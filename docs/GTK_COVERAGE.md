@@ -154,6 +154,13 @@ QEMU already runs with two guest CPUs. During these draws its host process
 consumed approximately one CPU core; increasing guest vCPUs does not parallelize
 the GPU model's serial execution. No higher-vCPU speedup has been measured.
 
+The smoke runner supplies a Weston configuration with `idle-time=0` and shell
+animations disabled. Weston 10's installed manual documents a default
+300-second idle timeout and a startup fade; both are unsuitable when a single
+draw takes about 900 seconds. This preserves the desktop shell, DRM backend,
+OpenGPU renderer, and GTK frame checks. Runtime verification of this
+configuration remains pending; the existing long run was started with defaults.
+
 
 ## Reusing the GTK-enabled image
 

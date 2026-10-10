@@ -222,7 +222,18 @@ cleanup() {
     kill ${a:-} ${w:-} "$logger" 2>/dev/null || true
 }
 trap cleanup EXIT
-weston --backend=drm-backend.so --tty=1 --socket=opengpu-gl >/tmp/weston-gtk-smoke.log 2>&1 & w=$!
+# A simulated draw can exceed the normal five-minute desktop idle timeout.
+# Keep the desktop visible and avoid spending GPU time on shell fades.
+cat >/tmp/opengpu-gtk-weston.ini <<'WESTON_CONFIG'
+[core]
+idle-time=0
+[shell]
+startup-animation=none
+animation=none
+close-animation=none
+focus-animation=none
+WESTON_CONFIG
+weston --config=/tmp/opengpu-gtk-weston.ini --backend=drm-backend.so --tty=1 --socket=opengpu-gl >/tmp/weston-gtk-smoke.log 2>&1 & w=$!
 for i in $(seq 1 60); do
     test -S /run/user/0/opengpu-gl && break
     kill -0 "$w" 2>/dev/null || exit 1
