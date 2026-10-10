@@ -34,6 +34,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define OPENGPU_VB_SLOTS 8u
 #define OPENGPU_ATTRIBS 8u
@@ -133,6 +134,8 @@ struct opengpu_context {
     struct pipe_opengpu_resource *packed;
     uint32_t packed_bytes;
     int64_t fence_timeout_ms;
+    bool trace_draws;
+    unsigned long long draw_sequence;
 };
 
 struct hw_vertex {
@@ -1996,6 +1999,8 @@ static void draw_vbo(struct pipe_context *pipe,
             struct pipe_opengpu_fence *fence = NULL;
             uint32_t cull = 0, depth_bits = 0, blend_config = 0;
             unsigned v;
+            struct timespec draw_start = {0}, draw_end;
+            int draw_status;
 
             for (v = 0; v < 3; v++) {
                 unsigned vertex = start + tri + v;
@@ -2122,9 +2127,31 @@ static void draw_vbo(struct pipe_context *pipe,
                 vdraw.state |= OPENGPU_DRAW_STATE_TEX_ENABLE |
                                OPENGPU_DRAW_STATE_TEX_CLAMP;
             }
-            if (pipe_opengpu_draw_vertex(ctx->gpu, &vdraw, &fence) ||
-                pipe_opengpu_fence_finish(ctx->gpu, fence,
-                                          ctx->fence_timeout_ms))
+            if (ctx->trace_draws) {
+                fprintf(stderr, "opengpu: submit draw=%llu target=%ux%u timeout_ms=%lld texture=%d position=%s\n",
+                        ++ctx->draw_sequence, ctx->width, ctx->height,
+                        (long long)ctx->fence_timeout_ms, ctx->fs->samples,
+                        ctx->vs->mvp ? "float" : "q16");
+                for (v = 0; v < 3; v++)
+                    fprintf(stderr, "opengpu: vertex[%u]=%08x,%08x,%08x,%08x\n",
+                            v, (uint32_t)verts[v].x, (uint32_t)verts[v].y,
+                            (uint32_t)verts[v].z, (uint32_t)verts[v].w);
+                clock_gettime(CLOCK_MONOTONIC, &draw_start);
+            }
+            draw_status = pipe_opengpu_draw_vertex(ctx->gpu, &vdraw, &fence);
+            if (!draw_status)
+                draw_status = pipe_opengpu_fence_finish(ctx->gpu, fence,
+                                                       ctx->fence_timeout_ms);
+            if (ctx->trace_draws) {
+                int saved_errno = errno;
+                clock_gettime(CLOCK_MONOTONIC, &draw_end);
+                fprintf(stderr, "opengpu: complete draw=%llu status=%d elapsed_ms=%.3f\n",
+                        ctx->draw_sequence, draw_status,
+                        (draw_end.tv_sec - draw_start.tv_sec) * 1000.0 +
+                        (draw_end.tv_nsec - draw_start.tv_nsec) / 1000000.0);
+                errno = saved_errno;
+            }
+            if (draw_status)
                 gpu_failed("GPU draw failed");
             else if (ctx->vs->mvp)
                 pipe_opengpu_log_vs_kernarg(ctx->gpu);
@@ -2469,6 +2496,8 @@ struct pipe_context *opengpu_pipe_context_create(struct pipe_screen *screen,
         return NULL;
     }
     ctx->fence_timeout_ms = opengpu_fence_timeout_ms();
+    ctx->trace_draws = getenv("OPENGPU_TRACE_DRAWS") != NULL &&
+                       !strcmp(getenv("OPENGPU_TRACE_DRAWS"), "1");
     ctx->base.screen = screen;
     ctx->base.priv = priv;
     ctx->base.destroy = context_destroy;

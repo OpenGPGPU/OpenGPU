@@ -109,6 +109,16 @@ GPU wait budget is selected with `OPENGPU_FENCE_TIMEOUT_MS`; the smoke gate uses
 minutes. Fast hardware or small tests can set a shorter value. The kernel
 watchdog remains independent and still reports real GPU faults.
 
+`OPENGPU_TRACE_DRAWS=1` logs each submitted triangle's framebuffer dimensions,
+packed vertex positions (hex float bits for matrix shaders, Q16.16 otherwise),
+timeout, and submission-to-fence elapsed milliseconds. The GTK smoke runner
+enables it for both Weston and the client. A `submit` without `complete` means
+the draw call is still outstanding; it does not by itself establish a GPU hang.
+Correlate it with model ticks and the guest thread stack. A sampled kiosk-shell
+run showed Weston in `DRM_IOCTL_SYNCOBJ_WAIT` and GTK in `poll`; neither GTK
+rendering nor a requirement for asynchronous compositor submission has yet
+been proven by that observation.
+
 
 ## Reusing the GTK-enabled image
 
