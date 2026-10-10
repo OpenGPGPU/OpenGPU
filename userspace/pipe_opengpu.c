@@ -4,6 +4,7 @@
 #include <drm/drm_fourcc.h>
 #include <drm/drm_mode.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -296,6 +297,49 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_linear(
     res->width = width;
     res->height = height;
     res->pitch = width * 4u;
+    return res;
+}
+
+struct pipe_opengpu_resource *pipe_opengpu_resource_from_handle(
+    struct pipe_opengpu_screen *screen, uint32_t width, uint32_t height,
+    uint32_t pitch, uint32_t handle, int is_fd)
+{
+    struct pipe_opengpu_resource *res;
+    struct drm_prime_handle prime = { .fd = (int32_t)handle,
+                                      .flags = DRM_CLOEXEC };
+    struct drm_mode_map_dumb map = { 0 };
+    uint64_t bytes = (uint64_t)pitch * height;
+    void *mapping;
+
+    if (!screen || !width || !height || !pitch || bytes > UINT32_MAX)
+        return NULL;
+    if (is_fd) {
+        if (ioctl(screen->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &prime) < 0)
+            return NULL;
+        handle = prime.handle;
+    }
+    res = calloc(1, sizeof(*res));
+    if (!res)
+        return NULL;
+    map.handle = handle;
+    if (ioctl(screen->fd, DRM_IOCTL_MODE_MAP_DUMB, &map) < 0) {
+        free(res);
+        return NULL;
+    }
+    mapping = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_SHARED,
+                   screen->fd, map.offset);
+    if (mapping == MAP_FAILED) {
+        opengpu_buffer_destroy(screen->fd, &(struct opengpu_buffer){
+            .handle = handle });
+        free(res);
+        return NULL;
+    }
+    res->buffer.handle = handle;
+    res->buffer.size = bytes;
+    res->buffer.map = mapping;
+    res->width = width;
+    res->height = height;
+    res->pitch = pitch;
     return res;
 }
 

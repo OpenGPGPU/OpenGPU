@@ -33,6 +33,9 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_2d(
  * no row padding, so a texture cannot use a dumb-buffer pitch. */
 struct pipe_opengpu_resource *pipe_opengpu_resource_create_linear(
     struct pipe_opengpu_screen *screen, uint32_t width, uint32_t height);
+struct pipe_opengpu_resource *pipe_opengpu_resource_from_handle(
+    struct pipe_opengpu_screen *screen, uint32_t width, uint32_t height,
+    uint32_t pitch, uint32_t handle, int is_fd);
 void *pipe_opengpu_resource_map(struct pipe_opengpu_resource *res);
 uint64_t pipe_opengpu_resource_size(const struct pipe_opengpu_resource *res);
 uint32_t pipe_opengpu_resource_width(const struct pipe_opengpu_resource *res);

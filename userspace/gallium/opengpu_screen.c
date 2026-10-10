@@ -62,6 +62,7 @@ static int screen_get_param(struct pipe_screen *screen, enum pipe_cap param)
     case PIPE_CAP_TGSI_TEXCOORD:
     case PIPE_CAP_ACCELERATED:
     case PIPE_CAP_UMA:
+    case PIPE_CAP_DMABUF:
     case PIPE_CAP_BLEND_EQUATION_SEPARATE:
     case PIPE_CAP_POINT_SIZE_FIXED:
         /* Triangles only. A fixed point size keeps gl_PointSize out of the
@@ -321,6 +322,37 @@ static bool resource_get_handle(struct pipe_screen *screen,
     return gem != 0;
 }
 
+static struct pipe_resource *resource_from_handle(
+    struct pipe_screen *screen, const struct pipe_resource *templ,
+    struct winsys_handle *whandle, unsigned usage)
+{
+    struct opengpu_screen *og = oscreen(screen);
+    struct opengpu_resource *res;
+
+    (void)usage;
+    if (!og || !templ || !whandle || templ->target != PIPE_TEXTURE_2D ||
+        templ->array_size != 1 || whandle->plane)
+        return NULL;
+    if (whandle->type != WINSYS_HANDLE_TYPE_FD &&
+        whandle->type != WINSYS_HANDLE_TYPE_KMS)
+        return NULL;
+    res = CALLOC_STRUCT(opengpu_resource);
+    if (!res)
+        return NULL;
+    res->base = *templ;
+    res->base.screen = screen;
+    res->base.reference.count = 1;
+    res->gpu = pipe_opengpu_resource_from_handle(
+        og->gpu, templ->width0, templ->height0,
+        whandle->stride ? whandle->stride : templ->width0 * 4u,
+        whandle->handle, whandle->type == WINSYS_HANDLE_TYPE_FD);
+    if (!res->gpu) {
+        FREE(res);
+        return NULL;
+    }
+    return &res->base;
+}
+
 static bool resource_get_param(struct pipe_screen *screen,
                                struct pipe_context *context,
                                struct pipe_resource *tex, unsigned plane,
@@ -428,6 +460,7 @@ struct pipe_screen *opengpu_drm_screen_create(
     screen->base.is_format_supported = screen_is_format_supported;
     screen->base.context_create = opengpu_pipe_context_create;
     screen->base.resource_create = resource_create;
+    screen->base.resource_from_handle = resource_from_handle;
     screen->base.resource_destroy = resource_destroy;
     screen->base.resource_get_handle = resource_get_handle;
     screen->base.resource_get_param = resource_get_param;
