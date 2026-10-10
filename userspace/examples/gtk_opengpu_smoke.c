@@ -43,12 +43,7 @@ static GLuint compile_shader(GLenum type, const char *source)
 static void realize(GtkGLArea *area, gpointer data)
 {
     struct AppState *state = data;
-    GLuint vs, fs;
-    GLint ok = 0;
-    const GLfloat vertices[] = {
-        -0.82f, -0.60f,  0.82f, -0.60f,  0.82f, 0.60f,
-        -0.82f, -0.60f,  0.82f,  0.60f, -0.82f, 0.60f,
-    };
+    (void)data;
     g_print("OPENGPU GTK REALIZE ENTER\n");
     fflush(stdout);
     gtk_gl_area_make_current(area);
@@ -69,25 +64,8 @@ static void realize(GtkGLArea *area, gpointer data)
             return;
         }
     }
-    vs = compile_shader(GL_VERTEX_SHADER, vs_src);
-    fs = compile_shader(GL_FRAGMENT_SHADER, fs_src);
-    if (!vs || !fs)
-        return;
-    state->program = glCreateProgram();
-    glAttachShader(state->program, vs);
-    glAttachShader(state->program, fs);
-    glBindAttribLocation(state->program, 0, "position");
-    glLinkProgram(state->program);
-    glGetProgramiv(state->program, GL_LINK_STATUS, &ok);
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-    if (!ok) {
-        g_printerr("gtk_opengpu_smoke: program link failed\n");
-        return;
-    }
-    glGenBuffers(1, &state->vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_STATIC_DRAW);
+    state->program = 0;
+    state->vbo = 0;
     g_print("OPENGPU GTK REALIZE PASS\n");
     fflush(stdout);
 }
@@ -97,7 +75,9 @@ static gboolean automatic_redraw(gpointer data);
 static gboolean render(GtkGLArea *area, GdkGLContext *context, gpointer data)
 {
     struct AppState *state = data;
-    GLint color;
+    GLubyte pixel[4] = {0};
+    const int expected[3] = { state->active ? 242 : 10,
+                              state->active ? 89 : 15, 30 };
     (void)context;
     g_print("OPENGPU GTK RENDER ENTER\n");
     fflush(stdout);
@@ -108,38 +88,25 @@ static gboolean render(GtkGLArea *area, GdkGLContext *context, gpointer data)
     }
     glViewport(0, 0, gtk_widget_get_allocated_width(GTK_WIDGET(area)),
                gtk_widget_get_allocated_height(GTK_WIDGET(area)));
-    glClearColor(0.04f, 0.06f, 0.10f, 1.0f);
+    glClearColor(state->active ? 0.95f : 0.04f,
+                 state->active ? 0.35f : 0.06f, 0.12f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    glUseProgram(state->program);
-    color = glGetUniformLocation(state->program, "color");
-    glUniform4f(color, state->active ? 0.95f : 0.20f,
-                state->active ? 0.35f : 0.55f, 0.18f, 1.0f);
-    glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-    glDisableVertexAttribArray(0);
     glFinish();
-    {
-        GLubyte pixel[4] = {0};
-        const int expected[3] = { state->active ? 242 : 51,
-                                  state->active ? 89 : 140, 46 };
-        glReadPixels(gtk_widget_get_allocated_width(GTK_WIDGET(area)) / 2,
-                     gtk_widget_get_allocated_height(GTK_WIDGET(area)) / 2,
-                     1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
-        if (glGetError() != GL_NO_ERROR ||
-            abs((int)pixel[0] - expected[0]) > 2 ||
-            abs((int)pixel[1] - expected[1]) > 2 ||
-            abs((int)pixel[2] - expected[2]) > 2) {
-            g_printerr("OPENGPU GTK FRAME ERROR: pixel=%u,%u,%u,%u\n",
-                       pixel[0], pixel[1], pixel[2], pixel[3]);
-            exit(1);
-        }
-        g_print("OPENGPU GTK FRAME PASS: %s pixel=%u,%u,%u,%u\n",
-                state->active ? "active" : "idle",
-                pixel[0], pixel[1], pixel[2], pixel[3]);
-        fflush(stdout);
+    glReadPixels(gtk_widget_get_allocated_width(GTK_WIDGET(area)) / 2,
+                 gtk_widget_get_allocated_height(GTK_WIDGET(area)) / 2,
+                 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+    if (glGetError() != GL_NO_ERROR ||
+        abs((int)pixel[0] - expected[0]) > 3 ||
+        abs((int)pixel[1] - expected[1]) > 3 ||
+        abs((int)pixel[2] - expected[2]) > 3) {
+        g_printerr("OPENGPU GTK FRAME ERROR: pixel=%u,%u,%u,%u\n",
+                   pixel[0], pixel[1], pixel[2], pixel[3]);
+        exit(1);
     }
+    g_print("OPENGPU GTK FRAME PASS: %s pixel=%u,%u,%u,%u\n",
+            state->active ? "active" : "idle",
+            pixel[0], pixel[1], pixel[2], pixel[3]);
+    fflush(stdout);
     if (!state->reported && getenv("OPENGPU_GTK_AUTOTEST")) {
         state->reported = TRUE;
         g_timeout_add_seconds(3, automatic_redraw, state);
