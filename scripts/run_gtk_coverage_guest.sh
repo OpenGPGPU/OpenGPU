@@ -91,6 +91,14 @@ if [ "$GTK_PROOF_SCISSOR" = 1 ]; then
     [ -f "$artifact" ] || { echo "missing guest artifact: $artifact" >&2; exit 1; }
 fi
 
+# GTK is compiled inside the guest, even when the GPU/Mesa build is cached.
+# Always stage current sources rather than reusing a previous Mesa build's copy.
+if [ "$GTK_PROOF_SMOKE" = 1 ]; then
+    for source in gtk_opengpu_smoke.c opengpu_gtk_smoke_build.sh opengpu_gtk_smoke.sh; do
+        cp "$GPU_DIR/userspace/examples/$source" "$DRIVER_OUTPUT/$source"
+    done
+fi
+
 BASE="${GTK_DEBIAN_BASE:-$ARTI_WORK/debian-arm64-base.qcow2}"
 [ -f "$BASE" ] || { echo "Debian base image missing at $BASE" >&2; exit 1; }
 QEMU_IMG="${QEMU_IMG:-$DISPLAY_WORK/qemu-arti-build/qemu-img}"
@@ -246,6 +254,10 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     if grep -qF 'OPENGPU GTK FRAME PASS: active' /tmp/gtk-client.log; then
         cat /tmp/gtk-client.log
         exit 0
+    fi
+    if grep -qE 'OPENGPU GTK .*ERROR|shader compile failed|program link failed' /tmp/gtk-client.log; then
+        cat /tmp/gtk-client.log
+        exit 1
     fi
     kill -0 "$w" 2>/dev/null && kill -0 "$a" 2>/dev/null || exit 1
     sleep 30
