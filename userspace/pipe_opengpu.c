@@ -306,8 +306,7 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_from_handle(
     uint32_t pitch, uint32_t handle, int is_fd)
 {
     struct pipe_opengpu_resource *res;
-    struct drm_prime_handle prime = { .fd = (int32_t)handle,
-                                      .flags = DRM_CLOEXEC };
+    struct drm_prime_handle prime = { .fd = (int32_t)handle };
     struct drm_mode_map_dumb map = { 0 };
     uint64_t bytes = (uint64_t)pitch * height;
     void *mapping;
