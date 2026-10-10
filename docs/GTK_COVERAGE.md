@@ -130,6 +130,31 @@ nor that increasing the timeout will solve the problem. The next diagnostic
 must inspect execution progress or reproduce this exact draw in isolation.
 
 
+### Measured compositor cost (2026-10-11)
+
+With a 1800000 ms fence budget, the real Weston desktop-shell run completed
+its first two 640x480 triangles successfully in 925181 ms and 1024258 ms.
+Together these took 32.49 minutes; they are two triangles, not two complete
+frames. Further compositor draws followed, so GTK startup remains unverified.
+The earlier ten-minute timeout was insufficient for these submissions.
+
+`GTK_PROOF_WESTON_REPRO=small|medium|full` isolates the uniform-color/opacity
+shader, pixel-space transform, and premultiplied-alpha blending in `gl_fill`.
+The small (32x24) and medium (160x120) triangle runs passed pixel checks and
+completed in 5277 ms and 62928 ms respectively. These are diagnostic workloads,
+not substitutes for the GTK window gate.
+
+`GTK_PROOF_SMOKE_TIMEOUT_S` sets the overall GTK startup/redraw budget in
+seconds, separately from `GTK_PROOF_FENCE_TIMEOUT_MS`. By default it allows
+eight fence budgets (four hours with the default 30-minute fence budget).
+This is a bounded allowance for multiple draws, not a guarantee of completion.
+The host SSH observer allows an additional five minutes for setup and cleanup.
+
+QEMU already runs with two guest CPUs. During these draws its host process
+consumed approximately one CPU core; increasing guest vCPUs does not parallelize
+the GPU model's serial execution. No higher-vCPU speedup has been measured.
+
+
 ## Reusing the GTK-enabled image
 
 The prepared image is a normal Debian ARM64 qcow2 image, so the other ARTI

@@ -171,6 +171,18 @@ grep -qF 'gl_gtk_coverage: mode 640x480 inside=0xff0000ff outside=0x00000000' "$
 grep -qF 'OPENGPU GL GTK COVERAGE PASS' "$PROOF_LOG"
 echo 'GTK coverage guest proof: PASS'
 
+# Isolate the compositor's uniform-color/opacity shader from Wayland dispatch.
+if [ -n "${GTK_PROOF_WESTON_REPRO:-}" ]; then
+    case "$GTK_PROOF_WESTON_REPRO" in
+        small|medium|full) ;;
+        *) echo 'GTK_PROOF_WESTON_REPRO must be small, medium, or full' >&2; exit 1 ;;
+    esac
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 3900 \
+        "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_TRACE_DRAWS=1 OPENGPU_FENCE_TIMEOUT_MS=1800000 OPENGPU_GL_EXIT=1 OPENGPU_GL_WESTON_REPRO=$GTK_PROOF_WESTON_REPRO /root/opengpu_gl_fill.bin" \
+        | tee "$PROOF_WORK/weston-repro.log"
+    grep -qF 'OPENGPU GL FILL PASS' "$PROOF_WORK/weston-repro.log"
+fi
+
 if [ "$GTK_PROOF_SMOKE" = 1 ]; then
     GTK_SMOKE_LOG="$PROOF_WORK/gtk-smoke.log"
     GTK_SMOKE_TIMEOUT="${GTK_PROOF_FENCE_TIMEOUT_MS:-1800000}"
@@ -181,7 +193,18 @@ if [ "$GTK_PROOF_SMOKE" = 1 ]; then
         echo 'GTK_PROOF_FENCE_TIMEOUT_MS must be 1..2147483647' >&2
         exit 1
     }
-    echo '=== Check GTK Wayland/OpenGPU smoke window ==='
+    # Startup and redraw contain multiple synchronous GPU submissions.
+    # Keep the whole-test budget separate from the per-fence budget.
+    GTK_SMOKE_WAIT="${GTK_PROOF_SMOKE_TIMEOUT_S:-$(( (10#$GTK_SMOKE_TIMEOUT + 999) / 1000 * 8 ))}"
+    [[ "$GTK_SMOKE_WAIT" =~ ^[0-9]+$ ]] &&
+        [ "${#GTK_SMOKE_WAIT}" -le 7 ] &&
+        [ "$GTK_SMOKE_WAIT" -gt 0 ] &&
+        [ "$GTK_SMOKE_WAIT" -le 604800 ] || {
+        echo 'GTK_PROOF_SMOKE_TIMEOUT_S must be 1..604800' >&2
+        exit 1
+    }
+    GTK_SMOKE_WAIT=$((10#$GTK_SMOKE_WAIT))
+    echo "=== Check GTK Wayland/OpenGPU smoke window (budget ${GTK_SMOKE_WAIT}s) ==="
     GTK_SMOKE_CMD=$(cat <<'EOF'
 set -eu
 /root/opengpu_gtk_smoke_build.sh
@@ -207,7 +230,8 @@ for i in $(seq 1 60); do
 done
 test -S /run/user/0/opengpu-gl
 OPENGPU_GTK_AUTOTEST=1 /root/opengpu_gtk_smoke.bin >/tmp/gtk-client.log 2>&1 & a=$!
-for i in $(seq 1 120); do
+deadline=$(( $(date +%s) + @SMOKE_TIMEOUT_S@ ))
+while [ "$(date +%s)" -lt "$deadline" ]; do
     if grep -qF 'OPENGPU GTK FRAME PASS: active' /tmp/gtk-client.log; then
         cat /tmp/gtk-client.log
         exit 0
@@ -220,7 +244,8 @@ exit 1
 EOF
 )
     GTK_SMOKE_CMD="${GTK_SMOKE_CMD/OPENGPU_FENCE_TIMEOUT_MS=1800000/OPENGPU_FENCE_TIMEOUT_MS=$GTK_SMOKE_TIMEOUT}"
-    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 3900 "$GTK_SMOKE_CMD" \
+    GTK_SMOKE_CMD="${GTK_SMOKE_CMD//@SMOKE_TIMEOUT_S@/$GTK_SMOKE_WAIT}"
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" "$((GTK_SMOKE_WAIT + 300))" "$GTK_SMOKE_CMD" \
         | tee "$GTK_SMOKE_LOG"
     grep -qF 'OPENGPU GTK FRAME PASS' "$GTK_SMOKE_LOG"
     grep -qF 'OPENGPU GTK REDRAW: active' "$GTK_SMOKE_LOG"

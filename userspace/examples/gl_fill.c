@@ -32,7 +32,7 @@ static const char *vs_src =
     "}\n";
 
 /* Column-major. Adds 0.5 to clip x, so the left edge sits at a quarter of the width. */
-static const float mvp[16] = {
+static float mvp[16] = {
     1.f, 0.f, 0.f, 0.f,
     0.f, 1.f, 0.f, 0.f,
     0.f, 0.f, 1.f, 0.f,
@@ -47,7 +47,7 @@ static const char *fs_src =
     "}\n";
 
 /* Clip triangle covering the GPU's top-left half. */
-static const float verts[] = {
+static float verts[] = {
     -1.f, -1.f,
      0.f, -1.f,
     -1.f, -0.75f,
@@ -131,6 +131,8 @@ int main(void)
     EGLint major = 0, minor = 0, nconfig = 0;
     GLuint program, vbo, vs, fs;
     GLint linked = 0, mvp_loc, color_loc;
+    const char *repro = getenv("OPENGPU_GL_WESTON_REPRO");
+    unsigned repro_width = 0, repro_height = 0;
     uint32_t crtc_id, fb = 0;
     uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 };
     uint32_t outside, inside, clear;
@@ -219,6 +221,29 @@ int main(void)
 
     step("context current");
     vs = compile_shader(GL_VERTEX_SHADER, vs_src);
+    if (repro) {
+        if (strcmp(repro, "small") && strcmp(repro, "medium") && strcmp(repro, "full"))
+            die("OPENGPU_GL_WESTON_REPRO must be small, medium, or full");
+        repro_width = !strcmp(repro, "small") ? 32 :
+                      !strcmp(repro, "medium") ? 160 : mode.hdisplay;
+        repro_height = !strcmp(repro, "small") ? 24 :
+                       !strcmp(repro, "medium") ? 120 : mode.vdisplay;
+        memset(mvp, 0, sizeof(mvp));
+        mvp[0] = 2.f / mode.hdisplay;
+        mvp[5] = -2.f / mode.vdisplay;
+        mvp[10] = mvp[15] = 1.f;
+        mvp[12] = -1.f;
+        mvp[13] = 1.f;
+        verts[0] = verts[1] = verts[3] = 0.f;
+        verts[2] = verts[4] = repro_width;
+        verts[5] = repro_height;
+        fs_src = "precision mediump float;\n"
+                 "uniform float alpha;\n"
+                 "uniform vec4 u_color;\n"
+                 "void main() { gl_FragColor = u_color * alpha; }\n";
+        fprintf(stderr, "gl_fill: Weston shader reproduction %ux%u\n",
+                repro_width, repro_height);
+    }
     fs = compile_shader(GL_FRAGMENT_SHADER, fs_src);
     program = glCreateProgram();
     glAttachShader(program, vs);
@@ -240,6 +265,12 @@ int main(void)
     if (color_loc < 0)
         die("u_color uniform missing");
     glUniform4f(color_loc, 1.f, 0.f, 0.f, 1.f);
+    if (repro) {
+        GLint alpha_loc = glGetUniformLocation(program, "alpha");
+        if (alpha_loc < 0)
+            die("alpha uniform missing");
+        glUniform1f(alpha_loc, 1.f);
+    }
 
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -250,6 +281,10 @@ int main(void)
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glDisable(GL_BLEND);
+    if (repro) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    }
     glViewport(0, 0, mode.hdisplay, mode.vdisplay);
     glClearColor(0.f, 0.f, 1.f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -264,6 +299,11 @@ int main(void)
     outside = pixel_word(8, mode.vdisplay - 1 - 8);
     inside = pixel_word(100 * mode.hdisplay / 320, mode.vdisplay - 1 - 8);
     clear = pixel_word(mode.hdisplay - 8, 8);
+    if (repro) {
+        inside = pixel_word(3 * repro_width / 4, repro_height / 4);
+        outside = pixel_word(repro_width / 4, 3 * repro_height / 4);
+        clear = outside;
+    }
     printf("gl_fill: mode %ux%u outside=0x%08x inside=0x%08x clear=0x%08x\n",
            mode.hdisplay, mode.vdisplay, outside, inside, clear);
     fflush(stdout);
