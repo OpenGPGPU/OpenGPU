@@ -119,6 +119,16 @@ run showed Weston in `DRM_IOCTL_SYNCOBJ_WAIT` and GTK in `poll`; neither GTK
 rendering nor a requirement for asynchronous compositor submission has yet
 been proven by that observation.
 
+On 2026-10-10 the traced desktop-shell run submitted draw 1 at 640x480,
+with float input vertices `(0,0,0,1)`, `(640,0,0,1)`, `(640,480,0,1)`,
+no texture, blend `0x511`, and a 52-instruction fragment program. Its fence
+wait returned `ETIMEDOUT` after 605023 ms with a 600000 ms budget. A subsequent
+guest stack still showed Weston in a syncobj wait (possibly a later operation).
+The model continued ticking, but ticks alone do not demonstrate fragment or
+pixel progress. This is not evidence that asynchronous submission is required,
+nor that increasing the timeout will solve the problem. The next diagnostic
+must inspect execution progress or reproduce this exact draw in isolation.
+
 
 ## Reusing the GTK-enabled image
 
