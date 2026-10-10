@@ -1161,7 +1161,11 @@ static void *create_shader(struct pipe_context *pipe,
 {
     struct opengpu_shader *shader = lower_shader(state, want_fs);
 
-    (void)pipe;
+    if (octx(pipe)->trace_draws && state &&
+        state->type == PIPE_SHADER_IR_TGSI && state->tokens) {
+        fprintf(stderr, "opengpu: %s shader TGSI\n", want_fs ? "fragment" : "vertex");
+        tgsi_dump(state->tokens, 0);
+    }
     if (!shader) {
         reject(want_fs ? "fragment shader did not lower onto the fragment core"
                        : "vertex shader did not lower onto the vertex core");
