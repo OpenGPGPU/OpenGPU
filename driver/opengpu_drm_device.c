@@ -9,6 +9,7 @@
 #include <drm/drm_fbdev_dma.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_ioctl.h>
+#include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_managed.h>
 #include <drm/drm_prime.h>
 #include "opengpu_drm_device.h"
@@ -19,6 +20,9 @@ MODULE_IMPORT_NS("DMA_BUF");
 DEFINE_DRM_GEM_DMA_FOPS(opengpu_drm_fops);
 
 static const struct drm_ioctl_desc opengpu_drm_ioctls[] = {
+    DRM_IOCTL_DEF_DRV(OPENGPU_CREATE_BUFFER,
+                      opengpu_drm_create_buffer_ioctl,
+                      DRM_RENDER_ALLOW),
     DRM_IOCTL_DEF_DRV(OPENGPU_SUBMIT, opengpu_compute_drm_ioctl,
                       DRM_RENDER_ALLOW),
     DRM_IOCTL_DEF_DRV(OPENGPU_CONTEXT_CREATE,
@@ -52,6 +56,35 @@ static const struct drm_ioctl_desc opengpu_drm_ioctls[] = {
     DRM_IOCTL_DEF_DRV(OPENGPU_GET_FAULT, opengpu_compute_get_fault_ioctl,
                       DRM_RENDER_ALLOW),
 };
+
+int opengpu_drm_create_buffer_ioctl(struct drm_device *drm, void *data,
+                                    struct drm_file *file_priv)
+{
+    struct drm_opengpu_create_buffer *args = data;
+    struct drm_mode_create_dumb dumb = {
+        .width = args->width,
+        .height = args->height,
+        .bpp = args->bpp,
+    };
+    int ret;
+
+    if (!args->width || !args->height || args->bpp != 32)
+        return -EINVAL;
+    ret = drm_gem_dma_dumb_create_internal(file_priv, drm, &dumb);
+    if (ret)
+        return ret;
+    args->handle = dumb.handle;
+    args->pitch = dumb.pitch;
+    args->size = dumb.size;
+    ret = drm_gem_dumb_map_offset(file_priv, drm, dumb.handle,
+                                  &args->offset);
+    if (ret) {
+        struct drm_gem_close close = { .handle = dumb.handle };
+        drm_gem_handle_delete(file_priv, close.handle);
+        return ret;
+    }
+    return 0;
+}
 
 /* Drop the shared-L2 lines covering a GEM object.  Called from the dma-buf
  * end_cpu_access hook after the caller wrote to a CPU mapping: the CPU does

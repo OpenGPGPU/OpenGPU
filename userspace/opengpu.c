@@ -82,21 +82,17 @@ int opengpu_context_destroy(int fd, uint32_t id)
 
 int opengpu_buffer_create(int fd, uint32_t bytes, struct opengpu_buffer *buffer)
 {
-    struct drm_mode_create_dumb create = { .width = (bytes + 3u) / 4u,
-                                           .height = 1, .bpp = 32 };
-    struct drm_mode_map_dumb map = { 0 };
-    struct drm_mode_destroy_dumb destroy;
+    struct drm_opengpu_create_buffer create = {
+        .width = (bytes + 3u) / 4u, .height = 1, .bpp = 32 };
     void *mapping;
     int saved;
     if (!buffer || !bytes || bytes > UINT32_MAX - 3u) {
         errno = EINVAL; return -1;
     }
     memset(buffer, 0, sizeof(*buffer));
-    if (ioctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &create) < 0) return -1;
-    map.handle = create.handle;
-    if (ioctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &map) < 0) goto fail;
+    if (ioctl(fd, DRM_IOCTL_OPENGPU_CREATE_BUFFER, &create) < 0) return -1;
     mapping = mmap(NULL, create.size, PROT_READ | PROT_WRITE, MAP_SHARED,
-                   fd, map.offset);
+                   fd, create.offset);
     if (mapping == MAP_FAILED) goto fail;
     buffer->handle = create.handle;
     buffer->size = create.size;
@@ -104,20 +100,19 @@ int opengpu_buffer_create(int fd, uint32_t bytes, struct opengpu_buffer *buffer)
     return 0;
 fail:
     saved = errno;
-    destroy.handle = create.handle;
-    ioctl(fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
+    { struct drm_gem_close close = { .handle = create.handle };
+      ioctl(fd, DRM_IOCTL_GEM_CLOSE, &close); }
     errno = saved;
     return -1;
 }
 
 int opengpu_buffer_destroy(int fd, struct opengpu_buffer *buffer)
 {
-    struct drm_mode_destroy_dumb destroy;
     int result;
     if (!buffer || !buffer->handle) { errno = EINVAL; return -1; }
-    destroy.handle = buffer->handle;
     if (buffer->map) munmap(buffer->map, buffer->size);
-    result = ioctl(fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
+    { struct drm_gem_close close = { .handle = buffer->handle };
+      result = ioctl(fd, DRM_IOCTL_GEM_CLOSE, &close); }
     if (!result) memset(buffer, 0, sizeof(*buffer));
     return result;
 }

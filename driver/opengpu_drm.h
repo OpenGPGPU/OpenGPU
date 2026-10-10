@@ -4,6 +4,19 @@
 
 #include <drm/drm.h>
 
+/* Render-node-safe replacement for the core dumb-buffer ioctls.  The core
+ * MODE_CREATE_DUMB and MODE_MAP_DUMB commands intentionally lack
+ * DRM_RENDER_ALLOW, so render nodes cannot use them. */
+struct drm_opengpu_create_buffer {
+    __u32 width;
+    __u32 height;
+    __u32 bpp;
+    __u32 handle;
+    __u32 pitch;
+    __u32 size;
+    __u64 offset;
+};
+
 /* Userspace draw record copied into per-job kernel DMA storage after
  * validation. shader_pc/kernarg are binding-relative offsets, never raw
  * device addresses; core-backed submission remains capability-gated. */
@@ -395,6 +408,7 @@ struct drm_opengpu_compute {
 #define DRM_OPENGPU_GET_FAULT 0x0a
 #define DRM_OPENGPU_RESOLVE 0x0b
 #define DRM_OPENGPU_INVALIDATE 0x0c
+#define DRM_OPENGPU_CREATE_BUFFER 0x0d
 #define DRM_IOCTL_OPENGPU_SUBMIT \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_SUBMIT, \
              struct drm_opengpu_submit)
@@ -434,5 +448,8 @@ struct drm_opengpu_compute {
 #define DRM_IOCTL_OPENGPU_INVALIDATE \
     DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_INVALIDATE, \
              struct drm_opengpu_invalidate)
+#define DRM_IOCTL_OPENGPU_CREATE_BUFFER \
+    DRM_IOWR(DRM_COMMAND_BASE + DRM_OPENGPU_CREATE_BUFFER, \
+             struct drm_opengpu_create_buffer)
 
 #endif /* OPENGPU_DRM_H */

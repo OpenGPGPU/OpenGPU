@@ -253,9 +253,7 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_2d(
     struct pipe_opengpu_screen *screen, uint32_t width, uint32_t height)
 {
     struct pipe_opengpu_resource *res;
-    struct drm_mode_create_dumb create = { .bpp = 32 };
-    struct drm_mode_map_dumb map = { 0 };
-    struct drm_mode_destroy_dumb destroy;
+    struct drm_opengpu_create_buffer create = { .bpp = 32 };
     void *mapping;
     int saved;
 
@@ -270,15 +268,12 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_2d(
     }
     create.width = width;
     create.height = height;
-    if (ioctl(screen->fd, DRM_IOCTL_MODE_CREATE_DUMB, &create) < 0) {
+    if (ioctl(screen->fd, DRM_IOCTL_OPENGPU_CREATE_BUFFER, &create) < 0) {
         free(res);
         return NULL;
     }
-    map.handle = create.handle;
-    if (ioctl(screen->fd, DRM_IOCTL_MODE_MAP_DUMB, &map) < 0)
-        goto fail;
     mapping = mmap(NULL, create.size, PROT_READ | PROT_WRITE, MAP_SHARED,
-                   screen->fd, map.offset);
+                   screen->fd, create.offset);
     if (mapping == MAP_FAILED)
         goto fail;
     res->buffer.handle = create.handle;
@@ -291,8 +286,8 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_2d(
     return res;
 fail:
     saved = errno;
-    destroy.handle = create.handle;
-    ioctl(screen->fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
+    { struct drm_gem_close close = { .handle = create.handle };
+      ioctl(screen->fd, DRM_IOCTL_GEM_CLOSE, &close); }
     free(res);
     errno = saved;
     return NULL;
