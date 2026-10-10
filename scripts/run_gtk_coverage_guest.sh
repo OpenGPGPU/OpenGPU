@@ -210,7 +210,7 @@ set -eu
 /root/opengpu_gtk_smoke_build.sh
 mkdir -p /run/user/0
 chmod 700 /run/user/0
-export XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=opengpu-gl GDK_BACKEND=wayland
+export XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=opengpu-gl GDK_BACKEND=wayland GDK_GL=gles
 export LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root MESA_LOADER_DRIVER_OVERRIDE=opengpu
 export OPENGPU_FENCE_TIMEOUT_MS=1800000
 export OPENGPU_TRACE_DRAWS=1
