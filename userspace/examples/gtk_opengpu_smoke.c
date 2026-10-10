@@ -15,31 +15,6 @@ struct AppState {
     GLuint vbo;
 };
 
-static const char *vs_src =
-    "attribute vec2 position;\n"
-    "void main() { gl_Position = vec4(position, 0.0, 1.0); }\n";
-static const char *fs_src =
-    "precision mediump float;\n"
-    "uniform vec4 color;\n"
-    "void main() { gl_FragColor = color; }\n";
-
-static GLuint compile_shader(GLenum type, const char *source)
-{
-    GLuint shader = glCreateShader(type);
-    GLint ok = 0;
-    glShaderSource(shader, 1, &source, NULL);
-    glCompileShader(shader);
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[512];
-        glGetShaderInfoLog(shader, sizeof log, NULL, log);
-        g_printerr("gtk_opengpu_smoke: shader compile failed: %s\n", log);
-        glDeleteShader(shader);
-        return 0;
-    }
-    return shader;
-}
-
 static void realize(GtkGLArea *area, gpointer data)
 {
     struct AppState *state = data;
