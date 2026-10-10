@@ -5,7 +5,6 @@
 #include <drm/drm_mode.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +43,7 @@
 struct pipe_opengpu_screen {
     int fd;
     uint64_t caps;
+    struct pipe_opengpu_resource *resources;
 };
 
 struct pipe_opengpu_resource {
@@ -52,6 +52,7 @@ struct pipe_opengpu_resource {
     uint32_t height;
     uint32_t pitch;
     uint32_t fb_id;
+    struct pipe_opengpu_resource *next;
 };
 
 struct pipe_opengpu_fence {
@@ -208,6 +209,24 @@ void pipe_opengpu_context_destroy(struct pipe_opengpu_context *ctx)
     free(ctx);
 }
 
+/* PRIME can return an existing GEM handle. Track wrappers so only the last
+ * resource closes that handle, including export/reimport of our own buffers. */
+static int resource_handle_live(struct pipe_opengpu_screen *screen, uint32_t handle)
+{
+    struct pipe_opengpu_resource *r;
+    for (r = screen->resources; r; r = r->next)
+        if (r->buffer.handle == handle)
+            return 1;
+    return 0;
+}
+
+static void track_resource(struct pipe_opengpu_screen *screen,
+                           struct pipe_opengpu_resource *res)
+{
+    res->next = screen->resources;
+    screen->resources = res;
+}
+
 struct pipe_opengpu_resource *pipe_opengpu_resource_create(
     struct pipe_opengpu_screen *screen, uint32_t bytes)
 {
@@ -226,6 +245,7 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create(
         free(res);
         return NULL;
     }
+    track_resource(screen, res);
     return res;
 }
 
@@ -267,6 +287,7 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_2d(
     res->width = width;
     res->height = height;
     res->pitch = create.pitch;
+    track_resource(screen, res);
     return res;
 fail:
     saved = errno;
@@ -307,40 +328,69 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_from_handle(
 {
     struct pipe_opengpu_resource *res;
     struct drm_prime_handle prime = { .fd = (int32_t)handle };
-    struct drm_mode_map_dumb map = { 0 };
     uint64_t bytes = (uint64_t)pitch * height;
-    void *mapping;
+    off_t size;
+    int saved;
 
-    if (!screen || !width || !height || !pitch || bytes > UINT32_MAX)
+    /* Only linear, zero-offset DMA-BUF images are supported. Obtain the real
+     * allocation size before mapping, rather than trusting image metadata. */
+    if (!screen || !is_fd || !width || !height ||
+        (uint64_t)width * 4 > pitch || bytes > UINT32_MAX) {
+        errno = EINVAL;
         return NULL;
-    if (is_fd) {
-        if (ioctl(screen->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &prime) < 0)
-            return NULL;
-        handle = prime.handle;
+    }
+    size = lseek(prime.fd, 0, SEEK_END);
+    if (size < 0 || (uint64_t)size < bytes || (uint64_t)size > UINT32_MAX) {
+        errno = EINVAL;
+        return NULL;
     }
     res = calloc(1, sizeof(*res));
     if (!res)
         return NULL;
-    map.handle = handle;
-    if (ioctl(screen->fd, DRM_IOCTL_MODE_MAP_DUMB, &map) < 0) {
+    if (ioctl(screen->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &prime) < 0) {
         free(res);
         return NULL;
     }
-    mapping = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_SHARED,
-                   screen->fd, map.offset);
-    if (mapping == MAP_FAILED) {
-        opengpu_buffer_destroy(screen->fd, &(struct opengpu_buffer){
-            .handle = handle });
+    res->buffer.map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                          prime.fd, 0);
+    if (res->buffer.map == MAP_FAILED) {
+        saved = errno;
+        if (!resource_handle_live(screen, prime.handle)) {
+            struct drm_gem_close close_handle = { .handle = prime.handle };
+            ioctl(screen->fd, DRM_IOCTL_GEM_CLOSE, &close_handle);
+        }
         free(res);
+        errno = saved;
         return NULL;
     }
-    res->buffer.handle = handle;
-    res->buffer.size = bytes;
-    res->buffer.map = mapping;
+    res->buffer.handle = prime.handle;
+    res->buffer.size = size;
     res->width = width;
     res->height = height;
     res->pitch = pitch;
+    track_resource(screen, res);
     return res;
+}
+
+int pipe_opengpu_resource_export_fd(struct pipe_opengpu_screen *screen,
+                                   struct pipe_opengpu_resource *res)
+{
+    struct drm_prime_handle prime = { 0 };
+    if (!screen || !res) {
+        errno = EINVAL;
+        return -1;
+    }
+    prime.handle = res->buffer.handle;
+    prime.flags = DRM_RDWR;
+    if (ioctl(screen->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &prime) < 0)
+        return -1;
+    if (fcntl(prime.fd, F_SETFD, FD_CLOEXEC) < 0) {
+        int saved = errno;
+        close(prime.fd);
+        errno = saved;
+        return -1;
+    }
+    return prime.fd;
 }
 
 void *pipe_opengpu_resource_map(struct pipe_opengpu_resource *res)
@@ -380,8 +430,19 @@ void pipe_opengpu_resource_destroy(struct pipe_opengpu_screen *screen,
         return;
     if (res->fb_id)
         ioctl(screen->fd, DRM_IOCTL_MODE_RMFB, &res->fb_id);
-    if (res->buffer.handle)
-        opengpu_buffer_destroy(screen->fd, &res->buffer);
+    {
+        struct pipe_opengpu_resource **link = &screen->resources;
+        while (*link && *link != res)
+            link = &(*link)->next;
+        if (*link)
+            *link = res->next;
+    }
+    if (res->buffer.map)
+        munmap(res->buffer.map, res->buffer.size);
+    if (res->buffer.handle && !resource_handle_live(screen, res->buffer.handle)) {
+        struct drm_gem_close close_handle = { .handle = res->buffer.handle };
+        ioctl(screen->fd, DRM_IOCTL_GEM_CLOSE, &close_handle);
+    }
     free(res);
 }
 

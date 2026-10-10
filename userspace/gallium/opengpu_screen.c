@@ -308,13 +308,21 @@ static bool resource_get_handle(struct pipe_screen *screen,
     (void)usage;
     if (!res || !res->gpu || !whandle || whandle->plane)
         return false;
-    if (whandle->type != WINSYS_HANDLE_TYPE_KMS)
+    if (whandle->type != WINSYS_HANDLE_TYPE_KMS &&
+        whandle->type != WINSYS_HANDLE_TYPE_FD)
         return false;
     gem = pipe_opengpu_resource_handle(res->gpu);
     pitch = pipe_opengpu_resource_pitch(res->gpu);
     if (!pitch && tex->target != PIPE_BUFFER)
         pitch = (uint32_t)tex->width0 * 4u;
-    whandle->handle = gem;
+    if (whandle->type == WINSYS_HANDLE_TYPE_FD) {
+        int fd = pipe_opengpu_resource_export_fd(opengpu_screen_gpu(screen), res->gpu);
+        if (fd < 0)
+            return false;
+        whandle->handle = fd;
+    } else {
+        whandle->handle = gem;
+    }
     whandle->stride = pitch;
     whandle->offset = 0;
     whandle->modifier = 0;
@@ -331,10 +339,13 @@ static struct pipe_resource *resource_from_handle(
 
     (void)usage;
     if (!og || !templ || !whandle || templ->target != PIPE_TEXTURE_2D ||
-        templ->array_size != 1 || whandle->plane)
+        templ->array_size != 1 || templ->depth0 != 1 || templ->last_level ||
+        templ->nr_samples > 1 || whandle->plane || whandle->offset ||
+        (whandle->modifier != 0 && whandle->modifier != UINT64_C(0x00ffffffffffffff)) ||
+        (templ->format != PIPE_FORMAT_R8G8B8A8_UNORM &&
+         templ->format != PIPE_FORMAT_B8G8R8X8_UNORM))
         return NULL;
-    if (whandle->type != WINSYS_HANDLE_TYPE_FD &&
-        whandle->type != WINSYS_HANDLE_TYPE_KMS)
+    if (whandle->type != WINSYS_HANDLE_TYPE_FD)
         return NULL;
     res = CALLOC_STRUCT(opengpu_resource);
     if (!res)
@@ -389,6 +400,14 @@ static bool resource_get_param(struct pipe_screen *screen,
     case PIPE_RESOURCE_PARAM_HANDLE_TYPE_KMS:
         *value = pipe_opengpu_resource_handle(res->gpu);
         return *value != 0;
+    case PIPE_RESOURCE_PARAM_HANDLE_TYPE_FD: {
+        int fd = pipe_opengpu_resource_export_fd(opengpu_screen_gpu(screen),
+                                                  res->gpu);
+        if (fd < 0)
+            return false;
+        *value = (uint32_t)fd;
+        return true;
+    }
     default:
         return false;
     }

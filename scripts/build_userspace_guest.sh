@@ -105,7 +105,7 @@ rm -f "$DRIVER_OUTPUT"/opengpu_fp_unary.o \
 
 for ex in pipe_clear_draw pipe_compute pipe_blit pipe_strided_blit \
           pipe_resolve pipe_texture_draw pipe_depth_pass pipe_msaa_draw \
-          pipe_vertex_draw pipe_present pipe_desktop; do
+          pipe_vertex_draw pipe_present pipe_desktop pipe_dmabuf; do
     "$CROSS_GCC" "${CFLAGS[@]}" \
         -o "$DRIVER_OUTPUT/opengpu_${ex}" \
         "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.c" \
