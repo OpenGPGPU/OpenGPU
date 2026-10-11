@@ -106,6 +106,7 @@ struct opengpu_context {
     struct pipe_opengpu_context *gpu;
     struct pipe_surface *cbuf;
     struct pipe_surface *zsbuf;
+    struct pipe_opengpu_resource *present_target;
     uint32_t width;
     uint32_t height;
     struct opengpu_shader *vs;
@@ -1549,8 +1550,50 @@ static void set_framebuffer(struct pipe_context *pipe,
     cres = opengpu_resource(ctx->cbuf->texture);
     if (ctx->zsbuf && ctx->zsbuf->texture)
         dres = opengpu_resource(ctx->zsbuf->texture);
+    if (state->width < 640 || state->height < 480) {
+        uint32_t mode_width = 0, mode_height = 0;
+
+        if (!pipe_opengpu_screen_display_size(
+                opengpu_screen_gpu(pipe->screen), &mode_width, &mode_height) &&
+            mode_width >= state->width && mode_height >= state->height) {
+            if (!ctx->present_target ||
+                pipe_opengpu_resource_width(ctx->present_target) != mode_width ||
+                pipe_opengpu_resource_height(ctx->present_target) != mode_height) {
+                if (ctx->present_target)
+                    pipe_opengpu_resource_destroy(opengpu_screen_gpu(pipe->screen),
+                                                  ctx->present_target);
+                ctx->present_target = pipe_opengpu_resource_create_2d(
+                    opengpu_screen_gpu(pipe->screen), mode_width, mode_height);
+            }
+            if (ctx->present_target) {
+                pipe_opengpu_set_framebuffer(ctx->gpu, ctx->present_target,
+                                             state->width, state->height);
+                pipe_opengpu_set_depth(ctx->gpu, dres ? dres->gpu : NULL, 0);
+                return;
+            }
+        }
+    }
     pipe_opengpu_set_framebuffer(ctx->gpu, cres->gpu, state->width, state->height);
     pipe_opengpu_set_depth(ctx->gpu, dres ? dres->gpu : NULL, 0);
+}
+
+static void copy_present_target(struct opengpu_context *ctx)
+{
+    struct opengpu_resource *surface;
+    uint8_t *src, *dst;
+    uint32_t y;
+
+    if (!ctx->present_target || !ctx->cbuf || !ctx->cbuf->texture)
+        return;
+    surface = opengpu_resource(ctx->cbuf->texture);
+    src = pipe_opengpu_resource_map(ctx->present_target);
+    dst = pipe_opengpu_resource_map(surface->gpu);
+    if (!src || !dst)
+        return;
+    for (y = 0; y < ctx->height; y++)
+        memcpy(dst + (size_t)y * pipe_opengpu_resource_pitch(surface->gpu),
+               src + (size_t)y * pipe_opengpu_resource_pitch(ctx->present_target),
+               (size_t)ctx->width * 4u);
 }
 
 static uint32_t pack_color(const float c[4])
@@ -2232,6 +2275,8 @@ static void draw_vbo(struct pipe_context *pipe,
             if (!draw_status)
                 draw_status = pipe_opengpu_fence_finish(ctx->gpu, fence,
                                                        ctx->fence_timeout_ms);
+            if (!draw_status)
+                copy_present_target(ctx);
             if (ctx->trace_draws) {
                 int saved_errno = errno;
                 clock_gettime(CLOCK_MONOTONIC, &draw_end);
@@ -2567,6 +2612,9 @@ static void context_destroy(struct pipe_context *pipe)
     if (ctx->packed)
         pipe_opengpu_resource_destroy(opengpu_screen_gpu(pipe->screen),
                                       ctx->packed);
+    if (ctx->present_target)
+        pipe_opengpu_resource_destroy(opengpu_screen_gpu(pipe->screen),
+                                      ctx->present_target);
     pipe_opengpu_context_destroy(ctx->gpu);
     FREE(ctx);
 }
