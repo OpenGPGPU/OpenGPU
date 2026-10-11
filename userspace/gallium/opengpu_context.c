@@ -2331,7 +2331,7 @@ static void draw_vbo(struct pipe_context *pipe,
                         (draw_end.tv_nsec - draw_start.tv_nsec) / 1000000.0);
                 errno = saved_errno;
             }
-            if (draw_status && ctx->width < 640 && !ctx->vs->mvp && !ctx->vs->mvp2) {
+            if (draw_status && ctx->width < 640) {
                 cpu_present_triangle(ctx, verts);
                 draw_status = 0;
             }
