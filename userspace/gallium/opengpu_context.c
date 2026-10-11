@@ -1571,7 +1571,7 @@ static void set_framebuffer(struct pipe_context *pipe,
             }
             if (ctx->present_target) {
                 pipe_opengpu_set_framebuffer(ctx->gpu, ctx->present_target,
-                                             state->width, state->height);
+                                             mode_width, mode_height);
                 pipe_opengpu_set_depth(ctx->gpu, dres ? dres->gpu : NULL, 0);
                 return;
             }
@@ -2607,9 +2607,10 @@ static void set_sampler_views(struct pipe_context *pipe,
 static void flush(struct pipe_context *pipe, struct pipe_fence_handle **fence,
                   unsigned flags)
 {
+    (void)pipe;
     (void)flags;
     if (fence)
-        pipe->screen->fence_reference(pipe->screen, fence, NULL);
+        *fence = NULL;
 }
 
 /* Draws, clears and copies wait on their fence inside the winsys, so the

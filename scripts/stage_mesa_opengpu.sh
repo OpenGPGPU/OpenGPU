@@ -31,6 +31,28 @@ python3 - "$MESA" <<'PY'
 import pathlib, sys
 mesa = pathlib.Path(sys.argv[1])
 
+# The OpenGPU Gallium context completes submissions synchronously and exposes
+# Mesa's sync entry points on ES2 through GL_APPLE_sync.  Mesa 22.3 has the
+# APPLE sync entry points in its dispatch table but omits the extension-table
+# alias, so add the alias when staging this out-of-tree driver.
+extensions = mesa / "src/mesa/main/extensions_table.h"
+extensions_text = extensions.read_text()
+apple_sync = "EXT(APPLE_sync                               , ARB_sync                              ,  x ,  x ,  x , ES2, 2003)"
+if apple_sync not in extensions_text:
+    anchor = "EXT(APPLE_packed_pixels                     , dummy_true                             , GLL,  x ,  x ,  x , 2002)\n"
+    if anchor not in extensions_text:
+        raise SystemExit("APPLE extension anchor missing")
+    extensions.write_text(extensions_text.replace(anchor, anchor + apple_sync + "\n", 1))
+
+# GL_APPLE_sync uses the same Mesa sync implementation as GL_ARB_sync.  The
+# pinned Mesa generator otherwise hides the entry points from eglGetProcAddress
+# for ES2 because ARB_sync.xml only tags them as ES3 functions.
+sync_xml = mesa / "src/mapi/glapi/gen/ARB_sync.xml"
+sync_text = sync_xml.read_text()
+sync_text_updated = sync_text.replace('es2="3.0"', 'es2="2.0"')
+if sync_text_updated != sync_text:
+    sync_xml.write_text(sync_text_updated)
+
 def insert_once(path, needle, addition, after=True):
     file = mesa / path
     text = file.read_text()

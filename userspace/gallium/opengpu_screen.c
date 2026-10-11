@@ -440,8 +440,10 @@ static void fence_reference(struct pipe_screen *screen,
                             struct pipe_fence_handle *fence)
 {
     (void)screen;
+    /* OpenGPU waits for completion before every submit returns.  There is no
+     * asynchronous handle to retain; NULL is the Gallium representation of an
+     * already-signalled flush for this synchronous backend. */
     (void)fence;
-    /* Draws wait for the GPU fence inside the winsys before they return. */
     if (ptr)
         *ptr = NULL;
 }
