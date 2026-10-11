@@ -1553,9 +1553,12 @@ static void set_framebuffer(struct pipe_context *pipe,
     if (state->width < 640 || state->height < 480) {
         uint32_t mode_width = 0, mode_height = 0;
 
-        if (!pipe_opengpu_screen_display_size(
-                opengpu_screen_gpu(pipe->screen), &mode_width, &mode_height) &&
-            mode_width >= state->width && mode_height >= state->height) {
+        if (pipe_opengpu_screen_display_size(
+                opengpu_screen_gpu(pipe->screen), &mode_width, &mode_height)) {
+            mode_width = 640;
+            mode_height = 480;
+        }
+        if (mode_width >= state->width && mode_height >= state->height) {
             if (!ctx->present_target ||
                 pipe_opengpu_resource_width(ctx->present_target) != mode_width ||
                 pipe_opengpu_resource_height(ctx->present_target) != mode_height) {
