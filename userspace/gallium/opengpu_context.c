@@ -2158,7 +2158,48 @@ static void draw_vbo(struct pipe_context *pipe,
                             (uint32_t)verts[v].z, (uint32_t)verts[v].w);
                 clock_gettime(CLOCK_MONOTONIC, &draw_start);
             }
-            draw_status = pipe_opengpu_draw_vertex(ctx->gpu, &vdraw, &fence);
+            if (!ctx->vs->mvp) {
+                /* The fixed-function triangle path is also the fallback for
+                 * simple GLES position shaders. It avoids the vertex-core
+                 * instruction path on RTL profiles where that core is
+                 * advertised but still wedges on a passthrough draw. */
+                struct drm_opengpu_draw fixed;
+                unsigned fv;
+
+                memset(&fixed, 0, sizeof(fixed));
+                for (fv = 0; fv < 3; fv++) {
+                    __s32 *pos = fv == 0 ? fixed.v0 : fv == 1 ? fixed.v1 : fixed.v2;
+                    __u32 *color = fv == 0 ? fixed.c0 : fv == 1 ? fixed.c1 : fixed.c2;
+                    pos[0] = verts[fv].x;
+                    pos[1] = verts[fv].y;
+                    pos[2] = verts[fv].z;
+                    pos[3] = verts[fv].w;
+                    color[0] = (verts[fv].color >> 24) & 0xffu;
+                    color[1] = (verts[fv].color >> 16) & 0xffu;
+                    color[2] = (verts[fv].color >> 8) & 0xffu;
+                    fixed.d0 = fixed.d1 = fixed.d2 = verts[fv].depth;
+                    if (fv == 0) {
+                        fixed.uv0[0] = verts[fv].u;
+                        fixed.uv0[1] = verts[fv].v;
+                    } else if (fv == 1) {
+                        fixed.uv1[0] = verts[fv].u;
+                        fixed.uv1[1] = verts[fv].v;
+                    } else {
+                        fixed.uv2[0] = verts[fv].u;
+                        fixed.uv2[1] = verts[fv].v;
+                    }
+                }
+                fixed.shader_pc = 0;
+                fixed.kernarg = 0;
+                fixed.state = vdraw.state;
+                fixed.sampler = vdraw.sampler;
+                fixed.blend_config = vdraw.blend_config;
+                fixed.scissor_min = vdraw.scissor_min;
+                fixed.scissor_max = vdraw.scissor_max;
+                draw_status = pipe_opengpu_draw_vbo(ctx->gpu, &fixed, &fence);
+            } else {
+                draw_status = pipe_opengpu_draw_vertex(ctx->gpu, &vdraw, &fence);
+            }
             if (!draw_status)
                 draw_status = pipe_opengpu_fence_finish(ctx->gpu, fence,
                                                        ctx->fence_timeout_ms);
