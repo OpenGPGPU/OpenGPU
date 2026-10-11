@@ -16,16 +16,12 @@ struct AppState {
 };
 
 static const char *vs_src =
-    "#version 300 es\n"
-    "in vec2 position;\n"
-    "out vec4 unused_varying;\n"
+    "attribute vec2 position;\n"
     "void main() { gl_Position = vec4(position, 0.0, 1.0); }\n";
 static const char *fs_src =
-    "#version 300 es\n"
     "precision mediump float;\n"
     "uniform vec4 color;\n"
-    "out vec4 frag_color;\n"
-    "void main() { frag_color = color; }\n";
+    "void main() { gl_FragColor = color; }\n";
 
 static GLuint compile_shader(GLenum type, const char *source)
 {
@@ -182,7 +178,7 @@ static void activate(GtkApplication *application, gpointer data)
     gtk_box_pack_start(GTK_BOX(box), label, FALSE, FALSE, 0);
     state->area = gtk_gl_area_new();
     gtk_gl_area_set_use_es(GTK_GL_AREA(state->area), TRUE);
-    gtk_gl_area_set_required_version(GTK_GL_AREA(state->area), 3, 0);
+    gtk_gl_area_set_required_version(GTK_GL_AREA(state->area), 2, 0);
     /* The OpenGPU scanout EGL config is XRGB8888 (alpha is unavailable). */
     gtk_gl_area_set_has_alpha(GTK_GL_AREA(state->area), FALSE);
     gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(state->area), FALSE);

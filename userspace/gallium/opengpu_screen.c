@@ -69,7 +69,8 @@ static int screen_get_param(struct pipe_screen *screen, enum pipe_cap param)
          * vertex shader, which the vertex core does not consume. */
         return 1;
     case PIPE_CAP_ESSL_FEATURE_LEVEL:
-        return 300;
+        /* GLES 2.0 is GLSL ES 1.00. Mesa hides the ES2 API bit without this. */
+        return 100;
     case PIPE_CAP_MAX_RENDER_TARGETS:
         return 1;
     case PIPE_CAP_MAX_VIEWPORTS:
@@ -84,8 +85,7 @@ static int screen_get_param(struct pipe_screen *screen, enum pipe_cap param)
         return 1;
     case PIPE_CAP_GLSL_FEATURE_LEVEL:
     case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:
-        /* Desktop GTK uses the ARB_sync entry points during frame handoff. */
-        return 130;
+        return 120;
     case PIPE_CAP_CONSTANT_BUFFER_OFFSET_ALIGNMENT:
     case PIPE_CAP_MIN_MAP_BUFFER_ALIGNMENT:
         return 64;
