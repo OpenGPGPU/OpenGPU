@@ -2278,6 +2278,7 @@ static void draw_vbo(struct pipe_context *pipe,
                     color[0] = (verts[fv].color >> 24) & 0xffu;
                     color[1] = (verts[fv].color >> 16) & 0xffu;
                     color[2] = (verts[fv].color >> 8) & 0xffu;
+                    color[3] = verts[fv].color & 0xffu;
                     fixed.d0 = fixed.d1 = fixed.d2 = verts[fv].depth;
                     if (fv == 0) {
                         fixed.uv0[0] = verts[fv].u;
