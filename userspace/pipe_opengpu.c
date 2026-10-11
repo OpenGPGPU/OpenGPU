@@ -255,6 +255,7 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_2d(
     struct pipe_opengpu_resource *res;
     struct drm_opengpu_create_buffer create = { .bpp = 32 };
     void *mapping;
+    uint32_t alloc_width = width, alloc_height = height;
     int saved;
 
     if (!screen || !width || !height) {
@@ -266,8 +267,20 @@ struct pipe_opengpu_resource *pipe_opengpu_resource_create_2d(
         errno = ENOMEM;
         return NULL;
     }
-    create.width = width;
-    create.height = height;
+    /* The render ABI validates every colour allocation against the device
+     * mode stride and height. Keep the logical surface size requested by
+     * Wayland, but pad the backing GEM so small GTK surfaces can render. */
+    {
+        uint32_t mode_width, mode_height;
+        if (!opengpu_display_size(screen->fd, &mode_width, &mode_height)) {
+            if (alloc_width < mode_width)
+                alloc_width = mode_width;
+            if (alloc_height < mode_height)
+                alloc_height = mode_height;
+        }
+    }
+    create.width = alloc_width;
+    create.height = alloc_height;
     if (ioctl(screen->fd, DRM_IOCTL_OPENGPU_CREATE_BUFFER, &create) < 0) {
         free(res);
         return NULL;
