@@ -1000,8 +1000,8 @@ static int opengpu_resolve_bindings(
     if (!args->shader_slot &&
         (gpu->hw.capabilities & GPU_CAP_FRAGMENT_CORE))
         return -EOPNOTSUPP;
-    if (vertex_submit !=
-        !!(gpu->hw.capabilities & GPU_CAP_VERTEX_CORE))
+    if (vertex_submit &&
+        !(gpu->hw.capabilities & GPU_CAP_VERTEX_CORE))
         return -EOPNOTSUPP;
     if (vertex_submit &&
         (!args->vertex_buffer_slot || !args->vertex_shader_slot ||
