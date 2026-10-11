@@ -1587,7 +1587,7 @@ static void copy_present_target(struct opengpu_context *ctx)
     uint8_t *src, *dst;
     uint32_t y;
 
-    if (!ctx->present_target || !ctx->cbuf || !ctx->cbuf->texture)
+    if (!ctx->cbuf || !ctx->cbuf->texture)
         return;
     surface = opengpu_resource(ctx->cbuf->texture);
     src = pipe_opengpu_resource_map(ctx->present_target);
@@ -2331,7 +2331,7 @@ static void draw_vbo(struct pipe_context *pipe,
                         (draw_end.tv_nsec - draw_start.tv_nsec) / 1000000.0);
                 errno = saved_errno;
             }
-            if (draw_status && ctx->present_target && !ctx->vs->mvp && !ctx->vs->mvp2) {
+            if (draw_status && ctx->width < 640 && !ctx->vs->mvp && !ctx->vs->mvp2) {
                 cpu_present_triangle(ctx, verts);
                 draw_status = 0;
             }
