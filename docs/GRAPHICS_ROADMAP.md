@@ -182,28 +182,25 @@ fixed-function RTL output. Boot now defaults to both shader cores and to
 `OPENGPU_AUTO_DISPLAY=desktop`. `gradient` and `opengpu_kms_present` paint
 the framebuffer on the CPU, so they stay outside this proof.
 
-Still to do:
+Desktop acceptance status:
 
-1. **Desktop client, landed.** `userspace/examples/pipe_desktop` fills the
+1. **Desktop client, verified.** `userspace/examples/pipe_desktop` fills the
    background and panel, blits the window, draws a triangle into it, blits a
    pointer, and `pipe_opengpu_present`s that GEM. It checks those pixels
    before printing `OPENGPU DESKTOP PASS`. `--hold` keeps the session and
    moves the pointer from evdev. `OPENGPU_AUTO_DISPLAY=desktop` is the Debian
    boot default (`opengpu-boot-display.service` runs it). `triangle` remains
    the single-draw boot.
-2. **A desktop mode.** KMS advertises one mode, and the Debian profile is
-   320x240. Raise it in `driver/gpu_integration_debian.yaml` and rebuild with
-   `scripts/build_arti_debian_display.sh`. Arti bakes the framebuffer size in
-   at compile time, and `run_arti_debian.sh` does not rebuild the RTL. There
-   is no cursor plane, so the compositor draws the pointer with a GPU fill or
-   blit. Rebuild once before expecting shader pixels: a model already on disk
-   keeps the elaboration it was built with. The fragment shader binaries are
-   staged by default.
-3. **Confirm it on the Debian guest.** Boot `scripts/run_arti_debian.sh` and
-   expect `OPENGPU DESKTOP PASS` (panel, window, triangle and pointer values).
-   The scanout image is that same GEM. `fragment_tint`, `pipe_texture_draw`,
-   and `pipe_vertex_draw` remain the shader coverage beside this frame.
-4. **Mesa only after that frame is real.** Stock GTK and Qt clients need
+2. **640x480 desktop mode, verified.** `driver/gpu_integration_debian.yaml`
+   advertises 640x480 and the ARTI model is elaborated with the matching
+   framebuffer and scanout geometry. There is no cursor plane, so the pointer
+   is drawn through the GPU fill/blit path.
+3. **Debian guest and scanout, verified.** The fresh guest proof reports
+   `OPENGPU DESKTOP PASS` for the panel, window, triangle and pointer, then
+   checks the complete 640x480 QEMU scanout PPM against those pixels.
+4. **Mesa GTK path, verified.** The GTK Wayland smoke proof submits through
+   the OpenGPU Gallium driver and reports GPU fence status 0 for both frames.
+   Stock GTK and Qt clients still need the same shader-lowering limits:
    OpenGL. The Gallium spike is [GALLIUM_SPIKE.md](GALLIUM_SPIKE.md). The
    shader sandbox is still 256 instructions, four forward branches, no loops
    or calls, e32/m1 only; see "Workload-driven ISA" below. Widen it when a
