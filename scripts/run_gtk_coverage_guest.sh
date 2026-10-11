@@ -172,12 +172,14 @@ echo '=== Load guest GPU driver ==='
 "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 120 \
     '/root/load_opengpu.sh && test -c /dev/dri/card0' | tee "$LOAD_LOG"
 
-echo '=== Check GTK ellipse coverage ==='
-"$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 600 \
-    'LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_EXIT=1 /root/opengpu_gl_gtk_coverage.bin' | tee "$PROOF_LOG"
-grep -qF 'gl_gtk_coverage: mode 640x480 inside=0xff0000ff outside=0x00000000' "$PROOF_LOG"
-grep -qF 'OPENGPU GL GTK COVERAGE PASS' "$PROOF_LOG"
-echo 'GTK coverage guest proof: PASS'
+if [ "${GTK_PROOF_SKIP_COVERAGE:-0}" != 1 ]; then
+    echo '=== Check GTK ellipse coverage ==='
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 600 \
+        'LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_EXIT=1 /root/opengpu_gl_gtk_coverage.bin' | tee "$PROOF_LOG"
+    grep -qF 'gl_gtk_coverage: mode 640x480 inside=0xff0000ff outside=0x00000000' "$PROOF_LOG"
+    grep -qF 'OPENGPU GL GTK COVERAGE PASS' "$PROOF_LOG"
+    echo 'GTK coverage guest proof: PASS'
+fi
 
 # Isolate the compositor's uniform-color/opacity shader from Wayland dispatch.
 if [ -n "${GTK_PROOF_WESTON_REPRO:-}" ]; then
