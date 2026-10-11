@@ -2052,41 +2052,6 @@ static void draw_vbo(struct pipe_context *pipe,
                     return;
                 }
             }
-            if (!ctx->packed || ctx->packed_bytes < sizeof(verts)) {
-                if (ctx->packed)
-                    pipe_opengpu_resource_destroy(
-                        opengpu_screen_gpu(ctx->base.screen), ctx->packed);
-                ctx->packed_bytes = (sizeof(verts) + 63u) & ~63u;
-                ctx->packed = pipe_opengpu_resource_create(
-                    opengpu_screen_gpu(ctx->base.screen), ctx->packed_bytes);
-                if (!ctx->packed) {
-                    reject("vertex buffer allocation failed");
-                    return;
-                }
-            }
-            {
-                void *mapped = pipe_opengpu_resource_map(ctx->packed);
-
-                if (!mapped) {
-                    reject("vertex buffer map failed");
-                    return;
-                }
-                memcpy(mapped, verts, sizeof(verts));
-            }
-            if (pipe_opengpu_invalidate(ctx->gpu, ctx->packed, 0, ctx->packed_bytes,
-                                        &fence) ||
-                pipe_opengpu_fence_finish(ctx->gpu, fence,
-                                          ctx->fence_timeout_ms)) {
-                pipe_opengpu_fence_reference(&fence, NULL);
-                gpu_failed("vertex buffer invalidate failed");
-                return;
-            }
-            pipe_opengpu_fence_reference(&fence, NULL);
-            if (pipe_opengpu_set_vertex_buffer(ctx->gpu, ctx->packed,
-                                               sizeof(verts[0]), sizeof(verts))) {
-                gpu_failed("vertex buffer bind failed");
-                return;
-            }
             if (hw_cull(&ctx->rast, &cull) || hw_depth(&ctx->dsa, &depth_bits)) {
                 reject("cull or depth state does not map onto the GPU");
                 return;
@@ -2223,8 +2188,6 @@ static void draw_vbo(struct pipe_context *pipe,
                 fixed.scissor_min = vdraw.scissor_min;
                 fixed.scissor_max = vdraw.scissor_max;
                 draw_status = pipe_opengpu_draw_vbo(ctx->gpu, &fixed, &fence);
-            } else {
-                draw_status = pipe_opengpu_draw_vertex(ctx->gpu, &vdraw, &fence);
             }
             if (!draw_status)
                 draw_status = pipe_opengpu_fence_finish(ctx->gpu, fence,
