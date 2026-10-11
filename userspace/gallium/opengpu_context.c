@@ -2158,11 +2158,11 @@ static void draw_vbo(struct pipe_context *pipe,
                             (uint32_t)verts[v].z, (uint32_t)verts[v].w);
                 clock_gettime(CLOCK_MONOTONIC, &draw_start);
             }
-            if (!ctx->vs->mvp) {
-                /* The fixed-function triangle path is also the fallback for
-                 * simple GLES position shaders. It avoids the vertex-core
-                 * instruction path on RTL profiles where that core is
-                 * advertised but still wedges on a passthrough draw. */
+            {
+                /* Use the fragment-core record path for GTK's supported
+                 * vertex forms. Apply the matrix on the CPU; this avoids the
+                 * vertex-core instruction path on RTL profiles where that
+                 * core is advertised but wedges on these draws. */
                 struct drm_opengpu_draw fixed;
                 unsigned fv;
 
@@ -2170,10 +2170,36 @@ static void draw_vbo(struct pipe_context *pipe,
                 for (fv = 0; fv < 3; fv++) {
                     __s32 *pos = fv == 0 ? fixed.v0 : fv == 1 ? fixed.v1 : fixed.v2;
                     __u32 *color = fv == 0 ? fixed.c0 : fv == 1 ? fixed.c1 : fixed.c2;
-                    pos[0] = verts[fv].x;
-                    pos[1] = verts[fv].y;
-                    pos[2] = verts[fv].z;
-                    pos[3] = verts[fv].w;
+                    if (ctx->vs->mvp) {
+                        float in[4], first[4], clip[4];
+                        unsigned row;
+
+                        memcpy(&in[0], &verts[fv].x, sizeof(float));
+                        memcpy(&in[1], &verts[fv].y, sizeof(float));
+                        memcpy(&in[2], &verts[fv].z, sizeof(float));
+                        memcpy(&in[3], &verts[fv].w, sizeof(float));
+                        for (row = 0; row < 4; row++) {
+                            first[row] = ctx->vs->mvp2 ?
+                                ctx->mvp_b[row] * in[0] +
+                                ctx->mvp_b[4 + row] * in[1] +
+                                ctx->mvp_b[8 + row] * in[2] +
+                                ctx->mvp_b[12 + row] * in[3] : in[row];
+                        }
+                        for (row = 0; row < 4; row++)
+                            clip[row] = ctx->mvp[row] * first[0] +
+                                ctx->mvp[4 + row] * first[1] +
+                                ctx->mvp[8 + row] * first[2] +
+                                ctx->mvp[12 + row] * first[3];
+                        pos[0] = q16(clip[0]);
+                        pos[1] = q16(clip[1]);
+                        pos[2] = q16(clip[2]);
+                        pos[3] = q16(clip[3]);
+                    } else {
+                        pos[0] = verts[fv].x;
+                        pos[1] = verts[fv].y;
+                        pos[2] = verts[fv].z;
+                        pos[3] = verts[fv].w;
+                    }
                     color[0] = (verts[fv].color >> 24) & 0xffu;
                     color[1] = (verts[fv].color >> 16) & 0xffu;
                     color[2] = (verts[fv].color >> 8) & 0xffu;
