@@ -2098,7 +2098,7 @@ static void draw_vbo(struct pipe_context *pipe,
                     return;
                 }
             }
-            if (!ctx->vs->mvp && !ctx->vs->mvp2) {
+            if (!ctx->vs->mvp && !ctx->vs->mvp2 && !ctx->present_target) {
                 if (!ctx->packed || ctx->packed_bytes < sizeof(verts)) {
                     if (ctx->packed)
                         pipe_opengpu_resource_destroy(
@@ -2270,7 +2270,7 @@ static void draw_vbo(struct pipe_context *pipe,
                 fixed.blend_config = vdraw.blend_config;
                 fixed.scissor_min = vdraw.scissor_min;
                 fixed.scissor_max = vdraw.scissor_max;
-                if (ctx->vs->mvp || ctx->vs->mvp2)
+                if (ctx->vs->mvp || ctx->vs->mvp2 || ctx->present_target)
                     draw_status = pipe_opengpu_draw_vbo(ctx->gpu, &fixed, &fence);
                 else
                     draw_status = pipe_opengpu_draw_vertex(ctx->gpu, &vdraw, &fence);
