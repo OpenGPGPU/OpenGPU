@@ -1021,15 +1021,31 @@ static struct opengpu_shader *lower_shader(const struct pipe_shader_state *state
             if (insn->Dst[0].Register.WriteMask != TGSI_WRITEMASK_XYZW ||
                 !identity_swizzle(&insn->Src[0].Register)) {
                 int sem = -1;
+                int position_zw_imm = 0;
 
                 if (insn->Dst[0].Register.File == TGSI_FILE_OUTPUT &&
                     insn->Dst[0].Register.Index < OPENGPU_ATTRIBS)
                     sem = sem_out[insn->Dst[0].Register.Index];
-                if (sem < 0 || sem == TGSI_SEMANTIC_POSITION ||
-                    (insn->Dst[0].Register.WriteMask & TGSI_WRITEMASK_XY) !=
-                        TGSI_WRITEMASK_XY ||
-                    !xy_swizzle(&insn->Src[0].Register))
+                position_zw_imm = sem == TGSI_SEMANTIC_POSITION &&
+                    insn->Dst[0].Register.WriteMask == TGSI_WRITEMASK_ZW &&
+                    insn->Src[0].Register.File == TGSI_FILE_IMMEDIATE &&
+                    insn->Src[0].Register.Index == 0 && nimm &&
+                    !insn->Src[0].Register.Indirect &&
+                    insn->Src[0].Register.SwizzleX == TGSI_SWIZZLE_X &&
+                    insn->Src[0].Register.SwizzleY == TGSI_SWIZZLE_Y &&
+                    insn->Src[0].Register.SwizzleZ == TGSI_SWIZZLE_X &&
+                    insn->Src[0].Register.SwizzleW == TGSI_SWIZZLE_Y;
+                if (sem < 0 ||
+                    (sem == TGSI_SEMANTIC_POSITION &&
+                     !position_zw_imm &&
+                     insn->Dst[0].Register.WriteMask != TGSI_WRITEMASK_XY) ||
+                    (sem != TGSI_SEMANTIC_POSITION &&
+                     (insn->Dst[0].Register.WriteMask & TGSI_WRITEMASK_XY) !=
+                         TGSI_WRITEMASK_XY) ||
+                    (!position_zw_imm && !xy_swizzle(&insn->Src[0].Register)))
                     goto fail;
+                if (position_zw_imm)
+                    break;
             }
             index = (unsigned)insn->Dst[0].Register.Index;
             if (index >= OPENGPU_ATTRIBS)
