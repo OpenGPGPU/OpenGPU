@@ -151,8 +151,11 @@ class SharedL2Slice(
     new L2SramArray(sets, tagWidth, useSramBlackBoxes)))
   private val data = Seq.fill(ways)(Module(
     new L2SramArray(sets, lineWidth, useSramBlackBoxes)))
-  private val valid = Seq.fill(ways)(
-    RegInit(VecInit(Seq.fill(sets)(false.B))))
+  // Pack one valid bit per set into a bitmap per way.  The Vec[Bool]
+  // representation elaborates into one scalar state element and dynamic
+  // enable chain per set; a packed bitmap keeps the same indexed semantics
+  // while presenting the simulator with four compact values.
+  private val valid = Seq.fill(ways)(RegInit(0.U(sets.W)))
   private val nextVictim =
     RegInit(VecInit(Seq.fill(sets)(0.U(wayWidth.W))))
   private val sharers = Seq.fill(ways)(
@@ -524,7 +527,7 @@ class SharedL2Slice(
         // clean and any CPU write to it is already visible in lower memory.
         for (way <- 0 until ways) {
           when(hitWay === way.U) {
-            valid(way)(requestIndex) := false.B
+            valid(way) := valid(way).bitSet(requestIndex, false.B)
             sharers(way)(requestIndex) := 0.U
           }
         }
@@ -683,7 +686,7 @@ class SharedL2Slice(
     when(cacheable && lookupHit) {
       for (way <- 0 until ways) {
         when(lookupHitWay === way.U) {
-          valid(way)(requestIndex) := false.B
+          valid(way) := valid(way).bitSet(requestIndex, false.B)
           sharers(way)(requestIndex) := 0.U
         }
       }
@@ -709,7 +712,7 @@ class SharedL2Slice(
             data(way).io.writeEnable := true.B
             data(way).io.writeAddress := requestIndex
             data(way).io.writeData := atomicMergedLine
-            valid(way)(requestIndex) := true.B
+            valid(way) := valid(way).bitSet(requestIndex, true.B)
             sharers(way)(requestIndex) := 0.U
           }
         }
@@ -728,7 +731,7 @@ class SharedL2Slice(
             data(way).io.writeEnable := true.B
             data(way).io.writeAddress := requestIndex
             data(way).io.writeData := io.memoryResponse.bits.readData
-            valid(way)(requestIndex) := true.B
+            valid(way) := valid(way).bitSet(requestIndex, true.B)
             sharers(way)(requestIndex) := waiterSharers
           }
         }
@@ -798,7 +801,7 @@ class SharedL2Slice(
         data(way).io.writeEnable := true.B
         data(way).io.writeAddress := fillWriteSet
         data(way).io.writeData := fillWriteData
-        valid(way)(fillWriteSet) := true.B
+        valid(way) := valid(way).bitSet(fillWriteSet, true.B)
         sharers(way)(fillWriteSet) := fillWriteSharers
       }
     }

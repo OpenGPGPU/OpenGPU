@@ -59,12 +59,17 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
 
   private val colorWords = Mem(wordsPerPlane, UInt(32.W))
   private val depthWords = Mem(wordsPerPlane, UInt(32.W))
-  private val colorValid = RegInit(VecInit(Seq.fill(wordsPerPlane)(false.B)))
-  private val depthValid = RegInit(VecInit(Seq.fill(wordsPerPlane)(false.B)))
+  // Keep validity as packed bitmaps.  The previous Vec[Bool] form elaborated
+  // into one register and one dynamic mux/enable chain per word; with the
+  // 16x16 tile this is 512 independent state elements per plane.  A packed
+  // bitmap preserves the one-cycle clear and indexed update semantics while
+  // giving RTL simulators a compact wide value to update.
+  private val colorValid = RegInit(0.U(wordsPerPlane.W))
+  private val depthValid = RegInit(0.U(wordsPerPlane.W))
   // Each word enters the list only on its first write. Flush therefore
   // examines changed words rather than scanning all 512 possible words or
   // building a wide priority encoder on the dirty bitmap.
-  private val dirty = RegInit(VecInit(Seq.fill(dirtyWords)(false.B)))
+  private val dirty = RegInit(0.U(dirtyWords.W))
   private val dirtyList = Mem(dirtyWords, UInt(11.W))
   private val dirtyCount = RegInit(0.U(dirtyCountBits.W))
   private val flushCursor = RegInit(0.U(dirtyCountBits.W))
@@ -133,8 +138,8 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
     val colOffset = ((io.fragmentX & "hfff0".U) << io.sampleMode) << 2
     colorTileBase := (io.colorBase + rowOffset + colOffset)(31, 0)
     depthTileBase := (io.depthBase + rowOffset + colOffset)(31, 0)
-    colorValid := VecInit(Seq.fill(wordsPerPlane)(false.B))
-    depthValid := VecInit(Seq.fill(wordsPerPlane)(false.B))
+    colorValid := 0.U
+    depthValid := 0.U
     state := active
   }
 
@@ -153,14 +158,14 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
           assert(dirtyCount < dirtyWords.U, "tile dirty list cannot overflow")
           dirtyList.write(dirtyCount(dirtyAddrBits - 1, 0), word)
           dirtyCount := dirtyCount + 1.U
-          dirty(word) := true.B
+          dirty := dirty.bitSet(word, true.B)
         }
         when(io.depthPlane) {
           depthWords.write(wordIndex, io.om.req.bits.data)
-          depthValid(wordIndex) := true.B
+          depthValid := depthValid.bitSet(wordIndex, true.B)
         }.otherwise {
           colorWords.write(wordIndex, io.om.req.bits.data)
-          colorValid(wordIndex) := true.B
+          colorValid := colorValid.bitSet(wordIndex, true.B)
         }
         responseValid := true.B
       }.otherwise {
@@ -187,10 +192,10 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
       "tile read response must match its outstanding miss")
     when(missDepth) {
       depthWords.write(missIndex, io.mem.resp.bits.data)
-      depthValid(missIndex) := true.B
+      depthValid := depthValid.bitSet(missIndex, true.B)
     }.otherwise {
       colorWords.write(missIndex, io.mem.resp.bits.data)
-      colorValid(missIndex) := true.B
+      colorValid := colorValid.bitSet(missIndex, true.B)
     }
     responseData := io.mem.resp.bits.data
     responseValid := true.B
@@ -214,7 +219,7 @@ class TileAttachmentStore(maxSampleCount: Int = 4) extends Module {
   when(state === flushResponse && io.mem.resp.fire) {
     assert(io.mem.resp.bits.write && io.mem.resp.bits.addr === flushAddr,
       "tile store response must acknowledge the selected word")
-    dirty(flushWord) := false.B
+    dirty := dirty.bitSet(flushWord, false.B)
     flushCursor := flushCursor + 1.U
     state := flushRequest
   }
