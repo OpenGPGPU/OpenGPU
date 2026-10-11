@@ -2293,6 +2293,7 @@ static void draw_vbo(struct pipe_context *pipe,
                 }
                 fixed.shader_pc = 0;
                 fixed.kernarg = 0;
+                fixed.kernarg_bank_stride = vdraw.fragment_kernarg_bank_stride;
                 fixed.state = vdraw.state;
                 fixed.sampler = vdraw.sampler;
                 fixed.blend_config = vdraw.blend_config;
