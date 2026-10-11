@@ -2040,7 +2040,7 @@ static void draw_vbo(struct pipe_context *pipe,
                 if (ctx->packed)
                     pipe_opengpu_resource_destroy(
                         opengpu_screen_gpu(ctx->base.screen), ctx->packed);
-                ctx->packed_bytes = sizeof(verts);
+                ctx->packed_bytes = (sizeof(verts) + 63u) & ~63u;
                 ctx->packed = pipe_opengpu_resource_create(
                     opengpu_screen_gpu(ctx->base.screen), ctx->packed_bytes);
                 if (!ctx->packed) {
