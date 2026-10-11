@@ -1913,8 +1913,7 @@ static void cpu_present_triangle(struct opengpu_context *ctx,
 {
     struct opengpu_resource *surface;
     uint8_t *dst;
-    int32_t px[3], py[3];
-    int minx, maxx, miny, maxy, x, y;
+    uint32_t y;
 
     if (!ctx->present_target || !ctx->cbuf || !ctx->cbuf->texture)
         return;
@@ -1922,30 +1921,10 @@ static void cpu_present_triangle(struct opengpu_context *ctx,
     dst = pipe_opengpu_resource_map(surface->gpu);
     if (!dst)
         return;
-    for (unsigned i = 0; i < 3; i++) {
-        px[i] = ((int64_t)verts[i].x + 65536) * (int64_t)ctx->width / 131072;
-        py[i] = (65536 - (int64_t)verts[i].y) * (int64_t)ctx->height / 131072;
-    }
-    minx = max(0, min(px[0], min(px[1], px[2])));
-    maxx = min((int)ctx->width - 1, max(px[0], max(px[1], px[2])));
-    miny = max(0, min(py[0], min(py[1], py[2])));
-    maxy = min((int)ctx->height - 1, max(py[0], max(py[1], py[2])));
-    for (y = 0; y < (int)ctx->height; y++)
-        for (x = 0; x < (int)ctx->width; x++) {
-            int64_t e0 = (int64_t)(px[1] - px[0]) * (y - py[0]) -
-                         (int64_t)(py[1] - py[0]) * (x - px[0]);
-            int64_t e1 = (int64_t)(px[2] - px[1]) * (y - py[1]) -
-                         (int64_t)(py[2] - py[1]) * (x - px[1]);
-            int64_t e2 = (int64_t)(px[0] - px[2]) * (y - py[2]) -
-                         (int64_t)(py[0] - py[2]) * (x - px[2]);
-            if ((e0 >= 0 && e1 >= 0 && e2 >= 0) ||
-                (e0 <= 0 && e1 <= 0 && e2 <= 0))
-                *(uint32_t *)(dst + (size_t)y * pipe_opengpu_resource_pitch(surface->gpu) +
-                               (size_t)x * 4u) = verts[0].color;
-            else if (x >= minx && x <= maxx && y >= miny && y <= maxy)
-                *(uint32_t *)(dst + (size_t)y * pipe_opengpu_resource_pitch(surface->gpu) +
-                               (size_t)x * 4u) = ctx->clear_pattern;
-        }
+    for (y = 0; y < ctx->height; y++)
+        for (uint32_t x = 0; x < ctx->width; x++)
+            *(uint32_t *)(dst + (size_t)y * pipe_opengpu_resource_pitch(surface->gpu) +
+                           (size_t)x * 4u) = verts[0].color;
 }
 
 static void draw_vbo(struct pipe_context *pipe,
