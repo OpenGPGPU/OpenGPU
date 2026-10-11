@@ -18,7 +18,10 @@
  * sandbox. The coverage fragment program needs the whole slot. */
 #define PIPE_FS_GEM_BYTES 1024u
 #define PIPE_KERNARG_BYTES 1024u
-#define PIPE_FS_BANK_STRIDE 512u
+/* The fragment ABI uses two 320-byte banks: 288 bytes of per-lane staging
+ * plus the 32-byte tail required by an eight-lane batch.  This is the stride
+ * exercised by the kernel DRM render tests. */
+#define PIPE_FS_BANK_STRIDE 320u
 #define PIPE_CS_SLOT 1u
 #define PIPE_CS_KERNARG_SLOT 2u
 #define PIPE_CS_GEM_BYTES 64u
