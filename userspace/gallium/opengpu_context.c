@@ -2068,7 +2068,7 @@ static void draw_vbo(struct pipe_context *pipe,
             pipe_opengpu_fence_reference(&fence, NULL);
             if (pipe_opengpu_set_vertex_buffer(ctx->gpu, ctx->packed,
                                                sizeof(verts[0]), sizeof(verts))) {
-                reject("vertex buffer bind failed");
+                gpu_failed("vertex buffer bind failed");
                 return;
             }
             if (hw_cull(&ctx->rast, &cull) || hw_depth(&ctx->dsa, &depth_bits)) {
