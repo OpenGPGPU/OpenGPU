@@ -67,6 +67,38 @@ def insert_once(path, needle, addition, after=True):
         text = text.replace(needle, addition + needle, 1)
     file.write_text(text)
 
+dri2 = mesa / "src/egl/drivers/dri2/egl_dri2.c"
+dri2_text = dri2.read_text()
+dri2_old = '''static _EGLProc
+dri2_get_proc_address(const char *procname)
+{
+   return _glapi_get_proc_address(procname);
+}
+'''
+dri2_new = '''static _EGLProc
+dri2_get_proc_address(const char *procname)
+{
+   /* GL_APPLE_sync aliases the core Mesa sync entry points. */
+   static const char *const apple_names[] = {
+      "glFenceSyncAPPLE", "glIsSyncAPPLE", "glDeleteSyncAPPLE",
+      "glClientWaitSyncAPPLE", "glWaitSyncAPPLE",
+      "glGetInteger64vAPPLE", "glGetSyncivAPPLE", NULL,
+   };
+   static const char *const core_names[] = {
+      "glFenceSync", "glIsSync", "glDeleteSync", "glClientWaitSync",
+      "glWaitSync", "glGetInteger64v", "glGetSynciv", NULL,
+   };
+   unsigned i;
+
+   for (i = 0; apple_names[i]; i++)
+      if (!strcmp(procname, apple_names[i]))
+         return _glapi_get_proc_address(core_names[i]);
+   return _glapi_get_proc_address(procname);
+}
+'''
+if dri2_old in dri2_text and dri2_new not in dri2_text:
+    dri2.write_text(dri2_text.replace(dri2_old, dri2_new, 1))
+
 gbm = mesa / "src/gbm/backends/dri/gbm_dri.c"
 gbm_text = gbm.read_text()
 old_cap = """   switch (cap) {
