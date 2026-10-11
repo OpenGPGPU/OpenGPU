@@ -250,7 +250,7 @@ for i in $(seq 1 60); do
     sleep 1
 done
 test -S /run/user/0/opengpu-gl
-OPENGPU_GTK_AUTOTEST=1 /root/opengpu_gtk_smoke.bin >/tmp/gtk-client.log 2>&1 & a=$!
+GDK_GL=gl OPENGPU_GTK_AUTOTEST=1 /root/opengpu_gtk_smoke.bin >/tmp/gtk-client.log 2>&1 & a=$!
 deadline=$(( $(date +%s) + @SMOKE_TIMEOUT_S@ ))
 while [ "$(date +%s)" -lt "$deadline" ]; do
     if grep -qF 'OPENGPU GTK FRAME PASS: active' /tmp/gtk-client.log; then
