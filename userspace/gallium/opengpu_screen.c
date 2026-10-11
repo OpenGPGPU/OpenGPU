@@ -69,8 +69,7 @@ static int screen_get_param(struct pipe_screen *screen, enum pipe_cap param)
          * vertex shader, which the vertex core does not consume. */
         return 1;
     case PIPE_CAP_ESSL_FEATURE_LEVEL:
-        /* GLES 2.0 is GLSL ES 1.00. Mesa hides the ES2 API bit without this. */
-        return 100;
+        return 300;
     case PIPE_CAP_MAX_RENDER_TARGETS:
         return 1;
     case PIPE_CAP_MAX_VIEWPORTS:
