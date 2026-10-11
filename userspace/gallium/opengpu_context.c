@@ -1923,8 +1923,14 @@ static void cpu_present_triangle(struct opengpu_context *ctx,
         return;
     for (y = 0; y < ctx->height; y++)
         for (uint32_t x = 0; x < ctx->width; x++)
-            *(uint32_t *)(dst + (size_t)y * pipe_opengpu_resource_pitch(surface->gpu) +
-                           (size_t)x * 4u) = verts[0].color;
+            {
+                uint8_t *pixel = dst + (size_t)y * pipe_opengpu_resource_pitch(surface->gpu) +
+                                 (size_t)x * 4u;
+                pixel[0] = (verts[0].color >> 24) & 0xffu;
+                pixel[1] = (verts[0].color >> 16) & 0xffu;
+                pixel[2] = (verts[0].color >> 8) & 0xffu;
+                pixel[3] = verts[0].color & 0xffu;
+            }
 }
 
 static void draw_vbo(struct pipe_context *pipe,
