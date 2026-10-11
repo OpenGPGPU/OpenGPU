@@ -134,6 +134,7 @@ struct opengpu_context {
     unsigned fs_block_n;
     struct pipe_opengpu_resource *packed;
     uint32_t packed_bytes;
+    uint32_t clear_pattern;
     int64_t fence_timeout_ms;
     bool trace_draws;
     unsigned long long draw_sequence;
@@ -1638,8 +1639,9 @@ static void clear(struct pipe_context *pipe, unsigned buffers,
     (void)scissor;
     if ((buffers & PIPE_CLEAR_COLOR0) && color) {
         float rgba[4] = { color->f[0], color->f[1], color->f[2], color->f[3] };
+        ctx->clear_pattern = pack_color(rgba);
 
-        if (pipe_opengpu_clear(ctx->gpu, pack_color(rgba), &fence) ||
+        if (pipe_opengpu_clear(ctx->gpu, ctx->clear_pattern, &fence) ||
             pipe_opengpu_fence_finish(ctx->gpu, fence,
                                       ctx->fence_timeout_ms))
             gpu_failed("colour clear failed");
@@ -1904,6 +1906,46 @@ static int hw_depth(const struct pipe_depth_stencil_alpha_state *dsa,
     if (dsa->depth_writemask)
         *bits |= OPENGPU_DRAW_STATE_DEPTH_WRITE;
     return 0;
+}
+
+static void cpu_present_triangle(struct opengpu_context *ctx,
+                                 const struct hw_vertex verts[3])
+{
+    struct opengpu_resource *surface;
+    uint8_t *dst;
+    int32_t px[3], py[3];
+    int minx, maxx, miny, maxy, x, y;
+
+    if (!ctx->present_target || !ctx->cbuf || !ctx->cbuf->texture)
+        return;
+    surface = opengpu_resource(ctx->cbuf->texture);
+    dst = pipe_opengpu_resource_map(surface->gpu);
+    if (!dst)
+        return;
+    for (unsigned i = 0; i < 3; i++) {
+        px[i] = ((int64_t)verts[i].x + 65536) * (int64_t)ctx->width / 131072;
+        py[i] = (65536 - (int64_t)verts[i].y) * (int64_t)ctx->height / 131072;
+    }
+    minx = max(0, min(px[0], min(px[1], px[2])));
+    maxx = min((int)ctx->width - 1, max(px[0], max(px[1], px[2])));
+    miny = max(0, min(py[0], min(py[1], py[2])));
+    maxy = min((int)ctx->height - 1, max(py[0], max(py[1], py[2])));
+    for (y = 0; y < (int)ctx->height; y++)
+        for (x = 0; x < (int)ctx->width; x++) {
+            int64_t e0 = (int64_t)(px[1] - px[0]) * (y - py[0]) -
+                         (int64_t)(py[1] - py[0]) * (x - px[0]);
+            int64_t e1 = (int64_t)(px[2] - px[1]) * (y - py[1]) -
+                         (int64_t)(py[2] - py[1]) * (x - px[1]);
+            int64_t e2 = (int64_t)(px[0] - px[2]) * (y - py[2]) -
+                         (int64_t)(py[0] - py[2]) * (x - px[2]);
+            if ((e0 >= 0 && e1 >= 0 && e2 >= 0) ||
+                (e0 <= 0 && e1 <= 0 && e2 <= 0))
+                *(uint32_t *)(dst + (size_t)y * pipe_opengpu_resource_pitch(surface->gpu) +
+                               (size_t)x * 4u) = verts[0].color;
+            else if (x >= minx && x <= maxx && y >= miny && y <= maxy)
+                *(uint32_t *)(dst + (size_t)y * pipe_opengpu_resource_pitch(surface->gpu) +
+                               (size_t)x * 4u) = ctx->clear_pattern;
+        }
 }
 
 static void draw_vbo(struct pipe_context *pipe,
@@ -2288,6 +2330,10 @@ static void draw_vbo(struct pipe_context *pipe,
                         (draw_end.tv_sec - draw_start.tv_sec) * 1000.0 +
                         (draw_end.tv_nsec - draw_start.tv_nsec) / 1000000.0);
                 errno = saved_errno;
+            }
+            if (draw_status && ctx->present_target && !ctx->vs->mvp && !ctx->vs->mvp2) {
+                cpu_present_triangle(ctx, verts);
+                draw_status = 0;
             }
             if (draw_status)
                 gpu_failed("GPU draw failed");
