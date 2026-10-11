@@ -177,8 +177,8 @@ static void activate(GtkApplication *application, gpointer data)
     label = gtk_label_new("OpenGPU GtkGLArea");
     gtk_box_pack_start(GTK_BOX(box), label, FALSE, FALSE, 0);
     state->area = gtk_gl_area_new();
-    gtk_gl_area_set_use_es(GTK_GL_AREA(state->area), TRUE);
-    gtk_gl_area_set_required_version(GTK_GL_AREA(state->area), 2, 0);
+    gtk_gl_area_set_use_es(GTK_GL_AREA(state->area), FALSE);
+    gtk_gl_area_set_required_version(GTK_GL_AREA(state->area), 2, 1);
     /* The OpenGPU scanout EGL config is XRGB8888 (alpha is unavailable). */
     gtk_gl_area_set_has_alpha(GTK_GL_AREA(state->area), FALSE);
     gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(state->area), FALSE);
