@@ -1264,6 +1264,11 @@ static void bind_fs_state(struct pipe_context *pipe, void *hw)
         if (bind_sample_program(ctx, opengpu_fragment_sample,
                                  OPENGPU_FRAGMENT_SAMPLE_BYTES))
             reject("fragment shader bind failed");
+    } else if (ctx->fs->color_const && !ctx->fs->modulate &&
+               !ctx->fs->scale_const) {
+        if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_uniform_color,
+                                 OPENGPU_FRAGMENT_UNIFORM_COLOR_BYTES))
+            reject("fragment shader bind failed");
     } else if (ctx->vs && ctx->vs->vs_opacity && ctx->fs->color_src >= 0 &&
                !ctx->fs->color_const && !ctx->fs->color_imm) {
         if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_fade,
@@ -1626,6 +1631,25 @@ static int32_t q16(float x)
     if (s <= -2147483648.0)
         return (int32_t)(-2147483647 - 1);
     return (int32_t)(s >= 0.0 ? s + 0.5 : s - 0.5);
+}
+
+/* Small GLES targets are rendered into the physical mode-sized scratch
+ * resource.  The RTL viewport is mode-sized, so map clip coordinates to the
+ * logical target before submitting the draw; the top-left copy then preserves
+ * the target's own viewport semantics while all pixels remain GPU-rendered. */
+static void scale_present_clip(const struct opengpu_context *ctx,
+                               int32_t *x, int32_t *y, int32_t w)
+{
+    uint32_t mode_w, mode_h;
+
+    if (!ctx->present_target || !x || !y)
+        return;
+    mode_w = pipe_opengpu_resource_width(ctx->present_target);
+    mode_h = pipe_opengpu_resource_height(ctx->present_target);
+    if (!mode_w || !mode_h)
+        return;
+    *x = (int32_t)((((int64_t)*x + w) * ctx->width) / mode_w - w);
+    *y = (int32_t)((((int64_t)*y + w) * ctx->height) / mode_h - w);
 }
 
 static void clear(struct pipe_context *pipe, unsigned buffers,
@@ -2068,6 +2092,34 @@ static void draw_vbo(struct pipe_context *pipe,
             }
             fprintf(stderr, "opengpu: shade 0x%08x\n", word);
         }
+        if (ctx->fs->color_const && !ctx->fs->modulate &&
+            !ctx->fs->scale_const) {
+            uint32_t word = 0;
+            unsigned chan;
+
+            if (!ctx->fs_const_set) {
+                reject("fragment colour did not reach the fragment core");
+                return;
+            }
+            else {
+                for (chan = 0; chan < 4; chan++) {
+                    float s = ctx->fs->color_const_chan >= 0 ?
+                        ctx->fs_const[ctx->fs->color_const_chan] :
+                        ctx->fs_const[chan];
+                    uint32_t byte;
+
+                    if (s < 0.0f) s = 0.0f;
+                    if (s > 1.0f) s = 1.0f;
+                    byte = (uint32_t)(s * 255.0f + 0.5f);
+                    /* The fragment output is a little-endian BGRA word. */
+                    word |= byte << (8 * (chan == 3 ? 3 : 2 - chan));
+                }
+                if (pipe_opengpu_write_fs_uniform(ctx->gpu, word)) {
+                    reject("fragment colour did not reach the fragment core");
+                    return;
+                }
+            }
+        }
         if (ctx->fs->alu) {
             float block[40];
             unsigned nconst = ctx->fs->alu_nconst * 4u;
@@ -2125,7 +2177,12 @@ static void draw_vbo(struct pipe_context *pipe,
                     return;
                 }
             }
-            if (!ctx->vs->mvp && !ctx->vs->mvp2 && !ctx->present_target) {
+            if (!ctx->vs->mvp && !ctx->vs->mvp2) {
+                unsigned sv;
+
+                for (sv = 0; sv < 3; sv++)
+                    scale_present_clip(ctx, &verts[sv].x, &verts[sv].y,
+                                       verts[sv].w);
                 if (!ctx->packed || ctx->packed_bytes < sizeof(verts)) {
                     if (ctx->packed)
                         pipe_opengpu_resource_destroy(
@@ -2275,6 +2332,8 @@ static void draw_vbo(struct pipe_context *pipe,
                         pos[2] = verts[fv].z;
                         pos[3] = verts[fv].w;
                     }
+                    if (ctx->vs->mvp || ctx->vs->mvp2)
+                        scale_present_clip(ctx, &pos[0], &pos[1], pos[3]);
                     color[0] = (verts[fv].color >> 24) & 0xffu;
                     color[1] = (verts[fv].color >> 16) & 0xffu;
                     color[2] = (verts[fv].color >> 8) & 0xffu;
@@ -2299,7 +2358,7 @@ static void draw_vbo(struct pipe_context *pipe,
                 fixed.blend_config = vdraw.blend_config;
                 fixed.scissor_min = vdraw.scissor_min;
                 fixed.scissor_max = vdraw.scissor_max;
-                if (ctx->vs->mvp || ctx->vs->mvp2 || ctx->present_target)
+                if (ctx->vs->mvp || ctx->vs->mvp2)
                     draw_status = pipe_opengpu_draw_vbo(ctx->gpu, &fixed, &fence);
                 else
                     draw_status = pipe_opengpu_draw_vertex(ctx->gpu, &vdraw, &fence);

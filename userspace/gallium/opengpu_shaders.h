@@ -22,6 +22,14 @@ static const uint32_t opengpu_fragment_color[] = {
     0x02036087u, 0x0c028313u, 0x020360a7u, 0x30500073u,
 };
 
+/* Uniform RGBA copy for fragment shaders that write a constant colour.  The
+ * interpolated-colour program cannot serve this case when the vertex shader
+ * has no colour output (the common GLES clear/fill path). */
+static const uint32_t opengpu_fragment_uniform_color[] = {
+    0x00241293u, 0x005082b3u, 0xc1027057u, 0x1200a483u,
+    0x5e04c0d7u, 0x0c028313u, 0x020360a7u, 0x30500073u,
+};
+
 static const uint32_t opengpu_vertex_passthrough[] = {
     0x00241293u, 0x005082b3u, 0xc1027057u, 0x00028313u, 0x02036087u,
     0x10028313u, 0x020360a7u, 0x02028313u, 0x02036087u, 0x12028313u,
@@ -75,6 +83,7 @@ static const uint32_t opengpu_vertex_mvp[] = {
 };
 
 #define OPENGPU_FRAGMENT_COLOR_BYTES (sizeof(opengpu_fragment_color))
+#define OPENGPU_FRAGMENT_UNIFORM_COLOR_BYTES (sizeof(opengpu_fragment_uniform_color))
 static const uint32_t opengpu_fragment_modulate[] = {
     0x00241293u, 0x005082b3u, 0xc1027057u, 0x08028313u,
     0x02036087u, 0x0a028313u, 0x02036107u, 0x0620812bu,

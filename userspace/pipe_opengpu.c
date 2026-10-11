@@ -79,6 +79,7 @@ struct pipe_opengpu_context {
     struct pipe_opengpu_resource *texture;
     struct pipe_opengpu_resource *vertex_buffer;
     uint32_t vertex_stride;
+    uint32_t vertex_bytes;
     int fs_bound;
     int cs_bound;
     int tex_bound;
@@ -1281,12 +1282,16 @@ int pipe_opengpu_set_vertex_buffer(struct pipe_opengpu_context *ctx,
         errno = EINVAL;
         return -1;
     }
+    if (ctx->vb_bound && ctx->vertex_buffer == vb &&
+        ctx->vertex_stride == stride && ctx->vertex_bytes == bytes)
+        return 0;
     fd = ctx->screen->fd;
     if (ctx->vb_bound) {
         opengpu_unbind(fd, ctx->context_id, PIPE_VB_SLOT);
         ctx->vb_bound = 0;
         ctx->vertex_buffer = NULL;
         ctx->vertex_stride = 0;
+        ctx->vertex_bytes = 0;
     }
     if (!vb)
         return 0;
@@ -1304,6 +1309,7 @@ int pipe_opengpu_set_vertex_buffer(struct pipe_opengpu_context *ctx,
         return -1;
     ctx->vertex_buffer = vb;
     ctx->vertex_stride = stride;
+    ctx->vertex_bytes = bytes;
     ctx->vb_bound = 1;
     return 0;
 }
