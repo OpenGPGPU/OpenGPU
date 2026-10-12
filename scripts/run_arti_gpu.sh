@@ -45,7 +45,10 @@ ARTI_SETUP_WORK="${WORK_DIR:-$ARTI_WORK}"
 QEMU_BUILD="${QEMU_BUILD:-$ARTI_SETUP_WORK/qemu-arti-build}"
 QEMU_DISPLAY="${QEMU_DISPLAY:-none}"
 GPU_FRAG_CORE="${GPU_FRAG_CORE:-1}"
+GPU_COMPUTE_UNITS="${GPU_COMPUTE_UNITS:-}"
+GPU_MEMORY_AXI_DATA_BYTES="${GPU_MEMORY_AXI_DATA_BYTES:-8}"
 GPU_TILE_BINNING="${GPU_TILE_BINNING:-0}"
+GPU_TILE_SIZE="${GPU_TILE_SIZE:-16}"
 # A fixed-function run sets GPU_FRAG_CORE=0 and leaves the vertex core unset.
 if [ -z "${GPU_VERT_CORE:-}" ]; then
     if [ "$GPU_FRAG_CORE" = "1" ]; then
@@ -135,6 +138,8 @@ case "$GPU_SIM" in
 esac
 echo "RTL sim     : $GPU_SIM"
 echo "GPU cores   : frag=$GPU_FRAG_CORE vert=$GPU_VERT_CORE"
+echo "Compute CUs : ${GPU_COMPUTE_UNITS:-emitter default}"
+echo "AXI beat    : ${GPU_MEMORY_AXI_DATA_BYTES} bytes"
 echo "Tile binning: $GPU_TILE_BINNING"
 echo "Fence slice : ${ARTI_GPU_FENCE_SLICE_MS}ms (0 = one blocking wait)"
 echo "ARTI work   : $ARTI_WORK"
@@ -146,9 +151,28 @@ echo "ARTI work   : $ARTI_WORK"
     fail "GPU_VERT_CORE=1 requires GPU_FRAG_CORE=1"
 [ "$GPU_TILE_BINNING" = "0" ] || [ "$GPU_TILE_BINNING" = "1" ] || \
     fail "GPU_TILE_BINNING must be 0 or 1"
+case "$GPU_MEMORY_AXI_DATA_BYTES" in
+    4|8|16|32|64) ;;
+    *) fail "GPU_MEMORY_AXI_DATA_BYTES must be 4, 8, 16, 32 or 64" ;;
+esac
+if [ -n "$GPU_COMPUTE_UNITS" ]; then
+    case "$GPU_COMPUTE_UNITS" in
+        ''|*[!0-9]*) fail "GPU_COMPUTE_UNITS must be a positive integer" ;;
+    esac
+    [ "$GPU_COMPUTE_UNITS" -gt 0 ] ||
+        fail "GPU_COMPUTE_UNITS must be a positive integer"
+fi
+case "$GPU_TILE_SIZE" in
+    ''|*[!0-9]*) fail "GPU_TILE_SIZE must be a positive integer" ;;
+esac
+[ "$GPU_TILE_SIZE" -gt 0 ] || fail "GPU_TILE_SIZE must be a positive integer"
 TILE_OPTIONS=""
 if [ "$GPU_TILE_BINNING" = "1" ]; then
-    TILE_OPTIONS="--tile-size 16 --tile-attachments --tile-binning"
+    TILE_OPTIONS="--tile-size $GPU_TILE_SIZE --tile-attachments --tile-binning"
+fi
+EMIT_OPTIONS="--memory-axi-data-bytes $GPU_MEMORY_AXI_DATA_BYTES"
+if [ -n "$GPU_COMPUTE_UNITS" ]; then
+    EMIT_OPTIONS="$EMIT_OPTIONS --compute-units $GPU_COMPUTE_UNITS"
 fi
 # The 16x16 minimum and the framebuffer-size cross-check live in
 # gpu_display_config.py, so the profile is validated once, in one place.
@@ -264,17 +288,17 @@ if [ "${SKIP_RTL_EMIT:-0}" = "1" ]; then
     fi
 elif [ "$GPU_VERT_CORE" = "1" ]; then
     (cd "$GPU_DIR" && \
-        sbt "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --frag-core --vert-core --width $GPU_WIDTH --height $GPU_HEIGHT $TILE_OPTIONS")
+        sbt "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --frag-core --vert-core --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
     TIMEOUT="${TIMEOUT:-3600}"
 elif [ "$GPU_FRAG_CORE" = "1" ]; then
     (cd "$GPU_DIR" && \
-        sbt "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --frag-core --width $GPU_WIDTH --height $GPU_HEIGHT $TILE_OPTIONS")
+        sbt "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --frag-core --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
     # The 3-draw fragment stencil job has a 15x watchdog; allow the full
     # userspace suite to continue after that job completes.
     TIMEOUT="${TIMEOUT:-2400}"
 else
     (cd "$GPU_DIR" && \
-        sbt "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --width $GPU_WIDTH --height $GPU_HEIGHT $TILE_OPTIONS")
+        sbt "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
     # FF + MSAA/persistent-depth DRM suite needs ~5+ minutes under FlashSim.
     TIMEOUT="${TIMEOUT:-600}"
 fi
