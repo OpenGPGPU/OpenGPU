@@ -158,8 +158,12 @@ class SharedL2Slice(
   private val valid = Seq.fill(ways)(RegInit(0.U(sets.W)))
   private val nextVictim =
     RegInit(VecInit(Seq.fill(sets)(0.U(wayWidth.W))))
-  private val sharers = Seq.fill(ways)(
-    RegInit(VecInit(Seq.fill(sets)(0.U(numComputeUnits.W)))))
+  // Keep sharer state as indexed memories so CIRCT can preserve the
+  // set-indexed update instead of expanding every set into a scalar enable
+  // ladder. Valid bits remain packed because they are consumed as a bitmap.
+  // Sharer contents need no reset writes: every consumer first proves the
+  // corresponding line valid, and valid bits reset to zero.
+  private val sharers = Seq.fill(ways)(Mem(sets, UInt(numComputeUnits.W)))
   private val missEngine = Module(new L2MissEngine(
     config, entries = 4, maxOutstanding = maxOutstanding,
     numComputeUnits = numComputeUnits, lineBytes = lineBytes,

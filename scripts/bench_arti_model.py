@@ -39,6 +39,7 @@ PROBE = r"""
 #include <ctime>
 
 static uint8_t *mem;
+static uint64_t read_calls, write_calls, read_bytes, write_bytes;
 static const uint64_t MEM_BASE = 0x40000000ull;
 static const uint64_t MEM_SIZE = 1ull << 30;
 
@@ -51,6 +52,8 @@ static const uint64_t MEM_SIZE = 1ull << 30;
 static int mem_read(uint64_t addr, uint8_t *data, unsigned size, uint64_t id) {
   (void)id;
   if (addr < MEM_BASE || addr + size > MEM_BASE + MEM_SIZE) return -1;
+  read_calls++;
+  read_bytes += size;
   memcpy(data, mem + (addr - MEM_BASE), size);
   return 0;
 }
@@ -58,23 +61,21 @@ static int mem_read(uint64_t addr, uint8_t *data, unsigned size, uint64_t id) {
 static int mem_write(uint64_t addr, const uint8_t *data, unsigned size,
                      uint64_t mask, uint64_t id) {
   (void)id;
-  if (addr < MEM_BASE || addr + size > MEM_BASE + MEM_SIZE) return -1;
+  if (size > 64 || addr < MEM_BASE || addr + size > MEM_BASE + MEM_SIZE) return -1;
+  write_calls++;
   uint8_t *p = mem + (addr - MEM_BASE);
   for (unsigned i = 0; i < size; i++)
-    if (mask & (1ull << i)) p[i] = data[i];
+    if (mask & (1ull << i)) { p[i] = data[i]; write_bytes++; }
   return 0;
 }
 
-static void mem_write(uint64_t addr, const uint8_t *data, unsigned size,
-                      uint64_t mask) {
+static void stage_memory(uint64_t addr, const uint8_t *data, unsigned size) {
   if (addr < MEM_BASE || addr + size > MEM_BASE + MEM_SIZE) {
     fprintf(stderr, "staging address 0x%llx outside the backing store\n",
             (unsigned long long)addr);
     exit(9);
   }
-  uint8_t *p = mem + (addr - MEM_BASE);
-  for (unsigned i = 0; i < size; i++)
-    if (mask & (1ull << i)) p[i] = data[i];
+  memcpy(mem + (addr - MEM_BASE), data, size);
 }
 
 static double now_s(void) {
@@ -171,6 +172,9 @@ int main(int argc, char **argv) {
     const uint64_t cmd_base = 0x42001000ull;
     const uint32_t stride = render_width * 4u;
     const uint32_t pixels = render_width * render_height;
+    /* Dynamic modes use the same viewport registers as guest modesets. */
+    reg_write(0x04c, render_width);
+    reg_write(0x050, render_height);
 
     /* Clear the colour and depth planes the way a frame start would. */
     reg_write(0x088, (uint32_t)colour_base);
@@ -197,7 +201,7 @@ int main(int argc, char **argv) {
       cmd[12 + v * 3 + 2] = 64u;
       cmd[21 + v] = 0x10u;                 /* depth, compared as-is */
     }
-    mem_write(cmd_base, (const uint8_t *)cmd, sizeof(cmd), ~0ull);
+    stage_memory(cmd_base, (const uint8_t *)cmd, sizeof(cmd));
 
     /* header = (record count << 16) | id; state bit0 depth test, bits 9:8
      * cull; colour and depth planes come next, then the framebuffer stride. */
@@ -209,8 +213,13 @@ int main(int argc, char **argv) {
     desc[3] = (uint32_t)depth_base;
     desc[4] = stride;
     desc[5] = 1u;                          /* depth test on, no write, no cull */
-    mem_write(desc_base, (const uint8_t *)desc, sizeof(desc), ~0ull);
+    stage_memory(desc_base, (const uint8_t *)desc, sizeof(desc));
 
+    read_calls = write_calls = read_bytes = write_bytes = 0;
+#ifdef ARTI_PROBE_HAS_SKIP_STATS
+    uint64_t render_start_ticks = 0, render_end_ticks = 0;
+    arti_rtl_model_skip_stats(&render_start_ticks, nullptr, nullptr, nullptr);
+#endif
     double t4 = now_s();
     for (unsigned r = 0; r < render_reps; r++) {
       reg_write(0x00c, 1u);               /* IRQ enable */
@@ -237,6 +246,10 @@ int main(int argc, char **argv) {
       reg_write(0x130, 1u);
     }
     double t5 = now_s();
+#ifdef ARTI_PROBE_HAS_SKIP_STATS
+    arti_rtl_model_skip_stats(&render_end_ticks, nullptr, nullptr, nullptr);
+    printf("render_ticks %llu\n", (unsigned long long)(render_end_ticks - render_start_ticks));
+#endif
     double render_s = (t5 - t4) / (render_reps ? render_reps : 1);
     uint32_t centre;
     memcpy(&centre, mem + (size_t)(render_height / 2) * stride +
@@ -244,6 +257,15 @@ int main(int argc, char **argv) {
     printf("render_ms %.3f\n", render_s * 1e3);
     printf("render_px %u\n", pixels);
     printf("render_centre 0x%08x\n", centre);
+    uint64_t hash = 14695981039346656037ull;
+    for (uint64_t i = 0; i < (uint64_t)stride * render_height; i++) {
+      hash ^= mem[i]; hash *= 1099511628211ull;
+    }
+    printf("render_hash 0x%016llx\n", (unsigned long long)hash);
+    printf("render_read_calls %llu\n", (unsigned long long)read_calls);
+    printf("render_write_calls %llu\n", (unsigned long long)write_calls);
+    printf("render_read_bytes %llu\n", (unsigned long long)read_bytes);
+    printf("render_write_bytes %llu\n", (unsigned long long)write_bytes);
     if (render_reps && centre == 0u) {
       fprintf(stderr, "FAIL: centre pixel is still the clear colour\n");
       return 8;
@@ -409,6 +431,8 @@ def build(model_dir, build_dir, compiler, counters, threads):
     binary = build_dir / ("probe_spliced" if (counters or threads) else "probe")
     subprocess.run([compiler, "-std=gnu++17", "-O2", "-w",
                     "-fbracket-depth=4096", f"-I{model_dir}",
+                    *(["-DARTI_PROBE_HAS_SKIP_STATS"] if backend == "flashsim" and
+                      "arti_rtl_model_skip_stats" in (model_dir / "arti_rtl_model.h").read_text() else []),
                     str(build_dir / "probe.cpp"), *link,
                     *(["-lpthread"] if backend == "verilator" else []),
                     "-o", str(binary)], check=True)
