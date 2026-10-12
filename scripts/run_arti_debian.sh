@@ -97,11 +97,16 @@ if [ -z "${QEMU_DISPLAY:-}" ]; then
         *)      QEMU_DISPLAY="gtk" ;;
     esac
 fi
-# Keep the guest UART attached to this terminal by default. The generic ARTI
-# runner can tee serial through a logfile chardev, but Cocoa/GTK launches can
-# leave that stdio chardev invisible even while the guest is booting. Set
-# DEBIAN_MON_STDIO=0 explicitly when logfile mirroring is preferred.
-export DEBIAN_MON_STDIO="${DEBIAN_MON_STDIO:-1}"
+# Put the guest UART in QEMU's graphical virtual console when a window is in
+# use. This restores the previous interactive behavior: boot text is visible
+# in the QEMU window. Headless runs keep the UART on the launching terminal.
+if [ -z "${DEBIAN_SERIAL_TARGET:-}" ]; then
+    case "$QEMU_DISPLAY" in
+        none) DEBIAN_SERIAL_TARGET="mon:stdio" ;;
+        *)    DEBIAN_SERIAL_TARGET="vc" ;;
+    esac
+fi
+export DEBIAN_SERIAL_TARGET
 # Keep the host window resizable when the guest mode changes.
 case "$QEMU_DISPLAY" in
     cocoa) QEMU_DISPLAY="cocoa,zoom-to-fit=on" ;;
