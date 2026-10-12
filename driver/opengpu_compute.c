@@ -854,8 +854,11 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
             goto out_file;
     } else if (args->type == OPENGPU_RESOURCE_TEXTURE &&
                context->vm.enabled) {
-        u32 policy = (args->flags & OPENGPU_RESOURCE_UNCACHED) ?
-            OPENGPU_MMU_POLICY_UNCACHED : OPENGPU_MMU_POLICY_CACHED;
+        /* ARTI compositors reuse GBM texture objects after another GPU
+         * context rendered into them. Keep these mappings uncached so the
+         * texture client observes the producer's latest pixels instead of a
+         * stale shared-L2 line. */
+        u32 policy = OPENGPU_MMU_POLICY_UNCACHED;
 
         if (!(args->flags & OPENGPU_RESOURCE_UNCACHED)) {
             /* Drop CPU-written cache lines before publishing the new PTEs, so
