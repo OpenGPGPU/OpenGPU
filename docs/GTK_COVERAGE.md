@@ -164,6 +164,20 @@ configuration remains pending; the existing long run was started with defaults.
 
 ## Reusing the GTK-enabled image
 
+To boot the real lightweight desktop shell in the graphical QEMU window, use
+the GTK-enabled image and select the ARTI `weston` display mode:
+
+```sh
+OPENGPU_AUTO_DISPLAY=weston \
+DEBIAN_BASE=../arti-work/debian-gtk-arm64.qcow2 \
+QEMU_DISPLAY=cocoa ./scripts/run_arti_debian.sh
+```
+
+This starts the stock Weston DRM backend and desktop-shell through the
+OpenGPU DRM/EGL path. It is a real Wayland desktop, separate from the
+deterministic `opengpu_pipe_desktop` scanout proof. The GTK image must already
+contain Weston; the image produced by `scripts/bake_gtk_debian_image.sh` does.
+
 The prepared image is a normal Debian ARM64 qcow2 image, so the other ARTI
 runners can use it as their base as well:
 
