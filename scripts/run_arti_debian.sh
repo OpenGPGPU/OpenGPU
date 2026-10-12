@@ -21,6 +21,8 @@
 #   GPU_SIM=flashsim QEMU_DISPLAY=cocoa ./scripts/run_arti_debian.sh
 #   OPENGPU_AUTO_DISPLAY=0 ./scripts/run_arti_debian.sh
 #       # boot without the KMS desktop service for manual pipe_* runs
+#   OPENGPU_AUTO_DISPLAY=weston DEBIAN_BASE=../arti-work/debian-gtk-arm64.qcow2 \
+#       ./scripts/run_arti_debian.sh
 #   REBUILD_DISK=1 ./scripts/run_arti_debian.sh   # fresh qcow2 from base image
 #   DEBIAN_BASE=../arti-work/debian-gtk-arm64.qcow2 ./scripts/run_arti_debian.sh
 #       # reuse the one-time GTK-enabled image for interactive runs
@@ -28,8 +30,9 @@
 #
 # OpenGPU loads at boot and presents a GPU-drawn desktop
 # (OPENGPU_AUTO_DISPLAY=desktop). The RTL writes the pixels. Set
-# OPENGPU_AUTO_DISPLAY=triangle for the single triangle, console for the
-# framebuffer console, or 0 to load manually. gradient paints the framebuffer
+# OPENGPU_AUTO_DISPLAY=weston to start the real Weston DRM desktop shell,
+# triangle for the single triangle, console for the framebuffer console, or
+# 0 to load manually. gradient paints the framebuffer
 # on the CPU and does not prove the graphics RTL.
 # Fragment and vertex cores are on. The model must have been built with
 # scripts/build_arti_debian_display.sh after that default; an older model
