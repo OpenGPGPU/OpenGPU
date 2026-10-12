@@ -97,14 +97,11 @@ if [ -z "${QEMU_DISPLAY:-}" ]; then
         *)      QEMU_DISPLAY="gtk" ;;
     esac
 fi
-# Put the guest UART in QEMU's graphical virtual console when a window is in
-# use. This restores the previous interactive behavior: boot text is visible
-# in the QEMU window. Headless runs keep the UART on the launching terminal.
+# Match the historical ARTI launcher: Linux `console=tty0` drives the QEMU
+# graphical console while `console=ttyAMA0` and mon:stdio drive the terminal.
+# Keep alternate serial targets available as explicit debug overrides.
 if [ -z "${DEBIAN_SERIAL_TARGET:-}" ]; then
-    case "$QEMU_DISPLAY" in
-        none) DEBIAN_SERIAL_TARGET="mon:stdio" ;;
-        *)    DEBIAN_SERIAL_TARGET="vc" ;;
-    esac
+    DEBIAN_SERIAL_TARGET="mon:stdio"
 fi
 export DEBIAN_SERIAL_TARGET
 # Keep the host window resizable when the guest mode changes.
