@@ -1548,11 +1548,23 @@ int opengpu_hw_display_commit(struct opengpu_device *gpu,
                               const struct opengpu_scanout *scanout)
 {
     u32 control = 0;
+    int ret;
 
     if (scanout->enable &&
         (!scanout->base || upper_32_bits(scanout->base) ||
          !scanout->stride || !scanout->width || !scanout->height))
         return -EINVAL;
+
+    /* Weston can submit a render and immediately page-flip its target BO.
+     * Quiesce the GPU before publishing that BO as scanout, otherwise ARTI
+     * may copy it while the fragment work is still in flight and display a
+     * stale/black frame. */
+    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_wait_idle_locked(gpu);
+    if (ret) {
+        mutex_unlock(&gpu->hw.submit_lock);
+        return ret;
+    }
 
     /* A page flip changes only BASE.  Avoid reprogramming the mode and
      * toggling CONTROL while an unchanged scanout is already active. */
@@ -1566,6 +1578,7 @@ int opengpu_hw_display_commit(struct opengpu_device *gpu,
         opengpu_reg_write(gpu, GPU_REG_SCANOUT_BASE,
                           lower_32_bits(scanout->base));
         gpu->display.scanout = scanout->base;
+        mutex_unlock(&gpu->hw.submit_lock);
         return 0;
     }
 
@@ -1594,6 +1607,7 @@ int opengpu_hw_display_commit(struct opengpu_device *gpu,
     if (!!(opengpu_reg_read(gpu, GPU_REG_SCANOUT_STATUS) &
            GPU_SCANOUT_ACTIVE) != scanout->enable) {
         gpu->display.enabled = false;
+        mutex_unlock(&gpu->hw.submit_lock);
         return -EIO;
     }
     gpu->display.scanout = scanout->base;
@@ -1608,6 +1622,7 @@ int opengpu_hw_display_commit(struct opengpu_device *gpu,
         gpu->width = min_t(u32, scanout->width, gpu->max_width);
         gpu->height = min_t(u32, scanout->height, gpu->max_height);
     }
+    mutex_unlock(&gpu->hw.submit_lock);
     return 0;
 }
 
