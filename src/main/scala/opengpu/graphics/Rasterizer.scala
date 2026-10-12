@@ -11,7 +11,10 @@ import chisel3.util._
   * sub-pixel precision used by typical hardware rasterizers.
   */
 case class GraphicsConfig(
+  /** Elaborated maximum. Tile storage is sized to this; a runtime mode may
+    * be smaller. Zero selects this maximum. */
   screenWidth: Int = 128,
+  /** Elaborated maximum, paired with `screenWidth`. */
   screenHeight: Int = 128,
   subPixelBits: Int = 8,
   drawFifoDepth: Int = 8,
@@ -45,6 +48,16 @@ case class GraphicsConfig(
 
   /** Convert an integer screen coordinate into fixed-point representation. */
   def toFixed(x: Int): Int = x << subPixelBits
+}
+
+/** Active screen extent. Zero selects the elaborated maximum; a programmed
+  * value above the maximum is clamped so a tile walk cannot leave its SRAM. */
+object ScreenLimit {
+  def apply(programmed: UInt, maximum: Int): UInt = {
+    val maxU = maximum.U(16.W)
+    val raw = programmed(15, 0)
+    Mux(raw === 0.U || raw > maxU, maxU, raw)
+  }
 }
 
 /** A 2D point in signed fixed-point screen space. */
@@ -327,6 +340,9 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
     val scissorMinY = Input(UInt(16.W))
     val scissorMaxX = Input(UInt(16.W))
     val scissorMaxY = Input(UInt(16.W))
+    /** Active mode. Zero uses the elaborated maximum. */
+    val screenW = Input(UInt(16.W))
+    val screenH = Input(UInt(16.W))
     val pixel = Decoupled(new RasterPixel(config))
     val quad = Decoupled(new RasterQuad(config))
     /** Registered per-triangle edge-plane coefficients, exported so the
@@ -382,6 +398,8 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
 
   // Registered inputs shared by the setup stages.
   private val vHold = Reg(new TriangleVertices(config))
+  private val screenWReg = RegInit(config.screenWidth.U(16.W))
+  private val screenHReg = RegInit(config.screenHeight.U(16.W))
   private val cullReg = Reg(UInt(2.W))
   private val scissorEnableReg = RegInit(false.B)
   private val scissorMinXReg = Reg(UInt(16.W))
@@ -502,7 +520,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
       io.quad.bits.lanes(k).e1 := quadCov.io.e1(k)
       io.quad.bits.lanes(k).e2 := quadCov.io.e2(k)
       io.quad.bits.lanes(k).area := areaReg
-      val inBounds = laneX < config.screenWidth.U && laneY < config.screenHeight.U
+      val inBounds = laneX < screenWReg && laneY < screenHReg
       val scOk = inScissor(laneX, laneY)
       io.quad.bits.lanes(k).covered := quadCoverage(k).orR && inBounds && scOk
       io.quad.bits.lanes(k).coverageMask :=
@@ -608,10 +626,12 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
   // ---------------------------------------------------------------------
   // Setup pipeline control.
   // ---------------------------------------------------------------------
-  private def clampPixN(vv: SInt, max: Int): UInt =
+  private def clampPixN(vv: SInt, maxPx: UInt): UInt = {
+    val limit = (maxPx << config.subPixelBits).zext.pad(vv.getWidth)
     Mux(vv <= 0.S, 0.U,
-      Mux(vv >= (max << config.subPixelBits).S, (max - 1).U,
+      Mux(vv >= limit, (maxPx - 1.U)(15, 0),
         vv.apply(config.subPixelBits + 15, config.subPixelBits).asUInt))
+  }
 
   private val bboxMinXW =
     Seq(vHold.v0.x, vHold.v1.x, vHold.v2.x).reduce(_ min _)
@@ -630,6 +650,8 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
 
   when(io.draw.fire) {
     vHold := io.draw.bits
+    screenWReg := ScreenLimit(io.screenW, config.screenWidth)
+    screenHReg := ScreenLimit(io.screenH, config.screenHeight)
     cullReg := io.cullMode
     scissorEnableReg := io.scissorEnable
     scissorMinXReg := io.scissorMinX
@@ -643,17 +665,17 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
     setupState := stSetup
     // Clamp against the JUST-CAPTURED vertices (vHold registered last edge).
     val rawMinX = if (quadMode) clampPixN(bboxMinXW - bboxPad,
-      config.screenWidth) & "hfffe".U else
-      clampPixN(bboxMinXW - bboxPad, config.screenWidth)
+      screenWReg) & "hfffe".U else
+      clampPixN(bboxMinXW - bboxPad, screenWReg)
     val rawMinY = if (quadMode) clampPixN(bboxMinYW - bboxPad,
-      config.screenHeight) & "hfffe".U else
-      clampPixN(bboxMinYW - bboxPad, config.screenHeight)
+      screenHReg) & "hfffe".U else
+      clampPixN(bboxMinYW - bboxPad, screenHReg)
     val rawMaxX = if (quadMode) clampPixN(bboxMaxXW + bboxPad,
-      config.screenWidth) & "hfffe".U else
-      clampPixN(bboxMaxXW + bboxPad, config.screenWidth)
+      screenWReg) & "hfffe".U else
+      clampPixN(bboxMaxXW + bboxPad, screenWReg)
     val rawMaxY = if (quadMode) clampPixN(bboxMaxYW + bboxPad,
-      config.screenHeight) & "hfffe".U else
-      clampPixN(bboxMaxYW + bboxPad, config.screenHeight)
+      screenHReg) & "hfffe".U else
+      clampPixN(bboxMaxYW + bboxPad, screenHReg)
     if (config.tileBinning) {
       // The replay scheduler visits the same draw in every tile. Restrict
       // setup to that tile's scissor so each replay scans at most one tile.

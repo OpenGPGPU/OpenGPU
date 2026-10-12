@@ -119,6 +119,9 @@ class RenderPipeline(
     val cullMode = Input(UInt(2.W))
     /** bits[1:0] sample mode: 0 = 1x, 1 = 2x, 2 = 4x. */
     val sampleMode = Input(UInt(2.W))
+    /** Active mode. Zero uses the elaborated maximum. */
+    val screenW = Input(UInt(16.W))
+    val screenH = Input(UInt(16.W))
     /** Texture sampling (fixed-function path; ignored with fragCore). */
     val texEnable = Input(Bool())
     val texBase = Input(UInt(32.W))
@@ -234,6 +237,8 @@ class RenderPipeline(
     }
     vertBinnerOpt match {
       case Some(binner) =>
+        binner.io.screenW := io.screenW
+        binner.io.screenH := io.screenH
         binner.io.start := io.tileStart.get
         binner.io.inputDone := io.tileInputDone.get && kernelVert.io.done
         binner.io.drawIn <> kernelVert.io.vertOut
@@ -377,8 +382,8 @@ class RenderPipeline(
     geo.io.clip(i).w := clippedVertices(i).w
     geo.io.color(i) := clippedVertices(i).color
   }
-  geo.io.screenW := config.screenWidth.U
-  geo.io.screenH := config.screenHeight.U
+  geo.io.screenW := ScreenLimit(io.screenW, config.screenWidth)
+  geo.io.screenH := ScreenLimit(io.screenH, config.screenHeight)
 
   // Shader consumes the screen-space triangle (sub-pixel fixed-point) directly.
   shader.io.draw.bits.v0.x := geo.io.out(0).sx(31, 0).asSInt
@@ -399,6 +404,8 @@ class RenderPipeline(
   shader.io.scissorMinY := drawHold.scissorMinY
   shader.io.scissorMaxX := drawHold.scissorMaxX
   shader.io.scissorMaxY := drawHold.scissorMaxY
+  shader.io.screenW := io.screenW
+  shader.io.screenH := io.screenH
 
   // The source remains stopped until every triangle in the clipped fan has
   // entered rasterization. This also keeps the source metadata snapshot stable.

@@ -299,6 +299,11 @@ class RenderHost(
   private val scanoutStrideReg = RegInit(0.U(32.W))
   private val scanoutWidthReg = RegInit(0.U(32.W))
   private val scanoutHeightReg = RegInit(0.U(32.W))
+  /** Render viewport. A non-zero scanout size latches it; clearing scanout
+    * (disable) leaves the last mode in place. Reset matches the elaborated
+    * maximum, so an unprogrammed device keeps the previous contract. */
+  private val viewportW = RegInit(config.screenWidth.U(16.W))
+  private val viewportH = RegInit(config.screenHeight.U(16.W))
   private val scanoutFormatReg = RegInit(0.U(32.W))
   private val scanoutControlReg = RegInit(0.U(32.W))
   private val scanoutPeriodReg = RegInit(0.U(32.W))
@@ -516,10 +521,18 @@ class RenderHost(
         scanoutStrideReg := merge(scanoutStrideReg, io.reg.req.bits.data, io.reg.req.bits.strb)
       }
       is(RenderHostRegs.SCANOUT_WIDTH.U) {
-        scanoutWidthReg := merge(scanoutWidthReg, io.reg.req.bits.data, io.reg.req.bits.strb)
+        val written = merge(scanoutWidthReg, io.reg.req.bits.data, io.reg.req.bits.strb)
+        scanoutWidthReg := written
+        when(written(15, 0).orR) {
+          viewportW := ScreenLimit(written, config.screenWidth)
+        }
       }
       is(RenderHostRegs.SCANOUT_HEIGHT.U) {
-        scanoutHeightReg := merge(scanoutHeightReg, io.reg.req.bits.data, io.reg.req.bits.strb)
+        val written = merge(scanoutHeightReg, io.reg.req.bits.data, io.reg.req.bits.strb)
+        scanoutHeightReg := written
+        when(written(15, 0).orR) {
+          viewportH := ScreenLimit(written, config.screenHeight)
+        }
       }
       is(RenderHostRegs.SCANOUT_FORMAT.U) {
         scanoutFormatReg := merge(scanoutFormatReg, io.reg.req.bits.data, io.reg.req.bits.strb)
@@ -797,6 +810,8 @@ class RenderHost(
   core.io.texWrapClamp := unifiedCfg.texWrapClamp
   core.io.texMaxLevel := unifiedCfg.texMaxLevel
   core.io.sampleMode := unifiedCfg.sampleMode
+  core.io.screenW := viewportW
+  core.io.screenH := viewportH
   core.io.start := renderLaunch && validRenderMode && !busy
 
   // Separate word ports.  The engine's command stage (draw records) and the

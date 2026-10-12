@@ -20,6 +20,9 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
   private val tileIndexWidth = log2Ceil(tileCount).max(1)
   private val useBinaryBounds = tileColumns + tileRows > 16
   val io = IO(new Bundle {
+    /** Active mode. Zero uses the elaborated maximum. Sampled at `start`. */
+    val screenW = Input(UInt(16.W))
+    val screenH = Input(UInt(16.W))
     val start = Input(Bool())
     val drawIn = Flipped(Decoupled(new SceneTriangle(config)))
     val inputDone = Input(Bool())
@@ -62,6 +65,12 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
   private val emitIndex = PriorityEncoder(emitMask)
   private val tileX = RegInit(0.U(16.W))
   private val tileY = RegInit(0.U(16.W))
+  private val screenW = RegInit(config.screenWidth.U(16.W))
+  private val screenH = RegInit(config.screenHeight.U(16.W))
+  private val activeColumns = ((screenW + 15.U) >> 4)(searchWidth - 1, 0)
+  private val activeRows = ((screenH + 15.U) >> 4)(searchWidth - 1, 0)
+  private val lastTileX = ((screenW - 1.U) >> 4) << 4
+  private val lastTileY = ((screenH - 1.U) >> 4) << 4
 
   private val findingBounds = state === boundsStart || state === boundsX ||
     state === boundsY || state === boundsSearch
@@ -78,22 +87,18 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
     probeOrigin, tileY)
   private val probeNextX = probeX +& 16.U
   private val probeNextY = probeY +& 16.U
-  private val tileMaxX = Mux(nextTileX >= config.screenWidth.U,
-    config.screenWidth.U(16.W), nextTileX(15, 0))
-  private val tileMaxY = Mux(nextTileY >= config.screenHeight.U,
-    config.screenHeight.U(16.W), nextTileY(15, 0))
-  private val probeMaxX = Mux(probeNextX >= config.screenWidth.U,
-    config.screenWidth.U(16.W), probeNextX(15, 0))
-  private val probeMaxY = Mux(probeNextY >= config.screenHeight.U,
-    config.screenHeight.U(16.W), probeNextY(15, 0))
+  private val tileMaxX = Mux(nextTileX >= screenW, screenW, nextTileX(15, 0))
+  private val tileMaxY = Mux(nextTileY >= screenH, screenH, nextTileY(15, 0))
+  private val probeMaxX = Mux(probeNextX >= screenW, screenW, probeNextX(15, 0))
+  private val probeMaxY = Mux(probeNextY >= screenH, screenH, probeNextY(15, 0))
   // Cheap scissor checks run in parallel. Most tiles in a small-scissor
   // chunk can write an empty mask without invoking any geometry comparison.
   private val candidates = VecInit((0 until capacity).map { i =>
     val d = draws(i)
     val x0 = Mux(d.scissorEnable, d.scissorMinX, 0.U(16.W))
     val y0 = Mux(d.scissorEnable, d.scissorMinY, 0.U(16.W))
-    val x1 = Mux(d.scissorEnable, d.scissorMaxX, config.screenWidth.U(16.W))
-    val y1 = Mux(d.scissorEnable, d.scissorMaxY, config.screenHeight.U(16.W))
+    val x1 = Mux(d.scissorEnable, d.scissorMaxX, screenW)
+    val y1 = Mux(d.scissorEnable, d.scissorMaxY, screenH)
     i.U < count && x0 < tileMaxX && y0 < tileMaxY &&
       x1 > tileX && y1 > tileY && x0 < x1 && y0 < y1 &&
       tileX >= boundMinX(i) && tileX <= boundMaxX(i) &&
@@ -104,9 +109,9 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
   private val originalMinY = Mux(selected.scissorEnable,
     selected.scissorMinY, 0.U(16.W))
   private val originalMaxX = Mux(selected.scissorEnable,
-    selected.scissorMaxX, config.screenWidth.U(16.W))
+    selected.scissorMaxX, screenW)
   private val originalMaxY = Mux(selected.scissorEnable,
-    selected.scissorMaxY, config.screenHeight.U(16.W))
+    selected.scissorMaxY, screenH)
   private val minX = Mux(originalMinX > tileX, originalMinX, tileX)
   private val minY = Mux(originalMinY > tileY, originalMinY, tileY)
   private val maxX = Mux(originalMaxX < tileMaxX, originalMaxX, tileMaxX)
@@ -124,8 +129,8 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
   private def axisSides(xAxis: Boolean, lo: UInt, hi: UInt): (Bool, Bool) = {
     val comparisons = selected.clip.map { v =>
       val position = if (xAxis) v.x else v.y
-      val dimension = if (xAxis) config.screenWidth else config.screenHeight
-      val numerator = (position +& v.w) * dimension.S
+      val dimension = (if (xAxis) screenW else screenH).zext.asSInt
+      val numerator = (position +& v.w) * dimension
       (numerator < ((v.w * lo.zext) << 1),
         numerator > ((v.w * hi.zext) << 1))
     }
@@ -185,11 +190,11 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
   private def advanceBinTile(): Unit = {
     buildMask := 0.U
     scanMask := 0.U
-    when(nextTileX < config.screenWidth.U) {
+    when(nextTileX < screenW) {
       tileX := nextTileX(15, 0)
       tileIndex := tileIndex + 1.U
       state := binStart
-    }.elsewhen(nextTileY < config.screenHeight.U) {
+    }.elsewhen(nextTileY < screenH) {
       tileX := 0.U
       tileY := nextTileY(15, 0)
       tileIndex := tileIndex + 1.U
@@ -203,6 +208,8 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
   }
 
   when(io.start) {
+    screenW := ScreenLimit(io.screenW, config.screenWidth)
+    screenH := ScreenLimit(io.screenH, config.screenHeight)
     state := collect
     count := 0.U
     boundsIndex := 0.U
@@ -246,15 +253,15 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
           // Scissor already provides a cheap range, and non-positive w may
           // produce clipped vertices outside the original projected bounds.
           boundMinX(boundsIndex) := 0.U
-          boundMaxX(boundsIndex) := (((config.screenWidth - 1) / 16) * 16).U
+          boundMaxX(boundsIndex) := lastTileX
           boundMinY(boundsIndex) := 0.U
-          boundMaxY(boundsIndex) := (((config.screenHeight - 1) / 16) * 16).U
+          boundMaxY(boundsIndex) := lastTileY
           advanceBoundsDraw()
         }.otherwise {
           if (useBinaryBounds) {
             searchPhase := 0.U
             searchLo := 0.U
-            searchHi := tileColumns.U
+            searchHi := activeColumns
             state := boundsSearch
           } else {
             scanMinX := "hffff".U
@@ -270,7 +277,7 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
       is(boundsX) {
         scanMinX := nextMinX
         scanMaxX := nextMaxX
-        when(nextTileX < config.screenWidth.U) {
+        when(nextTileX < screenW) {
           tileX := nextTileX(15, 0)
         }.otherwise {
           boundMinX(boundsIndex) := nextMinX
@@ -288,7 +295,7 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
       is(boundsY) {
         scanMinY := nextMinY
         scanMaxY := nextMaxY
-        when(nextTileY < config.screenHeight.U) {
+        when(nextTileY < screenH) {
           tileY := nextTileY(15, 0)
         }.otherwise {
           boundMinY(boundsIndex) := nextMinY
@@ -302,7 +309,7 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
         when(newSearchLo === newSearchHi) {
           switch(searchPhase) {
             is(0.U) {
-              when(newSearchLo === tileColumns.U) {
+              when(newSearchLo === activeColumns) {
                 boundMinX(boundsIndex) := "hffff".U
                 boundMaxX(boundsIndex) := 0.U
                 boundMinY(boundsIndex) := "hffff".U
@@ -312,7 +319,7 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
                 searchFirst := newSearchLo
                 boundMinX(boundsIndex) := tileOrigin(newSearchLo)
                 searchLo := newSearchLo
-                searchHi := tileColumns.U
+                searchHi := activeColumns
                 searchPhase := 1.U
               }
             }
@@ -326,12 +333,12 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
               }.otherwise {
                 boundMaxX(boundsIndex) := tileOrigin(newSearchLo - 1.U)
                 searchLo := 0.U
-                searchHi := tileRows.U
+                searchHi := activeRows
                 searchPhase := 2.U
               }
             }
             is(2.U) {
-              when(newSearchLo === tileRows.U) {
+              when(newSearchLo === activeRows) {
                 boundMinY(boundsIndex) := "hffff".U
                 boundMaxY(boundsIndex) := 0.U
                 advanceBoundsDraw()
@@ -339,7 +346,7 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
                 searchFirst := newSearchLo
                 boundMinY(boundsIndex) := tileOrigin(newSearchLo)
                 searchLo := newSearchLo
-                searchHi := tileRows.U
+                searchHi := activeRows
                 searchPhase := 3.U
               }
             }
@@ -391,11 +398,11 @@ class TileDrawBinner(config: GraphicsConfig) extends Module {
         }
       }
       is(nextTile) {
-        when(nextTileX < config.screenWidth.U) {
+        when(nextTileX < screenW) {
           tileX := nextTileX(15, 0)
           tileIndex := tileIndex + 1.U
           state := loadTile
-        }.elsewhen(nextTileY < config.screenHeight.U) {
+        }.elsewhen(nextTileY < screenH) {
           tileX := 0.U
           tileY := nextTileY(15, 0)
           tileIndex := tileIndex + 1.U

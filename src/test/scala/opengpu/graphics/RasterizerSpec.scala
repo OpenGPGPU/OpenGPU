@@ -179,6 +179,45 @@ class RasterizerSpec extends AnyFlatSpec {
     }
   }
 
+  it should "clip to a programmed mode smaller than the elaborated screen" in {
+    val config = GraphicsConfig(screenWidth = 64, screenHeight = 64, subPixelBits = 8)
+    simulate(new TriangleRasterizer(config)) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step()
+      dut.reset.poke(false.B)
+      dut.io.sampleMode.poke(0.U)
+      dut.io.pixel.ready.poke(true.B)
+      dut.io.cullMode.poke(0.U)
+      dut.io.screenW.poke(16.U)
+      dut.io.screenH.poke(16.U)
+      dut.io.draw.valid.poke(true.B)
+      dut.io.draw.bits.v0.x.poke(config.toFixed(0).S)
+      dut.io.draw.bits.v0.y.poke(config.toFixed(0).S)
+      dut.io.draw.bits.v1.x.poke(config.toFixed(63).S)
+      dut.io.draw.bits.v1.y.poke(config.toFixed(0).S)
+      dut.io.draw.bits.v2.x.poke(config.toFixed(0).S)
+      dut.io.draw.bits.v2.y.poke(config.toFixed(63).S)
+      dut.clock.step()
+      dut.io.draw.valid.poke(false.B)
+
+      var covered = Set.empty[(Int, Int)]
+      var cycles = 0
+      while (!dut.io.draw.ready.peek().litToBoolean && cycles < 8000) {
+        if (dut.io.pixel.valid.peek().litToBoolean) {
+          val x = dut.io.pixel.bits.x.peek().litValue.toInt
+          val y = dut.io.pixel.bits.y.peek().litValue.toInt
+          covered += ((x, y))
+        }
+        dut.clock.step()
+        cycles += 1
+      }
+      assert(cycles < 8000)
+      assert(covered.nonEmpty)
+      assert(covered.forall { case (x, y) => x < 16 && y < 16 },
+        s"pixels outside the programmed 16x16 mode: ${covered.filter { case (x, y) => x >= 16 || y >= 16 }}")
+    }
+  }
+
   it should "cover edge-sharing triangles exactly once (no cracks, no double-draw)" in {
     val config = GraphicsConfig(screenWidth = 16, screenHeight = 16, subPixelBits = 8)
     // Above-left triangle: shares the diagonal with the below-right triangle.

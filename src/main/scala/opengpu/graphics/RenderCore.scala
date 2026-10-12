@@ -92,6 +92,9 @@ class RenderCore(
     val cullMode = Input(UInt(2.W))
     /** bits[1:0] sample mode: 0 = 1x, 1 = 2x, 2 = 4x. */
     val sampleMode = Input(UInt(2.W))
+    /** Active mode. Zero uses the elaborated maximum. */
+    val screenW = Input(UInt(16.W))
+    val screenH = Input(UInt(16.W))
     /** Sampler word port (separate client in the fabric arbitration). */
     val texMem = new Bundle {
       val req = Decoupled(new OmMemoryRequest)
@@ -119,6 +122,9 @@ class RenderCore(
   cb.io.mem.req <> io.cbMem.req
   cb.io.mem.resp <> io.cbMem.resp
 
+  rp.io.screenW := io.screenW
+  rp.io.screenH := io.screenH
+
   if (config.tileBinning && vertCore) {
     cb.io.draw <> rp.io.draw
     rp.io.tileStart.get := startDelay
@@ -126,6 +132,8 @@ class RenderCore(
     io.done := cb.io.done && rp.io.done
   } else if (config.tileBinning) {
     val binner = Module(new TileDrawBinner(config))
+    binner.io.screenW := io.screenW
+    binner.io.screenH := io.screenH
     binner.io.start := startDelay
     cb.io.draw <> binner.io.drawIn
     binner.io.inputDone := cb.io.done

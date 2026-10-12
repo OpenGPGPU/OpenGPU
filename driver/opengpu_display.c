@@ -74,8 +74,9 @@ opengpu_pipe_mode_valid(struct drm_simple_display_pipe *pipe,
 {
     struct opengpu_drm *kms = pipe_to_opengpu_drm(pipe);
 
-    if (mode->hdisplay != kms->gpu->width ||
-        mode->vdisplay != kms->gpu->height)
+    if (mode->hdisplay < 16 || mode->vdisplay < 16 ||
+        mode->hdisplay > kms->gpu->max_width ||
+        mode->vdisplay > kms->gpu->max_height)
         return MODE_BAD;
     return MODE_OK;
 }
@@ -165,30 +166,73 @@ opengpu_connector_detect(struct drm_connector *connector, bool force)
     return connector_status_connected;
 }
 
-static int opengpu_connector_get_modes(struct drm_connector *connector)
+struct opengpu_mode_entry {
+    u16 width;
+    u16 height;
+};
+
+/* Sizes a desktop or the bring-up profiles actually use. Anything else in
+ * [16, max] is still accepted by mode_valid as a custom mode. */
+static const struct opengpu_mode_entry opengpu_standard_modes[] = {
+    { 1920, 1080 },
+    { 1280, 720 },
+    { 1024, 768 },
+    { 800, 600 },
+    { 640, 480 },
+    { 320, 240 },
+    { 64, 64 },
+};
+
+static int opengpu_add_mode(struct drm_connector *connector,
+                            u32 width, u32 height, bool preferred)
 {
-    struct opengpu_drm *kms = to_opengpu_drm(connector->dev);
     struct drm_display_mode *mode;
 
     mode = drm_mode_create(connector->dev);
     if (!mode)
         return 0;
 
-    mode->hdisplay = kms->gpu->width;
+    mode->hdisplay = width;
     mode->hsync_start = mode->hdisplay + 1;
     mode->hsync_end = mode->hsync_start + 1;
     mode->htotal = mode->hsync_end + 2;
-    mode->vdisplay = kms->gpu->height;
+    mode->vdisplay = height;
     mode->vsync_start = mode->vdisplay + 1;
     mode->vsync_end = mode->vsync_start + 1;
     mode->vtotal = mode->vsync_end + 2;
     mode->clock = max_t(u32, 1,
                         DIV_ROUND_UP(mode->htotal * mode->vtotal * 30,
                                      1000));
-    mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
+    mode->type = DRM_MODE_TYPE_DRIVER;
+    if (preferred)
+        mode->type |= DRM_MODE_TYPE_PREFERRED;
     drm_mode_set_name(mode);
     drm_mode_probed_add(connector, mode);
     return 1;
+}
+
+static int opengpu_connector_get_modes(struct drm_connector *connector)
+{
+    struct opengpu_drm *kms = to_opengpu_drm(connector->dev);
+    u32 native_w = kms->gpu->max_width;
+    u32 native_h = kms->gpu->max_height;
+    int count = 0;
+    unsigned int i;
+
+    /* First entry is the boot mode. Guests that take modes[0] keep the
+     * elaborated size; smaller modes are alternatives. */
+    count += opengpu_add_mode(connector, native_w, native_h, true);
+    for (i = 0; i < ARRAY_SIZE(opengpu_standard_modes); i++) {
+        const struct opengpu_mode_entry *entry = &opengpu_standard_modes[i];
+
+        if (entry->width > native_w || entry->height > native_h)
+            continue;
+        if (entry->width == native_w && entry->height == native_h)
+            continue;
+        count += opengpu_add_mode(connector, entry->width, entry->height,
+                                  false);
+    }
+    return count;
 }
 
 static const struct drm_connector_helper_funcs opengpu_connector_helpers = {
@@ -246,10 +290,10 @@ int opengpu_display_init(struct opengpu_device *gpu)
     ret = drmm_mode_config_init(&kms->drm);
     if (ret)
         return ret;
-    kms->drm.mode_config.min_width = gpu->width;
-    kms->drm.mode_config.max_width = gpu->width;
-    kms->drm.mode_config.min_height = gpu->height;
-    kms->drm.mode_config.max_height = gpu->height;
+    kms->drm.mode_config.min_width = 16;
+    kms->drm.mode_config.max_width = gpu->max_width;
+    kms->drm.mode_config.min_height = 16;
+    kms->drm.mode_config.max_height = gpu->max_height;
     kms->drm.mode_config.funcs = &opengpu_mode_config_funcs;
     kms->drm.mode_config.helper_private = &opengpu_mode_config_helpers;
 

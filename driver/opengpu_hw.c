@@ -1602,6 +1602,12 @@ int opengpu_hw_display_commit(struct opengpu_device *gpu,
     gpu->display.height = scanout->height;
     gpu->display.format = scanout->format;
     gpu->display.enabled = scanout->enable;
+    /* Submit validation follows the active mode. Disable leaves the last
+     * mode in place, matching the hardware viewport latch. */
+    if (scanout->enable && scanout->width && scanout->height) {
+        gpu->width = min_t(u32, scanout->width, gpu->max_width);
+        gpu->height = min_t(u32, scanout->height, gpu->max_height);
+    }
     return 0;
 }
 

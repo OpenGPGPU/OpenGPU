@@ -322,15 +322,15 @@ opengpu.system.GpuHostSystemAxiSpec -- -z "replay randomized commands"'`.
    and 33.29–33.74 ms respectively. Other registers retain the full settle.
    Continuously clocked devices use hardware vblank
    (`GPU_CAP_HW_VBLANK`, `SCANOUT_PERIOD`, IRQ bit2). ARTI's QEMU
-   device truncates any programmed mode to the compile-time `ARTI_FB_WIDTH` /
-   `ARTI_FB_HEIGHT` in `hw/misc/arti-rtl.c` and copies rows through a
-   same-width on-stack buffer, so those constants have to follow the mode.
-   The integration profile's `display:` block is the single source of the
-   resolution: `scripts/gpu_display_config.py` reads it, and the scripts derive
-   the elaboration, the driver default mode, the work-tree names and the PPM
-   check from it, so the scanout cannot end up sized differently from the RTL.
-   Change the mode by editing the profile rather than by setting a variable,
-   and `scripts/test_display_config.py` guards the literals in
+   window follows the GPU scanout width, height and stride registers. The
+   profile width and height remain only the copy-buffer maximum
+   (`ARTI_FB_WIDTH` / `ARTI_FB_HEIGHT`).
+   The integration profile's `display:` block is the elaborated maximum and
+   the boot mode: `scripts/gpu_display_config.py` reads it, and the scripts
+   derive the elaboration, the driver default mode, the work-tree names and
+   the PPM check from it. A modeset can select any smaller size; raising the
+   maximum still means editing the profile rather than setting a variable.
+   `scripts/test_display_config.py` guards the literals in
    `driver/gpu.dtsi` against it. `driver/gpu_integration_debian.yaml` is
    320x240 at 30 Hz; `driver/gpu_integration.yaml`, the reference profile the
    fast qualification runs use, is 64x64. Lowering `clk_freq_mhz` in the

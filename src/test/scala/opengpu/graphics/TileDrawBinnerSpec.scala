@@ -7,6 +7,54 @@ import org.scalatest.flatspec.AnyFlatSpec
 class TileDrawBinnerSpec extends AnyFlatSpec {
   behavior of "TileDrawBinner"
 
+  it should "walk only the programmed mode on a larger elaborated screen" in {
+    val cfg = GraphicsConfig(screenWidth = 32, screenHeight = 16,
+      tileSize = 16, tileAttachments = true, tileBinning = true)
+    simulate(new TileDrawBinner(cfg)) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step()
+      dut.reset.poke(false.B)
+      dut.io.drawIn.valid.poke(false.B)
+      dut.io.drawOut.ready.poke(true.B)
+      dut.io.renderDrained.poke(true.B)
+      dut.io.passDone.poke(true.B)
+      dut.io.inputDone.poke(false.B)
+      dut.io.screenW.poke(16.U)
+      dut.io.screenH.poke(16.U)
+      dut.io.start.poke(true.B)
+      dut.clock.step()
+      dut.io.start.poke(false.B)
+
+      val seen = scala.collection.mutable.Set.empty[(Int, Int)]
+      var sent = false
+      var cycles = 0
+      while (!dut.io.done.peek().litToBoolean && cycles < 400) {
+        dut.io.drawIn.valid.poke((!sent).B)
+        dut.io.drawIn.bits.poke(0.U.asTypeOf(new SceneTriangle(cfg)))
+        dut.io.drawIn.bits.clip(0).x.poke(-65536.S)
+        dut.io.drawIn.bits.clip(0).y.poke(-65536.S)
+        dut.io.drawIn.bits.clip(0).w.poke(65536.S)
+        dut.io.drawIn.bits.clip(1).x.poke(65536.S)
+        dut.io.drawIn.bits.clip(1).y.poke(-65536.S)
+        dut.io.drawIn.bits.clip(1).w.poke(65536.S)
+        dut.io.drawIn.bits.clip(2).x.poke(-65536.S)
+        dut.io.drawIn.bits.clip(2).y.poke(65536.S)
+        dut.io.drawIn.bits.clip(2).w.poke(65536.S)
+        if (!sent && dut.io.drawIn.ready.peek().litToBoolean) sent = true
+        if (sent) dut.io.inputDone.poke(true.B)
+        if (dut.io.drawOut.valid.peek().litToBoolean)
+          seen += ((dut.io.drawOut.bits.scissorMinX.peek().litValue.toInt,
+            dut.io.drawOut.bits.scissorMinY.peek().litValue.toInt))
+        dut.clock.step()
+        cycles += 1
+      }
+      assert(cycles < 400, s"binner did not finish, seen=$seen")
+      assert(seen.contains((0, 0)), s"missing the origin tile: $seen")
+      assert(seen.forall { case (x, y) => x < 16 && y < 16 },
+        s"walked tiles outside the programmed 16x16 mode: $seen")
+    }
+  }
+
   it should "retain all desktop triangle tiles at 640x480" in {
     val cfg = GraphicsConfig(screenWidth = 640, screenHeight = 480,
       tileSize = 16, tileAttachments = true, tileBinning = true)

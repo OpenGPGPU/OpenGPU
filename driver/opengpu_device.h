@@ -50,10 +50,10 @@ struct opengpu_drm;
 #ifndef OPENGPU_RESET_WAIT_MS
 #define OPENGPU_RESET_WAIT_MS   5000
 #endif
-/* Boot-time render mode used when the device-tree node carries no
- * opengpu,width/height/stride properties (the ARTI-generated node does not).
- * Must match the elaborated RTL resolution; the runner passes
- * -DOPENGPU_DEFAULT_WIDTH/HEIGHT to keep them in lockstep. */
+/* Elaborated maximum, used as the boot mode when the device-tree node
+ * carries no opengpu,width/height/stride properties. The runner passes
+ * -DOPENGPU_DEFAULT_WIDTH/HEIGHT so this matches the RTL maximum. A modeset
+ * may select any size from 16 up to that maximum without rebuilding. */
 #ifndef OPENGPU_DEFAULT_WIDTH
 #define OPENGPU_DEFAULT_WIDTH   64
 #endif
@@ -198,9 +198,13 @@ struct opengpu_device {
     struct opengpu_compute compute;
     struct opengpu_display display;
     struct opengpu_mmu mmu;
+    /* Current mode. Starts at the elaborated maximum and follows modesets. */
     u32 width;
     u32 height;
     u32 stride;
+    /* Elaborated maximum. Tile storage cannot grow past this. */
+    u32 max_width;
+    u32 max_height;
 };
 
 /* Typed execution descriptor passed across the business/hardware boundary. */

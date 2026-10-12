@@ -142,6 +142,8 @@ class RenderCoreL2(
   core.io.stencilZPassOp := io.stencilZPassOp
   core.io.cullMode := io.cullMode
   core.io.sampleMode := io.sampleMode
+  core.io.screenW := 0.U
+  core.io.screenH := 0.U
   core.io.texEnable := io.texEnable
   core.io.texBase := io.texBase
   core.io.texWidth := io.texWidth

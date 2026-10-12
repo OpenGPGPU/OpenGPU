@@ -18,13 +18,16 @@ static int opengpu_probe(struct platform_device *pdev)
         return -ENOMEM;
     gpu->dev = &pdev->dev;
 
-    of_property_read_u32(pdev->dev.of_node, "opengpu,width", &gpu->width);
-    of_property_read_u32(pdev->dev.of_node, "opengpu,height", &gpu->height);
+    of_property_read_u32(pdev->dev.of_node, "opengpu,width", &gpu->max_width);
+    of_property_read_u32(pdev->dev.of_node, "opengpu,height", &gpu->max_height);
     of_property_read_u32(pdev->dev.of_node, "opengpu,stride", &gpu->stride);
-    if (!gpu->width)
-        gpu->width = OPENGPU_DEFAULT_WIDTH;
-    if (!gpu->height)
-        gpu->height = OPENGPU_DEFAULT_HEIGHT;
+    if (!gpu->max_width)
+        gpu->max_width = OPENGPU_DEFAULT_WIDTH;
+    if (!gpu->max_height)
+        gpu->max_height = OPENGPU_DEFAULT_HEIGHT;
+    /* Boot in the elaborated mode. A later modeset can shrink it. */
+    gpu->width = gpu->max_width;
+    gpu->height = gpu->max_height;
     if (!gpu->stride)
         gpu->stride = gpu->width * 4;
     if (gpu->stride < gpu->width * 4)

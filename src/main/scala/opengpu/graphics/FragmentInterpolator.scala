@@ -112,6 +112,9 @@ class RasterShader(config: GraphicsConfig, quadMode: Boolean = false) extends Mo
     val scissorMinY = Input(UInt(16.W))
     val scissorMaxX = Input(UInt(16.W))
     val scissorMaxY = Input(UInt(16.W))
+    /** Active mode. Zero uses the elaborated maximum. */
+    val screenW = Input(UInt(16.W))
+    val screenH = Input(UInt(16.W))
     val done = Output(Bool())
     val pixel = Decoupled(new RasterFragment(config))
     val quad = Decoupled(new FragmentQuad(config))
@@ -134,6 +137,8 @@ class RasterShader(config: GraphicsConfig, quadMode: Boolean = false) extends Mo
   raster.io.scissorMinY := io.scissorMinY
   raster.io.scissorMaxX := io.scissorMaxX
   raster.io.scissorMaxY := io.scissorMaxY
+  raster.io.screenW := io.screenW
+  raster.io.screenH := io.screenH
   io.done := raster.io.draw.ready
 
   if (quadMode) {
