@@ -49,6 +49,9 @@ GPU_COMPUTE_UNITS="${GPU_COMPUTE_UNITS:-}"
 GPU_MEMORY_AXI_DATA_BYTES="${GPU_MEMORY_AXI_DATA_BYTES:-8}"
 GPU_TILE_BINNING="${GPU_TILE_BINNING:-0}"
 GPU_TILE_SIZE="${GPU_TILE_SIZE:-16}"
+# GPU_COMPUTE_UNITS sizes GpuSystem's compute-kernel pool. The graphics path
+# has one shared vertex/fragment shader CU by design; expanding that path needs
+# an ordering-aware graphics scheduler and is a separate hardware change.
 # A fixed-function run sets GPU_FRAG_CORE=0 and leaves the vertex core unset.
 if [ -z "${GPU_VERT_CORE:-}" ]; then
     if [ "$GPU_FRAG_CORE" = "1" ]; then
