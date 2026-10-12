@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build an isolated ARTI GPU/QEMU/driver for the interactive Debian guest at a
-# given resolution. The 16x16 qualification binary and the generated RTL for
+# given maximum resolution. The 16x16 qualification binary and the generated RTL for
 # other sizes remain available.
 set -euo pipefail
 
@@ -12,8 +12,8 @@ INTEGRATION_CONFIG="${INTEGRATION_CONFIG:-$GPU_DIR/driver/gpu_integration_debian
 # The profile owns the resolution; these names follow from it.
 eval "$(python3 "$GPU_DIR/scripts/gpu_display_config.py" --shell \
     "$INTEGRATION_CONFIG")"
-# Each size needs its own work tree: the generated RTL, the embedded model and
-# the QEMU build are all sized from it.
+# Each elaborated maximum needs its own work tree: the generated RTL, embedded
+# model and QEMU build are sized from it. Smaller KMS modes can share this build.
 GPU_TILE_BINNING="${GPU_TILE_BINNING:-0}"
 TILE_SUFFIX=""
 [ "$GPU_TILE_BINNING" != 1 ] || TILE_SUFFIX="-tile"

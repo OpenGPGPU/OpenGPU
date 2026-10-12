@@ -54,11 +54,12 @@ if [ -z "${GPU_VERT_CORE:-}" ]; then
         GPU_VERT_CORE=0
     fi
 fi
-# The integration profile is the single source of the resolution. ARTI derives
+# The integration profile is the source of the elaborated maximum and boot
+# resolution. Smaller guest KMS modes use the same model. ARTI derives
 # its QEMU scanout constants from it, so the elaboration, the driver default
 # mode and the work-tree names have to come from the same place; a variable
 # that disagreed with the profile would size the RTL differently from the
-# window it is presented in. Switch size by switching INTEGRATION_CONFIG.
+# initial window it is presented in. Change the maximum via INTEGRATION_CONFIG.
 if [ ! -f "$INTEGRATION_CONFIG" ]; then
     echo "FAIL: integration profile not found: $INTEGRATION_CONFIG" >&2
     exit 1

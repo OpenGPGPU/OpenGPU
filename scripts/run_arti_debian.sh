@@ -6,7 +6,9 @@
 # Cloud-init stays tiny; DRM .ko files ship on a separate OPENGPU ISO that is
 # copied into /root on boot — no manual scp, no 14MB YAML.
 #
-# This script boots the separately built 64x64 display GPU. Build it once:
+# This script boots the display GPU sized by the integration profile. That
+# size is the elaborated maximum and boot mode; KMS may select a smaller mode
+# after the dynamic-viewport RTL and matching driver have been rebuilt:
 #   ./scripts/build_arti_debian_display.sh
 # The 16x16 functional qualification binary stays separate.
 # Optional side-by-side installs (fallback when the main binary is another backend):
@@ -136,10 +138,11 @@ warn_if_model_stale() {
     # closing reader gives the writer SIGPIPE, which would fail the whole
     # script. find stopping on its own cannot do that.
     for d in "$FLASHSIM_DIR/flashsim" \
+             "$GPU_DIR/src/main/scala" \
              "$GPU_DIR/generated/debian-${GPU_MODE}${TILE_SUFFIX}" \
              "$ARTI_DIR/examples/linux_arti_driver"; do
         [ -d "$d" ] || continue
-        src="$(find "$d" -type f \( -name '*.py' -o -name '*.sv' \
+        src="$(find "$d" -type f \( -name '*.py' -o -name '*.sv' -o -name '*.scala' \
                    -o -name '*.sh' \) -newer "$bin" -print -quit 2>/dev/null)"
         [ -n "$src" ] && break
     done

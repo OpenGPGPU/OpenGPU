@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Read the GPU display geometry out of an ARTI integration profile.
 
-The profile is the single source of truth for the resolution. ARTI already
+The profile defines the elaborated maximum and boot resolution. Smaller guest
+KMS modes reuse the same model. ARTI already
 derives its QEMU scanout constants from it, and the elaboration, the driver
 default mode, the work-tree names and the PPM check all have to agree, so the
 scripts read it from here instead of each carrying their own GPU_WIDTH
-default. Choosing a different size means using a different profile, not
+default. Choosing a different maximum means using a different profile, not
 setting a variable that silently disagrees with it.
 
 `framebuffer_size` is checked against width*height*4 rather than trusted: a
