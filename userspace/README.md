@@ -126,7 +126,9 @@ Debian interactive (same binaries on the OPENGPU ISO):
 scripts/run_arti_debian.sh
 # guest after /root/load_opengpu.sh:
 /root/load_opengpu.sh examples
-/root/opengpu_pipe_desktop --hold
+# The boot desktop owns DRM master; stop it before a second KMS client.
+systemctl stop opengpu-boot-display.service
+/root/opengpu_pipe_desktop /dev/dri/card0 /root/opengpu_fragment_tint.bin --hold
 ```
 
 See the platform-integration section of

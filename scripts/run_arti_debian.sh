@@ -17,6 +17,8 @@
 #   ./scripts/run_arti_debian.sh
 #   GPU_SIM=verilator ./scripts/run_arti_debian.sh
 #   GPU_SIM=flashsim QEMU_DISPLAY=cocoa ./scripts/run_arti_debian.sh
+#   OPENGPU_AUTO_DISPLAY=0 ./scripts/run_arti_debian.sh
+#       # boot without the KMS desktop service for manual pipe_* runs
 #   REBUILD_DISK=1 ./scripts/run_arti_debian.sh   # fresh qcow2 from base image
 #   DEBIAN_BASE=../arti-work/debian-gtk-arm64.qcow2 ./scripts/run_arti_debian.sh
 #       # reuse the one-time GTK-enabled image for interactive runs
@@ -35,6 +37,7 @@
 #   systemctl status opengpu-boot-display.service
 #   /root/load_opengpu.sh test      # opengpu_drm_test (modeset + flip → ARTI scanout)
 #   /root/load_opengpu.sh examples  # pipe/userspace smoke (when staged)
+#   systemctl stop opengpu-boot-display.service  # before a manual KMS client
 #   /root/opengpu_triangle_present --hold
 #
 # For a visible primary scanout window:
@@ -250,6 +253,13 @@ echo "  ARTI_WORK : $ARTI_WORK"
 echo "  QEMU      : $QEMU"
 echo "  Display   : $QEMU_DISPLAY"
 echo "  Driver    : $DRIVER_KO"
+case "${OPENGPU_AUTO_DISPLAY:-desktop}" in
+    0)
+        echo "  KMS owner : manual (opengpu-boot-display.service disabled)" ;;
+    *)
+        echo "  KMS owner : opengpu-boot-display.service"
+        echo "  Manual KMS: stop that service first, or boot with OPENGPU_AUTO_DISPLAY=0" ;;
+esac
 
 ensure_disk
 
@@ -306,6 +316,11 @@ echo "    systemctl status opengpu-boot-display.service"
 echo "    /root/load_opengpu.sh"
 echo "    /root/load_opengpu.sh test"
 echo "    /root/load_opengpu.sh examples"
+if [ "${OPENGPU_AUTO_DISPLAY:-desktop}" != "0" ]; then
+    echo "    # For a manual KMS client:"
+    echo "    systemctl stop opengpu-boot-display.service"
+    echo "    /root/opengpu_pipe_desktop /dev/dri/card0 /root/opengpu_fragment_tint.bin"
+fi
 echo ""
 
 # FlashSim steps the RTL inside QEMU while holding the BQL: once from the

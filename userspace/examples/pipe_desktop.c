@@ -559,8 +559,18 @@ int main(int argc, char **argv)
     if (fill_solid(ctx, sprite, CURSOR * 4u * CURSOR, COLOR_CURSOR) ||
         place_cursor(ctx, color, backup, sprite, &desk))
         goto done;
-    if (pipe_opengpu_present(screen, color))
+    if (pipe_opengpu_present(screen, color)) {
+        int saved = errno;
+
+        if (saved == EACCES || saved == EPERM)
+            fprintf(stderr,
+                    "pipe_desktop: KMS modeset denied; "
+                    "opengpu-boot-display.service may already own "
+                    "/dev/dri/card0. Stop it before running a second "
+                    "desktop, or boot with OPENGPU_AUTO_DISPLAY=0.\n");
+        errno = saved;
         goto done;
+    }
 
     panel = pixel_at(color, 4, 4);
     window = pixel_at(color, desk.win_x + desk.win_w - 4,
