@@ -345,7 +345,29 @@ path.write_text(source.replace(old, new))
 PY
 }
 
+# Keep the QEMU-side guest-memory write optimization reproducible even when
+# ARTI is checked out at an older revision.  The patch is intentionally
+# applied to the generator source before setup_env.sh emits arti-rtl.c; this
+# avoids patching generated files after every model regeneration.  Current
+# ARTI revisions already contain the change, so the check makes this idempotent
+# and leaves a clean worktree on repeated builds.
+apply_qemu_guest_write_patch() {
+    local patch_file="$GPU_DIR/scripts/patches/qemu-coalesce-guest-writes.patch"
+    local protocols="$ARTI_DIR/src/arti/protocols.py"
+
+    [ -f "$patch_file" ] || fail "QEMU optimization patch not found: $patch_file"
+    [ -f "$protocols" ] || fail "ARTI protocol generator not found: $protocols"
+    if grep -q 'while (i < size && !(byte_mask & (UINT64_C(1) << i)))' "$protocols"; then
+        echo "QEMU guest-write coalescing: already present"
+        return 0
+    fi
+    echo "Applying QEMU guest-write coalescing patch"
+    (cd "$ARTI_DIR" && patch --forward --batch -p1 < "$patch_file") || \
+        fail "Failed to apply QEMU optimization patch"
+}
+
 patch_arti_model_address_width || true
+apply_qemu_guest_write_patch
 
 echo "=== 2/4 Prepare ARTI, QEMU and Linux ($GPU_SIM) ==="
 # The external module is built in the next step, after setup has prepared the
