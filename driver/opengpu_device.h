@@ -336,6 +336,7 @@ int opengpu_hw_flush_tlb_asid(struct opengpu_device *gpu, u32 asid);
 int opengpu_hw_flush_tlb_vpn(struct opengpu_device *gpu, u32 vpn);
 /* Caller holds submit_lock until its page-table update and flush finish. */
 int opengpu_hw_wait_idle_locked(struct opengpu_device *gpu);
+int opengpu_hw_wait_idle(struct opengpu_device *gpu);
 
 int opengpu_mmu_init(struct opengpu_device *gpu);
 void opengpu_mmu_fini(struct opengpu_device *gpu);

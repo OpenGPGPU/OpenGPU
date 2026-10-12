@@ -1094,6 +1094,16 @@ int opengpu_hw_wait_idle_locked(struct opengpu_device *gpu)
     return READ_ONCE(gpu->hw.wedged) ? -EIO : 0;
 }
 
+int opengpu_hw_wait_idle(struct opengpu_device *gpu)
+{
+    int ret;
+
+    mutex_lock(&gpu->hw.submit_lock);
+    ret = opengpu_hw_wait_idle_locked(gpu);
+    mutex_unlock(&gpu->hw.submit_lock);
+    return ret;
+}
+
 int opengpu_hw_clear_async(struct opengpu_device *gpu, u32 base, u32 bytes,
                            u32 pattern,
                            const struct opengpu_command_events *events,

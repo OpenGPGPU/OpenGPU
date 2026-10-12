@@ -261,6 +261,7 @@ static const struct drm_mode_config_funcs opengpu_mode_config_funcs = {
  */
 static void opengpu_atomic_commit_tail(struct drm_atomic_commit *state)
 {
+    struct opengpu_drm *kms = container_of(state->dev, struct opengpu_drm, drm);
     struct drm_crtc_state *new_crtc_state;
     struct drm_crtc *crtc;
     unsigned int i;
@@ -268,6 +269,11 @@ static void opengpu_atomic_commit_tail(struct drm_atomic_commit *state)
     drm_atomic_helper_commit_modeset_disables(state->dev, state);
     drm_atomic_helper_commit_planes(state->dev, state, 0);
     drm_atomic_helper_commit_modeset_enables(state->dev, state);
+
+    /* Weston may release the previous GBM BO as soon as the fake vblank is
+     * delivered. Keep it mapped until the emulated GPU has finished the
+     * compositor draw that reads it. */
+    opengpu_hw_wait_idle(kms->gpu);
 
     for_each_new_crtc_in_state(state, crtc, new_crtc_state, i)
         drm_crtc_vblank_atomic_flush(crtc, state);
