@@ -170,6 +170,7 @@ the GTK-enabled image and select the ARTI `weston` display mode:
 ```sh
 OPENGPU_AUTO_DISPLAY=weston \
 DEBIAN_BASE=../arti-work/debian-gtk-arm64.qcow2 \
+DISK=/tmp/arti-weston.qcow2 REBUILD_DISK=1 \
 QEMU_DISPLAY=cocoa ./scripts/run_arti_debian.sh
 ```
 
