@@ -7,6 +7,42 @@ The design adopts a commercial-GPU-style architecture: unified shading on the
 SIMT lanes plus separated fixed-function graphics, in a small, dependency-light
 package that is incrementally verifiable.
 
+## Milestone: a real simulated graphical desktop
+
+![Weston desktop rendered by OpenGPU RTL in ARTI/QEMU](docs/images/weston-desktop-640x480.png)
+
+On 2026-10-13 the project reached its first complete graphical desktop
+milestone. A Debian ARM64 guest now boots the Linux DRM/KMS driver, starts the
+Weston Wayland desktop shell, renders through the OpenGPU Mesa/Gallium driver,
+and presents the resulting guest framebuffer in a QEMU Cocoa window.
+
+The screenshot above is a live 640x480 FlashSim run. The purple desktop
+surface, bottom panel, clock text, launcher icon, and pointer are visible in
+the guest scanout. The scanout is backed by guest GEM memory written by
+OpenGPU jobs; the host window only displays that memory.
+
+This milestone verifies the complete path:
+
+```text
+Weston / Wayland
+        ↓
+Mesa EGL + OpenGPU Gallium (opengpu_dri.so)
+        ↓
+Linux gpu_drv.ko and DRM/KMS ioctls
+        ↓
+ARTI full-system model + OpenGPU RTL
+        ↓
+guest GEM framebuffer / scanout registers
+        ↓
+QEMU display window
+```
+
+The final orientation fix is part of this path. Mesa uses a lower-left
+texture-coordinate origin while the imported linear display resources store
+row zero at the top, so the Gallium vertex packer converts `v` to `1.0 - v`
+before submitting a textured draw. Render failures remain visible as failures;
+the desktop proof does not replace GPU output with a CPU-painted frame.
+
 ## Structure
 
 - `src/main/scala/opengpu/core/frontend/decode/` — unified scalar/FPU/RVV decoder and pipeline
@@ -22,6 +58,8 @@ package that is incrementally verifiable.
 - `docs/FUNCTIONAL_QUALIFICATION.md` — full Scala, host driver and guest gate
 - `docs/HOST_INTERFACE.md` — AXI registers and shared-memory layouts
 - `docs/DRIVER_ARCHITECTURE.md` — Linux driver ownership split
+- `docs/GTK_COVERAGE.md` — Debian, Mesa, Weston and GTK/QEMU proof procedure
+- `docs/images/` — checked-in screenshots of end-to-end display milestones
 - `userspace/` — small DRM userspace library and compute/graphics examples
 - `scripts/bench_arti_model.py` — ARTI model throughput probe (idle vs active
   settle rate, no QEMU boot), used to size what a redraw costs under simulation
@@ -59,6 +97,51 @@ Verilog and the compiler flags, so a design is built once and reused by every
 spec that touches it and by every later run. A cold full run is unchanged; a warm
 one is several times faster. The cache is safe to share between concurrent test
 threads, is dropped by `sbt clean`, and `-Dopengpu.simCache=off` turns it off.
+
+### Full-system graphical desktop
+
+The desktop run needs the sibling ARTI checkout, the prepared ARM64 kernel
+build, QEMU, Mesa's AArch64 dependencies, and a GTK-enabled Debian image. The
+one-time image preparation is documented in
+[docs/GTK_COVERAGE.md](docs/GTK_COVERAGE.md). After those prerequisites exist,
+build the display model and Mesa driver:
+
+```sh
+scripts/build_arti_debian_display.sh
+bash scripts/build_mesa_opengpu.sh
+```
+
+Boot the real Weston desktop in a visible QEMU window:
+
+```sh
+OPENGPU_AUTO_DISPLAY=weston \
+DEBIAN_BASE=../arti-work/debian-gtk-arm64.qcow2 \
+DISK="$PWD/arti-weston-current.qcow2" \
+REBUILD_DISK=0 \
+REBUILD_CLOUDINIT=1 \
+GPU_SIM=flashsim \
+QEMU_DISPLAY=cocoa \
+bash scripts/run_arti_debian.sh
+```
+
+Once the modules ISO has been refreshed, repeated boots can skip the rebuild:
+
+```sh
+OPENGPU_AUTO_DISPLAY=weston \
+DEBIAN_BASE=../arti-work/debian-gtk-arm64.qcow2 \
+DISK="$PWD/arti-weston-current.qcow2" \
+REBUILD_DISK=0 \
+REBUILD_CLOUDINIT=0 \
+BUILD_USERSPACE=0 \
+GPU_SIM=flashsim \
+QEMU_DISPLAY=cocoa \
+bash scripts/run_arti_debian.sh
+```
+
+FlashSim models the RTL cycle by cycle, so a 640x480 compositor frame can
+take minutes. Seeing the QEMU window with an upright clock and launcher in the
+bottom panel is the graphical success condition. The serial log should also
+show the OpenGPU renderer and completed fence-backed draws.
 
 ## Current scope
 
@@ -128,6 +211,36 @@ ARTI/QEMU end-to-end display tests. Scanout pixels are the pixels those GPU
 jobs wrote: shading and rasterization run on this RTL, and a CPU paint of the
 framebuffer is not the graphics proof. See `docs/GRAPHICS_ROADMAP.md`.
 
-Current development continues on RVV coverage, CSR/trap semantics, host
-integration and physical timing closure. Status:
+## Verified end-to-end status
+
+The current graphical acceptance path covers these layers:
+
+| Layer | Verified result |
+| --- | --- |
+| RTL graphics | Triangle rasterization, interpolation, depth, texture sampling, fill, blit, resolve, and scanout jobs execute in the OpenGPU model. |
+| Shader cores | Fragment and vertex shader binaries are validated and run through the shader sandboxes; the default display build enables both cores. |
+| Linux driver | GEM resources, validated bindings, DRM/KMS modeset, fences, page flips, and scanout registers are exercised by the guest. |
+| Mesa/Gallium | `opengpu_dri.so` lowers the supported Weston/GTK draw forms to OpenGPU submissions and waits for real GPU fences. |
+| Desktop shell | Weston starts on the guest's DRM connector and produces a usable Wayland desktop with panel, clock, launcher, shell surface, and pointer. |
+| QEMU presentation | QEMU displays the guest-memory scanout at 640x480; the visible window is the final end-to-end artifact. |
+
+The deterministic `opengpu_pipe_desktop` proof and the real Weston desktop are
+both useful: the former gives exact pixel checks for a small controlled scene,
+while the latter validates the Linux, Mesa, Wayland, and compositor stack as a
+single system. Keep the detailed capability matrix, timing data, and remaining
+shader-lowering work in [docs/GRAPHICS_ROADMAP.md](docs/GRAPHICS_ROADMAP.md).
+
+## Current priorities
+
+- Broaden the shader sandbox and Gallium lowering coverage for more stock GTK
+  and Qt workloads.
+- Reduce FlashSim wall-clock cost for large compositor frames and continue
+  physical timing closure.
+- Extend the automated guest proof from deterministic scanout checks to more
+  interactive Wayland and GTK workloads.
+- Continue RVV, CSR/trap, memory-system, and multi-render-target coverage.
+
+The full qualification procedures remain in
+[docs/FUNCTIONAL_QUALIFICATION.md](docs/FUNCTIONAL_QUALIFICATION.md),
+[docs/GTK_COVERAGE.md](docs/GTK_COVERAGE.md), and
 [docs/GRAPHICS_ROADMAP.md](docs/GRAPHICS_ROADMAP.md).

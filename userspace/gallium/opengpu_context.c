@@ -28,6 +28,7 @@
 #include "util/u_memory.h"
 #include "util/u_transfer.h"
 #include "util/u_upload_mgr.h"
+#include <sys/mman.h>
 
 #include <errno.h>
 #include <limits.h>
@@ -1603,6 +1604,15 @@ static void copy_present_target(struct opengpu_context *ctx)
         memcpy(dst + (size_t)y * pipe_opengpu_resource_pitch(surface->gpu),
                src + (size_t)y * pipe_opengpu_resource_pitch(ctx->present_target),
                (size_t)ctx->width * 4u);
+    if (ctx->trace_draws)
+        fprintf(stderr, "opengpu: present-copy p0=%08x/%08x center=%08x/%08x\n",
+                ((uint32_t *)src)[0], ((uint32_t *)dst)[0],
+                ((uint32_t *)(src + (size_t)(ctx->height / 2) *
+                    pipe_opengpu_resource_pitch(ctx->present_target)))[ctx->width / 2],
+                ((uint32_t *)(dst + (size_t)(ctx->height / 2) *
+                    pipe_opengpu_resource_pitch(surface->gpu)))[ctx->width / 2]);
+    msync(dst, pipe_opengpu_resource_size(surface->gpu), MS_SYNC);
+
 }
 
 static uint32_t pack_color(const float c[4])
@@ -1869,7 +1879,11 @@ static int pack_one(struct opengpu_context *ctx, unsigned vertex,
     out->color = pack_color(c);
     out->depth = 0x10;
     out->u = (uint32_t)q16(uv[0]);
-    out->v = (uint32_t)q16(uv[1]);
+    /* Mesa's texture coordinates use the GL lower-left origin, while the
+     * linear resources imported by the display path store row 0 at the
+     * top of the image.  Convert V at the Gallium boundary so sampled
+     * window contents have the same orientation as the scanout. */
+    out->v = (uint32_t)q16(1.0f - uv[1]);
     return 0;
 }
 
@@ -2152,10 +2166,10 @@ static void draw_vbo(struct pipe_context *pipe,
                     return;
                 }
             }
-            if (!ctx->vs->mvp && !ctx->vs->mvp2) {
+            {
                 unsigned sv;
 
-                for (sv = 0; sv < 3; sv++)
+                for (sv = 0; !ctx->vs->mvp && !ctx->vs->mvp2 && sv < 3; sv++)
                     scale_present_clip(ctx, &verts[sv].x, &verts[sv].y,
                                        verts[sv].w);
                 if (!ctx->packed || ctx->packed_bytes < sizeof(verts)) {
@@ -2265,79 +2279,7 @@ static void draw_vbo(struct pipe_context *pipe,
                             (uint32_t)verts[v].z, (uint32_t)verts[v].w);
                 clock_gettime(CLOCK_MONOTONIC, &draw_start);
             }
-            {
-                /* Use the fragment-core record path for GTK's supported
-                 * vertex forms. Apply the matrix on the CPU; this avoids the
-                 * vertex-core instruction path on RTL profiles where that
-                 * core is advertised but wedges on these draws. */
-                struct drm_opengpu_draw fixed;
-                unsigned fv;
-
-                memset(&fixed, 0, sizeof(fixed));
-                for (fv = 0; fv < 3; fv++) {
-                    __s32 *pos = fv == 0 ? fixed.v0 : fv == 1 ? fixed.v1 : fixed.v2;
-                    __u32 *color = fv == 0 ? fixed.c0 : fv == 1 ? fixed.c1 : fixed.c2;
-                    if (ctx->vs->mvp) {
-                        float in[4], first[4], clip[4];
-                        unsigned row;
-
-                        memcpy(&in[0], &verts[fv].x, sizeof(float));
-                        memcpy(&in[1], &verts[fv].y, sizeof(float));
-                        memcpy(&in[2], &verts[fv].z, sizeof(float));
-                        memcpy(&in[3], &verts[fv].w, sizeof(float));
-                        for (row = 0; row < 4; row++) {
-                            first[row] = ctx->vs->mvp2 ?
-                                ctx->mvp_b[row] * in[0] +
-                                ctx->mvp_b[4 + row] * in[1] +
-                                ctx->mvp_b[8 + row] * in[2] +
-                                ctx->mvp_b[12 + row] * in[3] : in[row];
-                        }
-                        for (row = 0; row < 4; row++)
-                            clip[row] = ctx->mvp[row] * first[0] +
-                                ctx->mvp[4 + row] * first[1] +
-                                ctx->mvp[8 + row] * first[2] +
-                                ctx->mvp[12 + row] * first[3];
-                        pos[0] = q16(clip[0]);
-                        pos[1] = q16(clip[1]);
-                        pos[2] = q16(clip[2]);
-                        pos[3] = q16(clip[3]);
-                    } else {
-                        pos[0] = verts[fv].x;
-                        pos[1] = verts[fv].y;
-                        pos[2] = verts[fv].z;
-                        pos[3] = verts[fv].w;
-                    }
-                    if (ctx->vs->mvp || ctx->vs->mvp2)
-                        scale_present_clip(ctx, &pos[0], &pos[1], pos[3]);
-                    color[0] = (verts[fv].color >> 24) & 0xffu;
-                    color[1] = (verts[fv].color >> 16) & 0xffu;
-                    color[2] = (verts[fv].color >> 8) & 0xffu;
-                    color[3] = verts[fv].color & 0xffu;
-                    fixed.d0 = fixed.d1 = fixed.d2 = verts[fv].depth;
-                    if (fv == 0) {
-                        fixed.uv0[0] = verts[fv].u;
-                        fixed.uv0[1] = verts[fv].v;
-                    } else if (fv == 1) {
-                        fixed.uv1[0] = verts[fv].u;
-                        fixed.uv1[1] = verts[fv].v;
-                    } else {
-                        fixed.uv2[0] = verts[fv].u;
-                        fixed.uv2[1] = verts[fv].v;
-                    }
-                }
-                fixed.shader_pc = 0;
-                fixed.kernarg = 0;
-                fixed.kernarg_bank_stride = vdraw.fragment_kernarg_bank_stride;
-                fixed.state = vdraw.state;
-                fixed.sampler = vdraw.sampler;
-                fixed.blend_config = vdraw.blend_config;
-                fixed.scissor_min = vdraw.scissor_min;
-                fixed.scissor_max = vdraw.scissor_max;
-                if (ctx->vs->mvp || ctx->vs->mvp2)
-                    draw_status = pipe_opengpu_draw_vbo(ctx->gpu, &fixed, &fence);
-                else
-                    draw_status = pipe_opengpu_draw_vertex(ctx->gpu, &vdraw, &fence);
-            }
+            draw_status = pipe_opengpu_draw_vertex(ctx->gpu, &vdraw, &fence);
             if (!draw_status)
                 draw_status = pipe_opengpu_fence_finish(ctx->gpu, fence,
                                                        ctx->fence_timeout_ms);

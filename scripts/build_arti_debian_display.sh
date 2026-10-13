@@ -22,7 +22,7 @@ DISPLAY_WORK="${DISPLAY_WORK:-$ARTI_WORK/debian-${GPU_MODE}${TILE_SUFFIX}}"
 export ARTI_WORK
 export GPU_WIDTH GPU_HEIGHT
 export WORK_DIR="$DISPLAY_WORK"
-export QEMU_BUILD="${QEMU_BUILD:-$DISPLAY_WORK/qemu-arti-build}"
+export QEMU_BUILD="${QEMU_BUILD:-$GPU_DIR/qemu-build}"
 export DRIVER_OUTPUT="${DRIVER_OUTPUT:-$DISPLAY_WORK/opengpu-driver}"
 export GPU_RTL_DIR="${GPU_RTL_DIR:-$GPU_DIR/generated/debian-${GPU_MODE}${TILE_SUFFIX}}"
 export INTEGRATION_CONFIG

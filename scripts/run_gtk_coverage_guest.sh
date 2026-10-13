@@ -80,7 +80,7 @@ if [ "${GTK_PROOF_SKIP_BUILD:-0}" = 1 ] && [ "$GPU_TILE_BINNING" = 1 ]; then
     }
 fi
 
-for artifact in "$DISPLAY_WORK/qemu-arti-build/qemu-system-aarch64" \
+for artifact in "${QEMU_BUILD:-$GPU_DIR/qemu-build}/qemu-system-aarch64" \
                 "$DRIVER_OUTPUT/gpu_drv.ko" \
                 "$DRIVER_OUTPUT/opengpu_gl_gtk_coverage.bin" \
                 "$DRIVER_OUTPUT/opengpu_dri.so"; do
@@ -101,7 +101,7 @@ fi
 
 BASE="${GTK_DEBIAN_BASE:-$ARTI_WORK/debian-arm64-base.qcow2}"
 [ -f "$BASE" ] || { echo "Debian base image missing at $BASE" >&2; exit 1; }
-QEMU_IMG="${QEMU_IMG:-$DISPLAY_WORK/qemu-arti-build/qemu-img}"
+QEMU_IMG="${QEMU_IMG:-${QEMU_BUILD:-$GPU_DIR/qemu-build}/qemu-img}"
 [ -x "$QEMU_IMG" ] || { echo "qemu-img missing at $QEMU_IMG" >&2; exit 1; }
 DISK="$PROOF_WORK/guest.qcow2"
 rm -f "$DISK"

@@ -7,7 +7,7 @@ ARTI_DIR="${ARTI_DIR:-$GPU_DIR/../arti}"
 DISPLAY_WORK="${DISPLAY_WORK:-$ARTI_WORK/debian-640x480}"
 BASE="${DEBIAN_BASE:-$ARTI_WORK/debian-arm64-base.qcow2}"
 DISK="${GTK_DEBIAN_BASE:-$ARTI_WORK/debian-gtk-arm64.qcow2}"
-QEMU_IMG="${QEMU_IMG:-$DISPLAY_WORK/qemu-arti-build/qemu-img}"
+QEMU_IMG="${QEMU_IMG:-${QEMU_BUILD:-$GPU_DIR/qemu-build}/qemu-img}"
 if [ -n "${SSH_PORT:-}" ]; then PORT="$SSH_PORT"; else
     PORT="$(python3 - <<'PY_PORT'
 import socket

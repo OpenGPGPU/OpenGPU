@@ -634,7 +634,10 @@ static int opengpu_binding_map_framebuffer(struct opengpu_device *gpu,
         return ret;
     ret = opengpu_mmu_vm_map(gpu, &context->vm, (dma_addr_t)plan.va_page,
                              (dma_addr_t)plan.pa_page, (size_t)plan.span,
-                             OPENGPU_MMU_POLICY_CACHED);
+                             /* Scanout/QEMU reads physical RAM directly;
+                              * keep render-target writes visible outside the
+                              * GPU cache at each completion. */
+                             OPENGPU_MMU_POLICY_UNCACHED);
     if (ret)
         return ret;
     *out_va = (dma_addr_t)plan.va;
@@ -1121,6 +1124,7 @@ static bool opengpu_validate_kernarg_binding(
                                (u64)GPU_KERNARG_BANKS, &span))
             return false;
         shader_kernarg_size = bank_stride;
+
     }
     if (check_add_overflow((u64)entry, 4ull, &address) ||
         address > shader->size ||

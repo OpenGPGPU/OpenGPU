@@ -253,7 +253,8 @@ class GpuHostSystemAxi(
       gpuConfig, wordPortTransactions, graphicsHostTransactions,
       uncached = true, preserveCachePolicy = true))
     val fbClient = Module(new TranslatedWordClient(
-      gpuConfig, wordPortTransactions, graphicsHostTransactions))
+      gpuConfig, wordPortTransactions, graphicsHostTransactions,
+      uncached = true, preserveCachePolicy = true))
     val texClient = Module(new TranslatedWordClient(
       gpuConfig, wordPortTransactions, graphicsHostTransactions))
     val stagingSelect =

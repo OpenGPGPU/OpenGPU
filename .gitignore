@@ -40,3 +40,16 @@ driver/modules.order
 
 # Python caches from local qualification scripts.
 __pycache__/
+
+# Local build of the sibling QEMU fork
+/qemu-build/
+
+# Local full-system boot artifacts and configure output.
+*.qcow2
+/config.log
+/config-temp/
+/depends/wayland-native/
+/.vscode/
+/paseo.json
+/weston-capture.png
+/weston-capture.ppm

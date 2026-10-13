@@ -42,7 +42,7 @@ DRIVER_OUTPUT="${DRIVER_OUTPUT:-$ARTI_WORK/opengpu-driver}"
 GPU_RTL_DIR="${GPU_RTL_DIR:-$GPU_DIR/generated/host}"
 QEMU_TOOLS="${QEMU_TOOLS:-$ARTI_WORK/qemu-build-tools}"
 ARTI_SETUP_WORK="${WORK_DIR:-$ARTI_WORK}"
-QEMU_BUILD="${QEMU_BUILD:-$ARTI_SETUP_WORK/qemu-arti-build}"
+QEMU_BUILD="${QEMU_BUILD:-$GPU_DIR/qemu-build}"
 QEMU_DISPLAY="${QEMU_DISPLAY:-none}"
 GPU_FRAG_CORE="${GPU_FRAG_CORE:-1}"
 GPU_COMPUTE_UNITS="${GPU_COMPUTE_UNITS:-}"
@@ -204,36 +204,9 @@ qemu_src_valid() {
     [ -n "$1" ] && [ -f "$1/configure" ] && [ -f "$1/meson.build" ]
 }
 
-if [ -z "${QEMU_SRC:-}" ]; then
-    for qemu_candidate in "$ARTI_WORK/qemu-${QEMU_VERSION}" \
-                          "$ARTI_WORK/qemu-src/qemu-${QEMU_VERSION}" \
-                          "$ARTI_WORK/qemu-src" \
-                          "/tmp/qemu-${QEMU_VERSION}" \
-                          "/tmp/qemu-src/qemu-${QEMU_VERSION}" \
-                          "/tmp/qemu-src"; do
-        if qemu_src_valid "$qemu_candidate"; then
-            QEMU_SRC="$qemu_candidate"
-            break
-        fi
-    done
-    QEMU_SRC="${QEMU_SRC:-$ARTI_WORK/qemu-${QEMU_VERSION}}"
-fi
+QEMU_SRC="${QEMU_SRC:-$GPU_DIR/../qemu}"
 if ! qemu_src_valid "$QEMU_SRC"; then
-    command -v curl >/dev/null 2>&1 || fail "curl is required to download the QEMU source"
-    echo "=== 0/4 Downloading QEMU v$QEMU_VERSION source (missing or invalid at $QEMU_SRC) ==="
-    QEMU_TARBALL="$ARTI_WORK/qemu-${QEMU_VERSION}.tar.xz"
-    if [ ! -f "$QEMU_TARBALL" ]; then
-        curl -fL --retry 5 --retry-all-errors --http1.1 \
-            -o "$QEMU_TARBALL.partial" \
-            "https://download.qemu.org/qemu-${QEMU_VERSION}.tar.xz"
-        mv "$QEMU_TARBALL.partial" "$QEMU_TARBALL"
-    fi
-    QEMU_DL_STAGE="$(mktemp -d "$ARTI_WORK/dl-qemu.XXXXXX")"
-    tar xJf "$QEMU_TARBALL" -C "$QEMU_DL_STAGE"
-    qemu_src_valid "$QEMU_DL_STAGE/qemu-${QEMU_VERSION}" || fail "QEMU source download failed"
-    rm -rf "$QEMU_SRC"
-    mv "$QEMU_DL_STAGE/qemu-${QEMU_VERSION}" "$QEMU_SRC"
-    rm -rf "$QEMU_DL_STAGE"
+    fail "QEMU fork not found or invalid at $QEMU_SRC; use the checked-out ../qemu repository"
 fi
 echo "QEMU source : $QEMU_SRC (valid)"
 if [ -f "$QEMU_SRC/pc-bios/efi-virtio.rom" ]; then
@@ -391,6 +364,16 @@ WORK_DIR="$ARTI_SETUP_WORK" \
 ARTI_RTL_SOURCE_LIST="$ARTI_RTL_SOURCE_LIST" \
 DRIVER_KO= DRIVER_MANIFEST= \
     "$ARTI_DIR/examples/linux_arti_driver/setup_env.sh"
+
+# ARTI regenerates this source on each RTL build. Reapply the display refresh
+# patch after generation so subsequent builds retain the QEMU window fix.
+if [ "${APPLY_QEMU_SCANOUT_PATCH:-1}" = "1" ] &&
+    grep -q 'qemu_console_hw_update(s->con);' "$QEMU_SRC/hw/misc/arti-rtl.c"; then
+    (cd "$QEMU_SRC" && patch --forward --batch -p1 < \
+        "$GPU_DIR/scripts/patches/qemu-scanout-refresh.patch") ||
+        fail "Failed to apply QEMU scanout refresh patch"
+    "${NINJA:-ninja}" -C "$QEMU_BUILD" qemu-system-aarch64
+fi
 
 if [ "$GPU_SIM" = "verilator" ] && patch_arti_model_address_width; then
     echo "Rebuilding ARTI model after widening AXI-Lite register addresses"

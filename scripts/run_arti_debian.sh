@@ -12,8 +12,7 @@
 #   ./scripts/build_arti_debian_display.sh
 # The 16x16 functional qualification binary stays separate.
 # Optional side-by-side installs (fallback when the main binary is another backend):
-#   $ARTI_WORK/debian-64x64/qemu-arti-build/qemu-system-aarch64.flashsim
-#   $ARTI_WORK/debian-64x64/qemu-arti-build/qemu-system-aarch64.verilator
+#   $GPU_DIR/qemu-build/qemu-system-aarch64
 #
 # Usage:
 #   ./scripts/run_arti_debian.sh
@@ -76,7 +75,7 @@ echo "  Mode     : $GPU_MODE (from $(basename "$INTEGRATION_CONFIG"))"
 
 LINUX_BUILD="${LINUX_BUILD:-$ARTI_WORK/arti-linux-build}"
 DRIVER_OUTPUT="${DRIVER_OUTPUT:-$DISPLAY_WORK/opengpu-driver}"
-QEMU_BUILD="${QEMU_BUILD:-$DISPLAY_WORK/qemu-arti-build}"
+QEMU_BUILD="${QEMU_BUILD:-$GPU_DIR/qemu-build}"
 KERNEL="${KERNEL:-$LINUX_BUILD/arch/arm64/boot/Image}"
 DISK="${DISK:-$ARTI_WORK/arti-dev.qcow2}"
 BASE="${DEBIAN_BASE:-$ARTI_WORK/debian-arm64-base.qcow2}"
@@ -233,7 +232,7 @@ fi
 
 QEMU_IMG="${QEMU_IMG:-}"
 if [ -z "$QEMU_IMG" ]; then
-    for cand in "$QEMU_BUILD/qemu-img" /tmp/qemu-arti-build/qemu-img "$(command -v qemu-img || true)"; do
+    for cand in "$QEMU_BUILD/qemu-img" "$(command -v qemu-img || true)"; do
         [ -n "$cand" ] && [ -x "$cand" ] || continue
         QEMU_IMG="$cand"
         break

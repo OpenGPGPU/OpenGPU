@@ -16,7 +16,7 @@ rtl:
   top_module: GpuHostSystemAxi
   # Emitted by the Chisel flow:
   #   sbt "runMain opengpu.elaboration.EmitGpuHostSystemAxi"
-  source_files: [../generated/debian-64x64/GpuHostSystemAxi.sv]
+  source_files: [../generated/debian-640x480/GpuHostSystemAxi.sv]
   clk_freq_mhz: 100
 
 bridge:
