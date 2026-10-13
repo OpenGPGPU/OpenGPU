@@ -135,8 +135,10 @@ must inspect execution progress or reproduce this exact draw in isolation.
 With a 1800000 ms fence budget, the real Weston desktop-shell run completed
 its first two 640x480 triangles successfully in 925181 ms and 1024258 ms.
 Together these took 32.49 minutes; they are two triangles, not two complete
-frames. Further compositor draws followed, so GTK startup remains unverified.
-The earlier ten-minute timeout was insufficient for these submissions.
+frames. This historical run stopped before a complete GTK startup proof, and
+the earlier ten-minute timeout was insufficient for these submissions. A later
+run on 2026-10-13 verified the real Weston desktop shell in the QEMU window;
+GtkGLArea client redraw remains a separate acceptance point.
 
 `GTK_PROOF_WESTON_REPRO=small|medium|full` isolates the uniform-color/opacity
 shader, pixel-space transform, and premultiplied-alpha blending in `gl_fill`.
@@ -158,8 +160,20 @@ The smoke runner supplies a Weston configuration with `idle-time=0` and shell
 animations disabled. Weston 10's installed manual documents a default
 300-second idle timeout and a startup fade; both are unsuitable when a single
 draw takes about 900 seconds. This preserves the desktop shell, DRM backend,
-OpenGPU renderer, and GTK frame checks. Runtime verification of this
-configuration remains pending; the existing long run was started with defaults.
+OpenGPU renderer, and GTK frame checks. The controlled configuration is now the
+recommended path for reproducing the verified Weston shell; GtkGLArea redraw
+and button-triggered client work remain separate follow-up checks.
+
+### Real Weston desktop milestone (2026-10-13)
+
+The GTK-enabled Debian image now boots the stock Weston DRM backend through
+the OpenGPU DRM/EGL path and presents an upright 640x480 shell in QEMU. The
+checked-in screenshot is
+[`docs/images/weston-desktop-640x480.png`](images/weston-desktop-640x480.png).
+This closes the Linux DRM/KMS, Mesa/Gallium, Weston, ARTI, RTL scanout, and
+QEMU presentation loop. The deterministic `opengpu_pipe_desktop` scanout
+proof remains the pixel-exact regression; this run is the full-system
+integration proof.
 
 
 ## Reusing the GTK-enabled image

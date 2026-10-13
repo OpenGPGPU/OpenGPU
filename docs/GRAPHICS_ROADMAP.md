@@ -8,6 +8,22 @@ Physical numbers: [../timing/README.md](../timing/README.md).
 **functional** = behavioral coverage on the unified path. **physical** = PPA.
 A passing sim is not silicon; a completed tool run is not timing closure.
 
+## Milestone update (2026-10-13)
+
+The full-system graphical desktop goal is now demonstrated. A Debian ARM64
+guest boots the OpenGPU DRM/KMS driver, starts the Weston Wayland desktop
+shell, submits textured and fixed-function work through the OpenGPU
+Mesa/Gallium path, and presents the guest-memory scanout in QEMU at 640x480.
+The project screenshot is checked in at
+[`docs/images/weston-desktop-640x480.png`](images/weston-desktop-640x480.png).
+
+This closes the baseline integration loop across Linux, Mesa, Weston, ARTI,
+the RTL graphics pipeline, guest GEM memory, and QEMU presentation. The
+display proof does not use a CPU-painted replacement frame. The final desktop
+orientation fix converts Mesa's lower-left texture V coordinate to the
+top-to-bottom row order of imported linear display resources in the Gallium
+vertex packer.
+
 ## Architecture (implemented)
 
 - RISC-V SIMT with shared vertex/fragment shaders; fixed-function clip,
@@ -198,7 +214,7 @@ Desktop acceptance status:
 3. **Debian guest and scanout, verified.** The fresh guest proof reports
    `OPENGPU DESKTOP PASS` for the panel, window, triangle and pointer, then
    checks the complete 640x480 QEMU scanout PPM against those pixels.
-4. **Mesa GTK path, verified.** The GTK Wayland smoke proof submits through
+4. **Mesa Gallium path, verified.** The GTK Wayland smoke proof submits through
    the OpenGPU Gallium driver and reports GPU fence status 0 for both frames.
    Stock GTK and Qt clients still need the same shader-lowering limits:
    OpenGL. The Gallium spike is [GALLIUM_SPIKE.md](GALLIUM_SPIKE.md). The
@@ -206,13 +222,21 @@ Desktop acceptance status:
    or calls, e32/m1 only; see "Workload-driven ISA" below. Widen it when a
    desktop shader hits the limit. Index buffers, instancing, and a second
    colour target wait for the same reason.
+5. **Real Weston desktop shell, verified (2026-10-13).** The GTK-enabled
+   Debian image boots the stock Weston DRM backend through the OpenGPU
+   DRM/EGL path. The 640x480 QEMU window shows the upright shell surface,
+   bottom panel, clock, launcher, and pointer. This is the end-to-end desktop
+   milestone; GtkGLArea client redraw and broader stock GTK/Qt shader coverage
+   remain separate follow-up gates.
 
 ## Next work
 
-Priority is **functional**: the Debian graphical desktop above, which is a
-usable DRM GPU under ARTI/QEMU (open card0, submit, fence, scan out RTL
-output). Cycle / PPA work stays secondary unless a guest path is blocked.
-Simulation wall-clock is not a gate.
+The baseline desktop is functional. Priority is now **breadth and
+repeatability**: broaden the shader forms accepted by the Gallium sandbox,
+turn the Weston run into an automated regression, and reduce the wall-clock
+cost of large FlashSim compositor frames. Cycle / PPA work stays secondary
+unless a guest path is blocked.
+Simulation wall-clock is not a correctness gate.
 
 An opt-in tile-order raster traversal is available through
 `EmitGpuHostSystemAxi ... --tile-size 16`. It visits every pixel or 2x2 helper
@@ -332,7 +356,7 @@ opengpu.system.GpuHostSystemAxiSpec -- -z "replay randomized commands"'`.
    maximum still means editing the profile rather than setting a variable.
    `scripts/test_display_config.py` guards the literals in
    `driver/gpu.dtsi` against it. `driver/gpu_integration_debian.yaml` is
-   320x240 at 30 Hz; `driver/gpu_integration.yaml`, the reference profile the
+   640x480 at 30 Hz; `driver/gpu_integration.yaml`, the reference profile the
    fast qualification runs use, is 64x64. Lowering `clk_freq_mhz` in the
    integration YAML does not
    help anything: ARTI ticks
