@@ -919,6 +919,32 @@ opengpu.system.GpuHostSystemAxiSpec -- -z "replay randomized commands"'`.
    (solid flats are not predictive). Revisit only with a product quality bar
    or a frame that fails these thresholds.
 
+8. **Scalable graphics shader CUs** — keep the current single graphics shader
+   CU as the functional baseline while making the scaling path explicit. The
+   vertex and fragment shader instructions already execute on the SIMT
+   `KernelShaderStage`; raster, sample, depth/stencil and blend remain in the
+   fixed-function `RenderPipeline`/`RenderHost` path. `numComputeUnits` scales
+   general compute CUs today and does not implicitly replicate the graphics
+   shader, so add an independent `graphicsShaderUnits` parameter rather than
+   coupling the two paths.
+
+   Start with instrumentation and repeatable scenes that report shader
+   occupancy, staging stalls, raster/OM stalls, L2 pressure, transaction
+   traffic and frame completion time. If the measurements identify the shader
+   as the limiter, add a `GraphicsShaderDispatcher` and begin with two
+   `KernelShaderStage` instances. Dispatch complete vertex or fragment batches
+   to separate instances while retaining one rasterizer and one output merger.
+   Preserve draw ordering and the existing 2x2 fragment-quad ABI. Allocate
+   independent transaction-ID ranges, L1 invalidation domains,
+   kernarg/staging banks and completion routing for each graphics CU.
+
+   A multi-CU shader implementation is accepted only when it produces the
+   same scanout pixels and depth/blend results as the one-CU baseline, keeps
+   draw-order and fence semantics intact, and shows a measured reduction in
+   shader or staging time. If rasterization, output merge or memory bandwidth
+   remains the limiter, scale those structures at tile/draw boundaries before
+   considering a unified pool shared by graphics and general compute CUs.
+
 ## Known limits
 
 - Guest ARTI/QEMU: the default, fragment-core, and vertex+fragment-core
