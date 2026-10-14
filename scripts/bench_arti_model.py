@@ -251,12 +251,26 @@ int main(int argc, char **argv) {
     printf("render_ticks %llu\n", (unsigned long long)(render_end_ticks - render_start_ticks));
 #endif
     double render_s = (t5 - t4) / (render_reps ? render_reps : 1);
-    uint32_t centre;
-    memcpy(&centre, mem + (size_t)(render_height / 2) * stride +
-           (size_t)(render_width / 2) * 4, sizeof(centre));
+    /* The triangle uses (-1,-1), (1,-1), (-1,1), so the exact framebuffer
+     * centre lies on its diagonal and is a legal clear-colour result under
+     * top-left raster rules.  Count the covered half instead of using that
+     * boundary pixel as the render verdict. */
+    uint32_t sample;
+    memcpy(&sample, mem + (size_t)(render_height / 4) * stride +
+           (size_t)(render_width / 4) * 4, sizeof(sample));
+    uint64_t nonclear = 0;
+    for (uint64_t y = 0; y < render_height; y++) {
+      for (uint64_t x = 0; x < render_width; x++) {
+        uint32_t pixel;
+        memcpy(&pixel, mem + y * stride + x * 4, sizeof(pixel));
+        if (pixel != 0u)
+          nonclear++;
+      }
+    }
     printf("render_ms %.3f\n", render_s * 1e3);
     printf("render_px %u\n", pixels);
-    printf("render_centre 0x%08x\n", centre);
+    printf("render_sample 0x%08x\n", sample);
+    printf("render_nonclear %llu\n", (unsigned long long)nonclear);
     uint64_t hash = 14695981039346656037ull;
     for (uint64_t i = 0; i < (uint64_t)stride * render_height; i++) {
       hash ^= mem[i]; hash *= 1099511628211ull;
@@ -266,8 +280,8 @@ int main(int argc, char **argv) {
     printf("render_write_calls %llu\n", (unsigned long long)write_calls);
     printf("render_read_bytes %llu\n", (unsigned long long)read_bytes);
     printf("render_write_bytes %llu\n", (unsigned long long)write_bytes);
-    if (render_reps && centre == 0u) {
-      fprintf(stderr, "FAIL: centre pixel is still the clear colour\n");
+    if (render_reps && !nonclear) {
+      fprintf(stderr, "FAIL: render produced no non-clear pixels\n");
       return 8;
     }
   }

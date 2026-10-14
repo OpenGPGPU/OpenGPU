@@ -244,6 +244,17 @@ full GTK-to-QEMU gate. Cycle / PPA work stays secondary unless a guest path is
 blocked.
 Simulation wall-clock is not a correctness gate.
 
+The first desktop timing pass separates the compositor work from the host
+framebuffer copy. In the retained 64x64 GTK trace, textured Weston draws take
+6.49–14.62 s and q16 client draws take 4.28–19.26 s; the present copy only
+copies the 60x32 or 64x64 logical surface into the padded 640x480 GEM. The
+texture/fragment execution path is therefore the measured hotspot. FlashSim
+PGO remains opt-in: a profile must come from the exact generated RTL and the
+same representative workload. Reusing the existing 640 profile on the 64x64
+model regressed the active probe (16.697 s → 17.365 s), and the regenerated
+640 model did not pass the GTK smoke gate, so that profile is not a default
+optimization for this tree.
+
 An opt-in tile-order raster traversal is available through
 `EmitGpuHostSystemAxi ... --tile-size 16`. It visits every pixel or 2x2 helper
 quad in 16x16 tile order, preserving edge planes, coverage masks, scissor,
