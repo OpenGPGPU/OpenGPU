@@ -118,6 +118,14 @@ int main(int argc, char **argv) {
     fprintf(stderr, "FAIL: GPU_ID readback mismatch\n");
     return 1;
   }
+  uint32_t capabilities = reg_read(0x060);
+  printf("capabilities 0x%08x\n", capabilities);
+  if (render_width && render_height && (capabilities & 0x5u)) {
+    fprintf(stderr, "--render requires a fixed-function model; this model "
+                    "expects shader/vertex records (capabilities 0x%08x)\n",
+            capabilities);
+    return 5;
+  }
 
   double t0 = now_s();
   uint32_t sink = 0;
@@ -146,7 +154,7 @@ int main(int argc, char **argv) {
   if (fill_reps) fill_s /= fill_reps;
   uint32_t word;
   memcpy(&word, mem, sizeof(word));
-  if (word != 0x00ff00ffu) {
+  if (fill_reps && word != 0x00ff00ffu) {
     fprintf(stderr, "FAIL: clear pattern readback 0x%08x\n", word);
     return 1;
   }
@@ -188,7 +196,7 @@ int main(int argc, char **argv) {
     reg_write(0x094, 1u);
     if (reg_read(0x008) & 0x8u) { fprintf(stderr, "depth clear busy\n"); return 4; }
 
-    /* One full-screen triangle in clip space, Q16.16, w = 1. */
+    /* One half-viewport triangle in clip space, Q16.16, w = 1. */
     uint32_t cmd[GPU_DRAW_WORDS];
     memset(cmd, 0, sizeof(cmd));
     const int32_t q = 1 << 16;
@@ -230,7 +238,7 @@ int main(int argc, char **argv) {
       reg_write(0x11c, 1u);               /* UCMD_SUBMIT */
       for (unsigned spin = 0; spin < 200000; spin++) {
         uint32_t status = reg_read(0x008);
-        if (status & 0x2u) break;         /* STATUS.DONE */
+        if (reg_read(0x120) & 0x2u) break; /* UCMD completion is valid */
         if (spin == 199999) {
           fprintf(stderr, "FAIL: render did not complete (status 0x%08x)\n",
                   status);
@@ -241,8 +249,13 @@ int main(int argc, char **argv) {
         fprintf(stderr, "FAIL: render reported an error\n");
         return 7;
       }
+      uint32_t completion = reg_read(0x124);
+      if (!(completion & 0x8000u) || ((completion >> 11) & 0xfu) ||
+          (completion & 0xffu) != 1u || ((completion >> 8) & 7u) != 6u) {
+        fprintf(stderr, "FAIL: render completion 0x%08x\n", completion);
+        return 7;
+      }
       /* The completion slot is single-use; pop before resubmitting. */
-      (void)reg_read(0x124);
       reg_write(0x130, 1u);
     }
     double t5 = now_s();
@@ -481,7 +494,8 @@ def main():
     parser.add_argument("--fill-bytes", type=int, default=32768)
     parser.add_argument("--fill-reps", type=int, default=1)
     parser.add_argument("--render", default="",
-                        help="WxH for a full-screen fixed-function triangle. "
+                        help="WxH for a fixed-function triangle (shader cores "
+                             "must be disabled). "
                              "Exercises the raster/fragment/output-merge path "
                              "rather than only the DMA engines, so it is the "
                              "rate a game frame is bounded by")

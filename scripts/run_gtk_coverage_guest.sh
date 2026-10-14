@@ -103,7 +103,7 @@ if [ "${GTK_PROOF_SKIP_BUILD:-0}" = 1 ] && [ "$GPU_TILE_BINNING" = 1 ]; then
     }
 fi
 
-for artifact in "${QEMU_BUILD:-$GPU_DIR/qemu-build}/qemu-system-aarch64" \
+for artifact in "${QEMU:-${QEMU_BUILD:-$GPU_DIR/qemu-build}/qemu-system-aarch64}" \
                 "$DRIVER_OUTPUT/gpu_drv.ko" \
                 "$DRIVER_OUTPUT/opengpu_gl_gtk_coverage.bin" \
                 "$DRIVER_OUTPUT/opengpu_dri.so"; do
@@ -184,6 +184,8 @@ fi
     echo "scanout_periodic=${GTK_PROOF_SCANOUT_PERIODIC:-0}"
     echo "qmp_socket=${QMP_SOCKET:-none} qmp_scanout=${QMP_SCANOUT:-none}"
     echo "qemu_display=${GTK_PROOF_QEMU_DISPLAY:-none}"
+    echo "qemu_binary=${QEMU:-${QEMU_BUILD:-$GPU_DIR/qemu-build}/qemu-system-aarch64}"
+    echo "gtk_debian_base=$BASE"
     echo "skip_build=${GTK_PROOF_SKIP_BUILD:-0} skip_coverage=${GTK_PROOF_SKIP_COVERAGE:-0}"
     echo "irq_pump=${ARTI_MODEL_IRQ_PUMP:-default} irq_pump_ns=${ARTI_MODEL_IRQ_PUMP_NS:-default}"
     echo "smoke_timeout_s=${GTK_PROOF_SMOKE_TIMEOUT_S:-0}"
@@ -201,7 +203,7 @@ if [ "$GTK_PROOF_SMOKE" = 1 ]; then
        "$GPU_DIR/scripts/qmp_screendump.py" \
        "$GPU_DIR/userspace/opengpu_retry.h" \
        "$GPU_DIR/userspace/examples/gtk_opengpu_smoke.c" "$PROOF_WORK/sources/"
-    shasum -a 256 "${QEMU_BUILD:-$GPU_DIR/qemu-build}/qemu-system-aarch64" \
+    shasum -a 256 "${QEMU:-${QEMU_BUILD:-$GPU_DIR/qemu-build}/qemu-system-aarch64}" \
         "$DRIVER_OUTPUT/gpu_drv.ko" "$DRIVER_OUTPUT/opengpu_dri.so" \
         "$BASE" > "$PROOF_WORK/artifact-sha256.txt"
 fi
@@ -376,8 +378,13 @@ EOF
     GTK_SMOKE_CMD="${GTK_SMOKE_CMD//@GTK_KMS_MODE@/$GTK_PROOF_KMS_MODE}"
     GTK_EXPECT_TIMEOUT=-1
     [ "$GTK_SMOKE_WAIT" = 0 ] || GTK_EXPECT_TIMEOUT=$((GTK_SMOKE_WAIT + 300))
-    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" "$GTK_EXPECT_TIMEOUT" "$GTK_SMOKE_CMD" \
-        | tee "$GTK_SMOKE_LOG"
+    if ! "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" "$GTK_EXPECT_TIMEOUT" "$GTK_SMOKE_CMD" \
+        | tee "$GTK_SMOKE_LOG"; then
+        "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 120 \
+            'command -v gcc pkg-config weston || true; cat /tmp/gtk-client.log /tmp/weston-gtk-smoke.log 2>/dev/null || true; dmesg' \
+            > "$PROOF_WORK/failure-guest.log" 2>&1 || true
+        exit 1
+    fi
     grep -qF 'OPENGPU GTK FRAME PASS' "$GTK_SMOKE_LOG"
     grep -qF 'OPENGPU GTK REDRAW: active' "$GTK_SMOKE_LOG"
     grep -qF 'OPENGPU GTK FRAME PASS: idle' "$GTK_SMOKE_LOG"

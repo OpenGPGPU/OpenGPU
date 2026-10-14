@@ -231,29 +231,53 @@ Desktop acceptance status:
 
 ## Next work
 
-The baseline desktop is functional. Priority is now **breadth and
-repeatability**: broaden the shader forms accepted by the Gallium sandbox,
-turn the Weston run into an automated regression, and reduce the wall-clock
-cost of large FlashSim compositor frames. The first concrete blocker was the
-GtkGLArea texture-composition shader. The cached guest reproducer originally
-rejected TGSI opcode 52 (`TEX`); the sampler matcher and fixed GPU swizzle
-program now produce both unchanged-red and BGRA-swizzled pixels in the small
-GLES regression. The next blocker is the captured constant-position vertex
-program, which still needs a vertex-core lowering and pixel proof before the
-full GTK-to-QEMU gate. Cycle / PPA work stays secondary unless a guest path is
-blocked.
+The baseline desktop and GTK idle/active scanout gate are functional.
+The current priority is **FlashSim desktop wall-clock time**. Measure the
+existing workload before expanding shader coverage: use the draw trace,
+separate preparation/submission/fence/copy timing, and sample the host model.
+Then change the measured hotspot and rerun the same GTK pixel and scanout
+checks on the same generated RTL. Broader shader forms remain follow-up work
+driven by captured client programs. Cycle / PPA work stays secondary unless
+a guest path is blocked.
 Simulation wall-clock is not a correctness gate.
 
-The first desktop timing pass separates the compositor work from the host
-framebuffer copy. In the retained 64x64 GTK trace, textured Weston draws take
-6.49–14.62 s and q16 client draws take 4.28–19.26 s; the present copy only
-copies the 60x32 or 64x64 logical surface into the padded 640x480 GEM. The
-texture/fragment execution path is therefore the measured hotspot. FlashSim
-PGO remains opt-in: a profile must come from the exact generated RTL and the
-same representative workload. Reusing the existing 640 profile on the 64x64
-model regressed the active probe (16.697 s → 17.365 s), and the regenerated
-640 model did not pass the GTK smoke gate, so that profile is not a default
-optimization for this tree.
+In the retained 64x64 GTK trace, textured Weston draws take 6.49–14.62 s
+and q16 client draws take 4.28–19.26 s. The elapsed time includes submission,
+fence waiting, and a host copy of the logical surface from a mode-sized
+temporary target. These traces alone do not separate texture, fragment,
+vertex, queue waiting, and copy costs; stage timings are needed before
+choosing a hotspot. FlashSim PGO remains opt-in and must be trained and
+validated on the exact generated model. A single clear probe with a reused
+640 profile measured 16.697 s → 17.365 s on the older 64 model; this is
+neither a representative desktop workload nor a matched-profile comparison.
+GTK validation uses the prepared `debian-gtk-arm64.qcow2` image, rather than
+the plain Debian base, which lacks the GTK build tools.
+
+The 2026-10-15 matched-model check found the expensive part in fence waiting
+(which includes GPU execution and queue contention), with framebuffer copy
+below a few milliseconds. Host sampling identified `fs_bump`, the generated
+page-invalidation loop in the `-O0` commit translation unit, as the largest
+active function. FlashSim now emits that loop into a separate default-`-O2`
+translation unit while keeping the large commit switch at `-O0`. RTL, shader
+programs, invalidation ordering, and the scanout gate are unchanged.
+
+| Check | Baseline | Separate helper | Wall-time reduction |
+|---|---:|---:|---:|
+| 32 KiB clear, median of three alternating runs of 20 clears | 51.235 ms | 44.709 ms | 12.7% |
+| GLES reproducer, 160x120 rectangle in native 640x480 mode | 63.750 s | 60.000 s | 5.9% |
+| First eight 64x64 Weston draws, including preparation and waits | 85.074 s | 70.138 s | 17.6% |
+
+The guest rows are single paired runs; GTK scheduling affects the stage split.
+These are representative draws, not a full-screen 640x480 redraw benchmark.
+Both builds pass native GLES pixel assertions, GTK idle/active readback, GPU
+fence status, and the existing 64x64 periodic scanout gate. FlashSim's 44 host
+tests pass, including helper linkage, duplicate page IDs, zero-length
+invalidation, and generation-counter wraparound. A framebuffer-sync-range
+experiment was removed after copy timing showed it was not the hotspot.
+The detailed local evidence is retained under
+`.artifacts/flashsim-commit-bump/final-comparison.json`; the generated model is
+cached outside the source tree in
+`../arti-work/debian-640x480-flashsim-perf/model`.
 
 An opt-in tile-order raster traversal is available through
 `EmitGpuHostSystemAxi ... --tile-size 16`. It visits every pixel or 2x2 helper

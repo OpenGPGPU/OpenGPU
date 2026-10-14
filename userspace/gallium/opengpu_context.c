@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #define OPENGPU_VB_SLOTS 8u
 #define OPENGPU_ATTRIBS 8u
@@ -1723,11 +1724,7 @@ static void copy_present_target(struct opengpu_context *ctx)
                     pipe_opengpu_resource_pitch(ctx->present_target)))[ctx->width / 2],
                 ((uint32_t *)(dst + (size_t)(ctx->height / 2) *
                     pipe_opengpu_resource_pitch(surface->gpu)))[ctx->width / 2]);
-    /* Small GTK surfaces render into the top-left of a mode-sized padded
-     * GEM.  Flush only the rows that this copy touched; syncing the entire
-     * 640x480 allocation after every draw adds avoidable host work. */
-    msync(dst, (size_t)pipe_opengpu_resource_pitch(surface->gpu) * ctx->height,
-          MS_SYNC);
+    msync(dst, pipe_opengpu_resource_size(surface->gpu), MS_SYNC);
 
 }
 
@@ -2259,9 +2256,12 @@ static void draw_vbo(struct pipe_context *pipe,
             struct pipe_opengpu_fence *fence = NULL;
             uint32_t cull = 0, depth_bits = 0, blend_config = 0;
             unsigned v;
-            struct timespec draw_start = {0}, draw_end;
+            struct timespec prepare_start = {0}, draw_start = {0};
+            struct timespec submit_end = {0}, wait_end = {0}, draw_end;
             int draw_status;
 
+            if (ctx->trace_draws)
+                clock_gettime(CLOCK_MONOTONIC, &prepare_start);
             for (v = 0; v < 3; v++) {
                 unsigned vertex = start + tri + v;
                 if (index_size) {
@@ -2410,9 +2410,13 @@ static void draw_vbo(struct pipe_context *pipe,
                 clock_gettime(CLOCK_MONOTONIC, &draw_start);
             }
             draw_status = pipe_opengpu_draw_vertex(ctx->gpu, &vdraw, &fence);
+            if (ctx->trace_draws)
+                clock_gettime(CLOCK_MONOTONIC, &submit_end);
             if (!draw_status)
                 draw_status = pipe_opengpu_fence_finish(ctx->gpu, fence,
                                                        ctx->fence_timeout_ms);
+            if (ctx->trace_draws)
+                clock_gettime(CLOCK_MONOTONIC, &wait_end);
             if (!draw_status)
                 copy_present_target(ctx);
             if (ctx->trace_draws) {
@@ -2422,6 +2426,17 @@ static void draw_vbo(struct pipe_context *pipe,
                         ctx->draw_sequence, draw_status,
                         (draw_end.tv_sec - draw_start.tv_sec) * 1000.0 +
                         (draw_end.tv_nsec - draw_start.tv_nsec) / 1000000.0);
+                fprintf(stderr, "opengpu: timing pid=%ld draw=%llu target=%ux%u texture=%d position=%s status=%d prepare_ms=%.3f submit_ms=%.3f wait_ms=%.3f copy_ms=%.3f\n",
+                        (long)getpid(), ctx->draw_sequence, ctx->width, ctx->height,
+                        ctx->fs->samples, ctx->vs->mvp ? "float" : "q16", draw_status,
+                        (draw_start.tv_sec - prepare_start.tv_sec) * 1000.0 +
+                        (draw_start.tv_nsec - prepare_start.tv_nsec) / 1000000.0,
+                        (submit_end.tv_sec - draw_start.tv_sec) * 1000.0 +
+                        (submit_end.tv_nsec - draw_start.tv_nsec) / 1000000.0,
+                        (wait_end.tv_sec - submit_end.tv_sec) * 1000.0 +
+                        (wait_end.tv_nsec - submit_end.tv_nsec) / 1000000.0,
+                        (draw_end.tv_sec - wait_end.tv_sec) * 1000.0 +
+                        (draw_end.tv_nsec - wait_end.tv_nsec) / 1000000.0);
                 errno = saved_errno;
             }
             if (draw_status)
