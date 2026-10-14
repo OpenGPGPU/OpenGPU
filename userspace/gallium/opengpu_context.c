@@ -1723,7 +1723,11 @@ static void copy_present_target(struct opengpu_context *ctx)
                     pipe_opengpu_resource_pitch(ctx->present_target)))[ctx->width / 2],
                 ((uint32_t *)(dst + (size_t)(ctx->height / 2) *
                     pipe_opengpu_resource_pitch(surface->gpu)))[ctx->width / 2]);
-    msync(dst, pipe_opengpu_resource_size(surface->gpu), MS_SYNC);
+    /* Small GTK surfaces render into the top-left of a mode-sized padded
+     * GEM.  Flush only the rows that this copy touched; syncing the entire
+     * 640x480 allocation after every draw adds avoidable host work. */
+    msync(dst, (size_t)pipe_opengpu_resource_pitch(surface->gpu) * ctx->height,
+          MS_SYNC);
 
 }
 
