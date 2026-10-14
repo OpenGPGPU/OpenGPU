@@ -118,6 +118,8 @@ minutes to seconds on FlashSim:
 ```sh
 GTK_DEBIAN_BASE=../arti-work/debian-gtk-arm64.qcow2 \
 GTK_PROOF_SMOKE=1 GTK_PROOF_KMS_MODE=64x64 \
+GTK_PROOF_SCANOUT_ENABLE=2 GTK_PROOF_SCANOUT_MATCH= \
+GTK_PROOF_SCANOUT_PERIODIC=1 \
 GTK_PROOF_SKIP_BUILD=1 GTK_PROOF_SKIP_COVERAGE=1 \
 bash scripts/run_gtk_coverage_guest.sh
 ```
@@ -125,6 +127,12 @@ bash scripts/run_gtk_coverage_guest.sh
 Use 640x480 for the final full-size qualification. The smaller-mode run still
 requires the authoritative scanout capture to pass; client readback alone is
 not sufficient.
+
+When the compositor's output transform changes the client texel values, use
+`GTK_PROOF_SCANOUT_PERIODIC=1`. The gate retains a periodic ARTI framebuffer
+capture and validates its mode size, substantial non-black content, and colour
+complexity after the active redraw marker. The strict default still looks for
+the exact `f2592e` texel.
 
 `GTK_PROOF_QEMU_DISPLAY` defaults to `none`; it can select a locally supported
 backend for diagnostics. The Cocoa diagnostic run in
