@@ -1,0 +1,104 @@
+diff --git a/hw/misc/arti-rtl.c b/hw/misc/arti-rtl.c
+index e8e4a3cbdf..53d1bd06e9 100644
+--- a/hw/misc/arti-rtl.c
++++ b/hw/misc/arti-rtl.c
+@@ -125,6 +125,8 @@ static void arti_gfx_invalidate(void *opaque)
+     s->invalidate = true;
+ }
+
++static void arti_dump_scanout_ppm(ArtiRtlState *s);
++
+ static bool arti_gfx_update(void *opaque)
+ {
+     ArtiRtlState *s = opaque;
+@@ -155,6 +157,10 @@ static bool arti_gfx_update(void *opaque)
+                 (src[x] | 0xff000000u) : ((src[x] >> 8) | (src[x] << 24));
+     }
+     qemu_console_update_full(s->con);
++    /* A client can change the scanout GEM without rewriting modeset
++     * registers. Run the opt-in dump matcher on every refresh so a retained
++     * PPM proves the currently presented framebuffer. */
++    arti_dump_scanout_ppm(s);
+     s->invalidate = false;
+     return true;
+ }
+@@ -163,6 +169,9 @@ static void arti_refresh_timer(void *opaque)
+ {
+     ArtiRtlState *s = opaque;
+     s->invalidate = true;
++    /* Drive the copy directly.  The generic console scheduler can defer
++     * hw_update indefinitely when the scanout changes without a host input
++     * event, leaving the QEMU window black while the guest keeps rendering. */
+     arti_gfx_update(s);
+     timer_mod(s->refresh_timer,
+               qemu_clock_get_ns(QEMU_CLOCK_HOST) + ARTI_REFRESH_NS);
+@@ -174,12 +183,15 @@ static const GraphicHwOps arti_gfx_ops = {
+ };
+
+ /* One-shot PPM dump of a selected enabled scanout.
+- * An optional sample pixel prevents early console captures. */
++ * An optional sample pixel or full-frame RGB match prevents
++ * early console captures. */
+ static void arti_dump_scanout_ppm(ArtiRtlState *s)
+ {
+     const char *path = getenv("ARTI_DISPLAY_DUMP");
+     const char *enable_env = getenv("ARTI_DISPLAY_DUMP_ENABLE");
+     const char *pixel_env = getenv("ARTI_DISPLAY_DUMP_PIXEL");
++    const char *match_env = getenv("ARTI_DISPLAY_DUMP_MATCH");
++    const char *periodic_env = getenv("ARTI_DISPLAY_DUMP_PERIODIC");
+     int target_enable = enable_env ? atoi(enable_env) : 1;
+     unsigned width = arti_mode_width(s);
+     unsigned height = arti_mode_height(s);
+@@ -188,8 +200,14 @@ static void arti_dump_scanout_ppm(ArtiRtlState *s)
+     uint32_t src[ARTI_FB_WIDTH];
+     FILE *fp;
+     static bool dumped;
++    static int64_t last_periodic_ns;
++    bool periodic = periodic_env && atoi(periodic_env) != 0;
++    int64_t now_ns;
+
+-    if (dumped || !path || !path[0]) return;
++    if ((!periodic && dumped) || !path || !path[0]) return;
++    now_ns = qemu_clock_get_ns(QEMU_CLOCK_HOST);
++    if (periodic && last_periodic_ns && now_ns - last_periodic_ns < 500000000)
++        return;
+     if (target_enable < 1) target_enable = 1;
+     if (s->scanout_enable_count < (uint32_t)target_enable) return;
+     if (!s->scanout_enable || !s->scanout_addr || !width || !height) return;
+@@ -209,6 +227,26 @@ static void arti_dump_scanout_ppm(ArtiRtlState *s)
+               ((sample >> 8) & 0xffffffu);
+         if (rgb != expected) return;
+     }
++    if (match_env && match_env[0] && !periodic) {
++        char *end;
++        unsigned long expected = strtoul(match_env, &end, 16);
++        bool found = false;
++        if (*end || expected > 0xffffffu) return;
++        for (y = 0; y < height && !found; y++) {
++            if (address_space_read(&address_space_memory,
++                                   s->scanout_addr + y * stride,
++                                   MEMTXATTRS_UNSPECIFIED, src,
++                                   width * 4u) != MEMTX_OK)
++                return;
++            for (x = 0; x < width; x++) {
++                uint32_t sample = src[x];
++                uint32_t rgb = s->scanout_format == 1 ? (sample & 0xffffffu) :
++                    ((sample >> 8) & 0xffffffu);
++                if (rgb == expected) { found = true; break; }
++            }
++        }
++        if (!found) return;
++    }
+     fp = fopen(path, "wb");
+     if (!fp) return;
+     fprintf(fp, "P6\n%u %u\n255\n", width, height);
+@@ -233,7 +271,8 @@ static void arti_dump_scanout_ppm(ArtiRtlState *s)
+         }
+     }
+     fclose(fp);
+-    dumped = true;
++    dumped = !periodic;
++    last_periodic_ns = now_ns;
+     warn_report("ARTI DISPLAY DUMP PASS: wrote %s (%ux%u, enable %u)",
+                 path, width, height, s->scanout_enable_count);
+ }

@@ -101,6 +101,72 @@ GTK/Wayland startup without a display error. The next acceptance point is
 The existing ellipse, desktop, and scissor proofs remain the deterministic
 scanout checks.
 
+The opt-in `GTK_PROOF_SMOKE=1` gate checks the idle frame and button-triggered
+active redraw, then keeps Weston and the client alive while QMP `screendump`
+captures the QEMU surface. The 640x480 capture must contain the active panel
+color. The ARTI sideband dump waits for that color anywhere in the full
+scanout, so the check does not depend on the GTK window's compositor position.
+`run-metadata.txt`, `gate.log`, `final-guest.log`, the integration config,
+worktree patch, source copies and artifact hashes are retained in the proof
+directory. **Final scanout verification has not passed.**
+
+For an iterative check, set `GTK_PROOF_KMS_MODE=64x64` (or `320x240`). The
+driver advertises these smaller KMS modes dynamically, and the smoke client
+uses a compact layout for 64x64. This reduces the long compositor draws from
+minutes to seconds on FlashSim:
+
+```sh
+GTK_DEBIAN_BASE=../arti-work/debian-gtk-arm64.qcow2 \
+GTK_PROOF_SMOKE=1 GTK_PROOF_KMS_MODE=64x64 \
+GTK_PROOF_SKIP_BUILD=1 GTK_PROOF_SKIP_COVERAGE=1 \
+bash scripts/run_gtk_coverage_guest.sh
+```
+
+Use 640x480 for the final full-size qualification. The smaller-mode run still
+requires the authoritative scanout capture to pass; client readback alone is
+not sufficient.
+
+`GTK_PROOF_QEMU_DISPLAY` defaults to `none`; it can select a locally supported
+backend for diagnostics. The Cocoa diagnostic run in
+`/tmp/opengpu-gtk-smoke15` timed out its first GPU fence. This does not establish
+that a graphical backend is required: ARTI's `arti_gfx_update` reads scanout
+memory independently of the UI backend. No backend change is a proven fix.
+
+The 2026-10-14 diagnostic run in `/tmp/opengpu-gtk-smoke10` reached both
+client frame checks with successful fences, but GTK's composition shader was
+rejected. The captured TGSI inputs are in `userspace/tests/gtk-composition/`.
+A later run also reproduced a cross-client vertex-buffer bind `EBUSY`.
+Client readback success alone therefore does not establish presentation.
+
+The rebuilt model completed compositor draws 1–10 and the client idle frame
+in `.artifacts/gtk-qualification-final/gtk-smoke.log`. Earlier manually
+interrupted runs do not establish a texture deadlock. Full-frame draws take
+about 16 minutes. The gate now defaults to no total time limit
+(`GTK_PROOF_SMOKE_TIMEOUT_S=0`), including the SSH wait and scanout polling.
+An explicit positive value remains available for bounded diagnostics.
+The per-fence wait and kernel watchdog are separate from this total limit.
+
+Build the guest module through `scripts/run_arti_gpu.sh` (as the display build
+does). That script supplies `OPENGPU_DRAW_WAIT_MS` scaled for simulation and
+`OPENGPU_FENCE_SLICE_MS=4`. A bare manual kernel-module build uses a 30-second
+watchdog, which is shorter than the measured 640x480 compositor submissions.
+The differing watchdog settings explain the early reset in the manual-build
+diagnostics; they are not evidence of a source-level driver regression.
+
+The gate is intentionally opt-in because a 640x480 FlashSim compositor run is
+slow and requires the prepared GTK image, QEMU build, and host networking:
+
+```sh
+GTK_PROOF_SMOKE=1 GTK_DEBIAN_BASE=../arti-work/debian-gtk-arm64.qcow2 \
+  bash scripts/run_gtk_coverage_guest.sh
+```
+
+The QMP framing helper can be checked without a guest or socket:
+
+```sh
+PYTHONPATH=scripts python3 scripts/test_qmp_screendump_protocol.py
+```
+
 The opt-in smoke gate now starts Weston through the OpenGPU EGL path and reports
 `GL vendor: opengpu` and `GL renderer: opengpu`. The TGSI texture shader and
 indexed triangle lowering are implemented in the Gallium driver. The remaining
@@ -147,10 +213,11 @@ completed in 5277 ms and 62928 ms respectively. These are diagnostic workloads,
 not substitutes for the GTK window gate.
 
 `GTK_PROOF_SMOKE_TIMEOUT_S` sets the overall GTK startup/redraw budget in
-seconds, separately from `GTK_PROOF_FENCE_TIMEOUT_MS`. By default it allows
-eight fence budgets (four hours with the default 30-minute fence budget).
-This is a bounded allowance for multiple draws, not a guarantee of completion.
-The host SSH observer allows an additional five minutes for setup and cleanup.
+seconds, separately from `GTK_PROOF_FENCE_TIMEOUT_MS`. The default is `0`,
+which follows the guest and QMP logs until they report success or a failure.
+Set a positive value only for a deliberately bounded diagnostic run. A fence
+value of `0` selects the driver's largest supported wait interval; it does not
+add a total test deadline.
 
 QEMU already runs with two guest CPUs. During these draws its host process
 consumed approximately one CPU core; increasing guest vCPUs does not parallelize

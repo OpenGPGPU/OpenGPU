@@ -19,6 +19,7 @@
 #include "opengpu_internal.h"
 #include "opengpu_fs_emit.h"
 #include "opengpu_shaders.h"
+#include "opengpu_retry.h"
 
 #include "pipe/p_context.h"
 #include "pipe/p_defines.h"
@@ -59,6 +60,7 @@ struct opengpu_shader {
     int color_imm;
     float color[4];
     int samples;
+    int sample_swizzle;
     int sample_alpha_one;
     int modulate;
     /* The modulate colour is fragment CONST[0][0], packed into the
@@ -465,6 +467,70 @@ static int match_mvp(const struct tgsi_full_instruction *insn, int *used,
     return 0;
 }
 
+/* Some GTK composition shaders fold the position vector into CONST[0][4]
+ * instead of reading a vertex input. The packed vertex stream still carries
+ * the position used by the draw; accept this equivalent matrix form and use
+ * the existing vertex MVP program for it. */
+static int match_const_position(const struct tgsi_full_instruction *insn,
+                                int *used, int *temp,
+                                struct opengpu_shader *shader,
+                                const int *sem_out)
+{
+    const struct tgsi_dst_register *dst = &insn->Dst[0].Register;
+    const struct tgsi_full_src_register *vec = NULL, *col = NULL;
+    unsigned column;
+
+    if (insn->Instruction.Saturate || insn->Instruction.NumDstRegs != 1 ||
+        dst->Indirect || dst->WriteMask != TGSI_WRITEMASK_XYZW ||
+        insn->Instruction.NumSrcRegs != (*used ? 3 : 2))
+        return -1;
+    if (*used == 0) {
+        if (insn->Instruction.Opcode != TGSI_OPCODE_MUL)
+            return -1;
+        if (insn->Src[0].Register.File == TGSI_FILE_CONSTANT) {
+            vec = &insn->Src[0]; col = &insn->Src[1];
+        } else {
+            vec = &insn->Src[1]; col = &insn->Src[0];
+        }
+        if (!const_scalar(vec, 4, 0) && !const_scalar(vec, 4, 1) &&
+            !const_scalar(vec, 4, 2) && !const_scalar(vec, 4, 3))
+            return -1;
+        if (dst->File != TGSI_FILE_TEMPORARY || dst->Index >= OPENGPU_ATTRIBS)
+            return -1;
+        *temp = dst->Index;
+    } else {
+        if (insn->Instruction.Opcode != TGSI_OPCODE_MAD ||
+            insn->Src[2].Register.File != TGSI_FILE_TEMPORARY ||
+            insn->Src[2].Register.Index != *temp ||
+            !plain_swizzle(&insn->Src[2].Register))
+            return -1;
+        if (insn->Src[0].Register.File == TGSI_FILE_CONSTANT) {
+            vec = &insn->Src[0]; col = &insn->Src[1];
+        } else {
+            vec = &insn->Src[1]; col = &insn->Src[0];
+        }
+        if (!const_scalar(vec, 4, 0) && !const_scalar(vec, 4, 1) &&
+            !const_scalar(vec, 4, 2) && !const_scalar(vec, 4, 3))
+            return -1;
+    }
+    if (col->Register.File != TGSI_FILE_CONSTANT ||
+        col->Register.Index < 0 || col->Register.Index > 3 ||
+        !const_column(col, col->Register.Index))
+        return -1;
+    column = vec->Register.SwizzleX;
+    if (*used & (1 << column))
+        return -1;
+    *used |= 1 << column;
+    if (*used != 0xf)
+        return dst->File == TGSI_FILE_TEMPORARY && dst->Index == *temp ? 0 : -1;
+    if (dst->File != TGSI_FILE_OUTPUT || dst->Index >= OPENGPU_ATTRIBS ||
+        sem_out[dst->Index] != TGSI_SEMANTIC_POSITION || shader->mvp)
+        return -1;
+    shader->mvp = 1;
+    shader->pos_src = 0;
+    return 0;
+}
+
 /* gl_FragColor = (texture * v_color) * u_opacity, the second MUL only.
  * The first MUL left sample * colour in a temporary. This one writes the
  * colour output and multiplies by CONST[0][0].xxxx. Returns 0 on that
@@ -792,6 +858,12 @@ static struct opengpu_shader *lower_shader(const struct pipe_shader_state *state
                     !match_vs_opacity(insn, shader, sem_in, sem_out,
                                       sem_out_index))
                     break;
+                if (!match_const_position(insn, &mvp_used, &mvp_temp,
+                                          shader, sem_out)) {
+                    temp_file[mvp_temp] = TEMP_MVP;
+                    temp_index[mvp_temp] = 0;
+                    break;
+                }
                 if (!match_mvp(insn, &mvp_used, &mvp_temp, &mvp_in, &mvp_base,
                                chain_temp, chain_attr, shader, sem_out)) {
                     temp_file[mvp_temp] = TEMP_MVP;
@@ -859,6 +931,42 @@ static struct opengpu_shader *lower_shader(const struct pipe_shader_state *state
                 shader->samples = 1;
                 shader->sample_sem = sem_in[src];
                 shader->sample_sem_index = sem_in_index[src];
+                break;
+            }
+            /* GtkGLArea emits texture2D() followed by a uniform-controlled
+             * BGRA swizzle. Keep this on the sampler path: the generic ALU
+             * emitter intentionally has no texture instruction. */
+            if (want_fs && insn->Instruction.Opcode == TGSI_OPCODE_SEQ) {
+                if (insn->Instruction.NumDstRegs != 1 ||
+                    insn->Instruction.NumSrcRegs != 2 ||
+                    insn->Dst[0].Register.File != TGSI_FILE_TEMPORARY ||
+                    insn->Dst[0].Register.Index >= OPENGPU_ATTRIBS ||
+                    !const_scalar(&insn->Src[0], 0, 0) ||
+                    insn->Src[1].Register.File != TGSI_FILE_IMMEDIATE ||
+                    insn->Src[1].Register.Index != 0 ||
+                    !broadcast_swizzle(&insn->Src[1].Register,
+                                       TGSI_SWIZZLE_X))
+                    goto fail;
+                break;
+            }
+            if (want_fs && insn->Instruction.Opcode == TGSI_OPCODE_CMP) {
+                if (!shader->samples || insn->Instruction.NumDstRegs != 1 ||
+                    insn->Instruction.NumSrcRegs != 3 ||
+                    insn->Dst[0].Register.File != TGSI_FILE_OUTPUT ||
+                    insn->Dst[0].Register.Index >= OPENGPU_ATTRIBS ||
+                    sem_out[insn->Dst[0].Register.Index] < 0 ||
+                    !color_semantic((unsigned)sem_out[insn->Dst[0].Register.Index]) ||
+                    insn->Src[0].Register.File != TGSI_FILE_TEMPORARY ||
+                    insn->Src[1].Register.File != TGSI_FILE_TEMPORARY ||
+                    insn->Src[2].Register.File != TGSI_FILE_TEMPORARY ||
+                    insn->Src[1].Register.Index != insn->Src[2].Register.Index ||
+                    insn->Src[1].Register.SwizzleX != TGSI_SWIZZLE_Z ||
+                    insn->Src[1].Register.SwizzleY != TGSI_SWIZZLE_Y ||
+                    insn->Src[1].Register.SwizzleZ != TGSI_SWIZZLE_X ||
+                    insn->Src[1].Register.SwizzleW != TGSI_SWIZZLE_W ||
+                    !plain_swizzle(&insn->Src[2].Register))
+                    goto fail;
+                shader->sample_swizzle = 1;
                 break;
             }
             /* gl_FragColor = texture2D(tex, uv) * colour. One source is the
@@ -1261,6 +1369,10 @@ static void bind_fs_state(struct pipe_context *pipe, void *hw)
         if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_fade,
                                  OPENGPU_FRAGMENT_FADE_BYTES))
             reject("fragment shader bind failed");
+    } else if (ctx->fs->sample_swizzle) {
+        if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_swizzle,
+                                 OPENGPU_FRAGMENT_SWIZZLE_BYTES))
+            reject("fragment shader bind failed");
     } else if (ctx->fs->samples) {
         if (bind_sample_program(ctx, opengpu_fragment_sample,
                                  OPENGPU_FRAGMENT_SAMPLE_BYTES))
@@ -1643,25 +1755,6 @@ static int32_t q16(float x)
     return (int32_t)(s >= 0.0 ? s + 0.5 : s - 0.5);
 }
 
-/* Small GLES targets are rendered into the physical mode-sized scratch
- * resource.  The RTL viewport is mode-sized, so map clip coordinates to the
- * logical target before submitting the draw; the top-left copy then preserves
- * the target's own viewport semantics while all pixels remain GPU-rendered. */
-static void scale_present_clip(const struct opengpu_context *ctx,
-                               int32_t *x, int32_t *y, int32_t w)
-{
-    uint32_t mode_w, mode_h;
-
-    if (!ctx->present_target || !x || !y)
-        return;
-    mode_w = pipe_opengpu_resource_width(ctx->present_target);
-    mode_h = pipe_opengpu_resource_height(ctx->present_target);
-    if (!mode_w || !mode_h)
-        return;
-    *x = (int32_t)((((int64_t)*x + w) * ctx->width) / mode_w - w);
-    *y = (int32_t)((((int64_t)*y + w) * ctx->height) / mode_h - w);
-}
-
 static void clear(struct pipe_context *pipe, unsigned buffers,
                   const struct pipe_scissor_state *scissor,
                   const union pipe_color_union *color, double depth,
@@ -1946,6 +2039,19 @@ static int hw_depth(const struct pipe_depth_stencil_alpha_state *dsa,
     return 0;
 }
 
+struct vertex_bind_request {
+    struct pipe_opengpu_context *gpu;
+    struct pipe_opengpu_resource *buffer;
+    uint32_t stride, bytes;
+};
+
+static int bind_uploaded_vertices(void *data)
+{
+    struct vertex_bind_request *request = data;
+    return pipe_opengpu_set_vertex_buffer(request->gpu, request->buffer,
+                                          request->stride, request->bytes);
+}
+
 static void draw_vbo(struct pipe_context *pipe,
                      const struct pipe_draw_info *info,
                      unsigned drawid_offset,
@@ -2052,6 +2158,22 @@ static void draw_vbo(struct pipe_context *pipe,
                 return;
             }
             fprintf(stderr, "opengpu: vertex opacity 0x%08x\n", word);
+        }
+        if (ctx->fs->sample_swizzle) {
+            if (!ctx->fs_const_set) {
+                reject("texture swizzle uniform did not reach the fragment core");
+                return;
+            }
+            /* The sampler and channel permutation are both GPU programs;
+             * the scalar uniform only selects which fixed program is bound. */
+            if (ctx->fs_const[0] >= 0.5f) {
+                if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_swizzle,
+                                         OPENGPU_FRAGMENT_SWIZZLE_BYTES))
+                    reject("fragment swizzle shader bind failed");
+            } else if (bind_sample_program(ctx, opengpu_fragment_sample,
+                                           OPENGPU_FRAGMENT_SAMPLE_BYTES)) {
+                reject("fragment sampler shader bind failed");
+            }
         }
         if (ctx->fs->scale_const) {
             float s;
@@ -2167,11 +2289,10 @@ static void draw_vbo(struct pipe_context *pipe,
                 }
             }
             {
-                unsigned sv;
-
-                for (sv = 0; !ctx->vs->mvp && !ctx->vs->mvp2 && sv < 3; sv++)
-                    scale_present_clip(ctx, &verts[sv].x, &verts[sv].y,
-                                       verts[sv].w);
+                /* Q16 vertex positions are already in the target's clip
+                 * space. Scaling them by the physical mode moves every
+                 * small logical surface below the viewport (for example a
+                 * 60x32 GtkGLArea in the 64x64 fast mode). */
                 if (!ctx->packed || ctx->packed_bytes < sizeof(verts)) {
                     if (ctx->packed)
                         pipe_opengpu_resource_destroy(
@@ -2202,8 +2323,13 @@ static void draw_vbo(struct pipe_context *pipe,
                     return;
                 }
                 pipe_opengpu_fence_reference(&fence, NULL);
-                if (pipe_opengpu_set_vertex_buffer(ctx->gpu, ctx->packed,
-                                                   sizeof(verts[0]), sizeof(verts))) {
+                struct vertex_bind_request request = {
+                    ctx->gpu, ctx->packed, sizeof(verts[0]), sizeof(verts)
+                };
+                /* Another client can acquire the command slot after our
+                 * invalidate fence and before the bind-time invalidate. */
+                if (opengpu_retry_busy(bind_uploaded_vertices, &request,
+                                       ctx->fence_timeout_ms)) {
                     gpu_failed("vertex buffer bind failed");
                     return;
                 }

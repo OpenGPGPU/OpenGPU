@@ -47,6 +47,18 @@ static const uint32_t opengpu_fragment_sample[] = {
     0x0c028313u, 0x02036127u, 0x30500073u,
 };
 
+/* Texture sample with red/blue channels exchanged for the GtkGLArea
+ * composition shader's uniform-selected swizzle branch. */
+static const uint32_t opengpu_fragment_swizzle[] = {
+    0x00241293u, 0x005082b3u, 0xc1027057u, 0x08028313u,
+    0x02036087u, 0x0a028313u, 0x02036107u, 0x0620812bu,
+    0x0ff00393u, 0x2623c257u, 0x96483257u, 0xa22832d7u,
+    0x2653c2d7u, 0x2a428257u, 0xa22432d7u, 0x2653c2d7u,
+    0x965432d7u, 0x2a428257u, 0xa22c32d7u, 0x2653c2d7u,
+    0x965c32d7u, 0x2a428257u, 0x0c028313u, 0x02036227u,
+    0x30500073u,
+};
+
 static const uint32_t opengpu_vertex_mvp[] = {
     0x00241293u, 0x005082b3u, 0xc1027057u, 0x08028313u,
     0x02036487u, 0x18028313u, 0x020364a7u, 0x0c028313u,
@@ -84,6 +96,7 @@ static const uint32_t opengpu_vertex_mvp[] = {
 
 #define OPENGPU_FRAGMENT_COLOR_BYTES (sizeof(opengpu_fragment_color))
 #define OPENGPU_FRAGMENT_UNIFORM_COLOR_BYTES (sizeof(opengpu_fragment_uniform_color))
+#define OPENGPU_FRAGMENT_SWIZZLE_BYTES (sizeof(opengpu_fragment_swizzle))
 static const uint32_t opengpu_fragment_modulate[] = {
     0x00241293u, 0x005082b3u, 0xc1027057u, 0x08028313u,
     0x02036087u, 0x0a028313u, 0x02036107u, 0x0620812bu,

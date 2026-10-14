@@ -234,8 +234,14 @@ Desktop acceptance status:
 The baseline desktop is functional. Priority is now **breadth and
 repeatability**: broaden the shader forms accepted by the Gallium sandbox,
 turn the Weston run into an automated regression, and reduce the wall-clock
-cost of large FlashSim compositor frames. Cycle / PPA work stays secondary
-unless a guest path is blocked.
+cost of large FlashSim compositor frames. The first concrete blocker was the
+GtkGLArea texture-composition shader. The cached guest reproducer originally
+rejected TGSI opcode 52 (`TEX`); the sampler matcher and fixed GPU swizzle
+program now produce both unchanged-red and BGRA-swizzled pixels in the small
+GLES regression. The next blocker is the captured constant-position vertex
+program, which still needs a vertex-core lowering and pixel proof before the
+full GTK-to-QEMU gate. Cycle / PPA work stays secondary unless a guest path is
+blocked.
 Simulation wall-clock is not a correctness gate.
 
 An opt-in tile-order raster traversal is available through

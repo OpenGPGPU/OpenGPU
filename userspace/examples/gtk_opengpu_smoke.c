@@ -167,14 +167,26 @@ static void activate(GtkApplication *application, gpointer data)
 {
     struct AppState *state = data;
     GtkWidget *window, *box, *label, *button;
+    gboolean compact = getenv("OPENGPU_GTK_COMPACT") != NULL;
     g_print("OPENGPU GTK ACTIVATE PASS\n");
     fflush(stdout);
     window = gtk_application_window_new(application);
     gtk_window_set_title(GTK_WINDOW(window), "OpenGPU GTK smoke");
-    gtk_window_set_default_size(GTK_WINDOW(window), 320, 240);
-    box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
-    gtk_container_set_border_width(GTK_CONTAINER(box), 20);
-    label = gtk_label_new("OpenGPU GtkGLArea");
+    gtk_window_set_default_size(GTK_WINDOW(window), compact ? 64 : 320,
+                               compact ? 64 : 240);
+    if (compact) {
+        GtkCssProvider *css = gtk_css_provider_new();
+        gtk_window_set_decorated(GTK_WINDOW(window), FALSE);
+        gtk_css_provider_load_from_data(css,
+            "* { font-size: 8px; } button { min-height: 0; min-width: 0; padding: 1px; }",
+            -1, NULL);
+        gtk_style_context_add_provider_for_screen(gtk_widget_get_screen(window),
+            GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+        g_object_unref(css);
+    }
+    box = gtk_box_new(GTK_ORIENTATION_VERTICAL, compact ? 2 : 12);
+    gtk_container_set_border_width(GTK_CONTAINER(box), compact ? 2 : 20);
+    label = gtk_label_new(compact ? "GPU" : "OpenGPU GtkGLArea");
     gtk_box_pack_start(GTK_BOX(box), label, FALSE, FALSE, 0);
     state->area = gtk_gl_area_new();
     gtk_gl_area_set_use_es(GTK_GL_AREA(state->area), TRUE);
@@ -185,7 +197,7 @@ static void activate(GtkApplication *application, gpointer data)
     g_signal_connect(state->area, "realize", G_CALLBACK(realize), state);
     g_signal_connect(state->area, "render", G_CALLBACK(render), state);
     gtk_box_pack_start(GTK_BOX(box), state->area, TRUE, TRUE, 0);
-    button = gtk_button_new_with_label("Redraw GPU panel");
+    button = gtk_button_new_with_label(compact ? "Redraw" : "Redraw GPU panel");
     state->button = button;
     g_signal_connect(button, "clicked", G_CALLBACK(clicked), state);
     gtk_box_pack_start(GTK_BOX(box), button, FALSE, FALSE, 0);

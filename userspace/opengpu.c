@@ -32,7 +32,8 @@ int opengpu_display_size(int fd, uint32_t *width, uint32_t *height)
 {
     struct drm_mode_card_res resources = { 0 };
     struct drm_mode_get_connector connector = { 0 };
-    struct drm_mode_modeinfo mode = { 0 };
+    struct drm_mode_crtc current = { 0 };
+    struct drm_mode_modeinfo modes[8] = { 0 };
     uint32_t connector_id = 0, crtc_id = 0;
     uint32_t encoders[8] = { 0 }, framebuffers[8] = { 0 };
     uint32_t connector_encoders[8] = { 0 }, properties[32] = { 0 };
@@ -51,17 +52,29 @@ int opengpu_display_size(int fd, uint32_t *width, uint32_t *height)
     if (ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &resources) < 0) return -1;
     connector.connector_id = connector_id;
     if (ioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, &connector) < 0 ||
-        connector.count_modes != 1 || connector.count_encoders > 8 ||
+        !connector.count_modes || connector.count_modes > 8 ||
+        connector.count_encoders > 8 ||
         connector.count_props > 32) {
         errno = ENODEV; return -1;
     }
-    connector.modes_ptr = (uintptr_t)&mode;
+    connector.modes_ptr = (uintptr_t)modes;
     connector.encoders_ptr = (uintptr_t)connector_encoders;
     connector.props_ptr = (uintptr_t)properties;
     connector.prop_values_ptr = (uintptr_t)property_values;
     if (ioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, &connector) < 0) return -1;
-    *width = mode.hdisplay;
-    *height = mode.vdisplay;
+    /* Dynamic KMS exposes the native mode plus smaller alternatives. The
+     * first connector mode is the preferred maximum, so ask the CRTC for the
+     * mode currently selected by Weston instead of assuming one connector
+     * mode. */
+    current.crtc_id = crtc_id;
+    if (!ioctl(fd, DRM_IOCTL_MODE_GETCRTC, &current) && current.mode_valid &&
+        current.mode.hdisplay && current.mode.vdisplay) {
+        *width = current.mode.hdisplay;
+        *height = current.mode.vdisplay;
+        return 0;
+    }
+    *width = modes[0].hdisplay;
+    *height = modes[0].vdisplay;
     return 0;
 }
 

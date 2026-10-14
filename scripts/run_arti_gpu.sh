@@ -374,6 +374,16 @@ if [ "${APPLY_QEMU_SCANOUT_PATCH:-1}" = "1" ] &&
         fail "Failed to apply QEMU scanout refresh patch"
     "${NINJA:-ninja}" -C "$QEMU_BUILD" qemu-system-aarch64
 fi
+# Keep the opt-in smoke gate's final scanout capture tied to the refresh path.
+# The GTK client changes the scanout GEM without another modeset-register
+# write, so a register-only dump can miss the presented active frame.
+if [ "${APPLY_QEMU_SCANOUT_PATCH:-1}" = "1" ] &&
+    ! grep -q 'Run the opt-in dump matcher on every refresh' "$QEMU_SRC/hw/misc/arti-rtl.c"; then
+    (cd "$QEMU_SRC" && patch --forward --batch -p1 < \
+        "$GPU_DIR/scripts/patches/qemu-scanout-dump-refresh.patch") ||
+        fail "Failed to apply QEMU scanout dump refresh patch"
+    "${NINJA:-ninja}" -C "$QEMU_BUILD" qemu-system-aarch64
+fi
 
 if [ "$GPU_SIM" = "verilator" ] && patch_arti_model_address_width; then
     echo "Rebuilding ARTI model after widening AXI-Lite register addresses"

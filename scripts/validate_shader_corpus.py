@@ -18,7 +18,8 @@ ASSEMBLY = ("compute_copy", "round_modes", "masked_ops", "fixed_width",
             "widen_alu", "fragment_texture", "fp_unary", "fp_binary",
             "fp_fma", "fp_div", "fp_compare", "fp_scalar", "fp_reduce",
             "fragment_fp", "fragment_fp_scalar", "fragment_tint",
-            "fragment_color", "fragment_sample", "fragment_modulate",
+            "fragment_color", "fragment_sample", "fragment_swizzle",
+            "fragment_modulate",
             "fragment_shade", "fragment_fade", "fragment_wash",
             "vertex_passthrough",
             "vertex_mvp", "vertex_mvp2")
@@ -28,7 +29,7 @@ ALL = ASSEMBLY + COMPILED
 # 4=compute/local4 with 128-byte kernarg (FP FMA stores past 64),
 # 5=profile 4 on hardware advertising the compute scalar FPU,
 # 6=fragment and 7=vertex on hardware advertising it
-PROFILES = (0, 0, 0, 0, 0, 3, 4, 4, 4, 4, 4, 5, 4, 1, 6, 1, 1, 3, 3, 8, 6, 8, 2, 7, 7, 0, 2)
+PROFILES = (0, 0, 0, 0, 0, 3, 4, 4, 4, 4, 4, 5, 4, 1, 6, 1, 1, 3, 3, 3, 8, 6, 8, 2, 7, 7, 0, 2)
 
 
 def run(args):

@@ -17,6 +17,7 @@ DEST="$MESA/src/gallium/drivers/opengpu"
 mkdir -p "$DEST"
 cp "$GPU_DIR/userspace/gallium/"*.c "$GPU_DIR/userspace/gallium/"*.h "$DEST/"
 cp "$GPU_DIR/userspace/pipe_opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.h" \
+   "$GPU_DIR/userspace/opengpu_retry.h" \
     "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/opengpu.h" \
     "$GPU_DIR/driver/opengpu_drm.h" "$DEST/"
 python3 - "$DEST/opengpu.h" <<'PY'

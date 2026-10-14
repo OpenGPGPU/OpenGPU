@@ -15,16 +15,32 @@ GPU_TILE_BINNING="${GPU_TILE_BINNING:-0}"
 GTK_PROOF_DESKTOP="${GTK_PROOF_DESKTOP:-0}"
 GTK_PROOF_SCISSOR="${GTK_PROOF_SCISSOR:-0}"
 GTK_PROOF_SMOKE="${GTK_PROOF_SMOKE:-0}"
+GTK_PROOF_KMS_MODE="${GTK_PROOF_KMS_MODE:-640x480}"
 [ "$GTK_PROOF_DESKTOP" != 1 ] || [ "$GTK_PROOF_SCISSOR" != 1 ] || {
     echo "choose either GTK_PROOF_DESKTOP or GTK_PROOF_SCISSOR" >&2
     exit 1
 }
+if [ "$GTK_PROOF_SMOKE" = 1 ] && { [ "$GTK_PROOF_DESKTOP" = 1 ] || [ "$GTK_PROOF_SCISSOR" = 1 ]; }; then
+    echo "GTK_PROOF_SMOKE cannot be combined with desktop or scissor proof" >&2
+    exit 1
+fi
 INTEGRATION_CONFIG="$GPU_DIR/driver/gpu_integration_debian.yaml"
 eval "$(python3 "$GPU_DIR/scripts/gpu_display_config.py" --shell "$INTEGRATION_CONFIG")"
 [ "$GPU_MODE" = 640x480 ] || {
     echo "expected the 640x480 coverage profile, got $GPU_MODE" >&2
     exit 1
 }
+if [ "$GTK_PROOF_SMOKE" = 1 ]; then
+    case "$GTK_PROOF_KMS_MODE" in
+        640x480|320x240|64x64) ;;
+        *) echo "GTK_PROOF_KMS_MODE must be 640x480, 320x240 or 64x64" >&2; exit 1 ;;
+    esac
+    GTK_KMS_WIDTH="${GTK_PROOF_KMS_MODE%x*}"
+    GTK_KMS_HEIGHT="${GTK_PROOF_KMS_MODE#*x}"
+else
+    GTK_KMS_WIDTH=640
+    GTK_KMS_HEIGHT=480
+fi
 if [ "$GPU_TILE_BINNING" = 1 ]; then
     DISPLAY_WORK="${DISPLAY_WORK:-$ARTI_WORK/debian-${GPU_MODE}-tile}"
     PROOF_WORK="${PROOF_WORK:-$ARTI_WORK/gtk-coverage-proof-tile}"
@@ -34,6 +50,13 @@ else
 fi
 DRIVER_OUTPUT="$DISPLAY_WORK/opengpu-driver"
 mkdir -p "$PROOF_WORK"
+if [ "$GTK_PROOF_SMOKE" = 1 ]; then
+    # Include the final scanout verdict, not just the guest's readback output.
+    # Direct redirection works in restricted shells where /dev/fd process
+    # substitution is unavailable; the complete transcript remains in the
+    # retained gate.log artifact.
+    exec > "$PROOF_WORK/gate.log" 2>&1
+fi
 
 for tool in expect ssh python3 sbt meson ninja aarch64-linux-gnu-gcc; do
     command -v "$tool" >/dev/null || { echo "missing $tool" >&2; exit 1; }
@@ -119,11 +142,26 @@ SERIAL_LOG="$PROOF_WORK/serial.log"
 BOOT_LOG="$PROOF_WORK/boot.log"
 PROOF_LOG="$PROOF_WORK/proof.log"
 LOAD_LOG="$PROOF_WORK/load.log"
+METADATA_LOG="$PROOF_WORK/run-metadata.txt"
 : > "$SERIAL_LOG"
 : > "$BOOT_LOG"
 : > "$PROOF_LOG"
 : > "$LOAD_LOG"
-if [ "$GTK_PROOF_DESKTOP" = 1 ]; then
+if [ "$GTK_PROOF_SMOKE" = 1 ]; then
+    SCANOUT="$PROOF_WORK/gtk-smoke-scanout.ppm"
+    # The GtkGLArea window is composited with Weston, so wait for the active
+    # color anywhere in the complete image rather than assuming a fixed pixel.
+    SCANOUT_PIXEL=""
+    # Keep an explicit empty value useful for isolating guest fence behavior;
+    # the qualification default matches the active GTK color.
+    SCANOUT_MATCH="${GTK_PROOF_SCANOUT_MATCH-f2592e}"
+    # The first enable may be the console; the full-frame match below keeps
+    # that capture out while allowing later page-flip/base writes at count 1.
+    SCANOUT_ENABLE="${GTK_PROOF_SCANOUT_ENABLE:-1}"
+    QMP_SOCKET="$PROOF_WORK/qmp.sock"
+    QMP_SCANOUT="$PROOF_WORK/gtk-smoke-qmp.ppm"
+    rm -f "$SCANOUT"
+elif [ "$GTK_PROOF_DESKTOP" = 1 ]; then
     SCANOUT="$PROOF_WORK/desktop-scanout.ppm"
     SCANOUT_PIXEL=243044
     rm -f "$SCANOUT"
@@ -132,13 +170,53 @@ elif [ "$GTK_PROOF_SCISSOR" = 1 ]; then
     SCANOUT_PIXEL=ffff00
     rm -f "$SCANOUT"
 fi
+{
+    echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "git_revision=$(git -C "$GPU_DIR" rev-parse HEAD)"
+    echo "integration_config=$INTEGRATION_CONFIG"
+    echo "integration_config_sha256=$(shasum -a 256 "$INTEGRATION_CONFIG" | awk '{print $1}')"
+    echo "gpu_mode=$GPU_MODE gpu_tile_binning=$GPU_TILE_BINNING"
+    echo "gtk_kms_mode=$GTK_PROOF_KMS_MODE gtk_kms_width=$GTK_KMS_WIDTH gtk_kms_height=$GTK_KMS_HEIGHT"
+    echo "gtk_proof_smoke=$GTK_PROOF_SMOKE gtk_proof_desktop=$GTK_PROOF_DESKTOP gtk_proof_scissor=$GTK_PROOF_SCISSOR"
+    echo "fence_timeout_ms=${GTK_PROOF_FENCE_TIMEOUT_MS:-1800000}"
+    echo "scanout_dump=${SCANOUT:-none} scanout_enable=${SCANOUT_ENABLE:-1}"
+    echo "scanout_pixel=${SCANOUT_PIXEL:-none} scanout_match=${SCANOUT_MATCH:-none}"
+    echo "scanout_periodic=${GTK_PROOF_SCANOUT_PERIODIC:-0}"
+    echo "qmp_socket=${QMP_SOCKET:-none} qmp_scanout=${QMP_SCANOUT:-none}"
+    echo "qemu_display=${GTK_PROOF_QEMU_DISPLAY:-none}"
+    echo "skip_build=${GTK_PROOF_SKIP_BUILD:-0} skip_coverage=${GTK_PROOF_SKIP_COVERAGE:-0}"
+    echo "irq_pump=${ARTI_MODEL_IRQ_PUMP:-default} irq_pump_ns=${ARTI_MODEL_IRQ_PUMP_NS:-default}"
+    echo "smoke_timeout_s=${GTK_PROOF_SMOKE_TIMEOUT_S:-0}"
+    for checkout in "$GPU_DIR" "$ARTI_DIR" "$FLASHSIM_DIR" "$MESA_SRC"; do
+        echo "checkout=$checkout"
+        git -C "$checkout" rev-parse HEAD
+        git -C "$checkout" status --porcelain --untracked-files=no
+    done
+} > "$METADATA_LOG"
+cp "$INTEGRATION_CONFIG" "$PROOF_WORK/integration-config.yaml"
+git -C "$GPU_DIR" diff --binary HEAD > "$PROOF_WORK/gpu-worktree.patch"
+if [ "$GTK_PROOF_SMOKE" = 1 ]; then
+    mkdir -p "$PROOF_WORK/sources"
+    cp "$GPU_DIR/scripts/run_gtk_coverage_guest.sh" \
+       "$GPU_DIR/scripts/qmp_screendump.py" \
+       "$GPU_DIR/userspace/opengpu_retry.h" \
+       "$GPU_DIR/userspace/examples/gtk_opengpu_smoke.c" "$PROOF_WORK/sources/"
+    shasum -a 256 "${QEMU_BUILD:-$GPU_DIR/qemu-build}/qemu-system-aarch64" \
+        "$DRIVER_OUTPUT/gpu_drv.ko" "$DRIVER_OUTPUT/opengpu_dri.so" \
+        "$BASE" > "$PROOF_WORK/artifact-sha256.txt"
+fi
 qemu_pid=""
+ready=0
 cleanup() {
+    result=$?
+    trap - EXIT
     if [ -n "$qemu_pid" ]; then
         kill "$qemu_pid" 2>/dev/null || true
         wait "$qemu_pid" 2>/dev/null || true
     fi
     rm -f "$DISK"
+    echo "gate_exit_status=$result" >> "$METADATA_LOG"
+    exit "$result"
 }
 trap cleanup EXIT
 
@@ -146,9 +224,14 @@ echo "=== Boot fresh Debian guest on SSH port $PORT ==="
 ARTI_DIR="$ARTI_DIR" ARTI_WORK="$ARTI_WORK" FLASHSIM_DIR="$FLASHSIM_DIR" \
     DISPLAY_WORK="$DISPLAY_WORK" DRIVER_OUTPUT="$DRIVER_OUTPUT" \
     INTEGRATION_CONFIG="$INTEGRATION_CONFIG" GPU_SIM=flashsim \
-    QEMU_DISPLAY=none OPENGPU_AUTO_DISPLAY=0 BUILD_USERSPACE=1 \
-    REBUILD_CLOUDINIT=1 CLOUDINIT_PACKAGES=0 \
+    QEMU_DISPLAY="${GTK_PROOF_QEMU_DISPLAY:-none}" OPENGPU_AUTO_DISPLAY=0 BUILD_USERSPACE=1 \
+    REBUILD_CLOUDINIT=1 CLOUDINIT_PACKAGES="${CLOUDINIT_PACKAGES:-0}" \
     ARTI_DISPLAY_DUMP="${SCANOUT:-}" ARTI_DISPLAY_DUMP_PIXEL="${SCANOUT_PIXEL:-}" \
+    ARTI_DISPLAY_DUMP_MATCH="${SCANOUT_MATCH:-}" \
+    ARTI_DISPLAY_DUMP_ENABLE="${SCANOUT_ENABLE:-1}" \
+    ARTI_DISPLAY_DUMP_PERIODIC="${GTK_PROOF_SCANOUT_PERIODIC:-0}" \
+    ARTI_DISPLAY_REFRESH_HZ="${ARTI_DISPLAY_REFRESH_HZ:-0}" \
+    QEMU_QMP_SOCKET="${QMP_SOCKET:-}" \
     DISK="$DISK" DEBIAN_BASE="$BASE" SSH_PORT="$PORT" SERIAL_LOG="$SERIAL_LOG" \
     "$GPU_DIR/scripts/run_arti_debian.sh" > "$BOOT_LOG" 2>&1 &
 qemu_pid=$!
@@ -195,26 +278,33 @@ fi
 
 if [ "$GTK_PROOF_SMOKE" = 1 ]; then
     GTK_SMOKE_LOG="$PROOF_WORK/gtk-smoke.log"
-    GTK_SMOKE_TIMEOUT="${GTK_PROOF_FENCE_TIMEOUT_MS:-1800000}"
-    [[ "$GTK_SMOKE_TIMEOUT" =~ ^[0-9]+$ ]] &&
-        [ "${#GTK_SMOKE_TIMEOUT}" -le 10 ] &&
-        [ "$GTK_SMOKE_TIMEOUT" -gt 0 ] &&
-        [ "$GTK_SMOKE_TIMEOUT" -le 2147483647 ] || {
-        echo 'GTK_PROOF_FENCE_TIMEOUT_MS must be 1..2147483647' >&2
+    GTK_SMOKE_TIMEOUT_RAW="${GTK_PROOF_FENCE_TIMEOUT_MS:-1800000}"
+    [[ "$GTK_SMOKE_TIMEOUT_RAW" =~ ^[0-9]+$ ]] &&
+        [ "${#GTK_SMOKE_TIMEOUT_RAW}" -le 10 ] &&
+        [ "$GTK_SMOKE_TIMEOUT_RAW" -le 2147483647 ] || {
+        echo 'GTK_PROOF_FENCE_TIMEOUT_MS must be 0..2147483647' >&2
         exit 1
     }
+    if [ "$GTK_SMOKE_TIMEOUT_RAW" = 0 ]; then
+        GTK_SMOKE_TIMEOUT=2147483647
+    else
+        GTK_SMOKE_TIMEOUT=$((10#$GTK_SMOKE_TIMEOUT_RAW))
+    fi
     # Startup and redraw contain multiple synchronous GPU submissions.
     # Keep the whole-test budget separate from the per-fence budget.
-    GTK_SMOKE_WAIT="${GTK_PROOF_SMOKE_TIMEOUT_S:-$(( (10#$GTK_SMOKE_TIMEOUT + 999) / 1000 * 8 ))}"
+    GTK_SMOKE_WAIT="${GTK_PROOF_SMOKE_TIMEOUT_S:-0}"
     [[ "$GTK_SMOKE_WAIT" =~ ^[0-9]+$ ]] &&
         [ "${#GTK_SMOKE_WAIT}" -le 7 ] &&
-        [ "$GTK_SMOKE_WAIT" -gt 0 ] &&
         [ "$GTK_SMOKE_WAIT" -le 604800 ] || {
-        echo 'GTK_PROOF_SMOKE_TIMEOUT_S must be 1..604800' >&2
+        echo 'GTK_PROOF_SMOKE_TIMEOUT_S must be 0..604800' >&2
         exit 1
     }
     GTK_SMOKE_WAIT=$((10#$GTK_SMOKE_WAIT))
-    echo "=== Check GTK Wayland/OpenGPU smoke window (budget ${GTK_SMOKE_WAIT}s) ==="
+    if [ "$GTK_SMOKE_WAIT" = 0 ]; then
+        echo '=== Check GTK Wayland/OpenGPU smoke window (log-driven, no total timeout) ==='
+    else
+        echo "=== Check GTK Wayland/OpenGPU smoke window (budget ${GTK_SMOKE_WAIT}s) ==="
+    fi
     GTK_SMOKE_CMD=$(cat <<'EOF'
 set -eu
 /root/opengpu_gtk_smoke_build.sh
@@ -242,6 +332,9 @@ startup-animation=none
 animation=none
 close-animation=none
 focus-animation=none
+[output]
+name=Virtual-1
+mode=@GTK_KMS_MODE@
 WESTON_CONFIG
 weston --config=/tmp/opengpu-gtk-weston.ini --backend=drm-backend.so --tty=1 --socket=opengpu-gl >/tmp/weston-gtk-smoke.log 2>&1 & w=$!
 for i in $(seq 1 60); do
@@ -250,11 +343,21 @@ for i in $(seq 1 60); do
     sleep 1
 done
 test -S /run/user/0/opengpu-gl
+if [ '@GTK_KMS_MODE@' = 64x64 ]; then
+    export OPENGPU_GTK_COMPACT=1
+fi
 OPENGPU_GTK_AUTOTEST=1 /root/opengpu_gtk_smoke.bin >/tmp/gtk-client.log 2>&1 & a=$!
-deadline=$(( $(date +%s) + @SMOKE_TIMEOUT_S@ ))
-while [ "$(date +%s)" -lt "$deadline" ]; do
+if [ @SMOKE_TIMEOUT_S@ = 0 ]; then
+    deadline=0
+else
+    deadline=$(( $(date +%s) + @SMOKE_TIMEOUT_S@ ))
+fi
+while [ "$deadline" = 0 ] || [ "$(date +%s)" -lt "$deadline" ]; do
     if grep -qF 'OPENGPU GTK FRAME PASS: active' /tmp/gtk-client.log; then
         cat /tmp/gtk-client.log
+        # Keep both producers alive for the host QMP presentation check.
+        # QEMU teardown in the outer EXIT trap owns their final cleanup.
+        trap 'kill "$logger" 2>/dev/null || true' EXIT
         exit 0
     fi
     if grep -qE 'OPENGPU GTK .*ERROR|shader compile failed|program link failed' /tmp/gtk-client.log; then
@@ -270,11 +373,65 @@ EOF
 )
     GTK_SMOKE_CMD="${GTK_SMOKE_CMD/OPENGPU_FENCE_TIMEOUT_MS=1800000/OPENGPU_FENCE_TIMEOUT_MS=$GTK_SMOKE_TIMEOUT}"
     GTK_SMOKE_CMD="${GTK_SMOKE_CMD//@SMOKE_TIMEOUT_S@/$GTK_SMOKE_WAIT}"
-    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" "$((GTK_SMOKE_WAIT + 300))" "$GTK_SMOKE_CMD" \
+    GTK_SMOKE_CMD="${GTK_SMOKE_CMD//@GTK_KMS_MODE@/$GTK_PROOF_KMS_MODE}"
+    GTK_EXPECT_TIMEOUT=-1
+    [ "$GTK_SMOKE_WAIT" = 0 ] || GTK_EXPECT_TIMEOUT=$((GTK_SMOKE_WAIT + 300))
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" "$GTK_EXPECT_TIMEOUT" "$GTK_SMOKE_CMD" \
         | tee "$GTK_SMOKE_LOG"
     grep -qF 'OPENGPU GTK FRAME PASS' "$GTK_SMOKE_LOG"
     grep -qF 'OPENGPU GTK REDRAW: active' "$GTK_SMOKE_LOG"
+    grep -qF 'OPENGPU GTK FRAME PASS: idle' "$GTK_SMOKE_LOG"
+    grep -qF 'OPENGPU GTK FRAME PASS: active' "$GTK_SMOKE_LOG"
+    grep -qE 'opengpu: complete draw=[0-9]+ status=0 ' "$GTK_SMOKE_LOG"
+    # Save the guest-side logs before QMP polling or teardown can obscure the
+    # compositor's final state.
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 120 \
+        'cat /tmp/gtk-client.log /tmp/weston-gtk-smoke.log; dmesg' \
+        > "$PROOF_WORK/final-guest.log" 2>&1 || true
     echo 'GTK Wayland/OpenGPU smoke proof: PASS'
+fi
+
+if [ "$GTK_PROOF_SMOKE" = 1 ]; then
+    # ARTI's guest-memory dump is the authoritative QEMU framebuffer capture.
+    # It is refreshed by QEMU's display timer and matched against the active
+    # client colour, so client readback alone is deliberately insufficient.
+    if [ "$GTK_SMOKE_WAIT" = 0 ]; then
+        deadline=0
+    else
+        deadline=$(( $(date +%s) + GTK_SMOKE_WAIT ))
+    fi
+    while [ "$deadline" = 0 ] || [ "$(date +%s)" -lt "$deadline" ]; do
+        if [ -f "$SCANOUT" ] && python3 - "$SCANOUT" "$GTK_KMS_WIDTH" "$GTK_KMS_HEIGHT" <<'PY'
+import pathlib
+import re
+import sys
+
+data = pathlib.Path(sys.argv[1]).read_bytes()
+expected = (int(sys.argv[2]), int(sys.argv[3]))
+header = re.match(rb"P6\n([0-9]+) ([0-9]+)\n255\n", data)
+if header is None:
+    raise SystemExit(1)
+size = tuple(map(int, header.groups()))
+if size != expected:
+    raise SystemExit(1)
+pixels = data[header.end():]
+raise SystemExit(0 if bytes.fromhex("f2592e") in
+                 (pixels[i:i + 3] for i in range(0, len(pixels), 3)) else 1)
+PY
+        then
+            break
+        fi
+        # Keep a QMP capture when the selected backend exposes one. Headless
+        # QEMU builds may return a non-scanout console surface; that optional
+        # image is retained for diagnosis while the ARTI dump remains the gate.
+        python3 "$GPU_DIR/scripts/qmp_screendump.py" "$QMP_SOCKET" "$QMP_SCANOUT" \
+            >"$PROOF_WORK/qmp-last-attempt.log" 2>&1 || true
+        sleep 10
+    done
+    [ -f "$SCANOUT" ] || {
+        echo "GTK active client content did not reach QEMU scanout" >&2
+        exit 1
+    }
 fi
 
 if [ "$GTK_PROOF_DESKTOP" = 1 ]; then
@@ -296,29 +453,42 @@ elif [ "$GTK_PROOF_SCISSOR" = 1 ]; then
 fi
 
 if [ -n "${SCANOUT:-}" ]; then
+    # Captures already exist: ARTI dumps on scanout register writes and QMP
+    # dumps on request. Teardown is not itself a capture trigger.
     SCENE=desktop
+    [ "$GTK_PROOF_SMOKE" != 1 ] || SCENE=gtk-smoke
     [ "$GTK_PROOF_SCISSOR" != 1 ] || SCENE=scissor
-    python3 - "$SCANOUT" "${GTK_PROOF_SCANOUT_REFERENCE:-}" "$SCENE" <<'PY'
+    python3 - "$SCANOUT" "${GTK_PROOF_SCANOUT_REFERENCE:-}" "$SCENE" "$GTK_KMS_WIDTH" "$GTK_KMS_HEIGHT" <<'PY'
 import pathlib
 import re
 import sys
 
 path = pathlib.Path(sys.argv[1])
 scene = sys.argv[3]
+expected_width = int(sys.argv[4])
+expected_height = int(sys.argv[5])
 if not path.is_file():
     sys.exit(f"missing QEMU scanout dump: {path}")
 data = path.read_bytes()
 header = re.match(rb"P6\n([0-9]+) ([0-9]+)\n255\n", data)
-if header is None or header.groups() != (b"640", b"480"):
-    sys.exit(f"invalid 640x480 scanout dump: {path}")
+if header is None or tuple(map(int, header.groups())) != (expected_width, expected_height):
+    sys.exit(f"invalid {expected_width}x{expected_height} scanout dump: {path}")
 pixels = data[header.end():]
-if len(pixels) != 640 * 480 * 3:
+if len(pixels) != expected_width * expected_height * 3:
     sys.exit(f"incomplete scanout dump: {path}")
 def pixel(x, y):
-    index = 3 * (y * 640 + x)
+    index = 3 * (y * expected_width + x)
     return pixels[index:index + 3]
 
-if scene == "desktop":
+if scene == "gtk-smoke":
+    if not any(pixels):
+        sys.exit(f"GTK smoke scanout is entirely black: {path}")
+    # The active redraw color is emitted by the GtkGLArea render itself. A
+    # matching pixel in QEMU's scanout proves the compositor presented it.
+    active = bytes.fromhex("f2592e")
+    if active not in (pixels[i:i + 3] for i in range(0, len(pixels), 3)):
+        sys.exit(f"GTK active redraw color missing from scanout: {path}")
+elif scene == "desktop":
     if pixel(1, 1) != bytes.fromhex("243044"):
         sys.exit(f"desktop panel missing from scanout: {path}")
     colors = {pixels[i:i + 3] for i in range(0, len(pixels), 3)}
