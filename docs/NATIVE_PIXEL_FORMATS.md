@@ -52,8 +52,10 @@ Hashes, configuration and scope are recorded in
 The actual 640x480 Weston desktop also passes on both instrumented and PGO
 builds, with visually verified background, panel, launcher and clock. See
 [the desktop qualification](performance/shared-cu-desktop-qualification-2026-10-16.json).
-Clean simulator timing remains pending; instrumented or concurrent guest runs
-are not performance baselines.
+Clean simulator timing records 29.8% less host time on identical real GTK
+trace work and a 22.4% observed desktop startup reduction from PGO and symbol
+ordering. See [the measurements](SIMULATION_PERFORMANCE.md). Instrumented or
+concurrent guest runs are excluded from these comparisons.
 
 Commit `f974cb4` fixes the separate four-CU gradient coherence failure: external staging-write
 IDs could alias CU0 in the directory's requester mask and skip its probe.

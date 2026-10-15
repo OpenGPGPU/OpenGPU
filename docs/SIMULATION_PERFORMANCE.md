@@ -18,8 +18,15 @@ ticks without other active guest or compiler jobs. Median runtime falls from
 time**. Commits, holds, DMA calls/bytes and all output checks match in every
 run. This changes simulator speed, not architectural cycles. See
 [the clean PGO measurements](performance/shared-cu-pgo-2026-10-16.json).
-Paired full-desktop startup timing remains in progress. This candidate has not
-replaced the installed executable described below.
+A clean sequential desktop pair also verifies both captures. First scanout
+falls from **413.5 s with O2 to 320.7 s with PGO**, a **22.4% observed
+reduction**. The two large background triangles take 171.423/172.764 s versus
+133.698/133.964 s. This is one boot per build, sampled every 15 seconds;
+it is not a repeated paired median. Both use the same native-format payload,
+simulation watchdog and model timing settings. Compilation starts only after
+the captures and guest teardown. See
+[the clean startup observations](performance/shared-cu-desktop-startup-2026-10-16.json).
+This candidate has not replaced the installed executable described below.
 
 | Completed textured batches | Worker cycles/lane | Shader cycles/lane | Sampler fetch cycles/lane | Fetch fraction of shader |
 |---|---:|---:|---:|---:|
