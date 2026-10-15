@@ -3,7 +3,7 @@ package opengpu.core.memory
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.graphics.{OmMemoryRequest, OmMemoryResponse, OmWordToLinePort}
+import opengpu.graphics.{CoalescedOmWordToLinePort, OmMemoryRequest, OmMemoryResponse, OmWordToLinePort}
 
 /** A graphics word-port client with its own Sv32 translation TLB.
   *
@@ -19,7 +19,8 @@ class TranslatedWordClient(
   wordTransactions: Int = 4,
   outstanding: Int = 32,
   uncached: Boolean = false,
-  preserveCachePolicy: Boolean = false
+  preserveCachePolicy: Boolean = false,
+  coalesceWrites: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new OmMemoryRequest))
@@ -41,14 +42,15 @@ class TranslatedWordClient(
     val walkActive = Output(Bool())
   })
 
-  private val bridge = Module(new OmWordToLinePort(
-    config, 64, wordTransactions, uncached))
-  bridge.io.in.valid := io.in.valid
-  bridge.io.in.bits := io.in.bits
-  io.in.ready := bridge.io.in.ready
-  io.out.valid := bridge.io.out.valid
-  io.out.bits := bridge.io.out.bits
-  bridge.io.out.ready := io.out.ready
+  private val bridge = if (coalesceWrites)
+    Module(new CoalescedOmWordToLinePort(config, wordTransactions, uncached)).io
+  else Module(new OmWordToLinePort(config, 64, wordTransactions, uncached)).io
+  bridge.in.valid := io.in.valid
+  bridge.in.bits := io.in.bits
+  io.in.ready := bridge.in.ready
+  io.out.valid := bridge.out.valid
+  io.out.bits := bridge.out.bits
+  bridge.out.ready := io.out.ready
 
   private val translator = Module(new GraphicsAddressTranslator(
     config, entries = 16, lineBytes = 64, maxOutstanding = outstanding,
@@ -56,7 +58,7 @@ class TranslatedWordClient(
   translator.io.satp := io.satp
   translator.io.flush := io.flush
   translator.io.pageWalkTransactionId := 0.U
-  translator.io.in <> bridge.io.memoryRequest
+  translator.io.in <> bridge.memoryRequest
   io.translationStall := translator.io.in.valid && !translator.io.in.ready
   io.translationMiss := translator.io.miss
   io.walkActive := translator.io.walkActive
@@ -77,6 +79,6 @@ class TranslatedWordClient(
   responseArb.io.in(1).valid := io.memResp.valid
   responseArb.io.in(1).bits := io.memResp.bits
   io.memResp.ready := responseArb.io.in(1).ready
-  bridge.io.memoryResponse <> responseArb.io.out
+  bridge.memoryResponse <> responseArb.io.out
   io.fault := responseArb.io.out.fire && responseArb.io.out.bits.fault
 }

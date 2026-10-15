@@ -9,7 +9,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 /** Exercise shader instruction fetch and vtex.sample through the host's AXI clients. */
-abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Boolean = false)
+abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Boolean = false,
+    coalesce: Boolean = false, axiBytes: Int = 8)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (scenario <- Seq("translation", "invalid PTE", "page-table bus fault",
       "texture bus fault", "reset during texture read", "instruction translation",
@@ -37,7 +38,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         scenario == "instruction vertex guest-sized fragment"
       simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = vertexShader,
         numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty,
-        parallelGraphics = parallel, exposePerformance = parallel)) { dut =>
+        parallelGraphics = parallel, exposePerformance = parallel,
+        coalesceFramebufferWrites = coalesce, memoryAxiDataBytes = axiBytes)) { dut =>
         initialize(dut)
         val words = mutable.LongMap.empty[BigInt]
         val reads = mutable.ArrayBuffer.empty[BigInt]
@@ -365,7 +367,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
     simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = true,
       numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty,
-      parallelGraphics = parallel)) { dut =>
+      parallelGraphics = parallel, coalesceFramebufferWrites = coalesce,
+      memoryAxiDataBytes = axiBytes)) { dut =>
       initialize(dut)
       val words = mutable.LongMap.empty[BigInt]
       val reads = mutable.ArrayBuffer.empty[BigInt]
@@ -515,3 +518,9 @@ class TwoParallelCuProgrammableTextureAxiSpec
 
 class ParallelCuProgrammableTextureAxiSpec
     extends ProgrammableTextureAxiChecks(Some(4), parallel = true)
+
+class WideAxiParallelCuProgrammableTextureAxiSpec
+    extends ProgrammableTextureAxiChecks(Some(4), parallel = true, axiBytes = 64)
+
+class CoalescedParallelCuProgrammableTextureAxiSpec
+    extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true, axiBytes = 64)

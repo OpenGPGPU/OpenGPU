@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-15",
+  "baseline_commit": "47a8090",
+  "scope": "32x32 gradient copy, four shared16-lane/eight-warp CUs,512-bit AXI; ONLY framebuffer write combining added, flush16cycles,4groups,16word credits. Same service delays as baseline; synthetic GPU cycles, not desktop wall time.",
+  "before_cycles": 23344,
+  "after_cycles": 17921,
+  "speedup": 1.3026058813682273,
+  "cycle_reduction_percent": 23.23080877313228,
+  "before_om_stall_cycles": 16221,
+  "after_om_stall_cycles": 10861,
+  "before_framebuffer_writes": 992,
+  "after_framebuffer_writes": 635,
+  "trace": [
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "traced_cycles": 17906,
+      "phase_worker_cycles": [
+        17834,
+        18028,
+        5,
+        3742,
+        3441,
+        28574
+      ],
+      "peak_staging_outstanding": 2,
+      "cycle_events": {
+        "idle_any": 8731,
+        "arvalid": 511,
+        "rvalid": 511,
+        "write_any": 6922,
+        "staging_without_shader_run": 8365,
+        "staging_outstanding_any": 8432,
+        "awvalid": 977,
+        "bvalid": 977,
+        "staging_blocked": 4248,
+        "raster_stall": 6200,
+        "launch_any": 5,
+        "run_any": 1731,
+        "read_any": 1764,
+        "emit_any": 11853,
+        "output_blocked": 11732,
+        "om_stall": 10861
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 302,
+        "color_write": 324,
+        "depth_write": 311
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-cycles.csv": "7ef6b915708be6ae45a4f279ac800c756e49c66689bb8452de50c731822e4ca9",
+        "cu-4-axi-64-memory.csv": "0e9184071b95141f0673404ea96c9af391cfc87bcf36799f7a49b10a627a89c1"
+      }
+    }
+  ],
+  "validation": {
+    "coalescer_unit": "4 PASS: full-line merging, partial timeout, backpressure, no early ACK, exact original-word reply fanout, same-word hazards, out-of-order/fault ACKs, credit exhaustion",
+    "wide_render": "1 PASS: every32x32color/depthpixel, bank uniforms, max4CUs",
+    "log": ".artifacts/shared-cu-coalescer-first-tests.log",
+    "remaining": "Ordered blend/MSAA, translated write faults/reset, broader shared rendering regression and wall-time qualification are subsequent requirements. Feature remains opt-in."
+  }
+}

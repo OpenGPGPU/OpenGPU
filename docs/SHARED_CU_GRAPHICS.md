@@ -350,6 +350,26 @@ with the wider bus, the four-CU copy scene is 1.65x faster in GPU cycles than
 the initial 64-bit/one-slot configuration. The 512-bit four-CU trace still
 records 16,221 OM stall cycles; this remains the dominant target.
 
-The broader translated shader/fault/reset suite remains a separate required
-regression. Results and overlap-aware counter interpretation are retained in
+The broader translated shader/fault/reset suite also passes all 27 cases,
+including reset recovery and guest-sized fragment and vertex programs.
+Results and overlap-aware counter interpretation are retained in
 [the staging evidence](performance/shared-cu-dual-staging-2026-10-15.json).
+
+## Framebuffer write combining
+
+`--coalesce-framebuffer` enables a word-to-line write combiner only on the
+framebuffer client. Four line buffers merge distinct pixel words; partial
+buffers flush after 16 cycles or when all 16 word credits are occupied. Reads
+remain full-line requests, preserving existing L2 read merging and coherence.
+Each word retains its slot through upstream acknowledgement consumption;
+one physical line acknowledgement fans out to its original word requests.
+Same-word conflicts wait for retirement, and queued line payloads remain
+stable under memory backpressure. No buffered write is acknowledged early.
+
+On the same four-CU 512-bit copy scene, combining alone reduces 23,344 cycles
+to 17,921 (23.2% fewer; 1.30x speedup). Framebuffer writes fall from 992 to 635,
+and OM stalls from 16,221 to 10,861 cycles. Four dedicated unit tests and the
+complete pixel/depth/uniform check pass. Ordered rendering, translated faults,
+reset recovery and simulator wall time remain separate qualification steps;
+this feature is opt-in. Reproduction details and trace hashes are in
+[the write-combining evidence](performance/shared-cu-write-combining-2026-10-15.json).

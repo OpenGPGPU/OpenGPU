@@ -67,6 +67,7 @@ object EmitGpuHostSystemAxi {
         graphicsGpuConfig = if (sharedGraphics) None else Some(GpuConfig(lanes = 4, warps = 2)),
         sharedGraphics = sharedGraphics,
         parallelGraphics = parallelGraphics,
+        coalesceFramebufferWrites = rest.contains("--coalesce-framebuffer"),
         fragCore = fragCore,
         vertCore = vertCore,
         enableFpuBackend = true,

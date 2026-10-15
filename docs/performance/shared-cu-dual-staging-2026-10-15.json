@@ -272,7 +272,8 @@
     "unit": "3 PASS; local tag restoration, stalled worker isolation, out-of-order replies, ID reuse, faults, held requests/responses. Final rerun has no elaboration warnings.",
     "wide_and_ordering": "7 PASS; five wide rendering scenes plus two four-CU ordered 1x/4x MSAA/depth/blend scenes.",
     "log": ".artifacts/shared-cu-staging-dual-id-render-tests.log",
-    "broader_vm_fault_reset_regression": "Pending; not included in the milestone test count."
+    "broader_vm_fault_reset_regression": "27 PASS; ParallelCuProgrammableTextureAxiSpec, including translated instructions/staging/textures, bus faults, reset/recovery, CPU updates and guest shaders. Completed 2026-10-15 16:31:28.",
+    "broader_log": ".artifacts/shared-cu-staging-dual-id-fault-regression.log"
   },
   "interpretation": [
     "At512bits andfourCUs, dual staging saves7.7% GPU cycles (25292to23344).",

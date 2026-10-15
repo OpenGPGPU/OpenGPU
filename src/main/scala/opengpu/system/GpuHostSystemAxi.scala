@@ -64,7 +64,8 @@ class GpuHostSystemAxi(
   exposePerformance: Boolean = false,
   graphicsGpuConfig: Option[GpuConfig] = None,
   sharedGraphics: Boolean = false,
-  parallelGraphics: Boolean = false
+  parallelGraphics: Boolean = false,
+  coalesceFramebufferWrites: Boolean = false
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   require(numComputeUnits > 0)
@@ -273,7 +274,8 @@ class GpuHostSystemAxi(
       uncached = true, preserveCachePolicy = true))
     val fbClient = Module(new TranslatedWordClient(
       gpuConfig, wordPortTransactions, graphicsHostTransactions,
-      uncached = true, preserveCachePolicy = true))
+      uncached = true, preserveCachePolicy = true,
+      coalesceWrites = coalesceFramebufferWrites))
     val texClient = Module(new TranslatedWordClient(
       gpuConfig, wordPortTransactions, graphicsHostTransactions))
     val stagingSelect =

@@ -5,6 +5,13 @@ import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
+class OmWordToLineIO(config: GpuConfig, lineBytes: Int, maxOutstanding: Int) extends Bundle {
+  val in = Flipped(Decoupled(new OmMemoryRequest))
+  val out = Decoupled(new OmMemoryResponse)
+  val memoryRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+  val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
+}
+
 /** Adapts the graphics word-level memory port to the core's line-level memory.
   *
   * The graphics fixed-function stages (`CommandBufferStage`, `OutputMerger`,
@@ -36,14 +43,7 @@ class OmWordToLinePort(
   private val offsetWidth = log2Ceil(lineBytes)
   private val wordsPerLine = lineBytes / 4
 
-  val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new OmMemoryRequest))
-    val out = Decoupled(new OmMemoryResponse)
-    val memoryRequest =
-      Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
-    val memoryResponse = Flipped(
-      Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
-  })
+  val io = IO(new OmWordToLineIO(config, lineBytes, maxOutstanding))
 
   private val wordIdx = io.in.bits.addr(offsetWidth - 1, 2)
   private val lineAddress = Cat(

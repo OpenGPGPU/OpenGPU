@@ -10,7 +10,7 @@ import scala.collection.mutable
 import java.nio.file.{Files, Paths}
 
 /** Qualify the real 16-lane/eight-warp pool before migrating stock Mesa shaders. */
-abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int])
+abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coalesce: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (cus <- cuCounts) {
     it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI" in {
@@ -21,7 +21,8 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int])
       val gpu = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
       simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side),
         gpu, numComputeUnits = cus, fragCore = true, sharedGraphics = true,
-        parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes)) { dut =>
+        parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes,
+        coalesceFramebufferWrites = coalesce)) { dut =>
         initialize(dut)
         val words = mutable.LongMap.empty[BigInt]
         val descriptor = 0x1000
@@ -157,3 +158,4 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int])
 class WideSharedGraphicsSpec extends WideSharedGraphicsChecks(8, Seq(1, 2, 4))
 class MediumAxiSharedGraphicsSpec extends WideSharedGraphicsChecks(32, Seq(1, 4))
 class WideAxiSharedGraphicsSpec extends WideSharedGraphicsChecks(64, Seq(1, 4))
+class CoalescedWideAxiSharedGraphicsSpec extends WideSharedGraphicsChecks(64, Seq(1, 2, 4), coalesce = true)
