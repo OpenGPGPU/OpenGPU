@@ -1,0 +1,438 @@
+{
+  "date": "2026-10-16",
+  "configuration": "FullVS/FS/FPU;16lanes8warps;L2default256sets4ways;64BAXI;OM64/locality;cap112;runtimeVLMAX; samebinary and resources per matchedCUcount",
+  "versions": {
+    "v1": [
+      {
+        "CUs": 1,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 81061,
+        "active_cu_cycles": 42506,
+        "peak_cus": 1,
+        "texture_extent": 1,
+        "buffer_texture_reads": false,
+        "texture_words": 2236,
+        "texture_lines": 2236
+      },
+      {
+        "CUs": 4,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 25884,
+        "active_cu_cycles": 51178,
+        "peak_cus": 4,
+        "texture_extent": 1,
+        "buffer_texture_reads": false,
+        "texture_words": 2236,
+        "texture_lines": 2236
+      },
+      {
+        "CUs": 1,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 78828,
+        "active_cu_cycles": 40273,
+        "peak_cus": 1,
+        "texture_extent": 1,
+        "buffer_texture_reads": true,
+        "texture_words": 2236,
+        "texture_lines": 1
+      },
+      {
+        "CUs": 4,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 23993,
+        "active_cu_cycles": 44073,
+        "peak_cus": 4,
+        "texture_extent": 1,
+        "buffer_texture_reads": true,
+        "texture_words": 2236,
+        "texture_lines": 1
+      },
+      {
+        "CUs": 1,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 101721,
+        "active_cu_cycles": 63166,
+        "peak_cus": 1,
+        "texture_extent": 64,
+        "buffer_texture_reads": false,
+        "texture_words": 8944,
+        "texture_lines": 8944
+      },
+      {
+        "CUs": 4,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 33727,
+        "active_cu_cycles": 82078,
+        "peak_cus": 4,
+        "texture_extent": 64,
+        "buffer_texture_reads": false,
+        "texture_words": 8944,
+        "texture_lines": 8944
+      },
+      {
+        "CUs": 1,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 93854,
+        "active_cu_cycles": 55299,
+        "peak_cus": 1,
+        "texture_extent": 64,
+        "buffer_texture_reads": true,
+        "texture_words": 8944,
+        "texture_lines": 166
+      },
+      {
+        "CUs": 4,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 32300,
+        "active_cu_cycles": 77260,
+        "peak_cus": 4,
+        "texture_extent": 64,
+        "buffer_texture_reads": true,
+        "texture_words": 8944,
+        "texture_lines": 257
+      }
+    ],
+    "v2": [
+      {
+        "CUs": 1,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 81061,
+        "active_cu_cycles": 42506,
+        "peak_cus": 1,
+        "texture_extent": 1,
+        "buffer_texture_reads": false,
+        "texture_words": 2236,
+        "texture_lines": 2236
+      },
+      {
+        "CUs": 4,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 25884,
+        "active_cu_cycles": 51178,
+        "peak_cus": 4,
+        "texture_extent": 1,
+        "buffer_texture_reads": false,
+        "texture_words": 2236,
+        "texture_lines": 2236
+      },
+      {
+        "CUs": 1,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 78828,
+        "active_cu_cycles": 40273,
+        "peak_cus": 1,
+        "texture_extent": 1,
+        "buffer_texture_reads": true,
+        "texture_words": 2236,
+        "texture_lines": 1
+      },
+      {
+        "CUs": 4,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 23993,
+        "active_cu_cycles": 44073,
+        "peak_cus": 4,
+        "texture_extent": 1,
+        "buffer_texture_reads": true,
+        "texture_words": 2236,
+        "texture_lines": 1
+      },
+      {
+        "CUs": 1,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 101319,
+        "active_cu_cycles": 62764,
+        "peak_cus": 1,
+        "texture_extent": 64,
+        "buffer_texture_reads": false,
+        "texture_words": 8944,
+        "texture_lines": 8944
+      },
+      {
+        "CUs": 4,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 31981,
+        "active_cu_cycles": 74569,
+        "peak_cus": 4,
+        "texture_extent": 64,
+        "buffer_texture_reads": false,
+        "texture_words": 8944,
+        "texture_lines": 8944
+      },
+      {
+        "CUs": 1,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 87152,
+        "active_cu_cycles": 48597,
+        "peak_cus": 1,
+        "texture_extent": 64,
+        "buffer_texture_reads": true,
+        "texture_words": 8944,
+        "texture_lines": 166
+      },
+      {
+        "CUs": 4,
+        "axi_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "om_inflight": 64,
+        "fragment_batch_limit": 112,
+        "lanes": 16,
+        "warps": 8,
+        "runtime_shader": true,
+        "cycles": 26637,
+        "active_cu_cycles": 54299,
+        "peak_cus": 4,
+        "texture_extent": 64,
+        "buffer_texture_reads": true,
+        "texture_words": 8944,
+        "texture_lines": 261
+      }
+    ]
+  },
+  "comparisons": [
+    {
+      "texture_extent": 1,
+      "before_cycles_1cu": 81061,
+      "before_cycles_4cu": 25884,
+      "after_cycles_1cu": 78828,
+      "after_cycles_4cu": 23993,
+      "matched_speedup_before": 3.1317029825374747,
+      "matched_speedup_after": 3.2854582586587755,
+      "reduction_4cu_percent": 7.305671457270901
+    },
+    {
+      "texture_extent": 64,
+      "before_cycles_1cu": 101721,
+      "before_cycles_4cu": 33727,
+      "after_cycles_1cu": 87152,
+      "after_cycles_4cu": 26637,
+      "matched_speedup_before": 3.016010911139443,
+      "matched_speedup_after": 3.2718399219131284,
+      "reduction_4cu_percent": 21.02173332938002
+    }
+  ],
+  "validation": {
+    "source_sha256": {
+      "src/main/scala/opengpu/core/memory/TranslatedWordClient.scala": "ebf61c82da5592dd7f53636ff02eb166ac479060a56823460db2f0893ac7b273",
+      "src/main/scala/opengpu/elaboration/EmitGpuHostSystemAxi.scala": "bcda80d212b5275eff52a428065e70dc66284919cdf06d3f2981dbcdfb1fcde0",
+      "src/main/scala/opengpu/graphics/BufferedTextureWordPort.scala": "003c505db5883671df4d3ff3d1680a63927f34b14260a770c06c34f17795365d",
+      "src/main/scala/opengpu/graphics/FragmentWorkerMemory.scala": "ef64b599b2c16cb086fc58a8c74cb5628d5d2e5e7af506eb48c4cf5dc07a3cfd",
+      "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "c8aaf81f09db1d895468b23daa6992614145051eecb13a96842600ad575d17ad",
+      "src/test/scala/opengpu/core/memory/BufferedTranslatedWordClientSpec.scala": "1be18b1693bc3508d3e2fee8141a48c1b9033d38f8ed5c4ab2dc019a9924457e",
+      "src/test/scala/opengpu/graphics/BufferedTextureWordPortSpec.scala": "e6d8e328fbbc2258f4549734ccd9300b41ae5bf74a6f281b2fee192bdfc39de9",
+      "src/test/scala/opengpu/graphics/FragmentWorkerMemorySpec.scala": "1398fd4d3f0a8c6f0687224cacf2821717251eb6fb8b3eb04b3f696be4ff8e79",
+      "src/test/scala/opengpu/system/FullPoolTextureScalingSpec.scala": "351eb0622e9fa0c0256c61706fccc360d081dff803d23c378c3dd20a84961056",
+      "src/test/scala/opengpu/system/ProgrammableTextureAxiSpec.scala": "1ed010a0c3ca524c6dabb7cf31d2daf2b01968eb5d980dd67847d07ea600b639",
+      "src/test/scala/opengpu/system/WideSharedGraphicsSpec.scala": "87ee63c0a3f290434e7898c7e880a78e3332d06eebc622baef1273c2a4bb6603"
+    },
+    "phases": [
+      {
+        "phase": "units",
+        "exit_status": 0,
+        "seconds": 31.777538209222257,
+        "args": [
+          "-s",
+          "opengpu.graphics.BufferedTextureWordPortSpec",
+          "-s",
+          "opengpu.graphics.FragmentWorkerMemorySpec",
+          "-s",
+          "opengpu.core.memory.BufferedTextureTranslatedWordClientSpec",
+          "-s",
+          "opengpu.core.memory.BufferedTranslatedWordClientSpec"
+        ]
+      },
+      {
+        "phase": "integration",
+        "exit_status": 0,
+        "seconds": 650.3049703750294,
+        "args": [
+          "-s",
+          "opengpu.system.BufferedTextureParallelCuProgrammableTextureAxiSpec",
+          "-s",
+          "opengpu.system.BufferedTextureMesaPixelFormatAxiSpec"
+        ]
+      },
+      {
+        "phase": "default-with-translation",
+        "exit_status": 0,
+        "seconds": 47.573528124950826,
+        "args": [
+          "-s",
+          "opengpu.system.BufferedCommandParallelCuProgrammableTextureAxiSpec",
+          "-z",
+          "with translation"
+        ]
+      },
+      {
+        "phase": "default-texture-bus-fault",
+        "exit_status": 0,
+        "seconds": 12.441133707994595,
+        "args": [
+          "-s",
+          "opengpu.system.BufferedCommandParallelCuProgrammableTextureAxiSpec",
+          "-z",
+          "texture bus fault"
+        ]
+      },
+      {
+        "phase": "default-reset-during-texture-read",
+        "exit_status": 0,
+        "seconds": 12.222546834032983,
+        "args": [
+          "-s",
+          "opengpu.system.BufferedCommandParallelCuProgrammableTextureAxiSpec",
+          "-z",
+          "reset during texture read"
+        ]
+      },
+      {
+        "phase": "default-texture-CPU-update",
+        "exit_status": 0,
+        "seconds": 12.236200000159442,
+        "args": [
+          "-s",
+          "opengpu.system.BufferedCommandParallelCuProgrammableTextureAxiSpec",
+          "-z",
+          "texture CPU update"
+        ]
+      },
+      {
+        "phase": "full-pool",
+        "exit_status": 0,
+        "seconds": 688.4232013330329,
+        "args": [
+          "-s",
+          "opengpu.system.FullPoolSolidTextureBaselineSpec",
+          "-s",
+          "opengpu.system.FullPoolSolidTextureBufferedSpec",
+          "-s",
+          "opengpu.system.FullPoolTextureBaselineSpec",
+          "-s",
+          "opengpu.system.FullPoolTextureBufferedSpec"
+        ]
+      }
+    ]
+  },
+  "scope": "All8matchedscenes perversion pass every4096colour/depthpixel,uniformsentinels,and actualpeakCUcount. Newcachedmodels use pipelinedtexture requests/replies. No hosttime claim.",
+  "limits": [
+    "Matchedcap112 speedups;full-batchcap128one-CUcontrolstillpending.",
+    "These are RTL scene cycles, not full desktop startup.",
+    "Full640native/GTKqualification of newRTL stillpending.",
+    "Cache v1 spatialgain4.2%wasnotpromoted; v2 removesrequest/replybubble."
+  ],
+  "evidence": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-cache",
+  "source_versions": {
+    "v1": "2bd506a",
+    "v2": "4118986"
+  },
+  "texture_arbiter_source_sha256": {
+    "v1": "e480e68897b98dcf49d95c50debe4d0aeebf514c15e483c21d06976c80bdf47f",
+    "v2": "ef64b599b2c16cb086fc58a8c74cb5628d5d2e5e7af506eb48c4cf5dc07a3cfd"
+  }
+}

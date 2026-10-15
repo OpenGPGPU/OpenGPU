@@ -67,7 +67,22 @@ Two throughput regressions fail before that change and pass afterward;
 29 unit/routing/translation tests, 30 cached pipeline tests and four targeted
 uncached pipeline checks pass. See
 [the throughput validation](performance/texture-port-throughput-validation-2026-10-16.json).
-Matched full-pool measurements are rerunning before any desktop regeneration.
+The revised full-pool tests pass all eight scenes. Including both queue and
+cache changes, the four-CU 64x64-texture scene falls from **33,727 to 26,637
+cycles (21.0%)**; the matched 1-to-4-CU speedup rises from **3.02x to 3.27x**.
+The 1x1 texture scene falls from **25,884 to 23,993 cycles (7.3%)**, with
+**3.29x** matched scaling. Each scene checks every colour/depth pixel, uniform
+sentinels and actual peak CU use, with the complete 16-lane/eight-warp
+vertex/fragment/FPU pool and the same runtime shader binary. These are
+cap-112 matched comparisons; the cap-128 one-CU control and new full desktop
+measurements remain pending. See
+[the cycle measurements](performance/texture-line-reuse-cycles-2026-10-16.json).
+
+The wider-callback experiment passes its unit and guest correctness checks,
+but six clean native GLES guests show **9,395.220 ms with eight-byte callbacks
+versus 9,503.885 ms with 64-byte callbacks** (1.2% slower). Eight-byte callbacks
+remain the default; 64-byte callbacks remain opt-in, not a claimed speedup.
+See [the rejected callback-default experiment](performance/wide-callback-experiment-2026-10-16.json).
 
 See [the trace measurements](performance/shared-cu-weston-trace-2026-10-16.json)
 for raw phase counts, hashes, configuration and limitations. A bare guest module
