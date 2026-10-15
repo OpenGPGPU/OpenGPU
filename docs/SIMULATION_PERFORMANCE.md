@@ -5,9 +5,15 @@
 The native-format candidate passes 18 compute replays, 21 GLES cases and
 64x64 Weston/GTK readback plus scanout. An actual Weston/GTK trace replays
 29,720 calls and 2,564,082 ticks, with every DMA write checked and no truncated
-tail. All four shared shader workers run concurrently. Full 640x480 desktop
-qualification and clean O2 versus PGO timing remain in progress; this candidate
-has not replaced the installed executable described below.
+tail. All four shared shader workers run concurrently. The actual 640x480
+Debian/Weston desktop also passes: the captured blue background, panel, launcher
+and clock were visually verified on both instrumented and PGO builds. The PGO
+capture was observed 336.7 seconds after QEMU start while another guest was
+active; this is not a clean performance comparison. See the
+[desktop qualification report](performance/shared-cu-desktop-qualification-2026-10-16.json)
+and [verified scanout](images/shared-four-cu-weston-20261016.png).
+Clean O2 versus PGO timing remains in progress. This candidate has not replaced
+the installed executable described below.
 
 | Completed textured batches | Worker cycles/lane | Shader cycles/lane | Sampler fetch cycles/lane | Fetch fraction of shader |
 |---|---:|---:|---:|---:|
@@ -30,9 +36,8 @@ experiment; they would leave architectural cycle counts unchanged.
 See [the trace measurements](performance/shared-cu-weston-trace-2026-10-16.json)
 for raw phase counts, hashes, configuration and limitations. A bare guest module
 also hit its 30-second kernel watchdog during the first large desktop draw.
-The full-resolution retry uses the documented simulation settings: a 30-minute
-watchdog and four-millisecond fence slices. This retry must complete before
-the desktop is considered qualified.
+The passing full-resolution retries use the documented simulation settings:
+a 30-minute watchdog and four-millisecond fence slices.
 
 ## Installed RTL optimization (2026-10-15)
 

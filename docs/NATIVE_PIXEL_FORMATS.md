@@ -49,8 +49,11 @@ EGL config deduplication now preserves different native visuals, and the
 stock swizzle shader preserves green and alpha in canonical RGBA order.
 Hashes, configuration and scope are recorded in
 [the native qualification report](performance/shared-cu-native-qualification-2026-10-16.json).
-Full 640x480 Weston desktop qualification and clean simulator timing remain
-pending; the instrumented qualification run is not a performance baseline.
+The actual 640x480 Weston desktop also passes on both instrumented and PGO
+builds, with visually verified background, panel, launcher and clock. See
+[the desktop qualification](performance/shared-cu-desktop-qualification-2026-10-16.json).
+Clean simulator timing remains pending; instrumented or concurrent guest runs
+are not performance baselines.
 
 Commit `f974cb4` fixes the separate four-CU gradient coherence failure: external staging-write
 IDs could alias CU0 in the directory's requester mask and skip its probe.
