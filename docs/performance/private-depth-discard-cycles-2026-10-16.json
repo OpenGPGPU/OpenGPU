@@ -543,5 +543,28 @@
     "Instrumented QEMU and concurrent compilation/other correctness guests: draw_ms is diagnostic, not host speed evidence.",
     "This measures one controlled nontexture draw, not full desktop acceleration.",
     "New fixed-LOD RTL not included; its native full-model pipeline is still active."
-  ]
+  ],
+  "benchmark_harness_guard_validation": {
+    "result": ".artifacts/dcguard/result.json",
+    "frozen_gate": {
+      "source_sha256": "93c46b5b8cfd0bc5d4d3aae6f0c475b1966f9534d8308785d33c0070147ab27d",
+      "path": "/Users/duckdonald/workspace/gpu/.artifacts/dcguard/run-guest-frozen.sh",
+      "sha256": "d1d3ebf9b42bd0f68c0d3edc569c3504c7484b832d57b7753773df82e0680128"
+    },
+    "runs": [
+      {
+        "name": "baseline",
+        "gpu_cycles": 331985,
+        "payload_unchanged": true,
+        "pixel_pass": true
+      },
+      {
+        "name": "candidate",
+        "gpu_cycles": 238608,
+        "payload_unchanged": true,
+        "pixel_pass": true
+      }
+    ],
+    "scope": "Separate final-harness validation pair; excluded from the three-pair median. Each run used a frozen shell gate and checked every guest payload SHA256 after completion."
+  }
 }

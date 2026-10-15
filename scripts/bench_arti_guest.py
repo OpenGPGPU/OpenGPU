@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import statistics
 import subprocess
 
@@ -74,9 +75,20 @@ def main():
             payload_reports[name] = {"path": str(selected),
                 "sha256": {p.name: digest(p) for p in sorted(driver.iterdir()) if p.is_file()}}
     work.mkdir(parents=True, exist_ok=False)
+    # Bash can resume reading a script after a long guest command. Freeze it
+    # so edits in the worktree cannot shift its current file offset.
+    gate_source = root / "scripts/run_gtk_coverage_guest.sh"
+    gate = work / "run-guest-frozen.sh"
+    source = gate_source.read_text()
+    anchor = 'GPU_DIR="$(cd "$(dirname "$0")/.." && pwd)"'
+    if source.count(anchor) != 1:
+        raise SystemExit("Guest gate root anchor changed; update the freezer")
+    gate.write_text(source.replace(anchor, "GPU_DIR=" + shlex.quote(str(root)), 1))
     report = {"binaries": {name: {"path": str(path), "sha256": digest(path)}
                            for name, path in binaries.items()},
               "base_image": str(args.base_image.resolve()),
+              "frozen_gate": {"source_sha256": digest(gate_source),
+                              "path": str(gate), "sha256": digest(gate)},
               "scope": "native GLES triangle with160x120bounding box in640x480mode; fresh guest; pixel proof required; no scanout capture",
               "workload": "Weston uniform-colour/opacity shader control; no texture sampling",
               "payload": payload_reports.get("baseline") if payloads["baseline"] == payloads["candidate"] else None,
@@ -113,7 +125,7 @@ def main():
             if args.record_trace:
                 env["ARTI_MODEL_TRACE"] = str(work / (run_dir.name + ".trace"))
             with (work / (run_dir.name + ".log")).open("w") as log:
-                result = subprocess.run(["bash", "scripts/run_gtk_coverage_guest.sh"],
+                result = subprocess.run(["bash", str(gate)],
                                         cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT)
             entry = read_guest_result(run_dir, name, round_index, result.returncode)
             boot = (run_dir / "boot.log").read_text(errors="replace") if (run_dir / "boot.log").exists() else ""
