@@ -29,12 +29,17 @@ def inspect_frame(path):
         count, body = colors[0]
         rows = {str(y): [image.getpixel((x, y)) for x in (8, 128, 256, 384, 632)]
                 for y in (15, 465)} if image.size == (640, 480) else {}
-        panel = any(sum(sum(abs(v[i] - body[i]) for i in range(3)) > 50
+        panel = any(sum(max(v) > 8 and sum(abs(v[i] - body[i]) for i in range(3)) > 50
                         for v in values) >= 4 for values in rows.values())
         coverage = count / (image.width * image.height)
+        # The launcher sets background-color=0xff336699. Reject a swapped
+        # channel order or an unfinished black region before visual review.
+        background = all(abs(body[i] - (51, 102, 153)[i]) <= 2 for i in range(3))
+        black = sum(n for n, rgb in colors if max(rgb) <= 8)
         return dict(size=list(image.size), dominant_rgb=list(body), coverage=coverage,
+                    background_matches=background, black_pixels=black,
                     rows=rows, candidate=image.size == (640, 480) and coverage > .5
-                    and max(body) > 70 and max(body) - min(body) > 30 and panel)
+                    and background and black < image.width * image.height // 100 and panel)
 
 
 def main():

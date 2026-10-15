@@ -1,5 +1,39 @@
 # Full-system simulation performance investigation
 
+## Shared four-CU candidate: real Weston trace (2026-10-16)
+
+The native-format candidate passes 18 compute replays, 21 GLES cases and
+64x64 Weston/GTK readback plus scanout. An actual Weston/GTK trace replays
+29,720 calls and 2,564,082 ticks, with every DMA write checked and no truncated
+tail. All four shared shader workers run concurrently. Full 640x480 desktop
+qualification and clean O2 versus PGO timing remain in progress; this candidate
+has not replaced the installed executable described below.
+
+| Completed textured batches | Worker cycles/lane | Shader cycles/lane | Sampler fetch cycles/lane | Fetch fraction of shader |
+|---|---:|---:|---:|---:|
+| 64x32 texture | 87.49 | 72.60 | 52.55 | 72.38% |
+| 64x64 texture | 73.41 | 60.51 | 42.77 | 70.67% |
+
+These are per-worker architectural counts, which overlap across CUs. They
+identify texture fetch as the main cost within these textured shader batches;
+they are not fractions of whole-guest wall time. Host compilation and a
+separate correctness guest were active, so this replay's seconds are excluded
+from performance comparisons. A texture line buffer with explicit job/VM
+invalidation is the next RTL experiment.
+
+The trace also reveals eight-byte write callbacks on the 64-byte AXI bus:
+the simulator adapter splits a wide beat into multiple callbacks. Consequently,
+615,696 callback writes do not mean that many AXI transactions. The fill engine
+already issues complete cache lines. Wider callbacks are a separate simulator
+experiment; they would leave architectural cycle counts unchanged.
+
+See [the trace measurements](performance/shared-cu-weston-trace-2026-10-16.json)
+for raw phase counts, hashes, configuration and limitations. A bare guest module
+also hit its 30-second kernel watchdog during the first large desktop draw.
+The full-resolution retry uses the documented simulation settings: a 30-minute
+watchdog and four-millisecond fence slices. This retry must complete before
+the desktop is considered qualified.
+
 ## Installed RTL optimization (2026-10-15)
 
 The default launcher now uses the qualified RTL changes in `34d8f7a` and

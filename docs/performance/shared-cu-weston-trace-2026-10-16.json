@@ -1,0 +1,250 @@
+{
+  "scope": "Exact replay of actual64x64 Weston/GTK and scanout; not full640startup qualification or timing comparison",
+  "qualification": {
+    "exit_status": 0,
+    "passed": true,
+    "markers": {
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true
+    },
+    "seconds": 128.88696604198776,
+    "scope": "64x64 real Weston/GTK trace for exact matching work replay and architectural phase analysis; guest walltime excluded while compiler/full640guest run"
+  },
+  "trace_sha256": "8cd3ae3a9bc055ad09f66d83e28403d5695e772bfdb8e9b6081ea4c9fb222861",
+  "replay": {
+    "calls": 29720,
+    "ticks": 2564082,
+    "commits": 44108347,
+    "holds": 522047205,
+    "dma_reads": 94302,
+    "dma_writes": 615696,
+    "dma_bytes": 10763256,
+    "seconds": 76.495510083,
+    "truncated_tail": false,
+    "warmup_calls": 0,
+    "sample": 0
+  },
+  "phase_order": [
+    "idle",
+    "write",
+    "launch",
+    "run",
+    "read",
+    "emit"
+  ],
+  "sampler_order": [
+    "idle",
+    "level",
+    "wrap",
+    "index",
+    "tap",
+    "fetch",
+    "blend",
+    "mix",
+    "done"
+  ],
+  "completed_batches": [
+    {
+      "pc": "0xc0400000",
+      "texture": [
+        0,
+        0
+      ],
+      "completed_batches": 42,
+      "lanes": 4504,
+      "phase_worker_cycles": [
+        0,
+        30031,
+        42,
+        15245,
+        9210,
+        13752
+      ],
+      "sampler_worker_cycles": [
+        15245,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cycles_per_lane": 15.159857904085257,
+      "shader_cycles_per_lane": 3.3847690941385435,
+      "fetch_cycles_per_lane": 0.0,
+      "fetch_fraction_of_shader": 0.0
+    },
+    {
+      "pc": "0xc0400000",
+      "texture": [
+        64,
+        32
+      ],
+      "completed_batches": 29,
+      "lanes": 3068,
+      "phase_worker_cycles": [
+        0,
+        21314,
+        29,
+        222722,
+        6935,
+        17414
+      ],
+      "sampler_worker_cycles": [
+        40037,
+        3068,
+        3068,
+        3068,
+        3068,
+        161209,
+        3068,
+        3068,
+        3068
+      ],
+      "cycles_per_lane": 87.48826597131682,
+      "shader_cycles_per_lane": 72.59517601043025,
+      "fetch_cycles_per_lane": 52.545306388526726,
+      "fetch_fraction_of_shader": 0.7238126453605841
+    },
+    {
+      "pc": "0xc0400000",
+      "texture": [
+        64,
+        64
+      ],
+      "completed_batches": 157,
+      "lanes": 17132,
+      "phase_worker_cycles": [
+        0,
+        119673,
+        157,
+        1036708,
+        41078,
+        60023
+      ],
+      "sampler_worker_cycles": [
+        184117,
+        17132,
+        17132,
+        17132,
+        17132,
+        732667,
+        17132,
+        17132,
+        17132
+      ],
+      "cycles_per_lane": 73.40876721923885,
+      "shader_cycles_per_lane": 60.51295820686435,
+      "fetch_cycles_per_lane": 42.76599346252627,
+      "fetch_fraction_of_shader": 0.7067245550338186
+    }
+  ],
+  "raw_phase_log": "CYCLE_PROBE_GLOBAL ticks=2564082 staging_without_run=28678 phase_any=2216903,100470,230,395304,48915,72125,\nCYCLE_PROBE_WORKERS peak_run=4\nCYCLE_PROBE_WORKER id=0 run=327834 batches=62\nCYCLE_PROBE_WORKER id=1 run=338086 batches=62\nCYCLE_PROBE_WORKER id=2 run=323146 batches=57\nCYCLE_PROBE_WORKER id=3 run=287458 batches=47\nCYCLE_PROBE pc=3225419776 texture=0x0 batches=42 lanes=4504 states=0,30031,42,15245,9210,13752, sampler=15245,0,0,0,0,0,0,0,0,\nCYCLE_PROBE pc=3225419776 texture=64x32 batches=29 lanes=3068 states=0,21314,29,222722,6935,17414, sampler=40037,3068,3068,3068,3068,161209,3068,3068,3068,\nCYCLE_PROBE pc=3225419776 texture=64x64 batches=157 lanes=17132 states=0,119673,157,1036708,41078,60023, sampler=184117,17132,17132,17132,17132,732667,17132,17132,17132,\n",
+  "wrapper_probe": {
+    "prefixes": [
+      "host_host_core_rp_parallelFrag_worker",
+      "host_host_core_rp_parallelFrag_worker_1",
+      "host_host_core_rp_parallelFrag_worker_2",
+      "host_host_core_rp_parallelFrag_worker_3"
+    ],
+    "archive_sha256": "18e2fcea1eb068b02d9f1a130fd80a66b60ac8f53f76f62aa31c137548ff7881",
+    "wrapper_sha256": "646d76c454d336fffa3f02752116c5831092848f17f429d00dd5cd81766b1de4",
+    "header_sha256": "5b89f4a995d5a6758ba71611cbe1fa48a13d0a3d9f051a832d318c29b823ef92",
+    "scope": "Exact architectural phase counts on replay; completed batches only; not simulator performance timing"
+  },
+  "limits": [
+    "Worker-cycle counts overlap across four CUs; do not sum them into elapsed cycles.",
+    "Phase aggregates exclude incomplete batches at trace end. Global counters include all replay ticks.",
+    "Host compilation and another guest were active; replay seconds are diagnostic only.",
+    "DMA callback counts are not AXI transaction counts: the adapter splits wide writes into8byte callbacks."
+  ],
+  "callback_traffic": {
+    "write_shapes": {
+      "bytes8-maskbits8": 610197,
+      "bytes8-maskbits4": 5499
+    },
+    "read_sizes": {
+      "4": 3294,
+      "64": 91008
+    },
+    "read_ids": {
+      "0": 60275,
+      "1": 28663,
+      "2": 5130,
+      "3": 234
+    },
+    "write_ids": {
+      "0": 314365,
+      "1": 289451,
+      "2": 10806,
+      "3": 1074
+    },
+    "calls": 29720,
+    "totals": {
+      "clocks": 85643,
+      "dma_reads": 94302,
+      "dma_writes": 615696
+    },
+    "busy_windows": [
+      {
+        "start": 3584,
+        "calls": 512,
+        "clocks": 5380,
+        "dma_reads": 379,
+        "dma_writes": 336
+      },
+      {
+        "start": 28672,
+        "calls": 512,
+        "clocks": 5322,
+        "dma_reads": 275,
+        "dma_writes": 200
+      },
+      {
+        "start": 1024,
+        "calls": 512,
+        "clocks": 5292,
+        "dma_reads": 0,
+        "dma_writes": 0
+      },
+      {
+        "start": 19968,
+        "calls": 512,
+        "clocks": 5241,
+        "dma_reads": 0,
+        "dma_writes": 0
+      },
+      {
+        "start": 5120,
+        "calls": 512,
+        "clocks": 3279,
+        "dma_reads": 1448,
+        "dma_writes": 90206
+      },
+      {
+        "start": 9216,
+        "calls": 512,
+        "clocks": 3211,
+        "dma_reads": 6116,
+        "dma_writes": 68454
+      },
+      {
+        "start": 12288,
+        "calls": 512,
+        "clocks": 2891,
+        "dma_reads": 0,
+        "dma_writes": 0
+      },
+      {
+        "start": 12800,
+        "calls": 512,
+        "clocks": 2843,
+        "dma_reads": 0,
+        "dma_writes": 0
+      }
+    ],
+    "note": "Clock events locate busy windows; they are not an exact GPU tick count. Use replayer reported ticks and matching DMA for timings."
+  }
+}
