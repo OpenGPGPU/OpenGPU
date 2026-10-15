@@ -304,7 +304,9 @@
       "after_cycles_4cu": 23993,
       "matched_speedup_before": 3.1317029825374747,
       "matched_speedup_after": 3.2854582586587755,
-      "reduction_4cu_percent": 7.305671457270901
+      "reduction_4cu_percent": 7.305671457270901,
+      "full_batch_cycles_1cu": 78034,
+      "conservative_speedup": 3.252365273204685
     },
     {
       "texture_extent": 64,
@@ -314,7 +316,9 @@
       "after_cycles_4cu": 26637,
       "matched_speedup_before": 3.016010911139443,
       "matched_speedup_after": 3.2718399219131284,
-      "reduction_4cu_percent": 21.02173332938002
+      "reduction_4cu_percent": 21.02173332938002,
+      "full_batch_cycles_1cu": 86360,
+      "conservative_speedup": 3.2421068438637985
     }
   ],
   "validation": {
@@ -421,7 +425,7 @@
   },
   "scope": "All8matchedscenes perversion pass every4096colour/depthpixel,uniformsentinels,and actualpeakCUcount. Newcachedmodels use pipelinedtexture requests/replies. No hosttime claim.",
   "limits": [
-    "Matchedcap112 speedups;full-batchcap128one-CUcontrolstillpending.",
+    "Speedups include both matchedcap112 and faster fullbatch128one-CU controls; only explicitly scopedscene results,not adesktopwalltime claim.",
     "These are RTL scene cycles, not full desktop startup.",
     "Full640native/GTKqualification of newRTL stillpending.",
     "Cache v1 spatialgain4.2%wasnotpromoted; v2 removesrequest/replybubble."
@@ -434,5 +438,43 @@
   "texture_arbiter_source_sha256": {
     "v1": "e480e68897b98dcf49d95c50debe4d0aeebf514c15e483c21d06976c80bdf47f",
     "v2": "ef64b599b2c16cb086fc58a8c74cb5628d5d2e5e7af506eb48c4cf5dc07a3cfd"
-  }
+  },
+  "full_batch_controls": [
+    {
+      "CUs": 1,
+      "axi_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "om_inflight": 64,
+      "fragment_batch_limit": 0,
+      "lanes": 16,
+      "warps": 8,
+      "runtime_shader": true,
+      "cycles": 78034,
+      "active_cu_cycles": 39485,
+      "peak_cus": 1,
+      "texture_extent": 1,
+      "buffer_texture_reads": true,
+      "texture_words": 2236,
+      "texture_lines": 1
+    },
+    {
+      "CUs": 1,
+      "axi_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "om_inflight": 64,
+      "fragment_batch_limit": 0,
+      "lanes": 16,
+      "warps": 8,
+      "runtime_shader": true,
+      "cycles": 86360,
+      "active_cu_cycles": 47811,
+      "peak_cus": 1,
+      "texture_extent": 64,
+      "buffer_texture_reads": true,
+      "texture_words": 8944,
+      "texture_lines": 166
+    }
+  ]
 }

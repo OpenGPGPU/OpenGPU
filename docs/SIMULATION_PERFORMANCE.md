@@ -74,8 +74,10 @@ The 1x1 texture scene falls from **25,884 to 23,993 cycles (7.3%)**, with
 **3.29x** matched scaling. Each scene checks every colour/depth pixel, uniform
 sentinels and actual peak CU use, with the complete 16-lane/eight-warp
 vertex/fragment/FPU pool and the same runtime shader binary. These are
-cap-112 matched comparisons; the cap-128 one-CU control and new full desktop
-measurements remain pending. See
+cap-112 matched comparisons. The full-capacity 128-lane one-CU controls also
+pass: **78,034 cycles** for 1x1 and **86,360 cycles** for 64x64 textures,
+giving conservative four-CU speedups of **3.25x** and **3.24x** respectively.
+New full desktop measurements remain pending. See
 [the cycle measurements](performance/texture-line-reuse-cycles-2026-10-16.json).
 
 The wider-callback experiment passes its unit and guest correctness checks,
