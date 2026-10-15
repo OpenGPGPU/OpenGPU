@@ -769,3 +769,25 @@ superpage and two-level 4 KiB mappings, each at three physical address bases,
 with and without a preceding invalidate. This validates the simulator fix;
 Debian desktop qualification remains separate. See
 [simulator evidence](performance/shared-cu-simulator-state-indices-2026-10-15.json).
+
+## Preserve synchronous scalar operands under backpressure
+
+The first shared-pool guest pass completed compute and eight native GLES
+fixtures, then `gl_fade` failed its first vector color load on CU one, warp five.
+The runtime staging parameters were correct. A scalar add had instead received
+zero for both source operands, producing a null pointer.
+
+A focused RTL test reproduced the cause: `ScalarRegisterMacroManager` retained
+the metadata for a synchronous register read while issue was blocked, but read
+the operands again after the SRAM response cycle had expired. It now captures
+both operands on the first stalled response cycle and retains them until issue
+accepts that response. This costs 65 bits per CU and adds no unstalled pipeline
+cycle. The independent-request throughput check still passes.
+
+All 24 relevant RTL checks pass. The new regression first fails with zero in
+place of `0x80c00140`, then checks both operands after a six-cycle stall and a
+new read launched as the retained response leaves. Other checks cover scalar,
+FPU and compute execution, seven-warps runtime VLMAX address/load/store behavior,
+and dependent instruction/data page walks on the complete FPU-enabled pool.
+The full desktop model is rebuilding; native guest and desktop qualification
+remain pending. See [operand retention evidence](performance/shared-cu-scalar-rf-stall-2026-10-15.json).

@@ -113,6 +113,11 @@ class ScalarRegisterMacroManager(
   val requestForwardRd = Reg(UInt(5.W))
   val readValid = RegInit(false.B)
   val readBits = Reg(new RegisterReservation(config))
+  // SyncReadMem guarantees its response only in the cycle after launch.
+  // Retain that response if the issue slot cannot accept it immediately.
+  val readDataSaved = RegInit(false.B)
+  val readRs1Data = Reg(UInt(config.xLen.W))
+  val readRs2Data = Reg(UInt(config.xLen.W))
   val issueValid = RegInit(false.B)
   val issueBits = Reg(new ScalarIssueOperands(config))
   val writebackValid = RegNext(io.writeback.valid, false.B)
@@ -201,16 +206,23 @@ class ScalarRegisterMacroManager(
   when(launchRead) {
     readValid := true.B
     readBits := requestBits
+    readDataSaved := false.B
   }.elsewhen(moveRead) {
     readValid := false.B
+  }
+
+  when(readValid && !moveRead && !readDataSaved) {
+    readDataSaved := true.B
+    readRs1Data := registerFile.io.rs1Data
+    readRs2Data := registerFile.io.rs2Data
   }
 
   when(canLoadIssue) {
     issueValid := readValid
     when(readValid) {
       issueBits.request := readBits
-      issueBits.rs1Data := registerFile.io.rs1Data
-      issueBits.rs2Data := registerFile.io.rs2Data
+      issueBits.rs1Data := Mux(readDataSaved, readRs1Data, registerFile.io.rs1Data)
+      issueBits.rs2Data := Mux(readDataSaved, readRs2Data, registerFile.io.rs2Data)
     }
   }
 

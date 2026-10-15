@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-15",
+  "scope": "RTL scalar synchronous register-read backpressure correctness; shared-pool guest qualification pending",
+  "trigger": "A synchronous register read completes while the issue slot is full. Its readValid metadata waits, but SyncReadMem does not retain a valid response in later disabled cycles.",
+  "guest_evidence": {
+    "proof": ".artifacts/sc-scalar-issue/boot.log",
+    "workload": "gl_fade, runtime VLMAX shader, four shared 16-lane/eight-warp FPU-enabled CUs",
+    "faulting_cu": 1,
+    "warp": 5,
+    "instruction_pc": "0xc0400024",
+    "instruction": "add x6,x5,x6",
+    "observed_operands": [
+      "0x0",
+      "0x0"
+    ],
+    "expected_operands": [
+      "0x80c00140",
+      "0x600"
+    ],
+    "result": "zero staging pointer; following vector load faults all16lanes"
+  },
+  "before": {
+    "regression": "ScalarRegisterMacroManagerSpec: retain both synchronous operands while issue is backpressured",
+    "result": "FAIL: rs1Data0 instead of0x80c00140; first3existingcasesPASS",
+    "log": ".artifacts/shared-cu-scalar-rf-stall-before.log"
+  },
+  "fix": "Capture both read operands on the first stalled response cycle and retain them until issue accepts the response. Reset the capture flag for every new read.",
+  "storage_per_cu_bits": 65,
+  "unstalled_behavior": "No added pipeline cycle; consecutive independent request test still passes.",
+  "after": {
+    "passed_unique_checks": 24,
+    "focused_register_issue": 5,
+    "scalar_fpu_compute_and_full_pool": 19,
+    "coverage": [
+      "Delayed read retains both operands through six cycles of backpressure.",
+      "Pending fresh read launches when the saved response leaves; both request identities and operands are checked.",
+      "Unstalled synchronous reads, dependency forwarding, consecutive independent requests and scalar metadata alignment.",
+      "Scalar/FPU backend and compute-unit regressions.",
+      "Seven-warps runtime VLMAX staging arithmetic, vector loads and exact stores on full FPU-enabled four-CU system.",
+      "Dependent instruction/data Sv32 walks with exact rounding outputs on full pool."
+    ],
+    "logs": [
+      ".artifacts/shared-cu-scalar-rf-stall-final.log",
+      ".artifacts/shared-cu-scalar-rf-integration.log"
+    ]
+  },
+  "reproduce": [
+    "sbt \"testOnly opengpu.core.backend.register.ScalarRegisterMacroManagerSpec opengpu.core.backend.issue.ScalarIssueStageSpec\"",
+    "sbt \"testOnly opengpu.core.backend.ScalarBackendSpec opengpu.core.backend.FpuBackendSpec opengpu.core.GpuComputeUnitSpec opengpu.system.RuntimeVectorAddressSpec opengpu.system.SharedCuTwoLevelWalkSpec\""
+  ],
+  "qualification": "Fresh 640x480 shared-pool model is rebuilding from corrected emitted RTL. Native gl_fade and remaining guest/desktop tests must pass before installation or PGO qualification."
+}

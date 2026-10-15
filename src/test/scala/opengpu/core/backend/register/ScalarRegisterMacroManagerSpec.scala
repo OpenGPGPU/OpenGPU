@@ -133,4 +133,56 @@ class ScalarRegisterMacroManagerSpec extends AnyFlatSpec {
     }
   }
 
+  it should "retain both synchronous operands while issue is backpressured" in {
+    simulate(new ScalarRegisterMacroManager(GpuConfig(warps = 8))) { dut =>
+      dut.io.request.valid.poke(false.B)
+      dut.io.issue.ready.poke(false.B)
+      dut.io.writeback.valid.poke(false.B)
+      dut.io.cancel.valid.poke(false.B)
+      dut.reset.poke(true.B)
+      dut.clock.step()
+      dut.reset.poke(false.B)
+      for ((warp, rd, value) <- Seq((5, 5, 0x80c00140L), (5, 6, 0x600L),
+          (6, 5, 0x12345678L), (6, 6, 0x42L))) {
+        dut.io.writeback.valid.poke(true.B)
+        dut.io.writeback.bits.warpId.poke(warp.U)
+        dut.io.writeback.bits.rd.poke(rd.U)
+        dut.io.writeback.bits.data.poke(value.U)
+        dut.clock.step()
+      }
+      dut.io.writeback.valid.poke(false.B)
+      dut.clock.step(2)
+      request(dut, warp = 0, rs1 = 0, rd = 0, useRs1 = false, writeRd = false)
+      dut.io.request.ready.expect(true.B)
+      dut.clock.step()
+      request(dut, warp = 5, rs1 = 5, rd = 0, writeRd = false)
+      dut.io.request.bits.rs2.poke(6.U)
+      dut.io.request.bits.useRs2.poke(true.B)
+      dut.io.request.ready.expect(true.B)
+      dut.clock.step()
+      // Queue a fresh read behind the stalled response. It launches in the
+      // same cycle that the retained response finally moves into issue.
+      request(dut, warp = 6, rs1 = 5, rd = 0, writeRd = false)
+      dut.io.request.bits.rs2.poke(6.U)
+      dut.io.request.bits.useRs2.poke(true.B)
+      dut.io.request.ready.expect(true.B)
+      dut.clock.step()
+      dut.io.request.valid.poke(false.B)
+      dut.clock.step(6)
+      dut.io.issue.valid.expect(true.B)
+      dut.io.issue.bits.request.warpId.expect(0.U)
+      dut.io.issue.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.issue.valid.expect(true.B)
+      dut.io.issue.bits.request.warpId.expect(5.U)
+      dut.io.issue.bits.rs1Data.expect(0x80c00140L.U)
+      dut.io.issue.bits.rs2Data.expect(0x600.U)
+      dut.clock.step()
+      dut.io.issue.valid.expect(true.B)
+      dut.io.issue.bits.request.warpId.expect(6.U)
+      dut.io.issue.bits.rs1Data.expect(0x12345678L.U)
+      dut.io.issue.bits.rs2Data.expect(0x42.U)
+    }
+  }
+
 }
