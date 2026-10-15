@@ -13,16 +13,20 @@ import java.nio.file.{Files, Paths}
 abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coalesce: Boolean = false,
     side: Int = 32, aluIterations: Int = 0, omInflight: Int = 16, omLocality: Boolean = false,
     fragmentBatchLimit: Int = 0, bufferCommandReads: Boolean = false,
-    lanes: Int = 16, warps: Int = 8, runtimeShader: Boolean = false)
+    lanes: Int = 16, warps: Int = 8, runtimeShader: Boolean = false,
+    enableFpuBackend: Boolean = false, vertCore: Boolean = false,
+    gpuConfig: Option[GpuConfig] = None)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (cus <- cuCounts) {
     it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations OM=$omInflight cap=$fragmentBatchLimit lanes=$lanes warps=$warps runtime=$runtimeShader)" in {
       val capacity = lanes * warps
       val stride = 4 * capacity
       val bankStride = (9 * stride + 32 + 63) & ~63
-      val gpu = GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2)
+      val gpu = gpuConfig.getOrElse(GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2))
+      require(gpu.lanes == lanes && gpu.warps == warps)
       simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight, omLocality = omLocality, fragmentBatchLimit = fragmentBatchLimit),
-        gpu, numComputeUnits = cus, fragCore = true, sharedGraphics = true,
+        gpu, numComputeUnits = cus, fragCore = true, vertCore = vertCore,
+        enableFpuBackend = enableFpuBackend, sharedGraphics = true,
         parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes,
         coalesceFramebufferWrites = coalesce, bufferCommandReads = bufferCommandReads)) { dut =>
         initialize(dut)
@@ -33,6 +37,10 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         val kernarg = 0x10000
         val color = 0x30000
         val depth = 0x40000
+        val vertexProgram = 0x5000
+        val vertexBuffer = 0x6000
+        val vertexKernarg = 0x50000
+        val vertexBankStride = 16 * stride + 256
         val sentinel = 0x13579bdfL
         def store(base: Int, data: Seq[Long]): Unit = data.zipWithIndex.foreach {
           case (value, i) => words(base.toLong + i * 4) = BigInt(value & 0xffffffffL)
@@ -78,18 +86,43 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         store(program, shader)
         val vertices = Seq(-65536L, -65536L, 0L, 65536L,
           65536L, -65536L, 0L, 65536L, -65536L, 65536L, 0L, 65536L)
-        store(commands, vertices ++ Seq(255L, 0L, 0L, 0L, 255L, 0L, 0L, 0L, 255L) ++
+        val vertexShader = if (vertCore) {
+          def sliceAddress(slice: Int): Seq[Long] =
+            if (slice == 0) Seq(0x00028313L)
+            else Seq((slice.toLong << 20) | 0x00000313L, 0x03e30333L, 0x00628333L)
+          val code = Seq(0x00249f13L, 0x00241293L, 0x005082b3L, 0x01007357L) ++
+            (0 until 8).flatMap { slice =>
+              sliceAddress(slice) ++ Seq(0x02036087L) ++
+                sliceAddress(slice + 8) ++ Seq(0x020360a7L)
+            } ++ Seq(0x30500073L)
+          store(vertexProgram, code)
+          for (v <- 0 until 3) {
+            val packed = Seq(0xff0000ffL, 0x00ff00ffL, 0x0000ffffL)(v)
+            val z = Seq(0L, 4096L, 2048L)(v)
+            store(vertexBuffer + v * 32, vertices.slice(v * 4, v * 4 + 4) ++
+              Seq(packed, z, 0L, 0L))
+          }
+          code
+        } else Seq.empty[Long]
+        val record = if (vertCore)
+          Seq(vertexBuffer.toLong, 3L, 32L, vertexProgram.toLong,
+            vertexKernarg.toLong, vertexBankStride.toLong, 0L) ++ Seq.fill(17)(0L) ++
+            Seq(program.toLong, kernarg.toLong) ++ Seq.fill(8)(0L) ++
+            Seq(bankStride.toLong) ++ Seq.fill(5)(0L)
+        else vertices ++ Seq(255L, 0L, 0L, 0L, 255L, 0L, 0L, 0L, 255L) ++
           Seq(0L, 4096L, 2048L) ++ Seq(program.toLong, kernarg.toLong) ++ Seq.fill(8)(0L) ++
-          Seq(bankStride.toLong) ++ Seq.fill(5)(0L))
+          Seq(bankStride.toLong) ++ Seq.fill(5)(0L)
+        store(commands, record)
         store(descriptor, Seq(1L << 16, commands.toLong, color.toLong, depth.toLong,
           side * 4L, 0x81L) ++ Seq.fill(10)(0L))
         store(color, Seq.fill(side * side)(0x12345678L))
         store(depth, Seq.fill(side * side)(0x00ffffffL))
         for (bank <- 0 until 2 * cus)
           store(kernarg + bank * bankStride + 9 * stride, Seq.fill((bankStride - 9 * stride) / 4)(sentinel))
-        val basePrefix = if (axiBytes == 8) s"cu-$cus" else s"cu-$cus-axi-$axiBytes"
-        val tracePrefix = if (side == 32 && aluIterations == 0) basePrefix else
-          s"$basePrefix-side-$side-alu-$aluIterations"
+        val tracePrefix = s"cu-$cus-axi-$axiBytes-side-$side-alu-$aluIterations" +
+          s"-lanes-$lanes-warps-$warps-cap-$fragmentBatchLimit-om-$omInflight" +
+          s"-l2-${gpu.l2Sets}x${gpu.l2Ways}-fpu-$enableFpuBackend-vert-$vertCore" +
+          s"-runtime-$runtimeShader-coalesce-$coalesce-locality-$omLocality-buffer-$bufferCommandReads"
         val traceDirectory = sys.env.get("WIDE_GRAPHICS_TRACE_DIR").map(Paths.get(_))
         val cycleTrace = new StringBuilder("start_cycle,duration,events_hex\n")
         val memoryTrace = new StringBuilder("cycle,operation,address_hex\n")
@@ -136,12 +169,32 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         axiWrite(dut, GpuCommandMmioRegs.SOURCE, descriptor)
         axiWrite(dut, GpuCommandMmioRegs.BYTES, 64)
         axiWrite(dut, GpuCommandMmioRegs.SUBMIT, 1)
+        var pixelsPassed = false
+        def saveMetadata(): Unit = traceDirectory.foreach { dir =>
+          val shaderWords = shader.map(w => "\"" + f"$w%08x" + "\"").mkString(",")
+          val vertexWords = vertexShader.map(w => "\"" + f"$w%08x" + "\"").mkString(",")
+          val metadata = s"""{
+            "cus":$cus,"axi_data_bytes":$axiBytes,"side":$side,"alu_loops":$aluIterations,
+            "lanes":$lanes,"warps":$warps,"bank_count":${2 * cus},"bank_stride":$bankStride,
+            "fragment_batch_limit":$fragmentBatchLimit,"om_inflight":$omInflight,
+            "l2_sets":${gpu.l2Sets},"l2_ways":${gpu.l2Ways},
+            "fpu_backend":$enableFpuBackend,"vertex_stage":$vertCore,
+            "runtime_shader":$runtimeShader,"pixel_checks_passed":$pixelsPassed,
+            "descriptor":$descriptor,"commands":$commands,"program":$program,
+            "kernarg":$kernarg,"color":$color,"depth":$depth,"shader_words":[$shaderWords],
+            "command_bytes":${record.size * 4},"vertex_program":$vertexProgram,
+            "vertex_buffer":$vertexBuffer,"vertex_kernarg":$vertexKernarg,
+            "vertex_bank_stride":$vertexBankStride,"vertex_shader_words":[$vertexWords]
+          }"""
+          Files.writeString(dir.resolve(s"$tracePrefix-metadata.json"), metadata)
+        }
         def saveTrace(): Unit = traceDirectory.foreach { dir =>
           val finalCycleTrace = cycleTrace.toString + lastTrace.map(old =>
             s"$traceStart,${traceCycle - traceStart},${old.toString(16)}\n").getOrElse("")
           Files.createDirectories(dir)
           Files.writeString(dir.resolve(s"$tracePrefix-cycles.csv"), finalCycleTrace)
           Files.writeString(dir.resolve(s"$tracePrefix-memory.csv"), memoryTrace.toString)
+          saveMetadata()
         }
         try {
           serviceMemoryMaster(dut, readLine, writeAckDelay = 12,
@@ -171,8 +224,11 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         println(s"WIDE_SHARED_GRAPHICS_PHASES CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight phases=${phases.mkString(",")} staging_outstanding_cycles=$outstanding staging_blocked=$blocked output_blocked=$outputBlocked om_stall=$omStall raster_stall=$rasterStall")
         val completion = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
         assert((completion & 0xff) == 91 && completion.testBit(15))
-        dut.io.performance.get.system.maxActiveComputeUnits.expect(cus.U)
-        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight fragment_batch_limit=$fragmentBatchLimit lanes=$lanes warps=$warps runtime_shader=$runtimeShader cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$cus")
+        val peakCus = dut.io.performance.get.system.maxActiveComputeUnits.peek().litValue
+        assert(peakCus == cus, s"render used at most $peakCus of $cus configured CUs")
+        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight fragment_batch_limit=$fragmentBatchLimit lanes=$lanes warps=$warps runtime_shader=$runtimeShader cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$peakCus")
+        val pixelDump = new StringBuilder("x,y,color_hex,expected_color_hex,depth,expected_depth\n")
+        val mismatches = mutable.ArrayBuffer.empty[String]
         for (y <- 0 until side; x <- 0 until side) {
           val offset = (y * side + x) * 4L
           val covered = x > 0 && y > 0 && x + y <= side
@@ -183,13 +239,20 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           val b = 255L * y / side
           val expected = if (covered) (r << 24) | (g << 16) | (b << 8) | 255L else 0x12345678L
           val expectedDepth = if (covered) 4096L * x / side + 2048L * y / side else 0x00ffffffL
-          assert(words(color + offset) == BigInt(expected),
-            f"CUs=$cus ($x,$y) color=${words(color + offset)} expected=0x$expected%08x")
-          assert(words(depth + offset) == BigInt(expectedDepth),
-            s"CUs=$cus ($x,$y) depth=${words(depth + offset)} expected=$expectedDepth")
+          val actual = words(color + offset)
+          val actualDepth = words(depth + offset)
+          pixelDump.append(s"$x,$y,${actual.toString(16)},${expected.toHexString},$actualDepth,$expectedDepth\n")
+          if (actual != BigInt(expected) || actualDepth != BigInt(expectedDepth))
+            mismatches += s"($x,$y) color=0x${actual.toString(16)} expected=0x${expected.toHexString} depth=$actualDepth expected=$expectedDepth"
         }
+        traceDirectory.foreach { dir =>
+          Files.writeString(dir.resolve(s"$tracePrefix-pixels.csv"), pixelDump.toString)
+        }
+        assert(mismatches.isEmpty, s"CUs=$cus: ${mismatches.size} mismatches: ${mismatches.take(12).mkString("; ")}")
         for (bank <- 0 until 2 * cus; word <- 0 until (bankStride - 9 * stride) / 4)
           assert(words(kernarg + bank * bankStride + 9L * stride + word * 4) == BigInt(sentinel))
+        pixelsPassed = true
+        saveMetadata()
       }
     }
   }

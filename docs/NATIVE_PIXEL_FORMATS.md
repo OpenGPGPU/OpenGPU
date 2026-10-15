@@ -42,6 +42,8 @@ check all five buffer layouts; isolated device compilation passes.
 Another 31 texture-instruction/fragment-stage RTL checks pass, including
 bilinear/trilinear alpha filtering and helper/output-control regressions.
 
-Fresh full-model GLES/GTK qualification is still pending. The separate full
-four-CU gradient cache-coherence failure is unresolved; these format checks
-do not qualify its performance numbers.
+Fresh full-model GLES/GTK qualification is still pending. Commit `f974cb4`
+fixes the separate four-CU gradient coherence failure: external staging-write
+IDs could alias CU0 in the directory's requester mask and skip its probe.
+All 27 L2 tests and the matched complete-pool 1/2/4-CU scenes now pass. See
+[the full-pool measurements](performance/shared-cu-full-pool-2026-10-15.json).

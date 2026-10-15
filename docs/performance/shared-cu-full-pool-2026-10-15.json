@@ -1,0 +1,277 @@
+{
+  "date": "2026-10-15",
+  "gpu_revision": "f974cb4c73b640c4657328fede51a554197d636e",
+  "configuration": {
+    "width": 64,
+    "height": 64,
+    "lanes": 16,
+    "warps": 8,
+    "fpu_backend": true,
+    "vertex_stage": true,
+    "shared_pool": true,
+    "parallel_fragments": true,
+    "axi_data_bytes": 64,
+    "l2_sets": 256,
+    "l2_ways": 4,
+    "om_inflight": 64,
+    "om_locality": true,
+    "coalesce": true,
+    "buffer_command_reads": true
+  },
+  "fragment_shader_sha256": "a063f047629bfba7969b8962241a6a36c6f090d4aaf657fb5e7df1e3854ff7ef",
+  "vertex_shader_sha256": "954f66f1c755a02e405f34035592afbe3ae28ba55ec1413aaac36a203b28ef40",
+  "shader_identity": "Both shader binaries are identical across all four resource configurations; VLMAX and launch x9 determine capacity.",
+  "scenes": [
+    {
+      "cus": 1,
+      "fragment_batch_limit": 0,
+      "cycles": 48512,
+      "traced_cycles": 48497,
+      "active_cu_cycles": 10335,
+      "peak_cus": 1,
+      "pixel_checks": "all4096color+depth+uniformsentinelsPASS",
+      "phase_worker_cycles": [
+        3544,
+        26501,
+        18,
+        9148,
+        4632,
+        4654
+      ],
+      "cycle_events": {
+        "idle_any": 3544,
+        "arvalid": 1059,
+        "rvalid": 1076,
+        "awvalid": 2077,
+        "bvalid": 2093,
+        "write_any": 26501,
+        "raster_stall": 43638,
+        "staging_without_shader_run": 31133,
+        "staging_outstanding_any": 26308,
+        "launch_any": 18,
+        "run_any": 9148,
+        "read_any": 4632,
+        "emit_any": 4654,
+        "output_blocked": 2429,
+        "om_stall": 525
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 1,
+        "commands_read": 3,
+        "vertex_input_read": 24,
+        "vertex_staging_write": 32,
+        "vertex_instructions_read": 5,
+        "vertex_staging_read": 32,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 433,
+        "color_write": 392,
+        "depth_write": 393
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-0-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-cycles.csv": "6a83c5ca780ce01e390d8b6491d534479618ee2e86766ffdb184f326d691c24b",
+        "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-0-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-memory.csv": "a42e4fdf4847997fcdb47f675c34675caa5ff4447bb0d4eb86ff1fe96ef3c1dc",
+        "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-0-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-metadata.json": "375c624a562dc6238129626e276ad709f94f0738f4207f76dd55a62c3ba18c78",
+        "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-0-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-pixels.csv": "8f131cec4f2f639b622c7ec06fe06aba7a7174a9f12f76841e21e9075d883a36"
+      }
+    },
+    {
+      "cus": 1,
+      "fragment_batch_limit": 112,
+      "cycles": 48732,
+      "traced_cycles": 48717,
+      "active_cu_cycles": 10555,
+      "peak_cus": 1,
+      "pixel_checks": "all4096color+depth+uniformsentinelsPASS",
+      "phase_worker_cycles": [
+        3582,
+        26589,
+        20,
+        9370,
+        4680,
+        4476
+      ],
+      "cycle_events": {
+        "idle_any": 3582,
+        "arvalid": 1084,
+        "rvalid": 1098,
+        "awvalid": 2097,
+        "bvalid": 2110,
+        "raster_stall": 43005,
+        "write_any": 26589,
+        "staging_without_shader_run": 31269,
+        "staging_outstanding_any": 26269,
+        "launch_any": 20,
+        "run_any": 9370,
+        "read_any": 4680,
+        "emit_any": 4476,
+        "output_blocked": 2261,
+        "om_stall": 406
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 1,
+        "commands_read": 3,
+        "vertex_input_read": 24,
+        "vertex_staging_write": 32,
+        "vertex_instructions_read": 5,
+        "vertex_staging_read": 32,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 458,
+        "color_write": 405,
+        "depth_write": 400
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-cycles.csv": "35fa49f9f7b76a11ca066c54fd2c9010c6776c11459fc624a5bcaa17392cbbf3",
+        "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-memory.csv": "ceb0688e7598d60dc3ea2003f5136bd32475ba7ebe46764c53e780a8eeaa12e1",
+        "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-metadata.json": "99f3dadea0ac7e34bbc9a6d67da017aaace74df0002e08d5841d7709e226745c",
+        "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-pixels.csv": "8f131cec4f2f639b622c7ec06fe06aba7a7174a9f12f76841e21e9075d883a36"
+      }
+    },
+    {
+      "cus": 2,
+      "fragment_batch_limit": 112,
+      "cycles": 26470,
+      "traced_cycles": 26455,
+      "active_cu_cycles": 10607,
+      "peak_cus": 2,
+      "pixel_checks": "all4096color+depth+uniformsentinelsPASS",
+      "phase_worker_cycles": [
+        6476,
+        27011,
+        20,
+        9422,
+        5158,
+        4823
+      ],
+      "cycle_events": {
+        "idle_any": 3988,
+        "arvalid": 1057,
+        "rvalid": 1104,
+        "awvalid": 2048,
+        "bvalid": 2098,
+        "write_any": 16300,
+        "staging_without_shader_run": 16247,
+        "staging_outstanding_any": 18966,
+        "raster_stall": 20691,
+        "launch_any": 20,
+        "run_any": 7327,
+        "read_any": 4888,
+        "staging_blocked": 37,
+        "emit_any": 4689,
+        "output_blocked": 2585,
+        "om_stall": 579
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 1,
+        "commands_read": 3,
+        "vertex_input_read": 24,
+        "vertex_staging_write": 32,
+        "vertex_instructions_read": 5,
+        "vertex_staging_read": 32,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 431,
+        "color_write": 380,
+        "depth_write": 376
+      },
+      "trace_sha256": {
+        "cu-2-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-cycles.csv": "79afafb64405aa7a8b4bb1e0bdbd2f3f3a22f5549a22239dac52890418858cfc",
+        "cu-2-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-memory.csv": "1a23d76c8b8bf14fdbfecce5cd227631836ba5f69e27bbebd5632c84baff0027",
+        "cu-2-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-metadata.json": "16b49be9357fa5d858896583fe3dce699c466612619d349ea01352d157dba68c",
+        "cu-2-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-pixels.csv": "8f131cec4f2f639b622c7ec06fe06aba7a7174a9f12f76841e21e9075d883a36"
+      }
+    },
+    {
+      "cus": 4,
+      "fragment_batch_limit": 112,
+      "cycles": 15702,
+      "traced_cycles": 15687,
+      "active_cu_cycles": 10923,
+      "peak_cus": 4,
+      "pixel_checks": "all4096color+depth+uniformsentinelsPASS",
+      "phase_worker_cycles": [
+        13223,
+        27910,
+        20,
+        9738,
+        5516,
+        6341
+      ],
+      "cycle_events": {
+        "idle_any": 4642,
+        "arvalid": 1049,
+        "rvalid": 1111,
+        "awvalid": 2032,
+        "bvalid": 2127,
+        "write_any": 11035,
+        "staging_without_shader_run": 6549,
+        "staging_outstanding_any": 11907,
+        "raster_stall": 9922,
+        "staging_blocked": 147,
+        "launch_any": 20,
+        "run_any": 6370,
+        "read_any": 4653,
+        "emit_any": 5153,
+        "output_blocked": 3288,
+        "om_stall": 1043
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 1,
+        "commands_read": 3,
+        "vertex_input_read": 24,
+        "vertex_staging_write": 32,
+        "vertex_instructions_read": 5,
+        "vertex_staging_read": 32,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 423,
+        "color_write": 376,
+        "depth_write": 364
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-cycles.csv": "7a98e9697ce176e2d770a4a0adb0dcf449c6ae24433157ba87529b628c8f906a",
+        "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-memory.csv": "9ed9aa057b28f8395095051cf14aba523cdf7d57a6e8a03a5046eb109917756d",
+        "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-metadata.json": "e24f75292a629b5be9301f30b0fb40ba71ef10e5dc27726b5a558ab1b5a1d5d9",
+        "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-pixels.csv": "8f131cec4f2f639b622c7ec06fe06aba7a7174a9f12f76841e21e9075d883a36"
+      }
+    }
+  ],
+  "speedup": {
+    "matched_1_to_4": 3.103553687428353,
+    "conservative_fullbatch_1_to_4": 3.0895427334097567
+  },
+  "scope": "GPU cycles for a 64x64 gradient scene on complete VS/FS/FPU shared pool. Not simulator wall-time or Debian startup.",
+  "fixed_bug": {
+    "commit": "f974cb4",
+    "before": {
+      "mismatched_color_pixels": 471,
+      "cycles": 15672,
+      "depth": "correct"
+    },
+    "after": {
+      "mismatched_color_pixels": 0,
+      "cycles": 15702,
+      "depth": "correct"
+    },
+    "unit_regression": "fails before atmissingCU0probe;27L2testsPASS after"
+  },
+  "phase_order": [
+    "idle",
+    "write",
+    "launch",
+    "run",
+    "read",
+    "emit"
+  ],
+  "next_bottleneck": "Four-CU trace has6549cycles with staging active and no shader execution,11035cycles with some worker staging writes, and5153cycles with some worker emitting. Counts overlap; do not add them. Vertex frontend and common staging/retirement remain serialized.",
+  "artifacts": {
+    "log": ".artifacts/shared-cu/format-native/full-pool-final.log",
+    "trace_directory": ".artifacts/shared-cu/traces/full-pool-final",
+    "analysis_sha256": "23980d651d5ad13aab93922bb49c515515c9d1cc2d6f94a2a7e85187c81dce0f"
+  }
+}
