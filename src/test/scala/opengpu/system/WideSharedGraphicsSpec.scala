@@ -15,7 +15,8 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
     fragmentBatchLimit: Int = 0, bufferCommandReads: Boolean = false,
     lanes: Int = 16, warps: Int = 8, runtimeShader: Boolean = false,
     enableFpuBackend: Boolean = false, vertCore: Boolean = false,
-    gpuConfig: Option[GpuConfig] = None)
+    gpuConfig: Option[GpuConfig] = None, textureExtent: Int = 0,
+    bufferTextureReads: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (cus <- cuCounts) {
     it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations OM=$omInflight cap=$fragmentBatchLimit lanes=$lanes warps=$warps runtime=$runtimeShader)" in {
@@ -28,7 +29,8 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         gpu, numComputeUnits = cus, fragCore = true, vertCore = vertCore,
         enableFpuBackend = enableFpuBackend, sharedGraphics = true,
         parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes,
-        coalesceFramebufferWrites = coalesce, bufferCommandReads = bufferCommandReads)) { dut =>
+        coalesceFramebufferWrites = coalesce, bufferCommandReads = bufferCommandReads,
+        bufferTextureReads = bufferTextureReads)) { dut =>
         initialize(dut)
         val words = mutable.LongMap.empty[BigInt]
         val descriptor = 0x1000
@@ -40,6 +42,10 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         val vertexProgram = 0x5000
         val vertexBuffer = 0x6000
         val vertexKernarg = 0x50000
+        val texture = 0x80000
+        val textureColor = 0x115395ffL
+        require(textureExtent >= 0 && textureExtent <= 64)
+        require(textureExtent == 0 || runtimeShader)
         val vertexBankStride = 16 * stride + 256
         val sentinel = 0x13579bdfL
         def store(base: Int, data: Seq[Long]): Unit = data.zipWithIndex.foreach {
@@ -72,7 +78,17 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           Seq((aluIterations.toLong << 20) | (7L << 7) | 0x13L) ++
             Seq.fill(16)(0x02204157L) ++ Seq(0xfff38393L, branch)
         }
-        val shader = if (runtimeShader) {
+        val shader = if (textureExtent > 0) {
+          // Runtime VLMAX and physical-capacity stride, identical on 1/4 CUs.
+          // UVs vary across a uniformly coloured texture, exercising line
+          // locality without making the pixel oracle depend on sampler math.
+          def sliceAddress(slice: Int): Seq[Long] =
+            Seq((slice.toLong << 20) | 0x00000313L, 0x03e30333L, 0x00628333L)
+          Seq(0x00249f13L, 0x00241293L, 0x005082b3L, 0x01007357L) ++
+            sliceAddress(4) ++ Seq(0x02036087L) ++
+            sliceAddress(5) ++ Seq(0x02036107L, 0x062081abL) ++
+            sliceAddress(6) ++ Seq(0x020361a7L, 0x30500073L)
+        } else if (runtimeShader) {
           // The exact same binary for every lane/warp/CU count. x9 supplies
           // capacity, x8 the warp base; vsetvli selects VLMAX at execution.
           Seq(0x00249f13L, 0x00241293L, 0x005082b3L, 0x01007357L,
@@ -100,7 +116,8 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
             val packed = Seq(0xff0000ffL, 0x00ff00ffL, 0x0000ffffL)(v)
             val z = Seq(0L, 4096L, 2048L)(v)
             store(vertexBuffer + v * 32, vertices.slice(v * 4, v * 4 + 4) ++
-              Seq(packed, z, 0L, 0L))
+              Seq(packed, z, if (textureExtent > 0 && v == 1) 65536L else 0L,
+                if (textureExtent > 0 && v == 2) 65536L else 0L))
           }
           code
         } else Seq.empty[Long]
@@ -110,11 +127,16 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
             Seq(program.toLong, kernarg.toLong) ++ Seq.fill(8)(0L) ++
             Seq(bankStride.toLong) ++ Seq.fill(5)(0L)
         else vertices ++ Seq(255L, 0L, 0L, 0L, 255L, 0L, 0L, 0L, 255L) ++
-          Seq(0L, 4096L, 2048L) ++ Seq(program.toLong, kernarg.toLong) ++ Seq.fill(8)(0L) ++
+          Seq(0L, 4096L, 2048L) ++ Seq(program.toLong, kernarg.toLong) ++
+          (if (textureExtent > 0) Seq(0L, 0L, 65536L, 0L, 0L, 65536L, 0L, 0L)
+           else Seq.fill(8)(0L)) ++
           Seq(bankStride.toLong) ++ Seq.fill(5)(0L)
         store(commands, record)
         store(descriptor, Seq(1L << 16, commands.toLong, color.toLong, depth.toLong,
-          side * 4L, 0x81L) ++ Seq.fill(10)(0L))
+          side * 4L, 0x81L, if (textureExtent > 0) texture.toLong else 0L,
+          textureExtent.toLong | textureExtent.toLong << 16,
+          if (textureExtent > 0) 0x101L else 0L) ++ Seq.fill(7)(0L))
+        if (textureExtent > 0) store(texture, Seq.fill(textureExtent * textureExtent)(textureColor))
         store(color, Seq.fill(side * side)(0x12345678L))
         store(depth, Seq.fill(side * side)(0x00ffffffL))
         for (bank <- 0 until 2 * cus)
@@ -122,7 +144,8 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         val tracePrefix = s"cu-$cus-axi-$axiBytes-side-$side-alu-$aluIterations" +
           s"-lanes-$lanes-warps-$warps-cap-$fragmentBatchLimit-om-$omInflight" +
           s"-l2-${gpu.l2Sets}x${gpu.l2Ways}-fpu-$enableFpuBackend-vert-$vertCore" +
-          s"-runtime-$runtimeShader-coalesce-$coalesce-locality-$omLocality-buffer-$bufferCommandReads"
+          s"-runtime-$runtimeShader-coalesce-$coalesce-locality-$omLocality-buffer-$bufferCommandReads" +
+          s"-texture-$textureExtent-texbuffer-$bufferTextureReads"
         val traceDirectory = sys.env.get("WIDE_GRAPHICS_TRACE_DIR").map(Paths.get(_))
         val cycleTrace = new StringBuilder("start_cycle,duration,events_hex\n")
         val memoryTrace = new StringBuilder("cycle,operation,address_hex\n")
@@ -158,6 +181,8 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         axiWrite(dut, RenderHostRegs.IRQ, 1)
         val startCycles = dut.io.performance.get.system.cycles.peek().litValue
         val startCuCycles = dut.io.performance.get.system.activeCuCycles.peek().litValue
+        val startTextureWords = dut.io.performance.get.textureWordReads.peek().litValue
+        val startTextureLines = dut.io.performance.get.textureLineReads.peek().litValue
         val startPhases = (0 until 6).map(i => dut.io.performance.get.fragmentPhaseWorkerCycles(i).peek().litValue)
         val startOutstanding = dut.io.performance.get.stagingOutstandingCycles.peek().litValue
         val startStagingBlocked = dut.io.performance.get.stagingBlockedCycles.peek().litValue
@@ -180,6 +205,7 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
             "l2_sets":${gpu.l2Sets},"l2_ways":${gpu.l2Ways},
             "fpu_backend":$enableFpuBackend,"vertex_stage":$vertCore,
             "runtime_shader":$runtimeShader,"pixel_checks_passed":$pixelsPassed,
+            "texture":$texture,"texture_extent":$textureExtent,"buffer_texture_reads":$bufferTextureReads,
             "descriptor":$descriptor,"commands":$commands,"program":$program,
             "kernarg":$kernarg,"color":$color,"depth":$depth,"shader_words":[$shaderWords],
             "command_bytes":${record.size * 4},"vertex_program":$vertexProgram,
@@ -215,6 +241,8 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         } finally { saveTrace() }
         val cycles = dut.io.performance.get.system.cycles.peek().litValue - startCycles
         val cuCycles = dut.io.performance.get.system.activeCuCycles.peek().litValue - startCuCycles
+        val textureWords = dut.io.performance.get.textureWordReads.peek().litValue - startTextureWords
+        val textureLines = dut.io.performance.get.textureLineReads.peek().litValue - startTextureLines
         val phases = (0 until 6).map(i => dut.io.performance.get.fragmentPhaseWorkerCycles(i).peek().litValue - startPhases(i))
         val outstanding = dut.io.performance.get.stagingOutstandingCycles.peek().litValue - startOutstanding
         val blocked = dut.io.performance.get.stagingBlockedCycles.peek().litValue - startStagingBlocked
@@ -226,7 +254,13 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         assert((completion & 0xff) == 91 && completion.testBit(15))
         val peakCus = dut.io.performance.get.system.maxActiveComputeUnits.peek().litValue
         assert(peakCus == cus, s"render used at most $peakCus of $cus configured CUs")
-        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight fragment_batch_limit=$fragmentBatchLimit lanes=$lanes warps=$warps runtime_shader=$runtimeShader cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$peakCus")
+        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight fragment_batch_limit=$fragmentBatchLimit lanes=$lanes warps=$warps runtime_shader=$runtimeShader cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$peakCus texture_extent=$textureExtent buffer_texture_reads=$bufferTextureReads texture_words=$textureWords texture_lines=$textureLines")
+        if (textureExtent > 0) {
+          assert(textureWords > 0 && textureLines > 0)
+          if (bufferTextureReads) assert(textureLines < textureWords,
+            "buffered texture sampling must reuse lines, not only pass pixels")
+          else assert(textureLines == textureWords)
+        }
         val pixelDump = new StringBuilder("x,y,color_hex,expected_color_hex,depth,expected_depth\n")
         val mismatches = mutable.ArrayBuffer.empty[String]
         for (y <- 0 until side; x <- 0 until side) {
@@ -237,7 +271,8 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           val r = 255L * (side - x - y) / side
           val g = 255L * x / side
           val b = 255L * y / side
-          val expected = if (covered) (r << 24) | (g << 16) | (b << 8) | 255L else 0x12345678L
+          val expected = if (!covered) 0x12345678L else if (textureExtent > 0) textureColor
+            else (r << 24) | (g << 16) | (b << 8) | 255L
           val expectedDepth = if (covered) 4096L * x / side + 2048L * y / side else 0x00ffffffL
           val actual = words(color + offset)
           val actualDepth = words(depth + offset)

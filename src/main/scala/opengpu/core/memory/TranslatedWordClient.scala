@@ -3,7 +3,7 @@ package opengpu.core.memory
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.graphics.{BufferedCommandWordPort, CoalescedOmWordToLinePort, OmMemoryRequest, OmMemoryResponse, OmWordToLinePort}
+import opengpu.graphics.{BufferedCommandWordPort, BufferedTextureWordPort, CoalescedOmWordToLinePort, OmMemoryRequest, OmMemoryResponse, OmWordToLinePort}
 
 /** A graphics word-port client with its own Sv32 translation TLB.
   *
@@ -21,7 +21,8 @@ class TranslatedWordClient(
   uncached: Boolean = false,
   preserveCachePolicy: Boolean = false,
   coalesceWrites: Boolean = false,
-  bufferCommandReads: Boolean = false
+  bufferCommandReads: Boolean = false,
+  bufferTextureReads: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new OmMemoryRequest))
@@ -35,6 +36,7 @@ class TranslatedWordClient(
     val pageWalkResp = Flipped(Decoupled(
       new ComputeMemoryResponse(64, outstanding)))
     val invalidateCommandReads = if (bufferCommandReads) Some(Input(Bool())) else None
+    val invalidateTextureReads = if (bufferTextureReads) Some(Input(Bool())) else None
     val satp = Input(UInt(32.W))
     val flush = Flipped(Valid(new VectorTlbFlush(config)))
     /** A translated or fault response for this client was consumed. */
@@ -48,10 +50,19 @@ class TranslatedWordClient(
     "command read buffering and framebuffer combining are distinct clients")
   require(!bufferCommandReads || (uncached && preserveCachePolicy),
     "command read buffering requires uncached lines and preserved cache policy")
-  private val previousSatp = if (bufferCommandReads) Some(RegNext(io.satp, 0.U)) else None
+  require(!bufferTextureReads || (!bufferCommandReads && !coalesceWrites),
+    "texture read buffering is distinct from command and framebuffer clients")
+  private val previousSatp = if (bufferCommandReads || bufferTextureReads)
+    Some(RegNext(io.satp, 0.U)) else None
   private val bridge = if (bufferCommandReads) {
     val buffered = Module(new BufferedCommandWordPort(config, wordTransactions))
     buffered.io.invalidate := io.invalidateCommandReads.get || io.flush.valid ||
+      io.satp =/= previousSatp.get
+    buffered.io.port
+  } else if (bufferTextureReads) {
+    val buffered = Module(new BufferedTextureWordPort(config, wordTransactions,
+      cacheLines = math.min(16, 1 << log2Floor(wordTransactions)), uncached = uncached))
+    buffered.io.invalidate := io.invalidateTextureReads.get || io.flush.valid ||
       io.satp =/= previousSatp.get
     buffered.io.port
   } else if (coalesceWrites)

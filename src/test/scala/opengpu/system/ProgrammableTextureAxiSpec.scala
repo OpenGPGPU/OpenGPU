@@ -12,10 +12,10 @@ import scala.collection.mutable
 abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Boolean = false,
     coalesce: Boolean = false, axiBytes: Int = 8, fragmentBatchLimit: Int = 0,
     omInflight: Int = 16, omLocality: Boolean = false, bufferCommandReads: Boolean = false,
-    mesaFormats: Boolean = false)
+    mesaFormats: Boolean = false, bufferTextureReads: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (scenario <- (if (mesaFormats) Seq("Mesa formats") else Seq("translation", "invalid PTE", "page-table bus fault",
-      "texture bus fault", "reset during texture read", "instruction translation",
+      "texture bus fault", "reset during texture read", "texture CPU update", "instruction translation",
       "instruction non-executable fault", "instruction invalid PTE fault", "instruction page-table bus fault",
       "instruction code bus fault", "instruction ASID switch",
       "instruction VPN flush", "instruction ASID flush",
@@ -43,7 +43,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty,
         parallelGraphics = parallel, exposePerformance = parallel,
         coalesceFramebufferWrites = coalesce, memoryAxiDataBytes = axiBytes,
-        bufferCommandReads = bufferCommandReads)) { dut =>
+        bufferCommandReads = bufferCommandReads, bufferTextureReads = bufferTextureReads)) { dut =>
         initialize(dut)
         val words = mutable.LongMap.empty[BigInt]
         val reads = mutable.ArrayBuffer.empty[BigInt]
@@ -283,6 +283,25 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         }
         // Repair and flush, then reuse the ID. A fresh framebuffer detects a
         // stale completion, and clearing observations proves this job did work.
+        val recoveryTexel = if (scenario == "texture CPU update") 0x935117ffL else texel
+        if (scenario == "texture CPU update") {
+          // Match the driver's upload/bind boundary: CPU update, then physical
+          // L2 range invalidation. That does not snoop the texture reuse buffer;
+          // it must also have discarded the preceding render's line itself.
+          store(texturePa, Seq(recoveryTexel))
+          axiWrite(dut, RenderHostRegs.IRQ, 3)
+          axiWrite(dut, GpuCommandMmioRegs.COMMAND_ID, 18)
+          axiWrite(dut, GpuCommandMmioRegs.OPCODE, GpuCommandOpcode.invalidate.litValue.toInt)
+          axiWrite(dut, GpuCommandMmioRegs.SOURCE, texturePa)
+          axiWrite(dut, GpuCommandMmioRegs.BYTES, 64)
+          axiWrite(dut, GpuCommandMmioRegs.SUBMIT, 1)
+          serviceMemoryMaster(dut, readLine, maxCycles = 300000)(writeLine) {
+            dut.io.m_irq.peek().litToBoolean
+          }
+          val invalidated = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
+          assert((invalidated & 255) == 18 && invalidated.testBit(15))
+          axiWrite(dut, GpuCommandMmioRegs.COMPLETION_POP, 1)
+        }
         store(root + 4, Seq((0x800L << 10) | 0x43L))
         if (stagingFault) {
           store(root + 32, Seq((kernargPa.toLong >> 12) << 10 | 0xcfL))
@@ -355,8 +374,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         }
         assert(!reads.exists(a => a >= textureVa && a < textureVa + 4096))
         assert(writes.exists(a => a >= recoveryColor && a < recoveryColor + framebufferBytes))
-        assert(if (divergentFragment) (0 until side * side).exists(i => words(recoveryColor + i * 4L) == texel)
-          else words(recoveryColor + 1 * 16L + 1 * 4) == texel,
+          assert(if (divergentFragment) (0 until side * side).exists(i => words(recoveryColor + i * 4L) == recoveryTexel)
+          else words(recoveryColor + 1 * 16L + 1 * 4) == recoveryTexel,
           "framebuffer must contain the sampled physical texel")
         if (mesaFormats) {
           val textureWords = Seq(0x115395d3L, 0xd3955311L, 0xd3115395L, 0x00955311L, 0x00115395L)
@@ -406,7 +425,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
     simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = true,
       numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty,
       parallelGraphics = parallel, coalesceFramebufferWrites = coalesce,
-      memoryAxiDataBytes = axiBytes)) { dut =>
+      memoryAxiDataBytes = axiBytes, bufferTextureReads = bufferTextureReads)) { dut =>
       initialize(dut)
       val words = mutable.LongMap.empty[BigInt]
       val reads = mutable.ArrayBuffer.empty[BigInt]
@@ -581,3 +600,13 @@ class MesaPixelFormatAxiSpec
     extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true,
       axiBytes = 64, fragmentBatchLimit = 4, omInflight = 64, omLocality = true,
       bufferCommandReads = true, mesaFormats = true)
+
+class BufferedTextureParallelCuProgrammableTextureAxiSpec
+    extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true,
+      axiBytes = 64, omInflight = 64, omLocality = true,
+      bufferCommandReads = true, bufferTextureReads = true)
+
+class BufferedTextureMesaPixelFormatAxiSpec
+    extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true,
+      axiBytes = 64, fragmentBatchLimit = 4, omInflight = 64, omLocality = true,
+      bufferCommandReads = true, mesaFormats = true, bufferTextureReads = true)

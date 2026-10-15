@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-16",
+  "status": "correctness-PASS;performance-and-fullguest-pending",
+  "tests": {
+    "units-final": 21,
+    "integration": 30
+  },
+  "details": [
+    "21cache/translated/command tests include same-line miss merging,parallel fills,out-of-order responses,output stalls,held invalidation,fault retry,1/3/8wordslots and old/newSATP overlap.",
+    "30shared4CU pipeline tests include fault/reset recovery,CPU texture upload with physicalL2invalidate,ASID/TLBchanges,vertex staging and all25native texture/framebuffer format pairs."
+  ],
+  "source_sha256": {
+    "src/main/scala/opengpu/core/memory/TranslatedWordClient.scala": "ebf61c82da5592dd7f53636ff02eb166ac479060a56823460db2f0893ac7b273",
+    "src/main/scala/opengpu/elaboration/EmitGpuHostSystemAxi.scala": "bcda80d212b5275eff52a428065e70dc66284919cdf06d3f2981dbcdfb1fcde0",
+    "src/main/scala/opengpu/graphics/BufferedTextureWordPort.scala": "56ea0db44bfa0892ecae8f18aac6d0f26e6e71c4636ddb4585592d559c453621",
+    "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "c8aaf81f09db1d895468b23daa6992614145051eecb13a96842600ad575d17ad",
+    "src/test/scala/opengpu/core/memory/BufferedTranslatedWordClientSpec.scala": "1be18b1693bc3508d3e2fee8141a48c1b9033d38f8ed5c4ab2dc019a9924457e",
+    "src/test/scala/opengpu/graphics/BufferedTextureWordPortSpec.scala": "d5b11451c96ab4b1a929bab2b14fc48afb0ba73ad2b97ec319a3ace887628954",
+    "src/test/scala/opengpu/system/FullPoolTextureScalingSpec.scala": "351eb0622e9fa0c0256c61706fccc360d081dff803d23c378c3dd20a84961056",
+    "src/test/scala/opengpu/system/ProgrammableTextureAxiSpec.scala": "1ed010a0c3ca524c6dabb7cf31d2daf2b01968eb5d980dd67847d07ea600b639",
+    "src/test/scala/opengpu/system/WideSharedGraphicsSpec.scala": "87ee63c0a3f290434e7898c7e880a78e3332d06eebc622baef1273c2a4bb6603"
+  },
+  "phases": [
+    {
+      "phase": "units-final",
+      "exit_status": 0,
+      "seconds": 21.010527375154197,
+      "suites": [
+        "opengpu.graphics.BufferedTextureWordPortSpec",
+        "opengpu.core.memory.BufferedTextureTranslatedWordClientSpec",
+        "opengpu.core.memory.BufferedTranslatedWordClientSpec"
+      ]
+    },
+    {
+      "phase": "integration",
+      "exit_status": 0,
+      "seconds": 659.9045526247937,
+      "suites": [
+        "opengpu.system.BufferedTextureParallelCuProgrammableTextureAxiSpec",
+        "opengpu.system.BufferedTextureMesaPixelFormatAxiSpec"
+      ]
+    }
+  ],
+  "configuration": {
+    "cache": "Up to16lines pertranslatedtextureclient, bounded bytransactioncapacity; read-only, originalcachedL2policy",
+    "integration": "4sharedCUs,4lanes2warps,512bitAXI,OM64; fullVS/FS/FPU16x8benchmarkpending",
+    "default_enabled": false,
+    "emitter_flag": "--buffer-texture-reads"
+  },
+  "limits": [
+    "No full640model regenerated with this cache yet.",
+    "No cache cycle/wall-time speedup claimed before matched full-pool measurements.",
+    "CPU/GPU coherence contract unchanged: CPU uploads still need the existing L2 invalidation."
+  ],
+  "evidence": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-cache"
+}

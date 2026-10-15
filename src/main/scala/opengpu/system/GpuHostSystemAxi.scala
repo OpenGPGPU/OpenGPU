@@ -25,6 +25,8 @@ class GpuHostPerformanceCounters extends Bundle {
   val stagingWriteBytes = UInt(64.W)
   val lowerReadBytes = UInt(64.W)
   val lowerWriteBytes = UInt(64.W)
+  val textureWordReads = UInt(64.W)
+  val textureLineReads = UInt(64.W)
   val translationStallCycles = Vec(4, UInt(64.W))
   val translationMisses = Vec(4, UInt(64.W))
   val walkCycles = Vec(4, UInt(64.W))
@@ -66,7 +68,8 @@ class GpuHostSystemAxi(
   sharedGraphics: Boolean = false,
   parallelGraphics: Boolean = false,
   coalesceFramebufferWrites: Boolean = false,
-  bufferCommandReads: Boolean = false
+  bufferCommandReads: Boolean = false,
+  bufferTextureReads: Boolean = false
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   require(numComputeUnits > 0)
@@ -287,7 +290,16 @@ class GpuHostSystemAxi(
       uncached = true, preserveCachePolicy = true,
       coalesceWrites = coalesceFramebufferWrites))
     val texClient = Module(new TranslatedWordClient(
-      gpuConfig, wordPortTransactions, graphicsHostTransactions))
+      gpuConfig, wordPortTransactions, graphicsHostTransactions,
+      bufferTextureReads = bufferTextureReads))
+    if (bufferTextureReads) {
+      val resetWasActive = RegNext(host.io.commandResetActive.get, false.B)
+      // Revoke reuse at the job boundary or reset entry. Unlike command
+      // buffering, the texture buffer still admits drain reads while idle
+      // invalidation is held high after a render fault.
+      texClient.io.invalidateTextureReads.get := host.io.commandReadsIdle ||
+        (host.io.commandResetActive.get && !resetWasActive)
+    }
     val stagingSelect =
       host.io.kernelWordMemReq.bits.transactionId < stagingTransactions.U
     stagingClient.io.in.valid :=
@@ -494,6 +506,8 @@ class GpuHostSystemAxi(
         counter
       }
       perf.system := system.io.performance
+      perf.textureWordReads := count(texClient.io.in.fire.asUInt)
+      perf.textureLineReads := count(texClient.io.memReq.fire.asUInt)
       perf.omStallCycles := count(host.io.performance.omStall.asUInt)
       perf.omConflictCycles := count(host.io.performance.omConflict.asUInt)
       perf.rasterStallCycles := count(host.io.performance.rasterStall.asUInt)

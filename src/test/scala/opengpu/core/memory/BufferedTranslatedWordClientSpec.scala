@@ -6,7 +6,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-class BufferedTranslatedWordClientSpec extends AnyFlatSpec {
+abstract class BufferedTranslatedWordClientChecks(texture: Boolean) extends AnyFlatSpec {
   private class Harness(d: TranslatedWordClient) {
     val replies = mutable.ArrayBuffer.empty[(BigInt, BigInt)]
     var faults = 0
@@ -18,7 +18,8 @@ class BufferedTranslatedWordClientSpec extends AnyFlatSpec {
     d.io.pageWalkResp.bits.poke(0.U.asTypeOf(d.io.pageWalkResp.bits))
     d.io.satp.poke(0.U); d.io.flush.valid.poke(false.B)
     d.io.flush.bits.poke(0.U.asTypeOf(d.io.flush.bits))
-    d.io.invalidateCommandReads.get.poke(false.B)
+    private val invalidate = d.io.invalidateTextureReads.getOrElse(d.io.invalidateCommandReads.get)
+    invalidate.poke(false.B)
     d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
     def step(): Unit = {
       if (d.io.fault.peek().litToBoolean) faults += 1
@@ -65,10 +66,12 @@ class BufferedTranslatedWordClientSpec extends AnyFlatSpec {
       until(replies.size == count); assert(replies.last == ((BigInt(address), BigInt(data))))
     }
     def flush(): Unit = { d.io.flush.valid.poke(true.B); step(); d.io.flush.valid.poke(false.B) }
+    def invalidateJob(): Unit = { invalidate.poke(true.B); step(); invalidate.poke(false.B) }
   }
   private def client = new TranslatedWordClient(GpuConfig(lanes = 4, warps = 2),
-    wordTransactions = 4, outstanding = 32, uncached = true,
-    preserveCachePolicy = true, bufferCommandReads = true)
+    wordTransactions = 4, outstanding = 32, uncached = !texture,
+    preserveCachePolicy = !texture, bufferCommandReads = !texture,
+    bufferTextureReads = texture)
 
   it should "reuse a command line only until the job boundary and observe a CPU update" in {
     simulate(client) { d =>
@@ -76,7 +79,7 @@ class BufferedTranslatedWordClientSpec extends AnyFlatSpec {
       h.send(0x400000); h.physical(0x400000, 100); h.expectReply(1, 0x400000, 100)
       h.send(0x400004); h.expectReply(2, 0x400004, 101)
       d.io.memReq.valid.expect(false.B)
-      d.io.invalidateCommandReads.get.poke(true.B); h.step(); d.io.invalidateCommandReads.get.poke(false.B)
+      h.invalidateJob()
       h.send(0x400004); h.physical(0x400000, 200); h.expectReply(3, 0x400004, 201)
       assert(h.faults == 0)
     }
@@ -120,4 +123,22 @@ class BufferedTranslatedWordClientSpec extends AnyFlatSpec {
       }
     }
   }
+  if (texture) {
+    it should "keep an old pending VA separate from a new address space and complete the new fill first" in {
+      simulate(client) { d =>
+        val h = new Harness(d)
+        h.send(0x400000); val old = h.capture(0x400000)
+        d.io.satp.poke(BigInt("80000030", 16).U); h.step()
+        h.send(0x400004); h.walk(0x800)
+        h.respond(h.capture(0x800000), 200); h.expectReply(1, 0x400004, 201)
+        h.respond(old, 100); h.expectReply(2, 0x400000, 100)
+        h.send(0x400008); h.expectReply(3, 0x400008, 202)
+        d.io.memReq.valid.expect(false.B)
+        assert(h.faults == 0)
+      }
+    }
+  }
 }
+
+class BufferedTranslatedWordClientSpec extends BufferedTranslatedWordClientChecks(texture = false)
+class BufferedTextureTranslatedWordClientSpec extends BufferedTranslatedWordClientChecks(texture = true)

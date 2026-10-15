@@ -76,6 +76,7 @@ object EmitGpuHostSystemAxi {
         parallelGraphics = parallelGraphics,
         coalesceFramebufferWrites = rest.contains("--coalesce-framebuffer"),
         bufferCommandReads = rest.contains("--buffer-command-reads"),
+        bufferTextureReads = rest.contains("--buffer-texture-reads"),
         fragCore = fragCore,
         vertCore = vertCore,
         enableFpuBackend = true,

@@ -46,6 +46,18 @@ the simulator adapter splits a wide beat into multiple callbacks. Consequently,
 already issues complete cache lines. Wider callbacks are a separate simulator
 experiment; they would leave architectural cycle counts unchanged.
 
+An optional texture line buffer is available through the emitter flag
+`--buffer-texture-reads`; its default is off pending performance and full-guest
+qualification. It merges words from a pending fill, allows independent fills
+to overlap and pins each line until its word replies have been queued. The
+desktop configuration has up to 16 line entries. Job boundaries, SATP changes,
+TLB flushes and reset entry revoke reuse, while admitted shader reads can
+still drain. The existing L2 policy and CPU upload/invalidate contract remain
+in force. Validation passes 21 buffer/translation tests and 30 shared-CU
+pipeline tests, including all 25 native-format pairs. See the
+[correctness evidence](performance/texture-line-reuse-validation-2026-10-16.json).
+Matched full-pool 1/4-CU tests are measuring cycle savings before enabling it.
+
 See [the trace measurements](performance/shared-cu-weston-trace-2026-10-16.json)
 for raw phase counts, hashes, configuration and limitations. A bare guest module
 also hit its 30-second kernel watchdog during the first large desktop draw.
