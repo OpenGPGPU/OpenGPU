@@ -132,6 +132,13 @@ must not be shared by concurrently executing fragment workers. Hardware and
 software will need an explicit lane/warp/bank-count contract before enabling
 the parallel mode.
 
+`SharedShaderTaskRouter` provides the next routing layer: independent shader
+clients retain their local task IDs while pool tags select a client. Scalar
+and vector texture traffic follows that client's task onto whichever CU runs
+it. Three tests pass for 2/4-CU routing, swapped physical CU placement,
+out-of-order completions, faults, client reuse and held invalidation replies.
+The router is not yet connected to parallel fragment workers.
+
 ## Performance interpretation
 
 The previous trace attributes about 84% of textured batch cycles to shader
