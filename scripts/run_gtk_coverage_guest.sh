@@ -324,6 +324,17 @@ if [ "$GTK_PROOF_SHADER_SUITE" = 1 ]; then
         "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_TRACE_DRAWS=1 OPENGPU_GL_PADDED_TEXTURE=1 OPENGPU_GL_EXIT=1 /root/opengpu_gl_texture.bin" \
         | tee "$PROOF_WORK/shader-texture-padded.log"
     grep -qF 'OPENGPU GL TEXTURE PASS' "$PROOF_WORK/shader-texture-padded.log"
+    for variant in distinct distinct-padded distinct-swizzle; do
+        extra=""
+        case "$variant" in
+            distinct-padded) extra="OPENGPU_GL_PADDED_TEXTURE=1" ;;
+            distinct-swizzle) extra="OPENGPU_GL_GTK_SWIZZLE=1" ;;
+        esac
+        "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 900 \
+            "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_TRACE_DRAWS=1 OPENGPU_GL_DISTINCT_TEXTURE=1 $extra OPENGPU_GL_EXIT=1 /root/opengpu_gl_texture.bin" \
+            | tee "$PROOF_WORK/shader-texture-$variant.log"
+        grep -qF 'OPENGPU GL TEXTURE PASS' "$PROOF_WORK/shader-texture-$variant.log"
+    done
     "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 900 \
         "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_GL_DISTINCT_COLOR=1 OPENGPU_GL_EXIT=1 /root/opengpu_gl_fill.bin" \
         | tee "$PROOF_WORK/shader-fill-distinct.log"

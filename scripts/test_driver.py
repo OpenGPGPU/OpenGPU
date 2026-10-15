@@ -26,6 +26,12 @@ def main():
             str(ROOT / "userspace/tests/shader_abi.c"), "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
         print("runtime shader ABI: PASS", flush=True)
+
+        binary = Path(directory) / "shader_color"
+        subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+            "-I" + str(ROOT / "userspace/gallium"),
+            str(ROOT / "userspace/tests/shader_color.c"), "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
         binary = Path(directory) / "texture_layout"
         subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
             "-I" + str(ROOT / "userspace/gallium"),

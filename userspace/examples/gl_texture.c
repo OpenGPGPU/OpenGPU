@@ -152,6 +152,8 @@ int main(void)
     uint32_t tri, clear;
     int i;
     const int swizzle_test = getenv("OPENGPU_GL_GTK_SWIZZLE") != NULL;
+    const uint32_t texture_color = getenv("OPENGPU_GL_DISTINCT_TEXTURE")
+        ? 0x115395d3u : COLOR_TEXEL;
     uint8_t texels[4 * 4 * 4];
     const EGLint config_attribs[] = {
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
@@ -262,8 +264,10 @@ int main(void)
 
     memset(texels, 0, sizeof(texels));
     for (i = 0; i < 16; i++) {
-        texels[i * 4 + 0] = 255;
-        texels[i * 4 + 3] = 255;
+        texels[i * 4 + 0] = texture_color >> 24;
+        texels[i * 4 + 1] = texture_color >> 16;
+        texels[i * 4 + 2] = texture_color >> 8;
+        texels[i * 4 + 3] = texture_color;
     }
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -356,8 +360,13 @@ int main(void)
         clear = pixel_word(mode.hdisplay - opengpu_gl_probe_x(&mode, 8), mode.vdisplay - 1 - opengpu_gl_probe_y(&mode, 8));
         printf("gl_texture: variant=%d triangle=0x%08x clear=0x%08x\n",
                variant, tri, clear);
+        uint32_t expected = variant
+            ? (texture_color & 0x00ff00ffu) |
+              ((texture_color & 0xff000000u) >> 16) |
+              ((texture_color & 0x0000ff00u) << 16)
+            : texture_color;
         if (glGetError() != GL_NO_ERROR ||
-            tri != (variant ? 0xffff0000u : COLOR_TEXEL) ||
+            tri != expected ||
             clear != (swizzle_test ? 0x00ff00ffu : COLOR_CLEAR)) {
             fprintf(stderr, "gl_texture: pixel mismatch\n");
             return 1;
