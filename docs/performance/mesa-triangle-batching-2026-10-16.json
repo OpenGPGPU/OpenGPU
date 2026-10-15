@@ -191,5 +191,13 @@
     "bash -n scripts/run_gtk_coverage_guest.sh PASS"
   ],
   "performance_scope": "Submission reduction verified for the same rectangle. No cycle or walltime speedup claimed from this correctness run.",
-  "full_resolution_proof_pending": ".artifacts/batch640-native"
+  "full_resolution_proof_pending": ".artifacts/batch640-frozen",
+  "interrupted_full_run": {
+    "proof": ".artifacts/batch640-native",
+    "exit_status": 127,
+    "reason": "Agent edited the running shell script; Bash resumed at a changed byte offset and failed before strict scanout polling.",
+    "guest_readback": "GTK idle/active passed",
+    "scanout": "Offline unchanged verifier failed with0active pixels: compositor had not presented active frame before teardown. This run is not full desktop success evidence.",
+    "retry": "Fresh frozen shell script in .artifacts/shared-cu/mesa-triangle-batching/run-guest-frozen.sh; qualification in progress."
+  }
 }

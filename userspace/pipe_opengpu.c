@@ -37,6 +37,7 @@
 struct pipe_opengpu_screen {
     int fd;
     uint64_t caps;
+    uint64_t driver_features;
     uint32_t shader_config;
     struct pipe_opengpu_resource *resources;
 };
@@ -121,6 +122,14 @@ static struct pipe_opengpu_screen *screen_from_fd(int fd)
         close(fd);
         free(screen);
         errno = EPROTO;
+        return NULL;
+    }
+    if (opengpu_driver_features(fd, &screen->driver_features)) {
+        int saved = errno;
+
+        close(fd);
+        free(screen);
+        errno = saved;
         return NULL;
     }
     screen->fd = fd;
@@ -1452,9 +1461,10 @@ out:
     return status;
 }
 
-int pipe_opengpu_draw_vertex(struct pipe_opengpu_context *ctx,
-                             const struct drm_opengpu_vertex_draw *draw,
-                             struct pipe_opengpu_fence **out_fence)
+static int draw_vertex(struct pipe_opengpu_context *ctx,
+                        const struct drm_opengpu_vertex_draw *draw,
+                        struct pipe_opengpu_fence **out_fence,
+                        int discard_private_depth)
 {
     struct opengpu_buffer commands = { 0 };
     struct drm_opengpu_submit submit = { 0 };
@@ -1487,6 +1497,13 @@ int pipe_opengpu_draw_vertex(struct pipe_opengpu_context *ctx,
     submit.command_handle = commands.handle;
     submit.command_count = 1;
     submit.flags = OPENGPU_SUBMIT_VERTEX_CORE;
+    if (discard_private_depth && (ctx->screen->driver_features &
+         OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH) && !ctx->depth &&
+        (draw->state & OPENGPU_DRAW_STATE_OVERRIDE) &&
+        !(draw->state & (OPENGPU_DRAW_STATE_DEPTH_TEST |
+                         OPENGPU_DRAW_STATE_DEPTH_WRITE |
+                         OPENGPU_DRAW_STATE_STENCIL_TEST)))
+        submit.flags |= OPENGPU_SUBMIT_DISCARD_PRIVATE_DEPTH;
     submit.shader_slot = PIPE_FS_SLOT;
     submit.kernarg_slot = PIPE_KERNARG_SLOT;
     submit.vertex_buffer_slot = PIPE_VB_SLOT;
@@ -1511,6 +1528,20 @@ out:
     if (commands.handle)
         opengpu_buffer_destroy(fd, &commands);
     return status;
+}
+
+int pipe_opengpu_draw_vertex(struct pipe_opengpu_context *ctx,
+                             const struct drm_opengpu_vertex_draw *draw,
+                             struct pipe_opengpu_fence **out_fence)
+{
+    return draw_vertex(ctx, draw, out_fence, 0);
+}
+
+int pipe_opengpu_draw_vertex_discard_depth(struct pipe_opengpu_context *ctx,
+                             const struct drm_opengpu_vertex_draw *draw,
+                             struct pipe_opengpu_fence **out_fence)
+{
+    return draw_vertex(ctx, draw, out_fence, 1);
 }
 
 int pipe_opengpu_present(struct pipe_opengpu_screen *screen,

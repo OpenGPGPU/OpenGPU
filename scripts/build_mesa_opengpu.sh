@@ -262,8 +262,15 @@ echo "Built $PREFIX/bin/opengpu_gl_triangle"
 # command; the ELF and the DRI driver sit beside it.
 eval "$(python3 "$GPU_DIR/scripts/gpu_display_config.py" --shell \
     "${INTEGRATION_CONFIG:-$GPU_DIR/driver/gpu_integration_debian.yaml}")"
+"$CROSS_GCC" -std=c11 -O2 -Wall -Wextra -Werror \
+    -I"$PREFIX/include" -I"$PREFIX/include/libdrm" -I"$GPU_DIR/driver" \
+    -o "$PREFIX/bin/opengpu_private_depth_test" \
+    "$GPU_DIR/userspace/tests/private_depth_discard.c" \
+    "$GPU_DIR/userspace/opengpu.c"
+
 DRIVER_OUTPUT="${DRIVER_OUTPUT:-$GPU_DIR/../arti-work/debian-${GPU_MODE}/opengpu-driver}"
 if [ -d "$DRIVER_OUTPUT" ]; then
+    cp "$PREFIX/bin/opengpu_private_depth_test" "$DRIVER_OUTPUT/"
     copy_lib() {
         cp -L "$PREFIX/lib/$1" "$DRIVER_OUTPUT/$1"
     }

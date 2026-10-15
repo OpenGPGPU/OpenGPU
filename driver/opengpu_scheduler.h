@@ -87,6 +87,7 @@ struct opengpu_sched_job {
      * the CPU fallback still target its range. */
     bool depth_user;
     bool depth_load;
+    bool depth_discard;
     dma_addr_t depth_clear_dma;
     size_t depth_clear_bytes;
     u8 *depth_clear_cpu;

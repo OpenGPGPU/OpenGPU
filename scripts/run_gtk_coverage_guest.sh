@@ -311,6 +311,13 @@ if [ "${GTK_PROOF_COMPUTE_SMOKE:-0}" = 1 ]; then
     grep -qF 'compute completed; RNU=1 RDN=0' "$PROOF_WORK/compute-smoke.log"
 fi
 
+if [ "${GTK_PROOF_PRIVATE_DEPTH_TEST:-0}" = 1 ]; then
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 900 \
+        'LD_LIBRARY_PATH=/root /root/opengpu_private_depth_test' \
+        | tee "$PROOF_WORK/private-depth-test.log"
+    grep -qF 'OPENGPU PRIVATE DEPTH DISCARD PASS:' "$PROOF_WORK/private-depth-test.log"
+fi
+
 # Exercise stock compiler programs in a small advertised mode before the
 # compositor gate. Each executable waits for its GPU fence and checks pixels.
 if [ "$GTK_PROOF_SHADER_SUITE" = 1 ] || [ "$GTK_PROOF_OFFSCREEN_ONLY" = 1 ]; then

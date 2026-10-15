@@ -350,6 +350,9 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
     case OPENGPU_PARAM_SHADER_CONFIG:
         args->value = gpu->hw.shader_config;
         break;
+    case OPENGPU_PARAM_DRIVER_FEATURES:
+        args->value = OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH;
+        break;
     default:
         return -EINVAL;
     }
@@ -1304,6 +1307,12 @@ static int opengpu_validate_vertex_commands(
             record->stencil_config & ~OPENGPU_DRAW_STENCIL_VALID_MASK ||
             record->stencil_ref & ~OPENGPU_DRAW_STENCIL_REF_VALID_MASK)
             return -EINVAL;
+        if ((args->flags & OPENGPU_SUBMIT_DISCARD_PRIVATE_DEPTH) &&
+            (!(record->state & OPENGPU_DRAW_STATE_OVERRIDE) ||
+             (record->state & (OPENGPU_DRAW_STATE_DEPTH_TEST |
+                               OPENGPU_DRAW_STATE_DEPTH_WRITE |
+                               OPENGPU_DRAW_STATE_STENCIL_TEST))))
+            return -EINVAL;
         if (!(record->state & OPENGPU_DRAW_STATE_OVERRIDE)) {
             if (record->state || record->sampler || record->blend_config ||
                 record->stencil_config || record->stencil_ref)
@@ -1629,7 +1638,7 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
             opengpu_depth_clear_uses_hw(
                 job->gpu->hw.capabilities & GPU_CAP_CLEAR_ENGINE,
                 job->depth_clear_dma, job->depth_clear_bytes) &&
-            !job->depth_load;
+            !job->depth_load && !job->depth_discard;
 
         /* Reach this job's command snapshot through the context's VM.  The
          * mapping is overwritten per job, so it must happen here, after the
@@ -1809,6 +1818,7 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
     if ((args->flags & ~(OPENGPU_SUBMIT_TEST_FENCE_DELAY |
                          OPENGPU_SUBMIT_VERTEX_CORE |
                          OPENGPU_SUBMIT_DEPTH_LOAD |
+                         OPENGPU_SUBMIT_DISCARD_PRIVATE_DEPTH |
                          OPENGPU_SUBMIT_COLOR_FORMAT_MASK)) ||
         ((args->flags & OPENGPU_SUBMIT_COLOR_FORMAT_MASK) >>
          OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT) > OPENGPU_FORMAT_MAX ||
@@ -1816,6 +1826,9 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
          !(gpu->hw.capabilities & GPU_CAP_NATIVE_PIXEL_FORMATS)) ||
         ((args->flags & OPENGPU_SUBMIT_DEPTH_LOAD) &&
          !args->depth_handle) ||
+        ((args->flags & OPENGPU_SUBMIT_DISCARD_PRIVATE_DEPTH) &&
+         (!(args->flags & OPENGPU_SUBMIT_VERTEX_CORE) ||
+          args->depth_handle || (args->flags & OPENGPU_SUBMIT_DEPTH_LOAD))) ||
         !args->context_id || !args->command_handle || !args->color_handle ||
         args->command_handle == args->color_handle ||
         !args->command_count || args->command_count > OPENGPU_MAX_COMMANDS ||
@@ -1954,6 +1967,8 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
     }
     sched_job->gpu = gpu;
     sched_job->vm = context->vm.enabled ? &context->vm : NULL;
+    sched_job->depth_discard =
+        !!(args->flags & OPENGPU_SUBMIT_DISCARD_PRIVATE_DEPTH);
     ret = opengpu_buffer_alloc(gpu, &sched_job->commands, command_bytes);
     if (ret)
         goto out_job;
@@ -2030,8 +2045,11 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
      * fallback. A persistent
      * attachment submitted with OPENGPU_SUBMIT_DEPTH_LOAD keeps its stored
      * contents instead. D24S8: the clear leaves stencil 0 under the far depth
-     * so stencil counters start from a defined state. */
-    if (!sched_job->depth_load && !opengpu_depth_clear_uses_hw(
+     * so stencil counters start from a defined state. The explicit private
+     * discard opt-in leaves this scratch plane undefined after all command
+     * records have been checked to disable its fixed-function consumers. */
+    if (!sched_job->depth_load && !sched_job->depth_discard &&
+        !opengpu_depth_clear_uses_hw(
             gpu->hw.capabilities & GPU_CAP_CLEAR_ENGINE,
             sched_job->depth_clear_dma, sched_job->depth_clear_bytes)) {
         u32 *word = (u32 *)sched_job->depth_clear_cpu;

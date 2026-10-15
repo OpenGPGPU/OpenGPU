@@ -2474,7 +2474,7 @@ static void draw_vbo(struct pipe_context *pipe,
                             (uint32_t)verts[v].z, (uint32_t)verts[v].w);
                 clock_gettime(CLOCK_MONOTONIC, &draw_start);
             }
-            draw_status = pipe_opengpu_draw_vertex(ctx->gpu, &vdraw, &fence);
+            draw_status = pipe_opengpu_draw_vertex_discard_depth(ctx->gpu, &vdraw, &fence);
             if (ctx->trace_draws)
                 clock_gettime(CLOCK_MONOTONIC, &submit_end);
             if (!draw_status)

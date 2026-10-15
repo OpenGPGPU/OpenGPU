@@ -17,6 +17,8 @@ struct opengpu_buffer {
 int opengpu_open(const char *path);
 int opengpu_capabilities(int fd, uint64_t *value);
 int opengpu_shader_config(int fd, uint32_t *value);
+/* Unknown feature query on older drivers is a successful zero-feature result. */
+int opengpu_driver_features(int fd, uint64_t *value);
 int opengpu_display_size(int fd, uint32_t *width, uint32_t *height);
 int opengpu_context_create(int fd, uint32_t *id);
 int opengpu_context_destroy(int fd, uint32_t id);

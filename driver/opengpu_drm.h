@@ -145,6 +145,10 @@ struct drm_opengpu_param {
 /* Same packed lane/warp/fragment-bank/graphics-CU bytes as SHADER_CONFIG.
  * Returns zero on older hardware without OPENGPU_CAP_SHADER_CONFIG_INFO. */
 #define OPENGPU_PARAM_SHADER_CONFIG 1u
+/* Software submission features, independent of RTL capability bits. Older
+ * drivers return EINVAL for this query; callers must then use zero features. */
+#define OPENGPU_PARAM_DRIVER_FEATURES 2u
+#define OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH (1u << 0)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -417,6 +421,11 @@ struct drm_opengpu_compute {
 /* Keep the bound depth attachment's stored contents instead of clearing it at
  * the start of the submission (depth_handle must be nonzero). */
 #define OPENGPU_SUBMIT_DEPTH_LOAD       (1u << 2)
+/* Opt in to undefined initial contents of the private depth scratch plane.
+ * Only vertex-core submissions without an attached depth plane are admitted,
+ * and every record must override state with depth test/write and stencil off.
+ * Query OPENGPU_PARAM_DRIVER_FEATURES before using this flag. */
+#define OPENGPU_SUBMIT_DISCARD_PRIVATE_DEPTH (1u << 3)
 #define OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT 4u
 #define OPENGPU_SUBMIT_COLOR_FORMAT_MASK (7u << OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT)
 

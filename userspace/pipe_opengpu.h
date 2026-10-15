@@ -186,6 +186,13 @@ int pipe_opengpu_draw_vbo(struct pipe_opengpu_context *ctx,
 int pipe_opengpu_draw_vertex(struct pipe_opengpu_context *ctx,
                              const struct drm_opengpu_vertex_draw *draw,
                              struct pipe_opengpu_fence **out_fence);
+/* Explicit opt-in: private depth scratch has undefined initial contents when
+ * every fixed-function consumer is disabled. Attached depth and older drivers
+ * retain their usual clear/load behavior. Raw shader callers use the original
+ * entry point unless they also accept undefined private depth contents. */
+int pipe_opengpu_draw_vertex_discard_depth(struct pipe_opengpu_context *ctx,
+                             const struct drm_opengpu_vertex_draw *draw,
+                             struct pipe_opengpu_fence **out_fence);
 
 /* Program the OpenGPU CRTC with a 1x pitched colour GEM matching the active or
  * advertised mode. Registers an FB on first use and keeps it alive. */
