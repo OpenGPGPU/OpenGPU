@@ -126,6 +126,7 @@ class TextureUnitSpec extends AnyFlatSpec {
     val requestCycles = mutable.ArrayBuffer.empty[Int]
     val requestAddrs = mutable.ArrayBuffer.empty[Long]
     val responseAddrs = mutable.ArrayBuffer.empty[Long]
+    var resultCycle = -1
   }
 
   private def runSample(
@@ -139,7 +140,8 @@ class TextureUnitSpec extends AnyFlatSpec {
     maxCycles: Int = 400,
     reverseResponses: Boolean = false,
     stats: Option[SampleStats] = None,
-    formatAfterAccept: Option[Int] = None
+    formatAfterAccept: Option[Int] = None,
+    requestStallCycles: Int = 0
   ): Int = {
     dut.io.sample.valid.poke(true.B)
     dut.io.sample.bits.u.poke(u.U)
@@ -156,6 +158,7 @@ class TextureUnitSpec extends AnyFlatSpec {
     var done = false
     var stalled = 0
     while (!done && guard < maxCycles) {
+      dut.io.mem.req.ready.poke((guard >= requestStallCycles).B)
       // Request side: drop valid once the handshake has committed.
       if (accepted) {
         dut.io.sample.valid.poke(false.B)
@@ -202,8 +205,11 @@ class TextureUnitSpec extends AnyFlatSpec {
       if (!seenValue && dut.io.result.valid.peek().litToBoolean) {
         value = dut.io.result.bits.peek().litValue.toInt & 0xffffffff
         seenValue = true
+        stats.foreach(_.resultCycle = guard)
       }
       if (seenValue) {
+        dut.io.result.valid.expect(true.B)
+        dut.io.result.bits.expect(BigInt(value & 0xffffffffL).U)
         if (stallCycles > stalled) stalled += 1
         else {
           dut.io.result.ready.poke(true.B)
@@ -219,6 +225,60 @@ class TextureUnitSpec extends AnyFlatSpec {
     dut.io.mem.resp.valid.poke(false.B)
     assert(done, s"sample did not complete (guard=$guard)")
     value
+  }
+
+  it should "finish single-texel levels without coordinate or bilinear pipeline bubbles" in {
+    simulate(new TextureUnit()) { dut =>
+      val words = Seq(0x115395d3L, 0xd3955311L, 0xd3115395L, 0x00955311L, 0x00115395L)
+      for (format <- words.indices; clamp <- Seq(false, true);
+           coordinate <- Seq(0L, q(0.5), q(1.0), 0xffffffffL)) {
+        val mem = new TexMem(0x1000, 1, 1)
+        mem.put(0, 0, words(format).toInt)
+        attach(dut, mem, wrapClamp = clamp)
+        dut.io.texFormat.poke(format.U)
+        val stats = new SampleStats
+        val got = runSample(dut, mem, coordinate, 0xffffffffL - coordinate,
+          stallCycles = 3, stats = Some(stats), formatAfterAccept = Some((format + 1) % 5))
+        assert((got & 0xffffffffL) == (if (format >= 3) 0x115395ffL else 0x115395d3L))
+        assert(stats.requestAddrs.toSeq == Seq(0x1000L) && mem.oobReads == 0)
+        assert(stats.requestCycles.head <= 2, "a 1x1 level needs no coordinate pipeline")
+        assert(stats.resultCycle <= 4, "a one-cycle memory reply should finish by cycle four")
+      }
+    }
+  }
+
+  it should "mix distinct 1x1 mip levels and enter a 1x1 level from a larger level" in {
+    simulate(new TextureUnit()) { dut =>
+      // Every level has a different colour and alpha, so skipping a mip walk
+      // or mixing against a stale first-level value cannot pass this oracle.
+      val colours = Seq(0xa0205040, 0x20609080, 0x0c3cdcc0, 0x6c140420, 0xc86428a0)
+      val mem = new TexMem(0x1800, 4, 2, levels = 5)
+      for (level <- colours.indices) {
+        val (_, w, h) = mem.levelInfo(level)
+        for (y <- 0 until h; x <- 0 until w) mem.putLevel(level, x, y, colours(level))
+      }
+      attach(dut, mem, wrapClamp = true, maxLevel = 4)
+      assert((runSample(dut, mem, q(0.31), q(0.79), mipLevel = 1, lodFrac = 64) & 0xffffffffL) == 0x1b57a390L)
+      assert((runSample(dut, mem, q(0.8), q(0.2), mipLevel = 2, lodFrac = 128) & 0xffffffffL) == 0x3c287070L)
+      assert((runSample(dut, mem, q(1.8), q(1.4), mipLevel = 15, lodFrac = 255) & 0xffffffffL) == 0xc86428a0L)
+      assert(mem.oobReads == 0)
+      val tiny = new TexMem(0x2000, 1, 1, levels = 3)
+      tiny.putLevel(0, 0, 0, 0x10203040)
+      tiny.putLevel(1, 0, 0, 0x50607080)
+      tiny.putLevel(2, 0, 0, 0x90a0b0c0)
+      attach(dut, tiny, wrapClamp = false, maxLevel = 2)
+      assert((runSample(dut, tiny, 0xffffffffL, 0, mipLevel = 0, lodFrac = 128,
+        stallCycles = 4) & 0xffffffffL) == 0x30405060L)
+      assert((runSample(dut, tiny, 0, 0xffffffffL, mipLevel = 1, lodFrac = 64) & 0xffffffffL) == 0x60708090L)
+      val stalled = new SampleStats
+      assert((runSample(dut, tiny, q(0.5), q(0.5), stallCycles = 4,
+        stats = Some(stalled), requestStallCycles = 8) & 0xffffffffL) == 0x10203040L)
+      assert(stalled.requestCycles.toSeq == Seq(8) && stalled.requestAddrs.toSeq == Seq(0x2000L))
+      assert(tiny.oobReads == 0)
+      // Reusing the unit for a larger level must re-enable bilinear filtering.
+      attach(dut, mem, wrapClamp = true, maxLevel = 4)
+      assert((runSample(dut, mem, q(0.31), q(0.79)) & 0xffffffffL) == 0xa0205040L)
+    }
   }
 
   it should "sample Mesa byte orders with alpha and retain format under backpressure" in {

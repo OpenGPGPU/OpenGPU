@@ -80,6 +80,19 @@ giving conservative four-CU speedups of **3.25x** and **3.24x** respectively.
 New full desktop measurements remain pending. See
 [the cycle measurements](performance/texture-line-reuse-cycles-2026-10-16.json).
 
+The sampler now skips coordinate and bilinear stages when the resolved mip
+level is 1x1. Format decoding, packed mip offsets and trilinear mixing remain
+active. In the solid-texture scene this reduces one-CU cap-112 cycles from
+**78,828 to 67,648 (14.2%)** and four-CU cycles from **23,993 to 22,087 (7.9%)**.
+The full-capacity one-CU control takes **66,854 cycles**, giving **3.03x**
+conservative scaling. The 64x64-texture controls are unchanged. All six scenes
+check every colour/depth pixel. The one-CU shader phase saves exactly five
+cycles for each of 2,236 samples; the four-CU trace still has 6,068 cycles
+with staging active and no shader running. Staging and fixed-LOD calculation
+are further candidates; these cycle results do not establish desktop wall-time
+gains. The new texture configuration still requires full guest qualification.
+See [the sampler measurements](performance/single-texel-sampler-2026-10-16.json).
+
 The wider-callback experiment passes its unit and guest correctness checks,
 but six clean native GLES guests show **9,395.220 ms with eight-byte callbacks
 versus 9,503.885 ms with 64-byte callbacks** (1.2% slower). Eight-byte callbacks

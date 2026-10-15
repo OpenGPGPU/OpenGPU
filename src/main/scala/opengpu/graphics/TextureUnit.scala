@@ -144,6 +144,7 @@ class TextureUnit(
   private val baseMipLevel = RegInit(0.U(4.W))
   private val lodFracReg = RegInit(0.U(8.W))
   private val secondLevel = RegInit(false.B)
+  private val singleTexel = RegInit(false.B)
 
   // Four logical per-level reads. `tapIssued` marks physical requests, which
   // are coalesced when clamp addressing makes logical taps share an address.
@@ -290,6 +291,26 @@ class TextureUnit(
   io.result.valid := state === sDone
   io.result.bits := resultReg
 
+  // Keep the trilinear multiply behind a register for both the filtered path
+  // and the single-texel path. Each packed mip still has its own address,
+  // even after its dimensions have reached 1x1.
+  private def finishBilinear(value: UInt): Unit = {
+    blendedReg := value
+    when(!secondLevel && lodFracReg =/= 0.U) {
+      firstLevelResult := value
+      levelBase := io.texBase
+      levelW := io.texWidth
+      levelH := io.texHeight
+      levelWMinusOne := io.texWidth - 1.U
+      levelHMinusOne := io.texHeight - 1.U
+      levelSteps := baseMipLevel + 1.U
+      secondLevel := true.B
+      state := sLevel
+    }.otherwise {
+      state := sMix
+    }
+  }
+
   switch(state) {
     is(sIdle) {
       when(io.sample.fire) {
@@ -326,9 +347,19 @@ class TextureUnit(
     }
     is(sLevel) {
       when(levelSteps === 0.U) {
-        biasedXReg := axisBias(uReg, levelW)
-        biasedYReg := axisBias(vReg, levelH)
-        state := sWrap
+        val isSingleTexel = levelW === 1.U && levelH === 1.U
+        singleTexel := isSingleTexel
+        when(isSingleTexel) {
+          // All four taps are the same for every coordinate and wrap mode.
+          for (i <- 0 until 4) { tapAddrs(i) := levelBase }
+          tapIssued := 0.U
+          tapReceived := 0.U
+          state := sFetch
+        }.otherwise {
+          biasedXReg := axisBias(uReg, levelW)
+          biasedYReg := axisBias(vReg, levelH)
+          state := sWrap
+        }
       }.otherwise {
         levelBase := levelBase + ((levelW * levelH) << 2)
         levelW := Mux(levelW === 1.U, 1.U, levelW >> 1)
@@ -393,27 +424,23 @@ class TextureUnit(
           when(responseFillBits(i)) { tapWords(i) := PixelFormat.decode(io.mem.resp.bits.data, formatReg) }
         }
         tapReceived := receivedAfterResponse
-        when(receivedAfterResponse.andR) { state := sBlend }
+        when(receivedAfterResponse.andR) {
+          when(singleTexel) {
+            val decoded = PixelFormat.decode(io.mem.resp.bits.data, formatReg)
+            when(!secondLevel && lodFracReg === 0.U) {
+              resultReg := decoded
+              state := sDone
+            }.otherwise {
+              finishBilinear(decoded)
+            }
+          }.otherwise {
+            state := sBlend
+          }
+        }
       }
     }
     is(sBlend) {
-      blendedReg := blended
-      when(!secondLevel && lodFracReg =/= 0.U) {
-        // Fetch level N+1 from a freshly rewound packed-chain walk. Keeping
-        // the two bilinear passes serial preserves the one-word memory-port
-        // contract and all response backpressure behaviour.
-        firstLevelResult := blended
-        levelBase := io.texBase
-        levelW := io.texWidth
-        levelH := io.texHeight
-        levelWMinusOne := io.texWidth - 1.U
-        levelHMinusOne := io.texHeight - 1.U
-        levelSteps := baseMipLevel + 1.U
-        secondLevel := true.B
-        state := sLevel
-      }.otherwise {
-        state := sMix
-      }
+      finishBilinear(blended)
     }
     is(sMix) {
       resultReg := Mux(secondLevel, trilinear, blendedReg)

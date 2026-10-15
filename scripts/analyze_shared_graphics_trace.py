@@ -50,7 +50,8 @@ for path in paths:
     mp=root/f'{prefix}-memory.csv'
     for row in csv.DictReader(mp.open()):
         addr=int(row['address_hex'],16);kind='other'
-        if config['kernarg']<=addr<config['kernarg']+config['bank_count']*config['bank_stride']:kind='staging_or_shader_data'
+        if config.get('texture_extent',0)>0 and config['texture']<=addr<config['texture']+config['texture_extent']**2*4:kind='texture'
+        elif config['kernarg']<=addr<config['kernarg']+config['bank_count']*config['bank_stride']:kind='staging_or_shader_data'
         elif config['color']<=addr<config['color']+side*side*4:kind='color'
         elif config['depth']<=addr<config['depth']+side*side*4:kind='depth'
         elif config['commands']<=addr<config['commands']+config.get('command_bytes',160):kind='commands'
