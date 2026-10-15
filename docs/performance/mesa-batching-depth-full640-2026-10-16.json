@@ -1,0 +1,161 @@
+{
+  "status": "Both frozen full640software variants PASS, including strict final presentation and manual visual review.",
+  "configuration": "Complete four shared CUs16lanes8warps,fullVS/FS/FPU,640x480maximum,AXI64B,OM64.",
+  "runs": [
+    {
+      "label": "batching",
+      "passed": true,
+      "proof": ".artifacts/batch640-frozen",
+      "rtl_source_commit": "2f9f09f",
+      "software_commit": "c2b4469",
+      "qemu_sha256": "32895b221acfe51428b26d04d701723b026942d3d2c0c978567753d48bf1cc2f",
+      "scanout": {
+        "passed": true,
+        "framebuffer_size": [
+          640,
+          480
+        ],
+        "client_size": [
+          280,
+          124
+        ],
+        "active_rectangle": [
+          93,
+          223,
+          227,
+          72
+        ],
+        "active_pixels": 16571,
+        "channel_tolerance": 3,
+        "capture_sha256": "525f42d5aedee6be897b7689fb88d2900444f8ce5ed75ea4f5e2879bf08f5427",
+        "source_frame": "/Users/duckdonald/workspace/gpu/.artifacts/batch640-frozen/gtk-smoke-scanout.ppm",
+        "saved_frame": "/Users/duckdonald/workspace/gpu/.artifacts/batch640-frozen/gtk-smoke-verified.ppm"
+      },
+      "markers": {
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GTK FRAME PASS: idle": true,
+        "OPENGPU GTK FRAME PASS: active": true
+      },
+      "visual_review": {
+        "passed": true,
+        "image": ".artifacts/shared-cu/mesa-triangle-batching/full640-verified.png",
+        "image_sha256": "191646edd5ddd4fbef61551b752777b7e474982360f9aaff7691add4d503b84c",
+        "observation": "Upright GTK title/label/button, complete orange rectangle with dark margins, patterned Weston desktop and panel."
+      },
+      "cycle_probe": {
+        "ticks": 28230056,
+        "staging_without_run": 215892,
+        "phase_any": [
+          13702287,
+          8506267,
+          15060,
+          15250458,
+          3261207,
+          3363724
+        ],
+        "peak_running_cus": 4
+      },
+      "commands": {
+        "trace": ".artifacts/shared-cu/mesa-triangle-batching/full640-frozen.trace",
+        "trace_sha256": "4624bff847d21fdd10fc04c9ee810a656b0e9fa9aec2707ec0b87831c142cf33",
+        "calls": 242497,
+        "commands_by_opcode": {
+          "5": 307,
+          "2": 47,
+          "6": 47
+        },
+        "fill_count": 47,
+        "fill_bytes": 49034240,
+        "depth_pattern_fill_count": 43,
+        "depth_pattern_fill_bytes": 48478720,
+        "depth_fill_size_histogram": {
+          "1228800": 39,
+          "138880": 4
+        },
+        "dma_read_bytes": 53929488,
+        "dma_write_bytes": 117600792,
+        "scope": "MMIO unified-command SUBMIT writes; 0x00ffffff identifies the depth-clear pattern, not proof of every fill consumer."
+      }
+    },
+    {
+      "label": "batching_and_depth_discard",
+      "passed": true,
+      "proof": ".artifacts/depth640-final",
+      "rtl_source_commit": "2f9f09f",
+      "software_commit": "9789e7b",
+      "qemu_sha256": "32895b221acfe51428b26d04d701723b026942d3d2c0c978567753d48bf1cc2f",
+      "scanout": {
+        "passed": true,
+        "framebuffer_size": [
+          640,
+          480
+        ],
+        "client_size": [
+          280,
+          124
+        ],
+        "active_rectangle": [
+          93,
+          223,
+          227,
+          72
+        ],
+        "active_pixels": 16571,
+        "channel_tolerance": 3,
+        "capture_sha256": "8d2b27a0c16ea9363cb43b86f67afaa673729a6564162c581b3a993aa4fd2f4d",
+        "source_frame": "/Users/duckdonald/workspace/gpu/.artifacts/depth640-final/gtk-smoke-scanout.ppm",
+        "saved_frame": "/Users/duckdonald/workspace/gpu/.artifacts/depth640-final/gtk-smoke-verified.ppm"
+      },
+      "markers": {
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GTK FRAME PASS: idle": true,
+        "OPENGPU GTK FRAME PASS: active": true
+      },
+      "visual_review": {
+        "passed": true,
+        "image": ".artifacts/shared-cu/private-depth-discard/full640-verified.png",
+        "image_sha256": "4d4fc8fdb06b14f6f0614f102e8fd2ad52ca3dc385b43b4bed0b92284b0342ad",
+        "observation": "Upright GTK title/label/button, complete orange rectangle with dark margins, patterned Weston desktop and panel."
+      },
+      "cycle_probe": {
+        "ticks": 24897411,
+        "staging_without_run": 228964,
+        "phase_any": [
+          10319680,
+          8465355,
+          15104,
+          15287151,
+          3267455,
+          3374433
+        ],
+        "peak_running_cus": 4
+      },
+      "commands": {
+        "trace": ".artifacts/shared-cu/private-depth-discard/full640.trace",
+        "trace_sha256": "71fdf9096de05209d99fc0b9e407ab766d85195f9ff04e6b3c66a4f8d6583d27",
+        "calls": 235992,
+        "commands_by_opcode": {
+          "5": 311,
+          "6": 47,
+          "2": 4
+        },
+        "fill_count": 4,
+        "fill_bytes": 555520,
+        "depth_pattern_fill_count": 0,
+        "depth_pattern_fill_bytes": 0,
+        "depth_fill_size_histogram": {},
+        "dma_read_bytes": 54065824,
+        "dma_write_bytes": 69320552,
+        "scope": "MMIO unified-command SUBMIT writes; 0x00ffffff identifies the depth-clear pattern, not proof of every fill consumer."
+      }
+    }
+  ],
+  "interpretation": "Batched run47renders/43depth-patternfills; discard run47renders/0depth-patternfills. GPU ticks28230056and24897411 are measured per actual desktop run. Weston damage,clock updates and batch schedules are not an identical workload, so these are not a controlled full-desktop speedup percentage.",
+  "limits": [
+    "Cycle-probed wrappers and concurrent work: no clean host timing claim.",
+    "This qualifies new software against frozen2f9f09fRTL; newerfixedLOD optimized model has separately passed native64 and its full640run is active.",
+    "Earlier mutable-script failure .artifacts/batch640-native is excluded; only frozen successful rerun is used."
+  ]
+}

@@ -212,5 +212,6 @@
     "scripts/test_scripts.sh PASS",
     "Shell syntax checksPASS"
   ],
-  "performance_scope": "Measured command omission; no clean host walltime or full-desktop cycle reduction claimed."
+  "performance_scope": "Measured command omission; no clean host walltime or full-desktop cycle reduction claimed.",
+  "full640_qualification": "PASS, strictscanout+manualreview; docs/performance/mesa-batching-depth-full640-2026-10-16.json"
 }
