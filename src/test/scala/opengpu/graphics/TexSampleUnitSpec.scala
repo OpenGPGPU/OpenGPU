@@ -321,4 +321,76 @@ class TexSampleUnitSpec extends AnyFlatSpec {
     }
   }
 
+  it should "derive independent LODs for every quad in a 16-lane vector" in {
+    simulate(new TexSampleUnit(GpuConfig(lanes = 16, warps = 2))) { dut =>
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      dut.io.in.valid.poke(false.B)
+      dut.io.commit.ready.poke(true.B)
+      dut.io.vectorIn.valid.poke(false.B)
+      dut.io.vectorCommit.ready.poke(false.B)
+      dut.io.mem.resp.valid.poke(false.B)
+      dut.io.mem.resp.bits.poke(0.U.asTypeOf(dut.io.mem.resp.bits))
+      dut.io.texBase.poke(0x2000.U)
+      dut.io.texWidth.poke(8.U); dut.io.texHeight.poke(8.U)
+      dut.io.wrapClamp.poke(true.B); dut.io.texMaxLevel.poke(3.U)
+      dut.io.lodBias.poke(0.S); dut.io.minLevel.poke(0.U)
+      val bases = Seq(0x2000L, 0x2100L, 0x2140L, 0x2150L, 0x2154L)
+      val colors = Seq(20, 80, 140, 200)
+      // One active lane per quad still uses the three masked helper UVs.
+      // Follow it with a full vector and an inactive middle quad to exercise
+      // boundary recalculation, skipping, consecutive requests and read stalls.
+      for ((mask, trial) <- Seq(0x1111, 0xffff, 0xf00f).zipWithIndex) {
+        val levels = if (trial == 1) Seq(3, 2, 1, 0) else Seq(0, 1, 2, 3)
+        dut.io.vectorIn.bits.poke(0.U.asTypeOf(dut.io.vectorIn.bits))
+        dut.io.vectorIn.bits.executionMask.poke(mask.U)
+        dut.io.vectorIn.bits.issued.decode.activeMask.poke(0xffff.U)
+        dut.io.vectorIn.bits.issued.decode.instruction.poke("h062081ab".U)
+        for (lane <- 0 until 16) {
+          val step = 8192L << levels(lane / 4) // extent 8 => rho 1/2/4/8
+          dut.io.vectorIn.bits.issued.vs1Data(lane).poke((if (lane % 2 == 0) 0L else step).U)
+          dut.io.vectorIn.bits.issued.vs2Data(lane).poke(0.U)
+          dut.io.vectorIn.bits.issued.oldVdData(lane).poke((0x100 + lane).U)
+        }
+        dut.io.vectorIn.valid.poke(true.B)
+        dut.io.vectorIn.ready.expect(true.B)
+        dut.clock.step(); dut.io.vectorIn.valid.poke(false.B)
+        dut.io.vectorIn.bits.poke(0.U.asTypeOf(dut.io.vectorIn.bits))
+        val pending = mutable.Queue.empty[Long]
+        val mipsRead = mutable.Set.empty[Int]
+        var cycle = 0
+        while (!dut.io.vectorCommit.valid.peek().litToBoolean && cycle < 3000) {
+          dut.io.mem.req.ready.poke((cycle % 3 != 0).B)
+          dut.io.mem.resp.valid.poke((pending.nonEmpty && cycle % 4 != 0).B)
+          if (pending.nonEmpty) {
+            val addr = pending.front
+            val mip = (0 until 4).find(l => addr >= bases(l) && addr < bases(l + 1)).get
+            mipsRead += mip
+            dut.io.mem.resp.bits.addr.poke(addr.U)
+            dut.io.mem.resp.bits.data.poke(texel(colors(mip), 0, 0).U)
+            dut.io.mem.resp.bits.write.poke(false.B)
+          }
+          if (dut.io.mem.resp.valid.peek().litToBoolean && dut.io.mem.resp.ready.peek().litToBoolean)
+            pending.dequeue()
+          if (dut.io.mem.req.valid.peek().litToBoolean && dut.io.mem.req.ready.peek().litToBoolean)
+            pending.enqueue(dut.io.mem.req.bits.addr.peek().litValue.toLong)
+          dut.clock.step(); cycle += 1
+        }
+        assert(cycle < 3000, s"wide vector trial $trial timed out")
+        dut.io.mem.resp.valid.poke(false.B)
+        val expectedMips = (0 until 16).filter(l => (mask & (1 << l)) != 0).map(l => levels(l / 4)).toSet
+        assert(mipsRead == expectedMips)
+        for (_ <- 0 until 3) {
+          dut.io.vectorCommit.valid.expect(true.B)
+          for (lane <- 0 until 16) {
+            val expected = if ((mask & (1 << lane)) != 0) texel(colors(levels(lane / 4)), 0, 0)
+              else BigInt(0x100 + lane)
+            dut.io.vectorCommit.bits.writeback.data(lane).expect(expected.U)
+          }
+          dut.clock.step()
+        }
+        dut.io.vectorCommit.ready.poke(true.B); dut.clock.step()
+        dut.io.vectorCommit.ready.poke(false.B)
+      }
+    }
+  }
 }

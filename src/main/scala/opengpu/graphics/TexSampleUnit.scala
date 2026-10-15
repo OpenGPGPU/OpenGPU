@@ -25,6 +25,8 @@ class TexSampleUnit(
   config: GpuConfig = GpuConfig(),
   gfxConfig: GraphicsConfig = GraphicsConfig()
 ) extends Module {
+  require(config.lanes < 4 || config.lanes % 4 == 0,
+    "texture vectors must contain complete derivative quads")
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ScalarIssuedInstruction(config)))
     val commit = Decoupled(new ScalarCommitRequest(config))
@@ -106,8 +108,14 @@ class TexSampleUnit(
   private val gradHiReg = Reg(Vec(2, UInt(30.W)))
   private val gradReg = Reg(Vec(2, UInt(46.W)))
   if (config.lanes >= 4) {
-    val u = uVectorReg
-    val v = vVectorReg
+    // Wide vectors contain independent TL/TR/BL/BR quads. Select the
+    // current quad, including masked helper coordinates, for its own LOD.
+    def quad(values: Vec[UInt]): Seq[UInt] = (0 until 4).map { lane =>
+      if (config.lanes == 4) values(lane)
+      else VecInit((0 until config.lanes / 4).map(q => values(q * 4 + lane)))(laneReg >> 2)
+    }
+    val u = quad(uVectorReg)
+    val v = quad(vVectorReg)
     diffReg(0) := absDiff(u(1), u(0))
     diffReg(1) := absDiff(u(3), u(2))
     diffReg(2) := absDiff(u(2), u(0))
@@ -199,6 +207,21 @@ class TexSampleUnit(
   io.vectorCommit.bits.pc := pcReg
   io.vectorCommit.bits.warpActiveMask := activeMaskReg
 
+  private def advanceVectorLane(): Unit = {
+    when(laneReg === (config.lanes - 1).U) {
+      state := sCommit
+    }.otherwise {
+      laneReg := laneReg + 1.U
+      if (config.lanes > 4) {
+        val nextQuadActive = MuxLookup(laneReg >> 2, false.B)(
+          (0 until config.lanes / 4 - 1).map { q =>
+            q.U -> executionMaskReg((q + 2) * 4 - 1, (q + 1) * 4).orR
+          })
+        when(laneReg(1, 0) === 3.U && nextQuadActive) { state := sGrad }
+      }
+    }
+  }
+
   switch(state) {
     is(sIdle) {
       when(io.vectorIn.fire) {
@@ -287,18 +310,10 @@ class TexSampleUnit(
         when(vectorLaneActive) {
           when(sampler.io.result.fire) {
             vectorDataReg(laneReg) := sampler.io.result.bits
-            when(laneReg === (config.lanes - 1).U) {
-              state := sCommit
-            }.otherwise {
-              laneReg := laneReg + 1.U
-            }
+            advanceVectorLane()
           }
         }.otherwise {
-          when(laneReg === (config.lanes - 1).U) {
-            state := sCommit
-          }.otherwise {
-            laneReg := laneReg + 1.U
-          }
+          advanceVectorLane()
         }
       }.otherwise {
         when(sampler.io.result.fire) {

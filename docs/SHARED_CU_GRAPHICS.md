@@ -249,3 +249,13 @@ readback and sentinel preservation. Log:
 `.artifacts/shared-cu-wide-staging-tests.log`. The wide checks use a cease-only
 kernel to isolate staging. Stock wide shader binaries and desktop execution
 still require coordinated software changes.
+
+Wide `vtex.sample` now calculates LOD separately for each four-lane quad,
+including masked helper coordinates, instead of reusing the first quad's
+LOD. Gradient calculation reuses the existing arithmetic between quad
+boundaries; inactive quads avoid unnecessary recalculation. Five sampler
+tests pass, including distinct mip levels across a 16-lane vector, masked
+helpers, inactive middle quads, consecutive requests, memory backpressure
+and held writeback. The two four-CU ordered 1x/4x renderer tests also pass
+after the wide-staging and sampler changes (seven tests total). Log:
+`.artifacts/shared-cu-wide-texture-tests.log`.
