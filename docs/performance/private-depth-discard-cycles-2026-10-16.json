@@ -1,0 +1,547 @@
+{
+  "scope": "Controlled GPU-cycle comparison on identical frozen complete4CU16lane8warp VS/FS/FPU RTL/QEMU. One Weston uniform/opacity triangle with160x120bounding box in640x480target; fresh guest; same fill fixture/EGL/GLES/GBM/GDK bytes. No texture sampling.",
+  "change": "Software only: baseline Mesa triangle batching c2b4469 versus opt-in private depth discard9789e7b.",
+  "measurement": {
+    "binaries": {
+      "baseline": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/runtime-render-extent/qemu-cycle-probe",
+        "sha256": "32895b221acfe51428b26d04d701723b026942d3d2c0c978567753d48bf1cc2f"
+      },
+      "candidate": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/runtime-render-extent/qemu-cycle-probe",
+        "sha256": "32895b221acfe51428b26d04d701723b026942d3d2c0c978567753d48bf1cc2f"
+      }
+    },
+    "base_image": "/Users/duckdonald/workspace/arti-work/debian-gtk-arm64.qcow2",
+    "scope": "native GLES triangle with160x120bounding box in640x480mode; fresh guest; pixel proof required; no scanout capture",
+    "workload": "Weston uniform-colour/opacity shader control; no texture sampling",
+    "payloads": {
+      "baseline": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/mesa-triangle-batching/display-work",
+        "sha256": {
+          "gpu_drv.deps": "7a2af8a9e8cdcb1f1d21b9150d3853b4447ab3103f183ab66df5d5425da862a8",
+          "gpu_drv.ko": "c0b3accd10245a02e419b80299a1495c33a57862b713efcbf55144d5a0caf5b3",
+          "gtk-gles-readback.json": "c5c7552fd748c2af2eed966abee720e393c05baca9e1a68dc6a86f5a26c67d4d",
+          "gtk_opengpu_smoke.c": "c3c9e590ef9b373de8b3d909d9ab305a8ec2a40344d03651b16bdecce8d32bc9",
+          "libEGL.so.1": "dcd23aea7092131e101d6807de77ce7377e416fd863dc8e55c7c3d4d1e4ce39c",
+          "libGLESv2.so.2": "97298e8a401f97fb9fb228887a40ed752a865188641f9747dc3a53c365074943",
+          "libdrm.so.2": "25c3503b94e105d9008c7b893b5096591da3e07164f9993ffbd56207779777cc",
+          "libexpat.so.1": "6ada26e660eb4470a151ce841f082a51e3d2cde630ec41d9ff106edbfc9fdc0a",
+          "libgbm.so.1": "6484127d57ad16df98fc7d3ac50bf55907283018b5e2730b1202425c135fd8c4",
+          "libgdk-3.so.0": "cdaa95d2a52cf153b78751f45322a552d87d9cc0bb52d0bd638e50ffe7594137",
+          "libglapi.so.0": "903b85269230ea4c0d276d0da57aabb9932a32c83bceeb5611d59f2e8f44c792",
+          "opengpu_asid_test": "f530eac736be5ca93987feabe6fbee4868d330443c5361dc02986de7c50686d2",
+          "opengpu_compute_example": "6573a26df0af368a0c59b5be853a9074aa45edce9aad92c44fc789635a765c49",
+          "opengpu_compute_shader.bin": "d1d077efcbf2ebdd53f3a7328a650f9cba950fc73fd6d9c282d639f5b308f8d8",
+          "opengpu_depth_validator_test": "a5655f4e37a3a8b1eecc0db4f0ff10417a77f9f69bb410899a252fb367080196",
+          "opengpu_dri.so": "ae9471ba72c034713a49f5a39de085aee4b506c94571d0b45ac41d46a5e29f7c",
+          "opengpu_drm_test": "d1a9a4739c836638948f30732f8c87b6a2b551d958162da10ae303071c5307fa",
+          "opengpu_fixed_width": "62bb874206a4e9c7fd82ad0e857939e4914d263d666da967f6c850b2e0c50aa5",
+          "opengpu_fixed_width.bin": "659e287f970faea8ec4b224d24338bd453e0fc1572412bf0afd38e7b91cf5b49",
+          "opengpu_fp_binary": "395d10d5a9fa3f98683b155afadaab8b21552469c2f900535fbebdc5e9fb426d",
+          "opengpu_fp_binary.bin": "449ab8b89a9419b311de17e06c1c66ca7693d16ac722c04efda38cdd55e1330d",
+          "opengpu_fp_compare": "e09493c92723cc8b68f026d2c3ad4346b91b085d53d0dba713b317ea36f0fae7",
+          "opengpu_fp_compare.bin": "82978224e150af029b1f5a6ac0fa81a922a61cbe91405814a3ea0b39b2766bfe",
+          "opengpu_fp_div": "89221800d1375af5545543baa6eaa81bc24d3eeaf2569653f9e94169a73a18f9",
+          "opengpu_fp_div.bin": "ec9c6ac57c7bedd135f36018676d24ffa0d2b1020457d341b2724cb085a5f25e",
+          "opengpu_fp_fma": "4fabe585e026db7c349f1f09fa89a49a7a84c8f85a6cfe711db69d70c5f3c63f",
+          "opengpu_fp_fma.bin": "227e259b9bf763f7379ec6c12e677cff4435af14c1da6ea94bb96547c49c8dac",
+          "opengpu_fp_reduce": "65557ccfaf76b44094edd28b273153e0484d3c9b346aab87ce8e049990b069ca",
+          "opengpu_fp_reduce.bin": "206d6d75941e942d2bb0e8557121e339846991b57279688b9a16c1250933255f",
+          "opengpu_fp_scalar": "eb00f803054229c61d9c2273be14631485fb3cf1098e44e41eedc6713f4c25f4",
+          "opengpu_fp_scalar.bin": "7d86240cd942a7e7985ce6a8be9ec9dc2c3e88373032762db9a8bcfbf01887f4",
+          "opengpu_fp_unary": "b92991b6e03719bb728571abfbc4addc20f8eac0a687f5b3f1c055c85b0c804a",
+          "opengpu_fp_unary.bin": "339bd3c43f24698863c2a2f7544d0c79af7f8df324cd90c22b31a2eb0987ed59",
+          "opengpu_fragment_fp": "dd8bf78e5b21c35d80cb3e41efdc73d6cf19603a3f3ace1b5e006d064e066287",
+          "opengpu_fragment_fp.bin": "4c8b44068e88c520a7bcb86219da72bb27760731bc7be3142e40ff74b21698cd",
+          "opengpu_fragment_fp.o": "49248a8c56efd6950d01c916b451cea8de0852afca0e91e74dd34c28d31b77da",
+          "opengpu_fragment_fp_scalar": "8c1aa9f948cd9c4453d541cdaaa78839efcf741e91d54c8849d6c02e0afd49f3",
+          "opengpu_fragment_fp_scalar.bin": "c8d25e9eb758bedfda4bae5ef3471e25c488aefb97e74154ca4248a16341740b",
+          "opengpu_fragment_fp_scalar.o": "3ee876c239431076701ec650b388ec09162c858c4364f90d5e31006c6b6309cd",
+          "opengpu_fragment_texture.bin": "695c7ed445f534e4cdfb5b5da2f3bb082fbeebaa94bb1f2a344aefdb6499c4bc",
+          "opengpu_fragment_texture.o": "b2a168a57a21561f3da92f490f1b87fafec7f546d14b0d4b4c17671937fb2bef",
+          "opengpu_fragment_tint": "97dc2f3330b1334d77310689340d473437077ae949e78b50699bb5321eb01767",
+          "opengpu_fragment_tint.bin": "d612b6e0fcc116d17ebc8d950328e67db8ca2263ca019c267221ed825f98dc77",
+          "opengpu_fragment_tint.o": "7264ea91670643a6b42941755eed404f049fe1a98ff6f540cf7051fb40f69d8c",
+          "opengpu_gl_blend": "0fbefce049390339f222d074fffa9af4d16538c1b558c1e1b71fdf1885722e9b",
+          "opengpu_gl_blend.bin": "96f7144a7d1e7a3a1da86ff21d63e7a6d06790f3b814d02d5d02a9b61b4bc999",
+          "opengpu_gl_fade": "6f8abcba66aad3851ea7812748d3a068d582388edea30a7464b4de84b3cc2e29",
+          "opengpu_gl_fade.bin": "e8fc418104a8986b63532af81563f89e5592092e41b04b24df8211864ac4e5b7",
+          "opengpu_gl_fill": "b6df64a3745542a1c936ac84208f49fe110a88583e32f5674f85edfdad8a5386",
+          "opengpu_gl_fill.bin": "3732e576a4da94185b7ceebd6d40bcc5d23dfcfaefcd6c4ef4a358ee67fe80ed",
+          "opengpu_gl_glass": "4b2842238fb2021d75f10fa9cf3e839d10c7b04fd4e3d3451d21deb24c7909c0",
+          "opengpu_gl_glass.bin": "159fbd42a3c13f160e27f653e05dbd9f2228db70e062b85b136559fa9329092e",
+          "opengpu_gl_grade": "bf005a0fe9686d8a89265a639ff3fde7e703dbae86eb920286fd1e143e2d4fc4",
+          "opengpu_gl_grade.bin": "7f85f608f3cd9da3518d737aa2567148e9fc8d299a903fd5de04c6a4f1cb69b7",
+          "opengpu_gl_gtk_color.bin": "82983700976b32287bd586f404d7087cdb94135100cda3c8db172c44b8e427ab",
+          "opengpu_gl_gtk_coverage": "80c77e9902945ec40d145f4cdda1f23874b79291f81037b040ffc14ce6add589",
+          "opengpu_gl_gtk_coverage.bin": "9b1ee55e0992972505f8597aab582db72b64aaa16d5659c87de45960d6456bb8",
+          "opengpu_gl_haze": "d1bdc86cf007d2a146d40611c7016ba8feefb7af46ee6cff75d7a4a85275cad3",
+          "opengpu_gl_haze.bin": "7471ea42d0c9ed4ebd33d72753448bf7f571e588a25ba849b96643ede6a60dbc",
+          "opengpu_gl_icon": "dbc5063f7015490b3c12dc7e08d5620a2375f5e350dfefca0f4dd352027b81d3",
+          "opengpu_gl_icon.bin": "591e726d4dea6d353d3801de831e5ce94f4f78dca3e02202bf0fb0107f74660d",
+          "opengpu_gl_modulate": "55b17b3776888d325b2a1fb86fc6e3549f73987db557fba81f21e57a51400447",
+          "opengpu_gl_modulate.bin": "4c08b56f0826090f14b8cc1073ec9c66d88df5f4d31e236a0b6a6a71a918ecf1",
+          "opengpu_gl_opacity": "32d04bbe19fedd86b6b20c99b9eb1d199c5d20e087e8271cdb5ba0f1f19cefdf",
+          "opengpu_gl_opacity.bin": "8db394217e99ad2e2916026d7361968f0d72c01d26e66473c91429cf43455ad4",
+          "opengpu_gl_pane": "1b38bd3366711292d186da75410c683fa5cf713dc4c301b235a4c04ae294f99a",
+          "opengpu_gl_pane.bin": "437fb8727ae841c47f85719d0f4d0f32032ac25dd023619f61bc59e5272a4bce",
+          "opengpu_gl_qt_flatcolor.bin": "cc87adabc49ffef0388dc83c04fd6efa89015e207b71922a4fe2cd2b8fc57bb6",
+          "opengpu_gl_qt_opacity.bin": "70006436541a1d0d2c5d0961b316d6ca19bd54f38c60fb5fd87968e79073820c",
+          "opengpu_gl_qt_rendernode.bin": "37d3d511e611c531715f6107f78f8940a26c4f704dd431d52e831e48c6fe421d",
+          "opengpu_gl_qt_stencilclip.bin": "b933b7df00abec4c8f67986889241abc33d6f6d9dae9f263a9705fb5f304ed62",
+          "opengpu_gl_qt_texture.bin": "4a16a241f872475e25f3df5a1bb47d925d92e0b4076d4b66bac467abc1185226",
+          "opengpu_gl_qt_vertexcolor.bin": "651a87e4fbc9b5d039cd2fecb90def9179605e76cdc98ca50d4858894754944d",
+          "opengpu_gl_quad": "f9400e70f168cd60610e2db89f575aadeb681409cf4cdb86b7e7d61ac98c01c3",
+          "opengpu_gl_quad.bin": "d0adc6a8874a2b780d73702f19c30257cb7c00de5887334cfa19c77d0e3e8106",
+          "opengpu_gl_ramp": "670429102e96608097a568f7bdd504ec0e759205fa0e2717323d070b85feee1d",
+          "opengpu_gl_ramp.bin": "a4f6501901b06fb7285108efaacce2b31ca1a9ace6ff74b878175457deb74a47",
+          "opengpu_gl_scissor": "9eaf6cb999cdb1b88113119fb9cda267bcb282888ec121ee38eab05fa2ef4eff",
+          "opengpu_gl_scissor.bin": "ad1cec7b14c8790f384021776fb5d3d842b51c546d48b85b24eef0bb8856f0bc",
+          "opengpu_gl_shade": "15ab99355fbdccbd975321ca267622bef337e4efeabe7855779fb9ef74163187",
+          "opengpu_gl_shade.bin": "e3fd5ae1951085fa1c7506ce6f0e2ee5ac7648354051059784c433cf0680ad55",
+          "opengpu_gl_sheet": "2cbba4fe1b432c525f480b253a16c6268ba9d1cad560065cdfa69a4960edacc9",
+          "opengpu_gl_sheet.bin": "c137138263da276e97bf2948e68777587ea6691922a6d574e324a9ec46a899a4",
+          "opengpu_gl_sprite": "06598c5951b651b037e1580b9821ad457b9898448f201916d0a9075fec798692",
+          "opengpu_gl_sprite.bin": "dec3347939bb42b5f30107e42750c1624959fa4d1349fa3ac784d90d990f8d36",
+          "opengpu_gl_textransform": "066eeefd1480698b9afbe6ff4dca4e48e6758a3fd78e3f007c5686089b147b1a",
+          "opengpu_gl_textransform.bin": "70bf527ecab6132f52ebd84e37be9222eb0edbd73723a347515f1488b5665e54",
+          "opengpu_gl_texture": "78d10bc451acabfc885746bfb9c5fb9bcf1a1651fe71922d0ef02ea9cca69a04",
+          "opengpu_gl_texture.bin": "29e14f79adfd763810d9167c2b5b6154c58422566f8a8b740c214d6b03fe02dc",
+          "opengpu_gl_tint": "8ac54332dc4a5bebffc4c00680502b8feb57ffe0a5aa1a2539fa4804d7eb15b1",
+          "opengpu_gl_tint.bin": "320b4ad71b20c6a0a78b9caa78256894b0f25a74c5a29f472746b9cf5b0f0da6",
+          "opengpu_gl_transform": "b63c2d65d3cb0ef40e0ec22d85653c903462e28204db0d7051882d91741bd7ea",
+          "opengpu_gl_transform.bin": "5c894c97cd214224ee8b4f476915f79a0dcf39848bd31fab790a8064f9bd3e7a",
+          "opengpu_gl_triangle": "34a46e089694b178b65d5f0277330486ae461db7d0958879a780da1fecdb491b",
+          "opengpu_gl_triangle.bin": "48e6ea334292c05f2ab880cb850b88fb1d9dbdaf7cdbbf6edd6cd5e34f2e900d",
+          "opengpu_gl_veil": "f9edc02544414b6832c78bc3d31b95b905f712737af645f55606adc022be4f74",
+          "opengpu_gl_veil.bin": "6c4a1961b85def0e077f41c05cf55754693f8f94ac706f68190621860ed64e83",
+          "opengpu_gl_wash": "4d32d97ef84554745452b6db62205840d62a8fbe8db2e82e609aaa126df9a0aa",
+          "opengpu_gl_wash.bin": "9263c0334a477eefc37044013f38c135acfb2d7561a7c9b4c678c7d0e52bbace",
+          "opengpu_gtk_smoke.sh": "44387a51c4f608b80d0e1c166e3d090acee71b1727c7ad25f7cd1338bb537350",
+          "opengpu_gtk_smoke_build.sh": "48a99eaf3c95f6532b70436ce514759168ed7f868a756efcc34404f04a9b7fdb",
+          "opengpu_kernarg_va_test": "51772c6627692018f25373f8db9b5d2814c901f9c22c4d9a4ff0a299788afe90",
+          "opengpu_kms_present": "3040972514b107e62cc3578041ff2bccd5b3aa07c03db855fd1ee0f1a839b90c",
+          "opengpu_mmu_test": "61e19d61b0f930ea3c9683e0d7704cc2d8492066f03fc451cf1abd4d0df412f8",
+          "opengpu_pipe_blit": "a5827ea20d12ef8404a33f5c751a94475c3dd699985f949540031d914fcdba39",
+          "opengpu_pipe_clear_draw": "e0e67fc9ad8a40f94ef1a420ecd610af5785a081ef2fa8985b95999e1ff041bc",
+          "opengpu_pipe_compute": "cbe37a0039c299056141b5915ba90738e9e4e38d87d49b5d96d0cf93dfaae6fb",
+          "opengpu_pipe_depth_pass": "a8cf6355f2d5fc5ef2b2e4f2e63bcb7bc2e5e05979788d75a5a07c2e04186558",
+          "opengpu_pipe_desktop": "9ed463c8e60f295e217c1d60a34ec316e594a7c245b1b374d934852b9f42b1c6",
+          "opengpu_pipe_dmabuf": "44a008c9f3af6cb5955c24969cd63f2774eb068d3313efde957e274c09f5b1a3",
+          "opengpu_pipe_msaa_draw": "ce2866274337b69b38e93e6112310496441645c1e26dc0ef880d2ada3a6f732e",
+          "opengpu_pipe_present": "b65bc0f3470f3bc067ab0062fec76f979c7f4aa5d007bed59dd801367261ad57",
+          "opengpu_pipe_resolve": "3873fe1701e552ae40d2dcacdc191004c153083e9e153e7e0c524588d61cda8c",
+          "opengpu_pipe_strided_blit": "cc995e6b3386c7deca137c7ce0a40c91b46b602e988999b32c232bcc5e4f2a48",
+          "opengpu_pipe_texture_draw": "affb8fc3918a97604ba24a183cf05e773192d7bbba8ddd00d4b012a5dc265ae0",
+          "opengpu_pipe_vertex_draw": "7cb6e05e773f6088649b33e32c9fb21cbb7655c0434c085af0f450f307076b85",
+          "opengpu_resolve_validator_test": "6b87d88fad0d8bd1e911f350186328d0c35f9d347f6e82f32423d2b99e25d922",
+          "opengpu_shader_validator_test": "b9a38e5772863e89c5e49ad8735ed7a879126e264880440f7b05c1790e81c4af",
+          "opengpu_tlb_flush_test": "d1653e6973a3837be38d2870b6c71e894ef0371de0f02d1d73ebf51a6f44cf40",
+          "opengpu_triangle_example": "f8b6b883563f03cc95b8048e3508fefeb573ac0e7300699cb855252f5097107e",
+          "opengpu_triangle_present": "828beef7e82810c7c9630a538e8012cff51a266f3a01b3b937e964d66760a10e",
+          "opengpu_widen_alu": "dcbcdccbc0084281463dc340601dcf50e835600ba738ace7b58511af15940116",
+          "opengpu_widen_alu.bin": "6d6f2aca2d75f5585fe2031c946e72c9e9ad405e9eb4cfc0148bd1a3aa36ff9a",
+          "simulation-driver.json": "992da7ece988c61d52df96abd5f17822469e324547c0238c254d7754ce2093b2"
+        }
+      },
+      "candidate": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/private-depth-discard/display-work-final",
+        "sha256": {
+          "gpu_drv.deps": "7a2af8a9e8cdcb1f1d21b9150d3853b4447ab3103f183ab66df5d5425da862a8",
+          "gpu_drv.ko": "72754a4e90b35cf4643395becc57d3239fda9a3584b4bd2f8bd7f74ea2257d4b",
+          "gtk-gles-readback.json": "c5c7552fd748c2af2eed966abee720e393c05baca9e1a68dc6a86f5a26c67d4d",
+          "gtk_opengpu_smoke.c": "c3c9e590ef9b373de8b3d909d9ab305a8ec2a40344d03651b16bdecce8d32bc9",
+          "libEGL.so.1": "dcd23aea7092131e101d6807de77ce7377e416fd863dc8e55c7c3d4d1e4ce39c",
+          "libGLESv2.so.2": "97298e8a401f97fb9fb228887a40ed752a865188641f9747dc3a53c365074943",
+          "libdrm.so.2": "25c3503b94e105d9008c7b893b5096591da3e07164f9993ffbd56207779777cc",
+          "libexpat.so.1": "6ada26e660eb4470a151ce841f082a51e3d2cde630ec41d9ff106edbfc9fdc0a",
+          "libgbm.so.1": "6484127d57ad16df98fc7d3ac50bf55907283018b5e2730b1202425c135fd8c4",
+          "libgdk-3.so.0": "cdaa95d2a52cf153b78751f45322a552d87d9cc0bb52d0bd638e50ffe7594137",
+          "libglapi.so.0": "903b85269230ea4c0d276d0da57aabb9932a32c83bceeb5611d59f2e8f44c792",
+          "opengpu_asid_test": "f530eac736be5ca93987feabe6fbee4868d330443c5361dc02986de7c50686d2",
+          "opengpu_compute_example": "6573a26df0af368a0c59b5be853a9074aa45edce9aad92c44fc789635a765c49",
+          "opengpu_compute_shader.bin": "d1d077efcbf2ebdd53f3a7328a650f9cba950fc73fd6d9c282d639f5b308f8d8",
+          "opengpu_depth_validator_test": "a5655f4e37a3a8b1eecc0db4f0ff10417a77f9f69bb410899a252fb367080196",
+          "opengpu_dri.so": "afbf3920bcec00f24723aba813a4e12c9cac47dcc0015a94d3b5588a3b0ea959",
+          "opengpu_drm_test": "d1a9a4739c836638948f30732f8c87b6a2b551d958162da10ae303071c5307fa",
+          "opengpu_fixed_width": "62bb874206a4e9c7fd82ad0e857939e4914d263d666da967f6c850b2e0c50aa5",
+          "opengpu_fixed_width.bin": "659e287f970faea8ec4b224d24338bd453e0fc1572412bf0afd38e7b91cf5b49",
+          "opengpu_fp_binary": "395d10d5a9fa3f98683b155afadaab8b21552469c2f900535fbebdc5e9fb426d",
+          "opengpu_fp_binary.bin": "449ab8b89a9419b311de17e06c1c66ca7693d16ac722c04efda38cdd55e1330d",
+          "opengpu_fp_compare": "e09493c92723cc8b68f026d2c3ad4346b91b085d53d0dba713b317ea36f0fae7",
+          "opengpu_fp_compare.bin": "82978224e150af029b1f5a6ac0fa81a922a61cbe91405814a3ea0b39b2766bfe",
+          "opengpu_fp_div": "89221800d1375af5545543baa6eaa81bc24d3eeaf2569653f9e94169a73a18f9",
+          "opengpu_fp_div.bin": "ec9c6ac57c7bedd135f36018676d24ffa0d2b1020457d341b2724cb085a5f25e",
+          "opengpu_fp_fma": "4fabe585e026db7c349f1f09fa89a49a7a84c8f85a6cfe711db69d70c5f3c63f",
+          "opengpu_fp_fma.bin": "227e259b9bf763f7379ec6c12e677cff4435af14c1da6ea94bb96547c49c8dac",
+          "opengpu_fp_reduce": "65557ccfaf76b44094edd28b273153e0484d3c9b346aab87ce8e049990b069ca",
+          "opengpu_fp_reduce.bin": "206d6d75941e942d2bb0e8557121e339846991b57279688b9a16c1250933255f",
+          "opengpu_fp_scalar": "eb00f803054229c61d9c2273be14631485fb3cf1098e44e41eedc6713f4c25f4",
+          "opengpu_fp_scalar.bin": "7d86240cd942a7e7985ce6a8be9ec9dc2c3e88373032762db9a8bcfbf01887f4",
+          "opengpu_fp_unary": "b92991b6e03719bb728571abfbc4addc20f8eac0a687f5b3f1c055c85b0c804a",
+          "opengpu_fp_unary.bin": "339bd3c43f24698863c2a2f7544d0c79af7f8df324cd90c22b31a2eb0987ed59",
+          "opengpu_fragment_fp": "dd8bf78e5b21c35d80cb3e41efdc73d6cf19603a3f3ace1b5e006d064e066287",
+          "opengpu_fragment_fp.bin": "4c8b44068e88c520a7bcb86219da72bb27760731bc7be3142e40ff74b21698cd",
+          "opengpu_fragment_fp.o": "49248a8c56efd6950d01c916b451cea8de0852afca0e91e74dd34c28d31b77da",
+          "opengpu_fragment_fp_scalar": "8c1aa9f948cd9c4453d541cdaaa78839efcf741e91d54c8849d6c02e0afd49f3",
+          "opengpu_fragment_fp_scalar.bin": "c8d25e9eb758bedfda4bae5ef3471e25c488aefb97e74154ca4248a16341740b",
+          "opengpu_fragment_fp_scalar.o": "3ee876c239431076701ec650b388ec09162c858c4364f90d5e31006c6b6309cd",
+          "opengpu_fragment_texture.bin": "695c7ed445f534e4cdfb5b5da2f3bb082fbeebaa94bb1f2a344aefdb6499c4bc",
+          "opengpu_fragment_texture.o": "b2a168a57a21561f3da92f490f1b87fafec7f546d14b0d4b4c17671937fb2bef",
+          "opengpu_fragment_tint": "97dc2f3330b1334d77310689340d473437077ae949e78b50699bb5321eb01767",
+          "opengpu_fragment_tint.bin": "d612b6e0fcc116d17ebc8d950328e67db8ca2263ca019c267221ed825f98dc77",
+          "opengpu_fragment_tint.o": "7264ea91670643a6b42941755eed404f049fe1a98ff6f540cf7051fb40f69d8c",
+          "opengpu_gl_blend": "0fbefce049390339f222d074fffa9af4d16538c1b558c1e1b71fdf1885722e9b",
+          "opengpu_gl_blend.bin": "96f7144a7d1e7a3a1da86ff21d63e7a6d06790f3b814d02d5d02a9b61b4bc999",
+          "opengpu_gl_fade": "6f8abcba66aad3851ea7812748d3a068d582388edea30a7464b4de84b3cc2e29",
+          "opengpu_gl_fade.bin": "e8fc418104a8986b63532af81563f89e5592092e41b04b24df8211864ac4e5b7",
+          "opengpu_gl_fill": "b6df64a3745542a1c936ac84208f49fe110a88583e32f5674f85edfdad8a5386",
+          "opengpu_gl_fill.bin": "3732e576a4da94185b7ceebd6d40bcc5d23dfcfaefcd6c4ef4a358ee67fe80ed",
+          "opengpu_gl_glass": "4b2842238fb2021d75f10fa9cf3e839d10c7b04fd4e3d3451d21deb24c7909c0",
+          "opengpu_gl_glass.bin": "159fbd42a3c13f160e27f653e05dbd9f2228db70e062b85b136559fa9329092e",
+          "opengpu_gl_grade": "bf005a0fe9686d8a89265a639ff3fde7e703dbae86eb920286fd1e143e2d4fc4",
+          "opengpu_gl_grade.bin": "7f85f608f3cd9da3518d737aa2567148e9fc8d299a903fd5de04c6a4f1cb69b7",
+          "opengpu_gl_gtk_color.bin": "82983700976b32287bd586f404d7087cdb94135100cda3c8db172c44b8e427ab",
+          "opengpu_gl_gtk_coverage": "80c77e9902945ec40d145f4cdda1f23874b79291f81037b040ffc14ce6add589",
+          "opengpu_gl_gtk_coverage.bin": "9b1ee55e0992972505f8597aab582db72b64aaa16d5659c87de45960d6456bb8",
+          "opengpu_gl_haze": "d1bdc86cf007d2a146d40611c7016ba8feefb7af46ee6cff75d7a4a85275cad3",
+          "opengpu_gl_haze.bin": "7471ea42d0c9ed4ebd33d72753448bf7f571e588a25ba849b96643ede6a60dbc",
+          "opengpu_gl_icon": "dbc5063f7015490b3c12dc7e08d5620a2375f5e350dfefca0f4dd352027b81d3",
+          "opengpu_gl_icon.bin": "591e726d4dea6d353d3801de831e5ce94f4f78dca3e02202bf0fb0107f74660d",
+          "opengpu_gl_modulate": "55b17b3776888d325b2a1fb86fc6e3549f73987db557fba81f21e57a51400447",
+          "opengpu_gl_modulate.bin": "4c08b56f0826090f14b8cc1073ec9c66d88df5f4d31e236a0b6a6a71a918ecf1",
+          "opengpu_gl_opacity": "32d04bbe19fedd86b6b20c99b9eb1d199c5d20e087e8271cdb5ba0f1f19cefdf",
+          "opengpu_gl_opacity.bin": "8db394217e99ad2e2916026d7361968f0d72c01d26e66473c91429cf43455ad4",
+          "opengpu_gl_pane": "1b38bd3366711292d186da75410c683fa5cf713dc4c301b235a4c04ae294f99a",
+          "opengpu_gl_pane.bin": "437fb8727ae841c47f85719d0f4d0f32032ac25dd023619f61bc59e5272a4bce",
+          "opengpu_gl_qt_flatcolor.bin": "cc87adabc49ffef0388dc83c04fd6efa89015e207b71922a4fe2cd2b8fc57bb6",
+          "opengpu_gl_qt_opacity.bin": "70006436541a1d0d2c5d0961b316d6ca19bd54f38c60fb5fd87968e79073820c",
+          "opengpu_gl_qt_rendernode.bin": "37d3d511e611c531715f6107f78f8940a26c4f704dd431d52e831e48c6fe421d",
+          "opengpu_gl_qt_stencilclip.bin": "b933b7df00abec4c8f67986889241abc33d6f6d9dae9f263a9705fb5f304ed62",
+          "opengpu_gl_qt_texture.bin": "4a16a241f872475e25f3df5a1bb47d925d92e0b4076d4b66bac467abc1185226",
+          "opengpu_gl_qt_vertexcolor.bin": "651a87e4fbc9b5d039cd2fecb90def9179605e76cdc98ca50d4858894754944d",
+          "opengpu_gl_quad": "f9400e70f168cd60610e2db89f575aadeb681409cf4cdb86b7e7d61ac98c01c3",
+          "opengpu_gl_quad.bin": "313486e360292f589eaeb26f66a5c58262c9c34007e2562cdf9c750efc3f981e",
+          "opengpu_gl_ramp": "670429102e96608097a568f7bdd504ec0e759205fa0e2717323d070b85feee1d",
+          "opengpu_gl_ramp.bin": "a4f6501901b06fb7285108efaacce2b31ca1a9ace6ff74b878175457deb74a47",
+          "opengpu_gl_scissor": "9eaf6cb999cdb1b88113119fb9cda267bcb282888ec121ee38eab05fa2ef4eff",
+          "opengpu_gl_scissor.bin": "ad1cec7b14c8790f384021776fb5d3d842b51c546d48b85b24eef0bb8856f0bc",
+          "opengpu_gl_shade": "15ab99355fbdccbd975321ca267622bef337e4efeabe7855779fb9ef74163187",
+          "opengpu_gl_shade.bin": "e3fd5ae1951085fa1c7506ce6f0e2ee5ac7648354051059784c433cf0680ad55",
+          "opengpu_gl_sheet": "2cbba4fe1b432c525f480b253a16c6268ba9d1cad560065cdfa69a4960edacc9",
+          "opengpu_gl_sheet.bin": "c137138263da276e97bf2948e68777587ea6691922a6d574e324a9ec46a899a4",
+          "opengpu_gl_sprite": "06598c5951b651b037e1580b9821ad457b9898448f201916d0a9075fec798692",
+          "opengpu_gl_sprite.bin": "dec3347939bb42b5f30107e42750c1624959fa4d1349fa3ac784d90d990f8d36",
+          "opengpu_gl_textransform": "066eeefd1480698b9afbe6ff4dca4e48e6758a3fd78e3f007c5686089b147b1a",
+          "opengpu_gl_textransform.bin": "70bf527ecab6132f52ebd84e37be9222eb0edbd73723a347515f1488b5665e54",
+          "opengpu_gl_texture": "78d10bc451acabfc885746bfb9c5fb9bcf1a1651fe71922d0ef02ea9cca69a04",
+          "opengpu_gl_texture.bin": "29e14f79adfd763810d9167c2b5b6154c58422566f8a8b740c214d6b03fe02dc",
+          "opengpu_gl_tint": "8ac54332dc4a5bebffc4c00680502b8feb57ffe0a5aa1a2539fa4804d7eb15b1",
+          "opengpu_gl_tint.bin": "320b4ad71b20c6a0a78b9caa78256894b0f25a74c5a29f472746b9cf5b0f0da6",
+          "opengpu_gl_transform": "b63c2d65d3cb0ef40e0ec22d85653c903462e28204db0d7051882d91741bd7ea",
+          "opengpu_gl_transform.bin": "5c894c97cd214224ee8b4f476915f79a0dcf39848bd31fab790a8064f9bd3e7a",
+          "opengpu_gl_triangle": "34a46e089694b178b65d5f0277330486ae461db7d0958879a780da1fecdb491b",
+          "opengpu_gl_triangle.bin": "48e6ea334292c05f2ab880cb850b88fb1d9dbdaf7cdbbf6edd6cd5e34f2e900d",
+          "opengpu_gl_veil": "f9edc02544414b6832c78bc3d31b95b905f712737af645f55606adc022be4f74",
+          "opengpu_gl_veil.bin": "6c4a1961b85def0e077f41c05cf55754693f8f94ac706f68190621860ed64e83",
+          "opengpu_gl_wash": "4d32d97ef84554745452b6db62205840d62a8fbe8db2e82e609aaa126df9a0aa",
+          "opengpu_gl_wash.bin": "9263c0334a477eefc37044013f38c135acfb2d7561a7c9b4c678c7d0e52bbace",
+          "opengpu_gtk_smoke.sh": "44387a51c4f608b80d0e1c166e3d090acee71b1727c7ad25f7cd1338bb537350",
+          "opengpu_gtk_smoke_build.sh": "48a99eaf3c95f6532b70436ce514759168ed7f868a756efcc34404f04a9b7fdb",
+          "opengpu_kernarg_va_test": "51772c6627692018f25373f8db9b5d2814c901f9c22c4d9a4ff0a299788afe90",
+          "opengpu_kms_present": "3040972514b107e62cc3578041ff2bccd5b3aa07c03db855fd1ee0f1a839b90c",
+          "opengpu_mmu_test": "61e19d61b0f930ea3c9683e0d7704cc2d8492066f03fc451cf1abd4d0df412f8",
+          "opengpu_pipe_blit": "a5827ea20d12ef8404a33f5c751a94475c3dd699985f949540031d914fcdba39",
+          "opengpu_pipe_clear_draw": "e0e67fc9ad8a40f94ef1a420ecd610af5785a081ef2fa8985b95999e1ff041bc",
+          "opengpu_pipe_compute": "cbe37a0039c299056141b5915ba90738e9e4e38d87d49b5d96d0cf93dfaae6fb",
+          "opengpu_pipe_depth_pass": "a8cf6355f2d5fc5ef2b2e4f2e63bcb7bc2e5e05979788d75a5a07c2e04186558",
+          "opengpu_pipe_desktop": "9ed463c8e60f295e217c1d60a34ec316e594a7c245b1b374d934852b9f42b1c6",
+          "opengpu_pipe_dmabuf": "44a008c9f3af6cb5955c24969cd63f2774eb068d3313efde957e274c09f5b1a3",
+          "opengpu_pipe_msaa_draw": "ce2866274337b69b38e93e6112310496441645c1e26dc0ef880d2ada3a6f732e",
+          "opengpu_pipe_present": "b65bc0f3470f3bc067ab0062fec76f979c7f4aa5d007bed59dd801367261ad57",
+          "opengpu_pipe_resolve": "3873fe1701e552ae40d2dcacdc191004c153083e9e153e7e0c524588d61cda8c",
+          "opengpu_pipe_strided_blit": "cc995e6b3386c7deca137c7ce0a40c91b46b602e988999b32c232bcc5e4f2a48",
+          "opengpu_pipe_texture_draw": "affb8fc3918a97604ba24a183cf05e773192d7bbba8ddd00d4b012a5dc265ae0",
+          "opengpu_pipe_vertex_draw": "7cb6e05e773f6088649b33e32c9fb21cbb7655c0434c085af0f450f307076b85",
+          "opengpu_private_depth_test": "e190148242bc630afd970c6c9747d968605528d9263267c2b78144a07671a576",
+          "opengpu_resolve_validator_test": "6b87d88fad0d8bd1e911f350186328d0c35f9d347f6e82f32423d2b99e25d922",
+          "opengpu_shader_validator_test": "b9a38e5772863e89c5e49ad8735ed7a879126e264880440f7b05c1790e81c4af",
+          "opengpu_tlb_flush_test": "d1653e6973a3837be38d2870b6c71e894ef0371de0f02d1d73ebf51a6f44cf40",
+          "opengpu_triangle_example": "f8b6b883563f03cc95b8048e3508fefeb573ac0e7300699cb855252f5097107e",
+          "opengpu_triangle_present": "828beef7e82810c7c9630a538e8012cff51a266f3a01b3b937e964d66760a10e",
+          "opengpu_widen_alu": "dcbcdccbc0084281463dc340601dcf50e835600ba738ace7b58511af15940116",
+          "opengpu_widen_alu.bin": "6d6f2aca2d75f5585fe2031c946e72c9e9ad405e9eb4cfc0148bd1a3aa36ff9a",
+          "simulation-driver.json": "82f681c38b9697ea5dde319c775edc4871cee351a1809ed70c6cdbf8a2a986c2"
+        }
+      }
+    },
+    "measurement": "GPU cycles only; elapsed times diagnostic",
+    "runs": [
+      {
+        "name": "baseline",
+        "round": 0,
+        "work": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/b0",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          10837.942
+        ],
+        "draws": [
+          {
+            "width": 640,
+            "height": 480,
+            "texture": 0
+          }
+        ],
+        "scene_verified": true,
+        "gpu_cycles": 331955,
+        "trace": {
+          "path": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/b0.trace",
+          "sha256": "3fdd75d3e378a5d4f6d3a530a12736cbac53553bddd6637c9a57e0a9722af21d"
+        }
+      },
+      {
+        "name": "candidate",
+        "round": 0,
+        "work": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/c0",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          8882.234
+        ],
+        "draws": [
+          {
+            "width": 640,
+            "height": 480,
+            "texture": 0
+          }
+        ],
+        "scene_verified": true,
+        "gpu_cycles": 238578,
+        "trace": {
+          "path": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/c0.trace",
+          "sha256": "e7524c3649450ea2961acab2a5bb78958f313250f629684edcefa733069362bc"
+        }
+      },
+      {
+        "name": "candidate",
+        "round": 1,
+        "work": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/c1",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          9205.587
+        ],
+        "draws": [
+          {
+            "width": 640,
+            "height": 480,
+            "texture": 0
+          }
+        ],
+        "scene_verified": true,
+        "gpu_cycles": 238688,
+        "trace": {
+          "path": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/c1.trace",
+          "sha256": "6ca428ca0602653bbb59b4e40bf74c38b123851d7a77e6e63a799b32f41e77e7"
+        }
+      },
+      {
+        "name": "baseline",
+        "round": 1,
+        "work": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/b1",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          10749.682
+        ],
+        "draws": [
+          {
+            "width": 640,
+            "height": 480,
+            "texture": 0
+          }
+        ],
+        "scene_verified": true,
+        "gpu_cycles": 332199,
+        "trace": {
+          "path": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/b1.trace",
+          "sha256": "cda53c9d8d580258933d9fa43eed2ae2164d7198931a941fe05e0fe8ff81b5b0"
+        }
+      },
+      {
+        "name": "baseline",
+        "round": 2,
+        "work": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/b2",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          13249.465
+        ],
+        "draws": [
+          {
+            "width": 640,
+            "height": 480,
+            "texture": 0
+          }
+        ],
+        "scene_verified": true,
+        "gpu_cycles": 331863,
+        "trace": {
+          "path": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/b2.trace",
+          "sha256": "78c8a52c2225beb23c14fee37798433a423266eb99cbcb9a5a5e7c1e7afdd3ca"
+        }
+      },
+      {
+        "name": "candidate",
+        "round": 2,
+        "work": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/c2",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          12620.455
+        ],
+        "draws": [
+          {
+            "width": 640,
+            "height": 480,
+            "texture": 0
+          }
+        ],
+        "scene_verified": true,
+        "gpu_cycles": 238977,
+        "trace": {
+          "path": "/Users/duckdonald/workspace/gpu/.artifacts/dcbench/c2.trace",
+          "sha256": "5f0e10e2ae3619eef55a34ca7098b272be36bce47ebe2a3eddd5f7fc99725760"
+        }
+      }
+    ],
+    "summary": {
+      "baseline": {
+        "gpu_cycles": [
+          331955,
+          332199,
+          331863
+        ],
+        "median_gpu_cycles": 331955,
+        "reduction_percent": 0.0
+      },
+      "candidate": {
+        "gpu_cycles": [
+          238578,
+          238688,
+          238977
+        ],
+        "median_gpu_cycles": 238688,
+        "reduction_percent": 28.096278109984784
+      }
+    },
+    "configuration": {
+      "QEMU_ACCEL": "hvf",
+      "QEMU_CPU": "host",
+      "ARTI_MODEL_IRQ_PUMP": "1024",
+      "ARTI_MODEL_IRQ_PUMP_NS": "8000000",
+      "ARTI_MODEL_SETTLE_NS": "8000000",
+      "GTK_PROOF_SMOKE": "1",
+      "GTK_PROOF_KMS_MODE": "64x64",
+      "GTK_PROOF_WESTON_REPRO": "medium",
+      "GTK_PROOF_REPRO_ONLY": "1",
+      "GTK_PROOF_SCANOUT_ENABLE": "0",
+      "GTK_PROOF_SKIP_BUILD": "1",
+      "GTK_PROOF_SKIP_COVERAGE": "1",
+      "GTK_PROOF_SMOKE_TIMEOUT_S": "900"
+    }
+  },
+  "completed_work": [
+    {
+      "name": "baseline",
+      "round": 0,
+      "cycles": 331955,
+      "batches": 88,
+      "lanes": 9840
+    },
+    {
+      "name": "candidate",
+      "round": 0,
+      "cycles": 238578,
+      "batches": 88,
+      "lanes": 9840
+    },
+    {
+      "name": "candidate",
+      "round": 1,
+      "cycles": 238688,
+      "batches": 88,
+      "lanes": 9840
+    },
+    {
+      "name": "baseline",
+      "round": 1,
+      "cycles": 332199,
+      "batches": 88,
+      "lanes": 9840
+    },
+    {
+      "name": "baseline",
+      "round": 2,
+      "cycles": 331863,
+      "batches": 88,
+      "lanes": 9840
+    },
+    {
+      "name": "candidate",
+      "round": 2,
+      "cycles": 238977,
+      "batches": 88,
+      "lanes": 9840
+    }
+  ],
+  "post_run_payload_sha256_unchanged": true,
+  "first_pair_command_trace": {
+    "b0": {
+      "trace": ".artifacts/dcbench/b0.trace",
+      "trace_sha256": "3fdd75d3e378a5d4f6d3a530a12736cbac53553bddd6637c9a57e0a9722af21d",
+      "calls": 3227,
+      "commands_by_opcode": {
+        "5": 14,
+        "2": 2,
+        "6": 1
+      },
+      "fill_count": 2,
+      "fill_bytes": 2457600,
+      "depth_pattern_fill_count": 1,
+      "depth_pattern_fill_bytes": 1228800,
+      "depth_fill_size_histogram": {
+        "1228800": 1
+      },
+      "dma_read_bytes": 711304,
+      "dma_write_bytes": 2856016,
+      "scope": "MMIO unified-command SUBMIT writes; 0x00ffffff identifies the depth-clear pattern, not proof of every fill consumer."
+    },
+    "c0": {
+      "trace": ".artifacts/dcbench/c0.trace",
+      "trace_sha256": "e7524c3649450ea2961acab2a5bb78958f313250f629684edcefa733069362bc",
+      "calls": 2885,
+      "commands_by_opcode": {
+        "5": 14,
+        "2": 1,
+        "6": 1
+      },
+      "fill_count": 1,
+      "fill_bytes": 1228800,
+      "depth_pattern_fill_count": 0,
+      "depth_pattern_fill_bytes": 0,
+      "depth_fill_size_histogram": {},
+      "dma_read_bytes": 710168,
+      "dma_write_bytes": 1627656,
+      "scope": "MMIO unified-command SUBMIT writes; 0x00ffffff identifies the depth-clear pattern, not proof of every fill consumer."
+    }
+  },
+  "interpretation": "Median331955->238688cycles(-28.0963%). All six runs: one render,88completedshaderbatches,9840lanes,pixelPASS. First-pair trace shows exactly one1228800byte0x00ffffffdepthfill omitted; colour clear remains. Small cycle variation from scheduling/cache/host poll interactions is exposed in all raw samples.",
+  "limits": [
+    "Instrumented QEMU and concurrent compilation/other correctness guests: draw_ms is diagnostic, not host speed evidence.",
+    "This measures one controlled nontexture draw, not full desktop acceleration.",
+    "New fixed-LOD RTL not included; its native full-model pipeline is still active."
+  ]
+}
