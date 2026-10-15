@@ -28,6 +28,8 @@ def main():
     p.add_argument("output", type=Path)
     p.add_argument("--qemu-build", type=Path, default=root / "qemu-build")
     p.add_argument("--profile-runtime", action="store_true")
+    p.add_argument("--device-object", type=Path,
+                   help="replace only the compiled ARTI QEMU device in this executable")
     args = p.parse_args()
     build, archive, output = args.qemu_build.resolve(), args.archive.resolve(), args.output.resolve()
     if output in (build / "qemu-system-aarch64", build / "qemu-system-aarch64-unsigned"):
@@ -50,9 +52,19 @@ def main():
     unsigned = output.with_name(output.name+".unsigned")
     link[libraries[0]] = str(archive)
     link[link.index("-o")+1] = str(unsigned)
+    device = args.device_object.resolve() if args.device_object else None
+    if device:
+        if not device.is_file():
+            p.error(f"device object not found: {device}")
+        slots = [i for i, arg in enumerate(link) if Path(arg).name == "hw_misc_arti-rtl.c.o"]
+        if len(slots) != 1:
+            p.error("cannot identify a unique compiled ARTI device object")
+        link[slots[0]] = str(device)
     if args.profile_runtime:
         link.append("-fprofile-instr-generate")
-    subprocess.run(link, cwd=build, check=True)
+    result = subprocess.run(link, cwd=build)
+    if result.returncode:
+        raise SystemExit(result.returncode)
     entitlements = [cmd for cmd in commands if Path(cmd[0]).name == "entitlement.sh"]
     post = None
     if entitlements:
@@ -65,7 +77,10 @@ def main():
         unsigned.replace(output)
     manifest = {"archive": str(archive), "archive_sha256": digest(archive),
                 "output": str(output), "output_sha256": digest(output),
-                "profile_runtime": args.profile_runtime, "cwd": str(build),
+                "profile_runtime": args.profile_runtime,
+                "device_object": str(device) if device else None,
+                "device_object_sha256": digest(device) if device else None,
+                "cwd": str(build),
                 "link": link, "post_link": post}
     output.with_name(output.name+".json").write_text(json.dumps(manifest, indent=2)+"\n")
     print(output, flush=True)

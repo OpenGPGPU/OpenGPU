@@ -177,6 +177,12 @@ if [ "$GTK_PROOF_SMOKE" = 1 ]; then
     QMP_SOCKET="$PROOF_WORK/qmp.sock"
     QMP_SCANOUT="$PROOF_WORK/gtk-smoke-qmp.ppm"
     rm -f "$SCANOUT"
+    if [ "$GTK_PROOF_REPRO_ONLY" = 1 ]; then
+        # Native-only timing has pixel assertions and exits before GTK. Do
+        # not repeatedly scan its framebuffer for the later GTK target color.
+        SCANOUT=""
+        SCANOUT_MATCH=""
+    fi
 elif [ "$GTK_PROOF_DESKTOP" = 1 ]; then
     SCANOUT="$PROOF_WORK/desktop-scanout.ppm"
     SCANOUT_PIXEL=243044
@@ -247,6 +253,8 @@ ARTI_DIR="$ARTI_DIR" ARTI_WORK="$ARTI_WORK" FLASHSIM_DIR="$FLASHSIM_DIR" \
     INTEGRATION_CONFIG="$INTEGRATION_CONFIG" GPU_SIM=flashsim \
     QEMU_DISPLAY="${GTK_PROOF_QEMU_DISPLAY:-none}" OPENGPU_AUTO_DISPLAY=0 BUILD_USERSPACE=1 \
     REBUILD_CLOUDINIT=1 CLOUDINIT_PACKAGES="${CLOUDINIT_PACKAGES:-0}" \
+    CIDATA="${CIDATA:-$PROOF_WORK/cloud-init.iso}" \
+    MODULES_ISO="${MODULES_ISO:-$PROOF_WORK/opengpu-modules.iso}" \
     ARTI_DISPLAY_DUMP="${SCANOUT:-}" ARTI_DISPLAY_DUMP_PIXEL="${SCANOUT_PIXEL:-}" \
     ARTI_DISPLAY_DUMP_MATCH="${SCANOUT_MATCH:-}" \
     ARTI_DISPLAY_DUMP_ENABLE="${SCANOUT_ENABLE:-1}" \

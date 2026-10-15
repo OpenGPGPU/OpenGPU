@@ -57,7 +57,65 @@ Require native GLES pixel assertions, GTK idle/active readback, and the
 periodic scanout gate. A framebuffer captured after the GLES program exits
 can show the restored console and is not a valid GLES reference image.
 
-## Remaining candidates under investigation
+## Qualified tick and commit changes (2026-10-15)
+
+FlashSim `b608384` uses the existing pass worklist to avoid re-demanding
+already-current eager regions. On this top, 177 of 182 sequence demands
+are already maintained by that worklist, and every late memory-enable demand
+has already run earlier in the tick. The five remaining checks fit directly
+in the tick path. Independently callable demand helpers keep their complete
+bodies, preserving the header and unrelated object files.
+
+The same change splits the 46,776-case commit switch into 94 helpers with
+at most 512 cases each. These compile at `-O2`; small switches retain the
+original path. Typed comparisons, ordered stores, wake masks, and invalidation
+epochs remain intact. Tests cover chunk boundaries, 8/16/32/64/128-bit and
+wide registers, duplicate invalidation IDs, wraparound, and invalid indices.
+All 54 FlashSim tests pass.
+
+Two alternating rounds, seven samples per round, gave these native shader
+window medians. Each sample executes 168,582 ticks after the same verified
+prefix and preheat:
+
+| Model | Median | Time reduction from original |
+|---|---:|---:|
+| Original baseline | 1.235177 s | — |
+| Memory/outline/unroll changes plus representative PGO | 0.833471 s | 32.52% |
+| Above plus satisfied-demand elimination | 0.780629 s | 36.80% |
+| Above plus bounded commit switches | 0.757853 s | 38.64% |
+| Alternative table-driven commit | 0.752915 s | 39.04% |
+
+The bounded-switch form keeps the original typed case operations and a small
+94-entry dispatch table. The alternative has 46,776 metadata entries and
+22,942 effect functions; its additional shader gain is about 0.65%, while the
+two forms are within about 0.25% in the texture interaction comparison. The
+bounded-switch form is the retained implementation.
+
+Texture screening uses a different trace window, with 255,934 ticks per
+sample. Separate matched comparisons measured 4.81% for the unprofiled
+memory/outline/unroll changes, 31.90% with representative PGO, a further 5.97%
+from demand elimination on top of PGO, and a further 3.90% from bounded
+switches on top of that. These percentages come from separate batches and
+must not be added.
+
+The regenerated candidate has an identical DUT header. Only `dut_0.cpp`
+and the replacement `dut_commit_chunks.cpp` change. Its complete recorded
+workload passes: 317,616 calls, 42,307,012 ticks, 352,495,253 commits,
+2,482,108,618 holds, 4,630,676 DMA reads, 7,983,437 DMA writes and 100,896,920
+DMA bytes, with zero mismatches and no truncated tail. A fresh guest passes
+compute rounding, native GLES pixels, GTK idle/active pixels, and periodic
+scanout. Native GLES is a 160x120 rectangle in a 640x480 mode; GTK uses 64x64.
+
+Evidence: `quiet-shader-combinations.json`, `quiet-texture-screening.json`,
+`quiet-pgo-combinations.json`, `quiet-demand-commit-interaction.json`, and
+`final-candidate/` under `.artifacts/full-system-speed/`.
+
+The first profile was trained on the matching memory/outline/unroll source.
+The candidate reuses it for unchanged code; a refreshed profile for the new
+tick and commit functions is being collected before final promotion. Guest
+wall-clock comparisons remain a separate check from model replay timing.
+
+## Investigation inventory
 
 The post-helper sample placed `_mem_prepare`, commit invalidation, `_commit`,
 and tick dispatch at the top of active model costs. Sleeping QEMU threads and
@@ -69,10 +127,10 @@ GPU fence time on this workload.
 |---|---|---|
 | Evaluate memory data/address dependencies per enabled port | The 384-port prepare helper checks 256 eager generations whenever any port writes | FlashSim `4f70542`; full recorded trace passes; combined guest training passes |
 | Avoid initializing disabled-port data/address scratch | 668 scalar stores are emitted although store code reads them only for enabled ports | FlashSim `4f70542`; combined native shader window improves 2.85% |
-| Profile-guided compilation of this exact model | Compute, native GLES, GTK, and periodic scanout training all pass | Matched-source plain and profile-use builds running; speed not yet measured |
+| Profile-guided compilation of this exact model | Compute, native GLES, GTK, and periodic scanout training all pass | Full matched-source builds complete; 31.9% texture and 32.5% shader replay reduction before the latest changes |
 | Outline enabled-port data helpers | Large prepare bodies can make the compiler prepare cold addresses in its prologue | 4.08% faster than original in shader windows; 1.20% incremental over four-way unrolling in a separate comparison |
 | Four-way commit invalidation unrolling | Repeated small page-ID increments remain a hot helper | 4.25% faster than original with the memory changes; eight-way is slower and rejected |
-| Separate memory/sequence demand generations | Training calls `_demand_mem` 28,822,501 times; all its generation checks hit | Dependency analysis in progress; skip only when actual source leaves are unchanged |
+| Reuse already-maintained demand regions | Training calls `_demand_mem` 28,822,501 times; all its generation checks hit | FlashSim `b608384` reuses the worklist and early demands; no new leaf-generation tracking is needed |
 | QEMU guest CPU and IRQ policy | HVF guest polling leaves gaps with the small TCG IRQ budget | HVF 1024 ticks / 8ms passes compute, native, GTK and scanout; settled idle CPU about 4.15% |
 
 
@@ -89,7 +147,7 @@ DMA writes. Baseline times were 24.754/24.533/24.549 s; initialization elision
 changes together passed the complete trace: 317,616 calls, 42,307,012 ticks,
 4,630,676 DMA reads, and 7,983,437 DMA writes, without mismatches or a truncated
 tail. The emitter changes are committed as FlashSim `4f70542`; the matching-source instrumented model also passes compute, native GLES, GTK,
-and scanout in a fresh guest. Normal-build qualification remains pending.
+and scanout in a fresh guest. The regenerated normal build is also qualified as described above.
 
 For native GLES timing alone, the guest script accepts
 `GTK_PROOF_REPRO_ONLY=1` with `GTK_PROOF_WESTON_REPRO=medium`; it exits after
@@ -132,3 +190,18 @@ ordinary full replay. Keep the training executable and generated source
 hashes with the merged profile. `scripts/link_arti_model.py` links and signs
 a separate QEMU using the configured Ninja link command, without changing
 the default executable or staged model library.
+
+Arti `8c3614e` backs off an IRQ timer to at most 8ms only when the model's tick
+counter does not advance. MMIO rearms the 100us interval. A weak counter
+fallback keeps the original policy for backends without this API. Runtime
+checks with tiny model libraries observe 802 polls without counters versus
+121 idle polls with counters over the same 1.2s interval. A guest using the
+real GPU passes compute/GLES/GTK/scanout checks. Single diagnostic console-idle
+samples were 3.90% CPU before and 2.13% after; display dirty tracking is still
+under investigation.
+
+Guest proofs now use private seed/modules ISOs. Arti `97902c6` generates
+cloud-init data in temporary staging rather than rewriting tracked templates.
+Native-only proofs disable the later GTK framebuffer matcher, which otherwise
+kept scanning a restored console. These changes isolate concurrent tests and
+remove capture overhead from native timing.
