@@ -1,6 +1,6 @@
 # Full-system simulation performance investigation
 
-The current baseline is the non-tile-binned 640x480 FlashSim model with vertex
+The reference baseline is the non-tile-binned 640x480 FlashSim model with vertex
 and fragment cores, plus the optimized commit invalidation helper from
 FlashSim `5614962`. Its archive SHA-256 is
 `9be9f2d5b281eaa828895db2264994c257b473ed4d806afaa7f0c8baafac5d71`.
@@ -57,6 +57,92 @@ Require native GLES pixel assertions, GTK idle/active readback, and the
 periodic scanout gate. A framebuffer captured after the GLES program exits
 can show the restored console and is not a valid GLES reference image.
 
+## Final profile and function layout (2026-10-15)
+
+The final model uses FlashSim `b608384`, a fresh representative profile for
+every object, and function ordering from that profile. The RTL remains the
+same 640x480 design. DUT shards compile at `-O2`, and the API wrapper at `-O1`.
+The profile includes successful compute, native GLES, GTK and scanout runs;
+its SHA-256 is
+`7bd7f3cdc88aa62bf649c5499551ede59b0f08baf98f5918c3eb628182f46722`.
+
+Two alternating rounds of seven warmed samples per binary give:
+
+| Replay workload | Original | Refreshed and ordered | Time reduction |
+|---|---:|---:|---:|
+| Native shader, 168,582 ticks | 1.232103 s | 0.732583 s | 40.54% |
+| Texture, 255,934 ticks | 1.863885 s | 1.121337 s | 39.84% |
+
+All samples execute equal tick and DMA work. Each has the same verified
+prefix and 64-call preheat. The native window starts at call 30,308 of
+`gtk.trace` and measures 512 calls; texture starts at 7,400 of
+`gtk-hvf1024-settled.trace` and measures 256. The final model also passes the
+complete 317,616-call, 42,307,012-tick trace with every DMA write checked,
+zero mismatches and no truncated tail. Its actual QEMU executable separately
+passes compute rounding, native GLES pixels, GTK idle/active pixels, and
+periodic scanout.
+
+Refreshing only the changed functions has similar performance, within about
+0.5% of the complete refresh in the ordered comparisons. The complete build
+is retained to use consistent profile data. Function ordering improves both
+workloads by 2.0–2.8% over the refreshed build in the same comparison.
+
+`scripts/arti_profile_order.py` ranks executed functions by recorded call
+count and keeps only uniquely defined symbols in the target binary.
+`scripts/link_arti_model.py --order-file FILE` applies the Darwin linker
+order without changing the configured QEMU build. Replay and normal QEMU
+have different wrapper symbols, so their order files are generated separately
+and both hashes are retained. Keep these model timings separate from actual
+guest draw timings.
+
+The final executable's SHA-256 is
+`8d2c4bc6d1f2d7de160a552b0370edae7318a228a66b7003daa022ea20006e5b`;
+the model archive is
+`33911b84ddc886f84bef7063e381192b983c0e8d8aaee8a4429d4ecc3889cc8c`.
+Raw comparison and qualification evidence is under
+`.artifacts/full-system-speed/quiet-refreshed-{shader,texture}.json`,
+`qualified-final.json`, and `fq-proof/`.
+
+Further hotspot trials used the same two workloads and 14 samples per
+candidate. Invalidation prefetch distances of 4, 8 and 16 regress both
+workloads by about 2–4%. Loading four IDs as one packed word gains less than
+0.5%, and `-O3` on the hot tick/memory code trades a roughly 0.3% texture gain
+for a 1.0% shader loss relative to the same refreshed build. None is retained.
+`-mcpu=native` resolves to the compiler's existing `apple-m1` target here.
+Evidence is in `quiet-hotspot-{shader,texture}.json`.
+
+The final quiet guest comparison uses three fresh guests per executable in
+the order baseline/candidate, candidate/baseline, baseline/candidate. HVF/host,
+1024-tick IRQ chunks and both 8ms budgets are fixed. Framebuffer capture is
+disabled; every run passes native GLES pixel assertions.
+
+| Executable | Three native draw samples | Median |
+|---|---|---:|
+| Original baseline | 56.078 / 56.499 / 55.570 s | 56.078 s |
+| Final candidate | 34.502 / 34.814 / 34.627 s | 34.627 s |
+
+This is a **38.25% draw-time reduction**, or about 1.62 times the throughput,
+for the 160x120 native rectangle in a 640x480 mode. Boot and build time are
+excluded. The result is separate from the replay measurements above.
+`native-final/result.json` retains each guest result and the executable
+hashes. A portable record of samples, hashes, fixed work, qualification,
+and rejected candidates is checked in as
+[`performance/2026-10-15.json`](performance/2026-10-15.json).
+
+The local final installation includes complete generated C++ sources, the
+archive, profile, both order files, and device compile commands under
+`../arti-work/debian-640x480-flashsim-qualified/`. Its `rebuild.sh` recreates
+a separate `qemu-rebuilt` executable using the recorded profile and ordering.
+The normal launcher uses the installed executable directly. A plain Ninja
+link does not apply the optional function order; use the saved recipe to
+reproduce the qualified settings. The original rollback files are retained.
+
+The investigation has reached diminishing returns on these workloads:
+subsequent measured hot-loop changes do not provide a useful consistent gain,
+and remaining samples are spread across many RTL evaluation functions. This
+is a measured stopping point, not a proof that every possible simulator or
+RTL architecture has been optimized.
+
 ## Qualified tick and commit changes (2026-10-15)
 
 FlashSim `b608384` uses the existing pass worklist to avoid re-demanding
@@ -111,9 +197,31 @@ Evidence: `quiet-shader-combinations.json`, `quiet-texture-screening.json`,
 `final-candidate/` under `.artifacts/full-system-speed/`.
 
 The first profile was trained on the matching memory/outline/unroll source.
-The candidate reuses it for unchanged code; a refreshed profile for the new
-tick and commit functions is being collected before final promotion. Guest
+These intermediate comparisons reused it for unchanged code. The final
+profile/layout comparison above uses a refreshed profile throughout. Guest
 wall-clock comparisons remain a separate check from model replay timing.
+
+The qualified candidate is installed locally as both
+`qemu-build/qemu-system-aarch64` and `qemu-system-aarch64.flashsim`.
+`../arti-work/debian-640x480-flashsim-qualified/install-manifest.json` records
+the archive, executable and source commits. Its `rollback/` directory preserves
+each original executable, staged archive/header and generated device source.
+The Verilator executable is unchanged. The generated QEMU staging files now
+match the qualified archive and idle-poll device, including the existing
+display fixes; those earlier QEMU changes are not included in these commits.
+
+For an actual guest comparison on Apple Silicon, use:
+
+```sh
+python3 scripts/bench_arti_guest.py /absolute/baseline-qemu /absolute/candidate-qemu \
+  --base-image "$PWD/../arti-work/debian-gtk-arm64.qcow2" \
+  --work "$PWD/.artifacts/native-ab" --rounds 3
+```
+
+This alternates fresh guests, fixes HVF/host and the 1024-tick/8ms IRQ policy,
+disables framebuffer capture, and requires native pixel assertions in every
+run. It records the single draw's elapsed time separately from guest boot and
+build time. Full GTK/scanout qualification remains a separate requirement.
 
 ## Investigation inventory
 
@@ -196,9 +304,16 @@ counter does not advance. MMIO rearms the 100us interval. A weak counter
 fallback keeps the original policy for backends without this API. Runtime
 checks with tiny model libraries observe 802 polls without counters versus
 121 idle polls with counters over the same 1.2s interval. A guest using the
-real GPU passes compute/GLES/GTK/scanout checks. Single diagnostic console-idle
-samples were 3.90% CPU before and 2.13% after; display dirty tracking is still
-under investigation.
+real GPU passes compute/GLES/GTK/scanout checks. Earlier diagnostic console-idle
+samples were 3.90% and 2.13%, but differed in setup/capture conditions and do
+not establish a paired CPU reduction.
+
+An experimental RAM dirty-page renderer passes GPU scanout and a CPU test
+that changes every pixel in place without a page flip. However, the matched
+CPU framebuffer workload measures about 0.385% idle CPU with either renderer.
+This does not establish a useful performance gain, so the renderer remains an
+experiment rather than part of the installed candidate. Console samples taken
+while compilers were active are excluded from performance conclusions.
 
 Guest proofs now use private seed/modules ISOs. Arti `97902c6` generates
 cloud-init data in temporary staging rather than rewriting tracked templates.

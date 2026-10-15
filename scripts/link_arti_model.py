@@ -30,6 +30,7 @@ def main():
     p.add_argument("--profile-runtime", action="store_true")
     p.add_argument("--device-object", type=Path,
                    help="replace only the compiled ARTI QEMU device in this executable")
+    p.add_argument("--order-file", type=Path, help="Darwin linker symbol order file")
     args = p.parse_args()
     build, archive, output = args.qemu_build.resolve(), args.archive.resolve(), args.output.resolve()
     if output in (build / "qemu-system-aarch64", build / "qemu-system-aarch64-unsigned"):
@@ -60,6 +61,11 @@ def main():
         if len(slots) != 1:
             p.error("cannot identify a unique compiled ARTI device object")
         link[slots[0]] = str(device)
+    order = args.order_file.resolve() if args.order_file else None
+    if order:
+        if not order.is_file():
+            p.error(f"symbol order file not found: {order}")
+        link.extend(["-Xlinker", "-order_file", "-Xlinker", str(order)])
     if args.profile_runtime:
         link.append("-fprofile-instr-generate")
     result = subprocess.run(link, cwd=build)
@@ -80,6 +86,8 @@ def main():
                 "profile_runtime": args.profile_runtime,
                 "device_object": str(device) if device else None,
                 "device_object_sha256": digest(device) if device else None,
+                "order_file": str(order) if order else None,
+                "order_file_sha256": digest(order) if order else None,
                 "cwd": str(build),
                 "link": link, "post_link": post}
     output.with_name(output.name+".json").write_text(json.dumps(manifest, indent=2)+"\n")
