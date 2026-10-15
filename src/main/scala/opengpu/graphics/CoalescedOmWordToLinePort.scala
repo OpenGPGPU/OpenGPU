@@ -27,8 +27,6 @@ class CoalescedOmWordToLinePort(
 
   private val valid = RegInit(VecInit(Seq.fill(maxOutstanding)(false.B)))
   private val done = RegInit(VecInit(Seq.fill(maxOutstanding)(false.B)))
-  private val readPending = RegInit(VecInit(Seq.fill(maxOutstanding)(false.B)))
-  private val sent = RegInit(VecInit(Seq.fill(maxOutstanding)(false.B)))
   private val addresses = Reg(Vec(maxOutstanding, UInt(32.W)))
   private val writes = Reg(Vec(maxOutstanding, Bool()))
   private val readData = Reg(Vec(maxOutstanding, UInt(32.W)))
@@ -42,6 +40,24 @@ class CoalescedOmWordToLinePort(
   private val inputMask = (15.U(64.W) << (wordIndex << 2))(63, 0)
   private val inputData = (io.in.bits.data.pad(512) << (wordIndex << 5))(511, 0)
   private val inputDataMask = ("hffffffff".U(512.W) << (wordIndex << 5))(511, 0)
+
+  // Merge only reads whose physical line request is still in flight. No
+  // completed line is cached: later CPU updates remain visible on this
+  // uncached client. Writes exclude their word from older read snapshots.
+  private val readValid = RegInit(VecInit(Seq.fill(groups)(false.B)))
+  private val readSent = RegInit(VecInit(Seq.fill(groups)(false.B)))
+  private val readExcludedWords = Reg(Vec(groups, UInt(16.W)))
+  private val readAddress = Reg(Vec(groups, UInt(32.W)))
+  private val readMembers = Reg(Vec(groups, UInt(maxOutstanding.W)))
+  private val readTag = Reg(Vec(groups, UInt(idWidth.W)))
+  private val readMatches = VecInit((0 until groups).map(i =>
+    readValid(i) && !readExcludedWords(i)(wordIndex) && readAddress(i) === lineAddress &&
+      !(io.memoryResponse.valid && io.memoryResponse.bits.transactionId === readTag(i)))).asUInt
+  private val freeReadGroups = ~readValid.asUInt
+  private val readGroup = Mux(readMatches.orR, PriorityEncoder(readMatches), PriorityEncoder(freeReadGroups))
+  private val pendingWriteWords = (0 until maxOutstanding).map(i =>
+    Mux(valid(i) && writes(i) && addresses(i)(31, 6) === io.in.bits.addr(31, 6),
+      UIntToOH(addresses(i)(5, 2), 16), 0.U(16.W))).reduce(_ | _)
 
   private val groupValid = RegInit(VecInit(Seq.fill(groups)(false.B)))
   private val groupIssued = RegInit(VecInit(Seq.fill(groups)(false.B)))
@@ -75,10 +91,12 @@ class CoalescedOmWordToLinePort(
     requestArb.io.in(i).bits.sizeLog2 := 6.U
     requestArb.io.in(i).bits.cachePolicy := Mux(uncached.B, CachePolicy.uncached, CachePolicy.cached)
   }
-  requestArb.io.in(0).valid := io.in.valid && !io.in.bits.write && canAccept
+  requestArb.io.in(0).valid := io.in.valid && !io.in.bits.write && canAccept &&
+    !readMatches.orR && freeReadGroups.orR
   requestArb.io.in(0).bits.address := lineAddress
   requestArb.io.in(0).bits.transactionId := wordId
-  io.in.ready := canAccept && Mux(io.in.bits.write, hasGroup, requestArb.io.in(0).ready)
+  io.in.ready := canAccept && Mux(io.in.bits.write, hasGroup,
+    readMatches.orR || (freeReadGroups.orR && requestArb.io.in(0).ready))
   for (i <- 0 until groups) {
     requestArb.io.in(i + 1).valid := sealedGroup(i)
     requestArb.io.in(i + 1).bits.address := groupAddress(i)
@@ -115,31 +133,54 @@ class CoalescedOmWordToLinePort(
   when(io.in.fire) {
     valid(wordId) := true.B
     done(wordId) := false.B
-    sent(wordId) := false.B
-    readPending(wordId) := !io.in.bits.write
     addresses(wordId) := io.in.bits.addr
     writes(wordId) := io.in.bits.write
   }
-  when(io.memoryRequest.fire && !io.memoryRequest.bits.isWrite) {
-    sent(io.memoryRequest.bits.transactionId) := true.B
+  for (i <- 0 until groups) {
+    when(io.in.fire && !io.in.bits.write && readGroup === i.U) {
+      when(readMatches.orR) {
+        readMembers(i) := readMembers(i) | UIntToOH(wordId, maxOutstanding)
+      }.otherwise {
+        readValid(i) := true.B
+        readSent(i) := false.B
+        readAddress(i) := lineAddress
+        readTag(i) := wordId
+        readMembers(i) := UIntToOH(wordId, maxOutstanding)
+        // A read started while a prior write is pending must not admit a
+        // later reader after that write has completed, using an old snapshot.
+        readExcludedWords(i) := pendingWriteWords
+      }
+    }
+    when(io.in.fire && io.in.bits.write && readValid(i) && readAddress(i) === lineAddress) {
+      readExcludedWords(i) := readExcludedWords(i) | UIntToOH(wordIndex, 16)
+    }
+    when(io.memoryRequest.fire && !io.memoryRequest.bits.isWrite &&
+        readValid(i) && readTag(i) === io.memoryRequest.bits.transactionId) {
+      readSent(i) := true.B
+    }
   }
 
   private val responseId = io.memoryResponse.bits.transactionId
-  private val readResponse = responseId < maxOutstanding.U && valid(responseId) &&
-    readPending(responseId) && sent(responseId)
+  private val readResponses = VecInit((0 until groups).map(i =>
+    readValid(i) && readSent(i) && readTag(i) === responseId))
   private val writeResponses = VecInit((0 until groups).map(i =>
     groupValid(i) && groupIssued(i) && groupSent(i) && groupTag(i) === responseId))
-  io.memoryResponse.ready := readResponse || writeResponses.asUInt.orR
+  io.memoryResponse.ready := readResponses.asUInt.orR || writeResponses.asUInt.orR
   when(io.memoryResponse.valid) {
-    assert(PopCount(writeResponses) + readResponse.asUInt === 1.U,
+    assert(PopCount(writeResponses) + PopCount(readResponses) === 1.U,
       "coalesced response must identify exactly one outstanding request")
   }
-  when(io.memoryResponse.fire && readResponse) {
-    readData(responseId) := (io.memoryResponse.bits.readData >> (addresses(responseId)(5, 2) << 5))(31, 0)
-    readPending(responseId) := false.B
-    done(responseId) := true.B
-  }
+  private val responseWords = io.memoryResponse.bits.readData.asTypeOf(Vec(16, UInt(32.W)))
   for (i <- 0 until groups) {
+    when(io.memoryResponse.fire && readResponses(i)) {
+      readValid(i) := false.B
+      for (j <- 0 until maxOutstanding) {
+        when(readMembers(i)(j)) {
+          readData(j) := responseWords(addresses(j)(5, 2))
+          done(j) := true.B
+        }
+      }
+    }
     when(io.memoryResponse.fire && writeResponses(i)) {
       groupValid(i) := false.B
       for (j <- 0 until maxOutstanding) {

@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-15",
+  "workload": "unchanged 64x64 copy, 16 lanes x 8 warps per CU, 512-bit AXI, read delay 2, write ACK delay 12",
+  "cycles": {
+    "pipelined_writes": {
+      "cu1": 60086,
+      "cu4": 26853
+    },
+    "inflight_read_merge": {
+      "cu1": 59839,
+      "cu4": 25754
+    },
+    "read_merge_four_staging_credits": {
+      "cu1": 59839,
+      "cu4": 25943
+    }
+  },
+  "interpretation": "Read merging improves cycles modestly. Four dynamically shared staging credits eliminate most staging arbitration stalls but alone regress four-CU elapsed cycles by 0.7%; they do not solve framebuffer throughput. Copy target >=3x remains unmet. No desktop wall-time claim.",
+  "validation": {
+    "expanded_units": {
+      "tests": 15,
+      "passed": 15,
+      "log": ".artifacts/shared-cu-readmerge-expanded-units.log"
+    },
+    "ordered_msaa": {
+      "tests": 2,
+      "passed": 2
+    },
+    "shader_vm_fault_reset": {
+      "tests": 27,
+      "passed": 27,
+      "log": ".artifacts/shared-cu-read-merge-staging-regression.log"
+    }
+  },
+  "semantics": [
+    "Only pending lower read snapshots are merged; completed lines are not cached.",
+    "Same-word writes close older read windows even after the write ACK retires.",
+    "Per-word credits remain reserved through upstream reply consumption.",
+    "Staging IDs [0,4) remain separate from DMA [4,8); owner/local IDs are restored on out-of-order replies.",
+    "One/two-CU staging path unchanged."
+  ]
+}

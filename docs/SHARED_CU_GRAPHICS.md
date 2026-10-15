@@ -452,3 +452,19 @@ requires further improvement, targeting at least 3x on this same workload.
 Fourteen AXI, 27 shader VM/fault/reset, 23 host-system, two MSAA ordering and
 two full copy tests pass. No simulator wall-time claim is made. See [the
 pipelined-write evidence](performance/shared-cu-pipelined-writes-2026-10-15.json).
+
+## Pending read merging and shared staging credits
+
+The framebuffer combiner now merges same-line reads only while a lower read
+is pending. Returning snapshots and writes close the affected merge windows;
+completed lines are never cached on this uncached client. Per-word replies
+still retain credits through consumption. The matched 64x64 copy improves
+from 60,086/26,853 cycles (one/four CUs) to 59,839/25,754 cycles.
+
+Large fragment pools can borrow all four existing staging IDs while vertex
+staging is idle, restoring producer/local IDs on response. Smaller pools keep
+their prior path. This reduces four-CU staging-blocked cycles from 3,578 to 28,
+but elapsed cycles increase slightly to 25,943; this change is credit balancing,
+not a solution to framebuffer throughput. Nine framebuffer and six routing
+unit tests, two ordered MSAA tests and 27 shader VM/fault/reset tests pass.
+See [read merging and staging evidence](performance/shared-cu-read-merge-staging-2026-10-15.json).

@@ -9,9 +9,11 @@ import scala.collection.mutable
 class FragmentWorkerMemorySpec extends AnyFlatSpec {
   behavior of "Fragment worker memory routing"
 
-  for (count <- Seq(1, 4)) {
-    it should s"preserve local IDs and isolate stalled replies across $count staging clients" in {
-      simulate(new FragmentStagingArbiter(GpuConfig(lanes = 4, warps = 2), count)) { dut =>
+  for ((count, slots, localIds, flow) <- Seq((1, 2, 2, false), (4, 2, 2, false),
+      (4, 4, 2, false), (4, 4, 4, true))) {
+    it should s"preserve local IDs across $count staging clients (slots=$slots local=$localIds flow=$flow)" in {
+      simulate(new FragmentStagingArbiter(GpuConfig(lanes = 4, warps = 2), count,
+        slots = slots, localOutstanding = localIds, flowRequests = flow)) { dut =>
         dut.io.memoryRequest.ready.poke(false.B)
         dut.io.memoryResponse.valid.poke(false.B)
         dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
@@ -40,9 +42,9 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
             client.request.bits.byteMask.poke((BigInt(15) << (i * 4)).U)
             client.request.bits.isWrite.poke((i % 2 == 0).B)
             client.request.bits.sizeLog2.poke(6.U)
-            // Every worker uses the same local ID; the two global IDs must
-            // be allocated independently and restored on the way back.
-            client.request.bits.transactionId.poke(1.U)
+            // Shared local IDs and wider tags must survive global remapping.
+            val localId = if (localIds == 2) 1 else 3 - i
+            client.request.bits.transactionId.poke(localId.U)
             client.request.bits.cachePolicy.poke(opengpu.config.CachePolicy.uncached)
             client.response.ready.poke((cycles >= (if (i == 0) 80 else 20) && cycles % 3 != 0).B)
           }
@@ -66,7 +68,7 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
                 client.response.bits.readData.peek().litValue, client.response.bits.fault.peek().litToBoolean)
               heldResponses.get(i).foreach(old => assert(old == value, "buffered reply changed under stall"))
               assert(owners.values.toSeq.contains(i))
-              client.response.bits.transactionId.expect(1.U)
+              client.response.bits.transactionId.expect((if (localIds == 2) 1 else 3 - i).U)
               client.response.bits.readData.expect((0xbeef + i).U)
               client.response.bits.fault.expect((i == 2).B)
               if (client.response.ready.peek().litToBoolean) clientFires += i
@@ -110,11 +112,86 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
         }
         dut.io.memoryResponse.valid.poke(false.B)
         assert(received.forall(identity), "staging clients did not all retire")
-        assert(peak == math.min(2, count))
+        assert(peak == math.min(slots, count))
         if (count > 1) assert(otherRepliesBeforeZero == count - 1,
           "a stalled worker must not prevent the other staging ID making progress")
         dut.io.drained.expect(true.B)
       }
+    }
+  }
+
+  it should "share four staging IDs between fragment and vertex owners without local-tag aliasing" in {
+    simulate(new FragmentStagingArbiter(GpuConfig(lanes = 4, warps = 2), 2,
+      slots = 4, localOutstanding = 4, flowRequests = true)) { dut =>
+      dut.io.memoryRequest.ready.poke(true.B)
+      dut.io.memoryResponse.valid.poke(false.B)
+      dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
+      dut.io.clients.foreach { c =>
+        c.request.valid.poke(false.B)
+        c.request.bits.poke(0.U.asTypeOf(c.request.bits))
+        c.response.ready.poke(false.B)
+      }
+      dut.io.clients(1).response.ready.poke(true.B)
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      def send(owner: Int, local: Int): BigInt = {
+        val c = dut.io.clients(owner)
+        c.request.valid.poke(true.B)
+        c.request.bits.address.poke((0x1000 + owner * 0x1000 + local * 64).U)
+        c.request.bits.transactionId.poke(local.U)
+        c.request.bits.sizeLog2.poke(6.U)
+        c.request.ready.expect(true.B)
+        // Flow-through requests add no ready-consumer latency.
+        dut.io.memoryRequest.valid.expect(true.B)
+        val global = dut.io.memoryRequest.bits.transactionId.peek().litValue
+        dut.clock.step(); c.request.valid.poke(false.B)
+        global
+      }
+      def reply(global: BigInt, fault: Boolean = false): Unit = {
+        dut.io.memoryResponse.valid.poke(true.B)
+        dut.io.memoryResponse.bits.transactionId.poke(global.U)
+        dut.io.memoryResponse.bits.readData.poke((1000 + global).U)
+        dut.io.memoryResponse.bits.fault.poke(fault.B)
+        dut.io.memoryResponse.ready.expect(true.B)
+        dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
+      }
+      val a = send(0, 3)
+      val b = send(0, 1)
+      val vertex = send(1, 1) // the same local ID belongs to another owner
+      val c = send(0, 2)
+      assert(Set(a, b, vertex, c).size == 4)
+      dut.io.outstanding.expect(4.U)
+      reply(vertex)
+      dut.io.outstanding.expect(3.U)
+      // A free global slot must not permit reuse of a live fragment tag.
+      dut.io.clients(0).request.valid.poke(true.B)
+      dut.io.clients(0).request.bits.transactionId.poke(3.U)
+      dut.io.clients(0).request.ready.expect(false.B)
+      dut.io.clients(0).request.valid.poke(false.B)
+      val nextVertex = send(1, 0)
+      assert(nextVertex == vertex)
+      reply(a, fault = true)
+      reply(c)
+      reply(b)
+      // Buffered fragment replies do not block the other owner's reply.
+      reply(nextVertex)
+      for (_ <- 0 until 4) {
+        dut.io.clients(0).response.valid.expect(true.B)
+        dut.io.clients(0).response.bits.transactionId.expect(3.U)
+        dut.io.clients(0).response.bits.fault.expect(true.B)
+        dut.clock.step()
+      }
+      dut.io.clients(0).response.ready.poke(true.B)
+      for ((local, global, fault) <- Seq((3, a, true), (2, c, false), (1, b, false))) {
+        dut.io.clients(0).response.valid.expect(true.B)
+        dut.io.clients(0).response.bits.transactionId.expect(local.U)
+        dut.io.clients(0).response.bits.readData.expect((1000 + global).U)
+        dut.io.clients(0).response.bits.fault.expect(fault.B)
+        dut.clock.step()
+      }
+      dut.io.drained.expect(true.B)
+      val reused = send(0, 3)
+      reply(reused)
+      dut.io.drained.expect(true.B)
     }
   }
 

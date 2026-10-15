@@ -160,4 +160,119 @@ class CoalescedOmWordToLinePortSpec extends AnyFlatSpec {
       h.until(h.replies.size == 4)
     }
   }
+
+  it should "merge in-flight reads, exclude a returning snapshot and refetch after completion" in {
+    simulate(new CoalescedOmWordToLinePort()) { dut =>
+      val h = new Harness(dut)
+      h.send(0x1000, write = false)
+      h.send(0x1004, write = false)
+      h.until(h.requests.nonEmpty)
+      h.run(3)
+      assert(h.requests.size == 1 && h.replies.isEmpty)
+      val old = h.requests.head
+      // A third request arrives on exactly the cycle that the old snapshot
+      // returns. It must issue a fresh read, rather than disappear from fanout.
+      dut.io.memoryResponse.valid.poke(true.B)
+      dut.io.memoryResponse.bits.transactionId.poke(old.id.U)
+      dut.io.memoryResponse.bits.readData.poke((BigInt(11) | (BigInt(22) << 32) | (BigInt(999) << 64)).U)
+      h.offer(0x1008, write = false)
+      dut.io.in.ready.expect(true.B)
+      h.step()
+      dut.io.in.valid.poke(false.B)
+      dut.io.memoryResponse.valid.poke(false.B)
+      h.until(h.requests.size == 2)
+      h.respond(h.requests.last, BigInt(33) << 64)
+      h.until(h.replies.size == 3)
+      assert(h.replies.toSet == Set((BigInt(0x1000), false, BigInt(11)),
+        (BigInt(0x1004), false, BigInt(22)), (BigInt(0x1008), false, BigInt(33))))
+      // Completed lines are never cached: a CPU change must be observable.
+      h.send(0x1000, write = false)
+      h.until(h.requests.size == 3)
+      h.respond(h.requests.last, BigInt(55))
+      h.until(h.replies.size == 4)
+      assert(h.replies.last == ((BigInt(0x1000), false, BigInt(55))))
+    }
+  }
+
+  for (writeFirst <- Seq(false, true)) {
+    it should s"close read-merge windows across a write even after its ACK retires (writeFirst=$writeFirst)" in {
+      simulate(new CoalescedOmWordToLinePort(flushCycles = 4)) { dut =>
+        val h = new Harness(dut)
+        if (writeFirst) h.send(0x1004, write = true, data = 22)
+        h.send(0x1000, write = false)
+        if (!writeFirst) h.send(0x1004, write = true, data = 22)
+        h.until(h.requests.size == 2)
+        val oldRead = h.requests.find(!_.write).get
+        val write = h.requests.find(_.write).get
+        // Deliberately retire W before the older physical R snapshot returns.
+        // A later read must not join that old snapshot after the word slot frees.
+        h.respond(write)
+        h.until(h.replies.size == 1)
+        // A write excludes only its own word; other snapshot words can still
+        // merge without losing uncached ordering or inflating transactions.
+        h.send(0x1008, write = false)
+        h.run(3)
+        assert(h.requests.size == 2)
+        h.send(0x1004, write = false)
+        h.until(h.requests.size == 3)
+        val freshRead = h.requests.last
+        assert(!freshRead.write && freshRead.id != oldRead.id)
+        h.respond(oldRead, BigInt(11) | (BigInt(999) << 32) | (BigInt(33) << 64))
+        h.respond(freshRead, BigInt(22) << 32)
+        h.until(h.replies.size == 4)
+        assert(h.replies.filter(!_._2).toSet == Set(
+          (BigInt(0x1000), false, BigInt(11)), (BigInt(0x1004), false, BigInt(22)),
+          (BigInt(0x1008), false, BigInt(33))))
+      }
+    }
+  }
+
+  it should "drain every member of a faulted merged read under reply backpressure" in {
+    simulate(new CoalescedOmWordToLinePort()) { dut =>
+      val h = new Harness(dut)
+      h.send(0x1000, write = false)
+      h.send(0x1004, write = false)
+      h.until(h.requests.nonEmpty)
+      dut.io.out.ready.poke(false.B)
+      h.respond(h.requests.head, fault = true)
+      h.run(5)
+      dut.io.out.valid.expect(true.B)
+      assert(h.replies.isEmpty && h.requests.size == 1)
+      dut.io.out.ready.poke(true.B)
+      h.until(h.replies.size == 2)
+      assert(h.replies.map(_._1).toSet == Set(BigInt(0x1000), BigInt(0x1004)))
+      h.send(0x1000, write = false)
+      h.until(h.requests.size == 2)
+      h.respond(h.requests.last, 77)
+      h.until(h.replies.size == 3)
+      assert(h.replies.last._3 == 77)
+    }
+  }
+
+  it should "combine eight lines with thirty-two reserved word replies and out-of-order acknowledgements" in {
+    simulate(new CoalescedOmWordToLinePort(maxOutstanding = 32, groups = 8)) { dut =>
+      val h = new Harness(dut)
+      for (line <- 0 until 8; word <- 0 until 4)
+        h.send(0x1000 + line * 64 + word * 4, write = true, data = 100 + line * 4 + word)
+      h.until(h.requests.size == 8)
+      assert(h.requests.map(_.id).distinct.size == 8)
+      for (r <- h.requests) {
+        val line = (r.address.toInt - 0x1000) / 64
+        val expected = (0 until 4).foldLeft(BigInt(0))((d, i) =>
+          d | (BigInt(100 + line * 4 + i) << (32 * i)))
+        assert(r.write && r.mask == 65535 && r.data == expected)
+      }
+      dut.io.out.ready.poke(false.B)
+      h.requests.reverse.foreach(r => h.respond(r, fault = r.address == 0x10c0))
+      h.offer(0x3000, write = false)
+      dut.io.in.ready.expect(false.B)
+      dut.io.in.valid.poke(false.B)
+      dut.io.out.ready.poke(true.B)
+      h.until(h.replies.size == 32)
+      val expectedAddresses = (for (line <- 0 until 8; word <- 0 until 4)
+        yield BigInt(0x1000 + line * 64 + word * 4)).toSet
+      assert(h.replies.map(_._1).toSet == expectedAddresses)
+      assert(h.replies.forall(_._2))
+    }
+  }
 }

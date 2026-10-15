@@ -724,37 +724,66 @@ class RenderPipeline(
     expander.io.out.ready := om.io.fragIn.ready && tilePermit
     textured.io.out.ready := om.io.fragIn.ready
 
-    // Pack both staging bridges into translated IDs [0,4): frag owns [0,2),
-    // vert owns [2,4). DMA fill/blit/strided keep physical IDs [4,8).
-    val wordArb = Module(new RRArbiter(
-      new ComputeMemoryRequest(gpuConfig, 64, kernelWordOutstanding), 2))
-    wordArb.io.in(0).valid := kernelFrag.wordMemReq.valid
-    wordArb.io.in(0).bits := kernelFrag.wordMemReq.bits
-    wordArb.io.in(0).bits.transactionId := Cat(0.U(1.W),
-      kernelFrag.wordMemReq.bits.transactionId(0))
-    kernelFrag.wordMemReq.ready := wordArb.io.in(0).ready
-    wordArb.io.in(1).valid := kernelVert.map(_.io.wordMemReq.valid).getOrElse(false.B)
-    wordArb.io.in(1).bits := kernelVert.map(_.io.wordMemReq.bits)
-      .getOrElse(0.U.asTypeOf(wordArb.io.in(1).bits))
-    wordArb.io.in(1).bits.transactionId := Cat(1.U(1.W),
-      kernelVert.map(_.io.wordMemReq.bits.transactionId(0)).getOrElse(0.U(1.W)))
-    kernelVert.foreach { vert =>
-      vert.io.wordMemReq.ready := wordArb.io.in(1).ready
-      vert.io.wordMemResp.valid := io.kernelWordMemResp.valid &&
-        io.kernelWordMemResp.bits.transactionId(1)
-      vert.io.wordMemResp.bits := io.kernelWordMemResp.bits
-      vert.io.wordMemResp.bits.transactionId :=
+    // Preserve the public four-ID staging range. Large fragment pools can
+    // borrow all four IDs while vertex staging is idle, with producer/local
+    // ownership restored on return. Small pools keep their exact old path.
+    val stagingRouterDrained = WireDefault(true.B)
+    if (sharedShader.exists(_.fragmentStagingTransactions > 2)) {
+      val stagingRouter = Module(new FragmentStagingArbiter(gpuConfig, 2,
+        slots = 4, localOutstanding = 4, flowRequests = true))
+      stagingRouter.io.clients(0).request.valid := kernelFrag.wordMemReq.valid
+      stagingRouter.io.clients(0).request.bits := kernelFrag.wordMemReq.bits
+      kernelFrag.wordMemReq.ready := stagingRouter.io.clients(0).request.ready
+      kernelFrag.wordMemResp <> stagingRouter.io.clients(0).response
+      stagingRouter.io.clients(1).request.valid := kernelVert.map(_.io.wordMemReq.valid).getOrElse(false.B)
+      stagingRouter.io.clients(1).request.bits := kernelVert.map(_.io.wordMemReq.bits)
+        .getOrElse(0.U.asTypeOf(stagingRouter.io.clients(1).request.bits))
+      stagingRouter.io.clients(1).response.ready := kernelVert.map(_.io.wordMemResp.ready).getOrElse(true.B)
+      kernelVert.foreach { vert =>
+        vert.io.wordMemReq.ready := stagingRouter.io.clients(1).request.ready
+        vert.io.wordMemResp.valid := stagingRouter.io.clients(1).response.valid
+        vert.io.wordMemResp.bits := stagingRouter.io.clients(1).response.bits
+      }
+      io.kernelWordMemReq.valid := stagingRouter.io.memoryRequest.valid
+      io.kernelWordMemReq.bits := stagingRouter.io.memoryRequest.bits
+      stagingRouter.io.memoryRequest.ready := io.kernelWordMemReq.ready
+      stagingRouter.io.memoryResponse.valid := io.kernelWordMemResp.valid
+      stagingRouter.io.memoryResponse.bits := io.kernelWordMemResp.bits
+      io.kernelWordMemResp.ready := stagingRouter.io.memoryResponse.ready
+      stagingRouterDrained := stagingRouter.io.drained
+    } else {
+      // Pack both staging bridges into translated IDs [0,4): frag owns [0,2),
+      // vert owns [2,4). DMA fill/blit/strided keep physical IDs [4,8).
+      val wordArb = Module(new RRArbiter(
+        new ComputeMemoryRequest(gpuConfig, 64, kernelWordOutstanding), 2))
+      wordArb.io.in(0).valid := kernelFrag.wordMemReq.valid
+      wordArb.io.in(0).bits := kernelFrag.wordMemReq.bits
+      wordArb.io.in(0).bits.transactionId := Cat(0.U(1.W),
+        kernelFrag.wordMemReq.bits.transactionId(0))
+      kernelFrag.wordMemReq.ready := wordArb.io.in(0).ready
+      wordArb.io.in(1).valid := kernelVert.map(_.io.wordMemReq.valid).getOrElse(false.B)
+      wordArb.io.in(1).bits := kernelVert.map(_.io.wordMemReq.bits)
+        .getOrElse(0.U.asTypeOf(wordArb.io.in(1).bits))
+      wordArb.io.in(1).bits.transactionId := Cat(1.U(1.W),
+        kernelVert.map(_.io.wordMemReq.bits.transactionId(0)).getOrElse(0.U(1.W)))
+      kernelVert.foreach { vert =>
+        vert.io.wordMemReq.ready := wordArb.io.in(1).ready
+        vert.io.wordMemResp.valid := io.kernelWordMemResp.valid &&
+          io.kernelWordMemResp.bits.transactionId(1)
+        vert.io.wordMemResp.bits := io.kernelWordMemResp.bits
+        vert.io.wordMemResp.bits.transactionId :=
+          io.kernelWordMemResp.bits.transactionId(0)
+      }
+      io.kernelWordMemReq <> wordArb.io.out
+      kernelFrag.wordMemResp.valid := io.kernelWordMemResp.valid &&
+        !io.kernelWordMemResp.bits.transactionId(1)
+      kernelFrag.wordMemResp.bits := io.kernelWordMemResp.bits
+      kernelFrag.wordMemResp.bits.transactionId :=
         io.kernelWordMemResp.bits.transactionId(0)
+      io.kernelWordMemResp.ready := Mux(io.kernelWordMemResp.bits.transactionId(1),
+        kernelVert.map(_.io.wordMemResp.ready).getOrElse(false.B),
+        kernelFrag.wordMemResp.ready)
     }
-    io.kernelWordMemReq <> wordArb.io.out
-    kernelFrag.wordMemResp.valid := io.kernelWordMemResp.valid &&
-      !io.kernelWordMemResp.bits.transactionId(1)
-    kernelFrag.wordMemResp.bits := io.kernelWordMemResp.bits
-    kernelFrag.wordMemResp.bits.transactionId :=
-      io.kernelWordMemResp.bits.transactionId(0)
-    io.kernelWordMemResp.ready := Mux(io.kernelWordMemResp.bits.transactionId(1),
-      kernelVert.map(_.io.wordMemResp.ready).getOrElse(false.B),
-      kernelFrag.wordMemResp.ready)
     textured.io.fragIn.valid := false.B // texture path only on fixed-func branch
     textured.io.fragDepths := 0.U.asTypeOf(
       Vec(config.maxSampleCount, UInt(30.W)))
@@ -812,7 +841,7 @@ class RenderPipeline(
     // to idle; otherwise a just-accepted vertex command looks drained before
     // its shader has fetched a single instruction.
     fragmentDrained := !drawHoldValid && shader.io.done && kernelFrag.drained &&
-      expander.io.drained && om.io.drained && !ctxFifo.io.headValid
+      expander.io.drained && om.io.drained && !ctxFifo.io.headValid && stagingRouterDrained
     upstreamDone := fragmentDrained && kernelVert.map(_.io.done).getOrElse(true.B) &&
       vertBinnerOpt.map(_.io.done).getOrElse(true.B)
   } else {

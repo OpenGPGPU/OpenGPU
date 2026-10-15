@@ -19,6 +19,10 @@ case class SharedCuShaderConfig(
   require(taskIdWidth > 0)
   val fragmentWorkers: Int = if (parallelFragments) numComputeUnits else 1
   val fragmentBanks: Int = fragmentWorkers * 2
+  // Four physical staging credits match the existing host staging window.
+  // Small pools retain their previous two-credit behavior and latency.
+  val fragmentStagingTransactions: Int =
+    if (parallelFragments && numComputeUnits > 2) 4 else 2
 }
 
 /** A fault belongs to a graphics task, not a host compute command. */

@@ -101,13 +101,13 @@ object KernelFragFrontendIO {
 }
 
 /** Standalone fragment worker ports, retaining the existing shader ABI. */
-class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig)
+class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig, stagingTransactions: Int = 2)
     extends KernelFragFrontendIO(config, gfxConfig) {
   val performance = Output(new FragmentPerformanceEvents)
   val memReq = Decoupled(new ComputeMemoryRequest(config))
   val memResp = Flipped(Decoupled(new ComputeMemoryResponse()))
-  val wordMemReq = Decoupled(new ComputeMemoryRequest(config, 64, 2))
-  val wordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, 2)))
+  val wordMemReq = Decoupled(new ComputeMemoryRequest(config, 64, stagingTransactions))
+  val wordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, stagingTransactions)))
   /** Texture-unit word memory.  Routed through the translated texture client
     * (VA under VECTOR_SATP), same translation domain as kernarg staging. */
   val texMem = new Bundle {

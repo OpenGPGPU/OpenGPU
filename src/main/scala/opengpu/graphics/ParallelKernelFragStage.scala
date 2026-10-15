@@ -18,12 +18,13 @@ class ParallelKernelFragStage(
 ) extends Module {
   require(sharedShader.parallelFragments)
   private val count = sharedShader.fragmentWorkers
-  val io = IO(new KernelFragStageIO(config, gfxConfig))
+  val io = IO(new KernelFragStageIO(config, gfxConfig, sharedShader.fragmentStagingTransactions))
   val sharedClients = IO(Vec(count, Flipped(new SharedCuGraphicsPort(
     config, sharedShader.taskIdWidth, sharedShader.numComputeUnits))))
   val shaderFault = IO(Output(Bool()))
   private val scheduler = Module(new ParallelFragmentScheduler(config, gfxConfig, count))
-  private val staging = Module(new FragmentStagingArbiter(config, count))
+  private val staging = Module(new FragmentStagingArbiter(config, count,
+    slots = sharedShader.fragmentStagingTransactions))
   private val texture = Module(new FragmentTextureArbiter(count, math.max(4, gfxConfig.omInflight)))
   private val faults = Wire(Vec(count, Bool()))
   private val events = Wire(Vec(count, new FragmentPerformanceEvents))

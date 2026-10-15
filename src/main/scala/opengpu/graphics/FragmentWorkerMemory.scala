@@ -5,28 +5,30 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
-class FragmentStagingClient(config: GpuConfig) extends Bundle {
-  val request = Flipped(Decoupled(new ComputeMemoryRequest(config, 64, 2)))
-  val response = Decoupled(new ComputeMemoryResponse(64, 2))
+class FragmentStagingClient(config: GpuConfig, localOutstanding: Int = 2) extends Bundle {
+  val request = Flipped(Decoupled(new ComputeMemoryRequest(config, 64, localOutstanding)))
+  val response = Decoupled(new ComputeMemoryResponse(64, localOutstanding))
 }
 
-private class QueuedFragmentStagingResponse(config: GpuConfig) extends Bundle {
-  val response = new ComputeMemoryResponse(64, 2)
-  val slot = UInt(1.W)
+private class QueuedFragmentStagingResponse(config: GpuConfig, localOutstanding: Int, slots: Int) extends Bundle {
+  val response = new ComputeMemoryResponse(64, localOutstanding)
+  val slot = UInt(math.max(1, log2Ceil(slots)).W)
 }
 
-/** Use both IDs of the existing fragment staging window. Reserve an owner
+/** Allocate tagged credits within a shared staging window. Reserve an owner
   * until its buffered response is consumed; another worker cannot alias its
   * local ID, and a stalled worker cannot block the other slot's responses.
   */
-class FragmentStagingArbiter(config: GpuConfig, numWorkers: Int) extends Module {
+class FragmentStagingArbiter(config: GpuConfig, numWorkers: Int,
+    slots: Int = 2, localOutstanding: Int = 2, flowRequests: Boolean = false) extends Module {
   require(numWorkers > 0)
+  require(slots >= 2 && isPow2(slots))
+  require(localOutstanding >= 2 && isPow2(localOutstanding))
   private val ownerWidth = math.max(1, log2Ceil(numWorkers))
-  private val slots = 2
   val io = IO(new Bundle {
-    val clients = Vec(numWorkers, new FragmentStagingClient(config))
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, 2))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, 2)))
+    val clients = Vec(numWorkers, new FragmentStagingClient(config, localOutstanding))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, slots))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, slots)))
     val drained = Output(Bool())
     val outstanding = Output(UInt(8.W))
   })
@@ -34,11 +36,11 @@ class FragmentStagingArbiter(config: GpuConfig, numWorkers: Int) extends Module 
   private val sent = RegInit(VecInit(Seq.fill(slots)(false.B)))
   private val replied = RegInit(VecInit(Seq.fill(slots)(false.B)))
   private val owners = Reg(Vec(slots, UInt(ownerWidth.W)))
-  private val localIds = Reg(Vec(slots, UInt(1.W)))
+  private val localIds = Reg(Vec(slots, UInt(log2Ceil(localOutstanding).W)))
   private val free = ~allocated.asUInt
   private val selected = PriorityEncoder(free)
-  private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, 2), numWorkers))
-  private val request = Module(new Queue(new ComputeMemoryRequest(config, 64, 2), 1))
+  private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, localOutstanding), numWorkers))
+  private val request = Module(new Queue(new ComputeMemoryRequest(config, 64, slots), 1, flow = flowRequests))
   for (worker <- 0 until numWorkers) {
     val client = io.clients(worker)
     val duplicate = (0 until slots).map { slot =>
@@ -63,13 +65,13 @@ class FragmentStagingArbiter(config: GpuConfig, numWorkers: Int) extends Module 
   when(io.memoryRequest.fire) { sent(io.memoryRequest.bits.transactionId) := true.B }
 
   private val responseId = io.memoryResponse.bits.transactionId
-  private val responseExpected = allocated(responseId) && sent(responseId) && !replied(responseId)
+  private val responseExpected = responseId < slots.U && allocated(responseId) && sent(responseId) && !replied(responseId)
   private val responseReady = Wire(Vec(numWorkers, Bool()))
   when(io.memoryResponse.fire) { replied(responseId) := true.B }
   for (worker <- 0 until numWorkers) {
-    // Two global slots bound all unconsumed replies. A queue of that size
+    // Global slots bound all unconsumed replies. A queue of that size
     // cannot block another worker's accepted memory response.
-    val replies = Module(new Queue(new QueuedFragmentStagingResponse(config), slots, flow = true))
+    val replies = Module(new Queue(new QueuedFragmentStagingResponse(config, localOutstanding, slots), slots, flow = true))
     replies.io.enq.valid := io.memoryResponse.valid && responseExpected && owners(responseId) === worker.U
     replies.io.enq.bits.response := io.memoryResponse.bits
     replies.io.enq.bits.response.transactionId := localIds(responseId)
