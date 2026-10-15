@@ -1,0 +1,335 @@
+{
+  "date": "2026-10-15",
+  "rtl_commit": "02b61be",
+  "test_source_note": "WideSharedGraphicsSpec parameterized64x64and ALU diagnostic, pending commit when both pass. Tests use the02b61beOM; later ordered test recompiles independent-plane OM WIP and is not part of these scaling numbers.",
+  "hardware": "Exactly1or4physicalsharedCUs,16lanes/eightwarps each,128lane batches,512-bitAXI,L2sets8ways2,writeACK12/readresponse2,16cyclewritecombiningwindow. Same shader and memory timing within each1/4pair.",
+  "workloads": [
+    {
+      "side": 32,
+      "alu_loops": 0,
+      "one_cu_cycles": 18691,
+      "four_cu_cycles": 13048,
+      "speedup": 1.4324800735744943,
+      "one_cu_active_cycles": 2366,
+      "four_cu_active_cycles": 2989
+    },
+    {
+      "side": 64,
+      "alu_loops": 0,
+      "one_cu_cycles": 69127,
+      "four_cu_cycles": 56611,
+      "speedup": 1.2210877744607938,
+      "one_cu_active_cycles": 8658,
+      "four_cu_active_cycles": 14858,
+      "one_cu_framebuffer_writes": 1922,
+      "four_cu_framebuffer_writes": 2685,
+      "one_cu_depth_reads": 1112,
+      "four_cu_depth_reads": 1445
+    },
+    {
+      "side": 64,
+      "alu_loops": 64,
+      "vector_adds_per_lane": 1024,
+      "one_cu_cycles": 441328,
+      "four_cu_cycles": 132708,
+      "speedup": 3.325556861681285,
+      "one_cu_active_cycles": 380861,
+      "four_cu_active_cycles": 383295,
+      "shader": "Copy raster color, then64iterations of16dependentvadd.vx v2,v2,x0 plus scalar decrement/branch; output color unchanged. Diagnostic microbenchmark, not desktop workload."
+    }
+  ],
+  "validation": "6PASS: everypixelcolor/depthanduniformtails, peakphysicalCUcount1/4 checked for each. Allworkloadpairs use identicalprogram/dimensions/memorylatency.",
+  "log": ".artifacts/shared-cu-scaling-memory-overlap.log",
+  "trace": [
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "side": 32,
+      "alu_loops": 0,
+      "traced_cycles": 18676,
+      "phase_worker_cycles": [
+        1038,
+        7758,
+        5,
+        2371,
+        1374,
+        6130
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1038,
+        "arvalid": 478,
+        "rvalid": 484,
+        "write_any": 7758,
+        "raster_stall": 15041,
+        "staging_without_shader_run": 9132,
+        "staging_outstanding_any": 7812,
+        "awvalid": 823,
+        "bvalid": 827,
+        "launch_any": 5,
+        "run_any": 2371,
+        "read_any": 1374,
+        "emit_any": 6130,
+        "output_blocked": 5536,
+        "om_stall": 5132
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 269,
+        "color_write": 246,
+        "depth_write": 235
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-cycles.csv": "821acff11253bdd4f09b610ad1ae70863c74d9a469e33cfe79d5d5a8683e8446",
+        "cu-1-axi-64-memory.csv": "00b0863eabfc76a360444f8cfe742327a894248d58619b91f91cbced5c5544b6"
+      }
+    },
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 69112,
+      "phase_worker_cycles": [
+        2170,
+        28911,
+        18,
+        8676,
+        5052,
+        24285
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 2170,
+        "arvalid": 1729,
+        "rvalid": 1748,
+        "write_any": 28911,
+        "raster_stall": 65709,
+        "staging_without_shader_run": 33963,
+        "staging_outstanding_any": 29138,
+        "awvalid": 3182,
+        "bvalid": 3196,
+        "launch_any": 18,
+        "run_any": 8676,
+        "read_any": 5052,
+        "emit_any": 24285,
+        "output_blocked": 22398,
+        "om_stall": 20729
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 1112,
+        "color_write": 979,
+        "depth_write": 943
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-side-64-alu-0-cycles.csv": "6e2336ce8d75317a57321e7b053733f10e928b66ffe8f16400c9de8dfdb087d4",
+        "cu-1-axi-64-side-64-alu-0-memory.csv": "3a816be1c0fdc433c621821164c00440d2e2750e75c2921cab0714de0906eaed"
+      }
+    },
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 64,
+      "traced_cycles": 441313,
+      "phase_worker_cycles": [
+        2170,
+        28909,
+        18,
+        380879,
+        5052,
+        24285
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 2170,
+        "arvalid": 1730,
+        "rvalid": 1749,
+        "write_any": 28909,
+        "raster_stall": 417257,
+        "staging_without_shader_run": 33961,
+        "staging_outstanding_any": 29136,
+        "awvalid": 3182,
+        "bvalid": 3196,
+        "launch_any": 18,
+        "run_any": 380879,
+        "read_any": 5052,
+        "emit_any": 24285,
+        "output_blocked": 22398,
+        "om_stall": 20729
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 2,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 1112,
+        "color_write": 979,
+        "depth_write": 943
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-side-64-alu-64-cycles.csv": "255f9d453786c68c9fe79e4bcf79140d41c251f19297970b7efcb841af9cc6a9",
+        "cu-1-axi-64-side-64-alu-64-memory.csv": "c49c6a7e4cfdb59e8885bba2494120b78dfa5ac47612018b22c64fbcfba98385"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "side": 32,
+      "alu_loops": 0,
+      "traced_cycles": 13033,
+      "phase_worker_cycles": [
+        12124,
+        16625,
+        5,
+        2994,
+        2465,
+        17919
+      ],
+      "peak_staging_outstanding": 2,
+      "cycle_events": {
+        "idle_any": 5580,
+        "arvalid": 497,
+        "rvalid": 509,
+        "write_any": 6317,
+        "staging_without_shader_run": 7066,
+        "staging_outstanding_any": 7134,
+        "awvalid": 843,
+        "bvalid": 847,
+        "staging_blocked": 3881,
+        "raster_stall": 5326,
+        "launch_any": 5,
+        "run_any": 1362,
+        "read_any": 1091,
+        "emit_any": 7660,
+        "output_blocked": 7519,
+        "om_stall": 6643
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 288,
+        "color_write": 257,
+        "depth_write": 244
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-cycles.csv": "f3317b9e2ae7d63f12d9c46e17bbc7fe5d0338a8fb99f9f8b05225ef66ec3b0a",
+        "cu-4-axi-64-memory.csv": "a705a57306e960a8b488d8ceeec2476af757095c5638ca1598ed3fb3c452a096"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 56596,
+      "phase_worker_cycles": [
+        12125,
+        67453,
+        18,
+        14876,
+        7699,
+        124213
+      ],
+      "peak_staging_outstanding": 2,
+      "cycle_events": {
+        "idle_any": 6627,
+        "arvalid": 2062,
+        "rvalid": 2107,
+        "write_any": 48989,
+        "staging_without_shader_run": 37629,
+        "staging_outstanding_any": 48071,
+        "awvalid": 3945,
+        "bvalid": 3969,
+        "staging_blocked": 3907,
+        "raster_stall": 47427,
+        "launch_any": 18,
+        "run_any": 13180,
+        "read_any": 6352,
+        "emit_any": 51231,
+        "output_blocked": 51132,
+        "om_stall": 47138
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 1445,
+        "color_write": 1356,
+        "depth_write": 1329
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-side-64-alu-0-cycles.csv": "f68d025afe54cb2049fb7f19e0743ef6914bb17070a21a0487b60de60905e8ba",
+        "cu-4-axi-64-side-64-alu-0-memory.csv": "a2bd96c524d78a22a57c9d77d2a81cb07be9dd39a166a9172c3ee3acf23e7bea"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 64,
+      "traced_cycles": 132693,
+      "phase_worker_cycles": [
+        41197,
+        51927,
+        18,
+        383313,
+        6146,
+        48171
+      ],
+      "peak_staging_outstanding": 2,
+      "cycle_events": {
+        "idle_any": 21107,
+        "arvalid": 1888,
+        "rvalid": 1923,
+        "write_any": 37971,
+        "staging_without_shader_run": 8182,
+        "staging_outstanding_any": 38534,
+        "awvalid": 3549,
+        "bvalid": 3563,
+        "staging_blocked": 3868,
+        "raster_stall": 107081,
+        "launch_any": 18,
+        "run_any": 121578,
+        "read_any": 4872,
+        "emit_any": 36262,
+        "output_blocked": 34665,
+        "om_stall": 32408
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 2,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 1270,
+        "color_write": 1166,
+        "depth_write": 1123
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-side-64-alu-64-cycles.csv": "20e5d3ebac3a19495dc013f54f5994923c246207943b7e3a9476c7fc79e319e6",
+        "cu-4-axi-64-side-64-alu-64-memory.csv": "f76afe8ecfe13e4ea86ad6ea3ca9403ed274eef2c72cf7fcf6aaab5f511fc631"
+      }
+    }
+  ],
+  "interpretation": [
+    "3.33xALU-diagnostic scaling with0.64%moreaggregateCUbusycycles supportsparallelCUexecution; it doesnotfix or qualifycopy-scene scaling.",
+    "Larger copy stillonly1.22x;4CUsproduce39.7%moreframebufferwritesand29.9%moredepthreads for identicalpixels. Memorywriteamplification, ACKserialization andstaging mustbeoptimized.",
+    "No simulatorwalltime or desktopclaim. Installedbinaryunchanged."
+  ]
+}

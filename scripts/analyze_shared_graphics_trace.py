@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Analyze the fixed WideSharedGraphicsSpec scene's packed CSV event traces."""
-import csv,json,sys,collections,hashlib
+import csv,json,sys,collections,hashlib,re
 from pathlib import Path
 root=Path(sys.argv[1])
 results=[]
@@ -22,17 +22,21 @@ for path in sorted(root.glob('cu-*-cycles.csv')):
     assert sum(phase) == cus * samples, "each worker must occupy exactly one phase per cycle"
     memory=collections.Counter()
     prefix=path.name.removesuffix('-cycles.csv')
-    axi_bytes=int(prefix.split('-axi-')[1]) if '-axi-' in prefix else 8
+    match=re.fullmatch(r'cu-(\d+)(?:-axi-(\d+))?(?:-side-(\d+)-alu-(\d+))?',prefix)
+    assert match, f'Unexpected trace prefix: {prefix}'
+    axi_bytes=int(match[2] or 8)
+    side=int(match[3] or 32)
+    alu_loops=int(match[4] or 0)
     mp=root/f'{prefix}-memory.csv'
     for row in csv.DictReader(mp.open()):
         addr=int(row['address_hex'],16);kind='other'
         if 0x10000<=addr<0x10000+cus*2*4672:kind='staging_or_shader_data'
-        elif 0x30000<=addr<0x31000:kind='color'
-        elif 0x40000<=addr<0x41000:kind='depth'
+        elif 0x30000<=addr<0x30000+side*side*4:kind='color'
+        elif 0x40000<=addr<0x40000+side*side*4:kind='depth'
         elif 0x2000<=addr<0x20a0:kind='commands'
-        elif 0x4000<=addr<0x4040:kind='instructions'
+        elif 0x4000<=addr<0x5000:kind='instructions'
         elif 0x1000<=addr<0x1040:kind='descriptor'
         memory[kind+'_'+row['operation']]+=1
-    r=dict(cus=cus,axi_data_bytes=axi_bytes,traced_cycles=samples,phase_worker_cycles=phase,peak_staging_outstanding=peak,cycle_events=dict(totals),lower_memory_transactions=dict(memory),trace_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (path,mp)})
+    r=dict(cus=cus,axi_data_bytes=axi_bytes,side=side,alu_loops=alu_loops,traced_cycles=samples,phase_worker_cycles=phase,peak_staging_outstanding=peak,cycle_events=dict(totals),lower_memory_transactions=dict(memory),trace_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (path,mp)})
     results.append(r)
 print(json.dumps(results,indent=2))

@@ -403,3 +403,21 @@ arrangement, improves native GLES median draw time from 12.018s to 11.670s
 (2.9%) across three fresh guests per binary, all pixel checked. It does not
 include write combining or AXI/L2 overlap. See [the guest measurements](performance/shared-cu-axi-wall-time-2026-10-15.json);
 GPU-cycle changes must not be presented as desktop wall-time improvements.
+
+## Matched CU scaling diagnostics
+
+The expanded 64x64 copy case is weaker than the small scene: 69,127 cycles
+on one CU versus 56,611 on four (1.22x). The image is identical, but four CUs
+produce 2,685 framebuffer writes versus 1,922, and 1,445 depth reads versus
+1,112. Concurrency therefore amplifies memory transactions; this remains a
+concrete optimization target rather than a completed scaling milestone.
+
+A separate arithmetic diagnostic applies 1,024 dependent vector additions
+of zero per lane before storing the same pixel color. It measures 441,328
+versus 132,708 cycles (3.33x), with aggregate CU busy time almost unchanged:
+380,861 versus 383,295 cycles. This supports effective CU execution scaling
+while exposing the shared data path as the limiting factor in the copy case.
+All six small/large/arithmetic renders check every color/depth pixel and
+uniform tail, and verify the configured peak CU count. The arithmetic result
+is a diagnostic, not a desktop-performance result or a substitute for copy
+scaling. Evidence is in [the matched comparisons](performance/shared-cu-scaling-diagnostics-2026-10-15.json).
