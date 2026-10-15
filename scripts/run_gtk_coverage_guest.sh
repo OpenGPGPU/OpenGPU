@@ -358,6 +358,16 @@ if [ "$GTK_PROOF_SHADER_SUITE" = 1 ]; then
         "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_GL_GTK_SWIZZLE_INT=1 OPENGPU_GL_EXIT=1 /root/opengpu_gl_texture.bin" \
         | tee "$PROOF_WORK/texture-swizzle-int.log"
     grep -qF 'OPENGPU GL TEXTURE PASS' "$PROOF_WORK/texture-swizzle-int.log"
+    # Cross the runtime vertex staging limit with visible triangles in
+    # different chunks; check both nonzero array and indexed starts.
+    for kind in arrays elements; do
+        log="$PROOF_WORK/quad-batch-$kind.log"
+        "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 900 \
+            "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_TRACE_DRAWS=1 OPENGPU_GL_QUAD_BATCH=$kind OPENGPU_GL_EXIT=1 /root/opengpu_gl_quad.bin" \
+            | tee "$log"
+        grep -qF "gl_quad: batch probe $kind" "$log"
+        grep -qF 'OPENGPU GL QUAD PASS' "$log"
+    done
     echo 'Native shader suite: PASS'
 fi
 

@@ -15,6 +15,8 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include "opengpu_gl_mode.h"
+#include "../../driver/opengpu_drm.h"
+#include "../../driver/opengpu_shader_resources.h"
 
 #include <errno.h>
 #include <execinfo.h>
@@ -99,6 +101,69 @@ static void die_gl(const char *what)
 {
     fprintf(stderr, "gl_quad: %s (egl 0x%x)\n", what, eglGetError());
     exit(1);
+}
+
+/* Put one visible triangle in each of two staging chunks. Degenerate
+ * filler triangles keep the expected image unchanged. Both entry points
+ * use a nonzero start, and the indexed case reverses physical vertex order
+ * so treating indices as sequential vertices cannot accidentally pass. */
+static void draw_batch_probe(int fd, const char *kind)
+{
+    struct drm_opengpu_param query = { .param = OPENGPU_PARAM_SHADER_CONFIG };
+    unsigned capacity, count, total, v;
+    const unsigned prefix = 3;
+    float *packed, *upload;
+    uint16_t *indices;
+    GLuint ibo;
+    int indexed = !strcmp(kind, "elements");
+
+    if (!indexed && strcmp(kind, "arrays"))
+        die("OPENGPU_GL_QUAD_BATCH must be arrays or elements");
+    if (drmIoctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &query))
+        die_errno("query shader resources");
+    capacity = opengpu_shader_resource_batch((uint32_t)query.value);
+    capacity -= capacity % 3u;
+    if (capacity < 3)
+        die("vertex staging capacity is too small");
+    count = capacity + 6u;
+    total = prefix + count;
+    if (total > UINT16_MAX)
+        die("batch probe exceeds its index format");
+    packed = malloc(total * 6u * sizeof(float));
+    upload = malloc(total * 6u * sizeof(float));
+    indices = malloc(total * sizeof(*indices));
+    if (!packed || !upload || !indices)
+        die("batch probe allocation");
+    for (v = 0; v < total; v++)
+        memcpy(packed + v * 6u, verts, 6u * sizeof(float));
+    memcpy(packed + prefix * 6u, verts, 18u * sizeof(float));
+    memcpy(packed + (total - 3u) * 6u, verts + 18u,
+           18u * sizeof(float));
+    for (v = 0; v < total; v++) {
+        unsigned physical = indexed ? total - 1u - v : v;
+        memcpy(upload + physical * 6u, packed + v * 6u,
+               6u * sizeof(float));
+        indices[v] = (uint16_t)physical;
+    }
+    glBufferData(GL_ARRAY_BUFFER, total * 6u * sizeof(float), upload,
+                 GL_STATIC_DRAW);
+    if (indexed) {
+        glGenBuffers(1, &ibo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, total * sizeof(*indices),
+                     indices, GL_STATIC_DRAW);
+        glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_SHORT,
+                       (const void *)(uintptr_t)(prefix * sizeof(*indices)));
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glDeleteBuffers(1, &ibo);
+    } else {
+        glDrawArrays(GL_TRIANGLES, prefix, count);
+    }
+    printf("gl_quad: batch probe %s capacity=%u vertices=%u first=%u\n",
+           kind, capacity, count, prefix);
+    free(indices);
+    free(upload);
+    free(packed);
 }
 
 static GLuint compile_shader(GLenum type, const char *src)
@@ -275,7 +340,10 @@ int main(void)
     glClearColor(0.f, 0.f, 1.f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
     step("clear submitted");
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    if (getenv("OPENGPU_GL_QUAD_BATCH"))
+        draw_batch_probe(fd, getenv("OPENGPU_GL_QUAD_BATCH"));
+    else
+        glDrawArrays(GL_TRIANGLES, 0, 6);
     glFinish();
     step("draw finished");
 

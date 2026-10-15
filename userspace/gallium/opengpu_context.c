@@ -2099,6 +2099,17 @@ static void draw_vbo(struct pipe_context *pipe,
     uint64_t index_bytes = 0;
     unsigned index_size = info->index_size;
     unsigned draw_i;
+    unsigned batch_capacity = opengpu_shader_resource_batch(
+        pipe_opengpu_screen_shader_config(opengpu_screen_gpu(pipe->screen)));
+
+    /* Match the vertex stage's whole-triangle staging capacity. The
+     * descriptor follows the runtime lane/warp configuration, including
+     * the historical zero-descriptor ABI. */
+    batch_capacity -= batch_capacity % 3u;
+    if (!batch_capacity) {
+        reject("vertex staging capacity is smaller than one triangle");
+        return;
+    }
 
     (void)drawid_offset;
     fprintf(stderr, "opengpu: draw\n");
@@ -2114,7 +2125,7 @@ static void draw_vbo(struct pipe_context *pipe,
     }
     /* The hardware command is a triangle list, but does not need an index
      * buffer of its own. Expand indexed Gallium draws on the CPU while
-     * packing the same three vertices into the existing upload buffer. */
+     * packing whole triangles into the upload buffer. */
     if (index_size) {
         if (index_size != 1 && index_size != 2 && index_size != 4) {
             reject("indexed draw has an unsupported index size");
@@ -2284,8 +2295,10 @@ static void draw_vbo(struct pipe_context *pipe,
                 return;
             }
         }
-        for (tri = 0; tri < count; tri += 3) {
-            struct hw_vertex verts[3];
+        for (tri = 0; tri < count;) {
+            unsigned vertex_count = MIN2(count - tri, batch_capacity);
+            unsigned vertex_bytes = vertex_count * sizeof(struct hw_vertex);
+            struct hw_vertex *verts;
             struct drm_opengpu_vertex_draw vdraw;
             struct pipe_opengpu_fence *fence = NULL;
             uint32_t cull = 0, depth_bits = 0, blend_config = 0;
@@ -2296,8 +2309,34 @@ static void draw_vbo(struct pipe_context *pipe,
 
             if (ctx->trace_draws)
                 clock_gettime(CLOCK_MONOTONIC, &prepare_start);
-            for (v = 0; v < 3; v++) {
-                unsigned vertex = start + tri + v;
+            /* Each preceding chunk has completed before this mapping is
+             * reused. Pack directly into the bounded GEM upload buffer. */
+            if (!ctx->packed || ctx->packed_bytes < vertex_bytes) {
+                if (ctx->packed)
+                    pipe_opengpu_resource_destroy(
+                        opengpu_screen_gpu(ctx->base.screen), ctx->packed);
+                ctx->packed_bytes = (vertex_bytes + 63u) & ~63u;
+                ctx->packed = pipe_opengpu_resource_create(
+                    opengpu_screen_gpu(ctx->base.screen), ctx->packed_bytes);
+                if (!ctx->packed) {
+                    reject("vertex buffer allocation failed");
+                    return;
+                }
+            }
+            verts = pipe_opengpu_resource_map(ctx->packed);
+            if (!verts) {
+                reject("vertex buffer map failed");
+                return;
+            }
+            for (v = 0; v < vertex_count; v++) {
+                uint64_t source_vertex = (uint64_t)start + tri + v;
+                unsigned vertex;
+
+                if (source_vertex > UINT32_MAX) {
+                    reject("vertex range overflows the GPU index format");
+                    return;
+                }
+                vertex = (unsigned)source_vertex;
                 if (index_size) {
                     uint32_t raw;
                     int64_t biased;
@@ -2331,27 +2370,6 @@ static void draw_vbo(struct pipe_context *pipe,
                  * space. Scaling them by the physical mode moves every
                  * small logical surface below the viewport (for example a
                  * 60x32 GtkGLArea in the 64x64 fast mode). */
-                if (!ctx->packed || ctx->packed_bytes < sizeof(verts)) {
-                    if (ctx->packed)
-                        pipe_opengpu_resource_destroy(
-                            opengpu_screen_gpu(ctx->base.screen), ctx->packed);
-                    ctx->packed_bytes = (sizeof(verts) + 63u) & ~63u;
-                    ctx->packed = pipe_opengpu_resource_create(
-                        opengpu_screen_gpu(ctx->base.screen), ctx->packed_bytes);
-                    if (!ctx->packed) {
-                        reject("vertex buffer allocation failed");
-                        return;
-                    }
-                }
-                {
-                    void *mapped = pipe_opengpu_resource_map(ctx->packed);
-
-                    if (!mapped) {
-                        reject("vertex buffer map failed");
-                        return;
-                    }
-                    memcpy(mapped, verts, sizeof(verts));
-                }
                 if (pipe_opengpu_invalidate(ctx->gpu, ctx->packed, 0, ctx->packed_bytes,
                                             &fence) ||
                     pipe_opengpu_fence_finish(ctx->gpu, fence,
@@ -2362,7 +2380,7 @@ static void draw_vbo(struct pipe_context *pipe,
                 }
                 pipe_opengpu_fence_reference(&fence, NULL);
                 struct vertex_bind_request request = {
-                    ctx->gpu, ctx->packed, sizeof(verts[0]), sizeof(verts)
+                    ctx->gpu, ctx->packed, sizeof(verts[0]), vertex_bytes
                 };
                 /* Another client can acquire the command slot after our
                  * invalidate fence and before the bind-time invalidate. */
@@ -2391,7 +2409,7 @@ static void draw_vbo(struct pipe_context *pipe,
                 }
             }
             memset(&vdraw, 0, sizeof(vdraw));
-            vdraw.vertex_count = 3;
+            vdraw.vertex_count = vertex_count;
             vdraw.vertex_stride = sizeof(verts[0]);
             vdraw.fragment_kernarg_bank_stride =
                 pipe_opengpu_screen_fs_bank_stride(opengpu_screen_gpu(ctx->base.screen));
@@ -2446,11 +2464,11 @@ static void draw_vbo(struct pipe_context *pipe,
                                OPENGPU_DRAW_STATE_TEX_CLAMP;
             }
             if (ctx->trace_draws) {
-                fprintf(stderr, "opengpu: submit draw=%llu target=%ux%u timeout_ms=%lld texture=%d position=%s\n",
+                fprintf(stderr, "opengpu: submit draw=%llu target=%ux%u timeout_ms=%lld texture=%d position=%s vertices=%u\n",
                         ++ctx->draw_sequence, ctx->width, ctx->height,
                         (long long)ctx->fence_timeout_ms, ctx->fs->samples,
-                        ctx->vs->mvp ? "float" : "q16");
-                for (v = 0; v < 3; v++)
+                        ctx->vs->mvp ? "float" : "q16", vertex_count);
+                for (v = 0; v < vertex_count; v++)
                     fprintf(stderr, "opengpu: vertex[%u]=%08x,%08x,%08x,%08x\n",
                             v, (uint32_t)verts[v].x, (uint32_t)verts[v].y,
                             (uint32_t)verts[v].z, (uint32_t)verts[v].w);
@@ -2489,6 +2507,9 @@ static void draw_vbo(struct pipe_context *pipe,
             else if (ctx->vs->mvp)
                 pipe_opengpu_log_vs_kernarg(ctx->gpu);
             pipe_opengpu_fence_reference(&fence, NULL);
+            if (draw_status)
+                return;
+            tri += vertex_count;
         }
     }
 }
