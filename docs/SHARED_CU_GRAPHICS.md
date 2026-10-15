@@ -690,3 +690,36 @@ programs still need full shared-pool guest rendering and Debian desktop
 qualification. The earlier 3.48x optimized copy measurement predates this ABI
 change and is not a runtime-shader speedup claim. See
 [the runtime ABI evidence](performance/shared-cu-runtime-shader-abi-2026-10-15.json).
+
+## Runtime shader scaling and wide-pool contention
+
+The runtime VLMAX copy shader retains 3.43x four-CU scaling against the fastest
+measured one-CU configuration. All cases keep the same binary, sixteen lanes,
+eight warps, 128-element staging layout and pixel/depth reference.
+
+| CUs | Dispatch limit | GPU cycles |
+| --- | --- | --- |
+| 1 | full capacity | 46,241 |
+| 1 | 112 | 46,305 |
+| 2 | 112 | 23,964 |
+| 4 | 112 | 13,479 |
+
+The matched limit-112 ratio is 3.44x; using the faster full-capacity one-CU
+control gives 3.43x (85.8% of ideal linear scaling). That extrapolation predicts
+11,560.25 cycles; the measured four-CU render adds 1,918.75 cycles. The traces
+still show shared staging and retirement costs: four-CU staging backpressure
+occupies 112 cycles and OM stalls occupy 633. These overlap other activity and
+must not be summed into a serial breakdown.
+
+Two further sixteen-lane/eight-warp pool tests pass. Compute retires while a
+separate CU's graphics task is blocked at texture sampling, with identical
+numeric IDs kept in separate producer namespaces. A faulted graphics task
+releases its CU, allowing a fresh graphics task to complete. The sampler's
+writeback is controlled by the test; actual image sampling is covered by the
+render/guest checks separately.
+
+The emitter now admits runtime-ABI shared widths with complete helper quads
+and an eight-bit batch capacity. A 640x480 four-CU emission contains exactly
+four `GpuComputeUnit` instances in `GpuSystem` and no private shader CU. The
+installed Debian model remains separate while the emitted shared model is
+qualified. See [runtime scaling evidence](performance/shared-cu-runtime-scaling-2026-10-15.json).

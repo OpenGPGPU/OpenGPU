@@ -41,9 +41,8 @@ object EmitGpuHostSystemAxi {
     val cuWarps = intOption("--cu-warps").getOrElse(8)
     require(!sharedGraphics || fragCore,
       "--shared-graphics requires --frag-core")
-    require(!sharedGraphics || (cuLanes == 4 && cuWarps == 2),
-      "the initial shared shader ABI requires explicit --cu-lanes 4 --cu-warps 2; " +
-        "16-lane graphics software is not qualified yet")
+    require(!sharedGraphics || (cuLanes % 4 == 0 && cuLanes * cuWarps <= 255),
+      "shared graphics requires whole helper quads and an eight-bit batch capacity")
     val gpuConfig = GpuConfig(lanes = cuLanes, warps = cuWarps)
     val memoryAxiDataBytes = intOption("--memory-axi-data-bytes").getOrElse(8)
     val tileSize = intOption("--tile-size").getOrElse(0)
@@ -70,7 +69,8 @@ object EmitGpuHostSystemAxi {
           tileBinning = tileBinning),
         gpuConfig,
         numComputeUnits = computeUnits,
-        // The graphics kernarg ABI still uses eight shader lanes per batch.
+        // Runtime-ABI shaders share the configured CUs. The historical private
+        // graphics backend retains its four-lane/two-warp compatibility profile.
         graphicsGpuConfig = if (sharedGraphics) None else Some(GpuConfig(lanes = 4, warps = 2)),
         sharedGraphics = sharedGraphics,
         parallelGraphics = parallelGraphics,

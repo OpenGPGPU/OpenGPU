@@ -90,8 +90,9 @@ class GpuSystemSpec extends AnyFlatSpec {
     }
   }
 
-  private def sharedCuExecution(count: Int, fault: Boolean): Unit = {
-    val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
+  private def sharedCuExecution(count: Int, fault: Boolean,
+                                lanes: Int = 4, warps: Int = 2): Unit = {
+    val config = GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2)
     simulate(new GpuSystem(config, numComputeUnits = count,
       enableGraphicsKernels = true, instructionCacheSets = 4,
       instructionCacheWays = 1, vectorCacheSets = 4, vectorCacheWays = 1)) { dut =>
@@ -255,6 +256,14 @@ class GpuSystemSpec extends AnyFlatSpec {
     it should s"execute graphics tasks and compute on the same $count CUs with texture writeback" in {
       sharedCuExecution(count, fault = false)
     }
+  }
+
+  it should "isolate wide compute and graphics while texture sampling is blocked" in {
+    sharedCuExecution(4, fault = false, lanes = 16, warps = 8)
+  }
+
+  it should "release a wide shared CU after a graphics fault" in {
+    sharedCuExecution(1, fault = true, lanes = 16, warps = 8)
   }
 
   it should "route faults from graphics tasks separately from compute commands" in {
