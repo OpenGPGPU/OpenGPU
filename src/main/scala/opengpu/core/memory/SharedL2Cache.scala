@@ -234,6 +234,20 @@ class SharedL2Slice(
     lookupAddress(offsetWidth + indexWidth - 1, offsetWidth)
   private val requestIndex =
     request.address(offsetWidth + indexWidth - 1, offsetWidth)
+  // The old tag must stop serving hits as soon as its way is reserved.
+  // Otherwise a reader can reinstall that line after the eviction probes,
+  // then lose its directory sharer when the replacement fill overwrites it.
+  private val retiringVictim = state === State.missAllocate &&
+    missEngine.io.allocation.valid && !missEngine.io.allocation.bits.merged
+  private val validAfterRetirement = VecInit((0 until ways).map { way =>
+    Mux(retiringVictim && lookupVictimWay === way.U,
+      valid(way).bitSet(requestIndex, false.B), valid(way))
+  })
+  for (way <- 0 until ways) {
+    when(retiringVictim && lookupVictimWay === way.U) {
+      valid(way) := validAfterRetirement(way)
+    }
+  }
   private val lookupReadIndex = Mux(lookupFire, incomingIndex, requestIndex)
   private val lookupReadEnable = lookupFire || state === State.lookup
   for (way <- 0 until ways) {
@@ -576,7 +590,7 @@ class SharedL2Slice(
         // clean and any CPU write to it is already visible in lower memory.
         for (way <- 0 until ways) {
           when(hitWay === way.U) {
-            valid(way) := valid(way).bitSet(requestIndex, false.B)
+            valid(way) := validAfterRetirement(way).bitSet(requestIndex, false.B)
             sharers(way)(requestIndex) := 0.U
           }
         }
@@ -735,7 +749,7 @@ class SharedL2Slice(
     when(cacheable && lookupHit) {
       for (way <- 0 until ways) {
         when(lookupHitWay === way.U) {
-          valid(way) := valid(way).bitSet(requestIndex, false.B)
+          valid(way) := validAfterRetirement(way).bitSet(requestIndex, false.B)
           sharers(way)(requestIndex) := 0.U
         }
       }
@@ -761,7 +775,7 @@ class SharedL2Slice(
             data(way).io.writeEnable := true.B
             data(way).io.writeAddress := requestIndex
             data(way).io.writeData := atomicMergedLine
-            valid(way) := valid(way).bitSet(requestIndex, true.B)
+            valid(way) := validAfterRetirement(way).bitSet(requestIndex, true.B)
             sharers(way)(requestIndex) := 0.U
           }
         }
@@ -780,7 +794,7 @@ class SharedL2Slice(
             data(way).io.writeEnable := true.B
             data(way).io.writeAddress := requestIndex
             data(way).io.writeData := io.memoryResponse.bits.readData
-            valid(way) := valid(way).bitSet(requestIndex, true.B)
+            valid(way) := validAfterRetirement(way).bitSet(requestIndex, true.B)
             sharers(way)(requestIndex) := waiterSharers
           }
         }
@@ -850,7 +864,7 @@ class SharedL2Slice(
         data(way).io.writeEnable := true.B
         data(way).io.writeAddress := fillWriteSet
         data(way).io.writeData := fillWriteData
-        valid(way) := valid(way).bitSet(fillWriteSet, true.B)
+        valid(way) := validAfterRetirement(way).bitSet(fillWriteSet, true.B)
         sharers(way)(fillWriteSet) := fillWriteSharers
       }
     }

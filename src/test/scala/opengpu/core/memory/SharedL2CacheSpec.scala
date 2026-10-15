@@ -913,4 +913,48 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     }
   }
 
+  it should "retire the old directory tag while its replacement miss is pending" in {
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 1)) { dut =>
+      initialize(dut)
+      requestLine(dut, 0, 0)
+      completeLower(dut, 0x11, 0)
+      dut.clock.step()
+      requestLine(dut, 0x200, 4)
+      waitInvalidation(dut, 0)
+      dut.io.invalidate(0).bits.lineAddress.expect(0.U)
+      dut.clock.step()
+      dut.io.invalidateDone(0).valid.poke(true.B)
+      dut.io.invalidateDone(0).bits.lineAddress.poke(0.U)
+      dut.clock.step()
+      dut.io.invalidateDone(0).valid.poke(false.B)
+      waitMemoryRequest(dut)
+      val replacementId = dut.io.memoryRequest.bits.transactionId.peek().litValue
+      dut.clock.step()
+      // CU0 may not reinstall the evicted tag while CU1's replacement is in
+      // flight: the replacement would erase that newly recorded L1 holder.
+      requestLine(dut, 0, 1)
+      for (_ <- 0 until 8) {
+        assert(!dut.io.response.valid.peek().litToBoolean,
+          "evicted tag hit while its directory way was reserved by a replacement")
+        dut.clock.step()
+      }
+      dut.io.memoryResponse.valid.poke(true.B)
+      dut.io.memoryResponse.bits.transactionId.poke(replacementId.U)
+      dut.io.memoryResponse.bits.readData.poke(0x22.U)
+      dut.io.memoryResponse.bits.fault.poke(false.B)
+      dut.clock.step()
+      dut.io.memoryResponse.valid.poke(false.B)
+      waitInvalidation(dut, 1)
+      dut.io.invalidate(1).bits.lineAddress.expect(0x200.U)
+      dut.clock.step()
+      dut.io.invalidateDone(1).valid.poke(true.B)
+      dut.io.invalidateDone(1).bits.lineAddress.poke(0x200.U)
+      dut.clock.step()
+      dut.io.invalidateDone(1).valid.poke(false.B)
+      completeLower(dut, 0x33, 1)
+      dut.io.response.bits.transactionId.expect(1.U)
+      dut.io.response.bits.readData.expect(0x33.U)
+    }
+  }
+
 }
