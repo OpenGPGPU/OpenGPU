@@ -448,4 +448,130 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
     }
   }
 
+
+  it should "issue four consecutive read addresses and retire out-of-order data under backpressure" in {
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4,
+      axiDataBytes = 64)) { dut =>
+      initialize(dut)
+      dut.io.m_axi_arready.poke(true.B)
+      val addresses = scala.collection.mutable.ArrayBuffer.empty[(Int, Int)]
+      var cycle = 0
+      def step(): Unit = {
+        if (dut.io.m_axi_arvalid.peek().litToBoolean && dut.io.m_axi_arready.peek().litToBoolean)
+          addresses += ((cycle, dut.io.m_axi_arid.peek().litValue.toInt))
+        dut.clock.step(); cycle += 1
+      }
+      for (id <- 0 until 4) {
+        dut.io.request.valid.poke(true.B)
+        dut.io.request.bits.address.poke((0x1000 + id * 64).U)
+        dut.io.request.bits.transactionId.poke(id.U)
+        dut.io.request.bits.sizeLog2.poke(6.U)
+        dut.io.request.ready.expect(true.B)
+        step()
+      }
+      dut.io.request.valid.poke(false.B)
+      step()
+      assert(addresses.map(_._2).toSeq == Seq(0, 1, 2, 3))
+      assert(addresses.map(_._1).sliding(2).forall(p => p(1) == p(0) + 1))
+      dut.io.m_axi_arready.poke(false.B)
+      val order = Seq(3, 1, 0, 2)
+      def drive(id: Int): Unit = {
+        dut.io.m_axi_rvalid.poke(true.B)
+        dut.io.m_axi_rid.poke(id.U)
+        dut.io.m_axi_rdata.poke((BigInt(100 + id) << 448).U)
+        dut.io.m_axi_rresp.poke((if (id == 1) 2 else 0).U)
+        dut.io.m_axi_rlast.poke(true.B)
+      }
+      for (id <- order.take(2)) {
+        drive(id); dut.io.m_axi_rready.expect(true.B); step()
+      }
+      drive(order(2))
+      for (_ <- 0 until 4) {
+        dut.io.m_axi_rready.expect(false.B)
+        dut.io.request.ready.expect(false.B) // Completed replies still own credits.
+        step()
+      }
+      dut.io.response.ready.poke(true.B)
+      val replies = scala.collection.mutable.ArrayBuffer.empty[Int]
+      var next = 2
+      var guard = 0
+      while (replies.size < 4 && guard < 20) {
+        if (next < 4) drive(order(next)) else dut.io.m_axi_rvalid.poke(false.B)
+        if (dut.io.response.valid.peek().litToBoolean) {
+          val id = dut.io.response.bits.transactionId.peek().litValue.toInt
+          dut.io.response.bits.readData.expect((BigInt(100 + id) << 448).U)
+          dut.io.response.bits.fault.expect((id == 1).B)
+          replies += id
+        }
+        if (dut.io.m_axi_rvalid.peek().litToBoolean && dut.io.m_axi_rready.peek().litToBoolean) next += 1
+        step(); guard += 1
+      }
+      assert(replies.toSeq == order)
+      dut.io.request.ready.expect(true.B)
+    }
+  }
+
+  it should "reassemble interleaved eight-beat read IDs with independent sticky faults" in {
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4,
+      axiDataBytes = 8)) { dut =>
+      initialize(dut)
+      dut.io.m_axi_arready.poke(true.B)
+      submit(dut, 0x1000, 0, 0, write = false, sizeLog2 = 6, id = 0)
+      submit(dut, 0x2000, 0, 0, write = false, sizeLog2 = 6, id = 2)
+      dut.clock.step()
+      dut.io.m_axi_arready.poke(false.B)
+      dut.io.response.ready.poke(true.B)
+      val replies = scala.collection.mutable.ArrayBuffer.empty[Int]
+      def collect(): Unit = if (dut.io.response.valid.peek().litToBoolean) {
+        val id = dut.io.response.bits.transactionId.peek().litValue.toInt
+        val line = (0 until 8).foldLeft(BigInt(0))((d, b) => d | (BigInt(id * 100 + b + 1) << (64 * b)))
+        dut.io.response.bits.readData.expect(line.U)
+        dut.io.response.bits.fault.expect((id == 2).B)
+        replies += id
+      }
+      for (beat <- 0 until 8; id <- Seq(2, 0)) {
+        dut.io.m_axi_rvalid.poke(true.B)
+        dut.io.m_axi_rid.poke(id.U)
+        dut.io.m_axi_rdata.poke((id * 100 + beat + 1).U)
+        dut.io.m_axi_rresp.poke((if (id == 2 && beat == 0) 2 else 0).U)
+        dut.io.m_axi_rlast.poke((beat == 7).B)
+        dut.io.m_axi_rready.expect(true.B)
+        collect(); dut.clock.step()
+      }
+      dut.io.m_axi_rvalid.poke(false.B)
+      for (_ <- 0 until 4) { collect(); dut.clock.step() }
+      assert(replies.toSeq == Seq(2, 0))
+    }
+  }
+
+
+  it should "restore distinct narrow-read lanes when responses return in reverse order" in {
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4,
+      axiDataBytes = 64)) { dut =>
+      initialize(dut)
+      dut.io.m_axi_arready.poke(true.B)
+      submit(dut, 0x1004, 0, 0, write = false, sizeLog2 = 2, id = 0)
+      submit(dut, 0x203c, 0, 0, write = false, sizeLog2 = 2, id = 1)
+      dut.clock.step()
+      dut.io.m_axi_arready.poke(false.B)
+      for ((id, word, shift) <- Seq((1, 0x2222, 480), (0, 0x1111, 32))) {
+        dut.io.m_axi_rvalid.poke(true.B)
+        dut.io.m_axi_rid.poke(id.U)
+        dut.io.m_axi_rdata.poke((BigInt(word) << shift).U)
+        dut.io.m_axi_rlast.poke(true.B)
+        dut.io.m_axi_rready.expect(true.B)
+        dut.clock.step()
+      }
+      dut.io.m_axi_rvalid.poke(false.B)
+      dut.io.response.ready.poke(true.B)
+      for ((id, word) <- Seq((1, 0x2222), (0, 0x1111))) {
+        dut.io.response.valid.expect(true.B)
+        dut.io.response.bits.transactionId.expect(id.U)
+        dut.io.response.bits.readData.expect(word.U)
+        dut.io.response.bits.fault.expect(false.B)
+        dut.clock.step()
+      }
+    }
+  }
+
 }

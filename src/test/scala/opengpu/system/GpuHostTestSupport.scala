@@ -204,14 +204,9 @@ trait GpuHostTestSupport {
     val axiDataBytes = dut.io.m_axi_wstrb.getWidth
     val axiDataBits = axiDataBytes * 8
     val beatMask = (BigInt(1) << axiDataBits) - 1
-    var arDone = false
-    var arAddr = BigInt(0)
-    var arId = BigInt(0)
-    var rBeat = 0
-    var rLine = BigInt(0)
-    var rBeats = 64 / axiDataBytes
-    var rFault = false
-    var rDelay = 0
+    case class PendingRead(address: BigInt, id: BigInt, line: BigInt,
+      beats: Int, fault: Boolean, due: Int, var beat: Int = 0)
+    val pendingReads = scala.collection.mutable.Queue.empty[PendingRead]
     var awDone = false
     var awAddr = BigInt(0)
     var awId = BigInt(0)
@@ -223,34 +218,34 @@ trait GpuHostTestSupport {
     var guard = 0
     var quietCycles = 0
     while (!until && guard < maxCycles) {
-      var acceptedRead = false
+      var acceptedReadAddress: Option[BigInt] = None
       var memoryProgress = false
-      // Read address channel.
-      dut.io.m_axi_arready.poke((!arDone && rBeat == 0).B)
-      if (!arDone && dut.io.m_axi_arvalid.peek().litToBoolean &&
+      // Accept independent read addresses while older R bursts are pending.
+      // Every burst retains its original snapshot and fixed response latency.
+      dut.io.m_axi_arready.poke((pendingReads.size < 16).B)
+      if (dut.io.m_axi_arvalid.peek().litToBoolean &&
           dut.io.m_axi_arready.peek().litToBoolean) {
-        arAddr = dut.io.m_axi_araddr.peek().litValue
-        arId = dut.io.m_axi_arid.peek().litValue
-        rLine = readLine(arAddr) >> ((arAddr.toInt & (64 - axiDataBytes)) * 8)
-        rBeats = dut.io.m_axi_arlen.peek().litValue.toInt + 1
-        rFault = readFault(arAddr)
-        arDone = true
-        rBeat = 0
-        rDelay = readResponseDelay
-        acceptedRead = true
+        val address = dut.io.m_axi_araddr.peek().litValue
+        val id = dut.io.m_axi_arid.peek().litValue
+        val line = readLine(address) >> ((address.toInt & (64 - axiDataBytes)) * 8)
+        val beats = dut.io.m_axi_arlen.peek().litValue.toInt + 1
+        pendingReads.enqueue(PendingRead(address, id, line, beats,
+          readFault(address), guard + math.max(1, readResponseDelay)))
+        acceptedReadAddress = Some(address)
         memoryProgress = true
       }
-      // Read data channel: narrow PTE reads use one lane-aligned beat.
-      if (arDone && rDelay == 0) {
-        dut.io.m_axi_rvalid.poke(true.B)
-        dut.io.m_axi_rid.poke(arId.U)
-        dut.io.m_axi_rdata.poke(((rLine >> (rBeat * axiDataBits)) & beatMask).U)
-        dut.io.m_axi_rresp.poke((if (rFault) 2 else 0).U)
-        dut.io.m_axi_rlast.poke((rBeat == rBeats - 1).B)
-      } else {
-        dut.io.m_axi_rvalid.poke(false.B)
-        dut.io.m_axi_rlast.poke(false.B)
-        if (rDelay > 0) rDelay -= 1
+      // R is ordered here; dedicated bridge units also exercise interleaving
+      // and out-of-order IDs. Raising BVALID may change this R's readiness.
+      pendingReads.headOption.filter(_.due <= guard) match {
+        case Some(r) =>
+          dut.io.m_axi_rvalid.poke(true.B)
+          dut.io.m_axi_rid.poke(r.id.U)
+          dut.io.m_axi_rdata.poke(((r.line >> (r.beat * axiDataBits)) & beatMask).U)
+          dut.io.m_axi_rresp.poke((if (r.fault) 2 else 0).U)
+          dut.io.m_axi_rlast.poke((r.beat == r.beats - 1).B)
+        case None =>
+          dut.io.m_axi_rvalid.poke(false.B)
+          dut.io.m_axi_rlast.poke(false.B)
       }
       // Write address channel.
       dut.io.m_axi_awready.poke((!awDone && !wDone).B)
@@ -295,7 +290,8 @@ trait GpuHostTestSupport {
       // a read beat that the DUT never accepted, causing a false deadlock.
       if (dut.io.m_axi_rvalid.peek().litToBoolean && dut.io.m_axi_rready.peek().litToBoolean) {
         memoryProgress = true
-        if (rBeat == rBeats - 1) { arDone = false; rBeat = 0 } else rBeat += 1
+        val r = pendingReads.front
+        if (r.beat == r.beats - 1) pendingReads.dequeue() else r.beat += 1
       }
       if (dut.io.m_axi_bvalid.peek().litToBoolean && dut.io.m_axi_bready.peek().litToBoolean) {
         memoryProgress = true
@@ -303,10 +299,10 @@ trait GpuHostTestSupport {
       }
       quietCycles = if (memoryProgress) 0 else quietCycles + 1
       assert(noProgressLimit == 0 || quietCycles < noProgressLimit,
-        s"AXI no progress for $quietCycles cycles at cycle=$guard arDone=$arDone rBeat=$rBeat awDone=$awDone wDone=$wDone pendingB=${pendingWriteAcks.size} rDelay=$rDelay")
+        s"AXI no progress for $quietCycles cycles at cycle=$guard pendingR=${pendingReads.size} awDone=$awDone wDone=$wDone pendingB=${pendingWriteAcks.size}")
       onCycle()
       dut.io.s_axi_aclk.step()
-      if (acceptedRead) {
+      acceptedReadAddress.foreach { address =>
         // Pause memory handshakes while the hook drives control MMIO. Local
         // burst state survives, including an accepted AR awaiting its R data.
         dut.io.m_axi_arready.poke(false.B)
@@ -314,7 +310,7 @@ trait GpuHostTestSupport {
         dut.io.m_axi_awready.poke(false.B)
         dut.io.m_axi_wready.poke(false.B)
         dut.io.m_axi_bvalid.poke(false.B)
-        onReadAccepted(arAddr)
+        onReadAccepted(address)
       }
       guard += 1
     }

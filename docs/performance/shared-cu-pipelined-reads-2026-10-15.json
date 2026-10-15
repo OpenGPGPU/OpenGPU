@@ -1,0 +1,171 @@
+{
+  "date": "2026-10-15",
+  "scope": "Matched same64x64 copy, pixel/depth/uniform checked. GPU cycles only; no Debian speed claim.",
+  "parent_milestone": "c8726c9",
+  "configuration": {
+    "lanes": 16,
+    "warps": 8,
+    "axi_bytes": 64,
+    "om_inflight": 32,
+    "om_locality": true,
+    "combining_groups": 8,
+    "fragment_batch_capacity": 128,
+    "read_response_delay": 2,
+    "write_ack_delay": 12,
+    "read_contexts": 4
+  },
+  "measurements": {
+    "locality_only": [
+      47529,
+      15428
+    ],
+    "nonblocking_l2_only_with_locality": [
+      47365,
+      15116
+    ],
+    "old_read_master_new_responder_control": [
+      47365,
+      15116
+    ],
+    "new_read_master_and_responder": [
+      47376,
+      14934
+    ],
+    "speedup": 3.172358376858176,
+    "four_cu_reduction_vs_locality_percent": 3.2019704433497553,
+    "one_cu_reduction_vs_locality_percent": 0.3219087294073053,
+    "note": "Pipelined master adds11cycles on1CU versus immediate L2-only control; overall1CU improves153cycles versus locality milestone. Responder control exactly matches previous cycles, validating unchanged response delay."
+  },
+  "implementation": [
+    "One non-allocating L2 read slot reserves lowerID7 and its64B line through upstream response consumption. Unrelated loads/stores can progress; same-line younger stores and AMO/host-invalidation fences wait. Seven-ID slices retain blocking fallback.",
+    "Four read contexts reassemble tagged bursts, including interleaved IDs and narrow-word lane offsets. AR issue runs independently of R completion; global credits remain reserved through upstream response consumption.",
+    "Test responder accepts a bounded queue of16reads, with snapshots and unchanged deadlines captured atAR handshake. Both R/B driven before sampling either ready. FlashSim adapter c113af2 separately admits a bounded queue."
+  ],
+  "validation": {
+    "axi_unit": {
+      "passed": 17,
+      "log": ".artifacts/shared-cu-pipelined-read-tests.log"
+    },
+    "l2_unit": {
+      "passed": 25,
+      "log": ".artifacts/shared-cu-pipelined-read-regression.log"
+    },
+    "broad_system": {
+      "passed": 52,
+      "log": ".artifacts/shared-cu-pipelined-read-regression.log",
+      "includes": "23host/MMIO/VM/reset;27shared shader/texture VM/fault/reset;2orderedMSAA"
+    },
+    "matched_copy": {
+      "passed": 2,
+      "log": ".artifacts/shared-cu-pipelined-read-tests.log"
+    },
+    "locality_om32_msaa": {
+      "passed": 2,
+      "log": ".artifacts/shared-cu-pipelined-read-tests.log"
+    }
+  },
+  "source_sha256": {
+    "src/main/scala/opengpu/core/memory/L2UncachedRead.scala": "73082adec26c98fb3b46c240424e90ec47eff708b971f82bb556e20e407917f7",
+    "src/main/scala/opengpu/core/memory/SharedL2Cache.scala": "9fe2e39c8941bb252c66e7a1649e06ea57fdb1636e47fd9adc3e7dfee50fa1ac",
+    "src/main/scala/opengpu/system/ComputeMemoryAxiMaster.scala": "f396a4eec8958629d36fa5c2c98c91471fa46ea71b24f634588678d9960254fb",
+    "src/test/scala/opengpu/system/GpuHostTestSupport.scala": "c2d1a7e270fa696f91034b8e40172760fd076827bb424fdd9c68fc64f78e3383"
+  },
+  "trace_analysis": [
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 47361,
+      "phase_worker_cycles": [
+        1684,
+        26374,
+        18,
+        8536,
+        4632,
+        6117
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1684,
+        "arvalid": 1146,
+        "rvalid": 1160,
+        "write_any": 26374,
+        "raster_stall": 44444,
+        "staging_without_shader_run": 31006,
+        "staging_outstanding_any": 26181,
+        "awvalid": 2225,
+        "bvalid": 2261,
+        "launch_any": 18,
+        "run_any": 8536,
+        "read_any": 4632,
+        "emit_any": 6117,
+        "output_blocked": 3900,
+        "om_stall": 2013
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 529,
+        "color_write": 473,
+        "depth_write": 492
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-side-64-alu-0-cycles.csv": "dbb71590444fb88ade6941bc8690fd0dfb848459021b356ceab20509d7dc8920",
+        "cu-1-axi-64-side-64-alu-0-memory.csv": "7a0eebf6f74e8104c2b6bc74eea65fa5cee233019e11b88613a780c9e7393c0f"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 14919,
+      "phase_worker_cycles": [
+        7377,
+        28248,
+        18,
+        9186,
+        5511,
+        9336
+      ],
+      "peak_staging_outstanding": 4,
+      "cycle_events": {
+        "idle_any": 3698,
+        "arvalid": 1165,
+        "rvalid": 1242,
+        "write_any": 12099,
+        "staging_without_shader_run": 6874,
+        "staging_outstanding_any": 12505,
+        "awvalid": 2260,
+        "bvalid": 2391,
+        "raster_stall": 11012,
+        "launch_any": 18,
+        "run_any": 6817,
+        "read_any": 4657,
+        "staging_blocked": 91,
+        "emit_any": 7239,
+        "output_blocked": 5513,
+        "om_stall": 2545
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 548,
+        "color_write": 503,
+        "depth_write": 497
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-side-64-alu-0-cycles.csv": "1c163445ec4805fd76cbf85090f42a0b6853fe444205b602fe7a493ac8555175",
+        "cu-4-axi-64-side-64-alu-0-memory.csv": "fe6e340b69c5904fdc964ba3463b10f9185240ee32da5bfa3b993192286a8f91"
+      }
+    }
+  ],
+  "next_bottleneck": "Worker idle/load imbalance and staging traffic; isolated dispatch-size experiments are not part of this milestone."
+}

@@ -519,3 +519,26 @@ elapsed time, so the large traffic reduction yields a modest cycle gain.
 Twenty-one OM functional cases, a continuous-hot-line fairness case, two
 ordered MSAA cases and two full copy renders pass. Default arbitration stays
 unchanged. See [the locality evidence](performance/shared-cu-om-locality-2026-10-15.json).
+
+## Overlapping uncached reads and tagged AXI bursts
+
+A non-allocating L2 read slot releases the lookup controller while memory is
+pending. It retains the line reservation through client reply consumption,
+so younger same-line writes, atomics and host invalidations cannot overtake
+the read. Slices with only seven lower IDs keep the blocking fallback.
+
+The AXI bridge now supports four tagged read contexts, independent AR issue,
+interleaved burst reconstruction, narrow-word offsets and sticky faults.
+Request credits remain held until the upper consumer accepts the response.
+
+The matched copy improves from 47,529/15,428 to **47,376/14,934 cycles
+(3.17x)**. The L2-only intermediate measures 47,365/15,116; pipelining reads
+adds eleven one-CU cycles while reducing four-CU cycles by 182. A control
+using the old bridge with the queued test responder exactly reproduces
+47,365/15,116, confirming that response latency did not change.
+
+Seventeen AXI and 25 L2 unit cases, 52 broader system cases, two matched
+copy renders and two OM32/locality ordered MSAA cases pass (98 total).
+The broad suite covers shader/texture faults, VM, host control and reset
+drain. These are GPU-cycle measurements; Debian wall time and wide Mesa
+qualification remain separate work. See [the tagged-read evidence](performance/shared-cu-pipelined-reads-2026-10-15.json).

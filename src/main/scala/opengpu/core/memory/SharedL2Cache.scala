@@ -176,6 +176,9 @@ class SharedL2Slice(
   private val storeTable = Module(new L2StoreTransactionTable(
     config, entries = 2, lineBytes = lineBytes,
     maxOutstanding = maxOutstanding, lowerIdBase = 4))
+  private val uncachedRead = if (maxOutstanding >= 8)
+    Some(Module(new L2UncachedRead(config, maxOutstanding, lowerId = 7))) else None
+  private val uncachedIdle = uncachedRead.map(r => !r.io.active).getOrElse(true.B)
   private val loadHitCounter = Module(new CarrySaveEventCounter())
   private val loadMissCounter = Module(new CarrySaveEventCounter())
   private val mshrMergeCounter = Module(new CarrySaveEventCounter())
@@ -201,14 +204,14 @@ class SharedL2Slice(
   private val missResponsePresented = io.memoryResponse.valid &&
     io.memoryResponse.bits.transactionId < 4.U
   private val acceptAtomic = state === State.idle && !loadMissesActive &&
-    !storeTable.io.active && !missResponsePresented &&
+    !storeTable.io.active && uncachedIdle && !missResponsePresented &&
     atomicArbiter.io.out.valid
   atomicArbiter.io.out.ready := state === State.idle && !loadMissesActive &&
-    !storeTable.io.active && !missResponsePresented
+    !storeTable.io.active && uncachedIdle && !missResponsePresented
   // Host invalidate traffic is low priority: it only enters the lookup path
   // when no normal request or atomic is waiting.
   private val acceptHostInv = state === State.idle && !loadMissesActive &&
-    !storeTable.io.active && !missResponsePresented &&
+    !storeTable.io.active && uncachedIdle && !missResponsePresented &&
     !atomicArbiter.io.out.valid && !io.request.valid && io.hostInvalidate.valid
   io.hostInvalidate.ready := acceptHostInv
   private val lookupAddress = Mux(acceptHostInv,
@@ -352,8 +355,15 @@ class SharedL2Slice(
   private val incomingRequesterOH = UIntToOH(
     incomingRequesterCu, numComputeUnits)
   storeTable.io.queryAddress := io.request.bits.address
+  private val incomingUncachedRead = !io.request.bits.isWrite &&
+    (!incomingFullLine || !CachePolicy.isCacheable(io.request.bits.cachePolicy))
+  private val uncachedAdmission = uncachedRead.map { slot =>
+    slot.io.queryAddress := io.request.bits.address
+    (!incomingUncachedRead || slot.io.allocate.ready) &&
+      (!io.request.bits.isWrite || !slot.io.queryConflict)
+  }.getOrElse(true.B)
   io.request.ready := (state === State.idle && !atomicArbiter.io.out.valid &&
-    !missResponsePresented &&
+    uncachedAdmission && !missResponsePresented &&
     (!io.request.bits.isWrite || !loadMissesActive) &&
     (!storeTable.io.queryConflict || io.request.bits.isWrite)) ||
     mergeLoad
@@ -363,7 +373,7 @@ class SharedL2Slice(
   regularResponse.bits := response
   regularResponse.bits.transactionId := PriorityEncoder(responseWaiters)
   private val responseArbiter = Module(new RRArbiter(
-    new ComputeMemoryResponse(lineBytes, maxOutstanding), 3))
+    new ComputeMemoryResponse(lineBytes, maxOutstanding), if (uncachedRead.isDefined) 4 else 3))
   responseArbiter.io.in(0) <> regularResponse
   responseArbiter.io.in(1).valid := missEngine.io.response.valid
   responseArbiter.io.in(1).bits.readData := missEngine.io.response.bits.readData
@@ -372,6 +382,7 @@ class SharedL2Slice(
   responseArbiter.io.in(1).bits.fault := missEngine.io.response.bits.fault
   missEngine.io.response.ready := responseArbiter.io.in(1).ready
   responseArbiter.io.in(2) <> storeTable.io.response
+  uncachedRead.foreach { slot => responseArbiter.io.in(3) <> slot.io.response }
   io.response <> responseArbiter.io.out
 
   // Fully drained for completion purposes: the FSM is idle, no miss fill is
@@ -382,7 +393,7 @@ class SharedL2Slice(
   // the responseWaiters presentation accounting, whose bits are cleared by
   // the regular response path.
   io.drained := state === State.idle && !loadMissesActive &&
-    !storeTable.io.active && !fillWriteValid && !hostInvMode &&
+    !storeTable.io.active && uncachedIdle && !fillWriteValid && !hostInvMode &&
     !io.hostInvalidate.valid
 
   private val blockingMemoryRequest = Wire(Decoupled(
@@ -410,10 +421,11 @@ class SharedL2Slice(
     blockingMemoryRequest.bits.cacheResident := false.B
   }
   private val memoryRequestArbiter = Module(new RRArbiter(
-    new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 3))
+    new ComputeMemoryRequest(config, lineBytes, maxOutstanding), if (uncachedRead.isDefined) 4 else 3))
   memoryRequestArbiter.io.in(0) <> blockingMemoryRequest
   memoryRequestArbiter.io.in(1) <> storeTable.io.lowerRequest
   memoryRequestArbiter.io.in(2) <> missEngine.io.lowerRequest
+  uncachedRead.foreach { slot => memoryRequestArbiter.io.in(3) <> slot.io.lowerRequest }
   io.memoryRequest <> memoryRequestArbiter.io.out
   when(blockingMemoryRequest.fire) { lowerIssued := true.B }
 
@@ -425,15 +437,25 @@ class SharedL2Slice(
   storeTable.io.lowerResponse.valid :=
     io.memoryResponse.valid && responseIsStore
   storeTable.io.lowerResponse.bits := io.memoryResponse.bits
+  private val responseIsUncached = uncachedRead.map(_ =>
+    io.memoryResponse.bits.transactionId === 7.U).getOrElse(false.B)
+  uncachedRead.foreach { slot =>
+    slot.io.lowerResponse.valid := io.memoryResponse.valid && responseIsUncached
+    slot.io.lowerResponse.bits := io.memoryResponse.bits
+    slot.io.allocate.valid := io.request.fire && state === State.idle && incomingUncachedRead
+    slot.io.allocate.bits := io.request.bits
+  }
+  private val uncachedResponseReady = uncachedRead.map(_.io.lowerResponse.ready).getOrElse(false.B)
   private val blockingMemoryResponseReady = state === State.lower ||
     state === State.atomicRead || state === State.atomicWrite
   io.memoryResponse.ready := Mux(responseIsMiss,
     missEngine.io.lowerResponse.ready, Mux(responseIsStore,
-      storeTable.io.lowerResponse.ready, blockingMemoryResponseReady))
+      storeTable.io.lowerResponse.ready, Mux(responseIsUncached,
+        uncachedResponseReady, blockingMemoryResponseReady)))
   private val blockingMemoryResponseFire = io.memoryResponse.fire &&
-    !responseIsMiss && !responseIsStore
+    !responseIsMiss && !responseIsStore && !responseIsUncached
   when(io.memoryResponse.valid) {
-    assert(responseIsMiss || responseIsStore ||
+    assert(responseIsMiss || responseIsStore || responseIsUncached ||
       io.memoryResponse.bits.transactionId === 6.U,
       "L2 slice response must identify a load, store, or blocking transaction")
   }
@@ -494,7 +516,8 @@ class SharedL2Slice(
       hostInvMode := false.B
       when(bypassLookup) {
         lookupHit := false.B
-        state := Mux(io.request.bits.isWrite, State.storeAllocate, State.lower)
+        state := Mux(io.request.bits.isWrite, State.storeAllocate,
+          if (uncachedRead.isDefined) State.idle else State.lower)
       }.otherwise {
         state := State.lookup
       }

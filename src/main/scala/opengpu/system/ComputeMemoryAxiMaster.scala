@@ -12,6 +12,7 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
   * 64-byte cache line is emitted as an INCR burst when the AXI data bus is
   * narrower than a cache line; four-byte page-table accesses use AXI narrow
   * transfers and are shifted to/from the addressed byte lane.
+  * Up to four tagged read bursts overlap, with per-ID beat/fault reassembly.
   * Write bursts continue while earlier B replies are outstanding; IDs and
   * request credits remain reserved through acknowledged response retirement.
   */
@@ -85,13 +86,24 @@ class ComputeMemoryAxiMaster(
   private val writeRequest = Reg(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
   private val readActive = RegInit(false.B)
   private val writeActive = RegInit(false.B)
-  private val readAddressSent = RegInit(false.B)
   private val writeAddressSent = RegInit(false.B)
   private val writeDataSent = RegInit(false.B)
-  private val readBeat = RegInit(0.U(beatIndexWidth.W))
   private val writeBeat = RegInit(0.U(beatIndexWidth.W))
-  private val readResult = RegInit(0.U((lineBytes * 8).W))
-  private val readFault = RegInit(false.B)
+  // Bound reassembly storage independently of the large global ID space.
+  // AR issue can continue while up to four tagged bursts await R data.
+  private val readSlots = math.min(maxOutstanding, 4)
+  private val readSlotWidth = math.max(1, log2Ceil(readSlots))
+  private val readAddressSlot = Reg(UInt(readSlotWidth.W))
+  private val readValid = RegInit(VecInit(Seq.fill(readSlots)(false.B)))
+  private val readIssued = RegInit(VecInit(Seq.fill(readSlots)(false.B)))
+  private val readIds = Reg(Vec(readSlots, UInt(idWidth.W)))
+  private val readOffsets = Reg(Vec(readSlots, UInt(laneOffsetWidth.W)))
+  private val readBursts = Reg(Vec(readSlots, Bool()))
+  private val readBeats = Reg(Vec(readSlots, UInt(beatIndexWidth.W)))
+  private val readResults = Reg(Vec(readSlots, UInt((lineBytes * 8).W)))
+  private val readFaults = Reg(Vec(readSlots, Bool()))
+  private val freeReadSlots = ~readValid.asUInt
+  private val allocateReadSlot = PriorityEncoder(freeReadSlots)
   // AW/W issue is independent of B retirement. Preserve an ID until its
   // physical acknowledgement is queued, then keep the global request credit
   // until the upper consumer accepts that reply.
@@ -112,7 +124,6 @@ class ComputeMemoryAxiMaster(
   writeRequests.io.enq.valid := io.request.valid && io.request.bits.isWrite && outstanding < maxOutstanding.U
   readRequests.io.enq.bits := io.request.bits
   writeRequests.io.enq.bits := io.request.bits
-  readRequests.io.deq.ready := !readActive
   private val responseArb = Module(new RRArbiter(
     new ComputeMemoryResponse(lineBytes, maxOutstanding), 2))
   private val responses = Module(new Queue(
@@ -126,13 +137,8 @@ class ComputeMemoryAxiMaster(
     Mux(lineTransfer(request), (lineBytes / axiDataBytes).U(8.W), 1.U(8.W))
   private def laneOffset(request: ComputeMemoryRequest): UInt =
     request.address(laneOffsetWidth - 1, 0)
-  private val readLast = readBeat === transferBeats(readRequest) - 1.U
   private val writeLast = writeBeat === transferBeats(writeRequest) - 1.U
-  private val readShift = readBeat << log2Ceil(axiDataWidth)
   private val writeShift = writeBeat << log2Ceil(axiDataWidth)
-  private val nextReadResult = Mux(lineTransfer(readRequest),
-    readResult | (io.m_axi_rdata << readShift),
-    io.m_axi_rdata >> (laneOffset(readRequest) << 3))
 
   io.request.ready := outstanding < maxOutstanding.U &&
     Mux(io.request.bits.isWrite, writeRequests.io.enq.ready, readRequests.io.enq.ready)
@@ -150,12 +156,12 @@ class ComputeMemoryAxiMaster(
     }
   }
   when(readRequests.io.deq.fire) {
+    assert(!(0 until readSlots).map(i => readValid(i) &&
+      readIds(i) === readRequests.io.deq.bits.transactionId).reduce(_ || _),
+      "AXI read ID cannot be reused before its burst completes")
     readRequest := readRequests.io.deq.bits
     readActive := true.B
-    readAddressSent := false.B
-    readBeat := 0.U
-    readResult := 0.U
-    readFault := false.B
+    readAddressSlot := allocateReadSlot
   }
 
   io.m_axi_awid := writeRequest.transactionId
@@ -231,22 +237,61 @@ class ComputeMemoryAxiMaster(
   io.m_axi_arcache := "b0011".U
   io.m_axi_arprot := 0.U
   io.m_axi_arqos := 0.U
-  io.m_axi_arvalid := readActive && !readAddressSent
-  when(io.m_axi_arvalid && io.m_axi_arready) { readAddressSent := true.B }
-  private val readResponseExpected = readActive && readAddressSent
+  io.m_axi_arvalid := readActive
+  private val readAddressFire = io.m_axi_arvalid && io.m_axi_arready
+  readRequests.io.deq.ready := (!readActive || readAddressFire) && freeReadSlots.orR
+  when(readAddressFire) { readActive := false.B }
+  // A next address may replace the accepted one on this edge.
+  when(readRequests.io.deq.fire) { readActive := true.B }
+
+  private val readTagMatches = VecInit((0 until readSlots).map(i =>
+    readValid(i) && readIds(i) === io.m_axi_rid))
+  private val readMatches = VecInit((0 until readSlots).map(i =>
+    readTagMatches(i) && readIssued(i)))
+  private val readResponseExpected = readMatches.asUInt.orR
+  private val responseBeat = Mux1H(readMatches, readBeats)
+  private val responseBurst = Mux1H(readMatches, readBursts)
+  private val responseOffset = Mux1H(readMatches, readOffsets)
+  private val responseResult = Mux1H(readMatches, readResults)
+  private val responseFault = Mux1H(readMatches, readFaults)
+  private val readLast = responseBeat === Mux(responseBurst,
+    (lineBytes / axiDataBytes - 1).U, 0.U)
+  private val readShift = responseBeat << log2Ceil(axiDataWidth)
+  private val nextReadResult = Mux(responseBurst,
+    responseResult | (io.m_axi_rdata << readShift),
+    io.m_axi_rdata >> (responseOffset << 3))
   responseArb.io.in(0).valid := readResponseExpected && io.m_axi_rvalid && readLast
-  responseArb.io.in(0).bits.transactionId := readRequest.transactionId
+  responseArb.io.in(0).bits.transactionId := io.m_axi_rid
   responseArb.io.in(0).bits.readData := nextReadResult
-  responseArb.io.in(0).bits.fault := readFault || io.m_axi_rresp(1) || (io.m_axi_rlast =/= readLast)
+  responseArb.io.in(0).bits.fault := responseFault || io.m_axi_rresp(1) || (io.m_axi_rlast =/= readLast)
   io.m_axi_rready := readResponseExpected && (!readLast || responseArb.io.in(0).ready)
+  when(io.m_axi_rvalid) {
+    assert(PopCount(readTagMatches) === 1.U,
+      "AXI read response ID must identify one reserved read context")
+  }
   when(io.m_axi_rvalid && io.m_axi_rready) {
-    assert(io.m_axi_rid === readRequest.transactionId,
-      "AXI read response ID must match the active lower-memory request")
+    assert(PopCount(readMatches) === 1.U,
+      "AXI read response must follow its address handshake")
     assert(io.m_axi_rlast === readLast,
       "AXI RLAST must match the programmed burst length")
-    readResult := nextReadResult
-    readFault := readFault || io.m_axi_rresp(1)
-    when(readLast) { readActive := false.B }
-      .otherwise { readBeat := readBeat + 1.U }
+  }
+  for (i <- 0 until readSlots) {
+    when(readRequests.io.deq.fire && allocateReadSlot === i.U) {
+      readValid(i) := true.B
+      readIssued(i) := false.B
+      readIds(i) := readRequests.io.deq.bits.transactionId
+      readOffsets(i) := laneOffset(readRequests.io.deq.bits)
+      readBursts(i) := lineTransfer(readRequests.io.deq.bits)
+      readBeats(i) := 0.U
+      readResults(i) := 0.U
+      readFaults(i) := false.B
+    }
+    when(readAddressFire && readAddressSlot === i.U) { readIssued(i) := true.B }
+    when(io.m_axi_rvalid && io.m_axi_rready && readMatches(i)) {
+      readResults(i) := nextReadResult
+      readFaults(i) := responseFault || io.m_axi_rresp(1)
+      when(readLast) { readValid(i) := false.B; readIssued(i) := false.B }
+        .otherwise { readBeats(i) := responseBeat + 1.U }
+    }
   }
 }
