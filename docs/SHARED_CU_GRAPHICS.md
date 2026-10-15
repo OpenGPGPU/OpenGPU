@@ -156,6 +156,18 @@ Logs are `.artifacts/shared-cu-shader-config-tests.log`,
 `.artifacts/shared-cu-driver-unit-tests.log` and
 `.artifacts/shared-cu-driver-build.log`.
 
+`ParallelFragmentScheduler` partitions whole quads into worker batches and
+orders their output using batch tokens and distinct real draw-end markers.
+Each worker seals one batch through its existing flush/retire interface and
+owns a disjoint pair of kernarg banks. The three 1/2/4-worker tests delay
+workers independently, stall output, preserve helper quads and depth
+sidebands, and cover partial/no-output batches, empty draws, late flush and
+zero-stride serialization. These use simulated worker backends; real parallel
+shader and memory integration is still pending. Extracting the reusable
+frontend interface also passes all 16 existing `KernelFragStageSpec` tests.
+Logs: `.artifacts/shared-cu-fragment-scheduler-tests.log` and
+`.artifacts/shared-cu-fragment-interface-tests.log`.
+
 ## Performance interpretation
 
 The previous trace attributes about 84% of textured batch cycles to shader

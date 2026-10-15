@@ -41,6 +41,79 @@ private class KernelFragEmitLane(gfxConfig: GraphicsConfig) extends Bundle {
   val coverageMask = UInt(gfxConfig.maxSampleCount.W)
 }
 
+/** Fragment batch producer/consumer contract, independent of its executor. */
+class KernelFragFrontendIO(config: GpuConfig, gfxConfig: GraphicsConfig) extends Bundle {
+  val fragIn = Flipped(Decoupled(new FragmentQuad(gfxConfig)))
+  /** Per-lane perspective-correct UVs of the presented quad. */
+  val fragUv = Input(Vec(4, new TexUV))
+  /** Per-lane rasterizer-derived per-sample depths of the presented quad. */
+  val fragDepths = Input(Vec(4, Vec(gfxConfig.maxSampleCount, UInt(30.W))))
+  val out = Decoupled(new RasterFragment(gfxConfig))
+  /** Per-sample depths selected for the presented fragment. */
+  val outDepths = Output(Vec(gfxConfig.maxSampleCount, UInt(30.W)))
+  /** The shader-depth word overrides the per-sample raster depths. */
+  val depthOverride = Output(Bool())
+  val shaderPc = Input(UInt(32.W))
+  /** Output-control ABI: 0 = legacy (any nonzero word emits), 1 = the
+    * output-valid word splits into bit 0 emit / bit 1 depth override. */
+  val abi1 = Input(Bool())
+  val kernargBase = Input(UInt(32.W))
+  /** Byte stride between two complete, identically laid-out kernarg banks. */
+  val kernargBankStride = Input(UInt(32.W))
+  /** Texture sampling config for the tex.sample instruction. */
+  val texBase = Input(UInt(32.W))
+  val texWidth = Input(UInt(14.W))
+  val texHeight = Input(UInt(14.W))
+  val texWrapClamp = Input(Bool())
+  val texMaxLevel = Input(UInt(4.W))
+  val texLodBias = Input(SInt(5.W))
+  val texMinLevel = Input(UInt(4.W))
+  val flush = Input(Bool())
+  val drained = Output(Bool())
+  /** Ordered per-draw completion event (one per rising flush). */
+  val drawRetire = Decoupled(Bool())
+}
+
+/** Standalone fragment worker ports, retaining the existing shader ABI. */
+class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig)
+    extends KernelFragFrontendIO(config, gfxConfig) {
+  val memReq = Decoupled(new ComputeMemoryRequest(config))
+  val memResp = Flipped(Decoupled(new ComputeMemoryResponse()))
+  val wordMemReq = Decoupled(new ComputeMemoryRequest(config, 64, 2))
+  val wordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, 2)))
+  /** Texture-unit word memory.  Routed through the translated texture client
+    * (VA under VECTOR_SATP), same translation domain as kernarg staging. */
+  val texMem = new Bundle {
+    val req = Decoupled(new OmMemoryRequest)
+    val resp = Flipped(Decoupled(new OmMemoryResponse))
+  }
+  val l1Invalidate = Flipped(Decoupled(new CacheLineInvalidate(config)))
+  val l1InvalidateDone = Decoupled(new CacheLineInvalidate(config))
+  val globalAtomicRequest = Decoupled(new SharedAtomicRequest(config))
+  val globalAtomicResponse = Flipped(Decoupled(new SharedAtomicResponse(config)))
+  val kernelLaunch = new Bundle {
+    val valid = Output(Bool())
+    val ready = Input(Bool())
+    val kernelPc = Output(UInt(config.xLen.W))
+    val kernargAddress = Output(UInt(config.xLen.W))
+    val gridX = Output(UInt(32.W))
+    val gridY = Output(UInt(32.W))
+    val gridZ = Output(UInt(32.W))
+    val localX = Output(UInt(16.W))
+    val localY = Output(UInt(16.W))
+    val localZ = Output(UInt(16.W))
+  }
+  val kernelCompletion = Flipped(Decoupled(new KernelCompletion))
+  val kernelTrap = Flipped(Decoupled(new CoreTrapEvent(config)))
+  val kernelSimtBranch = Flipped(Decoupled(new SimtBranchRequest(config)))
+  val kernelTexSample = Flipped(Decoupled(new ScalarIssuedInstruction(config)))
+  val kernelTexWriteback = Decoupled(new ScalarCommitRequest(config))
+  val kernelVectorTexSample =
+    Flipped(Decoupled(new VectorTextureRequest(config)))
+  val kernelVectorTexWriteback =
+    Decoupled(new VectorCommitRequest(config))
+}
+
 /** Core-backed fragment shader stage (Phase D), batched quad dispatch with
   * per-draw overlap.
   *
@@ -137,72 +210,7 @@ class KernelFragStage(
   // Per-array byte stride of the SoA kernarg layout (see the class doc).
   private val arrayStride = 4 * batchCap
 
-  val io = IO(new Bundle {
-    val fragIn = Flipped(Decoupled(new FragmentQuad(gfxConfig)))
-    /** Per-lane perspective-correct UVs of the presented quad. */
-    val fragUv = Input(Vec(4, new TexUV))
-    /** Per-lane rasterizer-derived per-sample depths of the presented quad. */
-    val fragDepths = Input(Vec(4, Vec(gfxConfig.maxSampleCount, UInt(30.W))))
-    val out = Decoupled(new RasterFragment(gfxConfig))
-    /** Per-sample depths selected for the presented fragment. */
-    val outDepths = Output(Vec(gfxConfig.maxSampleCount, UInt(30.W)))
-    /** The shader-depth word overrides the per-sample raster depths. */
-    val depthOverride = Output(Bool())
-    val shaderPc = Input(UInt(32.W))
-    /** Output-control ABI: 0 = legacy (any nonzero word emits), 1 = the
-      * output-valid word splits into bit 0 emit / bit 1 depth override. */
-    val abi1 = Input(Bool())
-    val kernargBase = Input(UInt(32.W))
-    /** Byte stride between two complete, identically laid-out kernarg banks. */
-    val kernargBankStride = Input(UInt(32.W))
-    /** Texture sampling config for the tex.sample instruction. */
-    val texBase = Input(UInt(32.W))
-    val texWidth = Input(UInt(14.W))
-    val texHeight = Input(UInt(14.W))
-    val texWrapClamp = Input(Bool())
-    val texMaxLevel = Input(UInt(4.W))
-    val texLodBias = Input(SInt(5.W))
-    val texMinLevel = Input(UInt(4.W))
-    val flush = Input(Bool())
-    val drained = Output(Bool())
-    /** Ordered per-draw completion event (one per rising flush). */
-    val drawRetire = Decoupled(Bool())
-    val memReq = Decoupled(new ComputeMemoryRequest(config))
-    val memResp = Flipped(Decoupled(new ComputeMemoryResponse()))
-    val wordMemReq = Decoupled(new ComputeMemoryRequest(config, 64, 2))
-    val wordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, 2)))
-    /** Texture-unit word memory.  Routed through the translated texture client
-      * (VA under VECTOR_SATP), same translation domain as kernarg staging. */
-    val texMem = new Bundle {
-      val req = Decoupled(new OmMemoryRequest)
-      val resp = Flipped(Decoupled(new OmMemoryResponse))
-    }
-    val l1Invalidate = Flipped(Decoupled(new CacheLineInvalidate(config)))
-    val l1InvalidateDone = Decoupled(new CacheLineInvalidate(config))
-    val globalAtomicRequest = Decoupled(new SharedAtomicRequest(config))
-    val globalAtomicResponse = Flipped(Decoupled(new SharedAtomicResponse(config)))
-    val kernelLaunch = new Bundle {
-      val valid = Output(Bool())
-      val ready = Input(Bool())
-      val kernelPc = Output(UInt(config.xLen.W))
-      val kernargAddress = Output(UInt(config.xLen.W))
-      val gridX = Output(UInt(32.W))
-      val gridY = Output(UInt(32.W))
-      val gridZ = Output(UInt(32.W))
-      val localX = Output(UInt(16.W))
-      val localY = Output(UInt(16.W))
-      val localZ = Output(UInt(16.W))
-    }
-    val kernelCompletion = Flipped(Decoupled(new KernelCompletion))
-    val kernelTrap = Flipped(Decoupled(new CoreTrapEvent(config)))
-    val kernelSimtBranch = Flipped(Decoupled(new SimtBranchRequest(config)))
-    val kernelTexSample = Flipped(Decoupled(new ScalarIssuedInstruction(config)))
-    val kernelTexWriteback = Decoupled(new ScalarCommitRequest(config))
-    val kernelVectorTexSample =
-      Flipped(Decoupled(new VectorTextureRequest(config)))
-    val kernelVectorTexWriteback =
-      Decoupled(new VectorCommitRequest(config))
-  })
+  val io = IO(new KernelFragStageIO(config, gfxConfig))
 
   // Word-client request/response interface to the bridge (driven by the FSM).
   private val wordValid = Wire(Bool())
