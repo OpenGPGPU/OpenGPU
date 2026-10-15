@@ -13,6 +13,7 @@
 #include <gbm.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+#include "opengpu_gl_mode.h"
 
 #include <errno.h>
 #include <execinfo.h>
@@ -180,7 +181,8 @@ int main(void)
     }
     if (!conn)
         die("no connected KMS mode");
-    mode = conn->modes[0];
+    if (opengpu_gl_choose_mode(conn, &mode))
+        die("requested KMS mode is unavailable");
     if (conn->encoder_id)
         enc = drmModeGetEncoder(fd, conn->encoder_id);
     if (!enc && conn->count_encoders > 0)
@@ -199,6 +201,8 @@ int main(void)
     if (!crtc_id)
         die("no KMS crtc");
 
+    if (opengpu_gl_activate_mode(fd, conn, crtc_id, &mode))
+        die("activate selected KMS mode");
     gbm = gbm_create_device(fd);
     if (!gbm)
         die("gbm_create_device");
@@ -298,9 +302,10 @@ int main(void)
      * shifted edge and x=100 is inside. GL y=8 is the narrow end, where
      * x=W-8 stays the clear colour. The red texel times the red vertex colour
      * is (255 * 255) >> 8 on red and alpha. */
-    outside = pixel_word(8, mode.vdisplay - 1 - 8);
-    inside = pixel_word(100 * mode.hdisplay / 320, mode.vdisplay - 1 - 8);
-    clear = pixel_word(mode.hdisplay - 8, 8);
+    outside = pixel_word(opengpu_gl_probe_x(&mode, 8), mode.vdisplay - 1 - opengpu_gl_probe_y(&mode, 8));
+    inside = pixel_word(100 * mode.hdisplay / 320, mode.vdisplay - 1 - opengpu_gl_probe_y(&mode, 8));
+    clear = pixel_word(mode.hdisplay - opengpu_gl_probe_x(&mode, 8),
+                       opengpu_gl_probe_y(&mode, 8));
     printf("gl_modulate: mode %ux%u outside=0x%08x inside=0x%08x clear=0x%08x\n",
            mode.hdisplay, mode.vdisplay, outside, inside, clear);
     fflush(stdout);

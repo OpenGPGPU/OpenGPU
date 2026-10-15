@@ -20,6 +20,7 @@
 #include "opengpu_fs_emit.h"
 #include "opengpu_shader_abi.h"
 #include "opengpu_shader_resources.h"
+#include "opengpu_texture_layout.h"
 #include "opengpu_shaders.h"
 #include "opengpu_retry.h"
 
@@ -113,6 +114,7 @@ struct opengpu_context {
     struct pipe_surface *cbuf;
     struct pipe_surface *zsbuf;
     struct pipe_opengpu_resource *present_target;
+    struct pipe_opengpu_resource *sample_upload;
     uint32_t width;
     uint32_t height;
     struct opengpu_shader *vs;
@@ -1908,6 +1910,58 @@ static const struct opengpu_link *find_link(const struct opengpu_shader *vs,
     return NULL;
 }
 
+/* The hardware sampler consumes packed rows. Imported window images can
+ * retain scanout padding, so synchronize their producer before packing data.
+ * Draws in this context wait for completion before reusing the upload GEM. */
+static struct pipe_opengpu_resource *prepare_sample_texture(
+    struct opengpu_context *ctx, struct pipe_opengpu_resource *source,
+    uint32_t width, uint32_t height)
+{
+    struct pipe_opengpu_screen *screen = opengpu_screen_gpu(ctx->base.screen);
+    struct pipe_opengpu_fence *fence = NULL;
+    uint32_t pitch = pipe_opengpu_resource_pitch(source);
+    uint64_t row = (uint64_t)width * 4u;
+    uint64_t source_bytes = pipe_opengpu_resource_size(source);
+    void *destination;
+    int status;
+
+    if (row == pitch)
+        return source;
+    if (!width || !height || row > pitch ||
+        (uint64_t)(height - 1u) * pitch + row > source_bytes) {
+        errno = EINVAL;
+        return NULL;
+    }
+    if (!ctx->sample_upload ||
+        pipe_opengpu_resource_width(ctx->sample_upload) != width ||
+        pipe_opengpu_resource_height(ctx->sample_upload) != height) {
+        if (ctx->sample_upload)
+            pipe_opengpu_resource_destroy(screen, ctx->sample_upload);
+        ctx->sample_upload = pipe_opengpu_resource_create_linear(screen, width, height);
+        if (!ctx->sample_upload)
+            return NULL;
+    }
+    /* The invalidate job waits for prior GPU writers and makes their rows
+     * visible to this CPU upload; copying before that fence would race them. */
+    status = pipe_opengpu_invalidate(ctx->gpu, source, 0, source_bytes, &fence);
+    if (!status)
+        status = pipe_opengpu_fence_finish(ctx->gpu, fence, ctx->fence_timeout_ms);
+    pipe_opengpu_fence_reference(&fence, NULL);
+    if (status)
+        return NULL;
+    destination = pipe_opengpu_resource_map(ctx->sample_upload);
+    if (opengpu_texture_pack_rows(destination,
+            pipe_opengpu_resource_size(ctx->sample_upload),
+            pipe_opengpu_resource_map(source), source_bytes, width, height, pitch)) {
+        errno = EINVAL;
+        return NULL;
+    }
+    /* This private upload is always sampled through an uncached binding.
+     * Order coherent DMA stores before publishing that binding to the GPU. */
+    __sync_synchronize();
+    return ctx->sample_upload;
+}
+
 static int pack_one(struct opengpu_context *ctx, unsigned vertex,
                     const struct opengpu_shader *vs,
                     const struct opengpu_shader *fs, struct hw_vertex *out)
@@ -2256,8 +2310,8 @@ static void draw_vbo(struct pipe_context *pipe,
                     if (s < 0.0f) s = 0.0f;
                     if (s > 1.0f) s = 1.0f;
                     byte = (uint32_t)(s * 255.0f + 0.5f);
-                    /* The fragment output is a little-endian BGRA word. */
-                    word |= byte << (8 * (chan == 3 ? 3 : 2 - chan));
+                    /* Match vertex colours and framebuffer words: R:G:B:A. */
+                    word |= byte << (8 * (3 - chan));
                 }
                 if (pipe_opengpu_write_fs_uniform(ctx->gpu, word)) {
                     reject("fragment colour did not reach the fragment core");
@@ -2410,6 +2464,7 @@ static void draw_vbo(struct pipe_context *pipe,
             if (ctx->fs->samples) {
                 struct pipe_resource *tex;
                 struct opengpu_resource *gpu;
+                struct pipe_opengpu_resource *sample;
                 uint32_t tw, th;
 
                 if (!ctx->fs_view || !ctx->fs_view->texture) {
@@ -2420,9 +2475,13 @@ static void draw_vbo(struct pipe_context *pipe,
                 gpu = opengpu_resource(tex);
                 tw = tex->width0;
                 th = tex->height0;
-                if (!gpu || !tw || !th ||
+                if (ctx->trace_draws)
+                    fprintf(stderr, "opengpu: sampler texture %ux%u pitch=%u bind=0x%x\n",
+                            tw, th, gpu ? pipe_opengpu_resource_pitch(gpu->gpu) : 0, tex->bind);
+                sample = gpu ? prepare_sample_texture(ctx, gpu->gpu, tw, th) : NULL;
+                if (!sample || !tw || !th ||
                     pipe_opengpu_bind_texture(
-                        ctx->gpu, gpu->gpu, tw, th, tw * th * 4u,
+                        ctx->gpu, sample, tw, th, tw * th * 4u,
                         OPENGPU_RESOURCE_TEXTURE_CLAMP |
                             OPENGPU_RESOURCE_UNCACHED)) {
                     reject("texture bind failed");
@@ -2800,6 +2859,9 @@ static void context_destroy(struct pipe_context *pipe)
     if (ctx->packed)
         pipe_opengpu_resource_destroy(opengpu_screen_gpu(pipe->screen),
                                       ctx->packed);
+    if (ctx->sample_upload)
+        pipe_opengpu_resource_destroy(opengpu_screen_gpu(ctx->base.screen),
+                                      ctx->sample_upload);
     if (ctx->present_target)
         pipe_opengpu_resource_destroy(opengpu_screen_gpu(pipe->screen),
                                       ctx->present_target);

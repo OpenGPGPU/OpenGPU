@@ -1,0 +1,119 @@
+{
+  "date": "2026-10-15",
+  "scope": "Gallium pitched-texture/color correctness and fast native qualification on the legacy private-graphics model; shared-CU desktop qualification pending",
+  "native_mode": "64x64",
+  "maximum_mode": "640x480",
+  "native_shader_runs": 18,
+  "native_results": {
+    "shader-blend": {
+      "result": "PASS",
+      "log_sha256": "28d19ac714415ad80ca3a4f482af3c7706d03b1f5ee83594dbc25b18dc942212"
+    },
+    "shader-fade": {
+      "result": "PASS",
+      "log_sha256": "4f4a0e8f836b67c0c416e6a33269cacb8f0abeb42fdb9eb0804824c51afbc86b"
+    },
+    "shader-fill-distinct": {
+      "result": "PASS",
+      "log_sha256": "3c3a030d80291af99ed7ed456a0123e51ca99d248def360ae9b8f2672c481172"
+    },
+    "shader-fill": {
+      "result": "PASS",
+      "log_sha256": "f01fe681a4b85bfa79e2608106b69a0056213433fea03a623adc65289bba61b3"
+    },
+    "shader-glass": {
+      "result": "PASS",
+      "log_sha256": "f6b4b7b43ccfe1bac1cbcb12438f6cb83dcaa6f1dbf48cba599ba7d356cd547b"
+    },
+    "shader-grade": {
+      "result": "PASS",
+      "log_sha256": "12d648f50a0e3ee2708d0880bce4a37901b2e51074630c443bda7bff19a30947"
+    },
+    "shader-modulate": {
+      "result": "PASS",
+      "log_sha256": "dc529c352c8f0ef25722d1ceb1b73710d8cbdf6f06c40cc97d05f0a169760f0f"
+    },
+    "shader-opacity": {
+      "result": "PASS",
+      "log_sha256": "26421398c43855a72f4fa2ec82c2f0c55253cbc3f494407e646bea28127b3446"
+    },
+    "shader-quad": {
+      "result": "PASS",
+      "log_sha256": "95870ada2f3d61c6622c0ea04c3420a723bcffa792c7f887a230309e34e2c814"
+    },
+    "shader-shade": {
+      "result": "PASS",
+      "log_sha256": "8e7e68af70d4677637688a66456ccdbd5d78e690d16663b966cd1221d57dba2f"
+    },
+    "shader-textransform": {
+      "result": "PASS",
+      "log_sha256": "2ffca7fe86dcbfb79333c9a1b757fcf3dacd8017186f649b0a318f5be0ec0f8c"
+    },
+    "shader-texture-padded": {
+      "result": "PASS",
+      "log_sha256": "0da929ee139ebeff603df85f03feea9001e4fd34bc334dc9509474e66da0cb20"
+    },
+    "shader-texture-swizzle": {
+      "result": "PASS",
+      "log_sha256": "6b4266d12b324c13d0fdc958d6332dde4c5a84fbaf305e884f3823bc5a2fe805"
+    },
+    "shader-texture": {
+      "result": "PASS",
+      "log_sha256": "586fa86532c74b4a10a3d0b97b6fb5fd8724be946bad5489a81eda8c86fa7c37"
+    },
+    "shader-tint": {
+      "result": "PASS",
+      "log_sha256": "d54d9ad526f83a8128f03086ed6c4632017a9e15624e3c6dd61e0aec0096edf9"
+    },
+    "shader-transform": {
+      "result": "PASS",
+      "log_sha256": "ff2ff7110d1d6b8fce828e0c1a982205fc47b807fda29634d85a83136d031775"
+    },
+    "shader-triangle": {
+      "result": "PASS",
+      "log_sha256": "3b3967c13dfe49898807645812b0e2ed7d8ca372b0b48eaa248fde5600708cf8"
+    },
+    "shader-wash": {
+      "result": "PASS",
+      "log_sha256": "e0cac647163ec5d532701acf220040cc820e8abdf08e44bead771e9f0f8067e6"
+    }
+  },
+  "extra_reproduction": "medium Weston native shader PASS",
+  "artifact_hashes": [
+    "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0  /Users/duckdonald/workspace/gpu/qemu-build/qemu-system-aarch64",
+    "c8929ed0f7e2da64865370872bd0ef7f8690e872d4287a4383c82653389c9797  /Users/duckdonald/workspace/gpu/.artifacts/shared-cu/runtime-guest/display-work/opengpu-driver/gpu_drv.ko",
+    "a0290a673f59b68dd3bb053dbf110048e73552fb9fa89204d3647d502c25b5de  /Users/duckdonald/workspace/gpu/.artifacts/shared-cu/runtime-guest/display-work/opengpu-driver/opengpu_dri.so",
+    "1fb59faa529037c8cc5c3773b4f04fd4c6301ea401b5787c8a6403b519e759fe  /Users/duckdonald/workspace/gpu/../arti-work/debian-gtk-arm64.qcow2"
+  ],
+  "host_checks": {
+    "driver_test_programs": 9,
+    "runtime_shader_program_resource_cases": 77,
+    "texture_rows_bounds_padding": "PASS",
+    "asan_ubsan": "PASS; .artifacts/shared-cu-runtime-texture-layout-sanitizers-final.log",
+    "standard_entry_point": "python3 scripts/test_driver.py: PASS"
+  },
+  "build": "AArch64 Gallium DRI shared object and all fifteen native fixtures PASS",
+  "reproduce": {
+    "entry_point": "scripts/run_gtk_coverage_guest.sh",
+    "environment": {
+      "GTK_PROOF_SKIP_BUILD": "1",
+      "GTK_PROOF_SKIP_COVERAGE": "1",
+      "GTK_PROOF_SMOKE": "1",
+      "GTK_PROOF_KMS_MODE": "64x64",
+      "GTK_PROOF_SHADER_SUITE": "1",
+      "GTK_PROOF_WESTON_REPRO": "medium",
+      "GTK_PROOF_REPRO_ONLY": "1"
+    },
+    "requires": "A qualified legacy QEMU, Debian template and staged guest payload; select them with QEMU, GTK_DEBIAN_BASE and DISPLAY_WORK. Native mode must be advertised by KMS."
+  },
+  "fixes": [
+    "Keep ordinary sampler/renderable textures packed; preserve pitch for shared and scanout images.",
+    "Synchronize and pack imported pitched rows into a reusable uncached sampler upload.",
+    "Pack uniform constant colors in the same RGBA word order as vertex and clear colors.",
+    "Select advertised KMS mode before EGL creation and derive probe locations and interpolation references from actual dimensions."
+  ],
+  "limitations": [
+    "Does not qualify shared-pool guest execution or the full Debian desktop.",
+    "No simulator wall-time comparison: the native mode and test set changed."
+  ]
+}

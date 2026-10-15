@@ -723,3 +723,30 @@ and an eight-bit batch capacity. A 640x480 four-CU emission contains exactly
 four `GpuComputeUnit` instances in `GpuSystem` and no private shader CU. The
 installed Debian model remains separate while the emitted shared model is
 qualified. See [runtime scaling evidence](performance/shared-cu-runtime-scaling-2026-10-15.json).
+
+## Native shader qualification before shared-pool guest integration
+
+The native gate can now run all fifteen stock GLES fixtures in any requested
+advertised KMS mode with `GTK_PROOF_SHADER_SUITE=1` and
+`GTK_PROOF_KMS_MODE=WxH`. Fixtures select the mode before EGL surface creation
+and derive probes from its dimensions. The grade fixture computes its reference
+from the actual integer sample position, since lowering resolution changes
+barycentric weights. This provides a faster correctness gate without changing
+the shader's hardware resource contract.
+
+The gate exposed two Gallium bugs: constant uniform colors used a different
+channel order from vertex/clear colors, and padded imported textures were
+sampled as tightly packed rows. Ordinary sampler/renderable allocations now
+use packed rows. Imported images retain their pitch; a producer-fenced row
+copy prepares a reusable uncached sampler upload. CPU stores are ordered before
+publishing it to the GPU. This is a texture transfer; shader execution remains
+on the GPU.
+
+All fifteen stock fixtures and three variants pass at 64x64 on the qualified
+legacy private-graphics simulator: GTK swizzling, a 4x4 DMA-BUF image with
+256-byte pitch, and constant RGBA bytes 17/83/149/211. The existing medium
+Weston shader reproduction also passes. Host row tests cover padding isolation,
+bounds, canaries and overflow under ASan/UBSan; the standard driver-test entry
+point and AArch64 DRI build pass. This validates the software fixes on legacy
+hardware; shared-pool guest rendering and full desktop qualification remain
+pending. See [native shader evidence](performance/shared-cu-native-shaders-2026-10-15.json).

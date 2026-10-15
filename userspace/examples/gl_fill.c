@@ -11,6 +11,7 @@
 #include <gbm.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+#include "opengpu_gl_mode.h"
 
 #include <errno.h>
 #include <execinfo.h>
@@ -132,6 +133,7 @@ int main(void)
     GLuint program, vbo, vs, fs;
     GLint linked = 0, mvp_loc, color_loc;
     const char *repro = getenv("OPENGPU_GL_WESTON_REPRO");
+    uint32_t expected_fill = COLOR_FILL;
     unsigned repro_width = 0, repro_height = 0;
     uint32_t crtc_id, fb = 0;
     uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 };
@@ -169,7 +171,8 @@ int main(void)
     }
     if (!conn)
         die("no connected KMS mode");
-    mode = conn->modes[0];
+    if (opengpu_gl_choose_mode(conn, &mode))
+        die("requested KMS mode is unavailable");
     if (conn->encoder_id)
         enc = drmModeGetEncoder(fd, conn->encoder_id);
     if (!enc && conn->count_encoders > 0)
@@ -188,6 +191,8 @@ int main(void)
     if (!crtc_id)
         die("no KMS crtc");
 
+    if (opengpu_gl_activate_mode(fd, conn, crtc_id, &mode))
+        die("activate selected KMS mode");
     gbm = gbm_create_device(fd);
     if (!gbm)
         die("gbm_create_device");
@@ -264,7 +269,13 @@ int main(void)
     color_loc = glGetUniformLocation(program, "u_color");
     if (color_loc < 0)
         die("u_color uniform missing");
-    glUniform4f(color_loc, 1.f, 0.f, 0.f, 1.f);
+    if (!repro && getenv("OPENGPU_GL_DISTINCT_COLOR")) {
+        glUniform4f(color_loc, 17.f / 255.f, 83.f / 255.f,
+                    149.f / 255.f, 211.f / 255.f);
+        expected_fill = 0x115395d3u;
+    } else {
+        glUniform4f(color_loc, 1.f, 0.f, 0.f, 1.f);
+    }
     if (repro) {
         GLint alpha_loc = glGetUniformLocation(program, "alpha");
         if (alpha_loc < 0)
@@ -296,9 +307,10 @@ int main(void)
     /* NDC y=-1 is scanout row 0. Row 8 is the wide end: x=8 is left of the
      * shifted edge and x=100 is inside. GL y=8 is the narrow end, where
      * x=W-8 stays the clear colour. u_color (1, 0, 0, 1) is 0xff0000ff. */
-    outside = pixel_word(8, mode.vdisplay - 1 - 8);
-    inside = pixel_word(100 * mode.hdisplay / 320, mode.vdisplay - 1 - 8);
-    clear = pixel_word(mode.hdisplay - 8, 8);
+    outside = pixel_word(opengpu_gl_probe_x(&mode, 8), mode.vdisplay - 1 - opengpu_gl_probe_y(&mode, 8));
+    inside = pixel_word(100 * mode.hdisplay / 320, mode.vdisplay - 1 - opengpu_gl_probe_y(&mode, 8));
+    clear = pixel_word(mode.hdisplay - opengpu_gl_probe_x(&mode, 8),
+                       opengpu_gl_probe_y(&mode, 8));
     if (repro) {
         inside = pixel_word(3 * repro_width / 4, repro_height / 4);
         outside = pixel_word(repro_width / 4, 3 * repro_height / 4);
@@ -307,7 +319,7 @@ int main(void)
     printf("gl_fill: mode %ux%u outside=0x%08x inside=0x%08x clear=0x%08x\n",
            mode.hdisplay, mode.vdisplay, outside, inside, clear);
     fflush(stdout);
-    if (outside != COLOR_CLEAR || inside != COLOR_FILL ||
+    if (outside != COLOR_CLEAR || inside != expected_fill ||
         clear != COLOR_CLEAR) {
         fprintf(stderr, "gl_fill: pixel mismatch\n");
         return 1;

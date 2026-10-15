@@ -17,6 +17,11 @@ GTK_PROOF_SCISSOR="${GTK_PROOF_SCISSOR:-0}"
 GTK_PROOF_SMOKE="${GTK_PROOF_SMOKE:-0}"
 GTK_PROOF_KMS_MODE="${GTK_PROOF_KMS_MODE:-640x480}"
 GTK_PROOF_REPRO_ONLY="${GTK_PROOF_REPRO_ONLY:-0}"
+GTK_PROOF_SHADER_SUITE="${GTK_PROOF_SHADER_SUITE:-0}"
+case "$GTK_PROOF_SHADER_SUITE" in
+    0|1) ;;
+    *) echo "GTK_PROOF_SHADER_SUITE must be 0 or 1" >&2; exit 1 ;;
+esac
 case "$GTK_PROOF_REPRO_ONLY" in
     0|1) ;;
     *) echo "GTK_PROOF_REPRO_ONLY must be 0 or 1" >&2; exit 1 ;;
@@ -212,6 +217,7 @@ fi
     echo "skip_build=${GTK_PROOF_SKIP_BUILD:-0} skip_coverage=${GTK_PROOF_SKIP_COVERAGE:-0}"
     echo "weston_repro=${GTK_PROOF_WESTON_REPRO:-none} repro_only=$GTK_PROOF_REPRO_ONLY"
     echo "compute_smoke=${GTK_PROOF_COMPUTE_SMOKE:-0}"
+    echo "shader_suite=$GTK_PROOF_SHADER_SUITE shader_mode=$GTK_PROOF_KMS_MODE"
     echo "irq_pump=${ARTI_MODEL_IRQ_PUMP:-default} irq_pump_ns=${ARTI_MODEL_IRQ_PUMP_NS:-default}"
     echo "smoke_timeout_s=${GTK_PROOF_SMOKE_TIMEOUT_S:-0}"
     for checkout in "$GPU_DIR" "$ARTI_DIR" "$FLASHSIM_DIR" "$MESA_SRC"; do
@@ -298,6 +304,31 @@ if [ "${GTK_PROOF_COMPUTE_SMOKE:-0}" = 1 ]; then
         'test -x /root/opengpu_compute_example && test -f /root/opengpu_compute_shader.bin && LD_LIBRARY_PATH=/root /root/opengpu_compute_example /dev/dri/card0 /root/opengpu_compute_shader.bin' \
         | tee "$PROOF_WORK/compute-smoke.log"
     grep -qF 'compute completed; RNU=1 RDN=0' "$PROOF_WORK/compute-smoke.log"
+fi
+
+# Exercise stock compiler programs in a small advertised mode before the
+# compositor gate. Each executable waits for its GPU fence and checks pixels.
+if [ "$GTK_PROOF_SHADER_SUITE" = 1 ]; then
+    for name in triangle transform textransform texture modulate tint opacity shade fade wash fill grade glass quad blend; do
+        log="$PROOF_WORK/shader-$name.log"
+        "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 900 \
+            "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_TRACE_DRAWS=1 OPENGPU_FENCE_TIMEOUT_MS=1800000 OPENGPU_GL_EXIT=1 /root/opengpu_gl_$name.bin" \
+            | tee "$log"
+        grep -qE '^OPENGPU GL.* PASS' "$log"
+    done
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 900 \
+        "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_GL_GTK_SWIZZLE=1 OPENGPU_GL_EXIT=1 /root/opengpu_gl_texture.bin" \
+        | tee "$PROOF_WORK/shader-texture-swizzle.log"
+    grep -qF 'OPENGPU GL TEXTURE PASS' "$PROOF_WORK/shader-texture-swizzle.log"
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 900 \
+        "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_TRACE_DRAWS=1 OPENGPU_GL_PADDED_TEXTURE=1 OPENGPU_GL_EXIT=1 /root/opengpu_gl_texture.bin" \
+        | tee "$PROOF_WORK/shader-texture-padded.log"
+    grep -qF 'OPENGPU GL TEXTURE PASS' "$PROOF_WORK/shader-texture-padded.log"
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 900 \
+        "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_GL_DISTINCT_COLOR=1 OPENGPU_GL_EXIT=1 /root/opengpu_gl_fill.bin" \
+        | tee "$PROOF_WORK/shader-fill-distinct.log"
+    grep -qF 'OPENGPU GL FILL PASS' "$PROOF_WORK/shader-fill-distinct.log"
+    echo 'Native shader suite: PASS'
 fi
 
 # Isolate the compositor's uniform-color/opacity shader from Wayland dispatch.

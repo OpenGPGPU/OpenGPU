@@ -15,6 +15,7 @@
 #include <gbm.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+#include "opengpu_gl_mode.h"
 
 #include <errno.h>
 #include <execinfo.h>
@@ -26,12 +27,24 @@
 #include <unistd.h>
 
 #define COLOR_CLEAR 0x0000ffffu /* glClearColor(0, 0, 1, 1) */
-/* White texel times the interpolated colour times 0.5.
- * The scaled (100, 30) sample interpolates to (106, 63, 85, 255), then
- * ((255 * c) >> 8) * 128 >> 8. */
-#define COLOR_GRADE 0x341f2a7fu
-/* The scaled (88, 20) sample interpolates to (201, 25, 28, 255). */
-#define COLOR_GRADE_RED 0x640c0d7fu
+/* Reference the sample's actual integer position, including rounding when
+ * the selected resolution cannot represent the original 320x240 probe. */
+static uint32_t expected_grade(unsigned x, unsigned y, unsigned width, unsigned height)
+{
+    uint64_t dx = width / 2u - width / 4u;
+    uint64_t dy = height / 4u - height / 16u;
+    uint64_t area = dx * dy;
+    uint64_t green = (x - width / 4u) * dy;
+    uint64_t blue = (y - height / 16u) * dx;
+    uint64_t red = area - green - blue;
+    uint32_t r = (uint32_t)(255u * red / area);
+    uint32_t g = (uint32_t)(255u * green / area);
+    uint32_t b = (uint32_t)(255u * blue / area);
+    r = ((255u * r >> 8) * 128u) >> 8;
+    g = ((255u * g >> 8) * 128u) >> 8;
+    b = ((255u * b >> 8) * 128u) >> 8;
+    return r << 24 | g << 16 | b << 8 | 127u;
+}
 
 static const char *vs_src =
     "attribute vec2 pos;\n"
@@ -187,7 +200,8 @@ int main(void)
     }
     if (!conn)
         die("no connected KMS mode");
-    mode = conn->modes[0];
+    if (opengpu_gl_choose_mode(conn, &mode))
+        die("requested KMS mode is unavailable");
     if (conn->encoder_id)
         enc = drmModeGetEncoder(fd, conn->encoder_id);
     if (!enc && conn->count_encoders > 0)
@@ -206,6 +220,8 @@ int main(void)
     if (!crtc_id)
         die("no KMS crtc");
 
+    if (opengpu_gl_activate_mode(fd, conn, crtc_id, &mode))
+        die("activate selected KMS mode");
     gbm = gbm_create_device(fd);
     if (!gbm)
         die("gbm_create_device");
@@ -303,18 +319,21 @@ int main(void)
 
     /* NDC y=-1 is scanout row 0. The samples scale from (100, 30) and
      * (88, 20) at 320x240, so the barycentric mix is unchanged. */
-    outside = pixel_word(8, mode.vdisplay - 1 - 8);
+    outside = pixel_word(opengpu_gl_probe_x(&mode, 8), mode.vdisplay - 1 - opengpu_gl_probe_y(&mode, 8));
     inside = pixel_word(100 * mode.hdisplay / 320,
                         mode.vdisplay - 1 - 30 * mode.vdisplay / 240);
     redish = pixel_word(88 * mode.hdisplay / 320,
                         mode.vdisplay - 1 - 20 * mode.vdisplay / 240);
-    clear = pixel_word(mode.hdisplay - 8, 8);
+    clear = pixel_word(mode.hdisplay - opengpu_gl_probe_x(&mode, 8),
+                       opengpu_gl_probe_y(&mode, 8));
     printf("gl_grade: mode %ux%u outside=0x%08x inside=0x%08x "
            "redish=0x%08x clear=0x%08x\n",
            mode.hdisplay, mode.vdisplay, outside, inside, redish, clear);
     fflush(stdout);
-    if (outside != COLOR_CLEAR || inside != COLOR_GRADE ||
-        redish != COLOR_GRADE_RED || clear != COLOR_CLEAR) {
+    if (outside != COLOR_CLEAR || inside != expected_grade(100 * mode.hdisplay / 320,
+            30 * mode.vdisplay / 240, mode.hdisplay, mode.vdisplay) ||
+        redish != expected_grade(88 * mode.hdisplay / 320,
+            20 * mode.vdisplay / 240, mode.hdisplay, mode.vdisplay) || clear != COLOR_CLEAR) {
         fprintf(stderr, "gl_grade: pixel mismatch\n");
         return 1;
     }

@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 /* GLES2 clear and one textured triangle. The fragment shader is texture2D,
  * so the Gallium driver submits fragment_sample and the GPU sampler returns
  * the texel. This program only uploads the texture, packs the vertex buffer,
@@ -6,11 +7,13 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 #include <drm/drm_fourcc.h>
 #include <fcntl.h>
 #include <gbm.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+#include "opengpu_gl_mode.h"
 
 #include <errno.h>
 #include <execinfo.h>
@@ -20,6 +23,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
 
 #define COLOR_CLEAR 0x0000ffffu /* glClearColor(0, 0, 1, 1) */
 #define COLOR_TEXEL 0xff0000ffu /* texture texel (1, 0, 0, 1) */
@@ -179,7 +184,8 @@ int main(void)
     }
     if (!conn)
         die("no connected KMS mode");
-    mode = conn->modes[0];
+    if (opengpu_gl_choose_mode(conn, &mode))
+        die("requested KMS mode is unavailable");
     if (conn->encoder_id)
         enc = drmModeGetEncoder(fd, conn->encoder_id);
     if (!enc && conn->count_encoders > 0)
@@ -198,6 +204,8 @@ int main(void)
     if (!crtc_id)
         die("no KMS crtc");
 
+    if (opengpu_gl_activate_mode(fd, conn, crtc_id, &mode))
+        die("activate selected KMS mode");
     gbm = gbm_create_device(fd);
     if (!gbm)
         die("gbm_create_device");
@@ -261,8 +269,58 @@ int main(void)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 4, 4, 0, GL_RGBA,
-                 GL_UNSIGNED_BYTE, texels);
+    if (getenv("OPENGPU_GL_PADDED_TEXTURE")) {
+        struct drm_mode_create_dumb image_dumb = { .width = 64, .height = 4, .bpp = 32 };
+        struct drm_mode_map_dumb image_map = {0};
+        uint32_t image_stride;
+        void *mapped;
+        int image_fd;
+        EGLImageKHR image;
+        PFNEGLCREATEIMAGEKHRPROC create_image =
+            (PFNEGLCREATEIMAGEKHRPROC)eglGetProcAddress("eglCreateImageKHR");
+        PFNGLEGLIMAGETARGETTEXTURE2DOESPROC image_target =
+            (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
+                eglGetProcAddress("glEGLImageTargetTexture2DOES");
+        if (!create_image || !image_target ||
+            ioctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &image_dumb))
+            die("create padded texture image");
+        image_map.handle = image_dumb.handle;
+        if (ioctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &image_map))
+            die("map padded texture image");
+        mapped = mmap(NULL, image_dumb.size, PROT_READ | PROT_WRITE,
+                       MAP_SHARED, fd, image_map.offset);
+        image_stride = image_dumb.pitch;
+        if (mapped == MAP_FAILED || image_stride <= 16)
+            die("padded texture requires a non-packed allocation");
+        for (i = 0; i < 4; i++)
+            memcpy((uint8_t *)mapped + i * image_stride, texels + i * 16, 16);
+        /* GEM DMA mappings are coherent; order CPU writes before export. */
+        __sync_synchronize();
+        if (drmPrimeHandleToFD(fd, image_dumb.handle, DRM_CLOEXEC | DRM_RDWR, &image_fd))
+            die_errno("export padded texture");
+        munmap(mapped, image_dumb.size);
+        {
+            const EGLint attributes[] = {
+                EGL_WIDTH, 4, EGL_HEIGHT, 4,
+                EGL_LINUX_DRM_FOURCC_EXT, GBM_FORMAT_ABGR8888,
+                EGL_DMA_BUF_PLANE0_FD_EXT, image_fd,
+                EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
+                EGL_DMA_BUF_PLANE0_PITCH_EXT, (EGLint)image_stride,
+                EGL_NONE,
+            };
+            image = create_image(dpy, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT,
+                                  NULL, attributes);
+        }
+        close(image_fd);
+        if (image == EGL_NO_IMAGE_KHR)
+            die_gl("import padded texture");
+        image_target(GL_TEXTURE_2D, image);
+        fprintf(stderr, "gl_texture: imported padded image pitch=%u\n", image_stride);
+        /* Keep the image and its dumb BO alive through the native fixture draw. */
+    } else {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 4, 4, 0, GL_RGBA,
+                     GL_UNSIGNED_BYTE, texels);
+    }
     step("texture uploaded");
 
     glGenBuffers(1, &vbo);
@@ -292,8 +350,8 @@ int main(void)
         glClear(GL_COLOR_BUFFER_BIT);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         glFinish();
-        tri = pixel_word(8, mode.vdisplay - 1 - 8);
-        clear = pixel_word(mode.hdisplay - 8, mode.vdisplay - 1 - 8);
+        tri = pixel_word(opengpu_gl_probe_x(&mode, 8), mode.vdisplay - 1 - opengpu_gl_probe_y(&mode, 8));
+        clear = pixel_word(mode.hdisplay - opengpu_gl_probe_x(&mode, 8), mode.vdisplay - 1 - opengpu_gl_probe_y(&mode, 8));
         printf("gl_texture: variant=%d triangle=0x%08x clear=0x%08x\n",
                variant, tri, clear);
         if (glGetError() != GL_NO_ERROR ||
