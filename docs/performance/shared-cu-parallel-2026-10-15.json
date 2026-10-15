@@ -1,0 +1,115 @@
+{
+  "date": "2026-10-15",
+  "scope": "Pixel-checked RTL simulation and structural RTL proof; no host wall-time or Debian startup qualification",
+  "configuration": {
+    "width": 16,
+    "height": 16,
+    "lanes": 4,
+    "warps": 2,
+    "l2_sets": 8,
+    "l2_ways": 2,
+    "memory_axi_data_bytes": 8,
+    "shared_graphics": true,
+    "parallel_graphics": true,
+    "fragment_workers": "numComputeUnits",
+    "fragment_banks": "2*numComputeUnits"
+  },
+  "cycle_scenes": {
+    "fragment": [
+      {
+        "cus": 1,
+        "cycles": 18137,
+        "active_cu_cycles": 10160,
+        "peak_cus": 1
+      },
+      {
+        "cus": 2,
+        "cycles": 12451,
+        "active_cu_cycles": 10665,
+        "peak_cus": 2
+      },
+      {
+        "cus": 4,
+        "cycles": 10639,
+        "active_cu_cycles": 12505,
+        "peak_cus": 4
+      }
+    ],
+    "vertex_fragment": [
+      {
+        "cus": 1,
+        "cycles": 20533,
+        "active_cu_cycles": 11089,
+        "peak_cus": 1
+      },
+      {
+        "cus": 2,
+        "cycles": 14845,
+        "active_cu_cycles": 11596,
+        "peak_cus": 2
+      },
+      {
+        "cus": 4,
+        "cycles": 13063,
+        "active_cu_cycles": 13564,
+        "peak_cus": 4
+      }
+    ]
+  },
+  "validation": {
+    "parallel_four_cu_and_units": {
+      "tests": 36,
+      "passed": 36
+    },
+    "one_two_cu_guest_scenes": {
+      "tests": 4,
+      "passed": 4
+    },
+    "legacy_vertex_fragment_scene": {
+      "tests": 1,
+      "passed": 1
+    },
+    "log": ".artifacts/shared-cu-parallel-render-regression.log",
+    "separate_ci_fix": {
+      "commit": "d37ee27",
+      "tests": 16,
+      "passed": 16
+    }
+  },
+  "structure": {
+    "compute_units": [
+      [
+        "GpuSystem.sv",
+        "GpuComputeUnit",
+        "computeUnits_0"
+      ],
+      [
+        "GpuSystem.sv",
+        "GpuComputeUnit",
+        "computeUnits_1"
+      ],
+      [
+        "GpuSystem.sv",
+        "GpuComputeUnit",
+        "computeUnits_2"
+      ],
+      [
+        "GpuSystem.sv",
+        "GpuComputeUnit",
+        "computeUnits_3"
+      ]
+    ],
+    "private_graphics_cus": 0,
+    "rtl_bundle_files": 341,
+    "rtl_bundle_sha256": "4adf025da3ef31ce847e42b9aad7752ba03c30fc1ffeafcab93a70ec0235f503",
+    "hash_method": "SHA256 of sorted filelist relative name + NUL + raw file SHA256 digest, concatenated",
+    "log": ".artifacts/shared-cu-parallel-rtl.log",
+    "fpu_enabled": true,
+    "note": "Structural model uses default cache sizes; the cycle tests use the explicit smaller cache above."
+  },
+  "limits": [
+    "Shared shader execution currently qualifies only four lanes/two warps.",
+    "Ordered MSAA/blending, wide ABI, trace stall attribution and full guest qualification remain.",
+    "The existing qualified default QEMU executable is unchanged."
+  ]
+}

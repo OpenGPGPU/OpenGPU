@@ -20,6 +20,7 @@ import opengpu.util.{CarrySaveAccumulator, CarrySaveEventCounter}
 class GpuPerformanceCounters extends Bundle {
   val cycles = UInt(64.W)
   val activeCuCycles = UInt(64.W)
+  val maxActiveComputeUnits = UInt(64.W)
   val lowerReadRequests = UInt(64.W)
   val lowerWriteRequests = UInt(64.W)
   val dmaBytesCompleted = UInt(64.W)
@@ -525,6 +526,11 @@ class GpuSystem(
     io.memoryRequest.fire && io.memoryRequest.bits.isWrite
   io.performance.cycles := cycleCounter.io.value
   io.performance.activeCuCycles := activeCuCycleCounter.io.value
+  private val peakActiveCus = RegInit(0.U(64.W))
+  private val activeCus = PopCount(dispatcher.io.busy)
+  when(clearPerf) { peakActiveCus := 0.U }
+    .elsewhen(activeCus > peakActiveCus) { peakActiveCus := activeCus }
+  io.performance.maxActiveComputeUnits := peakActiveCus
   io.performance.lowerReadRequests := lowerReadCounter.io.value
   io.performance.lowerWriteRequests := lowerWriteCounter.io.value
   io.performance.dmaBytesCompleted := (dmaBytesSum +& dmaBytesCarry)(63, 0)

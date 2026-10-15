@@ -10,9 +10,15 @@ import opengpu.core.trap.CoreTrapEvent
 import opengpu.core.memory.CacheLineInvalidate
 import opengpu.dispatch.{TaggedKernelCompletion, TaggedKernelLaunch}
 
-case class SharedCuShaderConfig(numComputeUnits: Int, taskIdWidth: Int = 8) {
+case class SharedCuShaderConfig(
+  numComputeUnits: Int,
+  taskIdWidth: Int = 8,
+  parallelFragments: Boolean = false
+) {
   require(numComputeUnits > 0)
   require(taskIdWidth > 0)
+  val fragmentWorkers: Int = if (parallelFragments) numComputeUnits else 1
+  val fragmentBanks: Int = fragmentWorkers * 2
 }
 
 /** A fault belongs to a graphics task, not a host compute command. */

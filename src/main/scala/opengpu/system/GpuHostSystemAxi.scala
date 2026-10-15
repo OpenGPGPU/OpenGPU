@@ -57,7 +57,8 @@ class GpuHostSystemAxi(
   memoryAxiDataBytes: Int = 8,
   exposePerformance: Boolean = false,
   graphicsGpuConfig: Option[GpuConfig] = None,
-  sharedGraphics: Boolean = false
+  sharedGraphics: Boolean = false,
+  parallelGraphics: Boolean = false
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   require(numComputeUnits > 0)
@@ -67,11 +68,12 @@ class GpuHostSystemAxi(
     "vertex-core graphics requires fragment-core graphics")
   require(!sharedGraphics || fragCore,
     "shared graphics requires programmable fragment graphics")
+  require(!parallelGraphics || sharedGraphics, "parallel graphics requires shared graphics")
   require(!sharedGraphics || (shaderConfig.lanes == gpuConfig.lanes &&
     shaderConfig.warps == gpuConfig.warps),
     "shared graphics and compute must use the same lane/warp shader ABI")
   private val sharedShader = if (sharedGraphics)
-    Some(SharedCuShaderConfig(numComputeUnits, commandIdWidth)) else None
+    Some(SharedCuShaderConfig(numComputeUnits, commandIdWidth, parallelGraphics)) else None
 
   // Kernel-word port IDs [0,8): frag+vert staging share translated [0,4);
   // fill/blit/strided DMA share translated [4,8). Command, framebuffer and

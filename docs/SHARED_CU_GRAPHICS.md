@@ -94,7 +94,7 @@ Local log: `.artifacts/shared-cu-foundation-regression.log`.
 fragment pipeline to the physical system CU pool. The compatibility adapter
 retains one graphics task at a time, preserving existing vertex/fragment
 ordering, texture state and the two-bank ABI. This removes the dedicated
-graphics CU; parallel fragment batches are the next milestone.
+graphics CU. The subsequently qualified parallel path is described below.
 
 Explicit staging invalidations broadcast to all shared CUs. Per-CU owner
 queues route acknowledgements back to either L2 coherence or the graphics
@@ -137,7 +137,7 @@ clients retain their local task IDs while pool tags select a client. Scalar
 and vector texture traffic follows that client's task onto whichever CU runs
 it. Three tests pass for 2/4-CU routing, swapped physical CU placement,
 out-of-order completions, faults, client reuse and held invalidation replies.
-The router is not yet connected to parallel fragment workers.
+The parallel renderer now connects vertex and fragment worker clients through this router.
 
 The shader resource query is now implemented at MMIO `0x158`, capability bit
 23 and DRM parameter 1. It reports lane count, resident warps, fragment bank
@@ -165,8 +165,7 @@ Each worker seals one batch through its existing flush/retire interface and
 owns a disjoint pair of kernarg banks. The three 1/2/4-worker tests delay
 workers independently, stall output, preserve helper quads and depth
 sidebands, and cover partial/no-output batches, empty draws, late flush and
-zero-stride serialization. These use simulated worker backends; real parallel
-shader and memory integration is still pending. Extracting the reusable
+zero-stride serialization. These scheduler unit tests use simulated worker backends; the real integration is qualified below. Extracting the reusable
 frontend interface also passes all 16 existing `KernelFragStageSpec` tests.
 Logs: `.artifacts/shared-cu-fragment-scheduler-tests.log` and
 `.artifacts/shared-cu-fragment-interface-tests.log`.
@@ -178,6 +177,45 @@ to complete out of order and delays duplicate addresses until their previous
 owner consumes the response. Three tests pass for 1/4 staging clients,
 colliding local IDs, held requests/responses, fault routing and duplicate
 texture ownership. Log: `.artifacts/shared-cu-worker-memory-tests.log`.
+
+## Parallel renderer qualification
+
+`--shared-graphics --parallel-graphics` connects one fragment worker and sampler
+per system CU. Independent worker tasks execute on the shared pool alongside
+the vertex client. Each worker owns two advertised fragment banks. Batch tokens
+restore raster order before sample expansion and output merging. Texture
+responses follow their owning worker; the common address-only texture memory
+port defers duplicate outstanding addresses until the earlier response retires.
+
+The regression passes 36 tests: all 27 four-CU programmable texture, translated
+instruction/staging, fault/recovery, reset and CPU-update cases plus nine task
+routing, scheduling and memory arbitration tests. Four additional pixel-checked
+cases compare one and two CUs, and the legacy vertex/fragment case also passes.
+These 41 cases are recorded in
+`.artifacts/shared-cu-parallel-render-regression.log`.
+
+With identical four-lane/two-warp CUs, 16x16 scenes, eight-set/two-way L2 and
+8-byte AXI beats, the counters report:
+
+| Scene | 1 CU cycles | 2 CU cycles | 4 CU cycles | 1-to-4 speedup |
+| --- | ---: | ---: | ---: | ---: |
+| Fragment program | 18,137 | 12,451 | 10,639 | 1.705x |
+| Vertex + fragment programs | 20,533 | 14,845 | 13,063 | 1.572x |
+
+Peak simultaneously occupied CUs is exactly 1/2/4 in the respective runs.
+All compared outputs pass the pixel reference. These are GPU-cycle results,
+not host simulation wall-time or Debian startup results. Trace analysis,
+16-lane software, ordered MSAA/blending integration and guest qualification
+remain required before installing a replacement desktop executable.
+
+Reproduce the parallel tests with:
+
+```sh
+sbt 'testOnly opengpu.system.ParallelCuProgrammableTextureAxiSpec opengpu.graphics.FragmentWorkerMemorySpec opengpu.graphics.ParallelFragmentSchedulerSpec opengpu.graphics.SharedShaderTaskRouterSpec' 'testOnly opengpu.system.SingleParallelCuProgrammableTextureAxiSpec opengpu.system.TwoParallelCuProgrammableTextureAxiSpec -- -z "guest-sized"' 'testOnly opengpu.system.ProgrammableTextureAxiSpec -- -z "instruction vertex guest-sized fragment"'
+```
+
+The initial shared ABI still requires explicit `--cu-lanes 4 --cu-warps 2`.
+The previously installed desktop model remains unchanged.
 
 ## Performance interpretation
 

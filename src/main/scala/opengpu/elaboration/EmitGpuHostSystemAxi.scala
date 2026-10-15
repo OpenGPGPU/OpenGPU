@@ -15,6 +15,8 @@ object EmitGpuHostSystemAxi {
     val fragCore = rest.contains("--frag-core")
     val vertCore = rest.contains("--vert-core")
     val sharedGraphics = rest.contains("--shared-graphics")
+    val parallelGraphics = rest.contains("--parallel-graphics")
+    require(!parallelGraphics || sharedGraphics, "--parallel-graphics requires --shared-graphics")
     require(!vertCore || fragCore,
       "--vert-core requires --frag-core because both stages share the shader CU")
 
@@ -64,6 +66,7 @@ object EmitGpuHostSystemAxi {
         // The graphics kernarg ABI still uses eight shader lanes per batch.
         graphicsGpuConfig = if (sharedGraphics) None else Some(GpuConfig(lanes = 4, warps = 2)),
         sharedGraphics = sharedGraphics,
+        parallelGraphics = parallelGraphics,
         fragCore = fragCore,
         vertCore = vertCore,
         enableFpuBackend = true,

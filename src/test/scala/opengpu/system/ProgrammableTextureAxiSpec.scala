@@ -9,7 +9,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 /** Exercise shader instruction fetch and vtex.sample through the host's AXI clients. */
-abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int])
+abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (scenario <- Seq("translation", "invalid PTE", "page-table bus fault",
       "texture bus fault", "reset during texture read", "instruction translation",
@@ -36,7 +36,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int])
       val guestVertexShader = scenario.contains("guest shader") ||
         scenario == "instruction vertex guest-sized fragment"
       simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = vertexShader,
-        numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty)) { dut =>
+        numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty,
+        parallelGraphics = parallel, exposePerformance = parallel)) { dut =>
         initialize(dut)
         val words = mutable.LongMap.empty[BigInt]
         val reads = mutable.ArrayBuffer.empty[BigInt]
@@ -180,6 +181,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int])
         val fault = scenario.contains("fault") || scenario == "invalid PTE"
         val resetting = scenario.startsWith("reset")
         var resetIssued = false
+        val startCycles = dut.io.performance.map(_.system.cycles.peek().litValue).getOrElse(BigInt(0))
+        val startCuCycles = dut.io.performance.map(_.system.activeCuCycles.peek().litValue).getOrElse(BigInt(0))
         submit(17)
         serviceMemoryMaster(dut, readLine,
           a => (scenario == "page-table bus fault" && a == root + 4) ||
@@ -197,6 +200,14 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int])
               dut.io.m_irq.expect(false.B)
             }
           })(writeLine) { dut.io.m_irq.peek().litToBoolean }
+        if (parallel && scenario.contains("guest-sized")) {
+          val performance = dut.io.performance.get.system
+          val peak = performance.maxActiveComputeUnits.peek().litValue
+          assert(peak == sharedCUs.get, "large draw did not occupy the configured shared CU pool")
+          println(s"SHARED_GRAPHICS_METRICS scenario=$scenario CUs=${sharedCUs.get} " +
+            s"cycles=${performance.cycles.peek().litValue - startCycles} " +
+            s"active_cu_cycles=${performance.activeCuCycles.peek().litValue - startCuCycles} peak_cus=$peak")
+        }
         val instructionFault = translatedInstructions && fault
         if (!instructionFault && !stagingFault) {
           assert(reads.contains(BigInt(root + 4)), "vtex.sample must walk the texture mapping")
@@ -353,7 +364,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int])
     val gfx = GraphicsConfig(screenWidth = side, screenHeight = side, subPixelBits = 8)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
     simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = true,
-      numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty)) { dut =>
+      numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty,
+      parallelGraphics = parallel)) { dut =>
       initialize(dut)
       val words = mutable.LongMap.empty[BigInt]
       val reads = mutable.ArrayBuffer.empty[BigInt]
@@ -494,3 +506,12 @@ class ProgrammableTextureAxiSpec extends ProgrammableTextureAxiChecks(None)
   * graphics CU removed and the renderer executing on the system's only CU.
   */
 class SharedCuProgrammableTextureAxiSpec extends ProgrammableTextureAxiChecks(Some(1))
+
+class SingleParallelCuProgrammableTextureAxiSpec
+    extends ProgrammableTextureAxiChecks(Some(1), parallel = true)
+
+class TwoParallelCuProgrammableTextureAxiSpec
+    extends ProgrammableTextureAxiChecks(Some(2), parallel = true)
+
+class ParallelCuProgrammableTextureAxiSpec
+    extends ProgrammableTextureAxiChecks(Some(4), parallel = true)

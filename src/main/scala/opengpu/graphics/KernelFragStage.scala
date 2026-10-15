@@ -74,6 +74,32 @@ class KernelFragFrontendIO(config: GpuConfig, gfxConfig: GraphicsConfig) extends
   val drawRetire = Decoupled(Bool())
 }
 
+/** Connect a producer frontend to its fragment worker. */
+object KernelFragFrontendIO {
+  def connect(front: KernelFragFrontendIO, worker: KernelFragFrontendIO): Unit = {
+    worker.fragIn <> front.fragIn
+    worker.fragUv := front.fragUv
+    worker.fragDepths := front.fragDepths
+    front.out <> worker.out
+    front.outDepths := worker.outDepths
+    front.depthOverride := worker.depthOverride
+    worker.shaderPc := front.shaderPc
+    worker.abi1 := front.abi1
+    worker.kernargBase := front.kernargBase
+    worker.kernargBankStride := front.kernargBankStride
+    worker.texBase := front.texBase
+    worker.texWidth := front.texWidth
+    worker.texHeight := front.texHeight
+    worker.texWrapClamp := front.texWrapClamp
+    worker.texMaxLevel := front.texMaxLevel
+    worker.texLodBias := front.texLodBias
+    worker.texMinLevel := front.texMinLevel
+    worker.flush := front.flush
+    front.drained := worker.drained
+    front.drawRetire <> worker.drawRetire
+  }
+}
+
 /** Standalone fragment worker ports, retaining the existing shader ABI. */
 class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig)
     extends KernelFragFrontendIO(config, gfxConfig) {

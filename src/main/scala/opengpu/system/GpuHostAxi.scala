@@ -166,7 +166,8 @@ class GpuHostAxi(
     val unified = if (unifiedCommandMmio) {
       Some(Module(new GpuCommandMmio(
         gpuConfig, commandIdWidth, gpuConfig.commandQueueDepth,
-        shaderComputeUnits = sharedShader.map(_.numComputeUnits).getOrElse(1))))
+        shaderComputeUnits = sharedShader.map(_.numComputeUnits).getOrElse(1),
+        shaderKernargBanks = sharedShader.map(_.fragmentBanks).getOrElse(2))))
     } else None
 
     // Command distribution lives here, next to the graphics engine: a render

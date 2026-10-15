@@ -480,14 +480,28 @@ class RenderPipeline(
     io.kernelWordMemReq.bits.isWrite, 1.U(8.W) << io.kernelWordMemReq.bits.sizeLog2, 0.U)
 
   if (fragCore || vertCore) {
-    val kernelFrag = Module(new KernelFragStage(gpuConfig, config))
+    val parallelFrag = sharedShader.filter(_.parallelFragments).map { pool =>
+      Module(new ParallelKernelFragStage(gpuConfig, config, pool, graphicsScalarFpu))
+    }
+    val kernelFrag: KernelFragStageIO = parallelFrag.map(_.io)
+      .getOrElse(Module(new KernelFragStage(gpuConfig, config)).io)
     val kernelShader = Module(new KernelShaderStage(gpuConfig, graphicsScalarFpu, sharedShader))
-    sharedShader.foreach(_ => kernelShader.io.shared.get <> io.shared.get)
+    if (parallelFrag.nonEmpty) {
+      val pool = sharedShader.get
+      val router = Module(new SharedShaderTaskRouter(gpuConfig, pool.numComputeUnits,
+        pool.fragmentWorkers + 1, pool.taskIdWidth))
+      router.io.pool <> io.shared.get
+      router.io.clients(0) <> kernelShader.io.shared.get
+      for (worker <- 0 until pool.fragmentWorkers)
+        router.io.clients(worker + 1) <> parallelFrag.get.sharedClients(worker)
+    } else {
+      sharedShader.foreach(_ => kernelShader.io.shared.get <> io.shared.get)
+    }
     kernelShader.io.instructionSatp := io.instructionSatp
     kernelShader.io.instructionTlbFlush := io.instructionTlbFlush
     kernelShader.io.vectorSatp := io.vectorSatp
     kernelShader.io.vectorTlbFlush := io.vectorTlbFlush
-    io.shaderFault := kernelShader.io.trap.fire
+    io.shaderFault := kernelShader.io.trap.fire || parallelFrag.map(_.shaderFault).getOrElse(false.B)
 
     // A vertex draw is fully transformed before it enters rasterization, so a
     // single SIMT CU can safely serve vertex and fragment launches in turn.
@@ -497,64 +511,64 @@ class RenderPipeline(
     val kernelOwnerVert = RegInit(false.B)
     val kernelVert = kernelVertOpt
     val vertLaunchValid = kernelVert.map(_.io.kernelLaunch.valid).getOrElse(false.B)
-    val fragLaunchValid = kernelFrag.io.kernelLaunch.valid
+    val fragLaunchValid = kernelFrag.kernelLaunch.valid
     val selectVertLaunch = vertLaunchValid
 
     kernelShader.io.launch.valid := vertLaunchValid || fragLaunchValid
     kernelShader.io.launch.kernelPc := Mux(selectVertLaunch,
       kernelVert.map(_.io.kernelLaunch.kernelPc).getOrElse(0.U),
-      kernelFrag.io.kernelLaunch.kernelPc)
+      kernelFrag.kernelLaunch.kernelPc)
     kernelShader.io.launch.kernargAddress := Mux(selectVertLaunch,
       kernelVert.map(_.io.kernelLaunch.kernargAddress).getOrElse(0.U),
-      kernelFrag.io.kernelLaunch.kernargAddress)
+      kernelFrag.kernelLaunch.kernargAddress)
     kernelShader.io.launch.gridX := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.gridX).getOrElse(1.U), kernelFrag.io.kernelLaunch.gridX)
+      kernelVert.map(_.io.kernelLaunch.gridX).getOrElse(1.U), kernelFrag.kernelLaunch.gridX)
     kernelShader.io.launch.gridY := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.gridY).getOrElse(1.U), kernelFrag.io.kernelLaunch.gridY)
+      kernelVert.map(_.io.kernelLaunch.gridY).getOrElse(1.U), kernelFrag.kernelLaunch.gridY)
     kernelShader.io.launch.gridZ := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.gridZ).getOrElse(1.U), kernelFrag.io.kernelLaunch.gridZ)
+      kernelVert.map(_.io.kernelLaunch.gridZ).getOrElse(1.U), kernelFrag.kernelLaunch.gridZ)
     kernelShader.io.launch.localX := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.localX).getOrElse(1.U), kernelFrag.io.kernelLaunch.localX)
+      kernelVert.map(_.io.kernelLaunch.localX).getOrElse(1.U), kernelFrag.kernelLaunch.localX)
     kernelShader.io.launch.localY := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.localY).getOrElse(1.U), kernelFrag.io.kernelLaunch.localY)
+      kernelVert.map(_.io.kernelLaunch.localY).getOrElse(1.U), kernelFrag.kernelLaunch.localY)
     kernelShader.io.launch.localZ := Mux(selectVertLaunch,
-      kernelVert.map(_.io.kernelLaunch.localZ).getOrElse(1.U), kernelFrag.io.kernelLaunch.localZ)
-    kernelFrag.io.kernelLaunch.ready := kernelShader.io.launch.ready && !selectVertLaunch
+      kernelVert.map(_.io.kernelLaunch.localZ).getOrElse(1.U), kernelFrag.kernelLaunch.localZ)
+    kernelFrag.kernelLaunch.ready := kernelShader.io.launch.ready && !selectVertLaunch
     kernelVert.foreach(_.io.kernelLaunch.ready := kernelShader.io.launch.ready && selectVertLaunch)
     when(kernelShader.io.launch.valid && kernelShader.io.launch.ready) {
       kernelOwnerVert := selectVertLaunch
     }
 
-    kernelFrag.io.kernelCompletion.valid := kernelShader.io.completion.valid && !kernelOwnerVert
-    kernelFrag.io.kernelCompletion.bits := kernelShader.io.completion.bits
+    kernelFrag.kernelCompletion.valid := kernelShader.io.completion.valid && !kernelOwnerVert
+    kernelFrag.kernelCompletion.bits := kernelShader.io.completion.bits
     kernelVert.foreach { vert =>
       vert.io.kernelCompletion.valid := kernelShader.io.completion.valid && kernelOwnerVert
       vert.io.kernelCompletion.bits := kernelShader.io.completion.bits
     }
     kernelShader.io.completion.ready := Mux(kernelOwnerVert,
       kernelVert.map(_.io.kernelCompletion.ready).getOrElse(false.B),
-      kernelFrag.io.kernelCompletion.ready)
+      kernelFrag.kernelCompletion.ready)
     when(kernelShader.io.completion.fire) { kernelOwnerVert := false.B }
 
-    kernelFrag.io.kernelTrap.valid := kernelShader.io.trap.valid && !kernelOwnerVert
-    kernelFrag.io.kernelTrap.bits := kernelShader.io.trap.bits
+    kernelFrag.kernelTrap.valid := kernelShader.io.trap.valid && !kernelOwnerVert
+    kernelFrag.kernelTrap.bits := kernelShader.io.trap.bits
     kernelVert.foreach { vert =>
       vert.io.kernelTrap.valid := kernelShader.io.trap.valid && kernelOwnerVert
       vert.io.kernelTrap.bits := kernelShader.io.trap.bits
     }
     kernelShader.io.trap.ready := Mux(kernelOwnerVert,
-      kernelVert.map(_.io.kernelTrap.ready).getOrElse(false.B), kernelFrag.io.kernelTrap.ready)
-    kernelFrag.io.kernelSimtBranch.valid := false.B
-    kernelFrag.io.kernelSimtBranch.bits := 0.U.asTypeOf(kernelFrag.io.kernelSimtBranch.bits)
+      kernelVert.map(_.io.kernelTrap.ready).getOrElse(false.B), kernelFrag.kernelTrap.ready)
+    kernelFrag.kernelSimtBranch.valid := false.B
+    kernelFrag.kernelSimtBranch.bits := 0.U.asTypeOf(kernelFrag.kernelSimtBranch.bits)
     kernelShader.io.simtBranch.valid := false.B
     kernelShader.io.simtBranch.bits := 0.U.asTypeOf(kernelShader.io.simtBranch.bits)
 
     // Only fragment shaders access the texture units.  Vertex-side texture
     // ports are deliberately held inactive by KernelVertStage.
-    kernelShader.io.texSample <> kernelFrag.io.kernelTexSample
-    kernelFrag.io.kernelTexWriteback <> kernelShader.io.texWriteback
-    kernelShader.io.vectorTexSample <> kernelFrag.io.kernelVectorTexSample
-    kernelFrag.io.kernelVectorTexWriteback <> kernelShader.io.vectorTexWriteback
+    kernelShader.io.texSample <> kernelFrag.kernelTexSample
+    kernelFrag.kernelTexWriteback <> kernelShader.io.texWriteback
+    kernelShader.io.vectorTexSample <> kernelFrag.kernelVectorTexSample
+    kernelFrag.kernelVectorTexWriteback <> kernelShader.io.vectorTexWriteback
 
     // Connect KernelShaderStage memory ports to RenderPipeline IO
     io.kernelMemReq <> kernelShader.io.memoryRequest
@@ -636,8 +650,8 @@ class RenderPipeline(
     // OM-independent, so a draw-N pixel could still be inside the expander
     // while the head advanced to draw N+1 and the OM latched it against
     // draw N+1's render-target state.
-    ctxFifo.io.retire := kernelFrag.io.drawRetire.valid && expander.io.drained
-    kernelFrag.io.drawRetire.ready := ctxFifo.io.retire
+    ctxFifo.io.retire := kernelFrag.drawRetire.valid && expander.io.drained
+    kernelFrag.drawRetire.ready := ctxFifo.io.retire
     // Per-draw overlap: the rasterizer is the only shared front-end resource,
     // so the next draw is admitted as soon as it is idle and the fragment
     // producer's staging slot can take fragments.  Batch N+1 accumulates
@@ -646,58 +660,58 @@ class RenderPipeline(
     // the ordered drawRetire handshake retires contexts in submission order.
     io.draw.ready := (if (config.tileBinning && vertCore)
       vertBinnerOpt.get.io.drawIn.ready else triSource.ready) &&
-      kernelFrag.io.fragIn.ready &&
+      kernelFrag.fragIn.ready &&
       ctxFifo.io.enq.ready && drawTileGate &&
       kernelVert.map(_.io.done).getOrElse(true.B)
-    kernelFrag.io.fragIn.valid := shader.io.quad.valid
-    kernelFrag.io.fragIn.bits := shader.io.quad.bits
-    kernelFrag.io.fragUv := textured.io.interpolatedUvQuad
-    kernelFrag.io.fragDepths := shader.io.quadDepths
-    shader.io.quad.ready := kernelFrag.io.fragIn.ready
+    kernelFrag.fragIn.valid := shader.io.quad.valid
+    kernelFrag.fragIn.bits := shader.io.quad.bits
+    kernelFrag.fragUv := textured.io.interpolatedUvQuad
+    kernelFrag.fragDepths := shader.io.quadDepths
+    shader.io.quad.ready := kernelFrag.fragIn.ready
     shader.io.pixel.ready := false.B // quad mode: scalar port is tied off
     // The programmable path selects ABI 1 exactly when MSAA is active; the
     // 1x ABI 0 path is observationally identical (the depth-output slice is
     // pre-initialised to the interpolated centre depth).
-    kernelFrag.io.abi1 := FragmentShaderAbi.usesMultisample(ctxFifo.io.tail.sampleMode)
-    kernelFrag.io.shaderPc := ctxFifo.io.tail.shaderPc
-    kernelFrag.io.kernargBase := ctxFifo.io.tail.kernargBase
-    kernelFrag.io.kernargBankStride := ctxFifo.io.tail.kernargBankStride
-    kernelFrag.io.texBase := ctxFifo.io.tail.texBase
-    kernelFrag.io.texWidth := ctxFifo.io.tail.texWidth
-    kernelFrag.io.texHeight := ctxFifo.io.tail.texHeight
-    kernelFrag.io.texWrapClamp := ctxFifo.io.tail.texWrapClamp
-    kernelFrag.io.texMaxLevel := ctxFifo.io.tail.texMaxLevel
-    kernelFrag.io.texLodBias := ctxFifo.io.tail.texLodBias
-    kernelFrag.io.texMinLevel := ctxFifo.io.tail.texMinLevel
+    kernelFrag.abi1 := FragmentShaderAbi.usesMultisample(ctxFifo.io.tail.sampleMode)
+    kernelFrag.shaderPc := ctxFifo.io.tail.shaderPc
+    kernelFrag.kernargBase := ctxFifo.io.tail.kernargBase
+    kernelFrag.kernargBankStride := ctxFifo.io.tail.kernargBankStride
+    kernelFrag.texBase := ctxFifo.io.tail.texBase
+    kernelFrag.texWidth := ctxFifo.io.tail.texWidth
+    kernelFrag.texHeight := ctxFifo.io.tail.texHeight
+    kernelFrag.texWrapClamp := ctxFifo.io.tail.texWrapClamp
+    kernelFrag.texMaxLevel := ctxFifo.io.tail.texMaxLevel
+    kernelFrag.texLodBias := ctxFifo.io.tail.texLodBias
+    kernelFrag.texMinLevel := ctxFifo.io.tail.texMinLevel
     // The batch must be flushed exactly at the draw boundary: once the
     // rasterizer has gone idle (all pixels of the current draw emitted), any
     // accumulated-but-unlaunched fragments are launched as one kernel.  The
     // batch is empty at that same point iff the draw produced no fragments, in
     // which case flush is a no-op.
-    kernelFrag.io.flush := shader.io.done
+    kernelFrag.flush := shader.io.done
 
     // The sample expander is the per-pixel/per-sample boundary for both
     // backends: the kernel emits one fragment per lane and the expander
     // presents one OM fragment per set coverage bit.  At 1x the mask is one
     // bit and the expander is 1-in/1-out (sampleIndex = 0), so the OM stream
     // is bit-identical to the pre-MSAA direct path.
-    val kfDepth24 = kernelFrag.io.out.bits.depth(23, 0).asUInt
+    val kfDepth24 = kernelFrag.out.bits.depth(23, 0).asUInt
     // ABI 1 bit 1 selects the shader-written depth word (replicated over the
     // samples); otherwise each sample takes its rasterizer-derived depth.
     val kfDepths = VecInit(Seq.tabulate(config.maxSampleCount)(s =>
-      Mux(kernelFrag.io.depthOverride, kfDepth24,
-        kernelFrag.io.outDepths(s))))
-    expander.io.in.valid := kernelFrag.io.out.valid
-    expander.io.in.bits.x := kernelFrag.io.out.bits.x(15, 0).asUInt
-    expander.io.in.bits.y := kernelFrag.io.out.bits.y(15, 0).asUInt
+      Mux(kernelFrag.depthOverride, kfDepth24,
+        kernelFrag.outDepths(s))))
+    expander.io.in.valid := kernelFrag.out.valid
+    expander.io.in.bits.x := kernelFrag.out.bits.x(15, 0).asUInt
+    expander.io.in.bits.y := kernelFrag.out.bits.y(15, 0).asUInt
     expander.io.in.bits.color := Cat(
-      kernelFrag.io.out.bits.color.r,
-      kernelFrag.io.out.bits.color.g,
-      kernelFrag.io.out.bits.color.b,
-      kernelFrag.io.out.bits.alpha)
-    expander.io.in.bits.coverageMask := kernelFrag.io.out.bits.coverageMask
+      kernelFrag.out.bits.color.r,
+      kernelFrag.out.bits.color.g,
+      kernelFrag.out.bits.color.b,
+      kernelFrag.out.bits.alpha)
+    expander.io.in.bits.coverageMask := kernelFrag.out.bits.coverageMask
     expander.io.in.bits.depths := kfDepths
-    kernelFrag.io.out.ready := expander.io.in.ready
+    kernelFrag.out.ready := expander.io.in.ready
 
     om.io.fragIn.valid := expander.io.out.valid && tilePermit
     om.io.fragIn.bits.x := expander.io.out.bits.x
@@ -712,11 +726,11 @@ class RenderPipeline(
     // vert owns [2,4). DMA fill/blit/strided keep physical IDs [4,8).
     val wordArb = Module(new RRArbiter(
       new ComputeMemoryRequest(gpuConfig, 64, kernelWordOutstanding), 2))
-    wordArb.io.in(0).valid := kernelFrag.io.wordMemReq.valid
-    wordArb.io.in(0).bits := kernelFrag.io.wordMemReq.bits
+    wordArb.io.in(0).valid := kernelFrag.wordMemReq.valid
+    wordArb.io.in(0).bits := kernelFrag.wordMemReq.bits
     wordArb.io.in(0).bits.transactionId := Cat(0.U(1.W),
-      kernelFrag.io.wordMemReq.bits.transactionId(0))
-    kernelFrag.io.wordMemReq.ready := wordArb.io.in(0).ready
+      kernelFrag.wordMemReq.bits.transactionId(0))
+    kernelFrag.wordMemReq.ready := wordArb.io.in(0).ready
     wordArb.io.in(1).valid := kernelVert.map(_.io.wordMemReq.valid).getOrElse(false.B)
     wordArb.io.in(1).bits := kernelVert.map(_.io.wordMemReq.bits)
       .getOrElse(0.U.asTypeOf(wordArb.io.in(1).bits))
@@ -731,14 +745,14 @@ class RenderPipeline(
         io.kernelWordMemResp.bits.transactionId(0)
     }
     io.kernelWordMemReq <> wordArb.io.out
-    kernelFrag.io.wordMemResp.valid := io.kernelWordMemResp.valid &&
+    kernelFrag.wordMemResp.valid := io.kernelWordMemResp.valid &&
       !io.kernelWordMemResp.bits.transactionId(1)
-    kernelFrag.io.wordMemResp.bits := io.kernelWordMemResp.bits
-    kernelFrag.io.wordMemResp.bits.transactionId :=
+    kernelFrag.wordMemResp.bits := io.kernelWordMemResp.bits
+    kernelFrag.wordMemResp.bits.transactionId :=
       io.kernelWordMemResp.bits.transactionId(0)
     io.kernelWordMemResp.ready := Mux(io.kernelWordMemResp.bits.transactionId(1),
       kernelVert.map(_.io.wordMemResp.ready).getOrElse(false.B),
-      kernelFrag.io.wordMemResp.ready)
+      kernelFrag.wordMemResp.ready)
     textured.io.fragIn.valid := false.B // texture path only on fixed-func branch
     textured.io.fragDepths := 0.U.asTypeOf(
       Vec(config.maxSampleCount, UInt(30.W)))
@@ -746,23 +760,23 @@ class RenderPipeline(
     // The programmable fragment shader samples through the translated texture
     // client, so its texture unit's word port carries the texture VA.  The
     // fixed-function texture stage is idle on this branch.
-    io.texMem <> kernelFrag.io.texMem
+    io.texMem <> kernelFrag.texMem
     textured.io.mem.req.ready := false.B
     textured.io.mem.resp.valid := false.B
     textured.io.mem.resp.bits := 0.U.asTypeOf(textured.io.mem.resp.bits)
 
     // Tie off kernelFrag's unused memReq/memResp ports
-    kernelFrag.io.memReq.ready := false.B
-    kernelFrag.io.memResp.valid := false.B
-    kernelFrag.io.memResp.bits := 0.U.asTypeOf(kernelFrag.io.memResp.bits)
+    kernelFrag.memReq.ready := false.B
+    kernelFrag.memResp.valid := false.B
+    kernelFrag.memResp.bits := 0.U.asTypeOf(kernelFrag.memResp.bits)
 
     // Tie off kernelFrag's l1Invalidate and globalAtomic ports
-    kernelFrag.io.l1Invalidate.valid := false.B
-    kernelFrag.io.l1Invalidate.bits := 0.U.asTypeOf(kernelFrag.io.l1Invalidate.bits)
-    kernelFrag.io.l1InvalidateDone.ready := false.B
-    kernelFrag.io.globalAtomicRequest.ready := false.B
-    kernelFrag.io.globalAtomicResponse.valid := false.B
-    kernelFrag.io.globalAtomicResponse.bits := 0.U.asTypeOf(kernelFrag.io.globalAtomicResponse.bits)
+    kernelFrag.l1Invalidate.valid := false.B
+    kernelFrag.l1Invalidate.bits := 0.U.asTypeOf(kernelFrag.l1Invalidate.bits)
+    kernelFrag.l1InvalidateDone.ready := false.B
+    kernelFrag.globalAtomicRequest.ready := false.B
+    kernelFrag.globalAtomicResponse.valid := false.B
+    kernelFrag.globalAtomicResponse.bits := 0.U.asTypeOf(kernelFrag.globalAtomicResponse.bits)
 
     // kernelFrag's l1Invalidate and globalAtomic ports are tied off internally.
     // The RenderPipeline's corresponding IO ports are driven by kernelShader.
@@ -795,7 +809,7 @@ class RenderPipeline(
     // Vertex draws also keep the pipeline busy until KernelVertStage returns
     // to idle; otherwise a just-accepted vertex command looks drained before
     // its shader has fetched a single instruction.
-    fragmentDrained := !drawHoldValid && shader.io.done && kernelFrag.io.drained &&
+    fragmentDrained := !drawHoldValid && shader.io.done && kernelFrag.drained &&
       expander.io.drained && om.io.drained && !ctxFifo.io.headValid
     upstreamDone := fragmentDrained && kernelVert.map(_.io.done).getOrElse(true.B) &&
       vertBinnerOpt.map(_.io.done).getOrElse(true.B)
