@@ -481,9 +481,13 @@ class KernelFragStageSpec extends AnyFlatSpec {
   }
 
   it should "bound staging traffic and preserve uniforms and inactive lanes in full and partial batches" in {
-    val config = GpuConfig(lanes = 4, warps = 2)
+    for (config <- Seq(GpuConfig(lanes = 4, warps = 2),
+                       GpuConfig(lanes = 16, warps = 2),
+                       GpuConfig(lanes = 16, warps = 8))) {
+    val capacity = config.lanes * config.warps
+    val stride = capacity * 4
     simulate(new KernelFragStageWithKernel(config)) { dut =>
-      for (count <- Seq(4, 8)) {
+      for (count <- Seq(4, capacity - 4, capacity).distinct) {
         val mem = new MemModel
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
         pokeDefaults(dut)
@@ -493,7 +497,8 @@ class KernelFragStageSpec extends AnyFlatSpec {
         // A cease-only kernel leaves the sentinel output colours untouched.
         mem.putWord(0x1000L, 0, cease)
         val sentinel = BigInt("a55a1234", 16)
-        for (i <- 0 until 80) mem.putWord(0x8000L + (i / 16) * 64, i % 16, sentinel)
+        for (i <- 0 until (9 * capacity + 16))
+          mem.putWord(0x8000L + (i / 16) * 64, i % 16, sentinel)
         for (q <- 0 until count / 4) {
           dut.io.fragIn.ready.expect(true.B)
           fireQuad(dut, Seq.tabulate(4) { k =>
@@ -505,23 +510,37 @@ class KernelFragStageSpec extends AnyFlatSpec {
         assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean, 2000))
         val writes = mem.stagingRequests.filter(_._2)
         val reads = mem.stagingRequests.filterNot(_._2)
-        assert(writes.size <= 5 && reads.size <= 2,
-          s"staging traffic exceeds seven line transfers: ${mem.stagingRequests}")
+        val maxWrites = if (capacity == 8) 5 else 8 * ((count + 15) / 16)
+        val maxReads = if (capacity == 8) 2 else 3 * ((count + 15) / 16)
+        assert(writes.size <= maxWrites && reads.size <= maxReads,
+          s"capacity=$capacity count=$count staging traffic exceeds line bounds: ${mem.stagingRequests}")
         assert(mem.stagingRequests.forall { case (addr, _) => (addr & 63) == 0 })
         for (i <- 0 until count) {
           assert(mem.getWord(0x8000L + i * 4) == i)
-          assert(mem.getWord(0x8000L + 224 + i * 4) == 100 + i)
-          assert(mem.getWord(0x8000L + 256 + i * 4) == 1)
-          assert(mem.getWord(0x8000L + 192 + i * 4) == sentinel,
+          assert(mem.getWord(0x8000L + 7 * stride + i * 4) == 100 + i)
+          assert(mem.getWord(0x8000L + 8 * stride + i * 4) == 1)
+          assert(mem.getWord(0x8000L + 6 * stride + i * 4) == sentinel,
             "staging must not overwrite shader colour outputs")
         }
-        for (slice <- Seq(0, 1, 2, 3, 4, 5, 7, 8); i <- count until 8)
-          assert(mem.getWord(0x8000L + slice * 32 + i * 4) == sentinel,
+        for (slice <- Seq(0, 1, 2, 3, 4, 5, 7, 8); i <- count until capacity)
+          assert(mem.getWord(0x8000L + slice * stride + i * 4) == sentinel,
             s"partial batch overwrote inactive slice $slice lane $i")
-        for (offset <- 288 until 320 by 4)
+        for (offset <- 9 * stride until 9 * stride + 64 by 4)
           assert(mem.getWord(0x8000L + offset) == sentinel,
             s"staging overwrote uniform byte $offset")
+        // Check the whole readback, including late wide-vector slices.
+        for (i <- 0 until count) {
+          assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean, 2000))
+          dut.io.out.bits.x.expect(i.S)
+          dut.io.out.bits.depth.expect((100 + i).S)
+          dut.io.out.bits.color.r.expect(0xa5.U)
+          dut.io.out.bits.color.g.expect(0x5a.U)
+          dut.io.out.bits.color.b.expect(0x12.U)
+          dut.clock.step()
+        }
+        assert(pump(dut, mem, () => dut.io.drained.peek().litToBoolean, 2000))
       }
+    }
     }
   }
 

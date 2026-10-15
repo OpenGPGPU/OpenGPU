@@ -248,11 +248,12 @@ class KernelFragStage(
   // bridge (owner bit selects half); the FSM is already one-at-a-time.
   private val bridge = Module(new OmWordToLinePort(
     config, uncached = true, maxOutstanding = 2))
-  // The desktop ABI packs eight lanes into 32-byte SoA slices. Stage the
-  // five containing lines once, preserving output/uniform bytes with masks,
-  // instead of issuing 64 individually acknowledged word writes per batch.
-  // Other batch widths retain their existing word walk.
-  private val coalesceStaging = batchCap == 8
+  // Stage whole lines, masking colour outputs, inactive lanes and uniforms.
+  // Keep the legacy word path for small/non-line-aligned batch layouts.
+  private val coalesceStaging = batchCap == 8 || batchCap % 16 == 0
+  private val stagingLineCount = (9 * arrayStride + 63) / 64
+  private val outputFirstLine = 6 * arrayStride / 64
+  private val outputLastLine = (9 * arrayStride - 1) / 64
   private val lineReqReg = if (coalesceStaging)
     Some(Reg(new ComputeMemoryRequest(config, 64, 2))) else None
   private val lineReqValid = RegInit(false.B)
@@ -466,7 +467,7 @@ class KernelFragStage(
   // Staging field: writes 0=x, 1=y, 2=depth, 3=packed colour, 4=u, 5=v,
   // 6=depth-output initialization, 7=output-valid initialization; reads
   // 0=colour, 1=depth, 2=output-valid.
-  private val field = RegInit(0.U(4.W))
+  private val field = RegInit(0.U(math.max(4, log2Ceil(stagingLineCount)).W))
 
   // ---------------------------------------------------------------------
   // Producer: accumulate the next draw's quads into slot prodSlot, four
@@ -827,17 +828,35 @@ class KernelFragStage(
     Mux(execSlot.asBool, value(fragRecords(1)(lane / 4)),
       value(fragRecords(0)(lane / 4)))
   }
-  private val stagedLines = if (coalesceStaging) (0 until 5).map { line =>
+  private val stagedLines = if (coalesceStaging) (0 until stagingLineCount).map { line =>
     val data = Cat((0 until 16).reverse.map { word =>
-      stageWord(line * 2 + word / 8, word % 8)
+      val position = line * 16 + word
+      stageWord(position / batchCap, position % batchCap)
     })
     val mask = Cat((0 until 16).reverse.map { word =>
-      val slice = line * 2 + word / 8
+      val position = line * 16 + word
+      val slice = position / batchCap
       if (slice == 6 || slice > 8) 0.U(4.W)
-      else Mux((word % 8).U < execCount, 15.U(4.W), 0.U(4.W))
+      else Mux((position % batchCap).U < execCount, 15.U(4.W), 0.U(4.W))
     })
     (line.U, data, mask)
   } else Seq.empty
+
+  private def advanceStagingWrite(): Unit = {
+    when(field === (stagingLineCount - 1).U) {
+      field := 0.U
+      state := sLaunch
+    }.otherwise { field := field + 1.U }
+  }
+  private def advanceStagingRead(): Unit = {
+    when(field === outputLastLine.U) {
+      field := 0.U
+      emitQuadValid := false.B
+      emitQuadPtr := 0.U
+      emitQuadSel := 1.U
+      state := sEmit
+    }.otherwise { field := field + 1.U }
+  }
 
   switch(state) {
     is(sIdle) {
@@ -855,12 +874,14 @@ class KernelFragStage(
           req.address := slotKernarg(execSlot) + (field << 6)
           req.writeData := MuxLookup(field, 0.U(512.W))(
             stagedLines.map { case (i, data, _) => i -> data })
-          req.byteMask := MuxLookup(field, 0.U(64.W))(
+          val mask = MuxLookup(field, 0.U(64.W))(
             stagedLines.map { case (i, _, mask) => i -> mask })
+          req.byteMask := mask
           req.isWrite := true.B
           req.sizeLog2 := 6.U
           req.cachePolicy := opengpu.config.CachePolicy.uncached
-          lineReqValid := true.B
+          when(mask.orR) { lineReqValid := true.B }
+            .otherwise { advanceStagingWrite() }
         }
         when(wordMemReqPipe.io.enq.fire) {
           lineReqValid := false.B
@@ -868,10 +889,7 @@ class KernelFragStage(
         }
         when(io.wordMemResp.fire) {
           wordPending := false.B
-          when(field === 4.U) {
-            field := 0.U
-            state := sLaunch
-          }.otherwise { field := field + 1.U }
+          advanceStagingWrite()
         }
       } else {
       when(!requestQuadLoaded) {
@@ -942,7 +960,7 @@ class KernelFragStage(
         requestQuadIdx := 0.U
         requestLaneIdx := 0.U
         wordPending := false.B
-        if (coalesceStaging) { field := 3.U }
+        if (coalesceStaging) { field := outputFirstLine.U }
         state := sRead
       }
     }
@@ -954,7 +972,13 @@ class KernelFragStage(
           req.address := slotKernarg(execSlot) + (field << 6)
           req.sizeLog2 := 6.U
           req.cachePolicy := opengpu.config.CachePolicy.uncached
-          lineReqValid := true.B
+          // A partial wide batch need not fetch output lines beyond its tail.
+          val needed = MuxLookup(field, false.B)(
+            (outputFirstLine to outputLastLine).map { line =>
+              line.U -> ((line * 16 % batchCap).U < execCount)
+            })
+          when(needed) { lineReqValid := true.B }
+            .otherwise { advanceStagingRead() }
         }
         when(wordMemReqPipe.io.enq.fire) {
           lineReqValid := false.B
@@ -962,28 +986,27 @@ class KernelFragStage(
         }
         when(io.wordMemResp.fire) {
           wordPending := false.B
-          when(field === 3.U) {
-            for (lane <- 0 until 8) {
-              outWords(lane) := io.wordMemResp.bits.readData(32 * lane + 31, 32 * lane)
-              outDepth(lane) := io.wordMemResp.bits.readData(32 * lane + 287, 32 * lane + 256).asSInt
+          for (line <- outputFirstLine to outputLastLine) {
+            when(field === line.U) {
+              for (word <- 0 until 16) {
+                val position = line * 16 + word
+                val slice = position / batchCap
+                val lane = position % batchCap
+                val data = io.wordMemResp.bits.readData(32 * word + 31, 32 * word)
+                if (slice == 6) outWords(lane) := data
+                else if (slice == 7) outDepth(lane) := data.asSInt
+                else if (slice == 8) {
+                  val covered = Mux(execSlot.asBool,
+                    fragRecords(1)(lane / 4).lanes(lane % 4).covered,
+                    fragRecords(0)(lane / 4).lanes(lane % 4).covered)
+                  outValid(lane) := FragmentShaderAbi.emits(data, slotAbi1(execSlot)) &&
+                    covered && !execFailed
+                  outOverride(lane) := FragmentShaderAbi.overridesDepth(data, slotAbi1(execSlot))
+                }
+              }
             }
-            field := 4.U
-          }.otherwise {
-            for (lane <- 0 until 8) {
-              val ctrl = io.wordMemResp.bits.readData(32 * lane + 31, 32 * lane)
-              val covered = Mux(execSlot.asBool,
-                fragRecords(1)(lane / 4).lanes(lane % 4).covered,
-                fragRecords(0)(lane / 4).lanes(lane % 4).covered)
-              outValid(lane) := FragmentShaderAbi.emits(ctrl, slotAbi1(execSlot)) &&
-                covered && !execFailed
-              outOverride(lane) := FragmentShaderAbi.overridesDepth(ctrl, slotAbi1(execSlot))
-            }
-            field := 0.U
-            emitQuadValid := false.B
-            emitQuadPtr := 0.U
-            emitQuadSel := 1.U
-            state := sEmit
           }
+          advanceStagingRead()
         }
       } else {
       when(!wordPending && !wordReqValid && bridge.io.in.ready) {

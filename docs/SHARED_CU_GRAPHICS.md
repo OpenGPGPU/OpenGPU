@@ -233,3 +233,19 @@ workload. This is not a desktop speedup promise. Shared memory bandwidth,
 sampler throughput, staging and output ordering can limit cycle scaling.
 More active CUs also increase host simulation work per tick. Acceptance must
 therefore report both GPU cycles and actual simulator wall time.
+
+## Wide-batch preparation
+
+Fragment staging now coalesces line-aligned wide batches as well as the
+existing eight-fragment ABI. Masks preserve shader colour outputs, inactive
+lanes and uniforms; fully masked write lines and inactive output-read lines
+are skipped. A full 128-fragment batch uses at most 64 writes and 24 reads
+instead of 1,024 word writes and 384 word reads. These are transfer counts,
+not measured application wall-time gains.
+
+All 16 `KernelFragStageSpec` tests pass, with the staging case extended to
+4x2, 16x2 and 16x8 configurations, full and partial batches, complete output
+readback and sentinel preservation. Log:
+`.artifacts/shared-cu-wide-staging-tests.log`. The wide checks use a cease-only
+kernel to isolate staging. Stock wide shader binaries and desktop execution
+still require coordinated software changes.
