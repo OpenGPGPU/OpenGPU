@@ -1,0 +1,313 @@
+{
+  "date": "2026-10-16",
+  "workload": "Exact recorded64x64 Weston/GTK traffic on the older qualified4CU16x8 model",
+  "validation": {
+    "baseline_archive_sha256": "424a8309dfa96053f186a2990cce0604cd516b509529c8b79d375b364dc26e72",
+    "variants": [
+      {
+        "unroll": 4,
+        "optimization": "-O3, unprofiled helper only; same qualified PGO DUT and common trace wrapper",
+        "source_sha256": "e688afd42339ed311ab0bea698f6dd4490e62ba460151b7058208a6cb28bd9b0",
+        "archive_sha256": "c7a9d67ac6bbf67851a4916230a6ab0521e51198bbbc57f7cb8c9bce15c57886",
+        "replayer_sha256": "c9f4eba9e10660d8b4e13f365b55ad3f818a0a60097070dac6f4237a7d0e4b13",
+        "sanitizer_check": "PASS all lengths0..257, full uint16 index range, duplicateIDs, uint32wrap and nullzero-length",
+        "exact_replay": "PASS allcalls/ticks/commits/holds/DMA",
+        "diagnostic_seconds_not_benchmark": 38.90549116698094
+      },
+      {
+        "unroll": 8,
+        "optimization": "-O3, unprofiled helper only; same qualified PGO DUT and common trace wrapper",
+        "source_sha256": "f85e6860185e08232cb43e2cd73fdfcfbfeee0b3c1b66b600965650dcab3a215",
+        "archive_sha256": "72d1ffa92e651480a84f6d69cb9a4c9f1d702b94098db0ce29f911bf5506e509",
+        "replayer_sha256": "f841a5e47c8bf870fc57e2fa1389480b71fd1cd62aefcda019ea222145b55c24",
+        "sanitizer_check": "PASS all lengths0..257, full uint16 index range, duplicateIDs, uint32wrap and nullzero-length",
+        "exact_replay": "PASS allcalls/ticks/commits/holds/DMA",
+        "diagnostic_seconds_not_benchmark": 38.54262187494896
+      },
+      {
+        "unroll": 16,
+        "optimization": "-O3, unprofiled helper only; same qualified PGO DUT and common trace wrapper",
+        "source_sha256": "39b39ddaef0709366a27c35919bc9caf4207bcc60a4de13dce68a330aadf2fb6",
+        "archive_sha256": "8e9ff56d4b4676a2011363fb12d43c30127f05c7a49fa17d62d407fbca63dac5",
+        "replayer_sha256": "bfd6a7d2a640874e3b351732d733425c644859ce5cdfcf6eef89eff394ba8f9e",
+        "sanitizer_check": "PASS all lengths0..257, full uint16 index range, duplicateIDs, uint32wrap and nullzero-length",
+        "exact_replay": "PASS allcalls/ticks/commits/holds/DMA",
+        "diagnostic_seconds_not_benchmark": 39.62750795809552
+      }
+    ],
+    "scope": "Only helper loop/optimization flags differ. Concurrent validation timings excluded; clean matched benchmark pending.",
+    "harness_sha256": "f01b1ce8c5410aabb0aa7dab6df03fd7cb8b52d63c5615c5c37c45070e38efb5",
+    "uint16_max_index_checked": true
+  },
+  "clean_benchmark": {
+    "trace": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/runtime-native-coherent/native-gtk.trace",
+    "trace_sha256": "8cd3ae3a9bc055ad09f66d83e28403d5695e772bfdb8e9b6081ea4c9fb222861",
+    "window": null,
+    "binaries": {
+      "baseline": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/runtime-native-coherent/trace-optimized/replay",
+        "sha256": "743dcf277b8d7115c86d3037b1f6e0140bdcf064f0efa84b5408e40217e63466"
+      },
+      "unroll4": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/commit-bump-unroll/unroll-4/replay",
+        "sha256": "c9f4eba9e10660d8b4e13f365b55ad3f818a0a60097070dac6f4237a7d0e4b13"
+      },
+      "unroll8": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/commit-bump-unroll/unroll-8/replay",
+        "sha256": "f841a5e47c8bf870fc57e2fa1389480b71fd1cd62aefcda019ea222145b55c24"
+      },
+      "unroll16": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/commit-bump-unroll/unroll-16/replay",
+        "sha256": "bfd6a7d2a640874e3b351732d733425c644859ce5cdfcf6eef89eff394ba8f9e"
+      }
+    },
+    "runs": [
+      {
+        "name": "baseline",
+        "round": 0,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.742579042,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "unroll4",
+        "round": 0,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.283512875,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "unroll8",
+        "round": 0,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.344735125,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "unroll16",
+        "round": 0,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.255605125,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "unroll16",
+        "round": 1,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.101075125,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "unroll8",
+        "round": 1,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.39349525,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "unroll4",
+        "round": 1,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.2577695,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "baseline",
+        "round": 1,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.655695083,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "baseline",
+        "round": 2,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.70092125,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "unroll4",
+        "round": 2,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.312796625,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "unroll8",
+        "round": 2,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.302922125,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "unroll16",
+        "round": 2,
+        "calls": 29720,
+        "ticks": 2564082,
+        "commits": 44108347,
+        "holds": 522047205,
+        "dma_reads": 94302,
+        "dma_writes": 615696,
+        "dma_bytes": 10763256,
+        "seconds": 31.264993584,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    ],
+    "summary": {
+      "baseline": {
+        "seconds": [
+          31.742579042,
+          31.655695083,
+          31.70092125
+        ],
+        "median_seconds": 31.70092125,
+        "reduction_percent": 0.0,
+        "round_medians": [
+          31.742579042,
+          31.655695083,
+          31.70092125
+        ]
+      },
+      "unroll4": {
+        "seconds": [
+          31.283512875,
+          31.2577695,
+          31.312796625
+        ],
+        "median_seconds": 31.283512875,
+        "reduction_percent": 1.3167073969498677,
+        "round_medians": [
+          31.283512875,
+          31.2577695,
+          31.312796625
+        ]
+      },
+      "unroll8": {
+        "seconds": [
+          31.344735125,
+          31.39349525,
+          31.302922125
+        ],
+        "median_seconds": 31.344735125,
+        "reduction_percent": 1.12358288325769,
+        "round_medians": [
+          31.344735125,
+          31.39349525,
+          31.302922125
+        ]
+      },
+      "unroll16": {
+        "seconds": [
+          31.255605125,
+          31.101075125,
+          31.264993584
+        ],
+        "median_seconds": 31.255605125,
+        "reduction_percent": 1.404741904779827,
+        "round_medians": [
+          31.255605125,
+          31.101075125,
+          31.264993584
+        ]
+      }
+    }
+  },
+  "decision": "Keep four-way unrolling. Unroll16 improves only0.089% over the four-way O3 control, so larger unrolling is not promoted.",
+  "helper_compile_candidate": "An unprofiled O3 four-way helper improves this trace median1.317% versus the existing O2/PGO helper; retest on the final model and native guests before promotion.",
+  "limits": [
+    "No concurrent compiler, simulator guest or other replayer during benchmark runs; variants executed serially.",
+    "All architecture, clocks,commits,holds and DMA are identical.",
+    "Only helper compile settings/code layout and unroll factors differ; not an RTL cycle improvement.",
+    "No production FlashSim defaults changed."
+  ]
+}

@@ -18,6 +18,21 @@ def digest(path):
     return value.hexdigest()
 
 
+def read_guest_result(run_dir, name, round_index, exit_status):
+    log = run_dir / "weston-repro.log"
+    text = log.read_text(errors="replace") if log.exists() else ""
+    times = re.findall(r"complete draw=\d+ status=0 elapsed_ms=([\d.]+)", text)
+    draws = [{"width": int(w), "height": int(h), "texture": int(t)}
+             for w, h, t in re.findall(
+                 r"submit draw=\d+ target=(\d+)x(\d+)[^\r\n]*texture=(\d+)", text)]
+    scene_verified = ("gl_fill: Weston shader reproduction 160x120" in text
+                      and draws == [{"width": 640, "height": 480, "texture": 0}])
+    return {"name": name, "round": round_index, "work": str(run_dir),
+            "gate_exit": exit_status, "pixel_pass": "OPENGPU GL FILL PASS" in text,
+            "draw_ms": [float(value) for value in times],
+            "draws": draws, "scene_verified": scene_verified}
+
+
 def main():
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
@@ -27,16 +42,30 @@ def main():
     parser.add_argument("--work", type=Path, required=True,
                         help="new short absolute directory (QMP has a socket path limit)")
     parser.add_argument("--rounds", type=int, default=3)
+    parser.add_argument("--display-work", type=Path,
+                        help="shared guest payload for both models; defaults to DISPLAY_WORK")
     args = parser.parse_args()
     if args.rounds < 1:
         parser.error("--rounds must be positive")
     work = args.work.resolve()
-    work.mkdir(parents=True, exist_ok=False)
     binaries = {"baseline": args.baseline.resolve(), "candidate": args.candidate.resolve()}
+    payload = args.display_work or (Path(os.environ["DISPLAY_WORK"])
+                                   if os.environ.get("DISPLAY_WORK") else None)
+    if payload:
+        payload = payload.resolve()
+        driver = payload / "opengpu-driver"
+        for name in ("gpu_drv.ko", "opengpu_dri.so", "opengpu_gl_fill.bin"):
+            if not (driver / name).is_file():
+                parser.error(f"missing shared guest payload file: {driver / name}")
+    work.mkdir(parents=True, exist_ok=False)
     report = {"binaries": {name: {"path": str(path), "sha256": digest(path)}
                            for name, path in binaries.items()},
               "base_image": str(args.base_image.resolve()),
               "scope": "native GLES triangle with160x120bounding box in640x480mode; fresh guest; pixel proof required; no scanout capture",
+              "workload": "Weston uniform-colour/opacity shader control; no texture sampling",
+              "payload": {"path": str(payload),
+                          "sha256": {p.name: digest(p) for p in sorted(driver.iterdir())
+                                     if p.is_file()}} if payload else None,
               "runs": [], "summary": {}}
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(("ARTI_", "GTK_PROOF_", "QEMU_", "LLVM_PROFILE_"))}
@@ -48,6 +77,8 @@ def main():
                GTK_PROOF_REPRO_ONLY="1", GTK_PROOF_SCANOUT_ENABLE="0",
                GTK_PROOF_SKIP_BUILD="1", GTK_PROOF_SKIP_COVERAGE="1",
                GTK_PROOF_SMOKE_TIMEOUT_S="900")
+    if payload:
+        env.update(DISPLAY_WORK=str(payload), DRIVER_OUTPUT=str(driver))
     report["configuration"] = {key: value for key, value in env.items()
                                if key.startswith(("ARTI_", "GTK_PROOF_", "QEMU_"))}
 
@@ -65,17 +96,13 @@ def main():
             with (work / (run_dir.name + ".log")).open("w") as log:
                 result = subprocess.run(["bash", "scripts/run_gtk_coverage_guest.sh"],
                                         cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT)
-            text = (run_dir / "weston-repro.log").read_text(errors="replace") if (
-                run_dir / "weston-repro.log").exists() else ""
-            times = re.findall(r"complete draw=\d+ status=0 elapsed_ms=([\d.]+)", text)
-            entry = {"name": name, "round": round_index, "work": str(run_dir),
-                     "gate_exit": result.returncode, "pixel_pass": "OPENGPU GL FILL PASS" in text,
-                     "draw_ms": [float(value) for value in times]}
+            entry = read_guest_result(run_dir, name, round_index, result.returncode)
             report["runs"].append(entry)
             save()
-            if result.returncode or not entry["pixel_pass"] or len(times) != 1:
+            if (result.returncode or not entry["pixel_pass"]
+                    or not entry["scene_verified"] or len(entry["draw_ms"]) != 1):
                 raise SystemExit(f"Guest qualification failed: {run_dir}")
-            print(f"round {round_index + 1} {name}: {times[0]} ms; pixels PASS", flush=True)
+            print(f"round {round_index + 1} {name}: {entry['draw_ms'][0]} ms; pixels PASS", flush=True)
     baseline = statistics.median(run["draw_ms"][0] for run in report["runs"]
                                  if run["name"] == "baseline")
     for name in binaries:
