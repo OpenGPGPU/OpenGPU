@@ -3,7 +3,7 @@ package opengpu.core.memory
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.graphics.{CoalescedOmWordToLinePort, OmMemoryRequest, OmMemoryResponse, OmWordToLinePort}
+import opengpu.graphics.{BufferedCommandWordPort, CoalescedOmWordToLinePort, OmMemoryRequest, OmMemoryResponse, OmWordToLinePort}
 
 /** A graphics word-port client with its own Sv32 translation TLB.
   *
@@ -20,7 +20,8 @@ class TranslatedWordClient(
   outstanding: Int = 32,
   uncached: Boolean = false,
   preserveCachePolicy: Boolean = false,
-  coalesceWrites: Boolean = false
+  coalesceWrites: Boolean = false,
+  bufferCommandReads: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new OmMemoryRequest))
@@ -33,6 +34,7 @@ class TranslatedWordClient(
     val pageWalk = Decoupled(new ComputeMemoryRequest(config, 64, outstanding))
     val pageWalkResp = Flipped(Decoupled(
       new ComputeMemoryResponse(64, outstanding)))
+    val invalidateCommandReads = if (bufferCommandReads) Some(Input(Bool())) else None
     val satp = Input(UInt(32.W))
     val flush = Flipped(Valid(new VectorTlbFlush(config)))
     /** A translated or fault response for this client was consumed. */
@@ -42,7 +44,17 @@ class TranslatedWordClient(
     val walkActive = Output(Bool())
   })
 
-  private val bridge = if (coalesceWrites)
+  require(!bufferCommandReads || !coalesceWrites,
+    "command read buffering and framebuffer combining are distinct clients")
+  require(!bufferCommandReads || (uncached && preserveCachePolicy),
+    "command read buffering requires uncached lines and preserved cache policy")
+  private val previousSatp = if (bufferCommandReads) Some(RegNext(io.satp, 0.U)) else None
+  private val bridge = if (bufferCommandReads) {
+    val buffered = Module(new BufferedCommandWordPort(config, wordTransactions))
+    buffered.io.invalidate := io.invalidateCommandReads.get || io.flush.valid ||
+      io.satp =/= previousSatp.get
+    buffered.io.port
+  } else if (coalesceWrites)
     Module(new CoalescedOmWordToLinePort(config, wordTransactions, uncached,
       groups = if (wordTransactions >= 32) 8 else 4)).io
   else Module(new OmWordToLinePort(config, 64, wordTransactions, uncached)).io

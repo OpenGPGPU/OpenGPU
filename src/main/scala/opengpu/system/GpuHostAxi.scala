@@ -127,6 +127,7 @@ class GpuHostAxi(
     // Renderer shared-memory ports (command buffer + framebuffer words, and the
     // core-backed shader kernel's line/coherence side ports) pass straight
     // through so the SoC attaches them to the shared off-chip hierarchy.
+    val commandReadsIdle = Output(Bool())
     val cbMem = new Bundle {
       val req = Decoupled(new OmMemoryRequest)
       val resp = Flipped(Decoupled(new OmMemoryResponse))
@@ -161,6 +162,7 @@ class GpuHostAxi(
       sharedShader = sharedShader))
     sharedShader.foreach(_ => host.io.shared.get <> io.shared.get)
     host.io.textureFault.foreach(_ := io.textureFault.get)
+    io.commandReadsIdle := host.io.commandReadsIdle
     io.graphicsDrained := host.io.drained
     io.performance := host.io.performance
     val unified = if (unifiedCommandMmio) {

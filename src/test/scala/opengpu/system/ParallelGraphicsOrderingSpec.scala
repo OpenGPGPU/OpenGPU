@@ -11,7 +11,7 @@ import scala.collection.mutable
 /** Exercise real parallel shader execution, draw contexts and the output merger. */
 abstract class ParallelGraphicsOrderingChecks(coalesce: Boolean = false,
     axiBytes: Int = 8, omInflight: Int = 16, omLocality: Boolean = false,
-    fragmentBatchLimit: Int = 0) extends AnyFlatSpec with GpuHostTestSupport {
+    fragmentBatchLimit: Int = 0, bufferCommandReads: Boolean = false) extends AnyFlatSpec with GpuHostTestSupport {
   for (mode <- Seq(0, 2)) {
     it should s"preserve ordered blend, depth and helper coverage with ${1 << mode} samples (AXI=$axiBytes OM=$omInflight)" in {
       val side = 16
@@ -20,7 +20,8 @@ abstract class ParallelGraphicsOrderingChecks(coalesce: Boolean = false,
       simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight, omLocality = omLocality, fragmentBatchLimit = fragmentBatchLimit),
         gpu, numComputeUnits = 4, fragCore = true, sharedGraphics = true,
         parallelGraphics = true, exposePerformance = true,
-        coalesceFramebufferWrites = coalesce, memoryAxiDataBytes = axiBytes)) { dut =>
+        coalesceFramebufferWrites = coalesce, memoryAxiDataBytes = axiBytes,
+        bufferCommandReads = bufferCommandReads)) { dut =>
         initialize(dut)
         val words = mutable.LongMap.empty[BigInt]
         val descriptor = 0x1000
@@ -131,3 +132,7 @@ class CappedLocalityParallelGraphicsOrderingSpec
 class WideCapacityLocalityParallelGraphicsOrderingSpec
     extends ParallelGraphicsOrderingChecks(coalesce = true, axiBytes = 64,
       omInflight = 64, omLocality = true, fragmentBatchLimit = 4)
+
+class BufferedCommandParallelGraphicsOrderingSpec
+    extends ParallelGraphicsOrderingChecks(coalesce = true, axiBytes = 64,
+      omInflight = 64, omLocality = true, fragmentBatchLimit = 4, bufferCommandReads = true)

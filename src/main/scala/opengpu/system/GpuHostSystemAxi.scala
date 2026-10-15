@@ -65,7 +65,8 @@ class GpuHostSystemAxi(
   graphicsGpuConfig: Option[GpuConfig] = None,
   sharedGraphics: Boolean = false,
   parallelGraphics: Boolean = false,
-  coalesceFramebufferWrites: Boolean = false
+  coalesceFramebufferWrites: Boolean = false,
+  bufferCommandReads: Boolean = false
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   require(numComputeUnits > 0)
@@ -271,7 +272,16 @@ class GpuHostSystemAxi(
       gpuConfig, graphicsHostTransactions, preserveCachePolicy = true))
     val cbClient = Module(new TranslatedWordClient(
       gpuConfig, wordPortTransactions, graphicsHostTransactions,
-      uncached = true, preserveCachePolicy = true))
+      uncached = true, preserveCachePolicy = true,
+      bufferCommandReads = bufferCommandReads))
+    // Reset drains admitted renders, whose command reads must keep progressing.
+    // Invalidate once at reset entry; idle invalidation clears the final line
+    // before another job can be admitted.
+    if (bufferCommandReads) {
+      val resetWasActive = RegNext(host.io.commandResetActive.get, false.B)
+      cbClient.io.invalidateCommandReads.get := host.io.commandReadsIdle ||
+        (host.io.commandResetActive.get && !resetWasActive)
+    }
     val fbClient = Module(new TranslatedWordClient(
       gpuConfig, wordPortTransactions, graphicsHostTransactions,
       uncached = true, preserveCachePolicy = true,

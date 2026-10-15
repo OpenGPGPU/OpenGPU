@@ -149,6 +149,8 @@ class RenderHost(
     /** Pulse when a failed texture response is consumed by the renderer. */
     val textureFault = if (textureFaultReporting) Some(Input(Bool())) else None
 
+    /** Discard command-line reuse outside a render job, independently of DMA. */
+    val commandReadsIdle = Output(Bool())
     val cbMem = new Bundle {
       val req = Decoupled(new OmMemoryRequest)
       val resp = Flipped(Decoupled(new OmMemoryResponse))
@@ -341,6 +343,7 @@ class RenderHost(
   private val memoryFaultNow = (io.textureFault.getOrElse(false.B) || core.io.shaderFault) &&
     (busy || renderFetching || renderLaunch)
   private val validRenderMode = Msaa.validModeWord(renderWords(9), config.maxSampleCount)
+  io.commandReadsIdle := !renderFetching && !renderLaunch && !busy
   io.drained := !renderFetching && !renderLaunch && !busy &&
     !renderDonePending && dmaOwner === dmaIdle &&
     !fill.io.busy && !blit.io.busy && !strided.io.busy

@@ -12,7 +12,7 @@ import java.nio.file.{Files, Paths}
 /** Qualify the real 16-lane/eight-warp pool before migrating stock Mesa shaders. */
 abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coalesce: Boolean = false,
     side: Int = 32, aluIterations: Int = 0, omInflight: Int = 16, omLocality: Boolean = false,
-    fragmentBatchLimit: Int = 0)
+    fragmentBatchLimit: Int = 0, bufferCommandReads: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (cus <- cuCounts) {
     it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations OM=$omInflight cap=$fragmentBatchLimit)" in {
@@ -23,7 +23,7 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
       simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight, omLocality = omLocality, fragmentBatchLimit = fragmentBatchLimit),
         gpu, numComputeUnits = cus, fragCore = true, sharedGraphics = true,
         parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes,
-        coalesceFramebufferWrites = coalesce)) { dut =>
+        coalesceFramebufferWrites = coalesce, bufferCommandReads = bufferCommandReads)) { dut =>
         initialize(dut)
         val words = mutable.LongMap.empty[BigInt]
         val descriptor = 0x1000
@@ -236,3 +236,7 @@ class WiderOm64SevenWarpSharedGraphicsSpec
 class WiderOm64OneCuSevenWarpSharedGraphicsSpec
     extends WideSharedGraphicsChecks(64, Seq(1), coalesce = true, side = 64,
       omInflight = 64, omLocality = true, fragmentBatchLimit = 112)
+
+class BufferedCommandWideSharedGraphicsSpec
+    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64,
+      omInflight = 64, omLocality = true, fragmentBatchLimit = 112, bufferCommandReads = true)

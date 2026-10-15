@@ -10,13 +10,13 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 import scala.util.Random
 
-class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
+abstract class GpuHostSystemAxiChecks(bufferCommandReads: Boolean = false) extends AnyFlatSpec with GpuHostTestSupport {
   for (shared <- Seq(false, true)) {
     it should s"expose shader resource discovery over AXI with shared graphics=$shared" in {
       val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
       val gfx = GraphicsConfig(screenWidth = 4, screenHeight = 4)
       simulate(new GpuHostSystemAxi(gfx, gpu, numComputeUnits = 2,
-        fragCore = true, sharedGraphics = shared)) { dut =>
+        fragCore = true, sharedGraphics = shared, bufferCommandReads = bufferCommandReads)) { dut =>
         initialize(dut)
         val caps = axiRead(dut, RenderHostRegs.CAPABILITIES)
         assert((caps & (1L << opengpu.graphics.GpuCapabilities.ShaderConfigInfo)) != 0)
@@ -34,7 +34,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
     val random = new Random(seed)
     val gfx = GraphicsConfig(screenWidth = 4, screenHeight = 4)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       val memory = mutable.Map.empty[BigInt, Int]
       val writes = mutable.ArrayBuffer.empty[BigInt]
@@ -155,7 +155,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(
       lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
 
       val base = 0x6000
@@ -186,7 +186,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "translate a legacy clear VA through VECTOR_SATP onto physical AXI" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       val words = mutable.LongMap.empty[BigInt]
       val writes = mutable.ArrayBuffer.empty[BigInt]
@@ -243,7 +243,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "fail a unified fill against an invalid DMA PTE and recover" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       val words = mutable.LongMap.empty[BigInt]
       val reads = mutable.ArrayBuffer.empty[BigInt]
@@ -312,7 +312,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "program the Sv32 page-table base and flush the TLBs over AXI" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       // Sv32 mode (bit 31), ASID 0, root PPN 0x12345.
       val satp = 0x80012345
@@ -331,7 +331,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(
       lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       assert((axiRead(dut, RenderHostRegs.CAPABILITIES) & (1 << 6)) != 0L,
         "integrated host must advertise unified-command MMIO")
@@ -376,7 +376,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(
       lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       assert((axiRead(dut, RenderHostRegs.CAPABILITIES) & (1 << 18)) != 0L,
         "integrated host must advertise the safe unified-command reset")
@@ -411,7 +411,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(
       lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       axiWrite(dut, RenderHostRegs.IRQ, 1)
 
@@ -473,7 +473,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "drain an outstanding DMA page walk before resetting and recover" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       val root = 0x30000
       val fillVa = 0x400000
@@ -537,7 +537,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "clear a backpressured completion on reset and accept later work" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       axiWrite(dut, RenderHostRegs.IRQ, 1)
       axiWrite(dut, GpuCommandMmioRegs.OPCODE, GpuCommandOpcode.fill.litValue.toInt)
@@ -588,7 +588,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "execute a unified kernel through the AXI memory master" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
 
       val programBase = 0x4000
@@ -638,7 +638,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "resolve a multi-row 4x region through the AXI unified command path" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       val srcBase = 0x1000L
       val dstBase = 0x2000L
@@ -706,7 +706,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "resolve through private DMA VAs while invalidating the physical source" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       val words = mutable.LongMap[BigInt]()
       val reads = mutable.ArrayBuffer[BigInt]()
@@ -801,7 +801,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
     it should s"report texture faults to the host and recover (pageBusFault=$busFault, textureBusFault=$textureBusFault)" in {
       val gfx = GraphicsConfig(screenWidth = 4, screenHeight = 4, subPixelBits = 8)
       val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-      simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+      simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
         initialize(dut)
         val words = mutable.LongMap[BigInt]()
         val reads = mutable.ArrayBuffer[BigInt]()
@@ -890,7 +890,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "drain a unified render and delayed writes before acknowledging reset" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       val words = mutable.Map.empty[BigInt, BigInt]
       def store(base: Int, data: Seq[Long]): Unit =
@@ -946,7 +946,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "reject invalid descriptor sample words through AXI, retain ERROR/completion, and recover" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       val words = mutable.Map.empty[BigInt, BigInt]
       def store(base: Int, data: Seq[Long]): Unit =
@@ -1033,7 +1033,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "keep the MMIO completion slot stable while a follow-up render paints" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       val words = mutable.Map.empty[BigInt, BigInt]
       def store(base: Int, data: Seq[Long]): Unit =
@@ -1118,7 +1118,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "run mixed sample modes in sequence through the AXI unified path" in {
     val gfx = GraphicsConfig(screenWidth = 4, screenHeight = 4)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       val words = mutable.Map.empty[BigInt, BigInt]
       def store(base: Int, data: Seq[Long]): Unit =
@@ -1180,7 +1180,7 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   it should "fail a descriptor fetch bus fault before launch, retain it until POP, and recover" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, bufferCommandReads = bufferCommandReads)) { dut =>
       initialize(dut)
       val words = mutable.Map.empty[BigInt, BigInt]
       def store(base: Int, data: Seq[Long]): Unit =
@@ -1246,3 +1246,6 @@ class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   }
 
 }
+
+class GpuHostSystemAxiSpec extends GpuHostSystemAxiChecks()
+class BufferedCommandGpuHostSystemAxiSpec extends GpuHostSystemAxiChecks(bufferCommandReads = true)

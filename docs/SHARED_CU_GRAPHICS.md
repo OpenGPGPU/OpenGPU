@@ -617,3 +617,29 @@ legacy private 4-lane/two-warp graphics CU; it does not include the latest
 shared-pool 3.42x design. This modest native gain neither demonstrates
 3.42x desktop scaling nor qualifies full 640x480 desktop startup. The
 installed default remains unchanged. See [the guest wall-time evidence](performance/shared-cu-memory-guest-wall-2026-10-15.json).
+
+## Job-scoped command-line reuse
+
+`--buffer-command-reads` retains one 64-byte line while fetching a render
+job's immutable descriptor and command records. Idle invalidation is
+independent of DMA. SATP changes, TLB flushes and reset entry discard reuse,
+including pending-fill eligibility. Reset invalidates once and then allows
+admitted reads to drain; holding the block throughout reset would deadlock.
+
+A miss enters translation on the same edge as word acceptance. Stalled word
+replies remain stable through invalidation, faults never populate the line,
+and any word write is acknowledged by memory and discards old read data.
+The command client's uncached lower-memory policy remains intact. This
+option changes neither framebuffer nor staging read semantics.
+
+The same copy now takes **45,625/13,121 cycles on one/four CUs (3.48x)**.
+Descriptor/command line reads fall from 56 to four and both configurations
+save exactly 308 serial setup cycles. Shader, staging and framebuffer phase
+counts and transactions remain unchanged. The final reset wiring reproduces
+the initial inactive-reset measurement exactly.
+
+Eight bridge, six translated-client, 52 enabled system and two final matched
+render checks pass (68 total), including reset during an outstanding
+descriptor fetch, VM changes, CPU updates, faults and ordered MSAA. The
+option defaults off; installed QEMU/Mesa remain unchanged. See [command
+fetch evidence](performance/shared-cu-command-fetch-2026-10-15.json).

@@ -1,0 +1,162 @@
+{
+  "date": "2026-10-15",
+  "scope": "Matched64x64 copy on real16-lane/eight-warp shared CUs. GPU cycles only.",
+  "configuration": {
+    "axi_bytes": 64,
+    "om_inflight": 64,
+    "fragment_dispatch_cap": 112,
+    "combining_groups": 8,
+    "read_response_delay": 2,
+    "write_ack_delay": 12,
+    "command_line_buffer_bytes": 64,
+    "command_buffer_default": false
+  },
+  "before": {
+    "commit": "36dc03d",
+    "cu1": 45933,
+    "cu4": 13429,
+    "descriptor_reads": 16,
+    "command_reads": 40
+  },
+  "after": {
+    "cu1": 45625,
+    "cu4": 13121,
+    "speedup": 3.477250209587684,
+    "cycles_saved_each": 308,
+    "descriptor_reads": 1,
+    "command_reads": 3,
+    "first_lower_staging_write_cycle": 213
+  },
+  "implementation": [
+    "One line retained only during an active render job. Idle invalidation is independent of DMA so every new render starts fresh.",
+    "SATP changes, TLB flushes and reset entry invalidate both existing reuse and in-flight-fill eligibility. Reset uses an entry pulse: admitted command reads must continue to drain.",
+    "Miss acceptance coincides with translator input acceptance, preserving address-space capture timing. Stalled replies survive invalidation; failed lines are never retained.",
+    "Writes are forwarded/acknowledged and invalidate reuse. Command requests preserve uncached policy. CLI --buffer-command-reads is opt-in; staging and framebuffer clients unchanged."
+  ],
+  "validation": {
+    "bridge_units": {
+      "passed": 8,
+      "log": ".artifacts/shared-cu-buffered-command-unit.log"
+    },
+    "translated_units": {
+      "passed": 6,
+      "log": ".artifacts/shared-cu-buffered-command-translated-unit.log",
+      "checks": "Job boundary CPU updates;SATPchange duringfill;sameSATP VMflush newmapping;readbus/invalidPTE/page-table-busfault recovery"
+    },
+    "enabled_broad_system": {
+      "passed": 52,
+      "log": ".artifacts/shared-cu-buffered-command-regression.log",
+      "checks": "23host incl pending descriptor reset drain/descriptorfault/completionstability/CPUupdate;27shaderVM/texture/fault/reset;2orderedMSAA"
+    },
+    "final_matched_render": {
+      "passed": 2,
+      "log": ".artifacts/shared-cu-buffered-command-copy-final.log",
+      "checks": "Final reset pulse wiring; every color/depth pixel, uniform tail, concurrency and completion. Reproduces initial inactive-reset pair exactly."
+    },
+    "discarded_run": "Pre-reset-fix enabled regression was canceled before completion; not counted."
+  },
+  "trace_analysis": [
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 45610,
+      "phase_worker_cycles": [
+        1386,
+        26601,
+        20,
+        8690,
+        4680,
+        4233
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1386,
+        "arvalid": 1035,
+        "rvalid": 1058,
+        "raster_stall": 42104,
+        "write_any": 26601,
+        "staging_without_shader_run": 31281,
+        "staging_outstanding_any": 26281,
+        "awvalid": 2073,
+        "bvalid": 2097,
+        "launch_any": 20,
+        "run_any": 8690,
+        "read_any": 4680,
+        "emit_any": 4233,
+        "output_blocked": 1994,
+        "om_stall": 116
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 1,
+        "commands_read": 3,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 470,
+        "color_write": 410,
+        "depth_write": 403
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-side-64-alu-0-cycles.csv": "8ce6dba65c6beb21c0d985eef49e6f2ab9e236b6fb4c67feaae130b12185c1d3",
+        "cu-1-axi-64-side-64-alu-0-memory.csv": "afe994e4eda5871b1125f04c8fcce146ff737698f384d1c293a3b6a64b71cb44"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 13106,
+      "phase_worker_cycles": [
+        4672,
+        27409,
+        20,
+        9185,
+        5280,
+        5858
+      ],
+      "peak_staging_outstanding": 4,
+      "cycle_events": {
+        "idle_any": 2512,
+        "arvalid": 993,
+        "rvalid": 1045,
+        "write_any": 10951,
+        "staging_without_shader_run": 6147,
+        "staging_outstanding_any": 11577,
+        "awvalid": 1960,
+        "bvalid": 2046,
+        "raster_stall": 9483,
+        "staging_blocked": 91,
+        "launch_any": 20,
+        "run_any": 6365,
+        "read_any": 4521,
+        "emit_any": 4764,
+        "output_blocked": 2851,
+        "om_stall": 639
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 1,
+        "commands_read": 3,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 428,
+        "color_write": 351,
+        "depth_write": 349
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-side-64-alu-0-cycles.csv": "212b2e39015fda65b372194a33ddf852fec539b99ca1877741aef1ccac383481",
+        "cu-4-axi-64-side-64-alu-0-memory.csv": "ed696f2d613e7701c9dd2ffb5272cbed4fac3811f28f384dfc3bf72f72f6909f"
+      }
+    }
+  ],
+  "reproduce": {
+    "units": "testOnly opengpu.graphics.BufferedCommandWordPortSpec opengpu.core.memory.BufferedTranslatedWordClientSpec",
+    "copy": "testOnly opengpu.system.BufferedCommandWideSharedGraphicsSpec",
+    "enabled_regression": "testOnly opengpu.system.BufferedCommandGpuHostSystemAxiSpec opengpu.system.BufferedCommandParallelCuProgrammableTextureAxiSpec opengpu.system.BufferedCommandParallelGraphicsOrderingSpec",
+    "environment": "JAVA_OPTS=-Xms1G -Xmx6G -Xss6M; sbt set Test / parallelExecution := false; optional WIDE_GRAPHICS_TRACE_DIR"
+  },
+  "remaining": "Stock Mesa wide ABI conversion, compute/graphics contention and Debian shared-pool qualification remain required. Installed default unchanged."
+}

@@ -11,7 +11,7 @@ import scala.collection.mutable
 /** Exercise shader instruction fetch and vtex.sample through the host's AXI clients. */
 abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Boolean = false,
     coalesce: Boolean = false, axiBytes: Int = 8, fragmentBatchLimit: Int = 0,
-    omInflight: Int = 16, omLocality: Boolean = false)
+    omInflight: Int = 16, omLocality: Boolean = false, bufferCommandReads: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (scenario <- Seq("translation", "invalid PTE", "page-table bus fault",
       "texture bus fault", "reset during texture read", "instruction translation",
@@ -41,7 +41,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
       simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = vertexShader,
         numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty,
         parallelGraphics = parallel, exposePerformance = parallel,
-        coalesceFramebufferWrites = coalesce, memoryAxiDataBytes = axiBytes)) { dut =>
+        coalesceFramebufferWrites = coalesce, memoryAxiDataBytes = axiBytes,
+        bufferCommandReads = bufferCommandReads)) { dut =>
         initialize(dut)
         val words = mutable.LongMap.empty[BigInt]
         val reads = mutable.ArrayBuffer.empty[BigInt]
@@ -535,3 +536,7 @@ class CappedParallelCuProgrammableTextureAxiSpec
 class WideCapacityCappedParallelCuProgrammableTextureAxiSpec
     extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true,
       axiBytes = 64, fragmentBatchLimit = 4, omInflight = 64, omLocality = true)
+
+class BufferedCommandParallelCuProgrammableTextureAxiSpec
+    extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true,
+      axiBytes = 64, bufferCommandReads = true)
