@@ -15,13 +15,10 @@
 
 #define PIPE_FS_SLOT 2u
 #define PIPE_KERNARG_SLOT 3u
-/* The kernel requires a multiple of 64, up to the 256-instruction
- * sandbox. The coverage fragment program needs the whole slot. */
-#define PIPE_FS_GEM_BYTES 1024u
+/* Shader bindings are cache-line aligned, with a bounded 512-instruction
+ * sandbox for runtime address generation. Preserve legacy 1024-byte slots. */
+#define PIPE_FS_GEM_BYTES 2048u
 #define PIPE_KERNARG_BYTES 1024u
-/* One eight-fragment bank: 288 bytes of staging and a 32-byte uniform tail.
- * Older hardware has two banks; shared graphics describes its bank count. */
-#define PIPE_FS_BANK_STRIDE 320u
 #define PIPE_CS_SLOT 1u
 #define PIPE_CS_KERNARG_SLOT 2u
 #define PIPE_CS_GEM_BYTES 64u
@@ -30,17 +27,10 @@
 #define PIPE_VB_SLOT 4u
 #define PIPE_VS_SLOT 5u
 #define PIPE_VS_KERNARG_SLOT 6u
-#define PIPE_VS_GEM_BYTES 1024u
-#define PIPE_VS_KERNARG_BYTES 768u
-/* Column-major mat4, past the 16 vertex slices of an 8-wide batch.
- * The next float is 65536.0, which the shader multiplies by before
- * converting clip space to Q16.16. A second mat4 starts at byte 640.
- * The two-matrix program biases that integer itself and does not
- * read byte 584. */
-#define PIPE_VS_MATRIX_OFFSET 512u
+#define PIPE_VS_GEM_BYTES 2048u
+/* Vertex uniforms: mat4, scale, padding, second mat4, within a 256-byte
+ * tail following the sixteen input/output arrays of the selected batch. */
 #define PIPE_VS_MATRIX_BYTES 64u
-#define PIPE_VS_SCALE_OFFSET 576u
-#define PIPE_VS_MATRIX2_OFFSET 640u
 #define PIPE_VS_UNIFORM_BYTES 256u
 
 struct pipe_opengpu_screen {
@@ -182,9 +172,30 @@ uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *scr
     return screen ? screen->shader_config : 0;
 }
 
+uint32_t pipe_opengpu_screen_fs_bank_stride(const struct pipe_opengpu_screen *screen)
+{
+    return screen ? opengpu_shader_fragment_bank_stride(screen->shader_config) : 0;
+}
+
+static uint32_t fragment_uniform_offset(const struct pipe_opengpu_screen *screen)
+{
+    return opengpu_shader_fragment_uniform_offset(screen->shader_config);
+}
+
+static uint32_t vertex_uniform_offset(const struct pipe_opengpu_screen *screen)
+{
+    return opengpu_shader_vertex_uniform_offset(screen->shader_config);
+}
+
+static uint32_t vertex_kernarg_bytes(const struct pipe_opengpu_screen *screen)
+{
+    return opengpu_shader_vertex_kernarg_bytes(screen->shader_config);
+}
+
 static uint32_t fragment_kernarg_bytes(const struct pipe_opengpu_screen *screen)
 {
-    uint32_t span = opengpu_shader_resource_banks(screen->shader_config) * PIPE_FS_BANK_STRIDE;
+    uint32_t span = opengpu_shader_resource_banks(screen->shader_config) *
+                    pipe_opengpu_screen_fs_bank_stride(screen);
     return span > PIPE_KERNARG_BYTES ? span : PIPE_KERNARG_BYTES;
 }
 
@@ -548,6 +559,7 @@ int pipe_opengpu_bind_fs(struct pipe_opengpu_context *ctx,
 {
     struct drm_opengpu_resource binding = { 0 };
     int fd;
+    uint32_t shader_bytes;
 
     if (!ctx) {
         errno = EINVAL;
@@ -584,16 +596,17 @@ int pipe_opengpu_bind_fs(struct pipe_opengpu_context *ctx,
         errno = EINVAL;
         return -1;
     }
-    if (opengpu_buffer_create(fd, PIPE_FS_GEM_BYTES, &ctx->shader) ||
+    shader_bytes = bytes <= 1024u ? 1024u : (uint32_t)((bytes + 63u) & ~63u);
+    if (opengpu_buffer_create(fd, shader_bytes, &ctx->shader) ||
         opengpu_buffer_create(fd, fragment_kernarg_bytes(ctx->screen), &ctx->kernarg))
         return -1;
-    memset(ctx->shader.map, 0, PIPE_FS_GEM_BYTES);
+    memset(ctx->shader.map, 0, shader_bytes);
     memcpy(ctx->shader.map, code, bytes);
     binding.context_id = ctx->context_id;
     binding.slot = PIPE_FS_SLOT;
     binding.handle = ctx->shader.handle;
     binding.type = OPENGPU_RESOURCE_SHADER;
-    binding.size = PIPE_FS_GEM_BYTES;
+    binding.size = shader_bytes;
     if (opengpu_bind(fd, &binding))
         return -1;
     binding.slot = PIPE_KERNARG_SLOT;
@@ -1090,6 +1103,7 @@ int pipe_opengpu_bind_vs(struct pipe_opengpu_context *ctx,
 {
     struct drm_opengpu_resource binding = { 0 };
     int fd;
+    uint32_t shader_bytes;
 
     if (!ctx || !code || bytes == 0 || bytes > PIPE_VS_GEM_BYTES || (bytes & 3)) {
         errno = EINVAL;
@@ -1113,22 +1127,23 @@ int pipe_opengpu_bind_vs(struct pipe_opengpu_context *ctx,
         opengpu_buffer_destroy(fd, &ctx->vs_kernarg);
         memset(&ctx->vs_kernarg, 0, sizeof(ctx->vs_kernarg));
     }
-    if (opengpu_buffer_create(fd, PIPE_VS_GEM_BYTES, &ctx->vs_shader) ||
-        opengpu_buffer_create(fd, PIPE_VS_KERNARG_BYTES, &ctx->vs_kernarg))
+    shader_bytes = bytes <= 1024u ? 1024u : (uint32_t)((bytes + 63u) & ~63u);
+    if (opengpu_buffer_create(fd, shader_bytes, &ctx->vs_shader) ||
+        opengpu_buffer_create(fd, vertex_kernarg_bytes(ctx->screen), &ctx->vs_kernarg))
         return -1;
     memcpy(ctx->vs_shader.map, code, bytes);
-    memset(ctx->vs_kernarg.map, 0, PIPE_VS_KERNARG_BYTES);
+    memset(ctx->vs_kernarg.map, 0, vertex_kernarg_bytes(ctx->screen));
     binding.context_id = ctx->context_id;
     binding.slot = PIPE_VS_SLOT;
     binding.handle = ctx->vs_shader.handle;
     binding.type = OPENGPU_RESOURCE_VERTEX_SHADER;
-    binding.size = PIPE_VS_GEM_BYTES;
+    binding.size = shader_bytes;
     if (opengpu_bind(fd, &binding))
         return -1;
     binding.slot = PIPE_VS_KERNARG_SLOT;
     binding.handle = ctx->vs_kernarg.handle;
     binding.type = OPENGPU_RESOURCE_VERTEX_KERNARG;
-    binding.size = PIPE_VS_KERNARG_BYTES;
+    binding.size = vertex_kernarg_bytes(ctx->screen);
     binding.flags = OPENGPU_RESOURCE_UNCACHED;
     if (opengpu_bind(fd, &binding))
         return -1;
@@ -1145,20 +1160,20 @@ int pipe_opengpu_write_vs_matrix(struct pipe_opengpu_context *ctx,
     float scale = 65536.0f;
 
     if (!ctx || !matrix || !ctx->vs_bound || !ctx->vs_kernarg.map ||
-        ctx->vs_kernarg.size < PIPE_VS_MATRIX_OFFSET + PIPE_VS_UNIFORM_BYTES) {
+        ctx->vs_kernarg.size < vertex_uniform_offset(ctx->screen) + PIPE_VS_UNIFORM_BYTES) {
         errno = EINVAL;
         return -1;
     }
-    memcpy((uint8_t *)ctx->vs_kernarg.map + PIPE_VS_MATRIX_OFFSET, matrix,
+    memcpy((uint8_t *)ctx->vs_kernarg.map + vertex_uniform_offset(ctx->screen), matrix,
            PIPE_VS_MATRIX_BYTES);
-    memcpy((uint8_t *)ctx->vs_kernarg.map + PIPE_VS_SCALE_OFFSET, &scale,
+    memcpy((uint8_t *)ctx->vs_kernarg.map + (vertex_uniform_offset(ctx->screen) + 64u), &scale,
            sizeof(scale));
     fence = alloc_fence(ctx->screen->fd);
     if (!fence)
         return -1;
     invalidate.context_id = ctx->context_id;
     invalidate.handle = ctx->vs_kernarg.handle;
-    invalidate.offset = PIPE_VS_MATRIX_OFFSET;
+    invalidate.offset = vertex_uniform_offset(ctx->screen);
     invalidate.bytes = PIPE_VS_UNIFORM_BYTES;
     invalidate.out_syncobj = fence->handle;
     if (opengpu_invalidate(ctx->screen->fd, &invalidate)) {
@@ -1181,24 +1196,24 @@ int pipe_opengpu_write_vs_matrices(struct pipe_opengpu_context *ctx,
 
     if (!ctx || !projection || !modelview || !ctx->vs_bound ||
         !ctx->vs_kernarg.map ||
-        ctx->vs_kernarg.size < PIPE_VS_MATRIX_OFFSET + PIPE_VS_UNIFORM_BYTES) {
+        ctx->vs_kernarg.size < vertex_uniform_offset(ctx->screen) + PIPE_VS_UNIFORM_BYTES) {
         errno = EINVAL;
         return -1;
     }
-    uniform = (uint8_t *)ctx->vs_kernarg.map + PIPE_VS_MATRIX_OFFSET;
+    uniform = (uint8_t *)ctx->vs_kernarg.map + vertex_uniform_offset(ctx->screen);
     memcpy(uniform, projection, PIPE_VS_MATRIX_BYTES);
-    memcpy(uniform + (PIPE_VS_SCALE_OFFSET - PIPE_VS_MATRIX_OFFSET), &scale,
+    memcpy(uniform + 64u, &scale,
            sizeof(scale));
     memcpy(uniform + 68, &zero, sizeof(zero));
     memcpy(uniform + 72, &half, sizeof(half));
-    memcpy((uint8_t *)ctx->vs_kernarg.map + PIPE_VS_MATRIX2_OFFSET, modelview,
+    memcpy(uniform + 128u, modelview,
            PIPE_VS_MATRIX_BYTES);
     fence = alloc_fence(ctx->screen->fd);
     if (!fence)
         return -1;
     invalidate.context_id = ctx->context_id;
     invalidate.handle = ctx->vs_kernarg.handle;
-    invalidate.offset = PIPE_VS_MATRIX_OFFSET;
+    invalidate.offset = vertex_uniform_offset(ctx->screen);
     invalidate.bytes = PIPE_VS_UNIFORM_BYTES;
     invalidate.out_syncobj = fence->handle;
     if (opengpu_invalidate(ctx->screen->fd, &invalidate)) {
@@ -1211,7 +1226,7 @@ int pipe_opengpu_write_vs_matrices(struct pipe_opengpu_context *ctx,
 int pipe_opengpu_write_fs_uniform(struct pipe_opengpu_context *ctx,
                                   uint32_t word)
 {
-    /* The uniform word is at byte 288 of every advertised fragment bank. */
+    /* Replicate the uniform tail into every advertised fragment bank. */
     unsigned i;
 
     if (!ctx || !ctx->fs_bound || !ctx->kernarg.map ||
@@ -1223,14 +1238,17 @@ int pipe_opengpu_write_fs_uniform(struct pipe_opengpu_context *ctx,
         struct drm_opengpu_invalidate invalidate = { 0 };
         struct pipe_opengpu_fence *fence;
 
-        memcpy((uint8_t *)ctx->kernarg.map + i * PIPE_FS_BANK_STRIDE + 288u,
+        memcpy((uint8_t *)ctx->kernarg.map +
+               i * pipe_opengpu_screen_fs_bank_stride(ctx->screen) +
+               fragment_uniform_offset(ctx->screen),
                &word, sizeof(word));
         fence = alloc_fence(ctx->screen->fd);
         if (!fence)
             return -1;
         invalidate.context_id = ctx->context_id;
         invalidate.handle = ctx->kernarg.handle;
-        invalidate.offset = i * PIPE_FS_BANK_STRIDE + 256u;
+        invalidate.offset = i * pipe_opengpu_screen_fs_bank_stride(ctx->screen) +
+                            (fragment_uniform_offset(ctx->screen) & ~63u);
         invalidate.bytes = 64;
         invalidate.out_syncobj = fence->handle;
         if (opengpu_invalidate(ctx->screen->fd, &invalidate)) {
@@ -1250,15 +1268,18 @@ int pipe_opengpu_write_fs_block(struct pipe_opengpu_context *ctx,
 
     if (!ctx || !words || !nfloats || !ctx->fs_bound || !ctx->kernarg.map ||
         ctx->kernarg.size < fragment_kernarg_bytes(ctx->screen) ||
-        288u + nfloats * 4u > PIPE_FS_BANK_STRIDE) {
+        nfloats > 8u) {
         errno = EINVAL;
         return -1;
     }
     bytes = nfloats * 4u;
     for (bank = 0; bank < opengpu_shader_resource_banks(ctx->screen->shader_config); bank++) {
-        memcpy((uint8_t *)ctx->kernarg.map + bank * PIPE_FS_BANK_STRIDE + 288u,
+        memcpy((uint8_t *)ctx->kernarg.map +
+               bank * pipe_opengpu_screen_fs_bank_stride(ctx->screen) +
+               fragment_uniform_offset(ctx->screen),
                words, bytes);
-        for (off = 256u; off < 288u + bytes; off += 64u) {
+        for (off = fragment_uniform_offset(ctx->screen) & ~63u;
+             off < fragment_uniform_offset(ctx->screen) + bytes; off += 64u) {
             struct drm_opengpu_invalidate invalidate = { 0 };
             struct pipe_opengpu_fence *fence = alloc_fence(ctx->screen->fd);
 
@@ -1266,7 +1287,7 @@ int pipe_opengpu_write_fs_block(struct pipe_opengpu_context *ctx,
                 return -1;
             invalidate.context_id = ctx->context_id;
             invalidate.handle = ctx->kernarg.handle;
-            invalidate.offset = bank * PIPE_FS_BANK_STRIDE + off;
+            invalidate.offset = bank * pipe_opengpu_screen_fs_bank_stride(ctx->screen) + off;
             invalidate.bytes = 64;
             invalidate.out_syncobj = fence->handle;
             if (opengpu_invalidate(ctx->screen->fd, &invalidate)) {
@@ -1283,21 +1304,31 @@ int pipe_opengpu_write_fs_block(struct pipe_opengpu_context *ctx,
 void pipe_opengpu_log_vs_kernarg(struct pipe_opengpu_context *ctx)
 {
     const uint32_t *w;
+    uint32_t probes[19];
+    const unsigned offsets[19] = {0, 96, 256, 288, 320, 352, 384, 512,
+        560, 572, 576, 584, 416, 420, 424, 428, 464, 480, 448};
+    unsigned i;
 
     if (!ctx || !ctx->vs_kernarg.map ||
-        ctx->vs_kernarg.size < PIPE_VS_MATRIX_OFFSET + PIPE_VS_UNIFORM_BYTES)
+        ctx->vs_kernarg.size < vertex_uniform_offset(ctx->screen) + PIPE_VS_UNIFORM_BYTES)
         return;
     w = ctx->vs_kernarg.map;
+    for (i = 0; i < 19; i++) {
+        unsigned old = offsets[i];
+        unsigned off = old < 512 ?
+            (old / 32) * opengpu_shader_array_stride(ctx->screen->shader_config) + old % 32 :
+            vertex_uniform_offset(ctx->screen) + old - 512;
+        probes[i] = w[off / 4];
+    }
     fprintf(stderr,
             "opengpu: kernarg px=%08x pw=%08x cx=%08x cy=%08x cz=%08x cw=%08x "
             "color=%08x m00=%08x m03=%08x m33=%08x scale=%08x inv=%08x "
             "m00ld=%08x m01ld=%08x m02ld=%08x m03ld=%08x f2ld=%08x "
             "partial=%08x rawx=%08x\n",
-            w[0], w[96 / 4], w[256 / 4], w[288 / 4], w[320 / 4], w[352 / 4],
-            w[384 / 4], w[512 / 4], w[560 / 4], w[572 / 4], w[576 / 4],
-            w[584 / 4],
-            w[416 / 4], w[420 / 4], w[424 / 4], w[428 / 4], w[464 / 4],
-            w[480 / 4], w[448 / 4]);
+            probes[0], probes[1], probes[2], probes[3], probes[4], probes[5],
+            probes[6], probes[7], probes[8], probes[9], probes[10], probes[11],
+            probes[12], probes[13], probes[14], probes[15], probes[16], probes[17],
+            probes[18]);
 }
 
 int pipe_opengpu_set_vertex_buffer(struct pipe_opengpu_context *ctx,

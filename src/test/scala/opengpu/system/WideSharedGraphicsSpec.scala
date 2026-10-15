@@ -12,14 +12,15 @@ import java.nio.file.{Files, Paths}
 /** Qualify the real 16-lane/eight-warp pool before migrating stock Mesa shaders. */
 abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coalesce: Boolean = false,
     side: Int = 32, aluIterations: Int = 0, omInflight: Int = 16, omLocality: Boolean = false,
-    fragmentBatchLimit: Int = 0, bufferCommandReads: Boolean = false)
+    fragmentBatchLimit: Int = 0, bufferCommandReads: Boolean = false,
+    lanes: Int = 16, warps: Int = 8, runtimeShader: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (cus <- cuCounts) {
-    it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations OM=$omInflight cap=$fragmentBatchLimit)" in {
-      val capacity = 128
+    it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations OM=$omInflight cap=$fragmentBatchLimit lanes=$lanes warps=$warps runtime=$runtimeShader)" in {
+      val capacity = lanes * warps
       val stride = 4 * capacity
-      val bankStride = 9 * stride + 64
-      val gpu = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
+      val bankStride = (9 * stride + 32 + 63) & ~63
+      val gpu = GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2)
       simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight, omLocality = omLocality, fragmentBatchLimit = fragmentBatchLimit),
         gpu, numComputeUnits = cus, fragCore = true, sharedGraphics = true,
         parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes,
@@ -63,9 +64,18 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           Seq((aluIterations.toLong << 20) | (7L << 7) | 0x13L) ++
             Seq.fill(16)(0x02204157L) ++ Seq(0xfff38393L, branch)
         }
-        store(program, Seq(0x00241293L, 0x005082b3L, 0xc1087057L) ++
+        val shader = if (runtimeShader) {
+          // The exact same binary for every lane/warp/CU count. x9 supplies
+          // capacity, x8 the warp base; vsetvli selects VLMAX at execution.
+          Seq(0x00249f13L, 0x00241293L, 0x005082b3L, 0x01007357L,
+            0x00300313L, 0x03e30333L, 0x00628333L, 0x02036107L,
+            0x00600313L, 0x03e30333L, 0x00628333L, 0x02036127L,
+            0x30500073L)
+        } else Seq(0x00241293L, 0x005082b3L, 0xc1087057L) ++
           address(3 * stride) ++ Seq(0x02036107L) ++ arithmetic ++
-          address(6 * stride) ++ Seq(0x02036127L, 0x30500073L))
+          address(6 * stride) ++ Seq(0x02036127L, 0x30500073L)
+        require(runtimeShader || (lanes == 16 && warps == 8))
+        store(program, shader)
         val vertices = Seq(-65536L, -65536L, 0L, 65536L,
           65536L, -65536L, 0L, 65536L, -65536L, 65536L, 0L, 65536L)
         store(commands, vertices ++ Seq(255L, 0L, 0L, 0L, 255L, 0L, 0L, 0L, 255L) ++
@@ -76,7 +86,7 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         store(color, Seq.fill(side * side)(0x12345678L))
         store(depth, Seq.fill(side * side)(0x00ffffffL))
         for (bank <- 0 until 2 * cus)
-          store(kernarg + bank * bankStride + 9 * stride, Seq.fill(16)(sentinel))
+          store(kernarg + bank * bankStride + 9 * stride, Seq.fill((bankStride - 9 * stride) / 4)(sentinel))
         val basePrefix = if (axiBytes == 8) s"cu-$cus" else s"cu-$cus-axi-$axiBytes"
         val tracePrefix = if (side == 32 && aluIterations == 0) basePrefix else
           s"$basePrefix-side-$side-alu-$aluIterations"
@@ -162,7 +172,7 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         val completion = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
         assert((completion & 0xff) == 91 && completion.testBit(15))
         dut.io.performance.get.system.maxActiveComputeUnits.expect(cus.U)
-        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight fragment_batch_limit=$fragmentBatchLimit lanes=16 warps=8 cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$cus")
+        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight fragment_batch_limit=$fragmentBatchLimit lanes=$lanes warps=$warps runtime_shader=$runtimeShader cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$cus")
         for (y <- 0 until side; x <- 0 until side) {
           val offset = (y * side + x) * 4L
           val covered = x > 0 && y > 0 && x + y <= side
@@ -178,7 +188,7 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           assert(words(depth + offset) == BigInt(expectedDepth),
             s"CUs=$cus ($x,$y) depth=${words(depth + offset)} expected=$expectedDepth")
         }
-        for (bank <- 0 until 2 * cus; word <- 0 until 16)
+        for (bank <- 0 until 2 * cus; word <- 0 until (bankStride - 9 * stride) / 4)
           assert(words(kernarg + bank * bankStride + 9L * stride + word * 4) == BigInt(sentinel))
       }
     }

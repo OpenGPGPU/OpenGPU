@@ -1,0 +1,132 @@
+{
+  "date": "2026-10-15",
+  "scope": "Runtime graphics shader ABI, resource-derived staging, capability-gated driver validation; desktop not yet qualified",
+  "abi": {
+    "capability_bit": 24,
+    "x9": "physical CU capacity = lanes * warps",
+    "x8": "warp local linear base",
+    "vector_configuration": "vsetvli x6,x0,e32,m1",
+    "shader_hardware_specialization": false,
+    "fragment_uniform_bytes": 32,
+    "vertex_uniform_bytes": 256,
+    "shader_instruction_bound": 512
+  },
+  "validation": {
+    "rtl": {
+      "passed": 41,
+      "breakdown": {
+        "initializer": 2,
+        "vector_configuration": 12,
+        "abi_layout": 11,
+        "pixel_checked_renders": 5,
+        "compute_unit_regression": 7,
+        "host_resource_reset_fault_regression": 4
+      }
+    },
+    "software": {
+      "stock_programs": 11,
+      "resource_descriptions": 7,
+      "cases": 77,
+      "all_warps_effective_addresses": true,
+      "asan_ubsan": "PASS: nine driver programs plus runtime shader cases",
+      "host_script_entry_point": "PASS"
+    },
+    "aarch64_builds": [
+      "Linux 7.2.0 external module",
+      "Gallium static library"
+    ]
+  },
+  "render_metrics": [
+    {
+      "CUs": 1,
+      "axi_bytes": 64,
+      "side": 16,
+      "alu_loops": 0,
+      "om_inflight": 16,
+      "fragment_batch_limit": 0,
+      "lanes": 4,
+      "warps": 2,
+      "runtime_shader": "true",
+      "cycles": 9306,
+      "active_cu_cycles": 5150,
+      "peak_cus": 1
+    },
+    {
+      "CUs": 1,
+      "axi_bytes": 64,
+      "side": 16,
+      "alu_loops": 0,
+      "om_inflight": 16,
+      "fragment_batch_limit": 0,
+      "lanes": 8,
+      "warps": 4,
+      "runtime_shader": "true",
+      "cycles": 5395,
+      "active_cu_cycles": 1720,
+      "peak_cus": 1
+    },
+    {
+      "CUs": 1,
+      "axi_bytes": 64,
+      "side": 32,
+      "alu_loops": 0,
+      "om_inflight": 16,
+      "fragment_batch_limit": 0,
+      "lanes": 16,
+      "warps": 8,
+      "runtime_shader": "true",
+      "cycles": 15794,
+      "active_cu_cycles": 2498,
+      "peak_cus": 1
+    },
+    {
+      "CUs": 4,
+      "axi_bytes": 64,
+      "side": 32,
+      "alu_loops": 0,
+      "om_inflight": 16,
+      "fragment_batch_limit": 0,
+      "lanes": 16,
+      "warps": 8,
+      "runtime_shader": "true",
+      "cycles": 8138,
+      "active_cu_cycles": 2623,
+      "peak_cus": 4
+    },
+    {
+      "CUs": 1,
+      "axi_bytes": 64,
+      "side": 16,
+      "alu_loops": 0,
+      "om_inflight": 16,
+      "fragment_batch_limit": 0,
+      "lanes": 32,
+      "warps": 2,
+      "runtime_shader": "true",
+      "cycles": 4673,
+      "active_cu_cycles": 880,
+      "peak_cus": 1
+    }
+  ],
+  "logs": [
+    ".artifacts/shared-cu-runtime-rtl.log",
+    ".artifacts/shared-cu-runtime-regression.log",
+    ".artifacts/shared-cu-runtime-sanitizers-final.log",
+    ".artifacts/shared-cu-runtime-scripts.log",
+    ".artifacts/shared-cu-runtime-mesa-build-final.log",
+    ".artifacts/shared-cu-runtime-module-build-final.log"
+  ],
+  "reproduce": [
+    "python3 scripts/test_driver.py",
+    "CC='cc -fsanitize=address,undefined -g' python3 scripts/test_driver.py",
+    "bash scripts/test_scripts.sh",
+    "JAVA_OPTS='-Xmx6G -XX:ActiveProcessorCount=4' sbt 'testOnly opengpu.dispatch.WarpContextInitializerSpec opengpu.core.vector.VectorConfigurationUnitSpec opengpu.graphics.GpuAbiLayoutSpec opengpu.system.RuntimeShaderFourLaneSpec opengpu.system.RuntimeShaderEightLaneSpec opengpu.system.RuntimeShaderSixteenLaneSpec opengpu.system.RuntimeShaderThirtyTwoLaneSpec'",
+    "sbt 'testOnly opengpu.core.GpuComputeUnitSpec' 'testOnly opengpu.system.GpuHostSystemAxiSpec -- -z \"expose shader resource\" -z \"drain a unified render\" -z \"fail a descriptor\"'"
+  ],
+  "limits": [
+    "C software test interprets address calculations and control, not FP/vector pixel arithmetic for every stock shader.",
+    "Pixel checked RTL render uses a common runtime color-copy shader; stock vertex/texture/ALU guest rendering remains to qualify.",
+    "Earlier optimized 3.48x measurement predates the extra launch-register initialization and runtime shader path; remeasure before making current scaling claims.",
+    "Installed QEMU, module, Mesa payload and Debian image unchanged."
+  ]
+}

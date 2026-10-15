@@ -47,6 +47,8 @@ object GpuCapabilities {
   val ComputeScalarFpu = 22
   /** Read-only shader lane/warp/bank/CU description is queryable (bit23). */
   val ShaderConfigInfo = 23
+  /** Launch x9 supplies CU capacity; shaders may select VLMAX dynamically. */
+  val RuntimeShaderAbi = 24
 }
 
 /** Byte fields of GpuCommandMmioRegs.SHADER_CONFIG and the DRM query. */

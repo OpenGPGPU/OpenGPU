@@ -5,16 +5,19 @@
 #include <string.h>
 #include "opengpu_shader_builder.h"
 
-static void check_copy(uint32_t batch, uint32_t lanes)
+static void check_copy(uint32_t batch, uint32_t lanes, bool runtime)
 {
     uint32_t program[16] = {0};
-    uint32_t count = opengpu_fragment_passthrough_shader(program, 16, batch, lanes);
+    uint32_t count = runtime ? opengpu_fragment_runtime_passthrough_shader(program, 16) :
+        opengpu_fragment_passthrough_shader(program, 16, batch, lanes);
     uint32_t memory[9 * 252 + 16], before[9 * 252 + 16];
     const uint32_t base = 0x8000;
     unsigned i, warp;
 
-    assert(count && count <= 11);
-    assert(opengpu_shader_validate_words(program, count, 9u * batch * 4, batch, false));
+    assert(count && count <= (runtime ? 13u : 11u));
+    assert(opengpu_shader_validate_words_profile_runtime(program, count,
+        9u * batch * 4, batch, 6, 9, true, false, false, false,
+        runtime ? batch : 0));
     for (i = 0; i < sizeof(memory) / sizeof(*memory); i++)
         memory[i] = 0x12340000u + i;
     memcpy(before, memory, sizeof(memory));
@@ -24,6 +27,7 @@ static void check_copy(uint32_t batch, uint32_t lanes)
         uint32_t x[32] = {0}, vector[32] = {0}, vl = 0;
         x[1] = base;
         x[8] = warp;
+        x[9] = batch;
         for (i = 0; i < count; i++) {
             uint32_t insn = program[i], op = insn & 127u;
             uint32_t rd = insn >> 7 & 31u, rs1 = insn >> 15 & 31u;
@@ -35,9 +39,13 @@ static void check_copy(uint32_t batch, uint32_t lanes)
             if (op == 0x13)
                 x[rd] = (insn >> 12 & 7u) == 1u ? x[rs1] << rs2 : x[rs1] + imm;
             else if (op == 0x33)
-                x[rd] = x[rs1] + x[rs2];
+                x[rd] = insn >> 25 == 1 ? x[rs1] * x[rs2] : x[rs1] + x[rs2];
             else if (op == 0x57) {
-                vl = rs1;
+                vl = runtime ? lanes : rs1;
+                if (runtime) {
+                    assert(insn == 0x01007357u);
+                    x[rd] = lanes;
+                }
                 assert(vl == lanes);
             } else {
                 assert(op == 0x07 || op == 0x27);
@@ -64,10 +72,16 @@ static void check_copy(uint32_t batch, uint32_t lanes)
 int main(void)
 {
     uint32_t program[16];
-    check_copy(8, 4);
-    check_copy(32, 16);
-    check_copy(128, 16);
-    check_copy(252, 4);
+    check_copy(8, 4, false);
+    check_copy(32, 16, false);
+    check_copy(128, 16, false);
+    check_copy(252, 4, false);
+    check_copy(8, 4, true);
+    check_copy(32, 8, true);
+    check_copy(128, 16, true);
+    check_copy(64, 32, true);
+    assert(!opengpu_fragment_runtime_passthrough_shader(program, 12));
+    assert(!opengpu_fragment_runtime_passthrough_shader(NULL, 16));
     assert(!opengpu_fragment_passthrough_shader(program, 15, 8, 4));
     assert(!opengpu_fragment_passthrough_shader(program, 16, 0, 4));
     assert(!opengpu_fragment_passthrough_shader(program, 16, 128, 0));

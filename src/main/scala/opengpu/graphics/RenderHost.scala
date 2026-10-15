@@ -409,6 +409,7 @@ class RenderHost(
       (1 << GpuCapabilities.StridedEngine) |
       (if (unifiedCommands) (1 << GpuCapabilities.UnifiedCommands) else 0) |
       (if (unifiedCommands && fragCore) (1 << GpuCapabilities.ShaderConfigInfo) else 0) |
+      (if (unifiedCommands && fragCore) (1 << GpuCapabilities.RuntimeShaderAbi) else 0) |
       // Advertise MSAA only when a mode above 1x is supported. The backend is
       // selected by FragmentCore, independently of this capability bit.
       (if (config.maxSampleCount > 1) (1 << GpuCapabilities.Msaa) else 0) |

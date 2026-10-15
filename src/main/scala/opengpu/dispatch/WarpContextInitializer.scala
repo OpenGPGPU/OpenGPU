@@ -10,7 +10,7 @@ import opengpu.core.frontend.warp.WarpLaunch
   *
   * Scalar ABI:
   *   x1=kernarg, x2..x4=group xyz, x5..x7=local-size xyz,
-  *   x8=local-linear-base.
+  *   x8=local-linear-base, x9=physical CU thread capacity (lanes * warps).
   * Vector v1 contains local-linear IDs. v0 remains reserved for RVV masks.
   *
   * This module owns the frontend launch port. It snapshots the lowest free
@@ -34,7 +34,7 @@ class WarpContextInitializer(config: GpuConfig = GpuConfig()) extends Module {
   private val state = RegInit(idle)
   private val task = Reg(new WarpTask(config))
   private val warpId = Reg(UInt(config.warpIdWidth.W))
-  private val scalarIndex = RegInit(0.U(3.W))
+  private val scalarIndex = RegInit(0.U(4.W))
   private val free = ~io.activeWarps
   private val selectedWarp = PriorityEncoder(free)
 
@@ -46,7 +46,7 @@ class WarpContextInitializer(config: GpuConfig = GpuConfig()) extends Module {
     state := scalarInit
   }
 
-  private val scalarValues = Wire(Vec(8, UInt(config.xLen.W)))
+  private val scalarValues = Wire(Vec(9, UInt(config.xLen.W)))
   scalarValues(0) := task.kernargAddress
   scalarValues(1) := task.groupId(0)
   scalarValues(2) := task.groupId(1)
@@ -55,13 +55,14 @@ class WarpContextInitializer(config: GpuConfig = GpuConfig()) extends Module {
   scalarValues(5) := task.localSize(1)
   scalarValues(6) := task.localSize(2)
   scalarValues(7) := task.localLinearBase
+  scalarValues(8) := (config.lanes * config.warps).U
 
   io.scalar.valid := state === scalarInit
   io.scalar.bits.warpId := warpId
   io.scalar.bits.rd := scalarIndex +& 1.U
   io.scalar.bits.data := scalarValues(scalarIndex)
   when(io.scalar.fire) {
-    when(scalarIndex === 7.U) {
+    when(scalarIndex === 8.U) {
       state := vectorInit
     }.otherwise {
       scalarIndex := scalarIndex + 1.U

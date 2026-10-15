@@ -109,7 +109,9 @@ static int opengpu_init_test_shader(struct opengpu_device *gpu)
 
     program = gpu->compute.shader.cpu;
     memset(program, 0, gpu->compute.shader.size);
-    if (!opengpu_fragment_passthrough_shader(program, 16, batch, vector_length)) {
+    if ((gpu->hw.capabilities & GPU_CAP_RUNTIME_SHADER_ABI) ?
+        !opengpu_fragment_runtime_passthrough_shader(program, 16) :
+        !opengpu_fragment_passthrough_shader(program, 16, batch, vector_length)) {
         opengpu_buffer_free(gpu, &gpu->compute.kernarg);
         opengpu_buffer_free(gpu, &gpu->compute.shader);
         return -EINVAL;
@@ -1079,10 +1081,12 @@ static bool opengpu_validate_shader(
     words = min_t(u64, available / sizeof(u32),
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)shader->cpu + entry);
-    return opengpu_shader_validate_words_with_texture(
+    return opengpu_shader_validate_words_profile_runtime(
         program, words, kernarg_size,
-        opengpu_fragment_batch_capacity(gpu), texture_enabled,
-        opengpu_shader_scalar_fpu_enabled(gpu));
+        opengpu_fragment_batch_capacity(gpu), 6, 9, true, texture_enabled,
+        false, opengpu_shader_scalar_fpu_enabled(gpu),
+        (gpu->hw.capabilities & GPU_CAP_RUNTIME_SHADER_ABI) ?
+            opengpu_fragment_batch_capacity(gpu) : 0);
 }
 
 static bool opengpu_validate_vertex_shader(
@@ -1099,10 +1103,12 @@ static bool opengpu_validate_vertex_shader(
     words = min_t(u64, available / sizeof(u32),
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)shader->cpu + entry);
-    return opengpu_vertex_shader_validate_words(
+    return opengpu_shader_validate_words_profile_runtime(
         program, words, kernarg_size,
-        opengpu_fragment_batch_capacity(gpu),
-        opengpu_shader_scalar_fpu_enabled(gpu));
+        opengpu_fragment_batch_capacity(gpu), 8, 16, false, false,
+        false, opengpu_shader_scalar_fpu_enabled(gpu),
+        (gpu->hw.capabilities & GPU_CAP_RUNTIME_SHADER_ABI) ?
+            opengpu_fragment_batch_capacity(gpu) : 0);
 }
 
 static bool opengpu_validate_kernarg_binding(

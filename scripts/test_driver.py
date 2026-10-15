@@ -20,6 +20,12 @@ def main():
                 "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
             print(f"{name}: PASS", flush=True)
+        binary = Path(directory) / "shader_abi"
+        subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+            "-I" + str(ROOT / "userspace/gallium"), "-I" + str(ROOT / "driver"),
+            str(ROOT / "userspace/tests/shader_abi.c"), "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+        print("runtime shader ABI: PASS", flush=True)
 
 if __name__ == "__main__":
     main()

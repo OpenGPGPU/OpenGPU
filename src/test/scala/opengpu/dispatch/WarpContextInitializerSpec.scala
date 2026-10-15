@@ -30,7 +30,7 @@ class WarpContextInitializerSpec extends AnyFlatSpec {
       dut.io.launch.ready.poke(true.B)
       dut.clock.step(); dut.io.task.valid.poke(false.B)
 
-      val values = Seq(0x8000, 3, 4, 5, 9, 2, 1, 8)
+      val values = Seq(0x8000, 3, 4, 5, 9, 2, 1, 8, config.lanes * config.warps)
       values.zipWithIndex.foreach { case (value, index) =>
         dut.io.scalar.valid.expect(true.B)
         dut.io.scalar.bits.warpId.expect(1.U)

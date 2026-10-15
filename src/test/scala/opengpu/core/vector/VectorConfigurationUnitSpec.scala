@@ -67,6 +67,20 @@ class VectorConfigurationUnitSpec extends AnyFlatSpec {
     dut.io.in.valid.poke(false.B)
   }
 
+  for (lanes <- Seq(4, 8, 16, 32)) {
+    it should s"select VLMAX at runtime with the same instruction for $lanes lanes" in {
+      simulate(new VectorConfigurationUnit(config.copy(lanes = lanes))) { dut =>
+        defaults(dut)
+        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+        issue(dut, BigInt("01007357", 16), warp = 0)
+        dut.io.out.bits.data.expect(lanes.U)
+        dut.io.out.bits.rd.expect(6.U)
+        dut.io.out.bits.vill.expect(false.B)
+        dut.io.state.vl.expect(lanes.U)
+      }
+    }
+  }
+
   it should "configure vl and vtype independently for each warp" in {
     simulate(new VectorConfigurationUnit(config)) { dut =>
       dut.reset.poke(true.B)

@@ -191,8 +191,130 @@ static uint32_t vquad(unsigned int funct6, unsigned int vd,
            (vd & 0x1f) << 7 | 0x2b;
 }
 
+static void test_wide_uniform_provenance(void)
+{
+    uint32_t code[513];
+    unsigned i;
+
+    code[0] = addi(31, 1, 2044);
+    code[1] = addi(31, 31, 2044);
+    code[2] = addi(31, 31, 520); /* x31 = kernarg + 4608 */
+    code[3] = (31u << 15) | (2u << 12) | (9u << 7) | 0x03u;
+    code[4] = OPENGPU_SHADER_CEASE;
+    assert(opengpu_shader_validate_words(code, 5, 4672, 128, true));
+    code[3] |= 64u << 20;
+    assert(!opengpu_shader_validate_words(code, 5, 4672, 128, true));
+    code[3] = (2u << 20) | (31u << 15) | (2u << 12) | (9u << 7) | 0x03u;
+    assert(!opengpu_shader_validate_words(code, 5, 4672, 128, true));
+    code[3] = (60u << 20) | (31u << 15) | (2u << 12) | (1u << 7) | 0x07u;
+    assert(opengpu_shader_validate_words(code, 5, 4672, 128, true));
+    assert(!opengpu_shader_validate_words(code, 5, 4672, 128, false));
+    code[3] |= 64u << 20;
+    assert(!opengpu_shader_validate_words(code, 5, 4672, 128, true));
+    code[0] = 0x2000u | (31u << 7) | 0x37u; /* LUI cannot forge provenance. */
+    code[1] = (31u << 15) | (2u << 12) | (9u << 7) | 0x03u;
+    code[2] = OPENGPU_SHADER_CEASE;
+    assert(!opengpu_shader_validate_words(code, 3, 4672, 128, true));
+    code[0] = addi(31, 1, -4);
+    assert(!opengpu_shader_validate_words(code, 3, 4672, 128, true));
+    code[0] = (2u << 20) | (8u << 15) | (1u << 12) | (31u << 7) | 0x13u;
+    code[1] = (31u << 20) | (1u << 15) | (31u << 7) | 0x33u;
+    code[2] = (31u << 15) | (2u << 12) | (9u << 7) | 0x03u;
+    code[3] = OPENGPU_SHADER_CEASE;
+    assert(!opengpu_shader_validate_words(code, 4, 4672, 128, true));
+    code[0] = addi(31, 1, 100);
+    code[1] = branch(0, 0, 0, 8);
+    code[2] = 0x2000u | (31u << 7) | 0x37u;
+    code[3] = (31u << 15) | (2u << 12) | (9u << 7) | 0x03u;
+    code[4] = OPENGPU_SHADER_CEASE;
+    assert(!opengpu_shader_validate_words(code, 5, 4672, 128, true));
+
+    for (i = 0; i < 513; i++)
+        code[i] = addi(0, 0, 0);
+    code[511] = OPENGPU_SHADER_CEASE;
+    assert(opengpu_shader_validate_words(code, 512, 4672, 128, true));
+    code[0] = branch(0, 0, 0, 511 * 4);
+    assert(opengpu_shader_validate_words(code, 512, 4672, 128, true));
+    code[0] = branch(0, 0, 0, 512 * 4);
+    assert(!opengpu_shader_validate_words(code, 512, 4672, 128, true));
+    code[0] = addi(0, 0, 0);
+    code[511] = addi(0, 0, 0);
+    code[512] = OPENGPU_SHADER_CEASE;
+    assert(!opengpu_shader_validate_words(code, 513, 4672, 128, true));
+}
+
+/* Runtime capacity is trusted only through the capability-gated graphics
+ * profile. Constant arithmetic may preserve proven addresses, never turn
+ * unknown runtime data or wrapping arithmetic into a trusted pointer. */
+static bool validate_runtime(const uint32_t *code, unsigned words, unsigned capacity)
+{
+    return opengpu_shader_validate_words_profile_runtime(code, words, 4672,
+        128, 6, 9, true, false, false, true, capacity);
+}
+
+static void test_runtime_capacity(void)
+{
+    uint32_t code[] = {
+        0x00249f13u, /* slli x30,x9,2: runtime array stride */
+        0x00300f93u, /* addi x31,x0,3 */
+        0x03ef8fb3u, /* mul x31,x31,x30 */
+        0x01f08fb3u, /* add x31,x1,x31 */
+        0x000fa503u, /* lw x10,0(x31) */
+        OPENGPU_SHADER_CEASE,
+    };
+    assert(validate_runtime(code, 6, 128));
+    assert(!validate_runtime(code, 6, 0));
+    assert(!validate_runtime(code, 6, 64));
+    code[0] = 0x00211f13u; /* unknown group ID, not the trusted capacity */
+    assert(!validate_runtime(code, 6, 128));
+    code[0] = 0x00249f13u;
+    code[1] = 0x00a00f93u; /* slice ten is beyond the bound kernarg */
+    assert(!validate_runtime(code, 6, 128));
+    code[1] = 0x00900f93u; /* uniform slice nine */
+    assert(validate_runtime(code, 6, 128));
+    code[4] = 0x03cfa503u; /* final aligned word in the bound bank */
+    assert(validate_runtime(code, 6, 128));
+    code[4] = 0x040fa503u; /* one word past the bank */
+    assert(!validate_runtime(code, 6, 128));
+    code[4] = 0x001fa503u; /* unaligned scalar read */
+    assert(!validate_runtime(code, 6, 128));
+    code[0] = 0x40000f37u; /* LUI is not kernarg provenance */
+    code[1] = 0x003f1f13u; /* wrapping shift must not create a trusted offset */
+    code[4] = 0x000fa503u;
+    assert(!validate_runtime(code, 6, 128));
+
+    {
+        uint32_t overflow[] = {
+            0x00100f13u, /* x30 = 1 */
+            0x01ef1f13u, /* x30 = 1 << 30 */
+            0x00100f93u, /* x31 = 1 */
+            0x01ef9f93u, /* x31 = 1 << 30 */
+            0xffff8f93u, /* x31 -= 1 */
+            0x01ff0f33u, /* x30 = INT32_MAX */
+            0x01e08f33u, /* x30 = kernarg + INT32_MAX */
+            0x001f0f13u, /* overflow must discard pointer provenance */
+            0x000f2503u, OPENGPU_SHADER_CEASE,
+        };
+        assert(!validate_runtime(overflow, 10, 128));
+        overflow[6] = 0x01ff0f33u; /* constant ADD overflow also stays untrusted */
+        assert(!validate_runtime(overflow, 10, 128));
+    }
+
+    code[0] = 0x01007357u; /* vsetvli x6,x0,e32,m1 */
+    code[1] = OPENGPU_SHADER_CEASE;
+    assert(validate_runtime(code, 2, 128));
+    code[0] = 0x01007057u; /* rd=x0 means preserve VL, not select VLMAX */
+    assert(!validate_runtime(code, 2, 128));
+    code[0] = 0x010070d7u; /* cannot overwrite kernarg x1 */
+    assert(!validate_runtime(code, 2, 128));
+    code[0] = 0x00807357u; /* e16 is unsupported */
+    assert(!validate_runtime(code, 2, 128));
+}
+
 int main(void)
 {
+    test_wide_uniform_provenance();
+    test_runtime_capacity();
     const uint32_t vxrm_valid[] = {
         OPENGPU_SHADER_SET_VXRM(0),
         OPENGPU_SHADER_SET_VXRM(1),
@@ -1174,7 +1296,7 @@ int main(void)
     program[0] = vsetivli(0);
     assert(!opengpu_shader_validate_words(program, 4, 288, 8, false));
 
-    program[0] = addi(8, 0, 0); /* destroy trusted localLinearBase */
+    program[0] = addi(8, 2, 0); /* replace trusted localLinearBase with unknown group ID */
     for (i = 0; i < 10; i++)
         program[i + 1] = vector_valid[i];
     assert(!opengpu_shader_validate_words(program, 11, 288, 8, false));

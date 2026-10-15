@@ -20,6 +20,7 @@ void pipe_opengpu_screen_destroy(struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_fd(const struct pipe_opengpu_screen *screen);
 uint64_t pipe_opengpu_screen_capabilities(const struct pipe_opengpu_screen *screen);
 uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen);
+uint32_t pipe_opengpu_screen_fs_bank_stride(const struct pipe_opengpu_screen *screen);
 
 struct pipe_opengpu_context *pipe_opengpu_context_create(
     struct pipe_opengpu_screen *screen);
@@ -150,14 +151,15 @@ int pipe_opengpu_write_vs_matrices(struct pipe_opengpu_context *ctx,
                                    const float modelview[16]);
 
 /* Copy one packed opacity word into every advertised fragment kernarg bank.
- * Byte 288 is the per-draw uniform of a 320-byte bank. */
+ * The offset and bank stride follow the discovered batch configuration. */
 int pipe_opengpu_write_fs_uniform(struct pipe_opengpu_context *ctx,
                                   uint32_t word);
 
-/* Copy float uniforms into every bank, starting at byte 288. */
+/* Copy up to eight float uniforms into every bank's uniform tail. */
 int pipe_opengpu_write_fs_block(struct pipe_opengpu_context *ctx,
                                 const float *words, unsigned nfloats);
 
+/* Legacy eight-fragment ABI. Query the screen for new draw bindings. */
 #define PIPE_OPENGPU_FS_BANK_STRIDE 320u
 
 /* Print the lane-0 position, clip result, uniform words and the probes

@@ -17,7 +17,7 @@ typedef uint64_t opengpu_shader_u64;
 typedef int64_t opengpu_shader_s64;
 #endif
 
-#define OPENGPU_SHADER_MAX_INSTRUCTIONS 256u
+#define OPENGPU_SHADER_MAX_INSTRUCTIONS 512u
 #define OPENGPU_SHADER_MAX_FORWARD_BRANCHES 4u
 #define OPENGPU_SHADER_CEASE 0x30500073u
 /* csrrwi x0, vxrm, mode: shader ABI admits only immediate modes 0..3. */
@@ -97,6 +97,20 @@ static inline bool opengpu_shader_queue_branch(
         }
     }
     return false;
+}
+
+/* Scalar uniform pointers may be formed by bounded ADDI chains from x1.
+ * Warp-relative, unknown and constant-only pointers cannot authorize a read. */
+static inline bool opengpu_shader_scalar_read_valid(
+    const struct opengpu_shader_value *base, opengpu_shader_s32 immediate,
+    opengpu_shader_u32 bytes, opengpu_shader_u64 kernarg_size)
+{
+    opengpu_shader_s64 offset = (opengpu_shader_s64)base->offset + immediate;
+
+    return bytes && base->kind == OPENGPU_SHADER_VALUE_KERNARG &&
+           offset >= 0 && !(offset & (bytes - 1u)) &&
+           (opengpu_shader_u64)offset <= kernarg_size &&
+           bytes <= kernarg_size - (opengpu_shader_u64)offset;
 }
 
 /* Width field of a vector load or store: 0 is 8 bits, 5 is 16, 6 is 32. */
@@ -547,8 +561,8 @@ static inline void opengpu_shader_define_integer(
  * reachable path must terminate. x1 remains the immutable kernarg base.
  * Scalar loads and stores are imm(x1) only: lb/lbu/lh/lhu/lw and sb/sh/sw,
  * naturally aligned, inside kernarg for loads and inside the profile output
- * window for stores. When the scalar FPU is enabled, flw is limited to aligned imm(x1)
- * reads inside kernarg and fsw to aligned imm(x1) writes of a defined
+ * window for stores. When the scalar FPU is enabled, flw is limited to aligned reads
+ * from a proven kernarg-relative pointer and fsw to aligned imm(x1) writes of a defined
  * f-register into that profile's output window. The same capability admits
  * the FP32 operations that retire on the scalar FPU fast path: fadd/fsub/fmul,
  * fsgnj/fsgnjn/fsgnjx, fmin/fmax, and the four fused multiply-add forms.
@@ -606,7 +620,7 @@ static inline void opengpu_shader_define_integer(
  * opcode. The masked form additionally needs a defined v0. The min/max
  * reductions are not admitted: vfredmin.vs would be funct6 001010, which this
  * profile already spends on vfsgnjx.vv.
- * The RVV profile admits vsetivli e32,m1, the implemented lane-local
+ * The RVV profile admits vsetivli and VLMAX vsetvli e32,m1, the implemented lane-local
  * integer ALU, comparison, saturating, reduction, gather, slide, multiply,
  * divide and remainder forms, vssrl/vssra rounded scaling shifts,
  * masked lane-local integer arithmetic, comparisons, reductions, gathers,
@@ -635,12 +649,13 @@ static inline void opengpu_shader_define_integer(
  * vector texture sample requires a validated texture binding. Backward
  * branches, jumps, atomics and all other custom instructions remain rejected.
  */
-static inline bool opengpu_shader_validate_words_profile(
+static inline bool opengpu_shader_validate_words_profile_runtime(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
     opengpu_shader_u32 output_start_slice,
     opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
-    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled)
+    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
+    opengpu_shader_u32 launch_capacity)
 {
     opengpu_shader_u64 stride, output_start, output_end;
     struct opengpu_shader_state state = { 0 };
@@ -674,6 +689,15 @@ static inline bool opengpu_shader_validate_words_profile(
     state.vector_local_indices = 1u << 1;
     values[1].kind = OPENGPU_SHADER_VALUE_KERNARG;
     values[8].kind = OPENGPU_SHADER_VALUE_LOCAL_INDEX;
+    /* Only the capability-gated graphics caller may assert this launch value.
+     * General compute admission does not confuse local size with CU capacity. */
+    if (launch_capacity) {
+        if (launch_capacity != batch_capacity || all_kernarg_writable)
+            return false;
+        scalar_defined[9] = true;
+        values[9].kind = OPENGPU_SHADER_VALUE_CONSTANT;
+        values[9].offset = (opengpu_shader_s32)launch_capacity;
+    }
 
     for (i = 0; i < word_count; i++) {
         opengpu_shader_u32 insn = words[i];
@@ -737,12 +761,24 @@ static inline bool opengpu_shader_validate_words_profile(
             if (funct3 == 0 && rs1 == 0) {
                 values[rd].kind = OPENGPU_SHADER_VALUE_CONSTANT;
                 values[rd].offset = imm;
+            } else if (lhs.kind == OPENGPU_SHADER_VALUE_CONSTANT &&
+                       (funct3 == 0 || (funct3 == 1 && funct7 == 0))) {
+                opengpu_shader_s64 result = funct3 == 0 ?
+                    (opengpu_shader_s64)lhs.offset + imm :
+                    (opengpu_shader_s64)lhs.offset * (1ll << rs2);
+                if (result >= -2147483647ll - 1 && result <= 2147483647ll) {
+                    values[rd].kind = OPENGPU_SHADER_VALUE_CONSTANT;
+                    values[rd].offset = (opengpu_shader_s32)result;
+                }
             } else if (funct3 == 0 &&
                 (lhs.kind == OPENGPU_SHADER_VALUE_KERNARG ||
                  lhs.kind == OPENGPU_SHADER_VALUE_LOCAL_BYTES ||
                  lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL)) {
-                values[rd] = lhs;
-                values[rd].offset += imm;
+                opengpu_shader_s64 result = (opengpu_shader_s64)lhs.offset + imm;
+                if (result >= -2147483647ll - 1 && result <= 2147483647ll) {
+                    values[rd] = lhs;
+                    values[rd].offset = (opengpu_shader_s32)result;
+                }
             } else if (funct3 == 1 &&
                        lhs.kind == OPENGPU_SHADER_VALUE_LOCAL_INDEX &&
                        ((insn >> 20) & 0x1f) == 2) {
@@ -766,8 +802,38 @@ static inline bool opengpu_shader_validate_words_profile(
                   rhs.kind == OPENGPU_SHADER_VALUE_LOCAL_BYTES) ||
                  (rhs.kind == OPENGPU_SHADER_VALUE_KERNARG &&
                   lhs.kind == OPENGPU_SHADER_VALUE_LOCAL_BYTES))) {
-                values[rd].kind = OPENGPU_SHADER_VALUE_KERNARG_LOCAL;
-                values[rd].offset = lhs.offset + rhs.offset;
+                opengpu_shader_s64 result = (opengpu_shader_s64)lhs.offset + rhs.offset;
+                if (result >= -2147483647ll - 1 && result <= 2147483647ll) {
+                    values[rd].kind = OPENGPU_SHADER_VALUE_KERNARG_LOCAL;
+                    values[rd].offset = (opengpu_shader_s32)result;
+                }
+            }
+            if (funct3 == 0 && (funct7 == 0 || funct7 == 1)) {
+                opengpu_shader_s64 result;
+                if (lhs.kind == OPENGPU_SHADER_VALUE_CONSTANT &&
+                    rhs.kind == OPENGPU_SHADER_VALUE_CONSTANT) {
+                    result = funct7 == 1 ? (opengpu_shader_s64)lhs.offset * rhs.offset :
+                                          (opengpu_shader_s64)lhs.offset + rhs.offset;
+                    if (result >= -2147483647ll - 1 && result <= 2147483647ll) {
+                        values[rd].kind = OPENGPU_SHADER_VALUE_CONSTANT;
+                        values[rd].offset = (opengpu_shader_s32)result;
+                    }
+                } else if (funct7 == 0 &&
+                           (lhs.kind == OPENGPU_SHADER_VALUE_CONSTANT ||
+                            rhs.kind == OPENGPU_SHADER_VALUE_CONSTANT)) {
+                    struct opengpu_shader_value base =
+                        lhs.kind == OPENGPU_SHADER_VALUE_CONSTANT ? rhs : lhs;
+                    struct opengpu_shader_value offset =
+                        lhs.kind == OPENGPU_SHADER_VALUE_CONSTANT ? lhs : rhs;
+                    result = (opengpu_shader_s64)base.offset + offset.offset;
+                    if ((base.kind == OPENGPU_SHADER_VALUE_KERNARG ||
+                         base.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL ||
+                         base.kind == OPENGPU_SHADER_VALUE_LOCAL_BYTES) &&
+                        result >= -2147483647ll - 1 && result <= 2147483647ll) {
+                        values[rd] = base;
+                        values[rd].offset = (opengpu_shader_s32)result;
+                    }
+                }
             }
             if (rd == 0) {
                 values[0].kind = OPENGPU_SHADER_VALUE_UNKNOWN;
@@ -783,18 +849,15 @@ static inline bool opengpu_shader_validate_words_profile(
             values[rd].offset = 0;
             scalar_defined[rd] = true;
             break;
-        case 0x03: { /* lb/lbu/lh/lhu/lw imm(x1) inside kernarg */
+        case 0x03: { /* bounded scalar read from a proven kernarg base */
             opengpu_shader_u32 bytes =
                 funct3 == 0u || funct3 == 4u ? 1u :
                 funct3 == 1u || funct3 == 5u ? 2u :
                 funct3 == 2u ? 4u : 0u;
 
             imm = (opengpu_shader_s32)insn >> 20;
-            if (!bytes || rs1 != 1 || rd == 1 || imm < 0 ||
-                (imm & (opengpu_shader_s32)(bytes - 1u)))
-                return false;
-            end = (opengpu_shader_u64)(opengpu_shader_u32)imm + bytes;
-            if (end > kernarg_size)
+            if (!scalar_defined[rs1] || rd == 1 ||
+                !opengpu_shader_scalar_read_valid(&lhs, imm, bytes, kernarg_size))
                 return false;
             values[rd].kind = OPENGPU_SHADER_VALUE_UNKNOWN;
             values[rd].offset = 0;
@@ -818,8 +881,15 @@ static inline bool opengpu_shader_validate_words_profile(
                 return false;
             break;
         }
-        case 0x57: /* vsetivli or allow-listed vector ALU (int + OPFVV) */
-            if ((insn & 0xfff07fffu) == 0xc1007057u) {
+        case 0x57: /* fixed-profile vector configuration or allow-listed ALU */
+            /* vsetvli rd,x0,e32,m1: nonzero rd requests VLMAX. Bound vector
+             * accesses by the full admitted batch, independently of VLEN. */
+            if ((insn & 0xfffff07fu) == 0x01007057u) {
+                if (!rd || rd == 1)
+                    return false;
+                state.vector_length = batch_capacity;
+                opengpu_shader_define_integer(&state, rd);
+            } else if ((insn & 0xfff07fffu) == 0xc1007057u) {
                 state.vector_length = rs1;
                 if (!state.vector_length ||
                     state.vector_length > batch_capacity)
@@ -927,15 +997,14 @@ static inline bool opengpu_shader_validate_words_profile(
                 vector_defined[rd] = true;
             }
             break;
-        case 0x07: { /* flw imm(x1), or an 8/16/32-bit vector load */
+        case 0x07: { /* proven kernarg flw, or an 8/16/32-bit vector load */
             bool strided, indexed;
             opengpu_shader_u32 elem;
 
             if (funct3 == 2) {
                 imm = (opengpu_shader_s32)insn >> 20;
-                end = (opengpu_shader_u64)(opengpu_shader_u32)imm + 4;
-                if (!scalar_fpu_enabled || rs1 != 1 || imm < 0 ||
-                    (imm & 3) || end > kernarg_size)
+                if (!scalar_fpu_enabled || !scalar_defined[rs1] ||
+                    !opengpu_shader_scalar_read_valid(&lhs, imm, 4, kernarg_size))
                     return false;
                 state.fp_defined[rd] = true;
                 break;
@@ -1115,6 +1184,19 @@ static inline bool opengpu_shader_validate_words_profile(
         }
     }
     return false;
+}
+
+static inline bool opengpu_shader_validate_words_profile(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
+    opengpu_shader_u32 output_start_slice,
+    opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
+    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled)
+{
+    return opengpu_shader_validate_words_profile_runtime(words, word_count,
+        kernarg_size, batch_capacity, output_start_slice, output_end_slice,
+        fragment_ops_enabled, texture_enabled, all_kernarg_writable,
+        scalar_fpu_enabled, 0);
 }
 
 /* Fragment/vertex profile. scalar_fpu_enabled admits flw and fsw, which is

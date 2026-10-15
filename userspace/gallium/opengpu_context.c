@@ -18,6 +18,8 @@
  * The Gallium draw module is not used. */
 #include "opengpu_internal.h"
 #include "opengpu_fs_emit.h"
+#include "opengpu_shader_abi.h"
+#include "opengpu_shader_resources.h"
 #include "opengpu_shaders.h"
 #include "opengpu_retry.h"
 
@@ -1315,6 +1317,37 @@ static void *create_vs_state(struct pipe_context *pipe,
     return create_shader(pipe, state, 0);
 }
 
+/* Only our compiler output passes through layout conversion. The pipe and
+ * DRM binding interfaces continue to accept explicit machine-code programs. */
+static int bind_shader_program(struct opengpu_context *ctx, bool vertex,
+                                const void *code, size_t bytes)
+{
+    uint32_t converted[OPENGPU_ABI_TARGET_WORDS];
+    struct pipe_opengpu_screen *screen = opengpu_screen_gpu(ctx->base.screen);
+    uint64_t caps = pipe_opengpu_screen_capabilities(screen);
+    size_t words;
+
+    if (!(caps & OPENGPU_CAP_RUNTIME_SHADER_ABI)) {
+        /* The installed historical backend retains its original shader ABI. */
+        uint32_t resources = pipe_opengpu_screen_shader_config(screen);
+        if (resources && (opengpu_shader_resource_lanes(resources) != 4u ||
+                          opengpu_shader_resource_warps(resources) != 2u)) {
+            errno = ENOTSUP;
+            return -1;
+        }
+        return vertex ? pipe_opengpu_bind_vs(ctx->gpu, code, bytes) :
+                        pipe_opengpu_bind_fs(ctx->gpu, code, bytes);
+    }
+    if (!code || !bytes || (bytes & 3u) ||
+        opengpu_shader_lower_runtime_abi(code, bytes / 4u, vertex,
+                                        converted, ARRAY_SIZE(converted), &words)) {
+        errno = EINVAL;
+        return -1;
+    }
+    return vertex ? pipe_opengpu_bind_vs(ctx->gpu, converted, words * 4u) :
+                    pipe_opengpu_bind_fs(ctx->gpu, converted, words * 4u);
+}
+
 /* The fixed sampling programs put the packed RGBA result in v2. Insert
  * alpha = 255 immediately after sampling, before the program multiplies it. */
 static int bind_sample_program(struct opengpu_context *ctx,
@@ -1324,7 +1357,7 @@ static int bind_sample_program(struct opengpu_context *ctx,
     size_t words = bytes / sizeof(uint32_t), i;
 
     if (!ctx->fs->sample_alpha_one)
-        return pipe_opengpu_bind_fs(ctx->gpu, code, bytes);
+        return bind_shader_program(ctx, false, code, bytes);
     if (words + 2 > ARRAY_SIZE(patched))
         return -1;
     for (i = 0; i < words; i++) {
@@ -1335,7 +1368,7 @@ static int bind_sample_program(struct opengpu_context *ctx,
         patched[i + 2] = 0x2a23c157u; /* vor.vx v2, v2, x7 */
         memcpy(patched + i + 3, code + i + 1,
                (words - i - 1) * sizeof(uint32_t));
-        return pipe_opengpu_bind_fs(ctx->gpu, patched, bytes + 8);
+        return bind_shader_program(ctx, false, patched, bytes + 8);
     }
     return -1;
 }
@@ -1348,7 +1381,7 @@ static void bind_fs_state(struct pipe_context *pipe, void *hw)
     if (!hw)
         return;
     if (ctx->fs->alu) {
-        if (pipe_opengpu_bind_fs(ctx->gpu, ctx->fs->alu_code,
+        if (bind_shader_program(ctx, false, ctx->fs->alu_code,
                                  ctx->fs->alu_words * sizeof(uint32_t)))
             reject("fragment shader bind failed");
         return;
@@ -1367,11 +1400,11 @@ static void bind_fs_state(struct pipe_context *pipe, void *hw)
                                  OPENGPU_FRAGMENT_MODULATE_BYTES))
             reject("fragment shader bind failed");
     } else if (ctx->fs->scale_const) {
-        if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_fade,
+        if (bind_shader_program(ctx, false, opengpu_fragment_fade,
                                  OPENGPU_FRAGMENT_FADE_BYTES))
             reject("fragment shader bind failed");
     } else if (ctx->fs->sample_swizzle) {
-        if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_swizzle,
+        if (bind_shader_program(ctx, false, opengpu_fragment_swizzle,
                                  OPENGPU_FRAGMENT_SWIZZLE_BYTES))
             reject("fragment shader bind failed");
     } else if (ctx->fs->samples) {
@@ -1380,15 +1413,15 @@ static void bind_fs_state(struct pipe_context *pipe, void *hw)
             reject("fragment shader bind failed");
     } else if (ctx->fs->color_const && !ctx->fs->modulate &&
                !ctx->fs->scale_const) {
-        if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_uniform_color,
+        if (bind_shader_program(ctx, false, opengpu_fragment_uniform_color,
                                  OPENGPU_FRAGMENT_UNIFORM_COLOR_BYTES))
             reject("fragment shader bind failed");
     } else if (ctx->vs && ctx->vs->vs_opacity && ctx->fs->color_src >= 0 &&
                !ctx->fs->color_const && !ctx->fs->color_imm) {
-        if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_fade,
+        if (bind_shader_program(ctx, false, opengpu_fragment_fade,
                                  OPENGPU_FRAGMENT_FADE_BYTES))
             reject("fragment shader bind failed");
-    } else if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_color,
+    } else if (bind_shader_program(ctx, false, opengpu_fragment_color,
                                     OPENGPU_FRAGMENT_COLOR_BYTES)) {
         reject("fragment shader bind failed");
     }
@@ -1402,14 +1435,14 @@ static void bind_vs_state(struct pipe_context *pipe, void *hw)
     if (!hw)
         return;
     if (ctx->vs->mvp2) {
-        if (pipe_opengpu_bind_vs(ctx->gpu, opengpu_vertex_mvp2,
+        if (bind_shader_program(ctx, true, opengpu_vertex_mvp2,
                                  OPENGPU_VERTEX_MVP2_BYTES))
             reject("vertex shader bind failed");
     } else if (ctx->vs->mvp) {
-        if (pipe_opengpu_bind_vs(ctx->gpu, opengpu_vertex_mvp,
+        if (bind_shader_program(ctx, true, opengpu_vertex_mvp,
                                  OPENGPU_VERTEX_MVP_BYTES))
             reject("vertex shader bind failed");
-    } else if (pipe_opengpu_bind_vs(ctx->gpu, opengpu_vertex_passthrough,
+    } else if (bind_shader_program(ctx, true, opengpu_vertex_passthrough,
                                     OPENGPU_VERTEX_PASSTHROUGH_BYTES)) {
         reject("vertex shader bind failed");
     }
@@ -1419,7 +1452,7 @@ static void bind_vs_state(struct pipe_context *pipe, void *hw)
         !ctx->fs->alu &&
         !ctx->fs->samples && !ctx->fs->modulate && !ctx->fs->scale_const &&
         !ctx->fs->color_const && !ctx->fs->color_imm) {
-        if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_fade,
+        if (bind_shader_program(ctx, false, opengpu_fragment_fade,
                                  OPENGPU_FRAGMENT_FADE_BYTES))
             reject("fragment shader bind failed");
     }
@@ -2168,7 +2201,7 @@ static void draw_vbo(struct pipe_context *pipe,
             /* The sampler and channel permutation are both GPU programs;
              * the scalar uniform only selects which fixed program is bound. */
             if (ctx->fs_const[0] >= 0.5f) {
-                if (pipe_opengpu_bind_fs(ctx->gpu, opengpu_fragment_swizzle,
+                if (bind_shader_program(ctx, false, opengpu_fragment_swizzle,
                                          OPENGPU_FRAGMENT_SWIZZLE_BYTES))
                     reject("fragment swizzle shader bind failed");
             } else if (bind_sample_program(ctx, opengpu_fragment_sample,
@@ -2359,7 +2392,8 @@ static void draw_vbo(struct pipe_context *pipe,
             memset(&vdraw, 0, sizeof(vdraw));
             vdraw.vertex_count = 3;
             vdraw.vertex_stride = sizeof(verts[0]);
-            vdraw.fragment_kernarg_bank_stride = PIPE_OPENGPU_FS_BANK_STRIDE;
+            vdraw.fragment_kernarg_bank_stride =
+                pipe_opengpu_screen_fs_bank_stride(opengpu_screen_gpu(ctx->base.screen));
             vdraw.blend_config = blend_config;
             vdraw.state = OPENGPU_DRAW_STATE_OVERRIDE | depth_bits |
                           (cull << OPENGPU_DRAW_STATE_CULL_SHIFT);

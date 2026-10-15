@@ -20,6 +20,7 @@ abstract class GpuHostSystemAxiChecks(bufferCommandReads: Boolean = false) exten
         initialize(dut)
         val caps = axiRead(dut, RenderHostRegs.CAPABILITIES)
         assert((caps & (1L << opengpu.graphics.GpuCapabilities.ShaderConfigInfo)) != 0)
+        assert((caps & (1L << opengpu.graphics.GpuCapabilities.RuntimeShaderAbi)) != 0)
         assert(axiRead(dut, GpuCommandMmioRegs.SHADER_CONFIG) ==
           (if (shared) 0x02020204L else 0x01020204L))
       }

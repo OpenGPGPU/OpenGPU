@@ -25,6 +25,40 @@ static inline u32 opengpu_shader_resource_cus(u32 config)
     return (config >> GPU_SHADER_CONFIG_CUS_SHIFT) & GPU_SHADER_CONFIG_FIELD_MASK;
 }
 
+/* Staging layouts follow the advertised batch, independently of bank count.
+ * A zero descriptor is the historical four-lane/two-warp graphics ABI. */
+static inline u32 opengpu_shader_resource_batch(u32 config)
+{
+    return config ? opengpu_shader_resource_lanes(config) *
+                    opengpu_shader_resource_warps(config) : 8u;
+}
+
+static inline u32 opengpu_shader_array_stride(u32 config)
+{
+    return 4u * opengpu_shader_resource_batch(config);
+}
+
+static inline u32 opengpu_shader_fragment_uniform_offset(u32 config)
+{
+    return 9u * opengpu_shader_array_stride(config);
+}
+
+static inline u32 opengpu_shader_fragment_bank_stride(u32 config)
+{
+    /* Retain the 32-byte uniform contract and align independent banks. */
+    return (opengpu_shader_fragment_uniform_offset(config) + 32u + 63u) & ~63u;
+}
+
+static inline u32 opengpu_shader_vertex_uniform_offset(u32 config)
+{
+    return 16u * opengpu_shader_array_stride(config);
+}
+
+static inline u32 opengpu_shader_vertex_kernarg_bytes(u32 config)
+{
+    return opengpu_shader_vertex_uniform_offset(config) + 256u;
+}
+
 static inline int opengpu_shader_resources_valid(u32 config, u32 batch)
 {
     u32 lanes = opengpu_shader_resource_lanes(config);

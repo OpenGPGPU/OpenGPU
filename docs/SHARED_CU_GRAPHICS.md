@@ -643,3 +643,50 @@ render checks pass (68 total), including reset during an outstanding
 descriptor fetch, VM changes, CPU updates, faults and ordered MSAA. The
 option defaults off; installed QEMU/Mesa remain unchanged. See [command
 fetch evidence](performance/shared-cu-command-fetch-2026-10-15.json).
+
+## Runtime vector length and shader staging ABI
+
+The new graphics shader path emits one binary independently of lane width,
+warp count and CU count. `vsetvli x6,x0,e32,m1` selects VLMAX at execution.
+Launch register `x9` supplies the physical CU thread capacity (`lanes * warps`),
+while `x8` retains the current warp's local linear base. The shader calculates
+its array stride as `4*x9`. This capacity stays constant for partial batches
+and dispatch caps; `localSize.x` describes the admitted batch and cannot supply
+the staging stride.
+
+Capability bit 24, `GPU_CAP_RUNTIME_SHADER_ABI`, guarantees the new launch
+register. Gallium's final lowering pass takes no hardware-resource argument:
+its canonical shader input produces identical runtime code for every supported
+configuration. It reserves integer `x30` for the runtime stride and `x31` for
+the uniform pointer; vector and floating-point registers 30/31 remain available.
+Forward branches are relocated after address expansion. Raw DRM/pipe shader
+programs keep their explicit machine-code contract. The boot self-test also
+uses one runtime shader binary when the capability is present. Historical
+four-lane/two-warp hardware retains its existing binaries.
+
+Userspace allocates staging arrays, uniforms and banks from the resource query.
+Fragment uniforms follow nine arrays and vertex uniforms follow sixteen. The
+existing fragment 32-byte and vertex 256-byte uniform contracts are retained.
+The bounded shader slot grows to 512 instructions for runtime address code;
+legacy programs continue to bind 1024-byte slots. The driver proves derived
+scalar/vector pointers from known launch capacity and immutable kernarg base,
+discards provenance on unknown or overflowing arithmetic, and retains output
+windows, defined-register checks and the forward-branch limit. General compute
+can select VLMAX, but its validator does not assume that local workgroup size
+is the physical CU capacity.
+
+Validation: 41 RTL checks pass, including five complete color/depth renders
+using the same runtime copy binary at 4x2, 8x4, 16x8 (one and four CUs), and
+32x2. The software checks validate all eleven stock shaders across seven
+resource descriptions (77 cases), compare effective memory addresses for every
+warp, and cover branch relocation, destination bounds, reserved-register
+collisions and capability rejection. Nine driver test programs and the runtime
+shader tests pass under ASan/UBSan. The AArch64 kernel module and Gallium static
+library compile successfully. The standard host-script test entry point now
+runs the runtime shader tests.
+
+This qualifies the runtime ABI and its copy-render path. Stock vertex/texture
+programs still need full shared-pool guest rendering and Debian desktop
+qualification. The earlier 3.48x optimized copy measurement predates this ABI
+change and is not a runtime-shader speedup claim. See
+[the runtime ABI evidence](performance/shared-cu-runtime-shader-abi-2026-10-15.json).

@@ -213,6 +213,8 @@ typedef int32_t s32;
 /* Compute CUs execute scalar FP32: flw and RVV .vf operands (bit22). */
 #define GPU_CAP_COMPUTE_SCALAR_FPU (1u << 22)
 #define GPU_CAP_SHADER_CONFIG_INFO (1u << 23)
+/* Launch x9 = lanes * warps; VLMAX shaders calculate staging strides at runtime. */
+#define GPU_CAP_RUNTIME_SHADER_ABI (1u << 24)
 
 #define GPU_SCANOUT_FORMAT_RGBA8888 0u
 #define GPU_SCANOUT_FORMAT_XRGB8888 1u

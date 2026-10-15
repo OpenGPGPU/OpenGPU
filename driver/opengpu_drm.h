@@ -174,6 +174,8 @@ struct drm_opengpu_param {
 /* Compute shaders may use flw and RVV .vf operands (bit22). */
 #define OPENGPU_CAP_COMPUTE_SCALAR_FPU (1u << 22)
 #define OPENGPU_CAP_SHADER_CONFIG_INFO (1u << 23)
+/* Launch x9 = lanes * warps; VLMAX shaders calculate staging strides at runtime. */
+#define OPENGPU_CAP_RUNTIME_SHADER_ABI (1u << 24)
 
 /* Sample mode field width (0 = 1x, 1 = 2x, 2 = 4x). */
 #define OPENGPU_MSAA_MODE_MASK 0x3u
