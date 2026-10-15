@@ -178,6 +178,8 @@ Choose the path that matches what you want to learn or change:
   and [docs/DRIVER_ARCHITECTURE.md](docs/DRIVER_ARCHITECTURE.md).
 - **See what is complete and what is still experimental:**
   [docs/GRAPHICS_ROADMAP.md](docs/GRAPHICS_ROADMAP.md).
+- **Set up a fresh checkout and see which repo owns which step:**
+  [docs/BOOTSTRAP.md](docs/BOOTSTRAP.md) and `scripts/bootstrap_arti_debian.sh`.
 - **Run deterministic display and GTK proofs:**
   [docs/GTK_COVERAGE.md](docs/GTK_COVERAGE.md).
 - **Run or extend the C examples:** [`userspace/README.md`](userspace/README.md).
