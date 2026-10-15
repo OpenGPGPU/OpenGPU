@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-15",
+  "configuration": {
+    "width": 32,
+    "height": 32,
+    "lanes": 16,
+    "warps": 8,
+    "batch": 128,
+    "fragment_bank_stride": 4672,
+    "l2_sets": 8,
+    "l2_ways": 2,
+    "memory_axi_data_bytes": 8,
+    "shader": "integer interpolated-colour copy",
+    "shared_graphics": true,
+    "parallel_graphics": true
+  },
+  "results": [
+    {
+      "cus": 1,
+      "cycles": 40940,
+      "active_cu_cycles": 2905,
+      "peak_cus": 1,
+      "all_pixels_depth_and_uniform_sentinels_passed": true
+    },
+    {
+      "cus": 2,
+      "cycles": 38445,
+      "active_cu_cycles": 5133,
+      "peak_cus": 2,
+      "all_pixels_depth_and_uniform_sentinels_passed": true
+    },
+    {
+      "cus": 4,
+      "cycles": 38577,
+      "active_cu_cycles": 6739,
+      "peak_cus": 4,
+      "all_pixels_depth_and_uniform_sentinels_passed": true
+    }
+  ],
+  "qualification": {
+    "passed": 3,
+    "failed": 0,
+    "log": ".artifacts/shared-cu-wide-render-tests.log",
+    "heap": "6 GB, first default1 GB run exhausted heap during two-CU elaboration"
+  },
+  "limits": [
+    "These are GPU cycles, not simulator wall time.",
+    "The test does not qualify stock Mesa, vertex shaders, scalar FPU or Debian desktop.",
+    "Four CUs do not improve on two in this simple-copy scene; trace attribution and shared-path optimization are next.",
+    "The previous qualified QEMU desktop executable is unchanged."
+  ]
+}

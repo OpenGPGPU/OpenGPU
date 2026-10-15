@@ -269,3 +269,20 @@ and independently executes every warp's effective vector addresses for
 kernel 7.2.0. Logs: `.artifacts/shared-cu-wide-driver-tests.log` and
 `.artifacts/shared-cu-wide-driver-build.log`. The stock desktop payload is
 unchanged; this does not yet migrate Mesa's shader binaries or uniforms.
+
+Three real 16-lane/eight-warp, 128-fragment-batch renderer tests now pass for
+1/2/4 shared CUs. Every 32x32 gradient pixel, depth value and bank uniform
+sentinel matches its reference; peak occupied CUs is 1/2/4. This uses a wide
+integer copy shader, with no Mesa/vertex/FPU qualification implied. The
+simple-copy scene takes 40,940 / 38,445 / 38,577 GPU cycles: the fourth CU
+does not improve on two, so shared-path bottlenecks require trace analysis.
+Do not compare these times directly with the narrower 16x16 textured scene.
+Reproduce with CI's heap allocation (Homebrew sbt reads `JAVA_OPTS`):
+
+```sh
+JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC' sbt 'testOnly opengpu.system.WideSharedGraphicsSpec'
+```
+
+The first local run with the default 1 GB heap passed one CU and exhausted
+heap while elaborating two CUs. The 6 GB rerun passes all three cases in
+about four minutes. Log: `.artifacts/shared-cu-wide-render-tests.log`.
