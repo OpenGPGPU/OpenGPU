@@ -136,11 +136,13 @@ class FragmentInterpolatorSpec extends AnyFlatSpec {
       dut.io.draw.valid.poke(false.B)
 
       val quads = collection.mutable.ArrayBuffer.empty[Seq[(Int, Int, Boolean, Int, Int, Int)]]
+      val beatCycles = collection.mutable.ArrayBuffer.empty[Int]
       var guard = 0
       while (!dut.io.done.peek().litToBoolean && guard < 2000) {
         assert(!dut.io.pixel.valid.peek().litToBoolean,
           "quad mode must not emit on the scalar port")
         if (dut.io.quad.valid.peek().litToBoolean) {
+          beatCycles += guard
           quads += (0 until 4).map { k =>
             (dut.io.quad.bits.lanes(k).x.peek().litValue.toInt,
               dut.io.quad.bits.lanes(k).y.peek().litValue.toInt,
@@ -154,20 +156,35 @@ class FragmentInterpolatorSpec extends AnyFlatSpec {
       }
       assert(guard < 2000 && quads.nonEmpty)
 
-      // One beat per bbox quad, TL/TR/BL/BR at an even origin.
-      assert(quads.size == 7 * 7)
+      // The independent top-left coverage reference determines which quads
+      // survive empty-quad rejection. Helpers still complete every 2x2 quad.
+      val expected = (3 until 14).flatMap { y => (3 until 14).collect {
+        case x if x + y <= 16 => (x, y)
+      }}.toSet
+      val expectedOrigins = expected.map { case (x, y) => (x & ~1, y & ~1) }
+        .toSeq.sortBy { case (x, y) => (y, x) }
+      val origins = quads.map(lanes => (lanes.head._1, lanes.head._2)).toSeq
+      assert(origins == expectedOrigins)
       quads.foreach { lanes =>
         val (x, y, _, _, _, _) = lanes.head
         assert((x & 1) == 0 && (y & 1) == 0)
         assert(lanes.map(p => (p._1, p._2)) ==
           Seq((x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)))
+        assert(lanes.exists(_._3), "wholly uncovered quads must be skipped")
+        lanes.foreach { case (px, py, covered, _, _, _) =>
+          assert(covered == expected.contains((px, py)))
+        }
+      }
+      origins.indices.drop(1).foreach { i =>
+        val (x, y) = origins(i)
+        val (previousX, previousY) = origins(i - 1)
+        if (y == previousY && x == previousX + 2)
+          assert(beatCycles(i) == beatCycles(i - 1) + 1,
+            "adjacent visible quads must sustain one complete quad per cycle")
       }
 
       // Same top-left coverage as the scalar path; helpers ride along.
       val covered = quads.flatten.collect { case (x, y, true, _, _, _) => (x, y) }.toSet
-      val expected = (3 until 14).flatMap { y => (3 until 14).collect {
-        case x if x + y <= 16 => (x, y)
-      }}.toSet
       assert(covered == expected)
       assert(quads.flatten.exists(!_._3), "edge quads must contain helper lanes")
 
