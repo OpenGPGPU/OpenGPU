@@ -308,3 +308,29 @@ Trace format and reproduction are recorded in
 `scripts/analyze_shared_graphics_trace.py DIRECTORY` validates phase accounting,
 counts overlapping event unions and classifies the scene's memory traffic.
 The default executable remains unchanged.
+
+## AXI bandwidth comparison
+
+Widening only the external memory AXI bus gives the following pixel-checked
+32x32 wide-copy results. All configurations retain the same cache, shaders,
+staging policy and response delays (12 write-ack cycles, two read cycles).
+
+| AXI width | 1 CU cycles | 4 CU cycles |
+| --- | ---: | ---: |
+| 64 bits | 40,940 | 38,577 |
+| 256 bits | 29,978 | 27,141 |
+| 512 bits | 28,293 | 25,292 |
+
+The four-CU 512-bit case saves 34.4% of cycles (1.525x) versus 64-bit AXI.
+One-to-four-CU scaling rises from 1.061x to 1.119x. Four wider-bus render tests
+and five AXI bridge unit tests pass, including narrow accesses in the highest
+byte lanes of 256/512-bit beats, independent AW/W stalls and acknowledged
+responses. The test memory responder now derives its beat width from the DUT
+and normalizes narrow writes into aligned line callbacks.
+
+This remains a synthetic GPU-cycle result: simulator wall time and desktop
+startup need separate measurements. FlashSim's memory wrapper already detects
+up to 64-byte AXI ports; the QEMU callback ABI supports those sizes. Generic
+ARTI/Verilator master discovery still limits widths to 64 bits. The installed
+executable is unchanged. Full evidence and traces are recorded in
+[the AXI comparison](performance/shared-cu-axi-width-2026-10-15.json).

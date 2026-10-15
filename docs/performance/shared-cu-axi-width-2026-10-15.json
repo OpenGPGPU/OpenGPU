@@ -1,0 +1,269 @@
+{
+  "date": "2026-10-15",
+  "production_rtl_base_commit": "640a0ff",
+  "scope": "AXI-width-only GPU-cycle comparison; all other parameters and memory-response delays identical",
+  "configuration": {
+    "width": 32,
+    "height": 32,
+    "lanes": 16,
+    "warps": 8,
+    "l2_sets": 8,
+    "l2_ways": 2,
+    "write_ack_delay": 12,
+    "read_response_delay": 2,
+    "shader": "integer interpolated-colour copy",
+    "shared_graphics": true,
+    "parallel_graphics": true,
+    "staging_ids_in_use": 1
+  },
+  "results": [
+    {
+      "axi_bits": 64,
+      "cus": 1,
+      "cycles": 40940,
+      "active_cu_cycles": 2905,
+      "peak_cus": 1,
+      "all_pixel_depth_uniform_checks_passed": true
+    },
+    {
+      "axi_bits": 64,
+      "cus": 4,
+      "cycles": 38577,
+      "active_cu_cycles": 6739,
+      "peak_cus": 4,
+      "all_pixel_depth_uniform_checks_passed": true
+    },
+    {
+      "axi_bits": 256,
+      "cus": 1,
+      "cycles": 29978,
+      "active_cu_cycles": 2444,
+      "peak_cus": 1,
+      "all_pixel_depth_uniform_checks_passed": true
+    },
+    {
+      "axi_bits": 256,
+      "cus": 4,
+      "cycles": 27141,
+      "active_cu_cycles": 4852,
+      "peak_cus": 4,
+      "all_pixel_depth_uniform_checks_passed": true
+    },
+    {
+      "axi_bits": 512,
+      "cus": 1,
+      "cycles": 28293,
+      "active_cu_cycles": 2366,
+      "peak_cus": 1,
+      "all_pixel_depth_uniform_checks_passed": true
+    },
+    {
+      "axi_bits": 512,
+      "cus": 4,
+      "cycles": 25292,
+      "active_cu_cycles": 4181,
+      "peak_cus": 4,
+      "all_pixel_depth_uniform_checks_passed": true
+    }
+  ],
+  "trace": [
+    {
+      "cus": 1,
+      "axi_data_bytes": 32,
+      "traced_cycles": 29963,
+      "phase_worker_cycles": [
+        1572,
+        9284,
+        5,
+        2449,
+        1488,
+        15165
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1572,
+        "arvalid": 500,
+        "rvalid": 1000,
+        "write_any": 9284,
+        "raster_stall": 24599,
+        "staging_without_shader_run": 10772,
+        "staging_outstanding_any": 9452,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "launch_any": 5,
+        "run_any": 2449,
+        "read_any": 1488,
+        "emit_any": 15165,
+        "output_blocked": 14759,
+        "om_stall": 14542
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 291,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-1-axi-32-cycles.csv": "d56ffcd7764fc18a8a7da3c697df800630692f330fb44b850e09e2aa599958ea",
+        "cu-1-axi-32-memory.csv": "c9c9d24b802bdc654f30a4279ad3f7bede1a48dd4c5163b4098511e86dd80c0a"
+      }
+    },
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "traced_cycles": 28278,
+      "phase_worker_cycles": [
+        1275,
+        8863,
+        5,
+        2371,
+        1374,
+        14390
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1275,
+        "arvalid": 515,
+        "rvalid": 515,
+        "write_any": 8863,
+        "raster_stall": 23236,
+        "staging_without_shader_run": 10237,
+        "staging_outstanding_any": 8917,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "launch_any": 5,
+        "run_any": 2371,
+        "read_any": 1374,
+        "emit_any": 14390,
+        "output_blocked": 13858,
+        "om_stall": 13676
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 306,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-cycles.csv": "d681f27a5a1bb13fbb3820d44af071cb65bf691c9fabfd8171f3ccd3f4e937a8",
+        "cu-1-axi-64-memory.csv": "5b134eef1cf2ee2dc639852c45b82d823eb5b232a5d70074fa95622869b5dbf8"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 32,
+      "traced_cycles": 27126,
+      "phase_worker_cycles": [
+        24302,
+        29183,
+        5,
+        4857,
+        6771,
+        43386
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 12210,
+        "arvalid": 527,
+        "rvalid": 1054,
+        "write_any": 12038,
+        "staging_without_shader_run": 14683,
+        "staging_outstanding_any": 14613,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "staging_blocked": 7441,
+        "raster_stall": 10356,
+        "launch_any": 5,
+        "run_any": 2884,
+        "read_any": 3172,
+        "emit_any": 18526,
+        "output_blocked": 18386,
+        "om_stall": 17562
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 318,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-4-axi-32-cycles.csv": "4cbd33a5a78cc7cb9b2eb404be37f65d965a20f4845ed5c4497bdeb52a245974",
+        "cu-4-axi-32-memory.csv": "7eaf019df6873e356bc3b8bdc29a698642bfe6792d1e785088f3ba1774f6ecec"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "traced_cycles": 25277,
+      "phase_worker_cycles": [
+        22371,
+        27443,
+        5,
+        4186,
+        6820,
+        40283
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 11382,
+        "arvalid": 527,
+        "rvalid": 527,
+        "write_any": 11055,
+        "staging_without_shader_run": 13966,
+        "staging_outstanding_any": 13828,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "staging_blocked": 7177,
+        "raster_stall": 9685,
+        "launch_any": 5,
+        "run_any": 2344,
+        "read_any": 3370,
+        "emit_any": 17209,
+        "output_blocked": 17069,
+        "om_stall": 16256
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 318,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-cycles.csv": "d29df7c74e3fabee486eeae2e9335a02c8c89777a690f7f3eb17227f84ea5f0a",
+        "cu-4-axi-64-memory.csv": "e7e49b5e6ebe1633207a926d598ebd7d55304d985ab07a49af7c5347e0bcd7f8"
+      }
+    }
+  ],
+  "validation": {
+    "width_comparisons": "4 PASS, .artifacts/shared-cu-wide-axi-baseline.log",
+    "axi_narrow_unit_checks": "5 PASS including 256/512-bit narrow read/write lanes, independent AW/W stalls and response acknowledgements; .artifacts/shared-cu-staging-dual-id-unit-tests.log",
+    "test_selection": "PASS, python3 scripts/test_test_selection.py"
+  },
+  "reproduce": "JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC' WIDE_GRAPHICS_TRACE_DIR=.artifacts/shared-cu/traces/wider-axi sbt 'set Test / parallelExecution := false' 'testOnly opengpu.system.MediumAxiSharedGraphicsSpec opengpu.system.WideAxiSharedGraphicsSpec'",
+  "limits": [
+    "No host simulation wall-time or desktop startup improvement claimed.",
+    "The width-only runs used the original one-outstanding staging arbiter; dual-ID changes are being qualified separately.",
+    "The synthetic memory model has 12 cycles of write acknowledgement delay and two cycles of read delay; actual FlashSim callbacks have different latency.",
+    "The installed executable and payload are unchanged."
+  ],
+  "integration": {
+    "FlashSim": "Wrapper detects 4..64-byte data ports and QEMU callbacks accept up to64bytes; end-to-end wider-model qualification remains.",
+    "Verilator": "ARTI generic master discovery currently limits data width to64bits; wider Verilator integration needs a separate generator change."
+  }
+}

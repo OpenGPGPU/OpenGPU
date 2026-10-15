@@ -21,7 +21,9 @@ for path in sorted(root.glob('cu-*-cycles.csv')):
         if not phases[3] and (phases[1] or phases[4]):totals['staging_without_shader_run']+=duration
     assert sum(phase) == cus * samples, "each worker must occupy exactly one phase per cycle"
     memory=collections.Counter()
-    mp=root/f'cu-{cus}-memory.csv'
+    prefix=path.name.removesuffix('-cycles.csv')
+    axi_bytes=int(prefix.split('-axi-')[1]) if '-axi-' in prefix else 8
+    mp=root/f'{prefix}-memory.csv'
     for row in csv.DictReader(mp.open()):
         addr=int(row['address_hex'],16);kind='other'
         if 0x10000<=addr<0x10000+cus*2*4672:kind='staging_or_shader_data'
@@ -31,6 +33,6 @@ for path in sorted(root.glob('cu-*-cycles.csv')):
         elif 0x4000<=addr<0x4040:kind='instructions'
         elif 0x1000<=addr<0x1040:kind='descriptor'
         memory[kind+'_'+row['operation']]+=1
-    r=dict(cus=cus,traced_cycles=samples,phase_worker_cycles=phase,peak_staging_outstanding=peak,cycle_events=dict(totals),lower_memory_transactions=dict(memory),trace_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (path,mp)})
+    r=dict(cus=cus,axi_data_bytes=axi_bytes,traced_cycles=samples,phase_worker_cycles=phase,peak_staging_outstanding=peak,cycle_events=dict(totals),lower_memory_transactions=dict(memory),trace_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (path,mp)})
     results.append(r)
 print(json.dumps(results,indent=2))

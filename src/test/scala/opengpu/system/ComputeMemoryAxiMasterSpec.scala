@@ -156,4 +156,54 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
       dut.io.request.ready.expect(true.B)
     }
   }
+  for (bytes <- Seq(32, 64)) {
+    it should s"preserve narrow-word lanes and acknowledgements on ${bytes * 8}-bit AXI" in {
+      simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 8,
+        axiDataBytes = bytes)) { dut =>
+        initialize(dut)
+        val address = 0x1000 + bytes - 4
+        val shift = (bytes - 4) * 8
+        val word = BigInt("aabbccdd", 16)
+        submit(dut, address, word, 15, write = true, sizeLog2 = 2, id = 5)
+        dut.io.m_axi_awaddr.expect(address.U)
+        dut.io.m_axi_awlen.expect(0.U)
+        dut.io.m_axi_awsize.expect(2.U)
+        dut.io.m_axi_wdata.expect((word << shift).U)
+        dut.io.m_axi_wstrb.expect((BigInt(15) << (bytes - 4)).U)
+        dut.io.m_axi_wlast.expect(true.B)
+        // Independently stalled AW/W channels keep the full wide payload.
+        dut.io.m_axi_awready.poke(true.B); dut.clock.step()
+        dut.io.m_axi_awready.poke(false.B)
+        dut.clock.step(2)
+        dut.io.m_axi_wvalid.expect(true.B)
+        dut.io.m_axi_wdata.expect((word << shift).U)
+        dut.io.m_axi_wready.poke(true.B); dut.clock.step()
+        dut.io.m_axi_wready.poke(false.B)
+        dut.io.m_axi_bid.poke(5.U); dut.io.m_axi_bvalid.poke(true.B)
+        dut.clock.step(); dut.io.m_axi_bvalid.poke(false.B)
+        dut.io.response.valid.expect(true.B)
+        dut.io.response.bits.transactionId.expect(5.U)
+        dut.io.response.bits.fault.expect(false.B)
+        dut.io.response.ready.poke(true.B); dut.clock.step()
+        dut.io.response.ready.poke(false.B)
+        submit(dut, address, 0, 0, write = false, sizeLog2 = 2, id = 3)
+        dut.io.m_axi_araddr.expect(address.U)
+        dut.io.m_axi_arlen.expect(0.U)
+        dut.io.m_axi_arsize.expect(2.U)
+        dut.io.m_axi_arready.poke(true.B); dut.clock.step()
+        dut.io.m_axi_arready.poke(false.B)
+        dut.io.m_axi_rid.poke(3.U); dut.io.m_axi_rdata.poke((word << shift).U)
+        dut.io.m_axi_rlast.poke(true.B); dut.io.m_axi_rvalid.poke(true.B)
+        dut.clock.step(); dut.io.m_axi_rvalid.poke(false.B)
+        for (_ <- 0 until 3) {
+          dut.io.response.valid.expect(true.B)
+          dut.io.response.bits.transactionId.expect(3.U)
+          dut.io.response.bits.readData.expect(word.U)
+          dut.io.response.bits.fault.expect(false.B)
+          dut.clock.step()
+        }
+      }
+    }
+  }
+
 }

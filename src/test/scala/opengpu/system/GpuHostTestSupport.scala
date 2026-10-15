@@ -103,6 +103,8 @@ trait GpuHostTestSupport {
   protected def acceptMemoryWrite(dut: GpuHostSystemAxi): MemoryWrite = {
     dut.io.m_axi_awready.poke(true.B)
     dut.io.m_axi_wready.poke(true.B)
+    val axiDataBytes = dut.io.m_axi_wstrb.getWidth
+    val axiDataBits = axiDataBytes * 8
     var address = BigInt(0)
     var id = BigInt(0)
     var data = BigInt(0)
@@ -119,8 +121,8 @@ trait GpuHostTestSupport {
         addressDone = true
       }
       if (!dataDone && dut.io.m_axi_wvalid.peek().litToBoolean) {
-        data |= dut.io.m_axi_wdata.peek().litValue << (beat * 64)
-        mask |= dut.io.m_axi_wstrb.peek().litValue << (beat * 8)
+        data |= dut.io.m_axi_wdata.peek().litValue << (beat * axiDataBits)
+        mask |= dut.io.m_axi_wstrb.peek().litValue << (beat * axiDataBytes)
         dataDone = dut.io.m_axi_wlast.peek().litToBoolean
         beat += 1
       }
@@ -136,7 +138,9 @@ trait GpuHostTestSupport {
     dut.io.m_axi_bready.expect(true.B)
     dut.io.s_axi_aclk.step()
     dut.io.m_axi_bvalid.poke(false.B)
-    MemoryWrite(address, id, data, mask)
+    val byteOffset = address.toInt & (64 - axiDataBytes)
+    MemoryWrite(address & ~BigInt(63), id,
+      data << (byteOffset * 8), mask << byteOffset)
   }
 
   protected def acceptMemoryRead(
@@ -144,6 +148,8 @@ trait GpuHostTestSupport {
     line: BigInt,
     respond: Boolean = true
   ): (BigInt, BigInt) = {
+    val axiDataBytes = dut.io.m_axi_wstrb.getWidth
+    val axiDataBits = axiDataBytes * 8
     dut.io.m_axi_arready.poke(true.B)
     var address = BigInt(0)
     var id = BigInt(0)
@@ -155,18 +161,18 @@ trait GpuHostTestSupport {
     assert(cycles < 160, "AXI memory read address timed out")
     address = dut.io.m_axi_araddr.peek().litValue
     id = dut.io.m_axi_arid.peek().litValue
-    dut.io.m_axi_arlen.expect(7.U)
-    dut.io.m_axi_arsize.expect(3.U)
+    dut.io.m_axi_arlen.expect((64 / axiDataBytes - 1).U)
+    dut.io.m_axi_arsize.expect(chisel3.util.log2Ceil(axiDataBytes).U)
     dut.io.m_axi_arburst.expect(1.U)
     dut.io.s_axi_aclk.step()
     dut.io.m_axi_arready.poke(false.B)
     if (respond) {
-      for (beat <- 0 until 8) {
+      for (beat <- 0 until 64 / axiDataBytes) {
         dut.io.m_axi_rid.poke(id.U)
-        dut.io.m_axi_rdata.poke(((line >> (beat * 64)) &
-          ((BigInt(1) << 64) - 1)).U)
+        dut.io.m_axi_rdata.poke(((line >> (beat * axiDataBits)) &
+          ((BigInt(1) << axiDataBits) - 1)).U)
         dut.io.m_axi_rresp.poke(0.U)
-        dut.io.m_axi_rlast.poke((beat == 7).B)
+        dut.io.m_axi_rlast.poke((beat == 64 / axiDataBytes - 1).B)
         dut.io.m_axi_rvalid.poke(true.B)
         dut.io.m_axi_rready.expect(true.B)
         dut.io.s_axi_aclk.step()
@@ -177,7 +183,7 @@ trait GpuHostTestSupport {
     (address, id)
   }
 
-  /** Services the 64-bit AXI memory master until `until` holds, accepting any
+  /** Services the configured-width AXI memory master until `until` holds, accepting any
     * mix of full-line and narrow reads and full-line writes. `readLine` supplies the 64-byte line
     * for a read address; `onWrite` receives every completed write burst as
     * (address, data, byte strobe). `onReadAccepted` runs after the AR handshake
@@ -194,13 +200,15 @@ trait GpuHostTestSupport {
     onReadAccepted: BigInt => Unit = _ => (),
     onCycle: () => Unit = () => ()
   )(onWrite: (BigInt, BigInt, BigInt) => Unit)(until: => Boolean): Unit = {
-    val mask64 = (BigInt(1) << 64) - 1
+    val axiDataBytes = dut.io.m_axi_wstrb.getWidth
+    val axiDataBits = axiDataBytes * 8
+    val beatMask = (BigInt(1) << axiDataBits) - 1
     var arDone = false
     var arAddr = BigInt(0)
     var arId = BigInt(0)
     var rBeat = 0
     var rLine = BigInt(0)
-    var rBeats = 8
+    var rBeats = 64 / axiDataBytes
     var rFault = false
     var rDelay = 0
     var awDone = false
@@ -221,7 +229,7 @@ trait GpuHostTestSupport {
           dut.io.m_axi_arready.peek().litToBoolean) {
         arAddr = dut.io.m_axi_araddr.peek().litValue
         arId = dut.io.m_axi_arid.peek().litValue
-        rLine = readLine(arAddr) >> ((arAddr.toInt & 56) * 8)
+        rLine = readLine(arAddr) >> ((arAddr.toInt & (64 - axiDataBytes)) * 8)
         rBeats = dut.io.m_axi_arlen.peek().litValue.toInt + 1
         rFault = readFault(arAddr)
         arDone = true
@@ -233,7 +241,7 @@ trait GpuHostTestSupport {
       if (arDone && rDelay == 0) {
         dut.io.m_axi_rvalid.poke(true.B)
         dut.io.m_axi_rid.poke(arId.U)
-        dut.io.m_axi_rdata.poke(((rLine >> (rBeat * 64)) & mask64).U)
+        dut.io.m_axi_rdata.poke(((rLine >> (rBeat * axiDataBits)) & beatMask).U)
         dut.io.m_axi_rresp.poke((if (rFault) 2 else 0).U)
         dut.io.m_axi_rlast.poke((rBeat == rBeats - 1).B)
         if (dut.io.m_axi_rready.peek().litToBoolean) {
@@ -256,13 +264,15 @@ trait GpuHostTestSupport {
       dut.io.m_axi_wready.poke((!wDone).B)
       if (!wDone && dut.io.m_axi_wvalid.peek().litToBoolean &&
           dut.io.m_axi_wready.peek().litToBoolean) {
-        wData |= dut.io.m_axi_wdata.peek().litValue << (wBeat * 64)
-        wStrb |= dut.io.m_axi_wstrb.peek().litValue << (wBeat * 8)
+        wData |= dut.io.m_axi_wdata.peek().litValue << (wBeat * axiDataBits)
+        wStrb |= dut.io.m_axi_wstrb.peek().litValue << (wBeat * axiDataBytes)
         wBeat += 1
         if (dut.io.m_axi_wlast.peek().litToBoolean) wDone = true
       }
       if (awDone && wDone && !bPending) {
-        onWrite(awAddr, wData, wStrb)
+        // Present narrow writes in the same aligned-line format as bursts.
+        val byteOffset = awAddr.toInt & (64 - axiDataBytes)
+        onWrite(awAddr & ~BigInt(63), wData << (byteOffset * 8), wStrb << byteOffset)
         bPending = true
         bDelay = writeAckDelay
       }

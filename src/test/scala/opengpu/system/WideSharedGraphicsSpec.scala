@@ -10,9 +10,10 @@ import scala.collection.mutable
 import java.nio.file.{Files, Paths}
 
 /** Qualify the real 16-lane/eight-warp pool before migrating stock Mesa shaders. */
-class WideSharedGraphicsSpec extends AnyFlatSpec with GpuHostTestSupport {
-  for (cus <- Seq(1, 2, 4)) {
-    it should s"shade every wide-batch lane through $cus shared CUs" in {
+abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int])
+    extends AnyFlatSpec with GpuHostTestSupport {
+  for (cus <- cuCounts) {
+    it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI" in {
       val side = 32
       val capacity = 128
       val stride = 4 * capacity
@@ -20,7 +21,7 @@ class WideSharedGraphicsSpec extends AnyFlatSpec with GpuHostTestSupport {
       val gpu = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
       simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side),
         gpu, numComputeUnits = cus, fragCore = true, sharedGraphics = true,
-        parallelGraphics = true, exposePerformance = true)) { dut =>
+        parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes)) { dut =>
         initialize(dut)
         val words = mutable.LongMap.empty[BigInt]
         val descriptor = 0x1000
@@ -61,6 +62,7 @@ class WideSharedGraphicsSpec extends AnyFlatSpec with GpuHostTestSupport {
         store(depth, Seq.fill(side * side)(0x00ffffffL))
         for (bank <- 0 until 2 * cus)
           store(kernarg + bank * bankStride + 9 * stride, Seq.fill(16)(sentinel))
+        val tracePrefix = if (axiBytes == 8) s"cu-$cus" else s"cu-$cus-axi-$axiBytes"
         val traceDirectory = sys.env.get("WIDE_GRAPHICS_TRACE_DIR").map(Paths.get(_))
         val cycleTrace = new StringBuilder("start_cycle,duration,events_hex\n")
         val memoryTrace = new StringBuilder("cycle,operation,address_hex\n")
@@ -116,8 +118,8 @@ class WideSharedGraphicsSpec extends AnyFlatSpec with GpuHostTestSupport {
         traceDirectory.foreach { dir =>
           lastTrace.foreach(old => cycleTrace.append(s"$traceStart,${traceCycle - traceStart},${old.toString(16)}\n"))
           Files.createDirectories(dir)
-          Files.writeString(dir.resolve(s"cu-$cus-cycles.csv"), cycleTrace.toString)
-          Files.writeString(dir.resolve(s"cu-$cus-memory.csv"), memoryTrace.toString)
+          Files.writeString(dir.resolve(s"$tracePrefix-cycles.csv"), cycleTrace.toString)
+          Files.writeString(dir.resolve(s"$tracePrefix-memory.csv"), memoryTrace.toString)
         }
         val phases = (0 until 6).map(i => dut.io.performance.get.fragmentPhaseWorkerCycles(i).peek().litValue - startPhases(i))
         val outstanding = dut.io.performance.get.stagingOutstandingCycles.peek().litValue - startOutstanding
@@ -125,11 +127,11 @@ class WideSharedGraphicsSpec extends AnyFlatSpec with GpuHostTestSupport {
         val outputBlocked = dut.io.performance.get.fragmentOutputBlockedCycles.peek().litValue - startOutputBlocked
         val omStall = dut.io.performance.get.omStallCycles.peek().litValue - startOmStall
         val rasterStall = dut.io.performance.get.rasterStallCycles.peek().litValue - startRasterStall
-        println(s"WIDE_SHARED_GRAPHICS_PHASES CUs=$cus phases=${phases.mkString(",")} staging_outstanding_cycles=$outstanding staging_blocked=$blocked output_blocked=$outputBlocked om_stall=$omStall raster_stall=$rasterStall")
+        println(s"WIDE_SHARED_GRAPHICS_PHASES CUs=$cus axi_bytes=$axiBytes phases=${phases.mkString(",")} staging_outstanding_cycles=$outstanding staging_blocked=$blocked output_blocked=$outputBlocked om_stall=$omStall raster_stall=$rasterStall")
         val completion = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
         assert((completion & 0xff) == 91 && completion.testBit(15))
         dut.io.performance.get.system.maxActiveComputeUnits.expect(cus.U)
-        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus lanes=16 warps=8 cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$cus")
+        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes lanes=16 warps=8 cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$cus")
         for (y <- 0 until side; x <- 0 until side) {
           val offset = (y * side + x) * 4L
           val covered = x > 0 && y > 0 && x + y <= side
@@ -151,3 +153,7 @@ class WideSharedGraphicsSpec extends AnyFlatSpec with GpuHostTestSupport {
     }
   }
 }
+
+class WideSharedGraphicsSpec extends WideSharedGraphicsChecks(8, Seq(1, 2, 4))
+class MediumAxiSharedGraphicsSpec extends WideSharedGraphicsChecks(32, Seq(1, 4))
+class WideAxiSharedGraphicsSpec extends WideSharedGraphicsChecks(64, Seq(1, 4))
