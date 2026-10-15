@@ -294,7 +294,11 @@ class SharedL2Slice(
   private val requesterOH = UIntToOH(requesterCu, numComputeUnits)
   private val hitSharers = Mux1H(hitByWay,
     VecInit(sharers.map(_(requestIndex))))
-  private val otherSharers = hitSharers & ~requesterOH
+  // Only a private-cache writer can exclude its own L1 from the probes.
+  // Host/DMA IDs are outside the CU range; UIntToOH truncation can alias
+  // those IDs to a real CU (e.g. staging ID 34 / 4 aliases CU0 in a 5-client
+  // directory), silently leaving that CU's old copy valid.
+  private val otherSharers = hitSharers & ~Mux(request.cacheClient, requesterOH, 0.U)
   private val victimSharers = Mux1H(UIntToOH(victimWay, ways),
     VecInit(sharers.map(_(requestIndex))))
   private val victimTag = Mux1H(UIntToOH(victimWay, ways), tagRead)

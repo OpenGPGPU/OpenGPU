@@ -125,6 +125,34 @@ class SharedL2CacheSpec extends AnyFlatSpec {
     dut.io.response.valid.expect(true.B)
   }
 
+  it should "invalidate every L1 holder for external stores whose IDs alias a CU" in {
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2,
+      maxOutstanding = 16, numComputeUnits = 2, transactionsPerCu = 4)) { dut =>
+      initialize(dut)
+      requestLine(dut, 0x4000, 0)
+      completeLower(dut, 0x115395d3L, 0)
+      dut.clock.step()
+      // External ID 8 / 4 = 2 aliases CU0 if UIntToOH truncates to one bit.
+      // An external writer owns no L1, so it must exclude no directory holder.
+      requestLine(dut, 0x4000, 8, isWrite = true,
+        data = 0x2791c543L, mask = 15, cacheClient = false)
+      waitInvalidation(dut, 0)
+      dut.io.invalidate(0).bits.lineAddress.expect(0x4000.U)
+      dut.io.memoryRequest.valid.expect(false.B)
+      dut.clock.step()
+      dut.io.invalidateDone(0).valid.poke(true.B)
+      dut.io.invalidateDone(0).bits.lineAddress.poke(0x4000.U)
+      dut.clock.step()
+      dut.io.invalidateDone(0).valid.poke(false.B)
+      completeLower(dut, 0, 8)
+      dut.io.response.bits.transactionId.expect(8.U)
+      dut.clock.step()
+      requestLine(dut, 0x4000, 0)
+      completeLower(dut, 0x2791c543L, 0)
+      dut.io.response.bits.readData.expect(0x2791c543L.U)
+    }
+  }
+
   it should "allocate a read miss and serve the next access as an L2 hit" in {
     simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2)) { dut =>
       initialize(dut)
