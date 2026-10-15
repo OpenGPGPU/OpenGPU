@@ -74,6 +74,23 @@
       "commit": "d37ee27",
       "tests": 16,
       "passed": 16
+    },
+    "ordered_blend_msaa": {
+      "tests": 2,
+      "passed": 2,
+      "samples": [
+        1,
+        4
+      ],
+      "physical_cus": 4,
+      "checks": [
+        "Every framebuffer sample matches independent coverage and ordered blend reference",
+        "Every depth sample matches affine depth plane or untouched clear value",
+        "Later LESS-failing draw does not overwrite color/depth",
+        "Eight fragment banks preserve uniform tails",
+        "Peak four CUs occupied with delayed memory responses"
+      ],
+      "log": ".artifacts/shared-cu-ordering-tests.log"
     }
   },
   "structure": {
@@ -109,7 +126,7 @@
   },
   "limits": [
     "Shared shader execution currently qualifies only four lanes/two warps.",
-    "Ordered MSAA/blending, wide ABI, trace stall attribution and full guest qualification remain.",
+    "Wide ABI, trace stall attribution and full guest qualification remain.",
     "The existing qualified default QEMU executable is unchanged."
   ]
 }

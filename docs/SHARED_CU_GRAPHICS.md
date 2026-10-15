@@ -205,7 +205,7 @@ With identical four-lane/two-warp CUs, 16x16 scenes, eight-set/two-way L2 and
 Peak simultaneously occupied CUs is exactly 1/2/4 in the respective runs.
 All compared outputs pass the pixel reference. These are GPU-cycle results,
 not host simulation wall-time or Debian startup results. Trace analysis,
-16-lane software, ordered MSAA/blending integration and guest qualification
+16-lane software and guest qualification
 remain required before installing a replacement desktop executable.
 
 Reproduce the parallel tests with:
@@ -213,6 +213,13 @@ Reproduce the parallel tests with:
 ```sh
 sbt 'testOnly opengpu.system.ParallelCuProgrammableTextureAxiSpec opengpu.graphics.FragmentWorkerMemorySpec opengpu.graphics.ParallelFragmentSchedulerSpec opengpu.graphics.SharedShaderTaskRouterSpec' 'testOnly opengpu.system.SingleParallelCuProgrammableTextureAxiSpec opengpu.system.TwoParallelCuProgrammableTextureAxiSpec -- -z "guest-sized"' 'testOnly opengpu.system.ProgrammableTextureAxiSpec -- -z "instruction vertex guest-sized fragment"'
 ```
+
+Two further four-CU integration tests pass for ordered blending/depth at 1x
+and 4x MSAA. Three overlapping draws must blend in submission order and reject
+a later depth-failing draw. Every sample matches independent coverage, color
+and affine depth references; all eight fragment banks retain their uniform
+tails despite delayed memory responses. Log:
+`.artifacts/shared-cu-ordering-tests.log`.
 
 The initial shared ABI still requires explicit `--cu-lanes 4 --cu-warps 2`.
 The previously installed desktop model remains unchanged.
