@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Link a separate QEMU executable with a chosen ARTI model archive.
+
+Reuse the configured Ninja link command without changing QEMU staging files,
+the normal executable, or Meson settings. Keep the archive's C ABI compatible
+with the QEMU objects in the selected build directory.
+"""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import shlex
+import subprocess
+
+
+def digest(path):
+    result = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024*1024), b""):
+            result.update(chunk)
+    return result.hexdigest()
+
+
+def main():
+    root = Path(__file__).resolve().parents[1]
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("archive", type=Path)
+    p.add_argument("output", type=Path)
+    p.add_argument("--qemu-build", type=Path, default=root / "qemu-build")
+    p.add_argument("--profile-runtime", action="store_true")
+    args = p.parse_args()
+    build, archive, output = args.qemu_build.resolve(), args.archive.resolve(), args.output.resolve()
+    if output in (build / "qemu-system-aarch64", build / "qemu-system-aarch64-unsigned"):
+        p.error("choose a separate output path")
+    if not archive.is_file():
+        p.error(f"archive not found: {archive}")
+    text = subprocess.check_output(["ninja", "-C", str(build), "-t", "commands",
+                                    "qemu-system-aarch64"], text=True)
+    commands = [shlex.split(line) for line in text.splitlines() if line.strip()]
+    candidates = [cmd for cmd in commands if any("libarti_rtl_model.a" in arg for arg in cmd)]
+    if len(candidates) != 1:
+        p.error("cannot identify a unique ARTI QEMU link command")
+    link = candidates[0].copy()
+    if any(arg.startswith("@") for arg in link):
+        p.error("response-file link commands require an expanded Ninja command")
+    libraries = [i for i,arg in enumerate(link) if Path(arg).name == "libarti_rtl_model.a"]
+    if len(libraries) != 1 or "-o" not in link:
+        p.error("unexpected model archive or output arguments")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    unsigned = output.with_name(output.name+".unsigned")
+    link[libraries[0]] = str(archive)
+    link[link.index("-o")+1] = str(unsigned)
+    if args.profile_runtime:
+        link.append("-fprofile-instr-generate")
+    subprocess.run(link, cwd=build, check=True)
+    entitlements = [cmd for cmd in commands if Path(cmd[0]).name == "entitlement.sh"]
+    post = None
+    if entitlements:
+        if len(entitlements) != 1 or len(entitlements[0]) != 5:
+            p.error("unexpected QEMU entitlement command")
+        post = entitlements[0].copy()
+        post[1], post[2] = str(output), str(unsigned)
+        subprocess.run(post, cwd=build, check=True)
+    else:
+        unsigned.replace(output)
+    manifest = {"archive": str(archive), "archive_sha256": digest(archive),
+                "output": str(output), "output_sha256": digest(output),
+                "profile_runtime": args.profile_runtime, "cwd": str(build),
+                "link": link, "post_link": post}
+    output.with_name(output.name+".json").write_text(json.dumps(manifest, indent=2)+"\n")
+    print(output, flush=True)
+
+
+if __name__ == "__main__":
+    main()

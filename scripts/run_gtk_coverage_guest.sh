@@ -16,6 +16,15 @@ GTK_PROOF_DESKTOP="${GTK_PROOF_DESKTOP:-0}"
 GTK_PROOF_SCISSOR="${GTK_PROOF_SCISSOR:-0}"
 GTK_PROOF_SMOKE="${GTK_PROOF_SMOKE:-0}"
 GTK_PROOF_KMS_MODE="${GTK_PROOF_KMS_MODE:-640x480}"
+GTK_PROOF_REPRO_ONLY="${GTK_PROOF_REPRO_ONLY:-0}"
+case "$GTK_PROOF_REPRO_ONLY" in
+    0|1) ;;
+    *) echo "GTK_PROOF_REPRO_ONLY must be 0 or 1" >&2; exit 1 ;;
+esac
+if [ "$GTK_PROOF_REPRO_ONLY" = 1 ] && [ -z "${GTK_PROOF_WESTON_REPRO:-}" ]; then
+    echo "GTK_PROOF_REPRO_ONLY requires GTK_PROOF_WESTON_REPRO" >&2
+    exit 1
+fi
 [ "$GTK_PROOF_DESKTOP" != 1 ] || [ "$GTK_PROOF_SCISSOR" != 1 ] || {
     echo "choose either GTK_PROOF_DESKTOP or GTK_PROOF_SCISSOR" >&2
     exit 1
@@ -114,6 +123,13 @@ if [ "$GTK_PROOF_SCISSOR" = 1 ]; then
     [ -f "$artifact" ] || { echo "missing guest artifact: $artifact" >&2; exit 1; }
 fi
 
+# Resolve the same defaults as the launcher before recording metadata.
+eval "$(python3 "$GPU_DIR/scripts/qemu_cpu_config.py" \
+    --qemu "${QEMU:-${QEMU_BUILD:-$GPU_DIR/qemu-build}/qemu-system-aarch64}" \
+    --sim flashsim --shell)"
+export QEMU_ACCEL QEMU_CPU
+export ARTI_MODEL_IRQ_PUMP ARTI_MODEL_IRQ_PUMP_NS ARTI_MODEL_SETTLE_NS
+
 # GTK is compiled inside the guest, even when the GPU/Mesa build is cached.
 # Always stage current sources rather than reusing a previous Mesa build's copy.
 if [ "$GTK_PROOF_SMOKE" = 1 ]; then
@@ -185,8 +201,11 @@ fi
     echo "qmp_socket=${QMP_SOCKET:-none} qmp_scanout=${QMP_SCANOUT:-none}"
     echo "qemu_display=${GTK_PROOF_QEMU_DISPLAY:-none}"
     echo "qemu_binary=${QEMU:-${QEMU_BUILD:-$GPU_DIR/qemu-build}/qemu-system-aarch64}"
+    echo "qemu_accel=${QEMU_ACCEL:-tcg} qemu_cpu=${QEMU_CPU:-auto}"
     echo "gtk_debian_base=$BASE"
     echo "skip_build=${GTK_PROOF_SKIP_BUILD:-0} skip_coverage=${GTK_PROOF_SKIP_COVERAGE:-0}"
+    echo "weston_repro=${GTK_PROOF_WESTON_REPRO:-none} repro_only=$GTK_PROOF_REPRO_ONLY"
+    echo "compute_smoke=${GTK_PROOF_COMPUTE_SMOKE:-0}"
     echo "irq_pump=${ARTI_MODEL_IRQ_PUMP:-default} irq_pump_ns=${ARTI_MODEL_IRQ_PUMP_NS:-default}"
     echo "smoke_timeout_s=${GTK_PROOF_SMOKE_TIMEOUT_S:-0}"
     for checkout in "$GPU_DIR" "$ARTI_DIR" "$FLASHSIM_DIR" "$MESA_SRC"; do
@@ -266,6 +285,13 @@ if [ "${GTK_PROOF_SKIP_COVERAGE:-0}" != 1 ]; then
     echo 'GTK coverage guest proof: PASS'
 fi
 
+if [ "${GTK_PROOF_COMPUTE_SMOKE:-0}" = 1 ]; then
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 900 \
+        'test -x /root/opengpu_compute_example && test -f /root/opengpu_compute_shader.bin && LD_LIBRARY_PATH=/root /root/opengpu_compute_example /dev/dri/card0 /root/opengpu_compute_shader.bin' \
+        | tee "$PROOF_WORK/compute-smoke.log"
+    grep -qF 'compute completed; RNU=1 RDN=0' "$PROOF_WORK/compute-smoke.log"
+fi
+
 # Isolate the compositor's uniform-color/opacity shader from Wayland dispatch.
 if [ -n "${GTK_PROOF_WESTON_REPRO:-}" ]; then
     case "$GTK_PROOF_WESTON_REPRO" in
@@ -276,6 +302,10 @@ if [ -n "${GTK_PROOF_WESTON_REPRO:-}" ]; then
         "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_TRACE_DRAWS=1 OPENGPU_FENCE_TIMEOUT_MS=1800000 OPENGPU_GL_EXIT=1 OPENGPU_GL_WESTON_REPRO=$GTK_PROOF_WESTON_REPRO /root/opengpu_gl_fill.bin" \
         | tee "$PROOF_WORK/weston-repro.log"
     grep -qF 'OPENGPU GL FILL PASS' "$PROOF_WORK/weston-repro.log"
+    if [ "$GTK_PROOF_REPRO_ONLY" = 1 ]; then
+        echo 'Native GLES reproduction proof: PASS'
+        exit 0
+    fi
 fi
 
 if [ "$GTK_PROOF_SMOKE" = 1 ]; then

@@ -335,20 +335,14 @@ if [ "${OPENGPU_AUTO_DISPLAY:-desktop}" != "0" ]; then
 fi
 echo ""
 
-# FlashSim steps the RTL inside QEMU while holding the BQL: once from the
-# vCPU on every register access (arti_model_settle), and again from the
-# main-thread IRQ poll (every 100us of host time). The built-in budgets are
-# 500k / 262k cycles with no wall-clock cap, on the theory that the BQL
-# freezes guest jiffies. This guest is -smp 2, so the other vCPU keeps the
-# clock running, a multi-second hold misses RCU grace periods, and the UI
-# thread never gets back in. The model reads these at startup; the binary
-# does not have to be rebuilt. The IRQ callback stays a few cycles so it
-# cannot sit on the main thread. Guest register polls (the sliced fence
-# wait) advance the draw, and one of those polls returns within 8ms.
-ARTI_MODEL_IRQ_PUMP="${ARTI_MODEL_IRQ_PUMP:-16}"
-ARTI_MODEL_IRQ_PUMP_NS="${ARTI_MODEL_IRQ_PUMP_NS:-200000}"
-ARTI_MODEL_SETTLE_NS="${ARTI_MODEL_SETTLE_NS:-8000000}"
+# The IRQ timer advances RTL between guest register polls. HVF needs a larger
+# chunk than TCG to keep active draws moving; wall-clock caps bound BQL holds.
+# Select HVF automatically only for a signed Apple Silicon FlashSim executable.
+# Explicit CPU, accelerator, and model budgets always take precedence.
+eval "$(python3 "$GPU_DIR/scripts/qemu_cpu_config.py" --qemu "$QEMU" --sim "$GPU_SIM" --shell)"
+export QEMU_ACCEL QEMU_CPU
 export ARTI_MODEL_IRQ_PUMP ARTI_MODEL_IRQ_PUMP_NS ARTI_MODEL_SETTLE_NS
+echo "  Guest CPU : $QEMU_ACCEL / $QEMU_CPU"
 echo "  Model cap : settle ${ARTI_MODEL_SETTLE_NS}ns, irq pump ${ARTI_MODEL_IRQ_PUMP} cycles / ${ARTI_MODEL_IRQ_PUMP_NS}ns"
 
 export ARTI_DIR ARTI_WORK INTEGRATION_CONFIG
