@@ -44,6 +44,8 @@ def main():
     parser.add_argument("--base", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--capture-seconds", type=float, default=15)
+    parser.add_argument("--profile-file", type=Path,
+                        help="instrumented correctness run; exclude from timing comparisons")
     args = parser.parse_args()
     if args.capture_seconds <= 0:
         parser.error("capture interval must be positive")
@@ -65,12 +67,18 @@ def main():
                     MODULES_ISO=str(out / "opengpu-modules.iso"),
                     REBUILD_CLOUDINIT="1", BUILD_USERSPACE="0", CLOUDINIT_PACKAGES="0",
                     DEBIAN_SERIAL_TARGET="logfile", SERIAL_LOG=str(out / "serial.log"),
-                    QEMU_QMP_SOCKET=str(out / "qmp.sock"), QEMU_ACCEL="hvf", QEMU_CPU="host",
+                    QEMU_ACCEL="hvf", QEMU_CPU="host",
                     ARTI_DISPLAY_DUMP=str(out / "live.ppm"), ARTI_DISPLAY_DUMP_PERIODIC="1",
                     ARTI_MODEL_STATS="1", ARTI_MODEL_IRQ_PUMP="1024",
                     ARTI_MODEL_IRQ_PUMP_NS="8000000", ARTI_MODEL_SETTLE_NS="8000000")
     env.update(settings)
+    if args.profile_file:
+        profile = args.profile_file.resolve()
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        settings["LLVM_PROFILE_FILE"] = str(profile)
+        env.update(settings)
     result = dict(status="running", scope="Fresh 640x480 Weston DRM desktop; candidate requires visual review",
+                  instrumented=bool(args.profile_file),
                   qemu_sha256=digest(qemu), payload_sha256={p.name: digest(p) for p in
                   sorted((payload / "opengpu-driver").iterdir()) if p.is_file()},
                   settings=settings, host_load_start=list(os.getloadavg()),
@@ -110,6 +118,9 @@ def main():
                         event("qemu_started", observation_uncertainty_seconds=1)
                 serial = out / "serial.log"
                 text = serial.read_text(errors="replace") if serial.exists() else ""
+                for failure in ("render scheduler timeout", "device wedged", "GPU draw failed"):
+                    if failure in text:
+                        raise RuntimeError(f"guest failure: {failure}; see serial.log")
                 for marker in ("GPU probe:", "Output 'Virtual-1' enabled",
                                "opengpu: submit draw=1", "opengpu: complete draw=1",
                                "OPENGPU GTK FRAME PASS: idle", "OPENGPU GTK FRAME PASS: active"):

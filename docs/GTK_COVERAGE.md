@@ -155,7 +155,9 @@ An explicit positive value remains available for bounded diagnostics.
 The per-fence wait and kernel watchdog are separate from this total limit.
 
 Build the guest module through `scripts/run_arti_gpu.sh` (as the display build
-does). That script supplies `OPENGPU_DRAW_WAIT_MS` scaled for simulation and
+does), or rebuild just the module with
+`bash scripts/build_arti_guest_driver.sh /path/to/isolated/opengpu-driver`.
+Both supply `OPENGPU_DRAW_WAIT_MS` scaled for simulation and
 `OPENGPU_FENCE_SLICE_MS=4`. A bare manual kernel-module build uses a 30-second
 watchdog, which is shorter than the measured 640x480 compositor submissions.
 The differing watchdog settings explain the early reset in the manual-build
