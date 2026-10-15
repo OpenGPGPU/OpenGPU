@@ -367,6 +367,7 @@
       "after_conservative_full_batch": 3.243780700364443
     }
   },
-  "performance_scope": "GPU-cycle evidence from pixel-checked synthetic scenes. Wall times overlapped independent correctness/build work and are not simulator speed measurements. The current full640 guest uses the earlier frozen2f9 RTL, not this optimization.",
-  "source_sha256": "084654e0245150090088dea9fa980bda26a0a2770d52c9e110e4bc642007350f"
+  "performance_scope": "GPU-cycle evidence from pixel-checked synthetic scenes. Full native 4-CU Debian/GTK 640x480 qualification now passes; see linked report. Overlapped wall times are not simulator speed measurements.",
+  "source_sha256": "084654e0245150090088dea9fa980bda26a0a2770d52c9e110e4bc642007350f",
+  "native_full640_qualification": "docs/performance/fixed-lod-full640-2026-10-16.json"
 }

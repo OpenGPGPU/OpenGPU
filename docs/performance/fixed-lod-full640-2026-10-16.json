@@ -1,0 +1,171 @@
+{
+  "status": "PASS: fixed-LOD RTL full desktop qualification",
+  "artifact_root": ".artifacts/shared-cu/fixed-lod-native",
+  "rtl_source_commit": "c2b4469b53bd14518131611f4751cf94f26a391c",
+  "software": {
+    "gpu_software_commit": "9789e7bad47b3eb1a91c4e778712c408a54a5b86",
+    "arti_commit": "15fc7df3ca38d88d98270c529098218e27c22e38",
+    "prior_payload": "payload-batching-only.json",
+    "current_payload": "payload.json",
+    "stage": "generate",
+    "qualification": "docs/performance/private-depth-discard-2026-10-16.json",
+    "scope": "Adopt validated software before training/native qualification starts. Retain original payload. Emitted RTL unchanged; its source commit remains c2b4469."
+  },
+  "archive_sha256": "379cf29beebd27c43756001966cf886c3edcfa9414a3aaf6375927b43725e85c",
+  "qemu_sha256": "7c2ee91c0e1fdd9e79101da1d144451279642dea2d7fa8956543705c6bae6126",
+  "payload_manifest_sha256": "685f0c07f99755f71a5b78f3725db2e12f924b563fbc8967a612af9b12ada8f2",
+  "structure": {
+    "CU_instances": [
+      [
+        "GpuSystem.sv",
+        "computeUnits_0"
+      ],
+      [
+        "GpuSystem.sv",
+        "computeUnits_1"
+      ],
+      [
+        "GpuSystem.sv",
+        "computeUnits_2"
+      ],
+      [
+        "GpuSystem.sv",
+        "computeUnits_3"
+      ]
+    ],
+    "private_shader_CUs": 0,
+    "dirty_entries": 66861,
+    "dirty_index_bits": 32,
+    "scalar_register_RTL_unchanged_from_qualified_baseline": {
+      "ScalarRegisterBank.sv": "d5e1013fa6d1900f7284592326360173c8096271164d49447d7201ee69734819",
+      "ScalarRegisterFile.sv": "da120a94556542a6646fb2a3ad1df449e470b4adc871660345519cc53ea76026",
+      "ScalarRegisterMacroFile.sv": "29795d93fac88f05c5decede4a9b1faffed15c6210fa62cd96ca88743f648298",
+      "ScalarRegisterMacroManager.sv": "acee0b7353690be8aaeecb258c555db29164dfbdb38ae897d94828b69916f36e"
+    },
+    "emitter_flags": [
+      "--frag-core",
+      "--vert-core",
+      "--shared-graphics",
+      "--parallel-graphics",
+      "--compute-units",
+      "4",
+      "--cu-lanes",
+      "16",
+      "--cu-warps",
+      "8",
+      "--width",
+      "640",
+      "--height",
+      "480",
+      "--memory-axi-data-bytes",
+      "64",
+      "--coalesce-framebuffer",
+      "--om-inflight",
+      "64",
+      "--om-locality",
+      "--fragment-batch-limit",
+      "112",
+      "--buffer-command-reads",
+      "--buffer-texture-reads"
+    ],
+    "header_sha256": "c6583b1db2542690d9b1fd9ae342ef192ce8be73ae63ee93ea53a6781c3f6f48",
+    "scope": "Structural check combined here with passing native and full640 evidence; no simulator timing claim."
+  },
+  "native_qualifications": {
+    "training": {
+      "passed": true,
+      "native_cases": 21,
+      "markers": {
+        "compute completed; RNU=1 RDN=0": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "report": ".artifacts/shared-cu/fixed-lod-native/guest-qualification-corrected.json",
+      "report_sha256": "29527d2abbdc8e1b603ecbe6c574a9234b39ede27cbb6ab53b802e6979d770e9"
+    },
+    "optimized": {
+      "passed": true,
+      "native_cases": 21,
+      "markers": {
+        "compute completed; RNU=1 RDN=0": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "report": ".artifacts/shared-cu/fixed-lod-native/guest-qualification-optimized.json",
+      "report_sha256": "de3a92d3c8e2e84f7e8d709edac60cc59420584a3b5d390937678fbb69946d15"
+    }
+  },
+  "full640": {
+    "passed": true,
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/lod-batch640",
+    "markers": [
+      "GTK Wayland/OpenGPU smoke proof: PASS",
+      "Gtk-smoke scanout proof: PASS",
+      "OPENGPU GTK FRAME PASS: idle",
+      "OPENGPU GTK FRAME PASS: active"
+    ],
+    "scanout": {
+      "passed": true,
+      "framebuffer_size": [
+        640,
+        480
+      ],
+      "client_size": [
+        280,
+        124
+      ],
+      "active_rectangle": [
+        93,
+        223,
+        227,
+        72
+      ],
+      "active_pixels": 16571,
+      "channel_tolerance": 3,
+      "capture_sha256": "faf64043fa05c52bb96079619b6c00d9f8edc9f61d206683986b3cc3231ef8d3",
+      "source_frame": "/Users/duckdonald/workspace/gpu/.artifacts/lod-batch640/gtk-smoke-scanout.ppm",
+      "saved_frame": "/Users/duckdonald/workspace/gpu/.artifacts/lod-batch640/gtk-smoke-verified.ppm"
+    },
+    "qemu_sha256": "7c2ee91c0e1fdd9e79101da1d144451279642dea2d7fa8956543705c6bae6126",
+    "archive_sha256": "379cf29beebd27c43756001966cf886c3edcfa9414a3aaf6375927b43725e85c",
+    "rtl_source_commit": "c2b4469b53bd14518131611f4751cf94f26a391c",
+    "trace_sha256": "401ec8812a1d2da437ad993ed23455c0856d9e6e540c227c846631443590a35e",
+    "visual_review": "PASS; see visual_review in this report",
+    "scope": "Full640x480 desktop+GTK on new fixed-LOD RTL and Mesa batching. Probe run is diagnostic; no host timing claim."
+  },
+  "visual_review": {
+    "passed": true,
+    "image": ".artifacts/shared-cu/fixed-lod-native/full640-verified.png",
+    "image_sha256": "7a3df26f5819ddfcd04f3c65184a92668ef0777627de8b948e2aad14294c21c6",
+    "observations": "Upright GTK window with readable title and label, complete orange GL area within dark margins, redraw control, patterned Weston desktop and bottom panel."
+  },
+  "trace": {
+    "sha256": "401ec8812a1d2da437ad993ed23455c0856d9e6e540c227c846631443590a35e",
+    "gpu_ticks": 24362219,
+    "calls": 210698,
+    "commands_by_opcode": {
+      "5": 307,
+      "6": 47,
+      "2": 4
+    },
+    "fill_count": 4,
+    "fill_bytes": 555520,
+    "depth_pattern_fill_count": 0,
+    "depth_pattern_fill_bytes": 0,
+    "depth_fill_size_histogram": {},
+    "dma_read_bytes": 53771584,
+    "dma_write_bytes": 69356824,
+    "scope": "MMIO unified-command SUBMIT writes; 0x00ffffff identifies the depth-clear pattern, not proof of every fill consumer."
+  },
+  "limits": [
+    "GPU ticks cover this recorded guest run; compositor scheduling differs between boots, so this is not a controlled full-desktop speedup.",
+    "Elapsed qualification time includes approximately 279 seconds of deliberate QEMU suspension and overlapping compiler/test workloads; no host-speed claim.",
+    "This qualified model has two FILL slots and no vector single-texel broadcast. The next RTL changes require their own native qualification."
+  ]
+}
