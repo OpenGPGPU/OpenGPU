@@ -1,0 +1,218 @@
+{
+  "status": "RTL promoted after focused throughput and full graphics regressions; native Debian qualification pending",
+  "diagnosis": "docs/performance/fill-native-diagnosis-2026-10-16.json",
+  "change": "Increase FILL transaction and line slots together from 2 to 16; transaction ID ranges remain derived from resource counts.",
+  "selection": "16 reaches 1039 cycles for 1024 bare AXI lines with prompt B; 32 offers no further benefit. Retain 16 to avoid unnecessary state.",
+  "matrix_scope": "Four idle 4-lane/2-warp CUs, FPU disabled, 512-bit AXI, 64 KiB fill; bare/Sv32 and B delays 1/16. Every byte, two 64-byte canaries, completion status and byte count checked.",
+  "matrix": [
+    {
+      "slots": 2,
+      "cases": [
+        {
+          "sv32": false,
+          "b_delay": 1,
+          "cycles": 4615
+        },
+        {
+          "sv32": false,
+          "b_delay": 16,
+          "cycles": 12295
+        },
+        {
+          "sv32": true,
+          "b_delay": 1,
+          "cycles": 4839
+        },
+        {
+          "sv32": true,
+          "b_delay": 16,
+          "cycles": 12519
+        }
+      ],
+      "log_sha256": "bc11c068271e4c0cb1ea8b39c2f66faae057636f51f6494f634de2cae7641de7"
+    },
+    {
+      "slots": 4,
+      "cases": [
+        {
+          "sv32": false,
+          "b_delay": 1,
+          "cycles": 2313
+        },
+        {
+          "sv32": false,
+          "b_delay": 16,
+          "cycles": 6153
+        },
+        {
+          "sv32": true,
+          "b_delay": 1,
+          "cycles": 2537
+        },
+        {
+          "sv32": true,
+          "b_delay": 16,
+          "cycles": 6377
+        }
+      ],
+      "log_sha256": "b6f1393ebe9adfe1ef93a37d9214579e255936d193888ab73942a6d820d9c002"
+    },
+    {
+      "slots": 8,
+      "cases": [
+        {
+          "sv32": false,
+          "b_delay": 1,
+          "cycles": 1221
+        },
+        {
+          "sv32": false,
+          "b_delay": 16,
+          "cycles": 3141
+        },
+        {
+          "sv32": true,
+          "b_delay": 1,
+          "cycles": 1389
+        },
+        {
+          "sv32": true,
+          "b_delay": 16,
+          "cycles": 3309
+        }
+      ],
+      "log_sha256": "a05839f4a6779459a5d6ea9b0343fdb8c454dc0cfd81b743fe8cc4a7144930f9"
+    },
+    {
+      "slots": 16,
+      "cases": [
+        {
+          "sv32": false,
+          "b_delay": 1,
+          "cycles": 1039
+        },
+        {
+          "sv32": false,
+          "b_delay": 16,
+          "cycles": 2831
+        },
+        {
+          "sv32": true,
+          "b_delay": 1,
+          "cycles": 1269
+        },
+        {
+          "sv32": true,
+          "b_delay": 16,
+          "cycles": 2866
+        }
+      ],
+      "log_sha256": "579f8356d7a24004cd0091d4531b8ef167f7226a10fe1da0aef7ee25905b1026"
+    },
+    {
+      "slots": 32,
+      "cases": [
+        {
+          "sv32": false,
+          "b_delay": 1,
+          "cycles": 1039
+        },
+        {
+          "sv32": false,
+          "b_delay": 16,
+          "cycles": 2831
+        },
+        {
+          "sv32": true,
+          "b_delay": 1,
+          "cycles": 1269
+        },
+        {
+          "sv32": true,
+          "b_delay": 16,
+          "cycles": 2867
+        }
+      ],
+      "log_sha256": "bd1a0674605604e3ff9317a7ec4d92bb2e433b6a601f255d7eea0d08fff29333"
+    }
+  ],
+  "validation": {
+    "started": 1792105877.825066,
+    "stages": [
+      {
+        "label": "fill-units",
+        "exit_status": 0,
+        "seconds": 5.299468333134428
+      },
+      {
+        "label": "throughput-gate",
+        "exit_status": 0,
+        "seconds": 13.878497833153233
+      },
+      {
+        "label": "random-routing",
+        "exit_status": 0,
+        "seconds": 34.18141566589475
+      },
+      {
+        "label": "buffered-random-routing",
+        "exit_status": 0,
+        "seconds": 31.690067667048424
+      },
+      {
+        "label": "full-solid",
+        "exit_status": 0,
+        "seconds": 372.8286655000411
+      },
+      {
+        "label": "full-spatial",
+        "exit_status": 0,
+        "seconds": 93.67310824990273
+      }
+    ],
+    "finished": 1792106429.382315
+  },
+  "negative_control": {
+    "expected_failure": true,
+    "exit_status": 1,
+    "meaning": "Old2slotdesign passes all byte/canary checks but fails the independent throughput budget."
+  },
+  "graphics_scope": "Full VS/FS/FPU, 16 lanes/8 warps, 1 and 4 CUs; spatial and single-texel texture scenes. Pixel CSV includes colour/depth; shader words and scene metadata identical.",
+  "graphics_comparisons": [
+    {
+      "scene": "full-solid",
+      "pixels_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "metadata_sha256": "af2fbca292da2260ab267628bb77d97d3f05b3234d5c4d3ca290062c2e0f05ef",
+      "file": "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-pixels.csv",
+      "identical_to": ".artifacts/shared-cu/fixed-lod/bypass/FullPoolSolidTextureBufferedSpec/cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-pixels.csv"
+    },
+    {
+      "scene": "full-solid",
+      "pixels_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "metadata_sha256": "425c66204736246c5dba52cfde7f0701f185e5cdff57326ab5e514b34db9c653",
+      "file": "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-pixels.csv",
+      "identical_to": ".artifacts/shared-cu/fixed-lod/bypass/FullPoolSolidTextureBufferedSpec/cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-pixels.csv"
+    },
+    {
+      "scene": "full-spatial",
+      "pixels_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "metadata_sha256": "f9edfa57abee974754bd8d1b6eb7def63052c6c687e03fbd813418cddeb3d740",
+      "file": "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv",
+      "identical_to": ".artifacts/shared-cu/fixed-lod/bypass/FullPoolTextureBufferedSpec/cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv"
+    },
+    {
+      "scene": "full-spatial",
+      "pixels_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "metadata_sha256": "50686761165eaac49de9ec6b0535bfcdf853339be3a21edd91b5de99d85f3f2c",
+      "file": "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv",
+      "identical_to": ".artifacts/shared-cu/fixed-lod/bypass/FullPoolTextureBufferedSpec/cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv"
+    }
+  ],
+  "source_sha256": "ee245a4ea00b794c6a125787f7f109a0d1f57fbf5c5bac34ff6eae1d774fc0cd",
+  "artifact_root": ".artifacts/shared-cu/fill-throughput",
+  "limits": [
+    "Focused FILL cycles are not a whole-desktop speedup.",
+    "Full native model must be regenerated and qualified before any default executable promotion.",
+    "No host wall-speed claim; simulation/build workloads overlapped."
+  ]
+}

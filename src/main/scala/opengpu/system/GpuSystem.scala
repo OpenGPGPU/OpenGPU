@@ -29,7 +29,7 @@ class GpuPerformanceCounters extends Bundle {
 
 object GpuSystem {
   private[system] val copyTransactions = 4
-  private[system] val fillTransactions = 2
+  private[system] val fillTransactions = 16
   private[system] val stridedCopyTransactions = 4
   private[system] val resolveTransactions = 4
   /** One PTE-walk slot per fill/blit/strided/resolve translator. */
@@ -249,6 +249,7 @@ class GpuSystem(
   private val fillEngine = Module(new FillEngine(
     config, descriptorIdWidth = commandIdWidth, lineBytes = 64,
     maxOutstanding = fillTransactions,
+    lineSlots = fillTransactions,
     descriptorQueueDepth = config.fillDescriptorQueueDepth))
   private val stridedCopyEngine = Module(new StridedCopyEngine(
     config, descriptorIdWidth = commandIdWidth, lineBytes = 64,

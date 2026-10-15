@@ -113,4 +113,57 @@ class FillEngineSpec extends AnyFlatSpec {
       dut.io.completion.bits.status.expect(CopyStatus.invalidLength)
     }
   }
+
+  for (slots <- Seq(8, 16)) {
+    it should s"drain $slots outstanding slots after an out-of-order fault and reuse them" in {
+      simulate(new FillEngine(GpuConfig(lanes = 4), descriptorIdWidth = 4,
+        maxOutstanding = 2 * slots, lineSlots = slots, transactionIdBase = slots)) { dut =>
+        initialize(dut)
+        submit(dut, 6, 0x8000, (slots + 2) * 64, 0x12345678L)
+        val ids = (0 until slots).map { line =>
+          dut.io.memoryRequest.valid.expect(true.B)
+          dut.io.memoryRequest.bits.address.expect((0x8000 + line * 64).U)
+          val id = dut.io.memoryRequest.bits.transactionId.peek().litValue
+          dut.clock.step()
+          id
+        }
+        assert(ids.toSet == (slots until 2 * slots).map(BigInt(_)).toSet)
+        dut.io.memoryRequest.valid.expect(false.B)
+        dut.io.memoryRequest.ready.poke(false.B)
+        respond(dut, ids.last)
+        dut.io.memoryRequest.valid.expect(true.B)
+        dut.io.memoryRequest.bits.address.expect((0x8000 + slots * 64).U)
+        for (_ <- 0 until 3) {
+          dut.io.memoryRequest.bits.address.expect((0x8000 + slots * 64).U)
+          dut.clock.step()
+        }
+        respond(dut, ids(2), fault = true)
+        dut.io.memoryRequest.valid.expect(false.B)
+        dut.io.completion.valid.expect(false.B)
+        for (slot <- (0 until slots).reverse.filterNot(i => i == 2 || i == slots - 1)) {
+          respond(dut, ids(slot))
+          dut.io.memoryRequest.valid.expect(false.B)
+        }
+        dut.clock.step()
+        for (_ <- 0 until 4) {
+          dut.io.completion.valid.expect(true.B)
+          dut.io.completion.bits.status.expect(CopyStatus.writeFault)
+          dut.io.completion.bits.bytesFilled.expect(((slots - 1) * 64).U)
+          dut.clock.step()
+        }
+        dut.io.completion.ready.poke(true.B)
+        dut.clock.step()
+        dut.io.memoryRequest.ready.poke(true.B)
+        submit(dut, 7, 0x9000, 64, 0xabcdef01L)
+        dut.io.memoryRequest.valid.expect(true.B)
+        val next = dut.io.memoryRequest.bits.transactionId.peek().litValue
+        dut.clock.step()
+        respond(dut, next)
+        dut.clock.step()
+        dut.io.completion.valid.expect(true.B)
+        dut.io.completion.bits.success.expect(true.B)
+        dut.io.completion.bits.bytesFilled.expect(64.U)
+      }
+    }
+  }
 }
