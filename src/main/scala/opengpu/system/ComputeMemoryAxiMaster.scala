@@ -8,7 +8,7 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 /** Converts the cache hierarchy's private lower-memory protocol into an AXI4
   * master port. The private protocol never crosses the product boundary.
   *
-  * The current bridge deliberately allows one AXI transaction at a time. A
+  * Independent read and write engines overlap transactions in both directions. A
   * 64-byte cache line is emitted as an INCR burst when the AXI data bus is
   * narrower than a cache line; four-byte page-table accesses use AXI narrow
   * transfers and are shifted to/from the addressed byte lane.
@@ -79,140 +79,142 @@ class ComputeMemoryAxiMaster(
     val m_axi_rready = Output(Bool())
   })
 
-  private val states = Enum(6)
-  private val idle = states(0)
-  private val readAddress = states(1)
-  private val readData = states(2)
-  private val writeData = states(3)
-  private val writeResponse = states(4)
-  private val returnResponse = states(5)
-  private val state = RegInit(idle)
-  private val request = Reg(new ComputeMemoryRequest(
-    config, lineBytes, maxOutstanding))
-  private val beat = RegInit(0.U(beatIndexWidth.W))
+  private val readRequest = Reg(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+  private val writeRequest = Reg(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
+  private val readActive = RegInit(false.B)
+  private val writeActive = RegInit(false.B)
+  private val readAddressSent = RegInit(false.B)
+  private val writeAddressSent = RegInit(false.B)
+  private val writeDataSent = RegInit(false.B)
+  private val readBeat = RegInit(0.U(beatIndexWidth.W))
+  private val writeBeat = RegInit(0.U(beatIndexWidth.W))
   private val readResult = RegInit(0.U((lineBytes * 8).W))
-  private val responseFault = RegInit(false.B)
-  private val addressSent = RegInit(false.B)
-  private val dataSent = RegInit(false.B)
+  private val readFault = RegInit(false.B)
+  // Include queued replies in the credit count. Backpressured consumers cannot
+  // cause the bridge to accept more requests than its advertised capacity.
+  private val outstanding = RegInit(0.U(log2Ceil(maxOutstanding + 1).W))
+  // A pending second store must not hold the shared L2 arbiter in front of a
+  // read while the first store waits for B. Each direction gets its own queue.
+  private val readRequests = Module(new Queue(
+    new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 2, flow = true))
+  private val writeRequests = Module(new Queue(
+    new ComputeMemoryRequest(config, lineBytes, maxOutstanding), 2, flow = true))
+  readRequests.io.enq.valid := io.request.valid && !io.request.bits.isWrite && outstanding < maxOutstanding.U
+  writeRequests.io.enq.valid := io.request.valid && io.request.bits.isWrite && outstanding < maxOutstanding.U
+  readRequests.io.enq.bits := io.request.bits
+  writeRequests.io.enq.bits := io.request.bits
+  readRequests.io.deq.ready := !readActive
+  writeRequests.io.deq.ready := !writeActive
+  private val responseArb = Module(new RRArbiter(
+    new ComputeMemoryResponse(lineBytes, maxOutstanding), 2))
+  private val responses = Module(new Queue(
+    new ComputeMemoryResponse(lineBytes, maxOutstanding), 2, pipe = true))
+  responses.io.enq <> responseArb.io.out
+  io.response <> responses.io.deq
 
-  private val requestBytes = (1.U(8.W) << request.sizeLog2)(7, 0)
-  private val lineTransfer = requestBytes > axiDataBytes.U
-  private val lineBeats = lineBytes / axiDataBytes
-  private val transferBeats = Mux(lineTransfer, lineBeats.U(8.W), 1.U(8.W))
-  private val lastBeat = beat === (transferBeats - 1.U)
-  private val laneOffset = if (laneOffsetWidth == 0) 0.U else
+  private def lineTransfer(request: ComputeMemoryRequest): Bool =
+    request.sizeLog2 > log2Ceil(axiDataBytes).U
+  private def transferBeats(request: ComputeMemoryRequest): UInt =
+    Mux(lineTransfer(request), (lineBytes / axiDataBytes).U(8.W), 1.U(8.W))
+  private def laneOffset(request: ComputeMemoryRequest): UInt =
     request.address(laneOffsetWidth - 1, 0)
-  private val laneShift = laneOffset << 3
-  private val beatShift = beat << log2Ceil(axiDataWidth)
+  private val readLast = readBeat === transferBeats(readRequest) - 1.U
+  private val writeLast = writeBeat === transferBeats(writeRequest) - 1.U
+  private val readShift = readBeat << log2Ceil(axiDataWidth)
+  private val writeShift = writeBeat << log2Ceil(axiDataWidth)
+  private val nextReadResult = Mux(lineTransfer(readRequest),
+    readResult | (io.m_axi_rdata << readShift),
+    io.m_axi_rdata >> (laneOffset(readRequest) << 3))
 
-  io.request.ready := state === idle
-  io.response.valid := state === returnResponse
-  io.response.bits.readData := readResult
-  io.response.bits.fault := responseFault
-  io.response.bits.transactionId := request.transactionId
+  io.request.ready := outstanding < maxOutstanding.U &&
+    Mux(io.request.bits.isWrite, writeRequests.io.enq.ready, readRequests.io.enq.ready)
+  when(io.request.fire =/= io.response.fire) {
+    outstanding := Mux(io.request.fire, outstanding + 1.U, outstanding - 1.U)
+  }
+  when(io.request.fire) {
+    assert(io.request.bits.sizeLog2 === 2.U || io.request.bits.sizeLog2 === 6.U,
+      "lower memory supports four-byte words and full cache lines")
+    when(io.request.bits.sizeLog2 === 6.U) {
+      assert(io.request.bits.address(5, 0) === 0.U,
+        "cache-line AXI bursts must be naturally aligned")
+    }
+  }
+  when(writeRequests.io.deq.fire) {
+    writeRequest := writeRequests.io.deq.bits
+    writeActive := true.B
+    writeAddressSent := false.B
+    writeDataSent := false.B
+    writeBeat := 0.U
+  }
+  when(readRequests.io.deq.fire) {
+    readRequest := readRequests.io.deq.bits
+    readActive := true.B
+    readAddressSent := false.B
+    readBeat := 0.U
+    readResult := 0.U
+    readFault := false.B
+  }
 
-  io.m_axi_awid := request.transactionId
-  io.m_axi_awaddr := request.address
-  io.m_axi_awlen := transferBeats - 1.U
-  io.m_axi_awsize := Mux(lineTransfer, log2Ceil(axiDataBytes).U,
-    request.sizeLog2)
-  io.m_axi_awburst := 1.U // INCR
+  io.m_axi_awid := writeRequest.transactionId
+  io.m_axi_awaddr := writeRequest.address
+  io.m_axi_awlen := transferBeats(writeRequest) - 1.U
+  io.m_axi_awsize := Mux(lineTransfer(writeRequest), log2Ceil(axiDataBytes).U, writeRequest.sizeLog2)
+  io.m_axi_awburst := 1.U
   io.m_axi_awlock := false.B
-  io.m_axi_awcache := "b0011".U // normal non-cacheable, bufferable
+  io.m_axi_awcache := "b0011".U
   io.m_axi_awprot := 0.U
   io.m_axi_awqos := 0.U
-  io.m_axi_awvalid := state === writeData && !addressSent
+  io.m_axi_awvalid := writeActive && !writeAddressSent
+  io.m_axi_wdata := Mux(lineTransfer(writeRequest),
+    (writeRequest.writeData >> writeShift)(axiDataWidth - 1, 0),
+    (writeRequest.writeData(axiDataWidth - 1, 0) << (laneOffset(writeRequest) << 3))(axiDataWidth - 1, 0))
+  io.m_axi_wstrb := Mux(lineTransfer(writeRequest),
+    (writeRequest.byteMask >> (writeBeat << log2Ceil(axiDataBytes)))(axiDataBytes - 1, 0),
+    (writeRequest.byteMask(axiDataBytes - 1, 0) << laneOffset(writeRequest))(axiDataBytes - 1, 0))
+  io.m_axi_wlast := writeLast
+  io.m_axi_wvalid := writeActive && !writeDataSent
+  when(io.m_axi_awvalid && io.m_axi_awready) { writeAddressSent := true.B }
+  when(io.m_axi_wvalid && io.m_axi_wready) {
+    when(writeLast) { writeDataSent := true.B }
+      .otherwise { writeBeat := writeBeat + 1.U }
+  }
+  private val writeResponseExpected = writeActive && writeAddressSent && writeDataSent
+  responseArb.io.in(1).valid := writeResponseExpected && io.m_axi_bvalid
+  responseArb.io.in(1).bits.transactionId := writeRequest.transactionId
+  responseArb.io.in(1).bits.readData := 0.U
+  responseArb.io.in(1).bits.fault := io.m_axi_bresp(1)
+  io.m_axi_bready := writeResponseExpected && responseArb.io.in(1).ready
+  when(io.m_axi_bvalid && io.m_axi_bready) {
+    assert(io.m_axi_bid === writeRequest.transactionId,
+      "AXI write response ID must match the active lower-memory request")
+    writeActive := false.B
+  }
 
-  private val lineWriteData = (request.writeData >> beatShift)(axiDataWidth - 1, 0)
-  private val narrowWriteData =
-    (request.writeData(axiDataWidth - 1, 0) << laneShift)(axiDataWidth - 1, 0)
-  private val lineWriteMask = (request.byteMask >>
-    (beat << log2Ceil(axiDataBytes)))(axiDataBytes - 1, 0)
-  private val narrowWriteMask =
-    (request.byteMask(axiDataBytes - 1, 0) << laneOffset)(axiDataBytes - 1, 0)
-  io.m_axi_wdata := Mux(lineTransfer, lineWriteData, narrowWriteData)
-  io.m_axi_wstrb := Mux(lineTransfer, lineWriteMask, narrowWriteMask)
-  io.m_axi_wlast := lastBeat
-  io.m_axi_wvalid := state === writeData && !dataSent
-
-  io.m_axi_bready := state === writeResponse
-
-  io.m_axi_arid := request.transactionId
-  io.m_axi_araddr := request.address
-  io.m_axi_arlen := transferBeats - 1.U
-  io.m_axi_arsize := Mux(lineTransfer, log2Ceil(axiDataBytes).U,
-    request.sizeLog2)
-  io.m_axi_arburst := 1.U // INCR
+  io.m_axi_arid := readRequest.transactionId
+  io.m_axi_araddr := readRequest.address
+  io.m_axi_arlen := transferBeats(readRequest) - 1.U
+  io.m_axi_arsize := Mux(lineTransfer(readRequest), log2Ceil(axiDataBytes).U, readRequest.sizeLog2)
+  io.m_axi_arburst := 1.U
   io.m_axi_arlock := false.B
   io.m_axi_arcache := "b0011".U
   io.m_axi_arprot := 0.U
   io.m_axi_arqos := 0.U
-  io.m_axi_arvalid := state === readAddress
-  io.m_axi_rready := state === readData
-
-  when(io.request.fire) {
-    request := io.request.bits
-    beat := 0.U
-    readResult := 0.U
-    responseFault := false.B
-    addressSent := false.B
-    dataSent := false.B
-    assert(io.request.bits.sizeLog2 === 2.U ||
-      io.request.bits.sizeLog2 === log2Ceil(lineBytes).U,
-      "lower memory supports four-byte words and full cache lines")
-    when(io.request.bits.sizeLog2 === log2Ceil(lineBytes).U) {
-      assert(io.request.bits.address(log2Ceil(lineBytes) - 1, 0) === 0.U,
-        "cache-line AXI bursts must be naturally aligned")
-    }
-    state := Mux(io.request.bits.isWrite, writeData, readAddress)
-  }
-
-  when(state === readAddress && io.m_axi_arready) {
-    state := readData
-  }
-
-  when(state === readData && io.m_axi_rvalid) {
-    val responseError = io.m_axi_rresp(1)
-    val narrowData = (io.m_axi_rdata >> laneShift)(axiDataWidth - 1, 0)
-    val lineData = readResult | (io.m_axi_rdata << beatShift)
-    val nextData = Mux(lineTransfer, lineData, narrowData)
-    readResult := nextData
-    responseFault := responseFault || responseError ||
-      (io.m_axi_rlast =/= lastBeat)
-    assert(io.m_axi_rid === request.transactionId,
+  io.m_axi_arvalid := readActive && !readAddressSent
+  when(io.m_axi_arvalid && io.m_axi_arready) { readAddressSent := true.B }
+  private val readResponseExpected = readActive && readAddressSent
+  responseArb.io.in(0).valid := readResponseExpected && io.m_axi_rvalid && readLast
+  responseArb.io.in(0).bits.transactionId := readRequest.transactionId
+  responseArb.io.in(0).bits.readData := nextReadResult
+  responseArb.io.in(0).bits.fault := readFault || io.m_axi_rresp(1) || (io.m_axi_rlast =/= readLast)
+  io.m_axi_rready := readResponseExpected && (!readLast || responseArb.io.in(0).ready)
+  when(io.m_axi_rvalid && io.m_axi_rready) {
+    assert(io.m_axi_rid === readRequest.transactionId,
       "AXI read response ID must match the active lower-memory request")
-    assert(io.m_axi_rlast === lastBeat,
+    assert(io.m_axi_rlast === readLast,
       "AXI RLAST must match the programmed burst length")
-    when(io.m_axi_rlast) {
-      state := returnResponse
-    }.otherwise {
-      beat := beat + 1.U
-    }
-  }
-
-  when(state === writeData) {
-    val addressFire = io.m_axi_awvalid && io.m_axi_awready
-    val dataFire = io.m_axi_wvalid && io.m_axi_wready
-    when(addressFire) { addressSent := true.B }
-    when(dataFire) {
-      when(lastBeat) { dataSent := true.B }
-        .otherwise { beat := beat + 1.U }
-    }
-    when((addressSent || addressFire) &&
-        (dataSent || (dataFire && lastBeat))) {
-      state := writeResponse
-    }
-  }
-
-  when(state === writeResponse && io.m_axi_bvalid) {
-    assert(io.m_axi_bid === request.transactionId,
-      "AXI write response ID must match the active lower-memory request")
-    readResult := 0.U
-    responseFault := io.m_axi_bresp(1)
-    state := returnResponse
-  }
-
-  when(io.response.fire) {
-    state := idle
+    readResult := nextReadResult
+    readFault := readFault || io.m_axi_rresp(1)
+    when(readLast) { readActive := false.B }
+      .otherwise { readBeat := readBeat + 1.U }
   }
 }

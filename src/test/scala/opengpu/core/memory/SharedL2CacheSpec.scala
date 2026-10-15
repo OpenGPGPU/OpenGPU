@@ -645,4 +645,58 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       dut.io.response.bits.transactionId.expect(2.U)
     }
   }
+
+  for (policy <- Seq(0, 2)) {
+    it should s"overlap an independent read with an unacknowledged store under cache policy $policy" in {
+      simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2)) { dut =>
+        initialize(dut)
+        requestLine(dut, 0x1000, 1, isWrite = true, data = 0x55, mask = 15,
+          cacheClient = false)
+        waitMemoryRequest(dut)
+        val storeId = dut.io.memoryRequest.bits.transactionId.peek().litValue
+        dut.clock.step()
+        // A read to another line must issue before the held write ACK.
+        requestLine(dut, 0x2000, 2, cacheClient = false, cachePolicy = policy)
+        waitMemoryRequest(dut)
+        val readId = dut.io.memoryRequest.bits.transactionId.peek().litValue
+        assert(readId != storeId)
+        dut.io.memoryRequest.bits.isWrite.expect(false.B)
+        dut.clock.step()
+        dut.io.memoryResponse.bits.transactionId.poke(readId.U)
+        dut.io.memoryResponse.bits.readData.poke(0xabcdef.U)
+        dut.io.memoryResponse.valid.poke(true.B)
+        dut.io.memoryResponse.ready.expect(true.B)
+        dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
+        waitResponse(dut)
+        dut.io.response.bits.transactionId.expect(2.U)
+        dut.io.response.bits.readData.expect(0xabcdef.U)
+        dut.clock.step()
+
+        dut.io.atomicRequest(0).valid.poke(true.B)
+        dut.io.atomicRequest(0).ready.expect(false.B)
+        dut.io.atomicRequest(0).valid.poke(false.B)
+        dut.io.hostInvalidate.valid.poke(true.B)
+        dut.io.hostInvalidate.ready.expect(false.B)
+        dut.io.hostInvalidate.valid.poke(false.B)
+
+        // The old line remains hazardous until the store's upper reply has
+        // been consumed. It must never return a stale cache hit or memory read.
+        requestLine(dut, 0x1000, 3, cacheClient = false, cachePolicy = policy)
+        dut.clock.step(4)
+        dut.io.memoryRequest.valid.expect(false.B)
+        dut.io.response.ready.poke(false.B)
+        dut.io.memoryResponse.bits.transactionId.poke(storeId.U)
+        dut.io.memoryResponse.bits.readData.poke(0.U)
+        dut.io.memoryResponse.valid.poke(true.B)
+        dut.clock.step(); dut.io.memoryResponse.valid.poke(false.B)
+        waitResponse(dut)
+        dut.io.response.bits.transactionId.expect(1.U)
+        dut.clock.step(3)
+        dut.io.memoryRequest.valid.expect(false.B)
+        dut.io.response.ready.poke(true.B); dut.clock.step()
+        waitMemoryRequest(dut)
+        dut.io.memoryRequest.bits.address.expect(0x1000.U)
+      }
+    }
+  }
 }

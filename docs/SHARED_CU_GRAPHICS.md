@@ -373,3 +373,33 @@ complete pixel/depth/uniform check pass. Ordered rendering, translated faults,
 reset recovery and simulator wall time remain separate qualification steps;
 this feature is opt-in. Reproduction details and trace hashes are in
 [the write-combining evidence](performance/shared-cu-write-combining-2026-10-15.json).
+
+## Concurrent AXI reads and writes
+
+The lower bridge now has independent read/write engines and two queued
+requests per direction. A pending second write cannot hold the shared
+arbiter ahead of a read while the first write awaits B. Replies arbitrate
+into a stable queue, with total credits retained until the consumer accepts
+them. The L2 store table exposes a line-conflict query: unrelated reads
+proceed, while same-line reads, atomics and host invalidations retain their
+required store ordering.
+
+A responder timing bug became visible with simultaneous R/B responses:
+sampling RREADY before driving BVALID could discard an unaccepted read.
+The integration harness now drives both channels before sampling either
+handshake. All 35 memory unit cases and four combined-write translation/
+fault recovery cases pass across the recorded final/rerun logs.
+
+The matched 32x32 copy comparison is now 18,691 cycles on one CU versus
+13,048 on four CUs (1.43x), compared with 28,293 versus 23,344 (1.21x)
+before combining/overlap. Every color, depth and uniform sentinel passes.
+Four-CU OM stalls remain 6,643 cycles; this is still weak scaling and needs
+further optimization. Larger-workload, ordered-render, broad fault/reset
+and guest qualification are separate remaining gates. Full traces and
+scope are recorded in [the overlap evidence](performance/shared-cu-memory-overlap-2026-10-15.json).
+
+A separate width-only guest candidate, using the old physical graphics-CU
+arrangement, improves native GLES median draw time from 12.018s to 11.670s
+(2.9%) across three fresh guests per binary, all pixel checked. It does not
+include write combining or AXI/L2 overlap. See [the guest measurements](performance/shared-cu-axi-wall-time-2026-10-15.json);
+GPU-cycle changes must not be presented as desktop wall-time improvements.

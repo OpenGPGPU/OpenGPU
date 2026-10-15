@@ -335,10 +335,11 @@ class SharedL2Slice(
     io.request.bits.transactionId / transactionsPerCu.U
   private val incomingRequesterOH = UIntToOH(
     incomingRequesterCu, numComputeUnits)
+  storeTable.io.queryAddress := io.request.bits.address
   io.request.ready := (state === State.idle && !atomicArbiter.io.out.valid &&
     !missResponsePresented &&
     (!io.request.bits.isWrite || !loadMissesActive) &&
-    (!storeTable.io.active || io.request.bits.isWrite)) ||
+    (!storeTable.io.queryConflict || io.request.bits.isWrite)) ||
     mergeLoad
   private val regularResponse = Wire(Decoupled(
     new ComputeMemoryResponse(lineBytes, maxOutstanding)))

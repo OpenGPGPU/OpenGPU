@@ -1,0 +1,137 @@
+{
+  "date": "2026-10-15",
+  "baseline_commit": "0a38724",
+  "changes": [
+    "Independent AXI read/write engines, two queued requests per direction, buffered/arbitrated replies, total outstanding credits held through upper reply consumption.",
+    "L2 reads overlap stores to different lines; pending allocation, active stores and stalled upper acknowledgements retain same-line hazards. Atomic and host-invalidate admission still requires store drain.",
+    "Integration responder drives both RVALID and BVALID before sampling shared response arbitration; fixes a testbench dropped-read/false-deadlock exposed by concurrent responses."
+  ],
+  "scene": "Same32x32gradient copy,16lanes/eightwarps,128lane batches,512-bit AXI,read delay2/write ACK12. Coalescer16cyclewindow.",
+  "results": [
+    {
+      "cus": 1,
+      "before_combining_and_overlap_cycles": 28293,
+      "after_cycles": 18691,
+      "active_cu_cycles": 2366
+    },
+    {
+      "cus": 4,
+      "before_combining_and_overlap_cycles": 23344,
+      "after_combining_only_cycles": 17921,
+      "after_cycles": 13048,
+      "active_cu_cycles": 2989
+    }
+  ],
+  "one_to_four_speedup_before": 1.2120030843043181,
+  "one_to_four_speedup_after": 1.4324800735744943,
+  "four_cu_overlap_speedup": 1.3734671980380135,
+  "trace": [
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "side": 32,
+      "alu_loops": 0,
+      "traced_cycles": 18676,
+      "phase_worker_cycles": [
+        1038,
+        7758,
+        5,
+        2371,
+        1374,
+        6130
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1038,
+        "arvalid": 478,
+        "rvalid": 484,
+        "write_any": 7758,
+        "raster_stall": 15041,
+        "staging_without_shader_run": 9132,
+        "staging_outstanding_any": 7812,
+        "awvalid": 823,
+        "bvalid": 827,
+        "launch_any": 5,
+        "run_any": 2371,
+        "read_any": 1374,
+        "emit_any": 6130,
+        "output_blocked": 5536,
+        "om_stall": 5132
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 269,
+        "color_write": 246,
+        "depth_write": 235
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-cycles.csv": "821acff11253bdd4f09b610ad1ae70863c74d9a469e33cfe79d5d5a8683e8446",
+        "cu-1-axi-64-memory.csv": "00b0863eabfc76a360444f8cfe742327a894248d58619b91f91cbced5c5544b6"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "side": 32,
+      "alu_loops": 0,
+      "traced_cycles": 13033,
+      "phase_worker_cycles": [
+        12124,
+        16625,
+        5,
+        2994,
+        2465,
+        17919
+      ],
+      "peak_staging_outstanding": 2,
+      "cycle_events": {
+        "idle_any": 5580,
+        "arvalid": 497,
+        "rvalid": 509,
+        "write_any": 6317,
+        "staging_without_shader_run": 7066,
+        "staging_outstanding_any": 7134,
+        "awvalid": 843,
+        "bvalid": 847,
+        "staging_blocked": 3881,
+        "raster_stall": 5326,
+        "launch_any": 5,
+        "run_any": 1362,
+        "read_any": 1091,
+        "emit_any": 7660,
+        "output_blocked": 7519,
+        "om_stall": 6643
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 288,
+        "color_write": 257,
+        "depth_write": 244
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-cycles.csv": "f3317b9e2ae7d63f12d9c46e17bbc7fe5d0338a8fb99f9f8b05225ef66ec3b0a",
+        "cu-4-axi-64-memory.csv": "a705a57306e960a8b488d8ceeec2476af757095c5638ca1598ed3fb3c452a096"
+      }
+    }
+  ],
+  "validation": {
+    "memory_unit": "35 distinct PASS across final/rerun logs:12AXI,4store-table,19L2; all32/64/128/256/512-bit narrow accesses; read/write concurrent bursts; simultaneous completions; queued and active credits; coherence/atomic/invalidation and read hazards.",
+    "translated_combining": "4 PASS: combined physical write bus fault, invalidPTE,PTWbusfault,validsuperpage; no early completion, all word replies drained, fault reported exactly once, subsequent write succeeds.",
+    "pixel_checked_scaling": "2 PASS:1CU and4CU complete color/depth/uniform check; exact peak active CUs verified.",
+    "remaining": "Larger copy/ALU diagnostics and orderedMSAA running; broader shader VM/fault/reset/compute integration regression and guest performance follow."
+  },
+  "logs": [
+    ".artifacts/shared-cu-memory-overlap-unit-tests-final.log",
+    ".artifacts/shared-cu-memory-overlap-render-tests.log",
+    ".artifacts/shared-cu-scaling-memory-overlap.log"
+  ],
+  "interpretation": "1.43x scaling remains weak for the copy scene; do not call multi-CU goal complete. OM/color-depth acknowledgement dependency and staging remain targets. These are GPU cycles, not simulator wall time. Installed executable unchanged."
+}

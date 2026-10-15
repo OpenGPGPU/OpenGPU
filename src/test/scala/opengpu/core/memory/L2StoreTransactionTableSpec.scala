@@ -16,6 +16,7 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
     dut.io.lowerResponse.valid.poke(false.B)
     dut.io.lowerResponse.bits.poke(0.U.asTypeOf(dut.io.lowerResponse.bits))
     dut.io.response.ready.poke(false.B)
+    dut.io.queryAddress.poke(0.U)
   }
 
   private def allocate(dut: L2StoreTransactionTable, address: BigInt,
@@ -105,6 +106,27 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
       dut.io.active.expect(true.B)
       dut.io.allocate.ready.expect(false.B)
       dut.io.lowerRequest.valid.expect(true.B)
+    }
+  }
+
+  it should "report read hazards through allocation, lower acknowledgement and stalled reply" in {
+    simulate(new L2StoreTransactionTable(GpuConfig(lanes = 4), entries = 2)) { dut =>
+      initialize(dut)
+      dut.io.queryAddress.poke(0x103c.U)
+      dut.io.queryConflict.expect(false.B)
+      allocate(dut, 0x1000, 1)
+      // The just-accepted allocation is not yet installed in the entry array.
+      dut.io.queryConflict.expect(true.B)
+      val id = lowerRequest(dut)
+      dut.io.queryAddress.poke(0x1040.U)
+      dut.io.queryConflict.expect(false.B)
+      dut.io.queryAddress.poke(0x1020.U)
+      dut.io.queryConflict.expect(true.B)
+      acknowledge(dut, id)
+      dut.clock.step(3)
+      dut.io.queryConflict.expect(true.B)
+      dut.io.response.ready.poke(true.B); dut.clock.step()
+      dut.io.queryConflict.expect(false.B)
     }
   }
 }

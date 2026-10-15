@@ -198,7 +198,8 @@ trait GpuHostTestSupport {
     maxCycles: Int = 20000,
     readResponseDelay: Int = 0,
     onReadAccepted: BigInt => Unit = _ => (),
-    onCycle: () => Unit = () => ()
+    onCycle: () => Unit = () => (),
+    noProgressLimit: Int = 0
   )(onWrite: (BigInt, BigInt, BigInt) => Unit)(until: => Boolean): Unit = {
     val axiDataBytes = dut.io.m_axi_wstrb.getWidth
     val axiDataBits = axiDataBytes * 8
@@ -221,8 +222,10 @@ trait GpuHostTestSupport {
     var bPending = false
     var bDelay = 0
     var guard = 0
+    var quietCycles = 0
     while (!until && guard < maxCycles) {
       var acceptedRead = false
+      var memoryProgress = false
       // Read address channel.
       dut.io.m_axi_arready.poke((!arDone && rBeat == 0).B)
       if (!arDone && dut.io.m_axi_arvalid.peek().litToBoolean &&
@@ -236,6 +239,7 @@ trait GpuHostTestSupport {
         rBeat = 0
         rDelay = readResponseDelay
         acceptedRead = true
+        memoryProgress = true
       }
       // Read data channel: narrow PTE reads use one lane-aligned beat.
       if (arDone && rDelay == 0) {
@@ -244,9 +248,6 @@ trait GpuHostTestSupport {
         dut.io.m_axi_rdata.poke(((rLine >> (rBeat * axiDataBits)) & beatMask).U)
         dut.io.m_axi_rresp.poke((if (rFault) 2 else 0).U)
         dut.io.m_axi_rlast.poke((rBeat == rBeats - 1).B)
-        if (dut.io.m_axi_rready.peek().litToBoolean) {
-          if (rBeat == rBeats - 1) { arDone = false; rBeat = 0 } else rBeat += 1
-        }
       } else {
         dut.io.m_axi_rvalid.poke(false.B)
         dut.io.m_axi_rlast.poke(false.B)
@@ -256,6 +257,7 @@ trait GpuHostTestSupport {
       dut.io.m_axi_awready.poke((!awDone && !wDone).B)
       if (!awDone && dut.io.m_axi_awvalid.peek().litToBoolean &&
           dut.io.m_axi_awready.peek().litToBoolean) {
+        memoryProgress = true
         awAddr = dut.io.m_axi_awaddr.peek().litValue
         awId = dut.io.m_axi_awid.peek().litValue
         awDone = true
@@ -264,6 +266,7 @@ trait GpuHostTestSupport {
       dut.io.m_axi_wready.poke((!wDone).B)
       if (!wDone && dut.io.m_axi_wvalid.peek().litToBoolean &&
           dut.io.m_axi_wready.peek().litToBoolean) {
+        memoryProgress = true
         wData |= dut.io.m_axi_wdata.peek().litValue << (wBeat * axiDataBits)
         wStrb |= dut.io.m_axi_wstrb.peek().litValue << (wBeat * axiDataBytes)
         wBeat += 1
@@ -281,7 +284,16 @@ trait GpuHostTestSupport {
       if (bDelay > 0) bDelay -= 1
       dut.io.m_axi_bid.poke(awId.U)
       dut.io.m_axi_bresp.poke(0.U)
+      // Drive BOTH response channels before sampling either handshake.
+      // RREADY/BREADY share the bridge's response arbiter: raising BVALID can
+      // revoke RREADY in this cycle. Sampling R earlier would silently drop
+      // a read beat that the DUT never accepted, causing a false deadlock.
+      if (dut.io.m_axi_rvalid.peek().litToBoolean && dut.io.m_axi_rready.peek().litToBoolean) {
+        memoryProgress = true
+        if (rBeat == rBeats - 1) { arDone = false; rBeat = 0 } else rBeat += 1
+      }
       if (dut.io.m_axi_bvalid.peek().litToBoolean && dut.io.m_axi_bready.peek().litToBoolean) {
+        memoryProgress = true
         bPending = false
         awDone = false
         wDone = false
@@ -289,6 +301,9 @@ trait GpuHostTestSupport {
         wData = BigInt(0)
         wStrb = BigInt(0)
       }
+      quietCycles = if (memoryProgress) 0 else quietCycles + 1
+      assert(noProgressLimit == 0 || quietCycles < noProgressLimit,
+        s"AXI no progress for $quietCycles cycles at cycle=$guard arDone=$arDone rBeat=$rBeat awDone=$awDone wDone=$wDone bPending=$bPending rDelay=$rDelay bDelay=$bDelay")
       onCycle()
       dut.io.s_axi_aclk.step()
       if (acceptedRead) {

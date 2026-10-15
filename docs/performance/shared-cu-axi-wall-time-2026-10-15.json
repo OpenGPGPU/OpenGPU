@@ -1,0 +1,129 @@
+{
+  "binaries": {
+    "baseline": {
+      "path": "/Users/duckdonald/workspace/gpu/.artifacts/rtl-speed/qemu-candidate",
+      "sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0"
+    },
+    "candidate": {
+      "path": "/Users/duckdonald/workspace/gpu/.artifacts/axi-bandwidth/qemu-candidate",
+      "sha256": "805c4a1a8dce322271291019ac982d2ddd7fef97a775168f01d55492955c605b"
+    }
+  },
+  "base_image": "/Users/duckdonald/workspace/arti-work/debian-gtk-arm64.qcow2",
+  "scope": "native GLES triangle with160x120bounding box in640x480mode; fresh guest; pixel proof required; no scanout capture",
+  "runs": [
+    {
+      "name": "baseline",
+      "round": 0,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/axi-bandwidth/native-comparison/b0",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        12060.609
+      ]
+    },
+    {
+      "name": "candidate",
+      "round": 0,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/axi-bandwidth/native-comparison/c0",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        11718.293
+      ]
+    },
+    {
+      "name": "candidate",
+      "round": 1,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/axi-bandwidth/native-comparison/c1",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        11670.244
+      ]
+    },
+    {
+      "name": "baseline",
+      "round": 1,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/axi-bandwidth/native-comparison/b1",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        12018.107
+      ]
+    },
+    {
+      "name": "baseline",
+      "round": 2,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/axi-bandwidth/native-comparison/b2",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        11981.638
+      ]
+    },
+    {
+      "name": "candidate",
+      "round": 2,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/axi-bandwidth/native-comparison/c2",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        11645.851
+      ]
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "draw_ms": [
+        12060.609,
+        12018.107,
+        11981.638
+      ],
+      "median_ms": 12018.107,
+      "reduction_percent": 0.0
+    },
+    "candidate": {
+      "draw_ms": [
+        11718.293,
+        11670.244,
+        11645.851
+      ],
+      "median_ms": 11670.244,
+      "reduction_percent": 2.8944907879418946
+    }
+  },
+  "configuration": {
+    "QEMU_ACCEL": "hvf",
+    "QEMU_CPU": "host",
+    "ARTI_MODEL_IRQ_PUMP": "1024",
+    "ARTI_MODEL_IRQ_PUMP_NS": "8000000",
+    "ARTI_MODEL_SETTLE_NS": "8000000",
+    "GTK_PROOF_SMOKE": "1",
+    "GTK_PROOF_KMS_MODE": "64x64",
+    "GTK_PROOF_WESTON_REPRO": "medium",
+    "GTK_PROOF_REPRO_ONLY": "1",
+    "GTK_PROOF_SCANOUT_ENABLE": "0",
+    "GTK_PROOF_SKIP_BUILD": "1",
+    "GTK_PROOF_SKIP_COVERAGE": "1",
+    "GTK_PROOF_SMOKE_TIMEOUT_S": "900"
+  },
+  "candidate_build": {
+    "archive_sha256": "45c0b7040db2696154b7f3454ac2dc6c97f8c143b53d555c6bd38ba1937174ac",
+    "qemu_sha256": "805c4a1a8dce322271291019ac982d2ddd7fef97a775168f01d55492955c605b",
+    "profile_sha256": "b985fcfcf5fc8b1d4f063d4474bfbd327948a9a324eba8beecc98e93f46d04e3",
+    "scope": "AXI512 candidate with the installed legacy CU arrangement (four16x8 compute plus one4x2 graphics CU); shared CU qualification separate",
+    "source_commit": "47a809070e7795f2ee2694c97beb7326e4c24875"
+  },
+  "interpretation": [
+    "Three alternating-order fresh-guest comparisons; six pixel proofs PASS. No concurrent RTL compilation or training during timing.",
+    "Whole512-bit candidate versus installed64-bit baseline: candidate also contains new shared-pool foundation/metadata infrastructure, but both use the same legacy arrangement of four16x8 compute CUs plus a dedicated4x2 graphics CU. This is NOT a shared-CU scaling result or an isolated width-only source comparison.",
+    "Both use identical isolated driver/Mesa payload. Default installed executable/payload unchanged.",
+    "No coalescer, independent AXI engines or line-specific L2 hazard optimization in this candidate; those RTL changes need a fresh build and guest qualification.",
+    "Median draw wall time improves2.9%, much less than synthetic width-only GPU cycles. Do not extrapolate synthetic32x32cycles to desktop startup."
+  ],
+  "payload": {
+    "gpu_drv.ko": "7afdd794a69e5070998bf44e24265c006c0e1372571cbc9d750f5f3b6a693a97",
+    "opengpu_dri.so": "1f5b46bdc976eb810d10f501b899a109ae66e3838f654ebf58ca27f9fafb5b33"
+  }
+}

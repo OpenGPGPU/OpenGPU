@@ -34,6 +34,9 @@ class L2StoreTransactionTable(
     val response = Decoupled(
       new ComputeMemoryResponse(lineBytes, maxOutstanding))
     val active = Output(Bool())
+    /** A read may overlap stores to other lines, but not this queried line. */
+    val queryAddress = Input(UInt(config.xLen.W))
+    val queryConflict = Output(Bool())
   })
 
   private object EntryState {
@@ -62,6 +65,12 @@ class L2StoreTransactionTable(
       requests(entry).address(config.xLen - 1, offsetWidth) === incomingLine
   }).asUInt.orR || (allocationPending &&
     pendingRequest.address(config.xLen - 1, offsetWidth) === incomingLine)
+  private val queryLine = io.queryAddress(config.xLen - 1, offsetWidth)
+  io.queryConflict := (0 until entries).map { entry =>
+    state(entry) =/= EntryState.free &&
+      requests(entry).address(config.xLen - 1, offsetWidth) === queryLine
+  }.reduce(_ || _) || (allocationPending &&
+    pendingRequest.address(config.xLen - 1, offsetWidth) === queryLine)
   private val reservedEntries = UIntToOH(pendingEntry, entries) &
     Fill(entries, allocationPending)
   private val freeEntries = VecInit((0 until entries).map { entry =>
