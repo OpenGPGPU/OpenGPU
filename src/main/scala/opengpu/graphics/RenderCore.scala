@@ -68,11 +68,13 @@ class RenderCore(
     val vectorSatp = Input(UInt(32.W))
     val vectorTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(gpuConfig)))
     val shaderFault = Output(Bool())
+    val colorFormat = Input(UInt(PixelFormat.width.W))
     val colorBase = Input(UInt(32.W))
     val depthBase = Input(UInt(32.W))
     val stride = Input(UInt(32.W))
     /** Texture sampling (forwarded to the fixed-function fragment stage). */
     val texEnable = Input(Bool())
+    val texFormat = Input(UInt(PixelFormat.width.W))
     val texBase = Input(UInt(32.W))
     val texWidth = Input(UInt(14.W))
     val texHeight = Input(UInt(14.W))
@@ -157,6 +159,7 @@ class RenderCore(
   rp.io.vectorTlbFlush := io.vectorTlbFlush
   io.shaderFault := rp.io.shaderFault
 
+  rp.io.colorFormat := io.colorFormat
   rp.io.colorBase := io.colorBase
   rp.io.depthBase := io.depthBase
   rp.io.stride := io.stride
@@ -179,6 +182,7 @@ class RenderCore(
   io.performance := rp.io.performance
   rp.io.sampleMode := io.sampleMode
   rp.io.texEnable := io.texEnable
+  rp.io.texFormat := io.texFormat
   rp.io.texBase := io.texBase
   rp.io.texWidth := io.texWidth
   rp.io.texHeight := io.texHeight

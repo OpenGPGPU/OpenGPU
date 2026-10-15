@@ -40,6 +40,8 @@ class SceneTriangle(config: GraphicsConfig) extends Bundle with HasDrawState {
 
 /** Fixed-function and render-target state sampled at a draw boundary. */
 private class DrawRenderState extends Bundle with HasResolvedDrawState {
+  val colorFormat = UInt(PixelFormat.width.W)
+  val texFormat = UInt(PixelFormat.width.W)
   val colorBase = UInt(32.W)
   val depthBase = UInt(32.W)
   val stride = UInt(32.W)
@@ -104,6 +106,7 @@ class RenderPipeline(
     val vectorSatp = Input(UInt(32.W))
     val vectorTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(gpuConfig)))
     val shaderFault = Output(Bool())
+    val colorFormat = Input(UInt(PixelFormat.width.W))
     val colorBase = Input(UInt(32.W))
     val depthBase = Input(UInt(32.W))
     val stride = Input(UInt(32.W))
@@ -130,6 +133,7 @@ class RenderPipeline(
     val screenH = Input(UInt(16.W))
     /** Texture sampling (fixed-function path; ignored with fragCore). */
     val texEnable = Input(Bool())
+    val texFormat = Input(UInt(PixelFormat.width.W))
     val texBase = Input(UInt(32.W))
     val texWidth = Input(UInt(14.W))
     val texHeight = Input(UInt(14.W))
@@ -338,6 +342,7 @@ class RenderPipeline(
       src.stencilZPassOp, io.stencilZPassOp)
     drawState.cullMode := Mux(src.stateOverride, src.cullMode, io.cullMode)
     drawState.texEnable := Mux(src.stateOverride, src.texEnable, io.texEnable)
+    drawState.texFormat := io.texFormat
     drawState.texBase := io.texBase
     drawState.texWidth := io.texWidth
     drawState.texHeight := io.texHeight
@@ -353,6 +358,7 @@ class RenderPipeline(
     drawHoldValid := true.B
     clipEmitIndex := 0.U
     clipTriangleActive := false.B
+    drawState.colorFormat := io.colorFormat
     drawState.colorBase := io.colorBase
     drawState.depthBase := io.depthBase
     drawState.stride := io.stride
@@ -434,6 +440,7 @@ class RenderPipeline(
   textured.io.uv0 := clippedVertices(0).uv
   textured.io.uv1 := clippedVertices(1).uv
   textured.io.uv2 := clippedVertices(2).uv
+  textured.io.texFormat := drawState.texFormat
   textured.io.texBase := drawState.texBase
   textured.io.texWidth := drawState.texWidth
   textured.io.texHeight := drawState.texHeight
@@ -613,6 +620,7 @@ class RenderPipeline(
     ctxFifo.io.enq.bits.shaderPc := drawHold.shaderPc
     ctxFifo.io.enq.bits.kernargBase := drawHold.shaderKernarg
     ctxFifo.io.enq.bits.kernargBankStride := drawHold.kernargBankStride
+    ctxFifo.io.enq.bits.texFormat := drawState.texFormat
     ctxFifo.io.enq.bits.texBase := drawState.texBase
     ctxFifo.io.enq.bits.texWidth := drawState.texWidth
     ctxFifo.io.enq.bits.texHeight := drawState.texHeight
@@ -620,6 +628,7 @@ class RenderPipeline(
     ctxFifo.io.enq.bits.texMaxLevel := drawState.texMaxLevel
     ctxFifo.io.enq.bits.texLodBias := drawState.texLodBias
     ctxFifo.io.enq.bits.texMinLevel := drawState.texMinLevel
+    ctxFifo.io.enq.bits.colorFormat := drawState.colorFormat
     ctxFifo.io.enq.bits.colorBase := drawState.colorBase
     ctxFifo.io.enq.bits.depthBase := drawState.depthBase
     ctxFifo.io.enq.bits.stride := drawState.stride
@@ -678,6 +687,7 @@ class RenderPipeline(
     kernelFrag.shaderPc := ctxFifo.io.tail.shaderPc
     kernelFrag.kernargBase := ctxFifo.io.tail.kernargBase
     kernelFrag.kernargBankStride := ctxFifo.io.tail.kernargBankStride
+    kernelFrag.texFormat := ctxFifo.io.tail.texFormat
     kernelFrag.texBase := ctxFifo.io.tail.texBase
     kernelFrag.texWidth := ctxFifo.io.tail.texWidth
     kernelFrag.texHeight := ctxFifo.io.tail.texHeight
@@ -812,6 +822,7 @@ class RenderPipeline(
     // kernelFrag's l1Invalidate and globalAtomic ports are tied off internally.
     // The RenderPipeline's corresponding IO ports are driven by kernelShader.
 
+    om.io.colorFormat := ctxFifo.io.head.colorFormat
     om.io.colorBase := ctxFifo.io.head.colorBase
     om.io.depthBase := ctxFifo.io.head.depthBase
     om.io.stride := ctxFifo.io.head.stride
@@ -847,6 +858,7 @@ class RenderPipeline(
   } else {
     shader.io.draw.valid := drawHoldValid && !clipTriangleActive && clipper.io.done &&
       clipEmitIndex < clipper.io.outValid
+    om.io.colorFormat := drawState.colorFormat
     om.io.colorBase := drawState.colorBase
     om.io.depthBase := drawState.depthBase
     om.io.stride := drawState.stride

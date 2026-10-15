@@ -404,6 +404,7 @@ class RenderHost(
   private val capabilityBits =
     ((if (fragCore) (1 << GpuCapabilities.FragmentCore) else 0) |
       (if (vertCore) (1 << GpuCapabilities.VertexCore) else 0) |
+      (if (unifiedCommands) (1 << GpuCapabilities.NativePixelFormats) else 0) |
       (1 << GpuCapabilities.ClearEngine) |
       (1 << GpuCapabilities.BlitEngine) |
       (1 << GpuCapabilities.StridedEngine) |
@@ -731,6 +732,8 @@ class RenderHost(
     unifiedCfg.blendSrcFactor := renderWords(12)(7, 4)
     unifiedCfg.blendDstFactor := renderWords(12)(11, 8)
     unifiedCfg.blendEquation := renderWords(12)(14, 12)
+    unifiedCfg.colorFormat := renderWords(13)(2, 0)
+    unifiedCfg.texFormat := renderWords(13)(6, 4)
   }
 
   // Completion: the engine must be observed non-idle after launch before its
@@ -794,6 +797,7 @@ class RenderHost(
   // The unified render descriptor is the single configuration source.
   core.io.cmdBase := unifiedCfg.cmdBase
   core.io.cmdCount := unifiedCfg.cmdCount
+  core.io.colorFormat := unifiedCfg.colorFormat
   core.io.colorBase := unifiedCfg.colorBase
   core.io.depthBase := unifiedCfg.depthBase
   core.io.stride := unifiedCfg.stride
@@ -814,6 +818,7 @@ class RenderHost(
   core.io.stencilZPassOp := unifiedCfg.stencilZPassOp
   core.io.cullMode := unifiedCfg.cullMode
   core.io.texEnable := unifiedCfg.texEnable
+  core.io.texFormat := unifiedCfg.texFormat
   core.io.texBase := unifiedCfg.texBase
   core.io.texWidth := unifiedCfg.texWidth
   core.io.texHeight := unifiedCfg.texHeight

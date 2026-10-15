@@ -103,6 +103,7 @@ class OutputMerger(
     /** Sideband for the selected request, used by the optional 16x16 store. */
     val tileWordIndex = Output(UInt(10.W))
     val tileDepthPlane = Output(Bool())
+    val colorFormat = Input(UInt(PixelFormat.width.W))
     val colorBase = Input(UInt(32.W))
     val depthBase = Input(UInt(32.W))
     val stride = Input(UInt(32.W)) // bytes per row
@@ -151,6 +152,7 @@ class OutputMerger(
     val colorAddr = UInt(32.W)
     val depthAddr = UInt(32.W)
     val tileWordIndex = UInt(10.W)
+    val colorFormat = UInt(PixelFormat.width.W)
     val color = UInt(32.W)
     val depth = UInt(32.W)
     val depthTestEnable = Bool()
@@ -323,7 +325,7 @@ class OutputMerger(
       Mux(e.state === sReadDepth || e.state === sWriteDepth, e.depthAddr, e.colorAddr)
     portArbiter.io.in(i).bits.write := writing
     portArbiter.io.in(i).bits.data := Mux(e.state === sWriteDepth, e.depthWriteData,
-      Mux(e.blendEnable || e.blendCfgEnable, e.blendedColor, e.color))
+      PixelFormat.encode(Mux(e.blendEnable || e.blendCfgEnable, e.blendedColor, e.color), e.colorFormat))
     granted(i) := portArbiter.io.in(i).fire
   }
   if (config.omLocality) {
@@ -408,6 +410,7 @@ class OutputMerger(
         e.tileWordIndex := ((Cat(io.fragIn.bits.y(3, 0),
           io.fragIn.bits.x(3, 0)) << io.sampleMode) +
           io.fragIn.bits.sampleIndex)(9, 0)
+        e.colorFormat := io.colorFormat
         e.color := io.fragIn.bits.color
         e.depth := io.fragIn.bits.depth
         e.depthTestEnable := io.depthTestEnable
@@ -516,9 +519,9 @@ class OutputMerger(
       }
       when(respRead && colorMatchers(i)) {
         e.blendedColor := Mux(e.blendCfgEnable,
-          blendGeneral(e.color, io.mem.resp.bits.data, e.blendSrcFactor,
+          blendGeneral(e.color, PixelFormat.decode(io.mem.resp.bits.data, e.colorFormat), e.blendSrcFactor,
             e.blendDstFactor, e.blendEquation),
-          blendSourceOver(e.color, io.mem.resp.bits.data))
+          blendSourceOver(e.color, PixelFormat.decode(io.mem.resp.bits.data, e.colorFormat)))
         e.state := sWriteColor
       }
     }

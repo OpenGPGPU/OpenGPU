@@ -104,6 +104,7 @@ class TextureUnitSpec extends AnyFlatSpec {
     */
   private def attach(dut: TextureUnit, mem: TexMem, wrapClamp: Boolean,
                      maxLevel: Int = 0): Unit = {
+    dut.io.texFormat.poke(0.U)
     dut.io.texBase.poke(mem.base.U)
     dut.io.texWidth.poke(mem.width.U)
     dut.io.texHeight.poke(mem.height.U)
@@ -137,7 +138,8 @@ class TextureUnitSpec extends AnyFlatSpec {
     stallCycles: Int = 0,
     maxCycles: Int = 400,
     reverseResponses: Boolean = false,
-    stats: Option[SampleStats] = None
+    stats: Option[SampleStats] = None,
+    formatAfterAccept: Option[Int] = None
   ): Int = {
     dut.io.sample.valid.poke(true.B)
     dut.io.sample.bits.u.poke(u.U)
@@ -155,7 +157,10 @@ class TextureUnitSpec extends AnyFlatSpec {
     var stalled = 0
     while (!done && guard < maxCycles) {
       // Request side: drop valid once the handshake has committed.
-      if (accepted) dut.io.sample.valid.poke(false.B)
+      if (accepted) {
+        dut.io.sample.valid.poke(false.B)
+        formatAfterAccept.foreach(f => dut.io.texFormat.poke(f.U))
+      }
       else if (dut.io.sample.valid.peek().litToBoolean &&
         dut.io.sample.ready.peek().litToBoolean) accepted = true
 
@@ -214,6 +219,37 @@ class TextureUnitSpec extends AnyFlatSpec {
     dut.io.mem.resp.valid.poke(false.B)
     assert(done, s"sample did not complete (guard=$guard)")
     value
+  }
+
+  it should "sample Mesa byte orders with alpha and retain format under backpressure" in {
+    simulate(new TextureUnit()) { dut =>
+      val memoryWords = Seq(0x115395d3L, 0xd3955311L, 0xd3115395L, 0x00955311L, 0x00115395L)
+      for (format <- memoryWords.indices) {
+        val mem = new TexMem(0x1000, 2, 2)
+        for (y <- 0 until 2; x <- 0 until 2) mem.put(x, y, memoryWords(format).toInt)
+        attach(dut, mem, wrapClamp = true)
+        dut.io.texFormat.poke(format.U)
+        val got = runSample(dut, mem, q(0.5), q(0.5), reverseResponses = true,
+          stallCycles = 5, formatAfterAccept = Some((format + 1) % 5))
+        val expected = if (format >= 3) 0x115395ffL else 0x115395d3L
+        assert((got & 0xffffffffL) == expected, s"format=$format got=0x${got.toHexString}")
+        assert(mem.oobReads == 0)
+      }
+      // Alpha uses the same bilinear weights as RGB, rather than becoming 255.
+      val mem = new TexMem(0x1000, 2, 2)
+      Seq(0x11955311L, 0x53955311L, 0x95955311L, 0xd3955311L).zipWithIndex.foreach {
+        case (word, i) => mem.put(i % 2, i / 2, word.toInt)
+      }
+      attach(dut, mem, wrapClamp = true)
+      dut.io.texFormat.poke(PixelFormat.rgba.U)
+      assert(runSample(dut, mem, q(0.5), q(0.5)) == 0x11539573)
+      val mip = new TexMem(0x1000, 2, 2, levels = 2)
+      for (y <- 0 until 2; x <- 0 until 2) mip.put(x, y, 0x11955311)
+      mip.putLevel(1, 0, 0, 0xd3955311L.toInt)
+      attach(dut, mip, wrapClamp = true, maxLevel = 1)
+      dut.io.texFormat.poke(PixelFormat.rgba.U)
+      assert(runSample(dut, mip, q(0.5), q(0.5), lodFrac = 128) == 0x11539572)
+    }
   }
 
   it should "blend a gradient bilinearly at interior points" in {

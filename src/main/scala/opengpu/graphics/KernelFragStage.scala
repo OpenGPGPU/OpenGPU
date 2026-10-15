@@ -61,6 +61,7 @@ class KernelFragFrontendIO(config: GpuConfig, gfxConfig: GraphicsConfig) extends
   /** Byte stride between two complete, identically laid-out kernarg banks. */
   val kernargBankStride = Input(UInt(32.W))
   /** Texture sampling config for the tex.sample instruction. */
+  val texFormat = Input(UInt(PixelFormat.width.W))
   val texBase = Input(UInt(32.W))
   val texWidth = Input(UInt(14.W))
   val texHeight = Input(UInt(14.W))
@@ -87,6 +88,7 @@ object KernelFragFrontendIO {
     worker.abi1 := front.abi1
     worker.kernargBase := front.kernargBase
     worker.kernargBankStride := front.kernargBankStride
+    worker.texFormat := front.texFormat
     worker.texBase := front.texBase
     worker.texWidth := front.texWidth
     worker.texHeight := front.texHeight
@@ -345,6 +347,7 @@ class KernelFragStage(
   private val slotTexWidth = Reg(Vec(2, UInt(14.W)))
   private val slotTexHeight = Reg(Vec(2, UInt(14.W)))
   private val slotTexWrapClamp = Reg(Vec(2, Bool()))
+  private val slotTexFormat = Reg(Vec(2, UInt(PixelFormat.width.W)))
   private val slotTexMaxLevel = Reg(Vec(2, UInt(4.W)))
   private val slotTexLodBias = Reg(Vec(2, SInt(5.W)))
   private val slotTexMinLevel = Reg(Vec(2, UInt(4.W)))
@@ -354,6 +357,7 @@ class KernelFragStage(
   texUnit.io.texWidth := slotTexWidth(execSlot)
   texUnit.io.texHeight := slotTexHeight(execSlot)
   texUnit.io.wrapClamp := slotTexWrapClamp(execSlot)
+  texUnit.io.texFormat := slotTexFormat(execSlot)
   texUnit.io.texMaxLevel := slotTexMaxLevel(execSlot)
   texUnit.io.lodBias := slotTexLodBias(execSlot)
   texUnit.io.minLevel := slotTexMinLevel(execSlot)
@@ -503,6 +507,7 @@ class KernelFragStage(
   private val wpTexWidth = Reg(UInt(14.W))
   private val wpTexHeight = Reg(UInt(14.W))
   private val wpTexWrapClamp = Reg(Bool())
+  private val wpTexFormat = Reg(UInt(PixelFormat.width.W))
   private val wpTexMaxLevel = Reg(UInt(4.W))
   private val wpTexLodBias = Reg(SInt(5.W))
   private val wpTexMinLevel = Reg(UInt(4.W))
@@ -572,6 +577,7 @@ class KernelFragStage(
     wpTexWidth := io.texWidth
     wpTexHeight := io.texHeight
     wpTexWrapClamp := io.texWrapClamp
+    wpTexFormat := io.texFormat
     wpTexMaxLevel := io.texMaxLevel
     wpTexLodBias := io.texLodBias
     wpTexMinLevel := io.texMinLevel
@@ -604,6 +610,7 @@ class KernelFragStage(
       slotTexWidth(wpSlot) := wpTexWidth
       slotTexHeight(wpSlot) := wpTexHeight
       slotTexWrapClamp(wpSlot) := wpTexWrapClamp
+      slotTexFormat(wpSlot) := wpTexFormat
       slotTexMaxLevel(wpSlot) := wpTexMaxLevel
       slotTexLodBias(wpSlot) := wpTexLodBias
       slotTexMinLevel(wpSlot) := wpTexMinLevel

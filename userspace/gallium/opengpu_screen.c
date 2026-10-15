@@ -187,8 +187,7 @@ static int screen_get_shader_param(struct pipe_screen *screen,
 
 static bool format_ok(enum pipe_format format, unsigned bindings)
 {
-    bool color = format == PIPE_FORMAT_R8G8B8A8_UNORM ||
-                 format == PIPE_FORMAT_B8G8R8X8_UNORM;
+    bool color = opengpu_format(format) >= 0;
     bool depth = format == PIPE_FORMAT_Z24_UNORM_S8_UINT ||
                  format == PIPE_FORMAT_Z24X8_UNORM;
     bool vertex = format == PIPE_FORMAT_R32G32B32A32_FLOAT ||
@@ -255,8 +254,7 @@ static struct pipe_resource *resource_create(struct pipe_screen *screen,
                templ->target == PIPE_TEXTURE_RECT) {
         if (!templ->width0 || !templ->height0 || templ->nr_samples > 1)
             return NULL;
-        if (templ->format != PIPE_FORMAT_R8G8B8A8_UNORM &&
-            templ->format != PIPE_FORMAT_B8G8R8X8_UNORM &&
+        if (opengpu_format(templ->format) < 0 &&
             templ->format != PIPE_FORMAT_Z24_UNORM_S8_UINT &&
             templ->format != PIPE_FORMAT_Z24X8_UNORM)
             return NULL;
@@ -293,6 +291,12 @@ static struct pipe_resource *resource_create(struct pipe_screen *screen,
     }
     if (!res->gpu) {
         FREE(res);
+        return NULL;
+    }
+    if (opengpu_format(templ->format) >= 0 &&
+        pipe_opengpu_resource_set_format(opengpu_screen_gpu(screen), res->gpu,
+                                          opengpu_format(templ->format))) {
+        resource_destroy(screen, &res->base);
         return NULL;
     }
     return &res->base;
@@ -346,8 +350,7 @@ static struct pipe_resource *resource_from_handle(
         templ->array_size != 1 || templ->depth0 != 1 || templ->last_level ||
         templ->nr_samples > 1 || whandle->plane || whandle->offset ||
         (whandle->modifier != 0 && whandle->modifier != UINT64_C(0x00ffffffffffffff)) ||
-        (templ->format != PIPE_FORMAT_R8G8B8A8_UNORM &&
-         templ->format != PIPE_FORMAT_B8G8R8X8_UNORM))
+        opengpu_format(templ->format) < 0)
         return NULL;
     if (whandle->type != WINSYS_HANDLE_TYPE_FD)
         return NULL;
@@ -363,6 +366,12 @@ static struct pipe_resource *resource_from_handle(
         whandle->handle, whandle->type == WINSYS_HANDLE_TYPE_FD);
     if (!res->gpu) {
         FREE(res);
+        return NULL;
+    }
+    if (opengpu_format(templ->format) >= 0 &&
+        pipe_opengpu_resource_set_format(opengpu_screen_gpu(screen), res->gpu,
+                                          opengpu_format(templ->format))) {
+        resource_destroy(screen, &res->base);
         return NULL;
     }
     return &res->base;
@@ -472,6 +481,12 @@ struct pipe_screen *opengpu_drm_screen_create(
     screen->gpu = pipe_opengpu_screen_create_fd(fd);
     if (!screen->gpu) {
         fprintf(stderr, "opengpu: screen init failed: %s\n", strerror(errno));
+        FREE(screen);
+        return NULL;
+    }
+    if (!(pipe_opengpu_screen_capabilities(screen->gpu) & OPENGPU_CAP_NATIVE_PIXEL_FORMATS)) {
+        fprintf(stderr, "opengpu: native pixel format support required\n");
+        pipe_opengpu_screen_destroy(screen->gpu);
         FREE(screen);
         return NULL;
     }

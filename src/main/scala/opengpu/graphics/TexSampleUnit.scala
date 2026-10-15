@@ -32,6 +32,7 @@ class TexSampleUnit(
     val commit = Decoupled(new ScalarCommitRequest(config))
     val vectorIn = Flipped(Decoupled(new VectorTextureRequest(config)))
     val vectorCommit = Decoupled(new VectorCommitRequest(config))
+    val texFormat = Input(UInt(PixelFormat.width.W))
     val texBase = Input(UInt(32.W))
     val texWidth = Input(UInt(14.W))
     val texHeight = Input(UInt(14.W))
@@ -49,6 +50,7 @@ class TexSampleUnit(
 
   private val sampler = Module(new TextureUnit(gfxConfig))
 
+  sampler.io.texFormat := io.texFormat
   sampler.io.texBase := io.texBase
   sampler.io.texWidth := io.texWidth
   sampler.io.texHeight := io.texHeight

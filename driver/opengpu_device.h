@@ -231,6 +231,7 @@ struct opengpu_job {
     u32 texture_width;
     u32 texture_height;
     u32 texture_config;
+    u32 pixel_formats;
     u32 completion_delay_ms;
 };
 

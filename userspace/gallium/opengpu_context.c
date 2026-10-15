@@ -1724,12 +1724,19 @@ static void set_framebuffer(struct pipe_context *pipe,
                     opengpu_screen_gpu(pipe->screen), mode_width, mode_height);
             }
             if (ctx->present_target) {
+                if (pipe_opengpu_resource_set_format(opengpu_screen_gpu(pipe->screen),
+                        ctx->present_target, opengpu_format(ctx->cbuf->format)))
+                    gpu_failed("framebuffer format selection failed");
                 pipe_opengpu_set_framebuffer(ctx->gpu, ctx->present_target,
                                              mode_width, mode_height);
                 pipe_opengpu_set_depth(ctx->gpu, dres ? dres->gpu : NULL, 0);
                 return;
             }
         }
+    }
+    if (ctx->present_target) {
+        pipe_opengpu_resource_destroy(opengpu_screen_gpu(pipe->screen), ctx->present_target);
+        ctx->present_target = NULL;
     }
     pipe_opengpu_set_framebuffer(ctx->gpu, cres->gpu, state->width, state->height);
     pipe_opengpu_set_depth(ctx->gpu, dres ? dres->gpu : NULL, 0);
@@ -2483,6 +2490,8 @@ static void draw_vbo(struct pipe_context *pipe,
                     pipe_opengpu_bind_texture(
                         ctx->gpu, sample, tw, th, tw * th * 4u,
                         OPENGPU_RESOURCE_TEXTURE_CLAMP |
+                            ((uint32_t)opengpu_format(ctx->fs_view->format) <<
+                             OPENGPU_RESOURCE_TEXTURE_FORMAT_SHIFT) |
                             OPENGPU_RESOURCE_UNCACHED)) {
                     reject("texture bind failed");
                     return;
@@ -2743,7 +2752,7 @@ static struct pipe_sampler_view *create_sampler_view(
     struct pipe_sampler_view *view;
 
     if (!texture || !templ || texture->target != PIPE_TEXTURE_2D ||
-        templ->format != PIPE_FORMAT_R8G8B8A8_UNORM ||
+        opengpu_format(templ->format) < 0 ||
         templ->u.tex.first_level != 0 || templ->u.tex.last_level != 0)
         return NULL;
     view = CALLOC_STRUCT(pipe_sampler_view);

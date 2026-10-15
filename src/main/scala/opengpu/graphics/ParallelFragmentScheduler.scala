@@ -130,6 +130,7 @@ class ParallelFragmentScheduler(
     port.abi1 := io.front.abi1
     port.kernargBase := io.front.kernargBase + io.front.kernargBankStride * (2 * worker).U
     port.kernargBankStride := io.front.kernargBankStride
+    port.texFormat := io.front.texFormat
     port.texBase := io.front.texBase
     port.texWidth := io.front.texWidth
     port.texHeight := io.front.texHeight

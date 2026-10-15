@@ -48,8 +48,9 @@ object TexWrap {
   *
   * Texel word layout matches the pipeline's packed-colour convention:
   * bits[31:24] red, [23:16] green, [15:8] blue, [7:0] alpha (little-endian
-  * bytes A,B,G,R). Alpha currently passes through as opaque 0xff; alpha
-  * blending stays with the OM hook.
+  * bytes A,B,G,R). `texFormat` selects the memory byte order; each response
+  * is decoded before filtering. Alpha is filtered with RGB; RGBX/BGRX taps
+  * have alpha 255. Blending stays with the OM.
   *
   * Sampling maths (all integer, no hidden rounding):
   *   biased = (u * width) - 0.5      -- texel-space coordinate with 8
@@ -98,6 +99,7 @@ class TextureUnit(
   gfxConfig: GraphicsConfig = GraphicsConfig()
 ) extends Module {
   val io = IO(new Bundle {
+    val texFormat = Input(UInt(PixelFormat.width.W))
     val texBase = Input(UInt(32.W))
     val texWidth = Input(UInt(14.W))
     val texHeight = Input(UInt(14.W))
@@ -130,6 +132,7 @@ class TextureUnit(
   // through the handshake cycle, so the coordinates start the walk in
   // registers.  levelBase accumulates the byte offsets of the skipped
   // levels; levelW/H shrink per level, floored at 1.
+  private val formatReg = RegInit(0.U(PixelFormat.width.W))
   private val uReg = RegInit(0.U(32.W))
   private val vReg = RegInit(0.U(32.W))
   private val levelBase = RegInit(0.U(32.W))
@@ -268,12 +271,12 @@ class TextureUnit(
   }
 
   // Output uses the pipeline's packed-colour convention (r<<24 | g<<16 |
-  // b<<8 | opaque alpha).
+  // b<<8 | a), independent of the memory byte order.
   private val blended = Cat(
     blend(w => w(31, 24)), // red
     blend(w => w(23, 16)), // green
     blend(w => w(15, 8)), // blue
-    0xff.U(8.W)
+    blend(w => w(7, 0))
   )
 
   private def trilinearChannel(shift: Int): UInt = {
@@ -282,7 +285,7 @@ class TextureUnit(
     (((first * (256.U - lodFracReg)) + second * lodFracReg) >> 8)(7, 0)
   }
   private val trilinear = Cat(
-    trilinearChannel(24), trilinearChannel(16), trilinearChannel(8), 0xff.U(8.W))
+    trilinearChannel(24), trilinearChannel(16), trilinearChannel(8), trilinearChannel(0))
 
   io.result.valid := state === sDone
   io.result.bits := resultReg
@@ -290,6 +293,7 @@ class TextureUnit(
   switch(state) {
     is(sIdle) {
       when(io.sample.fire) {
+        formatReg := io.texFormat
         // Power-of-two extents are required for the mask-based REPEAT wrap.
         when(io.wrapMode === TexWrap.repeat) {
           assert(
@@ -386,7 +390,7 @@ class TextureUnit(
       }
       when(responseAccepted && responseMatchBits.orR) {
         for (i <- 0 until 4) {
-          when(responseFillBits(i)) { tapWords(i) := io.mem.resp.bits.data }
+          when(responseFillBits(i)) { tapWords(i) := PixelFormat.decode(io.mem.resp.bits.data, formatReg) }
         }
         tapReceived := receivedAfterResponse
         when(receivedAfterResponse.andR) { state := sBlend }

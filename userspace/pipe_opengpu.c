@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "pipe_opengpu.h"
 #include "opengpu_shader_resources.h"
+#include "opengpu_pixel_format.h"
 #include <drm/drm.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_mode.h>
@@ -46,6 +47,7 @@ struct pipe_opengpu_resource {
     uint32_t height;
     uint32_t pitch;
     uint32_t fb_id;
+    uint32_t format;
     struct pipe_opengpu_resource *next;
 };
 
@@ -509,6 +511,19 @@ int pipe_opengpu_screen_display_size(struct pipe_opengpu_screen *screen,
     return opengpu_display_size(screen->fd, width, height);
 }
 
+int pipe_opengpu_resource_set_format(struct pipe_opengpu_screen *screen,
+                                      struct pipe_opengpu_resource *res, uint32_t format)
+{
+    if (!screen || !res || format > OPENGPU_FORMAT_MAX ||
+        (format && !(screen->caps & OPENGPU_CAP_NATIVE_PIXEL_FORMATS)) ||
+        (res->fb_id && res->format != format)) {
+        errno = EINVAL;
+        return -1;
+    }
+    res->format = format;
+    return 0;
+}
+
 void pipe_opengpu_set_framebuffer(struct pipe_opengpu_context *ctx,
                                   struct pipe_opengpu_resource *color,
                                   uint32_t width, uint32_t height)
@@ -816,6 +831,7 @@ static int apply_color_submit(struct pipe_opengpu_context *ctx,
     submit->color_handle = ctx->color->buffer.handle;
     submit->stride = stride;
     submit->sample_mode = ctx->sample_mode;
+    submit->flags |= ctx->color->format << OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT;
     return 0;
 }
 
@@ -844,7 +860,7 @@ int pipe_opengpu_clear(struct pipe_opengpu_context *ctx, uint32_t pattern,
         return -1;
     fill.context_id = ctx->context_id;
     fill.destination_handle = ctx->color->buffer.handle;
-    fill.pattern = pattern;
+    fill.pattern = opengpu_pixel_encode(pattern, ctx->color->format);
     fill.bytes = bytes;
     fill.out_syncobj = fence->handle;
     if (opengpu_fill(ctx->screen->fd, &fill)) {
@@ -1516,6 +1532,14 @@ int pipe_opengpu_present(struct pipe_opengpu_screen *screen,
         !color->width || !color->height) {
         errno = EINVAL;
         return -1;
+    }
+    switch (color->format) {
+    case OPENGPU_FORMAT_NATIVE: fb.pixel_format = DRM_FORMAT_RGBA8888; break;
+    case OPENGPU_FORMAT_RGBA8: fb.pixel_format = DRM_FORMAT_ABGR8888; break;
+    case OPENGPU_FORMAT_RGBX8: fb.pixel_format = DRM_FORMAT_XBGR8888; break;
+    case OPENGPU_FORMAT_BGRA8: fb.pixel_format = DRM_FORMAT_ARGB8888; break;
+    case OPENGPU_FORMAT_BGRX8: fb.pixel_format = DRM_FORMAT_XRGB8888; break;
+    default: errno = EINVAL; return -1;
     }
     if (ioctl(screen->fd, DRM_IOCTL_MODE_GETRESOURCES, &resources) < 0)
         return -1;

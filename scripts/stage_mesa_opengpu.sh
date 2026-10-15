@@ -16,10 +16,10 @@ DEST="$MESA/src/gallium/drivers/opengpu"
 
 mkdir -p "$DEST"
 cp "$GPU_DIR/userspace/gallium/"*.c "$GPU_DIR/userspace/gallium/"*.h "$DEST/"
-cp "$GPU_DIR/userspace/pipe_opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.h" \
+cp "$GPU_DIR/userspace/pipe_opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.h" "$GPU_DIR/userspace/opengpu_pixel_format.h" \
    "$GPU_DIR/userspace/opengpu_retry.h" \
     "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/opengpu.h" \
-    "$GPU_DIR/driver/opengpu_drm.h" "$GPU_DIR/driver/gpu_abi.h" \
+    "$GPU_DIR/driver/opengpu_drm.h" "$GPU_DIR/driver/gpu_abi.h" "$GPU_DIR/driver/opengpu_formats.h" \
     "$GPU_DIR/driver/opengpu_shader_resources.h" "$DEST/"
 python3 - "$DEST/opengpu.h" <<'PY'
 import pathlib, sys
@@ -112,8 +112,8 @@ old_cap = """   switch (cap) {
 new_cap = """   switch (cap) {
    case DRI_LOADER_CAP_FP16:
    case DRI_LOADER_CAP_RGBA_ORDERING:
-      /* OpenGPU scanout stores R8G8B8A8. Without this cap Mesa hides that
-       * format and the screen has no EGL config. */
+      /* Expose RGBA-byte visuals alongside BGRA. OpenGPU's native pixel
+       * format ABI supports both memory orders for rendering and scanout. */
       return 1;
    default:
       return 0;

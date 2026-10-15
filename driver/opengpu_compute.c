@@ -778,11 +778,17 @@ int opengpu_compute_resource_bind_ioctl(struct drm_device *drm, void *data,
             args->width > 0x3fff || args->height > 0x3fff ||
             (args->flags & ~(OPENGPU_RESOURCE_TEXTURE_CLAMP |
                              OPENGPU_RESOURCE_TEXTURE_MAX_MIP_MASK |
+                             OPENGPU_RESOURCE_TEXTURE_FORMAT_MASK |
                              OPENGPU_RESOURCE_UNCACHED)) ||
             mip_level >= 32 - __builtin_clz(max(args->width, args->height)) ||
             (!(args->flags & OPENGPU_RESOURCE_TEXTURE_CLAMP) &&
              (!opengpu_is_power_of_two(args->width) ||
               !opengpu_is_power_of_two(args->height))))
+            return -EINVAL;
+        if (((args->flags & OPENGPU_RESOURCE_TEXTURE_FORMAT_MASK) >>
+             OPENGPU_RESOURCE_TEXTURE_FORMAT_SHIFT) > OPENGPU_FORMAT_MAX ||
+            ((args->flags & OPENGPU_RESOURCE_TEXTURE_FORMAT_MASK) &&
+             !(gpu->hw.capabilities & GPU_CAP_NATIVE_PIXEL_FORMATS)))
             return -EINVAL;
         texture_bytes = 0;
         mip_width = args->width;
@@ -1790,7 +1796,12 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
 
     if ((args->flags & ~(OPENGPU_SUBMIT_TEST_FENCE_DELAY |
                          OPENGPU_SUBMIT_VERTEX_CORE |
-                         OPENGPU_SUBMIT_DEPTH_LOAD)) ||
+                         OPENGPU_SUBMIT_DEPTH_LOAD |
+                         OPENGPU_SUBMIT_COLOR_FORMAT_MASK)) ||
+        ((args->flags & OPENGPU_SUBMIT_COLOR_FORMAT_MASK) >>
+         OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT) > OPENGPU_FORMAT_MAX ||
+        ((args->flags & OPENGPU_SUBMIT_COLOR_FORMAT_MASK) &&
+         !(gpu->hw.capabilities & GPU_CAP_NATIVE_PIXEL_FORMATS)) ||
         ((args->flags & OPENGPU_SUBMIT_DEPTH_LOAD) &&
          !args->depth_handle) ||
         !args->context_id || !args->command_handle || !args->color_handle ||
@@ -2036,6 +2047,10 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         .texture = texture ? (texture->va ? texture->va : texture->dma) : 0,
         .texture_width = texture ? texture->width : 0,
         .texture_height = texture ? texture->height : 0,
+        .pixel_formats = ((args->flags & OPENGPU_SUBMIT_COLOR_FORMAT_MASK) >>
+                          OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT) |
+            (texture ? (((texture->flags & OPENGPU_RESOURCE_TEXTURE_FORMAT_MASK) >>
+                         OPENGPU_RESOURCE_TEXTURE_FORMAT_SHIFT) << 4) : 0),
         .texture_config = texture ? GPU_TEX_ENABLE |
             (texture->flags & OPENGPU_RESOURCE_TEXTURE_CLAMP ?
              GPU_TEX_WRAP_CLAMP : 0) |

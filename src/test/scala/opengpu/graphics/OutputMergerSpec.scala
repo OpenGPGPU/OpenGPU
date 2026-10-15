@@ -102,6 +102,7 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
 
   private def pokeConfig(dut: OutputMerger, depthTestEnable: Boolean,
     depthFunc: Int, depthWrite: Boolean, blend: Boolean): Unit = {
+    dut.io.colorFormat.poke(0.U)
     dut.io.colorBase.poke(colorBase.U)
     dut.io.depthBase.poke(depthBase.U)
     dut.io.stride.poke(stride.U)
@@ -827,6 +828,52 @@ abstract class OutputMergerChecks(omLocality: Boolean = false, omInflight: Int =
         0x0badf00d, 0x77, 0xa5000060)
       assert(colourFail == 0xdeadbeef, "stencil fail with depth test disabled skips colour")
       assert(depthFail == 0x00000060, f"fail ZERO cleared the byte: 0x$depthFail%08x")
+    }
+  }
+
+  it should "preserve Mesa byte orders and snapshot format across outstanding blends" in {
+    simulate(new OutputMerger(GraphicsConfig(omInflight = omInflight, omLocality = omLocality))) { dut =>
+      newDut(dut)
+      pokeConfig(dut, false, 0, false, false)
+      dut.io.sampleMode.poke(0.U)
+      val mem = Array.fill(1 << 15)(0)
+      val model = new OooModel(mem)
+      // Shader RGBA=(17,83,149,211). Expected words are literal memory bytes,
+      // independent of the RTL codec. All formats are simultaneously live.
+      val stored = Seq(0x115395d3, 0xd3955311, 0xd3115395, 0xff955311, 0xff115395)
+      dut.io.mem.req.ready.poke(false.B)
+      for (format <- stored.indices) {
+        dut.io.colorFormat.poke(format.U)
+        pokeFrag(dut, format, 0, 0x115395d3, 0)
+        dut.io.fragIn.valid.poke(true.B)
+        dut.io.fragIn.ready.expect(true.B)
+        dut.clock.step()
+      }
+      dut.io.fragIn.valid.poke(false.B)
+      dut.io.colorFormat.poke(0.U)
+      drain(dut, model)
+      for (format <- stored.indices)
+        assert(mem(addrOf(colorBase, format, 0)) == stored(format))
+
+      // Copy destination through GL factors ZERO/ONE. This exercises decode
+      // before blending as well as encode afterward, including forced X=255.
+      pokeBlendCfg(dut, true, 0, 1, 0)
+      val dst = Seq(0x2791c543, 0x43c59127, 0x432791c5, 0x00c59127, 0x002791c5)
+      val expected = Seq(0x2791c543, 0x43c59127, 0x432791c5, 0xffc59127, 0xff2791c5)
+      dut.io.mem.req.ready.poke(false.B)
+      for (format <- dst.indices) {
+        mem(addrOf(colorBase, format, 1)) = dst(format)
+        dut.io.colorFormat.poke(format.U)
+        pokeFrag(dut, format, 1, 0x115395d3, 0)
+        dut.io.fragIn.valid.poke(true.B)
+        dut.io.fragIn.ready.expect(true.B)
+        dut.clock.step()
+      }
+      dut.io.fragIn.valid.poke(false.B)
+      dut.io.colorFormat.poke(0.U)
+      drain(dut, model)
+      for (format <- dst.indices)
+        assert(mem(addrOf(colorBase, format, 1)) == expected(format))
     }
   }
 

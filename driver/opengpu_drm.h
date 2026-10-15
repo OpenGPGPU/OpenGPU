@@ -3,6 +3,7 @@
 #define OPENGPU_DRM_H
 
 #include <drm/drm.h>
+#include "opengpu_formats.h"
 
 /* Render-node-safe replacement for the core dumb-buffer ioctls.  The core
  * MODE_CREATE_DUMB and MODE_MAP_DUMB commands intentionally lack
@@ -176,6 +177,9 @@ struct drm_opengpu_param {
 #define OPENGPU_CAP_SHADER_CONFIG_INFO (1u << 23)
 /* Launch x9 = lanes * warps; VLMAX shaders calculate staging strides at runtime. */
 #define OPENGPU_CAP_RUNTIME_SHADER_ABI (1u << 24)
+/* Descriptor-selected framebuffer and sampler byte orders. */
+#define OPENGPU_CAP_NATIVE_PIXEL_FORMATS (1u << 25)
+
 
 /* Sample mode field width (0 = 1x, 1 = 2x, 2 = 4x). */
 #define OPENGPU_MSAA_MODE_MASK 0x3u
@@ -236,6 +240,8 @@ struct drm_opengpu_resource {
     __u32 pad;
 };
 
+#define OPENGPU_RESOURCE_TEXTURE_FORMAT_SHIFT 8u
+#define OPENGPU_RESOURCE_TEXTURE_FORMAT_MASK (7u << OPENGPU_RESOURCE_TEXTURE_FORMAT_SHIFT)
 #define OPENGPU_RESOURCE_TEXTURE_CLAMP (1u << 0)
 #define OPENGPU_RESOURCE_TEXTURE_MAX_MIP_SHIFT 4u
 #define OPENGPU_RESOURCE_TEXTURE_MAX_MIP_MASK \
@@ -405,6 +411,8 @@ struct drm_opengpu_compute {
 /* Keep the bound depth attachment's stored contents instead of clearing it at
  * the start of the submission (depth_handle must be nonzero). */
 #define OPENGPU_SUBMIT_DEPTH_LOAD       (1u << 2)
+#define OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT 4u
+#define OPENGPU_SUBMIT_COLOR_FORMAT_MASK (7u << OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT)
 
 #define DRM_OPENGPU_SUBMIT 0x00
 #define DRM_OPENGPU_CONTEXT_CREATE 0x01

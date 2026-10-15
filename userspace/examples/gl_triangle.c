@@ -109,8 +109,8 @@ static uint32_t pixel_word(int x, int y)
 
     glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
     /* R8G8B8A8 memory is the little-endian bytes of the GPU colour word. */
-    return (uint32_t)px[0] | ((uint32_t)px[1] << 8) |
-           ((uint32_t)px[2] << 16) | ((uint32_t)px[3] << 24);
+    return ((uint32_t)px[0] << 24) | ((uint32_t)px[1] << 16) |
+           ((uint32_t)px[2] << 8) | (uint32_t)px[3];
 }
 
 int main(void)
@@ -194,9 +194,7 @@ int main(void)
     gbm = gbm_create_device(fd);
     if (!gbm)
         die("gbm_create_device");
-    /* Mesa's R8G8B8A8 config matches the ABGR8888 visual (red in the low
-     * byte). Scanout still uses DRM_FORMAT_RGBA8888: the GPU word stores R
-     * in the high byte. */
+    /* Use RGBA bytes throughout rendering, GL readback and KMS. */
     gsurf = gbm_surface_create(gbm, mode.hdisplay, mode.vdisplay,
                                GBM_FORMAT_ABGR8888,
                                GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
@@ -282,7 +280,7 @@ int main(void)
         die("gbm_surface_lock_front_buffer");
     handles[0] = gbm_bo_get_handle(bo).u32;
     pitches[0] = gbm_bo_get_stride(bo);
-    if (drmModeAddFB2(fd, mode.hdisplay, mode.vdisplay, DRM_FORMAT_RGBA8888,
+    if (drmModeAddFB2(fd, mode.hdisplay, mode.vdisplay, gbm_bo_get_format(bo),
                       handles, pitches, offsets, &fb, 0))
         die_errno("drmModeAddFB2");
     if (drmModeSetCrtc(fd, crtc_id, fb, 0, 0, &conn->connector_id, 1, &mode))

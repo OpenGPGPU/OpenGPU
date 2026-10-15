@@ -75,6 +75,7 @@ class KernelFragStageWithKernel(
   frag.io.shaderPc := io.shaderPc
   frag.io.kernargBase := io.kernargBase
   frag.io.kernargBankStride := io.kernargBankStride
+  frag.io.texFormat := 0.U
   frag.io.texBase := io.texBase
   frag.io.texWidth := io.texWidth
   frag.io.texHeight := io.texHeight

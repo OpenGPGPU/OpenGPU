@@ -129,8 +129,8 @@ static uint32_t pixel_word(int x, int y)
     uint8_t px[4];
 
     glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
-    return (uint32_t)px[0] | ((uint32_t)px[1] << 8) |
-           ((uint32_t)px[2] << 16) | ((uint32_t)px[3] << 24);
+    return ((uint32_t)px[0] << 24) | ((uint32_t)px[1] << 16) |
+           ((uint32_t)px[2] << 8) | (uint32_t)px[3];
 }
 
 int main(void)
@@ -325,7 +325,7 @@ int main(void)
         die("gbm_surface_lock_front_buffer");
     handles[0] = gbm_bo_get_handle(bo).u32;
     pitches[0] = gbm_bo_get_stride(bo);
-    if (drmModeAddFB2(fd, mode.hdisplay, mode.vdisplay, DRM_FORMAT_RGBA8888,
+    if (drmModeAddFB2(fd, mode.hdisplay, mode.vdisplay, gbm_bo_get_format(bo),
                       handles, pitches, offsets, &fb, 0))
         die_errno("drmModeAddFB2");
     if (drmModeSetCrtc(fd, crtc_id, fb, 0, 0, &conn->connector_id, 1, &mode))

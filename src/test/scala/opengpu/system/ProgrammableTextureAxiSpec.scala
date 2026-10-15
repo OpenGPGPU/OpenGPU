@@ -11,9 +11,10 @@ import scala.collection.mutable
 /** Exercise shader instruction fetch and vtex.sample through the host's AXI clients. */
 abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Boolean = false,
     coalesce: Boolean = false, axiBytes: Int = 8, fragmentBatchLimit: Int = 0,
-    omInflight: Int = 16, omLocality: Boolean = false, bufferCommandReads: Boolean = false)
+    omInflight: Int = 16, omLocality: Boolean = false, bufferCommandReads: Boolean = false,
+    mesaFormats: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
-  for (scenario <- Seq("translation", "invalid PTE", "page-table bus fault",
+  for (scenario <- (if (mesaFormats) Seq("Mesa formats") else Seq("translation", "invalid PTE", "page-table bus fault",
       "texture bus fault", "reset during texture read", "instruction translation",
       "instruction non-executable fault", "instruction invalid PTE fault", "instruction page-table bus fault",
       "instruction code bus fault", "instruction ASID switch",
@@ -28,7 +29,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
       // Guest DRM vertex shader: lane-aware SoA copy (x8 base, vl=4) plus the
       // divergent fragment program used by opengpu_drm_test on 16x16.
       "instruction vertex guest shader",
-      "instruction vertex guest-sized fragment")) {
+      "instruction vertex guest-sized fragment"))) {
     it should s"complete programmable texture rendering with $scenario and recover" in {
       val side = if (scenario.contains("guest-sized")) 16 else 4
       val framebufferBytes = side * side * 4
@@ -69,7 +70,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         val root = 0x30000
         val textureVa = 0x400000
         val texturePa = 0x800000
-        val texel = 0xff00ffffL
+        val texel = if (mesaFormats) 0x115395d3L else 0xff00ffffL
         def store(base: Int, data: Seq[Long]): Unit = data.zipWithIndex.foreach {
           case (v, i) => words(base.toLong + i * 4) = BigInt(v & 0xffffffffL)
         }
@@ -357,6 +358,39 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         assert(if (divergentFragment) (0 until side * side).exists(i => words(recoveryColor + i * 4L) == texel)
           else words(recoveryColor + 1 * 16L + 1 * 4) == texel,
           "framebuffer must contain the sampled physical texel")
+        if (mesaFormats) {
+          val textureWords = Seq(0x115395d3L, 0xd3955311L, 0xd3115395L, 0x00955311L, 0x00115395L)
+          val rgbaAlpha = Seq(0x115395d3L, 0xd3955311L, 0xd3115395L, 0xff955311L, 0xff115395L)
+          val opaqueAlpha = Seq(0x115395ffL, 0xff955311L, 0xff115395L, 0xff955311L, 0xff115395L)
+          val covered = (0 until side * side).filter(i =>
+            words.getOrElse(recoveryColor + i * 4L, BigInt(0)) == texel)
+          assert(covered.nonEmpty)
+          assert((axiRead(dut, RenderHostRegs.CAPABILITIES) & (1 << 25)) != 0)
+          for (textureFormat <- textureWords.indices; colorFormat <- rgbaAlpha.indices) {
+            axiWrite(dut, GpuCommandMmioRegs.COMPLETION_POP, 1)
+            axiWrite(dut, RenderHostRegs.IRQ, 3)
+            // Distinct lines model separately bound images. CPU updates to a
+            // previously sampled cached image require explicit invalidation.
+            val textureOffset = (textureFormat * 5 + colorFormat + 1) * 64
+            store(texturePa + textureOffset, Seq(textureWords(textureFormat)))
+            store(descriptor + 6 * 4, Seq((textureVa + textureOffset).toLong))
+            store(descriptor + 13 * 4, Seq((textureFormat << 4 | colorFormat).toLong))
+            store(recoveryColor, Seq.fill(side * side)(0x12345678L))
+            store(0x21000, Seq.fill(side * side)(0x00ffffffL))
+            submit(17)
+            serviceMemoryMaster(dut, readLine, writeAckDelay = 12, maxCycles = 300000)(writeLine) {
+              dut.io.m_irq.peek().litToBoolean
+            }
+            val expected = (if (textureFormat >= 3) opaqueAlpha else rgbaAlpha)(colorFormat)
+            for (i <- 0 until side * side) {
+              val want = if (covered.contains(i)) expected else 0x12345678L
+              assert(words.getOrElse(recoveryColor + i * 4L, BigInt(0)) == want,
+                s"texture=$textureFormat target=$colorFormat pixel=$i expected=0x${want.toHexString}")
+            }
+            val result = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
+            assert((result & 255) == 17 && ((result >> 15) & 1) == 1)
+          }
+        }
       }
     }
   }
@@ -540,3 +574,10 @@ class WideCapacityCappedParallelCuProgrammableTextureAxiSpec
 class BufferedCommandParallelCuProgrammableTextureAxiSpec
     extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true,
       axiBytes = 64, bufferCommandReads = true)
+
+/** All 25 sampler/target format combinations through translated texture reads,
+  * shared-CU shader execution, context queues, OM and 512-bit write combining. */
+class MesaPixelFormatAxiSpec
+    extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true,
+      axiBytes = 64, fragmentBatchLimit = 4, omInflight = 64, omLocality = true,
+      bufferCommandReads = true, mesaFormats = true)

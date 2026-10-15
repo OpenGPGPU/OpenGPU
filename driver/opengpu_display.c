@@ -36,6 +36,9 @@ static const u32 opengpu_formats[] = {
     /* DRM [31:0] R:G:B:A, matching renderer word 0xRRGGBBAA. */
     DRM_FORMAT_RGBA8888,
     DRM_FORMAT_XRGB8888,
+    DRM_FORMAT_ARGB8888,
+    DRM_FORMAT_ABGR8888,
+    DRM_FORMAT_XBGR8888,
 };
 
 static bool opengpu_use_hw_vblank(struct opengpu_device *gpu)
@@ -53,7 +56,14 @@ static int opengpu_kms_commit(struct opengpu_drm *kms,
     struct opengpu_scanout scanout;
 
     if (!fb || (fb->format->format != DRM_FORMAT_RGBA8888 &&
-                fb->format->format != DRM_FORMAT_XRGB8888))
+                fb->format->format != DRM_FORMAT_XRGB8888 &&
+                fb->format->format != DRM_FORMAT_ARGB8888 &&
+                fb->format->format != DRM_FORMAT_ABGR8888 &&
+                fb->format->format != DRM_FORMAT_XBGR8888))
+        return -EINVAL;
+    if ((fb->format->format == DRM_FORMAT_ABGR8888 ||
+         fb->format->format == DRM_FORMAT_XBGR8888) &&
+        !(kms->gpu->hw.capabilities & GPU_CAP_NATIVE_PIXEL_FORMATS))
         return -EINVAL;
 
     scanout = (struct opengpu_scanout) {
@@ -62,7 +72,10 @@ static int opengpu_kms_commit(struct opengpu_drm *kms,
         .width = plane_state->crtc_w,
         .height = plane_state->crtc_h,
         .format = fb->format->format == DRM_FORMAT_RGBA8888 ?
-                  GPU_SCANOUT_FORMAT_RGBA8888 : GPU_SCANOUT_FORMAT_XRGB8888,
+                  GPU_SCANOUT_FORMAT_RGBA8888 :
+                  (fb->format->format == DRM_FORMAT_ABGR8888 ||
+                   fb->format->format == DRM_FORMAT_XBGR8888) ?
+                  GPU_SCANOUT_FORMAT_XBGR8888 : GPU_SCANOUT_FORMAT_XRGB8888,
         .enable = true,
     };
     return opengpu_hw_display_commit(kms->gpu, &scanout);
@@ -313,7 +326,8 @@ int opengpu_display_init(struct opengpu_device *gpu)
     ret = drm_simple_display_pipe_init(&kms->drm, &kms->pipe,
                                        &opengpu_pipe_funcs,
                                        opengpu_formats,
-                                       ARRAY_SIZE(opengpu_formats),
+                                       (gpu->hw.capabilities & GPU_CAP_NATIVE_PIXEL_FORMATS) ?
+                                       ARRAY_SIZE(opengpu_formats) : 2,
                                        NULL, &kms->connector);
     if (ret)
         return ret;

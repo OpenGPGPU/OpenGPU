@@ -70,6 +70,7 @@ class RenderCoreL2(
     val cmdBase = Input(UInt(32.W))
     val cmdCount = Input(UInt(16.W))
     val start = Input(Bool())
+    val colorFormat = Input(UInt(PixelFormat.width.W))
     val colorBase = Input(UInt(32.W))
     val depthBase = Input(UInt(32.W))
     val stride = Input(UInt(32.W))
@@ -93,6 +94,7 @@ class RenderCoreL2(
     val sampleMode = Input(UInt(2.W))
     /** Texture sampling config forwarded to the core's fragment stage. */
     val texEnable = Input(Bool())
+    val texFormat = Input(UInt(PixelFormat.width.W))
     val texBase = Input(UInt(32.W))
     val texWidth = Input(UInt(14.W))
     val texHeight = Input(UInt(14.W))
@@ -122,6 +124,7 @@ class RenderCoreL2(
   core.io.cmdBase := io.cmdBase
   core.io.cmdCount := io.cmdCount
   core.io.start := io.start
+  core.io.colorFormat := io.colorFormat
   core.io.colorBase := io.colorBase
   core.io.depthBase := io.depthBase
   core.io.stride := io.stride
@@ -145,6 +148,7 @@ class RenderCoreL2(
   core.io.screenW := 0.U
   core.io.screenH := 0.U
   core.io.texEnable := io.texEnable
+  core.io.texFormat := io.texFormat
   core.io.texBase := io.texBase
   core.io.texWidth := io.texWidth
   core.io.texHeight := io.texHeight

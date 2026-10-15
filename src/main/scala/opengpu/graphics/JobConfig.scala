@@ -7,10 +7,12 @@ import chisel3.util._
 class JobConfig extends Bundle with HasResolvedDrawState {
   val cmdBase = UInt(32.W)
   val cmdCount = UInt(16.W)
+  val colorFormat = UInt(PixelFormat.width.W)
   val colorBase = UInt(32.W)
   val depthBase = UInt(32.W)
   val stride = UInt(32.W)
   val sampleMode = UInt(2.W)
+  val texFormat = UInt(PixelFormat.width.W)
   val texBase = UInt(32.W)
   val texWidth = UInt(14.W)
   val texHeight = UInt(14.W)
