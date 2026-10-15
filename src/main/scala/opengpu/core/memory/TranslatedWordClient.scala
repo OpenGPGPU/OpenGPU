@@ -43,7 +43,8 @@ class TranslatedWordClient(
   })
 
   private val bridge = if (coalesceWrites)
-    Module(new CoalescedOmWordToLinePort(config, wordTransactions, uncached)).io
+    Module(new CoalescedOmWordToLinePort(config, wordTransactions, uncached,
+      groups = if (wordTransactions >= 32) 8 else 4)).io
   else Module(new OmWordToLinePort(config, 64, wordTransactions, uncached)).io
   bridge.in.valid := io.in.valid
   bridge.in.bits := io.in.bits

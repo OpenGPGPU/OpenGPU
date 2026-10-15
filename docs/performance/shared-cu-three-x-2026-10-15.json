@@ -1,0 +1,219 @@
+{
+  "date": "2026-10-15",
+  "scope": "Matched GPU-cycle scaling on the same 64x64 copy render. Not Debian desktop wall time.",
+  "configuration": {
+    "lanes_per_cu": 16,
+    "warps_per_cu": 8,
+    "cu_counts": [
+      1,
+      4
+    ],
+    "axi_bytes": 64,
+    "read_response_delay": 2,
+    "write_ack_delay": 12,
+    "l2_sets": 8,
+    "l2_ways": 2,
+    "om_inflight": 32,
+    "combining_groups": 8,
+    "word_reply_credits": 32,
+    "flush_cycles": 16,
+    "coalesce_framebuffer": true,
+    "default_installed_model_changed": false
+  },
+  "matched_cycles": {
+    "pipelined_writes_om16_groups4": {
+      "cu1": 60086,
+      "cu4": 26853
+    },
+    "readmerge_four_staging_om16_groups4": {
+      "cu1": 59839,
+      "cu4": 25943
+    },
+    "om32_groups4": {
+      "cu1": 53268,
+      "cu4": 20539
+    },
+    "directory_filter_om32_groups4": {
+      "cu1": 51388,
+      "cu4": 18882
+    },
+    "directory_filter_om32_groups8": {
+      "cu1": 48225,
+      "cu4": 15930,
+      "speedup": 3.0273069679849343,
+      "parallel_efficiency_percent": 75.68267419962335
+    }
+  },
+  "trace_analysis": [
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 48210,
+      "phase_worker_cycles": [
+        1698,
+        26422,
+        18,
+        8536,
+        4632,
+        6904
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1698,
+        "arvalid": 1359,
+        "rvalid": 1379,
+        "write_any": 26422,
+        "raster_stall": 45252,
+        "staging_without_shader_run": 31054,
+        "staging_outstanding_any": 26229,
+        "awvalid": 2563,
+        "bvalid": 2629,
+        "launch_any": 18,
+        "run_any": 8536,
+        "read_any": 4632,
+        "emit_any": 6904,
+        "output_blocked": 4674,
+        "om_stall": 2822
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 742,
+        "color_write": 652,
+        "depth_write": 651
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-side-64-alu-0-cycles.csv": "f7c43f7235a2e565707dfc159bd0ea94830a4c7b9c105db3c2b60929a41a65f2",
+        "cu-1-axi-64-side-64-alu-0-memory.csv": "ac61bf06dbbc3e7f8125a91902b1303dfe8e1476cc106c242d7beb3d4f12cde8"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 15915,
+      "phase_worker_cycles": [
+        7087,
+        30449,
+        18,
+        9570,
+        5958,
+        10578
+      ],
+      "peak_staging_outstanding": 4,
+      "cycle_events": {
+        "idle_any": 3542,
+        "arvalid": 1334,
+        "rvalid": 1406,
+        "write_any": 13078,
+        "staging_without_shader_run": 6947,
+        "staging_outstanding_any": 13679,
+        "awvalid": 2666,
+        "bvalid": 2819,
+        "raster_stall": 12085,
+        "launch_any": 18,
+        "run_any": 7708,
+        "read_any": 4923,
+        "staging_blocked": 88,
+        "emit_any": 8338,
+        "output_blocked": 6581,
+        "om_stall": 4065
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 717,
+        "color_write": 689,
+        "depth_write": 717
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-side-64-alu-0-cycles.csv": "80d1929bea04a5a91f441a7a18e5acf1b1f16b81ad6926f7ff5f1637b4807d1f",
+        "cu-4-axi-64-side-64-alu-0-memory.csv": "ad0518d16ebb648a371abf094fbef9a9ec2aea122f920d743b030b1059badc68"
+      }
+    }
+  ],
+  "source_reference": {
+    "base_commit": "12743d29268d19f18ccae67c3afdcb55aeabe01b",
+    "source_sha256": {
+      "src/main/scala/opengpu/core/memory/SharedL2Cache.scala": "a9488b5b66830cb2a3780876bde91431a7aa4ef18c5b8e7ab62f5c828b304384",
+      "src/main/scala/opengpu/core/memory/TranslatedWordClient.scala": "ca2c1f558200681fe1ad1b36d6ee3f4f37d6d716571f39c709e5948a5b040d25",
+      "src/main/scala/opengpu/elaboration/EmitGpuHostSystemAxi.scala": "761af5aed7a110d249b0f7707f8c71955ff071e41e15fd0a75fb44f987278f48",
+      "src/test/scala/opengpu/core/memory/SharedL2CacheSpec.scala": "8593e331e3face07c6669ab330e7ce10bbdbd42cd4085ee409c41b1c365051a0",
+      "src/test/scala/opengpu/system/WideSharedGraphicsSpec.scala": "5af51d9dc85163f56e3622a77e66bd8f3d3449e82e8c218605b27825445ab31d",
+      "src/test/scala/opengpu/system/ParallelGraphicsOrderingSpec.scala": "5786dac91167c8bfdd0a06cb46e701428c14340fda6646a7637c826e2510d5bb"
+    }
+  },
+  "validation": {
+    "l2_unit_tests": {
+      "passed": 21,
+      "log": ".artifacts/shared-cu-l2-eight-groups-tests.log"
+    },
+    "matched_render_tests": {
+      "passed": 2,
+      "checks": "Every pixel, depth value, staging uniform sentinel, completion and peak active CUs",
+      "log": ".artifacts/shared-cu-l2-eight-groups-tests.log"
+    },
+    "broader_system_tests": {
+      "passed": 52,
+      "suites": {
+        "GpuHostSystemAxiSpec": 23,
+        "CoalescedParallelGraphicsOrderingSpec": 2,
+        "CoalescedParallelCuProgrammableTextureAxiSpec": 27
+      },
+      "log": ".artifacts/shared-cu-l2-system-regression.log",
+      "note": "Default OM16 uses four groups in both the isolated regression model and reference. OM32/eight-group renders are qualified separately."
+    },
+    "deep_om_ordered_msaa": {
+      "passed": 2,
+      "axi_bytes": 64,
+      "om_inflight": 32,
+      "combining_groups": 8,
+      "samples": [
+        1,
+        4
+      ],
+      "checks": "Draw order, blend, depth, helper coverage and per-bank uniform tails",
+      "log": ".artifacts/shared-cu-three-x-deep-msaa-tests.log"
+    },
+    "total_new_milestone_checks": 77
+  },
+  "semantics": [
+    "Uncached reads bypass tag lookup; they do not read or allocate L2 data.",
+    "A negative six-bit directory fingerprint permits store lookup bypass. All real tag writes update fingerprints, and valid bits gate entries.",
+    "Fingerprint matches/collisions retain full tag lookup and CU invalidation. Concurrent fills conservatively disable write bypass.",
+    "Blocking reads merge only when cacheability matches so a cached CU reader cannot lose directory sharer registration."
+  ],
+  "limitations": [
+    "OM32 and coalescing remain explicit opt-ins; default OM16 and installed QEMU are unchanged.",
+    "The sixteen-lane shader program is a pixel-checked RTL workload; stock Mesa wide-ABI qualification remains outstanding.",
+    "No implication of a 3.03x desktop startup improvement.",
+    "A separate double-word-credit experiment is excluded from this reference."
+  ],
+  "rejected_experiments": [
+    {
+      "name": "double word credits with separate physical line IDs",
+      "cu1_cycles": 48021,
+      "cu4_cycles": 15986,
+      "speedup": 3.0039409483297885,
+      "unit_tests_passed": 10,
+      "render_tests_passed": 2,
+      "decision": "Reject: four-CU cycles slightly increase and storage/complexity increase. Retain smaller 32-word-credit reference.",
+      "archive": ".artifacts/shared-cu/double-word-credits-wip.patch",
+      "log": ".artifacts/shared-cu-double-word-credits-tests.log"
+    }
+  ],
+  "flashsim_adapter": {
+    "commit": "edf4aaa",
+    "tests_passed": 6,
+    "scope": "Sparse write callback suppression, per-chunk byte-mask clipping, 32-bit strobes, sticky errors; separate from RTL-cycle result."
+  }
+}

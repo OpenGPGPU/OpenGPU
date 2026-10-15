@@ -156,6 +156,11 @@ class SharedL2Slice(
   // enable chain per set; a packed bitmap keeps the same indexed semantics
   // while presenting the simulator with four compact values.
   private val valid = Seq.fill(ways)(RegInit(0.U(sets.W)))
+  // A negative fingerprint proves a directory miss without reading the
+  // synchronous tag/data SRAM. Collisions retain the ordinary coherent path.
+  private val directoryFingerprints = Seq.fill(ways)(Mem(sets, UInt(6.W)))
+  private def fingerprint(tag: UInt): UInt =
+    (0 until tagWidth by 6).map(lo => tag(math.min(tagWidth - 1, lo + 5), lo).pad(6)).reduce(_ ^ _)
   private val nextVictim =
     RegInit(VecInit(Seq.fill(sets)(0.U(wayWidth.W))))
   // Keep sharer state as indexed memories so CIRCT can preserve the
@@ -210,8 +215,18 @@ class SharedL2Slice(
     io.hostInvalidate.bits.lineAddress,
     Mux(acceptAtomic,
       atomicArbiter.io.out.bits.address, io.request.bits.address))
+  private val incomingTagForFilter = io.request.bits.address(config.xLen - 1, offsetWidth + indexWidth)
+  private val incomingSetForFilter = io.request.bits.address(offsetWidth + indexWidth - 1, offsetWidth)
+  private val possibleDirectoryHit = (0 until ways).map(way =>
+    valid(way)(incomingSetForFilter) &&
+      directoryFingerprints(way)(incomingSetForFilter) === fingerprint(incomingTagForFilter)).reduce(_ || _)
+  private val incomingFullLine = io.request.bits.sizeLog2 === offsetWidth.U &&
+    io.request.bits.address(offsetWidth - 1, 0) === 0.U
+  private val bypassLookup = !incomingFullLine ||
+    (!io.request.bits.isWrite && !CachePolicy.isCacheable(io.request.bits.cachePolicy)) ||
+    (io.request.bits.isWrite && !possibleDirectoryHit && !fillWriteValid)
   private val lookupFire = acceptHostInv || atomicArbiter.io.out.fire ||
-    io.request.fire
+    (io.request.fire && state === State.idle && !bypassLookup)
   private val incomingIndex =
     lookupAddress(offsetWidth + indexWidth - 1, offsetWidth)
   private val requestIndex =
@@ -330,6 +345,7 @@ class SharedL2Slice(
   private val mergeLoad = state === State.lower && !request.isWrite &&
     request.sizeLog2 === offsetWidth.U && !io.request.bits.isWrite &&
     io.request.bits.sizeLog2 === offsetWidth.U && incomingLine === activeLine &&
+    (CachePolicy.isCacheable(io.request.bits.cachePolicy) === CachePolicy.isCacheable(request.cachePolicy)) &&
     !responseWaiters(io.request.bits.transactionId)
   private val incomingRequesterCu =
     io.request.bits.transactionId / transactionsPerCu.U
@@ -476,7 +492,12 @@ class SharedL2Slice(
         io.request.bits.cacheClient, incomingRequesterOH, 0.U)
       atomicMode := false.B
       hostInvMode := false.B
-      state := State.lookup
+      when(bypassLookup) {
+        lookupHit := false.B
+        state := Mux(io.request.bits.isWrite, State.storeAllocate, State.lower)
+      }.otherwise {
+        state := State.lookup
+      }
     }.otherwise {
       responseWaiters := responseWaiters | UIntToOH(
         io.request.bits.transactionId, maxOutstanding)
@@ -811,6 +832,13 @@ class SharedL2Slice(
       }
     }
     nextVictim(fillWriteSet) := followingWay(fillWriteWay)
+  }
+  // Mirror every real tag installation, including AMO and miss fills. The
+  // valid directory bitmap gates uninitialized or evicted fingerprints.
+  for (way <- 0 until ways) {
+    when(tags(way).io.writeEnable) {
+      directoryFingerprints(way).write(tags(way).io.writeAddress, fingerprint(tags(way).io.writeData))
+    }
   }
 }
 

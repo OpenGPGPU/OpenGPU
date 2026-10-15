@@ -468,3 +468,39 @@ but elapsed cycles increase slightly to 25,943; this change is credit balancing,
 not a solution to framebuffer throughput. Nine framebuffer and six routing
 unit tests, two ordered MSAA tests and 27 shader VM/fault/reset tests pass.
 See [read merging and staging evidence](performance/shared-cu-read-merge-staging-2026-10-15.json).
+
+## Matched copy scaling above three times
+
+The same 64x64 copy render now takes **48,225 cycles on one CU and 15,930 on
+four CUs (3.03x, 75.7% parallel efficiency)**. Both use 16 lanes/eight warps
+per CU, 512-bit AXI, OM32, eight combining groups, a 16-cycle combining age,
+and unchanged two-cycle read/twelve-cycle write-response delays. Every pixel,
+depth value and staging uniform sentinel is checked. Neither resolution nor
+shader workload changes, and the one-CU baseline also improves.
+
+| Incremental configuration | One CU | Four CUs | Scaling |
+| --- | ---: | ---: | ---: |
+| Pipelined writes, OM16/four groups | 60,086 | 26,853 | 2.24x |
+| Pending read merge and four shared staging credits | 59,839 | 25,943 | 2.31x |
+| OM32/four groups | 53,268 | 20,539 | 2.59x |
+| L2 directory filter, OM32/four groups | 51,388 | 18,882 | 2.72x |
+| L2 directory filter, OM32/eight groups | 48,225 | 15,930 | 3.03x |
+
+Uncached reads bypass the synchronous L2 lookup. Writes bypass only when a
+six-bit directory fingerprint proves that no resident tag can match; every
+real tag installation updates the fingerprint. Matches and hash collisions
+retain the full lookup and CU invalidation path. Concurrent fills disable the
+write bypass conservatively. Cached readers cannot join uncached pending
+reads, preserving both refill and directory sharer registration.
+
+Four-CU OM-stall cycles fall from 11,693 with four groups to 4,065 with eight.
+Doubling word-reply credits with separate physical line IDs does not improve
+four-CU elapsed cycles (15,986 versus 15,930) and is rejected. OM32 is selected
+with `--om-inflight 32`; OM16 remains the default.
+
+Twenty-one L2 unit tests, 52 broader system tests, two matched copy renders
+and two focused OM32/eight-group ordered MSAA tests pass (77 total).
+
+This measures GPU cycles on a qualified RTL workload. It does not establish
+Debian desktop wall time or complete the stock Mesa wide-ABI migration. See
+[the matched trace evidence](performance/shared-cu-three-x-2026-10-15.json).

@@ -11,15 +11,15 @@ import java.nio.file.{Files, Paths}
 
 /** Qualify the real 16-lane/eight-warp pool before migrating stock Mesa shaders. */
 abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coalesce: Boolean = false,
-    side: Int = 32, aluIterations: Int = 0)
+    side: Int = 32, aluIterations: Int = 0, omInflight: Int = 16)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (cus <- cuCounts) {
-    it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations)" in {
+    it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations OM=$omInflight)" in {
       val capacity = 128
       val stride = 4 * capacity
       val bankStride = 9 * stride + 64
       val gpu = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
-      simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side),
+      simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight),
         gpu, numComputeUnits = cus, fragCore = true, sharedGraphics = true,
         parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes,
         coalesceFramebufferWrites = coalesce)) { dut =>
@@ -157,11 +157,11 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         val outputBlocked = dut.io.performance.get.fragmentOutputBlockedCycles.peek().litValue - startOutputBlocked
         val omStall = dut.io.performance.get.omStallCycles.peek().litValue - startOmStall
         val rasterStall = dut.io.performance.get.rasterStallCycles.peek().litValue - startRasterStall
-        println(s"WIDE_SHARED_GRAPHICS_PHASES CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations phases=${phases.mkString(",")} staging_outstanding_cycles=$outstanding staging_blocked=$blocked output_blocked=$outputBlocked om_stall=$omStall raster_stall=$rasterStall")
+        println(s"WIDE_SHARED_GRAPHICS_PHASES CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight phases=${phases.mkString(",")} staging_outstanding_cycles=$outstanding staging_blocked=$blocked output_blocked=$outputBlocked om_stall=$omStall raster_stall=$rasterStall")
         val completion = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
         assert((completion & 0xff) == 91 && completion.testBit(15))
         dut.io.performance.get.system.maxActiveComputeUnits.expect(cus.U)
-        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations lanes=16 warps=8 cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$cus")
+        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight lanes=16 warps=8 cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$cus")
         for (y <- 0 until side; x <- 0 until side) {
           val offset = (y * side + x) * 4L
           val covered = x > 0 && y > 0 && x + y <= side
@@ -192,3 +192,6 @@ class LargeCoalescedWideAxiSharedGraphicsSpec
     extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64)
 class ArithmeticCoalescedWideAxiSharedGraphicsSpec
     extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64, aluIterations = 64)
+
+class DeepOmCoalescedWideAxiSharedGraphicsSpec
+    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64, omInflight = 32)

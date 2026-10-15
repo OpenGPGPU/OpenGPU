@@ -699,4 +699,83 @@ class SharedL2CacheSpec extends AnyFlatSpec {
       }
     }
   }
+
+  it should "keep fingerprint collisions distinct and invalidate real uncached-write sharers" in {
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 1, banks = 1)) { dut =>
+      initialize(dut)
+      // Tags 1 and 64 have the same six-bit XOR fingerprint, in the same set.
+      val resident = BigInt(0x0200)
+      val collision = BigInt(0x8000)
+      requestLine(dut, resident, 0)
+      completeLower(dut, 0x55, 0)
+      dut.clock.step()
+      requestLine(dut, collision, 4, isWrite = true, data = 0x66, mask = 1,
+        cacheClient = false, cachePolicy = 2)
+      waitMemoryRequest(dut)
+      dut.io.invalidate(0).valid.expect(false.B)
+      completeLower(dut, 0, 4)
+      dut.clock.step()
+
+      // A colliding write must not evict the unrelated cached directory line.
+      requestLine(dut, resident, 1)
+      dut.clock.step()
+      dut.io.response.valid.expect(true.B)
+      dut.io.response.bits.readData.expect(0x55.U)
+      dut.io.performance.loadHits.expect(1.U)
+      dut.clock.step()
+
+      // An actual uncached write hit must invalidate the cached CU copy before
+      // the lower write is issued, despite bypassing cache allocation itself.
+      requestLine(dut, resident, 5, isWrite = true, data = 0x77, mask = 1,
+        cacheClient = false, cachePolicy = 2)
+      waitInvalidation(dut, 0)
+      dut.io.invalidate(0).bits.lineAddress.expect(resident.U)
+      dut.clock.step()
+      dut.io.memoryRequest.valid.expect(false.B)
+      dut.io.invalidateDone(0).valid.poke(true.B)
+      dut.io.invalidateDone(0).bits.lineAddress.poke(resident.U)
+      dut.clock.step()
+      dut.io.invalidateDone(0).valid.poke(false.B)
+      completeLower(dut, 0, 5)
+      dut.clock.step()
+      requestLine(dut, resident, 2, cacheClient = false)
+      completeLower(dut, 0x77, 2)
+      dut.io.response.bits.readData.expect(0x77.U)
+      dut.io.performance.loadMisses.expect(2.U)
+    }
+  }
+
+  it should "refill and track a cached reader behind an outstanding uncached read" in {
+    simulate(new SharedL2Cache(GpuConfig(lanes = 4), sets = 8, ways = 2, banks = 1)) { dut =>
+      initialize(dut)
+      requestLine(dut, 0x4000, 0, cacheClient = false, cachePolicy = 2)
+      waitMemoryRequest(dut)
+      val uncachedId = dut.io.memoryRequest.bits.transactionId.peek().litValue
+      dut.clock.step()
+      requestLine(dut, 0x4000, 4) // CU1 must allocate its own coherent refill.
+      dut.clock.step(2)
+      dut.io.memoryRequest.valid.expect(false.B)
+      dut.io.memoryResponse.valid.poke(true.B)
+      dut.io.memoryResponse.bits.transactionId.poke(uncachedId.U)
+      dut.io.memoryResponse.bits.readData.poke(0x11.U)
+      dut.clock.step()
+      dut.io.memoryResponse.valid.poke(false.B)
+      waitResponse(dut)
+      dut.io.response.bits.transactionId.expect(0.U)
+      dut.io.response.bits.readData.expect(0x11.U)
+      dut.clock.step()
+      completeLower(dut, 0x22, 4)
+      dut.io.response.bits.transactionId.expect(4.U)
+      dut.io.response.bits.readData.expect(0x22.U)
+      dut.clock.step()
+      dut.io.performance.loadMisses.expect(1.U)
+      dut.io.performance.mshrMerges.expect(0.U)
+
+      requestLine(dut, 0x4000, 1, isWrite = true, data = 0x33, mask = 1)
+      waitInvalidation(dut, 1)
+      dut.io.invalidate(1).bits.lineAddress.expect(0x4000.U)
+      dut.io.invalidate(0).valid.expect(false.B)
+    }
+  }
+
 }
