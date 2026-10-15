@@ -143,6 +143,63 @@ and remaining samples are spread across many RTL evaluation functions. This
 is a measured stopping point, not a proof that every possible simulator or
 RTL architecture has been optimized.
 
+## Graphics lane and cycle audit (2026-10-15)
+
+The installed desktop model has 16-lane, eight-warp general compute CUs,
+but its graphics shader CU has **four lanes and two warps**, giving an
+eight-fragment batch. Commit `41229a7` raised the default configuration;
+`308e135` subsequently added the explicit `graphicsGpuConfig` override in
+`EmitGpuHostSystemAxi.scala` to preserve the desktop shader ABI. The installed
+generated model confirms four texture-coordinate lane registers. Desktop
+shaders still use VL=4, fixed array offsets and 320-byte fragment banks;
+removing the override alone is not a valid graphics-width migration.
+
+A diagnostic wrapper samples the fragment FSM before every tick while replaying
+the existing `gtk-hvf1024-settled.trace`. DMA verification remains enabled:
+94,095 calls and 34,402,900 ticks complete without a mismatch or truncated tail.
+These ticks cover the recorded guest workload, not one desktop frame.
+Only batches observed from staging entry through emit exit contribute below.
+
+| Completed textured batches | Processed lanes | Staging writes, cycles/lane | Shader, cycles/lane | Readback, cycles/lane | Total, cycles/lane |
+|---|---:|---:|---:|---:|---:|
+| 64x32 texture | 20,480 | 158.09 | 149.85 | 51.00 | 360.53 |
+| 64x64 texture | 58,112 | 155.67 | 138.34 | 51.00 | 346.60 |
+
+For the 64x64 group, staging writes/readback account for 59.6% of batch cycles,
+shader execution for 39.9%, and launch/emit for the remainder. The stage writes
+eight words and reads three words per processed lane. Transactions are issued
+one at a time, as 64-byte line requests for individual four-byte values, over
+the installed 64-bit AXI bus. Staging therefore has substantial transaction
+and data-transfer overhead even before shader execution.
+
+The quad rasterizer currently emits **every quad in the bounding box**, including
+quads with no covered samples. `io.quad.valid := active` does not reject empty
+quads. The two background triangles consequently process roughly 614,400 lanes
+for a 640x479 visible rectangle. At the measured 346.60 cycles per processed
+lane this predicts about **213 million batch cycles**. Independently, the
+984.23-second measured background time multiplied by the qualified texture
+replay rate (228,240 ticks/s) gives about **225 million cycles**. Both are
+estimates for the full desktop background; that startup run did not record
+per-draw cycle counters. Texture extent, cache behavior, presentation, and
+host integration limit the precision of this extrapolation.
+
+For comparison, the current uncoalesced staging alone has a bus-data lower
+bound of `614400 * 11 * 8 = 54,067,200` cycles: eleven full-line transactions
+per processed lane, eight data beats per line on the 64-bit AXI bus. This
+excludes address/response, translation, shader and output costs; it is not
+an achievable frame-cycle target. It explains why pixels divided by lane
+count is not a useful render-cycle prediction for this implementation.
+
+There is architectural optimization space beyond the simulator changes already
+qualified. Rejecting wholly empty quads could remove roughly half the background
+shader/staging lanes while retaining helpers in every nonempty quad. Coalescing
+staging transactions and overlapping requests address the largest measured
+phase. Graphics-width migration must update the shader VL and ABI together;
+texture sampling also serializes active lanes, so lane count alone does not
+predict speedup. These are candidates requiring cycle and pixel qualification,
+not measured speedup claims. Exact phase counts and estimate assumptions are in
+[`performance/fragment-cycles-2026-10-15.json`](performance/fragment-cycles-2026-10-15.json).
+
 ## Qualified tick and commit changes (2026-10-15)
 
 FlashSim `b608384` uses the existing pass worklist to avoid re-demanding

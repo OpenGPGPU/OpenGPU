@@ -1,0 +1,115 @@
+{
+  "date": "2026-10-15",
+  "scope": "Cycle audit of unchanged installed RTL; no lane or RTL changes made.",
+  "configuration": {
+    "compute_lanes": 16,
+    "compute_resident_warps": 8,
+    "graphics_lanes": 4,
+    "graphics_resident_warps": 2,
+    "graphics_batch_capacity": 8,
+    "axi_data_bits": 64,
+    "graphics_override_commit": "308e135b2ee4e54c9f0bf806db3941feb1e5da91",
+    "default_increase_commit": "41229a7cd5c35b3055e1071204fa66f3e919b473"
+  },
+  "archive_sha256": "33911b84ddc886f84bef7063e381192b983c0e8d8aaee8a4429d4ecc3889cc8c",
+  "trace": {
+    "path": ".artifacts/full-system-speed/gtk-hvf1024-settled.trace",
+    "sha256": "ed8c48639e0328c0f9f99312b9343aac9aa51c2514d9cb388e6c163567829650",
+    "replay_result": {
+      "calls": 94095,
+      "ticks": 34402900,
+      "commits": 306572658,
+      "holds": 2086016880,
+      "dma_reads": 3948194,
+      "dma_writes": 6644672,
+      "dma_bytes": 84731080,
+      "seconds": 144.525837625,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "phase_probe": "Sample current KernelFrag FSM state before each tick; accumulate only batches observed from stage_write entry to emit exit; unchanged DMA replay verification remains enabled. Phase cycles count simulated ticks; instrumented replay wall time is not a performance comparison.",
+    "groups": [
+      {
+        "shader_pc": 3225419776,
+        "texture": [
+          0,
+          0
+        ],
+        "completed_batches": 1120,
+        "processed_fragment_lanes": 8960,
+        "cycles_by_phase": {
+          "idle": 0,
+          "stage_write": 1394578,
+          "launch": 1120,
+          "shader_run": 198436,
+          "stage_read": 456960,
+          "emit": 12974
+        },
+        "total_batch_cycles": 2064068,
+        "cycles_per_processed_lane": 230.36473214285715
+      },
+      {
+        "shader_pc": 3225419776,
+        "texture": [
+          64,
+          32
+        ],
+        "completed_batches": 2560,
+        "processed_fragment_lanes": 20480,
+        "cycles_by_phase": {
+          "idle": 0,
+          "stage_write": 3237660,
+          "launch": 2560,
+          "shader_run": 3068962,
+          "stage_read": 1044480,
+          "emit": 30015
+        },
+        "total_batch_cycles": 7383677,
+        "cycles_per_processed_lane": 360.531103515625
+      },
+      {
+        "shader_pc": 3225419776,
+        "texture": [
+          64,
+          64
+        ],
+        "completed_batches": 7264,
+        "processed_fragment_lanes": 58112,
+        "cycles_by_phase": {
+          "idle": 0,
+          "stage_write": 9046046,
+          "launch": 7264,
+          "shader_run": 8039473,
+          "stage_read": 2963712,
+          "emit": 85215
+        },
+        "total_batch_cycles": 20141710,
+        "cycles_per_processed_lane": 346.6015625
+      }
+    ]
+  },
+  "desktop_estimate": {
+    "visible_background_area_pixels": 306560,
+    "estimated_processed_lanes": 614400,
+    "note": "Two full bounding boxes, outward quad alignment; the current rasterizer emits even fully uncovered quads. Estimate, not measured 640x480 per-draw counters.",
+    "measured_background_seconds": 984.232862,
+    "reference_texture_ticks_per_second": 228240.04272849366,
+    "estimated_cycles_from_reference_replay_rate": 224641350.4776676,
+    "estimated_cycles_from_64x64_texture_phase_cost": 212952000.0,
+    "scope_limit": "Different texture extent/cache behavior and host integration can change cycles per lane and ticks per second.",
+    "staging_axi_data_beat_lower_bound_cycles": 54067200,
+    "lower_bound_scope": "Current uncoalesced staging transfers only: 11 full-line transactions per processed lane, 8 data beats per 64-byte line on a 64-bit AXI bus. Excludes all address/response, translation, shader and output work; not an achievable frame-cycle target."
+  },
+  "optimization_candidates": [
+    "Reject wholly uncovered quads while preserving all helper lanes of every nonempty quad and empty-draw retirement. Roughly half the background shader/staging lanes could be removed; gain requires implementation and pixel/cycle validation.",
+    "Coalesce or pipeline the eight staging writes and three readbacks per lane; each currently uses a serialized 64-byte line transaction for a four-byte word. Preserve CPU coherence and private-cache invalidations.",
+    "Make graphics lane count, shader VL, array offsets and bank sizes agree before enabling 16 graphics lanes; general-compute lane count does not widen graphics.",
+    "Texture sampler serializes active lanes; widen only after stage/texture bottlenecks are measured."
+  ],
+  "limitations": [
+    "The 34,402,900 ticks cover the recorded guest workload, not a single desktop frame.",
+    "Per-phase results are exact for completed batches in this trace; background cycle totals above are estimates.",
+    "Existing simulator optimization plateau does not establish an RTL architecture optimum."
+  ]
+}
