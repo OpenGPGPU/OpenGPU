@@ -254,7 +254,7 @@ class RasterizerSpec extends AnyFlatSpec {
     }
   }
 
-  it should "emit one complete TL/TR/BL/BR quad per cycle and mark uncovered helper lanes" in {
+  it should "skip empty quads and retain complete TL/TR/BL/BR groups around covered samples" in {
     val config = GraphicsConfig(screenWidth = 16, screenHeight = 16,
       subPixelBits = 8)
     simulate(new TriangleRasterizer(config, quadMode = true)) { dut =>
@@ -291,6 +291,7 @@ class RasterizerSpec extends AnyFlatSpec {
         assert((x & 1) == 0 && (y & 1) == 0)
         assert(lanes.map(p => (p._1, p._2)) ==
           Seq((x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)))
+        assert(lanes.exists(_._3), "a fully uncovered quad must not reach the shader")
       }
       val emitted = quads.flatten
       val covered = emitted.collect { case (x, y, true) => (x, y) }.toSet
@@ -300,12 +301,89 @@ class RasterizerSpec extends AnyFlatSpec {
       }}.toSet
       assert(covered == expected)
       assert(emitted.exists(!_._3), "edge quads must contain helper lanes")
-      // One quad per cycle: every active beat above fired exactly one quad.
-      // Quad origins run over the even-aligned bbox inclusive of maxX/maxY:
-      // x,y ∈ {2,4,6,8,10,12}.
-      val bboxQuads = 6 * 6
-      assert(quads.size == bboxQuads,
-        s"expected one beat per bbox quad ($bboxQuads), got ${quads.size}")
+      val expectedOrigins = expected.map { case (x, y) => (x & ~1, y & ~1) }
+      assert(quads.map(q => (q.head._1, q.head._2)).toSet == expectedOrigins)
+      assert(quads.size == expectedOrigins.size)
+    }
+  }
+
+  it should "drain fully scissored quads without downstream readiness in every sample mode" in {
+    val config = GraphicsConfig(screenWidth = 16, screenHeight = 16)
+    simulate(new TriangleRasterizer(config, quadMode = true)) { dut =>
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      dut.io.draw.valid.poke(false.B)
+      dut.io.quad.ready.poke(false.B)
+      dut.io.cullMode.poke(0.U)
+      dut.io.screenW.poke(16.U); dut.io.screenH.poke(16.U)
+      dut.io.scissorEnable.poke(true.B)
+      dut.io.scissorMinX.poke(12.U); dut.io.scissorMinY.poke(12.U)
+      dut.io.scissorMaxX.poke(16.U); dut.io.scissorMaxY.poke(16.U)
+      for (mode <- 0 to 2) {
+        dut.io.sampleMode.poke(mode.U)
+        dut.io.draw.bits.v0.x.poke(0.S); dut.io.draw.bits.v0.y.poke(0.S)
+        dut.io.draw.bits.v1.x.poke(config.toFixed(8).S); dut.io.draw.bits.v1.y.poke(0.S)
+        dut.io.draw.bits.v2.x.poke(0.S); dut.io.draw.bits.v2.y.poke(config.toFixed(8).S)
+        dut.io.draw.ready.expect(true.B)
+        dut.io.draw.valid.poke(true.B); dut.clock.step(); dut.io.draw.valid.poke(false.B)
+        var cycles = 0
+        while (!dut.io.draw.ready.peek().litToBoolean && cycles < 100) {
+          dut.io.quad.valid.expect(false.B)
+          dut.clock.step(); cycles += 1
+        }
+        assert(cycles < 100, s"empty mode $mode draw stalled on quad.ready")
+      }
+    }
+  }
+
+  it should "preserve subpixel MSAA coverage and hold a nonempty quad under backpressure" in {
+    val config = GraphicsConfig(screenWidth = 16, screenHeight = 16)
+    simulate(new TriangleRasterizer(config, quadMode = true)) { dut =>
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      dut.io.draw.valid.poke(false.B)
+      dut.io.quad.ready.poke(false.B)
+      dut.io.cullMode.poke(0.U)
+      dut.io.screenW.poke(16.U); dut.io.screenH.poke(16.U)
+      dut.io.scissorEnable.poke(false.B)
+      // Only quarter-offset samples hit this tiny triangle; no pixel centre does.
+      val verts = Seq((2.125, 2.125), (2.875, 2.125), (2.125, 2.875))
+      for (mode <- 0 to 2) {
+        dut.io.sampleMode.poke(mode.U)
+        val ports = Seq(dut.io.draw.bits.v0, dut.io.draw.bits.v1, dut.io.draw.bits.v2)
+        ports.zip(verts).foreach { case (p, (x, y)) =>
+          p.x.poke((x * 256).toInt.S); p.y.poke((y * 256).toInt.S)
+        }
+        dut.io.draw.valid.poke(true.B); dut.clock.step(); dut.io.draw.valid.poke(false.B)
+        var cycles = 0
+        while (!dut.io.quad.valid.peek().litToBoolean &&
+          !dut.io.draw.ready.peek().litToBoolean && cycles < 100) {
+          dut.clock.step(); cycles += 1
+        }
+        if (mode == 0) {
+          dut.io.draw.ready.expect(true.B)
+          dut.io.quad.valid.expect(false.B)
+        } else {
+          dut.io.quad.valid.expect(true.B)
+          def snapshot(): Seq[BigInt] = (0 until 4).flatMap { k =>
+            val lane = dut.io.quad.bits.lanes(k)
+            Seq(lane.x.peek().litValue, lane.y.peek().litValue,
+              lane.e0.peek().litValue, lane.e1.peek().litValue,
+              lane.e2.peek().litValue, lane.coverageMask.peek().litValue)
+          }
+          val stalled = snapshot()
+          dut.clock.step(4)
+          dut.io.quad.valid.expect(true.B)
+          assert(snapshot() == stalled)
+          assert((0 until 4).exists(k =>
+            dut.io.quad.bits.lanes(k).coverageMask.peek().litValue != 0))
+          dut.io.quad.ready.poke(true.B); dut.clock.step()
+          cycles = 0
+          while (!dut.io.draw.ready.peek().litToBoolean && cycles < 100) {
+            dut.clock.step(); cycles += 1
+          }
+          assert(cycles < 100)
+          dut.io.quad.ready.poke(false.B)
+        }
+      }
     }
   }
 

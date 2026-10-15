@@ -214,6 +214,16 @@ class KernelFragStage(
   // bridge (owner bit selects half); the FSM is already one-at-a-time.
   private val bridge = Module(new OmWordToLinePort(
     config, uncached = true, maxOutstanding = 2))
+  // The desktop ABI packs eight lanes into 32-byte SoA slices. Stage the
+  // five containing lines once, preserving output/uniform bytes with masks,
+  // instead of issuing 64 individually acknowledged word writes per batch.
+  // Other batch widths retain their existing word walk.
+  private val coalesceStaging = batchCap == 8
+  private val lineReqReg = if (coalesceStaging)
+    Some(Reg(new ComputeMemoryRequest(config, 64, 2))) else None
+  private val lineReqValid = RegInit(false.B)
+  private val wordMemReqPipe = Module(
+    new Queue(new ComputeMemoryRequest(config, 64, 2), 1, pipe = false, flow = false))
   private val texUnit = Module(new TexSampleUnit(config, gfxConfig))
 
   texUnit.io.in.valid := io.kernelTexSample.valid
@@ -756,12 +766,73 @@ class KernelFragStage(
       outDepthsReg(s) := emitDepthsQ(laneIdx)(s)
   }
 
+  // Cache-line payloads select individual record fields, avoiding aggregate
+  // Vec muxes rejected by the ARTI RTL lowering settings. The request itself
+  // is registered before leaving this block, as on the legacy word path.
+  private def stageWord(slice: Int, lane: Int): UInt = {
+    def value(r: KernelFragQuadRecord): UInt = {
+      val p = r.lanes(lane % 4)
+      slice match {
+        case 0 => p.x.pad(32).asUInt
+        case 1 => p.y.pad(32).asUInt
+        case 2 | 7 => p.depth.asUInt
+        case 3 => Cat(p.color.r, p.color.g, p.color.b, p.alpha)
+        case 4 => r.u(lane % 4)
+        case 5 => r.v(lane % 4)
+        case 8 => Mux(p.covered, 1.U(32.W), 0.U(32.W))
+        case _ => 0.U(32.W)
+      }
+    }
+    Mux(execSlot.asBool, value(fragRecords(1)(lane / 4)),
+      value(fragRecords(0)(lane / 4)))
+  }
+  private val stagedLines = if (coalesceStaging) (0 until 5).map { line =>
+    val data = Cat((0 until 16).reverse.map { word =>
+      stageWord(line * 2 + word / 8, word % 8)
+    })
+    val mask = Cat((0 until 16).reverse.map { word =>
+      val slice = line * 2 + word / 8
+      if (slice == 6 || slice > 8) 0.U(4.W)
+      else Mux((word % 8).U < execCount, 15.U(4.W), 0.U(4.W))
+    })
+    (line.U, data, mask)
+  } else Seq.empty
+
   switch(state) {
     is(sIdle) {
       // Nothing executing; the producer fills prodSlot (equal to execSlot
       // until the first commit flips it).
     }
     is(sWrite) {
+      if (coalesceStaging) {
+        // A fullness commit can enter sWrite on the same edge that captures
+        // the last producer quad. Wait for that quad's registered write to
+        // drain before snapshotting a line containing both quad records.
+        when(!wordPending && !lineReqValid && !(wpValid && wpSlot === execSlot)) {
+          val req = lineReqReg.get
+          req := 0.U.asTypeOf(req)
+          req.address := slotKernarg(execSlot) + (field << 6)
+          req.writeData := MuxLookup(field, 0.U(512.W))(
+            stagedLines.map { case (i, data, _) => i -> data })
+          req.byteMask := MuxLookup(field, 0.U(64.W))(
+            stagedLines.map { case (i, _, mask) => i -> mask })
+          req.isWrite := true.B
+          req.sizeLog2 := 6.U
+          req.cachePolicy := opengpu.config.CachePolicy.uncached
+          lineReqValid := true.B
+        }
+        when(wordMemReqPipe.io.enq.fire) {
+          lineReqValid := false.B
+          wordPending := true.B
+        }
+        when(io.wordMemResp.fire) {
+          wordPending := false.B
+          when(field === 4.U) {
+            field := 0.U
+            state := sLaunch
+          }.otherwise { field := field + 1.U }
+        }
+      } else {
       when(!requestQuadLoaded) {
         // Re-base the request address at the start of the burst.  The slot's
         // kernarg snapshot has been staged by this point.
@@ -813,6 +884,7 @@ class KernelFragStage(
           }
         }
       }
+      }
     }
     is(sLaunch) {
       io.kernelLaunch.kernelPc := slotShaderPc(execSlot)
@@ -829,13 +901,54 @@ class KernelFragStage(
         requestQuadIdx := 0.U
         requestLaneIdx := 0.U
         wordPending := false.B
+        if (coalesceStaging) { field := 3.U }
         state := sRead
       }
     }
     is(sRead) {
+      if (coalesceStaging) {
+        when(!wordPending && !lineReqValid) {
+          val req = lineReqReg.get
+          req := 0.U.asTypeOf(req)
+          req.address := slotKernarg(execSlot) + (field << 6)
+          req.sizeLog2 := 6.U
+          req.cachePolicy := opengpu.config.CachePolicy.uncached
+          lineReqValid := true.B
+        }
+        when(wordMemReqPipe.io.enq.fire) {
+          lineReqValid := false.B
+          wordPending := true.B
+        }
+        when(io.wordMemResp.fire) {
+          wordPending := false.B
+          when(field === 3.U) {
+            for (lane <- 0 until 8) {
+              outWords(lane) := io.wordMemResp.bits.readData(32 * lane + 31, 32 * lane)
+              outDepth(lane) := io.wordMemResp.bits.readData(32 * lane + 287, 32 * lane + 256).asSInt
+            }
+            field := 4.U
+          }.otherwise {
+            for (lane <- 0 until 8) {
+              val ctrl = io.wordMemResp.bits.readData(32 * lane + 31, 32 * lane)
+              val covered = Mux(execSlot.asBool,
+                fragRecords(1)(lane / 4).lanes(lane % 4).covered,
+                fragRecords(0)(lane / 4).lanes(lane % 4).covered)
+              outValid(lane) := FragmentShaderAbi.emits(ctrl, slotAbi1(execSlot)) &&
+                covered && !execFailed
+              outOverride(lane) := FragmentShaderAbi.overridesDepth(ctrl, slotAbi1(execSlot))
+            }
+            field := 0.U
+            emitQuadValid := false.B
+            emitQuadPtr := 0.U
+            emitQuadSel := 1.U
+            state := sEmit
+          }
+        }
+      } else {
       when(!wordPending && !wordReqValid && bridge.io.in.ready) {
         wordReqReg := wordBits
         wordReqValid := true.B
+      }
       }
       when(wordReqValid && bridge.io.in.fire) { wordReqValid := false.B; wordPending := true.B }
       when(wordPending && bridge.io.out.fire) {
@@ -927,13 +1040,20 @@ class KernelFragStage(
   // Register the wide line request at the block boundary.  Besides providing
   // one entry of elastic backpressure, this prevents the 512-bit write-data
   // cone from becoming a top-level output path.
-  private val wordMemReqPipe = Module(
-    new Queue(new ComputeMemoryRequest(config, 64, 2), 1, pipe = false, flow = false))
-  wordMemReqPipe.io.enq.valid := bridge.io.memoryRequest.valid
-  wordMemReqPipe.io.enq.bits := bridge.io.memoryRequest.bits
-  bridge.io.memoryRequest.ready := wordMemReqPipe.io.enq.ready
+  if (coalesceStaging) {
+    wordMemReqPipe.io.enq.valid := lineReqValid
+    wordMemReqPipe.io.enq.bits := lineReqReg.get
+    bridge.io.memoryRequest.ready := false.B
+    io.wordMemResp.ready := wordPending
+    bridge.io.memoryResponse.valid := false.B
+    bridge.io.memoryResponse.bits := 0.U.asTypeOf(bridge.io.memoryResponse.bits)
+  } else {
+    wordMemReqPipe.io.enq.valid := bridge.io.memoryRequest.valid
+    wordMemReqPipe.io.enq.bits := bridge.io.memoryRequest.bits
+    bridge.io.memoryRequest.ready := wordMemReqPipe.io.enq.ready
+    io.wordMemResp.ready := bridge.io.memoryResponse.ready
+    bridge.io.memoryResponse.valid := io.wordMemResp.valid
+    bridge.io.memoryResponse.bits := io.wordMemResp.bits
+  }
   io.wordMemReq <> wordMemReqPipe.io.deq
-  io.wordMemResp.ready := bridge.io.memoryResponse.ready
-  bridge.io.memoryResponse.valid := io.wordMemResp.valid
-  bridge.io.memoryResponse.bits := io.wordMemResp.bits
 }

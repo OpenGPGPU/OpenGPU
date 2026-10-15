@@ -156,6 +156,7 @@ class KernelFragStageSpec extends AnyFlatSpec {
     */
   private class MemModel {
     val lines = scala.collection.mutable.LongMap[BigInt]()
+    val stagingRequests = scala.collection.mutable.ArrayBuffer.empty[(Long, Boolean)]
     def putWord(lineAddr: Long, wordIdx: Int, value: BigInt): Unit = {
       val base = lines.getOrElse(lineAddr, BigInt(0))
       val mask = (BigInt(0xffffffffL) << (wordIdx * 32))
@@ -383,6 +384,7 @@ class KernelFragStageSpec extends AnyFlatSpec {
       if (wFired) {
         val addr = dut.io.wordMemReq.bits.address.peek().litValue.toLong
         val id = dut.io.wordMemReq.bits.transactionId.peek().litValue
+        mem.stagingRequests += ((addr, dut.io.wordMemReq.bits.isWrite.peek().litToBoolean))
         if (dut.io.wordMemReq.bits.isWrite.peek().litToBoolean) {
           val wd = dut.io.wordMemReq.bits.writeData.peek().litValue
           val bm = dut.io.wordMemReq.bits.byteMask.peek().litValue
@@ -476,6 +478,51 @@ class KernelFragStageSpec extends AnyFlatSpec {
     dut.io.fragIn.valid.poke(true.B)
     dut.clock.step()
     dut.io.fragIn.valid.poke(false.B)
+  }
+
+  it should "bound staging traffic and preserve uniforms and inactive lanes in full and partial batches" in {
+    val config = GpuConfig(lanes = 4, warps = 2)
+    simulate(new KernelFragStageWithKernel(config)) { dut =>
+      for (count <- Seq(4, 8)) {
+        val mem = new MemModel
+        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+        pokeDefaults(dut)
+        dut.io.shaderPc.poke(0x1000.U)
+        dut.io.kernargBase.poke(0x8000.U)
+        dut.io.kernargBankStride.poke(0.U)
+        // A cease-only kernel leaves the sentinel output colours untouched.
+        mem.putWord(0x1000L, 0, cease)
+        val sentinel = BigInt("a55a1234", 16)
+        for (i <- 0 until 80) mem.putWord(0x8000L + (i / 16) * 64, i % 16, sentinel)
+        for (q <- 0 until count / 4) {
+          dut.io.fragIn.ready.expect(true.B)
+          fireQuad(dut, Seq.tabulate(4) { k =>
+            val i = q * 4 + k
+            Frag(i, i + 1, 100 + i, r = i, g = 2 * i, b = 3 * i)
+          })
+        }
+        dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
+        assert(pump(dut, mem, () => dut.io.out.valid.peek().litToBoolean, 2000))
+        val writes = mem.stagingRequests.filter(_._2)
+        val reads = mem.stagingRequests.filterNot(_._2)
+        assert(writes.size <= 5 && reads.size <= 2,
+          s"staging traffic exceeds seven line transfers: ${mem.stagingRequests}")
+        assert(mem.stagingRequests.forall { case (addr, _) => (addr & 63) == 0 })
+        for (i <- 0 until count) {
+          assert(mem.getWord(0x8000L + i * 4) == i)
+          assert(mem.getWord(0x8000L + 224 + i * 4) == 100 + i)
+          assert(mem.getWord(0x8000L + 256 + i * 4) == 1)
+          assert(mem.getWord(0x8000L + 192 + i * 4) == sentinel,
+            "staging must not overwrite shader colour outputs")
+        }
+        for (slice <- Seq(0, 1, 2, 3, 4, 5, 7, 8); i <- count until 8)
+          assert(mem.getWord(0x8000L + slice * 32 + i * 4) == sentinel,
+            s"partial batch overwrote inactive slice $slice lane $i")
+        for (offset <- 288 until 320 by 4)
+          assert(mem.getWord(0x8000L + offset) == sentinel,
+            s"staging overwrote uniform byte $offset")
+      }
+    }
   }
 
   it should "shade a single fragment via a batched pass-through kernel" in {

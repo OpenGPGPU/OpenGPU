@@ -324,7 +324,7 @@ class QuadCoverage(config: GraphicsConfig) extends Module {
   *
   * Four-lane 2x2 quad evaluation with pure additions is provided by
   * [[QuadCoverage]]. `quadMode` emits one complete TL/TR/BL/BR [[RasterQuad]]
-  * per cycle — including uncovered helper lanes — for fragment-core
+  * per cycle when any lane has a covered sample, retaining uncovered helper lanes for fragment-core
   * execution; the default mode keeps the fixed-function covered-only scalar
   * contract on `pixel`.
   */
@@ -503,6 +503,13 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
     VecInit((0 until 4).map(k =>
       sampleCoverage(VecInit(quadCov.io.e0(k), quadCov.io.e1(k),
         quadCov.io.e2(k)))))
+  private val quadVisible = VecInit((0 until 4).map { k =>
+    val laneX = curX + (k & 1).U
+    val laneY = curY + (k >> 1).U
+    quadCoverage(k).orR && laneX < screenWReg && laneY < screenHReg &&
+      inScissor(laneX, laneY)
+  })
+  private val quadCoveredAny = quadVisible.asUInt.orR
 
   if (quadMode) {
     // Whole-quad emission: all four lanes of the current 2x2 group per beat,
@@ -510,7 +517,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
     io.pixel.valid := false.B
     io.pixel.bits := 0.U.asTypeOf(new RasterPixel(config))
 
-    io.quad.valid := active
+    io.quad.valid := active && quadCoveredAny
     for (k <- 0 until 4) {
       val laneX = curX + (k & 1).U
       val laneY = curY + (k >> 1).U
@@ -522,7 +529,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
       io.quad.bits.lanes(k).area := areaReg
       val inBounds = laneX < screenWReg && laneY < screenHReg
       val scOk = inScissor(laneX, laneY)
-      io.quad.bits.lanes(k).covered := quadCoverage(k).orR && inBounds && scOk
+      io.quad.bits.lanes(k).covered := quadVisible(k)
       io.quad.bits.lanes(k).coverageMask :=
         Mux(inBounds && scOk, quadCoverage(k), 0.U(config.maxSampleCount.W))
     }
@@ -547,7 +554,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
   // a tile boundary; pixels inside a tile still use one edge add per step.
   // ---------------------------------------------------------------------
   private val scanStep = if (quadMode) 2 else 1
-  private val scanAdvance = if (quadMode) io.quad.fire else
+  private val scanAdvance = if (quadMode) !quadCoveredAny || io.quad.fire else
     !curCoveredAny || !inScissor(curX, curY) || io.pixel.fire
   private def edgeStep(base: SInt, delta: SInt, pixels: UInt): SInt =
     FixedPointMath.trim64(base + delta * pixels.zext)
