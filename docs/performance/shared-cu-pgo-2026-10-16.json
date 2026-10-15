@@ -1,0 +1,165 @@
+{
+  "trace": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/runtime-native-coherent/native-gtk.trace",
+  "trace_sha256": "8cd3ae3a9bc055ad09f66d83e28403d5695e772bfdb8e9b6081ea4c9fb222861",
+  "window": null,
+  "binaries": {
+    "baseline": {
+      "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/runtime-native-coherent/trace-baseline/replay",
+      "sha256": "745c3a9dad18d74722453326722022e3f0f54c87f82f6488d9786882483fe5ec"
+    },
+    "pgo": {
+      "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/runtime-native-coherent/trace-optimized/replay-ordered",
+      "sha256": "a101a51000e7704068335212330283beb109f2f3b20169e6742fac2a8b022d4e"
+    }
+  },
+  "runs": [
+    {
+      "name": "baseline",
+      "round": 0,
+      "calls": 29720,
+      "ticks": 2564082,
+      "commits": 44108347,
+      "holds": 522047205,
+      "dma_reads": 94302,
+      "dma_writes": 615696,
+      "dma_bytes": 10763256,
+      "seconds": 43.756918208,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    {
+      "name": "pgo",
+      "round": 0,
+      "calls": 29720,
+      "ticks": 2564082,
+      "commits": 44108347,
+      "holds": 522047205,
+      "dma_reads": 94302,
+      "dma_writes": 615696,
+      "dma_bytes": 10763256,
+      "seconds": 30.705360375,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    {
+      "name": "pgo",
+      "round": 1,
+      "calls": 29720,
+      "ticks": 2564082,
+      "commits": 44108347,
+      "holds": 522047205,
+      "dma_reads": 94302,
+      "dma_writes": 615696,
+      "dma_bytes": 10763256,
+      "seconds": 30.683657167,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    {
+      "name": "baseline",
+      "round": 1,
+      "calls": 29720,
+      "ticks": 2564082,
+      "commits": 44108347,
+      "holds": 522047205,
+      "dma_reads": 94302,
+      "dma_writes": 615696,
+      "dma_bytes": 10763256,
+      "seconds": 43.687940167,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    {
+      "name": "baseline",
+      "round": 2,
+      "calls": 29720,
+      "ticks": 2564082,
+      "commits": 44108347,
+      "holds": 522047205,
+      "dma_reads": 94302,
+      "dma_writes": 615696,
+      "dma_bytes": 10763256,
+      "seconds": 43.726875708,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    {
+      "name": "pgo",
+      "round": 2,
+      "calls": 29720,
+      "ticks": 2564082,
+      "commits": 44108347,
+      "holds": 522047205,
+      "dma_reads": 94302,
+      "dma_writes": 615696,
+      "dma_bytes": 10763256,
+      "seconds": 30.780214583,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "seconds": [
+        43.756918208,
+        43.687940167,
+        43.726875708
+      ],
+      "median_seconds": 43.726875708,
+      "reduction_percent": 0.0,
+      "round_medians": [
+        43.756918208,
+        43.687940167,
+        43.726875708
+      ]
+    },
+    "pgo": {
+      "seconds": [
+        30.705360375,
+        30.683657167,
+        30.780214583
+      ],
+      "median_seconds": 30.705360375,
+      "reduction_percent": 29.779203572547175,
+      "round_medians": [
+        30.705360375,
+        30.683657167,
+        30.780214583
+      ]
+    }
+  },
+  "configuration": {
+    "width": 640,
+    "height": 480,
+    "lanes": 16,
+    "warps": 8,
+    "cus": 4,
+    "shared_graphics": true,
+    "parallel_graphics": true,
+    "axi_bytes": 64,
+    "om_inflight": 64,
+    "om_locality": true,
+    "fragment_batch_limit": 112,
+    "buffer_command_reads": true
+  },
+  "qualification": {
+    "native": "shared-cu-native-qualification-2026-10-16.json",
+    "desktop": "shared-cu-desktop-qualification-2026-10-16.json",
+    "trace": "shared-cu-weston-trace-2026-10-16.json"
+  },
+  "baseline_model_sha256": "18e2fcea1eb068b02d9f1a130fd80a66b60ac8f53f76f62aa31c137548ff7881",
+  "candidate_model_sha256": "424a8309dfa96053f186a2990cce0604cd516b509529c8b79d375b364dc26e72",
+  "training_profile_sha256": "3d1e80ad735bff338ab2c7bc5b45dca3bcf601d7a1da38f7f78a6804b1e5e43a",
+  "scope": "Clean simulator comparison on the same real64x64Weston/GTKtrace.3alternatingrounds,unmodifiedDUT,identicalcallbacks/ticks/DMA,zero truncatedtail. Baseline O2 vsO2PGO+symbolordering. No ownactiveotherguestorcompiler.",
+  "limits": [
+    "Single representative trace; not a whole-desktop startup result.",
+    "Uses matching trace calls/ticks; this is a host runtime gain, not fewer RTL cycles.",
+    "Full-desktop profile was collected later and is not used by this candidate."
+  ]
+}

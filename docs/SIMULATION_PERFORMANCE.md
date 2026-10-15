@@ -12,8 +12,14 @@ capture was observed 336.7 seconds after QEMU start while another guest was
 active; this is not a clean performance comparison. See the
 [desktop qualification report](performance/shared-cu-desktop-qualification-2026-10-16.json)
 and [verified scanout](images/shared-four-cu-weston-20261016.png).
-Clean O2 versus PGO timing remains in progress. This candidate has not replaced
-the installed executable described below.
+A clean three-round comparison replays the same 29,720 calls and 2,564,082
+ticks without other active guest or compiler jobs. Median runtime falls from
+**43.73 s with O2 to 30.71 s with PGO and symbol ordering: 29.8% less host
+time**. Commits, holds, DMA calls/bytes and all output checks match in every
+run. This changes simulator speed, not architectural cycles. See
+[the clean PGO measurements](performance/shared-cu-pgo-2026-10-16.json).
+Paired full-desktop startup timing remains in progress. This candidate has not
+replaced the installed executable described below.
 
 | Completed textured batches | Worker cycles/lane | Shader cycles/lane | Sampler fetch cycles/lane | Fetch fraction of shader |
 |---|---:|---:|---:|---:|
