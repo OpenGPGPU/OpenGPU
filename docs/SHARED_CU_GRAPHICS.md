@@ -286,3 +286,25 @@ JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC' sbt 'testOnly opengpu.system.WideS
 The first local run with the default 1 GB heap passed one CU and exhausted
 heap while elaborating two CUs. The 6 GB rerun passes all three cases in
 about four minutes. Log: `.artifacts/shared-cu-wide-render-tests.log`.
+
+## Shared-path bottleneck trace
+
+The wide copy scene's per-cycle trace reproduces the same 1/2/4-CU cycle
+counts with instrumentation enabled. Four-CU output-merger backpressure
+occupies 25,760 of 38,577 cycles; staging request backpressure occupies 9,023
+cycles. The staging port never has more than one outstanding request.
+These stalls overlap and must not be added. The one-CU phases are 11,869
+write, 2,910 run, 2,172 read and 22,069 emit cycles (plus idle/launch).
+
+The framebuffer word bridge expands 4-byte operations to 64-byte requests.
+Uncached line reads can merge in L2, but each masked word write still consumes
+a full eight-beat AXI burst. The lower-memory AXI bridge also has a single FSM
+for both reads and writes. These shared resources, rather than additional
+shader CUs, are the next optimization targets. Keep full-line L2/L1 coherence
+for writes; compacting the final AXI byte lanes is a separate operation.
+
+Trace format and reproduction are recorded in
+[the baseline evidence](performance/shared-cu-trace-baseline-2026-10-15.json).
+`scripts/analyze_shared_graphics_trace.py DIRECTORY` validates phase accounting,
+counts overlapping event unions and classifies the scene's memory traffic.
+The default executable remains unchanged.

@@ -1,0 +1,151 @@
+{
+  "date": "2026-10-15",
+  "source_base_commit": "403d1e4",
+  "scene": "WideSharedGraphicsSpec: 32x32, lanes16, warps8, integer gradient copy",
+  "tracing": "Run-length-encoded per-cycle worker phase counts and stalls, plus accepted AXI read and completed write-data addresses. Service trace excludes the 15 command-submit MMIO cycles included in total GPU-cycle measurements. Phase worker-cycle totals overlap across workers; event union counts do not.",
+  "results": [
+    {
+      "cus": 1,
+      "traced_cycles": 40925,
+      "phase_worker_cycles": [
+        1900,
+        11869,
+        5,
+        2910,
+        2172,
+        22069
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1900,
+        "arvalid": 495,
+        "rvalid": 3960,
+        "write_any": 11869,
+        "raster_stall": 33620,
+        "staging_without_shader_run": 14041,
+        "staging_outstanding_any": 12721,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "launch_any": 5,
+        "run_any": 2910,
+        "read_any": 2172,
+        "emit_any": 22069,
+        "output_blocked": 21567,
+        "om_stall": 21548
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 286,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-1-cycles.csv": "2eb8824dbca25988723d6eae4947eed1ea6df6fe65d139f10f19fa38093c5bb7",
+        "cu-1-memory.csv": "4d2d6c1aad423addf13f7323dac806c07fd028e444f76d05adbf45d24b862df8"
+      }
+    },
+    {
+      "cus": 2,
+      "traced_cycles": 38430,
+      "phase_worker_cycles": [
+        8090,
+        27111,
+        5,
+        5138,
+        6422,
+        30094
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 6530,
+        "arvalid": 521,
+        "rvalid": 4168,
+        "write_any": 21612,
+        "staging_without_shader_run": 25378,
+        "staging_outstanding_any": 25476,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "raster_stall": 25844,
+        "staging_blocked": 6737,
+        "launch_any": 5,
+        "run_any": 4526,
+        "read_any": 5692,
+        "emit_any": 25888,
+        "output_blocked": 25461,
+        "om_stall": 25091
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 312,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-2-cycles.csv": "2d9b95bdc9d8e4fc92270142b4c9e8ca83f356bbba50547fb830837126982718",
+        "cu-2-memory.csv": "40fa6bbb2ba9ec5fca164275f8a4ff9db1922d19d5cda79c91542ca7700aeac6"
+      }
+    },
+    {
+      "cus": 4,
+      "traced_cycles": 38562,
+      "phase_worker_cycles": [
+        35074,
+        36512,
+        5,
+        6744,
+        9498,
+        66415
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 17656,
+        "arvalid": 541,
+        "rvalid": 4328,
+        "write_any": 14791,
+        "staging_without_shader_run": 19110,
+        "staging_outstanding_any": 19153,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "staging_blocked": 9023,
+        "raster_stall": 13953,
+        "launch_any": 5,
+        "run_any": 3771,
+        "read_any": 4957,
+        "emit_any": 26933,
+        "output_blocked": 26840,
+        "om_stall": 25760
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 332,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-4-cycles.csv": "4cc1a2a233092c4a77c42c04721aed182bbc66745f8fa16b9b43ab75ecbe4208",
+        "cu-4-memory.csv": "25a4932a9137c8e94080944143b0872f142b60114158db0ba086b554ca064bfd"
+      }
+    }
+  ],
+  "reproduce": "JAVA_OPTS='-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC' WIDE_GRAPHICS_TRACE_DIR=.artifacts/shared-cu/traces/baseline sbt 'testOnly opengpu.system.WideSharedGraphicsSpec'",
+  "analyze": "python3 scripts/analyze_shared_graphics_trace.py .artifacts/shared-cu/traces/baseline",
+  "interpretation": [
+    "Output-merger backpressure dominates the copy scene. For four CUs it occupies 25760 of 38577 total cycles.",
+    "The staging arbiter never has more than one outstanding request; four-CU staging backpressure occupies 9023 cycles.",
+    "Full-line word reads can merge in L2; word writes remain individual masked full-line AXI bursts.",
+    "The AXI bridge serializes reads and writes in one global FSM.",
+    "Do not add overlapping stall counters or interpret worker-cycle totals as elapsed time."
+  ]
+}

@@ -468,6 +468,7 @@ class RenderPipeline(
   }
   io.done := upstreamDone && tileDrained
   io.drawDrained.foreach(_ := fragmentDrained)
+  io.performance.fragment := 0.U.asTypeOf(io.performance.fragment)
   io.performance.omStall := expander.io.out.valid &&
     !(om.io.fragIn.ready && tilePermit)
   io.performance.omConflict := om.io.addressConflict
@@ -485,6 +486,7 @@ class RenderPipeline(
     }
     val kernelFrag: KernelFragStageIO = parallelFrag.map(_.io)
       .getOrElse(Module(new KernelFragStage(gpuConfig, config)).io)
+    io.performance.fragment := kernelFrag.performance
     val kernelShader = Module(new KernelShaderStage(gpuConfig, graphicsScalarFpu, sharedShader))
     if (parallelFrag.nonEmpty) {
       val pool = sharedShader.get

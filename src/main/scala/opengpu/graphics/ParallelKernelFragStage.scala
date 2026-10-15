@@ -26,10 +26,12 @@ class ParallelKernelFragStage(
   private val staging = Module(new FragmentStagingArbiter(config, count))
   private val texture = Module(new FragmentTextureArbiter(count, math.max(4, gfxConfig.omInflight)))
   private val faults = Wire(Vec(count, Bool()))
+  private val events = Wire(Vec(count, new FragmentPerformanceEvents))
   KernelFragFrontendIO.connect(io, scheduler.io.front)
 
   for (workerId <- 0 until count) {
     val worker = Module(new KernelFragStage(config, gfxConfig))
+    events(workerId) := worker.io.performance
     val shader = Module(new KernelShaderStage(config, graphicsScalarFpu, Some(sharedShader)))
     KernelFragFrontendIO.connect(scheduler.io.workers(workerId), worker.io)
     shader.io.shared.get <> sharedClients(workerId)
@@ -93,6 +95,11 @@ class ParallelKernelFragStage(
   texture.io.memoryResponse <> io.texMem.resp
   io.drained := scheduler.io.front.drained && staging.io.drained && texture.io.drained
   shaderFault := faults.asUInt.orR
+  for (phase <- 0 until 6)
+    io.performance.phaseWorkers(phase) := PopCount(events.map(_.phaseWorkers(phase).orR))
+  io.performance.stagingOutstanding := staging.io.outstanding
+  io.performance.stagingBlocked := events.map(_.stagingBlocked).reduce(_ || _)
+  io.performance.outputBlocked := events.map(_.outputBlocked).reduce(_ || _)
 
   // Compatibility ports remain quiescent: all real kernel traffic uses the
   // independently tagged sharedClients above, including texture writeback.

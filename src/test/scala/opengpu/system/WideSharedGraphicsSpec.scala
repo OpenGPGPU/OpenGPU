@@ -7,6 +7,7 @@ import opengpu.graphics.{GpuCommandMmioRegs, GraphicsConfig, RenderHostRegs}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
+import java.nio.file.{Files, Paths}
 
 /** Qualify the real 16-lane/eight-warp pool before migrating stock Mesa shaders. */
 class WideSharedGraphicsSpec extends AnyFlatSpec with GpuHostTestSupport {
@@ -60,13 +61,30 @@ class WideSharedGraphicsSpec extends AnyFlatSpec with GpuHostTestSupport {
         store(depth, Seq.fill(side * side)(0x00ffffffL))
         for (bank <- 0 until 2 * cus)
           store(kernarg + bank * bankStride + 9 * stride, Seq.fill(16)(sentinel))
+        val traceDirectory = sys.env.get("WIDE_GRAPHICS_TRACE_DIR").map(Paths.get(_))
+        val cycleTrace = new StringBuilder("start_cycle,duration,events_hex\n")
+        val memoryTrace = new StringBuilder("cycle,operation,address_hex\n")
+        var traceCycle = 0
+        var traceStart = 0
+        var lastTrace: Option[BigInt] = None
+        def recordCycle(): Unit = traceDirectory.foreach { _ =>
+          val event = dut.io.performance.get.fragmentTrace.peek().litValue
+          if (!lastTrace.contains(event)) {
+            lastTrace.foreach(old => cycleTrace.append(s"$traceStart,${traceCycle - traceStart},${old.toString(16)}\n"))
+            traceStart = traceCycle
+            lastTrace = Some(event)
+          }
+          traceCycle += 1
+        }
         def readLine(address: BigInt): BigInt = {
+          traceDirectory.foreach(_ => memoryTrace.append(s"$traceCycle,read,${address.toString(16)}\n"))
           val base = address.toLong & ~63L
           (0 until 16).foldLeft(BigInt(0)) { (line, i) =>
             line | (words.getOrElse(base + i * 4, BigInt(0)) << (32 * i))
           }
         }
         def writeLine(address: BigInt, data: BigInt, mask: BigInt): Unit = {
+          traceDirectory.foreach(_ => memoryTrace.append(s"$traceCycle,write,${address.toString(16)}\n"))
           val base = address.toLong & ~63L
           for (b <- 0 until 64 if mask.testBit(b)) {
             val a = base + (b / 4) * 4
@@ -78,17 +96,36 @@ class WideSharedGraphicsSpec extends AnyFlatSpec with GpuHostTestSupport {
         axiWrite(dut, RenderHostRegs.IRQ, 1)
         val startCycles = dut.io.performance.get.system.cycles.peek().litValue
         val startCuCycles = dut.io.performance.get.system.activeCuCycles.peek().litValue
+        val startPhases = (0 until 6).map(i => dut.io.performance.get.fragmentPhaseWorkerCycles(i).peek().litValue)
+        val startOutstanding = dut.io.performance.get.stagingOutstandingCycles.peek().litValue
+        val startStagingBlocked = dut.io.performance.get.stagingBlockedCycles.peek().litValue
+        val startOutputBlocked = dut.io.performance.get.fragmentOutputBlockedCycles.peek().litValue
+        val startOmStall = dut.io.performance.get.omStallCycles.peek().litValue
+        val startRasterStall = dut.io.performance.get.rasterStallCycles.peek().litValue
         axiWrite(dut, GpuCommandMmioRegs.COMMAND_ID, 91)
         axiWrite(dut, GpuCommandMmioRegs.OPCODE, GpuCommandOpcode.render.litValue.toInt)
         axiWrite(dut, GpuCommandMmioRegs.SOURCE, descriptor)
         axiWrite(dut, GpuCommandMmioRegs.BYTES, 64)
         axiWrite(dut, GpuCommandMmioRegs.SUBMIT, 1)
         serviceMemoryMaster(dut, readLine, writeAckDelay = 12,
-          readResponseDelay = 2, maxCycles = 300000)(writeLine) {
+          readResponseDelay = 2, maxCycles = 300000, onCycle = () => recordCycle())(writeLine) {
           dut.io.m_irq.peek().litToBoolean
         }
         val cycles = dut.io.performance.get.system.cycles.peek().litValue - startCycles
         val cuCycles = dut.io.performance.get.system.activeCuCycles.peek().litValue - startCuCycles
+        traceDirectory.foreach { dir =>
+          lastTrace.foreach(old => cycleTrace.append(s"$traceStart,${traceCycle - traceStart},${old.toString(16)}\n"))
+          Files.createDirectories(dir)
+          Files.writeString(dir.resolve(s"cu-$cus-cycles.csv"), cycleTrace.toString)
+          Files.writeString(dir.resolve(s"cu-$cus-memory.csv"), memoryTrace.toString)
+        }
+        val phases = (0 until 6).map(i => dut.io.performance.get.fragmentPhaseWorkerCycles(i).peek().litValue - startPhases(i))
+        val outstanding = dut.io.performance.get.stagingOutstandingCycles.peek().litValue - startOutstanding
+        val blocked = dut.io.performance.get.stagingBlockedCycles.peek().litValue - startStagingBlocked
+        val outputBlocked = dut.io.performance.get.fragmentOutputBlockedCycles.peek().litValue - startOutputBlocked
+        val omStall = dut.io.performance.get.omStallCycles.peek().litValue - startOmStall
+        val rasterStall = dut.io.performance.get.rasterStallCycles.peek().litValue - startRasterStall
+        println(s"WIDE_SHARED_GRAPHICS_PHASES CUs=$cus phases=${phases.mkString(",")} staging_outstanding_cycles=$outstanding staging_blocked=$blocked output_blocked=$outputBlocked om_stall=$omStall raster_stall=$rasterStall")
         val completion = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
         assert((completion & 0xff) == 91 && completion.testBit(15))
         dut.io.performance.get.system.maxActiveComputeUnits.expect(cus.U)

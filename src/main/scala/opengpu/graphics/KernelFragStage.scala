@@ -103,6 +103,7 @@ object KernelFragFrontendIO {
 /** Standalone fragment worker ports, retaining the existing shader ABI. */
 class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig)
     extends KernelFragFrontendIO(config, gfxConfig) {
+  val performance = Output(new FragmentPerformanceEvents)
   val memReq = Decoupled(new ComputeMemoryRequest(config))
   val memResp = Flipped(Decoupled(new ComputeMemoryResponse()))
   val wordMemReq = Decoupled(new ComputeMemoryRequest(config, 64, 2))
@@ -1119,5 +1120,10 @@ class KernelFragStage(
     bridge.io.memoryResponse.valid := io.wordMemResp.valid
     bridge.io.memoryResponse.bits := io.wordMemResp.bits
   }
+  for (phase <- 0 until 6)
+    io.performance.phaseWorkers(phase) := (state === phase.U).asUInt
+  io.performance.stagingOutstanding := wordPending.asUInt
+  io.performance.stagingBlocked := io.wordMemReq.valid && !io.wordMemReq.ready
+  io.performance.outputBlocked := io.out.valid && !io.out.ready
   io.wordMemReq <> wordMemReqPipe.io.deq
 }

@@ -15,6 +15,12 @@ class GpuHostPerformanceCounters extends Bundle {
   val omStallCycles = UInt(64.W)
   val omConflictCycles = UInt(64.W)
   val rasterStallCycles = UInt(64.W)
+  val fragmentPhaseWorkerCycles = Vec(6, UInt(64.W))
+  val stagingOutstandingCycles = UInt(64.W)
+  val stagingBlockedCycles = UInt(64.W)
+  val fragmentOutputBlockedCycles = UInt(64.W)
+  /** Packed per-cycle events for run-length-encoded simulation traces. */
+  val fragmentTrace = UInt(64.W)
   val stagingReadBytes = UInt(64.W)
   val stagingWriteBytes = UInt(64.W)
   val lowerReadBytes = UInt(64.W)
@@ -479,6 +485,17 @@ class GpuHostSystemAxi(
       perf.omStallCycles := count(host.io.performance.omStall.asUInt)
       perf.omConflictCycles := count(host.io.performance.omConflict.asUInt)
       perf.rasterStallCycles := count(host.io.performance.rasterStall.asUInt)
+      val fragmentEvents = host.io.performance.fragment
+      for (phase <- 0 until 6)
+        perf.fragmentPhaseWorkerCycles(phase) := count(fragmentEvents.phaseWorkers(phase))
+      perf.stagingOutstandingCycles := count(fragmentEvents.stagingOutstanding)
+      perf.stagingBlockedCycles := count(fragmentEvents.stagingBlocked.asUInt)
+      perf.fragmentOutputBlockedCycles := count(fragmentEvents.outputBlocked.asUInt)
+      perf.fragmentTrace := Cat(io.m_axi_arvalid, io.m_axi_awvalid,
+        io.m_axi_rvalid, io.m_axi_bvalid, host.io.performance.rasterStall,
+        host.io.performance.omStall, fragmentEvents.outputBlocked,
+        fragmentEvents.stagingBlocked, fragmentEvents.stagingOutstanding,
+        fragmentEvents.phaseWorkers.asUInt)
       perf.stagingReadBytes := count(host.io.performance.stagingReadBytes)
       perf.stagingWriteBytes := count(host.io.performance.stagingWriteBytes)
       perf.translationStallCycles(0) :=

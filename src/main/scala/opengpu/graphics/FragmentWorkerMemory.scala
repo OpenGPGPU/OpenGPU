@@ -22,6 +22,7 @@ class FragmentStagingArbiter(config: GpuConfig, numWorkers: Int) extends Module 
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, 2))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, 2)))
     val drained = Output(Bool())
+    val outstanding = Output(UInt(8.W))
   })
   private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, 2), numWorkers))
   private val request = Module(new Queue(new ComputeMemoryRequest(config, 64, 2), 1))
@@ -54,6 +55,7 @@ class FragmentStagingArbiter(config: GpuConfig, numWorkers: Int) extends Module 
       "fragment staging response changed the worker's local transaction ID")
   }
   io.drained := !busy && !request.io.deq.valid
+  io.outstanding := busy.asUInt
 }
 
 class FragmentTextureClient extends Bundle {

@@ -191,7 +191,8 @@ trait GpuHostTestSupport {
     writeAckDelay: Int = 0,
     maxCycles: Int = 20000,
     readResponseDelay: Int = 0,
-    onReadAccepted: BigInt => Unit = _ => ()
+    onReadAccepted: BigInt => Unit = _ => (),
+    onCycle: () => Unit = () => ()
   )(onWrite: (BigInt, BigInt, BigInt) => Unit)(until: => Boolean): Unit = {
     val mask64 = (BigInt(1) << 64) - 1
     var arDone = false
@@ -278,6 +279,7 @@ trait GpuHostTestSupport {
         wData = BigInt(0)
         wStrb = BigInt(0)
       }
+      onCycle()
       dut.io.s_axi_aclk.step()
       if (acceptedRead) {
         // Pause memory handshakes while the hook drives control MMIO. Local
