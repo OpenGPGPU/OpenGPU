@@ -130,6 +130,26 @@ class BufferedTextureWordPortSpec extends AnyFlatSpec {
     }
   }
 
+  it should "sustain one cached word reply per cycle after warmup" in {
+    simulate(new BufferedTextureWordPort(config, maxOutstanding = 8, cacheLines = 2)) { d =>
+      val h = new Harness(d)
+      h.send(0x1000); h.line(h.issued.head._2, 100); h.received(1)
+      h.p.in.valid.poke(true.B)
+      for (i <- 0 until 20) {
+        h.p.in.bits.addr.poke((0x1000 + (i % 16) * 4).U)
+        h.p.in.ready.expect(true.B)
+        val before = h.replies.size
+        h.step()
+        if (i >= 3) assert(h.replies.size == before + 1,
+          "warm texture reads must not insert alternate-cycle reply bubbles")
+      }
+      h.p.in.valid.poke(false.B); h.received(21)
+      assert(h.issued.size == 1)
+      assert(h.replies.drop(1).map(_._2).toSeq ==
+        (0 until 20).map(i => BigInt(100 + i % 16)))
+    }
+  }
+
   for ((slots, lines) <- Seq((1, 1), (3, 2), (8, 4))) {
     it should s"reuse and replace lines with $slots word slots and $lines lines" in {
       simulate(new BufferedTextureWordPort(config, maxOutstanding = slots, cacheLines = lines)) { d =>

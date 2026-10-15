@@ -129,7 +129,10 @@ class FragmentTextureArbiter(numWorkers: Int, maxOutstanding: Int = 16) extends 
   private val available = ~valid.asUInt
   private val selectedSlot = PriorityEncoder(available)
   private val arbiter = Module(new RRArbiter(new OmMemoryRequest, numWorkers))
-  private val request = Module(new Queue(new QueuedFragmentTextureRead(slotWidth), 1))
+  // The queue still holds requests stable while stalled, but a consumed
+  // request must not force an empty cycle before the next worker can issue.
+  private val request = Module(new Queue(new QueuedFragmentTextureRead(slotWidth), 1,
+    pipe = true))
   for (worker <- 0 until numWorkers) {
     val client = io.clients(worker)
     val duplicate = (0 until maxOutstanding).map { slot =>

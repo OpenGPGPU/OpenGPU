@@ -58,6 +58,17 @@ pipeline tests, including all 25 native-format pairs. See the
 [correctness evidence](performance/texture-line-reuse-validation-2026-10-16.json).
 Matched full-pool 1/4-CU tests are measuring cycle savings before enabling it.
 
+The first cache measurements pass every colour/depth check but only reduce
+the four-CU 64x64-texture scene from 33,727 to 32,300 cycles (4.2%); line
+requests fall from 8,944 to 257. This version is not being promoted. Both the
+fragment texture request queue and cache word reply queue inserted empty
+cycles after transfers. They now refill on the same edge as consumption.
+Two throughput regressions fail before that change and pass afterward;
+29 unit/routing/translation tests, 30 cached pipeline tests and four targeted
+uncached pipeline checks pass. See
+[the throughput validation](performance/texture-port-throughput-validation-2026-10-16.json).
+Matched full-pool measurements are rerunning before any desktop regeneration.
+
 See [the trace measurements](performance/shared-cu-weston-trace-2026-10-16.json)
 for raw phase counts, hashes, configuration and limitations. A bare guest module
 also hit its 30-second kernel watchdog during the first large desktop draw.
