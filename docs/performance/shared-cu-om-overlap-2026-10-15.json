@@ -1,0 +1,130 @@
+{
+  "date": "2026-10-15",
+  "baseline_commit": "f7f113a",
+  "changes": "Issue independent color/depth writes without color-ACK dependency; retain pixel reservation until both replies in any order. Serialize aliased planes for address-only reply uniqueness.",
+  "workload": "Same64x64gradientcopy,16lane/eightwarp1/4CUs,512-bitAXI,read delay2/writeACK12,combiningwindow16. AXI stillonewriteawaitingB in these measurements.",
+  "results": [
+    {
+      "cus": 1,
+      "before_cycles": 69127,
+      "after_cycles": 70533,
+      "change_percent": 2.0339375352611766
+    },
+    {
+      "cus": 4,
+      "before_cycles": 56611,
+      "after_cycles": 52978,
+      "change_percent": -6.41748070163043
+    }
+  ],
+  "speedup_one_to_four": 1.3313639623994866,
+  "validation": {
+    "output_merger": "21PASS:bothACKorders,samepixelreservation,stalleddepthissue,aliasedplanes,allGLblend/stencil/depthsemantics.",
+    "ordered_render": "2PASS:real4CU1x/4xMSAA,overlappingorderedblend/depthrejection/helpers.",
+    "copy_scaling": "2PASS:all64x64pixelcolors/depths/uniformtails andCUoccupancy.",
+    "textured_shader": "2PASS:guest-sized translated fragment andvertex+fragment cases,CPUupdates,recovery.",
+    "remaining": "FullshaderVM/fault/resetandcomputeintegrationregression andguestperformance remain."
+  },
+  "logs": [
+    ".artifacts/shared-cu-om-overlap-tests.log",
+    ".artifacts/shared-cu-scaling-memory-overlap.log"
+  ],
+  "trace": [
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 70518,
+      "phase_worker_cycles": [
+        2074,
+        29075,
+        18,
+        8676,
+        5052,
+        25623
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 2074,
+        "arvalid": 1650,
+        "rvalid": 1670,
+        "write_any": 29075,
+        "raster_stall": 67045,
+        "staging_without_shader_run": 34127,
+        "staging_outstanding_any": 29302,
+        "awvalid": 3294,
+        "bvalid": 3327,
+        "launch_any": 18,
+        "run_any": 8676,
+        "read_any": 5052,
+        "emit_any": 25623,
+        "output_blocked": 23568,
+        "om_stall": 21884
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 1033,
+        "color_write": 998,
+        "depth_write": 1036
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-side-64-alu-0-cycles.csv": "e979722d866ae29230fd50c122296f600ba0fdd7eef373adf2b3cc9e9a8f953b",
+        "cu-1-axi-64-side-64-alu-0-memory.csv": "5f67326855d4b605792fb3ac45ab2e310c5a34be3a3b029f14cf712efbdf80bf"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 52963,
+      "phase_worker_cycles": [
+        13113,
+        68879,
+        18,
+        14785,
+        7522,
+        107535
+      ],
+      "peak_staging_outstanding": 2,
+      "cycle_events": {
+        "idle_any": 7019,
+        "arvalid": 1827,
+        "rvalid": 1878,
+        "write_any": 44800,
+        "staging_without_shader_run": 33436,
+        "staging_outstanding_any": 44408,
+        "awvalid": 3674,
+        "bvalid": 3696,
+        "staging_blocked": 3905,
+        "raster_stall": 43302,
+        "launch_any": 18,
+        "run_any": 13089,
+        "read_any": 6152,
+        "emit_any": 47556,
+        "output_blocked": 47453,
+        "om_stall": 43461
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 1210,
+        "color_write": 1210,
+        "depth_write": 1204
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-side-64-alu-0-cycles.csv": "822805dc09520e8aa2c22b0932756c45534b82876e923842347b6417d56802c1",
+        "cu-4-axi-64-side-64-alu-0-memory.csv": "44b279eb4ebd91483393fbbaf05a7bf9d6cba81cc550d238658c8fe035855073"
+      }
+    }
+  ],
+  "interpretation": "Small4CUgain6.4% withsingleCUregression2.0%; not a scaling solution. Nextbottleneckis AXI awaitingonewriteACK before nextburst. No wall-timeclaim."
+}

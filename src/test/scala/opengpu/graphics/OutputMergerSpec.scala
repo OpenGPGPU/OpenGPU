@@ -243,43 +243,91 @@ class OutputMergerSpec extends AnyFlatSpec {
     dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
   }
 
-  it should "hold reservations and completion until delayed writes are acknowledged" in {
+  for (depthFirst <- Seq(false, true)) {
+    it should s"overlap independent plane writes and retain reservations until both ACKs (depthFirst=$depthFirst)" in {
+      simulate(new OutputMerger(GraphicsConfig())) { dut =>
+        newDut(dut)
+        pokeConfig(dut, false, 0, true, false)
+        pokeFrag(dut, 1, 1, 0x11223344, 0x10)
+        dut.io.fragIn.valid.poke(true.B); dut.clock.step()
+        dut.io.fragIn.valid.poke(false.B)
+        dut.io.mem.req.valid.expect(true.B)
+        dut.io.mem.req.bits.write.expect(true.B)
+        dut.io.mem.req.bits.addr.expect(addrOf(colorBase, 1, 1).U)
+        dut.clock.step()
+        // Depth must issue BEFORE any color acknowledgement.
+        dut.io.mem.req.valid.expect(true.B)
+        dut.io.mem.req.bits.addr.expect(addrOf(depthBase, 1, 1).U)
+        dut.clock.step()
+        for (_ <- 0 until 12) {
+          dut.io.drained.expect(false.B)
+          dut.io.fragIn.ready.expect(false.B)
+          dut.io.mem.req.valid.expect(false.B)
+          dut.clock.step()
+        }
+        val order = if (depthFirst) Seq(depthBase, colorBase) else Seq(colorBase, depthBase)
+        dut.io.mem.resp.valid.poke(true.B)
+        dut.io.mem.resp.bits.write.poke(true.B)
+        dut.io.mem.resp.bits.addr.poke(addrOf(order.head, 1, 1).U)
+        dut.clock.step(); dut.io.mem.resp.valid.poke(false.B)
+        dut.io.drained.expect(false.B)
+        dut.io.fragIn.ready.expect(false.B)
+        // Independent pixels still have capacity while this pixel awaits ACK.
+        pokeFrag(dut, 2, 1, 0, 0)
+        dut.io.fragIn.ready.expect(true.B)
+        dut.clock.step(4)
+        dut.io.mem.resp.valid.poke(true.B)
+        dut.io.mem.resp.bits.addr.poke(addrOf(order.last, 1, 1).U)
+        dut.clock.step(); dut.io.mem.resp.valid.poke(false.B)
+        dut.io.drained.expect(true.B)
+      }
+    }
+  }
+
+  it should "consume a color ACK while its independent depth request is stalled" in {
     simulate(new OutputMerger(GraphicsConfig())) { dut =>
       newDut(dut)
       pokeConfig(dut, false, 0, true, false)
       pokeFrag(dut, 1, 1, 0x11223344, 0x10)
-      dut.io.fragIn.valid.poke(true.B)
-      dut.clock.step()
-      dut.io.fragIn.valid.poke(false.B)
-      // Depth testing is disabled: no unnecessary depth read.
-      dut.io.mem.req.valid.expect(true.B)
-      dut.io.mem.req.bits.write.expect(true.B)
-      dut.io.mem.req.bits.addr.expect(addrOf(colorBase, 1, 1).U)
-      dut.clock.step()
-      for (_ <- 0 until 12) {
-        dut.io.drained.expect(false.B)
-        dut.io.fragIn.ready.expect(false.B)
-        dut.io.mem.req.valid.expect(false.B)
-        dut.clock.step()
-      }
-      // A distinct pixel can still be admitted while this write is pending.
-      pokeFrag(dut, 2, 1, 0, 0)
-      dut.io.fragIn.ready.expect(true.B)
-      dut.io.drained.expect(false.B)
+      dut.io.fragIn.valid.poke(true.B); dut.clock.step()
+      dut.io.fragIn.valid.poke(false.B); dut.clock.step()
+      dut.io.mem.req.ready.poke(false.B)
+      dut.io.mem.req.bits.addr.expect(addrOf(depthBase, 1, 1).U)
       dut.io.mem.resp.valid.poke(true.B)
       dut.io.mem.resp.bits.write.poke(true.B)
       dut.io.mem.resp.bits.addr.poke(addrOf(colorBase, 1, 1).U)
-      dut.clock.step()
-      dut.io.mem.resp.valid.poke(false.B)
-      dut.io.mem.req.bits.addr.expect(addrOf(depthBase, 1, 1).U)
-      dut.io.mem.req.valid.expect(true.B)
-      dut.clock.step()
-      dut.clock.step(12)
+      dut.clock.step(); dut.io.mem.resp.valid.poke(false.B)
+      dut.clock.step(4)
       dut.io.drained.expect(false.B)
+      dut.io.mem.req.valid.expect(true.B)
+      dut.io.mem.req.bits.data.expect(0x10.U)
+      dut.io.mem.req.ready.poke(true.B); dut.clock.step()
       dut.io.mem.resp.valid.poke(true.B)
       dut.io.mem.resp.bits.addr.poke(addrOf(depthBase, 1, 1).U)
+      dut.clock.step(); dut.io.mem.resp.valid.poke(false.B)
+      dut.io.drained.expect(true.B)
+    }
+  }
+
+  it should "serialize aliased plane writes so address-tagged ACKs remain unique" in {
+    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+      newDut(dut)
+      pokeConfig(dut, false, 0, true, false)
+      dut.io.depthBase.poke(colorBase.U)
+      pokeFrag(dut, 1, 1, 0x11223344, 0x10)
+      dut.io.fragIn.valid.poke(true.B); dut.clock.step()
+      dut.io.fragIn.valid.poke(false.B); dut.clock.step()
+      dut.io.mem.req.valid.expect(false.B)
+      dut.clock.step(4)
+      dut.io.mem.resp.valid.poke(true.B)
+      dut.io.mem.resp.bits.write.poke(true.B)
+      dut.io.mem.resp.bits.addr.poke(addrOf(colorBase, 1, 1).U)
+      dut.clock.step(); dut.io.mem.resp.valid.poke(false.B)
+      dut.io.mem.req.valid.expect(true.B)
+      dut.io.mem.req.bits.data.expect(0x10.U)
       dut.clock.step()
-      dut.io.mem.resp.valid.poke(false.B)
+      dut.io.mem.resp.valid.poke(true.B)
+      dut.clock.step(); dut.io.mem.resp.valid.poke(false.B)
       dut.io.drained.expect(true.B)
     }
   }

@@ -172,6 +172,8 @@ class OutputMerger(
     val blendedColor = UInt(32.W)
     /** Full depth/stencil word presented to sWriteDepth. */
     val depthWriteData = UInt(32.W)
+    val colorWritePending = Bool()
+    val depthWritePending = Bool()
   }
 
   private val entries = RegInit(VecInit(Seq.fill(slots)(0.U.asTypeOf(new Entry))))
@@ -349,6 +351,14 @@ class OutputMerger(
     assert(PopCount(depthMatchers) + PopCount(colorMatchers) === 1.U,
       "a read response must match exactly one in-flight OM entry")
   }
+  private val colorWriteMatchers = VecInit(entries.map(e => e.valid &&
+    e.colorWritePending && e.colorAddr === io.mem.resp.bits.addr))
+  private val depthWriteMatchers = VecInit(entries.map(e => e.valid &&
+    e.depthWritePending && e.depthAddr === io.mem.resp.bits.addr))
+  when(io.mem.resp.fire && io.mem.resp.bits.write) {
+    assert(PopCount(colorWriteMatchers) + PopCount(depthWriteMatchers) === 1.U,
+      "a write acknowledgement must match exactly one pending OM write")
+  }
 
   for (i <- 0 until slots) {
     val e = entries(i)
@@ -387,23 +397,40 @@ class OutputMerger(
         // Without a depth read there is no stored stencil byte to preserve,
         // so the no-depth-test path writes stencil 0 under the D24 depth.
         e.depthWriteData := Cat(0.U(8.W), io.fragIn.bits.depth(23, 0))
+        e.colorWritePending := false.B
+        e.depthWritePending := false.B
       }
     }.otherwise {
       when(granted(i)) {
         when(e.state === sReadDepth) { e.state := sWaitDepth }
         when(e.state === sReadColor) { e.state := sWaitColor }
         when(e.state === sWriteColor) {
-          e.state := sWaitColorWrite
+          e.colorWritePending := true.B
+          // Independent planes need no acknowledgement dependency. Keep the
+          // reservation until BOTH writes complete, in either response order.
+          // Aliased planes retain sequential issue so address-only replies
+          // remain unambiguous even outside the driver's disjoint contract.
+          e.state := Mux(e.writeDepth && e.colorAddr =/= e.depthAddr,
+            sWriteDepth, sWaitColorWrite)
         }
-        when(e.state === sWriteDepth) { e.state := sWaitDepthWrite }
+        when(e.state === sWriteDepth) {
+          e.depthWritePending := true.B
+          e.state := sWaitDepthWrite
+        }
       }
       when(io.mem.resp.fire && io.mem.resp.bits.write) {
-        when(e.state === sWaitColorWrite && e.colorAddr === io.mem.resp.bits.addr) {
-          when(e.writeDepth) { e.state := sWriteDepth }
-            .otherwise { e.valid := false.B }
+        when(colorWriteMatchers(i)) {
+          e.colorWritePending := false.B
+          when(e.state === sWaitColorWrite) {
+            when(e.writeDepth) { e.state := sWriteDepth }
+              .otherwise { e.valid := false.B }
+          }.elsewhen(e.state === sWaitDepthWrite && !e.depthWritePending) {
+            e.valid := false.B
+          }
         }
-        when(e.state === sWaitDepthWrite && e.depthAddr === io.mem.resp.bits.addr) {
-          e.valid := false.B
+        when(depthWriteMatchers(i)) {
+          e.depthWritePending := false.B
+          when(!e.colorWritePending) { e.valid := false.B }
         }
       }
       when(respRead && depthMatchers(i)) {

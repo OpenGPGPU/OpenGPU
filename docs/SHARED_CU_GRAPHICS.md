@@ -421,3 +421,18 @@ All six small/large/arithmetic renders check every color/depth pixel and
 uniform tail, and verify the configured peak CU count. The arithmetic result
 is a diagnostic, not a desktop-performance result or a substitute for copy
 scaling. Evidence is in [the matched comparisons](performance/shared-cu-scaling-diagnostics-2026-10-15.json).
+
+## Independent color/depth write acknowledgements
+
+The OM can issue a passing pixel's depth write before its color write is
+acknowledged. Separate pending bits accept either response order; the pixel
+reservation and completion fence remain live until both replies arrive.
+Aliased planes still issue serially, keeping address-tagged replies unique.
+All 21 OM unit tests, both ordered MSAA scenes and both guest-sized textured
+fragment/vertex scenes pass.
+
+On the matched 64x64 copy, four-CU cycles improve from 56,611 to 52,978
+(6.4%), while one-CU cycles regress from 69,127 to 70,533 (2.0%). Scaling
+becomes 1.33x; this is a measured tradeoff and remains insufficient. These
+numbers still use one write awaiting B in the AXI bridge. Multiple outstanding
+write acknowledgements are the next bandwidth target. See [the OM evidence](performance/shared-cu-om-overlap-2026-10-15.json).
