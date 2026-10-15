@@ -428,6 +428,69 @@ class RenderHostSpec extends AnyFlatSpec {
     }
   }
 
+  it should "render offscreen extents independently of the scanout mode" in {
+    val config = GraphicsConfig(screenWidth = 64, screenHeight = 48)
+    val m = new MemModel
+    val descriptorBase = 0x1000
+    val cmdBase = 0x2000
+    val colorBase = 0x8000
+    val stride = 64 * 4
+    val sentinel = 0x12345678
+    val points = Seq((q(-0.82), q(-0.6)), (q(0.82), q(-0.6)),
+      (q(0.82), q(0.6)), (q(-0.82), q(0.6)))
+    val records = Seq(Seq(0, 1, 2), Seq(0, 2, 3)).flatMap { indices =>
+      encode(indices.map { i =>
+        ((points(i)._1, points(i)._2, 0, q(1.0)), (0, 255, 0), 0)
+      })
+    }
+    records.zipWithIndex.foreach { case (word, i) => m.wwrite(cmdBase + i * 4, word) }
+    simulate(new RenderHost(config, GpuConfig(lanes = 4, warps = 2))) { dut =>
+      dut.io.externalCompletion.poke(false.B)
+      dut.io.renderCompletion.ready.poke(false.B)
+      dut.io.renderCommand.valid.poke(false.B)
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      regWrite(dut, RenderHostRegs.SCANOUT_WIDTH, 64)
+      regWrite(dut, RenderHostRegs.SCANOUT_HEIGHT, 48)
+      regWrite(dut, RenderHostRegs.SCANOUT_STRIDE, stride)
+      regWrite(dut, RenderHostRegs.SCANOUT_BASE, 0x20000)
+      regWrite(dut, RenderHostRegs.SCANOUT_CONTROL, 1)
+      // Change offscreen size between jobs, then submit a legacy descriptor.
+      // Padding remains allocated so incorrect viewport writes hit canaries.
+      for (((width, height, explicit), job) <-
+           Seq((14, 10, true), (26, 18, true), (64, 48, false)).zipWithIndex) {
+        for (i <- 0 until 64 * 48) m.wwrite(colorBase + i * 4, sentinel)
+        val descriptor = Seq(2 << 16, cmdBase, colorBase, 0x18000,
+          stride, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          if (explicit) width else 0, if (explicit) height else 0)
+        descriptor.zipWithIndex.foreach { case (word, i) =>
+          m.wwrite(descriptorBase + i * 4, word)
+        }
+        dut.io.renderCommand.bits.descriptorId.poke((job + 1).U)
+        dut.io.renderCommand.bits.descriptorAddress.poke(descriptorBase.U)
+        dut.io.renderCommand.bits.bytes.poke(64.U)
+        dut.io.renderCommand.valid.poke(true.B)
+        serviceMem(dut, m, 400000, drainCycles = 4) {
+          dut.io.renderCompletion.valid.peek().litToBoolean
+        }
+        dut.io.renderCommand.valid.poke(false.B)
+        dut.io.renderCompletion.bits.success.expect(true.B)
+        for (y <- height / 3 until height * 2 / 3;
+             x <- width / 3 until width * 2 / 3) {
+          assert(m.word(colorBase + y * stride + x * 4) == 0x00ff00ffL,
+            s"$width x $height target pixel ($x,$y) must use its own viewport")
+        }
+        for (y <- 0 until 48; x <- 0 until 64 if x >= width || y >= height)
+          assert(m.word(colorBase + y * stride + x * 4) == sentinel,
+            s"$width x $height target must preserve padding ($x,$y)")
+        assert(regRead(dut, RenderHostRegs.SCANOUT_WIDTH) == 64)
+        assert(regRead(dut, RenderHostRegs.SCANOUT_HEIGHT) == 48)
+        dut.io.renderCompletion.ready.poke(true.B)
+        dut.clock.step(2)
+        dut.io.renderCompletion.ready.poke(false.B)
+      }
+    }
+  }
+
   for (mode <- Seq(0, 2)) {
     it should s"run a unified render command (mode=$mode) through the command port" in {
       val config = GraphicsConfig(screenWidth = 16, screenHeight = 16, subPixelBits = 8)

@@ -405,6 +405,7 @@ class RenderHost(
     ((if (fragCore) (1 << GpuCapabilities.FragmentCore) else 0) |
       (if (vertCore) (1 << GpuCapabilities.VertexCore) else 0) |
       (if (unifiedCommands) (1 << GpuCapabilities.NativePixelFormats) else 0) |
+      (if (unifiedCommands) (1 << GpuCapabilities.RenderExtents) else 0) |
       (1 << GpuCapabilities.ClearEngine) |
       (1 << GpuCapabilities.BlitEngine) |
       (1 << GpuCapabilities.StridedEngine) |
@@ -709,6 +710,13 @@ class RenderHost(
     unifiedCfg.colorBase := renderWords(2)
     unifiedCfg.depthBase := renderWords(3)
     unifiedCfg.stride := renderWords(4)
+    // Snapshot the viewport per job. Offscreen targets must not inherit the
+    // display size or change the scanout registers. Zero preserves the older
+    // descriptor ABI, including the last mode while scanout is disabled.
+    unifiedCfg.screenW := Mux(renderWords(14) === 0.U, viewportW,
+      ScreenLimit(renderWords(14), config.screenWidth))
+    unifiedCfg.screenH := Mux(renderWords(15) === 0.U, viewportH,
+      ScreenLimit(renderWords(15), config.screenHeight))
     unifiedCfg.depthTestEnable := renderWords(5)(0)
     unifiedCfg.depthFunc := renderWords(5)(6, 4)
     unifiedCfg.depthWriteEnable := renderWords(5)(7)
@@ -825,8 +833,8 @@ class RenderHost(
   core.io.texWrapClamp := unifiedCfg.texWrapClamp
   core.io.texMaxLevel := unifiedCfg.texMaxLevel
   core.io.sampleMode := unifiedCfg.sampleMode
-  core.io.screenW := viewportW
-  core.io.screenH := viewportH
+  core.io.screenW := unifiedCfg.screenW
+  core.io.screenH := unifiedCfg.screenH
   core.io.start := renderLaunch && validRenderMode && !busy
 
   // Separate word ports.  The engine's command stage (draw records) and the

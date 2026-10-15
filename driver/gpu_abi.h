@@ -218,6 +218,7 @@ typedef int32_t s32;
 #define GPU_CAP_RUNTIME_SHADER_ABI (1u << 24)
 /* Descriptor-selected framebuffer and sampler byte orders. */
 #define GPU_CAP_NATIVE_PIXEL_FORMATS (1u << 25)
+#define GPU_CAP_RENDER_EXTENTS (1u << 26)
 
 /* Bytes at increasing memory addresses; zero is legacy A,B,G,R. */
 #define GPU_FORMAT_NATIVE OPENGPU_FORMAT_NATIVE
@@ -642,7 +643,7 @@ struct gpu_vert_draw_record {
  *   stencil ref [7:0], read mask [15:8], write mask [23:16]              [11]
  *   blend config (same layout as draw-record word 35)                    [12]
  *   pixel formats: colour [2:0], texture [6:4]                             [13]
- *   reserved                                                             [14..15]
+ *   render width, render height (zero keeps the scanout-sized viewport) [14..15]
  * ------------------------------------------------------------------------ */
 #define GPU_JOB_WORDS 16u
 struct gpu_job_record {
@@ -660,8 +661,9 @@ struct gpu_job_record {
     u32 stencil_ref_masks;
     u32 blend_config;
     /* bits 2:0 colour format, bits 6:4 texture format. */
-u32 pixel_formats;
-    u32 reserved[2];
+    u32 pixel_formats;
+    u32 render_width;
+    u32 render_height;
 };
 
 #define GPU_JOB_HDR_ID(h)       ((h) & 0xffffu)

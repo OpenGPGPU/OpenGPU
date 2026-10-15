@@ -215,6 +215,8 @@ struct opengpu_job {
     dma_addr_t color;
     dma_addr_t depth;
     u32 stride;
+    u32 render_width;
+    u32 render_height;
     bool depth_test;
     u32 depth_func;
     bool depth_write;

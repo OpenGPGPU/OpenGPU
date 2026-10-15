@@ -12,7 +12,8 @@ import scala.collection.mutable
 abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Boolean = false,
     coalesce: Boolean = false, axiBytes: Int = 8, fragmentBatchLimit: Int = 0,
     omInflight: Int = 16, omLocality: Boolean = false, bufferCommandReads: Boolean = false,
-    mesaFormats: Boolean = false, bufferTextureReads: Boolean = false)
+    mesaFormats: Boolean = false, bufferTextureReads: Boolean = false,
+    explicitRenderExtent: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (scenario <- (if (mesaFormats) Seq("Mesa formats") else Seq("translation", "invalid PTE", "page-table bus fault",
       "texture bus fault", "reset during texture read", "texture CPU update", "instruction translation",
@@ -33,7 +34,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
     it should s"complete programmable texture rendering with $scenario and recover" in {
       val side = if (scenario.contains("guest-sized")) 16 else 4
       val framebufferBytes = side * side * 4
-      val gfx = GraphicsConfig(screenWidth = side, screenHeight = side, subPixelBits = 8,
+      val screenSide = if (explicitRenderExtent) side * 2 else side
+      val gfx = GraphicsConfig(screenWidth = screenSide, screenHeight = screenSide, subPixelBits = 8,
         fragmentBatchLimit = fragmentBatchLimit, omInflight = omInflight, omLocality = omLocality)
       val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
       val vertexShader = scenario.startsWith("instruction vertex")
@@ -86,7 +88,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         assert(record.size == 40)
         store(commands, record)
         store(descriptor, Seq(1L << 16, commands.toLong, color.toLong, 0x20000L,
-          side * 4L, 0x81L, textureVa.toLong, 0x10001L, 0x101L) ++ Seq.fill(7)(0L))
+          side * 4L, 0x81L, textureVa.toLong, 0x10001L, 0x101L) ++ Seq.fill(5)(0L) ++
+          Seq.fill(2)(if (explicitRenderExtent) side.toLong else 0L))
         store(0x20000, Seq.fill(side * side)(0x00ffffffL))
         store(program, Seq(
           0x0080006fL, 0L, // jal +8: relative control flow must retain the virtual PC
@@ -610,3 +613,9 @@ class BufferedTextureMesaPixelFormatAxiSpec
     extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true,
       axiBytes = 64, fragmentBatchLimit = 4, omInflight = 64, omLocality = true,
       bufferCommandReads = true, mesaFormats = true, bufferTextureReads = true)
+
+/** Render smaller targets while the advertised screen remains twice as large. */
+class OffscreenBufferedTextureParallelCuProgrammableTextureAxiSpec
+    extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true,
+      axiBytes = 64, omInflight = 64, omLocality = true,
+      bufferCommandReads = true, bufferTextureReads = true, explicitRenderExtent = true)

@@ -308,6 +308,8 @@ static void opengpu_job_fill(struct gpu_job_record *rec, u32 id,
     rec->stencil_ref_masks = job->stencil_ref_masks;
     rec->blend_config = job->blend_config;
     rec->pixel_formats = job->pixel_formats;
+    rec->render_width = job->render_width;
+    rec->render_height = job->render_height;
     if (job->stencil_test)
         rec->state |= GPU_JOB_STATE_STENCIL_TEST;
 }

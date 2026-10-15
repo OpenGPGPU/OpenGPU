@@ -1,0 +1,83 @@
+{
+  "date": "2026-10-16",
+  "problem": "GTK280x124 offscreen rendering in a640x480 desktop used the scanout viewport. Both previous models completed draws but read back the clear colour10,15,26,255.",
+  "failed_guests": [
+    ".artifacts/tb640",
+    ".artifacts/tf640"
+  ],
+  "negative_control": {
+    "exit_status": 1,
+    "expected_viewport_failure": true
+  },
+  "change": "Descriptor words14/15 carry per-job render width/height; zeros snapshot the legacy scanout-sized viewport. Append DRM submit dimensions, advertise capability26, and use target height for attachment validation, VM mappings and depth allocation. Unaligned depth clears use the coherent CPU fallback.",
+  "validation": {
+    "rtl": [
+      {
+        "name": "offscreen",
+        "args": [
+          "-s",
+          "opengpu.graphics.RenderHostSpec",
+          "-z",
+          "offscreen extents"
+        ],
+        "exit_status": 0,
+        "seconds": 9.258403209038079
+      },
+      {
+        "name": "host",
+        "args": [
+          "-s",
+          "opengpu.graphics.RenderHostSpec"
+        ],
+        "exit_status": 0,
+        "seconds": 90.57221145788208
+      },
+      {
+        "name": "cached-pipeline",
+        "args": [
+          "-s",
+          "opengpu.system.BufferedTextureParallelCuProgrammableTextureAxiSpec",
+          "-z",
+          "with translation"
+        ],
+        "exit_status": 0,
+        "seconds": 59.15807499992661
+      }
+    ],
+    "offscreen_shared_cu": [
+      {
+        "name": "offscreen-with-translation",
+        "exit_status": 0,
+        "seconds": 59.02730245795101
+      },
+      {
+        "name": "offscreen-instruction-vertex-staging-translation",
+        "exit_status": 0,
+        "seconds": 59.0425199160818
+      }
+    ],
+    "kernel_free_driver_tests": "PASS scripts/test_driver.py",
+    "guest_module": {
+      "module_sha256": "c0b3accd10245a02e419b80299a1495c33a57862b713efcbf55144d5a0caf5b3",
+      "kcflags": " -DOPENGPU_DRAW_WAIT_MS=1800000 -DOPENGPU_DEFAULT_WIDTH=640 -DOPENGPU_DEFAULT_HEIGHT=480 -DOPENGPU_FENCE_SLICE_MS=4",
+      "integration_config": "/Users/duckdonald/workspace/gpu/driver/gpu_integration_debian.yaml",
+      "scope": "Simulation watchdog and sliced fence waits; real hardware defaults unchanged"
+    },
+    "mesa_build": "PASS depends/mesa-build/src/gallium/targets/dri/libgallium_dri.so",
+    "mesa_sha256": "57af27ded95b1100fb4577fdb37ede81a4176334e7941b15df9400334fb73061"
+  },
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/RenderHost.scala": "a1a38d4b2fdb2347d57db9518829d223259b6b2e708aac786856d2cbbbe92962",
+    "src/main/scala/opengpu/graphics/JobConfig.scala": "62c2e31dfce8ae62037097ad40bb20788cdb56317c54ab9f3b2d9943f2999422",
+    "driver/opengpu_compute.c": "6a43c20f19201fb797a9ddfef937bbea8156a45a24c02e90f067c990f404eafa",
+    "driver/opengpu_drm.h": "b15aa43fb2be9176d3d631ef8b2f035aa7df158ad9611de02375db112759d3f7",
+    "driver/opengpu_render_extent.h": "858059243549c2177d1a9705d0778e24259670e9ea44dd75b03f7c9e44cf6c1b",
+    "userspace/pipe_opengpu.c": "c89f23da63451394749ba9e14570f52f07a82fc7b13fc56f04cfe13b34ee076a"
+  },
+  "evidence_directory": ".artifacts/shared-cu/render-extent",
+  "limits": [
+    "Fresh full4CU640RTL model and GTK idle/active readback/scanout qualification still pending.",
+    "Previous full640failed guests are not performance/qualification passes.",
+    "Periodic scanout gate is too permissive; strengthen it before final qualification."
+  ]
+}

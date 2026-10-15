@@ -831,6 +831,8 @@ static int apply_color_submit(struct pipe_opengpu_context *ctx,
     submit->color_handle = ctx->color->buffer.handle;
     submit->stride = stride;
     submit->sample_mode = ctx->sample_mode;
+    submit->render_width = ctx->fb_width;
+    submit->render_height = ctx->fb_height;
     submit->flags |= ctx->color->format << OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT;
     return 0;
 }

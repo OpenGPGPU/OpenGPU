@@ -11,6 +11,8 @@ class JobConfig extends Bundle with HasResolvedDrawState {
   val colorBase = UInt(32.W)
   val depthBase = UInt(32.W)
   val stride = UInt(32.W)
+  val screenW = UInt(16.W)
+  val screenH = UInt(16.W)
   val sampleMode = UInt(2.W)
   val texFormat = UInt(PixelFormat.width.W)
   val texBase = UInt(32.W)

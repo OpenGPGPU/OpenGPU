@@ -179,6 +179,7 @@ struct drm_opengpu_param {
 #define OPENGPU_CAP_RUNTIME_SHADER_ABI (1u << 24)
 /* Descriptor-selected framebuffer and sampler byte orders. */
 #define OPENGPU_CAP_NATIVE_PIXEL_FORMATS (1u << 25)
+#define OPENGPU_CAP_RENDER_EXTENTS (1u << 26)
 
 
 /* Sample mode field width (0 = 1x, 1 = 2x, 2 = 4x). */
@@ -281,6 +282,11 @@ struct drm_opengpu_submit {
      * contents are kept so a render pass can continue across submissions. */
     __u32 depth_handle;
     __u64 depth_offset;
+    /* Render-target dimensions, independent of the scanout mode. Both zero
+     * retain the legacy scanout-sized viewport; otherwise both are required.
+     * Appended fields preserve older ioctl callers (DRM zero-fills them). */
+    __u32 render_width;
+    __u32 render_height;
 };
 
 /* Ordered whole-cache-line copy. Source and destination ranges are validated

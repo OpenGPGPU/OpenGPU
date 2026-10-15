@@ -35,6 +35,14 @@ typedef uint64_t opengpu_depth_u64;
  * aligned (matching the colour attachment's stride requirement). */
 #define OPENGPU_DEPTH_ALIGNMENT 4u
 
+/* FillEngine clears complete cache lines; smaller attachments and unaligned
+ * persistent ranges use the coherent CPU fallback without touching neighbours. */
+static inline int opengpu_depth_clear_uses_hw(int has_engine,
+	opengpu_depth_u64 address, opengpu_depth_u64 bytes)
+{
+	return has_engine && bytes && !((address | bytes) & 63u);
+}
+
 /* Return values are 0 or a negative errno-compatible code. */
 enum opengpu_depth_status {
 	OPENGPU_DEPTH_OK = 0,

@@ -18,6 +18,7 @@
 #include <drm/gpu_scheduler.h>
 
 #include "opengpu_depth_validator.h"
+#include "opengpu_render_extent.h"
 #include "opengpu_device.h"
 #include "opengpu_scheduler.h"
 #include "opengpu_drm.h"
@@ -1625,7 +1626,9 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
         const struct opengpu_buffer *snapshots[2];
         unsigned int snapshot_count = 0;
         bool clear_depth =
-            (job->gpu->hw.capabilities & GPU_CAP_CLEAR_ENGINE) &&
+            opengpu_depth_clear_uses_hw(
+                job->gpu->hw.capabilities & GPU_CAP_CLEAR_ENGINE,
+                job->depth_clear_dma, job->depth_clear_bytes) &&
             !job->depth_load;
 
         /* Reach this job's command snapshot through the context's VM.  The
@@ -1704,7 +1707,8 @@ struct dma_fence *opengpu_job_run(struct opengpu_sched_job *job)
          * output merger translates render-target traffic under this ASID.  The
          * windows are remapped per job; the previous job has drained. */
         if (vm && job->context) {
-            size_t fb_bytes = (size_t)job->hw.stride * job->gpu->height;
+            size_t fb_bytes = (size_t)job->hw.stride *
+                (job->hw.render_height ? job->hw.render_height : job->gpu->height);
             dma_addr_t color_va = 0, depth_va = 0;
 
             if (job->hw.color && fb_bytes) {
@@ -1788,7 +1792,15 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
     size_t color_required;
     u32 i, j;
     u32 sample_mode, max_mode;
+    struct opengpu_render_extent extent;
     int ret;
+
+    ret = opengpu_render_extent_resolve(
+        args->render_width, args->render_height, gpu->width, gpu->height,
+        gpu->max_width, gpu->max_height,
+        !!(gpu->hw.capabilities & GPU_CAP_RENDER_EXTENTS), &extent);
+    if (ret)
+        return ret;
 
     sample_mode = args->sample_mode & OPENGPU_MSAA_MODE_MASK;
     max_mode = (gpu->hw.capabilities & GPU_CAP_MSAA_MAX_MODE_MASK) >>
@@ -1818,8 +1830,8 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         args->vertex_shader_slot > OPENGPU_MAX_RESOURCE_SLOTS ||
         args->vertex_kernarg_slot > OPENGPU_MAX_RESOURCE_SLOTS ||
         (args->stride & 3) ||
-        args->stride < (u64)gpu->width * (1u << sample_mode) * 4u ||
-        check_mul_overflow((size_t)args->stride, (size_t)gpu->height,
+        args->stride < (u64)extent.width * (1u << sample_mode) * 4u ||
+        check_mul_overflow((size_t)args->stride, (size_t)extent.height,
                            &color_required) ||
         check_mul_overflow((size_t)args->command_count,
                            sizeof(struct gpu_draw_record), &command_bytes) ||
@@ -1860,7 +1872,7 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         depth_dma = to_drm_gem_dma_obj(depth_object);
         depth_desc.offset = args->depth_offset;
         depth_desc.stride = args->stride;
-        depth_desc.height = gpu->height;
+        depth_desc.height = extent.height;
         ret = opengpu_depth_validate(&depth_desc, depth_object->size,
                                      NULL);
         if (ret)
@@ -1986,12 +1998,12 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
             !!(args->flags & OPENGPU_SUBMIT_DEPTH_LOAD);
         sched_job->depth_clear_dma = depth_address;
         sched_job->depth_clear_bytes =
-            (size_t)args->stride * gpu->height;
+            (size_t)args->stride * extent.height;
         sched_job->depth_clear_cpu = depth_dma->vaddr ?
             (u8 *)depth_dma->vaddr + args->depth_offset : NULL;
     } else {
         ret = opengpu_buffer_alloc(gpu, &sched_job->depth,
-                                   (size_t)args->stride * gpu->height);
+                                   (size_t)args->stride * extent.height);
         if (ret)
             goto out_job;
         sched_job->depth_clear_dma = sched_job->depth.dma;
@@ -2014,17 +2026,24 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
     if (ret)
         goto out_job;
     /* Clear-capable hardware clears the depth plane immediately before its
-     * draw. Older devices retain the coherent CPU fallback. A persistent
+     * draw. Older devices and sub-cache-line ranges use the coherent CPU
+     * fallback. A persistent
      * attachment submitted with OPENGPU_SUBMIT_DEPTH_LOAD keeps its stored
      * contents instead. D24S8: the clear leaves stencil 0 under the far depth
      * so stencil counters start from a defined state. */
-    if (!(gpu->hw.capabilities & GPU_CAP_CLEAR_ENGINE) &&
-        !sched_job->depth_load && sched_job->depth_clear_cpu) {
+    if (!sched_job->depth_load && !opengpu_depth_clear_uses_hw(
+            gpu->hw.capabilities & GPU_CAP_CLEAR_ENGINE,
+            sched_job->depth_clear_dma, sched_job->depth_clear_bytes)) {
         u32 *word = (u32 *)sched_job->depth_clear_cpu;
         size_t n;
 
+        if (!word) {
+            ret = -EINVAL;
+            goto out_job;
+        }
         for (n = 0; n < sched_job->depth_clear_bytes / sizeof(u32); n++)
             word[n] = 0x00ffffffu;
+        dma_wmb();
     }
     /* Per-draw stencil/blend state rides the command records; the job-level
      * global defaults stay disabled so legacy records keep their meaning. */
@@ -2035,6 +2054,8 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         .depth = sched_job->depth_user ? depth_address
                                        : sched_job->depth.dma,
         .stride = args->stride,
+        .render_width = extent.width,
+        .render_height = extent.height,
         .depth_test = true,
         .depth_func = GPU_DEPTH_FUNC_LESS,
         .depth_write = true,

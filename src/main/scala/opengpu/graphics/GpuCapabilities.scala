@@ -50,6 +50,8 @@ object GpuCapabilities {
   /** Launch x9 supplies CU capacity; shaders may select VLMAX dynamically. */
   val RuntimeShaderAbi = 24
   val NativePixelFormats = 25
+  /** Each unified render descriptor can select its own target dimensions. */
+  val RenderExtents = 26
 }
 
 /** Byte fields of GpuCommandMmioRegs.SHADER_CONFIG and the DRM query. */

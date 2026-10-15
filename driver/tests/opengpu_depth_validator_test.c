@@ -95,6 +95,11 @@ static void test_rejects_overflow(void)
 
 int main(void)
 {
+	assert(opengpu_depth_clear_uses_hw(1, 64, 128));
+	assert(!opengpu_depth_clear_uses_hw(0, 64, 128));
+	assert(!opengpu_depth_clear_uses_hw(1, 68, 128));
+	assert(!opengpu_depth_clear_uses_hw(1, 64, 560));
+	assert(!opengpu_depth_clear_uses_hw(1, 64, 0));
 	test_valid_tight();
 	test_valid_padded_offset_and_slack();
 	test_optional_layout();
