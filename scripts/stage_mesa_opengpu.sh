@@ -102,6 +102,25 @@ if dri2_old in dri2_text and dri2_new not in dri2_text:
     dri2.write_text(dri2_text.replace(dri2_old, dri2_new, 1))
 
 gbm = mesa / "src/gbm/backends/dri/gbm_dri.c"
+egl_dri2 = mesa / "src/egl/drivers/dri2/egl_dri2.c"
+egl_dri2_text = egl_dri2.read_text()
+visual_anchor = """dri2_match_config(const _EGLConfig *conf, const _EGLConfig *criteria)
+{
+"""
+visual_guard = """   /* Native GBM visuals with equal channel sizes can have different byte
+    * orders. Keep their DRI configs separate; eglChooseConfig itself still
+    * ignores EGL_NATIVE_VISUAL_ID as required by EGL. */
+   if (criteria->NativeVisualID &&
+       conf->NativeVisualID != criteria->NativeVisualID)
+      return EGL_FALSE;
+
+"""
+if visual_guard not in egl_dri2_text:
+    if egl_dri2_text.count(visual_anchor) != 1:
+        raise SystemExit("EGL native-visual config anchor missing")
+    egl_dri2.write_text(egl_dri2_text.replace(visual_anchor,
+                         visual_anchor + visual_guard, 1))
+
 gbm_text = gbm.read_text()
 old_cap = """   switch (cap) {
    case DRI_LOADER_CAP_FP16:

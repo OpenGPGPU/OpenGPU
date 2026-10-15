@@ -4,6 +4,7 @@
  * only packs the vertex buffer, issues the GL calls, and reads the GEM back.
  */
 #include <EGL/egl.h>
+#include "opengpu_gl_egl.h"
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 #include <drm/drm_fourcc.h>
@@ -207,7 +208,8 @@ int main(void)
         die_gl("eglInitialize");
     if (!eglBindAPI(EGL_OPENGL_ES_API))
         die_gl("eglBindAPI");
-    if (!eglChooseConfig(dpy, config_attribs, &config, 1, &nconfig) ||
+    if (!opengpu_gl_choose_config(dpy, config_attribs, GBM_FORMAT_ABGR8888,
+                                   &config, &nconfig) ||
         nconfig < 1) {
         fprintf(stderr,
                 "gl_triangle: eglChooseConfig matched %d configs (egl 0x%x)\n",
