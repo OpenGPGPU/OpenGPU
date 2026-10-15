@@ -64,7 +64,8 @@ class GpuSystem(
   instructionCacheWays: Int = 2,
   instructionCacheMissEntries: Int = 4,
   vectorCacheSets: Int = 64,
-  vectorCacheWays: Int = 2
+  vectorCacheWays: Int = 2,
+  enableGraphicsKernels: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
   require(graphicsHostTransactions > 0 && isPow2(graphicsHostTransactions),
@@ -95,6 +96,8 @@ class GpuSystem(
     math.max(1, log2Ceil(totalSystemTransactions))
 
   val io = IO(new Bundle {
+    val graphicsKernels = if (enableGraphicsKernels)
+      Some(new SharedCuGraphicsPort(config, commandIdWidth, numComputeUnits)) else None
     val command = Flipped(Decoupled(
       new KernelCommand(config, commandIdWidth)))
     val commandCompletion = Decoupled(
@@ -201,7 +204,7 @@ class GpuSystem(
   private val commandRouter = Module(new GpuCommandRouter(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
     completionQueueDepth = config.completionQueueDepth))
-  private val dispatcher = Module(new MultiCuKernelDispatcher(
+  private val dispatcher = Module(new SharedCuKernelDispatcher(
     config, numComputeUnits, commandIdWidth))
   private val memory = Module(new SharedComputeMemoryInterconnect(
     config, numComputeUnits, 64, transactionsPerCu))
@@ -229,7 +232,7 @@ class GpuSystem(
   // The generic compute system has no graphics sampler. Keep the optional
   // texture-instruction sideband quiescent; graphics top levels connect it to
   // TexSampleUnit instead.
-  computeUnits.foreach { cu =>
+  if (!enableGraphicsKernels) computeUnits.foreach { cu =>
     cu.io.texSample.ready := false.B
     cu.io.texWriteback.valid := false.B
     cu.io.texWriteback.bits := 0.U.asTypeOf(cu.io.texWriteback.bits)
@@ -282,6 +285,20 @@ class GpuSystem(
 
   dispatcher.io.launch <> commandProcessor.io.dispatch
   commandProcessor.io.dispatchCompletion <> dispatcher.io.completion
+  private val graphicsDispatchBlocked = WireDefault(false.B)
+  if (enableGraphicsKernels) {
+    val graphics = io.graphicsKernels.get
+    dispatcher.io.graphicsLaunch.valid := graphics.launch.valid && !graphicsDispatchBlocked
+    dispatcher.io.graphicsLaunch.bits := graphics.launch.bits
+    graphics.launch.ready := dispatcher.io.graphicsLaunch.ready && !graphicsDispatchBlocked
+    graphics.completion <> dispatcher.io.graphicsCompletion
+    graphics.owned := dispatcher.io.graphicsOwner
+    graphics.taskIds := dispatcher.io.taskIds
+  } else {
+    dispatcher.io.graphicsLaunch.valid := false.B
+    dispatcher.io.graphicsLaunch.bits := 0.U.asTypeOf(dispatcher.io.graphicsLaunch.bits)
+    dispatcher.io.graphicsCompletion.ready := true.B
+  }
   io.busyComputeUnits := dispatcher.io.busy
   io.commandProcessorBusy := commandProcessor.io.busy
   io.queuedCommands := commandProcessor.io.queued
@@ -418,11 +435,13 @@ class GpuSystem(
     val quiesced = io.graphicsDrained && !copyEngine.io.busy && !fillEngine.io.busy &&
       !stridedCopyEngine.io.busy && !resolveEngine.io.busy &&
       !resolveActive && !resolveDonePending &&
-      !commandProcessor.io.busy &&
+      !commandProcessor.io.busy && !dispatcher.io.busy.orR &&
+      !dispatcher.io.graphicsCompletion.valid &&
       l2.io.drained && !commandRouter.io.completion.valid
     // Held across the resetting cycle too: otherwise a queue flush and a
     // dispatch fire on the same edge and launch the flushed command.
     commandRouter.io.blockDispatch := resetState =/= ResetState.idle
+    graphicsDispatchBlocked := resetState =/= ResetState.idle || io.commandResetActive
     commandRouter.io.pathReset := resetState === ResetState.resetting
     commandProcessor.io.pathReset := resetState === ResetState.resetting
     io.commandResetDone := resetState === ResetState.resetting
@@ -773,6 +792,10 @@ class GpuSystem(
   io.memoryRequest <> l2.io.memoryRequest
   l2.io.memoryResponse <> io.memoryResponse
 
+  private val graphicsTraps = if (enableGraphicsKernels) Some(Module(new RRArbiter(
+    new TaggedGraphicsTrap(config, commandIdWidth, numComputeUnits), numComputeUnits))) else None
+  graphicsTraps.foreach(arb => io.graphicsKernels.get.trap <> arb.io.out)
+
   for (cu <- 0 until numComputeUnits) {
     val unit = computeUnits(cu)
     unit.io.kernel <> dispatcher.io.cuLaunch(cu)
@@ -792,7 +815,34 @@ class GpuSystem(
     io.fpu(cu) <> unit.io.fpu
     io.vector(cu) <> unit.io.vector
     io.scalarMemory(cu) <> unit.io.memory
-    io.trap(cu) <> unit.io.trap
+    if (enableGraphicsKernels) {
+      val graphics = io.graphicsKernels.get
+      val owned = dispatcher.io.graphicsOwner(cu)
+      val trap = graphicsTraps.get.io.in(cu)
+      trap.valid := unit.io.trap.valid && owned
+      trap.bits.taskId := dispatcher.io.taskIds(cu)
+      trap.bits.cu := cu.U
+      trap.bits.event := unit.io.trap.bits
+      io.trap(cu).valid := unit.io.trap.valid && !owned
+      io.trap(cu).bits := unit.io.trap.bits
+      unit.io.trap.ready := Mux(owned, trap.ready, io.trap(cu).ready)
+
+      val tex = graphics.texture(cu)
+      tex.scalar.valid := unit.io.texSample.valid && owned
+      tex.scalar.bits := unit.io.texSample.bits
+      unit.io.texSample.ready := tex.scalar.ready && owned
+      unit.io.texWriteback.valid := tex.scalarWriteback.valid && owned
+      unit.io.texWriteback.bits := tex.scalarWriteback.bits
+      tex.scalarWriteback.ready := unit.io.texWriteback.ready && owned
+      tex.vector.valid := unit.io.vectorTexSample.valid && owned
+      tex.vector.bits := unit.io.vectorTexSample.bits
+      unit.io.vectorTexSample.ready := tex.vector.ready && owned
+      unit.io.vectorTexWriteback.valid := tex.vectorWriteback.valid && owned
+      unit.io.vectorTexWriteback.bits := tex.vectorWriteback.bits
+      tex.vectorWriteback.ready := unit.io.vectorTexWriteback.ready && owned
+    } else {
+      io.trap(cu) <> unit.io.trap
+    }
     unit.io.simtBranch <> io.simtBranch(cu)
 
     io.committedWriteback(cu) := unit.io.committedWriteback

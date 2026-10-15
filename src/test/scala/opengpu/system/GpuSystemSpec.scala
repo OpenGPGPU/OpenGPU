@@ -13,6 +13,21 @@ class GpuSystemSpec extends AnyFlatSpec {
   private def initialize(dut: GpuSystem, numComputeUnits: Int): Unit = {
     dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
     dut.io.graphicsDrained.poke(true.B)
+    dut.io.commandResetActive.poke(false.B)
+    dut.io.graphicsKernels.foreach { graphics =>
+      graphics.launch.valid.poke(false.B)
+      graphics.launch.bits.poke(0.U.asTypeOf(graphics.launch.bits))
+      graphics.completion.ready.poke(true.B)
+      graphics.trap.ready.poke(true.B)
+      graphics.texture.foreach { tex =>
+        tex.scalar.ready.poke(false.B)
+        tex.scalarWriteback.valid.poke(false.B)
+        tex.scalarWriteback.bits.poke(0.U.asTypeOf(tex.scalarWriteback.bits))
+        tex.vector.ready.poke(false.B)
+        tex.vectorWriteback.valid.poke(false.B)
+        tex.vectorWriteback.bits.poke(0.U.asTypeOf(tex.vectorWriteback.bits))
+      }
+    }
     dut.io.command.valid.poke(false.B)
     dut.io.command.bits.poke(0.U.asTypeOf(dut.io.command.bits))
     dut.io.commandCompletion.ready.poke(true.B)
@@ -70,6 +85,177 @@ class GpuSystemSpec extends AnyFlatSpec {
       dut.io.simtBranch(cu).bits.poke(
         0.U.asTypeOf(dut.io.simtBranch(cu).bits))
     }
+  }
+
+  private def sharedCuExecution(count: Int, fault: Boolean): Unit = {
+    val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
+    simulate(new GpuSystem(config, numComputeUnits = count,
+      enableGraphicsKernels = true, instructionCacheSets = 4,
+      instructionCacheWays = 1, vectorCacheSets = 4, vectorCacheWays = 1)) { dut =>
+      initialize(dut, count)
+      val graphics = dut.io.graphicsKernels.get
+      val memory = scala.collection.mutable.Map.empty[BigInt, BigInt]
+      def putWord(address: BigInt, word: BigInt): Unit =
+        for (i <- 0 until 4) memory(address + i) = (word >> (8 * i)) & 255
+      def word(address: BigInt): BigInt = (0 until 4).foldLeft(BigInt(0)) {
+        (v, i) => v | (memory.getOrElse(address + i, BigInt(0)) << (8 * i))
+      }
+      def program(base: Int, words: Seq[BigInt]): Unit =
+        words.zipWithIndex.foreach { case (v, i) => putWord(base + 4 * i, v) }
+      val cease = BigInt("30500073", 16)
+      val tex = (BigInt(1) << 25) | (BigInt(5) << 20) |
+        (BigInt(5) << 15) | (BigInt(6) << 7) | 0x0b
+      program(0x1000, Seq(BigInt("12300293", 16), BigInt("0050a023", 16), cease))
+      program(0x2000, if (fault) Seq(BigInt("ffffffff", 16)) else
+        Seq(BigInt("00000293", 16), tex, BigInt("0060a023", 16), cease))
+      for (d <- 0 until 3) {
+        graphics.launch.bits.launch.gridSize(d).poke(1.U)
+        graphics.launch.bits.launch.localSize(d).poke(1.U)
+        dut.io.command.bits.launch.gridSize(d).poke(1.U)
+        dut.io.command.bits.launch.localSize(d).poke(1.U)
+      }
+      // The same numeric ID is legal in the two separate producer namespaces.
+      graphics.launch.bits.commandId.poke(7.U)
+      graphics.launch.bits.launch.kernelPc.poke(0x2000.U)
+      graphics.launch.bits.launch.kernargAddress.poke(0x8000.U)
+      graphics.launch.valid.poke(true.B)
+      dut.io.command.bits.commandId.poke(7.U)
+      dut.io.command.bits.launch.kernelPc.poke(0x1000.U)
+      dut.io.command.bits.launch.kernargAddress.poke(0x9000.U)
+      dut.io.command.valid.poke(true.B)
+      var computeSubmitted = false
+      var graphicsSubmitted = false
+      var computeDone = false
+      var graphicsDone = false
+      var graphicsId = 7
+      var graphicsSuccess = !fault
+      var sawFault = false
+      var samplerCalls = 0
+      var computeDoneWithSamplerBlocked = false
+      var bothBusy = false
+      var cycles = 0
+      val replies = scala.collection.mutable.Queue.empty[(BigInt, BigInt)]
+      case class TexReply(warp: BigInt, pc: BigInt, mask: BigInt, rd: BigInt)
+      val texReplies = Array.fill[Option[TexReply]](count)(None)
+      val color = BigInt("ff336699", 16)
+
+      def step(): Unit = {
+        dut.io.memoryResponse.valid.poke(replies.nonEmpty.B)
+        replies.headOption.foreach { case (id, data) =>
+          dut.io.memoryResponse.bits.transactionId.poke(id.U)
+          dut.io.memoryResponse.bits.readData.poke(data.U)
+          dut.io.memoryResponse.bits.fault.poke(false.B)
+        }
+        val responseAccepted = replies.nonEmpty && dut.io.memoryResponse.ready.peek().litToBoolean
+        val request = if (dut.io.memoryRequest.valid.peek().litToBoolean &&
+            dut.io.memoryRequest.ready.peek().litToBoolean) {
+          val address = dut.io.memoryRequest.bits.address.peek().litValue
+          val id = dut.io.memoryRequest.bits.transactionId.peek().litValue
+          val writing = dut.io.memoryRequest.bits.isWrite.peek().litToBoolean
+          if (writing) {
+            val mask = dut.io.memoryRequest.bits.byteMask.peek().litValue
+            val data = dut.io.memoryRequest.bits.writeData.peek().litValue
+            for (i <- 0 until 64 if mask.testBit(i)) memory(address + i) = (data >> (8 * i)) & 255
+          }
+          val data = if (writing) BigInt(0) else (0 until 64).foldLeft(BigInt(0)) {
+            (v, i) => v | (memory.getOrElse(address + i, BigInt(0)) << (8 * i))
+          }
+          Some(id -> data)
+        } else None
+
+        for (cu <- 0 until count) {
+          val port = graphics.texture(cu)
+          val enableSampler = cycles >= 350
+          port.scalar.ready.poke((enableSampler && texReplies(cu).isEmpty).B)
+          port.scalarWriteback.valid.poke(texReplies(cu).nonEmpty.B)
+          texReplies(cu).foreach { reply =>
+            port.scalarWriteback.bits.warpId.poke(reply.warp.U)
+            port.scalarWriteback.bits.nextPc.poke((reply.pc + 4).U)
+            port.scalarWriteback.bits.activeMask.poke(reply.mask.U)
+            port.scalarWriteback.bits.writeRd.poke(true.B)
+            port.scalarWriteback.bits.rd.poke(reply.rd.U)
+            port.scalarWriteback.bits.data.poke(color.U)
+          }
+          val finished = texReplies(cu).nonEmpty && port.scalarWriteback.ready.peek().litToBoolean
+          val accepted = port.scalar.valid.peek().litToBoolean && port.scalar.ready.peek().litToBoolean
+          val newReply = if (accepted) {
+            assert(graphics.owned.peek().litValue.testBit(cu))
+            graphics.taskIds(cu).expect(7.U)
+            port.scalar.bits.rs1Data.expect(0.U)
+            port.scalar.bits.rs2Data.expect(0.U)
+            samplerCalls += 1
+            Some(TexReply(port.scalar.bits.decode.warpId.peek().litValue,
+              port.scalar.bits.decode.pc.peek().litValue,
+              port.scalar.bits.decode.activeMask.peek().litValue,
+              (port.scalar.bits.decode.instruction.peek().litValue >> 7) & 31))
+          } else None
+          if (finished) texReplies(cu) = None
+          newReply.foreach(r => texReplies(cu) = Some(r))
+          dut.io.trap(cu).valid.expect(false.B)
+        }
+        if (dut.io.command.valid.peek().litToBoolean && dut.io.command.ready.peek().litToBoolean)
+          computeSubmitted = true
+        if (graphics.launch.valid.peek().litToBoolean && graphics.launch.ready.peek().litToBoolean)
+          graphicsSubmitted = true
+        if (dut.io.commandCompletion.valid.peek().litToBoolean) {
+          dut.io.commandCompletion.bits.commandId.expect(7.U)
+          dut.io.commandCompletion.bits.success.expect(true.B)
+          computeDone = true
+          if (cycles < 350) computeDoneWithSamplerBlocked = true
+        }
+        if (graphics.completion.valid.peek().litToBoolean) {
+          graphics.completion.bits.commandId.expect(graphicsId.U)
+          graphics.completion.bits.success.expect(graphicsSuccess.B)
+          graphicsDone = true
+        }
+        if (graphics.trap.valid.peek().litToBoolean) {
+          assert(fault)
+          graphics.trap.bits.taskId.expect(7.U)
+          graphics.trap.bits.event.pc.expect(0x2000.U)
+          graphics.trap.bits.event.cause.expect(2.U)
+          sawFault = true
+        }
+        if (dut.io.busyComputeUnits.peek().litValue.bitCount >= 2) bothBusy = true
+        dut.clock.step(); cycles += 1
+        if (responseAccepted) replies.dequeue()
+        request.foreach(replies.enqueue(_))
+        if (computeSubmitted) dut.io.command.valid.poke(false.B)
+        if (graphicsSubmitted) graphics.launch.valid.poke(false.B)
+      }
+      while (!(computeDone && graphicsDone) && cycles < 2500) step()
+      assert(computeDone && graphicsDone, s"shared CU tasks did not finish in $cycles cycles")
+      assert(word(0x9000) == 0x123, "compute store did not reach shared memory")
+      if (fault) {
+        assert(sawFault && samplerCalls == 0)
+        // A failed graphics task must release the same pool for a later task.
+        graphics.launch.bits.commandId.poke(8.U)
+        graphics.launch.bits.launch.kernelPc.poke(0x1000.U)
+        graphics.launch.bits.launch.kernargAddress.poke(0xa000.U)
+        graphics.launch.valid.poke(true.B)
+        graphicsSubmitted = false; graphicsDone = false
+        graphicsId = 8; graphicsSuccess = true
+        while (!graphicsDone && cycles < 3500) step()
+        assert(graphicsDone && word(0xa000) == 0x123,
+          "shared CU did not execute a fresh graphics task after fault retirement")
+      } else {
+        assert(!sawFault && samplerCalls == 1)
+        assert(word(0x8000) == color, "texture writeback was not stored by the graphics shader")
+        if (count > 1) {
+          assert(bothBusy, "compute and graphics did not occupy distinct CUs concurrently")
+          assert(computeDoneWithSamplerBlocked, "stalled graphics texture work blocked compute")
+        }
+      }
+    }
+  }
+
+  for (count <- Seq(1, 2, 4)) {
+    it should s"execute graphics tasks and compute on the same $count CUs with texture writeback" in {
+      sharedCuExecution(count, fault = false)
+    }
+  }
+
+  it should "route faults from graphics tasks separately from compute commands" in {
+    sharedCuExecution(1, fault = true)
   }
 
   it should "elaborate four compute units behind tagged dispatch and shared memory" in {
