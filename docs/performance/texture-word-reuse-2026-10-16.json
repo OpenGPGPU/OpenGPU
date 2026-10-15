@@ -1,0 +1,99 @@
+{
+  "status": "Native64 exact replay and observational counter invariants PASS; full640 replay still running",
+  "builder": "scripts/build_arti_texture_probe.py",
+  "analyzer": "scripts/analyze_arti_texture_probe.py",
+  "manifest": {
+    "archive_sha256": "379cf29beebd27c43756001966cf886c3edcfa9414a3aaf6375927b43725e85c",
+    "header_sha256": "c6583b1db2542690d9b1fd9ae342ef192ce8be73ae63ee93ea53a6781c3f6f48",
+    "wrapper_sha256": "f5aceac44a10e0c71206e50785e0c2d8c35d9ea4738013e1141e110131cca1cd",
+    "builder_sha256": "0d365894400ac9474d16ba922c80f92afd0db71b7500af333e7eb64352cb9e1c",
+    "replay_sha256": "da99196eca21352791d0ad09b93ed73b0780b8dcf0296e33a1e0bc6c6f6caad3",
+    "trace_source_sha256": "80487c2b6f7f6f5205892594509754ece4bed0db56b6489f70a2a74a8d5366a2",
+    "baseline_replay": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-reuse/versioned/cycle/replay",
+    "scope": "Observation-only; compare replay outputs and all architectural counts to control. Per-vector LRU estimates do not establish an RTL speedup. No host timing claim."
+  },
+  "native64": {
+    "log": ".artifacts/shared-cu/texture-reuse/versioned/native64.stderr.log",
+    "log_sha256": "a514d85ee2e247a8e90855db4073a95c2bebebcd6d8f5fbce7a4f747c6cf0054",
+    "replay_json": ".artifacts/shared-cu/texture-reuse/versioned/native64.stdout.json",
+    "replay_sha256": "5255afbfaa202867809fcebefa98fa685b8a9af950d9a42192718c393d25a472",
+    "replay": {
+      "calls": 63706,
+      "ticks": 5009644,
+      "commits": 86853031,
+      "holds": 582305854,
+      "dma_reads": 50676,
+      "dma_writes": 668209,
+      "dma_bytes": 8343176,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "textures": [
+      {
+        "width": 4,
+        "height": 4,
+        "vectors": 134,
+        "requests": 6716,
+        "vector_reuse": 6048,
+        "quad_reuse": 5025,
+        "lru4": 6007,
+        "lru8": 6038,
+        "lru16": 6048,
+        "fetch": 13427,
+        "issue_blocked": 194,
+        "response_wait": 6517,
+        "lru8_hit_fraction": 0.8990470518165575
+      },
+      {
+        "width": 64,
+        "height": 32,
+        "vectors": 272,
+        "requests": 17376,
+        "vector_reuse": 10204,
+        "quad_reuse": 7894,
+        "lru4": 5626,
+        "lru8": 10198,
+        "lru16": 10200,
+        "fetch": 44098,
+        "issue_blocked": 10057,
+        "response_wait": 16665,
+        "lru8_hit_fraction": 0.5869014732965009
+      },
+      {
+        "width": 64,
+        "height": 64,
+        "vectors": 1584,
+        "requests": 101280,
+        "vector_reuse": 58764,
+        "quad_reuse": 45456,
+        "lru4": 32726,
+        "lru8": 58718,
+        "lru16": 58748,
+        "fetch": 256834,
+        "issue_blocked": 59110,
+        "response_wait": 96444,
+        "lru8_hit_fraction": 0.579759083728278
+      }
+    ],
+    "scope": "Physical tap requests inferred from issued-bit transitions. LRU and address sets reset per vector instruction; quad sets reset at lane/4 boundaries. Counts measure potential word reuse, not saved cycles. Probe elapsed time excluded."
+  },
+  "control_equivalence": {
+    "calls": 63706,
+    "ticks": 5009644,
+    "commits": 86853031,
+    "holds": 582305854,
+    "dma_reads": 50676,
+    "dma_writes": 668209,
+    "dma_bytes": 8343176,
+    "truncated_tail": false
+  },
+  "control": ".artifacts/shared-cu/commit-helper-final/clean-benchmark.json",
+  "interpretation": "Per-vector 8-word LRU potential hits are about58.7% for64x32 and58.0% for64x64. Four words lose substantial reuse; sixteen add little in these cases. This motivates testing a small instruction-local word cache.",
+  "limits": [
+    "LRU counts estimate address reuse; the RTL prototype uses FIFO replacement and requires measured full-scene cycle gains.",
+    "No cache speedup or host wall-speed claim follows from these counts.",
+    "Instrumented replay elapsed time and a two-second sampling profile are diagnostic only.",
+    "Initial full640 replay was interrupted before a terminal result and is excluded. Fresh versioned full640 replay is live, not yet qualification evidence."
+  ]
+}
