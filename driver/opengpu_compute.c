@@ -25,6 +25,7 @@
 #include "opengpu_resolve_validator.h"
 #include "opengpu_shader_validator.h"
 #include "opengpu_shader_resources.h"
+#include "opengpu_shader_builder.h"
 
 static const struct file_operations opengpu_compute_fops;
 static u32 opengpu_fragment_batch_capacity(struct opengpu_device *gpu);
@@ -85,16 +86,15 @@ static void opengpu_fill_test_command(struct opengpu_device *gpu)
 static int opengpu_init_test_shader(struct opengpu_device *gpu)
 {
     u32 batch = opengpu_fragment_batch_capacity(gpu);
-    u32 stride, input_offset, output_offset, vector_length;
+    u32 stride, vector_length;
     u32 *program;
     int ret;
 
     if (!batch)
         return -EINVAL;
     stride = 4 * batch;
-    vector_length = min(batch, 4u);
-    input_offset = GPU_KERNARG_COLOR_OFF(stride);
-    output_offset = GPU_KERNARG_OUT_OFF(stride);
+    vector_length = gpu->hw.shader_config ?
+        opengpu_shader_resource_lanes(gpu->hw.shader_config) : min(batch, 4u);
     ret = opengpu_buffer_alloc(gpu, &gpu->compute.shader, 64);
     if (ret)
         return ret;
@@ -109,18 +109,11 @@ static int opengpu_init_test_shader(struct opengpu_device *gpu)
 
     program = gpu->compute.shader.cpu;
     memset(program, 0, gpu->compute.shader.size);
-    /* Per-warp vector pass-through over the SoA kernarg arrays:
-     * x5 = x1 + 4*x8; vle32 colours; vse32 outputs. */
-    program[0] = 2u << 20 | 8u << 15 | 1u << 12 | 5u << 7 | 0x13;
-    program[1] = 5u << 20 | 1u << 15 | 5u << 7 | 0x33;
-    program[2] = 0xc1007057u | vector_length << 15;
-    program[3] = (input_offset & 0xfff) << 20 | 5u << 15 |
-                 6u << 7 | 0x13;
-    program[4] = 0x02006007u | 6u << 15 | 2u << 7;
-    program[5] = (output_offset & 0xfff) << 20 | 5u << 15 |
-                 6u << 7 | 0x13;
-    program[6] = 0x02006027u | 6u << 15 | 2u << 7;
-    program[7] = OPENGPU_SHADER_CEASE;
+    if (!opengpu_fragment_passthrough_shader(program, 16, batch, vector_length)) {
+        opengpu_buffer_free(gpu, &gpu->compute.kernarg);
+        opengpu_buffer_free(gpu, &gpu->compute.shader);
+        return -EINVAL;
+    }
     return 0;
 }
 

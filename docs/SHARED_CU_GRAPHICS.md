@@ -259,3 +259,13 @@ helpers, inactive middle quads, consecutive requests, memory backpressure
 and held writeback. The two four-CU ordered 1x/4x renderer tests also pass
 after the wide-staging and sampler changes (seven tests total). Log:
 `.artifacts/shared-cu-wide-texture-tests.log`.
+
+The driver's boot-test shader now takes VL from the advertised lane count
+and constructs large SoA addresses using bounded signed-immediate additions.
+It preserves the four-lane fallback on older hardware. Nine kernel-free
+driver test programs pass; the new builder test checks sandbox acceptance
+and independently executes every warp's effective vector addresses for
+8/32/128/252-fragment batches. The isolated AArch64 module builds against
+kernel 7.2.0. Logs: `.artifacts/shared-cu-wide-driver-tests.log` and
+`.artifacts/shared-cu-wide-driver-build.log`. The stock desktop payload is
+unchanged; this does not yet migrate Mesa's shader binaries or uniforms.
