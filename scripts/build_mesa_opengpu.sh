@@ -8,8 +8,11 @@ GPU_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${PREFIX:-$GPU_DIR/depends/aarch64-root}"
 MESA_SRC="${MESA_SRC:-$GPU_DIR/depends/mesa}"
 MESA_BUILD="${MESA_BUILD:-$GPU_DIR/depends/mesa-build}"
-CROSS="${CROSS:-$GPU_DIR/scripts/aarch64-linux-gnu-cross.txt}"
 CROSS_GCC="${CROSS_GCC:-aarch64-linux-gnu-gcc}"
+# The checked-in cross file is a template: its pkg_config_libdir is rewritten
+# per workspace so a clone does not depend on the author's path. Respect an
+# explicit CROSS, otherwise generate a build-local copy next to the Mesa build.
+CROSS_TEMPLATE="$GPU_DIR/scripts/aarch64-linux-gnu-cross.txt"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
@@ -19,6 +22,14 @@ command -v "$CROSS_GCC" >/dev/null || fail "cross compiler not found: $CROSS_GCC
 [ -f "$MESA_SRC/meson.build" ] || fail "Mesa checkout missing at $MESA_SRC"
 [ -f "$PREFIX/lib/pkgconfig/libdrm.pc" ] || \
     fail "aarch64 libdrm missing under $PREFIX (build libdrm into that prefix first)"
+
+if [ -z "${CROSS:-}" ]; then
+    CROSS="$MESA_BUILD/aarch64-linux-gnu-cross.txt"
+    mkdir -p "$MESA_BUILD"
+    python3 "$GPU_DIR/scripts/aarch64_cross_prefix.py" \
+        "$CROSS_TEMPLATE" "$CROSS" "$PREFIX"
+fi
+[ -f "$CROSS" ] || fail "cross file not found: $CROSS"
 
 bash "$GPU_DIR/scripts/stage_mesa_opengpu.sh"
 

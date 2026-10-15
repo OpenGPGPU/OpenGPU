@@ -237,6 +237,8 @@ fi
 step "5/6 Mesa DRI driver"
 MESA_SRC="${MESA_SRC:-$GPU_DIR/depends/mesa}"
 PREFIX="${PREFIX:-$GPU_DIR/depends/aarch64-root}"
+MESA_BUILD="${MESA_BUILD:-$GPU_DIR/depends/mesa-build}"
+CROSS="${CROSS:-$MESA_BUILD/aarch64-linux-gnu-cross.txt}"
 DRI_SO="$DRIVER_OUTPUT/opengpu_dri.so"
 if [ "$BOOTSTRAP_FORCE" != 1 ] && [ -f "$DRI_SO" ]; then
     info "Mesa driver already present (reusing): $DRI_SO"
@@ -251,7 +253,10 @@ elif [ "${#missing_mesa[@]}" -gt 0 ]; then
     warn "Meson stage tools missing: ${missing_mesa[*]}"
 else
     info "cross-building Mesa + OpenGPU Gallium driver -> $DRIVER_OUTPUT"
-    run env PREFIX="$PREFIX" MESA_SRC="$MESA_SRC" \
+    mkdir -p "$(dirname "$CROSS")"
+    run python3 "$GPU_DIR/scripts/aarch64_cross_prefix.py" \
+        "$GPU_DIR/scripts/aarch64-linux-gnu-cross.txt" "$CROSS" "$PREFIX"
+    run env PREFIX="$PREFIX" MESA_SRC="$MESA_SRC" MESA_BUILD="$MESA_BUILD" CROSS="$CROSS" \
         INTEGRATION_CONFIG="$INTEGRATION_CONFIG" DRIVER_OUTPUT="$DRIVER_OUTPUT" \
         bash "$GPU_DIR/scripts/build_mesa_opengpu.sh"
 fi

@@ -18,3 +18,14 @@ def test_explicit_acceleration_and_cpu_preferences_are_preserved():
     assert select_cpu("tcg,thread=multi", "max", "flashsim", "Darwin", "arm64", True) == ("tcg,thread=multi", "max")
     assert select_cpu("hvf", "host,pauth=off", "flashsim", "Darwin", "arm64", False) == ("hvf", "host,pauth=off")
     assert select_cpu("kvm", "", "flashsim", "Linux", "aarch64", False) == ("kvm", "host")
+
+
+def _run_all():
+    for name, fn in sorted(globals().items()):
+        if name.startswith("test_") and callable(fn):
+            fn()
+
+
+if __name__ == "__main__":
+    _run_all()
+    print("qemu_cpu_config: PASS")

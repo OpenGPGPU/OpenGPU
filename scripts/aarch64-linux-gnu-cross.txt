@@ -12,4 +12,6 @@ cpu = 'cortex-a53'
 endian = 'little'
 
 [properties]
-pkg_config_libdir = ['/Users/duckdonald/workspace/gpu/depends/aarch64-root/lib/pkgconfig']
+# Template value only. build_mesa_opengpu.sh and run_gtk_coverage_guest.sh
+# rewrite this line for the local aarch64 prefix via aarch64_cross_prefix.py.
+pkg_config_libdir = ['@AARCH64_PREFIX@/lib/pkgconfig']

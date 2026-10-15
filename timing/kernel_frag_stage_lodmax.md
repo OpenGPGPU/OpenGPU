@@ -63,8 +63,12 @@ To regenerate the combined candidate from the source:
 
 ```sh
 sbt -batch 'runMain opengpu.elaboration.EmitPpaRtl kernel-frag-stage generated/ppa_refresh_head/kernel_frag_stage_lodmax'
-GRAPHICS_PPA_TIMING_EFFORT=explore /Users/duckdonald/workspace/chipagent/.venv/bin/python scripts/run_graphics_ppa.py generated/ppa_refresh_head/kernel_frag_stage_lodmax KernelFragStage
+CHIPAGENT_DIR=../chipagent GRAPHICS_PPA_TIMING_EFFORT=explore \
+  python3 scripts/run_graphics_ppa.py generated/ppa_refresh_head/kernel_frag_stage_lodmax KernelFragStage
 ```
+
+Use the interpreter that has ChipAgent's dependencies installed (its virtualenv);
+`CHIPAGENT_DIR` defaults to a sibling `../chipagent` checkout.
 
 ## Validation
 

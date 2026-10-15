@@ -85,10 +85,11 @@ the simulator or measuring a clean build:
 sbt -Dopengpu.simCache=off test
 ```
 
-For the host-side ABI and validator checks:
+For the host-side script tests (driver ABI, display geometry, QMP screendump
+protocol, QEMU CPU/accel selection, integration test selection):
 
 ```sh
-python3 scripts/test_driver.py
+bash scripts/test_scripts.sh
 ```
 
 The release-style local gate runs the Scala suite, host tests, and both ARTI
