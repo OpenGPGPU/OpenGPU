@@ -1,0 +1,179 @@
+{
+  "decision": "Do not promote unprofiled O3 helper on the current model. Retain four-way O2/PGO helper.",
+  "change": "Only helper compile flags and resulting code layout; same PGO DUT, common unprofiled O1 trace wrapper, identical recorded workload.",
+  "clean_benchmark": {
+    "trace": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/commit-helper-final/native64.trace",
+    "trace_sha256": "8f3a96b2b3ed8fd0d41f5af75382bc3828df6effc2bbbd5a0af8c94d4160bd8b",
+    "window": null,
+    "binaries": {
+      "baseline": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/commit-helper-final/control/replay",
+        "sha256": "4dfba53771b8c22bb2f40f586d9fc0ba64c12d77b63af6bbdc8774d018b64ec2"
+      },
+      "helper-o3": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/commit-helper-final/optimized/replay",
+        "sha256": "4dfba53771b8c22bb2f40f586d9fc0ba64c12d77b63af6bbdc8774d018b64ec2"
+      }
+    },
+    "runs": [
+      {
+        "name": "baseline",
+        "round": 0,
+        "calls": 63706,
+        "ticks": 5009644,
+        "commits": 86853031,
+        "holds": 582305854,
+        "dma_reads": 50676,
+        "dma_writes": 668209,
+        "dma_bytes": 8343176,
+        "seconds": 46.343520458,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "helper-o3",
+        "round": 0,
+        "calls": 63706,
+        "ticks": 5009644,
+        "commits": 86853031,
+        "holds": 582305854,
+        "dma_reads": 50676,
+        "dma_writes": 668209,
+        "dma_bytes": 8343176,
+        "seconds": 46.413238375,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "helper-o3",
+        "round": 1,
+        "calls": 63706,
+        "ticks": 5009644,
+        "commits": 86853031,
+        "holds": 582305854,
+        "dma_reads": 50676,
+        "dma_writes": 668209,
+        "dma_bytes": 8343176,
+        "seconds": 46.299898625,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "baseline",
+        "round": 1,
+        "calls": 63706,
+        "ticks": 5009644,
+        "commits": 86853031,
+        "holds": 582305854,
+        "dma_reads": 50676,
+        "dma_writes": 668209,
+        "dma_bytes": 8343176,
+        "seconds": 46.274469834,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "baseline",
+        "round": 2,
+        "calls": 63706,
+        "ticks": 5009644,
+        "commits": 86853031,
+        "holds": 582305854,
+        "dma_reads": 50676,
+        "dma_writes": 668209,
+        "dma_bytes": 8343176,
+        "seconds": 46.527573958,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      {
+        "name": "helper-o3",
+        "round": 2,
+        "calls": 63706,
+        "ticks": 5009644,
+        "commits": 86853031,
+        "holds": 582305854,
+        "dma_reads": 50676,
+        "dma_writes": 668209,
+        "dma_bytes": 8343176,
+        "seconds": 46.15300325,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    ],
+    "summary": {
+      "baseline": {
+        "seconds": [
+          46.343520458,
+          46.274469834,
+          46.527573958
+        ],
+        "median_seconds": 46.343520458,
+        "reduction_percent": 0.0,
+        "round_medians": [
+          46.343520458,
+          46.274469834,
+          46.527573958
+        ]
+      },
+      "helper-o3": {
+        "seconds": [
+          46.413238375,
+          46.299898625,
+          46.15300325
+        ],
+        "median_seconds": 46.299898625,
+        "reduction_percent": 0.09412714564819291,
+        "round_medians": [
+          46.413238375,
+          46.299898625,
+          46.15300325
+        ]
+      }
+    }
+  },
+  "process_control": {
+    "started": 1792104358.568651,
+    "suspended_private_qemu_pid": 98713,
+    "command": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/fixed-lod-native/qemu-cycle-probe -L /Users/duckdonald/workspace/gpu/../arti-work/qemu-pc-bios -qmp unix:/Users/duckdonald/workspace/gpu/.artifacts/lod-batch640/qmp.sock,server=on,wait=off -machine virt -accel hvf -cpu host -m 1G -smp 2 -display none -serial mon:stdio -global virtio-mmio.force-legacy=false -drive if=none,file=/Users/duckdonald/workspace/gpu/.artifacts/lod-batch640/opengpu-modules.iso,format=raw,id=opengpu,read-only=on -device virtio-blk-device,drive=opengpu -drive if=none,file=/Users/duckdonald/workspace/gpu/.artifacts/lod-batch640/cloud-init.iso,format=raw,id=cidata,read-only=on -device virtio-blk-device,drive=cidata -drive if=none,file=/Users/duckdonald/workspace/gpu/.artifacts/lod-batch640/guest.qcow2,format=qcow2,id=hd0 -device virtio-blk-device,drive=hd0 -device virtio-keyboard-device -device virtio-tablet-device -netdev user,id=net0,hostfwd=tcp:127.0.0.1:61835-:22 -device virtio-net-device,netdev=net0 -kernel /Users/duckdonald/workspace/gpu/../arti-work/arti-linux-build/arch/arm64/boot/Image -append root=/dev/vda1 console=tty0 console=ttyAMA0 rw rootwait systemd.mask=systemd-resolved.service systemd.mask=systemd-networkd-wait-online.service systemd.mask=boot-efi.mount",
+    "scope": "Only private full640 correctness VM suspended; same process resumed in finally. No other own compiler/JVM/QEMU workload.",
+    "exit_status": 0,
+    "resumed": 1792104637.121216
+  },
+  "native_qualification": {
+    "passed": true,
+    "qemu_sha256": "ba69e5d6f5f28bc3b64d96ac5bcf728134def91ccfe4fd89f81ccda3cfe16140",
+    "archive_sha256": "a980539c8c52543633cc4fdbf3d18adc799d2d74f67b6d07d2c0a295f356337e",
+    "native_cases": 21,
+    "markers": {
+      "compute completed; RNU=1 RDN=0": true,
+      "Native shader suite: PASS": true,
+      "OPENGPU GL FILL PASS": true,
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "OPENGPU GL OFFSCREEN PASS:": true
+    }
+  },
+  "exact_architectural_work": {
+    "calls": 63706,
+    "ticks": 5009644,
+    "commits": 86853031,
+    "holds": 582305854,
+    "dma_reads": 50676,
+    "dma_writes": 668209,
+    "dma_bytes": 8343176,
+    "truncated_tail": false
+  },
+  "interpretation": "Median46.343520s->46.299899s(0.0941%); firsttwo pairs slightly slower, lastpair faster. No consistent material gain. Earlier1.317% result on older model/workload did not reproduce.",
+  "limits": [
+    "No compiler/JVM/other own QEMU during clean benchmark. Private full640VM was suspended and resumed without restart.",
+    "Primaryfull640validation elapsed time includes this suspension; never use it as a clean walltime result.",
+    "No default build/runtime changes."
+  ]
+}
