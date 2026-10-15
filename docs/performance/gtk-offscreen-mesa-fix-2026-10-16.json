@@ -1,0 +1,94 @@
+{
+  "status": "Offscreen mapping fixed and regression passed; complete GTK presentation still fails with exchanged red/blue channels. Goal remains active.",
+  "root_cause": "Gallium replaced small attachments with a physical-display-sized intermediate and cropped the top-left corner. This bypassed per-job target extents and changed clip-space geometry.",
+  "change": "Render directly into the actual Gallium colour attachment; remove the display-sized allocation, CPU copy and msync. Keep format selection in the native hardware OM/sampler path.",
+  "negative_control": {
+    "log": ".artifacts/sc-extent-negative-fbo/gate.log",
+    "result": "FAIL as expected on old Mesa with the same render-extent RTL/kernel",
+    "failure": "offscreen 60x32 pixel 9,10 channel 1: 0 expected 255"
+  },
+  "validation": {
+    "mesa_build": "PASS",
+    "cross_compile_gl_fill_and_gl_texture": "PASS -std=c11 -O2 -Wall -Wextra -Werror",
+    "fbo_regression": {
+      "result": "PASS",
+      "log": ".artifacts/shared-cu/gtk-extent-debug/fbo-rgbx-int.log",
+      "sizes": [
+        [
+          64,
+          64
+        ],
+        [
+          60,
+          32
+        ],
+        [
+          280,
+          124
+        ]
+      ],
+      "checks": [
+        "RGBA and RGB attachments",
+        "every interior/exterior pixel excluding rounded boundaries",
+        "RGBA/BGRA readback equivalence",
+        "byte-exact preservation after reverse rebinding"
+      ]
+    },
+    "integer_swap_uniform": {
+      "result": "PASS",
+      "log": ".artifacts/shared-cu/gtk-extent-debug/fbo-rgbx-int.log",
+      "variants": [
+        {
+          "swap": 0,
+          "pixel": "ff0000ff"
+        },
+        {
+          "swap": 1,
+          "pixel": "0000ffff"
+        }
+      ]
+    },
+    "native_direct_guest": {
+      "report": ".artifacts/shared-cu/runtime-render-extent/guest-qualification-direct.json",
+      "compute_replays": 18,
+      "native_shader_cases": 21,
+      "compute_and_shader_result": "PASS",
+      "medium_weston_fill": "PASS",
+      "gtk_idle_readback": "51,140,46,255 PASS",
+      "gtk_active_readback": "242,89,46,255 PASS",
+      "strict_scanout": "FAIL; active pixels (45,88,241), expected approximately (242,89,46)",
+      "passed": false,
+      "termination": "Stopped host scanout wait after wrong presented channel order was observed; no failed profile merged"
+    }
+  },
+  "dma_evidence": {
+    "before": ".artifacts/shared-cu/gtk-extent-debug/before-dma.json",
+    "after": ".artifacts/shared-cu/gtk-extent-debug/diagnostic-dma.json",
+    "gtk_logical_extent": [
+      64,
+      64
+    ],
+    "before_descriptor_extent": [
+      640,
+      480
+    ],
+    "before_stride": 2560,
+    "after_descriptor_extent": [
+      64,
+      64
+    ],
+    "after_stride": 256,
+    "scope": "Diagnostic captures; excludes host speedup claims because tests overlapped. Lower geometric work follows corrected target dimensions."
+  },
+  "next": "Trace GTK readback/composition colour handling; rerun strict native and full640 presentation before PGO qualification.",
+  "files_sha256": {
+    "userspace/gallium/opengpu_context.c": "8d4ffff507e29e429aea7507ef3a03995dc062a0fbba9b6571eb3e69e69e82bd",
+    "userspace/examples/gl_fill.c": "a4aa09a7328ddaa15212f659ff6875b69151ad5c085da3756f0839ee1bd232a6",
+    "userspace/examples/gl_texture.c": "af0571ca7ddc0747852f67b2beabf1080b738507c74ec92c003aca39359f72d3",
+    "scripts/run_gtk_coverage_guest.sh": "0665dcf55a8be01da57eca10fcdf63b78dc70a6262f8ebb6639c2aa7a2ad2395",
+    ".artifacts/shared-cu/gtk-extent-debug/fbo-rgbx-int.log": "1fb339e2c40e315b0707d4eb6d7e5eb47a2a8732b8f978b9d430698416798f7c",
+    ".artifacts/sc-extent-negative-fbo/gate.log": "a9ce26c52e52ded06d8398da02629635609435a7486f1b7556269c75f108b59c",
+    ".artifacts/shared-cu/gtk-extent-debug/before-dma.json": "eb155e5a7fdd1a038046c15a0b7b2df98b859d8b8ba816d7ea6c437e7d845a91",
+    ".artifacts/shared-cu/gtk-extent-debug/diagnostic-dma.json": "cd4e7ef4dbfe983be16534886942d4766049e0b80bae653ff15a9794149b40a0"
+  }
+}

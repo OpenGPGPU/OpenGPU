@@ -7,6 +7,7 @@
 #include "opengpu_gl_egl.h"
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 #include <drm/drm_fourcc.h>
 #include <fcntl.h>
 #include <gbm.h>
@@ -114,6 +115,115 @@ static uint32_t pixel_word(int x, int y)
     glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
     return ((uint32_t)px[0] << 24) | ((uint32_t)px[1] << 16) |
            ((uint32_t)px[2] << 8) | (uint32_t)px[3];
+}
+
+/* Offscreen attachment sizes must not inherit the active KMS mode. Keep all
+ * three targets alive, then rebind them in reverse order to catch accidental
+ * writes into another target as well as incorrect viewport mapping. */
+static void offscreen_regression(GLint matrix, GLint color)
+{
+    static const unsigned sizes[3][2] = {{64, 64}, {60, 32}, {280, 124}};
+    static const GLfloat rectangle[] = {
+        -.75f, -.5f, .75f, -.5f, .75f, .5f,
+        -.75f, -.5f, .75f, .5f, -.75f, .5f,
+    };
+    static const GLfloat identity[16] = {
+        1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
+    };
+    GLuint textures[3], targets[3];
+    unsigned char *pixels[3];
+
+    glUniformMatrix4fv(matrix, 1, GL_FALSE, identity);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(rectangle), rectangle, GL_STATIC_DRAW);
+    glGenTextures(3, textures);
+    glGenFramebuffers(3, targets);
+    for (unsigned i = 0; i < 3; i++) {
+        unsigned w = sizes[i][0], h = sizes[i][1];
+
+        pixels[i] = malloc((size_t)w * h * 4);
+        if (!pixels[i])
+            die("offscreen readback allocation");
+        glBindTexture(GL_TEXTURE_2D, textures[i]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        /* GtkGLArea without alpha uses an RGB attachment. Exercise its
+         * implicit alpha and BGRA readback along with the RGBA targets. */
+        GLenum format = i == 2 ? GL_RGB : GL_RGBA;
+        glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0,
+                     format, GL_UNSIGNED_BYTE, NULL);
+        glBindFramebuffer(GL_FRAMEBUFFER, targets[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                              GL_TEXTURE_2D, textures[i], 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            die("offscreen framebuffer incomplete");
+        glViewport(0, 0, w, h);
+        glClearColor(0, 0, 1, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUniform4f(color, i != 1, i != 0, 0, 1);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels[i]);
+        if (glGetError() != GL_NO_ERROR)
+            die("offscreen draw/readback GL error");
+        if (strstr((const char *)glGetString(GL_EXTENSIONS),
+                   "GL_EXT_read_format_bgra")) {
+            size_t bytes = (size_t)w * h * 4;
+            unsigned char *bgra = malloc(bytes);
+
+            if (!bgra)
+                die("offscreen BGRA readback allocation");
+            glReadPixels(0, 0, w, h, GL_BGRA_EXT, GL_UNSIGNED_BYTE, bgra);
+            if (glGetError() != GL_NO_ERROR)
+                die("offscreen BGRA readback GL error");
+            for (size_t p = 0; p < bytes; p += 4) {
+                if (bgra[p] != pixels[i][p + 2] || bgra[p + 1] != pixels[i][p + 1] ||
+                    bgra[p + 2] != pixels[i][p] || bgra[p + 3] != pixels[i][p + 3])
+                    die("offscreen BGRA readback channel order");
+            }
+            free(bgra);
+        }
+        for (unsigned y = 0; y < h; y++) {
+            for (unsigned x = 0; x < w; x++) {
+                int inside = x > w / 8 + 1 && x + 2 < 7 * w / 8 &&
+                             y > h / 4 + 1 && y + 2 < 3 * h / 4;
+                int outside = x + 2 < w / 8 || x > 7 * w / 8 + 1 ||
+                              y + 2 < h / 4 || y > 3 * h / 4 + 1;
+                const unsigned char *p = pixels[i] + ((size_t)y * w + x) * 4;
+                const unsigned expected[4] = {
+                    inside && i != 1 ? 255 : 0,
+                    inside && i != 0 ? 255 : 0,
+                    outside ? 255 : 0, 255,
+                };
+
+                if (!inside && !outside)
+                    continue; /* Rasterized boundary pixels are rounded. */
+                for (unsigned c = 0; c < 4; c++) {
+                    if (abs((int)p[c] - (int)expected[c]) > 1) {
+                        fprintf(stderr, "offscreen %ux%u pixel %u,%u channel %u: %u expected %u\n",
+                                w, h, x, y, c, p[c], expected[c]);
+                        exit(1);
+                    }
+                }
+            }
+        }
+    }
+    for (int i = 2; i >= 0; i--) {
+        size_t bytes = (size_t)sizes[i][0] * sizes[i][1] * 4;
+        unsigned char *again = malloc(bytes);
+
+        if (!again)
+            die("offscreen preservation allocation");
+        glBindFramebuffer(GL_FRAMEBUFFER, targets[i]);
+        glReadPixels(0, 0, sizes[i][0], sizes[i][1],
+                     GL_RGBA, GL_UNSIGNED_BYTE, again);
+        if (glGetError() != GL_NO_ERROR || memcmp(again, pixels[i], bytes))
+            die("offscreen attachment changed after rebinding");
+        free(again);
+        free(pixels[i]);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(3, targets);
+    glDeleteTextures(3, textures);
+    puts("OPENGPU GL OFFSCREEN PASS: 64x64 60x32 280x124, interior, exterior and rebind preservation");
 }
 
 int main(void)
@@ -297,6 +407,12 @@ int main(void)
     if (repro) {
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    }
+    if (getenv("OPENGPU_GL_OFFSCREEN")) {
+        if (repro)
+            die("offscreen regression cannot use the Weston reproduction shader");
+        offscreen_regression(mvp_loc, color_loc);
+        return 0;
     }
     glViewport(0, 0, mode.hdisplay, mode.vdisplay);
     glClearColor(0.f, 0.f, 1.f, 1.f);

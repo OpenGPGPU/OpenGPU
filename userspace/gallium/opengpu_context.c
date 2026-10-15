@@ -32,7 +32,6 @@
 #include "util/u_memory.h"
 #include "util/u_transfer.h"
 #include "util/u_upload_mgr.h"
-#include <sys/mman.h>
 
 #include <errno.h>
 #include <limits.h>
@@ -113,7 +112,6 @@ struct opengpu_context {
     struct pipe_opengpu_context *gpu;
     struct pipe_surface *cbuf;
     struct pipe_surface *zsbuf;
-    struct pipe_opengpu_resource *present_target;
     struct pipe_opengpu_resource *sample_upload;
     uint32_t width;
     uint32_t height;
@@ -1705,69 +1703,11 @@ static void set_framebuffer(struct pipe_context *pipe,
     cres = opengpu_resource(ctx->cbuf->texture);
     if (ctx->zsbuf && ctx->zsbuf->texture)
         dres = opengpu_resource(ctx->zsbuf->texture);
-    if (state->width < 640 || state->height < 480) {
-        uint32_t mode_width = 0, mode_height = 0;
-
-        if (pipe_opengpu_screen_display_size(
-                opengpu_screen_gpu(pipe->screen), &mode_width, &mode_height)) {
-            mode_width = 640;
-            mode_height = 480;
-        }
-        if (mode_width >= state->width && mode_height >= state->height) {
-            if (!ctx->present_target ||
-                pipe_opengpu_resource_width(ctx->present_target) != mode_width ||
-                pipe_opengpu_resource_height(ctx->present_target) != mode_height) {
-                if (ctx->present_target)
-                    pipe_opengpu_resource_destroy(opengpu_screen_gpu(pipe->screen),
-                                                  ctx->present_target);
-                ctx->present_target = pipe_opengpu_resource_create_2d(
-                    opengpu_screen_gpu(pipe->screen), mode_width, mode_height);
-            }
-            if (ctx->present_target) {
-                if (pipe_opengpu_resource_set_format(opengpu_screen_gpu(pipe->screen),
-                        ctx->present_target, opengpu_format(ctx->cbuf->format)))
-                    gpu_failed("framebuffer format selection failed");
-                pipe_opengpu_set_framebuffer(ctx->gpu, ctx->present_target,
-                                             mode_width, mode_height);
-                pipe_opengpu_set_depth(ctx->gpu, dres ? dres->gpu : NULL, 0);
-                return;
-            }
-        }
-    }
-    if (ctx->present_target) {
-        pipe_opengpu_resource_destroy(opengpu_screen_gpu(pipe->screen), ctx->present_target);
-        ctx->present_target = NULL;
-    }
+    /* The job carries this attachment's extent independently of KMS. A
+     * display-sized intermediate changes the clip-space mapping and cropping
+     * it back loses pixels from offscreen targets such as GtkGLArea FBOs. */
     pipe_opengpu_set_framebuffer(ctx->gpu, cres->gpu, state->width, state->height);
     pipe_opengpu_set_depth(ctx->gpu, dres ? dres->gpu : NULL, 0);
-}
-
-static void copy_present_target(struct opengpu_context *ctx)
-{
-    struct opengpu_resource *surface;
-    uint8_t *src, *dst;
-    uint32_t y;
-
-    if (!ctx->cbuf || !ctx->cbuf->texture)
-        return;
-    surface = opengpu_resource(ctx->cbuf->texture);
-    src = pipe_opengpu_resource_map(ctx->present_target);
-    dst = pipe_opengpu_resource_map(surface->gpu);
-    if (!src || !dst)
-        return;
-    for (y = 0; y < ctx->height; y++)
-        memcpy(dst + (size_t)y * pipe_opengpu_resource_pitch(surface->gpu),
-               src + (size_t)y * pipe_opengpu_resource_pitch(ctx->present_target),
-               (size_t)ctx->width * 4u);
-    if (ctx->trace_draws)
-        fprintf(stderr, "opengpu: present-copy p0=%08x/%08x center=%08x/%08x\n",
-                ((uint32_t *)src)[0], ((uint32_t *)dst)[0],
-                ((uint32_t *)(src + (size_t)(ctx->height / 2) *
-                    pipe_opengpu_resource_pitch(ctx->present_target)))[ctx->width / 2],
-                ((uint32_t *)(dst + (size_t)(ctx->height / 2) *
-                    pipe_opengpu_resource_pitch(surface->gpu)))[ctx->width / 2]);
-    msync(dst, pipe_opengpu_resource_size(surface->gpu), MS_SYNC);
-
 }
 
 static uint32_t pack_color(const float c[4])
@@ -2483,8 +2423,13 @@ static void draw_vbo(struct pipe_context *pipe,
                 tw = tex->width0;
                 th = tex->height0;
                 if (ctx->trace_draws)
-                    fprintf(stderr, "opengpu: sampler texture %ux%u pitch=%u bind=0x%x\n",
-                            tw, th, gpu ? pipe_opengpu_resource_pitch(gpu->gpu) : 0, tex->bind);
+                    fprintf(stderr, "opengpu: sampler texture %ux%u pitch=%u bind=0x%x resource_format=%u view_format=%u swizzle=%u,%u,%u,%u uniform0=%g swap=%d target_format=%u\n",
+                            tw, th, gpu ? pipe_opengpu_resource_pitch(gpu->gpu) : 0,
+                            tex->bind, tex->format, ctx->fs_view->format,
+                            ctx->fs_view->swizzle_r, ctx->fs_view->swizzle_g,
+                            ctx->fs_view->swizzle_b, ctx->fs_view->swizzle_a,
+                            ctx->fs_const[0], ctx->fs->sample_swizzle,
+                            ctx->cbuf->format);
                 sample = gpu ? prepare_sample_texture(ctx, gpu->gpu, tw, th) : NULL;
                 if (!sample || !tw || !th ||
                     pipe_opengpu_bind_texture(
@@ -2519,8 +2464,6 @@ static void draw_vbo(struct pipe_context *pipe,
                                                        ctx->fence_timeout_ms);
             if (ctx->trace_draws)
                 clock_gettime(CLOCK_MONOTONIC, &wait_end);
-            if (!draw_status)
-                copy_present_target(ctx);
             if (ctx->trace_draws) {
                 int saved_errno = errno;
                 clock_gettime(CLOCK_MONOTONIC, &draw_end);
@@ -2871,9 +2814,6 @@ static void context_destroy(struct pipe_context *pipe)
     if (ctx->sample_upload)
         pipe_opengpu_resource_destroy(opengpu_screen_gpu(ctx->base.screen),
                                       ctx->sample_upload);
-    if (ctx->present_target)
-        pipe_opengpu_resource_destroy(opengpu_screen_gpu(pipe->screen),
-                                      ctx->present_target);
     pipe_opengpu_context_destroy(ctx->gpu);
     FREE(ctx);
 }

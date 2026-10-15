@@ -18,6 +18,11 @@ GTK_PROOF_SMOKE="${GTK_PROOF_SMOKE:-0}"
 GTK_PROOF_KMS_MODE="${GTK_PROOF_KMS_MODE:-640x480}"
 GTK_PROOF_REPRO_ONLY="${GTK_PROOF_REPRO_ONLY:-0}"
 GTK_PROOF_SHADER_SUITE="${GTK_PROOF_SHADER_SUITE:-0}"
+GTK_PROOF_OFFSCREEN_ONLY="${GTK_PROOF_OFFSCREEN_ONLY:-0}"
+case "$GTK_PROOF_OFFSCREEN_ONLY" in
+    0|1) ;;
+    *) echo "GTK_PROOF_OFFSCREEN_ONLY must be 0 or 1" >&2; exit 1 ;;
+esac
 case "$GTK_PROOF_SHADER_SUITE" in
     0|1) ;;
     *) echo "GTK_PROOF_SHADER_SUITE must be 0 or 1" >&2; exit 1 ;;
@@ -308,6 +313,16 @@ fi
 
 # Exercise stock compiler programs in a small advertised mode before the
 # compositor gate. Each executable waits for its GPU fence and checks pixels.
+if [ "$GTK_PROOF_SHADER_SUITE" = 1 ] || [ "$GTK_PROOF_OFFSCREEN_ONLY" = 1 ]; then
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 900 \
+        "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_TRACE_DRAWS=1 OPENGPU_FENCE_TIMEOUT_MS=1800000 OPENGPU_GL_OFFSCREEN=1 /root/opengpu_gl_fill.bin" \
+        | tee "$PROOF_WORK/offscreen.log"
+    grep -qF 'OPENGPU GL OFFSCREEN PASS:' "$PROOF_WORK/offscreen.log"
+    if [ "$GTK_PROOF_OFFSCREEN_ONLY" = 1 ]; then
+        echo 'Offscreen attachment proof: PASS'
+        exit 0
+    fi
+fi
 if [ "$GTK_PROOF_SHADER_SUITE" = 1 ]; then
     for name in triangle transform textransform texture modulate tint opacity shade fade wash fill grade glass quad blend; do
         log="$PROOF_WORK/shader-$name.log"
@@ -339,6 +354,10 @@ if [ "$GTK_PROOF_SHADER_SUITE" = 1 ]; then
         "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_GL_DISTINCT_COLOR=1 OPENGPU_GL_EXIT=1 /root/opengpu_gl_fill.bin" \
         | tee "$PROOF_WORK/shader-fill-distinct.log"
     grep -qF 'OPENGPU GL FILL PASS' "$PROOF_WORK/shader-fill-distinct.log"
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 900 \
+        "LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_MODE=$GTK_PROOF_KMS_MODE OPENGPU_GL_GTK_SWIZZLE_INT=1 OPENGPU_GL_EXIT=1 /root/opengpu_gl_texture.bin" \
+        | tee "$PROOF_WORK/texture-swizzle-int.log"
+    grep -qF 'OPENGPU GL TEXTURE PASS' "$PROOF_WORK/texture-swizzle-int.log"
     echo 'Native shader suite: PASS'
 fi
 

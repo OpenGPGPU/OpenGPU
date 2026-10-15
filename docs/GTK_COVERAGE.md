@@ -356,3 +356,14 @@ DEBIAN_BASE=../arti-work/debian-gtk-arm64.qcow2 \
 from the GTK image again, choose a new `DISK` or set `REBUILD_DISK=1`. The
 qualification scripts should keep using the clean default image for reproducible
 baseline runs; use the GTK image for interactive and application development.
+
+The native shader suite also checks offscreen FBOs at 64×64, 60×32 and
+280×124, including RGB/RGBA attachments, RGBA/BGRA readback, interior and
+exterior pixels, and preservation after rebinding another attachment. To
+run only this smaller regression with an existing compatible QEMU and
+staged driver, set `GTK_PROOF_SKIP_BUILD=1 GTK_PROOF_SKIP_COVERAGE=1
+GTK_PROOF_SMOKE=1 GTK_PROOF_KMS_MODE=64x64 GTK_PROOF_OFFSCREEN_ONLY=1`
+when invoking `scripts/run_gtk_coverage_guest.sh`. Supply `QEMU`,
+`DISPLAY_WORK` and `GTK_DEBIAN_BASE` as for the full proof. This mode exits
+after `Offscreen attachment proof: PASS`; it does not qualify desktop
+presentation. Rebuild/stage `opengpu_gl_fill.bin` when using a cached payload.

@@ -59,6 +59,16 @@ static const char *swizzle_fs_src =
     "  gl_FragColor = swap_rb == 1.0 ? c.bgra : c;\n"
     "}\n";
 
+static const char *swizzle_int_fs_src =
+    "precision mediump float;\n"
+    "varying vec2 v_uv;\n"
+    "uniform sampler2D tex;\n"
+    "uniform int swap_rb;\n"
+    "void main() {\n"
+    "  vec4 c = texture2D(tex, v_uv);\n"
+    "  gl_FragColor = swap_rb == 1 ? c.bgra : c;\n"
+    "}\n";
+
 /* Clip triangle covering the GPU's top-left half. UVs stay near texel 0 at
  * the first vertex, which is scanout row 0. */
 /* Small top-left triangle. At 640x480 the vertices land on (0, 0),
@@ -151,7 +161,8 @@ int main(void)
     uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 };
     uint32_t tri, clear;
     int i;
-    const int swizzle_test = getenv("OPENGPU_GL_GTK_SWIZZLE") != NULL;
+    const int swizzle_int_test = getenv("OPENGPU_GL_GTK_SWIZZLE_INT") != NULL;
+    const int swizzle_test = swizzle_int_test || getenv("OPENGPU_GL_GTK_SWIZZLE") != NULL;
     const uint32_t texture_color = getenv("OPENGPU_GL_DISTINCT_TEXTURE")
         ? 0x115395d3u : COLOR_TEXEL;
     uint8_t texels[4 * 4 * 4];
@@ -243,7 +254,8 @@ int main(void)
 
     step("context current");
     vs = compile_shader(GL_VERTEX_SHADER, vs_src);
-    fs = compile_shader(GL_FRAGMENT_SHADER, swizzle_test ? swizzle_fs_src : fs_src);
+    fs = compile_shader(GL_FRAGMENT_SHADER, swizzle_int_test ? swizzle_int_fs_src :
+                        swizzle_test ? swizzle_fs_src : fs_src);
     program = glCreateProgram();
     glAttachShader(program, vs);
     glAttachShader(program, fs);
@@ -347,7 +359,10 @@ int main(void)
             GLint swap = glGetUniformLocation(program, "swap_rb");
             if (swap < 0)
                 die("swizzle uniform missing");
-            glUniform1f(swap, (float)variant);
+            if (swizzle_int_test)
+                glUniform1i(swap, variant);
+            else
+                glUniform1f(swap, (float)variant);
             /* Green clear distinguishes a missing draw from either branch. */
             glClearColor(0.f, 1.f, 0.f, 1.f);
         } else {
