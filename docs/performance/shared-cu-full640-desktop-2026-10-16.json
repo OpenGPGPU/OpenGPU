@@ -1,0 +1,141 @@
+{
+  "passed": true,
+  "dimensions": [
+    640,
+    480
+  ],
+  "markers": {
+    "GTK Wayland/OpenGPU smoke proof: PASS": true,
+    "Gtk-smoke scanout proof: PASS": true,
+    "OPENGPU GTK FRAME PASS: idle": true,
+    "OPENGPU GTK FRAME PASS: active": true
+  },
+  "proof": "/Users/duckdonald/workspace/gpu/.artifacts/re640",
+  "capture_sha256": "01ee6fb0c8f4ab23c799ada6e973cef0db5d98ff4dc879fae98ed48f07815884",
+  "scanout_verification": {
+    "passed": true,
+    "framebuffer_size": [
+      640,
+      480
+    ],
+    "client_size": [
+      280,
+      124
+    ],
+    "active_rectangle": [
+      93,
+      223,
+      227,
+      72
+    ],
+    "active_pixels": 16571,
+    "channel_tolerance": 3,
+    "capture_sha256": "01ee6fb0c8f4ab23c799ada6e973cef0db5d98ff4dc879fae98ed48f07815884",
+    "source_frame": "/Users/duckdonald/workspace/gpu/.artifacts/re640/gtk-smoke-scanout.ppm",
+    "saved_frame": "/Users/duckdonald/workspace/gpu/.artifacts/re640/gtk-smoke-verified.ppm"
+  },
+  "qemu_sha256": "32895b221acfe51428b26d04d701723b026942d3d2c0c978567753d48bf1cc2f",
+  "qualified_optimized_archive_sha256": "f12b2bbe116f1fa49fcbfb08df80a042b8fb51cf4f30d68da49871e14e13a680",
+  "probe_manifest": {
+    "prefixes": [
+      "host_host_core_rp_parallelFrag_worker",
+      "host_host_core_rp_parallelFrag_worker_1",
+      "host_host_core_rp_parallelFrag_worker_2",
+      "host_host_core_rp_parallelFrag_worker_3"
+    ],
+    "archive_sha256": "f12b2bbe116f1fa49fcbfb08df80a042b8fb51cf4f30d68da49871e14e13a680",
+    "wrapper_sha256": "8f8cd09b530e4595510f82be365b53c69920ae1e904594b1e0cb7e556fd0f60a",
+    "header_sha256": "1d6f0fba3cc06273a3324566eb4d033fa0fe7a94c251145d05cdf024f4ef7873",
+    "probe_source_sha256": "acb8b472d19272c86eb662201ca59ed43b314d62a6de875071d07cecf48d8497",
+    "trace_source_sha256": "80487c2b6f7f6f5205892594509754ece4bed0db56b6489f70a2a74a8d5366a2",
+    "replayer_sha256": "e1c200aa558de4a57113ab9bd7b609648a7c3541ede58479b2633784a2619eb4",
+    "profile_runtime": false,
+    "qemu_archive_sha256": "c9834bc47814a422d2251cbd46f4c0b36e9b58be19658f90a83f18b1903a87e2",
+    "texture_unit_states": [
+      "idle",
+      "grad",
+      "max_pair",
+      "max",
+      "mul",
+      "add",
+      "max2",
+      "lod",
+      "frac",
+      "sample",
+      "commit"
+    ],
+    "scope": "Exact architectural phase counts on replay; completed batches only; not simulator performance timing"
+  },
+  "trace": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/runtime-render-extent/full640-gtk.trace",
+  "trace_sha256": "0b6b2e7571fed225ad17a24f005ba32bd6cdf16ed7172eb150968e12e6169802",
+  "scope": "Actual640x480 Debian Weston desktop and normal GTK window, four shared CU16lane8warp VS/FS/FPU. Idle/active GL readback and strict orange scanout passed. Cycle-probed run is diagnostic, not clean host performance timing.",
+  "rtl_source_commit": "2f9f09f",
+  "mesa_source_commit": "3a41015",
+  "gdk_source_commit": "c801937",
+  "arti_source_commit": "7a6cd42",
+  "visual_review": {
+    "passed": true,
+    "image": ".artifacts/shared-cu/runtime-render-extent/full640-verified.png",
+    "image_sha256": "72f60b361eb98b1c1943ba89e665834671cbc888fdf222043b18f1608a5aa74e",
+    "observation": "Upright labelled GTK window, redraw button, complete orange GL rectangle, patterned Weston desktop and panel."
+  },
+  "pending": "New fixed-LOD RTL edda71b is not included in this qualified model; native validation of that RTL is pending.",
+  "cycles": {
+    "ticks": 36703246,
+    "staging_without_run": 425994,
+    "phase_any": [
+      21750957,
+      8245265,
+      15452,
+      15633978,
+      3300281,
+      3448294
+    ],
+    "peak_running_cus": 4,
+    "workers": [
+      {
+        "id": 0,
+        "shader_run": 11346489,
+        "batches": 3902
+      },
+      {
+        "id": 1,
+        "shader_run": 11319222,
+        "batches": 3886
+      },
+      {
+        "id": 2,
+        "shader_run": 11239360,
+        "batches": 3836
+      },
+      {
+        "id": 3,
+        "shader_run": 11177545,
+        "batches": 3824
+      }
+    ],
+    "fixed_lod_gradient_worker_cycles": 3306832,
+    "fixed_lod_interpretation": "3306832 worker cycles in eight redundant LOD stages across413354quads. Parallel contention/overlap prevents treating these as global task-cycle savings. phase_any fields overlap; shared virtual shader PCs do not uniquely identify programs."
+  },
+  "command_trace": {
+    "trace": ".artifacts/shared-cu/runtime-render-extent/full640-gtk.trace",
+    "trace_sha256": "0b6b2e7571fed225ad17a24f005ba32bd6cdf16ed7172eb150968e12e6169802",
+    "calls": 291131,
+    "commands_by_opcode": {
+      "5": 464,
+      "2": 93,
+      "6": 97
+    },
+    "fill_count": 93,
+    "fill_bytes": 101199360,
+    "depth_pattern_fill_count": 89,
+    "depth_pattern_fill_bytes": 100643840,
+    "depth_fill_size_histogram": {
+      "1228800": 81,
+      "138880": 8
+    },
+    "dma_read_bytes": 56483144,
+    "dma_write_bytes": 171531680,
+    "scope": "MMIO unified-command SUBMIT writes; 0x00ffffff identifies the depth-clear pattern, not proof of every fill consumer."
+  }
+}

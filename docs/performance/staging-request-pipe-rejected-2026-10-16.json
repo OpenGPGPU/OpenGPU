@@ -1,0 +1,54 @@
+{
+  "status": "REJECTED for current renderer; not merged",
+  "candidate_commit": "01d9e1c in opt/fixed-lod worktree",
+  "baseline_commit": "edda71b (fixed LOD only)",
+  "change": "Enable pipe on the one-entry staging request queue.",
+  "unit_tests": "8PASS including response credits, tags, faults, stalls and out-of-order responses. Correct negative control old queue issues cycles1,3,5,7; candidate1,2,3,4.",
+  "negative_log": ".artifacts/shared-cu/fixed-lod/staging-negative-final.log",
+  "unit_log": ".artifacts/shared-cu/fixed-lod/staging-pipe-unit.log",
+  "scenes": [
+    {
+      "suite": "FullPoolSolidTextureBufferedSpec",
+      "cus": 1,
+      "before": 63176,
+      "after": 63176,
+      "identical_pixel_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f"
+    },
+    {
+      "suite": "FullPoolSolidTextureBufferedSpec",
+      "cus": 4,
+      "before": 21173,
+      "after": 21181,
+      "identical_pixel_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f"
+    },
+    {
+      "suite": "FullPoolTextureBufferedSpec",
+      "cus": 1,
+      "before": 82681,
+      "after": 82681,
+      "identical_pixel_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f"
+    },
+    {
+      "suite": "FullPoolTextureBufferedSpec",
+      "cus": 4,
+      "before": 25244,
+      "after": 25421,
+      "identical_pixel_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f"
+    },
+    {
+      "suite": "FullPoolSolidTextureFullBatchSpec",
+      "cus": 1,
+      "before": 62382,
+      "after": 62382,
+      "identical_pixel_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f"
+    },
+    {
+      "suite": "FullPoolTextureFullBatchSpec",
+      "cus": 1,
+      "before": 81886,
+      "after": 81886,
+      "identical_pixel_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f"
+    }
+  ],
+  "conclusion": "One-CU cycles unchanged. Four-CU solid is8cycles slower and spatial177cycles slower. Request microbenchmark throughput does not predict complete-renderer improvement. No host walltime claim."
+}
