@@ -42,8 +42,17 @@ check all five buffer layouts; isolated device compilation passes.
 Another 31 texture-instruction/fragment-stage RTL checks pass, including
 bilinear/trilinear alpha filtering and helper/output-control regressions.
 
-Fresh full-model GLES/GTK qualification is still pending. Commit `f974cb4`
-fixes the separate four-CU gradient coherence failure: external staging-write
+The fresh full model passes 18 compute replays, all 21 GLES cases, GTK
+idle/active pixel readback and periodic scanout at 64x64. The GLES cases
+include distinct RGBA channels, alpha, padded textures and swizzling. Mesa's
+EGL config deduplication now preserves different native visuals, and the
+stock swizzle shader preserves green and alpha in canonical RGBA order.
+Hashes, configuration and scope are recorded in
+[the native qualification report](performance/shared-cu-native-qualification-2026-10-16.json).
+Full 640x480 Weston desktop qualification and clean simulator timing remain
+pending; the instrumented qualification run is not a performance baseline.
+
+Commit `f974cb4` fixes the separate four-CU gradient coherence failure: external staging-write
 IDs could alias CU0 in the directory's requester mask and skip its probe.
 All 27 L2 tests and the matched complete-pool 1/2/4-CU scenes now pass. See
 [the full-pool measurements](performance/shared-cu-full-pool-2026-10-15.json).
