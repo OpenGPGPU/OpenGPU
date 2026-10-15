@@ -419,12 +419,14 @@ compiler-cache reuse; it has no claimed simulation runtime gain.
 
 ## Guest CPU and progress budgets
 
-`scripts/run_arti_debian.sh` automatically selects HVF with `-cpu host` on
-Apple Silicon when the FlashSim QEMU advertises HVF and has the hypervisor
-entitlement. It uses an IRQ chunk of 1024 ticks capped at 8ms, with MMIO
-settling also capped at 8ms. Other hosts and Verilator retain the TCG defaults.
-`QEMU_ACCEL=tcg`, `QEMU_CPU`, and explicit `ARTI_MODEL_*` values take precedence.
-The lower-level Arti launcher defaults to TCG unless configured explicitly.
+`scripts/run_arti_debian.sh` and `scripts/run_arti_gpu.sh` automatically
+select HVF with `-cpu host` on Apple Silicon when the FlashSim QEMU advertises
+HVF and has the hypervisor entitlement. They use an IRQ chunk of 1024 ticks
+capped at 8ms, with MMIO settling also capped at 8ms. Other hosts and Verilator
+retain the TCG defaults. `QEMU_ACCEL=tcg`, `QEMU_CPU`, and explicit
+`ARTI_MODEL_*` values take precedence. The lower-level Arti launchers
+(`run_linux_test.sh`, `run_interactive.sh`) default to TCG unless `QEMU_ACCEL`
+is set.
 The proof script records the resolved CPU and budgets in run metadata.
 
 With the same original model, a native 160x120 draw under HVF took 90.879s

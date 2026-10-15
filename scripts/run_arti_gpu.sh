@@ -801,13 +801,21 @@ if [ "${GPU_USERSPACE_EXAMPLES_ONLY:-0}" = "1" ]; then
     export DRIVER_MARKER="OPENGPU USERSPACE EXAMPLES PASS"
 fi
 
-# Same BQL bound as run_arti_debian.sh. A 500k-cycle settle on -smp 2 lets
-# the other vCPU advance jiffies while this one is inside the model, which
-# is the guest RCU stall on FlashSim draws. Honoured by the existing binary.
-ARTI_MODEL_IRQ_PUMP="${ARTI_MODEL_IRQ_PUMP:-16}"
-ARTI_MODEL_IRQ_PUMP_NS="${ARTI_MODEL_IRQ_PUMP_NS:-200000}"
-ARTI_MODEL_SETTLE_NS="${ARTI_MODEL_SETTLE_NS:-8000000}"
+# Point ARTI's run_linux_test.sh at the QEMU we just built instead of its
+# default path under ARTI_WORK.
+QEMU="${QEMU:-$QEMU_BUILD/qemu-system-aarch64}"
+export QEMU
+
+# Guest CPU/accelerator and the RTL progress budgets that track it. The IRQ
+# timer advances the model between guest register polls: HVF needs a larger
+# chunk than TCG to keep active draws moving, while wall-clock caps bound BQL
+# holds. Select HVF automatically only for a signed Apple Silicon FlashSim
+# executable; explicit CPU, accelerator, and model budgets take precedence.
+eval "$(python3 "$GPU_DIR/scripts/qemu_cpu_config.py" --qemu "$QEMU" --sim "$GPU_SIM" --shell)"
+export QEMU_ACCEL QEMU_CPU
 export ARTI_MODEL_IRQ_PUMP ARTI_MODEL_IRQ_PUMP_NS ARTI_MODEL_SETTLE_NS
+echo "  Guest CPU : $QEMU_ACCEL / $QEMU_CPU"
+echo "  Model cap : settle ${ARTI_MODEL_SETTLE_NS}ns, irq pump ${ARTI_MODEL_IRQ_PUMP} cycles / ${ARTI_MODEL_IRQ_PUMP_NS}ns"
 
 export ARTI_DIR INTEGRATION_CONFIG LINUX_BUILD DRIVER_KO DRIVER_MANIFEST WORK
 export QEMU_DISPLAY HOLD_AFTER_TEST TIMEOUT
