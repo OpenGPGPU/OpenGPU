@@ -47,10 +47,23 @@ int main(int argc, char **argv)
     command.grid[0] = command.grid[1] = command.grid[2] = 1;
     command.local[0] = command.local[1] = command.local[2] = 1;
     command.out_syncobj = fence;
-    if (opengpu_compute(fd, &command) || opengpu_sync_wait_success(fd, fence, 30000))
+    if (opengpu_compute(fd, &command)) {
+        int error = errno;
+        perror("compute submit");
+        errno = error;
         goto done;
+    }
+    if (opengpu_sync_wait_success(fd, fence, 30000)) {
+        int error = errno;
+        perror("compute completion");
+        errno = error;
+        goto done;
+    }
     if (((uint32_t *)kernarg.map)[1] != 1 ||
         ((uint32_t *)kernarg.map)[2] != 0) {
+        fprintf(stderr, "compute outputs: input=%08x RNU=%08x RDN=%08x\n",
+                ((uint32_t *)kernarg.map)[0], ((uint32_t *)kernarg.map)[1],
+                ((uint32_t *)kernarg.map)[2]);
         errno = EIO;
         goto done;
     }

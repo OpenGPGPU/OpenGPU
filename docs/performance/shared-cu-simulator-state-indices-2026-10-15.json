@@ -1,0 +1,179 @@
+{
+  "date": "2026-10-15",
+  "scope": "Correctness of the generated full shared-CU model, not a wall-time optimization measurement",
+  "gpu_revision": "9c150b5ed2f35d6eed2e6fe46b731754635eba8a",
+  "flashsim_fix": "b61d695",
+  "configuration": {
+    "width": 640,
+    "height": 480,
+    "lanes": 16,
+    "warps": 8,
+    "cus": 4,
+    "shared_graphics": true,
+    "parallel_graphics": true,
+    "axi_bytes": 64,
+    "om_inflight": 64,
+    "om_locality": true,
+    "fragment_batch_limit": 112,
+    "buffer_command_reads": true
+  },
+  "cause": {
+    "tracked_scalar_states": 66748,
+    "old_index_width": 16,
+    "new_index_width": 32,
+    "policy": "Choose dirty list element and insertion argument type from maximum generated state index.",
+    "effect": "Upper dirty indices wrapped, so L2 bank2 page-walk state updates were silently lost after a successful request handshake."
+  },
+  "regressions": {
+    "flashsim_emitter_arti": 70,
+    "old_width_mutation": "Expected regression failure reproduced at actual GPU state count.",
+    "boundary_cases": [
+      65536,
+      65537,
+      66748
+    ],
+    "sanitizers": "ASan/UBSan PASS",
+    "verilator": "One full-pool FPU-enabled dependent instruction/data page-walk and round-modes test PASS; IRQ explicitly enabled."
+  },
+  "replay_cases": [
+    {
+      "mode": 0,
+      "base": "0x0",
+      "invalidate": 0,
+      "returncode": 0,
+      "seconds": 1.5628466249909252
+    },
+    {
+      "mode": 0,
+      "base": "0x0",
+      "invalidate": 1,
+      "returncode": 0,
+      "seconds": 0.09123141691088676
+    },
+    {
+      "mode": 0,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "returncode": 0,
+      "seconds": 0.08746041590347886
+    },
+    {
+      "mode": 0,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "returncode": 0,
+      "seconds": 0.08899433305487037
+    },
+    {
+      "mode": 0,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "returncode": 0,
+      "seconds": 0.08642054186202586
+    },
+    {
+      "mode": 0,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "returncode": 0,
+      "seconds": 0.09598537511192262
+    },
+    {
+      "mode": 1,
+      "base": "0x0",
+      "invalidate": 0,
+      "returncode": 0,
+      "seconds": 0.08166266605257988
+    },
+    {
+      "mode": 1,
+      "base": "0x0",
+      "invalidate": 1,
+      "returncode": 0,
+      "seconds": 0.09723279112949967
+    },
+    {
+      "mode": 1,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "returncode": 0,
+      "seconds": 0.09431912493892014
+    },
+    {
+      "mode": 1,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "returncode": 0,
+      "seconds": 0.10426683304831386
+    },
+    {
+      "mode": 1,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "returncode": 0,
+      "seconds": 0.09938833303749561
+    },
+    {
+      "mode": 1,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "returncode": 0,
+      "seconds": 0.10703237494453788
+    },
+    {
+      "mode": 2,
+      "base": "0x0",
+      "invalidate": 0,
+      "returncode": 0,
+      "seconds": 0.10768050001934171
+    },
+    {
+      "mode": 2,
+      "base": "0x0",
+      "invalidate": 1,
+      "returncode": 0,
+      "seconds": 0.10171391605399549
+    },
+    {
+      "mode": 2,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "returncode": 0,
+      "seconds": 0.1022504169959575
+    },
+    {
+      "mode": 2,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "returncode": 0,
+      "seconds": 0.10674258298240602
+    },
+    {
+      "mode": 2,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "returncode": 0,
+      "seconds": 0.09541112510487437
+    },
+    {
+      "mode": 2,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "returncode": 0,
+      "seconds": 0.09985637501813471
+    }
+  ],
+  "artifact_hashes": {
+    "header": "fb7aef0d58b313e4f2919315337c3a886cb8e3c80e24273e9f202f713a0000d4",
+    "archive": "af1f79f40ad468dbf87bd3cf94660e930d9891f33215e1e3c92a18128a2fbc98",
+    "qemu": "9ba78775d0f931b2f4e9da4618b6e96f72ddd0e217bf8fdb50943d30866e2af1"
+  },
+  "artifact_generation": "Existing generated DUT header updated with exactly the corrected emitter declarations; every translation unit rebuilt. RTL and generated method bodies unchanged.",
+  "logs": [
+    ".artifacts/shared-cu-runtime-dirty-index-regression.log",
+    ".artifacts/shared-cu-runtime-dirty-index-before.log",
+    ".artifacts/shared-cu-two-level-walk-final.log",
+    ".artifacts/shared-cu-runtime-fixed-model-qualification.log"
+  ],
+  "qualification": "18/18 stand-alone memory/compute replays PASS. Debian compute/native/GTK proof in progress; full shared-pool desktop still pending."
+}

@@ -750,3 +750,22 @@ bounds, canaries and overflow under ASan/UBSan; the standard driver-test entry
 point and AArch64 DRI build pass. This validates the software fixes on legacy
 hardware; shared-pool guest rendering and full desktop qualification remain
 pending. See [native shader evidence](performance/shared-cu-native-shaders-2026-10-15.json).
+
+## Full-pool simulator state indices
+
+The FPU-enabled four-CU desktop model contains 66,748 independently tracked
+scalar states. FlashSim used 16-bit dirty-list elements and insertion arguments,
+which wrapped indices above 65,535. A dependent Sv32 root/leaf walk exposed the
+problem: the leaf request handshook into L2 bank two, but its state updates were
+committed under the wrong indices and no AXI request followed. Verilator
+completed the same dependent instruction/data walks and rounding-result check.
+
+FlashSim commit `b61d695` derives both index types from the generated state
+count. All 70 emitter/ARTI regressions pass, including ASan/UBSan checks at
+65,536, 65,537 and 66,748 entries; restoring the old width fails the regression.
+Every full-model translation unit was rebuilt after changing its DUT layout.
+The resulting model passes eighteen standalone compute cases: bare, Sv32
+superpage and two-level 4 KiB mappings, each at three physical address bases,
+with and without a preceding invalidate. This validates the simulator fix;
+Debian desktop qualification remains separate. See
+[simulator evidence](performance/shared-cu-simulator-state-indices-2026-10-15.json).
