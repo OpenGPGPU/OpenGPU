@@ -1,0 +1,652 @@
+{
+  "date": "2026-10-15",
+  "scope": "RTL optimization; unchanged 640x480 maximum and four-lane/two-warp graphics ABI",
+  "source_commits": [
+    "34d8f7a",
+    "ed7636b"
+  ],
+  "baseline_source_commit": "31d5d59",
+  "configuration": {
+    "lanes": 4,
+    "warps": 2,
+    "l2_sets": 8,
+    "l2_ways": 2,
+    "memory_data_bytes": 8,
+    "write_ack_delay_cycles": 4,
+    "sv32": true,
+    "io_instrumentation": true,
+    "scope": "Small fixed-scene RTL cycle benchmark configuration; not desktop cache sizing"
+  },
+  "comparisons": [
+    {
+      "workload": "shader_16_1x",
+      "baseline": {
+        "workload": "shader_16_1x",
+        "size": 16,
+        "samples": 1,
+        "framebuffer_lines_per_plane": 16,
+        "color_uniform_lines": 1,
+        "depth_uniform_lines": 1,
+        "command_tlb_misses": 2,
+        "command_translation_stall_cycles": 0,
+        "command_walk_cycles": 18,
+        "cycles": 68026,
+        "framebuffer_tlb_misses": 2,
+        "framebuffer_translation_stall_cycles": 25,
+        "framebuffer_walk_cycles": 27,
+        "l2_load_hits": 0,
+        "l2_load_misses": 4,
+        "l2_mshr_merges": 1,
+        "lower_read_bytes": 55708,
+        "lower_write_bytes": 150528,
+        "om_conflict_cycles": 0,
+        "om_stall_cycles": 0,
+        "raster_stall_cycles": 63072,
+        "staging_read_bytes": 49152,
+        "staging_tlb_misses": 1,
+        "staging_translation_stall_cycles": 0,
+        "staging_walk_cycles": 9,
+        "staging_write_bytes": 131072,
+        "texture_tlb_misses": 0,
+        "texture_translation_stall_cycles": 0,
+        "texture_walk_cycles": 0
+      },
+      "candidate": {
+        "workload": "shader_16_1x",
+        "size": 16,
+        "samples": 1,
+        "framebuffer_lines_per_plane": 16,
+        "color_uniform_lines": 1,
+        "depth_uniform_lines": 1,
+        "command_tlb_misses": 2,
+        "command_translation_stall_cycles": 0,
+        "command_walk_cycles": 18,
+        "cycles": 10754,
+        "framebuffer_tlb_misses": 2,
+        "framebuffer_translation_stall_cycles": 16,
+        "framebuffer_walk_cycles": 18,
+        "l2_load_hits": 0,
+        "l2_load_misses": 4,
+        "l2_mshr_merges": 1,
+        "lower_read_bytes": 9500,
+        "lower_write_bytes": 25152,
+        "om_conflict_cycles": 0,
+        "om_stall_cycles": 0,
+        "raster_stall_cycles": 8903,
+        "staging_read_bytes": 2816,
+        "staging_tlb_misses": 1,
+        "staging_translation_stall_cycles": 0,
+        "staging_walk_cycles": 9,
+        "staging_write_bytes": 7040,
+        "texture_tlb_misses": 0,
+        "texture_translation_stall_cycles": 0,
+        "texture_walk_cycles": 0
+      },
+      "cycle_reduction_percent": 84.19133860582718
+    },
+    {
+      "workload": "shader_16_4x",
+      "baseline": {
+        "workload": "shader_16_4x",
+        "size": 16,
+        "samples": 4,
+        "framebuffer_lines_per_plane": 64,
+        "color_uniform_lines": 33,
+        "depth_uniform_lines": 33,
+        "command_tlb_misses": 2,
+        "command_translation_stall_cycles": 0,
+        "command_walk_cycles": 18,
+        "cycles": 79215,
+        "framebuffer_tlb_misses": 2,
+        "framebuffer_translation_stall_cycles": 61,
+        "framebuffer_walk_cycles": 62,
+        "l2_load_hits": 0,
+        "l2_load_misses": 4,
+        "l2_mshr_merges": 1,
+        "lower_read_bytes": 60060,
+        "lower_write_bytes": 202496,
+        "om_conflict_cycles": 0,
+        "om_stall_cycles": 8053,
+        "raster_stall_cycles": 74261,
+        "staging_read_bytes": 49152,
+        "staging_tlb_misses": 1,
+        "staging_translation_stall_cycles": 0,
+        "staging_walk_cycles": 9,
+        "staging_write_bytes": 131072,
+        "texture_tlb_misses": 0,
+        "texture_translation_stall_cycles": 0,
+        "texture_walk_cycles": 0
+      },
+      "candidate": {
+        "workload": "shader_16_4x",
+        "size": 16,
+        "samples": 4,
+        "framebuffer_lines_per_plane": 64,
+        "color_uniform_lines": 33,
+        "depth_uniform_lines": 33,
+        "command_tlb_misses": 2,
+        "command_translation_stall_cycles": 0,
+        "command_walk_cycles": 18,
+        "cycles": 22150,
+        "framebuffer_tlb_misses": 2,
+        "framebuffer_translation_stall_cycles": 61,
+        "framebuffer_walk_cycles": 62,
+        "l2_load_hits": 0,
+        "l2_load_misses": 4,
+        "l2_mshr_merges": 1,
+        "lower_read_bytes": 14876,
+        "lower_write_bytes": 77120,
+        "om_conflict_cycles": 0,
+        "om_stall_cycles": 8342,
+        "raster_stall_cycles": 19546,
+        "staging_read_bytes": 2816,
+        "staging_tlb_misses": 1,
+        "staging_translation_stall_cycles": 0,
+        "staging_walk_cycles": 9,
+        "staging_write_bytes": 7040,
+        "texture_tlb_misses": 0,
+        "texture_translation_stall_cycles": 0,
+        "texture_walk_cycles": 0
+      },
+      "cycle_reduction_percent": 72.03812409265922
+    }
+  ],
+  "validation": {
+    "fragment_stage_tests": 16,
+    "initial_raster_pipeline_translation_tests": 50,
+    "full_workload_sweep_before_retirement_fix": 12,
+    "final_integration_tests": 61,
+    "final_fragment_and_integration_tests": 77,
+    "final_shader_workloads_after_retirement_fix": 2,
+    "note": "Initial 50-test set overlaps final integration tests; do not add all counts. Full 12-scene sweep preceded the late-flush fix; final fragment, integration and two shader cycle workloads include that fix.",
+    "guest": "compute/native GLES/GTK idle+active/periodic scanout PASS"
+  },
+  "host": "Apple M4 Max;macOS15.8.1;36GiB RAM",
+  "desktop_hardware": {
+    "compute_cus": 4,
+    "compute_lanes": 16,
+    "compute_warps": 8,
+    "graphics_lanes": 4,
+    "graphics_warps": 2,
+    "graphics_batch_capacity": 8,
+    "maximum_resolution": [
+      640,
+      480
+    ],
+    "axi_data_bits": 64,
+    "tile_binning": false
+  },
+  "changes": [
+    "Reject only quads with no covered samples after screen/scissor/sample coverage; retain all helper lanes of nonempty quads.",
+    "For eight-fragment batches, replace 64 individual full-line writes and 24 reads with five masked line writes and two reads. Keep word fallback for other batch widths.",
+    "Preserve partial-batch inactive words, per-draw uniforms, ABI output-control/depth behavior and full-line invalidation.",
+    "Drain the final producer quad before snapshotting a staging line; retain the last blocked output across a late raster flush."
+  ],
+  "provenance": {
+    "qemu_sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0",
+    "archive_sha256": "4f8fa67fa308a3f06b8c954dde50d9eb3ff38e932901a1a2b193533dfd2ae27d",
+    "profile_sha256": "226ca0f29d44812e08454bba94b100959acf9c898358336e7a496456b19d1f6e",
+    "rtl_bundle_sha256": "ed34bb7b496587949e9155033813984018c2156798e4b58b165a2c8d42ddd479",
+    "rtl_top_sha256": "8eaf25f3b755f8cc3077a5419eeb4add314a83e63c422d9807b5c9bd0886722f",
+    "rtl_hash_method": "SHA256 of sorted filelist relative name+NUL+raw SHA256(source bytes), concatenated",
+    "sources": {
+      ".": "75ef1bc18703490fdd44c5815fcc18ec6d22887c",
+      "../arti": "9d9dda2539f494e6ebc49639108d5570c91d0f8f",
+      "../FlashSim": "b608384e6c4b32e74cfef0d9db00839fb6e95570",
+      "../qemu": "e92ef845b5dfa8e79b03433c91179f9379951f05"
+    },
+    "baseline_qemu_sha256": "8d2c4bc6d1f2d7de160a552b0370edae7318a228a66b7003daa022ea20006e5b",
+    "baseline_rtl_bundle_sha256": "1fb465b96307c9d8a9bc51cc74f0b84c7c1da334613856e30c23bf0bde58209c",
+    "rtl_bundle_file_count": 456,
+    "note": "Top-level module text is unchanged across this optimization; the all-file RTL digest identifies leaf changes."
+  },
+  "native_guest_comparison": {
+    "binaries": {
+      "baseline": {
+        "path": ".artifacts/rtl-speed/qemu-previous",
+        "sha256": "8d2c4bc6d1f2d7de160a552b0370edae7318a228a66b7003daa022ea20006e5b"
+      },
+      "candidate": {
+        "path": ".artifacts/rtl-speed/qemu-candidate",
+        "sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0"
+      }
+    },
+    "base_image": "../arti-work/debian-gtk-arm64.qcow2",
+    "scope": "One native GLES triangle with a 160x120 bounding box in a 640x480 mode; six alternating fresh guests, three per executable; every pixel proof passes; no scanout capture",
+    "runs": [
+      {
+        "name": "baseline",
+        "round": 0,
+        "work": ".artifacts/rtl-speed/native-comparison/b0",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          34705.885
+        ]
+      },
+      {
+        "name": "candidate",
+        "round": 0,
+        "work": ".artifacts/rtl-speed/native-comparison/c0",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          11926.379
+        ]
+      },
+      {
+        "name": "candidate",
+        "round": 1,
+        "work": ".artifacts/rtl-speed/native-comparison/c1",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          11970.197
+        ]
+      },
+      {
+        "name": "baseline",
+        "round": 1,
+        "work": ".artifacts/rtl-speed/native-comparison/b1",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          34759.94
+        ]
+      },
+      {
+        "name": "baseline",
+        "round": 2,
+        "work": ".artifacts/rtl-speed/native-comparison/b2",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          34389.203
+        ]
+      },
+      {
+        "name": "candidate",
+        "round": 2,
+        "work": ".artifacts/rtl-speed/native-comparison/c2",
+        "gate_exit": 0,
+        "pixel_pass": true,
+        "draw_ms": [
+          11958.31
+        ]
+      }
+    ],
+    "summary": {
+      "baseline": {
+        "draw_ms": [
+          34705.885,
+          34759.94,
+          34389.203
+        ],
+        "median_ms": 34705.885,
+        "reduction_percent": 0.0
+      },
+      "candidate": {
+        "draw_ms": [
+          11926.379,
+          11970.197,
+          11958.31
+        ],
+        "median_ms": 11958.31,
+        "reduction_percent": 65.54385517038392
+      }
+    },
+    "configuration": {
+      "QEMU_ACCEL": "hvf",
+      "QEMU_CPU": "host",
+      "ARTI_MODEL_IRQ_PUMP": "1024",
+      "ARTI_MODEL_IRQ_PUMP_NS": "8000000",
+      "ARTI_MODEL_SETTLE_NS": "8000000",
+      "GTK_PROOF_SMOKE": "1",
+      "GTK_PROOF_KMS_MODE": "64x64",
+      "GTK_PROOF_WESTON_REPRO": "medium",
+      "GTK_PROOF_REPRO_ONLY": "1",
+      "GTK_PROOF_SCANOUT_ENABLE": "0",
+      "GTK_PROOF_SKIP_BUILD": "1",
+      "GTK_PROOF_SKIP_COVERAGE": "1",
+      "GTK_PROOF_SMOKE_TIMEOUT_S": "900"
+    }
+  },
+  "desktop_comparison": {
+    "scope": "One fresh full 640x480 headless Weston boot per executable, same launcher, guest userspace and HVF/host pump settings; first scanout with background, panel, launcher and clock, visually verified",
+    "baseline_record": "docs/performance/desktop-startup-2026-10-15.json",
+    "baseline_first_verified_desktop_seconds": 1076.3816797500476,
+    "candidate_first_verified_desktop_seconds": 350.81761916703545,
+    "candidate_previous_black_frame_seconds": 335.69388479203917,
+    "candidate_first_desktop_command_seconds": 354.9360560839996,
+    "observed_time_reduction_percent": 67.40769322193401,
+    "observed_speed_ratio": 3.0682087242532368,
+    "capture": {
+      "observation_seconds": 15,
+      "nominal_periodic_dump_seconds": 0.5,
+      "image": "docs/images/weston-desktop-rtl-optimized-20261015.png",
+      "image_sha256": "153b0cb6ae735501704acc7ac0583de426142a34b767dbc87a3ac93439a14073",
+      "dimensions": [
+        640,
+        480
+      ]
+    },
+    "configuration": {
+      "GPU_SIM": "flashsim",
+      "QEMU_ACCEL": "hvf",
+      "QEMU_CPU": "host",
+      "IRQ_PUMP_TICKS": 1024,
+      "IRQ_PUMP_NS": 8000000,
+      "SETTLE_NS": 8000000,
+      "OPENGPU_AUTO_DISPLAY": "weston",
+      "QEMU_DISPLAY": "none",
+      "BUILD_USERSPACE": 0,
+      "base": "../arti-work/debian-gtk-arm64.qcow2",
+      "ARTI_MODEL_STATS": 1
+    },
+    "events": [
+      {
+        "event": "command_started",
+        "command_seconds": 0.06509645911864936
+      },
+      {
+        "event": "qemu_started",
+        "command_seconds": 4.118481292156503,
+        "qemu_seconds": 2.0416919142007828e-05
+      },
+      {
+        "event": "GPU probe:",
+        "command_seconds": 7.132132624974474,
+        "qemu_seconds": 3.013672708068043
+      },
+      {
+        "event": "Output 'Virtual-1' enabled",
+        "command_seconds": 7.132645291974768,
+        "qemu_seconds": 3.014184166910127
+      },
+      {
+        "event": "Loading module",
+        "command_seconds": 7.132921834010631,
+        "qemu_seconds": 3.0144606670364738
+      },
+      {
+        "event": "opengpu: submit draw=1",
+        "command_seconds": 9.1513303341344,
+        "qemu_seconds": 5.0328698749653995
+      },
+      {
+        "event": "opengpu: complete draw=1",
+        "command_seconds": 10.16183212515898,
+        "qemu_seconds": 6.043371707899496
+      },
+      {
+        "event": "OPENGPU GTK WINDOW BUILT",
+        "command_seconds": 343.841650250135,
+        "qemu_seconds": 339.7231897499878
+      },
+      {
+        "event": "desktop_frame_visible",
+        "command_seconds": 354.9360560839996,
+        "capture": "frame-0023.ppm",
+        "qemu_seconds": 350.8175952921156
+      }
+    ],
+    "completed_draws": [
+      {
+        "draw": 1,
+        "milliseconds": 1155.737
+      },
+      {
+        "draw": 2,
+        "milliseconds": 1182.257
+      },
+      {
+        "draw": 3,
+        "milliseconds": 1178.344
+      },
+      {
+        "draw": 4,
+        "milliseconds": 1178.289
+      },
+      {
+        "draw": 5,
+        "milliseconds": 152597.44
+      },
+      {
+        "draw": 6,
+        "milliseconds": 148730.567
+      },
+      {
+        "draw": 7,
+        "milliseconds": 13034.527
+      },
+      {
+        "draw": 8,
+        "milliseconds": 13761.918
+      },
+      {
+        "draw": 9,
+        "milliseconds": 1370.399
+      },
+      {
+        "draw": 10,
+        "milliseconds": 1348.32
+      },
+      {
+        "draw": 11,
+        "milliseconds": 1357.93
+      },
+      {
+        "draw": 12,
+        "milliseconds": 1370.132
+      }
+    ],
+    "qemu_exit": 0,
+    "limits": [
+      "One observed boot per executable, not a repeated paired median. Capture observation cadence is about 15 seconds.",
+      "Candidate additionally enables throttled model statistics. Baseline did not record these counters.",
+      "Desktop background/panel visibility does not establish GTK application readiness or input responsiveness; separate 64x64 GTK idle/active pixel proof passes."
+    ]
+  },
+  "fresh_trace": {
+    "path": ".artifacts/rtl-speed/qualified.trace",
+    "sha256": "5f2016895ef7c658e0a01dcab871b60e7038d8f5e0e486672b4372bc7fd649ff",
+    "replay": {
+      "calls": 34707,
+      "ticks": 8595267,
+      "commits": 93016750,
+      "holds": 486636788,
+      "dma_reads": 790324,
+      "dma_writes": 1284560,
+      "dma_bytes": 16585328,
+      "seconds": 40.84147025,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "cycle_probe_replay": {
+      "calls": 34707,
+      "ticks": 8595267,
+      "commits": 93016750,
+      "holds": 486636788,
+      "dma_reads": 790324,
+      "dma_writes": 1284560,
+      "dma_bytes": 16585328,
+      "seconds": 40.92437125,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "phase_groups": [
+      {
+        "shader_pc": 3225419776,
+        "texture": [
+          0,
+          0
+        ],
+        "completed_batches": 1794,
+        "processed_fragment_lanes": 14344,
+        "cycles_by_phase": {
+          "idle": 0,
+          "stage_write": 301549,
+          "launch": 1794,
+          "shader_run": 1481433,
+          "stage_read": 60996,
+          "emit": 26087
+        },
+        "total_batch_cycles": 1871859,
+        "cycles_per_processed_lane": 130.49769938650306,
+        "shader_percent": 79.14233924670609,
+        "sampler_cycles_by_state": [
+          1481433,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "shader_pc": 3225419776,
+        "texture": [
+          64,
+          32
+        ],
+        "completed_batches": 544,
+        "processed_fragment_lanes": 4344,
+        "cycles_by_phase": {
+          "idle": 0,
+          "stage_write": 89218,
+          "launch": 544,
+          "shader_run": 651917,
+          "stage_read": 18496,
+          "emit": 7650
+        },
+        "total_batch_cycles": 767825,
+        "cycles_per_processed_lane": 176.75529465930018,
+        "shader_percent": 84.90437274118452,
+        "sampler_cycles_by_state": [
+          480103,
+          4344,
+          4344,
+          4344,
+          4344,
+          141406,
+          4344,
+          4344,
+          4344
+        ]
+      },
+      {
+        "shader_pc": 3225419776,
+        "texture": [
+          64,
+          64
+        ],
+        "completed_batches": 1980,
+        "processed_fragment_lanes": 15828,
+        "cycles_by_phase": {
+          "idle": 0,
+          "stage_write": 313915,
+          "launch": 1980,
+          "shader_run": 2094814,
+          "stage_read": 67320,
+          "emit": 28489
+        },
+        "total_batch_cycles": 2506518,
+        "cycles_per_processed_lane": 158.35974222896132,
+        "shader_percent": 83.57466413566549,
+        "sampler_cycles_by_state": [
+          1473953,
+          15828,
+          15828,
+          15828,
+          15828,
+          510065,
+          15828,
+          15828,
+          15828
+        ]
+      }
+    ],
+    "method": "Sample fragment FSM before each tick; count only batches fully observed from staging-write entry through emit exit, with DMA replay verification enabled. Trace includes fresh compute/native/64x64 GTK/scanout proof; it is not a full640 desktop trace.",
+    "comparison_limit": "Old RTL trace cannot replay cycle-for-cycle against changed RTL. New/old phase groups have different completed batch populations; do not claim a fixed-work whole-trace speedup from total tick counts."
+  },
+  "desktop_model_ticks": {
+    "last_logged_total_ticks": 58072405,
+    "event_log_brackets": [
+      {
+        "draw": 5,
+        "event": "submit",
+        "previous_logged_tick_count": 1546990,
+        "next_logged_tick_count": 1574410
+      },
+      {
+        "draw": 5,
+        "event": "complete",
+        "previous_logged_tick_count": 26534266,
+        "next_logged_tick_count": 26552117
+      },
+      {
+        "draw": 6,
+        "event": "complete",
+        "previous_logged_tick_count": 51596641,
+        "next_logged_tick_count": 51647758
+      },
+      {
+        "draw": 7,
+        "event": "submit",
+        "previous_logged_tick_count": 51714266,
+        "next_logged_tick_count": 51765854
+      },
+      {
+        "draw": 7,
+        "event": "complete",
+        "previous_logged_tick_count": 53716616,
+        "next_logged_tick_count": 53753129
+      },
+      {
+        "draw": 8,
+        "event": "submit",
+        "previous_logged_tick_count": 53716616,
+        "next_logged_tick_count": 53804767
+      },
+      {
+        "draw": 8,
+        "event": "complete",
+        "previous_logged_tick_count": 55887219,
+        "next_logged_tick_count": 55896381
+      }
+    ],
+    "background_draws_5_and_6_approximate_ticks": 50000000,
+    "note": "About 50 million actual model ticks for the two background draws, from surrounding throttled statistics. These are approximate log brackets and include host progress between submissions; not exact per-draw hardware counters. Last logged 58,072,405 ticks covers the boot through capture, including later GTK work."
+  },
+  "installation": {
+    "state": "qualified RTL-optimized default installed",
+    "durable_directory": "../arti-work/debian-640x480-flashsim-rtl-optimized/",
+    "recipe": "../arti-work/debian-640x480-flashsim-rtl-optimized/rebuild.sh",
+    "default_binaries": [
+      "qemu-build/qemu-system-aarch64",
+      "qemu-build/qemu-system-aarch64.flashsim"
+    ],
+    "rollback": "../arti-work/debian-640x480-flashsim-rtl-optimized/rollback/",
+    "older_qualified_installation_preserved": true
+  },
+  "remaining_targets": [
+    "Shader/texture execution accounts for 83.57% of completed64x64 textured batch cycles in the new trace. Investigate instruction count and serialized texture sampling next.",
+    "Graphics-width migration requires matching shader VL, ABI array offsets and bank strides; four-lane graphics is deliberately unchanged.",
+    "Per-draw uniforms share a staging control cache line; isolate only with coordinated ABI/software and coherence qualification."
+  ],
+  "background_cycle_estimates": {
+    "approximate_processed_lanes": 307200,
+    "assumption": "Two full background triangles process about one screen of covered lanes after rejecting empty quads. Boundary helpers add some lanes; texture/cache/workload mix may differ from64x64 probe group.",
+    "measured_batch_cycles_per_lane": 158.35974222896132,
+    "predicted_batch_cycles": 48648112.81273691,
+    "observed_approximate_model_ticks": 50000000,
+    "staging_bus_data_lower_bound_cycles": 2150400,
+    "lower_bound_formula": "307200 lanes /8 lanes per batch *7 line requests per batch *8 64-bit data beats per line",
+    "limits": "Bus lower bound excludes address/response, translation, shader and output work. Batch extrapolation is not an exact full-frame count."
+  }
+}

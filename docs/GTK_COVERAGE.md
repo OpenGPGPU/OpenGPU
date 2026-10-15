@@ -204,9 +204,43 @@ nor that increasing the timeout will solve the problem. The next diagnostic
 must inspect execution progress or reproduce this exact draw in isolation.
 
 
-### Full desktop startup with the optimized model (2026-10-15)
+### Full desktop startup after RTL optimization (2026-10-15)
 
-A fresh headless boot on the M4 Max now measures the actual 640x480 Weston
+The installed default now reaches a visually verified **640x480 desktop in
+about 5 min 51 s after QEMU start**, versus the earlier 17 min 56 s observation
+below. The first capture takes 5 min 55 s after the launch command. Resolution,
+graphics lane count and guest userspace are unchanged. The model skips empty
+raster quads and coalesces eight-fragment staging transactions; details and
+the native benchmark are in
+[`SIMULATION_PERFORMANCE.md`](SIMULATION_PERFORMANCE.md).
+
+| Milestone | Time after QEMU start |
+|---|---:|
+| GPU probe and Weston output enabled | About 3 s |
+| Last captured black framebuffer | 5 min 36 s |
+| First verified background, bottom panel, launcher and clock | 5 min 51 s |
+
+The two background draws take 152.597 s and 148.731 s, totaling 5 min 1 s;
+the two panel draws take 13.035 s and 13.762 s. This is one fresh headless
+boot per model, with the same launcher, userspace, HVF/host and pump settings.
+Capture observations are about 15 seconds apart, and the new run additionally
+enables throttled model statistics. The observed startup time is about 67%
+lower; it is not a repeated paired median or an input-latency measurement.
+Separate fresh 64x64 guest proofs pass compute, native GLES, GTK idle/active
+pixel checks and periodic scanout, including a fully verified new trace.
+
+The new scanout is
+[`images/weston-desktop-rtl-optimized-20261015.png`](images/weston-desktop-rtl-optimized-20261015.png).
+Samples, capture bounds, draw timings and model hashes are retained in
+[`performance/rtl-speed-2026-10-15.json`](performance/rtl-speed-2026-10-15.json).
+Raw logs are in `.artifacts/rtl-speed/desktop-startup/`; the test VM exited
+cleanly after capture. The default executables are installed, with generated
+sources and rollback under
+`../arti-work/debian-640x480-flashsim-rtl-optimized/`.
+
+### Earlier full desktop startup baseline (2026-10-15)
+
+A preceding fresh headless boot on the M4 Max measured the actual 640x480 Weston
 desktop launcher, including its normal GTK smoke client. It uses the
 qualified optimized FlashSim executable, HVF/host, 1024-tick IRQ chunks and
 8ms IRQ/MMIO budgets. Existing userspace binaries are reused.
@@ -228,8 +262,9 @@ The 34.627 s native benchmark in
 [`SIMULATION_PERFORMANCE.md`](SIMULATION_PERFORMANCE.md) measures a
 triangle with a 160x120 bounding box, not desktop startup. Full-size RTL desktop rendering
 remains very slow. This first-image measurement does not establish GTK
-application readiness or input responsiveness, and has no paired full-desktop
-baseline from which to claim a startup speedup.
+application readiness or input responsiveness. At the time, there was no
+corresponding full-desktop baseline for a startup speed comparison; this run
+is now the baseline for the RTL optimization above.
 
 The captured scanout is
 [`images/weston-desktop-optimized-20261015.png`](images/weston-desktop-optimized-20261015.png).

@@ -1,6 +1,98 @@
 # Full-system simulation performance investigation
 
-The reference baseline is the non-tile-binned 640x480 FlashSim model with vertex
+## Installed RTL optimization (2026-10-15)
+
+The default launcher now uses the qualified RTL changes in `34d8f7a` and
+`ed7636b`, with a freshly trained profile. Resolution remains **640x480**;
+general compute remains 16 lanes/eight warps per CU, and graphics remains
+four lanes/two warps. Guest userspace and the fragment ABI are unchanged.
+
+| Measurement | Previous model | Installed model | Time/cycle reduction |
+|---|---:|---:|---:|
+| First verified full desktop scanout, after QEMU start | 17 min 56 s | 5 min 51 s | 67.4% observed |
+| Native GLES triangle, median of three fresh guests | 34.706 s | 11.958 s | 65.5% |
+| Fixed shader scene, 1x samples | 68,026 cycles | 10,754 cycles | 84.2% |
+| Fixed shader scene, 4x MSAA | 79,215 cycles | 22,150 cycles | 72.0% |
+
+The native benchmark draws one triangle with a 160x120 bounding box in a
+640x480 mode. Six fresh guests alternate executables, all pass pixel checks,
+and capture is disabled. The desktop comparison is one fresh headless boot
+per model with periodic scanout capture observed every 15 seconds; it is an
+observed startup improvement, not a repeated paired median. The new boot also
+enables throttled model statistics. Its last black capture is at 335.7 s and
+the first verified background, panel, launcher and clock at 350.8 s. Including
+launch preparation, the capture takes 354.9 s. Application readiness and
+input latency require separate measurements.
+
+The rasterizer now skips wholly uncovered quads after screen, scissor and
+sample coverage, preserving all four helper lanes in every nonempty quad.
+For the installed eight-fragment batches, staging uses five masked line
+writes and two line reads instead of 64 writes and 24 reads. Other batch
+widths retain the word path. Partial batches preserve inactive words and
+uniforms; full-line cache invalidation and the existing output-control/depth
+ABI remain intact. A separate regression fixes retirement when the final
+fragment is blocked and raster flush arrives after a full batch completes.
+
+The two full desktop background draws now take **152.597 s and 148.731 s**,
+versus 491.562 s and 492.671 s. Surrounding throttled statistics show about
+**50 million model ticks** for the pair; these are log brackets, not exact
+per-draw hardware counters. The earlier 213–225 million cycle estimate below
+applies to the previous RTL. All work through the new capture records about
+58.1 million model ticks, including subsequent GTK activity.
+
+A fresh trace replays all 34,707 calls and 8,595,267 ticks, with every DMA write
+checked and no truncated tail. Completed 64x64 textured batches average
+19.83 staging-write, 132.35 shader, 4.25 readback and 1.93 launch/emit cycles
+per processed lane: **158.36 cycles/lane**, with shader execution now 83.57%
+of the total. The earlier trace's corresponding group averages 346.60
+cycles/lane, but the traces contain different batch populations; total trace
+ticks are not a fixed-work speed comparison. Shader instruction count and
+serialized texture sampling are the next measured targets. Graphics-width
+changes still require a coordinated shader/ABI migration.
+
+For roughly 307,200 processed background lanes after empty-quad rejection,
+the new measured batch average predicts about **48.6 million batch cycles**,
+consistent with the approximately 50 million observed model ticks. Edge
+helpers, texture extent, cache behavior and downstream work prevent an exact
+prediction. The staging bus-data lower bound is now roughly **2.15 million
+cycles**: seven line transactions per eight-fragment batch, eight data beats
+per transaction on the 64-bit bus. This excludes transaction overhead,
+translation, shader and output work; it is not a complete frame-cycle target.
+
+Validation includes 16 fragment-stage tests, 61 final integration tests,
+a 12-scene pixel-checked workload sweep before the retirement fix, and both
+shader cycle scenes rerun afterward. The final executable separately passes
+compute rounding, native GLES pixels, GTK idle/active pixels and periodic
+scanout. The full desktop image is visually verified in
+[`images/weston-desktop-rtl-optimized-20261015.png`](images/weston-desktop-rtl-optimized-20261015.png).
+
+Current artifact SHA-256 values:
+
+| Artifact | SHA-256 |
+|---|---|
+| QEMU executable | `ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0` |
+| Model archive | `4f8fa67fa308a3f06b8c954dde50d9eb3ff38e932901a1a2b193533dfd2ae27d` |
+| Training profile | `226ca0f29d44812e08454bba94b100959acf9c898358336e7a496456b19d1f6e` |
+| Complete 456-file RTL bundle | `ed34bb7b496587949e9155033813984018c2156798e4b58b165a2c8d42ddd479` |
+
+The top-level SV text is unchanged; use the complete RTL bundle digest to
+identify this change. The digest hashes sorted filelist names followed by NUL
+and each file's raw SHA-256 digest. Generated C++, RTL, profile, ordering,
+device compile command, qualification and rollback are saved under
+`../arti-work/debian-640x480-flashsim-rtl-optimized/`. Its `rebuild.sh` creates
+a separate executable. Both default FlashSim executables and the staged model
+archive are installed and hash-verified; the previous qualified directory and
+its original rollback remain available.
+
+Portable samples, counters, hashes and limitations are in
+[`performance/rtl-speed-2026-10-15.json`](performance/rtl-speed-2026-10-15.json).
+Raw logs, trace and timing artifacts are in `.artifacts/rtl-speed/`.
+The following sections retain the earlier simulator investigation and RTL
+audit as the baseline for this optimization.
+
+## Earlier simulator baseline
+
+The earlier reference baseline is the non-tile-binned 640x480 FlashSim model with vertex
 and fragment cores, plus the optimized commit invalidation helper from
 FlashSim `5614962`. Its archive SHA-256 is
 `9be9f2d5b281eaa828895db2264994c257b473ed4d806afaa7f0c8baafac5d71`.
@@ -57,9 +149,9 @@ Require native GLES pixel assertions, GTK idle/active readback, and the
 periodic scanout gate. A framebuffer captured after the GLES program exits
 can show the restored console and is not a valid GLES reference image.
 
-## Final profile and function layout (2026-10-15)
+## Earlier profile and function layout (2026-10-15)
 
-The final model uses FlashSim `b608384`, a fresh representative profile for
+The earlier simulator-only model uses FlashSim `b608384`, a fresh representative profile for
 every object, and function ordering from that profile. The RTL remains the
 same 640x480 design. DUT shards compile at `-O2`, and the API wrapper at `-O1`.
 The profile includes successful compute, native GLES, GTK and scanout runs;
@@ -143,9 +235,9 @@ and remaining samples are spread across many RTL evaluation functions. This
 is a measured stopping point, not a proof that every possible simulator or
 RTL architecture has been optimized.
 
-## Graphics lane and cycle audit (2026-10-15)
+## Baseline graphics lane and cycle audit (2026-10-15)
 
-The installed desktop model has 16-lane, eight-warp general compute CUs,
+Both desktop models have 16-lane, eight-warp general compute CUs,
 but its graphics shader CU has **four lanes and two warps**, giving an
 eight-fragment batch. Commit `41229a7` raised the default configuration;
 `308e135` subsequently added the explicit `graphicsGpuConfig` override in
@@ -172,7 +264,7 @@ one at a time, as 64-byte line requests for individual four-byte values, over
 the installed 64-bit AXI bus. Staging therefore has substantial transaction
 and data-transfer overhead even before shader execution.
 
-The quad rasterizer currently emits **every quad in the bounding box**, including
+The previous quad rasterizer emitted **every quad in the bounding box**, including
 quads with no covered samples. `io.quad.valid := active` does not reject empty
 quads. The two background triangles consequently process roughly 614,400 lanes
 for a 640x479 visible rectangle. At the measured 346.60 cycles per processed
@@ -183,15 +275,15 @@ estimates for the full desktop background; that startup run did not record
 per-draw cycle counters. Texture extent, cache behavior, presentation, and
 host integration limit the precision of this extrapolation.
 
-For comparison, the current uncoalesced staging alone has a bus-data lower
+For comparison, the previous uncoalesced staging alone has a bus-data lower
 bound of `614400 * 11 * 8 = 54,067,200` cycles: eleven full-line transactions
 per processed lane, eight data beats per line on the 64-bit AXI bus. This
 excludes address/response, translation, shader and output costs; it is not
 an achievable frame-cycle target. It explains why pixels divided by lane
 count is not a useful render-cycle prediction for this implementation.
 
-There is architectural optimization space beyond the simulator changes already
-qualified. Rejecting wholly empty quads could remove roughly half the background
+This baseline identified architectural optimization space beyond the simulator
+changes. Rejecting wholly empty quads could remove roughly half the background
 shader/staging lanes while retaining helpers in every nonempty quad. Coalescing
 staging transactions and overlapping requests address the largest measured
 phase. Graphics-width migration must update the shader VL and ABI together;
