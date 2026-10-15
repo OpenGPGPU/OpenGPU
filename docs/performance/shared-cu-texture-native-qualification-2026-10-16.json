@@ -1,6 +1,6 @@
 {
   "date": "2026-10-16",
-  "status": "Instrumented native/GTK64 qualification passed; optimized/full640 guest qualification pending",
+  "status": "Compute, native GLES and GTK64 readback passed; active GTK scanout was not established by the older periodic gate",
   "sampler_commit": "7d466a7",
   "frozen_source": {
     "base_commit": "a02ca5f4013f65e69be93b47d2b1e6b9350ddac6",
@@ -242,6 +242,7 @@
   "limits": [
     "This guest uses64x64 KMS mode with the complete4CU16lane8warpVS/FS/FPU model; it is not full640desktop/GTK qualification.",
     "Instrumented correctness-run elapsed time is not a clean simulator speed comparison.",
-    "The installed/default QEMU has not changed; texture buffering remains opt-in."
+    "The installed/default QEMU has not changed; texture buffering remains opt-in.",
+    "The recorded periodic scanout marker used a colourful-frame predicate. It is not proof of active GTK presentation; superseded by verify_gtk_scanout.py and fresh qualification."
   ]
 }

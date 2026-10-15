@@ -98,6 +98,8 @@ static gboolean render(GtkGLArea *area, GdkGLContext *context, gpointer data)
 {
     struct AppState *state = data;
     GLint color;
+    int width = gtk_widget_get_allocated_width(GTK_WIDGET(area));
+    int height = gtk_widget_get_allocated_height(GTK_WIDGET(area));
     (void)context;
     g_print("OPENGPU GTK RENDER ENTER\n");
     fflush(stdout);
@@ -106,8 +108,7 @@ static gboolean render(GtkGLArea *area, GdkGLContext *context, gpointer data)
         g_printerr("OPENGPU GTK RENDER ERROR\n");
         return FALSE;
     }
-    glViewport(0, 0, gtk_widget_get_allocated_width(GTK_WIDGET(area)),
-               gtk_widget_get_allocated_height(GTK_WIDGET(area)));
+    glViewport(0, 0, width, height);
     glClearColor(0.04f, 0.06f, 0.10f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     glUseProgram(state->program);
@@ -124,8 +125,7 @@ static gboolean render(GtkGLArea *area, GdkGLContext *context, gpointer data)
         GLubyte pixel[4] = {0};
         const int expected[3] = { state->active ? 242 : 51,
                                   state->active ? 89 : 140, 46 };
-        glReadPixels(gtk_widget_get_allocated_width(GTK_WIDGET(area)) / 2,
-                     gtk_widget_get_allocated_height(GTK_WIDGET(area)) / 2,
+        glReadPixels(width / 2, height / 2,
                      1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
         if (glGetError() != GL_NO_ERROR ||
             abs((int)pixel[0] - expected[0]) > 2 ||
@@ -135,9 +135,9 @@ static gboolean render(GtkGLArea *area, GdkGLContext *context, gpointer data)
                        pixel[0], pixel[1], pixel[2], pixel[3]);
             exit(1);
         }
-        g_print("OPENGPU GTK FRAME PASS: %s pixel=%u,%u,%u,%u\n",
+        g_print("OPENGPU GTK FRAME PASS: %s pixel=%u,%u,%u,%u size=%dx%d\n",
                 state->active ? "active" : "idle",
-                pixel[0], pixel[1], pixel[2], pixel[3]);
+                pixel[0], pixel[1], pixel[2], pixel[3], width, height);
         fflush(stdout);
     }
     if (!state->reported && getenv("OPENGPU_GTK_AUTOTEST")) {
@@ -159,7 +159,10 @@ static void clicked(GtkButton *button, gpointer data)
 static gboolean automatic_redraw(gpointer data)
 {
     struct AppState *state = data;
-    g_signal_emit_by_name(state->button, "clicked");
+    if (state->button)
+        g_signal_emit_by_name(state->button, "clicked");
+    else
+        clicked(NULL, state);
     return G_SOURCE_REMOVE;
 }
 
@@ -177,6 +180,7 @@ static void activate(GtkApplication *application, gpointer data)
     if (compact) {
         GtkCssProvider *css = gtk_css_provider_new();
         gtk_window_set_decorated(GTK_WINDOW(window), FALSE);
+        gtk_window_fullscreen(GTK_WINDOW(window));
         gtk_css_provider_load_from_data(css,
             "* { font-size: 8px; } button { min-height: 0; min-width: 0; padding: 1px; }",
             -1, NULL);
@@ -184,10 +188,6 @@ static void activate(GtkApplication *application, gpointer data)
             GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
         g_object_unref(css);
     }
-    box = gtk_box_new(GTK_ORIENTATION_VERTICAL, compact ? 2 : 12);
-    gtk_container_set_border_width(GTK_CONTAINER(box), compact ? 2 : 20);
-    label = gtk_label_new(compact ? "GPU" : "OpenGPU GtkGLArea");
-    gtk_box_pack_start(GTK_BOX(box), label, FALSE, FALSE, 0);
     state->area = gtk_gl_area_new();
     gtk_gl_area_set_use_es(GTK_GL_AREA(state->area), TRUE);
     gtk_gl_area_set_required_version(GTK_GL_AREA(state->area), 2, 0);
@@ -196,19 +196,27 @@ static void activate(GtkApplication *application, gpointer data)
     gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(state->area), FALSE);
     g_signal_connect(state->area, "realize", G_CALLBACK(realize), state);
     g_signal_connect(state->area, "render", G_CALLBACK(render), state);
-    gtk_box_pack_start(GTK_BOX(box), state->area, TRUE, TRUE, 0);
-    button = gtk_button_new_with_label(compact ? "Redraw" : "Redraw GPU panel");
-    state->button = button;
-    g_signal_connect(button, "clicked", G_CALLBACK(clicked), state);
-    gtk_box_pack_start(GTK_BOX(box), button, FALSE, FALSE, 0);
-    gtk_container_add(GTK_CONTAINER(window), box);
+    if (compact) {
+        /* Keep the complete test rectangle visible in a 64x64 output. The
+         * normal fixture retains its title, label and interactive button. */
+        gtk_container_add(GTK_CONTAINER(window), state->area);
+    } else {
+        box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+        gtk_container_set_border_width(GTK_CONTAINER(box), 20);
+        label = gtk_label_new("OpenGPU GtkGLArea");
+        gtk_box_pack_start(GTK_BOX(box), label, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), state->area, TRUE, TRUE, 0);
+        button = gtk_button_new_with_label("Redraw GPU panel");
+        state->button = button;
+        g_signal_connect(button, "clicked", G_CALLBACK(clicked), state);
+        gtk_box_pack_start(GTK_BOX(box), button, FALSE, FALSE, 0);
+        gtk_container_add(GTK_CONTAINER(window), box);
+        gtk_widget_show_all(box);
+    }
     g_print("OPENGPU GTK WINDOW BUILT\n");
     fflush(stdout);
     gtk_widget_show(window);
-    gtk_widget_show(box);
-    gtk_widget_show(label);
     gtk_widget_show(state->area);
-    gtk_widget_show(button);
     g_print("OPENGPU GTK SHOW PASS\n");
     fflush(stdout);
     gtk_window_present(GTK_WINDOW(window));

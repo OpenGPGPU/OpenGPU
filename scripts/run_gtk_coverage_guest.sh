@@ -487,31 +487,17 @@ if [ "$GTK_PROOF_SMOKE" = 1 ]; then
     else
         deadline=$(( $(date +%s) + GTK_SMOKE_WAIT ))
     fi
+    gtk_scanout_verified=0
+    GTK_VERIFIED_SCANOUT="$PROOF_WORK/gtk-smoke-verified.ppm"
     while [ "$deadline" = 0 ] || [ "$(date +%s)" -lt "$deadline" ]; do
-        if [ -f "$SCANOUT" ] && python3 - "$SCANOUT" "$GTK_KMS_WIDTH" "$GTK_KMS_HEIGHT" "${GTK_PROOF_SCANOUT_PERIODIC:-0}" <<'PY'
-import pathlib
-import re
-import sys
-
-data = pathlib.Path(sys.argv[1]).read_bytes()
-expected = (int(sys.argv[2]), int(sys.argv[3]))
-periodic = sys.argv[4] == "1"
-header = re.match(rb"P6\n([0-9]+) ([0-9]+)\n255\n", data)
-if header is None:
-    raise SystemExit(1)
-size = tuple(map(int, header.groups()))
-if size != expected:
-    raise SystemExit(1)
-pixels = data[header.end():]
-if periodic:
-    colors = {pixels[i:i + 3] for i in range(0, len(pixels), 3)}
-    nonblack = sum(pixels[i:i + 3] != b"\0\0\0"
-                   for i in range(0, len(pixels), 3))
-    raise SystemExit(0 if nonblack > len(pixels) // 48 and len(colors) >= 8 else 1)
-raise SystemExit(0 if bytes.fromhex("f2592e") in
-                 (pixels[i:i + 3] for i in range(0, len(pixels), 3)) else 1)
-PY
+        if python3 "$GPU_DIR/scripts/verify_gtk_scanout.py" "$SCANOUT" \
+            "$GTK_KMS_WIDTH" "$GTK_KMS_HEIGHT" "$GTK_SMOKE_LOG" \
+            --save-frame "$GTK_VERIFIED_SCANOUT" \
+            --output "$PROOF_WORK/gtk-scanout-verification.json" \
+            >"$PROOF_WORK/scanout-last-check.log" 2>&1
         then
+            gtk_scanout_verified=1
+            SCANOUT="$GTK_VERIFIED_SCANOUT"
             break
         fi
         # Keep a QMP capture when the selected backend exposes one. Headless
@@ -521,7 +507,7 @@ PY
             >"$PROOF_WORK/qmp-last-attempt.log" 2>&1 || true
         sleep 10
     done
-    [ -f "$SCANOUT" ] || {
+    [ "$gtk_scanout_verified" = 1 ] || {
         echo "GTK active client content did not reach QEMU scanout" >&2
         exit 1
     }
@@ -551,9 +537,10 @@ if [ -n "${SCANOUT:-}" ]; then
     SCENE=desktop
     [ "$GTK_PROOF_SMOKE" != 1 ] || SCENE=gtk-smoke
     [ "$GTK_PROOF_SCISSOR" != 1 ] || SCENE=scissor
-    python3 - "$SCANOUT" "${GTK_PROOF_SCANOUT_REFERENCE:-}" "$SCENE" "$GTK_KMS_WIDTH" "$GTK_KMS_HEIGHT" "${GTK_PROOF_SCANOUT_PERIODIC:-0}" <<'PY'
+    python3 - "$SCANOUT" "${GTK_PROOF_SCANOUT_REFERENCE:-}" "$SCENE" "$GTK_KMS_WIDTH" "$GTK_KMS_HEIGHT" "${GTK_PROOF_SCANOUT_PERIODIC:-0}" "$GPU_DIR/scripts/verify_gtk_scanout.py" "${GTK_SMOKE_LOG:-}" <<'PY'
 import pathlib
 import re
+import subprocess
 import sys
 
 path = pathlib.Path(sys.argv[1])
@@ -575,23 +562,8 @@ def pixel(x, y):
     return pixels[index:index + 3]
 
 if scene == "gtk-smoke":
-    if not any(pixels):
-        sys.exit(f"GTK smoke scanout is entirely black: {path}")
-    colors = {pixels[i:i + 3] for i in range(0, len(pixels), 3)}
-    nonblack = sum(pixels[i:i + 3] != b"\0\0\0"
-                   for i in range(0, len(pixels), 3))
-    if periodic:
-        # Weston applies its output transform and texture blend before the
-        # framebuffer reaches QEMU, so the client's exact f2592e texel is not
-        # stable in scanout. A retained periodic frame with substantial
-        # non-black content and multiple colours proves the window was copied
-        # into the physical framebuffer after the active redraw marker.
-        if nonblack <= expected_width * expected_height // 48 or len(colors) < 8:
-            sys.exit(f"GTK periodic scanout lacks window content: {path}")
-    else:
-        active = bytes.fromhex("f2592e")
-        if active not in (pixels[i:i + 3] for i in range(0, len(pixels), 3)):
-            sys.exit(f"GTK active redraw color missing from scanout: {path}")
+    subprocess.run([sys.executable, sys.argv[7], str(path),
+                    str(expected_width), str(expected_height), sys.argv[8]], check=True)
 elif scene == "desktop":
     if pixel(1, 1) != bytes.fromhex("243044"):
         sys.exit(f"desktop panel missing from scanout: {path}")

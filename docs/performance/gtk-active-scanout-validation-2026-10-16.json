@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-16",
+  "change": "Require a presented active GtkGLArea rectangle with dimensions from successful client readback. Freeze the exact verified capture and SHA256. Reject stale colourful/idle/partial frames.",
+  "tests": {
+    "verifier_cases": 7,
+    "host_script_suite": "PASS scripts/test_scripts.sh",
+    "actual_failure_captures": [
+      {
+        "path": ".artifacts/tb640/gtk-smoke-scanout.ppm",
+        "older_colourful_gate_accepts": true,
+        "active_rectangle_gate_rejects": true
+      },
+      {
+        "path": ".artifacts/tf640/gtk-smoke-scanout.ppm",
+        "older_colourful_gate_accepts": true,
+        "active_rectangle_gate_rejects": true
+      }
+    ],
+    "freeze_and_hash_race_check": "PASS; overwriting source leaves saved verified bytes unchanged"
+  },
+  "fixture": "Compact mode uses fullscreen GLArea for complete64x64 visibility; normal mode retains320x240 GTK window, label and redraw button. Logs include actual viewport dimensions.",
+  "source_sha256": {
+    "scripts/verify_gtk_scanout.py": "45e33bd8e6eb3fd42638a80a28829ffd5d36656ec0fe5a19f381c7de39fa8963",
+    "scripts/test_verify_gtk_scanout.py": "ad141ff4867c4c377134fb11fc2aaf4f29704196337683a302eca06bc02eca5d",
+    "scripts/run_gtk_coverage_guest.sh": "68ea49268a86ab056f21cf233c0dfb8149237a76ff7a14383e8c678be4a80213",
+    "userspace/examples/gtk_opengpu_smoke.c": "c3c9e590ef9b373de8b3d909d9ab305a8ec2a40344d03651b16bdecce8d32bc9"
+  },
+  "limits": [
+    "Fresh native and full640 runs with the strengthened gate still pending.",
+    "Previous periodic colourful-frame passes establish neither active GTK presentation nor viewport correctness.",
+    "Visible expected rectangle check is combined with readback, RTL/driver tests and manual capture review; it is not a complete pixel-by-pixel desktop reference comparison."
+  ]
+}

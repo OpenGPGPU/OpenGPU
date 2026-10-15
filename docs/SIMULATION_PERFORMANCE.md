@@ -108,6 +108,25 @@ older real GTK trace preserves all architectural and original probe counters:
 whole-frame saving. See
 [the probe validation](performance/fixed-lod-probe-validation-2026-10-16.json).
 
+Full 640x480 GTK runs exposed an offscreen viewport bug in both prior
+models: a 280x124 application target inherited the 640x480 scanout dimensions
+and read back its clear colour. Commit `2f9f09f` adds per-job dimensions in
+render descriptor words 14/15 and the DRM submit extension; zero dimensions
+preserve older callers. The negative regression fails before the change;
+host, shared-CU programmable offscreen and driver tests pass, and driver/Mesa
+builds succeed. A fresh full model is being qualified. See
+[the extent fix](performance/render-target-extent-fix-2026-10-16.json).
+
+Earlier periodic GTK scanout checks accepted any sufficiently colourful
+frame. Those recorded markers do not prove that the active GTK redraw was
+presented. `verify_gtk_scanout.py` now requires an active readback with viewport
+dimensions and a nearly complete rectangle of the expected colour in the
+actual framebuffer. It rejects both saved full-resolution failure captures,
+stale green frames and partial triangles/tiles. The gate freezes the exact
+verified bytes as `gtk-smoke-verified.ppm`, with a hash and rectangle report,
+so display timer updates cannot replace the reviewed capture. Compact tests
+use a fullscreen GL area; the normal desktop keeps its 320x240 GTK window.
+
 The wider-callback experiment passes its unit and guest correctness checks,
 but six clean native GLES guests show **9,395.220 ms with eight-byte callbacks
 versus 9,503.885 ms with 64-byte callbacks** (1.2% slower). Eight-byte callbacks
