@@ -490,4 +490,129 @@ class TexSampleUnitSpec extends AnyFlatSpec {
       }
     }
   }
+
+  for (lanes <- Seq(4, 16)) {
+    it should s"broadcast a fixed single-texel mip across $lanes lanes without changing masks or dynamic LOD" in {
+      val config = GpuConfig(lanes = lanes, warps = 2)
+      simulate(new TexSampleUnit(config)) { dut =>
+        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+        dut.io.in.valid.poke(false.B); dut.io.commit.ready.poke(false.B)
+        dut.io.vectorIn.valid.poke(false.B); dut.io.vectorCommit.ready.poke(false.B)
+        dut.io.texFormat.poke(PixelFormat.native.U)
+        dut.io.texBase.poke(0x4000.U); dut.io.wrapClamp.poke(true.B)
+        dut.io.mem.req.ready.poke(false.B); dut.io.mem.resp.valid.poke(false.B)
+        dut.io.mem.resp.bits.poke(0.U.asTypeOf(dut.io.mem.resp.bits))
+        val all = (BigInt(1) << lanes) - 1
+        val sparse = if (lanes == 4) BigInt(10) else BigInt(0x8420)
+        val colors = (0 to 5).map(l => texel(20 + l * 40, 7 + l * 20, 9 + l * 13))
+        var memory = Map.empty[Long, BigInt]
+        def serve(done: () => Boolean): (Int, Int) = {
+          val pending = mutable.Queue.empty[(Long, Int)]
+          var cycle = 0
+          var requests = 0
+          var first = -1
+          while (!done() && cycle < 4000) {
+            dut.io.mem.req.ready.poke((cycle % 5 != 2).B)
+            val response = pending.headOption.filter(_._2 <= cycle)
+            dut.io.mem.resp.valid.poke(response.nonEmpty.B)
+            response.foreach { case (address, _) =>
+              dut.io.mem.resp.bits.addr.poke(address.U)
+              dut.io.mem.resp.bits.data.poke(memory(address).U)
+              dut.io.mem.resp.bits.write.poke(false.B)
+            }
+            if (response.nonEmpty && dut.io.mem.resp.ready.peek().litToBoolean) pending.dequeue()
+            if (dut.io.mem.req.valid.peek().litToBoolean) {
+              if (first < 0) first = cycle
+              if (dut.io.mem.req.ready.peek().litToBoolean) {
+                val address = dut.io.mem.req.bits.addr.peek().litValue.toLong
+                assert(memory.contains(address), f"unexpected sample address0x$address%x")
+                pending.enqueue((address, cycle + 7))
+                requests += 1
+              }
+            }
+            dut.clock.step(); cycle += 1
+          }
+          assert(cycle < 4000 && pending.isEmpty)
+          dut.io.mem.resp.valid.poke(false.B)
+          (requests, first)
+        }
+        val trials = Seq((1, 1, 0, 0, all), (8, 4, 3, 3, sparse),
+          (1, 1, 0, 2, all), (4, 4, 0, 0, all),
+          (1, 1, 0, 0, BigInt(0)), (1, 1, 0, 0, all))
+        for (((width, height, minimum, maximum, mask), trial) <- trials.zipWithIndex) {
+          var base = 0x4000L
+          memory = Map.empty
+          for (level <- 0 to maximum) {
+            val w = math.max(1, width >> level)
+            val h = math.max(1, height >> level)
+            for (pixel <- 0 until w * h) {
+              val color = if (trial == 3) texel(pixel * 11, pixel * 7, pixel * 3) else colors(level)
+              memory += (base + pixel * 4) -> color
+            }
+            base += w * h * 4
+          }
+          dut.io.texWidth.poke(width.U); dut.io.texHeight.poke(height.U)
+          dut.io.minLevel.poke(minimum.U); dut.io.texMaxLevel.poke(maximum.U)
+          dut.io.lodBias.poke(0.S)
+          dut.io.vectorIn.bits.poke(0.U.asTypeOf(dut.io.vectorIn.bits))
+          dut.io.vectorIn.bits.executionMask.poke(mask.U)
+          dut.io.vectorIn.bits.issued.decode.activeMask.poke(all.U)
+          dut.io.vectorIn.bits.issued.decode.warpId.poke(1.U)
+          dut.io.vectorIn.bits.issued.decode.pc.poke((0x500 + trial * 4).U)
+          dut.io.vectorIn.bits.issued.decode.instruction.poke("h062081ab".U)
+          for (lane <- 0 until lanes) {
+            val step = if (lane / 4 == 1) 2L << 16 else if (lane / 4 == 2) 4L << 16 else 0L
+            val u = if (trial == 3) (2L * (lane % 4) + 1) * 8192 else if (lane % 2 == 1) step else 0L
+            val v = if (trial == 3) (2L * (lane / 4) + 1) * 8192 else 0L
+            dut.io.vectorIn.bits.issued.vs1Data(lane).poke(u.U)
+            dut.io.vectorIn.bits.issued.vs2Data(lane).poke(v.U)
+            dut.io.vectorIn.bits.issued.oldVdData(lane).poke((0x120000 + lane).U)
+          }
+          dut.io.vectorIn.valid.poke(true.B); dut.io.vectorIn.ready.expect(true.B)
+          dut.clock.step(); dut.io.vectorIn.valid.poke(false.B)
+          dut.io.vectorIn.bits.poke(0.U.asTypeOf(dut.io.vectorIn.bits))
+          val (requests, first) = serve(() => dut.io.vectorCommit.valid.peek().litToBoolean)
+          for (_ <- 0 until 3) {
+            dut.io.vectorCommit.bits.writeback.warpId.expect(1.U)
+            dut.io.vectorCommit.bits.pc.expect((0x500 + trial * 4).U)
+            for (lane <- 0 until lanes) {
+              val level = if (trial == 2) Seq(0, 1, 2, 0)(lane / 4) else minimum
+              val sampled = if (trial == 3) texel(lane * 11, lane * 7, lane * 3) else colors(level)
+              val expected = if (mask.testBit(lane)) sampled else BigInt(0x120000 + lane)
+              dut.io.vectorCommit.bits.writeback.data(lane).expect(expected.U)
+            }
+            dut.io.vectorCommit.valid.expect(true.B)
+            dut.io.vectorIn.ready.expect(false.B)
+            dut.clock.step()
+          }
+          if (trial == 0 || trial == 1 || trial == 5) {
+            assert(requests == 1, s"single-texel vector fetched $requests words")
+            assert(first <= 5 + minimum, s"leading masked lanes delayed the sample: $first")
+          }
+          if (mask == 0) assert(requests == 0)
+          println(s"SINGLE_TEXEL_VECTOR lanes=$lanes trial=$trial requests=$requests first=$first")
+          dut.io.vectorCommit.ready.poke(true.B); dut.clock.step()
+          dut.io.vectorCommit.ready.poke(false.B)
+        }
+        // A scalar instruction immediately after the broadcast still uses
+        // the scalar commit channel and releases its ordinary rd reservation.
+        dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
+        dut.io.in.bits.decode.warpId.poke(1.U)
+        dut.io.in.bits.decode.pc.poke(0x700.U)
+        dut.io.in.bits.decode.activeMask.poke(all.U)
+        dut.io.in.bits.decode.instruction.poke((3 << 7).U)
+        dut.io.in.valid.poke(true.B); dut.io.in.ready.expect(true.B)
+        dut.clock.step(); dut.io.in.valid.poke(false.B)
+        val (requests, _) = serve(() => dut.io.commit.valid.peek().litToBoolean)
+        assert(requests == 1)
+        dut.io.commit.bits.warpId.expect(1.U)
+        dut.io.commit.bits.rd.expect(3.U)
+        dut.io.commit.bits.nextPc.expect(0x704.U)
+        dut.io.commit.bits.data.expect(colors(0).U)
+        dut.io.vectorCommit.valid.expect(false.B)
+        dut.io.commit.ready.poke(true.B); dut.clock.step()
+      }
+    }
+  }
+
 }

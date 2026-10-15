@@ -20,6 +20,7 @@ import opengpu.core.backend.writeback.ScalarCommitRequest
   * The scalar instruction is warp-uniform. `vtex.sample` supplies one Q16.16
   * coordinate pair per vector lane; this unit serializes the active lanes
   * through the one physical sampler and preserves inactive destination lanes.
+  * A fixed single-texel mip is sampled once for all active vector lanes.
   */
 class TexSampleUnit(
   config: GpuConfig = GpuConfig(),
@@ -73,6 +74,7 @@ class TexSampleUnit(
   private val activeMaskReg = RegInit(0.U(config.lanes.W))
   private val dataReg = RegInit(0.U(32.W))
   private val vectorModeReg = RegInit(false.B)
+  private val broadcastTexelReg = RegInit(false.B)
   private val executionMaskReg = RegInit(0.U(config.lanes.W))
   private val vectorDataReg =
     Reg(Vec(config.lanes, UInt(config.xLen.W)))
@@ -244,7 +246,16 @@ class TexSampleUnit(
         lodBiasReg := io.lodBias
         minLevelReg := io.minLevel
         maxLevelReg := io.texMaxLevel
-        laneReg := 0.U
+        // A fixed mip whose dimensions have both reached one has exactly
+        // one decoded colour for every coordinate. Reuse the scalar
+        // sampler's format/address handling, then broadcast its result.
+        val oneTexel = io.minLevel === io.texMaxLevel &&
+          (io.texWidth >> io.minLevel) <= 1.U &&
+          (io.texHeight >> io.minLevel) <= 1.U &&
+          io.vectorIn.bits.executionMask.orR
+        broadcastTexelReg := oneTexel
+        laneReg := Mux(oneTexel,
+          PriorityEncoder(io.vectorIn.bits.executionMask), 0.U)
         preferVector := false.B
         when(io.minLevel === io.texMaxLevel) {
           // Every derivative and bias clamps to this exact level. Fractional
@@ -257,6 +268,7 @@ class TexSampleUnit(
         }
       }.elsewhen(io.in.fire) {
         vectorModeReg := false.B
+        broadcastTexelReg := false.B
         warpIdReg := io.in.bits.decode.warpId
         rdReg := io.in.bits.decode.instruction(11, 7)
         pcReg := io.in.bits.decode.pc
@@ -322,8 +334,17 @@ class TexSampleUnit(
       when(vectorModeReg) {
         when(vectorLaneActive) {
           when(sampler.io.result.fire) {
-            vectorDataReg(laneReg) := sampler.io.result.bits
-            advanceVectorLane()
+            when(broadcastTexelReg) {
+              for (lane <- 0 until config.lanes) {
+                when(executionMaskReg(lane)) {
+                  vectorDataReg(lane) := sampler.io.result.bits
+                }
+              }
+              state := sCommit
+            }.otherwise {
+              vectorDataReg(laneReg) := sampler.io.result.bits
+              advanceVectorLane()
+            }
           }
         }.otherwise {
           advanceVectorLane()

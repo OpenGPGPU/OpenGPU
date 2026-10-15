@@ -1,0 +1,237 @@
+{
+  "status": "RTL validated in unit and full shared-CU scenes; native desktop qualification pending",
+  "change": "For a fixed mip with both dimensions clamped to one, sample the first active lane once and broadcast the decoded result to execution-mask lanes. Preserve old destination values in inactive lanes. Scalar and automatic-LOD paths retain prior behavior.",
+  "vlen": "Uses config.lanes and a priority encoder; no hardcoded shader lane count.",
+  "unit_validation": {
+    "tests": 8,
+    "log": ".artifacts/shared-cu/fill-throughput/broadcast-validation/broadcast-units.log",
+    "sha256": "4d6300aca4665c34faed4ead57bfd2c2d52e10e8ab414e134c4e939465c85ba9",
+    "coverage": [
+      "4 and 16 lanes",
+      "fixed base mip and nonzero mip",
+      "leading, interior and empty masks",
+      "dynamic per-quad LOD on repeated 1x1 mip levels",
+      "ordinary spatial texture after broadcast",
+      "memory request and commit backpressure",
+      "scalar instruction immediately after vector broadcast"
+    ]
+  },
+  "negative_control": {
+    "exit_status": 1,
+    "expected_failure": true,
+    "scope": "Unmodified target TexSampleUnit classes with new request-count regressions",
+    "controller_note": "Initial controller expected a different ScalaTest assertion wording; actual exit/log confirm both intended request-count failures. No rerun or result replacement."
+  },
+  "validation": {
+    "started": 1792107513.646162,
+    "stages": [
+      {
+        "label": "broadcast-units",
+        "exit_status": 0,
+        "seconds": 10.708265375113115
+      },
+      {
+        "label": "full-solid",
+        "exit_status": 0,
+        "seconds": 375.6597148750443
+      },
+      {
+        "label": "full-spatial",
+        "exit_status": 0,
+        "seconds": 96.76309704198502
+      }
+    ],
+    "finished": 1792107996.771085
+  },
+  "scenes": [
+    {
+      "scene": "full-solid",
+      "cus": 1,
+      "before": {
+        "CUs": "1",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "63176",
+        "active_cu_cycles": "24621",
+        "peak_cus": "1",
+        "texture_extent": "1",
+        "buffer_texture_reads": "true",
+        "texture_words": "2236",
+        "texture_lines": "1"
+      },
+      "after": {
+        "CUs": "1",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "52050",
+        "active_cu_cycles": "13495",
+        "peak_cus": "1",
+        "texture_extent": "1",
+        "buffer_texture_reads": "true",
+        "texture_words": "140",
+        "texture_lines": "1"
+      },
+      "cycle_reduction": 0.17611118146131444,
+      "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "identical_metadata_sha256": "af2fbca292da2260ab267628bb77d97d3f05b3234d5c4d3ca290062c2e0f05ef",
+      "shader_words_identical": true
+    },
+    {
+      "scene": "full-solid",
+      "cus": 4,
+      "before": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "21173",
+        "active_cu_cycles": "31739",
+        "peak_cus": "4",
+        "texture_extent": "1",
+        "buffer_texture_reads": "true",
+        "texture_words": "2236",
+        "texture_lines": "1"
+      },
+      "after": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "16640",
+        "active_cu_cycles": "14142",
+        "peak_cus": "4",
+        "texture_extent": "1",
+        "buffer_texture_reads": "true",
+        "texture_words": "140",
+        "texture_lines": "1"
+      },
+      "cycle_reduction": 0.21409342086619754,
+      "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "identical_metadata_sha256": "425c66204736246c5dba52cfde7f0701f185e5cdff57326ab5e514b34db9c653",
+      "shader_words_identical": true
+    },
+    {
+      "scene": "full-spatial",
+      "cus": 1,
+      "before": {
+        "CUs": "1",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "82681",
+        "active_cu_cycles": "44126",
+        "peak_cus": "1",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "8944",
+        "texture_lines": "166"
+      },
+      "after": {
+        "CUs": "1",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "82681",
+        "active_cu_cycles": "44126",
+        "peak_cus": "1",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "8944",
+        "texture_lines": "166"
+      },
+      "cycle_reduction": 0.0,
+      "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "identical_metadata_sha256": "f9edfa57abee974754bd8d1b6eb7def63052c6c687e03fbd813418cddeb3d740",
+      "shader_words_identical": true
+    },
+    {
+      "scene": "full-spatial",
+      "cus": 4,
+      "before": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "25244",
+        "active_cu_cycles": "49346",
+        "peak_cus": "4",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "8944",
+        "texture_lines": "243"
+      },
+      "after": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "25244",
+        "active_cu_cycles": "49346",
+        "peak_cus": "4",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "8944",
+        "texture_lines": "243"
+      },
+      "cycle_reduction": 0.0,
+      "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "identical_metadata_sha256": "50686761165eaac49de9ec6b0535bfcdf853339be3a21edd91b5de99d85f3f2c",
+      "shader_words_identical": true
+    }
+  ],
+  "scaling": {
+    "solid_before": 2.983800122797903,
+    "solid_after": 3.1280048076923075,
+    "spatial_before": 3.275273332276977,
+    "spatial_after": 3.275273332276977
+  },
+  "source_sha256": "fad4fae0d3f5aad2ff225a39d18e94cfe5ed8e4c71c042670c30ee70750846d6",
+  "artifact_root": ".artifacts/shared-cu/fill-throughput",
+  "limits": [
+    "Cycle gains apply to fixed single-texel textures. General desktop textures need separate optimizations and native measurements.",
+    "No simulator host-speed claim: builds, simulations and diagnostic replay overlapped.",
+    "Regenerate and qualify complete four-CU native model before default executable promotion."
+  ]
+}
