@@ -42,7 +42,7 @@ renders. Dedicated legacy DMA registers remain supported.
 ## Registers
 
 The C definitions in `driver/gpu_abi.h` and Scala definitions are compared by
-`GpuAbiLayoutSpec`. The mapped end of an integrated build is 0x158.
+`GpuAbiLayoutSpec`. The mapped end of an integrated build is 0x15c.
 
 | Offset | Name | Access | Meaning |
 |---|---|---|---|
@@ -119,6 +119,25 @@ The C definitions in `driver/gpu_abi.h` and Scala definitions are compared by
 | 0x14C | UCMD_VECTOR_SATP | RW | Sv32 `satp` for the vector/data MMU: bit 31 enable, ASID `[30:22]`, root PPN `[19:0]` |
 | 0x150 | UCMD_INSTRUCTION_SATP | RW | Sv32 `satp` for the instruction MMU (same layout as VECTOR_SATP) |
 | 0x154 | UCMD_TLB_FLUSH | W1P | bit 0 full flush; bit 1 ASID-scoped flush (ASID `[11:3]`); bit 2 VPN-scoped flush (VPN `[31:12]`); no bit set is a no-op |
+| 0x158 | SHADER_CONFIG | RO | shader lanes `[7:0]`, resident warps `[15:8]`, fragment kernarg banks `[23:16]`, graphics execution CUs `[31:24]` |
+
+`CAPABILITIES[23]` advertises the shader-resource description on programmable
+unified builds. The CU count describes executors available to graphics: one
+on the dedicated path, or the shared pool's CU count. It does not describe
+the number of separate compute CUs on the older dedicated architecture.
+Software must query the four fields independently; fragment batch capacity
+alone does not identify lane width or the number of staging banks.
+
+The Linux driver validates that the nonzero lane/warp product matches the
+advertised batch capacity and that at least two fragment banks are provided
+in complete pairs. `OPENGPU_PARAM_SHADER_CONFIG` returns the packed word,
+or zero when older hardware lacks the capability. The userspace helper only
+queries that new parameter when the capability is present, preserving older
+driver/hardware operation. Fragment allocation, bank-span validation and
+uniform replication use the advertised bank count; vertex banks retain the
+existing two-bank contract. A parallel fragment layout with more than two
+banks requires a nonzero bank stride. Stock shader lane width and array
+offsets still require a coordinated ABI migration.
 
 ## Translation and ownership
 

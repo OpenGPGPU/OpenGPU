@@ -125,7 +125,8 @@ class GpuAbiLayoutSpec extends AnyFlatSpec {
       "GPU_REG_UCMD_SAMPLE_MODE" -> GpuCommandMmioRegs.SAMPLE_MODE,
       "GPU_REG_UCMD_VECTOR_SATP" -> GpuCommandMmioRegs.VECTOR_SATP,
       "GPU_REG_UCMD_INSTRUCTION_SATP" -> GpuCommandMmioRegs.INSTRUCTION_SATP,
-      "GPU_REG_UCMD_TLB_FLUSH" -> GpuCommandMmioRegs.TLB_FLUSH
+      "GPU_REG_UCMD_TLB_FLUSH" -> GpuCommandMmioRegs.TLB_FLUSH,
+      "GPU_REG_SHADER_CONFIG" -> GpuCommandMmioRegs.SHADER_CONFIG
     ).map { case (n, v) => (n, v.toLong) })
   }
 
@@ -161,6 +162,7 @@ class GpuAbiLayoutSpec extends AnyFlatSpec {
       "GPU_CAP_UNIFIED_RENDER" -> (1L << GpuCapabilities.UnifiedRender),
       "GPU_CAP_HW_VBLANK" -> (1L << GpuCapabilities.HwVblank),
       "GPU_CAP_COMPUTE_SCALAR_FPU" -> (1L << GpuCapabilities.ComputeScalarFpu),
+      "GPU_CAP_SHADER_CONFIG_INFO" -> (1L << GpuCapabilities.ShaderConfigInfo),
       "GPU_CAP_MSAA" -> (1L << GpuCapabilities.Msaa),
       "GPU_CAP_MSAA_MAX_MODE_SHIFT" -> GpuCapabilities.MsaaMaxModeShift.toLong,
       "GPU_CAP_MSAA_MAX_MODE_MASK" ->
@@ -170,6 +172,23 @@ class GpuAbiLayoutSpec extends AnyFlatSpec {
       "GPU_CAP_FRAGMENT_BATCH_MASK" ->
         (0xffL << GpuCapabilities.FragmentBatchShift)
     ))
+  }
+
+  it should "match shader resource fields across hardware and the DRM UAPI" in {
+    val fields = Seq(
+      "LANES_SHIFT" -> ShaderResourceConfig.LanesShift,
+      "WARPS_SHIFT" -> ShaderResourceConfig.WarpsShift,
+      "BANKS_SHIFT" -> ShaderResourceConfig.BanksShift,
+      "CUS_SHIFT" -> ShaderResourceConfig.ComputeUnitsShift,
+      "FIELD_MASK" -> ShaderResourceConfig.FieldMask)
+    val uapi = CHeader.parse(new String(Files.readAllBytes(
+      Paths.get("driver", "opengpu_drm.h")), StandardCharsets.UTF_8))
+    fields.foreach { case (name, value) =>
+      check("GPU_SHADER_CONFIG_" + name, value.toLong)
+      assert(uapi("OPENGPU_SHADER_CONFIG_" + name) == value.toLong)
+    }
+    assert(uapi("OPENGPU_PARAM_SHADER_CONFIG") == 1)
+    assert(uapi("OPENGPU_CAP_SHADER_CONFIG_INFO") == (1L << GpuCapabilities.ShaderConfigInfo))
   }
 
   it should "match the fragment output-control ABI" in {

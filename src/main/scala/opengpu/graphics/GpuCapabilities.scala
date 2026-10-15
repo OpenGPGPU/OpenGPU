@@ -45,4 +45,22 @@ object GpuCapabilities {
   /** Compute CUs execute scalar FP32 (`flw` and RVV `.vf` operands) (bit22).
     * Fragment and vertex shader CUs never have the scalar FPU. */
   val ComputeScalarFpu = 22
+  /** Read-only shader lane/warp/bank/CU description is queryable (bit23). */
+  val ShaderConfigInfo = 23
+}
+
+/** Byte fields of GpuCommandMmioRegs.SHADER_CONFIG and the DRM query. */
+object ShaderResourceConfig {
+  val LanesShift = 0
+  val WarpsShift = 8
+  val BanksShift = 16
+  val ComputeUnitsShift = 24
+  val FieldMask = 0xff
+
+  def encode(lanes: Int, warps: Int, banks: Int, computeUnits: Int): BigInt = {
+    require(Seq(lanes, warps, banks, computeUnits).forall(n => n > 0 && n <= FieldMask),
+      "shader resource counts must fit nonzero eight-bit fields")
+    BigInt(lanes) | (BigInt(warps) << WarpsShift) |
+      (BigInt(banks) << BanksShift) | (BigInt(computeUnits) << ComputeUnitsShift)
+  }
 }

@@ -165,7 +165,8 @@ class GpuHostAxi(
     io.performance := host.io.performance
     val unified = if (unifiedCommandMmio) {
       Some(Module(new GpuCommandMmio(
-        gpuConfig, commandIdWidth, gpuConfig.commandQueueDepth)))
+        gpuConfig, commandIdWidth, gpuConfig.commandQueueDepth,
+        shaderComputeUnits = sharedShader.map(_.numComputeUnits).getOrElse(1))))
     } else None
 
     // Command distribution lives here, next to the graphics engine: a render
@@ -273,8 +274,8 @@ class GpuHostAxi(
     // RenderHost owns 0x000..0xC4, MSAA_CONFIG at 0x134, and the
     // stencil/blend registers at 0x13C..0x144; the unified block owns
     // 0xC4..0x130, the RESET register at 0x138 and the SAMPLE_MODE / satp /
-    // TLB_FLUSH registers at 0x148..0x154. The overall map ends at
-    // GpuCommandMmioRegs.END (0x158) for both build flavours; non-unified
+    // TLB_FLUSH registers at 0x148..0x154, plus shader resources at 0x158.
+    // The overall map ends at GpuCommandMmioRegs.END (0x15c); non-unified
     // builds read the unified range as reserved zero.
     val mappedEnd = GpuCommandMmioRegs.END.U
     val beatOk = (beatAddr & 0x3.U) === 0.U && beatAddr < mappedEnd

@@ -28,6 +28,16 @@ int opengpu_capabilities(int fd, uint64_t *value)
     return 0;
 }
 
+int opengpu_shader_config(int fd, uint32_t *value)
+{
+    struct drm_opengpu_param param = { .param = OPENGPU_PARAM_SHADER_CONFIG };
+    if (!value) { errno = EINVAL; return -1; }
+    if (ioctl(fd, DRM_IOCTL_OPENGPU_GET_PARAM, &param) < 0) return -1;
+    if (param.value > UINT32_MAX) { errno = EPROTO; return -1; }
+    *value = (uint32_t)param.value;
+    return 0;
+}
+
 int opengpu_display_size(int fd, uint32_t *width, uint32_t *height)
 {
     struct drm_mode_card_res resources = { 0 };

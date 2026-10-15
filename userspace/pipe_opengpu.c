@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "pipe_opengpu.h"
+#include "opengpu_shader_resources.h"
 #include <drm/drm.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_mode.h>
@@ -18,9 +19,8 @@
  * sandbox. The coverage fragment program needs the whole slot. */
 #define PIPE_FS_GEM_BYTES 1024u
 #define PIPE_KERNARG_BYTES 1024u
-/* The fragment ABI uses two 320-byte banks: 288 bytes of per-lane staging
- * plus the 32-byte tail required by an eight-lane batch.  This is the stride
- * exercised by the kernel DRM render tests. */
+/* One eight-fragment bank: 288 bytes of staging and a 32-byte uniform tail.
+ * Older hardware has two banks; shared graphics describes its bank count. */
 #define PIPE_FS_BANK_STRIDE 320u
 #define PIPE_CS_SLOT 1u
 #define PIPE_CS_KERNARG_SLOT 2u
@@ -46,6 +46,7 @@
 struct pipe_opengpu_screen {
     int fd;
     uint64_t caps;
+    uint32_t shader_config;
     struct pipe_opengpu_resource *resources;
 };
 
@@ -112,6 +113,24 @@ static struct pipe_opengpu_screen *screen_from_fd(int fd)
         errno = saved;
         return NULL;
     }
+    if ((screen->caps & OPENGPU_CAP_SHADER_CONFIG_INFO) &&
+        opengpu_shader_config(fd, &screen->shader_config)) {
+        int saved = errno;
+
+        close(fd);
+        free(screen);
+        errno = saved;
+        return NULL;
+    }
+    if ((screen->caps & OPENGPU_CAP_SHADER_CONFIG_INFO) &&
+        !opengpu_shader_resources_valid(screen->shader_config,
+          (uint32_t)((screen->caps & OPENGPU_CAP_FRAGMENT_BATCH_MASK) >>
+                     OPENGPU_CAP_FRAGMENT_BATCH_SHIFT))) {
+        close(fd);
+        free(screen);
+        errno = EPROTO;
+        return NULL;
+    }
     screen->fd = fd;
     return screen;
 }
@@ -156,6 +175,17 @@ int pipe_opengpu_screen_fd(const struct pipe_opengpu_screen *screen)
 uint64_t pipe_opengpu_screen_capabilities(const struct pipe_opengpu_screen *screen)
 {
     return screen ? screen->caps : 0;
+}
+
+uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen)
+{
+    return screen ? screen->shader_config : 0;
+}
+
+static uint32_t fragment_kernarg_bytes(const struct pipe_opengpu_screen *screen)
+{
+    uint32_t span = opengpu_shader_resource_banks(screen->shader_config) * PIPE_FS_BANK_STRIDE;
+    return span > PIPE_KERNARG_BYTES ? span : PIPE_KERNARG_BYTES;
 }
 
 struct pipe_opengpu_context *pipe_opengpu_context_create(
@@ -555,7 +585,7 @@ int pipe_opengpu_bind_fs(struct pipe_opengpu_context *ctx,
         return -1;
     }
     if (opengpu_buffer_create(fd, PIPE_FS_GEM_BYTES, &ctx->shader) ||
-        opengpu_buffer_create(fd, PIPE_KERNARG_BYTES, &ctx->kernarg))
+        opengpu_buffer_create(fd, fragment_kernarg_bytes(ctx->screen), &ctx->kernarg))
         return -1;
     memset(ctx->shader.map, 0, PIPE_FS_GEM_BYTES);
     memcpy(ctx->shader.map, code, bytes);
@@ -569,7 +599,7 @@ int pipe_opengpu_bind_fs(struct pipe_opengpu_context *ctx,
     binding.slot = PIPE_KERNARG_SLOT;
     binding.handle = ctx->kernarg.handle;
     binding.type = OPENGPU_RESOURCE_KERNARG;
-    binding.size = PIPE_KERNARG_BYTES;
+    binding.size = fragment_kernarg_bytes(ctx->screen);
     binding.flags = OPENGPU_RESOURCE_UNCACHED;
     if (opengpu_bind(fd, &binding))
         return -1;
@@ -1181,27 +1211,26 @@ int pipe_opengpu_write_vs_matrices(struct pipe_opengpu_context *ctx,
 int pipe_opengpu_write_fs_uniform(struct pipe_opengpu_context *ctx,
                                   uint32_t word)
 {
-    /* Each bank is 512 bytes. The uniform word is at byte 288 of both. */
-    static const uint32_t lines[] = { 256u, 256u + PIPE_FS_BANK_STRIDE };
-    static const uint32_t words[] = { 288u, 288u + PIPE_FS_BANK_STRIDE };
+    /* The uniform word is at byte 288 of every advertised fragment bank. */
     unsigned i;
 
     if (!ctx || !ctx->fs_bound || !ctx->kernarg.map ||
-        ctx->kernarg.size < PIPE_KERNARG_BYTES) {
+        ctx->kernarg.size < fragment_kernarg_bytes(ctx->screen)) {
         errno = EINVAL;
         return -1;
     }
-    for (i = 0; i < 2; i++) {
+    for (i = 0; i < opengpu_shader_resource_banks(ctx->screen->shader_config); i++) {
         struct drm_opengpu_invalidate invalidate = { 0 };
         struct pipe_opengpu_fence *fence;
 
-        memcpy((uint8_t *)ctx->kernarg.map + words[i], &word, sizeof(word));
+        memcpy((uint8_t *)ctx->kernarg.map + i * PIPE_FS_BANK_STRIDE + 288u,
+               &word, sizeof(word));
         fence = alloc_fence(ctx->screen->fd);
         if (!fence)
             return -1;
         invalidate.context_id = ctx->context_id;
         invalidate.handle = ctx->kernarg.handle;
-        invalidate.offset = lines[i];
+        invalidate.offset = i * PIPE_FS_BANK_STRIDE + 256u;
         invalidate.bytes = 64;
         invalidate.out_syncobj = fence->handle;
         if (opengpu_invalidate(ctx->screen->fd, &invalidate)) {
@@ -1220,13 +1249,13 @@ int pipe_opengpu_write_fs_block(struct pipe_opengpu_context *ctx,
     unsigned bytes, bank, off;
 
     if (!ctx || !words || !nfloats || !ctx->fs_bound || !ctx->kernarg.map ||
-        ctx->kernarg.size < PIPE_KERNARG_BYTES ||
+        ctx->kernarg.size < fragment_kernarg_bytes(ctx->screen) ||
         288u + nfloats * 4u > PIPE_FS_BANK_STRIDE) {
         errno = EINVAL;
         return -1;
     }
     bytes = nfloats * 4u;
-    for (bank = 0; bank < 2; bank++) {
+    for (bank = 0; bank < opengpu_shader_resource_banks(ctx->screen->shader_config); bank++) {
         memcpy((uint8_t *)ctx->kernarg.map + bank * PIPE_FS_BANK_STRIDE + 288u,
                words, bytes);
         for (off = 256u; off < 288u + bytes; off += 64u) {

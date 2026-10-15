@@ -11,6 +11,20 @@ import scala.collection.mutable
 import scala.util.Random
 
 class GpuHostSystemAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
+  for (shared <- Seq(false, true)) {
+    it should s"expose shader resource discovery over AXI with shared graphics=$shared" in {
+      val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
+      val gfx = GraphicsConfig(screenWidth = 4, screenHeight = 4)
+      simulate(new GpuHostSystemAxi(gfx, gpu, numComputeUnits = 2,
+        fragCore = true, sharedGraphics = shared)) { dut =>
+        initialize(dut)
+        val caps = axiRead(dut, RenderHostRegs.CAPABILITIES)
+        assert((caps & (1L << opengpu.graphics.GpuCapabilities.ShaderConfigInfo)) != 0)
+        assert(axiRead(dut, GpuCommandMmioRegs.SHADER_CONFIG) ==
+          (if (shared) 0x02020204L else 0x01020204L))
+      }
+    }
+  }
   behavior of "GpuHostSystemAxi"
 
   it should "replay randomized commands under backpressure and injected faults" in {

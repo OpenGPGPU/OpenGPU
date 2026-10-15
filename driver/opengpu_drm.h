@@ -141,6 +141,14 @@ struct drm_opengpu_param {
 };
 
 #define OPENGPU_PARAM_CAPABILITIES 0u
+/* Same packed lane/warp/fragment-bank/graphics-CU bytes as SHADER_CONFIG.
+ * Returns zero on older hardware without OPENGPU_CAP_SHADER_CONFIG_INFO. */
+#define OPENGPU_PARAM_SHADER_CONFIG 1u
+#define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
+#define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
+#define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
+#define OPENGPU_SHADER_CONFIG_CUS_SHIFT   24u
+#define OPENGPU_SHADER_CONFIG_FIELD_MASK  0xffu
 #define OPENGPU_CAP_FRAGMENT_CORE (1u << 0)
 /* Bit1 was the host-memory job ring, retired; it is reserved and never set. */
 #define OPENGPU_CAP_VERTEX_CORE (1u << 2)
@@ -165,6 +173,7 @@ struct drm_opengpu_param {
 #define OPENGPU_CAP_HW_VBLANK (1u << 21)
 /* Compute shaders may use flw and RVV .vf operands (bit22). */
 #define OPENGPU_CAP_COMPUTE_SCALAR_FPU (1u << 22)
+#define OPENGPU_CAP_SHADER_CONFIG_INFO (1u << 23)
 
 /* Sample mode field width (0 = 1x, 1 = 2x, 2 = 4x). */
 #define OPENGPU_MSAA_MODE_MASK 0x3u

@@ -112,6 +112,7 @@ struct opengpu_hw {
     u64 fence_context;
     u64 fence_seqno;
     u32 capabilities;
+    u32 shader_config;
     /* Free-running job/command id allocator (unified command ids). */
     u32 job_seqno;              /* last allocated job id */
 };

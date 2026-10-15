@@ -139,6 +139,23 @@ it. Three tests pass for 2/4-CU routing, swapped physical CU placement,
 out-of-order completions, faults, client reuse and held invalidation replies.
 The router is not yet connected to parallel fragment workers.
 
+The shader resource query is now implemented at MMIO `0x158`, capability bit
+23 and DRM parameter 1. It reports lane count, resident warps, fragment bank
+count and graphics executor count in separate bytes. The current shared
+compatibility path still advertises two banks. The driver and pipe library
+validate the description and use its bank count for fragment allocation,
+binding bounds and uniform replication; older hardware retains two banks.
+Vertex bank allocation is unchanged. Zero-stride fragment bindings are
+rejected when a future parallel configuration advertises more than two banks.
+
+Resource discovery passes 21 Scala/AXI tests and eight kernel-free driver
+test programs. AArch64 kernel-module and userspace compilation pass using
+isolated output directories. The 16-lane case in the resource-register test
+checks encoding only; shared 16-lane shader execution remains unqualified.
+Logs are `.artifacts/shared-cu-shader-config-tests.log`,
+`.artifacts/shared-cu-driver-unit-tests.log` and
+`.artifacts/shared-cu-driver-build.log`.
+
 ## Performance interpretation
 
 The previous trace attributes about 84% of textured batch cycles to shader

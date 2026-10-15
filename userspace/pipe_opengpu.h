@@ -19,6 +19,7 @@ struct pipe_opengpu_screen *pipe_opengpu_screen_create_fd(int fd);
 void pipe_opengpu_screen_destroy(struct pipe_opengpu_screen *screen);
 int pipe_opengpu_screen_fd(const struct pipe_opengpu_screen *screen);
 uint64_t pipe_opengpu_screen_capabilities(const struct pipe_opengpu_screen *screen);
+uint32_t pipe_opengpu_screen_shader_config(const struct pipe_opengpu_screen *screen);
 
 struct pipe_opengpu_context *pipe_opengpu_context_create(
     struct pipe_opengpu_screen *screen);
@@ -148,12 +149,12 @@ int pipe_opengpu_write_vs_matrices(struct pipe_opengpu_context *ctx,
                                    const float projection[16],
                                    const float modelview[16]);
 
-/* Copy one packed opacity word into both fragment kernarg banks.
+/* Copy one packed opacity word into every advertised fragment kernarg bank.
  * Byte 288 is the per-draw uniform of a 320-byte bank. */
 int pipe_opengpu_write_fs_uniform(struct pipe_opengpu_context *ctx,
                                   uint32_t word);
 
-/* Copy float uniforms into both banks, starting at byte 288. */
+/* Copy float uniforms into every bank, starting at byte 288. */
 int pipe_opengpu_write_fs_block(struct pipe_opengpu_context *ctx,
                                 const float *words, unsigned nfloats);
 

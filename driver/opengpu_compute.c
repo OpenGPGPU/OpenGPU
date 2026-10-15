@@ -24,6 +24,7 @@
 #include "opengpu_kernarg_va.h"
 #include "opengpu_resolve_validator.h"
 #include "opengpu_shader_validator.h"
+#include "opengpu_shader_resources.h"
 
 static const struct file_operations opengpu_compute_fops;
 static u32 opengpu_fragment_batch_capacity(struct opengpu_device *gpu);
@@ -76,7 +77,8 @@ static void opengpu_fill_test_command(struct opengpu_device *gpu)
     if (gpu->hw.capabilities & GPU_CAP_FRAGMENT_CORE) {
         r->shader_pc = lower_32_bits(gpu->compute.shader.dma);
         r->kernarg = lower_32_bits(gpu->compute.kernarg.dma);
-        r->kernarg_bank_stride = gpu->compute.kernarg.size / GPU_KERNARG_BANKS;
+        r->kernarg_bank_stride = gpu->compute.kernarg.size /
+            opengpu_shader_resource_banks(gpu->hw.shader_config);
     }
 }
 
@@ -97,7 +99,7 @@ static int opengpu_init_test_shader(struct opengpu_device *gpu)
     if (ret)
         return ret;
     ret = opengpu_buffer_alloc(gpu, &gpu->compute.kernarg,
-                               GPU_KERNARG_BANKS *
+                               opengpu_shader_resource_banks(gpu->hw.shader_config) *
                                ALIGN(GPU_KERNARG_UNIFORM_OFF(stride),
                                      GPU_KERNARG_BANK_ALIGN));
     if (ret) {
@@ -345,9 +347,16 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
 
     if (args->pad)
         return -EINVAL;
-    if (args->param != OPENGPU_PARAM_CAPABILITIES)
+    switch (args->param) {
+    case OPENGPU_PARAM_CAPABILITIES:
+        args->value = gpu->hw.capabilities;
+        break;
+    case OPENGPU_PARAM_SHADER_CONFIG:
+        args->value = gpu->hw.shader_config;
+        break;
+    default:
         return -EINVAL;
-    args->value = gpu->hw.capabilities;
+    }
     return 0;
 }
 
@@ -1109,10 +1118,16 @@ static bool opengpu_validate_kernarg_binding(
     u32 bank_stride, u32 slices, bool vertex, bool texture_enabled)
 {
     u64 address, minimum, span, shader_kernarg_size;
+    u32 banks = vertex ? GPU_KERNARG_BANKS :
+                opengpu_shader_resource_banks(gpu->hw.shader_config);
 
     minimum = (u64)slices * 4ull *
               opengpu_fragment_batch_capacity(gpu);
     if (!minimum || offset > kernarg->size)
+        return false;
+    /* Parallel fragment workers need disjoint complete banks. Zero stride
+     * remains valid for the legacy single-worker/vertex contracts only. */
+    if (!vertex && banks > GPU_KERNARG_BANKS && !bank_stride)
         return false;
     span = minimum;
     shader_kernarg_size = kernarg->size - offset;
@@ -1121,7 +1136,7 @@ static bool opengpu_validate_kernarg_binding(
             (bank_stride & (GPU_KERNARG_BANK_ALIGN - 1)) ||
             bank_stride < minimum ||
             check_mul_overflow((u64)bank_stride,
-                               (u64)GPU_KERNARG_BANKS, &span))
+                               (u64)banks, &span))
             return false;
         shader_kernarg_size = bank_stride;
 

@@ -131,6 +131,15 @@ typedef int32_t s32;
 #define GPU_REG_UCMD_VECTOR_SATP     0x14c
 #define GPU_REG_UCMD_INSTRUCTION_SATP 0x150
 #define GPU_REG_UCMD_TLB_FLUSH       0x154
+/* Read-only shader resources, advertised by GPU_CAP_SHADER_CONFIG_INFO.
+ * Lanes/warps describe one shader CU; banks count fragment staging banks;
+ * CUs count executors available to graphics, including the shared pool. */
+#define GPU_REG_SHADER_CONFIG        0x158
+#define GPU_SHADER_CONFIG_LANES_SHIFT 0u
+#define GPU_SHADER_CONFIG_WARPS_SHIFT 8u
+#define GPU_SHADER_CONFIG_BANKS_SHIFT 16u
+#define GPU_SHADER_CONFIG_CUS_SHIFT   24u
+#define GPU_SHADER_CONFIG_FIELD_MASK  0xffu
 
 /* GPU_REG_UCMD_{VECTOR,INSTRUCTION}_SATP fields. */
 #define GPU_SATP_ENABLE              (1u << 31)
@@ -203,6 +212,7 @@ typedef int32_t s32;
 #define GPU_CAP_HW_VBLANK       (1u << 21)
 /* Compute CUs execute scalar FP32: flw and RVV .vf operands (bit22). */
 #define GPU_CAP_COMPUTE_SCALAR_FPU (1u << 22)
+#define GPU_CAP_SHADER_CONFIG_INFO (1u << 23)
 
 #define GPU_SCANOUT_FORMAT_RGBA8888 0u
 #define GPU_SCANOUT_FORMAT_XRGB8888 1u
@@ -490,6 +500,8 @@ struct gpu_draw_record {
 #define GPU_KERNARG_DEPTH_OUT_OFF(s) (7u * (s))
 #define GPU_KERNARG_VALID_OFF(s)  (8u * (s))
 #define GPU_KERNARG_UNIFORM_OFF(s)(9u * (s))
+/* Vertex and legacy fragment bank count. Fragment banks on resource-aware
+ * hardware come from GPU_REG_SHADER_CONFIG instead. */
 #define GPU_KERNARG_BANKS          2u
 #define GPU_KERNARG_BANK_ALIGN     64u
 

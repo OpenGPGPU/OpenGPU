@@ -69,17 +69,23 @@ object GpuCommandMmioRegs {
   val TLB_FLUSH_VPN = 1 << 2
   val TLB_FLUSH_VPN_SHIFT = 12
   val TLB_FLUSH_VPN_MASK = 0xfffff
-  val END = 0x158
+  /** Read-only shader lanes/warps/kernarg banks/execution CUs, one byte each. */
+  val SHADER_CONFIG = 0x158
+  val END = 0x15c
 }
 
 /** Register-programmed bridge to the ordered unified GPU command stream. */
 class GpuCommandMmio(
   config: GpuConfig = GpuConfig(),
   commandIdWidth: Int = 8,
-  queueDepth: Int = 4
+  queueDepth: Int = 4,
+  shaderComputeUnits: Int = 1,
+  shaderKernargBanks: Int = 2
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 8)
   require(queueDepth > 0)
+  private val shaderConfigWord = ShaderResourceConfig.encode(
+    config.lanes, config.warps, shaderKernargBanks, shaderComputeUnits)
 
   val io = IO(new Bundle {
     val reg = new Bundle {
@@ -322,6 +328,7 @@ class GpuCommandMmio(
     GpuCommandMmioRegs.SAMPLE_MODE.U -> sampleMode,
     GpuCommandMmioRegs.VECTOR_SATP.U -> vectorSatp,
     GpuCommandMmioRegs.INSTRUCTION_SATP.U -> instructionSatp,
+    GpuCommandMmioRegs.SHADER_CONFIG.U -> shaderConfigWord.U(32.W),
     GpuCommandMmioRegs.STATUS.U -> status,
     GpuCommandMmioRegs.COMPLETION.U -> completionMeta,
     GpuCommandMmioRegs.COMPLETION_BYTES_LO.U -> completion.bytesProcessed(31, 0),

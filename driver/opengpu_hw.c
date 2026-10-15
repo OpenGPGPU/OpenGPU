@@ -15,6 +15,7 @@
 #include <linux/platform_device.h>
 
 #include "opengpu_device.h"
+#include "opengpu_shader_resources.h"
 #include "opengpu_drm.h"
 #include "opengpu_resolve_validator.h"
 #include "opengpu_tlb_flush.h"
@@ -517,6 +518,21 @@ int opengpu_hw_init(struct opengpu_device *gpu, struct platform_device *pdev)
         return dev_err_probe(gpu->dev, -ENODEV,
                              "bad device id 0x%08x\n", id);
     gpu->hw.capabilities = opengpu_reg_read(gpu, GPU_REG_CAPABILITIES);
+    gpu->hw.shader_config = 0;
+    if (gpu->hw.capabilities & GPU_CAP_SHADER_CONFIG_INFO) {
+        u32 cfg = opengpu_reg_read(gpu, GPU_REG_SHADER_CONFIG);
+        u32 batch = (gpu->hw.capabilities & GPU_CAP_FRAGMENT_BATCH_MASK) >>
+                    GPU_CAP_FRAGMENT_BATCH_SHIFT;
+
+        if (!opengpu_shader_resources_valid(cfg, batch))
+            return dev_err_probe(gpu->dev, -EINVAL,
+                                 "invalid shader resource description 0x%08x\n", cfg);
+        gpu->hw.shader_config = cfg;
+        dev_info(gpu->dev,
+                 "shader resources: lanes=%u warps=%u fragment_banks=%u executors=%u\n",
+                 opengpu_shader_resource_lanes(cfg), opengpu_shader_resource_warps(cfg),
+                 opengpu_shader_resource_banks(cfg), opengpu_shader_resource_cus(cfg));
+    }
     dev_info(gpu->dev,
              "GPU ABI device=0x%08x version=0x%04x capabilities=0x%08x\n",
              id, id & 0xffff, gpu->hw.capabilities);

@@ -9,6 +9,27 @@ import org.scalatest.flatspec.AnyFlatSpec
 class GpuCommandMmioSpec extends AnyFlatSpec {
   behavior of "GpuCommandMmio"
 
+  for ((lanes, warps, banks, cus) <- Seq((4, 2, 2, 1), (4, 2, 8, 4), (16, 8, 8, 4))) {
+    it should s"report immutable shader resources lanes=$lanes warps=$warps banks=$banks CUs=$cus" in {
+      simulate(new GpuCommandMmio(GpuConfig(lanes = lanes, warps = warps),
+        shaderComputeUnits = cus, shaderKernargBanks = banks)) { dut =>
+        dut.io.reg.req.valid.poke(false.B)
+        dut.io.reg.resp.ready.poke(true.B)
+        dut.io.command.ready.poke(false.B)
+        dut.io.completion.valid.poke(false.B)
+        dut.io.completion.bits.poke(0.U.asTypeOf(dut.io.completion.bits))
+        dut.io.resetDone.poke(false.B)
+        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+        val expected = BigInt(lanes) | (BigInt(warps) << 8) |
+          (BigInt(banks) << 16) | (BigInt(cus) << 24)
+        assert(read(dut, GpuCommandMmioRegs.SHADER_CONFIG) == expected)
+        dut.io.reg.resp.bits.ok.expect(true.B)
+        write(dut, GpuCommandMmioRegs.SHADER_CONFIG, BigInt("ffffffff", 16))
+        assert(read(dut, GpuCommandMmioRegs.SHADER_CONFIG) == expected)
+      }
+    }
+  }
+
   private def write(dut: GpuCommandMmio, address: Int, data: BigInt): Unit = {
     dut.io.reg.req.bits.addr.poke(address.U)
     dut.io.reg.req.bits.data.poke(data.U)
