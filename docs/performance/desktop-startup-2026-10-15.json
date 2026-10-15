@@ -1,0 +1,131 @@
+{
+  "date": "2026-10-15",
+  "host": "Apple M4 Max;macOS15.8.1;36GiB RAM",
+  "scope": "One fresh Debian640x480Weston desktop startup, headless, through OpenGPU DRM/Gallium/RTL; visible background+panel+launcher+clock verified from raw scanout",
+  "qemu_sha256": "8d2c4bc6d1f2d7de160a552b0370edae7318a228a66b7003daa022ea20006e5b",
+  "rtl_sha256": "8eaf25f3b755f8cc3077a5419eeb4add314a83e63c422d9807b5c9bd0886722f",
+  "source_commits": {
+    ".": "985b5355d90bc78d3513fad958817fc8a919286f",
+    "../FlashSim": "b608384e6c4b32e74cfef0d9db00839fb6e95570",
+    "../arti": "9d9dda2539f494e6ebc49639108d5570c91d0f8f"
+  },
+  "configuration": {
+    "GPU_SIM": "flashsim",
+    "QEMU_ACCEL": "hvf",
+    "QEMU_CPU": "host",
+    "IRQ_PUMP_TICKS": 1024,
+    "IRQ_PUMP_NS": 8000000,
+    "SETTLE_NS": 8000000,
+    "OPENGPU_AUTO_DISPLAY": "weston",
+    "QEMU_DISPLAY": "none",
+    "BUILD_USERSPACE": 0,
+    "base": "../arti-work/debian-gtk-arm64.qcow2"
+  },
+  "capture": {
+    "authoritative_periodic_scanout_dump": true,
+    "nominal_dump_period_seconds": 0.5,
+    "observation_period_seconds": 15,
+    "previous_black_frame_seconds": 1061.268354458036,
+    "first_verified_desktop_seconds": 1076.3816797500476,
+    "image": "docs/images/weston-desktop-optimized-20261015.png",
+    "image_sha256": "41858ba00f5ed080e7f41d87ed16b8d99b55c64ac7faa548ce1233064205ef22",
+    "dimensions": [
+      640,
+      480
+    ]
+  },
+  "events": [
+    {
+      "event": "command_started",
+      "command_seconds": 0.06149687501601875
+    },
+    {
+      "event": "qemu_started",
+      "command_seconds": 4.100710792001337,
+      "qemu_seconds": 2.8333161026239395e-05
+    },
+    {
+      "event": "GPU probe:",
+      "command_seconds": 7.121934457914904,
+      "qemu_seconds": 3.021252333186567
+    },
+    {
+      "event": "Output 'Virtual-1' enabled",
+      "command_seconds": 7.122369082877412,
+      "qemu_seconds": 3.021686000050977
+    },
+    {
+      "event": "Loading module",
+      "command_seconds": 7.122620124835521,
+      "qemu_seconds": 3.0219369581900537
+    },
+    {
+      "event": "opengpu: submit draw=1",
+      "command_seconds": 9.145491207949817,
+      "qemu_seconds": 5.04480866715312
+    },
+    {
+      "event": "opengpu: complete draw=1",
+      "command_seconds": 10.155879291938618,
+      "qemu_seconds": 6.055196542060003
+    },
+    {
+      "event": "OPENGPU GTK WINDOW BUILT",
+      "command_seconds": 1078.456930291839,
+      "qemu_seconds": 1074.3562479170505
+    },
+    {
+      "event": "desktop_frame_visible",
+      "command_seconds": 1080.482337291818,
+      "capture": "frame-0071.ppm",
+      "qemu_seconds": 1076.3816545831505
+    }
+  ],
+  "first_desktop_command_seconds": 1080.482337291818,
+  "completed_draws": [
+    {
+      "draw": 1,
+      "milliseconds": 1132.254
+    },
+    {
+      "draw": 2,
+      "milliseconds": 1172.01
+    },
+    {
+      "draw": 3,
+      "milliseconds": 3125.945
+    },
+    {
+      "draw": 4,
+      "milliseconds": 3074.552
+    },
+    {
+      "draw": 5,
+      "milliseconds": 491562.357
+    },
+    {
+      "draw": 6,
+      "milliseconds": 492670.505
+    },
+    {
+      "draw": 7,
+      "milliseconds": 37720.07
+    },
+    {
+      "draw": 8,
+      "milliseconds": 37542.491
+    },
+    {
+      "draw": 9,
+      "milliseconds": 1214.235
+    }
+  ],
+  "qemu_exit": 0,
+  "limits": [
+    "Single fresh boot with scanout capture enabled; not a paired desktop startup speedup benchmark.",
+    "First verified image is bounded by capture cadence; use approximately18minutes, not subsecond precision.",
+    "Background/panel visibility does not establish GTK application readiness or interactive input latency.",
+    "The34.627second native benchmark covers a160x120draw, not full desktop startup."
+  ],
+  "launcher_fix": "Arti9d9dda2 replaces GNU-specific host sed -i while rendering Weston mode; staging and actual macOS launch pass."
+}

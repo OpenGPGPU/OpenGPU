@@ -204,6 +204,45 @@ nor that increasing the timeout will solve the problem. The next diagnostic
 must inspect execution progress or reproduce this exact draw in isolation.
 
 
+### Full desktop startup with the optimized model (2026-10-15)
+
+A fresh headless boot on the M4 Max now measures the actual 640x480 Weston
+desktop launcher, including its normal GTK smoke client. It uses the
+qualified optimized FlashSim executable, HVF/host, 1024-tick IRQ chunks and
+8ms IRQ/MMIO budgets. Existing userspace binaries are reused.
+
+| Milestone | Time after QEMU start |
+|---|---:|
+| GPU probe and Weston output enabled | About 3 s |
+| Last captured black framebuffer | 17 min 41 s |
+| First verified desktop background, bottom panel, launcher and clock | 17 min 56 s |
+
+Including disk/ISO preparation, the first verified desktop capture was about
+18 minutes after the launch command. This is one fresh boot with periodic
+scanout capture; observations are roughly 15 seconds apart, so quote
+**about 18 minutes**, rather than an exact presentation timestamp. The two
+large textured background draws alone take 491.562 s and 492.671 s, totaling
+16 min 24 s. Small draws and presentation account for the remaining wait.
+
+The 34.627 s native benchmark in
+[`SIMULATION_PERFORMANCE.md`](SIMULATION_PERFORMANCE.md) measures a
+160x120 rectangle, not desktop startup. Full-size RTL desktop rendering
+remains very slow. This first-image measurement does not establish GTK
+application readiness or input responsiveness, and has no paired full-desktop
+baseline from which to claim a startup speedup.
+
+The captured scanout is
+[`images/weston-desktop-optimized-20261015.png`](images/weston-desktop-optimized-20261015.png).
+Machine, executable/RTL hashes, draw timings, capture bounds and launch
+configuration are recorded in
+[`performance/desktop-startup-2026-10-15.json`](performance/desktop-startup-2026-10-15.json).
+Raw logs and captures remain in `.artifacts/full-system-speed/desktop-startup/`.
+The test VM shut down cleanly after verification.
+
+This run also exposed a macOS launcher bug before QEMU started. Arti
+`9d9dda2` renders the Weston mode with Python instead of GNU-specific
+`sed -i`; actual staging and boot now pass on macOS.
+
 ### Measured compositor cost (2026-10-11)
 
 With a 1800000 ms fence budget, the real Weston desktop-shell run completed
