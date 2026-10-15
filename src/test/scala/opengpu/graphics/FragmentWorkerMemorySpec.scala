@@ -10,7 +10,7 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
   behavior of "Fragment worker memory routing"
 
   for (count <- Seq(1, 4)) {
-    it should s"retain request fields and local IDs across $count serialized staging clients" in {
+    it should s"preserve local IDs and isolate stalled replies across $count staging clients" in {
       simulate(new FragmentStagingArbiter(GpuConfig(lanes = 4, warps = 2), count)) { dut =>
         dut.io.memoryRequest.ready.poke(false.B)
         dut.io.memoryResponse.valid.poke(false.B)
@@ -23,10 +23,14 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
         val submitted = Array.fill(count)(false)
         val received = Array.fill(count)(false)
-        var owner: Option[Int] = None
-        var reply: Option[(Int, Int)] = None
-        var heldRequest: Option[(BigInt, BigInt, BigInt)] = None
+        val owners = mutable.Map.empty[Int, Int]
+        val pending = mutable.Map.empty[Int, Int]
+        val heldResponses = mutable.Map.empty[Int, (BigInt, BigInt, Boolean)]
+        var reply: Option[Int] = None
+        var heldRequest: Option[(BigInt, BigInt, BigInt, BigInt)] = None
         var cycles = 0
+        var peak = 0
+        var otherRepliesBeforeZero = 0
         while (!received.forall(identity) && cycles < 240) {
           for (i <- 0 until count) {
             val client = dut.io.clients(i)
@@ -36,58 +40,79 @@ class FragmentWorkerMemorySpec extends AnyFlatSpec {
             client.request.bits.byteMask.poke((BigInt(15) << (i * 4)).U)
             client.request.bits.isWrite.poke((i % 2 == 0).B)
             client.request.bits.sizeLog2.poke(6.U)
+            // Every worker uses the same local ID; the two global IDs must
+            // be allocated independently and restored on the way back.
             client.request.bits.transactionId.poke(1.U)
             client.request.bits.cachePolicy.poke(opengpu.config.CachePolicy.uncached)
-            client.response.ready.poke((cycles >= 20 && cycles % 3 != 0).B)
+            client.response.ready.poke((cycles >= (if (i == 0) 80 else 20) && cycles % 3 != 0).B)
           }
           dut.io.memoryRequest.ready.poke((cycles % 4 == 0).B)
-          dut.io.memoryResponse.valid.poke(reply.exists(_._2 == 0).B)
-          reply.foreach { case (i, _) =>
-            dut.io.memoryResponse.bits.transactionId.poke(1.U)
-            dut.io.memoryResponse.bits.readData.poke((0xbeef + i).U)
-            dut.io.memoryResponse.bits.fault.poke((i == 2).B)
+          if (reply.isEmpty && cycles >= 16)
+            reply = pending.keys.filter(id => pending(id) <= cycles).toSeq.sorted.lastOption
+          dut.io.memoryResponse.valid.poke(reply.nonEmpty.B)
+          reply.foreach { id =>
+            val owner = owners(id)
+            dut.io.memoryResponse.bits.transactionId.poke(id.U)
+            dut.io.memoryResponse.bits.readData.poke((0xbeef + owner).U)
+            dut.io.memoryResponse.bits.fault.poke((owner == 2).B)
           }
+          val clientFires = mutable.ArrayBuffer.empty[Int]
           for (i <- 0 until count) {
             val client = dut.io.clients(i)
-            if (client.request.valid.peek().litToBoolean && client.request.ready.peek().litToBoolean) {
-              assert(owner.isEmpty, "staging arbiter admitted overlapping ID owners")
-              owner = Some(i); submitted(i) = true
-            }
+            if (client.request.valid.peek().litToBoolean && client.request.ready.peek().litToBoolean)
+              submitted(i) = true
             if (client.response.valid.peek().litToBoolean) {
-              assert(owner.contains(i))
+              val value = (client.response.bits.transactionId.peek().litValue,
+                client.response.bits.readData.peek().litValue, client.response.bits.fault.peek().litToBoolean)
+              heldResponses.get(i).foreach(old => assert(old == value, "buffered reply changed under stall"))
+              assert(owners.values.toSeq.contains(i))
               client.response.bits.transactionId.expect(1.U)
               client.response.bits.readData.expect((0xbeef + i).U)
               client.response.bits.fault.expect((i == 2).B)
-            }
+              if (client.response.ready.peek().litToBoolean) clientFires += i
+              else heldResponses(i) = value
+            } else assert(!heldResponses.contains(i))
           }
           if (dut.io.memoryRequest.valid.peek().litToBoolean) {
             val request = dut.io.memoryRequest.bits
             val value = (request.address.peek().litValue, request.writeData.peek().litValue,
-              request.byteMask.peek().litValue)
+              request.byteMask.peek().litValue, request.transactionId.peek().litValue)
             heldRequest.foreach(old => assert(old == value, "registered staging request changed under stall"))
-            val i = owner.get
-            request.address.expect((0x4000 + i * 64).U)
+            val i = ((value._1.toInt - 0x4000) / 64)
+            assert(i >= 0 && i < count && submitted(i))
             request.writeData.expect((BigInt(i + 1) << 480).U)
             request.byteMask.expect((BigInt(15) << (i * 4)).U)
             request.isWrite.expect((i % 2 == 0).B)
             request.sizeLog2.expect(6.U)
             request.cachePolicy.expect(opengpu.config.CachePolicy.uncached)
             if (dut.io.memoryRequest.ready.peek().litToBoolean) {
-              assert(reply.isEmpty); reply = Some(i -> 3); heldRequest = None
+              val id = value._4.toInt
+              assert(!owners.contains(id), "global staging ID reused before reply consumption")
+              owners(id) = i
+              pending(id) = cycles + 3
+              heldRequest = None
             } else heldRequest = Some(value)
           } else assert(heldRequest.isEmpty)
           val responseFire = dut.io.memoryResponse.valid.peek().litToBoolean &&
             dut.io.memoryResponse.ready.peek().litToBoolean
-          if (responseFire) {
-            val i = owner.get
-            assert(!received(i)); received(i) = true
-          }
+          peak = peak.max(dut.io.outstanding.peek().litValue.toInt)
           dut.clock.step(); cycles += 1
-          if (responseFire) { reply = None; owner = None }
-          else reply = reply.map { case (i, delay) => i -> math.max(0, delay - 1) }
+          if (responseFire) {
+            pending.remove(reply.get)
+            reply = None
+          }
+          for (i <- clientFires) {
+            assert(!received(i)); received(i) = true
+            if (i != 0 && !received(0)) otherRepliesBeforeZero += 1
+            heldResponses.remove(i)
+            owners.remove(owners.find(_._2 == i).get._1)
+          }
         }
         dut.io.memoryResponse.valid.poke(false.B)
         assert(received.forall(identity), "staging clients did not all retire")
+        assert(peak == math.min(2, count))
+        if (count > 1) assert(otherRepliesBeforeZero == count - 1,
+          "a stalled worker must not prevent the other staging ID making progress")
         dut.io.drained.expect(true.B)
       }
     }

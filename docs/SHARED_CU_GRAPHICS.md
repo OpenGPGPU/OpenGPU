@@ -334,3 +334,22 @@ up to 64-byte AXI ports; the QEMU callback ABI supports those sizes. Generic
 ARTI/Verilator master discovery still limits widths to 64 bits. The installed
 executable is unchanged. Full evidence and traces are recorded in
 [the AXI comparison](performance/shared-cu-axi-width-2026-10-15.json).
+
+## Two-ID fragment staging
+
+The staging arbiter now uses both IDs already reserved by the fragment port.
+It records worker/local-tag ownership and retains each slot until its reply
+is consumed. Per-worker reply queues isolate stalled consumers; flow-through
+replies preserve the existing ready-consumer latency. A worker cannot reuse
+an outstanding local ID.
+
+Three routing unit tests and seven wide/ordered-render tests pass. Four-CU
+cycles fall from 38,577 to 36,440 on 64-bit AXI and from 25,292 to 23,344 on
+512-bit AXI. One-CU counts remain exactly unchanged at both widths. Combined
+with the wider bus, the four-CU copy scene is 1.65x faster in GPU cycles than
+the initial 64-bit/one-slot configuration. The 512-bit four-CU trace still
+records 16,221 OM stall cycles; this remains the dominant target.
+
+The broader translated shader/fault/reset suite remains a separate required
+regression. Results and overlap-aware counter interpretation are retained in
+[the staging evidence](performance/shared-cu-dual-staging-2026-10-15.json).

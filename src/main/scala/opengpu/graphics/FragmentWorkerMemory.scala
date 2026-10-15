@@ -10,13 +10,19 @@ class FragmentStagingClient(config: GpuConfig) extends Bundle {
   val response = Decoupled(new ComputeMemoryResponse(64, 2))
 }
 
-/** Preserve the existing fragment staging ID window while serving several
-  * workers. One registered request owns the port until its response retires;
-  * a request from another worker cannot alias that worker's local ID.
+private class QueuedFragmentStagingResponse(config: GpuConfig) extends Bundle {
+  val response = new ComputeMemoryResponse(64, 2)
+  val slot = UInt(1.W)
+}
+
+/** Use both IDs of the existing fragment staging window. Reserve an owner
+  * until its buffered response is consumed; another worker cannot alias its
+  * local ID, and a stalled worker cannot block the other slot's responses.
   */
 class FragmentStagingArbiter(config: GpuConfig, numWorkers: Int) extends Module {
   require(numWorkers > 0)
   private val ownerWidth = math.max(1, log2Ceil(numWorkers))
+  private val slots = 2
   val io = IO(new Bundle {
     val clients = Vec(numWorkers, new FragmentStagingClient(config))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, 2))
@@ -24,38 +30,68 @@ class FragmentStagingArbiter(config: GpuConfig, numWorkers: Int) extends Module 
     val drained = Output(Bool())
     val outstanding = Output(UInt(8.W))
   })
+  private val allocated = RegInit(VecInit(Seq.fill(slots)(false.B)))
+  private val sent = RegInit(VecInit(Seq.fill(slots)(false.B)))
+  private val replied = RegInit(VecInit(Seq.fill(slots)(false.B)))
+  private val owners = Reg(Vec(slots, UInt(ownerWidth.W)))
+  private val localIds = Reg(Vec(slots, UInt(1.W)))
+  private val free = ~allocated.asUInt
+  private val selected = PriorityEncoder(free)
   private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, 2), numWorkers))
   private val request = Module(new Queue(new ComputeMemoryRequest(config, 64, 2), 1))
-  private val busy = RegInit(false.B)
-  private val sent = RegInit(false.B)
-  private val owner = Reg(UInt(ownerWidth.W))
-  private val requestId = Reg(UInt(1.W))
-  for (worker <- 0 until numWorkers) arbiter.io.in(worker) <> io.clients(worker).request
-  request.io.enq.valid := arbiter.io.out.valid && !busy
+  for (worker <- 0 until numWorkers) {
+    val client = io.clients(worker)
+    val duplicate = (0 until slots).map { slot =>
+      allocated(slot) && owners(slot) === worker.U && localIds(slot) === client.request.bits.transactionId
+    }.reduce(_ || _)
+    arbiter.io.in(worker).valid := client.request.valid && !duplicate
+    arbiter.io.in(worker).bits := client.request.bits
+    client.request.ready := arbiter.io.in(worker).ready && !duplicate
+  }
+  request.io.enq.valid := arbiter.io.out.valid && free.orR
   request.io.enq.bits := arbiter.io.out.bits
-  arbiter.io.out.ready := request.io.enq.ready && !busy
+  request.io.enq.bits.transactionId := selected
+  arbiter.io.out.ready := request.io.enq.ready && free.orR
   io.memoryRequest <> request.io.deq
   when(request.io.enq.fire) {
-    busy := true.B
-    sent := false.B
-    owner := arbiter.io.chosen
-    requestId := arbiter.io.out.bits.transactionId
+    allocated(selected) := true.B
+    sent(selected) := false.B
+    replied(selected) := false.B
+    owners(selected) := arbiter.io.chosen
+    localIds(selected) := arbiter.io.out.bits.transactionId
   }
-  when(io.memoryRequest.fire) { sent := true.B }
+  when(io.memoryRequest.fire) { sent(io.memoryRequest.bits.transactionId) := true.B }
+
+  private val responseId = io.memoryResponse.bits.transactionId
+  private val responseExpected = allocated(responseId) && sent(responseId) && !replied(responseId)
+  private val responseReady = Wire(Vec(numWorkers, Bool()))
+  when(io.memoryResponse.fire) { replied(responseId) := true.B }
   for (worker <- 0 until numWorkers) {
-    io.clients(worker).response.valid := io.memoryResponse.valid && busy && sent && owner === worker.U
-    io.clients(worker).response.bits := io.memoryResponse.bits
+    // Two global slots bound all unconsumed replies. A queue of that size
+    // cannot block another worker's accepted memory response.
+    val replies = Module(new Queue(new QueuedFragmentStagingResponse(config), slots, flow = true))
+    replies.io.enq.valid := io.memoryResponse.valid && responseExpected && owners(responseId) === worker.U
+    replies.io.enq.bits.response := io.memoryResponse.bits
+    replies.io.enq.bits.response.transactionId := localIds(responseId)
+    replies.io.enq.bits.slot := responseId
+    responseReady(worker) := replies.io.enq.ready
+    io.clients(worker).response.valid := replies.io.deq.valid
+    io.clients(worker).response.bits := replies.io.deq.bits.response
+    replies.io.deq.ready := io.clients(worker).response.ready
+    when(replies.io.deq.fire) {
+      val slot = replies.io.deq.bits.slot
+      allocated(slot) := false.B
+      sent(slot) := false.B
+      replied(slot) := false.B
+    }
   }
-  io.memoryResponse.ready := busy && sent && MuxLookup(owner, false.B)(
-    (0 until numWorkers).map(i => i.U -> io.clients(i).response.ready))
-  when(io.memoryResponse.fire) { busy := false.B; sent := false.B }
+  io.memoryResponse.ready := responseExpected && (if (numWorkers == 1)
+    responseReady(0) else responseReady(owners(responseId)))
   when(io.memoryResponse.valid) {
-    assert(busy, "fragment staging response has no requesting worker")
-    assert(io.memoryResponse.bits.transactionId === requestId,
-      "fragment staging response changed the worker's local transaction ID")
+    assert(responseExpected, "fragment staging response must identify an issued, unanswered slot")
   }
-  io.drained := !busy && !request.io.deq.valid
-  io.outstanding := busy.asUInt
+  io.drained := !allocated.asUInt.orR && !request.io.deq.valid
+  io.outstanding := PopCount(allocated)
 }
 
 class FragmentTextureClient extends Bundle {

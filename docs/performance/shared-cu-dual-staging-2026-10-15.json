@@ -1,0 +1,285 @@
+{
+  "date": "2026-10-15",
+  "baseline_commit": "d4ec7fc",
+  "configuration": "Same pixel-checked 32x32 gradient copy as prior traces; only fragment staging arbitration changes from one outstanding request to two tagged slots with buffered replies.",
+  "results": [
+    {
+      "axi_bits": 64,
+      "cus": 1,
+      "before_cycles": 40940,
+      "after_cycles": 40940,
+      "after_active_cu_cycles": 2905
+    },
+    {
+      "axi_bits": 64,
+      "cus": 2,
+      "before_cycles": 38445,
+      "after_cycles": 36873,
+      "after_active_cu_cycles": 5252
+    },
+    {
+      "axi_bits": 64,
+      "cus": 4,
+      "before_cycles": 38577,
+      "after_cycles": 36440,
+      "after_active_cu_cycles": 5802
+    },
+    {
+      "axi_bits": 512,
+      "cus": 1,
+      "before_cycles": 28293,
+      "after_cycles": 28293,
+      "after_active_cu_cycles": 2366
+    },
+    {
+      "axi_bits": 512,
+      "cus": 4,
+      "before_cycles": 25292,
+      "after_cycles": 23344,
+      "after_active_cu_cycles": 4533
+    }
+  ],
+  "trace": [
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "traced_cycles": 28278,
+      "phase_worker_cycles": [
+        1275,
+        8863,
+        5,
+        2371,
+        1374,
+        14390
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1275,
+        "arvalid": 515,
+        "rvalid": 515,
+        "write_any": 8863,
+        "raster_stall": 23236,
+        "staging_without_shader_run": 10237,
+        "staging_outstanding_any": 8917,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "launch_any": 5,
+        "run_any": 2371,
+        "read_any": 1374,
+        "emit_any": 14390,
+        "output_blocked": 13858,
+        "om_stall": 13676
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 306,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-cycles.csv": "d681f27a5a1bb13fbb3820d44af071cb65bf691c9fabfd8171f3ccd3f4e937a8",
+        "cu-1-axi-64-memory.csv": "5b134eef1cf2ee2dc639852c45b82d823eb5b232a5d70074fa95622869b5dbf8"
+      }
+    },
+    {
+      "cus": 1,
+      "axi_data_bytes": 8,
+      "traced_cycles": 40925,
+      "phase_worker_cycles": [
+        1900,
+        11869,
+        5,
+        2910,
+        2172,
+        22069
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1900,
+        "arvalid": 495,
+        "rvalid": 3960,
+        "write_any": 11869,
+        "raster_stall": 33620,
+        "staging_without_shader_run": 14041,
+        "staging_outstanding_any": 12721,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "launch_any": 5,
+        "run_any": 2910,
+        "read_any": 2172,
+        "emit_any": 22069,
+        "output_blocked": 21567,
+        "om_stall": 21548
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 286,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-1-cycles.csv": "2eb8824dbca25988723d6eae4947eed1ea6df6fe65d139f10f19fa38093c5bb7",
+        "cu-1-memory.csv": "4d2d6c1aad423addf13f7323dac806c07fd028e444f76d05adbf45d24b862df8"
+      }
+    },
+    {
+      "cus": 2,
+      "axi_data_bytes": 8,
+      "traced_cycles": 36858,
+      "phase_worker_cycles": [
+        8121,
+        24457,
+        5,
+        5257,
+        6457,
+        29419
+      ],
+      "peak_staging_outstanding": 2,
+      "cycle_events": {
+        "idle_any": 6561,
+        "arvalid": 510,
+        "rvalid": 4080,
+        "write_any": 20230,
+        "staging_without_shader_run": 23845,
+        "staging_outstanding_any": 24228,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "raster_stall": 24289,
+        "launch_any": 5,
+        "run_any": 4644,
+        "read_any": 5859,
+        "emit_any": 25253,
+        "output_blocked": 24833,
+        "om_stall": 24552
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 301,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-2-cycles.csv": "b7410bf937563fc1fef5e9776809ea4e4634b4de5b57f0a4af17e3a9ddf2a769",
+        "cu-2-memory.csv": "f2dd73110b68f0a58e8f7218d2ddd591dd8c99ca82a82bc8d7534f4acab41c59"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "traced_cycles": 23329,
+      "phase_worker_cycles": [
+        22308,
+        19725,
+        5,
+        4538,
+        4390,
+        42350
+      ],
+      "peak_staging_outstanding": 2,
+      "cycle_events": {
+        "idle_any": 11230,
+        "arvalid": 524,
+        "rvalid": 524,
+        "write_any": 8619,
+        "staging_without_shader_run": 10937,
+        "staging_outstanding_any": 11004,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "staging_blocked": 4249,
+        "raster_stall": 7699,
+        "launch_any": 5,
+        "run_any": 2527,
+        "read_any": 2639,
+        "emit_any": 17189,
+        "output_blocked": 17067,
+        "om_stall": 16221
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 315,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-cycles.csv": "d3251cd9367c1b5d1a3635f036a562b1e57cbb2edb38d4f78c46a245055e60ed",
+        "cu-4-axi-64-memory.csv": "13b8cf998aa98753eaa3cc6f97e2b686b0b58b820a0783e8b9a30472023d99f3"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 8,
+      "traced_cycles": 36425,
+      "phase_worker_cycles": [
+        34872,
+        29438,
+        5,
+        5807,
+        8924,
+        66654
+      ],
+      "peak_staging_outstanding": 2,
+      "cycle_events": {
+        "idle_any": 17511,
+        "arvalid": 542,
+        "rvalid": 4336,
+        "write_any": 13008,
+        "staging_without_shader_run": 17763,
+        "staging_outstanding_any": 18291,
+        "awvalid": 1334,
+        "bvalid": 1334,
+        "staging_blocked": 6502,
+        "raster_stall": 11850,
+        "launch_any": 5,
+        "run_any": 2879,
+        "read_any": 5536,
+        "emit_any": 26901,
+        "output_blocked": 26797,
+        "om_stall": 26049
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 342,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 152,
+        "depth_read": 333,
+        "color_write": 496,
+        "depth_write": 496
+      },
+      "trace_sha256": {
+        "cu-4-cycles.csv": "6630ecf3b4a4d5b351594ac2f98223bb47f3d41e3a204191da0a6726191afe02",
+        "cu-4-memory.csv": "168395eccbe257b5b6bc6aa82af8311df790a7a642b92025ecbac0ee59fc90e0"
+      }
+    }
+  ],
+  "validation": {
+    "unit": "3 PASS; local tag restoration, stalled worker isolation, out-of-order replies, ID reuse, faults, held requests/responses. Final rerun has no elaboration warnings.",
+    "wide_and_ordering": "7 PASS; five wide rendering scenes plus two four-CU ordered 1x/4x MSAA/depth/blend scenes.",
+    "log": ".artifacts/shared-cu-staging-dual-id-render-tests.log",
+    "broader_vm_fault_reset_regression": "Pending; not included in the milestone test count."
+  },
+  "interpretation": [
+    "At512bits andfourCUs, dual staging saves7.7% GPU cycles (25292to23344).",
+    "Combined512bit bus+dual staging is1.65x over the initial64bit one-slot four-CU scene.",
+    "The one-CU cycle count is unchanged onboth64bit and512bit buses.",
+    "Outstanding-cycle counters integrate the number of occupied slots and may exceed elapsed cycles; use the trace union counter for busy time.",
+    "Remaining output-merger stalls are16221of23344cycles on512bit fourCUs. Wider buses and staging concurrency alone do not eliminate the shared output bottleneck.",
+    "No simulator wall-time or desktop improvement claimed yet."
+  ]
+}
