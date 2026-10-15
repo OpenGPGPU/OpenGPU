@@ -168,6 +168,14 @@ frontend interface also passes all 16 existing `KernelFragStageSpec` tests.
 Logs: `.artifacts/shared-cu-fragment-scheduler-tests.log` and
 `.artifacts/shared-cu-fragment-interface-tests.log`.
 
+`FragmentStagingArbiter` retains one registered worker request through its
+response, preserving the existing staging-ID window, masks, cache policy and
+fault indication. `FragmentTextureArbiter` permits distinct texture addresses
+to complete out of order and delays duplicate addresses until their previous
+owner consumes the response. Three tests pass for 1/4 staging clients,
+colliding local IDs, held requests/responses, fault routing and duplicate
+texture ownership. Log: `.artifacts/shared-cu-worker-memory-tests.log`.
+
 ## Performance interpretation
 
 The previous trace attributes about 84% of textured batch cycles to shader
