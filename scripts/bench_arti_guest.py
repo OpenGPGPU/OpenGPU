@@ -36,7 +36,7 @@ def main():
     report = {"binaries": {name: {"path": str(path), "sha256": digest(path)}
                            for name, path in binaries.items()},
               "base_image": str(args.base_image.resolve()),
-              "scope": "native GLES 160x120 draw; fresh guest; pixel proof required; no scanout capture",
+              "scope": "native GLES triangle with160x120bounding box in640x480mode; fresh guest; pixel proof required; no scanout capture",
               "runs": [], "summary": {}}
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(("ARTI_", "GTK_PROOF_", "QEMU_", "LLVM_PROFILE_"))}

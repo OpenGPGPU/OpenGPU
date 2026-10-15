@@ -264,7 +264,7 @@ programs, invalidation ordering, and the scanout gate are unchanged.
 | Check | Baseline | Separate helper | Wall-time reduction |
 |---|---:|---:|---:|
 | 32 KiB clear, median of three alternating runs of 20 clears | 51.235 ms | 44.709 ms | 12.7% |
-| GLES reproducer, 160x120 rectangle in native 640x480 mode | 63.750 s | 60.000 s | 5.9% |
+| GLES reproducer, triangle with 160x120 bounding box in native 640x480 mode | 63.750 s | 60.000 s | 5.9% |
 | First eight 64x64 Weston draws, including preparation and waits | 85.074 s | 70.138 s | 17.6% |
 
 The guest rows are single paired runs; GTK scheduling affects the stage split.

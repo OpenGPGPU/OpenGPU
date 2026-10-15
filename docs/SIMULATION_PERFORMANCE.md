@@ -51,7 +51,7 @@ GTK_PROOF_SMOKE_TIMEOUT_S=900 PROOF_WORK=/absolute/path/proof \
 ./scripts/run_gtk_coverage_guest.sh
 ```
 
-The native GLES rectangle is 160x120 in a 640x480 mode; the following
+The native GLES triangle has a 160x120 bounding box in a 640x480 mode; the following
 Weston/GTK proof uses a 64x64 mode. Report these dimensions with the results.
 Require native GLES pixel assertions, GTK idle/active readback, and the
 periodic scanout gate. A framebuffer captured after the GLES program exits
@@ -122,7 +122,7 @@ disabled; every run passes native GLES pixel assertions.
 | Final candidate | 34.502 / 34.814 / 34.627 s | 34.627 s |
 
 This is a **38.25% draw-time reduction**, or about 1.62 times the throughput,
-for the 160x120 native rectangle in a 640x480 mode. Boot and build time are
+for the native triangle with a 160x120 bounding box in a 640x480 mode. Boot and build time are
 excluded. The result is separate from the replay measurements above.
 `native-final/result.json` retains each guest result and the executable
 hashes. A portable record of samples, hashes, fixed work, qualification,
@@ -247,7 +247,7 @@ workload passes: 317,616 calls, 42,307,012 ticks, 352,495,253 commits,
 2,482,108,618 holds, 4,630,676 DMA reads, 7,983,437 DMA writes and 100,896,920
 DMA bytes, with zero mismatches and no truncated tail. A fresh guest passes
 compute rounding, native GLES pixels, GTK idle/active pixels, and periodic
-scanout. Native GLES is a 160x120 rectangle in a 640x480 mode; GTK uses 64x64.
+scanout. Native GLES draws a triangle with a 160x120 bounding box in a 640x480 mode; GTK uses 64x64.
 
 Evidence: `quiet-shader-combinations.json`, `quiet-texture-screening.json`,
 `quiet-pgo-combinations.json`, `quiet-demand-commit-interaction.json`, and

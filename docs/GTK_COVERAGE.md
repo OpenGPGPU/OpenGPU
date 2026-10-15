@@ -226,7 +226,7 @@ large textured background draws alone take 491.562 s and 492.671 s, totaling
 
 The 34.627 s native benchmark in
 [`SIMULATION_PERFORMANCE.md`](SIMULATION_PERFORMANCE.md) measures a
-160x120 rectangle, not desktop startup. Full-size RTL desktop rendering
+triangle with a 160x120 bounding box, not desktop startup. Full-size RTL desktop rendering
 remains very slow. This first-image measurement does not establish GTK
 application readiness or input responsiveness, and has no paired full-desktop
 baseline from which to claim a startup speedup.

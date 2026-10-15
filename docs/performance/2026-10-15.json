@@ -3,7 +3,7 @@
   "date": "2026-10-15",
   "host": "Apple M4 Max;14 logical CPUs;36GiB RAM;macOS15.8.1",
   "compiler": "Apple clang version 16.0.0 (clang-1600.0.26.6)",
-  "scope": "Same640x480RTL with vertex/fragment cores; native GLES160x120 rectangle; GTK64x64; no CPU rendering fallback",
+  "scope": "Same640x480RTL with vertex/fragment cores; native GLES triangle with160x120bounding box; GTK64x64; no CPU rendering fallback",
   "source_commits": {
     ".": "0ac38cab327f7970585f5c7fa1fc7d5a273f494b",
     "../FlashSim": "b608384e6c4b32e74cfef0d9db00839fb6e95570",
