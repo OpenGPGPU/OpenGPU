@@ -1271,6 +1271,36 @@ class KernelFragStageSpec extends AnyFlatSpec {
     }
   }
 
+  it should "retain the last output across a late raster flush after a full batch" in {
+    val config = GpuConfig(lanes = 4, warps = 2)
+    simulate(new KernelFragStageWithKernel(config)) { dut =>
+      val mem = new MemModel
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      pokeDefaults(dut)
+      dut.io.shaderPc.poke(0x1000.U)
+      dut.io.kernargBase.poke(0x8000.U)
+      dut.io.out.ready.poke(false.B)
+      mem.putWord(0x1000L, 0, cease)
+      fireQuad(dut, Seq.fill(4)(Frag(0, 0, 0, covered = false, coverageMask = 0)))
+      fireQuad(dut, Seq.fill(3)(Frag(0, 0, 0, covered = false, coverageMask = 0)) :+
+        Frag(7, 7, 7))
+      // Trailing empty raster quads can delay flush beyond the full batch's
+      // execution. Its registered final output must retain the draw context.
+      assert(pump(dut, mem, () => dut.io.drained.peek().litToBoolean &&
+        dut.io.out.valid.peek().litToBoolean, 2000))
+      dut.clock.step(8)
+      dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
+      for (_ <- 0 until 4) {
+        dut.io.out.valid.expect(true.B)
+        dut.io.drawRetire.valid.expect(false.B)
+        dut.clock.step()
+      }
+      dut.io.out.ready.poke(true.B); dut.clock.step()
+      dut.io.drawRetire.valid.expect(true.B)
+      dut.clock.step(); dut.io.drawRetire.valid.expect(false.B)
+    }
+  }
+
   /** Result of one ABI output-control run: whether a fragment emitted, its
     * effective coverage mask, the selected depth source, the per-sample
     * depths presented alongside it, and whether the draw retired.  `retired`

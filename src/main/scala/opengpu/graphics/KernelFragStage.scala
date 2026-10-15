@@ -609,7 +609,9 @@ class KernelFragStage(
 
   // Flush without a new commit: accumulation is empty or already parked.
   // Bind the most recent unbound batch (pending, else executing) as the
-  // draw's last; otherwise the draw retires as an empty entry.
+  // draw's last. A full batch may already have finished while the rasterizer
+  // scans trailing empty quads; its last registered output still owns the
+  // context until accepted. Only a truly drained draw retires immediately.
   private val bindPending = pendingValid && !pendingCarries
   private val bindExec = !pendingValid && state =/= sIdle && !execCarries
   when(flushRise && !commitFlush) {
@@ -620,6 +622,11 @@ class KernelFragStage(
     }.elsewhen(bindExec) {
       execCarries := true.B
       execEntryIdx := qTail
+      pushEntry(false.B)
+    }.elsewhen(state === sIdle && !pendingValid && io.out.valid &&
+        !io.out.ready && !outputRetirePending) {
+      outputRetirePending := true.B
+      outputRetireEntry := qTail
       pushEntry(false.B)
     }.otherwise {
       pushEntry(true.B)
