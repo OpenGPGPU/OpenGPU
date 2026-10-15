@@ -3,6 +3,7 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
+import opengpu.system.{SharedCuGraphicsPort, SharedCuShaderConfig}
 import opengpu.core.memory.{
   CacheLineInvalidate,
   ComputeMemoryRequest,
@@ -37,9 +38,12 @@ class RenderCore(
   gpuConfig: GpuConfig = GpuConfig(),
   fragCore: Boolean = false,
   vertCore: Boolean = false,
-  graphicsScalarFpu: Boolean = true
+  graphicsScalarFpu: Boolean = true,
+  sharedShader: Option[SharedCuShaderConfig] = None
 ) extends Module {
   val io = IO(new Bundle {
+    val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
+      gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val cmdBase = Input(UInt(32.W))
     val cmdCount = Input(UInt(16.W))
     val start = Input(Bool())
@@ -109,7 +113,8 @@ class RenderCore(
   // than containing three inline clip-space vertices.
   private val cb = Module(new CommandBufferStage(config, vertCore))
   private val rp = Module(new RenderPipeline(
-    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu))
+    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader))
+  sharedShader.foreach(_ => rp.io.shared.get <> io.shared.get)
   // RenderHost snapshots the legacy registers and queue ownership on the
   // same edge that it presents start.  Delay the parser start one cycle so
   // the selected command configuration is visible at the parser boundary.

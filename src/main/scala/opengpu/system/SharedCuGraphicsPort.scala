@@ -7,7 +7,13 @@ import opengpu.core.backend.{VectorCommitRequest, VectorTextureRequest}
 import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
 import opengpu.core.trap.CoreTrapEvent
+import opengpu.core.memory.CacheLineInvalidate
 import opengpu.dispatch.{TaggedKernelCompletion, TaggedKernelLaunch}
+
+case class SharedCuShaderConfig(numComputeUnits: Int, taskIdWidth: Int = 8) {
+  require(numComputeUnits > 0)
+  require(taskIdWidth > 0)
+}
 
 /** A fault belongs to a graphics task, not a host compute command. */
 class TaggedGraphicsTrap(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int)
@@ -42,4 +48,6 @@ class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUni
   val texture = Vec(numComputeUnits, new SharedCuTexturePort(config))
   val owned = Output(UInt(numComputeUnits.W))
   val taskIds = Output(Vec(numComputeUnits, UInt(commandIdWidth.W)))
+  val invalidate = Flipped(Decoupled(new CacheLineInvalidate(config)))
+  val invalidateDone = Decoupled(new CacheLineInvalidate(config))
 }

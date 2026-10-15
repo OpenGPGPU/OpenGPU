@@ -88,6 +88,50 @@ sbt 'testOnly opengpu.system.GpuSystemSpec opengpu.system.GpuHostSystemAxiSpec o
 
 Local log: `.artifacts/shared-cu-foundation-regression.log`.
 
+## Qualified single-CU renderer
+
+`GpuHostSystemAxi(sharedGraphics = true)` now connects the existing vertex and
+fragment pipeline to the physical system CU pool. The compatibility adapter
+retains one graphics task at a time, preserving existing vertex/fragment
+ordering, texture state and the two-bank ABI. This removes the dedicated
+graphics CU; parallel fragment batches are the next milestone.
+
+Explicit staging invalidations broadcast to all shared CUs. Per-CU owner
+queues route acknowledgements back to either L2 coherence or the graphics
+requester. Reset waits for the graphics acknowledgement to be consumed.
+During reset drain, an already admitted render may still launch its remaining
+shader batches and invalidations; blocking those batches deadlocks the draw.
+The command router rejects new renders, and shader admission closes once the
+renderer reports drained.
+
+The final regression passes 34 tests: 27 real programmable rendering/VM/fault
+and recovery cases, three 1/2/4-CU invalidation tests, and four dispatcher
+tests. A separate four-test reset regression covers legacy rendering, shared
+rendering, shared cache acknowledgements and command-path reset. The initial
+broader 75-test run passed 74 cases and exposed the reset deadlock above;
+the failed case passes after the fix, including the complete rendering rerun.
+The broader run also passed all 27 legacy shader execution cases and all
+18 compute/system cases.
+
+Emit the opt-in, existing-width configuration with:
+
+```sh
+sbt 'runMain opengpu.elaboration.EmitGpuHostSystemAxi .artifacts/shared-cu/rtl-one-cu --frag-core --vert-core --shared-graphics --compute-units 1 --cu-lanes 4 --cu-warps 2 --width 16 --height 16'
+```
+
+The generated RTL contains exactly one `GpuComputeUnit` instance in
+`GpuSystem.sv` and none in `KernelShaderStage.sv`. The emitter requires an
+explicit four-lane/two-warp selection for this initial shared shader ABI;
+the normal default configuration remains separate. No new Debian executable
+is installed by this milestone. Structural hashes, test scopes and commands
+are retained in [the single-CU evidence](performance/shared-cu-single-2026-10-15.json).
+
+Next, multiple shader clients need tagged task/texture routing, independently
+allocated batch storage and ordered output retirement. The current two banks
+must not be shared by concurrently executing fragment workers. Hardware and
+software will need an explicit lane/warp/bank-count contract before enabling
+the parallel mode.
+
 ## Performance interpretation
 
 The previous trace attributes about 84% of textured batch cycles to shader

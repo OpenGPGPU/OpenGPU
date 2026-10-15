@@ -9,7 +9,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 /** Exercise shader instruction fetch and vtex.sample through the host's AXI clients. */
-class ProgrammableTextureAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
+abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int])
+    extends AnyFlatSpec with GpuHostTestSupport {
   for (scenario <- Seq("translation", "invalid PTE", "page-table bus fault",
       "texture bus fault", "reset during texture read", "instruction translation",
       "instruction non-executable fault", "instruction invalid PTE fault", "instruction page-table bus fault",
@@ -34,7 +35,8 @@ class ProgrammableTextureAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
       val vertexShader = scenario.startsWith("instruction vertex")
       val guestVertexShader = scenario.contains("guest shader") ||
         scenario == "instruction vertex guest-sized fragment"
-      simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = vertexShader)) { dut =>
+      simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = vertexShader,
+        numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty)) { dut =>
         initialize(dut)
         val words = mutable.LongMap.empty[BigInt]
         val reads = mutable.ArrayBuffer.empty[BigInt]
@@ -350,7 +352,8 @@ class ProgrammableTextureAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
     val side = 4
     val gfx = GraphicsConfig(screenWidth = side, screenHeight = side, subPixelBits = 8)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-    simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = true)) { dut =>
+    simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = true,
+      numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty)) { dut =>
       initialize(dut)
       val words = mutable.LongMap.empty[BigInt]
       val reads = mutable.ArrayBuffer.empty[BigInt]
@@ -484,3 +487,10 @@ class ProgrammableTextureAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
     }
   }
 }
+
+class ProgrammableTextureAxiSpec extends ProgrammableTextureAxiChecks(None)
+
+/** Same shader, sampler, VM/fault and CPU-update assertions, with the private
+  * graphics CU removed and the renderer executing on the system's only CU.
+  */
+class SharedCuProgrammableTextureAxiSpec extends ProgrammableTextureAxiChecks(Some(1))

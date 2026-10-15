@@ -14,6 +14,7 @@ object EmitGpuHostSystemAxi {
     val rest = args.drop(1).toIndexedSeq
     val fragCore = rest.contains("--frag-core")
     val vertCore = rest.contains("--vert-core")
+    val sharedGraphics = rest.contains("--shared-graphics")
     require(!vertCore || fragCore,
       "--vert-core requires --frag-core because both stages share the shader CU")
 
@@ -30,6 +31,14 @@ object EmitGpuHostSystemAxi {
     val height = intOption("--height").getOrElse(64)
     val computeUnits = intOption("--compute-units")
       .getOrElse(GpuConfig.MobileComputeUnits)
+    val cuLanes = intOption("--cu-lanes").getOrElse(16)
+    val cuWarps = intOption("--cu-warps").getOrElse(8)
+    require(!sharedGraphics || fragCore,
+      "--shared-graphics requires --frag-core")
+    require(!sharedGraphics || (cuLanes == 4 && cuWarps == 2),
+      "the initial shared shader ABI requires explicit --cu-lanes 4 --cu-warps 2; " +
+        "16-lane graphics software is not qualified yet")
+    val gpuConfig = GpuConfig(lanes = cuLanes, warps = cuWarps)
     val memoryAxiDataBytes = intOption("--memory-axi-data-bytes").getOrElse(8)
     val tileSize = intOption("--tile-size").getOrElse(0)
     val tileAttachments = rest.contains("--tile-attachments")
@@ -50,10 +59,11 @@ object EmitGpuHostSystemAxi {
           tileSize = tileSize,
           tileAttachments = tileAttachments,
           tileBinning = tileBinning),
-        GpuConfig(),
+        gpuConfig,
         numComputeUnits = computeUnits,
         // The graphics kernarg ABI still uses eight shader lanes per batch.
-        graphicsGpuConfig = Some(GpuConfig(lanes = 4, warps = 2)),
+        graphicsGpuConfig = if (sharedGraphics) None else Some(GpuConfig(lanes = 4, warps = 2)),
+        sharedGraphics = sharedGraphics,
         fragCore = fragCore,
         vertCore = vertCore,
         enableFpuBackend = true,

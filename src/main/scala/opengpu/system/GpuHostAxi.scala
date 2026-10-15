@@ -54,11 +54,14 @@ class GpuHostAxi(
   commandIdWidth: Int = 8,
   textureFaultReporting: Boolean = false,
   computeScalarFpu: Boolean = false,
-  graphicsScalarFpu: Boolean = true
+  graphicsScalarFpu: Boolean = true,
+  sharedShader: Option[SharedCuShaderConfig] = None
 ) extends Module {
   override def desiredName: String = "GpuHostAxi"
 
   val io = IO(new Bundle {
+    val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
+      gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val s_axi_aclk = Input(Clock())
     val s_axi_aresetn = Input(Bool())
 
@@ -154,7 +157,9 @@ class GpuHostAxi(
       textureFaultReporting = textureFaultReporting,
       commandIdWidth = commandIdWidth,
       computeScalarFpu = computeScalarFpu,
-      graphicsScalarFpu = graphicsScalarFpu))
+      graphicsScalarFpu = graphicsScalarFpu,
+      sharedShader = sharedShader))
+    sharedShader.foreach(_ => host.io.shared.get <> io.shared.get)
     host.io.textureFault.foreach(_ := io.textureFault.get)
     io.graphicsDrained := host.io.drained
     io.performance := host.io.performance

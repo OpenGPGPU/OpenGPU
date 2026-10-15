@@ -286,6 +286,7 @@ class GpuSystem(
   dispatcher.io.launch <> commandProcessor.io.dispatch
   commandProcessor.io.dispatchCompletion <> dispatcher.io.completion
   private val graphicsDispatchBlocked = WireDefault(false.B)
+  private val graphicsCacheDrained = WireDefault(true.B)
   if (enableGraphicsKernels) {
     val graphics = io.graphicsKernels.get
     dispatcher.io.graphicsLaunch.valid := graphics.launch.valid && !graphicsDispatchBlocked
@@ -435,13 +436,19 @@ class GpuSystem(
     val quiesced = io.graphicsDrained && !copyEngine.io.busy && !fillEngine.io.busy &&
       !stridedCopyEngine.io.busy && !resolveEngine.io.busy &&
       !resolveActive && !resolveDonePending &&
-      !commandProcessor.io.busy && !dispatcher.io.busy.orR &&
+      !commandProcessor.io.busy && !dispatcher.io.busy.orR && graphicsCacheDrained &&
       !dispatcher.io.graphicsCompletion.valid &&
       l2.io.drained && !commandRouter.io.completion.valid
     // Held across the resetting cycle too: otherwise a queue flush and a
     // dispatch fire on the same edge and launch the flushed command.
     commandRouter.io.blockDispatch := resetState =/= ResetState.idle
-    graphicsDispatchBlocked := resetState =/= ResetState.idle || io.commandResetActive
+    // These are shader batches belonging to an already admitted render, not
+    // new host commands. The command router blocks new renders; the active
+    // renderer must still launch its remaining batches/invalidations while
+    // draining, or reset waits forever for graphicsDrained. Once the owner
+    // reports drained, reject further tasks through the resetting cycle.
+    graphicsDispatchBlocked := resetState === ResetState.resetting ||
+      ((resetState =/= ResetState.idle || io.commandResetActive) && io.graphicsDrained)
     commandRouter.io.pathReset := resetState === ResetState.resetting
     commandProcessor.io.pathReset := resetState === ResetState.resetting
     io.commandResetDone := resetState === ResetState.resetting
@@ -795,6 +802,16 @@ class GpuSystem(
   private val graphicsTraps = if (enableGraphicsKernels) Some(Module(new RRArbiter(
     new TaggedGraphicsTrap(config, commandIdWidth, numComputeUnits), numComputeUnits))) else None
   graphicsTraps.foreach(arb => io.graphicsKernels.get.trap <> arb.io.out)
+  private val graphicsInvalidation = if (enableGraphicsKernels)
+    Some(Module(new SharedCuCacheInvalidation(config, numComputeUnits))) else None
+  graphicsInvalidation.foreach { broadcast =>
+    val request = io.graphicsKernels.get.invalidate
+    broadcast.io.request.valid := request.valid && !graphicsDispatchBlocked
+    broadcast.io.request.bits := request.bits
+    request.ready := broadcast.io.request.ready && !graphicsDispatchBlocked
+    io.graphicsKernels.get.invalidateDone <> broadcast.io.done
+    graphicsCacheDrained := broadcast.io.drained
+  }
 
   for (cu <- 0 until numComputeUnits) {
     val unit = computeUnits(cu)
@@ -802,8 +819,16 @@ class GpuSystem(
     dispatcher.io.cuCompletion(cu) <> unit.io.completion
     memory.io.cuRequest(cu) <> unit.io.memoryRequest
     unit.io.memoryResponse <> memory.io.cuResponse(cu)
-    unit.io.l1Invalidate <> l2.io.invalidate(cu)
-    l2.io.invalidateDone(cu) <> unit.io.l1InvalidateDone
+    if (enableGraphicsKernels) {
+      val broadcast = graphicsInvalidation.get
+      broadcast.io.l2Request(cu) <> l2.io.invalidate(cu)
+      l2.io.invalidateDone(cu) <> broadcast.io.l2Done(cu)
+      unit.io.l1Invalidate <> broadcast.io.cuRequest(cu)
+      broadcast.io.cuDone(cu) <> unit.io.l1InvalidateDone
+    } else {
+      unit.io.l1Invalidate <> l2.io.invalidate(cu)
+      l2.io.invalidateDone(cu) <> unit.io.l1InvalidateDone
+    }
     l2.io.atomicRequest(cu) <> unit.io.globalAtomicRequest
     unit.io.globalAtomicResponse <> l2.io.atomicResponse(cu)
 

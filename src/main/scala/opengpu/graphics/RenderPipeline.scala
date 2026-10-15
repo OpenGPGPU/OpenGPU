@@ -3,6 +3,7 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
+import opengpu.system.{SharedCuGraphicsPort, SharedCuShaderConfig}
 import opengpu.core.memory.{
   CacheLineInvalidate,
   ComputeMemoryRequest,
@@ -74,12 +75,17 @@ class RenderPipeline(
   gpuConfig: GpuConfig = GpuConfig(),
   fragCore: Boolean = false,
   vertCore: Boolean = false,
-  graphicsScalarFpu: Boolean = true
+  graphicsScalarFpu: Boolean = true,
+  sharedShader: Option[SharedCuShaderConfig] = None
 ) extends Module {
+  require(sharedShader.isEmpty || fragCore,
+    "shared shader execution requires programmable fragment graphics")
   // Vertex and fragment bridges each retain four local IDs.  The shared
   // external port carries the stage-select bit plus that local ID.
   private val kernelWordOutstanding = 8
   val io = IO(new Bundle {
+    val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
+      gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val draw = Flipped(Decoupled(if (vertCore) new VertexDrawCommand(config) else new SceneTriangle(config)))
     val mem = new Bundle {
       val req = Decoupled(new OmMemoryRequest)
@@ -475,7 +481,8 @@ class RenderPipeline(
 
   if (fragCore || vertCore) {
     val kernelFrag = Module(new KernelFragStage(gpuConfig, config))
-    val kernelShader = Module(new KernelShaderStage(gpuConfig, graphicsScalarFpu))
+    val kernelShader = Module(new KernelShaderStage(gpuConfig, graphicsScalarFpu, sharedShader))
+    sharedShader.foreach(_ => kernelShader.io.shared.get <> io.shared.get)
     kernelShader.io.instructionSatp := io.instructionSatp
     kernelShader.io.instructionTlbFlush := io.instructionTlbFlush
     kernelShader.io.vectorSatp := io.vectorSatp

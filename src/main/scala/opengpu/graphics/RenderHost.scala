@@ -3,6 +3,7 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
+import opengpu.system.{SharedCuGraphicsPort, SharedCuShaderConfig}
 import opengpu.command.{RenderCompletion, RenderDescriptor, RenderStatus}
 import opengpu.dma.{CopyEngine, FillEngine, StridedCopyEngine}
 import opengpu.core.memory.{
@@ -124,12 +125,15 @@ class RenderHost(
   textureFaultReporting: Boolean = false,
   commandIdWidth: Int = 8,
   computeScalarFpu: Boolean = false,
-  graphicsScalarFpu: Boolean = true
+  graphicsScalarFpu: Boolean = true,
+  sharedShader: Option[SharedCuShaderConfig] = None
 ) extends Module {
   override def desiredName: String = "RenderHost"
   private val maxSampleMode = log2Ceil(config.maxSampleCount)
 
   val io = IO(new Bundle {
+    val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
+      gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val reg = new Bundle {
       val req = Flipped(Decoupled(new RenderHostRegRequest))
       val resp = Decoupled(new RenderHostRegResponse)
@@ -178,7 +182,8 @@ class RenderHost(
   })
 
   private val core = Module(new RenderCore(
-    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu))
+    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader))
+  sharedShader.foreach(_ => core.io.shared.get <> io.shared.get)
   core.io.instructionSatp := io.instructionSatp
   core.io.instructionTlbFlush := io.instructionTlbFlush
   core.io.vectorSatp := io.vectorSatp

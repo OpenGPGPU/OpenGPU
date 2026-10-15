@@ -19,6 +19,9 @@ class GpuSystemSpec extends AnyFlatSpec {
       graphics.launch.bits.poke(0.U.asTypeOf(graphics.launch.bits))
       graphics.completion.ready.poke(true.B)
       graphics.trap.ready.poke(true.B)
+      graphics.invalidate.valid.poke(false.B)
+      graphics.invalidate.bits.poke(0.U.asTypeOf(graphics.invalidate.bits))
+      graphics.invalidateDone.ready.poke(true.B)
       graphics.texture.foreach { tex =>
         tex.scalar.ready.poke(false.B)
         tex.scalarWriteback.valid.poke(false.B)
@@ -256,6 +259,44 @@ class GpuSystemSpec extends AnyFlatSpec {
 
   it should "route faults from graphics tasks separately from compute commands" in {
     sharedCuExecution(1, fault = true)
+  }
+
+  it should "drain shared graphics cache acknowledgements before completing reset" in {
+    val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
+    simulate(new GpuSystem(config, numComputeUnits = 2, enableGraphicsKernels = true,
+      enableUnifiedCommands = true, instructionCacheSets = 4,
+      instructionCacheWays = 1, vectorCacheSets = 4, vectorCacheWays = 1)) { dut =>
+      initialize(dut, 2)
+      val graphics = dut.io.graphicsKernels.get
+      graphics.invalidateDone.ready.poke(false.B)
+      graphics.invalidate.bits.lineAddress.poke(0x8000.U)
+      graphics.invalidate.valid.poke(true.B)
+      graphics.invalidate.ready.expect(true.B)
+      dut.clock.step(); graphics.invalidate.valid.poke(false.B)
+      var cycles = 0
+      while (!graphics.invalidateDone.valid.peek().litToBoolean && cycles < 40) {
+        dut.clock.step(); cycles += 1
+      }
+      graphics.invalidateDone.valid.expect(true.B)
+      graphics.invalidateDone.bits.lineAddress.expect(0x8000.U)
+      dut.io.commandResetActive.poke(true.B)
+      for (_ <- 0 until 12) {
+        dut.io.commandResetDone.expect(false.B)
+        graphics.launch.ready.expect(false.B)
+        graphics.invalidate.ready.expect(false.B)
+        dut.clock.step()
+      }
+      graphics.invalidateDone.ready.poke(true.B)
+      dut.clock.step()
+      cycles = 0
+      while (!dut.io.commandResetDone.peek().litToBoolean && cycles < 12) {
+        dut.clock.step(); cycles += 1
+      }
+      dut.io.commandResetDone.expect(true.B)
+      dut.io.commandResetActive.poke(false.B)
+      dut.clock.step()
+      graphics.invalidate.ready.expect(true.B)
+    }
   }
 
   it should "elaborate four compute units behind tagged dispatch and shared memory" in {

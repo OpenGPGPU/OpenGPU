@@ -56,7 +56,8 @@ class GpuHostSystemAxi(
   vectorCacheWays: Int = 2,
   memoryAxiDataBytes: Int = 8,
   exposePerformance: Boolean = false,
-  graphicsGpuConfig: Option[GpuConfig] = None
+  graphicsGpuConfig: Option[GpuConfig] = None,
+  sharedGraphics: Boolean = false
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   require(numComputeUnits > 0)
@@ -64,6 +65,13 @@ class GpuHostSystemAxi(
     "graphics and compute CUs must use the same address width")
   require(!vertCore || fragCore,
     "vertex-core graphics requires fragment-core graphics")
+  require(!sharedGraphics || fragCore,
+    "shared graphics requires programmable fragment graphics")
+  require(!sharedGraphics || (shaderConfig.lanes == gpuConfig.lanes &&
+    shaderConfig.warps == gpuConfig.warps),
+    "shared graphics and compute must use the same lane/warp shader ABI")
+  private val sharedShader = if (sharedGraphics)
+    Some(SharedCuShaderConfig(numComputeUnits, commandIdWidth)) else None
 
   // Kernel-word port IDs [0,8): frag+vert staging share translated [0,4);
   // fill/blit/strided DMA share translated [4,8). Command, framebuffer and
@@ -182,7 +190,8 @@ class GpuHostSystemAxi(
       unifiedCommandMmio = true, commandIdWidth = commandIdWidth,
       textureFaultReporting = true,
       computeScalarFpu = enableFpuBackend && gpuConfig.enableFpu,
-      graphicsScalarFpu = enableFpuBackend && shaderConfig.enableFpu))
+      graphicsScalarFpu = enableFpuBackend && shaderConfig.enableFpu,
+      sharedShader = sharedShader))
     val system = Module(new GpuSystem(
       gpuConfig,
       numComputeUnits = numComputeUnits,
@@ -196,7 +205,9 @@ class GpuHostSystemAxi(
       instructionCacheWays = instructionCacheWays,
       instructionCacheMissEntries = instructionCacheMissEntries,
       vectorCacheSets = vectorCacheSets,
-      vectorCacheWays = vectorCacheWays))
+      vectorCacheWays = vectorCacheWays,
+      enableGraphicsKernels = sharedGraphics))
+    sharedShader.foreach(_ => system.io.graphicsKernels.get <> host.io.shared.get)
 
     host.io.s_axi_aclk := io.s_axi_aclk
     host.io.s_axi_aresetn := io.s_axi_aresetn

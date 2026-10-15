@@ -1,0 +1,70 @@
+{
+  "configuration": {
+    "width": 16,
+    "height": 16,
+    "compute_units": 1,
+    "lanes": 4,
+    "warps": 2,
+    "fragment_core": true,
+    "vertex_core": true,
+    "shared_graphics": true,
+    "enable_fpu_backend": true
+  },
+  "physical_cu_instances": [
+    [
+      "GpuSystem.sv",
+      "GpuComputeUnit",
+      "computeUnits_0"
+    ]
+  ],
+  "private_graphics_cu_instances": 0,
+  "rtl_bundle_files": 325,
+  "rtl_bundle_sha256": "add2e6a7b63a9f029530ea24c925db2f23dd9ef4898a99cbc0d627710bdff223",
+  "hash_method": "SHA256 of sorted filelist relative name + NUL + raw file SHA256 digest, concatenated",
+  "scope": "Structural proof from emitted RTL, separate from pixel-checked test configurations; no speedup or desktop qualification claim",
+  "date": "2026-10-15",
+  "baseline_commit": "7b097e8",
+  "validation": {
+    "final_regression": {
+      "tests": 34,
+      "passed": 34,
+      "failed": 0,
+      "suites": [
+        "opengpu.system.SharedCuProgrammableTextureAxiSpec",
+        "opengpu.core.memory.SharedCuCacheInvalidationSpec",
+        "opengpu.dispatch.SharedCuKernelDispatcherSpec"
+      ],
+      "log": ".artifacts/shared-cu-render-final.log"
+    },
+    "reset_regression": {
+      "tests": 4,
+      "passed": 4,
+      "failed": 0,
+      "command": "sbt 'testOnly opengpu.system.SharedCuProgrammableTextureAxiSpec opengpu.system.ProgrammableTextureAxiSpec opengpu.system.GpuSystemSpec -- -z reset'",
+      "log": ".artifacts/shared-cu-reset-regression.log"
+    },
+    "initial_broad_regression": {
+      "tests": 75,
+      "passed": 74,
+      "failed": 1,
+      "failure": "Reset blocked internal shader launches needed by the admitted render; draw could not drain. Fixed by allowing internal work until graphicsDrained, while the command router blocks new renders.",
+      "failed_case_rerun_passed": true,
+      "log": ".artifacts/shared-cu-render-regression.log"
+    },
+    "interpretation": "Test sets overlap; do not add their counts. Pixel-checked shared renderer uses one four-lane/two-warp CU and real TexSampleUnit/TextureUnit, instruction/texture/staging translation and faults, ASID/VPN changes, reset and recovery, CPU-updated staging, and guest shader instruction streams. The FPU-enabled emitted model is structural evidence; shared scalar FP desktop execution is not qualified by these pixel tests."
+  },
+  "emit_command": "sbt 'runMain opengpu.elaboration.EmitGpuHostSystemAxi .artifacts/shared-cu/rtl-one-cu --frag-core --vert-core --shared-graphics --compute-units 1 --cu-lanes 4 --cu-warps 2 --width 16 --height 16'",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/KernelShaderStage.scala": "b93091921fad53227e9cdb7c88ba9eec9b72398b3ee041a80a4c50be2cd2d194",
+    "src/main/scala/opengpu/graphics/RenderPipeline.scala": "5372e8c62100a34bccf54b4fc9cbb5e5a41506781a7269000d5e3bf9d721b8c6",
+    "src/main/scala/opengpu/system/GpuSystem.scala": "f6a2d29992956bd1b91887aa512358da8d9bbe51ec772a337912e0e62e77c6e7",
+    "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "5c787f00fdc9d9ccdf95fc25130cc9f7ed51d4fa8fb6ab053c5c8b664110afb0",
+    "src/main/scala/opengpu/core/memory/SharedCuCacheInvalidation.scala": "0630ab884aa86900163abe07ffe573aa6177c2408a735d35ef5896bcd638b79b"
+  },
+  "limits": [
+    "One graphics task at a time in the compatibility adapter; this is shared execution, not parallel single-draw scaling yet.",
+    "The initial opt-in ABI uses four lanes and two warps. The emitter rejects an unqualified 16-lane shared graphics configuration.",
+    "No GPU-cycle, simulation-throughput or Debian-startup speedup claimed for this milestone.",
+    "Existing qualified QEMU/default desktop is unchanged; installed executable SHA256 remains ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0."
+  ]
+}
