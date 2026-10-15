@@ -46,8 +46,8 @@ case class GraphicsConfig(
     "tile attachments currently require tileSize=16")
   require(!tileBinning || tileAttachments,
     "tile binning requires tile attachments")
-  require(omInflight >= 1 && omInflight <= 32,
-    "omInflight must be in [1, 32]")
+  require(omInflight >= 1 && omInflight <= 64,
+    "omInflight must be in [1, 64]")
   require(fragmentBatchLimit >= 0 && fragmentBatchLimit % 4 == 0,
     "fragment batch limit must be zero or a whole number of quads")
   def coordWidth: Int = 32

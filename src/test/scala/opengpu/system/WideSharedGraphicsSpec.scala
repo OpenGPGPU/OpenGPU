@@ -224,3 +224,15 @@ class BatchGranularityLarge96Spec
 class SevenWarpBatchCoalescedWideAxiSharedGraphicsSpec
     extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 64,
       omInflight = 32, omLocality = true, fragmentBatchLimit = 112)
+
+class WiderOm64LocalitySharedGraphicsSpec
+    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64,
+      omInflight = 64, omLocality = true)
+
+class WiderOm64SevenWarpSharedGraphicsSpec
+    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 64,
+      omInflight = 64, omLocality = true, fragmentBatchLimit = 112)
+
+class WiderOm64OneCuSevenWarpSharedGraphicsSpec
+    extends WideSharedGraphicsChecks(64, Seq(1), coalesce = true, side = 64,
+      omInflight = 64, omLocality = true, fragmentBatchLimit = 112)

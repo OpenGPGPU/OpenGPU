@@ -249,30 +249,36 @@ class CoalescedOmWordToLinePortSpec extends AnyFlatSpec {
     }
   }
 
-  it should "combine eight lines with thirty-two reserved word replies and out-of-order acknowledgements" in {
-    simulate(new CoalescedOmWordToLinePort(maxOutstanding = 32, groups = 8)) { dut =>
-      val h = new Harness(dut)
-      for (line <- 0 until 8; word <- 0 until 4)
-        h.send(0x1000 + line * 64 + word * 4, write = true, data = 100 + line * 4 + word)
-      h.until(h.requests.size == 8)
-      assert(h.requests.map(_.id).distinct.size == 8)
-      for (r <- h.requests) {
-        val line = (r.address.toInt - 0x1000) / 64
-        val expected = (0 until 4).foldLeft(BigInt(0))((d, i) =>
-          d | (BigInt(100 + line * 4 + i) << (32 * i)))
-        assert(r.write && r.mask == 65535 && r.data == expected)
+  for (credits <- Seq(32, 64)) {
+    it should s"combine eight lines with $credits reserved word replies and out-of-order acknowledgements" in {
+      simulate(new CoalescedOmWordToLinePort(maxOutstanding = credits, groups = 8)) { dut =>
+        val wordsPerLine = credits / 8
+        val h = new Harness(dut)
+        for (line <- 0 until 8; word <- 0 until wordsPerLine)
+          h.send(0x1000 + line * 64 + word * 4, write = true, data = 100 + line * wordsPerLine + word)
+        h.until(h.requests.size == 8)
+        assert(h.requests.map(_.id).distinct.size == 8)
+        if (credits == 64) assert(h.requests.exists(_.id >= 32))
+        for (r <- h.requests) {
+          val line = (r.address.toInt - 0x1000) / 64
+          val expected = (0 until wordsPerLine).foldLeft(BigInt(0))((d, i) =>
+            d | (BigInt(100 + line * wordsPerLine + i) << (32 * i)))
+          val mask = (BigInt(1) << (wordsPerLine * 4)) - 1
+          assert(r.write && r.mask == mask && r.data == expected)
+        }
+        dut.io.out.ready.poke(false.B)
+        h.requests.reverse.foreach(r => h.respond(r, fault = r.address == 0x10c0))
+        h.offer(0x3000, write = false)
+        dut.io.in.ready.expect(false.B)
+        dut.io.in.valid.poke(false.B)
+        dut.io.out.ready.poke(true.B)
+        h.until(h.replies.size == credits)
+        val expectedAddresses = (for (line <- 0 until 8; word <- 0 until wordsPerLine)
+          yield BigInt(0x1000 + line * 64 + word * 4)).toSet
+        assert(h.replies.map(_._1).toSet == expectedAddresses)
+        assert(h.replies.forall(_._2))
       }
-      dut.io.out.ready.poke(false.B)
-      h.requests.reverse.foreach(r => h.respond(r, fault = r.address == 0x10c0))
-      h.offer(0x3000, write = false)
-      dut.io.in.ready.expect(false.B)
-      dut.io.in.valid.poke(false.B)
-      dut.io.out.ready.poke(true.B)
-      h.until(h.replies.size == 32)
-      val expectedAddresses = (for (line <- 0 until 8; word <- 0 until 4)
-        yield BigInt(0x1000 + line * 64 + word * 4)).toSet
-      assert(h.replies.map(_._1).toSet == expectedAddresses)
-      assert(h.replies.forall(_._2))
     }
   }
+
 }

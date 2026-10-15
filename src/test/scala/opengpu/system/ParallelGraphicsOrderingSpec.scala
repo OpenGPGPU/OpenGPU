@@ -127,3 +127,7 @@ class LocalityCoalescedParallelGraphicsOrderingSpec
 class CappedLocalityParallelGraphicsOrderingSpec
     extends ParallelGraphicsOrderingChecks(coalesce = true, axiBytes = 64,
       omInflight = 32, omLocality = true, fragmentBatchLimit = 4)
+
+class WideCapacityLocalityParallelGraphicsOrderingSpec
+    extends ParallelGraphicsOrderingChecks(coalesce = true, axiBytes = 64,
+      omInflight = 64, omLocality = true, fragmentBatchLimit = 4)

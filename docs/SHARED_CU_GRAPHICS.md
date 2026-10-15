@@ -575,3 +575,29 @@ cases, two matched renders and three fault/reset recovery cases. Eight
 additional pixel-checked probe renders cover cap choices and scene sizes;
 their fixtures are retained for reproduction. See [dispatch evidence and
 commands](performance/shared-cu-dispatch-granularity-2026-10-15.json).
+
+## Optional OM64 and matched scaling of 3.42x
+
+The output-merger limit now permits 64 entries, with 64 word-reply credits
+and the existing eight combining groups. OM16 remains the default; the
+larger configuration is selected explicitly with `--om-inflight 64`.
+This adds optional buffering and arbitration logic; GPU-cycle gains alone
+do not establish clock-frequency or host simulation gains.
+
+On the same 64x64 copy, OM64/full batches measure 45,937/14,138 cycles.
+Combining OM64 with the 112-fragment dispatch cap gives **45,933/13,429
+cycles on one/four CUs: 3.42x, or 85.5% parallel efficiency**. The one-CU
+cap result is four cycles faster than full batches, so the matched baseline
+is also the fastest measured one-CU control. Four-CU cycles improve 6.1%
+from the previous 14,299-cycle best while one-CU cycles also decrease.
+
+Four-CU OM-stall cycles fall from 2,550 with OM32/cap112 to 639. This is
+consistent with the unique-pixel scene exhausting in-flight capacity,
+rather than address hazards. Staging and serial setup/fill/drain remain.
+The trace also exposes 56 word-oriented descriptor/command fetches that
+repeat aligned line reads before rendering; these are a further candidate
+for bounded, job-scoped fetch coalescing.
+
+Thirty-seven root capacity/order/recovery cases and four pixel-checked
+full-system RTL probe renders pass. Default installed QEMU and stock Mesa
+remain unchanged. See [OM64 evidence and reproduction](performance/shared-cu-om64-2026-10-15.json).
