@@ -393,4 +393,101 @@ class TexSampleUnitSpec extends AnyFlatSpec {
       }
     }
   }
+
+  it should "bypass derivative latency for fixed mip ranges across masked quads" in {
+    val config = GpuConfig(lanes = 16, warps = 2)
+    simulate(new TexSampleUnit(config)) { dut =>
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      dut.io.in.valid.poke(false.B); dut.io.commit.ready.poke(true.B)
+      dut.io.vectorIn.valid.poke(false.B); dut.io.vectorCommit.ready.poke(false.B)
+      dut.io.texFormat.poke(PixelFormat.native.U)
+      dut.io.texBase.poke(0x2000.U)
+      dut.io.texWidth.poke(8.U); dut.io.texHeight.poke(8.U)
+      dut.io.wrapClamp.poke(true.B)
+      dut.io.mem.req.ready.poke(true.B); dut.io.mem.resp.valid.poke(false.B)
+      dut.io.mem.resp.bits.poke(0.U.asTypeOf(dut.io.mem.resp.bits))
+      val bases = Seq(0x2000L, 0x2100L, 0x2140L, 0x2150L, 0x2154L)
+      val colors = Seq(21, 75, 133, 201)
+      // Alternate fixed/nonfixed ranges, including bias endpoints, empty
+      // quads and an empty instruction. Helper coordinates have independent
+      // gradients even when their destination lanes are masked off.
+      val trials = Seq((0, 0, 15, 0xffff), (0, 3, 0, 0xffff),
+        (2, 2, -16, 0x1111), (3, 3, 15, 0xf00f),
+        (1, 1, 0, 0x00f0), (0, 0, -16, 0), (1, 3, 1, 0xf00f))
+      for (((minimum, maximum, bias, mask), trial) <- trials.zipWithIndex) {
+        dut.io.minLevel.poke(minimum.U); dut.io.texMaxLevel.poke(maximum.U)
+        dut.io.lodBias.poke(bias.S)
+        dut.io.vectorIn.bits.poke(0.U.asTypeOf(dut.io.vectorIn.bits))
+        dut.io.vectorIn.bits.executionMask.poke(mask.U)
+        dut.io.vectorIn.bits.issued.decode.activeMask.poke(0xffff.U)
+        dut.io.vectorIn.bits.issued.decode.instruction.poke("h062081ab".U)
+        for (lane <- 0 until 16) {
+          val step = 8192L << (lane / 4)
+          dut.io.vectorIn.bits.issued.vs1Data(lane).poke((if (lane % 2 == 0) 0L else step).U)
+          dut.io.vectorIn.bits.issued.vs2Data(lane).poke(0.U)
+          dut.io.vectorIn.bits.issued.oldVdData(lane).poke((0x1200 + lane).U)
+        }
+        dut.io.vectorIn.valid.poke(true.B); dut.io.vectorIn.ready.expect(true.B)
+        dut.clock.step(); dut.io.vectorIn.valid.poke(false.B)
+        dut.io.vectorIn.bits.poke(0.U.asTypeOf(dut.io.vectorIn.bits))
+        // LOD controls must be held by the accepted instruction, not taken
+        // from a later caller while the current vector traverses its quads.
+        dut.io.minLevel.poke(((minimum + 1) % 4).U)
+        dut.io.lodBias.poke((if (bias < 0) 15 else -16).S)
+        val pending = mutable.Queue.empty[Long]
+        val mipsRead = mutable.Set.empty[Int]
+        var firstRequest = -1
+        var cycle = 0
+        var requests = 0
+        while (!dut.io.vectorCommit.valid.peek().litToBoolean && cycle < 3000) {
+          dut.io.mem.req.ready.poke((cycle % 3 != 1).B)
+          dut.io.mem.resp.valid.poke((pending.nonEmpty && cycle % 4 != 2).B)
+          if (pending.nonEmpty) {
+            val address = pending.front
+            val mip = (0 until 4).find(l => address >= bases(l) && address < bases(l + 1)).get
+            mipsRead += mip
+            dut.io.mem.resp.bits.addr.poke(address.U)
+            dut.io.mem.resp.bits.data.poke(texel(colors(mip), 0, 0).U)
+            dut.io.mem.resp.bits.write.poke(false.B)
+          }
+          if (dut.io.mem.resp.valid.peek().litToBoolean && dut.io.mem.resp.ready.peek().litToBoolean)
+            pending.dequeue()
+          if (dut.io.mem.req.valid.peek().litToBoolean) {
+            if (firstRequest < 0) firstRequest = cycle
+            if (dut.io.mem.req.ready.peek().litToBoolean) {
+              pending.enqueue(dut.io.mem.req.bits.addr.peek().litValue.toLong)
+              requests += 1
+            }
+          }
+          dut.clock.step(); cycle += 1
+        }
+        assert(cycle < 3000, s"fixed LOD trial $trial timed out")
+        dut.io.mem.resp.valid.poke(false.B)
+        val levels = (0 until 4).map(q => math.max(minimum, math.min(maximum, q + bias)))
+        val expectedMips = (0 until 16).filter(l => (mask & (1 << l)) != 0).map(l => levels(l / 4)).toSet
+        assert(mipsRead == expectedMips, s"trial $trial read $mipsRead expected $expectedMips")
+        for (_ <- 0 until 4) {
+          dut.io.vectorCommit.valid.expect(true.B)
+          for (lane <- 0 until 16) {
+            val expected = if ((mask & (1 << lane)) != 0) texel(colors(levels(lane / 4)), 0, 0)
+              else BigInt(0x1200 + lane)
+            dut.io.vectorCommit.bits.writeback.data(lane).expect(expected.U)
+          }
+          dut.clock.step()
+        }
+        println(s"FIXED_LOD trial=$trial min=$minimum max=$maximum bias=$bias mask=$mask first_request=$firstRequest cycles=$cycle requests=$requests")
+        if (minimum == maximum && mask != 0) {
+          val firstLane = (0 until 16).find(l => (mask & (1 << l)) != 0).get
+          // Each nonzero mip also requires its packed-base address walk;
+          // this is sampler addressing latency, independent of derivatives.
+          val budget = firstLane + 5 + minimum
+          assert(firstRequest <= budget,
+            s"fixed mip incurred derivative startup latency: first request $firstRequest, budget $budget")
+        }
+        if (mask == 0) assert(requests == 0 && cycle <= 16)
+        dut.io.vectorCommit.ready.poke(true.B); dut.clock.step()
+        dut.io.vectorCommit.ready.poke(false.B)
+      }
+    }
+  }
 }

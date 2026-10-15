@@ -219,7 +219,10 @@ class TexSampleUnit(
           (0 until config.lanes / 4 - 1).map { q =>
             q.U -> executionMaskReg((q + 2) * 4 - 1, (q + 1) * 4).orR
           })
-        when(laneReg(1, 0) === 3.U && nextQuadActive) { state := sGrad }
+        // A fixed clamp already selects the mip for every quad. The
+        // accepted controls remain latched even if the caller changes them.
+        when(laneReg(1, 0) === 3.U && nextQuadActive &&
+          minLevelReg =/= maxLevelReg) { state := sGrad }
       }
     }
   }
@@ -243,7 +246,15 @@ class TexSampleUnit(
         maxLevelReg := io.texMaxLevel
         laneReg := 0.U
         preferVector := false.B
-        state := sGrad
+        when(io.minLevel === io.texMaxLevel) {
+          // Every derivative and bias clamps to this exact level. Fractional
+          // blending cannot select a different mip at the upper endpoint.
+          mipLevelReg := io.minLevel
+          mipFracReg := 0.U
+          state := sSample
+        }.otherwise {
+          state := sGrad
+        }
       }.elsewhen(io.in.fire) {
         vectorModeReg := false.B
         warpIdReg := io.in.bits.decode.warpId
