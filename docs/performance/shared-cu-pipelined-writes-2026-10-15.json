@@ -1,0 +1,136 @@
+{
+  "date": "2026-10-15",
+  "baseline_commit": "1c44d34",
+  "scope": "Same64x64gradient copy,1/4shared16lane8warpCUs,512-bitAXI,16cyclecombiningwindow,read delay2/writeack12. Independent OM planes retained. Only write burst/acknowledgement pipelining changes.",
+  "implementation": [
+    "Release AW/W issue engine after both channels finish, while tracking pending and completed IDs independently until B.",
+    "Accept next burst on the final handshake edge;512-bit one-beat lines can issue on consecutive cycles.",
+    "Preserve total credits through upper reply consumption; allow out-of-order BIDs and hold buffered replies under backpressure.",
+    "Test responder now accepts multiple AW/W bursts and queues delayed B replies, matching FlashSim wrapper capability. Same per-transaction read/write latency; old bridge cannot exploit the additional acceptance capacity."
+  ],
+  "results": [
+    {
+      "cus": 1,
+      "before_cycles": 70533,
+      "after_cycles": 60086,
+      "active_cu_cycles": 8658
+    },
+    {
+      "cus": 4,
+      "before_cycles": 52978,
+      "after_cycles": 26853,
+      "active_cu_cycles": 9481
+    }
+  ],
+  "one_to_four_speedup": 2.2375898409861095,
+  "four_cu_cycle_reduction_percent": 49.31292234512439,
+  "trace": [
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 60071,
+      "phase_worker_cycles": [
+        1894,
+        27358,
+        18,
+        8676,
+        5052,
+        17073
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1894,
+        "arvalid": 1618,
+        "rvalid": 1628,
+        "write_any": 27358,
+        "raster_stall": 56843,
+        "staging_without_shader_run": 32410,
+        "staging_outstanding_any": 27585,
+        "awvalid": 3089,
+        "bvalid": 3122,
+        "launch_any": 18,
+        "run_any": 8676,
+        "read_any": 5052,
+        "emit_any": 17073,
+        "output_blocked": 14960,
+        "om_stall": 13232
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 1001,
+        "color_write": 870,
+        "depth_write": 959
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-side-64-alu-0-cycles.csv": "bc1e56dbe1c49bc6d68b1f93666c2413517df3ff02c3631536144d630298f5c3",
+        "cu-1-axi-64-side-64-alu-0-memory.csv": "b1b0877d754d25465dfc633a259b5f06757da988e8b1e6cd460690bbac9743c3"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 26838,
+      "phase_worker_cycles": [
+        8963,
+        34539,
+        18,
+        9499,
+        7073,
+        47260
+      ],
+      "peak_staging_outstanding": 2,
+      "cycle_events": {
+        "idle_any": 4604,
+        "arvalid": 1827,
+        "rvalid": 1882,
+        "write_any": 21895,
+        "staging_without_shader_run": 15526,
+        "staging_outstanding_any": 21559,
+        "awvalid": 3332,
+        "bvalid": 3447,
+        "staging_blocked": 3578,
+        "raster_stall": 21422,
+        "launch_any": 18,
+        "run_any": 8011,
+        "read_any": 5386,
+        "emit_any": 22324,
+        "output_blocked": 22130,
+        "om_stall": 18235
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 1210,
+        "color_write": 1014,
+        "depth_write": 1058
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-side-64-alu-0-cycles.csv": "078e974bfced15b7a44fa85517cf85b2db9f9808095dd0f4dadc15ad236b44ea",
+        "cu-4-axi-64-side-64-alu-0-memory.csv": "72b571a5c48e8774c5b48a10d301431d90d69d8c882fd25220d9dc7e6f43b3f6"
+      }
+    }
+  ],
+  "validation": {
+    "axi_units": "14PASS; final rerun has no elaboration warnings. Covers all32/64/128/256/512-bit narrow lanes, burst data, concurrent directions, consecutive writes before B, out-of-order/fault replies, full credit and backpressure, old B while newer AW/W stalls.",
+    "ordered_render": "2PASS real4CU1x/4xMSAA/blend/depth/helper ordering.",
+    "translated_shader": "27PASS combined fragment/vertex guest programs, translation, PTW/instruction/texture bus faults, reset, ASID/VPNshootdowns, CPUstaging updates.",
+    "host_system": "23PASS control/MMIO/unifiedcompute/DMA/resolve/render/fault/reset. Coalescing disabled in this suite, proving the changed default AXI bridge separately.",
+    "copy_scaling": "2PASS complete64x64color/depth/uniform andpeakCU checks."
+  },
+  "logs": [
+    ".artifacts/shared-cu-pipelined-writes-tests.log",
+    ".artifacts/shared-cu-pipelined-write-regression.log"
+  ],
+  "interpretation": "2.24xcopy scaling is intermediate and explicitly rejected by user as insufficient. Continue targeting at least3x on samecopy workload without slowing1CU or changing memorytiming. No wall-time/desktop claim; installedbinaryunchanged."
+}

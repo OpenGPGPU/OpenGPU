@@ -115,10 +115,10 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
       dut.clock.step()
       dut.io.m_axi_awready.poke(false.B)
 
-      dut.io.m_axi_bready.expect(true.B)
       dut.io.m_axi_bid.poke(5.U)
       dut.io.m_axi_bresp.poke(2.U) // SLVERR
       dut.io.m_axi_bvalid.poke(true.B)
+      dut.io.m_axi_bready.expect(true.B)
       dut.clock.step()
       dut.io.m_axi_bvalid.poke(false.B)
       dut.io.response.valid.expect(true.B)
@@ -343,6 +343,108 @@ class ComputeMemoryAxiMasterSpec extends AnyFlatSpec {
       dut.io.response.ready.poke(true.B); dut.clock.step()
       dut.io.request.ready.expect(true.B)
       dut.io.m_axi_arid.expect(1.U)
+    }
+  }
+
+  it should "issue consecutive writes before B replies and retire out-of-order IDs under backpressure" in {
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 4,
+      axiDataBytes = 64)) { dut =>
+      initialize(dut)
+      dut.io.m_axi_awready.poke(true.B)
+      dut.io.m_axi_wready.poke(true.B)
+      submit(dut, 0x1040, 0x101, 15, write = true, sizeLog2 = 6, id = 1)
+      for (id <- 2 to 3) {
+        dut.io.m_axi_awvalid.expect(true.B)
+        dut.io.m_axi_awid.expect((id - 1).U)
+        dut.io.m_axi_wvalid.expect(true.B)
+        dut.io.m_axi_wdata.expect((0x100 + id - 1).U)
+        dut.io.m_axi_wlast.expect(true.B)
+        submit(dut, 0x1000 + id * 64, 0x100 + id, 15,
+          write = true, sizeLog2 = 6, id = id)
+      }
+      dut.io.m_axi_awid.expect(3.U)
+      dut.io.m_axi_wdata.expect(0x103.U)
+      dut.clock.step()
+      dut.io.m_axi_awvalid.expect(false.B)
+      dut.io.m_axi_wvalid.expect(false.B)
+      dut.io.response.valid.expect(false.B)
+      // All three AW/W pairs completed before ANY acknowledgement arrived.
+      for (id <- Seq(3, 1)) {
+        dut.io.m_axi_bid.poke(id.U)
+        dut.io.m_axi_bresp.poke((if (id == 1) 2 else 0).U)
+        dut.io.m_axi_bvalid.poke(true.B)
+        dut.io.m_axi_bready.expect(true.B)
+        dut.clock.step()
+      }
+      dut.io.m_axi_bid.poke(2.U)
+      dut.io.m_axi_bresp.poke(0.U)
+      for (_ <- 0 until 4) {
+        dut.io.m_axi_bready.expect(false.B)
+        dut.io.response.valid.expect(true.B)
+        dut.io.response.bits.transactionId.expect(3.U)
+        dut.io.response.bits.fault.expect(false.B)
+        dut.clock.step()
+      }
+      dut.io.response.ready.poke(true.B)
+      dut.io.m_axi_bready.expect(true.B)
+      dut.clock.step(); dut.io.m_axi_bvalid.poke(false.B)
+      for (id <- Seq(1, 2)) {
+        dut.io.response.valid.expect(true.B)
+        dut.io.response.bits.transactionId.expect(id.U)
+        dut.io.response.bits.fault.expect((id == 1).B)
+        dut.clock.step()
+      }
+      dut.io.response.valid.expect(false.B)
+      submit(dut, 0x2000, 0x55, 15, write = true, sizeLog2 = 6, id = 1)
+      dut.io.m_axi_awid.expect(1.U)
+    }
+  }
+
+  it should "retire an older B response while a newer burst is stalled and then transferring" in {
+    simulate(new ComputeMemoryAxiMaster(GpuConfig(), maxOutstanding = 8,
+      axiDataBytes = 8)) { dut =>
+      initialize(dut)
+      dut.io.m_axi_awready.poke(true.B)
+      dut.io.m_axi_wready.poke(true.B)
+      submit(dut, 0x1004, 0x11223344, 15, write = true, sizeLog2 = 2, id = 5)
+      dut.clock.step()
+      dut.io.m_axi_awready.poke(false.B)
+      dut.io.m_axi_wready.poke(false.B)
+      val line = (0 until 8).foldLeft(BigInt(0))((d, i) => d | (BigInt(100 + i) << (64 * i)))
+      submit(dut, 0x2000, line, (BigInt(1) << 64) - 1,
+        write = true, sizeLog2 = 6, id = 6)
+      dut.io.m_axi_bid.poke(5.U)
+      dut.io.m_axi_bresp.poke(2.U)
+      dut.io.m_axi_bvalid.poke(true.B)
+      dut.io.m_axi_bready.expect(true.B)
+      dut.clock.step(); dut.io.m_axi_bvalid.poke(false.B)
+      for (_ <- 0 until 3) {
+        dut.io.m_axi_awvalid.expect(true.B)
+        dut.io.m_axi_awid.expect(6.U)
+        dut.io.m_axi_awaddr.expect(0x2000.U)
+        dut.io.m_axi_wvalid.expect(true.B)
+        dut.io.m_axi_wdata.expect(100.U)
+        dut.clock.step()
+      }
+      dut.io.m_axi_awready.poke(true.B)
+      dut.io.m_axi_wready.poke(true.B)
+      for (beat <- 0 until 8) {
+        dut.io.m_axi_wvalid.expect(true.B)
+        dut.io.m_axi_wdata.expect((100 + beat).U)
+        dut.io.m_axi_wlast.expect((beat == 7).B)
+        dut.clock.step()
+      }
+      dut.io.m_axi_bid.poke(6.U)
+      dut.io.m_axi_bresp.poke(0.U)
+      dut.io.m_axi_bvalid.poke(true.B)
+      dut.io.m_axi_bready.expect(true.B)
+      dut.clock.step(); dut.io.m_axi_bvalid.poke(false.B)
+      dut.io.response.ready.poke(true.B)
+      dut.io.response.bits.transactionId.expect(5.U)
+      dut.io.response.bits.fault.expect(true.B)
+      dut.clock.step()
+      dut.io.response.bits.transactionId.expect(6.U)
+      dut.io.response.bits.fault.expect(false.B)
     }
   }
 

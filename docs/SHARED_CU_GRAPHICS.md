@@ -436,3 +436,19 @@ On the matched 64x64 copy, four-CU cycles improve from 56,611 to 52,978
 becomes 1.33x; this is a measured tradeoff and remains insufficient. These
 numbers still use one write awaiting B in the AXI bridge. Multiple outstanding
 write acknowledgements are the next bandwidth target. See [the OM evidence](performance/shared-cu-om-overlap-2026-10-15.json).
+
+## Pipelined AXI write bursts
+
+AW/W issue no longer waits for the preceding B acknowledgement. Separate
+pending/completed ID maps restore out-of-order replies; the next burst can
+start on the previous burst's final handshake edge. Total credits still
+include queued replies until the upper consumer accepts them. The test
+responder queues delayed B replies independently of accepting the next AW/W,
+matching the existing FlashSim wrapper. Per-transaction latency is unchanged.
+
+On the same 64x64 copy, one-CU cycles fall from 70,533 to 60,086 and four-CU
+cycles from 52,978 to 26,853. Scaling becomes 2.24x; the user explicitly
+requires further improvement, targeting at least 3x on this same workload.
+Fourteen AXI, 27 shader VM/fault/reset, 23 host-system, two MSAA ordering and
+two full copy tests pass. No simulator wall-time claim is made. See [the
+pipelined-write evidence](performance/shared-cu-pipelined-writes-2026-10-15.json).

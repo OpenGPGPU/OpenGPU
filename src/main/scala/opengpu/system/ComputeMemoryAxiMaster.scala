@@ -12,6 +12,8 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
   * 64-byte cache line is emitted as an INCR burst when the AXI data bus is
   * narrower than a cache line; four-byte page-table accesses use AXI narrow
   * transfers and are shifted to/from the addressed byte lane.
+  * Write bursts continue while earlier B replies are outstanding; IDs and
+  * request credits remain reserved through acknowledged response retirement.
   */
 class ComputeMemoryAxiMaster(
   config: GpuConfig = GpuConfig(),
@@ -90,6 +92,13 @@ class ComputeMemoryAxiMaster(
   private val writeBeat = RegInit(0.U(beatIndexWidth.W))
   private val readResult = RegInit(0.U((lineBytes * 8).W))
   private val readFault = RegInit(false.B)
+  // AW/W issue is independent of B retirement. Preserve an ID until its
+  // physical acknowledgement is queued, then keep the global request credit
+  // until the upper consumer accepts that reply.
+  private val pendingWrites = RegInit(0.U(maxOutstanding.W))
+  private val completedWrites = RegInit(0.U(maxOutstanding.W))
+  private def writeBit(bitmap: UInt, id: UInt): Bool =
+    if (maxOutstanding == 1) bitmap(0) else bitmap(id)
   // Include queued replies in the credit count. Backpressured consumers cannot
   // cause the bridge to accept more requests than its advertised capacity.
   private val outstanding = RegInit(0.U(log2Ceil(maxOutstanding + 1).W))
@@ -104,7 +113,6 @@ class ComputeMemoryAxiMaster(
   readRequests.io.enq.bits := io.request.bits
   writeRequests.io.enq.bits := io.request.bits
   readRequests.io.deq.ready := !readActive
-  writeRequests.io.deq.ready := !writeActive
   private val responseArb = Module(new RRArbiter(
     new ComputeMemoryResponse(lineBytes, maxOutstanding), 2))
   private val responses = Module(new Queue(
@@ -132,19 +140,14 @@ class ComputeMemoryAxiMaster(
     outstanding := Mux(io.request.fire, outstanding + 1.U, outstanding - 1.U)
   }
   when(io.request.fire) {
+    assert(io.request.bits.transactionId < maxOutstanding.U,
+      "lower-memory transaction ID must be in the advertised range")
     assert(io.request.bits.sizeLog2 === 2.U || io.request.bits.sizeLog2 === 6.U,
       "lower memory supports four-byte words and full cache lines")
     when(io.request.bits.sizeLog2 === 6.U) {
       assert(io.request.bits.address(5, 0) === 0.U,
         "cache-line AXI bursts must be naturally aligned")
     }
-  }
-  when(writeRequests.io.deq.fire) {
-    writeRequest := writeRequests.io.deq.bits
-    writeActive := true.B
-    writeAddressSent := false.B
-    writeDataSent := false.B
-    writeBeat := 0.U
   }
   when(readRequests.io.deq.fire) {
     readRequest := readRequests.io.deq.bits
@@ -178,17 +181,46 @@ class ComputeMemoryAxiMaster(
     when(writeLast) { writeDataSent := true.B }
       .otherwise { writeBeat := writeBeat + 1.U }
   }
-  private val writeResponseExpected = writeActive && writeAddressSent && writeDataSent
+  private val writeFinished = writeActive &&
+    (writeAddressSent || (io.m_axi_awvalid && io.m_axi_awready)) &&
+    (writeDataSent || (io.m_axi_wvalid && io.m_axi_wready && writeLast))
+  writeRequests.io.deq.ready := !writeActive || writeFinished
+  when(writeFinished) { writeActive := false.B }
+  // Loading the next queued burst wins over the old burst's final handshakes.
+  // With one-beat lines, AW/W can therefore issue on consecutive cycles.
+  when(writeRequests.io.deq.fire) {
+    assert(!writeBit(pendingWrites, writeRequests.io.deq.bits.transactionId),
+      "AXI write ID cannot be reused before its acknowledgement")
+    writeRequest := writeRequests.io.deq.bits
+    writeActive := true.B
+    writeAddressSent := false.B
+    writeDataSent := false.B
+    writeBeat := 0.U
+  }
+  private val bidInRange = io.m_axi_bid < maxOutstanding.U
+  private val writeResponseExpected = bidInRange && writeBit(pendingWrites, io.m_axi_bid) &&
+    writeBit(completedWrites, io.m_axi_bid)
   responseArb.io.in(1).valid := writeResponseExpected && io.m_axi_bvalid
-  responseArb.io.in(1).bits.transactionId := writeRequest.transactionId
+  responseArb.io.in(1).bits.transactionId := io.m_axi_bid
   responseArb.io.in(1).bits.readData := 0.U
   responseArb.io.in(1).bits.fault := io.m_axi_bresp(1)
   io.m_axi_bready := writeResponseExpected && responseArb.io.in(1).ready
   when(io.m_axi_bvalid && io.m_axi_bready) {
-    assert(io.m_axi_bid === writeRequest.transactionId,
-      "AXI write response ID must match the active lower-memory request")
-    writeActive := false.B
+    assert(writeResponseExpected,
+      "AXI write response ID must identify an issued and completed burst")
   }
+  when(io.m_axi_bvalid) {
+    assert(writeResponseExpected,
+      "AXI write acknowledgement must follow both address and final data handshakes")
+  }
+  private val allocatedWrite = Mux(writeRequests.io.deq.fire,
+    UIntToOH(writeRequests.io.deq.bits.transactionId, maxOutstanding), 0.U(maxOutstanding.W))
+  private val finishedWrite = Mux(writeFinished,
+    UIntToOH(writeRequest.transactionId, maxOutstanding), 0.U(maxOutstanding.W))
+  private val acknowledgedWrite = Mux(io.m_axi_bvalid && io.m_axi_bready,
+    UIntToOH(io.m_axi_bid, maxOutstanding), 0.U(maxOutstanding.W))
+  pendingWrites := (pendingWrites & ~acknowledgedWrite) | allocatedWrite
+  completedWrites := (completedWrites & ~acknowledgedWrite) | finishedWrite
 
   io.m_axi_arid := readRequest.transactionId
   io.m_axi_araddr := readRequest.address

@@ -219,8 +219,7 @@ trait GpuHostTestSupport {
     var wData = BigInt(0)
     var wStrb = BigInt(0)
     var wDone = false
-    var bPending = false
-    var bDelay = 0
+    val pendingWriteAcks = scala.collection.mutable.Queue.empty[(BigInt, Int)]
     var guard = 0
     var quietCycles = 0
     while (!until && guard < maxCycles) {
@@ -272,17 +271,23 @@ trait GpuHostTestSupport {
         wBeat += 1
         if (dut.io.m_axi_wlast.peek().litToBoolean) wDone = true
       }
-      if (awDone && wDone && !bPending) {
-        // Present narrow writes in the same aligned-line format as bursts.
+      if (awDone && wDone) {
+        // Complete the burst's data independently of acknowledgement delay.
+        // AXI permits another AW/W burst while earlier B replies are pending.
         val byteOffset = awAddr.toInt & (64 - axiDataBytes)
         onWrite(awAddr & ~BigInt(63), wData << (byteOffset * 8), wStrb << byteOffset)
-        bPending = true
-        bDelay = writeAckDelay
+        pendingWriteAcks.enqueue((awId, guard + math.max(1, writeAckDelay)))
+        awDone = false
+        wDone = false
+        wBeat = 0
+        wData = BigInt(0)
+        wStrb = BigInt(0)
       }
-      // Write response channel.
-      dut.io.m_axi_bvalid.poke((bPending && bDelay == 0).B)
-      if (bDelay > 0) bDelay -= 1
-      dut.io.m_axi_bid.poke(awId.U)
+      // B may not precede the edge accepting AW and WLAST. Once presented,
+      // keep the head ID stable until the DUT accepts it.
+      val bReadyToPresent = pendingWriteAcks.headOption.exists(_._2 <= guard)
+      dut.io.m_axi_bvalid.poke(bReadyToPresent.B)
+      dut.io.m_axi_bid.poke(pendingWriteAcks.headOption.map(_._1).getOrElse(BigInt(0)).U)
       dut.io.m_axi_bresp.poke(0.U)
       // Drive BOTH response channels before sampling either handshake.
       // RREADY/BREADY share the bridge's response arbiter: raising BVALID can
@@ -294,16 +299,11 @@ trait GpuHostTestSupport {
       }
       if (dut.io.m_axi_bvalid.peek().litToBoolean && dut.io.m_axi_bready.peek().litToBoolean) {
         memoryProgress = true
-        bPending = false
-        awDone = false
-        wDone = false
-        wBeat = 0
-        wData = BigInt(0)
-        wStrb = BigInt(0)
+        pendingWriteAcks.dequeue()
       }
       quietCycles = if (memoryProgress) 0 else quietCycles + 1
       assert(noProgressLimit == 0 || quietCycles < noProgressLimit,
-        s"AXI no progress for $quietCycles cycles at cycle=$guard arDone=$arDone rBeat=$rBeat awDone=$awDone wDone=$wDone bPending=$bPending rDelay=$rDelay bDelay=$bDelay")
+        s"AXI no progress for $quietCycles cycles at cycle=$guard arDone=$arDone rBeat=$rBeat awDone=$awDone wDone=$wDone pendingB=${pendingWriteAcks.size} rDelay=$rDelay")
       onCycle()
       dut.io.s_axi_aclk.step()
       if (acceptedRead) {
