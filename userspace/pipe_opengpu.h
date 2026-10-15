@@ -50,7 +50,7 @@ uint32_t pipe_opengpu_resource_handle(const struct pipe_opengpu_resource *res);
 void pipe_opengpu_resource_destroy(struct pipe_opengpu_screen *screen,
                                    struct pipe_opengpu_resource *res);
 
-/* Single OpenGPU KMS mode (matches RTL/device width×height). */
+/* Active OpenGPU KMS mode, or the preferred mode before a modeset. */
 int pipe_opengpu_screen_display_size(struct pipe_opengpu_screen *screen,
                                      uint32_t *width, uint32_t *height);
 
@@ -183,8 +183,8 @@ int pipe_opengpu_draw_vertex(struct pipe_opengpu_context *ctx,
                              const struct drm_opengpu_vertex_draw *draw,
                              struct pipe_opengpu_fence **out_fence);
 
-/* Program the OpenGPU CRTC with a 1x pitched colour GEM matching the mode.
- * Registers an FB on first use; keeps the GEM alive for scanout. */
+/* Program the OpenGPU CRTC with a 1x pitched colour GEM matching the active or
+ * advertised mode. Registers an FB on first use and keeps it alive. */
 int pipe_opengpu_present(struct pipe_opengpu_screen *screen,
                          struct pipe_opengpu_resource *color);
 
