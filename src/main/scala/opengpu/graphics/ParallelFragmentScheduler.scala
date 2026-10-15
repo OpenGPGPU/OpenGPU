@@ -28,7 +28,12 @@ class ParallelFragmentScheduler(
   require(maxDraws > 0)
   private val batchCapacity = config.lanes * config.warps
   require(batchCapacity % 4 == 0)
-  private val quadsPerBatch = batchCapacity / 4
+  private val dispatchCapacity = if (gfxConfig.fragmentBatchLimit == 0)
+    batchCapacity else gfxConfig.fragmentBatchLimit
+  require(dispatchCapacity > 0 && dispatchCapacity <= batchCapacity &&
+    dispatchCapacity % config.lanes == 0,
+    "fragment dispatch must fit the physical batch and preserve whole warps")
+  private val quadsPerBatch = dispatchCapacity / 4
   private val workerWidth = math.max(1, log2Ceil(numWorkers))
   private val quadCountWidth = math.max(1, log2Ceil(quadsPerBatch + 1))
 

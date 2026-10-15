@@ -29,6 +29,10 @@ object EmitGpuHostSystemAxi {
       }
     }
 
+    val fragmentBatchLimit = intOption("--fragment-batch-limit").getOrElse(0)
+    require(fragmentBatchLimit == 0 || parallelGraphics,
+      "--fragment-batch-limit requires --parallel-graphics")
+
     val width = intOption("--width").getOrElse(64)
     val height = intOption("--height").getOrElse(64)
     val computeUnits = intOption("--compute-units")
@@ -60,6 +64,7 @@ object EmitGpuHostSystemAxi {
           screenWidth = width, screenHeight = height, subPixelBits = 8,
           omInflight = intOption("--om-inflight").getOrElse(16),
           omLocality = rest.contains("--om-locality"),
+          fragmentBatchLimit = fragmentBatchLimit,
           tileSize = tileSize,
           tileAttachments = tileAttachments,
           tileBinning = tileBinning),

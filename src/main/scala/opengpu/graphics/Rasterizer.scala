@@ -31,7 +31,10 @@ case class GraphicsConfig(
     * rather than same-pixel serialization. Default 16 after measuring 8→16. */
   omInflight: Int = 16,
   /** Prefer a bounded burst to one memory line between fair OM grants. */
-  omLocality: Boolean = false
+  omLocality: Boolean = false,
+  /** Optional dispatch cap in fragments. Zero uses the physical CU capacity;
+    * nonzero caps retain the full physical staging and uniform ABI. */
+  fragmentBatchLimit: Int = 0
 ) {
   require(drawFifoDepth >= 2, "draw FIFO must hold at least two records")
   require(Set(1, 2, 4)(maxSampleCount),
@@ -45,6 +48,8 @@ case class GraphicsConfig(
     "tile binning requires tile attachments")
   require(omInflight >= 1 && omInflight <= 32,
     "omInflight must be in [1, 32]")
+  require(fragmentBatchLimit >= 0 && fragmentBatchLimit % 4 == 0,
+    "fragment batch limit must be zero or a whole number of quads")
   def coordWidth: Int = 32
   def edgeWidth: Int = 64
 

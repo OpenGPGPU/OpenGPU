@@ -11,15 +11,16 @@ import java.nio.file.{Files, Paths}
 
 /** Qualify the real 16-lane/eight-warp pool before migrating stock Mesa shaders. */
 abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coalesce: Boolean = false,
-    side: Int = 32, aluIterations: Int = 0, omInflight: Int = 16, omLocality: Boolean = false)
+    side: Int = 32, aluIterations: Int = 0, omInflight: Int = 16, omLocality: Boolean = false,
+    fragmentBatchLimit: Int = 0)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (cus <- cuCounts) {
-    it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations OM=$omInflight)" in {
+    it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations OM=$omInflight cap=$fragmentBatchLimit)" in {
       val capacity = 128
       val stride = 4 * capacity
       val bankStride = 9 * stride + 64
       val gpu = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
-      simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight, omLocality = omLocality),
+      simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight, omLocality = omLocality, fragmentBatchLimit = fragmentBatchLimit),
         gpu, numComputeUnits = cus, fragCore = true, sharedGraphics = true,
         parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes,
         coalesceFramebufferWrites = coalesce)) { dut =>
@@ -161,7 +162,7 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         val completion = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
         assert((completion & 0xff) == 91 && completion.testBit(15))
         dut.io.performance.get.system.maxActiveComputeUnits.expect(cus.U)
-        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight lanes=16 warps=8 cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$cus")
+        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight fragment_batch_limit=$fragmentBatchLimit lanes=16 warps=8 cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$cus")
         for (y <- 0 until side; x <- 0 until side) {
           val offset = (y * side + x) * 4L
           val covered = x > 0 && y > 0 && x + y <= side
@@ -199,3 +200,27 @@ class DeepOmCoalescedWideAxiSharedGraphicsSpec
 class LocalityCoalescedWideAxiSharedGraphicsSpec
     extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64,
       omInflight = 32, omLocality = true)
+
+class CappedLocalityWideSharedGraphicsSpec
+    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64,
+      omInflight = 32, omLocality = true, fragmentBatchLimit = 96)
+
+class BatchGranularityOneCu112Spec
+    extends WideSharedGraphicsChecks(64, Seq(1), coalesce = true, side = 64,
+      omInflight = 32, omLocality = true, fragmentBatchLimit = 112)
+class BatchGranularitySmallControlSpec
+    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 32,
+      omInflight = 32, omLocality = true)
+class BatchGranularitySmall96Spec
+    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 32,
+      omInflight = 32, omLocality = true, fragmentBatchLimit = 96)
+class BatchGranularityLargeControlSpec
+    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 128,
+      omInflight = 32, omLocality = true)
+class BatchGranularityLarge96Spec
+    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 128,
+      omInflight = 32, omLocality = true, fragmentBatchLimit = 96)
+
+class SevenWarpBatchCoalescedWideAxiSharedGraphicsSpec
+    extends WideSharedGraphicsChecks(64, Seq(4), coalesce = true, side = 64,
+      omInflight = 32, omLocality = true, fragmentBatchLimit = 112)

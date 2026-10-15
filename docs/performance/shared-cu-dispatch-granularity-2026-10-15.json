@@ -1,0 +1,258 @@
+{
+  "date": "2026-10-15",
+  "scope": "GPU-cycle dispatch granularity tuning on the same copy shader and image. No guest wall-time claim.",
+  "parent_milestone": "355c85e",
+  "configuration": {
+    "physical_lanes": 16,
+    "physical_warps": 8,
+    "physical_batch_capacity": 128,
+    "axi_bytes": 64,
+    "om_inflight": 32,
+    "om_locality": true,
+    "combining_groups": 8,
+    "read_response_delay": 2,
+    "write_ack_delay": 12,
+    "array_stride": 512,
+    "uniform_offset": 4608,
+    "kernarg_bank_stride": 4672
+  },
+  "implementation": "Optional whole-warp/whole-quad fragment dispatch cap. Default0 keeps physical capacity128. Physical CU resources, staging allocation/stride, shader workload, uniform tail and ordered contiguous stream remain unchanged. CLI --fragment-batch-limit requires parallel graphics; stock wide-software ABI guard remains in force.",
+  "copy64": {
+    "best_one_cu_cycles": 47376,
+    "best_one_cu_cap": 128,
+    "one_cu_cycles_by_cap": {
+      "128": 47376,
+      "96": 48149,
+      "112": 47738
+    },
+    "four_cu_cycles_by_cap": {
+      "128": 14934,
+      "64": 14620,
+      "96": 14414,
+      "112": 14299
+    },
+    "conservative_speedup_96": 3.2868044956292493,
+    "conservative_speedup_112": 3.3132386880201414,
+    "same_cap_speedup_96": 3.3404329124462326,
+    "same_cap_speedup_112": 3.3385551437163437,
+    "note": "Headline uses faster unchanged full-batch one-CU baseline, avoiding inflation from the slower capped one-CU runs.",
+    "dispatches_by_cap": {
+      "128": 18,
+      "64": 35,
+      "96": 24,
+      "112": 20
+    }
+  },
+  "cross_size_four_cu_96": {
+    "32": {
+      "full": 5404,
+      "cap96": 5100,
+      "reduction_percent": 5.625462620281274
+    },
+    "64": {
+      "full": 14934,
+      "cap96": 14414,
+      "reduction_percent": 3.481987411276277
+    },
+    "128": {
+      "full": 58945,
+      "cap96": 58208,
+      "reduction_percent": 1.25031809313767
+    }
+  },
+  "validation": {
+    "root_focused": {
+      "passed": 12,
+      "details": "8scheduler (delayed workers, backpressure, helpers, empty/partial draws, zero-stride fallback);2ordered1x/4xMSAA;2matched96capcopy renders",
+      "log": ".artifacts/shared-cu-capped-batch-qualification.log"
+    },
+    "root_faults": {
+      "passed": 3,
+      "details": "Reset during texture read, staging invalid PTE, instruction code bus fault; all recover",
+      "log": ".artifacts/shared-cu-capped-batch-faults.log"
+    },
+    "isolated_probes": {
+      "passed": 3,
+      "details": "Four-CU64/96/112 caps with every pixel/depth/uniform checked",
+      "logs": [
+        ".artifacts/shared-cu-batch-granularity-tests.log",
+        ".artifacts/shared-cu-batch-112-tests.log"
+      ]
+    },
+    "cross_size_and_one_cu112": {
+      "passed": 5,
+      "log": ".artifacts/shared-cu-batch-size-matrix.log",
+      "scope": "Isolated source mirror, same memory and scheduler RTL. Final fixtures copied to WideSharedGraphicsSpec and Test/compile PASS."
+    },
+    "final_compile": {
+      "log": ".artifacts/shared-cu-capped-batch-final-compile.log",
+      "passed": true
+    }
+  },
+  "trace_analysis": {
+    "64": [
+      {
+        "cus": 4,
+        "axi_data_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "traced_cycles": 14605,
+        "phase_worker_cycles": [
+          5635,
+          29520,
+          35,
+          10424,
+          5835,
+          6971
+        ],
+        "peak_staging_outstanding": 4,
+        "cycle_events": {
+          "idle_any": 3134,
+          "arvalid": 1161,
+          "rvalid": 1223,
+          "write_any": 12431,
+          "staging_without_shader_run": 6519,
+          "staging_outstanding_any": 12885,
+          "awvalid": 2264,
+          "bvalid": 2388,
+          "raster_stall": 11580,
+          "staging_blocked": 116,
+          "launch_any": 35,
+          "run_any": 7325,
+          "read_any": 5344,
+          "emit_any": 6206,
+          "output_blocked": 4242,
+          "om_stall": 2123
+        },
+        "lower_memory_transactions": {
+          "descriptor_read": 16,
+          "commands_read": 40,
+          "staging_or_shader_data_write": 1260,
+          "instructions_read": 1,
+          "staging_or_shader_data_read": 560,
+          "depth_read": 544,
+          "color_write": 509,
+          "depth_write": 495
+        },
+        "trace_sha256": {
+          "cu-4-axi-64-side-64-alu-0-cycles.csv": "969e80aa5ff7a70275affe7a90fbb9b58eda5405137b249dc7ef899bcd8e974c",
+          "cu-4-axi-64-side-64-alu-0-memory.csv": "17f1e859324500e5d715cfe21ef84fecbc73036727b67c42d07af6cdeca65167"
+        }
+      }
+    ],
+    "96": [
+      {
+        "cus": 4,
+        "axi_data_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "traced_cycles": 14399,
+        "phase_worker_cycles": [
+          4737,
+          28588,
+          24,
+          9673,
+          5606,
+          8968
+        ],
+        "peak_staging_outstanding": 4,
+        "cycle_events": {
+          "idle_any": 2365,
+          "arvalid": 1161,
+          "rvalid": 1239,
+          "write_any": 11922,
+          "staging_without_shader_run": 6683,
+          "staging_outstanding_any": 12445,
+          "awvalid": 2252,
+          "bvalid": 2373,
+          "staging_blocked": 152,
+          "raster_stall": 10971,
+          "launch_any": 24,
+          "run_any": 6748,
+          "read_any": 4949,
+          "emit_any": 6939,
+          "output_blocked": 5324,
+          "om_stall": 2582
+        },
+        "lower_memory_transactions": {
+          "descriptor_read": 16,
+          "commands_read": 40,
+          "staging_or_shader_data_write": 1260,
+          "instructions_read": 1,
+          "staging_or_shader_data_read": 560,
+          "depth_read": 544,
+          "color_write": 492,
+          "depth_write": 500
+        },
+        "trace_sha256": {
+          "cu-4-axi-64-side-64-alu-0-cycles.csv": "b2e565b67c94ea81f4d4da0789f28653c53f368176695284bfe8c57d63c8e96e",
+          "cu-4-axi-64-side-64-alu-0-memory.csv": "df5d8e33b60d5dee74daf6072d274c0660518fc913e1ad9b4cefc87a1c82a336"
+        }
+      }
+    ],
+    "112": [
+      {
+        "cus": 4,
+        "axi_data_bytes": 64,
+        "side": 64,
+        "alu_loops": 0,
+        "traced_cycles": 14284,
+        "phase_worker_cycles": [
+          6034,
+          27974,
+          20,
+          9434,
+          5636,
+          8038
+        ],
+        "peak_staging_outstanding": 4,
+        "cycle_events": {
+          "idle_any": 2898,
+          "arvalid": 1156,
+          "rvalid": 1218,
+          "write_any": 11866,
+          "staging_without_shader_run": 6210,
+          "staging_outstanding_any": 12392,
+          "awvalid": 2250,
+          "bvalid": 2385,
+          "raster_stall": 10317,
+          "staging_blocked": 99,
+          "launch_any": 20,
+          "run_any": 7132,
+          "read_any": 4878,
+          "emit_any": 6640,
+          "output_blocked": 4746,
+          "om_stall": 2550
+        },
+        "lower_memory_transactions": {
+          "descriptor_read": 16,
+          "commands_read": 40,
+          "staging_or_shader_data_write": 1260,
+          "instructions_read": 1,
+          "staging_or_shader_data_read": 560,
+          "depth_read": 539,
+          "color_write": 503,
+          "depth_write": 487
+        },
+        "trace_sha256": {
+          "cu-4-axi-64-side-64-alu-0-cycles.csv": "0d60da992c4018c69da2246da1d6e6d15b5e79be15ae02af33469c69c782cebd",
+          "cu-4-axi-64-side-64-alu-0-memory.csv": "a689bbb6f79cc7548453ba3bd79a2ce40b955fed863622f9315b0980796e3c15"
+        }
+      }
+    ]
+  },
+  "reproduce": {
+    "baseline": "testOnly opengpu.system.LocalityCoalescedWideAxiSharedGraphicsSpec",
+    "matched96": "testOnly opengpu.system.CappedLocalityWideSharedGraphicsSpec",
+    "four_cu112": "testOnly opengpu.system.SevenWarpBatchCoalescedWideAxiSharedGraphicsSpec",
+    "size_matrix": "testOnly opengpu.system.BatchGranularity*Spec",
+    "scheduler_and_ordering": "testOnly opengpu.graphics.ParallelFragmentSchedulerSpec opengpu.system.CappedLocalityParallelGraphicsOrderingSpec",
+    "faults": "testOnly opengpu.system.CappedParallelCuProgrammableTextureAxiSpec -- -z \"reset during texture read\" (also staging invalid PTE fault and instruction code bus fault)",
+    "environment": "JAVA_OPTS=-Xms1G -Xmx6G -Xss6M; sbt set Test / parallelExecution := false; optional WIDE_GRAPHICS_TRACE_DIR per run"
+  },
+  "limitations": [
+    "No universal optimal dispatch size is established. Keep default physical capacity;96/112 are optional measured policies.",
+    "The112cap is best on64scene; only96 was compared across32/64/128.",
+    "Current Mesa desktop still uses qualified installed legacy ABI; shared16-lane software migration remains outstanding."
+  ]
+}

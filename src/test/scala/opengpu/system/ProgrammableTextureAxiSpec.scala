@@ -10,7 +10,7 @@ import scala.collection.mutable
 
 /** Exercise shader instruction fetch and vtex.sample through the host's AXI clients. */
 abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Boolean = false,
-    coalesce: Boolean = false, axiBytes: Int = 8)
+    coalesce: Boolean = false, axiBytes: Int = 8, fragmentBatchLimit: Int = 0)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (scenario <- Seq("translation", "invalid PTE", "page-table bus fault",
       "texture bus fault", "reset during texture read", "instruction translation",
@@ -31,7 +31,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
     it should s"complete programmable texture rendering with $scenario and recover" in {
       val side = if (scenario.contains("guest-sized")) 16 else 4
       val framebufferBytes = side * side * 4
-      val gfx = GraphicsConfig(screenWidth = side, screenHeight = side, subPixelBits = 8)
+      val gfx = GraphicsConfig(screenWidth = side, screenHeight = side, subPixelBits = 8,
+        fragmentBatchLimit = fragmentBatchLimit)
       val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
       val vertexShader = scenario.startsWith("instruction vertex")
       val guestVertexShader = scenario.contains("guest shader") ||
@@ -363,7 +364,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
   // empty first-draw vertices and miss the sampled texel.
   it should "observe a CPU update to translated uncached vertex staging across draws" in {
     val side = 4
-    val gfx = GraphicsConfig(screenWidth = side, screenHeight = side, subPixelBits = 8)
+    val gfx = GraphicsConfig(screenWidth = side, screenHeight = side, subPixelBits = 8,
+      fragmentBatchLimit = fragmentBatchLimit)
     val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
     simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = true,
       numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty,
@@ -524,3 +526,7 @@ class WideAxiParallelCuProgrammableTextureAxiSpec
 
 class CoalescedParallelCuProgrammableTextureAxiSpec
     extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true, axiBytes = 64)
+
+class CappedParallelCuProgrammableTextureAxiSpec
+    extends ProgrammableTextureAxiChecks(Some(4), parallel = true, coalesce = true,
+      axiBytes = 64, fragmentBatchLimit = 4)

@@ -542,3 +542,36 @@ copy renders and two OM32/locality ordered MSAA cases pass (98 total).
 The broad suite covers shader/texture faults, VM, host control and reset
 drain. These are GPU-cycle measurements; Debian wall time and wide Mesa
 qualification remain separate work. See [the tagged-read evidence](performance/shared-cu-pipelined-reads-2026-10-15.json).
+
+## Whole-warp dispatch granularity
+
+`GraphicsConfig.fragmentBatchLimit` optionally seals fragment batches before
+they fill every physical warp. Zero preserves the full physical capacity;
+nonzero limits must fit the CU and preserve whole warps and helper quads.
+The 16-lane/eight-warp CU, 512-byte array stride, 4,608-byte uniform offset
+and 4,672-byte bank stride remain unchanged. Contiguous stream ordering and
+acknowledged draw retirement are preserved. The CLI exposes
+`--fragment-batch-limit` only with parallel graphics; the existing stock
+Mesa wide-ABI guard remains in force.
+
+The 64x64 scene contains 2,240 fragment/helper lanes. Full 128-fragment
+batches produce 18 dispatches, leaving an uneven final wave on four CUs.
+Caps of 96 and 112 produce 24 and 20 dispatches respectively:
+
+| Dispatch cap | One CU | Four CUs | Speedup against best one-CU baseline |
+| --- | ---: | ---: | ---: |
+| 128 (default) | 47,376 | 14,934 | 3.17x |
+| 96 | 48,149 | 14,414 | 3.29x |
+| 112 | 47,738 | 14,299 | 3.31x |
+
+The comparison deliberately retains the faster 47,376-cycle one-CU
+baseline. Capping one-CU dispatches slows this scene slightly. The 96 cap
+also improves four-CU cycles on 32x32 (5,404 to 5,100) and 128x128
+(58,945 to 58,208). This evidence supports an optional tuning parameter;
+it does not establish a universal best cap or change the default.
+
+Fifteen focused root checks pass: eight scheduler cases, two ordered MSAA
+cases, two matched renders and three fault/reset recovery cases. Eight
+additional pixel-checked probe renders cover cap choices and scene sizes;
+their fixtures are retained for reproduction. See [dispatch evidence and
+commands](performance/shared-cu-dispatch-granularity-2026-10-15.json).

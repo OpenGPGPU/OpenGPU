@@ -9,10 +9,14 @@ import scala.collection.mutable
 class ParallelFragmentSchedulerSpec extends AnyFlatSpec {
   behavior of "ParallelFragmentScheduler"
 
-  for (count <- Seq(1, 2, 4)) {
-    it should s"retire ordered quads and draw boundaries across $count independently delayed workers" in {
-      val config = GpuConfig(lanes = 4, warps = 2)
-      val gfx = GraphicsConfig(screenWidth = 256, screenHeight = 16)
+  private val cases = Seq(1, 2, 4).flatMap(n => Seq((n, 4, 2, 0), (n, 4, 2, 4))) ++
+    Seq((4, 16, 8, 96), (4, 16, 8, 112))
+  for ((count, lanes, warps, limit) <- cases) {
+    it should s"retire ordered quads across $count delayed workers (lanes=$lanes warps=$warps cap=$limit)" in {
+      val config = GpuConfig(lanes = lanes, warps = warps)
+      val capacity = if (limit == 0) lanes * warps else limit
+      val quadsPerBatch = capacity / 4
+      val gfx = GraphicsConfig(screenWidth = 256, screenHeight = 16, fragmentBatchLimit = limit)
       simulate(new ParallelFragmentScheduler(config, gfx, count)) { dut =>
         val front = dut.io.front
         front.fragIn.valid.poke(false.B)
@@ -62,12 +66,12 @@ class ParallelFragmentSchedulerSpec extends AnyFlatSpec {
           for (i <- 0 until count) {
             val port = dut.io.workers(i); val model = models(i)
             if (port.flush.peek().litToBoolean && !model.started) {
-              assert(model.input.nonEmpty && model.input.size <= 8)
+              assert(model.input.nonEmpty && model.input.size <= capacity)
               model.output ++= model.input.filter(_.covered)
               model.started = true
               model.delay = if (i == 0) 23 else 2
             }
-            port.fragIn.ready.poke((!model.started && model.input.size < 8).B)
+            port.fragIn.ready.poke((!model.started && model.input.size < capacity).B)
             port.out.valid.poke((model.started && model.delay == 0 && model.output.nonEmpty).B)
             port.drawRetire.valid.poke((model.started && model.delay == 0 && model.output.isEmpty).B)
             port.drained.poke((!model.started && model.input.isEmpty).B)
@@ -147,14 +151,14 @@ class ParallelFragmentSchedulerSpec extends AnyFlatSpec {
         def waitRetires(target: Int): Unit = while (retireCount < target) step()
 
         // More than one pool's worth of batches, followed by an empty draw.
-        for (_ <- 0 until count * 2 + 1) quad()
+        for (_ <- 0 until count * quadsPerBatch + 1) quad()
         flush(); flush(); waitRetires(2)
         assert(observed.toSeq == expected.toSeq)
         if (count > 1) assert(outOfOrderReady, "workers never became ready out of order")
         // A partial batch with no live outputs must still retire exactly once.
         quad(empty = true); flush(); waitRetires(3)
         // Let a full batch retire before its real raster flush arrives.
-        quad(); quad()
+        for (_ <- 0 until quadsPerBatch) quad()
         while (dut.io.assignedWorkers.peek().litValue != 0) step()
         assert(retireCount == 3, "a batch retirement was mistaken for a draw end")
         flush(); waitRetires(4)
