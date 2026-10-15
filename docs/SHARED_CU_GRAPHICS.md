@@ -601,3 +601,19 @@ for bounded, job-scoped fetch coalescing.
 Thirty-seven root capacity/order/recovery cases and four pixel-checked
 full-system RTL probe renders pass. Default installed QEMU and stock Mesa
 remain unchanged. See [OM64 evidence and reproduction](performance/shared-cu-om64-2026-10-15.json).
+
+## Legacy-ABI native guest timing of the memory candidate
+
+An isolated optimized FlashSim/QEMU candidate containing the earlier
+AXI512, pipelined-write, OM32/eight-group combining, read-merging and L2
+directory-filter changes passes compute, native GLES, GTK frame and
+scanout proofs. Its actual emitted sources are GPU `28e8941` and FlashSim
+`82c9dfc`; later repository HEADs at link time are not its build inputs.
+
+Three alternating, pixel-checked native GLES rounds on a quiet host give
+medians of **12,235.300 ms baseline and 11,967.825 ms candidate (2.19%
+less draw time)**. All six fresh-guest runs pass. The candidate uses the
+legacy private 4-lane/two-warp graphics CU; it does not include the latest
+shared-pool 3.42x design. This modest native gain neither demonstrates
+3.42x desktop scaling nor qualifies full 640x480 desktop startup. The
+installed default remains unchanged. See [the guest wall-time evidence](performance/shared-cu-memory-guest-wall-2026-10-15.json).

@@ -1,0 +1,138 @@
+{
+  "binaries": {
+    "baseline": {
+      "path": "/Users/duckdonald/workspace/gpu/.artifacts/rtl-speed/qemu-candidate",
+      "sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0"
+    },
+    "candidate": {
+      "path": "/Users/duckdonald/workspace/gpu/.artifacts/memory-throughput/qemu-candidate",
+      "sha256": "905b358302b746801d8529ddba475874d033b48106fe880b33fa773ea301349b"
+    }
+  },
+  "base_image": "/Users/duckdonald/workspace/arti-work/debian-gtk-arm64.qcow2",
+  "scope": "native GLES triangle with160x120bounding box in640x480mode; fresh guest; pixel proof required; no scanout capture",
+  "runs": [
+    {
+      "name": "baseline",
+      "round": 0,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/memwall/b0",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        12235.3
+      ]
+    },
+    {
+      "name": "candidate",
+      "round": 0,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/memwall/c0",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        11780.803
+      ]
+    },
+    {
+      "name": "candidate",
+      "round": 1,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/memwall/c1",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        12121.011
+      ]
+    },
+    {
+      "name": "baseline",
+      "round": 1,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/memwall/b1",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        12229.622
+      ]
+    },
+    {
+      "name": "baseline",
+      "round": 2,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/memwall/b2",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        12381.859
+      ]
+    },
+    {
+      "name": "candidate",
+      "round": 2,
+      "work": "/Users/duckdonald/workspace/gpu/.artifacts/memwall/c2",
+      "gate_exit": 0,
+      "pixel_pass": true,
+      "draw_ms": [
+        11967.825
+      ]
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "draw_ms": [
+        12235.3,
+        12229.622,
+        12381.859
+      ],
+      "median_ms": 12235.3,
+      "reduction_percent": 0.0
+    },
+    "candidate": {
+      "draw_ms": [
+        11780.803,
+        12121.011,
+        11967.825
+      ],
+      "median_ms": 11967.825,
+      "reduction_percent": 2.18609269899388
+    }
+  },
+  "configuration": {
+    "QEMU_ACCEL": "hvf",
+    "QEMU_CPU": "host",
+    "ARTI_MODEL_IRQ_PUMP": "1024",
+    "ARTI_MODEL_IRQ_PUMP_NS": "8000000",
+    "ARTI_MODEL_SETTLE_NS": "8000000",
+    "GTK_PROOF_SMOKE": "1",
+    "GTK_PROOF_KMS_MODE": "64x64",
+    "GTK_PROOF_WESTON_REPRO": "medium",
+    "GTK_PROOF_REPRO_ONLY": "1",
+    "GTK_PROOF_SCANOUT_ENABLE": "0",
+    "GTK_PROOF_SKIP_BUILD": "1",
+    "GTK_PROOF_SKIP_COVERAGE": "1",
+    "GTK_PROOF_SMOKE_TIMEOUT_S": "900"
+  },
+  "date": "2026-10-15",
+  "candidate_provenance": {
+    "archive_sha256": "90e0eccdff73101c26bc75e1022a86a77c8d99b2f2bb633367f4f2a3321b8175",
+    "qemu_sha256": "905b358302b746801d8529ddba475874d033b48106fe880b33fa773ea301349b",
+    "profile_sha256": "39ef707a160fd159a623935891ded9bcf2805ee5a82381fe6b9969ae36a40f74",
+    "scope": "AXI512 + pipelined writes + OM32/8-group framebuffer combining + pending read merge + L2 directory filter + sparse host callbacks, with installed legacy four16x8 compute plus one4x2 graphics CU; shared-CU software ABI qualification separate",
+    "source_commit": "28e8941",
+    "flashsim_commit": "82c9dfc",
+    "reported_head_at_link": {
+      "gpu": "3e65ac3ed698c30e932a68b7e6d7892a18f93580",
+      "flashsim": "c113af22faa94e3ea3cccecd62267e13903177ff"
+    },
+    "provenance_note": "Emitted RTL and generated C++ precede later source commits; emitted-source.json and optimized/manifest.json identify actual build inputs. No OM locality, nonblocking uncached read slot, pipelined reads, or dispatch-granularity tuning in this legacy-ABI candidate."
+  },
+  "scope_note": "Native GLES legacy ABI only: four16-lane/eight-warp compute CUs plus separate4-lane/two-warp graphics CU. Candidate emittedGPU28e8941, FlashSim82c9dfc; no OM locality, later nonblocking uncached reads, pipelined reads, shared16-laneMesa or dispatch caps. This does not measure latest3.42xshared-pool cycle design.",
+  "procedure": "Three alternating rounds, fresh guests, same image/payload and fixed HVF/IRQ settings. Started after own compiler/SBT jobs completed. Six pixel proofs PASS. No concurrent model compilation.",
+  "candidate_functional_proof": {
+    "log": ".artifacts/memory-throughput/optimized-proof/gate.log",
+    "checks": "Compute, native GLES, GTK idle/active pixels, periodic scanout PASS; performed before timed native runs.",
+    "timing_note": "Functional proof ran with compiler jobs; its wall times are not benchmark results."
+  },
+  "default_installation": "Unchanged ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0. No full640desktop startup qualification or3.42xdesktop claim.",
+  "payload_sha256": {
+    "gpu_drv.ko": "7afdd794a69e5070998bf44e24265c006c0e1372571cbc9d750f5f3b6a693a97",
+    "opengpu_dri.so": "1f5b46bdc976eb810d10f501b899a109ae66e3838f654ebf58ca27f9fafb5b33",
+    "opengpu_gl_fill.bin": "ce524538a22fd8818d47f0db811e6e0e72ad90916632e5ad71fb02083dacb150"
+  }
+}
