@@ -11,7 +11,7 @@ import java.nio.file.{Files, Paths}
 
 /** Qualify the real 16-lane/eight-warp pool before migrating stock Mesa shaders. */
 abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coalesce: Boolean = false,
-    side: Int = 32, aluIterations: Int = 0, omInflight: Int = 16)
+    side: Int = 32, aluIterations: Int = 0, omInflight: Int = 16, omLocality: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
   for (cus <- cuCounts) {
     it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations OM=$omInflight)" in {
@@ -19,7 +19,7 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
       val stride = 4 * capacity
       val bankStride = 9 * stride + 64
       val gpu = GpuConfig(lanes = 16, warps = 8, l2Sets = 8, l2Ways = 2)
-      simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight),
+      simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight, omLocality = omLocality),
         gpu, numComputeUnits = cus, fragCore = true, sharedGraphics = true,
         parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes,
         coalesceFramebufferWrites = coalesce)) { dut =>
@@ -195,3 +195,7 @@ class ArithmeticCoalescedWideAxiSharedGraphicsSpec
 
 class DeepOmCoalescedWideAxiSharedGraphicsSpec
     extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64, omInflight = 32)
+
+class LocalityCoalescedWideAxiSharedGraphicsSpec
+    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64,
+      omInflight = 32, omLocality = true)

@@ -504,3 +504,18 @@ and two focused OM32/eight-group ordered MSAA tests pass (77 total).
 This measures GPU cycles on a qualified RTL workload. It does not establish
 Debian desktop wall time or complete the stock Mesa wide-ABI migration. See
 [the matched trace evidence](performance/shared-cu-three-x-2026-10-15.json).
+
+## Framebuffer request locality
+
+With `--om-locality`, bounded same-line/same-direction bursts improve
+framebuffer combining while a separate global round-robin cursor guarantees
+service for other entries. At most eight local requests precede each fair
+grant. Per-fragment hazards and acknowledged retirement are unchanged.
+
+The matched copy improves from 48,225/15,930 to **47,529/15,428 cycles (3.08x)**.
+Four-CU framebuffer writes drop from 1,406 to 989, depth reads from 717 to
+524, and OM-stall cycles from 4,065 to 2,798. Staging now limits more of the
+elapsed time, so the large traffic reduction yields a modest cycle gain.
+Twenty-one OM functional cases, a continuous-hot-line fairness case, two
+ordered MSAA cases and two full copy renders pass. Default arbitration stays
+unchanged. See [the locality evidence](performance/shared-cu-om-locality-2026-10-15.json).

@@ -1,0 +1,161 @@
+{
+  "date": "2026-10-15",
+  "scope": "Same64x64 copy, matched1/4CU GPU cycles. No guest wall-time claim.",
+  "configuration": {
+    "lanes": 16,
+    "warps": 8,
+    "axi_bytes": 64,
+    "om_inflight": 32,
+    "combining_groups": 8,
+    "local_burst_limit": 8,
+    "read_latency": 2,
+    "write_ack_delay": 12
+  },
+  "before": {
+    "commit": "28e8941",
+    "cu1_cycles": 48225,
+    "cu4_cycles": 15930,
+    "speedup": 3.0273069679849343,
+    "four_cu_framebuffer_writes": 1406,
+    "four_cu_depth_reads": 717,
+    "four_cu_om_stall": 4065
+  },
+  "after": {
+    "cu1_cycles": 47529,
+    "cu4_cycles": 15428,
+    "speedup": 3.080697433238268,
+    "four_cu_reduction_percent": 3.1512868801004394,
+    "one_cu_reduction_percent": 1.4432348367029548,
+    "four_cu_framebuffer_writes": 989,
+    "four_cu_depth_reads": 524,
+    "four_cu_om_stall": 2798
+  },
+  "validation": {
+    "output_merger_functional": {
+      "passed": 21,
+      "log": ".artifacts/shared-cu-om-locality-regression.log"
+    },
+    "hot_line_fairness": {
+      "passed": 1,
+      "log": ".artifacts/shared-cu-om-locality-fairness-tests.log"
+    },
+    "ordered_msaa": {
+      "passed": 2,
+      "samples": [
+        1,
+        4
+      ],
+      "log": ".artifacts/shared-cu-om-locality-regression.log"
+    },
+    "matched_render": {
+      "passed": 2,
+      "checks": "All pixels/depth/uniform sentinels, completion, peak active CUs",
+      "log": ".artifacts/shared-cu-om-locality-tests.log"
+    }
+  },
+  "trace_analysis": [
+    {
+      "cus": 1,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 47514,
+      "phase_worker_cycles": [
+        1722,
+        26382,
+        18,
+        8536,
+        4632,
+        6224
+      ],
+      "peak_staging_outstanding": 1,
+      "cycle_events": {
+        "idle_any": 1722,
+        "arvalid": 1145,
+        "rvalid": 1157,
+        "write_any": 26382,
+        "raster_stall": 44583,
+        "staging_without_shader_run": 31014,
+        "staging_outstanding_any": 26189,
+        "awvalid": 2223,
+        "bvalid": 2249,
+        "launch_any": 18,
+        "run_any": 8536,
+        "read_any": 4632,
+        "emit_any": 6224,
+        "output_blocked": 4031,
+        "om_stall": 2176
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 528,
+        "color_write": 488,
+        "depth_write": 475
+      },
+      "trace_sha256": {
+        "cu-1-axi-64-side-64-alu-0-cycles.csv": "0cc7d098caa2d2603bb9c8eb2d04a11743d620e5864af78db2509c03518ba84c",
+        "cu-1-axi-64-side-64-alu-0-memory.csv": "1f163242aaeddd1d5f8b9127817242b6f4a705d9736becc386ab63bdcfe81426"
+      }
+    },
+    {
+      "cus": 4,
+      "axi_data_bytes": 64,
+      "side": 64,
+      "alu_loops": 0,
+      "traced_cycles": 15413,
+      "phase_worker_cycles": [
+        7859,
+        28904,
+        18,
+        9437,
+        5931,
+        9503
+      ],
+      "peak_staging_outstanding": 4,
+      "cycle_events": {
+        "idle_any": 3884,
+        "arvalid": 1141,
+        "rvalid": 1188,
+        "write_any": 12449,
+        "staging_without_shader_run": 7112,
+        "staging_outstanding_any": 12968,
+        "awvalid": 2249,
+        "bvalid": 2348,
+        "raster_stall": 11279,
+        "launch_any": 18,
+        "run_any": 7049,
+        "read_any": 4948,
+        "staging_blocked": 71,
+        "emit_any": 7480,
+        "output_blocked": 5715,
+        "om_stall": 2798
+      },
+      "lower_memory_transactions": {
+        "descriptor_read": 16,
+        "commands_read": 40,
+        "staging_or_shader_data_write": 1260,
+        "instructions_read": 1,
+        "staging_or_shader_data_read": 560,
+        "depth_read": 524,
+        "color_write": 495,
+        "depth_write": 494
+      },
+      "trace_sha256": {
+        "cu-4-axi-64-side-64-alu-0-cycles.csv": "9616bb2d9e1039dd55f9f402a9696a5e2db6cfe9b0001909e93589adb2292015",
+        "cu-4-axi-64-side-64-alu-0-memory.csv": "6fb8d53edf79ee0d87286583177906abad1e65860c5cba008b74b9ad6b52e295"
+      }
+    }
+  ],
+  "design": [
+    "Favor a matching64-byte line and same read/write direction for at most8 local grants.",
+    "A separate global round-robin cursor advances only on fair grants, guaranteeing service under continuously replenished hot-line traffic.",
+    "Existing per-fragment address reservations and write-ACK retirement remain authoritative.",
+    "Tile sidebands follow the actually selected request.",
+    "Opt in with --om-locality; default arbitration unchanged."
+  ],
+  "interpretation": "Memory traffic drops substantially; GPU cycles improve modestly because staging is now the dominant cost. Further L2 read/write overlap is under investigation."
+}

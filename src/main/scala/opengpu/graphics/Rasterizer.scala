@@ -29,7 +29,9 @@ case class GraphicsConfig(
   /** Concurrent output-merger RMW slots. Workload baselines showed flat draws
     * are OM-bound with zero address conflicts, so depth hides memory latency
     * rather than same-pixel serialization. Default 16 after measuring 8→16. */
-  omInflight: Int = 16
+  omInflight: Int = 16,
+  /** Prefer a bounded burst to one memory line between fair OM grants. */
+  omLocality: Boolean = false
 ) {
   require(drawFifoDepth >= 2, "draw FIFO must hold at least two records")
   require(Set(1, 2, 4)(maxSampleCount),

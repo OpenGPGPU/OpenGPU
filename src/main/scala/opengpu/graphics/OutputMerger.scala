@@ -313,6 +313,7 @@ class OutputMerger(
   // ---------------------------------------------------------------------
   private val portArbiter = Module(new RRArbiter(new OmMemoryRequest, slots))
   private val granted = Wire(Vec(slots, Bool()))
+  private val selectedRequest = Wire(chiselTypeOf(portArbiter.io.chosen))
   for (i <- 0 until slots) {
     val e = entries(i)
     val reading = e.state === sReadDepth || e.state === sReadColor
@@ -325,10 +326,42 @@ class OutputMerger(
       Mux(e.blendEnable || e.blendCfgEnable, e.blendedColor, e.color))
     granted(i) := portArbiter.io.in(i).fire
   }
-  io.mem.req <> portArbiter.io.out
-  io.tileWordIndex := entries(portArbiter.io.chosen).tileWordIndex
-  io.tileDepthPlane := entries(portArbiter.io.chosen).state === sReadDepth ||
-    entries(portArbiter.io.chosen).state === sWriteDepth
+  if (config.omLocality) {
+    // Local bursts improve word combining without changing fragment hazards.
+    // Advance the global RR cursor only on fair grants, so repeated traffic
+    // to a hot line cannot starve another entry. At most eight local requests
+    // may precede the next global grant.
+    val local = Module(new RRArbiter(new OmMemoryRequest, slots))
+    val lastLine = Reg(UInt(26.W))
+    val lastWrite = Reg(Bool())
+    val haveLine = RegInit(false.B)
+    val burst = RegInit(0.U(4.W))
+    for (i <- 0 until slots) {
+      local.io.in(i).valid := portArbiter.io.in(i).valid && haveLine &&
+        portArbiter.io.in(i).bits.addr(31, 6) === lastLine &&
+        portArbiter.io.in(i).bits.write === lastWrite
+      local.io.in(i).bits := portArbiter.io.in(i).bits
+      granted(i) := portArbiter.io.in(i).fire || local.io.in(i).fire
+    }
+    val useLocal = local.io.out.valid && burst < 8.U
+    io.mem.req.valid := Mux(useLocal, local.io.out.valid, portArbiter.io.out.valid)
+    io.mem.req.bits := Mux(useLocal, local.io.out.bits, portArbiter.io.out.bits)
+    selectedRequest := Mux(useLocal, local.io.chosen, portArbiter.io.chosen)
+    local.io.out.ready := useLocal && io.mem.req.ready
+    portArbiter.io.out.ready := !useLocal && io.mem.req.ready
+    when(io.mem.req.fire) {
+      haveLine := true.B
+      lastLine := io.mem.req.bits.addr(31, 6)
+      lastWrite := io.mem.req.bits.write
+      burst := Mux(useLocal, burst + 1.U, 0.U)
+    }
+  } else {
+    io.mem.req <> portArbiter.io.out
+    selectedRequest := portArbiter.io.chosen
+  }
+  io.tileWordIndex := entries(selectedRequest).tileWordIndex
+  io.tileDepthPlane := entries(selectedRequest).state === sReadDepth ||
+    entries(selectedRequest).state === sWriteDepth
   io.mem.resp.ready := true.B
 
   io.wroteColor := VecInit(granted.zip(entries).map { case (g, e) =>

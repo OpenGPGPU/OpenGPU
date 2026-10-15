@@ -10,13 +10,13 @@ import scala.collection.mutable
 
 /** Exercise real parallel shader execution, draw contexts and the output merger. */
 abstract class ParallelGraphicsOrderingChecks(coalesce: Boolean = false,
-    axiBytes: Int = 8, omInflight: Int = 16) extends AnyFlatSpec with GpuHostTestSupport {
+    axiBytes: Int = 8, omInflight: Int = 16, omLocality: Boolean = false) extends AnyFlatSpec with GpuHostTestSupport {
   for (mode <- Seq(0, 2)) {
     it should s"preserve ordered blend, depth and helper coverage with ${1 << mode} samples (AXI=$axiBytes OM=$omInflight)" in {
       val side = 16
       val samples = 1 << mode
       val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-      simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight),
+      simulate(new GpuHostSystemAxi(GraphicsConfig(screenWidth = side, screenHeight = side, omInflight = omInflight, omLocality = omLocality),
         gpu, numComputeUnits = 4, fragCore = true, sharedGraphics = true,
         parallelGraphics = true, exposePerformance = true,
         coalesceFramebufferWrites = coalesce, memoryAxiDataBytes = axiBytes)) { dut =>
@@ -118,3 +118,7 @@ class CoalescedParallelGraphicsOrderingSpec extends ParallelGraphicsOrderingChec
 
 class DeepOmCoalescedParallelGraphicsOrderingSpec
     extends ParallelGraphicsOrderingChecks(coalesce = true, axiBytes = 64, omInflight = 32)
+
+class LocalityCoalescedParallelGraphicsOrderingSpec
+    extends ParallelGraphicsOrderingChecks(coalesce = true, axiBytes = 64,
+      omInflight = 32, omLocality = true)

@@ -4,7 +4,7 @@ import chisel3._
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
-class OutputMergerSpec extends AnyFlatSpec {
+abstract class OutputMergerChecks(omLocality: Boolean = false) extends AnyFlatSpec {
   behavior of "OutputMerger"
 
   private val W = 4
@@ -245,7 +245,7 @@ class OutputMergerSpec extends AnyFlatSpec {
 
   for (depthFirst <- Seq(false, true)) {
     it should s"overlap independent plane writes and retain reservations until both ACKs (depthFirst=$depthFirst)" in {
-      simulate(new OutputMerger(GraphicsConfig())) { dut =>
+      simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
         newDut(dut)
         pokeConfig(dut, false, 0, true, false)
         pokeFrag(dut, 1, 1, 0x11223344, 0x10)
@@ -285,7 +285,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "consume a color ACK while its independent depth request is stalled" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       newDut(dut)
       pokeConfig(dut, false, 0, true, false)
       pokeFrag(dut, 1, 1, 0x11223344, 0x10)
@@ -310,7 +310,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "serialize aliased plane writes so address-tagged ACKs remain unique" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       newDut(dut)
       pokeConfig(dut, false, 0, true, false)
       dut.io.depthBase.poke(colorBase.U)
@@ -333,7 +333,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "write color and depth for a passing fragment" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff) // stencil 0, depth far (D24S8 clear)
       newDut(dut)
       pokeConfig(dut, true, 0, true, false)
@@ -351,7 +351,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "preserve the stored stencil byte on a plain depth write" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff)
       newDut(dut)
       pokeConfig(dut, true, 0, true, false)
@@ -370,7 +370,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "keep the nearer (smaller depth) of two overlapping fragments" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff) // stencil 0, depth far (D24S8 clear)
       newDut(dut)
       pokeConfig(dut, true, 0, true, false)
@@ -406,7 +406,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "reject a fragment that fails the depth test and not write it" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff) // stencil 0, depth far (D24S8 clear)
       newDut(dut)
       pokeConfig(dut, true, 0, true, false)
@@ -428,7 +428,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "source-over blend a passing fragment and preserve depth semantics" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff) // stencil 0, depth far (D24S8 clear)
       newDut(dut)
       pokeConfig(dut, true, 0, true, true)
@@ -449,7 +449,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "match a software source-over image with depth-gated pixels" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0)
       newDut(dut)
       pokeConfig(dut, true, 0, true, true)
@@ -508,7 +508,7 @@ class OutputMergerSpec extends AnyFlatSpec {
     // acks (tagged write=true, data=0) overtake the read.  The OM must pop
     // them and keep waiting for the real read data; consuming the ack as
     // depth (0) would fail every LESS test and reject the fragment.
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff) // stencil 0, depth far (D24S8 clear)
       newDut(dut)
       pokeConfig(dut, true, 0, true, false)
@@ -537,7 +537,7 @@ class OutputMergerSpec extends AnyFlatSpec {
     // The in-flight table's whole point: several fragments' depth reads are
     // outstanding at once (attributed by address) instead of one serialized
     // read-modify-write at a time.
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff) // stencil 0, depth far (D24S8 clear)
       newDut(dut)
       pokeConfig(dut, true, 0, true, false)
@@ -576,7 +576,7 @@ class OutputMergerSpec extends AnyFlatSpec {
     // earlier fragment of a pixel is in flight, a later one must not be
     // accepted.  Four back-to-back same-pixel fragments with descending
     // depth must still leave the nearest one written.
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff) // stencil 0, depth far (D24S8 clear)
       newDut(dut)
       pokeConfig(dut, true, 0, true, false)
@@ -614,7 +614,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "blend distinct pixels concurrently without cross-talk" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff) // stencil 0, depth far (D24S8 clear)
       newDut(dut)
       pokeConfig(dut, true, 0, true, true)
@@ -659,7 +659,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "blend with every GL factor and equation" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff)
       newDut(dut)
       // Depth testing disabled: only the colour RMW is exercised.
@@ -684,7 +684,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "let a present blend config override legacy source-over" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff)
       newDut(dut)
       pokeConfig(dut, false, 0, false, blend = true)
@@ -699,7 +699,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "run every stencil func before the depth test and apply the z-pass op" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff)
       newDut(dut)
       // Depth ALWAYS so the depth test never gates the stencil sweep.
@@ -735,7 +735,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "apply every stencil op with saturation, wrap, and masks" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff)
       newDut(dut)
       pokeConfig(dut, true, 6, true, false)
@@ -770,7 +770,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "apply zfail on a depth fail and skip colour on stencil fail" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff)
       newDut(dut)
       pokeConfig(dut, true, 0, true, false) // depth LESS, write enabled
@@ -793,7 +793,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "update the stencil byte with depth write disabled and keep the depth value" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff)
       newDut(dut)
       pokeConfig(dut, true, 6, depthWrite = false, false)
@@ -808,7 +808,7 @@ class OutputMergerSpec extends AnyFlatSpec {
   }
 
   it should "run the stencil test with the depth test disabled" in {
-    simulate(new OutputMerger(GraphicsConfig())) { dut =>
+    simulate(new OutputMerger(GraphicsConfig(omLocality = omLocality))) { dut =>
       val mem = Array.fill(1 << 15)(0x00ffffff)
       newDut(dut)
       // Depth test disabled; the stencil test still rides the D24S8 read.
@@ -829,4 +829,45 @@ class OutputMergerSpec extends AnyFlatSpec {
       assert(depthFail == 0x00000060, f"fail ZERO cleared the byte: 0x$depthFail%08x")
     }
   }
+
+  if (omLocality) {
+    it should "serve a cold line despite continuously replenished hot-line requests" in {
+      simulate(new OutputMerger(GraphicsConfig(omInflight = 32, omLocality = true))) { dut =>
+        newDut(dut)
+        pokeConfig(dut, false, 0, false, false)
+        dut.io.sampleMode.poke(0.U)
+        dut.io.mem.req.ready.poke(false.B)
+        // Reserve the cold entry among hot entries before serving any request.
+        for (x <- (0 until 8) ++ Seq(16) ++ (8 until 16)) {
+          pokeFrag(dut, x, 0, 0x12345678, 0)
+          dut.io.fragIn.valid.poke(true.B)
+          dut.io.fragIn.ready.expect(true.B)
+          dut.clock.step()
+        }
+        val model = new OooModel(Array.fill(1 << 15)(0))
+        var nextHot = 0
+        var cycles = 0
+        var coldIssued = false
+        dut.io.mem.req.ready.poke(true.B)
+        while (!coldIssued && cycles < 32 * 9) {
+          pokeFrag(dut, nextHot, 0, 0x76543210, 0)
+          dut.io.fragIn.valid.poke(true.B)
+          val accepted = dut.io.fragIn.ready.peek().litToBoolean
+          coldIssued = dut.io.mem.req.valid.peek().litToBoolean &&
+            dut.io.mem.req.bits.addr.peek().litValue == colorBase + 64
+          tick(dut, model)
+          if (accepted) nextHot = (nextHot + 1) % 16
+          cycles += 1
+        }
+        assert(coldIssued, "bounded local bursts must preserve global RR service")
+        dut.io.fragIn.valid.poke(false.B)
+        drain(dut, model)
+        assert(model.mem(colorBase + 64) == 0x12345678)
+      }
+    }
+  }
+
 }
+
+class OutputMergerSpec extends OutputMergerChecks()
+class LocalityOutputMergerSpec extends OutputMergerChecks(omLocality = true)

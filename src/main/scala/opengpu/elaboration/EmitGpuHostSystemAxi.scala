@@ -59,6 +59,7 @@ object EmitGpuHostSystemAxi {
         GraphicsConfig(
           screenWidth = width, screenHeight = height, subPixelBits = 8,
           omInflight = intOption("--om-inflight").getOrElse(16),
+          omLocality = rest.contains("--om-locality"),
           tileSize = tileSize,
           tileAttachments = tileAttachments,
           tileBinning = tileBinning),
