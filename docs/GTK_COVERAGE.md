@@ -367,3 +367,21 @@ when invoking `scripts/run_gtk_coverage_guest.sh`. Supply `QEMU`,
 `DISPLAY_WORK` and `GTK_DEBIAN_BASE` as for the full proof. This mode exits
 after `Offscreen attachment proof: PASS`; it does not qualify desktop
 presentation. Rebuild/stage `opengpu_gl_fill.bin` when using a cached payload.
+
+Debian 12's GTK 3.24.38 has a GLES fallback that reads RGBA bytes into a
+Cairo BGRA surface. This exchanges red and blue even when the driver's
+RGBA/BGRA readbacks and the GtkGLArea's own pixel check pass. For that
+guest, `scripts/build_gtk_gles_readback.sh NEW_OUTPUT_DIRECTORY [ARCHIVE]`
+builds an isolated GDK with extension-checked native BGRA readback. Run
+the builder inside Debian ARM64 with `build-essential meson ninja-build
+pkg-config libgtk-3-dev libepoxy-dev libxkbcommon-dev libwayland-dev
+wayland-protocols curl` installed. It verifies the pinned GTK source hash,
+saves the patch and library manifest, and checks the installed GTK library
+can load against it. It does not replace system libraries.
+
+Copy the output's `libgdk-3.so.0` and `gtk-gles-readback.json` into the
+host's `DISPLAY_WORK/opengpu-driver/` before launching a fresh proof. ARTI
+stages those optional files into `/root`; the existing GTK launcher uses
+`LD_LIBRARY_PATH=/root`. Keep both files in the frozen payload hash record.
+The original Debian base image can remain unchanged. The presentation
+checker still requires the original orange colour and complete rectangle.

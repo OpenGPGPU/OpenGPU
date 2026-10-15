@@ -1,0 +1,81 @@
+{
+  "status": "Native isolated GDK backport builds and passes Debian GTK ABI load. Diagnostic GTK64 presentation passes; a fresh frozen-payload qualification is required.",
+  "guest_package": "libgtk-3-0:arm64 3.24.38-2~deb12u3",
+  "cause": "The old GDK GLES software fallback unconditionally uses GL_RGBA on non-Windows platforms, then treats bytes as Cairo native BGRA. GTK uploads that Cairo surface and explicitly swaps channels, displaying the wrong colour.",
+  "upstream_old_source": "https://github.com/GNOME/gtk/blob/3.24.38/gdk/gdkgl.c",
+  "upstream_current_source": "https://github.com/GNOME/gtk/blob/gtk-3-24/gdk/gdkgl.c",
+  "fix": "For little-endian GLES, select GL_BGRA when GL_EXT_read_format_bgra is available. Retain the old fallback otherwise. No RTL or Mesa channel special case and no CPU conversion added.",
+  "build": {
+    "source_url": "https://download.gnome.org/sources/gtk+/3.24/gtk+-3.24.38.tar.xz",
+    "archive_sha256": "ce11decf018b25bdd8505544a4f87242854ec88be054d9ade5f3a20444dd8ee7",
+    "library_sha256": "cdaa95d2a52cf153b78751f45322a552d87d9cc0bb52d0bd638e50ffe7594137",
+    "patch_sha256": "8f4a78dbb9486553f878e48ca545a8a775fd572282f86ba5bd0751ad5e0c8b2c",
+    "patched_source_sha256": "331d712c4314988ffa1edcfb4b4bbef7273b37beb11f87a5dd1fda066e4872f3",
+    "architecture": "aarch64",
+    "dependencies": [
+      "2.74.6",
+      "1.5.10",
+      "1.21.0",
+      "3.24.38"
+    ],
+    "scope": "GDK GLES fallback uses native BGRA readback when supported; no shader/channel workaround or CPU conversion added.",
+    "reference": "https://github.com/GNOME/gtk/blob/gtk-3-24/gdk/gdkgl.c"
+  },
+  "builder": "scripts/build_gtk_gles_readback.sh",
+  "native_build_log": ".artifacts/shared-cu/gtk-extent-debug/build-gdk-final.log",
+  "abi_check": "ctypes.CDLL(libgtk-3.so.0, RTLD_NOW) with the isolated library passed; X11, Wayland and Broadway enabled to match Debian GTK references.",
+  "diagnostic_readback": {
+    "before_log": ".artifacts/shared-cu/gtk-extent-debug/gtk-readback.log",
+    "before": {
+      "format": "GL_RGBA",
+      "active_center": [
+        242,
+        89,
+        46,
+        255
+      ]
+    },
+    "after_log": ".artifacts/shared-cu/gtk-extent-debug/gtk-readback-backport-broadway.log",
+    "after": {
+      "format": "GL_BGRA",
+      "active_center": [
+        46,
+        89,
+        242,
+        255
+      ]
+    },
+    "client_rgba_readback": [
+      242,
+      89,
+      46,
+      255
+    ]
+  },
+  "diagnostic_scanout": {
+    "passed": true,
+    "framebuffer_size": [
+      64,
+      64
+    ],
+    "client_size": [
+      64,
+      64
+    ],
+    "active_rectangle": [
+      8,
+      14,
+      50,
+      36
+    ],
+    "active_pixels": 1887,
+    "channel_tolerance": 3,
+    "capture_sha256": "96023b41d72eb995b1e9829cc1fb5281eb71cee973a1b5c13f216cab177e7d7d",
+    "source_frame": ".artifacts/sc-extent-diagnostic/gtk-smoke-scanout.ppm",
+    "saved_frame": ".artifacts/shared-cu/gtk-extent-debug/backport-verified.ppm"
+  },
+  "visual_review": "Viewed frozen 64x64 frame; complete orange rectangle with dark border. Full640 desktop/window layout remains pending.",
+  "evidence_limit": "Diagnostic QEMU guest had libraries changed after boot. Do not count it as a frozen-payload model qualification or use elapsed time as a performance comparison. Failed profiles remain separate.",
+  "base_image_modified": false,
+  "installed_qemu_modified": false
+}
