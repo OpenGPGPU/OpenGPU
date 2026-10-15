@@ -155,6 +155,9 @@ checks encoding only; shared 16-lane shader execution remains unqualified.
 Logs are `.artifacts/shared-cu-shader-config-tests.log`,
 `.artifacts/shared-cu-driver-unit-tests.log` and
 `.artifacts/shared-cu-driver-build.log`.
+Mesa staging also copies the shared resource decoder and ABI header; the
+OpenGPU Gallium static library compiles successfully with those staged
+headers (`.artifacts/shared-cu-mesa-compile.log`).
 
 `ParallelFragmentScheduler` partitions whole quads into worker batches and
 orders their output using batch tokens and distinct real draw-end markers.
