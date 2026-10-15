@@ -1,0 +1,208 @@
+{
+  "replay": {
+    "calls": 29720,
+    "ticks": 2564082,
+    "commits": 44108347,
+    "holds": 522047205,
+    "dma_reads": 94302,
+    "dma_writes": 615696,
+    "dma_bytes": 10763256,
+    "truncated_tail": false,
+    "warmup_calls": 0,
+    "sample": 0
+  },
+  "preserved_all_existing_probe_counters": true,
+  "same_wrapper_in_archive_and_validated_replayer": true,
+  "compute_replays": [
+    {
+      "mode": 0,
+      "base": "0x0",
+      "invalidate": 0,
+      "exit_status": 0
+    },
+    {
+      "mode": 0,
+      "base": "0x0",
+      "invalidate": 1,
+      "exit_status": 0
+    },
+    {
+      "mode": 0,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "exit_status": 0
+    },
+    {
+      "mode": 0,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "exit_status": 0
+    },
+    {
+      "mode": 0,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "exit_status": 0
+    },
+    {
+      "mode": 0,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "exit_status": 0
+    },
+    {
+      "mode": 1,
+      "base": "0x0",
+      "invalidate": 0,
+      "exit_status": 0
+    },
+    {
+      "mode": 1,
+      "base": "0x0",
+      "invalidate": 1,
+      "exit_status": 0
+    },
+    {
+      "mode": 1,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "exit_status": 0
+    },
+    {
+      "mode": 1,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "exit_status": 0
+    },
+    {
+      "mode": 1,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "exit_status": 0
+    },
+    {
+      "mode": 1,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "exit_status": 0
+    },
+    {
+      "mode": 2,
+      "base": "0x0",
+      "invalidate": 0,
+      "exit_status": 0
+    },
+    {
+      "mode": 2,
+      "base": "0x0",
+      "invalidate": 1,
+      "exit_status": 0
+    },
+    {
+      "mode": 2,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "exit_status": 0
+    },
+    {
+      "mode": 2,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "exit_status": 0
+    },
+    {
+      "mode": 2,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "exit_status": 0
+    },
+    {
+      "mode": 2,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "exit_status": 0
+    }
+  ],
+  "probe_source_sha256": "acb8b472d19272c86eb662201ca59ed43b314d62a6de875071d07cecf48d8497",
+  "header_mismatch_rejected": true,
+  "lod_groups": [
+    {
+      "texture_extent": [
+        0,
+        0
+      ],
+      "lanes": 4504,
+      "shader_worker_cycles": 15245,
+      "texture_unit_worker_cycles": [
+        15245,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "fixed_lod_gradient_worker_cycles": 0,
+      "fixed_lod_gradient_shader_fraction": 0.0
+    },
+    {
+      "texture_extent": [
+        64,
+        32
+      ],
+      "lanes": 3068,
+      "shader_worker_cycles": 222722,
+      "texture_unit_worker_cycles": [
+        30637,
+        767,
+        767,
+        767,
+        767,
+        767,
+        767,
+        767,
+        767,
+        185757,
+        192
+      ],
+      "fixed_lod_gradient_worker_cycles": 6136,
+      "fixed_lod_gradient_shader_fraction": 0.02755003996012967
+    },
+    {
+      "texture_extent": [
+        64,
+        64
+      ],
+      "lanes": 17132,
+      "shader_worker_cycles": 1036708,
+      "texture_unit_worker_cycles": [
+        131626,
+        4283,
+        4283,
+        4283,
+        4283,
+        4283,
+        4283,
+        4283,
+        4283,
+        869743,
+        1075
+      ],
+      "fixed_lod_gradient_worker_cycles": 34264,
+      "fixed_lod_gradient_shader_fraction": 0.03305077225216744
+    }
+  ],
+  "date": "2026-10-16",
+  "scope": "Real64x64 Weston/GTK trace from the older uncached texture model. Counters are exact RTL worker-cycles; replay wall times are diagnostic only.",
+  "trace_sha256": "8cd3ae3a9bc055ad09f66d83e28403d5695e772bfdb8e9b6081ea4c9fb222861",
+  "evidence_directory": ".artifacts/shared-cu/lod-probe-validation",
+  "limits": [
+    "These counts identify a candidate; fixed-LOD bypass is not implemented and has no measured speedup.",
+    "Worker-cycle counters overlap across CUs; the 3.3% shader fraction is not a whole-frame time reduction.",
+    "New texture model and full640traffic still need the same probe analysis."
+  ]
+}

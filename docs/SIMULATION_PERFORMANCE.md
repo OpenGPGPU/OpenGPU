@@ -90,8 +90,23 @@ check every colour/depth pixel. The one-CU shader phase saves exactly five
 cycles for each of 2,236 samples; the four-CU trace still has 6,068 cycles
 with staging active and no shader running. Staging and fixed-LOD calculation
 are further candidates; these cycle results do not establish desktop wall-time
-gains. The new texture configuration still requires full guest qualification.
+gains. The new texture configuration passes the instrumented 18-case compute
+replay, 21 native GLES cases, medium reproduction, GTK idle/active readback
+and scanout at 64x64. Full 640x480 desktop/GTK qualification remains pending;
+the optimized build uses only the profile from that passing guest. See
+[the native qualification](performance/shared-cu-texture-native-qualification-2026-10-16.json).
 See [the sampler measurements](performance/single-texel-sampler-2026-10-16.json).
+
+`scripts/build_arti_cycle_probe.py MODEL_DIR ARCHIVE OUTPUT_DIR` builds a
+separate diagnostic replayer; `--qemu-archive` also produces an archive for a
+separate QEMU binary. It rejects a model/archive header mismatch and preserves
+existing output directories. Its vector texture counters distinguish gradient
+work while the accepted instruction has equal mip clamps. Exact replay of the
+older real GTK trace preserves all architectural and original probe counters:
+34,264 such worker-cycles for 64x64 textures (3.3% of that shader group) and
+6,136 for 64x32. These identify a candidate, not a measured bypass speedup or
+whole-frame saving. See
+[the probe validation](performance/fixed-lod-probe-validation-2026-10-16.json).
 
 The wider-callback experiment passes its unit and guest correctness checks,
 but six clean native GLES guests show **9,395.220 ms with eight-byte callbacks

@@ -1,0 +1,247 @@
+{
+  "date": "2026-10-16",
+  "status": "Instrumented native/GTK64 qualification passed; optimized/full640 guest qualification pending",
+  "sampler_commit": "7d466a7",
+  "frozen_source": {
+    "base_commit": "a02ca5f4013f65e69be93b47d2b1e6b9350ddac6",
+    "patch_sha256": "8889957c804adb9d4a9dace9a34567b51c680c44bd30fa895608cdb5b0e22f05",
+    "manifest_sha256": "69032a74bca59791074d0d420eda80aab6d69207e5a400414b9fb272b50ec253",
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/TextureUnit.scala": "732b154e43517f2a2f84b99951ff86dd1ff12d755818eea4526e1162048032b9",
+      "src/main/scala/opengpu/graphics/BufferedTextureWordPort.scala": "003c505db5883671df4d3ff3d1680a63927f34b14260a770c06c34f17795365d",
+      "src/main/scala/opengpu/graphics/FragmentWorkerMemory.scala": "ef64b599b2c16cb086fc58a8c74cb5628d5d2e5e7af506eb48c4cf5dc07a3cfd"
+    },
+    "emitter_flags": [
+      "--frag-core",
+      "--vert-core",
+      "--shared-graphics",
+      "--parallel-graphics",
+      "--compute-units",
+      "4",
+      "--cu-lanes",
+      "16",
+      "--cu-warps",
+      "8",
+      "--width",
+      "640",
+      "--height",
+      "480",
+      "--memory-axi-data-bytes",
+      "64",
+      "--coalesce-framebuffer",
+      "--om-inflight",
+      "64",
+      "--om-locality",
+      "--fragment-batch-limit",
+      "112",
+      "--buffer-command-reads",
+      "--buffer-texture-reads"
+    ],
+    "flashsim_commit": "0e78cdc793c5a65667f633e5a4daf62c10c6f968"
+  },
+  "structure": {
+    "CU_instances": [
+      [
+        "GpuSystem.sv",
+        "computeUnits_0"
+      ],
+      [
+        "GpuSystem.sv",
+        "computeUnits_1"
+      ],
+      [
+        "GpuSystem.sv",
+        "computeUnits_2"
+      ],
+      [
+        "GpuSystem.sv",
+        "computeUnits_3"
+      ]
+    ],
+    "private_shader_CUs": 0,
+    "dirty_entries": 66857,
+    "dirty_index_bits": 32,
+    "retained_scalar_operands_all_four_CUs": true,
+    "write_callback_bytes": 8
+  },
+  "training_archive_sha256": "ebc20c7fc93c648ba00090b0b8b825d3582a56096dddc42b7fc495994e832107",
+  "qemu_sha256": "514a245a92a71cec7c101546b589c229c3d90e1c6c6b4c9f5af1f2c6c2e567d0",
+  "guest_module_sha256": "d26c9ed6fe9e258d6ac8bc2f06d518e7036312152629a294b6a0f9bf0cb8d99f",
+  "compute_replays": [
+    {
+      "mode": 0,
+      "base": "0x0",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 1.5628543328493834
+    },
+    {
+      "mode": 0,
+      "base": "0x0",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09404920879751444
+    },
+    {
+      "mode": 0,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.09382091695442796
+    },
+    {
+      "mode": 0,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09038499998860061
+    },
+    {
+      "mode": 0,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.08783758315257728
+    },
+    {
+      "mode": 0,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09618754195980728
+    },
+    {
+      "mode": 1,
+      "base": "0x0",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.09237566590309143
+    },
+    {
+      "mode": 1,
+      "base": "0x0",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09051212505437434
+    },
+    {
+      "mode": 1,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.09645595797337592
+    },
+    {
+      "mode": 1,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09769141697324812
+    },
+    {
+      "mode": 1,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.08303874987177551
+    },
+    {
+      "mode": 1,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.08121666591614485
+    },
+    {
+      "mode": 2,
+      "base": "0x0",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.09091258305124938
+    },
+    {
+      "mode": 2,
+      "base": "0x0",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09132970799691975
+    },
+    {
+      "mode": 2,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.09778079204261303
+    },
+    {
+      "mode": 2,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09681762498803437
+    },
+    {
+      "mode": 2,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.09774170792661607
+    },
+    {
+      "mode": 2,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.10231387498788536
+    }
+  ],
+  "native_cases": 21,
+  "native_logs_sha256": {
+    "shader-blend.log": "0984d87ec6bf7e650811dce86340e2d1fb634541b8bbd27bb62a261faf67ff27",
+    "shader-fade.log": "3e7d5e66ffe1fe79f0f0f93ca39b024f71e02a74c48ec1a00a8ee8306edb62a4",
+    "shader-fill-distinct.log": "6838faf2e29b762c3ac430bbffb322f0e80b303a7eade13d2be828227a74fb5d",
+    "shader-fill.log": "68cd606ff1981faf1b64d3a6b1357ff07f7fa1296c0079851916094d2f3de73c",
+    "shader-glass.log": "2c8e9d5920de31d54f994b35872a1f031216c9228e736513d2aff4fba752969b",
+    "shader-grade.log": "1b44f8001ab05b30998ba02279a64b09e29553af90fb7ca5703707b7fcdafe65",
+    "shader-modulate.log": "2ffcefe701826df3bbf438ac423612bf6a3550cd8e3e9171f63103602834ecde",
+    "shader-opacity.log": "a91d8a6fbdd31a152c80dc6b6ba81ce2dae3a15760c3b80ed0528ce8713847b9",
+    "shader-quad.log": "33743ad3469fb9bc5c92f8fb0c55ead2e7f31d4d93624ef4a6eb820f3db34d33",
+    "shader-shade.log": "cd52555ed50a8df53e831a43ad8670bec2318b72e406af5d7742dad3e9c97bc5",
+    "shader-textransform.log": "c9bad5d6443904c7a8a1d03dbcefabfc597b8c0169a9b3713a1ac174f71e7f56",
+    "shader-texture-distinct-padded.log": "c89555755ead271a0209aba33efee446babbd7f68b9c92d98ccecccb62149a6f",
+    "shader-texture-distinct-swizzle.log": "87d9ff4055d00af80a6ff30c61bc7e09e9226289be9e0459dde8d2e8394cfb3b",
+    "shader-texture-distinct.log": "c2e5bda1bdcda18a243f064c617b1814b86721309274b106f89c74eda375bb86",
+    "shader-texture-padded.log": "b05c0c9cca570f8b2610f4c4e8e1d3143d282856c340a9160d36335b7e0bd4a4",
+    "shader-texture-swizzle.log": "7f6e7ad8b4de57894c9e2f0052b19a75b41a9e03c3dc9097dd04fdfb8608ade8",
+    "shader-texture.log": "90c9e6dd473eadce9d12347453a6bfd25c66aada3a0e8a1cd9ce2081f3e7129c",
+    "shader-tint.log": "da726c7e31b4811999c0195bdee542dffff90512408288f4c076c0bf48ba93d4",
+    "shader-transform.log": "cc29469953823f6b0fcaf8142cfafa90d37e9f25b5771ccee7a0f863dc748685",
+    "shader-triangle.log": "bba7dc7bfc80ba65b8b902b27220e7bb76540ac03e941990d159c24805cf6f56",
+    "shader-wash.log": "d4646a460d827e2ea2d4007475d0d48b03fb2013924e04ebe3fc8c2a0c36f8ff"
+  },
+  "markers": {
+    "compute completed; RNU=1 RDN=0": true,
+    "Native shader suite: PASS": true,
+    "OPENGPU GL FILL PASS": true,
+    "GTK Wayland/OpenGPU smoke proof: PASS": true,
+    "Gtk-smoke scanout proof: PASS": true
+  },
+  "guest_qualification_seconds_diagnostic_only": 132.5470832500141,
+  "qualified_profile": {
+    "qualification": "guest-qualification.json",
+    "qualification_sha256": "05814ea1ab0cbd11d295f007d9e3c9b10dc496dccbce120f59afcb1868f5920a",
+    "inputs": {
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/runtime-texture-fastpath/profile/guest-texture/guest-78569.profraw": "17f86704d0c87de6a3c2c0cad9dee1feabc87f41c1ebbc9636e652d9632b4da9"
+    },
+    "output_sha256": "617a20a22e745f7da85ccdd00d937f1bd1c78a6f059898e61f25837af526163c",
+    "created": 1792090934.225735,
+    "scope": "Full shared4CU16x8FPU/VS/FS model, runtime shader ABI, native Mesa formats and external-store invalidations. 64x64 guest GLES/GTK and scanout; full640 desktop still pending."
+  },
+  "evidence_directory": ".artifacts/shared-cu/runtime-texture-fastpath",
+  "guest_proof_directory": "/Users/duckdonald/workspace/gpu/.artifacts/sc-texture-fastpath-training",
+  "limits": [
+    "This guest uses64x64 KMS mode with the complete4CU16lane8warpVS/FS/FPU model; it is not full640desktop/GTK qualification.",
+    "Instrumented correctness-run elapsed time is not a clean simulator speed comparison.",
+    "The installed/default QEMU has not changed; texture buffering remains opt-in."
+  ]
+}
