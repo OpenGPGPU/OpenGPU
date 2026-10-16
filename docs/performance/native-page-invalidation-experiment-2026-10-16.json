@@ -1,0 +1,189 @@
+{
+  "status": "CORRECTNESS PASS; HOST BENEFIT PENDING",
+  "artifact_root": ".artifacts/shared-cu/commit-page-dedup",
+  "rtl_source_commit": "3cf451a",
+  "production_emitter_unchanged": true,
+  "scope": "Private native generated-C++ experiment only. No default archive, QEMU, RTL, or FlashSim source change. Matched timings not yet available; preserve unmodified production model.",
+  "cpu_sample": {
+    "artifact": ".artifacts/shared-cu/native-render-cpu-profile/v2",
+    "draws": 32,
+    "completion_ids": [
+      91,
+      122
+    ],
+    "final_pixel_depth_and_canaries": "PASS via existing independent gradient oracle",
+    "main_thread_samples": 7327,
+    "helper_top_samples": 262,
+    "helper_top_sample_fraction": 0.03575815477002866,
+    "scope": "10second macOS sample after first draw. Warm repeated rendering, with background compilers/user processes; no speed claim. First v1 driver omitted completion pop and timed out on draw2; v2 uses POP and distinct IDs,32drawsPASS. Failed evidence retained."
+  },
+  "instrumented_duplication": [
+    {
+      "scene": "spatial",
+      "helper_page_increments": 142444821,
+      "distinct_helper_pages_per_commit_sum": 38320950,
+      "commits_with_helper_calls": 14140,
+      "duplicate_percent": 73.09768812163414
+    },
+    {
+      "scene": "solid",
+      "helper_page_increments": 129880729,
+      "distinct_helper_pages_per_commit_sum": 31417709,
+      "commits_with_helper_calls": 8832,
+      "duplicate_percent": 75.81033826811982
+    }
+  ],
+  "algorithm": [
+    "Each indivisible generated _commit starts a new thread-local mark epoch. Within it, repeated helper-driven page invalidations increment a page generation only once.",
+    "All cache generations are consumed after the register commit, and the audited commit contains only copy/compare, wake and bump operations, without combinational evaluations or foreign callbacks.",
+    "Inline page increments and page changes outside _commit remain unchanged. The experiment deduplicates helper increments only.",
+    "8bit/32bit epochs reset their mark arrays on wrap. A commit always starts a new epoch, avoiding object-address reuse or cross-model state assumptions. Thread-local marks isolate concurrent threads."
+  ],
+  "sanitizer_checks": [
+    {
+      "mark_bits": 8,
+      "exit_status": 0,
+      "source_sha256": "ea29cd5ecdc016601200008900886f7a344493a5c0014d3e3253796a1b2bc723",
+      "helper_sha256": "f172b91dc79078cb4cee49191c2d4470fca375ffc1629e83e348ffcb158d1ea9",
+      "scope": "ASan+UBSan;1024commits on main and two concurrent threads;256+ID lengths, duplicates, full16bit index range, page counter wrap, forced mark-epoch wrap, and nullzero-length. Heap vectors avoid original test fixture exceeding default worker stack."
+    },
+    {
+      "mark_bits": 32,
+      "exit_status": 0,
+      "source_sha256": "b18b584ac90c7e2aa5e02af933d1c5b54a09f05d919029f9a608a759780fd4b8",
+      "helper_sha256": "86d91ee34e63290d590b6b994854ddd013517f95b261826710cf8dd830532daf",
+      "scope": "ASan+UBSan;1024commits on main and two concurrent threads;256+ID lengths, duplicates, full16bit index range, page counter wrap, forced mark-epoch wrap, and nullzero-length. Heap vectors avoid original test fixture exceeding default worker stack."
+    }
+  ],
+  "native_exact_matches": [
+    {
+      "mark_bits": 8,
+      "pattern": "uniform",
+      "scene": "solid",
+      "ticks": 8827,
+      "commits": 839725,
+      "holds": 10368669,
+      "holds_wrote": 847780,
+      "reads": 1170,
+      "writes": 12524,
+      "read_bytes": 74880,
+      "write_bytes": 96816,
+      "output_sha256": "923eea5949eb3c08cd6b358a48b8836958da14a2a9bc34c4448f98f734fe573b",
+      "fixture_sha256": "3b8001981f0d022c4223e19ffd489d65f2aa2c99ce810f03c13df0bf69b1c5d0"
+    },
+    {
+      "mark_bits": 8,
+      "pattern": "uniform",
+      "scene": "spatial",
+      "ticks": 14135,
+      "commits": 986657,
+      "holds": 12107311,
+      "holds_wrote": 994877,
+      "reads": 1380,
+      "writes": 12491,
+      "read_bytes": 88320,
+      "write_bytes": 96816,
+      "output_sha256": "9c537f8d09a277aecb29330b8f38a58d9fa2e52c9e0f5d5d3ab95ad2f6579dba",
+      "fixture_sha256": "3228b049444728550c16bd6344ad8c3395c82e660d89575651729e22d324ec4c"
+    },
+    {
+      "mark_bits": 8,
+      "pattern": "gradient",
+      "scene": "solid",
+      "ticks": 8827,
+      "commits": 839721,
+      "holds": 10368669,
+      "holds_wrote": 847776,
+      "reads": 1170,
+      "writes": 12524,
+      "read_bytes": 74880,
+      "write_bytes": 96816,
+      "output_sha256": "129ef02f27278f14451f618fa976368f7aeb30a95b1765a96c722499bdcbfdf3",
+      "fixture_sha256": "3e08ee8bfca818c143c6f7a6dd9972879a5018e94bc09b762d5e394f59016eb1"
+    },
+    {
+      "mark_bits": 8,
+      "pattern": "gradient",
+      "scene": "spatial",
+      "ticks": 14135,
+      "commits": 1037684,
+      "holds": 12203483,
+      "holds_wrote": 1045904,
+      "reads": 1380,
+      "writes": 12491,
+      "read_bytes": 88320,
+      "write_bytes": 96816,
+      "output_sha256": "50e0edfc975b54e482e5146783e7220bb0e871ae8a447cfa33041fce19d8cd99",
+      "fixture_sha256": "93f0194c1c89e4a143a519a793aa9e8c04a80f28b27e78b57a904acfd3e0de29"
+    },
+    {
+      "mark_bits": 32,
+      "pattern": "uniform",
+      "scene": "solid",
+      "ticks": 8827,
+      "commits": 839725,
+      "holds": 10368669,
+      "holds_wrote": 847780,
+      "reads": 1170,
+      "writes": 12524,
+      "read_bytes": 74880,
+      "write_bytes": 96816,
+      "output_sha256": "923eea5949eb3c08cd6b358a48b8836958da14a2a9bc34c4448f98f734fe573b",
+      "fixture_sha256": "3b8001981f0d022c4223e19ffd489d65f2aa2c99ce810f03c13df0bf69b1c5d0"
+    },
+    {
+      "mark_bits": 32,
+      "pattern": "uniform",
+      "scene": "spatial",
+      "ticks": 14135,
+      "commits": 986657,
+      "holds": 12107311,
+      "holds_wrote": 994877,
+      "reads": 1380,
+      "writes": 12491,
+      "read_bytes": 88320,
+      "write_bytes": 96816,
+      "output_sha256": "9c537f8d09a277aecb29330b8f38a58d9fa2e52c9e0f5d5d3ab95ad2f6579dba",
+      "fixture_sha256": "3228b049444728550c16bd6344ad8c3395c82e660d89575651729e22d324ec4c"
+    },
+    {
+      "mark_bits": 32,
+      "pattern": "gradient",
+      "scene": "solid",
+      "ticks": 8827,
+      "commits": 839721,
+      "holds": 10368669,
+      "holds_wrote": 847776,
+      "reads": 1170,
+      "writes": 12524,
+      "read_bytes": 74880,
+      "write_bytes": 96816,
+      "output_sha256": "129ef02f27278f14451f618fa976368f7aeb30a95b1765a96c722499bdcbfdf3",
+      "fixture_sha256": "3e08ee8bfca818c143c6f7a6dd9972879a5018e94bc09b762d5e394f59016eb1"
+    },
+    {
+      "mark_bits": 32,
+      "pattern": "gradient",
+      "scene": "spatial",
+      "ticks": 14135,
+      "commits": 1037684,
+      "holds": 12203483,
+      "holds_wrote": 1045904,
+      "reads": 1380,
+      "writes": 12491,
+      "read_bytes": 88320,
+      "write_bytes": 96816,
+      "output_sha256": "50e0edfc975b54e482e5146783e7220bb0e871ae8a447cfa33041fce19d8cd99",
+      "fixture_sha256": "93f0194c1c89e4a143a519a793aa9e8c04a80f28b27e78b57a904acfd3e0de29"
+    }
+  ],
+  "paired_screen_state": ".artifacts/shared-cu/staging-sampler-native-screen/paired-screen/state.json",
+  "decision": "Do not promote before matched host measurements and broader native guest qualification. Redundant bookkeeping is proven; a large percentage of redundant increments is not the same percentage of runtime.",
+  "proof_sha256": {
+    ".artifacts/shared-cu/native-render-cpu-profile/v2/sample.txt": "38a82ee1c9eda900b8dd3f2888fef74fbedf60c1cd85ac62e0da542febd14102",
+    ".artifacts/shared-cu/native-render-cpu-profile/v2/runs.jsonl": "448b2212350f29eb3591e22bbab35531a7c38a5422ec8c7c5934239a454915b0",
+    ".artifacts/shared-cu/commit-page-dedup/dedup/dut_commit_chunks.cpp": "6ad40c6472052091ca235f51486d4512522ded1b61d225cd94f8ea62d9c1770b",
+    ".artifacts/shared-cu/commit-page-dedup/instrument/dut_commit_helpers.cpp": "9ad3d1662aa9c9d4751c36ea5d5b98fd0b07df5575e5e0a506f53c153e46dcf8"
+  },
+  "production_rtl_unchanged": true
+}

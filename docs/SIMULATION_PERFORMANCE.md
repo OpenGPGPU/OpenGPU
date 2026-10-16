@@ -123,6 +123,17 @@ L2 stores are write-through and Linux maps kernargs uncached, so changing a
 request cache flag would not remove this write traffic. See the
 [callback traffic analysis](performance/native-render-memory-traffic-2026-10-16.json).
 
+A warm-render CPU sample also identifies page-invalidation bookkeeping as a
+simulator cost. Instrumentation finds repeated helper page increments within
+one register commit: 75.8% for solid and 73.1% for spatial rendering. Private
+8-bit and 32-bit mark prototypes deduplicate those helper increments and pass
+eight native pixel/memory/counter comparisons plus sanitizer checks, including
+epoch wrap and concurrent threads. The production emitter is unchanged;
+matched host measurements and broader guest qualification are still required.
+The helper accounts for about 3.6% of top-of-stack samples, so the duplication
+percentage is not an estimate of total speedup. See the
+[page-invalidation experiment](performance/native-page-invalidation-experiment-2026-10-16.json).
+
 ## Shared four-CU candidate: real Weston trace (2026-10-16)
 
 The native-format candidate passes 18 compute replays, 21 GLES cases and
