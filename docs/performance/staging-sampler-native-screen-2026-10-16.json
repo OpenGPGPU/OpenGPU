@@ -1,0 +1,208 @@
+{
+  "status": "PASS correctness; PAGE DEDUP REJECTED; COMBINED RTL FRESH PROFILE PENDING",
+  "artifact_root": ".artifacts/shared-cu/staging-sampler-native-screen/paired-after-usage",
+  "scope": "Contended screening, not an idle-host timing claim. Balanced ABCDDCBA rounds for current3cf, per-commit dedup8/dedup32, and combinedRTL candidate. All use identical current runner source, fixtures and existing qualified3cf PGO. Never alters installed QEMU.",
+  "samples": 48,
+  "warmups": 8,
+  "order": "3balanced ABCDDCBA rounds per scene; order rotated each round",
+  "summary": {
+    "solid": {
+      "control": {
+        "samples": 6,
+        "median_seconds": 1.0233670625,
+        "reduction_percent": 0.0,
+        "round_medians": [
+          1.025214,
+          1.028808875,
+          1.0222351455
+        ]
+      },
+      "dedup8": {
+        "samples": 6,
+        "median_seconds": 1.078815417,
+        "reduction_percent": -5.418227391894392,
+        "round_medians": [
+          1.0907325829999999,
+          1.076863167,
+          1.074214521
+        ]
+      },
+      "dedup32": {
+        "samples": 6,
+        "median_seconds": 1.0810776039999999,
+        "reduction_percent": -5.639280724847429,
+        "round_medians": [
+          1.0810776039999999,
+          1.076771271,
+          1.0820697080000001
+        ]
+      },
+      "combined": {
+        "samples": 6,
+        "median_seconds": 1.4176338125,
+        "reduction_percent": -38.52642560498669,
+        "round_medians": [
+          1.419564625,
+          1.4105463125,
+          1.416490521
+        ]
+      }
+    },
+    "spatial": {
+      "control": {
+        "samples": 6,
+        "median_seconds": 1.25629825,
+        "reduction_percent": 0.0,
+        "round_medians": [
+          1.265351646,
+          1.25629825,
+          1.250895209
+        ]
+      },
+      "dedup8": {
+        "samples": 6,
+        "median_seconds": 1.3174425415,
+        "reduction_percent": -4.8670203512581445,
+        "round_medians": [
+          1.3131558335000002,
+          1.3225579585,
+          1.30919175
+        ]
+      },
+      "dedup32": {
+        "samples": 6,
+        "median_seconds": 1.3297122705,
+        "reduction_percent": -5.843677685613269,
+        "round_medians": [
+          1.3297968125,
+          1.3290524795,
+          1.3286190415
+        ]
+      },
+      "combined": {
+        "samples": 6,
+        "median_seconds": 1.6921710835,
+        "reduction_percent": -34.69501239056887,
+        "round_medians": [
+          1.7070869169999998,
+          1.6918660835,
+          1.6872299585000001
+        ]
+      }
+    }
+  },
+  "host_activity_before": [
+    {
+      "pid": 584,
+      "cpu": 16.8,
+      "command": "loginwindow"
+    }
+  ],
+  "host_activity_after_round": [
+    {
+      "scene": "solid",
+      "round": 0,
+      "activity": []
+    },
+    {
+      "scene": "solid",
+      "round": 1,
+      "activity": [
+        {
+          "pid": 584,
+          "cpu": 15.6,
+          "command": "loginwindow"
+        }
+      ]
+    },
+    {
+      "scene": "solid",
+      "round": 2,
+      "activity": [
+        {
+          "pid": 584,
+          "cpu": 16.1,
+          "command": "loginwindow"
+        }
+      ]
+    },
+    {
+      "scene": "spatial",
+      "round": 0,
+      "activity": [
+        {
+          "pid": 302,
+          "cpu": 16.9,
+          "command": "sysmond"
+        },
+        {
+          "pid": 584,
+          "cpu": 17.3,
+          "command": "loginwindow"
+        },
+        {
+          "pid": 1071,
+          "cpu": 17.0,
+          "command": "Activity Monitor"
+        }
+      ]
+    },
+    {
+      "scene": "spatial",
+      "round": 1,
+      "activity": [
+        {
+          "pid": 584,
+          "cpu": 17.0,
+          "command": "loginwindow"
+        }
+      ]
+    },
+    {
+      "scene": "spatial",
+      "round": 2,
+      "activity": [
+        {
+          "pid": 584,
+          "cpu": 16.2,
+          "command": "loginwindow"
+        }
+      ]
+    }
+  ],
+  "runner_sha256": "eaa7e797b684339c46ccebd1df371b302895b264469fda923b0191f5282e2b03",
+  "qualification": {
+    "all48complete_memory_outputs_identical": true,
+    "all48pixel_depth_pairs": 4096,
+    "all48uniform_canaries_and_outside_memory": true,
+    "model_ticks_DMA_and_work_counters_stable": true
+  },
+  "models": {
+    "control": {
+      "archive_sha256": "3002754d477171d6d4fdf7b9142f55ec491b03ff28170a3d3d41431e29c5486a",
+      "header_sha256": "32a0fcec8b31eafdd491f24e5c44d2bfa318c4aa529b4e31cbd8ae698e19a674"
+    },
+    "dedup8": {
+      "archive_sha256": "6d44ac45c978900f1d396f23ace0f15468bbd566cece50fe2431cd4b19c67f98",
+      "header_sha256": "32a0fcec8b31eafdd491f24e5c44d2bfa318c4aa529b4e31cbd8ae698e19a674"
+    },
+    "dedup32": {
+      "archive_sha256": "b0ab43a7fa65d10303865c32729dd974f5d0cd5c0f7ef3e902bdde8685edc1d4",
+      "header_sha256": "32a0fcec8b31eafdd491f24e5c44d2bfa318c4aa529b4e31cbd8ae698e19a674"
+    },
+    "combined": {
+      "archive_sha256": "59755e53fc3023f458d41e6485b4c46d4b0256d031ebca185e8fd4070c4db036",
+      "header_sha256": "5c28e889b75e5a6e83cbb55c6cf090110b860ebafd3bd985902b4a255b254b26"
+    }
+  },
+  "decisions": {
+    "page_dedup": "Reject8bit and32bit helper marks: both scenes regress in all3rounds, ~4.9\u20135.8% longer median runtime. Keep existing optimized bump helper. No FlashSim source/default archive change.",
+    "combined_rtl": "Do notpromote on this screening. Cycles improve on spatial texture but hostmedians regress34.7\u201338.5%. Candidate used qualified3cf PGO from different generated source; this is a confound, not proof the RTL itself causes the full regression. Fresh exact-model profile/build is running beforeselection.",
+    "source_profile_gate": ".artifacts/shared-cu/staging-sampler-native-screen/fresh-profile/state.json"
+  },
+  "limits": [
+    "Host activity is sampled, not continuously controlled. Agent-owned scene/compiler jobs finish before preparation/measurements. No guest was running.",
+    "Fixed-work native gradient fixtures, not Debian startup timings.",
+    "Current3cf and helper-only variants use identical existing objects except the audited commit/helper substitution. Combined RTL has a different generated header/source graph; its profile applicability needs a separate check."
+  ]
+}

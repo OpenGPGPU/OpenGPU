@@ -32,5 +32,5 @@
     "Scalar reads and unit-stride vector reads use existing proven kernarg provenance and bounds. Strided/indexed and narrow warp-relative vector reads conservatively require all six inputs.",
     "The old function signature delegates without a metadata destination. Instruction validation, address permissions, writable output windows and branch constraints remain unchanged."
   ],
-  "next": "Connect the derived mask to capability-gated private GPU draw records after complete RTL scene qualification; no userspace promise or shader-binary matching is needed."
+  "next": "Connect derived metadata to capability-gated private GPU records after RTL qualification, requiring explicit transient-staging opt-in to preserve CPU-visible GEM scratch contents for existing callers. No shader binary pattern matching or user-declared shader read mask is needed."
 }

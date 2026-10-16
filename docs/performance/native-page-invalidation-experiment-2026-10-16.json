@@ -1,5 +1,5 @@
 {
-  "status": "CORRECTNESS PASS; HOST BENEFIT PENDING",
+  "status": "REJECTED: host runtime regresses",
   "artifact_root": ".artifacts/shared-cu/commit-page-dedup",
   "rtl_source_commit": "3cf451a",
   "production_emitter_unchanged": true,
@@ -178,12 +178,13 @@
     }
   ],
   "paired_screen_state": ".artifacts/shared-cu/staging-sampler-native-screen/paired-screen/state.json",
-  "decision": "Do not promote before matched host measurements and broader native guest qualification. Redundant bookkeeping is proven; a large percentage of redundant increments is not the same percentage of runtime.",
+  "decision": "Reject helper-only8bit and32bit page marks. Both scenes regress in every balanced round; medianruntime increases4.9\u20135.8%. Keep production emitter/helper and default model unchanged. Correctness and redundantwork counts do not imply a speed gain.",
   "proof_sha256": {
     ".artifacts/shared-cu/native-render-cpu-profile/v2/sample.txt": "38a82ee1c9eda900b8dd3f2888fef74fbedf60c1cd85ac62e0da542febd14102",
     ".artifacts/shared-cu/native-render-cpu-profile/v2/runs.jsonl": "448b2212350f29eb3591e22bbab35531a7c38a5422ec8c7c5934239a454915b0",
     ".artifacts/shared-cu/commit-page-dedup/dedup/dut_commit_chunks.cpp": "6ad40c6472052091ca235f51486d4512522ded1b61d225cd94f8ea62d9c1770b",
     ".artifacts/shared-cu/commit-page-dedup/instrument/dut_commit_helpers.cpp": "9ad3d1662aa9c9d4751c36ea5d5b98fd0b07df5575e5e0a506f53c153e46dcf8"
   },
-  "production_rtl_unchanged": true
+  "production_rtl_unchanged": true,
+  "paired_screen_report": "docs/performance/staging-sampler-native-screen-2026-10-16.json"
 }

@@ -1,0 +1,134 @@
+{
+  "status": "PRIVATE RTL CORRECTNESS PASS; NATIVE AND GUEST QUALIFICATION PENDING",
+  "artifact_root": ".artifacts/shared-cu/fragment-input-usage",
+  "base_rtl_commit": "3cf451a",
+  "patch": "docs/performance/fragment-input-usage-rtl-2026-10-16.patch",
+  "scope": "Runtime6bit hint in rawdraw word32bits24:19. Zero preserves full ABI; coalesced staging can omit declaredunused input slices0..5 only. Original word path stagesall conservatively. No productionRTLchange or defaultmodelpromotion.",
+  "sources": {
+    "HasDrawState.scala": "6fd0c3661684af86e5d229b090c8117e97c774183f22e2d795482fc5faf81052",
+    "CommandBufferStage.scala": "9fbfec821376e9835081c25367a0c59104bc0a7b7ae27ac25dd305d124c017c6",
+    "DrawContextFifo.scala": "159d332b258cbc5d763881f2987ec1300f8c46d1408d57af268dbd1dd426018e",
+    "KernelVertStage.scala": "894db5dc3b9afd7329de47b265561288b45cadc0b33ef7f222a3547f8670168c",
+    "KernelFragStage.scala": "bfdf4f30ef5ecbd9055b77b02527210119a3e792c82bdc73cecd9221077cb512",
+    "ParallelFragmentScheduler.scala": "79f0f4cd6012c3d3bd01f925e81fb1bd6d3253e94b4ab888280fb8fc41978fd1",
+    "RenderPipeline.scala": "20f3522e9e3f2cbddc54082234c5477f22a03b4fa79c4b0144b71fa7ae8b5c13"
+  },
+  "capability_prototype": {
+    "GpuCapabilities.scala": "344bc715b6017d0a535d875c25dbc3a1f1fbf7d059a194903c422e83b46b1c9e",
+    "RenderHost.scala": "3d713935eae1a4f5c1e6205834e2a0834809946edacf42a61a269e063f64fef7"
+  },
+  "units": [
+    {
+      "name": "masked-staging",
+      "tests": 4,
+      "log_sha256": "740e67cdd09e32ce947ea92baf6b9dd2231b4066c5fdd712e893ccff30770a48"
+    },
+    {
+      "name": "draw-context",
+      "tests": 3,
+      "log_sha256": "c98bb636e518547f003db9fd7a2c4c244b6634c2f874dc030af28a5ee23cae06"
+    },
+    {
+      "name": "command-decode",
+      "tests": 2,
+      "log_sha256": "81d79459a866417b4c16a96b25c17c1d1693d4c5003890d08b5fcada7c73fe14"
+    },
+    {
+      "name": "legacy-staging-v2",
+      "tests": 16,
+      "log_sha256": "9aeed05f6e5224afd199b80dcf017682b46dda9c775db16baf3d356a22c83ec9"
+    },
+    {
+      "name": "scheduler",
+      "tests": 8,
+      "log_sha256": "a3610dc40e4cd782ec8c81a395517b0575ed3a3ae94d6c8fca555744879567e1"
+    }
+  ],
+  "staging_adversarial_scope": "96batches over4configurations(4x2,8x2,16x7,16x8), masks0/15/63/21; full/partial, outoforderphysicalacks, write/readfaults, backpressure, bankreuse, metadatachangedafterfirstquad. Omitted bytes/uniforms unchanged; outputdepth/control initialized.",
+  "scenes": [
+    {
+      "label": "scene-0-solid-1",
+      "cus": 1,
+      "cycles": 26008,
+      "pixel_depth_metadata_identical": true,
+      "omitted_input_and_uniform_bytes_preserved": true
+    },
+    {
+      "label": "scene-0-solid-4",
+      "cus": 4,
+      "cycles": 10730,
+      "pixel_depth_metadata_identical": true,
+      "omitted_input_and_uniform_bytes_preserved": true
+    },
+    {
+      "label": "scene-0-spatial-1",
+      "cus": 1,
+      "cycles": 48881,
+      "pixel_depth_metadata_identical": true,
+      "omitted_input_and_uniform_bytes_preserved": true
+    },
+    {
+      "label": "scene-0-spatial-4",
+      "cus": 4,
+      "cycles": 16047,
+      "pixel_depth_metadata_identical": true,
+      "omitted_input_and_uniform_bytes_preserved": true
+    },
+    {
+      "label": "scene-15-solid-1",
+      "cus": 1,
+      "cycles": 24792,
+      "pixel_depth_metadata_identical": true,
+      "omitted_input_and_uniform_bytes_preserved": true
+    },
+    {
+      "label": "scene-15-solid-4",
+      "cus": 4,
+      "cycles": 9817,
+      "pixel_depth_metadata_identical": true,
+      "omitted_input_and_uniform_bytes_preserved": true
+    },
+    {
+      "label": "scene-15-spatial-1",
+      "cus": 1,
+      "cycles": 47665,
+      "pixel_depth_metadata_identical": true,
+      "omitted_input_and_uniform_bytes_preserved": true
+    },
+    {
+      "label": "scene-15-spatial-4",
+      "cus": 4,
+      "cycles": 15272,
+      "pixel_depth_metadata_identical": true,
+      "omitted_input_and_uniform_bytes_preserved": true
+    }
+  ],
+  "cycle_reductions_percent": {
+    "solid_1cu": 4.675484466318059,
+    "solid_4cu": 8.50885368126747,
+    "spatial_1cu": 2.4876741474192388,
+    "spatial_4cu": 4.829563158222716
+  },
+  "default_mode": "All4mask0 scenes exactly match prior3cf cycles andcompleteRGBA/depth/metadata.",
+  "software_contract": "Kernargs areCPU-visibleGEMs. Shader readanalysis alone cannot authorize skipping observable scratch writes. Finalintegration requires explicit TRANSIENT_FRAGMENT_STAGING submitoptin; zero/defaultflags preserve existing clients. Mesa privatebanks mayoptin; no user-supplied shader usage mask or shaderbinary matching.",
+  "private_software": {
+    "kernel": "AArch64 Linux7.2.0modulebuiltwith explicitoptin, hardwarecap27 anddriverfeaturebit1; rawuser recordstate mask stillrejects userinjectedhints.",
+    "mesa": "PrivateGallium context andpipehelper crosscompiledAArch64 with existingMesa22.3.6 compilationflags; olddrawentrypoints unchanged. Newoptin helper usedonlyby privateMesa copy.",
+    "scope": "Compilechecks only; actualguestdefault-vs-optin, hardwarecapfallback, GPU/CPUvisiblecontract tests, GLES andGTK qualification stillpending.",
+    "sources": {
+      "driver/opengpu_compute.c": "4d04239b80789dd6be598eced0676bd42fb29c9ffb676626dafe4e25dd2c6140",
+      "driver/opengpu_drm.h": "fe22ab8da4b2c9604da8c8533b2676b7edc833c53f0cab23f87a6775f1a48b07",
+      "driver/gpu_abi.h": "8fbca59b72060e4412429f8772b807d09c8083280122bdd0c7ed1da558868a5a",
+      "userspace/pipe_opengpu.c": "1fecc8fd71662e5510ba7f31f9c0cd02184745882642bd4ae113182c245cd768",
+      "userspace/pipe_opengpu.h": "57d29f15a7b6cb55195f171952f80268f3f57e39019ea6f428f934256c65bdca",
+      "userspace/gallium/opengpu_context.c": "0a2b71558618020610d41d64ec714a1e19593a01027deaf98c500bdaae734b7c"
+    },
+    "module_sha256": "10d8d057c4fc98830b3cdd9bae451a60c2590b90c469698582f50973aa1b13a8",
+    "crosscompile": true
+  },
+  "retained_failures": "V1legacy fixture lacked a new childinput connection;16elaborationfailures retained. V2tieslegacyharness input tozero andall16legacycasespass. Decoder/context/masked positivegates retained separately.",
+  "native_state": ".artifacts/shared-cu/fragment-input-usage-native/state.json",
+  "native_scope": "Fresh exactgeneratedmodel PGO, full/derivedinput masks anduniform/gradient texels; bothmodes same hardware. Barefixturetimings excludeCLIanalysis andguestboot. Nativecommand hints areexplicit testoptin; Linux/Mesa path stillneedsruntimequalification.",
+  "patch_sha256": "45832ca9c9671e977ccd260620b9d420a5d929ccac7f3665f8b4c7303fc2ede4",
+  "patch_scope": "9productionRTL files plus tested privatefixture/unit deltas, including legacychildinput zero tie. Reviewable experimentalpatch; notapplied to main source. Software opt-in/driver/Mesa integration is artifact-only and not included in this RTLpatch."
+}

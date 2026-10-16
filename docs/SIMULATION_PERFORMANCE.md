@@ -130,19 +130,44 @@ optimistic mask only after complete successful validation. Existing callers
 keep their validation API and admission rules. Host tests cover all 64 input
 combinations at five capacities; 2,880 mutations also match the previous
 validator's admission decisions. Production draw records do not yet use this
-metadata. See the
+metadata. Kernarg GEMs are CPU-visible, so shader read analysis alone cannot
+authorize omitting observable scratch writes: the integration requires an
+explicit transient-staging opt-in. See the
 [validator qualification](performance/fragment-input-usage-validator-2026-10-16.json).
+
+The private RTL prototype carries a six-bit per-draw omission hint through
+vertex processing, the context FIFO, worker scheduling and first-quad batch
+snapshots. It passes 33 targeted tests and eight complete scenes. Zero hints
+retain exactly the previous pixels, depth, metadata and cycles. For the UV-only
+sampling shader, omitting x/y/input-depth/input-colour gives:
+
+| Scene | Full inputs, 1 CU | Omit unused, 1 CU | Full inputs, 4 CUs | Omit unused, 4 CUs |
+| --- | ---: | ---: | ---: | ---: |
+| 1×1 texture | 26,008 | 24,792 | 10,730 | 9,817 |
+| 64×64 texture | 48,881 | 47,665 | 16,047 | 15,272 |
+
+The four-CU cycle reductions are 8.5% and 4.8%. The private opt-in driver builds
+against the guest's Linux 7.2 kernel; its Mesa context and pipe helper also
+cross-compile. Native timing, actual guest opt-in/fallback tests and full GTK
+qualification remain pending. The production RTL and installed QEMU are
+unchanged. See the [RTL experiment and reviewable patch](performance/fragment-input-usage-rtl-experiment-2026-10-16.json).
 
 A warm-render CPU sample also identifies page-invalidation bookkeeping as a
 simulator cost. Instrumentation finds repeated helper page increments within
 one register commit: 75.8% for solid and 73.1% for spatial rendering. Private
 8-bit and 32-bit mark prototypes deduplicate those helper increments and pass
 eight native pixel/memory/counter comparisons plus sanitizer checks, including
-epoch wrap and concurrent threads. The production emitter is unchanged;
-matched host measurements and broader guest qualification are still required.
+epoch wrap and concurrent threads. A balanced 48-sample comparison then finds
+roughly 5–6% longer host times for both prototypes, consistently across three
+rounds. They are rejected; the production emitter is unchanged.
 The helper accounts for about 3.6% of top-of-stack samples, so the duplication
 percentage is not an estimate of total speedup. See the
 [page-invalidation experiment](performance/native-page-invalidation-experiment-2026-10-16.json).
+The same screen finds 34.7–38.5% longer host times for the combined bitmap,
+sampler handoff and operand-retention RTL candidate using the prior model's
+PGO profile. That candidate is not selected: a fresh exact-model profile check
+is running before attributing the slowdown to RTL. See the
+[matched native screen](performance/staging-sampler-native-screen-2026-10-16.json).
 
 ## Shared four-CU candidate: real Weston trace (2026-10-16)
 
