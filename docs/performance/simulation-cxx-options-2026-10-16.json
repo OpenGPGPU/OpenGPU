@@ -1,0 +1,168 @@
+{
+  "status": "Correctness verified; no change to default compiler optimization",
+  "artifact_root": ".artifacts/shared-cu/sim-compile-opt",
+  "source_commit": "86c67f8",
+  "experiment": "Private GpuSim overlay: select model C++ O0/O1/Os before computing the cache key, and optionally bound compiler parallelism. DPI bridge retains its stock Os compilation.",
+  "main_source_unchanged": true,
+  "checks": {
+    "small_suite": "Six FillEngine tests pass at Os and O0; cached repeat compiles no C++; cache-disabled run also passes.",
+    "cache_key": "Optimization modes have disjoint cache keys.",
+    "full_four_CU": "Both O0 and O1 pass identical full VS/FS/FPU 16-lane eight-warp spatial scene: same shader metadata, pixels and depth;22766cycles."
+  },
+  "runs": [
+    {
+      "label": "Os",
+      "mode": "Os",
+      "passed": true,
+      "seconds": 33.29168787505478,
+      "compiler_invocations": 24,
+      "model_compiler_invocations": 4,
+      "bridge_compiler_invocations": 4,
+      "bridge_optimization": "Os",
+      "cache_events": [
+        "store 14243777531533",
+        "hit 14243777531533",
+        "store 10970833591533",
+        "hit 14243777531533",
+        "store 16133697821533",
+        "store 24823037331533"
+      ],
+      "full_graphics": false,
+      "scope": "Correctness and compiler/cache behavior; contended elapsed time is diagnostic only."
+    },
+    {
+      "label": "O0-cold",
+      "mode": "O0",
+      "passed": true,
+      "seconds": 18.323515916010365,
+      "compiler_invocations": 24,
+      "model_compiler_invocations": 4,
+      "bridge_compiler_invocations": 4,
+      "bridge_optimization": "Os",
+      "cache_events": [
+        "store 36193139341533",
+        "hit 36193139341533",
+        "store 32584640721533",
+        "hit 36193139341533",
+        "store 38161651531533",
+        "store 2795060181533"
+      ],
+      "full_graphics": false,
+      "scope": "Correctness and compiler/cache behavior; contended elapsed time is diagnostic only."
+    },
+    {
+      "label": "O0-hit",
+      "mode": "O0",
+      "passed": true,
+      "seconds": 5.224847958888859,
+      "compiler_invocations": 0,
+      "model_compiler_invocations": 0,
+      "bridge_compiler_invocations": 0,
+      "bridge_optimization": "Os",
+      "cache_events": [
+        "hit 36193139341533",
+        "hit 36193139341533",
+        "hit 32584640721533",
+        "hit 36193139341533",
+        "hit 38161651531533",
+        "hit 2795060181533"
+      ],
+      "full_graphics": false,
+      "scope": "Correctness and compiler/cache behavior; contended elapsed time is diagnostic only."
+    },
+    {
+      "label": "O0-off",
+      "mode": "O0",
+      "passed": true,
+      "seconds": 6.260520749958232,
+      "compiler_invocations": 6,
+      "model_compiler_invocations": 1,
+      "bridge_compiler_invocations": 1,
+      "bridge_optimization": "Os",
+      "cache_events": [],
+      "full_graphics": false,
+      "scope": "Correctness and compiler/cache behavior; contended elapsed time is diagnostic only."
+    },
+    {
+      "label": "O0-full4",
+      "mode": "O0",
+      "passed": true,
+      "seconds": 426.58031137497164,
+      "compiler_invocations": 38,
+      "model_compiler_invocations": 33,
+      "bridge_compiler_invocations": 1,
+      "bridge_optimization": "Os",
+      "cache_events": [
+        "store 104433503725652"
+      ],
+      "full_graphics": true,
+      "scope": "Correctness and compiler/cache behavior; contended elapsed time is diagnostic only.",
+      "metrics": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "22766",
+        "active_cu_cycles": "39622",
+        "peak_cus": "4",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "3677",
+        "texture_lines": "229"
+      },
+      "pixel_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "shader_metadata_identical": true
+    },
+    {
+      "label": "O1-full4",
+      "mode": "O1",
+      "passed": true,
+      "seconds": 648.3912231251597,
+      "compiler_invocations": 38,
+      "model_compiler_invocations": 33,
+      "bridge_compiler_invocations": 1,
+      "bridge_optimization": "Os",
+      "cache_events": [
+        "store 26246523725652"
+      ],
+      "full_graphics": true,
+      "scope": "Correctness and compiler/cache behavior; contended elapsed time is diagnostic only.",
+      "metrics": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "22766",
+        "active_cu_cycles": "39622",
+        "peak_cus": "4",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "3677",
+        "texture_lines": "229"
+      },
+      "pixel_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "shader_metadata_identical": true
+    }
+  ],
+  "evidence_sha256": {
+    ".artifacts/shared-cu/sim-compile-opt/GpuSim.scala": "25904c2ce8e78d2a282267b36ff0127df51e1f2fadb7bf6b3aaf14593e785082",
+    ".artifacts/shared-cu/sim-compile-opt/validation-v2/state.json": "318d80462604df9018b92887f8f83df4be2f6ff2fbc3458075f9626d29cf0f61",
+    ".artifacts/shared-cu/sim-compile-opt/validation-o1/state.json": "f49458615e8bf03ec46205084a47ea6135b4e31b93029db88f56028be284bdf2"
+  },
+  "decision": "Retain stock Os. Measured elapsed times overlap native builds/guests and cannot establish a clean speed ranking. The full-model experiments do not justify changing defaults.",
+  "limitations": [
+    "v1 controller incorrectly required the bridge to use the model optimization; preserved as an excluded validator failure. v2 validates actual model and bridge commands separately.",
+    "Elapsed numbers are diagnostic, not speedup claims.",
+    "Verilator frontend optimization and generated C++ compiler optimization are distinct settings."
+  ]
+}
