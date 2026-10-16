@@ -32,6 +32,34 @@ against the earlier diagnostic boot. Installed QEMU remains unchanged. See
 [the qualification](performance/sampler-format-folding-2026-10-16.json) and
 [the saved active frame](images/opengpu-gtk-sampler-format-20261016.png).
 
+## Generated scheduler host experiment (2026-10-17)
+
+A private fixed-layout prototype removes 819,777 generation checks for ready
+regions already drained before nonblocking-assignment evaluation. It also uses
+correct cold initialization and coherent forced worklist wakeup. Its 73-profile
+PGO training includes native formats/staging, compute/VM, actual GLES/GTK64 and
+exact trace replay; the baseline uses the prior 43-profile training. This
+comparison measures the combined artifact change, not source alone.
+
+Both O1 and O2 candidates pass 40 native sampler cases, 12 staging cases,
+six forced-evaluation controls, 18 compute/VM replays, actual 21-case GLES/GTK64
+scanout and strict Mesa/full640-prefix replay. The matched traces preserve GPU
+cycles, commits, API results, DMA payloads/masks/order and recorded clocks.
+
+Three balanced samples per artifact give these median process times, with own
+builds and guests stopped:
+
+| Exact replay workload | Baseline wall | Candidate wall | Wall reduction | Baseline CPU | Candidate CPU |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Mesa64, 3,191,999 GPU ticks | 37.335 s | 31.825 s | 14.76% | 37.331 s | 31.820 s |
+| Full640 prefix, 829,297 GPU ticks | 58.480 s | 49.464 s | 15.42% | 58.474 s | 49.459 s |
+
+The prefix contains 8,862 calls and ends at a preregistered complete API boundary;
+it is not an exact wallpaper milestone or a whole-desktop timing claim. Actual
+fresh generator output and full640desktop qualification remain before promoting
+the performance change. The installed QEMU executable is unchanged. See the
+[protocol, all samples and qualification](performance/drained-pass-host-experiment-2026-10-17.json).
+
 ## Initialization of large generated models (2026-10-17)
 
 FlashSim commits `25c3bd4` and `b9aa7c2` preserve cold-state defaults in
