@@ -1,0 +1,223 @@
+{
+  "status": "Training native qualification PASS; optimized and full640 qualification pending",
+  "rtl_source_commit": "8dfbd8fe9d2ec7f87725f7d38b1aef3c7a23df00",
+  "configuration": {
+    "shared_compute_units": [
+      "computeUnits_0",
+      "computeUnits_1",
+      "computeUnits_2",
+      "computeUnits_3"
+    ],
+    "private_shader_CUs": 0,
+    "lanes": 16,
+    "warps": 8,
+    "full_vs_fs_fpu": true,
+    "fill_slots": 16,
+    "dirty_entries": 66921,
+    "dirty_index_bits": 32,
+    "scalar_register_RTL_unchanged_from_qualified_baseline": {
+      "ScalarRegisterBank.sv": "d5e1013fa6d1900f7284592326360173c8096271164d49447d7201ee69734819",
+      "ScalarRegisterFile.sv": "da120a94556542a6646fb2a3ad1df449e470b4adc871660345519cc53ea76026",
+      "ScalarRegisterMacroFile.sv": "29795d93fac88f05c5decede4a9b1faffed15c6210fa62cd96ca88743f648298",
+      "ScalarRegisterMacroManager.sv": "acee0b7353690be8aaeecb258c555db29164dfbdb38ae897d94828b69916f36e"
+    },
+    "emitter_flags": [
+      "--frag-core",
+      "--vert-core",
+      "--shared-graphics",
+      "--parallel-graphics",
+      "--compute-units",
+      "4",
+      "--cu-lanes",
+      "16",
+      "--cu-warps",
+      "8",
+      "--width",
+      "640",
+      "--height",
+      "480",
+      "--memory-axi-data-bytes",
+      "64",
+      "--coalesce-framebuffer",
+      "--om-inflight",
+      "64",
+      "--om-locality",
+      "--fragment-batch-limit",
+      "112",
+      "--buffer-command-reads",
+      "--buffer-texture-reads"
+    ],
+    "header_sha256": "06e265460db94c2ca2b7048bdb6e76da87d29df3b2e3023a8a6fdd843305d62a",
+    "scope": "Structural verification only. Native training/optimized/full640 gates remain required."
+  },
+  "archive_sha256": "48997e106e72cd6b201e7fcf65c52fcd1218ca62716425a0847661d98d1c22cc",
+  "qemu_sha256": "a6179788eb6fc7cf149368540a96dd0acb55873ce0cb378efef67970a63d44d6",
+  "payload_manifest_sha256": "685f0c07f99755f71a5b78f3725db2e12f924b563fbc8967a612af9b12ada8f2",
+  "compute_cases": [
+    {
+      "mode": 0,
+      "base": "0x0",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 1.5527250829618424
+    },
+    {
+      "mode": 0,
+      "base": "0x0",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09171458287164569
+    },
+    {
+      "mode": 0,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.0952528330963105
+    },
+    {
+      "mode": 0,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09128045896068215
+    },
+    {
+      "mode": 0,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.09103045798838139
+    },
+    {
+      "mode": 0,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.08920062496326864
+    },
+    {
+      "mode": 1,
+      "base": "0x0",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.08603450004011393
+    },
+    {
+      "mode": 1,
+      "base": "0x0",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09020087495446205
+    },
+    {
+      "mode": 1,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.09335766616277397
+    },
+    {
+      "mode": 1,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09089424996636808
+    },
+    {
+      "mode": 1,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.11026174994185567
+    },
+    {
+      "mode": 1,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09492654190398753
+    },
+    {
+      "mode": 2,
+      "base": "0x0",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.09138433402404189
+    },
+    {
+      "mode": 2,
+      "base": "0x0",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09784083301201463
+    },
+    {
+      "mode": 2,
+      "base": "0x40000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.09177362499758601
+    },
+    {
+      "mode": 2,
+      "base": "0x40000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09602612489834428
+    },
+    {
+      "mode": 2,
+      "base": "0x80000000",
+      "invalidate": 0,
+      "result": "PASS",
+      "seconds": 0.09678729088045657
+    },
+    {
+      "mode": 2,
+      "base": "0x80000000",
+      "invalidate": 1,
+      "result": "PASS",
+      "seconds": 0.09255108307115734
+    }
+  ],
+  "native_shader_cases": 21,
+  "markers": {
+    "compute completed; RNU=1 RDN=0": true,
+    "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+    "Native shader suite: PASS": true,
+    "OPENGPU GL FILL PASS": true,
+    "GTK Wayland/OpenGPU smoke proof: PASS": true,
+    "Gtk-smoke scanout proof: PASS": true,
+    "OPENGPU GL OFFSCREEN PASS:": true
+  },
+  "proof": "/Users/duckdonald/workspace/gpu/.artifacts/fill16-bcast-train",
+  "scanout": {
+    "passed": true,
+    "framebuffer_size": [
+      64,
+      64
+    ],
+    "client_size": [
+      64,
+      64
+    ],
+    "active_rectangle": [
+      8,
+      14,
+      50,
+      36
+    ],
+    "active_pixels": 1887,
+    "channel_tolerance": 3,
+    "capture_sha256": "96023b41d72eb995b1e9829cc1fb5281eb71cee973a1b5c13f216cab177e7d7d",
+    "source_frame": "/Users/duckdonald/workspace/gpu/.artifacts/fill16-bcast-train/gtk-smoke-scanout.ppm",
+    "saved_frame": "/Users/duckdonald/workspace/gpu/.artifacts/fill16-bcast-train/gtk-smoke-verified.ppm"
+  },
+  "qualification_report_sha256": "fcda3469842714f6455d4c5ebc59d48876ab98acc750bb38ab6d2be935661b10",
+  "limits": [
+    "This is the FILL16+broadcast model, before86c67f8 vector-word cache. The newer cache model requires separate qualification.",
+    "Training instrumented host elapsed times are not simulator speed evidence.",
+    "Default executable remains unchanged; full640 and optimized gates must pass before promotion."
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "status": "RTL validated in unit and full shared-CU scenes; native desktop qualification pending",
+  "status": "RTL unit/full-scene and full4CU native training qualification PASS; optimized/full640 pending",
   "change": "For a fixed mip with both dimensions clamped to one, sample the first active lane once and broadcast the decoded result to execution-mask lanes. Preserve old destination values in inactive lanes. Scalar and automatic-LOD paths retain prior behavior.",
   "vlen": "Uses config.lanes and a priority encoder; no hardcoded shader lane count.",
   "unit_validation": {
@@ -233,5 +233,6 @@
     "Cycle gains apply to fixed single-texel textures. General desktop textures need separate optimizations and native measurements.",
     "No simulator host-speed claim: builds, simulations and diagnostic replay overlapped.",
     "Regenerate and qualify complete four-CU native model before default executable promotion."
-  ]
+  ],
+  "native_training_qualification": "docs/performance/fill16-broadcast-native-2026-10-16.json"
 }
