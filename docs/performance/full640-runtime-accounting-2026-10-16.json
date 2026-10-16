@@ -1,0 +1,254 @@
+{
+  "date": "2026-10-16",
+  "status": "PASS: exact full640 strict semantic replay and runtime accounting",
+  "source_report": "coordinate-pointer-full640-2026-10-16.json",
+  "simulation_ticks": 17897346,
+  "diagnostic_boot_seconds": 1127.4379962079693,
+  "milestones_seconds": {
+    "background": 263.0518644999247,
+    "idle": 906.1694665830582,
+    "active": 1125.432121832855
+  },
+  "hypothetical_clock_duration_seconds": {
+    "100MHz": 0.17897346,
+    "500MHz": 0.035794692,
+    "1GHz": 0.017897346
+  },
+  "hardware_time_scope": "Only converts measured RTL tick count to assumed clock duration. No demonstrated chip frequency or real DRAM/CPU/OS timing; not predicted real-hardware application startup.",
+  "small_trace_extrapolation": {
+    "ticks": 3203895,
+    "seconds": 40.6001335,
+    "ticks_per_second": 78913.4104694508,
+    "predicted_full640_replay_seconds": 226.79726922876404,
+    "scope": "Prior GTK64 unprobed strict replay baseline median. Workload-dependent estimate, not hardware theory or end-to-end desktop prediction."
+  },
+  "full640_strict_replay": {
+    "started": 1792158834.963369,
+    "pid": 37117,
+    "stage": "terminal",
+    "executable_sha256": "addaa4de5d2f0a332dffe1c80ffdca4c72c3b5c61a2391087d72582a002a0369",
+    "archive_sha256": "e859535aa7a35fce7f972940525f25af5104716da193c1abebb6085029dc6647",
+    "trace_sha256": "cf1b3e2f96dfa55f8b1a6ebf54c011a365ef62bc94c02f6b6ad7e0aaf6df1142",
+    "scope": "One exact full640 trace replay without guest, recorder or cycle probes. Strict event/data/clock validation; current selected model unchanged. No host speedup claim.",
+    "child_pid": 37118,
+    "elapsed_seconds": 969.0095260408707,
+    "exit_status": 0,
+    "wall_seconds": 969.010973499855,
+    "cpu_seconds": 967.93437,
+    "user_cpu_seconds": 961.420487,
+    "system_cpu_seconds": 6.513883,
+    "finished": 1792159804.352653,
+    "passed": true,
+    "replay": {
+      "calls": 194602,
+      "ticks": 17897346,
+      "commits": 2545853169,
+      "holds": 7938987357,
+      "dma_reads": 642677,
+      "dma_writes": 4105625,
+      "dma_bytes": 72340008,
+      "seconds": 968.038342375,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    }
+  },
+  "original_recorded_clock_spans": {
+    "calls": 194602,
+    "events": 5910712,
+    "clock_counts_by_call_tag": {
+      "1": 0,
+      "4": 595037,
+      "2": 154947,
+      "3": 23222
+    },
+    "recorded_within_call_clock_spans_seconds": {
+      "4": 708.512401,
+      "2": 338.396974,
+      "3": 1.321361
+    },
+    "sum_recorded_within_call_clock_spans_seconds": 1048.230736,
+    "first_to_last_recorded_clock_seconds": 1111.748266,
+    "scope": "Lower bound on time inside original model API calls, from recorded monotonic-clock observations. Omits each call before its first and after its last clock; excludes gaps between calls. Includes diagnostic probe and recorder work inside intervals. Not standalone model CPU time.",
+    "parser_seconds": 2.7285072919912636
+  },
+  "sampled_full640_cpu": {
+    "scope": "5-second10ms CPU-stack diagnostic on exact full640 strict replay about636s after start,412observations. Other own heavy jobs deferred; background UI/indexer activity unrestricted. Sampled-stack attribution is not wholetrace CPU percentage, benchmark or projected speedup. Self samples subtract immediate children, invariant totals412/nonnegative.",
+    "source_sha256": "c6e06fd6d644d41b08de082342b52e499a3c97ba46e652ad5c1ad9fd4e58a8be",
+    "total_samples": 412,
+    "categories": {
+      "generated_register_commit_functions": {
+        "self_samples": 183,
+        "observed_share_percent": 44.41747572815534
+      },
+      "generated_eager_functions": {
+        "self_samples": 150,
+        "observed_share_percent": 36.407766990291265
+      },
+      "other_generated_model_functions": {
+        "self_samples": 46,
+        "observed_share_percent": 11.16504854368932
+      },
+      "tick_dispatch_self": {
+        "self_samples": 19,
+        "observed_share_percent": 4.611650485436893
+      },
+      "commit_generation_bump_self": {
+        "self_samples": 14,
+        "observed_share_percent": 3.3980582524271843
+      },
+      "wrapper_trace_runtime_and_system_functions": {
+        "self_samples": 0,
+        "observed_share_percent": 0.0
+      }
+    },
+    "top_functions": [
+      {
+        "symbol": "GpuHostSystemAxiDut::tick_nba()",
+        "self_samples": 19,
+        "observed_share_percent": 4.611650485436893
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut_commit_bump(unsigned int*, unsigned short const*, unsigned int)",
+        "self_samples": 14,
+        "observed_share_percent": 3.3980582524271843
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_eager3802_1()",
+        "self_samples": 4,
+        "observed_share_percent": 0.970873786407767
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h8043()",
+        "self_samples": 3,
+        "observed_share_percent": 0.7281553398058253
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h8113()",
+        "self_samples": 3,
+        "observed_share_percent": 0.7281553398058253
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_eager17595_0()",
+        "self_samples": 3,
+        "observed_share_percent": 0.7281553398058253
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_eager14658_0()",
+        "self_samples": 3,
+        "observed_share_percent": 0.7281553398058253
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_eager17574_0()",
+        "self_samples": 3,
+        "observed_share_percent": 0.7281553398058253
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h3288()",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h7836()",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h8372()",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h5810()",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h8217()",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h8277()",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h8608()",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_eager13125_0()",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_eager17680()",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_eager14651()",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut_commit_part66(GpuHostSystemAxiDut*, unsigned int)",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_eager16730_0()",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut_commit_part101(GpuHostSystemAxiDut*, unsigned int)",
+        "self_samples": 2,
+        "observed_share_percent": 0.4854368932038835
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_eager13909()",
+        "self_samples": 1,
+        "observed_share_percent": 0.24271844660194175
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h10115()",
+        "self_samples": 1,
+        "observed_share_percent": 0.24271844660194175
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h10228()",
+        "self_samples": 1,
+        "observed_share_percent": 0.24271844660194175
+      },
+      {
+        "symbol": "GpuHostSystemAxiDut::_nba_h10345()",
+        "self_samples": 1,
+        "observed_share_percent": 0.24271844660194175
+      }
+    ]
+  },
+  "derived": {
+    "unprobed_replay_ticks_per_second": 18488.26148362097,
+    "unprobed_replay_microseconds_per_tick": 54.088373906108764,
+    "original_model_call_time_lower_bound_fraction": 0.929745794913445,
+    "diagnostic_elapsed_minus_native_replay_seconds": 159.3996538329693,
+    "average_running_workers_when_any_runs": 3.2363737713858716,
+    "ticks_without_any_shader_worker_running": 9594902,
+    "fraction_ticks_without_any_shader_worker_running": 0.536107532368207,
+    "balanced_four_worker_shader_run_lower_bound_ticks": 6717453.0,
+    "actual_any_worker_run_ticks": 8302444,
+    "full640_register_commits_per_tick": 142.2475248006045,
+    "small_trace_register_commits_per_tick": 21.71382395490489,
+    "full640_register_holds_per_tick": 443.58461623304373,
+    "small_trace_register_holds_per_tick": 128.19666187562328
+  },
+  "interpretation": [
+    "A single unprobed strict replay isolates exact recorded GPU work from live guest scheduling, recorder and diagnostic probe. It still includes trace input/validation and is not a plain-QEMU desktop timing.",
+    "Original clock spans prove where elapsed time was spent, but include host preemption, model, probe, recorder and live memory callbacks. Native replay difference cannot uniquely attribute each overhead without an additional controlled experiment.",
+    "No-worker-run ticks include required frontend, staging, output, nonshader commands and polling. They are not all removable idle cycles. Phase-any counts overlap and are not wall-time percentages.",
+    "One replay, with one-second and five-second diagnostic stack samples and a 2.73-second parser, is sufficient for order-of-magnitude accounting, not a percent-level speedup benchmark."
+  ]
+}

@@ -1,5 +1,47 @@
 # Full-system simulation performance investigation
 
+## Full-resolution runtime accounting (2026-10-16)
+
+The selected 640×480 diagnostic guest advances **17,897,346 GPU
+ticks** and completes in **1127.438 seconds**. Wallpaper
+appears at 263.052 seconds, GTK idle at 906.169 seconds and active redraw at
+1125.432 seconds. The wallpaper milestone is not complete GTK startup.
+
+Strict replay of that exact desktop trace, without the live guest, recorder
+or cycle probe, takes **968.038 seconds** (967.934 child CPU seconds),
+or **18,488 ticks/second**. All 194,602 API
+calls, DMA results/data/masks/order and recorded clock observations match;
+the trace ends exactly without truncation. This is one diagnostic replay,
+including two short stack samples, not a percent-level speedup benchmark.
+
+The prior GTK64 median of 40.600 seconds for 3,203,895 ticks would extrapolate
+to 226.797 seconds. Its work mix does not represent full desktop cost. The
+desktop trace averages 142.25 register-commit events and 443.58 holds per tick;
+the GTK64 trace averages 21.71 and 128.20. An architectural cycle therefore
+does not represent a fixed amount of generated C++ work.
+
+Recorded clocks independently bound original time inside GPU model calls at
+**1048.231 seconds**, at least **92.97%** of total diagnostic elapsed time.
+Those intervals include model work, probes, callbacks, recording and host
+preemption. The replay difference cannot separately attribute those costs.
+
+A five-second sample late in this exact replay attributes 44.4% of observations
+to generated register updates and 36.4% to generated combinational evaluation.
+These are sampled observations of one interval, not whole-guest CPU shares.
+The simulator evaluates the four CUs on one host thread: architectural cycle
+scaling alone therefore does not predict equal host-time scaling.
+
+When any worker executes a shader, the average running-worker count is 3.236.
+Across the complete diagnostic workload, 53.61% of ticks have no shader worker
+running. That includes frontend, transfers, output, other commands and polls;
+it is not all removable idle time. Phase-any counters overlap across workers.
+
+At an assumed 100 MHz, the measured tick count corresponds to 0.179 seconds
+of GPU clock duration (0.0179 seconds at an assumed 1 GHz). These conversions
+demonstrate neither a chip frequency nor real DRAM/CPU/OS timing, and are not
+real-hardware desktop-startup predictions. See the
+[runtime accounting](performance/full640-runtime-accounting-2026-10-16.json).
+
 ## Optional faster Verilator builds (2026-10-16)
 
 The verification harness can compile repeated compute units as a shared

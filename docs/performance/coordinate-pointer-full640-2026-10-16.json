@@ -219,7 +219,8 @@
       "3": 10352
     },
     "structural_integrity": "Valid magic/environment header, complete lengths, known call tags and final Result in every block, exact EOF. This structural check is not a semantic model replay.",
-    "semantic_replay": "Not yet performed on this large trace; real live guest/scanout checks provide functional evidence."
+    "semantic_replay": "PASS: exact full640 trace replay on unchanged selected model; all API results, DMA payloads/masks/order and recorded clock observations match; exact EOF, no truncated tail.",
+    "semantic_replay_report": "full640-runtime-accounting-2026-10-16.json"
   },
   "artifact_sources": {
     "TextureUnit.scala": "84ed9915eefa2afe4652e5fa47e5088680506361686c5807629e2c935d70cf85",
