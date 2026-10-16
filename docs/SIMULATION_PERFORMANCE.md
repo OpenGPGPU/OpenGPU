@@ -96,6 +96,16 @@ uniforms and memory outside scratch are independently checked. Native ticks
 fall from 8,757/14,005 to 8,683/13,636, distinct from the Scala cycle reductions.
 See the [optimized native evidence](performance/fragment-output-usage-native-training-2026-10-16.json).
 
+A subsequent empty-line scan experiment passes 39 RTL tests and all 12 complete
+scenes, but has mixed four-CU results: solid rendering rises from 9,385 to
+9,395 cycles while spatial rendering falls from 14,692 to 14,509. Faster local
+staging does not guarantee a faster whole render; output waiting grows in the
+solid trace. The unconditional variant is deferred, with native compilation
+and timing stopped before they begin. A guarded revision preserves all four
+zero-hint scene cycle counts, while downstream ordering and OM pressure remain
+the next performance questions. See the
+[experiment and trace evidence](performance/empty-staging-scan-2026-10-16.json).
+
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per
 worker, scales the shared credit and translation ranges with CU count, pipelines
 the shared request queue, and bounds reply buffering by local ownership. It also
