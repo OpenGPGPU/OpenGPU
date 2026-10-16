@@ -49,7 +49,7 @@ class TexSampleUnit(
     }
   })
 
-  private val sampler = Module(new TextureUnit(gfxConfig, wordCacheEntries = 8))
+  private val sampler = Module(new TextureUnit(gfxConfig, wordCacheEntries = 8, allowPrepared = true))
 
   // Reuse is limited to one instruction. A later operation may observe
   // changed texture memory, format, binding, or address translation.
@@ -87,6 +87,14 @@ class TexSampleUnit(
     Reg(Vec(config.lanes, UInt(config.xLen.W)))
   private val laneWidth = math.max(1, log2Ceil(config.lanes))
   private val laneReg = RegInit(0.U(laneWidth.W))
+  private val coordinatePipeline = Module(new TextureCoordinatePipeline(laneWidth))
+  private val preparedModeReg = RegInit(false.B)
+  private val firstSampleReg = RegInit(true.B)
+  private val prepareLane = RegInit(0.U(log2Ceil(config.lanes + 1).W))
+  private val texBaseReg = RegInit(0.U(32.W))
+  private val texFormatReg = RegInit(0.U(PixelFormat.width.W))
+  private val wrapClampReg = RegInit(false.B)
+
   // Latch the coordinates at accept: the upstream issued-instruction bits are
   // only stable through the handshake cycle (same race class as M4b/M5b).
   private val uReg = RegInit(0.U(32.W))
@@ -179,9 +187,43 @@ class TexSampleUnit(
   io.vectorIn.ready := state === sIdle && selectVector
   io.in.ready := state === sIdle && !selectVector
 
+  sampler.io.texBase := Mux(preparedModeReg, texBaseReg, io.texBase)
+  sampler.io.texFormat := Mux(preparedModeReg, texFormatReg, io.texFormat)
+  sampler.io.texWidth := Mux(preparedModeReg, texWidthReg, io.texWidth)
+  sampler.io.texHeight := Mux(preparedModeReg, texHeightReg, io.texHeight)
+  sampler.io.wrapMode := Mux(preparedModeReg, wrapClampReg, io.wrapClamp)
+  sampler.io.texMaxLevel := Mux(preparedModeReg, maxLevelReg, io.texMaxLevel)
+
+  private val prepareIndex = prepareLane(laneWidth - 1, 0)
+  private val prepareActive = executionMaskReg(prepareIndex)
+  private val prepareMore = state === sSample && preparedModeReg && prepareLane < config.lanes.U
+  coordinatePipeline.io.in.valid := prepareMore && prepareActive
+  coordinatePipeline.io.in.bits.lane := prepareIndex
+  coordinatePipeline.io.in.bits.u := uVectorReg(prepareIndex)
+  coordinatePipeline.io.in.bits.v := vVectorReg(prepareIndex)
+  coordinatePipeline.io.in.bits.base := texBaseReg
+  coordinatePipeline.io.in.bits.texWidth := texWidthReg
+  coordinatePipeline.io.in.bits.texHeight := texHeightReg
+  coordinatePipeline.io.in.bits.clamp := wrapClampReg
+  when(prepareMore && (!prepareActive || coordinatePipeline.io.in.fire)) {
+    prepareLane := prepareLane + 1.U
+  }
+  private val usePrepared = preparedModeReg && !firstSampleReg
+  sampler.io.prepared.get.valid := usePrepared && coordinatePipeline.io.out.valid
+  sampler.io.prepared.get.bits := coordinatePipeline.io.out.bits.sample
+  coordinatePipeline.io.out.ready := usePrepared && sampler.io.sample.fire
+  when(preparedModeReg && sampler.io.sample.fire) { firstSampleReg := false.B }
+  when(usePrepared && sampler.io.sample.fire) {
+    assert(coordinatePipeline.io.out.bits.lane === laneReg, "prepared coordinate lane must match sample owner")
+  }
+  when(io.vectorIn.fire || io.in.fire) {
+    assert(!coordinatePipeline.io.busy, "coordinate metadata must drain before the next instruction")
+  }
+
   private val vectorLaneActive = executionMaskReg(laneReg)
   sampler.io.sample.valid :=
-    state === sSample && (!vectorModeReg || vectorLaneActive)
+    state === sSample && (!vectorModeReg || vectorLaneActive) &&
+      (!usePrepared || coordinatePipeline.io.out.valid)
   sampler.io.sample.bits.u :=
     Mux(vectorModeReg, uVectorReg(laneReg), uReg)
   sampler.io.sample.bits.v :=
@@ -257,6 +299,15 @@ class TexSampleUnit(
           (io.texHeight >> io.minLevel) <= 1.U &&
           io.vectorIn.bits.executionMask.orR
         broadcastTexelReg := oneTexel
+        preparedModeReg := io.minLevel === 0.U && io.texMaxLevel === 0.U &&
+          !oneTexel && PopCount(io.vectorIn.bits.executionMask) > 1.U
+        // Preserve the original first-sample latency; only later active
+        // lanes enter the lookahead pipeline.
+        firstSampleReg := true.B
+        prepareLane := PriorityEncoder(io.vectorIn.bits.executionMask) +& 1.U
+        texBaseReg := io.texBase
+        texFormatReg := io.texFormat
+        wrapClampReg := io.wrapClamp
         laneReg := Mux(oneTexel,
           PriorityEncoder(io.vectorIn.bits.executionMask), 0.U)
         preferVector := false.B
@@ -271,6 +322,7 @@ class TexSampleUnit(
         }
       }.elsewhen(io.in.fire) {
         vectorModeReg := false.B
+        preparedModeReg := false.B
         broadcastTexelReg := false.B
         warpIdReg := io.in.bits.decode.warpId
         rdReg := io.in.bits.decode.instruction(11, 7)

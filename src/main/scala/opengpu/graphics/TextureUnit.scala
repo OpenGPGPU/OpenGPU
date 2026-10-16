@@ -99,10 +99,12 @@ object TexWrap {
   */
 class TextureUnit(
   gfxConfig: GraphicsConfig = GraphicsConfig(),
-  wordCacheEntries: Int = 0
+  wordCacheEntries: Int = 0,
+  allowPrepared: Boolean = false
 ) extends Module {
   // Preserve the uncached single-argument interface for existing callers.
-  def this(gfxConfig: GraphicsConfig) = this(gfxConfig, 0)
+  def this(gfxConfig: GraphicsConfig) = this(gfxConfig, 0, false)
+  def this(gfxConfig: GraphicsConfig, wordCacheEntries: Int) = this(gfxConfig, wordCacheEntries, false)
   require(wordCacheEntries == 0 || (wordCacheEntries >= 4 && isPow2(wordCacheEntries)))
   val io = IO(new Bundle {
     // The owner must invalidate between instructions/bindings. Uncached
@@ -117,6 +119,7 @@ class TextureUnit(
     /** Deepest mip level the level-walk may reach (TEX_CONFIG[5:2]). */
     val texMaxLevel = Input(UInt(4.W))
     val sample = Flipped(Decoupled(new TexSampleRequest))
+    val prepared = if (allowPrepared) Some(Input(Valid(new TexturePreparedSample))) else None
     val result = Decoupled(UInt(32.W))
     val mem = new Bundle {
       val req = Decoupled(new OmMemoryRequest)
@@ -457,6 +460,15 @@ class TextureUnit(
           io.sample.bits.lodFrac, 0.U)
         secondLevel := false.B
         state := sLevel
+        if (allowPrepared) {
+          when(io.prepared.get.valid) {
+            assert(io.sample.bits.mipLevel === 0.U && io.sample.bits.lodFrac === 0.U &&
+              io.texMaxLevel === 0.U, "prepared samples require fixed base-level filtering")
+            singleTexel := false.B
+            wReg := io.prepared.get.bits.weights
+            beginTapFetch(io.prepared.get.bits.addresses.toSeq)
+          }
+        }
       }
     }
     is(sLevel) {

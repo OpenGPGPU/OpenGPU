@@ -1,0 +1,416 @@
+{
+  "date": "2026-10-16",
+  "status": "Full640 selected fourCU coordinate pipeline plus committed runtime pointer reuse passes actual Debian/Weston/GTK idle+active readback, both onscreen frames, strictscanout and manualvisual review. Exact3qualified RTL sources promoted to main and23main sampler/helpertests pass. Installed QEMU unchanged.",
+  "selection": {
+    "model": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-coordinate-pipeline-native/model",
+    "archive": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-coordinate-pipeline-native/optimized/libarti_rtl_model.a",
+    "archive_sha256": "e859535aa7a35fce7f972940525f25af5104716da193c1abebb6085029dc6647",
+    "qemu": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-coordinate-pipeline-native/qemu-cycle-probe",
+    "qemu_sha256": "68cf2b6b53623569125d82bc1bb3cd1cc32ddfb3e4168ae02a8130da38deb2a8",
+    "mesa_sha256": "a8342a5b8c5f7e68b08648188bcc72391d29c94d82d22000e2d433b0928edb2d",
+    "integer_selected": false,
+    "benchmark_sha256": "f6bb51c36aa2cffe873694ff04f49635eb581617f83c0c89f79ec2be62c2b045",
+    "baseline_mesa_commit": "77831fb"
+  },
+  "supervisor": {
+    "started": 1792156621.393505,
+    "pid": 21377,
+    "stage": "terminal",
+    "milestones": {
+      "background": {
+        "seconds": 263.0518644999247,
+        "evidence": {
+          "scope": "Four distributed wallpaper crops and static launcher-panel crop match qualified frame; full saved image still needs visual review",
+          "regions": [
+            [
+              5,
+              5,
+              37,
+              37
+            ],
+            [
+              600,
+              5,
+              632,
+              37
+            ],
+            [
+              5,
+              410,
+              37,
+              442
+            ],
+            [
+              600,
+              410,
+              632,
+              442
+            ],
+            [
+              5,
+              451,
+              37,
+              477
+            ]
+          ],
+          "tolerance": 3
+        },
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/sd-final640/first-background.png",
+        "capture_sha256": "360e305b4207f6df6381ed37eeeba5e020e00d1d1290c25b1b89e07a3ed9fe99",
+        "image_sha256": "c96d5dde2ac9a95aed0e0858440ad482d6ccf74ff9f255096d951c5ada204b90"
+      },
+      "idle": {
+        "seconds": 906.1694665830582,
+        "evidence": {
+          "colour_pixels": 16571,
+          "expected_rgb": [
+            51,
+            140,
+            46
+          ],
+          "tolerance": 3
+        },
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/sd-final640/first-idle.png",
+        "capture_sha256": "c57616aa0e5c57750d2f31a5f7a5d03bc4f207ae44a9246c03d9bc7ba8e3c48a",
+        "image_sha256": "c6149b1b4da231f34f5d9ff73544e6c952d57cf69c914f933183e95edcf19c96"
+      },
+      "active": {
+        "seconds": 1125.432121832855,
+        "evidence": {
+          "colour_pixels": 16571,
+          "expected_rgb": [
+            242,
+            89,
+            46
+          ],
+          "tolerance": 3
+        },
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/sd-final640/first-active.png",
+        "capture_sha256": "82fac261a6b9629fe38a1251f073ef5260a61f2bb98a45825418340cd914ffda",
+        "image_sha256": "2b3f4a656bd1bd71fdf27f94d35bdafd33e1b6ff9a342ecc1b9621e09e6d94b6"
+      }
+    },
+    "scope": "Full640selectedqualified fourCU model plus committed runtime pointer reuse Mesa. Model selection follows completed strict realMesa benchmark; no host gain assumed for deferred candidates. Explicittraceargument survivesnestedenvsanitization. Noowncompilersorotherguests activeatlaunch. Includescycleprobe,ARTItrace,guestbootandcustomDRMregression; notcontrolleddesktop speedratio. Lowcost2secondscanoutobserver recordsfirstbackground/visibleidle/visibleactive. Strictoriginalactive-frameverifierremainsthequalificationgate.",
+    "gate_pid": 21379,
+    "passed": true,
+    "exit_status": 0,
+    "finished": 1792157748.807946,
+    "seconds": 1127.4379962079693,
+    "gate_report": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/selected-desktop-20261016/guest-final640.json"
+  },
+  "guest": {
+    "started": 1792156621.625689,
+    "pid": 21379,
+    "stage": "terminal",
+    "replays": [],
+    "qemu_sha256": "68cf2b6b53623569125d82bc1bb3cd1cc32ddfb3e4168ae02a8130da38deb2a8",
+    "archive_sha256": "e859535aa7a35fce7f972940525f25af5104716da193c1abebb6085029dc6647",
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/sd-final640",
+    "profile": false,
+    "scope": "Selected fourCU RTL plus committed runtime pointer reuse;cap28; explicitfirst9scratchcontract,immutablevalidatedread/writeusage,DMAaliasguard andunchangedMesaoptin. StandaloneDRMdefault/optin/all4096pixels+outputcanaries,18VMreplays,21GLES,quadbatch/offscreen/private-depth/GTK64strictscanout; desktopflagselectsfull640only. Nohostspeedclaim.",
+    "exit_status": 0,
+    "guest_seconds": 1125.236360957846,
+    "markers": {
+      "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+      "output_usage=1": true,
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "fragment staging transient=1": true
+    },
+    "native_cases": 0,
+    "quad_batch_pass": true,
+    "payload_unchanged": true,
+    "trace_requested": true,
+    "trace_present": true,
+    "passed": true,
+    "finished": 1792157747.132735
+  },
+  "visual": {
+    "reviewed_at": 1792157978.7352269,
+    "active_visual_passed": true,
+    "idle_visual_passed": true,
+    "full_functional_gate_passed": true,
+    "observations": [
+      "Upright completeGTKwindow with readable title,label andbutton",
+      "Green idle GLarea andorangeactive GLarea bothvisible onscreen",
+      "Wallpaper,panel,launcher andclock remain intact",
+      "No visible corruption in reviewed exactsaved milestone frames"
+    ],
+    "images": {
+      "idle": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/sd-final640/first-idle.png",
+        "sha256": "c6149b1b4da231f34f5d9ff73544e6c952d57cf69c914f933183e95edcf19c96",
+        "seconds": 906.1694665830582
+      },
+      "active": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/sd-final640/first-active.png",
+        "sha256": "2b3f4a656bd1bd71fdf27f94d35bdafd33e1b6ff9a342ecc1b9621e09e6d94b6",
+        "seconds": 1125.432121832855
+      }
+    }
+  },
+  "scanout": {
+    "passed": true,
+    "framebuffer_size": [
+      640,
+      480
+    ],
+    "client_size": [
+      280,
+      124
+    ],
+    "active_rectangle": [
+      93,
+      223,
+      227,
+      72
+    ],
+    "active_pixels": 16571,
+    "channel_tolerance": 3,
+    "capture_sha256": "82fac261a6b9629fe38a1251f073ef5260a61f2bb98a45825418340cd914ffda",
+    "source_frame": "/Users/duckdonald/workspace/gpu/.artifacts/sd-final640/gtk-smoke-scanout.ppm",
+    "saved_frame": "/Users/duckdonald/workspace/gpu/.artifacts/sd-final640/gtk-smoke-verified.ppm"
+  },
+  "cycle_probe": {
+    "ticks": 17897346,
+    "fragment_staging_without_any_worker_run": 12322,
+    "any_worker_phase": {
+      "idle": 10481213,
+      "stage_in": 1366735,
+      "launch": 15096,
+      "run": 8302444,
+      "stage_out": 483379,
+      "emit": 3314915
+    },
+    "workers": [
+      {
+        "worker": 0,
+        "run": 6736892,
+        "batches": 3788
+      },
+      {
+        "worker": 1,
+        "run": 6729391,
+        "batches": 3782
+      },
+      {
+        "worker": 2,
+        "run": 6718373,
+        "batches": 3768
+      },
+      {
+        "worker": 3,
+        "run": 6685156,
+        "batches": 3754
+      }
+    ],
+    "peak_running_workers": 4,
+    "scope": "Whole diagnostic guest GPU tick/phase counts. Phase-any values overlap across different workers; they are not disjoint wall-time percentages. Includes custom DRM regression and compositor draws. Not matched-cycle comparison with earlier boots."
+  },
+  "trace": {
+    "path": ".artifacts/shared-cu/selected-desktop-20261016/full640.trace",
+    "sha256": "cf1b3e2f96dfa55f8b1a6ebf54c011a365ef62bc94c02f6b6ad7e0aaf6df1142",
+    "bytes": 585530024,
+    "complete_call_blocks": 194602,
+    "call_type_counts": {
+      "1": 1,
+      "4": 123441,
+      "2": 60808,
+      "3": 10352
+    },
+    "structural_integrity": "Valid magic/environment header, complete lengths, known call tags and final Result in every block, exact EOF. This structural check is not a semantic model replay.",
+    "semantic_replay": "Not yet performed on this large trace; real live guest/scanout checks provide functional evidence."
+  },
+  "artifact_sources": {
+    "TextureUnit.scala": "84ed9915eefa2afe4652e5fa47e5088680506361686c5807629e2c935d70cf85",
+    "TexSampleUnit.scala": "8595993d3ec1a6befe42d558fe14a4321d7d212b6b31fbfcf69623bd59bfd3bb",
+    "TextureCoordinatePipeline.scala": "664856486322bd24bc84120949f0466739559d2c0731895429dfdfb4f64ed9d3"
+  },
+  "main_promotion": {
+    "started": 1792157978.82982,
+    "pid": 29737,
+    "stages": [
+      {
+        "name": "compile-main",
+        "exit_status": 0,
+        "seconds": 3.8834430421702564
+      },
+      {
+        "name": "compile-test",
+        "exit_status": 0,
+        "seconds": 2.1450309578794986
+      },
+      {
+        "name": "units",
+        "exit_status": 0,
+        "seconds": 25.25087920902297
+      }
+    ],
+    "scope": "Main promotion of exact byte-identical desktop-qualified coordinateRTL. Isolated compiler/classes avoid existingSBT targets; independent main vertex-index fix prefixes frozen classpath. Main helper regression plus existing sampler/texexecute tests. Native/frozen-sampler/fullscene evidence remains tied to exact same3source hashes.",
+    "sources": {
+      "src/main/scala/opengpu/graphics/TextureCoordinatePipeline.scala": "664856486322bd24bc84120949f0466739559d2c0731895429dfdfb4f64ed9d3",
+      "src/main/scala/opengpu/graphics/TextureUnit.scala": "84ed9915eefa2afe4652e5fa47e5088680506361686c5807629e2c935d70cf85",
+      "src/main/scala/opengpu/graphics/TexSampleUnit.scala": "8595993d3ec1a6befe42d558fe14a4321d7d212b6b31fbfcf69623bd59bfd3bb"
+    },
+    "passed": true,
+    "finished": 1792158010.112703
+  },
+  "rtl_qualification": {
+    "report": "texture-coordinate-pipeline-2026-10-16.json",
+    "positive_tests": 49,
+    "full128_control": "texture-coordinate-native-training-2026-10-16.json"
+  },
+  "mini_qualification": {
+    "started": 1792154952.79392,
+    "pid": 8577,
+    "stage": "terminal",
+    "replays": [
+      {
+        "mode": 0,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      }
+    ],
+    "qemu_sha256": "251ff6e3d76acf894e2de1aeb5fc3d7c5e2e0853dbfd253df02e749d4fcba54c",
+    "archive_sha256": "e859535aa7a35fce7f972940525f25af5104716da193c1abebb6085029dc6647",
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/pr-abi64",
+    "profile": false,
+    "scope": "Same qualified coordinate RTL/newMesa combination. Existing passing GTK64 functional gate reused; cycle-probe base archive identity independently verified. Actual explicit trace will be captured on new full640 run.",
+    "exit_status": 0,
+    "guest_seconds": 94.53102929191664,
+    "markers": {
+      "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+      "output_usage=1": true,
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "fragment staging transient=1": true,
+      "compute completed; RNU=1 RDN=0": true,
+      "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+      "Native shader suite: PASS": true,
+      "OPENGPU GL FILL PASS": true,
+      "OPENGPU GL OFFSCREEN PASS:": true
+    },
+    "native_cases": 21,
+    "quad_batch_pass": true,
+    "payload_unchanged": true,
+    "trace_requested": true,
+    "trace_present": false,
+    "passed": true,
+    "finished": 1792155050.517083,
+    "error": "AssertionError()",
+    "trace_capture_passed": false,
+    "original_requested_gate_passed": false,
+    "original_gate_sha256": "e5f29b80f0f52923b25121b1afdf594e1d52702d9782a8f1d884bdec563e3c18",
+    "correction": "Original functional checks all passed; requested trace absent because selected plain optimized QEMU lacks recorder. Preserve original failed trace gate. No guest rerun solely for tracing; later desktop uses explicitly trace-enabled artifact.",
+    "postprocessed_at": 1792155158.7121,
+    "reused_functional_evidence": true,
+    "probe_archive_base_sha256": "e859535aa7a35fce7f972940525f25af5104716da193c1abebb6085029dc6647"
+  },
+  "software_qualification": "runtime-pointer-reuse-2026-10-16.json",
+  "host_gain": "Not established. Diagnostic traced boot: wallpaper263.052s,idle906.169s,active1125.432s,gate1127.438s. Earlier untraced f4 run observed active894.709s but did not separately observe idle onscreen. Different captures/workload timing and backgroundUI/indexer activity prevent a controlled speed ratio. Native coordinate host windows are near parity; change is selected for qualified architectural cycle reduction.",
+  "image": "docs/images/opengpu-gtk-coordinate-pointer-20261016.png",
+  "default_qemu_sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0"
+}

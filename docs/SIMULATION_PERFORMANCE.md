@@ -67,7 +67,9 @@ sanitizers, and a private 181,260-execution address comparison. A private Mesa
 DSO also passes 18 compute replays, 21 GLES cases, quad batching and GTK64
 readback/strict scanout. Its requested trace was not captured because the
 selected plain QEMU has no recorder; that failed capture record is preserved
-separately from functional qualification. Full640 validation remains pending.
+separately from functional qualification. The subsequent explicit-trace
+[full640 run](performance/coordinate-pointer-full640-2026-10-16.json) passes
+both onscreen GTK states, strict scanout and visual review with this Mesa build.
 See the [qualification](performance/runtime-pointer-reuse-2026-10-16.json).
 
 ## Tagged staging and fast native checks (2026-10-16)
@@ -153,7 +155,7 @@ texture sampling ahead of OM port changes for the next desktop investigation.
 It is not a full compositor profile or host timing benchmark. See the
 [ordering experiment and control](performance/primitive-output-order-2026-10-16.json).
 
-A fixed-base-mip coordinate lookahead candidate now passes 49 RTL tests,
+A fixed-base-mip coordinate lookahead now passes 49 RTL tests,
 including 12 complete scenes and 576 frozen-sampler comparison instructions
 across 1–32 lanes. It prepares later lanes while the current lane fetches and
 filters, preserving the first-request latency and existing sampling arithmetic.
@@ -163,18 +165,29 @@ Both improve, but whole-scene scaling changes from 3.147× to 2.992×. The conse
 which gives 2.926× against four CUs at the selected 112 batch limit. Native
 training also passes 24 exact pixel/depth/canary fixtures, 18 compute replays,
 21 GLES cases and GTK64 readback/scanout. Primary spatial native ticks fall
-from 13,636 to 11,585 (15.0%); solid ticks remain unchanged. Optimized host
-timing and full640 desktop qualification are pending. This remains a private
-candidate with no host-time claim or production promotion. See the
+from 13,636 to 11,585 (15.0%); solid ticks remain unchanged. The exact sources
+now pass the main-source compile and 23 sampler/helper tests, plus an actual
+full640 Debian/Weston/GTK gate with idle and active frames both visible onscreen,
+strict scanout and manual visual review. The change is selected for its
+architectural cycle reduction; no host-time gain is established. See the
 [RTL evidence](performance/texture-coordinate-pipeline-2026-10-16.json) and
-[native training qualification](performance/texture-coordinate-native-training-2026-10-16.json).
+[full-resolution qualification](performance/coordinate-pointer-full640-2026-10-16.json).
+
+That traced run uses the committed runtime pointer-reuse Mesa build. Wallpaper
+and panel appear at **263 seconds**, idle GTK at **906 seconds**, and active GTK
+at **1,125 seconds**; the full gate ends at **1,127 seconds**. It records
+17,897,346 GPU ticks, four concurrently running shared workers, and a complete
+558 MiB trace. The earlier untraced output-omission run observed active GTK at
+895 seconds but did not separately observe idle onscreen. These diagnostic
+boots have different capture/workload timing and host activity, so they do not
+establish a controlled startup-time ratio. The installed executable is unchanged.
 
 The optimized coordinate model passes native pixels, 18 compute replays and
 21 GLES/GTK64 checks, but wall-time improvement is unproven. Two balanced
 timing windows have medians near parity and fail their background-activity
 bound, so neither supports a speedup claim. Primary ticks fall 15.0%, while
 changed-register commits fall only 0.47% and hold evaluations 1.06%; much of
-the simulator work remains. The private candidate is held for further work;
+the simulator work remains. These results guide further host-cost optimization;
 see the [host investigation](performance/texture-coordinate-host-investigation-2026-10-16.json).
 A read-only probe of the real GLES/GTK64 workload observes **3,972,016** changes
 in unselected integer result groups, versus **35,124** unused texture changes.
