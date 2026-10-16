@@ -138,9 +138,9 @@ that every desktop workload has the same footprint, nor predict a host speedup.
 The low-value pruning prototype stays private and uncompiled. See [exact counters,
 address bounds and scope](performance/texture-instruction-footprint-2026-10-17.json).
 
-## Sparse hold-wakeup host experiment (2026-10-17)
+## Qualified sparse hold wakeups (2026-10-17)
 
-A private generator change groups dense hold IDs into nonzero word masks.
+The generator groups dense hold IDs into nonzero word masks.
 It preserves the exact need/summary bits and summary count while avoiding
 repeated shifts and bit writes within the same word. No GPU RTL or shader
 changes are involved. The existing full-word-pack option retains priority.
@@ -168,10 +168,23 @@ show helper loop iterations falling from 630.3 million to 334.4 million (46.95%)
 That measures operations, rather than CPU share or a 47% speedup. The measured
 host improvement is the smaller value in the table.
 
-This passes the gate for the expensive complete desktop trace and a fresh
-640x480 guest. Those checks, active-image review and main-package/source gates
-remain pending before source promotion. The installed QEMU is unchanged. See
-[all samples, exact-work checks and remaining gates](performance/sparse-hold-wake-host-experiment-2026-10-17.json).
+FlashSim `c218278` commits the source after a single main-package
+run passes all 109 tests, including sanitized helper and complete-circuit
+comparisons. The full desktop trace passes all 154,410 calls and 15,447,854
+ticks in 550.35 s, matching every result, DMA transfer, clock and counter.
+This is one validation replay, rather than a balanced full-trace benchmark.
+
+A fresh actual 640x480 Debian/GTK guest passes idle/active RGBA and strict
+scanout checks; the active image was reviewed. Wallpaper appears at 171.0 s and active GTK at 683.8 s in this
+diagnostic run.
+The live run uses plain optimized QEMU, while the older
+baseline guest used a recorder; their times do not establish a desktop speed
+ratio. The installed QEMU remains unchanged.
+
+![Qualified Debian/GTK sparse-wakeup model](images/opengpu-gtk-sparse-wake-20261017.png)
+
+See [balanced samples and exact-work checks](performance/sparse-hold-wake-host-experiment-2026-10-17.json)
+and [committed source, full desktop qualification and selected artifact](performance/sparse-hold-wake-main-qualification-2026-10-17.json).
 
 ## Qualified prepared sampler handoff (2026-10-17)
 

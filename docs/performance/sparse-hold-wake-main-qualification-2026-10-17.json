@@ -1,0 +1,288 @@
+{
+  "date": "2026-10-17",
+  "recorded_at": 1792185414.273924,
+  "status": "PASS: sparseholdwakeup sourcecommitted after fullnative/guest/traces/balancedhost/manualactiveimage/mainpackagegates.",
+  "flashsim_commit": "c218278357abd2ffb9fcd27e97878b327eb6ed33",
+  "emitter_sha256": "193efea2c4addd744c20f78e7b2e229b7eece161ccf73176f66aab34a918261c",
+  "gpu_RTL_commit": "480d7072c51a8f29897d6571f3be6da66b0c1d84",
+  "hardware": {
+    "CUs": 4,
+    "lanes": 16,
+    "warps_per_CU": 8,
+    "AXI_bytes": 64,
+    "desktop": "640x480"
+  },
+  "change": "Replace sufficiently dense hold-ID wake lists with sparse(nonzero word index, bitmask) pairs. Preserve need bits, summary bits and summary count; full-word-pack opt-in retains priority. No RTL, scheduling granularity, shader or DUT state layout change.",
+  "package_tests": {
+    "count": 109,
+    "single_invocation": true,
+    "exit_status": 0,
+    "seconds": 105.74317591707222,
+    "log_sha256": "a4b601d975d9d49ce462e1c0c1ceb5848623ad8ed941da17508d08d2b4429c7f"
+  },
+  "qualification": {
+    "optimization_levels": [
+      "O1",
+      "O2"
+    ],
+    "format_cases_each": 40,
+    "staging_controls_each": 12,
+    "forced_wakeup_controls_each": 6,
+    "all58cases_each_full_RAM_and_counters_match_baseline": true,
+    "VM_replays_each": 18,
+    "GLES_cases_each": 21,
+    "actual_GTK64_strict_scanout_each": true,
+    "strict_O1": {
+      "calls": 45008,
+      "ticks": 3185555,
+      "commits": 64015331,
+      "holds": 403336334,
+      "dma_reads": 39627,
+      "dma_writes": 473603,
+      "dma_bytes": 6095512,
+      "seconds": 47.29323875,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "strict_O2": {
+      "calls": 45008,
+      "ticks": 3185555,
+      "commits": 64015331,
+      "holds": 403336334,
+      "dma_reads": 39627,
+      "dma_writes": 473603,
+      "dma_bytes": 6095512,
+      "seconds": 24.71683525,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    }
+  },
+  "balanced_host_summary": {
+    "mesa64": {
+      "baseline": {
+        "wall_seconds": {
+          "median": 25.624626207863912,
+          "min": 25.60858220793307,
+          "max": 25.665843958966434
+        },
+        "cpu_seconds": {
+          "median": 25.621351,
+          "min": 25.604825999999992,
+          "max": 25.659833000000003
+        },
+        "ROI_seconds": {
+          "median": 25.569421167,
+          "min": 25.553319375,
+          "max": 25.612461042
+        }
+      },
+      "candidate": {
+        "wall_seconds": {
+          "median": 24.834988249931484,
+          "min": 24.796120875049382,
+          "max": 24.844187249895185
+        },
+        "cpu_seconds": {
+          "median": 24.831858999999998,
+          "min": 24.792475000000017,
+          "max": 24.840032
+        },
+        "ROI_seconds": {
+          "median": 24.778810625,
+          "min": 24.741546709,
+          "max": 24.787604333
+        }
+      },
+      "candidate_over_baseline": {
+        "wall_seconds": 0.9691844106709312,
+        "cpu_seconds": 0.9691861682079137,
+        "ROI_seconds": 0.9690798420176845
+      }
+    },
+    "full640-prefix": {
+      "baseline": {
+        "wall_seconds": {
+          "median": 29.599931500153616,
+          "min": 29.511514625046402,
+          "max": 29.686469458043575
+        },
+        "cpu_seconds": {
+          "median": 29.593497999999972,
+          "min": 29.50643400000001,
+          "max": 29.682722999999985
+        },
+        "ROI_seconds": {
+          "median": 29.542268792,
+          "min": 29.454908875,
+          "max": 29.63155875
+        }
+      },
+      "candidate": {
+        "wall_seconds": {
+          "median": 28.99601541715674,
+          "min": 28.915123207960278,
+          "max": 29.04053758410737
+        },
+        "cpu_seconds": {
+          "median": 28.992012000000017,
+          "min": 28.911130999999994,
+          "max": 29.036277000000023
+        },
+        "ROI_seconds": {
+          "median": 28.941269375,
+          "min": 28.859897125,
+          "max": 28.983950958
+        }
+      },
+      "candidate_over_baseline": {
+        "wall_seconds": 0.9795973824130728,
+        "cpu_seconds": 0.9796750624072911,
+        "ROI_seconds": 0.9796562876997873
+      }
+    },
+    "large256": {
+      "baseline": {
+        "wall_seconds": {
+          "median": 11.890989749925211,
+          "min": 11.754104957915843,
+          "max": 12.54861674993299
+        },
+        "cpu_seconds": {
+          "median": 11.88419700000002,
+          "min": 11.750540999999991,
+          "max": 11.895708999999963
+        },
+        "ROI_seconds": {
+          "median": 11.784920625,
+          "min": 11.67105275,
+          "max": 11.811093542
+        }
+      },
+      "candidate": {
+        "wall_seconds": {
+          "median": 11.589287541108206,
+          "min": 11.571853958070278,
+          "max": 12.236920374911278
+        },
+        "cpu_seconds": {
+          "median": 11.58396500000004,
+          "min": 11.558851000000013,
+          "max": 11.58495599999999
+        },
+        "ROI_seconds": {
+          "median": 11.479230208,
+          "min": 11.475666333,
+          "max": 11.51283625
+        }
+      },
+      "candidate_over_baseline": {
+        "wall_seconds": 0.9746276621911223,
+        "cpu_seconds": 0.9747368711575566,
+        "ROI_seconds": 0.9740608845212312
+      }
+    }
+  },
+  "balanced_evidence": {
+    "report": "docs/performance/sparse-hold-wake-host-experiment-2026-10-17.json",
+    "sha256": "4acc4f12bb037530d7fe296986385c7c6dfc9ea29e490931430acc5987085cfd"
+  },
+  "profile_scope": "Both artifacts use72 own qualified profiles with the same protocol and exactsame fixedMesa64 trace. Completeartifactcomparison includes independently collectednative/guestPGOtraining.",
+  "complete_baseline_desktop_trace": {
+    "passed": true,
+    "wall_seconds": 550.4053310418967,
+    "cpu_seconds": 550.329027,
+    "replay": {
+      "calls": 154410,
+      "ticks": 15447854,
+      "commits": 1979914972,
+      "holds": 6830582608,
+      "dma_reads": 567152,
+      "dma_writes": 3729183,
+      "dma_bytes": 64927952,
+      "seconds": 550.351430417,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "trace_sha256": "443b5ce0a20fdceca4bcf997af1b10fc6c4cdc57d51b07311af458a17c904040",
+    "scope": "One exactsamefullbaselineworkload, allresults/DMA/clocks/counters match. Diagnostic complete run, notbalancedfulltracespeedratio."
+  },
+  "actual_full640_guest": {
+    "started": 1792184519.11588,
+    "pid": 12333,
+    "stage": "terminal",
+    "replays": [],
+    "qemu_sha256": "1db058731ccf550c727862d328e0ff7ac115b0e7b9534a04f9c7ce99c5b00380",
+    "archive_sha256": "93e5391fa302ca3e6254fc0e1d5958e79dc7190b6f1d701eae3cf3ecaa172901",
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/shw-full640",
+    "profile": false,
+    "scope": "Private sparse hold-wakeup scheduler with unchanged RTL on currentmainselected fourCU RTL and committed sampler-format Mesa;cap28; explicitfirst9scratchcontract,immutablevalidatedread/writeusage,DMAaliasguard andunchangedMesaoptin. StandaloneDRMdefault/optin/all4096pixels+outputcanaries,18VMreplays,21GLES,quadbatch/offscreen/private-depth/GTK64strictscanout; desktopflagselectsfull640only. Nohostspeedclaim.",
+    "exit_status": 0,
+    "guest_seconds": 690.3270026249811,
+    "markers": {
+      "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+      "output_usage=1": true,
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "fragment staging transient=1": true
+    },
+    "native_cases": 0,
+    "quad_batch_pass": true,
+    "payload_unchanged": true,
+    "trace_requested": false,
+    "trace_present": true,
+    "passed": true,
+    "finished": 1792185209.6208599
+  },
+  "actual_milestones_seconds": {
+    "background": 170.97251683403738,
+    "idle": 545.0520861248951,
+    "active": 683.7558611668646
+  },
+  "manual_review": {
+    "recorded_at": 1792185279.2698848,
+    "reviewed": true,
+    "active": {
+      "required": true,
+      "reviewed": true,
+      "image": "/Users/duckdonald/workspace/gpu/.artifacts/shw-full640/qualified-active.png",
+      "image_sha256": "c664d42d0d52b7d008b7ab6ef27f5680e66dee42f7e701df75e1e2e05d67c829",
+      "source": "/Users/duckdonald/workspace/gpu/.artifacts/shw-full640/gtk-smoke-verified.ppm",
+      "source_sha256": "bdd1a6d965f091f061defc461b82a54780f853381d6a82685a7ec71776e940de",
+      "passed": true
+    },
+    "idle": {
+      "readback_passed": true,
+      "onscreen_frame_captured": true,
+      "reviewed": true,
+      "image": "/Users/duckdonald/workspace/gpu/.artifacts/shw-full640/first-idle.png",
+      "image_sha256": "9bafb31b5c4aa79360467b4a9e96bec5d5a9dfe819faab7a7452b641e6d6ab2d",
+      "recorded_original_PPM_sha256": "8842f687ebfe45737998e934b53cc6aa934027bb43c87c09b8252d5efa1b6250"
+    },
+    "observations": "Both640x480frames reviewed: intactgreyfloraldesktop andbottompanel, legibleGTKtitle/label/button, cleanblackframe; uniformgreenidlepanelanduniformorangeactivepanel. No visiblecorruption.",
+    "timing_scope": "Actualfullguest isfunctionaldiagnostic. PlainoptimizedQEMU, no recorder; read-onlyphaseprobereplay overlapslaterguest andmayaffectcache/CPUtiming. Notcontrolledwhole-desktopbenchmark."
+  },
+  "selection": {
+    "root": ".artifacts/shared-cu/sparse-hold-wake-native",
+    "qemu": ".artifacts/shared-cu/sparse-hold-wake-native/qemu-optimized",
+    "qemu_sha256": "1db058731ccf550c727862d328e0ff7ac115b0e7b9534a04f9c7ce99c5b00380",
+    "archive_sha256": "93e5391fa302ca3e6254fc0e1d5958e79dc7190b6f1d701eae3cf3ecaa172901",
+    "header_sha256": "b00a97624f596a8107b176d22812155c3c04ca01229d096c9b37d0336391cf17",
+    "installed": false
+  },
+  "image": {
+    "path": "docs/images/opengpu-gtk-sparse-wake-20261017.png",
+    "sha256": "c664d42d0d52b7d008b7ab6ef27f5680e66dee42f7e701df75e1e2e05d67c829"
+  },
+  "installed_qemu_sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0",
+  "limits": [
+    "Balancedfixed-work mediansare3.09%,2.03%,2.59%faster; complete550.35sreplayisonesinglevalidationrun, notbalancedfulltracebenchmark.",
+    "No GPUtaskcyclechange or hardwarefrequencyclaim.",
+    "Live640guestusesplainoptimizedQEMU withoutrecorder; olderbaselinefullguestusedrecorder. No whole-desktopspeedratio.",
+    "Concurrentread-onlyphaseprobe mayoverlaplaterliveguest; actualguesttimingisdiagnostic, notcontrolledbenchmark.",
+    "IdleRGBAreadbackproofandanyseparateonscreenreviewareexplicitlydistinguished.",
+    "Furtherprofile/vertexRTLwork remains; overalloptimizationgoal active."
+  ]
+}

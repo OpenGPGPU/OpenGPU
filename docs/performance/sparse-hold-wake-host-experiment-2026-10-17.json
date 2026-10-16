@@ -1,7 +1,7 @@
 {
   "date": "2026-10-17",
   "recorded_at": 1792184052.519489,
-  "status": "PRIVATE: O1/O2/native/actualguest/strictMesa64 and balanced3workloadhosttimingPASS; complete15.45Mdesktoptrace andfreshactual640qualification underway, sourcepromotionpending.",
+  "status": "PASS: measuredexperiment subsequentlyqualified on completebaseline desktoptrace and actual640guest, mainpackage109casesPASS andFlashSimsourcecommitted.",
   "gpu_commit": "480d7072c51a8f29897d6571f3be6da66b0c1d84",
   "flashsim_baseline_commit": "94ed58c165c880c347d1deacb16b5ef894a1a044",
   "emitter_sha256": "193efea2c4addd744c20f78e7b2e229b7eece161ccf73176f66aab34a918261c",
@@ -670,15 +670,12 @@
     ".artifacts/shared-cu/sparse-hold-wake-native/controls-optimized-exact-baseline.json": "f43f5269aed447914fa6ad501a72eb446a72ff09f7642dea3815cde70dc6d62c",
     ".artifacts/shared-cu/sparse-hold-wake-native/wake-profile/calibration.json": "46c45fd92d302c29e7808c26e1a6dbea6ea0825633d039e7873e252363e09eae"
   },
-  "remaining": [
-    "Complete exactsame baseline15.45M-tick desktop trace",
-    "Fresh actual640x480Debian/GTK functional proof and externalactiveimage review",
-    "Main sourceequivalence and mainpackage tests beforeFlashSimsourcecommit"
-  ],
+  "remaining": [],
   "limitations": [
     "Helperiterations fell46.95%; that isnotCPUshare or a projected47%runtimegain.",
     "Observedmediansimprovementsare3.09%,2.03%,2.59%; notawhole-desktopspeedratio.",
     "Prototypeunit109distinctcases passedacrossoriginal108pass+onefixture-onlytargetedretest; notonesingleall-greeninvocation.",
     "InstalledQEMU remainsunchanged; privatecandidate isnotselecteduntilremaininggatespass."
-  ]
+  ],
+  "subsequent_main_qualification": "sparse-hold-wake-main-qualification-2026-10-17.json"
 }
