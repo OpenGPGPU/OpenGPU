@@ -7,6 +7,15 @@
 #include "opengpu_shader_resources.h"
 #include "opengpu_shader_validator.h"
 
+/* Alpha forcing also reuses x7 before the packed-byte mask constants. */
+static const uint32_t opengpu_fragment_modulate_white_alpha_one[] = {
+    0x241293u, 0x5082b3u, 0xc1027057u, 0x8028313u,
+    0x2036087u, 0xa028313u, 0x2036107u, 0x620812bu,
+    0xff00393u, 0x2a23c157u, 0x7f7f83b7u, 0xf7f38393u,
+    0x80808537u, 0x8050513u, 0x2623c1d7u, 0x233c1d7u,
+    0x2a3101d7u, 0x263541d7u, 0xa233b1d7u, 0xa218157u,
+    0xc028313u, 0x2036127u, 0x30500073u,
+};
 #define COUNT(a) (sizeof(a) / sizeof((a)[0]))
 struct program { const char *name; const uint32_t *code; size_t words; bool vertex; };
 #define PROGRAM(n, v) { #n, n, COUNT(n), v }
@@ -16,6 +25,8 @@ static const struct program programs[] = {
     PROGRAM(opengpu_fragment_sample, false),
     PROGRAM(opengpu_fragment_swizzle, false),
     PROGRAM(opengpu_fragment_modulate, false),
+    PROGRAM(opengpu_fragment_modulate_white, false),
+    PROGRAM(opengpu_fragment_modulate_white_alpha_one, false),
     PROGRAM(opengpu_fragment_shade, false),
     PROGRAM(opengpu_fragment_fade, false),
     PROGRAM(opengpu_fragment_wash, false),
@@ -238,7 +249,7 @@ static void check_pointer_join(uint32_t resources)
 
 int main(void)
 {
-    const uint32_t resources[] = {0, 0x01020204u, 0x02040408u, 0x04080810u, 0x01020810u, 0x02040810u, 0x01020220u};
+    const uint32_t resources[] = {0, 0x01020204u, 0x02040408u, 0x04080810u, 0x01020810u, 0x02040810u, 0x01020220u, 0x01020801u, 0x01020802u, 0x01020104u};
     uint32_t out[512], guarded[514], branch_code[] = {
         0x00241293u, 0x005082b3u, 0xc1027057u, 0x1200a483u,
         0x00700663u, /* beq x0,x7,+12: skip an expanding address and store */

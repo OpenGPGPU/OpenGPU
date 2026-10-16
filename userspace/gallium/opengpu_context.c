@@ -2372,6 +2372,27 @@ static void draw_vbo(struct pipe_context *pipe,
                     return;
                 }
             }
+            /* Specialize the known packed-byte modulation only after all
+             * staged colours are known. Rebind the ordinary program on the
+             * next non-white batch, including draws using the same FS state.
+             * Keep alpha-forcing in bind_sample_program for either choice. */
+            if (ctx->fs->samples && ctx->fs->modulate && !ctx->fs->scale_const &&
+                !ctx->fs->alu && !ctx->fs->sample_swizzle) {
+                bool all_white = vertex_count != 0;
+                for (v = 0; v < vertex_count; v++)
+                    all_white &= verts[v].color == UINT32_MAX;
+                if (bind_sample_program(ctx,
+                        all_white ? opengpu_fragment_modulate_white :
+                                    opengpu_fragment_modulate,
+                        all_white ? OPENGPU_FRAGMENT_MODULATE_WHITE_BYTES :
+                                    OPENGPU_FRAGMENT_MODULATE_BYTES)) {
+                    reject("fragment modulation shader bind failed");
+                    return;
+                }
+                if (ctx->trace_draws)
+                    fprintf(stderr, "opengpu: white modulation folded=%d vertices=%u\n",
+                            all_white, vertex_count);
+            }
             {
                 /* Q16 vertex positions are already in the target's clip
                  * space. Scaling them by the physical mode moves every

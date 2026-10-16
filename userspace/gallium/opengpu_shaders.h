@@ -96,6 +96,21 @@ static const uint32_t opengpu_vertex_mvp[] = {
 #define OPENGPU_FRAGMENT_COLOR_BYTES (sizeof(opengpu_fragment_color))
 #define OPENGPU_FRAGMENT_UNIFORM_COLOR_BYTES (sizeof(opengpu_fragment_uniform_color))
 #define OPENGPU_FRAGMENT_SWIZZLE_BYTES (sizeof(opengpu_fragment_swizzle))
+/* White modulation retains the existing byte arithmetic exactly:
+ * floor(c * 255 / 256) is c-1 for nonzero bytes and zero for zero bytes.
+ * Form one subtract bit per nonzero packed RGBA byte without cross-byte
+ * carries. Apply only when every staged vertex colour is 0xffffffff.
+ * The ordinary modulate program remains for all other colours. */
+static const uint32_t opengpu_fragment_modulate_white[] = {
+    0x00241293u, 0x005082b3u, 0xc1027057u, 0x08028313u,
+    0x02036087u, 0x0a028313u, 0x02036107u, 0x0620812bu,
+    0x7f7f83b7u, 0xf7f38393u, 0x80808537u, 0x08050513u,
+    0x2623c1d7u, 0x0233c1d7u, 0x2a3101d7u, 0x263541d7u,
+    0xa233b1d7u, 0x0a218157u, 0x0c028313u, 0x02036127u,
+    0x30500073u,
+};
+#define OPENGPU_FRAGMENT_MODULATE_WHITE_BYTES (sizeof(opengpu_fragment_modulate_white))
+
 static const uint32_t opengpu_fragment_modulate[] = {
     0x00241293u, 0x005082b3u, 0xc1027057u, 0x08028313u,
     0x02036087u, 0x0a028313u, 0x02036107u, 0x0620812bu,

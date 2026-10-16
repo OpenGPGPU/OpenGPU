@@ -32,6 +32,12 @@ def main():
             "-I" + str(ROOT / "userspace/gallium"),
             str(ROOT / "userspace/tests/shader_color.c"), "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
+        binary = Path(directory) / "shader_modulate_white"
+        subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+            "-I" + str(ROOT / "userspace/gallium"),
+            str(ROOT / "userspace/tests/shader_modulate_white.c"), "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+
         binary = Path(directory) / "sampler_format"
         subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
             "-I" + str(ROOT / "userspace/gallium"), "-I" + str(ROOT / "driver"),

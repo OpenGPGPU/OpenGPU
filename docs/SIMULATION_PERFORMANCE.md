@@ -66,6 +66,48 @@ With the longer actual Mesa modulation program it saves 3.33% on four CUs and
 2.71% on one CU. It remains private while a larger shader simplification is
 evaluated. See [the complete CU counters and queue screening](performance/desktop-CU-issue-attribution-2026-10-17.json).
 
+## Qualified packed-white modulation (2026-10-17)
+
+The desktop frequently samples a texture and modulates it by packed white
+vertex colours. The current shader computes `floor(channel * 255 / 256)`,
+so simply omitting white modulation would change pixels. The replacement
+uses packed byte arithmetic to decrement each nonzero channel once, preserving
+that rounding exactly. It reduces the canonical program from 45 to 21 words
+(51 to 23 after runtime ABI lowering), with no fixed vector length.
+
+Mesa checks every staged vertex and restores the full
+program for subsequent non-white batches. Alpha forcing remains in the existing
+binding path. Nine paired native fixtures pass independent filtering/colour
+references and memory-canary checks. The arithmetic passes 1,786,432 sanitized
+RVV/reference cases, including a negative control that incorrectly treats
+white as identity. ABI checks cover 1/2/4/8/16/32 lanes.
+
+Three balanced fresh-process samples per shader, using the same qualified
+four-CU model and PGO artifact, give these render-time medians:
+
+| Native workload | General modulation | Packed equivalent | Reduction |
+| --- | ---: | ---: | ---: |
+| Solid64, forced alpha | 0.983 s | 0.670 s | 31.88% |
+| Spatial64, forced alpha | 1.124 s | 0.829 s | 26.18% |
+| Spatial256, forced alpha | 17.780 s | 12.979 s | 27.00% |
+
+The qualified Mesa build passes 21 GLES cases, GTK64 scanout and all 46,091 calls of
+its fresh trace. The modulation test adds white/green/white/mixed/white draws
+using one GLES program, with no intervening clear; all five exact pixel checks
+pass. The new trace includes those extra draws and has a different polling
+schedule, so its runtime is not a fixed-workload comparison with earlier traces.
+The full 640×480 guest passes idle/active readback and active onscreen scanout.
+Its complete 173,947-call, 16,529,708-tick trace also passes strict replay. Both
+full-size frames were visually reviewed; a separate capture with the orange
+filter disabled supplies the green idle image. Wallpaper appears at 126.7 s
+and active GTK at 468.7 s in the primary run. These are functional milestones;
+the 424.37 s replay partly overlaps the supplemental capture and is diagnostic.
+The native paired medians above provide the controlled host comparison.
+
+Main sources now match the qualified Mesa inputs and pass the complete C test
+suite. The installed QEMU executable remains unchanged. See
+[the native samples, source hashes and full qualification](performance/packed-white-modulation-main-qualification-2026-10-17.json).
+
 ## Sampler-format channel permutation (2026-10-16)
 
 Gallium now folds a recognized pure texture R/B swap into the sampler's native

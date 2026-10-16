@@ -1,0 +1,974 @@
+{
+  "recorded_at": 1792190508.25668,
+  "status": "QUALIFIED main-source implementation; all native/host/Mesa/full640/owntrace/manualvisual/retained-regression gates PASS. InstalledQEMU unchanged.",
+  "scope": "Byte-equivalent Mesa shader optimization on unchanged qualified4CU RTL/FlashSim/PGO. Main source files match exact private Mesa/header/test inputs; default hardware and installedQEMU unchanged.",
+  "mathematics": {
+    "original": "Perchannel floor(sample*255/256); white is not identity in current shader.",
+    "replacement": "packed - (((((packed & 0x7f7f7f7f) + 0x7f7f7f7f) | packed) & 0x80808080) >> 7)",
+    "explanation": "Low7bitaddition cannot carry across bytes; highbit indicates nonzero byte. Subtract one only from nonzero channels, preserving zero and oldrounding exactly.",
+    "canonical_words_before": 45,
+    "canonical_words_after": 21,
+    "runtime_words_before": 51,
+    "runtime_words_after": 23,
+    "alpha_forced_runtime_words_before": 53,
+    "alpha_forced_runtime_words_after": 25
+  },
+  "selection": [
+    "Onlysamples+modulate; excludes scale_const/ALU/sample_swizzle composite paths.",
+    "Inspecteveryactualpackedvertexcolor perboundedbatch, allmustUINT32_MAX.",
+    "Rebindordinarymodulateonallothereligiblebatches, including sameFSobject and laterdraws.",
+    "RetainexistingalphaOne patching, formatpolicy, portableVLEN lowering, drawcap/memorycontracts.",
+    "Exactoldbyte arithmetic floor(channel*255/256), notidentity andnotanumericalfix."
+  ],
+  "arithmetic": {
+    "recorded_at": 1792189897.6917472,
+    "passed": true,
+    "arithmetic_cases": 1786432,
+    "arithmetic_positive_output": "white modulation: 1786432 exact actual-RVV and independent byte-reference cases PASS",
+    "arithmetic_binary_sha256": "0fe26d68e8e12339e4c3cefc6745e61f71620964b6dbdfdbf7100585f686bcfd",
+    "arithmetic_source_sha256": "fb46e1fd2f32353ec54384e6e3ba1bf78fefa52ced68b5f81324d9f357f0aa77",
+    "sanitizers": [
+      "address",
+      "undefined"
+    ],
+    "negative_identity_shader_rejected": true,
+    "negative_log_sha256": "e31c0e2a9f19612e946bb2a74dad068bc4d2baf00b05acefdf9e34e47ad162ba",
+    "original_interpreter_attempt": "arithmetic.c/binary preserved: runtime address-lowering emits scalar op0x33; first reference interpreter aborted because it only covered canonical post-sample opcodes. Corrected in arithmetic-v2.c before positive/negative proof.",
+    "source_header_sha256": "40c3e6d79d24c55c62a8b7e15a4c1845efda8547083a4c8cdca4a6958ba809cc",
+    "scope": "Actual RVV instruction interpreter for both old and replacement shaders after runtime ABI lowering, independent per-byte multiply255/256 golden, 393216 exhaustive byte-pair cases plus500000randompackedwords, each forcealpha0/1. Oracle rejects incorrectly bypassing white multiplication. No Mesa selection qualification yet."
+  },
+  "runtime_ABI": {
+    "passed": true,
+    "lanes": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "normal_and_alpha_forced": true,
+    "scope": "Fullshadercatalog/address/branch/bounds/usagevalidator underASAN/UBSAN; expanded1/2lane8warp and4lane1warp profiles, allhardwarewarps checked.",
+    "log_sha256": "298e3152cebc114ddd0c4a261946aaf0da1d188ad7a59d20c61887d784f530a6"
+  },
+  "native_cases": [
+    {
+      "scene": "solid",
+      "pattern": "uniform",
+      "force_alpha": 0,
+      "baseline_ticks": 11061,
+      "candidate_ticks": 8801,
+      "baseline_runtime_shader_words": 51,
+      "candidate_runtime_shader_words": 23,
+      "pixel_depth_reference_passed": true,
+      "all_other_RAM_and_omitted_canaries_passed": true,
+      "baseline_output_sha256": "4634183ae5c1dcaf3609874edfb9eebf61dd7e92877088711549474e8ebd0668",
+      "candidate_output_sha256": "d7055c555c6ebd1f6bc1c171f2e88f13589d1291b6650d640e56b3c1b4349670"
+    },
+    {
+      "scene": "solid",
+      "pattern": "uniform",
+      "force_alpha": 1,
+      "baseline_ticks": 11132,
+      "candidate_ticks": 8841,
+      "baseline_runtime_shader_words": 53,
+      "candidate_runtime_shader_words": 25,
+      "pixel_depth_reference_passed": true,
+      "all_other_RAM_and_omitted_canaries_passed": true,
+      "baseline_output_sha256": "49c306f9ba374538d66e8c2024866b512837a265b37d6be4a99c02ee1ae178ac",
+      "candidate_output_sha256": "739c4572c80198ad38a6993a6b896982b22403aeb5e975c856cfedffffefea74"
+    },
+    {
+      "scene": "solid",
+      "pattern": "gradient",
+      "force_alpha": 0,
+      "baseline_ticks": 11061,
+      "candidate_ticks": 8801,
+      "baseline_runtime_shader_words": 51,
+      "candidate_runtime_shader_words": 23,
+      "pixel_depth_reference_passed": true,
+      "all_other_RAM_and_omitted_canaries_passed": true,
+      "baseline_output_sha256": "5e67b879bf8ab6ba7e26df9ddad92e60cabe27e99470381af660ac2545a135ad",
+      "candidate_output_sha256": "0a96a26487987e9c6e76759d844d041a1206ad1fe783a7a0c2909e24f0447802"
+    },
+    {
+      "scene": "solid",
+      "pattern": "gradient",
+      "force_alpha": 1,
+      "baseline_ticks": 11132,
+      "candidate_ticks": 8841,
+      "baseline_runtime_shader_words": 53,
+      "candidate_runtime_shader_words": 25,
+      "pixel_depth_reference_passed": true,
+      "all_other_RAM_and_omitted_canaries_passed": true,
+      "baseline_output_sha256": "223fae2ca4e066a70ade9ca44aee2ea8344650d96b03adef79f49eabd8a3cdd1",
+      "candidate_output_sha256": "ed561c92a217db0b2695179285ccf02a4f2847952db6f73674bf9d92ecddc6e5"
+    },
+    {
+      "scene": "spatial",
+      "pattern": "uniform",
+      "force_alpha": 0,
+      "baseline_ticks": 14359,
+      "candidate_ticks": 11562,
+      "baseline_runtime_shader_words": 51,
+      "candidate_runtime_shader_words": 23,
+      "pixel_depth_reference_passed": true,
+      "all_other_RAM_and_omitted_canaries_passed": true,
+      "baseline_output_sha256": "c89b3cd1a71a23cb31117a5643975779de0d4770f82077f42c06b98e02bdc3fa",
+      "candidate_output_sha256": "4cccfc2f526cc611c3e98f8e42c9257caf8ab18c61bba61deb8e7bcc400e9c30"
+    },
+    {
+      "scene": "spatial",
+      "pattern": "uniform",
+      "force_alpha": 1,
+      "baseline_ticks": 14409,
+      "candidate_ticks": 11803,
+      "baseline_runtime_shader_words": 53,
+      "candidate_runtime_shader_words": 25,
+      "pixel_depth_reference_passed": true,
+      "all_other_RAM_and_omitted_canaries_passed": true,
+      "baseline_output_sha256": "21f92979991812556c15a18aa76643152c92e0e194008afd876dbbb471f27884",
+      "candidate_output_sha256": "16c8475726b7624734382d2cd3b353059a95d1286c6205114e029f6be3c42978"
+    },
+    {
+      "scene": "spatial",
+      "pattern": "gradient",
+      "force_alpha": 0,
+      "baseline_ticks": 14359,
+      "candidate_ticks": 11562,
+      "baseline_runtime_shader_words": 51,
+      "candidate_runtime_shader_words": 23,
+      "pixel_depth_reference_passed": true,
+      "all_other_RAM_and_omitted_canaries_passed": true,
+      "baseline_output_sha256": "6777068a3d1839507042947c54483b28cc1986b06183b8ea266c47f37a49e07e",
+      "candidate_output_sha256": "be0ff370b62ac4929d1e00f0b528e6a3b482993a0a049d4e686ef188780a3f44"
+    },
+    {
+      "scene": "spatial",
+      "pattern": "gradient",
+      "force_alpha": 1,
+      "baseline_ticks": 14409,
+      "candidate_ticks": 11803,
+      "baseline_runtime_shader_words": 53,
+      "candidate_runtime_shader_words": 25,
+      "pixel_depth_reference_passed": true,
+      "all_other_RAM_and_omitted_canaries_passed": true,
+      "baseline_output_sha256": "c10cfbfcc7d7884ae4769f04a3ae506b447f55dade19b96292387c47636aab94",
+      "candidate_output_sha256": "49cac5eaec731503ca52001b5d933c763324fc491af99f59833e3ec1b26de663"
+    },
+    {
+      "scene": "large256",
+      "pattern": "gradient",
+      "force_alpha": 1,
+      "baseline_ticks": 176669,
+      "candidate_ticks": 139330,
+      "baseline_runtime_shader_words": 53,
+      "candidate_runtime_shader_words": 25,
+      "pixel_depth_reference_passed": true,
+      "all_other_RAM_and_omitted_canaries_passed": true,
+      "baseline_output_sha256": "14543a720d733a1c2ac16e3c34bd8c32be0379f4075145ca90e9d27585881a1c",
+      "candidate_output_sha256": "9456ada3521ec70e4b1a435f41dc5f301740d2881a41e315dc9f6613d48c5511"
+    }
+  ],
+  "balanced_host": {
+    "samples": [
+      {
+        "name": "solid64",
+        "variant": "old",
+        "index": 0,
+        "wall_seconds": 1.1949172501917928,
+        "cpu_seconds": 1.0797070000000002,
+        "ROI_seconds": 1.0029375,
+        "result": {
+          "passed": true,
+          "ticks": 11132,
+          "explicit_ticks": 0,
+          "seconds": 1.0029375,
+          "commits": 3903169,
+          "holds": 12462253,
+          "holds_wrote": 3916994,
+          "reads": 1079,
+          "writes": 6902,
+          "read_bytes": 69056,
+          "write_bytes": 52096,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "solid64",
+        "variant": "fast",
+        "index": 1,
+        "wall_seconds": 0.7311862909700722,
+        "cpu_seconds": 0.7265309999999998,
+        "ROI_seconds": 0.668382875,
+        "result": {
+          "passed": true,
+          "ticks": 8841,
+          "explicit_ticks": 0,
+          "seconds": 0.668382875,
+          "commits": 1418464,
+          "holds": 8774114,
+          "holds_wrote": 1427499,
+          "reads": 894,
+          "writes": 5806,
+          "read_bytes": 57216,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "solid64",
+        "variant": "fast",
+        "index": 2,
+        "wall_seconds": 0.7366700829006732,
+        "cpu_seconds": 0.7345930000000002,
+        "ROI_seconds": 0.670068625,
+        "result": {
+          "passed": true,
+          "ticks": 8841,
+          "explicit_ticks": 0,
+          "seconds": 0.670068625,
+          "commits": 1418464,
+          "holds": 8774114,
+          "holds_wrote": 1427499,
+          "reads": 894,
+          "writes": 5806,
+          "read_bytes": 57216,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "solid64",
+        "variant": "old",
+        "index": 3,
+        "wall_seconds": 1.0480939999688417,
+        "cpu_seconds": 1.044975,
+        "ROI_seconds": 0.979454834,
+        "result": {
+          "passed": true,
+          "ticks": 11132,
+          "explicit_ticks": 0,
+          "seconds": 0.979454834,
+          "commits": 3903169,
+          "holds": 12462253,
+          "holds_wrote": 3916994,
+          "reads": 1079,
+          "writes": 6902,
+          "read_bytes": 69056,
+          "write_bytes": 52096,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "solid64",
+        "variant": "old",
+        "index": 4,
+        "wall_seconds": 1.051319041987881,
+        "cpu_seconds": 1.0479829999999999,
+        "ROI_seconds": 0.983182125,
+        "result": {
+          "passed": true,
+          "ticks": 11132,
+          "explicit_ticks": 0,
+          "seconds": 0.983182125,
+          "commits": 3903169,
+          "holds": 12462253,
+          "holds_wrote": 3916994,
+          "reads": 1079,
+          "writes": 6902,
+          "read_bytes": 69056,
+          "write_bytes": 52096,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "solid64",
+        "variant": "fast",
+        "index": 5,
+        "wall_seconds": 0.733172208070755,
+        "cpu_seconds": 0.730607,
+        "ROI_seconds": 0.669767875,
+        "result": {
+          "passed": true,
+          "ticks": 8841,
+          "explicit_ticks": 0,
+          "seconds": 0.669767875,
+          "commits": 1418464,
+          "holds": 8774114,
+          "holds_wrote": 1427499,
+          "reads": 894,
+          "writes": 5806,
+          "read_bytes": 57216,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "old",
+        "index": 0,
+        "wall_seconds": 1.1872111249249429,
+        "cpu_seconds": 1.1817649999999995,
+        "ROI_seconds": 1.123633791,
+        "result": {
+          "passed": true,
+          "ticks": 14409,
+          "explicit_ticks": 0,
+          "seconds": 1.123633791,
+          "commits": 4349668,
+          "holds": 13611841,
+          "holds_wrote": 4363658,
+          "reads": 1235,
+          "writes": 6926,
+          "read_bytes": 79040,
+          "write_bytes": 52096,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "fast",
+        "index": 1,
+        "wall_seconds": 0.8973423750139773,
+        "cpu_seconds": 0.8938949999999994,
+        "ROI_seconds": 0.829100667,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 0.829100667,
+          "commits": 1616238,
+          "holds": 10440462,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "fast",
+        "index": 2,
+        "wall_seconds": 0.8922178749926388,
+        "cpu_seconds": 0.8885540000000005,
+        "ROI_seconds": 0.831509375,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 0.831509375,
+          "commits": 1616238,
+          "holds": 10440462,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "old",
+        "index": 3,
+        "wall_seconds": 1.187338000163436,
+        "cpu_seconds": 1.183704000000001,
+        "ROI_seconds": 1.121801334,
+        "result": {
+          "passed": true,
+          "ticks": 14409,
+          "explicit_ticks": 0,
+          "seconds": 1.121801334,
+          "commits": 4349668,
+          "holds": 13611841,
+          "holds_wrote": 4363658,
+          "reads": 1235,
+          "writes": 6926,
+          "read_bytes": 79040,
+          "write_bytes": 52096,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "old",
+        "index": 4,
+        "wall_seconds": 1.1897905000951141,
+        "cpu_seconds": 1.1861710000000005,
+        "ROI_seconds": 1.123773625,
+        "result": {
+          "passed": true,
+          "ticks": 14409,
+          "explicit_ticks": 0,
+          "seconds": 1.123773625,
+          "commits": 4349668,
+          "holds": 13611841,
+          "holds_wrote": 4363658,
+          "reads": 1235,
+          "writes": 6926,
+          "read_bytes": 79040,
+          "write_bytes": 52096,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "fast",
+        "index": 5,
+        "wall_seconds": 0.8993010420817882,
+        "cpu_seconds": 0.8952760000000006,
+        "ROI_seconds": 0.829489875,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 0.829489875,
+          "commits": 1616238,
+          "holds": 10440462,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial256",
+        "variant": "old",
+        "index": 0,
+        "wall_seconds": 17.88985845888965,
+        "cpu_seconds": 17.885830000000002,
+        "ROI_seconds": 17.811834417,
+        "result": {
+          "passed": true,
+          "ticks": 176669,
+          "explicit_ticks": 0,
+          "seconds": 17.811834417,
+          "commits": 66243097,
+          "holds": 211607813,
+          "holds_wrote": 66454724,
+          "reads": 17984,
+          "writes": 104987,
+          "read_bytes": 1150976,
+          "write_bytes": 797824,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial256",
+        "variant": "fast",
+        "index": 1,
+        "wall_seconds": 13.056395249906927,
+        "cpu_seconds": 13.051419999999998,
+        "ROI_seconds": 12.978856958,
+        "result": {
+          "passed": true,
+          "ticks": 139330,
+          "explicit_ticks": 0,
+          "seconds": 12.978856958,
+          "commits": 24374241,
+          "holds": 158444263,
+          "holds_wrote": 24512616,
+          "reads": 15790,
+          "writes": 88300,
+          "read_bytes": 1010560,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial256",
+        "variant": "fast",
+        "index": 2,
+        "wall_seconds": 13.06035279110074,
+        "cpu_seconds": 13.055078999999997,
+        "ROI_seconds": 12.982680334,
+        "result": {
+          "passed": true,
+          "ticks": 139330,
+          "explicit_ticks": 0,
+          "seconds": 12.982680334,
+          "commits": 24374241,
+          "holds": 158444263,
+          "holds_wrote": 24512616,
+          "reads": 15790,
+          "writes": 88300,
+          "read_bytes": 1010560,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial256",
+        "variant": "old",
+        "index": 3,
+        "wall_seconds": 17.842270541004837,
+        "cpu_seconds": 17.838140000000003,
+        "ROI_seconds": 17.758639875,
+        "result": {
+          "passed": true,
+          "ticks": 176669,
+          "explicit_ticks": 0,
+          "seconds": 17.758639875,
+          "commits": 66243097,
+          "holds": 211607813,
+          "holds_wrote": 66454724,
+          "reads": 17984,
+          "writes": 104987,
+          "read_bytes": 1150976,
+          "write_bytes": 797824,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial256",
+        "variant": "old",
+        "index": 4,
+        "wall_seconds": 17.863664125092328,
+        "cpu_seconds": 17.859849,
+        "ROI_seconds": 17.779523667,
+        "result": {
+          "passed": true,
+          "ticks": 176669,
+          "explicit_ticks": 0,
+          "seconds": 17.779523667,
+          "commits": 66243097,
+          "holds": 211607813,
+          "holds_wrote": 66454724,
+          "reads": 17984,
+          "writes": 104987,
+          "read_bytes": 1150976,
+          "write_bytes": 797824,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      },
+      {
+        "name": "spatial256",
+        "variant": "fast",
+        "index": 5,
+        "wall_seconds": 12.970954708987847,
+        "cpu_seconds": 12.966247,
+        "ROI_seconds": 12.886862833,
+        "result": {
+          "passed": true,
+          "ticks": 139330,
+          "explicit_ticks": 0,
+          "seconds": 12.886862833,
+          "commits": 24374241,
+          "holds": 158444263,
+          "holds_wrote": 24512616,
+          "reads": 15790,
+          "writes": 88300,
+          "read_bytes": 1010560,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "all_RAM_and_counters_match_own_qualified_output": true
+      }
+    ],
+    "summary": {
+      "solid64": {
+        "old": {
+          "ROI_seconds": {
+            "median": 0.983182125,
+            "min": 0.979454834,
+            "max": 1.0029375
+          },
+          "wall_seconds": {
+            "median": 1.051319041987881,
+            "min": 1.0480939999688417,
+            "max": 1.1949172501917928
+          },
+          "cpu_seconds": {
+            "median": 1.0479829999999999,
+            "min": 1.044975,
+            "max": 1.0797070000000002
+          }
+        },
+        "fast": {
+          "ROI_seconds": {
+            "median": 0.669767875,
+            "min": 0.668382875,
+            "max": 0.670068625
+          },
+          "wall_seconds": {
+            "median": 0.733172208070755,
+            "min": 0.7311862909700722,
+            "max": 0.7366700829006732
+          },
+          "cpu_seconds": {
+            "median": 0.730607,
+            "min": 0.7265309999999998,
+            "max": 0.7345930000000002
+          }
+        },
+        "fast_over_old": {
+          "ROI_seconds": 0.6812246256002671,
+          "wall_seconds": 0.6973831717957284,
+          "cpu_seconds": 0.6971553927878602
+        }
+      },
+      "spatial64": {
+        "old": {
+          "ROI_seconds": {
+            "median": 1.123633791,
+            "min": 1.121801334,
+            "max": 1.123773625
+          },
+          "wall_seconds": {
+            "median": 1.187338000163436,
+            "min": 1.1872111249249429,
+            "max": 1.1897905000951141
+          },
+          "cpu_seconds": {
+            "median": 1.183704000000001,
+            "min": 1.1817649999999995,
+            "max": 1.1861710000000005
+          }
+        },
+        "fast": {
+          "ROI_seconds": {
+            "median": 0.829489875,
+            "min": 0.829100667,
+            "max": 0.831509375
+          },
+          "wall_seconds": {
+            "median": 0.8973423750139773,
+            "min": 0.8922178749926388,
+            "max": 0.8993010420817882
+          },
+          "cpu_seconds": {
+            "median": 0.8938949999999994,
+            "min": 0.8885540000000005,
+            "max": 0.8952760000000006
+          }
+        },
+        "fast_over_old": {
+          "ROI_seconds": 0.7382208346206633,
+          "wall_seconds": 0.7557598383025381,
+          "cpu_seconds": 0.7551676770543977
+        }
+      },
+      "spatial256": {
+        "old": {
+          "ROI_seconds": {
+            "median": 17.779523667,
+            "min": 17.758639875,
+            "max": 17.811834417
+          },
+          "wall_seconds": {
+            "median": 17.863664125092328,
+            "min": 17.842270541004837,
+            "max": 17.88985845888965
+          },
+          "cpu_seconds": {
+            "median": 17.859849,
+            "min": 17.838140000000003,
+            "max": 17.885830000000002
+          }
+        },
+        "fast": {
+          "ROI_seconds": {
+            "median": 12.978856958,
+            "min": 12.886862833,
+            "max": 12.982680334
+          },
+          "wall_seconds": {
+            "median": 13.056395249906927,
+            "min": 12.970954708987847,
+            "max": 13.06035279110074
+          },
+          "cpu_seconds": {
+            "median": 13.051419999999998,
+            "min": 12.966247,
+            "max": 13.055078999999997
+          }
+        },
+        "fast_over_old": {
+          "ROI_seconds": 0.7299890143901683,
+          "wall_seconds": 0.7308912190958161,
+          "cpu_seconds": 0.7307687763765527
+        }
+      }
+    },
+    "scope": "Three balanced freshprocess samples per shader and workload, unchanged exact qualified4CU model/archive/PGO/runtime. Oldgeneralwhite modulation vs packedexactequivalent. AllRAM andarchitecture/counters match own qualifiedoutputs; shader/taskcycles and traffic legitimately differ. No concurrent own heavyjob; actual desktop speedup not implied by native fixtures."
+  },
+  "private_Mesa": {
+    "baseline_DSO_sha256": "6827389d8d07268312a8ab6d576abb51d221c005b49cdf5d2e76f550ad28d84f",
+    "candidate_DSO_sha256": "ed52ddee5cb14fc079ddbd001d249729be2711845e427aab7fd0f44aa6fdc918",
+    "context_sha256": "e8916a52a234d40c651fdd768d57152ac4370218f8e75d0f0770653044aab0b6",
+    "shader_header_sha256": "40c3e6d79d24c55c62a8b7e15a4c1845efda8547083a4c8cdca4a6958ba809cc",
+    "baseline_byte_identically_reconstructed": true,
+    "four_unchanged_OpenGPU_objects_and_Mesa_core_reused": true
+  },
+  "actual_small_guest": {
+    "passed": true,
+    "case_count": 21,
+    "markers": {
+      "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+      "output_usage=1": true,
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "fragment staging transient=1": true,
+      "compute completed; RNU=1 RDN=0": true,
+      "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+      "Native shader suite: PASS": true,
+      "OPENGPU GL FILL PASS": true,
+      "OPENGPU GL OFFSCREEN PASS:": true
+    },
+    "transition": {
+      "passed": true,
+      "fold_sequence": [
+        0,
+        1,
+        0,
+        1,
+        0,
+        1
+      ],
+      "log_sha256": "8114de764bcb7f10ff71877a4825e29a4e6f68e0ff5deb56818ba6ffd0afbafc"
+    },
+    "unchanged_model_VM_evidence": {
+      "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/sparse-hold-wake-native/guest-opt64.json",
+      "sha256": "631bac9e4f4d34a7b7ef97877607df0114b457cf1eb363d61433251c9643e4bf",
+      "cases": 18,
+      "rerun": false
+    },
+    "fresh_trace": {
+      "passed": true,
+      "replay": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 388012071,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 23.348235708,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "trace_sha256": "99aa007c1563454e43af7f02096850fa3b9e319e1b42c17bc6916e8aa2615cd5"
+    },
+    "payload_changed_files": [
+      "opengpu_dri.so",
+      "opengpu_gl_modulate.bin"
+    ],
+    "test_extension": "Existingredtexture/redvertex regression retained; sameGLprogram thenwhite/green/white/mixed/white, nointerveningclear. All5exactpixels pass; fold sequence0,1,0,1,0,1 verifies ordinaryrestoration andallverticesguard.",
+    "scope": "Guest80.66sdiagnostic; newtraceincludesfiveextraGLdraws andnewpoll/clock schedule. Do notcompare tooldtrace asfixedworkloadspeedratio."
+  },
+  "full640": {
+    "passed": true,
+    "primary_milestones": {
+      "background": {
+        "seconds": 126.69209829205647,
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/wm-full640/first-background.png",
+        "image_sha256": "e2ffc4b5d463e90d4e8a5d1363a4a87278243e3ab6c4f79aad75182a57dd5589",
+        "source_sha256": "d2af9a67bfaadfdfaf8c6101fce1c44882172ad35a3459a706bc6269fba94cd3",
+        "evidence": {
+          "scope": "Wallpaper andstaticpanelcropmatchonly, notcompleteGTKstartup",
+          "regions": [
+            [
+              5,
+              5,
+              37,
+              37
+            ],
+            [
+              600,
+              5,
+              632,
+              37
+            ],
+            [
+              5,
+              410,
+              37,
+              442
+            ],
+            [
+              600,
+              410,
+              632,
+              442
+            ],
+            [
+              5,
+              451,
+              37,
+              477
+            ]
+          ],
+          "tolerance": 3
+        }
+      },
+      "active": {
+        "seconds": 468.7100573340431,
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/wm-full640/first-active.png",
+        "image_sha256": "17d0ce4ae8d81e62b84ab214b9cbc87d31d4befe0d7d1334d4faca6212bafb6d",
+        "source_sha256": "e22b496be7132a2c75230e7c630daba4ae349fabc41dd8b913cf31606e9cb439",
+        "evidence": {
+          "colour_pixels": 16571,
+          "expected_rgb": [
+            242,
+            89,
+            46
+          ],
+          "tolerance": 3
+        }
+      }
+    },
+    "complete_trace": {
+      "passed": true,
+      "replay": {
+        "calls": 173947,
+        "ticks": 16529708,
+        "commits": 797248588,
+        "holds": 5369196155,
+        "dma_reads": 507606,
+        "dma_writes": 3212098,
+        "dma_bytes": 56973488,
+        "seconds": 424.366759834,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "trace_sha256": "a677e4bf11cc8f79d7d0df942323c8cc607ea34f141008804831c0f6857a24b0"
+    },
+    "actual_fold_used": true,
+    "manual_visual": {
+      "recorded_at": 1792191536.318433,
+      "passed": true,
+      "reviewed": true,
+      "primary_active": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/wm-full640/qualified-active.png",
+        "sha256": "17d0ce4ae8d81e62b84ab214b9cbc87d31d4befe0d7d1334d4faca6212bafb6d",
+        "observation": "CleanorangeGLpanelwithblackborder; legibleOpenGPU GTKsmoke/GLArea/buttonlabels, intactfloralwallpaper/bottompanel; no visible corruption."
+      },
+      "supplemental_idle": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/wm-unfiltered640/first-idle.png",
+        "sha256": "bf34f02579d3774c85171d401fd36b6bba0a84d3adf056a3f10a64a7449f442b",
+        "observation": "CleangreenGLpanelwithblackborder; completelegiblewindowtitle/GLArea/button, intactwallpaper/bottompanel; no visible corruption.",
+        "run": "Separateunfilteredcapture becauseprimarydefaultfilterselectedorangeonly."
+      },
+      "candidate_DSO_sha256": "ed52ddee5cb14fc079ddbd001d249729be2711845e427aab7fd0f44aa6fdc918",
+      "model_archive_sha256": "93e5391fa302ca3e6254fc0e1d5958e79dc7190b6f1d701eae3cf3ecaa172901",
+      "scope": "Manualimage-toolreview ofboth640x480frames; idlefromsamecandidatepayload/unchangedmodelwithcapturefilterempty, activefromprimaryfullrecordedguest. Mainfullidle+activeGPUreadbacks andactiveonscreenscanout alreadyPASS; owncomplete173947calltracePASS. No cross-run timing ratio."
+    },
+    "supplemental_unfiltered": {
+      "passed": true,
+      "guest_seconds": 530.8092765000183,
+      "milestones": {
+        "idle": {
+          "seconds": 419.72320991707966,
+          "image": "/Users/duckdonald/workspace/gpu/.artifacts/wm-unfiltered640/first-idle.png",
+          "image_sha256": "bf34f02579d3774c85171d401fd36b6bba0a84d3adf056a3f10a64a7449f442b",
+          "source_sha256": "db2c0c4ee83ab2c8e2a93f6364e994025410e3d38daa939e56518476bf1d425d",
+          "colour_pixels": 16571
+        },
+        "active": {
+          "seconds": 525.7693632920273,
+          "image": "/Users/duckdonald/workspace/gpu/.artifacts/wm-unfiltered640/first-active.png",
+          "image_sha256": "987988947703846c4123c331d1b17f799107e8783334dc9b6eed13f4a9315fa4",
+          "source_sha256": "e04680daf24163ab77da7d5134ceb686869b1f23ed694a186bbdd2d265e0b1ab",
+          "colour_pixels": 16571
+        }
+      },
+      "scope": "Supplemental idle/active visual capture only. Main full640guest alreadypassesidle+activeGPUreadback andactiveonscreenscanout; defaultf2592e capturefilterdidnotsavegreenidle. Thisrunsetsfilterempty, sameMesa/payload/RTL/defaultbudgets, plainoptimizedQEMU. No newtrace orspeedclaim; elapseddiagnosticconcurrentstrictmaintrace replay."
+    },
+    "canonical_README_image_sha256": "17d0ce4ae8d81e62b84ab214b9cbc87d31d4befe0d7d1334d4faca6212bafb6d",
+    "source_promotion_allowed": true,
+    "scope": "Primaryidle/activeGPUreadback+activeonscreenscanoutandnewcomplete173947calltracePASS. Manualactivefromprimary, manualidlefromsamepayloadunfilteredcapture. Guest/replaytimesdiagnostic; partialoverlapbetweenprimaryreplayandsupplementalcapture, no fixedworkloadfull-desktop speedratio.",
+    "guest_seconds": 470.7156732089352
+  },
+  "evidence": {
+    ".artifacts/shared-cu/white-modulate-specialization/native/state.json": "74f6340d9e844cef2918785f13b22398b409a89bb9d49022a5585e04f60456af",
+    ".artifacts/shared-cu/white-modulate-specialization/large-native/state.json": "39a3b5ea848370964040c3161b077d6383f5b828c417c490d6cd01b5284430fb",
+    ".artifacts/shared-cu/white-modulate-specialization/paired/state.json": "4ce12dd06afe028fd22de3ef60102396e5fb2ad90b9689b6d0b707c191f60a4a",
+    ".artifacts/shared-cu/white-modulate-specialization/guest-opt64.json": "12a83d293941a511fe776bbe96a8c2e4451cf6ee269a3223d6d41549f2a039bb",
+    ".artifacts/shared-cu/white-modulate-specialization/mesa-build/manifest.json": "057cc54f6e3a475b643ca23ad71738490bbaa9e7d9f4de3360f124c4e925f6d2",
+    ".artifacts/shared-cu/white-modulate-specialization/selection-design.json": "db3c6af6eb14110837c0982f1c8f5ed7fc6eb175167d5aa99f04a0d52b533549"
+  },
+  "main_source_sha256": {
+    "userspace/gallium/opengpu_context.c": "e8916a52a234d40c651fdd768d57152ac4370218f8e75d0f0770653044aab0b6",
+    "userspace/gallium/opengpu_shaders.h": "40c3e6d79d24c55c62a8b7e15a4c1845efda8547083a4c8cdca4a6958ba809cc",
+    "userspace/examples/gl_modulate.c": "32b1606f3bb45e46d4ea386f5c7d95ec71ca254d5d95bb0302bd1d7b437a2e85",
+    "userspace/tests/shader_abi.c": "0ebcab918f8715faf14b82c5e8bfe72fd17140a5160b0f838c20078b70bc0ec4",
+    "userspace/tests/shader_modulate_white.c": "7bc8f8b8621ec3a5e17a048779bc688aa3afb3ba0dee8207d7c335402e7dd50d",
+    "scripts/test_driver.py": "c3194e1d5ad537d550b9fdc635ba907a473085cbfeb1fbe1065c026829b4ccc1"
+  },
+  "main_host_tests": {
+    "passed": true,
+    "log_sha256": "34cb087f79cab699ae4dff98b5489a70116b0d6f9847734ea521b8f4bebe09b4",
+    "command": "python3 scripts/test_driver.py"
+  },
+  "production_arithmetic": {
+    "passed": true,
+    "sanitizers": [
+      "address",
+      "undefined"
+    ],
+    "cases": 1786432,
+    "positive_log_sha256": "217bbc15d6f4ad732fd8eb83d28f087f77fc4ec46da3baa3e240dcccd83b44c1",
+    "negative_identity_rejected": true,
+    "negative_log_sha256": "e31c0e2a9f19612e946bb2a74dad068bc4d2baf00b05acefdf9e34e47ad162ba"
+  }
+}

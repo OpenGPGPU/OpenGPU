@@ -20,6 +20,7 @@
 #include <execinfo.h>
 #include <signal.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -316,6 +317,47 @@ int main(void)
         fprintf(stderr, "gl_modulate: pixel mismatch\n");
         return 1;
     }
+
+    /* Keep this GLES program bound while changing only the vertex colours.
+     * White batches may use the shorter byte-equivalent GPU program; green
+     * and mixed batches must restore ordinary modulation. Avoid intervening
+     * clears, which could hide a stale per-draw program selection. */
+    for (unsigned pass = 0; pass < 5; pass++) {
+        float changed[sizeof(verts) / sizeof(verts[0])];
+        uint32_t expected = COLOR_MODULATE;
+        memcpy(changed, verts, sizeof(changed));
+        for (unsigned vertex = 0; vertex < 3; vertex++) {
+            bool white = pass != 1 && (pass != 3 || vertex == 0);
+            changed[vertex * 10 + 6] = white ? 1.f : 0.f;
+            changed[vertex * 10 + 7] = 1.f;
+            changed[vertex * 10 + 8] = white ? 1.f : 0.f;
+            changed[vertex * 10 + 9] = 1.f;
+        }
+        if (pass == 1)
+            expected = 0x000000feu;
+        if (pass == 3) {
+            unsigned x = 100u * mode.hdisplay / 320u;
+            unsigned y = opengpu_gl_probe_y(&mode, 8);
+            unsigned x0 = mode.hdisplay / 4u;
+            unsigned width = mode.hdisplay / 2u, height = mode.vdisplay / 8u;
+            unsigned area = width * height;
+            unsigned e0 = area - (x - x0) * height - y * width;
+            unsigned colour = 255u * e0 / area;
+            expected = ((255u * colour / 256u) << 24) | 254u;
+        }
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(changed), changed);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glFinish();
+        inside = pixel_word(100 * mode.hdisplay / 320,
+            mode.vdisplay - 1 - opengpu_gl_probe_y(&mode, 8));
+        if (inside != expected || glGetError() != GL_NO_ERROR) {
+            fprintf(stderr, "white modulation transition pass=%u got=%08x expected=%08x\n",
+                    pass, inside, expected);
+            return 1;
+        }
+        printf("OPENGPU WHITE MODULATE TRANSITION pass=%u pixel=%08x PASS\n", pass, inside);
+    }
+    puts("OPENGPU WHITE MODULATE TRANSITIONS PASS");
 
     step("swap");
     if (!eglSwapBuffers(dpy, surface))
