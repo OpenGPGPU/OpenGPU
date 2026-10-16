@@ -1,0 +1,171 @@
+{
+  "status": "PASS: eight-credit concurrent staging and zero-fraction sampler full desktop qualification",
+  "artifact_root": ".artifacts/shared-cu/staging8-pipeline-native",
+  "rtl_source_commit": "3cf451ab6d4f44a1c7ed3fa3e6434c1cc5cca46b",
+  "software": {
+    "gpu_software_commit": "9789e7bad47b3eb1a91c4e778712c408a54a5b86",
+    "arti_commit": "15fc7df3ca38d88d98270c529098218e27c22e38",
+    "prior_payload": ".artifacts/shared-cu/fixed-lod-native/payload.json",
+    "current_payload": "payload.json",
+    "stage": "frozen before RTL generation",
+    "qualification": "docs/performance/private-depth-discard-2026-10-16.json",
+    "scope": "Reuse unchanged software payload qualified with prior fixed-LOD full640 model; RTL changes only."
+  },
+  "configuration": {
+    "fragment_staging_credits_per_worker": 8,
+    "shared_staging_credits": 32,
+    "shared_compute_units": [
+      "computeUnits_0",
+      "computeUnits_1",
+      "computeUnits_2",
+      "computeUnits_3"
+    ],
+    "private_shader_CUs": 0,
+    "lanes": 16,
+    "warps": 8,
+    "full_vs_fs_fpu": true,
+    "fill_slots": 16,
+    "word_cache_entries": 8,
+    "scalar_register_RTL_unchanged": {
+      "ScalarRegisterBank.sv": "d5e1013fa6d1900f7284592326360173c8096271164d49447d7201ee69734819",
+      "ScalarRegisterFile.sv": "da120a94556542a6646fb2a3ad1df449e470b4adc871660345519cc53ea76026",
+      "ScalarRegisterMacroFile.sv": "29795d93fac88f05c5decede4a9b1faffed15c6210fa62cd96ca88743f648298",
+      "ScalarRegisterMacroManager.sv": "acee0b7353690be8aaeecb258c555db29164dfbdb38ae897d94828b69916f36e"
+    },
+    "emitter_flags": [
+      "--frag-core",
+      "--vert-core",
+      "--shared-graphics",
+      "--parallel-graphics",
+      "--compute-units",
+      "4",
+      "--cu-lanes",
+      "16",
+      "--cu-warps",
+      "8",
+      "--width",
+      "640",
+      "--height",
+      "480",
+      "--memory-axi-data-bytes",
+      "64",
+      "--coalesce-framebuffer",
+      "--om-inflight",
+      "64",
+      "--om-locality",
+      "--fragment-batch-limit",
+      "112",
+      "--buffer-command-reads",
+      "--buffer-texture-reads"
+    ],
+    "header_sha256": "32a0fcec8b31eafdd491f24e5c44d2bfa318c4aa529b4e31cbd8ae698e19a674"
+  },
+  "native_qualifications": {
+    "training": {
+      "passed": true,
+      "native_cases": 21,
+      "markers": {
+        "compute completed; RNU=1 RDN=0": true,
+        "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "report": ".artifacts/shared-cu/staging8-pipeline-native/guest-qualification-corrected.json",
+      "report_sha256": "12e2a89db6a6691c7c1a9f8da4bfbf63a0697bd7c464c494bea514dbc4e8ca01",
+      "archive_sha256": "7f89231338234292aef8b50e102dd276bfea89fd109fec3e8564d641ad9527dd",
+      "qemu_sha256": "8da0405d1223f6ffd5ae3d604c967cc431f6b462905065d3563ad9c6dc0a8c19"
+    },
+    "optimized": {
+      "passed": true,
+      "native_cases": 21,
+      "markers": {
+        "compute completed; RNU=1 RDN=0": true,
+        "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "report": ".artifacts/shared-cu/staging8-pipeline-native/guest-qualification-optimized.json",
+      "report_sha256": "779f95ba0c41eb7482789fdbacce71ebfd5f051cc12abf330bb19623eaf80ed0",
+      "archive_sha256": "3002754d477171d6d4fdf7b9142f55ec491b03ff28170a3d3d41431e29c5486a",
+      "qemu_sha256": "9d44388b9094ca87c29175760dc68baf5590721678e1aa29bd305069c4f56697"
+    }
+  },
+  "optimized_archive_sha256": "3002754d477171d6d4fdf7b9142f55ec491b03ff28170a3d3d41431e29c5486a",
+  "payload_manifest_sha256": "685f0c07f99755f71a5b78f3725db2e12f924b563fbc8967a612af9b12ada8f2",
+  "full640": {
+    "passed": true,
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/staging8-pipeline640",
+    "markers": [
+      "GTK Wayland/OpenGPU smoke proof: PASS",
+      "Gtk-smoke scanout proof: PASS",
+      "OPENGPU GTK FRAME PASS: idle",
+      "OPENGPU GTK FRAME PASS: active"
+    ],
+    "scanout": {
+      "passed": true,
+      "framebuffer_size": [
+        640,
+        480
+      ],
+      "client_size": [
+        280,
+        124
+      ],
+      "active_rectangle": [
+        93,
+        223,
+        227,
+        72
+      ],
+      "active_pixels": 16571,
+      "channel_tolerance": 3,
+      "capture_sha256": "33b626d03bacba444475030b441eee13a38f5b5106ef0fe40d044f55ce9bae73",
+      "source_frame": "/Users/duckdonald/workspace/gpu/.artifacts/staging8-pipeline640/gtk-smoke-scanout.ppm",
+      "saved_frame": "/Users/duckdonald/workspace/gpu/.artifacts/staging8-pipeline640/gtk-smoke-verified.ppm"
+    },
+    "qemu_sha256": "b6a7f7e661488ef9583bd6864aca4bb98ef0435ac2527ab6f82236f674e31865",
+    "archive_sha256": "3002754d477171d6d4fdf7b9142f55ec491b03ff28170a3d3d41431e29c5486a",
+    "rtl_source_commit": "3cf451ab6d4f44a1c7ed3fa3e6434c1cc5cca46b",
+    "trace_sha256": "ca1d81044c059f0d795a2a4605660b3fc3e098455b7f2361bf351bafebf72753",
+    "visual_review": "PASS; see visual_review in this report",
+    "scope": "Full640x480 desktop+GTK on eight-credit pipelined staging, zero-fraction sampler, instruction-local texture cache, FILL16 and single-texel broadcast RTL; software payload unchanged. Probe run is diagnostic; no host timing claim."
+  },
+  "visual_review": {
+    "passed": true,
+    "image": ".artifacts/staging8-pipeline640/full640-verified.png",
+    "image_sha256": "a1e70f2e1a2851fc1cd7482d54701afa01025f52a977fd4dccabbed0b35dcc70",
+    "observations": "Readable upright GTK title and label, complete orange GL rectangle inside dark margins, redraw button, patterned Weston desktop and bottom panel.",
+    "versioned_image": "docs/images/opengpu-gtk-staging-20261016.png"
+  },
+  "trace": {
+    "trace": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/staging8-pipeline-native/full640.trace",
+    "trace_sha256": "ca1d81044c059f0d795a2a4605660b3fc3e098455b7f2361bf351bafebf72753",
+    "calls": 189967,
+    "commands_by_opcode": {
+      "5": 223,
+      "6": 33,
+      "2": 4
+    },
+    "fill_count": 4,
+    "fill_bytes": 555520,
+    "depth_pattern_fill_count": 0,
+    "depth_pattern_fill_bytes": 0,
+    "depth_fill_size_histogram": {},
+    "dma_read_bytes": 47529224,
+    "dma_write_bytes": 62613688,
+    "scope": "MMIO unified-command SUBMIT writes; 0x00ffffff identifies the depth-clear pattern, not proof of every fill consumer.",
+    "gpu_ticks": 17395632
+  },
+  "limits": [
+    "This frozen3cf451amodel includes concurrent eight-credit staging, pipelined shared requests, bounded replies and the non-fractional sampler bypass, plus the previously qualified texture cache/FILL16/broadcast. It excludes unpromoted sampler-handoff, bitmap, vertex-cache and RF experiments.",
+    "GPU ticks cover this guest boot; compositor scheduling and draw counts differ between boots. Do not claim a controlled whole-desktop cycle speedup.",
+    "Raw1086.49-second qualification elapsed time includes34.61seconds of deliberate suspension and overlapping test/build workloads. It is not an idle-host startup measurement; see the separate paired native render benchmark.",
+    "Installed default QEMU remains unchanged; use this separately qualified binary explicitly."
+  ]
+}

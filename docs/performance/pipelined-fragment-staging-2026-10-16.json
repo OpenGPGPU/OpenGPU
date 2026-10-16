@@ -1,5 +1,5 @@
 {
-  "status": "PASS: main RTL unit and matched complete-scene qualification",
+  "status": "PASS:38units,fourmatched scenes,native training/optimized suites and full640 Debian/GTK desktop",
   "artifact_root": ".artifacts/shared-cu/staging-two-inflight",
   "source_sha256": {
     "src/main/scala/yunsuan/FmaCompatibility.scala": "86a7a0ec8f4bf9bace458f2dc5c9d349df9c554ab7cdcc0edb7b45e3e68a11a6",
@@ -1532,8 +1532,9 @@
     }
   },
   "limits": [
-    "Native Debian/GTK qualification is a separate required gate and has not passed for this RTL yet.",
     "Both CU counts improve; the scaling ratio alone is not an optimization target.",
-    "The installed default QEMU is unchanged."
-  ]
+    "The installed default QEMU is unchanged.",
+    "Full640 qualification passes separately; use the linked report for exact frozen source, binary and capture hashes."
+  ],
+  "native_full640_report": "docs/performance/pipelined-staging-native-full640-2026-10-16.json"
 }

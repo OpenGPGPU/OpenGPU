@@ -26,9 +26,14 @@ with complete memory outputs unchanged: solid rendering falls from 11,952 to
 8,827 native ticks, and spatial rendering from 18,523 to 14,135. These reductions
 are 26.1% and 23.7%; native callback timing differs from the Scala AXI fixture.
 See the [native training qualification](performance/pipelined-staging-native-training-2026-10-16.json).
-The optimized build and full-resolution qualification remain in progress.
-The latest completed full-resolution proof remains the
-[texture-cache model](performance/vector-cache-native-full640-2026-10-16.json).
+The optimized build passes the same native suite, and the **640×480 Debian,
+Weston and GTK desktop also passes** idle/active readback, strict scanout checks
+and visual review. This frozen `3cf451a` boot records 17,395,632 GPU ticks,
+33 renders and four fills; compositor workloads differ between boots, so these
+totals are not a controlled desktop speedup comparison. See the
+[full-resolution qualification](performance/pipelined-staging-native-full640-2026-10-16.json)
+and [verified desktop capture](images/opengpu-gtk-staging-20261016.png).
+The separately qualified binary remains outside the installed default QEMU.
 
 A paired comparison of the two optimized native models checks identical
 complete memory outputs in all 24 measured runs. Three balanced ABBA rounds per
