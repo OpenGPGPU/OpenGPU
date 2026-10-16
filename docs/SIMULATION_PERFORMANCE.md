@@ -44,6 +44,32 @@ pass. The default 128-capacity control preserves exactly 59,077 cycles. This
 fix is independent of the private transfer optimization; see the
 [index-width qualification](performance/vertex-index-width-2026-10-16.json).
 
+## Runtime shader address reuse (2026-10-16)
+
+Gallium's ABI lowering now reuses an address already held in a staging
+temporary, or adds the runtime array stride for the adjacent semantic field.
+The stride still comes from launch capacity and vector length still uses
+VLMAX; the same shader binary adapts to different hardware resources.
+Integer-register clobbers, branches and control-flow joins invalidate cached
+addresses. Floating-point and vector registers retain their separate banks.
+
+The sample and swizzle programs each lose four instructions, while the first
+matrix vertex program loses ten. On the existing four-CU coordinate-pipeline
+model, the textured sample falls from **11,451 to 11,219 ticks (2.03%)**, and
+swizzle from **12,949 to 12,740 ticks (1.61%)**. Solid cases improve less.
+All complete colour/depth pixels, omitted scratch bytes, uniforms and other
+memory pass independent checks. These runs overlap compilation and provide
+task-cycle evidence, not host-time measurements.
+
+The change passes the complete host driver suite, 105 program/resource checks,
+seven additional branch-join configurations across all warps and both paths,
+sanitizers, and a private 181,260-execution address comparison. A private Mesa
+DSO also passes 18 compute replays, 21 GLES cases, quad batching and GTK64
+readback/strict scanout. Its requested trace was not captured because the
+selected plain QEMU has no recorder; that failed capture record is preserved
+separately from functional qualification. Full640 validation remains pending.
+See the [qualification](performance/runtime-pointer-reuse-2026-10-16.json).
+
 ## Tagged staging and fast native checks (2026-10-16)
 
 Fragment input omission now removes staging writes for inputs the validated

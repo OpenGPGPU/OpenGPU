@@ -179,6 +179,63 @@ static void check_program(const struct program *p, uint32_t resources)
     printf("%s resources=%08x: %zu -> %zu words PASS\n", p->name, resources, p->words, words);
 }
 
+static void check_pointer_clobbers(uint32_t resources)
+{
+    const uint32_t clobbers[] = {
+        0x00000313u, /* addi x6,x0,0 */
+        0x00000333u, /* add x6,x0,x0 */
+        0x1200a303u, /* lw x6,288(x1): relocated uniform access */
+        0x00428293u, /* addi x5,x5,4: update the common staging base */
+    };
+    size_t i;
+
+    for (i = 0; i < COUNT(clobbers); i++) {
+        uint32_t code[] = {
+            0x00241293u, 0x005082b3u, 0xc1027057u,
+            0x08028313u, 0x02036087u, /* x6 = slice4; vector load */
+            clobbers[i],
+            0x0a028313u, 0x02036107u, /* x6 = slice5; vector load */
+            OPENGPU_SHADER_CEASE,
+        };
+        struct program p = { "pointer-clobber", code, COUNT(code), false };
+        check_program(&p, resources);
+    }
+}
+
+static void check_pointer_join(uint32_t resources)
+{
+    const uint32_t code[] = {
+        0x00241293u, 0x005082b3u, 0xc1027057u,
+        0x08028313u, 0x02036087u, /* slice4 */
+        0x00700663u,             /* beq x0,x7,+12: skip slice5 */
+        0x0a028313u, 0x02036107u,
+        0x0c028313u, 0x02036187u, /* join: slice6 */
+        OPENGPU_SHADER_CEASE,
+    };
+    uint32_t converted[512];
+    unsigned lanes = resources ? opengpu_shader_resource_lanes(resources) : 4;
+    unsigned batch = opengpu_shader_resource_batch(resources);
+    unsigned stride = opengpu_shader_array_stride(resources);
+    size_t words;
+
+    assert(!opengpu_shader_lower_runtime_abi(code, COUNT(code), false,
+                                            converted, COUNT(converted), &words));
+    for (unsigned flag = 0; flag < 2; flag++)
+        for (unsigned warp = 0; warp < batch / lanes; warp++) {
+            struct execution before = execute(code, COUNT(code), 0, flag, 4, 8);
+            struct execution after = execute(converted, words, warp * lanes,
+                                               flag, lanes, batch);
+            assert(before.count == 2 + flag && before.count == after.count);
+            for (unsigned i = 0; i < before.count; i++) {
+                uint32_t offset = before.accesses[i].address - 0x10000000u;
+                uint32_t expected = offset / 32u * stride + offset % 32u +
+                                    warp * lanes * 4u;
+                assert(after.accesses[i].address == 0x10000000u + expected);
+                assert(after.accesses[i].kind == before.accesses[i].kind);
+            }
+        }
+}
+
 int main(void)
 {
     const uint32_t resources[] = {0, 0x01020204u, 0x02040408u, 0x04080810u, 0x01020810u, 0x02040810u, 0x01020220u};
@@ -191,6 +248,10 @@ int main(void)
     for (i = 0; i < COUNT(programs); i++)
         for (j = 0; j < COUNT(resources); j++)
             check_program(&programs[i], resources[j]);
+    for (j = 0; j < COUNT(resources); j++) {
+        check_pointer_clobbers(resources[j]);
+        check_pointer_join(resources[j]);
+    }
     assert(!opengpu_shader_lower_runtime_abi(branch_code, COUNT(branch_code),
                                           false, out, COUNT(out), &words));
     for (i = 0; i < 2; i++) {
