@@ -1,0 +1,285 @@
+{
+  "status": "PASS",
+  "artifact_root": ".artifacts/shared-cu/native-render-fixture/traced-gradient",
+  "rtl_source_commit": "3cf451a",
+  "archive_sha256": "3002754d477171d6d4fdf7b9142f55ec491b03ff28170a3d3d41431e29c5486a",
+  "header_sha256": "32a0fcec8b31eafdd491f24e5c44d2bfa318c4aa529b4e31cbd8ae698e19a674",
+  "texture_pattern": "gradient",
+  "scope": "Fresh native offscreen64x64 fixtures on full640x480 four-shared-CU RTL model. Successful lower-memory callbacks traced from initialization through completion; bytes classified by fixture resource intervals. No host speed claim; timings intentionally omitted because tracing adds work.",
+  "sources": {
+    "scripts/benchmark_native_render.py": "5d6e3f6949c43e243436eb3e7c64a389d9f50f06de749173c01283afff6752b5",
+    "scripts/native_render_fixture.cpp": "eaa7e797b684339c46ccebd1df371b302895b264469fda923b0191f5282e2b03"
+  },
+  "trace_format": {
+    "header": "OGMEM1LE",
+    "record_bytes": 32,
+    "fields": [
+      "kind uint64 little-endian (0 read /1 write)",
+      "address uint64 little-endian",
+      "size uint64 little-endian",
+      "mask uint64 little-endian (0 for read)"
+    ]
+  },
+  "cases": [
+    {
+      "scene": "solid",
+      "trial": 0,
+      "ticks": 8827,
+      "commits": 839721,
+      "holds": 10368669,
+      "holds_wrote": 847776,
+      "reads": 1170,
+      "writes": 12524,
+      "read_bytes": 74880,
+      "write_bytes": 96816,
+      "faults": 0,
+      "completion": 34395,
+      "shader_config": 67635216,
+      "fixture_sha256": "3e08ee8bfca818c143c6f7a6dd9972879a5018e94bc09b762d5e394f59016eb1",
+      "output_sha256": "129ef02f27278f14451f618fa976368f7aeb30a95b1765a96c722499bdcbfdf3",
+      "pixel_depth_pairs": 4096,
+      "staging_canaries": true,
+      "all_other_memory_unchanged": true,
+      "memory_trace": {
+        "reads": 1170,
+        "writes": 12524,
+        "read_bytes": 74880,
+        "write_bytes": 96816,
+        "byte_regions": {
+          "color": {
+            "read_bytes": 0,
+            "write_bytes": 8064
+          },
+          "commands": {
+            "read_bytes": 160,
+            "write_bytes": 0
+          },
+          "depth": {
+            "read_bytes": 25728,
+            "write_bytes": 8064
+          },
+          "descriptor": {
+            "read_bytes": 64,
+            "write_bytes": 0
+          },
+          "fragment_color_input": {
+            "read_bytes": 0,
+            "write_bytes": 8944
+          },
+          "fragment_color_output": {
+            "read_bytes": 8960,
+            "write_bytes": 8944
+          },
+          "fragment_control_output": {
+            "read_bytes": 8960,
+            "write_bytes": 8944
+          },
+          "fragment_depth_input": {
+            "read_bytes": 0,
+            "write_bytes": 8944
+          },
+          "fragment_depth_output": {
+            "read_bytes": 8960,
+            "write_bytes": 8944
+          },
+          "fragment_program": {
+            "read_bytes": 72,
+            "write_bytes": 0
+          },
+          "fragment_u": {
+            "read_bytes": 8960,
+            "write_bytes": 8944
+          },
+          "fragment_v": {
+            "read_bytes": 8960,
+            "write_bytes": 8944
+          },
+          "fragment_x": {
+            "read_bytes": 0,
+            "write_bytes": 8944
+          },
+          "fragment_y": {
+            "read_bytes": 0,
+            "write_bytes": 8944
+          },
+          "other": {
+            "read_bytes": 456,
+            "write_bytes": 0
+          },
+          "texture": {
+            "read_bytes": 4,
+            "write_bytes": 0
+          },
+          "vertex_input": {
+            "read_bytes": 1280,
+            "write_bytes": 0
+          },
+          "vertex_kernarg": {
+            "read_bytes": 2048,
+            "write_bytes": 192
+          },
+          "vertex_program": {
+            "read_bytes": 268,
+            "write_bytes": 0
+          }
+        },
+        "trace_sha256": "561132c3768b78558adb470489cbc2ea784fceea35e7cb93913dbc46fac79f24",
+        "records": 13694,
+        "scope": "Successful lower-memory callbacks; reads include fetched line bytes, writes include only masked bytes. Tracing adds host work; exclude times from benchmarks."
+      },
+      "derived": {
+        "fragment_staging_and_shader_output_write_bytes": 80496,
+        "fragment_fraction_of_all_write_bytes": 0.8314328210213188,
+        "four_unread_input_slices_write_bytes": 35776,
+        "four_unread_slices_fraction_of_all_write_bytes": 0.36952569823169723
+      }
+    },
+    {
+      "scene": "spatial",
+      "trial": 0,
+      "ticks": 14135,
+      "commits": 1037684,
+      "holds": 12203483,
+      "holds_wrote": 1045904,
+      "reads": 1380,
+      "writes": 12491,
+      "read_bytes": 88320,
+      "write_bytes": 96816,
+      "faults": 0,
+      "completion": 34395,
+      "shader_config": 67635216,
+      "fixture_sha256": "93f0194c1c89e4a143a519a793aa9e8c04a80f28b27e78b57a904acfd3e0de29",
+      "output_sha256": "50e0edfc975b54e482e5146783e7220bb0e871ae8a447cfa33041fce19d8cd99",
+      "pixel_depth_pairs": 4096,
+      "staging_canaries": true,
+      "all_other_memory_unchanged": true,
+      "memory_trace": {
+        "reads": 1380,
+        "writes": 12491,
+        "read_bytes": 88320,
+        "write_bytes": 96816,
+        "byte_regions": {
+          "color": {
+            "read_bytes": 0,
+            "write_bytes": 8064
+          },
+          "commands": {
+            "read_bytes": 160,
+            "write_bytes": 0
+          },
+          "depth": {
+            "read_bytes": 28608,
+            "write_bytes": 8064
+          },
+          "descriptor": {
+            "read_bytes": 64,
+            "write_bytes": 0
+          },
+          "fragment_color_input": {
+            "read_bytes": 0,
+            "write_bytes": 8944
+          },
+          "fragment_color_output": {
+            "read_bytes": 8960,
+            "write_bytes": 8944
+          },
+          "fragment_control_output": {
+            "read_bytes": 8960,
+            "write_bytes": 8944
+          },
+          "fragment_depth_input": {
+            "read_bytes": 0,
+            "write_bytes": 8944
+          },
+          "fragment_depth_output": {
+            "read_bytes": 8960,
+            "write_bytes": 8944
+          },
+          "fragment_program": {
+            "read_bytes": 72,
+            "write_bytes": 0
+          },
+          "fragment_u": {
+            "read_bytes": 8960,
+            "write_bytes": 8944
+          },
+          "fragment_v": {
+            "read_bytes": 8960,
+            "write_bytes": 8944
+          },
+          "fragment_x": {
+            "read_bytes": 0,
+            "write_bytes": 8944
+          },
+          "fragment_y": {
+            "read_bytes": 0,
+            "write_bytes": 8944
+          },
+          "other": {
+            "read_bytes": 396,
+            "write_bytes": 0
+          },
+          "texture": {
+            "read_bytes": 10624,
+            "write_bytes": 0
+          },
+          "vertex_input": {
+            "read_bytes": 1280,
+            "write_bytes": 0
+          },
+          "vertex_kernarg": {
+            "read_bytes": 2048,
+            "write_bytes": 192
+          },
+          "vertex_program": {
+            "read_bytes": 268,
+            "write_bytes": 0
+          }
+        },
+        "trace_sha256": "8a97d285ef43196105856fbde347e9b15ef6be4b0f2a8065d91d08cc2660afb0",
+        "records": 13871,
+        "scope": "Successful lower-memory callbacks; reads include fetched line bytes, writes include only masked bytes. Tracing adds host work; exclude times from benchmarks."
+      },
+      "derived": {
+        "fragment_staging_and_shader_output_write_bytes": 80496,
+        "fragment_fraction_of_all_write_bytes": 0.8314328210213188,
+        "four_unread_input_slices_write_bytes": 35776,
+        "four_unread_slices_fraction_of_all_write_bytes": 0.36952569823169723
+      }
+    }
+  ],
+  "validation": {
+    "passed": true,
+    "baseline_traced_and_trace_off_identical": [
+      "ticks",
+      "commits",
+      "holds",
+      "holds_wrote",
+      "reads",
+      "writes",
+      "read_bytes",
+      "write_bytes",
+      "output_sha256"
+    ],
+    "negative_controls": [
+      "truncated",
+      "bad-kind",
+      "oversized",
+      "mask-outside-size",
+      "outside-memory"
+    ],
+    "synthetic_masked_boundary_case": "PASS"
+  },
+  "findings": [
+    "Fragment argument/output traffic is83.1% of successful write bytes; framebuffer colour/depth is16128B and vertex kernarg192B.",
+    "Each of nine fragment slices receives8944B. The four x/y/input-depth/input-colour slices have zero lower callback read bytes in these sampling shaders. This is fixture evidence, not permission to skip fields for arbitrary shader programs.",
+    "The shared L2 implements write-through stores; fragment/vertex kernarg mappings use the uncached page policy. A request cache-flag change alone cannot remove these writes and does not change the PTE policy.",
+    "A future compiler-declared fragment input usage contract could omit proven-unused input staging. It must preserve default full ABI, runtime VLEN layout, output-depth/control initialization, uniforms, virtual-memory permission/fault handling and CPU coherence. No such ABI or RTL change is made here."
+  ],
+  "primary_local_sources": [
+    "src/main/scala/opengpu/graphics/KernelFragStage.scala: stagedLines/stageWord and sWrite",
+    "src/main/scala/opengpu/core/memory/SharedL2Cache.scala: write-through store allocation and uncached reads",
+    "driver/opengpu_compute.c: opengpu_binding_map_kernarg",
+    "docs/HOST_INTERFACE.md: Fragment kernarg"
+  ]
+}

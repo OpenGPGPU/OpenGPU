@@ -12,12 +12,23 @@
 static std::vector<uint8_t> memory(1 << 20);
 static uint64_t reads, writes, read_bytes, write_bytes;
 static int faults;
+static FILE *memory_trace;
+static void trace_memory(uint64_t kind, uint64_t address, unsigned size, uint64_t mask) {
+  if (!memory_trace) return;
+  const uint64_t fields[] = {kind, address, size, mask};
+  uint8_t record[32];
+  for (unsigned f=0; f<4; ++f)
+    for (unsigned b=0; b<8; ++b) record[8*f+b]=uint8_t(fields[f]>>(8*b));
+  assert(fwrite(record,1,sizeof(record),memory_trace)==sizeof(record));
+}
 static int rd(uint64_t a, uint8_t *d, unsigned n, uint64_t) {
   if (a > memory.size() || n > memory.size()-a) { ++faults; return -1; }
+  trace_memory(0,a,n,0);
   memcpy(d, memory.data()+a, n); ++reads; read_bytes += n; return 0;
 }
 static int wr(uint64_t a, const uint8_t *d, unsigned n, uint64_t mask, uint64_t) {
   if (a > memory.size() || n > memory.size()-a || n > 64) { ++faults; return -1; }
+  trace_memory(1,a,n,mask);
   for (unsigned i=0; i<n; ++i) if ((mask >> i) & 1) { memory[a+i]=d[i]; ++write_bytes; }
   ++writes; return 0;
 }
@@ -32,6 +43,10 @@ int main(int argc, char **argv) {
   std::ifstream input(argv[1],std::ios::binary); assert(input);
   input.read(reinterpret_cast<char *>(memory.data()),memory.size());
   assert(input.gcount()==static_cast<std::streamsize>(memory.size()));
+  if (const char *path=getenv("OPENGPU_NATIVE_MEMORY_TRACE")) {
+    memory_trace=fopen(path,"wb"); assert(memory_trace);
+    assert(fwrite("OGMEM1LE",1,8,memory_trace)==8);
+  }
   arti_rtl_model_set_memory_callbacks(rd,wr); arti_rtl_model_init();
   const uint64_t shader_config=regr(GPU_REG_SHADER_CONFIG);
   const uint64_t expected_config=strtoull(argv[3],nullptr,0);
@@ -55,6 +70,7 @@ int main(int argc, char **argv) {
   const double seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
   arti_rtl_model_skip_stats(&end,&end_commits,&end_holds,&end_writes);
   const uint64_t completion=regr(GPU_REG_UCMD_COMPLETION);
+  if (memory_trace) { assert(!fclose(memory_trace)); memory_trace=nullptr; }
   std::ofstream output(argv[2],std::ios::binary); assert(output);
   output.write(reinterpret_cast<const char *>(memory.data()),memory.size());
   const bool passed=ticks<2000000 && !faults && GPU_UCMD_COMPLETION_SUCCESS(completion) && (completion&255)==91;

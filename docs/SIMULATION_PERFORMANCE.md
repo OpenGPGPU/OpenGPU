@@ -110,6 +110,19 @@ keeps its original input hashes and ticks. This varying-data workload helps
 evaluate operand-activity changes that a uniform texture would miss. See the
 [gradient fixture qualification](performance/native-gradient-render-fixture-2026-10-16.json).
 
+Add `--trace-memory` to save binary callback traces and classify bytes by
+resource and fragment SoA slice. Trace totals must match the runner's independent
+callback counters. Reads include fetched line bytes; writes count only enabled
+mask bytes. This mode adds host work, so exclude its times from speed comparisons.
+On the qualified four-CU model, fragment staging and shader output account for
+**80,496 of 96,816 written bytes (83.1%)** in each fixture. The x, y, input-depth
+and input-colour slices alone receive 35,776 bytes and have no lower-memory reads
+in these texture-sampling fixtures. General shaders can consume those inputs;
+skipping them requires an explicit usage contract with a conservative fallback.
+L2 stores are write-through and Linux maps kernargs uncached, so changing a
+request cache flag would not remove this write traffic. See the
+[callback traffic analysis](performance/native-render-memory-traffic-2026-10-16.json).
+
 ## Shared four-CU candidate: real Weston trace (2026-10-16)
 
 The native-format candidate passes 18 compute replays, 21 GLES cases and

@@ -123,6 +123,58 @@ def verify(m, initial, data):
                 output_sha256=hashlib.sha256(data).hexdigest())
 
 
+def summarize_memory_trace(m, path):
+    """Classify successful host callbacks, including only masked write bytes.
+
+    These are lower-memory callbacks, not shader instructions or L1 accesses.
+    Read callbacks include the whole fetched line even when only a word is used.
+    """
+    stride = 4 * m['lanes'] * m['warps']
+    regions = []
+
+    def region(name, base, size):
+        regions.append((base, base + size, name))
+
+    region('descriptor', m['descriptor'], 64)
+    region('commands', m['commands'], m['command_bytes'])
+    region('fragment_program', m['program'], 4 * len(m['shader_words']))
+    region('vertex_program', m['vertex_program'], 4 * len(m['vertex_shader_words']))
+    region('vertex_input', m['vertex_buffer'], 3 * 32)
+    region('vertex_kernarg', m['vertex_kernarg'], 2 * m['vertex_bank_stride'])
+    region('texture', m['texture'], 4 * m['texture_extent'] ** 2)
+    for name in ('color', 'depth'):
+        region(name, m[name], 4 * m['side'] ** 2)
+    slices = ('x', 'y', 'depth_input', 'color_input', 'u', 'v',
+              'color_output', 'depth_output', 'control_output')
+    for bank in range(m['bank_count']):
+        base = m['kernarg'] + bank * m['bank_stride']
+        for index, name in enumerate(slices):
+            region('fragment_' + name, base + index * stride, stride)
+        region('fragment_uniforms', base + 9 * stride, m['bank_stride'] - 9 * stride)
+    regions.sort()
+    assert all(a[1] <= b[0] for a, b in zip(regions, regions[1:]))
+    data = path.read_bytes()
+    assert data[:8] == b'OGMEM1LE' and (len(data) - 8) % 32 == 0
+    counts = dict(reads=0, writes=0, read_bytes=0, write_bytes=0)
+    byte_regions = {}
+    for kind, address, size, mask in struct.iter_unpack('<QQQQ', data[8:]):
+        assert kind in (0, 1) and 0 < size <= 64
+        assert address <= 1 << 20 and size <= (1 << 20) - address
+        assert (mask == 0) if kind == 0 else (mask >> size == 0)
+        operation = 'write' if kind else 'read'
+        counts[operation + 's'] += 1
+        for offset in range(size):
+            if kind and not (mask >> offset) & 1:
+                continue
+            counts[operation + '_bytes'] += 1
+            name = next((name for lo, hi, name in regions if lo <= address + offset < hi), 'other')
+            byte_regions.setdefault(name, dict(read_bytes=0, write_bytes=0))[operation + '_bytes'] += 1
+    return dict(**counts, byte_regions=dict(sorted(byte_regions.items())),
+                trace_sha256=sha(path), records=(len(data) - 8) // 32,
+                scope='Successful lower-memory callbacks; reads include fetched line bytes, '
+                      'writes include only masked bytes. Tracing adds host work; exclude times from benchmarks.')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model', type=Path, required=True, help='generated native model directory')
@@ -135,6 +187,8 @@ def main():
     parser.add_argument('--repeat', type=int, default=1)
     parser.add_argument('--timeout', type=float, default=300)
     parser.add_argument('--profile-runtime', action='store_true', help='link an instrumented training archive')
+    parser.add_argument('--trace-memory', action='store_true',
+                        help='record and classify lower-memory callbacks; timings include trace overhead')
     parser.add_argument('--output', type=Path, required=True, help='fresh evidence directory')
     args = parser.parse_args()
     if args.repeat < 1 or args.timeout <= 0:
@@ -155,6 +209,7 @@ def main():
     state = dict(started=datetime.now(timezone.utc).isoformat(), model=str(args.model),
                  archive_sha256=sha(args.archive), header_sha256=sha(args.model / 'dut.h'),
                  report_sha256=sha(args.report), runner_sha256=sha(source), texture_pattern=args.pattern,
+                 memory_trace_enabled=args.trace_memory,
                  scope='Bare native rendering with explicit small offscreen viewport; no guest boot. '
                        'MMIO submit may settle the entire job; ticks include all API-driven model work. '
                        'Compare host times with paired runs on an otherwise idle host.', cases=[])
@@ -180,13 +235,21 @@ def main():
             name = f'{scene}-{trial}'
             output = (args.output / (name + '.bin')).resolve()
             env = {k: v for k, v in os.environ.items() if not k.startswith(('ARTI_', 'LLVM_PROFILE_'))}
+            env.pop('OPENGPU_NATIVE_MEMORY_TRACE', None)
             env['LLVM_PROFILE_FILE'] = str((args.output / (name + '-%p.profraw')).resolve())
+            memory_trace = args.output / (name + '.memory-trace')
+            if args.trace_memory:
+                env['OPENGPU_NATIVE_MEMORY_TRACE'] = str(memory_trace.resolve())
             with (args.output / (name + '.json')).open('w') as log, (args.output / (name + '.stderr')).open('w') as err:
                 subprocess.run([str(executable), str(fixture), str(output), hex(expected_config)],
                                check=True, stdout=log, stderr=err, env=env, timeout=args.timeout)
             result = json.loads((args.output / (name + '.json')).read_text())
             assert result['passed'] and result['shader_config'] == expected_config
             result.update(verify(m, initial, output.read_bytes()))
+            if args.trace_memory:
+                summary = summarize_memory_trace(m, memory_trace)
+                assert all(summary[key] == result[key] for key in ('reads', 'writes', 'read_bytes', 'write_bytes'))
+                result['memory_trace'] = summary
             result.update(scene=scene, trial=trial, fixture_sha256=hashlib.sha256(initial).hexdigest())
             state['cases'].append(result)
             save()
