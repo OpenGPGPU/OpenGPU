@@ -194,6 +194,14 @@ int pipe_opengpu_draw_vertex_discard_depth(struct pipe_opengpu_context *ctx,
                              const struct drm_opengpu_vertex_draw *draw,
                              struct pipe_opengpu_fence **out_fence);
 
+/* Renderer-owned fragment banks: the first nine SoA slices are transient
+ * scratch and must not be observed outside this draw. Uniforms are preserved.
+ * Also request private-depth discard when its existing conditions allow it.
+ * Older hardware/drivers use full staging. Other entry points keep their ABI. */
+int pipe_opengpu_draw_vertex_transient(struct pipe_opengpu_context *ctx,
+                             const struct drm_opengpu_vertex_draw *draw,
+                             struct pipe_opengpu_fence **out_fence);
+
 /* Program the OpenGPU CRTC with a 1x pitched colour GEM matching the active or
  * advertised mode. Registers an FB on first use and keeps it alive. */
 int pipe_opengpu_present(struct pipe_opengpu_screen *screen,

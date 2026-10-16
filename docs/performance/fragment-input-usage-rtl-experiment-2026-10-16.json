@@ -1,5 +1,5 @@
 {
-  "status": "PRIVATE RTL CORRECTNESS PASS; NATIVE AND GUEST QUALIFICATION PENDING",
+  "status": "PASS: exact RTL promoted; maincompile+36units+8complete1/4CUscenes,native timing and optimized Debian GLES/GTK64; full640 scanout pending",
   "artifact_root": ".artifacts/shared-cu/fragment-input-usage",
   "base_rtl_commit": "3cf451a",
   "patch": "docs/performance/fragment-input-usage-rtl-2026-10-16.patch",
@@ -130,5 +130,6 @@
   "native_state": ".artifacts/shared-cu/fragment-input-usage-native/state.json",
   "native_scope": "Fresh exactgeneratedmodel PGO, full/derivedinput masks anduniform/gradient texels; bothmodes same hardware. Barefixturetimings excludeCLIanalysis andguestboot. Nativecommand hints areexplicit testoptin; Linux/Mesa path stillneedsruntimequalification.",
   "patch_sha256": "45832ca9c9671e977ccd260620b9d420a5d929ccac7f3665f8b4c7303fc2ede4",
-  "patch_scope": "9productionRTL files plus tested privatefixture/unit deltas, including legacychildinput zero tie. Reviewable experimentalpatch; notapplied to main source. Software opt-in/driver/Mesa integration is artifact-only and not included in this RTLpatch."
+  "patch_scope": "9productionRTL files plus tested privatefixture/unit deltas, including legacychildinput zero tie. Reviewable experimentalpatch; notapplied to main source. Software opt-in/driver/Mesa integration is artifact-only and not included in this RTLpatch.",
+  "native_report": "docs/performance/fragment-input-usage-native-2026-10-16.json"
 }

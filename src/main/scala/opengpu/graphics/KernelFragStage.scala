@@ -54,6 +54,7 @@ class KernelFragFrontendIO(config: GpuConfig, gfxConfig: GraphicsConfig) extends
   /** The shader-depth word overrides the per-sample raster depths. */
   val depthOverride = Output(Bool())
   val shaderPc = Input(UInt(32.W))
+  val inputSkip = Input(UInt(6.W))
   /** Output-control ABI: 0 = legacy (any nonzero word emits), 1 = the
     * output-valid word splits into bit 0 emit / bit 1 depth override. */
   val abi1 = Input(Bool())
@@ -85,6 +86,7 @@ object KernelFragFrontendIO {
     front.outDepths := worker.outDepths
     front.depthOverride := worker.depthOverride
     worker.shaderPc := front.shaderPc
+    worker.inputSkip := front.inputSkip
     worker.abi1 := front.abi1
     worker.kernargBase := front.kernargBase
     worker.kernargBankStride := front.kernargBankStride
@@ -355,6 +357,7 @@ class KernelFragStage(
   private val slotTexLodBias = Reg(Vec(2, SInt(5.W)))
   private val slotTexMinLevel = Reg(Vec(2, UInt(4.W)))
   private val slotAbi1 = Reg(Vec(2, Bool()))
+  private val slotInputSkip = Reg(Vec(2, UInt(6.W)))
 
   texUnit.io.texBase := slotTexBase(execSlot)
   texUnit.io.texWidth := slotTexWidth(execSlot)
@@ -531,6 +534,7 @@ class KernelFragStage(
   private val wpTexLodBias = Reg(SInt(5.W))
   private val wpTexMinLevel = Reg(UInt(4.W))
   private val wpAbi1 = Reg(Bool())
+  private val wpInputSkip = Reg(UInt(6.W))
 
   io.fragIn.ready := !pendingValid && prodCount < batchCap.U
   io.drained := state === sIdle && !pendingValid
@@ -591,6 +595,7 @@ class KernelFragStage(
     }
     wpShaderPc := io.shaderPc
     wpAbi1 := io.abi1
+    wpInputSkip := io.inputSkip
     wpKernarg := bankedKernarg(prodSlot)
     wpTexBase := io.texBase
     wpTexWidth := io.texWidth
@@ -634,6 +639,7 @@ class KernelFragStage(
       slotTexLodBias(wpSlot) := wpTexLodBias
       slotTexMinLevel(wpSlot) := wpTexMinLevel
       slotAbi1(wpSlot) := wpAbi1
+      slotInputSkip(wpSlot) := wpInputSkip
     }
   }
 
@@ -864,7 +870,10 @@ class KernelFragStage(
       val position = line * 16 + word
       val slice = position / batchCap
       if (slice == 6 || slice > 8) 0.U(4.W)
-      else Mux((position % batchCap).U < execCount, 15.U(4.W), 0.U(4.W))
+      else {
+        val enabled = if (slice < 6) !slotInputSkip(execSlot)(slice) else true.B
+        Mux(enabled && (position % batchCap).U < execCount, 15.U(4.W), 0.U(4.W))
+      }
     })
     (line.U, data, mask)
   } else Seq.empty

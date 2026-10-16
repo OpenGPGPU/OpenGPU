@@ -25,6 +25,7 @@
 #include "opengpu_kernarg_va.h"
 #include "opengpu_resolve_validator.h"
 #include "opengpu_shader_validator.h"
+#include "opengpu_staging_validator.h"
 #include "opengpu_shader_resources.h"
 #include "opengpu_shader_builder.h"
 
@@ -351,7 +352,8 @@ int opengpu_compute_get_param_ioctl(struct drm_device *drm, void *data,
         args->value = gpu->hw.shader_config;
         break;
     case OPENGPU_PARAM_DRIVER_FEATURES:
-        args->value = OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH;
+        args->value = OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH |
+                      OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING;
         break;
     default:
         return -EINVAL;
@@ -1079,7 +1081,7 @@ static bool opengpu_shader_scalar_fpu_enabled(struct opengpu_device *gpu)
 
 static bool opengpu_validate_shader(
     struct opengpu_device *gpu, struct opengpu_buffer *shader,
-    u64 kernarg_size, u32 entry, bool texture_enabled)
+    u64 kernarg_size, u32 entry, bool texture_enabled, u32 *input_read_mask)
 {
     const u32 *program;
     u64 available;
@@ -1091,12 +1093,12 @@ static bool opengpu_validate_shader(
     words = min_t(u64, available / sizeof(u32),
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)shader->cpu + entry);
-    return opengpu_shader_validate_words_profile_runtime(
+    return opengpu_shader_validate_words_profile_runtime_usage(
         program, words, kernarg_size,
         opengpu_fragment_batch_capacity(gpu), 6, 9, true, texture_enabled,
         false, opengpu_shader_scalar_fpu_enabled(gpu),
         (gpu->hw.capabilities & GPU_CAP_RUNTIME_SHADER_ABI) ?
-            opengpu_fragment_batch_capacity(gpu) : 0);
+            opengpu_fragment_batch_capacity(gpu) : 0, input_read_mask);
 }
 
 static bool opengpu_validate_vertex_shader(
@@ -1124,7 +1126,8 @@ static bool opengpu_validate_vertex_shader(
 static bool opengpu_validate_kernarg_binding(
     struct opengpu_device *gpu, struct opengpu_buffer *shader,
     struct opengpu_resource_binding *kernarg, u32 entry, u32 offset,
-    u32 bank_stride, u32 slices, bool vertex, bool texture_enabled)
+    u32 bank_stride, u32 slices, bool vertex, bool texture_enabled,
+    u32 *input_read_mask)
 {
     u64 address, minimum, span, shader_kernarg_size;
     u32 banks = vertex ? GPU_KERNARG_BANKS :
@@ -1159,7 +1162,7 @@ static bool opengpu_validate_kernarg_binding(
         opengpu_validate_vertex_shader(gpu, shader,
                                        shader_kernarg_size, entry) :
         opengpu_validate_shader(gpu, shader, shader_kernarg_size,
-                                entry, texture_enabled);
+                                entry, texture_enabled, input_read_mask);
 }
 
 static int opengpu_validate_commands(struct opengpu_device *gpu,
@@ -1178,6 +1181,7 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
                  38u * sizeof(u32));
     for (i = 0; i < args->command_count; i++) {
         struct gpu_draw_record *record = &records[i];
+        u32 input_reads = 0x3f;
 
         if (record->v0[3] <= 0 || record->v1[3] <= 0 ||
             record->v2[3] <= 0)
@@ -1256,8 +1260,14 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
         }
         if (!opengpu_validate_kernarg_binding(
                 gpu, shader, kernarg, record->shader_pc, record->kernarg,
-                record->kernarg_bank_stride, 9, false, texture != NULL))
+                record->kernarg_bank_stride, 9, false, texture != NULL,
+                (args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) ?
+                    &input_reads : NULL))
             return -EINVAL;
+        if ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
+            (gpu->hw.capabilities & GPU_CAP_FRAGMENT_INPUT_USAGE))
+            record->state |= ((~input_reads) & 0x3fu) <<
+                             GPU_DRAW_FRAGMENT_INPUT_SKIP_SHIFT;
         record->shader_pc += lower_32_bits(shader->dma);
         /* Staging and shader data loads translate under VECTOR_SATP. */
         record->kernarg += lower_32_bits(kernarg->va ?
@@ -1285,6 +1295,7 @@ static int opengpu_validate_vertex_commands(
                  38u * sizeof(u32));
     for (i = 0; i < args->command_count; i++) {
         struct gpu_vert_draw_record *record = &records[i];
+        u32 input_reads = 0x3f;
         u64 address, bytes;
 
         if (record->vert_count < 3 || record->vert_count % 3 ||
@@ -1372,14 +1383,20 @@ static int opengpu_validate_vertex_commands(
         if (!opengpu_validate_kernarg_binding(
                 gpu, vertex_shader, vertex_kernarg,
                 record->vert_shader_pc, record->vert_kernarg,
-                record->vert_kernarg_bank_stride, 16, true, false))
+                record->vert_kernarg_bank_stride, 16, true, false, NULL))
             return -EINVAL;
         if (!opengpu_validate_kernarg_binding(
                 gpu, fragment_shader, fragment_kernarg,
                 record->frag_shader_pc, record->frag_kernarg,
                 record->frag_kernarg_bank_stride, 9, false,
-                texture != NULL))
+                texture != NULL,
+                (args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) ?
+                    &input_reads : NULL))
             return -EINVAL;
+        if ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
+            (gpu->hw.capabilities & GPU_CAP_FRAGMENT_INPUT_USAGE))
+            record->state |= ((~input_reads) & 0x3fu) <<
+                             GPU_DRAW_FRAGMENT_INPUT_SKIP_SHIFT;
         /* Vertex-buffer and kernarg staging share VECTOR_SATP with shader
          * data loads. Prefer the private VA when the bind mapped one. */
         record->vert_buffer_base += lower_32_bits(vertex_buffer->va ?
@@ -1819,7 +1836,8 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
                          OPENGPU_SUBMIT_VERTEX_CORE |
                          OPENGPU_SUBMIT_DEPTH_LOAD |
                          OPENGPU_SUBMIT_DISCARD_PRIVATE_DEPTH |
-                         OPENGPU_SUBMIT_COLOR_FORMAT_MASK)) ||
+                         OPENGPU_SUBMIT_COLOR_FORMAT_MASK |
+                         OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING)) ||
         ((args->flags & OPENGPU_SUBMIT_COLOR_FORMAT_MASK) >>
          OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT) > OPENGPU_FORMAT_MAX ||
         ((args->flags & OPENGPU_SUBMIT_COLOR_FORMAT_MASK) &&
@@ -1829,6 +1847,8 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
         ((args->flags & OPENGPU_SUBMIT_DISCARD_PRIVATE_DEPTH) &&
          (!(args->flags & OPENGPU_SUBMIT_VERTEX_CORE) ||
           args->depth_handle || (args->flags & OPENGPU_SUBMIT_DEPTH_LOAD))) ||
+        ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
+         !(gpu->hw.capabilities & GPU_CAP_FRAGMENT_INPUT_USAGE)) ||
         !args->context_id || !args->command_handle || !args->color_handle ||
         args->command_handle == args->color_handle ||
         !args->command_count || args->command_count > OPENGPU_MAX_COMMANDS ||
@@ -1936,6 +1956,37 @@ int opengpu_compute_drm_ioctl(struct drm_device *drm, void *data,
                 ret = -EINVAL;
                 goto out_file;
             }
+        }
+    }
+
+    if (args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) {
+        struct opengpu_staging_range scratch;
+        struct opengpu_staging_range others[ARRAY_SIZE(resources) + 3];
+        unsigned n = 0;
+
+        if (!kernarg) {
+            ret = -EINVAL;
+            goto out_file;
+        }
+        scratch.address = kernarg->dma;
+        scratch.bytes = kernarg->size;
+        for (i = 0; i < ARRAY_SIZE(resources); i++) {
+            if (!resources[i] || resources[i] == kernarg)
+                continue;
+            others[n].address = resources[i]->dma;
+            others[n++].bytes = resources[i]->size;
+        }
+        others[n].address = command_dma->dma_addr;
+        others[n++].bytes = command_object->size;
+        others[n].address = color_dma->dma_addr;
+        others[n++].bytes = color_object->size;
+        if (depth_object) {
+            others[n].address = depth_dma->dma_addr;
+            others[n++].bytes = depth_object->size;
+        }
+        if (!opengpu_staging_disjoint(&scratch, others, n)) {
+            ret = -EINVAL;
+            goto out_file;
         }
     }
 

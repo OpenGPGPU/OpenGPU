@@ -1464,7 +1464,7 @@ out:
 static int draw_vertex(struct pipe_opengpu_context *ctx,
                         const struct drm_opengpu_vertex_draw *draw,
                         struct pipe_opengpu_fence **out_fence,
-                        int discard_private_depth)
+                        int discard_private_depth, int transient_fragment_staging)
 {
     struct opengpu_buffer commands = { 0 };
     struct drm_opengpu_submit submit = { 0 };
@@ -1497,6 +1497,11 @@ static int draw_vertex(struct pipe_opengpu_context *ctx,
     submit.command_handle = commands.handle;
     submit.command_count = 1;
     submit.flags = OPENGPU_SUBMIT_VERTEX_CORE;
+    if (transient_fragment_staging &&
+        (ctx->screen->caps & OPENGPU_CAP_FRAGMENT_INPUT_USAGE) &&
+        (ctx->screen->driver_features &
+         OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING))
+        submit.flags |= OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING;
     if (discard_private_depth && (ctx->screen->driver_features &
          OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH) && !ctx->depth &&
         (draw->state & OPENGPU_DRAW_STATE_OVERRIDE) &&
@@ -1516,6 +1521,10 @@ static int draw_vertex(struct pipe_opengpu_context *ctx,
         submit.texture_slot = PIPE_TEX_SLOT;
     if (apply_depth_submit(ctx, &submit))
         goto out;
+    if (transient_fragment_staging && getenv("OPENGPU_TRACE_DRAWS"))
+        fprintf(stderr, "opengpu: fragment staging transient=%u flags=0x%x\n",
+                !!(submit.flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING),
+                submit.flags);
     if (opengpu_render(fd, &submit))
         goto out;
     if (finish_or_hand_off(ctx, fence, out_fence))
@@ -1534,14 +1543,21 @@ int pipe_opengpu_draw_vertex(struct pipe_opengpu_context *ctx,
                              const struct drm_opengpu_vertex_draw *draw,
                              struct pipe_opengpu_fence **out_fence)
 {
-    return draw_vertex(ctx, draw, out_fence, 0);
+    return draw_vertex(ctx, draw, out_fence, 0, 0);
 }
 
 int pipe_opengpu_draw_vertex_discard_depth(struct pipe_opengpu_context *ctx,
                              const struct drm_opengpu_vertex_draw *draw,
                              struct pipe_opengpu_fence **out_fence)
 {
-    return draw_vertex(ctx, draw, out_fence, 1);
+    return draw_vertex(ctx, draw, out_fence, 1, 0);
+}
+
+int pipe_opengpu_draw_vertex_transient(struct pipe_opengpu_context *ctx,
+                             const struct drm_opengpu_vertex_draw *draw,
+                             struct pipe_opengpu_fence **out_fence)
+{
+    return draw_vertex(ctx, draw, out_fence, 1, 1);
 }
 
 int pipe_opengpu_present(struct pipe_opengpu_screen *screen,

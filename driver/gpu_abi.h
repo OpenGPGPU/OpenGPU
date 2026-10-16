@@ -219,6 +219,10 @@ typedef int32_t s32;
 /* Descriptor-selected framebuffer and sampler byte orders. */
 #define GPU_CAP_NATIVE_PIXEL_FORMATS (1u << 25)
 #define GPU_CAP_RENDER_EXTENTS (1u << 26)
+#define GPU_CAP_FRAGMENT_INPUT_USAGE (1u << 27)
+/* Trusted kernel metadata in raw draw word32; never accepted from userspace. */
+#define GPU_DRAW_FRAGMENT_INPUT_SKIP_SHIFT 19u
+#define GPU_DRAW_FRAGMENT_INPUT_SKIP_MASK (0x3fu << GPU_DRAW_FRAGMENT_INPUT_SKIP_SHIFT)
 
 /* Bytes at increasing memory addresses; zero is legacy A,B,G,R. */
 #define GPU_FORMAT_NATIVE OPENGPU_FORMAT_NATIVE

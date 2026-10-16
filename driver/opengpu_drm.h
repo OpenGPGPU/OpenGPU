@@ -149,6 +149,7 @@ struct drm_opengpu_param {
  * drivers return EINVAL for this query; callers must then use zero features. */
 #define OPENGPU_PARAM_DRIVER_FEATURES 2u
 #define OPENGPU_DRIVER_FEATURE_DISCARD_PRIVATE_DEPTH (1u << 0)
+#define OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING (1u << 1)
 #define OPENGPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define OPENGPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define OPENGPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -184,6 +185,7 @@ struct drm_opengpu_param {
 /* Descriptor-selected framebuffer and sampler byte orders. */
 #define OPENGPU_CAP_NATIVE_PIXEL_FORMATS (1u << 25)
 #define OPENGPU_CAP_RENDER_EXTENTS (1u << 26)
+#define OPENGPU_CAP_FRAGMENT_INPUT_USAGE (1u << 27)
 
 
 /* Sample mode field width (0 = 1x, 1 = 2x, 2 = 4x). */
@@ -426,6 +428,14 @@ struct drm_opengpu_compute {
  * and every record must override state with depth test/write and stencil off.
  * Query OPENGPU_PARAM_DRIVER_FEATURES before using this flag. */
 #define OPENGPU_SUBMIT_DISCARD_PRIVATE_DEPTH (1u << 3)
+/* The first nine fragment SoA slices are transient renderer scratch: the
+ * caller must not observe their contents after the draw or use them as input
+ * to a later job. Shader reads and draw output remain defined; uniforms at
+ * slice9+ retain their usual contract. The driver may omit proven-unused
+ * staging. The kernarg DMA range must not overlap other draw resources.
+ * Query both the driver feature and FRAGMENT_INPUT_USAGE capability.
+ * Zero/default flags retain full staging and CPU-visible scratch contents. */
+#define OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING (1u << 7)
 #define OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT 4u
 #define OPENGPU_SUBMIT_COLOR_FORMAT_MASK (7u << OPENGPU_SUBMIT_COLOR_FORMAT_SHIFT)
 

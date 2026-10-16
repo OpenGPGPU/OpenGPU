@@ -100,6 +100,20 @@ triangle: fixed-function uses the HW sampler; fragment-core loads the corpus
 `fragment_texture` (`vtex.sample`) binary (default
 `/opengpu_fragment_texture.bin`). `examples/pipe_vertex_draw`
 exercises vertex+fragment cores (`GPU_VERT_CORE=1`).
+
+Mesa uses `pipe_opengpu_draw_vertex_transient` for its private fragment banks.
+It enables input omission only when both the driver feature and hardware
+capability are present; the driver derives the required inputs from the shader
+and runtime CU capacity. Callers of this helper must treat the first nine
+fragment SoA slices as transient scratch. Uniforms remain persistent. The
+existing draw helpers retain full staging.
+
+`scripts/build_mesa_opengpu.sh` also builds `opengpu_transient_staging_test`.
+Run it in the Debian guest with the module loaded to check default CPU-visible
+inputs, opt-in omission, pixel equality and unsupported-hardware rejection.
+The executable must be copied into the guest explicitly when using an older
+ARTI cloud-init payload whitelist.
+
 `examples/pipe_present` allocates a mode-sized 2D colour GEM, clears, draws,
 and presents via `pipe_opengpu_present` (same `--hold` / tint rules as
 `triangle_present`). `examples/pipe_desktop` is the Debian desktop frame:

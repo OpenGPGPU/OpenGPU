@@ -127,6 +127,7 @@ class ParallelFragmentScheduler(
     port.fragUv := io.front.fragUv
     port.fragDepths := io.front.fragDepths
     port.shaderPc := io.front.shaderPc
+    port.inputSkip := io.front.inputSkip
     port.abi1 := io.front.abi1
     port.kernargBase := io.front.kernargBase + io.front.kernargBankStride * (2 * worker).U
     port.kernargBankStride := io.front.kernargBankStride

@@ -131,7 +131,11 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           (if (textureExtent > 0) Seq(0L, 0L, 65536L, 0L, 0L, 65536L, 0L, 0L)
            else Seq.fill(8)(0L)) ++
           Seq(bankStride.toLong) ++ Seq.fill(5)(0L)
-        store(commands, record)
+        val skip = sys.props.get("opengpu.testFragInputSkip").map(_.toInt).getOrElse(0)
+        require(skip >= 0 && skip < 64)
+        store(commands, record.updated(32, record(32) | (skip.toLong << 19)))
+        for (bank <- 0 until 2*cus; slice <- 0 until 6; lane <- 0 until capacity if (skip & (1<<slice)) != 0)
+          store(kernarg+bank*bankStride+slice*stride+lane*4,Seq(0x5a000000L+bank*0x100000L+slice*0x10000L+lane))
         store(descriptor, Seq(1L << 16, commands.toLong, color.toLong, depth.toLong,
           side * 4L, 0x81L, if (textureExtent > 0) texture.toLong else 0L,
           textureExtent.toLong | textureExtent.toLong << 16,
@@ -174,6 +178,10 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           for (b <- 0 until 64 if mask.testBit(b)) {
             val a = base + (b / 4) * 4
             val shift = (b % 4) * 8
+            if (a >= kernarg && a < kernarg + 2L*cus*bankStride) {
+              val slice = ((a-kernarg)%bankStride/stride).toInt
+              assert(slice >= 6 || (skip & (1<<slice)) == 0, "wrote omitted fragment input")
+            }
             words(a) = (words.getOrElse(a, BigInt(0)) & ~(BigInt(255) << shift)) |
               (((data >> (8 * b)) & 255) << shift)
           }
@@ -286,6 +294,9 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         assert(mismatches.isEmpty, s"CUs=$cus: ${mismatches.size} mismatches: ${mismatches.take(12).mkString("; ")}")
         for (bank <- 0 until 2 * cus; word <- 0 until (bankStride - 9 * stride) / 4)
           assert(words(kernarg + bank * bankStride + 9L * stride + word * 4) == BigInt(sentinel))
+        for (bank <- 0 until 2*cus; slice <- 0 until 6; lane <- 0 until capacity if (skip & (1<<slice)) != 0)
+          assert(words(kernarg+bank*bankStride+slice.toLong*stride+lane*4)==BigInt(0x5a000000L+bank*0x100000L+slice*0x10000L+lane), "omitted input sentinel changed")
+        println(s"FRAGMENT_INPUT_USAGE skip=$skip all_omitted_bytes_preserved=true")
         pixelsPassed = true
         saveMetadata()
       }

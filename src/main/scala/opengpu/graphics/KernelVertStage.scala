@@ -97,6 +97,7 @@ class KernelVertStage(
     val kernargBase = Input(UInt(32.W))
     val kernargBankStride = Input(UInt(32.W))
     val fragShaderPc = Input(UInt(32.W))
+    val fragInputSkip = Input(UInt(6.W))
     val fragKernarg = Input(UInt(32.W))
     val fragKernargBankStride = Input(UInt(32.W))
     val stateOverride = Input(Bool())
@@ -323,6 +324,7 @@ class KernelVertStage(
   }
   private val kernargBank = RegInit(false.B)
   private val snapFragPc = Reg(UInt(32.W))
+  private val snapFragInputSkip = Reg(UInt(6.W))
   private val snapFragKernarg = Reg(UInt(32.W))
   private val snapFragBankStride = Reg(UInt(32.W))
   private val snapStateOverride = Reg(Bool())
@@ -395,6 +397,7 @@ class KernelVertStage(
     io.vertOut.bits.uv(k).v := outTexV(vi)
   }
   io.vertOut.bits.shaderPc := snapFragPc
+  io.vertOut.bits.fragInputSkip := snapFragInputSkip
   io.vertOut.bits.shaderKernarg := snapFragKernarg
   io.vertOut.bits.kernargBankStride := snapFragBankStride
   io.vertOut.bits.stateOverride := snapStateOverride
@@ -442,6 +445,7 @@ class KernelVertStage(
         snapKernarg := io.kernargBase
         kernargBank := false.B
         snapFragPc := io.fragShaderPc
+        snapFragInputSkip := io.fragInputSkip
         snapFragKernarg := io.fragKernarg
         snapFragBankStride := io.fragKernargBankStride
         snapStateOverride := io.stateOverride

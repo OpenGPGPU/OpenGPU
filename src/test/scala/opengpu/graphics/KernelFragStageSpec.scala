@@ -72,6 +72,7 @@ class KernelFragStageWithKernel(
   io.outDepths := frag.io.outDepths
   io.depthOverride := frag.io.depthOverride
   frag.io.abi1 := io.abi1
+  frag.io.inputSkip := 0.U // Legacy fixture requests the complete input ABI.
   frag.io.shaderPc := io.shaderPc
   frag.io.kernargBase := io.kernargBase
   frag.io.kernargBankStride := io.kernargBankStride

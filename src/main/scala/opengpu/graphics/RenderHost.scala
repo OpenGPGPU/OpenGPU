@@ -408,6 +408,7 @@ class RenderHost(
       (if (vertCore) (1 << GpuCapabilities.VertexCore) else 0) |
       (if (unifiedCommands) (1 << GpuCapabilities.NativePixelFormats) else 0) |
       (if (unifiedCommands) (1 << GpuCapabilities.RenderExtents) else 0) |
+      (if (unifiedCommands && fragCore) (1 << GpuCapabilities.FragmentInputUsage) else 0) |
       (1 << GpuCapabilities.ClearEngine) |
       (1 << GpuCapabilities.BlitEngine) |
       (1 << GpuCapabilities.StridedEngine) |

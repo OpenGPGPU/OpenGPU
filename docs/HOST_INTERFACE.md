@@ -199,6 +199,24 @@ value ranges (blend factors 0–10, equations 0–4, func/op fields 0–7), and
 rejects stencil words without the stencil-enable bit; words 38–39 stay
 reserved-zero.
 
+With `GPU_CAP_FRAGMENT_INPUT_USAGE` (bit 27), raw word 32 bits 24:19
+carry an omission mask for fragment input SoA slices 0–5: x, y, input depth,
+input colour, u and v. Zero requests full staging. The coalesced staging path
+can omit the selected inputs; output initialization and uniforms remain
+unchanged. Metadata follows the draw context and is snapshotted per batch.
+The legacy word staging path conservatively writes all inputs.
+
+Linux rejects these bits in user command records. To permit omission, a caller
+must query `OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING` and the hardware
+capability, then set `OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING`. This declares
+the first nine fragment SoA slices to be transient scratch, whose contents the
+caller must not observe outside the draw or reuse as input to a later job.
+Uniforms at slice 9 onward retain their usual contract. The driver rejects
+overlap between the scratch DMA span and other draw resources, validates the
+immutable shader snapshot, and derives the mask from its possible input reads.
+Analysis uses runtime launch capacity and does not identify stock binaries.
+Without the flag, staging retains its CPU-visible behavior.
+
 The fixed vertex format is eight words: Q16.16 position, RGBA8888 colour, depth and
 Q16.16 UV. Resource addresses are relocated from validated bindings rather
 than trusted from userspace command data.

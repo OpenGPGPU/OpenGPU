@@ -40,4 +40,6 @@ trait HasResolvedDrawState extends Bundle {
 trait HasDrawState extends HasResolvedDrawState {
   /** When set, this record's state fields override the global registers. */
   val stateOverride = Bool()
+  /** Optional promise: shader does not read these input SoA slices (0..5). */
+  val fragInputSkip = UInt(6.W)
 }

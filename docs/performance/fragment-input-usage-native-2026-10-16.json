@@ -1,0 +1,834 @@
+{
+  "status": "PASS: maincompile,36featureunits,8complete1/4CU scenes, native task timing and optimized Debian GLES/GTK64; full640 scanout gate in progress",
+  "artifact_root": ".artifacts/shared-cu/fragment-input-usage-native",
+  "scope": "Four shared CUs,16 lanes,8warps,full vertex/fragment/FPU,640x480 model rendering64x64 fixtures. Runtime mask derived by conservative validator from actual shader binary and capacity; explicit transient scratch opt-in. Exact qualified RTL/driver/Mesa promoted to main worktree; maincompile and hostdriver tests PASS, 36 main feature units and eight complete1/4CU scenes PASS; full640 scanout gate in progress.",
+  "controlled_timing": {
+    "samples": 48,
+    "warmups": 6,
+    "order": "Four balanced ABC CBA rounds per scene; eight samples per variant per scene",
+    "same_binary_comparison": "full and derived use the identical executable and archive; only hint and omitted scratch canaries differ",
+    "summary": {
+      "solid": {
+        "control": {
+          "median_seconds": 1.0143990835,
+          "reduction_from_control_percent": 0.0,
+          "reduction_from_full_percent": -0.24815408382898863,
+          "round_medians": [
+            1.0219472920000001,
+            1.0123985210000002,
+            1.014197125,
+            1.0121778955
+          ]
+        },
+        "full": {
+          "median_seconds": 1.0118880419999998,
+          "reduction_from_control_percent": 0.24753980369701667,
+          "reduction_from_full_percent": 0.0,
+          "round_medians": [
+            1.0163020624999999,
+            1.0042494579999999,
+            1.0118880419999998,
+            1.009294896
+          ]
+        },
+        "derived": {
+          "median_seconds": 0.934734104,
+          "reduction_from_control_percent": 7.8534159578625085,
+          "reduction_from_full_percent": 7.6247504464530325,
+          "round_medians": [
+            0.9378090210000001,
+            0.9385016875,
+            0.9401564579999999,
+            0.9303645415
+          ]
+        }
+      },
+      "spatial": {
+        "control": {
+          "median_seconds": 1.2501311665000001,
+          "reduction_from_control_percent": 0.0,
+          "reduction_from_full_percent": -0.5203964201580646,
+          "round_medians": [
+            1.246151271,
+            1.2591966665,
+            1.2501311665000001,
+            1.2523157915
+          ]
+        },
+        "full": {
+          "median_seconds": 1.2436592085,
+          "reduction_from_control_percent": 0.5177023158393634,
+          "reduction_from_full_percent": 0.0,
+          "round_medians": [
+            1.2462911664999998,
+            1.262559917,
+            1.240996604,
+            1.2385065625
+          ]
+        },
+        "derived": {
+          "median_seconds": 1.192902375,
+          "reduction_from_control_percent": 4.577822954388367,
+          "reduction_from_full_percent": 4.081249361006112,
+          "round_medians": [
+            1.1960980829999999,
+            1.1961523955,
+            1.188001,
+            1.1926488960000001
+          ]
+        }
+      }
+    },
+    "every_round_favours_derived": true,
+    "limitations": "GPU task host seconds exclude C validator CLI, process initialization and guest startup. No own compiler/guest active; sampled unrelated host activity retained in rawstate. No full desktop startup speed claim."
+  },
+  "native_cases": {
+    "0-uniform": [
+      {
+        "scene": "solid",
+        "ticks": 8827,
+        "write_bytes": 96816,
+        "output_sha256": "923eea5949eb3c08cd6b358a48b8836958da14a2a9bc34c4448f98f734fe573b",
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "input_skip_mask": 0,
+        "omitted_input_bytes_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "ticks": 14135,
+        "write_bytes": 96816,
+        "output_sha256": "9c537f8d09a277aecb29330b8f38a58d9fa2e52c9e0f5d5d3ab95ad2f6579dba",
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "input_skip_mask": 0,
+        "omitted_input_bytes_preserved": true
+      }
+    ],
+    "0-gradient": [
+      {
+        "scene": "solid",
+        "ticks": 8827,
+        "write_bytes": 96816,
+        "output_sha256": "129ef02f27278f14451f618fa976368f7aeb30a95b1765a96c722499bdcbfdf3",
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "input_skip_mask": 0,
+        "omitted_input_bytes_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "ticks": 14135,
+        "write_bytes": 96816,
+        "output_sha256": "50e0edfc975b54e482e5146783e7220bb0e871ae8a447cfa33041fce19d8cd99",
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "input_skip_mask": 0,
+        "omitted_input_bytes_preserved": true
+      }
+    ],
+    "1-uniform": [
+      {
+        "scene": "solid",
+        "ticks": 8757,
+        "write_bytes": 61040,
+        "output_sha256": "e9ad1e927422544bf4d205fe866907268e5838c608653bd918ddef4a23b8c60a",
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "input_skip_mask": 15,
+        "omitted_input_bytes_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "ticks": 14005,
+        "write_bytes": 61040,
+        "output_sha256": "859d899ae71232bca6ead5257ed03e923f62673bad32a9f42d79eaad027e7dae",
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "input_skip_mask": 15,
+        "omitted_input_bytes_preserved": true
+      }
+    ],
+    "1-gradient": [
+      {
+        "scene": "solid",
+        "ticks": 8757,
+        "write_bytes": 61040,
+        "output_sha256": "33bc352693562931774e0747df8ae3b2ee36622727d090de65c8ea2cd11833c0",
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "input_skip_mask": 15,
+        "omitted_input_bytes_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "ticks": 14005,
+        "write_bytes": 61040,
+        "output_sha256": "f4255621ee891ed50a1ea046bd7abbec732b30263be5715ed4fda5020b6e9691",
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "input_skip_mask": 15,
+        "omitted_input_bytes_preserved": true
+      }
+    ]
+  },
+  "traffic": {
+    "0": [
+      {
+        "scene": "solid",
+        "ticks": 8827,
+        "write_bytes": 96816,
+        "memory_trace": {
+          "reads": 1170,
+          "writes": 12524,
+          "read_bytes": 74880,
+          "write_bytes": 96816,
+          "byte_regions": {
+            "color": {
+              "read_bytes": 0,
+              "write_bytes": 8064
+            },
+            "commands": {
+              "read_bytes": 160,
+              "write_bytes": 0
+            },
+            "depth": {
+              "read_bytes": 25728,
+              "write_bytes": 8064
+            },
+            "descriptor": {
+              "read_bytes": 64,
+              "write_bytes": 0
+            },
+            "fragment_color_input": {
+              "read_bytes": 0,
+              "write_bytes": 8944
+            },
+            "fragment_color_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_control_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_depth_input": {
+              "read_bytes": 0,
+              "write_bytes": 8944
+            },
+            "fragment_depth_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_program": {
+              "read_bytes": 72,
+              "write_bytes": 0
+            },
+            "fragment_u": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_v": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_x": {
+              "read_bytes": 0,
+              "write_bytes": 8944
+            },
+            "fragment_y": {
+              "read_bytes": 0,
+              "write_bytes": 8944
+            },
+            "other": {
+              "read_bytes": 456,
+              "write_bytes": 0
+            },
+            "texture": {
+              "read_bytes": 4,
+              "write_bytes": 0
+            },
+            "vertex_input": {
+              "read_bytes": 1280,
+              "write_bytes": 0
+            },
+            "vertex_kernarg": {
+              "read_bytes": 2048,
+              "write_bytes": 192
+            },
+            "vertex_program": {
+              "read_bytes": 268,
+              "write_bytes": 0
+            }
+          },
+          "trace_sha256": "561132c3768b78558adb470489cbc2ea784fceea35e7cb93913dbc46fac79f24",
+          "records": 13694,
+          "scope": "Successful lower-memory callbacks; reads include fetched line bytes, writes include only masked bytes. Tracing adds host work; exclude times from benchmarks."
+        }
+      },
+      {
+        "scene": "spatial",
+        "ticks": 14135,
+        "write_bytes": 96816,
+        "memory_trace": {
+          "reads": 1380,
+          "writes": 12491,
+          "read_bytes": 88320,
+          "write_bytes": 96816,
+          "byte_regions": {
+            "color": {
+              "read_bytes": 0,
+              "write_bytes": 8064
+            },
+            "commands": {
+              "read_bytes": 160,
+              "write_bytes": 0
+            },
+            "depth": {
+              "read_bytes": 28608,
+              "write_bytes": 8064
+            },
+            "descriptor": {
+              "read_bytes": 64,
+              "write_bytes": 0
+            },
+            "fragment_color_input": {
+              "read_bytes": 0,
+              "write_bytes": 8944
+            },
+            "fragment_color_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_control_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_depth_input": {
+              "read_bytes": 0,
+              "write_bytes": 8944
+            },
+            "fragment_depth_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_program": {
+              "read_bytes": 72,
+              "write_bytes": 0
+            },
+            "fragment_u": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_v": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_x": {
+              "read_bytes": 0,
+              "write_bytes": 8944
+            },
+            "fragment_y": {
+              "read_bytes": 0,
+              "write_bytes": 8944
+            },
+            "other": {
+              "read_bytes": 396,
+              "write_bytes": 0
+            },
+            "texture": {
+              "read_bytes": 10624,
+              "write_bytes": 0
+            },
+            "vertex_input": {
+              "read_bytes": 1280,
+              "write_bytes": 0
+            },
+            "vertex_kernarg": {
+              "read_bytes": 2048,
+              "write_bytes": 192
+            },
+            "vertex_program": {
+              "read_bytes": 268,
+              "write_bytes": 0
+            }
+          },
+          "trace_sha256": "8a97d285ef43196105856fbde347e9b15ef6be4b0f2a8065d91d08cc2660afb0",
+          "records": 13871,
+          "scope": "Successful lower-memory callbacks; reads include fetched line bytes, writes include only masked bytes. Tracing adds host work; exclude times from benchmarks."
+        }
+      }
+    ],
+    "1": [
+      {
+        "scene": "solid",
+        "ticks": 8757,
+        "write_bytes": 61040,
+        "memory_trace": {
+          "reads": 1154,
+          "writes": 8006,
+          "read_bytes": 73856,
+          "write_bytes": 61040,
+          "byte_regions": {
+            "color": {
+              "read_bytes": 0,
+              "write_bytes": 8064
+            },
+            "commands": {
+              "read_bytes": 160,
+              "write_bytes": 0
+            },
+            "depth": {
+              "read_bytes": 24704,
+              "write_bytes": 8064
+            },
+            "descriptor": {
+              "read_bytes": 64,
+              "write_bytes": 0
+            },
+            "fragment_color_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_control_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_depth_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_program": {
+              "read_bytes": 72,
+              "write_bytes": 0
+            },
+            "fragment_u": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_v": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "other": {
+              "read_bytes": 456,
+              "write_bytes": 0
+            },
+            "texture": {
+              "read_bytes": 4,
+              "write_bytes": 0
+            },
+            "vertex_input": {
+              "read_bytes": 1280,
+              "write_bytes": 0
+            },
+            "vertex_kernarg": {
+              "read_bytes": 2048,
+              "write_bytes": 192
+            },
+            "vertex_program": {
+              "read_bytes": 268,
+              "write_bytes": 0
+            }
+          },
+          "trace_sha256": "5b151fe9f7a62dd83e7be3ec38c1b42d4f5c9d15c0bf1c3d07dd34e75912ffec",
+          "records": 9160,
+          "scope": "Successful lower-memory callbacks; reads include fetched line bytes, writes include only masked bytes. Tracing adds host work; exclude times from benchmarks."
+        }
+      },
+      {
+        "scene": "spatial",
+        "ticks": 14005,
+        "write_bytes": 61040,
+        "memory_trace": {
+          "reads": 1382,
+          "writes": 8065,
+          "read_bytes": 88448,
+          "write_bytes": 61040,
+          "byte_regions": {
+            "color": {
+              "read_bytes": 0,
+              "write_bytes": 8064
+            },
+            "commands": {
+              "read_bytes": 160,
+              "write_bytes": 0
+            },
+            "depth": {
+              "read_bytes": 28736,
+              "write_bytes": 8064
+            },
+            "descriptor": {
+              "read_bytes": 64,
+              "write_bytes": 0
+            },
+            "fragment_color_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_control_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_depth_output": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_program": {
+              "read_bytes": 72,
+              "write_bytes": 0
+            },
+            "fragment_u": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "fragment_v": {
+              "read_bytes": 8960,
+              "write_bytes": 8944
+            },
+            "other": {
+              "read_bytes": 396,
+              "write_bytes": 0
+            },
+            "texture": {
+              "read_bytes": 10624,
+              "write_bytes": 0
+            },
+            "vertex_input": {
+              "read_bytes": 1280,
+              "write_bytes": 0
+            },
+            "vertex_kernarg": {
+              "read_bytes": 2048,
+              "write_bytes": 192
+            },
+            "vertex_program": {
+              "read_bytes": 268,
+              "write_bytes": 0
+            }
+          },
+          "trace_sha256": "b23d00e51b24e41608a0ce88a162a1fe8aac1fdfd0da48f753eada5d0bc931ff",
+          "records": 9447,
+          "scope": "Successful lower-memory callbacks; reads include fetched line bytes, writes include only masked bytes. Tracing adds host work; exclude times from benchmarks."
+        }
+      }
+    ]
+  },
+  "write_reduction_bytes": 35776,
+  "write_reduction_percent": 36.952569823169725,
+  "native_tick_reductions_percent": {
+    "solid": 0.7930214115781098,
+    "spatial": 0.9197028652281558
+  },
+  "cycle_scope": "Native ticks are distinct from RTL scene test cycles; do not infer8.5%/4.8% native tick reduction from Scala fixture results.",
+  "guest_drm": {
+    "fragment-input-usage-fallback-v2": {
+      "passed": true,
+      "exit_status": 0,
+      "payload_unchanged": true,
+      "qemu_sha256": "9d44388b9094ca87c29175760dc68baf5590721678e1aa29bd305069c4f56697"
+    },
+    "fragment-input-usage-guest": {
+      "passed": true,
+      "exit_status": 0,
+      "payload_unchanged": true,
+      "qemu_sha256": "f0f0e34c3c2bb7d61343198eadab5c55d17649249a2ed32fdabbec09c43ecddd"
+    }
+  },
+  "guest_test_scope": "All4096independent colour pixels; default CPU-visible6inputs and uniforms, forged rawhint rejection; optin preserves omittedinputs on cap27. Oldhardware rejects optin without scratchwrites. Newdriver DMA-range guard independently100000ASan/UBSan referencecases and Linux7.2 module build PASS.",
+  "prior_failure": "First fallback attempt failed127 due custom executable missing from cloud-init whitelist. Preserved; v2 uses existing standard DRM-test payload hook. No RTL bug inferred.",
+  "evidence": {
+    ".artifacts/shared-cu/fragment-input-usage-native/paired/state.json": "98aded7a772266d08ec5a51eab874f6d0df496b07c94fc300e35950e9a83aee1",
+    ".artifacts/shared-cu/fragment-input-usage-native/optimized/manifest.json": "b6419167b2d7de955cb5394f54951c8cb9a29409dca316787f50b622babdd7b3",
+    ".artifacts/shared-cu/fragment-input-usage-native/profile-inputs.json": "40c3eadb9914b678172acd62278520b769ae470552a86c2fd773fb3600383d59",
+    ".artifacts/shared-cu/fragment-input-usage/userspace-compile-v2.json": "29b7339acfe8f3b83c586ece24c5e0437b5d24843e3b2c92713bd6efa4550e0c",
+    ".artifacts/shared-cu/fragment-input-usage/mesa-linked-v2/manifest.json": "778f26febd51b1bf13ca75a2348be18a75820a16ff9853fcd17094bc3261d2ad",
+    ".artifacts/shared-cu/fragment-input-usage-fallback-v2/state.json": "c37316dbf7e1ab27f9fb8fbb34a8746d92d4b2ce140e03f6ac2ea1fb5b03f5ce",
+    ".artifacts/shared-cu/fragment-input-usage-fallback-v2/proof/transient-staging.log": "ed63f1d7cad601fe4f28c36d95aad880d324f4e1610948d3214462a2eb136969",
+    ".artifacts/shared-cu/fragment-input-usage-guest/state.json": "02a5e3388fda5a0571930ef42b0aedbf432aab2afec9e3b56d96d424b061d7fe",
+    ".artifacts/shared-cu/fragment-input-usage-guest/proof/transient-staging.log": "8c0de4f8a199ee80278bfd810f48df508c52fb575352f28c3e65f89a1bf6c84c"
+  },
+  "installed_qemu": "Unchanged",
+  "guest_optimized_gate": {
+    "started": 1792131761.554729,
+    "pid": 81803,
+    "stage": "terminal",
+    "qemu_sha256": "88384a2dd6dc6f1eefbc0c0a4b136df611ca77c95a0254d381074b9eec5d22ca",
+    "archive_sha256": "645a9d1269db490814a1344b8c46306dce1d6f1dc3e79d90269957ca3bd1bfa1",
+    "gate_sha256": "80c78151ca3172a3e773fc9f4e50e1e43e254eb52f6df87ea48bcadd13934568",
+    "scope": "New exact-model native-fixture PGO, private DMA-guarded explicit transient scratch driver and Mesa opt-in. Full 18 compute replays, custom DRM default/opt-in,21 GLES,GTK64 idle/active and strictscanout. No guest-trained profile or clean desktop startup timing claim.",
+    "exit_status": 0,
+    "guest_seconds": 87.48184620821849,
+    "markers": {
+      "compute completed; RNU=1 RDN=0": true,
+      "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+      "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+      "Native shader suite: PASS": true,
+      "OPENGPU GL FILL PASS": true,
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "OPENGPU GL OFFSCREEN PASS:": true,
+      "fragment staging transient=1": true
+    },
+    "native_cases": 21,
+    "quad_batch_pass": true,
+    "payload_unchanged": true,
+    "passed": true,
+    "finished": 1792131851.9590132,
+    "compute_replays_passed": 18,
+    "report": ".artifacts/shared-cu/fragment-input-usage-qualified/state.json"
+  },
+  "stock_shader_address_oracle": "Main userspace/tests/shader_abi.c: independently execute8stockFS x7resourceconfigs, everywarp/allreadbytes; derivedmask equals actualunion. ASan/UBSan PASS. Existing11program x7config ABI regression retained.",
+  "main_rtl_source_promoted": true,
+  "main_regressions": {
+    "compile": "PASS",
+    "host_driver_tests": "PASS",
+    "feature_units_passed": 36,
+    "unit_detail": "35passed initialrun; one Verilator shell-script setup failure from concurrent shim rewrite. Harness fixed in4ca9309; onlyfailed staging-traffic test rerunallvariantsPASS. NoRTLchangesrequired byfailure. Separate3helpertests and12concurrentchecksPASS.",
+    "failed_log_preserved": ".artifacts/shared-cu/fragment-input-usage/main-units.log",
+    "native_DRM_test_AArch64_build": "PASS publicsource",
+    "staging_guard_ASan_UBSan": "PASS100000widenedreferencecases plusaliases/boundaries/null/wrap/multiplebindings",
+    "address_oracle": "PASS8stockFS x7resourceconfigurations, everywarp andallreadbytes; exactmaskunion. ASan/UBSan.",
+    "evidence_sha256": {
+      ".artifacts/shared-cu/fragment-input-usage/main-compile.log": "b44e32d08d25a2ab98e4b657e57b0f7b03ffcf5acb5351e0cba895f005220094",
+      ".artifacts/shared-cu/fragment-input-usage/main-host-driver.log": "c4ffab21ebfa6e3de81829b92c781f7816f8f533a16326710bf9e675d72de2ef",
+      ".artifacts/shared-cu/fragment-input-usage/main-units.log": "4567bc04229da067ce8ce88b88a6e00bbcc90d27b6c0a275a37279ba06b746b5",
+      ".artifacts/shared-cu/fragment-input-usage/main-isolated-rerun.log": "ca8c374274f706493a11b69098d6be2a8b544585bd26092e567caea700fffc83",
+      ".artifacts/shared-cu/fragment-input-usage/validator/shader-abi-usage.log": "359cf1bd323ad90592b10e156fa5cde0cd41127166709ae4d72ec608390dce62",
+      ".artifacts/shared-cu/fragment-input-usage/parallel-harness/state.json": "82fcd0b0a5c07663699bf6055c3d5bb89e3e7d63fbcce1a21e3705ba6c2c9b91"
+    },
+    "full_scenes": {
+      "passed": true,
+      "cases": [
+        {
+          "name": "main-scene-0-solid-1",
+          "passed": true,
+          "cycles": 26008,
+          "metrics": {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "26008",
+            "active_cu_cycles": "13495",
+            "peak_cus": "1",
+            "texture_extent": "1",
+            "buffer_texture_reads": "true",
+            "texture_words": "140",
+            "texture_lines": "1"
+          },
+          "seconds": 116.38768166606314
+        },
+        {
+          "name": "main-scene-0-solid-4",
+          "passed": true,
+          "cycles": 10730,
+          "metrics": {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "10730",
+            "active_cu_cycles": "15936",
+            "peak_cus": "4",
+            "texture_extent": "1",
+            "buffer_texture_reads": "true",
+            "texture_words": "140",
+            "texture_lines": "1"
+          },
+          "seconds": 118.37646454107016
+        },
+        {
+          "name": "main-scene-0-spatial-1",
+          "passed": true,
+          "cycles": 48881,
+          "metrics": {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "48881",
+            "active_cu_cycles": "36368",
+            "peak_cus": "1",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3676",
+            "texture_lines": "166"
+          },
+          "seconds": 38.55549566610716
+        },
+        {
+          "name": "main-scene-0-spatial-4",
+          "passed": true,
+          "cycles": 16047,
+          "metrics": {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "16047",
+            "active_cu_cycles": "38240",
+            "peak_cus": "4",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3678",
+            "texture_lines": "228"
+          },
+          "seconds": 47.71114516700618
+        },
+        {
+          "name": "main-scene-15-solid-1",
+          "passed": true,
+          "cycles": 24792,
+          "metrics": {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "24792",
+            "active_cu_cycles": "13495",
+            "peak_cus": "1",
+            "texture_extent": "1",
+            "buffer_texture_reads": "true",
+            "texture_words": "140",
+            "texture_lines": "1"
+          },
+          "seconds": 37.846272916998714
+        },
+        {
+          "name": "main-scene-15-solid-4",
+          "passed": true,
+          "cycles": 9817,
+          "metrics": {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "9817",
+            "active_cu_cycles": "15396",
+            "peak_cus": "4",
+            "texture_extent": "1",
+            "buffer_texture_reads": "true",
+            "texture_words": "140",
+            "texture_lines": "1"
+          },
+          "seconds": 46.95930491597392
+        },
+        {
+          "name": "main-scene-15-spatial-1",
+          "passed": true,
+          "cycles": 47665,
+          "metrics": {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "47665",
+            "active_cu_cycles": "36368",
+            "peak_cus": "1",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3676",
+            "texture_lines": "166"
+          },
+          "seconds": 38.13124854210764
+        },
+        {
+          "name": "main-scene-15-spatial-4",
+          "passed": true,
+          "cycles": 15272,
+          "metrics": {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "15272",
+            "active_cu_cycles": "38040",
+            "peak_cus": "4",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3678",
+            "texture_lines": "231"
+          },
+          "seconds": 45.75520179211162
+        }
+      ],
+      "evidence": ".artifacts/shared-cu/fragment-input-usage/main-scenes-state.json",
+      "sha256": "41843affb0786d28fe99f0ce51a14fec0de9fe8d68fe9b4040b53e0fc9a2e9ca"
+    }
+  },
+  "configuration": {
+    "physical_compute_units": 4,
+    "private_graphics_CUs": 0,
+    "lanes": 16,
+    "warps": 8,
+    "full_vertex_fragment_FPU": true,
+    "header_sha256": "0ea9359119c71b1935fde4496d1b03cb3001444b0fa85c34a4319ebecd91e909"
+  },
+  "promoted_source_sha256": {
+    "src/main/scala/opengpu/graphics/HasDrawState.scala": "6fd0c3661684af86e5d229b090c8117e97c774183f22e2d795482fc5faf81052",
+    "src/main/scala/opengpu/graphics/CommandBufferStage.scala": "9fbfec821376e9835081c25367a0c59104bc0a7b7ae27ac25dd305d124c017c6",
+    "src/main/scala/opengpu/graphics/DrawContextFifo.scala": "159d332b258cbc5d763881f2987ec1300f8c46d1408d57af268dbd1dd426018e",
+    "src/main/scala/opengpu/graphics/KernelVertStage.scala": "894db5dc3b9afd7329de47b265561288b45cadc0b33ef7f222a3547f8670168c",
+    "src/main/scala/opengpu/graphics/KernelFragStage.scala": "bfdf4f30ef5ecbd9055b77b02527210119a3e792c82bdc73cecd9221077cb512",
+    "src/main/scala/opengpu/graphics/ParallelFragmentScheduler.scala": "79f0f4cd6012c3d3bd01f925e81fb1bd6d3253e94b4ab888280fb8fc41978fd1",
+    "src/main/scala/opengpu/graphics/RenderPipeline.scala": "20f3522e9e3f2cbddc54082234c5477f22a03b4fa79c4b0144b71fa7ae8b5c13",
+    "src/main/scala/opengpu/graphics/GpuCapabilities.scala": "344bc715b6017d0a535d875c25dbc3a1f1fbf7d059a194903c422e83b46b1c9e",
+    "src/main/scala/opengpu/graphics/RenderHost.scala": "3d713935eae1a4f5c1e6205834e2a0834809946edacf42a61a269e063f64fef7",
+    "driver/opengpu_compute.c": "a3925ce89699ace3af29b369f0d0b613027a7f24291897d464ac514191c08c81",
+    "driver/opengpu_drm.h": "78934052b24f1324d150a8ce086a95fcb10b158d034c341b650968bbad83e7fc",
+    "driver/gpu_abi.h": "8fbca59b72060e4412429f8772b807d09c8083280122bdd0c7ed1da558868a5a",
+    "driver/opengpu_staging_validator.h": "570456006916817f03320b17ce99e34c22e6ee9562779f8c1470a559f97b1625",
+    "userspace/pipe_opengpu.c": "f35595a9a6857a1cbcbd13a6141cfc3a40180397d682abd90a04ba77d3cf3395",
+    "userspace/pipe_opengpu.h": "57d29f15a7b6cb55195f171952f80268f3f57e39019ea6f428f934256c65bdca",
+    "userspace/gallium/opengpu_context.c": "0a2b71558618020610d41d64ec714a1e19593a01027deaf98c500bdaae734b7c"
+  }
+}

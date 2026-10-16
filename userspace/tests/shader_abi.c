@@ -96,6 +96,7 @@ static void check_program(const struct program *p, uint32_t resources)
     unsigned target_uniform = p->vertex ? opengpu_shader_vertex_uniform_offset(resources) :
                                          opengpu_shader_fragment_uniform_offset(resources);
     unsigned stride = opengpu_shader_array_stride(resources), warp;
+    uint32_t input_reads = 0x3fu, actual_input_reads = 0;
     size_t words;
     assert(!opengpu_shader_lower_runtime_abi(p->code, p->words, p->vertex,
                                               converted, COUNT(converted), &words));
@@ -104,6 +105,10 @@ static void check_program(const struct program *p, uint32_t resources)
         p->vertex ? opengpu_shader_vertex_kernarg_bytes(resources) :
                     opengpu_shader_fragment_bank_stride(resources), batch,
         p->vertex ? 8 : 6, p->vertex ? 16 : 9, !p->vertex, true, false, true, batch));
+    if (!p->vertex)
+        assert(opengpu_shader_validate_words_profile_runtime_usage(
+            converted, words, opengpu_shader_fragment_bank_stride(resources),
+            batch, 6, 9, true, true, false, true, batch, &input_reads));
     /* The same binary must be refused when x9 has no launch-time guarantee. */
     assert(!opengpu_shader_validate_words_profile_runtime(converted, words,
         p->vertex ? opengpu_shader_vertex_kernarg_bytes(resources) :
@@ -126,8 +131,25 @@ static void check_program(const struct program *p, uint32_t resources)
             }
             assert(wide.accesses[i].kind == old.accesses[i].kind);
             assert(wide.accesses[i].address == 0x10000000u + expected);
+            if (!p->vertex && wide.accesses[i].kind != 2) {
+                unsigned byte, bytes = wide.accesses[i].kind == 3 ? 4 : 4 * wide.vl;
+                uint32_t start = wide.accesses[i].address - 0x10000000u;
+
+                /* Independently union every byte actually read by every warp.
+                 * A missing bit would let staging omit a shader input. Stock
+                 * programs also require an exact union, keeping the analysis
+                 * useful across all resource configurations. */
+                for (byte = 0; byte < bytes; byte++) {
+                    unsigned slice = (start + byte) / stride;
+
+                    if (slice < 6)
+                        actual_input_reads |= 1u << slice;
+                }
+            }
         }
     }
+    if (!p->vertex)
+        assert(input_reads == actual_input_reads);
     printf("%s resources=%08x: %zu -> %zu words PASS\n", p->name, resources, p->words, words);
 }
 

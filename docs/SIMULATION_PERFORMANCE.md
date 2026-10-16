@@ -37,6 +37,24 @@ four-CU scene pass the [mode qualification](performance/hierarchical-verificatio
 
 ## Tagged staging and fast native checks (2026-10-16)
 
+Fragment input omission now removes staging writes for inputs the validated
+shader cannot read. Mesa explicitly opts its private scratch into this behavior;
+existing callers retain full staging. Analysis uses the immutable shader
+snapshot and runtime CU capacity, with hardware/driver capability checks and
+DMA-range alias rejection.
+
+In 48 balanced native samples, the same executable takes **7.6% less host
+time for solid sampling and 4.1% less for spatial sampling** with omission
+enabled. Written bytes fall from 96,816 to 61,040. All pixels, depths, uniforms
+and memory outside scratch pass validation. Native GPU ticks fall from
+8,827/14,135 to 8,757/14,005; the separate Scala scenes have different memory
+timing and must not be used to predict these native reductions. The optimized
+stack passes 18 compute replays, the default/opt-in DRM regression, 21 GLES
+cases, quad batching and GTK64 idle/active frames with strict scanout checks.
+See the [native qualification](performance/fragment-input-usage-native-2026-10-16.json).
+The full 640×480 run is still in progress; these task measurements are not a
+desktop startup-time claim.
+
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per
 worker, scales the shared credit and translation ranges with CU count, pipelines
 the shared request queue, and bounds reply buffering by local ownership. It also

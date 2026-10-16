@@ -1,5 +1,5 @@
 {
-  "status": "PASS four concurrent real simulator JVMs; failed RTL-fixture rerun still running",
+  "status": "PASS: targeted failed RTL fixture, original3helper tests and12concurrent-process checks",
   "problem": "Two JVMs shared root/bin/verilator. One generated hierarchy/job configuration rewrote the script while another shell was waiting for Verilator. The first shell resumed in the rewritten bytes and reported a syntax error after a successful model build. Shared slot names could also collide across JVMs.",
   "change": "Keep the compiled content-addressed cache shared, but put the generated shim and numbered workspaces under root/runs/<pid>. Each process retains its own options and cleanup cannot delete another live workspace. Binary cache keys and assertion settings are unchanged.",
   "negative_evidence": {
@@ -43,7 +43,12 @@
     "scope": "Four concurrent real simulator JVMs share one compiled model cache, with jobs1/2/1/2. Each runs3originalGpuSimSpec checks including failing-expectation negative. Distinct per-process scripts/options and cleaned workspaces verified. No guest speed claim.",
     "helper_sha256": "b8fffa2bd6682de5c63df2d92ada94751df49a11a7e0ba77de8311bc476863f9"
   },
-  "main_rtl_rerun": "The failed KernelFragStageSpec bound-staging-traffic test is rerunning with the new helper; its result will be recorded separately.",
+  "main_rtl_rerun": {
+    "passed": true,
+    "log": ".artifacts/shared-cu/fragment-input-usage/main-isolated-rerun.log",
+    "sha256": "ca8c374274f706493a11b69098d6be2a8b544585bd26092e567caea700fffc83",
+    "scope": "Only failed KernelFragStageSpec staging-traffic test rerun (all parameter variants) plus3originalGpuSimSpec checks; allPASS. Combined with35unaffected passing initial tests completes36main feature units."
+  },
   "limitations": "No host-performance claim. Four jobs1/2/1/2 JVMs each run the3originalGpuSimSpec checks, including a deliberate failing expectation. Scripts/jobs and cleaned workspaces verified individually; cache publication remains atomic.",
   "evidence": {
     ".artifacts/shared-cu/fragment-input-usage/parallel-harness/state.json": "82fcd0b0a5c07663699bf6055c3d5bb89e3e7d63fbcce1a21e3705ba6c2c9b91"
