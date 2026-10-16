@@ -26,6 +26,29 @@ clock does not predict desktop startup or establish achievable hardware timing.
 
 See [the estimate, counter definitions, all three predictions and limitations](performance/desktop-runtime-estimate-2026-10-17.json).
 
+The subsequent full-trace observer preserves every API result, DMA event,
+recorded clock and model counter. It finds 133,547 destination-colour reads,
+but **zero** satisfy the proposed opaque identity-blend bypass. That private
+candidate passes 3,860 independent blend cases and the existing OM/ordering
+regressions; its four-CU opaque scene saves 4.27% of cycles. It is deferred
+because this desktop trace cannot use the bypass.
+
+Reducing the runtime settle minimum from 128 to 16 also passes 40 native
+fixtures with identical complete output RAM and memory traffic, 18 VM cases,
+21 actual GLES cases, GTK64 scanout and all 82,641 calls of its own recorded
+guest trace. A balanced quiet-read microbenchmark improves from 49.30 to
+15.96 ms per 10,000 reads. This saves only 33.34 ms for those reads and leaves
+rendering task cycles unchanged; it is not evidence of a material desktop
+speedup. The production default remains 128, and the shorter minimum has not
+been qualified on the full 640×480 desktop.
+
+The activity observer counts 5,723,797 ticks without AXI or bounded change-tail
+activity. Tick shares are not CPU-time shares, and the observed graphics-stage
+mask omits other engines. These counts do not establish that removing idle
+ticks would reduce wall time proportionally. Active CU execution and sampler
+fetch remain the next profiling priority. See
+[the candidate results and complete activity counts](performance/desktop-candidate-attribution-2026-10-17.json).
+
 ## Sampler-format channel permutation (2026-10-16)
 
 Gallium now folds a recognized pure texture R/B swap into the sampler's native

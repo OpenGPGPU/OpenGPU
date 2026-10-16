@@ -1,0 +1,391 @@
+{
+  "recorded_at": 1792188559.938813,
+  "passed": true,
+  "scope": "Completed private candidates and exact full-trace read-only attribution. No production RTL, runtime defaults or installed QEMU changed. Probe elapsed557.30s is diagnostic, not a balanced speed comparison.",
+  "full_trace": {
+    "trace_sha256": "443b5ce0a20fdceca4bcf997af1b10fc6c4cdc57d51b07311af458a17c904040",
+    "replay": {
+      "calls": 154410,
+      "ticks": 15447854,
+      "commits": 1979914972,
+      "holds": 6830582608,
+      "dma_reads": 567152,
+      "dma_writes": 3729183,
+      "dma_bytes": 64927952,
+      "seconds": 557.297987125,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "policy_definitions": {
+      "0": "AXI queues or master valids busy at completed tick",
+      "1": "No AXI busy, _chg nonzero and change-tail below4096",
+      "2": "Neither AXI nor bounded change-tail activity"
+    },
+    "policy_ticks": {
+      "0": 2301267,
+      "1": 7422790,
+      "2": 5723797
+    },
+    "policy_fraction": {
+      "0": 0.14897001227484413,
+      "1": 0.4805062243597072,
+      "2": 0.3705237633654487
+    },
+    "mask_bit_definitions": {
+      "1": "any fragment worker shader phase",
+      "2": "any fragment worker nonidle",
+      "4": "vertex stage nonidle",
+      "8": "any OM entry valid"
+    },
+    "activity_bins": [
+      {
+        "policy": 0,
+        "mask": 0,
+        "ticks": 10857
+      },
+      {
+        "policy": 0,
+        "mask": 2,
+        "ticks": 874
+      },
+      {
+        "policy": 0,
+        "mask": 3,
+        "ticks": 504082
+      },
+      {
+        "policy": 0,
+        "mask": 4,
+        "ticks": 13182
+      },
+      {
+        "policy": 0,
+        "mask": 6,
+        "ticks": 1066
+      },
+      {
+        "policy": 0,
+        "mask": 7,
+        "ticks": 484576
+      },
+      {
+        "policy": 0,
+        "mask": 8,
+        "ticks": 881
+      },
+      {
+        "policy": 0,
+        "mask": 10,
+        "ticks": 3701
+      },
+      {
+        "policy": 0,
+        "mask": 11,
+        "ticks": 645032
+      },
+      {
+        "policy": 0,
+        "mask": 14,
+        "ticks": 2294
+      },
+      {
+        "policy": 0,
+        "mask": 15,
+        "ticks": 634722
+      },
+      {
+        "policy": 1,
+        "mask": 0,
+        "ticks": 2709589
+      },
+      {
+        "policy": 1,
+        "mask": 2,
+        "ticks": 990
+      },
+      {
+        "policy": 1,
+        "mask": 3,
+        "ticks": 1283136
+      },
+      {
+        "policy": 1,
+        "mask": 4,
+        "ticks": 126287
+      },
+      {
+        "policy": 1,
+        "mask": 6,
+        "ticks": 2002
+      },
+      {
+        "policy": 1,
+        "mask": 7,
+        "ticks": 1266461
+      },
+      {
+        "policy": 1,
+        "mask": 8,
+        "ticks": 1795
+      },
+      {
+        "policy": 1,
+        "mask": 10,
+        "ticks": 6586
+      },
+      {
+        "policy": 1,
+        "mask": 11,
+        "ticks": 1032346
+      },
+      {
+        "policy": 1,
+        "mask": 14,
+        "ticks": 2469
+      },
+      {
+        "policy": 1,
+        "mask": 15,
+        "ticks": 991129
+      },
+      {
+        "policy": 2,
+        "mask": 0,
+        "ticks": 5723797
+      }
+    ],
+    "no_observed_graphics_stage_live_ticks": 8444243,
+    "caution": "These are tick counts, not CPU-cost shares. The mask omits other engines/CU/cache states. No observed graphics stage live does not establish that every such tick can be removed."
+  },
+  "opaque_blend_candidate": {
+    "unit_passed": true,
+    "independent_blend_oracle_cases": 3860,
+    "old_baseline_negative_control_passed": true,
+    "existing_OM_regressions_passed": true,
+    "pipeline_passed": true,
+    "paired_scenes": [
+      {
+        "cus": 4,
+        "blend_mode": "off",
+        "baseline_cycles": 12141,
+        "candidate_cycles": 12141,
+        "reduction_percent": 0.0,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_preserved": true
+      },
+      {
+        "cus": 4,
+        "blend_mode": "general",
+        "baseline_cycles": 12683,
+        "candidate_cycles": 12141,
+        "reduction_percent": 4.273436884017978,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_preserved": true
+      },
+      {
+        "cus": 1,
+        "blend_mode": "general",
+        "baseline_cycles": 37027,
+        "candidate_cycles": 35759,
+        "reduction_percent": 3.424528047100761,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_preserved": true
+      },
+      {
+        "cus": 4,
+        "blend_mode": "legacy",
+        "baseline_cycles": 12683,
+        "candidate_cycles": 12141,
+        "reduction_percent": 4.273436884017978,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_preserved": true
+      }
+    ],
+    "ordered_pipeline_suites": [
+      "ordered-CappedLocalityParallelGraphicsOrderingSpec",
+      "ordered-WideCapacityLocalityParallelGraphicsOrderingSpec",
+      "ordered-BufferedCommandParallelGraphicsOrderingSpec"
+    ],
+    "actual_desktop_colour_reads": 133547,
+    "actual_desktop_eligible": 0,
+    "observer_positive_negative_passed": true,
+    "decision": "Defer native model generation and source promotion: zero eligible reads in this exact real desktop workload. Preserve qualified private implementation and tests for future blended opaque workloads."
+  },
+  "short_settle_candidate": {
+    "runtime_minimum_candidate": 16,
+    "runtime_minimum_default": 128,
+    "native_cases": 40,
+    "VM_cases": 18,
+    "all_native_RAM_and_callbacks_identical": true,
+    "all_render_task_ticks_unchanged": true,
+    "actual_guest_cases": 21,
+    "own_strict_guest_trace": {
+      "calls": 82641,
+      "ticks": 1902933,
+      "commits": 78509083,
+      "holds": 443145834,
+      "dma_reads": 43109,
+      "dma_writes": 490087,
+      "dma_bytes": 6426832,
+      "seconds": 28.917807709,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "own_trace_sha256": "113d973d83faff40b5a4cc818099860fb3b2467655492c97e1ed0bcdaefad075",
+    "quiet_read_samples": [
+      {
+        "reads": 10000,
+        "ticks": 1300000,
+        "commits": 20000,
+        "holds": 130000,
+        "seconds": 0.049269542,
+        "settle_min": 128,
+        "index": 0
+      },
+      {
+        "reads": 10000,
+        "ticks": 190000,
+        "commits": 20000,
+        "holds": 130000,
+        "seconds": 0.016244833,
+        "settle_min": 16,
+        "index": 1
+      },
+      {
+        "reads": 10000,
+        "ticks": 190000,
+        "commits": 20000,
+        "holds": 130000,
+        "seconds": 0.015959959,
+        "settle_min": 16,
+        "index": 2
+      },
+      {
+        "reads": 10000,
+        "ticks": 1300000,
+        "commits": 20000,
+        "holds": 130000,
+        "seconds": 0.049325583,
+        "settle_min": 128,
+        "index": 3
+      },
+      {
+        "reads": 10000,
+        "ticks": 1300000,
+        "commits": 20000,
+        "holds": 130000,
+        "seconds": 0.049301792,
+        "settle_min": 128,
+        "index": 4
+      },
+      {
+        "reads": 10000,
+        "ticks": 190000,
+        "commits": 20000,
+        "holds": 130000,
+        "seconds": 0.015963125,
+        "settle_min": 16,
+        "index": 5
+      }
+    ],
+    "quiet_read_medians": {
+      "128": 0.049301792,
+      "16": 0.015963125
+    },
+    "quiet_read_speedup": 3.088479981206687,
+    "seconds_saved_per_10000_quiet_reads": 0.033338666999999995,
+    "decision": "Keep private runtime experiment; quiet microbenchmark gain alone does not justify claiming desktop acceleration or changing the production default. Full640 with min16 has not been qualified."
+  },
+  "recorded_original_clock_cost": {
+    "passed": true,
+    "recorded_at": 1792188262.2908,
+    "calls": 154410,
+    "knobs": {
+      "MMIO_ADVANCE": "",
+      "IDLE_GRACE": "",
+      "SETTLE_MIN": "",
+      "IRQ_PUMP": "1024",
+      "IRQ_PUMP_NS": "8000000",
+      "HOLD_BOOST": "",
+      "CHG_TAIL": "",
+      "SETTLE_NS": "8000000"
+    },
+    "bins": {
+      "api1-noDMA": {
+        "calls": 1,
+        "clock_observed_calls": 0,
+        "recorded_within_call_nanoseconds": 0,
+        "dma_read_events": 0,
+        "dma_write_events": 0,
+        "max_observed_call_nanoseconds": 0
+      },
+      "api2-noDMA": {
+        "calls": 37675,
+        "clock_observed_calls": 37675,
+        "recorded_within_call_nanoseconds": 3532174000,
+        "dma_read_events": 0,
+        "dma_write_events": 0,
+        "max_observed_call_nanoseconds": 11931000
+      },
+      "api2-withDMA": {
+        "calls": 15250,
+        "clock_observed_calls": 15250,
+        "recorded_within_call_nanoseconds": 169705376000,
+        "dma_read_events": 167111,
+        "dma_write_events": 1124312,
+        "max_observed_call_nanoseconds": 17407000
+      },
+      "api3-noDMA": {
+        "calls": 7565,
+        "clock_observed_calls": 7565,
+        "recorded_within_call_nanoseconds": 531170000,
+        "dma_read_events": 0,
+        "dma_write_events": 0,
+        "max_observed_call_nanoseconds": 8215000
+      },
+      "api3-withDMA": {
+        "calls": 43,
+        "clock_observed_calls": 43,
+        "recorded_within_call_nanoseconds": 366352000,
+        "dma_read_events": 2120,
+        "dma_write_events": 13533,
+        "max_observed_call_nanoseconds": 10362000
+      },
+      "api4-noDMA": {
+        "calls": 48786,
+        "clock_observed_calls": 1400,
+        "recorded_within_call_nanoseconds": 4648194000,
+        "dma_read_events": 0,
+        "dma_write_events": 0,
+        "max_observed_call_nanoseconds": 9246000
+      },
+      "api4-withDMA": {
+        "calls": 45090,
+        "clock_observed_calls": 45090,
+        "recorded_within_call_nanoseconds": 392732838000,
+        "dma_read_events": 397921,
+        "dma_write_events": 2591338,
+        "max_observed_call_nanoseconds": 11048000
+      }
+    },
+    "recorded_first_to_last_clock_seconds": 604.486592,
+    "sum_recorded_within_call_seconds": 571.516104,
+    "noDMA_recorded_within_call_seconds": 8.711538,
+    "scope": "Parse recorded original wall-clock samples only, no new simulation. Within-call spans are sampled lower bounds and omit the final unsampled tail and APIs without clocks. NoDMA does not imply idle: ALU work can have no DMA. Inter-call gaps include guest scheduling and proof waits, not necessarily avoidable overhead. Original recording used previous prepared-handoff model, so these clocks are not new sparse-wake benchmarks.",
+    "parser_seconds": 3.5511844160500914,
+    "source_sha256": "443b5ce0a20fdceca4bcf997af1b10fc6c4cdc57d51b07311af458a17c904040"
+  },
+  "next_priority": "Profile dynamic CU instruction issue/stalls and sampler fetch ownership on the actual trace before selecting a new RTL change. Current sampler fetch37.49% of shader-worker phase cycles; phase occupancy is not ALU utilization.",
+  "evidence": {
+    ".artifacts/shared-cu/om-opaque-identity/unit-state.json": "80a27916aa35c5bbdbbc4cb7e632f5984500ad923472ed7f30620d171a85060b",
+    ".artifacts/shared-cu/om-opaque-identity/pipeline-state.json": "9951aea125387186e1dd98b1ca5d162877dcda2fbd63456e3aa33d8793feaff3",
+    ".artifacts/shared-cu/om-opaque-identity/full-activity-probe/state.json": "5d7d07b17b58ac93f88835ba71100fb366bb83a6af6722cd698fbaea51406e71",
+    ".artifacts/shared-cu/om-opaque-identity/known-blended-native-probe-v2/state.json": "39abd6d8a94459dc6b35b881c4f1ba1c26d321c0182fa4a0de2547975bb0b926",
+    ".artifacts/shared-cu/sparse-hold-wake-native/settle16-screen/state.json": "508546289989375b45dfacc50576e6aecddc2b033fff917fb2d5120e8cbbc0b9",
+    ".artifacts/shared-cu/sparse-hold-wake-native/settle16-guest64-traced/state.json": "ec2329533d9be5f03723d8405de7d71bcae82ec28a83bfb059e0e0345d3584c8",
+    ".artifacts/shared-cu/sparse-hold-wake-native/settle16-idle-benchmark/state.json": "31aeead17f10bc6b078d87d7eba8488d9518296c616d5f8d1674fc37b6e5c33a",
+    ".artifacts/shared-cu/sparse-hold-wake-native/recorded-call-cost/state.json": "0a405141d2d76bbd2a772673b266362cb391d807cfc23a0c83091d6f513687fc"
+  }
+}
