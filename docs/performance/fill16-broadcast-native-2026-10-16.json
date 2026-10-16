@@ -1,5 +1,5 @@
 {
-  "status": "Training native qualification PASS; optimized and full640 qualification pending",
+  "status": "PASS: training, optimized native suites and full640 desktop qualification",
   "rtl_source_commit": "8dfbd8fe9d2ec7f87725f7d38b1aef3c7a23df00",
   "configuration": {
     "shared_compute_units": [
@@ -48,7 +48,7 @@
       "--buffer-texture-reads"
     ],
     "header_sha256": "06e265460db94c2ca2b7048bdb6e76da87d29df3b2e3023a8a6fdd843305d62a",
-    "scope": "Structural verification only. Native training/optimized/full640 gates remain required."
+    "scope": "Structural verification combined with native and full640 desktop qualification."
   },
   "archive_sha256": "48997e106e72cd6b201e7fcf65c52fcd1218ca62716425a0847661d98d1c22cc",
   "qemu_sha256": "a6179788eb6fc7cf149368540a96dd0acb55873ce0cb378efef67970a63d44d6",
@@ -216,8 +216,108 @@
   },
   "qualification_report_sha256": "fcda3469842714f6455d4c5ebc59d48876ab98acc750bb38ab6d2be935661b10",
   "limits": [
-    "This is the FILL16+broadcast model, before86c67f8 vector-word cache. The newer cache model requires separate qualification.",
-    "Training instrumented host elapsed times are not simulator speed evidence.",
-    "Default executable remains unchanged; full640 and optimized gates must pass before promotion."
-  ]
+    "This qualified FILL16+broadcast model precedes the instruction-local word cache in86c67f8; that model requires separate qualification.",
+    "Qualification overlapped other compilers and tests and used an observation wrapper; elapsed time is not a host-speed measurement.",
+    "Desktop scheduling differs between guest boots; recorded work is not a controlled cycle-speedup comparison.",
+    "Installed default QEMU has not been replaced."
+  ],
+  "native_qualifications": {
+    "training": {
+      "passed": true,
+      "native_cases": 21,
+      "markers": {
+        "compute completed; RNU=1 RDN=0": true,
+        "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "report": ".artifacts/shared-cu/fill16-broadcast-native/guest-qualification-corrected.json",
+      "report_sha256": "fcda3469842714f6455d4c5ebc59d48876ab98acc750bb38ab6d2be935661b10",
+      "archive_sha256": "48997e106e72cd6b201e7fcf65c52fcd1218ca62716425a0847661d98d1c22cc",
+      "qemu_sha256": "a6179788eb6fc7cf149368540a96dd0acb55873ce0cb378efef67970a63d44d6"
+    },
+    "optimized": {
+      "passed": true,
+      "native_cases": 21,
+      "markers": {
+        "compute completed; RNU=1 RDN=0": true,
+        "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "report": ".artifacts/shared-cu/fill16-broadcast-native/guest-qualification-optimized.json",
+      "report_sha256": "8fb0bdd2596382c9665ad89ca3c76224bee2199c4d2e393bacb804298f37f7b0",
+      "archive_sha256": "b274ad76d552bf469deea3ca2f89fb123296953c323619a6c273d69b9592cbea",
+      "qemu_sha256": "48552de587e81656138dbd8941d549a43d4db03b6a7eb68e86a1bb9e62e6cc50"
+    }
+  },
+  "full640": {
+    "passed": true,
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/fill16-bcast640",
+    "markers": [
+      "GTK Wayland/OpenGPU smoke proof: PASS",
+      "Gtk-smoke scanout proof: PASS",
+      "OPENGPU GTK FRAME PASS: idle",
+      "OPENGPU GTK FRAME PASS: active"
+    ],
+    "scanout": {
+      "passed": true,
+      "framebuffer_size": [
+        640,
+        480
+      ],
+      "client_size": [
+        280,
+        124
+      ],
+      "active_rectangle": [
+        93,
+        223,
+        227,
+        72
+      ],
+      "active_pixels": 16571,
+      "channel_tolerance": 3,
+      "capture_sha256": "887c98fee99e55a00d611a19ca2685030e98b33e5cb39a235e3a1306b8aabdda",
+      "source_frame": "/Users/duckdonald/workspace/gpu/.artifacts/fill16-bcast640/gtk-smoke-scanout.ppm",
+      "saved_frame": "/Users/duckdonald/workspace/gpu/.artifacts/fill16-bcast640/gtk-smoke-verified.ppm"
+    },
+    "qemu_sha256": "81ee118f5ef05f657409cdf99d9d33c954ddc8c34aeb07d5baafb716cf5dde2f",
+    "archive_sha256": "b274ad76d552bf469deea3ca2f89fb123296953c323619a6c273d69b9592cbea",
+    "rtl_source_commit": "8dfbd8fe9d2ec7f87725f7d38b1aef3c7a23df00",
+    "trace_sha256": "0d42d3b619426ef3a290542d13bcf2dad2fd40d949f74b3c67bf00febda5c8c2",
+    "visual_review": "PASS; see visual_review in this report",
+    "scope": "Full640x480 desktop+GTK on FILL16 and single-texel broadcast RTL; software payload unchanged. Probe run is diagnostic; no host timing claim."
+  },
+  "visual_review": {
+    "passed": true,
+    "image": ".artifacts/fill16-bcast640/full640-verified.png",
+    "image_sha256": "bf9a3bdd0e638a829805ca86a10309ef6be92a326f24b9567c41735692ff1f81",
+    "observations": "Readable upright GTK title and label, complete orange GL rectangle within dark margins, redraw button, patterned Weston desktop and bottom panel."
+  },
+  "trace": {
+    "trace": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/fill16-broadcast-native/full640.trace",
+    "trace_sha256": "0d42d3b619426ef3a290542d13bcf2dad2fd40d949f74b3c67bf00febda5c8c2",
+    "calls": 234271,
+    "commands_by_opcode": {
+      "5": 219,
+      "6": 32,
+      "2": 4
+    },
+    "fill_count": 4,
+    "fill_bytes": 555520,
+    "depth_pattern_fill_count": 0,
+    "depth_pattern_fill_bytes": 0,
+    "depth_fill_size_histogram": {},
+    "dma_read_bytes": 47236472,
+    "dma_write_bytes": 62389232,
+    "scope": "MMIO unified-command SUBMIT writes; 0x00ffffff identifies the depth-clear pattern, not proof of every fill consumer."
+  },
+  "optimized_archive_sha256": "b274ad76d552bf469deea3ca2f89fb123296953c323619a6c273d69b9592cbea"
 }
