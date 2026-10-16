@@ -1,0 +1,236 @@
+{
+  "recorded_at": 1792185953.593527,
+  "passed": true,
+  "scope": "Exactfull15.45M-ticktrace phaseobservation withunchangedDUTobjects; APIresults,DMAmasks/data/order,clocksandcounters allmatch. Probe566.07selapsedisdiagnostic withconcurrentfunctionalguest/tests, notahostbenchmark. Phase-anycategories overlap; worker-cyclesaresummedacrossCUs. Completedfragmentbatches versusstartedvertexbatches distinguished.",
+  "trace_sha256": "443b5ce0a20fdceca4bcf997af1b10fc6c4cdc57d51b07311af458a17c904040",
+  "vertex": {
+    "ticks": 15447854,
+    "draws": 35,
+    "batches": 35,
+    "vertices": 204,
+    "no_fragment_work": 139469,
+    "with_fragment_work": 3384719,
+    "simultaneous_shader_run": 0,
+    "failed": 0,
+    "phases": {
+      "idle": 11923666,
+      "read_VB": 11914,
+      "write_SoA": 15178,
+      "invalidate_request": 35,
+      "invalidate_ack": 105,
+      "launch": 35,
+      "shader_run": 79480,
+      "readback": 11914,
+      "emit_triangles": 3405527
+    },
+    "active_fraction": 0.22813447097570963,
+    "no_fragment_work_fraction": 0.009028373779296463
+  },
+  "completed_fragment_groups": [
+    {
+      "pc": 3225419776,
+      "batches": 680,
+      "lanes": 75608,
+      "fixed_lod_gradient": 0,
+      "texture": "0x0",
+      "worker_phases": [
+        0,
+        51961,
+        680,
+        232869,
+        23128,
+        252602
+      ],
+      "sampler_states": [
+        232869,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "owner_states": [
+        232869,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "pc": 3225419776,
+      "batches": 5556,
+      "lanes": 621016,
+      "fixed_lod_gradient": 0,
+      "texture": "372x329",
+      "worker_phases": [
+        0,
+        492693,
+        5556,
+        7326010,
+        178163,
+        1278732
+      ],
+      "sampler_states": [
+        2396080,
+        38824,
+        38824,
+        38824,
+        38824,
+        3532602,
+        621016,
+        0,
+        621016
+      ],
+      "owner_states": [
+        2318214,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4968922,
+        38874
+      ]
+    },
+    {
+      "pc": 3225419776,
+      "batches": 950,
+      "lanes": 105720,
+      "fixed_lod_gradient": 0,
+      "texture": "640x32",
+      "worker_phases": [
+        0,
+        90030,
+        950,
+        1763395,
+        30593,
+        213093
+      ],
+      "sampler_states": [
+        956082,
+        6610,
+        6610,
+        6610,
+        6610,
+        569433,
+        105720,
+        0,
+        105720
+      ],
+      "owner_states": [
+        942784,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        813963,
+        6648
+      ]
+    },
+    {
+      "pc": 3225419776,
+      "batches": 6590,
+      "lanes": 736760,
+      "fixed_lod_gradient": 0,
+      "texture": "640x480",
+      "worker_phases": [
+        0,
+        620925,
+        6590,
+        12254526,
+        211163,
+        1507341
+      ],
+      "sampler_states": [
+        6610474,
+        46055,
+        46055,
+        46055,
+        46055,
+        3986312,
+        736760,
+        0,
+        736760
+      ],
+      "owner_states": [
+        6517935,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        5690227,
+        46364
+      ]
+    }
+  ],
+  "derived": {
+    "vertex_fetch_stage_readback_cycles": 39006,
+    "vertex_fetch_stage_readback_fraction": 0.002525010917374025,
+    "vertex_shader_cycles": 79480,
+    "vertex_shader_fraction": 0.00514505121552806,
+    "any_fragment_shader_cycles": 6841483,
+    "any_fragment_shader_fraction": 0.44287594898294613,
+    "any_fragment_emit_cycles": 3024461,
+    "any_fragment_emit_fraction": 0.19578518802676412,
+    "completed_shader_worker_cycles": 21576800,
+    "completed_processed_lanes": 1539104,
+    "shader_worker_cycles_per_processed_lane": 14.019065638189492,
+    "sampler_fetch_worker_cycles": 8088347,
+    "sampler_fetch_fraction_of_shader_worker_cycles": 0.3748631400393015
+  },
+  "decision": "Defer freshcombinedvertexnativebuild: all12distinctunitcasesnowpass across10original+2correctedcount-oracleretests, butdesktopvertexfetch/staging/readback costs0.2525%ofticks evenbeforelimitedremovability. No whole-desktopgainclaim fromsmallfixture531startupcycleimprovement. Preserveprototype; prioritizefragmentretirement/OMdestinationreads andsamplerfetch overlap.",
+  "next_candidate": {
+    "root": ".artifacts/shared-cu/om-opaque-identity",
+    "status": "PRIVATE compiledonly",
+    "hypothesis": "OutputMerger unconditionallyreads destination for enabled blending, including provableidentityopaque sourceover. Captureeffectiveblendflagsatfragmentacceptance andskiponlymathematicallyidentity blends; MIN/MAXanddestination-dependentfactorsstayordinary. Needindependentblendoracle/allflags/formats/depth/stencil/MSAA/stalls andoldnegativecontrols beforeanynativebuild."
+  },
+  "evidence_sha256": {
+    ".artifacts/shared-cu/sparse-hold-wake-native/phase-probe/state.json": "736971ea10e60ab1a6da869691c38354d87537607e404ef7744d64addb4105c1",
+    ".artifacts/shared-cu/sparse-hold-wake-native/phase-probe/replay.log": "e77e32f163239ad6f652e09a3e378f0d0726ef114e57f6e8613246f53d06ea23",
+    ".artifacts/shared-cu/sparse-hold-wake-native/vertex_observer.inc": "968753a75e8f4545fc98e50b350f720b0361645a3738e289dbfae8329f2c33ed"
+  },
+  "combined_vertex_unit_qualification": {
+    "passed": true,
+    "recorded_at": 1792186010.2303329,
+    "distinct_tests": 12,
+    "original_passes": 10,
+    "targeted_retest_passes": 2,
+    "single_all_green_invocation": false,
+    "RTL_source_sha256": "bc8b6a18a605f206e3d96fc40dde9780641c8e5791a5fc5811964e6912b6183b",
+    "widths": [
+      3,
+      8,
+      16,
+      28,
+      32,
+      48,
+      112,
+      128
+    ],
+    "all88line_scenarios_and4standalone_kernel_tests": true,
+    "scope": "Original10passes retainedbyunchangedRTL; twofailedstale scalarphysicalread-count expectations replacedbyexactABIaddress-runoracle. Affected3/8capacity suites rerunall11drawscenarios eachincludingcompleteRAM/canaries. Finaltestclass differsonlythatreadcountoracle.",
+    "decision": "Deferfurthercombinedvertexscene/nativebuild basedonactualfullDesktopphasebudget; mainRTLunchanged.",
+    "retost_state_sha256": "a86259858ec9144689fba9a2d0da81f50a1c7e8a75fdf21f8419228ba05e2059"
+  }
+}

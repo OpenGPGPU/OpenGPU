@@ -186,6 +186,39 @@ ratio. The installed QEMU remains unchanged.
 See [balanced samples and exact-work checks](performance/sparse-hold-wake-host-experiment-2026-10-17.json)
 and [committed source, full desktop qualification and selected artifact](performance/sparse-hold-wake-main-qualification-2026-10-17.json).
 
+## Full desktop phase priorities (2026-10-17)
+
+A read-only probe replays the exact 15,447,854-tick desktop trace with unchanged
+DUT objects and matches every API result, DMA transfer, clock and counter.
+Its elapsed time includes observation and concurrent functional work, so it
+is excluded from host performance comparisons.
+
+The trace contains 35 vertex draws/batches and 204 vertices. Vertex-buffer
+fetch, SoA staging and readback occupy **39,006 ticks (0.253%)**; vertex shader
+execution occupies **79,480 ticks (0.515%)**. The vertex stage also spends
+3.406 million ticks in triangle emission, mostly overlapping fragment work.
+Use the distinct fetch/staging/readback budget when prioritizing its memory
+optimizations.
+
+The combined private vertex prototype now passes 12 distinct unit cases across
+the original ten passes and two targeted expectation fixes. All eight widths,
+88 line-staging scenarios and four standalone kernel tests are covered. The two
+old failures expected one physical read per scalar word; the revised oracle
+counts consecutive cache-line runs in ABI access order and still checks every
+RAM/canary byte. Main RTL is unchanged. Further native builds for this prototype
+are deferred while larger full-workload costs are investigated.
+
+At least one fragment worker runs a shader for **6.841 million ticks (44.29%)**;
+at least one emits fragments for **3.024 million ticks (19.58%)**. These phase-any
+counts overlap. Across completed batches, sampler fetching consumes **8.088
+million of 21.577 million shader worker-cycles (37.49%)**. Worker-cycles sum
+across CUs and have a different denominator from elapsed ticks.
+
+The next investigation is destination-colour reads for provably identity blends
+in the output merger, followed by sampler fetch overlap. A private output-merger
+variant compiles, but has no functional or performance claim yet. See [complete
+counters, source hashes and qualification scope](performance/desktop-phase-priorities-2026-10-17.json).
+
 ## Qualified prepared sampler handoff (2026-10-17)
 
 The sampler accepts an eligible successor sample on the edge that
