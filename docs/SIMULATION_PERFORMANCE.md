@@ -101,9 +101,10 @@ scenes, but has mixed four-CU results: solid rendering rises from 9,385 to
 9,395 cycles while spatial rendering falls from 14,692 to 14,509. Faster local
 staging does not guarantee a faster whole render; output waiting grows in the
 solid trace. The unconditional variant is deferred, with native compilation
-and timing stopped before they begin. A guarded revision preserves all four
-zero-hint scene cycle counts, while downstream ordering and OM pressure remain
-the next performance questions. See the
+and timing stopped before they begin. A guarded revision also passes 39 tests and 12 scenes, preserving all four
+zero-hint scene cycle counts. Its omission-enabled results remain mixed, so it
+is deferred too. Downstream ordering and OM pressure remain the next
+performance questions. See the
 [experiment and trace evidence](performance/empty-staging-scan-2026-10-16.json).
 
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per

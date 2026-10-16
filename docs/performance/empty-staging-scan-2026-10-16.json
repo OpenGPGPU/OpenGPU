@@ -517,8 +517,133 @@
   "followup": {
     "root": ".artifacts/shared-cu/staging-skip-empty-optin",
     "change": "Per-bank omission-hint guard retains the default scan schedule.",
-    "verified_now": "39RTLtests/322masked batches PASS; all4zero-hint fullscene cycles exactly matchf4c523d. Remaining matrix live at publication.",
-    "limitation": "The omission-enabled paths retain the first variant schedule, so this guard alone does not resolve its solid four-CU result."
+    "verified_now": "All39RTLtests/322masked batches and12full1/4scenes PASS. All4zero-hint cycle counts exact. Omission-enabled cycles match unconditional version: solid4CU9395vs9385,spatial14509vs14692.",
+    "limitation": "The omission-enabled paths retain the first variant schedule, so this guard alone does not resolve its solid four-CU result.",
+    "status": "DEFERRED: all39RTLtests and12complete scenes PASS; exact defaults, same mixed omission results",
+    "scenes": [
+      {
+        "scene": "solid",
+        "cus": 1,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 26008,
+        "baseline_cycles": 26008,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 4,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 10730,
+        "baseline_cycles": 10730,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 1,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 48881,
+        "baseline_cycles": 48881,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 4,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 16047,
+        "baseline_cycles": 16047,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 24390,
+        "baseline_cycles": 24792,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 9754,
+        "baseline_cycles": 9817,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 47263,
+        "baseline_cycles": 47665,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 15223,
+        "baseline_cycles": 15272,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 22490,
+        "baseline_cycles": 23364,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 9395,
+        "baseline_cycles": 9385,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 45363,
+        "baseline_cycles": 46237,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 14509,
+        "baseline_cycles": 14692,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      }
+    ],
+    "patch": "docs/performance/empty-staging-scan-optin-2026-10-16.patch",
+    "native_compilation_started": false
   },
   "callback_analysis": {
     "source_commit": "f4c523d",
@@ -834,7 +959,10 @@
     ".artifacts/shared-cu/staging-skip-empty/KernelFragSkipEmptySpec.scala": "5f509dac1d2b7cfca80b3621ff3a46ee5dd4f8182ea93af943894a716e5fbf7a",
     ".artifacts/shared-cu/staging-skip-empty-native/generation-state.json": "4e285403c80bf29442f5ec419fd7c43d3c43b63a06289f56f83afc828c15fb58",
     ".artifacts/shared-cu/staging-skip-empty-native/state.json": "ffedc39ffae9302377b49cc0239bcd81e8164589defc90d189d515c4e79ccaa5",
-    ".artifacts/shared-cu/staging-skip-empty-native/paired/state.json": "0d6e42784418728ed02d98b9cad70e00ab011da3be48053f95a42d71a782d3c2"
+    ".artifacts/shared-cu/staging-skip-empty-native/paired/state.json": "0d6e42784418728ed02d98b9cad70e00ab011da3be48053f95a42d71a782d3c2",
+    ".artifacts/shared-cu/staging-skip-empty-optin/state.json": "414560ce63e2d9ada297023e2e9877e3a00b3aad8ce2bc8228bb2ee42369ae77",
+    ".artifacts/shared-cu/staging-skip-empty-optin/candidate-units.log": "751b380d87d7da4fce0ecf6493b99b0317feb30293dc5f04d54bc45b5fe482d2",
+    ".artifacts/shared-cu/staging-skip-empty-optin/KernelFragStage.scala": "dbf5974b2a0a96f3c2b2508c58458b8e70e2dc441ca29f380a6338a6136730da"
   },
   "limits": [
     "No native model was compiled or timed for this candidate. Generated C++ is not runtime qualification.",

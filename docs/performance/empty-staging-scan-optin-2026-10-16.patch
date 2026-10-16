@@ -1,0 +1,86 @@
+--- a/src/main/scala/opengpu/graphics/KernelFragStage.scala
++++ b/src/main/scala/opengpu/graphics/KernelFragStage.scala
+@@ -887,15 +887,56 @@
+     (line.U, data, mask)
+   } else Seq.empty
+
++  // Each bank's count and omission metadata stay stable until emission.
++  // Search only later nonempty lines; the current line still drains through
++  // the registered request and its independent acknowledgement ownership.
++  private val readNeededLines = if (coalesceStaging)
++    (outputFirstLine to outputLastLine).map { line =>
++      val needed = (0 until 16).map { word =>
++        val position = line * 16 + word
++        val slice = position / batchCap
++        val active = (position % batchCap).U < execCount
++        if (slice == 6) active
++        else if (slice == 7 || slice == 8)
++          active && !slotOutputSkip(execSlot)(slice - 7)
++        else false.B
++      }
++      line.U -> VecInit(needed).asUInt.orR
++    } else Seq.empty
++
++  // Full-staging draws retain their qualified request schedule. A denser
++  // burst can otherwise increase shared-memory contention among four CUs.
++  // Use only this executing bank's captured omission contract.
++  private val useSparseScan = slotInputSkip(execSlot).orR ||
++    slotOutputSkip(execSlot).orR
++
+   private def advanceStagingWrite(): Unit = {
+-    when(field === (stagingLineCount - 1).U) {
+-      lineScanDone := true.B
+-    }.otherwise { field := field + 1.U }
++    if (coalesceStaging) {
++      when(useSparseScan) {
++        val later = VecInit(stagedLines.map { case (i, _, mask) =>
++          i > field && mask.orR
++        }).asUInt
++        when(later.orR) { field := PriorityEncoder(later) }
++          .otherwise { lineScanDone := true.B }
++      }.otherwise {
++        when(field === (stagingLineCount - 1).U) { lineScanDone := true.B }
++          .otherwise { field := field + 1.U }
++      }
++    }
+   }
+   private def advanceStagingRead(): Unit = {
+-    when(field === outputLastLine.U) {
+-      lineScanDone := true.B
+-    }.otherwise { field := field + 1.U }
++    if (coalesceStaging) {
++      when(useSparseScan) {
++        val later = VecInit(readNeededLines.map { case (i, needed) =>
++          i > field && needed
++        }).asUInt
++        when(later.orR) { field := outputFirstLine.U +& PriorityEncoder(later) }
++          .otherwise { lineScanDone := true.B }
++      }.otherwise {
++        when(field === outputLastLine.U) { lineScanDone := true.B }
++          .otherwise { field := field + 1.U }
++      }
++    }
+   }
+   private def beginStagingEmit(): Unit = {
+     field := 0.U
+@@ -1050,19 +1091,7 @@
+           req.sizeLog2 := 6.U
+           req.cachePolicy := opengpu.config.CachePolicy.uncached
+           // A partial wide batch need not fetch output lines beyond its tail.
+-          val needed = MuxLookup(field, false.B)(
+-            (outputFirstLine to outputLastLine).map { line =>
+-              val words = (0 until 16).map { word =>
+-                val position = line * 16 + word
+-                val slice = position / batchCap
+-                val active = (position % batchCap).U < execCount
+-                if (slice == 6) active
+-                else if (slice == 7 || slice == 8)
+-                  active && !slotOutputSkip(execSlot)(slice - 7)
+-                else false.B
+-              }
+-              line.U -> VecInit(words).asUInt.orR
+-            })
++          val needed = MuxLookup(field, false.B)(readNeededLines)
+           when(needed) {
+             req.transactionId := freeLineId
+             lineFields(freeLineId) := field
