@@ -86,6 +86,10 @@ class KernelVertStage(
   require(batchEff >= 3, "need at least one triangle per batch")
   private val countWidth = math.max(1, log2Ceil(batchCap + 1))
   private val arrayStride = 4 * batchCap
+  // Count needs an extra bit only for power-of-two capacities. Derive the
+  // register index from the actual Vec extent so non-power-of-two batches
+  // retain their top index bit (for example vertices64..110 at capacity112).
+  private val vertexIndexWidth = math.max(1, log2Ceil(batchEff))
 
   val io = IO(new Bundle {
     val start = Input(Bool())
@@ -294,7 +298,7 @@ class KernelVertStage(
   private val state = RegInit(sIdle)
 
   private val vertIdx = RegInit(0.U(countWidth.W))
-  private val vertIdxIdx = vertIdx(countWidth - 2, 0)
+  private val vertIdxIdx = vertIdx(vertexIndexWidth - 1, 0)
   private val field = RegInit(0.U(4.W))
   private val wordPending = RegInit(false.B)
   private val vbWord = RegInit(0.U(4.W))
@@ -379,9 +383,9 @@ class KernelVertStage(
 
   // -- Triangle emission --
   private val triBase = emitTriIdx * 3.U
-  private val v0 = triBase(countWidth - 2, 0)
-  private val v1 = (triBase + 1.U)(countWidth - 2, 0)
-  private val v2 = (triBase + 2.U)(countWidth - 2, 0)
+  private val v0 = triBase(vertexIndexWidth - 1, 0)
+  private val v1 = (triBase + 1.U)(vertexIndexWidth - 1, 0)
+  private val v2 = (triBase + 2.U)(vertexIndexWidth - 1, 0)
 
   io.vertOut.valid := state === sEmitTri && emitTriIdx =/= emitTriBatch
   io.vertOut.bits := 0.U.asTypeOf(new SceneTriangle(gfxConfig))

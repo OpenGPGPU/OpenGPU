@@ -35,6 +35,15 @@ still propagates from fresh and cached models. Fresh/cached independence,
 separate configuration keys, job limits, cache-off behaviour and the complete
 four-CU scene pass the [mode qualification](performance/hierarchical-verification-mode-2026-10-16.json).
 
+A vertex regression found a separate correctness defect in non-power-of-two
+CU capacities: the old index slice drops a live high bit (vertices 64–110 at
+capacity 112). Index width now follows the actual vertex-array extent. The
+frozen baseline reproduces the failure; isolated tests pass at capacities
+3, 28, 48, 112 and 128, and the main regression plus four existing vertex tests
+pass. The default 128-capacity control preserves exactly 59,077 cycles. This
+fix is independent of the private transfer optimization; see the
+[index-width qualification](performance/vertex-index-width-2026-10-16.json).
+
 ## Tagged staging and fast native checks (2026-10-16)
 
 Fragment input omission now removes staging writes for inputs the validated

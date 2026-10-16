@@ -1,0 +1,114 @@
+{
+  "date": "2026-10-16",
+  "status": "main_correctness_fix_qualified",
+  "baseline": "f4c523d",
+  "problem": "The vertex arrays have batchEff=floor(warps*lanes/3)*3 elements. Truncating every index to countWidth-1 bits drops a live top bit at non-power-of-two capacities: capacity112 aliases vertices64..110 to0..46, and the three-entry minimum aliases vertex2 to0.",
+  "fix": "Derive vertexIndexWidth=max(1,ceil(log2(batchEff))) and use it for input/output array indices and all three triangle vertex indices. No transfer, shader, VLEN or scheduling specialization.",
+  "baseline_reproduction": {
+    "started": 1792148055.996066,
+    "pid": 72965,
+    "stages": [
+      {
+        "name": "compile-baseline-index",
+        "exit_status": 0,
+        "seconds": 3.567188333021477
+      },
+      {
+        "name": "baseline-index112-negative",
+        "exit_status": 1,
+        "seconds": 20.387739832978696
+      },
+      {
+        "name": "baseline-index128-control",
+        "exit_status": 0,
+        "seconds": 36.48577820789069
+      }
+    ],
+    "scope": "Frozen f4c523d vertex RTL, no line optimization overlay. Independent full input/output/canary oracle: capacity112 must expose index alias; capacity128 is the passing control.",
+    "passed": true,
+    "finished": 1792148116.4399822
+  },
+  "isolated_width_only": {
+    "started": 1792148288.026762,
+    "pid": 78883,
+    "stages": [
+      {
+        "name": "compile-rtl",
+        "exit_status": 0,
+        "seconds": 5.456601084209979
+      },
+      {
+        "name": "compile-tests",
+        "exit_status": 0,
+        "seconds": 4.697891666088253
+      },
+      {
+        "name": "fixed-index-positive",
+        "exit_status": 0,
+        "seconds": 117.6253049171064
+      }
+    ],
+    "scope": "Isolated generic vertex index-width fix only; no line staging change. Full scalar IO/kernel emulation oracle with capacities3,28,48,112,128; negative112 and passing128 controls on frozen f4c523d already verified. Current default128 must retain exact behavior/cycles.",
+    "source_sha256": {
+      "FixedVertexIndexSpec.scala": "46647fad4adfceac21883103ebd548b24153e8982ef9c5f267b2754b354bb17d",
+      "KernelVertStage.scala": "c18dd66bf36ffd0446abdc54c23859893a16d96d66b92ff1678908bd439b6684"
+    },
+    "default128_exact_cycles": 59077,
+    "passed": true,
+    "finished": 1792148415.8235059
+  },
+  "exact_main": {
+    "started": 1792148504.211213,
+    "pid": 85645,
+    "stages": [
+      {
+        "name": "compile-main-tests",
+        "exit_status": 0,
+        "seconds": 6.898445165948942
+      },
+      {
+        "name": "main-baseline-negative",
+        "exit_status": 1,
+        "seconds": 18.856408708030358
+      },
+      {
+        "name": "main-positive",
+        "exit_status": 0,
+        "seconds": 100.09439145796932
+      }
+    ],
+    "scope": "Exact main RTL/test source. Compile production regression once; frozen baseline112 must fail before fake-kernel launch input check, correctedmain capacities3/28/112 and four existing tests must pass. Maindefault128 mathematically same index bits and prior independent59,077cycle control unchanged.",
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/KernelVertStage.scala": "c18dd66bf36ffd0446abdc54c23859893a16d96d66b92ff1678908bd439b6684",
+      "src/test/scala/opengpu/graphics/KernelVertIndexWidthSpec.scala": "f91d458b36e591057119902628ad794fdb84e1d93c89a4ff35147badcd070de3"
+    },
+    "passed": true,
+    "finished": 1792148630.065446
+  },
+  "positive_tests": {
+    "isolated_capacities": [
+      3,
+      28,
+      48,
+      112,
+      128
+    ],
+    "isolated_tests": 5,
+    "production_regression_capacities": [
+      3,
+      28,
+      112
+    ],
+    "production_tests": 3,
+    "existing_vertex_tests": 4
+  },
+  "default128": {
+    "old_index_bits": 7,
+    "new_index_bits": 7,
+    "cycle_control": 59077,
+    "cycles_exactly_preserved": true,
+    "scope": "One complete126vertex batch with all16SoAfields, independent emulated shader outputs, exact triangles and complete RAM/canary checks. This is not a host timing benchmark."
+  },
+  "performance_scope": "Correctness fix only. The separate masked-line vertex staging and coordinate lookahead experiments remain private. Installed default desktop binary is unchanged; its128lane vertex configuration already uses the same seven index bits.",
+  "artifacts": ".artifacts/shared-cu/vertex-index-width"
+}
