@@ -1,0 +1,64 @@
+{
+  "date": "2026-10-17",
+  "status": "Correctness fix committed in FlashSim; no host speedup claim",
+  "flashsim_commits": [
+    "25c3bd4",
+    "b9aa7c2"
+  ],
+  "trigger": {
+    "compiler": "Apple clang version16.0.0(clang-1600.0.26.6)",
+    "initialized_members": 262145,
+    "previous_observed": {
+      "first": 1,
+      "second": 0,
+      "last": 0,
+      "tail": 0
+    },
+    "expected": {
+      "first": 1,
+      "second": 1,
+      "last": 1,
+      "tail": 7
+    },
+    "scope": "Local empirical reproducer. Does not assert every compiler/version has this limit."
+  },
+  "native_diagnostic": {
+    "initializer_bearing_member_lines": 264747,
+    "previous_initial_pass_words": 0,
+    "previous_initial_hold_words": 0,
+    "scope": "Exact selected fourCU header has additional grouped member declarators. Lost late metadata was observed in the failing private scheduling experiment, preserved without promotion."
+  },
+  "change": {
+    "threshold_initialized_members": 65536,
+    "initialization": "One explicit zeroing pass over generated arithmetic storage, followed by restoration of nonzero scalar/array defaults.",
+    "preserved": "All grouped declarators, sparse arrays, wide integers and alignment; parser stack mutation independent of Python assertions.",
+    "small_models": "Text unchanged below threshold; synthetic candidate lowers threshold only to exercise the constructor.",
+    "scheduling": "Production scheduling and wrapper unchanged by these commits."
+  },
+  "qualification": {
+    "full_package_tests": 96,
+    "independent_sanitized_complete_state_cycles": 20000,
+    "generation_checks_unchanged": true,
+    "followup_constructor_tests": 5,
+    "python_optimized_negative_compile_status": 1,
+    "python_optimized_corrected_runtime_passed": true,
+    "normal_python_emission_identical": [
+      {
+        "registers": 160,
+        "identical_normal_python_emission": true,
+        "sha256": "6ceda69b8fe746403dcb68cfd35561431ba50a8d88a5804f75e5ccfaccd9e6e1"
+      },
+      {
+        "registers": 256,
+        "identical_normal_python_emission": true,
+        "sha256": "65ab6c312068e44578864df4caa58fda62fd0eace470d78186d49fe89f986d8c"
+      }
+    ]
+  },
+  "sources": {
+    "emit.py": "d933a1006baa6a417add06e825f9cac9f7e8e64a3b61e558b8c933c998e02c40",
+    "test_emit_bulk_constructor.py": "f1da9f68d46726e002390b20cec6def171b0c1967f04d5f53c3d898af9b78094"
+  },
+  "installed_qemu_sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0",
+  "performance": "No timing ratio or end-to-end desktop gain claimed for this correctness fix. Current private scheduling/performance candidate requires separate optimized qualification and timing."
+}

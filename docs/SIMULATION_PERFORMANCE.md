@@ -32,6 +32,29 @@ against the earlier diagnostic boot. Installed QEMU remains unchanged. See
 [the qualification](performance/sampler-format-folding-2026-10-16.json) and
 [the saved active frame](images/opengpu-gtk-sampler-format-20261016.png).
 
+## Initialization of large generated models (2026-10-17)
+
+FlashSim commits `25c3bd4` and `b9aa7c2` preserve cold-state defaults in
+large generated models. On the installed Apple Clang 16, a local reproducer
+with 262,145 initialized members silently loses most implicit constructor
+initializers. The selected four-CU DUT also lost its late ready/hold worklist
+defaults in a private diagnostic.
+
+Fresh generation now uses an explicit zeroing pass and restores nonzero
+scalar/array defaults when a class has at least 65,536 initialized members.
+Grouped declarations, sparse arrays, wide integers and alignment are preserved;
+smaller models retain their previous emitted text. The parser also works with
+Python assertions disabled.
+
+Independent constructor-only qualification passes 96 package tests and 20,000
+sanitized complete-state, memory and counter cycles with unchanged scheduling.
+Five focused constructor tests pass after the Python optimization correction;
+the previous parser is a failing negative control. This is a correctness fix;
+no host speedup is claimed and the installed QEMU executable is unchanged.
+See the [qualification](performance/generated-model-constructor-2026-10-17.json)
+and `../FlashSim/flashsim/test_emit_bulk_constructor.py` for the executable
+compiler regression.
+
 ## Full-resolution runtime accounting (2026-10-16)
 
 The selected 640×480 diagnostic guest advances **17,897,346 GPU
