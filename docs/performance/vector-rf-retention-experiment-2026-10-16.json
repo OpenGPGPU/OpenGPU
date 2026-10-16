@@ -1,0 +1,226 @@
+{
+  "status": "Functionally qualified experiment; retain baseline RF implementation",
+  "artifact_root": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/native-rf-compare",
+  "experiment": "Gate unused vector RF read addresses and retain unused issue operand snapshots; experimental Scala overlay, never promoted to main.",
+  "source_overlay": {
+    "baseline_source_sha256": "bb0b94f2c5610f818fdfc07d48351822367acfb081d787afc7313e98b58b8aec",
+    "effective_source_sha256": "7fe7cb0e55c60655563ee65ced8e4fd9dcd9d83fc2bd218f8cf7f36bfac1830f",
+    "classes": {
+      "opengpu/core/backend/register/VectorIssueOperands.class": "08720715f0d6498fb54c1b67b14be0b09558849e24e7e9398b0d825ef46451c9",
+      "opengpu/core/backend/register/VectorRegisterManager$$anon$1.class": "968d9b9123baa0023519caa6c2d3148f254ddc0bf87668225f53278e505573e4",
+      "opengpu/core/backend/register/VectorRegisterManager$.class": "fec6e28a92e017d572f27fb9b5fa0d3956f35699ec7ff72ac5177afeabc138f8",
+      "opengpu/core/backend/register/VectorRegisterManager.class": "13480cf5cf6e0605087ec7c4be045f9e81903adc29361f9f1b61511d38ddf317",
+      "opengpu/core/backend/register/VectorRegisterManagerSpec.class": "8cc977397e1bd49b9ee1f7d959d2311b2b6f5e90fadc01098dfd0ed5179d76d5"
+    },
+    "validation": {
+      "started": 1792108779.244631,
+      "stages": [
+        {
+          "label": "manager",
+          "exit_status": 0,
+          "seconds": 9.461450875038281
+        },
+        {
+          "label": "issue",
+          "exit_status": 0,
+          "seconds": 4.501801000209525
+        },
+        {
+          "label": "integrated-vector",
+          "exit_status": 0,
+          "seconds": 21.237535415915772
+        }
+      ],
+      "finished": 1792108814.448981
+    },
+    "scope": "Experimental RF retention overlay only; all other Scala sources match committed FILL16+broadcast model. No main-source or default executable promotion."
+  },
+  "native_qualifications": {
+    "training": {
+      "passed": true,
+      "native_cases": 21,
+      "markers": {
+        "compute completed; RNU=1 RDN=0": true,
+        "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "report": ".artifacts/shared-cu/vector-rf-native/guest-qualification-corrected.json",
+      "report_sha256": "624f699dc3be9bd255f70643c43dd4102e1300761414cbe9fb1c30f68ca87082",
+      "archive_sha256": "91f4196606b3e4722413592d1cc7297591e00ff415992ab79b92d332484501f8",
+      "qemu_sha256": "92cb7cf8cd571d417946299c1c14560fa7d9626b5fa848da12ed4e88cd0e07b9"
+    },
+    "optimized": {
+      "passed": true,
+      "native_cases": 21,
+      "markers": {
+        "compute completed; RNU=1 RDN=0": true,
+        "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "report": ".artifacts/shared-cu/vector-rf-native/guest-qualification-optimized.json",
+      "report_sha256": "9985c0d1f406234f4afbf3fc36ee62a88f23ca85ba8e76c14d01d935086fcc5c",
+      "archive_sha256": "945ef2e5c4040a499891fc3669bb580267a800a48ffd00c170127a621f536b6e",
+      "qemu_sha256": "9674e1ad1df701861e60adf7fb7d062993915994478e4c72c844c0b725b57901"
+    }
+  },
+  "exact_work": {
+    "started": 1792113377.316719,
+    "pid": 87302,
+    "phase": "ready-for-clean-benchmark",
+    "finished": 1792113848.153805,
+    "architecture_identical": true,
+    "baseline": {
+      "calls": 128,
+      "ticks": 12424,
+      "dma_reads": 671,
+      "dma_writes": 6872,
+      "dma_bytes": 96480,
+      "truncated_tail": false,
+      "warmup_calls": 2564,
+      "sample": 0
+    },
+    "candidate": {
+      "calls": 128,
+      "ticks": 12424,
+      "dma_reads": 671,
+      "dma_writes": 6872,
+      "dma_bytes": 96480,
+      "truncated_tail": false,
+      "warmup_calls": 2564,
+      "sample": 0
+    },
+    "scope": "Strict recorded MMIO outputs and DMA payloads match the control. Times here are contended diagnostics, not host-speed evidence. No full640 qualification or source promotion."
+  },
+  "benchmark": {
+    "trace_sha256": "529b8cae3c7a4158be04d33cc78d190e9bdf0dc304895e955969c6340fd2205e",
+    "window": {
+      "start": 2500,
+      "calls": 128,
+      "repeats": 7,
+      "preheat": 64
+    },
+    "binaries": {
+      "baseline": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/native-rf-compare/control/replay",
+        "sha256": "f56beeedecb0465caadb7e747f7ad31814f5b73e3533ec3227deb458afabc979"
+      },
+      "rf": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/native-rf-compare/rf/replay",
+        "sha256": "66fbeed0cee8d27b751cb03f7a00fe4fe49fb4f58665cdd7d616978fb2739931"
+      }
+    },
+    "samples_per_variant": 21,
+    "paired_process_rounds": 3,
+    "baseline_median_seconds": 0.948358167,
+    "candidate_median_seconds": 0.930441667,
+    "median_reduction_percent": 1.8892123907865321,
+    "baseline_round_medians": [
+      0.946223083,
+      0.948358167,
+      0.9546245
+    ],
+    "candidate_round_medians": [
+      0.951078625,
+      0.940282416,
+      0.921619542
+    ],
+    "paired_round_reduction_percent": [
+      -0.5131498150103608,
+      0.8515507411663403,
+      3.4573759630095457
+    ],
+    "full_report": ".artifacts/shared-cu/native-rf-compare/paused-benchmark/timing.json",
+    "full_report_sha256": "770c60dcc64385fc50d293ece6bc287f4a3bcbe4cbabda6619f35f8b1ef9d5b6"
+  },
+  "measurement_conditions": {
+    "own_validation_trees_suspended": true,
+    "all_resumed": true,
+    "suspension_seconds": 104.54592800140381,
+    "other_host_work_present": true,
+    "background_before": {
+      "168": {
+        "ppid": 1,
+        "state": "Ss",
+        "cpu": 2.4,
+        "comm": "/System/Library/PrivateFrameworks/CoreDuetContext.framework/Resources/contextstored"
+      },
+      "584": {
+        "ppid": 1,
+        "state": "Ss",
+        "cpu": 16.9,
+        "comm": "/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow"
+      },
+      "41511": {
+        "ppid": 77586,
+        "state": "S",
+        "cpu": 8.5,
+        "comm": "gh"
+      },
+      "77569": {
+        "ppid": 77511,
+        "state": "S",
+        "cpu": 2.8,
+        "comm": "/Applications/Paseo.app/Contents/Frameworks/Paseo Helper (Renderer).app/Contents/MacOS/Paseo Helper (Renderer)"
+      },
+      "77586": {
+        "ppid": 77584,
+        "state": "S",
+        "cpu": 12.0,
+        "comm": "Paseo Daemon"
+      },
+      "69280": {
+        "ppid": 67338,
+        "state": "U+",
+        "cpu": 42.7,
+        "comm": "opencode"
+      }
+    },
+    "background_after": {
+      "400": {
+        "ppid": 1,
+        "state": "Ss",
+        "cpu": 34.1,
+        "comm": "/System/Library/Frameworks/CoreServices.framework/Frameworks/Metadata.framework/Versions/A/Support/mds_stores"
+      },
+      "584": {
+        "ppid": 1,
+        "state": "Ss",
+        "cpu": 14.4,
+        "comm": "/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow"
+      },
+      "4324": {
+        "ppid": 1,
+        "state": "R",
+        "cpu": 76.1,
+        "comm": "/System/Library/PrivateFrameworks/MediaAnalysis.framework/Versions/A/mediaanalysisd"
+      },
+      "4344": {
+        "ppid": 1,
+        "state": "Ss",
+        "cpu": 14.5,
+        "comm": "/System/Library/PrivateFrameworks/MediaAnalysisAccess.framework/Versions/A/XPCServices/mediaanalysisd-access.xpc/Contents/MacOS/mediaanalysisd-access"
+      },
+      "69280": {
+        "ppid": 67338,
+        "state": "U+",
+        "cpu": 108.7,
+        "comm": "opencode"
+      }
+    },
+    "recovery": "finally resume plus independent240-second recovery watchdog"
+  },
+  "decision": "Do not promote this RF overlay. The observed1.89%median reduction is small, per-round benefit changes sign, and unrelated user/system activity remained. Prioritize staging concurrency; skip full640 qualification of this unpromoted candidate.",
+  "limits": [
+    "Strict replay proves unchanged recorded MMIO outputs and DMA payloads for this active window; it does not prove all desktop traffic or a universal host-speed benefit.",
+    "Native GTK qualification is64x64; full640 was deliberately not run for this RF candidate.",
+    "The RF model and control use the same compiler settings and frozen guest payload but independently trained PGO profiles; this compares complete qualified candidate binaries, not an isolated compiler-independent RF cost."
+  ]
+}
