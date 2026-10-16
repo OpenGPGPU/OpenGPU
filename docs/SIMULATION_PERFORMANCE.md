@@ -107,6 +107,17 @@ is deferred too. Downstream ordering and OM pressure remain the next
 performance questions. See the
 [experiment and trace evidence](performance/empty-staging-scan-2026-10-16.json).
 
+A primitive-safe ready-batch drain also passes 14 scheduler tests, 12 complete
+scenes and eight real four-CU blend/depth/stencil/MSAA integration tests.
+Its primary four-CU solid scene improves only 9 cycles (9,385 to 9,376), while
+spatial rendering rises by 28 (14,692 to 14,720); it remains deferred.
+A separate qualified native control disables all depth work without changing
+texture shaders or pixels: solid ticks fall from 8,683 to 7,164, but spatial
+ticks fall only from 13,636 to 13,280 (2.6%). This counter-only control puts
+texture sampling ahead of OM port changes for the next desktop investigation.
+It is not a full compositor profile or host timing benchmark. See the
+[ordering experiment and control](performance/primitive-output-order-2026-10-16.json).
+
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per
 worker, scales the shared credit and translation ranges with CU count, pipelines
 the shared request queue, and bounds reply buffering by local ownership. It also

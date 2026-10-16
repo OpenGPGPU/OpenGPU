@@ -1,0 +1,324 @@
+{
+  "date": "2026-10-16",
+  "baseline": "f4c523d",
+  "status": "correctness_passed_performance_mixed_deferred",
+  "promoted": false,
+  "hypothesis": "Ready whole batches of the current raster primitive may drain before an older stalled worker without reordering different primitives.",
+  "implementation": "Completion tickets preserve primitive retirement order; whole-batch RR grants preserve stalled sidebands/locality. One-CU and generic non-raster integration retain ordered behavior. No shader/VLEN specialization.",
+  "unit_tests": 14,
+  "unit_state": {
+    "started": 1792143570.660222,
+    "pid": 28248,
+    "stages": [
+      {
+        "name": "compile-tests-v2",
+        "exit_status": 0,
+        "seconds": 3.1449968749657273
+      },
+      {
+        "name": "primitive-positive-v2",
+        "exit_status": 0,
+        "seconds": 39.36789170792326
+      }
+    ],
+    "scope": "Private primitive-safe whole-batch output drain. Ordered and1CU modes preserved. Delayed oldest shader availability negative,6adversarial configs,47epochs each, cross-primitive identical pixels, ticket reuse, empty/helper-only/late flush, zero stride, output/retire stalls and sideband stability. No main promotion.",
+    "prior": "unit-state.json",
+    "test_fix": "The single worker cannot accept a younger primitive while its only worker is explicitly held. Release it before second admission;2/4worker adversarial test unchanged. RTL unchanged.",
+    "sources": {
+      "PrimitiveOrderedCompatibilitySpec.scala": "ea9866407414a4b99601103d6343fca4a5a6f2f8afcf03688557689a95942f5f",
+      "PrimitiveFragmentSchedulerSpec.scala": "1751a74f05b7e98e51bde1ed549f3ece933121381a0d0e0674adb0ff1bd01bc4",
+      "RenderPipeline.scala": "2f115cf1ac7e5b5c82cd5ccfe58c70ff00601f9865777bb920e900cd365a7ee2",
+      "ParallelKernelFragStage.scala": "0552b8af8ad6d0fb1470468694b579b3429eb910a95bb9e784c21d9e78329f0f",
+      "PrimitiveFragmentScheduler.scala": "909b0be4856c97d00d7a22d3923afdc67a1e45603e96ce718c5fa1e0d4849ba2"
+    },
+    "passed": true,
+    "finished": 1792143613.175382
+  },
+  "scenes": {
+    "started": 1792143677.132561,
+    "pid": 30442,
+    "stages": [
+      {
+        "name": "scene-15-15-solid-1",
+        "exit_status": 0,
+        "seconds": 108.10939579200931
+      },
+      {
+        "name": "scene-15-15-solid-4",
+        "exit_status": 0,
+        "seconds": 137.07965470897034
+      },
+      {
+        "name": "scene-15-15-spatial-1",
+        "exit_status": 0,
+        "seconds": 36.16858533304185
+      },
+      {
+        "name": "scene-15-15-spatial-4",
+        "exit_status": 0,
+        "seconds": 46.21811025007628
+      },
+      {
+        "name": "scene-0-0-solid-1",
+        "exit_status": 0,
+        "seconds": 33.54821725003421
+      },
+      {
+        "name": "scene-0-0-solid-4",
+        "exit_status": 0,
+        "seconds": 41.27797045814805
+      },
+      {
+        "name": "scene-0-0-spatial-1",
+        "exit_status": 0,
+        "seconds": 36.57477870793082
+      },
+      {
+        "name": "scene-0-0-spatial-4",
+        "exit_status": 0,
+        "seconds": 43.17451966693625
+      },
+      {
+        "name": "scene-15-0-solid-1",
+        "exit_status": 0,
+        "seconds": 31.22674375004135
+      },
+      {
+        "name": "scene-15-0-solid-4",
+        "exit_status": 0,
+        "seconds": 41.164222500054166
+      },
+      {
+        "name": "scene-15-0-spatial-1",
+        "exit_status": 0,
+        "seconds": 36.0725897080265
+      },
+      {
+        "name": "scene-15-0-spatial-4",
+        "exit_status": 0,
+        "seconds": 42.71268800017424
+      },
+      {
+        "name": "overlap-integration",
+        "exit_status": 0,
+        "seconds": 155.66548254108056
+      }
+    ],
+    "cases": [
+      {
+        "scene": "solid",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 23364,
+        "baseline_cycles": 23364,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 9376,
+        "baseline_cycles": 9385,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 46237,
+        "baseline_cycles": 46237,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 14720,
+        "baseline_cycles": 14692,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 1,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 26008,
+        "baseline_cycles": 26008,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 4,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 10655,
+        "baseline_cycles": 10730,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 1,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 48881,
+        "baseline_cycles": 48881,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 4,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 16236,
+        "baseline_cycles": 16047,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 24792,
+        "baseline_cycles": 24792,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 9777,
+        "baseline_cycles": 9817,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 47665,
+        "baseline_cycles": 47665,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 15261,
+        "baseline_cycles": 15272,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      }
+    ],
+    "scope": "Private primitive-ready batch drain. Wait for14scheduler tests. First four primary input15/output15 scenes compare unchanged1CU versus4CU. Then8 default/input-only scenes and6real four-CU overlap blend/depth/MSAA integration tests. Exact pixels/depth/metadata and all omission/uniform canaries. Contended build elapsed is not a host benchmark.",
+    "primary_performance_passed": false,
+    "passed": true,
+    "finished": 1792144466.134753
+  },
+  "stencil": {
+    "started": 1792144327.0822232,
+    "pid": 68141,
+    "scope": "Private primitive-ready scheduler: real4CUthree-overlapping-primitive stencil/blend/depth/coverage with1x/4xMSAA,17cyclewriteACKs,3cyclereads. Baseline sameindependentoracle passed. Performance is mixed; correctness qualification only.",
+    "passed": true,
+    "exit_status": 0,
+    "seconds": 76.19854754209518,
+    "finished": 1792144403.2784169
+  },
+  "baseline_stencil": {
+    "started": 1792143952.5156548,
+    "pid": 38896,
+    "scope": "Independent1x/4xMSAAthree-overlapping-primitive stencil/blend/depth oracle on frozen f4c523d baseline. No new scheduling RTL in this classpath.",
+    "passed": true,
+    "exit_status": 0,
+    "seconds": 77.47727379202843,
+    "finished": 1792144029.993599
+  },
+  "integration_tests": 8,
+  "integration_scope": "Six blend/depth/helper/1x+4xMSAA fixtures and two independent stencil/depth/blend fixtures, four CUs with delayed memory ACKs.",
+  "decision": "Primary four-CU solid improves 9 cycles (0.096%); spatial regresses 28 cycles (0.191%). Not enough end-to-end gain to justify native model/PGO builds. All one-CU counts are exactly preserved.",
+  "trace_interpretation": "Worker outputBlocked includes normal arbitration waits and is not a recoverable-cycle budget. Baseline solid has 4447 blocked/1880 OM-stall trace cycles; candidate 4509/1806. Counts overlap.",
+  "sources": {
+    "src/main/scala/opengpu/graphics/PrimitiveFragmentScheduler.scala": "909b0be4856c97d00d7a22d3923afdc67a1e45603e96ce718c5fa1e0d4849ba2",
+    "src/main/scala/opengpu/graphics/ParallelKernelFragStage.scala": "0552b8af8ad6d0fb1470468694b579b3429eb910a95bb9e784c21d9e78329f0f",
+    "src/main/scala/opengpu/graphics/RenderPipeline.scala": "2f115cf1ac7e5b5c82cd5ccfe58c70ff00601f9865777bb920e900cd365a7ee2",
+    "src/test/scala/opengpu/graphics/PrimitiveFragmentSchedulerSpec.scala": "1751a74f05b7e98e51bde1ed549f3ece933121381a0d0e0674adb0ff1bd01bc4",
+    "src/test/scala/opengpu/graphics/PrimitiveOrderedCompatibilitySpec.scala": "ea9866407414a4b99601103d6343fca4a5a6f2f8afcf03688557689a95942f5f",
+    "src/test/scala/opengpu/system/PrimitiveStencilOrderingSpec.scala": "a848ed487d2165aa4bb5f5f538c83c47842db6f42f63a3a9a75277a95b93206c"
+  },
+  "artifacts": ".artifacts/shared-cu/primitive-output-order",
+  "patch": "docs/performance/primitive-output-order-2026-10-16.patch",
+  "next_bottleneck_control": {
+    "status": "PASS: existing qualified f4c523d4CU model, opaque no-depth runtime descriptor",
+    "cases": [
+      {
+        "passed": true,
+        "ticks": 7164,
+        "explicit_ticks": 0,
+        "seconds": 0.73132825,
+        "commits": 657693,
+        "holds": 6606644,
+        "holds_wrote": 665748,
+        "reads": 488,
+        "writes": 4625,
+        "read_bytes": 31232,
+        "write_bytes": 35088,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216,
+        "scene": "solid",
+        "baseline_depth_test_write_ticks": 8683,
+        "all4096_colours_exact": true,
+        "depth_plane_untouched": true,
+        "omitted_bytes_uniforms_and_outside_allocated_scratch_unchanged": true,
+        "callbacks": {
+          "color_writes": 1231
+        },
+        "trace_sha256": "cde436cd5971e35adb3a2f7b31766b5e345a46eeab47d2b0f212cbea560babcc",
+        "output_sha256": "999453723dcbf3d41af842b3592da7b14fd0091f6b946e9bd8c5774b82d95887"
+      },
+      {
+        "passed": true,
+        "ticks": 13280,
+        "explicit_ticks": 0,
+        "seconds": 0.894666833,
+        "commits": 849233,
+        "holds": 8208874,
+        "holds_wrote": 857453,
+        "reads": 653,
+        "writes": 4623,
+        "read_bytes": 41792,
+        "write_bytes": 35088,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216,
+        "scene": "spatial",
+        "baseline_depth_test_write_ticks": 13636,
+        "all4096_colours_exact": true,
+        "depth_plane_untouched": true,
+        "omitted_bytes_uniforms_and_outside_allocated_scratch_unchanged": true,
+        "callbacks": {
+          "color_writes": 1229
+        },
+        "trace_sha256": "efa7ffa36b17178bd3a69465310501a6136f4f6008e36e0f9ea588c13ba37fd4",
+        "output_sha256": "3088b5391534b7371d42ede2833854acf4a84bc7b2aee8dd929a5be5e901086d"
+      }
+    ],
+    "scope": "Counter/pixel qualification only. Same texture shaders, positions, formats, VLEN and640hardware; offscreen64viewport. Runtime descriptor turns depth test/write off. Tracing enabled; elapsed numbers are not benchmarks. This models opaque2D more closely than the depth-enabled scaling scene; it is not a fullGTKboot or completecompositorprofile."
+  }
+}
