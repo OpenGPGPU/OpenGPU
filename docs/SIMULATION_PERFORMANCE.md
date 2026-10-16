@@ -65,8 +65,10 @@ The next private experiment skips initialization and readback of depth/control
 outputs when validated shader reads and writes permit it. It passes 39 targeted
 tests and 12 complete scenes, including unchanged default and input-only paths.
 Four-CU cycles fall further from 9,817 to 9,385 for solid sampling and from
-15,272 to 14,692 for spatial sampling. Native wall-time and new-hardware guest
-qualification are still pending; see the
+15,272 to 14,692 for spatial sampling. The instrumented native model and new-hardware Debian GLES/GTK64 gate also
+pass. Native writes fall a further 29.3%, with smaller native tick reductions
+than these Scala scenes. Optimized wall-time and full640 checks remain pending;
+see the
 [output staging experiment](performance/fragment-output-usage-rtl-experiment-2026-10-16.json).
 
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per

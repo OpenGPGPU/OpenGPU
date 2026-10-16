@@ -1,5 +1,5 @@
 {
-  "status": "PRIVATE RTL+DRIVER COMPATIBILITY PASS; fresh native qualification running",
+  "status": "PASS: privateRTL+12scenes,oldhardwarecompatibility,24nativefixtures andnewcap28Debian18compute/21GLES/GTK64; O2qualification/hosttiming/full640pending",
   "artifact_root": ".artifacts/shared-cu/fragment-output-usage",
   "base_commit": "bc557c5",
   "patch": "docs/performance/fragment-output-usage-rtl-2026-10-16.patch",
@@ -93,9 +93,9 @@
     "finished": 1792135368.5035148
   },
   "limits": [
-    "Native host-time andtraffic savings remain unproven; Scala scene timingsnotnativeGPUnorwalltimes.",
-    "Newcap28 realguesttraining/optimized/full640gatespending. Oldcap27/cap0newdrivergatespassed; thisdoesnotprove newcap28hardware execution.",
-    "Freshmodel generation/training usessealed sourceandnewprofile; neverreuse oldgenerated-model PGO. DefaultQEMUandproductionbc557c5 remainunchanged."
+    "NativeGPUticks andcallbackbytes improved in24instrumented runs; nohosttimeclaimbeforeO2matchedsamples.",
+    "Newcap28Debiantraining64gatepassed; optimizedguest/full640gatespending.",
+    "Fresh exact-model43profilebuild inprogress; productionbc557c5 anddefaultQEMUunchanged."
   ],
   "sources": {
     ".artifacts/shared-cu/fragment-output-usage/rtl-source/CommandBufferStage.scala": "0d5d243ca0d6b1630b9b6c87f596e9a0c731ebe1b8ae74208bf953cdd84a038a",
@@ -117,5 +117,6 @@
     ".artifacts/shared-cu/fragment-output-usage/scene-state.json": "6140e3598c260919fdb1dd450128b2ee1fcaee181364e4961fe42a7c4b14fa35",
     ".artifacts/shared-cu/fragment-output-usage/overlap-v3-state.json": "3ed8791bc85e3aa26c84999c8807ed3037774715110761ccfdea088b94df1ce4",
     ".artifacts/shared-cu/fragment-output-usage-native/compat-state.json": "e0a39bc90b578c2d863f5630f48a9f249fdc4127722c5cf8331a76e1b5ad22ec"
-  }
+  },
+  "native_training_report": "docs/performance/fragment-output-usage-native-training-2026-10-16.json"
 }
