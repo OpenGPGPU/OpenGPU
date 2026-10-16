@@ -1,5 +1,55 @@
 # Full-system simulation performance investigation
 
+## Tagged staging and fast native checks (2026-10-16)
+
+Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per
+worker, scales the shared credit and translation ranges with CU count, pipelines
+the shared request queue, and bounds reply buffering by local ownership. It also
+removes the forwarding-only mix cycle from non-fractional bilinear samples.
+The main source passes 38 targeted tests and four complete runtime-shader scenes,
+with identical colour, depth and shader metadata:
+
+| Scene | Previous 1 CU | Current 1 CU | Previous 4 CUs | Current 4 CUs |
+| --- | ---: | ---: | ---: | ---: |
+| 1×1 texture | 52,050 | 26,008 | 16,640 | 10,730 |
+| 64×64 texture | 77,160 | 48,881 | 22,766 | 16,047 |
+
+These are task cycles, not desktop startup times. Both CU counts improve; the
+four-CU reductions are 35.5% and 29.5%. A worker request-refill experiment and a
+larger sixteen-credit window passed correctness but slightly regressed both
+four-CU scenes, so neither was selected. See the
+[RTL qualification](performance/pipelined-fragment-staging-2026-10-16.json).
+The new frozen native model is undergoing Debian/GTK qualification; the latest
+completed full-resolution proof remains the
+[texture-cache model](performance/vector-cache-native-full640-2026-10-16.json).
+
+`benchmark_native_render.py` runs the same small scene through an already built
+native model, using render-descriptor dimensions to select a 64×64 offscreen
+viewport while keeping the desktop model at 640×480. It reuses the qualified
+runtime vertex/fragment binaries, validates the advertised lane/warp/CU layout,
+and checks every colour/depth pixel, staging canaries, and all memory outside
+the permitted write regions. For example:
+
+```sh
+python3 scripts/benchmark_native_render.py \
+  --model path/to/model \
+  --archive path/to/optimized/libarti_rtl_model.a \
+  --report docs/performance/pipelined-fragment-staging-2026-10-16.json \
+  --repeat 3 \
+  --output generated/qualification/native-render
+```
+
+The output directory must be new. The archive's build manifest must match its
+hash and generated header; use `--profile-runtime` for a training archive. Each
+case records input/output hashes, model ticks, DMA counts and host seconds.
+MMIO submission can settle the whole job, so the measured interval includes
+submission and all model work. Four baseline runs passed with stable outputs
+and 11,952/18,523 ticks, taking about 1.1–1.3 seconds each on this host. These
+fixtures accelerate native checks and comparisons; Debian, Mesa, GTK readback
+and full scanout still require the separate guest qualification. Host-speed
+comparisons require paired runs with controlled competing workloads. See the
+[fixture qualification](performance/native-render-fixture-2026-10-16.json).
+
 ## Shared four-CU candidate: real Weston trace (2026-10-16)
 
 The native-format candidate passes 18 compute replays, 21 GLES cases and

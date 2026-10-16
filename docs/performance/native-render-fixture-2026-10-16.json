@@ -1,0 +1,132 @@
+{
+  "started": "2026-10-16T02:51:19.675490+00:00",
+  "model": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/vector-cache-native/model",
+  "archive_sha256": "46a684d87481b4c7dcccf1a6c005b9de6db1ff0a58d4aef0b853d4a7e8c04337",
+  "header_sha256": "31f0765514b05a024b33d20097018bc4336fe77d170d5cd578d518405b0ba6b7",
+  "report_sha256": "61524f5817f4bacb9d797c4dd74bf48dd4f2b9ec4c7f0d4782f3a717a33d09f3",
+  "runner_sha256": "f9ebcb4d5cf40ae58e0cac9b7caae840e4789d8bcd5da844d7c489a43a759706",
+  "scope": "Bare native rendering with explicit small offscreen viewport; no guest boot. MMIO submit may settle the entire job; ticks include all API-driven model work. Compare host times with paired runs on an otherwise idle host.",
+  "cases": [
+    {
+      "passed": true,
+      "ticks": 11952,
+      "explicit_ticks": 0,
+      "seconds": 1.09167825,
+      "reads": 1215,
+      "writes": 12505,
+      "read_bytes": 77760,
+      "write_bytes": 96816,
+      "faults": 0,
+      "completion": 34395,
+      "shader_config": 67635216,
+      "pixel_depth_pairs": 4096,
+      "staging_canaries": true,
+      "all_other_memory_unchanged": true,
+      "output_sha256": "923eea5949eb3c08cd6b358a48b8836958da14a2a9bc34c4448f98f734fe573b",
+      "scene": "solid",
+      "trial": 0,
+      "fixture_sha256": "3b8001981f0d022c4223e19ffd489d65f2aa2c99ce810f03c13df0bf69b1c5d0"
+    },
+    {
+      "passed": true,
+      "ticks": 11952,
+      "explicit_ticks": 0,
+      "seconds": 1.083896667,
+      "reads": 1215,
+      "writes": 12505,
+      "read_bytes": 77760,
+      "write_bytes": 96816,
+      "faults": 0,
+      "completion": 34395,
+      "shader_config": 67635216,
+      "pixel_depth_pairs": 4096,
+      "staging_canaries": true,
+      "all_other_memory_unchanged": true,
+      "output_sha256": "923eea5949eb3c08cd6b358a48b8836958da14a2a9bc34c4448f98f734fe573b",
+      "scene": "solid",
+      "trial": 1,
+      "fixture_sha256": "3b8001981f0d022c4223e19ffd489d65f2aa2c99ce810f03c13df0bf69b1c5d0"
+    },
+    {
+      "passed": true,
+      "ticks": 18523,
+      "explicit_ticks": 0,
+      "seconds": 1.286019625,
+      "reads": 1391,
+      "writes": 12499,
+      "read_bytes": 89024,
+      "write_bytes": 96816,
+      "faults": 0,
+      "completion": 34395,
+      "shader_config": 67635216,
+      "pixel_depth_pairs": 4096,
+      "staging_canaries": true,
+      "all_other_memory_unchanged": true,
+      "output_sha256": "9c537f8d09a277aecb29330b8f38a58d9fa2e52c9e0f5d5d3ab95ad2f6579dba",
+      "scene": "spatial",
+      "trial": 0,
+      "fixture_sha256": "3228b049444728550c16bd6344ad8c3395c82e660d89575651729e22d324ec4c"
+    },
+    {
+      "passed": true,
+      "ticks": 18523,
+      "explicit_ticks": 0,
+      "seconds": 1.301410291,
+      "reads": 1391,
+      "writes": 12499,
+      "read_bytes": 89024,
+      "write_bytes": 96816,
+      "faults": 0,
+      "completion": 34395,
+      "shader_config": 67635216,
+      "pixel_depth_pairs": 4096,
+      "staging_canaries": true,
+      "all_other_memory_unchanged": true,
+      "output_sha256": "9c537f8d09a277aecb29330b8f38a58d9fa2e52c9e0f5d5d3ab95ad2f6579dba",
+      "scene": "spatial",
+      "trial": 1,
+      "fixture_sha256": "3228b049444728550c16bd6344ad8c3395c82e660d89575651729e22d324ec4c"
+    }
+  ],
+  "passed": true,
+  "finished": "2026-10-16T02:51:26.556066+00:00",
+  "status": "PASS: native render fixture on qualified full640 four-CU model",
+  "artifact_root": ".artifacts/shared-cu/native-render-fixture/public-baseline",
+  "negative_controls": [
+    {
+      "label": "colour",
+      "rejected": true
+    },
+    {
+      "label": "depth",
+      "rejected": true
+    },
+    {
+      "label": "padding",
+      "rejected": true
+    },
+    {
+      "label": "shader",
+      "rejected": true
+    },
+    {
+      "label": "framebuffer-boundary",
+      "rejected": true
+    },
+    {
+      "label": "wrong shader layout before submit",
+      "rejected": true,
+      "exit_status": 2
+    }
+  ],
+  "source_sha256": {
+    "scripts/benchmark_native_render.py": "77cf1ea15f2eb3eec31992c75f3ebfdf32287bd2608649392d924cf33ea28627",
+    "scripts/native_render_fixture.cpp": "f9ebcb4d5cf40ae58e0cac9b7caae840e4789d8bcd5da844d7c489a43a759706"
+  },
+  "limits": [
+    "These are native bare render fixtures, not a Debian/Mesa/GTK qualification.",
+    "Raw host seconds overlap the next model generation and are not a controlled simulator speedup comparison.",
+    "Native callback latencies differ from Scala AXI fixture delays, so native ticks must not be equated with the Scala scene cycle counts.",
+    "Both scenes use identical source fixture hashes and output hashes on repeated runs. The compiler supplies no new simulated RTL."
+  ]
+}
