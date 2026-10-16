@@ -1,0 +1,527 @@
+{
+  "date": "2026-10-17",
+  "recorded_at": 1792178232.770062,
+  "status": "PRIVATE RTL prototype:25units+sixwidthmiters+fourpairedscenesPASS. ActualnativegenerationPASS; nativehost/guestqualification andpromotionstillpending.",
+  "hardware": {
+    "CUs": [
+      1,
+      4
+    ],
+    "lanes": 16,
+    "warps_per_CU": 8,
+    "AXI_bytes": 64,
+    "scene_side": 64,
+    "fragment_batch_limit": 112
+  },
+  "change": "Accept a real eligible successor sample on current result retirement, selecting the next lane and its matching prepared coordinates. Scalar, broadcast, inactive successor, end of vector and newautomaticLODquad retainordinarypath. No shaderprogram or VLEN hardcoding.",
+  "source_sha256": {
+    "TextureUnit.scala": "8f3d08d76b370fbf85dd9cdbe6c9c49f39fe0afd7e25d8b93219c2e406a6f9b0",
+    "TexSampleUnit.scala": "f7063ad6dcbd0c2ea93e300cee595b80c0d5315b2251ee6b40ee4e1f7c9901e2",
+    "TextureCoordinatePipeline.scala": "664856486322bd24bc84120949f0466739559d2c0731895429dfdfb4f64ed9d3",
+    "TextureResultHandoffSpec.scala": "b712d45061504e52e56cf2dec59f45a1a02e562d5684959ebc8f718b9391a6f2"
+  },
+  "baseline_source_sha256": {
+    "TextureUnit.scala": "84ed9915eefa2afe4652e5fa47e5088680506361686c5807629e2c935d70cf85",
+    "TexSampleUnit.scala": "8595993d3ec1a6befe42d558fe14a4321d7d212b6b31fbfcf69623bd59bfd3bb",
+    "TextureCoordinatePipeline.scala": "664856486322bd24bc84120949f0466739559d2c0731895429dfdfb4f64ed9d3"
+  },
+  "unit_tests": {
+    "positive": 25,
+    "old_sampler_negative_controls": 2,
+    "log_sha256": "1a52eeacd8949be8790553f41abf311b8dd3b07b89b735eab1bbe4c3916ccd2e",
+    "negative_log_sha256": "3589dc6a26bbc6c3ec6b1ee0f974626709fc46e7bed06f70d5d7936ca8b0fc78"
+  },
+  "width_miters": {
+    "positive": 6,
+    "instructions": 576,
+    "lane_counts": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "measurements": [
+      {
+        "lanes": 1,
+        "instructions": 96,
+        "current": 1495,
+        "baseline": 1495
+      },
+      {
+        "lanes": 2,
+        "instructions": 96,
+        "current": 1947,
+        "baseline": 1991
+      },
+      {
+        "lanes": 4,
+        "instructions": 96,
+        "current": 2730,
+        "baseline": 2884
+      },
+      {
+        "lanes": 8,
+        "instructions": 96,
+        "current": 4657,
+        "baseline": 4963
+      },
+      {
+        "lanes": 16,
+        "instructions": 96,
+        "current": 8521,
+        "baseline": 9212
+      },
+      {
+        "lanes": 32,
+        "instructions": 96,
+        "current": 16146,
+        "baseline": 17595
+      }
+    ],
+    "log_sha256": "490fb393ae63840e23edc0ce01cfc53a94f8701b612c648686134dda85f2e4b0",
+    "scope": "Currentbaseline versus preparedhandoff at1/2/4/8/16/32lanes,96instructions each. Fullcommit equality, independentbase-mipRGBAoracle, livebinding changes, masks, rebinding, stale-memory checks, arbitraryrequest/resultstalls and reversed replies. Physicalreadorder/count maylegitimatelychange; everyaddress mustremaininsidevalidmipchain. Not a hostbenchmark."
+  },
+  "scene_pairs": [
+    {
+      "scene": "spatial",
+      "cus": 1,
+      "baseline_cycles": 37853,
+      "candidate_cycles": 35759,
+      "pixels_depth_metadata_identical": true,
+      "omitted_bytes_preserved": true,
+      "reduction_percent": 5.531926135312926,
+      "counters": {
+        "baseline": {
+          "CUs": "1",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "phases": [
+            3597,
+            2321,
+            20,
+            26799,
+            640,
+            4476
+          ],
+          "staging_outstanding_cycles": "8817",
+          "staging_blocked": "0",
+          "output_blocked": "2261",
+          "om_stall": "406",
+          "raster_stall": "32681",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "37853",
+          "active_cu_cycles": "27984",
+          "peak_cus": "1",
+          "texture_extent": "64",
+          "buffer_texture_reads": "true",
+          "texture_words": "3676",
+          "texture_lines": "166"
+        },
+        "candidate": {
+          "CUs": "1",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "phases": [
+            3597,
+            2321,
+            20,
+            24705,
+            640,
+            4476
+          ],
+          "staging_outstanding_cycles": "8817",
+          "staging_blocked": "0",
+          "output_blocked": "2261",
+          "om_stall": "406",
+          "raster_stall": "30688",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "35759",
+          "active_cu_cycles": "25890",
+          "peak_cus": "1",
+          "texture_extent": "64",
+          "buffer_texture_reads": "true",
+          "texture_words": "3676",
+          "texture_lines": "166"
+        }
+      },
+      "proof_files": {
+        "baseline": {
+          "log_sha256": "e4f95565d7f660c3f769c42ca9ce6a5562c86f09284fd2a5f96359545ca0b1fa",
+          "output_files": {
+            "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+            "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "f9edfa57abee974754bd8d1b6eb7def63052c6c687e03fbd813418cddeb3d740"
+          }
+        },
+        "candidate": {
+          "log_sha256": "96bea28f73110dcf20501d39c4beb2d01effde2a69bb2aac0e8e439f81171027",
+          "output_files": {
+            "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+            "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "f9edfa57abee974754bd8d1b6eb7def63052c6c687e03fbd813418cddeb3d740"
+          }
+        }
+      }
+    },
+    {
+      "scene": "spatial",
+      "cus": 4,
+      "baseline_cycles": 12651,
+      "candidate_cycles": 12141,
+      "pixels_depth_metadata_identical": true,
+      "omitted_bytes_preserved": true,
+      "reduction_percent": 4.0313018733696975,
+      "counters": {
+        "baseline": {
+          "CUs": "4",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "phases": [
+            13387,
+            2421,
+            20,
+            28463,
+            738,
+            5575
+          ],
+          "staging_outstanding_cycles": "9926",
+          "staging_blocked": "7",
+          "output_blocked": "2896",
+          "om_stall": "807",
+          "raster_stall": "7391",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "12651",
+          "active_cu_cycles": "29648",
+          "peak_cus": "4",
+          "texture_extent": "64",
+          "buffer_texture_reads": "true",
+          "texture_words": "3677",
+          "texture_lines": "200"
+        },
+        "candidate": {
+          "CUs": "4",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "phases": [
+            13341,
+            2465,
+            20,
+            26458,
+            748,
+            5532
+          ],
+          "staging_outstanding_cycles": "10089",
+          "staging_blocked": "6",
+          "output_blocked": "2864",
+          "om_stall": "809",
+          "raster_stall": "7015",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "12141",
+          "active_cu_cycles": "27643",
+          "peak_cus": "4",
+          "texture_extent": "64",
+          "buffer_texture_reads": "true",
+          "texture_words": "3677",
+          "texture_lines": "190"
+        }
+      },
+      "proof_files": {
+        "baseline": {
+          "log_sha256": "d28bbccc515c9087d9da8bd7e91d1b3ed9fc73166d93a7db04833723622c7f8c",
+          "output_files": {
+            "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+            "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "50686761165eaac49de9ec6b0535bfcdf853339be3a21edd91b5de99d85f3f2c"
+          }
+        },
+        "candidate": {
+          "log_sha256": "c5397263763b5c3caea92fd3196a365914d9720050599d789942422b73f35920",
+          "output_files": {
+            "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+            "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "50686761165eaac49de9ec6b0535bfcdf853339be3a21edd91b5de99d85f3f2c"
+          }
+        }
+      }
+    },
+    {
+      "scene": "solid",
+      "cus": 1,
+      "baseline_cycles": 23364,
+      "candidate_cycles": 23364,
+      "pixels_depth_metadata_identical": true,
+      "omitted_bytes_preserved": true,
+      "reduction_percent": 0.0,
+      "counters": {
+        "baseline": {
+          "CUs": "1",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "phases": [
+            3597,
+            2321,
+            20,
+            12310,
+            640,
+            4476
+          ],
+          "staging_outstanding_cycles": "8817",
+          "staging_blocked": "0",
+          "output_blocked": "2261",
+          "om_stall": "406",
+          "raster_stall": "18921",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "23364",
+          "active_cu_cycles": "13495",
+          "peak_cus": "1",
+          "texture_extent": "1",
+          "buffer_texture_reads": "true",
+          "texture_words": "140",
+          "texture_lines": "1"
+        },
+        "candidate": {
+          "CUs": "1",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "phases": [
+            3597,
+            2321,
+            20,
+            12310,
+            640,
+            4476
+          ],
+          "staging_outstanding_cycles": "8817",
+          "staging_blocked": "0",
+          "output_blocked": "2261",
+          "om_stall": "406",
+          "raster_stall": "18921",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "23364",
+          "active_cu_cycles": "13495",
+          "peak_cus": "1",
+          "texture_extent": "1",
+          "buffer_texture_reads": "true",
+          "texture_words": "140",
+          "texture_lines": "1"
+        }
+      },
+      "proof_files": {
+        "baseline": {
+          "log_sha256": "c81a1af1b86b4698faf79869d4ecb55ff97aa98084a49b034af047d720d54f9e",
+          "output_files": {
+            "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-metadata.json": "af2fbca292da2260ab267628bb77d97d3f05b3234d5c4d3ca290062c2e0f05ef",
+            "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-pixels.csv": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f"
+          }
+        },
+        "candidate": {
+          "log_sha256": "400c5ea410e41f104c49d05cf72fd1f1d96f634f473a8182f4e752d4dd84c15b",
+          "output_files": {
+            "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-metadata.json": "af2fbca292da2260ab267628bb77d97d3f05b3234d5c4d3ca290062c2e0f05ef",
+            "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-pixels.csv": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f"
+          }
+        }
+      }
+    },
+    {
+      "scene": "solid",
+      "cus": 4,
+      "baseline_cycles": 9385,
+      "candidate_cycles": 9385,
+      "pixels_depth_metadata_identical": true,
+      "omitted_bytes_preserved": true,
+      "reduction_percent": 0.0,
+      "counters": {
+        "baseline": {
+          "CUs": "4",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "phases": [
+            12944,
+            2358,
+            20,
+            13360,
+            754,
+            8104
+          ],
+          "staging_outstanding_cycles": "9770",
+          "staging_blocked": "2",
+          "output_blocked": "4447",
+          "om_stall": "1880",
+          "raster_stall": "4897",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "9385",
+          "active_cu_cycles": "14545",
+          "peak_cus": "4",
+          "texture_extent": "1",
+          "buffer_texture_reads": "true",
+          "texture_words": "140",
+          "texture_lines": "1"
+        },
+        "candidate": {
+          "CUs": "4",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "phases": [
+            12944,
+            2358,
+            20,
+            13360,
+            754,
+            8104
+          ],
+          "staging_outstanding_cycles": "9770",
+          "staging_blocked": "2",
+          "output_blocked": "4447",
+          "om_stall": "1880",
+          "raster_stall": "4897",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "9385",
+          "active_cu_cycles": "14545",
+          "peak_cus": "4",
+          "texture_extent": "1",
+          "buffer_texture_reads": "true",
+          "texture_words": "140",
+          "texture_lines": "1"
+        }
+      },
+      "proof_files": {
+        "baseline": {
+          "log_sha256": "32433b2b79ab60e14eaff7f0fd6059b0f6e84730350bcb116c68763520b1025f",
+          "output_files": {
+            "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-metadata.json": "425c66204736246c5dba52cfde7f0701f185e5cdff57326ab5e514b34db9c653",
+            "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-pixels.csv": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f"
+          }
+        },
+        "candidate": {
+          "log_sha256": "e3bd198159ce3a6fe2e3ae6a8ecac70e5afd3edcf047e10de6100e931d5375f9",
+          "output_files": {
+            "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-metadata.json": "425c66204736246c5dba52cfde7f0701f185e5cdff57326ab5e514b34db9c653",
+            "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-1-texbuffer-true-pixels.csv": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f"
+          }
+        }
+      }
+    }
+  ],
+  "phase_interpretation": "Phase order isidle/write/launch/run/read/emit, summed overCUworkers; phase totals equalCUs*elapsedtaskcycles. OneCUrunresidency falls2094cycles, exactlymatchingtaskreduction. FourCUrunresidency falls2005worker-cycles outof2040totalworker-cycles saved. Runphaseincludes shader execution and memorywaiting, notjustALUissue.",
+  "main_source_provenance": {
+    "report_sha256": "dd2ae5eb0f7d9a5bc313f3758668e7e75c77a635593135ea4b4002c0a486a4dc",
+    "passed": true,
+    "SV_files": 296,
+    "scope": "All executableSVtext for current selectedmain is identical to qualifiedbaseline after removing only generatedScala source-locationcomments. This explicitly includes later generic vertex-indexfix; selectedcapacity128 retains same indexbits. Rawstrictcomparison and initialscalar-location-parser failures preserved; mergedcolumn locations handled with string-aware comment parser."
+  },
+  "native_generation": {
+    "model_sources": {
+      "dut_9.cpp": "9e2f8ea88cf9e030c2bae3ec44a546065e5d496d57cddd053d8529e70468b0f9",
+      "dut_8.cpp": "ae6fb12efbe97af3fb6fc05f16de48782470cb29f2b2aebd2e3606baa2b63994",
+      "dut_21.cpp": "f0cf6e4d3956f848596240771c7d3fb1c3577e306d059c6fccfba0eb19a6793e",
+      "dut_20.cpp": "97f8346b9c860463d02860df0db991fc44b5ca0bcbab831b5d8aced9713465e1",
+      "dut_22.cpp": "fc1b0f159c4db30a8f889de1f2207203bf4a9da6757c9eb7164b4d2a576c8359",
+      "dut_23.cpp": "096fc271c62e191e967679c106fb28c0970ece3683d66bf54cc2053fac0cf2ab",
+      "dut.h": "4bda9453aff60c9a4b9d8297bddc29881fc982f2553300a9df5900a93bfe9caf",
+      "dut_27.cpp": "a0af263379a31f9a5c88f73c63f30a91910f08dbfe4656632d22f55ee6189f5e",
+      "dut_26.cpp": "0822262ff3113e2020dd575bbfdbd897f305e620c9a01293d96f138a44fdea2e",
+      "dut_24.cpp": "04ba9bc058247c6ca4ef8a907044c2d9bcc933f764291687c3b0433d7262c63d",
+      "dut_30.cpp": "7afbfd93fe12a9dc3186f48d465980532a55bd855bfdb4ab96fccc83e4782a18",
+      "dut_18.cpp": "03d48a25669c53256f872048ea2a8f62be41265bd5eff68e0fd96cf0969d62ac",
+      "dut_19.cpp": "fcad6077af8b962e967c79db7536711f4c4191f8768a728515dd572db347efea",
+      "dut_31.cpp": "c491d1ab6a9c57bc948bea101e219a63850de2e45cddef526321dee8218eb0d4",
+      "dut_25.cpp": "0fba0c0771ed78577719bb4faf5f77390b9556b8737203f2471b954a4a6a40e7",
+      "dut_28.cpp": "2ddfe5fdbdbf024458fdb0965f5a5891b8070b6baa2d06d965e78f8e397d4be1",
+      "dut_14.cpp": "f6fb1bf337961b383946893f4f52b600b26d566b5f87c3b0a42b22122dd2684c",
+      "dut_15.cpp": "370b45c27ef3a87539358a50d5c7cf5474f139352dd0f652a18fa7df8dc46b68",
+      "dut_29.cpp": "c78c4208069e8306ed668ebd4912cdc2bab6bb98b38e486a3f346b5f1dc2826d",
+      "dut_17.cpp": "ee0d8f6bee6573ded97392864cb2b4519318a816515db073f58ad51260ad1af4",
+      "dut_16.cpp": "eff8a33212196a1e27ea3b37b3fb0dfb8016dc602f71a99cd74a85cc4d58270f",
+      "dut_commit_helpers.cpp": "3554c37c2e57c62d716ba1c58c979062b3d00c4e4edf7729294dbb2a3281403e",
+      "arti_rtl_model.h": "1c03023f2d5f1e46a9968eb82ac70beaae4edfc63252300a44bc757ef40990d4",
+      "arti_rtl_model.cpp": "c175500879fd56d74d9fbc60cf5ff9bb00be5f7351bdecdd93d02f6329546c3b",
+      "dut_12.cpp": "627a0b331a45869e34b7a9452e3b065fd6a495ce4d61af4dc736828098082bae",
+      "dut_13.cpp": "7f257f8e21d9427049a9db440f7087923e332a061b457f67bb71505284ad1db0",
+      "arti_smoke.cpp": "eb3699b736aeae965aa933baf8a648681f9b651d74daa6dd39daf047a805697a",
+      "dut_11.cpp": "b0032cefcef2bb3a6a52037a5b556dc0db791493525507d7f89a25bab8f89781",
+      "dut_10.cpp": "ac94cd9f19350167699cee0043b3cc86179ea27e5b54910425fe9c689659bb4e",
+      "dut_0.cpp": "6cc4f51e9599034d88cafc418e3e70d55a88a11920293db5ef8997c77f7fae5e",
+      "dut_1.cpp": "a4dd2ccb7aba06e166d05c2f54a66fb61ae88ebe107c7e8c70c4d00307ef9e02",
+      "dut_3.cpp": "fb3229c4b818128f4ce031d2aa52c331cf750c1f6f97dfafd51cd00bed17a5d2",
+      "dut_mem_ports.cpp": "307a6c9477e34c3ae6f49e17164f4efae51ac4aad0304a8c468676004d433a19",
+      "dut_commit_chunks.cpp": "e297ecb89a9049c222ba58637aaaac3123abad01415c67f5810845d147d6a109",
+      "dut_2.cpp": "f015dd5d65ce5b41016a4d8b12ada8bbd9bfb31c38df67b131f410586a7c27d3",
+      "dut_6.cpp": "248c110e165ba295ec64aa50756710beb59e5626c6fb65dbcbd704d777ee1849",
+      "dut_7.cpp": "4d6f2d35ee93a485789b8f39166ce88397d78a39af6a53ebc81c863b4ffc0369",
+      "dut_5.cpp": "84aeedfcd1bf5b3162d0de7109b5c7570e4dd0fb31aee320677843d176038f3b",
+      "dut_4.cpp": "5555a386553a5a8d1b79cac200cc742763d74b4d81d45b816a92417e6ee8b237"
+    },
+    "changed_executable_modules": [
+      "TextureUnit_1.sv",
+      "TexSampleUnit.sv"
+    ],
+    "phase_seconds": {
+      "before_emit": 362.5301580419764,
+      "capture": 6.52793512493372,
+      "emit_cpp": 119.79438208299689,
+      "split_dut_methods": 15.523120915982872
+    },
+    "scope": "Fresh actualCIRCTfrontend generation onchangedhardware, no reusedoldRTLIR. CapturednewIR isnotacceptedforcache reuse without laterindependentroundtrip."
+  },
+  "next_validation": {
+    "root": ".artifacts/shared-cu/texture-prepared-handoff-native",
+    "scope": "FreshO1/O2native40formats+12staging+6forced,18VM21GLES/GTK64 andstrictnewhardwaretrace. Own72profiles; oldqualifiedartifact uses73includingoldRTLdesktop-prefix, so hostcomparison measurescompleteartifactsincludingtraining. Balancednativeprocesses run16drawseach withfirst2excluded,3samples perartifact/scene; full640admission preregisteredbeforeanysample.",
+    "full640_admission": {
+      "preregistered_at": 1792178150.345889,
+      "benchmark_stage": "verified-qualification-wait",
+      "samples_completed": 0,
+      "requires": "NativeO1/O2/actualguest/newstricttracePASS,25units+sixwidthmiters576instructions+fourpaired1/4CUscenes. Both benchmark artifacts completeRAMoracle.",
+      "host_gate": {
+        "spatial_steady_ROI_candidate_over_baseline_max": 0.99,
+        "solid_steady_ROI_candidate_over_baseline_max": 1.02
+      },
+      "purpose": "Onlyspendfull640recording/replaycostafterobservablehostgain; otherwise investigatePGOprotocol/logiccostwhilekeepinggoalactive. Baseline73vsnew72profiledifference remains explicit.",
+      "controller_sha256": "c8e3491d586b7f19160d4ca7e27750b8e045d98fe41f389cc94c8116ff755313"
+    }
+  },
+  "remaining": [
+    "Nativearchitecturaloracles andO1/O2crosschecks",
+    "Quietbalancednativehostmeasurement",
+    "Full640newRTLrecording,strictcomplete replay andmanualvisualreview ifhostgate passes",
+    "MainRTL/testsourcepromotion andcommits onlyafterqualification"
+  ]
+}

@@ -138,6 +138,44 @@ that every desktop workload has the same footprint, nor predict a host speedup.
 The low-value pruning prototype stays private and uncompiled. See [exact counters,
 address bounds and scope](performance/texture-instruction-footprint-2026-10-17.json).
 
+## Prepared sampler handoff prototype (2026-10-17)
+
+A private RTL change accepts an eligible successor sample on the edge that
+retires the current result. The owner selects the next lane and consumes its
+matching prepared-coordinate entry. Scalar, broadcast, inactive successors,
+the last lane, and a new automatic-LOD quad keep the ordinary path. Shader
+programs are unchanged; lane handling follows the hardware configuration.
+
+All 25 current sampler/execute/coordinate/handoff unit tests pass. Two tests
+fail as expected against the old sampler's turnaround bubble. An additional
+576 instructions across 1/2/4/8/16/32 lanes match the current baseline and the
+independent base-mip colour oracle, including masks, rebinding, changing memory,
+backpressure and reversed replies.
+
+Paired complete scenes preserve pixels, depth, metadata and omitted bytes:
+
+| Scene | CUs | Baseline cycles | Candidate cycles | Reduction |
+| --- | ---: | ---: | ---: | ---: |
+| Spatial texture | 1 | 37,853 | 35,759 | 5.53% |
+| Spatial texture | 4 | 12,651 | 12,141 | 4.03% |
+| Solid texture | 1 | 23,364 | 23,364 | 0% |
+| Solid texture | 4 | 9,385 | 9,385 | 0% |
+
+The one-CU shader-run phase loses exactly the 2,094 saved task cycles. With
+four CUs, that phase accounts for 2,005 of the 2,040 saved worker cycles; worker
+cycles sum across CUs and differ from elapsed task cycles. These phase counters
+include shader memory waiting. They support the turnaround explanation without
+assuming an equal percentage of host-time improvement.
+
+Fresh generation changes executable RTL in only the sampler and its owner.
+A separate source audit confirms that the current committed selected hardware
+matches the previously qualified baseline apart from generated Scala location
+comments, including the later generic vertex-index fix at capacity 128.
+Native O1/O2 builds and independent output/canary checks are underway. Balanced
+host timing, actual full640 desktop, a fresh RTL trace and source promotion
+remain pending; this cycle result is not a host speedup claim. See
+[the measurements, source hashes and remaining gates](performance/prepared-sampler-handoff-rtl-2026-10-17.json).
+
 ## Generated scheduler host experiment (2026-10-17)
 
 A private fixed-layout prototype removes 819,777 generation checks for ready
