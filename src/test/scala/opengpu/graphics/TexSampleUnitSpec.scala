@@ -492,7 +492,7 @@ class TexSampleUnitSpec extends AnyFlatSpec {
   }
 
   for (lanes <- Seq(4, 16)) {
-    it should s"broadcast a fixed single-texel mip across $lanes lanes without changing masks or dynamic LOD" in {
+    it should s"reuse vector texture words across $lanes lanes while preserving masks, mip LOD and rebinding" in {
       val config = GpuConfig(lanes = lanes, warps = 2)
       simulate(new TexSampleUnit(config)) { dut =>
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
@@ -507,28 +507,35 @@ class TexSampleUnitSpec extends AnyFlatSpec {
         val colors = (0 to 5).map(l => texel(20 + l * 40, 7 + l * 20, 9 + l * 13))
         var memory = Map.empty[Long, BigInt]
         def serve(done: () => Boolean): (Int, Int) = {
-          val pending = mutable.Queue.empty[(Long, Int)]
+          val pending = mutable.ArrayBuffer.empty[(Long, Int)]
           var cycle = 0
           var requests = 0
           var first = -1
+          var held = Option.empty[BigInt]
           while (!done() && cycle < 4000) {
             dut.io.mem.req.ready.poke((cycle % 5 != 2).B)
-            val response = pending.headOption.filter(_._2 <= cycle)
+            val responseIndex = pending.lastIndexWhere(_._2 <= cycle)
+            val response = if (responseIndex < 0) None else Some(pending(responseIndex))
             dut.io.mem.resp.valid.poke(response.nonEmpty.B)
             response.foreach { case (address, _) =>
               dut.io.mem.resp.bits.addr.poke(address.U)
               dut.io.mem.resp.bits.data.poke(memory(address).U)
               dut.io.mem.resp.bits.write.poke(false.B)
             }
-            if (response.nonEmpty && dut.io.mem.resp.ready.peek().litToBoolean) pending.dequeue()
+            if (response.nonEmpty && dut.io.mem.resp.ready.peek().litToBoolean) pending.remove(responseIndex)
+            held.foreach { address =>
+              dut.io.mem.req.valid.expect(true.B)
+              dut.io.mem.req.bits.addr.expect(address.U)
+            }
+            held = None
             if (dut.io.mem.req.valid.peek().litToBoolean) {
               if (first < 0) first = cycle
               if (dut.io.mem.req.ready.peek().litToBoolean) {
                 val address = dut.io.mem.req.bits.addr.peek().litValue.toLong
                 assert(memory.contains(address), f"unexpected sample address0x$address%x")
-                pending.enqueue((address, cycle + 7))
+                pending.append((address, cycle + 7 + (if (requests % 4 == 0) 5 else 0)))
                 requests += 1
-              }
+              } else { held = Some(dut.io.mem.req.bits.addr.peek().litValue) }
             }
             dut.clock.step(); cycle += 1
           }
@@ -536,18 +543,27 @@ class TexSampleUnitSpec extends AnyFlatSpec {
           dut.io.mem.resp.valid.poke(false.B)
           (requests, first)
         }
+        def spatialColor(pixel: Int, trial: Int): BigInt = {
+          val offset = if (trial >= 6 && trial <= 8) 17 * (trial - 5) else 0
+          texel(pixel * 11 + offset, pixel * 7 + offset, pixel * 3 + offset)
+        }
         val trials = Seq((1, 1, 0, 0, all), (8, 4, 3, 3, sparse),
           (1, 1, 0, 2, all), (4, 4, 0, 0, all),
-          (1, 1, 0, 0, BigInt(0)), (1, 1, 0, 0, all))
+          (1, 1, 0, 0, BigInt(0)), (1, 1, 0, 0, all),
+          (4, 4, 0, 0, all), (4, 4, 0, 0, all),
+          (4, 4, 0, 0, BigInt(0)), (1, 1, 0, 0, all))
         for (((width, height, minimum, maximum, mask), trial) <- trials.zipWithIndex) {
+          val ordinary = trial == 3 || (trial >= 6 && trial <= 8)
+          dut.io.texFormat.poke((if (trial == 7) PixelFormat.bgra else PixelFormat.native).U)
           var base = 0x4000L
           memory = Map.empty
           for (level <- 0 to maximum) {
             val w = math.max(1, width >> level)
             val h = math.max(1, height >> level)
             for (pixel <- 0 until w * h) {
-              val color = if (trial == 3) texel(pixel * 11, pixel * 7, pixel * 3) else colors(level)
-              memory += (base + pixel * 4) -> color
+              val color = if (ordinary) spatialColor(pixel, trial) else colors(level)
+              val encoded = if (trial == 7) (BigInt(255) << 24) | (color >> 8) else color
+              memory += (base + pixel * 4) -> encoded
             }
             base += w * h * 4
           }
@@ -562,8 +578,8 @@ class TexSampleUnitSpec extends AnyFlatSpec {
           dut.io.vectorIn.bits.issued.decode.instruction.poke("h062081ab".U)
           for (lane <- 0 until lanes) {
             val step = if (lane / 4 == 1) 2L << 16 else if (lane / 4 == 2) 4L << 16 else 0L
-            val u = if (trial == 3) (2L * (lane % 4) + 1) * 8192 else if (lane % 2 == 1) step else 0L
-            val v = if (trial == 3) (2L * (lane / 4) + 1) * 8192 else 0L
+            val u = if (ordinary) (2L * (lane % 4) + 1) * 8192 else if (lane % 2 == 1) step else 0L
+            val v = if (ordinary) (2L * (lane / 4) + 1) * 8192 else 0L
             dut.io.vectorIn.bits.issued.vs1Data(lane).poke(u.U)
             dut.io.vectorIn.bits.issued.vs2Data(lane).poke(v.U)
             dut.io.vectorIn.bits.issued.oldVdData(lane).poke((0x120000 + lane).U)
@@ -577,7 +593,7 @@ class TexSampleUnitSpec extends AnyFlatSpec {
             dut.io.vectorCommit.bits.pc.expect((0x500 + trial * 4).U)
             for (lane <- 0 until lanes) {
               val level = if (trial == 2) Seq(0, 1, 2, 0)(lane / 4) else minimum
-              val sampled = if (trial == 3) texel(lane * 11, lane * 7, lane * 3) else colors(level)
+              val sampled = if (ordinary) spatialColor(lane, trial) else colors(level)
               val expected = if (mask.testBit(lane)) sampled else BigInt(0x120000 + lane)
               dut.io.vectorCommit.bits.writeback.data(lane).expect(expected.U)
             }
@@ -585,9 +601,13 @@ class TexSampleUnitSpec extends AnyFlatSpec {
             dut.io.vectorIn.ready.expect(false.B)
             dut.clock.step()
           }
-          if (trial == 0 || trial == 1 || trial == 5) {
+          if (trial == 0 || trial == 1 || trial == 5 || trial == 9) {
             assert(requests == 1, s"single-texel vector fetched $requests words")
             assert(first <= 5 + minimum, s"leading masked lanes delayed the sample: $first")
+          }
+          if (ordinary && mask == all) {
+            val expected = if (lanes == 4) 8 else 16
+            assert(requests == expected, s"spatial cache requested $requests words, expected $expected")
           }
           if (mask == 0) assert(requests == 0)
           println(s"SINGLE_TEXEL_VECTOR lanes=$lanes trial=$trial requests=$requests first=$first")

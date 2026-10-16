@@ -67,11 +67,13 @@ def main():
     model, archive, out = (p.resolve() for p in (args.model, args.archive, args.output))
     if out.exists():
         parser.error("Choose a fresh output directory to preserve prior evidence")
+    header = (model / "dut.h").read_text()
+    if "_texUnit_sampler_cacheLookupPending" in header:
+        parser.error("Cached samplers also set tapIssued for hits; this observer requires an uncached sampler")
     out.mkdir(parents=True)
     cycle = out / "cycle"
     subprocess.run([sys.executable, str(ROOT / "scripts/build_arti_cycle_probe.py"),
                     str(model), str(archive), str(cycle)], check=True)
-    header = (model / "dut.h").read_text()
     prefixes = sorted(re.findall(
         r"uint8_t (host_host_core_rp_parallelFrag_worker(?:_[123])?)_state =", header))
     assert len(prefixes) == 4

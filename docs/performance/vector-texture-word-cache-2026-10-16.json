@@ -1,0 +1,430 @@
+{
+  "status": "RTL validated in 20 unit tests and four full shared-CU scenes; native qualification pending",
+  "design": "Eight raw texture words per execute-side sampler with FIFO replacement. Parallel tap lookup uses registered addresses and can issue the first miss during lookup. Snapshot cached blend inputs before outstanding replies can replace cache words. Invalidate every accepted vector or scalar instruction; uncached legacy TextureUnit remains available.",
+  "selection": "Full640 trace predicts 57.7 percent per-vector eight-word LRU hits; sixteen add about0.01percentagepoints. RTL uses FIFO; actual miss and cycle counts below are measured independently.",
+  "trace_basis": "docs/performance/texture-word-reuse-2026-10-16.json",
+  "validation": {
+    "started": 1792108906.3738399,
+    "stages": [
+      {
+        "label": "full-solid",
+        "exit_status": 0,
+        "seconds": 478.0639774999581
+      },
+      {
+        "label": "full-spatial",
+        "exit_status": 0,
+        "seconds": 122.14218604099005
+      }
+    ],
+    "finished": 1792109506.600189
+  },
+  "clean_units": {
+    "started": 1792109711.7733839,
+    "stages": [
+      {
+        "label": "cached-units",
+        "exit_status": 0,
+        "seconds": 13.787468540947884
+      },
+      {
+        "label": "legacy-sampler",
+        "exit_status": 0,
+        "seconds": 7.922413374995813
+      }
+    ],
+    "finished": 1792109733.484864
+  },
+  "cleanup_netlist_equivalence": {
+    "passed": true,
+    "files": [
+      {
+        "file": "TexSampleUnit.sv",
+        "normalized_sha256": "6c718587cf7c694d1dec741cd6bc4526bd081eccbc68b29243aa0e837a121df9",
+        "identical": true
+      },
+      {
+        "file": "TextureUnit.sv",
+        "normalized_sha256": "fcacb6c67678c07400fdb227a382b925f10d774e2f32dcb6033b5443b62ec789",
+        "identical": true
+      }
+    ],
+    "scope": "Cleanup removes an unused Scala helper Boolean, reindents the helper and documents invalidation. Emitted RTL is identical after removing comments/whitespace and normalizing source locations in assertion diagnostics."
+  },
+  "unit_scope": [
+    "4/16 lanes and fixed/automatic/fractional/per-quad mip selection",
+    "masked/empty vectors and scalar follow-up",
+    "changed contents and BGRA rebinding at same address",
+    "delayed, out-of-order replies and stalled request stability",
+    "12 existing uncached sampler regressions"
+  ],
+  "scenes": [
+    {
+      "scene": "full-solid",
+      "cus": 1,
+      "before": {
+        "CUs": "1",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "52050",
+        "active_cu_cycles": "13495",
+        "peak_cus": "1",
+        "texture_extent": "1",
+        "buffer_texture_reads": "true",
+        "texture_words": "140",
+        "texture_lines": "1"
+      },
+      "after": {
+        "CUs": "1",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "52050",
+        "active_cu_cycles": "13495",
+        "peak_cus": "1",
+        "texture_extent": "1",
+        "buffer_texture_reads": "true",
+        "texture_words": "140",
+        "texture_lines": "1"
+      },
+      "cycle_reduction": 0.0,
+      "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "metadata_sha256": "af2fbca292da2260ab267628bb77d97d3f05b3234d5c4d3ca290062c2e0f05ef",
+      "shader_words_identical": true
+    },
+    {
+      "scene": "full-solid",
+      "cus": 4,
+      "before": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "16640",
+        "active_cu_cycles": "14142",
+        "peak_cus": "4",
+        "texture_extent": "1",
+        "buffer_texture_reads": "true",
+        "texture_words": "140",
+        "texture_lines": "1"
+      },
+      "after": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "16640",
+        "active_cu_cycles": "14142",
+        "peak_cus": "4",
+        "texture_extent": "1",
+        "buffer_texture_reads": "true",
+        "texture_words": "140",
+        "texture_lines": "1"
+      },
+      "cycle_reduction": 0.0,
+      "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "metadata_sha256": "425c66204736246c5dba52cfde7f0701f185e5cdff57326ab5e514b34db9c653",
+      "shader_words_identical": true
+    },
+    {
+      "scene": "full-spatial",
+      "cus": 1,
+      "before": {
+        "CUs": "1",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "82681",
+        "active_cu_cycles": "44126",
+        "peak_cus": "1",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "8944",
+        "texture_lines": "166"
+      },
+      "after": {
+        "CUs": "1",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "77160",
+        "active_cu_cycles": "38605",
+        "peak_cus": "1",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "3676",
+        "texture_lines": "166"
+      },
+      "cycle_reduction": 0.0667747124490512,
+      "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "metadata_sha256": "f9edfa57abee974754bd8d1b6eb7def63052c6c687e03fbd813418cddeb3d740",
+      "shader_words_identical": true
+    },
+    {
+      "scene": "full-spatial",
+      "cus": 4,
+      "before": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "25244",
+        "active_cu_cycles": "49346",
+        "peak_cus": "4",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "8944",
+        "texture_lines": "243"
+      },
+      "after": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "22766",
+        "active_cu_cycles": "39622",
+        "peak_cus": "4",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "3677",
+        "texture_lines": "229"
+      },
+      "cycle_reduction": 0.09816193947076535,
+      "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+      "metadata_sha256": "50686761165eaac49de9ec6b0535bfcdf853339be3a21edd91b5de99d85f3f2c",
+      "shader_words_identical": true
+    }
+  ],
+  "scaling": {
+    "solid": 3.1280048076923075,
+    "spatial_before": 3.275273332276977,
+    "spatial_after": 3.3892646929631907
+  },
+  "prior_variant": {
+    "status": "20 unit tests and four full scenes PASS; every colour/depth byte and shader metadata identical",
+    "scenes": [
+      {
+        "scene": "full-solid",
+        "cus": 1,
+        "before": {
+          "CUs": "1",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "52050",
+          "active_cu_cycles": "13495",
+          "peak_cus": "1",
+          "texture_extent": "1",
+          "buffer_texture_reads": "true",
+          "texture_words": "140",
+          "texture_lines": "1"
+        },
+        "after": {
+          "CUs": "1",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "52050",
+          "active_cu_cycles": "13495",
+          "peak_cus": "1",
+          "texture_extent": "1",
+          "buffer_texture_reads": "true",
+          "texture_words": "140",
+          "texture_lines": "1"
+        },
+        "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+        "shader_words_and_metadata_identical": true
+      },
+      {
+        "scene": "full-solid",
+        "cus": 4,
+        "before": {
+          "CUs": "4",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "16640",
+          "active_cu_cycles": "14142",
+          "peak_cus": "4",
+          "texture_extent": "1",
+          "buffer_texture_reads": "true",
+          "texture_words": "140",
+          "texture_lines": "1"
+        },
+        "after": {
+          "CUs": "4",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "16640",
+          "active_cu_cycles": "14142",
+          "peak_cus": "4",
+          "texture_extent": "1",
+          "buffer_texture_reads": "true",
+          "texture_words": "140",
+          "texture_lines": "1"
+        },
+        "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+        "shader_words_and_metadata_identical": true
+      },
+      {
+        "scene": "full-spatial",
+        "cus": 1,
+        "before": {
+          "CUs": "1",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "82681",
+          "active_cu_cycles": "44126",
+          "peak_cus": "1",
+          "texture_extent": "64",
+          "buffer_texture_reads": "true",
+          "texture_words": "8944",
+          "texture_lines": "166"
+        },
+        "after": {
+          "CUs": "1",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "79128",
+          "active_cu_cycles": "40573",
+          "peak_cus": "1",
+          "texture_extent": "64",
+          "buffer_texture_reads": "true",
+          "texture_words": "3676",
+          "texture_lines": "166"
+        },
+        "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+        "shader_words_and_metadata_identical": true
+      },
+      {
+        "scene": "full-spatial",
+        "cus": 4,
+        "before": {
+          "CUs": "4",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "25244",
+          "active_cu_cycles": "49346",
+          "peak_cus": "4",
+          "texture_extent": "64",
+          "buffer_texture_reads": "true",
+          "texture_words": "8944",
+          "texture_lines": "243"
+        },
+        "after": {
+          "CUs": "4",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "23275",
+          "active_cu_cycles": "41363",
+          "peak_cus": "4",
+          "texture_extent": "64",
+          "buffer_texture_reads": "true",
+          "texture_words": "3678",
+          "texture_lines": "228"
+        },
+        "pixels_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+        "shader_words_and_metadata_identical": true
+      }
+    ],
+    "scope": "Isolated 8-word FIFO candidate with one lookup cycle on nonempty cache. Main RTL unchanged. Next variant can issue first miss during lookup, preserving address-register separation.",
+    "host_timing_claim": false
+  },
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/TextureUnit.scala": "43d08e51f5e10f00d535532f449b6db94aa41d93206120f91737e6a6ad09783d",
+    "src/main/scala/opengpu/graphics/TexSampleUnit.scala": "a40edc78467e7ec5a480426db5ea0f1f612304719beffaa9dcc72b7e5b56bb90",
+    "src/test/scala/opengpu/graphics/TexSampleUnitSpec.scala": "40c7fb793bef4f40550c5ade076fe30d21cccdc746883356d1031cc86482bf5d"
+  },
+  "artifact_root": ".artifacts/shared-cu/vector-texel-cache",
+  "limits": [
+    "No native desktop cycle or host-speed claim until a fresh full-model qualification and controlled timing.",
+    "Validation wall times overlapped other builds/replays and are not performance evidence.",
+    "No new shader lane assumption; vectors still use config.lanes and runtime shader programs are unchanged."
+  ]
+}

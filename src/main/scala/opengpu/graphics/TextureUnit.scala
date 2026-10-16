@@ -94,11 +94,20 @@ object TexWrap {
   * read and its response fills every matching logical tap. Trilinear sampling
   * keeps the two four-tap level groups sequential, bounding the required
   * downstream transaction capacity at four.
+  * An optional word cache reuses raw taps within an owner-defined operation.
+  * Its owner must invalidate it before each new instruction or binding.
   */
 class TextureUnit(
-  gfxConfig: GraphicsConfig = GraphicsConfig()
+  gfxConfig: GraphicsConfig = GraphicsConfig(),
+  wordCacheEntries: Int = 0
 ) extends Module {
+  // Preserve the uncached single-argument interface for existing callers.
+  def this(gfxConfig: GraphicsConfig) = this(gfxConfig, 0)
+  require(wordCacheEntries == 0 || (wordCacheEntries >= 4 && isPow2(wordCacheEntries)))
   val io = IO(new Bundle {
+    // The owner must invalidate between instructions/bindings. Uncached
+    // legacy samplers have no extra input or persistent cached words.
+    val invalidateCache = if (wordCacheEntries > 0) Some(Input(Bool())) else None
     val texFormat = Input(UInt(PixelFormat.width.W))
     val texBase = Input(UInt(32.W))
     val texWidth = Input(UInt(14.W))
@@ -153,6 +162,17 @@ class TextureUnit(
   private val tapIssued = RegInit(0.U(4.W))
   private val tapReceived = RegInit(0.U(4.W))
   private val tapWords = Reg(Vec(4, UInt(32.W)))
+
+  private val cacheValid = if (wordCacheEntries > 0)
+    Some(RegInit(0.U(wordCacheEntries.W))) else None
+  private val cacheTags = if (wordCacheEntries > 0)
+    Some(Reg(Vec(wordCacheEntries, UInt(32.W)))) else None
+  private val cacheWords = if (wordCacheEntries > 0)
+    Some(Reg(Vec(wordCacheEntries, UInt(32.W)))) else None
+  private val cacheLookupPending = if (wordCacheEntries > 0)
+    Some(RegInit(false.B)) else None
+  private val cacheReplace = if (wordCacheEntries > 0)
+    Some(RegInit(0.U(log2Ceil(wordCacheEntries).W))) else None
 
   // Blended result held until result.fire.
   private val resultReg = RegInit(0.U(32.W))
@@ -232,14 +252,21 @@ class TextureUnit(
     if (i == 0) true.B
     else !VecInit((0 until i).map(j => tapAddrs(j) === tapAddrs(i))).asUInt.orR
   })
-  private val unissued = ~tapIssued & tapLeaders.asUInt
+  private val cachedTapHits = if (wordCacheEntries > 0) Some(VecInit(
+    (0 until 4).map(tap => VecInit((0 until wordCacheEntries).map(entry =>
+      cacheValid.get(entry) && cacheTags.get(entry) === tapAddrs(tap))).asUInt))) else None
+  private val cachedTapReady = cachedTapHits.map(hits =>
+    VecInit(hits.map(_.orR)).asUInt).getOrElse(0.U(4.W))
+  private val issuedForSelection = Mux(cacheLookupPending.getOrElse(false.B),
+    cachedTapReady, tapIssued)
+  private val unissued = ~issuedForSelection & tapLeaders.asUInt
   private val hasUnissued = unissued.orR
   private val issueIdx = PriorityEncoder(unissued)
   io.mem.req.valid := state === sFetch && hasUnissued
   io.mem.req.bits.write := false.B
   io.mem.req.bits.addr := tapAddrs(issueIdx)
   io.mem.req.bits.data := 0.U
-  io.mem.resp.ready := state === sFetch
+  io.mem.resp.ready := state === sFetch && !cacheLookupPending.getOrElse(false.B)
 
   // A response belongs to its issued leader, then fills every as-yet-empty
   // logical tap at that address. This preserves all four blend inputs without
@@ -255,6 +282,19 @@ class TextureUnit(
   }).asUInt
   private val receivedAfterResponse =
     tapReceived | responseFillBits
+
+  if (wordCacheEntries > 0) {
+    when(io.invalidateCache.get) {
+      cacheValid.get := 0.U
+      cacheReplace.get := 0.U
+      cacheLookupPending.get := false.B
+    }.elsewhen(responseAccepted && responseMatchBits.orR) {
+      cacheValid.get := cacheValid.get | UIntToOH(cacheReplace.get, wordCacheEntries)
+      cacheTags.get(cacheReplace.get) := io.mem.resp.bits.addr
+      cacheWords.get(cacheReplace.get) := io.mem.resp.bits.data
+      cacheReplace.get := cacheReplace.get + 1.U
+    }
+  }
 
   // ---------------------------------------------------------------------
   // Blend: fixed-point weights summing to exactly 65536, truncated shift.
@@ -311,6 +351,74 @@ class TextureUnit(
     }
   }
 
+  /** Cache lookup follows the registered tap addresses, keeping its CAM
+    * and data mux off the address-multiply stage's combinational path.
+    * The first uncached tap can issue during lookup; no extra miss bubble. */
+  private def beginTapFetch(addresses: Seq[UInt]): Unit = {
+    for (i <- 0 until 4) { tapAddrs(i) := addresses(i) }
+    tapIssued := 0.U
+    tapReceived := 0.U
+    state := sFetch
+    if (wordCacheEntries > 0) { cacheLookupPending.get := cacheValid.get.orR }
+  }
+
+  private def loadCachedTaps(): Unit = {
+    if (wordCacheEntries > 0) {
+      cacheLookupPending.get := false.B
+      val hits = cachedTapHits.get
+      val ready = cachedTapReady
+      for (tap <- 0 until 4) {
+        when(hits(tap).orR) {
+          tapWords(tap) := PixelFormat.decode(
+            cacheWords.get(PriorityEncoder(hits(tap))), formatReg)
+        }
+      }
+      tapIssued := Mux(io.mem.req.fire,
+        ready | UIntToOH(issueIdx, 4), ready)
+      tapReceived := ready
+      when(ready.andR) {
+        when(singleTexel) {
+          val decoded = PixelFormat.decode(cacheWords.get(PriorityEncoder(hits(0))), formatReg)
+          when(!secondLevel && lodFracReg === 0.U) {
+            resultReg := decoded
+            state := sDone
+          }.otherwise { finishBilinear(decoded) }
+        }.otherwise { state := sBlend }
+      }
+    }
+  }
+
+  private def fetchMemory(): Unit = {
+    when(io.mem.req.fire) {
+      tapIssued := tapIssued | UIntToOH(issueIdx, 4)
+    }
+    when(io.mem.resp.fire) {
+      assert(!io.mem.resp.bits.write,
+        "texture reads must not receive a write acknowledgement")
+      assert(responseMatchBits.orR,
+        "texture response must match an issued, pending tap address")
+    }
+    when(responseAccepted && responseMatchBits.orR) {
+      for (i <- 0 until 4) {
+        when(responseFillBits(i)) { tapWords(i) := PixelFormat.decode(io.mem.resp.bits.data, formatReg) }
+      }
+      tapReceived := receivedAfterResponse
+      when(receivedAfterResponse.andR) {
+        when(singleTexel) {
+          val decoded = PixelFormat.decode(io.mem.resp.bits.data, formatReg)
+          when(!secondLevel && lodFracReg === 0.U) {
+            resultReg := decoded
+            state := sDone
+          }.otherwise {
+            finishBilinear(decoded)
+          }
+        }.otherwise {
+          state := sBlend
+        }
+      }
+    }
+  }
+
   switch(state) {
     is(sIdle) {
       when(io.sample.fire) {
@@ -351,10 +459,7 @@ class TextureUnit(
         singleTexel := isSingleTexel
         when(isSingleTexel) {
           // All four taps are the same for every coordinate and wrap mode.
-          for (i <- 0 until 4) { tapAddrs(i) := levelBase }
-          tapIssued := 0.U
-          tapReceived := 0.U
-          state := sFetch
+          beginTapFetch(Seq.fill(4)(levelBase))
         }.otherwise {
           biasedXReg := axisBias(uReg, levelW)
           biasedYReg := axisBias(vReg, levelH)
@@ -401,43 +506,15 @@ class TextureUnit(
     }
     is(sTap) {
       // Tap addresses: one index-by-width multiply plus the level base.
-      tapAddrs(0) := tapAddr(idxXReg(0), idxYReg(0))
-      tapAddrs(1) := tapAddr(idxXReg(1), idxYReg(0))
-      tapAddrs(2) := tapAddr(idxXReg(0), idxYReg(1))
-      tapAddrs(3) := tapAddr(idxXReg(1), idxYReg(1))
-      tapIssued := 0.U
-      tapReceived := 0.U
-      state := sFetch
+      beginTapFetch(Seq(
+        tapAddr(idxXReg(0), idxYReg(0)), tapAddr(idxXReg(1), idxYReg(0)),
+        tapAddr(idxXReg(0), idxYReg(1)), tapAddr(idxXReg(1), idxYReg(1))))
     }
     is(sFetch) {
-      when(io.mem.req.fire) {
-        tapIssued := tapIssued | UIntToOH(issueIdx, 4)
-      }
-      when(io.mem.resp.fire) {
-        assert(!io.mem.resp.bits.write,
-          "texture reads must not receive a write acknowledgement")
-        assert(responseMatchBits.orR,
-          "texture response must match an issued, pending tap address")
-      }
-      when(responseAccepted && responseMatchBits.orR) {
-        for (i <- 0 until 4) {
-          when(responseFillBits(i)) { tapWords(i) := PixelFormat.decode(io.mem.resp.bits.data, formatReg) }
-        }
-        tapReceived := receivedAfterResponse
-        when(receivedAfterResponse.andR) {
-          when(singleTexel) {
-            val decoded = PixelFormat.decode(io.mem.resp.bits.data, formatReg)
-            when(!secondLevel && lodFracReg === 0.U) {
-              resultReg := decoded
-              state := sDone
-            }.otherwise {
-              finishBilinear(decoded)
-            }
-          }.otherwise {
-            state := sBlend
-          }
-        }
-      }
+      if (wordCacheEntries > 0) {
+        when(cacheLookupPending.get) { loadCachedTaps() }
+          .otherwise { fetchMemory() }
+      } else { fetchMemory() }
     }
     is(sBlend) {
       finishBilinear(blended)

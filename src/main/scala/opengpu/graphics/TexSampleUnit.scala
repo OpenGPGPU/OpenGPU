@@ -49,8 +49,11 @@ class TexSampleUnit(
     }
   })
 
-  private val sampler = Module(new TextureUnit(gfxConfig))
+  private val sampler = Module(new TextureUnit(gfxConfig, wordCacheEntries = 8))
 
+  // Reuse is limited to one instruction. A later operation may observe
+  // changed texture memory, format, binding, or address translation.
+  sampler.io.invalidateCache.get := io.vectorIn.fire || io.in.fire
   sampler.io.texFormat := io.texFormat
   sampler.io.texBase := io.texBase
   sampler.io.texWidth := io.texWidth
