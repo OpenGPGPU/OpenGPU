@@ -1,0 +1,51 @@
+{
+  "status": "PASS four concurrent real simulator JVMs; failed RTL-fixture rerun still running",
+  "problem": "Two JVMs shared root/bin/verilator. One generated hierarchy/job configuration rewrote the script while another shell was waiting for Verilator. The first shell resumed in the rewritten bytes and reported a syntax error after a successful model build. Shared slot names could also collide across JVMs.",
+  "change": "Keep the compiled content-addressed cache shared, but put the generated shim and numbered workspaces under root/runs/<pid>. Each process retains its own options and cleanup cannot delete another live workspace. Binary cache keys and assertion settings are unchanged.",
+  "negative_evidence": {
+    "log": ".artifacts/shared-cu/fragment-input-usage/main-units.log",
+    "sha256": "4567bc04229da067ce8ce88b88a6e00bbcc90d27b6c0a275a37279ba06b746b5",
+    "result": "35testsPASS,1setupFAIL; build completed then shell line56 syntax error. No RTL assertion failure."
+  },
+  "concurrent_regression": {
+    "passed": true,
+    "seconds": 12.31184720993042,
+    "rows": [
+      {
+        "pid": 43132,
+        "jobs": 1,
+        "passed": true,
+        "tests": 3,
+        "shim": ".artifacts/shared-cu/fragment-input-usage/parallel-harness/shared/runs/43132/bin/verilator"
+      },
+      {
+        "pid": 43133,
+        "jobs": 2,
+        "passed": true,
+        "tests": 3,
+        "shim": ".artifacts/shared-cu/fragment-input-usage/parallel-harness/shared/runs/43133/bin/verilator"
+      },
+      {
+        "pid": 43134,
+        "jobs": 1,
+        "passed": true,
+        "tests": 3,
+        "shim": ".artifacts/shared-cu/fragment-input-usage/parallel-harness/shared/runs/43134/bin/verilator"
+      },
+      {
+        "pid": 43135,
+        "jobs": 2,
+        "passed": true,
+        "tests": 3,
+        "shim": ".artifacts/shared-cu/fragment-input-usage/parallel-harness/shared/runs/43135/bin/verilator"
+      }
+    ],
+    "scope": "Four concurrent real simulator JVMs share one compiled model cache, with jobs1/2/1/2. Each runs3originalGpuSimSpec checks including failing-expectation negative. Distinct per-process scripts/options and cleaned workspaces verified. No guest speed claim.",
+    "helper_sha256": "b8fffa2bd6682de5c63df2d92ada94751df49a11a7e0ba77de8311bc476863f9"
+  },
+  "main_rtl_rerun": "The failed KernelFragStageSpec bound-staging-traffic test is rerunning with the new helper; its result will be recorded separately.",
+  "limitations": "No host-performance claim. Four jobs1/2/1/2 JVMs each run the3originalGpuSimSpec checks, including a deliberate failing expectation. Scripts/jobs and cleaned workspaces verified individually; cache publication remains atomic.",
+  "evidence": {
+    ".artifacts/shared-cu/fragment-input-usage/parallel-harness/state.json": "82fcd0b0a5c07663699bf6055c3d5bb89e3e7d63fbcce1a21e3705ba6c2c9b91"
+  }
+}

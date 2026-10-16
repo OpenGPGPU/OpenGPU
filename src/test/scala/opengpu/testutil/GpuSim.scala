@@ -49,7 +49,12 @@ object GpuSim extends PeekPokeAPI {
   private val enabled = !cacheSetting.contains("off")
   private val root = Paths.get(sys.props.get("opengpu.simWorkspace").getOrElse(
     cacheSetting.filter(_ => enabled).getOrElse("target/chiselsim")))
-  private val binDirectory = root.resolve("bin")
+  // Only compiled executables are shared. A shim embeds this JVM's options,
+  // and svsim removes/rebuilds workspace contents, so neither may be reused by
+  // another JVM. In particular, truncating a running shell script can corrupt
+  // the remainder of its input after Verilator returns.
+  private val runDirectory = root.resolve("runs").resolve(ProcessHandle.current().pid().toString)
+  private val binDirectory = runDirectory.resolve("bin")
   private val cacheDirectory = root.resolve("cache")
 
   private val slots = new AtomicInteger(0)
@@ -80,8 +85,8 @@ object GpuSim extends PeekPokeAPI {
     * `chisel3.simulator.EphemeralSimulator.simulate`.
     */
   def simulate[T <: RawModule](module: => T)(body: T => Unit): Unit = {
-    Files.createDirectories(root)
-    val workspace = root.resolve(s"slot-${slots.getAndIncrement()}")
+    Files.createDirectories(runDirectory)
+    val workspace = runDirectory.resolve(s"slot-${slots.getAndIncrement()}")
     try {
       new Runner(workspace.toString)
         .simulate(module)(simulated => body(simulated.wrapped))

@@ -21,6 +21,12 @@ sbt -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2 \
 test. The default remains flat. The hierarchy flags and control-file contents
 enter the binary cache key, so flat and different hierarchy configurations can
 share the cache safely. `opengpu.simJobs` sets a positive build-job limit.
+Separate JVMs keep generated scripts and temporary workspaces under
+`runs/<pid>` while sharing the compiled executable cache. This prevents a
+concurrent run from truncating a script still in use or deleting another
+run's workspace. Four concurrent JVMs with different job limits pass all
+12 counter, reset and failing-expectation checks in the
+[concurrency regression](performance/simulator-workspace-isolation-2026-10-16.json).
 Both options still apply with `opengpu.simCache=off`; use
 `opengpu.simWorkspace=/absolute/private/path` to isolate an uncached workspace.
 Hierarchy mode suppresses the observed `UNOPTFLAT` warnings at Verilator's DPI
