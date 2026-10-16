@@ -77,7 +77,8 @@ assert ci_skip.isdisjoint(assigned)
 assert json.loads(shard_cmd("shards-json", "ALL")) == list(shards)
 assert json.loads(shard_cmd("shards-json", "NONE")) == []
 assert json.loads(shard_cmd("shards-json", "opengpu.graphics.*")) == ["graphics"]
-assert shard_cmd("flags", "system-rt") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2"
+assert shard_cmd("flags", "system-rt") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1"
+assert shard_cmd("flags", "system-wide") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2"
 assert shard_cmd("flags", "system-mem") == ""
 assert shard_cmd("flags", "graphics") == ""
 graphics_fanout = " ".join(select("src/main/scala/opengpu/graphics/RenderHost.scala"))

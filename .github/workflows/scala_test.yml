@@ -158,7 +158,15 @@ jobs:
         fi
         echo "Running: $SUITES"
         # GpuComputeUnit shards compile repeated CUs as a hierarchy library.
-        # simJobs stays at 2: this runner has 16 GB, and the JVM reserves 6 GB.
+        # Job count comes from ci_shard_tests.sh. system-rt is serial, and the
+        # 6 GB heap still leaves too little RAM for its 32-lane model: without
+        # swap the OOM killer stops the runner and the step is canceled.
+        if [ "${{ matrix.shard }}" = "system-rt" ]; then
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+        fi
         FLAGS=$(bash scripts/ci_shard_tests.sh flags "${{ matrix.shard }}")
         if [ -n "$FLAGS" ]; then
           echo "Simulation flags: $FLAGS"

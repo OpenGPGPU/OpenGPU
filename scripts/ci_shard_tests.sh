@@ -141,10 +141,15 @@ shard_spec_files() {
 shard_flags() {
   # Hierarchical compile helps designs that instantiate GpuComputeUnit.
   # ubuntu-latest has 16 GB and the JVM already reserves 6 GB, so the C++
-  # build stays at two jobs. The memory shard has no compute unit, so it
-  # stays flat.
+  # build stays at two jobs. system-rt elaborates a distinct full-GPU model
+  # per lane width (including 32-lane); two compilers there SIGTERM the
+  # runner agent, which GitHub reports as "The operation was canceled."
+  # The memory shard has no compute unit, so it stays flat.
   case "$1" in
-    system-host|system-walk|system-tex|system-wide|system-core|system-rt|system-pool)
+    system-rt)
+      printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1'
+      ;;
+    system-host|system-walk|system-tex|system-wide|system-core|system-pool)
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2'
       ;;
     graphics|system-mem|core-a|core-b)
