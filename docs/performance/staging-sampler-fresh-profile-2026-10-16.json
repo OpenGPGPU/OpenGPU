@@ -1,0 +1,86 @@
+{
+  "status": "CLOSED: fresh exact-model profile restores host parity; combined RTL bundle deferred",
+  "artifact_root": ".artifacts/shared-cu/staging-sampler-native-screen/fresh-profile",
+  "scope": "Same combined bitmap/bounded reply queues/sampler handoff/unused blend retention model, freshly instrumented and trained from eight native fixtures versus prior mismatched3cf PGO. All native fixture pixels/depth/canaries and complete memory match. No production promotion.",
+  "samples": 36,
+  "warmups": 6,
+  "order": "Three balanced ABC CBA rounds per scene; six samples per variant per scene",
+  "summary": {
+    "solid": {
+      "control": {
+        "median_seconds": 1.0222016045,
+        "reduction_from_control_percent": 0.0,
+        "round_medians": [
+          1.028085875,
+          1.019013146,
+          1.033251292
+        ]
+      },
+      "stale": {
+        "median_seconds": 1.417864521,
+        "reduction_from_control_percent": -38.70693557495781,
+        "round_medians": [
+          1.4188265,
+          1.4212599375,
+          1.414784625
+        ]
+      },
+      "fresh": {
+        "median_seconds": 1.0234857915,
+        "reduction_from_control_percent": -0.12562952301646835,
+        "round_medians": [
+          1.027962354,
+          1.024889188,
+          1.0208100625
+        ]
+      }
+    },
+    "spatial": {
+      "control": {
+        "median_seconds": 1.2605440620000001,
+        "reduction_from_control_percent": 0.0,
+        "round_medians": [
+          1.2635965625,
+          1.2643049375,
+          1.2601216455
+        ]
+      },
+      "stale": {
+        "median_seconds": 1.693186479,
+        "reduction_from_control_percent": -34.32187973767154,
+        "round_medians": [
+          1.692056312,
+          1.6880948335000001,
+          1.6980599165
+        ]
+      },
+      "fresh": {
+        "median_seconds": 1.2615788335,
+        "reduction_from_control_percent": -0.08208927646353725,
+        "round_medians": [
+          1.260866125,
+          1.2632758955,
+          1.27173575
+        ]
+      }
+    }
+  },
+  "same_model_profile_recovery_percent": {
+    "solid": 27.814979757152702,
+    "spatial": 25.490851176351736
+  },
+  "conclusion": "Fresh profile recovers the large regression but yields no consistent host-time improvement over qualified3cf control (solid0.13% slower, spatial0.08% slower, mixed round direction). Spatial native ticks14135->13633 remain a real3.55% improvement. Defer bundle and prioritize input omission with measured host savings.",
+  "limitations": "Control profile trained on broader guest workload, fresh candidate on nativefixtures; no universal RTL/profile claim. Host samples exclude tracing; no own concurrent compiler/guest. Unrelated host activity sampled in rawstate.",
+  "controlled_build_pause": {
+    "seconds": 58.08775925007649,
+    "resumed_by_watchdog": false,
+    "all_resumed": true,
+    "scope": "Input-usage native build temporarily paused under85second watchdog; resumed and finished successfully. Build timings include this pause and contention, not clean build performance."
+  },
+  "evidence": {
+    ".artifacts/shared-cu/staging-sampler-native-screen/fresh-profile/state.json": "19d121bd70041d39740446db5b3f7f4984b52e24830425f3feea6870162a7683",
+    ".artifacts/shared-cu/staging-sampler-native-screen/fresh-profile/profile-inputs.json": "1e2e6abaa88b07afb23f4d70ff934980085fa9ccb3074142fa1c6555a351a3fa",
+    ".artifacts/shared-cu/staging-sampler-native-screen/fresh-profile/paused-comparison/state.json": "4f68e73f130a0e1387a392bbad03b01f0d9e7303cdfb84e2e68496359d4c11bb",
+    ".artifacts/shared-cu/staging-sampler-native-screen/fresh-profile/paused-comparison/pause.json": "d931c1fc457b8c1d7aaa291d3051f259bfd0e8443b1636fd1bcd57ff16079888"
+  }
+}

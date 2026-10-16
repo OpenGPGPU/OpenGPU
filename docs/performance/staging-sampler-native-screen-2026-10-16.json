@@ -1,5 +1,5 @@
 {
-  "status": "PASS correctness; PAGE DEDUP REJECTED; COMBINED RTL FRESH PROFILE PENDING",
+  "status": "PASS correctness; PAGE DEDUP REJECTED; COMBINED RTL FRESH PROFILE CLOSED AT HOST PARITY",
   "artifact_root": ".artifacts/shared-cu/staging-sampler-native-screen/paired-after-usage",
   "scope": "Contended screening, not an idle-host timing claim. Balanced ABCDDCBA rounds for current3cf, per-commit dedup8/dedup32, and combinedRTL candidate. All use identical current runner source, fixtures and existing qualified3cf PGO. Never alters installed QEMU.",
   "samples": 48,
@@ -204,5 +204,7 @@
     "Host activity is sampled, not continuously controlled. Agent-owned scene/compiler jobs finish before preparation/measurements. No guest was running.",
     "Fixed-work native gradient fixtures, not Debian startup timings.",
     "Current3cf and helper-only variants use identical existing objects except the audited commit/helper substitution. Combined RTL has a different generated header/source graph; its profile applicability needs a separate check."
-  ]
+  ],
+  "follow_up_report": "docs/performance/staging-sampler-fresh-profile-2026-10-16.json",
+  "follow_up_decision": "Fresh profile resolves large regression but no meaningful host gain; defer combinedRTL bundle."
 }
