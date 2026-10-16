@@ -1,0 +1,537 @@
+{
+  "date": "2026-10-17",
+  "status": "Guarded generic optimization committed in FlashSim; exactfourCUactualgeneratedmodel fullyqualified and measured. InstalledQEMU unchanged.",
+  "flashsim_commit": "64d32392bf1e0db9a78edb3fdea94119c84381a4",
+  "sources": {
+    "emit.py": "92e11fbfdc7df7d5d486ce06cc749bcd2c5d0c8592e9b39291adf060aeef9835",
+    "arti_model.py": "c6e53eb05e2441bc51e5be0135f9131c7f597388fa7327a922953af1ec02cfb3",
+    "test_emit_force_wake.py": "67166bfafc8172385a43cf742f66eb7c0a61e3a2ca5febcdd7b76aadcba7f703",
+    "test_ready_group_safety.py": "84d0b403f104e61777230502110a4a6d7186925187154961de4714959ec1bde2"
+  },
+  "change": "Elide repeated NBA eagerchecks onlyfor a proven earlier-ready dependencyclosure; keep lazy evaluation in otherdomains. Coherentforcewake preserves pass/hold summaries.",
+  "generic_safety": {
+    "regression": "Custom captured eagergroups put consumer before unscheduledproducer; oldcandidate returnsstaler0=2 versus baseline7. Conservativeclosurefallback givescorrectupdates.",
+    "tests": 106,
+    "old_negative": {
+      "at": 1792172667.506826,
+      "cases": [
+        {
+          "variant": "baseline",
+          "status": 0,
+          "output": "second=7 expected=7\n",
+          "header_sha256": "116e5a0f059a4951b7ca5a5d2b4ffe9759ac27034340061833f188b8757c45b6"
+        },
+        {
+          "variant": "candidate",
+          "status": 2,
+          "output": "second=2 expected=7\n",
+          "header_sha256": "b6d6fd8e3b1d550bff5baf3420206506985d8d05422f1ddcc24af651dfb18cc7"
+        }
+      ],
+      "scope": "Configurable eager grouping can order a consumer region before a producer. Baseline retains lazy NBAchecks; current optimization must conservatively fall back if ready domain not upstreamclosed/topological. DefaultGPU proof remains separate."
+    },
+    "default_model_equivalence": {
+      "passed": true,
+      "at": 1792172922.643181,
+      "reference": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/drained-pass-nba-generated",
+      "cases": [
+        {
+          "registers": 160,
+          "byte_identical": true,
+          "sha256": "618aca38fdd72ead52523ceff4ea9beebefd2d45092d2fa00191494c19f6c4ee"
+        },
+        {
+          "registers": 256,
+          "byte_identical": true,
+          "sha256": "27f0ad4a4891d52d83cc0daf33aec4024df4d9e6ba76c061867139cd2fb4fe00"
+        }
+      ],
+      "scope": "Conservative group-closure guard preserves exactCpp foralready40000cycle-qualified defaultmodels. Newcustomgroupregression separatelytests fallback; fullGPUCpp comparison still required before sourcepromotion."
+    },
+    "full_GPU_source_equivalence": {
+      "passed": true,
+      "source_count": 39,
+      "all_generated_sources_identical": true,
+      "actual_emitter_sha256": "92e11fbfdc7df7d5d486ce06cc749bcd2c5d0c8592e9b39291adf060aeef9835",
+      "model_sources": {
+        "dut_9.cpp": "540ae854440023bf35056b00417470678b67d772310c10f42467c533fa5e712b",
+        "dut_8.cpp": "6db7de3656455ba4662f948ebf11badeea424846f6dea8f2221f6a29e63a53ec",
+        "dut_21.cpp": "29ac4a1d69b3e9dfbec2d946c4a89e62a4ba8fe207eea6dc55596cb1e698e489",
+        "dut_20.cpp": "84c23ce74186cb2856f3aafed0b0c946613f1b53a7daa55380a18555c3888ec0",
+        "dut_22.cpp": "c09367b1af6d91701dd4b2e84781ae13bd5497e4d9137418425839637a3671bc",
+        "dut_23.cpp": "3f2f4c0f4b7b460f6ce2717ea2c7027fed279abd36a3a1343f9f26dc994dea63",
+        "dut.h": "2a698830778839e5939ce76f6d78286bc0f82103bdab9de6eab970eb7627e222",
+        "dut_27.cpp": "268f146f78686c75ab638d5da8b8b02071c7ffd9b221770115e46b623c04e1e3",
+        "dut_26.cpp": "4907f79ac1a78daa644fdf08eda9fd6f259db2b06292874d5e096b47ff007374",
+        "dut_24.cpp": "aaae2d3f4d75da9ff7e570446109f0eb568e188b4ad7248de2d1901e552bf3f4",
+        "dut_30.cpp": "6676e3722eefe213de269a90e983eac18e29ca98a40029a7ac0c2084f96b2988",
+        "dut_18.cpp": "85b779a7c4ce12731d757f4bdbd6e50478cf9dbc2d787d73ffaa41302d8c4941",
+        "dut_19.cpp": "8154ac8e00dd1d8caa68da01d7e08ea7a7a45bdc09f052fe5ed5ef03163c143b",
+        "dut_31.cpp": "f9e42a691bd312e486d8eb62cc78fad8ea6516828d9f5b2527befacd9735faa0",
+        "dut_25.cpp": "7fb0580d74c3df3fe5d297c7f4f607900bc0b487003a89e46d6428e848d09e40",
+        "dut_28.cpp": "fde02c3de327d893a9e208939ef3a3f202fd4144ce0615a9ef7202b41b578160",
+        "dut_14.cpp": "5abdd14feed5f0442676ddcbadbc758cd556d88fa9f39672c1e4a6aa25518ebe",
+        "dut_15.cpp": "f5cb3646af2dec0373a7aa3e573d4b540bac45e6913821c03b675541b000d84d",
+        "dut_29.cpp": "870fac57c4ebf48828f7d0b2ec9bde48c2537faf361f0cd7bfc6969c60eab03e",
+        "dut_17.cpp": "0ca755cc15b184b251dd634bd95e35bd6b76be17f87b95c838b26ba32ed35aa6",
+        "dut_16.cpp": "c78edc60526b9e7dd1ac0a213538969916aa501157c7b7e90cb749ef6aeab624",
+        "dut_commit_helpers.cpp": "3554c37c2e57c62d716ba1c58c979062b3d00c4e4edf7729294dbb2a3281403e",
+        "arti_rtl_model.h": "1c03023f2d5f1e46a9968eb82ac70beaae4edfc63252300a44bc757ef40990d4",
+        "arti_rtl_model.cpp": "c175500879fd56d74d9fbc60cf5ff9bb00be5f7351bdecdd93d02f6329546c3b",
+        "dut_12.cpp": "ff714a36cfcd13b01ccf7bf9c38c80ac0ab2a58a5d6410eef4952b5c69c088fc",
+        "dut_13.cpp": "4961fc415c8113500d5f17254f91d91eccc498930e3f2fb878da3efa7ff5ddeb",
+        "arti_smoke.cpp": "eb3699b736aeae965aa933baf8a648681f9b651d74daa6dd39daf047a805697a",
+        "dut_11.cpp": "a2b7bc33f4768a94f697fc8518fd546520935b07b0aebe27cabd04696a9dbd3b",
+        "dut_10.cpp": "8022e46b1f62da1d04edbffc1243ec99d5d3a3f4b4099f44c070a5d03168381e",
+        "dut_0.cpp": "87c8da6ac7286f5966e1bd4abd6db9488a28ff7a44cb49706dae0a30376811fd",
+        "dut_1.cpp": "7a083d2ce00cfc6331a78e8c013733369fc3e0a7fb5ff0bd68082ed6a091c2fd",
+        "dut_3.cpp": "2ab716a284d227f34718921e647c2ac79fb0f33af872e846af0d6ca4f6f383d8",
+        "dut_mem_ports.cpp": "88b360ebcfd5d715d00d5e66f2206563788d3fa5233643282d4b03b95c45be65",
+        "dut_commit_chunks.cpp": "81981fbf0759e667914df8327799d7226881cd76938801ec05c389a9145efbea",
+        "dut_2.cpp": "0647bc84ab08214f38865dbd74a5b1489f1232c3e442fac1dc7fe2a96d61b16c",
+        "dut_6.cpp": "72d9f56745fa4e3c1e39cbc239f0b628ed395ba25be88bcd820908679d5de03e",
+        "dut_7.cpp": "182d2ed1971107d2e2e9cab26c543f84ad0f0efac347991d8ed1424255867240",
+        "dut_5.cpp": "c53b6ca5e65849fff04f926c8eb377bd7875a15c5828d3edf89df57f99cbe8e3",
+        "dut_4.cpp": "ebfc594fba43de25dbb75c8733565703341e8d2f4303bb9d6c0ba2085611a305"
+      }
+    },
+    "scope": "GuardeddefaultCpp is byte-identical acrossall39files toqualified artifact; its native/guest/timing proof remains exact. Reuse40000sanitized default/forcedstatecycles through identicalCpp; newcustomgroup behavior independentlytested."
+  },
+  "hardware": {
+    "compute_units": 4,
+    "lanes": 16,
+    "warps_per_CU": 8,
+    "desktop": "640x480",
+    "scope": "Exact qualified frozenRTL, no hardwareapproximation, no taskcyclechange for this hostoptimization."
+  },
+  "selection": {
+    "model": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/drained-pass-nba-generated/model",
+    "archive": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/drained-pass-nba-generated/optimized/libarti_rtl_model.a",
+    "archive_sha256": "e5855e15a04d60bf47bab3ac9c2b38cd306ed7e78c161680f7cc8bcff1138dfa",
+    "header_sha256": "2a698830778839e5939ce76f6d78286bc0f82103bdab9de6eab970eb7627e222",
+    "qemu": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/drained-pass-nba-generated/qemu-optimized",
+    "qemu_sha256": "6bce60a4a2f30f7a6fe83d6cbc81d3c000b7df8a1d5e9821293a5158f7c58bc7",
+    "replayer_sha256": "7fd3db46f2522617e13e845840884d2a95f8a122a81ef448b3693e2fd4701ff1",
+    "profile_sha256": "c4bda47cb72f583bac2c8379b3bf95455a71501eb6f4405bb925cf53a159b5bc"
+  },
+  "qualification": {
+    "O1_and_O2_native_sampler_cases": 40,
+    "native_staging_cases": 12,
+    "forced_controls": 6,
+    "VM_replays": 18,
+    "actual_GLES_cases": 21,
+    "GTK64_strict_scanout": true,
+    "full640_guest_passed": true,
+    "full640_milestones_seconds": {
+      "background": 207.1299892088864,
+      "idle": 671.7019777919631,
+      "active": 842.579116292065
+    },
+    "full640_guest_seconds": 850.6169984170701,
+    "manual_visual": {
+      "reviewed": true,
+      "at": 1792171931.75406,
+      "active": {
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/dpg-full640/qualified-active.png",
+        "sha256": "d87ce122d02a309f6c5bc1b7c4b4a32298adfd0457143d9e1345613465e9b4c0",
+        "source_sha256": "27468f33bfb54bfd1be4fdd86f2d2756f60bb236a31329e150f2c22dd2fa79a5"
+      },
+      "idle": {
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/dpg-full640/first-idle.png",
+        "sha256": "0416fe608e3ce39efcb2d5c514ba4dc26dc7084ce138790b6e153e6e5b6020c5"
+      },
+      "observations": "Both640x480frames visually correct: completewallpaper/panel/terminal launcher/clock, centeredOpenGPU GTKsmoke window, legibletitleandGtkGLArea label, blackGLborder, greenidle andorangeactive panels, redrawbutton andcleanwindowedges. No visiblecorruption orclipping.",
+      "milestones_seconds": {
+        "background": 207.1299892088864,
+        "idle": 671.7019777919631,
+        "active": 842.579116292065
+      },
+      "scope": "Manual review follows actualfull640readback+strictscanoutPASS. Complete17.9Mtrace stillrunning, sourcepromotionnotyetqualified."
+    },
+    "complete_legacy_desktop_trace": {
+      "passed": true,
+      "exit_status": 0,
+      "wall_seconds": 810.7999354591593,
+      "cpu_seconds": 810.7669400000001,
+      "replay": {
+        "calls": 194602,
+        "ticks": 17897346,
+        "commits": 2545853169,
+        "holds": 7938992624,
+        "dma_reads": 642677,
+        "dma_writes": 4105625,
+        "dma_bytes": 72340008,
+        "seconds": 810.743676708,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "trace_sha256": "cf1b3e2f96dfa55f8b1a6ebf54c011a365ef62bc94c02f6b6ad7e0aaf6df1142"
+    },
+    "scope": "Every fixednativefixture matches complete1MiBRAM, pixels/depth/canaries. Bothstrictsections andcomplete17.9Mtrace checkAPIresults, DMAdata/masks/order, clocks, GPUticks andcommits. Internalhold-evaluationcounts may differ diagnostically."
+  },
+  "timing": {
+    "scope": "Three balanced exactreplay samples perartifact/workload, ownheavyjobs stopped. Candidateuses73profiles versus baseline43: combinedsource+training effect, not isolatedsource-only gain. Full640live milestones andonecompletetrace run arediagnostic, not balancedwhole-desktop ratios.",
+    "baseline_profile_count": 43,
+    "candidate_profile_count": 73,
+    "groups": {
+      "native": 40,
+      "controls": 12,
+      "guest": 19,
+      "trace": 2
+    },
+    "plan": {
+      "status": "preregistered; not started",
+      "requires": "optimized-state.json terminal PASS, own native build/training/guest/qualification processes exited, exact source/header/archive hashes preserved",
+      "scope": "Actual generator candidate plus its own73qualified profiles versus baseline43profile model. Combined artifact comparison, not isolated source-only ratio.",
+      "baseline": "../vector-integer-retention-native/trace-baseline/replay",
+      "baseline_sha256": "addaa4de5d2f0a332dffe1c80ffdca4c72c3b5c61a2391087d72582a002a0369",
+      "candidate": "replay-optimized",
+      "workloads": [
+        {
+          "name": "mesa64",
+          "path": "../sampler-format-swizzle/fold64.trace",
+          "sha256": "fdc11ba4324010fc6571e95b310481dc420bbf27a3e2f5234463bbd58f29afa7"
+        },
+        {
+          "name": "full640-prefix",
+          "path": "desktop-prefix/trace",
+          "sha256": "d8fe468f4c41b735ad6dedeb5ed9f042c5c9c99ab3cab51b595e154a6b513e76"
+        }
+      ],
+      "order_per_workload": [
+        "baseline",
+        "candidate",
+        "candidate",
+        "baseline",
+        "baseline",
+        "candidate"
+      ],
+      "runs_per_artifact_per_workload": 3,
+      "measurements": "Fresh exact trace process per run; resource child user+system CPU and monotonic wall time, strict replay JSON metrics. Report medians, ranges and all individual results. No other own heavy jobs during samples.",
+      "correctness": "Every replay must exit0, consume exactly all trace calls without truncation and match ticks, commits and all DMA counts/bytes; replay also checks every API result and recorded clock and DMA payload/mask/order. Internal hold-evaluation counts may differ by documented cold-initialization work, not architecture.",
+      "interpretation": "Same two preregistered exact traces and balanced3pairs each; no own heavyjobs. Fresh actualCLI generation, own O1profiles/O2native/guest/strict checks required before measurement; actual full640desktop remains required before promotion."
+    },
+    "summary": {
+      "mesa64": {
+        "baseline": {
+          "wall_seconds": {
+            "median": 37.0906191249378,
+            "min": 37.04825170803815,
+            "max": 37.15697866701521
+          },
+          "cpu_seconds": {
+            "median": 37.084996,
+            "min": 37.04565900000001,
+            "max": 37.15181699999999
+          }
+        },
+        "candidate": {
+          "wall_seconds": {
+            "median": 31.670781957916915,
+            "min": 31.622642874950543,
+            "max": 31.773197750095278
+          },
+          "cpu_seconds": {
+            "median": 31.666823000000004,
+            "min": 31.617178999999997,
+            "max": 31.768568000000002
+          }
+        },
+        "candidate_over_baseline": {
+          "wall_seconds": 0.8538757967677906,
+          "cpu_seconds": 0.853898514644575
+        }
+      },
+      "full640-prefix": {
+        "baseline": {
+          "wall_seconds": {
+            "median": 58.475101500051096,
+            "min": 58.26341950008646,
+            "max": 58.525642457883805
+          },
+          "cpu_seconds": {
+            "median": 58.471390999999976,
+            "min": 58.25675400000006,
+            "max": 58.52076899999997
+          }
+        },
+        "candidate": {
+          "wall_seconds": {
+            "median": 49.18492591707036,
+            "min": 49.13568083313294,
+            "max": 49.28493337496184
+          },
+          "cpu_seconds": {
+            "median": 49.180318999999955,
+            "min": 49.13064199999998,
+            "max": 49.28059300000004
+          }
+        },
+        "candidate_over_baseline": {
+          "wall_seconds": 0.8411259605428368,
+          "cpu_seconds": 0.8411005477875492
+        }
+      }
+    },
+    "samples": [
+      {
+        "tag": "mesa64-0-baseline",
+        "workload": "mesa64",
+        "variant": "baseline",
+        "wall_seconds": 37.0906191249378,
+        "cpu_seconds": 37.084996,
+        "exit_status": 0,
+        "replay": {
+          "calls": 44295,
+          "ticks": 3191999,
+          "commits": 64104634,
+          "holds": 405529562,
+          "dma_reads": 39806,
+          "dma_writes": 473614,
+          "dma_bytes": 6106936,
+          "seconds": 37.036938417,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      },
+      {
+        "tag": "mesa64-1-candidate",
+        "workload": "mesa64",
+        "variant": "candidate",
+        "wall_seconds": 31.670781957916915,
+        "cpu_seconds": 31.666823000000004,
+        "exit_status": 0,
+        "replay": {
+          "calls": 44295,
+          "ticks": 3191999,
+          "commits": 64104634,
+          "holds": 405534828,
+          "dma_reads": 39806,
+          "dma_writes": 473614,
+          "dma_bytes": 6106936,
+          "seconds": 31.615563875,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      },
+      {
+        "tag": "mesa64-2-candidate",
+        "workload": "mesa64",
+        "variant": "candidate",
+        "wall_seconds": 31.622642874950543,
+        "cpu_seconds": 31.617178999999997,
+        "exit_status": 0,
+        "replay": {
+          "calls": 44295,
+          "ticks": 3191999,
+          "commits": 64104634,
+          "holds": 405534828,
+          "dma_reads": 39806,
+          "dma_writes": 473614,
+          "dma_bytes": 6106936,
+          "seconds": 31.571773542,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      },
+      {
+        "tag": "mesa64-3-baseline",
+        "workload": "mesa64",
+        "variant": "baseline",
+        "wall_seconds": 37.04825170803815,
+        "cpu_seconds": 37.04565900000001,
+        "exit_status": 0,
+        "replay": {
+          "calls": 44295,
+          "ticks": 3191999,
+          "commits": 64104634,
+          "holds": 405529562,
+          "dma_reads": 39806,
+          "dma_writes": 473614,
+          "dma_bytes": 6106936,
+          "seconds": 36.995762,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      },
+      {
+        "tag": "mesa64-4-baseline",
+        "workload": "mesa64",
+        "variant": "baseline",
+        "wall_seconds": 37.15697866701521,
+        "cpu_seconds": 37.15181699999999,
+        "exit_status": 0,
+        "replay": {
+          "calls": 44295,
+          "ticks": 3191999,
+          "commits": 64104634,
+          "holds": 405529562,
+          "dma_reads": 39806,
+          "dma_writes": 473614,
+          "dma_bytes": 6106936,
+          "seconds": 37.104696792,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      },
+      {
+        "tag": "mesa64-5-candidate",
+        "workload": "mesa64",
+        "variant": "candidate",
+        "wall_seconds": 31.773197750095278,
+        "cpu_seconds": 31.768568000000002,
+        "exit_status": 0,
+        "replay": {
+          "calls": 44295,
+          "ticks": 3191999,
+          "commits": 64104634,
+          "holds": 405534828,
+          "dma_reads": 39806,
+          "dma_writes": 473614,
+          "dma_bytes": 6106936,
+          "seconds": 31.716701166,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      },
+      {
+        "tag": "full640-prefix-0-baseline",
+        "workload": "full640-prefix",
+        "variant": "baseline",
+        "wall_seconds": 58.525642457883805,
+        "cpu_seconds": 58.52076899999997,
+        "exit_status": 0,
+        "replay": {
+          "calls": 8862,
+          "ticks": 829297,
+          "commits": 176077252,
+          "holds": 480196389,
+          "dma_reads": 33946,
+          "dma_writes": 258645,
+          "dma_bytes": 4170544,
+          "seconds": 58.470167875,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      },
+      {
+        "tag": "full640-prefix-1-candidate",
+        "workload": "full640-prefix",
+        "variant": "candidate",
+        "wall_seconds": 49.28493337496184,
+        "cpu_seconds": 49.28059300000004,
+        "exit_status": 0,
+        "replay": {
+          "calls": 8862,
+          "ticks": 829297,
+          "commits": 176077252,
+          "holds": 480201656,
+          "dma_reads": 33946,
+          "dma_writes": 258645,
+          "dma_bytes": 4170544,
+          "seconds": 49.233696458,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      },
+      {
+        "tag": "full640-prefix-2-candidate",
+        "workload": "full640-prefix",
+        "variant": "candidate",
+        "wall_seconds": 49.13568083313294,
+        "cpu_seconds": 49.13064199999998,
+        "exit_status": 0,
+        "replay": {
+          "calls": 8862,
+          "ticks": 829297,
+          "commits": 176077252,
+          "holds": 480201656,
+          "dma_reads": 33946,
+          "dma_writes": 258645,
+          "dma_bytes": 4170544,
+          "seconds": 49.080012708,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      },
+      {
+        "tag": "full640-prefix-3-baseline",
+        "workload": "full640-prefix",
+        "variant": "baseline",
+        "wall_seconds": 58.475101500051096,
+        "cpu_seconds": 58.471390999999976,
+        "exit_status": 0,
+        "replay": {
+          "calls": 8862,
+          "ticks": 829297,
+          "commits": 176077252,
+          "holds": 480196389,
+          "dma_reads": 33946,
+          "dma_writes": 258645,
+          "dma_bytes": 4170544,
+          "seconds": 58.420002916,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      },
+      {
+        "tag": "full640-prefix-4-baseline",
+        "workload": "full640-prefix",
+        "variant": "baseline",
+        "wall_seconds": 58.26341950008646,
+        "cpu_seconds": 58.25675400000006,
+        "exit_status": 0,
+        "replay": {
+          "calls": 8862,
+          "ticks": 829297,
+          "commits": 176077252,
+          "holds": 480196389,
+          "dma_reads": 33946,
+          "dma_writes": 258645,
+          "dma_bytes": 4170544,
+          "seconds": 58.211205625,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      },
+      {
+        "tag": "full640-prefix-5-candidate",
+        "workload": "full640-prefix",
+        "variant": "candidate",
+        "wall_seconds": 49.18492591707036,
+        "cpu_seconds": 49.180318999999955,
+        "exit_status": 0,
+        "replay": {
+          "calls": 8862,
+          "ticks": 829297,
+          "commits": 176077252,
+          "holds": 480201656,
+          "dma_reads": 33946,
+          "dma_writes": 258645,
+          "dma_bytes": 4170544,
+          "seconds": 49.127961625,
+          "truncated_tail": false,
+          "warmup_calls": 0,
+          "sample": 0
+        }
+      }
+    ]
+  },
+  "image": {
+    "path": "docs/images/opengpu-gtk-drained-pass-20261017.png",
+    "sha256": "d87ce122d02a309f6c5bc1b7c4b4a32298adfd0457143d9e1345613465e9b4c0"
+  },
+  "installed_qemu_sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0"
+}

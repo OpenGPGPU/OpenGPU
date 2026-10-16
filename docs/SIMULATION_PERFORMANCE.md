@@ -32,6 +32,47 @@ against the earlier diagnostic boot. Installed QEMU remains unchanged. See
 [the qualification](performance/sampler-format-folding-2026-10-16.json) and
 [the saved active frame](images/opengpu-gtk-sampler-format-20261016.png).
 
+## Qualified generated scheduler (2026-10-17)
+
+FlashSim commit `64d3239` reuses combinational values already drained before
+nonblocking-assignment evaluation. Elision requires a complete earlier-ready
+dependency closure; other eager groupings keep lazy evaluation. Forced wakeup
+updates pass/hold worklists and summaries coherently.
+
+The guarded generator passes 106 tests, including a custom-group stale-value
+regression. Its four-CU C++ output is byte-identical across all 39 source/header
+files to the fully qualified actual-generator artifact. This preserves the
+40,000 sanitized state-cycle proof, native sampler/staging/forced controls,
+18 VM replays, 21 GLES cases, GTK64 scanout and exact trace results.
+
+Three balanced samples per artifact reproduce the host improvement:
+
+| Fixed replay workload | Baseline wall median | Candidate wall median | Reduction |
+| --- | ---: | ---: | ---: |
+| Mesa64, 3,191,999 GPU ticks | 37.091 s | 31.671 s | 14.61% |
+| Full640 prefix, 829,297 GPU ticks | 58.475 s | 49.185 s | 15.89% |
+
+CPU medians improve similarly. The candidate uses 73 qualified training profiles
+and the baseline 43, so these ratios measure the combined code and training
+change. GPU cycles and architectural results remain identical.
+
+The complete 17,897,346-tick desktop trace also passes all 194,602 calls, DMA
+payloads/masks/order and recorded clocks in **810.744 seconds**, with 810.767
+child CPU seconds. The earlier exact replay took 968.038 seconds; these are
+separate diagnostic full runs, rather than balanced full-trace samples.
+
+Actual plain 640×480 Debian/Weston/GTK passes both idle/active readback and
+strict onscreen scanout. Wallpaper appears at **207.130 seconds**, idle GTK at
+671.702 seconds and active GTK at 842.579 seconds. Both green idle and orange
+active frames were visually reviewed. These are functional-run milestones;
+the paired speed ratios above refer to fixed traces. The installed QEMU
+executable remains unchanged. The qualified local executable is
+`.artifacts/shared-cu/drained-pass-nba-generated/qemu-optimized`.
+
+![Qualified four-CU Debian GTK active frame](images/opengpu-gtk-drained-pass-20261017.png)
+
+See the [source, all samples and full qualification](performance/drained-pass-main-qualification-2026-10-17.json).
+
 ## Generated scheduler host experiment (2026-10-17)
 
 A private fixed-layout prototype removes 819,777 generation checks for ready
