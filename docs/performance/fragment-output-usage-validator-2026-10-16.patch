@@ -1,0 +1,162 @@
+--- a/driver/opengpu_shader_validator.h
++++ b/driver/opengpu_shader_validator.h
+@@ -664,17 +664,32 @@
+     return mask;
+ }
+ 
+-/* Optional metadata for fragment staging: a conservative union of reads from
+- * input SoA slices 0..5 across every reachable path. Success publishes the
+- * union; failure leaves all six inputs required. Indexed/strided and narrow
+- * warp-relative reads currently retain every input. Validation is unchanged. */
+-static inline bool opengpu_shader_validate_words_profile_runtime_usage(
++/* Private prototype: conservative first-nine-SoA read/write usage. */
++static inline opengpu_shader_u32 opengpu_shader_io_range_mask(
++    opengpu_shader_u64 start, opengpu_shader_u64 bytes,
++    opengpu_shader_u64 stride)
++{
++    opengpu_shader_u32 slice, mask = 0;
++    opengpu_shader_u64 end = start + bytes;
++    if (!stride || end < start)
++        return 0x1ffu;
++    for (slice = 0; slice < 9; slice++)
++        if (start < (slice + 1ull) * stride && end > slice * stride)
++            mask |= 1u << slice;
++    return mask;
++}
++
++/* Private prototype: conservative read/write unions for SoA slices0..8.
++ * Publish only after complete validation; failed or complex accesses retain
++ * conservative masks. The committed six-input API remains a wrapper below. */
++static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
+     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
+     opengpu_shader_u32 output_start_slice,
+     opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
+     bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
+-    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask)
++    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
++    opengpu_shader_u32 *output_write_mask)
+ {
+     opengpu_shader_u64 stride, output_start, output_end;
+     struct opengpu_shader_state state = { 0 };
+@@ -684,11 +699,13 @@
+     bool *scalar_defined = state.scalar_defined;
+     bool *vector_defined = state.vector_defined;
+     bool reachable = true;
+-    opengpu_shader_u32 i, branch, input_reads = 0;
++    opengpu_shader_u32 i, branch, input_reads = 0, output_writes = 0;
+ 
+     /* Failed validation never publishes an optimistic input promise. */
+     if (input_read_mask)
+-        *input_read_mask = 0x3fu;
++        *input_read_mask = 0x1ffu;
++    if (output_write_mask)
++        *output_write_mask = 0x1ffu;
+ 
+     /* The advertised fragment batch capacity occupies eight ABI bits. */
+     if (!words || !word_count || !batch_capacity || batch_capacity > 255)
+@@ -761,6 +778,8 @@
+             if (branch == OPENGPU_SHADER_MAX_FORWARD_BRANCHES) {
+                 if (input_read_mask)
+                     *input_read_mask = input_reads;
++                if (output_write_mask)
++                    *output_write_mask = output_writes;
+                 return true;
+             }
+             reachable = false;
+@@ -886,7 +905,7 @@
+                 !opengpu_shader_scalar_read_valid(&lhs, imm, bytes, kernarg_size))
+                 return false;
+             if (input_read_mask)
+-                input_reads |= opengpu_shader_input_range_mask(
++                input_reads |= opengpu_shader_io_range_mask(
+                     (opengpu_shader_s64)lhs.offset + imm, bytes, stride);
+             values[rd].kind = OPENGPU_SHADER_VALUE_UNKNOWN;
+             values[rd].offset = 0;
+@@ -908,6 +927,9 @@
+             end = (opengpu_shader_u64)(opengpu_shader_u32)imm + bytes;
+             if (end > output_end)
+                 return false;
++            if (output_write_mask)
++                output_writes |= opengpu_shader_io_range_mask(
++                    (opengpu_shader_u32)imm, bytes, stride);
+             break;
+         }
+         case 0x57: /* fixed-profile vector configuration or allow-listed ALU */
+@@ -1036,7 +1058,7 @@
+                     !opengpu_shader_scalar_read_valid(&lhs, imm, 4, kernarg_size))
+                     return false;
+                 if (input_read_mask)
+-                    input_reads |= opengpu_shader_input_range_mask(
++                    input_reads |= opengpu_shader_io_range_mask(
+                         (opengpu_shader_s64)lhs.offset + imm, 4, stride);
+                 state.fp_defined[rd] = true;
+                 break;
+@@ -1066,9 +1088,9 @@
+                  * Their validation/admission is completely unchanged. */
+                 if (strided || indexed ||
+                     (elem != 4 && lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL))
+-                    input_reads = 0x3fu;
++                    input_reads = 0x1ffu;
+                 else
+-                    input_reads |= opengpu_shader_input_range_mask(
++                    input_reads |= opengpu_shader_io_range_mask(
+                         (opengpu_shader_u32)lhs.offset,
+                         (opengpu_shader_u64)elem *
+                             (lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL ?
+@@ -1097,6 +1119,9 @@
+                         output_start ||
+                     end > output_end)
+                     return false;
++                if (output_write_mask)
++                    output_writes |= opengpu_shader_io_range_mask(
++                        (opengpu_shader_u32)imm, 4, stride);
+                 break;
+             }
+             if (!opengpu_shader_vector_memory_form(
+@@ -1118,6 +1143,17 @@
+                      &values[rs1], state.vector_length, elem, true,
+                      kernarg_size, batch_capacity, output_start, output_end)))
+                 return false;
++            if (output_write_mask) {
++                if (strided || indexed ||
++                    (elem != 4 && lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL))
++                    output_writes = 0x1ffu;
++                else
++                    output_writes |= opengpu_shader_io_range_mask(
++                        (opengpu_shader_u32)lhs.offset,
++                        (opengpu_shader_u64)elem *
++                            (lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL ?
++                             batch_capacity : state.vector_length), stride);
++            }
+             break;
+         }
+         case 0x63: { /* bounded forward scalar conditional branch */
+@@ -1231,6 +1267,27 @@
+     return false;
+ }
+ 
++/* Retain the committed six-input metadata API and failure contract. */
++static inline bool opengpu_shader_validate_words_profile_runtime_usage(
++    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
++    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
++    opengpu_shader_u32 output_start_slice,
++    opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
++    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
++    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask)
++{
++    opengpu_shader_u32 reads = 0x1ffu;
++    bool valid = opengpu_shader_validate_words_profile_runtime_io_usage(
++        words, word_count, kernarg_size, batch_capacity, output_start_slice,
++        output_end_slice, fragment_ops_enabled, texture_enabled,
++        all_kernarg_writable, scalar_fpu_enabled, launch_capacity,
++        input_read_mask ? &reads : (opengpu_shader_u32 *)0,
++        (opengpu_shader_u32 *)0);
++    if (input_read_mask)
++        *input_read_mask = valid ? reads & 0x3fu : 0x3fu;
++    return valid;
++}
++
+ /* Compatibility entry point: callers not requesting metadata keep the
+  * exact existing validation contract and do not pay for read-mask tracking. */
+ static inline bool opengpu_shader_validate_words_profile_runtime(

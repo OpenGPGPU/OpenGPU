@@ -1,0 +1,119 @@
+{
+  "status": "PRIVATE ANALYSIS PROTOTYPE PASS; no production output-traffic omission or speed claim",
+  "artifact_root": ".artifacts/shared-cu/fragment-output-usage",
+  "base_commit": "bc557c5",
+  "opportunity": [
+    {
+      "scene": "solid",
+      "total_read_bytes": 73856,
+      "total_write_bytes": 61040,
+      "depth_output": {
+        "read_bytes": 8960,
+        "write_bytes": 8944
+      },
+      "control_output": {
+        "read_bytes": 8960,
+        "write_bytes": 8944
+      },
+      "potential_untouched_output_roundtrip_bytes": 35808
+    },
+    {
+      "scene": "spatial",
+      "total_read_bytes": 88448,
+      "total_write_bytes": 61040,
+      "depth_output": {
+        "read_bytes": 8960,
+        "write_bytes": 8944
+      },
+      "control_output": {
+        "read_bytes": 8960,
+        "write_bytes": 8944
+      },
+      "potential_untouched_output_roundtrip_bytes": 35808
+    }
+  ],
+  "metadata": "Conservativefirst9SoA read/write unions over all reachable paths. Scalar byte/half/word, FP and unit-stride vectorstores tracked; complexstrided/indexed/narrowwarp stores retainall9bits. Failure publishesall9required. Existing6input API projectsreads and retainsfailure63.",
+  "validation": {
+    "checks": [
+      {
+        "name": "output-cases",
+        "passed": true,
+        "command": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-Wall",
+          "-Wextra",
+          "-Werror",
+          "-fsanitize=address,undefined",
+          "-I.artifacts/shared-cu/fragment-output-usage",
+          "-Idriver",
+          ".artifacts/shared-cu/fragment-output-usage/io_usage_test.c",
+          "-o",
+          ".artifacts/shared-cu/fragment-output-usage/final-output-cases"
+        ],
+        "log": ".artifacts/shared-cu/fragment-output-usage/final-output-cases.log"
+      },
+      {
+        "name": "stock-address-oracle",
+        "passed": true,
+        "command": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-Wall",
+          "-Wextra",
+          "-Werror",
+          "-fsanitize=address,undefined",
+          "-I.artifacts/shared-cu/fragment-output-usage",
+          "-Iuserspace/gallium",
+          "-Idriver",
+          ".artifacts/shared-cu/fragment-output-usage/stock_io_oracle.c",
+          "-o",
+          ".artifacts/shared-cu/fragment-output-usage/final-stock-address-oracle"
+        ],
+        "log": ".artifacts/shared-cu/fragment-output-usage/final-stock-address-oracle.log"
+      },
+      {
+        "name": "existing-admission",
+        "passed": true,
+        "command": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-Wall",
+          "-Wextra",
+          "-Werror",
+          "-fsanitize=address,undefined",
+          "-I.artifacts/shared-cu/fragment-output-usage",
+          "-Idriver",
+          ".artifacts/shared-cu/fragment-output-usage/tests/opengpu_shader_validator_test.c",
+          "-o",
+          ".artifacts/shared-cu/fragment-output-usage/final-existing-admission"
+        ],
+        "log": ".artifacts/shared-cu/fragment-output-usage/final-existing-admission.log"
+      }
+    ],
+    "stock_fragment_cases": 56,
+    "stock_all_program_ABI_cases": 77,
+    "every_warp_and_every_read_write_byte": true,
+    "custom_successful_cases": 20,
+    "custom_failure_cases": 1,
+    "sanitizers": "ASan+UBSan",
+    "special_cases": "Conditional/partialwrite union, scalarwidths/FP/vector writes, readdepth/writecontrol, strided/indexedconservative fallback andfailedvalidationallrequired."
+  },
+  "patch": "docs/performance/fragment-output-usage-validator-2026-10-16.patch",
+  "sources": {
+    ".artifacts/shared-cu/fragment-output-usage/opengpu_shader_validator.h": "ce13e6633c473f4722035b3cd853a18d30fd78d6c35bcd0c4855243243a789e2",
+    ".artifacts/shared-cu/fragment-output-usage/io_usage_test.c": "965173f185e65a58be996018f5c866df8c9497b5adb1b0a6153eb919ad25eaa4",
+    ".artifacts/shared-cu/fragment-output-usage/stock_io_oracle.c": "819ea974bb698530a0b296fec2f2ede0a0f7d857886c65a04b26dd6945dc929f",
+    ".artifacts/shared-cu/fragment-output-usage/tests/opengpu_shader_validator_test.c": "3ddb597a3053e3dd7d465581c64a4ffdbb725d25d945d63edc2074f003c054c7",
+    ".artifacts/shared-cu/fragment-output-usage/private-dependencies.d": "76daf2f2622145a9da9657a81f1ba298d83195dac898b932eacda74739d3cb44"
+  },
+  "failure_note": "Initial existing-admission invocation accidentally resolved its ../header include to main. Preserved first binary/log, not counted as private proof; final copiedtest and dependencyfile explicitly verify private header.",
+  "next": "Add separatelycapability-gated trustedoutput hints, snapshot perbank, synthesize default rasterdepth/control onchip, preserve default scratch/ABI0/ABI1/faults, filter mixedoutputlines, then runRTL/native/guest gates. NoRTL/driverintegration yet.",
+  "created": 1792133445.246224
+}

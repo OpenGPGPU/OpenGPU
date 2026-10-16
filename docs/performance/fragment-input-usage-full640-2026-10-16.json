@@ -1,0 +1,173 @@
+{
+  "status": "PASS: explicit transient fragment input omission full640 desktop",
+  "artifact_root": ".artifacts/shared-cu/fragment-input-usage-qualified",
+  "source_commit": "bc557c5",
+  "configuration": {
+    "physical_shared_CUs": [
+      "computeUnits_0",
+      "computeUnits_1",
+      "computeUnits_2",
+      "computeUnits_3"
+    ],
+    "private_graphics_CUs": 0,
+    "lanes": 16,
+    "warps": 8,
+    "fragment_banks": 8,
+    "full_vertex_fragment_FPU": true,
+    "hardware_input_usage_capability_bit": 27,
+    "default_abi_retained": true,
+    "header_sha256": "0ea9359119c71b1935fde4496d1b03cb3001444b0fa85c34a4319ebecd91e909"
+  },
+  "software": {
+    "driver_module_sha256": "cc992237d145d5234a374eac88f7ab25b41fe6ed0b040f875292c07e46224d90",
+    "mesa_dri_sha256": "c160c6a3c8fe174864489685e3a11b1cef6cfad97311de5ace663c18b7c481eb",
+    "payload_manifest_sha256": "ed527eaea6e0d24a3d7f806101afb967b52f823a23eb72948fbad7b058504ece",
+    "payload_unchanged": true,
+    "mesa_optin_logged": true,
+    "source_manifest": {
+      "src/main/scala/opengpu/graphics/HasDrawState.scala": "6fd0c3661684af86e5d229b090c8117e97c774183f22e2d795482fc5faf81052",
+      "src/main/scala/opengpu/graphics/CommandBufferStage.scala": "9fbfec821376e9835081c25367a0c59104bc0a7b7ae27ac25dd305d124c017c6",
+      "src/main/scala/opengpu/graphics/DrawContextFifo.scala": "159d332b258cbc5d763881f2987ec1300f8c46d1408d57af268dbd1dd426018e",
+      "src/main/scala/opengpu/graphics/KernelVertStage.scala": "894db5dc3b9afd7329de47b265561288b45cadc0b33ef7f222a3547f8670168c",
+      "src/main/scala/opengpu/graphics/KernelFragStage.scala": "bfdf4f30ef5ecbd9055b77b02527210119a3e792c82bdc73cecd9221077cb512",
+      "src/main/scala/opengpu/graphics/ParallelFragmentScheduler.scala": "79f0f4cd6012c3d3bd01f925e81fb1bd6d3253e94b4ab888280fb8fc41978fd1",
+      "src/main/scala/opengpu/graphics/RenderPipeline.scala": "20f3522e9e3f2cbddc54082234c5477f22a03b4fa79c4b0144b71fa7ae8b5c13",
+      "src/main/scala/opengpu/graphics/GpuCapabilities.scala": "344bc715b6017d0a535d875c25dbc3a1f1fbf7d059a194903c422e83b46b1c9e",
+      "src/main/scala/opengpu/graphics/RenderHost.scala": "3d713935eae1a4f5c1e6205834e2a0834809946edacf42a61a269e063f64fef7",
+      "driver/opengpu_compute.c": "a3925ce89699ace3af29b369f0d0b613027a7f24291897d464ac514191c08c81",
+      "driver/opengpu_drm.h": "78934052b24f1324d150a8ce086a95fcb10b158d034c341b650968bbad83e7fc",
+      "driver/gpu_abi.h": "8fbca59b72060e4412429f8772b807d09c8083280122bdd0c7ed1da558868a5a",
+      "driver/opengpu_staging_validator.h": "570456006916817f03320b17ce99e34c22e6ee9562779f8c1470a559f97b1625",
+      "userspace/pipe_opengpu.c": "f35595a9a6857a1cbcbd13a6141cfc3a40180397d682abd90a04ba77d3cf3395",
+      "userspace/pipe_opengpu.h": "57d29f15a7b6cb55195f171952f80268f3f57e39019ea6f428f934256c65bdca",
+      "userspace/gallium/opengpu_context.c": "0a2b71558618020610d41d64ec714a1e19593a01027deaf98c500bdaae734b7c"
+    }
+  },
+  "native_report": "docs/performance/fragment-input-usage-native-2026-10-16.json",
+  "optimized_guest_gate": {
+    "passed": true,
+    "compute_replays": 18,
+    "native_GLES": 21,
+    "DRM_default_optin": true,
+    "quad_batch_arrays_elements": true,
+    "GTK64_idle_active_strictscanout": true,
+    "state_sha256": "9f597fca53c76f8ce3f759e45015d3723cce892522112ff0be98dd0aa68bb697"
+  },
+  "full640": {
+    "started": 1792131930.469812,
+    "pid": 83333,
+    "qemu_sha256": "14790834632e0d52660a2db47ad76fa676bba72c10816b4f367bb29248f0d64e",
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/fragment-input-usage-qualified/proof640",
+    "stage": "terminal",
+    "scope": "Full640 desktop qualification using same frozen payload and model as18compute+21GLES+GTK64 PASS. Cycleprobe and tracing diagnostic; concurrent main-tree tests mean no clean wall-time claim.",
+    "exit_status": 0,
+    "seconds": 1130.524477042025,
+    "markers": {
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "OPENGPU GTK FRAME PASS: idle": true,
+      "OPENGPU GTK FRAME PASS: active": true,
+      "fragment staging transient=1": true,
+      "OPENGPU TRANSIENT STAGING PASS: hardware=1": true
+    },
+    "finished": 1792133061.130928,
+    "payload_unchanged": true,
+    "passed": true,
+    "scanout": {
+      "passed": true,
+      "framebuffer_size": [
+        640,
+        480
+      ],
+      "client_size": [
+        280,
+        124
+      ],
+      "active_rectangle": [
+        93,
+        223,
+        227,
+        72
+      ],
+      "active_pixels": 16571,
+      "channel_tolerance": 3,
+      "capture_sha256": "e52204d9475bc50cba9c4c3d71fa8f7e3feccc5dcea3b44b60304254305ce646",
+      "source_frame": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/fragment-input-usage-qualified/proof640/gtk-smoke-scanout.ppm",
+      "saved_frame": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/fragment-input-usage-qualified/proof640/gtk-smoke-verified.ppm"
+    },
+    "gpu_ticks": 17156336,
+    "trace": {
+      "trace": ".artifacts/shared-cu/fragment-input-usage-qualified/full640.trace",
+      "trace_sha256": "a3b4625b379bdde8eb725174129992de3db7d2f22ab86c1fe7cc038c15b8f011",
+      "calls": 175835,
+      "commands_by_opcode": {
+        "5": 282,
+        "2": 6,
+        "6": 45
+      },
+      "fill_count": 6,
+      "fill_bytes": 343296,
+      "depth_pattern_fill_count": 2,
+      "depth_pattern_fill_bytes": 32768,
+      "depth_fill_size_histogram": {
+        "16384": 2
+      },
+      "dma_read_bytes": 46629064,
+      "dma_write_bytes": 39605336,
+      "scope": "MMIO unified-command SUBMIT writes; 0x00ffffff identifies the depth-clear pattern, not proof of every fill consumer."
+    },
+    "workers": [
+      {
+        "id": 0,
+        "run": 7300876,
+        "batches": 3178
+      },
+      {
+        "id": 1,
+        "run": 7285052,
+        "batches": 3174
+      },
+      {
+        "id": 2,
+        "run": 7269842,
+        "batches": 3160
+      },
+      {
+        "id": 3,
+        "run": 7223816,
+        "batches": 3150
+      }
+    ],
+    "probe_records": [
+      "CYCLE_PROBE_GLOBAL ticks=17156336 staging_without_run=15899 phase_any=9152796,1454437,12666,8751185,699487,2795361,",
+      "CYCLE_PROBE_WORKERS peak_run=4",
+      "CYCLE_PROBE_WORKER id=0 run=7300876 batches=3178",
+      "CYCLE_PROBE_WORKER id=1 run=7285052 batches=3174",
+      "CYCLE_PROBE_WORKER id=2 run=7269842 batches=3160",
+      "CYCLE_PROBE_WORKER id=3 run=7223816 batches=3150",
+      "CYCLE_PROBE pc=3225419776 texture=0x0 batches=360 lanes=40040 states=0,37588,360,126108,21113,115279, sampler=126108,0,0,0,0,0,0,0,0, texture_unit=126108,0,0,0,0,0,0,0,0,0,0, fixed_lod_gradient=0",
+      "CYCLE_PROBE pc=3225419776 texture=372x329 batches=4494 lanes=501296 states=0,516407,4494,10045604,250428,1049374, sampler=4184637,501296,501296,501296,501296,2853191,501296,0,501296, texture_unit=3651648,0,0,0,0,0,0,0,0,6362503,31453, fixed_lod_gradient=0",
+      "CYCLE_PROBE pc=3225419776 texture=640x32 batches=950 lanes=105720 states=0,114606,950,2289702,56129,217406, sampler=1077229,105720,105720,105720,105720,578153,105720,0,105720, texture_unit=964846,0,0,0,0,0,0,0,0,1318233,6623, fixed_lod_gradient=0",
+      "CYCLE_PROBE pc=3225419776 texture=640x480 batches=6858 lanes=766096 states=0,809122,6858,16615495,377790,1602006, sampler=7768907,766096,766096,766096,766096,4250012,766096,0,766096, texture_unit=6954411,0,0,0,0,0,0,0,0,9612892,48192, fixed_lod_gradient=0"
+    ],
+    "visual_review": "PASS"
+  },
+  "visual": {
+    "image": "docs/images/opengpu-gtk-input-usage-20261016.png",
+    "sha256": "009eca7f04db8fbb95dc861b3daad4840760f2471e15522ee3a49dae41ff435c",
+    "review": "Upright legible GTK title/label/button, complete orange GL rectangle with dark margins, patterned Weston desktop and panel. Verified exact saved active frame.",
+    "passed": true
+  },
+  "binaries": {
+    "plain_optimized_sha256": "88384a2dd6dc6f1eefbc0c0a4b136df611ca77c95a0254d381074b9eec5d22ca",
+    "cycle_probe_sha256": "14790834632e0d52660a2db47ad76fa676bba72c10816b4f367bb29248f0d64e",
+    "optimized_archive_sha256": "645a9d1269db490814a1344b8c46306dce1d6f1dc3e79d90269957ca3bd1bfa1"
+  },
+  "limits": [
+    "Raw1130.52second gate elapsed includes custom DRM default/optin regression, guest boot, trace/probe overhead and overlapping main-tree compilers/tests. It is not an idle-host desktop startup benchmark.",
+    "This boot has45render submissions,6fills and282invalidations, including2custom DRM draws. Previous3cf desktop boot has33renders/4fills. Real compositor scheduling and clock redraws vary; do not report a whole-desktop speedup from these totals.",
+    "Four workers all execute, peak concurrency4 and balanced batchcounts. Probe phase_any counters overlap between workers and are not additive serial bottleneck shares.",
+    "Model optimized from fresh16native-fixture profiles; broad guest-trained compiler artifact is being built separately. No broader-profile speed claim until qualification and matched measurement.",
+    "Installed default QEMU remains unchanged. README retains the user-approved original screenshot."
+  ]
+}

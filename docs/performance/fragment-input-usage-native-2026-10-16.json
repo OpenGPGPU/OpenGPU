@@ -1,7 +1,7 @@
 {
-  "status": "PASS: maincompile,36featureunits,8complete1/4CU scenes, native task timing and optimized Debian GLES/GTK64; full640 scanout gate in progress",
+  "status": "PASS: main36units+8complete1/4CUscenes, native task timing, optimized Debian GLES/GTK64 and full640 strictscanout+visual",
   "artifact_root": ".artifacts/shared-cu/fragment-input-usage-native",
-  "scope": "Four shared CUs,16 lanes,8warps,full vertex/fragment/FPU,640x480 model rendering64x64 fixtures. Runtime mask derived by conservative validator from actual shader binary and capacity; explicit transient scratch opt-in. Exact qualified RTL/driver/Mesa promoted to main worktree; maincompile and hostdriver tests PASS, 36 main feature units and eight complete1/4CU scenes PASS; full640 scanout gate in progress.",
+  "scope": "Four shared CUs,16 lanes,8warps,full vertex/fragment/FPU,640x480 model rendering64x64 fixtures. Runtime mask derived by conservative validator from actual shader binary and capacity; explicit transient scratch opt-in. Exact qualified RTL/driver/Mesa promoted to main worktree; maincompile and hostdriver tests PASS, 36 main feature units and eight complete1/4CU scenes PASS; full640 strictscanout and visual check PASS.",
   "controlled_timing": {
     "samples": 48,
     "warmups": 6,
@@ -830,5 +830,6 @@
     "userspace/pipe_opengpu.c": "f35595a9a6857a1cbcbd13a6141cfc3a40180397d682abd90a04ba77d3cf3395",
     "userspace/pipe_opengpu.h": "57d29f15a7b6cb55195f171952f80268f3f57e39019ea6f428f934256c65bdca",
     "userspace/gallium/opengpu_context.c": "0a2b71558618020610d41d64ec714a1e19593a01027deaf98c500bdaae734b7c"
-  }
+  },
+  "full640_report": "docs/performance/fragment-input-usage-full640-2026-10-16.json"
 }

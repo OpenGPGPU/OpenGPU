@@ -52,8 +52,9 @@ timing and must not be used to predict these native reductions. The optimized
 stack passes 18 compute replays, the default/opt-in DRM regression, 21 GLES
 cases, quad batching and GTK64 idle/active frames with strict scanout checks.
 See the [native qualification](performance/fragment-input-usage-native-2026-10-16.json).
-The full 640×480 run is still in progress; these task measurements are not a
-desktop startup-time claim.
+The [640×480 desktop qualification](performance/fragment-input-usage-full640-2026-10-16.json)
+also passes active/idle readback, strict scanout and visual checks. These task
+measurements are not a desktop startup-time claim.
 
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per
 worker, scales the shared credit and translation ranges with CU count, pipelines
