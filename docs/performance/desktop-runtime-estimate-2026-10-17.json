@@ -1,0 +1,82 @@
+{
+  "recorded_at": 1792188216.159728,
+  "scope": "An empirical work-counter estimate for the exact qualified four-CU model, not an analytical minimum or desktop-startup prediction. Existing three balanced representative samples per workload; one exact complete replay. Holds counts dispatch invocations (_hc++) before kHolds member call, not hardware instructions or cycles. Whole-trace includes multiple desktop/GTK operations and polling.",
+  "archive_sha256": "93e5391fa302ca3e6254fc0e1d5958e79dc7190b6f1d701eae3cf3ecaa172901",
+  "trace_sha256": "443b5ce0a20fdceca4bcf997af1b10fc6c4cdc57d51b07311af458a17c904040",
+  "complete_replay": {
+    "calls": 154410,
+    "ticks": 15447854,
+    "commits": 1979914972,
+    "holds": 6830582608,
+    "dma_reads": 567152,
+    "dma_writes": 3729183,
+    "dma_bytes": 64927952,
+    "seconds": 550.351430417,
+    "truncated_tail": false,
+    "warmup_calls": 0,
+    "sample": 0
+  },
+  "representative_estimates": [
+    {
+      "workload": "mesa64",
+      "samples": 3,
+      "ticks": 3185555,
+      "holds": 403336334,
+      "commits": 64015331,
+      "median_seconds": 24.778810625,
+      "microseconds_per_tick": 7.778490914456037,
+      "nanoseconds_per_hold_dispatch": 61.43461061209526,
+      "full_trace_hold_dispatch_prediction_seconds": 419.6341827762301,
+      "prediction_error_percent": -23.751595874244526
+    },
+    {
+      "workload": "full640-prefix",
+      "samples": 3,
+      "ticks": 681916,
+      "holds": 351990348,
+      "commits": 127528009,
+      "median_seconds": 28.941269375,
+      "microseconds_per_tick": 42.44110619929727,
+      "nanoseconds_per_hold_dispatch": 82.22176982818858,
+      "full_trace_hold_dispatch_prediction_seconds": 561.6225909874041,
+      "prediction_error_percent": 2.0479933270753925
+    },
+    {
+      "workload": "large256",
+      "samples": 3,
+      "ticks": 123300,
+      "holds": 145682589,
+      "commits": 13403866,
+      "median_seconds": 11.479230208,
+      "microseconds_per_tick": 93.10000168694242,
+      "nanoseconds_per_hold_dispatch": 78.79617109220924,
+      "full_trace_hold_dispatch_prediction_seconds": 538.2237558394369,
+      "prediction_error_percent": -2.2036237042890927
+    }
+  ],
+  "similar_active_workloads_prediction_range_seconds": [
+    538.2237558394369,
+    561.6225909874041
+  ],
+  "limitations": [
+    "No universal cost per RTL tick: measured representative values span 7.78..93.10 us/tick.",
+    "Hold dispatch cost also varies with the dispatched code and activity: Mesa64 extrapolation underestimates the full trace by 23.75%.",
+    "The complete replay is model execution only; actual guest boot, compositor, app startup, proof waits and capture add separate costs.",
+    "Counter-based prediction explains current measured time; it does not prove RTL or generated C++ optimality.",
+    "A hypothetical clock conversion (e.g. 100 MHz) is not a hardware timing closure or desktop-startup claim."
+  ],
+  "phase_context": {
+    "shader_worker_phase_sum": 21576800,
+    "four_worker_perfect_balance_bound_with_unchanged_phase_work": 5394200.0,
+    "any_worker_shader_phase_ticks": 6841483,
+    "shader_phase_occupancy_when_any_worker_in_shader": 0.7884547838531499,
+    "note": "Worker shader phases include stalls and completion waiting; this is not ALU utilization. Categories overlap, and this unchanged-work scheduling bound is not an algorithmic minimum.",
+    "vertex_fetch_stage_readback_fraction": 0.002525010917374025,
+    "sampler_fetch_fraction_of_shader_worker_cycles": 0.3748631400393015
+  },
+  "evidence": {
+    ".artifacts/shared-cu/sparse-hold-wake-native/paired/state.json": "73871617185548be758b98490624e7ec478fd437ca4906ca9c2317991ee6c691",
+    ".artifacts/shared-cu/sparse-hold-wake-native/full-validation-state.json": "4954b27a15933955a7ba566228f7eb197a1623abda9eebf3bd49d83b67a73b64",
+    "docs/performance/desktop-phase-priorities-2026-10-17.json": "92a83e3666a7629db8b40c34046156cc1df5bc38617ca69b3dacdf32bbe0cc18"
+  }
+}

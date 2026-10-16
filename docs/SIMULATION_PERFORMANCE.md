@@ -1,5 +1,31 @@
 # Full-system simulation performance investigation
 
+## Runtime estimate for the current four-CU model (2026-10-17)
+
+The exact complete desktop/GTK trace takes **550.351 seconds** in the qualified
+sparse-wake model: 15,447,854 ticks and 6,830,582,608 hold-dispatch invocations.
+This trace covers multiple desktop operations and polling, so its duration is
+not the time to first wallpaper or a single frame.
+
+An empirical estimate based on evaluation work agrees with this measurement.
+The three-sample desktop-prefix median costs 82.22 ns per hold dispatch; the
+separate 256×256 render costs 78.80 ns. Applying those costs to the complete
+trace predicts **538.2–561.6 seconds**, within 2.3% of the measured result.
+These are version-specific work counters: a dispatch invokes a generated hold
+function, and its cost depends on which function runs and what it evaluates.
+This agreement explains the current runtime; it does not establish an optimal
+implementation or an analytical lower bound.
+
+Using one universal simulated-clock rate gives unreliable estimates. The same
+artifact averages 7.78 µs/tick in the small Mesa workload, 42.44 µs/tick in the
+desktop prefix, and 93.10 µs/tick in the active 256×256 render. Even dispatch
+cost varies: extrapolating the small Mesa workload underestimates the complete
+trace by 23.75%. Actual guest startup also includes CPU execution and proof
+waits outside model replay. Converting ticks to time at a hypothetical hardware
+clock does not predict desktop startup or establish achievable hardware timing.
+
+See [the estimate, counter definitions, all three predictions and limitations](performance/desktop-runtime-estimate-2026-10-17.json).
+
 ## Sampler-format channel permutation (2026-10-16)
 
 Gallium now folds a recognized pure texture R/B swap into the sampler's native
