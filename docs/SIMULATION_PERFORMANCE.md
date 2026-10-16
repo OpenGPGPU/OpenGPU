@@ -138,6 +138,41 @@ that every desktop workload has the same footprint, nor predict a host speedup.
 The low-value pruning prototype stays private and uncompiled. See [exact counters,
 address bounds and scope](performance/texture-instruction-footprint-2026-10-17.json).
 
+## Sparse hold-wakeup host experiment (2026-10-17)
+
+A private generator change groups dense hold IDs into nonzero word masks.
+It preserves the exact need/summary bits and summary count while avoiding
+repeated shifts and bit writes within the same word. No GPU RTL or shader
+changes are involved. The existing full-word-pack option retains priority.
+
+Both O1 and PGO O2 pass 40 native format cases, 12 staging controls, six forced
+wakeup controls, 18 VM replays and an actual 21-case GLES/GTK64 guest with
+strict scanout. All 58 native outputs and counters match the current baseline
+at each optimization level. The same complete Mesa64 trace also matches every
+API result, DMA payload/mask/order, clock and counter.
+
+Three balanced fresh-process samples per artifact give:
+
+| Fixed workload | Baseline median | Candidate median | Reduction |
+| --- | ---: | ---: | ---: |
+| Mesa/GLES/GTK64 trace | 25.5694 s | 24.7788 s | 3.09% |
+| Initial full640 trace prefix | 29.5423 s | 28.9413 s | 2.03% |
+| Native 256x256 textured draw | 11.7849 s | 11.4792 s | 2.59% |
+
+The artifacts use the same 72-profile protocol, including the exact same fixed
+Mesa64 training trace, with their own native/guest training runs. No other own
+heavy jobs ran during these samples. GPU cycles and output memory are identical.
+
+Independently calibrated counters on that same 3.19-million-tick training trace
+show helper loop iterations falling from 630.3 million to 334.4 million (46.95%).
+That measures operations, rather than CPU share or a 47% speedup. The measured
+host improvement is the smaller value in the table.
+
+This passes the gate for the expensive complete desktop trace and a fresh
+640x480 guest. Those checks, active-image review and main-package/source gates
+remain pending before source promotion. The installed QEMU is unchanged. See
+[all samples, exact-work checks and remaining gates](performance/sparse-hold-wake-host-experiment-2026-10-17.json).
+
 ## Qualified prepared sampler handoff (2026-10-17)
 
 The sampler accepts an eligible successor sample on the edge that

@@ -1,0 +1,684 @@
+{
+  "date": "2026-10-17",
+  "recorded_at": 1792184052.519489,
+  "status": "PRIVATE: O1/O2/native/actualguest/strictMesa64 and balanced3workloadhosttimingPASS; complete15.45Mdesktoptrace andfreshactual640qualification underway, sourcepromotionpending.",
+  "gpu_commit": "480d7072c51a8f29897d6571f3be6da66b0c1d84",
+  "flashsim_baseline_commit": "94ed58c165c880c347d1deacb16b5ef894a1a044",
+  "emitter_sha256": "193efea2c4addd744c20f78e7b2e229b7eece161ccf73176f66aab34a918261c",
+  "change": "Replace sufficiently dense hold-ID wake lists with sparse(nonzero word index, bitmask) pairs. Preserve need bits, summary bits and summary count; full-word-pack opt-in retains priority. No RTL, scheduling granularity, shader or DUT state layout change.",
+  "unit_qualification": {
+    "passed": true,
+    "existing_passes": 108,
+    "targeted_retest_passes": 1,
+    "total_distinct_cases": 109,
+    "single_all_green_invocation": false,
+    "emitter_sha256": "193efea2c4addd744c20f78e7b2e229b7eece161ccf73176f66aab34a918261c",
+    "new_test_sha256": "a628a48510b9ec52274f4f32b9200fc82aa4874195d8bded71145d9ae8470790",
+    "recorder_fixture_sha256": "80487c2b6f7f6f5205892594509754ece4bed0db56b6489f70a2a74a8d5366a2",
+    "logs": {
+      "attempt-02-missing-recorder-fixture/all-tests.log": "f58ef1b8739d46d2806f560c17d6c9332032d867d2cc65778203273456369f87",
+      "recorder-fixture-retest.log": "073b1bbed3fedd224b758a734fc16517c5bf3d17bd10f69d131ecd1b1c9690ca"
+    },
+    "scope": "Only missing recorder source fixture was copied after108cases passed. Failed recorder testcase then passes unchanged. New sparse sanitized helper and40000completecircuitcycles alreadypassed inoriginalrun. No fullGPUqualification claim."
+  },
+  "native_qualification": {
+    "optimization_levels": [
+      "O1",
+      "O2"
+    ],
+    "format_cases_each": 40,
+    "staging_controls_each": 12,
+    "forced_wakeup_controls_each": 6,
+    "all58cases_each_full_RAM_and_counters_match_baseline": true,
+    "VM_replays_each": 18,
+    "GLES_cases_each": 21,
+    "actual_GTK64_strict_scanout_each": true,
+    "strict_O1": {
+      "calls": 45008,
+      "ticks": 3185555,
+      "commits": 64015331,
+      "holds": 403336334,
+      "dma_reads": 39627,
+      "dma_writes": 473603,
+      "dma_bytes": 6095512,
+      "seconds": 47.29323875,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "strict_O2": {
+      "calls": 45008,
+      "ticks": 3185555,
+      "commits": 64015331,
+      "holds": 403336334,
+      "dma_reads": 39627,
+      "dma_writes": 473603,
+      "dma_bytes": 6095512,
+      "seconds": 24.71683525,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    }
+  },
+  "profile_scope": "Both artifacts use72 own qualified profiles with the same protocol and exactsame fixedMesa64 trace. Completeartifactcomparison includes independently collectednative/guestPGOtraining.",
+  "balanced_protocol": {
+    "samples_per_artifact_per_workload": 3,
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline",
+      "baseline",
+      "candidate"
+    ],
+    "fresh_processes": true,
+    "own_heavy_jobs_stopped": true,
+    "workloads": {
+      "mesa64": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-prepared-handoff-native/train64.trace",
+        "sha256": "3a72f7bf7bafae4fa3eb8b6ef66654153292c84ec695e8bd161bc783bf78c225"
+      },
+      "full640-prefix": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/sparse-hold-wake-native/desktop-prefix/trace",
+        "sha256": "07a7c5f73c1814e5ed8766599c043c55ab531d19de2437ac6a5b6736fa185083"
+      },
+      "large256": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-prepared-handoff-native/large-native/input.bin",
+        "sha256": "df2fed67865cb9c05a41489399cf7eae7fa2490af90ab1d0166a466a44275fef"
+      }
+    },
+    "checks": "Tracechecks everyAPIresult,DMApayload/mask/order,clockandallcounters. Large256fixture checkscompleteRAMagainstindependentpixel/depth/canaryqualifiedbaseline; no resolutionchange."
+  },
+  "balanced_summary": {
+    "mesa64": {
+      "baseline": {
+        "wall_seconds": {
+          "median": 25.624626207863912,
+          "min": 25.60858220793307,
+          "max": 25.665843958966434
+        },
+        "cpu_seconds": {
+          "median": 25.621351,
+          "min": 25.604825999999992,
+          "max": 25.659833000000003
+        },
+        "ROI_seconds": {
+          "median": 25.569421167,
+          "min": 25.553319375,
+          "max": 25.612461042
+        }
+      },
+      "candidate": {
+        "wall_seconds": {
+          "median": 24.834988249931484,
+          "min": 24.796120875049382,
+          "max": 24.844187249895185
+        },
+        "cpu_seconds": {
+          "median": 24.831858999999998,
+          "min": 24.792475000000017,
+          "max": 24.840032
+        },
+        "ROI_seconds": {
+          "median": 24.778810625,
+          "min": 24.741546709,
+          "max": 24.787604333
+        }
+      },
+      "candidate_over_baseline": {
+        "wall_seconds": 0.9691844106709312,
+        "cpu_seconds": 0.9691861682079137,
+        "ROI_seconds": 0.9690798420176845
+      }
+    },
+    "full640-prefix": {
+      "baseline": {
+        "wall_seconds": {
+          "median": 29.599931500153616,
+          "min": 29.511514625046402,
+          "max": 29.686469458043575
+        },
+        "cpu_seconds": {
+          "median": 29.593497999999972,
+          "min": 29.50643400000001,
+          "max": 29.682722999999985
+        },
+        "ROI_seconds": {
+          "median": 29.542268792,
+          "min": 29.454908875,
+          "max": 29.63155875
+        }
+      },
+      "candidate": {
+        "wall_seconds": {
+          "median": 28.99601541715674,
+          "min": 28.915123207960278,
+          "max": 29.04053758410737
+        },
+        "cpu_seconds": {
+          "median": 28.992012000000017,
+          "min": 28.911130999999994,
+          "max": 29.036277000000023
+        },
+        "ROI_seconds": {
+          "median": 28.941269375,
+          "min": 28.859897125,
+          "max": 28.983950958
+        }
+      },
+      "candidate_over_baseline": {
+        "wall_seconds": 0.9795973824130728,
+        "cpu_seconds": 0.9796750624072911,
+        "ROI_seconds": 0.9796562876997873
+      }
+    },
+    "large256": {
+      "baseline": {
+        "wall_seconds": {
+          "median": 11.890989749925211,
+          "min": 11.754104957915843,
+          "max": 12.54861674993299
+        },
+        "cpu_seconds": {
+          "median": 11.88419700000002,
+          "min": 11.750540999999991,
+          "max": 11.895708999999963
+        },
+        "ROI_seconds": {
+          "median": 11.784920625,
+          "min": 11.67105275,
+          "max": 11.811093542
+        }
+      },
+      "candidate": {
+        "wall_seconds": {
+          "median": 11.589287541108206,
+          "min": 11.571853958070278,
+          "max": 12.236920374911278
+        },
+        "cpu_seconds": {
+          "median": 11.58396500000004,
+          "min": 11.558851000000013,
+          "max": 11.58495599999999
+        },
+        "ROI_seconds": {
+          "median": 11.479230208,
+          "min": 11.475666333,
+          "max": 11.51283625
+        }
+      },
+      "candidate_over_baseline": {
+        "wall_seconds": 0.9746276621911223,
+        "cpu_seconds": 0.9747368711575566,
+        "ROI_seconds": 0.9740608845212312
+      }
+    }
+  },
+  "samples": [
+    {
+      "name": "mesa64",
+      "variant": "baseline",
+      "index": 0,
+      "wall_seconds": 25.665843958966434,
+      "cpu_seconds": 25.659833000000003,
+      "ROI_seconds": 25.612461042,
+      "result": {
+        "calls": 45008,
+        "ticks": 3185555,
+        "commits": 64015331,
+        "holds": 403336334,
+        "dma_reads": 39627,
+        "dma_writes": 473603,
+        "dma_bytes": 6095512,
+        "seconds": 25.612461042,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "mesa64",
+      "variant": "candidate",
+      "index": 1,
+      "wall_seconds": 24.834988249931484,
+      "cpu_seconds": 24.831858999999998,
+      "ROI_seconds": 24.778810625,
+      "result": {
+        "calls": 45008,
+        "ticks": 3185555,
+        "commits": 64015331,
+        "holds": 403336334,
+        "dma_reads": 39627,
+        "dma_writes": 473603,
+        "dma_bytes": 6095512,
+        "seconds": 24.778810625,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "mesa64",
+      "variant": "candidate",
+      "index": 2,
+      "wall_seconds": 24.844187249895185,
+      "cpu_seconds": 24.840032,
+      "ROI_seconds": 24.787604333,
+      "result": {
+        "calls": 45008,
+        "ticks": 3185555,
+        "commits": 64015331,
+        "holds": 403336334,
+        "dma_reads": 39627,
+        "dma_writes": 473603,
+        "dma_bytes": 6095512,
+        "seconds": 24.787604333,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "mesa64",
+      "variant": "baseline",
+      "index": 3,
+      "wall_seconds": 25.60858220793307,
+      "cpu_seconds": 25.604825999999992,
+      "ROI_seconds": 25.553319375,
+      "result": {
+        "calls": 45008,
+        "ticks": 3185555,
+        "commits": 64015331,
+        "holds": 403336334,
+        "dma_reads": 39627,
+        "dma_writes": 473603,
+        "dma_bytes": 6095512,
+        "seconds": 25.553319375,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "mesa64",
+      "variant": "baseline",
+      "index": 4,
+      "wall_seconds": 25.624626207863912,
+      "cpu_seconds": 25.621351,
+      "ROI_seconds": 25.569421167,
+      "result": {
+        "calls": 45008,
+        "ticks": 3185555,
+        "commits": 64015331,
+        "holds": 403336334,
+        "dma_reads": 39627,
+        "dma_writes": 473603,
+        "dma_bytes": 6095512,
+        "seconds": 25.569421167,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "mesa64",
+      "variant": "candidate",
+      "index": 5,
+      "wall_seconds": 24.796120875049382,
+      "cpu_seconds": 24.792475000000017,
+      "ROI_seconds": 24.741546709,
+      "result": {
+        "calls": 45008,
+        "ticks": 3185555,
+        "commits": 64015331,
+        "holds": 403336334,
+        "dma_reads": 39627,
+        "dma_writes": 473603,
+        "dma_bytes": 6095512,
+        "seconds": 24.741546709,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "full640-prefix",
+      "variant": "baseline",
+      "index": 0,
+      "wall_seconds": 29.686469458043575,
+      "cpu_seconds": 29.682722999999985,
+      "ROI_seconds": 29.63155875,
+      "result": {
+        "calls": 5742,
+        "ticks": 681916,
+        "commits": 127528009,
+        "holds": 351990348,
+        "dma_reads": 24948,
+        "dma_writes": 193527,
+        "dma_bytes": 3081468,
+        "seconds": 29.63155875,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "full640-prefix",
+      "variant": "candidate",
+      "index": 1,
+      "wall_seconds": 28.99601541715674,
+      "cpu_seconds": 28.992012000000017,
+      "ROI_seconds": 28.941269375,
+      "result": {
+        "calls": 5742,
+        "ticks": 681916,
+        "commits": 127528009,
+        "holds": 351990348,
+        "dma_reads": 24948,
+        "dma_writes": 193527,
+        "dma_bytes": 3081468,
+        "seconds": 28.941269375,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "full640-prefix",
+      "variant": "candidate",
+      "index": 2,
+      "wall_seconds": 28.915123207960278,
+      "cpu_seconds": 28.911130999999994,
+      "ROI_seconds": 28.859897125,
+      "result": {
+        "calls": 5742,
+        "ticks": 681916,
+        "commits": 127528009,
+        "holds": 351990348,
+        "dma_reads": 24948,
+        "dma_writes": 193527,
+        "dma_bytes": 3081468,
+        "seconds": 28.859897125,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "full640-prefix",
+      "variant": "baseline",
+      "index": 3,
+      "wall_seconds": 29.599931500153616,
+      "cpu_seconds": 29.593497999999972,
+      "ROI_seconds": 29.542268792,
+      "result": {
+        "calls": 5742,
+        "ticks": 681916,
+        "commits": 127528009,
+        "holds": 351990348,
+        "dma_reads": 24948,
+        "dma_writes": 193527,
+        "dma_bytes": 3081468,
+        "seconds": 29.542268792,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "full640-prefix",
+      "variant": "baseline",
+      "index": 4,
+      "wall_seconds": 29.511514625046402,
+      "cpu_seconds": 29.50643400000001,
+      "ROI_seconds": 29.454908875,
+      "result": {
+        "calls": 5742,
+        "ticks": 681916,
+        "commits": 127528009,
+        "holds": 351990348,
+        "dma_reads": 24948,
+        "dma_writes": 193527,
+        "dma_bytes": 3081468,
+        "seconds": 29.454908875,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "full640-prefix",
+      "variant": "candidate",
+      "index": 5,
+      "wall_seconds": 29.04053758410737,
+      "cpu_seconds": 29.036277000000023,
+      "ROI_seconds": 28.983950958,
+      "result": {
+        "calls": 5742,
+        "ticks": 681916,
+        "commits": 127528009,
+        "holds": 351990348,
+        "dma_reads": 24948,
+        "dma_writes": 193527,
+        "dma_bytes": 3081468,
+        "seconds": 28.983950958,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    {
+      "name": "large256",
+      "variant": "baseline",
+      "index": 0,
+      "wall_seconds": 12.54861674993299,
+      "cpu_seconds": 11.895708999999963,
+      "ROI_seconds": 11.784920625,
+      "result": {
+        "passed": true,
+        "ticks": 123300,
+        "explicit_ticks": 0,
+        "seconds": 11.784920625,
+        "commits": 13403866,
+        "holds": 145682589,
+        "holds_wrote": 13506607,
+        "reads": 15711,
+        "writes": 88068,
+        "read_bytes": 1005504,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "name": "large256",
+      "variant": "candidate",
+      "index": 1,
+      "wall_seconds": 12.236920374911278,
+      "cpu_seconds": 11.58396500000004,
+      "ROI_seconds": 11.475666333,
+      "result": {
+        "passed": true,
+        "ticks": 123300,
+        "explicit_ticks": 0,
+        "seconds": 11.475666333,
+        "commits": 13403866,
+        "holds": 145682589,
+        "holds_wrote": 13506607,
+        "reads": 15711,
+        "writes": 88068,
+        "read_bytes": 1005504,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "name": "large256",
+      "variant": "candidate",
+      "index": 2,
+      "wall_seconds": 11.589287541108206,
+      "cpu_seconds": 11.58495599999999,
+      "ROI_seconds": 11.51283625,
+      "result": {
+        "passed": true,
+        "ticks": 123300,
+        "explicit_ticks": 0,
+        "seconds": 11.51283625,
+        "commits": 13403866,
+        "holds": 145682589,
+        "holds_wrote": 13506607,
+        "reads": 15711,
+        "writes": 88068,
+        "read_bytes": 1005504,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "name": "large256",
+      "variant": "baseline",
+      "index": 3,
+      "wall_seconds": 11.754104957915843,
+      "cpu_seconds": 11.750540999999991,
+      "ROI_seconds": 11.67105275,
+      "result": {
+        "passed": true,
+        "ticks": 123300,
+        "explicit_ticks": 0,
+        "seconds": 11.67105275,
+        "commits": 13403866,
+        "holds": 145682589,
+        "holds_wrote": 13506607,
+        "reads": 15711,
+        "writes": 88068,
+        "read_bytes": 1005504,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "name": "large256",
+      "variant": "baseline",
+      "index": 4,
+      "wall_seconds": 11.890989749925211,
+      "cpu_seconds": 11.88419700000002,
+      "ROI_seconds": 11.811093542,
+      "result": {
+        "passed": true,
+        "ticks": 123300,
+        "explicit_ticks": 0,
+        "seconds": 11.811093542,
+        "commits": 13403866,
+        "holds": 145682589,
+        "holds_wrote": 13506607,
+        "reads": 15711,
+        "writes": 88068,
+        "read_bytes": 1005504,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "name": "large256",
+      "variant": "candidate",
+      "index": 5,
+      "wall_seconds": 11.571853958070278,
+      "cpu_seconds": 11.558851000000013,
+      "ROI_seconds": 11.479230208,
+      "result": {
+        "passed": true,
+        "ticks": 123300,
+        "explicit_ticks": 0,
+        "seconds": 11.479230208,
+        "commits": 13403866,
+        "holds": 145682589,
+        "holds_wrote": 13506607,
+        "reads": 15711,
+        "writes": 88068,
+        "read_bytes": 1005504,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    }
+  ],
+  "wake_operation_counts": {
+    "passed": true,
+    "scope": "Exactsamefixed3.185M-tickMesa64trace replay O1instrumentedprofiles; counter-loopmappingindependentlycalibrated usingexacthelperandLLVMhash. Dynamichelperloopiterations, notCPUshare orspeedup. Inline wake code isoutside these helper counts.",
+    "trace_sha256": "3a72f7bf7bafae4fa3eb8b6ef66654153292c84ec695e8bd161bc783bf78c225",
+    "profiles": {
+      "baseline": {
+        "input": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-prepared-handoff-native/profiles/replay/mesa64-73763.profraw",
+        "sha256": "75f5ff1deeb9a06abef29d9cbb03a3496c5125ba74bdbf0ebaee3c47235a71ca",
+        "helpers": {
+          "fs_wake": {
+            "calls": 16789785,
+            "loop_iterations": 630277779,
+            "new_summary_groups": 114420
+          },
+          "fs_wake_sparse": {
+            "calls": 0,
+            "loop_iterations": 0,
+            "new_summary_groups": 0
+          }
+        }
+      },
+      "candidate": {
+        "input": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/sparse-hold-wake-native/profiles/replay/mesa64-2078.profraw",
+        "sha256": "0aae86a9d0ac7cedb16a3e0eaf813a60fb309cd863dbc6388ad5dcb4227fabe2",
+        "helpers": {
+          "fs_wake": {
+            "calls": 13242936,
+            "loop_iterations": 326278326,
+            "new_summary_groups": 114207
+          },
+          "fs_wake_sparse": {
+            "calls": 3546849,
+            "loop_iterations": 8103929,
+            "new_summary_groups": 213
+          }
+        }
+      }
+    },
+    "helper_loop_iterations_candidate_over_baseline": 0.5305315626556462
+  },
+  "static_density": {
+    "tables": 2356,
+    "selected": 634,
+    "selected_ID_visits": 17734,
+    "selected_word_visits": 930,
+    "legacy_bytes": 35468,
+    "pair_bytes": 14880,
+    "scope": "Static unweighted distinct wake tables in actual selectedGPUmodel. Not dynamic operation count or speedup. ExistingIDtables remain emitted, so pair_bytes is extra constant storage until unusedIDtables are removed."
+  },
+  "evidence_sha256": {
+    ".artifacts/shared-cu/sparse-hold-wake-native/qualification-state.json": "707143a793e4b30545283bdb8f9c583239e2f600acddeacf86dcef7955ce24ad",
+    ".artifacts/shared-cu/sparse-hold-wake-native/paired/state.json": "73871617185548be758b98490624e7ec478fd437ca4906ca9c2317991ee6c691",
+    ".artifacts/shared-cu/sparse-hold-wake-native/ir-cache-qualification.json": "ae20b57e90e4be22186f19ac69410878be20c0d6374501cb7f6143ae8f2f7f05",
+    ".artifacts/shared-cu/sparse-hold-wake-native/benchmark.py": "614d529f69f42c4500a032172b8d67d3cc58ea77823f14df10463cfe86c2635d",
+    ".artifacts/shared-cu/sparse-hold-wake-native/controls-exact-baseline.json": "7874069626383628337af6b7a1c40d552e23db422d2fa5b048ba1127ffce903c",
+    ".artifacts/shared-cu/sparse-hold-wake-native/controls-optimized-exact-baseline.json": "f43f5269aed447914fa6ad501a72eb446a72ff09f7642dea3815cde70dc6d62c",
+    ".artifacts/shared-cu/sparse-hold-wake-native/wake-profile/calibration.json": "46c45fd92d302c29e7808c26e1a6dbea6ea0825633d039e7873e252363e09eae"
+  },
+  "remaining": [
+    "Complete exactsame baseline15.45M-tick desktop trace",
+    "Fresh actual640x480Debian/GTK functional proof and externalactiveimage review",
+    "Main sourceequivalence and mainpackage tests beforeFlashSimsourcecommit"
+  ],
+  "limitations": [
+    "Helperiterations fell46.95%; that isnotCPUshare or a projected47%runtimegain.",
+    "Observedmediansimprovementsare3.09%,2.03%,2.59%; notawhole-desktopspeedratio.",
+    "Prototypeunit109distinctcases passedacrossoriginal108pass+onefixture-onlytargetedretest; notonesingleall-greeninvocation.",
+    "InstalledQEMU remainsunchanged; privatecandidate isnotselecteduntilremaininggatespass."
+  ]
+}
