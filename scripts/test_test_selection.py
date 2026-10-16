@@ -38,33 +38,54 @@ vector_selected = select("src/main/scala/opengpu/core/vector/VectorFdivAlu.scala
 assert "opengpu.core.vector.*" in vector_selected, vector_selected
 assert "opengpu.core.backend.VectorBackendSpec" in vector_selected, vector_selected
 
-# CI shard partition: every Spec belongs to exactly one shard; selection
+# CI shard partition: every Spec belongs to exactly one shard, except the
+# desktop scaling sweeps that local `sbt test` still runs. Selection
 # intersects so a graphics-only change only schedules the graphics runner.
 all_specs = {
     str(p.relative_to(root / "src/test/scala").with_suffix("")).replace("/", ".")
     for p in (root / "src/test/scala").rglob("*Spec.scala")
 }
+ci_skip = {
+    "opengpu.system.FullPoolRuntimeScalingSpec",
+    "opengpu.system.RuntimeSharedGraphicsPerformanceSpec",
+    "opengpu.system.FullPoolTextureScalingSpec",
+}
+shards = (
+    "graphics",
+    "system-mem",
+    "system-host",
+    "system-walk",
+    "system-tex",
+    "system-wide",
+    "system-core",
+    "system-rt",
+    "system-pool",
+    "core-a",
+    "core-b",
+)
 assigned = {}
-for shard in ("graphics", "system", "core-a", "core-b"):
+for shard in shards:
     suites = shard_cmd("suites", shard, "ALL").split()
     for suite in suites:
         assert suite not in assigned, (suite, assigned[suite], shard)
         assigned[suite] = shard
-assert set(assigned) == all_specs, (
-    sorted(all_specs - set(assigned)),
-    sorted(set(assigned) - all_specs),
+assert set(assigned) == all_specs - ci_skip, (
+    sorted(all_specs - ci_skip - set(assigned)),
+    sorted(set(assigned) - (all_specs - ci_skip)),
 )
-assert json.loads(shard_cmd("shards-json", "ALL")) == [
-    "graphics",
-    "system",
-    "core-a",
-    "core-b",
-]
+assert ci_skip.isdisjoint(assigned)
+assert json.loads(shard_cmd("shards-json", "ALL")) == list(shards)
 assert json.loads(shard_cmd("shards-json", "NONE")) == []
 assert json.loads(shard_cmd("shards-json", "opengpu.graphics.*")) == ["graphics"]
+assert shard_cmd("flags", "system-rt") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2"
+assert shard_cmd("flags", "system-mem") == ""
+assert shard_cmd("flags", "graphics") == ""
 graphics_fanout = " ".join(select("src/main/scala/opengpu/graphics/RenderHost.scala"))
-assert "graphics" in json.loads(shard_cmd("shards-json", graphics_fanout))
-assert "system" in json.loads(shard_cmd("shards-json", graphics_fanout))
+scheduled = json.loads(shard_cmd("shards-json", graphics_fanout))
+assert "graphics" in scheduled
+for shard in shards:
+    if shard.startswith("system-"):
+        assert shard in scheduled, shard
 assert json.loads(shard_cmd("shards-json", " ".join(vector_selected))) == [
     "core-b"
 ]

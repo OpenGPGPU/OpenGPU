@@ -157,7 +157,14 @@ jobs:
           exit 0
         fi
         echo "Running: $SUITES"
-        sbt 'set Test / parallelExecution := false' "testOnly $SUITES"
+        # GpuComputeUnit shards compile repeated CUs as a hierarchy library.
+        # simJobs stays at 2: this runner has 16 GB, and the JVM reserves 6 GB.
+        FLAGS=$(bash scripts/ci_shard_tests.sh flags "${{ matrix.shard }}")
+        if [ -n "$FLAGS" ]; then
+          echo "Simulation flags: $FLAGS"
+        fi
+        # shellcheck disable=SC2086
+        sbt $FLAGS 'set Test / parallelExecution := false' "testOnly $SUITES"
 
   dependency-graph:
     runs-on: ubuntu-26.04

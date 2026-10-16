@@ -10,12 +10,31 @@
 #     Print space-separated fully-qualified suite names for sbt testOnly,
 #     or nothing if this shard has no work.
 #
-# Shard layout (balanced from local JUnit timing; each runner stays serial
-# inside one JVM so Chisel elaboration cannot OOM the shared heap):
-#   graphics  — opengpu/graphics/**
-#   system    — opengpu/system/**
-#   core-a    — opengpu/core/{execute,memory}/**
-#   core-b    — remaining opengpu/core/** plus dispatch/dma/command/util
+#   ci_shard_tests.sh flags <shard>
+#     Print extra sbt -D options for this shard, or nothing.
+#
+# Shard layout (each runner stays serial inside one JVM so Chisel
+# elaboration cannot OOM the shared heap). The old single `system` shard
+# ran every full-GPU Verilator model back to back and was the hour-plus
+# job. Those suites now fan out, and the desktop scaling sweeps below are
+# left to local `sbt test`:
+#   graphics     — opengpu/graphics/**
+#   system-mem   — AXI masters and the register-only host
+#   system-host  — GpuHostSystemAxi plus the fill-throughput model
+#   system-walk  — 4-CU desktop page-walk and address repros (one shared model)
+#   system-tex   — programmable texture and parallel ordering
+#   system-wide  — WideSharedGraphicsSpec (1/2/4 CU)
+#   system-core  — GpuSystemSpec
+#   system-rt    — runtime-shader lane profiles and the side-64 runtime control
+#   system-pool  — one desktop full-pool control (GpuConfig defaults, side 64)
+#   core-a       — opengpu/core/{execute,memory}/**
+#   core-b       — remaining opengpu/core/** plus dispatch/dma/command/util
+#
+# CI skip (still run by a local full `sbt test`):
+#   FullPoolRuntimeScalingSpec            — 1/2/4 CU desktop, side 64
+#   RuntimeSharedGraphicsPerformanceSpec  — 1/2/4 CU runtime scaling, side 64
+#   FullPoolTextureScalingSpec            — texture on/off sweeps; suite names
+#                                           in that file are not the filename
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,7 +43,6 @@ test_root="$root/src/test/scala"
 shard_prefixes() {
   case "$1" in
     graphics) printf '%s\n' "opengpu/graphics" ;;
-    system)   printf '%s\n' "opengpu/system" ;;
     core-a)   printf '%s\n' "opengpu/core/execute" "opengpu/core/memory" ;;
     core-b)
       printf '%s\n' \
@@ -47,7 +65,56 @@ shard_prefixes() {
   esac
 }
 
-all_shards=(graphics system core-a core-b)
+all_shards=(graphics system-mem system-host system-walk system-tex system-wide system-core system-rt system-pool core-a core-b)
+
+# Map one opengpu/system spec file to a shard, or SKIP.
+# A new file must be added here; otherwise CI selection fails closed.
+system_shard_for() {
+  case "$(basename "$1")" in
+    AxiStimulusOrderingSpec.scala|ComputeMemoryAxiMasterSpec.scala|GpuHostAxiSpec.scala|GpuWorkloadSpec.scala)
+      printf '%s\n' system-mem ;;
+    GpuHostSystemAxiSpec.scala|GpuFillThroughputSpec.scala)
+      printf '%s\n' system-host ;;
+    RuntimeVectorAddressSpec.scala|SharedCuTwoLevelWalkSpec.scala)
+      printf '%s\n' system-walk ;;
+    ProgrammableTextureAxiSpec.scala|ParallelGraphicsOrderingSpec.scala)
+      printf '%s\n' system-tex ;;
+    WideSharedGraphicsSpec.scala)
+      printf '%s\n' system-wide ;;
+    GpuSystemSpec.scala)
+      printf '%s\n' system-core ;;
+    RuntimeShaderFourLaneSpec.scala|RuntimeShaderEightLaneSpec.scala|RuntimeShaderSixteenLaneSpec.scala|RuntimeShaderThirtyTwoLaneSpec.scala|RuntimeSharedGraphicsFullBatchSpec.scala)
+      printf '%s\n' system-rt ;;
+    FullPoolRuntimeFullBatchSpec.scala)
+      printf '%s\n' system-pool ;;
+    FullPoolRuntimeScalingSpec.scala|RuntimeSharedGraphicsPerformanceSpec.scala|FullPoolTextureScalingSpec.scala)
+      printf '%s\n' SKIP ;;
+    *)
+      echo "system spec $(basename "$1") is not assigned to a CI shard" >&2
+      return 1
+      ;;
+  esac
+}
+
+validate_system_assignment() {
+  local file status=0
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    system_shard_for "$file" >/dev/null || status=1
+  done < <(find "$test_root/opengpu/system" -name '*Spec.scala' -print)
+  return "$status"
+}
+
+system_shard_files() {
+  local shard=$1 file assigned
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    assigned=$(system_shard_for "$file")
+    if [ "$assigned" = "$shard" ]; then
+      printf '%s\n' "$file"
+    fi
+  done < <(find "$test_root/opengpu/system" -name '*Spec.scala' -print)
+}
 
 # Top-level specs directly under opengpu/core/ (not in a subpackage).
 core_b_toplevel() {
@@ -56,6 +123,12 @@ core_b_toplevel() {
 
 shard_spec_files() {
   local shard=$1 prefix
+  case "$shard" in
+    system-*)
+      system_shard_files "$shard"
+      return
+      ;;
+  esac
   while IFS= read -r prefix; do
     [ -d "$test_root/$prefix" ] || continue
     find "$test_root/$prefix" -name '*Spec.scala' -print
@@ -63,6 +136,24 @@ shard_spec_files() {
   if [ "$shard" = "core-b" ]; then
     core_b_toplevel
   fi
+}
+
+shard_flags() {
+  # Hierarchical compile helps designs that instantiate GpuComputeUnit.
+  # ubuntu-latest has 16 GB and the JVM already reserves 6 GB, so the C++
+  # build stays at two jobs. The memory shard has no compute unit, so it
+  # stays flat.
+  case "$1" in
+    system-host|system-walk|system-tex|system-wide|system-core|system-rt|system-pool)
+      printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2'
+      ;;
+    graphics|system-mem|core-a|core-b)
+      ;;
+    *)
+      echo "unknown shard: $1" >&2
+      return 2
+      ;;
+  esac
 }
 
 fqcn_of() {
@@ -112,12 +203,13 @@ suites_for_shard() {
 shards_json() {
   local selected=$1 shard suites
   local -a active=()
+  validate_system_assignment
   if [ "$selected" = "NONE" ]; then
     printf '[]\n'
     return
   fi
   for shard in "${all_shards[@]}"; do
-    suites=$(suites_for_shard "$shard" "$selected" || true)
+    suites=$(suites_for_shard "$shard" "$selected")
     if [ -n "${suites:-}" ]; then
       active+=("\"$shard\"")
     fi
@@ -139,12 +231,17 @@ case "$cmd" in
     ;;
   suites)
     [ $# -ge 3 ] || { echo "usage: $0 suites <shard> <selected>" >&2; exit 2; }
+    validate_system_assignment
     shard=$2
     shift 2
     suites_for_shard "$shard" "$*"
     ;;
+  flags)
+    [ $# -eq 2 ] || { echo "usage: $0 flags <shard>" >&2; exit 2; }
+    shard_flags "$2"
+    ;;
   *)
-    echo "usage: $0 {shards-json|suites} ..." >&2
+    echo "usage: $0 {shards-json|suites|flags} ..." >&2
     exit 2
     ;;
 esac
