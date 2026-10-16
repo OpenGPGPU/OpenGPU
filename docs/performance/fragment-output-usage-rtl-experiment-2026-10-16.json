@@ -1,5 +1,5 @@
 {
-  "status": "PASS: promoted source, 39 main RTL tests, 12 complete main scenes, host and sanitizer checks, Linux build, optimized native/paired and Debian GTK64 gates; full640 running",
+  "status": "PASS: promoted source, 39 main RTL tests, 12 complete main scenes, host and sanitizer checks, Linux build, optimized native/paired and Debian GTK64 gates; full640 PASS",
   "artifact_root": ".artifacts/shared-cu/fragment-output-usage",
   "base_commit": "bc557c5",
   "patch": "docs/performance/fragment-output-usage-rtl-2026-10-16.patch",
@@ -95,8 +95,8 @@
   "limits": [
     "All old/default and input-only scene cycles are unchanged; optional output hints improve only shaders whose validated I/O permits omission.",
     "Coalesced path uses the omission contract. The legacy word path retains full staging; callers must allow that conservative fallback.",
-    "Full640 desktop qualification is running; the last completed full640 qualification remains bc557c5 until it passes.",
-    "Installed default QEMU remains unchanged."
+    "Installed default QEMU remains unchanged.",
+    "Committed f4c523d full640 desktop now passes idle/active readback, strict active scanout and visual review; see the separate full640 report for timing scope."
   ],
   "sources": {
     ".artifacts/shared-cu/fragment-output-usage/rtl-source/CommandBufferStage.scala": "0d5d243ca0d6b1630b9b6c87f596e9a0c731ebe1b8ae74208bf953cdd84a038a",
@@ -518,5 +518,7 @@
     "src/main/scala/opengpu/graphics/HasDrawState.scala": "64d2772eebf225e53781c2de0b7a089192927bc1fa15041de60e05714de565cc",
     "src/main/scala/opengpu/graphics/KernelFragStage.scala": "a11f8cd2e603af936812eb856a948b5e8a108e0e90696c67a4bc411f63fc4aef"
   },
-  "paired_report": "docs/performance/fragment-output-usage-native-paired-2026-10-16.json"
+  "paired_report": "docs/performance/fragment-output-usage-native-paired-2026-10-16.json",
+  "full640_report": "docs/performance/fragment-output-usage-full640-2026-10-16.json",
+  "full640_passed": true
 }

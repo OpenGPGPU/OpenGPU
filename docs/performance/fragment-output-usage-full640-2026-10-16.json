@@ -1,0 +1,210 @@
+{
+  "status": "PASS: committed output omission, full640 Debian/Weston/GTK readback, strict scanout and visual review",
+  "source_commit": "f4c523d",
+  "artifact_root": ".artifacts/shared-cu/fragment-output-usage-native",
+  "proof": ".artifacts/fo-main640",
+  "configuration": {
+    "physical_shared_CUs": 4,
+    "private_graphics_CUs": 0,
+    "lanes": 16,
+    "warps": 8,
+    "full_vertex_fragment_FPU": true,
+    "framebuffer": [
+      640,
+      480
+    ],
+    "AXI_bytes": 64,
+    "fragment_batch_limit": 112,
+    "hardware_input_usage_capability_bit": 27,
+    "hardware_output_usage_capability_bit": 28
+  },
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/CommandBufferStage.scala": "0d5d243ca0d6b1630b9b6c87f596e9a0c731ebe1b8ae74208bf953cdd84a038a",
+    "src/main/scala/opengpu/graphics/ParallelFragmentScheduler.scala": "2283e849136a12bf9fb8fd4df8ee9643bbcabdf6f99b81bd1d00fa96bb2e1b42",
+    "src/main/scala/opengpu/graphics/DrawContextFifo.scala": "cec16f809c14d7b11f0532a3aca56425ed7aa5e6388ff049fa4844abbca2935a",
+    "src/main/scala/opengpu/graphics/GpuCapabilities.scala": "f6f73d3d5b7df4c30afcf8ef41763d853b977e63be80e6c2fba683168c5b4a2c",
+    "src/main/scala/opengpu/graphics/RenderHost.scala": "c6c26b05974877548ee93b364bcb552c95008499544789aeb9e9e5a77172bd1c",
+    "src/main/scala/opengpu/graphics/RenderPipeline.scala": "a320935984a376868ec30e6bf111b6acfa7d90941038a1dfe81670f1ba159d8a",
+    "src/main/scala/opengpu/graphics/KernelVertStage.scala": "29a186f9febf04b79139c891872c3664273e54c758cffb0cfeea4467fbbc1101",
+    "src/main/scala/opengpu/graphics/HasDrawState.scala": "64d2772eebf225e53781c2de0b7a089192927bc1fa15041de60e05714de565cc",
+    "src/main/scala/opengpu/graphics/KernelFragStage.scala": "a11f8cd2e603af936812eb856a948b5e8a108e0e90696c67a4bc411f63fc4aef",
+    "driver/opengpu_memory.c": "1f19b581c40a94466580939180569a4a0ed8264df38bd1e4ac1e22f1bf55c35c",
+    "driver/opengpu_device.h": "6b61ff2a8823b5d25d7b9582e48d31bbed6c49c1cc962fad068d84b632a23c1c",
+    "driver/opengpu_drv.c": "a5bf92692ece1f1c7fc42fa6a12f859bec58e50da1baff9719ed3423a7263b55",
+    "driver/opengpu_render_extent.h": "858059243549c2177d1a9705d0778e24259670e9ea44dd75b03f7c9e44cf6c1b",
+    "driver/opengpu_compute.c": "31bbc18b3e72e7c5b05812c6d88e161b35fc375a46ceed083142f2a5e0f11a7a",
+    "driver/opengpu_shader_validator.h": "7075c29ddaabf2fb927a344efa12e0c0d58b8e9de7de2d3f09572bcd25aa650d",
+    "driver/opengpu_drm_device.h": "2ca007e6858a940d0d7970b6cf3c75ec44f53c3ba27c4e80c18fa4d04e6f0ed0",
+    "driver/opengpu_shader_resources.h": "b526e1c51b6812f29af2f8fddef2d78ab35de530eba35e877a2a415dc3bd3208",
+    "driver/opengpu_mmu.c": "0865a9a80da603dd621eb110d30647d22b7976792b53e8ba8d15f1b428cfc69b",
+    "driver/opengpu_scheduler.h": "cc6910f35b78fc97dabfef87e2fdd1ccbb58398bebb63482bb46808a66b59a9b",
+    "driver/opengpu_asid.h": "0f1357c0770f4d032586a0e49804f881246054beafc3d8d34400702575e38423",
+    "driver/opengpu_shader_builder.h": "22e718b0fa332d0a72ecf78842ad07ce9739a66f34f906092cb4d3c7df902b4f",
+    "driver/opengpu_staging_validator.h": "570456006916817f03320b17ce99e34c22e6ee9562779f8c1470a559f97b1625",
+    "driver/gpu_drv.mod.c": "fd52feaa05cee71993acdd35ae1e72081f8593013f3edb3fcbf8a3c9b4e55146",
+    "driver/opengpu_resolve_validator.h": "0d05974e01829a221fffc340ee7cc956af897e61ef026bf6f0dae8f228425343",
+    "driver/opengpu_drm_device.c": "bf409d10f9ba5743ed15c63ff328285f76955b466adf42d28dbbf5200c1c37e2",
+    "driver/opengpu_tlb_flush.h": "7d57d98e2486bd9ca81fe3afa232d47d518c6762d35ee893d6b760881e4d8b5c",
+    "driver/opengpu_hw.c": "9a8b9df41d712427bbe0d27c9eba0d7ad78074ab6a351e327912ccd5226d849f",
+    "driver/opengpu_formats.h": "e60ea7ee839aaaab8bfced15c8e01e0d7fc5398deba055191bc0c4e9cec28091",
+    "driver/gpu_abi.h": "1180992f9530fc523cf3e9a0f0a71b079e33c88fd576aaa53e67cb03c220cb2e",
+    "driver/opengpu_drm.h": "066b68caf487bdd61d51c2e745ee59eb32597f7894beeb3b9ea26d9c8962dcc1",
+    "driver/opengpu_kernarg_va.h": "4525fa98c3c93bdf9033fabafdae295587472a40aa20647a481e005f35aee22c",
+    "driver/opengpu_display.c": "c681390e3d84d951d1a225f891fde0d2faf5d9feff5994772017048a782a9f82",
+    "driver/opengpu_scheduler.c": "5c9a1371a63f1fd27fcbf15a0903b61d1897074fe07dbe6e4f2fedc8f0d60e51",
+    "driver/opengpu_depth_validator.h": "89e01bdc0d0fc86b12e792a558911f861ddd4d73160eb586af817b037916085e"
+  },
+  "software": {
+    "driver_module_sha256": "e248e87c3341934dc2a3de4fb318bde2010f497634c6a2b427133942a819dada",
+    "mesa_DSO_sha256": "c160c6a3c8fe174864489685e3a11b1cef6cfad97311de5ace663c18b7c481eb",
+    "payload_manifest_sha256": "1e5800eb9fc19a32b66e4774f5be3b95c74a4bf08ca1ee0b1db932364a6ab3fc",
+    "payload_unchanged": true,
+    "mesa_shader_programs_unchanged": true
+  },
+  "prior_gates": {
+    "main_RTL_tests": 39,
+    "complete_1CU_4CU_scenes": 12,
+    "main_driver_real_Debian_compute_replays": 18,
+    "main_driver_GLES_cases": 21,
+    "main_driver_quad_batch_offscreen_private_depth_GTK64": true,
+    "native_optimized_cases": 12,
+    "native_traced_cases": 4,
+    "balanced_native_samples": 88,
+    "RTL_report": "docs/performance/fragment-output-usage-rtl-experiment-2026-10-16.json",
+    "native_report": "docs/performance/fragment-output-usage-native-training-2026-10-16.json",
+    "paired_report": "docs/performance/fragment-output-usage-native-paired-2026-10-16.json"
+  },
+  "full640": {
+    "passed": true,
+    "GTK_idle_readback": true,
+    "GTK_active_readback": true,
+    "strict_active_scanout": {
+      "passed": true,
+      "framebuffer_size": [
+        640,
+        480
+      ],
+      "client_size": [
+        280,
+        124
+      ],
+      "active_rectangle": [
+        93,
+        223,
+        227,
+        72
+      ],
+      "active_pixels": 16571,
+      "channel_tolerance": 3,
+      "capture_sha256": "2814d3f62950d4446938e5776ec333b8f944368db7c4d9dccbcfcb2e772dddc9",
+      "source_frame": "/Users/duckdonald/workspace/gpu/.artifacts/fo-main640/gtk-smoke-scanout.ppm",
+      "saved_frame": "/Users/duckdonald/workspace/gpu/.artifacts/fo-main640/gtk-smoke-verified.ppm"
+    },
+    "custom_DRM_default_and_output_omission_canaries": true,
+    "visual_review": "PASS: upright GTK title, label and button, complete orange GL rectangle with dark margins, patterned Weston background, launcher and panel. The window is unfocused, so GTK text is gray.",
+    "diagnostic_GPU_ticks": 16513091,
+    "peak_running_CUs": 4,
+    "workers": [
+      {
+        "id": 0,
+        "run": 7349464,
+        "batches": 3374
+      },
+      {
+        "id": 1,
+        "run": 7348369,
+        "batches": 3369
+      },
+      {
+        "id": 2,
+        "run": 7335851,
+        "batches": 3359
+      },
+      {
+        "id": 3,
+        "run": 7299894,
+        "batches": 3347
+      }
+    ],
+    "probe_records": [
+      "CYCLE_PROBE_GLOBAL ticks=16513091 staging_without_run=8360 phase_any=8554459,1212313,13453,8752346,430697,2963977,",
+      "CYCLE_PROBE_WORKERS peak_run=4",
+      "CYCLE_PROBE_WORKER id=0 run=7349464 batches=3374",
+      "CYCLE_PROBE_WORKER id=1 run=7348369 batches=3369",
+      "CYCLE_PROBE_WORKER id=2 run=7335851 batches=3359",
+      "CYCLE_PROBE_WORKER id=3 run=7299894 batches=3347",
+      "CYCLE_PROBE pc=3225419776 texture=0x0 batches=680 lanes=75608 states=0,51968,680,232622,23255,252963, sampler=232622,0,0,0,0,0,0,0,0, texture_unit=232622,0,0,0,0,0,0,0,0,0,0, fixed_lod_gradient=0",
+      "CYCLE_PROBE pc=3225419776 texture=372x329 batches=5556 lanes=621016 states=0,492738,5556,11682891,178067,1268922, sampler=4460879,621016,621016,621016,621016,3495916,621016,0,621016, texture_unit=3800805,0,0,0,0,0,0,0,0,7843196,38890, fixed_lod_gradient=0",
+      "CYCLE_PROBE pc=3225419776 texture=640x32 batches=950 lanes=105720 states=0,90167,950,2288674,30686,217513, sampler=1076529,105720,105720,105720,105720,577825,105720,0,105720, texture_unit=964147,0,0,0,0,0,0,0,0,1317905,6622, fixed_lod_gradient=0",
+      "CYCLE_PROBE pc=3225419776 texture=640x480 batches=6263 lanes=700336 states=0,590109,6263,15123204,200623,1450796, sampler=7077202,700336,700336,700336,700336,3843986,700336,0,700336, texture_unit=6332711,0,0,0,0,0,0,0,0,8746450,44043, fixed_lod_gradient=0"
+    ],
+    "ARTI_trace_enabled": false
+  },
+  "host_elapsed_milestones": {
+    "wallpaper_and_panel_first_visible_seconds": 237.31064599985257,
+    "active_GTK_first_visible_seconds": 894.709234375041,
+    "complete_supervisor_gate_seconds": 898.7266288748942,
+    "complete_guest_gate_seconds": 896.4672566659283,
+    "idle_scanout_observed": false,
+    "GTK_idle_readback_passed": true,
+    "observer_interval_seconds": 2,
+    "observer_evidence": {
+      "background": {
+        "seconds": 237.31064599985257,
+        "evidence": "Wallpapercropmatchesqualifieddesktopwith3channel tolerance",
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/fo-main640/first-background.png",
+        "capture_sha256": "99fe89d4329f49eceb4d8c6595ccc23116eb8940809bbff4382cc28ab792caa6",
+        "image_sha256": "f09d36031370877c6dedadb9e5a5042c46b8c939cdfe10fcd5b12df6479c9cde"
+      },
+      "active": {
+        "seconds": 894.709234375041,
+        "evidence": {
+          "colour_pixels": 16571,
+          "expected_rgb": [
+            242,
+            89,
+            46
+          ],
+          "tolerance": 3
+        },
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/fo-main640/first-active.png",
+        "capture_sha256": "2814d3f62950d4446938e5776ec333b8f944368db7c4d9dccbcfcb2e772dddc9",
+        "image_sha256": "7cdf43e5486fd3bbe41460772f574e8dcf3f2dce490bd9f888b4c0cb06ae718b"
+      }
+    },
+    "scope": "Time from qualification supervisor launch, including boot, custom DRM default/opt-in regression, compositor and GTK work, cycle probe, 2-second scanout observer and two short CPU stack samples (3+5 seconds). No own compiler or other test guest overlapped. The following prototype compiler started only after this supervisor reached PASS. Unrelated host activity is not controlled."
+  },
+  "visual": {
+    "image": "docs/images/opengpu-gtk-output-usage-20261016.png",
+    "sha256": "7cdf43e5486fd3bbe41460772f574e8dcf3f2dce490bd9f888b4c0cb06ae718b",
+    "passed": true
+  },
+  "binaries": {
+    "optimized_archive_sha256": "afcd121573c07090f7bf805dd126f2eaa181723717cd854f28a2b4b39c59baa1",
+    "plain_optimized_QEMU_sha256": "832edffa77eec86bc9c33b8e66d542882b16ad2c89885c0ebbadd5a1c5d0800c",
+    "cycle_probe_QEMU_sha256": "b142f46b100ef72ebedd5bce03fb08199e53d7a167ca41165fefe5fa038b7be6",
+    "installed_default_QEMU_sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0",
+    "installed_default_unchanged": true
+  },
+  "evidence_sha256": {
+    ".artifacts/shared-cu/fragment-output-usage-native/full640-main-state.json": "582fe0d52008e93c3e90deb8a242f734f1d3c48a0a62758a19667f4f5b1684e9",
+    ".artifacts/shared-cu/fragment-output-usage-native/guest-main640.json": "bb445aed2b1f75bc25706786bb6bcffb63af837470633759c8755a7b9062c58b",
+    ".artifacts/shared-cu/fragment-output-usage-native/guest-main64.json": "0c6f19738a8e330c012fcbb4754f96ea9130d1573d66f8ea8a761dc747530e99",
+    ".artifacts/shared-cu/fragment-output-usage-native/main-payload.json": "1e5800eb9fc19a32b66e4774f5be3b95c74a4bf08ca1ee0b1db932364a6ab3fc",
+    ".artifacts/shared-cu/fragment-output-usage-native/full640_main.py": "e14dcd6f3e739b2b8e55e853167cb88ac37904d67001b278014e16b54cdec493",
+    ".artifacts/shared-cu/fragment-output-usage-native/qualify_main_guest.py": "7132f1938716c39c17def358f42a71ede2bd60bfe5f138165f6a6c2efce10a0b",
+    ".artifacts/shared-cu/fragment-output-usage-native/full640-observation-audit.json": "293e75bc4c0157f9d6d48e20133209f1d3e09adabfbda15990bccf8b9404f9b3",
+    ".artifacts/fo-main640/gtk-scanout-verification.json": "2bdabbc2f0dd7ac0045ed424166dd05a66b8bd84da141995af5b89b7aa40ac1b",
+    ".artifacts/fo-main640/gtk-smoke-verified.ppm": "2814d3f62950d4446938e5776ec333b8f944368db7c4d9dccbcfcb2e772dddc9",
+    ".artifacts/fo-main640/gtk-smoke.log": "e223ab8e4dc374a51105d77c1efe43ac7b6b554bb219eb951e176528bec9dbe9",
+    ".artifacts/fo-main640/boot.log": "c766618544cabcbde960bdc770cc5757de17e5779f33d789d2e5d48d76e376bb"
+  },
+  "limits": [
+    "237 seconds measures first wallpaper/panel; the complete GTK gate took899 seconds. Neither should be compared directly with a prior total gate as the same milestone.",
+    "The earlier input-only full640 gate took1130 seconds under overlapping builds and a different compositor workload. This run has a different batch distribution, so elapsed and total-tick differences are diagnostic, not a controlled speedup ratio.",
+    "GTK idle/active pixels passed readback. The observer captured the active on-screen frame; no separate idle on-screen frame was observed.",
+    "The supervisor requested ARTI tracing, but the nested qualifier removed ARTI_* environment variables. No full-system trace was generated in this run. This is documented in the observation audit. Existing native field-classified traces and the prior full-system trace remain available; a new explicit trace option is prepared for future guests.",
+    "Per-worker and phase counters overlap and cannot be added as serial bottleneck shares.",
+    "The qualified binaries are separate artifacts. The installed default QEMU and README original screenshot remain unchanged."
+  ]
+}

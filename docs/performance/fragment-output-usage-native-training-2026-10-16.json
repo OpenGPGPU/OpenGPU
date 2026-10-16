@@ -1,5 +1,5 @@
 {
-  "status": "PASS: exact-model 43-profile optimized build, 12 native cases, 4 traced cases, Debian compute/GLES/GTK64, main-source promotion gates",
+  "status": "PASS: exact-model 43-profile optimized build, 12 native cases, 4 traced cases, Debian compute/GLES/GTK64, main-source promotion gates and full640 desktop",
   "artifact_root": ".artifacts/shared-cu/fragment-output-usage-native",
   "base_commit": "bc557c5",
   "scope": "Same new4CU16x8fullVS/FS/FPU640x480 generated model; modes0fullABI,1input-only,2input+outputomission. Inputonly/fulldefault match priornative ticks andcomplete outputSHA; eachrun independently checks4096RGBA/depthpairs, uniforms,outsideallocatedscratchandallomittedinput/outputbytes. InstrumentedO1 timingsnotbenchmarks.",
@@ -566,7 +566,7 @@
   "limits": [
     "Native instrumented and traced timings are qualification evidence, not host benchmarks; use the separate balanced paired report.",
     "Net read savings are smaller than eliminated depth/control reads because other cached traffic changes.",
-    "New-feature full640 desktop qualification is running separately. The installed default QEMU is unchanged."
+    "Committed f4c523d full640 desktop now passes idle/active readback, strict active scanout and visual review; see the separate full640 report for timing scope."
   ],
   "evidence": {
     ".artifacts/shared-cu/fragment-output-usage-native/guest-train64.json": "781321c43a9e8756516904b697c6efb6b2d8212a3ca5094e1636022c4c86d4eb",
@@ -1597,5 +1597,7 @@
     },
     "scope": "Successful callback byte regions, both optimized gradient scenes. Missing region after bypass means zero bytes; compare all regions, not only removed fields."
   },
-  "paired_report": "docs/performance/fragment-output-usage-native-paired-2026-10-16.json"
+  "paired_report": "docs/performance/fragment-output-usage-native-paired-2026-10-16.json",
+  "full640_report": "docs/performance/fragment-output-usage-full640-2026-10-16.json",
+  "full640_passed": true
 }

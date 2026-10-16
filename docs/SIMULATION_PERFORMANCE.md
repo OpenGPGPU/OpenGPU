@@ -68,8 +68,16 @@ unchanged default and input-only paths. Four-CU cycles fall further from
 9,817 to 9,385 for solid sampling and from 15,272 to 14,692 for spatial sampling.
 The optimized native model, main-built Linux driver, 18 compute replays,
 21 GLES cases and GTK64 idle/active readback plus strict scanout checks pass.
-The full640 desktop gate is running separately; see the
-[output staging qualification](performance/fragment-output-usage-rtl-experiment-2026-10-16.json).
+The full640 desktop also passes idle/active readback, strict active scanout
+and visual review; see the
+[output staging qualification](performance/fragment-output-usage-rtl-experiment-2026-10-16.json)
+and [full-resolution report](performance/fragment-output-usage-full640-2026-10-16.json).
+The wallpaper and panel first appear at **237 seconds**, the active GTK window
+at **895 seconds**, and the complete gate ends at **899 seconds** (about
+15 minutes). These are separate milestones from one diagnostic boot, including
+a cycle probe and short CPU samples. No own builds overlap, but earlier boots
+have different compositor workloads and host conditions; these times do not
+establish a controlled whole-desktop speedup.
 
 In 64 balanced opt-in native samples, the same optimized executable takes
 **5.7% less host time for solid sampling and 4.9% less for spatial sampling**
