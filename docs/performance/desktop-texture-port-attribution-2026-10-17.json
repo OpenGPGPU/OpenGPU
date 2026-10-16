@@ -1,0 +1,561 @@
+{
+  "recorded_at": 1792192757.670475,
+  "passed": true,
+  "scope": "Exact complete packed-white-modulation desktop trace, unchanged qualified4CU model. Read-only CU and texture-port observers combined in one strict replay. Diagnostic runtime, no speed comparison.",
+  "trace_sha256": "a677e4bf11cc8f79d7d0df942323c8cc607ea34f141008804831c0f6857a24b0",
+  "replay": {
+    "calls": 173947,
+    "ticks": 16529708,
+    "commits": 797248588,
+    "holds": 5369196155,
+    "dma_reads": 507606,
+    "dma_writes": 3212098,
+    "dma_bytes": 56973488,
+    "seconds": 430.964053125,
+    "truncated_tail": false,
+    "warmup_calls": 0,
+    "sample": 0
+  },
+  "texture_port": {
+    "ticks": 16529708,
+    "accepted": 2439887,
+    "allocated": 2439887,
+    "retired": 2439884,
+    "pending": 3,
+    "request_workers": 2860558,
+    "blocked_workers": 420671,
+    "duplicate_blocked": 387,
+    "capacity_blocked": 0,
+    "other_blocked": 420284,
+    "any_fetch": 4964723,
+    "fetch_no_request": 2511851,
+    "queue_occupied": 2454131,
+    "pending_sum": 8953521,
+    "peak_pending": 10,
+    "latency_sum": 8953518,
+    "max_latency": 66
+  },
+  "texture_pending": {
+    "any_pending": 4517265,
+    "fetch_waiting_replies": 2506934
+  },
+  "derived": {
+    "accepted_per_request_present_cycle": 0.9947062056234488,
+    "mean_outstanding_latency_cycles": 3.6696490488892093,
+    "replies_per_pending_cycle": 0.5401241680530143,
+    "duplicate_share_of_blocked": 0.0009199588276824407,
+    "fetch_waiting_no_new_requests_fraction": 0.5049494201388476,
+    "all_active_warps_blocked_fraction_of_active_CU_cycles": 0.8853381063849293,
+    "texture_fraction_of_held_vector_worker_cycles": 0.7775733537287312,
+    "request_present_cycles": 2452872,
+    "replies_completed_within_four_cycles_fraction": 0.9106006679006051
+  },
+  "vector_issue_by_unit": [
+    {
+      "unit": 1,
+      "name": "integer_ALU",
+      "accepted": 413318,
+      "held_worker_cycles": 0
+    },
+    {
+      "unit": 4,
+      "name": "floating_point",
+      "accepted": 1600,
+      "held_worker_cycles": 0
+    },
+    {
+      "unit": 5,
+      "name": "load_store",
+      "accepted": 277100,
+      "held_worker_cycles": 2617643
+    },
+    {
+      "unit": 6,
+      "name": "vector_configuration",
+      "accepted": 95301,
+      "held_worker_cycles": 604
+    },
+    {
+      "unit": 8,
+      "name": "texture",
+      "accepted": 90525,
+      "held_worker_cycles": 9153036
+    }
+  ],
+  "CU_global": {
+    "ticks": 16529708,
+    "vector_texture_accepted": 90525,
+    "texture_unit_vector_starts": 90525
+  },
+  "per_CU_stats": [
+    {
+      "id": 0,
+      "active_cycles": 4480537,
+      "active_warp_cycles": 25392596,
+      "eligible_warp_cycles": 528101,
+      "all_active_blocked": 3959584,
+      "vector_present": 3268245,
+      "vector_accepted": 231670,
+      "vector_held": 3036575,
+      "skid_cycles": 1637580,
+      "request_cycles": 3012245,
+      "operand_cycles": 3158117,
+      "commit_cycles": 226000,
+      "resumes": 495114,
+      "finishes": 25839,
+      "launches": 25839
+    },
+    {
+      "id": 1,
+      "active_cycles": 4321069,
+      "active_warp_cycles": 24879267,
+      "eligible_warp_cycles": 511977,
+      "all_active_blocked": 3816020,
+      "vector_present": 3209848,
+      "vector_accepted": 224419,
+      "vector_held": 2985429,
+      "skid_cycles": 1616179,
+      "request_cycles": 2962100,
+      "operand_cycles": 3102223,
+      "commit_cycles": 219046,
+      "resumes": 479936,
+      "finishes": 25104,
+      "launches": 25111
+    },
+    {
+      "id": 2,
+      "active_cycles": 4133849,
+      "active_warp_cycles": 23997310,
+      "eligible_warp_cycles": 470356,
+      "all_active_blocked": 3669870,
+      "vector_present": 3123359,
+      "vector_accepted": 212862,
+      "vector_held": 2910497,
+      "skid_cycles": 1597480,
+      "request_cycles": 2900554,
+      "operand_cycles": 3031381,
+      "commit_cycles": 210030,
+      "resumes": 441581,
+      "finishes": 22391,
+      "launches": 22398
+    },
+    {
+      "id": 3,
+      "active_cycles": 4026440,
+      "active_warp_cycles": 23422005,
+      "eligible_warp_cycles": 461173,
+      "all_active_blocked": 3571538,
+      "vector_present": 3047675,
+      "vector_accepted": 208893,
+      "vector_held": 2838782,
+      "skid_cycles": 1562076,
+      "request_cycles": 2826283,
+      "operand_cycles": 2958152,
+      "commit_cycles": 208026,
+      "resumes": 432925,
+      "finishes": 21946,
+      "launches": 21953
+    }
+  ],
+  "prepared_cache": {
+    "samples": 1357520,
+    "lookups": 1357520,
+    "allhit": 10922,
+    "partial": 1343455,
+    "miss": 3143
+  },
+  "request_population": [
+    {
+      "workers": 0,
+      "ticks": 14076836
+    },
+    {
+      "workers": 1,
+      "ticks": 2076254
+    },
+    {
+      "workers": 2,
+      "ticks": 346502
+    },
+    {
+      "workers": 3,
+      "ticks": 29164
+    },
+    {
+      "workers": 4,
+      "ticks": 952
+    }
+  ],
+  "pending_population": [
+    {
+      "pending": 0,
+      "ticks": 12012443
+    },
+    {
+      "pending": 1,
+      "ticks": 1704112
+    },
+    {
+      "pending": 2,
+      "ticks": 1595856
+    },
+    {
+      "pending": 3,
+      "ticks": 943821
+    },
+    {
+      "pending": 4,
+      "ticks": 177069
+    },
+    {
+      "pending": 5,
+      "ticks": 67192
+    },
+    {
+      "pending": 6,
+      "ticks": 23159
+    },
+    {
+      "pending": 7,
+      "ticks": 5475
+    },
+    {
+      "pending": 8,
+      "ticks": 513
+    },
+    {
+      "pending": 9,
+      "ticks": 65
+    },
+    {
+      "pending": 10,
+      "ticks": 3
+    }
+  ],
+  "response_latency_buckets": [
+    {
+      "bucket": 0,
+      "replies": 0
+    },
+    {
+      "bucket": 1,
+      "replies": 2221760
+    },
+    {
+      "bucket": 2,
+      "replies": 29385
+    },
+    {
+      "bucket": 3,
+      "replies": 176715
+    },
+    {
+      "bucket": 4,
+      "replies": 11588
+    },
+    {
+      "bucket": 5,
+      "replies": 435
+    },
+    {
+      "bucket": 6,
+      "replies": 1
+    },
+    {
+      "bucket": 7,
+      "replies": 0
+    }
+  ],
+  "latency_bucket_upper_bounds": [
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    null
+  ],
+  "checks": [
+    "Complete API/result/DMA/clock/tick/commit/hold counts equal ordinary strict replay.",
+    "Each inferred accepted request independently matches owner-slot allocation; at most one acceptance and response per cycle.",
+    "Accepted=allocated; allocated-retired=3 outstanding at trace end. Remaining3 accepted reads are accounted for, not discarded.",
+    "All request, block, outstanding-population and response-latency histograms conserve their corresponding totals.",
+    "Vector texture accepts equal sampler starts; accepted vector instruction counts reconcile with per-CU totals and retirement accounting."
+  ],
+  "interpretation": [
+    "No observed outstanding-slot capacity stalls; increasing slots is not supported by this workload.",
+    "Request arbitration is active, but a physical read is accepted on 99.47% of cycles when any worker presents a request. This does not prove unlimited request bandwidth.",
+    "Mean outstanding lifetime 3.67 cycles and 50.49% of any-fetch cycles waiting on outstanding replies without a new request motivate response-latency screening.",
+    "Held-vector share and all-active-warps-blocked share are worker-cycle statistics, not host CPU percentages or ALU utilization.",
+    "Prepared-cache full hits are 0.8%; early full-hit-only shortcuts have limited coverage.",
+    "The private empty-output-queue bypass reduces task cycles but fails combined-path synthesis timing; it is rejected for promotion. See the paired experiment below."
+  ],
+  "limitations": [
+    "Trace contains several desktop/GTKoperations, polling and residual work; total ticks are not one-frame cycles or an analytical minimum.",
+    "Attribution times overlap other qualification work and are not balanced performance measurements."
+  ],
+  "evidence": {
+    ".artifacts/shared-cu/texture-port-attribution/full-combined/state.json": "48438ad7b2eec150d73407640f6b30dc0eef845f6406771299cc264d2d32f5fb",
+    ".artifacts/shared-cu/texture-port-attribution/probe-combined/manifest.json": "a2f3df72429db47ccce321a0e5fe3efff80cce2e7bd18c73833fd254f31e785a",
+    ".artifacts/shared-cu/texture-port-attribution/probe-combined/wrapper.cpp": "cb93496d53e309643ab72783edda367bb640dda7e0280216e2c774d67fbc7693",
+    ".artifacts/shared-cu/texture-port-attribution/run_combined.py": "07cf6ed853b4ce00eea23c6e36efab757496b7618060ec98c637c8bedcc47ae5"
+  },
+  "runtime_estimate": {
+    "recorded_at": 1792192170.133624,
+    "scope": "Read-only empirical work-counter estimate for latest qualified white-modulation 4CU trace. Calibration uses independent balanced native rendering fixtures. Not an analytical cycle lower bound, hardware timing closure, or controlled full-desktop speed comparison. Replay elapsed is diagnostic and partially overlaps supplemental guest capture.",
+    "source": "docs/performance/packed-white-modulation-main-qualification-2026-10-17.json",
+    "source_sha256": "3bad98b2dcc4297b3daff2a29477e0e60776777830bd0ae8275cb3938b4decf8",
+    "complete_replay": {
+      "calls": 173947,
+      "ticks": 16529708,
+      "commits": 797248588,
+      "holds": 5369196155,
+      "dma_reads": 507606,
+      "dma_writes": 3212098,
+      "dma_bytes": 56973488,
+      "seconds": 424.366759834,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "calibrations": [
+      {
+        "calibration": "solid64",
+        "median_seconds": 0.669767875,
+        "hold_dispatches": 8774114,
+        "ns_per_hold_dispatch": 76.33453075717959,
+        "predicted_full_replay_seconds": 409.85506903517785,
+        "error_percent": -3.419610622777969
+      },
+      {
+        "calibration": "spatial64",
+        "median_seconds": 0.829489875,
+        "hold_dispatches": 10440462,
+        "ns_per_hold_dispatch": 79.44953729059117,
+        "predicted_full_replay_seconds": 426.5801501371712,
+        "error_percent": 0.5215748528553554
+      },
+      {
+        "calibration": "spatial256",
+        "median_seconds": 12.978856958,
+        "hold_dispatches": 158444263,
+        "ns_per_hold_dispatch": 81.91433828058514,
+        "predicted_full_replay_seconds": 439.81415013548707,
+        "error_percent": 3.640103741284939
+      }
+    ],
+    "prediction_range_seconds": [
+      409.85506903517785,
+      439.81415013548707
+    ],
+    "observed_average_cycles_per_second": 38951.46737333043,
+    "primary_guest_milestones_seconds": {
+      "background": 126.69209829205647,
+      "active": 468.7100573340431
+    },
+    "limitations": [
+      "Hold counts are evaluator dispatches, not shader instructions or hardware cycles.",
+      "Per-cycle host cost varies by activity; do not extrapolate using a universal cycle rate.",
+      "Guest and standalone replay have different scopes. Their difference is not a measured QEMU-only cost.",
+      "Current measurements explain elapsed time, but do not establish RTL optimality or a theoretical minimum cycle count.",
+      "Qualified Mesa payload and QEMU are private artifacts; installed default binaries were not replaced."
+    ]
+  },
+  "active_render_host_sample": {
+    "started": 1792192420.678536,
+    "pid": 37954,
+    "stage": "terminal",
+    "scope": "Diagnostic sampled host stacks for current qualified four-CU model and packed-white256gradient rendering. Concurrent other qualification jobs; elapsed is not a benchmark. Complete RAM and counters must match existing independent qualification.",
+    "runner_sha256": "4e13ea85485c479c1b5f9160177154f6828dc96601cba279be7bda5a621a796c",
+    "fixture_sha256": "6782f160a5506847c98ec4171b7d71bef0157d9ed7da3db5e16cb4dc938db3b7",
+    "render_pid": 37956,
+    "sample_exit_status": 0,
+    "passed": true,
+    "result": {
+      "passed": true,
+      "ticks": 139330,
+      "explicit_ticks": 0,
+      "seconds": 14.4333135,
+      "commits": 24374241,
+      "holds": 158444263,
+      "holds_wrote": 24512616,
+      "reads": 15790,
+      "writes": 88300,
+      "read_bytes": 1010560,
+      "write_bytes": 663696,
+      "faults": 0,
+      "completion": 34395,
+      "shader_config": 67635216
+    },
+    "all_RAM_exact": true,
+    "stacks_sha256": "2b6016f73dc07a0c7ea49dd3636347c0027156205eb1d659b0b49e3e4fb8f933",
+    "finished": 1792192435.282104,
+    "sample_duration_seconds": 5,
+    "sampling_interval_milliseconds": 1,
+    "main_thread_observations": 3600,
+    "commit_bump_leaf_observations": 300,
+    "commit_bump_leaf_fraction": 0.08333333333333333,
+    "interpretation": "Register invalidation helper is a measurable host target. This one sampled interval is not a whole-trace CPU share. Other qualifications were concurrent; sampled-render elapsed is not a benchmark."
+  },
+  "private_reply_queue_flow_screen": {
+    "decision": "Reject promotion: lower task-cycle count does not compensate for failing the paired synthesis timing gate. No native model or guest build for this candidate.",
+    "change": "Only allow a ready reply to flow through an empty output queue; main RTL remains unchanged.",
+    "unit_tests": {
+      "passed": true,
+      "count": 16,
+      "suites": [
+        "BufferedTextureWordPortSpec",
+        "FragmentWorkerMemorySpec"
+      ]
+    },
+    "paired_current_Mesa_white_shader_scenes": [
+      {
+        "cus": 4,
+        "baseline_cycles": 13155,
+        "candidate_cycles": 12567,
+        "reduction_percent": 4.46978335233752,
+        "exact_pixels_depth_metadata": true,
+        "omitted_bytes_preserved": true,
+        "metrics": {
+          "baseline": {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "13155",
+            "active_cu_cycles": "31327",
+            "peak_cus": "4",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3677",
+            "texture_lines": "192"
+          },
+          "candidate": {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "12567",
+            "active_cu_cycles": "28980",
+            "peak_cus": "4",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3676",
+            "texture_lines": "182"
+          }
+        }
+      },
+      {
+        "cus": 1,
+        "baseline_cycles": 39360,
+        "candidate_cycles": 37041,
+        "reduction_percent": 5.891768292682931,
+        "exact_pixels_depth_metadata": true,
+        "omitted_bytes_preserved": true,
+        "metrics": {
+          "baseline": {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "39360",
+            "active_cu_cycles": "29491",
+            "peak_cus": "1",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3676",
+            "texture_lines": "166"
+          },
+          "candidate": {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "37041",
+            "active_cu_cycles": "27172",
+            "peak_cus": "1",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3676",
+            "texture_lines": "166"
+          }
+        }
+      }
+    ],
+    "shader_words": 25,
+    "shader_sha256": "1329bb64f8c67591a4a20c1e00ff5ae59cc512483e284585ca18e212c7219fd7",
+    "timing": {
+      "scope": "Combined four-worker/64-owner arbiter plus64-word-slot/16-line buffer; ASAP7 SLVT TC synthesis,1ns clock,25%IOdelay,no retiming,no place/route. Not whole-chip Fmax.",
+      "baseline": {
+        "verdict": "PASS",
+        "headline": "Synthesis meets 1 GHz",
+        "next_action": "Proceed to physical implementation.",
+        "analysis": "Pre-layout STA on the synthesized netlist",
+        "stage": "1_synth",
+        "target": {
+          "clock_period_ps": 1000.0,
+          "frequency_mhz": 1000.0,
+          "corner": "TC"
+        },
+        "timing": {
+          "setup_slack_ps": 0.07,
+          "core_clock_fmax_mhz": 1000.07
+        },
+        "physical": {
+          "note": "synthesis-only gate; no place/route performed"
+        }
+      },
+      "candidate": {
+        "verdict": "FAIL",
+        "headline": "Synthesis does not meet 1 GHz",
+        "next_action": "Pipeline the failing datapath before running physical flow.",
+        "analysis": "Pre-layout STA on the synthesized netlist",
+        "stage": "1_synth",
+        "target": {
+          "clock_period_ps": 1000.0,
+          "frequency_mhz": 1000.0,
+          "corner": "TC"
+        },
+        "timing": {
+          "setup_slack_ps": -330.485,
+          "core_clock_fmax_mhz": 751.606
+        },
+        "physical": {
+          "note": "synthesis-only gate; no place/route performed"
+        }
+      }
+    },
+    "remaining_qualification": "No native host benchmark or actual guest qualification: timing gate failed before those expensive stages.",
+    "evidence": {
+      ".artifacts/shared-cu/texture-reply-flow/unit-state.json": "98d57f009b62474bccfb93eb955692975d060007a6cfa1d18d47234e71a871f0",
+      ".artifacts/shared-cu/texture-reply-flow/white-scenes/state.json": "425cf3fe1a6191f890901e09d811dfc6b9f877f1c289847f02d7da72c057de95",
+      ".artifacts/shared-cu/texture-reply-flow/preparation.json": "379459f69b8ca6deb915fc5f2a685debaadd005b05f14d0db6d022f09d4dd562",
+      ".artifacts/shared-cu/texture-reply-flow/EmitTextureReplyPath.scala": "b0137f14f4a5a10e08e147cf17ee7795e596838e25a9c061e774d3f6c96ef734",
+      ".artifacts/shared-cu/texture-reply-flow/timing-baseline/manifest.json": "5489948590558a1687665ef1296f4ec1f0dee3fbf638b6c3924cb8aca3dc4783",
+      ".artifacts/shared-cu/texture-reply-flow/timing-candidate/manifest.json": "4ae09ccc19d13dfd676c86cbf28d0aa03d82c268da61148cb7c4ff24bfe2fef3",
+      ".artifacts/shared-cu/texture-reply-flow/timing-baseline/result.json": "2bc8d03b7046db670df475198246d07a3d50a4fcdd69c998f9aa2e9138b1520c",
+      ".artifacts/shared-cu/texture-reply-flow/timing-candidate/result.json": "393966e1bddee8d792aaa0f0b6a8ea468ca4c4bf0f75b9506a8cd095afa232a4"
+    }
+  }
+}

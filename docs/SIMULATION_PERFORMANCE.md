@@ -1,6 +1,50 @@
 # Full-system simulation performance investigation
 
-## Runtime estimate for the current four-CU model (2026-10-17)
+## Current desktop simulation rate and texture bottleneck (2026-10-17)
+
+With qualified packed-white modulation, the complete 640×480 desktop/GTK
+trace contains **16,529,708 ticks** and takes **424.367 seconds** in ordinary
+strict replay, averaging **38.95 kHz**. Independent balanced native fixtures
+calibrate an empirical evaluator-work estimate of **409.9–439.8 seconds**,
+within 3.7% of that measurement. This explains the elapsed time; it does not
+establish an analytical minimum or simulator optimality. Replay elapsed is
+diagnostic, with partial overlap from a supplemental guest capture.
+
+The same four-CU artifact's rendering-heavy 256×256 packed-white fixture takes
+12.979 seconds for 139,330 ticks, or **10.74 kHz**. A tick's cost depends on
+active logic. Older FlashSim README benchmarks describe a one-CU system and
+an AXI ID read followed by idle cycles; their MHz rates cannot predict active
+four-CU desktop throughput. The model evaluates all four CUs on one host
+thread. Latest qualified guest milestones are 126.692 seconds to wallpaper
+and 468.710 seconds to the active GTK proof window, measured separately from
+standalone replay; installed default binaries remain unchanged.
+
+A read-only observer replays every recorded API result, DMA event and clock
+with exactly matching counters. Of 2,439,887 logical texture reads, 2,439,884
+retire and three remain accounted for at trace end. Mean outstanding lifetime
+is **3.67 cycles**. The shared port accepts a read on **99.47% of cycles when
+any worker presents a request**; there are no outstanding-slot capacity
+stalls. More slots therefore have no demonstrated benefit for this trace.
+Texture instructions account for **77.76% of held vector worker-cycles**.
+These are RTL activity statistics, not host CPU percentages.
+
+A fresh five-second host sample of the qualified packed-white 256×256 renderer
+finds 300 of 3,600 main-thread observations in the register-page invalidation
+helper. That identifies a concrete host target alongside texture-response
+latency. The sampled run preserves every RAM byte and model/memory counter;
+its elapsed time is not used for a performance comparison.
+
+A private empty-reply-queue bypass passes 16 existing port/ownership tests and
+exact paired pixel/depth/metadata checks. It reduces the current Mesa white
+scene from 13,155 to 12,567 cycles on four CUs and from 39,360 to 37,041 on one
+CU. However, the combined arbiter/buffer synthesis estimate fails the 1 GHz
+target: core timing is about 752 MHz versus 1,000 MHz for the baseline.
+The bypass is rejected for promotion; no native model or guest build is
+started for it. These are pre-layout estimates, not whole-chip timing closure.
+
+See [the complete texture-port counters, runtime calculation and sampled-host evidence](performance/desktop-texture-port-attribution-2026-10-17.json).
+
+## Runtime estimate before packed-white modulation (2026-10-17)
 
 The exact complete desktop/GTK trace takes **550.351 seconds** in the qualified
 sparse-wake model: 15,447,854 ticks and 6,830,582,608 hold-dispatch invocations.
