@@ -30,6 +30,17 @@ The optimized build and full-resolution qualification remain in progress.
 The latest completed full-resolution proof remains the
 [texture-cache model](performance/vector-cache-native-full640-2026-10-16.json).
 
+A paired comparison of the two optimized native models checks identical
+complete memory outputs in all 24 measured runs. Three balanced ABBA rounds per
+scene give median task times of **1.073 → 1.035 s for solid rendering (3.5%)**
+and **1.286 → 1.253 s for spatial rendering (2.6%)**. The agent-owned qualification
+guest was paused for 34.6 seconds and fully resumed; other system activity was
+sampled. Each round favours the candidate. These modest host-time gains are
+distinct from the larger architectural cycle reductions: much of the active
+simulation work remains. The full-resolution qualification now includes that
+controlled pause, so its elapsed time is not an idle-host startup measurement.
+See the [paired native measurements](performance/pipelined-staging-native-paired-2026-10-16.json).
+
 `benchmark_native_render.py` runs the same small scene through an already built
 native model, using render-descriptor dimensions to select a 64×64 offscreen
 viewport while keeping the desktop model at 640×480. It reuses the qualified
