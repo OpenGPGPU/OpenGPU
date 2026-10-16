@@ -215,5 +215,6 @@
     "Full native model must be regenerated and qualified before any default executable promotion.",
     "No host wall-speed claim; simulation/build workloads overlapped."
   ],
-  "native_training_qualification": "docs/performance/fill16-broadcast-native-2026-10-16.json"
+  "native_training_qualification": "docs/performance/fill16-broadcast-native-2026-10-16.json",
+  "native_throughput": "docs/performance/fill16-native-throughput-2026-10-16.json"
 }
