@@ -1,7 +1,7 @@
 {
   "date": "2026-10-17",
   "recorded_at": 1792178232.770062,
-  "status": "PRIVATE RTL prototype:25units+sixwidthmiters+fourpairedscenesPASS. ActualnativegenerationPASS; nativehost/guestqualification andpromotionstillpending.",
+  "status": "PASS: prototype evidence retained; subsequent main integration/nativehost/full640qualification complete, see prepared-sampler-handoff-main-qualification-2026-10-17.json",
   "hardware": {
     "CUs": [
       1,

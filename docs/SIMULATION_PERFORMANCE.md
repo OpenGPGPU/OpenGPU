@@ -138,9 +138,9 @@ that every desktop workload has the same footprint, nor predict a host speedup.
 The low-value pruning prototype stays private and uncompiled. See [exact counters,
 address bounds and scope](performance/texture-instruction-footprint-2026-10-17.json).
 
-## Prepared sampler handoff prototype (2026-10-17)
+## Qualified prepared sampler handoff (2026-10-17)
 
-A private RTL change accepts an eligible successor sample on the edge that
+The sampler accepts an eligible successor sample on the edge that
 retires the current result. The owner selects the next lane and consumes its
 matching prepared-coordinate entry. Scalar, broadcast, inactive successors,
 the last lane, and a new automatic-LOD quad keep the ordinary path. Shader
@@ -171,10 +171,30 @@ Fresh generation changes executable RTL in only the sampler and its owner.
 A separate source audit confirms that the current committed selected hardware
 matches the previously qualified baseline apart from generated Scala location
 comments, including the later generic vertex-index fix at capacity 128.
-Native O1/O2 builds and independent output/canary checks are underway. Balanced
-host timing, actual full640 desktop, a fresh RTL trace and source promotion
-remain pending; this cycle result is not a host speedup claim. See
-[the measurements, source hashes and remaining gates](performance/prepared-sampler-handoff-rtl-2026-10-17.json).
+Main-source integration passes 31 sampler tests, including consecutive masked
+instructions at 1/2/4/8/16/32 lanes. All 296 selected main SV modules match the
+fully qualified candidate after removing only generated Scala location comments.
+Native O1/O2 builds each pass 40 format cases, 12 staging cases, six forced
+controls, 18 VM replays and an actual 21-case GLES/GTK64 guest with strict scanout.
+
+Three balanced samples per artifact show **1.51% less host time** for the small
+textured workload with **4.66% fewer steady ticks**. A separately checked
+256x256 workload shows **1.08% less host time** and **5.86% fewer ticks**. The
+solid workload is unchanged in cycles and differs by only 0.36% in host time.
+These compare complete PGO artifacts: the prior model uses 73 profiles and the
+new model 72, excluding the invalid old-RTL desktop-prefix trace.
+
+A fresh actual 640x480 Debian/GTK run passes idle and active RGBA checks and
+active onscreen verification. Wallpaper appears at 175.0 s and active GTK at
+611.5 s in this diagnostic run. Its new complete trace passes all 154,410 calls,
+15,447,854 ticks and every recorded result/DMA/clock observation in 565.0 s.
+The old trace contains different work, so their elapsed times do not establish
+a desktop speed ratio. The installed QEMU remains unchanged.
+
+![Qualified Debian/GTK sampler handoff](images/opengpu-gtk-sampler-handoff-20261017.png)
+
+See [prototype cycle measurements](performance/prepared-sampler-handoff-rtl-2026-10-17.json)
+and [main integration, host timing and full desktop evidence](performance/prepared-sampler-handoff-main-qualification-2026-10-17.json).
 
 ## Generated scheduler host experiment (2026-10-17)
 

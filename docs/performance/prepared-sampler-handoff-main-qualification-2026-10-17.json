@@ -1,0 +1,379 @@
+{
+  "date": "2026-10-17",
+  "status": "PASS: prepared sampler handoff integrated into main after isolated31tests, selectedRTLidentity, nativeO1/O2, actualguest, exactnewtrace and activeimage gates.",
+  "change": "Accept eligible next texture sample on the edge retiring current result, with matching config-derived lane and prepared coordinate. No shaderprogram or VLEN constants.",
+  "main_source_sha256": {
+    "src/main/scala/opengpu/graphics/TextureUnit.scala": "8f3d08d76b370fbf85dd9cdbe6c9c49f39fe0afd7e25d8b93219c2e406a6f9b0",
+    "src/main/scala/opengpu/graphics/TexSampleUnit.scala": "f7063ad6dcbd0c2ea93e300cee595b80c0d5315b2251ee6b40ee4e1f7c9901e2",
+    "src/test/scala/opengpu/graphics/TextureResultHandoffSpec.scala": "b712d45061504e52e56cf2dec59f45a1a02e562d5684959ebc8f718b9391a6f2",
+    "src/test/scala/opengpu/graphics/TexSampleLaneHandoffSpec.scala": "37659dbd96355f55386cbefa366cfe10c9e16b5a032b1748e4b06291766a14f4"
+  },
+  "selected_main_equivalence": {
+    "source_count": 296,
+    "unexpected_differences": [],
+    "scope": "Only generated trailing Scala source-locationcomments normalized; exact executableSVtext matches fullyqualified nativecandidate.",
+    "evidence_sha256": "8d04b47d632e7f4d6afd25b1047d978fb9500e9f7821fd004d7d65eb72ebc43a"
+  },
+  "qualification": {
+    "sampler_tests": 31,
+    "width_miters": {
+      "configurations": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32
+      ],
+      "instructions": 576
+    },
+    "old_sampler_negative_controls": 2,
+    "native_format_cases_per_optimization": 40,
+    "staging_cases_per_optimization": 12,
+    "forced_controls_per_optimization": 6,
+    "VM_replays_per_optimization": 18,
+    "GLES_cases_per_optimization": 21,
+    "O1_and_O2_passed": true,
+    "strict_training_trace": {
+      "calls": 45008,
+      "ticks": 3185555,
+      "commits": 64015331,
+      "holds": 403336334,
+      "dma_reads": 39627,
+      "dma_writes": 473603,
+      "dma_bytes": 6095512,
+      "seconds": 48.188508208,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "strict_optimized_trace": {
+      "calls": 45008,
+      "ticks": 3185555,
+      "commits": 64015331,
+      "holds": 403336334,
+      "dma_reads": 39627,
+      "dma_writes": 473603,
+      "dma_bytes": 6095512,
+      "seconds": 25.592329958,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "scope": "Independentpixel/depthoracle, omittedfields/uniforms/allRAMoutsideboundedFSscratch; allnativeO2fullRAMmatchesownO1. Fresh actualguest/realrecorder strictscanout."
+  },
+  "balanced_small_native": {
+    "summary": {
+      "solid": {
+        "baseline": {
+          "steady_ROI_seconds": {
+            "median": 8.183450668,
+            "min": 8.176015252000001,
+            "max": 8.241391419
+          },
+          "steady_ticks": {
+            "median": 121058,
+            "min": 121058,
+            "max": 121058
+          },
+          "wall_seconds": {
+            "median": 9.538042499916628,
+            "min": 9.467126457951963,
+            "max": 10.125516042113304
+          },
+          "cpu_seconds": {
+            "median": 9.472225000000002,
+            "min": 9.44836,
+            "max": 9.518278999999996
+          }
+        },
+        "candidate": {
+          "steady_ROI_seconds": {
+            "median": 8.153901878,
+            "min": 8.123441001,
+            "max": 8.176255417
+          },
+          "steady_ticks": {
+            "median": 121058,
+            "min": 121058,
+            "max": 121058
+          },
+          "wall_seconds": {
+            "median": 9.427925375057384,
+            "min": 9.4034729169216,
+            "max": 10.131635083118454
+          },
+          "cpu_seconds": {
+            "median": 9.413858,
+            "min": 9.393548000000003,
+            "max": 9.478138000000001
+          }
+        },
+        "candidate_over_baseline": {
+          "steady_ROI_seconds": 0.9963892016706904,
+          "steady_ticks": 1.0,
+          "wall_seconds": 0.9884549555257061,
+          "cpu_seconds": 0.9938380897835511
+        }
+      },
+      "spatial": {
+        "baseline": {
+          "steady_ROI_seconds": {
+            "median": 10.370431374,
+            "min": 10.363133628,
+            "max": 10.427715417
+          },
+          "steady_ticks": {
+            "median": 152523,
+            "min": 152523,
+            "max": 152523
+          },
+          "wall_seconds": {
+            "median": 11.989695208147168,
+            "min": 11.96488600014709,
+            "max": 12.033202999969944
+          },
+          "cpu_seconds": {
+            "median": 11.968484000000005,
+            "min": 11.953712000000003,
+            "max": 12.011516
+          }
+        },
+        "candidate": {
+          "steady_ROI_seconds": {
+            "median": 10.213790084,
+            "min": 10.174057417,
+            "max": 10.214858624
+          },
+          "steady_ticks": {
+            "median": 145418,
+            "min": 145418,
+            "max": 145418
+          },
+          "wall_seconds": {
+            "median": 11.799966665916145,
+            "min": 11.763679875060916,
+            "max": 11.800500666024163
+          },
+          "cpu_seconds": {
+            "median": 11.784053999999998,
+            "min": 11.754451999999997,
+            "max": 11.791685
+          }
+        },
+        "candidate_over_baseline": {
+          "steady_ROI_seconds": 0.9848953930313139,
+          "steady_ticks": 0.9534168617192161,
+          "wall_seconds": 0.9841756993036737,
+          "cpu_seconds": 0.9845903624886821
+        }
+      }
+    },
+    "samples_per_artifact_per_scene": 3,
+    "draws_per_process": 16,
+    "warmup_draws_excluded": 2
+  },
+  "balanced_large_native": {
+    "summary": {
+      "baseline": {
+        "seconds": {
+          "median": 11.913409292,
+          "min": 11.803089208,
+          "max": 11.943471166
+        },
+        "ticks": {
+          "median": 130970,
+          "min": 130970,
+          "max": 130970
+        },
+        "process_wall_seconds": {
+          "median": 12.046798916067928,
+          "min": 11.912522666854784,
+          "max": 12.685485082911327
+        },
+        "process_CPU_seconds": {
+          "median": 12.014452000000004,
+          "min": 11.874563,
+          "max": 12.020118
+        }
+      },
+      "candidate": {
+        "seconds": {
+          "median": 11.78503225,
+          "min": 11.766480583,
+          "max": 11.827761333
+        },
+        "ticks": {
+          "median": 123300,
+          "min": 123300,
+          "max": 123300
+        },
+        "process_wall_seconds": {
+          "median": 11.876089666970074,
+          "min": 11.851383249973878,
+          "max": 12.586184500018135
+        },
+        "process_CPU_seconds": {
+          "median": 11.857692999999998,
+          "min": 11.841405,
+          "max": 11.934934999999998
+        }
+      },
+      "candidate_over_baseline": {
+        "seconds": 0.9892241558353739,
+        "ticks": 0.9414369702985417,
+        "process_wall_seconds": 0.9858294929393929,
+        "process_CPU_seconds": 0.9869524635830244
+      }
+    },
+    "samples_per_artifact": 3,
+    "side": 256,
+    "pixel_depth_pairs_per_sample": 65536,
+    "all_pixel_depth_and_memory_checks": true
+  },
+  "profile_scope": "Priorhostbaseline73ownprofiles; candidate72ownprofiles excludes invalidoldRTLdesktop-prefix. Completeartifactcomparisonincludestrainingdifference.",
+  "actual_full640": {
+    "guest": {
+      "started": 1792179512.235374,
+      "pid": 80665,
+      "stage": "terminal",
+      "replays": [],
+      "qemu_sha256": "f93421717cb81b93ede08e774eac0c462c64d2cc94453c00ca686e1be205cb23",
+      "archive_sha256": "59461111fac49e34c299990b3d71614d15822768a5e63e154f6ebe056a0cb27b",
+      "proof": "/Users/duckdonald/workspace/gpu/.artifacts/pth-full640",
+      "profile": false,
+      "scope": "Private prepared-sample result handoff on currentmainselected fourCU RTL and committed sampler-format Mesa;cap28; explicitfirst9scratchcontract,immutablevalidatedread/writeusage,DMAaliasguard andunchangedMesaoptin. StandaloneDRMdefault/optin/all4096pixels+outputcanaries,18VMreplays,21GLES,quadbatch/offscreen/private-depth/GTK64strictscanout; desktopflagselectsfull640only. Nohostspeedclaim.",
+      "exit_status": 0,
+      "guest_seconds": 619.0090241250582,
+      "markers": {
+        "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+        "output_usage=1": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "fragment staging transient=1": true
+      },
+      "native_cases": 0,
+      "quad_batch_pass": true,
+      "payload_unchanged": true,
+      "trace_requested": true,
+      "trace_present": true,
+      "passed": true,
+      "finished": 1792180131.441493
+    },
+    "milestones": {
+      "background": {
+        "seconds": 174.99675329192542,
+        "evidence": {
+          "scope": "Wallpaperandstaticpanelcrops,notcompleteGTKstartup",
+          "regions": [
+            [
+              5,
+              5,
+              37,
+              37
+            ],
+            [
+              600,
+              5,
+              632,
+              37
+            ],
+            [
+              5,
+              410,
+              37,
+              442
+            ],
+            [
+              600,
+              410,
+              632,
+              442
+            ],
+            [
+              5,
+              451,
+              37,
+              477
+            ]
+          ],
+          "tolerance": 3
+        },
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/pth-full640/first-background.png",
+        "image_sha256": "9515140fdb32ccdaab5c098163fb8ac5ddee28c005981210cc25a0ecdec96c87",
+        "source_sha256": "80848af4f05d4e0472a4683d3137194b7a7171bdbca7f6ebee7d5cba3429bdb0"
+      },
+      "active": {
+        "seconds": 611.5482501669321,
+        "evidence": {
+          "colour_pixels": 16571,
+          "expected_rgb": [
+            242,
+            89,
+            46
+          ],
+          "tolerance": 3
+        },
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/pth-full640/first-active.png",
+        "image_sha256": "f0343f217bfcc970fb5a0b384fc9d32486bd4ab428dc14021b4ed07016f687a7",
+        "source_sha256": "1e7d8836f29cc6d30ed9dca12e61da0b4a9b710facb8fe79f952eaaccb2a5a3a"
+      }
+    },
+    "manual_review": {
+      "at": 1792181475.042479,
+      "reviewed": true,
+      "active": {
+        "passed": true,
+        "reviewed": true,
+        "image": "/Users/duckdonald/workspace/gpu/.artifacts/pth-full640/qualified-active.png",
+        "image_sha256": "f0343f217bfcc970fb5a0b384fc9d32486bd4ab428dc14021b4ed07016f687a7",
+        "source": "/Users/duckdonald/workspace/gpu/.artifacts/pth-full640/gtk-smoke-verified.ppm",
+        "source_sha256": "1e7d8836f29cc6d30ed9dca12e61da0b4a9b710facb8fe79f952eaaccb2a5a3a",
+        "observations": "640x480 greyfloraldesktop, legibleGTKtitle/label/button, solidorangeGLpanelinsideblackborder, intactbottompanel; no visiblecorruption."
+      },
+      "idle": {
+        "readback_passed": true,
+        "onscreen_frame_captured": false,
+        "scope": "IdleRGBA marker in actualguestlog. No separateidleonscreenframe wascaptured, so no idlevisualclaim."
+      },
+      "timing_scope": "Recorder/periodicscanout functionalguest; no controlledwhole-desktopspeedratio."
+    }
+  },
+  "complete_new_desktop_trace": {
+    "passed": true,
+    "exit_status": 0,
+    "wall_seconds": 565.050149000017,
+    "cpu_seconds": 565.0311009999999,
+    "replay": {
+      "calls": 154410,
+      "ticks": 15447854,
+      "commits": 1979914972,
+      "holds": 6830582608,
+      "dma_reads": 567152,
+      "dma_writes": 3729183,
+      "dma_bytes": 64927952,
+      "seconds": 564.9950485,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "trace_sha256": "443b5ce0a20fdceca4bcf997af1b10fc6c4cdc57d51b07311af458a17c904040"
+  },
+  "selection": {
+    "qemu": ".artifacts/shared-cu/texture-prepared-handoff-native/qemu-optimized",
+    "qemu_sha256": "2ff432784583c48b3b1282dba501118462d049b3b57321481c45e98581616019",
+    "archive_sha256": "095e78d17a16d7c687dbedeadbf780e0a381e10b31db5095641d2a99067ab016",
+    "header_sha256": "4bda9453aff60c9a4b9d8297bddc29881fc982f2553300a9df5900a93bfe9caf"
+  },
+  "image": {
+    "path": "docs/images/opengpu-gtk-sampler-handoff-20261017.png",
+    "sha256": "f0343f217bfcc970fb5a0b384fc9d32486bd4ab428dc14021b4ed07016f687a7"
+  },
+  "installed_qemu_sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0",
+  "limitations": [
+    "Full640liveguesttimingisdiagnostic, notabalancedwhole-desktopspeedcomparison.",
+    "Newandoldfull640tracesdifferinwork; no667s/565swhole-desktopspeedratio.",
+    "Cyclegainsarelargerthanhostgains; remaininghostevaluation/wakeworkisunderinvestigation.",
+    "IdleRGBAreadbackpassed; noseparateidleonscreenimagewasreviewed."
+  ]
+}

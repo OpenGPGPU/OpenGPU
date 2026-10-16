@@ -208,26 +208,36 @@ class TexSampleUnit(
   when(prepareMore && (!prepareActive || coordinatePipeline.io.in.fire)) {
     prepareLane := prepareLane + 1.U
   }
+  // Select the real next lane while the previous result retires. A new
+  // automatic-LOD quad, an inactive successor, scalar and broadcast keep
+  // the ordinary idle path. Lane width and final-lane tests follow config.
+  private val vectorLaneActive = executionMaskReg(laneReg)
+  private val nextLane = (laneReg + 1.U)(laneWidth - 1, 0)
+  private val sameMip = if (config.lanes <= 4) true.B else
+    laneReg(1, 0) =/= 3.U || minLevelReg === maxLevelReg
+  private val canChain = vectorModeReg && !broadcastTexelReg &&
+    laneReg =/= (config.lanes - 1).U && executionMaskReg(nextLane) && sameMip
+  private val retiringSample = sampler.io.result.valid
+  private val requestedLane = Mux(retiringSample, nextLane, laneReg)
   private val usePrepared = preparedModeReg && !firstSampleReg
   sampler.io.prepared.get.valid := usePrepared && coordinatePipeline.io.out.valid
   sampler.io.prepared.get.bits := coordinatePipeline.io.out.bits.sample
   coordinatePipeline.io.out.ready := usePrepared && sampler.io.sample.fire
   when(preparedModeReg && sampler.io.sample.fire) { firstSampleReg := false.B }
   when(usePrepared && sampler.io.sample.fire) {
-    assert(coordinatePipeline.io.out.bits.lane === laneReg, "prepared coordinate lane must match sample owner")
+    assert(coordinatePipeline.io.out.bits.lane === requestedLane, "prepared coordinate lane must match sample owner")
   }
   when(io.vectorIn.fire || io.in.fire) {
     assert(!coordinatePipeline.io.busy, "coordinate metadata must drain before the next instruction")
   }
 
-  private val vectorLaneActive = executionMaskReg(laneReg)
-  sampler.io.sample.valid :=
-    state === sSample && (!vectorModeReg || vectorLaneActive) &&
+  sampler.io.sample.valid := state === sSample &&
+    Mux(retiringSample, canChain, !vectorModeReg || vectorLaneActive) &&
       (!usePrepared || coordinatePipeline.io.out.valid)
   sampler.io.sample.bits.u :=
-    Mux(vectorModeReg, uVectorReg(laneReg), uReg)
+    Mux(vectorModeReg, uVectorReg(requestedLane), uReg)
   sampler.io.sample.bits.v :=
-    Mux(vectorModeReg, vVectorReg(laneReg), vReg)
+    Mux(vectorModeReg, vVectorReg(requestedLane), vReg)
   sampler.io.sample.bits.mipLevel := mipLevelReg
   sampler.io.sample.bits.lodFrac := mipFracReg
   sampler.io.result.ready :=

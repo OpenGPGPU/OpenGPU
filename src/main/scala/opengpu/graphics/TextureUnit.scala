@@ -188,7 +188,7 @@ class TextureUnit(
   private val idxXReg = Reg(Vec(2, UInt(14.W)))
   private val idxYReg = Reg(Vec(2, UInt(14.W)))
 
-  io.sample.ready := state === sIdle
+  io.sample.ready := state === sIdle || (state === sDone && io.result.ready)
 
   // ---------------------------------------------------------------------
   // Coordinate decode, split across the sWrap and sTap stages so neither
@@ -428,48 +428,50 @@ class TextureUnit(
     }
   }
 
+  private def acceptSample(): Unit = {
+    formatReg := io.texFormat
+    // Power-of-two extents are required for the mask-based REPEAT wrap.
+    when(io.wrapMode === TexWrap.repeat) {
+      assert(
+        (io.texWidth & (io.texWidth - 1.U)) === 0.U &&
+          (io.texHeight & (io.texHeight - 1.U)) === 0.U,
+        "REPEAT wrapping requires power-of-two texture dimensions")
+    }
+    assert(io.texWidth =/= 0.U && io.texHeight =/= 0.U,
+      "texture dimensions must be non-zero")
+    uReg := io.sample.bits.u
+    vReg := io.sample.bits.v
+    levelBase := io.texBase
+    levelW := io.texWidth
+    levelH := io.texHeight
+    levelWMinusOne := io.texWidth - 1.U
+    levelHMinusOne := io.texHeight - 1.U
+    val selectedLevel = Mux(io.sample.bits.mipLevel > io.texMaxLevel,
+      io.texMaxLevel, io.sample.bits.mipLevel)
+    levelSteps := selectedLevel
+    baseMipLevel := selectedLevel
+    // There is no next level at the upper clamp, so suppress the second
+    // four-tap fetch rather than blending a level with itself.
+    // min(requested, max) < max iff requested < max. Keep the clamp
+    // mux out of the fractional-weight register's timing cone.
+    lodFracReg := Mux(io.sample.bits.mipLevel < io.texMaxLevel,
+      io.sample.bits.lodFrac, 0.U)
+    secondLevel := false.B
+    state := sLevel
+    if (allowPrepared) {
+      when(io.prepared.get.valid) {
+        assert(io.sample.bits.mipLevel === 0.U && io.sample.bits.lodFrac === 0.U &&
+          io.texMaxLevel === 0.U, "prepared samples require fixed base-level filtering")
+        singleTexel := false.B
+        wReg := io.prepared.get.bits.weights
+        beginTapFetch(io.prepared.get.bits.addresses.toSeq)
+      }
+    }
+  }
+
   switch(state) {
     is(sIdle) {
-      when(io.sample.fire) {
-        formatReg := io.texFormat
-        // Power-of-two extents are required for the mask-based REPEAT wrap.
-        when(io.wrapMode === TexWrap.repeat) {
-          assert(
-            (io.texWidth & (io.texWidth - 1.U)) === 0.U &&
-              (io.texHeight & (io.texHeight - 1.U)) === 0.U,
-            "REPEAT wrapping requires power-of-two texture dimensions")
-        }
-        assert(io.texWidth =/= 0.U && io.texHeight =/= 0.U,
-          "texture dimensions must be non-zero")
-        uReg := io.sample.bits.u
-        vReg := io.sample.bits.v
-        levelBase := io.texBase
-        levelW := io.texWidth
-        levelH := io.texHeight
-        levelWMinusOne := io.texWidth - 1.U
-        levelHMinusOne := io.texHeight - 1.U
-        val selectedLevel = Mux(io.sample.bits.mipLevel > io.texMaxLevel,
-          io.texMaxLevel, io.sample.bits.mipLevel)
-        levelSteps := selectedLevel
-        baseMipLevel := selectedLevel
-        // There is no next level at the upper clamp, so suppress the second
-        // four-tap fetch rather than blending a level with itself.
-        // min(requested, max) < max iff requested < max. Keep the clamp
-        // mux out of the fractional-weight register's timing cone.
-        lodFracReg := Mux(io.sample.bits.mipLevel < io.texMaxLevel,
-          io.sample.bits.lodFrac, 0.U)
-        secondLevel := false.B
-        state := sLevel
-        if (allowPrepared) {
-          when(io.prepared.get.valid) {
-            assert(io.sample.bits.mipLevel === 0.U && io.sample.bits.lodFrac === 0.U &&
-              io.texMaxLevel === 0.U, "prepared samples require fixed base-level filtering")
-            singleTexel := false.B
-            wReg := io.prepared.get.bits.weights
-            beginTapFetch(io.prepared.get.bits.addresses.toSeq)
-          }
-        }
-      }
+      when(io.sample.fire) { acceptSample() }
     }
     is(sLevel) {
       when(levelSteps === 0.U) {
@@ -542,7 +544,10 @@ class TextureUnit(
       state := sDone
     }
     is(sDone) {
-      when(io.result.fire) { state := sIdle }
+      when(io.result.fire) {
+        when(io.sample.fire) { acceptSample() }
+          .otherwise { state := sIdle }
+      }
     }
   }
 }
