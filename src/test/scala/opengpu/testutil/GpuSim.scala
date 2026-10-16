@@ -29,24 +29,40 @@ import scala.jdk.CollectionConverters._
   * The cache lives under `target/chiselsim`, so `sbt clean` drops it.  Pass
   * `-Dopengpu.simCache=off` to run against the real Verilator without caching,
   * and set `GPU_SIM_DEBUG=1` to log every build the shim restores or publishes.
+  * Optional `opengpu.simHierarchy=GpuComputeUnit` compiles repeated modules
+  * as hierarchy libraries; its flags and control file enter the cache key.
+  * Assertions stay enabled; UNOPTFLAT is suppressed at hierarchical DPI
+  * boundaries. `opengpu.simJobs=N` bounds build parallelism. With caching off,
+  * `opengpu.simWorkspace` can isolate temporary files; requested options still
+  * apply. Without these properties, the normal flat cache path is unchanged.
   */
 object GpuSim extends PeekPokeAPI {
 
+  private val hierarchyModules = sys.props.get("opengpu.simHierarchy").toSeq
+    .flatMap(_.split(",")).filter(_.nonEmpty).distinct.sorted
+  require(hierarchyModules.forall(_.matches("[A-Za-z_][A-Za-z0-9_]*")),
+    "hierarchy modules must be plain Verilog module identifiers")
+  private val hierarchy = hierarchyModules.nonEmpty
+  private val buildJobs = sys.props.get("opengpu.simJobs").map(_.toInt)
+  require(buildJobs.forall(_ > 0), "simulation build jobs must be positive")
   private val cacheSetting = sys.props.get("opengpu.simCache")
   private val enabled = !cacheSetting.contains("off")
-  private val root = Paths.get(cacheSetting.filter(_ => enabled).getOrElse("target/chiselsim"))
+  private val root = Paths.get(sys.props.get("opengpu.simWorkspace").getOrElse(
+    cacheSetting.filter(_ => enabled).getOrElse("target/chiselsim")))
   private val binDirectory = root.resolve("bin")
   private val cacheDirectory = root.resolve("cache")
 
   private val slots = new AtomicInteger(0)
 
-  private val backend: Backend = if (enabled) locateVerilator() match {
+  private val backend: Backend = if (enabled || hierarchy || buildJobs.nonEmpty) locateVerilator() match {
     case Some(verilator) =>
       val shim = binDirectory.resolve("verilator")
       Files.createDirectories(binDirectory)
       Files.write(shim, shimScript(verilator, cacheDirectory.toAbsolutePath).getBytes("UTF-8"))
       shim.toFile.setExecutable(true)
       new Backend(shim.toAbsolutePath.toString)
+    case None if hierarchy || buildJobs.nonEmpty =>
+      throw new IllegalStateException("Explicit simulation options require Verilator on PATH")
     case None =>
       Backend.initializeFromProcessEnvironment()
   } else {
@@ -103,6 +119,19 @@ object GpuSim extends PeekPokeAPI {
        |verilator='$verilator'
        |cache='$cache'
        |log="$cache/shim.log"
+       |case "$${1:-}" in --version) exec "$$verilator" "$$@" ;; esac
+       |${if (hierarchy) {
+          val control = "`verilator_config\n" + hierarchyModules.map(m =>
+            "hier_block -module \"" + m + "\"\n").mkString
+          "cat > gpu-sim-hierarchy.vlt <<'GPU_SIM_HIERARCHY_CONTROL'\n" +
+            control + "GPU_SIM_HIERARCHY_CONTROL\n" +
+            "assertions=0\nfor arg in \"$@\"; do\n" +
+            "  case \"$arg\" in --assert) assertions=1 ;; --no-assert) exit 2 ;; esac\ndone\n" +
+            "[ \"$assertions\" = 1 ] || { echo 'GpuSim hierarchy requires assertions' >&2; exit 2; }\n" +
+            "set -- \"$@\" --hierarchical -Wno-UNOPTFLAT gpu-sim-hierarchy.vlt"
+        } else ""}
+       |${buildJobs.map(n => "set -- \"$@\" --build-jobs " + n).getOrElse("")}
+       |${if (!enabled) "exec \"$verilator\" \"$@\"" else ""}
        |out=''
        |mdir=''
        |filelist=''
@@ -128,6 +157,7 @@ object GpuSim extends PeekPokeAPI {
        |  {
        |    "$$verilator" --version 2>/dev/null
        |    printf '%s\\n' "$$@" | sed "s|$$workspace/|WS/|g; s|$$physical/|WS/|g"
+       |${if (hierarchy) "    cksum < gpu-sim-hierarchy.vlt" else ""}
        |    if [ -n "$$filelist" ] && [ -f "$$filelist" ]; then
        |      while IFS= read -r f; do
        |        f=$$(printf '%s' "$$f" | sed "s|$$workspace/||g; s|$$physical/||g")

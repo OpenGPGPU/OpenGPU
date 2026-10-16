@@ -1,0 +1,179 @@
+{
+  "status": "PASS: optional hierarchical verification with cache and assertion validation",
+  "artifact_root": ".artifacts/shared-cu/sim-hierarchy-config",
+  "default": "flat, unchanged",
+  "properties": {
+    "opengpu.simHierarchy": "comma-separated plain Verilog module identifiers, e.g. GpuComputeUnit",
+    "opengpu.simJobs": "positive build-job limit; forwarded before cache hashing, including cache-off",
+    "opengpu.simWorkspace": "optional workspace/root override, useful for isolated cache-off runs"
+  },
+  "source_sha256": {
+    "src/test/scala/opengpu/testutil/GpuSim.scala": "9220e05f0e9f51780513d87f4b6e2d93fb64f6698b335911dd0c3cc48a97df18",
+    "src/test/scala/opengpu/testutil/GpuSimHierarchySpec.scala": "77c58b3c31cc2a734e47c700729438133f1e9b3adace51d0159043fe7a270162"
+  },
+  "cache_proof": {
+    "flat_leaf_harness_keys": {
+      "flat": "25236494301527",
+      "leaf": "20631884971593",
+      "harness": "35748150711593"
+    },
+    "new_main_leaf_harness_jobs_keys": {
+      "leaf": "36220837381586",
+      "harness": "24160982871586",
+      "jobs": "25245472941601"
+    },
+    "flags_and_control_contents_hashed": true,
+    "stock_and_new_flat_keys_identical": [
+      [
+        "hit 391445407225623"
+      ],
+      [
+        "hit 391445407225623"
+      ]
+    ],
+    "cache_off_preserves_options": true,
+    "cached_hardware_assertion_sentinel": true
+  },
+  "main_tests": [
+    {
+      "label": "flat",
+      "status": 0,
+      "expected": true,
+      "seconds": 8.483108791988343,
+      "cache_events": [
+        "store 11631446211289",
+        "hit 11631446211289",
+        "hit 11631446211289",
+        "hit 11631446211289",
+        "hit 11631446211289",
+        "hit 11631446211289",
+        "store 2954107911520",
+        "hit 2954107911520",
+        "hit 2954107911520"
+      ]
+    },
+    {
+      "label": "leaf",
+      "status": 0,
+      "expected": true,
+      "seconds": 4.380057040834799,
+      "cache_events": [
+        "store 36220837381586",
+        "hit 36220837381586",
+        "hit 36220837381586"
+      ]
+    },
+    {
+      "label": "harness",
+      "status": 0,
+      "expected": true,
+      "seconds": 4.349082832923159,
+      "cache_events": [
+        "store 24160982871586",
+        "hit 24160982871586",
+        "hit 24160982871586"
+      ]
+    },
+    {
+      "label": "jobs",
+      "status": 0,
+      "expected": true,
+      "seconds": 2.9529562091920525,
+      "cache_events": [
+        "store 25245472941601",
+        "hit 25245472941601",
+        "hit 25245472941601"
+      ]
+    },
+    {
+      "label": "jobs-repeat",
+      "status": 0,
+      "expected": true,
+      "seconds": 2.1475391250569373,
+      "cache_events": [
+        "hit 25245472941601",
+        "hit 25245472941601",
+        "hit 25245472941601"
+      ]
+    },
+    {
+      "label": "off-leaf",
+      "status": 0,
+      "expected": true,
+      "seconds": 12.778728708159178,
+      "cache_events": []
+    },
+    {
+      "label": "off-flat",
+      "status": 0,
+      "expected": true,
+      "seconds": 9.354261332890019,
+      "cache_events": []
+    },
+    {
+      "label": "invalid-jobs",
+      "status": 1,
+      "expected": true,
+      "seconds": 0.5156104590278119,
+      "cache_events": []
+    },
+    {
+      "label": "full4",
+      "status": 0,
+      "seconds": 55.66218987503089,
+      "pixel_depth_metadata_identical": true,
+      "metrics": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "16047",
+        "active_cu_cycles": "38240",
+        "peak_cus": "4",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "3678",
+        "texture_lines": "228"
+      }
+    }
+  ],
+  "main_compile_log_sha256": "aa79e5fb2831021db33ab8ad2bf354f4e4a5784ae31f985b56f503d5960e767d",
+  "cold_pair": {
+    "scope": "One matched cold flat/hierarchical pair on the same frozen3cf451a four-CU spatial scene. Model cache off and ccache disabled for both, two compile jobs, assertions enabled. Native pipeline and earlier Scala experiments terminal before starting. Background system activity is not disabled; no universal build-time claim.",
+    "elapsed_reduction_percent": 33.840202093657034,
+    "runs": [
+      {
+        "mode": "flat",
+        "seconds": 242.16311520780437,
+        "compiler_seconds": 197.52295999997295,
+        "compiler_user_cpu_seconds": 321.894846,
+        "cycles": 16047,
+        "pixel_depth_metadata_identical": true,
+        "assertions_enabled": true,
+        "hierarchical": false
+      },
+      {
+        "mode": "hierarchy",
+        "seconds": 160.21462762518786,
+        "compiler_seconds": 114.82368616713211,
+        "compiler_user_cpu_seconds": 208.125997,
+        "cycles": 16047,
+        "pixel_depth_metadata_identical": true,
+        "assertions_enabled": true,
+        "hierarchical": true
+      }
+    ]
+  },
+  "build_structure": "Hierarchical GpuComputeUnit library is compiled once and reused across the four physical CUs; generated makefile paths retained in commands.jsonl.",
+  "limits": [
+    "One cold pair, not a multi-workload median; background system activity was not disabled.",
+    "Only UNOPTFLAT warnings are suppressed in explicit hierarchy mode because of the observed DPI-boundary warnings; assertions and other warning categories stay enabled.",
+    "Tests without the selected module should use flat mode or select their own present module.",
+    "This changes verification compilation, not RTL architecture or native Debian simulator performance."
+  ]
+}

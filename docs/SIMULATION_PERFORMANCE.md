@@ -1,5 +1,34 @@
 # Full-system simulation performance investigation
 
+## Optional faster Verilator builds (2026-10-16)
+
+The verification harness can compile repeated compute units as a shared
+hierarchical library. In one matched cold four-CU spatial-render test, with
+both model caching and ccache disabled and two compile jobs, elapsed time fell
+from **242 to 160 seconds (33.8%)**. Compiler CPU time fell from 322 to 208
+seconds. Both runs produced exactly 16,047 GPU cycles and identical complete
+colour/depth pixels and shader metadata. This is one cold pair; it is not a
+general speedup estimate for every test.
+
+For suites containing `GpuComputeUnit`, enable the mode explicitly:
+
+```sh
+sbt -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2 \
+  'testOnly opengpu.system.FullPoolTextureBufferedSpec'
+```
+
+`opengpu.simHierarchy` accepts comma-separated module names present in the
+test. The default remains flat. The hierarchy flags and control-file contents
+enter the binary cache key, so flat and different hierarchy configurations can
+share the cache safely. `opengpu.simJobs` sets a positive build-job limit.
+Both options still apply with `opengpu.simCache=off`; use
+`opengpu.simWorkspace=/absolute/private/path` to isolate an uncached workspace.
+Hierarchy mode suppresses the observed `UNOPTFLAT` warnings at Verilator's DPI
+boundaries. Assertions remain enabled, and a deliberate hardware assertion
+still propagates from fresh and cached models. Fresh/cached independence,
+separate configuration keys, job limits, cache-off behaviour and the complete
+four-CU scene pass the [mode qualification](performance/hierarchical-verification-mode-2026-10-16.json).
+
 ## Tagged staging and fast native checks (2026-10-16)
 
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per
