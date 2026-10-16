@@ -55,6 +55,7 @@ class KernelFragFrontendIO(config: GpuConfig, gfxConfig: GraphicsConfig) extends
   val depthOverride = Output(Bool())
   val shaderPc = Input(UInt(32.W))
   val inputSkip = Input(UInt(6.W))
+  val outputSkip = Input(UInt(4.W))
   /** Output-control ABI: 0 = legacy (any nonzero word emits), 1 = the
     * output-valid word splits into bit 0 emit / bit 1 depth override. */
   val abi1 = Input(Bool())
@@ -87,6 +88,7 @@ object KernelFragFrontendIO {
     front.depthOverride := worker.depthOverride
     worker.shaderPc := front.shaderPc
     worker.inputSkip := front.inputSkip
+    worker.outputSkip := front.outputSkip
     worker.abi1 := front.abi1
     worker.kernargBase := front.kernargBase
     worker.kernargBankStride := front.kernargBankStride
@@ -358,6 +360,7 @@ class KernelFragStage(
   private val slotTexMinLevel = Reg(Vec(2, UInt(4.W)))
   private val slotAbi1 = Reg(Vec(2, Bool()))
   private val slotInputSkip = Reg(Vec(2, UInt(6.W)))
+  private val slotOutputSkip = Reg(Vec(2, UInt(4.W)))
 
   texUnit.io.texBase := slotTexBase(execSlot)
   texUnit.io.texWidth := slotTexWidth(execSlot)
@@ -535,6 +538,7 @@ class KernelFragStage(
   private val wpTexMinLevel = Reg(UInt(4.W))
   private val wpAbi1 = Reg(Bool())
   private val wpInputSkip = Reg(UInt(6.W))
+  private val wpOutputSkip = Reg(UInt(4.W))
 
   io.fragIn.ready := !pendingValid && prodCount < batchCap.U
   io.drained := state === sIdle && !pendingValid
@@ -596,6 +600,7 @@ class KernelFragStage(
     wpShaderPc := io.shaderPc
     wpAbi1 := io.abi1
     wpInputSkip := io.inputSkip
+    wpOutputSkip := io.outputSkip
     wpKernarg := bankedKernarg(prodSlot)
     wpTexBase := io.texBase
     wpTexWidth := io.texWidth
@@ -640,6 +645,7 @@ class KernelFragStage(
       slotTexMinLevel(wpSlot) := wpTexMinLevel
       slotAbi1(wpSlot) := wpAbi1
       slotInputSkip(wpSlot) := wpInputSkip
+      slotOutputSkip(wpSlot) := wpOutputSkip
     }
   }
 
@@ -871,7 +877,10 @@ class KernelFragStage(
       val slice = position / batchCap
       if (slice == 6 || slice > 8) 0.U(4.W)
       else {
-        val enabled = if (slice < 6) !slotInputSkip(execSlot)(slice) else true.B
+        val enabled = if (slice < 6) !slotInputSkip(execSlot)(slice)
+          else if (slice == 7 || slice == 8)
+            !(slotOutputSkip(execSlot)(slice - 5) && slotOutputSkip(execSlot)(slice - 7))
+          else true.B
         Mux(enabled && (position % batchCap).U < execCount, 15.U(4.W), 0.U(4.W))
       }
     })
@@ -1012,7 +1021,23 @@ class KernelFragStage(
         requestQuadIdx := 0.U
         requestLaneIdx := 0.U
         wordPending := false.B
-        if (coalesceStaging) { field := outputFirstLine.U }
+        if (coalesceStaging) {
+          field := outputFirstLine.U
+          // Unwritten outputs retain the defaults captured with this bank.
+          // ABI0 always overrides depth; ABI1's default control only emits.
+          for (lane <- 0 until batchCap) {
+            val p0 = fragRecords(0)(lane / 4).lanes(lane % 4)
+            val p1 = fragRecords(1)(lane / 4).lanes(lane % 4)
+            when(slotOutputSkip(execSlot)(0)) {
+              outDepth(lane) := Mux(execSlot.asBool, p1.depth, p0.depth)
+            }
+            when(slotOutputSkip(execSlot)(1)) {
+              outValid(lane) := Mux(execSlot.asBool, p1.covered, p0.covered) &&
+                io.kernelCompletion.bits.success
+              outOverride(lane) := !slotAbi1(execSlot)
+            }
+          }
+        }
         state := sRead
       }
     }
@@ -1027,7 +1052,16 @@ class KernelFragStage(
           // A partial wide batch need not fetch output lines beyond its tail.
           val needed = MuxLookup(field, false.B)(
             (outputFirstLine to outputLastLine).map { line =>
-              line.U -> ((line * 16 % batchCap).U < execCount)
+              val words = (0 until 16).map { word =>
+                val position = line * 16 + word
+                val slice = position / batchCap
+                val active = (position % batchCap).U < execCount
+                if (slice == 6) active
+                else if (slice == 7 || slice == 8)
+                  active && !slotOutputSkip(execSlot)(slice - 7)
+                else false.B
+              }
+              line.U -> VecInit(words).asUInt.orR
             })
           when(needed) {
             req.transactionId := freeLineId
@@ -1050,14 +1084,18 @@ class KernelFragStage(
                 val lane = position % batchCap
                 val data = io.wordMemResp.bits.readData(32 * word + 31, 32 * word)
                 if (slice == 6) outWords(lane) := data
-                else if (slice == 7) outDepth(lane) := data.asSInt
+                else if (slice == 7) {
+                  when(!slotOutputSkip(execSlot)(0)) { outDepth(lane) := data.asSInt }
+                }
                 else if (slice == 8) {
+                  when(!slotOutputSkip(execSlot)(1)) {
                   val covered = Mux(execSlot.asBool,
                     fragRecords(1)(lane / 4).lanes(lane % 4).covered,
                     fragRecords(0)(lane / 4).lanes(lane % 4).covered)
                   outValid(lane) := FragmentShaderAbi.emits(data, slotAbi1(execSlot)) &&
                     covered && !execFailed
                   outOverride(lane) := FragmentShaderAbi.overridesDepth(data, slotAbi1(execSlot))
+                }
                 }
               }
             }

@@ -202,9 +202,17 @@ reserved-zero.
 With `GPU_CAP_FRAGMENT_INPUT_USAGE` (bit 27), raw word 32 bits 24:19
 carry an omission mask for fragment input SoA slices 0–5: x, y, input depth,
 input colour, u and v. Zero requests full staging. The coalesced staging path
-can omit the selected inputs; output initialization and uniforms remain
-unchanged. Metadata follows the draw context and is snapshotted per batch.
+can omit the selected inputs; this input mask leaves output initialization and
+uniforms unchanged. Metadata follows the draw context and is snapshotted per batch.
 The legacy word staging path conservatively writes all inputs.
+
+`GPU_CAP_FRAGMENT_OUTPUT_USAGE` (bit 28) also permits raw word 32 bits 28:25
+to describe shader accesses to depth/control output slices 7/8. The low two
+hint bits promise no stores, so readback can use the captured raster depth and
+the ABI's default emit/override control. The high two bits promise neither
+loads nor stores and permit omitting initialization when the matching low bit
+is set. Any possible partial or conditional store keeps initialization and
+readback for that output. The legacy word path retains full traffic.
 
 Linux rejects these bits in user command records. To permit omission, a caller
 must query `OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING` and the hardware
@@ -213,7 +221,9 @@ the first nine fragment SoA slices to be transient scratch, whose contents the
 caller must not observe outside the draw or reuse as input to a later job.
 Uniforms at slice 9 onward retain their usual contract. The driver rejects
 overlap between the scratch DMA span and other draw resources, validates the
-immutable shader snapshot, and derives the mask from its possible input reads.
+immutable shader snapshot, and derives input/output hints from all possible
+reads and stores. Fixed-function depth-test and depth-write state retain their
+usual behavior.
 Analysis uses runtime launch capacity and does not identify stock binaries.
 Without the flag, staging retains its CPU-visible behavior.
 

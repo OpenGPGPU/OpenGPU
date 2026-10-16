@@ -7,6 +7,7 @@ import chisel3.util._
 class DrawContext extends Bundle with HasResolvedDrawState {
   val shaderPc = UInt(32.W)
   val fragInputSkip = UInt(6.W)
+  val fragOutputSkip = UInt(4.W)
   val kernargBase = UInt(32.W)
   val kernargBankStride = UInt(32.W)
   val texFormat = UInt(PixelFormat.width.W)

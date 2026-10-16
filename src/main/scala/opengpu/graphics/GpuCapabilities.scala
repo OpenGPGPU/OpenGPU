@@ -53,6 +53,7 @@ object GpuCapabilities {
   /** Each unified render descriptor can select its own target dimensions. */
   val RenderExtents = 26
   val FragmentInputUsage = 27
+  val FragmentOutputUsage = 28
 }
 
 /** Byte fields of GpuCommandMmioRegs.SHADER_CONFIG and the DRM query. */

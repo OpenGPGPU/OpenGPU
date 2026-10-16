@@ -186,6 +186,7 @@ struct drm_opengpu_param {
 #define OPENGPU_CAP_NATIVE_PIXEL_FORMATS (1u << 25)
 #define OPENGPU_CAP_RENDER_EXTENTS (1u << 26)
 #define OPENGPU_CAP_FRAGMENT_INPUT_USAGE (1u << 27)
+#define OPENGPU_CAP_FRAGMENT_OUTPUT_USAGE (1u << 28)
 
 
 /* Sample mode field width (0 = 1x, 1 = 2x, 2 = 4x). */

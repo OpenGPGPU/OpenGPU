@@ -42,4 +42,5 @@ trait HasDrawState extends HasResolvedDrawState {
   val stateOverride = Bool()
   /** Optional promise: shader does not read these input SoA slices (0..5). */
   val fragInputSkip = UInt(6.W)
+  val fragOutputSkip = UInt(4.W)
 }

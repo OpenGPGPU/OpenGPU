@@ -1,5 +1,5 @@
 {
-  "status": "PASS:24instrumented native fixtures and newcap28 realDebian18compute+21GLES+GTK64; optimized artifact building",
+  "status": "PASS: exact-model 43-profile optimized build, 12 native cases, 4 traced cases, Debian compute/GLES/GTK64, main-source promotion gates",
   "artifact_root": ".artifacts/shared-cu/fragment-output-usage-native",
   "base_commit": "bc557c5",
   "scope": "Same new4CU16x8fullVS/FS/FPU640x480 generated model; modes0fullABI,1input-only,2input+outputomission. Inputonly/fulldefault match priornative ticks andcomplete outputSHA; eachrun independently checks4096RGBA/depthpairs, uniforms,outsideallocatedscratchandallomittedinput/outputbytes. InstrumentedO1 timingsnotbenchmarks.",
@@ -564,9 +564,9 @@
     "raw_profiles_verified": true
   },
   "limits": [
-    "No wall-time speedup claim: these are instrumented qualification runs. WaitforO2native+guestgates andbalanced quiet host measurements.",
-    "Readbyte savings differ from the original depth/control-only opportunity because overall cachedtraffic changes; collectfield-classified optimized traces before attributingallread savings.",
-    "Newfeaturefull640desktoppending; existingbc557c5 full640desktop remainslatestfullyqualified. Main/defaultQEMU unchanged."
+    "Native instrumented and traced timings are qualification evidence, not host benchmarks; use the separate balanced paired report.",
+    "Net read savings are smaller than eliminated depth/control reads because other cached traffic changes.",
+    "New-feature full640 desktop qualification is running separately. The installed default QEMU is unchanged."
   ],
   "evidence": {
     ".artifacts/shared-cu/fragment-output-usage-native/guest-train64.json": "781321c43a9e8756516904b697c6efb6b2d8212a3ca5094e1636022c4c86d4eb",
@@ -574,6 +574,1028 @@
     ".artifacts/shared-cu/fragment-output-usage-native/profile-inputs.json": "80cb85c3c9332044ff9590286be5b60df215be9a066aa8acdeef87fd6829b912",
     ".artifacts/shared-cu/fragment-output-usage/scene-state.json": "6140e3598c260919fdb1dd450128b2ee1fcaee181364e4961fe42a7c4b14fa35",
     ".artifacts/shared-cu/fragment-output-usage/rtl-v2-state.json": "0e9b6d5f76e1998079f2acd9a442d13bb51d2dd12d6651146418fc8c5ecbb199",
-    ".artifacts/shared-cu/fragment-output-usage/overlap-v3-state.json": "3ed8791bc85e3aa26c84999c8807ed3037774715110761ccfdea088b94df1ce4"
-  }
+    ".artifacts/shared-cu/fragment-output-usage/overlap-v3-state.json": "3ed8791bc85e3aa26c84999c8807ed3037774715110761ccfdea088b94df1ce4",
+    ".artifacts/shared-cu/fragment-output-usage-native/state.json": "3b10679dcab40b93a5350053115256eb0fe0a362e982d4cc33e7c4128d5797b1",
+    ".artifacts/shared-cu/fragment-output-usage-native/guest-opt64.json": "ef49802b2b32b82ace2502f43e0e5fe52fb416a6a347452f78a35e201997ba16",
+    ".artifacts/shared-cu/fragment-output-usage-native/guest-main64.json": "0c6f19738a8e330c012fcbb4754f96ea9130d1573d66f8ea8a761dc747530e99",
+    ".artifacts/shared-cu/fragment-output-usage-native/paired/state.json": "5ccac6ccc16cf9ae6844aa810df5239b7ca6bb953a130d4d95af268569bcf0ea"
+  },
+  "optimized": {
+    "archive_sha256": "afcd121573c07090f7bf805dd126f2eaa181723717cd854f28a2b4b39c59baa1",
+    "pipeline_passed": true,
+    "cases": {
+      "0-uniform": [
+        {
+          "passed": true,
+          "ticks": 8827,
+          "explicit_ticks": 0,
+          "seconds": 1.046661625,
+          "commits": 839725,
+          "holds": 10532220,
+          "holds_wrote": 847780,
+          "reads": 1170,
+          "writes": 12524,
+          "read_bytes": 74880,
+          "write_bytes": 96816,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "923eea5949eb3c08cd6b358a48b8836958da14a2a9bc34c4448f98f734fe573b",
+          "input_skip_mask": 0,
+          "output_skip_mask": 0,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "solid",
+          "trial": 0,
+          "fixture_sha256": "3b8001981f0d022c4223e19ffd489d65f2aa2c99ce810f03c13df0bf69b1c5d0"
+        },
+        {
+          "passed": true,
+          "ticks": 14135,
+          "explicit_ticks": 0,
+          "seconds": 1.284333583,
+          "commits": 986657,
+          "holds": 12353474,
+          "holds_wrote": 994877,
+          "reads": 1380,
+          "writes": 12491,
+          "read_bytes": 88320,
+          "write_bytes": 96816,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "9c537f8d09a277aecb29330b8f38a58d9fa2e52c9e0f5d5d3ab95ad2f6579dba",
+          "input_skip_mask": 0,
+          "output_skip_mask": 0,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "spatial",
+          "trial": 0,
+          "fixture_sha256": "3228b049444728550c16bd6344ad8c3395c82e660d89575651729e22d324ec4c"
+        }
+      ],
+      "0-gradient": [
+        {
+          "passed": true,
+          "ticks": 8827,
+          "explicit_ticks": 0,
+          "seconds": 1.039598,
+          "commits": 839721,
+          "holds": 10532220,
+          "holds_wrote": 847776,
+          "reads": 1170,
+          "writes": 12524,
+          "read_bytes": 74880,
+          "write_bytes": 96816,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "129ef02f27278f14451f618fa976368f7aeb30a95b1765a96c722499bdcbfdf3",
+          "input_skip_mask": 0,
+          "output_skip_mask": 0,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "solid",
+          "trial": 0,
+          "fixture_sha256": "3e08ee8bfca818c143c6f7a6dd9972879a5018e94bc09b762d5e394f59016eb1"
+        },
+        {
+          "passed": true,
+          "ticks": 14135,
+          "explicit_ticks": 0,
+          "seconds": 1.282046583,
+          "commits": 1037684,
+          "holds": 12458873,
+          "holds_wrote": 1045904,
+          "reads": 1380,
+          "writes": 12491,
+          "read_bytes": 88320,
+          "write_bytes": 96816,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "50e0edfc975b54e482e5146783e7220bb0e871ae8a447cfa33041fce19d8cd99",
+          "input_skip_mask": 0,
+          "output_skip_mask": 0,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "spatial",
+          "trial": 0,
+          "fixture_sha256": "93f0194c1c89e4a143a519a793aa9e8c04a80f28b27e78b57a904acfd3e0de29"
+        }
+      ],
+      "1-uniform": [
+        {
+          "passed": true,
+          "ticks": 8757,
+          "explicit_ticks": 0,
+          "seconds": 0.984223834,
+          "commits": 793095,
+          "holds": 9118373,
+          "holds_wrote": 801150,
+          "reads": 1154,
+          "writes": 8006,
+          "read_bytes": 73856,
+          "write_bytes": 61040,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "e9ad1e927422544bf4d205fe866907268e5838c608653bd918ddef4a23b8c60a",
+          "input_skip_mask": 15,
+          "output_skip_mask": 0,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "solid",
+          "trial": 0,
+          "fixture_sha256": "ed6aedbe5b08a3adb7612909fe438e03530940c815f48986695f7bb54e8b4452"
+        },
+        {
+          "passed": true,
+          "ticks": 14005,
+          "explicit_ticks": 0,
+          "seconds": 1.273964292,
+          "commits": 947065,
+          "holds": 11261195,
+          "holds_wrote": 955285,
+          "reads": 1382,
+          "writes": 8065,
+          "read_bytes": 88448,
+          "write_bytes": 61040,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "859d899ae71232bca6ead5257ed03e923f62673bad32a9f42d79eaad027e7dae",
+          "input_skip_mask": 15,
+          "output_skip_mask": 0,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "spatial",
+          "trial": 0,
+          "fixture_sha256": "49557d8b472a360c0a37119ab6f98568863d67fab7a6ee2935a60959273e0cb6"
+        }
+      ],
+      "1-gradient": [
+        {
+          "passed": true,
+          "ticks": 8757,
+          "explicit_ticks": 0,
+          "seconds": 0.997096958,
+          "commits": 793091,
+          "holds": 9118373,
+          "holds_wrote": 801146,
+          "reads": 1154,
+          "writes": 8006,
+          "read_bytes": 73856,
+          "write_bytes": 61040,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "33bc352693562931774e0747df8ae3b2ee36622727d090de65c8ea2cd11833c0",
+          "input_skip_mask": 15,
+          "output_skip_mask": 0,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "solid",
+          "trial": 0,
+          "fixture_sha256": "9a7eedd71f9306842ac83e8025de3ffce56717390558c586d3e7cd8cfca04f0d"
+        },
+        {
+          "passed": true,
+          "ticks": 14005,
+          "explicit_ticks": 0,
+          "seconds": 1.278040958,
+          "commits": 998085,
+          "holds": 11365891,
+          "holds_wrote": 1006305,
+          "reads": 1382,
+          "writes": 8065,
+          "read_bytes": 88448,
+          "write_bytes": 61040,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "f4255621ee891ed50a1ea046bd7abbec732b30263be5715ed4fda5020b6e9691",
+          "input_skip_mask": 15,
+          "output_skip_mask": 0,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "spatial",
+          "trial": 0,
+          "fixture_sha256": "7b262acbce6c9e4912844f1e083b5526b6d0f91fe346c7dd006aef171ce5edad"
+        }
+      ],
+      "2-uniform": [
+        {
+          "passed": true,
+          "ticks": 8683,
+          "explicit_ticks": 0,
+          "seconds": 0.916944,
+          "commits": 756123,
+          "holds": 8171158,
+          "holds_wrote": 764178,
+          "reads": 896,
+          "writes": 5840,
+          "read_bytes": 57344,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "9b19d10272d0616d21e7f68878fea8164937d52c06df2b46a15ef1348fc08509",
+          "input_skip_mask": 15,
+          "output_skip_mask": 15,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "solid",
+          "trial": 0,
+          "fixture_sha256": "771c14d9d8c143f79f50300f83c8c78286ab262571c7df6e90da338a2034778a"
+        },
+        {
+          "passed": true,
+          "ticks": 13636,
+          "explicit_ticks": 0,
+          "seconds": 1.151185042,
+          "commits": 908031,
+          "holds": 10063930,
+          "holds_wrote": 916251,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "ac5b3bf5f15011f90f4e0a76efd18512a7e94f837c3950a33e472f31eb7cb1f0",
+          "input_skip_mask": 15,
+          "output_skip_mask": 15,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "spatial",
+          "trial": 0,
+          "fixture_sha256": "769dd59d3900b24611474ec5131f27a8cd0fb3423e499d701d17849bec7d2a31"
+        }
+      ],
+      "2-gradient": [
+        {
+          "passed": true,
+          "ticks": 8683,
+          "explicit_ticks": 0,
+          "seconds": 0.908317833,
+          "commits": 756119,
+          "holds": 8171158,
+          "holds_wrote": 764174,
+          "reads": 896,
+          "writes": 5840,
+          "read_bytes": 57344,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "8efaf2a3ebd72f4a8a4425288be0f9d8f388da81e53a7eb6bbc0779edf142530",
+          "input_skip_mask": 15,
+          "output_skip_mask": 15,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "solid",
+          "trial": 0,
+          "fixture_sha256": "9e6b34a815d71d6335ed9e6dc7a94e108f217231d0888b6d4632ef8d0cd870f0"
+        },
+        {
+          "passed": true,
+          "ticks": 13636,
+          "explicit_ticks": 0,
+          "seconds": 1.156067542,
+          "commits": 959037,
+          "holds": 10176811,
+          "holds_wrote": 967257,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "9d526eb0ce9689d11c81eeaf251a4cff2565fecfae44c2ed18914fa1ec61e14d",
+          "input_skip_mask": 15,
+          "output_skip_mask": 15,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "scene": "spatial",
+          "trial": 0,
+          "fixture_sha256": "1524c7e2b632d9e2ee8907166ae79081b5dfe972e7632ad8c4ba55d8b5a4fa0a"
+        }
+      ]
+    },
+    "guest_gate": {
+      "started": 1792137359.125361,
+      "pid": 57324,
+      "stage": "terminal",
+      "replays": [
+        {
+          "mode": 0,
+          "base": "0x0",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x0",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x40000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x40000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x80000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x80000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x0",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x0",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x40000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x40000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x80000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x80000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x0",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x0",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x40000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x40000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x80000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x80000000",
+          "invalidate": 1,
+          "passed": true
+        }
+      ],
+      "qemu_sha256": "832edffa77eec86bc9c33b8e66d542882b16ad2c89885c0ebbadd5a1c5d0800c",
+      "archive_sha256": "afcd121573c07090f7bf805dd126f2eaa181723717cd854f28a2b4b39c59baa1",
+      "proof": "/Users/duckdonald/workspace/gpu/.artifacts/fo-opt64",
+      "profile": false,
+      "scope": "Privateoutputstagingbypasscap28; explicitfirst9scratchcontract,immutablevalidatedread/writeusage,DMAaliasguard andunchangedMesaoptin. StandaloneDRMdefault/optin/all4096pixels+outputcanaries,18VMreplays,21GLES,quadbatch/offscreen/private-depth/GTK64strictscanout; desktopflagselectsfull640only. Nohostspeedclaim.",
+      "exit_status": 0,
+      "guest_seconds": 86.6752606658265,
+      "markers": {
+        "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+        "output_usage=1": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "fragment staging transient=1": true,
+        "compute completed; RNU=1 RDN=0": true,
+        "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "native_cases": 21,
+      "quad_batch_pass": true,
+      "payload_unchanged": true,
+      "passed": true,
+      "finished": 1792137448.842624
+    },
+    "main_source_guest_gate": {
+      "started": 1792139493.0553112,
+      "pid": 41993,
+      "stage": "terminal",
+      "replays": [
+        {
+          "mode": 0,
+          "base": "0x0",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x0",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x40000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x40000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x80000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x80000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x0",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x0",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x40000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x40000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x80000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x80000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x0",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x0",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x40000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x40000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x80000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x80000000",
+          "invalidate": 1,
+          "passed": true
+        }
+      ],
+      "qemu_sha256": "832edffa77eec86bc9c33b8e66d542882b16ad2c89885c0ebbadd5a1c5d0800c",
+      "archive_sha256": "afcd121573c07090f7bf805dd126f2eaa181723717cd854f28a2b4b39c59baa1",
+      "proof": "/Users/duckdonald/workspace/gpu/.artifacts/fo-main64",
+      "profile": false,
+      "scope": "Privateoutputstagingbypasscap28; explicitfirst9scratchcontract,immutablevalidatedread/writeusage,DMAaliasguard andunchangedMesaoptin. StandaloneDRMdefault/optin/all4096pixels+outputcanaries,18VMreplays,21GLES,quadbatch/offscreen/private-depth/GTK64strictscanout; desktopflagselectsfull640only. Nohostspeedclaim.",
+      "exit_status": 0,
+      "guest_seconds": 84.96688912506215,
+      "markers": {
+        "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+        "output_usage=1": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "fragment staging transient=1": true,
+        "compute completed; RNU=1 RDN=0": true,
+        "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "native_cases": 21,
+      "quad_batch_pass": true,
+      "payload_unchanged": true,
+      "passed": true,
+      "finished": 1792139581.0495381
+    },
+    "trace_cases": {
+      "1": [
+        {
+          "passed": true,
+          "ticks": 8757,
+          "explicit_ticks": 0,
+          "seconds": 0.979625542,
+          "commits": 793091,
+          "holds": 9118373,
+          "holds_wrote": 801146,
+          "reads": 1154,
+          "writes": 8006,
+          "read_bytes": 73856,
+          "write_bytes": 61040,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "33bc352693562931774e0747df8ae3b2ee36622727d090de65c8ea2cd11833c0",
+          "input_skip_mask": 15,
+          "output_skip_mask": 0,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "memory_trace": {
+            "reads": 1154,
+            "writes": 8006,
+            "read_bytes": 73856,
+            "write_bytes": 61040,
+            "byte_regions": {
+              "color": {
+                "read_bytes": 0,
+                "write_bytes": 8064
+              },
+              "commands": {
+                "read_bytes": 160,
+                "write_bytes": 0
+              },
+              "depth": {
+                "read_bytes": 24704,
+                "write_bytes": 8064
+              },
+              "descriptor": {
+                "read_bytes": 64,
+                "write_bytes": 0
+              },
+              "fragment_color_output": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_control_output": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_depth_output": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_program": {
+                "read_bytes": 72,
+                "write_bytes": 0
+              },
+              "fragment_u": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_v": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "other": {
+                "read_bytes": 456,
+                "write_bytes": 0
+              },
+              "texture": {
+                "read_bytes": 4,
+                "write_bytes": 0
+              },
+              "vertex_input": {
+                "read_bytes": 1280,
+                "write_bytes": 0
+              },
+              "vertex_kernarg": {
+                "read_bytes": 2048,
+                "write_bytes": 192
+              },
+              "vertex_program": {
+                "read_bytes": 268,
+                "write_bytes": 0
+              }
+            },
+            "trace_sha256": "5b151fe9f7a62dd83e7be3ec38c1b42d4f5c9d15c0bf1c3d07dd34e75912ffec",
+            "records": 9160,
+            "scope": "Successful lower-memory callbacks; reads include fetched line bytes, writes include only masked bytes. Tracing adds host work; exclude times from benchmarks."
+          },
+          "scene": "solid",
+          "trial": 0,
+          "fixture_sha256": "9a7eedd71f9306842ac83e8025de3ffce56717390558c586d3e7cd8cfca04f0d"
+        },
+        {
+          "passed": true,
+          "ticks": 14005,
+          "explicit_ticks": 0,
+          "seconds": 1.236449458,
+          "commits": 998085,
+          "holds": 11365891,
+          "holds_wrote": 1006305,
+          "reads": 1382,
+          "writes": 8065,
+          "read_bytes": 88448,
+          "write_bytes": 61040,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "f4255621ee891ed50a1ea046bd7abbec732b30263be5715ed4fda5020b6e9691",
+          "input_skip_mask": 15,
+          "output_skip_mask": 0,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "memory_trace": {
+            "reads": 1382,
+            "writes": 8065,
+            "read_bytes": 88448,
+            "write_bytes": 61040,
+            "byte_regions": {
+              "color": {
+                "read_bytes": 0,
+                "write_bytes": 8064
+              },
+              "commands": {
+                "read_bytes": 160,
+                "write_bytes": 0
+              },
+              "depth": {
+                "read_bytes": 28736,
+                "write_bytes": 8064
+              },
+              "descriptor": {
+                "read_bytes": 64,
+                "write_bytes": 0
+              },
+              "fragment_color_output": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_control_output": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_depth_output": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_program": {
+                "read_bytes": 72,
+                "write_bytes": 0
+              },
+              "fragment_u": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_v": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "other": {
+                "read_bytes": 396,
+                "write_bytes": 0
+              },
+              "texture": {
+                "read_bytes": 10624,
+                "write_bytes": 0
+              },
+              "vertex_input": {
+                "read_bytes": 1280,
+                "write_bytes": 0
+              },
+              "vertex_kernarg": {
+                "read_bytes": 2048,
+                "write_bytes": 192
+              },
+              "vertex_program": {
+                "read_bytes": 268,
+                "write_bytes": 0
+              }
+            },
+            "trace_sha256": "b23d00e51b24e41608a0ce88a162a1fe8aac1fdfd0da48f753eada5d0bc931ff",
+            "records": 9447,
+            "scope": "Successful lower-memory callbacks; reads include fetched line bytes, writes include only masked bytes. Tracing adds host work; exclude times from benchmarks."
+          },
+          "scene": "spatial",
+          "trial": 0,
+          "fixture_sha256": "7b262acbce6c9e4912844f1e083b5526b6d0f91fe346c7dd006aef171ce5edad"
+        }
+      ],
+      "2": [
+        {
+          "passed": true,
+          "ticks": 8683,
+          "explicit_ticks": 0,
+          "seconds": 0.91268275,
+          "commits": 756119,
+          "holds": 8171158,
+          "holds_wrote": 764174,
+          "reads": 896,
+          "writes": 5840,
+          "read_bytes": 57344,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "8efaf2a3ebd72f4a8a4425288be0f9d8f388da81e53a7eb6bbc0779edf142530",
+          "input_skip_mask": 15,
+          "output_skip_mask": 15,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "memory_trace": {
+            "reads": 896,
+            "writes": 5840,
+            "read_bytes": 57344,
+            "write_bytes": 43152,
+            "byte_regions": {
+              "color": {
+                "read_bytes": 0,
+                "write_bytes": 8064
+              },
+              "commands": {
+                "read_bytes": 160,
+                "write_bytes": 0
+              },
+              "depth": {
+                "read_bytes": 26112,
+                "write_bytes": 8064
+              },
+              "descriptor": {
+                "read_bytes": 64,
+                "write_bytes": 0
+              },
+              "fragment_color_output": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_program": {
+                "read_bytes": 72,
+                "write_bytes": 0
+              },
+              "fragment_u": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_v": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "other": {
+                "read_bytes": 456,
+                "write_bytes": 0
+              },
+              "texture": {
+                "read_bytes": 4,
+                "write_bytes": 0
+              },
+              "vertex_input": {
+                "read_bytes": 1280,
+                "write_bytes": 0
+              },
+              "vertex_kernarg": {
+                "read_bytes": 2048,
+                "write_bytes": 192
+              },
+              "vertex_program": {
+                "read_bytes": 268,
+                "write_bytes": 0
+              }
+            },
+            "trace_sha256": "1aba776bfa53e1a9a819df99d5b22ddcba22b68c27b760ef7c6e40cbee8159e5",
+            "records": 6736,
+            "scope": "Successful lower-memory callbacks; reads include fetched line bytes, writes include only masked bytes. Tracing adds host work; exclude times from benchmarks."
+          },
+          "scene": "solid",
+          "trial": 0,
+          "fixture_sha256": "9e6b34a815d71d6335ed9e6dc7a94e108f217231d0888b6d4632ef8d0cd870f0"
+        },
+        {
+          "passed": true,
+          "ticks": 13636,
+          "explicit_ticks": 0,
+          "seconds": 1.171060625,
+          "commits": 959037,
+          "holds": 10176811,
+          "holds_wrote": 967257,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216,
+          "pixel_depth_pairs": 4096,
+          "staging_canaries": true,
+          "all_other_memory_unchanged": true,
+          "output_sha256": "9d526eb0ce9689d11c81eeaf251a4cff2565fecfae44c2ed18914fa1ec61e14d",
+          "input_skip_mask": 15,
+          "output_skip_mask": 15,
+          "omitted_output_bytes_preserved": true,
+          "omitted_input_bytes_preserved": true,
+          "memory_trace": {
+            "reads": 1110,
+            "writes": 5776,
+            "read_bytes": 71040,
+            "write_bytes": 43152,
+            "byte_regions": {
+              "color": {
+                "read_bytes": 0,
+                "write_bytes": 8064
+              },
+              "commands": {
+                "read_bytes": 160,
+                "write_bytes": 0
+              },
+              "depth": {
+                "read_bytes": 29248,
+                "write_bytes": 8064
+              },
+              "descriptor": {
+                "read_bytes": 64,
+                "write_bytes": 0
+              },
+              "fragment_color_output": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_program": {
+                "read_bytes": 72,
+                "write_bytes": 0
+              },
+              "fragment_u": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "fragment_v": {
+                "read_bytes": 8960,
+                "write_bytes": 8944
+              },
+              "other": {
+                "read_bytes": 396,
+                "write_bytes": 0
+              },
+              "texture": {
+                "read_bytes": 10624,
+                "write_bytes": 0
+              },
+              "vertex_input": {
+                "read_bytes": 1280,
+                "write_bytes": 0
+              },
+              "vertex_kernarg": {
+                "read_bytes": 2048,
+                "write_bytes": 192
+              },
+              "vertex_program": {
+                "read_bytes": 268,
+                "write_bytes": 0
+              }
+            },
+            "trace_sha256": "1022e04309bf6b6a931b49161b5db5ddc1aa5d633f599c0da565414702c177d4",
+            "records": 6886,
+            "scope": "Successful lower-memory callbacks; reads include fetched line bytes, writes include only masked bytes. Tracing adds host work; exclude times from benchmarks."
+          },
+          "scene": "spatial",
+          "trial": 0,
+          "fixture_sha256": "1524c7e2b632d9e2ee8907166ae79081b5dfe972e7632ad8c4ba55d8b5a4fa0a"
+        }
+      ]
+    }
+  },
+  "field_trace_conclusion": {
+    "depth_output_and_control_output_reads_writes_after": 0,
+    "removed_depth_and_control_read_bytes": 17920,
+    "removed_depth_and_control_write_bytes": 17888,
+    "total_bytes_removed_in_these_two_fields": 35808,
+    "net_read_reduction": {
+      "solid": 16512,
+      "spatial": 17408
+    },
+    "other_read_bytes_increase": {
+      "solid": 1408,
+      "spatial": 512
+    },
+    "scope": "Successful callback byte regions, both optimized gradient scenes. Missing region after bypass means zero bytes; compare all regions, not only removed fields."
+  },
+  "paired_report": "docs/performance/fragment-output-usage-native-paired-2026-10-16.json"
 }

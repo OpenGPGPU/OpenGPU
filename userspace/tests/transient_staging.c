@@ -47,16 +47,22 @@ static int rejected(int fd, struct drm_opengpu_submit *s)
 
 #define SCRATCH 0x5a6b7c8du
 static int scratch_check(const struct opengpu_buffer *bo,uint32_t config,
-                          uint32_t bank_stride,int omitted) {
+                          uint32_t bank_stride,int omitted,int omitted_outputs) {
     uint32_t cap=opengpu_shader_resource_batch(config), stride=4*cap;
     uint32_t banks=opengpu_shader_resource_banks(config);
-    unsigned changed[6]={0};
+    unsigned changed[6]={0}, output_changed[2]={0};
     for(unsigned bank=0;bank<banks;bank++) {
         const uint32_t *p=(const uint32_t *)((const char *)bo->map+bank*bank_stride);
         for(unsigned slice=0;slice<6;slice++)for(unsigned lane=0;lane<cap;lane++) {
             if(p[slice*cap+lane]!=SCRATCH)changed[slice]++;
             if(omitted && slice!=3 && p[slice*cap+lane]!=SCRATCH) {
                 fprintf(stderr,"omittedinputchanged bank=%u slice=%u lane=%u\n",bank,slice,lane);return -1;
+            }
+        }
+        for (unsigned slice=7;slice<9;slice++) for (unsigned lane=0;lane<cap;lane++) {
+            if (p[slice*cap+lane]!=SCRATCH) output_changed[slice-7]++;
+            if (omitted_outputs && p[slice*cap+lane]!=SCRATCH) {
+                fprintf(stderr,"omitted output changed bank=%u slice=%u lane=%u\n",bank,slice,lane);return -1;
             }
         }
         for(unsigned byte=9*stride;byte<bank_stride;byte+=4)
@@ -66,6 +72,9 @@ static int scratch_check(const struct opengpu_buffer *bo,uint32_t config,
         if((!omitted || slice==3) && !changed[slice]) {
             fprintf(stderr,"requiredinputnotstaged slice=%u\n",slice);return -1;
         }
+    if (!omitted_outputs && (!output_changed[0] || !output_changed[1])) {
+        fputs("default depth/control were not initialized\n",stderr);return -1;
+    }
     return 0;
 }
 int main(void) {
@@ -82,6 +91,9 @@ int main(void) {
     }
     CHECK(opengpu_shader_config(fd,&config));CHECK(opengpu_context_create(fd,&context));CHECK(opengpu_sync_create(fd,&sync));
     fstride=opengpu_shader_fragment_bank_stride(config);vstride=opengpu_shader_vertex_kernarg_bytes(config);
+    /* Small non-line-aligned configurations retain the legacy word path. */
+    unsigned capacity = opengpu_shader_resource_batch(config);
+    int coalesced = capacity == 8 || capacity % 16 == 0;
     CHECK(opengpu_buffer_create(fd,sizeof(struct drm_opengpu_vertex_draw),&command));
     CHECK(opengpu_buffer_create(fd,SIDE*SIDE*4u,&color));CHECK(opengpu_buffer_create(fd,sizeof(vertices),&vb));
     CHECK(opengpu_buffer_create(fd,2048,&vs));CHECK(opengpu_buffer_create(fd,2048,&fs));
@@ -104,6 +116,7 @@ int main(void) {
         .render_width=SIDE,.render_height=SIDE};
     /* Raw record hints are reserved for trusted kernel snapshots. */
     draw->state|=55u<<19;CHECK(rejected(fd,&submit));draw->state=OPENGPU_DRAW_STATE_OVERRIDE;
+    draw->state|=15u<<25;CHECK(rejected(fd,&submit));draw->state=OPENGPU_DRAW_STATE_OVERRIDE;
     for(unsigned pass=0;pass<2;pass++) {
         for(size_t i=0;i<fk.size/4;i++)((uint32_t *)fk.map)[i]=SCRATCH;
         CHECK(fill(fd,context,&color,0,sync));
@@ -115,7 +128,8 @@ int main(void) {
             break;
         }
         CHECK(opengpu_render(fd,&submit));CHECK(opengpu_sync_wait_success(fd,sync,1800000));
-        CHECK(scratch_check(&fk,config,fstride,pass));
+        CHECK(scratch_check(&fk,config,fstride,pass && coalesced,
+            pass && coalesced && (caps&OPENGPU_CAP_FRAGMENT_OUTPUT_USAGE)));
         for(unsigned y=0;y<SIDE;y++)for(unsigned x=0;x<SIDE;x++) {
             uint32_t expected=x>0&&y>0&&x+y<=SIDE?RED:0;
             if(((uint32_t *)color.map)[y*SIDE+x]!=expected) {
@@ -127,9 +141,11 @@ int main(void) {
         if(!pass)memcpy(baseline,color.map,sizeof(baseline));
         else if(memcmp(baseline,color.map,sizeof(baseline)))return 1;
     }
-    printf("OPENGPU TRANSIENT STAGING PASS: hardware=%u covered=%u defaultCPUinputs+uniforms preserved, "
-           "reservedhint rejected, %s\n",!!(caps&OPENGPU_CAP_FRAGMENT_INPUT_USAGE),covered,
-           caps&OPENGPU_CAP_FRAGMENT_INPUT_USAGE?"optin omittedbytesandpixels exact":"unsupportedoptin rejected withoutscratchwrites");
+    printf("OPENGPU TRANSIENT STAGING PASS: hardware=%u covered=%u output_usage=%u defaultCPUinputs+uniforms preserved, "
+           "reservedhint rejected, %s\n",!!(caps&OPENGPU_CAP_FRAGMENT_INPUT_USAGE),covered,!!(caps&OPENGPU_CAP_FRAGMENT_OUTPUT_USAGE),
+           caps&OPENGPU_CAP_FRAGMENT_INPUT_USAGE?
+               (coalesced?"optin omittedbytesandpixels exact":"optin legacy staging and pixels exact"):
+               "unsupportedoptin rejected withoutscratchwrites");
     CHECK(opengpu_sync_destroy(fd,sync));CHECK(opengpu_context_destroy(fd,context));
     CHECK(opengpu_buffer_destroy(fd,&command));CHECK(opengpu_buffer_destroy(fd,&color));CHECK(opengpu_buffer_destroy(fd,&vb));
     CHECK(opengpu_buffer_destroy(fd,&vs));CHECK(opengpu_buffer_destroy(fd,&fs));CHECK(opengpu_buffer_destroy(fd,&vk));CHECK(opengpu_buffer_destroy(fd,&fk));

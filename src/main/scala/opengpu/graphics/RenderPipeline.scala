@@ -193,6 +193,7 @@ class RenderPipeline(
     kernelVert.io.kernargBase := io.draw.bits.asInstanceOf[VertexDrawCommand].vertKernarg
     kernelVert.io.kernargBankStride := io.draw.bits.asInstanceOf[VertexDrawCommand].vertKernargBankStride
     kernelVert.io.fragInputSkip := io.draw.bits.asInstanceOf[VertexDrawCommand].fragInputSkip
+    kernelVert.io.fragOutputSkip := io.draw.bits.asInstanceOf[VertexDrawCommand].fragOutputSkip
     kernelVert.io.fragShaderPc := io.draw.bits.asInstanceOf[VertexDrawCommand].fragShaderPc
     kernelVert.io.fragKernarg := io.draw.bits.asInstanceOf[VertexDrawCommand].fragKernarg
     kernelVert.io.fragKernargBankStride := io.draw.bits.asInstanceOf[VertexDrawCommand].fragKernargBankStride
@@ -619,6 +620,7 @@ class RenderPipeline(
     ctxFifo.io.enq.valid := shader.io.draw.fire
     ctxFifo.io.enq.bits.shaderPc := drawHold.shaderPc
     ctxFifo.io.enq.bits.fragInputSkip := drawHold.fragInputSkip
+    ctxFifo.io.enq.bits.fragOutputSkip := drawHold.fragOutputSkip
     ctxFifo.io.enq.bits.kernargBase := drawHold.shaderKernarg
     ctxFifo.io.enq.bits.kernargBankStride := drawHold.kernargBankStride
     ctxFifo.io.enq.bits.texFormat := drawState.texFormat
@@ -687,6 +689,7 @@ class RenderPipeline(
     kernelFrag.abi1 := FragmentShaderAbi.usesMultisample(ctxFifo.io.tail.sampleMode)
     kernelFrag.shaderPc := ctxFifo.io.tail.shaderPc
     kernelFrag.inputSkip := ctxFifo.io.tail.fragInputSkip
+    kernelFrag.outputSkip := ctxFifo.io.tail.fragOutputSkip
     kernelFrag.kernargBase := ctxFifo.io.tail.kernargBase
     kernelFrag.kernargBankStride := ctxFifo.io.tail.kernargBankStride
     kernelFrag.texFormat := ctxFifo.io.tail.texFormat

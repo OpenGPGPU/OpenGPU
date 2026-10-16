@@ -1081,11 +1081,13 @@ static bool opengpu_shader_scalar_fpu_enabled(struct opengpu_device *gpu)
 
 static bool opengpu_validate_shader(
     struct opengpu_device *gpu, struct opengpu_buffer *shader,
-    u64 kernarg_size, u32 entry, bool texture_enabled, u32 *input_read_mask)
+    u64 kernarg_size, u32 entry, bool texture_enabled, u32 *input_read_mask,
+    u32 *output_skip)
 {
     const u32 *program;
     u64 available;
-    u32 words;
+    u32 words, reads = 0x1ff, writes = 0x1ff;
+    bool valid;
 
     if ((entry & 3) || entry >= shader->size)
         return false;
@@ -1093,12 +1095,32 @@ static bool opengpu_validate_shader(
     words = min_t(u64, available / sizeof(u32),
                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
     program = (const u32 *)((const u8 *)shader->cpu + entry);
-    return opengpu_shader_validate_words_profile_runtime_usage(
+    valid = opengpu_shader_validate_words_profile_runtime_io_usage(
         program, words, kernarg_size,
         opengpu_fragment_batch_capacity(gpu), 6, 9, true, texture_enabled,
         false, opengpu_shader_scalar_fpu_enabled(gpu),
         (gpu->hw.capabilities & GPU_CAP_RUNTIME_SHADER_ABI) ?
-            opengpu_fragment_batch_capacity(gpu) : 0, input_read_mask);
+            opengpu_fragment_batch_capacity(gpu) : 0,
+        (input_read_mask || output_skip) ? &reads : NULL,
+        output_skip ? &writes : NULL);
+    if (input_read_mask)
+        *input_read_mask = valid ? reads & 0x3fu : 0x3fu;
+    if (output_skip) {
+        *output_skip = 0;
+        if (valid) {
+            if (!(writes & (1u << 7))) {
+                *output_skip |= 1u;
+                if (!(reads & (1u << 7)))
+                    *output_skip |= 4u;
+            }
+            if (!(writes & (1u << 8))) {
+                *output_skip |= 2u;
+                if (!(reads & (1u << 8)))
+                    *output_skip |= 8u;
+            }
+        }
+    }
+    return valid;
 }
 
 static bool opengpu_validate_vertex_shader(
@@ -1127,7 +1149,7 @@ static bool opengpu_validate_kernarg_binding(
     struct opengpu_device *gpu, struct opengpu_buffer *shader,
     struct opengpu_resource_binding *kernarg, u32 entry, u32 offset,
     u32 bank_stride, u32 slices, bool vertex, bool texture_enabled,
-    u32 *input_read_mask)
+    u32 *input_read_mask, u32 *output_skip)
 {
     u64 address, minimum, span, shader_kernarg_size;
     u32 banks = vertex ? GPU_KERNARG_BANKS :
@@ -1162,7 +1184,7 @@ static bool opengpu_validate_kernarg_binding(
         opengpu_validate_vertex_shader(gpu, shader,
                                        shader_kernarg_size, entry) :
         opengpu_validate_shader(gpu, shader, shader_kernarg_size,
-                                entry, texture_enabled, input_read_mask);
+                                entry, texture_enabled, input_read_mask, output_skip);
 }
 
 static int opengpu_validate_commands(struct opengpu_device *gpu,
@@ -1181,7 +1203,7 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
                  38u * sizeof(u32));
     for (i = 0; i < args->command_count; i++) {
         struct gpu_draw_record *record = &records[i];
-        u32 input_reads = 0x3f;
+        u32 input_reads = 0x3f, output_skip = 0;
 
         if (record->v0[3] <= 0 || record->v1[3] <= 0 ||
             record->v2[3] <= 0)
@@ -1262,12 +1284,18 @@ static int opengpu_validate_commands(struct opengpu_device *gpu,
                 gpu, shader, kernarg, record->shader_pc, record->kernarg,
                 record->kernarg_bank_stride, 9, false, texture != NULL,
                 (args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) ?
-                    &input_reads : NULL))
+                    &input_reads : NULL,
+                ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
+                 (gpu->hw.capabilities & GPU_CAP_FRAGMENT_OUTPUT_USAGE)) ?
+                    &output_skip : NULL))
             return -EINVAL;
         if ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
             (gpu->hw.capabilities & GPU_CAP_FRAGMENT_INPUT_USAGE))
             record->state |= ((~input_reads) & 0x3fu) <<
                              GPU_DRAW_FRAGMENT_INPUT_SKIP_SHIFT;
+        if ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
+            (gpu->hw.capabilities & GPU_CAP_FRAGMENT_OUTPUT_USAGE))
+            record->state |= output_skip << GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT;
         record->shader_pc += lower_32_bits(shader->dma);
         /* Staging and shader data loads translate under VECTOR_SATP. */
         record->kernarg += lower_32_bits(kernarg->va ?
@@ -1295,7 +1323,7 @@ static int opengpu_validate_vertex_commands(
                  38u * sizeof(u32));
     for (i = 0; i < args->command_count; i++) {
         struct gpu_vert_draw_record *record = &records[i];
-        u32 input_reads = 0x3f;
+        u32 input_reads = 0x3f, output_skip = 0;
         u64 address, bytes;
 
         if (record->vert_count < 3 || record->vert_count % 3 ||
@@ -1383,7 +1411,7 @@ static int opengpu_validate_vertex_commands(
         if (!opengpu_validate_kernarg_binding(
                 gpu, vertex_shader, vertex_kernarg,
                 record->vert_shader_pc, record->vert_kernarg,
-                record->vert_kernarg_bank_stride, 16, true, false, NULL))
+                record->vert_kernarg_bank_stride, 16, true, false, NULL, NULL))
             return -EINVAL;
         if (!opengpu_validate_kernarg_binding(
                 gpu, fragment_shader, fragment_kernarg,
@@ -1391,12 +1419,18 @@ static int opengpu_validate_vertex_commands(
                 record->frag_kernarg_bank_stride, 9, false,
                 texture != NULL,
                 (args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) ?
-                    &input_reads : NULL))
+                    &input_reads : NULL,
+                ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
+                 (gpu->hw.capabilities & GPU_CAP_FRAGMENT_OUTPUT_USAGE)) ?
+                    &output_skip : NULL))
             return -EINVAL;
         if ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
             (gpu->hw.capabilities & GPU_CAP_FRAGMENT_INPUT_USAGE))
             record->state |= ((~input_reads) & 0x3fu) <<
                              GPU_DRAW_FRAGMENT_INPUT_SKIP_SHIFT;
+        if ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
+            (gpu->hw.capabilities & GPU_CAP_FRAGMENT_OUTPUT_USAGE))
+            record->state |= output_skip << GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT;
         /* Vertex-buffer and kernarg staging share VECTOR_SATP with shader
          * data loads. Prefer the private VA when the bind mapped one. */
         record->vert_buffer_base += lower_32_bits(vertex_buffer->va ?

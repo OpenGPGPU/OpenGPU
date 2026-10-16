@@ -61,15 +61,32 @@ also passes native, compute, GLES and GTK64 checks. Its 64 paired native timing
 samples show small gains that vary by round, so it remains a separate compiler
 candidate; see the [profile comparison](performance/fragment-input-usage-broad-profile-2026-10-16.json).
 
-The next private experiment skips initialization and readback of depth/control
-outputs when validated shader reads and writes permit it. It passes 39 targeted
-tests and 12 complete scenes, including unchanged default and input-only paths.
-Four-CU cycles fall further from 9,817 to 9,385 for solid sampling and from
-15,272 to 14,692 for spatial sampling. The instrumented native model and new-hardware Debian GLES/GTK64 gate also
-pass. Native writes fall a further 29.3%, with smaller native tick reductions
-than these Scala scenes. Optimized wall-time and full640 checks remain pending;
-see the
-[output staging experiment](performance/fragment-output-usage-rtl-experiment-2026-10-16.json).
+Fragment output omission now also skips initialization and readback of
+unchanged depth/control outputs when validated shader reads and writes permit
+it. The main source passes 39 targeted tests and 12 complete scenes, including
+unchanged default and input-only paths. Four-CU cycles fall further from
+9,817 to 9,385 for solid sampling and from 15,272 to 14,692 for spatial sampling.
+The optimized native model, main-built Linux driver, 18 compute replays,
+21 GLES cases and GTK64 idle/active readback plus strict scanout checks pass.
+The full640 desktop gate is running separately; see the
+[output staging qualification](performance/fragment-output-usage-rtl-experiment-2026-10-16.json).
+
+In 64 balanced opt-in native samples, the same optimized executable takes
+**5.7% less host time for solid sampling and 4.9% less for spatial sampling**
+when output omission is enabled. All four rounds favour omission. Against the
+previous qualified native artifact, the new artifact is 4.7% and 3.8% faster.
+A separate 24-sample default-path guard shows approximately **1% host overhead**
+with only two rounds per scene. These are task timings, with unrelated host
+activity recorded, and do not establish a desktop startup speedup; see the
+[paired measurements](performance/fragment-output-usage-native-paired-2026-10-16.json).
+
+Native writes fall from 61,040 to 43,152 bytes, a further 29.3%. Field-classified
+traces show zero depth/control scratch reads and writes, removing 35,808 bytes
+across those fields. Other cached read traffic increases slightly, so the net
+read savings are smaller. All 4,096 colour/depth pairs, omitted-field bytes,
+uniforms and memory outside scratch are independently checked. Native ticks
+fall from 8,757/14,005 to 8,683/13,636, distinct from the Scala cycle reductions.
+See the [optimized native evidence](performance/fragment-output-usage-native-training-2026-10-16.json).
 
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per
 worker, scales the shared credit and translation ranges with CU count, pipelines

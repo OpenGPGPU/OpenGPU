@@ -97,6 +97,7 @@ static void check_program(const struct program *p, uint32_t resources)
                                          opengpu_shader_fragment_uniform_offset(resources);
     unsigned stride = opengpu_shader_array_stride(resources), warp;
     uint32_t input_reads = 0x3fu, actual_input_reads = 0;
+    uint32_t io_reads = 0, io_writes = 0, actual_reads = 0, actual_writes = 0;
     size_t words;
     assert(!opengpu_shader_lower_runtime_abi(p->code, p->words, p->vertex,
                                               converted, COUNT(converted), &words));
@@ -109,6 +110,10 @@ static void check_program(const struct program *p, uint32_t resources)
         assert(opengpu_shader_validate_words_profile_runtime_usage(
             converted, words, opengpu_shader_fragment_bank_stride(resources),
             batch, 6, 9, true, true, false, true, batch, &input_reads));
+    if (!p->vertex)
+        assert(opengpu_shader_validate_words_profile_runtime_io_usage(
+            converted, words, opengpu_shader_fragment_bank_stride(resources),
+            batch, 6, 9, true, true, false, true, batch, &io_reads, &io_writes));
     /* The same binary must be refused when x9 has no launch-time guarantee. */
     assert(!opengpu_shader_validate_words_profile_runtime(converted, words,
         p->vertex ? opengpu_shader_vertex_kernarg_bytes(resources) :
@@ -131,6 +136,23 @@ static void check_program(const struct program *p, uint32_t resources)
             }
             assert(wide.accesses[i].kind == old.accesses[i].kind);
             assert(wide.accesses[i].address == 0x10000000u + expected);
+            if (!p->vertex) {
+                unsigned bytes = wide.accesses[i].kind == 3 ? 4 : 4 * wide.vl;
+                uint32_t start = wide.accesses[i].address - 0x10000000u;
+
+                /* Union actual reads and stores across every warp, including
+                 * output slices that the six-input API deliberately omits. */
+                for (unsigned byte = 0; byte < bytes; byte++) {
+                    unsigned slice = (start + byte) / stride;
+
+                    if (slice < 9) {
+                        if (wide.accesses[i].kind == 2)
+                            actual_writes |= 1u << slice;
+                        else
+                            actual_reads |= 1u << slice;
+                    }
+                }
+            }
             if (!p->vertex && wide.accesses[i].kind != 2) {
                 unsigned byte, bytes = wide.accesses[i].kind == 3 ? 4 : 4 * wide.vl;
                 uint32_t start = wide.accesses[i].address - 0x10000000u;
@@ -150,6 +172,10 @@ static void check_program(const struct program *p, uint32_t resources)
     }
     if (!p->vertex)
         assert(input_reads == actual_input_reads);
+    if (!p->vertex) {
+        assert(io_reads == actual_reads);
+        assert(io_writes == actual_writes);
+    }
     printf("%s resources=%08x: %zu -> %zu words PASS\n", p->name, resources, p->words, words);
 }
 
