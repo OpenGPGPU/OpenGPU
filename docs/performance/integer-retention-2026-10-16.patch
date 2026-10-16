@@ -1,0 +1,177 @@
+--- a/src/main/scala/opengpu/core/vector/VectorIntegerAlu.scala
++++ b/src/main/scala/opengpu/core/vector/VectorIntegerAlu.scala
+@@ -113,6 +113,18 @@
+     val in = Flipped(Decoupled(new VectorIntegerRequest(config)))
+     val out = Decoupled(new VectorIntegerResult(config))
+   })
++
++  // Only the selected result family must advance. Metadata, readiness and
++  // packed mask payloads keep their original behavior, including fields whose
++  // architectural write-enable is false.
++  private def opcodeIs(funct: UInt, codes: Int*): Bool =
++    codes.map(code => funct === code.U(6.W)).reduce(_ || _)
++  private def saturatingOp(funct: UInt): Bool =
++    opcodeIs(funct, 0x20, 0x21, 0x22, 0x23, 0x2e, 0x2f)
++  private def shiftOp(funct: UInt): Bool =
++    opcodeIs(funct, 0x25, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d)
++  private def comparisonOp(funct: UInt): Bool =
++    funct >= 0x18.U && funct <= 0x1f.U
+ 
+   private val inputValid = RegInit(false.B)
+   private val inputBits = Reg(new NormalizedVectorIntegerRequest(config))
+@@ -337,12 +349,12 @@
+       candidateBits.vs1Field := partialBits.vs1Field
+       candidateBits.quad := partialBits.quad
+       candidateBits.reduction := partialBits.reduction
+-      candidateBits.basic := basicCandidates
+-      candidateBits.saturating := saturatingCandidates
+-      candidateBits.saturationLimit := saturationLimits
+-      candidateBits.shift := shiftCandidates
++      when(!saturatingOp(partialBits.funct6) && !shiftOp(partialBits.funct6) && !comparisonOp(partialBits.funct6)) { candidateBits.basic := basicCandidates }
++      when(saturatingOp(partialBits.funct6)) { candidateBits.saturating := saturatingCandidates }
++      when(saturatingOp(partialBits.funct6)) { candidateBits.saturationLimit := saturationLimits }
++      when(shiftOp(partialBits.funct6)) { candidateBits.shift := shiftCandidates }
+       candidateBits.comparison := laneComparisons.asUInt
+-      candidateBits.saturated := laneSaturated.asUInt
++      when(saturatingOp(partialBits.funct6)) { candidateBits.saturated := laneSaturated.asUInt }
+       candidateBits.maskLogical := partialBits.maskLogical
+       candidateBits.maskBits := partialBits.maskBits
+       candidateBits.writesScalar := partialBits.writesScalar
+@@ -386,15 +398,17 @@
+         val widenMulS = (lhs16se * rhs16se).asUInt
+         val widenMulU = (lhs16u * rhs16u)(31, 0)
+         val widenMulSU = (lhs16se * rhs16u.asSInt).asUInt
+-        partialBits.widening(lane) := MuxLookup(
+-          inputBits.funct6, 0.U(32.W)
+-        )(Seq(
+-          "h30".U -> widenAdd,
+-          "h31".U -> widenSub,
+-          "h32".U -> widenMulS,
+-          "h33".U -> widenMulU,
+-          "h34".U -> widenMulSU
+-        ))
++        when(opcodeIs(inputBits.funct6, 0x30, 0x31, 0x32, 0x33, 0x34)) {
++          partialBits.widening(lane) := MuxLookup(
++            inputBits.funct6, 0.U(32.W)
++          )(Seq(
++            "h30".U -> widenAdd,
++            "h31".U -> widenSub,
++            "h32".U -> widenMulS,
++            "h33".U -> widenMulU,
++            "h34".U -> widenMulSU
++          ))
++        }
+         val signedAddOverflow =
+           !lhs(31) && !rhs(31) && addResult(31)
+         val signedAddUnderflow =
+@@ -410,8 +424,8 @@
+         val equal = lhs === rhs
+         partialBits.lhs(lane) := lhs
+         partialBits.rhs(lane) := rhs
+-        partialBits.add(lane) := addResult
+-        partialBits.sub(lane) := subResult
++        when(opcodeIs(inputBits.funct6, 0x0, 0x20, 0x21)) { partialBits.add(lane) := addResult }
++        when(opcodeIs(inputBits.funct6, 0x2, 0x3, 0x22, 0x23)) { partialBits.sub(lane) := subResult }
+         val scaling = inputBits.funct6 === "h2a".U ||
+           inputBits.funct6 === "h2b".U
+         val signedScaling = inputBits.funct6 === "h2b".U
+@@ -432,49 +446,57 @@
+         val stickyMask = ~(Fill(64, 1.U) << guardIndex)(63, 0)
+         val sticky = (wide & stickyMask).orR
+         val discarded = (wide & discardedMask).orR
+-        partialBits.fixedShift(lane) := fixedShift
+-        partialBits.fixedRound(lane) := MuxLookup(inputBits.vxrm, false.B)(Seq(
+-          0.U -> guard,
+-          1.U -> (guard && (sticky || fixedShift(0))),
+-          2.U -> false.B,
+-          3.U -> (!fixedShift(0) && discarded)
+-        ))
+-        partialBits.shift(lane) := MuxLookup(inputBits.funct6, 0.U(32.W))(Seq(
+-          "h25".U -> (lhs << shiftAmount)(31, 0),
+-          "h28".U -> (lhs >> shiftAmount),
+-          "h29".U -> (lhs.asSInt >> shiftAmount).asUInt,
+-          // vnsrl/vnsra narrow the 64-bit pair {vs2+1, vs2} to its low word.
+-          "h2c".U -> fixedShift(31, 0),
+-          "h2d".U -> fixedShift(31, 0)
+-        ))
+-        partialBits.less(lane) := less
+-        partialBits.lessSigned(lane) := lessSigned
+-        partialBits.greater(lane) := greater
+-        partialBits.greaterSigned(lane) := greaterSigned
+-        partialBits.equal(lane) := equal
+-        partialBits.saturated(lane) := MuxLookup(
+-          inputBits.funct6, false.B
+-        )(Seq(
+-          "h20".U -> unsignedAdd(32),
+-          "h21".U -> (signedAddOverflow || signedAddUnderflow),
+-          "h22".U -> less,
+-          "h23".U -> (signedSubOverflow || signedSubUnderflow)
+-        ))
+-        partialBits.saturationLimit(lane) :=
+-          MuxLookup(inputBits.funct6, 0.U(32.W))(Seq(
+-            "h20".U -> Fill(32, 1.U),
+-            "h21".U -> Mux(
+-              lhs(31),
+-              (BigInt(1) << 31).U(32.W),
+-              ((BigInt(1) << 31) - 1).U(32.W)
+-            ),
+-            "h22".U -> 0.U,
+-            "h23".U -> Mux(
+-              lhs(31),
+-              (BigInt(1) << 31).U(32.W),
+-              ((BigInt(1) << 31) - 1).U(32.W)
+-            )
++        when(opcodeIs(inputBits.funct6, 0x2a, 0x2b, 0x2e, 0x2f)) {
++          partialBits.fixedShift(lane) := fixedShift
++          partialBits.fixedRound(lane) := MuxLookup(inputBits.vxrm, false.B)(Seq(
++            0.U -> guard,
++            1.U -> (guard && (sticky || fixedShift(0))),
++            2.U -> false.B,
++            3.U -> (!fixedShift(0) && discarded)
+           ))
++        }
++        when(opcodeIs(inputBits.funct6, 0x25, 0x28, 0x29, 0x2c, 0x2d)) {
++          partialBits.shift(lane) := MuxLookup(inputBits.funct6, 0.U(32.W))(Seq(
++            "h25".U -> (lhs << shiftAmount)(31, 0),
++            "h28".U -> (lhs >> shiftAmount),
++            "h29".U -> (lhs.asSInt >> shiftAmount).asUInt,
++            // vnsrl/vnsra narrow the 64-bit pair {vs2+1, vs2} to its low word.
++            "h2c".U -> fixedShift(31, 0),
++            "h2d".U -> fixedShift(31, 0)
++          ))
++        }
++        when(opcodeIs(inputBits.funct6, 0x4, 0x1a, 0x1c)) { partialBits.less(lane) := less }
++        when(opcodeIs(inputBits.funct6, 0x5, 0x1b, 0x1d)) { partialBits.lessSigned(lane) := lessSigned }
++        when(opcodeIs(inputBits.funct6, 0x6, 0x1e)) { partialBits.greater(lane) := greater }
++        when(opcodeIs(inputBits.funct6, 0x7, 0x1f)) { partialBits.greaterSigned(lane) := greaterSigned }
++        when(opcodeIs(inputBits.funct6, 0x18, 0x19, 0x1c, 0x1d)) { partialBits.equal(lane) := equal }
++        when(opcodeIs(inputBits.funct6, 0x20, 0x21, 0x22, 0x23)) {
++          partialBits.saturated(lane) := MuxLookup(
++            inputBits.funct6, false.B
++          )(Seq(
++            "h20".U -> unsignedAdd(32),
++            "h21".U -> (signedAddOverflow || signedAddUnderflow),
++            "h22".U -> less,
++            "h23".U -> (signedSubOverflow || signedSubUnderflow)
++          ))
++        }
++        when(opcodeIs(inputBits.funct6, 0x20, 0x21, 0x22, 0x23)) {
++          partialBits.saturationLimit(lane) :=
++            MuxLookup(inputBits.funct6, 0.U(32.W))(Seq(
++              "h20".U -> Fill(32, 1.U),
++              "h21".U -> Mux(
++                lhs(31),
++                (BigInt(1) << 31).U(32.W),
++                ((BigInt(1) << 31) - 1).U(32.W)
++              ),
++              "h22".U -> 0.U,
++              "h23".U -> Mux(
++                lhs(31),
++                (BigInt(1) << 31).U(32.W),
++                ((BigInt(1) << 31) - 1).U(32.W)
++              )
++            ))
++        }
+       }
+     }
+   }

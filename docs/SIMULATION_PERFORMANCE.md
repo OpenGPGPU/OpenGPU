@@ -183,6 +183,18 @@ shader does not exercise that integer datapath, so its timings alone cannot
 evaluate this next change. See the
 [register activity](performance/register-activity-2026-10-16.json).
 
+An opcode-selected register-retention prototype now passes 46 RTL/integration
+tests, exact-source native training/optimization, compute and GLES/GTK64 gates,
+and strict replay of the real Mesa trace. It removes **4,071,536 register
+commits (5.85%)** while preserving all 3,203,895 ticks and all observable
+traffic. It remains deferred: eight balanced replay samples have nearly
+unchanged wall and process-CPU medians, and UI/indexer activity exceeds the
+predeclared background bounds. These observations demonstrate neither a
+speedup nor a precise slowdown. A separate CPU-stack sample attributes about
+36% of observed stacks to generated register-commit functions in its sampled
+region; this is not the share attributable to the removed commits. See the
+[qualification and private patch](performance/integer-retention-2026-10-16.json).
+
 A separate masked vertex-line staging prototype passes 88 draws across eight
 capacities, four existing vertex tests, 12 complete scenes and six ordered
 blend/depth/MSAA checks. Every complete scene saves exactly 531 startup cycles;
