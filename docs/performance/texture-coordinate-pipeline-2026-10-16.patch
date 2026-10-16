@@ -1,0 +1,356 @@
+--- /dev/null
++++ b/src/main/scala/opengpu/graphics/TextureCoordinatePipeline.scala
+@@ -0,0 +1,129 @@
++package opengpu.graphics
++
++import chisel3._
++import chisel3.util._
++
++/** Base-level bilinear metadata. Filtering and memory ownership stay in TextureUnit. */
++class TexturePreparedSample extends Bundle {
++  val addresses = Vec(4, UInt(32.W))
++  val weights = Vec(4, UInt(17.W))
++}
++
++class TextureCoordinateRequest(laneWidth: Int) extends Bundle {
++  val lane = UInt(laneWidth.W)
++  val u = UInt(32.W)
++  val v = UInt(32.W)
++  val base = UInt(32.W)
++  val texWidth = UInt(14.W)
++  val texHeight = UInt(14.W)
++  val clamp = Bool()
++}
++
++class TextureCoordinateResult(laneWidth: Int) extends Bundle {
++  val lane = UInt(laneWidth.W)
++  val sample = new TexturePreparedSample
++}
++
++/** Five elastic stages preserve the sampler's arithmetic register cuts while
++  * decoding later vector lanes during the current lane's fetch/filter work.
++  * This unit issues no memory requests and keeps no cross-instruction state.
++  */
++class TextureCoordinatePipeline(laneWidth: Int) extends Module {
++  val io = IO(new Bundle {
++    val in = Flipped(Decoupled(new TextureCoordinateRequest(laneWidth)))
++    val out = Decoupled(new TextureCoordinateResult(laneWidth))
++    val busy = Output(Bool())
++  })
++  private class Binding extends Bundle {
++    val lane = UInt(laneWidth.W)
++    val base = UInt(32.W)
++    val texWidth = UInt(14.W)
++    val texHeight = UInt(14.W)
++    val clamp = Bool()
++  }
++  private class Biased extends Bundle {
++    val texture = new Binding
++    val x = UInt(38.W)
++    val y = UInt(38.W)
++  }
++  private class Ranged extends Bundle {
++    val texture = new Binding
++    val x = UInt(22.W)
++    val y = UInt(22.W)
++  }
++  private class Indexed extends Bundle {
++    val lane = UInt(laneWidth.W)
++    val base = UInt(32.W)
++    val texWidth = UInt(14.W)
++    val x = Vec(2, UInt(14.W))
++    val y = Vec(2, UInt(14.W))
++    val weights = Vec(4, UInt(17.W))
++  }
++  private val captured = Queue(io.in, 1, pipe = true, flow = false)
++  private val bias = Wire(Decoupled(new Biased))
++  bias.valid := captured.valid
++  captured.ready := bias.ready
++  bias.bits.texture.lane := captured.bits.lane
++  bias.bits.texture.base := captured.bits.base
++  bias.bits.texture.texWidth := captured.bits.texWidth
++  bias.bits.texture.texHeight := captured.bits.texHeight
++  bias.bits.texture.clamp := captured.bits.clamp
++  bias.bits.x := ((captured.bits.u * captured.bits.texWidth) >> 8) - 128.U
++  bias.bits.y := ((captured.bits.v * captured.bits.texHeight) >> 8) - 128.U
++  private val biased = Queue(bias, 1, pipe = true, flow = false)
++
++  private def axisRange(value: UInt, extent: UInt, clamp: Bool): UInt = {
++    val signed = value.asSInt
++    val last = ((extent << 8) - 1.U).pad(64)
++    val clamped = Mux(signed < 0.S, 0.S(64.W),
++      Mux(signed > last.asSInt, last.asSInt, signed.pad(64)))
++    Mux(clamp, clamped.asUInt, value.pad(64) & last)(21, 0)
++  }
++  private val range = Wire(Decoupled(new Ranged))
++  range.valid := biased.valid
++  biased.ready := range.ready
++  range.bits.texture := biased.bits.texture
++  range.bits.x := axisRange(biased.bits.x, biased.bits.texture.texWidth, biased.bits.texture.clamp)
++  range.bits.y := axisRange(biased.bits.y, biased.bits.texture.texHeight, biased.bits.texture.clamp)
++  private val ranged = Queue(range, 1, pipe = true, flow = false)
++
++  private def indices(value: UInt, extent: UInt, clamp: Bool): Seq[UInt] = {
++    val last = extent - 1.U
++    val raw = value(21, 8)
++    val first = Mux(clamp, Mux(raw > last, last, raw), raw)
++    val next = first + 1.U
++    Seq(first, Mux(clamp, Mux(next > last, last, next), next & last))
++  }
++  private val index = Wire(Decoupled(new Indexed))
++  index.valid := ranged.valid
++  ranged.ready := index.ready
++  index.bits.lane := ranged.bits.texture.lane
++  index.bits.base := ranged.bits.texture.base
++  index.bits.texWidth := ranged.bits.texture.texWidth
++  index.bits.x := VecInit(indices(ranged.bits.x, ranged.bits.texture.texWidth, ranged.bits.texture.clamp))
++  index.bits.y := VecInit(indices(ranged.bits.y, ranged.bits.texture.texHeight, ranged.bits.texture.clamp))
++  private val fx = ranged.bits.x(7, 0)
++  private val fy = ranged.bits.y(7, 0)
++  index.bits.weights(0) := (256.U - fx) * (256.U - fy)
++  index.bits.weights(1) := fx * (256.U - fy)
++  index.bits.weights(2) := (256.U - fx) * fy
++  index.bits.weights(3) := fx * fy
++  private val indexed = Queue(index, 1, pipe = true, flow = false)
++
++  private val addressed = Wire(Decoupled(new TextureCoordinateResult(laneWidth)))
++  addressed.valid := indexed.valid
++  indexed.ready := addressed.ready
++  addressed.bits.lane := indexed.bits.lane
++  addressed.bits.sample.weights := indexed.bits.weights
++  for (tap <- 0 until 4) {
++    addressed.bits.sample.addresses(tap) := indexed.bits.base +
++      ((indexed.bits.y(tap / 2) * indexed.bits.texWidth + indexed.bits.x(tap % 2)) << 2)
++  }
++  io.out <> Queue(addressed, 1, pipe = true, flow = false)
++
++  private val count = RegInit(0.U(3.W))
++  when(io.in.fire =/= io.out.fire) {
++    count := Mux(io.in.fire, count + 1.U, count - 1.U)
++  }
++  io.busy := count =/= 0.U
++}
+--- a/src/main/scala/opengpu/graphics/TextureUnit.scala
++++ b/src/main/scala/opengpu/graphics/TextureUnit.scala
+@@ -99,10 +99,12 @@
+   */
+ class TextureUnit(
+   gfxConfig: GraphicsConfig = GraphicsConfig(),
+-  wordCacheEntries: Int = 0
++  wordCacheEntries: Int = 0,
++  allowPrepared: Boolean = false
+ ) extends Module {
+   // Preserve the uncached single-argument interface for existing callers.
+-  def this(gfxConfig: GraphicsConfig) = this(gfxConfig, 0)
++  def this(gfxConfig: GraphicsConfig) = this(gfxConfig, 0, false)
++  def this(gfxConfig: GraphicsConfig, wordCacheEntries: Int) = this(gfxConfig, wordCacheEntries, false)
+   require(wordCacheEntries == 0 || (wordCacheEntries >= 4 && isPow2(wordCacheEntries)))
+   val io = IO(new Bundle {
+     // The owner must invalidate between instructions/bindings. Uncached
+@@ -117,6 +119,7 @@
+     /** Deepest mip level the level-walk may reach (TEX_CONFIG[5:2]). */
+     val texMaxLevel = Input(UInt(4.W))
+     val sample = Flipped(Decoupled(new TexSampleRequest))
++    val prepared = if (allowPrepared) Some(Input(Valid(new TexturePreparedSample))) else None
+     val result = Decoupled(UInt(32.W))
+     val mem = new Bundle {
+       val req = Decoupled(new OmMemoryRequest)
+@@ -457,6 +460,15 @@
+           io.sample.bits.lodFrac, 0.U)
+         secondLevel := false.B
+         state := sLevel
++        if (allowPrepared) {
++          when(io.prepared.get.valid) {
++            assert(io.sample.bits.mipLevel === 0.U && io.sample.bits.lodFrac === 0.U &&
++              io.texMaxLevel === 0.U, "prepared samples require fixed base-level filtering")
++            singleTexel := false.B
++            wReg := io.prepared.get.bits.weights
++            beginTapFetch(io.prepared.get.bits.addresses.toSeq)
++          }
++        }
+       }
+     }
+     is(sLevel) {
+--- a/src/main/scala/opengpu/graphics/TexSampleUnit.scala
++++ b/src/main/scala/opengpu/graphics/TexSampleUnit.scala
+@@ -49,7 +49,7 @@
+     }
+   })
+
+-  private val sampler = Module(new TextureUnit(gfxConfig, wordCacheEntries = 8))
++  private val sampler = Module(new TextureUnit(gfxConfig, wordCacheEntries = 8, allowPrepared = true))
+
+   // Reuse is limited to one instruction. A later operation may observe
+   // changed texture memory, format, binding, or address translation.
+@@ -87,6 +87,14 @@
+     Reg(Vec(config.lanes, UInt(config.xLen.W)))
+   private val laneWidth = math.max(1, log2Ceil(config.lanes))
+   private val laneReg = RegInit(0.U(laneWidth.W))
++  private val coordinatePipeline = Module(new TextureCoordinatePipeline(laneWidth))
++  private val preparedModeReg = RegInit(false.B)
++  private val firstSampleReg = RegInit(true.B)
++  private val prepareLane = RegInit(0.U(log2Ceil(config.lanes + 1).W))
++  private val texBaseReg = RegInit(0.U(32.W))
++  private val texFormatReg = RegInit(0.U(PixelFormat.width.W))
++  private val wrapClampReg = RegInit(false.B)
++
+   // Latch the coordinates at accept: the upstream issued-instruction bits are
+   // only stable through the handshake cycle (same race class as M4b/M5b).
+   private val uReg = RegInit(0.U(32.W))
+@@ -179,9 +187,43 @@
+   io.vectorIn.ready := state === sIdle && selectVector
+   io.in.ready := state === sIdle && !selectVector
+
++  sampler.io.texBase := Mux(preparedModeReg, texBaseReg, io.texBase)
++  sampler.io.texFormat := Mux(preparedModeReg, texFormatReg, io.texFormat)
++  sampler.io.texWidth := Mux(preparedModeReg, texWidthReg, io.texWidth)
++  sampler.io.texHeight := Mux(preparedModeReg, texHeightReg, io.texHeight)
++  sampler.io.wrapMode := Mux(preparedModeReg, wrapClampReg, io.wrapClamp)
++  sampler.io.texMaxLevel := Mux(preparedModeReg, maxLevelReg, io.texMaxLevel)
++
++  private val prepareIndex = prepareLane(laneWidth - 1, 0)
++  private val prepareActive = executionMaskReg(prepareIndex)
++  private val prepareMore = state === sSample && preparedModeReg && prepareLane < config.lanes.U
++  coordinatePipeline.io.in.valid := prepareMore && prepareActive
++  coordinatePipeline.io.in.bits.lane := prepareIndex
++  coordinatePipeline.io.in.bits.u := uVectorReg(prepareIndex)
++  coordinatePipeline.io.in.bits.v := vVectorReg(prepareIndex)
++  coordinatePipeline.io.in.bits.base := texBaseReg
++  coordinatePipeline.io.in.bits.texWidth := texWidthReg
++  coordinatePipeline.io.in.bits.texHeight := texHeightReg
++  coordinatePipeline.io.in.bits.clamp := wrapClampReg
++  when(prepareMore && (!prepareActive || coordinatePipeline.io.in.fire)) {
++    prepareLane := prepareLane + 1.U
++  }
++  private val usePrepared = preparedModeReg && !firstSampleReg
++  sampler.io.prepared.get.valid := usePrepared && coordinatePipeline.io.out.valid
++  sampler.io.prepared.get.bits := coordinatePipeline.io.out.bits.sample
++  coordinatePipeline.io.out.ready := usePrepared && sampler.io.sample.fire
++  when(preparedModeReg && sampler.io.sample.fire) { firstSampleReg := false.B }
++  when(usePrepared && sampler.io.sample.fire) {
++    assert(coordinatePipeline.io.out.bits.lane === laneReg, "prepared coordinate lane must match sample owner")
++  }
++  when(io.vectorIn.fire || io.in.fire) {
++    assert(!coordinatePipeline.io.busy, "coordinate metadata must drain before the next instruction")
++  }
++
+   private val vectorLaneActive = executionMaskReg(laneReg)
+   sampler.io.sample.valid :=
+-    state === sSample && (!vectorModeReg || vectorLaneActive)
++    state === sSample && (!vectorModeReg || vectorLaneActive) &&
++      (!usePrepared || coordinatePipeline.io.out.valid)
+   sampler.io.sample.bits.u :=
+     Mux(vectorModeReg, uVectorReg(laneReg), uReg)
+   sampler.io.sample.bits.v :=
+@@ -257,6 +299,15 @@
+           (io.texHeight >> io.minLevel) <= 1.U &&
+           io.vectorIn.bits.executionMask.orR
+         broadcastTexelReg := oneTexel
++        preparedModeReg := io.minLevel === 0.U && io.texMaxLevel === 0.U &&
++          !oneTexel && PopCount(io.vectorIn.bits.executionMask) > 1.U
++        // Preserve the original first-sample latency; only later active
++        // lanes enter the lookahead pipeline.
++        firstSampleReg := true.B
++        prepareLane := PriorityEncoder(io.vectorIn.bits.executionMask) +& 1.U
++        texBaseReg := io.texBase
++        texFormatReg := io.texFormat
++        wrapClampReg := io.wrapClamp
+         laneReg := Mux(oneTexel,
+           PriorityEncoder(io.vectorIn.bits.executionMask), 0.U)
+         preferVector := false.B
+@@ -271,6 +322,7 @@
+         }
+       }.elsewhen(io.in.fire) {
+         vectorModeReg := false.B
++        preparedModeReg := false.B
+         broadcastTexelReg := false.B
+         warpIdReg := io.in.bits.decode.warpId
+         rdReg := io.in.bits.decode.instruction(11, 7)
+--- /dev/null
++++ b/src/test/scala/opengpu/graphics/TextureCoordinatePipelineSpec.scala
+@@ -0,0 +1,85 @@
++package opengpu.graphics
++
++import chisel3._
++import opengpu.testutil.GpuSim._
++import org.scalatest.flatspec.AnyFlatSpec
++import scala.collection.mutable
++import scala.util.Random
++
++class TextureCoordinatePipelineSpec extends AnyFlatSpec {
++  behavior of "TextureCoordinatePipeline"
++  it should "match exact base-level addressing and weights through arbitrary stalls" in {
++    case class Request(lane: Int, u: Long, v: Long, base: Long, w: Int, h: Int, clamp: Boolean)
++    val rng = new Random(7319)
++    val edge = Seq(0L,1L,0x7fL,0x80L,0xffL,0x100L,0x3fffL,0x4000L,0x8000L,
++      0xffffL,0x10000L,0x10001L,0x7fffffffL,0x80000000L,0xfffffffeL,0xffffffffL)
++    val cases = (0 until 1200).map { n =>
++      val clamp = n % 3 != 0
++      val w = if (clamp) Seq(1,2,3,7,17,255,256,4095,8192,16383)(n % 10) else 1 << (n % 14)
++      val h = if (clamp) Seq(16383,8192,4096,511,33,9,5,3,2,1)((n / 10) % 10) else 1 << ((n / 14) % 14)
++      Request(n % 16, if (n < 256) edge(n % 16) else rng.nextLong() & 0xffffffffL,
++        if (n < 256) edge(n / 16) else rng.nextLong() & 0xffffffffL,
++        if (n % 7 == 0) 0xfffffff0L else rng.nextLong() & 0xfffffffcL,w,h,clamp)
++    }
++    def expected(r: Request): (Seq[Long],Seq[Int]) = {
++      def axis(c: Long, n: Int): (Int,Int,Int) = {
++        val bits = ((BigInt(c) * n >> 8) - 128) & ((BigInt(1) << 38) - 1)
++        val signed = if (bits.testBit(37)) bits - (BigInt(1) << 38) else bits
++        val bounded = if (r.clamp) signed.max(BigInt(0)).min(BigInt(n * 256L - 1))
++          else bits & BigInt(n * 256L - 1)
++        val first = (bounded >> 8).toInt
++        (first, if (r.clamp) (first + 1).min(n - 1) else (first + 1) & (n - 1), (bounded & 255).toInt)
++      }
++      val (x0,x1,fx)=axis(r.u,r.w);val (y0,y1,fy)=axis(r.v,r.h)
++      val addresses = Seq((x0,y0),(x1,y0),(x0,y1),(x1,y1)).map {
++        case (x,y) => (r.base + (y.toLong * r.w + x) * 4) & 0xffffffffL
++      }
++      (addresses,Seq((256-fx)*(256-fy),fx*(256-fy),(256-fx)*fy,fx*fy))
++    }
++    simulate(new TextureCoordinatePipeline(4)) { dut =>
++      dut.io.in.valid.poke(false.B);dut.io.out.ready.poke(false.B)
++      dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
++      dut.reset.poke(true.B);dut.clock.step();dut.reset.poke(false.B)
++      val pending=mutable.Queue.empty[Request]
++      var sent=0;var received=0;var cycle=0
++      var held:Option[BigInt]=None
++      while(received < cases.size && cycle < 20000) {
++        val send=sent<cases.size && (cycle%17<13)
++        dut.io.in.valid.poke(send.B)
++        if(sent<cases.size) {
++          val r=cases(sent)
++          dut.io.in.bits.lane.poke(r.lane.U);dut.io.in.bits.u.poke(r.u.U);dut.io.in.bits.v.poke(r.v.U)
++          dut.io.in.bits.base.poke(r.base.U);dut.io.in.bits.texWidth.poke(r.w.U)
++          dut.io.in.bits.texHeight.poke(r.h.U);dut.io.in.bits.clamp.poke(r.clamp.B)
++        }
++        val ready=cycle%31<18 && cycle%7!=3
++        dut.io.out.ready.poke(ready.B)
++        if(dut.io.out.valid.peek().litToBoolean) {
++          val snapshot=dut.io.out.bits.peek().litValue
++          held.foreach(x=>assert(snapshot==x,"prepared metadata changed under backpressure"))
++          if(ready) {
++            val r=pending.dequeue();val (addresses,weights)=expected(r)
++            dut.io.out.bits.lane.expect(r.lane.U)
++            for(i<-0 until 4) {
++              dut.io.out.bits.sample.addresses(i).expect(addresses(i).U)
++              dut.io.out.bits.sample.weights(i).expect(weights(i).U)
++            }
++            assert(weights.sum==65536);received+=1;held=None
++          } else held=Some(snapshot)
++        } else assert(held.isEmpty,"prepared valid dropped under backpressure")
++        if(send && dut.io.in.ready.peek().litToBoolean) {pending.enqueue(cases(sent));sent+=1}
++        dut.clock.step();cycle+=1
++      }
++      assert(received==cases.size && pending.isEmpty)
++      dut.io.in.valid.poke(false.B);dut.io.out.ready.poke(true.B);dut.clock.step(3)
++      dut.io.busy.expect(false.B);dut.io.out.valid.expect(false.B)
++      // Reset must discard metadata in every occupied stage.
++      dut.io.out.ready.poke(false.B);dut.io.in.valid.poke(true.B);dut.clock.step(5)
++      dut.io.busy.expect(true.B)
++      dut.reset.poke(true.B);dut.clock.step();dut.reset.poke(false.B)
++      dut.io.in.valid.poke(false.B);dut.io.out.ready.poke(true.B);dut.clock.step(6)
++      dut.io.busy.expect(false.B);dut.io.out.valid.expect(false.B)
++      println(s"TEXTURE_COORDINATE_CASES=$received cycles=$cycle")
++    }
++  }
++}

@@ -118,6 +118,18 @@ texture sampling ahead of OM port changes for the next desktop investigation.
 It is not a full compositor profile or host timing benchmark. See the
 [ordering experiment and control](performance/primitive-output-order-2026-10-16.json).
 
+A fixed-base-mip coordinate lookahead candidate now passes 49 RTL tests,
+including 12 complete scenes and 576 frozen-sampler comparison instructions
+across 1–32 lanes. It prepares later lanes while the current lane fetches and
+filters, preserving the first-request latency and existing sampling arithmetic.
+Primary spatial cycles fall from 46,237 to 37,853 for one CU and from 14,692 to
+12,651 for four CUs (18.1% and 13.9%); solid cycles stay exactly unchanged.
+Both improve, but whole-scene scaling changes from 3.147× to 2.992×. Native
+model generation passes; fresh training, host timing and desktop qualification
+remain in progress. This is a private candidate, with no host-time claim or
+production promotion yet. See the
+[RTL evidence and trace](performance/texture-coordinate-pipeline-2026-10-16.json).
+
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per
 worker, scales the shared credit and translation ranges with CU count, pipelines
 the shared request queue, and bounds reply buffering by local ownership. It also
