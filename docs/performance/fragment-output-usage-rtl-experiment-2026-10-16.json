@@ -1,0 +1,121 @@
+{
+  "status": "PRIVATE RTL+DRIVER COMPATIBILITY PASS; fresh native qualification running",
+  "artifact_root": ".artifacts/shared-cu/fragment-output-usage",
+  "base_commit": "bc557c5",
+  "patch": "docs/performance/fragment-output-usage-rtl-2026-10-16.patch",
+  "scope": "Raw drawword32bits28:25 carry4output hints. Bits0/1 promise no depth/control writes (skipreadback); bits2/3 promise noreads orwrites (skipinit only withmatching no-writebit). Zero preservesfullABI. Coalescedpathonly; legacyword path remainsfull. No mainRTL/driverpromotion.",
+  "capability_bit": 28,
+  "software": "Existing explicittransientfirst9SoAflag/driverfeature gatesallomission. Driverderives first9read/writeusagefromimmutableshaders andinjectstrustedhints onlyifcap28; rawuserhintsstillrejected. DMAaliasguardandoldhelpers/defaultfullstagingretained. Mesa alreadydeclaresprivatefirst9scratch; noMesa shaderbinary/VLENchanges.",
+  "units": {
+    "tests": 39,
+    "counts": {
+      "masked-output": 4,
+      "output-metadata": 5,
+      "legacy-output": 28
+    },
+    "masked_batches": 306,
+    "adversarial": "Ninecanonicalmasks,ABI0/ABI1,full/small/nearfullbatches,partialshaderwrites,helpercoverageandpersampledepthsideband,outoforderACKs/stalls/IDreuse,firstquadmetadata/alternatebankreuse,write/read/kernelfailures,uniformandinput/outputomissioncanaries.",
+    "overlap": {
+      "passed": true,
+      "tests": 2,
+      "pairs": 4,
+      "scope": "Two configs8/128capacity, both15->0 and0->15contracts. Entiresecondbank admittedwhilefirstshadercompletionstalled; firstandsecondABI1/ABI0 snapshots, defaultdepth/control, outputmasks, pixels andomittedbytes checked. Signednegativeandpositive rasterdepths preserveall32bits."
+    },
+    "negative": "Oldimplementation withnewmetadata interface passeszero-hint control thenfails byte-maskcheck: wroteomitteddepthinitialization. Initialcontroller expectedlaterasserttext; correctedverification only, RTL/testunchanged. Bothlogsretained."
+  },
+  "full_scenes": {
+    "cases": 12,
+    "all_pixels_depth_metadata_identical": true,
+    "all_omitted_bytes_and_uniforms_preserved": true,
+    "summary": {
+      "solid": {
+        "1": {
+          "cycles": {
+            "0/0": 26008,
+            "15/0": 24792,
+            "15/15": 23364
+          },
+          "incremental_output_reduction_percent": 5.759922555663122
+        },
+        "4": {
+          "cycles": {
+            "0/0": 10730,
+            "15/0": 9817,
+            "15/15": 9385
+          },
+          "incremental_output_reduction_percent": 4.4005296933890214
+        }
+      },
+      "spatial": {
+        "1": {
+          "cycles": {
+            "0/0": 48881,
+            "15/0": 47665,
+            "15/15": 46237
+          },
+          "incremental_output_reduction_percent": 2.995908947865311
+        },
+        "4": {
+          "cycles": {
+            "0/0": 16047,
+            "15/0": 15272,
+            "15/15": 14692
+          },
+          "incremental_output_reduction_percent": 3.7977998952331116
+        }
+      }
+    }
+  },
+  "guest_backward_compatibility": {
+    "started": 1792135345.348781,
+    "pid": 37165,
+    "cases": [
+      {
+        "hardware": "cap27",
+        "passed": true,
+        "exit_status": 0,
+        "qemu_sha256": "88384a2dd6dc6f1eefbc0c0a4b136df611ca77c95a0254d381074b9eec5d22ca",
+        "seconds": 14.864730833098292,
+        "proof": "/Users/duckdonald/workspace/gpu/.artifacts/fo-cap27"
+      },
+      {
+        "hardware": "cap0",
+        "passed": true,
+        "exit_status": 0,
+        "qemu_sha256": "9d44388b9094ca87c29175760dc68baf5590721678e1aa29bd305069c4f56697",
+        "seconds": 8.187096290988848,
+        "proof": "/Users/duckdonald/workspace/gpu/.artifacts/fo-cap0"
+      }
+    ],
+    "scope": "NewDMAguarded outputusage driver on previouslyqualifiedcap27 andcap0 hardware. Defaultall6CPUinputs+depth/control+uniforms exact; inputoptin oldcap27 retainsoutputinitialization, oldcap0rejectsoptin beforescratchwrites. Bothraw hintfields rejectedindependently. All4096pixels checked.",
+    "payload_unchanged": true,
+    "passed": true,
+    "finished": 1792135368.5035148
+  },
+  "limits": [
+    "Native host-time andtraffic savings remain unproven; Scala scene timingsnotnativeGPUnorwalltimes.",
+    "Newcap28 realguesttraining/optimized/full640gatespending. Oldcap27/cap0newdrivergatespassed; thisdoesnotprove newcap28hardware execution.",
+    "Freshmodel generation/training usessealed sourceandnewprofile; neverreuse oldgenerated-model PGO. DefaultQEMUandproductionbc557c5 remainunchanged."
+  ],
+  "sources": {
+    ".artifacts/shared-cu/fragment-output-usage/rtl-source/CommandBufferStage.scala": "0d5d243ca0d6b1630b9b6c87f596e9a0c731ebe1b8ae74208bf953cdd84a038a",
+    ".artifacts/shared-cu/fragment-output-usage/rtl-source/DrawContextFifo.scala": "cec16f809c14d7b11f0532a3aca56425ed7aa5e6388ff049fa4844abbca2935a",
+    ".artifacts/shared-cu/fragment-output-usage/rtl-source/GpuCapabilities.scala": "f6f73d3d5b7df4c30afcf8ef41763d853b977e63be80e6c2fba683168c5b4a2c",
+    ".artifacts/shared-cu/fragment-output-usage/rtl-source/HasDrawState.scala": "64d2772eebf225e53781c2de0b7a089192927bc1fa15041de60e05714de565cc",
+    ".artifacts/shared-cu/fragment-output-usage/rtl-source/KernelFragStage.scala": "a11f8cd2e603af936812eb856a948b5e8a108e0e90696c67a4bc411f63fc4aef",
+    ".artifacts/shared-cu/fragment-output-usage/rtl-source/KernelVertStage.scala": "29a186f9febf04b79139c891872c3664273e54c758cffb0cfeea4467fbbc1101",
+    ".artifacts/shared-cu/fragment-output-usage/rtl-source/ParallelFragmentScheduler.scala": "2283e849136a12bf9fb8fd4df8ee9643bbcabdf6f99b81bd1d00fa96bb2e1b42",
+    ".artifacts/shared-cu/fragment-output-usage/rtl-source/RenderHost.scala": "c6c26b05974877548ee93b364bcb552c95008499544789aeb9e9e5a77172bd1c",
+    ".artifacts/shared-cu/fragment-output-usage/rtl-source/RenderPipeline.scala": "a320935984a376868ec30e6bf111b6acfa7d90941038a1dfe81670f1ba159d8a",
+    ".artifacts/shared-cu/fragment-output-usage/driver/opengpu_compute.c": "31bbc18b3e72e7c5b05812c6d88e161b35fc375a46ceed083142f2a5e0f11a7a",
+    ".artifacts/shared-cu/fragment-output-usage/driver/opengpu_shader_validator.h": "ce13e6633c473f4722035b3cd853a18d30fd78d6c35bcd0c4855243243a789e2",
+    ".artifacts/shared-cu/fragment-output-usage/KernelFragOutputUsageSpec.scala": "25fc4d834e507fde954771dcd885be0443f3fff127de00f84d434940e1118ad1",
+    ".artifacts/shared-cu/fragment-output-usage/KernelFragOutputOverlapSpec.scala": "606aab39f13881157ad9f9e591f8d6a3535c4b2fae59f11ec8a02a71f384010b"
+  },
+  "evidence": {
+    ".artifacts/shared-cu/fragment-output-usage/rtl-v2-state.json": "0e9b6d5f76e1998079f2acd9a442d13bb51d2dd12d6651146418fc8c5ecbb199",
+    ".artifacts/shared-cu/fragment-output-usage/scene-state.json": "6140e3598c260919fdb1dd450128b2ee1fcaee181364e4961fe42a7c4b14fa35",
+    ".artifacts/shared-cu/fragment-output-usage/overlap-v3-state.json": "3ed8791bc85e3aa26c84999c8807ed3037774715110761ccfdea088b94df1ce4",
+    ".artifacts/shared-cu/fragment-output-usage-native/compat-state.json": "e0a39bc90b578c2d863f5630f48a9f249fdc4127722c5cf8331a76e1b5ad22ec"
+  }
+}

@@ -1,0 +1,165 @@
+{
+  "status": "PASS correctness; small/variable native task timing benefit, separate compiler candidate retained",
+  "artifact_root": ".artifacts/shared-cu/fragment-input-usage-qualified/broad-profile",
+  "source_commit": "bc557c5",
+  "scope": "Identical generated RTL/model and C++runner; native16fixture profile compared with fresh35profile mix (16native+18VMreplays+one21GLES/GTK64guest). Samecomplete inputs/outputandcounters in eachmode. NoRTLchange ordefaultQEMUreplacement.",
+  "qualification": {
+    "native_cases": 8,
+    "VMreplays": 18,
+    "GLES_cases": 21,
+    "GTK64_idle_active_strictscanout": true,
+    "full640_for_broad_artifact": false,
+    "payload_unchanged": true
+  },
+  "paired": {
+    "samples": 64,
+    "warmups": 8,
+    "order": "Four ABBA/BAAB rounds per scene andfull/derivedmode; eight samples/profile/scene/mode",
+    "summary": {
+      "0": {
+        "solid": {
+          "medians": {
+            "native": 1.0425087290000001,
+            "broad": 1.0405305835
+          },
+          "broad_reduction_percent": 0.18974857907401166,
+          "round_medians": {
+            "native": [
+              1.0456785000000002,
+              1.0365394585,
+              1.040733854,
+              1.0521870414999999
+            ],
+            "broad": [
+              1.0371374375,
+              1.0289799165,
+              1.0405305835,
+              1.0433117295
+            ]
+          }
+        },
+        "spatial": {
+          "medians": {
+            "native": 1.2853592505,
+            "broad": 1.2789841874999999
+          },
+          "broad_reduction_percent": 0.49597519117867694,
+          "round_medians": {
+            "native": [
+              1.2837693749999999,
+              1.2847948335,
+              1.289065917,
+              1.2884672505
+            ],
+            "broad": [
+              1.2730245,
+              1.2716064585,
+              1.2880949579999998,
+              1.2903461040000002
+            ]
+          }
+        }
+      },
+      "1": {
+        "solid": {
+          "medians": {
+            "native": 0.979650083,
+            "broad": 0.9689108955000001
+          },
+          "broad_reduction_percent": 1.0962268759385108,
+          "round_medians": {
+            "native": [
+              0.9868478125,
+              0.989817604,
+              0.9701473955,
+              0.9599295210000001
+            ],
+            "broad": [
+              0.9722915830000001,
+              0.975443646,
+              0.9551389164999999,
+              0.961001479
+            ]
+          }
+        },
+        "spatial": {
+          "medians": {
+            "native": 1.2593450415,
+            "broad": 1.2316248545
+          },
+          "broad_reduction_percent": 2.2011590220725186,
+          "round_medians": {
+            "native": [
+              1.2262748955,
+              1.224805479,
+              1.3195934375,
+              1.352765542
+            ],
+            "broad": [
+              1.216645979,
+              1.2316248545,
+              1.3027570415,
+              1.2515961039999999
+            ]
+          }
+        }
+      }
+    },
+    "within_round": {
+      "0": {
+        "solid": {
+          "reductions_percent": [
+            0.8167962236959259,
+            0.7293057623623533,
+            0.01953145842413795,
+            0.8435108635577837
+          ],
+          "median_reduction_percent": 0.7730509930291396,
+          "rounds_favouring_broad": 4
+        },
+        "spatial": {
+          "reductions_percent": [
+            0.8369786045098526,
+            1.0264965779845592,
+            0.07532268033739742,
+            -0.1458208192153032
+          ],
+          "median_reduction_percent": 0.456150642423625,
+          "rounds_favouring_broad": 3
+        }
+      },
+      "1": {
+        "solid": {
+          "reductions_percent": [
+            1.475022725451891,
+            1.4521824972512754,
+            1.5470307985793075,
+            -0.1116704900254728
+          ],
+          "median_reduction_percent": 1.4636026113515832,
+          "rounds_favouring_broad": 3
+        },
+        "spatial": {
+          "reductions_percent": [
+            0.7852168005179627,
+            -0.5567721256086733,
+            1.275877518146562,
+            7.478711931886284
+          ],
+          "median_reduction_percent": 1.0305471593322624,
+          "rounds_favouring_broad": 3
+        }
+      }
+    },
+    "limitations": "No owncompilers/guests live during samples; unrelatedhostactivity sampled. Overallmedians andwithin-round ratios differ; optinspatiallast rounddrift islarge. 1.1%/2.2% aggregateoptin gains are smallandnot a clean desktop-startup claim. Do not compoundwith previous7.6%/4.1% omission savings."
+  },
+  "decision": "Keep qualified broad artifact separate. Current fullyqualified desktop remains native-fixture-profile bc557c5. Prioritize outputstagingbypass with cleartrace/cycle opportunity; actual desktop trace/profile comparison remains open.",
+  "evidence": {
+    ".artifacts/shared-cu/fragment-input-usage-qualified/broad-profile/state.json": "0df33360684c9b538069d24c22efa34d6c75209f8504eef399dcdb4f52aa8d24",
+    ".artifacts/shared-cu/fragment-input-usage-qualified/broad-profile/profile-inputs.json": "e761ef7b70dbab8a85a1cdd0c5c40409073448af061e8db74830500347d50050",
+    ".artifacts/shared-cu/fragment-input-usage-qualified/broad-profile/paired/state.json": "de9d34b435f23947f940af4db185e0856c26dc79888f662210150b41f59993ad",
+    ".artifacts/shared-cu/fragment-input-usage-qualified/broad-guest-state.json": "85b65cfec5f027f16f867bf67bf0d1d9159c93040d64702ea583c13aeda06800"
+  },
+  "qemu_sha256": "4d197511c804b393216805a8ce819ca3af65ecc4695a023b0a3909e37f6afce5",
+  "archive_sha256": "40489f65e9c77685a7d75d96425845f77af776251074da5b43f323925c5be5b7"
+}

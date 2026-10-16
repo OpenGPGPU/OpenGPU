@@ -1,0 +1,1146 @@
+--- a/src/main/scala/opengpu/graphics/CommandBufferStage.scala
++++ b/src/main/scala/opengpu/graphics/CommandBufferStage.scala
+@@ -79,6 +79,7 @@
+     d.fragKernarg := words(25)
+     d.fragKernargBankStride := words(34)
+     d.fragInputSkip := words(32)(24, 19)
++    d.fragOutputSkip := words(32)(28, 25)
+     d.stateOverride := words(32)(0)
+     d.depthTestEnable := words(32)(1)
+     d.depthFunc := words(32)(6, 4)
+@@ -149,6 +150,7 @@
+     d.uv(2).u := words(30)
+     d.uv(2).v := words(31)
+     d.fragInputSkip := words(32)(24, 19)
++    d.fragOutputSkip := words(32)(28, 25)
+     d.stateOverride := words(32)(0)
+     d.depthTestEnable := words(32)(1)
+     d.depthFunc := words(32)(6, 4)
+--- a/src/main/scala/opengpu/graphics/DrawContextFifo.scala
++++ b/src/main/scala/opengpu/graphics/DrawContextFifo.scala
+@@ -7,6 +7,7 @@
+ class DrawContext extends Bundle with HasResolvedDrawState {
+   val shaderPc = UInt(32.W)
+   val fragInputSkip = UInt(6.W)
++  val fragOutputSkip = UInt(4.W)
+   val kernargBase = UInt(32.W)
+   val kernargBankStride = UInt(32.W)
+   val texFormat = UInt(PixelFormat.width.W)
+--- a/src/main/scala/opengpu/graphics/GpuCapabilities.scala
++++ b/src/main/scala/opengpu/graphics/GpuCapabilities.scala
+@@ -53,6 +53,7 @@
+   /** Each unified render descriptor can select its own target dimensions. */
+   val RenderExtents = 26
+   val FragmentInputUsage = 27
++  val FragmentOutputUsage = 28
+ }
+
+ /** Byte fields of GpuCommandMmioRegs.SHADER_CONFIG and the DRM query. */
+--- a/src/main/scala/opengpu/graphics/HasDrawState.scala
++++ b/src/main/scala/opengpu/graphics/HasDrawState.scala
+@@ -42,4 +42,5 @@
+   val stateOverride = Bool()
+   /** Optional promise: shader does not read these input SoA slices (0..5). */
+   val fragInputSkip = UInt(6.W)
++  val fragOutputSkip = UInt(4.W)
+ }
+--- a/src/main/scala/opengpu/graphics/KernelFragStage.scala
++++ b/src/main/scala/opengpu/graphics/KernelFragStage.scala
+@@ -55,6 +55,7 @@
+   val depthOverride = Output(Bool())
+   val shaderPc = Input(UInt(32.W))
+   val inputSkip = Input(UInt(6.W))
++  val outputSkip = Input(UInt(4.W))
+   /** Output-control ABI: 0 = legacy (any nonzero word emits), 1 = the
+     * output-valid word splits into bit 0 emit / bit 1 depth override. */
+   val abi1 = Input(Bool())
+@@ -87,6 +88,7 @@
+     front.depthOverride := worker.depthOverride
+     worker.shaderPc := front.shaderPc
+     worker.inputSkip := front.inputSkip
++    worker.outputSkip := front.outputSkip
+     worker.abi1 := front.abi1
+     worker.kernargBase := front.kernargBase
+     worker.kernargBankStride := front.kernargBankStride
+@@ -358,6 +360,7 @@
+   private val slotTexMinLevel = Reg(Vec(2, UInt(4.W)))
+   private val slotAbi1 = Reg(Vec(2, Bool()))
+   private val slotInputSkip = Reg(Vec(2, UInt(6.W)))
++  private val slotOutputSkip = Reg(Vec(2, UInt(4.W)))
+
+   texUnit.io.texBase := slotTexBase(execSlot)
+   texUnit.io.texWidth := slotTexWidth(execSlot)
+@@ -535,6 +538,7 @@
+   private val wpTexMinLevel = Reg(UInt(4.W))
+   private val wpAbi1 = Reg(Bool())
+   private val wpInputSkip = Reg(UInt(6.W))
++  private val wpOutputSkip = Reg(UInt(4.W))
+
+   io.fragIn.ready := !pendingValid && prodCount < batchCap.U
+   io.drained := state === sIdle && !pendingValid
+@@ -596,6 +600,7 @@
+     wpShaderPc := io.shaderPc
+     wpAbi1 := io.abi1
+     wpInputSkip := io.inputSkip
++    wpOutputSkip := io.outputSkip
+     wpKernarg := bankedKernarg(prodSlot)
+     wpTexBase := io.texBase
+     wpTexWidth := io.texWidth
+@@ -640,6 +645,7 @@
+       slotTexMinLevel(wpSlot) := wpTexMinLevel
+       slotAbi1(wpSlot) := wpAbi1
+       slotInputSkip(wpSlot) := wpInputSkip
++      slotOutputSkip(wpSlot) := wpOutputSkip
+     }
+   }
+
+@@ -871,7 +877,10 @@
+       val slice = position / batchCap
+       if (slice == 6 || slice > 8) 0.U(4.W)
+       else {
+-        val enabled = if (slice < 6) !slotInputSkip(execSlot)(slice) else true.B
++        val enabled = if (slice < 6) !slotInputSkip(execSlot)(slice)
++          else if (slice == 7 || slice == 8)
++            !(slotOutputSkip(execSlot)(slice - 5) && slotOutputSkip(execSlot)(slice - 7))
++          else true.B
+         Mux(enabled && (position % batchCap).U < execCount, 15.U(4.W), 0.U(4.W))
+       }
+     })
+@@ -1012,7 +1021,23 @@
+         requestQuadIdx := 0.U
+         requestLaneIdx := 0.U
+         wordPending := false.B
+-        if (coalesceStaging) { field := outputFirstLine.U }
++        if (coalesceStaging) {
++          field := outputFirstLine.U
++          // Unwritten outputs retain the defaults captured with this bank.
++          // ABI0 always overrides depth; ABI1's default control only emits.
++          for (lane <- 0 until batchCap) {
++            val p0 = fragRecords(0)(lane / 4).lanes(lane % 4)
++            val p1 = fragRecords(1)(lane / 4).lanes(lane % 4)
++            when(slotOutputSkip(execSlot)(0)) {
++              outDepth(lane) := Mux(execSlot.asBool, p1.depth, p0.depth)
++            }
++            when(slotOutputSkip(execSlot)(1)) {
++              outValid(lane) := Mux(execSlot.asBool, p1.covered, p0.covered) &&
++                io.kernelCompletion.bits.success
++              outOverride(lane) := !slotAbi1(execSlot)
++            }
++          }
++        }
+         state := sRead
+       }
+     }
+@@ -1027,7 +1052,16 @@
+           // A partial wide batch need not fetch output lines beyond its tail.
+           val needed = MuxLookup(field, false.B)(
+             (outputFirstLine to outputLastLine).map { line =>
+-              line.U -> ((line * 16 % batchCap).U < execCount)
++              val words = (0 until 16).map { word =>
++                val position = line * 16 + word
++                val slice = position / batchCap
++                val active = (position % batchCap).U < execCount
++                if (slice == 6) active
++                else if (slice == 7 || slice == 8)
++                  active && !slotOutputSkip(execSlot)(slice - 7)
++                else false.B
++              }
++              line.U -> VecInit(words).asUInt.orR
+             })
+           when(needed) {
+             req.transactionId := freeLineId
+@@ -1050,8 +1084,11 @@
+                 val lane = position % batchCap
+                 val data = io.wordMemResp.bits.readData(32 * word + 31, 32 * word)
+                 if (slice == 6) outWords(lane) := data
+-                else if (slice == 7) outDepth(lane) := data.asSInt
++                else if (slice == 7) {
++                  when(!slotOutputSkip(execSlot)(0)) { outDepth(lane) := data.asSInt }
++                }
+                 else if (slice == 8) {
++                  when(!slotOutputSkip(execSlot)(1)) {
+                   val covered = Mux(execSlot.asBool,
+                     fragRecords(1)(lane / 4).lanes(lane % 4).covered,
+                     fragRecords(0)(lane / 4).lanes(lane % 4).covered)
+@@ -1059,6 +1096,7 @@
+                     covered && !execFailed
+                   outOverride(lane) := FragmentShaderAbi.overridesDepth(data, slotAbi1(execSlot))
+                 }
++                }
+               }
+             }
+           }
+--- a/src/main/scala/opengpu/graphics/KernelVertStage.scala
++++ b/src/main/scala/opengpu/graphics/KernelVertStage.scala
+@@ -98,6 +98,7 @@
+     val kernargBankStride = Input(UInt(32.W))
+     val fragShaderPc = Input(UInt(32.W))
+     val fragInputSkip = Input(UInt(6.W))
++    val fragOutputSkip = Input(UInt(4.W))
+     val fragKernarg = Input(UInt(32.W))
+     val fragKernargBankStride = Input(UInt(32.W))
+     val stateOverride = Input(Bool())
+@@ -325,6 +326,7 @@
+   private val kernargBank = RegInit(false.B)
+   private val snapFragPc = Reg(UInt(32.W))
+   private val snapFragInputSkip = Reg(UInt(6.W))
++  private val snapFragOutputSkip = Reg(UInt(4.W))
+   private val snapFragKernarg = Reg(UInt(32.W))
+   private val snapFragBankStride = Reg(UInt(32.W))
+   private val snapStateOverride = Reg(Bool())
+@@ -398,6 +400,7 @@
+   }
+   io.vertOut.bits.shaderPc := snapFragPc
+   io.vertOut.bits.fragInputSkip := snapFragInputSkip
++  io.vertOut.bits.fragOutputSkip := snapFragOutputSkip
+   io.vertOut.bits.shaderKernarg := snapFragKernarg
+   io.vertOut.bits.kernargBankStride := snapFragBankStride
+   io.vertOut.bits.stateOverride := snapStateOverride
+@@ -446,6 +449,7 @@
+         kernargBank := false.B
+         snapFragPc := io.fragShaderPc
+         snapFragInputSkip := io.fragInputSkip
++        snapFragOutputSkip := io.fragOutputSkip
+         snapFragKernarg := io.fragKernarg
+         snapFragBankStride := io.fragKernargBankStride
+         snapStateOverride := io.stateOverride
+--- a/src/main/scala/opengpu/graphics/ParallelFragmentScheduler.scala
++++ b/src/main/scala/opengpu/graphics/ParallelFragmentScheduler.scala
+@@ -128,6 +128,7 @@
+     port.fragDepths := io.front.fragDepths
+     port.shaderPc := io.front.shaderPc
+     port.inputSkip := io.front.inputSkip
++    port.outputSkip := io.front.outputSkip
+     port.abi1 := io.front.abi1
+     port.kernargBase := io.front.kernargBase + io.front.kernargBankStride * (2 * worker).U
+     port.kernargBankStride := io.front.kernargBankStride
+--- a/src/main/scala/opengpu/graphics/RenderHost.scala
++++ b/src/main/scala/opengpu/graphics/RenderHost.scala
+@@ -409,6 +409,7 @@
+       (if (unifiedCommands) (1 << GpuCapabilities.NativePixelFormats) else 0) |
+       (if (unifiedCommands) (1 << GpuCapabilities.RenderExtents) else 0) |
+       (if (unifiedCommands && fragCore) (1 << GpuCapabilities.FragmentInputUsage) else 0) |
++      (if (unifiedCommands && fragCore) (1 << GpuCapabilities.FragmentOutputUsage) else 0) |
+       (1 << GpuCapabilities.ClearEngine) |
+       (1 << GpuCapabilities.BlitEngine) |
+       (1 << GpuCapabilities.StridedEngine) |
+--- a/src/main/scala/opengpu/graphics/RenderPipeline.scala
++++ b/src/main/scala/opengpu/graphics/RenderPipeline.scala
+@@ -193,6 +193,7 @@
+     kernelVert.io.kernargBase := io.draw.bits.asInstanceOf[VertexDrawCommand].vertKernarg
+     kernelVert.io.kernargBankStride := io.draw.bits.asInstanceOf[VertexDrawCommand].vertKernargBankStride
+     kernelVert.io.fragInputSkip := io.draw.bits.asInstanceOf[VertexDrawCommand].fragInputSkip
++    kernelVert.io.fragOutputSkip := io.draw.bits.asInstanceOf[VertexDrawCommand].fragOutputSkip
+     kernelVert.io.fragShaderPc := io.draw.bits.asInstanceOf[VertexDrawCommand].fragShaderPc
+     kernelVert.io.fragKernarg := io.draw.bits.asInstanceOf[VertexDrawCommand].fragKernarg
+     kernelVert.io.fragKernargBankStride := io.draw.bits.asInstanceOf[VertexDrawCommand].fragKernargBankStride
+@@ -619,6 +620,7 @@
+     ctxFifo.io.enq.valid := shader.io.draw.fire
+     ctxFifo.io.enq.bits.shaderPc := drawHold.shaderPc
+     ctxFifo.io.enq.bits.fragInputSkip := drawHold.fragInputSkip
++    ctxFifo.io.enq.bits.fragOutputSkip := drawHold.fragOutputSkip
+     ctxFifo.io.enq.bits.kernargBase := drawHold.shaderKernarg
+     ctxFifo.io.enq.bits.kernargBankStride := drawHold.kernargBankStride
+     ctxFifo.io.enq.bits.texFormat := drawState.texFormat
+@@ -687,6 +689,7 @@
+     kernelFrag.abi1 := FragmentShaderAbi.usesMultisample(ctxFifo.io.tail.sampleMode)
+     kernelFrag.shaderPc := ctxFifo.io.tail.shaderPc
+     kernelFrag.inputSkip := ctxFifo.io.tail.fragInputSkip
++    kernelFrag.outputSkip := ctxFifo.io.tail.fragOutputSkip
+     kernelFrag.kernargBase := ctxFifo.io.tail.kernargBase
+     kernelFrag.kernargBankStride := ctxFifo.io.tail.kernargBankStride
+     kernelFrag.texFormat := ctxFifo.io.tail.texFormat
+--- a/driver/gpu_abi.h
++++ b/driver/gpu_abi.h
+@@ -220,7 +220,10 @@
+ #define GPU_CAP_NATIVE_PIXEL_FORMATS (1u << 25)
+ #define GPU_CAP_RENDER_EXTENTS (1u << 26)
+ #define GPU_CAP_FRAGMENT_INPUT_USAGE (1u << 27)
++#define GPU_CAP_FRAGMENT_OUTPUT_USAGE (1u << 28)
+ /* Trusted kernel metadata in raw draw word32; never accepted from userspace. */
++#define GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT 25u
++#define GPU_DRAW_FRAGMENT_OUTPUT_SKIP_MASK (0xfu << GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT)
+ #define GPU_DRAW_FRAGMENT_INPUT_SKIP_SHIFT 19u
+ #define GPU_DRAW_FRAGMENT_INPUT_SKIP_MASK (0x3fu << GPU_DRAW_FRAGMENT_INPUT_SKIP_SHIFT)
+
+--- a/driver/opengpu_drm.h
++++ b/driver/opengpu_drm.h
+@@ -186,6 +186,7 @@
+ #define OPENGPU_CAP_NATIVE_PIXEL_FORMATS (1u << 25)
+ #define OPENGPU_CAP_RENDER_EXTENTS (1u << 26)
+ #define OPENGPU_CAP_FRAGMENT_INPUT_USAGE (1u << 27)
++#define OPENGPU_CAP_FRAGMENT_OUTPUT_USAGE (1u << 28)
+
+
+ /* Sample mode field width (0 = 1x, 1 = 2x, 2 = 4x). */
+--- a/driver/opengpu_compute.c
++++ b/driver/opengpu_compute.c
+@@ -1081,11 +1081,13 @@
+
+ static bool opengpu_validate_shader(
+     struct opengpu_device *gpu, struct opengpu_buffer *shader,
+-    u64 kernarg_size, u32 entry, bool texture_enabled, u32 *input_read_mask)
++    u64 kernarg_size, u32 entry, bool texture_enabled, u32 *input_read_mask,
++    u32 *output_skip)
+ {
+     const u32 *program;
+     u64 available;
+-    u32 words;
++    u32 words, reads = 0x1ff, writes = 0x1ff;
++    bool valid;
+
+     if ((entry & 3) || entry >= shader->size)
+         return false;
+@@ -1093,12 +1095,32 @@
+     words = min_t(u64, available / sizeof(u32),
+                   OPENGPU_SHADER_MAX_INSTRUCTIONS);
+     program = (const u32 *)((const u8 *)shader->cpu + entry);
+-    return opengpu_shader_validate_words_profile_runtime_usage(
++    valid = opengpu_shader_validate_words_profile_runtime_io_usage(
+         program, words, kernarg_size,
+         opengpu_fragment_batch_capacity(gpu), 6, 9, true, texture_enabled,
+         false, opengpu_shader_scalar_fpu_enabled(gpu),
+         (gpu->hw.capabilities & GPU_CAP_RUNTIME_SHADER_ABI) ?
+-            opengpu_fragment_batch_capacity(gpu) : 0, input_read_mask);
++            opengpu_fragment_batch_capacity(gpu) : 0,
++        (input_read_mask || output_skip) ? &reads : NULL,
++        output_skip ? &writes : NULL);
++    if (input_read_mask)
++        *input_read_mask = valid ? reads & 0x3fu : 0x3fu;
++    if (output_skip) {
++        *output_skip = 0;
++        if (valid) {
++            if (!(writes & (1u << 7))) {
++                *output_skip |= 1u;
++                if (!(reads & (1u << 7)))
++                    *output_skip |= 4u;
++            }
++            if (!(writes & (1u << 8))) {
++                *output_skip |= 2u;
++                if (!(reads & (1u << 8)))
++                    *output_skip |= 8u;
++            }
++        }
++    }
++    return valid;
+ }
+
+ static bool opengpu_validate_vertex_shader(
+@@ -1127,7 +1149,7 @@
+     struct opengpu_device *gpu, struct opengpu_buffer *shader,
+     struct opengpu_resource_binding *kernarg, u32 entry, u32 offset,
+     u32 bank_stride, u32 slices, bool vertex, bool texture_enabled,
+-    u32 *input_read_mask)
++    u32 *input_read_mask, u32 *output_skip)
+ {
+     u64 address, minimum, span, shader_kernarg_size;
+     u32 banks = vertex ? GPU_KERNARG_BANKS :
+@@ -1162,7 +1184,7 @@
+         opengpu_validate_vertex_shader(gpu, shader,
+                                        shader_kernarg_size, entry) :
+         opengpu_validate_shader(gpu, shader, shader_kernarg_size,
+-                                entry, texture_enabled, input_read_mask);
++                                entry, texture_enabled, input_read_mask, output_skip);
+ }
+
+ static int opengpu_validate_commands(struct opengpu_device *gpu,
+@@ -1181,7 +1203,7 @@
+                  38u * sizeof(u32));
+     for (i = 0; i < args->command_count; i++) {
+         struct gpu_draw_record *record = &records[i];
+-        u32 input_reads = 0x3f;
++        u32 input_reads = 0x3f, output_skip = 0;
+
+         if (record->v0[3] <= 0 || record->v1[3] <= 0 ||
+             record->v2[3] <= 0)
+@@ -1262,12 +1284,18 @@
+                 gpu, shader, kernarg, record->shader_pc, record->kernarg,
+                 record->kernarg_bank_stride, 9, false, texture != NULL,
+                 (args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) ?
+-                    &input_reads : NULL))
++                    &input_reads : NULL,
++                ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
++                 (gpu->hw.capabilities & GPU_CAP_FRAGMENT_OUTPUT_USAGE)) ?
++                    &output_skip : NULL))
+             return -EINVAL;
+         if ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
+             (gpu->hw.capabilities & GPU_CAP_FRAGMENT_INPUT_USAGE))
+             record->state |= ((~input_reads) & 0x3fu) <<
+                              GPU_DRAW_FRAGMENT_INPUT_SKIP_SHIFT;
++        if ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
++            (gpu->hw.capabilities & GPU_CAP_FRAGMENT_OUTPUT_USAGE))
++            record->state |= output_skip << GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT;
+         record->shader_pc += lower_32_bits(shader->dma);
+         /* Staging and shader data loads translate under VECTOR_SATP. */
+         record->kernarg += lower_32_bits(kernarg->va ?
+@@ -1295,7 +1323,7 @@
+                  38u * sizeof(u32));
+     for (i = 0; i < args->command_count; i++) {
+         struct gpu_vert_draw_record *record = &records[i];
+-        u32 input_reads = 0x3f;
++        u32 input_reads = 0x3f, output_skip = 0;
+         u64 address, bytes;
+
+         if (record->vert_count < 3 || record->vert_count % 3 ||
+@@ -1383,7 +1411,7 @@
+         if (!opengpu_validate_kernarg_binding(
+                 gpu, vertex_shader, vertex_kernarg,
+                 record->vert_shader_pc, record->vert_kernarg,
+-                record->vert_kernarg_bank_stride, 16, true, false, NULL))
++                record->vert_kernarg_bank_stride, 16, true, false, NULL, NULL))
+             return -EINVAL;
+         if (!opengpu_validate_kernarg_binding(
+                 gpu, fragment_shader, fragment_kernarg,
+@@ -1391,12 +1419,18 @@
+                 record->frag_kernarg_bank_stride, 9, false,
+                 texture != NULL,
+                 (args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) ?
+-                    &input_reads : NULL))
++                    &input_reads : NULL,
++                ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
++                 (gpu->hw.capabilities & GPU_CAP_FRAGMENT_OUTPUT_USAGE)) ?
++                    &output_skip : NULL))
+             return -EINVAL;
+         if ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
+             (gpu->hw.capabilities & GPU_CAP_FRAGMENT_INPUT_USAGE))
+             record->state |= ((~input_reads) & 0x3fu) <<
+                              GPU_DRAW_FRAGMENT_INPUT_SKIP_SHIFT;
++        if ((args->flags & OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING) &&
++            (gpu->hw.capabilities & GPU_CAP_FRAGMENT_OUTPUT_USAGE))
++            record->state |= output_skip << GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT;
+         /* Vertex-buffer and kernarg staging share VECTOR_SATP with shader
+          * data loads. Prefer the private VA when the bind mapped one. */
+         record->vert_buffer_base += lower_32_bits(vertex_buffer->va ?
+--- a/driver/opengpu_shader_validator.h
++++ b/driver/opengpu_shader_validator.h
+@@ -664,17 +664,32 @@
+     return mask;
+ }
+
+-/* Optional metadata for fragment staging: a conservative union of reads from
+- * input SoA slices 0..5 across every reachable path. Success publishes the
+- * union; failure leaves all six inputs required. Indexed/strided and narrow
+- * warp-relative reads currently retain every input. Validation is unchanged. */
+-static inline bool opengpu_shader_validate_words_profile_runtime_usage(
++/* Private prototype: conservative first-nine-SoA read/write usage. */
++static inline opengpu_shader_u32 opengpu_shader_io_range_mask(
++    opengpu_shader_u64 start, opengpu_shader_u64 bytes,
++    opengpu_shader_u64 stride)
++{
++    opengpu_shader_u32 slice, mask = 0;
++    opengpu_shader_u64 end = start + bytes;
++    if (!stride || end < start)
++        return 0x1ffu;
++    for (slice = 0; slice < 9; slice++)
++        if (start < (slice + 1ull) * stride && end > slice * stride)
++            mask |= 1u << slice;
++    return mask;
++}
++
++/* Private prototype: conservative read/write unions for SoA slices0..8.
++ * Publish only after complete validation; failed or complex accesses retain
++ * conservative masks. The committed six-input API remains a wrapper below. */
++static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
+     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
+     opengpu_shader_u32 output_start_slice,
+     opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
+     bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
+-    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask)
++    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask,
++    opengpu_shader_u32 *output_write_mask)
+ {
+     opengpu_shader_u64 stride, output_start, output_end;
+     struct opengpu_shader_state state = { 0 };
+@@ -684,11 +699,13 @@
+     bool *scalar_defined = state.scalar_defined;
+     bool *vector_defined = state.vector_defined;
+     bool reachable = true;
+-    opengpu_shader_u32 i, branch, input_reads = 0;
++    opengpu_shader_u32 i, branch, input_reads = 0, output_writes = 0;
+
+     /* Failed validation never publishes an optimistic input promise. */
+     if (input_read_mask)
+-        *input_read_mask = 0x3fu;
++        *input_read_mask = 0x1ffu;
++    if (output_write_mask)
++        *output_write_mask = 0x1ffu;
+
+     /* The advertised fragment batch capacity occupies eight ABI bits. */
+     if (!words || !word_count || !batch_capacity || batch_capacity > 255)
+@@ -761,6 +778,8 @@
+             if (branch == OPENGPU_SHADER_MAX_FORWARD_BRANCHES) {
+                 if (input_read_mask)
+                     *input_read_mask = input_reads;
++                if (output_write_mask)
++                    *output_write_mask = output_writes;
+                 return true;
+             }
+             reachable = false;
+@@ -886,7 +905,7 @@
+                 !opengpu_shader_scalar_read_valid(&lhs, imm, bytes, kernarg_size))
+                 return false;
+             if (input_read_mask)
+-                input_reads |= opengpu_shader_input_range_mask(
++                input_reads |= opengpu_shader_io_range_mask(
+                     (opengpu_shader_s64)lhs.offset + imm, bytes, stride);
+             values[rd].kind = OPENGPU_SHADER_VALUE_UNKNOWN;
+             values[rd].offset = 0;
+@@ -908,6 +927,9 @@
+             end = (opengpu_shader_u64)(opengpu_shader_u32)imm + bytes;
+             if (end > output_end)
+                 return false;
++            if (output_write_mask)
++                output_writes |= opengpu_shader_io_range_mask(
++                    (opengpu_shader_u32)imm, bytes, stride);
+             break;
+         }
+         case 0x57: /* fixed-profile vector configuration or allow-listed ALU */
+@@ -1036,7 +1058,7 @@
+                     !opengpu_shader_scalar_read_valid(&lhs, imm, 4, kernarg_size))
+                     return false;
+                 if (input_read_mask)
+-                    input_reads |= opengpu_shader_input_range_mask(
++                    input_reads |= opengpu_shader_io_range_mask(
+                         (opengpu_shader_s64)lhs.offset + imm, 4, stride);
+                 state.fp_defined[rd] = true;
+                 break;
+@@ -1066,9 +1088,9 @@
+                  * Their validation/admission is completely unchanged. */
+                 if (strided || indexed ||
+                     (elem != 4 && lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL))
+-                    input_reads = 0x3fu;
++                    input_reads = 0x1ffu;
+                 else
+-                    input_reads |= opengpu_shader_input_range_mask(
++                    input_reads |= opengpu_shader_io_range_mask(
+                         (opengpu_shader_u32)lhs.offset,
+                         (opengpu_shader_u64)elem *
+                             (lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL ?
+@@ -1097,6 +1119,9 @@
+                         output_start ||
+                     end > output_end)
+                     return false;
++                if (output_write_mask)
++                    output_writes |= opengpu_shader_io_range_mask(
++                        (opengpu_shader_u32)imm, 4, stride);
+                 break;
+             }
+             if (!opengpu_shader_vector_memory_form(
+@@ -1118,6 +1143,17 @@
+                      &values[rs1], state.vector_length, elem, true,
+                      kernarg_size, batch_capacity, output_start, output_end)))
+                 return false;
++            if (output_write_mask) {
++                if (strided || indexed ||
++                    (elem != 4 && lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL))
++                    output_writes = 0x1ffu;
++                else
++                    output_writes |= opengpu_shader_io_range_mask(
++                        (opengpu_shader_u32)lhs.offset,
++                        (opengpu_shader_u64)elem *
++                            (lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL ?
++                             batch_capacity : state.vector_length), stride);
++            }
+             break;
+         }
+         case 0x63: { /* bounded forward scalar conditional branch */
+@@ -1231,6 +1267,27 @@
+     return false;
+ }
+
++/* Retain the committed six-input metadata API and failure contract. */
++static inline bool opengpu_shader_validate_words_profile_runtime_usage(
++    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
++    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
++    opengpu_shader_u32 output_start_slice,
++    opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
++    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
++    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask)
++{
++    opengpu_shader_u32 reads = 0x1ffu;
++    bool valid = opengpu_shader_validate_words_profile_runtime_io_usage(
++        words, word_count, kernarg_size, batch_capacity, output_start_slice,
++        output_end_slice, fragment_ops_enabled, texture_enabled,
++        all_kernarg_writable, scalar_fpu_enabled, launch_capacity,
++        input_read_mask ? &reads : (opengpu_shader_u32 *)0,
++        (opengpu_shader_u32 *)0);
++    if (input_read_mask)
++        *input_read_mask = valid ? reads & 0x3fu : 0x3fu;
++    return valid;
++}
++
+ /* Compatibility entry point: callers not requesting metadata keep the
+  * exact existing validation contract and do not pay for read-mask tracking. */
+ static inline bool opengpu_shader_validate_words_profile_runtime(
+--- a/src/test/scala/opengpu/graphics/KernelFragStageSpec.scala
++++ b/src/test/scala/opengpu/graphics/KernelFragStageSpec.scala
+@@ -72,7 +72,8 @@
+   io.outDepths := frag.io.outDepths
+   io.depthOverride := frag.io.depthOverride
+   frag.io.abi1 := io.abi1
+-  frag.io.inputSkip := 0.U // Legacy fixture requests the complete input ABI.
++  frag.io.inputSkip := 0.U
++    frag.io.outputSkip := 0.U // Legacy fixture requests the complete input ABI.
+   frag.io.shaderPc := io.shaderPc
+   frag.io.kernargBase := io.kernargBase
+   frag.io.kernargBankStride := io.kernargBankStride
+--- a/src/test/scala/opengpu/system/WideSharedGraphicsSpec.scala
++++ b/src/test/scala/opengpu/system/WideSharedGraphicsSpec.scala
+@@ -133,8 +133,14 @@
+           Seq(bankStride.toLong) ++ Seq.fill(5)(0L)
+         val skip = sys.props.get("opengpu.testFragInputSkip").map(_.toInt).getOrElse(0)
+         require(skip >= 0 && skip < 64)
+-        store(commands, record.updated(32, record(32) | (skip.toLong << 19)))
+-        for (bank <- 0 until 2*cus; slice <- 0 until 6; lane <- 0 until capacity if (skip & (1<<slice)) != 0)
++        val outputSkip = sys.props.get("opengpu.testFragOutputSkip").map(_.toInt).getOrElse(0)
++        require(outputSkip >= 0 && outputSkip < 16)
++        def omitted(slice: Int): Boolean =
++          (slice < 6 && (skip & (1 << slice)) != 0) ||
++          (slice == 7 && (outputSkip & 5) == 5) ||
++          (slice == 8 && (outputSkip & 10) == 10)
++        store(commands, record.updated(32, record(32) | (skip.toLong << 19) | (outputSkip.toLong << 25)))
++        for (bank <- 0 until 2*cus; slice <- 0 until 9; lane <- 0 until capacity if omitted(slice))
+           store(kernarg+bank*bankStride+slice*stride+lane*4,Seq(0x5a000000L+bank*0x100000L+slice*0x10000L+lane))
+         store(descriptor, Seq(1L << 16, commands.toLong, color.toLong, depth.toLong,
+           side * 4L, 0x81L, if (textureExtent > 0) texture.toLong else 0L,
+@@ -180,7 +186,7 @@
+             val shift = (b % 4) * 8
+             if (a >= kernarg && a < kernarg + 2L*cus*bankStride) {
+               val slice = ((a-kernarg)%bankStride/stride).toInt
+-              assert(slice >= 6 || (skip & (1<<slice)) == 0, "wrote omitted fragment input")
++              assert(!omitted(slice), "wrote omitted fragment scratch")
+             }
+             words(a) = (words.getOrElse(a, BigInt(0)) & ~(BigInt(255) << shift)) |
+               (((data >> (8 * b)) & 255) << shift)
+@@ -294,9 +300,9 @@
+         assert(mismatches.isEmpty, s"CUs=$cus: ${mismatches.size} mismatches: ${mismatches.take(12).mkString("; ")}")
+         for (bank <- 0 until 2 * cus; word <- 0 until (bankStride - 9 * stride) / 4)
+           assert(words(kernarg + bank * bankStride + 9L * stride + word * 4) == BigInt(sentinel))
+-        for (bank <- 0 until 2*cus; slice <- 0 until 6; lane <- 0 until capacity if (skip & (1<<slice)) != 0)
++        for (bank <- 0 until 2*cus; slice <- 0 until 9; lane <- 0 until capacity if omitted(slice))
+           assert(words(kernarg+bank*bankStride+slice.toLong*stride+lane*4)==BigInt(0x5a000000L+bank*0x100000L+slice*0x10000L+lane), "omitted input sentinel changed")
+-        println(s"FRAGMENT_INPUT_USAGE skip=$skip all_omitted_bytes_preserved=true")
++        println(s"FRAGMENT_OUTPUT_USAGE input=$skip output=$outputSkip all_omitted_bytes_preserved=true")
+         pixelsPassed = true
+         saveMetadata()
+       }
+--- a/userspace/tests/transient_staging.c
++++ b/userspace/tests/transient_staging.c
+@@ -47,10 +47,10 @@
+
+ #define SCRATCH 0x5a6b7c8du
+ static int scratch_check(const struct opengpu_buffer *bo,uint32_t config,
+-                          uint32_t bank_stride,int omitted) {
++                          uint32_t bank_stride,int omitted,int omitted_outputs) {
+     uint32_t cap=opengpu_shader_resource_batch(config), stride=4*cap;
+     uint32_t banks=opengpu_shader_resource_banks(config);
+-    unsigned changed[6]={0};
++    unsigned changed[6]={0}, output_changed[2]={0};
+     for(unsigned bank=0;bank<banks;bank++) {
+         const uint32_t *p=(const uint32_t *)((const char *)bo->map+bank*bank_stride);
+         for(unsigned slice=0;slice<6;slice++)for(unsigned lane=0;lane<cap;lane++) {
+@@ -59,6 +59,12 @@
+                 fprintf(stderr,"omittedinputchanged bank=%u slice=%u lane=%u\n",bank,slice,lane);return -1;
+             }
+         }
++        for (unsigned slice=7;slice<9;slice++) for (unsigned lane=0;lane<cap;lane++) {
++            if (p[slice*cap+lane]!=SCRATCH) output_changed[slice-7]++;
++            if (omitted_outputs && p[slice*cap+lane]!=SCRATCH) {
++                fprintf(stderr,"omitted output changed bank=%u slice=%u lane=%u\n",bank,slice,lane);return -1;
++            }
++        }
+         for(unsigned byte=9*stride;byte<bank_stride;byte+=4)
+             if(p[byte/4]!=SCRATCH) {fprintf(stderr,"uniformchanged bank=%u\n",bank);return -1;}
+     }
+@@ -66,6 +72,9 @@
+         if((!omitted || slice==3) && !changed[slice]) {
+             fprintf(stderr,"requiredinputnotstaged slice=%u\n",slice);return -1;
+         }
++    if (!omitted_outputs && (!output_changed[0] || !output_changed[1])) {
++        fputs("default depth/control were not initialized\n",stderr);return -1;
++    }
+     return 0;
+ }
+ int main(void) {
+@@ -104,6 +113,7 @@
+         .render_width=SIDE,.render_height=SIDE};
+     /* Raw record hints are reserved for trusted kernel snapshots. */
+     draw->state|=55u<<19;CHECK(rejected(fd,&submit));draw->state=OPENGPU_DRAW_STATE_OVERRIDE;
++    draw->state|=15u<<25;CHECK(rejected(fd,&submit));draw->state=OPENGPU_DRAW_STATE_OVERRIDE;
+     for(unsigned pass=0;pass<2;pass++) {
+         for(size_t i=0;i<fk.size/4;i++)((uint32_t *)fk.map)[i]=SCRATCH;
+         CHECK(fill(fd,context,&color,0,sync));
+@@ -115,7 +125,7 @@
+             break;
+         }
+         CHECK(opengpu_render(fd,&submit));CHECK(opengpu_sync_wait_success(fd,sync,1800000));
+-        CHECK(scratch_check(&fk,config,fstride,pass));
++        CHECK(scratch_check(&fk,config,fstride,pass,pass && (caps&OPENGPU_CAP_FRAGMENT_OUTPUT_USAGE)));
+         for(unsigned y=0;y<SIDE;y++)for(unsigned x=0;x<SIDE;x++) {
+             uint32_t expected=x>0&&y>0&&x+y<=SIDE?RED:0;
+             if(((uint32_t *)color.map)[y*SIDE+x]!=expected) {
+@@ -127,8 +137,8 @@
+         if(!pass)memcpy(baseline,color.map,sizeof(baseline));
+         else if(memcmp(baseline,color.map,sizeof(baseline)))return 1;
+     }
+-    printf("OPENGPU TRANSIENT STAGING PASS: hardware=%u covered=%u defaultCPUinputs+uniforms preserved, "
+-           "reservedhint rejected, %s\n",!!(caps&OPENGPU_CAP_FRAGMENT_INPUT_USAGE),covered,
++    printf("OPENGPU TRANSIENT STAGING PASS: hardware=%u covered=%u output_usage=%u defaultCPUinputs+uniforms preserved, "
++           "reservedhint rejected, %s\n",!!(caps&OPENGPU_CAP_FRAGMENT_INPUT_USAGE),covered,!!(caps&OPENGPU_CAP_FRAGMENT_OUTPUT_USAGE),
+            caps&OPENGPU_CAP_FRAGMENT_INPUT_USAGE?"optin omittedbytesandpixels exact":"unsupportedoptin rejected withoutscratchwrites");
+     CHECK(opengpu_sync_destroy(fd,sync));CHECK(opengpu_context_destroy(fd,context));
+     CHECK(opengpu_buffer_destroy(fd,&command));CHECK(opengpu_buffer_destroy(fd,&color));CHECK(opengpu_buffer_destroy(fd,&vb));
+--- /dev/null
++++ b/src/test/scala/opengpu/graphics/KernelFragOutputUsageSpec.scala
+@@ -0,0 +1,220 @@
++package opengpu.graphics
++
++import chisel3._
++import chisel3.reflect.DataMirror
++import opengpu.config.GpuConfig
++import opengpu.testutil.GpuSim._
++import org.scalatest.flatspec.AnyFlatSpec
++import scala.collection.mutable
++
++/** Exercise the staging port directly: acknowledgements publish writes, read
++  * replies reorder, both request/output ports stall, and banks are reused. */
++class KernelFragOutputUsageSpec extends AnyFlatSpec {
++  behavior of "KernelFragStage output bypass"
++  for ((lanes, warps, transactions) <- Seq((4, 2, 2), (8, 2, 2), (16, 7, 4), (16, 8, 8))) {
++    it should s"drain tagged writes and route reordered reads for $lanes lanes, $warps warps and $transactions credits" in {
++      val cap = lanes * warps
++      simulate(new KernelFragStage(GpuConfig(lanes = lanes, warps = warps), GraphicsConfig(), transactions)) { dut =>
++        def zeroInputs(d: Data): Unit = d match {
++          case r: Record => r.elements.values.foreach(zeroInputs)
++          case v: Vec[_] => v.foreach(zeroInputs)
++          case b: Bool if DataMirror.directionOf(b) == ActualDirection.Input => b.poke(false.B)
++          case s: SInt if DataMirror.directionOf(s) == ActualDirection.Input => s.poke(0.S)
++          case u: UInt if DataMirror.directionOf(u) == ActualDirection.Input => u.poke(0.U)
++          case _ => ()
++        }
++        zeroInputs(dut.io)
++        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
++        dut.io.shaderPc.poke(0x1000.U)
++        dut.io.kernargBase.poke(0x8000.U)
++        dut.io.kernargBankStride.poke(0x2000.U)
++        dut.io.abi1.poke(true.B)
++        dut.io.kernelLaunch.ready.poke(true.B)
++        dut.io.drawRetire.ready.poke(true.B)
++        dut.io.texMem.req.ready.poke(true.B)
++        dut.io.kernelTexWriteback.ready.poke(true.B)
++        dut.io.kernelVectorTexWriteback.ready.poke(true.B)
++        val mem = mutable.LongMap[BigInt]()
++        def put(addr: Long, data: BigInt): Unit = {
++          val base = addr & ~63L; val shift = (addr & 63).toInt * 8
++          mem(base) = (mem.getOrElse(base, BigInt(0)) & ~(BigInt("ffffffff",16) << shift)) | ((data & BigInt("ffffffff",16)) << shift)
++        }
++        def word(addr: Long): BigInt = (mem.getOrElse(addr & ~63L, BigInt(0)) >> ((addr & 63).toInt * 8)) & BigInt("ffffffff",16)
++        case class Pending(id: Int, addr: Long, write: Boolean, data: BigInt, mask: BigInt, due: Int, fault: Boolean)
++        case class Case(outputSkip: Int, abi1: Boolean, count: Int, phase: String, inputSkip: Int)
++        val masks = for (depth <- Seq(0, 1, 5); control <- Seq(0, 2, 10)) yield depth | control
++        val cases = if (sys.props.contains("opengpu.outputUsageNegative"))
++          Seq(Case(0, true, cap, "none", 15), Case(15, true, cap, "none", 15))
++        else (for (out <- masks; abi <- Seq(false, true); count <- Seq(cap, 4, cap-4).distinct)
++          yield Case(out, abi, count, "none", if ((out + (if (abi) 1 else 0)) % 2 == 0) 15 else 0)) ++
++          (for (out <- masks; phase <- Seq("write", "read", "kernel"))
++            yield Case(out, (out & 1) != 0, cap, phase, 15))
++        for (c <- cases) {
++          val skip = c.inputSkip; val count = c.count; val faultPhase = c.phase
++          val outputSkip = c.outputSkip; val abi1 = c.abi1
++          val depthNoWrite = (outputSkip & 1) != 0
++          val controlNoWrite = (outputSkip & 2) != 0
++          val depthNoInit = (outputSkip & 5) == 5
++          val controlNoInit = (outputSkip & 10) == 10
++          def sentinel(bank: Int, slice: Int, i: Int): BigInt = BigInt(0x5a000000L + bank*0x100000 + slice*0x10000 + i)
++          for (bank <- 0 until 2; slice <- 0 until 10; i <- 0 until cap)
++            put(0x8000L + bank*0x2000 + slice*4L*cap + i*4, sentinel(bank,slice,i))
++          dut.io.inputSkip.poke(skip.U)
++          dut.io.outputSkip.poke(outputSkip.U)
++          dut.io.abi1.poke(abi1.B)
++          val pending = mutable.ArrayBuffer.empty[Pending]
++          var cycle = 0; var seq = 0; var launched = false; var completed = false
++          var injected = false; var maxPending = 0; var reordered = false
++          var launchBase = 0L; var outputs = 0; var retired = false
++          var readSeen = false; var stable: Option[(BigInt, BigInt, BigInt, BigInt)] = None
++          dut.io.wordMemReq.ready.poke(false.B)
++          dut.io.out.ready.poke(false.B)
++          // Feed a whole batch while staging is stalled; the registered
++          // producer write of the last quad must be included in its first line.
++          for (q <- 0 until count / 4) {
++            dut.io.fragIn.ready.expect(true.B)
++            for (k <- 0 until 4) {
++              val i = q * 4 + k; val p = dut.io.fragIn.bits.lanes(k)
++              p.x.poke((i + 1).S); p.y.poke((-i - 1).S)
++              p.depth.poke((100 + i).S); p.covered.poke((i != count - 1).B)
++              for (sample <- 0 until GraphicsConfig().maxSampleCount)
++                dut.io.fragDepths(k)(sample).poke((10000 + i*4 + sample).U)
++              p.coverageMask.poke(1.U); p.color.r.poke((i & 255).U)
++              p.color.g.poke(2.U); p.color.b.poke(3.U); p.alpha.poke(255.U)
++              dut.io.fragUv(k).u.poke((1000 + i).U); dut.io.fragUv(k).v.poke((2000 + i).U)
++            }
++            dut.io.fragIn.valid.poke(true.B); dut.clock.step()
++            // Later producer quads and live IO must not alter first-quad metadata.
++            dut.io.inputSkip.poke((skip ^ 63).U)
++            dut.io.outputSkip.poke((outputSkip ^ 15).U)
++            dut.io.abi1.poke((!abi1).B)
++          }
++          dut.io.fragIn.valid.poke(false.B)
++          dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
++          val expected = (0 until count).filter(i => i != count - 1 && (controlNoWrite || i % 2 != 0 || i % 7 != 0))
++          while (!retired && cycle < 16000) {
++            dut.io.wordMemReq.ready.poke((cycle % 11 >= 3).B)
++            dut.io.out.ready.poke((cycle % 7 >= 2).B)
++            dut.io.kernelCompletion.valid.poke((launched && !completed).B)
++            dut.io.kernelCompletion.bits.success.poke((faultPhase != "kernel").B)
++            // Younger requests complete first, and a lone request eventually
++            // completes too. No dependence on a particular local ID sequence.
++            val eligible = pending.indices.filter(i => pending(i).due <= cycle)
++            val selected = eligible.lastOption
++            dut.io.wordMemResp.valid.poke(selected.nonEmpty.B)
++            selected.foreach { j =>
++              val p = pending(j)
++              dut.io.wordMemResp.bits.transactionId.poke(p.id.U)
++              dut.io.wordMemResp.bits.readData.poke(mem.getOrElse(p.addr, BigInt(0)).U)
++              dut.io.wordMemResp.bits.fault.poke(p.fault.B)
++            }
++            val reply = selected.filter(_ => dut.io.wordMemResp.ready.peek().litToBoolean)
++            val reqFire = dut.io.wordMemReq.valid.peek().litToBoolean && dut.io.wordMemReq.ready.peek().litToBoolean
++            if (dut.io.wordMemReq.valid.peek().litToBoolean) {
++              val b = dut.io.wordMemReq.bits
++              val payload = (b.address.peek().litValue, b.writeData.peek().litValue, b.byteMask.peek().litValue, b.transactionId.peek().litValue)
++              stable.foreach(v => assert(v == payload, "request changed while stalled"))
++              stable = if (reqFire) None else Some(payload)
++            } else assert(stable.isEmpty, "stalled request disappeared")
++            if (dut.io.kernelLaunch.valid.peek().litToBoolean) {
++              assert(!launched && pending.isEmpty && !reqFire, "shader launched before all write acknowledgements")
++              assert(faultPhase != "write", "staging write fault launched a shader")
++              launchBase = dut.io.kernelLaunch.kernargAddress.peek().litValue.toLong
++              dut.io.kernelLaunch.localX.expect(count.U)
++              for (i <- 0 until count) {
++                val bank = ((launchBase-0x8000)/0x2000).toInt
++                val expectedInput = Seq(BigInt(i+1), BigInt((-i-1).toLong & 0xffffffffL),
++                  BigInt(100+i), BigInt((i.toLong&255)<<24 | 0x0203ffL), BigInt(1000+i), BigInt(2000+i))
++                for (slice <- 0 until 6) {
++                  val expectedWord = if ((skip & (1<<slice)) != 0) sentinel(bank,slice,i) else expectedInput(slice)
++                  assert(word(launchBase + slice*4L*cap + i*4) == expectedWord, s"skip=$skip slice=$slice lane=$i snapshot/input mismatch")
++                }
++                assert(word(launchBase + 28L*cap + 4L*i) ==
++                  (if (depthNoInit) sentinel(bank,7,i) else BigInt(100+i)), "depth initialization/omission mismatch")
++                assert(word(launchBase + 32L*cap + 4L*i) ==
++                  (if (controlNoInit) sentinel(bank,8,i) else BigInt(if (i==count-1) 0 else 1)), "control initialization/omission mismatch")
++                put(launchBase + 24L*cap + 4L*i, BigInt("aabbccff",16) + (BigInt(i) << 24))
++                // Partial shader writes require the other lanes' defaults.
++                if (!depthNoWrite && i % 2 == 0) put(launchBase + 28L*cap + 4L*i, 300+i)
++                if (!controlNoWrite && i % 2 == 0)
++                  put(launchBase + 32L*cap + 4L*i, if (i % 7 == 0) 0 else 3)
++              }
++              launched = true
++            }
++            if (dut.io.kernelCompletion.valid.peek().litToBoolean && dut.io.kernelCompletion.ready.peek().litToBoolean) completed = true
++            if (dut.io.out.valid.peek().litToBoolean) {
++              assert(pending.isEmpty && !reqFire, "fragment escaped before read drain")
++              assert(faultPhase == "none", "faulted staging emitted a fragment")
++              if (dut.io.out.ready.peek().litToBoolean) {
++                val i = expected(outputs)
++                dut.io.out.bits.x.expect((i+1).S)
++                dut.io.out.bits.y.expect((-i-1).S)
++                dut.io.out.bits.depth.expect((if (!depthNoWrite && i % 2 == 0) 300+i else 100+i).S)
++                dut.io.out.bits.color.r.expect(((0xaa+i)&255).U)
++                dut.io.out.bits.color.g.expect(0xbb.U)
++                dut.io.out.bits.color.b.expect(0xcc.U)
++                dut.io.out.bits.alpha.expect(0xff.U)
++                dut.io.depthOverride.expect((!abi1 || (!controlNoWrite && i % 2 == 0)).B)
++                for (sample <- 0 until GraphicsConfig().maxSampleCount)
++                  dut.io.outDepths(sample).expect((10000 + i*4 + sample).U)
++                outputs += 1
++              }
++            }
++            if (dut.io.drawRetire.valid.peek().litToBoolean) {
++              assert(pending.isEmpty && !reqFire, "batch retired with unacknowledged memory")
++              retired = true
++            }
++            // Commit responses after inspecting combinational outputs, before
++            // the clock edge. Writes become visible only on their response.
++            reply.foreach { j =>
++              val p = pending.remove(j); if (j > 0) reordered = true
++              if (p.write && !p.fault) for (b <- 0 until 64 if p.mask.testBit(b)) {
++                val shift = b*8; val old = mem.getOrElse(p.addr, BigInt(0))
++                mem(p.addr) = (old & ~(BigInt(255) << shift)) | (((p.data >> shift)&255) << shift)
++              }
++            }
++            if (reqFire) {
++              val b = dut.io.wordMemReq.bits; val id = b.transactionId.peek().litValue.toInt
++              assert(!pending.exists(_.id == id), "reused a live local staging ID")
++              val wr = b.isWrite.peek().litToBoolean
++              if (wr) {
++                val addr = b.address.peek().litValue.toLong
++                val bankBase = if (addr >= 0xa000L) 0xa000L else 0x8000L
++                for (byte <- 0 until 64 if b.byteMask.peek().litValue.testBit(byte)) {
++                  val slice = ((addr+byte-bankBase)/(4*cap)).toInt
++                  assert(slice >= 6 || (skip & (1<<slice)) == 0, "wrote an omitted input byte")
++                  assert(slice != 7 || !depthNoInit, "wrote omitted depth initialization")
++                  assert(slice != 8 || !controlNoInit, "wrote omitted control initialization")
++                }
++              }
++              readSeen ||= !wr
++              val fault = !injected && ((faultPhase == "write" && wr) || (faultPhase == "read" && !wr))
++              injected ||= fault
++              pending += Pending(id, b.address.peek().litValue.toLong, wr, b.writeData.peek().litValue,
++                b.byteMask.peek().litValue, cycle + (if (seq % 2 == 0) 35 * transactions else 4), fault)
++              seq += 1; maxPending = math.max(maxPending, pending.size)
++            }
++            dut.clock.step(); cycle += 1
++          }
++          assert(retired, s"batch count=$count fault=$faultPhase timed out")
++          assert(outputs == (if (faultPhase == "none") expected.size else 0))
++          val singleLine = cap == 8 && skip == 15 && outputSkip == 15
++          assert(maxPending >= (if (singleLine) 1 else 2) && maxPending <= transactions)
++          if (!singleLine) assert(reordered, "did not reorder staging IDs")
++          if (count == cap) assert(maxPending == (if (singleLine) 1 else transactions), "did not fill every usable credit")
++          assert(launched == (faultPhase != "write"))
++          assert(readSeen == (faultPhase != "write"))
++          for (bank <- 0 until 2; slice <- 0 until 10; i <- 0 until cap
++              if (slice < 6 && (skip & (1<<slice)) != 0) || slice == 9 ||
++                (slice == 7 && depthNoInit) || (slice == 8 && controlNoInit))
++            assert(word(0x8000L+bank*0x2000+slice*4L*cap+i*4)==sentinel(bank,slice,i), "omitted input/uniform changed")
++          dut.io.wordMemResp.valid.poke(false.B)
++          dut.io.kernelCompletion.valid.poke(false.B)
++          dut.clock.step(2)
++          dut.io.drained.expect(true.B)
++          println(s"OUTPUT_STAGING outputSkip=$outputSkip abi1=$abi1 cap=$cap count=$count fault=$faultPhase credits=$transactions cycles=$cycle maxPending=$maxPending")
++        }
++      }
++    }
++  }
++}
+--- /dev/null
++++ b/src/test/scala/opengpu/graphics/OutputUsageCommandSpec.scala
+@@ -0,0 +1,35 @@
++package opengpu.graphics
++import chisel3._
++import opengpu.testutil.GpuSim._
++import org.scalatest.flatspec.AnyFlatSpec
++class OutputUsageCommandSpec extends AnyFlatSpec {
++ for(vertex <- Seq(false,true)) it should s"decode independent input usage on vertex=$vertex records under stalls" in {
++  simulate(new CommandBufferStage(GraphicsConfig(),vertCore=vertex)) { d =>
++   d.io.base.poke(0x1000.U);d.io.count.poke(4.U);d.io.start.poke(false.B)
++   d.io.mem.req.ready.poke(true.B);d.io.mem.resp.valid.poke(false.B);d.io.mem.resp.bits.addr.poke(0.U);d.io.mem.resp.bits.data.poke(0.U);d.io.draw.ready.poke(false.B)
++   d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
++   d.io.start.poke(true.B);d.clock.step();d.io.start.poke(false.B)
++   val masks=Seq(0,1,21,63);val outputs=Seq(15,5,10,0);var pending:Option[(Int,Int)]=None;var seen=0;var cycle=0
++   while(seen<4 && cycle<1000){
++    d.io.draw.ready.poke((cycle%11>4).B)
++    d.io.mem.resp.valid.poke(pending.nonEmpty.B)
++    pending.foreach{case(a,v)=>d.io.mem.resp.bits.addr.poke(a.U);d.io.mem.resp.bits.data.poke(v.U)}
++    pending=None
++    if(d.io.mem.req.valid.peek().litToBoolean){
++     val a=d.io.mem.req.bits.addr.peek().litValue.toInt;val pos=(a-0x1000)/4
++     val value=if(pos%40==32) (masks(pos/40)<<19)|(outputs(pos/40)<<25)|(pos/40&1) else 0
++     pending=Some((a,value))
++    }
++    if(d.io.draw.valid.peek().litToBoolean){
++     if(vertex)d.io.draw.bits.asInstanceOf[VertexDrawCommand].fragInputSkip.expect(masks(seen).U)
++     else d.io.draw.bits.asInstanceOf[SceneTriangle].fragInputSkip.expect(masks(seen).U)
++     if(vertex)d.io.draw.bits.asInstanceOf[VertexDrawCommand].fragOutputSkip.expect(outputs(seen).U)
++     else d.io.draw.bits.asInstanceOf[SceneTriangle].fragOutputSkip.expect(outputs(seen).U)
++     if(d.io.draw.ready.peek().litToBoolean)seen+=1
++    }
++    d.clock.step();cycle+=1
++   }
++   assert(seen==4);d.io.mem.resp.valid.poke(false.B);d.clock.step();d.io.done.expect(true.B)
++  }
++ }
++}
+--- /dev/null
++++ b/src/test/scala/opengpu/graphics/OutputUsageDrawContextSpec.scala
+@@ -0,0 +1,91 @@
++package opengpu.graphics
++
++import chisel3._
++import opengpu.testutil.GpuSim._
++import org.scalatest.flatspec.AnyFlatSpec
++
++class OutputUsageDrawContextSpec extends AnyFlatSpec {
++  behavior of "DrawContextFifo"
++
++  private def driveContext(dut: DrawContextFifo, tag: Int): Unit = {
++    // These are simulator drives, deliberately using poke rather than Chisel
++    // connection syntax (:=).  The latter only builds hardware during module
++    // elaboration and does not drive a DUT in a test.
++    dut.io.enq.bits.fragInputSkip.poke((tag*17).U)
++    dut.io.enq.bits.fragOutputSkip.poke((tag*5).U)
++    dut.io.enq.bits.shaderPc.poke((0x1000 + tag).U)
++    dut.io.enq.bits.kernargBase.poke((0x2000 + tag).U)
++    dut.io.enq.bits.kernargBankStride.poke((0x3000 + tag).U)
++    dut.io.enq.bits.texBase.poke((0x4000 + tag).U)
++    dut.io.enq.bits.texWidth.poke((16 + tag).U)
++    dut.io.enq.bits.texHeight.poke((32 + tag).U)
++    dut.io.enq.bits.texWrapClamp.poke((tag & 1).B)
++    dut.io.enq.bits.texMaxLevel.poke((tag & 0xf).U)
++    dut.io.enq.bits.texLodBias.poke((tag - 2).S)
++    dut.io.enq.bits.texMinLevel.poke((tag & 0xf).U)
++    dut.io.enq.bits.colorBase.poke((0x8000 + tag).U)
++    dut.io.enq.bits.depthBase.poke((0x9000 + tag).U)
++    dut.io.enq.bits.stride.poke((0x100 + tag).U)
++    dut.io.enq.bits.depthTestEnable.poke((tag & 1).B)
++    dut.io.enq.bits.depthFunc.poke((tag & 7).U)
++    dut.io.enq.bits.depthWriteEnable.poke((tag & 1).B)
++    dut.io.enq.bits.blendEnable.poke(((tag >> 1) & 1).B)
++  }
++
++  it should "preserve the complete context at head and tail" in {
++    simulate(new DrawContextFifo(2)) { dut =>
++      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
++      dut.io.retire.poke(false.B)
++      dut.io.enq.valid.poke(true.B)
++      driveContext(dut, 1)
++      dut.io.enq.ready.expect(true.B)
++      dut.clock.step()
++      dut.io.enq.valid.poke(false.B)
++      dut.io.headValid.expect(true.B)
++      dut.io.tailValid.expect(true.B)
++      dut.io.head.fragInputSkip.expect(17.U); dut.io.head.fragOutputSkip.expect(5.U); dut.io.head.shaderPc.expect(0x1001.U)
++      dut.io.head.kernargBase.expect(0x2001.U)
++      dut.io.head.texBase.expect(0x4001.U)
++      dut.io.head.colorBase.expect(0x8001.U)
++      dut.io.head.depthBase.expect(0x9001.U)
++      dut.io.head.texLodBias.expect((-1).S)
++      dut.io.head.blendEnable.expect(false.B)
++      dut.io.tail.shaderPc.expect(0x1001.U)
++    }
++  }
++
++  it should "retain FIFO order while the tail follows the latest admitted draw" in {
++    simulate(new DrawContextFifo(2)) { dut =>
++      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
++      dut.io.retire.poke(false.B)
++      dut.io.enq.valid.poke(true.B); driveContext(dut, 1); dut.clock.step()
++      driveContext(dut, 2); dut.clock.step()
++      dut.io.enq.valid.poke(false.B)
++      dut.io.enq.ready.expect(false.B)
++      dut.io.head.fragInputSkip.expect(17.U); dut.io.head.fragOutputSkip.expect(5.U); dut.io.head.shaderPc.expect(0x1001.U)
++      dut.io.tail.fragInputSkip.expect(34.U); dut.io.tail.fragOutputSkip.expect(10.U); dut.io.tail.shaderPc.expect(0x1002.U)
++      dut.io.retire.poke(true.B); dut.clock.step()
++      dut.io.retire.poke(false.B)
++      dut.io.headValid.expect(true.B)
++      dut.io.head.fragInputSkip.expect(34.U); dut.io.head.fragOutputSkip.expect(10.U); dut.io.head.shaderPc.expect(0x1002.U)
++      dut.io.tail.fragInputSkip.expect(34.U); dut.io.tail.fragOutputSkip.expect(10.U); dut.io.tail.shaderPc.expect(0x1002.U)
++    }
++  }
++
++  it should "admit a replacement on the same edge that retires its head" in {
++    simulate(new DrawContextFifo(2)) { dut =>
++      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
++      dut.io.retire.poke(false.B)
++      dut.io.enq.valid.poke(true.B); driveContext(dut, 1); dut.clock.step()
++      driveContext(dut, 2); dut.clock.step()
++      dut.io.enq.valid.poke(true.B); dut.io.retire.poke(true.B); driveContext(dut, 3)
++      dut.io.enq.ready.expect(true.B)
++      dut.clock.step()
++      dut.io.enq.valid.poke(false.B); dut.io.retire.poke(false.B)
++      dut.io.head.fragInputSkip.expect(34.U); dut.io.head.fragOutputSkip.expect(10.U); dut.io.head.shaderPc.expect(0x1002.U)
++      dut.io.tail.fragInputSkip.expect(51.U); dut.io.tail.fragOutputSkip.expect(15.U); dut.io.tail.shaderPc.expect(0x1003.U)
++      dut.io.retire.poke(true.B); dut.clock.step(); dut.io.retire.poke(false.B)
++      dut.io.head.fragInputSkip.expect(51.U); dut.io.head.fragOutputSkip.expect(15.U); dut.io.head.shaderPc.expect(0x1003.U)
++    }
++  }
++}
+--- /dev/null
++++ b/src/test/scala/opengpu/graphics/KernelFragOutputOverlapSpec.scala
+@@ -0,0 +1,95 @@
++package opengpu.graphics
++import chisel3._
++import chisel3.reflect.DataMirror
++import opengpu.config.GpuConfig
++import opengpu.testutil.GpuSim._
++import org.scalatest.flatspec.AnyFlatSpec
++import scala.collection.mutable
++
++class KernelFragOutputOverlapSpec extends AnyFlatSpec {
++  for ((lanes,warps) <- Seq((4,2),(16,8))) {
++    it should s"retain different output contracts across overlapping $lanes x $warps banks" in {
++      val cap=lanes*warps
++      simulate(new KernelFragStage(GpuConfig(lanes=lanes,warps=warps),GraphicsConfig(),4)) { d =>
++        def zero(x: Data): Unit = x match {
++          case r: Record => r.elements.values.foreach(zero)
++          case v: Vec[_] => v.foreach(zero)
++          case b: Bool if DataMirror.directionOf(b)==ActualDirection.Input => b.poke(false.B)
++          case s: SInt if DataMirror.directionOf(s)==ActualDirection.Input => s.poke(0.S)
++          case u: UInt if DataMirror.directionOf(u)==ActualDirection.Input => u.poke(0.U)
++          case _ => ()
++        }
++        zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
++        d.io.shaderPc.poke(0x1000.U);d.io.kernargBase.poke(0x8000.U);d.io.kernargBankStride.poke(0x2000.U)
++        d.io.inputSkip.poke(15.U);d.io.kernelLaunch.ready.poke(true.B);d.io.drawRetire.ready.poke(true.B)
++        d.io.texMem.req.ready.poke(true.B);d.io.kernelTexWriteback.ready.poke(true.B);d.io.kernelVectorTexWriteback.ready.poke(true.B)
++        val mem=mutable.LongMap[BigInt]()
++        def put(a:Long,v:BigInt):Unit={val b=a& ~63L;val shift=(a&63).toInt*8;mem(b)=(mem.getOrElse(b,BigInt(0)) & ~(BigInt("ffffffff",16)<<shift))|((v&BigInt("ffffffff",16))<<shift)}
++        def word(a:Long):BigInt=(mem.getOrElse(a& ~63L,BigInt(0))>>((a&63).toInt*8))&BigInt("ffffffff",16)
++        def canary(bank:Int,slice:Int,i:Int):BigInt=BigInt(0x5a000000L+bank*0x100000+slice*0x10000+i)
++        def metadata(which:Int,mask:Int):Unit={d.io.outputSkip.poke(mask.U);d.io.abi1.poke((which==0).B)}
++        def rasterDepth(which:Int,i:Int):Int = if(i%3==1) -(which*1000+100+i) else which*1000+100+i
++        def quad(which:Int,q:Int):Unit={
++          for(k<-0 until 4){val i=q*4+k;val p=d.io.fragIn.bits.lanes(k)
++            p.x.poke((which*1000+i+1).S);p.y.poke((i+1).S);p.depth.poke(rasterDepth(which,i).S)
++            p.covered.poke((i!=cap-1).B);p.coverageMask.poke(1.U);p.color.r.poke(1.U);p.color.g.poke(2.U);p.color.b.poke(3.U);p.alpha.poke(255.U)
++            d.io.fragUv(k).u.poke((i+10).U);d.io.fragUv(k).v.poke((i+20).U)
++          }
++        }
++        case class Reply(id:Int,addr:Long,write:Boolean,data:BigInt,mask:BigInt,due:Int)
++        for (firstMask<-Seq(15,0)) {
++          val masks=Seq(firstMask,firstMask^15)
++          for(bank<-0 until 2;slice<-0 until 10;i<-0 until cap)put(0x8000L+bank*0x2000+slice*4L*cap+i*4,canary(bank,slice,i))
++          metadata(0,masks(0));d.io.wordMemReq.ready.poke(false.B);d.io.out.ready.poke(false.B)
++          for(q<-0 until cap/4){quad(0,q);d.io.fragIn.valid.poke(true.B);d.io.fragIn.ready.expect(true.B);d.clock.step()}
++          d.io.fragIn.valid.poke(false.B);d.io.flush.poke(true.B);d.clock.step();d.io.flush.poke(false.B)
++          val pending=mutable.ArrayBuffer.empty[Reply];var cycle=0;var launched=0;var completed=0;var retired=0;var fed=0;var flushed=false;var overlap=false;var emitted=0
++          val expected=for(which<-0 until 2;i<-0 until cap if i!=cap-1 && (masks(which)==15 || i%5!=0))yield (which,i)
++          val bases=mutable.ArrayBuffer.empty[Long]
++          while(retired<2 && cycle<12000){
++            d.io.wordMemReq.ready.poke((cycle%9>1).B);d.io.out.ready.poke((cycle%7>1).B)
++            val feeding=launched==1 && fed<cap/4
++            if(feeding){metadata(1,masks(1));quad(1,fed)}else{d.io.outputSkip.poke(10.U);d.io.abi1.poke(false.B)}
++            d.io.fragIn.valid.poke(feeding.B)
++            val feedFire=feeding&&d.io.fragIn.ready.peek().litToBoolean
++            d.io.flush.poke((launched==1 && fed==cap/4 && !flushed).B)
++            val flushNow=d.io.flush.peek().litToBoolean
++            d.io.kernelCompletion.valid.poke((launched>completed && (completed>0 || flushed)).B);d.io.kernelCompletion.bits.success.poke(true.B)
++            val reply=pending.indexWhere(_.due<=cycle);d.io.wordMemResp.valid.poke((reply>=0).B)
++            if(reply>=0){val p=pending(reply);d.io.wordMemResp.bits.transactionId.poke(p.id.U);d.io.wordMemResp.bits.readData.poke(mem.getOrElse(p.addr,BigInt(0)).U);d.io.wordMemResp.bits.fault.poke(false.B)}
++            val replyFire=reply>=0 && d.io.wordMemResp.ready.peek().litToBoolean
++            val reqFire=d.io.wordMemReq.valid.peek().litToBoolean&&d.io.wordMemReq.ready.peek().litToBoolean
++            if(d.io.kernelLaunch.valid.peek().litToBoolean){
++              assert(pending.isEmpty && launched<2)
++              if(launched==1)assert(flushed&&completed==1,"second bank launched before overlap was exercised")
++              val base=d.io.kernelLaunch.kernargAddress.peek().litValue.toLong;bases+=base;val bank=((base-0x8000)/0x2000).toInt
++              for(i<-0 until cap){
++                for(slice<-Seq(7,8))assert(word(base+slice*4L*cap+i*4)==(if(masks(launched)==15)canary(bank,slice,i)else BigInt((if(slice==7)rasterDepth(launched,i) else if(i==cap-1)0 else 1).toLong & 0xffffffffL)),"overlapped bank initialized with another draw's mask")
++                put(base+24L*cap+i*4,BigInt(if(launched==0)"112233ff" else "aabbccff",16))
++                if(masks(launched)==0){put(base+28L*cap+i*4,launched*1000+300+i);put(base+32L*cap+i*4,if(i%5==0)0 else 3)}
++              }
++              launched+=1
++            }
++            if(d.io.kernelCompletion.valid.peek().litToBoolean&&d.io.kernelCompletion.ready.peek().litToBoolean)completed+=1
++            if(d.io.out.valid.peek().litToBoolean&&d.io.out.ready.peek().litToBoolean){
++              val (which,i)=expected(emitted);d.io.out.bits.x.expect((which*1000+i+1).S)
++              d.io.out.bits.depth.expect((if(masks(which)==15)rasterDepth(which,i) else which*1000+300+i).S)
++              d.io.depthOverride.expect((which==1||masks(which)==0).B)
++              d.io.out.bits.color.r.expect((if(which==0)0x11 else 0xaa).U);emitted+=1
++            }
++            if(d.io.drawRetire.valid.peek().litToBoolean)retired+=1
++            if(replyFire){val p=pending.remove(reply);if(p.write)for(b<-0 until 64 if p.mask.testBit(b)){val shift=b*8;mem(p.addr)=(mem.getOrElse(p.addr,BigInt(0))& ~(BigInt(255)<<shift))|(((p.data>>shift)&255)<<shift)}}
++            if(reqFire){val p=d.io.wordMemReq.bits;val id=p.transactionId.peek().litValue.toInt;assert(!pending.exists(_.id==id));pending+=Reply(id,p.address.peek().litValue.toLong,p.isWrite.peek().litToBoolean,p.writeData.peek().litValue,p.byteMask.peek().litValue,cycle+4)}
++            if(feedFire){assert(completed==0,"producer did not overlap the first kernel");fed+=1;overlap=true}
++            if(flushNow)flushed=true
++            d.clock.step();cycle+=1
++          }
++          assert(retired==2&&emitted==expected.size&&overlap&&bases.distinct.size==2)
++          for(which<-0 until 2 if masks(which)==15; slice<-Seq(7,8);i<-0 until cap){val bank=((bases(which)-0x8000)/0x2000).toInt;assert(word(bases(which)+slice*4L*cap+i*4)==canary(bank,slice,i))}
++          d.io.fragIn.valid.poke(false.B);d.io.flush.poke(false.B);d.io.kernelCompletion.valid.poke(false.B);d.io.wordMemResp.valid.poke(false.B);d.clock.step(2);d.io.drained.expect(true.B)
++          println(s"OUTPUT_OVERLAP cap=$cap first=$firstMask second=${masks(1)} PASS")
++        }
++      }
++    }
++  }
++}

@@ -56,6 +56,19 @@ The [640×480 desktop qualification](performance/fragment-input-usage-full640-20
 also passes active/idle readback, strict scanout and visual checks. These task
 measurements are not a desktop startup-time claim.
 
+A fresh profile combining native fixtures and the qualified guest workload
+also passes native, compute, GLES and GTK64 checks. Its 64 paired native timing
+samples show small gains that vary by round, so it remains a separate compiler
+candidate; see the [profile comparison](performance/fragment-input-usage-broad-profile-2026-10-16.json).
+
+The next private experiment skips initialization and readback of depth/control
+outputs when validated shader reads and writes permit it. It passes 39 targeted
+tests and 12 complete scenes, including unchanged default and input-only paths.
+Four-CU cycles fall further from 9,817 to 9,385 for solid sampling and from
+15,272 to 14,692 for spatial sampling. Native wall-time and new-hardware guest
+qualification are still pending; see the
+[output staging experiment](performance/fragment-output-usage-rtl-experiment-2026-10-16.json).
+
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per
 worker, scales the shared credit and translation ranges with CU count, pipelines
 the shared request queue, and bounds reply buffering by local ownership. It also
