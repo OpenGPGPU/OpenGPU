@@ -1,0 +1,50 @@
+{
+  "scope": "PCH feasibility on immutable qualified model. Filter only the initial dut.h include from a private translation-unit copy; PCH supplies that exact header. CPU costs are compiler diagnostics, not an end-to-end speed claim.",
+  "header_sha256": "31f0765514b05a024b33d20097018bc4336fe77d170d5cd578d518405b0ba6b7",
+  "profile_sha256": "7062c2b0f8b9c446ed20e7b53f0f64f4ab18799ef5676729610d79c63f618762",
+  "source_sha256": "38a6f58975478e34213ec2fa8bec35b6cd1ab515cd369d1077cfb304749b6369",
+  "filtered_source_sha256": "b4575b3f1e71c423bb2ebb56450c3f021244ef5c16ca6263797e4a0c3beca180",
+  "pch_bytes": 132119380,
+  "object_sha256": "793e0c40e25da101ecea163606062eec079517d1949e278195a11e53066ee36d",
+  "qualified_object_sha256": "793e0c40e25da101ecea163606062eec079517d1949e278195a11e53066ee36d",
+  "object_identical": true,
+  "status": "PASS: one qualified native model object reproduced byte-for-byte with a precompiled header",
+  "artifact_root": ".artifacts/shared-cu/native-pch",
+  "measurements": [
+    {
+      "label": "pch-create",
+      "exit_status": 0,
+      "seconds": 3.3604557500220835,
+      "user_cpu_seconds": 3.16034,
+      "system_cpu_seconds": 0.189466
+    },
+    {
+      "label": "normal-syntax",
+      "exit_status": 0,
+      "seconds": 2.328415167052299,
+      "user_cpu_seconds": 2.181587,
+      "system_cpu_seconds": 0.12643399999999996
+    },
+    {
+      "label": "pch-syntax",
+      "exit_status": 0,
+      "seconds": 0.7667604589369148,
+      "user_cpu_seconds": 0.7096119999999999,
+      "system_cpu_seconds": 0.05219600000000002
+    },
+    {
+      "label": "pch-object",
+      "exit_status": 0,
+      "seconds": 126.07213200000115,
+      "user_cpu_seconds": 122.78244199999999,
+      "system_cpu_seconds": 3.16393
+    }
+  ],
+  "decision": "Keep current native builder. The parsing reduction is small relative to optimizing this translation unit; a complete build and replay speedup is unproven.",
+  "limits": [
+    "One translation unit, not the complete native archive.",
+    "Raw wall times overlap other workloads; compiler CPU costs are diagnostic.",
+    "The generated header has no include guard: only the initial dut.h include was removed from a private source copy, then supplied through the exact PCH. Qualified sources and installed QEMU were unchanged.",
+    "No runtime speed claim, no default compiler or builder change."
+  ]
+}
