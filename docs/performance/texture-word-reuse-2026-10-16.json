@@ -1,5 +1,5 @@
 {
-  "status": "Native64 exact replay and observational counter invariants PASS; full640 replay still running",
+  "status": "PASS: native64 and full640 exact replay; observational reuse counters and fetch decomposition verified",
   "builder": "scripts/build_arti_texture_probe.py",
   "analyzer": "scripts/analyze_arti_texture_probe.py",
   "manifest": {
@@ -94,6 +94,74 @@
     "LRU counts estimate address reuse; the RTL prototype uses FIFO replacement and requires measured full-scene cycle gains.",
     "No cache speedup or host wall-speed claim follows from these counts.",
     "Instrumented replay elapsed time and a two-second sampling profile are diagnostic only.",
-    "Initial full640 replay was interrupted before a terminal result and is excluded. Fresh versioned full640 replay is live, not yet qualification evidence."
-  ]
+    "Full640 observational replay took a contended, instrumented run; elapsed time is deliberately excluded from host-speed evidence."
+  ],
+  "full640": {
+    "log": ".artifacts/shared-cu/texture-reuse/versioned/full640.stderr.log",
+    "log_sha256": "2a1fc1b3dda822dd024a299851f79256426f63a30de5168210f03ba285ef13e8",
+    "replay_json": ".artifacts/shared-cu/texture-reuse/versioned/full640.stdout.json",
+    "replay_sha256": "8c0e1e384d11cece9383ad85101e31b2860a5540d65f671dcfc2ffa607594818",
+    "replay": {
+      "calls": 210698,
+      "ticks": 24362219,
+      "commits": 2672303685,
+      "holds": 10733382357,
+      "dma_reads": 866206,
+      "dma_writes": 8669603,
+      "dma_bytes": 123128408,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "textures": [
+      {
+        "width": 372,
+        "height": 329,
+        "vectors": 46780,
+        "requests": 2984120,
+        "vector_reuse": 1724020,
+        "quad_reuse": 1310384,
+        "lru4": 939734,
+        "lru8": 1723562,
+        "lru16": 1723874,
+        "fetch": 6714294,
+        "issue_blocked": 947270,
+        "response_wait": 2782904,
+        "lru8_hit_fraction": 0.5775779794378242
+      },
+      {
+        "width": 640,
+        "height": 32,
+        "vectors": 6610,
+        "requests": 422880,
+        "vector_reuse": 248035,
+        "quad_reuse": 190060,
+        "lru4": 133360,
+        "lru8": 248035,
+        "lru16": 248035,
+        "fetch": 983324,
+        "issue_blocked": 174091,
+        "response_wait": 386353,
+        "lru8_hit_fraction": 0.5865375520242149
+      },
+      {
+        "width": 640,
+        "height": 480,
+        "vectors": 47646,
+        "requests": 3048472,
+        "vector_reuse": 1760611,
+        "quad_reuse": 1337213,
+        "lru4": 955661,
+        "lru8": 1760125,
+        "lru16": 1760435,
+        "fetch": 6831492,
+        "issue_blocked": 993551,
+        "response_wait": 2789469,
+        "lru8_hit_fraction": 0.577379421559391
+      }
+    ],
+    "scope": "Physical tap requests inferred from issued-bit transitions. LRU and address sets reset per vector instruction; quad sets reset at lane/4 boundaries. Counts measure potential word reuse, not saved cycles. Probe elapsed time excluded.",
+    "recorded_trace_sha256": "401ec8812a1d2da437ad993ed23455c0856d9e6e540c227c846631443590a35e",
+    "scope_note": "All recorded MMIO outputs and DMA byte payloads verified by replay. GPU ticks match the qualified live full640 run; DMA byte sum matches independent trace parser. Architectural commit/hold totals have no separate live control here."
+  }
 }
