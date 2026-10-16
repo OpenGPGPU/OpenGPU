@@ -73,6 +73,60 @@ executable remains unchanged. The qualified local executable is
 
 See the [source, all samples and full qualification](performance/drained-pass-main-qualification-2026-10-17.json).
 
+## Ready-dispatch follow-up experiment (2026-10-17)
+
+The next private generator removes repeated foreign-dependency checks from
+ready dispatches whose predecessors have already drained. It keeps the existing
+own-generation guard and ordinary lazy/output wrappers. The conservative source
+passes 106 tests; all 39 generated C++/header files match the actual native
+artifact used for qualification and timing. Both compared artifacts use their
+own 73 qualified PGO profiles under the same training protocol.
+
+Three balanced samples per artifact, with own builds and guests stopped, give:
+
+| Exact replay workload | Prior qualified wall median | Follow-up wall median | Reduction |
+| --- | ---: | ---: | ---: |
+| Mesa64, 3,191,999 GPU ticks | 31.580 s | 25.942 s | 17.85% |
+| Full640 prefix, 829,297 GPU ticks | 49.188 s | 40.548 s | 17.56% |
+
+CPU medians improve similarly. GPU ticks, commits, API results and DMA
+payloads/masks/order remain identical. These are complete artifact comparisons,
+including retraining, rather than an isolated source-only estimate.
+
+O1/O2 native sampler/staging/forced controls, 18 VM replays, 21 GLES cases,
+GTK64 scanout and strict replay gates pass. The actual full640 guest also
+passes idle/active readback and active onscreen scanout. The saved active frame
+was visually reviewed; this observer did not capture a separate idle frame.
+Wallpaper appears at 168.934 seconds and the active frame at 605.437 seconds.
+Brief texture probes and a three-second stack sample ran during this functional
+guest, so its milestones are not controlled whole-guest speed comparisons.
+The complete 17.9-million-tick strict trace and main source promotion remain
+pending at this checkpoint. See [all samples and qualification scope](performance/ready-dispatch-host-experiment-2026-10-17.json).
+
+## Texture fetch footprint (2026-10-17)
+
+A read-only FF observer brackets the native fixture's existing measured interval.
+Both scenes retain every task counter, callback count and all 1 MiB of RAM.
+The spatial scene performs 2,236 samples in 140 texture instructions, taking
+11,219 GPU ticks. Its four samplers together spend 12,559 worker ticks in fetch;
+this is summed CU residency, not elapsed task time.
+
+Of 8,944 logical taps, the existing eight-word cache supplies 5,267; 3,677
+physical word reads remain. These are sampler-to-line-port requests, rather
+than AXI transactions; the downstream line cache also merges and reuses reads.
+The exact address union within each instruction
+requires **3,674 distinct words even with unlimited cache capacity**. Increasing
+capacity can therefore remove at most three physical reads on this fixture.
+There are 2,109 four-weight samples, 126 two-weight samples and one single-weight
+sample. Ignoring zero-weight taps leaves the same 3,674-word compulsory footprint,
+because later samples need those addresses.
+
+These observations favour reducing fetch latency and overlapping successor
+samples over enlarging this cache or adding tap-pruning state. They do not prove
+that every desktop workload has the same footprint, nor predict a host speedup.
+The low-value pruning prototype stays private and uncompiled. See [exact counters,
+address bounds and scope](performance/texture-instruction-footprint-2026-10-17.json).
+
 ## Generated scheduler host experiment (2026-10-17)
 
 A private fixed-layout prototype removes 819,777 generation checks for ready

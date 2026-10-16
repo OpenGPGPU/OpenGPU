@@ -1,0 +1,404 @@
+{
+  "date": "2026-10-17",
+  "status": "PASS: exact read-only texture footprint and fetch-state attribution on two native scenes",
+  "analysis": {
+    "at": 1792175816.555477,
+    "passed": true,
+    "source_state_sha256": "b55c92e5076cadb3452ab17014b1fef6d3326192257a92853d47c794a674836b",
+    "scope": "Exact FF observations on two native fixtures, matching all original task counters and complete1MiBRAM. Address-union bounds apply only to sampledspatialinstruction-localtexturewords; not full640, cyclebounds or achievedcounterfactualperformance.",
+    "sampler_prefixes": [
+      "host_host_core_rp_parallelFrag_worker_1_texUnit_sampler",
+      "host_host_core_rp_parallelFrag_worker_2_texUnit_sampler",
+      "host_host_core_rp_parallelFrag_worker_3_texUnit_sampler",
+      "host_host_core_rp_parallelFrag_worker_texUnit_sampler"
+    ],
+    "spatial": {
+      "task_ticks": 11219,
+      "samples": 2236,
+      "instruction_groups": 140,
+      "logical_taps": 8944,
+      "logical_cache_hits": 5267,
+      "physical_reads": 3677,
+      "fetch_worker_ticks": 12559,
+      "all_hit_samples": 127,
+      "weight_nonzero_hist": [
+        0,
+        1,
+        126,
+        0,
+        2109
+      ],
+      "instruction_samples_hist": {
+        "16": 139,
+        "12": 1
+      },
+      "unique_addresses_per_instruction_hist": {
+        "18": 7,
+        "16": 1,
+        "27": 122,
+        "24": 8,
+        "26": 1,
+        "20": 1
+      },
+      "ideal_unbounded_instruction_local_reads": 3674,
+      "ideal_unbounded_pruned_reads": 3674,
+      "maximum_physical_read_savings_from_capacity_only": 3,
+      "fifo_logical_insertion_estimates": {
+        "4": 5428,
+        "8": 3676,
+        "16": 3675,
+        "32": 3674,
+        "64": 3674
+      },
+      "pruned_fifo_logical_insertion_estimates": {
+        "8": 3676,
+        "16": 3675,
+        "32": 3674,
+        "64": 3674
+      }
+    },
+    "counterfactual_caution": "FIFO estimates assume logical-order miss completion and a sample-boundary lookup. They do not reproduce the real out-of-order line-port completions, misses during lookup or replacement timing. Compare observed8-wordcount before trusting any prediction; only RTLtests/nativecycles and hosttiming can qualify a change."
+  },
+  "fixtures": [
+    {
+      "tag": "fmt1-solid-gradient-candidate",
+      "ticks": 8680,
+      "full_RAM_equal": true,
+      "reads": 903,
+      "writes": 5868,
+      "read_bytes": 57792,
+      "write_bytes": 43152,
+      "completion": 34395,
+      "faults": 0,
+      "state_ticks": [
+        [
+          8454,
+          35,
+          0,
+          0,
+          0,
+          156,
+          0,
+          0,
+          35
+        ],
+        [
+          8463,
+          35,
+          0,
+          0,
+          0,
+          147,
+          0,
+          0,
+          35
+        ],
+        [
+          8469,
+          35,
+          0,
+          0,
+          0,
+          141,
+          0,
+          0,
+          35
+        ],
+        [
+          8453,
+          35,
+          0,
+          0,
+          0,
+          157,
+          0,
+          0,
+          35
+        ]
+      ],
+      "weight_bins": [
+        {
+          "format": 2,
+          "width": 1,
+          "height": 1,
+          "level": 0,
+          "samples": 140,
+          "single": 140,
+          "invalid_weights": 0,
+          "nonzero": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "fetch": [
+        {
+          "cache_lookups": 0,
+          "logical_cache_hits": 0,
+          "physical_reads": 35,
+          "responses": 35,
+          "cold_samples": 35,
+          "all_hit_samples": 0,
+          "fetch_ticks_hist": {
+            "4": 32,
+            "5": 1,
+            "8": 1,
+            "15": 1
+          }
+        },
+        {
+          "cache_lookups": 0,
+          "logical_cache_hits": 0,
+          "physical_reads": 35,
+          "responses": 35,
+          "cold_samples": 35,
+          "all_hit_samples": 0,
+          "fetch_ticks_hist": {
+            "4": 33,
+            "7": 1,
+            "8": 1
+          }
+        },
+        {
+          "cache_lookups": 0,
+          "logical_cache_hits": 0,
+          "physical_reads": 35,
+          "responses": 35,
+          "cold_samples": 35,
+          "all_hit_samples": 0,
+          "fetch_ticks_hist": {
+            "4": 34,
+            "5": 1
+          }
+        },
+        {
+          "cache_lookups": 0,
+          "logical_cache_hits": 0,
+          "physical_reads": 35,
+          "responses": 35,
+          "cold_samples": 35,
+          "all_hit_samples": 0,
+          "fetch_ticks_hist": {
+            "4": 32,
+            "5": 1,
+            "6": 1,
+            "18": 1
+          }
+        }
+      ]
+    },
+    {
+      "tag": "fmt1-spatial-gradient-candidate",
+      "ticks": 11219,
+      "full_RAM_equal": true,
+      "reads": 1099,
+      "writes": 5786,
+      "read_bytes": 70336,
+      "write_bytes": 43152,
+      "completion": 34395,
+      "faults": 0,
+      "state_ticks": [
+        [
+          6750,
+          35,
+          35,
+          35,
+          35,
+          3209,
+          560,
+          0,
+          560
+        ],
+        [
+          6739,
+          35,
+          35,
+          35,
+          35,
+          3220,
+          560,
+          0,
+          560
+        ],
+        [
+          6783,
+          35,
+          35,
+          35,
+          35,
+          3184,
+          556,
+          0,
+          556
+        ],
+        [
+          7013,
+          35,
+          35,
+          35,
+          35,
+          2946,
+          560,
+          0,
+          560
+        ]
+      ],
+      "weight_bins": [
+        {
+          "format": 2,
+          "width": 64,
+          "height": 64,
+          "level": 0,
+          "samples": 2236,
+          "single": 0,
+          "invalid_weights": 0,
+          "nonzero": [
+            0,
+            1,
+            126,
+            0,
+            2109
+          ]
+        }
+      ],
+      "fetch": [
+        {
+          "cache_lookups": 525,
+          "logical_cache_hits": 1310,
+          "physical_reads": 930,
+          "responses": 930,
+          "cold_samples": 35,
+          "all_hit_samples": 22,
+          "fetch_ticks_hist": {
+            "1": 22,
+            "4": 199,
+            "5": 172,
+            "6": 74,
+            "7": 27,
+            "8": 13,
+            "9": 7,
+            "10": 2,
+            "11": 3,
+            "12": 1,
+            "13": 4,
+            "14": 13,
+            "15": 4,
+            "16": 5,
+            "17": 3,
+            "18": 4,
+            "19": 2,
+            "23": 2,
+            "24": 1,
+            "28": 1,
+            "33": 1
+          }
+        },
+        {
+          "cache_lookups": 525,
+          "logical_cache_hits": 1303,
+          "physical_reads": 937,
+          "responses": 937,
+          "cold_samples": 35,
+          "all_hit_samples": 16,
+          "fetch_ticks_hist": {
+            "1": 16,
+            "4": 211,
+            "5": 160,
+            "6": 72,
+            "7": 33,
+            "8": 13,
+            "9": 6,
+            "10": 5,
+            "11": 3,
+            "12": 1,
+            "13": 5,
+            "14": 9,
+            "15": 6,
+            "16": 3,
+            "17": 6,
+            "18": 4,
+            "19": 4,
+            "20": 1,
+            "21": 1,
+            "24": 1
+          }
+        },
+        {
+          "cache_lookups": 521,
+          "logical_cache_hits": 1294,
+          "physical_reads": 930,
+          "responses": 930,
+          "cold_samples": 35,
+          "all_hit_samples": 22,
+          "fetch_ticks_hist": {
+            "1": 22,
+            "4": 208,
+            "5": 172,
+            "6": 60,
+            "7": 32,
+            "8": 2,
+            "9": 9,
+            "10": 3,
+            "11": 2,
+            "12": 1,
+            "13": 3,
+            "14": 14,
+            "15": 6,
+            "16": 9,
+            "17": 3,
+            "18": 1,
+            "19": 2,
+            "20": 3,
+            "21": 3,
+            "26": 1
+          }
+        },
+        {
+          "cache_lookups": 525,
+          "logical_cache_hits": 1360,
+          "physical_reads": 880,
+          "responses": 880,
+          "cold_samples": 35,
+          "all_hit_samples": 67,
+          "fetch_ticks_hist": {
+            "1": 67,
+            "4": 165,
+            "5": 174,
+            "6": 66,
+            "7": 30,
+            "8": 14,
+            "9": 8,
+            "10": 2,
+            "11": 2,
+            "12": 1,
+            "13": 5,
+            "14": 6,
+            "15": 4,
+            "16": 7,
+            "17": 3,
+            "19": 2,
+            "21": 1,
+            "22": 1,
+            "23": 1,
+            "29": 1
+          }
+        }
+      ]
+    }
+  ],
+  "scope": "Only two native fixtures, not complete desktop or host timing. ROI observer calls restore byte-identical originalfixture when removed. All1MiBRAM bytes and originaltaskcounter/callback metrics match. Fetch histogram sums must equal FFstate5residency; issued word counts equal received word counts.",
+  "source_sha256": {
+    "observer": "f89f85c9de4ad43a963fdd3bcf9c8c27d6a8450f93382c94644ba4d507eef521",
+    "state": "b55c92e5076cadb3452ab17014b1fef6d3326192257a92853d47c794a674836b",
+    "wrapper": "4c6f4550d17105945d77251d3180c0d9111ab4d14df3a7ea696fe674fbb0f41f",
+    "fixture": "5cdc5468e1198ebecfccb2da85a36f3cee698a3431851a2e66797d11695974cf",
+    "analysis": "92181a016800ea484935c68d0227e56223f4ac941ea4028b7d48b92fcf3fdfe5"
+  },
+  "measurement_correction": "Earlier whole-process probe counted9865ticks versus fixture8680. Preserved failed attempt; explicit begin/end hooks now match existing fixture skip_stats snapshots exactly.",
+  "decision": "Defer cache expansion and zero-weightpruning: existing8wordcache within3physicalreads ofunlimitedinstruction-localcache, with unchanged pruned compulsoryfootprint. Preparedhandoff/better fetch overlap and residual host-evaluation cost are higher-priority experiments.",
+  "next_candidate": ".artifacts/shared-cu/texture-prepared-handoff",
+  "word_request_scope": "Physical word requests from sampler to buffered line port, not externalAXItransactions. The downstreamlinecache additionally merges/reuseslinefills."
+}
