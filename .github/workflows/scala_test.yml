@@ -159,13 +159,19 @@ jobs:
         echo "Running: $SUITES"
         # GpuComputeUnit shards compile repeated CUs as a hierarchy library.
         # Job count comes from ci_shard_tests.sh. system-rt is serial, and the
-        # 6 GB heap still leaves too little RAM for its 32-lane model: without
-        # swap the OOM killer stops the runner and the step is canceled.
+        # 6 GB heap still leaves too little RAM for its 32-lane model: the
+        # OOM killer stops the runner and GitHub reports a canceled step.
+        # ubuntu-latest already has /swapfile active (~4G). fallocate on that
+        # live file returns ETXTBSY ("Text file busy"), so swap it off and
+        # replace the inode with 8G before the model build.
         if [ "${{ matrix.shard }}" = "system-rt" ]; then
+          sudo swapoff /swapfile 2>/dev/null || true
+          sudo rm -f /swapfile
           sudo fallocate -l 8G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
+          free -h
         fi
         FLAGS=$(bash scripts/ci_shard_tests.sh flags "${{ matrix.shard }}")
         if [ -n "$FLAGS" ]; then
