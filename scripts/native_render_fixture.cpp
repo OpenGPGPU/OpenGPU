@@ -43,8 +43,9 @@ int main(int argc, char **argv) {
   regw(GPU_REG_IRQ,3); regw(GPU_REG_UCMD_ID,91);
   regw(GPU_REG_UCMD_OPCODE,GPU_UCMD_OP_RENDER);
   regw(GPU_REG_UCMD_SOURCE,0x1000); regw(GPU_REG_UCMD_BYTES,64);
-  uint64_t begin=0,end=0;
-  arti_rtl_model_skip_stats(&begin,nullptr,nullptr,nullptr);
+  uint64_t begin=0,end=0,begin_commits=0,end_commits=0;
+  uint64_t begin_holds=0,end_holds=0,begin_writes=0,end_writes=0;
+  arti_rtl_model_skip_stats(&begin,&begin_commits,&begin_holds,&begin_writes);
   const auto start=std::chrono::steady_clock::now();
   regw(GPU_REG_UCMD_SUBMIT,1);
   unsigned ticks=0;
@@ -52,13 +53,15 @@ int main(int argc, char **argv) {
     arti_rtl_model_tick_n(1); ++ticks;
   }
   const double seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
-  arti_rtl_model_skip_stats(&end,nullptr,nullptr,nullptr);
+  arti_rtl_model_skip_stats(&end,&end_commits,&end_holds,&end_writes);
   const uint64_t completion=regr(GPU_REG_UCMD_COMPLETION);
   std::ofstream output(argv[2],std::ios::binary); assert(output);
   output.write(reinterpret_cast<const char *>(memory.data()),memory.size());
   const bool passed=ticks<2000000 && !faults && GPU_UCMD_COMPLETION_SUCCESS(completion) && (completion&255)==91;
-  printf("{\"passed\":%s,\"ticks\":%llu,\"explicit_ticks\":%u,\"seconds\":%.9f,\"reads\":%llu,\"writes\":%llu,\"read_bytes\":%llu,\"write_bytes\":%llu,\"faults\":%d,\"completion\":%llu,\"shader_config\":%llu}\n",
+  printf("{\"passed\":%s,\"ticks\":%llu,\"explicit_ticks\":%u,\"seconds\":%.9f,\"commits\":%llu,\"holds\":%llu,\"holds_wrote\":%llu,\"reads\":%llu,\"writes\":%llu,\"read_bytes\":%llu,\"write_bytes\":%llu,\"faults\":%d,\"completion\":%llu,\"shader_config\":%llu}\n",
     passed?"true":"false",(unsigned long long)(end-begin),ticks,seconds,
+    (unsigned long long)(end_commits-begin_commits),(unsigned long long)(end_holds-begin_holds),
+    (unsigned long long)(end_writes-begin_writes),
     (unsigned long long)reads,(unsigned long long)writes,(unsigned long long)read_bytes,
     (unsigned long long)write_bytes,faults,(unsigned long long)completion,(unsigned long long)shader_config);
   return passed?0:1;

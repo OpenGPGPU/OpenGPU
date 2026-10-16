@@ -1,0 +1,50 @@
+{
+  "status": "PASS: native fixture commit/hold counters with exact output verification",
+  "source_sha256": {
+    "scripts/native_render_fixture.cpp": "02e1c8fd9db64ecec3e67d218e97d80379c09c624dcb06f7c35efe5f3e992bb3",
+    "scripts/benchmark_native_render.py": "77cf1ea15f2eb3eec31992c75f3ebfdf32287bd2608649392d924cf33ea28627"
+  },
+  "baseline": "46a684d87481b4c7dcccf1a6c005b9de6db1ff0a58d4aef0b853d4a7e8c04337",
+  "candidate": "7f89231338234292aef8b50e102dd276bfea89fd109fec3e8564d641ad9527dd",
+  "artifact_root": ".artifacts/shared-cu/native-render-fixture",
+  "cases": [
+    {
+      "scene": "solid",
+      "baseline": {
+        "ticks": 11952,
+        "commits": 854591,
+        "holds": 12125503,
+        "holds_wrote": 862646
+      },
+      "candidate": {
+        "ticks": 8827,
+        "commits": 839725,
+        "holds": 10368669,
+        "holds_wrote": 847780
+      },
+      "holds_reduction_percent": 14.48875151818444,
+      "scope": "Same scene and complete output memory; instrumentation counters describe simulator work, not host-speed ratios."
+    },
+    {
+      "scene": "spatial",
+      "baseline": {
+        "ticks": 18523,
+        "commits": 996923,
+        "holds": 13851241,
+        "holds_wrote": 1005143
+      },
+      "candidate": {
+        "ticks": 14135,
+        "commits": 986657,
+        "holds": 12107311,
+        "holds_wrote": 994877
+      },
+      "holds_reduction_percent": 12.590424208199103,
+      "scope": "Same scene and complete output memory; instrumentation counters describe simulator work, not host-speed ratios."
+    }
+  ],
+  "limits": [
+    "Candidate archive is instrumentedO1; do not compare seconds with baselinePGO.",
+    "Holds and commits have different costs; their count is not a wall-time estimate."
+  ]
+}
