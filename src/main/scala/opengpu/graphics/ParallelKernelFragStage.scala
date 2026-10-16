@@ -24,14 +24,15 @@ class ParallelKernelFragStage(
   val shaderFault = IO(Output(Bool()))
   private val scheduler = Module(new ParallelFragmentScheduler(config, gfxConfig, count))
   private val staging = Module(new FragmentStagingArbiter(config, count,
-    slots = sharedShader.fragmentStagingTransactions))
+    slots = sharedShader.fragmentStagingTransactions,
+    localOutstanding = sharedShader.fragmentStagingPerWorker))
   private val texture = Module(new FragmentTextureArbiter(count, math.max(4, gfxConfig.omInflight)))
   private val faults = Wire(Vec(count, Bool()))
   private val events = Wire(Vec(count, new FragmentPerformanceEvents))
   KernelFragFrontendIO.connect(io, scheduler.io.front)
 
   for (workerId <- 0 until count) {
-    val worker = Module(new KernelFragStage(config, gfxConfig))
+    val worker = Module(new KernelFragStage(config, gfxConfig, sharedShader.fragmentStagingPerWorker))
     events(workerId) := worker.io.performance
     val shader = Module(new KernelShaderStage(config, graphicsScalarFpu, Some(sharedShader)))
     KernelFragFrontendIO.connect(scheduler.io.workers(workerId), worker.io)

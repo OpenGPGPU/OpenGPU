@@ -19,10 +19,20 @@ case class SharedCuShaderConfig(
   require(taskIdWidth > 0)
   val fragmentWorkers: Int = if (parallelFragments) numComputeUnits else 1
   val fragmentBanks: Int = fragmentWorkers * 2
-  // Four physical staging credits match the existing host staging window.
-  // Small pools retain their previous two-credit behavior and latency.
+  val fragmentStagingPerWorker: Int = 8
+  // Match global credits to each worker's independent local transactions. Round the shared
+  // credit window up for non-power-of-two CU counts; no shader ABI changes.
   val fragmentStagingTransactions: Int =
-    if (parallelFragments && numComputeUnits > 2) 4 else 2
+    if (parallelFragments) 1 << log2Ceil(fragmentWorkers * fragmentStagingPerWorker) else 2
+}
+
+object SharedCuShaderConfig {
+  def stagingTransactions(pool: Option[SharedCuShaderConfig]): Int =
+    math.max(4, pool.map(_.fragmentStagingTransactions).getOrElse(2))
+  // Staging and the four legacy host-DMA IDs have disjoint ranges. All word
+  // interfaces use this width, including the response decoder and MMUs.
+  def kernelWordTransactions(pool: Option[SharedCuShaderConfig]): Int =
+    1 << log2Ceil(stagingTransactions(pool) + 4)
 }
 
 /** A fault belongs to a graphics task, not a host compute command. */

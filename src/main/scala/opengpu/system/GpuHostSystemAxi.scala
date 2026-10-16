@@ -86,14 +86,14 @@ class GpuHostSystemAxi(
   private val sharedShader = if (sharedGraphics)
     Some(SharedCuShaderConfig(numComputeUnits, commandIdWidth, parallelGraphics)) else None
 
-  // Kernel-word port IDs [0,8): frag+vert staging share translated [0,4);
-  // fill/blit/strided DMA share translated [4,8). Command, framebuffer and
+  // Kernel-word IDs reserve a CU-scaled staging range followed by four
+  // host-DMA IDs. Command, framebuffer and
   // texture word clients each own a translated range plus a PTE-walk range.
   // Staging and DMA walks sit with the other TLB clients.
   private val translatedWordClients = Seq("command", "framebuffer", "texture")
   private val wordPortTransactions = math.max(4, graphicsConfig.omInflight)
-  private val kernelWordTransactions = 8
-  private val stagingTransactions = 4
+  private val kernelWordTransactions = SharedCuShaderConfig.kernelWordTransactions(sharedShader)
+  private val stagingTransactions = SharedCuShaderConfig.stagingTransactions(sharedShader)
   private val dmaTransactions = 4
   private val usedExact =
     kernelWordTransactions +
@@ -267,7 +267,7 @@ class GpuHostSystemAxi(
     host.io.kernelGlobalAtomicResponse <>
       system.io.graphicsShaderAtomicResponse
     // Staging (kernarg/VB) and fill/blit/strided DMA share the kernel-word
-    // port under VECTOR_SATP. IDs [0,4) are staging; [4,8) are DMA. Command,
+    // port under VECTOR_SATP. Staging and DMA have disjoint ID ranges. Command,
     // framebuffer and texture word clients each keep their own TLB.
     val stagingClient = Module(new TranslatedLineClient(
       gpuConfig, graphicsHostTransactions, preserveCachePolicy = true))

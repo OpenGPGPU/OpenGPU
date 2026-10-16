@@ -126,6 +126,7 @@ class TextureUnitSpec extends AnyFlatSpec {
     val requestCycles = mutable.ArrayBuffer.empty[Int]
     val requestAddrs = mutable.ArrayBuffer.empty[Long]
     val responseAddrs = mutable.ArrayBuffer.empty[Long]
+    val responseCycles = mutable.ArrayBuffer.empty[Int]
     var resultCycle = -1
   }
 
@@ -185,7 +186,10 @@ class TextureUnitSpec extends AnyFlatSpec {
         dut.io.mem.resp.bits.addr.poke(responseAddr.U)
         if (dut.io.mem.resp.valid.peek().litToBoolean &&
           dut.io.mem.resp.ready.peek().litToBoolean) {
-          stats.foreach(_.responseAddrs += responseAddr)
+          stats.foreach { s =>
+            s.responseAddrs += responseAddr
+            s.responseCycles += guard
+          }
           pending.remove(responseIdx)
           if (reverseResponses && pending.isEmpty) releaseReverseBatch = false
         }
@@ -524,4 +528,29 @@ class TextureUnitSpec extends AnyFlatSpec {
       assert(mem.oobReads == 0, "hardware fetched outside the texture")
     }
   }
+  for (entries <- Seq(0, 8)) {
+    it should s"finish a non-fractional sample without a mix bubble (cache=$entries)" in {
+      simulate(new TextureUnit(wordCacheEntries = entries)) { dut =>
+        val mem = new TexMem(0x4000L, 2, 2, levels = 2)
+        for (y <- 0 until 2; x <- 0 until 2) mem.put(x, y, texel(32, 64, 96))
+        mem.putLevel(1, 0, 0, texel(128, 160, 192))
+        attach(dut, mem, wrapClamp = true, maxLevel = 1)
+        dut.io.invalidateCache.foreach(_.poke(false.B))
+        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+        val stats = new SampleStats
+        assert(runSample(dut, mem, q(0.5), q(0.5), stats = Some(stats),
+          stallCycles = 4) == texel(32, 64, 96))
+        assert(stats.responseCycles.nonEmpty)
+        assert(stats.resultCycle - stats.responseCycles.last == 2,
+          "non-fractional bilinear sample retained a redundant mix cycle")
+        // A fractional request still mixes the two registered levels, and a
+        // following zero-fraction request must not return the preceding mix.
+        assert(runSample(dut, mem, q(0.5), q(0.5), lodFrac = 128,
+          stallCycles = 3) == texel(80, 112, 144))
+        assert(runSample(dut, mem, q(0.5), q(0.5), stallCycles = 2) == texel(32, 64, 96))
+        assert(mem.oobReads == 0)
+      }
+    }
+  }
+
 }

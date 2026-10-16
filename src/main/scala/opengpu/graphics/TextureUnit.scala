@@ -346,6 +346,12 @@ class TextureUnit(
       levelSteps := baseMipLevel + 1.U
       secondLevel := true.B
       state := sLevel
+    }.elsewhen(lodFracReg === 0.U) {
+      // A non-fractional sample already has its final packed result. Avoid
+      // the extra register-forwarding cycle; fractional trilinear mixing
+      // still consumes blendedReg on the following cycle.
+      resultReg := value
+      state := sDone
     }.otherwise {
       state := sMix
     }

@@ -40,7 +40,7 @@ class FragmentStagingArbiter(config: GpuConfig, numWorkers: Int,
   private val free = ~allocated.asUInt
   private val selected = PriorityEncoder(free)
   private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config, 64, localOutstanding), numWorkers))
-  private val request = Module(new Queue(new ComputeMemoryRequest(config, 64, slots), 1, flow = flowRequests))
+  private val request = Module(new Queue(new ComputeMemoryRequest(config, 64, slots), 1, pipe = true, flow = flowRequests))
   for (worker <- 0 until numWorkers) {
     val client = io.clients(worker)
     val duplicate = (0 until slots).map { slot =>
@@ -69,9 +69,11 @@ class FragmentStagingArbiter(config: GpuConfig, numWorkers: Int,
   private val responseReady = Wire(Vec(numWorkers, Bool()))
   when(io.memoryResponse.fire) { replied(responseId) := true.B }
   for (worker <- 0 until numWorkers) {
-    // Global slots bound all unconsumed replies. A queue of that size
-    // cannot block another worker's accepted memory response.
-    val replies = Module(new Queue(new QueuedFragmentStagingResponse(config, localOutstanding, slots), slots, flow = true))
+    // A worker owns at most one slot per distinct local ID. Credits remain
+    // allocated until its replies are consumed, so min(global, local) bounds
+    // all buffered replies and cannot block another worker's response.
+    val replies = Module(new Queue(new QueuedFragmentStagingResponse(config, localOutstanding, slots),
+      math.min(slots, localOutstanding), flow = true))
     replies.io.enq.valid := io.memoryResponse.valid && responseExpected && owners(responseId) === worker.U
     replies.io.enq.bits.response := io.memoryResponse.bits
     replies.io.enq.bits.response.transactionId := localIds(responseId)

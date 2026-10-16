@@ -57,8 +57,8 @@ class RenderCore(
     }
     val kernelMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig))
     val kernelMemResp = Flipped(Decoupled(new ComputeMemoryResponse()))
-    val kernelWordMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig, 64, 8))
-    val kernelWordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, 8)))
+    val kernelWordMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig, 64, SharedCuShaderConfig.kernelWordTransactions(sharedShader)))
+    val kernelWordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, SharedCuShaderConfig.kernelWordTransactions(sharedShader))))
     val kernelL1Invalidate = Flipped(Decoupled(new CacheLineInvalidate(gpuConfig)))
     val kernelL1InvalidateDone = Decoupled(new CacheLineInvalidate(gpuConfig))
     val kernelGlobalAtomicRequest = Decoupled(new SharedAtomicRequest(gpuConfig))

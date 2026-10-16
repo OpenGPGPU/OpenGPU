@@ -231,15 +231,18 @@ class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig, stagingTra
   */
 class KernelFragStage(
   config: GpuConfig = GpuConfig(),
-  gfxConfig: GraphicsConfig = GraphicsConfig()
+  gfxConfig: GraphicsConfig = GraphicsConfig(),
+  stagingTransactions: Int = 2
 ) extends Module {
+  def this(config: GpuConfig, gfxConfig: GraphicsConfig) = this(config, gfxConfig, 2)
+  require(stagingTransactions >= 2 && isPow2(stagingTransactions))
   private val batchCap = config.warps * config.lanes
   require(batchCap % 4 == 0, "fragment batches accumulate whole 2x2 quads")
   private val countWidth = math.max(1, log2Ceil(batchCap + 1))
   // Per-array byte stride of the SoA kernarg layout (see the class doc).
   private val arrayStride = 4 * batchCap
 
-  val io = IO(new KernelFragStageIO(config, gfxConfig))
+  val io = IO(new KernelFragStageIO(config, gfxConfig, stagingTransactions))
 
   // Word-client request/response interface to the bridge (driven by the FSM).
   private val wordValid = Wire(Bool())
@@ -247,10 +250,10 @@ class KernelFragStage(
 
   // Kernarg staging is CPU-written; bypass L1/L2. Texture samples stay cached
   // and leave through `io.texMem` so the caller can translate the texture VA.
-  // Two slots share the translated staging ID window [0,4) with the vertex
-  // bridge (owner bit selects half); the FSM is already one-at-a-time.
+  // Reserve independent tags for coalesced requests. The shared router maps
+  // them into the CU-scaled staging window and restores local IDs on return.
   private val bridge = Module(new OmWordToLinePort(
-    config, uncached = true, maxOutstanding = 2))
+    config, uncached = true, maxOutstanding = stagingTransactions))
   // Stage whole lines, masking colour outputs, inactive lanes and uniforms.
   // Keep the legacy word path for small/non-line-aligned batch layouts.
   private val coalesceStaging = batchCap == 8 || batchCap % 16 == 0
@@ -258,10 +261,10 @@ class KernelFragStage(
   private val outputFirstLine = 6 * arrayStride / 64
   private val outputLastLine = (9 * arrayStride - 1) / 64
   private val lineReqReg = if (coalesceStaging)
-    Some(Reg(new ComputeMemoryRequest(config, 64, 2))) else None
+    Some(Reg(new ComputeMemoryRequest(config, 64, stagingTransactions))) else None
   private val lineReqValid = RegInit(false.B)
   private val wordMemReqPipe = Module(
-    new Queue(new ComputeMemoryRequest(config, 64, 2), 1, pipe = false, flow = false))
+    new Queue(new ComputeMemoryRequest(config, 64, stagingTransactions), 1, pipe = false, flow = false))
   private val texUnit = Module(new TexSampleUnit(config, gfxConfig))
 
   texUnit.io.in.valid := io.kernelTexSample.valid
@@ -473,6 +476,22 @@ class KernelFragStage(
   // 6=depth-output initialization, 7=output-valid initialization; reads
   // 0=colour, 1=depth, 2=output-valid.
   private val field = RegInit(0.U(math.max(4, log2Ceil(stagingLineCount)).W))
+  // Reserve a local ID before registering a request; keep it reserved through
+  // the request queue and until its physical acknowledgement. Read responses
+  // select their destination by ID, independently of the next line to issue.
+  private val lineBusy = RegInit(VecInit(Seq.fill(stagingTransactions)(false.B)))
+  private val lineFields = Reg(Vec(stagingTransactions, chiselTypeOf(field)))
+  private val lineScanDone = RegInit(false.B)
+  private val lineFault = RegInit(false.B)
+  private val freeLineId = PriorityEncoder(~lineBusy.asUInt)
+  private val responseField = lineFields(io.wordMemResp.bits.transactionId)
+  if (coalesceStaging) {
+    when(io.wordMemResp.fire) {
+      assert(lineBusy(io.wordMemResp.bits.transactionId))
+      lineBusy(io.wordMemResp.bits.transactionId) := false.B
+      when(io.wordMemResp.bits.fault) { lineFault := true.B }
+    }
+  }
 
   // ---------------------------------------------------------------------
   // Producer: accumulate the next draw's quads into slot prodSlot, four
@@ -852,18 +871,21 @@ class KernelFragStage(
 
   private def advanceStagingWrite(): Unit = {
     when(field === (stagingLineCount - 1).U) {
-      field := 0.U
-      state := sLaunch
+      lineScanDone := true.B
     }.otherwise { field := field + 1.U }
   }
   private def advanceStagingRead(): Unit = {
     when(field === outputLastLine.U) {
-      field := 0.U
-      emitQuadValid := false.B
-      emitQuadPtr := 0.U
-      emitQuadSel := 1.U
-      state := sEmit
+      lineScanDone := true.B
     }.otherwise { field := field + 1.U }
+  }
+  private def beginStagingEmit(): Unit = {
+    field := 0.U
+    lineScanDone := false.B
+    emitQuadValid := false.B
+    emitQuadPtr := 0.U
+    emitQuadSel := 1.U
+    state := sEmit
   }
 
   switch(state) {
@@ -876,7 +898,8 @@ class KernelFragStage(
         // A fullness commit can enter sWrite on the same edge that captures
         // the last producer quad. Wait for that quad's registered write to
         // drain before snapshotting a line containing both quad records.
-        when(!wordPending && !lineReqValid && !(wpValid && wpSlot === execSlot)) {
+        when(!lineScanDone && !lineBusy.asUInt.andR && !lineReqValid &&
+            !(wpValid && wpSlot === execSlot)) {
           val req = lineReqReg.get
           req := 0.U.asTypeOf(req)
           req.address := slotKernarg(execSlot) + (field << 6)
@@ -888,16 +911,28 @@ class KernelFragStage(
           req.isWrite := true.B
           req.sizeLog2 := 6.U
           req.cachePolicy := opengpu.config.CachePolicy.uncached
-          when(mask.orR) { lineReqValid := true.B }
+          when(mask.orR) {
+            req.transactionId := freeLineId
+            lineFields(freeLineId) := field
+            lineBusy(freeLineId) := true.B
+            lineReqValid := true.B
+          }
             .otherwise { advanceStagingWrite() }
         }
         when(wordMemReqPipe.io.enq.fire) {
           lineReqValid := false.B
-          wordPending := true.B
-        }
-        when(io.wordMemResp.fire) {
-          wordPending := false.B
           advanceStagingWrite()
+        }
+        when(lineScanDone && !lineBusy.asUInt.orR && !lineReqValid) {
+          field := 0.U
+          lineScanDone := false.B
+          when(lineFault) {
+            // Drain every outstanding ID on a fault, then retire without
+            // executing a shader against incompletely staged inputs.
+            for (lane <- 0 until batchCap) { outValid(lane) := false.B }
+            lineFault := false.B
+            beginStagingEmit()
+          }.otherwise { state := sLaunch }
         }
       } else {
       when(!requestQuadLoaded) {
@@ -974,7 +1009,7 @@ class KernelFragStage(
     }
     is(sRead) {
       if (coalesceStaging) {
-        when(!wordPending && !lineReqValid) {
+        when(!lineScanDone && !lineBusy.asUInt.andR && !lineReqValid) {
           val req = lineReqReg.get
           req := 0.U.asTypeOf(req)
           req.address := slotKernarg(execSlot) + (field << 6)
@@ -985,17 +1020,21 @@ class KernelFragStage(
             (outputFirstLine to outputLastLine).map { line =>
               line.U -> ((line * 16 % batchCap).U < execCount)
             })
-          when(needed) { lineReqValid := true.B }
+          when(needed) {
+            req.transactionId := freeLineId
+            lineFields(freeLineId) := field
+            lineBusy(freeLineId) := true.B
+            lineReqValid := true.B
+          }
             .otherwise { advanceStagingRead() }
         }
         when(wordMemReqPipe.io.enq.fire) {
           lineReqValid := false.B
-          wordPending := true.B
+          advanceStagingRead()
         }
         when(io.wordMemResp.fire) {
-          wordPending := false.B
           for (line <- outputFirstLine to outputLastLine) {
-            when(field === line.U) {
+            when(responseField === line.U) {
               for (word <- 0 until 16) {
                 val position = line * 16 + word
                 val slice = position / batchCap
@@ -1014,7 +1053,15 @@ class KernelFragStage(
               }
             }
           }
-          advanceStagingRead()
+        }
+        when(lineScanDone && !lineBusy.asUInt.orR && !lineReqValid) {
+          // A late read fault must also suppress fragments whose control
+          // lines completed earlier, so decide only after the entire drain.
+          when(lineFault) {
+            for (lane <- 0 until batchCap) { outValid(lane) := false.B }
+          }
+          lineFault := false.B
+          beginStagingEmit()
         }
       } else {
       when(!wordPending && !wordReqValid && bridge.io.in.ready) {
@@ -1116,7 +1163,8 @@ class KernelFragStage(
     wordMemReqPipe.io.enq.valid := lineReqValid
     wordMemReqPipe.io.enq.bits := lineReqReg.get
     bridge.io.memoryRequest.ready := false.B
-    io.wordMemResp.ready := wordPending
+    io.wordMemResp.ready := (state === sWrite || state === sRead) &&
+      lineBusy(io.wordMemResp.bits.transactionId)
     bridge.io.memoryResponse.valid := false.B
     bridge.io.memoryResponse.bits := 0.U.asTypeOf(bridge.io.memoryResponse.bits)
   } else {
@@ -1129,7 +1177,8 @@ class KernelFragStage(
   }
   for (phase <- 0 until 6)
     io.performance.phaseWorkers(phase) := (state === phase.U).asUInt
-  io.performance.stagingOutstanding := wordPending.asUInt
+  io.performance.stagingOutstanding :=
+    (if (coalesceStaging) PopCount(lineBusy) else wordPending.asUInt)
   io.performance.stagingBlocked := io.wordMemReq.valid && !io.wordMemReq.ready
   io.performance.outputBlocked := io.out.valid && !io.out.ready
   io.wordMemReq <> wordMemReqPipe.io.deq

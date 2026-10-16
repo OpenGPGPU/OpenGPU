@@ -82,9 +82,8 @@ class RenderPipeline(
 ) extends Module {
   require(sharedShader.isEmpty || fragCore,
     "shared shader execution requires programmable fragment graphics")
-  // Vertex and fragment bridges each retain four local IDs.  The shared
-  // external port carries the stage-select bit plus that local ID.
-  private val kernelWordOutstanding = 8
+  // The shared staging router restores producer-local IDs on responses.
+  private val kernelWordOutstanding = SharedCuShaderConfig.kernelWordTransactions(sharedShader)
   val io = IO(new Bundle {
     val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
       gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
@@ -734,13 +733,13 @@ class RenderPipeline(
     expander.io.out.ready := om.io.fragIn.ready && tilePermit
     textured.io.out.ready := om.io.fragIn.ready
 
-    // Preserve the public four-ID staging range. Large fragment pools can
-    // borrow all four IDs while vertex staging is idle, with producer/local
-    // ownership restored on return. Small pools keep their exact old path.
+    // Share the CU-scaled staging range with vertex traffic, restoring
+    // producer/local ownership on return.
     val stagingRouterDrained = WireDefault(true.B)
     if (sharedShader.exists(_.fragmentStagingTransactions > 2)) {
       val stagingRouter = Module(new FragmentStagingArbiter(gpuConfig, 2,
-        slots = 4, localOutstanding = 4, flowRequests = true))
+        slots = SharedCuShaderConfig.stagingTransactions(sharedShader),
+        localOutstanding = sharedShader.get.fragmentStagingTransactions, flowRequests = true))
       stagingRouter.io.clients(0).request.valid := kernelFrag.wordMemReq.valid
       stagingRouter.io.clients(0).request.bits := kernelFrag.wordMemReq.bits
       kernelFrag.wordMemReq.ready := stagingRouter.io.clients(0).request.ready

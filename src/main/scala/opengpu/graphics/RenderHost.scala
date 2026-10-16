@@ -130,6 +130,8 @@ class RenderHost(
 ) extends Module {
   override def desiredName: String = "RenderHost"
   private val maxSampleMode = log2Ceil(config.maxSampleCount)
+  private val stagingTransactions = SharedCuShaderConfig.stagingTransactions(sharedShader)
+  private val kernelWordTransactions = SharedCuShaderConfig.kernelWordTransactions(sharedShader)
 
   val io = IO(new Bundle {
     val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
@@ -161,8 +163,8 @@ class RenderHost(
     }
     val kernelMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig))
     val kernelMemResp = Flipped(Decoupled(new ComputeMemoryResponse()))
-    val kernelWordMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig, 64, 8))
-    val kernelWordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, 8)))
+    val kernelWordMemReq = Decoupled(new ComputeMemoryRequest(gpuConfig, 64, SharedCuShaderConfig.kernelWordTransactions(sharedShader)))
+    val kernelWordMemResp = Flipped(Decoupled(new ComputeMemoryResponse(64, SharedCuShaderConfig.kernelWordTransactions(sharedShader))))
     val kernelL1Invalidate = Flipped(Decoupled(new CacheLineInvalidate(gpuConfig)))
     val kernelL1InvalidateDone = Decoupled(new CacheLineInvalidate(gpuConfig))
     val kernelGlobalAtomicRequest = Decoupled(new SharedAtomicRequest(gpuConfig))
@@ -194,14 +196,14 @@ class RenderHost(
 
   // The DMA engines share the kernelWordMem line port with the core's
   // staging/sampler bridge. Responses are routed by transaction-ID range:
-  // ids [0,4) belong to the core. The DMA engines share [4,8), but their
-  // descriptor admission below makes them mutually exclusive.
-  private val fill = Module(new FillEngine(gpuConfig, maxOutstanding = 8,
-    transactionIdBase = 4))
-  private val blit = Module(new CopyEngine(gpuConfig, maxOutstanding = 8,
-    lineSlots = 2, transactionIdBase = 4))
+  // The core owns the CU-scaled staging range; the DMA engines share the
+  // following four IDs and descriptor admission makes them mutually exclusive.
+  private val fill = Module(new FillEngine(gpuConfig, maxOutstanding = kernelWordTransactions,
+    transactionIdBase = stagingTransactions))
+  private val blit = Module(new CopyEngine(gpuConfig, maxOutstanding = kernelWordTransactions,
+    lineSlots = 2, transactionIdBase = stagingTransactions))
   private val strided = Module(new StridedCopyEngine(gpuConfig,
-    maxOutstanding = 8, transactionIdBase = 4))
+    maxOutstanding = kernelWordTransactions, transactionIdBase = stagingTransactions))
   private val dmaIdle :: dmaFill :: dmaBlit :: dmaStrided :: Nil = Enum(4)
   private val dmaOwner = RegInit(dmaIdle)
   // Hardware clear (FillEngine) programming.
@@ -240,7 +242,7 @@ class RenderHost(
     io.kernelWordMemReq.ready && !fill.io.memoryRequest.valid &&
       !blit.io.memoryRequest.valid && !strided.io.memoryRequest.valid
 
-  private val wordRespIsDma = io.kernelWordMemResp.bits.transactionId >= 4.U
+  private val wordRespIsDma = io.kernelWordMemResp.bits.transactionId >= stagingTransactions.U
   private val wordRespIsBlit = wordRespIsDma && dmaOwner === dmaBlit
   private val wordRespIsFill = wordRespIsDma && dmaOwner === dmaFill
   private val wordRespIsStrided = wordRespIsDma && dmaOwner === dmaStrided
