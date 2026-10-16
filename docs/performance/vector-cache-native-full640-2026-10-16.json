@@ -1,0 +1,168 @@
+{
+  "status": "PASS: instruction-local texture-cache RTL full desktop qualification",
+  "artifact_root": ".artifacts/shared-cu/vector-cache-native",
+  "rtl_source_commit": "86c67f8a17bf92b3ac0d630590f31c0b352452e4",
+  "software": {
+    "gpu_software_commit": "9789e7bad47b3eb1a91c4e778712c408a54a5b86",
+    "arti_commit": "15fc7df3ca38d88d98270c529098218e27c22e38",
+    "prior_payload": ".artifacts/shared-cu/fixed-lod-native/payload.json",
+    "current_payload": "payload.json",
+    "stage": "frozen before RTL generation",
+    "qualification": "docs/performance/private-depth-discard-2026-10-16.json",
+    "scope": "Reuse unchanged software payload qualified with prior fixed-LOD full640 model; RTL changes only."
+  },
+  "configuration": {
+    "shared_compute_units": [
+      "computeUnits_0",
+      "computeUnits_1",
+      "computeUnits_2",
+      "computeUnits_3"
+    ],
+    "private_shader_CUs": 0,
+    "lanes": 16,
+    "warps": 8,
+    "full_vs_fs_fpu": true,
+    "fill_slots": 16,
+    "word_cache_entries": 8,
+    "scalar_register_RTL_unchanged": {
+      "ScalarRegisterBank.sv": "d5e1013fa6d1900f7284592326360173c8096271164d49447d7201ee69734819",
+      "ScalarRegisterFile.sv": "da120a94556542a6646fb2a3ad1df449e470b4adc871660345519cc53ea76026",
+      "ScalarRegisterMacroFile.sv": "29795d93fac88f05c5decede4a9b1faffed15c6210fa62cd96ca88743f648298",
+      "ScalarRegisterMacroManager.sv": "acee0b7353690be8aaeecb258c555db29164dfbdb38ae897d94828b69916f36e"
+    },
+    "emitter_flags": [
+      "--frag-core",
+      "--vert-core",
+      "--shared-graphics",
+      "--parallel-graphics",
+      "--compute-units",
+      "4",
+      "--cu-lanes",
+      "16",
+      "--cu-warps",
+      "8",
+      "--width",
+      "640",
+      "--height",
+      "480",
+      "--memory-axi-data-bytes",
+      "64",
+      "--coalesce-framebuffer",
+      "--om-inflight",
+      "64",
+      "--om-locality",
+      "--fragment-batch-limit",
+      "112",
+      "--buffer-command-reads",
+      "--buffer-texture-reads"
+    ],
+    "header_sha256": "31f0765514b05a024b33d20097018bc4336fe77d170d5cd578d518405b0ba6b7"
+  },
+  "native_qualifications": {
+    "training": {
+      "passed": true,
+      "native_cases": 21,
+      "markers": {
+        "compute completed; RNU=1 RDN=0": true,
+        "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "report": ".artifacts/shared-cu/vector-cache-native/guest-qualification-corrected.json",
+      "report_sha256": "78d1c41c196bf1eebf65b03cefae175440f9dfdecefd8394f696d24c5f1f2582",
+      "archive_sha256": "b5ea8ab80044e769b922520f2a6416d9ba410497f3097c9256196702034274ce",
+      "qemu_sha256": "d83798df11346e33fa9467b0b56d6e6cd5179eb0ca004b0d81a1f5d37aa57427"
+    },
+    "optimized": {
+      "passed": true,
+      "native_cases": 21,
+      "markers": {
+        "compute completed; RNU=1 RDN=0": true,
+        "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "report": ".artifacts/shared-cu/vector-cache-native/guest-qualification-optimized.json",
+      "report_sha256": "919e8ecd97c3092699cf5e52f92e0b00c4ee0ae3c4f476b84f199b8657025e26",
+      "archive_sha256": "46a684d87481b4c7dcccf1a6c005b9de6db1ff0a58d4aef0b853d4a7e8c04337",
+      "qemu_sha256": "62efd312131dd1866bd8e5dc672c597b937e884fb06895483fa90d4cd628179e"
+    }
+  },
+  "optimized_archive_sha256": "46a684d87481b4c7dcccf1a6c005b9de6db1ff0a58d4aef0b853d4a7e8c04337",
+  "payload_manifest_sha256": "685f0c07f99755f71a5b78f3725db2e12f924b563fbc8967a612af9b12ada8f2",
+  "full640": {
+    "passed": true,
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/vector-cache640",
+    "markers": [
+      "GTK Wayland/OpenGPU smoke proof: PASS",
+      "Gtk-smoke scanout proof: PASS",
+      "OPENGPU GTK FRAME PASS: idle",
+      "OPENGPU GTK FRAME PASS: active"
+    ],
+    "scanout": {
+      "passed": true,
+      "framebuffer_size": [
+        640,
+        480
+      ],
+      "client_size": [
+        280,
+        124
+      ],
+      "active_rectangle": [
+        93,
+        223,
+        227,
+        72
+      ],
+      "active_pixels": 16571,
+      "channel_tolerance": 3,
+      "capture_sha256": "4771a2eb1c524824e4c364effe037e9504605f279b6197113af28b568a209b4f",
+      "source_frame": "/Users/duckdonald/workspace/gpu/.artifacts/vector-cache640/gtk-smoke-scanout.ppm",
+      "saved_frame": "/Users/duckdonald/workspace/gpu/.artifacts/vector-cache640/gtk-smoke-verified.ppm"
+    },
+    "qemu_sha256": "d5b007ce3966e241fe305099f045805e12002c9d31a623c6e24d68b8b6997284",
+    "archive_sha256": "46a684d87481b4c7dcccf1a6c005b9de6db1ff0a58d4aef0b853d4a7e8c04337",
+    "rtl_source_commit": "86c67f8a17bf92b3ac0d630590f31c0b352452e4",
+    "trace_sha256": "b52b96e560b037e76e2c9f0f62f9af3d9e00f3ca9620595dda78c78debab0bc0",
+    "visual_review": "PASS; see visual_review in this report",
+    "scope": "Full640x480 desktop+GTK on instruction-local texture cache, FILL16 and single-texel broadcast RTL; software payload unchanged. Probe run is diagnostic; no host timing claim."
+  },
+  "visual_review": {
+    "passed": true,
+    "image": ".artifacts/vector-cache640/full640-verified.png",
+    "image_sha256": "214fe32d86feaeec1cef8bed47a68cc0cf0b3e5c41e6b89cfe1792091ebf3887",
+    "observations": "Readable upright GTK title and label, complete orange GL rectangle inside dark margins, redraw button, patterned Weston desktop and bottom panel."
+  },
+  "trace": {
+    "trace": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/vector-cache-native/full640.trace",
+    "trace_sha256": "b52b96e560b037e76e2c9f0f62f9af3d9e00f3ca9620595dda78c78debab0bc0",
+    "calls": 183118,
+    "commands_by_opcode": {
+      "5": 273,
+      "6": 42,
+      "2": 2
+    },
+    "fill_count": 2,
+    "fill_bytes": 277760,
+    "depth_pattern_fill_count": 0,
+    "depth_pattern_fill_bytes": 0,
+    "depth_fill_size_histogram": {},
+    "dma_read_bytes": 45832392,
+    "dma_write_bytes": 57271640,
+    "scope": "MMIO unified-command SUBMIT writes; 0x00ffffff identifies the depth-clear pattern, not proof of every fill consumer.",
+    "gpu_ticks": 18847435
+  },
+  "limits": [
+    "This frozen86c67f8model includes FILL16, single-texel broadcast and an instruction-local eight-word texture cache; it excludes the unpromoted RF and staging concurrency experiments.",
+    "GPU ticks cover this guest boot; compositor scheduling and draw counts differ between boots. Do not claim a controlled whole-desktop cycle speedup.",
+    "Raw1519.56-second qualification elapsed time includes104.3seconds of deliberate suspension and overlapping compiler/test workloads. It is not an idle-host simulator speed measurement.",
+    "Installed default QEMU remains unchanged; use this separately qualified binary explicitly."
+  ]
+}

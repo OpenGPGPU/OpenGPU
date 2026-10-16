@@ -1,5 +1,5 @@
 {
-  "status": "RTL validated in 20 unit tests and four full shared-CU scenes; native qualification pending",
+  "status": "PASS:20units,fourfullshared-CUscenes,native training/optimized suites and full640 desktop qualification",
   "design": "Eight raw texture words per execute-side sampler with FIFO replacement. Parallel tap lookup uses registered addresses and can issue the first miss during lookup. Snapshot cached blend inputs before outstanding replies can replace cache words. Invalidate every accepted vector or scalar instruction; uncached legacy TextureUnit remains available.",
   "selection": "Full640 trace predicts 57.7 percent per-vector eight-word LRU hits; sixteen add about0.01percentagepoints. RTL uses FIFO; actual miss and cycle counts below are measured independently.",
   "trace_basis": "docs/performance/texture-word-reuse-2026-10-16.json",
@@ -426,5 +426,6 @@
     "No native desktop cycle or host-speed claim until a fresh full-model qualification and controlled timing.",
     "Validation wall times overlapped other builds/replays and are not performance evidence.",
     "No new shader lane assumption; vectors still use config.lanes and runtime shader programs are unchanged."
-  ]
+  ],
+  "native_full640_report": "docs/performance/vector-cache-native-full640-2026-10-16.json"
 }
