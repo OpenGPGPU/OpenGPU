@@ -20,12 +20,15 @@ Linux application all the way down to RTL.
 
 ## The current proof
 
-![Weston desktop rendered by OpenGPU RTL in ARTI/QEMU](docs/images/weston-desktop-640x480.png)
+![OpenGPU GTK smoke application on the Weston desktop, rendered by four shared OpenGPU CUs at 640×480](docs/images/opengpu-gtk-smoke-640x480.png)
 
-The checked-in screenshot comes from a 640×480 FlashSim run. A Debian ARM64 guest
-boots the OpenGPU DRM/KMS driver, starts the Weston Wayland desktop, renders
-through the OpenGPU Mesa/Gallium driver, and presents the guest-memory scanout
-in a QEMU window.
+The screenshot shows the **OpenGPU GTK smoke** application running on a
+640×480 Weston desktop in a Debian ARM64 guest. Its GtkGLArea renders the orange
+rectangle through the OpenGPU Mesa/Gallium driver and OpenGPU RTL in FlashSim,
+using four shared compute units with 16 lanes each. The OpenGPU DRM/KMS driver
+presents the resulting guest-memory scanout in QEMU. The
+[qualification report](docs/performance/vector-cache-native-full640-2026-10-16.json)
+records passing idle and active GTK frame checks and scanout verification.
 
 ```text
 Weston / Wayland
