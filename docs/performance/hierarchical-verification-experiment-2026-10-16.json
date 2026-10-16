@@ -1,0 +1,54 @@
+{
+  "status": "Hierarchical four-CU verification correctness PASS; build-time benefit unqualified",
+  "artifact_root": ".artifacts/shared-cu/sim-hierarchical",
+  "rtl_source_commit": "86c67f8",
+  "configuration": "Stock compiled RTL and GpuSim; private PATH wrapper enables --hierarchical and marks GpuComputeUnit via Verilator control file; two compile jobs; isolated binary cache.",
+  "source_files_sha256": {
+    ".artifacts/shared-cu/sim-hierarchical/bin/verilator": "b94c98e752cb97f67190ed62748ceac4e6dfb052003bd9c22ecbfd6b16153ffa",
+    ".artifacts/shared-cu/sim-hierarchical/bin-v2/verilator": "2e796455f532da8ebef327efdf758b19e62927cd4c7cebdbef4a3d6862df59a1",
+    ".artifacts/shared-cu/sim-hierarchical/hierarchy.vlt": "7c9860a3ef357f0f9eabaff8ec761ceec8e3895fcb40f6e171db8f9b0ce7936c",
+    ".artifacts/shared-cu/sim-hierarchical/validate_v2.py": "0a0da7a837c585cd32e9790b8444828c6960343464e175804e64d6ffd3ff13c1"
+  },
+  "full_scene": {
+    "passed": true,
+    "metrics": {
+      "CUs": "4",
+      "axi_bytes": "64",
+      "side": "64",
+      "alu_loops": "0",
+      "om_inflight": "64",
+      "fragment_batch_limit": "112",
+      "lanes": "16",
+      "warps": "8",
+      "runtime_shader": "true",
+      "cycles": "22766",
+      "active_cu_cycles": "39622",
+      "peak_cus": "4",
+      "texture_extent": "64",
+      "buffer_texture_reads": "true",
+      "texture_words": "3677",
+      "texture_lines": "229"
+    },
+    "pixel_depth_metadata_identical": true,
+    "pixel_depth_sha256": "51bc27c4b8272aeb5c337726e03da4d4e66bf64f94243246cd289e007c92107f",
+    "report_sha256": "cb258bdcf7c7718eb96ac5ffcc582a36d7790f6e287cc085c7d6889e8cd80cb9"
+  },
+  "first_attempt": {
+    "exit_status": 1,
+    "reason": "Twenty UNOPTFLAT warnings introduced at hierarchical DPI boundaries were fatal.",
+    "log_sha256": "f71ed45ec7fdf4b9829f5db2d2e0f4dcd788fb1b56a52bb770dd08ce9c938e30"
+  },
+  "second_attempt": {
+    "exit_status": 0,
+    "warning_scope": "Private wrapper suppresses only UNOPTFLAT; assertions and other warning categories remain enabled.",
+    "raw_elapsed_seconds": 312.3851320743561,
+    "scope": "Elapsed includes the explicit104-second suspension and overlapping builds/QEMU; do not compare this number to other build times."
+  },
+  "build_structure": "Initial build snapshot contains one VGpuComputeUnit hierarchy library and a separate top-level build; generated makefiles retained under build-snapshot.",
+  "main_harness_unchanged": true,
+  "next_gate": "Run a matched cold flat-versus-hierarchical build on the same source and validate cache keys, assertion propagation and a cached repeat before considering an opt-in GpuSim feature.",
+  "documentation": [
+    "https://verilator.org/guide/latest/verilating.html#hierarchical-verilation",
+    "https://verilator.org/guide/latest/control.html"
+  ]
+}
