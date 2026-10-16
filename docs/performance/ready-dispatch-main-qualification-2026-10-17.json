@@ -1,0 +1,322 @@
+{
+  "date": "2026-10-17",
+  "recorded_at": 1792176620.889034,
+  "status": "PASS: guarded ready dispatch committed after all native/guest/complete trace/manual-active-visual and main-package gates.",
+  "flashsim_commit": "94ed58c165c880c347d1deacb16b5ef894a1a044",
+  "emitter_sha256": "0d3508d195b5a953b3c6881ccf2e0f2f3d32fcf001229173161fbd0d88dfe45d",
+  "hardware": {
+    "compute_units": 4,
+    "lanes": 16,
+    "warps_per_CU": 8,
+    "desktop": "640x480"
+  },
+  "change": "Inline metadata/payload suffix into ready dispatch only when every foreign predecessor belongs to earlier drained closure. Retain own-generation guards, ordinary lazy/output wrappers and conservative generic-group fallback.",
+  "source_equivalence": {
+    "started": 1792173496.764887,
+    "pid": 21633,
+    "stage": "terminal",
+    "candidate": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/eager-ready-fastpath-safe",
+    "reference": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/eager-ready-fastpath-native",
+    "scope": "Compare conservative-guard output from exact pinned optimizedGPU IR against independent actualCLI-qualified target C++. Every .cpp/.h mustmatch byte-for-byte before reusing runtime/timing evidence. No approximateRTL ortextualmodelpostprocessing.",
+    "exit_status": 0,
+    "seconds": 157.60456954105757,
+    "actual_emitter_sha256": "0d3508d195b5a953b3c6881ccf2e0f2f3d32fcf001229173161fbd0d88dfe45d",
+    "passed": true,
+    "source_count": 39,
+    "all_generated_sources_identical": true,
+    "model_sources": {
+      "dut_9.cpp": "540ae854440023bf35056b00417470678b67d772310c10f42467c533fa5e712b",
+      "dut_8.cpp": "6db7de3656455ba4662f948ebf11badeea424846f6dea8f2221f6a29e63a53ec",
+      "dut_21.cpp": "29ac4a1d69b3e9dfbec2d946c4a89e62a4ba8fe207eea6dc55596cb1e698e489",
+      "dut_20.cpp": "84c23ce74186cb2856f3aafed0b0c946613f1b53a7daa55380a18555c3888ec0",
+      "dut_22.cpp": "c09367b1af6d91701dd4b2e84781ae13bd5497e4d9137418425839637a3671bc",
+      "dut_23.cpp": "3f2f4c0f4b7b460f6ce2717ea2c7027fed279abd36a3a1343f9f26dc994dea63",
+      "dut.h": "0864dfc8779f7ce14634f20790e9ea2b57f0243bcbd79f97483c6bb1c7d3feb4",
+      "dut_27.cpp": "268f146f78686c75ab638d5da8b8b02071c7ffd9b221770115e46b623c04e1e3",
+      "dut_26.cpp": "4907f79ac1a78daa644fdf08eda9fd6f259db2b06292874d5e096b47ff007374",
+      "dut_24.cpp": "aaae2d3f4d75da9ff7e570446109f0eb568e188b4ad7248de2d1901e552bf3f4",
+      "dut_30.cpp": "6676e3722eefe213de269a90e983eac18e29ca98a40029a7ac0c2084f96b2988",
+      "dut_18.cpp": "85b779a7c4ce12731d757f4bdbd6e50478cf9dbc2d787d73ffaa41302d8c4941",
+      "dut_19.cpp": "8154ac8e00dd1d8caa68da01d7e08ea7a7a45bdc09f052fe5ed5ef03163c143b",
+      "dut_31.cpp": "f9e42a691bd312e486d8eb62cc78fad8ea6516828d9f5b2527befacd9735faa0",
+      "dut_25.cpp": "7fb0580d74c3df3fe5d297c7f4f607900bc0b487003a89e46d6428e848d09e40",
+      "dut_28.cpp": "fde02c3de327d893a9e208939ef3a3f202fd4144ce0615a9ef7202b41b578160",
+      "dut_14.cpp": "5abdd14feed5f0442676ddcbadbc758cd556d88fa9f39672c1e4a6aa25518ebe",
+      "dut_15.cpp": "f5cb3646af2dec0373a7aa3e573d4b540bac45e6913821c03b675541b000d84d",
+      "dut_29.cpp": "870fac57c4ebf48828f7d0b2ec9bde48c2537faf361f0cd7bfc6969c60eab03e",
+      "dut_17.cpp": "0ca755cc15b184b251dd634bd95e35bd6b76be17f87b95c838b26ba32ed35aa6",
+      "dut_16.cpp": "c78edc60526b9e7dd1ac0a213538969916aa501157c7b7e90cb749ef6aeab624",
+      "dut_commit_helpers.cpp": "3554c37c2e57c62d716ba1c58c979062b3d00c4e4edf7729294dbb2a3281403e",
+      "arti_rtl_model.h": "1c03023f2d5f1e46a9968eb82ac70beaae4edfc63252300a44bc757ef40990d4",
+      "arti_rtl_model.cpp": "c175500879fd56d74d9fbc60cf5ff9bb00be5f7351bdecdd93d02f6329546c3b",
+      "dut_12.cpp": "ff714a36cfcd13b01ccf7bf9c38c80ac0ab2a58a5d6410eef4952b5c69c088fc",
+      "dut_13.cpp": "4961fc415c8113500d5f17254f91d91eccc498930e3f2fb878da3efa7ff5ddeb",
+      "arti_smoke.cpp": "eb3699b736aeae965aa933baf8a648681f9b651d74daa6dd39daf047a805697a",
+      "dut_11.cpp": "a2b7bc33f4768a94f697fc8518fd546520935b07b0aebe27cabd04696a9dbd3b",
+      "dut_10.cpp": "8022e46b1f62da1d04edbffc1243ec99d5d3a3f4b4099f44c070a5d03168381e",
+      "dut_0.cpp": "87c8da6ac7286f5966e1bd4abd6db9488a28ff7a44cb49706dae0a30376811fd",
+      "dut_1.cpp": "7a083d2ce00cfc6331a78e8c013733369fc3e0a7fb5ff0bd68082ed6a091c2fd",
+      "dut_3.cpp": "2ab716a284d227f34718921e647c2ac79fb0f33af872e846af0d6ca4f6f383d8",
+      "dut_mem_ports.cpp": "88b360ebcfd5d715d00d5e66f2206563788d3fa5233643282d4b03b95c45be65",
+      "dut_commit_chunks.cpp": "81981fbf0759e667914df8327799d7226881cd76938801ec05c389a9145efbea",
+      "dut_2.cpp": "0647bc84ab08214f38865dbd74a5b1489f1232c3e442fac1dc7fe2a96d61b16c",
+      "dut_6.cpp": "72d9f56745fa4e3c1e39cbc239f0b628ed395ba25be88bcd820908679d5de03e",
+      "dut_7.cpp": "182d2ed1971107d2e2e9cab26c543f84ad0f0efac347991d8ed1424255867240",
+      "dut_5.cpp": "c53b6ca5e65849fff04f926c8eb377bd7875a15c5828d3edf89df57f99cbe8e3",
+      "dut_4.cpp": "ebfc594fba43de25dbb75c8733565703341e8d2f4303bb9d6c0ba2085611a305"
+    },
+    "emitter_sha256": "0d3508d195b5a953b3c6881ccf2e0f2f3d32fcf001229173161fbd0d88dfe45d",
+    "cache_pickle_sha256": "1f53f425fcc5b5c4300c4930ff4380953e7afc89ed7885ee7b7a6624562da870",
+    "cache_manifest_sha256": "2fb91b64d9d045cf955296fcd0b7be677a2975d15216711f5778191df05e9fd5",
+    "finished": 1792173655.060809
+  },
+  "package_tests": {
+    "count": 106,
+    "exit_status": 0,
+    "seconds": 36.16173733305186,
+    "log_sha256": "aae9f34d58d8e4b33138b438c9604c37ce91baf3d406a442388657b451184ec1"
+  },
+  "sanitized_state_cycles": 40000,
+  "qualification": {
+    "native_sampler_cases": 40,
+    "staging_cases": 12,
+    "forced_controls": 6,
+    "VM_replays": 18,
+    "GLES_cases": 21,
+    "GTK64_strict_scanout": true,
+    "O1_and_O2_passed": true,
+    "strict_mesa64": {
+      "calls": 44295,
+      "ticks": 3191999,
+      "commits": 64104634,
+      "holds": 405534828,
+      "dma_reads": 39806,
+      "dma_writes": 473614,
+      "dma_bytes": 6106936,
+      "seconds": 25.868383041,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "strict_desktop_prefix": {
+      "calls": 8862,
+      "ticks": 829297,
+      "commits": 176077252,
+      "holds": 480201656,
+      "dma_reads": 33946,
+      "dma_writes": 258645,
+      "dma_bytes": 4170544,
+      "seconds": 40.5397435,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    }
+  },
+  "selection": {
+    "archive_sha256": "06b5a61e814bd44db27692dd36d013de34394662197f0261ff765b57b343674d",
+    "header_sha256": "0864dfc8779f7ce14634f20790e9ea2b57f0243bcbd79f97483c6bb1c7d3feb4",
+    "qemu": ".artifacts/shared-cu/eager-ready-fastpath-native/qemu-optimized",
+    "qemu_sha256": "46286a2479a77e6ebd85de82727bfffe37195f5c50a758aec7cebe0f75c9efbd",
+    "replayer_sha256": "1e84eb2df314ccc4d3c2b9202853c8895a12d7a599a36ad2126bcf104bb9fb3c"
+  },
+  "balanced_timing": {
+    "scope": "Three balanced samples per artifact per exact trace, own heavy jobs stopped. Both artifacts use own73qualifiedtrainingprofiles under same protocol. Complete artifact comparison includes retraining; no GPU taskcyclechange.",
+    "summary": {
+      "mesa64": {
+        "baseline": {
+          "wall_seconds": {
+            "median": 31.580071249976754,
+            "min": 31.545809334143996,
+            "max": 31.59219183307141
+          },
+          "cpu_seconds": {
+            "median": 31.575053000000004,
+            "min": 31.541236000000005,
+            "max": 31.586898999999995
+          }
+        },
+        "candidate": {
+          "wall_seconds": {
+            "median": 25.941502083092928,
+            "min": 25.807678082957864,
+            "max": 25.958803000161424
+          },
+          "cpu_seconds": {
+            "median": 25.937852,
+            "min": 25.803978999999984,
+            "max": 25.954456
+          }
+        },
+        "candidate_over_baseline": {
+          "wall_seconds": 0.821451664176091,
+          "cpu_seconds": 0.8214666179657718
+        }
+      },
+      "full640-prefix": {
+        "baseline": {
+          "wall_seconds": {
+            "median": 49.18759150011465,
+            "min": 48.911599749932066,
+            "max": 49.3053095000796
+          },
+          "cpu_seconds": {
+            "median": 49.17982300000002,
+            "min": 48.906558,
+            "max": 49.301164999999976
+          }
+        },
+        "candidate": {
+          "wall_seconds": {
+            "median": 40.548222792102024,
+            "min": 40.33821325004101,
+            "max": 40.63004366704263
+          },
+          "cpu_seconds": {
+            "median": 40.53558199999997,
+            "min": 40.33361200000005,
+            "max": 40.625048000000035
+          }
+        },
+        "candidate_over_baseline": {
+          "wall_seconds": 0.824358777396277,
+          "cpu_seconds": 0.8242319619572431
+        }
+      }
+    },
+    "all_samples_report": "docs/performance/ready-dispatch-host-experiment-2026-10-17.json",
+    "all_samples_report_sha256": "a5b244d77b80f391b373c1e7f140839c33850b86a96d29409123d3f6bcfb97dd"
+  },
+  "actual_full640_guest": {
+    "started": 1792175242.333034,
+    "pid": 31211,
+    "stage": "terminal",
+    "replays": [],
+    "qemu_sha256": "46286a2479a77e6ebd85de82727bfffe37195f5c50a758aec7cebe0f75c9efbd",
+    "archive_sha256": "06b5a61e814bd44db27692dd36d013de34394662197f0261ff765b57b343674d",
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/erf-full640",
+    "profile": false,
+    "scope": "Private bulk-constructor and drained-pass host model; same selected fourCU RTL and committed sampler-format Mesa;cap28; explicitfirst9scratchcontract,immutablevalidatedread/writeusage,DMAaliasguard andunchangedMesaoptin. StandaloneDRMdefault/optin/all4096pixels+outputcanaries,18VMreplays,21GLES,quadbatch/offscreen/private-depth/GTK64strictscanout; desktopflagselectsfull640only. Nohostspeedclaim.",
+    "exit_status": 0,
+    "guest_seconds": 612.6143437908031,
+    "markers": {
+      "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+      "output_usage=1": true,
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "fragment staging transient=1": true
+    },
+    "native_cases": 0,
+    "quad_batch_pass": true,
+    "payload_unchanged": true,
+    "trace_requested": false,
+    "trace_present": true,
+    "passed": true,
+    "finished": 1792175855.146584
+  },
+  "milestones": {
+    "background": {
+      "seconds": 168.93427345901728,
+      "evidence": {
+        "scope": "Wallpaper andstaticpanel crops match qualified reference, not completeGTKstartup",
+        "regions": [
+          [
+            5,
+            5,
+            37,
+            37
+          ],
+          [
+            600,
+            5,
+            632,
+            37
+          ],
+          [
+            5,
+            410,
+            37,
+            442
+          ],
+          [
+            600,
+            410,
+            632,
+            442
+          ],
+          [
+            5,
+            451,
+            37,
+            477
+          ]
+        ],
+        "tolerance": 3
+      },
+      "image": "/Users/duckdonald/workspace/gpu/.artifacts/erf-full640/first-background.png",
+      "source_sha256": "15423a3ca7a94dba09bd8b1b6a2dbc97c7f4713bf3ef46ad408acd9151dc0314",
+      "image_sha256": "4020acac8f61217968b95b137c760220e55aa640c05857302fd7e2ae1143d103"
+    },
+    "active": {
+      "seconds": 605.4367985420395,
+      "evidence": {
+        "colour_pixels": 16571,
+        "expected_rgb": [
+          242,
+          89,
+          46
+        ],
+        "tolerance": 3
+      },
+      "image": "/Users/duckdonald/workspace/gpu/.artifacts/erf-full640/first-active.png",
+      "source_sha256": "f5e5a82a0e5cbecda29e3a23607ccfad723c7a371b7a7b0992b65a002e5d73e2",
+      "image_sha256": "db2a1e2c0a79d196cafe7c529d2785aa8fd2fb5ed22b00430b6065185d1a548e"
+    }
+  },
+  "manual_visual_review": {
+    "at": 1792175974.2412622,
+    "reviewed": true,
+    "active": {
+      "passed": true,
+      "image": "/Users/duckdonald/workspace/gpu/.artifacts/erf-full640/qualified-active.png",
+      "image_sha256": "db2a1e2c0a79d196cafe7c529d2785aa8fd2fb5ed22b00430b6065185d1a548e",
+      "source": "/Users/duckdonald/workspace/gpu/.artifacts/erf-full640/gtk-smoke-verified.ppm",
+      "source_sha256": "f5e5a82a0e5cbecda29e3a23607ccfad723c7a371b7a7b0992b65a002e5d73e2",
+      "observations": "640x480 floral desktop, legible GTK title/label/button, solid orange GL panel within black frame, bottom panel; no visible corruption."
+    },
+    "idle": {
+      "readback_passed": true,
+      "onscreen_frame_captured": false,
+      "scope": "Exact idle RGBA marker present in actual guest log. No separate onscreen idle image was captured, so no idle visual-review claim."
+    },
+    "timing_scope": "Actual guest is a functional diagnostic, with short concurrent texture observers and3secondstack sample. No controlled whole-guest speed ratio."
+  },
+  "manual_review_record_sha256": "191a3e5be64eac5aa8ebacbfe6b4f58a38932b59db1791d0e074cc6e1d5278be",
+  "raw_full_validator_scope": "Raw full-validation-state.json leaves its manual_visual.reviewed=false because it is written before external human/agent visual review. The separately hashed manual-visual-review.json above is authoritative for the later review; idle onscreen visual review is not claimed.",
+  "complete_desktop_trace": {
+    "passed": true,
+    "exit_status": 0,
+    "wall_seconds": 667.8322865420487,
+    "cpu_seconds": 667.797493,
+    "replay": {
+      "calls": 194602,
+      "ticks": 17897346,
+      "commits": 2545853169,
+      "holds": 7938992624,
+      "dma_reads": 642677,
+      "dma_writes": 4105625,
+      "dma_bytes": 72340008,
+      "seconds": 667.778794333,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "trace_sha256": "cf1b3e2f96dfa55f8b1a6ebf54c011a365ef62bc94c02f6b6ad7e0aaf6df1142"
+  },
+  "complete_trace_scope": "One complete unprobed strict replay after live guest exit, without competing own heavyweight jobs. Prior qualified replay810.743676708s and current667.778794333s are separate diagnostic full runs, not balanced complete-trace samples.",
+  "image": {
+    "path": "docs/images/opengpu-gtk-ready-dispatch-20261017.png",
+    "sha256": "db2a1e2c0a79d196cafe7c529d2785aa8fd2fb5ed22b00430b6065185d1a548e"
+  },
+  "installed_qemu_sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0",
+  "remaining_goal_work": "Source optimization qualified, but overall goal remains active. Current-prepared-sample result handoff RTL is privately being tested; further taskcycle and host bottlenecks remain to investigate."
+}

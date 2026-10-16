@@ -73,9 +73,9 @@ executable remains unchanged. The qualified local executable is
 
 See the [source, all samples and full qualification](performance/drained-pass-main-qualification-2026-10-17.json).
 
-## Ready-dispatch follow-up experiment (2026-10-17)
+## Qualified ready dispatch (2026-10-17)
 
-The next private generator removes repeated foreign-dependency checks from
+FlashSim commit `94ed58c` removes repeated foreign-dependency checks from
 ready dispatches whose predecessors have already drained. It keeps the existing
 own-generation guard and ordinary lazy/output wrappers. The conservative source
 passes 106 tests; all 39 generated C++/header files match the actual native
@@ -100,8 +100,19 @@ was visually reviewed; this observer did not capture a separate idle frame.
 Wallpaper appears at 168.934 seconds and the active frame at 605.437 seconds.
 Brief texture probes and a three-second stack sample ran during this functional
 guest, so its milestones are not controlled whole-guest speed comparisons.
-The complete 17.9-million-tick strict trace and main source promotion remain
-pending at this checkpoint. See [all samples and qualification scope](performance/ready-dispatch-host-experiment-2026-10-17.json).
+The complete 17,897,346-tick desktop trace also passes all 194,602 calls,
+DMA payloads/masks/order and recorded clocks in **667.779 seconds**, with
+667.797 child CPU seconds. Its task cycles and register-commit count remain
+identical. The prior complete replay took 810.744 seconds; these are separate
+diagnostic full runs, rather than balanced complete-trace samples.
+
+Fresh tests on the main FlashSim package pass all 106 cases before commit.
+The qualified local executable is
+`.artifacts/shared-cu/eager-ready-fastpath-native/qemu-optimized`; installed QEMU
+remains unchanged. See [the final source and full-desktop qualification](performance/ready-dispatch-main-qualification-2026-10-17.json)
+and [all balanced samples](performance/ready-dispatch-host-experiment-2026-10-17.json).
+
+![Qualified four-CU Debian GTK with ready dispatch](images/opengpu-gtk-ready-dispatch-20261017.png)
 
 ## Texture fetch footprint (2026-10-17)
 
