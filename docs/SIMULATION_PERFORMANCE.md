@@ -19,8 +19,15 @@ four-CU reductions are 35.5% and 29.5%. A worker request-refill experiment and a
 larger sixteen-credit window passed correctness but slightly regressed both
 four-CU scenes, so neither was selected. See the
 [RTL qualification](performance/pipelined-fragment-staging-2026-10-16.json).
-The new frozen native model is undergoing Debian/GTK qualification; the latest
-completed full-resolution proof remains the
+The new frozen native model passes the instrumented 18-case compute replay,
+21 native GLES cases, private-depth and offscreen checks, and GTK idle/active
+readback plus scanout at 64×64. Identical native render fixtures also pass twice,
+with complete memory outputs unchanged: solid rendering falls from 11,952 to
+8,827 native ticks, and spatial rendering from 18,523 to 14,135. These reductions
+are 26.1% and 23.7%; native callback timing differs from the Scala AXI fixture.
+See the [native training qualification](performance/pipelined-staging-native-training-2026-10-16.json).
+The optimized build and full-resolution qualification remain in progress.
+The latest completed full-resolution proof remains the
 [texture-cache model](performance/vector-cache-native-full640-2026-10-16.json).
 
 `benchmark_native_render.py` runs the same small scene through an already built
