@@ -1,0 +1,369 @@
+{
+  "recorded_at": 1792190116.36289,
+  "passed": true,
+  "scope": "Read-only full desktop CU attribution and private queue screening; diagnostic observer runtime, no host-speedup claim. Exact wholetrace API/results/DMA/clocks/ticks/commit/hold counters unchanged. No production source/default/installedQEMU changes.",
+  "trace_sha256": "443b5ce0a20fdceca4bcf997af1b10fc6c4cdc57d51b07311af458a17c904040",
+  "replay": {
+    "calls": 154410,
+    "ticks": 15447854,
+    "commits": 1979914972,
+    "holds": 6830582608,
+    "dma_reads": 567152,
+    "dma_writes": 3729183,
+    "dma_bytes": 64927952,
+    "seconds": 572.4541185,
+    "truncated_tail": false,
+    "warmup_calls": 0,
+    "sample": 0
+  },
+  "global_counters": {
+    "ticks": 15447854,
+    "vector_texture_accepted": 91513,
+    "texture_unit_vector_starts": 91513
+  },
+  "per_CU_stats": [
+    {
+      "id": 0,
+      "active_cycles": 5548658,
+      "active_warp_cycles": 33242319,
+      "eligible_warp_cycles": 956557,
+      "all_active_blocked": 4599232,
+      "vector_present": 3662843,
+      "vector_accepted": 629727,
+      "vector_held": 3033116,
+      "skid_cycles": 2047123,
+      "request_cycles": 3353514,
+      "operand_cycles": 3500834,
+      "commit_cycles": 628376,
+      "resumes": 923608,
+      "finishes": 25800,
+      "launches": 25807
+    },
+    {
+      "id": 1,
+      "active_cycles": 5419845,
+      "active_warp_cycles": 32891031,
+      "eligible_warp_cycles": 941658,
+      "all_active_blocked": 4485138,
+      "vector_present": 3630379,
+      "vector_accepted": 621629,
+      "vector_held": 3008750,
+      "skid_cycles": 2039135,
+      "request_cycles": 3326056,
+      "operand_cycles": 3470460,
+      "commit_cycles": 620825,
+      "resumes": 909413,
+      "finishes": 25279,
+      "launches": 25279
+    },
+    {
+      "id": 2,
+      "active_cycles": 5260075,
+      "active_warp_cycles": 32166820,
+      "eligible_warp_cycles": 903986,
+      "all_active_blocked": 4362593,
+      "vector_present": 3563362,
+      "vector_accepted": 611274,
+      "vector_held": 2952088,
+      "skid_cycles": 2027943,
+      "request_cycles": 3284617,
+      "operand_cycles": 3419497,
+      "commit_cycles": 611394,
+      "resumes": 874708,
+      "finishes": 22757,
+      "launches": 22764
+    },
+    {
+      "id": 3,
+      "active_cycles": 5184123,
+      "active_warp_cycles": 31737199,
+      "eligible_warp_cycles": 892176,
+      "all_active_blocked": 4298373,
+      "vector_present": 3518384,
+      "vector_accepted": 603566,
+      "vector_held": 2914818,
+      "skid_cycles": 2008458,
+      "request_cycles": 3236012,
+      "operand_cycles": 3374632,
+      "commit_cycles": 603598,
+      "resumes": 863278,
+      "finishes": 22427,
+      "launches": 22434
+    }
+  ],
+  "vector_issue_by_unit": [
+    {
+      "unit": 0,
+      "name": "none",
+      "accepted": 0,
+      "held_worker_cycles": 0
+    },
+    {
+      "unit": 1,
+      "name": "integer_ALU",
+      "accepted": 1693571,
+      "held_worker_cycles": 0
+    },
+    {
+      "unit": 2,
+      "name": "multiply",
+      "accepted": 242536,
+      "held_worker_cycles": 0
+    },
+    {
+      "unit": 3,
+      "name": "divide",
+      "accepted": 0,
+      "held_worker_cycles": 0
+    },
+    {
+      "unit": 4,
+      "name": "floating_point",
+      "accepted": 1600,
+      "held_worker_cycles": 0
+    },
+    {
+      "unit": 5,
+      "name": "load_store",
+      "accepted": 340692,
+      "held_worker_cycles": 2771080
+    },
+    {
+      "unit": 6,
+      "name": "configuration",
+      "accepted": 96284,
+      "held_worker_cycles": 436
+    },
+    {
+      "unit": 7,
+      "name": "mask",
+      "accepted": 0,
+      "held_worker_cycles": 0
+    },
+    {
+      "unit": 8,
+      "name": "texture",
+      "accepted": 91513,
+      "held_worker_cycles": 9137256
+    }
+  ],
+  "derived": {
+    "total_vector_dispatch_hold_worker_cycles": 11908772,
+    "texture_share_of_dispatch_holds": 0.7672710502812549,
+    "all_active_warps_blocked_share_of_active_CU_cycles": 0.8287294536079312,
+    "mean_active_warps_when_CU_active": 6.072908270656747
+  },
+  "counter_validation": [
+    "91513 accepted vector texture instructions exactly match91513 sampler vector instruction starts.",
+    "Every acceptedvector trackedperCU/perwarp until resume; retiredPCmustmatch pendinginstructionPC. Totalremainingvectorrequests<=32 hardwarewarps.",
+    "Histogramkey usesPC+instruction tokeep differentprogrambindings atsameaddress separate.",
+    "OriginalperPC-only comparison failed because shadersreusecodeaddress; retained failedattempt andcorrectedobserver, noDUTchanges."
+  ],
+  "prepared_cache": {
+    "counts": {
+      "samples": 1372364,
+      "lookups": 1372364,
+      "allhit": 10955,
+      "partial": 1358256,
+      "miss": 3153
+    },
+    "all_hit_fraction": 0.00798257605125171,
+    "prefix_counts": {
+      "samples": 61146,
+      "lookups": 61146,
+      "allhit": 2,
+      "partial": 61014,
+      "miss": 130
+    },
+    "decision": "Do not implement prepared-address earlycachelookup: <0.8% allhits inwholetrace. Existingpartialmisspath alreadyissuesfirstmissduringlookup; eliminatinglookupregisterwould addtiming/hostcost withnegligiblecycleopportunity."
+  },
+  "queue_candidate": {
+    "source_sha256": "453224c3a89a55bd7b0c491bfabfed8197e5b9baf43737269b4c800d6a60f828",
+    "source_main_unchanged": true,
+    "unit_gate_passed": true,
+    "new_unit_configurations": [
+      [
+        1,
+        2
+      ],
+      [
+        4,
+        4
+      ],
+      [
+        16,
+        8
+      ]
+    ],
+    "old_negative_progress_control_passed": true,
+    "existing_vector_backend_tests": 9,
+    "plain_scene": {
+      "four_CU": {
+        "cus": 4,
+        "blend_mode": "off",
+        "baseline_cycles": 12141,
+        "candidate_cycles": 12134,
+        "reduction_percent": 0.05765587678115969,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_preserved": true,
+        "metrics": {
+          "baseline": {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "12141",
+            "active_cu_cycles": "27643",
+            "peak_cus": "4",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3677",
+            "texture_lines": "190"
+          },
+          "candidate": {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "12134",
+            "active_cu_cycles": "27585",
+            "peak_cus": "4",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3676",
+            "texture_lines": "192"
+          }
+        }
+      },
+      "one_CU": {
+        "baseline_cycles": 35759,
+        "candidate_cycles": 35768,
+        "exact_pixels_depth_metadata": true,
+        "scope": "ActualsuccessfulRTLsimulation; controllerperformancegatefailed on9cycle regression. SupplementaryoutputSHAcomparison above verifiesdata, no rerun orpassstatusrewrite."
+      }
+    },
+    "plain_pipeline_gate_passed": false,
+    "unrun_after_failed_gate": [
+      "4CUgeneralblend pair",
+      "4CUlegacyblend pair",
+      "threeorderedMSAA/depth suites"
+    ],
+    "actual_Mesa_modulate_scene": [
+      {
+        "cus": 4,
+        "baseline_cycles": 16169,
+        "candidate_cycles": 15630,
+        "reduction_percent": 3.333539489145898,
+        "exact_pixels_depth_metadata": true,
+        "omitted_bytes_preserved": true,
+        "metrics": {
+          "baseline": {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "16169",
+            "active_cu_cycles": "42117",
+            "peak_cus": "4",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3677",
+            "texture_lines": "198"
+          },
+          "candidate": {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "15630",
+            "active_cu_cycles": "40709",
+            "peak_cus": "4",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3678",
+            "texture_lines": "200"
+          }
+        }
+      },
+      {
+        "cus": 1,
+        "baseline_cycles": 50514,
+        "candidate_cycles": 49146,
+        "reduction_percent": 2.708160114027791,
+        "exact_pixels_depth_metadata": true,
+        "omitted_bytes_preserved": true,
+        "metrics": {
+          "baseline": {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "50514",
+            "active_cu_cycles": "40154",
+            "peak_cus": "1",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3676",
+            "texture_lines": "166"
+          },
+          "candidate": {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "49146",
+            "active_cu_cycles": "38791",
+            "peak_cus": "1",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3676",
+            "texture_lines": "166"
+          }
+        }
+      }
+    ],
+    "decision": "Keepprivate; skipfreshnativegeneration now.7cycle4CUplainimprovement/9cycle1CUregression;3.33%4CUand2.71%1CUgain onlongeractualMesa-stylemodulate. Preferbyte-equivalentsoftwaremodulationspecialization with18..21%nativecyclegainandunchangedhardware; reevaluatequeueonlyifremainingrealworkjustifiesstorageandC++cost."
+  },
+  "next_candidate": {
+    "root": ".artifacts/shared-cu/white-modulate-specialization",
+    "status": "PrivateMesaDSObuilt;8smallnativepairs+1large256pairallpassindependentreference/allRAM;1786432sanitizedactualRVVoraclecasesandidentity-negativePASS; runtimeABI1/2/4/8/16/32lanesverified. Threebalancedfreshprocesssamples each onsolid64/spatial64/spatial256 improveROI31.88%/26.18%/27.00%. ActualMesaGL/trace/full640notyetqualified.",
+    "scope": "Oldmodulationfloor(c*255/256) preservedexactly bypackednonzerobytedecrement; requires allactualpackedvertexcolourswhite. Alpha-forcingandnonwhiterestorationretained."
+  },
+  "evidence": {
+    ".artifacts/shared-cu/cu-issue-attribution/full-v3/state.json": "f19e036a30474d49fe6b400cdb8bf2de5b842fb1cfe748f6f9b45d118eb335e4",
+    ".artifacts/shared-cu/cu-issue-attribution/prefix-v3/state.json": "76d52eda7c52b5d30185518d236031864fe9ea285803814f645da51bdc79994c",
+    ".artifacts/shared-cu/vector-texture-queue/unit-state.json": "59d3139dd43f2f3a895d9c4e45ff9eb286fa1dfa72300344224912f528915f6b",
+    ".artifacts/shared-cu/vector-texture-queue/pipeline-state.json": "cc21ae8d278544d395d85e8e2b73941fd86b2f3988e19b06a62b7cbb43e7ca5c",
+    ".artifacts/shared-cu/vector-texture-queue/modulate/state.json": "d3d5b69794fcb563f6f7cf5e8aa17678a7bb3cadac7e0d6f9d0a6873416b9cad"
+  }
+}

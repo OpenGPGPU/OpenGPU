@@ -49,6 +49,23 @@ ticks would reduce wall time proportionally. Active CU execution and sampler
 fetch remain the next profiling priority. See
 [the candidate results and complete activity counts](performance/desktop-candidate-attribution-2026-10-17.json).
 
+The follow-up CU probe counts all 91,513 vector texture instructions and
+independently matches them to sampler instruction starts. Texture instructions
+account for **76.7% of vector-dispatch hold cycles**. Active warps are all
+blocked during 82.9% of active CU cycles; that includes normal instruction
+latency and does not measure ALU utilization. Program addresses are reused, so
+instruction histograms distinguish both PC and instruction word, and accepted
+vector instructions are tracked by CU and warp until retirement.
+
+Only **10,955 of 1,372,364 prepared samples** hit all four cached taps. Partial
+misses already issue during lookup, so removing that lookup stage has little
+opportunity. A private warp-sized texture queue passes operand/mask ownership,
+FIFO, progress and configuration-order tests. It saves only seven cycles in
+the plain four-CU scene and regresses its one-CU counterpart by nine cycles.
+With the longer actual Mesa modulation program it saves 3.33% on four CUs and
+2.71% on one CU. It remains private while a larger shader simplification is
+evaluated. See [the complete CU counters and queue screening](performance/desktop-CU-issue-attribution-2026-10-17.json).
+
 ## Sampler-format channel permutation (2026-10-16)
 
 Gallium now folds a recognized pure texture R/B swap into the sampler's native
