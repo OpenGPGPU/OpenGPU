@@ -21,6 +21,7 @@
 #include "opengpu_shader_abi.h"
 #include "opengpu_shader_resources.h"
 #include "opengpu_texture_layout.h"
+#include "opengpu_sampler_lowering.h"
 #include "opengpu_shaders.h"
 #include "opengpu_retry.h"
 
@@ -2154,6 +2155,11 @@ static void draw_vbo(struct pipe_context *pipe,
         unsigned start = draws[draw_i].start;
         unsigned count = draws[draw_i].count;
         unsigned tri;
+        struct opengpu_sample_plan sample_plan = opengpu_lower_sample_swap(
+            ctx->fs_view ? opengpu_format(ctx->fs_view->format) : -1,
+            ctx->fs->sample_swizzle && ctx->fs_const_set && ctx->fs_const[0] >= 0.5f,
+            !ctx->fs->alu && !ctx->fs->modulate && !ctx->fs->scale_const &&
+                !ctx->fs->sample_alpha_one);
 
         if (!count)
             continue;
@@ -2210,9 +2216,10 @@ static void draw_vbo(struct pipe_context *pipe,
                 reject("texture swizzle uniform did not reach the fragment core");
                 return;
             }
-            /* The sampler and channel permutation are both GPU programs;
-             * the scalar uniform only selects which fixed program is bound. */
-            if (ctx->fs_const[0] >= 0.5f) {
+            /* The recognized pure channel permutation can use the sampler's
+             * existing native byte-order decoder. Otherwise retain the GPU
+             * shader. This changes neither the texture bytes nor vector ABI. */
+            if (sample_plan.shader_swizzle) {
                 if (bind_shader_program(ctx, false, opengpu_fragment_swizzle,
                                          OPENGPU_FRAGMENT_SWIZZLE_BYTES))
                     reject("fragment swizzle shader bind failed");
@@ -2441,19 +2448,21 @@ static void draw_vbo(struct pipe_context *pipe,
                 tw = tex->width0;
                 th = tex->height0;
                 if (ctx->trace_draws)
-                    fprintf(stderr, "opengpu: sampler texture %ux%u pitch=%u bind=0x%x resource_format=%u view_format=%u swizzle=%u,%u,%u,%u uniform0=%g swap=%d target_format=%u\n",
+                    fprintf(stderr, "opengpu: sampler texture %ux%u pitch=%u bind=0x%x resource_format=%u view_format=%u swizzle=%u,%u,%u,%u uniform0=%g swap=%d target_format=%u sampler_format=%d folded_swap=%d\n",
                             tw, th, gpu ? pipe_opengpu_resource_pitch(gpu->gpu) : 0,
                             tex->bind, tex->format, ctx->fs_view->format,
                             ctx->fs_view->swizzle_r, ctx->fs_view->swizzle_g,
                             ctx->fs_view->swizzle_b, ctx->fs_view->swizzle_a,
                             ctx->fs_const[0], ctx->fs->sample_swizzle,
-                            ctx->cbuf->format);
+                            ctx->cbuf->format, sample_plan.texture_format,
+                            ctx->fs->sample_swizzle && ctx->fs_const_set &&
+                                ctx->fs_const[0] >= 0.5f && !sample_plan.shader_swizzle);
                 sample = gpu ? prepare_sample_texture(ctx, gpu->gpu, tw, th) : NULL;
                 if (!sample || !tw || !th ||
                     pipe_opengpu_bind_texture(
                         ctx->gpu, sample, tw, th, tw * th * 4u,
                         OPENGPU_RESOURCE_TEXTURE_CLAMP |
-                            ((uint32_t)opengpu_format(ctx->fs_view->format) <<
+                            ((uint32_t)sample_plan.texture_format <<
                              OPENGPU_RESOURCE_TEXTURE_FORMAT_SHIFT) |
                             OPENGPU_RESOURCE_UNCACHED)) {
                     reject("texture bind failed");

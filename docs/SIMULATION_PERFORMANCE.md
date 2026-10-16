@@ -1,5 +1,37 @@
 # Full-system simulation performance investigation
 
+## Sampler-format channel permutation (2026-10-16)
+
+Gallium now folds a recognized pure texture R/B swap into the sampler's native
+format decoder: RGBA8/BGRA8 and RGBX8/BGRX8 pairs exchange the colour channels
+with unchanged alpha policy. The texture bytes stay in place. The draw uses
+the existing sample shader, reducing the current runtime-ABI program from
+26 to 13 instructions. Vector length and staging stride remain runtime values.
+Zero-uniform, alpha-forcing, composite and unknown/native-word formats keep
+their existing shader/helper selection.
+
+Across four native byte formats, two texture extents and two colour patterns,
+complete output pixels/depth and all memory canaries match the original shader.
+Spatial draws fall from **12,740 to 11,219 cycles (11.9%)**; solid draws fall
+from **8,926 to 8,680 (2.8%)**. Eight legacy-format controls retain their exact
+cycles and outputs. The independent filter/RVV reference checks 262,144
+bilinear/trilinear colour cases plus 32 policies under sanitizers; a deliberately
+wrong peer format fails the reference. The complete main host suite passes.
+
+A private Mesa DSO reconstructs the frozen baseline exactly before rebuilding
+only its context. It passes 18 compute replays, 21 GLES cases, depth/quad tests
+and GTK64 strict scanout. All 44,295 calls of the new actual Mesa trace then
+match in strict replay, including DMA data/masks/order and recorded clocks.
+The full 640×480 desktop passes idle/active readback and active-frame strict
+scanout plus visual review. This observer saved no idle onscreen frame.
+
+The plain optimized full guest completes in 883.055 seconds, with wallpaper
+at 245.316 seconds and active GTK at 881.043 seconds. This is functional timing;
+different instrumentation and host conditions prevent a controlled speed ratio
+against the earlier diagnostic boot. Installed QEMU remains unchanged. See
+[the qualification](performance/sampler-format-folding-2026-10-16.json) and
+[the saved active frame](images/opengpu-gtk-sampler-format-20261016.png).
+
 ## Full-resolution runtime accounting (2026-10-16)
 
 The selected 640×480 diagnostic guest advances **17,897,346 GPU
