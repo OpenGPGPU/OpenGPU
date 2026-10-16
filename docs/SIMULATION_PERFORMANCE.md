@@ -143,6 +143,27 @@ candidate with no host-time claim or production promotion. See the
 [RTL evidence](performance/texture-coordinate-pipeline-2026-10-16.json) and
 [native training qualification](performance/texture-coordinate-native-training-2026-10-16.json).
 
+The optimized coordinate model passes native pixels, 18 compute replays and
+21 GLES/GTK64 checks, but wall-time improvement is unproven. Two balanced
+timing windows have medians near parity and fail their background-activity
+bound, so neither supports a speedup claim. Primary ticks fall 15.0%, while
+changed-register commits fall only 0.47% and hold evaluations 1.06%; much of
+the simulator work remains. The private candidate is held for further work;
+see the [host investigation](performance/texture-coordinate-host-investigation-2026-10-16.json).
+A read-only probe of the real GLES/GTK64 workload observes **3,972,016** changes
+in unselected integer result groups, versus **35,124** unused texture changes.
+These are register transitions, not CPU-time percentages. The synthetic sample
+shader does not exercise that integer datapath, so its timings alone cannot
+evaluate this next change. See the
+[register activity](performance/register-activity-2026-10-16.json).
+
+A separate masked vertex-line staging prototype passes 88 draws across eight
+capacities, four existing vertex tests, 12 complete scenes and six ordered
+blend/depth/MSAA checks. Every complete scene saves exactly 531 startup cycles;
+primary four-CU spatial falls from 12,651 to 12,120 and solid from 9,385 to
+8,854. It remains private without native wall-time or full-desktop claims; see
+the [RTL qualification](performance/vertex-line-staging-2026-10-16.json).
+
 Commit `3cf451a` overlaps fragment staging with eight local transaction IDs per
 worker, scales the shared credit and translation ranges with CU count, pipelines
 the shared request queue, and bounds reply buffering by local ownership. It also

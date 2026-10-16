@@ -1,0 +1,255 @@
+{
+  "date": "2026-10-16",
+  "status": "private_RTL_qualified_no_native_claim",
+  "production_promoted": false,
+  "baseline": "coordinate-lookaheadprivatecandidate; mainindexwidthfix shared",
+  "implementation": "AlignedSoA host staging uses masked64byte line writes/readbacks and two tagged local IDs. Retain existing IO/globalranges; drain allwrites beforeinvalidate/launch and allreads beforetriangles. Unalignedbase/stride and smallnonline capacities uselegacyword path. AllnormalABIinactive/uniformbytes preserved; no new persistentcache.",
+  "unit": {
+    "started": 1792148086.2948039,
+    "pid": 73220,
+    "stages": [
+      {
+        "name": "compile-tests-v3",
+        "exit_status": 0,
+        "seconds": 3.946041458984837
+      },
+      {
+        "name": "line-disabled-negative-v3",
+        "exit_status": 1,
+        "seconds": 8.938565542222932
+      },
+      {
+        "name": "vertex-positive-v3",
+        "exit_status": 0,
+        "seconds": 365.39736266690306
+      }
+    ],
+    "scope": "Private vertex SoA masked line staging; unchanged two local IDs and public IO. Frozen coordinate candidate classpath unchanged. Existing legacy fallback tests and eight capacities with tagged/reversed/delayed ACKs, bank reuse, unaligned fallback, masks/canaries and failed-kernel completion.",
+    "sources": {
+      "BaselineVertexIndexSpec.scala": "9fdee1b2613683de3fb15c70bef7bc7b687014ee81c22ae601b88a1952693e7c",
+      "KernelVertStage.scala": "e6f78c58a8a00afa0e06927ccd3a7788d0c0167e32fc87382caf99561d72f20c",
+      "KernelVertLineStagingSpec.scala": "960d05015c7b13f12f821c8fd55705d9a35c7e5d963a7ef4cb971194f86e1520"
+    },
+    "passed": true,
+    "finished": 1792148464.58153
+  },
+  "draws": 88,
+  "capacities": [
+    3,
+    8,
+    16,
+    32,
+    28,
+    48,
+    112,
+    128
+  ],
+  "existing_vertex_tests": 4,
+  "real_scenes": {
+    "started": 1792148362.3438022,
+    "pid": 80154,
+    "stages": [
+      {
+        "name": "scene-15-15-spatial-4",
+        "exit_status": 0,
+        "seconds": 241.10636691586114
+      },
+      {
+        "name": "scene-15-15-spatial-1",
+        "exit_status": 0,
+        "seconds": 177.11452712514438
+      },
+      {
+        "name": "scene-15-15-solid-4",
+        "exit_status": 0,
+        "seconds": 72.20924504101276
+      },
+      {
+        "name": "scene-15-15-solid-1",
+        "exit_status": 0,
+        "seconds": 47.003408832941204
+      },
+      {
+        "name": "scene-0-0-spatial-4",
+        "exit_status": 0,
+        "seconds": 75.57143037510104
+      },
+      {
+        "name": "scene-0-0-spatial-1",
+        "exit_status": 0,
+        "seconds": 41.17173379100859
+      },
+      {
+        "name": "scene-0-0-solid-4",
+        "exit_status": 0,
+        "seconds": 44.41578195896
+      },
+      {
+        "name": "scene-0-0-solid-1",
+        "exit_status": 0,
+        "seconds": 34.151478041894734
+      },
+      {
+        "name": "scene-15-0-spatial-4",
+        "exit_status": 0,
+        "seconds": 45.368824375094846
+      },
+      {
+        "name": "scene-15-0-spatial-1",
+        "exit_status": 0,
+        "seconds": 37.42933016712777
+      },
+      {
+        "name": "scene-15-0-solid-4",
+        "exit_status": 0,
+        "seconds": 44.52138191694394
+      },
+      {
+        "name": "scene-15-0-solid-1",
+        "exit_status": 0,
+        "seconds": 32.77216862491332
+      },
+      {
+        "name": "overlap-integration",
+        "exit_status": 0,
+        "seconds": 197.85811879090033
+      }
+    ],
+    "cases": [
+      {
+        "scene": "spatial",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 12120,
+        "baseline_cycles": 12651,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 37322,
+        "baseline_cycles": 37853,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 8854,
+        "baseline_cycles": 9385,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 15,
+        "cycles": 22833,
+        "baseline_cycles": 23364,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 4,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 13662,
+        "baseline_cycles": 14193,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 1,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 39966,
+        "baseline_cycles": 40497,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 4,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 10199,
+        "baseline_cycles": 10730,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 1,
+        "input_skip": 0,
+        "output_skip": 0,
+        "cycles": 25477,
+        "baseline_cycles": 26008,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 12755,
+        "baseline_cycles": 13286,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "spatial",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 38750,
+        "baseline_cycles": 39281,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 4,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 9286,
+        "baseline_cycles": 9817,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      },
+      {
+        "scene": "solid",
+        "cus": 1,
+        "input_skip": 15,
+        "output_skip": 0,
+        "cycles": 24261,
+        "baseline_cycles": 24792,
+        "pixels_depth_metadata_identical": true,
+        "omitted_bytes_uniforms_preserved": true
+      }
+    ],
+    "scope": "Private masked vertex line staging over frozen coordinate candidate. Wait for eight-capacity vertex units. First four primary input15/output15 scenes compare1CU versus4CU. Then8 default/input-only scenes and6real four-CU overlap blend/depth/MSAA integration tests. Exact pixels/depth/metadata and all omission/uniform canaries. Contended build elapsed is not a host benchmark.",
+    "primary_performance_passed": true,
+    "passed": true,
+    "finished": 1792149558.374614
+  },
+  "integration_tests": 6,
+  "result": "Every1/4CU/default/input-only/input+outputscene saves exactly531pre-fragmentcycles. Primaryspatial12651->12120,solid9385->8854. Allfragment phasecounts unchanged. Exactcolour/depth/metadata/omissioncanaries pass.",
+  "negative": "Disableline path: threeverticesissue24writes instead ofrequired8; countoraclefails as expected. Initialsignedliteral fixture issueand pre-existingnonpowercapacityindexdefect are retained. Mainindexfix is separatelycommitteddc7abbf.",
+  "patch": "docs/performance/vertex-line-staging-2026-10-16.patch",
+  "sources": {
+    "KernelVertStage.scala": "e6f78c58a8a00afa0e06927ccd3a7788d0c0167e32fc87382caf99561d72f20c",
+    "KernelVertLineStagingSpec.scala": "960d05015c7b13f12f821c8fd55705d9a35c7e5d963a7ef4cb971194f86e1520"
+  },
+  "native_generation_started": false,
+  "artifacts": ".artifacts/shared-cu/vertex-line-staging"
+}

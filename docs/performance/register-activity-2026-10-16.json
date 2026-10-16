@@ -1,0 +1,715 @@
+{
+  "date": "2026-10-16",
+  "status": "diagnostic_qualified",
+  "scope": "Same optimized coordinate model objects; read-only scalar register snapshots around each clock. Native complete RAM, cycles and all reported counters match. Real18VMreplays/21GLES/GTK64readback/scanout pass. Counts are value transitions under source-based post-edge opcode use classification; not CPU-time shares.",
+  "model_header_sha256": "227b108063e0d1f849222d94e22487f836e9cbec05f0abe0b23ade86ef205180",
+  "model_archive_sha256": "e859535aa7a35fce7f972940525f25af5104716da193c1abebb6085029dc6647",
+  "field_count": 1160,
+  "native": {
+    "solid": {
+      "source": ".artifacts/shared-cu/register-change-probe/solid.profile",
+      "sha256": "594e1162488a03b3edb838ccd955f0484fe07e6cb318f62b8c22f9592151703f",
+      "ticks": [
+        8683
+      ],
+      "groups": {
+        "texture.derivativeDifference": {
+          "changed": 16,
+          "unused": 16,
+          "bit_toggles": 16
+        },
+        "texture.scalarCoordinates": {
+          "changed": 183,
+          "unused": 0,
+          "bit_toggles": 352
+        }
+      },
+      "active_fields": 24,
+      "top_unused_fields": [
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_diffReg_0",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_diffReg_1",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_diffReg_6",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_diffReg_7",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_diffReg_0",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_diffReg_1",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_diffReg_6",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_diffReg_7",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_diffReg_0",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_diffReg_1",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_diffReg_6",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_diffReg_7",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_diffReg_0",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_diffReg_1",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_diffReg_6",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_diffReg_7",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_sampler_uReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 35,
+          "unused": 0,
+          "bit_toggles": 72
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_sampler_vReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 10,
+          "unused": 0,
+          "bit_toggles": 17
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_sampler_uReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 35,
+          "unused": 0,
+          "bit_toggles": 67
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_sampler_vReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 12,
+          "unused": 0,
+          "bit_toggles": 29
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_sampler_uReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 34,
+          "unused": 0,
+          "bit_toggles": 61
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_sampler_vReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 14,
+          "unused": 0,
+          "bit_toggles": 24
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_sampler_uReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 34,
+          "unused": 0,
+          "bit_toggles": 60
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_sampler_vReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 9,
+          "unused": 0,
+          "bit_toggles": 22
+        }
+      ],
+      "scope": "Observed register value transitions under post-edge opcode matching. Unselected counts are conservative source-use classifications, not CPU-time shares. Texture derivative stages are tagged by post-edge consumer stage. Privatediagnostic only; cycles/pixels/counters qualified separately."
+    },
+    "spatial": {
+      "source": ".artifacts/shared-cu/register-change-probe/spatial.profile",
+      "sha256": "61cfbfe2a6d71c0605645451e04c971ab2afb2e1864257a08bd5c4d276171a28",
+      "ticks": [
+        11585
+      ],
+      "groups": {
+        "texture.scalarCoordinates": {
+          "changed": 3351,
+          "unused": 3074,
+          "bit_toggles": 4509
+        },
+        "texture.derivativeDifference": {
+          "changed": 20,
+          "unused": 20,
+          "bit_toggles": 22
+        }
+      },
+      "active_fields": 26,
+      "top_unused_fields": [
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_sampler_uReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 560,
+          "unused": 525,
+          "bit_toggles": 831
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_sampler_uReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 560,
+          "unused": 525,
+          "bit_toggles": 826
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_sampler_uReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 559,
+          "unused": 525,
+          "bit_toggles": 825
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_sampler_uReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 556,
+          "unused": 521,
+          "bit_toggles": 818
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_sampler_vReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 279,
+          "unused": 245,
+          "bit_toggles": 298
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_sampler_vReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 280,
+          "unused": 245,
+          "bit_toggles": 308
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_sampler_vReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 279,
+          "unused": 245,
+          "bit_toggles": 301
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_sampler_vReg",
+          "group": "texture.scalarCoordinates",
+          "changed": 278,
+          "unused": 243,
+          "bit_toggles": 302
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_diffReg_0",
+          "group": "texture.derivativeDifference",
+          "changed": 2,
+          "unused": 2,
+          "bit_toggles": 3
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_diffReg_1",
+          "group": "texture.derivativeDifference",
+          "changed": 2,
+          "unused": 2,
+          "bit_toggles": 3
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_diffReg_0",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_diffReg_1",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_diffReg_6",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_1_texUnit_diffReg_7",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_diffReg_0",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_diffReg_1",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_diffReg_6",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_2_texUnit_diffReg_7",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_diffReg_2",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_diffReg_3",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_diffReg_6",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_3_texUnit_diffReg_7",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_diffReg_0",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_diffReg_1",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_diffReg_6",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        },
+        {
+          "field": "host_host_core_rp_parallelFrag_worker_texUnit_diffReg_7",
+          "group": "texture.derivativeDifference",
+          "changed": 1,
+          "unused": 1,
+          "bit_toggles": 1
+        }
+      ],
+      "scope": "Observed register value transitions under post-edge opcode matching. Unselected counts are conservative source-use classifications, not CPU-time shares. Texture derivative stages are tagged by post-edge consumer stage. Privatediagnostic only; cycles/pixels/counters qualified separately."
+    }
+  },
+  "real_guest": {
+    "source": ".artifacts/tc-regdiag64/boot.log",
+    "sha256": "4a4380db0447755ac56861245734ffaddc2f9fc5551316bed39ce88a2120df56",
+    "ticks": [
+      3300761
+    ],
+    "groups": {
+      "integer.partialBits.add": {
+        "changed": 585215,
+        "unused": 583530,
+        "bit_toggles": 8076422
+      },
+      "integer.candidateBits.saturating": {
+        "changed": 577306,
+        "unused": 577306,
+        "bit_toggles": 8145150
+      },
+      "integer.partialBits.sub": {
+        "changed": 577306,
+        "unused": 577306,
+        "bit_toggles": 8145150
+      },
+      "integer.partialBits.fixedShift": {
+        "changed": 513439,
+        "unused": 513439,
+        "bit_toggles": 6102052
+      },
+      "integer.partialBits.greater": {
+        "changed": 250356,
+        "unused": 250356,
+        "bit_toggles": 250356
+      },
+      "integer.partialBits.fixedRound": {
+        "changed": 244594,
+        "unused": 244592,
+        "bit_toggles": 244594
+      },
+      "integer.partialBits.greaterSigned": {
+        "changed": 241506,
+        "unused": 241506,
+        "bit_toggles": 241506
+      },
+      "integer.partialBits.less": {
+        "changed": 204636,
+        "unused": 204636,
+        "bit_toggles": 204636
+      },
+      "integer.partialBits.lessSigned": {
+        "changed": 202178,
+        "unused": 202178,
+        "bit_toggles": 202178
+      },
+      "integer.candidateBits.basic": {
+        "changed": 439048,
+        "unused": 155167,
+        "bit_toggles": 4258094
+      },
+      "integer.candidateBits.shift": {
+        "changed": 399992,
+        "unused": 146624,
+        "bit_toggles": 3190164
+      },
+      "integer.partialBits.shift": {
+        "changed": 399990,
+        "unused": 146624,
+        "bit_toggles": 3190162
+      },
+      "integer.partialBits.equal": {
+        "changed": 128752,
+        "unused": 128752,
+        "bit_toggles": 128752
+      },
+      "texture.scalarCoordinates": {
+        "changed": 37984,
+        "unused": 34806,
+        "bit_toggles": 53413
+      },
+      "texture.derivativeDifference": {
+        "changed": 318,
+        "unused": 318,
+        "bit_toggles": 578
+      }
+    },
+    "active_fields": 863,
+    "top_unused_fields": [
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_candidateBits_saturating_1",
+        "group": "integer.candidateBits.saturating",
+        "changed": 10637,
+        "unused": 10637,
+        "bit_toggles": 150016
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_sub_1",
+        "group": "integer.partialBits.sub",
+        "changed": 10637,
+        "unused": 10637,
+        "bit_toggles": 150016
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_candidateBits_saturating_2",
+        "group": "integer.candidateBits.saturating",
+        "changed": 10616,
+        "unused": 10616,
+        "bit_toggles": 150946
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_sub_2",
+        "group": "integer.partialBits.sub",
+        "changed": 10616,
+        "unused": 10616,
+        "bit_toggles": 150946
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_candidateBits_saturating_0",
+        "group": "integer.candidateBits.saturating",
+        "changed": 10612,
+        "unused": 10612,
+        "bit_toggles": 150452
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_sub_0",
+        "group": "integer.partialBits.sub",
+        "changed": 10612,
+        "unused": 10612,
+        "bit_toggles": 150452
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_1",
+        "group": "integer.partialBits.add",
+        "changed": 10752,
+        "unused": 10604,
+        "bit_toggles": 147265
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_5",
+        "group": "integer.partialBits.add",
+        "changed": 10727,
+        "unused": 10602,
+        "bit_toggles": 146713
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_candidateBits_saturating_5",
+        "group": "integer.candidateBits.saturating",
+        "changed": 10601,
+        "unused": 10601,
+        "bit_toggles": 149374
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_7",
+        "group": "integer.partialBits.add",
+        "changed": 10685,
+        "unused": 10601,
+        "bit_toggles": 146710
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_sub_5",
+        "group": "integer.partialBits.sub",
+        "changed": 10601,
+        "unused": 10601,
+        "bit_toggles": 149374
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_9",
+        "group": "integer.partialBits.add",
+        "changed": 10684,
+        "unused": 10600,
+        "bit_toggles": 146365
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_3",
+        "group": "integer.partialBits.add",
+        "changed": 10726,
+        "unused": 10599,
+        "bit_toggles": 147450
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_11",
+        "group": "integer.partialBits.add",
+        "changed": 10682,
+        "unused": 10598,
+        "bit_toggles": 146608
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_candidateBits_saturating_3",
+        "group": "integer.candidateBits.saturating",
+        "changed": 10597,
+        "unused": 10597,
+        "bit_toggles": 149624
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_sub_3",
+        "group": "integer.partialBits.sub",
+        "changed": 10597,
+        "unused": 10597,
+        "bit_toggles": 149624
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_10",
+        "group": "integer.partialBits.add",
+        "changed": 10680,
+        "unused": 10596,
+        "bit_toggles": 146486
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_8",
+        "group": "integer.partialBits.add",
+        "changed": 10680,
+        "unused": 10596,
+        "bit_toggles": 146059
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_4",
+        "group": "integer.partialBits.add",
+        "changed": 10720,
+        "unused": 10594,
+        "bit_toggles": 146467
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_candidateBits_saturating_4",
+        "group": "integer.candidateBits.saturating",
+        "changed": 10592,
+        "unused": 10592,
+        "bit_toggles": 149380
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_sub_4",
+        "group": "integer.partialBits.sub",
+        "changed": 10592,
+        "unused": 10592,
+        "bit_toggles": 149380
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_12",
+        "group": "integer.partialBits.add",
+        "changed": 10674,
+        "unused": 10591,
+        "bit_toggles": 145879
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_14",
+        "group": "integer.partialBits.add",
+        "changed": 10690,
+        "unused": 10591,
+        "bit_toggles": 146484
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_6",
+        "group": "integer.partialBits.add",
+        "changed": 10675,
+        "unused": 10591,
+        "bit_toggles": 146522
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_0",
+        "group": "integer.partialBits.add",
+        "changed": 10730,
+        "unused": 10588,
+        "bit_toggles": 146327
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_13",
+        "group": "integer.partialBits.add",
+        "changed": 10666,
+        "unused": 10583,
+        "bit_toggles": 146541
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_2",
+        "group": "integer.partialBits.add",
+        "changed": 10730,
+        "unused": 10581,
+        "bit_toggles": 146970
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_add_15",
+        "group": "integer.partialBits.add",
+        "changed": 10676,
+        "unused": 10577,
+        "bit_toggles": 147086
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_candidateBits_saturating_7",
+        "group": "integer.candidateBits.saturating",
+        "changed": 10541,
+        "unused": 10541,
+        "bit_toggles": 148652
+      },
+      {
+        "field": "system_computeUnits_0_core_vector_integerAlu_partialBits_sub_7",
+        "group": "integer.partialBits.sub",
+        "changed": 10541,
+        "unused": 10541,
+        "bit_toggles": 148652
+      }
+    ],
+    "scope": "Observed register value transitions under post-edge opcode matching. Unselected counts are conservative source-use classifications, not CPU-time shares. Texture derivative stages are tagged by post-edge consumer stage. Privatediagnostic only; cycles/pixels/counters qualified separately."
+  },
+  "integer_unused_changes": 3972016,
+  "texture_unused_changes": 35124,
+  "interpretation": "Synthetic sample shader does not exercise vectorIntegerAlu; actual GLES/GTK workload does. Prioritize unselected integer add/sub/rounding/compare/result-family registers before the much smaller texture-coordinate retention lead. Preserve every public valid payload, including mask/scalar fields with false architectural write enables.",
+  "analysis_correction": "Guest qualification passed. Initial postprocessing inspected gate.log instead of boot.log, where the QEMU diagnostic reporter writes. Corrected postprocessing only; valid guest was not restarted.",
+  "sources": {
+    "build.py": "b9c43751694013035a07a3c56f1d10ed464be10dfa940a3eb87b9badefcaa692",
+    "fields.json": "dfd4627592b78bf8c070906edcfe2399e441f4e77746383df149035206f504bf",
+    "wrapper.cpp": "045ba07f627683c1383050092f7acaf5ee1181814c9fe9cdc128ffef9b37282c",
+    "analyze.py": "400dd4625c3215884e32433f660ad03748f2a2840efae5846dff8cac13fc0c94"
+  },
+  "artifacts": ".artifacts/shared-cu/register-change-probe"
+}

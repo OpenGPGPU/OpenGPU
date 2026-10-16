@@ -1,0 +1,460 @@
+--- a/src/main/scala/opengpu/graphics/KernelVertStage.scala
++++ b/src/main/scala/opengpu/graphics/KernelVertStage.scala
+@@ -2,7 +2,7 @@
+
+ import chisel3._
+ import chisel3.util._
+-import opengpu.config.GpuConfig
++import opengpu.config.{CachePolicy, GpuConfig}
+ import opengpu.core.memory.{
+   CacheLineInvalidate,
+   ComputeMemoryRequest,
+@@ -79,16 +79,16 @@
+   config: GpuConfig = GpuConfig(),
+   gfxConfig: GraphicsConfig = GraphicsConfig(),
+   /** Compatibility mode for direct stage tests; RenderPipeline supplies the CU. */
+-  standaloneKernel: Boolean = true
++  standaloneKernel: Boolean = true,
++  lineStaging: Boolean = true
+ ) extends Module {
++  def this(config: GpuConfig, gfxConfig: GraphicsConfig, standaloneKernel: Boolean) =
++    this(config, gfxConfig, standaloneKernel, true)
+   private val batchCap = config.warps * config.lanes
+   private val batchEff = (batchCap / 3) * 3
+   require(batchEff >= 3, "need at least one triangle per batch")
+   private val countWidth = math.max(1, log2Ceil(batchCap + 1))
+   private val arrayStride = 4 * batchCap
+-  // Count needs an extra bit only for power-of-two capacities. Derive the
+-  // register index from the actual Vec extent so non-power-of-two batches
+-  // retain their top index bit (for example vertices64..110 at capacity112).
+   private val vertexIndexWidth = math.max(1, log2Ceil(batchEff))
+
+   val io = IO(new Bundle {
+@@ -362,8 +362,33 @@
+   private val snapScissorMaxX = Reg(UInt(16.W))
+   private val snapScissorMaxY = Reg(UInt(16.W))
+
++  // An aligned SoA field owns complete lines inside its allocated stride.
++  // Write masks protect inactive vertices and the adjacent uniform region.
++  private val lineStagingEligible = lineStaging.B && (arrayStride % 64 == 0).B &&
++    snapKernarg(5, 0) === 0.U
++  private val linePhase = lineStagingEligible && (state === sWrite || state === sReadback)
++  private val lineField = RegInit(0.U(3.W))
++  private val lineVertex = RegInit(0.U(countWidth.W))
++  private val lineIssueDone = RegInit(false.B)
++  private val lineValid = RegInit(VecInit(Seq.fill(2)(false.B)))
++  private val lineFields = Reg(Vec(2, UInt(3.W)))
++  private val lineVertices = Reg(Vec(2, UInt(countWidth.W)))
++  private val lineFree = ~lineValid.asUInt
++  private val lineIdHeld = RegInit(false.B)
++  private val heldLineId = Reg(UInt(1.W))
++  private val lineId = Mux(lineIdHeld, heldLineId, PriorityEncoder(lineFree))
++  private val lineRequest = Wire(Decoupled(new ComputeMemoryRequest(config, 64, 2)))
++  private val lineResponse = Wire(Flipped(Decoupled(new ComputeMemoryResponse(64, 2))))
++  private def beginLineStaging(): Unit = {
++    lineField := 0.U
++    lineVertex := 0.U
++    lineIssueDone := false.B
++    assert(!lineValid.asUInt.orR, "vertex staging must drain before a new phase")
++  }
++
+   // -- Word bridge request generation --
+-  wordValid := (state === sReadVB || state === sWrite || state === sReadback) && !wordPending
++  wordValid := (state === sReadVB || ((state === sWrite || state === sReadback) &&
++    !lineStagingEligible)) && !wordPending
+   wordBits.write := (state === sWrite)
+   wordBits.addr := Mux(state === sReadVB,
+     snapVertBase + (drawVertBase + vertIdx) * snapVertStride + vbWord * 4.U,
+@@ -517,6 +542,7 @@
+           when(vertIdx === batchVertCount - 1.U) {
+             vertIdx := 0.U
+             field := 0.U
++            beginLineStaging()
+             state := sWrite
+           }.otherwise {
+             vertIdx := vertIdx + 1.U
+@@ -527,8 +553,8 @@
+       }
+     }
+     is(sWrite) {
+-      when(!wordPending && bridge.io.in.fire) { wordPending := true.B }
+-      when(wordPending && bridge.io.out.fire) {
++      when(!lineStagingEligible && !wordPending && bridge.io.in.fire) { wordPending := true.B }
++      when(!lineStagingEligible && wordPending && bridge.io.out.fire) {
+         wordPending := false.B
+         when(field =/= 7.U) {
+           field := field + 1.U
+@@ -565,12 +591,13 @@
+         vertIdx := 0.U
+         field := 0.U
+         wordPending := false.B
++        beginLineStaging()
+         state := Mux(kernelCompletionSuccess, sReadback, sIdle)
+       }
+     }
+     is(sReadback) {
+-      when(!wordPending && bridge.io.in.fire) { wordPending := true.B }
+-      when(wordPending && bridge.io.out.fire && !bridge.io.out.bits.write) {
++      when(!lineStagingEligible && !wordPending && bridge.io.in.fire) { wordPending := true.B }
++      when(!lineStagingEligible && wordPending && bridge.io.out.fire && !bridge.io.out.bits.write) {
+         wordPending := false.B
+         val idx = vertIdxIdx
+         when(field === 0.U) { outClipX(idx) := bridge.io.out.bits.data.asSInt }
+@@ -626,17 +653,97 @@
+     }
+   }
+
+-  // -- Memory port mux: bridge is active during VB read, write, and readback --
+-  private val stagingActive = state === sWrite || state === sReadback ||
+-    state === sReadVB
+-  io.wordMemReq.valid := Mux(stagingActive,
+-    bridge.io.memoryRequest.valid, false.B)
+-  io.wordMemReq.bits := Mux(stagingActive,
+-    bridge.io.memoryRequest.bits,
+-    0.U.asTypeOf(bridge.io.memoryRequest.bits))
+-  bridge.io.memoryRequest.ready := io.wordMemReq.ready && stagingActive
+-  io.wordMemResp.ready := Mux(stagingActive,
+-    bridge.io.memoryResponse.ready, false.B)
+-  bridge.io.memoryResponse.valid := io.wordMemResp.valid && stagingActive
++  // Two local IDs are shared by the word and line paths. The word path
++  // drains before line staging begins; each line phase drains before launch
++  // or triangle emission, so an ID can never belong to both paths.
++  lineRequest.valid := linePhase && !lineIssueDone && lineFree.orR
++  lineRequest.bits.address := snapKernarg +
++    (Mux(state === sReadback, lineField +& 8.U, lineField) * arrayStride.U) +
++    (lineVertex << 2)
++  lineRequest.bits.isWrite := state === sWrite
++  lineRequest.bits.sizeLog2 := 6.U
++  lineRequest.bits.cacheClient := false.B
++  lineRequest.bits.cacheResident := false.B
++  lineRequest.bits.cachePolicy := CachePolicy.uncached
++  lineRequest.bits.transactionId := lineId
++  private val lineWords = Wire(Vec(16, UInt(32.W)))
++  private val lineMasks = Wire(Vec(16, UInt(4.W)))
++  for (word <- 0 until 16) {
++    val index = lineVertex +& word.U
++    val registerIndex = index(vertexIndexWidth - 1, 0)
++    val active = index < batchVertCount
++    val value = MuxLookup(lineField, 0.U(32.W))(Seq(
++      0.U -> inPosX(registerIndex).asUInt,
++      1.U -> inPosY(registerIndex).asUInt,
++      2.U -> inPosZ(registerIndex).asUInt,
++      3.U -> inPosW(registerIndex).asUInt,
++      4.U -> inColor(registerIndex),
++      5.U -> inDepth(registerIndex).asUInt,
++      6.U -> inTexU(registerIndex),
++      7.U -> inTexV(registerIndex)))
++    lineWords(word) := Mux(active && state === sWrite, value, 0.U)
++    lineMasks(word) := Mux(active, 15.U, 0.U)
++  }
++  lineRequest.bits.writeData := lineWords.asUInt
++  lineRequest.bits.byteMask := lineMasks.asUInt
++  lineResponse.ready := linePhase
++  when(lineRequest.valid && !lineRequest.ready && !lineIdHeld) {
++    lineIdHeld := true.B
++    heldLineId := lineId
++  }
++  when(lineRequest.fire) {
++    lineIdHeld := false.B
++    lineValid(lineId) := true.B
++    lineFields(lineId) := lineField
++    lineVertices(lineId) := lineVertex
++    when(lineVertex +& 16.U >= batchVertCount) {
++      lineVertex := 0.U
++      when(lineField === 7.U) { lineIssueDone := true.B }
++        .otherwise { lineField := lineField + 1.U }
++    }.otherwise { lineVertex := lineVertex + 16.U }
++  }
++  when(lineResponse.valid) {
++    assert(lineValid(lineResponse.bits.transactionId),
++      "vertex line response must reference a pending local ID")
++  }
++  when(lineResponse.fire) {
++    val id = lineResponse.bits.transactionId
++    lineValid(id) := false.B
++    when(state === sReadback) {
++      for (vertex <- 0 until batchEff) {
++        val value = lineResponse.bits.readData((vertex % 16) * 32 + 31, (vertex % 16) * 32)
++        when(vertex.U < batchVertCount && (vertex / 16).U === (lineVertices(id) >> 4)) {
++          switch(lineFields(id)) {
++            is(0.U) { outClipX(vertex) := value.asSInt }
++            is(1.U) { outClipY(vertex) := value.asSInt }
++            is(2.U) { outClipZ(vertex) := value.asSInt }
++            is(3.U) { outClipW(vertex) := value.asSInt }
++            is(4.U) { outColor(vertex) := value }
++            is(5.U) { outDepth(vertex) := value.asSInt }
++            is(6.U) { outTexU(vertex) := value }
++            is(7.U) { outTexV(vertex) := value }
++          }
++        }
++      }
++    }
++  }
++  when(linePhase && lineIssueDone && !lineValid.asUInt.orR) {
++    when(state === sWrite) { state := sInvalidateReq }
++      .otherwise {
++        vertIdx := 0.U
++        emitTriIdx := 0.U
++        state := sEmitTri
++      }
++  }
++
++  private val stagingActive = state === sWrite || state === sReadback || state === sReadVB
++  io.wordMemReq.valid := stagingActive && Mux(linePhase, lineRequest.valid, bridge.io.memoryRequest.valid)
++  io.wordMemReq.bits := Mux(linePhase, lineRequest.bits, bridge.io.memoryRequest.bits)
++  lineRequest.ready := io.wordMemReq.ready && linePhase
++  bridge.io.memoryRequest.ready := io.wordMemReq.ready && stagingActive && !linePhase
++  io.wordMemResp.ready := Mux(linePhase, lineResponse.ready, bridge.io.memoryResponse.ready && stagingActive)
++  lineResponse.valid := io.wordMemResp.valid && linePhase
++  lineResponse.bits := io.wordMemResp.bits
++  bridge.io.memoryResponse.valid := io.wordMemResp.valid && stagingActive && !linePhase
+   bridge.io.memoryResponse.bits := io.wordMemResp.bits
+ }
+--- /dev/null
++++ b/src/test/scala/opengpu/graphics/KernelVertLineStagingSpec.scala
+@@ -0,0 +1,245 @@
++package opengpu.graphics
++
++import chisel3._
++import opengpu.config.{CachePolicy, GpuConfig}
++import opengpu.testutil.GpuSim._
++import org.scalatest.flatspec.AnyFlatSpec
++import scala.collection.mutable
++
++class KernelVertLineStagingSpec extends AnyFlatSpec {
++  behavior of "KernelVertStage line staging"
++  for((lanes,warps)<-Seq((1,3),(4,2),(4,4),(8,4),(4,7),(16,3),(16,7),(16,8))) {
++    val capacity=lanes*warps
++    it should s"preserve all fields and canaries through tagged reversed replies with $capacity slots" in {
++      val config=GpuConfig(lanes=lanes,warps=warps)
++      val eff=(capacity/3)*3
++      val stride=capacity*4
++      val disabled=sys.props.get("opengpu.vertexLineDisabled").contains("1")
++      simulate(new KernelVertStage(config,GraphicsConfig(),standaloneKernel=false,lineStaging = !disabled)) { dut =>
++        def zeroInputs():Unit={
++          dut.io.start.poke(false.B);dut.io.vertBufferBase.poke(0.U);dut.io.vertCount.poke(0.U)
++          dut.io.vertStride.poke(0.U);dut.io.shaderPc.poke(0.U);dut.io.kernargBase.poke(0.U)
++          dut.io.kernargBankStride.poke(0.U);dut.io.fragShaderPc.poke(0.U)
++          dut.io.fragInputSkip.poke(0.U);dut.io.fragOutputSkip.poke(0.U)
++          dut.io.fragKernarg.poke(0.U);dut.io.fragKernargBankStride.poke(0.U)
++          dut.io.stateOverride.poke(false.B);dut.io.depthTestEnable.poke(false.B)
++          dut.io.depthFunc.poke(0.U);dut.io.depthWriteEnable.poke(false.B)
++          dut.io.blendEnable.poke(false.B);dut.io.blendCfgEnable.poke(false.B)
++          dut.io.blendSrcFactor.poke(0.U);dut.io.blendDstFactor.poke(0.U);dut.io.blendEquation.poke(0.U)
++          dut.io.stencilTestEnable.poke(false.B);dut.io.stencilFunc.poke(0.U)
++          dut.io.stencilRef.poke(0.U);dut.io.stencilReadMask.poke(0.U);dut.io.stencilWriteMask.poke(0.U)
++          dut.io.stencilFailOp.poke(0.U);dut.io.stencilZFailOp.poke(0.U);dut.io.stencilZPassOp.poke(0.U)
++          dut.io.cullMode.poke(0.U);dut.io.texEnable.poke(false.B);dut.io.texWrapClamp.poke(false.B)
++          dut.io.texMaxLevel.poke(0.U);dut.io.texLodBias.poke(0.S);dut.io.texMinLevel.poke(0.U)
++          dut.io.scissorEnable.poke(false.B);dut.io.scissorMinX.poke(0.U);dut.io.scissorMinY.poke(0.U)
++          dut.io.scissorMaxX.poke(0.U);dut.io.scissorMaxY.poke(0.U)
++        }
++        zeroInputs()
++        dut.io.vertOut.ready.poke(false.B)
++        dut.io.memReq.ready.poke(true.B)
++        dut.io.memResp.valid.poke(false.B);dut.io.memResp.bits.poke(0.U.asTypeOf(dut.io.memResp.bits))
++        dut.io.wordMemReq.ready.poke(false.B)
++        dut.io.wordMemResp.valid.poke(false.B);dut.io.wordMemResp.bits.poke(0.U.asTypeOf(dut.io.wordMemResp.bits))
++        dut.io.stagingInvalidate.ready.poke(false.B)
++        dut.io.stagingInvalidateDone.valid.poke(false.B)
++        dut.io.stagingInvalidateDone.bits.poke(0.U.asTypeOf(dut.io.stagingInvalidateDone.bits))
++        dut.io.l1Invalidate.valid.poke(false.B);dut.io.l1Invalidate.bits.poke(0.U.asTypeOf(dut.io.l1Invalidate.bits))
++        dut.io.l1InvalidateDone.ready.poke(true.B)
++        dut.io.globalAtomicRequest.ready.poke(true.B)
++        dut.io.globalAtomicResponse.valid.poke(false.B);dut.io.globalAtomicResponse.bits.poke(0.U.asTypeOf(dut.io.globalAtomicResponse.bits))
++        dut.io.kernelLaunch.ready.poke(false.B)
++        dut.io.kernelCompletion.valid.poke(false.B);dut.io.kernelCompletion.bits.poke(0.U.asTypeOf(dut.io.kernelCompletion.bits))
++        dut.io.kernelTrap.valid.poke(false.B);dut.io.kernelTrap.bits.poke(0.U.asTypeOf(dut.io.kernelTrap.bits))
++        dut.io.kernelSimtBranch.valid.poke(false.B);dut.io.kernelSimtBranch.bits.poke(0.U.asTypeOf(dut.io.kernelSimtBranch.bits))
++        dut.io.kernelTexSample.valid.poke(false.B);dut.io.kernelTexSample.bits.poke(0.U.asTypeOf(dut.io.kernelTexSample.bits))
++        dut.io.kernelTexWriteback.ready.poke(true.B)
++        dut.io.kernelVectorTexSample.valid.poke(false.B);dut.io.kernelVectorTexSample.bits.poke(0.U.asTypeOf(dut.io.kernelVectorTexSample.bits))
++        dut.io.kernelVectorTexWriteback.ready.poke(true.B)
++        dut.reset.poke(true.B);dut.clock.step();dut.reset.poke(false.B)
++        val scenarios=if(disabled)Seq((3,0,0,true)) else Seq(
++          (0,0,0,true),(1,0,0,true),(2,0,0,true),(3,0,0,true),(6,0,0,true),
++          (eff,0,0,true),(eff+3,0,0,true),(2*eff+3,0,0,true),
++          (eff+3,4,0,true),(eff+3,0,4,true),(3,0,0,false))
++        var totalCycles=0
++        for(((count,baseOffset,bankOffset,success),trial)<-scenarios.zipWithIndex) {
++          val vb=0x10000L;val vertexStride=36+4*(trial%5)
++          val base=0x40000L+baseOffset
++          val bankStride=((16*stride+191)/64)*64+bankOffset
++          val memory=mutable.LongMap.empty[Long]
++          def original(a:Long):Long=((a*0x45d9f3bL)^(a>>2)^(trial.toLong*0x19377))&0xffffffffL
++          def get(a:Long):Long=memory.getOrElse(a,original(a))
++          def put(a:Long,value:Long):Unit=memory(a)=value&0xffffffffL
++          def input(vertex:Int,field:Int):Long={
++            val raw=(0x01000000L*(field+1)+vertex*0x101L+trial*17L)&0xffffffffL
++            if(field<4 && vertex%5==0)raw^0x80000000L
++            else if(field==7 && vertex%7==0)0xffffffffL-vertex else raw
++          }
++          def signed(value:Long):Long={
++            val bits=value&0xffffffffL
++            if((bits&0x80000000L)!=0)bits-(1L<<32) else bits
++          }
++          def output(vertex:Int,field:Int):Long=(field match {
++            case 0=>input(vertex,1)+3
++            case 1=>input(vertex,0)+5
++            case 2=>input(vertex,2)+7
++            case 3=>input(vertex,3)+9
++            case 4=>0x20406080L+vertex*0x01010101L
++            case 5=>(0x12340L+vertex)&0xffffffL
++            case 6=>input(vertex,7)+11
++            case 7=>input(vertex,6)+13
++          })&0xffffffffL
++          for(v<-0 until count;f<-0 until 8)put(vb+v*vertexStride+f*4,input(v,f))
++          val untouched=memory.toMap
++          val expected=mutable.LongMap.empty[Long]++memory
++          val batches=if(count<3)0 else (count/3*3+eff-1)/eff
++          val batchCounts=(0 until batches).map(b=>math.min(eff,count/3*3-b*eff))
++          val bankBase=(b:Int)=>base+(if(b%2==1)bankStride else 0)
++          for(b<-0 until batches) {
++            for(v<-0 until batchCounts(b);f<-0 until 8)expected(bankBase(b)+f*stride+v*4)=input(b*eff+v,f)
++            if(success)for(v<-0 until batchCounts(b);f<-0 until 8)
++              expected(bankBase(b)+(f+8)*stride+v*4)=output(b*eff+v,f)&0xffffffffL
++          }
++          zeroInputs();dut.io.vertBufferBase.poke(vb.U);dut.io.vertCount.poke(count.U)
++          dut.io.vertStride.poke(vertexStride.U);dut.io.shaderPc.poke(0x1000.U)
++          dut.io.kernargBase.poke(base.U);dut.io.kernargBankStride.poke(bankStride.U)
++          dut.io.fragShaderPc.poke(0x2000.U);dut.io.fragInputSkip.poke(21.U)
++          dut.io.fragOutputSkip.poke(5.U);dut.io.fragKernarg.poke(0x80000.U)
++          dut.io.fragKernargBankStride.poke(0x4000.U)
++          dut.io.start.poke(true.B);dut.clock.step();dut.io.start.poke(false.B)
++          // Descriptor pins may change after start; every batch must use the snapshot.
++          zeroInputs()
++          case class Pending(id:Int,address:Long,write:Boolean,data:BigInt,mask:BigInt,due:Int)
++          val pending=mutable.ArrayBuffer.empty[Pending]
++          var presenting:Option[Pending]=None
++          var heldRequest:Option[BigInt]=None
++          var heldTriangle:Option[BigInt]=None
++          var invalidateDue:Option[Int]=None
++          var completionDue:Option[Int]=None
++          var launched=0;var emitted=0;var invalidations=0;var cycle=0;var peak=0
++          val writes=mutable.ArrayBuffer.empty[(Int,Int)]
++          val reads=mutable.ArrayBuffer.empty[(Int,Int)]
++          while(!dut.io.done.peek().litToBoolean && cycle<150000) {
++            dut.io.memReq.valid.expect(false.B)
++            dut.io.wordMemReq.ready.poke((cycle%13<8).B)
++            dut.io.stagingInvalidate.ready.poke((cycle%7==0).B)
++            dut.io.kernelLaunch.ready.poke((cycle%11==0).B)
++            dut.io.vertOut.ready.poke((cycle%17<10).B)
++            dut.io.stagingInvalidateDone.valid.poke(invalidateDue.exists(_<=cycle).B)
++            dut.io.stagingInvalidateDone.bits.lineAddress.poke(((BigInt(1)<<32)-1).U)
++            dut.io.kernelCompletion.valid.poke(completionDue.exists(_<=cycle).B)
++            dut.io.kernelCompletion.bits.success.poke(success.B)
++            if(presenting.isEmpty) {
++              val ready=pending.filter(_.due<=cycle)
++              if(ready.nonEmpty)presenting=Some(if(cycle%2==0)ready.last else ready.head)
++            }
++            dut.io.wordMemResp.valid.poke(presenting.nonEmpty.B)
++            presenting.foreach{p=>
++              val data=(0 until 16).foldLeft(BigInt(0)){(acc,w)=>acc|(BigInt(get(p.address+w*4))<<(w*32))}
++              dut.io.wordMemResp.bits.transactionId.poke(p.id.U)
++              dut.io.wordMemResp.bits.readData.poke(data.U)
++              dut.io.wordMemResp.bits.fault.poke(false.B)
++            }
++            val batch=math.min(launched,batches-1)
++            if(dut.io.wordMemReq.valid.peek().litToBoolean) {
++              val snapshot=dut.io.wordMemReq.bits.peek().litValue
++              heldRequest.foreach(x=>assert(x==snapshot,"vertex request changed under backpressure"))
++              if(!dut.io.wordMemReq.ready.peek().litToBoolean)heldRequest=Some(snapshot)
++              else {
++                heldRequest=None
++                val req=dut.io.wordMemReq.bits
++                val id=req.transactionId.peek().litValue.toInt
++                assert(!pending.exists(_.id==id),"local staging ID reused before response")
++                val a=req.address.peek().litValue.toLong
++                val write=req.isWrite.peek().litToBoolean
++                val mask=req.byteMask.peek().litValue
++                assert(mask!=0);req.sizeLog2.expect(6.U);req.cachePolicy.expect(CachePolicy.uncached)
++                val p=Pending(id,a,write,req.writeData.peek().litValue,mask,cycle+(if(id==0)17 else 3))
++                if(write) {
++                  val allowed=(for(f<-0 until 8;v<-0 until batchCounts(batch);b<-0 until 4)
++                    yield bankBase(batch)+f*stride+v*4+b).toSet
++                  for(b<-0 until 64 if mask.testBit(b))assert(allowed(a+b),s"write outside active input fields $a+$b")
++                  writes+=((batch,1))
++                } else if(a>=vb && a<vb+count*vertexStride) {
++                  assert(mask.bitCount==4,"VB path must retain its exact word mask")
++                } else reads+=((launched-1,1))
++                pending+=p;peak=peak.max(pending.size);assert(pending.size<=2)
++              }
++            } else assert(heldRequest.isEmpty,"vertex request valid dropped under backpressure")
++            if(dut.io.wordMemResp.valid.peek().litToBoolean && dut.io.wordMemResp.ready.peek().litToBoolean) {
++              val p=presenting.get
++              if(p.write)for(w<-0 until 16) {
++                val nibble=(p.mask>>(w*4))&15
++                assert(nibble==0 || nibble==15,"staging writes must contain whole words")
++                if(nibble==15)put(p.address+w*4,((p.data>>(w*32))&0xffffffffL).toLong)
++              }
++              pending-=p;presenting=None
++            }
++            if(dut.io.stagingInvalidate.valid.peek().litToBoolean && dut.io.stagingInvalidate.ready.peek().litToBoolean) {
++              assert(pending.isEmpty && heldRequest.isEmpty,"invalidation started before write acknowledgements drained")
++              assert(invalidateDue.isEmpty);invalidateDue=Some(cycle+9);invalidations+=1
++            }
++            if(dut.io.stagingInvalidateDone.valid.peek().litToBoolean && dut.io.stagingInvalidateDone.ready.peek().litToBoolean)
++              invalidateDue=None
++            if(dut.io.kernelLaunch.valid.peek().litToBoolean && dut.io.kernelLaunch.ready.peek().litToBoolean) {
++              assert(pending.isEmpty && invalidateDue.isEmpty)
++              val b=launched;val n=batchCounts(b);val ka=bankBase(b)
++              dut.io.kernelLaunch.kernargAddress.expect(ka.U);dut.io.kernelLaunch.localX.expect(n.U)
++              for(f<-0 until 8;v<-0 until n)assert(get(ka+f*stride+v*4)==input(b*eff+v,f),s"input mismatch field=$f vertex=$v")
++              // Independently emulate the kernel's output writes after checking every input.
++              if(success)for(f<-0 until 8;v<-0 until n)put(ka+(8+f)*stride+v*4,output(b*eff+v,f))
++              launched+=1;completionDue=Some(cycle+23)
++            }
++            if(dut.io.kernelCompletion.valid.peek().litToBoolean && dut.io.kernelCompletion.ready.peek().litToBoolean)
++              completionDue=None
++            if(dut.io.vertOut.valid.peek().litToBoolean) {
++              val bits=dut.io.vertOut.bits.peek().litValue
++              heldTriangle.foreach(x=>assert(x==bits,"triangle sidebands changed under backpressure"))
++              if(dut.io.vertOut.ready.peek().litToBoolean) {
++                assert(pending.isEmpty,"triangle emitted before readback responses drained")
++                assert(success);dut.io.vertOut.bits.fragInputSkip.expect(21.U)
++                dut.io.vertOut.bits.fragOutputSkip.expect(5.U)
++                dut.io.vertOut.bits.shaderPc.expect(0x2000.U)
++                for(v<-0 until 3) {
++                  val vertex=emitted*3+v
++                  dut.io.vertOut.bits.clip(v).x.expect(signed(output(vertex,0)).S(32.W))
++                  dut.io.vertOut.bits.clip(v).y.expect(signed(output(vertex,1)).S(32.W))
++                  dut.io.vertOut.bits.clip(v).z.expect(signed(output(vertex,2)).S(32.W))
++                  dut.io.vertOut.bits.clip(v).w.expect(signed(output(vertex,3)).S(32.W))
++                  val color=output(vertex,4)&0xffffffffL
++                  dut.io.vertOut.bits.color(v).r.expect(((color>>24)&255).U)
++                  dut.io.vertOut.bits.color(v).g.expect(((color>>16)&255).U)
++                  dut.io.vertOut.bits.color(v).b.expect(((color>>8)&255).U)
++                  dut.io.vertOut.bits.alpha(v).expect((color&255).U)
++                  dut.io.vertOut.bits.depth(v).expect(signed(output(vertex,5)).S(32.W))
++                  dut.io.vertOut.bits.uv(v).u.expect(output(vertex,6).U)
++                  dut.io.vertOut.bits.uv(v).v.expect(output(vertex,7).U)
++                }
++                emitted+=1;heldTriangle=None
++              } else heldTriangle=Some(bits)
++            } else assert(heldTriangle.isEmpty)
++            dut.clock.step();cycle+=1
++          }
++          assert(cycle<150000,s"stage timeout cap=$capacity trial=$trial")
++          assert(pending.isEmpty && presenting.isEmpty && completionDue.isEmpty && invalidateDue.isEmpty)
++          val expectedBatches=if(success)batches else math.min(1,batches)
++          assert(launched==expectedBatches && invalidations==expectedBatches)
++          assert(emitted==(if(success)count/3 else 0))
++          for(b<-0 until expectedBatches) {
++            val aligned=stride%64==0 && bankBase(b)%64==0
++            val expectedTransactions=8*(if(aligned)(batchCounts(b)+15)/16 else batchCounts(b))
++            assert(writes.count(_._1==b)==expectedTransactions,s"write count cap=$capacity trial=$trial batch=$b ${writes.count(_._1==b)} != $expectedTransactions")
++            if(success)assert(reads.count(_._1==b)==expectedTransactions,s"read count cap=$capacity trial=$trial batch=$b")
++          }
++          for(a<-(memory.keySet++expected.keySet))assert(get(a)==expected.getOrElse(a,original(a)),s"RAM/canary mismatch $a")
++          for((a,value)<-untouched)assert(get(a)==value,"VB or padding changed")
++          if(stride%64==0 && baseOffset==0 && bankOffset==0 && count>=3 && success)assert(peak==2)
++          totalCycles+=cycle
++          println(s"VERTEX_LINE_CASE slots=$capacity trial=$trial vertices=$count writes=${writes.size} reads=${reads.size} cycles=$cycle peak=$peak")
++          dut.io.wordMemResp.valid.poke(false.B);dut.io.stagingInvalidateDone.valid.poke(false.B)
++          dut.io.kernelCompletion.valid.poke(false.B);dut.clock.step(2)
++        }
++        println(s"VERTEX_LINE_SUITE slots=$capacity draws=${scenarios.size} cycles=$totalCycles")
++      }
++    }
++  }
++}
