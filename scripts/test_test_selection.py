@@ -58,7 +58,10 @@ shards = (
     "system-tex",
     "system-wide",
     "system-core",
-    "system-rt",
+    "system-rt-narrow",
+    "system-rt-16",
+    "system-rt-32",
+    "system-rt-batch",
     "system-pool",
     "core-a",
     "core-b",
@@ -77,7 +80,8 @@ assert ci_skip.isdisjoint(assigned)
 assert json.loads(shard_cmd("shards-json", "ALL")) == list(shards)
 assert json.loads(shard_cmd("shards-json", "NONE")) == []
 assert json.loads(shard_cmd("shards-json", "opengpu.graphics.*")) == ["graphics"]
-assert shard_cmd("flags", "system-rt") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1"
+assert shard_cmd("flags", "system-rt-32") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1"
+assert shard_cmd("flags", "system-rt-narrow") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2"
 assert shard_cmd("flags", "system-wide") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2"
 assert shard_cmd("flags", "system-mem") == ""
 assert shard_cmd("flags", "graphics") == ""

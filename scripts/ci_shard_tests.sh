@@ -25,7 +25,10 @@
 #   system-tex   — programmable texture and parallel ordering
 #   system-wide  — WideSharedGraphicsSpec (1/2/4 CU)
 #   system-core  — GpuSystemSpec
-#   system-rt    — runtime-shader lane profiles and the side-64 runtime control
+#   system-rt-narrow — 4- and 8-lane runtime shaders (side 16, one CU)
+#   system-rt-16     — 16-lane runtime shader (side 32, one and four CUs)
+#   system-rt-32     — 32-lane runtime shader (side 16, one CU)
+#   system-rt-batch  — side-64 runtime full-batch control
 #   system-pool  — one desktop full-pool control (GpuConfig defaults, side 64)
 #   core-a       — opengpu/core/{execute,memory}/**
 #   core-b       — remaining opengpu/core/** plus dispatch/dma/command/util
@@ -65,7 +68,7 @@ shard_prefixes() {
   esac
 }
 
-all_shards=(graphics system-mem system-host system-walk system-tex system-wide system-core system-rt system-pool core-a core-b)
+all_shards=(graphics system-mem system-host system-walk system-tex system-wide system-core system-rt-narrow system-rt-16 system-rt-32 system-rt-batch system-pool core-a core-b)
 
 # Map one opengpu/system spec file to a shard, or SKIP.
 # A new file must be added here; otherwise CI selection fails closed.
@@ -83,8 +86,14 @@ system_shard_for() {
       printf '%s\n' system-wide ;;
     GpuSystemSpec.scala)
       printf '%s\n' system-core ;;
-    RuntimeShaderFourLaneSpec.scala|RuntimeShaderEightLaneSpec.scala|RuntimeShaderSixteenLaneSpec.scala|RuntimeShaderThirtyTwoLaneSpec.scala|RuntimeSharedGraphicsFullBatchSpec.scala)
-      printf '%s\n' system-rt ;;
+    RuntimeShaderFourLaneSpec.scala|RuntimeShaderEightLaneSpec.scala)
+      printf '%s\n' system-rt-narrow ;;
+    RuntimeShaderSixteenLaneSpec.scala)
+      printf '%s\n' system-rt-16 ;;
+    RuntimeShaderThirtyTwoLaneSpec.scala)
+      printf '%s\n' system-rt-32 ;;
+    RuntimeSharedGraphicsFullBatchSpec.scala)
+      printf '%s\n' system-rt-batch ;;
     FullPoolRuntimeFullBatchSpec.scala)
       printf '%s\n' system-pool ;;
     FullPoolRuntimeScalingSpec.scala|RuntimeSharedGraphicsPerformanceSpec.scala|FullPoolTextureScalingSpec.scala)
@@ -141,15 +150,16 @@ shard_spec_files() {
 shard_flags() {
   # Hierarchical compile helps designs that instantiate GpuComputeUnit.
   # ubuntu-latest has 16 GB and the JVM already reserves 6 GB, so the C++
-  # build stays at two jobs. system-rt elaborates a distinct full-GPU model
-  # per lane width (including 32-lane); two compilers there SIGTERM the
-  # runner agent, which GitHub reports as "The operation was canceled."
-  # The memory shard has no compute unit, so it stays flat.
+  # build stays at two jobs. The wide runtime shards each elaborate one
+  # full-GPU model (16-lane also builds the four-CU variant). Two compilers
+  # on those models SIGTERM the runner agent, which GitHub reports as
+  # "The operation was canceled." The memory shard has no compute unit, so
+  # it stays flat.
   case "$1" in
-    system-rt)
+    system-rt-16|system-rt-32|system-rt-batch)
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1'
       ;;
-    system-host|system-walk|system-tex|system-wide|system-core|system-pool)
+    system-host|system-walk|system-tex|system-wide|system-core|system-pool|system-rt-narrow)
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2'
       ;;
     graphics|system-mem|core-a|core-b)
