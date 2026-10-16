@@ -102,6 +102,14 @@ and full scanout still require the separate guest qualification. Host-speed
 comparisons require paired runs with controlled competing workloads. See the
 [fixture qualification](performance/native-render-fixture-2026-10-16.json).
 
+Add `--pattern gradient` to exercise changing RGBA texels, including alpha.
+The verifier computes the four-tap integer bilinear result independently from
+the initial texture bytes and affine Q16 UVs. Both native models pass both
+patterns with identical complete output memory; the default uniform fixture
+keeps its original input hashes and ticks. This varying-data workload helps
+evaluate operand-activity changes that a uniform texture would miss. See the
+[gradient fixture qualification](performance/native-gradient-render-fixture-2026-10-16.json).
+
 ## Shared four-CU candidate: real Weston trace (2026-10-16)
 
 The native-format candidate passes 18 compute replays, 21 GLES cases and
