@@ -649,13 +649,32 @@ static inline void opengpu_shader_define_integer(
  * vector texture sample requires a validated texture binding. Backward
  * branches, jumps, atomics and all other custom instructions remain rejected.
  */
-static inline bool opengpu_shader_validate_words_profile_runtime(
+/* Conservative union of input SoA slices touched by a proven read range. */
+static inline opengpu_shader_u32 opengpu_shader_input_range_mask(
+    opengpu_shader_u64 start, opengpu_shader_u64 bytes,
+    opengpu_shader_u64 stride)
+{
+    opengpu_shader_u32 slice, mask = 0;
+    opengpu_shader_u64 end = start + bytes;
+    if (!stride || end < start)
+        return 0x3fu;
+    for (slice = 0; slice < 6; slice++)
+        if (start < (slice + 1ull) * stride && end > slice * stride)
+            mask |= 1u << slice;
+    return mask;
+}
+
+/* Optional metadata for fragment staging: a conservative union of reads from
+ * input SoA slices 0..5 across every reachable path. Success publishes the
+ * union; failure leaves all six inputs required. Indexed/strided and narrow
+ * warp-relative reads currently retain every input. Validation is unchanged. */
+static inline bool opengpu_shader_validate_words_profile_runtime_usage(
     const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
     opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
     opengpu_shader_u32 output_start_slice,
     opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
     bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
-    opengpu_shader_u32 launch_capacity)
+    opengpu_shader_u32 launch_capacity, opengpu_shader_u32 *input_read_mask)
 {
     opengpu_shader_u64 stride, output_start, output_end;
     struct opengpu_shader_state state = { 0 };
@@ -665,7 +684,11 @@ static inline bool opengpu_shader_validate_words_profile_runtime(
     bool *scalar_defined = state.scalar_defined;
     bool *vector_defined = state.vector_defined;
     bool reachable = true;
-    opengpu_shader_u32 i, branch;
+    opengpu_shader_u32 i, branch, input_reads = 0;
+
+    /* Failed validation never publishes an optimistic input promise. */
+    if (input_read_mask)
+        *input_read_mask = 0x3fu;
 
     /* The advertised fragment batch capacity occupies eight ABI bits. */
     if (!words || !word_count || !batch_capacity || batch_capacity > 255)
@@ -735,8 +758,11 @@ static inline bool opengpu_shader_validate_words_profile_runtime(
                 if (branches[branch].used)
                     break;
             }
-            if (branch == OPENGPU_SHADER_MAX_FORWARD_BRANCHES)
+            if (branch == OPENGPU_SHADER_MAX_FORWARD_BRANCHES) {
+                if (input_read_mask)
+                    *input_read_mask = input_reads;
                 return true;
+            }
             reachable = false;
             continue;
         }
@@ -859,6 +885,9 @@ static inline bool opengpu_shader_validate_words_profile_runtime(
             if (!scalar_defined[rs1] || rd == 1 ||
                 !opengpu_shader_scalar_read_valid(&lhs, imm, bytes, kernarg_size))
                 return false;
+            if (input_read_mask)
+                input_reads |= opengpu_shader_input_range_mask(
+                    (opengpu_shader_s64)lhs.offset + imm, bytes, stride);
             values[rd].kind = OPENGPU_SHADER_VALUE_UNKNOWN;
             values[rd].offset = 0;
             scalar_defined[rd] = true;
@@ -1006,6 +1035,9 @@ static inline bool opengpu_shader_validate_words_profile_runtime(
                 if (!scalar_fpu_enabled || !scalar_defined[rs1] ||
                     !opengpu_shader_scalar_read_valid(&lhs, imm, 4, kernarg_size))
                     return false;
+                if (input_read_mask)
+                    input_reads |= opengpu_shader_input_range_mask(
+                        (opengpu_shader_s64)lhs.offset + imm, 4, stride);
                 state.fp_defined[rd] = true;
                 break;
             }
@@ -1029,6 +1061,19 @@ static inline bool opengpu_shader_validate_words_profile_runtime(
                      &values[rs1], state.vector_length, elem, false,
                      kernarg_size, batch_capacity, output_start, output_end)))
                 return false;
+            if (input_read_mask) {
+                /* Keep complex and narrow warp-relative accesses conservative.
+                 * Their validation/admission is completely unchanged. */
+                if (strided || indexed ||
+                    (elem != 4 && lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL))
+                    input_reads = 0x3fu;
+                else
+                    input_reads |= opengpu_shader_input_range_mask(
+                        (opengpu_shader_u32)lhs.offset,
+                        (opengpu_shader_u64)elem *
+                            (lhs.kind == OPENGPU_SHADER_VALUE_KERNARG_LOCAL ?
+                             batch_capacity : state.vector_length), stride);
+            }
             state.vector_local_indices &= ~(1u << rd);
             state.vector_local_bytes &= ~(1u << rd);
             vector_defined[rd] = true;
@@ -1184,6 +1229,22 @@ static inline bool opengpu_shader_validate_words_profile_runtime(
         }
     }
     return false;
+}
+
+/* Compatibility entry point: callers not requesting metadata keep the
+ * exact existing validation contract and do not pay for read-mask tracking. */
+static inline bool opengpu_shader_validate_words_profile_runtime(
+    const opengpu_shader_u32 *words, opengpu_shader_u32 word_count,
+    opengpu_shader_u64 kernarg_size, opengpu_shader_u32 batch_capacity,
+    opengpu_shader_u32 output_start_slice,
+    opengpu_shader_u32 output_end_slice, bool fragment_ops_enabled,
+    bool texture_enabled, bool all_kernarg_writable, bool scalar_fpu_enabled,
+    opengpu_shader_u32 launch_capacity)
+{
+    return opengpu_shader_validate_words_profile_runtime_usage(words, word_count,
+        kernarg_size, batch_capacity, output_start_slice, output_end_slice,
+        fragment_ops_enabled, texture_enabled, all_kernarg_writable,
+        scalar_fpu_enabled, launch_capacity, (opengpu_shader_u32 *)0);
 }
 
 static inline bool opengpu_shader_validate_words_profile(

@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "../opengpu_shader_validator.h"
+#include "../opengpu_shader_builder.h"
 
 static uint32_t load(unsigned int funct3, unsigned int rd, int imm)
 {
@@ -311,10 +312,109 @@ static void test_runtime_capacity(void)
     assert(!validate_runtime(code, 2, 128));
 }
 
+static bool validate_usage(const uint32_t *program, unsigned words,
+                           unsigned capacity, bool runtime, uint32_t *mask)
+{
+    return opengpu_shader_validate_words_profile_runtime_usage(
+        program, words, 9ull * 4 * capacity + 256, capacity,
+        6, 9, true, true, false, true, runtime ? capacity : 0, mask);
+}
+
+static void test_input_read_usage(void)
+{
+    uint32_t p[512], mask;
+    static const unsigned capacities[] = {8, 16, 112, 128, 252};
+    static const uint32_t sample[] = {
+        0x00249f13u, 0x00241293u, 0x005082b3u, 0x01007357u,
+        0x00400313u, 0x03e30333u, 0x00628333u, 0x02036087u,
+        0x00500313u, 0x03e30333u, 0x00628333u, 0x02036107u,
+        0x062081abu, 0x00600313u, 0x03e30333u, 0x00628333u,
+        0x020361a7u, OPENGPU_SHADER_CEASE,
+    };
+
+    for (unsigned c = 0; c < sizeof(capacities) / sizeof(capacities[0]); c++) {
+        unsigned cap = capacities[c];
+        unsigned n = opengpu_fragment_runtime_passthrough_shader(p, 512);
+
+        assert(n && validate_usage(p, n, cap, true, &mask) && mask == 8);
+        assert(validate_usage(sample, sizeof(sample) / sizeof(sample[0]),
+                              cap, true, &mask) && mask == 0x30);
+        /* All 64 input combinations, including wide slices beyond ADDI's
+         * immediate range. Each load uses a proven chained kernarg pointer. */
+        for (unsigned wanted = 0; wanted < 64; wanted++) {
+            n = 0;
+            for (unsigned slice = 0; slice < 6; slice++) {
+                if (!(wanted & (1u << slice)))
+                    continue;
+                n = opengpu_shader_append_address(p, n, 1, 6, slice * 4 * cap);
+                p[n++] = 0x00032503u; /* lw x10,0(x6) */
+            }
+            p[n++] = OPENGPU_SHADER_CEASE;
+            assert(validate_usage(p, n, cap, true, &mask) && mask == wanted);
+        }
+    }
+    /* Scalar loads, uniform-only loads, and no-read programs. */
+    p[0] = OPENGPU_SHADER_CEASE;
+    assert(validate_usage(p, 1, 8, false, &mask) && mask == 0);
+    for (unsigned slice = 0; slice < 10; slice++) {
+        p[0] = lw(10, slice * 32);
+        p[1] = OPENGPU_SHADER_CEASE;
+        assert(validate_usage(p, 2, 8, false, &mask));
+        assert(mask == (slice < 6 ? 1u << slice : 0));
+    }
+    p[0] = lw(10, 0);
+    p[1] = branch(0, 0, 0, 8);
+    p[2] = lw(10, 3 * 32);
+    p[3] = OPENGPU_SHADER_CEASE;
+    assert(validate_usage(p, 4, 8, false, &mask) && mask == 9);
+    /* Both independently terminating branches contribute their loads. */
+    p[0] = branch(0, 0, 0, 12);
+    p[1] = lw(10, 32);
+    p[2] = OPENGPU_SHADER_CEASE;
+    p[3] = lw(10, 4 * 32);
+    p[4] = OPENGPU_SHADER_CEASE;
+    assert(validate_usage(p, 5, 8, false, &mask) && mask == 18);
+    /* A byte vector crosses the input-slice boundary; both slices are used. */
+    p[0] = vsetivli(2);
+    p[1] = addi(5, 1, 31);
+    p[2] = vle_width(0, 2, 5);
+    p[3] = OPENGPU_SHADER_CEASE;
+    assert(validate_usage(p, 4, 8, false, &mask) && mask == 3);
+    /* Strided and indexed accesses conservatively retain every input. */
+    p[0] = vsetivli(4);
+    p[1] = addi(5, 1, 0);
+    p[2] = addi(6, 0, 4);
+    p[3] = vlse_width(6, 2, 5, 6);
+    p[4] = OPENGPU_SHADER_CEASE;
+    assert(validate_usage(p, 5, 8, false, &mask) && mask == 63);
+    p[0] = vsetivli(4);
+    p[1] = vector_alu(0x25, 3, 2, 1, 2);
+    p[2] = addi(5, 1, 0);
+    p[3] = vluxei32(3, 5, 2);
+    p[4] = OPENGPU_SHADER_CEASE;
+    assert(validate_usage(p, 5, 8, false, &mask) && mask == 63);
+    /* Narrow warp-relative loads also retain every input. */
+    p[0] = slli(5, 8, 2);
+    p[1] = add(5, 1, 5);
+    p[2] = vsetivli(4);
+    p[3] = vle_width(0, 2, 5);
+    p[4] = OPENGPU_SHADER_CEASE;
+    assert(validate_usage(p, 5, 8, false, &mask) && mask == 63);
+    /* Failure must not publish partial optimistic metadata. */
+    p[0] = lw(10, 0);
+    p[1] = 0xffffffff;
+    assert(!validate_usage(p, 2, 8, false, &mask) && mask == 63);
+
+    p[0] = 0x0600a107u; /* flw f2,96(x1): colour input */
+    p[1] = OPENGPU_SHADER_CEASE;
+    assert(validate_usage(p, 2, 8, false, &mask) && mask == 8);
+}
+
 int main(void)
 {
     test_wide_uniform_provenance();
     test_runtime_capacity();
+    test_input_read_usage();
     const uint32_t vxrm_valid[] = {
         OPENGPU_SHADER_SET_VXRM(0),
         OPENGPU_SHADER_SET_VXRM(1),

@@ -123,6 +123,16 @@ L2 stores are write-through and Linux maps kernargs uncached, so changing a
 request cache flag would not remove this write traffic. See the
 [callback traffic analysis](performance/native-render-memory-traffic-2026-10-16.json).
 
+The shader validator now offers optional input-read metadata derived from
+proven kernarg addresses across all reachable paths. It supports runtime batch
+capacity, retains all inputs for complex access forms, and publishes an
+optimistic mask only after complete successful validation. Existing callers
+keep their validation API and admission rules. Host tests cover all 64 input
+combinations at five capacities; 2,880 mutations also match the previous
+validator's admission decisions. Production draw records do not yet use this
+metadata. See the
+[validator qualification](performance/fragment-input-usage-validator-2026-10-16.json).
+
 A warm-render CPU sample also identifies page-invalidation bookkeeping as a
 simulator cost. Instrumentation finds repeated helper page increments within
 one register commit: 75.8% for solid and 73.1% for spatial rendering. Private

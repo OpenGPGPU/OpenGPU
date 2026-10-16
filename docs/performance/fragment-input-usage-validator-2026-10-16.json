@@ -1,0 +1,36 @@
+{
+  "status": "PASS",
+  "scope": "Optional conservative fragment input-read metadata in the shader validator. Existing validation entry points and admission contract retained; production driver currently requests no metadata and emits no omission hints. Production RTL unchanged.",
+  "source_sha256": {
+    "driver/opengpu_shader_validator.h": "36c46923c9f774efdc787bfddddf1eb43aa68215c4d952620d8deba5ce275f81",
+    "driver/tests/opengpu_shader_validator_test.c": "3ddb597a3053e3dd7d465581c64a4ffdbb725d25d945d63edc2074f003c054c7"
+  },
+  "gates": {
+    "host_driver_suite": {
+      "exit_status": 0,
+      "seconds": 6.265425625024363,
+      "log_sha256": "13a06ddac9f326b15cf99d727ddf196e0e86653550df7b3c4fc97572dee5df1b",
+      "command": "python3 scripts/test_driver.py"
+    },
+    "sanitized_main_validator": {
+      "exit_status": 0,
+      "flags": "-std=c11 -O2 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all",
+      "scope": "Full existing validator suite plus320 exact input combinations,2runtime shaders at5capacities, scalar/FP/branch/byte-boundary/fallback/failure cases."
+    },
+    "reference_mutations": {
+      "count": 2880,
+      "exit_status": 0,
+      "stdout": "PASS originalvalidator + 2880 admission-equivalence mutations + range/branch/fallback cases",
+      "reference_header_sha256": "9aba446821fe281ab7bd3a6e8b814563d0053b426f1bc8e53e04b82752b05e1b",
+      "private_test_sha256": "f5b807a3ce89faf36863ee66a5973d09582361719ed8d274d136e4ecc7ec78f1",
+      "scope": "Allsingle-bit mutations of18word runtime sampling shader atcapacities8/16/112/128/252; compare admission against frozen pre-change validator. Failed validation always leaves all six inputs required."
+    }
+  },
+  "algorithm": [
+    "Union input-slice read ranges across every reachable branch; inputs are slices0..5 at4*batch_capacity byte stride.",
+    "Only successful complete validation publishes metadata. Failure leaves all six bits set.",
+    "Scalar reads and unit-stride vector reads use existing proven kernarg provenance and bounds. Strided/indexed and narrow warp-relative vector reads conservatively require all six inputs.",
+    "The old function signature delegates without a metadata destination. Instruction validation, address permissions, writable output windows and branch constraints remain unchanged."
+  ],
+  "next": "Connect the derived mask to capability-gated private GPU draw records after complete RTL scene qualification; no userspace promise or shader-binary matching is needed."
+}
