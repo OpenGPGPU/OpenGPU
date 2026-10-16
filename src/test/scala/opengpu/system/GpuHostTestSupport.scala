@@ -3,6 +3,37 @@ package opengpu.system
 import chisel3._
 import opengpu.testutil.GpuSim._
 
+/** Signal references shared by the full-system fixture and small AXI driver tests. */
+private[system] final class AxiMemoryMasterPort(signals: Record) {
+  private def bit(name: String): Bool = signals.elements(name).asInstanceOf[Bool]
+  private def word(name: String): UInt = signals.elements(name).asInstanceOf[UInt]
+  val s_axi_aclk = signals.elements("s_axi_aclk").asInstanceOf[Clock]
+  val m_axi_arvalid = bit("m_axi_arvalid")
+  val m_axi_arready = bit("m_axi_arready")
+  val m_axi_rvalid = bit("m_axi_rvalid")
+  val m_axi_rready = bit("m_axi_rready")
+  val m_axi_rlast = bit("m_axi_rlast")
+  val m_axi_awvalid = bit("m_axi_awvalid")
+  val m_axi_awready = bit("m_axi_awready")
+  val m_axi_wvalid = bit("m_axi_wvalid")
+  val m_axi_wready = bit("m_axi_wready")
+  val m_axi_wlast = bit("m_axi_wlast")
+  val m_axi_bvalid = bit("m_axi_bvalid")
+  val m_axi_bready = bit("m_axi_bready")
+  val m_axi_araddr = word("m_axi_araddr")
+  val m_axi_arid = word("m_axi_arid")
+  val m_axi_arlen = word("m_axi_arlen")
+  val m_axi_rid = word("m_axi_rid")
+  val m_axi_rdata = word("m_axi_rdata")
+  val m_axi_rresp = word("m_axi_rresp")
+  val m_axi_awaddr = word("m_axi_awaddr")
+  val m_axi_awid = word("m_axi_awid")
+  val m_axi_wdata = word("m_axi_wdata")
+  val m_axi_wstrb = word("m_axi_wstrb")
+  val m_axi_bid = word("m_axi_bid")
+  val m_axi_bresp = word("m_axi_bresp")
+}
+
 /** Shared cycle-accurate AXI stimulus for integration tests and workload measurement. */
 trait GpuHostTestSupport {
   protected def initialize(dut: GpuHostSystemAxi): Unit = {
@@ -201,7 +232,23 @@ trait GpuHostTestSupport {
     onCycle: () => Unit = () => (),
     noProgressLimit: Int = 0
   )(onWrite: (BigInt, BigInt, BigInt) => Unit)(until: => Boolean): Unit = {
-    val axiDataBytes = dut.io.m_axi_wstrb.getWidth
+    serviceMemoryMasterPort(new AxiMemoryMasterPort(dut.io), readLine, readFault,
+      writeAckDelay, maxCycles, readResponseDelay, onReadAccepted, onCycle,
+      noProgressLimit)(onWrite)(until)
+  }
+
+  protected def serviceMemoryMasterPort(
+    port: AxiMemoryMasterPort,
+    readLine: BigInt => BigInt,
+    readFault: BigInt => Boolean = _ => false,
+    writeAckDelay: Int = 0,
+    maxCycles: Int = 20000,
+    readResponseDelay: Int = 0,
+    onReadAccepted: BigInt => Unit = _ => (),
+    onCycle: () => Unit = () => (),
+    noProgressLimit: Int = 0
+  )(onWrite: (BigInt, BigInt, BigInt) => Unit)(until: => Boolean): Unit = {
+    val axiDataBytes = port.m_axi_wstrb.getWidth
     val axiDataBits = axiDataBytes * 8
     val beatMask = (BigInt(1) << axiDataBits) - 1
     case class PendingRead(address: BigInt, id: BigInt, line: BigInt,
@@ -220,51 +267,60 @@ trait GpuHostTestSupport {
     while (!until && guard < maxCycles) {
       var acceptedReadAddress: Option[BigInt] = None
       var memoryProgress = false
-      // Accept independent read addresses while older R bursts are pending.
-      // Every burst retains its original snapshot and fixed response latency.
-      dut.io.m_axi_arready.poke((pendingReads.size < 16).B)
-      if (dut.io.m_axi_arvalid.peek().litToBoolean &&
-          dut.io.m_axi_arready.peek().litToBoolean) {
-        val address = dut.io.m_axi_araddr.peek().litValue
-        val id = dut.io.m_axi_arid.peek().litValue
+      // Drive all channels before observing any handshake. A response can
+      // change the DUT's request selection or free an issue credit in this
+      // cycle; capturing a request before driving it can invent/drop a transfer.
+      port.m_axi_arready.poke((pendingReads.size < 16).B)
+      // R is ordered here; dedicated bridge units also exercise interleaving
+      // and out-of-order IDs. Raising BVALID may change this R's readiness.
+      pendingReads.headOption.filter(_.due <= guard) match {
+        case Some(r) =>
+          port.m_axi_rvalid.poke(true.B)
+          port.m_axi_rid.poke(r.id.U)
+          port.m_axi_rdata.poke(((r.line >> (r.beat * axiDataBits)) & beatMask).U)
+          port.m_axi_rresp.poke((if (r.fault) 2 else 0).U)
+          port.m_axi_rlast.poke((r.beat == r.beats - 1).B)
+        case None =>
+          port.m_axi_rvalid.poke(false.B)
+          port.m_axi_rlast.poke(false.B)
+      }
+      port.m_axi_awready.poke((!awDone && !wDone).B)
+      port.m_axi_wready.poke((!wDone).B)
+      // B may not precede the edge accepting AW and WLAST. Once presented,
+      // keep the head ID stable until the DUT accepts it.
+      val bReadyToPresent = pendingWriteAcks.headOption.exists(_._2 <= guard)
+      port.m_axi_bvalid.poke(bReadyToPresent.B)
+      port.m_axi_bid.poke(pendingWriteAcks.headOption.map(_._1).getOrElse(BigInt(0)).U)
+      port.m_axi_bresp.poke(0.U)
+      // All inputs are now stable. Capture requests before applying memory
+      // writes, and retire only responses that were actually presented above.
+      if (port.m_axi_arvalid.peek().litToBoolean &&
+          port.m_axi_arready.peek().litToBoolean) {
+        val address = port.m_axi_araddr.peek().litValue
+        val id = port.m_axi_arid.peek().litValue
         val line = readLine(address) >> ((address.toInt & (64 - axiDataBytes)) * 8)
-        val beats = dut.io.m_axi_arlen.peek().litValue.toInt + 1
+        val beats = port.m_axi_arlen.peek().litValue.toInt + 1
         pendingReads.enqueue(PendingRead(address, id, line, beats,
           readFault(address), guard + math.max(1, readResponseDelay)))
         acceptedReadAddress = Some(address)
         memoryProgress = true
       }
-      // R is ordered here; dedicated bridge units also exercise interleaving
-      // and out-of-order IDs. Raising BVALID may change this R's readiness.
-      pendingReads.headOption.filter(_.due <= guard) match {
-        case Some(r) =>
-          dut.io.m_axi_rvalid.poke(true.B)
-          dut.io.m_axi_rid.poke(r.id.U)
-          dut.io.m_axi_rdata.poke(((r.line >> (r.beat * axiDataBits)) & beatMask).U)
-          dut.io.m_axi_rresp.poke((if (r.fault) 2 else 0).U)
-          dut.io.m_axi_rlast.poke((r.beat == r.beats - 1).B)
-        case None =>
-          dut.io.m_axi_rvalid.poke(false.B)
-          dut.io.m_axi_rlast.poke(false.B)
-      }
       // Write address channel.
-      dut.io.m_axi_awready.poke((!awDone && !wDone).B)
-      if (!awDone && dut.io.m_axi_awvalid.peek().litToBoolean &&
-          dut.io.m_axi_awready.peek().litToBoolean) {
+      if (!awDone && port.m_axi_awvalid.peek().litToBoolean &&
+          port.m_axi_awready.peek().litToBoolean) {
         memoryProgress = true
-        awAddr = dut.io.m_axi_awaddr.peek().litValue
-        awId = dut.io.m_axi_awid.peek().litValue
+        awAddr = port.m_axi_awaddr.peek().litValue
+        awId = port.m_axi_awid.peek().litValue
         awDone = true
       }
       // Write data channel.
-      dut.io.m_axi_wready.poke((!wDone).B)
-      if (!wDone && dut.io.m_axi_wvalid.peek().litToBoolean &&
-          dut.io.m_axi_wready.peek().litToBoolean) {
+      if (!wDone && port.m_axi_wvalid.peek().litToBoolean &&
+          port.m_axi_wready.peek().litToBoolean) {
         memoryProgress = true
-        wData |= dut.io.m_axi_wdata.peek().litValue << (wBeat * axiDataBits)
-        wStrb |= dut.io.m_axi_wstrb.peek().litValue << (wBeat * axiDataBytes)
+        wData |= port.m_axi_wdata.peek().litValue << (wBeat * axiDataBits)
+        wStrb |= port.m_axi_wstrb.peek().litValue << (wBeat * axiDataBytes)
         wBeat += 1
-        if (dut.io.m_axi_wlast.peek().litToBoolean) wDone = true
+        if (port.m_axi_wlast.peek().litToBoolean) wDone = true
       }
       if (awDone && wDone) {
         // Complete the burst's data independently of acknowledgement delay.
@@ -278,22 +334,12 @@ trait GpuHostTestSupport {
         wData = BigInt(0)
         wStrb = BigInt(0)
       }
-      // B may not precede the edge accepting AW and WLAST. Once presented,
-      // keep the head ID stable until the DUT accepts it.
-      val bReadyToPresent = pendingWriteAcks.headOption.exists(_._2 <= guard)
-      dut.io.m_axi_bvalid.poke(bReadyToPresent.B)
-      dut.io.m_axi_bid.poke(pendingWriteAcks.headOption.map(_._1).getOrElse(BigInt(0)).U)
-      dut.io.m_axi_bresp.poke(0.U)
-      // Drive BOTH response channels before sampling either handshake.
-      // RREADY/BREADY share the bridge's response arbiter: raising BVALID can
-      // revoke RREADY in this cycle. Sampling R earlier would silently drop
-      // a read beat that the DUT never accepted, causing a false deadlock.
-      if (dut.io.m_axi_rvalid.peek().litToBoolean && dut.io.m_axi_rready.peek().litToBoolean) {
+      if (port.m_axi_rvalid.peek().litToBoolean && port.m_axi_rready.peek().litToBoolean) {
         memoryProgress = true
         val r = pendingReads.front
         if (r.beat == r.beats - 1) pendingReads.dequeue() else r.beat += 1
       }
-      if (dut.io.m_axi_bvalid.peek().litToBoolean && dut.io.m_axi_bready.peek().litToBoolean) {
+      if (port.m_axi_bvalid.peek().litToBoolean && port.m_axi_bready.peek().litToBoolean) {
         memoryProgress = true
         pendingWriteAcks.dequeue()
       }
@@ -301,15 +347,15 @@ trait GpuHostTestSupport {
       assert(noProgressLimit == 0 || quietCycles < noProgressLimit,
         s"AXI no progress for $quietCycles cycles at cycle=$guard pendingR=${pendingReads.size} awDone=$awDone wDone=$wDone pendingB=${pendingWriteAcks.size}")
       onCycle()
-      dut.io.s_axi_aclk.step()
+      port.s_axi_aclk.step()
       acceptedReadAddress.foreach { address =>
         // Pause memory handshakes while the hook drives control MMIO. Local
         // burst state survives, including an accepted AR awaiting its R data.
-        dut.io.m_axi_arready.poke(false.B)
-        dut.io.m_axi_rvalid.poke(false.B)
-        dut.io.m_axi_awready.poke(false.B)
-        dut.io.m_axi_wready.poke(false.B)
-        dut.io.m_axi_bvalid.poke(false.B)
+        port.m_axi_arready.poke(false.B)
+        port.m_axi_rvalid.poke(false.B)
+        port.m_axi_awready.poke(false.B)
+        port.m_axi_wready.poke(false.B)
+        port.m_axi_bvalid.poke(false.B)
         onReadAccepted(address)
       }
       guard += 1

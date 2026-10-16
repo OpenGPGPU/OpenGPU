@@ -1,0 +1,252 @@
+{
+  "status": "PASS: request/response stimulus ordering regression fixed",
+  "problem": "The AXI testbench sampled AR/AW/W before driving all R/B inputs. Driving a response could change the settled request seen at the clock edge, so the software memory model could drop a real transfer and falsely report no progress.",
+  "change": "Drive every memory-side input first; then observe request and response handshakes without changing inputs before the clock edge. Keep the existing full-system helper API and share its implementation with small directed fixtures through signal references.",
+  "directed_regression": {
+    "old_order": "Both read and write counterexamples fail with AXI no-progress as expected.",
+    "corrected_order": "Both pass with the same clock, reset, requests and acknowledgement delay.",
+    "evidence": {
+      "started": 1792115442.714145,
+      "pid": 76935,
+      "stages": [
+        {
+          "mode": "old-order",
+          "exit_status": 1,
+          "expected": true,
+          "seconds": 6.222666375106201
+        },
+        {
+          "mode": "drive-before-sample",
+          "exit_status": 0,
+          "expected": true,
+          "seconds": 1.698662375099957
+        }
+      ],
+      "finished": 1792115450.636169
+    },
+    "source_sha256": "84179a1e621fbba66a960d4e48c14a2909ff5056e21487fe3b07341d670e1d55"
+  },
+  "main_validation": {
+    "started": 1792116066.131131,
+    "pid": 1678,
+    "stages": [
+      {
+        "label": "regression",
+        "exit_status": 0,
+        "seconds": 7.4321188752073795
+      },
+      {
+        "label": "randomized-axi",
+        "exit_status": 0,
+        "seconds": 35.23167270910926
+      },
+      {
+        "label": "walk-reset",
+        "exit_status": 0,
+        "seconds": 30.247906832955778
+      },
+      {
+        "label": "render-drain",
+        "exit_status": 0,
+        "seconds": 10.184725791914389
+      }
+    ],
+    "finished": 1792116149.2306392
+  },
+  "matched_full_scenes": {
+    "started": 1792115258.8013299,
+    "pid": 70658,
+    "stages": [
+      {
+        "label": "baseline-solid",
+        "exit_status": 0,
+        "seconds": 355.60024462500587,
+        "pixel_depth_metadata_identical": true,
+        "metrics": [
+          {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "52050",
+            "active_cu_cycles": "13495",
+            "peak_cus": "1",
+            "texture_extent": "1",
+            "buffer_texture_reads": "true",
+            "texture_words": "140",
+            "texture_lines": "1"
+          },
+          {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "16640",
+            "active_cu_cycles": "14142",
+            "peak_cus": "4",
+            "texture_extent": "1",
+            "buffer_texture_reads": "true",
+            "texture_words": "140",
+            "texture_lines": "1"
+          }
+        ]
+      },
+      {
+        "label": "baseline-spatial",
+        "exit_status": 0,
+        "seconds": 87.17880049999803,
+        "pixel_depth_metadata_identical": true,
+        "metrics": [
+          {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "77160",
+            "active_cu_cycles": "38605",
+            "peak_cus": "1",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3676",
+            "texture_lines": "166"
+          },
+          {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "22766",
+            "active_cu_cycles": "39622",
+            "peak_cus": "4",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3677",
+            "texture_lines": "229"
+          }
+        ]
+      },
+      {
+        "label": "scaled-credits-solid",
+        "exit_status": 0,
+        "seconds": 75.0674226670526,
+        "pixel_depth_metadata_identical": true,
+        "metrics": [
+          {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "36595",
+            "active_cu_cycles": "13495",
+            "peak_cus": "1",
+            "texture_extent": "1",
+            "buffer_texture_reads": "true",
+            "texture_words": "140",
+            "texture_lines": "1"
+          },
+          {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "12889",
+            "active_cu_cycles": "14646",
+            "peak_cus": "4",
+            "texture_extent": "1",
+            "buffer_texture_reads": "true",
+            "texture_words": "140",
+            "texture_lines": "1"
+          }
+        ]
+      },
+      {
+        "label": "scaled-credits-spatial",
+        "exit_status": 0,
+        "seconds": 81.96235341695137,
+        "pixel_depth_metadata_identical": true,
+        "metrics": [
+          {
+            "CUs": "1",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "61705",
+            "active_cu_cycles": "38605",
+            "peak_cus": "1",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3676",
+            "texture_lines": "166"
+          },
+          {
+            "CUs": "4",
+            "axi_bytes": "64",
+            "side": "64",
+            "alu_loops": "0",
+            "om_inflight": "64",
+            "fragment_batch_limit": "112",
+            "lanes": "16",
+            "warps": "8",
+            "runtime_shader": "true",
+            "cycles": "18989",
+            "active_cu_cycles": "39761",
+            "peak_cus": "4",
+            "texture_extent": "64",
+            "buffer_texture_reads": "true",
+            "texture_words": "3678",
+            "texture_lines": "225"
+          }
+        ]
+      }
+    ],
+    "scope": "Matched baseline and two-local/eight-global staging candidate, using drive-all-inputs-before-sampling memory stimulus on the default flat backend.",
+    "finished": 1792115858.620665
+  },
+  "evidence_sha256": {
+    ".artifacts/shared-cu/axi-stimulus-order/validation-v2/state.json": "652e257e4f96ec65749a901b2e36958e5a28d20c1e3c868f5730f67c5dcf0fb0",
+    ".artifacts/shared-cu/axi-stimulus-order/main-validation/state.json": "f9b8180a64cf673f3b4af575757f9acc1098678df29a835cf8b6658eb0a0b2a0",
+    ".artifacts/shared-cu/axi-stimulus-order/graphics-validation/state.json": "1534a05834366621b2108f70ea6b569880864e193dbc9739e55c854785928875",
+    "src/test/scala/opengpu/system/GpuHostTestSupport.scala": "590eb4451fbe324f70fbae47b456b4c14035b25774990353ffb5439d24596019"
+  },
+  "limits": [
+    "This changes only verification stimulus; no production RTL or guest software changes.",
+    "Baseline full-scene cycles are unchanged. The eight-credit staging prototype remains unpromoted and requires further tuning/native qualification.",
+    "The initial eight-credit no-progress trace is retained; all four later backend/diagnostic combinations pass12889cycles. Those observations alone did not establish a simulator defect. The directed tests independently demonstrate the stimulus ordering bug.",
+    "Elapsed times include concurrent builds; they are not simulator performance comparisons."
+  ]
+}
