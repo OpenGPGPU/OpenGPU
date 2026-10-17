@@ -1,5 +1,40 @@
 # Full-system simulation performance investigation
 
+## Qualified prepared fetch window (2026-10-17)
+
+Two prepared contexts per CU now share the existing word cache, blend datapath
+and four physical read credits. Context count is independent of shader VLEN.
+In-flight aliases share a physical request, results retire in order, and cache
+invalidation waits for older fetches. Registered cache lookup and parallel
+coordinate partial products preserve the generic first-read latency.
+
+| Matched workload | Previous cycles | New cycles | Reduction |
+| --- | ---: | ---: | ---: |
+| One CU scene | 35,137 | 32,341 | 7.96% |
+| Four CU scene | 11,929 | 11,566 | 3.04% |
+| Four CU native spatial256 | 122,349 | 112,502 | 8.05% |
+
+Both CU scenes preserve pixels, depth, metadata and canaries. The one-CU
+benefit is larger, so scene scaling decreases from **2.95× to 2.80×**. Balanced
+four-process O2/own-profile measurements establish **no simulator wall-time
+gain**: solid64 and spatial64 differ by less than 0.3%; spatial256 measures
+9.4992→9.5931 seconds, with overlapping ranges. This is a useful-cycle change.
+
+Fresh compilation of **170 main sources** passes **84 tests in 19 suites**;
+all **298 executable RTL modules** match the qualified runtime. Native format,
+staging and forced controls preserve complete RAM, and O1/O2 match all own
+counters. The actual sampler cone meets the unchanged 1 GHz / 25% I/O synthesis
+screen at **+1.309 ps core / +123.197 ps I/O**; the core margin is narrow and
+this is not whole-chip placement/routing closure.
+
+The actual **640×480 Debian/GTK desktop** and orange redraw pass scanout checks
+and manual image review. Its own strict trace matches **158,666 calls and
+16,530,549 ticks**, without a truncated tail. Capture and replay overlap and GUI
+activity differs from earlier runs; these elapsed times do not prove a desktop
+speed change. The installed default QEMU remains unchanged.
+
+See [the source, timing, host and desktop qualification](performance/prepared-fetch-window-main-qualification-2026-10-17.json).
+
 ## Qualified L2 remapper optimization (2026-10-17)
 
 The lower-memory transaction remapper now stores validity as a bitmap and
@@ -178,9 +213,8 @@ four CUs. However, timing still fails at **−2.759 ps core / −16.170 ps I/O**
 A further private revision moves axis bias across an existing register boundary
 and removes redundant state guards under a proved ownership invariant. Its
 35 tests and decomposed equivalence checks pass, but timing worsens to
-**−56.138 ps core / −41.616 ps I/O**; scene compilation is skipped. All window
-revisions remain private. Simulator and desktop qualification remain required
-for any future revision that passes hardware timing.
+**−56.138 ps core / −41.616 ps I/O**; scene compilation is skipped. These unsuccessful revisions remain private. The final revision described
+below subsequently passed hardware, simulator and desktop qualification.
 
 A registered-issue revision removes the cache CAM from the physical request
 address path. An extra fallback arithmetic cycle fails the unchanged fixed-mip
@@ -189,7 +223,7 @@ products at admission or the preceding mip-walk edge preserves that limit.
 Selecting those operands from registered FSM state keeps input-valid and
 backpressure out of the multiplier's input selector.
 
-This final private revision passes **36 tests in eight suites**. An independent
+This final revision passes **36 tests in eight suites**. An independent
 address/color oracle also passes the original sampler, including full-width
 coordinates, extent 16,383, clamp and repeat. Only `TextureUnit_1.sv` changes.
 Unchanged native-cone timing passes at **+1.309 ps core / +123.197 ps I/O**;
@@ -197,8 +231,8 @@ the core margin is narrow. Both full scenes preserve pixels, depth, metadata
 and canaries: **35,137→32,341 cycles (7.96%)** for one CU and
 **11,929→11,566 (3.04%)** for four CUs. CU scaling falls from **2.95× to 2.80×**
 because one CU benefits more. This is an absolute-cycle improvement, not an
-improvement in CU scaling. Native host speed and actual desktop qualification
-remain required before promotion.
+improvement in CU scaling. Native and desktop qualification subsequently
+passed, as recorded at the top of this document; host wall time remains flat.
 
 See [the overlap controls, epoch failure/fix and qualification gates](performance/prepared-fetch-window-screen-2026-10-17.json).
 
@@ -213,9 +247,17 @@ against the same header before execution.
 A fresh, sequential single-file O2/PGO pair with compiler caching disabled
 measures **330.6→215.9 seconds**. Other sampler validation overlaps, so this is
 a diagnostic screen rather than an isolated or complete-build speed claim.
-The private 37-object rebuild is running; subsequent nine-fixture RAM/counter
-checks are queued. FlashSim sources and the installed QEMU remain unchanged; runtime
-qualification and a quiet repeated build comparison remain required.
+All 37 objects were rebuilt against one grouped header. Nine native scenes,
+40 format cases, 18 controls and strict current64/full640 traces preserve
+complete RAM and all applicable counters. Actual current64 and 640×480 desktop
+runs and image review pass. Runtime timing shows no established gain.
+
+FlashSim commit `53fadf2` adds this as the opt-in
+`FLASHSIM_DATA_REGION_FIELDS=1024` compiler policy; the default remains off.
+Fourteen compiler tests pass. Compile-time layout guards emit no object-code
+changes in the checked CAPI translation unit. A quiet repeated build comparison
+is still required before an isolated or complete-build speedup claim. The
+installed QEMU remains unchanged.
 
 See [the layout checks, compile samples and remaining gates](performance/l2-generated-header-regions-screen-2026-10-17.json).
 

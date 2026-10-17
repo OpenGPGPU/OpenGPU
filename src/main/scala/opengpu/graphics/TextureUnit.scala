@@ -171,6 +171,32 @@ class TextureUnit(
   private val tapReceived = RegInit(0.U(4.W))
   private val tapWords = Reg(Vec(4, UInt(32.W)))
 
+  // Two prepared contexts share the existing word cache, physical port and
+  // blend multipliers. This window is independent of shader vector length.
+  private class PreparedWindow {
+    val valid = RegInit(VecInit(Seq.fill(2)(false.B))).suggestName("preparedValid")
+    val head = RegInit(0.U(1.W)).suggestName("preparedHead")
+    val tail = RegInit(0.U(1.W)).suggestName("preparedTail")
+    val addresses = Reg(Vec(2, Vec(4, UInt(32.W)))).suggestName("preparedAddresses")
+    val weights = Reg(Vec(2, Vec(4, UInt(17.W)))).suggestName("preparedWeights")
+    val format = Reg(Vec(2, UInt(PixelFormat.width.W))).suggestName("preparedFormat")
+    val words = Reg(Vec(2, Vec(4, UInt(32.W)))).suggestName("preparedWords")
+    val issued = RegInit(VecInit(Seq.fill(2)(0.U(4.W)))).suggestName("preparedIssued")
+    val received = RegInit(VecInit(Seq.fill(2)(0.U(4.W)))).suggestName("preparedReceived")
+    val lookup = RegInit(VecInit(Seq.fill(2)(false.B))).suggestName("preparedLookup")
+  }
+  private val preparedWindow = if (overlapPrepared) Some(new PreparedWindow) else None
+  private val preparedActive = preparedWindow.map(p => state === sIdle && p.valid.asUInt.orR).getOrElse(false.B)
+  private val preparedEmpty = preparedWindow.map(p => !p.valid.asUInt.orR).getOrElse(true.B)
+  private val preparedLookupIndex = preparedWindow.map(p =>
+    Mux(p.valid(p.head) && p.lookup(p.head), p.head, ~p.head)).getOrElse(0.U(1.W))
+  private val preparedLookupActive = preparedWindow.map(p =>
+    state === sIdle && p.valid(preparedLookupIndex) && p.lookup(preparedLookupIndex)).getOrElse(false.B)
+  private val preparedRequestValid = WireDefault(false.B)
+  private val preparedRequestAddress = WireDefault(0.U(32.W))
+  private val preparedResponseMatch = WireDefault(false.B)
+
+
   private val cacheValid = if (wordCacheEntries > 0)
     Some(RegInit(0.U(wordCacheEntries.W))) else None
   private val cacheTags = if (wordCacheEntries > 0)
@@ -182,12 +208,30 @@ class TextureUnit(
   private val cacheReplace = if (wordCacheEntries > 0)
     Some(RegInit(0.U(log2Ceil(wordCacheEntries).W))) else None
 
+  // A binding change must not invalidate taps that an older accepted
+  // prepared context still needs. Retain even a one-cycle invalidate pulse.
+  private val preparedFetched = preparedWindow.map(p => VecInit((0 until 2).map(g =>
+    !p.valid(g) || (!p.lookup(g) && p.received(g).andR))).asUInt.andR).getOrElse(true.B)
+  private val invalidationPending = if (overlapPrepared && wordCacheEntries > 0)
+    Some(RegInit(false.B)) else None
+  private val cacheInvalidateRequested = io.invalidateCache.map(pin =>
+    pin || invalidationPending.getOrElse(false.B)).getOrElse(false.B)
+  private val cacheInvalidateNow = cacheInvalidateRequested && preparedFetched
+  invalidationPending.foreach { pending =>
+    when(cacheInvalidateNow) { pending := false.B }
+      .elsewhen(io.invalidateCache.get) { pending := true.B }
+  }
+
   // Blended result held until result.fire.
   private val resultReg = RegInit(0.U(32.W))
   // One output slot overlaps the next prepared fetch with the prior blend.
-  // Tap registers and multipliers are shared; no two fetch groups overlap.
+  // The prepared fetch window shares its blend multipliers with this generic path.
   private val resultValid = if (overlapPrepared) Some(RegInit(false.B)) else None
   private val resultSpace = resultValid.map(v => !v || io.result.ready).getOrElse(true.B)
+  private val preparedRetire = preparedWindow.map(p =>
+    state === sIdle && p.valid(p.head) && !p.lookup(p.head) &&
+      p.received(p.head).andR && resultSpace).getOrElse(false.B)
+
   if (overlapPrepared) { when(io.result.fire) { resultValid.get := false.B } }
   private def completeResult(value: UInt): Unit = {
     resultReg := value
@@ -208,8 +252,12 @@ class TextureUnit(
 
   if (overlapPrepared) {
     val finishingBase = state === sBlend && !secondLevel && lodFracReg === 0.U
-    io.sample.ready := resultSpace && (state === sIdle ||
-      (finishingBase && io.prepared.get.valid))
+    val p = preparedWindow.get
+    val room = !p.valid.asUInt.andR || preparedRetire
+    val canPrepare = room && (state === sIdle || (finishingBase && resultSpace)) &&
+      (!cacheInvalidateRequested || preparedFetched)
+    io.sample.ready := Mux(io.prepared.get.valid, canPrepare,
+      preparedEmpty && resultSpace && state === sIdle)
   } else {
     io.sample.ready := state === sIdle || (state === sDone && io.result.ready)
   }
@@ -237,6 +285,30 @@ class TextureUnit(
 
   private val biasedXReg = RegInit(0.U(38.W))
   private val biasedYReg = RegInit(0.U(38.W))
+  // Capture parallel partial products at admission or the prior mip-walk
+  // edge, then combine at sLevel. Preserve the original fallback latency.
+  private val axisProducts = if (overlapPrepared)
+    Some(RegInit(VecInit(Seq.fill(4)(0.U(30.W))))) else None
+  private val productCapture = WireDefault(false.B)
+  // Capture can occur either at a new handshake or during sLevel's mip
+  // walk. Select operands from registered state, so live input-valid and
+  // backpressure do not precede a multiplier. The capture enable is separate.
+  private val productU = Mux(state === sLevel, uReg, io.sample.bits.u)
+  private val productV = Mux(state === sLevel, vReg, io.sample.bits.v)
+  private val productW = Mux(state === sLevel,
+    Mux(levelW === 1.U, 1.U, levelW >> 1), io.texWidth)
+  private val productH = Mux(state === sLevel,
+    Mux(levelH === 1.U, 1.U, levelH >> 1), io.texHeight)
+  if (overlapPrepared) {
+    when(productCapture) {
+      assert(state === sLevel || io.sample.fire,
+        "partial-product capture must belong to a mip walk or new sample")
+      axisProducts.get(0) := productU(15, 0) * productW
+      axisProducts.get(1) := productU(31, 16) * productW
+      axisProducts.get(2) := productV(15, 0) * productH
+      axisProducts.get(3) := productV(31, 16) * productH
+    }
+  }
   private val inRangeXReg = RegInit(0.U(22.W))
   private val inRangeYReg = RegInit(0.U(22.W))
 
@@ -278,9 +350,11 @@ class TextureUnit(
     if (i == 0) true.B
     else !VecInit((0 until i).map(j => tapAddrs(j) === tapAddrs(i))).asUInt.orR
   })
+  private val lookupAddresses = preparedWindow.map(p =>
+    Mux(preparedLookupActive, p.addresses(preparedLookupIndex), tapAddrs)).getOrElse(tapAddrs)
   private val cachedTapHits = if (wordCacheEntries > 0) Some(VecInit(
     (0 until 4).map(tap => VecInit((0 until wordCacheEntries).map(entry =>
-      cacheValid.get(entry) && cacheTags.get(entry) === tapAddrs(tap))).asUInt))) else None
+      cacheValid.get(entry) && cacheTags.get(entry) === lookupAddresses(tap))).asUInt))) else None
   private val cachedTapReady = cachedTapHits.map(hits =>
     VecInit(hits.map(_.orR)).asUInt).getOrElse(0.U(4.W))
   private val issuedForSelection = Mux(cacheLookupPending.getOrElse(false.B),
@@ -288,11 +362,11 @@ class TextureUnit(
   private val unissued = ~issuedForSelection & tapLeaders.asUInt
   private val hasUnissued = unissued.orR
   private val issueIdx = PriorityEncoder(unissued)
-  io.mem.req.valid := state === sFetch && hasUnissued
+  io.mem.req.valid := (state === sFetch && hasUnissued) || preparedRequestValid
   io.mem.req.bits.write := false.B
-  io.mem.req.bits.addr := tapAddrs(issueIdx)
+  io.mem.req.bits.addr := Mux(preparedActive, preparedRequestAddress, tapAddrs(issueIdx))
   io.mem.req.bits.data := 0.U
-  io.mem.resp.ready := state === sFetch && !cacheLookupPending.getOrElse(false.B)
+  io.mem.resp.ready := (state === sFetch && !cacheLookupPending.getOrElse(false.B)) || preparedActive
 
   // A response belongs to its issued leader, then fills every as-yet-empty
   // logical tap at that address. This preserves all four blend inputs without
@@ -309,12 +383,96 @@ class TextureUnit(
   private val receivedAfterResponse =
     tapReceived | responseFillBits
 
+  if (overlapPrepared) {
+    val p = preparedWindow.get
+    when(p.valid.asUInt.orR) {
+      assert(state === sIdle, "prepared contexts must own the idle generic datapath")
+    }
+    val afterLookupIssued = VecInit((0 until 2).map(g =>
+      p.issued(g) | Mux(preparedLookupActive && preparedLookupIndex === g.U,
+        cachedTapReady, 0.U(4.W))))
+    val afterLookupReceived = VecInit((0 until 2).map(g =>
+      p.received(g) | Mux(preparedLookupActive && preparedLookupIndex === g.U,
+        cachedTapReady, 0.U(4.W))))
+    val outstanding = PopCount(Cat((0 until 2).map(g =>
+      Mux(p.valid(g), p.issued(g) & ~p.received(g), 0.U(4.W)))))
+    val matches = VecInit((0 until 2).map(g => VecInit((0 until 4).map(t =>
+      p.valid(g) && p.issued(g)(t) && !p.received(g)(t) &&
+        p.addresses(g)(t) === io.mem.resp.bits.addr)).asUInt))
+    preparedResponseMatch := matches.asUInt.orR
+    val response = preparedActive && responseAccepted && preparedResponseMatch
+    val candidates = VecInit((0 until 2).map(g => VecInit((0 until 4).map { t =>
+      val alreadyPending = VecInit((0 until 2).flatMap(other => (0 until 4).map { j =>
+        p.valid(other) && p.issued(other)(j) && !p.received(other)(j) &&
+          p.addresses(other)(j) === p.addresses(g)(t)
+      })).asUInt.orR
+      // Keep the cache tag CAM off the physical address-selection path.
+      p.valid(g) && !p.lookup(g) &&
+        !p.issued(g)(t) && !p.received(g)(t) && !alreadyPending
+    }).asUInt))
+    val group = Mux(candidates(p.head).orR, p.head, ~p.head)
+    val tap = PriorityEncoder(candidates(group))
+    preparedRequestValid := preparedActive && candidates.asUInt.orR &&
+      (outstanding < TextureUnit.maxOutstandingReads.U || response)
+    preparedRequestAddress := p.addresses(group)(tap)
+    val request = preparedActive && io.mem.req.fire
+
+    when(preparedActive) {
+      assert(outstanding <= TextureUnit.maxOutstandingReads.U,
+        "prepared fetch window exceeded the physical read budget")
+      when(io.mem.resp.fire) {
+        assert(!io.mem.resp.bits.write && preparedResponseMatch,
+          "prepared texture response must match an issued pending address")
+      }
+      for (g <- 0 until 2) {
+        when(p.valid(g)) {
+          p.issued(g) := afterLookupIssued(g) |
+            Mux(request && group === g.U, UIntToOH(tap, 4), 0.U(4.W))
+          val fills = VecInit((0 until 4).map(t =>
+            !afterLookupReceived(g)(t) && p.addresses(g)(t) === io.mem.resp.bits.addr)).asUInt
+          p.received(g) := afterLookupReceived(g) | Mux(response, fills, 0.U(4.W))
+          for (t <- 0 until 4) {
+            if (wordCacheEntries > 0) {
+              when(preparedLookupActive && preparedLookupIndex === g.U && cachedTapHits.get(t).orR) {
+                p.words(g)(t) := PixelFormat.decode(
+                  cacheWords.get(PriorityEncoder(cachedTapHits.get(t))), p.format(g))
+              }
+            }
+            when(response && fills(t)) {
+              p.words(g)(t) := PixelFormat.decode(io.mem.resp.bits.data, p.format(g))
+            }
+          }
+        }
+      }
+      when(preparedLookupActive) { p.lookup(preparedLookupIndex) := false.B }
+    }
+    when(preparedRetire) {
+      p.valid(p.head) := false.B
+      p.head := ~p.head
+    }
+    // Admission is last so a full window can retire and reuse its old head
+    // on one edge. The blend still reads the predecessor's registered data.
+    when(io.sample.fire && io.prepared.get.valid) {
+      p.valid(p.tail) := true.B
+      p.addresses(p.tail) := io.prepared.get.bits.addresses
+      p.weights(p.tail) := io.prepared.get.bits.weights
+      p.format(p.tail) := io.texFormat
+      p.issued(p.tail) := 0.U
+      p.received(p.tail) := 0.U
+      p.lookup(p.tail) := cacheValid.map(_.orR).getOrElse(false.B) && !cacheInvalidateNow
+      p.tail := ~p.tail
+      assert(io.sample.bits.mipLevel === 0.U && io.sample.bits.lodFrac === 0.U &&
+        io.texMaxLevel === 0.U, "prepared samples require fixed base-level filtering")
+    }
+  }
+
+
   if (wordCacheEntries > 0) {
-    when(io.invalidateCache.get) {
+    when(cacheInvalidateNow) {
       cacheValid.get := 0.U
       cacheReplace.get := 0.U
       cacheLookupPending.get := false.B
-    }.elsewhen(responseAccepted && responseMatchBits.orR) {
+    }.elsewhen(responseAccepted && ((state === sFetch && responseMatchBits.orR) || preparedResponseMatch)) {
       cacheValid.get := cacheValid.get | UIntToOH(cacheReplace.get, wordCacheEntries)
       cacheTags.get(cacheReplace.get) := io.mem.resp.bits.addr
       cacheWords.get(cacheReplace.get) := io.mem.resp.bits.data
@@ -331,9 +489,17 @@ class TextureUnit(
   // Keeping only 16 bits would turn exact-texel samples into transparent RGB.
   private val wReg = Reg(Vec(4, UInt(17.W)))
 
+  // Valid prepared contexts only coexist with the idle generic FSM. Decode
+  // their datapath from registered validity, keeping FSM state off the shared
+  // blend multiplier inputs.
+  private val blendPrepared = preparedWindow.map(p => p.valid(p.head)).getOrElse(false.B)
+  private val blendWords = preparedWindow.map(p =>
+    Mux(blendPrepared, p.words(p.head), tapWords)).getOrElse(tapWords)
+  private val blendWeights = preparedWindow.map(p =>
+    Mux(blendPrepared, p.weights(p.head), wReg)).getOrElse(wReg)
   private def blend(sel: UInt => UInt): UInt = {
-    val acc = sel(tapWords(0)) * wReg(0) + sel(tapWords(1)) * wReg(1) +
-      sel(tapWords(2)) * wReg(2) + sel(tapWords(3)) * wReg(3)
+    val acc = sel(blendWords(0)) * blendWeights(0) + sel(blendWords(1)) * blendWeights(1) +
+      sel(blendWords(2)) * blendWeights(2) + sel(blendWords(3)) * blendWeights(3)
     acc(23, 16)
   }
 
@@ -461,6 +627,9 @@ class TextureUnit(
       "texture dimensions must be non-zero")
     uReg := io.sample.bits.u
     vReg := io.sample.bits.v
+    if (overlapPrepared) {
+      productCapture := true.B
+    }
     levelBase := io.texBase
     levelW := io.texWidth
     levelH := io.texHeight
@@ -478,7 +647,7 @@ class TextureUnit(
       io.sample.bits.lodFrac, 0.U)
     secondLevel := false.B
     state := sLevel
-    if (allowPrepared) {
+    if (allowPrepared && !overlapPrepared) {
       when(io.prepared.get.valid) {
         assert(io.sample.bits.mipLevel === 0.U && io.sample.bits.lodFrac === 0.U &&
           io.texMaxLevel === 0.U, "prepared samples require fixed base-level filtering")
@@ -491,7 +660,7 @@ class TextureUnit(
 
   switch(state) {
     is(sIdle) {
-      when(io.sample.fire) { acceptSample() }
+      when(io.sample.fire && (!io.prepared.map(_.valid).getOrElse(false.B) || (!overlapPrepared).B)) { acceptSample() }
     }
     is(sLevel) {
       when(levelSteps === 0.U) {
@@ -501,11 +670,18 @@ class TextureUnit(
           // All four taps are the same for every coordinate and wrap mode.
           beginTapFetch(Seq.fill(4)(levelBase))
         }.otherwise {
-          biasedXReg := axisBias(uReg, levelW)
-          biasedYReg := axisBias(vReg, levelH)
+          if (overlapPrepared) {
+            val products = axisProducts.get
+            biasedXReg := ((products(1) << 8) + products(0)(29, 8) - 128.U)(37, 0)
+            biasedYReg := ((products(3) << 8) + products(2)(29, 8) - 128.U)(37, 0)
+          } else {
+            biasedXReg := axisBias(uReg, levelW)
+            biasedYReg := axisBias(vReg, levelH)
+          }
           state := sWrap
         }
       }.otherwise {
+        if (overlapPrepared) { productCapture := true.B }
         levelBase := levelBase + ((levelW * levelH) << 2)
         levelW := Mux(levelW === 1.U, 1.U, levelW >> 1)
         levelH := Mux(levelH === 1.U, 1.U, levelH >> 1)
@@ -559,7 +735,7 @@ class TextureUnit(
     is(sBlend) {
       when(resultSpace) {
         finishBilinear(blended)
-        if (overlapPrepared) { when(io.sample.fire) { acceptSample() } }
+        if (overlapPrepared) { when(io.sample.fire && !io.prepared.get.valid) { acceptSample() } }
       }
     }
     is(sMix) {
@@ -572,10 +748,13 @@ class TextureUnit(
       }
     }
   }
+  if (overlapPrepared) {
+    when(preparedRetire) { completeResult(blended) }
+  }
 }
 
 /** Physical memory-read concurrency, independent of the shader vector length.
-  * Bilinear samples have four taps; fetch groups remain sequential.
+  * Bilinear samples have four taps; the two-context prepared window shares this read budget.
   * A prepared successor can fetch while its predecessor holds a result.
   * Update this contract together with the owner/word credits if that changes.
   */

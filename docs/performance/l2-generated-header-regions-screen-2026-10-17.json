@@ -1,6 +1,6 @@
 {
   "recorded_at": 1792232930.836894,
-  "status": "private_all_object_rebuild_in_progress",
+  "status": "opt_in_implementation_committed_and_native_desktop_qualified",
   "source": {
     "path": ".artifacts/shared-cu/l2-header-regions-ctor-screen/run.py",
     "sha256": "1b7eb90a011ed79a58ea9e8468e0e51651ed7ef4d39c055152dd0e867a9f353b"
@@ -89,23 +89,126 @@
     "scope": "Sequential fresh compilations with cache disabled, same compiler/O2/qualified profile. Sampler validation overlaps; diagnostic only, no isolated or complete-build speedup claim."
   },
   "all_object_rebuild": {
-    "state_path": ".artifacts/shared-cu/l2-header-regions-native/build-state.json",
-    "status_at_recording": "compile-all37",
+    "evidence": {
+      "path": ".artifacts/shared-cu/l2-header-regions-native/build-state.json",
+      "sha256": "cef06b186ecb46d4823e16d97a5b001f8930c548010c0aad660a625995b40cb8"
+    },
     "objects": 37,
-    "all_generated_and_CAPI_sources_byte_identical": true
+    "seconds": 636.1389577500522,
+    "same_all37_evaluator_CAPI_sources": true,
+    "scope": "Observed build duration; concurrent validation and earlier cache prewarming differ, so do not infer a controlled whole-build speedup."
   },
   "native9": {
-    "state_path": ".artifacts/shared-cu/l2-header-regions-native/native9-state.json",
-    "qualification_pending": true
+    "evidence": {
+      "path": ".artifacts/shared-cu/l2-header-regions-native/native9-state.json",
+      "sha256": "c234b6005c5b6f9790799afa4d7b3dc3192ade2e773c7d866c0e254cb623ea9d"
+    },
+    "cases": 9,
+    "complete_RAM_and_all12_counters_exact": true
   },
-  "runtime_qualified": false,
+  "runtime_qualified": true,
   "production_promoted": false,
-  "FlashSim_sources_changed": false,
+  "FlashSim_sources_changed": true,
   "installed_QEMU_changed": false,
   "remaining": [
-    "All37objects compiled against exactly the same new class definition; no mixed headers.",
-    "Exact native complete RAM and counters, native formats/controls and strict traces.",
-    "Balanced host timings and actual desktop before any runtime promotion.",
-    "A quiet repeated build comparison before claiming isolated or complete-build speedup."
-  ]
+    "Keep the compiler flag opt-in; no runtime gain is established.",
+    "A quiet repeated build comparison is required before an isolated or complete-build speedup claim."
+  ],
+  "updated_at": 1792238343.234592,
+  "implementation_commit": "53fadf2d87a9233037b1ebdbfc0eabbc29e1f64c",
+  "compiler_option": "FLASHSIM_DATA_REGION_FIELDS=1024",
+  "default_enabled": false,
+  "implementation": {
+    "path": ".artifacts/shared-cu/data-regions-implementation/state.json",
+    "sha256": "e2e661244cbc2df822f24a511e4c747a32513a80dce9c5ffbd2359643be7a21f"
+  },
+  "functional": {
+    "evidence": {
+      "path": ".artifacts/shared-cu/l2-header-regions-native/functional-state.json",
+      "sha256": "d9bb635f8288ab5252d28c1cc62cfa8b88d24608a62c68e47a3c70775b57124e"
+    },
+    "formats": 40,
+    "controls": 18,
+    "current64_and_full640_strict_all_counters_exact": true
+  },
+  "host": {
+    "evidence": {
+      "path": ".artifacts/shared-cu/l2-header-regions-native/host-state.json",
+      "sha256": "ed953ed49fc0fdaa5c57bd3d826f836e212779b2f3605c116422e624fe33344b"
+    },
+    "summary": {
+      "solid64": {
+        "medians": {
+          "baseline": 0.511240875,
+          "candidate": 0.5164087505
+        },
+        "time_saved_percent": -1.0108494356989794,
+        "ranges": {
+          "baseline": [
+            0.506599208,
+            0.514235166
+          ],
+          "candidate": [
+            0.513435583,
+            0.527155875
+          ]
+        },
+        "samples_per_variant": {
+          "baseline": 4,
+          "candidate": 4
+        }
+      },
+      "spatial64": {
+        "medians": {
+          "baseline": 0.6318478750000001,
+          "candidate": 0.6330048955
+        },
+        "time_saved_percent": -0.18311694092505437,
+        "ranges": {
+          "baseline": [
+            0.62737975,
+            0.635711875
+          ],
+          "candidate": [
+            0.631209166,
+            0.636688917
+          ]
+        },
+        "samples_per_variant": {
+          "baseline": 4,
+          "candidate": 4
+        }
+      },
+      "spatial256": {
+        "medians": {
+          "baseline": 9.837105979,
+          "candidate": 9.7761272295
+        },
+        "time_saved_percent": 0.6198850518656207,
+        "ranges": {
+          "baseline": [
+            9.747191625,
+            9.896820333
+          ],
+          "candidate": [
+            9.72306075,
+            9.820092375
+          ]
+        },
+        "samples_per_variant": {
+          "baseline": 4,
+          "candidate": 4
+        }
+      }
+    },
+    "runtime_speedup_proven": false
+  },
+  "desktop": {
+    "path": ".artifacts/shared-cu/l2-header-regions-native/desktop-state.json",
+    "sha256": "33093367042306164967869f8b214e31181adb6434edf0abe8b7fc64430a1f32"
+  },
+  "visual_review": {
+    "path": ".artifacts/shared-cu/l2-header-regions-native/visual-review.json",
+    "sha256": "9f4e885729a8587c4a29b5a931ac3e08fa58c740aed542a6ff11d8764cbfd18c"
+  }
 }

@@ -1,6 +1,6 @@
 {
   "recorded_at": 1792227215.597932,
-  "status": "Private state-selected precompute revision passes36source tests, unchanged hardware timing and exact1CU/4CU scenes. Native host/desktop qualification remains.",
+  "status": "Final state-selected sampler revision fully qualified and integrated for lower useful task cycles. Host time near-flat; no host speed gain claim.",
   "configuration": {
     "compute_units": [
       1,
@@ -157,12 +157,7 @@
     },
     "decision": "Keep private: unchanged hardware timing still fails despite matching scene improvements."
   },
-  "remaining_gates": [
-    "Unchanged1GHz25%IO actual native sampler cone timing. Baseline reuse allowed only for exact byte-identical module inputs, preserving original evidence identity.",
-    "Independent pixels/depth/canaries and task-cycle improvement on matched1CU/4CU scenes.",
-    "Actual native model and direct qualified O2/own-profile host comparison; cycle improvement is not a simulator-speed claim.",
-    "Actual current Debian/GTK desktop, strict own traces and manual image review."
-  ],
+  "remaining_gates": [],
   "timing_revision": {
     "source": {
       "path": ".artifacts/shared-cu/prepared-fetch-window-timing/TextureUnit.scala",
@@ -313,16 +308,23 @@
         }
       ]
     },
-    "production_promoted": false,
-    "remaining": [
-      "Native/O1 controls, own-profile O2 host measurements, complete RAM and clocks/DMA comparisons.",
-      "Actual current Debian desktop, strict current traces, scanout and manual image review."
-    ],
+    "production_promoted": true,
+    "remaining": [],
     "CU_scaling": {
       "baseline": 2.9455109397267165,
       "candidate": 2.796213038215459,
       "scope": "Matched1CU/4CU RTL scene cycles. Absolute cycles improve for both, but1CU benefits more; this is not an improvement in CU scaling."
     }
   },
-  "updated_at": 1792232930.8362381
+  "updated_at": 1792238343.2336059,
+  "final_qualification": {
+    "path": "docs/performance/prepared-fetch-window-main-qualification-2026-10-17.json",
+    "sha256": "ad4270ee4a2c6e3bf2cbfea5b4677f742d988fa0a70e2fda1591dba0a430af60"
+  },
+  "historical_remaining_gates": [
+    "Unchanged1GHz25%IO actual native sampler cone timing. Baseline reuse allowed only for exact byte-identical module inputs, preserving original evidence identity.",
+    "Independent pixels/depth/canaries and task-cycle improvement on matched1CU/4CU scenes.",
+    "Actual native model and direct qualified O2/own-profile host comparison; cycle improvement is not a simulator-speed claim.",
+    "Actual current Debian/GTK desktop, strict own traces and manual image review."
+  ]
 }

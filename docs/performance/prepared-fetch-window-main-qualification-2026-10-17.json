@@ -1,0 +1,1315 @@
+{
+  "recorded_at": 1792238343.174487,
+  "status": "qualified_and_integrated_cycle_optimization",
+  "main_sources": [
+    {
+      "path": "src/main/scala/opengpu/graphics/TextureUnit.scala",
+      "sha256": "bd1d5bcd25fa9c672a8e2c016a0f6eeb113d7dac5795c9320b154d17a2ae894a"
+    }
+  ],
+  "regressions": [
+    {
+      "path": "src/test/scala/opengpu/graphics/PreparedFetchWindowSpec.scala",
+      "sha256": "5e791aac92d5a2f8b79132ea219064ca0cdd0b247028442ae804ee495a33dc7c"
+    },
+    {
+      "path": "src/test/scala/opengpu/graphics/PreparedFetchWindowEpochSpec.scala",
+      "sha256": "e4a67f6932e39c095d16dce7e88bccc5197b45bfba514727f9f46a63e93329dc"
+    },
+    {
+      "path": "src/test/scala/opengpu/graphics/PartialProductBoundarySpec.scala",
+      "sha256": "0ceb8f31fac6a4cf7d5f7a0e4a28c42be92885bde587f3ba7982cbcced9d9edb"
+    }
+  ],
+  "configuration": {
+    "compute_units": 4,
+    "lanes": 16,
+    "warps": 8,
+    "framebuffer": [
+      640,
+      480
+    ],
+    "physical_read_credits_per_CU": 4,
+    "prepared_contexts_per_CU": 2,
+    "blend_datapaths_per_CU": 1,
+    "context_count_independent_of_VLEN": true
+  },
+  "changes": [
+    "Two prepared contexts share the existing word cache, four physical read credits and blend datapath.",
+    "Global in-flight address coalescing within the sampler, ordered retirement, stable requests under stalls.",
+    "Drain old lookups before cache invalidation/new epoch admission; preserve one-cycle invalidation pulses.",
+    "Register cache lookup before physical request selection.",
+    "Compute parallel16x14 coordinate partials at admission or the previous mip-walk edge, retaining the original generic startup latency. Select operands using registered FSM state."
+  ],
+  "evidence": {
+    "build-state.json": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/build-state.json",
+      "sha256": "52f988b0b7db5f22a0585634ebf4cef15bb0d8d75d19dd8bb01de22f24f084ec"
+    },
+    "native-functional-state.json": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/native-functional-state.json",
+      "sha256": "d5c875864f63ca32d42fee0a3db04946345ce33298a37e4a42ad130ff8f39c72"
+    },
+    "qualification-state.json": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/qualification-state.json",
+      "sha256": "6242bf0dcb0818b6452eae04403cd429c316978269b1264c6cd2cc8d07f4a416"
+    },
+    "native9-optimized-state.json": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/native9-optimized-state.json",
+      "sha256": "c97c680b70d5a429faee7cd47cbb5c300f983bfe7d4d4c9dd9da91cb0d7e1c0e"
+    },
+    "optimized-host-state.json": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/optimized-host-state.json",
+      "sha256": "60770f55f029e2f106bf4927e23d7c757447accdd3a60f5773c0177299bc863b"
+    },
+    "current-desktop-state.json": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/current-desktop-state.json",
+      "sha256": "9b2f99cbf886e778e0619fdd7ff6e8941ff6cc41b970bd75faf566a67e91aad1"
+    },
+    "full640-visual-review.json": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/full640-visual-review.json",
+      "sha256": "ebcc4d57dc4d1f2c55310ea6425c0f352225aaaa8ee115a9a3beb491027499b9"
+    },
+    "optimized-layout-state.json": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/optimized-layout-state.json",
+      "sha256": "424fbe8b4148e15890333437108773174c82df581dd6aa99b0e2abea2b325ded"
+    },
+    "main-integration/state.json": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/main-integration/state.json",
+      "sha256": "301e968d2c8fcd72f81c231f5debdcbbfdea71518f00395a1df6db8f7fed8a31"
+    }
+  },
+  "source_gates": {
+    "path": ".artifacts/shared-cu/prepared-fetch-window-state-products/state.json",
+    "sha256": "a3f8e04cb97b8c665bc254a7da500a131c374191e97936fd4e3385871e76f704"
+  },
+  "hardware": {
+    "evidence": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products/native-component-timing-state.json",
+      "sha256": "76c6b6c3d7660338b5cc90660aeefe11d925bd27ab9aa5285b37860d1a3699df"
+    },
+    "qualification": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        1.309,
+        123.197
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "265d9dcc9b5f36d04d7b1c746964b4e40240f4da1b6596451de374ac5986910a"
+    },
+    "clock_GHz": 1,
+    "IO_budget_percent": 25,
+    "narrow_core_margin": true,
+    "scope": "Actual emitted native TexSampleUnit cone synthesis; not whole-chip place/route closure."
+  },
+  "scenes": {
+    "evidence": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products/scene-state.json",
+      "sha256": "4b73984bf3112183db268d6074599066557ebe41e0ac600db3fa3935f5cceace"
+    },
+    "results": [
+      {
+        "cus": 4,
+        "baseline_cycles": 11929,
+        "candidate_cycles": 11566,
+        "cycle_reduction_percent": 3.0430044429541447,
+        "pixels_depth_metadata_exact": true,
+        "omitted_bytes_preserved": true
+      },
+      {
+        "cus": 1,
+        "baseline_cycles": 35137,
+        "candidate_cycles": 32341,
+        "cycle_reduction_percent": 7.95742379827532,
+        "pixels_depth_metadata_exact": true,
+        "omitted_bytes_preserved": true
+      }
+    ],
+    "scaling_baseline": 2.9455109397267165,
+    "scaling_candidate": 2.796213038215459,
+    "scaling_improved": false
+  },
+  "native9": [
+    {
+      "tag": "solid-uniform-alpha0-fast",
+      "task_cycle_reduction_percent": 0.0,
+      "complete_RAM_equal": true,
+      "result": {
+        "passed": true,
+        "ticks": 8788,
+        "explicit_ticks": 0,
+        "seconds": 0.503731417,
+        "commits": 1271063,
+        "holds": 3452276,
+        "holds_wrote": 1279678,
+        "reads": 903,
+        "writes": 5824,
+        "read_bytes": 57792,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "tag": "solid-uniform-alpha1-fast",
+      "task_cycle_reduction_percent": 0.0,
+      "complete_RAM_equal": true,
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.505941792,
+        "commits": 1385952,
+        "holds": 3568036,
+        "holds_wrote": 1394987,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "tag": "solid-gradient-alpha0-fast",
+      "task_cycle_reduction_percent": 0.0,
+      "complete_RAM_equal": true,
+      "result": {
+        "passed": true,
+        "ticks": 8788,
+        "explicit_ticks": 0,
+        "seconds": 0.500597334,
+        "commits": 1269079,
+        "holds": 3452263,
+        "holds_wrote": 1277694,
+        "reads": 903,
+        "writes": 5824,
+        "read_bytes": 57792,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "tag": "solid-gradient-alpha1-fast",
+      "task_cycle_reduction_percent": 0.0,
+      "complete_RAM_equal": true,
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.504853209,
+        "commits": 1400408,
+        "holds": 3569266,
+        "holds_wrote": 1409443,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "tag": "spatial-uniform-alpha0-fast",
+      "task_cycle_reduction_percent": 7.038314533420342,
+      "complete_RAM_equal": true,
+      "result": {
+        "passed": true,
+        "ticks": 9972,
+        "explicit_ticks": 0,
+        "seconds": 0.601176791,
+        "commits": 1423650,
+        "holds": 3978705,
+        "holds_wrote": 1432430,
+        "reads": 1110,
+        "writes": 5790,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "tag": "spatial-uniform-alpha1-fast",
+      "task_cycle_reduction_percent": 5.773138740070205,
+      "complete_RAM_equal": true,
+      "result": {
+        "passed": true,
+        "ticks": 10201,
+        "explicit_ticks": 0,
+        "seconds": 0.623346708,
+        "commits": 1476167,
+        "holds": 4084456,
+        "holds_wrote": 1485367,
+        "reads": 1103,
+        "writes": 5764,
+        "read_bytes": 70592,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "tag": "spatial-gradient-alpha0-fast",
+      "task_cycle_reduction_percent": 7.038314533420342,
+      "complete_RAM_equal": true,
+      "result": {
+        "passed": true,
+        "ticks": 9972,
+        "explicit_ticks": 0,
+        "seconds": 0.613810833,
+        "commits": 1521151,
+        "holds": 4067444,
+        "holds_wrote": 1529931,
+        "reads": 1110,
+        "writes": 5790,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "tag": "spatial-gradient-alpha1-fast",
+      "task_cycle_reduction_percent": 5.773138740070205,
+      "complete_RAM_equal": true,
+      "result": {
+        "passed": true,
+        "ticks": 10201,
+        "explicit_ticks": 0,
+        "seconds": 0.634863791,
+        "commits": 1625471,
+        "holds": 4183498,
+        "holds_wrote": 1634671,
+        "reads": 1103,
+        "writes": 5764,
+        "read_bytes": 70592,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    },
+    {
+      "tag": "large256-gradient-alpha1-fast",
+      "task_cycle_reduction_percent": 8.048288093895328,
+      "complete_RAM_equal": true,
+      "result": {
+        "passed": true,
+        "ticks": 112502,
+        "explicit_ticks": 0,
+        "seconds": 9.7168365,
+        "commits": 24490732,
+        "holds": 63028966,
+        "holds_wrote": 24629109,
+        "reads": 15644,
+        "writes": 88225,
+        "read_bytes": 1001216,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      }
+    }
+  ],
+  "profile": {
+    "manifest": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/profile-inputs.json",
+      "sha256": "3c7fe45d55fd9e9565f3dfde2d9417ee11d4085f438cdb7c6073ae4d76e2e5c0"
+    },
+    "merged": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/qualified.profdata",
+      "sha256": "7599d2cf0616346e38807ea72b2e76dc2bfb9057e8786844b20af6bebab4275c"
+    },
+    "groups": {
+      "native": 40,
+      "controls": 12,
+      "guest": 19,
+      "trace": 1
+    },
+    "inputs": 72,
+    "optimized_manifest": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/optimized/manifest.json",
+      "sha256": "697366e0963f79c80a3d0a8547d26a39fa372a4ed7cc7f89b9f4cccb14f6120d"
+    },
+    "optimized_archive": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/optimized/libarti_rtl_model.a",
+      "sha256": "eb75816bdb19c5cb7b29be17d19f1910a1c14bff18400aac2afcd810495d53a6"
+    },
+    "layout_certificate": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products-native/optimized-layout-state.json",
+      "sha256": "424fbe8b4148e15890333437108773174c82df581dd6aa99b0e2abea2b325ded"
+    }
+  },
+  "host": {
+    "summary": {
+      "solid64": {
+        "medians": {
+          "flat": 0.5095764165000001,
+          "grouped": 0.5087116875,
+          "sampler": 0.5083172915
+        },
+        "ranges": {
+          "flat": [
+            0.505597625,
+            0.514433333
+          ],
+          "grouped": [
+            0.505853208,
+            0.511118583
+          ],
+          "sampler": [
+            0.504841625,
+            0.511814292
+          ]
+        },
+        "samples_per_variant": {
+          "flat": 4,
+          "grouped": 4,
+          "sampler": 4
+        },
+        "sampler_time_saved_vs_flat_percent": 0.24709247901389952,
+        "sampler_time_saved_vs_grouped_percent": 0.07752839372300313,
+        "grouped_time_saved_vs_flat_percent": 0.16969564760069833
+      },
+      "spatial64": {
+        "medians": {
+          "flat": 0.6269910415,
+          "grouped": 0.6211885619999999,
+          "sampler": 0.6256875420000001
+        },
+        "ranges": {
+          "flat": [
+            0.616672708,
+            0.63395225
+          ],
+          "grouped": [
+            0.615418834,
+            0.622390041
+          ],
+          "sampler": [
+            0.619853583,
+            0.630354334
+          ]
+        },
+        "samples_per_variant": {
+          "flat": 4,
+          "grouped": 4,
+          "sampler": 4
+        },
+        "sampler_time_saved_vs_flat_percent": 0.20789762751336482,
+        "sampler_time_saved_vs_grouped_percent": -0.7242535157947927,
+        "grouped_time_saved_vs_flat_percent": 0.9254485496504539
+      },
+      "spatial256": {
+        "medians": {
+          "flat": 9.4991603955,
+          "grouped": 9.511469271,
+          "sampler": 9.593120895999999
+        },
+        "ranges": {
+          "flat": [
+            9.386210166,
+            9.608900166
+          ],
+          "grouped": [
+            9.460838667,
+            9.655687833
+          ],
+          "sampler": [
+            9.489568875,
+            9.632331958
+          ]
+        },
+        "samples_per_variant": {
+          "flat": 4,
+          "grouped": 4,
+          "sampler": 4
+        },
+        "sampler_time_saved_vs_flat_percent": -0.9891453200907119,
+        "sampler_time_saved_vs_grouped_percent": -0.8584543846338333,
+        "grouped_time_saved_vs_flat_percent": -0.12957856260464862
+      }
+    },
+    "samples": [
+      {
+        "workload": "solid64",
+        "variant": "flat",
+        "index": 0,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.514433333,
+          "commits": 1385769,
+          "holds": 3553952,
+          "holds_wrote": 1394804,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "solid64",
+        "variant": "grouped",
+        "index": 1,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.511118583,
+          "commits": 1385769,
+          "holds": 3553952,
+          "holds_wrote": 1394804,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "solid64",
+        "variant": "sampler",
+        "index": 2,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.506964917,
+          "commits": 1385952,
+          "holds": 3568036,
+          "holds_wrote": 1394987,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "solid64",
+        "variant": "sampler",
+        "index": 3,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.504841625,
+          "commits": 1385952,
+          "holds": 3568036,
+          "holds_wrote": 1394987,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "solid64",
+        "variant": "grouped",
+        "index": 4,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.505853208,
+          "commits": 1385769,
+          "holds": 3553952,
+          "holds_wrote": 1394804,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "solid64",
+        "variant": "flat",
+        "index": 5,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.510897625,
+          "commits": 1385769,
+          "holds": 3553952,
+          "holds_wrote": 1394804,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "solid64",
+        "variant": "grouped",
+        "index": 6,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.508600375,
+          "commits": 1385769,
+          "holds": 3553952,
+          "holds_wrote": 1394804,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "solid64",
+        "variant": "sampler",
+        "index": 7,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.509669666,
+          "commits": 1385952,
+          "holds": 3568036,
+          "holds_wrote": 1394987,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "solid64",
+        "variant": "flat",
+        "index": 8,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.505597625,
+          "commits": 1385769,
+          "holds": 3553952,
+          "holds_wrote": 1394804,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "solid64",
+        "variant": "flat",
+        "index": 9,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.508255208,
+          "commits": 1385769,
+          "holds": 3553952,
+          "holds_wrote": 1394804,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "solid64",
+        "variant": "sampler",
+        "index": 10,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.511814292,
+          "commits": 1385952,
+          "holds": 3568036,
+          "holds_wrote": 1394987,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "solid64",
+        "variant": "grouped",
+        "index": 11,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 0.508823,
+          "commits": 1385769,
+          "holds": 3553952,
+          "holds_wrote": 1394804,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "flat",
+        "index": 0,
+        "result": {
+          "passed": true,
+          "ticks": 10826,
+          "explicit_ticks": 0,
+          "seconds": 0.630251583,
+          "commits": 1619935,
+          "holds": 4228034,
+          "holds_wrote": 1629135,
+          "reads": 1110,
+          "writes": 5778,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "grouped",
+        "index": 1,
+        "result": {
+          "passed": true,
+          "ticks": 10826,
+          "explicit_ticks": 0,
+          "seconds": 0.622390041,
+          "commits": 1619935,
+          "holds": 4228034,
+          "holds_wrote": 1629135,
+          "reads": 1110,
+          "writes": 5778,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "sampler",
+        "index": 2,
+        "result": {
+          "passed": true,
+          "ticks": 10201,
+          "explicit_ticks": 0,
+          "seconds": 0.619853583,
+          "commits": 1625471,
+          "holds": 4183498,
+          "holds_wrote": 1634671,
+          "reads": 1103,
+          "writes": 5764,
+          "read_bytes": 70592,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "sampler",
+        "index": 3,
+        "result": {
+          "passed": true,
+          "ticks": 10201,
+          "explicit_ticks": 0,
+          "seconds": 0.626654,
+          "commits": 1625471,
+          "holds": 4183498,
+          "holds_wrote": 1634671,
+          "reads": 1103,
+          "writes": 5764,
+          "read_bytes": 70592,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "grouped",
+        "index": 4,
+        "result": {
+          "passed": true,
+          "ticks": 10826,
+          "explicit_ticks": 0,
+          "seconds": 0.622037291,
+          "commits": 1619935,
+          "holds": 4228034,
+          "holds_wrote": 1629135,
+          "reads": 1110,
+          "writes": 5778,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "flat",
+        "index": 5,
+        "result": {
+          "passed": true,
+          "ticks": 10826,
+          "explicit_ticks": 0,
+          "seconds": 0.63395225,
+          "commits": 1619935,
+          "holds": 4228034,
+          "holds_wrote": 1629135,
+          "reads": 1110,
+          "writes": 5778,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "grouped",
+        "index": 6,
+        "result": {
+          "passed": true,
+          "ticks": 10826,
+          "explicit_ticks": 0,
+          "seconds": 0.615418834,
+          "commits": 1619935,
+          "holds": 4228034,
+          "holds_wrote": 1629135,
+          "reads": 1110,
+          "writes": 5778,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "sampler",
+        "index": 7,
+        "result": {
+          "passed": true,
+          "ticks": 10201,
+          "explicit_ticks": 0,
+          "seconds": 0.630354334,
+          "commits": 1625471,
+          "holds": 4183498,
+          "holds_wrote": 1634671,
+          "reads": 1103,
+          "writes": 5764,
+          "read_bytes": 70592,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "flat",
+        "index": 8,
+        "result": {
+          "passed": true,
+          "ticks": 10826,
+          "explicit_ticks": 0,
+          "seconds": 0.6237305,
+          "commits": 1619935,
+          "holds": 4228034,
+          "holds_wrote": 1629135,
+          "reads": 1110,
+          "writes": 5778,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "flat",
+        "index": 9,
+        "result": {
+          "passed": true,
+          "ticks": 10826,
+          "explicit_ticks": 0,
+          "seconds": 0.616672708,
+          "commits": 1619935,
+          "holds": 4228034,
+          "holds_wrote": 1629135,
+          "reads": 1110,
+          "writes": 5778,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "sampler",
+        "index": 10,
+        "result": {
+          "passed": true,
+          "ticks": 10201,
+          "explicit_ticks": 0,
+          "seconds": 0.624721084,
+          "commits": 1625471,
+          "holds": 4183498,
+          "holds_wrote": 1634671,
+          "reads": 1103,
+          "writes": 5764,
+          "read_bytes": 70592,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial64",
+        "variant": "grouped",
+        "index": 11,
+        "result": {
+          "passed": true,
+          "ticks": 10826,
+          "explicit_ticks": 0,
+          "seconds": 0.620339833,
+          "commits": 1619935,
+          "holds": 4228034,
+          "holds_wrote": 1629135,
+          "reads": 1110,
+          "writes": 5778,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "flat",
+        "index": 0,
+        "result": {
+          "passed": true,
+          "ticks": 122349,
+          "explicit_ticks": 0,
+          "seconds": 9.608900166,
+          "commits": 24517134,
+          "holds": 64014195,
+          "holds_wrote": 24655512,
+          "reads": 15689,
+          "writes": 88187,
+          "read_bytes": 1004096,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "grouped",
+        "index": 1,
+        "result": {
+          "passed": true,
+          "ticks": 122349,
+          "explicit_ticks": 0,
+          "seconds": 9.533384125,
+          "commits": 24517134,
+          "holds": 64014195,
+          "holds_wrote": 24655512,
+          "reads": 15689,
+          "writes": 88187,
+          "read_bytes": 1004096,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "sampler",
+        "index": 2,
+        "result": {
+          "passed": true,
+          "ticks": 112502,
+          "explicit_ticks": 0,
+          "seconds": 9.632331958,
+          "commits": 24490732,
+          "holds": 63028966,
+          "holds_wrote": 24629109,
+          "reads": 15644,
+          "writes": 88225,
+          "read_bytes": 1001216,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "sampler",
+        "index": 3,
+        "result": {
+          "passed": true,
+          "ticks": 112502,
+          "explicit_ticks": 0,
+          "seconds": 9.564128417,
+          "commits": 24490732,
+          "holds": 63028966,
+          "holds_wrote": 24629109,
+          "reads": 15644,
+          "writes": 88225,
+          "read_bytes": 1001216,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "grouped",
+        "index": 4,
+        "result": {
+          "passed": true,
+          "ticks": 122349,
+          "explicit_ticks": 0,
+          "seconds": 9.489554417,
+          "commits": 24517134,
+          "holds": 64014195,
+          "holds_wrote": 24655512,
+          "reads": 15689,
+          "writes": 88187,
+          "read_bytes": 1004096,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "flat",
+        "index": 5,
+        "result": {
+          "passed": true,
+          "ticks": 122349,
+          "explicit_ticks": 0,
+          "seconds": 9.4633625,
+          "commits": 24517134,
+          "holds": 64014195,
+          "holds_wrote": 24655512,
+          "reads": 15689,
+          "writes": 88187,
+          "read_bytes": 1004096,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "grouped",
+        "index": 6,
+        "result": {
+          "passed": true,
+          "ticks": 122349,
+          "explicit_ticks": 0,
+          "seconds": 9.655687833,
+          "commits": 24517134,
+          "holds": 64014195,
+          "holds_wrote": 24655512,
+          "reads": 15689,
+          "writes": 88187,
+          "read_bytes": 1004096,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "sampler",
+        "index": 7,
+        "result": {
+          "passed": true,
+          "ticks": 112502,
+          "explicit_ticks": 0,
+          "seconds": 9.489568875,
+          "commits": 24490732,
+          "holds": 63028966,
+          "holds_wrote": 24629109,
+          "reads": 15644,
+          "writes": 88225,
+          "read_bytes": 1001216,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "flat",
+        "index": 8,
+        "result": {
+          "passed": true,
+          "ticks": 122349,
+          "explicit_ticks": 0,
+          "seconds": 9.534958291,
+          "commits": 24517134,
+          "holds": 64014195,
+          "holds_wrote": 24655512,
+          "reads": 15689,
+          "writes": 88187,
+          "read_bytes": 1004096,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "flat",
+        "index": 9,
+        "result": {
+          "passed": true,
+          "ticks": 122349,
+          "explicit_ticks": 0,
+          "seconds": 9.386210166,
+          "commits": 24517134,
+          "holds": 64014195,
+          "holds_wrote": 24655512,
+          "reads": 15689,
+          "writes": 88187,
+          "read_bytes": 1004096,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "sampler",
+        "index": 10,
+        "result": {
+          "passed": true,
+          "ticks": 112502,
+          "explicit_ticks": 0,
+          "seconds": 9.622113375,
+          "commits": 24490732,
+          "holds": 63028966,
+          "holds_wrote": 24629109,
+          "reads": 15644,
+          "writes": 88225,
+          "read_bytes": 1001216,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      },
+      {
+        "workload": "spatial256",
+        "variant": "grouped",
+        "index": 11,
+        "result": {
+          "passed": true,
+          "ticks": 122349,
+          "explicit_ticks": 0,
+          "seconds": 9.460838667,
+          "commits": 24517134,
+          "holds": 64014195,
+          "holds_wrote": 24655512,
+          "reads": 15689,
+          "writes": 88187,
+          "read_bytes": 1004096,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_all_own12_counters_exact": true
+      }
+    ],
+    "order": [
+      "flat",
+      "grouped",
+      "sampler",
+      "sampler",
+      "grouped",
+      "flat",
+      "grouped",
+      "sampler",
+      "flat",
+      "flat",
+      "sampler",
+      "grouped"
+    ],
+    "archive_sha256": {
+      "flat": "a309234715815354ea9c4ecd88df869af022554b2ebd9927d6fb52538c182e17",
+      "grouped": "f16de9933f2bd8a6a02d0939f244846185bb7b1f4e3c620ef10653f7350d820d",
+      "sampler": "eb75816bdb19c5cb7b29be17d19f1910a1c14bff18400aac2afcd810495d53a6"
+    },
+    "nonregression_gate": true,
+    "host_speed_gain_proven": false,
+    "interpretation": "Near-flat host time: sampler vs flat baseline+0.25%/+0.21%/-0.99% saved for solid64/spatial64/spatial256; ranges overlap. Keep separate from useful task-cycle improvement. Three variants distinguish compiler layout from sampler/own-profile effects."
+  },
+  "desktop": {
+    "current64": {
+      "trace_sha256": "83e79ca23b08b8847066e539f65f9142e07c79807c42398741fc153667432d39",
+      "trace_bytes": 63089584,
+      "strict_replay": {
+        "calls": 45450,
+        "ticks": 3305804,
+        "commits": 46789051,
+        "holds": 147741157,
+        "dma_reads": 38883,
+        "dma_writes": 468170,
+        "dma_bytes": 5990752,
+        "seconds": 61.128904,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "proof_path": "/Users/duckdonald/workspace/gpu/.artifacts/srq-pfs-current-opt64",
+      "guest_passed": true,
+      "guest_seconds": 81.98694600001909
+    },
+    "full640": {
+      "trace_sha256": "a9e79c1514ff3676491ea6ca03a85043f58ef3e5bc3bebf9716f448745324af6",
+      "trace_bytes": 502336744,
+      "strict_replay": {
+        "calls": 158666,
+        "ticks": 16530549,
+        "commits": 923453157,
+        "holds": 2515526334,
+        "dma_reads": 562188,
+        "dma_writes": 3562518,
+        "dma_bytes": 62775336,
+        "seconds": 431.079856834,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "proof_path": "/Users/duckdonald/workspace/gpu/.artifacts/srq-pfs-current-full640",
+      "guest_passed": true,
+      "guest_seconds": 450.6485437499359
+    }
+  },
+  "main_audit": {
+    "sources": 170,
+    "tests": 84,
+    "suites": 19,
+    "matching_executable_modules": 298
+  },
+  "limitations": [
+    "CU scaling decreases2.95x to2.80x because1CU benefits more, although both useful cycle counts improve.",
+    "No simulator wall-time gain is established by this sampler revision.",
+    "Live GUI runs have different API/polling activity and overlap capture/replay; elapsed times and total live trace ticks are not matched-work speed comparisons.",
+    "The optimized private build opts into grouped compiler storage; the compiler option itself remains off by default.",
+    "Installed default QEMU is unchanged."
+  ]
+}
