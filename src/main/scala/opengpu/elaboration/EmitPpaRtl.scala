@@ -48,6 +48,10 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "command-buffer" | "cancellable-command-buffer" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.CommandBufferStage(opengpu.graphics.GraphicsConfig(),
+            cancellable = args(0) == "cancellable-command-buffer"), stageArgs, firtoolArgs)
       case "persistent-tile-store" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.PersistentTileAttachmentStore(useSramBlackBoxes = true), stageArgs, firtoolArgs)

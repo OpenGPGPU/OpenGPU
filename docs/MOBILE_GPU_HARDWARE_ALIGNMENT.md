@@ -346,3 +346,17 @@ boundary harness models the shader ABI protocol; full system CU-pool and VM/cach
 integration remain required. Legacy word staging also waits for the first quad's
 producer write and correctly sizes indices for non-power-of-two batch capacities;
 4/8/12/16/112/128-fragment configurations are checked with faults and reuse.
+
+An [optional command-fetch ownership path](performance/mobile-h1-command-drain-2026-10-17.json)
+snapshots the command base/count, discards unaccepted records on cancellation,
+and drains offered or issued reads before admitting another binding. Its
+registered sequential address advances only on a read handshake. Eleven checks
+cover both record formats, queued-record discard, bus backpressure and reuse,
+including the three existing decoder regressions. This standalone prerequisite
+is not yet wired into `RenderCore`/`RenderHost`; unified pass submission, command
+allocation bounds, memory-fault attribution and cache-domain publication remain
+required.
+With the same eight-record FIFO and 1 GHz synthesis constraints, the optional
+reader reports +503.856 ps core and +456.246 ps I/O setup slack; the existing
+reader reports +285.019 ps and +11.587 ps. These are setup synthesis screens,
+not post-route clocks or whole-frame measurements.

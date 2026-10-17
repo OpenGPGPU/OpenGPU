@@ -39,5 +39,19 @@
       "PersistentTileAttachmentStore.sv": "bad3889a889caad97b53e3bdc6c79b3f69b18488de98091e18e2e2f78e68dce9"
     }
   },
-  "route": "pending new run; preceding frozen component fails setup by 124.621 ps, passes hold and physical checks"
+  "route": {
+    "status": "running",
+    "artifact": "generated/mobile-h1/physical-registered-events-closure",
+    "exec_session": 16292,
+    "container": "3f2894fe8547",
+    "source_checkpoint": "d27f05d",
+    "last_observed_stage": "detailed routing, optimization iteration 1",
+    "intermediate_cts": {
+      "core_setup_slack_ps": 9.23,
+      "io_setup_slack_ps": 1.71,
+      "hold_slack_ps": 0.29,
+      "report_sha256": "9069f527792e6731f7ac755dd594f1636f8b27382c0eab0c2aff6171fc55e038"
+    },
+    "note": "Intermediate report only. Revalidate the live handle; no post-route timing qualification is established."
+  }
 }

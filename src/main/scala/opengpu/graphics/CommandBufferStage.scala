@@ -28,13 +28,19 @@ import chisel3.util._
   * phase-D shader descriptor lets a draw select a compiled RV32 shader program
   * and point at it kernarg buffer.
   */
-class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false) extends Module {
+class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
+  cancellable: Boolean = false) extends Module {
   private val wordsPerRecord = 40
 
   val io = IO(new Bundle {
     val base = Input(UInt(32.W))
     val count = Input(UInt(16.W))
     val start = Input(Bool())
+    /** Optional pass-owner cancellation. Unaccepted draws are discarded;
+      * an offered or accepted memory read retains ownership until drain.
+      * The next job may start only after done, including the discarded FIFO.
+      */
+    val cancel = if (cancellable) Some(Input(Bool())) else None
     val mem = new Bundle {
       val req = Decoupled(new OmMemoryRequest)
       val resp = Flipped(Decoupled(new OmMemoryResponse))
@@ -49,6 +55,12 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false) exte
   private val words = Reg(Vec(wordsPerRecord, UInt(32.W)))
   private val running = RegInit(false.B)
   private val presenting = RegInit(false.B)
+  private val readAddress = if (cancellable) Some(Reg(UInt(32.W))) else None
+  private val jobCount = if (cancellable) Reg(UInt(16.W)) else io.count
+  private val aborting = if (cancellable) RegInit(false.B) else false.B
+  private val offered = if (cancellable) RegInit(false.B) else false.B
+  private val cancelRequested = io.cancel.getOrElse(false.B)
+  private val discard = aborting || cancelRequested
   /**
     * Decouple command-buffer memory latency from rasterization.  The parser
     * may fill these entries while the pipeline is still rendering the
@@ -58,7 +70,10 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false) exte
     if (vertCore) new VertexDrawCommand(config) else new SceneTriangle(config),
     config.drawFifoDepth))
 
-  private val wordAddr = io.base + ((record * wordsPerRecord.U) + word) * 4.U
+  // Pass-owned fetching is sequential. Increment the address only on accepted
+  // reads instead of repeating a record multiply and two additions per word.
+  private val wordAddr = readAddress.getOrElse(
+    io.base + ((record * wordsPerRecord.U) + word) * 4.U)
 
   private val decodedDraw = if (vertCore) {
     val d = Wire(new VertexDrawCommand(config))
@@ -183,29 +198,46 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false) exte
     d
   }
 
-  drawFifo.io.enq.valid := presenting
+  drawFifo.io.enq.valid := presenting && !discard
   drawFifo.io.enq.bits := decodedDraw
-  io.draw <> drawFifo.io.deq
+  if (cancellable) {
+    // Cancellation explicitly withdraws unaccepted draw records. It never
+    // withdraws a bus request that was already offered to memory.
+    io.draw.valid := drawFifo.io.deq.valid && !discard
+    io.draw.bits := drawFifo.io.deq.bits
+    drawFifo.io.deq.ready := discard || io.draw.ready
+  } else io.draw <> drawFifo.io.deq
 
   // A start pulse is not itself a completed job.  This also makes the
   // contract robust for users that sample done in the launch cycle rather
   // than using the RenderHost sawBusy guard.
   io.done := !io.start && !running && !presenting && !waiting &&
-    !drawFifo.io.deq.valid
-  io.mem.req.valid := running && !presenting && !waiting
+    !drawFifo.io.deq.valid && !offered
+  io.mem.req.valid := (running && !presenting && !waiting && !discard) || offered
   io.mem.req.bits.addr := wordAddr
   io.mem.req.bits.write := false.B
   io.mem.req.bits.data := 0.U
-  io.mem.resp.ready := running && waiting
+  io.mem.resp.ready := (if (cancellable) waiting else running && waiting)
 
-  private val lastRecord = record === io.count - 1.U
+  private val lastRecord = record === jobCount - 1.U
 
-  when(!running && io.start && io.count.orR && !drawFifo.io.deq.valid) {
+  when(!running && io.start && io.count.orR && !drawFifo.io.deq.valid &&
+      !waiting && !offered && !cancelRequested) {
+    if (cancellable) {
+      readAddress.get := io.base
+      jobCount := io.count
+      aborting := false.B
+    }
     running := true.B
     record := 0.U
     word := 0.U
     waiting := false.B
     presenting := false.B
+  }.elsewhen(discard) {
+    running := false.B
+    presenting := false.B
+    when(io.mem.resp.fire) { waiting := false.B }
+    when(io.mem.req.fire) { waiting := true.B }
   }.elsewhen(waiting) {
     when(io.mem.resp.fire) {
       words(word) := io.mem.resp.bits.data
@@ -229,6 +261,13 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false) exte
   }.otherwise {
     // issue the next word read
     when(io.mem.req.fire) { waiting := true.B }
+  }
+
+  if (cancellable) {
+    when(cancelRequested) { aborting := true.B }
+    when(io.mem.req.valid) { offered := !io.mem.req.ready }
+    when(io.mem.req.fire) { readAddress.get := readAddress.get + 4.U }
+    assert(!(offered && waiting), "a command read cannot be both offered and issued")
   }
 
 }

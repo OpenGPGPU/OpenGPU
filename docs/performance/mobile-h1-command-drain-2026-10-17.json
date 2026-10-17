@@ -1,0 +1,93 @@
+{
+  "scope": "Preparatory H1 command fetch ownership; optional standalone component, not yet enabled by RenderCore/RenderHost or unified submission. No H0/H1 completion claim.",
+  "reference_checkpoint": "a553586",
+  "default_cancellable": false,
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/CommandBufferStage.scala": "4e911aabca828e4909ac6baebebd61365861f67fb735138e0d6f164ed7145ce0",
+    "src/test/scala/opengpu/graphics/CancellableCommandBufferStageSpec.scala": "28ace399e0a1655966e06a60518a12262ea2b73073e461a09f437c1cbdb52680",
+    "src/test/scala/opengpu/graphics/CommandBufferStageSpec.scala": "8d74bdb4d312f3a34d3c6b5d160e7ceece0b458fe3c2a7a2e51d815d1857ec4a",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "6347a9661e309b8a29e2e9a0072ef452c7f094a0461ff0d6c9c89cea591c665f"
+  },
+  "contract": [
+    "Snapshot base/count on an accepted nonempty start.",
+    "Cancellation discards draw records not yet accepted, including queued/presenting records.",
+    "A bus request offered before cancellation remains stable until accepted.",
+    "Issued reads remain owned until response drain; done waits for all queued records and memory ownership.",
+    "A later job may start only after done and captures a fresh binding."
+  ],
+  "address_generation": "Registered address initialized from base, incremented by four only when a word read is accepted; no per-word record multiply in the optional path.",
+  "functional": {
+    "passed": true,
+    "tests": 11,
+    "legacy_tests": 3,
+    "optional_tests": 8,
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/command-drain-incremental.log",
+    "log_sha256": "ea3ecbc53d562ef520d1d3d3c834f74dbec9db61d1027249b07929dbb3d8803b",
+    "cases": [
+      "inline and vertex-record decoders",
+      "binding input mutation during two-record jobs",
+      "cancel before offering any read",
+      "cancel an offered backpressured read",
+      "cancel two queued records with another read in flight",
+      "no old record emitted after cancel; fresh binding reuse"
+    ]
+  },
+  "physical": {
+    "synthesis": {
+      "reference": {
+        "artifact": "generated/mobile-h1/physical-command-reference",
+        "gate": {
+          "passed": true,
+          "reported_setup_slacks_ps": [
+            285.019,
+            11.587
+          ],
+          "reported_path_groups": 2,
+          "scope": "All reported synthesis setup paths, including I/O",
+          "report_sha256": "79234a58d5d25e668306ee35d55446d0ad5f37c9926cc95bc0ec52b3645c9edb"
+        },
+        "qor": {
+          "setup_worst_slack_ps": 285.019,
+          "core_clock_fmax_mhz": 1398.639
+        },
+        "manifest_sha256": "fe1b3f611a4bfd55cb1a04a26939e144219d137991aa7fa4a97600283b2ace41",
+        "result_sha256": "236fbd44234e4ddeca30375ed462869e3f5b0a2fd49132220afd2e50d218f42d",
+        "emitted_sha256": {
+          "ram_8x1012.sv": "28e2ed9b0a73ddf301ad4338594d42d31b26b49aa72ad9506aae9d512ff81927",
+          "Queue8_SceneTriangle.sv": "edf315011ece8bba6ccb4dc519114ce51089bbef048f9326bdc57fe759f4fd96",
+          "CommandBufferStage.sv": "190d538dcdff4e9ff54c74b33b7f4f057bbd8dc5ab3e6b78855a774d8b738669"
+        }
+      },
+      "optional": {
+        "artifact": "generated/mobile-h1/physical-command-drain",
+        "gate": {
+          "passed": true,
+          "reported_setup_slacks_ps": [
+            503.856,
+            456.246
+          ],
+          "reported_path_groups": 2,
+          "scope": "All reported synthesis setup paths, including I/O",
+          "report_sha256": "fe6a25f1dd2f31a035e22ff0373329f492239320c965188f57282096005c9771"
+        },
+        "qor": {
+          "setup_worst_slack_ps": 503.856,
+          "core_clock_fmax_mhz": 2015.544
+        },
+        "manifest_sha256": "94553db7f656e58ec4d9f7fa0ee83dfca237ef80d0590b3656dba12a1a15ee1f",
+        "result_sha256": "80228816d8a5571e24dd2451d165c945a9858c42cfedb661a662e624074ab198",
+        "emitted_sha256": {
+          "ram_8x1012.sv": "28e2ed9b0a73ddf301ad4338594d42d31b26b49aa72ad9506aae9d512ff81927",
+          "Queue8_SceneTriangle.sv": "edf315011ece8bba6ccb4dc519114ce51089bbef048f9326bdc57fe759f4fd96",
+          "CommandBufferStage.sv": "d5a1d0af0411c97edae27b47727eef0ad38bde2df78c293cdf3981dd06e5c061"
+        }
+      }
+    },
+    "scope": "Matched TC/SLVT, 1000 ps, 25% I/O delay, default eight-record FIFO; setup synthesis estimates only. No post-route clock or energy/frame qualification."
+  },
+  "remaining": [
+    "pass/job controller integration and command memory fault attribution",
+    "checked command allocation bounds and translation/cache-domain ownership",
+    "full H0-H8 requirements"
+  ]
+}
