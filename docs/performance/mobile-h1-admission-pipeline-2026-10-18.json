@@ -1,5 +1,5 @@
 {
-  "scope": "H1 admission timing pipeline; component synthesis and correctness evidence, no full milestone/post-route/FPS/energy qualification.",
+  "scope": "H1 admission timing pipeline: component correctness, synthesis and frozen post-route evidence. No full milestone, integrated renderer/GPU, FPS or workload energy qualification.",
   "reference_checkpoint": "9a804c6",
   "source_sha256": {
     "src/main/scala/opengpu/graphics/TileRenderPassAdmission.scala": "dd48e24be589be1204348d075dd572dbf8341ae531aff9b57c27efac56071279",
@@ -133,10 +133,24 @@
       }
     }
   },
-  "post_route": "Not yet run on this source. Frozen d27f05d route failed by 2.460 ps on a partial product; new synthesis passes but does not establish route closure.",
+  "post_route": {
+    "status": "PASS",
+    "evidence": "docs/performance/mobile-h1-post-route-2026-10-18.json",
+    "artifact": "generated/mobile-h1/physical-split-carry-route",
+    "setup_worst_slack_ps": 19.2192,
+    "hold_worst_slack_ps": 29.3974,
+    "setup_violations": 0,
+    "hold_violations": 0,
+    "route_drc_errors": 0,
+    "antenna_violating_nets": 0,
+    "antenna_violating_pins": 0,
+    "placement_violations": 0,
+    "mapping_complete": true,
+    "scope": "Frozen component only, byte-identical RTL to this record's synthesis candidate; no integrated GPU clock or energy qualification."
+  },
   "remaining": [
-    "post-route setup/hold and area/energy at the selected clock",
-    "shared-system CU and VM/cache publication integration for persistent jobs",
+    "integrated renderer/GPU physical qualification and representative workload energy",
+    "production persistent-job host submission and dependency publication",
     "all remaining H0-H8 requirements"
   ]
 }

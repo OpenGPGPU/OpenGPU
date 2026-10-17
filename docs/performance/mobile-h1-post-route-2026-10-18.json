@@ -1,0 +1,203 @@
+{
+  "scope": "Post-route qualification of the frozen H1 persistent tile attachment component with eight store credits and synchronous SRAM macros. No integrated renderer/GPU clock, frame rate or energy qualification.",
+  "checkpoint": "ad92925",
+  "component": {
+    "module": "PersistentTileAttachmentStore",
+    "store_credits": 8,
+    "max_sample_count": 4,
+    "tile_classes": [
+      8,
+      16
+    ],
+    "attachment_data_bytes_at_16x16_4x": 8192,
+    "layout": "One RGBA8 plus D24S8 plane; admission, clear tags/partial clears, storage, load/store/resolve and concurrent transfer acknowledgement ownership. Raster, shader CUs, output merger, translation and shared L2 lie outside this timed component."
+  },
+  "artifact": "generated/mobile-h1/physical-split-carry-route",
+  "constraints": {
+    "clock_port": "clock",
+    "clock_period": 1000,
+    "io_delay_percent": 0.25,
+    "cell_vt": "SLVT",
+    "corner": "TC",
+    "core_utilization": 25,
+    "place_density": 0.6,
+    "timing_effort": "closure",
+    "synthesis_engine": "syn"
+  },
+  "qualification": {
+    "passed": true,
+    "checks": {
+      "setup_worst_slack_ps": true,
+      "hold_worst_slack_ps": true,
+      "setup_violation_count": true,
+      "hold_violation_count": true,
+      "route_drc_errors": true,
+      "antenna_violating_nets": true,
+      "antenna_violating_pins": true,
+      "placement_violations": true,
+      "flow_errors": true,
+      "flow_completed": true,
+      "tool_verdict": true
+    },
+    "missing_metrics": [],
+    "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+    "mapping": {
+      "passed": true,
+      "mapping_report_present": true,
+      "skipped_instance_types": [],
+      "skipped_instance_count": 0,
+      "skipped_instances_by_type": {},
+      "unresolved_diagnostics": [],
+      "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+      "log": "generated/mobile-h1/physical-split-carry-route/flow/orfs-work/logs/base/1_synth.log",
+      "log_sha256": "75e4d0e924f8a60f939cd6447a00c5d1c76d201ce823848a7f46e5a3d0ebbca2"
+    }
+  },
+  "qor": {
+    "instance_count": 266527,
+    "instance_area": 12929.3,
+    "sequential_cell_count": 9022,
+    "clock_buffer_count": 1087,
+    "timing_repair_buffer_count": 3935,
+    "setup_tns_ps": 0,
+    "hold_tns_ps": 0,
+    "setup_worst_slack_ps": 19.2192,
+    "hold_worst_slack_ps": 29.3974,
+    "setup_violation_count": 0,
+    "hold_violation_count": 0,
+    "core_clock_fmax_mhz": 1019.6,
+    "virtual_io_clock_fmax_mhz": 1141.44,
+    "reported_fmax_mhz": 1019.6,
+    "setup_clock_skew_ps": 51.0653,
+    "hold_clock_skew_ps": 39.8528,
+    "total_power_w": 0.161291,
+    "placement_utilization": 23.6232,
+    "placement_violations": 0,
+    "estimated_wirelength": 351494,
+    "route_wirelength": 436727,
+    "route_vias": 798262,
+    "route_drc_errors": 0,
+    "route_drc_report_bytes": 0,
+    "antenna_violating_nets": 0,
+    "antenna_violating_pins": 0,
+    "ir_drop_vdd_worst": 0.0096558,
+    "ir_drop_vss_worst": 0.0112971,
+    "flow_warnings": 20,
+    "flow_errors": 0,
+    "critical_path": {
+      "startpoint": "u233 (rising edge-triggered flip-flop clocked by core_clock)",
+      "endpoint": "u14966 (rising edge-triggered flip-flop clocked by core_clock)",
+      "group": "core_clock",
+      "slack_ps": 19.22,
+      "arrival_ps": 1136.12,
+      "data_path_delay_ps": 904.55,
+      "cell_delay_ps": 801.91,
+      "net_delay_ps": 102.64,
+      "cell_delay_percent": 88.65,
+      "net_delay_percent": 11.35,
+      "cell_count": 30,
+      "net_count": 30,
+      "dominant_cell_types": [
+        {
+          "cell_type": "BUFx6f_ASAP7_75t_SL",
+          "count": 5,
+          "delay_ps": 92.39
+        },
+        {
+          "cell_type": "AO21x1_ASAP7_75t_SL",
+          "count": 3,
+          "delay_ps": 78.87
+        },
+        {
+          "cell_type": "AO32x1_ASAP7_75t_SL",
+          "count": 2,
+          "delay_ps": 75.28
+        },
+        {
+          "cell_type": "OA211x2_ASAP7_75t_SL",
+          "count": 2,
+          "delay_ps": 60.66
+        },
+        {
+          "cell_type": "OA222x2_ASAP7_75t_SL",
+          "count": 2,
+          "delay_ps": 53.57
+        },
+        {
+          "cell_type": "OR3x1_ASAP7_75t_SL",
+          "count": 2,
+          "delay_ps": 47.37
+        },
+        {
+          "cell_type": "DFFHQNx3_ASAP7_75t_SL",
+          "count": 1,
+          "delay_ps": 46.44
+        },
+        {
+          "cell_type": "AOI211x1_ASAP7_75t_SL",
+          "count": 1,
+          "delay_ps": 41.79
+        }
+      ],
+      "per_group": {
+        "core_clock": {
+          "startpoint": "u233 (rising edge-triggered flip-flop clocked by core_clock)",
+          "endpoint": "u14966 (rising edge-triggered flip-flop clocked by core_clock)",
+          "slack_ps": 19.22,
+          "arrival_ps": 1136.12
+        },
+        "vclk_core_clock": {
+          "startpoint": "u228 (rising edge-triggered flip-flop clocked by core_clock)",
+          "endpoint": "io_permit (output port clocked by vclk_core_clock)",
+          "slack_ps": 63.1,
+          "arrival_ps": 686.9
+        }
+      }
+    }
+  },
+  "emitted_sha256": {
+    "L2SramArray.sv": "d72588e8a9ac8d8aaec7495aae3ec57045cb817695cf11148a7df7b8e3f732f9",
+    "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+    "TileAttachmentClearEngine.sv": "86ba4d76c76df4e0929da729c48a1d710fd00f7a62738845ebc707823bff44a8",
+    "TileRenderPassAdmission.sv": "b3f8a132a1892b0bf4fdef64ea62d48a85a2fc1e5bd7c60457c77b221e41c019",
+    "TileAttachmentWriteQueue.sv": "b31ec91c7967cd69767cee88a7891c14f7a5f7ab2ded89c0a688cd9d3bcc2967",
+    "RRArbiter2_TileTransferRequest.sv": "308a3ea4afc09ae2077ff04b24363b89743706f0ec6591073e072dfd41374313",
+    "Queue1_TileTransferRequest.sv": "92c1ac8047c81f62d3b63a7c3c2b926d36ae566136c7025493e22561b01b901f",
+    "TileAttachmentTransfer.sv": "1cad4bbe458c422cce996b849bc838c1e45419b4f315b1c3f9e0cb4b9bda39ae",
+    "PersistentTileAttachmentStore.sv": "5dafb8147d1b1c95fabfb15bf998ae9c5617e21afb2d323f450d1414f815263b"
+  },
+  "macro_sha256": {
+    "depends/asap7_sram_0p0/generated/LIB/srambank_64x4x32_6t122.lib": "d2af1d73cd23ca0e4333cb60148a47720d08f0b5b31be5eb404992402a29573d",
+    "depends/asap7_sram_0p0/generated/LEF/srambank_64x4x32_6t122.lef": "15ce8352303ddf999aff20b1d82550cf28ac792610efd7874c0705204b83a6c3"
+  },
+  "input_hashes": {
+    "result.json": "e607d0c01a5aff6f61fa50e90d2a69baba86e28b5827e95ac977d99476e885f3",
+    "manifest.json": "7ad5847b2a8b7689a3648db50914fcd08e77805e0a1bbc12bec15b4d8f57a2d7",
+    "qualification.json": "c4b35b2e6a209a0f1424dc40f7e7bafb3080cb93cab2cbf38962b01c81ed2f81"
+  },
+  "provenance": {
+    "route_manifest_commit": "ad929253878da09c87c89446243446fc61a1c099",
+    "route_manifest_dirty": true,
+    "emission_synthesis_manifest": "generated/mobile-h1/physical-split-carry/manifest.json",
+    "emission_synthesis_manifest_sha256": "e0f7eb07faa9905261857e1dd8934dbebb468d5e48cf22c25b1af39c35ffdd16",
+    "emitted_inputs_identical_to_prior_passing_synthesis": true,
+    "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+    "note": "The admission pipeline was first emitted and synthesized as dirty source before its ad92925 commit. The immutable synthesis manifest records those source hashes; the route consumes byte-identical emitted files."
+  },
+  "functional_reference": "docs/performance/mobile-h1-admission-pipeline-2026-10-18.json: 27 integration checks, 248-descriptor independent interval oracle, matched images and transfer traffic.",
+  "comparison": {
+    "previous_artifact": "generated/mobile-h1/physical-registered-events-closure",
+    "previous_frozen_checkpoint": "d27f05d",
+    "previous_setup_worst_slack_ps": -2.46025,
+    "current_setup_worst_slack_ps": 19.2192,
+    "current_hold_worst_slack_ps": 29.3974,
+    "scope": "Different frozen implementation checkpoints, not a controlled area/power-only experiment. The admission pipeline adds three cycles and retains exact samples/traffic."
+  },
+  "limits": [
+    "Single selected TC/SLVT corner and explicit 25-percent I/O timing budget. Integration and additional corners require separate checks.",
+    "The tool-reported instance area is 12929.3; preserve the flow metric rather than infer whole-GPU area.",
+    "The 0.161291 W power value is a tool estimate without workload-specific switching activity and establishes no energy-per-frame result.",
+    "The full fixed-function RenderCore mapping attempts remain unqualified (omitted divisions with syn; failed Yosys mapping).",
+    "All remaining H0-H8 capability, physical, performance and product gates remain required."
+  ]
+}

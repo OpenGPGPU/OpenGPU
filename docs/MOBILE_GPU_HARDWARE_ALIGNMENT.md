@@ -406,8 +406,9 @@ checks pass, and an expanded 248-descriptor BigInt interval oracle covers upper
 coordinates, high pitches, carry boundaries, overflow and exact 4 GiB allocation
 ends. The matched eight-credit workload is now 15,008 cycles (serial 43,402),
 with unchanged samples and traffic. The component passes its 1 GHz synthesis
-setup and mapping screen at +73.113 ps core and +242.262 ps I/O. Post-route
-setup/hold, area/energy and integrated GPU performance remain unqualified.
+setup and mapping screen at +73.113 ps core and +242.262 ps I/O. The completed
+component route is recorded below; workload energy and integrated GPU
+performance remain unqualified.
 
 The experimental persistent core now has an accepted-response texture-fault
 sideband. A failed texture response cancels command prefetch and attachment
@@ -460,3 +461,16 @@ response-presentation check. Kernel-free driver tests pass. The protected MMIO
 control block passes its standalone 1 GHz synthesis/mapping screen at +434.332 ps
 core and +306.617 ps I/O; this excludes system quiescence aggregation, the AXI
 adapter and post-route timing.
+
+The frozen admission-pipeline tile store now
+[passes its 1 GHz post-route qualification](performance/mobile-h1-post-route-2026-10-18.json)
+at the selected TC/SLVT corner with the recorded 25% I/O timing budget. Global
+setup slack is +19.219 ps, hold is +29.397 ps, and I/O setup is +63.10 ps.
+Setup/hold violations, route DRC, antenna, placement and flow errors are zero;
+mapping is complete. Its emitted RTL is byte-identical to the prior passing
+synthesis candidate. The tool reports instance area 12,929.3 and estimated
+power 0.161291 W; no workload-specific switching or frame energy was measured.
+This qualifies the eight-credit attachment component with synchronous SRAM,
+including admission, clear, transfer and resolve logic. Integrated renderer
+mapping/timing, broader physical corners and the full performance/product
+qualification remain required.
