@@ -7,6 +7,53 @@ import org.scalatest.flatspec.AnyFlatSpec
 class PipelinedRasterizerSpec extends AnyFlatSpec {
   behavior of "Pipelined quad rasterization"
 
+  it should "reject degenerate and culled draws before reusing scan state" in {
+    val config = GraphicsConfig(screenWidth = 16, screenHeight = 16)
+    simulate(new TriangleRasterizer(config, quadMode = true)) { dut =>
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      dut.io.draw.valid.poke(false.B); dut.io.quad.ready.poke(false.B)
+      dut.io.pixel.ready.poke(false.B); dut.io.sampleMode.poke(0.U)
+      dut.io.screenW.poke(16.U); dut.io.screenH.poke(16.U)
+      dut.io.scissorEnable.poke(false.B)
+      val triangle = Seq((0, 0), (16, 0), (0, 16))
+      def submit(vertices: Seq[(Int, Int)], cull: Int): Unit = {
+        dut.io.draw.ready.expect(true.B); dut.io.cullMode.poke(cull.U)
+        Seq(dut.io.draw.bits.v0, dut.io.draw.bits.v1, dut.io.draw.bits.v2)
+          .zip(vertices).foreach { case (v, (x, y)) =>
+            v.x.poke((x * 256).S); v.y.poke((y * 256).S)
+          }
+        dut.io.draw.valid.poke(true.B); dut.clock.step(); dut.io.draw.valid.poke(false.B)
+      }
+      val rejected = Seq((Seq((2, 2), (4, 4), (6, 6)), 0),
+        (triangle, 2), (triangle.reverse, 1))
+      val expected = (for (y <- 0 until 16; x <- 0 until 16
+        if x > 0 && y > 0 && x + y <= 16) yield (x, y)).toSet
+      for ((vertices, cull) <- rejected) {
+        dut.io.quad.ready.poke(false.B); submit(vertices, cull)
+        var cycles = 0
+        while (!dut.io.draw.ready.peek().litToBoolean && cycles < 32) {
+          dut.io.quad.valid.expect(false.B); dut.clock.step(); cycles += 1
+        }
+        assert(cycles < 32)
+        submit(triangle, 0)
+        val seen = collection.mutable.Set.empty[(Int, Int)]
+        cycles = 0
+        while (!dut.io.draw.ready.peek().litToBoolean && cycles < 1000) {
+          val ready = cycles % 7 < 4
+          dut.io.quad.ready.poke(ready.B)
+          if (ready && dut.io.quad.valid.peek().litToBoolean) {
+            for (lane <- dut.io.quad.bits.lanes if lane.covered.peek().litToBoolean) {
+              val p = (lane.x.peek().litValue.toInt, lane.y.peek().litValue.toInt)
+              assert(seen.add(p), s"duplicate pixel after rejected draw: $p")
+            }
+          }
+          dut.clock.step(); cycles += 1
+        }
+        assert(cycles < 1000 && seen.toSet == expected)
+      }
+    }
+  }
+
   for (mode <- 0 to 2) {
     it should s"sustain one complete quad per cycle and retain draw ownership in mode$mode" in {
       val config = GraphicsConfig(screenWidth = 64, screenHeight = 64, tileSize = 16)

@@ -809,8 +809,16 @@ at -258.308 ps: its critical path now runs from the area/cull calculation to
 wide engine register enables. All three map completely. These are pre-layout
 screens, not routed clock qualifications; V1-V5 use the general tiled profile
 and must not be treated as an isolated arithmetic comparison with V6-V9.
-Direct V9 product replay, current-candidate Linux integration, post-route
+Direct current-candidate product replay, Linux integration, post-route
 qualification and the original H0-H8 gates remain open.
+
+V10 removes the area/cull decision from scan-data register enables. Only
+`active` gates output validity; inactive scan data can load because prior
+outputs must drain before a new draw is admitted. Setup gains no extra cycle.
+All 47 component checks pass, including degenerate/front/back rejection under
+stalls followed by healthy coverage reuse. The fresh product replay is still
+running. Synthesis maps completely but still fails at -222.905 ps; the next
+verified path is vertex X through minimum selection and bound padding.
 
 ## Exact programmable desktop image oracle
 

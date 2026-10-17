@@ -462,5 +462,50 @@
     "direct_native_product": false,
     "full_system_guest": false,
     "post_route_qualified": false
+  },
+  "followup_v10": {
+    "scope": "Remove rejection from scan data-register enables. active alone gates output validity. Queues drain before next admission, and rejected draws may update inactive scan data and planeArea; the first valid output and latency contracts remain unchanged.",
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+      "src/main/scala/opengpu/graphics/Rasterizer.scala": "c7f1b39a2c717e75119389ca31c01a1b3a8f754efcbe43f7881ce692084fdd6b",
+      "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+      "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+      "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+      "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+      "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+      "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+      "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+      "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+      "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+      "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+      "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+      "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+      "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c"
+    },
+    "component_checks": 47,
+    "suites": 12,
+    "unit_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v10_unit.log",
+      "sha256": "992be8ba6163ba53307b099eba728be2e4e4139fd032dfb791003c398f458332"
+    },
+    "new_check": "Three rejected draws (degenerate/front-culled/back-culled) with output stalled, each followed by exact healthy coverage recovery.",
+    "synthesis": {
+      "qualification": "generated/mobile-h1/physical-product-raster-v10-resident-synth/qualification.json",
+      "sha256": "123dd9715379b19706ef2eda5b34c99ab0fea1dda602e240b5a3a07eca322450",
+      "passed": false,
+      "setup_slacks_ps": [
+        -222.905,
+        224.091
+      ],
+      "critical_path": "vHold_v1_x[1] -> paddedMinX[31]; OpenDB endpoints verified. Parallel min selection followed by bound padding.",
+      "mapping_passed": true
+    },
+    "direct_native_product": {
+      "status": "running",
+      "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v10.json",
+      "scope": "Fresh fixed/shared24-job replay running on frozen V10 classes; not yet a pass."
+    },
+    "full_system_guest": false,
+    "post_route_qualified": false
   }
 }

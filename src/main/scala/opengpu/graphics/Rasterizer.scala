@@ -791,33 +791,33 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
 
     val emptyScissor = scissorEnableReg &&
       (scissorMinXReg >= scissorMaxXReg || scissorMinYReg >= scissorMaxYReg)
-    when(culledFinal || degenerate || emptyScissor || minX > maxX || minY > maxY) {
-      active := false.B
-    }.otherwise {
-      active := true.B
-      curX := minX
-      curY := minY
-      areaReg := signedAreaN
-      dxReg.e.zipWithIndex.foreach { case (r, i) =>
-        r := FixedPointMath.trim64(coeffReg.a(i) << config.subPixelBits) }
-      dyReg.e.zipWithIndex.foreach { case (r, i) =>
-        r := FixedPointMath.trim64(coeffReg.b(i) << config.subPixelBits) }
-      edgeReg.e.zipWithIndex.foreach { case (r, i) => r := originE(i) }
-      rowStartReg.e.zipWithIndex.foreach { case (r, i) => r := originE(i) }
-      if (config.tileSize > 0) {
-        tileStartX := minX
-        tileStartY := minY
-        tileEndX := lastInTile(minX, maxX)
-        tileEndY := lastInTile(minY, maxY)
-        tileOriginReg.e.zipWithIndex.foreach { case (r, i) => r := originE(i) }
-        tileRowOriginReg.e.zipWithIndex.foreach { case (r, i) => r := originE(i) }
-      }
-      frontReg := frontN
-      tlReg.zipWithIndex.foreach { case (r, i) =>
-        val fa = Mux(frontN, coeffReg.a(i), -coeffReg.a(i))
-        val fb = Mux(frontN, coeffReg.b(i), -coeffReg.b(i))
-        r := (fa < 0.S) || (fa === 0.S && fb < 0.S)
-      }
+    active := !(culledFinal || degenerate || emptyScissor || minX > maxX || minY > maxY)
+    // Only active needs the area/cull decision. Queues are drained before a
+    // new draw is admitted, so inactive scan data may load unconditionally.
+    // Keeping rejection off these wide register enables avoids a sum/sign/
+    // zero-detect/fanout path without adding a setup cycle.
+    curX := minX
+    curY := minY
+    areaReg := signedAreaN
+    dxReg.e.zipWithIndex.foreach { case (r, i) =>
+      r := FixedPointMath.trim64(coeffReg.a(i) << config.subPixelBits) }
+    dyReg.e.zipWithIndex.foreach { case (r, i) =>
+      r := FixedPointMath.trim64(coeffReg.b(i) << config.subPixelBits) }
+    edgeReg.e.zipWithIndex.foreach { case (r, i) => r := originE(i) }
+    rowStartReg.e.zipWithIndex.foreach { case (r, i) => r := originE(i) }
+    if (config.tileSize > 0) {
+      tileStartX := minX
+      tileStartY := minY
+      tileEndX := lastInTile(minX, maxX)
+      tileEndY := lastInTile(minY, maxY)
+      tileOriginReg.e.zipWithIndex.foreach { case (r, i) => r := originE(i) }
+      tileRowOriginReg.e.zipWithIndex.foreach { case (r, i) => r := originE(i) }
+    }
+    frontReg := frontN
+    tlReg.zipWithIndex.foreach { case (r, i) =>
+      val fa = Mux(frontN, coeffReg.a(i), -coeffReg.a(i))
+      val fb = Mux(frontN, coeffReg.b(i), -coeffReg.b(i))
+      r := (fa < 0.S) || (fa === 0.S && fb < 0.S)
     }
   }
 }
