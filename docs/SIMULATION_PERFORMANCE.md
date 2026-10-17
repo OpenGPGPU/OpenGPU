@@ -1,5 +1,36 @@
 # Full-system simulation performance investigation
 
+## Concurrent strict trace validation (2026-10-17)
+
+[`scripts/stream_arti_trace.py`](../scripts/stream_arti_trace.py) records and
+strictly replays concurrently, saving exactly the bytes delivered to the
+unchanged replayer. This overlaps two functional checks instead of waiting
+for capture to finish before starting replay. Both commands must succeed;
+truncated tails fail even if the replayer exits zero. Existing trace/work
+paths are preserved, and child process groups stop on failure or cancellation.
+
+```sh
+python3 scripts/stream_arti_trace.py \
+  --trace /tmp/gtk.trace --work /tmp/gtk-stream \
+  --replayer /path/to/replay -- /path/to/recorder-enabled-guest-launcher
+```
+
+The producer inherits `ARTI_MODEL_TRACE` pointing at the recording FIFO. It
+must honor that destination and remain alive until recording finishes. A
+producer that exits without opening the FIFO fails and its children stop. A
+launcher that overrides the destination can use `<work>/record.fifo` explicitly.
+
+Seven transport/lifecycle tests pass, including a producer that exits without
+opening the recording FIFO and isolation from inherited replay settings. The
+actual optimized current Mesa64 guest
+also passes 18 VM cases, 21 GLES cases, GTK64 and all six white-fold transitions
+while its complete trace replays strictly. A fragmented-stream test preserves
+all known counters, and a deliberately truncated first payload is rejected.
+Backpressure can affect recorded wall-clock observations, so capture/replay
+elapsed is functional evidence rather than a desktop-speed comparison.
+
+See [the stream hashes, actual guest proof and transport controls](performance/concurrent-trace-validation-2026-10-17.json).
+
 ## Current AXI and sampler activity (2026-10-17)
 
 Read-only observers of the qualified current model preserve complete native

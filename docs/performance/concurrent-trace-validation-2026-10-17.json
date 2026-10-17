@@ -1,0 +1,328 @@
+{
+  "recorded_at": 1792214227.019579,
+  "scope": "Concurrent recording and unchanged strict replay on current4CU native prototype. Exact saved stream, complete fragmented transport, clean EOF, current Mesa/GTK64 and white-fold transitions. This report qualifies Mesa64 and tool lifecycle; full640 is a separate pending RTL qualification and is not claimed here. Elapsed is functional only.",
+  "public_script_sha256": "33350a46f4ee353b0905056f5e48fa431a2cfc4386106f2540f48d79fc0eec53",
+  "test_script_sha256": "30d7981238f9a82460c53263fbb13389c253041cc7ee21fe1e3bd238055be67d",
+  "unit_test_cases": 7,
+  "unit_test_command": "python3 -m unittest discover -s scripts -p test_stream_arti_trace.py -v",
+  "fragmented_transport": {
+    "pid": 53676,
+    "started": 1792212528.0194292,
+    "stage": "terminal",
+    "scope": "Validate unchanged strict replayer on a FIFO with deliberately fragmented headers/payloads. Complete stream must match every known own-trace counter. Truncated first payload must be rejected. No raw trace output; separate diagnostic profiles never enter the72 release set.",
+    "replayer_pid": 53718,
+    "complete": {
+      "exit_status": 0,
+      "bytes_streamed": 63831360,
+      "result": {
+        "calls": 44430,
+        "ticks": 3171684,
+        "commits": 63927195,
+        "holds": 383443859,
+        "dma_reads": 39370,
+        "dma_writes": 473617,
+        "dma_bytes": 6078336,
+        "seconds": 53.259749708,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "passed": true
+    },
+    "truncated": {
+      "exit_status": 1,
+      "bytes_streamed": 631,
+      "result": {
+        "calls": 0,
+        "ticks": 0,
+        "commits": 0,
+        "holds": 0,
+        "dma_reads": 0,
+        "dma_writes": 0,
+        "dma_bytes": 0,
+        "seconds": 6.666e-06,
+        "truncated_tail": true,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "passed": true
+    },
+    "passed": true,
+    "finished": 1792212581.490391
+  },
+  "actual_current64": {
+    "guest": {
+      "started": 1792213570.6998558,
+      "pid": 59981,
+      "stage": "terminal",
+      "replays": [
+        {
+          "mode": 0,
+          "base": "0x0",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x0",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x40000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x40000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x80000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 0,
+          "base": "0x80000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x0",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x0",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x40000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x40000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x80000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 1,
+          "base": "0x80000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x0",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x0",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x40000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x40000000",
+          "invalidate": 1,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x80000000",
+          "invalidate": 0,
+          "passed": true
+        },
+        {
+          "mode": 2,
+          "base": "0x80000000",
+          "invalidate": 1,
+          "passed": true
+        }
+      ],
+      "qemu_sha256": "10863dae062eb702e7cc075f2e73d193a1b90a4abe21c2765d00ee25546f7b0f",
+      "archive_sha256": "98094582eea8b80bfa0214cb67bffb96e2cf99293576348b3ddbf51bd1509709",
+      "proof": "/Users/duckdonald/workspace/gpu/.artifacts/srq-pbo-current-opt64",
+      "profile": false,
+      "scope": "Private prepared-sample blend overlap with fused sampler bias and six-stage coordinate lookahead. Unchanged external4CU16lane8warp ABI and Mesa payload. Old training or explicit currentpackedwhite payload;18VM,21GLES,quadbatch,offscreen,private-depth,GTK64 or full640 strict scanout. Functional only; own hardware trace required.",
+      "exit_status": 0,
+      "guest_seconds": 89.95207266695797,
+      "markers": {
+        "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+        "output_usage=1": true,
+        "GTK Wayland/OpenGPU smoke proof: PASS": true,
+        "Gtk-smoke scanout proof: PASS": true,
+        "fragment staging transient=1": true,
+        "compute completed; RNU=1 RDN=0": true,
+        "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+        "Native shader suite: PASS": true,
+        "OPENGPU GL FILL PASS": true,
+        "OPENGPU GL OFFSCREEN PASS:": true
+      },
+      "native_cases": 21,
+      "quad_batch_pass": true,
+      "payload_unchanged": true,
+      "trace_requested": true,
+      "trace_present": true,
+      "passed": true,
+      "finished": 1792213663.759962
+    },
+    "stream": {
+      "pid": 59978,
+      "started": 1792213570.523078,
+      "stage": "terminal",
+      "trace": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/current64-optimized.trace",
+      "replayer": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/trace-optimized/replay",
+      "producer": [
+        "/opt/homebrew/bin/python3",
+        "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/qualify_guest.py",
+        "--archive",
+        "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/trace-optimized/libarti_rtl_model.a",
+        "--qemu",
+        "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/qemu-optimized-trace",
+        "--tag",
+        "pbo-current-opt64",
+        "--current-payload",
+        "--trace",
+        "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/current64-optimized.trace",
+        "--trace-stream",
+        "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/live-current64-optimized/record.fifo"
+      ],
+      "child_pids": {
+        "replay": 59979,
+        "relay": 59980,
+        "producer": 59981
+      },
+      "scope": "Concurrent actual recording and unchanged strict replay; relay saves exactly the bytes delivered to the replayer. Functional elapsed only; producer wall-clock observations may be delayed by backpressure.",
+      "passed": true,
+      "finished": 1792213663.906263,
+      "strict_replay": {
+        "calls": 45693,
+        "ticks": 3311169,
+        "commits": 46926267,
+        "holds": 367858085,
+        "dma_reads": 39094,
+        "dma_writes": 468192,
+        "dma_bytes": 6005392,
+        "seconds": 66.562350458,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "trace_sha256": "b6112abf682c39e0d8c3c2e10b74bd641cd3c40de90e68b9547ca131d059728f",
+      "trace_bytes": 63254872,
+      "relay": {
+        "passed": true,
+        "bytes": 63254872,
+        "sha256": "b6112abf682c39e0d8c3c2e10b74bd641cd3c40de90e68b9547ca131d059728f"
+      }
+    },
+    "transition_folds": [
+      0,
+      1,
+      0,
+      1,
+      0,
+      1
+    ]
+  },
+  "initial_instrumented_live_trial": {
+    "pid": 55110,
+    "started": 1792212847.590863,
+    "stage": "terminal",
+    "trace": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/current64-stream-training.trace",
+    "replayer": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/trace-training/replay",
+    "producer": [
+      "/opt/homebrew/bin/python3",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/qualify_guest.py",
+      "--archive",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/trace-training/libarti_rtl_model.a",
+      "--qemu",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/qemu-training-trace",
+      "--tag",
+      "pbo-stream-current64",
+      "--profile",
+      "--current-payload",
+      "--trace",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/current64-stream-training.trace",
+      "--trace-stream",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/live-current64-training/record.fifo"
+    ],
+    "child_pids": {
+      "replay": 55111,
+      "relay": 55112,
+      "producer": 55113
+    },
+    "scope": "Concurrent actual recording and unchanged strict replay; relay saves exactly the bytes delivered to the replayer. Functional elapsed only; producer wall-clock observations may be delayed by backpressure.",
+    "passed": true,
+    "finished": 1792212994.6212008,
+    "strict_replay": {
+      "calls": 58171,
+      "ticks": 4105927,
+      "commits": 53643900,
+      "holds": 396799032,
+      "dma_reads": 42117,
+      "dma_writes": 481450,
+      "dma_bytes": 6282848,
+      "seconds": 118.5497135,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "trace_sha256": "fbfe4a368ac53eba470ee426ae91e7a5ccbd4cab62d1868b73ed0902a23fd9e3",
+    "trace_bytes": 67626088,
+    "relay": {
+      "passed": true,
+      "bytes": 67626088,
+      "sha256": "fbfe4a368ac53eba470ee426ae91e7a5ccbd4cab62d1868b73ed0902a23fd9e3"
+    }
+  },
+  "limitations": [
+    "Backpressure can alter producer wall-clock observations and polling. Strict replay validates those actual recorded observations; this is not a paired desktop-speed measurement.",
+    "The producer must use the recorder-enabled model and honor the supplied recording FIFO.",
+    "Existing traces/work directories are rejected, and a truncated replay is rejected even when the replayer exits zero."
+  ],
+  "Mesa64_script_sha256": "73269bb32b52ef6eb04de635134f2e65720819cf0351281feda7038b1bc6b61d",
+  "v1_prototype_relay_AST_identical": true,
+  "v2_changes": [
+    "Relay creates a connection marker after the real producer opens the recording FIFO.",
+    "Producer exits without capture fail within a bounded grace period, stopping owned processes.",
+    "Inherited replay selectors are cleared for the producer while its explicit LLVM profile destination is retained."
+  ],
+  "v1_freeze": {
+    "recorded_at": 1792214210.808326,
+    "reason": "Initial preservation raced the first working-tree edit; exact earlier bytes reconstructed by reversing only subsequent patches and matching the independently pinned preexisting completed-proof SHA256.",
+    "sha256": "73269bb32b52ef6eb04de635134f2e65720819cf0351281feda7038b1bc6b61d"
+  },
+  "full640_first_attempt": {
+    "passed": false,
+    "reason": "ENOSPC in guest gate log; trace write failed before GTK proof. Neither strict full replay nor full desktop is claimed for this failed run.",
+    "trace_bytes": 79126528,
+    "receipt": ".artifacts/shared-cu/prepared-blend-overlap-native/current-desktop-state.json"
+  }
+}
