@@ -1,0 +1,498 @@
+{
+  "recorded_at": 1792215054.3629498,
+  "decision": "Reject: table size reduction does not establish active-render wall-time benefit. Do not change the backend.",
+  "scope": "Private same-header same-RTL host screen: replace only ready-pass table member offsets with checked compact offsets. Both control and candidate dispatcher use O2 without PGO; remaining selected own-profile O2 objects identical. No production emitter or binary change. Timings wait for current full640 functional process to end.",
+  "guard_entries": 17522,
+  "table_bytes_before": 560704,
+  "table_bytes_after": 280352,
+  "header_sha256": "c5863d475082dc50f8fc77cf261dd04a92d7b452cd73961f4e3e8f093ddf7e5d",
+  "original_dispatcher_sha256": "82b090312ea2e1de0e8cb0a19b0bb7a058cd0184af522c1192b2d72f8e114bdb",
+  "baseline_archive_sha256": "066e130ab96286b4d9808689b6fd2ec8cf6857ebe23ef5312c94749278dd07f8",
+  "prototype": {
+    "implementation": "Replace three member offsets and two32-bit pages per ready guard with three32-bit offsetof fields and two16-bit pages. Check actual class standard layout/size, every page range, and16-byte guard size at compile time.",
+    "baseline": {
+      "command": [
+        "/opt/homebrew/opt/ccache/libexec/c++",
+        "-std=gnu++17",
+        "-fPIC",
+        "-fPIE",
+        "-Wno-parentheses-equality",
+        "-fbracket-depth=4096",
+        "-I/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/model",
+        "-O2",
+        "-c",
+        "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/compact-pass-guards-native/baseline/dut_0.cpp",
+        "-o",
+        "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/compact-pass-guards-native/baseline/dut_0.o"
+      ],
+      "source_sha256": "82b090312ea2e1de0e8cb0a19b0bb7a058cd0184af522c1192b2d72f8e114bdb",
+      "object_sha256": "36b53f0e5f148270045066636f14f7bb15b56c86bdd3c55d52830618c2baf23b",
+      "compile_seconds": 95.1720455409959,
+      "archive_sha256": "2cb654a2f4fc439762fa9ca0bcbca7b139808a897addc7e3948182d35f10193b"
+    },
+    "candidate": {
+      "command": [
+        "/opt/homebrew/opt/ccache/libexec/c++",
+        "-std=gnu++17",
+        "-fPIC",
+        "-fPIE",
+        "-Wno-parentheses-equality",
+        "-fbracket-depth=4096",
+        "-I/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/prepared-blend-overlap-native/model",
+        "-O2",
+        "-c",
+        "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/compact-pass-guards-native/candidate/dut_0.cpp",
+        "-o",
+        "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/compact-pass-guards-native/candidate/dut_0.o"
+      ],
+      "source_sha256": "714836f17b204ed152fd8e401843ee31216c5122c54abadb7cc4f67a4c6a3b2b",
+      "object_sha256": "77dc297f6bd64ca3fdb4458c78976a3df42f955eaad95619c49063c755d77a4d",
+      "compile_seconds": 156.1285849160049,
+      "archive_sha256": "a762f37bd3da395f3e7e38254472e9979f373e757d9755b9f9983df29e573cbe"
+    },
+    "reused_members": {
+      "dut_1.o": "289ab6c817923a83fdb1205abbba77853aa04a54cc21011eb72f4925d344047c",
+      "dut_10.o": "36f98932b39ba6bd9478c60272f57772e9ad893e9313d6f62d9103fe3d7c3edf",
+      "dut_11.o": "e72ea7861ee9b9a5be6cc845ee44e3bbc659ef180926275d87e6bc58981cc9cc",
+      "dut_12.o": "e98b3edc7baf33292ba54b2d121e99266bcaf95079b94cfc79cc5e776fa55c99",
+      "dut_13.o": "98345fe3a833b8f526a00e624afafc5c6eb22d711a5845857d08638109c0426e",
+      "dut_14.o": "09aa7373fdcd3b0efc89f4a518067f862f461ce833974a10bab96be6cd806e1b",
+      "dut_15.o": "550c146fb47cf1129805798b509dc5d479eb7e60023598e50cf69688603d0245",
+      "dut_16.o": "f081e13a86587285847d3c48e6d87e0069d7ae7a6866dcd6fb6f4d1b6a9caf35",
+      "dut_17.o": "2329de0b1ca7317d8bcc3e935e5037590f544272dbf1542ece58bad0ae5e7e20",
+      "dut_18.o": "620e93d4b6dd7902776eaa42beb5603da409155f113c6d0fdc6ae3fc4c2640c4",
+      "dut_19.o": "9040a73b9ea2912786035612399677f90addb58012c61ce4fb96db87c12743a7",
+      "dut_2.o": "452681d5d3fcf8672b3ea580a2ecc78e27d81071d261f5db238a061e474182e5",
+      "dut_20.o": "dc9c0f77c2100d6222d08b86196a2b1ab66b45cb5a53bcc929c57ac3374e9cf1",
+      "dut_21.o": "f6b39d95b1e5e24c8caaa77c54f7de459938f4945e528de4697229ade20f9b55",
+      "dut_22.o": "6c2c0e550f3c6d2847955b05b5db9b29d1dd615c1819742dcd8300a99d7879fd",
+      "dut_23.o": "34761503242cff5c8a1cd01343c120279248e318eaee44fbf0c731e802a7cb97",
+      "dut_24.o": "c1c1fb0b3545a7fffe86a4dafafa6576a2d216a5a2b83260b879f268df8dd1d7",
+      "dut_25.o": "00ceee7461de0e4d8c88cd6ef89b47a0f93f67a4ed304e7878bdfad353b4552a",
+      "dut_26.o": "281fdea08744cfe14433b2f52312ee562f4bd05b0439988a6512b3218f3ee4f2",
+      "dut_27.o": "8fe95d038c70b31a5013483d10433036741d95a915ba635103ecc92a4d39cc02",
+      "dut_28.o": "f599ff46f7bc22817d467fae27cbda5571b9d318626e360b00600901928d84f5",
+      "dut_29.o": "b1561c1e9ac53645cc2b60f5cb6224348894e6dcd26e80e61015dae89c5395bf",
+      "dut_3.o": "33d5d627c4fb60befd918614790a13ebec94bba5d0364ffd05a030f04219663a",
+      "dut_30.o": "f8ba3ab8e7e5d34071bf3cba55964c99c84688ff579439d862bde656de2d409b",
+      "dut_31.o": "7b5f1489fd81e16d915166e90bd1e2cdd67d0da8e6fb3a09ad930b4ff65efbde",
+      "dut_4.o": "1477fb918a875dfb1f73678e0d56f22752a40d82e0dd0f1be4641e73a35565e0",
+      "dut_5.o": "fc1101b5434d7d9ff71dc23b4d03d9eef51d2ed49d8c08194d41f214cab00824",
+      "dut_6.o": "cff16a130d04ae5db74cb38db482885e708d159e455443b387ee1dad2d560e3d",
+      "dut_7.o": "044aa891d1f150455b481d84d4268bee6a3bd4fb8e98877198186d2e02158b89",
+      "dut_8.o": "5f2cc0ede35481f700b546d0ab50ddd088ca1375d0c3e27c5160b6fdeb28fe3a",
+      "dut_9.o": "4418eec043d7e52a8b64477bb39d67d6275ace77d9c8e811bd224d574022de76",
+      "dut_commit_blocks.o": "87e5c167dc9efb0f8137d580566f59161471bac3b6b19c4d5f9cdf03d080653b",
+      "dut_commit_chunks.o": "15bf3a13a4d20d3a113f615b72ab7432bf6af1c7ddcafb29db9795ba5bf848a9",
+      "dut_commit_helpers.o": "b548471cc689579008bae17428d6d2426082acd836402b6bb80dd2fb784392e5",
+      "dut_mem_ports.o": "a8d6a1e57f6194e36e656af3ca5360b90a6cc13e31be4776c96832a4c592fdea",
+      "arti_rtl_model.o": "d18e0a032beef0b5c839b365a5988ca3df2e1f3f6365b70fa4970fe32df52884"
+    }
+  },
+  "order": [
+    "baseline",
+    "candidate",
+    "candidate",
+    "baseline",
+    "candidate",
+    "baseline",
+    "baseline",
+    "candidate"
+  ],
+  "samples": [
+    {
+      "workload": "spatial64",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 10826,
+        "explicit_ticks": 0,
+        "seconds": 0.726065708,
+        "commits": 1622516,
+        "holds": 9726293,
+        "holds_wrote": 1631716,
+        "reads": 1110,
+        "writes": 5778,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 10826,
+        "explicit_ticks": 0,
+        "seconds": 0.720941334,
+        "commits": 1622516,
+        "holds": 9726293,
+        "holds_wrote": 1631716,
+        "reads": 1110,
+        "writes": 5778,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 10826,
+        "explicit_ticks": 0,
+        "seconds": 0.717415916,
+        "commits": 1622516,
+        "holds": 9726293,
+        "holds_wrote": 1631716,
+        "reads": 1110,
+        "writes": 5778,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 10826,
+        "explicit_ticks": 0,
+        "seconds": 0.725412417,
+        "commits": 1622516,
+        "holds": 9726293,
+        "holds_wrote": 1631716,
+        "reads": 1110,
+        "writes": 5778,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "candidate",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 10826,
+        "explicit_ticks": 0,
+        "seconds": 0.718365958,
+        "commits": 1622516,
+        "holds": 9726293,
+        "holds_wrote": 1631716,
+        "reads": 1110,
+        "writes": 5778,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "baseline",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 10826,
+        "explicit_ticks": 0,
+        "seconds": 0.719949417,
+        "commits": 1622516,
+        "holds": 9726293,
+        "holds_wrote": 1631716,
+        "reads": 1110,
+        "writes": 5778,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "baseline",
+      "index": 6,
+      "result": {
+        "passed": true,
+        "ticks": 10826,
+        "explicit_ticks": 0,
+        "seconds": 0.72058225,
+        "commits": 1622516,
+        "holds": 9726293,
+        "holds_wrote": 1631716,
+        "reads": 1110,
+        "writes": 5778,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "candidate",
+      "index": 7,
+      "result": {
+        "passed": true,
+        "ticks": 10826,
+        "explicit_ticks": 0,
+        "seconds": 0.729400417,
+        "commits": 1622516,
+        "holds": 9726293,
+        "holds_wrote": 1631716,
+        "reads": 1110,
+        "writes": 5778,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 122349,
+        "explicit_ticks": 0,
+        "seconds": 11.104450375,
+        "commits": 24557903,
+        "holds": 144355044,
+        "holds_wrote": 24696281,
+        "reads": 15689,
+        "writes": 88187,
+        "read_bytes": 1004096,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 122349,
+        "explicit_ticks": 0,
+        "seconds": 11.16828025,
+        "commits": 24557903,
+        "holds": 144355044,
+        "holds_wrote": 24696281,
+        "reads": 15689,
+        "writes": 88187,
+        "read_bytes": 1004096,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 122349,
+        "explicit_ticks": 0,
+        "seconds": 11.161887375,
+        "commits": 24557903,
+        "holds": 144355044,
+        "holds_wrote": 24696281,
+        "reads": 15689,
+        "writes": 88187,
+        "read_bytes": 1004096,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 122349,
+        "explicit_ticks": 0,
+        "seconds": 10.999068792,
+        "commits": 24557903,
+        "holds": 144355044,
+        "holds_wrote": 24696281,
+        "reads": 15689,
+        "writes": 88187,
+        "read_bytes": 1004096,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "candidate",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 122349,
+        "explicit_ticks": 0,
+        "seconds": 11.148242041,
+        "commits": 24557903,
+        "holds": 144355044,
+        "holds_wrote": 24696281,
+        "reads": 15689,
+        "writes": 88187,
+        "read_bytes": 1004096,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "baseline",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 122349,
+        "explicit_ticks": 0,
+        "seconds": 11.0648505,
+        "commits": 24557903,
+        "holds": 144355044,
+        "holds_wrote": 24696281,
+        "reads": 15689,
+        "writes": 88187,
+        "read_bytes": 1004096,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "baseline",
+      "index": 6,
+      "result": {
+        "passed": true,
+        "ticks": 122349,
+        "explicit_ticks": 0,
+        "seconds": 11.087307208,
+        "commits": 24557903,
+        "holds": 144355044,
+        "holds_wrote": 24696281,
+        "reads": 15689,
+        "writes": 88187,
+        "read_bytes": 1004096,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "candidate",
+      "index": 7,
+      "result": {
+        "passed": true,
+        "ticks": 122349,
+        "explicit_ticks": 0,
+        "seconds": 11.021182792,
+        "commits": 24557903,
+        "holds": 144355044,
+        "holds_wrote": 24696281,
+        "reads": 15689,
+        "writes": 88187,
+        "read_bytes": 1004096,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "whole_RAM_and_all_counters_exact": true
+    }
+  ],
+  "summary": {
+    "spatial64": {
+      "medians": {
+        "baseline": 0.7229973335,
+        "candidate": 0.719653646
+      },
+      "time_saved_percent": 0.4624757720492867,
+      "ranges": {
+        "baseline": [
+          0.719949417,
+          0.726065708
+        ],
+        "candidate": [
+          0.717415916,
+          0.729400417
+        ]
+      }
+    },
+    "large256": {
+      "medians": {
+        "baseline": 11.076078854,
+        "candidate": 11.155064708
+      },
+      "time_saved_percent": -0.7131210877166616,
+      "ranges": {
+        "baseline": [
+          10.999068792,
+          11.104450375
+        ],
+        "candidate": [
+          11.021182792,
+          11.16828025
+        ]
+      }
+    }
+  },
+  "all_RAM_and_counters_exact": true,
+  "limitations": [
+    "Both dispatchers are O2 without PGO; all36 other selected O2/PGO objects are byte-identical. This isolates the compact table screen rather than qualifying a new profile-trained release.",
+    "Sample ranges overlap and large256 regresses slightly; no idle or full-desktop inference.",
+    "Compiler elapsed includes cleanup scheduling and is not a build-speed comparison."
+  ]
+}

@@ -1,0 +1,209 @@
+{
+  "recorded_at": 1792215142.502555,
+  "scope": "Exclusive/self sampled stack observations from one five-second interval in the selected committed native spatial256 renderer after two-second startup delay. Interval observations are not whole-desktop CPU percentages or guaranteed optimization headroom.",
+  "samples": 3680,
+  "counts_and_interval_percent": {
+    "combinational evaluation": {
+      "samples": 1427,
+      "percent": 38.77717391304348
+    },
+    "sequential hold evaluation": {
+      "samples": 1364,
+      "percent": 37.06521739130435
+    },
+    "evaluator dispatch and inline work": {
+      "samples": 405,
+      "percent": 11.005434782608695
+    },
+    "register commit excluding invalidation helpers": {
+      "samples": 260,
+      "percent": 7.065217391304348
+    },
+    "page-invalidation helpers": {
+      "samples": 141,
+      "percent": 3.8315217391304346
+    },
+    "memory simulation": {
+      "samples": 60,
+      "percent": 1.6304347826086956
+    },
+    "other runtime": {
+      "samples": 21,
+      "percent": 0.5706521739130435
+    },
+    "input update": {
+      "samples": 2,
+      "percent": 0.05434782608695652
+    }
+  },
+  "top_self_functions": [
+    {
+      "function": "GpuHostSystemAxiDut::tick_nba()",
+      "samples": 405,
+      "percent": 11.005434782608695
+    },
+    {
+      "function": "GpuHostSystemAxiDut_commit_bump_blocks(unsigned int*, unsigned short const*, unsigned int)",
+      "samples": 119,
+      "percent": 3.233695652173913
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_eager17415_0()",
+      "samples": 26,
+      "percent": 0.7065217391304348
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_mem_prepare()",
+      "samples": 25,
+      "percent": 0.6793478260869565
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_eager14688_0()",
+      "samples": 24,
+      "percent": 0.6521739130434783
+    },
+    {
+      "function": "GpuHostSystemAxiDut_commit_bump(unsigned int*, unsigned short const*, unsigned int)",
+      "samples": 22,
+      "percent": 0.5978260869565217
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_mem_store()",
+      "samples": 22,
+      "percent": 0.5978260869565217
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_eager16889_0()",
+      "samples": 18,
+      "percent": 0.4891304347826087
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_eager3036_0()",
+      "samples": 17,
+      "percent": 0.46195652173913043
+    },
+    {
+      "function": "GpuHostSystemAxiDut_commit_part128(GpuHostSystemAxiDut*, unsigned int)",
+      "samples": 17,
+      "percent": 0.46195652173913043
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_eager17057_0()",
+      "samples": 16,
+      "percent": 0.43478260869565216
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_eager3816_1()",
+      "samples": 16,
+      "percent": 0.43478260869565216
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_eager17581_0()",
+      "samples": 13,
+      "percent": 0.3532608695652174
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_eager16713_0()",
+      "samples": 12,
+      "percent": 0.32608695652173914
+    },
+    {
+      "function": "GpuHostSystemAxiDut_commit_part107(GpuHostSystemAxiDut*, unsigned int)",
+      "samples": 12,
+      "percent": 0.32608695652173914
+    },
+    {
+      "function": "GpuHostSystemAxiDut_commit_part84(GpuHostSystemAxiDut*, unsigned int)",
+      "samples": 11,
+      "percent": 0.29891304347826086
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_nba_h7614()",
+      "samples": 10,
+      "percent": 0.2717391304347826
+    },
+    {
+      "function": "_platform_memcmp",
+      "samples": 10,
+      "percent": 0.2717391304347826
+    },
+    {
+      "function": "GpuHostSystemAxiDut_commit_part66(GpuHostSystemAxiDut*, unsigned int)",
+      "samples": 10,
+      "percent": 0.2717391304347826
+    },
+    {
+      "function": "GpuHostSystemAxiDut_commit_part53(GpuHostSystemAxiDut*, unsigned int)",
+      "samples": 10,
+      "percent": 0.2717391304347826
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_eager93_0()",
+      "samples": 9,
+      "percent": 0.24456521739130435
+    },
+    {
+      "function": "GpuHostSystemAxiDut_commit_part47(GpuHostSystemAxiDut*, unsigned int)",
+      "samples": 9,
+      "percent": 0.24456521739130435
+    },
+    {
+      "function": "GpuHostSystemAxiDut_commit_part0(GpuHostSystemAxiDut*, unsigned int)",
+      "samples": 9,
+      "percent": 0.24456521739130435
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_eager13193_0()",
+      "samples": 9,
+      "percent": 0.24456521739130435
+    },
+    {
+      "function": "GpuHostSystemAxiDut::_eager16547_0()",
+      "samples": 8,
+      "percent": 0.21739130434782608
+    }
+  ],
+  "capture": {
+    "pid": 74828,
+    "started": 1792215085.185579,
+    "stage": "terminal",
+    "scope": "Fresh five-second CPU stack sample after a two-second process-start delay of committed63fa036 native spatial256 using selected own72 O2/PGO build. Diagnostic interval only, not a speed benchmark or whole-desktop CPU fraction. Require entire output RAM and every counter to match qualified fixture.",
+    "executable_sha256": "9a42fd82fe1ba9a0d8fab326a9eb147cd1c4d643e115fbf11be51ddbc6003b88",
+    "fixture_sha256": "6782f160a5506847c98ec4171b7d71bef0157d9ed7da3db5e16cb4dc938db3b7",
+    "archive_sha256": "066e130ab96286b4d9808689b6fd2ec8cf6857ebe23ef5312c94749278dd07f8",
+    "child_pid": 74831,
+    "passed": true,
+    "finished": 1792215096.897693,
+    "result": {
+      "passed": true,
+      "ticks": 122349,
+      "explicit_ticks": 0,
+      "seconds": 11.587921125,
+      "commits": 24557903,
+      "holds": 144355044,
+      "holds_wrote": 24696281,
+      "reads": 15689,
+      "writes": 88187,
+      "read_bytes": 1004096,
+      "write_bytes": 663696,
+      "faults": 0,
+      "completion": 34395,
+      "shader_config": 67635216
+    },
+    "complete_RAM_and_all_counters_exact": true,
+    "stack_sha256": "695ccbe65204ef799233f2841b3172dc3cebc83696546f7415008ec47221135f"
+  },
+  "stack_sha256": "695ccbe65204ef799233f2841b3172dc3cebc83696546f7415008ec47221135f",
+  "parser_invariants": {
+    "nonnegative_exclusive_counts": true,
+    "root_samples_equal_sum_exclusive_counts": true
+  },
+  "startup_samples": 0,
+  "limitations": [
+    "Classifications follow sampled function names; inlined work remains in its caller.",
+    "Flat symbol samples do not attribute every combinational cone to one RTL block. Cross-unit eager methods require per-cone inspection.",
+    "One sampled run is diagnostic and is not a paired speed measurement."
+  ],
+  "selected_RTL_commit": "63fa036",
+  "selected_backend_commit": "efefca8"
+}

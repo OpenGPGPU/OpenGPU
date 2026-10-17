@@ -38,6 +38,42 @@ a component estimate rather than whole-chip placement/routing.
 
 See [the sources, every gate, complete samples and trace hashes](performance/prepared-blend-overlap-main-qualification-2026-10-17.json).
 
+## Current active-render CPU sample (2026-10-17)
+
+A fresh five-second spatial256 sample of the qualified sampler-overlap model
+contains 3,680 observations after a two-second startup delay, with no loader
+samples. Exclusive observations group as follows:
+
+| Runtime work | Share of this interval |
+| --- | ---: |
+| Combinational evaluation | 38.78% |
+| Held-register update evaluation | 37.07% |
+| Evaluator dispatch and inline work | 11.01% |
+| Register commit, excluding invalidation helpers | 7.07% |
+| Page-invalidation helpers | 3.83% |
+| Memory simulation | 1.63% |
+
+The instrumented run preserves the qualified complete RAM and every counter.
+These shares describe this sampled native-render interval, not whole-desktop
+CPU costs or removable overhead. Inlined work stays attributed to its caller.
+Held-update evaluation now warrants exact per-call write-path and wake-source
+attribution before changing its scheduling.
+
+See [the exclusive-count invariants, top symbols and pinned build](performance/current-active-render-cpu-sample-2026-10-17.json).
+
+## Rejected compact dispatch metadata (2026-10-17)
+
+A host-only prototype halves the 17,522-entry ready-pass guard table from
+560,704 to 280,352 bytes. Both dispatchers use matched O2 without PGO, while
+the other 36 selected O2/PGO objects and the header remain byte-identical.
+Every output RAM byte and simulation counter matches in all 16 executions.
+
+Four balanced samples per variant show **0.46% saved on spatial64** and
+**0.71% slower spatial256**, with overlapping ranges. The smaller table does
+not demonstrate a useful active-render gain, so it is not promoted.
+
+See [the checked layout, reused-object hashes and all samples](performance/compact-pass-guards-screen-2026-10-17.json).
+
 ## Concurrent strict trace validation (2026-10-17)
 
 [`scripts/stream_arti_trace.py`](../scripts/stream_arti_trace.py) records and
