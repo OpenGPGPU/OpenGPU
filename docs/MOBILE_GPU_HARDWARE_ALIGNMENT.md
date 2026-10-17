@@ -760,3 +760,20 @@ All four fixtures pass mapping and the complete routed gate. These results
 justify evaluating the primitives in wider raster datapaths. They do not
 qualify an integrated rasterizer, renderer, CU or whole-GPU clock; integration
 requires separate numeric, ordering, throughput and physical evidence.
+
+## Native replay of the Linux compute smoke
+
+[The compute replay record](performance/mobile-drm-compute-replay-2026-10-18.json)
+checks the actual Linux smoke shader on both four-lane and sixteen-lane CU
+profiles in Bare and private Sv32 modes. The 23-word shader defines the
+slide-down destination and masks its last active lane, preserving the intended
+reduction result without reading an undefined tail beyond VL=4. The native
+test requires its instruction words to match the C smoke source exactly.
+
+Both profile checks pass, including every kernarg word, masked/strided/indexed
+memory operations, prior FILL event dependency, private code mapping and
+physical code-cache publication before restoring the job VM. The aggregate
+27-check run also retains the first queued raster revision's 24 product MSAA
+jobs and 23 integer ALU checks. Later raster revisions need their own replay.
+The Linux guest passed the compute and initial rendering checks but failed
+during paced flip-event delivery; full desktop qualification remains open.

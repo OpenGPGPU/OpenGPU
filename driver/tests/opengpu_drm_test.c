@@ -945,24 +945,29 @@ static void write_compute_shader(void *mapping)
     program[0] = 0xc1027057u; /* vsetivli x0,4,e32,m1,ta,ma */
     program[1] = 0x02103157u; /* vadd.vi v2,v1,0: define old vd */
     program[2] = 0x3a10b157u; /* vslideup.vi v2,v1,1 */
-    program[3] = 0x3e20b1d7u; /* vslidedown.vi v3,v2,1 */
-    program[4] = 0x02103257u; /* vadd.vi v4,v1,0: define reduction vd */
-    program[5] = 0x0230a257u; /* vredsum.vs v4,v3,v1: result 3 */
-    program[6] = 0x324032d7u; /* vrgather.vi v5,v4,0: broadcast 3 */
-    program[7] = 0x00200313u; /* addi x6,x0,2 */
-    program[8] = 0x96536357u; /* vmul.vx v6,v5,x6 */
-    program[9] = 0x7210b057u; /* vmsleu.vi v0,v1,1: enable lanes 0-1 */
-    program[10] = 0x0000e327u; /* vse32.v v6,(x1),v0.t */
-    program[11] = 0x021033d7u; /* vadd.vi v7,v1,0: define masked-load vd */
-    program[12] = 0x0000e387u; /* vle32.v v7,(x1),v0.t */
-    program[13] = 0x00800393u; /* addi x7,x0,8: signed byte stride */
-    program[14] = 0x0a70e3a7u; /* vsse32.v v7,(x1),x7 */
-    program[15] = 0x0a70e407u; /* vlse32.v v8,(x1),x7 */
-    program[16] = 0x0200e427u; /* vse32.v v8,(x1) */
-    program[17] = 0x961134d7u; /* vsll.vi v9,v1,2: trusted byte indices */
-    program[18] = 0x0690e507u; /* vluxei32.v v10,(x1),v9 */
-    program[19] = 0x0200e527u; /* vse32.v v10,(x1) */
-    program[20] = 0x30500073u; /* cease */
+    /* vslidedown may read tail elements below VLMAX even when they are
+     * above VL. Initialize vd and mask the last active lane so this test
+     * does not depend on v2[4] when the hardware has more than four lanes. */
+    program[3] = 0x5e0031d7u; /* vmv.vi v3,0 */
+    program[4] = 0x72113057u; /* vmsleu.vi v0,v1,2 */
+    program[5] = 0x3c20b1d7u; /* vslidedown.vi v3,v2,1,v0.t */
+    program[6] = 0x02103257u; /* vadd.vi v4,v1,0: define reduction vd */
+    program[7] = 0x0230a257u; /* vredsum.vs v4,v3,v1: result 3 */
+    program[8] = 0x324032d7u; /* vrgather.vi v5,v4,0: broadcast 3 */
+    program[9] = 0x00200313u; /* addi x6,x0,2 */
+    program[10] = 0x96536357u; /* vmul.vx v6,v5,x6 */
+    program[11] = 0x7210b057u; /* vmsleu.vi v0,v1,1: enable lanes 0-1 */
+    program[12] = 0x0000e327u; /* vse32.v v6,(x1),v0.t */
+    program[13] = 0x021033d7u; /* vadd.vi v7,v1,0: define masked-load vd */
+    program[14] = 0x0000e387u; /* vle32.v v7,(x1),v0.t */
+    program[15] = 0x00800393u; /* addi x7,x0,8: signed byte stride */
+    program[16] = 0x0a70e3a7u; /* vsse32.v v7,(x1),x7 */
+    program[17] = 0x0a70e407u; /* vlse32.v v8,(x1),x7 */
+    program[18] = 0x0200e427u; /* vse32.v v8,(x1) */
+    program[19] = 0x961134d7u; /* vsll.vi v9,v1,2: trusted byte indices */
+    program[20] = 0x0690e507u; /* vluxei32.v v10,(x1),v9 */
+    program[21] = 0x0200e527u; /* vse32.v v10,(x1) */
+    program[22] = 0x30500073u; /* cease */
 }
 
 static int reject_unsafe_command(int fd, uint32_t context_id,

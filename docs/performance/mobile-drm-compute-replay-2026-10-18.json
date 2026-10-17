@@ -1,0 +1,106 @@
+{
+  "scope": "Deterministic Linux smoke compute shader and independent native replay; no fullLinux/desktop qualification.",
+  "reference_checkpoint": "69cfab4",
+  "source_sha256": {
+    "driver/tests/opengpu_drm_test.c": "db6e81f09c6f99304e4a6174e6016497d69d402818417fc5dcfffce912b4190b",
+    "src/test/scala/opengpu/system/DrmComputeProgramReplaySpec.scala": "e8532f644a9710a8d0276d641931ef3e27a14905f9d3753c1ebd35dde89aa7e1",
+    "src/test/scala/opengpu/system/GpuHostTestSupport.scala": "7c5c7b7ac80b72015c9272a901cd1cef370cfdda7fb3f5003c23a5317d297921",
+    "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "44e1e1dbbabcb20146fe674dca1e6bbc79b2aa526a7d8738f85d47d2a196e2c3",
+    "driver/opengpu_shader_validator.h": "7075c29ddaabf2fb927a344efa12e0c0d58b8e9de7de2d3f09572bcd25aa650d"
+  },
+  "change": "Initialize slide-down destination and mask its final active lane, avoiding an undefined source tail when VLMAX exceedsVL4. Preserve slide/reduction/gather, masked/strided/indexed memory operations and result checks.",
+  "native": {
+    "checks": 2,
+    "vm_profile_cases": 4,
+    "results": [
+      {
+        "cus": 1,
+        "lanes": 4,
+        "warps": 2,
+        "sv32": false,
+        "instruction_words": 23,
+        "lower_reads": 3,
+        "first_outputs": [
+          6,
+          6,
+          2,
+          3
+        ]
+      },
+      {
+        "cus": 1,
+        "lanes": 4,
+        "warps": 2,
+        "sv32": true,
+        "instruction_words": 23,
+        "lower_reads": 7,
+        "first_outputs": [
+          6,
+          6,
+          2,
+          3
+        ]
+      },
+      {
+        "cus": 4,
+        "lanes": 16,
+        "warps": 8,
+        "sv32": false,
+        "instruction_words": 23,
+        "lower_reads": 3,
+        "first_outputs": [
+          6,
+          6,
+          2,
+          3
+        ]
+      },
+      {
+        "cus": 4,
+        "lanes": 16,
+        "warps": 8,
+        "sv32": true,
+        "instruction_words": 23,
+        "lower_reads": 7,
+        "first_outputs": [
+          6,
+          6,
+          2,
+          3
+        ]
+      }
+    ],
+    "publication": "FILL signals event7, software code mapping fails without a submission, repaired mapping flushesTLBs, physicalL2code invalidate executes underBare globalVM, kernel restores context and waits event7/signals event8. Every kernarg word checked.",
+    "aggregate_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/pipeline_v1_native27.log",
+      "sha256": "3fa9cf63cc41b3b1257b465c3b4b17c1b3aef25d8c27063563817262434f5963",
+      "aggregate_checks": 27,
+      "scope": "Aggregate also has2productMSAAchecks/24jobs and23VectorIntegerALUchecks on frozen rasterv1; later rasterv2/v3not covered."
+    },
+    "graphics_source_snapshots": {
+      "Rasterizer_pipeline_v1.scala": "e44e070a265a1fa4f0b41257df6db15a5f85f329ec96459ed5afe130c1e34434",
+      "Msaa_before_prefix.scala": "6f25eff93fb8dee88d280f7a7866c0108fdad99096d1444f9a5ff61308c4bf36"
+    }
+  },
+  "driver": {
+    "host_test_log_sha256": "bd13abb7ee4906e6bdf65261755de3893cfa8e3f209a1ebbf2f546d8922386cd",
+    "shader_validator": "Actual23word shader independently passes opengpu_compute_shader_validate_words with64B kernarg and4localitems."
+  },
+  "original_negative": {
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/drm-default-replay_original_program.log",
+    "sha256": "5bb103f8d88022f8eb8e4ebbda360a644471da6febd1bb8515ae24cbe647275d",
+    "scope": "Original21word shader returned undefined tail-dependent reduction values on16lanes; this is a test-program defect, not proof of an ALU defect."
+  },
+  "linux": {
+    "passed": false,
+    "serial": ".artifacts/mobile-hardware-alignment/h0-h1/fixed_guest_tailfix_failed_serial.log",
+    "serial_sha256": "8d6948c75bd08c5cf1aed088043f399625c848e3c83221549d2505e7784f7923",
+    "failure": "paced flip event: Timer expired",
+    "observed": "Both compute submissions and preceding firstrender/blit checks completed before paced flip test. Fullsmoke remains failing; original compute timeout rootcause is not proven."
+  },
+  "remaining": [
+    "Diagnose Linux paced flip delivery.",
+    "Native compute results do not prove raster or720p workload performance.",
+    "Original H0-H8 hardware requirements remain incomplete."
+  ]
+}
