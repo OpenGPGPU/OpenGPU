@@ -24,7 +24,7 @@ class TextureCoordinateResult(laneWidth: Int) extends Bundle {
   val sample = new TexturePreparedSample
 }
 
-/** Five elastic stages preserve the sampler's arithmetic register cuts while
+/** Six elastic stages preserve the sampler's arithmetic register cuts while
   * decoding later vector lanes during the current lane's fetch/filter work.
   * This unit issues no memory requests and keeps no cross-instruction state.
   */
@@ -60,16 +60,25 @@ class TextureCoordinatePipeline(laneWidth: Int) extends Module {
     val weights = Vec(4, UInt(17.W))
   }
   private val captured = Queue(io.in, 1, pipe = true, flow = false)
+  // Keep the 32x14 product and the half-texel subtraction on different
+  // register stages. Metadata remains elastic and preserves lane ownership.
+  private val scale = Wire(Decoupled(new Biased))
+  scale.valid := captured.valid
+  captured.ready := scale.ready
+  scale.bits.texture.lane := captured.bits.lane
+  scale.bits.texture.base := captured.bits.base
+  scale.bits.texture.texWidth := captured.bits.texWidth
+  scale.bits.texture.texHeight := captured.bits.texHeight
+  scale.bits.texture.clamp := captured.bits.clamp
+  scale.bits.x := (captured.bits.u * captured.bits.texWidth) >> 8
+  scale.bits.y := (captured.bits.v * captured.bits.texHeight) >> 8
+  private val scaled = Queue(scale, 1, pipe = true, flow = false)
   private val bias = Wire(Decoupled(new Biased))
-  bias.valid := captured.valid
-  captured.ready := bias.ready
-  bias.bits.texture.lane := captured.bits.lane
-  bias.bits.texture.base := captured.bits.base
-  bias.bits.texture.texWidth := captured.bits.texWidth
-  bias.bits.texture.texHeight := captured.bits.texHeight
-  bias.bits.texture.clamp := captured.bits.clamp
-  bias.bits.x := ((captured.bits.u * captured.bits.texWidth) >> 8) - 128.U
-  bias.bits.y := ((captured.bits.v * captured.bits.texHeight) >> 8) - 128.U
+  bias.valid := scaled.valid
+  scaled.ready := bias.ready
+  bias.bits.texture := scaled.bits.texture
+  bias.bits.x := scaled.bits.x - 128.U
+  bias.bits.y := scaled.bits.y - 128.U
   private val biased = Queue(bias, 1, pipe = true, flow = false)
 
   private def axisRange(value: UInt, extent: UInt, clamp: Bool): UInt = {

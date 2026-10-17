@@ -1,5 +1,43 @@
 # Full-system simulation performance investigation
 
+## Qualified prepared sampler overlap (2026-10-17)
+
+Each vector sampler can fetch its next prepared sample while holding the
+previous result. The tap datapath remains shared, with four outstanding reads.
+Issue and retirement use separate cursors derived from shader lane count; the
+coordinate lookahead has six elastic stages to keep multiply and bias apart.
+
+| Workload | Previous cycles | New cycles | Reduction |
+| --- | ---: | ---: | ---: |
+| Matched scene, one CU | 37,041 | 35,137 | 5.14% |
+| Matched scene, four CUs | 12,567 | 11,929 | 5.08% |
+| Native spatial64, four CUs | 11,304 | 10,826 | 4.23% |
+| Native spatial256, four CUs | 129,786 | 122,349 | 5.73% |
+
+The one/four-CU scene preserves pixels, depth, metadata and texture traffic;
+its CU scaling remains about 2.95x. Solid64 cycles are unchanged. Balanced
+four-sample O2/PGO native timings show **no host wall-time gain**: spatial256
+measures 10.957572 → 10.964003 seconds, with overlapping sample ranges. Its
+hold evaluations decrease only 0.65%, despite fewer GPU cycles.
+
+Fresh actual main-source emission matches all **296 qualified RTL modules**
+after removing source-location annotations. Six Scala suites pass 32 tests,
+including 1,200 coordinate cases, VLEN1/2/4/8/16/32, masks and backpressure.
+Disabling overlap fails the successor-prefetch control. Forty native
+format/swizzle cases, 18 staging controls and nine white-modulation cases pass;
+O1/O2 preserve complete RAM and all counters. The new model uses its own 72
+representative profile inputs.
+
+The actual 640×480 Debian/Weston/GTK desktop and orange redraw pass scanout
+checks and manual image review. Its complete strict trace contains **143,122
+calls and 15,959,940 ticks**, with no mismatch or truncated tail. Concurrent
+capture/replay and cleanup affect elapsed, so this is functional evidence.
+The sampler cone copied from actual native RTL passes the 1 GHz ASAP7
+synthesis screen with **+7.786 ps core / +273.148 ps I/O** setup slack; this is
+a component estimate rather than whole-chip placement/routing.
+
+See [the sources, every gate, complete samples and trace hashes](performance/prepared-blend-overlap-main-qualification-2026-10-17.json).
+
 ## Concurrent strict trace validation (2026-10-17)
 
 [`scripts/stream_arti_trace.py`](../scripts/stream_arti_trace.py) records and

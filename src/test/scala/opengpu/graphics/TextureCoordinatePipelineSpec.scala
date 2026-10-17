@@ -74,7 +74,8 @@ class TextureCoordinatePipelineSpec extends AnyFlatSpec {
       dut.io.in.valid.poke(false.B);dut.io.out.ready.poke(true.B);dut.clock.step(3)
       dut.io.busy.expect(false.B);dut.io.out.valid.expect(false.B)
       // Reset must discard metadata in every occupied stage.
-      dut.io.out.ready.poke(false.B);dut.io.in.valid.poke(true.B);dut.clock.step(5)
+      dut.io.out.ready.poke(false.B);dut.io.in.valid.poke(true.B);dut.clock.step(6)
+      dut.io.out.valid.expect(true.B)
       dut.io.busy.expect(true.B)
       dut.reset.poke(true.B);dut.clock.step();dut.reset.poke(false.B)
       dut.io.in.valid.poke(false.B);dut.io.out.ready.poke(true.B);dut.clock.step(6)

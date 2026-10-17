@@ -100,8 +100,13 @@ object TexWrap {
 class TextureUnit(
   gfxConfig: GraphicsConfig = GraphicsConfig(),
   wordCacheEntries: Int = 0,
-  allowPrepared: Boolean = false
+  allowPrepared: Boolean = false,
+  overlapPrepared: Boolean = false
 ) extends Module {
+  // Preserve the original constructor ABI for precompiled callers.
+  def this(gfxConfig: GraphicsConfig, wordCacheEntries: Int, allowPrepared: Boolean) =
+    this(gfxConfig, wordCacheEntries, allowPrepared, false)
+  require(!overlapPrepared || allowPrepared)
   // Preserve the uncached single-argument interface for existing callers.
   def this(gfxConfig: GraphicsConfig) = this(gfxConfig, 0, false)
   def this(gfxConfig: GraphicsConfig, wordCacheEntries: Int) = this(gfxConfig, wordCacheEntries, false)
@@ -179,6 +184,19 @@ class TextureUnit(
 
   // Blended result held until result.fire.
   private val resultReg = RegInit(0.U(32.W))
+  // One output slot overlaps the next prepared fetch with the prior blend.
+  // Tap registers and multipliers are shared; no two fetch groups overlap.
+  private val resultValid = if (overlapPrepared) Some(RegInit(false.B)) else None
+  private val resultSpace = resultValid.map(v => !v || io.result.ready).getOrElse(true.B)
+  if (overlapPrepared) { when(io.result.fire) { resultValid.get := false.B } }
+  private def completeResult(value: UInt): Unit = {
+    resultReg := value
+    if (overlapPrepared) {
+      assert(resultSpace, "a pending texture result must not be overwritten")
+      resultValid.get := true.B
+      state := sIdle
+    } else { state := sDone }
+  }
   private val firstLevelResult = RegInit(0.U(32.W))
   // Bilinear result registered between sBlend and sMix so the trilinear
   // weight multiplies never sit behind the four-tap blend adder tree.
@@ -188,7 +206,13 @@ class TextureUnit(
   private val idxXReg = Reg(Vec(2, UInt(14.W)))
   private val idxYReg = Reg(Vec(2, UInt(14.W)))
 
-  io.sample.ready := state === sIdle || (state === sDone && io.result.ready)
+  if (overlapPrepared) {
+    val finishingBase = state === sBlend && !secondLevel && lodFracReg === 0.U
+    io.sample.ready := resultSpace && (state === sIdle ||
+      (finishingBase && io.prepared.get.valid))
+  } else {
+    io.sample.ready := state === sIdle || (state === sDone && io.result.ready)
+  }
 
   // ---------------------------------------------------------------------
   // Coordinate decode, split across the sWrap and sTap stages so neither
@@ -203,14 +227,13 @@ class TextureUnit(
     *   biased = (u*extent) - 0.5            (fixed-point, wide enough never
     *                                          to lose information)
     *
-    * Coordinate ranges here keep every product below 2^46.  Shift into
-    * texel-space x256 first, THEN apply the half-texel bias (the bias is
-    * -128 in the post-shift domain; applying it pre-shift would be off by
-    * a factor of 256).  Natural-width shift + borrow-capable subtraction;
-    * no fixed-size slicing so no truncation surprises.
+    * A 32-bit coordinate and 14-bit extent produce at most 46 bits.
+    * Subtracting 32768 before taking bits 45:8 is equivalent modulo 2^38
+    * to shifting by eight and subtracting 128. This keeps the multiply
+    * and bias on the sampler's existing register boundary.
     */
   private def axisBias(coord: UInt, extent: UInt): UInt =
-    ((coord * extent) >> 8) - 128.U
+    ((coord * extent) - 32768.U)(45, 8)
 
   private val biasedXReg = RegInit(0.U(38.W))
   private val biasedYReg = RegInit(0.U(38.W))
@@ -331,7 +354,7 @@ class TextureUnit(
   private val trilinear = Cat(
     trilinearChannel(24), trilinearChannel(16), trilinearChannel(8), trilinearChannel(0))
 
-  io.result.valid := state === sDone
+  io.result.valid := resultValid.getOrElse(state === sDone)
   io.result.bits := resultReg
 
   // Keep the trilinear multiply behind a register for both the filtered path
@@ -353,8 +376,7 @@ class TextureUnit(
       // A non-fractional sample already has its final packed result. Avoid
       // the extra register-forwarding cycle; fractional trilinear mixing
       // still consumes blendedReg on the following cycle.
-      resultReg := value
-      state := sDone
+      completeResult(value)
     }.otherwise {
       state := sMix
     }
@@ -389,8 +411,7 @@ class TextureUnit(
         when(singleTexel) {
           val decoded = PixelFormat.decode(cacheWords.get(PriorityEncoder(hits(0))), formatReg)
           when(!secondLevel && lodFracReg === 0.U) {
-            resultReg := decoded
-            state := sDone
+            completeResult(decoded)
           }.otherwise { finishBilinear(decoded) }
         }.otherwise { state := sBlend }
       }
@@ -416,8 +437,7 @@ class TextureUnit(
         when(singleTexel) {
           val decoded = PixelFormat.decode(io.mem.resp.bits.data, formatReg)
           when(!secondLevel && lodFracReg === 0.U) {
-            resultReg := decoded
-            state := sDone
+            completeResult(decoded)
           }.otherwise {
             finishBilinear(decoded)
           }
@@ -537,11 +557,13 @@ class TextureUnit(
       } else { fetchMemory() }
     }
     is(sBlend) {
-      finishBilinear(blended)
+      when(resultSpace) {
+        finishBilinear(blended)
+        if (overlapPrepared) { when(io.sample.fire) { acceptSample() } }
+      }
     }
     is(sMix) {
-      resultReg := Mux(secondLevel, trilinear, blendedReg)
-      state := sDone
+      when(resultSpace) { completeResult(Mux(secondLevel, trilinear, blendedReg)) }
     }
     is(sDone) {
       when(io.result.fire) {
@@ -553,7 +575,8 @@ class TextureUnit(
 }
 
 /** Physical memory-read concurrency, independent of the shader vector length.
-  * Bilinear samples have four taps; mip groups and samples do not overlap.
+  * Bilinear samples have four taps; fetch groups remain sequential.
+  * A prepared successor can fetch while its predecessor holds a result.
   * Update this contract together with the owner/word credits if that changes.
   */
 object TextureUnit {

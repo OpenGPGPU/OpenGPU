@@ -49,7 +49,7 @@ class TexSampleUnit(
     }
   })
 
-  private val sampler = Module(new TextureUnit(gfxConfig, wordCacheEntries = 8, allowPrepared = true))
+  private val sampler = Module(new TextureUnit(gfxConfig, wordCacheEntries = 8, allowPrepared = true, overlapPrepared = true))
 
   // Reuse is limited to one instruction. A later operation may observe
   // changed texture memory, format, binding, or address translation.
@@ -87,6 +87,12 @@ class TexSampleUnit(
     Reg(Vec(config.lanes, UInt(config.xLen.W)))
   private val laneWidth = math.max(1, log2Ceil(config.lanes))
   private val laneReg = RegInit(0.U(laneWidth.W))
+  // Track prepared issue independently from retirement: one result may be
+  // held while its successor fetches. Derive the pointer and terminal bound
+  // from shader lane count, including VLEN1.
+  private val requestLane = RegInit(0.U(log2Ceil(config.lanes + 1).W))
+  private val requestIndex = requestLane(laneWidth - 1, 0)
+  private val preparedRequestActive = requestLane < config.lanes.U && executionMaskReg(requestIndex)
   private val coordinatePipeline = Module(new TextureCoordinatePipeline(laneWidth))
   private val preparedModeReg = RegInit(false.B)
   private val firstSampleReg = RegInit(true.B)
@@ -218,7 +224,12 @@ class TexSampleUnit(
   private val canChain = vectorModeReg && !broadcastTexelReg &&
     laneReg =/= (config.lanes - 1).U && executionMaskReg(nextLane) && sameMip
   private val retiringSample = sampler.io.result.valid
-  private val requestedLane = Mux(retiringSample, nextLane, laneReg)
+  private val requestedLane = Mux(preparedModeReg, requestIndex,
+    Mux(retiringSample, nextLane, laneReg))
+  when(state === sSample && preparedModeReg && requestLane < config.lanes.U &&
+    (!executionMaskReg(requestIndex) || sampler.io.sample.fire)) {
+    requestLane := requestLane + 1.U
+  }
   private val usePrepared = preparedModeReg && !firstSampleReg
   sampler.io.prepared.get.valid := usePrepared && coordinatePipeline.io.out.valid
   sampler.io.prepared.get.bits := coordinatePipeline.io.out.bits.sample
@@ -232,7 +243,8 @@ class TexSampleUnit(
   }
 
   sampler.io.sample.valid := state === sSample &&
-    Mux(retiringSample, canChain, !vectorModeReg || vectorLaneActive) &&
+    Mux(preparedModeReg, preparedRequestActive,
+      Mux(retiringSample, canChain, !vectorModeReg || vectorLaneActive)) &&
       (!usePrepared || coordinatePipeline.io.out.valid)
   sampler.io.sample.bits.u :=
     Mux(vectorModeReg, uVectorReg(requestedLane), uReg)
@@ -314,6 +326,7 @@ class TexSampleUnit(
         // Preserve the original first-sample latency; only later active
         // lanes enter the lookahead pipeline.
         firstSampleReg := true.B
+        requestLane := PriorityEncoder(io.vectorIn.bits.executionMask)
         prepareLane := PriorityEncoder(io.vectorIn.bits.executionMask) +& 1.U
         texBaseReg := io.texBase
         texFormatReg := io.texFormat
