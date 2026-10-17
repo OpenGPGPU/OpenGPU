@@ -1,5 +1,50 @@
 # Full-system simulation performance investigation
 
+## Qualified shared pass dispatch (2026-10-17)
+
+FlashSim commit `f86b763` shares generation/data/pending guards across
+ready worklist passes. It calls each region's eager chunks directly and keeps
+the complete lazy dependency walk for regions outside the drained closure.
+All 17,446 table entries and six multi-chunk paths match the legacy wrappers.
+The RTL, generated header and remaining 36 translation units are unchanged.
+`FLASHSIM_UNIFORM_PASSES=0` selects the legacy generation path for comparison.
+
+The changed dispatcher is trained from its own 72 representative executions;
+both timed variants retain byte-identical selected O2/PGO objects elsewhere.
+Three balanced fresh-process samples per variant give:
+
+| Same useful workload | Selected main | Shared dispatcher | Time saved |
+| --- | ---: | ---: | ---: |
+| Packed-white solid64 | 0.624063 s | 0.600818 s | 3.72% |
+| Packed-white spatial64 | 0.765788 s | 0.728353 s | 4.89% |
+| Packed-white spatial256 | 11.872122 s | 11.287641 s | 4.92% |
+| Fixed actual current Mesa64 trace | 24.306895 s | 23.547001 s | 3.13% |
+
+All output RAM, task clocks, holds, commits and DMA counters match. The final
+profiled gains are smaller than the earlier matched unprofiled-object screen;
+use this release table when estimating benefit. Idle has a small cost:
+**20.65 → 20.23 MHz**, about 2% lower throughput, measured with ten million
+idle ticks per fresh process and zero DMA, holds or commits.
+
+Qualification passes 117 package tests, strengthened mixed ready/lazy tests,
+40 native formats and 18 controls in O1/O2, nine current packed-white fixtures,
+18 VM cases, 21 GLES cases and GTK64. The full 640×480 guest and green-to-orange
+redraw pass, with manually reviewed scanout images. Strict replay matches all
+151,931 calls and 16,856,198 ticks of the existing full desktop trace. Its
+elapsed overlaps functional work and is not a paired whole-desktop timing.
+The installed QEMU executable and canonical README image remain unchanged.
+
+Guest disk preparation initially exhausted storage. The retry uses a
+byte-verified APFS clone. Checked cleanup removes only unused reproducible
+training binaries and the failed partial disk; all profile inputs remain
+available with identical paths and hashes after transparent compression.
+
+The next host targets come from a diagnostic five-second active-render sample:
+L2 evaluation, output merging and register-page invalidation. These sampled
+shares describe that interval and do not establish whole-desktop CPU costs.
+
+See [the complete shared-dispatch qualification and samples](performance/uniform-pass-dispatch-main-qualification-2026-10-17.json).
+
 ## Interpreting the 39 kHz desktop rate
 
 The same compiled four-CU model reaches **21.57 MHz while idle**, with zero
@@ -15,8 +60,8 @@ dispatch and register-invalidation costs. An exact observer of the current
 spatial64 fixture counts 8,890,221 pass dispatches: 8,809,255 evaluate their
 region, 80,966 return at the generation guard, and none return at the data
 guard. Only **0.91%** are no-op calls in that fixture. Removing no-op calls
-alone therefore has little headroom. A shared-dispatch implementation is a
-separate private host experiment; no release gain is claimed for it here.
+alone therefore has little headroom. Those counters motivated the shared
+dispatcher qualified above.
 
 The private shared-dispatch screen replaces the small wrappers with one typed
 guard loop and direct calls to each region's eager chunks. Every guard update
@@ -24,9 +69,9 @@ and chunk order is preserved. Both replacement objects use `-O2` without PGO;
 all other objects come from the same qualified O2/PGO archive. Three balanced
 samples per variant save **7.24% on solid64, 6.79% on spatial64 and 8.24% on
 spatial256**, with identical complete RAM and all simulation counters. The
-replacement object's text section is 33.84% smaller. These are preliminary
-matched-object results; representative PGO, generic-emitter semantics and
-strict Mesa/desktop qualification remain before release promotion.
+replacement object's text section is 33.84% smaller. These preliminary
+matched-object results preceded representative PGO, generic-emitter semantics
+and strict Mesa/desktop qualification. The completed release result is above.
 
 See [the private dispatcher measurements and compiler scope](performance/uniform-dispatch-host-screen-2026-10-17.json).
 
