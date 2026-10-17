@@ -167,6 +167,8 @@ class RenderPipeline(
     Some(Module(new PersistentTileAttachmentStore(config.maxSampleCount,
       config.screenWidth, config.screenHeight, useTileSramBlackBoxes, tileStoreCredits))) else None
   persistentStore.foreach(_.io.pass <> io.tilePass.get)
+  private val fragmentExecutionFault = WireDefault(false.B)
+  persistentStore.foreach(_.io.executionFault := fragmentExecutionFault)
   private val passAcceptingDraws = persistentStore.map(store =>
     store.io.pass.active && store.io.pass.end.ready &&
       !io.tilePass.get.end.valid && !io.tilePass.get.cancel).getOrElse(true.B)
@@ -543,6 +545,7 @@ class RenderPipeline(
     val kernelFrag: KernelFragStageIO = parallelFrag.map(_.io)
       .getOrElse(Module(new KernelFragStage(gpuConfig, config)).io)
     io.performance.fragment := kernelFrag.performance
+    fragmentExecutionFault := kernelFrag.executionFault
     val kernelShader = Module(new KernelShaderStage(gpuConfig, graphicsScalarFpu, sharedShader))
     if (parallelFrag.nonEmpty) {
       val pool = sharedShader.get
@@ -559,7 +562,8 @@ class RenderPipeline(
     kernelShader.io.instructionTlbFlush := io.instructionTlbFlush
     kernelShader.io.vectorSatp := io.vectorSatp
     kernelShader.io.vectorTlbFlush := io.vectorTlbFlush
-    io.shaderFault := kernelShader.io.trap.fire || parallelFrag.map(_.shaderFault).getOrElse(false.B)
+    io.shaderFault := kernelFrag.executionFault || kernelShader.io.trap.fire ||
+      parallelFrag.map(_.shaderFault).getOrElse(false.B)
 
     // A vertex draw is fully transformed before it enters rasterization, so a
     // single SIMT CU can safely serve vertex and fragment launches in turn.

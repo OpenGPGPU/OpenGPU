@@ -330,3 +330,19 @@ output. A [registered diagnostic candidate](performance/mobile-h1-registered-eve
 preserves exact event totals with a one-cycle delay and passes 16 concurrent
 component checks. Its synthesis setup screen reports +8.170 ps core and
 +256.364 ps I/O; a new route must establish the actual physical result.
+
+The [execution-failure path](performance/mobile-h1-execution-faults-2026-10-17.json)
+now fails the resident pass on accepted fragment traps, unsuccessful task
+completions and staging-memory faults. Completion retains context/pass/generation
+through producer and memory drain; a later pass starts with a fresh status.
+The experimental completion status is three bits, preserving values 0–3 and
+adding execution failure as value 4. The existing host `shaderFault` output
+also reports failed fragment completions and staging faults.
+
+Thirty-nine checks pass on the recorded source, including single/parallel
+shared-CU boundary failure cases, native CU-backed rendering, both tile classes,
+randomized attachment lifetimes and the matched transfer benchmark. The shared
+boundary harness models the shader ABI protocol; full system CU-pool and VM/cache
+integration remain required. Legacy word staging also waits for the first quad's
+producer write and correctly sizes indices for non-power-of-two batch capacities;
+4/8/12/16/112/128-fragment configurations are checked with faults and reuse.

@@ -1,0 +1,106 @@
+{
+  "scope": "H1 execution failure ownership; no milestone, API, full-system or physical-clock completion claim.",
+  "reference_checkpoint": "d27f05d",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/KernelFragStage.scala": "3ade6afab85f682d76060c2efb54fdd0668a899bc79ca7ee2a56678bf7b8b6a9",
+    "src/main/scala/opengpu/graphics/ParallelKernelFragStage.scala": "02d78250d18d377634cad66df7827b76c15189cf502406c5237cefd745ba39c7",
+    "src/main/scala/opengpu/graphics/PersistentTileAttachmentStore.scala": "34df353c3782bb241b588b8be76515b8334721c8609da721b966a23496e48de3",
+    "src/main/scala/opengpu/graphics/RenderPipeline.scala": "aab1a51c0f58571d3f16f3e4d3a8c90b8522666a23610c0e3c0d52c0368cdc59",
+    "src/main/scala/opengpu/graphics/TileRenderPass.scala": "bafa13d0dac623b585a0dec4577800549ef276aaad67aaa3394237d6640a02d5",
+    "src/test/scala/opengpu/graphics/KernelFragConcurrentStagingSpec.scala": "62d86d4f3b59a1ae3dc232ed707474193d185cf8659426f92b57a6fdb0229e38",
+    "src/test/scala/opengpu/graphics/PersistentTileAttachmentStoreSpec.scala": "03719effc6a58ee4a4f0c1fd968ed3bca310a5f8a1dce7f293ebb90faa000b4e",
+    "src/test/scala/opengpu/graphics/PersistentTileShaderFaultSpec.scala": "d22dfbd06c6949bed679be576ff942fd9bcbea9938619be1f2015e5b1c0ea7e4",
+    "src/test/scala/opengpu/graphics/PersistentTileRenderPipelineSpec.scala": "7083feebd8409ad30182b5a719bea90eddf632e94cd33ceb619027c9db7227e9",
+    "src/test/scala/opengpu/graphics/RenderPipelineSpec.scala": "ff81dde2acee017c53fc08fc0b6fc5e675602a045f5ad26eee0dd266baa41bb9"
+  },
+  "contract": {
+    "completion_status_width": 3,
+    "execution_fault_status": 4,
+    "older_status_values_unchanged": true,
+    "executionFault_input": "Accepted task trap, failed kernel completion or accepted staging response fault belonging to the resident owner; pulse, not sticky historical state.",
+    "drain": "Close the pass, suppress new local updates, drain already offered/issued work and every producer before releasing context/pass/generation.",
+    "shaderFault_output": "Also reports failed fragment completions and staging faults to the existing host failure path.",
+    "failed_pass": "A failure does not roll back attachment writes that had already completed; dependent consumers must observe the failed status."
+  },
+  "functional": {
+    "passed": true,
+    "tests": 39,
+    "credits": 8,
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/execution-fault-final.log",
+    "log_sha256": "6ccc1210fe492abae9b052ac33674066257d3d5a48e53fe9386f24e27053edfe",
+    "suites": {
+      "KernelFragConcurrentStagingSpec": 6,
+      "PersistentTileAttachmentStoreSpec": 17,
+      "PersistentTileShaderFaultSpec": 2,
+      "PersistentTileRenderPipelineSpec": 8,
+      "RenderPipelineSpec": 6
+    }
+  },
+  "shared_boundary_cases": [
+    "single and parallel fragment workers",
+    "successful ordered equal-depth draws",
+    "accepted trap followed by failed completion",
+    "failed completion without a trap",
+    "staging write fault and staging read fault",
+    "mutated descriptor inputs after admission",
+    "successful context/pass/generation reuse after every failed lifetime",
+    "final image and zero failed-pass stores before end",
+    "two simultaneously executing worker tasks with tagged replies"
+  ],
+  "shared_boundary_executor_scope": "The boundary harness copies ABI input color/depth to outputs; it does not execute instructions. RenderPipelineSpec separately retains actual CU-executed image checks at all sample modes. Integration with the full shared system CU pool and VM/cache publication is still pending.",
+  "legacy_staging_fixes": [
+    "Wait for the producer write pipe before capturing the first quad of a one-quad batch.",
+    "Keep ceil(log2(batch capacity)) index bits for non-power-of-two capacities.",
+    "Suppress launch after legacy-word input staging faults and suppress all batch outputs after output staging faults.",
+    "Verify 4/8/12/16/112/128 fragment capacities, response reorder/backpressure, exact one-cycle fault-event counts and healthy reuse."
+  ],
+  "performance": {
+    "matched_8_credit_cycles": 15005,
+    "serial_cycles": 43399,
+    "words_stored": 936,
+    "old_reads": 0,
+    "pre_store_cycles": 10757,
+    "scope": "Unchanged fixed32 word-latency/eight-request-window component model; not DRAM/AXI or frame FPS."
+  },
+  "physical": {
+    "synthesis": {
+      "artifact": "generated/mobile-h1/physical-execution-fault",
+      "gate": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          0.459,
+          241.354
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "61a4d5e8b091741cf2bd94b447ec7369bd8b0b09bbed39b87255d87d57ac274a"
+      },
+      "qor": {
+        "setup_worst_slack_ps": 0.459,
+        "core_clock_fmax_mhz": 1000.459
+      },
+      "manifest_sha256": "cd026b843d75be7ab9bdd84b5e6ed3025dcc4cc4e44d6d6267d77a34311ae56d",
+      "result_sha256": "f041a7b4ecf3be976915c6681460db388e030b0765df508cc768f5378cdeb140",
+      "emitted_sha256": {
+        "L2SramArray.sv": "d72588e8a9ac8d8aaec7495aae3ec57045cb817695cf11148a7df7b8e3f732f9",
+        "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+        "TileAttachmentClearEngine.sv": "86ba4d76c76df4e0929da729c48a1d710fd00f7a62738845ebc707823bff44a8",
+        "TileRenderPassAdmission.sv": "f161dd46e04f56a7e408efa1286c9ef4a8ba5abe7ac17eb7fb607571cea85f9b",
+        "TileAttachmentWriteQueue.sv": "b31ec91c7967cd69767cee88a7891c14f7a5f7ab2ded89c0a688cd9d3bcc2967",
+        "RRArbiter2_TileTransferRequest.sv": "308a3ea4afc09ae2077ff04b24363b89743706f0ec6591073e072dfd41374313",
+        "Queue1_TileTransferRequest.sv": "92c1ac8047c81f62d3b63a7c3c2b926d36ae566136c7025493e22561b01b901f",
+        "TileAttachmentTransfer.sv": "1cad4bbe458c422cce996b849bc838c1e45419b4f315b1c3f9e0cb4b9bda39ae",
+        "PersistentTileAttachmentStore.sv": "5dafb8147d1b1c95fabfb15bf998ae9c5617e21afb2d323f450d1414f815263b"
+      }
+    },
+    "route": "Latest execution-fault input is not route-qualified. Separate live registered-event route is frozen before this change.",
+    "scope": "TC/SLVT, 1000 ps, 25% I/O-delay budget and characterized SRAM; component synthesis estimate, not integrated GPU qualification."
+  },
+  "remaining": [
+    "host command/VM integration and cache-domain publication",
+    "full shared-system CU-pool pass integration",
+    "texture fault and broader protected execution contracts",
+    "latest component and integrated physical qualification",
+    "all remaining H0-H8 requirements"
+  ]
+}

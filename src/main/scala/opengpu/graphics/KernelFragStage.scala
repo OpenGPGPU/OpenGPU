@@ -110,6 +110,8 @@ object KernelFragFrontendIO {
 class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig, stagingTransactions: Int = 2)
     extends KernelFragFrontendIO(config, gfxConfig) {
   val performance = Output(new FragmentPerformanceEvents)
+  /** One-cycle failure events; ownership lasts until drained/draw retirement. */
+  val executionFault = Output(Bool())
   val memReq = Decoupled(new ComputeMemoryRequest(config))
   val memResp = Flipped(Decoupled(new ComputeMemoryResponse()))
   val wordMemReq = Decoupled(new ComputeMemoryRequest(config, 64, stagingTransactions))
@@ -297,6 +299,9 @@ class KernelFragStage(
   io.kernelCompletion.ready := true.B
   io.kernelTrap.ready := true.B
   io.kernelSimtBranch.ready := true.B
+  io.executionFault := io.kernelTrap.fire ||
+    (io.kernelCompletion.fire && !io.kernelCompletion.bits.success) ||
+    (io.wordMemResp.fire && io.wordMemResp.bits.fault)
 
   io.memReq.valid := false.B
   io.memReq.bits := 0.U.asTypeOf(io.memReq.bits)
@@ -386,7 +391,7 @@ class KernelFragStage(
   // over-wide dynamic index.  Counts reach `batchCap` for the fullness
   // comparison, so they keep the wider width and are narrowed when used to
   // index a Vec.
-  private val indexIdx = index(countWidth - 2, 0)
+  private val indexIdx = index(log2Ceil(batchCap) - 1, 0)
   private val quadCount = batchCap / 4
   private val quadIdxWidth = math.max(1, log2Ceil(quadCount))
   // Emit-cache fill selector.  The emit walk loads its quad cache in order, so
@@ -489,13 +494,14 @@ class KernelFragStage(
   private val lineFields = Reg(Vec(stagingTransactions, chiselTypeOf(field)))
   private val lineScanDone = RegInit(false.B)
   private val lineFault = RegInit(false.B)
+  private val stagingFaultNow = lineFault || (io.wordMemResp.fire && io.wordMemResp.bits.fault)
+  when(io.wordMemResp.fire && io.wordMemResp.bits.fault) { lineFault := true.B }
   private val freeLineId = PriorityEncoder(~lineBusy.asUInt)
   private val responseField = lineFields(io.wordMemResp.bits.transactionId)
   if (coalesceStaging) {
     when(io.wordMemResp.fire) {
       assert(lineBusy(io.wordMemResp.bits.transactionId))
       lineBusy(io.wordMemResp.bits.transactionId) := false.B
-      when(io.wordMemResp.bits.fault) { lineFault := true.B }
     }
   }
 
@@ -811,7 +817,7 @@ class KernelFragStage(
       emitQuad(lane).e2 := loadQuadField(lane)(_.e2)
       emitQuad(lane).covered := loadQuadField(lane)(_.covered)
       emitQuad(lane).coverageMask := loadQuadField(lane)(_.coverageMask)
-      val emitOutIdx = (emitQuadPtr << 2) + lane.U
+      val emitOutIdx = ((emitQuadPtr << 2) + lane.U)(log2Ceil(batchCap) - 1, 0)
       emitColorQ(lane) := outWords(emitOutIdx)
       emitDepthQ(lane) := outDepth(emitOutIdx)
       emitHitQ(lane) := outValid(emitOutIdx)
@@ -953,7 +959,9 @@ class KernelFragStage(
           }.otherwise { state := sLaunch }
         }
       } else {
-      when(!requestQuadLoaded) {
+      // A one-quad batch can commit on its first producer handshake. Its
+      // records and descriptor are still in the write pipe on entry here.
+      when(!requestQuadLoaded && !(wpValid && wpSlot === execSlot)) {
         // Re-base the request address at the start of the burst.  The slot's
         // kernarg snapshot has been staged by this point.
         when(requestQuadIdx === 0.U) { wordBase := slotKernarg(execSlot) }
@@ -989,7 +997,11 @@ class KernelFragStage(
             requestQuadIdx := 0.U
             requestLaneIdx := 0.U
             requestQuadLoaded := false.B
-            state := sLaunch
+            when(stagingFaultNow) {
+              for (lane <- 0 until batchCap) { outValid(lane) := false.B }
+              lineFault := false.B
+              beginStagingEmit()
+            }.otherwise { state := sLaunch }
           }.otherwise {
             index := index + 1.U
             wordBase := wordBase + 4.U
@@ -1146,6 +1158,10 @@ class KernelFragStage(
             emitQuadPtr := 0.U
             emitQuadSel := 1.U
             state := sEmit
+            when(stagingFaultNow) {
+              for (lane <- 0 until batchCap) { outValid(lane) := false.B }
+            }
+            lineFault := false.B
           }.otherwise {
             index := index + 1.U
             wordBase := wordBase + 4.U

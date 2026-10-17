@@ -10,10 +10,12 @@ object AttachmentLoadOp {
 }
 
 object TilePassStatus {
+  val width = 3
   val success = 0
   val invalidDescriptor = 1
   val cancelled = 2
   val memoryFault = 3
+  val executionFault = 4
 }
 
 /** Stable identity retained through completion and fault drain. Stage tags
@@ -75,7 +77,7 @@ class TileRenderPassDescriptor extends Bundle {
 
 class TileRenderPassCompletion extends Bundle {
   val identity = new GraphicsWorkIdentity
-  val status = UInt(2.W)
+  val status = UInt(TilePassStatus.width.W)
 }
 
 /** Half-open rectangle in tile-local pixel coordinates. A bit mask preserves

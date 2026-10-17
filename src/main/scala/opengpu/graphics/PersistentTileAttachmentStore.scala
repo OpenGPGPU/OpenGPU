@@ -23,6 +23,9 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     val permit = Output(Bool())
     val producerDrained = Input(Bool())
     val omDrained = Input(Bool())
+    /** Accepted shader trap, failed task completion or staging fault for this
+      * resident pass. A pulse, not a sticky status from an earlier owner. */
+    val executionFault = Input(Bool())
     val wordIndex = Input(UInt(10.W))
     val depthPlane = Input(Bool())
     val om = new Bundle {
@@ -52,8 +55,9 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   private val state = RegInit(idle)
   private val descriptor = Reg(new TileRenderPassDescriptor)
   private val closing = RegInit(false.B)
-  private val status = RegInit(TilePassStatus.success.U(2.W))
+  private val status = RegInit(TilePassStatus.success.U(TilePassStatus.width.W))
   private val failed = status =/= TilePassStatus.success.U
+  private val abortNow = io.pass.cancel || io.executionFault
   private val color = Module(new TileAttachmentSram(planeWords, useSramBlackBoxes))
   private val depth = Module(new TileAttachmentSram(planeWords, useSramBlackBoxes))
   for (memory <- Seq(color, depth)) {
@@ -91,7 +95,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   clearEngine.io.descriptor := descriptor
   clearEngine.io.colorTileBase := tileColorBase
   clearEngine.io.depthTileBase := tileDepthBase
-  clearEngine.io.cancel := failed || io.pass.cancel
+  clearEngine.io.cancel := failed || abortNow
   private val clearAdmission = state === running && !closing && io.producerDrained &&
     io.omDrained && !responseValid && !io.om.req.valid
   clearEngine.io.command.valid := io.pass.clear.valid && clearAdmission
@@ -111,7 +115,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   clearEngine.io.mem.resp.valid := responseValid && responseForClear
   clearEngine.io.mem.resp.bits := response
   when(io.om.resp.fire || clearEngine.io.mem.resp.fire) { responseValid := false.B }
-  when(io.pass.clearDone.fire && !io.pass.clearDone.bits && !failed && !io.pass.cancel) {
+  when(io.pass.clearDone.fire && !io.pass.clearDone.bits && !failed && !abortNow) {
     status := TilePassStatus.invalidDescriptor.U
     closing := true.B
   }
@@ -128,7 +132,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     flushRowBase := admission.io.out.bits.tileBases(0)
     resolveSourceRowBase := admission.io.out.bits.tileBases(0)
     resolveDestinationRowBase := admission.io.out.bits.tileBases(2)
-    when(failed || io.pass.cancel) { state := completed }
+    when(failed || abortNow) { state := completed }
       .otherwise {
         status := Mux(admission.io.out.bits.valid, TilePassStatus.success.U, TilePassStatus.invalidDescriptor.U)
         state := Mux(admission.io.out.bits.valid, running, completed)
@@ -155,6 +159,12 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   when(io.pass.cancel && io.pass.active) {
     closing := true.B
     when(!failed) { status := TilePassStatus.cancelled.U }
+  }
+  when(io.executionFault && io.pass.active) {
+    closing := true.B
+    when(!failed || status === TilePassStatus.cancelled.U) {
+      status := TilePassStatus.executionFault.U
+    }
   }
 
   private val xEnd = descriptor.originX +& descriptor.tileWidth
@@ -200,7 +210,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     response.write := operation.bits.write
     response.data := 0.U
     when(operation.bits.write) {
-      when(!failed && !io.pass.cancel) {
+      when(!failed && !abortNow) {
         when(operationDepth) {
           depth.io.writeEnable := true.B
           depth.io.writeAddress := wordIndex
@@ -216,10 +226,10 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
         }
       }
       responseValid := true.B
-    }.elsewhen(failed || io.pass.cancel || taggedRead) {
+    }.elsewhen(failed || abortNow || taggedRead) {
       // A failed pass still drains old OM entries, but its completion reports
       // failure and it cannot publish these drain values as attachment stores.
-      response.data := Mux(failed || io.pass.cancel, 0.U,
+      response.data := Mux(failed || abortNow, 0.U,
         Mux(selectedView.loadOp === AttachmentLoadOp.clear.U, selectedView.clearValue, 0.U))
       responseValid := true.B
     }.elsewhen(selectedValid) {
@@ -238,7 +248,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     }
   }
   when(state === hitRead) {
-    response.data := Mux(failed || io.pass.cancel, 0.U,
+    response.data := Mux(failed || abortNow, 0.U,
       Mux(hitDepth, depth.io.readData, color.io.readData))
     responseValid := true.B
     state := running
@@ -303,7 +313,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   when(state === missResponse && localMemory.resp.fire) {
     assert(!localMemory.resp.bits.write && localMemory.resp.bits.addr === missAddress,
       "tile load response must retain transaction ownership")
-    when(!localResponseFault && !failed && !io.pass.cancel) {
+    when(!localResponseFault && !failed && !abortNow) {
       when(missDepth) {
         depth.io.writeEnable := true.B
         depth.io.writeAddress := missIndex
@@ -317,10 +327,10 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
       }
     }
     when(missForResolve) {
-      when(localResponseFault || failed || io.pass.cancel) { state := completed }
+      when(localResponseFault || failed || abortNow) { state := completed }
         .otherwise { accumulateResolve(localMemory.resp.bits.data) }
     }.otherwise {
-      response.data := Mux(localResponseFault || failed || io.pass.cancel, 0.U, localMemory.resp.bits.data)
+      response.data := Mux(localResponseFault || failed || abortNow, 0.U, localMemory.resp.bits.data)
       responseValid := true.B
       state := running
     }
@@ -334,7 +344,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     state := Mux(failed, completed, flushing)
   }
   when(state === flushing) {
-    when(failed || io.pass.cancel) {
+    when(failed || abortNow) {
       state := completed
     }.elsewhen(cursor === (2 * planeWords).U) {
       state := Mux(descriptor.resolve, resolveSample, completed)
@@ -377,7 +387,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     state := flushing
   }
   when(state === resolveSample) {
-    when(failed || io.pass.cancel) { state := completed }
+    when(failed || abortNow) { state := completed }
       .elsewhen(colorValid(resolveIndex)) {
         color.io.readEnable := true.B
         color.io.readAddress := resolveIndex
@@ -393,7 +403,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
       }
   }
   when(state === resolveRead) {
-    when(failed || io.pass.cancel) { state := completed }
+    when(failed || abortNow) { state := completed }
       .otherwise { accumulateResolve(color.io.readData) }
   }
   when(state === resolveWrite) {
@@ -424,7 +434,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   if (storeCredits > 1) {
     val transfer = Module(new TileAttachmentTransfer(storeCredits))
     transfer.io.begin := io.pass.begin.fire
-    transfer.io.abort := failed || io.pass.cancel
+    transfer.io.abort := failed || abortNow
     transfer.io.resolve := state === resolveWrite
     transfer.io.local.req <> localMemory.req
     localMemory.resp <> transfer.io.local.resp
@@ -452,7 +462,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   when(io.pass.completion.fire) { state := idle }
 
   io.events.resident := io.pass.active
-  io.events.admitted := admission.io.out.fire && admission.io.out.bits.valid && !failed && !io.pass.cancel
+  io.events.admitted := admission.io.out.fire && admission.io.out.bits.valid && !failed && !abortNow
   io.events.completed := io.pass.completion.fire
   io.events.loadBytes := Mux(io.mem.req.fire && !io.mem.req.bits.write, 4.U, 0.U)
   io.events.storeBytes := Mux(io.mem.req.fire && io.mem.req.bits.write, 4.U, 0.U)
@@ -461,6 +471,6 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   // The wide tag lookup already serves the local response path. Register its
   // diagnostic pulse so it does not also consume the external I/O budget.
   io.events.clearRead := RegNext(operation.fire && !operation.bits.write && taggedRead &&
-    selectedView.loadOp === AttachmentLoadOp.clear.U && !failed, false.B)
+    selectedView.loadOp === AttachmentLoadOp.clear.U && !failed && !abortNow, false.B)
   io.events.attachmentStall := operation.valid && !operation.ready
 }

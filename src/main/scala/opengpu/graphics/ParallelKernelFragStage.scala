@@ -31,12 +31,14 @@ class ParallelKernelFragStage(
   private val texture = Module(new FragmentTextureArbiter(count,
     TextureUnit.maxOutstandingReads * count))
   private val faults = Wire(Vec(count, Bool()))
+  private val executionFaults = Wire(Vec(count, Bool()))
   private val events = Wire(Vec(count, new FragmentPerformanceEvents))
   KernelFragFrontendIO.connect(io, scheduler.io.front)
 
   for (workerId <- 0 until count) {
     val worker = Module(new KernelFragStage(config, gfxConfig, sharedShader.fragmentStagingPerWorker))
     events(workerId) := worker.io.performance
+    executionFaults(workerId) := worker.io.executionFault
     val shader = Module(new KernelShaderStage(config, graphicsScalarFpu, Some(sharedShader)))
     KernelFragFrontendIO.connect(scheduler.io.workers(workerId), worker.io)
     shader.io.shared.get <> sharedClients(workerId)
@@ -100,6 +102,7 @@ class ParallelKernelFragStage(
   texture.io.memoryResponse <> io.texMem.resp
   io.drained := scheduler.io.front.drained && staging.io.drained && texture.io.drained
   shaderFault := faults.asUInt.orR
+  io.executionFault := executionFaults.asUInt.orR
   for (phase <- 0 until 6)
     io.performance.phaseWorkers(phase) := PopCount(events.map(_.phaseWorkers(phase).orR))
   io.performance.stagingOutstanding := staging.io.outstanding

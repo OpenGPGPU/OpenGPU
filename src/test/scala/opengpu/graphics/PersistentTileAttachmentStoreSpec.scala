@@ -94,6 +94,7 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
     dut.io.fragmentY.poke(16.U)
     dut.io.producerDrained.poke(true.B)
     dut.io.omDrained.poke(true.B)
+    dut.io.executionFault.poke(false.B)
     dut.io.wordIndex.poke(0.U)
     dut.io.depthPlane.poke(false.B)
     dut.io.om.req.valid.poke(false.B)
@@ -333,6 +334,32 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
       d.end()
       d.complete(TilePassStatus.memoryFault)
       assert(d.requests.nonEmpty && d.requests.size <= credits && d.requests.forall(_.write))
+    }
+  }
+
+  it should "retain a failed shader's pass through outstanding attachment and producer drain" in {
+    simulate(store()) { dut =>
+      val d = new Driver(dut)
+      d.begin(Pass(colorLoad = AttachmentLoadOp.load))
+      d.deliverResponses = false
+      dut.io.producerDrained.poke(false.B)
+      d.issue(1, 1)
+      d.waitFor(d.requests.nonEmpty)
+      dut.io.executionFault.poke(true.B)
+      d.tick()
+      dut.io.executionFault.poke(false.B)
+      for (_ <- 0 until 5) { d.tick(); dut.io.pass.completion.valid.expect(false.B) }
+      d.deliverResponses = true
+      d.response(0)
+      for (_ <- 0 until 5) { d.tick(); dut.io.pass.completion.valid.expect(false.B) }
+      dut.io.producerDrained.poke(true.B)
+      d.complete(TilePassStatus.executionFault)
+      assert(d.requests.size == 1 && !d.requests.head.write)
+      d.begin(Pass(id = 8, generation = 12, context = 99, colorStore = false, depthStore = false))
+      d.issue(0, 0)
+      d.response(d.pass.colorClear)
+      d.end()
+      d.complete()
     }
   }
 

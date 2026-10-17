@@ -11,7 +11,7 @@ import scala.collection.mutable
   * replies reorder, both request/output ports stall, and banks are reused. */
 class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
   behavior of "KernelFragStage concurrent staging"
-  for ((lanes, warps, transactions) <- Seq((4, 2, 2), (8, 2, 2), (16, 7, 4), (16, 8, 8))) {
+  for ((lanes, warps, transactions) <- Seq((4, 1, 2), (4, 2, 2), (4, 3, 2), (8, 2, 2), (16, 7, 4), (16, 8, 8))) {
     it should s"drain tagged writes and route reordered reads for $lanes lanes, $warps warps and $transactions credits" in {
       val cap = lanes * warps
       simulate(new KernelFragStage(GpuConfig(lanes = lanes, warps = warps), GraphicsConfig(), transactions)) { dut =>
@@ -41,11 +41,12 @@ class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
         }
         def word(addr: Long): BigInt = (mem.getOrElse(addr & ~63L, BigInt(0)) >> ((addr & 63).toInt * 8)) & BigInt("ffffffff",16)
         case class Pending(id: Int, addr: Long, write: Boolean, data: BigInt, mask: BigInt, due: Int, fault: Boolean)
-        for ((count, faultPhase) <- Seq((cap, "none"), (4, "none"), (cap - 4, "none"), (cap, "write"), (cap, "read"), (4, "none"))) {
+        for ((count, faultPhase) <- Seq((cap, "none"), (4, "none"), (math.max(4, cap - 4), "none"), (cap, "write"), (cap, "read"), (4, "none"))) {
           val pending = mutable.ArrayBuffer.empty[Pending]
           var cycle = 0; var seq = 0; var launched = false; var completed = false
           var injected = false; var maxPending = 0; var reordered = false
           var launchBase = 0L; var outputs = 0; var retired = false
+          var faultEvents = 0
           var readSeen = false; var stable: Option[(BigInt, BigInt, BigInt, BigInt)] = None
           dut.io.wordMemReq.ready.poke(false.B)
           dut.io.out.ready.poke(false.B)
@@ -83,6 +84,7 @@ class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
               dut.io.wordMemResp.bits.fault.poke(p.fault.B)
             }
             val reply = selected.filter(_ => dut.io.wordMemResp.ready.peek().litToBoolean)
+            if (dut.io.executionFault.peek().litToBoolean) faultEvents += 1
             val reqFire = dut.io.wordMemReq.valid.peek().litToBoolean && dut.io.wordMemReq.ready.peek().litToBoolean
             if (dut.io.wordMemReq.valid.peek().litToBoolean) {
               val b = dut.io.wordMemReq.bits
@@ -150,8 +152,11 @@ class KernelFragConcurrentStagingSpec extends AnyFlatSpec {
           }
           assert(retired, s"batch count=$count fault=$faultPhase timed out")
           assert(outputs == (if (faultPhase == "none") expected.size else 0))
-          assert(maxPending >= 2 && maxPending <= transactions && reordered, "did not overlap/reorder staging IDs")
-          if (count == cap) assert(maxPending == transactions, "did not fill every local credit")
+          if (cap == 8 || cap % 16 == 0) {
+            assert(maxPending >= 2 && maxPending <= transactions && reordered, "did not overlap/reorder staging IDs")
+            if (count == cap) assert(maxPending == transactions, "did not fill every local credit")
+          } else assert(maxPending == 1, "word staging exceeded its serial bridge window")
+          assert(faultEvents == (if (faultPhase == "none") 0 else 1), "lost or repeated a staging failure event")
           assert(launched == (faultPhase != "write"))
           assert(readSeen == (faultPhase != "write"))
           dut.io.wordMemResp.valid.poke(false.B)
