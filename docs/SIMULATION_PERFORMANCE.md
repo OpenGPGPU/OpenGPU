@@ -1,5 +1,57 @@
 # Full-system simulation performance investigation
 
+## Current AXI and sampler activity (2026-10-17)
+
+Read-only observers of the qualified current model preserve complete native
+RAM, every counter and strict replay of both Mesa recordings. They sample
+existing pre-edge AXI fields and registered sampler state without invoking
+extra DUT evaluations. Current 512-bit AXI transfers are:
+
+| Workload | Task ticks | Accepted R beats | Accepted W beats | R / W occupancy |
+| --- | ---: | ---: | ---: | ---: |
+| Spatial64 | 11,304 | 1,113 | 1,180 | 9.85% / 10.44% |
+| Spatial256 | 129,786 | 15,716 | 17,721 | 12.11% / 13.65% |
+| Fixed Mesa64 trace | 3,619,433 | 42,352 | 76,740 | 1.17% / 2.12% |
+| Full640 trace | 16,856,198 | 584,122 | 738,764 | 3.47% / 4.38% |
+
+Every recorded request occupies one beat. Reads are four or 64 bytes; writes
+are masked 64-byte transfers. Every channel has **zero observed backpressure**,
+and every AR-to-R / AW-to-B latency is **one cycle** in the callback memory
+model. Widening this bus alone would leave each current request at one beat.
+These measurements describe the simulator's memory model, rather than physical
+DRAM latency. DMA callback counts differ from wire beats because writes are
+split into eight-byte callbacks.
+
+An ideal independent-channel bound for the full trace is 738,764 cycles to
+carry its recorded data beats, versus 16,856,198 actual ticks. That bound
+ignores compute, dependencies, request scheduling and control; it is a weak
+necessary bound, not a predicted attainable runtime or proof of optimality.
+
+The current full trace's sampler accepts **2,765,252** word requests, with two
+pending at trace end. Mean owner lifetime is **2.70 cycles**, peak occupancy
+is **9 of 16 slots**, and owner-capacity stalls are zero. The shared port
+accepts a request on **99.27% of cycles when any worker presents one**. This
+conditional acceptance differs from overall port utilization. Individual
+workers still compete during bursts.
+
+Within the vector-sample stage, worker-cycle residency is **66.90% fetch,
+14.31% blend and 14.31% result presentation**. These are current-RTL figures,
+replacing the older trace as the basis for the next sampler experiment.
+The private prepared-overlap prototype starts a successor during the prior
+blend, retaining one physical sampler and four outstanding reads per worker.
+Unit tests pass across VLEN 1/2/4/8/16/32; the matched full-mask 16-lane case
+drops from 176 to 160 cycles and the 32-lane case from 339 to 307. The full
+four-CU scene drops **12,567 → 11,929 cycles (5.08%)**, with exact pixels,
+depth, metadata and preserved canaries; texture traffic is unchanged. Its
+first standalone timing estimate regresses **986.765 → 931.648 MHz** at the
+1 GHz target, preventing promotion. The mapped path is coordinate multiply
+plus half-texel bias. A follow-up fuses that constant before product slicing;
+a SAT proof covers every possible 46-bit product. Further timing and desktop
+qualification remain necessary, and these cycle gains establish no desktop
+wall-time speedup.
+
+See [raw counters, observer source and exact validation](performance/current-axi-and-sampler-attribution-2026-10-17.json).
+
 ## Qualified immutable invalidation blocks (2026-10-17)
 
 FlashSim commit `efefca8` predecodes dense immutable page-ID lists into fixed eight/four-cell
