@@ -1,0 +1,90 @@
+{
+  "recorded_at": 1792239338.19822,
+  "status": "rejected_hardware_timing",
+  "production_promoted": false,
+  "change": "Existing one-entry pipelined texture-request queue also flows through when empty. All capacities, owner arbitration and duplicates unchanged.",
+  "evidence": {
+    "state.json": {
+      "path": ".artifacts/shared-cu/texture-request-flow-screen/state.json",
+      "sha256": "f1ea7667c555647f57f8dd7e726da6640ef9eb77ab633182fb7993c21bb1cfd7"
+    },
+    "timing-state.json": {
+      "path": ".artifacts/shared-cu/texture-request-flow-screen/timing-state.json",
+      "sha256": "451adce0b800f198031047cc70ce7b0f6288b3b59c0d374fbb7ae54f98706187"
+    },
+    "scene-state.json": {
+      "path": ".artifacts/shared-cu/texture-request-flow-screen/scene-state.json",
+      "sha256": "7d45462c74566626c4bb60c0ce9f84427aa2f3abe8dd07823a6f2436f12c1375"
+    },
+    "run.py": {
+      "path": ".artifacts/shared-cu/texture-request-flow-screen/run.py",
+      "sha256": "a875a2b85d3226327466298021ab11499d0a25fa4a13a011a0a5a1b1fbaca105"
+    },
+    "timing.py": {
+      "path": ".artifacts/shared-cu/texture-request-flow-screen/timing.py",
+      "sha256": "38584dd97d879ea8facb1315e6dc390ecf9b8122a231999cc15c3da37a06490f"
+    },
+    "FragmentWorkerMemory.scala": {
+      "path": ".artifacts/shared-cu/texture-request-flow-screen/FragmentWorkerMemory.scala",
+      "sha256": "a48ea53ee302fb25b3d6e157aa42031517596845ab05afd5c614e7fa2b221996"
+    },
+    "FragmentWorkerMemorySpec.scala": {
+      "path": ".artifacts/shared-cu/texture-request-flow-screen/FragmentWorkerMemorySpec.scala",
+      "sha256": "49746998cc11818f62d9d7e71326ab7b74dc51c9d095da7e1755a116858f7e12"
+    }
+  },
+  "tests": 7,
+  "baseline_latency_negative_control_failed_as_expected": true,
+  "changed_executable_modules": [
+    "Queue1_QueuedFragmentTextureRead.sv"
+  ],
+  "unchanged_modules": 297,
+  "timing": {
+    "scope": "Paired exact actual native FragmentTextureArbiter plus downstream BufferedTextureWordPort, joined by a wiring-only wrapper. Includes the newly bypassed request path through both components. Unchanged ASAP7 SLVT TC1GHz25%IO synthesis gate, all core and IO paths. This is a component estimate, not whole-chip closure.",
+    "baseline": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        107.193,
+        30.719
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "f853f2dcd5be0fb46b8eef46465b9a07a3176f2db14be494810ece0a3d05c171"
+    },
+    "candidate": {
+      "passed": false,
+      "reported_setup_slacks_ps": [
+        -32.092,
+        -178.185
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "53f3b8365536ba180a590fdd89ee0cb7d1b44e124443683573ab9ac4c7cb7881"
+    },
+    "baseline_inputs": {
+      "BufferedTextureWordPort": "5aa9a620fcd4e7eb11689bbe45e76f17b89dab2ed8940a1b3bc0fbf69ab63214",
+      "FragmentTextureArbiter": "ba5a291239894a972e4f7e2a87057aed94d05c70d717f42b48453324bbf37e89",
+      "Queue1_OmMemoryResponse": "ee827cc036043ec103cae041c7801c3783ef6134b92fafb31df2a8276e9df469",
+      "Queue1_QueuedFragmentTextureRead": "30ae3ba63724ce4f1a10f5702d31708eb3bb6fd25cc91c7b0d05fdf430f2da1c",
+      "RRArbiter16_UInt4": "22d916563145dc05156de54321a140562a4217c0a08816174678ed90aea62c2f",
+      "RRArbiter4_OmMemoryRequest": "fabdc48ad6ab9540decf19741980af0b0e8d3e8fa2a10891a123cf5ab45f2343",
+      "TextureRequestPath": "25adcb8d2b373965f76623d3d58a64e9e04ce2d2702cbc9c82cdad841b3f5112"
+    },
+    "candidate_inputs": {
+      "BufferedTextureWordPort": "5aa9a620fcd4e7eb11689bbe45e76f17b89dab2ed8940a1b3bc0fbf69ab63214",
+      "FragmentTextureArbiter": "65c24506e2657ba352cc5732134376a8956bbc52a29591ccc2e09084d2311b3f",
+      "Queue1_OmMemoryResponse": "ee827cc036043ec103cae041c7801c3783ef6134b92fafb31df2a8276e9df469",
+      "Queue1_QueuedFragmentTextureRead": "9bf68bc40253ac2c87dfd03173855fbad1486daca19f976ff2bfb00ec51aac97",
+      "RRArbiter16_UInt4": "22d916563145dc05156de54321a140562a4217c0a08816174678ed90aea62c2f",
+      "RRArbiter4_OmMemoryRequest": "fabdc48ad6ab9540decf19741980af0b0e8d3e8fa2a10891a123cf5ab45f2343",
+      "TextureRequestPath": "25adcb8d2b373965f76623d3d58a64e9e04ce2d2702cbc9c82cdad841b3f5112"
+    },
+    "clock_GHz": 1,
+    "IO_budget_percent": 25,
+    "wrapper_is_wiring_only_and_byte_identical": true
+  },
+  "scenes_skipped": true,
+  "native_runtime_built": false,
+  "host_speedup_claim": false,
+  "decision": "Keep the registered queue. Avoid joining sampler address selection to downstream cache/CAM acceptance on one combinational path; use structural throughput changes or reduce per-clock simulator work instead."
+}

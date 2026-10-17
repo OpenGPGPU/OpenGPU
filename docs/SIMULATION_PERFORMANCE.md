@@ -1,5 +1,40 @@
 # Full-system simulation performance investigation
 
+## Current shared texture-port contention (2026-10-17)
+
+Read-only register snapshots now cover every task tick in three native fixtures
+and both complete current64/full640 strict desktop traces. Complete native RAM
+and all twelve counters match; strict replay preserves every recorded event,
+clock, internal count and DMA total. Only the diagnostic dispatcher differs;
+36 other model members are byte-identical to the qualified runtime.
+
+| Workload | Credit-free prepared candidate worker ticks | Cross-CU duplicate worker ticks | Task ticks with multiple nonduplicate candidates | Peak owner slots |
+| --- | ---: | ---: | ---: | ---: |
+| Spatial64 | 4,358 | 2 | 836 | 9 / 16 |
+| Spatial256 | 57,425 | 34 | 7,696 | 8 / 16 |
+| Current64 desktop | 46,877 | 182 | 9,365 | 9 / 16 |
+| Full640 desktop | 2,993,115 | 1,786 | 515,641 | 10 / 16 |
+
+Cross-CU duplicates account for only **0.06%** of full-desktop candidate worker
+ticks. Increasing the owner table or adding duplicate multicast is therefore
+low priority for these workloads. Distinct requests do overlap, but these
+opportunity counts are not causal stalls, CPU shares or attainable speedups.
+The reconstruction excludes same-cycle response turnover at all four credits;
+generic reads are counted in owner allocations but not prepared-candidate
+histograms. Worker ticks and task ticks have different denominators.
+
+A private empty-queue bypass passes seven routing tests, including stalled
+requests and out-of-order replies. Its startup-latency regression fails against
+the baseline as expected; only one queue module changes among 298 modules.
+However, a wiring-only cone joining the actual native arbiter and downstream
+texture line buffer exposes a timing regression at unchanged 1 GHz / 25% I/O:
+**+107.193 ps core / +30.719 ps I/O** becomes **−32.092 ps / −178.185 ps**.
+The shortcut remains private; expensive scene and native builds were skipped.
+This is synthesis component evidence, not whole-chip placement/routing.
+
+See [the complete trace counters and observer scope](performance/texture-arbiter-contention-2026-10-17.json)
+and [the rejected request bypass and paired timing](performance/texture-request-flow-screen-2026-10-17.json).
+
 ## Qualified prepared fetch window (2026-10-17)
 
 Two prepared contexts per CU now share the existing word cache, blend datapath
