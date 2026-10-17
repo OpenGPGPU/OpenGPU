@@ -68,6 +68,44 @@ the already qualified staging-payload change.
 
 See [the complete capacity screens and I/O-gate evidence](performance/texture-capacity-and-io-screen-2026-10-17.json).
 
+## Combined texture prototype: native checks and release build (2026-10-17)
+
+The combined bounded-owner/word-buffer, direct-decoder and reply-forwarding
+prototype passes all nine packed-white native fixtures with **bit-identical
+complete output RAM**, including staging scratch. The 256×256 render drops
+from 139,330 to 129,786 ticks (**6.85% fewer**). A paired component extraction
+copies the actual native RTL modules unchanged, retaining the native lowering
+and constant propagation. Both baseline and candidate pass core and I/O setup;
+the candidate has 129.400 ps core slack and 44.669 ps I/O slack at 1 GHz.
+This remains a pre-layout component estimate.
+
+The preliminary matched O1 instrumented host screen gives these medians:
+
+| Useful workload | Main staging-quiet model | Combined prototype | Time saved |
+| --- | ---: | ---: | ---: |
+| Packed-white solid64 | 1.385989 s | 1.345551 s | 2.92% |
+| Packed-white spatial64 | 1.537631 s | 1.490923 s | 3.04% |
+| Packed-white spatial256 | 26.426378 s | 25.533979 s | 3.38% |
+
+Solid and spatial256 use three balanced samples per variant. Spatial64's first
+three samples showed a noisy 1.29% regression; six additional balanced samples
+per variant resolve that borderline result. All original samples are retained
+in its final nine-sample medians, and the screening thresholds are unchanged.
+These are preliminary instrumented results, not release O2 gains. Fewer ticks
+can accompany a lower tick rate when useful work per tick increases; compare
+elapsed time for the same completed render.
+
+Broader checks pass 40 native format cases, 12 staging controls, six forced
+controls, 18 VM cases and an actual 21-case GLES/GTK64 training guest. Its own
+captured timed trace replays strictly. The representative 72-profile set is
+merged and the O2 release model is compiling. Independent output and memory
+checks replace old-architecture timing equality; O1/O2 builds of this same
+candidate must still match their own clocks, callbacks and complete RAM.
+Current packed-white/full640 qualification and final balanced release timing
+remain before source promotion.
+
+See [the native proofs, all timing samples and training evidence](performance/texture-composite-native-screen-2026-10-17.json).
+
 ## Desktop activity cost before payload quieting (2026-10-17)
 
 With qualified packed-white modulation, the complete 640×480 desktop/GTK

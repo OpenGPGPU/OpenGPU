@@ -1,0 +1,1728 @@
+{
+  "recorded_at": 1792201494.774733,
+  "status": "Private composite exactnativecomponentPPA and9packedwhite/40nativeformats/18stagingforcedcontrols/18VM/21GLES+GTK64 PASS; own72profile O2 release compilation underway. MainRTL/defaultbinaries unchanged.",
+  "actual_native_timing": {
+    "scope": "Paired exactnativeSV texture owner+wordbuffer component cone, all childmodule bytes copied unchanged from actualfull640 RTL. Wrapper exposes the same proof IO; remove only namedconnections eliminated by wholemodel constantpropagation and adapt6vs4bit private wordID. Nativeemitlowering retained. Synthesisonly ASAP7 SLVT TC1GHz25%IO, explicitbothcoreandIO; notwholechipclosure.",
+    "baseline": {
+      "verdict": "PASS",
+      "headline": "Synthesis meets 1 GHz",
+      "next_action": "Proceed to physical implementation.",
+      "analysis": "Pre-layout STA on the synthesized netlist",
+      "stage": "1_synth",
+      "target": {
+        "clock_period_ps": 1000.0,
+        "frequency_mhz": 1000.0,
+        "corner": "TC"
+      },
+      "timing": {
+        "setup_slack_ps": 9.614,
+        "core_clock_fmax_mhz": 1009.707
+      },
+      "physical": {
+        "note": "synthesis-only gate; no place/route performed"
+      }
+    },
+    "candidate": {
+      "verdict": "PASS",
+      "headline": "Synthesis meets 1 GHz",
+      "next_action": "Proceed to physical implementation.",
+      "analysis": "Pre-layout STA on the synthesized netlist",
+      "stage": "1_synth",
+      "target": {
+        "clock_period_ps": 1000.0,
+        "frequency_mhz": 1000.0,
+        "corner": "TC"
+      },
+      "timing": {
+        "setup_slack_ps": 129.4,
+        "core_clock_fmax_mhz": 1148.633
+      },
+      "physical": {
+        "note": "synthesis-only gate; no place/route performed"
+      }
+    },
+    "baseline_strict_gate": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        9.614,
+        203.02
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "c3727b64512dd4c67f6c75450c389697cfe630f85545782ff8f09f2504bb6bb1"
+    },
+    "candidate_strict_gate": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        129.4,
+        44.669
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "b894d595eb9622a32fc7f9efe5072c2c257cb223170b569c8a2666a72fa76614"
+    },
+    "baseline_extraction": {
+      "copied_native_module_sha256": {
+        "BufferedTextureWordPort": "1f0feca605d5bc4fcfe897ce5521935d7bddfc0220940a2689ef0af1780bac47",
+        "FragmentTextureArbiter": "32745dbeccfcd637f43d6bc0d95e327c0fac78931143e90df3e46832e5da1a56",
+        "Queue1_OmMemoryResponse": "9727bbcf2644d8911540444802eec6713c411492904d6cbb4db30672103e058a",
+        "Queue1_QueuedFragmentTextureRead": "ad891626f287e6071ef931414691b0d8e33bbd9e2572da7f757847375ca0443a",
+        "RRArbiter4_OmMemoryRequest": "fabdc48ad6ab9540decf19741980af0b0e8d3e8fa2a10891a123cf5ab45f2343",
+        "RRArbiter64_UInt6": "e2d926649e80d847f37be32f9e5725386f121a12dbdff89272c15ce419a34a0d"
+      },
+      "removed_constant_eliminated_connections": {
+        "owner": [
+          "io_clients_0_request_bits_write",
+          "io_clients_0_request_bits_data",
+          "io_clients_1_request_bits_write",
+          "io_clients_1_request_bits_data",
+          "io_clients_2_request_bits_write",
+          "io_clients_2_request_bits_data",
+          "io_clients_3_request_bits_write",
+          "io_clients_3_request_bits_data"
+        ],
+        "words": []
+      },
+      "wrapper_sha256": "f3f4aee5e4195e36c15b0f9b31f159dc4d4445957a284cb6ec58c77eb23dc72b"
+    },
+    "candidate_extraction": {
+      "copied_native_module_sha256": {
+        "BufferedTextureWordPort": "319cfe435b6d75f90f138f6d78e71774b429502ee52d58ec69545420c178b89e",
+        "FragmentTextureArbiter": "df86335cf6c37d608542ac82146118006fea6243c8dd43ba546e654fe214eed6",
+        "Queue1_OmMemoryResponse": "ee827cc036043ec103cae041c7801c3783ef6134b92fafb31df2a8276e9df469",
+        "Queue1_QueuedFragmentTextureRead": "30ae3ba63724ce4f1a10f5702d31708eb3bb6fd25cc91c7b0d05fdf430f2da1c",
+        "RRArbiter16_UInt4": "22d916563145dc05156de54321a140562a4217c0a08816174678ed90aea62c2f",
+        "RRArbiter4_OmMemoryRequest": "fabdc48ad6ab9540decf19741980af0b0e8d3e8fa2a10891a123cf5ab45f2343"
+      },
+      "removed_constant_eliminated_connections": {
+        "owner": [
+          "io_clients_0_request_bits_write",
+          "io_clients_0_request_bits_data",
+          "io_clients_1_request_bits_write",
+          "io_clients_1_request_bits_data",
+          "io_clients_2_request_bits_write",
+          "io_clients_2_request_bits_data",
+          "io_clients_3_request_bits_write",
+          "io_clients_3_request_bits_data"
+        ],
+        "words": []
+      },
+      "wrapper_sha256": "06faed1501690d17b661fbaae713d93f86fd10aaa415460b3f47dcc2927d41ea"
+    }
+  },
+  "native_packedwhite_cases": [
+    {
+      "tag": "solid-uniform-alpha0-fast",
+      "result": {
+        "passed": true,
+        "ticks": 8788,
+        "explicit_ticks": 0,
+        "seconds": 1.363502167,
+        "commits": 1273254,
+        "holds": 8141999,
+        "holds_wrote": 1281869,
+        "reads": 903,
+        "writes": 5824,
+        "read_bytes": 57792,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "baseline": {
+        "passed": true,
+        "ticks": 8801,
+        "explicit_ticks": 0,
+        "seconds": 1.275904667,
+        "commits": 1303072,
+        "holds": 8080280,
+        "holds_wrote": 1311687,
+        "reads": 901,
+        "writes": 5863,
+        "read_bytes": 57664,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "independent_proof": {
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "output_sha256": "d7055c555c6ebd1f6bc1c171f2e88f13589d1291b6650d640e56b3c1b4349670"
+      },
+      "complete_RAM_equal": true,
+      "transient_scratch_different_bytes": 0,
+      "all_RAM_outside_FS_scratch_exact": true,
+      "omitted_fields_and_uniform_canaries_preserved": true,
+      "fixture_sha256": "6b4240e3a683b49e7a91ba76ad2338f4a81f5ced9aa1cf24853fca75ee93de2e",
+      "output_sha256": "d7055c555c6ebd1f6bc1c171f2e88f13589d1291b6650d640e56b3c1b4349670",
+      "task_cycle_reduction_percent": 0.1477104874446078,
+      "hold_dispatch_reduction_percent": -0.7638225408030497
+    },
+    {
+      "tag": "solid-uniform-alpha1-fast",
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 1.408594125,
+        "commits": 1388084,
+        "holds": 8185941,
+        "holds_wrote": 1397119,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "baseline": {
+        "passed": true,
+        "ticks": 8841,
+        "explicit_ticks": 0,
+        "seconds": 1.175421042,
+        "commits": 1418464,
+        "holds": 8217010,
+        "holds_wrote": 1427499,
+        "reads": 894,
+        "writes": 5806,
+        "read_bytes": 57216,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "independent_proof": {
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "output_sha256": "739c4572c80198ad38a6993a6b896982b22403aeb5e975c856cfedffffefea74"
+      },
+      "complete_RAM_equal": true,
+      "transient_scratch_different_bytes": 0,
+      "all_RAM_outside_FS_scratch_exact": true,
+      "omitted_fields_and_uniform_canaries_preserved": true,
+      "fixture_sha256": "1b35782543e98fdfa16969278f0489b9ea3a046b629b93104dce161f658b273f",
+      "output_sha256": "739c4572c80198ad38a6993a6b896982b22403aeb5e975c856cfedffffefea74",
+      "task_cycle_reduction_percent": 0.2035968781812003,
+      "hold_dispatch_reduction_percent": 0.37810590470256367
+    },
+    {
+      "tag": "solid-gradient-alpha0-fast",
+      "result": {
+        "passed": true,
+        "ticks": 8788,
+        "explicit_ticks": 0,
+        "seconds": 1.352184667,
+        "commits": 1271270,
+        "holds": 8141986,
+        "holds_wrote": 1279885,
+        "reads": 903,
+        "writes": 5824,
+        "read_bytes": 57792,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "baseline": {
+        "passed": true,
+        "ticks": 8801,
+        "explicit_ticks": 0,
+        "seconds": 1.073234875,
+        "commits": 1300852,
+        "holds": 8080269,
+        "holds_wrote": 1309467,
+        "reads": 901,
+        "writes": 5863,
+        "read_bytes": 57664,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "independent_proof": {
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "output_sha256": "0a96a26487987e9c6e76759d844d041a1206ad1fe783a7a0c2909e24f0447802"
+      },
+      "complete_RAM_equal": true,
+      "transient_scratch_different_bytes": 0,
+      "all_RAM_outside_FS_scratch_exact": true,
+      "omitted_fields_and_uniform_canaries_preserved": true,
+      "fixture_sha256": "850cb788ac02a58b32b428ef85c093ddea3fb6f061d553a1d6a29ebfa4758881",
+      "output_sha256": "0a96a26487987e9c6e76759d844d041a1206ad1fe783a7a0c2909e24f0447802",
+      "task_cycle_reduction_percent": 0.1477104874446078,
+      "hold_dispatch_reduction_percent": -0.7637988289746378
+    },
+    {
+      "tag": "solid-gradient-alpha1-fast",
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 1.389093083,
+        "commits": 1402540,
+        "holds": 8187045,
+        "holds_wrote": 1411575,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "baseline": {
+        "passed": true,
+        "ticks": 8841,
+        "explicit_ticks": 0,
+        "seconds": 1.112675625,
+        "commits": 1435756,
+        "holds": 8218897,
+        "holds_wrote": 1444791,
+        "reads": 894,
+        "writes": 5806,
+        "read_bytes": 57216,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "independent_proof": {
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "output_sha256": "ed561c92a217db0b2695179285ccf02a4f2847952db6f73674bf9d92ecddc6e5"
+      },
+      "complete_RAM_equal": true,
+      "transient_scratch_different_bytes": 0,
+      "all_RAM_outside_FS_scratch_exact": true,
+      "omitted_fields_and_uniform_canaries_preserved": true,
+      "fixture_sha256": "c9167d3e742e617be1a2c68e79b149366df329e3de4a57770c5cdaf40ee8ae3b",
+      "output_sha256": "ed561c92a217db0b2695179285ccf02a4f2847952db6f73674bf9d92ecddc6e5",
+      "task_cycle_reduction_percent": 0.2035968781812003,
+      "hold_dispatch_reduction_percent": 0.3875459200912257
+    },
+    {
+      "tag": "spatial-uniform-alpha0-fast",
+      "result": {
+        "passed": true,
+        "ticks": 11119,
+        "explicit_ticks": 0,
+        "seconds": 1.610503459,
+        "commits": 1405821,
+        "holds": 9536781,
+        "holds_wrote": 1414601,
+        "reads": 1099,
+        "writes": 5757,
+        "read_bytes": 70336,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "baseline": {
+        "passed": true,
+        "ticks": 11562,
+        "explicit_ticks": 0,
+        "seconds": 1.4143025,
+        "commits": 1414221,
+        "holds": 9698717,
+        "holds_wrote": 1423001,
+        "reads": 1116,
+        "writes": 5768,
+        "read_bytes": 71424,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "independent_proof": {
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "output_sha256": "4cccfc2f526cc611c3e98f8e42c9257caf8ab18c61bba61deb8e7bcc400e9c30"
+      },
+      "complete_RAM_equal": true,
+      "transient_scratch_different_bytes": 0,
+      "all_RAM_outside_FS_scratch_exact": true,
+      "omitted_fields_and_uniform_canaries_preserved": true,
+      "fixture_sha256": "c023778e2bd94d3981c18069c8cd4d2dc9c1cfac0900fa79ae118b582615168b",
+      "output_sha256": "4cccfc2f526cc611c3e98f8e42c9257caf8ab18c61bba61deb8e7bcc400e9c30",
+      "task_cycle_reduction_percent": 3.831517038574639,
+      "hold_dispatch_reduction_percent": 1.669664142174676
+    },
+    {
+      "tag": "spatial-uniform-alpha1-fast",
+      "result": {
+        "passed": true,
+        "ticks": 11304,
+        "explicit_ticks": 0,
+        "seconds": 1.646297417,
+        "commits": 1459557,
+        "holds": 9639570,
+        "holds_wrote": 1468757,
+        "reads": 1113,
+        "writes": 5812,
+        "read_bytes": 71232,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "baseline": {
+        "passed": true,
+        "ticks": 11803,
+        "explicit_ticks": 0,
+        "seconds": 1.563376125,
+        "commits": 1460782,
+        "holds": 9645603,
+        "holds_wrote": 1469982,
+        "reads": 1110,
+        "writes": 5776,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "independent_proof": {
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "output_sha256": "16c8475726b7624734382d2cd3b353059a95d1286c6205114e029f6be3c42978"
+      },
+      "complete_RAM_equal": true,
+      "transient_scratch_different_bytes": 0,
+      "all_RAM_outside_FS_scratch_exact": true,
+      "omitted_fields_and_uniform_canaries_preserved": true,
+      "fixture_sha256": "14a16539d02bbc047b5f2a6d6cfc0b4dc26bf9450844d57be1ff76714270acf5",
+      "output_sha256": "16c8475726b7624734382d2cd3b353059a95d1286c6205114e029f6be3c42978",
+      "task_cycle_reduction_percent": 4.227738710497331,
+      "hold_dispatch_reduction_percent": 0.06254663394295035
+    },
+    {
+      "tag": "spatial-gradient-alpha0-fast",
+      "result": {
+        "passed": true,
+        "ticks": 11119,
+        "explicit_ticks": 0,
+        "seconds": 1.606953125,
+        "commits": 1511499,
+        "holds": 9616777,
+        "holds_wrote": 1520279,
+        "reads": 1099,
+        "writes": 5757,
+        "read_bytes": 70336,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "baseline": {
+        "passed": true,
+        "ticks": 11562,
+        "explicit_ticks": 0,
+        "seconds": 1.335771958,
+        "commits": 1520125,
+        "holds": 9775202,
+        "holds_wrote": 1528905,
+        "reads": 1116,
+        "writes": 5768,
+        "read_bytes": 71424,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "independent_proof": {
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "output_sha256": "be0ff370b62ac4929d1e00f0b528e6a3b482993a0a049d4e686ef188780a3f44"
+      },
+      "complete_RAM_equal": true,
+      "transient_scratch_different_bytes": 0,
+      "all_RAM_outside_FS_scratch_exact": true,
+      "omitted_fields_and_uniform_canaries_preserved": true,
+      "fixture_sha256": "25b38b2c86b0dfb19398a3994d7dd5c9e71e7135e5918accf4fbbc7166fdd0b1",
+      "output_sha256": "be0ff370b62ac4929d1e00f0b528e6a3b482993a0a049d4e686ef188780a3f44",
+      "task_cycle_reduction_percent": 3.831517038574639,
+      "hold_dispatch_reduction_percent": 1.6206826211877745
+    },
+    {
+      "tag": "spatial-gradient-alpha1-fast",
+      "result": {
+        "passed": true,
+        "ticks": 11304,
+        "explicit_ticks": 0,
+        "seconds": 1.631198833,
+        "commits": 1610429,
+        "holds": 9726318,
+        "holds_wrote": 1619629,
+        "reads": 1113,
+        "writes": 5812,
+        "read_bytes": 71232,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "baseline": {
+        "passed": true,
+        "ticks": 11803,
+        "explicit_ticks": 0,
+        "seconds": 1.34516825,
+        "commits": 1616238,
+        "holds": 9731311,
+        "holds_wrote": 1625438,
+        "reads": 1110,
+        "writes": 5776,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "independent_proof": {
+        "pixel_depth_pairs": 4096,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "output_sha256": "49cac5eaec731503ca52001b5d933c763324fc491af99f59833e3ec1b26de663"
+      },
+      "complete_RAM_equal": true,
+      "transient_scratch_different_bytes": 0,
+      "all_RAM_outside_FS_scratch_exact": true,
+      "omitted_fields_and_uniform_canaries_preserved": true,
+      "fixture_sha256": "fbe41ec917fca0f87e959b803391c02e015c261187e2c8fe874b00d15ace2239",
+      "output_sha256": "49cac5eaec731503ca52001b5d933c763324fc491af99f59833e3ec1b26de663",
+      "task_cycle_reduction_percent": 4.227738710497331,
+      "hold_dispatch_reduction_percent": 0.05130860579833918
+    },
+    {
+      "tag": "large256-gradient-alpha1-fast",
+      "result": {
+        "passed": true,
+        "ticks": 129786,
+        "explicit_ticks": 0,
+        "seconds": 26.202449084,
+        "commits": 24230299,
+        "holds": 145305253,
+        "holds_wrote": 24368676,
+        "reads": 15716,
+        "writes": 88216,
+        "read_bytes": 1005824,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "baseline": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 21.80520225,
+        "commits": 24374241,
+        "holds": 147062174,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "independent_proof": {
+        "pixel_depth_pairs": 65536,
+        "staging_canaries": true,
+        "all_other_memory_unchanged": true,
+        "output_sha256": "9456ada3521ec70e4b1a435f41dc5f301740d2881a41e315dc9f6613d48c5511"
+      },
+      "complete_RAM_equal": true,
+      "transient_scratch_different_bytes": 0,
+      "all_RAM_outside_FS_scratch_exact": true,
+      "omitted_fields_and_uniform_canaries_preserved": true,
+      "fixture_sha256": "6782f160a5506847c98ec4171b7d71bef0157d9ed7da3db5e16cb4dc938db3b7",
+      "output_sha256": "9456ada3521ec70e4b1a435f41dc5f301740d2881a41e315dc9f6613d48c5511",
+      "task_cycle_reduction_percent": 6.849924639345439,
+      "hold_dispatch_reduction_percent": 1.1946790613880043
+    }
+  ],
+  "native9_all_complete_RAM_exact": true,
+  "preliminary_O1_instrumented_host": {
+    "initial_summary": {
+      "solid64": {
+        "medians": {
+          "baseline": 1.385989375,
+          "candidate": 1.34555125
+        },
+        "candidate_over_baseline": 0.9708236399719874
+      },
+      "spatial64": {
+        "medians": {
+          "baseline": 1.61061525,
+          "candidate": 1.631379125
+        },
+        "candidate_over_baseline": 1.0128918902264212
+      },
+      "large256": {
+        "medians": {
+          "baseline": 26.426377584,
+          "candidate": 25.533978834
+        },
+        "candidate_over_baseline": 0.9662307576146831
+      }
+    },
+    "initial_samples": [
+      {
+        "name": "solid64",
+        "variant": "baseline",
+        "index": 0,
+        "result": {
+          "passed": true,
+          "ticks": 8841,
+          "explicit_ticks": 0,
+          "seconds": 1.367817834,
+          "commits": 1418464,
+          "holds": 8217010,
+          "holds_wrote": 1427499,
+          "reads": 894,
+          "writes": 5806,
+          "read_bytes": 57216,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "solid64",
+        "variant": "candidate",
+        "index": 1,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 1.34555125,
+          "commits": 1388084,
+          "holds": 8185941,
+          "holds_wrote": 1397119,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "solid64",
+        "variant": "candidate",
+        "index": 2,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 1.214899375,
+          "commits": 1388084,
+          "holds": 8185941,
+          "holds_wrote": 1397119,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "solid64",
+        "variant": "baseline",
+        "index": 3,
+        "result": {
+          "passed": true,
+          "ticks": 8841,
+          "explicit_ticks": 0,
+          "seconds": 1.385989375,
+          "commits": 1418464,
+          "holds": 8217010,
+          "holds_wrote": 1427499,
+          "reads": 894,
+          "writes": 5806,
+          "read_bytes": 57216,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "solid64",
+        "variant": "baseline",
+        "index": 4,
+        "result": {
+          "passed": true,
+          "ticks": 8841,
+          "explicit_ticks": 0,
+          "seconds": 1.3886975,
+          "commits": 1418464,
+          "holds": 8217010,
+          "holds_wrote": 1427499,
+          "reads": 894,
+          "writes": 5806,
+          "read_bytes": 57216,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "solid64",
+        "variant": "candidate",
+        "index": 5,
+        "result": {
+          "passed": true,
+          "ticks": 8823,
+          "explicit_ticks": 0,
+          "seconds": 1.353193834,
+          "commits": 1388084,
+          "holds": 8185941,
+          "holds_wrote": 1397119,
+          "reads": 898,
+          "writes": 5834,
+          "read_bytes": 57472,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "baseline",
+        "index": 0,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 1.701865375,
+          "commits": 1616238,
+          "holds": 9731311,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "candidate",
+        "index": 1,
+        "result": {
+          "passed": true,
+          "ticks": 11304,
+          "explicit_ticks": 0,
+          "seconds": 1.645409833,
+          "commits": 1610429,
+          "holds": 9726318,
+          "holds_wrote": 1619629,
+          "reads": 1113,
+          "writes": 5812,
+          "read_bytes": 71232,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "candidate",
+        "index": 2,
+        "result": {
+          "passed": true,
+          "ticks": 11304,
+          "explicit_ticks": 0,
+          "seconds": 1.631379125,
+          "commits": 1610429,
+          "holds": 9726318,
+          "holds_wrote": 1619629,
+          "reads": 1113,
+          "writes": 5812,
+          "read_bytes": 71232,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "baseline",
+        "index": 3,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 1.61061525,
+          "commits": 1616238,
+          "holds": 9731311,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "baseline",
+        "index": 4,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 1.559947,
+          "commits": 1616238,
+          "holds": 9731311,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "candidate",
+        "index": 5,
+        "result": {
+          "passed": true,
+          "ticks": 11304,
+          "explicit_ticks": 0,
+          "seconds": 1.62827,
+          "commits": 1610429,
+          "holds": 9726318,
+          "holds_wrote": 1619629,
+          "reads": 1113,
+          "writes": 5812,
+          "read_bytes": 71232,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "large256",
+        "variant": "baseline",
+        "index": 0,
+        "result": {
+          "passed": true,
+          "ticks": 139330,
+          "explicit_ticks": 0,
+          "seconds": 26.726033166,
+          "commits": 24374241,
+          "holds": 147062174,
+          "holds_wrote": 24512616,
+          "reads": 15790,
+          "writes": 88300,
+          "read_bytes": 1010560,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "large256",
+        "variant": "candidate",
+        "index": 1,
+        "result": {
+          "passed": true,
+          "ticks": 129786,
+          "explicit_ticks": 0,
+          "seconds": 25.576651375,
+          "commits": 24230299,
+          "holds": 145305253,
+          "holds_wrote": 24368676,
+          "reads": 15716,
+          "writes": 88216,
+          "read_bytes": 1005824,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "large256",
+        "variant": "candidate",
+        "index": 2,
+        "result": {
+          "passed": true,
+          "ticks": 129786,
+          "explicit_ticks": 0,
+          "seconds": 24.8937005,
+          "commits": 24230299,
+          "holds": 145305253,
+          "holds_wrote": 24368676,
+          "reads": 15716,
+          "writes": 88216,
+          "read_bytes": 1005824,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "large256",
+        "variant": "baseline",
+        "index": 3,
+        "result": {
+          "passed": true,
+          "ticks": 139330,
+          "explicit_ticks": 0,
+          "seconds": 26.426377584,
+          "commits": 24374241,
+          "holds": 147062174,
+          "holds_wrote": 24512616,
+          "reads": 15790,
+          "writes": 88300,
+          "read_bytes": 1010560,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "large256",
+        "variant": "baseline",
+        "index": 4,
+        "result": {
+          "passed": true,
+          "ticks": 139330,
+          "explicit_ticks": 0,
+          "seconds": 25.754561875,
+          "commits": 24374241,
+          "holds": 147062174,
+          "holds_wrote": 24512616,
+          "reads": 15790,
+          "writes": 88300,
+          "read_bytes": 1010560,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "large256",
+        "variant": "candidate",
+        "index": 5,
+        "result": {
+          "passed": true,
+          "ticks": 129786,
+          "explicit_ticks": 0,
+          "seconds": 25.533978834,
+          "commits": 24230299,
+          "holds": 145305253,
+          "holds_wrote": 24368676,
+          "reads": 15716,
+          "writes": 88216,
+          "read_bytes": 1005824,
+          "write_bytes": 663696,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      }
+    ],
+    "refined_summary": {
+      "solid64": {
+        "medians": {
+          "baseline": 1.385989375,
+          "candidate": 1.34555125
+        },
+        "candidate_over_baseline": 0.9708236399719874,
+        "samples_per_variant": {
+          "baseline": 3,
+          "candidate": 3
+        },
+        "ranges": {
+          "baseline": [
+            1.367817834,
+            1.3886975
+          ],
+          "candidate": [
+            1.214899375,
+            1.353193834
+          ]
+        }
+      },
+      "spatial64": {
+        "medians": {
+          "baseline": 1.537630667,
+          "candidate": 1.490922667
+        },
+        "candidate_over_baseline": 0.9696233946145665,
+        "samples_per_variant": {
+          "baseline": 9,
+          "candidate": 9
+        },
+        "ranges": {
+          "baseline": [
+            1.504506875,
+            1.701865375
+          ],
+          "candidate": [
+            1.472761833,
+            1.645409833
+          ]
+        }
+      },
+      "large256": {
+        "medians": {
+          "baseline": 26.426377584,
+          "candidate": 25.533978834
+        },
+        "candidate_over_baseline": 0.9662307576146831,
+        "samples_per_variant": {
+          "baseline": 3,
+          "candidate": 3
+        },
+        "ranges": {
+          "baseline": [
+            25.754561875,
+            26.726033166
+          ],
+          "candidate": [
+            24.8937005,
+            25.576651375
+          ]
+        }
+      }
+    },
+    "additional_balanced_spatial_samples": [
+      {
+        "name": "spatial64",
+        "variant": "baseline",
+        "index": 0,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 1.504506875,
+          "commits": 1616238,
+          "holds": 9731311,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "candidate",
+        "index": 1,
+        "result": {
+          "passed": true,
+          "ticks": 11304,
+          "explicit_ticks": 0,
+          "seconds": 1.472761833,
+          "commits": 1610429,
+          "holds": 9726318,
+          "holds_wrote": 1619629,
+          "reads": 1113,
+          "writes": 5812,
+          "read_bytes": 71232,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "candidate",
+        "index": 2,
+        "result": {
+          "passed": true,
+          "ticks": 11304,
+          "explicit_ticks": 0,
+          "seconds": 1.473144334,
+          "commits": 1610429,
+          "holds": 9726318,
+          "holds_wrote": 1619629,
+          "reads": 1113,
+          "writes": 5812,
+          "read_bytes": 71232,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "baseline",
+        "index": 3,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 1.5176635,
+          "commits": 1616238,
+          "holds": 9731311,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "candidate",
+        "index": 4,
+        "result": {
+          "passed": true,
+          "ticks": 11304,
+          "explicit_ticks": 0,
+          "seconds": 1.474839959,
+          "commits": 1610429,
+          "holds": 9726318,
+          "holds_wrote": 1619629,
+          "reads": 1113,
+          "writes": 5812,
+          "read_bytes": 71232,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "baseline",
+        "index": 5,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 1.539495834,
+          "commits": 1616238,
+          "holds": 9731311,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "baseline",
+        "index": 6,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 1.537630667,
+          "commits": 1616238,
+          "holds": 9731311,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "candidate",
+        "index": 7,
+        "result": {
+          "passed": true,
+          "ticks": 11304,
+          "explicit_ticks": 0,
+          "seconds": 1.49812325,
+          "commits": 1610429,
+          "holds": 9726318,
+          "holds_wrote": 1619629,
+          "reads": 1113,
+          "writes": 5812,
+          "read_bytes": 71232,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "baseline",
+        "index": 8,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 1.530721833,
+          "commits": 1616238,
+          "holds": 9731311,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "candidate",
+        "index": 9,
+        "result": {
+          "passed": true,
+          "ticks": 11304,
+          "explicit_ticks": 0,
+          "seconds": 1.490922667,
+          "commits": 1610429,
+          "holds": 9726318,
+          "holds_wrote": 1619629,
+          "reads": 1113,
+          "writes": 5812,
+          "read_bytes": 71232,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "candidate",
+        "index": 10,
+        "result": {
+          "passed": true,
+          "ticks": 11304,
+          "explicit_ticks": 0,
+          "seconds": 1.476764041,
+          "commits": 1610429,
+          "holds": 9726318,
+          "holds_wrote": 1619629,
+          "reads": 1113,
+          "writes": 5812,
+          "read_bytes": 71232,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      },
+      {
+        "name": "spatial64",
+        "variant": "baseline",
+        "index": 11,
+        "result": {
+          "passed": true,
+          "ticks": 11803,
+          "explicit_ticks": 0,
+          "seconds": 1.523733083,
+          "commits": 1616238,
+          "holds": 9731311,
+          "holds_wrote": 1625438,
+          "reads": 1110,
+          "writes": 5776,
+          "read_bytes": 71040,
+          "write_bytes": 43152,
+          "faults": 0,
+          "completion": 34395,
+          "shader_config": 67635216
+        },
+        "complete_RAM_and_own_counters_exact": true
+      }
+    ],
+    "all_original_samples_preserved": true,
+    "original_gate_thresholds_unchanged": true,
+    "final_preliminary_gate_passed": true
+  },
+  "broader_native_formats": 40,
+  "staging_and_forced_controls": 18,
+  "actual_training_guest": {
+    "started": 1792201059.98332,
+    "pid": 51772,
+    "stage": "terminal",
+    "replays": [
+      {
+        "mode": 0,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      }
+    ],
+    "qemu_sha256": "dd861e1a71f6553f260fe185fafef7281b58bc3dbefd7bb139bf85359bc76c81",
+    "archive_sha256": "d508221011a2b6547e101f6a5a79c1f48feba01382b0109d45a165aa70bc485b",
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/srq-twr-train64",
+    "profile": true,
+    "scope": "Private boundedtexture/directresponseDecode/flowreply on current fourCU RTL; old training payload preserved or explicit currentpackedwhite payload selected;cap28; explicitfirst9scratchcontract,immutablevalidatedread/writeusage,DMAaliasguard andunchangedMesaoptin. StandaloneDRMdefault/optin/all4096pixels+outputcanaries,18VMreplays,21GLES,quadbatch/offscreen/private-depth/GTK64strictscanout; desktopflagselectsfull640only. Nohostspeedclaim.",
+    "exit_status": 0,
+    "guest_seconds": 94.69884295784868,
+    "markers": {
+      "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+      "output_usage=1": true,
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "fragment staging transient=1": true,
+      "compute completed; RNU=1 RDN=0": true,
+      "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+      "Native shader suite: PASS": true,
+      "OPENGPU GL FILL PASS": true,
+      "OPENGPU GL OFFSCREEN PASS:": true
+    },
+    "native_cases": 21,
+    "quad_batch_pass": true,
+    "payload_unchanged": true,
+    "trace_requested": true,
+    "trace_present": true,
+    "passed": true,
+    "finished": 1792201159.0278242
+  },
+  "representative_training": {
+    "groups": {
+      "native": 40,
+      "controls": 12,
+      "guest": 19,
+      "trace": 1
+    },
+    "raw": {
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt0-solid-gradient-baseline-50558.profraw": "e02b5dac1744e697a81f5c52de4e80b1a094490c79f94984ab898266dd380135",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt0-solid-gradient-candidate-50569.profraw": "f428634bd6060a3fd4afa36e948a069ef7461838e70306a69a8a2ddacc9829ca",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt0-solid-uniform-baseline-50543.profraw": "9bd09a3c2ca463468517256cb6e568d1dd62558139e1b2dbca9b00eb93553e7a",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt0-solid-uniform-candidate-50555.profraw": "ddb59b405c6cdf11b541660c466f660a084c03771efe4e560933d196e19b509c",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt0-spatial-gradient-baseline-50588.profraw": "177f1e42ba515979cc29789f0c36522aada98f528ddf00c012195933a376db29",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt0-spatial-gradient-candidate-50599.profraw": "44e7b811641cf3fdb9ff7d886f9a23925af6677dc70c9c8401e1483db92ff44d",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt0-spatial-uniform-baseline-50572.profraw": "d6e04b8a967f0182beb5d7564a843edf67381803a9110c3fe9428726b2b1f699",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt0-spatial-uniform-candidate-50584.profraw": "c5b33cb6f0eafc3c95c416508eaab444f1fe7c59781a7b95aeeb5da9becff363",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt1-solid-gradient-baseline-50616.profraw": "bd2213512ebd04bda858f11cd78a2861a37f167c120539df5ac4326723b867e0",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt1-solid-gradient-candidate-50627.profraw": "1a4a54154fbb6e81d27c9ab5a97490337b3930c7fd73ed417d96b375a8fa8937",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt1-solid-uniform-baseline-50610.profraw": "711e6780de22ebce3509fbff39043a1cbb94d886d17931e97ff7e7fe5b05be56",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt1-solid-uniform-candidate-50613.profraw": "e56afc93908bd89252f8d65cb38ce1492f0bbbd8859945fbc2bbda64c67f995a",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt1-spatial-gradient-baseline-50645.profraw": "69fe1129211967f2e7675a195a6e8a0f1e623ff8df302671fc4f9a4e1c2d2d8a",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt1-spatial-gradient-candidate-50655.profraw": "ca77d0ac868ac59269fa469b788424453b4c2d981be5fce0b5daa8a816cb1187",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt1-spatial-uniform-baseline-50631.profraw": "c3ef9900ecbeeba5fa9cc293d1ff458d096bbe02089436ba7e8fcfe0730ca6c8",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt1-spatial-uniform-candidate-50642.profraw": "2b65e6d9cf9b10bd84f32cc829154d7f6723e601eb282bb1885b6aefe357da38",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt2-solid-gradient-baseline-50669.profraw": "b7e5177e15f951890f47eeab64675587e95db059eacd00cff81d894cae3cd848",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt2-solid-gradient-candidate-50675.profraw": "0300a910ab619e8258c714c77cfcd70b7c7e15158fcefcaf26694a992af92254",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt2-solid-uniform-baseline-50662.profraw": "bad98a1cc71ff9161f0beca0b2820ab2b86f67fbf2ca5c2ccebb1ae6faac1610",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt2-solid-uniform-candidate-50665.profraw": "5fdce4c9469761347ff8bd7a8386c962ab2c06d0f50fe9b8c6bf2bc87995741a",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt2-spatial-gradient-baseline-50719.profraw": "49dec95c012ca09ecae22e061aa80f1d06de9cfcaef9e2eaa77c958c7e002ca7",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt2-spatial-gradient-candidate-50724.profraw": "05b1a626351caf7c5de0de2b81fe8e000b88cbf6022d9ca5fb9cab3eadb546b8",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt2-spatial-uniform-baseline-50687.profraw": "4cc20c187bcf9a77e3542dd6faf9e3845b0abb307f4f55b5ad2450ae705ca443",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt2-spatial-uniform-candidate-50698.profraw": "087a8e808905d3dc09981340a2a6fa037dab0c5e9a0a7849f95e20c7cca037de",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt3-solid-gradient-baseline-50746.profraw": "53982ab795091a9a2b8bf1b057c52913f58b29da1f1b0206f8c7c9cf998e7dc9",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt3-solid-gradient-candidate-50752.profraw": "6a56cedcb0cd7f5e531339a8fcef248f8d722a391a3d4d6849fc998c4278c572",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt3-solid-uniform-baseline-50729.profraw": "0d683bf8f99ba34755cf4180ec59b1fbad92f32c7cf6acd8dc42c0657f0478d0",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt3-solid-uniform-candidate-50742.profraw": "ad83f4bd5d0aee88fa0a60bcddadecdbf0b33845456d4db79a9894481a89c9e9",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt3-spatial-gradient-baseline-50775.profraw": "c170754e6c8acdec0af8872c2a034ff0cb95cc9a44f9ae99ce1d9478bfc3f81c",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt3-spatial-gradient-candidate-50778.profraw": "d9cb6676ac4e284abe9b54a363990d9563de4d81a9d50361f8c99f87dfd464c2",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt3-spatial-uniform-baseline-50761.profraw": "645b15e36822e36ee704250e342df99142879d71bdd9f9e8d5db143019a321e1",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt3-spatial-uniform-candidate-50772.profraw": "af4c177b39d00e631f0d808866743d4ead76642ce91b18e99ff47bc1cfe7a74f",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt4-solid-gradient-baseline-50800.profraw": "dd8f6b3a70e8a8f3144043b7e84b54f135a677e645b6ae6a3baf8b580e1f5b8d",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt4-solid-gradient-candidate-50810.profraw": "29e90026d89d1b9567835c9faae6e2b2a3cc19cec3e7bbcd7cbcda619b57f082",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt4-solid-uniform-baseline-50784.profraw": "98d022259c4841b48dbb875c30811ce7e6b8c87200085ea7b62e555a30b00679",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt4-solid-uniform-candidate-50796.profraw": "d1f3be7f37a46cc337a39fcbd6d41116040efaeeeff22bffe6a6c6fed49acb4f",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt4-spatial-gradient-baseline-50823.profraw": "23c29412190f71b96ba143344f40adfa1440a51f648deed768d52ee8a9c1638b",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt4-spatial-gradient-candidate-50832.profraw": "bf5264dd7fdf46fa16a47bb762672144dc55931f4576e851c3dc9d3d8eeaa652",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt4-spatial-uniform-baseline-50814.profraw": "665e97e135dbcac21d3fa4ad1345ba8c323696a78333affd52f135063cb2f818",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/native/fmt4-spatial-uniform-candidate-50818.profraw": "fb0ee36b08e1be44249759d90b207c0524ffdf1e1cfd98819591f7ffac184803",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode0-gradient-solid-50856.profraw": "c7045c69fe781b7071cd5319a843fb2fdd7d5a3aa62c184db1dc1ae7bf6c69cf",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode0-gradient-spatial-50865.profraw": "ef4e922de0c1e0011e06f9f1141a3163ac48858ef8b85119d144e0c5bf2389d0",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode0-uniform-solid-50845.profraw": "711863a4112e2daea8f84d5b01196432bc9a083ead1d3a2636ddc38907e065c2",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode0-uniform-spatial-50846.profraw": "40bc9ede6040268e75ba2864a4da2cf63f3cef46951cfc377a4481cf3148d36d",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode1-gradient-solid-50876.profraw": "dadaa592feae85dad2b3fcc61a6a8bc73c61ecf163edae8cce9ef65b4aaa56b3",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode1-gradient-spatial-50878.profraw": "17ddecca2ddcddeccdcd47814107df35393117f61cbd461219c3a9074b144ea7",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode1-uniform-solid-50870.profraw": "b4c322e8464272407517fdefa95afd54ae879b93d077d3f5ce4886b0b2c87839",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode1-uniform-spatial-50875.profraw": "d495f12f55e7217b710d1d7fdacc26b0aa612902a84706f5da5cf39db78f8823",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode2-gradient-solid-50894.profraw": "58edbcb6c0e3b006a14194f4ca93140541ac3b50ac0fa7a557f245089903f776",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode2-gradient-spatial-50899.profraw": "bfb62c60c622d5baf6c706b8d25ce3f9ab4fecc748d5dfae7bc5a57f606e10f8",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode2-uniform-solid-50879.profraw": "03a0c494dff344dfa53df64565548745b9e033558f0c34d474d63794fc1f8858",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/controls/mode2-uniform-spatial-50889.profraw": "674d1d13d4dde8e689b32082dc94638342fd73eb389f8784837c579ac1b9a06f",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/guest/guest-51867.profraw": "b952ca56c5b6e516be5cce84e74b592fe732aebc0be27bcc804749e19262edcc",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm0-base0-inv0-51778.profraw": "65febd3d1de45e883f2fcbcb3ed821d7c16774d9de257555a1ece87e4c06cda7",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm0-base0-inv1-51779.profraw": "7832f779220c6ddd1e10049db51ce04c2d616e4cb2b7c0641981d497912d21f7",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm0-base40000000-inv0-51780.profraw": "d72b37a68dc1420f1112ea74b226543b291ed6a063aad31d299ced70e23d4e9b",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm0-base40000000-inv1-51781.profraw": "3a418b62fb6f50ab6e42e32d8b2d268410bb719bdf251bdc0577043b2751267f",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm0-base80000000-inv0-51782.profraw": "0ebacd953ce4586e73872cf08849f57c175da27d73bee3b8cbaa37c576884c74",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm0-base80000000-inv1-51783.profraw": "d360c5e56f77056d0621f0df5f09a4254390a832303a69d997548f59c45d459a",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm1-base0-inv0-51784.profraw": "0eefd5ace70ebcda8b3d2c9b0a41f8a6d8fb88beabc06d86f0bf8c39c41190ec",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm1-base0-inv1-51785.profraw": "3d5dde62d535f71b70a553621e36e81eb6092c429d183895209fe55847e3cf22",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm1-base40000000-inv0-51786.profraw": "c4206c1b9ba40f6d8527f6c57dfb4d903b7cef1ca83bf30cbad7e5a4a887be81",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm1-base40000000-inv1-51787.profraw": "5ef92ef20bea9265f50658a4ccd3bc01cb81d423eb64a5112f102c46b25452dd",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm1-base80000000-inv0-51789.profraw": "fd2dc05f2835bc5f00a18cf516413e927ec0dabf0c64915563311d27b5ae6a2d",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm1-base80000000-inv1-51790.profraw": "15ccb5499b7d554fb06fca587f08c901a2daa2b1b0885e0a2833000196cf86d4",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm2-base0-inv0-51791.profraw": "eda534983f282b83d81e1021fb8f5c1936b5b38241516a4ac81b28031a1cdd13",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm2-base0-inv1-51792.profraw": "78d4200ac4df5f2421562a8eb4b29ba296584e414a2589b0a3d345314232f7b7",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm2-base40000000-inv0-51800.profraw": "1f56bf6966937ab796ca7f806cb1a3149990b6d1bfa590b722b91d29f56a4e5e",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm2-base40000000-inv1-51803.profraw": "f6980aca1c8ed4e9b64d733960a4e03be9f420b062d451fc2f69095731b8fae0",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm2-base80000000-inv0-51804.profraw": "9aacea5235c0adef22c9faa2bb8212763c3a16061465bf82c89ba91cd14d99d3",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/twr-train64/replay/vm2-base80000000-inv1-51807.profraw": "1d6b0c3d4359dff0a4ce5def3dfff55cba99862f507c447a728096ee67a6618c",
+      "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/profiles/replay/mesa64-52711.profraw": "872f2b867041e94c192a2ea58c6c6e45e791934801d032f4afc28178ca3ab1f8"
+    },
+    "profile_sha256": "98055db9eaae8a96653cc3008b56446af74fb9b2dfcfabc453e1a9e3d7bd78d7",
+    "trace_sha256": "5ff9de94604bf9d34a45d549b133d7937e3d8f7d5bb2f290d72cb2f036ff9cb2",
+    "model_sources": {
+      "dut_9.cpp": "e1692a1eb888d1a643d14a07547efafcb2b33dac022415a08f2def2b28aa7512",
+      "dut_8.cpp": "400a70f3573d082e6d99417a7bfa30cd6450f1960f5c83060900ecdbc69926bc",
+      "dut_21.cpp": "e74865380201e75f0e6c461fdff40cbbee586582691a11ca7692166b9897f3ab",
+      "dut_20.cpp": "6f6fce64c26606eff4a81f0fd42be40a10905e9d9dee34bf317da13e52a8507e",
+      "dut_22.cpp": "f1e367685f34ba11ca477dbff09405313f4d5d576b41665abb96d969cf44a4c1",
+      "dut_23.cpp": "af0611f417767aa577acc5f253459a4298989808996cb7faf30518730b77c838",
+      "dut.h": "822ea28949824cff47057707e46f2ce5c1cd3453892a8ff82266bc8a87f00dd9",
+      "dut_27.cpp": "b29c47eab215f38178f7e54c45acefcc8bafda6a33c61b1cbcdc921b9e2bf0f6",
+      "dut_26.cpp": "4ac5d4dbe3516623bc374bca041e01e582f64c2e93820c3ab0397528d08c980a",
+      "dut_24.cpp": "fdbf15b386a85db85980989a1b1cd25330acab31aef6ae27e2a90c34bfb3e69e",
+      "dut_30.cpp": "58b69440ef154b628caca8363a2569fd3ed0542500adb5d10771c7a73e06ce65",
+      "dut_18.cpp": "8706326bb3e49b27ca86ed9661e0846ee279f7e0e9788a60c40a81a76bd9f389",
+      "dut_19.cpp": "c99bd2378b60de9ca63f628b7890bb4fd0c5f024b3dd61e3f781ff4408722fd8",
+      "dut_31.cpp": "c7ca2acfc261a954f0c6a5c3d7d9063df0432d37fd362dd2aa4bbed04b828ba9",
+      "dut_25.cpp": "2e334dbb90a457ed706ba18de8da6059e4566d422b2f11c86db21284b03c1558",
+      "dut_28.cpp": "7ea0106de15f9c95a5c388949017a659d5e2773e7ac17f6824c0c151af225631",
+      "dut_14.cpp": "b95f27b9a8dde60b38014696d0ca9437956b5c718e2360a5e82b95d516deb93a",
+      "dut_15.cpp": "5c8b2648e2c5d0eb555dd35e9303733a363e4ea1e51e48344e96bce45bf7fddc",
+      "dut_29.cpp": "a28a0af2b5a1a4bc58e60d32867aec319d422197e9c2bb1dca30eef4fc085612",
+      "dut_17.cpp": "c16c1621011dcf53dfa5b9b963c089bb4f0beb6ce50aab7eecf28f19f4a071eb",
+      "dut_16.cpp": "cc51fe0119d0062ad546be16cb309582d49785fb5d20557a721687265714cd66",
+      "dut_commit_helpers.cpp": "3554c37c2e57c62d716ba1c58c979062b3d00c4e4edf7729294dbb2a3281403e",
+      "arti_rtl_model.h": "1c03023f2d5f1e46a9968eb82ac70beaae4edfc63252300a44bc757ef40990d4",
+      "arti_rtl_model.cpp": "c175500879fd56d74d9fbc60cf5ff9bb00be5f7351bdecdd93d02f6329546c3b",
+      "dut_12.cpp": "a3d7304069d432395bbc3437568c62551a6867bdc02be46f6a6db03e5ffc5f7d",
+      "dut_13.cpp": "8c303e975a5afe7ceb4cceeb07733eee971e74f0f5b85bbb6a0a8bd6fe8bf22a",
+      "arti_smoke.cpp": "eb3699b736aeae965aa933baf8a648681f9b651d74daa6dd39daf047a805697a",
+      "dut_11.cpp": "5f318e38655af9c76dde257d3f3edb0a4ac5912b03b418a191cfb04f1b34df62",
+      "dut_10.cpp": "c64af161ce3800d2870b3f797cfc85166cfc117837f7e0bdcb89ba44b9f7ec5b",
+      "dut_0.cpp": "e3f6091b4699e892eab193cf00310536dfc3af46f7494c4730f37b500aa4960e",
+      "dut_1.cpp": "b53ac282a394fb4288948789467125cdaa61e973589ec33f3df6f7dd74306e5a",
+      "dut_3.cpp": "9fe6a68d3abdb8d5ca84d0a0896bcfa6a952d9046518d57e400e8b0cbfee5fc1",
+      "dut_mem_ports.cpp": "60154bb889f26305ca2bc75f5cbee009be266ed20068b5c65e9dac611cc8c993",
+      "dut_commit_chunks.cpp": "258c9c0f1a6dcc084716d284747832089b1d78c801421f5ed37ff7fa3f849d1f",
+      "dut_2.cpp": "09b46e229fbbb458cfd2e8a7dbdb408f6fbb0c6d344a0c449e918a0dc2e9402a",
+      "dut_6.cpp": "30341d4613375e9fb97b40fc65d5073f458a1243e8b069339e43af13f9113a27",
+      "dut_7.cpp": "8dd7b991bcf2a3b77bd6f897d8911b500461f6efa83abfc183b6a190e720cd64",
+      "dut_5.cpp": "df60bfb99bb7cd2cacabb7c58c16eab59feda6cd5a90893279022d5d0dab82df",
+      "dut_4.cpp": "7f1e4f795a0cee29017d3bb24c2a12565b042970b1bc987d2f8008c4d8268bee"
+    },
+    "scope": "72 own passed profiles, same useful40native+12controls+18VM+actualoldMesa64guest protocol as baseline; replay owncaptured timedtrace because hardwarelatency changes. Native and actualguest runs use own binaries; no failed/forceddebug profiles. Completeartifactcomparison includes independent PGOtraining."
+  },
+  "own_training_trace": {
+    "calls": 47786,
+    "ticks": 3367729,
+    "commits": 64106468,
+    "holds": 383793620,
+    "dma_reads": 39609,
+    "dma_writes": 473613,
+    "dma_bytes": 6094080,
+    "seconds": 43.500990708,
+    "truncated_tail": false,
+    "warmup_calls": 0,
+    "sample": 0
+  },
+  "qualification_snapshot": {
+    "at": 1792201494.775869,
+    "stage": "compile-optimized",
+    "release_qualification_finished": false,
+    "controller_pid": 50525
+  },
+  "invariants": {
+    "actual296module_scope_audit": {
+      "changed_executable_modules": [
+        "BufferedTextureWordPort.sv",
+        "FragmentTextureArbiter.sv",
+        "Queue1_OmMemoryResponse.sv",
+        "Queue1_QueuedFragmentTextureRead.sv",
+        "TranslatedWordClient_2.sv"
+      ],
+      "removed": [
+        "RRArbiter64_UInt6.sv"
+      ],
+      "added": [
+        "RRArbiter16_UInt4.sv"
+      ],
+      "unchanged_executable_modules": 290,
+      "private_queue_slot_width_only": true,
+      "translation_parent_private_width_only": true,
+      "global_top_and_system_ID_budgets_executable_identical": true
+    },
+    "global_transaction_windows_unchanged": true,
+    "sixteen_texture_cache_lines_preserved": true,
+    "physical_read_bound_independent_of_shader_VLEN": true,
+    "oldtiming_identity_not_required": true,
+    "own_strict_record_replay_required": true,
+    "installed_QEMU_unchanged": true
+  },
+  "limitations": [
+    "Native/runtime hostscreen is preliminary O1instrumented, not finalO2 gain. Releasebenchmark and actualcurrentpackedwhite/full640 proof/ownstricttrace/manualimages remain beforepromotion.",
+    "Initial3samplespatial medians showed1.29%regression withvisiblevariance. Sixadditional balanced samples pervariant were added and every originalsample retained. Finalspatial9samplemedians show3.04%gain; no thresholdrelaxation.",
+    "Clockrate alone is not usefulwork throughput: largefixturecycles fall6.85% and preliminaryhosttime3.38%, while simulated ticks/second decrease because eachremainingtick containsmorework.",
+    "Exact nativecomponentSV extraction strengthens the earlier defaultlowering synthesisestimate. Both remain isolatedprelayout component estimates, not wholechipfrequencyclosure.",
+    "All58broadnative cases use independentframe/depth and memory/omitted/canary oracles; do not impose oldhardwarecycle orcachetraffic equality on replyforwarding.",
+    "O1/O2samehardware must still match ownclocks/callbacks/RAM; pendingreleasecontroller and finalhostgate will verify this."
+  ],
+  "evidence": {
+    ".artifacts/shared-cu/texture-word-route-native/build-state.json": "3a444ccb7d551ff8f89c673972768531abd2e87a2416ecceef39c1936190097d",
+    ".artifacts/shared-cu/texture-word-route-native/native-screen-state.json": "7fed9f17eec4bd0ef5220e31e9b49ce88502803a27997f242407475549833403",
+    ".artifacts/shared-cu/texture-word-route-native/instrumented-host-v2-state.json": "e6387d34258caacdf74814bb238a17a61c81899db6ec57ddcea28bd05b944969",
+    ".artifacts/shared-cu/texture-word-route-native/refined-host-state.json": "4612de4683e76e738b93a97ebd82581b93e7a25323f93de09bed1b6c48322ea4",
+    ".artifacts/shared-cu/texture-word-route-native/qualification-sequencing.json": "5a0f5a26bd2b57dac303e621371d059289f085c4d2bb1ebc45659b1f2f4888d4",
+    ".artifacts/shared-cu/texture-word-route-native/native-component-timing-state.json": "1e15335c023ad18511bc7a5ebdc54011ae5075e5bf9fd4eba100b58d103911df",
+    ".artifacts/shared-cu/texture-word-route-native/qualification-preparation.json": "51c3e84ea611e2001f8385ffd888485f0ddb33cf12c67f90735430484f72a9c3",
+    ".artifacts/shared-cu/texture-word-route-native/native/state.json": "0b8539829270ac9b3bc67d60086990e501ba6da40abdad894c1135f7eabeba12",
+    ".artifacts/shared-cu/texture-word-route-native/controls/state.json": "bacca62dd473cd75cec1f5e947cb2a72414327b45d7906ce80609b2606a614af",
+    ".artifacts/shared-cu/texture-word-route-native/guest-twr-train64.json": "2201d9e9891cdd8965fea1f4eefafedb615f58780f80ad556490e8c79020edd1",
+    ".artifacts/shared-cu/texture-word-route-native/profile-inputs.json": "7380df88399332f38b17ca54527fc6915c61bf0d6645c337102d436f136094e7"
+  },
+  "scene_configurations": [
+    {
+      "cus": 4,
+      "baseline_cycles": 13155,
+      "candidate_cycles": 12567,
+      "metrics": {
+        "CUs": "4",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "12567",
+        "active_cu_cycles": "28980",
+        "peak_cus": "4",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "3676",
+        "texture_lines": "182"
+      },
+      "pixels_depth_metadata_exact": true,
+      "omitted_bytes_preserved": true
+    },
+    {
+      "cus": 1,
+      "baseline_cycles": 39360,
+      "candidate_cycles": 37041,
+      "metrics": {
+        "CUs": "1",
+        "axi_bytes": "64",
+        "side": "64",
+        "alu_loops": "0",
+        "om_inflight": "64",
+        "fragment_batch_limit": "112",
+        "lanes": "16",
+        "warps": "8",
+        "runtime_shader": "true",
+        "cycles": "37041",
+        "active_cu_cycles": "27172",
+        "peak_cus": "1",
+        "texture_extent": "64",
+        "buffer_texture_reads": "true",
+        "texture_words": "3676",
+        "texture_lines": "166"
+      },
+      "pixels_depth_metadata_exact": true,
+      "omitted_bytes_preserved": true
+    }
+  ],
+  "native_model_flags": [
+    "--frag-core",
+    "--vert-core",
+    "--shared-graphics",
+    "--parallel-graphics",
+    "--compute-units",
+    "4",
+    "--cu-lanes",
+    "16",
+    "--cu-warps",
+    "8",
+    "--width",
+    "640",
+    "--height",
+    "480",
+    "--memory-axi-data-bytes",
+    "64",
+    "--coalesce-framebuffer",
+    "--om-inflight",
+    "64",
+    "--om-locality",
+    "--fragment-batch-limit",
+    "112",
+    "--buffer-command-reads",
+    "--buffer-texture-reads"
+  ]
+}
