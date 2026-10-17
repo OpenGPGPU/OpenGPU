@@ -1,0 +1,47 @@
+{
+  "scope": "Terminal failed mapping of the experimental fixed-function RenderCore; not a four-CU GPU frequency or PPA qualification.",
+  "artifact": "generated/mobile-h1/physical-persistent-core-yosys",
+  "frozen_rtl": "generated/mobile-h1/persistent-core-rtl",
+  "frozen_source_note": "Predates complete job-default materialization and the later admission arithmetic pipeline; immutable historical attempt.",
+  "outcome": {
+    "status": "failed",
+    "stage": "1_synth",
+    "tool_exit": 247,
+    "elapsed": "32:54.38",
+    "peak_memory_kb": 29980812,
+    "terminal_evidence": "result.json reports make do-yosys Error 247 during TECHMAP/OPT_EXPR; prior container no longer exists. No successful mapped netlist or timing result was emitted.",
+    "cause": "Resource/tool failure; memory exhaustion is plausible from the peak, but no retained OOM-kill verdict proves its exact cause."
+  },
+  "mapping_gate": {
+    "passed": false,
+    "mapping_report_present": false,
+    "skipped_instance_types": [],
+    "skipped_instance_count": 0,
+    "skipped_instances_by_type": {},
+    "unresolved_diagnostics": [],
+    "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+    "log": "generated/mobile-h1/physical-persistent-core-yosys/flow/orfs-work/logs/base/1_2_yosys.log",
+    "log_sha256": "4d952861c4c4f2af36a381791f8f8559230f9e4c1744bceb17d31cb8a182c7db"
+  },
+  "hashes": {
+    "result.json": "8eb29190b296e799b97102aa8b7ee5c6922a6ec28ef8a78abdca12b08317bde0",
+    "manifest.json": "632de53fb8d7104ed618eb7d23e2078ccc20bc0a40490e5657ac3b03f1b374c2",
+    "flow/orfs-work/logs/base/1_2_yosys.log": "4d952861c4c4f2af36a381791f8f8559230f9e4c1744bceb17d31cb8a182c7db"
+  },
+  "synthesis_inputs": {
+    "module_name": "RenderCore",
+    "clock_period": 1000,
+    "synthesis_engine": "yosys",
+    "corner": "TC",
+    "cell_vt": "SLVT"
+  },
+  "qualification": {
+    "passed": false,
+    "renderer_clock_established": false
+  },
+  "next_steps": [
+    "Reduce or separately map the variable-division-heavy geometry datapaths with complete operator coverage.",
+    "Qualify the current integrated renderer after successful mapping; do not reuse Fmax from the earlier syn netlist that omitted 211 divisions.",
+    "Continue the original H0-H8 implementation and physical gates."
+  ]
+}

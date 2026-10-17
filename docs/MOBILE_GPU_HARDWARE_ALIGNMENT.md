@@ -389,7 +389,12 @@ separately; neither is a full-GPU physical or 720p frame-rate qualification.
 The controller passes its 1 GHz synthesis setup screen (+462.011 ps core,
 +413.436 ps I/O). The larger fixed-function core screen is rejected because
 the `syn` engine omitted division operators; no renderer frequency follows
-from that partial netlist. A supported Yosys mapping run is tracked separately.
+from that partial netlist. The subsequent
+[Yosys mapping attempt](performance/mobile-h1-core-mapping-failure-2026-10-18.json)
+also terminated without a mapped netlist: error 247 after 32:54, with peak memory
+near 30 GB. Its exact termination cause is not proven by the retained logs.
+It establishes neither renderer timing nor area; the division-heavy geometry
+datapaths still need a complete, successfully mapped physical implementation.
 The [mapping audit](performance/mobile-h1-mapping-audit-2026-10-18.json) records
 the prior screens; the qualifier now rejects omitted operators and missing
 mapping evidence, with 24 Python checks covering mapping and timing gates.
