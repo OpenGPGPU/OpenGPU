@@ -820,7 +820,172 @@
     "artifact": "generated/mobile-h1/physical-bringup",
     "reason": "Asynchronous Mem expanded into roughly 70k state bits and a large logic network; SRAM-backed screens supersede this implementation."
   },
-  "current_source_sha256": {
+  "milestones": {
+    "H0": "in progress: proposed resource profile, tile descriptors, stages, events and analytic budgets; broader descriptors/discovery/integration remain",
+    "H1": "in progress: component and fixed-function pipeline coverage; host/VM/cache-domain integration, shared-CU validation, throughput and physical qualification remain",
+    "H2": "pending; original specification remains authoritative",
+    "H3": "pending; original specification remains authoritative",
+    "H4": "pending; original specification remains authoritative",
+    "H5": "pending; original specification remains authoritative",
+    "H6": "pending; original specification remains authoritative",
+    "H7": "pending; original specification remains authoritative",
+    "H8": "pending; original specification remains authoritative"
+  },
+  "physical_route": {
+    "status": "terminal",
+    "artifact": "generated/mobile-h1/physical-route",
+    "input_rtl": "generated/mobile-h1/mulpipe-rtl",
+    "scope": "standalone component; no whole-GPU claim",
+    "intermediate_cts": {
+      "scope": "intermediate clock-tree result; routing remains live, not final qualification",
+      "metrics": {
+        "cts__timing__setup__ws": -567.966,
+        "cts__timing__hold__ws": -47.5596,
+        "cts__timing__setup__tns": -495621,
+        "cts__timing__hold__tns": -2487.09,
+        "cts__timing__fmax__clock:core_clock": 692916000.0
+      },
+      "sha256": "b050779be555b53f6e9bf56409d85b7b2868f6e06c43c8b3b4a7c03b80a502cf"
+    },
+    "passed": false,
+    "flow_status": "success",
+    "verdict": "FAIL",
+    "result_sha256": "d3f39f1c056eab5d5f5b45ee0e23a417dca510a571b6e8080105fbb60bab878e",
+    "qor": {
+      "instance_count": 240085,
+      "instance_area": 12077.7,
+      "sequential_cell_count": 7195,
+      "clock_buffer_count": 816,
+      "timing_repair_buffer_count": 3291,
+      "setup_tns_ps": -698173,
+      "hold_tns_ps": -36.267,
+      "setup_worst_slack_ps": -530.636,
+      "hold_worst_slack_ps": -7.68602,
+      "setup_violation_count": 3704,
+      "hold_violation_count": 5,
+      "core_clock_fmax_mhz": 668.381,
+      "virtual_io_clock_fmax_mhz": 787.122,
+      "reported_fmax_mhz": 668.381,
+      "setup_clock_skew_ps": 52.7312,
+      "hold_clock_skew_ps": 50.9281,
+      "total_power_w": 0.169194,
+      "placement_utilization": 24.4554,
+      "placement_violations": 0,
+      "estimated_wirelength": 309438,
+      "route_wirelength": 385614,
+      "route_vias": 758752,
+      "route_drc_errors": 0,
+      "route_drc_report_bytes": 0,
+      "antenna_violating_nets": 0,
+      "antenna_violating_pins": 0,
+      "ir_drop_vdd_worst": 0.0123738,
+      "ir_drop_vss_worst": 0.0138112,
+      "flow_warnings": 20,
+      "flow_errors": 0,
+      "critical_path": {
+        "startpoint": "u20 (rising edge-triggered flip-flop clocked by core_clock)",
+        "endpoint": "io_events_clearRead (output port clocked by vclk_core_clock)",
+        "group": "vclk_core_clock",
+        "slack_ps": -530.64,
+        "arrival_ps": 1280.64,
+        "data_path_delay_ps": 1059.13,
+        "cell_delay_ps": 842.1,
+        "net_delay_ps": 217.03,
+        "cell_delay_percent": 79.51,
+        "net_delay_percent": 20.49,
+        "cell_count": 26,
+        "net_count": 25,
+        "dominant_cell_types": [
+          {
+            "cell_type": "BUFx16f_ASAP7_75t_SL",
+            "count": 7,
+            "delay_ps": 186.0
+          },
+          {
+            "cell_type": "DFFHQNx1_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 127.82
+          },
+          {
+            "cell_type": "NAND2x2_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 64.85
+          },
+          {
+            "cell_type": "INVx2_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 58.53
+          },
+          {
+            "cell_type": "OA211x2_ASAP7_75t_SL",
+            "count": 2,
+            "delay_ps": 55.64
+          },
+          {
+            "cell_type": "AO222x2_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 46.78
+          },
+          {
+            "cell_type": "AO21x1_ASAP7_75t_SL",
+            "count": 2,
+            "delay_ps": 43.04
+          },
+          {
+            "cell_type": "AO33x2_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 41.53
+          }
+        ],
+        "per_group": {
+          "core_clock": {
+            "startpoint": "u10 (rising edge-triggered flip-flop clocked by core_clock)",
+            "endpoint": "u541 (rising edge-triggered flip-flop clocked by core_clock)",
+            "slack_ps": -496.15,
+            "arrival_ps": 1714.28
+          },
+          "vclk_core_clock": {
+            "startpoint": "u20 (rising edge-triggered flip-flop clocked by core_clock)",
+            "endpoint": "io_events_clearRead (output port clocked by vclk_core_clock)",
+            "slack_ps": -530.64,
+            "arrival_ps": 1280.64
+          }
+        }
+      }
+    },
+    "power_scope": "flow estimate without representative workload switching; not measured energy/frame",
+    "source_note": "Frozen pre-concurrency RTL under generated/mobile-h1/mulpipe-rtl; not the current concurrent candidate.",
+    "explicit_post_route_gate": {
+      "passed": false,
+      "checks": {
+        "setup_worst_slack_ps": false,
+        "hold_worst_slack_ps": false,
+        "setup_violation_count": false,
+        "hold_violation_count": false,
+        "route_drc_errors": true,
+        "antenna_violating_nets": true,
+        "antenna_violating_pins": true,
+        "placement_violations": true,
+        "flow_errors": true,
+        "flow_completed": true,
+        "tool_verdict": false
+      },
+      "missing_metrics": [],
+      "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors"
+    },
+    "gate_source_sha256": "7b7840203c32b2bddb2235bce6a948371d7b5e6b216fe3da5aaf0582a8331ed0"
+  },
+  "script_checks": {
+    "command": "python3 -m pytest -q scripts/test_qualify_ppa.py",
+    "passed_tests": 5
+  },
+  "unique_checked_scala_tests": 49,
+  "reproduction": {
+    "functional": "sbt -batch 'testOnly opengpu.config.MobileGpuConfigSpec opengpu.config.MobileGpuBudgetSpec opengpu.graphics.PersistentTileAttachmentStoreSpec opengpu.graphics.PersistentTileRenderPipelineSpec opengpu.graphics.TileAttachmentStoreSpec opengpu.graphics.TileRenderPipelineSpec opengpu.graphics.RenderPipelineSpec opengpu.graphics.TileBinningRenderCoreSpec opengpu.graphics.TileDrawBinnerSpec'",
+    "emit": "sbt -batch 'runMain opengpu.elaboration.EmitPpaRtl persistent-tile-store generated/mobile-h1/reproduced-rtl'",
+    "physical": "Use ChipAgent Python environment: scripts/qualify_ppa.py generated/mobile-h1/reproduced-rtl PersistentTileAttachmentStore --output <new-output-directory>; default 1000 ps, TC/SLVT, 25% I/O budget. Add --stage route for post-route."
+  },
+  "checkpoint_source_sha256": {
     "src/main/scala/opengpu/config/MobileGpuBudget.scala": "3776937da1a8b7cc865542c1126613c9b337c4ec6051bf146494a5981a08b74e",
     "src/main/scala/opengpu/config/MobileGpuConfig.scala": "461a1a56b8b1827834d7d50bdcab0a531a22af4780a62e4c48e0cb19ba912cda",
     "src/main/scala/opengpu/graphics/PersistentTileAttachmentStore.scala": "a6aa61db7e18ab9e7f114ce14899c59a3689bf39ca9a574671dcb253972a6b17",
@@ -835,43 +1000,5 @@
     "src/test/scala/opengpu/config/MobileGpuConfigSpec.scala": "60cc0f462ab74702965388a0c1da8a7a31b696b844673b1cefaeae38f493a599",
     "src/test/scala/opengpu/graphics/PersistentTileAttachmentStoreSpec.scala": "8bcb886d089e77c0baf08b312d703251444df84fc98a98dfe5ca59d234cabf68",
     "src/test/scala/opengpu/graphics/PersistentTileRenderPipelineSpec.scala": "46cd3a82adca5a2be5ec87b4ce0a884f065322d9d6e96f31011ec517780a8a0e"
-  },
-  "milestones": {
-    "H0": "in progress: proposed resource profile, tile descriptors, stages, events and analytic budgets; broader descriptors/discovery/integration remain",
-    "H1": "in progress: component and fixed-function pipeline coverage; host/VM/cache-domain integration, shared-CU validation, throughput and physical qualification remain",
-    "H2": "pending; original specification remains authoritative",
-    "H3": "pending; original specification remains authoritative",
-    "H4": "pending; original specification remains authoritative",
-    "H5": "pending; original specification remains authoritative",
-    "H6": "pending; original specification remains authoritative",
-    "H7": "pending; original specification remains authoritative",
-    "H8": "pending; original specification remains authoritative"
-  },
-  "physical_route": {
-    "status": "running",
-    "artifact": "generated/mobile-h1/physical-route",
-    "input_rtl": "generated/mobile-h1/mulpipe-rtl",
-    "scope": "standalone component; no whole-GPU claim",
-    "intermediate_cts": {
-      "scope": "intermediate clock-tree result; routing remains live, not final qualification",
-      "metrics": {
-        "cts__timing__setup__ws": -567.966,
-        "cts__timing__hold__ws": -47.5596,
-        "cts__timing__setup__tns": -495621,
-        "cts__timing__hold__tns": -2487.09,
-        "cts__timing__fmax__clock:core_clock": 692916000.0
-      },
-      "sha256": "b050779be555b53f6e9bf56409d85b7b2868f6e06c43c8b3b4a7c03b80a502cf"
-    }
-  },
-  "script_checks": {
-    "command": "python3 -m pytest -q scripts/test_qualify_ppa.py",
-    "passed_tests": 5
-  },
-  "unique_checked_scala_tests": 49,
-  "reproduction": {
-    "functional": "sbt -batch 'testOnly opengpu.config.MobileGpuConfigSpec opengpu.config.MobileGpuBudgetSpec opengpu.graphics.PersistentTileAttachmentStoreSpec opengpu.graphics.PersistentTileRenderPipelineSpec opengpu.graphics.TileAttachmentStoreSpec opengpu.graphics.TileRenderPipelineSpec opengpu.graphics.RenderPipelineSpec opengpu.graphics.TileBinningRenderCoreSpec opengpu.graphics.TileDrawBinnerSpec'",
-    "emit": "sbt -batch 'runMain opengpu.elaboration.EmitPpaRtl persistent-tile-store generated/mobile-h1/reproduced-rtl'",
-    "physical": "Use ChipAgent Python environment: scripts/qualify_ppa.py generated/mobile-h1/reproduced-rtl PersistentTileAttachmentStore --output <new-output-directory>; default 1000 ps, TC/SLVT, 25% I/O budget. Add --stage route for post-route."
   }
 }

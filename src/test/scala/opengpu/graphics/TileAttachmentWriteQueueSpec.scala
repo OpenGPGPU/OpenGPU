@@ -153,4 +153,23 @@ class TileAttachmentWriteQueueSpec extends AnyFlatSpec {
       dut.io.drained.expect(true.B)
     }
   }
+
+  it should "backpressure a same-cycle acknowledgement until its issued owner is registered" in {
+    simulate(new TileAttachmentWriteQueue(3)) { dut =>
+      val d = new Driver(dut)
+      d.begin()
+      d.enqueue(0x1000)
+      d.waitFor(dut.io.request.valid.peek().litToBoolean)
+      dut.io.request.ready.poke(true.B)
+      dut.io.response.bits.addr.poke(0x1000.U)
+      dut.io.response.bits.write.poke(true.B)
+      dut.io.response.valid.poke(true.B)
+      dut.io.response.ready.expect(false.B)
+      d.tick()
+      dut.io.response.ready.expect(true.B)
+      d.tick()
+      dut.io.response.valid.poke(false.B)
+      dut.io.drained.expect(true.B)
+    }
+  }
 }

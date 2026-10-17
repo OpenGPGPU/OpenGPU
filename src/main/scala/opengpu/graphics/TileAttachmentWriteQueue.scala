@@ -34,8 +34,10 @@ class TileAttachmentWriteQueue(credits: Int = 8) extends Module {
   private val offered = RegInit(false.B)
   private val offeredSlot = Reg(UInt(slotBits.W))
   private val aborting = RegInit(false.B)
-  private val matches = VecInit((0 until credits).map(i => live(i) &&
-    (issued(i) || (offered && offeredSlot === i.U && io.request.fire)) &&
+  // A zero-latency responder holds valid until the next cycle's credit is
+  // registered. Keeping request.ready out of this decode avoids a loop when
+  // an upstream arbiter uses response faults to stop admission.
+  private val matches = VecInit((0 until credits).map(i => live(i) && issued(i) &&
     entries(i).address === io.response.bits.addr))
   io.response.ready := matches.asUInt.orR
   private val abortNow = io.abort || (io.response.fire && io.responseFault)

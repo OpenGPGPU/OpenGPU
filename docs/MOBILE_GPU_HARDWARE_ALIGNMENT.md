@@ -279,9 +279,9 @@ passes assert zero old-attachment reads and zero intermediate stores, and final
 color/depth/stencil samples match the reference.
 
 These checks establish correctness and attachment-locality progress, not a
-throughput or whole-system performance pass. The current transfer engine has
-one outstanding external transaction and the SRAM service is serialized. Its
-small-scene cycle counts still exceed the ordered reference. The reference
+whole-system performance pass. The serial reference has one outstanding
+external transaction and the SRAM service is serialized. Its small-scene cycle
+counts still exceed the ordered reference. The reference
 models partial clear as an immediate memory update after draw drain, so its
 clear-operation cost is not a fair hardware performance comparison. Use a
 dedicated matched workload when qualifying transfer/backend speedups.
@@ -289,17 +289,36 @@ dedicated matched workload when qualifying transfer/backend speedups.
 Remaining H0/H1 work includes broader resource descriptors and implemented
 capability discovery, host command/VM integration, cache-domain publication for
 dependent texture/DMA access, programmable shared-CU pass validation, concurrent
-attachment transfers with reordered fault drain, post-route setup/hold and
+attachment-transfer product qualification, post-route setup/hold and
 power qualification, and the integration-milestone desktop smoke. H2–H8 remain
 required. The standalone synthesis screens in the measurement record are
 component estimates and do not qualify the integrated GPU clock or energy/frame.
 The staged-admission/SRAM component passes its 1 GHz synthesis setup screen
 at TC/SLVT with the stated 25% I/O budget: core slack +26.670 ps and reported
-I/O slack +39.924 ps. Post-route setup/hold qualification remains separate.
+I/O slack +39.924 ps. The completed exploration-mode route has zero DRC and
+antenna errors but fails 1 GHz setup/hold: worst setup -530.636 ps, worst hold
+-7.686 ps. The reported core setup estimate is 668.381 MHz, not a qualified
+operating clock. A timing-repair flow remains separate from this result.
 
-A separate [attachment transfer-credit candidate](performance/mobile-h1-transfer-credits-2026-10-17.json)
+A separate [initial transfer-credit candidate](performance/mobile-h1-transfer-credits-2026-10-17.json)
 passes isolated tests for 1/3/8 credits, reordered acknowledgements, stable
 backpressure, repeated-address serialization and cancellation/fault drain.
 It sustains one request/cycle with a ready port after warm-up and passes its
-standalone 1 GHz synthesis setup screen. It is not yet integrated into the
-tile engine, so the one-outstanding-transaction limitation above still applies.
+standalone 1 GHz synthesis setup screen.
+
+The [concurrent transfer integration](performance/mobile-h1-concurrent-transfers-2026-10-17.json)
+adds optional bounded write credits while retaining the serial reference.
+Private preparation acknowledgements transfer ownership to the write queue;
+pass completion waits for every actual external acknowledgement. Late faults,
+reordered replies, context reuse and randomized load/clear/discard/resolve
+lifetimes are tested. The proposed mobile profile starts with eight credits;
+the existing default remains the serial path during physical qualification.
+
+In a matched 4x-MSAA component workload with identical hardware clear work,
+936 stores, fixed 32-cycle word response latency and an eight-request external
+window, eight credits reduce total cycles from 43,399 to 15,005. Pre-store draw
+work stays at 10,757 cycles and final samples match. A 2/4/8/16/32-credit sweep
+gives 27,617/19,201/15,005/14,656/14,656 cycles. This is a word-service model,
+not an AXI/DRAM or whole-frame performance claim. Both eight- and sixteen-credit
+components pass their standalone 1 GHz synthesis setup screens; post-route
+timing and area/energy tradeoffs remain under qualification.

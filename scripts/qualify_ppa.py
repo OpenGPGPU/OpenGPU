@@ -7,6 +7,7 @@ Outputs are immutable run directories; no historical result is overwritten.
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -30,6 +31,24 @@ def synthesis_setup_gate(report):
                 reported_setup_slacks_ps=slacks,
                 reported_path_groups=len(paths))
 
+
+def post_route_gate(result):
+    """Require explicit global setup/hold and physical checks, not tool completion."""
+    qor = result.get('qor') or {}
+    slacks = ('setup_worst_slack_ps', 'hold_worst_slack_ps')
+    zero_counts = ('setup_violation_count', 'hold_violation_count',
+                   'route_drc_errors', 'antenna_violating_nets',
+                   'antenna_violating_pins', 'placement_violations', 'flow_errors')
+    def number(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    checks = {name: number(qor.get(name)) and qor[name] >= 0 for name in slacks}
+    checks.update({name: number(qor.get(name)) and qor[name] == 0 for name in zero_counts})
+    checks['flow_completed'] = result.get('status') == 'success'
+    checks['tool_verdict'] = (result.get('overview') or {}).get('verdict') == 'PASS'
+    return dict(passed=all(checks.values()), checks=checks,
+                missing_metrics=[name for name in slacks + zero_counts if not number(qor.get(name))],
+                scope='Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors')
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('rtl', type=Path)
@@ -41,6 +60,7 @@ def main():
     parser.add_argument('--utilization', type=int, default=25)
     parser.add_argument('--density', type=float, default=0.6)
     parser.add_argument('--timeout', type=int, default=7200)
+    parser.add_argument('--timing-effort', choices=['explore', 'closure', 'closure_no_cts'])
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -75,7 +95,8 @@ def main():
         core_utilization=args.utilization, place_density=args.density,
         output_dir=str(args.output.resolve() / 'flow'), timeout=args.timeout,
         synthesis_only=args.stage == 'synthesis', cache=False, clean=False,
-        generate_gds=False, timing_effort='explore',
+        generate_gds=False,
+        timing_effort=args.timing_effort or ('closure' if args.stage == 'route' else 'explore'),
         macro_libs=[str(p) for p in libs] or None,
         macro_lefs=[str(p) for p in lefs] or None,
         macro_placement_tcl=str(ROOT / 'timing/asap7/compute_unit_sram_macro_placement.tcl') if macros else None)
@@ -112,6 +133,12 @@ def main():
                     report_sha256=hashlib.sha256(report.encode()).hexdigest())
         (args.output / 'qualification.json').write_text(json.dumps(gate, indent=2) + '\n')
         print(json.dumps({'synthesis_setup_gate': gate}), flush=True)
+        if not gate['passed']:
+            raise SystemExit(2)
+    else:
+        gate = post_route_gate(result.result)
+        (args.output / 'qualification.json').write_text(json.dumps(gate, indent=2) + '\n')
+        print(json.dumps({'post_route_gate': gate}), flush=True)
         if not gate['passed']:
             raise SystemExit(2)
     if result.result.get('overview', {}).get('verdict') == 'FAIL':

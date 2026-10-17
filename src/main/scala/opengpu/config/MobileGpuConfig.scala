@@ -18,6 +18,7 @@ case class MobileGpuConfig(
   textureFillsPerCluster: Int = 16,
   tileBytesPerEngine: Int = 64 * 1024,
   tileSlotsPerEngine: Int = 2,
+  attachmentStoreCredits: Int = 8,
   payloadBytes: Int = 64 * 1024,
   primitiveBytes: Int = 32 * 1024,
   colorAttachments: Int = 4,
@@ -35,12 +36,14 @@ case class MobileGpuConfig(
   require(powerOfTwo(textureFillsPerCluster))
   require(powerOfTwo(tileSlotsPerEngine) && tileBytesPerEngine % tileSlotsPerEngine == 0)
   require(powerOfTwo(tileBytesPerEngine) && tileSlotBytes >= 8 * 1024)
+  require(attachmentStoreCredits > 0 && attachmentStoreCredits <= 32)
   require(powerOfTwo(payloadBytes) && powerOfTwo(primitiveBytes))
   require(colorAttachments >= 1 && colorAttachments <= 4)
   require(Set(4, 8, 16, 32, 64)(axiBytes))
 
   def tileSlotBytes: Int = tileBytesPerEngine / tileSlotsPerEngine
   def tileEngineIdWidth: Int = math.max(1, log2Ceil(tileEngines))
+  def attachmentCreditIdWidth: Int = math.max(1, log2Ceil(attachmentStoreCredits))
   def textureFillIdWidth: Int = math.max(1, log2Ceil(textureFillsPerCluster))
   def payloadAddressWidth: Int = math.max(1, log2Ceil(payloadBytes))
   def l2Bytes: Long = execution.l2Sets.toLong * execution.l2Ways * 64

@@ -10,6 +10,7 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
     val c = MobileGpuConfig()
     assert(c.dataStorageBytes == 368 * 1024)
     assert(c.l2Bytes == 128 * 1024 && c.tileSlotBytes == 32 * 1024)
+    assert(c.attachmentStoreCredits == 8 && c.attachmentCreditIdWidth == 3)
     assert(c.tileClass(Seq.fill(4)(4), 4, 4) == 16)
     assert(c.tileClass(Seq.fill(4)(8), 4, 4) == 8)
     assert(c.tileClass(Seq(4), 4, 4) == 16)

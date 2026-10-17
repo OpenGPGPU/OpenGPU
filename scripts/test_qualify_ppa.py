@@ -42,6 +42,34 @@ def test_missing_setup_paths_cannot_qualify_a_design():
     assert not qualify.synthesis_setup_gate('No paths found.\n')['passed']
 
 
+def routed_result():
+    return dict(status='success', overview=dict(verdict='PASS'), qor=dict(
+        setup_worst_slack_ps=20.0, hold_worst_slack_ps=1.0,
+        setup_violation_count=0, hold_violation_count=0, route_drc_errors=0,
+        antenna_violating_nets=0, antenna_violating_pins=0, placement_violations=0, flow_errors=0))
+
+
+def test_route_requires_explicit_global_setup_hold_and_physical_metrics():
+    assert qualify.post_route_gate(routed_result())['passed']
+    assert not qualify.post_route_gate(dict(status='success', overview=dict(verdict='PASS')))['passed']
+    result = routed_result()
+    del result['qor']['hold_worst_slack_ps']
+    assert 'hold_worst_slack_ps' in qualify.post_route_gate(result)['missing_metrics']
+
+
+@pytest.mark.parametrize('metric,value', [
+    ('setup_worst_slack_ps', -1), ('hold_worst_slack_ps', -0.1),
+    ('setup_violation_count', 1), ('hold_violation_count', 1),
+    ('route_drc_errors', 1), ('antenna_violating_nets', 1),
+    ('antenna_violating_pins', 1), ('placement_violations', 1),
+    ('flow_errors', 1), ('hold_worst_slack_ps', float('nan')),
+])
+def test_route_cannot_hide_failed_or_invalid_checks_behind_a_pass_verdict(metric, value):
+    result = routed_result()
+    result['qor'][metric] = value
+    assert not qualify.post_route_gate(result)['passed']
+
+
 def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypatch):
     rtl = tmp_path / 'rtl'
     rtl.mkdir()

@@ -93,7 +93,8 @@ class TileAttachmentClear extends Bundle {
   val depthValue = UInt(32.W)
 }
 
-/** end/cancel are handshakes. The owner stops producing draws before end and
+/** begin/end/clear use ready/valid; cancel is a synchronous cancellation request.
+  * The owner stops producing draws before end and
   * waits for completion before a dependent texture/DMA/CPU operation. This
   * completion acknowledges the memory port, not CPU cache coherence.
   */
@@ -122,4 +123,6 @@ class TileAttachmentEvents extends Bundle {
   val resolveBytes = UInt(3.W)
   val clearRead = Bool()
   val attachmentStall = Bool()
+  /** Allocated transfer credits, including buffered requests and pending acks. */
+  val transferOccupancy = UInt(6.W)
 }

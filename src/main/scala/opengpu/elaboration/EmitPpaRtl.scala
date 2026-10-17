@@ -51,6 +51,12 @@ object EmitPpaRtl {
       case "persistent-tile-store" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.PersistentTileAttachmentStore(useSramBlackBoxes = true), stageArgs, firtoolArgs)
+      case "persistent-tile-store-concurrent" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.PersistentTileAttachmentStore(useSramBlackBoxes = true,
+            storeCredits = args.lift(2).map(_.toInt)
+              .getOrElse(opengpu.config.MobileGpuConfig().attachmentStoreCredits)),
+          stageArgs, firtoolArgs)
       case "legacy-tile-store" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.TileAttachmentStore(), stageArgs, firtoolArgs)

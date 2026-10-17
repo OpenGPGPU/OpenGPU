@@ -6,11 +6,12 @@ import chisel3.util._
 /** H1 single-owner tile SRAM. Draw completion never evicts the attachments.
   * Clear tags cover unwritten samples as well as samples touched by shading;
   * a store of a clear-start pass therefore exports the complete clear region.
-  * Only one external transaction is live, including during cancellation.
+  * A configurable transfer window retains external ownership until pass drain.
   */
 class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   screenWidth: Int = 65535, screenHeight: Int = 65535,
-  useSramBlackBoxes: Boolean = false) extends Module {
+  useSramBlackBoxes: Boolean = false, storeCredits: Int = 1) extends Module {
+  require(storeCredits > 0 && storeCredits <= 32)
   require(Set(1, 2, 4)(maxSampleCount))
   require(screenWidth > 0 && screenWidth <= 65535 && screenHeight > 0 && screenHeight <= 65535)
   private val planeWords = 256 * maxSampleCount
@@ -34,6 +35,16 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     }
     val events = Output(new TileAttachmentEvents)
   })
+
+  private val localMemory = Wire(new Bundle {
+    val req = Decoupled(new OmMemoryRequest)
+    val resp = Flipped(Decoupled(new OmMemoryResponse))
+  })
+  private val localResponseFault = Wire(Bool())
+  private val transfersDrained = WireDefault(true.B)
+  private val transferFault = WireDefault(false.B)
+  private val resolveStoreEvent = Wire(Bool())
+  private val transferOccupancy = Wire(UInt(6.W))
 
   private val Seq(idle, admitting, running, hitRead, missRequest, missResponse, flushing, flushRead,
     transferRequest, storeResponse, resolveSample, resolveRead, resolveWrite,
@@ -90,9 +101,9 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   private val responseForClear = RegInit(false.B)
 
   io.pass.end.ready := state === running && !closing && !clearEngine.io.busy && !io.pass.clear.valid
-  io.pass.active := state =/= idle && state =/= completed
+  io.pass.active := state =/= idle && (state =/= completed || !transfersDrained)
   io.pass.descriptor := descriptor
-  io.pass.completion.valid := state === completed
+  io.pass.completion.valid := state === completed && transfersDrained
   io.pass.completion.bits.identity := descriptor.identity
   io.pass.completion.bits.status := status
   io.om.resp.valid := responseValid && !responseForClear
@@ -281,40 +292,40 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     }
   }
 
-  io.mem.req.valid := state === missRequest ||
+  localMemory.req.valid := state === missRequest ||
     (state === transferRequest && (!failed || storeOffered)) ||
     (state === resolveWrite && (!failed || storeOffered))
-  io.mem.req.bits.write := state =/= missRequest
-  io.mem.req.bits.addr := Mux(state === missRequest, missAddress, storeAddress)
-  io.mem.req.bits.data := storeData
-  io.mem.resp.ready := state === missResponse || state === storeResponse || state === resolveResponse
-  when(state === missRequest && io.mem.req.fire) { state := missResponse }
-  when(state === missResponse && io.mem.resp.fire) {
-    assert(!io.mem.resp.bits.write && io.mem.resp.bits.addr === missAddress,
+  localMemory.req.bits.write := state =/= missRequest
+  localMemory.req.bits.addr := Mux(state === missRequest, missAddress, storeAddress)
+  localMemory.req.bits.data := storeData
+  localMemory.resp.ready := state === missResponse || state === storeResponse || state === resolveResponse
+  when(state === missRequest && localMemory.req.fire) { state := missResponse }
+  when(state === missResponse && localMemory.resp.fire) {
+    assert(!localMemory.resp.bits.write && localMemory.resp.bits.addr === missAddress,
       "tile load response must retain transaction ownership")
-    when(!io.pass.memoryFault && !failed && !io.pass.cancel) {
+    when(!localResponseFault && !failed && !io.pass.cancel) {
       when(missDepth) {
         depth.io.writeEnable := true.B
         depth.io.writeAddress := missIndex
-        depth.io.writeData := io.mem.resp.bits.data
+        depth.io.writeData := localMemory.resp.bits.data
         depthValid := depthValid.bitSet(missIndex, true.B)
       }.otherwise {
         color.io.writeEnable := true.B
         color.io.writeAddress := missIndex
-        color.io.writeData := io.mem.resp.bits.data
+        color.io.writeData := localMemory.resp.bits.data
         colorValid := colorValid.bitSet(missIndex, true.B)
       }
     }
     when(missForResolve) {
-      when(io.pass.memoryFault || failed || io.pass.cancel) { state := completed }
-        .otherwise { accumulateResolve(io.mem.resp.bits.data) }
+      when(localResponseFault || failed || io.pass.cancel) { state := completed }
+        .otherwise { accumulateResolve(localMemory.resp.bits.data) }
     }.otherwise {
-      response.data := Mux(io.pass.memoryFault || failed || io.pass.cancel, 0.U, io.mem.resp.bits.data)
+      response.data := Mux(localResponseFault || failed || io.pass.cancel, 0.U, localMemory.resp.bits.data)
       responseValid := true.B
       state := running
     }
   }
-  when(io.mem.resp.fire && io.pass.memoryFault) {
+  when(localMemory.resp.fire && localResponseFault) {
     status := TilePassStatus.memoryFault.U
     closing := true.B
   }
@@ -352,15 +363,15 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   }
   when(state === transferRequest) {
     // Keep an offered request stable through cancellation and backpressure.
-    storeOffered := io.mem.req.valid && !io.mem.req.ready
+    storeOffered := localMemory.req.valid && !localMemory.req.ready
     when(failed && !storeOffered) { state := completed }
-      .elsewhen(io.mem.req.fire) {
+      .elsewhen(localMemory.req.fire) {
         storeOffered := false.B
         state := storeResponse
       }
   }
-  when(state === storeResponse && io.mem.resp.fire) {
-    assert(io.mem.resp.bits.write && io.mem.resp.bits.addr === storeAddress,
+  when(state === storeResponse && localMemory.resp.fire) {
+    assert(localMemory.resp.bits.write && localMemory.resp.bits.addr === storeAddress,
       "tile store completion must acknowledge its outstanding address")
     advanceFlush()
     state := flushing
@@ -386,16 +397,16 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
       .otherwise { accumulateResolve(color.io.readData) }
   }
   when(state === resolveWrite) {
-    storeOffered := io.mem.req.valid && !io.mem.req.ready
+    storeOffered := localMemory.req.valid && !localMemory.req.ready
     when(failed && !storeOffered) { state := completed }
-      .elsewhen(io.mem.req.fire) {
+      .elsewhen(localMemory.req.fire) {
         storeOffered := false.B
-        storeAddress := io.mem.req.bits.addr
+        storeAddress := localMemory.req.bits.addr
         state := resolveResponse
       }
   }
-  when(state === resolveResponse && io.mem.resp.fire) {
-    assert(io.mem.resp.bits.write && io.mem.resp.bits.addr === storeAddress,
+  when(state === resolveResponse && localMemory.resp.fire) {
+    assert(localMemory.resp.bits.write && localMemory.resp.bits.addr === storeAddress,
       "resolve completion must acknowledge its outstanding destination")
     for (c <- 0 until 4) resolveAcc(c) := 0.U
     resolveS := 0.U
@@ -410,6 +421,34 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
       state := resolveSample
     }
   }
+  if (storeCredits > 1) {
+    val transfer = Module(new TileAttachmentTransfer(storeCredits))
+    transfer.io.begin := io.pass.begin.fire
+    transfer.io.abort := failed || io.pass.cancel
+    transfer.io.resolve := state === resolveWrite
+    transfer.io.local.req <> localMemory.req
+    localMemory.resp <> transfer.io.local.resp
+    localResponseFault := transfer.io.local.responseFault
+    io.mem.req <> transfer.io.mem.req
+    transfer.io.mem.resp <> io.mem.resp
+    transfer.io.mem.responseFault := io.pass.memoryFault
+    transfersDrained := transfer.io.drained
+    transferFault := transfer.io.fault
+    resolveStoreEvent := transfer.io.resolveStore
+    transferOccupancy := transfer.io.occupancy
+  } else {
+    io.mem.req <> localMemory.req
+    localMemory.resp <> io.mem.resp
+    localResponseFault := io.pass.memoryFault
+    resolveStoreEvent := io.mem.req.fire && state === resolveWrite
+    transferOccupancy := Mux(state === missResponse || state === storeResponse || state === resolveResponse, 1.U, 0.U)
+  }
+  // A real write may fail after its private preparation acknowledgement.
+  // Keep completion hidden until every external transfer has drained.
+  when(transferFault) {
+    status := TilePassStatus.memoryFault.U
+    closing := true.B
+  }
   when(io.pass.completion.fire) { state := idle }
 
   io.events.resident := io.pass.active
@@ -417,7 +456,8 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   io.events.completed := io.pass.completion.fire
   io.events.loadBytes := Mux(io.mem.req.fire && !io.mem.req.bits.write, 4.U, 0.U)
   io.events.storeBytes := Mux(io.mem.req.fire && io.mem.req.bits.write, 4.U, 0.U)
-  io.events.resolveBytes := Mux(io.mem.req.fire && state === resolveWrite, 4.U, 0.U)
+  io.events.resolveBytes := Mux(resolveStoreEvent, 4.U, 0.U)
+  io.events.transferOccupancy := transferOccupancy
   io.events.clearRead := operation.fire && !operation.bits.write && taggedRead &&
     selectedView.loadOp === AttachmentLoadOp.clear.U && !failed
   io.events.attachmentStall := operation.valid && !operation.ready

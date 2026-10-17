@@ -8,11 +8,14 @@ import scala.collection.mutable
 class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
   import TilePassTestData._
   behavior of "render-pass attachment lifetime"
+  private val configuredCredits = sys.props.get("opengpu.tileStoreCredits").map(_.toInt).getOrElse(1)
 
-  private case class Result(color: Seq[Long], depth: Seq[Long], reads: Int, writes: Int, cycles: Int)
+  private case class Result(color: Seq[Long], depth: Seq[Long], reads: Int, writes: Int,
+    cycles: Int, drawCycles: Int, peakOutstanding: Int)
   private case class Response(write: Boolean, address: Long, data: Long, due: Int)
 
-  private def render(persistent: Boolean, mode: Int, load: Boolean, tileLog2: Int = 4): Result = {
+  private def render(persistent: Boolean, mode: Int, load: Boolean, tileLog2: Int = 4,
+    storeCredits: Int = configuredCredits, memoryLatency: Int = 0, memoryWindow: Int = 8): Result = {
     val p = Pass(mode = mode, width = if (tileLog2 == 3) 8 else 13,
       height = if (tileLog2 == 3) 8 else 9, tileLog2 = tileLog2,
       originX = if (tileLog2 == 3) 8 else 0, originY = if (tileLog2 == 3) 8 else 16,
@@ -20,8 +23,8 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
       depthLoad = if (load) AttachmentLoadOp.load else AttachmentLoadOp.clear)
     val cfg = GraphicsConfig(screenWidth = 32, screenHeight = 32,
       tileSize = if (persistent) 16 else 0, tileAttachments = persistent)
-    var result = Result(Nil, Nil, 0, 0, 0)
-    simulate(new RenderPipeline(cfg, persistentAttachments = persistent)) { dut =>
+    var result = Result(Nil, Nil, 0, 0, 0, 0, 0)
+    simulate(new RenderPipeline(cfg, persistentAttachments = persistent, tileStoreCredits = storeCredits)) { dut =>
       val memory = mutable.Map.empty[Long, Long].withDefaultValue(0xdeadbeefL)
       for (y <- 0 until p.height; x <- 0 until p.width; s <- 0 until p.samples) {
         memory(p.address(x, y, s, depth = false)) = p.colorClear
@@ -35,6 +38,8 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
       var writes = 0
       var readBytes = 0L
       var writeBytes = 0L
+      var outstanding = 0
+      var peakOutstanding = 0
       dut.io.draw.valid.poke(false.B)
       dut.io.colorFormat.poke(PixelFormat.native.U)
       dut.io.colorBase.poke(p.colorBase.U)
@@ -87,7 +92,8 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
       dut.reset.poke(false.B)
 
       def tick(): Unit = {
-        dut.io.mem.req.ready.poke((rng.nextInt(4) != 0).B)
+        dut.io.mem.req.ready.poke((if (memoryLatency > 0) outstanding < memoryWindow
+          else rng.nextInt(4) != 0).B)
         if (response.isEmpty) {
           val due = queue.indices.filter(i => queue(i).due <= cycles)
           if (due.nonEmpty) response = Some(queue.remove(due(rng.nextInt(due.size))))
@@ -106,7 +112,9 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
             memory(address) = dut.io.mem.req.bits.data.peek().litValue.toLong
             writes += 1
           } else reads += 1
-          queue += Response(write, address, memory(address), cycles + 1 + rng.nextInt(12))
+          outstanding += 1
+          queue += Response(write, address, memory(address), cycles +
+            (if (memoryLatency > 0) memoryLatency else 1 + rng.nextInt(12)))
         }
         dut.io.tileEvents.foreach { events =>
           readBytes += events.loadBytes.peek().litValue.toLong
@@ -114,7 +122,8 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
         }
         dut.clock.step()
         cycles += 1
-        if (responseFire) response = None
+        if (responseFire) { response = None; outstanding -= 1 }
+        peakOutstanding = math.max(peakOutstanding, outstanding)
       }
       def waitFor(condition: => Boolean): Unit = {
         val start = cycles
@@ -213,6 +222,7 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
         }
       }
 
+      val drawCycles = cycles
       dut.io.tilePass.foreach { port =>
         waitFor(port.end.ready.peek().litToBoolean)
         port.end.valid.poke(true.B)
@@ -234,7 +244,7 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
       assert(color.count(_ != p.colorClear) > 20)
       assert(depth.exists(v => (v >>> 24) != (p.depthClear >>> 24)), "stencil was not exercised")
       assert(memory(p.address(p.width, 0, 0, depth = false)) == 0xdeadbeefL)
-      result = Result(color, depth, reads, writes, cycles)
+      result = Result(color, depth, reads, writes, cycles, drawCycles, peakOutstanding)
     }
     result
   }
@@ -247,7 +257,7 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
       assert(candidate.depth == reference.depth)
       assert(candidate.reads < reference.reads && candidate.writes < reference.writes)
       info(s"mode=$mode load=$load reference reads/writes/cycles=${reference.reads}/${reference.writes}/${reference.cycles}; " +
-        s"persistent=${candidate.reads}/${candidate.writes}/${candidate.cycles}")
+        s"persistent=${candidate.reads}/${candidate.writes}/${candidate.cycles}; credits=$configuredCredits")
     }
   }
   for (mode <- Seq(0, 2)) {
@@ -257,5 +267,33 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
       assert(candidate.color == reference.color && candidate.depth == reference.depth)
       assert(candidate.reads == 0)
     }
+  }
+  it should "reduce pass-store latency with concurrent credits at fixed memory latency and bandwidth" in {
+    val serial = render(persistent = true, mode = 2, load = false, storeCredits = 1, memoryLatency = 32)
+    val concurrent = render(persistent = true, mode = 2, load = false, storeCredits = 8, memoryLatency = 32)
+    assert(concurrent.color == serial.color && concurrent.depth == serial.depth)
+    assert(concurrent.reads == serial.reads && concurrent.writes == serial.writes)
+    assert(serial.peakOutstanding == 1 && concurrent.peakOutstanding > 1 && concurrent.peakOutstanding <= 8)
+    assert(serial.drawCycles == concurrent.drawCycles,
+      "clear-start transfer comparison changed the pre-store draw work")
+    assert(concurrent.cycles < serial.cycles)
+    info(s"fixed32 word latency, external window=8; serial cycles=${serial.cycles}, " +
+      s"concurrent=${concurrent.cycles}, words=${concurrent.reads + concurrent.writes}, " +
+      s"peak=${concurrent.peakOutstanding}, draw cycles=${concurrent.drawCycles}")
+  }
+  it should "size transfer credits against a fixed external window rather than unlimited memory" in {
+    val results = Seq(2, 4, 8, 16, 32).map { credits =>
+      credits -> render(persistent = true, mode = 2, load = false,
+        storeCredits = credits, memoryLatency = 32, memoryWindow = 8)
+    }
+    val reference = results.head._2
+    for ((credits, result) <- results) {
+      assert(result.color == reference.color && result.depth == reference.depth)
+      assert(result.reads == reference.reads && result.writes == reference.writes)
+      assert(result.drawCycles == reference.drawCycles && result.peakOutstanding <= 8)
+      info(s"fixed32 word latency, external window=8; credits=$credits cycles=${result.cycles}, " +
+        s"draw cycles=${result.drawCycles}, peak=${result.peakOutstanding}")
+    }
+    assert(results.toMap.apply(8).cycles < results.toMap.apply(2).cycles)
   }
 }

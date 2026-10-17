@@ -79,7 +79,9 @@ class RenderPipeline(
   vertCore: Boolean = false,
   graphicsScalarFpu: Boolean = true,
   sharedShader: Option[SharedCuShaderConfig] = None,
-  persistentAttachments: Boolean = false
+  persistentAttachments: Boolean = false,
+  tileStoreCredits: Int = 1,
+  useTileSramBlackBoxes: Boolean = false
 ) extends Module {
   require(sharedShader.isEmpty || fragCore,
     "shared shader execution requires programmable fragment graphics")
@@ -163,7 +165,7 @@ class RenderPipeline(
   private val om = Module(new OutputMerger(config))
   private val persistentStore = if (persistentAttachments)
     Some(Module(new PersistentTileAttachmentStore(config.maxSampleCount,
-      config.screenWidth, config.screenHeight))) else None
+      config.screenWidth, config.screenHeight, useTileSramBlackBoxes, tileStoreCredits))) else None
   persistentStore.foreach(_.io.pass <> io.tilePass.get)
   private val passAcceptingDraws = persistentStore.map(store =>
     store.io.pass.active && store.io.pass.end.ready &&
