@@ -1,0 +1,549 @@
+{
+  "recorded_at": 1792215948.651694,
+  "scope": "Read-only attribution at existing hold dispatch; no extra DUT evaluations. Only diagnostic dispatcher object and small fixture checkpoint calls differ. All other36 selected own72 O2/PGO objects and header preserved. Counter collection enabled exactly between existing skip-stats snapshots. Diagnostic elapsed is not performance evidence.",
+  "passed": true,
+  "selected_RTL_commit": "63fa036",
+  "selected_backend_commit": "efefca8",
+  "hold_functions": 11329,
+  "header_sha256": "c5863d475082dc50f8fc77cf261dd04a92d7b452cd73961f4e3e8f093ddf7e5d",
+  "original_source_sha256": "82b090312ea2e1de0e8cb0a19b0bb7a058cd0184af522c1192b2d72f8e114bdb",
+  "original_archive_sha256": "066e130ab96286b4d9808689b6fd2ec8cf6857ebe23ef5312c94749278dd07f8",
+  "observer_source_sha256": "a3a7aeb6208990049cc5e16890273dfa9eedfb02ebcd41abf9998ecd9ee775f8",
+  "fixture_checkpoint_source_sha256": {
+    "small": "c9a25fb007b7fb937c91253577a8731efdbdaa314fa99c2b8138174d761073df",
+    "large": "786190f59e5ab63299a28b1acbbf625ac2e90f8df8a7b46ff405a0d81853103a"
+  },
+  "reused_members": {
+    "dut_1.o": "289ab6c817923a83fdb1205abbba77853aa04a54cc21011eb72f4925d344047c",
+    "dut_10.o": "36f98932b39ba6bd9478c60272f57772e9ad893e9313d6f62d9103fe3d7c3edf",
+    "dut_11.o": "e72ea7861ee9b9a5be6cc845ee44e3bbc659ef180926275d87e6bc58981cc9cc",
+    "dut_12.o": "e98b3edc7baf33292ba54b2d121e99266bcaf95079b94cfc79cc5e776fa55c99",
+    "dut_13.o": "98345fe3a833b8f526a00e624afafc5c6eb22d711a5845857d08638109c0426e",
+    "dut_14.o": "09aa7373fdcd3b0efc89f4a518067f862f461ce833974a10bab96be6cd806e1b",
+    "dut_15.o": "550c146fb47cf1129805798b509dc5d479eb7e60023598e50cf69688603d0245",
+    "dut_16.o": "f081e13a86587285847d3c48e6d87e0069d7ae7a6866dcd6fb6f4d1b6a9caf35",
+    "dut_17.o": "2329de0b1ca7317d8bcc3e935e5037590f544272dbf1542ece58bad0ae5e7e20",
+    "dut_18.o": "620e93d4b6dd7902776eaa42beb5603da409155f113c6d0fdc6ae3fc4c2640c4",
+    "dut_19.o": "9040a73b9ea2912786035612399677f90addb58012c61ce4fb96db87c12743a7",
+    "dut_2.o": "452681d5d3fcf8672b3ea580a2ecc78e27d81071d261f5db238a061e474182e5",
+    "dut_20.o": "dc9c0f77c2100d6222d08b86196a2b1ab66b45cb5a53bcc929c57ac3374e9cf1",
+    "dut_21.o": "f6b39d95b1e5e24c8caaa77c54f7de459938f4945e528de4697229ade20f9b55",
+    "dut_22.o": "6c2c0e550f3c6d2847955b05b5db9b29d1dd615c1819742dcd8300a99d7879fd",
+    "dut_23.o": "34761503242cff5c8a1cd01343c120279248e318eaee44fbf0c731e802a7cb97",
+    "dut_24.o": "c1c1fb0b3545a7fffe86a4dafafa6576a2d216a5a2b83260b879f268df8dd1d7",
+    "dut_25.o": "00ceee7461de0e4d8c88cd6ef89b47a0f93f67a4ed304e7878bdfad353b4552a",
+    "dut_26.o": "281fdea08744cfe14433b2f52312ee562f4bd05b0439988a6512b3218f3ee4f2",
+    "dut_27.o": "8fe95d038c70b31a5013483d10433036741d95a915ba635103ecc92a4d39cc02",
+    "dut_28.o": "f599ff46f7bc22817d467fae27cbda5571b9d318626e360b00600901928d84f5",
+    "dut_29.o": "b1561c1e9ac53645cc2b60f5cb6224348894e6dcd26e80e61015dae89c5395bf",
+    "dut_3.o": "33d5d627c4fb60befd918614790a13ebec94bba5d0364ffd05a030f04219663a",
+    "dut_30.o": "f8ba3ab8e7e5d34071bf3cba55964c99c84688ff579439d862bde656de2d409b",
+    "dut_31.o": "7b5f1489fd81e16d915166e90bd1e2cdd67d0da8e6fb3a09ad930b4ff65efbde",
+    "dut_4.o": "1477fb918a875dfb1f73678e0d56f22752a40d82e0dd0f1be4641e73a35565e0",
+    "dut_5.o": "fc1101b5434d7d9ff71dc23b4d03d9eef51d2ed49d8c08194d41f214cab00824",
+    "dut_6.o": "cff16a130d04ae5db74cb38db482885e708d159e455443b387ee1dad2d560e3d",
+    "dut_7.o": "044aa891d1f150455b481d84d4268bee6a3bd4fb8e98877198186d2e02158b89",
+    "dut_8.o": "5f2cc0ede35481f700b546d0ab50ddd088ca1375d0c3e27c5160b6fdeb28fe3a",
+    "dut_9.o": "4418eec043d7e52a8b64477bb39d67d6275ace77d9c8e811bd224d574022de76",
+    "dut_commit_blocks.o": "87e5c167dc9efb0f8137d580566f59161471bac3b6b19c4d5f9cdf03d080653b",
+    "dut_commit_chunks.o": "15bf3a13a4d20d3a113f615b72ab7432bf6af1c7ddcafb29db9795ba5bf848a9",
+    "dut_commit_helpers.o": "b548471cc689579008bae17428d6d2426082acd836402b6bb80dd2fb784392e5",
+    "dut_mem_ports.o": "a8d6a1e57f6194e36e656af3ca5360b90a6cc13e31be4776c96832a4c592fdea",
+    "arti_rtl_model.o": "d18e0a032beef0b5c839b365a5988ca3df2e1f3f6365b70fa4970fe32df52884"
+  },
+  "cases": [
+    {
+      "tag": "solid-uniform-alpha1-fast",
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.619720667,
+        "commits": 1388224,
+        "holds": 8188998,
+        "holds_wrote": 1397259,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "csv_sha256": "36094f0c4ba640dadc320355b29c90fe3898f11172aad734ebe39423fc7c444c",
+      "whole_RAM_and_all_counters_exact": true,
+      "write_calls": 557638,
+      "zero_write_calls": 7631360,
+      "pending_calls": 8182208,
+      "busy_calls": 557638,
+      "both_calls": 550848,
+      "zero_recorded_write_call_percent": 93.19040009534744,
+      "lower_valid": {
+        "tag": "solid-uniform-alpha1-fast",
+        "lower_valid_holds": 564,
+        "lower_valid_calls": 1890908,
+        "lower_valid_zero_write_calls": 1886970,
+        "lower_valid_share": 23.090834800545807
+      },
+      "top_holds_by_no_recorded_write": [
+        {
+          "hold": 7638,
+          "calls": 6072,
+          "write_calls": 0,
+          "write_paths": 0,
+          "pending": 6072,
+          "busy": 0,
+          "both": 0,
+          "first_condition": "((!(fbClient_CoalescedOmWordToLinePort_t9490 & (!(fbClient_CoalescedOmWordToLinePort_replyQueue_io_deq_valid & (fbClient_CoalescedOmWordToLinePort_replyQueue_io_deq_bits_id == 48u))))) & fbClient_CoalescedOmWordToLinePort_valid_48)"
+        },
+        {
+          "hold": 7639,
+          "calls": 6072,
+          "write_calls": 0,
+          "write_paths": 0,
+          "pending": 6072,
+          "busy": 0,
+          "both": 0,
+          "first_condition": "((!(fbClient_CoalescedOmWordToLinePort_t9490 & (!(fbClient_CoalescedOmWordToLinePort_replyQueue_io_deq_valid & (fbClient_CoalescedOmWordToLinePort_replyQueue_io_deq_bits_id == 60u))))) & fbClient_CoalescedOmWordToLinePort_valid_60)"
+        },
+        {
+          "hold": 7608,
+          "calls": 6059,
+          "write_calls": 0,
+          "write_paths": 0,
+          "pending": 6059,
+          "busy": 0,
+          "both": 0,
+          "first_condition": "(fbClient_CoalescedOmWordToLinePort_t5713 & (fbClient_CoalescedOmWordToLinePort_addresses_48 != host_io_fbMem_req_bits_addr))"
+        },
+        {
+          "hold": 7758,
+          "calls": 6204,
+          "write_calls": 191,
+          "write_paths": 219,
+          "pending": 6204,
+          "busy": 191,
+          "both": 191,
+          "first_condition": "((host_host_core_rp_om_t50728 & ((!host_host_core_rp_om_t50726) & (host_host_core_rp_om_entries_56_stencilFunc != 0u))) & (host_host_core_rp_om_entries_56_stencilFunc != 0u))"
+        },
+        {
+          "hold": 8797,
+          "calls": 6106,
+          "write_calls": 105,
+          "write_paths": 176,
+          "pending": 6106,
+          "busy": 105,
+          "both": 105,
+          "first_condition": "(host_host_core_rp_om_t48820 & (host_host_core_rp_om_t48818 & (host_host_core_rp_om_entries_3_stencilFunc != host_host_core_rp_ctxFifo_io_head_stencilFunc)))"
+        },
+        {
+          "hold": 8699,
+          "calls": 6114,
+          "write_calls": 145,
+          "write_paths": 185,
+          "pending": 6114,
+          "busy": 145,
+          "both": 145,
+          "first_condition": "host_host_core_rp_t1088"
+        },
+        {
+          "hold": 8119,
+          "calls": 6106,
+          "write_calls": 139,
+          "write_paths": 197,
+          "pending": 6106,
+          "busy": 139,
+          "both": 139,
+          "first_condition": "(host_host_core_rp_om_t50728 & (host_host_core_rp_om_t50726 & (host_host_core_rp_om_entries_56_blendEquation != host_host_core_rp_ctxFifo_io_head_blendEquation)))"
+        },
+        {
+          "hold": 8044,
+          "calls": 6106,
+          "write_calls": 149,
+          "write_paths": 208,
+          "pending": 6106,
+          "busy": 149,
+          "both": 149,
+          "first_condition": "((host_host_core_rp_om_t50224 & ((!host_host_core_rp_om_t50222) & (host_host_core_rp_om_entries_42_blendDstFactor != 0u))) & (host_host_core_rp_om_entries_42_blendDstFactor != 0u))"
+        }
+      ]
+    },
+    {
+      "tag": "spatial-gradient-alpha1-fast",
+      "result": {
+        "passed": true,
+        "ticks": 10826,
+        "explicit_ticks": 0,
+        "seconds": 0.747847125,
+        "commits": 1622516,
+        "holds": 9726293,
+        "holds_wrote": 1631716,
+        "reads": 1110,
+        "writes": 5778,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "csv_sha256": "67ebf52728edc86a3a857f1a7a9c5af3da16a05ba26d11d363f058640f5c97b3",
+      "whole_RAM_and_all_counters_exact": true,
+      "write_calls": 702572,
+      "zero_write_calls": 9023721,
+      "pending_calls": 9718467,
+      "busy_calls": 702572,
+      "both_calls": 694746,
+      "zero_recorded_write_call_percent": 92.77656965505768,
+      "lower_valid": {
+        "tag": "spatial-gradient-alpha1-fast",
+        "lower_valid_holds": 564,
+        "lower_valid_calls": 2235313,
+        "lower_valid_zero_write_calls": 2230721,
+        "lower_valid_share": 22.982168026400192
+      },
+      "top_holds_by_no_recorded_write": [
+        {
+          "hold": 8110,
+          "calls": 7304,
+          "write_calls": 320,
+          "write_paths": 550,
+          "pending": 7304,
+          "busy": 320,
+          "both": 320,
+          "first_condition": "((_fs_cse_t44 & (!host_host_core_rp_parallelFrag_worker_3_outValid_127)) & (!host_host_core_rp_parallelFrag_worker_3_outValid_127))"
+        },
+        {
+          "hold": 7899,
+          "calls": 7107,
+          "write_calls": 286,
+          "write_paths": 469,
+          "pending": 7107,
+          "busy": 286,
+          "both": 286,
+          "first_condition": "((_fs_cse_t11 & (!host_host_core_rp_parallelFrag_worker_outValid_46)) & (!host_host_core_rp_parallelFrag_worker_outValid_46))"
+        },
+        {
+          "hold": 8016,
+          "calls": 7075,
+          "write_calls": 287,
+          "write_paths": 514,
+          "pending": 7075,
+          "busy": 287,
+          "both": 287,
+          "first_condition": "((_fs_cse_t33 & (!host_host_core_rp_parallelFrag_worker_2_outValid_37)) & (!host_host_core_rp_parallelFrag_worker_2_outValid_37))"
+        },
+        {
+          "hold": 7758,
+          "calls": 6701,
+          "write_calls": 49,
+          "write_paths": 57,
+          "pending": 6701,
+          "busy": 49,
+          "both": 49,
+          "first_condition": "((host_host_core_rp_om_t50728 & ((!host_host_core_rp_om_t50726) & (host_host_core_rp_om_entries_56_stencilFunc != 0u))) & (host_host_core_rp_om_entries_56_stencilFunc != 0u))"
+        },
+        {
+          "hold": 8203,
+          "calls": 8239,
+          "write_calls": 1694,
+          "write_paths": 1742,
+          "pending": 8239,
+          "busy": 1694,
+          "both": 1694,
+          "first_condition": "((((host_host_core_rp_parallelFrag_worker_t6951 & (host_host_core_rp_parallelFrag_worker_t6924 & 0u)) & (((((!host_host_core_rp_parallelFrag_worker_outValid_59) | (!host_host_core_rp_parallelFrag_worker_outValid_68)) | (!host_host_core_rp_parallelFrag_worker_outValid_77)) | (!host_host_core_rp_parallelFrag_worker_outValid_86)) | (!host_host_core_rp_parallelFrag_worker_outValid_95))) & (!host_host_core_rp_parallelFrag_worker_outValid_59)) & (!host_host_core_rp_parallelFrag_worker_outValid_59))"
+        },
+        {
+          "hold": 8213,
+          "calls": 8253,
+          "write_calls": 1713,
+          "write_paths": 1765,
+          "pending": 8253,
+          "busy": 1713,
+          "both": 1713,
+          "first_condition": "((host_host_core_rp_parallelFrag_worker_1_t6951 & (!host_host_core_rp_parallelFrag_worker_1_t6924)) & host_host_core_rp_parallelFrag_worker_1_outValid_86)"
+        },
+        {
+          "hold": 8119,
+          "calls": 6601,
+          "write_calls": 70,
+          "write_paths": 98,
+          "pending": 6601,
+          "busy": 70,
+          "both": 70,
+          "first_condition": "(host_host_core_rp_om_t50728 & (host_host_core_rp_om_t50726 & (host_host_core_rp_om_entries_56_blendEquation != host_host_core_rp_ctxFifo_io_head_blendEquation)))"
+        },
+        {
+          "hold": 8044,
+          "calls": 6602,
+          "write_calls": 107,
+          "write_paths": 148,
+          "pending": 6602,
+          "busy": 107,
+          "both": 107,
+          "first_condition": "((host_host_core_rp_om_t50224 & ((!host_host_core_rp_om_t50222) & (host_host_core_rp_om_entries_42_blendDstFactor != 0u))) & (host_host_core_rp_om_entries_42_blendDstFactor != 0u))"
+        }
+      ]
+    },
+    {
+      "tag": "large256-gradient-alpha1-fast",
+      "result": {
+        "passed": true,
+        "ticks": 122349,
+        "explicit_ticks": 0,
+        "seconds": 11.5743445,
+        "commits": 24557903,
+        "holds": 144355044,
+        "holds_wrote": 24696281,
+        "reads": 15689,
+        "writes": 88187,
+        "read_bytes": 1004096,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "csv_sha256": "c0dc71a045cf84a1bc8656e6509302919309b0b771d0f578fe96aa3548db7fc3",
+      "whole_RAM_and_all_counters_exact": true,
+      "write_calls": 10627545,
+      "zero_write_calls": 133727499,
+      "pending_calls": 144240192,
+      "busy_calls": 10627545,
+      "both_calls": 10512693,
+      "zero_recorded_write_call_percent": 92.6379122575031,
+      "lower_valid": {
+        "tag": "large256-gradient-alpha1-fast",
+        "lower_valid_holds": 564,
+        "lower_valid_calls": 31999183,
+        "lower_valid_zero_write_calls": 31932431,
+        "lower_valid_share": 22.167000274683854
+      },
+      "top_holds_by_no_recorded_write": [
+        {
+          "hold": 7758,
+          "calls": 107308,
+          "write_calls": 1539,
+          "write_paths": 1742,
+          "pending": 107308,
+          "busy": 1539,
+          "both": 1539,
+          "first_condition": "((host_host_core_rp_om_t50728 & ((!host_host_core_rp_om_t50726) & (host_host_core_rp_om_entries_56_stencilFunc != 0u))) & (host_host_core_rp_om_entries_56_stencilFunc != 0u))"
+        },
+        {
+          "hold": 8119,
+          "calls": 107171,
+          "write_calls": 1576,
+          "write_paths": 2138,
+          "pending": 107171,
+          "busy": 1576,
+          "both": 1576,
+          "first_condition": "(host_host_core_rp_om_t50728 & (host_host_core_rp_om_t50726 & (host_host_core_rp_om_entries_56_blendEquation != host_host_core_rp_ctxFifo_io_head_blendEquation)))"
+        },
+        {
+          "hold": 8044,
+          "calls": 107184,
+          "write_calls": 1670,
+          "write_paths": 2311,
+          "pending": 107184,
+          "busy": 1670,
+          "both": 1670,
+          "first_condition": "((host_host_core_rp_om_t50224 & ((!host_host_core_rp_om_t50222) & (host_host_core_rp_om_entries_42_blendDstFactor != 0u))) & (host_host_core_rp_om_entries_42_blendDstFactor != 0u))"
+        },
+        {
+          "hold": 7962,
+          "calls": 107179,
+          "write_calls": 2186,
+          "write_paths": 2903,
+          "pending": 107179,
+          "busy": 2186,
+          "both": 2186,
+          "first_condition": "((((host_host_core_rp_om_t48705 | host_host_core_rp_om_t40791) | host_host_core_rp_om_t40782) | host_host_core_rp_om_t30940) | host_host_core_rp_om_t32559)"
+        },
+        {
+          "hold": 8246,
+          "calls": 107220,
+          "write_calls": 2577,
+          "write_paths": 3097,
+          "pending": 107220,
+          "busy": 2577,
+          "both": 2577,
+          "first_condition": "(host_host_core_rp_om_t50656 & (host_host_core_rp_om_t50654 & (host_host_core_rp_om_entries_54_stencilRef != host_host_core_rp_ctxFifo_io_head_stencilRef)))"
+        },
+        {
+          "hold": 8184,
+          "calls": 107201,
+          "write_calls": 2809,
+          "write_paths": 3461,
+          "pending": 107201,
+          "busy": 2809,
+          "both": 2809,
+          "first_condition": "((host_host_core_rp_om_t50368 & ((!host_host_core_rp_om_t50366) & (host_host_core_rp_om_entries_46_stencilFailOp != 0u))) & (host_host_core_rp_om_entries_46_stencilFailOp != 0u))"
+        },
+        {
+          "hold": 8185,
+          "calls": 107218,
+          "write_calls": 2939,
+          "write_paths": 3500,
+          "pending": 107218,
+          "busy": 2939,
+          "both": 2939,
+          "first_condition": "((host_host_core_rp_om_t50620 & ((!host_host_core_rp_om_t50618) & (host_host_core_rp_om_entries_53_stencilRef != 0u))) & (host_host_core_rp_om_entries_53_stencilRef != 0u))"
+        },
+        {
+          "hold": 8797,
+          "calls": 107195,
+          "write_calls": 2944,
+          "write_paths": 4579,
+          "pending": 107195,
+          "busy": 2944,
+          "both": 2944,
+          "first_condition": "(host_host_core_rp_om_t48820 & (host_host_core_rp_om_t48818 & (host_host_core_rp_om_entries_3_stencilFunc != host_host_core_rp_ctxFifo_io_head_stencilFunc)))"
+        }
+      ]
+    }
+  ],
+  "static_screen": {
+    "holds_without_lazy_calls": 11289,
+    "whole_words_without_lazy_calls": 164,
+    "all_methods_clear_only_own_need_and_busy_bits": true,
+    "inspection_sha256": "ad50b8415a09742362bc7992e0628928c87b5774e4d073f8188050901794aed1"
+  },
+  "next_target": "Qualify native functional/cycle/traffic equivalence, same-work host performance and actual-native synthesis timing of the private packed lowerValid bitmap. No promotion or speedup is claimed by this report.",
+  "limitations": [
+    "Read-only per-call observer changes host cost; its elapsed is not speed evidence.",
+    "A zero recorded-write call can still compute expressions or evaluate dependencies; it is not automatically safe to remove.",
+    "Static absence of lazy calls alone is not a proof that changing dispatcher scheduling is safe.",
+    "An additional legacy textured integration test exposed a payload-handoff defect in the unchanged baseline. A separate consumer fix passes67 tests after rebuilding all169 current Scala sources; all296 four-CU RTL modules still match the qualified native model."
+  ],
+  "private_bitmap_gates": {
+    "candidate_source_sha256": "c16ee6073f02f094a028264765694b267d28e28979235990b428736af7477edc",
+    "scope": "Width derives from maxOutstanding; all configured IDs and old-state free-ID allocation preserved.",
+    "SAT_equivalence": {
+      "passed": true,
+      "recorded_at": 1792215787.650251,
+      "image_id": "sha256:f6fe3d06f65481e2a00afca34c9d9201c514b00d4fe32028a9c6dde948ede8b4",
+      "cases": [
+        {
+          "width": 8,
+          "id_width": 3,
+          "passed": true,
+          "seconds": 0.2503730421885848,
+          "source_sha256": "da9219b8419fc60ad666f1ccc1c16ec1cde04f6ca59332964774a493b644d53c",
+          "log_sha256": "080683e85dec642f45286390b7e7e3caee790cb3b5a1683e78ca5e902743c5ea",
+          "command": [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/l2-transaction-bitmap:/work:ro",
+            "-w",
+            "/work",
+            "--entrypoint",
+            "/bin/bash",
+            "chipagent/openroad:arm64",
+            "-lc",
+            "yosys -p \"read_verilog update-8.v; prep -top proof; sat -verify -prove passed 1\""
+          ]
+        },
+        {
+          "width": 17,
+          "id_width": 5,
+          "passed": true,
+          "seconds": 0.2115171670448035,
+          "source_sha256": "a97a4b410da0962ceafcbbe0f4467aa32bb78ab542dc769f99cb703936075413",
+          "log_sha256": "97f2a1cb29d89cb8e154cb9f26bde4dfa8d166aee593909431823c6097e9c768",
+          "command": [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/l2-transaction-bitmap:/work:ro",
+            "-w",
+            "/work",
+            "--entrypoint",
+            "/bin/bash",
+            "chipagent/openroad:arm64",
+            "-lc",
+            "yosys -p \"read_verilog update-17.v; prep -top proof; sat -verify -prove passed 1\""
+          ]
+        },
+        {
+          "width": 564,
+          "id_width": 10,
+          "passed": true,
+          "seconds": 4.669676833087578,
+          "source_sha256": "d8a4e88cf9c660933202357b1190707813d2036d621bb5fd8381859d885a4408",
+          "log_sha256": "8c1d0eed82089ec63f6542f354c55401720102b5e10c9193f729f9410e827f26",
+          "command": [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/l2-transaction-bitmap:/work:ro",
+            "-w",
+            "/work",
+            "--entrypoint",
+            "/bin/bash",
+            "chipagent/openroad:arm64",
+            "-lc",
+            "yosys -p \"read_verilog update-564.v; prep -top proof; sat -verify -prove passed 1\""
+          ]
+        },
+        {
+          "width": 576,
+          "id_width": 10,
+          "passed": true,
+          "seconds": 4.597570416051894,
+          "source_sha256": "f664027fb54e0ad52ff013f02d776bddcd7bd428f78a7e8bd959b803401b7a88",
+          "log_sha256": "3efa2ba11ca13f894655cda82246347a3b42626dd483d5eb9ab8bd0a9f53be1c",
+          "command": [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/l2-transaction-bitmap:/work:ro",
+            "-w",
+            "/work",
+            "--entrypoint",
+            "/bin/bash",
+            "chipagent/openroad:arm64",
+            "-lc",
+            "yosys -p \"read_verilog update-576.v; prep -top proof; sat -verify -prove passed 1\""
+          ]
+        }
+      ],
+      "scope": "Combinational SAT equivalence of original per-ID set then clear priority and packed update for all old flags, allocate/retire enables, and IDs. Includes simultaneous same-ID and out-of-range encodings; no stimulus assumptions. Reset remains zero in both implementations."
+    },
+    "unit_stages": [
+      {
+        "name": "compile",
+        "exit_status": 0,
+        "seconds": 3.7556791249662638
+      },
+      {
+        "name": "compile-tests",
+        "exit_status": 0,
+        "seconds": 3.9396464170422405
+      },
+      {
+        "name": "test-SharedL2CacheSpec",
+        "exit_status": 0,
+        "seconds": 18.876372332917526
+      },
+      {
+        "name": "test-RenderCoreL2Spec",
+        "exit_status": 0,
+        "seconds": 42.74224554095417
+      },
+      {
+        "name": "emit-actual296",
+        "exit_status": 0,
+        "seconds": 39.73496124986559
+      }
+    ],
+    "changed_executable_modules": [
+      "SharedL2Cache.sv"
+    ],
+    "unchanged_executable_modules": 295,
+    "native_and_timing_and_desktop_qualification_pending": true
+  }
+}

@@ -55,6 +55,33 @@ a component estimate rather than whole-chip placement/routing.
 
 See [the sources, every gate, complete samples and trace hashes](performance/prepared-blend-overlap-main-qualification-2026-10-17.json).
 
+## Exact held-update attribution (2026-10-17)
+
+A read-only observer surrounds existing hold dispatches, without evaluating
+any extra RTL. Collection starts and stops at the fixture's existing task
+counter snapshots. Complete RAM, task clocks, commits, holds, write events and
+DMA traffic remain exact in three native fixtures.
+
+| Workload | Hold calls | Calls with no recorded write | L2 validity-flag share |
+| --- | ---: | ---: | ---: |
+| Solid64 | 8,188,998 | 93.19% | 23.09% |
+| Spatial64 | 9,726,293 | 92.78% | 22.98% |
+| Spatial256 | 144,355,044 | 92.64% | 22.17% |
+
+The current L2 has 564 separate lower-transaction validity flags. In spatial256,
+their methods receive **31,999,183 calls**, of which **31,932,431** record no
+write. A private packed-bitmap candidate retains all transaction IDs, capacity
+and set/clear priority. Its SAT update equivalence passes at widths 8/17/564/576;
+27 cache tests and both legacy render image tests pass, and only
+`SharedL2Cache.sv` changes among the 296 emitted modules. Native runtime,
+physical timing and desktop qualification remain required before promotion.
+
+No-write calls are not automatically removable: they can evaluate expressions
+or dependencies. The observer's elapsed time is diagnostic. The flag-call
+fraction is not a wall-time speedup prediction.
+
+See [the exact per-call/write/wake counts and selected-object hashes](performance/hold-write-attribution-2026-10-17.json).
+
 ## Current active-render CPU sample (2026-10-17)
 
 A fresh five-second spatial256 sample of the qualified sampler-overlap model
