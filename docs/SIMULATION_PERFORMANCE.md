@@ -77,6 +77,24 @@ cycle-reduction target after the L2 host-work qualification.
 
 See [the per-tick histograms and unchanged-object checks](performance/prepared-sampler-cadence-2026-10-17.json).
 
+An additional read-only observer counts the distinct addresses whose tap
+weights are nonzero at each fetch-group entry. Spatial256 has **1,023 / 134,128
+addresses (0.76%)** with zero weight. The complete existing Mesa64 trace has
+**4,561 / 102,544 (4.45%)**. Its unchanged strict replay still matches all
+45,693 calls, 3,311,169 ticks, commits, holds and DMA totals. Cache hits can
+already satisfy these addresses, so these percentages bound logical address
+opportunities before caching; they are not physical-read or cycle savings.
+The complete qualified **640×480 desktop** is less favorable: only **17,078 /
+6,469,064 addresses (0.264%)** have zero weight. Its full strict replay matches
+all **143,122 calls, 15,959,940 ticks**, reported internal counters and DMA
+traffic. Zero-weight suppression is therefore a low priority for this desktop
+workload; fetch latency and overlapping groups remain the stronger targets.
+Fetching consumes **76.57%** of active texture-unit worker clocks in this
+trace. The shared texture ID table peaks at **10 / 16**, never filling; only
+121,103 of 7,610,007 fetch worker clocks have three or four outstanding reads.
+
+See [the tap-demand histograms and strict replay checks](performance/prepared-tap-demand-2026-10-17.json).
+
 ## Prepared cache admission screen (2026-10-17)
 
 A private sampler reuses its existing CAM at prepared-request admission.
@@ -188,10 +206,22 @@ It passes the same **40 tests**, fresh twelve-capacity encoder proofs and
 **22 exhaustive selector-case SAT proofs** across five configurations,
 including 4×564. All waiter bits remain arbitrary. Case splitting replaces an
 unrestricted packed-vector proof that expanded to 58 million SAT variables;
-it covers every selector without reducing the theorem. This revision's native
-and unchanged-constraint full-cache timing qualification are running.
-Optimized host measurements and actual desktop qualification remain required
-before production promotion.
+it covers every selector without reducing the theorem. Its nine native cases
+and strict Mesa64 replay pass, but full-cache timing regresses to **−16.637 ps
+core / −221.286 ps I/O**. The matched incremental O1 large workload is flat
+(**−0.244% saved**, overlapping ranges). This revision is not promoted.
+
+Read-only netlist mapping confirms both failing paths start at MSHR waiter
+bits; the core path reaches a waiter in another slice, and the I/O path reaches
+response data. A new private revision maintains one cached nonempty bit per
+entry on the same bitmap-update edges and with the same write priority. This
+targets the wide reduction before response arbitration without adding a
+pipeline cycle or changing capacity. All **40 source tests** pass; only the
+expected MSHR module changes among 298 emitted modules. Inductive SAT checks
+pass at **2×1, 4×7, 4×17, 4×564 and 8×576**, including simultaneous same-entry
+updates and the original out-of-range one-hot semantics. Native build and
+unchanged-constraint full-cache timing are running. Optimized host measurements
+and actual desktop qualification remain required before production promotion.
 
 See [the remapper screens, exact-ID proofs and timing limits](performance/l2-transaction-remapper-screen-2026-10-17.json).
 

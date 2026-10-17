@@ -1,0 +1,358 @@
+{
+  "recorded_at": 1792225473.537865,
+  "passed": true,
+  "selected_model": "prepared-blend-overlap-native",
+  "scope": "Read-only per-fetch-entry observation of registered sampler weights and addresses. No extra RTL evaluation, request, or state change. Exact task tick coverage, complete native RAM and all own counters; Mesa trace uses the frozen strict event verifier and preserves every original reported counter.",
+  "method": "Count nonzero logical weights and distinct addresses among their taps. Compare with all distinct addresses at that fetch entry. Single-texel bypass groups reported separately. These are logical address opportunities before word-cache hits, not actual physical read savings or an achievable cycle/time gain.",
+  "selected_header_sha256": "c5863d475082dc50f8fc77cf261dd04a92d7b452cd73961f4e3e8f093ddf7e5d",
+  "selected_archive_sha256": "066e130ab96286b4d9808689b6fd2ec8cf6857ebe23ef5312c94749278dd07f8",
+  "reused_unchanged_object_members": {
+    "dut_1.o": "289ab6c817923a83fdb1205abbba77853aa04a54cc21011eb72f4925d344047c",
+    "dut_10.o": "36f98932b39ba6bd9478c60272f57772e9ad893e9313d6f62d9103fe3d7c3edf",
+    "dut_11.o": "e72ea7861ee9b9a5be6cc845ee44e3bbc659ef180926275d87e6bc58981cc9cc",
+    "dut_12.o": "e98b3edc7baf33292ba54b2d121e99266bcaf95079b94cfc79cc5e776fa55c99",
+    "dut_13.o": "98345fe3a833b8f526a00e624afafc5c6eb22d711a5845857d08638109c0426e",
+    "dut_14.o": "09aa7373fdcd3b0efc89f4a518067f862f461ce833974a10bab96be6cd806e1b",
+    "dut_15.o": "550c146fb47cf1129805798b509dc5d479eb7e60023598e50cf69688603d0245",
+    "dut_16.o": "f081e13a86587285847d3c48e6d87e0069d7ae7a6866dcd6fb6f4d1b6a9caf35",
+    "dut_17.o": "2329de0b1ca7317d8bcc3e935e5037590f544272dbf1542ece58bad0ae5e7e20",
+    "dut_18.o": "620e93d4b6dd7902776eaa42beb5603da409155f113c6d0fdc6ae3fc4c2640c4",
+    "dut_19.o": "9040a73b9ea2912786035612399677f90addb58012c61ce4fb96db87c12743a7",
+    "dut_2.o": "452681d5d3fcf8672b3ea580a2ecc78e27d81071d261f5db238a061e474182e5",
+    "dut_20.o": "dc9c0f77c2100d6222d08b86196a2b1ab66b45cb5a53bcc929c57ac3374e9cf1",
+    "dut_21.o": "f6b39d95b1e5e24c8caaa77c54f7de459938f4945e528de4697229ade20f9b55",
+    "dut_22.o": "6c2c0e550f3c6d2847955b05b5db9b29d1dd615c1819742dcd8300a99d7879fd",
+    "dut_23.o": "34761503242cff5c8a1cd01343c120279248e318eaee44fbf0c731e802a7cb97",
+    "dut_24.o": "c1c1fb0b3545a7fffe86a4dafafa6576a2d216a5a2b83260b879f268df8dd1d7",
+    "dut_25.o": "00ceee7461de0e4d8c88cd6ef89b47a0f93f67a4ed304e7878bdfad353b4552a",
+    "dut_26.o": "281fdea08744cfe14433b2f52312ee562f4bd05b0439988a6512b3218f3ee4f2",
+    "dut_27.o": "8fe95d038c70b31a5013483d10433036741d95a915ba635103ecc92a4d39cc02",
+    "dut_28.o": "f599ff46f7bc22817d467fae27cbda5571b9d318626e360b00600901928d84f5",
+    "dut_29.o": "b1561c1e9ac53645cc2b60f5cb6224348894e6dcd26e80e61015dae89c5395bf",
+    "dut_3.o": "33d5d627c4fb60befd918614790a13ebec94bba5d0364ffd05a030f04219663a",
+    "dut_30.o": "f8ba3ab8e7e5d34071bf3cba55964c99c84688ff579439d862bde656de2d409b",
+    "dut_31.o": "7b5f1489fd81e16d915166e90bd1e2cdd67d0da8e6fb3a09ad930b4ff65efbde",
+    "dut_4.o": "1477fb918a875dfb1f73678e0d56f22752a40d82e0dd0f1be4641e73a35565e0",
+    "dut_5.o": "fc1101b5434d7d9ff71dc23b4d03d9eef51d2ed49d8c08194d41f214cab00824",
+    "dut_6.o": "cff16a130d04ae5db74cb38db482885e708d159e455443b387ee1dad2d560e3d",
+    "dut_7.o": "044aa891d1f150455b481d84d4268bee6a3bd4fb8e98877198186d2e02158b89",
+    "dut_8.o": "5f2cc0ede35481f700b546d0ab50ddd088ca1375d0c3e27c5160b6fdeb28fe3a",
+    "dut_9.o": "4418eec043d7e52a8b64477bb39d67d6275ace77d9c8e811bd224d574022de76",
+    "dut_commit_blocks.o": "87e5c167dc9efb0f8137d580566f59161471bac3b6b19c4d5f9cdf03d080653b",
+    "dut_commit_chunks.o": "15bf3a13a4d20d3a113f615b72ab7432bf6af1c7ddcafb29db9795ba5bf848a9",
+    "dut_commit_helpers.o": "b548471cc689579008bae17428d6d2426082acd836402b6bb80dd2fb784392e5",
+    "dut_mem_ports.o": "a8d6a1e57f6194e36e656af3ca5360b90a6cc13e31be4776c96832a4c592fdea",
+    "arti_rtl_model.o": "d18e0a032beef0b5c839b365a5988ca3df2e1f3f6365b70fa4970fe32df52884"
+  },
+  "observer_sources": {
+    "run.py": "0cf3b150587d66a084ad34fa87c72f75de0f4bb84b410561f0761dba3c546afe",
+    "replay.py": "b2cc335836f60d7ca1547e16c175a72e98cbb00db2950c3a0def9a9d5bb83a68",
+    "dut_0.cpp": "857e8d0429ace86f4137cfce8ad2f5747a866aef57d7fd6049a5d740d77de8a2",
+    "replay_full.py": "71731423fe4b921cd606e9197402ed3d82032c8f9010716e4894a4bebcbdd56d"
+  },
+  "strict_trace_sha256": "b6112abf682c39e0d8c3c2e10b74bd641cd3c40de90e68b9547ca131d059728f",
+  "strict_verifier_sha256": "80487c2b6f7f6f5205892594509754ece4bed0db56b6489f70a2a74a8d5366a2",
+  "cases": [
+    {
+      "tag": "solid-uniform-alpha1-fast",
+      "scope": "native fixture task ticks",
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.596750708,
+        "commits": 1388224,
+        "holds": 8188998,
+        "holds_wrote": 1397259,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "counter_and_complete_RAM_exact": true,
+      "demand": {
+        "weighted_groups": 0,
+        "single_texel_groups": 140,
+        "histograms": {
+          "needed_taps_histogram": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "needed_unique_addresses_histogram": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "all_unique_addresses_histogram": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "needed_unique_addresses": 0,
+        "all_unique_addresses": 0,
+        "zero_weight_unique_addresses": 0,
+        "zero_weight_unique_address_percent": null,
+        "fetch_worker_ticks": 452,
+        "lookup_worker_ticks": 0
+      },
+      "observer_file_sha256": "0307e1d827b52ff4339101cd5670117fdff56e8babba16411942eecd58256b2a"
+    },
+    {
+      "tag": "spatial-gradient-alpha1-fast",
+      "scope": "native fixture task ticks",
+      "result": {
+        "passed": true,
+        "ticks": 10826,
+        "explicit_ticks": 0,
+        "seconds": 0.727210625,
+        "commits": 1622516,
+        "holds": 9726293,
+        "holds_wrote": 1631716,
+        "reads": 1110,
+        "writes": 5778,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "counter_and_complete_RAM_exact": true,
+      "demand": {
+        "weighted_groups": 2236,
+        "single_texel_groups": 0,
+        "histograms": {
+          "needed_taps_histogram": [
+            0,
+            1,
+            126,
+            0,
+            2109
+          ],
+          "needed_unique_addresses_histogram": [
+            0,
+            1,
+            126,
+            0,
+            2109
+          ],
+          "all_unique_addresses_histogram": [
+            0,
+            0,
+            0,
+            0,
+            2236
+          ]
+        },
+        "needed_unique_addresses": 8689,
+        "all_unique_addresses": 8944,
+        "zero_weight_unique_addresses": 255,
+        "zero_weight_unique_address_percent": 2.8510733452593917,
+        "fetch_worker_ticks": 10766,
+        "lookup_worker_ticks": 2096
+      },
+      "observer_file_sha256": "836aac20b54df1c0d23c7b7664e74d501ed540bf0caefe40aa0a0d3bb4a6570e"
+    },
+    {
+      "tag": "large256-gradient-alpha1-fast",
+      "scope": "native fixture task ticks",
+      "result": {
+        "passed": true,
+        "ticks": 122349,
+        "explicit_ticks": 0,
+        "seconds": 11.1847295,
+        "commits": 24557903,
+        "holds": 144355044,
+        "holds_wrote": 24696281,
+        "reads": 15689,
+        "writes": 88187,
+        "read_bytes": 1004096,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "counter_and_complete_RAM_exact": true,
+      "demand": {
+        "weighted_groups": 33532,
+        "single_texel_groups": 0,
+        "histograms": {
+          "needed_taps_histogram": [
+            0,
+            1,
+            510,
+            0,
+            33021
+          ],
+          "needed_unique_addresses_histogram": [
+            0,
+            1,
+            510,
+            0,
+            33021
+          ],
+          "all_unique_addresses_histogram": [
+            0,
+            0,
+            0,
+            0,
+            33532
+          ]
+        },
+        "needed_unique_addresses": 133105,
+        "all_unique_addresses": 134128,
+        "zero_weight_unique_addresses": 1023,
+        "zero_weight_unique_address_percent": 0.7627042824764404,
+        "fetch_worker_ticks": 154084,
+        "lookup_worker_ticks": 31436
+      },
+      "observer_file_sha256": "82d4af364512a745b2068ceb4b3b87193587fee6a6c6c13ce3f1fae97ff315ae"
+    },
+    {
+      "tag": "existing-Mesa64-trace",
+      "scope": "complete strict replay, including existing guest/driver traffic",
+      "result": {
+        "calls": 45693,
+        "ticks": 3311169,
+        "commits": 46926267,
+        "holds": 367858085,
+        "dma_reads": 39094,
+        "dma_writes": 468192,
+        "dma_bytes": 6005392,
+        "seconds": 21.027324834,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "demand": {
+        "weighted_groups": 26164,
+        "single_texel_groups": 0,
+        "histograms": {
+          "needed_taps_histogram": [
+            0,
+            475,
+            2160,
+            0,
+            23529
+          ],
+          "needed_unique_addresses_histogram": [
+            0,
+            679,
+            2318,
+            0,
+            23167
+          ],
+          "all_unique_addresses_histogram": [
+            0,
+            88,
+            924,
+            0,
+            25152
+          ]
+        },
+        "needed_unique_addresses": 97983,
+        "all_unique_addresses": 102544,
+        "zero_weight_unique_addresses": 4561,
+        "zero_weight_unique_address_percent": 4.447846777968482,
+        "fetch_worker_ticks": 116758,
+        "lookup_worker_ticks": 24519
+      },
+      "observer_file_sha256": "f26fabd53932cb55b44f6e133cd2f0ac8626efe7e2205a8057667f0579fe61f6",
+      "all_reported_replay_counters_and_strict_DMA_exact": true
+    },
+    {
+      "tag": "qualified-full640-desktop-trace",
+      "scope": "complete qualified640x480 Debian/Weston/GTK trace, including orange redraw",
+      "result": {
+        "calls": 143122,
+        "ticks": 15959940,
+        "commits": 927395384,
+        "holds": 5538273925,
+        "dma_reads": 565188,
+        "dma_writes": 3570023,
+        "dma_bytes": 63045736,
+        "seconds": 420.749270083,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_reported_replay_counters_and_strict_DMA_exact": true,
+      "demand": {
+        "weighted_groups": 1619444,
+        "single_texel_groups": 0,
+        "histograms": {
+          "needed_taps_histogram": [
+            0,
+            10,
+            8528,
+            0,
+            1610906
+          ],
+          "needed_unique_addresses_histogram": [
+            0,
+            26,
+            12856,
+            0,
+            1606562
+          ],
+          "all_unique_addresses_histogram": [
+            0,
+            8,
+            4344,
+            0,
+            1615092
+          ]
+        },
+        "needed_unique_addresses": 6451986,
+        "all_unique_addresses": 6469064,
+        "zero_weight_unique_addresses": 17078,
+        "zero_weight_unique_address_percent": 0.2639949148748567,
+        "fetch_worker_ticks": 7610007,
+        "lookup_worker_ticks": 1518195,
+        "active_texture_unit_worker_ticks": 9938748,
+        "fetch_share_of_active_texture_unit_percent": 76.56907087291076,
+        "fetch_outstanding_leader_histogram": [
+          1731808,
+          4611796,
+          1145300,
+          55897,
+          65206
+        ],
+        "owner_histogram": [
+          11700064,
+          1946419,
+          1811780,
+          320788,
+          121415,
+          45293,
+          13020,
+          982,
+          165,
+          11,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "peak_shared_texture_owners": 10
+      },
+      "observer_file_sha256": "fcf8c8a77753714fcd828180ccea9dd236eb339fc5296175c120a2a472d36d5c",
+      "strict_trace_sha256": "c8a32de13ff7ab906941f7dbe135f1d2d912fa6f157a99be16f363f938d19399"
+    }
+  ],
+  "decision": "Full640 exposes only0.264% zero-weight unique addresses before cache reuse, versus0.76% in spatial256 and4.45% in the shorter Mesa run. Do not prioritize zero-weight suppression for the desktop workload. Investigate fetch latency and overlapping groups under the existing four-read budget. These logical counts do not establish achievable physical-read, cycle or simulation-time gains.",
+  "updated_at": 1792226130.011231
+}

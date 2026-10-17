@@ -667,7 +667,7 @@
     "Format/swizzle/staging controls and current Debian/Mesa desktop, strict trace, scanout and visual checks."
   ],
   "production_RTL_changed": false,
-  "updated_at": 1792224739.568958,
+  "updated_at": 1792226008.803354,
   "all_wide_revision": {
     "sources": {
       "L2PriorityEncoder.scala": {
@@ -1104,8 +1104,213 @@
       "path": ".artifacts/shared-cu/l2-response-id-preselect/selection-proof-transition.json",
       "sha256": "1945c211cec2013962ae5aefc1d2c3cfe21b15acbf8bdfc40189923e8e974eec"
     },
-    "native_and_full_cache_timing": "running",
+    "native_and_full_cache_timing": "completed; functional passes, unchanged full-cache timing fails",
     "task_pipeline_changes": false,
-    "clock_and_IO_constraint_changes": false
+    "clock_and_IO_constraint_changes": false,
+    "native9": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-response-id-preselect-native/build-state.json",
+        "sha256": "f20993e05749e48a0f8680a0cda358ae4db258cd25d8e6ceaf304baf99d25210"
+      },
+      "cases": 9,
+      "complete_RAM_task_clocks_and_DMA_exact": true,
+      "hold_call_reduction_percent_range": [
+        55.65503412544422,
+        57.77188754882019
+      ]
+    },
+    "strict_Mesa64": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-response-id-preselect-native/reference-replay-state.json",
+        "sha256": "2304981ab0ff925a68d3e74cce7e005b5258762537ae4d25d72618a98f95c33b"
+      },
+      "result": {
+        "calls": 45693,
+        "ticks": 3311169,
+        "commits": 46754789,
+        "holds": 148057406,
+        "dma_reads": 39094,
+        "dma_writes": 468192,
+        "dma_bytes": 6005392,
+        "seconds": 31.673192083,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    "native_full_cache_timing": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-response-id-preselect-native/native-component-timing-state.json",
+        "sha256": "3f03b7397a825cb853713d54097d50b42324ef7f3ab2427e947c25b8c5f1de3b"
+      },
+      "qualification": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -16.637,
+          -221.286
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "345080f008454192f9e93499f0a4ada4ea094a8d8975db8970ad3aab88e400bf"
+      },
+      "core_slack_ps": -16.637,
+      "IO_slack_ps": -221.286,
+      "read_only_pin_mapping": {
+        "path": ".artifacts/shared-cu/l2-response-id-preselect-native/pin-inspection-state.json",
+        "sha256": "19cf00bbbaefbd6b33163cf2006e490588090f09f78c41d2cd39693afb10fcb2"
+      },
+      "pins": [
+        "PIN_NET u53560 slices_0.missEngine.table_0.waiters_0[39]",
+        "PIN_NET u12723 slices_3.missEngine.table_0.waiters_0[294]",
+        "PIN_NET u40799 slices_1.missEngine.table_0.waiters_0[263]"
+      ]
+    },
+    "O1_host_screen": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-response-id-preselect-native/O1-host-state.json",
+        "sha256": "91948b027ba65f80dd7c3272369a9d235741a65c472be6888522ccf8b44e9037"
+      },
+      "passed": true,
+      "promising": false,
+      "summary": {
+        "solid64": {
+          "medians": {
+            "baseline": 0.9870472705,
+            "candidate": 0.999494625
+          },
+          "time_saved_percent": -1.2610697452913877,
+          "ranges": {
+            "baseline": [
+              0.9836965,
+              1.021568708
+            ],
+            "candidate": [
+              0.994024041,
+              1.010912
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "spatial64": {
+          "medians": {
+            "baseline": 1.21389675,
+            "candidate": 1.2198438955
+          },
+          "time_saved_percent": -0.48992185702778634,
+          "ranges": {
+            "baseline": [
+              1.20546,
+              1.220256167
+            ],
+            "candidate": [
+              1.207808834,
+              1.225219417
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "spatial256": {
+          "medians": {
+            "baseline": 18.634060771,
+            "candidate": 18.6795480415
+          },
+          "time_saved_percent": -0.24410820088549556,
+          "ranges": {
+            "baseline": [
+              18.620708666,
+              18.76112
+            ],
+            "candidate": [
+              18.656816125,
+              18.744515833
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        }
+      },
+      "scope": "Matched O1 plus profile-instrumentation native host screen on same external work: factored-guard baseline versus per-entry response-ID encoding. Four balanced fresh processes per variant/workload. Preserve complete RAM and each own internal counter; require exact baseline task clocks/DMA. Final O2/PGO, native format/control and actual guest qualification remain before any gain/promotion claim."
+    },
+    "decision": "Reject this revision for promotion: functional passes but both unchanged hardware timing budgets fail and matched incremental O1 measurements show no gain. Next private revision targets waiter-nonempty reductions with cached predicates, preserving every bitmap update edge and priority."
+  },
+  "cached_waiter_presence": {
+    "origin": {
+      "parent": ".artifacts/shared-cu/l2-response-id-preselect",
+      "parent_source_sha256": "d4d2ac1cc5feff06ec207df25bdbed2a15484a92cf24c6ab89bd6b024ef23a49",
+      "candidate_source_sha256": "d1bd191909ec3e9458f167b9f380e9d8ceb79d019f04050c93c0bb5587909933",
+      "change": "One nonempty bit per MSHR entry, maintained with exact waiter update priority; no protocol/pipeline/capacity change.",
+      "evidence": "l2-response-id-preselect-native/physical-component-timing/qualification.json",
+      "parent_core_slack_ps": -16.637,
+      "parent_IO_slack_ps": -221.286,
+      "pin_mapping": [
+        "PIN_NET u53560 slices_0.missEngine.table_0.waiters_0[39]",
+        "PIN_NET u12723 slices_3.missEngine.table_0.waiters_0[294]",
+        "PIN_NET u40799 slices_1.missEngine.table_0.waiters_0[263]"
+      ],
+      "recorded_at": 1792225705.506646
+    },
+    "source": {
+      "path": ".artifacts/shared-cu/l2-waiter-presence/L2MshrTable.scala",
+      "sha256": "d1bd191909ec3e9458f167b9f380e9d8ceb79d019f04050c93c0bb5587909933"
+    },
+    "status": "40 source tests,298-module emission and all five inductive SAT configurations pass; native build and unchanged full-cache timing running",
+    "register_bits_per_entry": 1,
+    "capacity_or_protocol_changes": false,
+    "source_tests": {
+      "path": ".artifacts/shared-cu/l2-waiter-presence/state.json",
+      "sha256": "dfd035bf95fdbe4574f23f84a055d9176d19d251a0efb18e7cd2c34fea497e46"
+    },
+    "test_count": 40,
+    "suites": 7,
+    "changed_executable_modules": [
+      "L2MshrTable.sv"
+    ],
+    "unchanged_executable_modules": 297,
+    "presence_equivalence": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-waiter-presence/presence-proof-state.json",
+        "sha256": "9f5de0fa5d724a1e6057733e03a758968ce923cc9884df59b4dba6c7945b885f"
+      },
+      "cases": [
+        {
+          "entries": 2,
+          "capacity": 1,
+          "passed": true
+        },
+        {
+          "entries": 4,
+          "capacity": 7,
+          "passed": true
+        },
+        {
+          "entries": 4,
+          "capacity": 17,
+          "passed": true
+        },
+        {
+          "entries": 4,
+          "capacity": 564,
+          "passed": true
+        },
+        {
+          "entries": 8,
+          "capacity": 576,
+          "passed": true
+        }
+      ],
+      "scope": "Inductive preservation of cached nonempty bits under arbitrary allocate, merge and retire actions, including simultaneous same-entry updates and out-of-range IDs. Same reset values and later retirement priority as actual source. Therefore every response-candidate reduction is identical at every reachable edge; not a whole-cache proof."
+    },
+    "harness_recovery": {
+      "path": ".artifacts/shared-cu/l2-waiter-presence-native/proof-harness-recovery.json",
+      "sha256": "58ac10ffa623a6ea8621fe62502d9bd3d75f5c9ac72e16e67814b750224e110a"
+    }
   }
 }
