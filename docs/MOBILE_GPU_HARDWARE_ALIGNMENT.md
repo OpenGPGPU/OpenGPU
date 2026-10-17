@@ -322,3 +322,11 @@ gives 27,617/19,201/15,005/14,656/14,656 cycles. This is a word-service model,
 not an AXI/DRAM or whole-frame performance claim. Both eight- and sixteen-credit
 components pass their standalone 1 GHz synthesis setup screens; post-route
 timing and area/energy tradeoffs remain under qualification.
+
+The completed eight-credit timing-repair route passes hold (+26.809 ps), DRC,
+antenna and placement checks, but still fails 1 GHz setup (-124.621 ps including
+I/O; core-only -20.28 ps). Its worst endpoint is the `clearRead` diagnostic
+output. A [registered diagnostic candidate](performance/mobile-h1-registered-events-2026-10-17.json)
+preserves exact event totals with a one-cycle delay and passes 16 concurrent
+component checks. Its synthesis setup screen reports +8.170 ps core and
++256.364 ps I/O; a new route must establish the actual physical result.

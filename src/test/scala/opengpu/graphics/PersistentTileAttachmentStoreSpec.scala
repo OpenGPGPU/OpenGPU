@@ -75,6 +75,7 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
     var faultNextResponse = false
     var loadBytes = 0L
     var storeBytes = 0L
+    var clearReads = 0L
     var peakMemoryPending = 0
     var peakTransferOccupancy = 0
     var pass = Pass()
@@ -140,6 +141,7 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
         dut.io.events.transferOccupancy.peek().litValue.toInt)
       loadBytes += dut.io.events.loadBytes.peek().litValue.toLong
       storeBytes += dut.io.events.storeBytes.peek().litValue.toLong
+      if (dut.io.events.clearRead.peek().litToBoolean) clearReads += 1
       dut.clock.step()
       cycle += 1
     }
@@ -231,14 +233,19 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
       val d = new Driver(dut)
       for (mode <- 0 to 2) {
         val p = Pass(mode = mode, id = 20 + mode)
+        val priorClearReads = d.clearReads
         d.requests.clear()
         d.begin(p)
         // Mutation after admission must not change the snapshot or owner.
         pokeDescriptor(dut.io.pass.begin.bits, p.copy(colorBase = 0x30000, id = 99))
         d.issue(1, 1, p.samples - 1, depth = true)
+        assert(d.clearReads == priorClearReads, "clear read diagnostic must be registered")
+        dut.io.events.clearRead.expect(true.B)
         d.response(p.depthClear)
+        assert(d.clearReads == priorClearReads + 1)
         d.issue(1, 1, p.samples - 1)
         d.response(p.colorClear)
+        assert(d.clearReads == priorClearReads + 2)
         d.issue(1, 1, p.samples - 1, write = true, data = 0x87654321L)
         d.response(0)
         d.issue(1, 1, p.samples - 1, write = true, data = 0xaabbccddL)
@@ -248,6 +255,7 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
         assert(d.requests.isEmpty, "clear pass accessed external attachments before end")
         d.end()
         d.complete()
+        assert(d.clearReads == priorClearReads + 2, "resident SRAM reads must not count as clear tags")
         val expectedWords = p.width * p.height * p.samples * 2
         assert(d.requests.size == expectedWords && d.requests.forall(_.write))
         assert(d.requests.map(_.address).distinct.size == expectedWords)
@@ -259,6 +267,7 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
         }
       }
       assert(d.loadBytes == 0 && d.storeBytes == d.requests.size * 4L + (30 + 60) * 4L)
+      assert(d.clearReads == 6)
     }
   }
 

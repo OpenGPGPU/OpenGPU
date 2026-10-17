@@ -458,7 +458,9 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   io.events.storeBytes := Mux(io.mem.req.fire && io.mem.req.bits.write, 4.U, 0.U)
   io.events.resolveBytes := Mux(resolveStoreEvent, 4.U, 0.U)
   io.events.transferOccupancy := transferOccupancy
-  io.events.clearRead := operation.fire && !operation.bits.write && taggedRead &&
-    selectedView.loadOp === AttachmentLoadOp.clear.U && !failed
+  // The wide tag lookup already serves the local response path. Register its
+  // diagnostic pulse so it does not also consume the external I/O budget.
+  io.events.clearRead := RegNext(operation.fire && !operation.bits.write && taggedRead &&
+    selectedView.loadOp === AttachmentLoadOp.clear.U && !failed, false.B)
   io.events.attachmentStall := operation.valid && !operation.ready
 }

@@ -1,0 +1,43 @@
+{
+  "scope": "Register one diagnostic output; attachment data and request timing are unchanged. No H0/H1 completion claim.",
+  "reference_checkpoint": "79a1120",
+  "change": "clearRead reports a clear-tag read accepted on the preceding cycle; exact counts checked across 1x/2x/4x.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/PersistentTileAttachmentStore.scala": "aac30a3af3a2da526d5ee8c7a2f5496fd540ddc6267c5e6306ec3ff686e3bbd0",
+    "src/main/scala/opengpu/graphics/TileRenderPass.scala": "82a478eea3afcec95ee4aa3e86859036df5fcad5914f68ad6be07ce4e8db345b",
+    "src/test/scala/opengpu/graphics/PersistentTileAttachmentStoreSpec.scala": "032f678cd5a8c53d1f896b2e904de6edfb215402a428359085d70d5fec5e577f"
+  },
+  "functional": {
+    "passed": true,
+    "tests": 16,
+    "credits": 8,
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/registered-events.log",
+    "log_sha256": "fd62aecb322663e9a19fad64f3a35b520063cfee6b9b14f10ec656f5a46d6f89"
+  },
+  "synthesis": {
+    "artifact": "generated/mobile-h1/physical-registered-events",
+    "gate": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        8.17,
+        256.364
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "16482dffcce6f21032cc31364ed5e624878bd6749e9f8db4c40c052d93a91a95"
+    },
+    "manifest_sha256": "21f8dc0f04e39c487ba668be063d451d86ed00c326a0e98cb5ee77247e65b1d2",
+    "emitted_sha256": {
+      "L2SramArray.sv": "d72588e8a9ac8d8aaec7495aae3ec57045cb817695cf11148a7df7b8e3f732f9",
+      "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+      "TileAttachmentClearEngine.sv": "86ba4d76c76df4e0929da729c48a1d710fd00f7a62738845ebc707823bff44a8",
+      "TileRenderPassAdmission.sv": "f161dd46e04f56a7e408efa1286c9ef4a8ba5abe7ac17eb7fb607571cea85f9b",
+      "TileAttachmentWriteQueue.sv": "b31ec91c7967cd69767cee88a7891c14f7a5f7ab2ded89c0a688cd9d3bcc2967",
+      "RRArbiter2_TileTransferRequest.sv": "308a3ea4afc09ae2077ff04b24363b89743706f0ec6591073e072dfd41374313",
+      "Queue1_TileTransferRequest.sv": "92c1ac8047c81f62d3b63a7c3c2b926d36ae566136c7025493e22561b01b901f",
+      "TileAttachmentTransfer.sv": "1cad4bbe458c422cce996b849bc838c1e45419b4f315b1c3f9e0cb4b9bda39ae",
+      "PersistentTileAttachmentStore.sv": "bad3889a889caad97b53e3bdc6c79b3f69b18488de98091e18e2e2f78e68dce9"
+    }
+  },
+  "route": "pending new run; preceding frozen component fails setup by 124.621 ps, passes hold and physical checks"
+}

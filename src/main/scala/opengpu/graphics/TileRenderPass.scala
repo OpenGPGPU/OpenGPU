@@ -121,6 +121,7 @@ class TileAttachmentEvents extends Bundle {
   val storeBytes = UInt(3.W)
   /** Subset of storeBytes belonging to resolved single-sample output. */
   val resolveBytes = UInt(3.W)
+  /** Clear-tag read accepted on the preceding cycle; count once per pulse. */
   val clearRead = Bool()
   val attachmentStall = Bool()
   /** Allocated transfer credits, including buffered requests and pending acks. */
