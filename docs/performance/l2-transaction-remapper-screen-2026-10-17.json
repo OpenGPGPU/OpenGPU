@@ -1,0 +1,323 @@
+{
+  "recorded_at": 1792219306.6584861,
+  "status": "private_screen_only_not_promoted",
+  "configuration": {
+    "compute_units": 4,
+    "lanes": 16,
+    "warps": 8,
+    "width": 640,
+    "height": 480,
+    "axi_data_bytes": 64,
+    "lower_transaction_capacity": 564
+  },
+  "packed_validity": {
+    "source": {
+      "path": ".artifacts/shared-cu/l2-transaction-bitmap/SharedL2Cache.scala",
+      "sha256": "c16ee6073f02f094a028264765694b267d28e28979235990b428736af7477edc"
+    },
+    "update_equivalence": {
+      "path": ".artifacts/shared-cu/l2-transaction-bitmap/update-equivalence.json",
+      "sha256": "1b9f312ca7be567343d966e1acc638a5f6d6b4229fb32eb1d3b9e8bb30b7caff"
+    },
+    "native_build": {
+      "path": ".artifacts/shared-cu/l2-transaction-bitmap-native/build-state.json",
+      "sha256": "6a008487de310e85d52f742a8f4e768bd2dce37a43e2ed0331cf58b5843f6d32"
+    },
+    "native_cases": [
+      {
+        "tag": "solid-uniform-alpha0-fast",
+        "ticks": 8788,
+        "hold_call_reduction_percent": 23.435607723655096,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "solid-uniform-alpha1-fast",
+        "ticks": 8823,
+        "hold_call_reduction_percent": 23.02766467887768,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "solid-gradient-alpha0-fast",
+        "ticks": 8788,
+        "hold_call_reduction_percent": 23.435645128833993,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "solid-gradient-alpha1-fast",
+        "ticks": 8823,
+        "hold_call_reduction_percent": 23.02456905588076,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "spatial-uniform-alpha0-fast",
+        "ticks": 10727,
+        "hold_call_reduction_percent": 23.16085877018982,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "spatial-uniform-alpha1-fast",
+        "ticks": 10826,
+        "hold_call_reduction_percent": 23.11899321356482,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "spatial-gradient-alpha0-fast",
+        "ticks": 10727,
+        "hold_call_reduction_percent": 22.968788449847644,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "spatial-gradient-alpha1-fast",
+        "ticks": 10826,
+        "hold_call_reduction_percent": 22.919400022187286,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "large256-gradient-alpha1-fast",
+        "ticks": 122349,
+        "hold_call_reduction_percent": 22.108028313856497,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      }
+    ],
+    "strict_reference_replay": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-transaction-bitmap-native/reference-replay-state.json",
+        "sha256": "64d4e51a9c0194129b3609626aa17ff218f72d0faa83503241135e9f8f383f34"
+      },
+      "trace_sha256": "b6112abf682c39e0d8c3c2e10b74bd641cd3c40de90e68b9547ca131d059728f",
+      "baseline": {
+        "calls": 45693,
+        "ticks": 3311169,
+        "commits": 46926267,
+        "holds": 367858085,
+        "dma_reads": 39094,
+        "dma_writes": 468192,
+        "dma_bytes": 6005392,
+        "seconds": 37.126451958,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "candidate": {
+        "calls": 45693,
+        "ticks": 3311169,
+        "commits": 46871692,
+        "holds": 272009017,
+        "dma_reads": 39094,
+        "dma_writes": 468192,
+        "dma_bytes": 6005392,
+        "seconds": 34.981970208,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "scope": "Unchanged strict API/MMIO/DMA/tick verifier; its recording has no skip-stat events. Internal commits and holds legitimately change. This is functional replay evidence, not a paired elapsed comparison."
+    },
+    "balanced_O1_host_screen": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-transaction-bitmap-native/O1-host-state.json",
+        "sha256": "08b2c1bc077b53c9410fffaf6a7f22ab516abd8f58be73fa83f032b38f181b55"
+      },
+      "summary": {
+        "solid64": {
+          "medians": {
+            "baseline": 1.091869146,
+            "candidate": 1.0524027500000002
+          },
+          "time_saved_percent": 3.6145719608052684,
+          "ranges": {
+            "baseline": [
+              1.082726167,
+              1.095587459
+            ],
+            "candidate": [
+              1.036144,
+              1.069101583
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "spatial64": {
+          "medians": {
+            "baseline": 1.3470867495,
+            "candidate": 1.2994833125
+          },
+          "time_saved_percent": 3.533806343033885,
+          "ranges": {
+            "baseline": [
+              1.342862417,
+              1.365081917
+            ],
+            "candidate": [
+              1.27656925,
+              1.30418475
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "spatial256": {
+          "medians": {
+            "baseline": 20.799705437500002,
+            "candidate": 19.9221087915
+          },
+          "time_saved_percent": 4.219274396154537,
+          "ranges": {
+            "baseline": [
+              20.725771084,
+              20.816836417
+            ],
+            "candidate": [
+              19.843847917,
+              19.986585416
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        }
+      },
+      "scope": "Four fresh processes per workload/variant in balanced B,C,C,B,C,B,B,C order. Matching O1 profile-instrumented archives. Whole RAM and each model own counters exact. Final O2/own-profile measurements and current desktop qualification remain."
+    }
+  },
+  "indexed_metadata": {
+    "source": {
+      "path": ".artifacts/shared-cu/l2-transaction-metadata-mem/SharedL2Cache.scala",
+      "sha256": "920ee4d0748177bebe6ad732ed5cd9cb5f72b5588bf265b55e84fc4a0e1f7a83"
+    },
+    "unit_and_emission": {
+      "path": ".artifacts/shared-cu/l2-transaction-metadata-mem/state.json",
+      "sha256": "a67af7c8d8dffd2e06d4b1a84107236819ed996db83f11ee887890ac2c99e0a0"
+    },
+    "functional_test_count": 29,
+    "shared_cache_tests": 27,
+    "legacy_render_tests": 2,
+    "added_memories": [
+      "lowerOriginalId_564x10.sv",
+      "lowerOwner_564x2.sv"
+    ],
+    "one_async_read_one_sync_write_per_table": true,
+    "read_write_safety": {
+      "path": ".artifacts/shared-cu/l2-transaction-metadata-mem/update-equivalence.json",
+      "sha256": "d6a80ed112060f59eee1bb27849d788be878d5567ada039ab330e840b93bad56"
+    },
+    "native_qualification": "in_progress"
+  },
+  "priority_encoder": {
+    "source": {
+      "path": ".artifacts/shared-cu/l2-transaction-priority-tree/SharedL2Cache.scala",
+      "sha256": "303057724945660d5a16bb005501ac85a4893c5e54359923a1b3717d75a45513"
+    },
+    "recursive_encoder_source": "  private def lowerIdPriority(bits: UInt): UInt = {\n    val width = bits.getWidth\n    if (width <= 8) PriorityEncoder(bits)\n    else {\n      val indexWidth = log2Ceil(width)\n      val lowWidth = 1 << (indexWidth - 1)\n      val low = bits(lowWidth - 1, 0)\n      val high = bits(width - 1, lowWidth)\n      val chooseLow = low.orR\n      Cat(!chooseLow, Mux(chooseLow,\n        lowerIdPriority(low).pad(indexWidth - 1),\n        lowerIdPriority(high).pad(indexWidth - 1)))\n    }\n  }\n",
+    "unit_and_emission": {
+      "path": ".artifacts/shared-cu/l2-transaction-priority-tree/state.json",
+      "sha256": "74fcb72e1ea44085682a4eb4bceb97752b691af29f75256d29821c1b996079d9"
+    },
+    "functional_test_count": 29,
+    "equivalence": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-transaction-priority-tree/priority-equivalence.json",
+        "sha256": "a4d4c2b09b46c4069ee0c9172144b4c6e553efc3a88958e7c3d309aa469ca191"
+      },
+      "widths": [
+        7,
+        8,
+        9,
+        16,
+        17,
+        32,
+        33,
+        64,
+        65,
+        564,
+        576,
+        1024
+      ],
+      "scope": "SAT compares actual Chisel-emitted PriorityEncoder and the identical extracted candidate recursive helper for every input bitmap, including empty input, at power-of-two boundaries and actual native capacity. No traffic assumptions."
+    },
+    "isolated_timing": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-transaction-priority-tree/allocator-timing-state.json",
+        "sha256": "d70319bc785266a551131d44727df4bac82cb9d3deee643c440ad6da14971293"
+      },
+      "scope": "Isolated actual564-entry allocation feedback loop, using identical packed validity update in both variants, and source-extracted recursive helper. Same1GHz ASAP7 SLVT TC25%IO synthesis constraints. Diagnostic isolation, not full-cache or full-chip timing qualification.",
+      "baseline": {
+        "qor": {
+          "setup_worst_slack_ps": -2121.155,
+          "core_clock_fmax_mhz": 320.394
+        },
+        "setup_gate": {
+          "passed": false,
+          "reported_setup_slacks_ps": [
+            -2121.155,
+            -2266.896
+          ],
+          "reported_path_groups": 2,
+          "scope": "All reported synthesis setup paths, including I/O",
+          "report_sha256": "61127512100e95266164de9fcf2e66fe7272c3f444eff834c8f619fb0286cb4d"
+        }
+      },
+      "candidate": {
+        "qor": {
+          "setup_worst_slack_ps": 577.433,
+          "core_clock_fmax_mhz": 2366.489
+        },
+        "setup_gate": {
+          "passed": true,
+          "reported_setup_slacks_ps": [
+            577.433,
+            450.902
+          ],
+          "reported_path_groups": 2,
+          "scope": "All reported synthesis setup paths, including I/O",
+          "report_sha256": "519cb05f301cdc73774b18526425e463900c5fadc26bfd4f49dc1350e4637a03"
+        }
+      }
+    },
+    "full_cache_baseline": {
+      "scope": "Actual SharedL2Cache cone, with only synchronous L2SramArray wrappers replaced by current repository L2SramArray(useBlackBox=true) elaborations using characterized ASAP7 SRAMs. Match every wrapper pin and preserve every surrounding native RTL byte. Avoid synthesizing behavioral SRAMs as620k flip-flop bits. Paired1GHz SLVT TC25%IO synthesis estimate, not full-chip placement/route.",
+      "qor": {
+        "setup_worst_slack_ps": -3399.312,
+        "core_clock_fmax_mhz": 227.308
+      },
+      "setup_gate": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -3399.312,
+          -3522.695
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "0d1fe9e63a145500278a5794a3ae16078802f2fc06163231d3c258ad23a485e9"
+      },
+      "critical_start_net": "lowerValid_562",
+      "critical_path_report": {
+        "path": ".artifacts/shared-cu/l2-transaction-bitmap-native/physical-component-timing-baseline/flow/orfs-work/reports/base/1_synth.rpt",
+        "sha256": "32287e3e560fda93c9f662c3c45302eae86a018e830bfae0ab011f7b438ae2cd"
+      }
+    },
+    "full_cache_candidate_qualification": "pending"
+  },
+  "remaining_gates": [
+    "Native whole-RAM, cycles and DMA comparisons for indexed metadata and hierarchical encoder.",
+    "Quiet balanced host screens, followed by own representative-profile O2/PGO release timings.",
+    "Actual native full-cache timing with characterized SRAM views; isolated allocator pass is insufficient.",
+    "Format/swizzle/staging controls and current Debian/Mesa desktop, strict trace, scanout and visual checks."
+  ],
+  "production_RTL_changed": false
+}

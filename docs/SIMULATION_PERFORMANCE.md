@@ -73,8 +73,29 @@ their methods receive **31,999,183 calls**, of which **31,932,431** record no
 write. A private packed-bitmap candidate retains all transaction IDs, capacity
 and set/clear priority. Its SAT update equivalence passes at widths 8/17/564/576;
 27 cache tests and both legacy render image tests pass, and only
-`SharedL2Cache.sv` changes among the 296 emitted modules. Native runtime,
-physical timing and desktop qualification remain required before promotion.
+`SharedL2Cache.sv` changes among the 296 emitted modules. Nine native fixtures
+now preserve complete RAM, task clocks and DMA, with **22.1–23.4% fewer hold
+calls**. The existing Mesa64 trace passes the unchanged strict verifier with
+the same 45,693 API calls and 3,311,169 ticks. A balanced four-sample O1 screen
+saves **3.53–4.22%** wall time. This is preliminary; own-profile O2/PGO and
+current desktop qualification remain required before promotion.
+
+Full-cache synthesis also exposes a pre-existing hardware bottleneck: the
+564-entry free-ID priority encoder is on a **4.40 ns** core path, failing the
+1 GHz target. A private hierarchical encoder preserves lowest-free-ID selection
+and the empty-input fallback. SAT checks actual Chisel-emitted logic for every
+bitmap at twelve capacities, including 564. Its isolated allocation feedback
+loop improves from **3.12 ns to 0.42 ns**, with **+577.433 ps core / +450.902 ps
+I/O** slack. Full-cache timing is still required; this isolated pass does not
+establish whole-cache or whole-chip frequency.
+
+Both indexed owner/original-ID memories and their combination with the
+hierarchical encoder pass 27 cache tests and two render tests. The memories
+share one asynchronous read per table and retain all 564 entries. A separate
+SAT proof excludes observable read/write collisions under the existing
+old-state allocation policy. Native and release qualification are in progress.
+
+See [the remapper screens, exact-ID proofs and timing limits](performance/l2-transaction-remapper-screen-2026-10-17.json).
 
 No-write calls are not automatically removable: they can evaluate expressions
 or dependencies. The observer's elapsed time is diagnostic. The flag-call
