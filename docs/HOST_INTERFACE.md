@@ -355,6 +355,9 @@ config encodes clamp [0], max mip [5:2], enable [8], min mip [15:12] and signed
 five-bit LOD bias [20:16]. View/load/store/resolve admission retains the checked
 tile contract. Texture and shader bindings retain the existing limited ABI;
 general bounded resources remain part of the hardware-alignment work.
+Clear words are already packed in the attachment's memory format. For example,
+canonical color `0x10203040` has packed clear word `0x40302010` in an RGBA byte
+view; the store does not encode the supplied clear word again.
 
 Descriptor fetch uses four independently tagged 64-byte uncached reads through
 the existing translated DMA line client, reserving its four IDs before shader
@@ -381,6 +384,14 @@ CPU cache maintenance and explicit synchronization of shader side effects remain
 caller obligations. Command/texture buffering and framebuffer write coalescing
 are rejected in this first profile because their fault callbacks need an
 extended ownership contract.
+
+For the supported texture path, attachment export invalidates a matching
+resident L2 line when its write is accepted. A dependent tile starts after the
+producer's exported writes have been acknowledged and its result published.
+Texture reads can then refill that physical line with the rendered data. Shader
+tap reuse is limited to one instruction; changing a texture format reuses raw
+L2 bytes with fresh decoding. This GPU publication boundary does not provide
+CPU cache coherence or synchronize unrelated shader side effects.
 
 For a matching small shared-CU bring-up emission:
 

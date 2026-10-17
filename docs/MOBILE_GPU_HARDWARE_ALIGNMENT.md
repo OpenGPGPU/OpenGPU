@@ -537,3 +537,37 @@ in-pass clear/draw host commands, broader resources, scoped dependency events,
 driver adoption, multiple tile engines and the remaining H0–H8 gates remain
 required. No frame-rate, energy or commercial-GPU parity follows from this
 single-tile correctness workload.
+
+## Implementation evidence: render-to-texture publication
+
+The [native texture-publication record](performance/mobile-h1-texture-publication-2026-10-18.json)
+adds three system checks covering fixed-function rendering, two shared CUs at
+four lanes/two warps, and four shared CUs at sixteen lanes/eight warps. Each
+profile uses the proposed 128 KiB four-bank L2 and repeats its sequence in Bare
+and Sv32 modes: thirty jobs across six backend/VM combinations. This validates
+that cache capacity in the native functional model, without qualifying its
+physical timing or sustained bandwidth.
+
+Two initial sampling jobs prove a physical texture line is resident: the first
+causes one lower-memory source-line fetch and the second causes none. A producer
+then renders new contents into that image while a dependent sampling job is
+queued. The consumer cannot fetch its descriptor before producer result
+publication and all 512 attachment bytes have been acknowledged. It refills the
+source line once and samples the new contents. A following format-only rebind
+decodes the same cached bytes as BGRA without another lower-memory source fetch.
+Every job checks all 64 color/depth positions, including untouched clear pixels;
+RGBA output packing, shader alpha, fixed-function modulation and ordered depth
+rejection use independent expected values.
+
+A controlled negative test temporarily disabled resident-line invalidation at
+L2 store acceptance. The consumer then produced the old sampled color instead
+of the new one. The production source was restored byte-for-byte before the
+final passing run. Existing L2 publication and per-instruction shader tap-cache
+invalidation already satisfy this tested path; no RTL change was needed.
+
+This covers one hot-line render-to-texture dependency through the current
+serialized host boundary. General bounded image resources, broader formats and
+filtering, scoped dependencies, concurrent engines, the proposed texture-cache
+clusters and throughput, mixed in-pass clear/draw host commands and the other
+H0–H8 exit gates remain required. These checks do not establish frame rate,
+full warp occupancy, power or commercial-GPU parity.

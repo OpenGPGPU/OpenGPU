@@ -1,0 +1,131 @@
+{
+  "scope": "H0/H1 native render-to-texture publication through the bounded persistent AXI host; one previously hot texture line, acknowledged exports, binding reinterpretation and VM rebinding. H4 cluster/throughput and full H0-H8 closure remain open.",
+  "reference_checkpoint": "94cde3e",
+  "production_rtl_unchanged": true,
+  "source_sha256": {
+    "src/main/scala/opengpu/core/memory/SharedL2Cache.scala": "058215bff889031c968297b061fa2237f3efb92047d37dec956b9ae284ceb7d2",
+    "src/main/scala/opengpu/graphics/TexSampleUnit.scala": "97736b2d89b02661f265195ddcc8e4262b400390600c0a1d05656382a3e06c2c",
+    "src/main/scala/opengpu/graphics/TextureUnit.scala": "bd1d5bcd25fa9c672a8e2c016a0f6eeb113d7dac5795c9320b154d17a2ae894a",
+    "src/main/scala/opengpu/graphics/RenderCore.scala": "251e433f666223259259626f5ad5deb86cee2df05e5034403745209cc6f604a1",
+    "src/main/scala/opengpu/graphics/RenderHost.scala": "8c14efd00ba4720d5193a4b2993401fecfd7e6c45f9db28ea0804c5ef4b37c61",
+    "src/main/scala/opengpu/graphics/TileJobDescriptorReader.scala": "b7c2cc63c253deb976539434fa90ca8b8d58d8bd7bf1bd6d6c64f7cbd7e34728",
+    "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "8927e8d16fdd222da9dc662a914b375ebf821c7fa1e690e8727e876c2abaeb45",
+    "src/main/scala/opengpu/config/MobileGpuConfig.scala": "645d39f3d38de6dcb72c753b8ce913184567f68a8e61df78345141f1cd82885d",
+    "src/main/scala/opengpu/config/GpuConfig.scala": "c0f0768115ac04d3bed0520a60b29a72fb7b33654c26048a5efc472167f0b055",
+    "build.sbt": "6f23fd73e23ef72909d01a33a27a93ff54d0bff1c7eaadc5ce49d595ff42c5e1",
+    "src/test/scala/opengpu/system/PersistentTileTextureVisibilitySpec.scala": "4a786bb0688e31764e49c3aadc844b65e4e74084da6265f00942515ab82f3527"
+  },
+  "functional": {
+    "command": "sbt -J-Xmx8G 'testOnly opengpu.system.PersistentTileTextureVisibilitySpec'",
+    "log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/texture_publication_final.log",
+      "sha256": "be8e345066621daf7c936a4bf825cba60c3e40ad075c5657c6d7892e0a58188d",
+      "passed": true
+    },
+    "checks": 3,
+    "backend_vm_combinations": 6,
+    "jobs_per_combination": 5,
+    "total_jobs": 30,
+    "profiles": [
+      {
+        "backend": "fixed function",
+        "cus": 1,
+        "lanes": 4,
+        "warps": 2
+      },
+      {
+        "backend": "actual shared shader CUs, FPU enabled",
+        "cus": 2,
+        "lanes": 4,
+        "warps": 2
+      },
+      {
+        "backend": "actual shared shader CUs, FPU enabled",
+        "cus": 4,
+        "lanes": 16,
+        "warps": 8
+      }
+    ],
+    "l2": {
+      "bytes": 131072,
+      "total_sets": 512,
+      "ways": 4,
+      "banks": 4,
+      "line_bytes": 64,
+      "selection": "MobileGpuConfig().execution, with lane/warp overrides for reference profiles"
+    },
+    "memory": "256-bit AXI; 8-cycle read delays, 17-cycle write acknowledgements. Track every W-export byte through B acknowledgement, including staging writes. Bare and Sv32 superpage mapping to +4 MiB; unchanged VA for the texture across jobs.",
+    "workload": "One 8x8, 1x tile within a 16x16 viewport. Two ordered overlapping triangle records per job; the first wins LESS. Each job exports a 32-bit color plane and D24S8 plane at 512-byte row pitch.",
+    "shader": "Real RV32 vector passthrough for the producer and vtex.sample for sampling jobs; capacity-based SoA offsets, configured vector length and two staging banks per worker.",
+    "checks_per_job": "64 color words and 64 depth/stencil words checked against independent expected values, including uncovered clear pixels. Unified command ID, success status, 320 command bytes and all 512 exported attachment bytes acknowledged before retirement.",
+    "test_counting": "Three new system checks. Each runs both VM modes and five jobs per mode. The negative-control failure and earlier fixture-debug runs are not passing checks. Earlier 56-check descriptor/host evidence is separate; no repeat of that cohort is claimed."
+  },
+  "sequence": [
+    {
+      "job": "warm0",
+      "action": "Sample the initial image at one interior texel; uniform white fixed-function input or direct vtex.sample shader output.",
+      "lower_source_line_fetches": 1
+    },
+    {
+      "job": "warm1",
+      "action": "Repeat sampling with identical binding; assert texture word requests occur but the source line stays hot.",
+      "lower_source_line_fetches": 0
+    },
+    {
+      "job": "producer",
+      "action": "Render a different color into the source image. Queue a consumer with distinct immutable descriptor/command allocations during the first producer descriptor read.",
+      "attachment_export_bytes": 512
+    },
+    {
+      "job": "consumer",
+      "action": "Its first descriptor fetch must observe the producer success result, all 512 attachment bytes acknowledged, no pending B replies and the exact producer image. Then sample the new image.",
+      "lower_source_line_fetches": 1,
+      "attachment_export_bytes": 512
+    },
+    {
+      "job": "rebind",
+      "action": "Interpret the same bytes/VA as BGRA and export to an RGBA view. Assert fresh channel/alpha decoding and raw L2 reuse.",
+      "lower_source_line_fetches": 0
+    }
+  ],
+  "oracles": {
+    "source_va": 327680,
+    "sampled_texel_va": 328196,
+    "consumer_color_va": 458752,
+    "depth_va": 131072,
+    "old_native_color": "0x132f5b7b",
+    "new_native_color": "0xc92b4dff",
+    "bgra_interpretation_of_new_word": "0x2b4dffc9",
+    "native_clear": "0x10203040",
+    "packed_rgba_clear": "0x40302010",
+    "fixed_modulation": "Each RGB channel is floor(255*texel_channel/256); alpha is opaque. Shared shaders export the sampled packed RGBA word including alpha.",
+    "scope": "Source-line fetch counts exclude instruction, staging, page-table, descriptor and other memory traffic. They are cache-visibility checks, not frame bandwidth or throughput measurements."
+  },
+  "negative_control": {
+    "command": "sbt -J-Xmx8G 'testOnly opengpu.system.PersistentTileTextureVisibilitySpec -- -z shared=false'",
+    "mutation": "Temporarily add && false.B to the resident-hit invalidation condition in SharedL2Cache storeAllocate. No production mutation retained.",
+    "log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/texture_publication_negative.log",
+      "sha256": "7372732ea9e8b4edb7b58f9838bf601d4a48defa77122f8c37ab83fab1e1fb46"
+    },
+    "expected_failure": {
+      "observed": true,
+      "test_exit_code": 1,
+      "phase": "consumer, fixed backend, Bare, pixel (1,1)",
+      "actual_packed_rgba": "0xff5a2e12",
+      "expected_packed_rgba": "0xff4c2ac8",
+      "meaning": "Old sampled RGB was reused despite the producer rendering new contents."
+    },
+    "original_source_sha256": "058215bff889031c968297b061fa2237f3efb92047d37dec956b9ae284ceb7d2",
+    "mutated_source_sha256": "4dfe64ed6fa870edcf6fb56fc307a4b60c16cfbd70aa4dc5acc2751c061428b9",
+    "restored_source_sha256": "058215bff889031c968297b061fa2237f3efb92047d37dec956b9ae284ceb7d2",
+    "restoration": "Original L2 source restored byte-for-byte in the wrapper finally block; final all-profile positive run recompiles and uses that restored source."
+  },
+  "limitations": [
+    "Only the existing one-image binding and 1x1 sampler view of an 8x8 rendered image are exercised; general image bounds, layers/mips, texture formats, filtering and cluster throughput are not qualified.",
+    "Current persistent profile has one resident tile and serializes dependent jobs/memory engines. Region-scoped dependencies and concurrent independent engines remain required.",
+    "128 KiB L2 and the proposed four-CU/16-lane/eight-warp configuration are validated functionally with SRAM models. No new physical, clock, area, energy, sustained-scaling or frame-rate claim follows.",
+    "No CPU-cache coherence or synchronization of unrelated shader side effects is implied.",
+    "Mixed in-pass clear/draw host commands, general bounded resources, two tile engines, product driver/API adoption and all remaining H0-H8 gates remain open."
+  ]
+}
