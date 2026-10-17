@@ -393,3 +393,13 @@ from that partial netlist. A supported Yosys mapping run is tracked separately.
 The [mapping audit](performance/mobile-h1-mapping-audit-2026-10-18.json) records
 the prior screens; the qualifier now rejects omitted operators and missing
 mapping evidence, with 24 Python checks covering mapping and timing gates.
+
+The [next admission pipeline](performance/mobile-h1-admission-pipeline-2026-10-18.json)
+registers pitch-half products and splits address sums at bit 16 while retaining
+their full high carries. It adds three admission cycles. Twenty-seven integration
+checks pass, and an expanded 248-descriptor BigInt interval oracle covers upper
+coordinates, high pitches, carry boundaries, overflow and exact 4 GiB allocation
+ends. The matched eight-credit workload is now 15,008 cycles (serial 43,402),
+with unchanged samples and traffic. The component passes its 1 GHz synthesis
+setup and mapping screen at +73.113 ps core and +242.262 ps I/O. Post-route
+setup/hold, area/energy and integrated GPU performance remain unqualified.

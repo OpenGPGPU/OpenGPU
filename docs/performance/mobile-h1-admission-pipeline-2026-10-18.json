@@ -1,0 +1,142 @@
+{
+  "scope": "H1 admission timing pipeline; component synthesis and correctness evidence, no full milestone/post-route/FPS/energy qualification.",
+  "reference_checkpoint": "9a804c6",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/TileRenderPassAdmission.scala": "dd48e24be589be1204348d075dd572dbf8341ae531aff9b57c27efac56071279",
+    "src/test/scala/opengpu/graphics/TileRenderPassAdmissionSpec.scala": "3670baa69e8820186d24352f1acd99da18495baccb71fa45f83a7bf98ca31f96"
+  },
+  "changes": [
+    "Register pitch-half products (8x16 and 10x16) before reconstructing full products.",
+    "Split base/row and column address sums at bit 16; register the low carry and high partial sum before joining.",
+    "Retain full 49-52-bit address-range arithmetic and the exclusive 33-bit allocation boundary.",
+    "Add three admission cycles without changing sample/store processing or transaction ownership."
+  ],
+  "functional": {
+    "logs": {
+      "split_carry": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/split_carry.log",
+        "sha256": "54755b58aa161a8b71063a88e64320e30411e0edb27178555ff6e0b1f8d395c8",
+        "tests": 27,
+        "passed": true
+      },
+      "expanded_oracle": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/expanded_oracle.log",
+        "sha256": "f6de9948f07edba012fb70214c534caf6a118c771f02a18e248e857a8ad5b5c9",
+        "tests": 1,
+        "passed": true
+      }
+    },
+    "distinct_integration_checks": 27,
+    "expanded_oracle_cases": 248,
+    "oracle": "Independent BigInt absolute start/end intervals, not the RTL decomposition; directed high coordinates/pitches and low-half carries plus 240 seeded descriptors.",
+    "coverage": [
+      "both tile classes and every supported MSAA capacity",
+      "clear/load/discard/store/resolve, partial clears, cancellation and fault drain",
+      "command-driven jobs and stable completion reuse",
+      "valid upper-coordinate pitches and exact 4 GiB end",
+      "base-plus-row and column carry crossings, overflow rejection, snapshot/backpressure"
+    ]
+  },
+  "matched_word_service": {
+    "scope": "Fixed32 response latency, external window eight, identical hardware clear and 936 stores; not AXI/DRAM or whole-frame timing.",
+    "serial_cycles": 43402,
+    "credits8_cycles": 15008,
+    "credits16_cycles": 14659,
+    "credits32_cycles": 14659,
+    "pre_store_cycles": 10760,
+    "delta_from_earlier_checkpoint": 3,
+    "images_and_traffic_match": true
+  },
+  "synthesis": {
+    "multiply_only": {
+      "artifact": "generated/mobile-h1/physical-pitch-parts",
+      "qor": {
+        "setup_worst_slack_ps": -8.975,
+        "core_clock_fmax_mhz": 991.105
+      },
+      "gate": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -8.975,
+          225.667
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "c0ecd8c34c90aa663a76a6ea7e557de7f7750526cdee74ce387b756f71e9112f",
+        "setup_passed": false,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-pitch-parts/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "56b6d9fcd127001d1e71949941388dcb3b32bc9e6f4f7ba09f8eda3fcb213e5b"
+        }
+      },
+      "result_sha256": "9c46ee3c629a47fb949fbe9978b3a4ba5618af84e6452eb1f4f57cc200536e13",
+      "manifest_sha256": "90dfa26b04ce7096bc9f2ba79463fc2f1100b59e5b66d48ddbfb1d0f4a762a20",
+      "emitted_sha256": {
+        "L2SramArray.sv": "d72588e8a9ac8d8aaec7495aae3ec57045cb817695cf11148a7df7b8e3f732f9",
+        "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+        "TileAttachmentClearEngine.sv": "86ba4d76c76df4e0929da729c48a1d710fd00f7a62738845ebc707823bff44a8",
+        "TileRenderPassAdmission.sv": "2492eaa6dc7600b15b397c34e4669d1c2a38defa503d4870c207336678a080e4",
+        "TileAttachmentWriteQueue.sv": "b31ec91c7967cd69767cee88a7891c14f7a5f7ab2ded89c0a688cd9d3bcc2967",
+        "RRArbiter2_TileTransferRequest.sv": "308a3ea4afc09ae2077ff04b24363b89743706f0ec6591073e072dfd41374313",
+        "Queue1_TileTransferRequest.sv": "92c1ac8047c81f62d3b63a7c3c2b926d36ae566136c7025493e22561b01b901f",
+        "TileAttachmentTransfer.sv": "1cad4bbe458c422cce996b849bc838c1e45419b4f315b1c3f9e0cb4b9bda39ae",
+        "PersistentTileAttachmentStore.sv": "5dafb8147d1b1c95fabfb15bf998ae9c5617e21afb2d323f450d1414f815263b"
+      }
+    },
+    "split_multiply_and_add": {
+      "artifact": "generated/mobile-h1/physical-split-carry",
+      "qor": {
+        "setup_worst_slack_ps": 73.113,
+        "core_clock_fmax_mhz": 1078.88
+      },
+      "gate": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          73.113,
+          242.262
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "05d5b7a35241868d2a4030f078aae54fbdbc438f749143541c0b7a7e4d9219a2",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-split-carry/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "899b002ff5eaa439eeeb7b617572b778007c772602357210cb2a3a0bb080606f"
+        }
+      },
+      "result_sha256": "24b59364d579107e670a54fa06b859f50eb3be20a5cea91e4d3df7cf2934c706",
+      "manifest_sha256": "e0f7eb07faa9905261857e1dd8934dbebb468d5e48cf22c25b1af39c35ffdd16",
+      "emitted_sha256": {
+        "L2SramArray.sv": "d72588e8a9ac8d8aaec7495aae3ec57045cb817695cf11148a7df7b8e3f732f9",
+        "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+        "TileAttachmentClearEngine.sv": "86ba4d76c76df4e0929da729c48a1d710fd00f7a62738845ebc707823bff44a8",
+        "TileRenderPassAdmission.sv": "b3f8a132a1892b0bf4fdef64ea62d48a85a2fc1e5bd7c60457c77b221e41c019",
+        "TileAttachmentWriteQueue.sv": "b31ec91c7967cd69767cee88a7891c14f7a5f7ab2ded89c0a688cd9d3bcc2967",
+        "RRArbiter2_TileTransferRequest.sv": "308a3ea4afc09ae2077ff04b24363b89743706f0ec6591073e072dfd41374313",
+        "Queue1_TileTransferRequest.sv": "92c1ac8047c81f62d3b63a7c3c2b926d36ae566136c7025493e22561b01b901f",
+        "TileAttachmentTransfer.sv": "1cad4bbe458c422cce996b849bc838c1e45419b4f315b1c3f9e0cb4b9bda39ae",
+        "PersistentTileAttachmentStore.sv": "5dafb8147d1b1c95fabfb15bf998ae9c5617e21afb2d323f450d1414f815263b"
+      }
+    }
+  },
+  "post_route": "Not yet run on this source. Frozen d27f05d route failed by 2.460 ps on a partial product; new synthesis passes but does not establish route closure.",
+  "remaining": [
+    "post-route setup/hold and area/energy at the selected clock",
+    "shared-system CU and VM/cache publication integration for persistent jobs",
+    "all remaining H0-H8 requirements"
+  ]
+}

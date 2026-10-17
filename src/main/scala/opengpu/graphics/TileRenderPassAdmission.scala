@@ -17,7 +17,8 @@ class TileRenderPassAdmission(maxSampleCount: Int, screenWidth: Int, screenHeigh
     val in = Flipped(Decoupled(new TileRenderPassDescriptor))
     val out = Decoupled(new TileRenderPassAdmissionResult)
   })
-  private val Seq(idle, coordinates, products, productSum, rowSums, ranges, validate, complete) = Enum(8)
+  private val Seq(idle, coordinates, products, joinProducts, productSum, rowSums, rowCarry,
+    ranges, rangeCarry, validate, complete) = Enum(11)
   private val state = RegInit(idle)
   private val descriptor = Reg(new TileRenderPassDescriptor)
   private val basicValid = Reg(Bool())
@@ -30,10 +31,28 @@ class TileRenderPassAdmission(maxSampleCount: Int, screenWidth: Int, screenHeigh
   private val startHigh = Reg(Vec(3, UInt(40.W)))
   private val endLow = Reg(Vec(3, UInt(40.W)))
   private val endHigh = Reg(Vec(3, UInt(42.W)))
+  private val startLowParts = Reg(Vec(3, Vec(2, UInt(24.W))))
+  private val startHighParts = Reg(Vec(3, Vec(2, UInt(24.W))))
+  private val endLowParts = Reg(Vec(3, Vec(2, UInt(24.W))))
+  private val endHighParts = Reg(Vec(3, Vec(2, UInt(26.W))))
   private val startBase = Reg(Vec(3, UInt(50.W)))
   private val endBase = Reg(Vec(3, UInt(51.W)))
   private val start = Reg(Vec(3, UInt(51.W)))
   private val end = Reg(Vec(3, UInt(52.W)))
+  private class SumParts(highBits: Int) extends Bundle {
+    val low = UInt(17.W)
+    val high = UInt(highBits.W)
+  }
+  private val rowStartParts = Reg(Vec(3, new SumParts(34)))
+  private val rowEndParts = Reg(Vec(3, new SumParts(35)))
+  private val rangeStartParts = Reg(Vec(3, new SumParts(35)))
+  private val rangeEndParts = Reg(Vec(3, new SumParts(36)))
+  private def splitSum(parts: SumParts, a: UInt, b: UInt): Unit = {
+    parts.low := a(15, 0) +& b(15, 0)
+    parts.high := (a >> 16) +& (b >> 16)
+  }
+  private def joinSum(parts: SumParts): UInt =
+    Cat(parts.high + parts.low(16), parts.low(15, 0))
   private val result = Reg(Bool())
   private val bases = Seq(descriptor.color.base, descriptor.depth.base, descriptor.resolveBase)
   private val pitches = Seq(descriptor.color.rowPitch, descriptor.depth.rowPitch, descriptor.resolveRowPitch)
@@ -75,10 +94,25 @@ class TileRenderPassAdmission(maxSampleCount: Int, screenWidth: Int, screenHeigh
   }
   when(state === products) {
     for (i <- 0 until 3) {
-      startLow(i) := descriptor.originY(7, 0) * pitches(i)
-      startHigh(i) := descriptor.originY(15, 8) * pitches(i)
-      endLow(i) := lastY(7, 0) * pitches(i)
-      endHigh(i) := lastY(17, 8) * pitches(i)
+      for (half <- 0 until 2) {
+        val pitchHalf = pitches(i)(16 * half + 15, 16 * half)
+        startLowParts(i)(half) := descriptor.originY(7, 0) * pitchHalf
+        startHighParts(i)(half) := descriptor.originY(15, 8) * pitchHalf
+        endLowParts(i)(half) := lastY(7, 0) * pitchHalf
+        endHighParts(i)(half) := lastY(17, 8) * pitchHalf
+      }
+    }
+    state := joinProducts
+  }
+  when(state === joinProducts) {
+    // Exact 8x32 (or 10x32) products in two shorter multiply/add stages.
+    // Preserve all pitch bits, including invalid descriptors whose high
+    // address carry must be rejected rather than wrapped into an allocation.
+    for (i <- 0 until 3) {
+      startLow(i) := startLowParts(i)(0) +& (startLowParts(i)(1) << 16)
+      startHigh(i) := startHighParts(i)(0) +& (startHighParts(i)(1) << 16)
+      endLow(i) := endLowParts(i)(0) +& (endLowParts(i)(1) << 16)
+      endHigh(i) := endHighParts(i)(0) +& (endHighParts(i)(1) << 16)
     }
     state := productSum
   }
@@ -91,15 +125,29 @@ class TileRenderPassAdmission(maxSampleCount: Int, screenWidth: Int, screenHeigh
   }
   when(state === rowSums) {
     for (i <- 0 until 3) {
-      startBase(i) := bases(i) +& rowStart(i)
-      endBase(i) := bases(i) +& rowEnd(i)
+      splitSum(rowStartParts(i), rowStart(i), bases(i))
+      splitSum(rowEndParts(i), rowEnd(i), bases(i))
+    }
+    state := rowCarry
+  }
+  when(state === rowCarry) {
+    for (i <- 0 until 3) {
+      startBase(i) := joinSum(rowStartParts(i))
+      endBase(i) := joinSum(rowEndParts(i))
     }
     state := ranges
   }
   when(state === ranges) {
     for (i <- 0 until 3) {
-      start(i) := startBase(i) +& columnStart(i)
-      end(i) := endBase(i) +& columnEnd(i)
+      splitSum(rangeStartParts(i), startBase(i), columnStart(i))
+      splitSum(rangeEndParts(i), endBase(i), columnEnd(i))
+    }
+    state := rangeCarry
+  }
+  when(state === rangeCarry) {
+    for (i <- 0 until 3) {
+      start(i) := joinSum(rangeStartParts(i))
+      end(i) := joinSum(rangeEndParts(i))
     }
     state := validate
   }
