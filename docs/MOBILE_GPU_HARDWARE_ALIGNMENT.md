@@ -811,3 +811,21 @@ screens, not routed clock qualifications; V1-V5 use the general tiled profile
 and must not be treated as an isolated arithmetic comparison with V6-V9.
 Direct V9 product replay, current-candidate Linux integration, post-route
 qualification and the original H0-H8 gates remain open.
+
+## Exact programmable desktop image oracle
+
+[The fragment image replay](performance/mobile-drm-fragment-image-2026-10-18.json)
+explains a programmable 64x64 Linux smoke failure on the frozen scissor-only
+baseline. The guest rendered 1,009 sampled-color pixels, while its count
+formula required 1,008. Independent top-left coverage and nonempty-quad
+enumeration predict 1,009: the shader discards warp zero, and edge quads do
+not contain equal numbers of covered lanes.
+
+A native replay checks all 4,096 pixels against that independent mask on both
+initial rendering and recovery, and requires the fragment instructions to
+match the actual 21-word C shader. Both images pass. The C smoke now derives
+its exact count from coverage, quad order and batch capacity; its checks for
+alternate colors and subsequent render/stencil/teardown results remain.
+The corrected full Linux smoke is running on the identical frozen model.
+This four-lane legacy graphics evidence does not qualify the current raster
+revision or the proposed shared-CU mobile product.

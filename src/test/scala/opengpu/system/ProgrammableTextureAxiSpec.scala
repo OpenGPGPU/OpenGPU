@@ -13,9 +13,10 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
     coalesce: Boolean = false, axiBytes: Int = 8, fragmentBatchLimit: Int = 0,
     omInflight: Int = 16, omLocality: Boolean = false, bufferCommandReads: Boolean = false,
     mesaFormats: Boolean = false, bufferTextureReads: Boolean = false,
-    explicitRenderExtent: Boolean = false)
+    explicitRenderExtent: Boolean = false, drmImageSide: Int = 0)
     extends AnyFlatSpec with GpuHostTestSupport {
-  for (scenario <- (if (mesaFormats) Seq("Mesa formats") else Seq("translation", "invalid PTE", "page-table bus fault",
+  for (scenario <- (if (drmImageSide > 0) Seq("instruction vertex DRM image")
+      else if (mesaFormats) Seq("Mesa formats") else Seq("translation", "invalid PTE", "page-table bus fault",
       "texture bus fault", "reset during texture read", "texture CPU update", "instruction translation",
       "instruction non-executable fault", "instruction invalid PTE fault", "instruction page-table bus fault",
       "instruction code bus fault", "instruction ASID switch",
@@ -32,7 +33,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
       "instruction vertex guest shader",
       "instruction vertex guest-sized fragment"))) {
     it should s"complete programmable texture rendering with $scenario and recover" in {
-      val side = if (scenario.contains("guest-sized")) 16 else 4
+      val drmImage = scenario == "instruction vertex DRM image"
+      val side = if (drmImage) drmImageSide else if (scenario.contains("guest-sized")) 16 else 4
       val framebufferBytes = side * side * 4
       val screenSide = if (explicitRenderExtent) side * 2 else side
       val gfx = GraphicsConfig(screenWidth = screenSide, screenHeight = screenSide, subPixelBits = 8,
@@ -40,7 +42,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
       val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
       val vertexShader = scenario.startsWith("instruction vertex")
       val guestVertexShader = scenario.contains("guest shader") ||
-        scenario == "instruction vertex guest-sized fragment"
+        scenario == "instruction vertex guest-sized fragment" || drmImage
       simulate(new GpuHostSystemAxi(gfx, gpu, fragCore = true, vertCore = vertexShader,
         numComputeUnits = sharedCUs.getOrElse(1), sharedGraphics = sharedCUs.nonEmpty,
         parallelGraphics = parallel, exposePerformance = parallel,
@@ -76,6 +78,23 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         def store(base: Int, data: Seq[Long]): Unit = data.zipWithIndex.foreach {
           case (v, i) => words(base.toLong + i * 4) = BigInt(v & 0xffffffffL)
         }
+        // The triangle includes the diagonal and excludes the two coordinate
+        // axes. The guest discards warp0 (the first quad of each8-slot batch).
+        // Unequal edge-quad populations mean this is not half the pixel area.
+        val guestLivePixels = (for (y <- 0 until side by 2; x <- 0 until side by 2)
+          yield (for (dy <- 0 to 1; dx <- 0 to 1
+            if x + dx > 0 && y + dy > 0 && x + dx + y + dy <= side)
+            yield (x + dx, y + dy))).filter(_.nonEmpty).zipWithIndex
+          .filter(_._2 % 2 == 1).flatMap(_._1).toSet
+        def checkGuestImage(base: Int, sampled: Long, background: Long): Unit = if (drmImage) {
+          assert(side == 64 && guestLivePixels.size == 1009)
+          val mismatches = for (y <- 0 until side; x <- 0 until side;
+            want = if (guestLivePixels((x, y))) sampled else background;
+            got = words.getOrElse(base + (y * side + x) * 4L, BigInt(0)).toLong
+            if got != want) yield s"($x,$y) got=0x${got.toHexString} expected=0x${want.toHexString}"
+          assert(mismatches.isEmpty, s"DRM image mismatch: ${mismatches.size}; ${mismatches.take(16).mkString(", ")}")
+          info(s"DRM image side=$side checkedPixels=${side * side} sampledPixels=${guestLivePixels.size}")
+        }
         val vertices = Seq(-65536L, -65536L, 0L, 65536L,
           65536L, -65536L, 0L, 65536L, -65536L, 65536L, 0L, 65536L)
         // ABI 0: eight lanes' worth of SoA staging; u/v at 128/160,
@@ -91,6 +110,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
           side * 4L, 0x81L, textureVa.toLong, 0x10001L, 0x101L) ++ Seq.fill(5)(0L) ++
           Seq.fill(2)(if (explicitRenderExtent) side.toLong else 0L))
         store(0x20000, Seq.fill(side * side)(0x00ffffffL))
+        if (drmImage) store(color, Seq.fill(side * side)(0x000000ffL))
         store(program, Seq(
           0x0080006fL, 0L, // jal +8: relative control flow must retain the virtual PC
           2L << 20 | 8L << 15 | 1L << 12 | 5L << 7 | 0x13L, // slli t0,s0,2
@@ -107,7 +127,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         // The guest's shader crosses a cache line and retires warp zero early;
         // the surviving warp samples texture and writes derivative depth.
         val divergentFragment = scenario.endsWith("fragment") ||
-          scenario == "instruction vertex guest shader"
+          scenario == "instruction vertex guest shader" || drmImage
         if (divergentFragment) store(program, Seq(
           0x00241293L, 0x005082b3L, 0xc1027057L, 0x08028313L,
           0x02036087L, 0x0a028313L, 0x02036107L, 0x0620812bL,
@@ -115,6 +135,16 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
           0x30500073L, 0x04028313L, 0x02036207L, 0x3210022bL,
           0x0e028313L, 0x02036227L, 0x0c028313L, 0x02036127L,
           0x30500073L))
+        if (drmImage) {
+          val source = scala.io.Source.fromFile("driver/tests/opengpu_drm_test.c")
+          val text = try source.mkString finally source.close()
+          val body = text.split("static void write_vector_shader\\(void \\*mapping\\)", 2)(1)
+            .split("static void write_vertex_shader", 2)(0)
+          val cWords = "program\\[\\d+\\] = (0x[0-9a-fA-F]+)u".r.findAllMatchIn(body)
+            .map(m => java.lang.Long.parseLong(m.group(1).drop(2), 16)).toSeq
+          assert(cWords.size == 21 && cWords.indices.forall(i => words(program + i * 4L) == cWords(i)),
+            "native fragment program must match the actual C smoke shader")
+        }
         store(texturePa, Seq(texel))
         store(textureVa, Seq(0x00ff00ffL)) // poison physical VA alias
         store(root, Seq(0xcfL, if (scenario == "invalid PTE") 0L else (0x800L << 10) | 0x43L))
@@ -199,7 +229,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
             (scenario == "instruction page-table bus fault" && a == instructionRoot + 12) ||
             (scenario == "instruction code bus fault" && a == program) ||
             (scenario == "staging page-table bus fault" && a == root + 32),
-          writeAckDelay = 12, maxCycles = 300000, readResponseDelay = 2,
+          writeAckDelay = 12, maxCycles = (if (drmImage) 2000000 else 300000), readResponseDelay = 2,
           onReadAccepted = a => if (resetting && a == texturePa && !resetIssued) {
             resetIssued = true
             axiWrite(dut, GpuCommandMmioRegs.RESET, 1)
@@ -209,6 +239,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
               dut.io.m_irq.expect(false.B)
             }
           })(writeLine) { dut.io.m_irq.peek().litToBoolean }
+        checkGuestImage(color, texel, 0x000000ffL)
         if (parallel && scenario.contains("guest-sized")) {
           val performance = dut.io.performance.get.system
           val peak = performance.maxActiveComputeUnits.peek().litValue
@@ -355,7 +386,8 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         store(0x21000, Seq.fill(side * side)(0x00ffffffL))
         reads.clear(); writes.clear()
         submit(17)
-        serviceMemoryMaster(dut, readLine, writeAckDelay = 12, maxCycles = 300000)(writeLine) {
+        serviceMemoryMaster(dut, readLine, writeAckDelay = 12,
+          maxCycles = (if (drmImage) 2000000 else 300000))(writeLine) {
           dut.io.m_irq.peek().litToBoolean
         }
         assert((axiRead(dut, RenderHostRegs.STATUS) & 7) == 2)
@@ -377,6 +409,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         }
         assert(!reads.exists(a => a >= textureVa && a < textureVa + 4096))
         assert(writes.exists(a => a >= recoveryColor && a < recoveryColor + framebufferBytes))
+        checkGuestImage(recoveryColor, recoveryTexel, 0x12345678L)
           assert(if (divergentFragment) (0 until side * side).exists(i => words(recoveryColor + i * 4L) == recoveryTexel)
           else words(recoveryColor + 1 * 16L + 1 * 4) == recoveryTexel,
           "framebuffer must contain the sampled physical texel")
@@ -420,7 +453,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
   // Staging is uncached so a CPU rewrite of the translated PA is visible on the
   // next draw without an L2 invalidate.  A stale cached read would keep the
   // empty first-draw vertices and miss the sampled texel.
-  it should "observe a CPU update to translated uncached vertex staging across draws" in {
+  if (drmImageSide == 0) it should "observe a CPU update to translated uncached vertex staging across draws" in {
     val side = 4
     val gfx = GraphicsConfig(screenWidth = side, screenHeight = side, subPixelBits = 8,
       fragmentBatchLimit = fragmentBatchLimit, omInflight = omInflight, omLocality = omLocality)

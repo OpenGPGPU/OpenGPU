@@ -20,6 +20,7 @@
 #include <unistd.h>
 
 #include "opengpu_drm.h"
+#include "opengpu_drm_image_oracle.h"
 
 /* Stencil/blend encodings (GL order), mirroring gpu_abi.h.  The UAPI masks
  * above carry the field layout; these name the values. */
@@ -55,8 +56,6 @@
 #error "TEST_WIDTH/TEST_HEIGHT must be at least 16"
 #endif
 
-/* Expected top-left fill coverage for the test triangle in square modes. */
-#define TEST_TRIANGLE_PIXELS (TEST_WIDTH * (TEST_HEIGHT - 1) / 4)
 #define MIN_FENCE_WAIT_MS 30
 #define FLIP_EVENT_COOKIE UINT64_C(0x4f50454e475055)
 
@@ -1390,6 +1389,7 @@ int main(void)
     uint32_t output_syncobjs[2];
     uint64_t capabilities;
     uint32_t batch_capacity;
+    uint32_t expected_fragment_pixels = 0;
     uint32_t msaa_max_mode;
     uint32_t texture_slot, shader_slot, kernarg_slot;
     uint32_t vertex_buffer_slot = 0, vertex_shader_slot = 0;
@@ -1454,6 +1454,9 @@ int main(void)
         perror("OPENGPU USERSPACE DRM FAIL fragment batch capacity");
         return 1;
     }
+    if (frag_core)
+        expected_fragment_pixels = opengpu_test_fragment_pixels(
+            TEST_WIDTH, TEST_HEIGHT, batch_capacity);
     if (vert_core && !frag_core) {
         errno = EPROTO;
         perror("OPENGPU USERSPACE DRM FAIL vertex core without shared CU");
@@ -1712,7 +1715,7 @@ int main(void)
         return 1;
     }
     if ((frag_core &&
-         (framebuffer_count(&first, expected_pixel) != TEST_TRIANGLE_PIXELS ||
+         (framebuffer_count(&first, expected_pixel) != expected_fragment_pixels ||
           framebuffer_count(&first, alternate_pixel) != 0)) ||
         (!frag_core &&
          *(uint32_t *)((uint8_t *)first.map + first.pitch + 4) !=
@@ -1741,7 +1744,7 @@ int main(void)
      * fence with an error and the blit wait would succeed vacuously. */
     CHECK(wait_syncobjs(fd, &syncobjs[2], 1), "wait second render syncobj");
     if ((frag_core &&
-         (framebuffer_count(&second, expected_pixel) != TEST_TRIANGLE_PIXELS ||
+         (framebuffer_count(&second, expected_pixel) != expected_fragment_pixels ||
           framebuffer_count(&second, alternate_pixel) != 0)) ||
         (!frag_core &&
          *(uint32_t *)((uint8_t *)second.map + second.pitch + 4) !=
@@ -1773,7 +1776,7 @@ int main(void)
     CHECK(wait_flip_event(fd, &event), "wait flip event");
     first_flip_sequence = event.sequence;
     if ((frag_core &&
-         (framebuffer_count(&second, expected_pixel) != TEST_TRIANGLE_PIXELS ||
+         (framebuffer_count(&second, expected_pixel) != expected_fragment_pixels ||
           framebuffer_count(&second, alternate_pixel) != 0)) ||
         (!frag_core &&
          *(uint32_t *)((uint8_t *)second.map + second.pitch + 4) !=
@@ -2181,7 +2184,7 @@ int main(void)
     CHECK(wait_syncobjs_for(fd, &syncobjs[7], 1, 900000000000ll),
           "wait stencil render syncobj");
     if ((frag_core &&
-         (framebuffer_count(&first, 0x00000000u) != TEST_TRIANGLE_PIXELS ||
+         (framebuffer_count(&first, 0x00000000u) != expected_fragment_pixels ||
           framebuffer_count(&first, expected_pixel) != 0)) ||
         (!frag_core &&
          *(uint32_t *)((uint8_t *)first.map + first.pitch + 4) !=
@@ -2801,7 +2804,7 @@ int main(void)
               "teardown render finished fence");
         if ((frag_core &&
              framebuffer_count(&teardown_fb, expected_pixel) !=
-                 TEST_TRIANGLE_PIXELS) ||
+                 expected_fragment_pixels) ||
             (!frag_core &&
              *(uint32_t *)((uint8_t *)teardown_fb.map +
                            teardown_fb.pitch + 4) != expected_pixel)) {

@@ -435,6 +435,10 @@ for validator in shader resolve depth; do
     "$VALIDATOR_TEST"
 done
 ASID_TEST="$DRIVER_OUTPUT/opengpu_asid_test"
+IMAGE_ORACLE_TEST="$DRIVER_OUTPUT/opengpu_drm_image_oracle_test"
+"$HOST_CC" -std=c11 -O2 -Wall -Wextra -Werror \
+    -o "$IMAGE_ORACLE_TEST" "$GPU_DIR/driver/tests/opengpu_drm_image_oracle_test.c"
+"$IMAGE_ORACLE_TEST"
 "$HOST_CC" -std=c11 -O2 -Wall -Wextra -Werror -I"$GPU_DIR/driver" \
     -o "$ASID_TEST" "$GPU_DIR/driver/tests/opengpu_asid_test.c"
 "$ASID_TEST"

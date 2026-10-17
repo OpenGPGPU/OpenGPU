@@ -1,0 +1,88 @@
+{
+  "scope": "Correct the image-count oracle for the existing four-lane/two-warp, row-major guest graphics smoke. No rendering hardware change, full-system PASS,720p product or commercial parity claim.",
+  "cause": "Top-left coverage owns the diagonal and excludes both coordinate axes. Nonempty2x2 quads have unequal covered-lane counts. The21-word smoke shader discards the first quad of each8-slot batch; remaining pixels are not exactly half of triangle coverage.",
+  "old_expected_pixels": 1008,
+  "independent_expected_pixels": 1009,
+  "guest_observed_pixels": 1009,
+  "native": {
+    "checks": 1,
+    "renders": 2,
+    "pixels_checked_per_render": 4096,
+    "sampled_pixels_per_render": 1009,
+    "log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/drm_fragment_image_baseline_unit.log",
+      "sha256": "882370cff0d37ac044c30c969a6df7bbc90b47d64cd40be921c972bfe03c07cd"
+    },
+    "metadata": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/drm_fragment_image_baseline.json",
+      "sha256": "df3f765f8bae3aae65162c2af74b424f543f4391374cf08b6d75289bde9231b3"
+    },
+    "source_sha256": {
+      "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1/drm-image-baseline-sources/Rasterizer.scala": "5a6ffc317e487fe7c8d1800f39373d5e9caca7b1e15726a44e1f4ba0522279e2",
+      "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1/drm-image-baseline-sources/Msaa.scala": "6f25eff93fb8dee88d280f7a7866c0108fdad99096d1444f9a5ff61308c4bf36",
+      "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1/drm-image-baseline-sources/RenderPipeline.scala": "aab1a51c0f58571d3f16f3e4d3a8c90b8522666a23610c0e3c0d52c0368cdc59",
+      "src/test/scala/opengpu/system/ProgrammableTextureAxiSpec.scala": "7c85b14163fd0b428167e5d0520ebb3833043824b1d97bf6850d87e85be845cc",
+      "src/test/scala/opengpu/system/DrmFragmentImageAxiSpec.scala": "be2f27557adf5be988a2270b4075a802134de0158b5aa669411ec43eb98eb2b5"
+    },
+    "shader": "All21instruction words must match driver/tests/opengpu_drm_test.c::write_vector_shader.",
+    "profile": "Frozen scissor-only graphics sources@6962573; private4lane2warp graphics,8slot batches,64x64 viewport,AXI64. Both initial and ID-reuse recovery images checked independently per pixel."
+  },
+  "c_checks": {
+    "host_binary_sha256": "dd9913218ce27b35e86bb7ee1eb87b9946748410ff12880a466f5c1edaaf4521",
+    "log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/drm_fragment_image_oracle_c_test.log",
+      "sha256": "c8ad7f29d905b87a82fd57755e20f7af3e724923da44d29a714003c1acaf2acf"
+    },
+    "fixture_counts": {
+      "4x4_batch8": 3,
+      "8x8_batch8": 15,
+      "16x16_batch8": 61,
+      "64x64_batch8": 1009,
+      "64x64_batch4": 0,
+      "64x64_batch4096": 2015
+    },
+    "cross_compile": "aarch64-linux-gnu-gcc -static -O2 -Wall -Wextra -Werror -I../arti-work/linux-headers/include -Idriver -DTEST_WIDTH=64 -DTEST_HEIGHT=64 -DOPENGPU_TEST_FLIP_TIMEOUT_MS=30000",
+    "guest_test_binary_sha256": "c27ea28161a1f936162f4d2a28184d67619668f5cd9f4802611493ba13042f17",
+    "runner_shell_syntax": "PASS bash -n scripts/run_arti_gpu.sh"
+  },
+  "source_sha256": {
+    "driver/tests/opengpu_drm_test.c": "10a1de39afb2e693940900d1e3afdf48a33165f1d49caec36e1dc3d42b47c823",
+    "driver/tests/opengpu_drm_image_oracle.h": "439bc4a4b0607587673222044d2f68cb49a77032a18a5259e2dbf1094b16eaa1",
+    "driver/tests/opengpu_drm_image_oracle_test.c": "a975c242f5e79583488ae66eabfe5762bee47396138a2432a12810c2c6174d13",
+    "src/test/scala/opengpu/system/ProgrammableTextureAxiSpec.scala": "7c85b14163fd0b428167e5d0520ebb3833043824b1d97bf6850d87e85be845cc",
+    "src/test/scala/opengpu/system/DrmFragmentImageAxiSpec.scala": "be2f27557adf5be988a2270b4075a802134de0158b5aa669411ec43eb98eb2b5",
+    "scripts/run_arti_gpu.sh": "7387ae87ebaad09a70911a0447831ed7d02bb7b4a6f38730dbe1909c65b50d1c"
+  },
+  "failed_guest": {
+    "status": "terminal FAIL: C image-count assertion",
+    "runner_exit_code": 1,
+    "full_marker": false,
+    "scope": "Frozen scissor-only64x64 programmable graphics RTL@6962573, shader4lanes/2warps, private legacy graphics; not V8/V9/V10.",
+    "observed_sampled_pixels": 1009,
+    "old_expected_pixels": 1008,
+    "serial": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/programmable_scissor_quad_count_failed_serial.log",
+      "sha256": "1d609be95483e6af1027a2199448a766c3c7be1483581bb7e2030e64e04be0eb"
+    },
+    "qemu": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/qemu-programmable-scissor-count-negative",
+      "sha256": "3ba8e247becf7f4de4d4271d0f055d51e4396f895544dd831e3de8f9eb78e5d0"
+    },
+    "hashes": {
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-scissor-programmable/linux-test-flip30s/initramfs.cpio.gz": "8b534e090e062787e7df20e5b3253e51d8f0912de7e661485f2c612ca676ea7c",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-scissor-programmable/linux-test-flip30s/opengpu_drm_test": "2849465ac833c32be5a654037246e362b850e6096402bbe0c75bc451930f1510",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-scissor-programmable/linux-test-flip30s/arti_driver.ko": "64fb2dbee2d97f6fae1ef4ebb5f0aec5da8a3791c3dae7814cb448b68222b21e",
+      "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1/opengpu_drm_test_before_quad_oracle.c": "f27f028701f4ded6e94ea29c8e93f287644de355e3aef5a649c014b56a354248"
+    }
+  },
+  "revised_guest": {
+    "status": "running",
+    "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/programmable_quad_oracle_guest.json",
+    "pid": 73990,
+    "scope": "Same frozen scissor-only programmable64x64 model and driver as count-negative guest; replace only C smoke image oracle. Full configured assertions still required; not V10 or mobile product qualification."
+  },
+  "open_gates": [
+    "Full configured Linux DRM smoke on the corrected test binary; QEMU exit0 alone is insufficient.",
+    "Fresh current-raster fixed/programmable guest validation, product frame budgets and original H0-H8 gates."
+  ]
+}
