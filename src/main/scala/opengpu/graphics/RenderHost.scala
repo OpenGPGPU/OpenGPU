@@ -461,6 +461,7 @@ class RenderHost(
       (1 << GpuCapabilities.PersistentDepth) |
       (if (unifiedCommands && !persistentAttachments) (1 << GpuCapabilities.UnifiedRender) else 0) |
       (if (persistentAttachments) (1 << GpuCapabilities.PersistentTileJobs) else 0) |
+      (if (persistentAttachments) (1L << GpuCapabilities.TypedTileCommands) else 0L) |
       (1 << GpuCapabilities.HwVblank) |
       // One bit covers every shader profile: flw is admitted for the
       // graphics validators only when the shader CU carries the FP

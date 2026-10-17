@@ -31,6 +31,10 @@ class TileCommandPassController extends Module {
     /** Pulse on an accepted texture response with a fault. */
     val textureFault = Input(Bool())
     val shaderFault = Input(Bool())
+    val invalidCommand = Input(Bool())
+    val clear = Flipped(Decoupled(new TileAttachmentClear))
+    val clearComplete = Output(Bool())
+    val typedCommands = Output(Bool())
     val pass = Flipped(new TileRenderPassPort)
     val admitted = Input(Bool())
     val commandsDrained = Input(Bool())
@@ -50,26 +54,37 @@ class TileCommandPassController extends Module {
   private val abortStatus = RegInit(TilePassStatus.success.U(TilePassStatus.width.W))
   private val resultBits = Reg(new TileRenderPassCompletion)
   private val active = state =/= idle && state =/= result
-  private val abortNow = io.cancel || io.attachmentFault || io.commandFault || io.textureFault || io.shaderFault
+  // clearDone incorporates the owner's cancellation input. Register its
+  // failure before feeding cancellation back, avoiding a combinational loop.
+  private val invalidClear = RegNext(io.pass.clearDone.fire && !io.pass.clearDone.bits && !draining &&
+    !(io.cancel || io.attachmentFault || io.commandFault || io.textureFault || io.shaderFault), false.B)
+  private val invalid = io.invalidCommand || invalidClear
+  private val abortNow = io.cancel || io.attachmentFault || io.commandFault || io.textureFault || io.shaderFault || invalid
   private val effectiveStatus = Mux(io.attachmentFault || abortStatus === TilePassStatus.memoryFault.U,
     TilePassStatus.memoryFault.U, Mux(io.commandFault, TilePassStatus.commandFault.U,
     Mux(io.textureFault && abortStatus =/= TilePassStatus.commandFault.U, TilePassStatus.textureFault.U,
     Mux(io.shaderFault && abortStatus =/= TilePassStatus.commandFault.U && abortStatus =/= TilePassStatus.textureFault.U,
       TilePassStatus.executionFault.U,
+      Mux(invalid && abortStatus === TilePassStatus.success.U, TilePassStatus.invalidDescriptor.U,
       Mux(io.cancel && abortStatus === TilePassStatus.success.U,
-        TilePassStatus.cancelled.U, abortStatus)))))
+        TilePassStatus.cancelled.U, abortStatus))))))
 
   io.job.ready := state === idle && io.commandsDrained && io.renderDrained
   io.busy := state =/= idle
   io.config := snapshot.config
+  io.typedCommands := snapshot.version === 2.U
   io.completion.valid := state === result
   io.completion.bits := resultBits
   io.pass.begin.valid := state === begin && !draining && !abortNow
   io.pass.begin.bits := snapshot.passDescriptor
-  io.pass.end.valid := state === running && io.commandsDrained && io.renderDrained && !draining && !abortNow
+  io.pass.end.valid := state === running && io.commandsDrained && io.renderDrained && !io.clear.valid && !draining && !abortNow
   io.pass.end.bits := true.B
-  io.pass.clear.valid := false.B
-  io.pass.clear.bits := 0.U.asTypeOf(new TileAttachmentClear)
+  // Presenting a clear closes the pipeline's draw-admission gate. Wait for
+  // older accepted geometry/fan work first, so it can still reach the OM.
+  io.pass.clear.valid := state === running && io.clear.valid && io.renderDrained && !draining && !abortNow
+  io.pass.clear.bits := io.clear.bits
+  io.clear.ready := state === running && io.renderDrained && io.pass.clear.ready && !draining && !abortNow
+  io.clearComplete := io.pass.clearDone.fire
   io.pass.clearDone.ready := true.B
   io.pass.cancel := passIssued && (draining || abortNow)
   io.pass.memoryFault := io.attachmentFault
@@ -90,13 +105,15 @@ class TileCommandPassController extends Module {
     state := range
   }
   when(state === range) {
-    // A 16-bit record count times 160 bytes plus a 32-bit base fits in 33
+    // A 16-bit record count times 160/164 bytes plus a 32-bit base fits in 33
     // bits. Preserve that carry until the exclusive allocation check.
-    commandEnd := snapshot.config.cmdBase +& (snapshot.config.cmdCount * 160.U)
+    val payloadBytes = snapshot.config.cmdCount * TileCommandMemoryLayout.legacyBytes.U
+    val headerBytes = Mux(snapshot.version === 2.U, snapshot.config.cmdCount << 2, 0.U)
+    commandEnd := snapshot.config.cmdBase +& (payloadBytes +& headerBytes)
     state := validate
   }
   when(state === validate) {
-    val valid = snapshot.version === 1.U && snapshot.config.cmdBase(1, 0) === 0.U &&
+    val valid = (snapshot.version === 1.U || snapshot.version === 2.U) && snapshot.config.cmdBase(1, 0) === 0.U &&
       snapshot.commandLimit <= (BigInt(1) << 32).U &&
       snapshot.config.cmdBase <= snapshot.commandLimit && commandEnd <= snapshot.commandLimit
     when(valid) { state := begin }

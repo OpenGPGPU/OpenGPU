@@ -18,4 +18,12 @@ WORD(draw_state, 29); WORD(stencil_ops, 30); WORD(stencil_masks, 31); WORD(blend
 WORD(tex_base, 33); WORD(tex_size, 34); WORD(sampler_config, 35); WORD(tex_format, 36);
 WORD(reserved, 37);
 _Static_assert(GPU_TILE_JOB_WORDS * 4u == GPU_TILE_JOB_BYTES, "descriptor word count");
+_Static_assert(sizeof(struct gpu_tile_command_record_v2) == GPU_TILE_COMMAND_V2_BYTES, "typed command size");
+_Static_assert(offsetof(struct gpu_tile_command_record_v2, payload) == 4u, "type precedes payload");
+_Static_assert(sizeof(struct gpu_tile_clear_payload) == GPU_TILE_COMMAND_V1_BYTES, "clear payload size");
+_Static_assert(offsetof(struct gpu_tile_clear_payload, color_mask) == 4u, "clear color mask offset");
+_Static_assert(offsetof(struct gpu_tile_clear_payload, depth_mask) == 8u, "clear depth mask offset");
+_Static_assert(offsetof(struct gpu_tile_clear_payload, color_value) == 12u, "clear color value offset");
+_Static_assert(offsetof(struct gpu_tile_clear_payload, depth_value) == 16u, "clear depth value offset");
+_Static_assert(offsetof(struct gpu_tile_clear_payload, reserved) == 20u, "clear reserved tail");
 int main(void) { return 0; }

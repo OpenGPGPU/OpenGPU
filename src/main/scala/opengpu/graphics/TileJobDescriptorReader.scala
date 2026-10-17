@@ -8,6 +8,7 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 /** Explicit little-endian memory ABI. Never derive this layout from Bundle packing. */
 object TileJobMemoryLayout {
   val magic = BigInt("47545001", 16)
+  val typedMagic = BigInt("47545002", 16)
   val words = 64
   val bytes = words * 4
   val lines = bytes / 64
@@ -69,7 +70,7 @@ class TileJobDescriptorReader(
   private val decoded = WireDefault(0.U.asTypeOf(new TileCommandJob))
   private val p = decoded.passDescriptor
   private val c = decoded.config
-  decoded.version := 1.U
+  decoded.version := words(0)(7, 0)
   decoded.commandLimit := Cat(words(8)(0), words(7))
   p.version := 1.U
   p.identity.context := words(2); p.identity.pass := words(3); p.identity.generation := words(4)
@@ -103,7 +104,8 @@ class TileJobDescriptorReader(
   c.texLodBias := words(35)(20, 16).asSInt; c.texFormat := words(36)(2, 0)
   private def masked(index: Int, allowed: BigInt): Bool =
     (words(index) & ((BigInt(1) << 32) - 1 - allowed).U(32.W)) === 0.U
-  private val legalEncoding = words(0) === TileJobMemoryLayout.magic.U &&
+  private val legalEncoding = (words(0) === TileJobMemoryLayout.magic.U ||
+    words(0) === TileJobMemoryLayout.typedMagic.U) &&
     words(1) === TileJobMemoryLayout.words.U &&
     Seq(8, 15, 21, 27).map(i => masked(i, 1)).reduce(_ && _) &&
     Seq(6, 9, 10).map(i => masked(i, 65535)).reduce(_ && _) &&

@@ -25,6 +25,7 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
         initialize(dut)
         val caps = axiRead(dut, RenderHostRegs.CAPABILITIES)
         assert(caps.testBit(GpuCapabilities.PersistentTileJobs) && caps.testBit(GpuCapabilities.ProtectedVmState))
+        assert(caps.testBit(GpuCapabilities.TypedTileCommands))
         assert(!caps.testBit(GpuCapabilities.UnifiedRender), "the legacy descriptor profile must not be advertised")
         val memory = mutable.Map.empty[BigInt, Long]
         var phase = ""
@@ -32,6 +33,8 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
         var attachmentReads = 0
         var storedBytes = 0
         var commandReads = 0
+        var commandEnd = 0x4140L
+        var expectedCommandWords = 80
         var physicalOffset = 0L
         var walked = false
         var sawTranslatedDescriptor = false
@@ -46,7 +49,7 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           if (address == 0x300000) walked = true
           if (address == 0x401000) sawTranslatedDescriptor = true
           if (virtual >= 0x1000 && virtual < 0x1100) fetchedLines :+= virtual
-          if (virtual >= 0x4000 && virtual < 0x4140) commandReads += 1
+          if (virtual >= 0x4000 && virtual < commandEnd) commandReads += 1
           if ((virtual >= 0x10000 && virtual < 0x11000) ||
               (virtual >= 0x20000 && virtual < 0x21000)) attachmentReads += 1
           val base = address & ~BigInt(63)
@@ -57,8 +60,8 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           val attachment = (virtual >= colorTarget && virtual < colorTarget + 4096) ||
             (virtual >= 0x20000 && virtual < 0x21000)
           if (attachment) {
-            assert(Set("success", "dependency", "afterDma")(phase), s"failed/load-only job $phase exported an attachment")
-            assert(commandReads == 80, "attachment exported before both draw records were fetched")
+            assert(Set("success", "dependency", "afterDma", "typed")(phase), s"failed/load-only job $phase exported an attachment")
+            assert(commandReads == expectedCommandWords, "attachment exported before all command records were fetched")
             storedBytes += mask.bitCount
           } else if (phase == "dependency" && virtual >= 0x50000 && virtual < 0x51000) {
             assert(storedBytes == 512, "DMA read a tile before its final attachment export")
@@ -272,6 +275,110 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           assert(word(0x50000+y*512+x*4) == (if (x > 0 && y > 0) 0x63283cffL else 0x10203040L))
         pop()
         info(s"queued tile/DMA/tile publication shared=$shared copiedBytes=$dmaBytes finalStores=$storedBytes")
+
+        // Version two: no-op clear, draw, masked depth/color clear, blended
+        // draw, masked stencil/alpha clear, stencil-tested draw. Everything
+        // remains in the same resident tile until this whole stream ends.
+        colorTarget = 0x10000
+        def typedDraw(r: Int, g: Int, b: Int, z: Int, last: Boolean = false): Seq[Long] = {
+          val w = Array.fill[Long](40)(0)
+          for ((xy,i) <- Seq((-1,-1),(1,-1),(-1,1)).zipWithIndex) {
+            w(4*i) = xy._1*65536L; w(4*i+1) = xy._2*65536L; w(4*i+3)=65536
+            w(12+3*i)=r; w(13+3*i)=g; w(14+3*i)=b; w(21+i)=z
+          }
+          w(24)=0x3000; w(25)=0x80000; w(34)=0x2000
+          if (z != 16) {
+            w(32)=1|2|128|(1<<17) // explicit LESS + depth write + stencil test
+            w(35)=if(last) 0x101 else 0x111 // ZERO/ONE or ONE/ONE
+            w(36)=4|(if(last) 5<<9 else 0) // EQUAL, then masked INVERT on Z pass
+            w(37)=if(last) 0x0fff33 else 0xffff5a
+          }
+          Seq(0L)++w
+        }
+        def typedClear(rect: Long, cm: Long, dm: Long, cv: Long, dv: Long): Seq[Long] =
+          Seq(1L,rect,cm,dm,cv,dv)++Seq.fill(35)(0L)
+        val firstClear = typedClear(0x06060202L,0x00ff0000L,0x00ffffffL,0x00a00000L,0x00ffffffL)
+        val scene = Seq(typedClear(0,0,0,0,0), typedDraw(100,40,60,16), firstClear,
+          typedDraw(50,20,30,32), typedClear(0x04040000L,0xff0000ffL,0xff000000L,0x07000022L,0x33000000L),
+          typedDraw(20,30,40,8,last=true))
+        commandEnd = 0x4000 + scene.size*164
+        expectedCommandWords = scene.size*41
+        val typedCases = Seq("typed", "typedBounds", "typedBadType", "typedReserved", "typedBadRect",
+          "typedReadFault", "typedCancel", "typed")
+        for (typedTranslated <- Seq(false,true)) {
+          physicalOffset=if(typedTranslated) 0x400000 else 0
+          val satp=if(typedTranslated) 0x80000300 else 0
+          axiWrite(dut,GpuCommandMmioRegs.VECTOR_SATP,satp)
+          axiWrite(dut,GpuCommandMmioRegs.INSTRUCTION_SATP,satp)
+          axiWrite(dut,GpuCommandMmioRegs.TLB_FLUSH,1)
+          put(0x3000,program)
+          for ((name,index) <- typedCases.zipWithIndex) {
+          phase=name; fetchedLines=Vector.empty; commandReads=0; attachmentReads=0; storedBytes=0
+          val job = TileDescriptorTestData.words(scene.size)
+          job(0)=0x47545002L; job(3)=0x90+index; job(4)=0x1000+index
+          job(7)=if(name=="typedBounds") commandEnd-1 else commandEnd
+          val records = scene.map(_.toArray).toArray
+          if(name=="typedBadType") records(0)(0)=2
+          if(name=="typedReserved") records(0)(40)=1
+          if(name=="typedBadRect") records(2)(1)=0x1f060202L
+          if(name=="typedReadFault" || name=="typedCancel") {
+            job(17)=4; job(23)=4; records(0)=firstClear.toArray
+          }
+          put(0x1000,job.toSeq); put(0x4000,records.toSeq.flatMap(_.toSeq))
+          for(base<-Seq(0x10000L,0x20000L);y<-0 until 8;x<-0 until 8)
+            put(base+y*512+x*4,Seq(0xdeadbeefL))
+          submit(0x90+index)
+          var resetClear=false; var faults=0
+          serviceMemoryMaster(dut,readLine,readFault=address=>{
+            val a=address-physicalOffset
+            val fail=name=="typedReadFault" && a>=0x10000 && a<0x11000
+            if(fail) faults+=1
+            fail
+          },writeAckDelay=17,readResponseDelay=8,maxCycles=100000,
+            onReadAccepted=address=>{
+              val a=address-physicalOffset
+              if(name=="typedCancel" && !resetClear && a>=0x10000 && a<0x11000) {
+                resetClear=true; axiWrite(dut,GpuCommandMmioRegs.RESET,1)
+              }
+            })(writeLine) { dut.io.m_irq.peek().litToBoolean }
+          pauseMemory()
+          if(name=="typedCancel") {
+            assert(resetClear && storedBytes==0)
+            assert((axiRead(dut,GpuCommandMmioRegs.STATUS)&10)==0)
+            axiWrite(dut,RenderHostRegs.IRQ,3)
+          } else {
+            val result=axiRead(dut,GpuCommandMmioRegs.COMPLETION)
+            val status=if(name=="typed") 0 else if(name=="typedReadFault") 3 else 1
+            assert((result&255)==0x90+index && ((result>>11)&15)==status && result.testBit(15)==(status==0),s"$name result=$result")
+            if(name=="typedReadFault") assert(faults>0)
+            if(name=="typedBounds") assert(commandReads==0)
+            if(name=="typed") {
+              assert(commandReads==expectedCommandWords && attachmentReads==0 && storedBytes==512)
+              assert(axiRead(dut,GpuCommandMmioRegs.COMPLETION_BYTES_LO)==expectedCommandWords*4)
+            } else assert(storedBytes==0)
+            for(y<-0 until 8;x<-0 until 8) {
+              val covered=x>0 && y>0
+              var c=0x10203040L; var d=0x5affffffL
+              if(covered) { c=0x64283cffL; d=0x5a000010L }
+              if(x>=2 && x<6 && y>=2 && y<6) {
+                c=(c&0xff00ffffL)|0x00a00000L; d=(d&0xff000000L)|0x00ffffffL
+              }
+              if(covered && (d>>>24)==0x5a && 32<(d&0xffffff)) {
+                val add=Seq(50L,20L,30L,255L)
+                c=Seq(24,16,8,0).zip(add).map { case(s,v)=> math.min(255L,((c>>>s)&255)+v)<<s }.reduce(_|_)
+                d=(d&0xff000000L)|32
+              }
+              if(x<4 && y<4) { c=(c&0x00ffff00L)|0x07000022L; d=(d&0x00ffffffL)|0x33000000L }
+              if(covered && (d>>>24)==0x33 && 8<(d&0xffffff)) d=0x3c000008L
+              if(name!="typed") { c=0xdeadbeefL; d=0xdeadbeefL }
+              assert(word(0x10000+y*512+x*4)==c,s"$name color ($x,$y) actual=${word(0x10000+y*512+x*4).toHexString} expected=${c.toHexString}")
+              assert(word(0x20000+y*512+x*4)==d,s"$name depth ($x,$y) actual=${word(0x20000+y*512+x*4).toHexString} expected=${d.toHexString}")
+            }
+            pop()
+          }
+          info(s"$name shared=$shared CUs=$count lanes=$lanes warps=$warps Sv32=$typedTranslated commandWords=$commandReads attachmentReads=$attachmentReads stores=$storedBytes")
+          }
+        }
       }
     }
   }

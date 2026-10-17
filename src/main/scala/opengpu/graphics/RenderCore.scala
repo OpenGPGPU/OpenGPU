@@ -131,7 +131,8 @@ class RenderCore(
   // The command payload type must follow the selected front end.  In vertex
   // core mode words 0..6 describe a vertex buffer and vertex shader rather
   // than containing three inline clip-space vertices.
-  private val cb = Module(new CommandBufferStage(config, vertCore, cancellable = persistentAttachments))
+  private val cb = Module(new CommandBufferStage(config, vertCore,
+    cancellable = persistentAttachments, tileCommands = persistentAttachments))
   private val rp = Module(new RenderPipeline(
     config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader,
     persistentAttachments, tileStoreCredits, useTileSramBlackBoxes))
@@ -192,6 +193,10 @@ class RenderCore(
     controller.io.attachmentFault := io.attachmentMemoryFault.get && io.fbMem.resp.fire
     controller.io.textureFault := io.textureMemoryFault.get && io.texMem.resp.fire
     controller.io.shaderFault := rp.io.shaderFault
+    controller.io.invalidCommand := cb.io.encodingFault.get
+    controller.io.clear <> cb.io.clear.get
+    cb.io.clearComplete.get := controller.io.clearComplete
+    cb.io.typedCommands.get := controller.io.typedCommands
     controller.io.pass <> rp.io.tilePass.get
     controller.io.admitted := rp.io.tileEvents.get.admitted
     controller.io.commandsDrained := cb.io.done

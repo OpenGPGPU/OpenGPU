@@ -229,6 +229,7 @@ typedef int32_t s32;
 /* Explicit persistent tile profile: opcode 7, bounded 256-byte descriptors.
  * Legacy opcode-6 GPU_CAP_UNIFIED_RENDER is not advertised in this profile. */
 #define GPU_CAP_PERSISTENT_TILE_JOBS (1u << 30)
+#define GPU_CAP_TYPED_TILE_COMMANDS (1u << 31)
 /* Trusted kernel metadata in raw draw word32; never accepted from userspace. */
 #define GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT 25u
 #define GPU_DRAW_FRAGMENT_OUTPUT_SKIP_MASK (0xfu << GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT)
@@ -301,6 +302,12 @@ typedef int32_t s32;
 #define GPU_UCMD_OP_TILE_RENDER  7u
 
 #define GPU_TILE_JOB_MAGIC       0x47545001u
+#define GPU_TILE_JOB_TYPED_MAGIC 0x47545002u
+#define GPU_TILE_COMMAND_PAYLOAD_WORDS 40u
+#define GPU_TILE_COMMAND_V1_BYTES 160u
+#define GPU_TILE_COMMAND_V2_BYTES 164u
+#define GPU_TILE_COMMAND_DRAW    0u
+#define GPU_TILE_COMMAND_CLEAR   1u
 #define GPU_TILE_JOB_WORDS       64u
 #define GPU_TILE_JOB_BYTES       256u
 #define GPU_TILE_RESULT_SUCCESS  0u
@@ -332,6 +339,21 @@ struct gpu_tile_job_record {
     u32 draw_state, stencil_ops, stencil_masks, blend_config;    /* 29..32 */
     u32 tex_base, tex_size, sampler_config, tex_format;           /* 33..36 */
     u32 reserved[27];                                           /* 37..63 */
+};
+/* Typed job magic selects 41-word records; v1 remains forty words per draw.
+ * type DRAW uses the complete existing inline draw payload, including scissor.
+ * type CLEAR uses gpu_tile_clear_payload, with all reserved words/bits zero.
+ * Rectangle coordinates are tile-local, half-open, five bits per byte:
+ * minX[4:0], minY[12:8], maxX[20:16], maxY[28:24]. Values/masks use memory
+ * byte order and affect every active sample; zero masks/empty rectangles are
+ * no-ops, while an out-of-tile rectangle fails the pass. */
+struct gpu_tile_command_record_v2 {
+    u32 type;
+    u32 payload[GPU_TILE_COMMAND_PAYLOAD_WORDS];
+};
+struct gpu_tile_clear_payload {
+    u32 rectangle, color_mask, depth_mask, color_value, depth_value;
+    u32 reserved[35];
 };
 /* Opcode-specific RENDER completion status. */
 #define GPU_RENDER_STATUS_SUCCESS             0u

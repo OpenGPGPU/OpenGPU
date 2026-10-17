@@ -3,11 +3,19 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
-/** Draw-call command-buffer reader.
+object TileCommandMemoryLayout {
+  val payloadWords = 40
+  val legacyBytes = payloadWords * 4
+  val typedBytes = (payloadWords + 1) * 4
+  val draw = 0
+  val clear = 1
+}
+
+/** Versioned command-buffer reader (legacy draw interface by default).
   *
   * Reads `count` sequential draw-call records from software-allocated host
   * memory starting at `base` and emits each as a SceneTriangle on `draw`.
-  * A record is a fixed 40-word layout (little-endian word index):
+  * A legacy draw record has this 40-word layout (little-endian word index):
   *
   *   [0..11]  v0/v1/v2 clip-space (x,y,z,w) as Q16.16   (12 words)
   *   [12..20] v0/v1/v2 colour (r,g,b) as 8-bit          (9 words)
@@ -21,7 +29,7 @@ import chisel3.util._
   *   [35]     optional GL-style blend config (bit0 present, factors, equation)
   *   [36]     stencil config: func [2:0], fail [5:3], zfail [8:6], zpass [11:9]
   *   [37]     stencil ref [7:0], read mask [15:8], write mask [23:16]
-  *   [38..39] reserved
+  *   [38..39] packed scissor min/max XY (enabled by word 32 bit 18)
   *
   * This is the hardware side of "the driver writes a command list, the GPU
   * executes it", the prerequisite for a host-driven (M6) Linux device.  The
@@ -29,8 +37,9 @@ import chisel3.util._
   * and point at it kernarg buffer.
   */
 class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
-  cancellable: Boolean = false) extends Module {
-  private val wordsPerRecord = 40
+  cancellable: Boolean = false, tileCommands: Boolean = false) extends Module {
+  require(!tileCommands || (cancellable && !vertCore))
+  private val wordsPerRecord = TileCommandMemoryLayout.payloadWords
 
   val io = IO(new Bundle {
     val base = Input(UInt(32.W))
@@ -41,6 +50,11 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
       * The next job may start only after done, including the discarded FIFO.
       */
     val cancel = if (cancellable) Some(Input(Bool())) else None
+    /** Version 2 adds a type word before the unchanged forty-word payload. */
+    val typedCommands = if (tileCommands) Some(Input(Bool())) else None
+    val clear = if (tileCommands) Some(Decoupled(new TileAttachmentClear)) else None
+    val clearComplete = if (tileCommands) Some(Input(Bool())) else None
+    val encodingFault = if (tileCommands) Some(Output(Bool())) else None
     val mem = new Bundle {
       val req = Decoupled(new OmMemoryRequest)
       val resp = Flipped(Decoupled(new OmMemoryResponse))
@@ -53,6 +67,9 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
   private val word = RegInit(0.U(log2Ceil(wordsPerRecord).W)) // 0..39
   private val waiting = RegInit(false.B) // a read is in flight
   private val words = Reg(Vec(wordsPerRecord, UInt(32.W)))
+  private val typed = if (tileCommands) RegInit(false.B) else false.B
+  private val commandType = if (tileCommands) Reg(UInt(32.W)) else 0.U
+  private val clearPending = if (tileCommands) RegInit(false.B) else false.B
   private val running = RegInit(false.B)
   private val presenting = RegInit(false.B)
   private val readAddress = if (cancellable) Some(Reg(UInt(32.W))) else None
@@ -66,9 +83,11 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     * may fill these entries while the pipeline is still rendering the
     * previous draw, but the FIFO remains the ordering point for draw records.
     */
-  private val drawFifo = Module(new Queue(
+  private val drawFifo = if (!tileCommands) Some(Module(new Queue(
     if (vertCore) new VertexDrawCommand(config) else new SceneTriangle(config),
-    config.drawFifoDepth))
+    config.drawFifoDepth))) else None
+  private val fifoValid = Wire(Bool())
+  private val enqueueFire = Wire(Bool())
 
   // Pass-owned fetching is sequential. Increment the address only on accepted
   // reads instead of repeating a record multiply and two additions per word.
@@ -198,21 +217,59 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     d
   }
 
-  drawFifo.io.enq.valid := presenting && !discard
-  drawFifo.io.enq.bits := decodedDraw
-  if (cancellable) {
+  if (tileCommands) {
+    val decodedClear = Wire(new TileAttachmentClear)
+    decodedClear.minX := words(0)(4, 0); decodedClear.minY := words(0)(12, 8)
+    decodedClear.maxX := words(0)(20, 16); decodedClear.maxY := words(0)(28, 24)
+    decodedClear.colorMask := words(1); decodedClear.depthMask := words(2)
+    decodedClear.colorValue := words(3); decodedClear.depthValue := words(4)
+    val isClear = typed && commandType === TileCommandMemoryLayout.clear.U
+    val legalClear = (words(0) & "he0e0e0e0".U) === 0.U && words.drop(5).map(_ === 0.U).reduce(_ && _)
+    val invalid = typed && (commandType > TileCommandMemoryLayout.clear.U || (isClear && !legalClear))
+    // This signal must not depend on cancel: the controller uses it to
+    // request cancellation on this same cycle.
+    io.encodingFault.get := presenting && invalid && !aborting
+    val fifo = Module(new Queue(new Bundle {
+      val clear = Bool()
+      val payload = UInt(decodedDraw.getWidth.W)
+    }, config.drawFifoDepth))
+    require(decodedDraw.getWidth >= decodedClear.getWidth)
+    fifo.io.enq.valid := presenting && !discard && !invalid
+    fifo.io.enq.bits.clear := isClear
+    fifo.io.enq.bits.payload := Mux(isClear, decodedClear.asUInt, decodedDraw.asUInt)
+    fifoValid := fifo.io.deq.valid
+    enqueueFire := fifo.io.enq.fire
+    io.draw.valid := fifo.io.deq.valid && !fifo.io.deq.bits.clear && !clearPending && !discard
+    io.draw.bits := fifo.io.deq.bits.payload.asTypeOf(io.draw.bits)
+    io.clear.get.valid := fifo.io.deq.valid && fifo.io.deq.bits.clear && !clearPending && !discard
+    io.clear.get.bits := fifo.io.deq.bits.payload.asTypeOf(new TileAttachmentClear)
+    fifo.io.deq.ready := discard || (!clearPending && Mux(fifo.io.deq.bits.clear,
+      io.clear.get.ready, io.draw.ready))
+    when(io.clear.get.fire) { clearPending := true.B }
+    when(io.clearComplete.get || discard) { clearPending := false.B }
+    when(presenting && invalid && !aborting) {
+      aborting := true.B; running := false.B; presenting := false.B
+    }
+  } else {
+    val fifo = drawFifo.get
+    fifo.io.enq.valid := presenting && !discard
+    fifo.io.enq.bits := decodedDraw
+    fifoValid := fifo.io.deq.valid
+    enqueueFire := fifo.io.enq.fire
+    if (cancellable) {
     // Cancellation explicitly withdraws unaccepted draw records. It never
     // withdraws a bus request that was already offered to memory.
-    io.draw.valid := drawFifo.io.deq.valid && !discard
-    io.draw.bits := drawFifo.io.deq.bits
-    drawFifo.io.deq.ready := discard || io.draw.ready
-  } else io.draw <> drawFifo.io.deq
+      io.draw.valid := fifo.io.deq.valid && !discard
+      io.draw.bits := fifo.io.deq.bits
+      fifo.io.deq.ready := discard || io.draw.ready
+    } else io.draw <> fifo.io.deq
+  }
 
   // A start pulse is not itself a completed job.  This also makes the
   // contract robust for users that sample done in the launch cycle rather
   // than using the RenderHost sawBusy guard.
   io.done := !io.start && !running && !presenting && !waiting &&
-    !drawFifo.io.deq.valid && !offered
+    !fifoValid && !offered && !clearPending
   io.mem.req.valid := (running && !presenting && !waiting && !discard) || offered
   io.mem.req.bits.addr := wordAddr
   io.mem.req.bits.write := false.B
@@ -221,13 +278,14 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
 
   private val lastRecord = record === jobCount - 1.U
 
-  when(!running && io.start && io.count.orR && !drawFifo.io.deq.valid &&
+  when(!running && io.start && io.count.orR && !fifoValid && !clearPending &&
       !waiting && !offered && !cancelRequested) {
     if (cancellable) {
       readAddress.get := io.base
       jobCount := io.count
       aborting := false.B
     }
+    if (tileCommands) { typed := io.typedCommands.get }
     running := true.B
     record := 0.U
     word := 0.U
@@ -240,16 +298,19 @@ class CommandBufferStage(config: GraphicsConfig, vertCore: Boolean = false,
     when(io.mem.req.fire) { waiting := true.B }
   }.elsewhen(waiting) {
     when(io.mem.resp.fire) {
-      words(word) := io.mem.resp.bits.data
+      if (tileCommands) {
+        when(typed && word === 0.U) { commandType := io.mem.resp.bits.data }
+          .otherwise { words(Mux(typed, word - 1.U, word)) := io.mem.resp.bits.data }
+      } else words(word) := io.mem.resp.bits.data
       waiting := false.B
-      when(word === (wordsPerRecord - 1).U) {
+      when(word === Mux(typed, wordsPerRecord.U, (wordsPerRecord - 1).U)) {
         presenting := true.B
       }.otherwise {
         word := word + 1.U
       }
     }
   }.elsewhen(presenting) {
-    when(drawFifo.io.enq.fire) {
+    when(enqueueFire) {
       presenting := false.B
       when(lastRecord) {
         running := false.B

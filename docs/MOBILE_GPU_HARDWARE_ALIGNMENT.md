@@ -532,8 +532,8 @@ setup/hold, DRC, antenna, placement or flow errors. Both checks cover only the
 descriptor reader; they exclude the host, shared CUs and full renderer. The
 reported power has no workload activity and does not qualify energy per frame.
 The profile currently rejects command/texture buffering and framebuffer write
-coalescing until their fault callbacks carry the required ownership. Mixed
-in-pass clear/draw host commands, broader resources, scoped dependency events,
+coalescing until their fault callbacks carry the required ownership. Version-2
+mixed clear/draw commands are described below. Broader resources, scoped dependency events,
 driver adoption, multiple tile engines and the remaining H0–H8 gates remain
 required. No frame-rate, energy or commercial-GPU parity follows from this
 single-tile correctness workload.
@@ -568,6 +568,58 @@ invalidation already satisfy this tested path; no RTL change was needed.
 This covers one hot-line render-to-texture dependency through the current
 serialized host boundary. General bounded image resources, broader formats and
 filtering, scoped dependencies, concurrent engines, the proposed texture-cache
-clusters and throughput, mixed in-pass clear/draw host commands and the other
+clusters and throughput, scalable command storage and the other
 H0–H8 exit gates remain required. These checks do not establish frame rate,
 full warp occupancy, power or commercial-GPU parity.
+
+## Implementation evidence: ordered clear/draw command streams
+
+The [typed-command record](performance/mobile-h1-typed-commands-2026-10-18.json)
+adds descriptor magic `0x47545002` and capability bit 31. Its 164-byte records
+carry one type word and forty payload words. Draw payloads retain the full
+existing inline layout, including scissors; clear payloads carry a tile-local
+rectangle and packed color/depth masks and values. Version 1 and the default
+desktop ABI retain their 160-byte draw records. Count/range admission checks
+the selected stride with the full 33-bit end, including the exact 4 GiB case.
+
+A shared FIFO stores a type and a union payload rather than duplicating a draw
+and clear payload in each entry. Clear admission waits for older accepted
+geometry and OM work before closing the draw gate, so an older clipped fan can
+still progress. An accepted clear holds younger draws until completion.
+Cancellation discards unaccepted tokens, drains offered/issued command reads
+and waits for the accepted clear owner to retire. Invalid encodings or
+rectangles fail with status 1; a clear-load fault retains attachment status 3.
+
+Native AXI checks cover fixed-function rendering, two shared CUs at four
+lanes/two warps and four shared CUs at sixteen lanes/eight warps, with both Bare
+and Sv32 addressing. A six-command stream runs a no-op clear, three overlapping
+draws and two masked clears. The checks independently compute additive and
+destination-preserving blending, depth rejection, stencil comparison/inversion,
+and preserved alpha/channels, including uncovered pixels. Successful passes
+fetch 984 logical command bytes, read zero old attachment data and export only
+512 final attachment bytes. Short bounds, unsupported types, reserved payload,
+invalid rectangles, a masked-clear LOAD fault, reset during that read and healthy
+reuse also pass. The final regression covers 78 distinct checks across twelve
+suites; parser/scissor and expanded native replays count repeated checks once.
+The driver/C layout tests verify both record sizes and clear-field offsets.
+
+Fresh synthesis/mapping and routed checks are recorded separately for the
+parser, controller and descriptor reader. They cover those components, with
+explicit standalone floorplans and I/O budgets, rather than the integrated
+renderer. The controller's initial floorplan could not place all exposed I/O;
+its enlarged floorplan retains the clock and I/O constraints. No full GPU clock
+or energy qualification follows. At TC/SLVT, 1 GHz and a 25% I/O delay budget,
+all three routes have zero setup/hold violations, DRC, antenna, placement or
+flow errors:
+
+| Block | Worst setup slack (ps) | Worst hold slack (ps) |
+|---|---:|---:|
+| Typed command parser | +76.5107 | +29.5621 |
+| Pass controller, enlarged standalone floorplan | +315.989 | +15.3648 |
+| Descriptor reader | +244.566 | +31.3226 |
+
+Typed host clear coverage here uses 1x and
+the small test L2; the separate texture-publication checks exercise the proposed
+128 KiB cache. Full product combinations, compact command/bin references,
+fault-aware command buffering, broader resources and the remaining H0–H8 gates
+remain required.

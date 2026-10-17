@@ -1,0 +1,720 @@
+{
+  "scope": "H0/H1 versioned draw/clear command submission with resident attachments, ordering, precise failure/cancellation drain, legacy compatibility and isolated physical checks. Full H0-H8 goal remains active.",
+  "reference_checkpoint": "7ff95f4",
+  "source_sha256": {
+    "driver/gpu_abi.h": "ce0752a869e1b13944aff1bbab876d6a74eeff03a4db2ece9fdb7855817ecfc4",
+    "driver/tests/opengpu_tile_job_abi_test.c": "8addfbf05215d2776d5855605b917f46f7378d474455aa4894958e8392b0e1aa",
+    "src/main/scala/opengpu/graphics/CommandBufferStage.scala": "640ed87c7cad2b64a215530e34d0bd343e20ca5c1e387baa885b10ce2df4cfe1",
+    "src/main/scala/opengpu/graphics/TileCommandPassController.scala": "41f6d0e082cf3052981b115884ead67a1dbe0cf3512657f9f8376cc556db6f8a",
+    "src/main/scala/opengpu/graphics/TileJobDescriptorReader.scala": "7b85baac6a141ccc596e1e88ee69a0985a0b963e9cfbc5e2bccd1e093755bd3a",
+    "src/main/scala/opengpu/graphics/RenderCore.scala": "f9be6aca3cdfccc06e28e3e34e5f8d422ee732197dcb57af85b0d7460681bbcf",
+    "src/main/scala/opengpu/graphics/RenderHost.scala": "8e0a977fe79991c3800765c10fb66ddec0135947d9efd3d1582fd90415d47ddc",
+    "src/main/scala/opengpu/graphics/GpuCapabilities.scala": "018d1da79c0bce01fcbc7a9ae4d1e47607b4dffbf329a320cee3a9df1073c6fb",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "1aeb8bebfc4905f6a56e223b50fb2fc294844db0087a9f13dad7b5892200b536",
+    "src/test/scala/opengpu/graphics/TypedTileCommandBufferSpec.scala": "c752a473254d5100d359363158a41072ef5ee5342faf59a387d85e50168eecb8",
+    "src/test/scala/opengpu/graphics/TileCommandPassControllerSpec.scala": "15c6f321c78c5ceb98b8add112815bb1ad392cf6e0cae43c31476fb1a39925f9",
+    "src/test/scala/opengpu/graphics/TileJobDescriptorReaderSpec.scala": "40f8362926d77d44f2ab0d6696708e9fa9940b3207bff429be44bee2f4e9fd90",
+    "src/test/scala/opengpu/graphics/GpuAbiLayoutSpec.scala": "cdc72d735c06a5d6d0c39b8837f133a8013f15fdc64b8bf91026da93dfedf032",
+    "src/test/scala/opengpu/system/PersistentTileHostAxiSpec.scala": "65018a59bdd7672fedbd9b32d5e00784f0739d79a5fea46dd41a293e5eb456e9",
+    "src/test/scala/opengpu/system/PersistentTileTextureVisibilitySpec.scala": "4a786bb0688e31764e49c3aadc844b65e4e74084da6265f00942515ab82f3527",
+    "scripts/qualify_ppa.py": "0c681ceaa9f30985d796159c9483114c6dc511fbdef345678549f96725655a93",
+    "build.sbt": "6f23fd73e23ef72909d01a33a27a93ff54d0bff1c7eaadc5ce49d595ff42c5e1"
+  },
+  "contract": {
+    "discovery": "GPU_CAP_TYPED_TILE_COMMANDS bit31, explicit persistent opcode-7 profile only. The default desktop profile and version-1 draw record stay unchanged.",
+    "descriptor": "Magic 0x47545002 selects typed commands; the 64-word/256-byte descriptor layout and inner attachment descriptor version1 are unchanged. Magic 0x47545001 retains legacy 160-byte command records.",
+    "records": "164 bytes: one exact type word (DRAW=0, CLEAR=1) followed by 40 payload words. Count includes every command. Full 33-bit allocation admission checks count*164, including exact 4GiB; no silent wrap.",
+    "draw": "Payload is the complete prior inline draw record, including state and scissor words38/39.",
+    "clear": "Payload0 packs minX,minY,maxX,maxY in five low bits per byte. Payload1/2 are color/depth masks, payload3/4 packed values, payload5..39 and high rectangle bits zero. Half-open tile-local rectangle; all active samples; empty/zero-mask valid no-ops.",
+    "ownership": "One tagged FIFO with a union payload. Older geometry and OM work drain before clear offer; younger draw stays blocked until clear completion. End waits for command/FIFO/clear and render drain, then exports once.",
+    "failure": "Unsupported/reserved encodings or invalid rectangles status1; clear LOAD memory fault status3. Cancel/reset drops unaccepted tokens but preserves offered/issued reads and accepted clear ownership. Reset discards its old completion.",
+    "feedback": "Register failed clearDone before returning cancellation, avoiding a combinational cycle through the owner status. Clear valid is fenced on renderDrained so it does not close the draw gate on older accepted geometry/fan work."
+  },
+  "functional": {
+    "logs": {
+      "regression": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/typed_validation.log",
+        "sha256": "cdd9eb4f323c793a5b928551d025b599cca71737a8fe7e23e8d2fe1e89e42e0f",
+        "raw_checks": 78
+      },
+      "parser_replay": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/typed_parser_replay.log",
+        "sha256": "e6dee639bca2e19d9a3e0ab6be4d90c696e56211f886fbd7e9b31fb21b65ee6f",
+        "raw_checks": 4
+      },
+      "native_replay": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/typed_host_final.log",
+        "sha256": "67c31be9300a2b52630fc69b17ea55f88cd33e4743f4b9b66e7311ba5bd2cb70",
+        "raw_checks": 3
+      },
+      "driver": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/typed_driver.log",
+        "sha256": "bd13abb7ee4906e6bdf65261755de3893cfa8e3f209a1ebbf2f546d8922386cd"
+      }
+    },
+    "distinct_checks": 78,
+    "counting": "The 78-check twelve-suite regression includes four parser and three host checks. Final four-test parser replay adds accepted-draw scissor assertions; final three-test host replay extends typed cases to Bare and Sv32. Count the updated repeated checks once: 71+4+3=78, not85.",
+    "suites": {
+      "TypedTileCommandBufferSpec": 4,
+      "TileCommandPassControllerSpec": 10,
+      "TileJobDescriptorReaderSpec": 7,
+      "GpuAbiLayoutSpec": 12,
+      "PersistentTileHostAxiSpec": 3,
+      "PersistentTileTextureVisibilitySpec": 3,
+      "CommandBufferStageSpec": 3,
+      "CancellableCommandBufferStageSpec": 8,
+      "RenderHostSpec": 15,
+      "PersistentTileRenderCoreSpec": 1,
+      "GpuHostAxiSpec": 3,
+      "GpuCommandRouterSpec": 9
+    },
+    "native_profiles": [
+      {
+        "backend": "fixed function",
+        "cus": 1,
+        "lanes": 4,
+        "warps": 2
+      },
+      {
+        "backend": "actual shared shader CUs, FPU enabled",
+        "cus": 2,
+        "lanes": 4,
+        "warps": 2
+      },
+      {
+        "backend": "actual shared shader CUs, FPU enabled",
+        "cus": 4,
+        "lanes": 16,
+        "warps": 8
+      }
+    ],
+    "native_memory": "256-bit AXI, small test L2 (8 total sets, two ways/four banks), 17-cycle write acknowledgement and 8-cycle read response delays. Typed cases repeat in Bare and Sv32 rebinding to +4MiB; old version1/fault/publication cases also run.",
+    "typed_matrix": {
+      "backend_vm_combinations": 6,
+      "cases_per_combination": [
+        "healthy",
+        "short command allocation",
+        "unknown type",
+        "reserved clear payload",
+        "out-of-tile rectangle",
+        "masked clear LOAD fault",
+        "reset during accepted clear LOAD",
+        "healthy recovery"
+      ],
+      "total_cases": 48,
+      "healthy_cases": 12
+    },
+    "component_coverage": [
+      "Snapshot typed stride and later input mutation.",
+      "Ordered draw/clear/draw; clear offer backpressure; younger draws blocked through completion.",
+      "Unknown types, reserved rectangle/high bits and tail words; v1 reuse with scissor.",
+      "Cancellation of accepted clear barrier with a pending command response.",
+      "Exactly41 word reads at the4GiB boundary and no wrapped extra request.",
+      "Version1/2 command-limit arithmetic, short ranges, overflow and future-version rejection.",
+      "Failed clear completion cancels younger commands with invalid status and stable results.",
+      "Both descriptor magic values, attachment version retained, future version rejected.",
+      "Full prior descriptor/legacy/cancellable/core/AXI/router regressions and 128KiB render-to-texture publication checks."
+    ],
+    "c_abi": "Kernel-free driver suite passes; C11 static assertions check 256-byte descriptor, 164-byte typed record, 160-byte clear payload and field offsets."
+  },
+  "mixed_scene": {
+    "sequence": [
+      "empty zero-mask clear",
+      "draw A: RGB100/40/60, Z16",
+      "rectangle[2,6)x[2,6): clear green to160 and D24 to max, preserve other channels/stencil",
+      "draw B: RGB50/20/30 Z32, LESS and stencil EQUAL0x5a, additive ONE/ONE blend",
+      "rectangle[0,4)x[0,4): clear R/alpha to7/0x22 and stencil to0x33, preserve G/B and depth",
+      "draw C: Z8, stencil EQUAL0x33 with lower-nibble INVERT, ZERO/ONE blend preserves existing color"
+    ],
+    "tile": "8x8,1x, origin0 in16x16 viewport; one native RGBA8-compatible color and D24S8 pair, row pitch512.",
+    "oracle": "Independent sequential byte/depth/stencil arithmetic checks every one of64 final color and64 final depth words, including uncovered clear pixels. Same shader passthrough binary uses configured SoA capacity and vector length.",
+    "traffic": {
+      "records": 6,
+      "record_bytes": 164,
+      "logical_command_bytes": 984,
+      "old_attachment_reads": 0,
+      "final_attachment_store_bytes": 512,
+      "intermediate_exports": 0
+    },
+    "traffic_scope": "Logical command byte count is not DRAM command traffic. The current unbuffered word client still performs uncached line requests; fault-aware command buffering remains an optimization opportunity."
+  },
+  "emission": {
+    "buffer": {
+      "frozen": "generated/mobile-h1/typed-command-buffer-final-rtl",
+      "final_replay": "generated/mobile-h1/typed-command-buffer-replay-rtl",
+      "byte_identical": true,
+      "sha256": {
+        "Queue8_CommandBufferStage_Anon.sv": "5b53e1e24b1520c674aa88e3ac3970038c4e935f27b8af7f6d27716e43a998f2",
+        "filelist.f": "acc057c3b6ea4c310dcc5b292b0900415b2620d982778e6d253128405ecefc1f",
+        "ram_8x1013.sv": "3729b450525a09dee0ac2838644f7d9eac97806a92b39f0da17f7a990510905c",
+        "CommandBufferStage.sv": "ed2d406354948c2ad8268ad4fa354f60358f181b5a8573be543f80f7370794fc",
+        "verification/layers-CommandBufferStage-Verification.sv": "c3ecd1a35ad9c218c14dee258345f4b5626e746b2b2cadde3dfe9ce693e83f7e",
+        "verification/assume/layers-CommandBufferStage-Verification-Assume.sv": "ce95de031137a371bda683b0347a0322ff8a8f657c96cffdbfad3dbd7bbff208",
+        "verification/assert/CommandBufferStage_Verification_Assert.sv": "e7c41812db8b50583a47c884ba1538d19357f6082fbea6e741158bed2ff50935",
+        "verification/assert/layers-CommandBufferStage-Verification-Assert.sv": "e1d15b776064fcdfe650132920326c4609a58b3174519a96b3cd2e5bcf01026f",
+        "verification/cover/layers-CommandBufferStage-Verification-Cover.sv": "168378d4fc8a8b6bac7f692f69370b7e89e11bce1b82cf2412cd3c68e68133f8"
+      }
+    },
+    "controller": {
+      "frozen": "generated/mobile-h1/typed-command-controller-rtl",
+      "final_replay": "generated/mobile-h1/typed-command-controller-replay-rtl",
+      "byte_identical": true,
+      "sha256": {
+        "TileCommandPassController.sv": "4528b31e2d8d7afb1ab1eb043ed64a58060f2c29145ee14e4a196b0c3d238509",
+        "filelist.f": "ff272b300c3f64aef4be25f1cc8dd98115bb1e85c707e121962030bf804e1248",
+        "verification/layers-TileCommandPassController-Verification.sv": "a1aafed89704a624b9737bd9179b7253bfb0d5502c47c80311a50fc09f74880f",
+        "verification/assume/layers-TileCommandPassController-Verification-Assume.sv": "21c3690c6a1cf489f7e6f0503345102056749378d49d5e9ed9b60bf872ad7adb",
+        "verification/assert/TileCommandPassController_Verification_Assert.sv": "705ed07b52e2ce6fa0a38c3d86f0ef0747f63223773c3565e53f989952dce418",
+        "verification/assert/layers-TileCommandPassController-Verification-Assert.sv": "20aee7732a0ee7e72e5c02f20be28926b184add2514ac02bbcd1a5a04b8ab840",
+        "verification/cover/layers-TileCommandPassController-Verification-Cover.sv": "f20fc6d33b47dc7bafae27cd156631de3e9e30e858f2e5e1a16fa7e31dbfe06e"
+      }
+    },
+    "reader": {
+      "frozen": "generated/mobile-h1/typed-descriptor-reader-final-rtl",
+      "final_replay": "generated/mobile-h1/typed-descriptor-reader-replay-rtl",
+      "byte_identical": true,
+      "sha256": {
+        "filelist.f": "8e4128127bb4275a18584b3fa68097e76d2d0b38899b8943897033c7b7b09aa4",
+        "TileJobDescriptorReader.sv": "e1bea9fa96992783f11b6671bd1feb89140ae18bf24acd1a94b6c80e23405f76",
+        "verification/layers-TileJobDescriptorReader-Verification.sv": "a652ecf1304406f6434565682f378037d8121cf929d4dcb1e2be85fd4acb480a",
+        "verification/assume/layers-TileJobDescriptorReader-Verification-Assume.sv": "058bb3acfc8dc8cd6e461b2856bca090c419046d0a16dc87ddeca05d144ac914",
+        "verification/assert/layers-TileJobDescriptorReader-Verification-Assert.sv": "4e39f00075503ce473289d55357af8d0c622ded5d9fcd7f49b42511d726f7de0",
+        "verification/assert/TileJobDescriptorReader_Verification_Assert.sv": "88c6096bfd02fef29167a0b41caf5f624f511c47257ff6e2b428f08e6af78069",
+        "verification/cover/layers-TileJobDescriptorReader-Verification-Cover.sv": "846b024d5c6286e3f3dcb9aaa377f7d503c48c86789693faa6a6a83e3fa732bd"
+      }
+    }
+  },
+  "physical_scope": "Only the isolated parser/controller/descriptor reader; TC/SLVT,1000ps clock,25% IO delay. Buffer emitter uses1280x720 GraphicsConfig; reader uses default16/8 ABI with four-CU-derived IDs. No full renderer/CUs/MMU/L2/AXI product clock or energy claim.",
+  "synthesis": {
+    "buffer": {
+      "artifact": "generated/mobile-h1/physical-typed-command-buffer",
+      "gate": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          401.943,
+          405.727
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "58c0659e8e90413819ce556e3791c2738c5e53b51608ef21277fa4fef21b1805",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-typed-command-buffer/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "3af417429a4ec7136840682e962590a31b0508ce8933694237166ae86d0e4200"
+        }
+      },
+      "qor": {
+        "setup_worst_slack_ps": 401.943,
+        "core_clock_fmax_mhz": 1672.081
+      },
+      "hashes": {
+        "manifest.json": "ed640db8be45e608b4cf7c2f037b5e54b565c655fd8ab0aacb68a02c4f03105a",
+        "result.json": "a8ce413eb6fa4a974deb1ccc2e360e2d9d8b7ef8fdddf31df66f5b5024c2ddf2",
+        "qualification.json": "436bcbd03eae31051f46797c50230d8e25022af2884446ce10d736ce04791ea8"
+      }
+    },
+    "controller": {
+      "artifact": "generated/mobile-h1/physical-typed-command-controller",
+      "gate": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          334.534,
+          393.479
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "5ee57ca7eab89ae2954fa31f5677f086543b20d49eef15235f3a4cae0dd6d05e",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-typed-command-controller/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "e3d5b7aa80676a4d2e55ac232500325c5e95a4f83f8f0833c7f7e2a27c734992"
+        }
+      },
+      "qor": {
+        "setup_worst_slack_ps": 334.534,
+        "core_clock_fmax_mhz": 1502.706
+      },
+      "hashes": {
+        "manifest.json": "30c07da4a98429afb9d8ee6a0c4442f19870c40eb74d00caed26ecf9ac79c7ef",
+        "result.json": "f4945b78a18ed724cf3944271327d600123e67f660fda09d104a08bfef8b9a7b",
+        "qualification.json": "b61e37faebb82a1bd1d247b1f3b3ef3304ffd283bdbd48ecef02b1bbe4ea55e3"
+      }
+    },
+    "reader": {
+      "artifact": "generated/mobile-h1/physical-typed-descriptor-reader",
+      "gate": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          241.681,
+          378.323
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "fac232c560af662885404d19f6ab19cd5a53f93e3cf21915f5cc93052a1d85e4",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-typed-descriptor-reader/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "a310219feb55ad3172bf9ce01b8f22b37cc3129ec08b58e9a9e84402bcf788cb"
+        }
+      },
+      "qor": {
+        "setup_worst_slack_ps": 241.681,
+        "core_clock_fmax_mhz": 1318.706
+      },
+      "hashes": {
+        "manifest.json": "3a117feba987e00b69b51717d0296e9eb60e04efb4b24af2c9419ff5cdecbf94",
+        "result.json": "27bc397229d7cb44bd44caab1382d9a76ae98d3037e50243f9946861683e4f08",
+        "qualification.json": "8266fb55be3e503d54a6c968bfa6b9c74116ca958feb9eaad1f2f5fb934a5db5"
+      }
+    }
+  },
+  "route": {
+    "buffer": {
+      "artifact": "generated/mobile-h1/physical-typed-buffer-route",
+      "gate": {
+        "passed": true,
+        "checks": {
+          "setup_worst_slack_ps": true,
+          "hold_worst_slack_ps": true,
+          "setup_violation_count": true,
+          "hold_violation_count": true,
+          "route_drc_errors": true,
+          "antenna_violating_nets": true,
+          "antenna_violating_pins": true,
+          "placement_violations": true,
+          "flow_errors": true,
+          "flow_completed": true,
+          "tool_verdict": true
+        },
+        "missing_metrics": [],
+        "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-typed-buffer-route/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "ba1c0a334793b547ea17b3b30e5348c81efa64b8dea1ca488a858db17de86899"
+        }
+      },
+      "qor": {
+        "instance_count": 157877,
+        "instance_area": 6457.42,
+        "sequential_cell_count": 9500,
+        "clock_buffer_count": 845,
+        "timing_repair_buffer_count": 2477,
+        "setup_tns_ps": 0,
+        "hold_tns_ps": 0,
+        "setup_worst_slack_ps": 76.5107,
+        "hold_worst_slack_ps": 29.5621,
+        "setup_violation_count": 0,
+        "hold_violation_count": 0,
+        "core_clock_fmax_mhz": 1191.2,
+        "virtual_io_clock_fmax_mhz": 1518.66,
+        "reported_fmax_mhz": 1191.2,
+        "setup_clock_skew_ps": 26.31,
+        "hold_clock_skew_ps": 29.816,
+        "total_power_w": 0.0307502,
+        "placement_utilization": 23.7109,
+        "placement_violations": 0,
+        "estimated_wirelength": 150657,
+        "route_wirelength": 221133,
+        "route_vias": 469464,
+        "route_drc_errors": 0,
+        "route_drc_report_bytes": 0,
+        "antenna_violating_nets": 0,
+        "antenna_violating_pins": 0,
+        "ir_drop_vdd_worst": 0.00352176,
+        "ir_drop_vss_worst": 0.00309321,
+        "flow_warnings": 15,
+        "flow_errors": 0,
+        "critical_path": {
+          "startpoint": "u2 (rising edge-triggered flip-flop clocked by core_clock)",
+          "endpoint": "io_draw_bits_scissorMaxX[13] (output port clocked by vclk_core_clock)",
+          "group": "vclk_core_clock",
+          "slack_ps": 76.51,
+          "arrival_ps": 673.49,
+          "data_path_delay_ps": 515.2,
+          "cell_delay_ps": 308.94,
+          "net_delay_ps": 206.26,
+          "cell_delay_percent": 59.97,
+          "net_delay_percent": 40.03,
+          "cell_count": 8,
+          "net_count": 7,
+          "dominant_cell_types": [
+            {
+              "cell_type": "DFFHQNx3_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 86.02
+            },
+            {
+              "cell_type": "OA21x2_ASAP7_75t_SL",
+              "count": 2,
+              "delay_ps": 55.33
+            },
+            {
+              "cell_type": "BUFx3_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 54.2
+            },
+            {
+              "cell_type": "BUFx6f_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 40.86
+            },
+            {
+              "cell_type": "INVx11_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 30.97
+            },
+            {
+              "cell_type": "OA22x2_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 23.91
+            },
+            {
+              "cell_type": "BUFx2_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 17.65
+            }
+          ],
+          "per_group": {
+            "core_clock": {
+              "startpoint": "u2782 (rising edge-triggered flip-flop clocked by core_clock)",
+              "endpoint": "u10793 (rising edge-triggered flip-flop clocked by core_clock)",
+              "slack_ps": 160.51,
+              "arrival_ps": 987.83
+            },
+            "vclk_core_clock": {
+              "startpoint": "u2 (rising edge-triggered flip-flop clocked by core_clock)",
+              "endpoint": "io_draw_bits_scissorMaxX[13] (output port clocked by vclk_core_clock)",
+              "slack_ps": 76.51,
+              "arrival_ps": 673.49
+            }
+          }
+        }
+      },
+      "hashes": {
+        "manifest.json": "14ac12f304ce3785c6c362525be3520d0b5a0572a8fb929a9ce2622177dd6732",
+        "result.json": "c5727443d294b15e3c83b7c3f86361db78df062aaf850e2ef2ff2db9cf43c625",
+        "qualification.json": "bccf0dae690d0cdecfed977bfd983080dbde0c3c2bec991b8f2e496dc0f759ca"
+      }
+    },
+    "controller": {
+      "artifact": "generated/mobile-h1/physical-typed-controller-route-u10",
+      "gate": {
+        "passed": true,
+        "checks": {
+          "setup_worst_slack_ps": true,
+          "hold_worst_slack_ps": true,
+          "setup_violation_count": true,
+          "hold_violation_count": true,
+          "route_drc_errors": true,
+          "antenna_violating_nets": true,
+          "antenna_violating_pins": true,
+          "placement_violations": true,
+          "flow_errors": true,
+          "flow_completed": true,
+          "tool_verdict": true
+        },
+        "missing_metrics": [],
+        "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-typed-controller-route-u10/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "0ab7d430714e7fa7952f603c97a567a59bb0e7ab6274309692c3bcb33989afbc"
+        }
+      },
+      "qor": {
+        "instance_count": 27956,
+        "instance_area": 741.787,
+        "sequential_cell_count": 1015,
+        "clock_buffer_count": 83,
+        "timing_repair_buffer_count": 1991,
+        "setup_tns_ps": 0,
+        "hold_tns_ps": 0,
+        "setup_worst_slack_ps": 315.989,
+        "hold_worst_slack_ps": 15.3648,
+        "setup_violation_count": 0,
+        "hold_violation_count": 0,
+        "core_clock_fmax_mhz": 1461.97,
+        "virtual_io_clock_fmax_mhz": 1535.36,
+        "reported_fmax_mhz": 1461.97,
+        "setup_clock_skew_ps": 43.2432,
+        "hold_clock_skew_ps": 41.8625,
+        "total_power_w": 0.00733915,
+        "placement_utilization": 11.9805,
+        "placement_violations": 0,
+        "estimated_wirelength": 49113,
+        "route_wirelength": 52956,
+        "route_vias": 49785,
+        "route_drc_errors": 0,
+        "route_drc_report_bytes": 0,
+        "antenna_violating_nets": 0,
+        "antenna_violating_pins": 0,
+        "ir_drop_vdd_worst": 0.00352473,
+        "ir_drop_vss_worst": 0.0027511,
+        "flow_warnings": 15,
+        "flow_errors": 0,
+        "critical_path": {
+          "startpoint": "u1013 (rising edge-triggered flip-flop clocked by core_clock)",
+          "endpoint": "u27 (rising edge-triggered flip-flop clocked by core_clock)",
+          "group": "core_clock",
+          "slack_ps": 315.99,
+          "arrival_ps": 754.22,
+          "data_path_delay_ps": 645.3,
+          "cell_delay_ps": 540.92,
+          "net_delay_ps": 104.38,
+          "cell_delay_percent": 83.82,
+          "net_delay_percent": 16.18,
+          "cell_count": 24,
+          "net_count": 24,
+          "dominant_cell_types": [
+            {
+              "cell_type": "OA222x2_ASAP7_75t_SL",
+              "count": 4,
+              "delay_ps": 88.27
+            },
+            {
+              "cell_type": "OA21x2_ASAP7_75t_SL",
+              "count": 4,
+              "delay_ps": 87.96
+            },
+            {
+              "cell_type": "OAI21x1_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 58.71
+            },
+            {
+              "cell_type": "OR5x1_ASAP7_75t_SL",
+              "count": 2,
+              "delay_ps": 49.41
+            },
+            {
+              "cell_type": "OA211x2_ASAP7_75t_SL",
+              "count": 2,
+              "delay_ps": 47.16
+            },
+            {
+              "cell_type": "AO21x1_ASAP7_75t_SL",
+              "count": 3,
+              "delay_ps": 40.59
+            },
+            {
+              "cell_type": "BUFx6f_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 38.07
+            },
+            {
+              "cell_type": "DFFHQNx1_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 37.0
+            }
+          ],
+          "per_group": {
+            "core_clock": {
+              "startpoint": "u1013 (rising edge-triggered flip-flop clocked by core_clock)",
+              "endpoint": "u27 (rising edge-triggered flip-flop clocked by core_clock)",
+              "slack_ps": 315.99,
+              "arrival_ps": 754.22
+            },
+            "vclk_core_clock": {
+              "startpoint": "io_shaderFault (input port clocked by vclk_core_clock)",
+              "endpoint": "io_startCommands (output port clocked by vclk_core_clock)",
+              "slack_ps": 348.69,
+              "arrival_ps": 401.31
+            }
+          }
+        }
+      },
+      "hashes": {
+        "manifest.json": "d9b3bcd553ab70a6b9a3746da4fa739b1fb5c882ec48023bd8cedaf67e0d4ef1",
+        "result.json": "be8269640a29236266d6239e675067411a8a113477dc74561bbcb8e02f066528",
+        "qualification.json": "247f0e7e1f9843ce232a161bd5e05f17469bfa60e29d523e4e0fbe782747fcb2"
+      }
+    },
+    "reader": {
+      "artifact": "generated/mobile-h1/physical-typed-reader-route",
+      "gate": {
+        "passed": true,
+        "checks": {
+          "setup_worst_slack_ps": true,
+          "hold_worst_slack_ps": true,
+          "setup_violation_count": true,
+          "hold_violation_count": true,
+          "route_drc_errors": true,
+          "antenna_violating_nets": true,
+          "antenna_violating_pins": true,
+          "placement_violations": true,
+          "flow_errors": true,
+          "flow_completed": true,
+          "tool_verdict": true
+        },
+        "missing_metrics": [],
+        "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-typed-reader-route/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "96087a99cd05b35630201049778dcaaea834b4364a544aaa9cfcdc1b91be6ea1"
+        }
+      },
+      "qor": {
+        "instance_count": 35052,
+        "instance_area": 1501.64,
+        "sequential_cell_count": 2366,
+        "clock_buffer_count": 210,
+        "timing_repair_buffer_count": 1846,
+        "setup_tns_ps": 0,
+        "hold_tns_ps": 0,
+        "setup_worst_slack_ps": 244.566,
+        "hold_worst_slack_ps": 31.3226,
+        "setup_violation_count": 0,
+        "hold_violation_count": 0,
+        "core_clock_fmax_mhz": 1447.25,
+        "virtual_io_clock_fmax_mhz": 1578.82,
+        "reported_fmax_mhz": 1447.25,
+        "setup_clock_skew_ps": 13.9632,
+        "hold_clock_skew_ps": 16.7291,
+        "total_power_w": 0.00880626,
+        "placement_utilization": 26.6847,
+        "placement_violations": 0,
+        "estimated_wirelength": 39981.1,
+        "route_wirelength": 46145,
+        "route_vias": 92164,
+        "route_drc_errors": 0,
+        "route_drc_report_bytes": 0,
+        "antenna_violating_nets": 0,
+        "antenna_violating_pins": 0,
+        "ir_drop_vdd_worst": 0.00284473,
+        "ir_drop_vss_worst": 0.00272283,
+        "flow_warnings": 15,
+        "flow_errors": 0,
+        "critical_path": {
+          "startpoint": "u956 (rising edge-triggered flip-flop clocked by core_clock)",
+          "endpoint": "io_memoryRequest_bits_address[31]",
+          "group": "vclk_core_clock",
+          "slack_ps": 244.57,
+          "arrival_ps": 505.43,
+          "data_path_delay_ps": 410.96,
+          "cell_delay_ps": 403.25,
+          "net_delay_ps": 7.71,
+          "cell_delay_percent": 98.12,
+          "net_delay_percent": 1.88,
+          "cell_count": 21,
+          "net_count": 20,
+          "dominant_cell_types": [
+            {
+              "cell_type": "AND2x2_ASAP7_75t_SL",
+              "count": 10,
+              "delay_ps": 144.13
+            },
+            {
+              "cell_type": "DFFHQNx1_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 59.76
+            },
+            {
+              "cell_type": "AND4x1_ASAP7_75t_SL",
+              "count": 2,
+              "delay_ps": 56.66
+            },
+            {
+              "cell_type": "AND2x4_ASAP7_75t_SL",
+              "count": 3,
+              "delay_ps": 46.29
+            },
+            {
+              "cell_type": "MAJx2_ASAP7_75t_SL",
+              "count": 2,
+              "delay_ps": 36.21
+            },
+            {
+              "cell_type": "AND3x1_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 30.31
+            },
+            {
+              "cell_type": "XOR2x2_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 17.7
+            },
+            {
+              "cell_type": "BUFx2_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 12.19
+            }
+          ],
+          "per_group": {
+            "core_clock": {
+              "startpoint": "io_commandReadAccepted (input port clocked by vclk_core_clock)",
+              "endpoint": "u944 (rising edge-triggered flip-flop clocked by core_clock)",
+              "slack_ps": 272.09,
+              "arrival_ps": 811.24
+            },
+            "vclk_core_clock": {
+              "startpoint": "u956 (rising edge-triggered flip-flop clocked by core_clock)",
+              "endpoint": "io_memoryRequest_bits_address[31]",
+              "slack_ps": 244.57,
+              "arrival_ps": 505.43
+            }
+          }
+        }
+      },
+      "hashes": {
+        "manifest.json": "3357d3e7b92bca739ef8b311d44d04ada9ef7f02c971db466de6d4902337003d",
+        "result.json": "34e00c9bb08ab56892fd97e17ff73c81bf522e5a558d8a89124f242b6b7de507",
+        "qualification.json": "d89aa4b8a5245cf424c9a3a58e4081aa336c61d09c8cf9e021e8645df46d1c50"
+      }
+    }
+  },
+  "controller_floorplan_retry": {
+    "failed_artifact": "generated/mobile-h1/physical-typed-controller-route",
+    "stage": "3_2_place_iop",
+    "reason": "2752 IO pins exceed2000 positions;198.16um perimeter versus required264.19um. No route/timing qualification from that run.",
+    "qualified_retry": "generated/mobile-h1/physical-typed-controller-route-u10",
+    "change": "Lower core utilization25->10 to enlarge standalone die for IO. Same RTL,1GHz,25% IO budget and physical/mapping gates. Buffer/reader retain utilization25. No comparable integrated-area/power claim."
+  },
+  "limitations": [
+    "Native typed host clear checks use1x and the small test L2. Full product MSAA/resource combinations remain required; existing clear engine covers all active samples but this record does not claim native2x/4x typed coverage.",
+    "One resident tile, one color/depth pair and serialized dependency boundaries. Multiple engines, MRT, broader resources and compact primitive/bin pages remain open.",
+    "Typed records retain forty-word payloads; compact commands and fault-aware line buffering are still needed for command bandwidth. Buffered command/texture and coalesced framebuffer options remain rejected in this profile.",
+    "Post-route results cover isolated blocks only. Reported raw tool area/power have no workload activity; they do not qualify whole-GPU clock or energy/frame.",
+    "Driver/API adoption, full renderer mapping (variable-division issue), product viewport/resource matrix, physical/bandwidth/FPS gates and all remaining H0-H8 requirements remain open."
+  ]
+}

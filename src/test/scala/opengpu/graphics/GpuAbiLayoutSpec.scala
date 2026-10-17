@@ -44,6 +44,12 @@ class GpuAbiLayoutSpec extends AnyFlatSpec {
   it should "match the bounded tile descriptor and its precise completion statuses" in {
     checkAll(Seq(
       "GPU_TILE_JOB_MAGIC" -> TileJobMemoryLayout.magic.toLong,
+      "GPU_TILE_JOB_TYPED_MAGIC" -> TileJobMemoryLayout.typedMagic.toLong,
+      "GPU_TILE_COMMAND_PAYLOAD_WORDS" -> TileCommandMemoryLayout.payloadWords.toLong,
+      "GPU_TILE_COMMAND_V1_BYTES" -> TileCommandMemoryLayout.legacyBytes.toLong,
+      "GPU_TILE_COMMAND_V2_BYTES" -> TileCommandMemoryLayout.typedBytes.toLong,
+      "GPU_TILE_COMMAND_DRAW" -> TileCommandMemoryLayout.draw.toLong,
+      "GPU_TILE_COMMAND_CLEAR" -> TileCommandMemoryLayout.clear.toLong,
       "GPU_TILE_JOB_WORDS" -> TileJobMemoryLayout.words.toLong,
       "GPU_TILE_JOB_BYTES" -> TileJobMemoryLayout.bytes.toLong,
       "GPU_TILE_RESULT_SUCCESS" -> TilePassStatus.success.toLong,
@@ -176,6 +182,7 @@ class GpuAbiLayoutSpec extends AnyFlatSpec {
       "GPU_CAP_UNIFIED_RENDER" -> (1L << GpuCapabilities.UnifiedRender),
       "GPU_CAP_PROTECTED_VM_STATE" -> (1L << GpuCapabilities.ProtectedVmState),
       "GPU_CAP_PERSISTENT_TILE_JOBS" -> (1L << GpuCapabilities.PersistentTileJobs),
+      "GPU_CAP_TYPED_TILE_COMMANDS" -> (1L << GpuCapabilities.TypedTileCommands),
       "GPU_CAP_HW_VBLANK" -> (1L << GpuCapabilities.HwVblank),
       "GPU_CAP_COMPUTE_SCALAR_FPU" -> (1L << GpuCapabilities.ComputeScalarFpu),
       "GPU_CAP_RUNTIME_SHADER_ABI" -> (1L << GpuCapabilities.RuntimeShaderAbi),

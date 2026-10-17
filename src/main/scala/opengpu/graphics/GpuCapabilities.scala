@@ -58,6 +58,8 @@ object GpuCapabilities {
   val ProtectedVmState = 29
   /** Explicit 256-byte bounded tile-job descriptors through opcode 7. */
   val PersistentTileJobs = 30
+  /** Version-2 draw/clear command streams are supported by the tile profile. */
+  val TypedTileCommands = 31
 }
 
 /** Byte fields of GpuCommandMmioRegs.SHADER_CONFIG and the DRM query. */

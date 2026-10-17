@@ -106,6 +106,18 @@ class TileJobDescriptorReaderSpec extends AnyFlatSpec {
     GpuConfig(lanes = 4, warps = 2), GraphicsConfig(screenWidth = 64, screenHeight = 64),
     memoryTransactions = 8, transactionId = 3)
 
+  it should "select typed command version two without changing attachment descriptor version" in {
+    simulate(reader) { dut =>
+      val h = new Driver(dut); val w = TileDescriptorTestData.words()
+      w(0) = 0x47545002L; w(7) = 0x4148
+      h.submit(); h.fetch(w); h.waitFor(dut.io.job.valid.peek().litToBoolean)
+      dut.io.job.bits.version.expect(2.U); dut.io.job.bits.passDescriptor.version.expect(1.U)
+      dut.io.job.bits.commandLimit.expect(0x4148.U)
+      h.coreResult(0); h.complete(0)
+      w(0) = 0x47545003L; h.submit(); h.fetch(w); h.complete(TilePassStatus.invalidDescriptor)
+    }
+  }
+
   it should "snapshot four bounded lines, decode every state group, and retain the job and result" in {
     simulate(reader) { dut =>
       val h = new Driver(dut); val w = TileDescriptorTestData.words()

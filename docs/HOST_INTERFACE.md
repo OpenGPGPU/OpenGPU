@@ -332,7 +332,8 @@ and rejects opcode 6; current DRM submission still uses the default profile.
 
 The record is exactly 64 little-endian words. Its explicit C layout and every
 field offset are checked by `opengpu_tile_job_abi_test.c`. Word 0 is magic/version
-`0x47545001`, word 1 is 64, and words 2–4 hold context/pass/generation. All
+`0x47545001` (draw-only stream) or `0x47545002` (typed stream), word 1 is 64,
+and words 2–4 hold context/pass/generation. All
 reserved bits and words 37–63 are zero. Header fields, limits, formats and draw
 defaults are snapshotted before any command record can be fetched.
 
@@ -358,6 +359,32 @@ general bounded resources remain part of the hardware-alignment work.
 Clear words are already packed in the attachment's memory format. For example,
 canonical color `0x10203040` has packed clear word `0x40302010` in an RGBA byte
 view; the store does not encode the supplied clear word again.
+
+`GPU_CAP_TYPED_TILE_COMMANDS` (bit 31) advertises version-2 streams. Version 1
+keeps its existing forty-word/160-byte inline draw records. Version 2 uses
+`gpu_tile_command_record_v2`: a type word followed by forty payload words,
+41 words/164 bytes total. The command count includes every draw and clear;
+admission checks the full `count * 164` range, including an exact 4 GiB end.
+The type word is exactly 0 for draw or 1 for clear. A draw payload is the
+complete existing inline draw record, including words 38–39 for scissors.
+
+The clear payload is `gpu_tile_clear_payload`: word 0 packs tile-local min X,
+min Y, max X and max Y into five bits per byte; words 1–4 contain color mask,
+depth/stencil mask, packed color value and packed depth/stencil value. All
+remaining payload words and rectangle-byte high bits are zero. Rectangles are
+half-open and must fit the admitted tile. Empty rectangles and zero masks are
+no-ops. Masks preserve unselected bits and apply to every active sample.
+Unsupported types/reserved encodings or an invalid rectangle fail with status
+1; a clear's attachment-load fault retains status 3.
+
+Draws and clears share one ordered FIFO. A clear waits for older geometry and
+OM work to drain before it is offered to the attachment owner, and younger
+draws wait for clear completion. Compatible operations retain their tile data;
+only the final pass end exports attachments. Cancellation discards unaccepted
+tokens while preserving offered/issued memory reads and accepted clear-owner
+drain. Version 2 does not change the attachment descriptor layout or legacy
+desktop command format. These fixed-size typed records are a bring-up ABI;
+compact primitive/state references remain part of the hardware-alignment work.
 
 Descriptor fetch uses four independently tagged 64-byte uncached reads through
 the existing translated DMA line client, reserving its four IDs before shader

@@ -154,6 +154,13 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(
           new CommandBufferStage(GraphicsConfig(), vertCore = false),
           stageArgs, firtoolArgs)
+      case "tile-command-buffer" =>
+        ChiselStage.emitSystemVerilogFile(
+          new CommandBufferStage(GraphicsConfig(screenWidth = 1280, screenHeight = 720),
+            cancellable = true, tileCommands = true), stageArgs, firtoolArgs)
+      case "tile-command-controller" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TileCommandPassController, stageArgs, firtoolArgs)
       case "command-buffer-vert" =>
         ChiselStage.emitSystemVerilogFile(
           new CommandBufferStage(GraphicsConfig(), vertCore = true),
