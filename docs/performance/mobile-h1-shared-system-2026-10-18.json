@@ -1,0 +1,121 @@
+{
+  "scope": "H0/H1 native shared-CU, Sv32 and coherent staging correctness, plus accepted-response texture fault ownership. No production host/VM ABI or performance qualification.",
+  "reference_checkpoint": "ced8890",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/RenderCore.scala": "cb7815e1addf0fa6a00318c586ea10f29e920be48a81cd576e53b61936508b03",
+    "src/main/scala/opengpu/graphics/TileCommandPassController.scala": "856946c6278ebcf54c2c33a747fa2a645f881f46898a1c8a2a0ec129b96dbb5b",
+    "src/main/scala/opengpu/graphics/TileRenderPass.scala": "8823923b5d70941206f63c47d11b75f2fd7abc2d39419c8f7764055453174f7c",
+    "src/test/scala/opengpu/graphics/PersistentTileSharedSystemSpec.scala": "545be1815862b38649f61efa8fa4280acf92c487a8a12e284d20a22699ca43cf",
+    "src/test/scala/opengpu/graphics/PersistentTileRenderCoreSpec.scala": "890f7b18a10e8812f74b0183912a86f36cef092410a793de40a1f1ab11d5ba8b",
+    "src/test/scala/opengpu/graphics/TileCommandPassControllerSpec.scala": "a2723ff64ca3976f3fae8cb546b8433bdf5c62b38e475a679597ce7ded01a37a"
+  },
+  "functional": {
+    "logs": {
+      "shared_system_validation": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/shared_system_validation.log",
+        "sha256": "78393c938c98dc62961bad72f767b31ab33daf46a6959ceada595e35ca4fb4b1",
+        "tests": 11,
+        "passed": true
+      },
+      "target_profile_heap_guard": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/target_profile_heap_guard.log",
+        "sha256": "ef2ac6b2afbbb90fdf9f45fc5e66aa524e5fce8f82f6446e31985e5cb4226267",
+        "tests": 1,
+        "passed": true
+      }
+    },
+    "distinct_tests": 11,
+    "composition": {
+      "shared_system_configurations": 4,
+      "controller": 6,
+      "fixed_function_core": 1,
+      "scenarios_in_fixed_function_core_test": 17
+    },
+    "target_profile_replay": "The one-test replay validates the later heap guard; it is a repeat of one of the eleven distinct checks, not a twelfth check.",
+    "command": "sbt -J-Xmx8G -batch 'testOnly opengpu.graphics.PersistentTileSharedSystemSpec opengpu.graphics.PersistentTileRenderCoreSpec opengpu.graphics.TileCommandPassControllerSpec'",
+    "target_profile_heap_requirement": "At least 4 GiB maximum JVM heap; the test reports insufficient heap explicitly. Qualification runs use -J-Xmx8G and all four configurations execute."
+  },
+  "system_profiles": [
+    {
+      "cus": 2,
+      "lanes": 4,
+      "warps": 2,
+      "sv32": false,
+      "dispatch_fragments": 8,
+      "cycles": 13906,
+      "peak_graphics_owned": 2,
+      "walk_requests": 0,
+      "command_faults": 0,
+      "mixed_graphics_compute_occupancy": true
+    },
+    {
+      "cus": 2,
+      "lanes": 4,
+      "warps": 2,
+      "sv32": true,
+      "dispatch_fragments": 8,
+      "cycles": 14322,
+      "peak_graphics_owned": 2,
+      "walk_requests": 36,
+      "command_faults": 1,
+      "mixed_graphics_compute_occupancy": true
+    },
+    {
+      "cus": 4,
+      "lanes": 4,
+      "warps": 2,
+      "sv32": true,
+      "dispatch_fragments": 8,
+      "cycles": 11237,
+      "peak_graphics_owned": 4,
+      "walk_requests": 65,
+      "command_faults": 1,
+      "mixed_graphics_compute_occupancy": true
+    },
+    {
+      "cus": 4,
+      "lanes": 16,
+      "warps": 8,
+      "sv32": true,
+      "dispatch_fragments": 16,
+      "cycles": 10396,
+      "peak_graphics_owned": 4,
+      "walk_requests": 78,
+      "command_faults": 1,
+      "mixed_graphics_compute_occupancy": true
+    }
+  ],
+  "harness": {
+    "execution": "RenderCore uses the actual GpuSystem CU pool and shared shader task router; no private graphics CUs. FPU enabled, L2 eight sets/two ways, CU caches four sets/one way.",
+    "memory": "Real TranslatedLineClient for staging and three unbuffered TranslatedWordClient instances for command, attachment and texture. Disjoint data/walk IDs are restored on response; a unique-owner assertion covers graphics response IDs.",
+    "lower_service": "Deterministic request stalls; seeded response delays 4..20 cycles and younger-ready responses first. Write bytes publish only on acknowledgement; a held response keeps frozen data. Live system transaction IDs cannot alias.",
+    "vm": "Sv32 roots, ASIDs and physical superpages change only after all graphics, compute and lower-memory traffic drains. Same virtual bindings map to new physical backing. Lower requests must lie in the current physical context or reserved page-table range. SATP/flush ownership is external to this validation harness.",
+    "workload": "8x8 resident tile, 1x RGBA8+D24S8. Two overlapping draws: LESS retains the first; the final healthy pass uses ALWAYS so changed second-draw inputs must reach stored samples. Illegal shader and invalid command mapping precede healthy reuse.",
+    "compute": "Submit host compute ID 1 once graphics has CU ownership; it overlaps graphics on a separate CU, completes with unchanged ID/success, and stores 0x123. Graphics router client 1 also uses ID 1 in its separate namespace.",
+    "completion": "Context/pass/generation retained; all color/depth samples checked independently; failed-pass attachments retain sentinels. Hold graphics result five cycles with a new job blocked."
+  },
+  "texture_failure": {
+    "status": 6,
+    "qualification": "Fault sideband is applied only on accepted texture responses.",
+    "fault_case": {
+      "command_reads_before_drain": 58,
+      "attachment_writes": 0,
+      "tagged_result_stable": true,
+      "healthy_reuse": true
+    },
+    "other_checks": [
+      "Sideband high without accepted response does not fault healthy passes.",
+      "Shader failure during texture drain does not replace texture status.",
+      "Late cancel/command/shader/texture inputs do not alter a published result.",
+      "Precise attachment-owner memory faults retain their own status."
+    ]
+  },
+  "limitations": [
+    "Small 8x8, single-sample workload with dispatch caps of eight/sixteen; not full resident-warp utilization or throughput.",
+    "Cycle counts include test control, stalls and faults and use different dispatch capacities; no scaling or frame-rate comparison follows.",
+    "No production RenderHost/unified AXI persistent submission or hardware VM context ownership yet.",
+    "Render-to-texture, DMA and CPU cache-domain publication/barriers remain to integrate and verify.",
+    "General descriptors, multiple tile engines, payload SRAM and all remaining H0-H8 capability/physical/product gates remain required.",
+    "Texture fault is tested through the fixed-function core response path; this record does not prove a textured shader Sv32-fault workload."
+  ]
+}

@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: proposed hardware architecture with H0/H1 implementation in progress, 2026-10-17. Baseline: `d038228`.
+Status: proposed hardware architecture with H0/H1 implementation in progress, 2026-10-18. Baseline: `d038228`.
 
 Evolve OpenGPU into a mobile rendering architecture by extending the shared CU pool with persistent tile storage, GPU geometry fetching, scalable texture and pixel backends, and general graphics resource descriptors. Keep shader arithmetic on the existing CUs. The first functional target is hardware sufficient for a complete GLES 3.0 implementation; a Mali-G31-class commercial comparison requires further feature, performance, and physical qualification.
 
@@ -408,3 +408,34 @@ ends. The matched eight-credit workload is now 15,008 cycles (serial 43,402),
 with unchanged samples and traffic. The component passes its 1 GHz synthesis
 setup and mapping screen at +73.113 ps core and +242.262 ps I/O. Post-route
 setup/hold, area/energy and integrated GPU performance remain unqualified.
+
+The experimental persistent core now has an accepted-response texture-fault
+sideband. A failed texture response cancels command prefetch and attachment
+export, drains outstanding work, and returns status 6 with the original pass
+identity. A fault sideband without an accepted response has no effect. Secondary
+shader failures during texture drain cannot hide that attribution; an already
+published completion stays stable even if later fault inputs change.
+
+The [shared-system validation](performance/mobile-h1-shared-system-2026-10-18.json)
+connects persistent command jobs to actual system CUs, their coherent caches,
+shared L2 and existing Sv32 clients, without private graphics CUs. Four
+configuration checks cover two CUs in Bare and Sv32 modes, four CUs with
+four lanes/two warps, and four CUs with sixteen lanes/eight warps. All assert
+multi-CU graphics ownership, overlapping graphics/compute CU occupancy, a
+colliding local command ID, exact stored color/depth samples, shader-trap drain
+and healthy reuse. The Sv32 cases change roots, ASIDs and physical backing at
+drained boundaries, reject an invalid command mapping, and then render again.
+An overwrite draw makes stale shader inputs observable instead of hiding them
+behind equal-depth rejection. Responses are delayed, reordered and backpressured;
+transaction IDs cannot alias live requests.
+
+Eleven distinct checks pass: four system configurations, six controller checks,
+and one fixed-function job check containing seventeen scenarios. The latter
+includes an accepted texture fault with zero attachment exports. Run the large
+configuration with `sbt -J-Xmx8G 'testOnly opengpu.graphics.PersistentTileSharedSystemSpec'`;
+it explicitly reports insufficient heap below 4 GiB. These small 8x8,
+single-sample workloads use dispatch limits of eight or sixteen fragments and
+do not establish full warp occupancy, scaling, bandwidth, FPS or energy. The
+harness pins VM state externally until complete drain; production host/AXI
+submission, context ownership, dependency publication and the remaining H0–H8
+gates are still required.

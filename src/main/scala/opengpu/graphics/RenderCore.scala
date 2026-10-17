@@ -58,6 +58,7 @@ class RenderCore(
     /** Sidebands apply to a response accepted on the corresponding port. */
     val commandMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
     val attachmentMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
+    val textureMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
     val tileEvents = if (persistentAttachments) Some(Output(new TileAttachmentEvents)) else None
     val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
       gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
@@ -189,6 +190,7 @@ class RenderCore(
     controller.io.cancel := io.tileCancel.get
     controller.io.commandFault := io.commandMemoryFault.get && io.cbMem.resp.fire
     controller.io.attachmentFault := io.attachmentMemoryFault.get
+    controller.io.textureFault := io.textureMemoryFault.get && io.texMem.resp.fire
     controller.io.shaderFault := rp.io.shaderFault
     controller.io.pass <> rp.io.tilePass.get
     controller.io.admitted := rp.io.tileEvents.get.admitted

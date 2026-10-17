@@ -28,6 +28,8 @@ class TileCommandPassController extends Module {
     /** Pulse on an accepted command-memory response with a fault. */
     val commandFault = Input(Bool())
     val attachmentFault = Input(Bool())
+    /** Pulse on an accepted texture response with a fault. */
+    val textureFault = Input(Bool())
     val shaderFault = Input(Bool())
     val pass = Flipped(new TileRenderPassPort)
     val admitted = Input(Bool())
@@ -48,11 +50,13 @@ class TileCommandPassController extends Module {
   private val abortStatus = RegInit(TilePassStatus.success.U(TilePassStatus.width.W))
   private val resultBits = Reg(new TileRenderPassCompletion)
   private val active = state =/= idle && state =/= result
-  private val abortNow = io.cancel || io.commandFault || io.shaderFault
+  private val abortNow = io.cancel || io.commandFault || io.textureFault || io.shaderFault
   private val effectiveStatus = Mux(io.commandFault, TilePassStatus.commandFault.U,
-    Mux(io.shaderFault && abortStatus =/= TilePassStatus.commandFault.U, TilePassStatus.executionFault.U,
+    Mux(io.textureFault && abortStatus =/= TilePassStatus.commandFault.U, TilePassStatus.textureFault.U,
+    Mux(io.shaderFault && abortStatus =/= TilePassStatus.commandFault.U && abortStatus =/= TilePassStatus.textureFault.U,
+      TilePassStatus.executionFault.U,
       Mux(io.cancel && abortStatus === TilePassStatus.success.U,
-        TilePassStatus.cancelled.U, abortStatus)))
+        TilePassStatus.cancelled.U, abortStatus))))
 
   io.job.ready := state === idle && io.commandsDrained && io.renderDrained
   io.busy := state =/= idle
@@ -110,8 +114,8 @@ class TileCommandPassController extends Module {
   when(io.pass.completion.fire) {
     assert(io.pass.completion.bits.identity.asUInt === snapshot.passDescriptor.identity.asUInt,
       "tile command completion must retain the submitted pass identity")
-    // Preserve precise pass errors. A controller-originated command fault or
-    // cancel replaces a cancellation/success result from the attachment owner.
+    // Preserve precise pass errors. A controller-originated failure replaces
+    // a cancellation/success result from the attachment owner.
     val ownerStatus = io.pass.completion.bits.status
     val overrideOwner = effectiveStatus =/= TilePassStatus.success.U &&
       (ownerStatus === TilePassStatus.success.U || ownerStatus === TilePassStatus.cancelled.U)

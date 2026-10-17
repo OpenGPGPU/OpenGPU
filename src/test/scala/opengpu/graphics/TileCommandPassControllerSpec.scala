@@ -56,12 +56,14 @@ class TileCommandPassControllerSpec extends AnyFlatSpec {
     dut.io.completion.bits.identity.context.expect(91.U)
     val snapshot = dut.io.completion.bits.peek().litValue
     dut.io.cancel.poke(true.B); dut.io.commandFault.poke(true.B); dut.io.shaderFault.poke(true.B)
+    dut.io.textureFault.poke(true.B)
     for (_ <- 0 until 4) {
       dut.clock.step(); dut.io.completion.valid.expect(true.B)
       assert(dut.io.completion.bits.peek().litValue == snapshot)
       dut.io.job.ready.expect(false.B)
     }
     dut.io.cancel.poke(false.B); dut.io.commandFault.poke(false.B); dut.io.shaderFault.poke(false.B)
+    dut.io.textureFault.poke(false.B)
     dut.io.completion.ready.poke(true.B); dut.clock.step()
     dut.io.job.ready.expect(true.B); dut.io.busy.expect(false.B)
   }
@@ -70,6 +72,7 @@ class TileCommandPassControllerSpec extends AnyFlatSpec {
     ("cancel", TilePassStatus.cancelled, TilePassStatus.cancelled),
     ("command", TilePassStatus.commandFault, TilePassStatus.cancelled),
     ("shader", TilePassStatus.executionFault, TilePassStatus.cancelled),
+    ("texture", TilePassStatus.textureFault, TilePassStatus.cancelled),
     ("command", TilePassStatus.memoryFault, TilePassStatus.memoryFault))) {
     it should s"retain a $fault failure with owner status $ownerStatus through both drains" in {
       simulate(new TileCommandPassController) { dut =>
@@ -82,14 +85,20 @@ class TileCommandPassControllerSpec extends AnyFlatSpec {
         if (fault == "cancel") dut.io.cancel.poke(true.B)
         if (fault == "command") dut.io.commandFault.poke(true.B)
         if (fault == "shader") dut.io.shaderFault.poke(true.B)
+        if (fault == "texture") dut.io.textureFault.poke(true.B)
         dut.io.cancelCommands.expect(true.B); dut.io.pass.cancel.expect(true.B)
         dut.clock.step()
         dut.io.cancel.poke(false.B); dut.io.commandFault.poke(false.B); dut.io.shaderFault.poke(false.B)
+        dut.io.textureFault.poke(false.B)
+        // A secondary shader failure during texture drain must not hide the
+        // more precise texture failure already attributed to this job.
+        if (fault == "texture") dut.io.shaderFault.poke(true.B)
         ownerResult(dut, ownerStatus)
         for (_ <- 0 until 6) {
           dut.clock.step(); dut.io.pass.completion.ready.expect(false.B)
           dut.io.completion.valid.expect(false.B); dut.io.cancelCommands.expect(true.B)
         }
+        dut.io.shaderFault.poke(false.B)
         dut.io.commandsDrained.poke(true.B)
         for (_ <- 0 until 3) { dut.clock.step(); dut.io.pass.completion.ready.expect(false.B) }
         dut.io.renderDrained.poke(true.B)

@@ -31,8 +31,10 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
       case class Reply(address: Long, data: Long, write: Boolean, fault: Boolean, due: Int)
       val commands = mutable.ArrayBuffer.empty[Reply]
       val attachments = mutable.ArrayBuffer.empty[Reply]
+      val textures = mutable.ArrayBuffer.empty[Reply]
       var commandReply: Option[Reply] = None
       var attachmentReply: Option[Reply] = None
+      var textureReply: Option[Reply] = None
       var cycle = 0
       var base = 0L
       var phase = ""
@@ -64,6 +66,7 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
       def tick(): Unit = {
         dut.io.cbMem.req.ready.poke((cycle % 4 != 0).B)
         dut.io.fbMem.req.ready.poke((cycle % 5 != 0).B)
+        dut.io.texMem.req.ready.poke((cycle % 3 != 0).B)
         if (commandReply.isEmpty && !holdingCommands) {
           commands.indices.find(i => commands(i).due <= cycle).foreach { i =>
             commandReply = Some(commands.remove(i))
@@ -72,6 +75,11 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
         if (attachmentReply.isEmpty) {
           attachments.indices.filter(i => attachments(i).due <= cycle).lastOption.foreach { i =>
             attachmentReply = Some(attachments.remove(i))
+          }
+        }
+        if (textureReply.isEmpty) {
+          textures.indices.find(i => textures(i).due <= cycle).foreach { i =>
+            textureReply = Some(textures.remove(i))
           }
         }
         def present(port: OmMemoryResponse, response: Option[Reply]): Unit = response.foreach { r =>
@@ -83,8 +91,21 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
         dut.io.fbMem.resp.valid.poke(attachmentReply.nonEmpty.B)
         present(dut.io.fbMem.resp.bits, attachmentReply)
         dut.io.attachmentMemoryFault.get.poke(attachmentReply.exists(_.fault).B)
+        dut.io.texMem.resp.valid.poke(textureReply.nonEmpty.B)
+        present(dut.io.texMem.resp.bits, textureReply)
+        // A sideband without an accepted texture response cannot fault a job.
+        dut.io.textureMemoryFault.get.poke((phase == "success" || textureReply.exists(_.fault)).B)
         val commandFire = commandReply.nonEmpty && dut.io.cbMem.resp.ready.peek().litToBoolean
         val attachmentFire = attachmentReply.nonEmpty && dut.io.fbMem.resp.ready.peek().litToBoolean
+        val textureFire = textureReply.nonEmpty && dut.io.texMem.resp.ready.peek().litToBoolean
+        if (dut.io.texMem.req.valid.peek().litToBoolean && dut.io.texMem.req.ready.peek().litToBoolean) {
+          assert(phase == "textureFault")
+          dut.io.texMem.req.bits.write.expect(false.B)
+          val fault = !faultInjected
+          faultInjected ||= fault
+          textures += Reply(dut.io.texMem.req.bits.addr.peek().litValue.toLong,
+            0xffffffffL, false, fault, cycle + 13)
+        }
         val cbValid = dut.io.cbMem.req.valid.peek().litToBoolean
         val cbFire = cbValid && dut.io.cbMem.req.ready.peek().litToBoolean
         if (cbValid) {
@@ -111,7 +132,7 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
         } else assert(attachmentStall.isEmpty, "offered attachment request disappeared")
         if (fbFire) {
           dut.io.fbMem.req.bits.write.expect(true.B)
-          assert(!Set("cancel", "cancelEarly", "commandFault", "badVersion", "badBounds", "badPass", "unaligned", "overflow", "badLimit")(phase),
+          assert(!Set("cancel", "cancelEarly", "commandFault", "textureFault", "badVersion", "badBounds", "badPass", "unaligned", "overflow", "badLimit")(phase),
             "a failed or invalid job exported attachments")
           val fault = phase == "attachmentFault" && !faultInjected
           faultInjected ||= fault
@@ -120,6 +141,7 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
           writes += 1
         }
         if (commandFire) commandReply = None
+        if (textureFire) textureReply = None
         if (attachmentFire) {
           val r = attachmentReply.get
           if (!r.fault) memory(r.address) = r.data
@@ -133,7 +155,7 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
         assert(p, s"timeout $phase at $cycle; command reads=$reads, attachment writes=$writes")
       }
 
-      val cases = Seq("success", "override", "jobBlend", "cancelEarly", "cancel", "commandFault", "attachmentFault", "badVersion",
+      val cases = Seq("success", "override", "jobBlend", "cancelEarly", "cancel", "commandFault", "textureFault", "attachmentFault", "badVersion",
         "badBounds", "badPass", "unaligned", "overflow", "badLimit", "boundary", "empty", "success")
       for ((name, index) <- cases.zipWithIndex) {
         val startCycle = cycle
@@ -158,6 +180,10 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
         job.bits.commandLimit.poke(limit.U)
         job.bits.config.screenW.poke(16.U); job.bits.config.screenH.poke(16.U)
         job.bits.config.depthTestEnable.poke(true.B); job.bits.config.depthWriteEnable.poke(true.B)
+        if (phase == "textureFault") {
+          job.bits.config.texEnable.poke(true.B); job.bits.config.texBase.poke(0x30000.U)
+          job.bits.config.texWidth.poke(2.U); job.bits.config.texHeight.poke(2.U)
+        }
         if (phase == "jobBlend") {
           job.bits.config.blendCfgEnable.poke(true.B)
           job.bits.config.blendSrcFactor.poke(1.U); job.bits.config.blendDstFactor.poke(1.U)
@@ -185,12 +211,15 @@ class PersistentTileRenderCoreSpec extends AnyFlatSpec {
         val expectedStatus = if (invalid) TilePassStatus.invalidDescriptor
           else if (phase == "cancel" || phase == "cancelEarly") TilePassStatus.cancelled
           else if (phase == "commandFault") TilePassStatus.commandFault
+          else if (phase == "textureFault") TilePassStatus.textureFault
           else if (phase == "attachmentFault") TilePassStatus.memoryFault else TilePassStatus.success
         completion.bits.status.expect(expectedStatus.U)
         completion.bits.identity.context.expect(p.context.U)
         completion.bits.identity.pass.expect(p.id.U)
         completion.bits.identity.generation.expect(p.generation.U)
-        assert(commands.isEmpty && commandReply.isEmpty && attachments.isEmpty && attachmentReply.isEmpty)
+        assert(commands.isEmpty && commandReply.isEmpty && attachments.isEmpty && attachmentReply.isEmpty &&
+          textures.isEmpty && textureReply.isEmpty)
+        if (phase == "textureFault") assert(faultInjected && writes == 0)
         if (invalid) assert(reads == 0 && writes == 0)
         if (phase == "cancelEarly") assert(reads == 0 && writes == 0)
         if (Set("cancel", "commandFault")(phase)) assert(reads == 85 && writes == 0)
