@@ -49,17 +49,17 @@ class TileJobDescriptorReaderSpec extends AnyFlatSpec {
       assert(p, "descriptor phase timed out")
     }
     def returnLine(w: Array[Long], index: Int, fault: Boolean = false): Unit = {
-      d.io.memoryResponse.bits.transactionId.poke(3.U)
+      d.io.memoryResponse.bits.transactionId.poke((3 + index).U)
       val line = (0 until 16).map(i => BigInt(w(index * 16 + i) & 0xffffffffL) << (32 * i)).foldLeft(BigInt(0))(_ | _)
       d.io.memoryResponse.bits.readData.poke(line.U); d.io.memoryResponse.bits.fault.poke(fault.B)
       d.io.memoryResponse.valid.poke(true.B)
       d.io.memoryResponse.ready.expect(true.B); d.clock.step(); d.io.memoryResponse.valid.poke(false.B)
     }
     def fetch(w: Array[Long] = TileDescriptorTestData.words(), base: Long = 0x1000, fault: Int = -1): Unit = {
-      for (index <- 0 to (if (fault < 0) 3 else fault)) {
+      for (index <- 0 until 4) {
         waitFor(d.io.memoryRequest.valid.peek().litToBoolean)
         d.io.memoryRequest.bits.address.expect((base + index * 64).U)
-        d.io.memoryRequest.bits.transactionId.expect(3.U)
+        d.io.memoryRequest.bits.transactionId.expect((3 + index).U)
         d.io.memoryRequest.bits.isWrite.expect(false.B)
         d.io.memoryRequest.bits.sizeLog2.expect(6.U)
         d.io.memoryRequest.bits.cachePolicy.expect(2.U)
@@ -67,7 +67,14 @@ class TileJobDescriptorReaderSpec extends AnyFlatSpec {
         for (_ <- 0 until 3) { d.clock.step(); assert(d.io.memoryRequest.bits.peek().litValue == offered) }
         d.io.memoryRequest.ready.poke(true.B); d.clock.step(); d.io.memoryRequest.ready.poke(false.B)
         for (_ <- 0 until 2) { d.clock.step(); d.io.completion.valid.expect(false.B) }
+      }
+      // All four requests must fit without waiting for any response. Return
+      // independent state groups out of order, including after a line fault.
+      d.io.memoryRequest.valid.expect(false.B)
+      for ((index, returned) <- Seq(2, 0, 3, 1).zipWithIndex) {
+        d.io.fetching.expect(true.B); d.io.completion.valid.expect(false.B)
         returnLine(w, index, fault == index)
+        if (returned < 3) d.io.completion.valid.expect(false.B)
       }
     }
     def coreResult(status: Int, reads: Int = 0): Unit = {
@@ -179,6 +186,117 @@ class TileJobDescriptorReaderSpec extends AnyFlatSpec {
         dut.io.completion.valid.expect(false.B)
       }
       h.coreResult(TilePassStatus.cancelled); h.complete(TilePassStatus.cancelled)
+    }
+  }
+
+  it should "retain a stalled offer after an older fault and drain all tags before releasing cancellation" in {
+    simulate(reader) { dut =>
+      val h = new Driver(dut); val w = TileDescriptorTestData.words()
+      h.submit(); h.waitFor(dut.io.memoryRequest.valid.peek().litToBoolean)
+      dut.io.memoryRequest.ready.poke(true.B); dut.clock.step()
+      dut.io.memoryRequest.ready.poke(false.B)
+      dut.io.memoryRequest.bits.transactionId.expect(4.U)
+      val offered = dut.io.memoryRequest.bits.peek().litValue
+      dut.io.cancel.poke(true.B); h.returnLine(w, 0, fault = true); dut.io.cancel.poke(false.B)
+      for (_ <- 0 until 5) {
+        dut.clock.step(); dut.io.memoryRequest.valid.expect(true.B)
+        assert(dut.io.memoryRequest.bits.peek().litValue == offered)
+        dut.io.fetching.expect(true.B); dut.io.completion.valid.expect(false.B)
+      }
+      dut.io.memoryRequest.ready.poke(true.B); dut.clock.step()
+      dut.io.memoryRequest.ready.poke(false.B); dut.io.memoryRequest.valid.expect(false.B)
+      for (_ <- 0 until 4) { dut.clock.step(); dut.io.completion.valid.expect(false.B) }
+      h.returnLine(w, 1); h.complete(TilePassStatus.commandFault)
+
+      // A fault may coincide with acceptance of the next irrevocable offer.
+      // Drain that request, but do not create a third one on the same edge.
+      h.submit(); h.waitFor(dut.io.memoryRequest.valid.peek().litToBoolean)
+      dut.io.memoryRequest.ready.poke(true.B); dut.clock.step()
+      dut.io.memoryRequest.bits.transactionId.expect(4.U)
+      h.returnLine(w, 0, fault = true)
+      dut.io.memoryRequest.ready.poke(false.B); dut.io.memoryRequest.valid.expect(false.B)
+      dut.io.completion.valid.expect(false.B); h.returnLine(w, 1)
+      h.complete(TilePassStatus.commandFault)
+
+      // A late fault takes precedence over cancellation, after earlier lines
+      // have drained. No tag may be reused for a new job before the last reply.
+      for (lateFault <- Seq(false, true)) {
+        h.submit(); h.waitFor(dut.io.memoryRequest.valid.peek().litToBoolean)
+        dut.io.memoryRequest.ready.poke(true.B)
+        for (index <- 0 until 4) {
+          dut.io.memoryRequest.valid.expect(true.B)
+          dut.io.memoryRequest.bits.transactionId.expect((3 + index).U); dut.clock.step()
+        }
+        dut.io.memoryRequest.ready.poke(false.B); dut.io.cancel.poke(true.B)
+        dut.clock.step(); dut.io.cancel.poke(false.B)
+        for ((index, n) <- Seq(3, 1, 0, 2).zipWithIndex) {
+          for (_ <- 0 until 3) {
+            dut.clock.step(); dut.io.fetching.expect(true.B)
+            dut.io.submit.ready.expect(false.B); dut.io.completion.valid.expect(false.B)
+          }
+          h.returnLine(w, index, fault = lateFault && n == 3)
+        }
+        h.complete(if (lateFault) TilePassStatus.commandFault else TilePassStatus.cancelled)
+      }
+      h.submit(); h.fetch(); h.waitFor(dut.io.job.valid.peek().litToBoolean)
+      h.coreResult(0); h.complete(0)
+    }
+  }
+
+  it should "retire responses on their issue cycle without losing live tags" in {
+    simulate(reader) { dut =>
+      val h = new Driver(dut); val w = TileDescriptorTestData.words()
+      h.submit(); h.waitFor(dut.io.memoryRequest.valid.peek().litToBoolean)
+      dut.io.memoryRequest.ready.poke(true.B)
+      for (index <- 0 until 4) {
+        dut.io.memoryRequest.valid.expect(true.B)
+        dut.io.memoryRequest.bits.transactionId.expect((3 + index).U)
+        h.returnLine(w, index)
+      }
+      dut.io.memoryRequest.ready.poke(false.B)
+      h.waitFor(dut.io.job.valid.peek().litToBoolean)
+      dut.io.job.bits.passDescriptor.identity.generation.expect(55.U)
+      h.coreResult(0); h.complete(0)
+    }
+  }
+
+  it should "overlap fixed-latency descriptor reads without changing the decoded job" in {
+    simulate(reader) { dut =>
+      val h = new Driver(dut); val w = TileDescriptorTestData.words()
+      val measurements = for (window <- Seq(1, 4)) yield {
+        h.submit()
+        val pending = scala.collection.mutable.ArrayBuffer.empty[(Int, Int)]
+        var cycle = 0; var peak = 0; var accepted = 0
+        while (!dut.io.job.valid.peek().litToBoolean && cycle < 120) {
+          dut.io.memoryRequest.ready.poke((pending.size < window).B)
+          val reply = pending.find(_._2 <= cycle)
+          dut.io.memoryResponse.valid.poke(reply.nonEmpty.B)
+          reply.foreach { case (index, _) =>
+            dut.io.memoryResponse.bits.transactionId.poke((3 + index).U)
+            val data = (0 until 16).map(i => BigInt(w(index * 16 + i)) << (i * 32)).foldLeft(BigInt(0))(_ | _)
+            dut.io.memoryResponse.bits.readData.poke(data.U)
+          }
+          val issue = dut.io.memoryRequest.valid.peek().litToBoolean && dut.io.memoryRequest.ready.peek().litToBoolean
+          if (issue) {
+            dut.io.memoryRequest.bits.address.expect((0x1000 + 64 * accepted).U)
+            dut.io.memoryRequest.bits.transactionId.expect((3 + accepted).U)
+          }
+          if (reply.nonEmpty) dut.io.memoryResponse.ready.expect(true.B)
+          dut.clock.step()
+          reply.foreach(pending -= _)
+          if (issue) { pending += ((accepted, cycle + 12)); accepted += 1 }
+          peak = peak.max(pending.size); cycle += 1
+        }
+        assert(accepted == 4 && pending.isEmpty && cycle < 120)
+        dut.io.memoryResponse.valid.poke(false.B); dut.io.memoryRequest.ready.poke(false.B)
+        dut.io.job.bits.passDescriptor.color.clearValue.expect(0x10203040L.U)
+        dut.io.job.bits.passDescriptor.depth.clearValue.expect(0x5affffffL.U)
+        h.coreResult(0); h.complete(0)
+        info(s"descriptor transportWindow=$window responseLatency=12 jobOfferCycles=$cycle peakOutstanding=$peak")
+        (cycle, peak)
+      }
+      assert(measurements(0)._2 == 1 && measurements(1)._2 == 4)
+      assert(measurements(1)._1 < measurements(0)._1)
     }
   }
 }

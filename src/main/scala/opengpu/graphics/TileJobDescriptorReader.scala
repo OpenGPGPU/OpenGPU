@@ -28,7 +28,8 @@ class TileHostCompletion(commandIdWidth: Int) extends Bundle {
 }
 
 /** Own one bounded descriptor, immutable job and tagged result through drain.
-  * Descriptors use four 64-byte uncached reads, not sixty-four word reads.
+  * Descriptors use four independently tagged 64-byte uncached reads. All four
+  * can be outstanding; responses may return in any order.
   * Cancellation drains every offered/accepted request before publishing a
   * result, and preserves an offered job until the core accepts/cancels it.
   */
@@ -39,7 +40,7 @@ class TileJobDescriptorReader(
   memoryTransactions: Int = 8,
   transactionId: Int = 0
 ) extends Module {
-  require(transactionId >= 0 && transactionId < memoryTransactions)
+  require(transactionId >= 0 && transactionId + TileJobMemoryLayout.lines <= memoryTransactions)
   val io = IO(new Bundle {
     val submit = Flipped(Decoupled(new TileJobDescriptorRequest(commandIdWidth)))
     val job = Decoupled(new TileCommandJob)
@@ -53,12 +54,14 @@ class TileJobDescriptorReader(
     val busy = Output(Bool())
     val fetching = Output(Bool())
   })
-  private val idle :: bounds :: request :: response :: decode :: offer :: running :: result :: Nil = Enum(8)
+  private val idle :: bounds :: fetch :: decode :: offer :: running :: result :: Nil = Enum(7)
   private val state = RegInit(idle)
   private val binding = Reg(new TileJobDescriptorRequest(commandIdWidth))
   private val words = Reg(Vec(TileJobMemoryLayout.words, UInt(32.W)))
-  private val line = RegInit(0.U(2.W))
-  private val address = Reg(UInt(32.W))
+  private val issued = RegInit(0.U(3.W))
+  private val offered = RegInit(false.B)
+  private val live = RegInit(0.U(TileJobMemoryLayout.lines.W))
+  private val failed = RegInit(false.B)
   private val cancelled = RegInit(false.B)
   private val fetched = RegInit(0.U(64.W))
   private val resultBits = Reg(new TileHostCompletion(commandIdWidth))
@@ -120,20 +123,31 @@ class TileJobDescriptorReader(
 
   io.submit.ready := state === idle
   io.busy := state =/= idle
-  io.fetching := state === bounds || state === request || state === response || state === decode
+  io.fetching := state === bounds || state === fetch || state === decode
   io.job.valid := state === offer
   io.job.bits := decoded
   io.passCompletion.ready := state === running
   io.cancelCore := (state === offer || state === running) && abort
   io.completion.valid := state === result
   io.completion.bits := resultBits
-  io.memoryRequest.valid := state === request
+  io.memoryRequest.valid := state === fetch && offered
   io.memoryRequest.bits := 0.U.asTypeOf(io.memoryRequest.bits)
-  io.memoryRequest.bits.address := address
+  io.memoryRequest.bits.address := binding.base + (issued << 6)
   io.memoryRequest.bits.sizeLog2 := 6.U
   io.memoryRequest.bits.cachePolicy := CachePolicy.uncached
-  io.memoryRequest.bits.transactionId := transactionId.U
-  io.memoryResponse.ready := state === response
+  io.memoryRequest.bits.transactionId := transactionId.U +& issued(1, 0)
+  private val responseLine = (io.memoryResponse.bits.transactionId - transactionId.U)(1, 0)
+  private val responseInRange = io.memoryResponse.bits.transactionId >= transactionId.U &&
+    io.memoryResponse.bits.transactionId < (transactionId + TileJobMemoryLayout.lines).U
+  private val issueMask = Mux(io.memoryRequest.fire, UIntToOH(issued(1, 0), 4), 0.U(4.W))
+  private val liveWithIssue = live | issueMask
+  io.memoryResponse.ready := state === fetch && responseInRange && liveWithIssue(responseLine)
+  private val faultNow = io.memoryResponse.fire && io.memoryResponse.bits.fault
+  private val stop = abort || failed || faultNow
+  // An offer is irrevocable, even if an older line fails while it is stalled.
+  private val offeredNext = Mux(io.memoryRequest.fire, issued < 3.U && !stop, offered)
+  private val liveNext = liveWithIssue &
+    ~Mux(io.memoryResponse.fire, UIntToOH(responseLine, 4), 0.U(4.W))
   private def finish(status: UInt): Unit = {
     resultBits := 0.U.asTypeOf(resultBits)
     resultBits.commandId := binding.commandId
@@ -142,8 +156,9 @@ class TileJobDescriptorReader(
     state := result
   }
   when(io.submit.fire) {
-    binding := io.submit.bits; address := io.submit.bits.base
-    line := 0.U; cancelled := false.B; fetched := 0.U; state := bounds
+    binding := io.submit.bits
+    issued := 0.U; offered := false.B; live := 0.U; failed := false.B
+    cancelled := false.B; fetched := 0.U; state := bounds
   }
   when(state =/= idle && state =/= result && io.cancel) { cancelled := true.B }
   when(state === bounds) {
@@ -152,17 +167,26 @@ class TileJobDescriptorReader(
       binding.limit <= (BigInt(1) << 32).U && end <= binding.limit
     when(abort) { finish(TilePassStatus.cancelled.U) }
       .elsewhen(!valid) { finish(TilePassStatus.invalidDescriptor.U) }
-      .otherwise { state := request }
+      .otherwise { offered := true.B; state := fetch }
   }
-  when(io.memoryRequest.fire) { state := response }
-  when(io.memoryResponse.fire) {
-    assert(io.memoryResponse.bits.transactionId === transactionId.U,
-      "descriptor response must retain its reserved transaction ID")
-    for (i <- 0 until 16) words(Cat(line, i.U(4.W))) := io.memoryResponse.bits.readData(32 * i + 31, 32 * i)
-    when(io.memoryResponse.bits.fault) { finish(TilePassStatus.commandFault.U) }
-      .elsewhen(abort) { finish(TilePassStatus.cancelled.U) }
-      .elsewhen(line === 3.U) { state := decode }
-      .otherwise { line := line + 1.U; address := address + 64.U; state := request }
+  when(state === fetch) {
+    offered := offeredNext
+    live := liveNext
+    when(io.memoryRequest.fire) { issued := issued + 1.U }
+    when(io.memoryResponse.valid) {
+      assert(responseInRange && liveWithIssue(responseLine),
+        "descriptor response must belong to a live reserved transaction ID")
+    }
+    when(io.memoryResponse.fire) {
+      for (i <- 0 until 16) words(Cat(responseLine, i.U(4.W))) :=
+        io.memoryResponse.bits.readData(32 * i + 31, 32 * i)
+      when(io.memoryResponse.bits.fault) { failed := true.B }
+    }
+    when(!offeredNext && liveNext === 0.U) {
+      when(failed || faultNow) { finish(TilePassStatus.commandFault.U) }
+        .elsewhen(abort) { finish(TilePassStatus.cancelled.U) }
+        .otherwise { state := decode }
+    }
   }
   when(state === decode) {
     when(abort) { finish(TilePassStatus.cancelled.U) }

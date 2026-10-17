@@ -243,7 +243,7 @@ class RenderHost(
   private val stridedSrcStrideReg = RegInit(0.U(32.W))
   private val stridedDstStrideReg = RegInit(0.U(32.W))
   // Descriptor fetch, legacy DMA and core staging use disjoint lifetimes.
-  // The descriptor reuses the first DMA ID before any shader task is launched.
+  // The descriptor reuses four DMA IDs before any shader task is launched.
   private val descriptorRequest = tileHost.map(_.io.memoryRequest)
   io.kernelWordMemReq.valid := descriptorRequest.map(_.valid).getOrElse(false.B) ||
     fill.io.memoryRequest.valid || blit.io.memoryRequest.valid ||

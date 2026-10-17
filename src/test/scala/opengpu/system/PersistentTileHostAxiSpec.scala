@@ -11,13 +11,17 @@ import scala.collection.mutable
 class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   behavior of "persistent tile jobs through the unified AXI host"
 
-  for (shared <- Seq(false, true)) {
-    it should s"retain attachments and attribute descriptor/command/attachment failures with real shared shaders=$shared" in {
-      val gpu = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
-      val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16, tileSize = 16, tileAttachments = true)
-      simulate(new GpuHostSystemAxi(gfx, gpu, numComputeUnits = (if (shared) 2 else 1),
+  for ((shared, count, lanes, warps) <- Seq((false, 1, 4, 2), (true, 2, 4, 2), (true, 4, 16, 8))) {
+    it should s"retain attachments and attribute failures with shared=$shared, $count CUs, $lanes lanes and $warps warps" in {
+      if (lanes == 16) assume(Runtime.getRuntime.maxMemory() >= 4L * 1024 * 1024 * 1024,
+        "The four-CU 16-lane/eight-warp host needs a larger JVM heap; run sbt -J-Xmx8G 'testOnly opengpu.system.PersistentTileHostAxiSpec'.")
+      val gpu = GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2)
+      val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16, tileSize = 16,
+        tileAttachments = true, fragmentBatchLimit = math.max(8, lanes))
+      simulate(new GpuHostSystemAxi(gfx, gpu, numComputeUnits = count,
         fragCore = shared, sharedGraphics = shared, parallelGraphics = shared,
-        enableFpuBackend = shared, memoryAxiDataBytes = 32, persistentAttachments = true)) { dut =>
+        enableFpuBackend = shared, memoryAxiDataBytes = 32, persistentAttachments = true,
+        exposePerformance = true)) { dut =>
         initialize(dut)
         val caps = axiRead(dut, RenderHostRegs.CAPABILITIES)
         assert(caps.testBit(GpuCapabilities.PersistentTileJobs) && caps.testBit(GpuCapabilities.ProtectedVmState))
@@ -86,13 +90,22 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           axiWrite(dut, GpuCommandMmioRegs.COMPLETION_POP, 1)
           axiWrite(dut, RenderHostRegs.IRQ, 3)
         }
-        // Real RV32 vector passthrough, using the 4-lane/2-warp ABI.
+        // Real RV32 vector passthrough, using the configured SoA staging ABI.
         def addi(rd: Int, rs: Int, imm: Int): Long = ((imm & 4095).toLong << 20) | (rs << 15) | (rd << 7) | 0x13
+        def add(rd: Int, a: Int, b: Int): Long = (b << 20) | (a << 15) | (rd << 7) | 0x33
+        def slli(rd: Int, rs: Int, n: Int): Long = (n << 20) | (rs << 15) | (1 << 12) | (rd << 7) | 0x13
         def load(base: Int, dst: Int): Long = (1 << 25) | (base << 15) | (6 << 12) | (dst << 7) | 7
         def store(base: Int, src: Int): Long = (1 << 25) | (base << 15) | (6 << 12) | (src << 7) | 0x27
-        val program = Seq(0x00241293L, 0x005082b3L, 0xc1027057L,
-          addi(6,5,96),load(6,2),addi(6,5,192),store(6,2),
-          addi(6,5,64),load(6,3),addi(6,5,224),store(6,3),0x30500073L)
+        val capacity = lanes * warps
+        // Large 128-thread offsets do not fit a positive addi immediate.
+        def address(offset: Int): Seq[Long] =
+          Seq(addi(7, 0, offset / 16), slli(7, 7, 4), add(6, 5, 7))
+        val vset = (3L << 30) | (0x10L << 20) | (lanes << 15) | (7 << 12) | 0x57
+        val program = Seq(slli(5, 8, 2), add(5, 1, 5), vset) ++
+          address(12 * capacity) ++ Seq(load(6, 2)) ++
+          address(24 * capacity) ++ Seq(store(6, 2)) ++
+          address(8 * capacity) ++ Seq(load(6, 3)) ++
+          address(28 * capacity) ++ Seq(store(6, 3), 0x30500073L)
         put(0x3000, program)
         put(0x3100, Seq(0xffffffffL))
         axiWrite(dut, RenderHostRegs.IRQ, 1)
@@ -167,10 +180,21 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           assert((result & 255) == 0x40+run && ((result >> 8) & 7) == (if (name == "legacyOpcode") 6 else 7))
           assert(((result >> 11) & 15) == expected && result.testBit(15) == (expected == 0), s"$name result=$result")
           val bytes = axiRead(dut, GpuCommandMmioRegs.COMPLETION_BYTES_LO)
-          if (name == "success") assert(bytes == 320 && storedBytes == 512 && attachmentReads == 0)
+          if (name == "success") {
+            assert(bytes == 320 && storedBytes == 512 && attachmentReads == 0)
+            if (shared) {
+              val peak = dut.io.performance.get.system.maxActiveComputeUnits.peek().litValue
+              assert(peak == count, s"only $peak of $count shared CUs were active")
+              info(s"shared CUs=$count lanes=$lanes warps=$warps peakActiveCUs=$peak")
+            }
+          }
           if (name == "load") assert(bytes == 320 && storedBytes == 0 && attachmentReads == 49)
           if (Set("bounds","envelope","size","legacyOpcode")(name)) assert(fetchedLines.isEmpty)
-          else assert(fetchedLines == (0 until (if (name == "descriptorFault") 3 else 4)).map(i => BigInt(0x1000+i*64)))
+          else if (name == "descriptorFault") {
+            // Requests already offered when a line fails must still drain.
+            assert(fetchedLines.contains(BigInt(0x1080)) && fetchedLines.distinct == fetchedLines)
+            assert(fetchedLines.forall(a => a >= 0x1000 && a <= 0x10c0 && (a & 63) == 0))
+          } else assert(fetchedLines.sorted == (0 until 4).map(i => BigInt(0x1000+i*64)))
           for (depth <- Seq(false,true); y <- 0 until 8; x <- 0 until 8) {
             val actual = word((if (depth) 0x20000L else 0x10000L)+y*512+x*4)
             val covered = x > 0 && y > 0
@@ -198,7 +222,9 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
             resetRequested = true; axiWrite(dut, GpuCommandMmioRegs.RESET, 1)
           })(writeLine) { dut.io.m_irq.peek().litToBoolean }
         pauseMemory()
-        assert(resetRequested && fetchedLines == Vector(BigInt(0x1000)) && storedBytes == 0 && commandReads == 0)
+        assert(resetRequested && fetchedLines.contains(BigInt(0x1000)) && storedBytes == 0 && commandReads == 0)
+        assert(fetchedLines.distinct == fetchedLines && fetchedLines.forall(a =>
+          a >= 0x1000 && a <= 0x10c0 && (a & 63) == 0))
         assert((axiRead(dut, GpuCommandMmioRegs.STATUS) & 10) == 0, "reset must retire the owner and discard its completion")
         axiWrite(dut, RenderHostRegs.IRQ, 3)
         phase = "dependency"; fetchedLines = Vector.empty; storedBytes = 0; commandReads = 0

@@ -486,8 +486,10 @@ advertises bit 30 and opcode 7, rejects the legacy render opcode, and fetches a
 versioned 256-byte descriptor as four uncached cache-line reads. It validates the
 full 33-bit allocation before fetch, rejects reserved/truncated encodings, then
 retains attachment views and all draw defaults through completion. The descriptor
-reuses one DMA transaction ID before staging starts, adding no simultaneous ID
-owner. The C ABI and every field offset are checked.
+reuses four reserved DMA transaction IDs before staging starts, adding no
+simultaneous ID owner. Reads can overlap and responses may return in any order;
+cancellation or a line fault retains every stalled offer and live response until
+drain. The C ABI and every field offset are checked.
 
 Unified DMA/resolve/invalidate commands serialize against tile jobs in queue
 order; unrelated compute remains dispatchable in the same VM. A small outstanding
@@ -497,9 +499,12 @@ transfer sees all 512 exported tile bytes before the next descriptor fetch, and
 the final blended pass loads and preserves that copy. Descriptor reset/cancellation,
 Sv32 rebinding, failed descriptor/command/attachment reads, shader traps, texture
 faults, stable results and healthy reuse run through the real hierarchy. The
-programmable configuration uses two actual shared CUs with four lanes/two warps.
-Native validation of this host profile at four CUs/sixteen lanes/eight warps
-remains required; the earlier shared-system job harness covers that CU profile.
+programmable host tests cover two actual shared CUs with four lanes/two warps
+and four shared CUs with sixteen lanes/eight warps. Final-image, traffic, fault,
+reset and Sv32 checks run through the complete host path. Smaller whole-warp
+fragment batches activate all configured CUs; the counter observes four active
+CUs in the four-CU host test. This does not establish full warp occupancy or a
+scaling result.
 
 An attachment-load fault exposed a producer-drain deadlock: the store failed
 while command prefetch kept a later draw live. Accepted attachment faults now
@@ -510,10 +515,22 @@ with depth `NEVER` fetches each covered old depth sample once (49 reads) and
 exports nothing; a clear-start pass reads no old attachments and exports exactly
 512 bytes after both draws.
 
-Thirty-six checks pass in the final descriptor/ABI/host/legacy cohort, and
-sixteen controller/router checks pass separately. The descriptor reader passes
-its standalone 1 GHz synthesis/mapping screen (+293.576 ps core, +460.350 ps I/O).
-This screen excludes the host, shared CUs, full renderer and post-route timing.
+The initial host implementation passed 52 distinct checks, as recorded above.
+The [descriptor-window evidence](performance/mobile-h1-descriptor-window-2026-10-18.json)
+records subsequent validation and physical checks. In a controlled reader test
+with twelve-cycle responses, a transport limited to one outstanding line takes
+54 cycles to offer the job; permitting four takes 18 cycles with identical
+decoded state. These are component cycles, not an AXI/frame-rate measurement.
+The final cohorts pass 56 distinct checks: 47 unchanged ABI/legacy/control checks,
+six descriptor-reader checks and three host configurations. The host checks in
+the earlier 50-test regression are repeated by the final nine-test cohort and
+counted once.
+The updated reader passes its standalone 1 GHz synthesis/mapping screen
+(+294.981 ps core, +406.521 ps I/O) and its TC/SLVT 1 GHz routed check with a
+25% I/O delay budget: +282.140 ps worst setup, +27.1948 ps worst hold and zero
+setup/hold, DRC, antenna, placement or flow errors. Both checks cover only the
+descriptor reader; they exclude the host, shared CUs and full renderer. The
+reported power has no workload activity and does not qualify energy per frame.
 The profile currently rejects command/texture buffering and framebuffer write
 coalescing until their fault callbacks carry the required ownership. Mixed
 in-pass clear/draw host commands, broader resources, scoped dependency events,

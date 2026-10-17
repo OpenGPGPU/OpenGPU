@@ -356,11 +356,14 @@ five-bit LOD bias [20:16]. View/load/store/resolve admission retains the checked
 tile contract. Texture and shader bindings retain the existing limited ABI;
 general bounded resources remain part of the hardware-alignment work.
 
-Descriptor fetch uses four 64-byte uncached reads through the existing translated
-DMA line client, reserving its first ID before shader staging begins. The reader
-checks the complete 33-bit descriptor range before its first request. It drains
-offered reads on reset/cancellation and never launches a partially fetched job.
-Faults stop command prefetch and retire one result after all owners drain.
+Descriptor fetch uses four independently tagged 64-byte uncached reads through
+the existing translated DMA line client, reserving its four IDs before shader
+staging begins. All four reads may be outstanding and responses may return in
+any order. The reader checks the complete 33-bit descriptor range before its
+first request. A fault or cancellation stops new offers, preserves any stalled
+offer and drains every issued response before releasing ownership. It never
+launches a partially fetched job. Faults stop command prefetch and retire one
+result after all owners drain.
 
 Completion keeps the unified command ID, which software reserves until `POP`.
 Statuses are 0 success, 1 invalid descriptor, 2 cancelled, 3 attachment fault,

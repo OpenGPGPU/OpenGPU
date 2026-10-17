@@ -1,0 +1,282 @@
+{
+  "scope": "H0/H1 descriptor latency optimization and proposed 4-CU/16-lane/8-warp host integration. Hardware alignment remains in progress; this is not whole-GPU performance qualification.",
+  "reference_checkpoint": "9774d32",
+  "initial_host_evidence": "docs/performance/mobile-h1-persistent-host-2026-10-18.json",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/TileJobDescriptorReader.scala": "b7c2cc63c253deb976539434fa90ca8b8d58d8bd7bf1bd6d6c64f7cbd7e34728",
+    "src/main/scala/opengpu/graphics/RenderHost.scala": "8c14efd00ba4720d5193a4b2993401fecfd7e6c45f9db28ea0804c5ef4b37c61",
+    "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "8927e8d16fdd222da9dc662a914b375ebf821c7fa1e690e8727e876c2abaeb45",
+    "src/test/scala/opengpu/graphics/TileJobDescriptorReaderSpec.scala": "8b91fae73826e8d76c5b71f9fd178ac5e70f459623989efaeaefce8446fb64d5",
+    "src/test/scala/opengpu/system/PersistentTileHostAxiSpec.scala": "9b2732793511e9c6bd48e4e7bd0a971d6da9a1cb540e88bf622e72d2a3cf37f9",
+    "src/test/scala/opengpu/graphics/GpuAbiLayoutSpec.scala": "0fa1ac5239c55b556f6df8f87c9551daf508b9386bb22f5727f386a144275d40",
+    "src/test/scala/opengpu/graphics/RenderHostSpec.scala": "bff6f3c0e98ee38184100bce7695ae330849b24b812356c8d2b981022b512f44",
+    "src/test/scala/opengpu/graphics/PersistentTileRenderCoreSpec.scala": "890f7b18a10e8812f74b0183912a86f36cef092410a793de40a1f1ab11d5ba8b",
+    "src/test/scala/opengpu/system/GpuHostAxiSpec.scala": "f91f09789f8c607675458419ced046372e75d8563b1104e4818caa216012bc82",
+    "src/test/scala/opengpu/graphics/TileCommandPassControllerSpec.scala": "10f13005f9f799eb95583d004c943dabe19b0ba6d609d6d053714ddcff3e3ba9",
+    "src/test/scala/opengpu/command/GpuCommandRouterSpec.scala": "b0abf4c1950cd8788aa9d2cfba1e7e43fc353560ea16e52f38bec09e06d78ae7",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "d3150803b874e51173a707a1cfc1e163806de8a1d6cb982698c57ef71945a748",
+    "scripts/qualify_ppa.py": "0c681ceaa9f30985d796159c9483114c6dc511fbdef345678549f96725655a93",
+    "build.sbt": "6f23fd73e23ef72909d01a33a27a93ff54d0bff1c7eaadc5ce49d595ff42c5e1"
+  },
+  "change": {
+    "fetch": "Four uncached 64-byte requests use consecutive reserved DMA IDs. All can be live; response ID selects the descriptor line. The 256-byte memory ABI and total ID budget do not change.",
+    "drain": "A fault/cancellation stops new offers, preserves any stalled offer, and drains every issued response before clearing fetching or publishing a result. A late line fault retains command-fault status over cancellation.",
+    "host": "Before shader staging, the reader owns all four host DMA IDs. Legacy DMA and tile owners still serialize. No response can escape into a later owner.",
+    "width": "Use widening addition for base ID plus line index; a nonzero, non-power-of-two-aligned base (3 in eight transactions) catches carry truncation.",
+    "shader_fixture": "Derive vector length and SoA offsets from lanes*warps. Construct large offsets in registers rather than truncating signed addi immediates. Whole-warp fragment batches exercise every shared CU."
+  },
+  "functional": {
+    "logs": {
+      "descriptor_window_final": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/descriptor_window_final.log",
+        "sha256": "52e9abe14ae3ab2f041ab9bab68e464989d510a8ead07110e17d79cf283e395c",
+        "passed": true,
+        "raw_checks": 9
+      },
+      "descriptor_window_regression": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/descriptor_window_regression.log",
+        "sha256": "bbefe07fe768d59b5b46d5cc208fe5f38ac58eb1f92861e55f3e214b643cbf6a",
+        "passed": true,
+        "raw_checks": 50
+      },
+      "descriptor_window_synthesis": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/descriptor_window_synthesis.log",
+        "sha256": "6a12b5b85184a09fdb979e308245d8b197ba922d0ee262451bd29ff79f916123",
+        "passed": true
+      },
+      "descriptor_window_route": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/descriptor_window_route.log",
+        "sha256": "ef004bbb7d30faabb82efb0d74f031d2527d157ba0253587b71c642cd833b749",
+        "passed": true
+      }
+    },
+    "distinct_checks": 56,
+    "counting": "50-check regression contains 47 ABI/legacy/control checks plus three host checks. The final nine-check run repeats those three host checks with active-CU assertions and adds six final-source reader checks: 47+9=56, not 59.",
+    "final_cohort": {
+      "TileJobDescriptorReaderSpec": 6,
+      "PersistentTileHostAxiSpec": 3
+    },
+    "other_checks": {
+      "GpuAbiLayoutSpec": 12,
+      "RenderHostSpec": 15,
+      "PersistentTileRenderCoreSpec": 1,
+      "GpuHostAxiSpec": 3,
+      "TileCommandPassControllerSpec": 7,
+      "GpuCommandRouterSpec": 9
+    },
+    "reader_coverage": [
+      "Full-field decoding, immutable job/result, input mutation and exact 4 GiB bounds.",
+      "Allocation and reserved/high-field rejection; healthy reuse.",
+      "Four requests accepted before any reply; reordered replies; fault on every line; all live responses drain.",
+      "Cancellation before fetch, during a stalled request, with four issued reads, and during a stalled job.",
+      "Older fault while next offer is stalled; fault simultaneous with next issue; no new third offer; fault/cancel precedence including last reply.",
+      "Response on the request issue cycle, including consecutive issue/response pairs.",
+      "Controlled transport windows one and four return identical decoded state."
+    ],
+    "native_profiles": [
+      {
+        "backend": "fixed function",
+        "cus": 1,
+        "lanes": 4,
+        "warps": 2,
+        "fragment_batch_limit": 8
+      },
+      {
+        "backend": "actual shared shader CUs, FPU enabled",
+        "cus": 2,
+        "lanes": 4,
+        "warps": 2,
+        "fragment_batch_limit": 8,
+        "observed_peak_active_cus": 2
+      },
+      {
+        "backend": "actual shared shader CUs, FPU enabled",
+        "cus": 4,
+        "lanes": 16,
+        "warps": 8,
+        "fragment_batch_limit": 16,
+        "observed_peak_active_cus": 4
+      }
+    ],
+    "native_memory": "256-bit AXI; four-bank L2, 8 sets/two ways (test capacity); 4/8-cycle read delays and 17-cycle write acknowledgements. Bare and Sv32 superpage rebinding to +4 MiB.",
+    "native_coverage": "Each profile repeats all 15 scenario groups from the initial host record, including exact final images/traffic, all fault classes, reset during descriptor fetch, stable result/VM mutation rejection and tile -> strided DMA -> blended LOAD tile publication.",
+    "commands": [
+      "sbt -J-Xmx8G 'testOnly opengpu.system.PersistentTileHostAxiSpec opengpu.graphics.GpuAbiLayoutSpec opengpu.graphics.RenderHostSpec opengpu.graphics.PersistentTileRenderCoreSpec opengpu.system.GpuHostAxiSpec opengpu.graphics.TileCommandPassControllerSpec opengpu.command.GpuCommandRouterSpec'",
+      "sbt -J-Xmx8G 'testOnly opengpu.graphics.TileJobDescriptorReaderSpec opengpu.system.PersistentTileHostAxiSpec' 'runMain opengpu.elaboration.EmitPpaRtl tile-descriptor-reader generated/mobile-h1/tile-descriptor-window-replay-rtl'"
+    ]
+  },
+  "latency": {
+    "scope": "Same final reader with a controlled memory transport allowing either one or four outstanding requests; fixed response latency 12 cycles. Not a native AXI or whole-frame measurement, and not a separately replayed old RTL revision.",
+    "response_latency_cycles": 12,
+    "window_one": {
+      "job_offer_cycles": 54,
+      "peak_outstanding": 1
+    },
+    "window_four": {
+      "job_offer_cycles": 18,
+      "peak_outstanding": 4
+    },
+    "cycles_saved": 36,
+    "latency_ratio": 3.0,
+    "bytes": "Both fetch four lines (256 descriptor bytes); healthy native jobs still fetch 320 draw-record bytes, read zero old cleared attachments and export 512 attachment bytes only at pass end."
+  },
+  "physical_scope": "Only TileJobDescriptorReader, default 16-lane/eight-warp shader ABI with IDs derived from four shared CUs (64 transactions, first reserved ID 32). No host/CU/renderer/AXI adapter. TC/SLVT, 1000 ps clock, 25% I/O budget.",
+  "emission": {
+    "frozen_rtl": "generated/mobile-h1/tile-descriptor-window-rtl",
+    "final_replay_rtl": "generated/mobile-h1/tile-descriptor-window-replay-rtl",
+    "byte_identical": true,
+    "sha256": {
+      "filelist.f": "8e4128127bb4275a18584b3fa68097e76d2d0b38899b8943897033c7b7b09aa4",
+      "TileJobDescriptorReader.sv": "feb1d455d107321f002f25a3adc0d593d2a2bc6a042ae0a902b91f5b5ea77010",
+      "verification/layers-TileJobDescriptorReader-Verification.sv": "1e1b601c431f992839fbbdb11574b274216a8ba1b74cf272eb7a837f8f4dd19a",
+      "verification/assume/layers-TileJobDescriptorReader-Verification-Assume.sv": "93397c134785fcb1725b451dc9c99b8a97b4994a04533ffe3974fb1038b5691b",
+      "verification/assert/layers-TileJobDescriptorReader-Verification-Assert.sv": "47f40783a572b77c8659023ce51f3179a812adc0daada6405bfce8a9e26252c6",
+      "verification/assert/TileJobDescriptorReader_Verification_Assert.sv": "95cb83957f3e20bc4461f2e6bd8e188e3d19d0ad1fa9f0062a5fb46d6e3ac505",
+      "verification/cover/layers-TileJobDescriptorReader-Verification-Cover.sv": "2c3d0704e1c9f4c268a151263ac5203f54a1fd13cb4e6d09861fe258648a0061"
+    }
+  },
+  "synthesis": {
+    "artifact": "generated/mobile-h1/physical-tile-descriptor-window-syn",
+    "gate": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        294.981,
+        406.521
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "87f60dae1c1cea4face69a7f8f3ae3e5a2c222cbd8f60341d632e2c14bd437be",
+      "setup_passed": true,
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-tile-descriptor-window-syn/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "478f1c96f53d14db149bd6b43fc887d737c1a04ee89d6bb14e16e08ea32d3068"
+      }
+    },
+    "qor": {
+      "setup_worst_slack_ps": 294.981,
+      "core_clock_fmax_mhz": 1418.401
+    },
+    "hashes": {
+      "manifest.json": "f9c47c34d40784f523d807bdfd972b415e9bcf7a8407b1e8f1256eaa660924c8",
+      "result.json": "28bf6497c97aec29f189aef476bb1f95eecda701fc03cc88dc667ee0d177a4a3",
+      "qualification.json": "daf7864bea1bde38296a16f4fb883d99505fe5312392d5e354542d05c2b585d6"
+    }
+  },
+  "route": {
+    "artifact": "generated/mobile-h1/physical-tile-descriptor-window-route",
+    "gate": {
+      "passed": true,
+      "checks": {
+        "setup_worst_slack_ps": true,
+        "hold_worst_slack_ps": true,
+        "setup_violation_count": true,
+        "hold_violation_count": true,
+        "route_drc_errors": true,
+        "antenna_violating_nets": true,
+        "antenna_violating_pins": true,
+        "placement_violations": true,
+        "flow_errors": true,
+        "flow_completed": true,
+        "tool_verdict": true
+      },
+      "missing_metrics": [],
+      "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-tile-descriptor-window-route/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "9478726910c33b953ca656b867df93900892aa93c268aa818e711a37893b027f"
+      }
+    },
+    "qor": {
+      "instance_count": 34954,
+      "instance_area": 1493.11,
+      "sequential_cell_count": 2366,
+      "clock_buffer_count": 196,
+      "timing_repair_buffer_count": 1837,
+      "setup_tns_ps": 0,
+      "hold_tns_ps": 0,
+      "setup_worst_slack_ps": 282.14,
+      "hold_worst_slack_ps": 27.1948,
+      "setup_violation_count": 0,
+      "hold_violation_count": 0,
+      "core_clock_fmax_mhz": 1481.39,
+      "virtual_io_clock_fmax_mhz": 1571.51,
+      "reported_fmax_mhz": 1481.39,
+      "setup_clock_skew_ps": 12.3146,
+      "hold_clock_skew_ps": 15.8257,
+      "total_power_w": 0.00853222,
+      "placement_utilization": 26.6568,
+      "placement_violations": 0,
+      "estimated_wirelength": 40105.2,
+      "route_wirelength": 46256,
+      "route_vias": 91197,
+      "route_drc_errors": 0,
+      "route_drc_report_bytes": 0,
+      "antenna_violating_nets": 0,
+      "antenna_violating_pins": 0,
+      "ir_drop_vdd_worst": 0.00276848,
+      "ir_drop_vss_worst": 0.00294175,
+      "flow_warnings": 15,
+      "flow_errors": 0,
+      "critical_path": {
+        "startpoint": "io_memoryRequest_ready (input port clocked by vclk_core_clock)",
+        "endpoint": "u567 (rising edge-triggered flip-flop clocked by core_clock)",
+        "group": "core_clock",
+        "slack_ps": 282.14,
+        "arrival_ps": 800.08,
+        "data_path_delay_ps": 0.0,
+        "cell_delay_ps": 0.0,
+        "net_delay_ps": 0.0,
+        "cell_delay_percent": null,
+        "net_delay_percent": null,
+        "cell_count": 0,
+        "net_count": 0,
+        "dominant_cell_types": [],
+        "per_group": {
+          "core_clock": {
+            "startpoint": "io_memoryRequest_ready (input port clocked by vclk_core_clock)",
+            "endpoint": "u567 (rising edge-triggered flip-flop clocked by core_clock)",
+            "slack_ps": 282.14,
+            "arrival_ps": 800.08
+          },
+          "vclk_core_clock": {
+            "startpoint": "u948 (rising edge-triggered flip-flop clocked by core_clock)",
+            "endpoint": "io_memoryRequest_bits_address[31]",
+            "slack_ps": 285.44,
+            "arrival_ps": 464.56
+          }
+        }
+      }
+    },
+    "hashes": {
+      "manifest.json": "c52a8e5ae48752f1b80f41c3d0064299787cfb6e67f161a2a07ca2f8989673c4",
+      "result.json": "ffbaf6e201fb18e98bbe9d689b0178ea1b3b6be263a682b5acc1b95b1a0ae8c9",
+      "qualification.json": "5816c8492aad3ae0311257b5c2e7ef81cf0a107fdd365ef91fcbd8c6f4c804e3"
+    }
+  },
+  "excluded_yosys_screen": {
+    "artifact": "generated/mobile-h1/physical-tile-descriptor-window",
+    "qualification_passed": false,
+    "note": "Setup paths passed, but mapping proof is missing: the qualifier reads 1_synth.log (OpenROAD linking), while the quiet 1_2_yosys.log lacks recognized cell-count/ABC-results evidence. This run is not qualified. The separately qualified syn-engine synthesis and route above are authoritative."
+  },
+  "limitations": [
+    "The 8x8 single-tile workload and small test L2 do not establish sustained four-CU scaling, full eight-warp occupancy, target cache capacity or 720p frame rate.",
+    "Qualified physical results cover the reader alone. Reported tool area/power do not qualify integrated area or workload energy; no activity annotation was supplied.",
+    "One resident tile, one RGBA8-compatible color plane and one D24S8 plane; MRT, two tile engines, broader resources and formats remain pending.",
+    "Render-to-texture publication coverage, mixed clear/draw host commands, scoped dependencies, concurrent transfers and driver/Mesa adoption remain required.",
+    "Whole-renderer mapping and GPU physical qualification remain open, as do the original H0-H8 gates. No commercial GPU parity claim."
+  ]
+}
