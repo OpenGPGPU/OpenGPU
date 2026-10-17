@@ -37,6 +37,12 @@
 #define DRAW_RECORD_BLEND_WORD   35u
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+#ifndef OPENGPU_TEST_FLIP_TIMEOUT_MS
+#define OPENGPU_TEST_FLIP_TIMEOUT_MS 5000
+#endif
+#if OPENGPU_TEST_FLIP_TIMEOUT_MS <= 0 || OPENGPU_TEST_FLIP_TIMEOUT_MS > 2147483647
+#error "flip timeout must fit a positive poll timeout"
+#endif
 /* Overridable so the ARTI runner can compile the guest test for the same
  * resolution the RTL was elaborated with (-DTEST_WIDTH/-DTEST_HEIGHT). */
 #ifndef TEST_WIDTH
@@ -1164,10 +1170,11 @@ static int wait_flip_event(int fd, struct drm_event_vblank *event)
     ssize_t length;
     int ret;
 
-    /* A nonblocking atomic commit waits for the preceding render fence in its
-     * worker. Under instruction-level RTL simulation that draw takes roughly
-     * 21 host seconds, while guest virtual time advances much more slowly. */
-    ret = poll(&pollfd, 1, 5000);
+    /* A nonblocking commit programs scanout in its worker after any render
+     * dependency. RTL simulation can spend hundreds of milliseconds on each
+     * idle MMIO, so its runner supplies a larger finite delivery deadline.
+     * Event contents, sequence and pacing are still checked by the caller. */
+    ret = poll(&pollfd, 1, OPENGPU_TEST_FLIP_TIMEOUT_MS);
     if (ret <= 0) {
         if (!ret)
             errno = ETIME;

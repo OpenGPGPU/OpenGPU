@@ -473,6 +473,13 @@ the driver uses the DRM soft timer there because the model does not advance
 millions of RTL cycles per wall-clock refresh. Continuously clocked devices use
 the hardware IRQ when the capability is present.
 
+The standalone DRM smoke defaults to a 5-second page-flip event deadline.
+The ARTI runner supplies `ARTI_GPU_FLIP_WAIT_MS` (default 30,000 ms) through
+`OPENGPU_TEST_FLIP_TIMEOUT_MS`, because slow emulated MMIO also delays the
+commit worker. This changes only the finite wall-clock wait: event contents,
+sequence, minimum pacing intervals and framebuffer results remain checked.
+It does not change a GPU-cycle budget or establish rendering FPS.
+
 Host validation: `python3 scripts/test_driver.py`. Linux integration:
 `bash scripts/run_arti_gpu.sh` (Verilator with eight simulation threads by
 default; `GPU_SIM=flashsim` for FlashSim). Visual scanout:
