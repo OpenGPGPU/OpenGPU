@@ -41,6 +41,8 @@ class TranslatedWordClient(
     val flush = Flipped(Valid(new VectorTlbFlush(config)))
     /** A translated or fault response for this client was consumed. */
     val fault = Output(Bool())
+    /** Buffered command word status; consumed with out.fire, not line fire. */
+    val commandResponseFault = if (bufferCommandReads) Some(Output(Bool())) else None
     val translationStall = Output(Bool())
     val translationMiss = Output(Bool())
     val walkActive = Output(Bool())
@@ -54,8 +56,11 @@ class TranslatedWordClient(
     "texture read buffering is distinct from command and framebuffer clients")
   private val previousSatp = if (bufferCommandReads || bufferTextureReads)
     Some(RegNext(io.satp, 0.U)) else None
+  private val commandResponseFault = WireDefault(false.B)
+  io.commandResponseFault.foreach(_ := commandResponseFault)
   private val bridge = if (bufferCommandReads) {
     val buffered = Module(new BufferedCommandWordPort(config, wordTransactions))
+    commandResponseFault := buffered.io.responseFault
     buffered.io.invalidate := io.invalidateCommandReads.get || io.flush.valid ||
       io.satp =/= previousSatp.get
     buffered.io.port
@@ -78,6 +83,10 @@ class TranslatedWordClient(
 
   private val translator = Module(new GraphicsAddressTranslator(
     config, entries = 16, lineBytes = 64, maxOutstanding = outstanding,
+    // The command buffer accepts no new miss until its previous word reply
+    // retires. One registered entry preserves the arbiter boundary; deeper
+    // queues cannot be used by that owner. Other clients retain their window.
+    pendingDepth = if (bufferCommandReads) 1 else 16,
     preserveCachePolicy = preserveCachePolicy))
   translator.io.satp := io.satp
   translator.io.flush := io.flush

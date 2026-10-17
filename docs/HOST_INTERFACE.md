@@ -172,7 +172,8 @@ host-invalidate port ignores satp) but keep the submitting context's VM active
 rather than restoring ASID-0. Fill/blit/strided DMA translate under
 VECTOR_SATP.
 
-The command client remains uncached. Texture/framebuffer clients use the
+Command line fills remain uncached; an optional job-local line buffer may
+retain immutable command bytes until that job drains. Texture/framebuffer clients use the
 PTE cache policy. CPU writes still require the appropriate CPU cache/DMA
 synchronization; uncached GPU mappings only bypass GPU caches.
 
@@ -408,9 +409,19 @@ in queue order. A following transfer waits for tile result publication; a new
 tile waits for older memory-engine completion. Unrelated compute remains
 dispatchable. Legacy host-register DMA also waits for tile ownership to retire.
 CPU cache maintenance and explicit synchronization of shader side effects remain
-caller obligations. Command/texture buffering and framebuffer write coalescing
-are rejected in this first profile because their fault callbacks need an
-extended ownership contract.
+caller obligations. `--buffer-command-reads` enables a 64-byte command line
+buffer within the immutable job. Reuse is revoked at idle/job boundaries,
+reset entry, SATP changes and TLB flushes; invalidation also prevents an old
+pending fill from being reused, while its accepted word reply still drains.
+Texture buffering and framebuffer write coalescing remain rejected because
+their logical response/fault ownership needs an extended contract.
+
+Buffered command fault status is registered with the offered word and remains
+stable through reply backpressure and invalidation. The persistent controller
+consumes it on the word-response handshake; the earlier lower-line fault pulse
+does not identify that later handshake. The legacy aggregate line-fault event
+is preserved. Completion bytes still count logical four-byte reads, including
+cache hits, rather than physical line fills.
 
 For the supported texture path, attachment export invalidates a matching
 resident L2 line when its write is accepted. A dependent tile starts after the
@@ -423,7 +434,7 @@ CPU cache coherence or synchronize unrelated shader side effects.
 For a matching small shared-CU bring-up emission:
 
 ```sh
-sbt -J-Xmx8G 'runMain opengpu.elaboration.EmitGpuHostSystemAxi generated/tile-host --persistent-tile-jobs --frag-core --shared-graphics --parallel-graphics --cu-lanes 4 --cu-warps 2 --compute-units 2 --width 16 --height 16 --memory-axi-data-bytes 32'
+sbt -J-Xmx8G 'runMain opengpu.elaboration.EmitGpuHostSystemAxi generated/tile-host --persistent-tile-jobs --buffer-command-reads --frag-core --shared-graphics --parallel-graphics --cu-lanes 4 --cu-warps 2 --compute-units 2 --width 16 --height 16 --memory-axi-data-bytes 32'
 ```
 
 `--tile-store-credits` selects transfer capacity from the common mobile proposal.

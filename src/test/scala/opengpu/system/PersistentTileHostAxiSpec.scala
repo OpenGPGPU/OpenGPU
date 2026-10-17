@@ -8,11 +8,11 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
+abstract class PersistentTileHostAxiChecks(bufferCommands: Boolean) extends AnyFlatSpec with GpuHostTestSupport {
   behavior of "persistent tile jobs through the unified AXI host"
 
   for ((shared, count, lanes, warps) <- Seq((false, 1, 4, 2), (true, 2, 4, 2), (true, 4, 16, 8))) {
-    it should s"retain attachments and attribute failures with shared=$shared, $count CUs, $lanes lanes and $warps warps" in {
+    it should s"retain attachments and attribute failures with shared=$shared, $count CUs, $lanes lanes and $warps warps, buffered=$bufferCommands" in {
       if (lanes == 16) assume(Runtime.getRuntime.maxMemory() >= 4L * 1024 * 1024 * 1024,
         "The four-CU 16-lane/eight-warp host needs a larger JVM heap; run sbt -J-Xmx8G 'testOnly opengpu.system.PersistentTileHostAxiSpec'.")
       val gpu = GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2)
@@ -21,7 +21,7 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
       simulate(new GpuHostSystemAxi(gfx, gpu, numComputeUnits = count,
         fragCore = shared, sharedGraphics = shared, parallelGraphics = shared,
         enableFpuBackend = shared, memoryAxiDataBytes = 32, persistentAttachments = true,
-        exposePerformance = true)) { dut =>
+        exposePerformance = true, bufferCommandReads = bufferCommands)) { dut =>
         initialize(dut)
         val caps = axiRead(dut, RenderHostRegs.CAPABILITIES)
         assert(caps.testBit(GpuCapabilities.PersistentTileJobs) && caps.testBit(GpuCapabilities.ProtectedVmState))
@@ -33,8 +33,10 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
         var attachmentReads = 0
         var storedBytes = 0
         var commandReads = 0
+        var commandBase = 0x4000L
         var commandEnd = 0x4140L
         var expectedCommandWords = 80
+        def expectedCommandLines: Int = if (bufferCommands) (expectedCommandWords+15)/16 else expectedCommandWords
         var physicalOffset = 0L
         var walked = false
         var sawTranslatedDescriptor = false
@@ -49,7 +51,7 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           if (address == 0x300000) walked = true
           if (address == 0x401000) sawTranslatedDescriptor = true
           if (virtual >= 0x1000 && virtual < 0x1100) fetchedLines :+= virtual
-          if (virtual >= 0x4000 && virtual < commandEnd) commandReads += 1
+          if (virtual >= commandBase && virtual < commandEnd) commandReads += 1
           if ((virtual >= 0x10000 && virtual < 0x11000) ||
               (virtual >= 0x20000 && virtual < 0x21000)) attachmentReads += 1
           val base = address & ~BigInt(63)
@@ -60,8 +62,8 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           val attachment = (virtual >= colorTarget && virtual < colorTarget + 4096) ||
             (virtual >= 0x20000 && virtual < 0x21000)
           if (attachment) {
-            assert(Set("success", "dependency", "afterDma", "typed")(phase), s"failed/load-only job $phase exported an attachment")
-            assert(commandReads == expectedCommandWords, "attachment exported before all command records were fetched")
+            assert(Set("success", "dependency", "afterDma", "typed", "typedAlias")(phase), s"failed/load-only job $phase exported an attachment")
+            assert(commandReads == expectedCommandLines, "attachment exported before all command lines were fetched")
             storedBytes += mask.bitCount
           } else if (phase == "dependency" && virtual >= 0x50000 && virtual < 0x51000) {
             assert(storedBytes == 512, "DMA read a tile before its final attachment export")
@@ -113,7 +115,7 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
         put(0x3100, Seq(0xffffffffL))
         axiWrite(dut, RenderHostRegs.IRQ, 1)
         val cases = Seq("success", "load", "bounds", "envelope", "size", "encoding", "cmdBounds",
-          "descriptorFault", "commandFault", "attachmentFault") ++
+          "descriptorFault", "commandFault", "commandTailFault", "attachmentFault") ++
           (if (shared) Seq("shaderFault") else Seq("textureFault")) ++ Seq("legacyOpcode", "success")
         for ((name, run) <- cases.zipWithIndex) {
           phase = name; fetchedLines = Vector.empty; attachmentReads = 0; storedBytes = 0; commandReads = 0
@@ -155,6 +157,7 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           val faultAt = name match {
             case "descriptorFault" => BigInt(0x1080)
             case "commandFault" => BigInt(0x4000)
+            case "commandTailFault" => BigInt(0x4100)
             case "attachmentFault" => BigInt(0x20000)
             case "textureFault" => BigInt(0x60000)
             case _ => BigInt(-1)
@@ -173,7 +176,7 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           val result = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
           val expected = name match {
             case "success" | "load" => 0
-            case "descriptorFault" | "commandFault" => 5
+            case "descriptorFault" | "commandFault" | "commandTailFault" => 5
             case "attachmentFault" => 3
             case "textureFault" => 6
             case "shaderFault" => 4
@@ -185,6 +188,7 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           val bytes = axiRead(dut, GpuCommandMmioRegs.COMPLETION_BYTES_LO)
           if (name == "success") {
             assert(bytes == 320 && storedBytes == 512 && attachmentReads == 0)
+            assert(commandReads == expectedCommandLines)
             if (shared) {
               val peak = dut.io.performance.get.system.maxActiveComputeUnits.peek().litValue
               assert(peak == count, s"only $peak of $count shared CUs were active")
@@ -214,7 +218,7 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           assert(axiRead(dut, GpuCommandMmioRegs.COMPLETION) == result)
           pop()
           if (physicalOffset != 0) assert(walked && sawTranslatedDescriptor)
-          info(s"$name shared=$shared translated=${physicalOffset != 0} status=$expected descriptorLines=${fetchedLines.size} commandBytes=$bytes storedBytes=$storedBytes")
+          info(s"$name shared=$shared buffered=$bufferCommands translated=${physicalOffset != 0} status=$expected descriptorLines=${fetchedLines.size} commandBytes=$bytes commandLines=$commandReads storedBytes=$storedBytes")
         }
         // Reset while the first accepted descriptor line has no response yet.
         phase = "cancel"; fetchedLines = Vector.empty; storedBytes = 0; commandReads = 0
@@ -303,8 +307,8 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           typedDraw(20,30,40,8,last=true))
         commandEnd = 0x4000 + scene.size*164
         expectedCommandWords = scene.size*41
-        val typedCases = Seq("typed", "typedBounds", "typedBadType", "typedReserved", "typedBadRect",
-          "typedReadFault", "typedCancel", "typed")
+        val typedCases = Seq("typed", "typedAlias", "typedBounds", "typedBadType", "typedReserved", "typedBadRect",
+          "typedReadFault", "typedTailFault", "typedCancel", "typedCommandReset", "typed")
         for (typedTranslated <- Seq(false,true)) {
           physicalOffset=if(typedTranslated) 0x400000 else 0
           val satp=if(typedTranslated) 0x80000300 else 0
@@ -314,8 +318,14 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           put(0x3000,program)
           for ((name,index) <- typedCases.zipWithIndex) {
           phase=name; fetchedLines=Vector.empty; commandReads=0; attachmentReads=0; storedBytes=0
+          // Start a new job in the previous job's cached tail line, after
+          // CPU replacement. Merely missing on a different first line would
+          // not prove that the real host invalidates reuse at job boundaries.
+          commandBase=if(name=="typedAlias") 0x43c0 else 0x4000
+          commandEnd=commandBase+scene.size*164
           val job = TileDescriptorTestData.words(scene.size)
           job(0)=0x47545002L; job(3)=0x90+index; job(4)=0x1000+index
+          job(5)=commandBase
           job(7)=if(name=="typedBounds") commandEnd-1 else commandEnd
           val records = scene.map(_.toArray).toArray
           if(name=="typedBadType") records(0)(0)=2
@@ -324,36 +334,41 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           if(name=="typedReadFault" || name=="typedCancel") {
             job(17)=4; job(23)=4; records(0)=firstClear.toArray
           }
-          put(0x1000,job.toSeq); put(0x4000,records.toSeq.flatMap(_.toSeq))
+          put(0x1000,job.toSeq); put(commandBase,records.toSeq.flatMap(_.toSeq))
           for(base<-Seq(0x10000L,0x20000L);y<-0 until 8;x<-0 until 8)
             put(base+y*512+x*4,Seq(0xdeadbeefL))
           submit(0x90+index)
+          val startCycles = dut.io.performance.get.system.cycles.peek().litValue
           var resetClear=false; var faults=0
           serviceMemoryMaster(dut,readLine,readFault=address=>{
             val a=address-physicalOffset
-            val fail=name=="typedReadFault" && a>=0x10000 && a<0x11000
+            val fail=(name=="typedReadFault" && a>=0x10000 && a<0x11000) ||
+              (name=="typedTailFault" && a==((commandEnd-1)& ~63L))
             if(fail) faults+=1
             fail
           },writeAckDelay=17,readResponseDelay=8,maxCycles=100000,
             onReadAccepted=address=>{
               val a=address-physicalOffset
-              if(name=="typedCancel" && !resetClear && a>=0x10000 && a<0x11000) {
+              if(!resetClear && ((name=="typedCancel" && a>=0x10000 && a<0x11000) ||
+                  (name=="typedCommandReset" && a>=0x4000 && a<commandEnd))) {
                 resetClear=true; axiWrite(dut,GpuCommandMmioRegs.RESET,1)
               }
             })(writeLine) { dut.io.m_irq.peek().litToBoolean }
           pauseMemory()
-          if(name=="typedCancel") {
+          val jobCycles = dut.io.performance.get.system.cycles.peek().litValue - startCycles
+          if(name=="typedCancel" || name=="typedCommandReset") {
             assert(resetClear && storedBytes==0)
             assert((axiRead(dut,GpuCommandMmioRegs.STATUS)&10)==0)
             axiWrite(dut,RenderHostRegs.IRQ,3)
           } else {
             val result=axiRead(dut,GpuCommandMmioRegs.COMPLETION)
-            val status=if(name=="typed") 0 else if(name=="typedReadFault") 3 else 1
+            val healthy=name=="typed" || name=="typedAlias"
+            val status=if(healthy) 0 else if(name=="typedReadFault") 3 else if(name=="typedTailFault") 5 else 1
             assert((result&255)==0x90+index && ((result>>11)&15)==status && result.testBit(15)==(status==0),s"$name result=$result")
-            if(name=="typedReadFault") assert(faults>0)
+            if(name=="typedReadFault" || name=="typedTailFault") assert(faults>0)
             if(name=="typedBounds") assert(commandReads==0)
-            if(name=="typed") {
-              assert(commandReads==expectedCommandWords && attachmentReads==0 && storedBytes==512)
+            if(healthy) {
+              assert(commandReads==expectedCommandLines && attachmentReads==0 && storedBytes==512)
               assert(axiRead(dut,GpuCommandMmioRegs.COMPLETION_BYTES_LO)==expectedCommandWords*4)
             } else assert(storedBytes==0)
             for(y<-0 until 8;x<-0 until 8) {
@@ -370,16 +385,19 @@ class PersistentTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
               }
               if(x<4 && y<4) { c=(c&0x00ffff00L)|0x07000022L; d=(d&0x00ffffffL)|0x33000000L }
               if(covered && (d>>>24)==0x33 && 8<(d&0xffffff)) d=0x3c000008L
-              if(name!="typed") { c=0xdeadbeefL; d=0xdeadbeefL }
+              if(!healthy) { c=0xdeadbeefL; d=0xdeadbeefL }
               assert(word(0x10000+y*512+x*4)==c,s"$name color ($x,$y) actual=${word(0x10000+y*512+x*4).toHexString} expected=${c.toHexString}")
               assert(word(0x20000+y*512+x*4)==d,s"$name depth ($x,$y) actual=${word(0x20000+y*512+x*4).toHexString} expected=${d.toHexString}")
             }
             pop()
           }
-          info(s"$name shared=$shared CUs=$count lanes=$lanes warps=$warps Sv32=$typedTranslated commandWords=$commandReads attachmentReads=$attachmentReads stores=$storedBytes")
+          info(s"$name shared=$shared CUs=$count lanes=$lanes warps=$warps Sv32=$typedTranslated buffered=$bufferCommands commandLines=$commandReads attachmentReads=$attachmentReads stores=$storedBytes jobCycles=$jobCycles")
           }
         }
       }
     }
   }
 }
+
+class PersistentTileHostAxiSpec extends PersistentTileHostAxiChecks(bufferCommands = false)
+class BufferedPersistentTileHostAxiSpec extends PersistentTileHostAxiChecks(bufferCommands = true)

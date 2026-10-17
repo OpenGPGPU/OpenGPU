@@ -48,6 +48,16 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "buffered-command-client" =>
+        val pool = Some(opengpu.system.SharedCuShaderConfig(GpuConfig.MobileComputeUnits,
+          parallelFragments = true))
+        val words = math.max(4, GraphicsConfig().omInflight)
+        val total = opengpu.system.SharedCuShaderConfig.kernelWordTransactions(pool) +
+          6 * words + opengpu.system.SharedCuShaderConfig.stagingTransactions(pool) + 4
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.core.memory.TranslatedWordClient(GpuConfig(), wordTransactions = words,
+            outstanding = 1 << chisel3.util.log2Ceil(total), uncached = true,
+            preserveCachePolicy = true, bufferCommandReads = true), stageArgs, firtoolArgs)
       case "tile-descriptor-reader" =>
         val pool = Some(opengpu.system.SharedCuShaderConfig(GpuConfig.MobileComputeUnits,
           parallelFragments = true))

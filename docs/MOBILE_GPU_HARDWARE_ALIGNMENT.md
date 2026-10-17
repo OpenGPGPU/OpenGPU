@@ -531,8 +531,10 @@ The updated reader passes its standalone 1 GHz synthesis/mapping screen
 setup/hold, DRC, antenna, placement or flow errors. Both checks cover only the
 descriptor reader; they exclude the host, shared CUs and full renderer. The
 reported power has no workload activity and does not qualify energy per frame.
-The profile currently rejects command/texture buffering and framebuffer write
-coalescing until their fault callbacks carry the required ownership. Version-2
+The initial profile rejected command/texture buffering and framebuffer write
+coalescing until their fault callbacks carried the required ownership. Command
+buffering is now validated below; texture buffering and framebuffer combining
+remain gated. Version-2
 mixed clear/draw commands are described below. Broader resources, scoped dependency events,
 driver adoption, multiple tile engines and the remaining H0–H8 gates remain
 required. No frame-rate, energy or commercial-GPU parity follows from this
@@ -621,5 +623,79 @@ flow errors:
 Typed host clear coverage here uses 1x and
 the small test L2; the separate texture-publication checks exercise the proposed
 128 KiB cache. Full product combinations, compact command/bin references,
-fault-aware command buffering, broader resources and the remaining H0–H8 gates
+broader resources and the remaining H0–H8 gates
 remain required.
+
+## Implementation evidence: buffered command replies and fault status
+
+The [buffered-command record](performance/mobile-h1-buffered-commands-2026-10-18.json)
+adds job-local command reuse to the persistent profile with
+`--buffer-command-reads`. Fills still bypass L2; one immutable 64-byte line is
+retained until replacement or invalidation. Idle/job boundaries, reset entry,
+SATP changes and TLB flushes revoke reuse, including pending fills, while accepted
+word replies keep their data and fault status through backpressure and drain.
+
+The legacy translated-client fault pulse occurs when the lower line response
+is consumed. A buffered word is offered later, so qualifying that earlier pulse
+with word-response acceptance loses the fault. The command buffer now retains
+fault status alongside its word, clears it on clean cache hits, and exposes it
+to the persistent controller at that word's handshake. The legacy line event
+is unchanged. A controlled negative test restored the old connection and a
+command-faulted job incorrectly exported an attachment; the corrected source
+was restored before the final passing runs.
+
+Matched native host checks retain the same input records, bus delays and pixel
+oracles in both cache modes. For two version-1 draws, physical command-line
+reads fall from 80 to 5; for the six-command version-2 clear/draw stream they
+fall from 246 to 16 (15.375 times fewer requests). Logical completion bytes
+remain 320/984 respectively, with zero old reads for clear-start attachments
+and 512 final export bytes. These source-line counts exclude other GPU traffic.
+
+For the Sv32 healthy recovery job, measured cycles from after submission to
+completion IRQ are:
+
+| Backend | Unbuffered cycles | Buffered cycles | Reduction |
+|---|---:|---:|---:|
+| Fixed-function reference | 6,843 | 4,392 | 35.8% |
+| Two shared CUs, 4 lanes/2 warps | 10,210 | 9,202 | 9.9% |
+| Four shared CUs, 16 lanes/8 warps | 7,658 | 6,294 | 17.8% |
+
+These timings cover one deterministic small-scene trace with the small test
+L2, including the cache/arbitration effects of that trace. They are not isolated
+cold starts, sustained scaling measurements or frame-rate estimates. Starting
+a new job in the previous cached tail line after CPU replacement tests the
+actual job invalidation boundary; merely starting on a different line would
+evict the old line and miss that failure. First/last-line faults, reset during a
+command fill, clear faults, VM rebinding, precise status and healthy reuse are
+also checked. Texture buffering and framebuffer combining remain gated until
+their logical fault ownership is implemented. The original H0–H8 resource,
+throughput, physical and API-facing requirements remain in force.
+
+The command bridge accepts only one outstanding word/miss. Its translator now
+uses one registered, non-flowing pending entry instead of the default sixteen;
+other clients retain their existing queue window. For the isolated generic
+read/write client with 16 word IDs and 256 line IDs, mapped synthesis area falls
+from 8,125.05 to 1,915 tool units (76.4%). Both netlists pass mapping and 1 GHz
+synthesis setup at TC/SLVT with 25% I/O delays. This is a client-level comparison;
+the integrated read-only command path may constant-fold more logic, and these
+numbers do not establish whole-GPU area, power or clock.
+
+At the same 1 GHz clock, corner, I/O budget and 10% standalone floorplan
+utilization, routed results are:
+
+| Pending entries | Mapped routed area, tool units | Sequential cells | Setup slack, ps | Hold slack, ps | DRC errors |
+|---|---:|---:|---:|---:|---:|
+| 16, original baseline | 8,101.44 | 11,904 | -3.26117 | +30.0672 | 0 |
+| 1, revised client | 2,049.66 | 2,803 | +145.297 | +15.2867 | 0 |
+
+The original baseline fails setup; the revised client passes the complete
+mapping and routed gate, including I/O, setup/hold, placement, DRC and antenna.
+Routed instance area decreases 74.7%. All 66 buffered typed-job trace records,
+including cycle counts, are identical before and after queue reduction.
+
+The regression covers 106 distinct checks in 17 suites. The 28 checks affected
+by queue reduction are replayed on the final source and counted once, replacing
+their earlier results. Final emitted RTL is byte-identical to the frozen
+one-entry client used for physical qualification. Native typed MSAA/product
+combinations and attachment-store AXI B-response faults remain separate work;
+these results do not close H0/H1 or any later milestone.

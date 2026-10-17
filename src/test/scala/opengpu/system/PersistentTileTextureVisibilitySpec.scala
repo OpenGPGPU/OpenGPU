@@ -10,11 +10,11 @@ import scala.collection.mutable
 /** Exercise publication through the real cached texture / uncached attachment
   * clients, including a previously hot physical line and shader tap reuse.
   */
-class PersistentTileTextureVisibilitySpec extends AnyFlatSpec with GpuHostTestSupport {
+abstract class PersistentTileTextureVisibilityChecks(bufferCommands: Boolean) extends AnyFlatSpec with GpuHostTestSupport {
   behavior of "persistent render-to-texture publication through AXI"
 
   for ((shared, count, lanes, warps) <- Seq((false, 1, 4, 2), (true, 2, 4, 2), (true, 4, 16, 8))) {
-    it should s"publish a hot texture line with shared=$shared, $count CUs, $lanes lanes and $warps warps" in {
+    it should s"publish a hot texture line with shared=$shared, $count CUs, $lanes lanes and $warps warps, buffered=$bufferCommands" in {
       if (lanes == 16) assume(Runtime.getRuntime.maxMemory() >= 4L * 1024 * 1024 * 1024,
         "Run sbt -J-Xmx8G 'testOnly opengpu.system.PersistentTileTextureVisibilitySpec' for the four-CU profile.")
       val gpu = MobileGpuConfig().execution.copy(lanes = lanes, warps = warps)
@@ -24,7 +24,7 @@ class PersistentTileTextureVisibilitySpec extends AnyFlatSpec with GpuHostTestSu
       simulate(new GpuHostSystemAxi(gfx, gpu, numComputeUnits = count,
         fragCore = shared, sharedGraphics = shared, parallelGraphics = shared,
         enableFpuBackend = shared, memoryAxiDataBytes = 32, persistentAttachments = true,
-        exposePerformance = true)) { dut =>
+        exposePerformance = true, bufferCommandReads = bufferCommands)) { dut =>
         initialize(dut)
         val memory = mutable.Map.empty[BigInt, Long]
         val written = mutable.Map.empty[String, Int].withDefaultValue(0)
@@ -212,9 +212,12 @@ class PersistentTileTextureVisibilitySpec extends AnyFlatSpec with GpuHostTestSu
           pauseMemory(); result(id); checkImage(sampling = true, sampledColor(0x2b4dffc9L)); pop()
           assert(sourceReads == beforeRebind, "format rebinding must reuse raw L2 data, with fresh texel decoding")
           if (translated) assert(walks > 0)
-          info(s"shared=$shared CUs=$count lanes=$lanes warps=$warps Sv32=$translated L2Bytes=131072 warmMisses=1 hotMisses=0 publishedMisses=1 rebindMisses=0 attachmentBytesPerJob=512")
+          info(s"shared=$shared CUs=$count lanes=$lanes warps=$warps Sv32=$translated buffered=$bufferCommands L2Bytes=131072 warmMisses=1 hotMisses=0 publishedMisses=1 rebindMisses=0 attachmentBytesPerJob=512")
         }
       }
     }
   }
 }
+
+class PersistentTileTextureVisibilitySpec extends PersistentTileTextureVisibilityChecks(bufferCommands=false)
+class BufferedPersistentTileTextureVisibilitySpec extends PersistentTileTextureVisibilityChecks(bufferCommands=true)

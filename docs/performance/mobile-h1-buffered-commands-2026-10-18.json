@@ -1,0 +1,1346 @@
+{
+  "scope": "H0/H1 fault-aware opt-in command buffering, immutable job lifetime and right-sized translation queue. Full H0-H8 goal remains active.",
+  "reference_checkpoint": "204472b",
+  "depth16_client_source": {
+    "path": ".artifacts/mobile-hardware-alignment/h0-h1/TranslatedWordClient_depth16.scala",
+    "sha256": "ea905202dea8cead261ad2ff22112c7c39b271531bb0a4f1cefcf0e1f5e8bbfe"
+  },
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/BufferedCommandWordPort.scala": "b09f8c24634d7fa58929d853ce2dfeffdfd62185d1c9061522cb9b0ad66ebd19",
+    "src/main/scala/opengpu/core/memory/TranslatedWordClient.scala": "71cd55974ddfb4a61128ac06a691694c8c569babd7799b912fe7995c3e5ae8a0",
+    "src/main/scala/opengpu/core/memory/GraphicsAddressTranslator.scala": "7d1d5ca98b1ad34fb8386cd5042c06097294ec2a57b3d8a19cb671718892631c",
+    "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "44e1e1dbbabcb20146fe674dca1e6bbc79b2aa526a7d8738f85d47d2a196e2c3",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f4ad7202364b6685cf9a26e60c2add36dcec2066ad85667c52aec11b5d3a4c7b",
+    "src/main/scala/opengpu/elaboration/EmitGpuHostSystemAxi.scala": "19d468a331f2bb2042ca52f6a58dede462310dfd3da7d86306edc1a078c2ae04",
+    "src/test/scala/opengpu/graphics/BufferedCommandWordPortSpec.scala": "9102430aebbfb93b5b3f8ac62845be43cccbe2403114bb7f4fd41516e072b052",
+    "src/test/scala/opengpu/core/memory/BufferedTranslatedWordClientSpec.scala": "1773678903ddbffdbf64de7612bf14ca3e618507a86b292a0ef315bfa03a1095",
+    "src/test/scala/opengpu/system/PersistentTileHostAxiSpec.scala": "5e2a857f19ac3ffaf6d862dbd3933741cd5b8dd4883eb11d2069f9bf245988b9",
+    "src/test/scala/opengpu/system/PersistentTileTextureVisibilitySpec.scala": "a01ca7737930d2bcb12931310d31342336ffcd8816e4dec0a8a3709c7ca26bde",
+    "driver/gpu_abi.h": "ce0752a869e1b13944aff1bbab876d6a74eeff03a4db2ece9fdb7855817ecfc4",
+    "build.sbt": "6f23fd73e23ef72909d01a33a27a93ff54d0bff1c7eaadc5ce49d595ff42c5e1",
+    "scripts/qualify_ppa.py": "0c681ceaa9f30985d796159c9483114c6dc511fbdef345678549f96725655a93"
+  },
+  "contract": {
+    "enable": "--persistent-tile-jobs --buffer-command-reads; desktop defaults unchanged.",
+    "storage": "One 64-byte immutable job-local line; uncached physical fills; one outstanding word/miss.",
+    "invalidation": "Host command idle/job boundary, reset entry, SATP change and scoped/full TLB flush revoke cached and pending-fill reuse. Accepted word data and fault remain stable until handshake.",
+    "faults": "Registered responseFault travels with word response; clean hits clear it. Persistent host consumes word fault at word handshake. Legacy lower-line fault pulse unchanged.",
+    "queue": "Only bufferCommandReads selects pendingDepth=1, registered non-flowing queue; all other clients retain16. A second miss cannot arrive until prior word retires.",
+    "logical_bytes": "Completion counts accepted logical command words, including cache hits, independently of physical64-byte fills.",
+    "gated": "Persistent texture buffering and framebuffer combining remain rejected pending logical fault ownership."
+  },
+  "functional": {
+    "logs": {
+      "original_queue106": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/buffered_command_baseline106.log",
+        "sha256": "8a8bd5cc88466e7e957783696a95cf40f60912d823845030ea3f0b073085827d",
+        "raw_checks": 106
+      },
+      "final_queue28": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/buffered_command_depth1_28.log",
+        "sha256": "58362f45c304add811096bcc1805e7b0932d9fe6583f147a542cf2ad846597fb",
+        "raw_checks": 28
+      }
+    },
+    "distinct_checks": 106,
+    "suites": {
+      "PersistentTileHostAxiSpec": 3,
+      "BufferedPersistentTileHostAxiSpec": 3,
+      "BufferedCommandWordPortSpec": 8,
+      "BufferedTranslatedWordClientSpec": 7,
+      "BufferedTextureTranslatedWordClientSpec": 7,
+      "TypedTileCommandBufferSpec": 4,
+      "TileCommandPassControllerSpec": 10,
+      "TileJobDescriptorReaderSpec": 7,
+      "GpuAbiLayoutSpec": 12,
+      "PersistentTileTextureVisibilitySpec": 3,
+      "BufferedPersistentTileTextureVisibilitySpec": 3,
+      "CommandBufferStageSpec": 3,
+      "CancellableCommandBufferStageSpec": 8,
+      "RenderHostSpec": 15,
+      "PersistentTileRenderCoreSpec": 1,
+      "GpuHostAxiSpec": 3,
+      "GpuCommandRouterSpec": 9
+    },
+    "final_replayed_suites": {
+      "BufferedPersistentTileHostAxiSpec": 3,
+      "BufferedPersistentTileTextureVisibilitySpec": 3,
+      "BufferedCommandWordPortSpec": 8,
+      "BufferedTranslatedWordClientSpec": 7,
+      "BufferedTextureTranslatedWordClientSpec": 7
+    },
+    "counting": "106 initial checks include28 affected checks. Replacing those with final depth1 replay gives78+28=106 distinct checks, not134.",
+    "compile_boundary": "Original106 checks use depth16. SBT recompiles changed TranslatedWordClient before subsequent runMain; that emission is depth1 and frozen separately. All28 affected checks replay with depth1, followed by byte-identical emission.",
+    "negative_control": {
+      "original_sha256": "44e1e1dbbabcb20146fe674dca1e6bbc79b2aa526a7d8738f85d47d2a196e2c3",
+      "mutated_sha256": "a1e4a5d8cfa2d41e511c5c104ad4f295c6d6311e0207c990c861d2f2eeae7288",
+      "log": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/buffered_command_negative.log",
+        "sha256": "2fd1c32664771da80bded3fe58175507d475e0f61a4103fb7253b6b35e39bebb"
+      },
+      "exit_code": 1,
+      "expected_failure_observed": true,
+      "restored_sha256": "44e1e1dbbabcb20146fe674dca1e6bbc79b2aa526a7d8738f85d47d2a196e2c3"
+    },
+    "native_profiles": "Fixed1CU4lanes2warps, actual shared2CU4/2 and4CU16/8; shared FPU enabled, Bare and Sv32(+4MiB). AXI256, read delay8 and B acknowledgement17 cycles.",
+    "native_cache": "Typed mixed-scene checks use8 total L2 sets,2ways,4banks. Separate publication checks use proposed128KiB512sets4ways4banks.",
+    "typed_cases_per_profile_vm": [
+      "typed",
+      "typedAlias",
+      "typedBounds",
+      "typedBadType",
+      "typedReserved",
+      "typedBadRect",
+      "typedReadFault",
+      "typedTailFault",
+      "typedCancel",
+      "typedCommandReset",
+      "typed"
+    ],
+    "typed_cases_per_cache_mode": 66,
+    "healthy_cases_per_cache_mode": 18,
+    "coverage": [
+      "Exact64color+64depth/stencil words across ordered draw/masked-clear stream.",
+      "CPU replacement at previous cached tail line before next job; true idle/job invalidation.",
+      "First/tail command bus faults, invalid PTE and PTE bus faults, stalled fault word with repeated invalidation, precise completion and recovery.",
+      "Reset during accepted command fill or clear LOAD; preserve response ownership and prohibit failed/cancelled exports.",
+      "128KiB L2 render-to-texture publication, queued dependency, hot reuse and image format rebind;30jobs per cache mode.",
+      "Versioned descriptor/parser/controller, ABI, legacy command, render, AXI and router regressions."
+    ],
+    "publication": "For each Bare/Sv32 backend, warm/hot/published/rebound source-line misses1/0/1/0;512acknowledged attachment bytes before dependent consumer."
+  },
+  "performance": {
+    "v1": {
+      "logical_bytes": 320,
+      "unbuffered_line_reads": 80,
+      "buffered_line_reads": 5,
+      "final_export_bytes": 512
+    },
+    "v2": {
+      "logical_bytes": 984,
+      "unbuffered_line_reads": 246,
+      "buffered_line_reads": 16,
+      "request_reduction_percent": 93.4959349593496,
+      "final_export_bytes": 512,
+      "old_attachment_reads": 0
+    },
+    "healthy_paired_jobs": [
+      {
+        "profile": {
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false
+        },
+        "phase": "typed",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6847
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 4396
+        },
+        "cycle_reduction_percent": 35.7967
+      },
+      {
+        "profile": {
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false
+        },
+        "phase": "typedAlias",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6847
+        },
+        "buffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 4396
+        },
+        "cycle_reduction_percent": 35.7967
+      },
+      {
+        "profile": {
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false
+        },
+        "phase": "typed",
+        "ordinal": 1,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6847
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 4396
+        },
+        "cycle_reduction_percent": 35.7967
+      },
+      {
+        "profile": {
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true
+        },
+        "phase": "typed",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6891
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 4440
+        },
+        "cycle_reduction_percent": 35.5681
+      },
+      {
+        "profile": {
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true
+        },
+        "phase": "typedAlias",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6843
+        },
+        "buffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 4392
+        },
+        "cycle_reduction_percent": 35.8176
+      },
+      {
+        "profile": {
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true
+        },
+        "phase": "typed",
+        "ordinal": 1,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6843
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": false,
+          "cus": 1,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 4392
+        },
+        "cycle_reduction_percent": 35.8176
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false
+        },
+        "phase": "typed",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 10265
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 9242
+        },
+        "cycle_reduction_percent": 9.9659
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false
+        },
+        "phase": "typedAlias",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 10211
+        },
+        "buffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 9204
+        },
+        "cycle_reduction_percent": 9.8619
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false
+        },
+        "phase": "typed",
+        "ordinal": 1,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 10212
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": false,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 9204
+        },
+        "cycle_reduction_percent": 9.8707
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true
+        },
+        "phase": "typed",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 10401
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 9377
+        },
+        "cycle_reduction_percent": 9.8452
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true
+        },
+        "phase": "typedAlias",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 10209
+        },
+        "buffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 9202
+        },
+        "cycle_reduction_percent": 9.8638
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true
+        },
+        "phase": "typed",
+        "ordinal": 1,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 10210
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": true,
+          "cus": 2,
+          "lanes": 4,
+          "warps": 2,
+          "sv32": true,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 9202
+        },
+        "cycle_reduction_percent": 9.8727
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": false
+        },
+        "phase": "typed",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": false,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 7643
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": false,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6340
+        },
+        "cycle_reduction_percent": 17.0483
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": false
+        },
+        "phase": "typedAlias",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": false,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 7637
+        },
+        "buffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": false,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6294
+        },
+        "cycle_reduction_percent": 17.5854
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": false
+        },
+        "phase": "typed",
+        "ordinal": 1,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": false,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 7658
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": false,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6296
+        },
+        "cycle_reduction_percent": 17.7853
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": true
+        },
+        "phase": "typed",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": true,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 7804
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": true,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6499
+        },
+        "cycle_reduction_percent": 16.7222
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": true
+        },
+        "phase": "typedAlias",
+        "ordinal": 0,
+        "unbuffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": true,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 7637
+        },
+        "buffered": {
+          "phase": "typedAlias",
+          "ordinal": 0,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": true,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6296
+        },
+        "cycle_reduction_percent": 17.5593
+      },
+      {
+        "profile": {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": true
+        },
+        "phase": "typed",
+        "ordinal": 1,
+        "unbuffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": true,
+          "command_lines": 246,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 7658
+        },
+        "buffered": {
+          "phase": "typed",
+          "ordinal": 1,
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "sv32": true,
+          "command_lines": 16,
+          "old_attachment_reads": 0,
+          "stored_bytes": 512,
+          "job_cycles": 6294
+        },
+        "cycle_reduction_percent": 17.8114
+      }
+    ],
+    "depth1_vs_depth16": "All66 buffered typed trace records including measured cycles are exactly identical.",
+    "cycle_scope": "After submit to IRQ on same deterministic small-scene trace, bus delays and oracle. Includes trace/cache/arbitration history; not isolated cold-start, sustained scaling or FPS. Physical source-line counts exclude all other GPU traffic."
+  },
+  "emission": {
+    "depth16": {
+      "path": "generated/mobile-h1/buffered-command-client-rtl",
+      "sha256": {
+        "BufferedCommandWordPort.sv": "c43799653b3a9e716365a40017fface503a378296294e571ba26f33209dd0eaa",
+        "GraphicsAddressTranslator.sv": "f7436be010f717cd9be36ed70c3ab0f1f491973ce6fc3bbfd1668f383fd3899b",
+        "Queue16_ComputeMemoryRequest.sv": "3bde910bf42c4933bdef81523d37fe2ce039c6fb98ae8ea792361f95dbaabe21",
+        "RRArbiter2_ComputeMemoryResponse.sv": "5f58add17e68d426b41f4c6df2dea3999824a64d71061bd89e4f11772f902ce9",
+        "Sv32PageTableWalker.sv": "ec7465da08e4c598aea7946fd7d0f6e5fed6e5f8d7bf417f689b1a028e19e882",
+        "TranslatedWordClient.sv": "535282b8aa7655b81440265c614f49bbb72cb68ff80fa73bdae586da3e522569",
+        "filelist.f": "c13dbf900df67dfad837cc94ad1e7dae760fc716b2223b27bfaef6b26756388c",
+        "ram_16x624.sv": "afd98e361aacd892ec3dcccc8f59a1d0d01e0093a9e63ed6292681e70418a080",
+        "verification/assert/BufferedCommandWordPort_Verification_Assert.sv": "60c40639a7c1710c241a94cbb3537ce7f2bc67da938f7addfddd80214cfd3201",
+        "verification/assert/GraphicsAddressTranslator_Verification_Assert.sv": "b60bec0b8dac405c5db61cde510b043654d655a1eb0dab106ec62d2302bb237d",
+        "verification/assert/layers-BufferedCommandWordPort-Verification-Assert.sv": "0b4c52e31c856d0bd477555dc0063ec0766ab4200ad07b0e1b5005b67e4afe5c",
+        "verification/assert/layers-GraphicsAddressTranslator-Verification-Assert.sv": "64dcb93efcadbcaf80341423519b1bd97cc083dea8be393daa243e40cc06e4bb",
+        "verification/assert/layers-TranslatedWordClient-Verification-Assert.sv": "fc6ca02d415529af045e28c23788435450f4fb1f371ccbfb272d5f2a2771f4c3",
+        "verification/assume/layers-TranslatedWordClient-Verification-Assume.sv": "9bbfe43b2edfaf63055c2ade2c74991c6250e7572377bb8e42edcee7dbddfe6a",
+        "verification/cover/layers-TranslatedWordClient-Verification-Cover.sv": "f761c1d25b0316e9e500e34cd569792c8343b96aad9d02afd869d81ee9c708ce",
+        "verification/layers-BufferedCommandWordPort-Verification.sv": "5e3270e594d291d34d662aeb444b5d93c9aff7a37db1a962cdf737d039a96c54",
+        "verification/layers-GraphicsAddressTranslator-Verification.sv": "66dda872d5849e69efd83bc42e2ea6b525da67cbb56843290bb7f5fb331cf31c",
+        "verification/layers-TranslatedWordClient-Verification.sv": "54c9c57b90da4a0758023ce0571053472ae7c1816e287ee7bf75491032ada304"
+      }
+    },
+    "depth1_frozen": {
+      "path": "generated/mobile-h1/buffered-command-client-depth1-rtl",
+      "sha256": {
+        "BufferedCommandWordPort.sv": "c43799653b3a9e716365a40017fface503a378296294e571ba26f33209dd0eaa",
+        "GraphicsAddressTranslator.sv": "e259ac0580bbe4b85c1b5940343a273518313b3ded428180f744091750682f54",
+        "Queue1_ComputeMemoryRequest.sv": "c58fd57e12cfd7d8779618be4458309db8528c49d415df0218ae76b2fa542bb2",
+        "RRArbiter2_ComputeMemoryResponse.sv": "5f58add17e68d426b41f4c6df2dea3999824a64d71061bd89e4f11772f902ce9",
+        "Sv32PageTableWalker.sv": "ec7465da08e4c598aea7946fd7d0f6e5fed6e5f8d7bf417f689b1a028e19e882",
+        "TranslatedWordClient.sv": "ea82a02ae404db0deda26253e5bcb8d10736d9f9708ccb1f65bcca85a64cfa31",
+        "filelist.f": "fd2609a30ff337794edd5d92dfe04483c4651743bd96615ae298cdb56a5b9ca8",
+        "verification/assert/BufferedCommandWordPort_Verification_Assert.sv": "60c40639a7c1710c241a94cbb3537ce7f2bc67da938f7addfddd80214cfd3201",
+        "verification/assert/GraphicsAddressTranslator_Verification_Assert.sv": "b60bec0b8dac405c5db61cde510b043654d655a1eb0dab106ec62d2302bb237d",
+        "verification/assert/layers-BufferedCommandWordPort-Verification-Assert.sv": "0b4c52e31c856d0bd477555dc0063ec0766ab4200ad07b0e1b5005b67e4afe5c",
+        "verification/assert/layers-GraphicsAddressTranslator-Verification-Assert.sv": "64dcb93efcadbcaf80341423519b1bd97cc083dea8be393daa243e40cc06e4bb",
+        "verification/assert/layers-TranslatedWordClient-Verification-Assert.sv": "fc6ca02d415529af045e28c23788435450f4fb1f371ccbfb272d5f2a2771f4c3",
+        "verification/assume/layers-TranslatedWordClient-Verification-Assume.sv": "9bbfe43b2edfaf63055c2ade2c74991c6250e7572377bb8e42edcee7dbddfe6a",
+        "verification/cover/layers-TranslatedWordClient-Verification-Cover.sv": "f761c1d25b0316e9e500e34cd569792c8343b96aad9d02afd869d81ee9c708ce",
+        "verification/layers-BufferedCommandWordPort-Verification.sv": "5e3270e594d291d34d662aeb444b5d93c9aff7a37db1a962cdf737d039a96c54",
+        "verification/layers-GraphicsAddressTranslator-Verification.sv": "66dda872d5849e69efd83bc42e2ea6b525da67cbb56843290bb7f5fb331cf31c",
+        "verification/layers-TranslatedWordClient-Verification.sv": "54c9c57b90da4a0758023ce0571053472ae7c1816e287ee7bf75491032ada304"
+      }
+    },
+    "depth1_replay": {
+      "path": "generated/mobile-h1/buffered-command-client-depth1-replay-rtl",
+      "sha256": {
+        "BufferedCommandWordPort.sv": "c43799653b3a9e716365a40017fface503a378296294e571ba26f33209dd0eaa",
+        "GraphicsAddressTranslator.sv": "e259ac0580bbe4b85c1b5940343a273518313b3ded428180f744091750682f54",
+        "Queue1_ComputeMemoryRequest.sv": "c58fd57e12cfd7d8779618be4458309db8528c49d415df0218ae76b2fa542bb2",
+        "RRArbiter2_ComputeMemoryResponse.sv": "5f58add17e68d426b41f4c6df2dea3999824a64d71061bd89e4f11772f902ce9",
+        "Sv32PageTableWalker.sv": "ec7465da08e4c598aea7946fd7d0f6e5fed6e5f8d7bf417f689b1a028e19e882",
+        "TranslatedWordClient.sv": "ea82a02ae404db0deda26253e5bcb8d10736d9f9708ccb1f65bcca85a64cfa31",
+        "filelist.f": "fd2609a30ff337794edd5d92dfe04483c4651743bd96615ae298cdb56a5b9ca8",
+        "verification/assert/BufferedCommandWordPort_Verification_Assert.sv": "60c40639a7c1710c241a94cbb3537ce7f2bc67da938f7addfddd80214cfd3201",
+        "verification/assert/GraphicsAddressTranslator_Verification_Assert.sv": "b60bec0b8dac405c5db61cde510b043654d655a1eb0dab106ec62d2302bb237d",
+        "verification/assert/layers-BufferedCommandWordPort-Verification-Assert.sv": "0b4c52e31c856d0bd477555dc0063ec0766ab4200ad07b0e1b5005b67e4afe5c",
+        "verification/assert/layers-GraphicsAddressTranslator-Verification-Assert.sv": "64dcb93efcadbcaf80341423519b1bd97cc083dea8be393daa243e40cc06e4bb",
+        "verification/assert/layers-TranslatedWordClient-Verification-Assert.sv": "fc6ca02d415529af045e28c23788435450f4fb1f371ccbfb272d5f2a2771f4c3",
+        "verification/assume/layers-TranslatedWordClient-Verification-Assume.sv": "9bbfe43b2edfaf63055c2ade2c74991c6250e7572377bb8e42edcee7dbddfe6a",
+        "verification/cover/layers-TranslatedWordClient-Verification-Cover.sv": "f761c1d25b0316e9e500e34cd569792c8343b96aad9d02afd869d81ee9c708ce",
+        "verification/layers-BufferedCommandWordPort-Verification.sv": "5e3270e594d291d34d662aeb444b5d93c9aff7a37db1a962cdf737d039a96c54",
+        "verification/layers-GraphicsAddressTranslator-Verification.sv": "66dda872d5849e69efd83bc42e2ea6b525da67cbb56843290bb7f5fb331cf31c",
+        "verification/layers-TranslatedWordClient-Verification.sv": "54c9c57b90da4a0758023ce0571053472ae7c1816e287ee7bf75491032ada304"
+      }
+    },
+    "depth1_byte_identical": true
+  },
+  "synthesis": {
+    "depth16": {
+      "artifact": "generated/mobile-h1/physical-buffered-command-client",
+      "gate": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          305.64,
+          214.475
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "da29f43e5493264975c05a17d118a5be5b8089564b2a47305157fabc9bb30b3a",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-buffered-command-client/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "17dc4b03ded373ba8e01e0e1bff95d54f72c0288f4b349508f41732c807093ff"
+        }
+      },
+      "qor": {
+        "setup_worst_slack_ps": 305.64,
+        "core_clock_fmax_mhz": 1440.175
+      },
+      "synthesis_instance_count": 46424,
+      "synthesis_instance_area": 8125.05,
+      "input_rtl_sha256": {
+        "BufferedCommandWordPort.sv": "c43799653b3a9e716365a40017fface503a378296294e571ba26f33209dd0eaa",
+        "Sv32PageTableWalker.sv": "ec7465da08e4c598aea7946fd7d0f6e5fed6e5f8d7bf417f689b1a028e19e882",
+        "ram_16x624.sv": "afd98e361aacd892ec3dcccc8f59a1d0d01e0093a9e63ed6292681e70418a080",
+        "Queue16_ComputeMemoryRequest.sv": "3bde910bf42c4933bdef81523d37fe2ce039c6fb98ae8ea792361f95dbaabe21",
+        "GraphicsAddressTranslator.sv": "f7436be010f717cd9be36ed70c3ab0f1f491973ce6fc3bbfd1668f383fd3899b",
+        "RRArbiter2_ComputeMemoryResponse.sv": "5f58add17e68d426b41f4c6df2dea3999824a64d71061bd89e4f11772f902ce9",
+        "TranslatedWordClient.sv": "535282b8aa7655b81440265c614f49bbb72cb68ff80fa73bdae586da3e522569"
+      },
+      "translated_client_source_sha256": "ea905202dea8cead261ad2ff22112c7c39b271531bb0a4f1cefcf0e1f5e8bbfe",
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "syn",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "hashes": {
+        "manifest.json": "951b11e48933a47435fd9a1884411bee4f6558c495df4672acef3c0b8882e0fb",
+        "result.json": "a4d24079e3d10ab5bfc4611f512c904ba6a90a983428c914ced320f5df983e12",
+        "qualification.json": "fc8ba377cc1769a2856c04b5aeaccdd4c31c7630423f6477893d9236356356ab"
+      },
+      "synthesis_metrics_sha256": "ad0a616adfbb0e6eecfeccdb7d1a9030d1804d9f7c60d865036c957cb663591d"
+    },
+    "depth1": {
+      "artifact": "generated/mobile-h1/physical-buffered-command-client-depth1",
+      "gate": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          386.852,
+          214.728
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "afdddbac4de697da1b14ca94d31c59838a3b1e15d1b61f65f6fb2cb0cfaf5ae9",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-buffered-command-client-depth1/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "29b3c67fbd917ce4b1291b2b61672ad4d05b4e43c0bea5ae1dc2540dc25c8757"
+        }
+      },
+      "qor": {
+        "setup_worst_slack_ps": 386.852,
+        "core_clock_fmax_mhz": 1630.928
+      },
+      "synthesis_instance_count": 11785,
+      "synthesis_instance_area": 1915,
+      "input_rtl_sha256": {
+        "BufferedCommandWordPort.sv": "c43799653b3a9e716365a40017fface503a378296294e571ba26f33209dd0eaa",
+        "Sv32PageTableWalker.sv": "ec7465da08e4c598aea7946fd7d0f6e5fed6e5f8d7bf417f689b1a028e19e882",
+        "Queue1_ComputeMemoryRequest.sv": "c58fd57e12cfd7d8779618be4458309db8528c49d415df0218ae76b2fa542bb2",
+        "GraphicsAddressTranslator.sv": "e259ac0580bbe4b85c1b5940343a273518313b3ded428180f744091750682f54",
+        "RRArbiter2_ComputeMemoryResponse.sv": "5f58add17e68d426b41f4c6df2dea3999824a64d71061bd89e4f11772f902ce9",
+        "TranslatedWordClient.sv": "ea82a02ae404db0deda26253e5bcb8d10736d9f9708ccb1f65bcca85a64cfa31"
+      },
+      "translated_client_source_sha256": "71cd55974ddfb4a61128ac06a691694c8c569babd7799b912fe7995c3e5ae8a0",
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "syn",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "hashes": {
+        "manifest.json": "cc08681d8ca2537f46be4f4e295e2af71fb0aaa4c883a3cd5dff6a4b697b682c",
+        "result.json": "61cd43ca258c98ae9e741fc903e7a1ccd285109a3c4efd5995c0aad6f55a3505",
+        "qualification.json": "49f4d74b948161d3b95b12ec792677a59f416597c51d3136a19ade91822a063f"
+      },
+      "synthesis_metrics_sha256": "8f15f8172c334f54cefbf5fc80175c5e74a4260c49845dfac60bda8d604ad2a9"
+    },
+    "instance_area_reduction_percent": 76.43091427129679
+  },
+  "route": {
+    "depth16": {
+      "artifact": "generated/mobile-h1/physical-buffered-command-client-route",
+      "gate": {
+        "passed": false,
+        "checks": {
+          "setup_worst_slack_ps": false,
+          "hold_worst_slack_ps": true,
+          "setup_violation_count": false,
+          "hold_violation_count": true,
+          "route_drc_errors": true,
+          "antenna_violating_nets": true,
+          "antenna_violating_pins": true,
+          "placement_violations": true,
+          "flow_errors": true,
+          "flow_completed": true,
+          "tool_verdict": false
+        },
+        "missing_metrics": [],
+        "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-buffered-command-client-route/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "acadaf43700f64cc33662b412dc0f263f8945ea564ee92f07f75b93143c93fad"
+        }
+      },
+      "qor": {
+        "instance_count": 344378,
+        "instance_area": 8101.44,
+        "sequential_cell_count": 11904,
+        "clock_buffer_count": 1069,
+        "timing_repair_buffer_count": 5147,
+        "setup_tns_ps": -9.13536,
+        "hold_tns_ps": 0,
+        "setup_worst_slack_ps": -3.26117,
+        "hold_worst_slack_ps": 30.0672,
+        "setup_violation_count": 4,
+        "hold_violation_count": 0,
+        "core_clock_fmax_mhz": 1456.98,
+        "virtual_io_clock_fmax_mhz": 1149.58,
+        "reported_fmax_mhz": 1456.98,
+        "setup_clock_skew_ps": 22.8568,
+        "hold_clock_skew_ps": 29.1194,
+        "total_power_w": 0.0365882,
+        "placement_utilization": 9.49112,
+        "placement_violations": 0,
+        "estimated_wirelength": 241617,
+        "route_wirelength": 326169,
+        "route_vias": 572732,
+        "route_drc_errors": 0,
+        "route_drc_report_bytes": 0,
+        "antenna_violating_nets": 0,
+        "antenna_violating_pins": 0,
+        "ir_drop_vdd_worst": 0.0025285,
+        "ir_drop_vss_worst": 0.00265428,
+        "flow_warnings": 15,
+        "flow_errors": 0,
+        "critical_path": {
+          "startpoint": "u12 (rising edge-triggered flip-flop clocked by core_clock)",
+          "endpoint": "io_memReq_bits_sizeLog2[1] (output port clocked by vclk_core_clock)",
+          "group": "vclk_core_clock",
+          "slack_ps": -3.26,
+          "arrival_ps": 753.26,
+          "data_path_delay_ps": 525.85,
+          "cell_delay_ps": 302.61,
+          "net_delay_ps": 223.24,
+          "cell_delay_percent": 57.55,
+          "net_delay_percent": 42.45,
+          "cell_count": 10,
+          "net_count": 9,
+          "dominant_cell_types": [
+            {
+              "cell_type": "BUFx6f_ASAP7_75t_SL",
+              "count": 3,
+              "delay_ps": 119.69
+            },
+            {
+              "cell_type": "OA21x2_ASAP7_75t_SL",
+              "count": 3,
+              "delay_ps": 64.5
+            },
+            {
+              "cell_type": "DFFHQNx3_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 53.09
+            },
+            {
+              "cell_type": "BUFx3_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 27.47
+            },
+            {
+              "cell_type": "AO32x1_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 23.26
+            },
+            {
+              "cell_type": "BUFx2_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 14.6
+            }
+          ],
+          "per_group": {
+            "core_clock": {
+              "startpoint": "io_satp[27] (input port clocked by vclk_core_clock)",
+              "endpoint": "u15000 (rising edge-triggered flip-flop clocked by core_clock)",
+              "slack_ps": 265.37,
+              "arrival_ps": 954.0
+            },
+            "vclk_core_clock": {
+              "startpoint": "u12 (rising edge-triggered flip-flop clocked by core_clock)",
+              "endpoint": "io_memReq_bits_sizeLog2[1] (output port clocked by vclk_core_clock)",
+              "slack_ps": -3.26,
+              "arrival_ps": 753.26
+            }
+          }
+        }
+      },
+      "synthesis_instance_count": 46424,
+      "synthesis_instance_area": 8125.05,
+      "input_rtl_sha256": {
+        "BufferedCommandWordPort.sv": "c43799653b3a9e716365a40017fface503a378296294e571ba26f33209dd0eaa",
+        "Sv32PageTableWalker.sv": "ec7465da08e4c598aea7946fd7d0f6e5fed6e5f8d7bf417f689b1a028e19e882",
+        "ram_16x624.sv": "afd98e361aacd892ec3dcccc8f59a1d0d01e0093a9e63ed6292681e70418a080",
+        "Queue16_ComputeMemoryRequest.sv": "3bde910bf42c4933bdef81523d37fe2ce039c6fb98ae8ea792361f95dbaabe21",
+        "GraphicsAddressTranslator.sv": "f7436be010f717cd9be36ed70c3ab0f1f491973ce6fc3bbfd1668f383fd3899b",
+        "RRArbiter2_ComputeMemoryResponse.sv": "5f58add17e68d426b41f4c6df2dea3999824a64d71061bd89e4f11772f902ce9",
+        "TranslatedWordClient.sv": "535282b8aa7655b81440265c614f49bbb72cb68ff80fa73bdae586da3e522569"
+      },
+      "translated_client_source_sha256": "ea905202dea8cead261ad2ff22112c7c39b271531bb0a4f1cefcf0e1f5e8bbfe",
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 10,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "closure",
+        "synthesis_engine": "syn",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "hashes": {
+        "manifest.json": "9822ecbcd5f97bdcc7ac3be5b683783465ab0a8bde11ee8f381434fe4b219fae",
+        "result.json": "26fa85b2630a3846457d295c17caede4e92dfe74d68b49e101a30278d10de167",
+        "qualification.json": "4a7220cb97d7b29780411865bbfd2135a56712668295cc20688a1f31d0aa6919"
+      },
+      "synthesis_metrics_sha256": "ad0a616adfbb0e6eecfeccdb7d1a9030d1804d9f7c60d865036c957cb663591d"
+    },
+    "depth1": {
+      "artifact": "generated/mobile-h1/physical-buffered-command-client-depth1-route",
+      "gate": {
+        "passed": true,
+        "checks": {
+          "setup_worst_slack_ps": true,
+          "hold_worst_slack_ps": true,
+          "setup_violation_count": true,
+          "hold_violation_count": true,
+          "route_drc_errors": true,
+          "antenna_violating_nets": true,
+          "antenna_violating_pins": true,
+          "placement_violations": true,
+          "flow_errors": true,
+          "flow_completed": true,
+          "tool_verdict": true
+        },
+        "missing_metrics": [],
+        "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-buffered-command-client-depth1-route/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "5b979c3b803139e5c5ea9b45d15503d129ece6c144cb7eac62b7711b049a5170"
+        }
+      },
+      "qor": {
+        "instance_count": 85164,
+        "instance_area": 2049.66,
+        "sequential_cell_count": 2803,
+        "clock_buffer_count": 238,
+        "timing_repair_buffer_count": 1722,
+        "setup_tns_ps": 0,
+        "hold_tns_ps": 0,
+        "setup_worst_slack_ps": 145.297,
+        "hold_worst_slack_ps": 15.2867,
+        "setup_violation_count": 0,
+        "hold_violation_count": 0,
+        "core_clock_fmax_mhz": 1752.63,
+        "virtual_io_clock_fmax_mhz": 1170.0,
+        "reported_fmax_mhz": 1752.63,
+        "setup_clock_skew_ps": 27.6038,
+        "hold_clock_skew_ps": 32.0973,
+        "total_power_w": 0.00931225,
+        "placement_utilization": 10.206,
+        "placement_violations": 0,
+        "estimated_wirelength": 61317.1,
+        "route_wirelength": 83937,
+        "route_vias": 153969,
+        "route_drc_errors": 0,
+        "route_drc_report_bytes": 0,
+        "antenna_violating_nets": 0,
+        "antenna_violating_pins": 0,
+        "ir_drop_vdd_worst": 0.00264932,
+        "ir_drop_vss_worst": 0.00240849,
+        "flow_warnings": 15,
+        "flow_errors": 0,
+        "critical_path": {
+          "startpoint": "io_in_bits_addr[23] (input port clocked by vclk_core_clock)",
+          "endpoint": "io_translationMiss (output port clocked by vclk_core_clock)",
+          "group": "vclk_core_clock",
+          "slack_ps": 145.3,
+          "arrival_ps": 604.7,
+          "data_path_delay_ps": 0.0,
+          "cell_delay_ps": 0.0,
+          "net_delay_ps": 0.0,
+          "cell_delay_percent": null,
+          "net_delay_percent": null,
+          "cell_count": 0,
+          "net_count": 0,
+          "dominant_cell_types": [],
+          "per_group": {
+            "core_clock": {
+              "startpoint": "io_in_bits_addr[12] (input port clocked by vclk_core_clock)",
+              "endpoint": "u520 (rising edge-triggered flip-flop clocked by core_clock)",
+              "slack_ps": 246.92,
+              "arrival_ps": 860.39
+            },
+            "vclk_core_clock": {
+              "startpoint": "io_in_bits_addr[23] (input port clocked by vclk_core_clock)",
+              "endpoint": "io_translationMiss (output port clocked by vclk_core_clock)",
+              "slack_ps": 145.3,
+              "arrival_ps": 604.7
+            }
+          }
+        }
+      },
+      "synthesis_instance_count": 11785,
+      "synthesis_instance_area": 1915,
+      "input_rtl_sha256": {
+        "BufferedCommandWordPort.sv": "c43799653b3a9e716365a40017fface503a378296294e571ba26f33209dd0eaa",
+        "Sv32PageTableWalker.sv": "ec7465da08e4c598aea7946fd7d0f6e5fed6e5f8d7bf417f689b1a028e19e882",
+        "Queue1_ComputeMemoryRequest.sv": "c58fd57e12cfd7d8779618be4458309db8528c49d415df0218ae76b2fa542bb2",
+        "GraphicsAddressTranslator.sv": "e259ac0580bbe4b85c1b5940343a273518313b3ded428180f744091750682f54",
+        "RRArbiter2_ComputeMemoryResponse.sv": "5f58add17e68d426b41f4c6df2dea3999824a64d71061bd89e4f11772f902ce9",
+        "TranslatedWordClient.sv": "ea82a02ae404db0deda26253e5bcb8d10736d9f9708ccb1f65bcca85a64cfa31"
+      },
+      "translated_client_source_sha256": "71cd55974ddfb4a61128ac06a691694c8c569babd7799b912fe7995c3e5ae8a0",
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 10,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "closure",
+        "synthesis_engine": "syn",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "hashes": {
+        "manifest.json": "b134d027225c95cee2d7a2fcdfb89c9fc5caafce051f2b58dcf2c86d632c465c",
+        "result.json": "402d82fa92793d7cdfd5b04a6ac627cb4cdcd3fc592b34c26f4aa1b7465324ff",
+        "qualification.json": "3593a7e6d6aef6dc5e84020b60b6872cc7726d296459c257947b948046380d77"
+      },
+      "synthesis_metrics_sha256": "8f15f8172c334f54cefbf5fc80175c5e74a4260c49845dfac60bda8d604ad2a9"
+    },
+    "instance_area_reduction_percent": 74.70005332385354,
+    "baseline_verdict": "FAIL setup -3.26117ps; hold, placement, mapping, DRC, antenna and flow-completion checks pass.",
+    "final_verdict": "PASS all mapping and routed gates."
+  },
+  "physical_scope": "Isolated generic read/write TranslatedWordClient,16 word IDs and256 line IDs, 1GHz TC/SLVT with25% IO delays. Route utilization10 for both. Integrated read-only command wiring may constant-fold more logic. Raw area is tool library units; no workload activity annotation or whole-GPU clock/area/power/energy claim.",
+  "remaining": [
+    "Native typed product/MSAA/resource combinations and full desktop integration smoke.",
+    "H0/H1 general resource/capability contracts, multiple attachment formats and full lifecycle gates.",
+    "H2-H8 bin pages, parallel engines, pixel/texture rates, payload/geometry, features and product720p physical/bandwidth/FPS gates.",
+    "Full renderer mapped physical qualification remains open, including variable division."
+  ]
+}

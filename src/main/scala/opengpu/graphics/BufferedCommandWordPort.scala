@@ -16,6 +16,8 @@ class BufferedCommandWordPort(config: GpuConfig = GpuConfig(),
   val io = IO(new Bundle {
     val port = new OmWordToLineIO(config, 64, maxOutstanding)
     val invalidate = Input(Bool())
+    /** Fault status of the currently offered word, stable until out.fire. */
+    val responseFault = Output(Bool())
   })
   private object State extends ChiselEnum { val idle, waitData, respond = Value }
   private val state = RegInit(State.idle)
@@ -26,6 +28,7 @@ class BufferedCommandWordPort(config: GpuConfig = GpuConfig(),
   private val pendingWrite = Reg(Bool())
   private val fillEligible = RegInit(false.B)
   private val response = Reg(new OmMemoryResponse)
+  private val responseFault = RegInit(false.B)
   private val p = io.port
   private val hit = cached && !p.in.bits.write &&
     cachedAddress === p.in.bits.addr(31, 6)
@@ -42,12 +45,14 @@ class BufferedCommandWordPort(config: GpuConfig = GpuConfig(),
   p.memoryResponse.ready := state === State.waitData
   p.out.valid := state === State.respond
   p.out.bits := response
+  io.responseFault := p.out.valid && responseFault
 
   when(p.in.fire) {
     pendingAddress := p.in.bits.addr
     pendingWrite := p.in.bits.write
     fillEligible := !p.in.bits.write
     when(hit) {
+      responseFault := false.B
       response.addr := p.in.bits.addr
       response.write := false.B
       response.data := (cachedData >> (p.in.bits.addr(5, 2) << 5))(31, 0)
@@ -63,6 +68,7 @@ class BufferedCommandWordPort(config: GpuConfig = GpuConfig(),
       "buffered command response must identify the outstanding line")
   }
   when(p.memoryResponse.fire) {
+    responseFault := p.memoryResponse.bits.fault
     response.addr := pendingAddress
     response.write := pendingWrite
     response.data := Mux(pendingWrite, 0.U,

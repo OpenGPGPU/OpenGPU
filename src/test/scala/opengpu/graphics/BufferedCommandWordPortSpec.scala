@@ -35,9 +35,10 @@ class BufferedCommandWordPortSpec extends AnyFlatSpec {
       p.memoryResponse.bits.fault.poke(fault.B); p.memoryResponse.ready.expect(true.B)
       step(); p.memoryResponse.valid.poke(false.B)
     }
-    def take(a: Int, value: Int, write: Boolean = false): Unit = {
+    def take(a: Int, value: Int, write: Boolean = false, fault: Boolean = false): Unit = {
       p.out.valid.expect(true.B); p.out.bits.addr.expect(a.U)
       p.out.bits.data.expect(value.U); p.out.bits.write.expect(write.B)
+      d.io.responseFault.expect(fault.B)
       p.out.ready.poke(true.B); step(); p.out.ready.poke(false.B)
     }
     def invalidate(): Unit = { d.io.invalidate.poke(true.B); step(); d.io.invalidate.poke(false.B) }
@@ -90,7 +91,12 @@ class BufferedCommandWordPortSpec extends AnyFlatSpec {
   it should "never retain a faulted line and block new requests during invalidation" in {
     simulate(new BufferedCommandWordPort()) { d =>
       val h = new Harness(d)
-      h.accept(0x1000); h.reply(50, fault = true); h.take(0x1000, 50)
+      h.accept(0x1000); h.reply(50, fault = true)
+      for (_ <- 0 until 5) {
+        d.io.responseFault.expect(true.B); h.p.out.valid.expect(true.B)
+        h.invalidate(); d.io.responseFault.expect(true.B)
+      }
+      h.take(0x1000, 50, fault = true); d.io.responseFault.expect(false.B)
       d.io.invalidate.poke(true.B); h.offer(0x1004)
       h.p.in.ready.expect(false.B); h.p.memoryRequest.valid.expect(false.B); h.step()
       d.io.invalidate.poke(false.B); h.step(); h.p.in.valid.poke(false.B)

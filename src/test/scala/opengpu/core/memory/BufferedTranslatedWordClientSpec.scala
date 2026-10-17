@@ -10,6 +10,7 @@ abstract class BufferedTranslatedWordClientChecks(texture: Boolean) extends AnyF
   private class Harness(d: TranslatedWordClient) {
     val replies = mutable.ArrayBuffer.empty[(BigInt, BigInt)]
     var faults = 0
+    var wordFaults = 0
     d.io.in.valid.poke(false.B); d.io.out.ready.poke(true.B)
     d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
     d.io.memReq.ready.poke(false.B); d.io.memResp.valid.poke(false.B)
@@ -24,6 +25,7 @@ abstract class BufferedTranslatedWordClientChecks(texture: Boolean) extends AnyF
     def step(): Unit = {
       if (d.io.fault.peek().litToBoolean) faults += 1
       if (d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
+        if (d.io.commandResponseFault.exists(_.peek().litToBoolean)) wordFaults += 1
         d.io.out.bits.write.expect(false.B)
         replies += ((d.io.out.bits.addr.peek().litValue, d.io.out.bits.data.peek().litValue))
       }
@@ -116,10 +118,12 @@ abstract class BufferedTranslatedWordClientChecks(texture: Boolean) extends AnyF
         if (scenario == "read bus fault") h.physical(0x400000, 0, fault = true)
         else h.walk(0x800, invalid = scenario == "invalid PTE", busFault = scenario == "page-table bus fault")
         h.expectReply(1, 0x400000, 0); assert(h.faults == 1)
+        if (!texture) assert(h.wordFaults == 1)
         d.io.memReq.valid.expect(false.B)
         d.io.satp.poke(0.U); h.flush()
         h.send(0x400004); h.physical(0x400000, 500); h.expectReply(2, 0x400004, 501)
         assert(h.faults == 1)
+        if (!texture) assert(h.wordFaults == 1)
       }
     }
   }
@@ -135,6 +139,26 @@ abstract class BufferedTranslatedWordClientChecks(texture: Boolean) extends AnyF
         h.send(0x400008); h.expectReply(3, 0x400008, 202)
         d.io.memReq.valid.expect(false.B)
         assert(h.faults == 0)
+      }
+    }
+  }
+  if (!texture) {
+    it should "retain a word fault through reply backpressure, invalidation and recovery without repeating the line pulse" in {
+      simulate(client) { d =>
+        val h = new Harness(d); d.io.out.ready.poke(false.B)
+        h.send(0x40000c); h.physical(0x400000, 100, fault=true)
+        h.until(d.io.out.valid.peek().litToBoolean)
+        assert(h.faults==1 && h.wordFaults==0)
+        val bits=d.io.out.bits.peek().litValue
+        for (_ <- 0 until 5) {
+          h.invalidateJob(); d.io.commandResponseFault.get.expect(true.B)
+          assert(d.io.out.bits.peek().litValue==bits && h.faults==1 && h.wordFaults==0)
+        }
+        d.io.out.ready.poke(true.B); h.step(); assert(h.wordFaults==1)
+        d.io.commandResponseFault.get.expect(false.B)
+        h.send(0x400010); h.physical(0x400000, 200); h.expectReply(2,0x400010,204)
+        h.send(0x400014); h.expectReply(3,0x400014,205)
+        assert(h.faults==1 && h.wordFaults==1)
       }
     }
   }

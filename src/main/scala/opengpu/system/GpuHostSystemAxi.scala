@@ -75,8 +75,8 @@ class GpuHostSystemAxi(
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   require(numComputeUnits > 0)
-  require(!persistentAttachments || (!bufferCommandReads && !bufferTextureReads && !coalesceFramebufferWrites),
-    "persistent jobs require response-aligned word faults; buffered/coalesced fault ownership needs a separate contract")
+  require(!persistentAttachments || (!bufferTextureReads && !coalesceFramebufferWrites),
+    "persistent texture buffering and framebuffer combining need response-aligned fault ownership")
   require(!persistentAttachments || !fragCore || sharedGraphics,
     "programmable persistent jobs use the shared system CU pool")
   require(shaderConfig.xLen == gpuConfig.xLen,
@@ -412,7 +412,7 @@ class GpuHostSystemAxi(
       stagingClient.io.fault || dmaClient.io.fault || cbClient.io.fault ||
         fbClient.io.fault || texClient.io.fault
     if (persistentAttachments) {
-      host.io.commandFault.get := cbClient.io.fault
+      host.io.commandFault.get := cbClient.io.commandResponseFault.getOrElse(cbClient.io.fault)
       host.io.attachmentFault.get := fbClient.io.fault
       host.io.tileTextureFault.get := texClient.io.fault
     }
