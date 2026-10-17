@@ -1,5 +1,22 @@
 # Full-system simulation performance investigation
 
+## Fixed-function texture payload handoff (2026-10-17)
+
+A sampler may accept its successor while delivering the previous result.
+The fixed-function texture consumer has one saved fragment payload; accepting
+that successor early overwrote the position before publishing the old texel.
+The continuous-input regression reproduced **x=11 instead of x=10**, and an
+existing textured render wrote the color for x1 at x2.
+
+The consumer now holds admission while its fragment is pending, through output
+retirement. The new stalled-output regression and the original 1x/4x
+texture/blend/stencil pixel/depth checks pass. Freshly compiling all **169 main
+Scala sources** and running ten suites passes **67 tests**. All **296 actual
+four-CU executable RTL modules** remain identical to the qualified native
+model, so its desktop and strict-trace evidence remains applicable.
+
+See [the before/after regression and whole-source audit](performance/textured-fragment-payload-fix-2026-10-17.json).
+
 ## Qualified prepared sampler overlap (2026-10-17)
 
 Each vector sampler can fetch its next prepared sample while holding the

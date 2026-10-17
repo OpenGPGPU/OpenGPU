@@ -181,7 +181,9 @@ class TexturedFragStage(
 
   private def modulate(fc: UInt, tc: UInt): UInt = (fc * tc)(15, 8)
 
-  io.fragIn.ready := state === sWait && sampler.io.sample.ready
+  // A sampler may accept its successor while delivering the previous result.
+  // This stage has one fragment payload slot, held until that output retires.
+  io.fragIn.ready := state === sWait && !pending && sampler.io.sample.ready
   sampler.io.sample.valid :=
     state === sWait && io.fragIn.valid && io.fragIn.ready
   sampler.io.sample.bits.u := uvInterp.io.uvPx.u
