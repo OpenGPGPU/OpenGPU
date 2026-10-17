@@ -1,0 +1,268 @@
+{
+  "scope": "Retrospective mapping audit of terminal H0/H1 physical screens; timing remains independently required. Raw historical results are preserved.",
+  "qualifier_sha256": "345d53af87f3219d52f42d636c8c59e56506479a4db1a12069de1e06d4fa0aa5",
+  "python_tests": 23,
+  "records": [
+    {
+      "artifact": "generated/mobile-h1/physical-admission",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-admission/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "0b78c2aa48eea0ab4bc719769027b06b7395ec84aa41d3953b394be030fc083c"
+      },
+      "result_sha256": "7226659da5ae64fce70d9e7b7e6df78df263e5d6f8e01c28cbbebf5963981186"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-bringup",
+      "mapping": {
+        "passed": false,
+        "mapping_report_present": false,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": null,
+        "log_sha256": null
+      },
+      "result_sha256": "243e4f690a988784b26fa2f278fffc00b234bbfa656813b1051437c1041d2c15"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-command-controller",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-command-controller/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "750a11a4bca8f2325d25e8099dc815cfa57af8e5112ce2671f86a2ae13aa3b67"
+      },
+      "result_sha256": "ace091aab9a9ddc71077dcf4f8fdad8b9b85e472d532e51e1110d78d301d6e3a"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-command-drain",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-command-drain/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "aee921dc44e3a9f60f8f02746a11b744651bd6989d96e032b185faf8df6c0419"
+      },
+      "result_sha256": "80228816d8a5571e24dd2451d165c945a9858c42cfedb661a662e624074ab198"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-command-reference",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-command-reference/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "8a9b506d9fe7b6478db2863f01f7ebd9af6b4961a9720344f23e480884719a0c"
+      },
+      "result_sha256": "236fbd44234e4ddeca30375ed462869e3f5b0a2fd49132220afd2e50d218f42d"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-concurrent",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-concurrent/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "55b8f891821b7031d247d1464df927033d0f502b939e0983f5cb74b10904ba2d"
+      },
+      "result_sha256": "aec974425b3034413702f72ce1d416efbcb0a8d920098a464e54a849cffd8759"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-concurrent-closure",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-concurrent-closure/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "ca819c14d3061564a156c7cb300a0691c9be4cce90da24ada22b3f7acb95eb97"
+      },
+      "result_sha256": "10b78def50cd55a7bed8ae24327993aadc4c435357a523ddeccf1655a807e847"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-credits16",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-credits16/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "b0c49a66ae00c2117fc9ed606bd7604cc59e75187c8c235829b256dcd0ecdec4"
+      },
+      "result_sha256": "0d2c8d12f4060f6065f483bc97a7cf0f4be2cd17f07f63e703af0ea18db0a6bc"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-execution-fault",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-execution-fault/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "bf0f612baf436981109d7adc68b4be4abec05fe8aeb9afb3019b247b727638ed"
+      },
+      "result_sha256": "f041a7b4ecf3be976915c6681460db388e030b0765df508cc768f5378cdeb140"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-mulpipe",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-mulpipe/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "b9641c0dedc2ba40981b903f6df579df75f4073e649de7dd76251fc79ed623bf"
+      },
+      "result_sha256": "97adf059a9fa91f6efd626010563c51d3ac9a8a069b1dc4f9f88b5645d28b848"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-persistent-core",
+      "mapping": {
+        "passed": false,
+        "mapping_report_present": true,
+        "skipped_instance_types": [
+          "sdiv_trunc",
+          "udiv"
+        ],
+        "skipped_instance_count": 211,
+        "skipped_instances_by_type": {
+          "sdiv_trunc": 16,
+          "udiv": 195
+        },
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-persistent-core/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "f3f29800ea779c8ddecc3d36c38757f8dda65cb4ef82dcbd2352cf637f30d210"
+      },
+      "result_sha256": "f6a6cc21445ede8f1bf5b59ea51c9b49fb3fd54c30441affcb71b3df16aee1db"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-registered-events",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-registered-events/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "46869b64d12ceff031ff52cf39b5b19f8a8ada8fd4142956b8f3b60e82cef866"
+      },
+      "result_sha256": "c63dbcb784bf4278453605bc884a34f705418c535fd206be113fc1677990a7bb"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-registered-events-closure",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-registered-events-closure/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "745b3d3432a753a212fd19db719ac5d6667dd6902dfb78240a1e1ffe3399895d"
+      },
+      "result_sha256": "a126ea2804357b9d62010d95397fe3ad5750a498e8e82121d51797fa268710c2"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-route",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-route/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "25e93ba17aadbb784473f06247ac6cf3e1c25e852b631d8f4ae8951120f960a8"
+      },
+      "result_sha256": "d3f39f1c056eab5d5f5b45ee0e23a417dca510a571b6e8080105fbb60bab878e"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-rowbase",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-rowbase/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "39a12d388ab0a4ed5953fbb6870a4d7090687d6957f7e69f885761f9983d7367"
+      },
+      "result_sha256": "8807aa84fe7f95073e88435f0d041e6a7e40dc7066f01e3c52263f954384d0d2"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-sram",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-sram/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "d134ddf258102f73e1f3e142efbe227ac8b37131140841a9fab454c783daaa8f"
+      },
+      "result_sha256": "1da163a7446cf6e92a18ff594811366ed66db7fdd0be813a681d928d0b7d4665"
+    },
+    {
+      "artifact": "generated/mobile-h1/physical-write-queue",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-write-queue/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "70e0a755a23920abc44c4dc20836d1d4cd69eaeb43b2f7be21f5bd1ca60b133c"
+      },
+      "result_sha256": "faf116e434a038ab4b5c0f9292eface8d1fbcaa9dafdd0ac59e609693a230623"
+    }
+  ]
+}

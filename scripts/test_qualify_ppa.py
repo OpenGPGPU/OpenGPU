@@ -42,6 +42,28 @@ def test_missing_setup_paths_cannot_qualify_a_design():
     assert not qualify.synthesis_setup_gate('No paths found.\n')['passed']
 
 
+def test_synthesis_mapping_requires_explicit_evidence():
+    assert not qualify.synthesis_mapping_gate('')['passed']
+    assert not qualify.synthesis_mapping_gate('Timing passed without a mapping report')['passed']
+    assert qualify.synthesis_mapping_gate('Export to ODB: created 100 instances, 120 nets')['passed']
+    assert qualify.synthesis_mapping_gate('ABC RESULTS: 100 NAND cells')['passed']
+
+
+@pytest.mark.parametrize('operator', ['sdiv_trunc', 'udiv', 'unknown_operator'])
+def test_skipped_operators_fail_even_when_a_netlist_was_exported(operator):
+    log = f"Export to ODB: created 100 instances\n[WARNING SYN-0030] Export to ODB: skipping unexpected instance type '{operator}'\n"
+    gate = qualify.synthesis_mapping_gate(log)
+    assert not gate['passed']
+    assert gate['skipped_instance_types'] == [operator]
+    assert gate['skipped_instance_count'] == 1
+
+
+@pytest.mark.parametrize('diagnostic', ['Warning: Wire Top.foo is used but has no driver.',
+                                      'unmapped cell $div', 'Found and reported 3 problems.'])
+def test_unresolved_logic_fails_mapping(diagnostic):
+    assert not qualify.synthesis_mapping_gate('ABC RESULTS: 100 NAND cells\n' + diagnostic)['passed']
+
+
 def routed_result():
     return dict(status='success', overview=dict(verdict='PASS'), qor=dict(
         setup_worst_slack_ps=20.0, hold_worst_slack_ps=1.0,
@@ -76,8 +98,10 @@ def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypa
     (rtl / 'Top.sv').write_text('module Top(input clock); endmodule\n')
     report = tmp_path / 'synthesis_sta.log'
     report.write_text('101.675 slack (MET)\n-1.068 slack (VIOLATED)\n')
+    mapping_log = tmp_path / 'synthesis.log'
+    mapping_log.write_text('Export to ODB: created 100 instances\n')
     payload = dict(status='success', overview=dict(verdict='PASS'),
-                   artifacts={'synthesis_sta.log': str(report)},
+                   artifacts={'synthesis_sta.log': str(report), 'run.log': str(mapping_log)},
                    report_tail='101.675 slack (MET)\n')
     modules = {
         'chipagent': types.ModuleType('chipagent'),
@@ -100,4 +124,5 @@ def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypa
         qualify.main()
     assert error.value.code == 2
     assert not json.loads((output / 'qualification.json').read_text())['passed']
+    assert json.loads((output / 'qualification.json').read_text())['mapping']['passed']
     assert json.loads((output / 'result.json').read_text()) == payload

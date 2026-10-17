@@ -32,6 +32,34 @@ def synthesis_setup_gate(report):
                 reported_path_groups=len(paths))
 
 
+def synthesis_mapping_gate(log):
+    """Timing cannot qualify a netlist that omitted RTL operators or drivers."""
+    skipped = re.findall(r"skipping unexpected instance type ['\"]([^'\"]+)['\"]", log or '')
+    unresolved = [line.strip() for line in (log or '').splitlines()
+                  if re.search(r'used but has no driver|unmapped (?:cell|instance)|'
+                               r'found and reported [1-9]\d* problems', line, re.I)]
+    mapped = bool(re.search(r'Export to ODB: created \d+ instances|ABC RESULTS:|Number of cells:', log or ''))
+    return dict(passed=mapped and not skipped and not unresolved,
+                mapping_report_present=mapped, skipped_instance_types=sorted(set(skipped)),
+                skipped_instance_count=len(skipped),
+                skipped_instances_by_type={name: skipped.count(name) for name in sorted(set(skipped))},
+                unresolved_diagnostics=unresolved,
+                scope='Synthesis mapping report; omitted operators and undriven logic fail qualification')
+
+
+def mapping_proof(result, output):
+    candidates = [output / 'flow/orfs-work/logs/base/1_synth.log']
+    run_log = (result.get('artifacts') or {}).get('run.log')
+    if run_log:
+        candidates.append(Path(run_log))
+    path = next((p for p in candidates if p.is_file()), None)
+    log = path.read_text() if path else ''
+    gate = synthesis_mapping_gate(log)
+    gate.update(log=str(path) if path else None,
+                log_sha256=hashlib.sha256(log.encode()).hexdigest() if path else None)
+    return gate
+
+
 def post_route_gate(result):
     """Require explicit global setup/hold and physical checks, not tool completion."""
     qor = result.get('qor') or {}
@@ -61,6 +89,7 @@ def main():
     parser.add_argument('--density', type=float, default=0.6)
     parser.add_argument('--timeout', type=int, default=7200)
     parser.add_argument('--timing-effort', choices=['explore', 'closure', 'closure_no_cts'])
+    parser.add_argument('--synthesis-engine', choices=['syn', 'yosys'], default='syn')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -90,7 +119,7 @@ def main():
     inputs = dict(reg_code='', rtl_files=[str(p) for p in files],
         module_name=args.module, clock_port=args.clock, clock_period=args.period_ps,
         io_delay_percent=args.io_delay, io_false_path_ports=None,
-        cell_vt='SLVT', corner='TC', synthesis_engine='syn',
+        cell_vt='SLVT', corner='TC', synthesis_engine=args.synthesis_engine,
         enable_retiming=False, sv_frontend='native',
         core_utilization=args.utilization, place_density=args.density,
         output_dir=str(args.output.resolve() / 'flow'), timeout=args.timeout,
@@ -123,6 +152,7 @@ def main():
         raise SystemExit(1)
     if status == 'failed' and result.result.get('overview', {}).get('verdict') != 'FAIL':
         raise SystemExit(1)
+    mapping = mapping_proof(result.result, args.output)
     if args.stage == 'synthesis':
         report_file = result.result.get('artifacts', {}).get('synthesis_sta.log')
         report_path = Path(report_file) if report_file else None
@@ -131,12 +161,17 @@ def main():
         gate = synthesis_setup_gate(report)
         gate.update(scope='All reported synthesis setup paths, including I/O',
                     report_sha256=hashlib.sha256(report.encode()).hexdigest())
+        gate['setup_passed'] = gate['passed']
+        gate['mapping'] = mapping
+        gate['passed'] = gate['passed'] and mapping['passed']
         (args.output / 'qualification.json').write_text(json.dumps(gate, indent=2) + '\n')
         print(json.dumps({'synthesis_setup_gate': gate}), flush=True)
         if not gate['passed']:
             raise SystemExit(2)
     else:
         gate = post_route_gate(result.result)
+        gate['mapping'] = mapping
+        gate['passed'] = gate['passed'] and mapping['passed']
         (args.output / 'qualification.json').write_text(json.dumps(gate, indent=2) + '\n')
         print(json.dumps({'post_route_gate': gate}), flush=True)
         if not gate['passed']:
