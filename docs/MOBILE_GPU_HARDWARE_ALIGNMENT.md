@@ -699,3 +699,41 @@ their earlier results. Final emitted RTL is byte-identical to the frozen
 one-entry client used for physical qualification. Native typed MSAA/product
 combinations and attachment-store AXI B-response faults remain separate work;
 these results do not close H0/H1 or any later milestone.
+
+## H1 product-profile MSAA and attachment write faults
+
+[The native functional checkpoint](performance/mobile-h1-product-functional-2026-10-18.json)
+records 135 passing checks in 22 suites. This includes the previous 106 checks,
+25 raster checks, two product MSAA checks and two attachment-write fault checks;
+repeated discovery runs are counted once.
+
+The rasterizer now intersects its walk bounds with the snapshotted runtime
+scissor in every configuration. Previously only bin replay enabled this
+optimization, so a persistent tile could scan a screen-sized triangle for each
+small tile. Odd bounds retain complete 2x2 helper groups; empty or inverted
+scissors finish without requiring output readiness. Independent plane/sample
+checks cover 84 submissions at a 1280x720 viewport, both scan orders and all
+three sample counts. The prior implementation fails the bounded-walk check.
+
+The native product matrix covers 24 jobs: fixed and shared shader backends,
+1x/2x/4x MSAA, 8x8/16x16 tiles, Bare/Sv32 translation, and alternating clear/load
+starts. Each job uses the proposed 128 KiB four-bank L2 and 256-bit AXI bus.
+Shared shading uses all four CUs with 16 lanes and eight warps. Every stored
+color/depth/stencil sample and resolved pixel is checked after an ordered typed
+draw/partial-clear/blend stream. These are single-tile functional measurements,
+not complete 720p frames or an FPS result.
+
+A further 68 jobs inject first/last color, depth and resolve B-response errors,
+reset during STORE, and reset combined with an error, followed by healthy
+reuse. Completion waits for all accepted transfers to drain; errors report
+status 3 and reset discards the old completion. Already accepted writes may
+change backing memory. A negative control disconnecting attachment-fault
+propagation fails the status assertion as expected.
+
+Qualification remains incomplete. The real 1280x720 quad rasterizer baseline
+maps fully but fails the routed 1 GHz setup gate at TC/SLVT with 25% I/O delays
+and 25% utilization: setup -966.104 ps, hold +30.8655 ps, DRC errors zero.
+The scissor revision's physical run is separate. The fixed Linux DRM smoke
+also failed a compute-fence timeout; this checkpoint does not claim a passing
+desktop integration. Arithmetic/timing improvements and that investigation
+continue separately. All original H0–H8 requirements remain in force.

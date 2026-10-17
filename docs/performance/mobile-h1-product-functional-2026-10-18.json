@@ -1,0 +1,2793 @@
+{
+  "scope": "Intermediate H0/H1 native functional evidence. Not milestone completion, physical qualification, full-system pass or Mali-G31 parity.",
+  "reference_checkpoint": "09c3f23",
+  "source_revision": {
+    "path": ".artifacts/mobile-hardware-alignment/h0-h1/Rasterizer_scissor_before_prefix.scala",
+    "sha256": "5a6ffc317e487fe7c8d1800f39373d5e9caca7b1e15726a44e1f4ba0522279e2"
+  },
+  "functional": {
+    "distinct_checks": 135,
+    "suites": {
+      "ScissoredRasterizerSpec": 12,
+      "RasterizerSpec": 11,
+      "TileRasterizerSpec": 2,
+      "PersistentTileProductMsaaSpec": 2,
+      "PersistentTileStoreFaultSpec": 2,
+      "PersistentTileHostAxiSpec": 3,
+      "BufferedPersistentTileHostAxiSpec": 3,
+      "BufferedCommandWordPortSpec": 8,
+      "BufferedTranslatedWordClientSpec": 7,
+      "BufferedTextureTranslatedWordClientSpec": 7,
+      "TypedTileCommandBufferSpec": 4,
+      "TileCommandPassControllerSpec": 10,
+      "TileJobDescriptorReaderSpec": 7,
+      "GpuAbiLayoutSpec": 12,
+      "PersistentTileTextureVisibilitySpec": 3,
+      "BufferedPersistentTileTextureVisibilitySpec": 3,
+      "CommandBufferStageSpec": 3,
+      "CancellableCommandBufferStageSpec": 8,
+      "RenderHostSpec": 15,
+      "PersistentTileRenderCoreSpec": 1,
+      "GpuHostAxiSpec": 3,
+      "GpuCommandRouterSpec": 9
+    },
+    "log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_final135.log",
+      "sha256": "d341ff5bd0e8c1294c9962658bd5c99e6f43d1d6aebc91e364a9e35e9c3d12fc"
+    },
+    "scissor": {
+      "checks": 12,
+      "submissions": 84,
+      "results": [
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 4
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 1,
+          "quads": 0,
+          "cycles": 4
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 1,
+          "quads": 0,
+          "cycles": 4
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 4
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 1,
+          "quads": 0,
+          "cycles": 4
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 0,
+          "cycles": 64
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 1,
+          "quads": 0,
+          "cycles": 4
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": false,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 4
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 0,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 1,
+          "quads": 1,
+          "cycles": 4
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 1,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 1,
+          "quads": 1,
+          "cycles": 4
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 0,
+          "mode": 2,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 4
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 0,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 1,
+          "quads": 1,
+          "cycles": 4
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 1,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            101,
+            51,
+            108,
+            58
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            109,
+            61,
+            116,
+            68
+          ],
+          "pixels": 49,
+          "quads": 16,
+          "cycles": 23
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "pixels": 1,
+          "quads": 1,
+          "cycles": 4
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            0,
+            0,
+            0,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            8,
+            5,
+            3,
+            7
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            1300,
+            0,
+            1310,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        },
+        {
+          "quad": true,
+          "tile": 16,
+          "mode": 2,
+          "rect": [
+            4,
+            8,
+            12,
+            8
+          ],
+          "pixels": 0,
+          "quads": 0,
+          "cycles": 3
+        }
+      ],
+      "reference": "Independent integer plane/sample oracle; odd/outside/inverted scissors, helpers and stalls."
+    },
+    "msaa": {
+      "checks": 2,
+      "jobs": 24,
+      "results": [
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 1,
+          "sv32": false,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 512,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 0,
+          "cycles": 3381
+        },
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 8,
+          "origin_y": 8,
+          "samples": 1,
+          "sv32": true,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 64,
+          "attachment_bytes": 512,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 0,
+          "cycles": 5176
+        },
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 1,
+          "sv32": false,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 263,
+          "attachment_bytes": 1856,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 0,
+          "cycles": 18379
+        },
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 16,
+          "origin_y": 16,
+          "samples": 1,
+          "sv32": true,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 2048,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 0,
+          "cycles": 16348
+        },
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 2,
+          "sv32": false,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 1024,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 0,
+          "cycles": 6913
+        },
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 8,
+          "origin_y": 8,
+          "samples": 2,
+          "sv32": true,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 128,
+          "attachment_bytes": 1024,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 0,
+          "cycles": 9645
+        },
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 2,
+          "sv32": false,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 519,
+          "attachment_bytes": 3904,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 0,
+          "cycles": 33322
+        },
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 16,
+          "origin_y": 16,
+          "samples": 2,
+          "sv32": true,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 4096,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 0,
+          "cycles": 26728
+        },
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 4,
+          "sv32": false,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 2048,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 0,
+          "cycles": 12901
+        },
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 8,
+          "origin_y": 8,
+          "samples": 4,
+          "sv32": true,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 256,
+          "attachment_bytes": 2048,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 0,
+          "cycles": 17624
+        },
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 4,
+          "sv32": false,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 1039,
+          "attachment_bytes": 7808,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 0,
+          "cycles": 60351
+        },
+        {
+          "shared": false,
+          "cus": 1,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 16,
+          "origin_y": 16,
+          "samples": 4,
+          "sv32": true,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 8192,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 0,
+          "cycles": 47311
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 1,
+          "sv32": false,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 512,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 4307,
+          "cycles": 5260
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 8,
+          "origin_y": 8,
+          "samples": 1,
+          "sv32": true,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 64,
+          "attachment_bytes": 512,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 4376,
+          "cycles": 7099
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 1,
+          "sv32": false,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 263,
+          "attachment_bytes": 1856,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 16799,
+          "cycles": 23109
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 16,
+          "origin_y": 16,
+          "samples": 1,
+          "sv32": true,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 2048,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 16875,
+          "cycles": 21908
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 2,
+          "sv32": false,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 1024,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 4212,
+          "cycles": 8761
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 8,
+          "origin_y": 8,
+          "samples": 2,
+          "sv32": true,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 128,
+          "attachment_bytes": 1024,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 4376,
+          "cycles": 11585
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 2,
+          "sv32": false,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 519,
+          "attachment_bytes": 3904,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 16833,
+          "cycles": 37285
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 16,
+          "origin_y": 16,
+          "samples": 2,
+          "sv32": true,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 4096,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 17156,
+          "cycles": 31192
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 4,
+          "sv32": false,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 2048,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 4212,
+          "cycles": 14755
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 8,
+          "origin_x": 8,
+          "origin_y": 8,
+          "samples": 4,
+          "sv32": true,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 256,
+          "attachment_bytes": 2048,
+          "resolve_bytes": 256,
+          "active_cu_cycles": 4376,
+          "cycles": 19545
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 0,
+          "origin_y": 0,
+          "samples": 4,
+          "sv32": false,
+          "load_start": true,
+          "command_lines": 16,
+          "attachment_reads": 1039,
+          "attachment_bytes": 7808,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 16946,
+          "cycles": 63149
+        },
+        {
+          "shared": true,
+          "cus": 4,
+          "lanes": 16,
+          "warps": 8,
+          "l2_bytes": 131072,
+          "tile": 16,
+          "origin_x": 16,
+          "origin_y": 16,
+          "samples": 4,
+          "sv32": true,
+          "load_start": false,
+          "command_lines": 16,
+          "attachment_reads": 0,
+          "attachment_bytes": 8192,
+          "resolve_bytes": 1024,
+          "active_cu_cycles": 17359,
+          "cycles": 49917
+        }
+      ],
+      "reference": "All color/depth/stencil samples and RGBA resolves; exact export address sets. Fixed1CU/shared4CU16lane8warp,128KiB4bank L2,AXI256,viewport1280x720. One resident8/16tile; not full frame."
+    },
+    "store_faults": {
+      "checks": 2,
+      "jobs": 68,
+      "profiles": [
+        {
+          "profile": {
+            "shared": false,
+            "cus": 1,
+            "lanes": 4,
+            "warps": 2,
+            "sv32": false
+          },
+          "results": [
+            {
+              "phase": "healthy",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "colorFirst",
+              "command_lines": 3,
+              "accepted_writes": 8,
+              "acknowledged_writes": 8,
+              "error_replies": 1,
+              "peak_pending": 1,
+              "exported_words": 8,
+              "cycles": 1587,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "colorLast",
+              "command_lines": 3,
+              "accepted_writes": 268,
+              "acknowledged_writes": 268,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 268,
+              "cycles": 9507,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "depthFirst",
+              "command_lines": 3,
+              "accepted_writes": 259,
+              "acknowledged_writes": 259,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 259,
+              "cycles": 9216,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "depthLast",
+              "command_lines": 3,
+              "accepted_writes": 524,
+              "acknowledged_writes": 524,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 524,
+              "cycles": 17189,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resolveFirst",
+              "command_lines": 3,
+              "accepted_writes": 515,
+              "acknowledged_writes": 515,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 515,
+              "cycles": 16944,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resolveLast",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "reset",
+              "command_lines": 3,
+              "accepted_writes": 3,
+              "acknowledged_writes": 3,
+              "error_replies": 0,
+              "peak_pending": 1,
+              "exported_words": 3,
+              "cycles": 1355,
+              "asserted_status": null
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resetFault",
+              "command_lines": 3,
+              "accepted_writes": 3,
+              "acknowledged_writes": 3,
+              "error_replies": 1,
+              "peak_pending": 1,
+              "exported_words": 3,
+              "cycles": 1355,
+              "asserted_status": null
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            }
+          ]
+        },
+        {
+          "profile": {
+            "shared": false,
+            "cus": 1,
+            "lanes": 4,
+            "warps": 2,
+            "sv32": true
+          },
+          "results": [
+            {
+              "phase": "healthy",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19454,
+              "asserted_status": 0
+            },
+            {
+              "phase": "colorFirst",
+              "command_lines": 3,
+              "accepted_writes": 8,
+              "acknowledged_writes": 8,
+              "error_replies": 1,
+              "peak_pending": 1,
+              "exported_words": 8,
+              "cycles": 1587,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "colorLast",
+              "command_lines": 3,
+              "accepted_writes": 268,
+              "acknowledged_writes": 268,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 268,
+              "cycles": 9507,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "depthFirst",
+              "command_lines": 3,
+              "accepted_writes": 259,
+              "acknowledged_writes": 259,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 259,
+              "cycles": 9216,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "depthLast",
+              "command_lines": 3,
+              "accepted_writes": 524,
+              "acknowledged_writes": 524,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 524,
+              "cycles": 17189,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resolveFirst",
+              "command_lines": 3,
+              "accepted_writes": 515,
+              "acknowledged_writes": 515,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 515,
+              "cycles": 16944,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resolveLast",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "reset",
+              "command_lines": 3,
+              "accepted_writes": 3,
+              "acknowledged_writes": 3,
+              "error_replies": 0,
+              "peak_pending": 1,
+              "exported_words": 3,
+              "cycles": 1355,
+              "asserted_status": null
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resetFault",
+              "command_lines": 3,
+              "accepted_writes": 3,
+              "acknowledged_writes": 3,
+              "error_replies": 1,
+              "peak_pending": 1,
+              "exported_words": 3,
+              "cycles": 1355,
+              "asserted_status": null
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            }
+          ]
+        },
+        {
+          "profile": {
+            "shared": true,
+            "cus": 4,
+            "lanes": 16,
+            "warps": 8,
+            "sv32": false
+          },
+          "results": [
+            {
+              "phase": "healthy",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "colorFirst",
+              "command_lines": 3,
+              "accepted_writes": 8,
+              "acknowledged_writes": 8,
+              "error_replies": 1,
+              "peak_pending": 1,
+              "exported_words": 8,
+              "cycles": 1587,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "colorLast",
+              "command_lines": 3,
+              "accepted_writes": 268,
+              "acknowledged_writes": 268,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 268,
+              "cycles": 9507,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "depthFirst",
+              "command_lines": 3,
+              "accepted_writes": 259,
+              "acknowledged_writes": 259,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 259,
+              "cycles": 9216,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "depthLast",
+              "command_lines": 3,
+              "accepted_writes": 524,
+              "acknowledged_writes": 524,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 524,
+              "cycles": 17189,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resolveFirst",
+              "command_lines": 3,
+              "accepted_writes": 515,
+              "acknowledged_writes": 515,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 515,
+              "cycles": 16944,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resolveLast",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "reset",
+              "command_lines": 3,
+              "accepted_writes": 3,
+              "acknowledged_writes": 3,
+              "error_replies": 0,
+              "peak_pending": 1,
+              "exported_words": 3,
+              "cycles": 1355,
+              "asserted_status": null
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resetFault",
+              "command_lines": 3,
+              "accepted_writes": 3,
+              "acknowledged_writes": 3,
+              "error_replies": 1,
+              "peak_pending": 1,
+              "exported_words": 3,
+              "cycles": 1355,
+              "asserted_status": null
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            }
+          ]
+        },
+        {
+          "profile": {
+            "shared": true,
+            "cus": 4,
+            "lanes": 16,
+            "warps": 8,
+            "sv32": true
+          },
+          "results": [
+            {
+              "phase": "healthy",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19454,
+              "asserted_status": 0
+            },
+            {
+              "phase": "colorFirst",
+              "command_lines": 3,
+              "accepted_writes": 8,
+              "acknowledged_writes": 8,
+              "error_replies": 1,
+              "peak_pending": 1,
+              "exported_words": 8,
+              "cycles": 1587,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "colorLast",
+              "command_lines": 3,
+              "accepted_writes": 268,
+              "acknowledged_writes": 268,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 268,
+              "cycles": 9507,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "depthFirst",
+              "command_lines": 3,
+              "accepted_writes": 259,
+              "acknowledged_writes": 259,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 259,
+              "cycles": 9216,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "depthLast",
+              "command_lines": 3,
+              "accepted_writes": 524,
+              "acknowledged_writes": 524,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 524,
+              "cycles": 17189,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resolveFirst",
+              "command_lines": 3,
+              "accepted_writes": 515,
+              "acknowledged_writes": 515,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 515,
+              "cycles": 16944,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resolveLast",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 1,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 3
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "reset",
+              "command_lines": 3,
+              "accepted_writes": 3,
+              "acknowledged_writes": 3,
+              "error_replies": 0,
+              "peak_pending": 1,
+              "exported_words": 3,
+              "cycles": 1355,
+              "asserted_status": null
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            },
+            {
+              "phase": "resetFault",
+              "command_lines": 3,
+              "accepted_writes": 3,
+              "acknowledged_writes": 3,
+              "error_replies": 1,
+              "peak_pending": 1,
+              "exported_words": 3,
+              "cycles": 1355,
+              "asserted_status": null
+            },
+            {
+              "phase": "recovery",
+              "command_lines": 3,
+              "accepted_writes": 576,
+              "acknowledged_writes": 576,
+              "error_replies": 0,
+              "peak_pending": 2,
+              "exported_words": 576,
+              "cycles": 19409,
+              "asserted_status": 0
+            }
+          ]
+        }
+      ],
+      "negative_control": {
+        "original_sha256": "44e1e1dbbabcb20146fe674dca1e6bbc79b2aa526a7d8738f85d47d2a196e2c3",
+        "mutated_sha256": "d5badb1c9c2c296bed6eb53b7ce91ba09ebadd0a59c2e1ae3175e38e2455ee51",
+        "log": {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_store_fault_negative.log",
+          "sha256": "7524c774a145a96b52152454eaa4f1b5ad087b69e98c2266117603f80b66a99f"
+        },
+        "exit_code": 1,
+        "expected_failure_observed": true,
+        "restored_sha256": "44e1e1dbbabcb20146fe674dca1e6bbc79b2aa526a7d8738f85d47d2a196e2c3",
+        "metadata_sha256": "64bec79bc2c9c56d5f2682c1a21097bc7d48102032689293c95c82eadaf40db3"
+      }
+    },
+    "driver": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_driver.log",
+      "sha256": "bd13abb7ee4906e6bdf65261755de3893cfa8e3f209a1ebbf2f546d8922386cd"
+    }
+  },
+  "emission": {
+    "baseline": {
+      "path": "generated/mobile-h1/product-raster-baseline-rtl",
+      "sha256": {
+        "QuadCoverage.sv": "639dcc423bc4b6985a3cf06cf5d9ddbb0d952303589bb7825f066a3f6f38210d",
+        "SampleCoverage.sv": "0b8226fd39a2e14efafac3c0abf1bbca3f9d0b9d6328415516525b3a58168b15",
+        "TriangleRasterizer.sv": "a36d36147476233237483bcec35d244d797137941d852db0bfbdd77c9061c5e0",
+        "filelist.f": "dd72e3b961f116fc256a4fe0e441d590f24315fd797fe62f48842fcc0f93e7dd",
+        "verification/assert/layers-TriangleRasterizer-Verification-Assert.sv": "a8c7cceea45eea71c9cfbb52af478d9ba719a4c98ae3895f9fcd6b7c03935704",
+        "verification/assume/layers-TriangleRasterizer-Verification-Assume.sv": "db4dd270cacafed3b174ac4f6173f02b701616c5a0eb8417213d6ec4876c33f8",
+        "verification/cover/layers-TriangleRasterizer-Verification-Cover.sv": "caec58eae26c75c7dc938b6dd93bd6fc2f1efbf323462b3fb4dd779d2f9ed26f",
+        "verification/layers-TriangleRasterizer-Verification.sv": "6fc29a714da0ea37e8bceb9dca042ed15cd3df0f8bbb242e50dbcbf3a69d64ad"
+      }
+    },
+    "scissor": {
+      "path": "generated/mobile-h1/product-raster-scissor-rtl",
+      "sha256": {
+        "QuadCoverage.sv": "639dcc423bc4b6985a3cf06cf5d9ddbb0d952303589bb7825f066a3f6f38210d",
+        "SampleCoverage.sv": "0b8226fd39a2e14efafac3c0abf1bbca3f9d0b9d6328415516525b3a58168b15",
+        "TriangleRasterizer.sv": "47f97e5446861162ff792d4fbc8549542312808cf3f6f3ee9a11ad8db3789868",
+        "filelist.f": "dd72e3b961f116fc256a4fe0e441d590f24315fd797fe62f48842fcc0f93e7dd",
+        "verification/assert/layers-TriangleRasterizer-Verification-Assert.sv": "a8c7cceea45eea71c9cfbb52af478d9ba719a4c98ae3895f9fcd6b7c03935704",
+        "verification/assume/layers-TriangleRasterizer-Verification-Assume.sv": "db4dd270cacafed3b174ac4f6173f02b701616c5a0eb8417213d6ec4876c33f8",
+        "verification/cover/layers-TriangleRasterizer-Verification-Cover.sv": "caec58eae26c75c7dc938b6dd93bd6fc2f1efbf323462b3fb4dd779d2f9ed26f",
+        "verification/layers-TriangleRasterizer-Verification.sv": "6fc29a714da0ea37e8bceb9dca042ed15cd3df0f8bbb242e50dbcbf3a69d64ad"
+      }
+    },
+    "replay": {
+      "path": "generated/mobile-h1/product-raster-scissor-replay-rtl",
+      "sha256": {
+        "QuadCoverage.sv": "639dcc423bc4b6985a3cf06cf5d9ddbb0d952303589bb7825f066a3f6f38210d",
+        "SampleCoverage.sv": "0b8226fd39a2e14efafac3c0abf1bbca3f9d0b9d6328415516525b3a58168b15",
+        "TriangleRasterizer.sv": "47f97e5446861162ff792d4fbc8549542312808cf3f6f3ee9a11ad8db3789868",
+        "filelist.f": "dd72e3b961f116fc256a4fe0e441d590f24315fd797fe62f48842fcc0f93e7dd",
+        "verification/assert/layers-TriangleRasterizer-Verification-Assert.sv": "a8c7cceea45eea71c9cfbb52af478d9ba719a4c98ae3895f9fcd6b7c03935704",
+        "verification/assume/layers-TriangleRasterizer-Verification-Assume.sv": "db4dd270cacafed3b174ac4f6173f02b701616c5a0eb8417213d6ec4876c33f8",
+        "verification/cover/layers-TriangleRasterizer-Verification-Cover.sv": "caec58eae26c75c7dc938b6dd93bd6fc2f1efbf323462b3fb4dd779d2f9ed26f",
+        "verification/layers-TriangleRasterizer-Verification.sv": "6fc29a714da0ea37e8bceb9dca042ed15cd3df0f8bbb242e50dbcbf3a69d64ad"
+      }
+    }
+  },
+  "process_results": {
+    "driver": {
+      "exit_code": 0,
+      "session": 68005,
+      "log": "/tmp/gpu-mobile-h1-product-driver.log"
+    },
+    "store_negative_wrapper": {
+      "exit_code": 0,
+      "session": 28583,
+      "log": "/tmp/gpu-mobile-h1-store-fault-negative-wrapper.log"
+    },
+    "scissor_unit_baseline": {
+      "exit_code": 1,
+      "session": 78400,
+      "log": "/tmp/gpu-mobile-h1-scissor-negative.log"
+    },
+    "fixed_guest": {
+      "exit_code": 1,
+      "session": 27424,
+      "log": "/tmp/gpu-mobile-h1-scissor-desktop-fixed.log",
+      "archived_serial": "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1/fixed_guest_failed_serial.log",
+      "failure": "wait compute syncobj: Timer expired; no graphics pass"
+    },
+    "baseline_route": {
+      "exit_code": 2,
+      "session": 29520,
+      "qualification": "generated/mobile-h1/physical-product-raster-baseline-route/qualification.json",
+      "failure": "post-route setup slack and violation count"
+    },
+    "native_compute_small": {
+      "exit_code": 0,
+      "log": "/tmp/gpu-mobile-h1-drm-replay-unit.log",
+      "cases": 2
+    },
+    "native135": {
+      "exit_code": 0,
+      "session": 79617,
+      "log": "/tmp/gpu-mobile-h1-product-final135.log",
+      "distinct_tests": 135,
+      "source_revision": "Rasterizer_scissor_before_prefix.scala; prefix integration is a later unqualified revision"
+    },
+    "native_compute_tailfix": {
+      "exit_code": 0,
+      "profiles": [
+        [
+          1,
+          4,
+          2
+        ],
+        [
+          4,
+          16,
+          8
+        ]
+      ],
+      "vm_modes": [
+        "Bare",
+        "Sv32"
+      ],
+      "instruction_words": 23,
+      "logs": [
+        "/tmp/gpu-mobile-h1-drm-replay-unit.log",
+        "/tmp/gpu-mobile-h1-drm-default-replay.log"
+      ]
+    }
+  },
+  "qualification": {
+    "passed": false,
+    "baseline_route": {
+      "artifact": "generated/mobile-h1/physical-product-raster-baseline-route",
+      "gate": {
+        "passed": false,
+        "checks": {
+          "setup_worst_slack_ps": false,
+          "hold_worst_slack_ps": true,
+          "setup_violation_count": false,
+          "hold_violation_count": true,
+          "route_drc_errors": true,
+          "antenna_violating_nets": true,
+          "antenna_violating_pins": true,
+          "placement_violations": true,
+          "flow_errors": true,
+          "flow_completed": true,
+          "tool_verdict": false
+        },
+        "missing_metrics": [],
+        "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-product-raster-baseline-route/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "203edd1e275572de1facf09bedf1abe6a6cea34cd1cf3c60fd53807ac57a87ce"
+        }
+      },
+      "qor": {
+        "instance_count": 342873,
+        "instance_area": 13986.4,
+        "sequential_cell_count": 2494,
+        "clock_buffer_count": 235,
+        "timing_repair_buffer_count": 23442,
+        "setup_tns_ps": -1076990.0,
+        "hold_tns_ps": 0,
+        "setup_worst_slack_ps": -966.104,
+        "hold_worst_slack_ps": 30.8655,
+        "setup_violation_count": 1872,
+        "hold_violation_count": 0,
+        "core_clock_fmax_mhz": 571.875,
+        "virtual_io_clock_fmax_mhz": 1330.09,
+        "reported_fmax_mhz": 571.875,
+        "setup_clock_skew_ps": 27.1527,
+        "hold_clock_skew_ps": 30.9047,
+        "total_power_w": 0.738546,
+        "placement_utilization": 27.0451,
+        "placement_violations": 0,
+        "estimated_wirelength": 468842,
+        "route_wirelength": 542864,
+        "route_vias": 1136701,
+        "route_drc_errors": 0,
+        "route_drc_report_bytes": 0,
+        "antenna_violating_nets": 0,
+        "antenna_violating_pins": 0,
+        "ir_drop_vdd_worst": 0.0990605,
+        "ir_drop_vss_worst": 0.0926463,
+        "flow_warnings": 15,
+        "flow_errors": 0,
+        "critical_path": {
+          "startpoint": "u1627 (rising edge-triggered flip-flop clocked by core_clock)",
+          "endpoint": "io_quad_valid (output port clocked by vclk_core_clock)",
+          "group": "vclk_core_clock",
+          "slack_ps": -966.1,
+          "arrival_ps": 1716.1,
+          "data_path_delay_ps": 1550.89,
+          "cell_delay_ps": 1530.49,
+          "net_delay_ps": 20.4,
+          "cell_delay_percent": 98.68,
+          "net_delay_percent": 1.32,
+          "cell_count": 83,
+          "net_count": 82,
+          "dominant_cell_types": [
+            {
+              "cell_type": "MAJx2_ASAP7_75t_SL",
+              "count": 32,
+              "delay_ps": 649.69
+            },
+            {
+              "cell_type": "OA211x2_ASAP7_75t_SL",
+              "count": 4,
+              "delay_ps": 96.4
+            },
+            {
+              "cell_type": "BUFx3_ASAP7_75t_SL",
+              "count": 7,
+              "delay_ps": 94.97
+            },
+            {
+              "cell_type": "AO22x2_ASAP7_75t_SL",
+              "count": 4,
+              "delay_ps": 77.97
+            },
+            {
+              "cell_type": "AO32x1_ASAP7_75t_SL",
+              "count": 3,
+              "delay_ps": 62.05
+            },
+            {
+              "cell_type": "AO21x2_ASAP7_75t_SL",
+              "count": 3,
+              "delay_ps": 52.22
+            },
+            {
+              "cell_type": "OR4x1_ASAP7_75t_SL",
+              "count": 2,
+              "delay_ps": 51.22
+            },
+            {
+              "cell_type": "OR2x2_ASAP7_75t_SL",
+              "count": 3,
+              "delay_ps": 47.56
+            }
+          ],
+          "per_group": {
+            "core_clock": {
+              "startpoint": "u1627 (rising edge-triggered flip-flop clocked by core_clock)",
+              "endpoint": "u25899 (rising edge-triggered flip-flop clocked by core_clock)",
+              "slack_ps": -748.63,
+              "arrival_ps": 1903.15
+            },
+            "vclk_core_clock": {
+              "startpoint": "u1627 (rising edge-triggered flip-flop clocked by core_clock)",
+              "endpoint": "io_quad_valid (output port clocked by vclk_core_clock)",
+              "slack_ps": -966.1,
+              "arrival_ps": 1716.1
+            }
+          }
+        }
+      },
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "closure",
+        "synthesis_engine": "syn",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "raster_source_sha256": "4361353de5b79ae9ebf3a2e34e2ce972c55de62df34c196aa8a3c55fe82f4821",
+      "input_rtl_sha256": {
+        "QuadCoverage.sv": "639dcc423bc4b6985a3cf06cf5d9ddbb0d952303589bb7825f066a3f6f38210d",
+        "SampleCoverage.sv": "0b8226fd39a2e14efafac3c0abf1bbca3f9d0b9d6328415516525b3a58168b15",
+        "TriangleRasterizer.sv": "a36d36147476233237483bcec35d244d797137941d852db0bfbdd77c9061c5e0"
+      },
+      "hashes": {
+        "manifest.json": "65e604ec0db15c23ef8998b51ed3393e95863ae7a1e24de53c62b42c8962acaf",
+        "result.json": "9e4e8bce0b7dd2695953315e6fed86a5ccee5c5e06dac23a5e3cd1b62062a00a",
+        "qualification.json": "3730b54250a623b504b2b8337c13a50e94479c086914021c5ca560f1b024dad4"
+      }
+    },
+    "revised_route": "still active when record created; inspect authoritative qualification.json for terminal result",
+    "desktop": "Fixed Linux guest failed compute fence timeout. Archived failed serial; investigation pending. Programmable guest not yet passed."
+  },
+  "remaining": [
+    "All original H0-H8 gates remain in force.",
+    "Integrated prefix arithmetic is a later source revision and is not covered by these135 tests.",
+    "No qualified product clock or720p frame/FPS/energy result; broader formats/descriptors, parallel engines, bins, payload/geometry, texture/pixel rate and API closure remain unfinished."
+  ],
+  "source_sha256": {
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "1dd1a5b7c2227c2ca2a24c30df2564ee41c7921ab26838cd4889ed3382b8557f",
+    "src/test/scala/opengpu/system/GpuHostTestSupport.scala": "7c5c7b7ac80b72015c9272a901cd1cef370cfdda7fb3f5003c23a5317d297921",
+    "src/test/scala/opengpu/graphics/ScissoredRasterizerSpec.scala": "23f85f1d8af369a95ae5549a7354d945320b7b25534135dc3e601533b062741f",
+    "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "cb0fe6521f15c0a75e40e9d71d17b577c87836ad13426216f4e74e188253621d",
+    "src/test/scala/opengpu/system/PersistentTileStoreFaultSpec.scala": "172ef61f2b1fe3cf047dfe264a943a50f4adf12c33509fd64ae26fdcbfc74afe"
+  }
+}

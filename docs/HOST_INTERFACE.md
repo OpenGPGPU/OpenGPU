@@ -396,13 +396,24 @@ offer and drains every issued response before releasing ownership. It never
 launches a partially fetched job. Faults stop command prefetch and retire one
 result after all owners drain.
 
+The resident tile intersects each draw's scissor for coverage and raster scan
+bounds. Quad scan bounds round outward to retain complete 2x2 helper groups;
+only covered lanes inside the scissor may update samples. Empty or inverted
+draw scissors drain without pixel output or downstream readiness.
+
 Completion keeps the unified command ID, which software reserves until `POP`.
 Statuses are 0 success, 1 invalid descriptor, 2 cancelled, 3 attachment fault,
 4 execution fault, 5 descriptor/command fault and 6 texture fault. Completion
-bytes count accepted draw-record reads and exclude descriptor lines. The core
+bytes count accepted command-record words and exclude descriptor lines. The core
 and reader validate context/pass/generation internally; the unified slot uses
 the command ID to identify the caller's immutable record. Reset drains and
 discards the cancelled stream's result through the existing reset protocol.
+
+An attachment STORE or resolve AXI write-response error reports status 3.
+Completion waits for every accepted external transfer to drain. Earlier
+accepted writes may already have changed attachment contents; an error does
+not roll them back. Reset also drains accepted transfers before discarding the
+old result, and the global VM-state guard remains held through that drain.
 
 This profile serializes tile jobs with unified DMA/resolve/invalidate commands
 in queue order. A following transfer waits for tile result publication; a new
@@ -441,7 +452,7 @@ sbt -J-Xmx8G 'runMain opengpu.elaboration.EmitGpuHostSystemAxi generated/tile-ho
 `--sram-black-boxes` selects the characterized SRAM path for physical emission.
 The profile currently owns one 8x8/16x16 tile, one RGBA8 and one D24S8 attachment,
 and the existing inline-triangle records. Multiple tile engines, broader resource
-descriptors, mixed in-pass clear/draw commands and driver adoption remain pending.
+descriptors, compact primitive/bin references and driver adoption remain pending.
 
 ## Linux and display
 

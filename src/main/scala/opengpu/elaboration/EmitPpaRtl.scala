@@ -148,6 +148,10 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(
           new Fp32ExactUnit(),
           stageArgs, firtoolArgs)
+      case "mobile-raster-quad" =>
+        ChiselStage.emitSystemVerilogFile(new TriangleRasterizer(
+          GraphicsConfig(screenWidth = 1280, screenHeight = 720, tileSize = 16),
+          quadMode = true), stageArgs, firtoolArgs)
       case "raster-quad" =>
         // M4b: incremental-edge rasterizer (adds-only steady state; the M1
         // per-cycle 64-bit multiply array is gone).  Emitted standalone so the
