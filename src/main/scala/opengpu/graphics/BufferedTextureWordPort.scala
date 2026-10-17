@@ -113,7 +113,7 @@ class BufferedTextureWordPort(
     replies.io.in(w).bits := w.U
   }
   // Refill a consumed reply on the same edge, sustaining one word per cycle.
-  private val output = Module(new Queue(new OmMemoryResponse, 1, pipe = true))
+  private val output = Module(new Queue(new OmMemoryResponse, 1, pipe = true, flow = true))
   private val replyingWord = replies.io.out.bits
   output.io.enq.valid := replies.io.out.valid
   private val replyingAddress = at(wordAddress, replyingWord)

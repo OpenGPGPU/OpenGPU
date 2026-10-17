@@ -26,7 +26,10 @@ class ParallelKernelFragStage(
   private val staging = Module(new FragmentStagingArbiter(config, count,
     slots = sharedShader.fragmentStagingTransactions,
     localOutstanding = sharedShader.fragmentStagingPerWorker))
-  private val texture = Module(new FragmentTextureArbiter(count, math.max(4, gfxConfig.omInflight)))
+  // Each physical sampler has one four-tap group in flight, independent of
+  // shader vector length. Overlapping sample groups must raise this bound.
+  private val texture = Module(new FragmentTextureArbiter(count,
+    TextureUnit.maxOutstandingReads * count))
   private val faults = Wire(Vec(count, Bool()))
   private val events = Wire(Vec(count, new FragmentPerformanceEvents))
   KernelFragFrontendIO.connect(io, scheduler.io.front)

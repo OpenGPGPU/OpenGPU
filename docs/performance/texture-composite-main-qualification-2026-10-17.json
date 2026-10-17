@@ -1,0 +1,1250 @@
+{
+  "recorded_at": 1792203358.430772,
+  "status": "Main RTL integrated and qualified. Installed/default executables unchanged.",
+  "change": {
+    "texture_owner_entries": "TextureUnit.maxOutstandingReads * workers; 16 for four workers, previously64",
+    "texture_word_slots": "Only buffered texture client bounded to max(16, four reads per worker), capped by existing word-port setting; 16 for four CUs/OM64, previously64",
+    "reply_queue": "Empty single-entry output queue forwards a ready cached reply; retained registered storage under backpressure",
+    "response_router": "Direct matching-slot-to-worker decode removes binary owner encode/decode",
+    "physical_read_bound": 4,
+    "shader_VLEN_dependency": false,
+    "cache_lines_unchanged": 16,
+    "global_transaction_ID_reservations_unchanged": true
+  },
+  "main_integration": {
+    "started": 1792202963.282557,
+    "pid": 64042,
+    "stage": "terminal",
+    "stages": [
+      {
+        "name": "compile-prepared-tests",
+        "exit_status": 0,
+        "seconds": 4.373808457981795
+      },
+      {
+        "name": "compile-negative-word",
+        "exit_status": 0,
+        "seconds": 2.1595945411827415
+      },
+      {
+        "name": "negative-no-forwarding",
+        "exit_status": 1,
+        "seconds": 1.482836291892454
+      },
+      {
+        "name": "compile-main",
+        "exit_status": 0,
+        "seconds": 4.197467875201255
+      },
+      {
+        "name": "compile-main-tests",
+        "exit_status": 0,
+        "seconds": 4.270044999895617
+      },
+      {
+        "name": "main-unit-regressions",
+        "exit_status": 0,
+        "seconds": 58.605567291844636
+      },
+      {
+        "name": "emit-main",
+        "exit_status": 0,
+        "seconds": 39.720625333022326
+      }
+    ],
+    "scope": "Integrate independently qualified texture capacity/direct decoder/reply forwarding. Require release host, own72PGO, all native/VM/GLES/GTK/current640 owntrace, native component core+IO and manual images. Recompile actual main, run regressions and require all296SV identical. No installed binary changes.",
+    "negative_latency_control_passed": true,
+    "original_word_test_sha256": "e6d8e328fbbc2258f4549734ccd9300b41ae5bf74a6f281b2fee192bdfc39de9",
+    "all_RTL_modules_executable_identical": 296,
+    "main_source_sha256": {
+      "src/main/scala/opengpu/graphics/FragmentWorkerMemory.scala": "8cdf1db69b1b582565636d9d03c1ecb85ee5b6ab4c165771eb56fe6676b8ffdd",
+      "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "4197eac435caa24cf4540c9821dd3c386d8e0d83b5a5842422b107d457e07dde",
+      "src/main/scala/opengpu/graphics/ParallelKernelFragStage.scala": "76fc3e726ee7301d89b2a9731447667d9ec84eab5d80e14ff3caa0a256c335c5",
+      "src/main/scala/opengpu/graphics/BufferedTextureWordPort.scala": "4effee0b92bc989423c4c79296c8cc663f2d7b9273b8dd8a2257d26b4c139540",
+      "src/main/scala/opengpu/graphics/TextureUnit.scala": "3879b7315b6c2b9b633559f3fca8e8bc95d597543b19936394913ca1d11ca0b4"
+    },
+    "main_test_sha256": {
+      "LegacyFragmentTextureArbiter.scala": "5fe36c9e2412488bc2a8a09ccaf6eca2e18d4e641f1b82c785f227b4c2936c19",
+      "TextureRouteEquivalenceSpec.scala": "2c0fe446c9754277afdc7874e75084281b296e0299a1152990a950492d8bd8a9",
+      "TextureWordBoundSpec.scala": "364b412216e952645e6011a21c7746d7a5387d6b4afb0c618bf62dc6e46478e8",
+      "BufferedTextureWordPortSpec.scala": "48fdfc0380eeebd052b404eabb6671fd562cd7c2b77a1526e21620f30bf939fa"
+    },
+    "passed": true,
+    "finished": 1792203343.1308942
+  },
+  "configuration": [
+    "--frag-core",
+    "--vert-core",
+    "--shared-graphics",
+    "--parallel-graphics",
+    "--compute-units",
+    "4",
+    "--cu-lanes",
+    "16",
+    "--cu-warps",
+    "8",
+    "--width",
+    "640",
+    "--height",
+    "480",
+    "--memory-axi-data-bytes",
+    "64",
+    "--coalesce-framebuffer",
+    "--om-inflight",
+    "64",
+    "--om-locality",
+    "--fragment-batch-limit",
+    "112",
+    "--buffer-command-reads",
+    "--buffer-texture-reads"
+  ],
+  "qualification": {
+    "stages": [
+      {
+        "name": "compile-renderer",
+        "exit_status": 0,
+        "seconds": 0.8973676669411361
+      },
+      {
+        "name": "native-sampler",
+        "exit_status": 0,
+        "seconds": 59.401489165844396
+      },
+      {
+        "name": "native-controls",
+        "exit_status": 0,
+        "seconds": 28.115238124970347
+      },
+      {
+        "name": "trace-training-compile-wrapper",
+        "exit_status": 0,
+        "seconds": 3.038679250050336
+      },
+      {
+        "name": "trace-training-replace-wrapper",
+        "exit_status": 0,
+        "seconds": 1.910096290986985
+      },
+      {
+        "name": "trace-training-link-replayer",
+        "exit_status": 0,
+        "seconds": 0.833257291931659
+      },
+      {
+        "name": "link-training-qemu",
+        "exit_status": 0,
+        "seconds": 3.4437595000490546
+      },
+      {
+        "name": "actual-guest-training",
+        "exit_status": 0,
+        "seconds": 99.36398629192263
+      },
+      {
+        "name": "strict-new-trace-training",
+        "exit_status": 0,
+        "seconds": 44.88758804090321
+      },
+      {
+        "name": "merge-own-qualified-profile",
+        "exit_status": 0,
+        "seconds": 1.336083292029798
+      },
+      {
+        "name": "compile-optimized",
+        "exit_status": 0,
+        "seconds": 705.3622862910852
+      },
+      {
+        "name": "compile-renderer-optimized",
+        "exit_status": 0,
+        "seconds": 0.6549986670725048
+      },
+      {
+        "name": "native-sampler-optimized",
+        "exit_status": 0,
+        "seconds": 31.82856075000018
+      },
+      {
+        "name": "native-controls-optimized",
+        "exit_status": 0,
+        "seconds": 14.31713758292608
+      },
+      {
+        "name": "link-optimized-qemu",
+        "exit_status": 0,
+        "seconds": 2.6569093340076506
+      },
+      {
+        "name": "actual-guest-optimized",
+        "exit_status": 0,
+        "seconds": 84.66518412507139
+      },
+      {
+        "name": "trace-optimized-compile-wrapper",
+        "exit_status": 0,
+        "seconds": 2.851014459040016
+      },
+      {
+        "name": "trace-optimized-replace-wrapper",
+        "exit_status": 0,
+        "seconds": 0.6912920419126749
+      },
+      {
+        "name": "trace-optimized-link-replayer",
+        "exit_status": 0,
+        "seconds": 0.25050066597759724
+      },
+      {
+        "name": "strict-new-trace-optimized",
+        "exit_status": 0,
+        "seconds": 24.359615749912336
+      }
+    ],
+    "representative_profile_counts": {
+      "native": 40,
+      "controls": 12,
+      "guest": 19,
+      "trace": 1
+    },
+    "native_formats": 40,
+    "staging_controls": 12,
+    "forced_controls": 6,
+    "VM_cases": 18,
+    "GLES_cases": 21,
+    "packedwhite_native_fixtures": 9,
+    "O1_O2_all_native40_controls18_completeRAM_and_all_counters_exact": true
+  },
+  "host_summary": {
+    "solid64": {
+      "medians": {
+        "baseline": 0.633771583,
+        "candidate": 0.631074166
+      },
+      "candidate_over_baseline": 0.9957438656570374,
+      "time_saved_percent": 0.425613434296257
+    },
+    "spatial64": {
+      "medians": {
+        "baseline": 0.782106709,
+        "candidate": 0.766286417
+      },
+      "candidate_over_baseline": 0.9797722077845007,
+      "time_saved_percent": 2.0227792215499307
+    },
+    "large256": {
+      "medians": {
+        "baseline": 12.154529875,
+        "candidate": 11.801321583
+      },
+      "candidate_over_baseline": 0.9709401930282392,
+      "time_saved_percent": 2.9059806971760804
+    }
+  },
+  "host_samples": [
+    {
+      "name": "solid64",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 8841,
+        "explicit_ticks": 0,
+        "seconds": 0.635001417,
+        "commits": 1418464,
+        "holds": 8217010,
+        "holds_wrote": 1427499,
+        "reads": 894,
+        "writes": 5806,
+        "read_bytes": 57216,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "solid64",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.627275417,
+        "commits": 1388084,
+        "holds": 8185941,
+        "holds_wrote": 1397119,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "solid64",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.63171325,
+        "commits": 1388084,
+        "holds": 8185941,
+        "holds_wrote": 1397119,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "solid64",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 8841,
+        "explicit_ticks": 0,
+        "seconds": 0.633771583,
+        "commits": 1418464,
+        "holds": 8217010,
+        "holds_wrote": 1427499,
+        "reads": 894,
+        "writes": 5806,
+        "read_bytes": 57216,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "solid64",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 8841,
+        "explicit_ticks": 0,
+        "seconds": 0.630697291,
+        "commits": 1418464,
+        "holds": 8217010,
+        "holds_wrote": 1427499,
+        "reads": 894,
+        "writes": 5806,
+        "read_bytes": 57216,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "solid64",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.631074166,
+        "commits": 1388084,
+        "holds": 8185941,
+        "holds_wrote": 1397119,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 11803,
+        "explicit_ticks": 0,
+        "seconds": 0.776169791,
+        "commits": 1616238,
+        "holds": 9731311,
+        "holds_wrote": 1625438,
+        "reads": 1110,
+        "writes": 5776,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 11304,
+        "explicit_ticks": 0,
+        "seconds": 0.770150084,
+        "commits": 1610429,
+        "holds": 9726318,
+        "holds_wrote": 1619629,
+        "reads": 1113,
+        "writes": 5812,
+        "read_bytes": 71232,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 11304,
+        "explicit_ticks": 0,
+        "seconds": 0.7637225,
+        "commits": 1610429,
+        "holds": 9726318,
+        "holds_wrote": 1619629,
+        "reads": 1113,
+        "writes": 5812,
+        "read_bytes": 71232,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 11803,
+        "explicit_ticks": 0,
+        "seconds": 0.7837015,
+        "commits": 1616238,
+        "holds": 9731311,
+        "holds_wrote": 1625438,
+        "reads": 1110,
+        "writes": 5776,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 11803,
+        "explicit_ticks": 0,
+        "seconds": 0.782106709,
+        "commits": 1616238,
+        "holds": 9731311,
+        "holds_wrote": 1625438,
+        "reads": 1110,
+        "writes": 5776,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 11304,
+        "explicit_ticks": 0,
+        "seconds": 0.766286417,
+        "commits": 1610429,
+        "holds": 9726318,
+        "holds_wrote": 1619629,
+        "reads": 1113,
+        "writes": 5812,
+        "read_bytes": 71232,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 12.138759542,
+        "commits": 24374241,
+        "holds": 147062174,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 129786,
+        "explicit_ticks": 0,
+        "seconds": 11.90035725,
+        "commits": 24230299,
+        "holds": 145305253,
+        "holds_wrote": 24368676,
+        "reads": 15716,
+        "writes": 88216,
+        "read_bytes": 1005824,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 129786,
+        "explicit_ticks": 0,
+        "seconds": 11.801321583,
+        "commits": 24230299,
+        "holds": 145305253,
+        "holds_wrote": 24368676,
+        "reads": 15716,
+        "writes": 88216,
+        "read_bytes": 1005824,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 12.154529875,
+        "commits": 24374241,
+        "holds": 147062174,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 12.17055225,
+        "commits": 24374241,
+        "holds": 147062174,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 129786,
+        "explicit_ticks": 0,
+        "seconds": 11.782256417,
+        "commits": 24230299,
+        "holds": 145305253,
+        "holds_wrote": 24368676,
+        "reads": 15716,
+        "writes": 88216,
+        "read_bytes": 1005824,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_own_counters_exact": true
+    }
+  ],
+  "work_changes": {
+    "solid64": {
+      "baseline_ticks": 8841,
+      "candidate_ticks": 8823,
+      "cycle_reduction_percent": 0.2035968781812003,
+      "baseline_holds": 8217010,
+      "candidate_holds": 8185941,
+      "baseline_commits": 1418464,
+      "candidate_commits": 1388084
+    },
+    "spatial64": {
+      "baseline_ticks": 11803,
+      "candidate_ticks": 11304,
+      "cycle_reduction_percent": 4.227738710497331,
+      "baseline_holds": 9731311,
+      "candidate_holds": 9726318,
+      "baseline_commits": 1616238,
+      "candidate_commits": 1610429
+    },
+    "large256": {
+      "baseline_ticks": 139330,
+      "candidate_ticks": 129786,
+      "cycle_reduction_percent": 6.849924639345439,
+      "baseline_holds": 147062174,
+      "candidate_holds": 145305253,
+      "baseline_commits": 24374241,
+      "candidate_commits": 24230299
+    }
+  },
+  "current_guest64": {
+    "started": 1792202189.939481,
+    "pid": 58889,
+    "stage": "terminal",
+    "replays": [
+      {
+        "mode": 0,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      }
+    ],
+    "qemu_sha256": "c044196a494d6781352f69250ef967b0ff8fdc07e646698b1de1d3c254373ffe",
+    "archive_sha256": "69776a3531c9332a83293b6abcf7e478dda333700ee75427e92a2fcfe120418f",
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/srq-twr-current-opt64",
+    "profile": false,
+    "scope": "Private boundedtexture/directresponseDecode/flowreply on current fourCU RTL; old training payload preserved or explicit currentpackedwhite payload selected;cap28; explicitfirst9scratchcontract,immutablevalidatedread/writeusage,DMAaliasguard andunchangedMesaoptin. StandaloneDRMdefault/optin/all4096pixels+outputcanaries,18VMreplays,21GLES,quadbatch/offscreen/private-depth/GTK64strictscanout; desktopflagselectsfull640only. Nohostspeedclaim.",
+    "exit_status": 0,
+    "guest_seconds": 75.88612129190005,
+    "markers": {
+      "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+      "output_usage=1": true,
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "fragment staging transient=1": true,
+      "compute completed; RNU=1 RDN=0": true,
+      "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+      "Native shader suite: PASS": true,
+      "OPENGPU GL FILL PASS": true,
+      "OPENGPU GL OFFSCREEN PASS:": true
+    },
+    "native_cases": 21,
+    "quad_batch_pass": true,
+    "payload_unchanged": true,
+    "trace_requested": false,
+    "trace_present": true,
+    "passed": true,
+    "finished": 1792202268.469741
+  },
+  "current_full640": {
+    "started": 1792202268.6581,
+    "pid": 60540,
+    "stage": "terminal",
+    "replays": [],
+    "qemu_sha256": "5e47551dee0b84862fbf8c1618e73f3506a96ba7853c42fe6935a3ad5944ebd7",
+    "archive_sha256": "c6d7f9f52b0a848ebd17076e62d5884371ff0c906926e7a4bcbbf03ee837ba7e",
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/srq-twr-current-full640",
+    "profile": false,
+    "scope": "Private boundedtexture/directresponseDecode/flowreply on current fourCU RTL; old training payload preserved or explicit currentpackedwhite payload selected;cap28; explicitfirst9scratchcontract,immutablevalidatedread/writeusage,DMAaliasguard andunchangedMesaoptin. StandaloneDRMdefault/optin/all4096pixels+outputcanaries,18VMreplays,21GLES,quadbatch/offscreen/private-depth/GTK64strictscanout; desktopflagselectsfull640only. Nohostspeedclaim.",
+    "exit_status": 0,
+    "guest_seconds": 497.62265533278696,
+    "markers": {
+      "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+      "output_usage=1": true,
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "fragment staging transient=1": true
+    },
+    "native_cases": 0,
+    "quad_batch_pass": true,
+    "payload_unchanged": true,
+    "trace_requested": true,
+    "trace_present": true,
+    "passed": true,
+    "finished": 1792202766.464271
+  },
+  "current_full_trace_replay": {
+    "calls": 151931,
+    "ticks": 16856198,
+    "commits": 929570796,
+    "holds": 5651201054,
+    "dma_reads": 584122,
+    "dma_writes": 3610593,
+    "dma_bytes": 64577632,
+    "seconds": 463.093316333,
+    "truncated_tail": false,
+    "warmup_calls": 0,
+    "sample": 0
+  },
+  "current_full_trace_sha256": "b2de20471eef4ed84ce25b4394a7cbb07bbe370a85c0c7962f51d09b36d3d523",
+  "visual_review": {
+    "passed": true,
+    "reviewed_at": 1792202942.4716349,
+    "images": {
+      "gtk-smoke-scanout.ppm": "b655a2f6491964a2e648351aa2e01c3da51fc642529cd91468dd59ac509de4fb",
+      "gtk-smoke-verified.ppm": "b655a2f6491964a2e648351aa2e01c3da51fc642529cd91468dd59ac509de4fb"
+    },
+    "observation": "Both saved scanout and verified frames show clean 640x480 Debian desktop with OpenGPU GTK smoke window, orange GPU panel, intact window and taskbar; manually viewed converted PNGs."
+  },
+  "timing": {
+    "scope": "Paired exactnativeSV texture owner+wordbuffer component cone, all childmodule bytes copied unchanged from actualfull640 RTL. Wrapper exposes the same proof IO; remove only namedconnections eliminated by wholemodel constantpropagation and adapt6vs4bit private wordID. Nativeemitlowering retained. Synthesisonly ASAP7 SLVT TC1GHz25%IO, explicitbothcoreandIO; notwholechipclosure.",
+    "baseline_core_slack_ps": 9.614,
+    "baseline_IO_slack_ps": 203.02,
+    "candidate_core_slack_ps": 129.4,
+    "candidate_IO_slack_ps": 44.669,
+    "limitation": "Paired synthesized component only; no whole-chip place/route timing claim."
+  },
+  "host_diagnostic": {
+    "guard_observer": {
+      "pid": 63628,
+      "started": 1792202890.032432,
+      "stage": "terminal",
+      "scope": "Read-only guard observer before original dispatch. Only copied dut_0.cpp compiled at O1; remaining objects from qualified O2/PGO archive. Diagnostic timing is not a speed comparison.",
+      "qualified_archive_sha256": "69776a3531c9332a83293b6abcf7e478dda333700ee75427e92a2fcfe120418f",
+      "qualified_header_sha256": "822ea28949824cff47057707e46f2ce5c1cd3453892a8ff82266bc8a87f00dd9",
+      "passed": true,
+      "finished": 1792202915.275349,
+      "counts": {
+        "generation_unchanged": 80966,
+        "data_unchanged": 0,
+        "evaluate": 8809255
+      },
+      "total": 8890221,
+      "percentages": {
+        "generation_unchanged": 0.9107310155731787,
+        "data_unchanged": 0.0,
+        "evaluate": 99.08926898442682
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    "profile": {
+      "baseline": {
+        "observations": 3699,
+        "categories": [
+          {
+            "category": "other_or_unmapped",
+            "observations": 659,
+            "percent": 17.815625844822925
+          },
+          {
+            "category": "L2",
+            "observations": 515,
+            "percent": 13.922681805893484
+          },
+          {
+            "category": "render_om",
+            "observations": 378,
+            "percent": 10.218978102189782
+          },
+          {
+            "category": "render_parallelFrag",
+            "observations": 329,
+            "percent": 8.894295755609624
+          },
+          {
+            "category": "mixed_or_unmapped",
+            "observations": 315,
+            "percent": 8.51581508515815
+          },
+          {
+            "category": "CU_vector_other",
+            "observations": 244,
+            "percent": 6.596377399297108
+          },
+          {
+            "category": "commit_other",
+            "observations": 225,
+            "percent": 6.082725060827251
+          },
+          {
+            "category": "commit_invalidation_helper",
+            "observations": 207,
+            "percent": 5.59610705596107
+          },
+          {
+            "category": "hold_dispatch",
+            "observations": 193,
+            "percent": 5.217626385509597
+          },
+          {
+            "category": "fbClient",
+            "observations": 105,
+            "percent": 2.83860502838605
+          },
+          {
+            "category": "CU_vector_coalescer",
+            "observations": 97,
+            "percent": 2.6223303595566367
+          },
+          {
+            "category": "texClient",
+            "observations": 76,
+            "percent": 2.054609353879427
+          },
+          {
+            "category": "CU_scalar",
+            "observations": 66,
+            "percent": 1.7842660178426601
+          },
+          {
+            "category": "model_memory_helpers",
+            "observations": 58,
+            "percent": 1.5679913490132469
+          },
+          {
+            "category": "CU_other",
+            "observations": 51,
+            "percent": 1.37875101378751
+          },
+          {
+            "category": "graphics_sampler",
+            "observations": 40,
+            "percent": 1.0813733441470668
+          },
+          {
+            "category": "CU_frontend",
+            "observations": 38,
+            "percent": 1.0273046769397134
+          },
+          {
+            "category": "system_other",
+            "observations": 33,
+            "percent": 0.8921330089213301
+          },
+          {
+            "category": "memoryAxi",
+            "observations": 16,
+            "percent": 0.4325493376588267
+          },
+          {
+            "category": "render_stagingRouter",
+            "observations": 13,
+            "percent": 0.3514463368477967
+          },
+          {
+            "category": "host_other",
+            "observations": 10,
+            "percent": 0.2703433360367667
+          },
+          {
+            "category": "CU_FPU",
+            "observations": 9,
+            "percent": 0.24330900243309003
+          },
+          {
+            "category": "dmaClient",
+            "observations": 5,
+            "percent": 0.13517166801838335
+          },
+          {
+            "category": "CU_completionArbiter",
+            "observations": 3,
+            "percent": 0.08110300081103
+          },
+          {
+            "category": "cbClient",
+            "observations": 3,
+            "percent": 0.08110300081103
+          },
+          {
+            "category": "CU_sharedMemory",
+            "observations": 3,
+            "percent": 0.08110300081103
+          },
+          {
+            "category": "CU_vector_TLB",
+            "observations": 3,
+            "percent": 0.08110300081103
+          },
+          {
+            "category": "render_expander",
+            "observations": 2,
+            "percent": 0.05406866720735334
+          },
+          {
+            "category": "stagingClient",
+            "observations": 2,
+            "percent": 0.05406866720735334
+          },
+          {
+            "category": "render_router",
+            "observations": 1,
+            "percent": 0.02703433360367667
+          }
+        ]
+      },
+      "candidate": {
+        "observations": 3655,
+        "categories": [
+          {
+            "category": "other_or_unmapped",
+            "observations": 682,
+            "percent": 18.6593707250342
+          },
+          {
+            "category": "L2",
+            "observations": 504,
+            "percent": 13.789329685362517
+          },
+          {
+            "category": "render_om",
+            "observations": 345,
+            "percent": 9.439124487004104
+          },
+          {
+            "category": "mixed_or_unmapped",
+            "observations": 335,
+            "percent": 9.165526675786595
+          },
+          {
+            "category": "render_parallelFrag",
+            "observations": 282,
+            "percent": 7.7154582763337896
+          },
+          {
+            "category": "CU_vector_other",
+            "observations": 280,
+            "percent": 7.660738714090288
+          },
+          {
+            "category": "commit_invalidation_helper",
+            "observations": 239,
+            "percent": 6.538987688098495
+          },
+          {
+            "category": "commit_other",
+            "observations": 216,
+            "percent": 5.909712722298222
+          },
+          {
+            "category": "hold_dispatch",
+            "observations": 166,
+            "percent": 4.54172366621067
+          },
+          {
+            "category": "fbClient",
+            "observations": 105,
+            "percent": 2.8727770177838576
+          },
+          {
+            "category": "CU_vector_coalescer",
+            "observations": 90,
+            "percent": 2.462380300957592
+          },
+          {
+            "category": "model_memory_helpers",
+            "observations": 68,
+            "percent": 1.8604651162790697
+          },
+          {
+            "category": "CU_frontend",
+            "observations": 59,
+            "percent": 1.6142270861833106
+          },
+          {
+            "category": "CU_scalar",
+            "observations": 55,
+            "percent": 1.5047879616963065
+          },
+          {
+            "category": "CU_other",
+            "observations": 47,
+            "percent": 1.2859097127222983
+          },
+          {
+            "category": "graphics_sampler",
+            "observations": 42,
+            "percent": 1.1491108071135432
+          },
+          {
+            "category": "texClient",
+            "observations": 41,
+            "percent": 1.121751025991792
+          },
+          {
+            "category": "system_other",
+            "observations": 23,
+            "percent": 0.6292749658002736
+          },
+          {
+            "category": "memoryAxi",
+            "observations": 23,
+            "percent": 0.6292749658002736
+          },
+          {
+            "category": "CU_FPU",
+            "observations": 10,
+            "percent": 0.27359781121751026
+          },
+          {
+            "category": "host_other",
+            "observations": 8,
+            "percent": 0.2188782489740082
+          },
+          {
+            "category": "render_stagingRouter",
+            "observations": 7,
+            "percent": 0.19151846785225718
+          },
+          {
+            "category": "dmaClient",
+            "observations": 5,
+            "percent": 0.13679890560875513
+          },
+          {
+            "category": "CU_completionArbiter",
+            "observations": 5,
+            "percent": 0.13679890560875513
+          },
+          {
+            "category": "stagingClient",
+            "observations": 4,
+            "percent": 0.1094391244870041
+          },
+          {
+            "category": "CU_sharedMemory",
+            "observations": 4,
+            "percent": 0.1094391244870041
+          },
+          {
+            "category": "render_expander",
+            "observations": 3,
+            "percent": 0.08207934336525308
+          },
+          {
+            "category": "CU_vector_TLB",
+            "observations": 3,
+            "percent": 0.08207934336525308
+          },
+          {
+            "category": "cbClient",
+            "observations": 2,
+            "percent": 0.05471956224350205
+          },
+          {
+            "category": "render_router",
+            "observations": 1,
+            "percent": 0.027359781121751026
+          },
+          {
+            "category": "CU_io",
+            "observations": 1,
+            "percent": 0.027359781121751026
+          }
+        ]
+      }
+    },
+    "interpretation": "Wrappers have a measurable sampled cost, but 99.09% of dispatches evaluate their region in spatial64. Avoiding no-op calls alone has little headroom. Shared dispatcher is a separate private experiment."
+  },
+  "artifacts": {
+    "optimized_archive_sha256": "69776a3531c9332a83293b6abcf7e478dda333700ee75427e92a2fcfe120418f",
+    "qemu": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/qemu-optimized",
+    "qemu_sha256": "c044196a494d6781352f69250ef967b0ff8fdc07e646698b1de1d3c254373ffe",
+    "trace_qemu": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/texture-word-route-native/qemu-optimized-trace",
+    "trace_qemu_sha256": "5e47551dee0b84862fbf8c1618e73f3506a96ba7853c42fe6935a3ad5944ebd7",
+    "installed_qemu_sha256": "ba65addea4834f852ac67c82f3c2ca02eec213fe334e0d9b07e94f508b2b43a0"
+  },
+  "limitations": [
+    "Balanced release results are three fresh samples per variant/workload with identical useful work and own72profile PGO under identical training protocol.",
+    "The new RTL intentionally changes task clocks, callback ordering and traffic. Each own trace replays strictly; O1/O2 of the same RTL must match complete RAM and all counters.",
+    "The full desktop recording is a functional proof, and overlaps diagnostic/qualification work. Its elapsed is not a paired whole-desktop speed comparison.",
+    "Old39kHz and current desktop traces differ in stimulus and polling. Do not compare their rates as backend gains.",
+    "Host samples cover a five-second active native interval, not the whole desktop. RTL component attribution is heuristic; dispatch guard counts are exact for the measured spatial64 fixture.",
+    "Default QEMU and README screenshot remain unchanged."
+  ],
+  "evidence": {
+    ".artifacts/shared-cu/texture-word-route-native/qualification-v2-state.json": "aae84c53e605085af76616f63cabf3315356e3f32605950bb282fa18eaae4d6e",
+    ".artifacts/shared-cu/texture-word-route-native/optimized-host-state.json": "eb9aacf018f64f3db4b7460682be15d5da77fb1cbeeee71e878cfad625b1328b",
+    ".artifacts/shared-cu/texture-word-route-native/native-screen-optimized-state.json": "a86c8e5f2ebc03f968658856e1d187537d1aeca27ae1dd9efc73f04bde6614ab",
+    ".artifacts/shared-cu/texture-word-route-native/profile-inputs.json": "7380df88399332f38b17ca54527fc6915c61bf0d6645c337102d436f136094e7",
+    ".artifacts/shared-cu/texture-word-route-native/native-component-timing-state.json": "1e15335c023ad18511bc7a5ebdc54011ae5075e5bf9fd4eba100b58d103911df",
+    ".artifacts/shared-cu/texture-word-route-native/current-desktop-state.json": "445687e8b4bd9c29a9e5f37f5e1af2ab3718a77ca174e5b114e6bb3b240cf604",
+    ".artifacts/shared-cu/texture-word-route-native/current-full640-visual-review.json": "a0b493ca030f00763eca6435b18b05ead10825bb5637d1644a6166d3f86c610e",
+    ".artifacts/shared-cu/texture-word-route-native/main-integration-state.json": "f47fd435b7b3e26ca9d345442193d3d0e316f5d9bb4573c808a6e5ffba103661",
+    ".artifacts/shared-cu/texture-word-route-native/host-profile-analysis.json": "678513415aa5677f01718bdefcab5b9b569be08c81289c0c7ef52b88a0d56d0b",
+    ".artifacts/shared-cu/texture-word-route-native/dispatch-diagnostic-state.json": "a28228cd849b71d3bdafcbf508b1e327b6582bef7169902daad1580beb3c529e",
+    ".artifacts/shared-cu/texture-word-route-native/pass-dispatch-shape.json": "f0ea0e9ba982ee9304acf4561d4b3b6c3d527bddde42df1601fc34441ee1a21f",
+    "src/main/scala/opengpu/graphics/FragmentWorkerMemory.scala": "8cdf1db69b1b582565636d9d03c1ecb85ee5b6ab4c165771eb56fe6676b8ffdd",
+    "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "4197eac435caa24cf4540c9821dd3c386d8e0d83b5a5842422b107d457e07dde",
+    "src/main/scala/opengpu/graphics/ParallelKernelFragStage.scala": "76fc3e726ee7301d89b2a9731447667d9ec84eab5d80e14ff3caa0a256c335c5",
+    "src/main/scala/opengpu/graphics/BufferedTextureWordPort.scala": "4effee0b92bc989423c4c79296c8cc663f2d7b9273b8dd8a2257d26b4c139540",
+    "src/main/scala/opengpu/graphics/TextureUnit.scala": "3879b7315b6c2b9b633559f3fca8e8bc95d597543b19936394913ca1d11ca0b4",
+    "src/test/scala/opengpu/graphics/LegacyFragmentTextureArbiter.scala": "5fe36c9e2412488bc2a8a09ccaf6eca2e18d4e641f1b82c785f227b4c2936c19",
+    "src/test/scala/opengpu/graphics/TextureRouteEquivalenceSpec.scala": "2c0fe446c9754277afdc7874e75084281b296e0299a1152990a950492d8bd8a9",
+    "src/test/scala/opengpu/graphics/TextureWordBoundSpec.scala": "364b412216e952645e6011a21c7746d7a5387d6b4afb0c618bf62dc6e46478e8",
+    "src/test/scala/opengpu/graphics/BufferedTextureWordPortSpec.scala": "48fdfc0380eeebd052b404eabb6671fd562cd7c2b77a1526e21620f30bf939fa"
+  }
+}

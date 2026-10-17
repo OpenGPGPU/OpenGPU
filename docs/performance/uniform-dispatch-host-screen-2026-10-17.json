@@ -1,0 +1,485 @@
+{
+  "recorded_at": 1792203472.591894,
+  "status": "Private matched-flags host screen PASS; not integrated into FlashSim or release/default binaries.",
+  "scope": "Private host-only uniform dispatch screen. Both dut_0 objects O2 without PGO; all other objects use the exact same qualified O2/PGO archive. Preserve each guard write, region order and eager chunks. No main generator/default model change. Not a fully retrained release comparison.",
+  "transformation": "Replace17446 address-taken _pn wrappers with one typed-member-pointer guard loop. Preserve generation guard, generation write even when data unchanged, data guard, data write, pending clear and exact eager chunk order.17440 regions have one chunk and6 have two. No DUT layout or RTL changes.",
+  "guard_observation": {
+    "pid": 63628,
+    "started": 1792202890.032432,
+    "stage": "terminal",
+    "scope": "Read-only guard observer before original dispatch. Only copied dut_0.cpp compiled at O1; remaining objects from qualified O2/PGO archive. Diagnostic timing is not a speed comparison.",
+    "qualified_archive_sha256": "69776a3531c9332a83293b6abcf7e478dda333700ee75427e92a2fcfe120418f",
+    "qualified_header_sha256": "822ea28949824cff47057707e46f2ce5c1cd3453892a8ff82266bc8a87f00dd9",
+    "passed": true,
+    "finished": 1792202915.275349,
+    "counts": {
+      "generation_unchanged": 80966,
+      "data_unchanged": 0,
+      "evaluate": 8809255
+    },
+    "total": 8890221,
+    "percentages": {
+      "generation_unchanged": 0.9107310155731787,
+      "data_unchanged": 0.0,
+      "evaluate": 99.08926898442682
+    },
+    "complete_RAM_and_all_counters_exact": true
+  },
+  "summary": {
+    "solid64": {
+      "medians": {
+        "baseline": 0.654187875,
+        "candidate": 0.606794542
+      },
+      "time_saved_percent": 7.2446058404857965
+    },
+    "spatial64": {
+      "medians": {
+        "baseline": 0.796250292,
+        "candidate": 0.7421635
+      },
+      "time_saved_percent": 6.79268724211658
+    },
+    "large256": {
+      "medians": {
+        "baseline": 12.486522,
+        "candidate": 11.457644916
+      },
+      "time_saved_percent": 8.239901263137972
+    }
+  },
+  "samples": [
+    {
+      "workload": "solid64",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.659595375,
+        "commits": 1388084,
+        "holds": 8185941,
+        "holds_wrote": 1397119,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "solid64",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.606794542,
+        "commits": 1388084,
+        "holds": 8185941,
+        "holds_wrote": 1397119,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "solid64",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.605822333,
+        "commits": 1388084,
+        "holds": 8185941,
+        "holds_wrote": 1397119,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "solid64",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.654187875,
+        "commits": 1388084,
+        "holds": 8185941,
+        "holds_wrote": 1397119,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "solid64",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.651713333,
+        "commits": 1388084,
+        "holds": 8185941,
+        "holds_wrote": 1397119,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "solid64",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 8823,
+        "explicit_ticks": 0,
+        "seconds": 0.607863917,
+        "commits": 1388084,
+        "holds": 8185941,
+        "holds_wrote": 1397119,
+        "reads": 898,
+        "writes": 5834,
+        "read_bytes": 57472,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 11304,
+        "explicit_ticks": 0,
+        "seconds": 0.798043333,
+        "commits": 1610429,
+        "holds": 9726318,
+        "holds_wrote": 1619629,
+        "reads": 1113,
+        "writes": 5812,
+        "read_bytes": 71232,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 11304,
+        "explicit_ticks": 0,
+        "seconds": 0.7421635,
+        "commits": 1610429,
+        "holds": 9726318,
+        "holds_wrote": 1619629,
+        "reads": 1113,
+        "writes": 5812,
+        "read_bytes": 71232,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 11304,
+        "explicit_ticks": 0,
+        "seconds": 0.735352041,
+        "commits": 1610429,
+        "holds": 9726318,
+        "holds_wrote": 1619629,
+        "reads": 1113,
+        "writes": 5812,
+        "read_bytes": 71232,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 11304,
+        "explicit_ticks": 0,
+        "seconds": 0.795835416,
+        "commits": 1610429,
+        "holds": 9726318,
+        "holds_wrote": 1619629,
+        "reads": 1113,
+        "writes": 5812,
+        "read_bytes": 71232,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 11304,
+        "explicit_ticks": 0,
+        "seconds": 0.796250292,
+        "commits": 1610429,
+        "holds": 9726318,
+        "holds_wrote": 1619629,
+        "reads": 1113,
+        "writes": 5812,
+        "read_bytes": 71232,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "spatial64",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 11304,
+        "explicit_ticks": 0,
+        "seconds": 0.742260792,
+        "commits": 1610429,
+        "holds": 9726318,
+        "holds_wrote": 1619629,
+        "reads": 1113,
+        "writes": 5812,
+        "read_bytes": 71232,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 129786,
+        "explicit_ticks": 0,
+        "seconds": 12.512753125,
+        "commits": 24230299,
+        "holds": 145305253,
+        "holds_wrote": 24368676,
+        "reads": 15716,
+        "writes": 88216,
+        "read_bytes": 1005824,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 129786,
+        "explicit_ticks": 0,
+        "seconds": 11.400070333,
+        "commits": 24230299,
+        "holds": 145305253,
+        "holds_wrote": 24368676,
+        "reads": 15716,
+        "writes": 88216,
+        "read_bytes": 1005824,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 129786,
+        "explicit_ticks": 0,
+        "seconds": 11.500041208,
+        "commits": 24230299,
+        "holds": 145305253,
+        "holds_wrote": 24368676,
+        "reads": 15716,
+        "writes": 88216,
+        "read_bytes": 1005824,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 129786,
+        "explicit_ticks": 0,
+        "seconds": 12.486522,
+        "commits": 24230299,
+        "holds": 145305253,
+        "holds_wrote": 24368676,
+        "reads": 15716,
+        "writes": 88216,
+        "read_bytes": 1005824,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 129786,
+        "explicit_ticks": 0,
+        "seconds": 12.443991291,
+        "commits": 24230299,
+        "holds": 145305253,
+        "holds_wrote": 24368676,
+        "reads": 15716,
+        "writes": 88216,
+        "read_bytes": 1005824,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    },
+    {
+      "workload": "large256",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 129786,
+        "explicit_ticks": 0,
+        "seconds": 11.457644916,
+        "commits": 24230299,
+        "holds": 145305253,
+        "holds_wrote": 24368676,
+        "reads": 15716,
+        "writes": 88216,
+        "read_bytes": 1005824,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "complete_RAM_and_all_counters_exact": true
+    }
+  ],
+  "compiler_flags": [
+    "-std=c++17",
+    "-O2"
+  ],
+  "replaced_object": "Only dut_0; both baseline and candidate compiled without PGO. All remaining objects use the same qualified O2/PGO archive.",
+  "qualified_archive_sha256": "69776a3531c9332a83293b6abcf7e478dda333700ee75427e92a2fcfe120418f",
+  "qualified_header_sha256": "822ea28949824cff47057707e46f2ce5c1cd3453892a8ff82266bc8a87f00dd9",
+  "object_sizes": {
+    "baseline": {
+      "text": 2645992,
+      "data": 460384,
+      "other": 600704
+    },
+    "candidate": {
+      "text": 1750568,
+      "data": 460384,
+      "other": 42432
+    },
+    "tool": "/usr/bin/size; text includes constants/metadata as reported by Mach-O tool"
+  },
+  "limitations": [
+    "This is an initial matched-object comparison, not a fully retrained release comparison.",
+    "Three balanced fresh-process samples per variant per workload; baseline and candidate finish identical native work with all output RAM, clocks, commits, holds and DMA counters exact.",
+    "Only three packed-white native workloads are timed. Mesa and whole-desktop host speed gains remain unproven.",
+    "The direct prototype requires every pass to have the canonical guard shape. A production emitter must preserve fallback behavior for other region kinds and pass generic event-order/cache tests."
+  ],
+  "next": "Implement guarded production emitter support, test event-order and cache semantics, then qualify own representative PGO and strict Mesa/desktop replay before promotion.",
+  "evidence": {
+    ".artifacts/shared-cu/texture-word-route-native/screen_uniform_dispatch.py": "6af965d8e40b1f773d8e9b54c0aa6e7b929f85d120fcfcae1d69e24c29ca592c",
+    ".artifacts/shared-cu/texture-word-route-native/uniform-dispatch-state.json": "47d64d80db29badf9d4632a38caa1e4144b23381c3e32a31a45f3aff81114550",
+    ".artifacts/shared-cu/texture-word-route-native/pass-dispatch-shape.json": "f0ea0e9ba982ee9304acf4561d4b3b6c3d527bddde42df1601fc34441ee1a21f",
+    ".artifacts/shared-cu/texture-word-route-native/uniform-dispatch/baseline.cpp": "e3f6091b4699e892eab193cf00310536dfc3af46f7494c4730f37b500aa4960e",
+    ".artifacts/shared-cu/texture-word-route-native/uniform-dispatch/candidate.cpp": "776e4f9f321b75eb5e83d3918e1d1604b261f76412104b527ae28e26470ea6a4",
+    ".artifacts/shared-cu/texture-word-route-native/uniform-dispatch/baseline.o": "50583758f296b7c5ae786a3a08eb879fc68673993f39c394db83e89d85dfcee7",
+    ".artifacts/shared-cu/texture-word-route-native/uniform-dispatch/candidate.o": "6a058f198fed09fd056c1bab58bb105606c5d244a566861d7997177130d6aae2"
+  }
+}

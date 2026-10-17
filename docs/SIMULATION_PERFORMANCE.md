@@ -1,5 +1,72 @@
 # Full-system simulation performance investigation
 
+## Interpreting the 39 kHz desktop rate
+
+The same compiled four-CU model reaches **21.57 MHz while idle**, with zero
+DMA, commits and hold dispatches. Its older desktop trace averages **38.95
+kHz**, and sustained active rendering runs at about **10–11 kHz**. Older
+benchmark MHz figures measure lighter workloads and sometimes fewer CUs.
+They do not predict active desktop throughput. All four CUs currently run
+on one host thread. The measured gap is explained by activity; it does not
+establish that the active simulator is efficient or near its limit.
+
+A fresh five-second active-render sample identifies substantial evaluator
+dispatch and register-invalidation costs. An exact observer of the current
+spatial64 fixture counts 8,890,221 pass dispatches: 8,809,255 evaluate their
+region, 80,966 return at the generation guard, and none return at the data
+guard. Only **0.91%** are no-op calls in that fixture. Removing no-op calls
+alone therefore has little headroom. A shared-dispatch implementation is a
+separate private host experiment; no release gain is claimed for it here.
+
+The private shared-dispatch screen replaces the small wrappers with one typed
+guard loop and direct calls to each region's eager chunks. Every guard update
+and chunk order is preserved. Both replacement objects use `-O2` without PGO;
+all other objects come from the same qualified O2/PGO archive. Three balanced
+samples per variant save **7.24% on solid64, 6.79% on spatial64 and 8.24% on
+spatial256**, with identical complete RAM and all simulation counters. The
+replacement object's text section is 33.84% smaller. These are preliminary
+matched-object results; representative PGO, generic-emitter semantics and
+strict Mesa/desktop qualification remain before release promotion.
+
+See [the private dispatcher measurements and compiler scope](performance/uniform-dispatch-host-screen-2026-10-17.json).
+
+## Qualified texture capacity, response routing and forwarding (2026-10-17)
+
+The main RTL bounds texture ownership and buffered word slots by the physical
+sampler's four outstanding tap reads per worker. Four CUs use 16 entries,
+retaining all sixteen cache lines and the existing global transaction-ID
+reservations. The bound comes from `TextureUnit.maxOutstandingReads` and is
+independent of shader VLEN. Direct slot-to-worker response decoding shortens
+the forwarding path, and an empty reply queue exposes a ready cached reply
+without an extra register cycle while retaining stalled replies.
+
+Three balanced fresh-process O2/PGO samples per variant give:
+
+| Same useful render | Staging-quiet baseline | Combined change | Time saved |
+| --- | ---: | ---: | ---: |
+| Packed-white solid64 | 0.633772 s | 0.631074 s | 0.43% |
+| Packed-white spatial64 | 0.782107 s | 0.766286 s | 2.02% |
+| Packed-white spatial256 | 12.154530 s | 11.801322 s | 2.91% |
+
+The large render drops from **139,330 to 129,786 cycles (6.85%)**. Its elapsed
+gain is smaller, so cycle reduction alone overstates the simulator benefit.
+Each variant uses its own 72-profile PGO set under the same training protocol.
+Full native RAM, pixels, depth and canaries pass independent checks. O1/O2
+builds of the candidate match complete RAM and every counter across 40 native
+formats and 18 controls. Current Mesa/GLES/GTK64, white-modulation transitions,
+the full 640×480 desktop, its own strict timed replay and manual image review
+also pass. The full desktop run overlaps diagnostic work and is a functional
+proof, not a paired elapsed-time comparison with the older desktop trace.
+
+The paired synthesis screen copies the actual native RTL component modules
+unchanged. Both core and I/O setup pass at the 1 GHz target; candidate margins
+are **129.400 ps core and 44.669 ps I/O**. This is a component estimate before
+placement and routing. All 24 main-source regressions pass, and all 296 emitted
+RTL modules match the qualified model. Installed/default QEMU executables
+remain unchanged.
+
+See [the main-source qualification, timing samples and exact dispatch counters](performance/texture-composite-main-qualification-2026-10-17.json).
+
 ## Qualified staging-response payload quieting (2026-10-17)
 
 The main RTL keeps each staging worker's 512-bit response payload quiet when
@@ -26,13 +93,13 @@ path meet the 1 GHz target, with 117.900 ps core slack and a tight 2.095 ps I/O
 margin. This is a pre-layout estimate; whole-chip timing remains unproven.
 The installed QEMU executable and README screenshot remain unchanged.
 
-The next private candidate sizes texture ownership by physical sampler
+The follow-up candidate sizes texture ownership by physical sampler
 concurrency: four pending reads per worker, or 16 entries for four CUs.
 Differential tests pass for 1/2/4/8 workers, and one/four-CU scenes preserve all
 cycles and results. The combined texture-path estimate improves from 0.070 ps
-to 50.167 ps core slack. Its fresh native simulator is being built; no host
-gain or main capacity change is claimed yet. Shader VLEN does not enter this
-physical four-tap concurrency bound.
+to 50.167 ps core slack. That owner-only screen preceded the combined change
+qualified above. Shader VLEN does not enter this physical four-tap concurrency
+bound.
 
 See [the complete main-source qualification and evidence](performance/staging-response-quiet-main-qualification-2026-10-17.json).
 
@@ -63,12 +130,12 @@ tests with 1/2/3/4/8 workers, and its synthesized forwarding path has 101.814 ps
 core slack and 18.880 ps I/O slack. Full scenes preserve exact results while
 reducing four-CU cycles from 13,155 to 12,567 (4.47%) and one-CU cycles from
 39,360 to 37,041 (5.89%). Fresh native performance qualification is underway.
-All estimates are pre-layout; main RTL retains
-the already qualified staging-payload change.
+All estimates are pre-layout. These preliminary screens preceded the combined
+native qualification above.
 
 See [the complete capacity screens and I/O-gate evidence](performance/texture-capacity-and-io-screen-2026-10-17.json).
 
-## Combined texture prototype: native checks and release build (2026-10-17)
+## Preliminary combined texture screening (2026-10-17)
 
 The combined bounded-owner/word-buffer, direct-decoder and reply-forwarding
 prototype passes all nine packed-white native fixtures with **bit-identical
@@ -98,11 +165,12 @@ elapsed time for the same completed render.
 Broader checks pass 40 native format cases, 12 staging controls, six forced
 controls, 18 VM cases and an actual 21-case GLES/GTK64 training guest. Its own
 captured timed trace replays strictly. The representative 72-profile set is
-merged and the O2 release model is compiling. Independent output and memory
+merged for the O2 release model. Independent output and memory
 checks replace old-architecture timing equality; O1/O2 builds of this same
 candidate must still match their own clocks, callbacks and complete RAM.
 Current packed-white/full640 qualification and final balanced release timing
-remain before source promotion.
+are recorded in the completed main-source qualification above. The O1 numbers
+in this historical screen are not the final release result.
 
 See [the native proofs, all timing samples and training evidence](performance/texture-composite-native-screen-2026-10-17.json).
 

@@ -7,7 +7,7 @@ import opengpu.core.memory.{
   ComputeMemoryRequest, ComputeMemoryResponse, TranslatedLineClient,
   TranslatedWordClient
 }
-import opengpu.graphics.GraphicsConfig
+import opengpu.graphics.{GraphicsConfig, TextureUnit}
 
 /** Optional simulation counters; the default product port list is unchanged. */
 class GpuHostPerformanceCounters extends Bundle {
@@ -92,6 +92,11 @@ class GpuHostSystemAxi(
   // Staging and DMA walks sit with the other TLB clients.
   private val translatedWordClients = Seq("command", "framebuffer", "texture")
   private val wordPortTransactions = math.max(4, graphicsConfig.omInflight)
+  // Each physical sampler has at most four accepted tap reads. Preserve
+  // the existing line cache and all global transaction-ID reservations.
+  private val textureWordTransactions = if (bufferTextureReads)
+    math.min(wordPortTransactions, math.max(16, TextureUnit.maxOutstandingReads * sharedShader.map(_.fragmentWorkers).getOrElse(1)))
+  else wordPortTransactions
   private val kernelWordTransactions = SharedCuShaderConfig.kernelWordTransactions(sharedShader)
   private val stagingTransactions = SharedCuShaderConfig.stagingTransactions(sharedShader)
   private val dmaTransactions = 4
@@ -290,7 +295,7 @@ class GpuHostSystemAxi(
       uncached = true, preserveCachePolicy = true,
       coalesceWrites = coalesceFramebufferWrites))
     val texClient = Module(new TranslatedWordClient(
-      gpuConfig, wordPortTransactions, graphicsHostTransactions,
+      gpuConfig, textureWordTransactions, graphicsHostTransactions,
       bufferTextureReads = bufferTextureReads))
     if (bufferTextureReads) {
       val resetWasActive = RegNext(host.io.commandResetActive.get, false.B)

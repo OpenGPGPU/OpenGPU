@@ -551,3 +551,11 @@ class TextureUnit(
     }
   }
 }
+
+/** Physical memory-read concurrency, independent of the shader vector length.
+  * Bilinear samples have four taps; mip groups and samples do not overlap.
+  * Update this contract together with the owner/word credits if that changes.
+  */
+object TextureUnit {
+  val maxOutstandingReads: Int = 4
+}

@@ -208,4 +208,27 @@ class BufferedTextureWordPortSpec extends AnyFlatSpec {
       assert(h.issued.size < addresses.size / 2, "nearby words should reuse complete lines")
     }
   }
+
+  it should "forward a cached word after acceptance and retain it under backpressure" in {
+    simulate(new BufferedTextureWordPort(config, maxOutstanding = 16, cacheLines = 16)) { d =>
+      val h = new Harness(d)
+      h.send(0x1000); h.line(h.issued.head._2, 100); h.received(1)
+      h.p.out.ready.poke(false.B)
+      h.send(0x1004)
+      // Acceptance sets wordValid. An empty reply queue must expose that
+      // cached word immediately, before another register edge.
+      h.p.out.valid.expect(true.B)
+      h.p.out.bits.addr.expect(0x1004.U)
+      h.p.out.bits.data.expect(101.U)
+      h.ticks(3)
+      h.p.in.bits.addr.poke(0x5000.U)
+      h.p.memoryResponse.bits.readData.poke(0.U)
+      h.p.out.valid.expect(true.B)
+      h.p.out.bits.addr.expect(0x1004.U)
+      h.p.out.bits.data.expect(101.U)
+      h.p.out.ready.poke(true.B); h.received(2)
+      assert(h.replies.last == ((BigInt(0x1004), BigInt(101))))
+      assert(h.issued.size == 1)
+    }
+  }
 }

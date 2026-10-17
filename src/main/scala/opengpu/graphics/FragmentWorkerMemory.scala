@@ -176,16 +176,19 @@ class FragmentTextureArbiter(numWorkers: Int, maxOutstanding: Int = 16) extends 
     valid(slot) && addresses(slot) === io.memoryResponse.bits.addr
   })
   private val responding = VecInit((0 until maxOutstanding).map { slot => matches(slot) && sent(slot) })
-  private val responseOwner = Mux1H((0 until maxOutstanding).map { slot =>
-    responding(slot) -> owners(slot)
+  // Decode each matching slot directly, avoiding owner encode/decode delay.
+  private val responseForWorker = VecInit((0 until numWorkers).map { worker =>
+    VecInit((0 until maxOutstanding).map { slot =>
+      responding(slot) && owners(slot) === worker.U
+    }).asUInt.orR
   })
   for (worker <- 0 until numWorkers) {
-    io.clients(worker).response.valid := io.memoryResponse.valid && responding.asUInt.orR &&
-      responseOwner === worker.U
+    io.clients(worker).response.valid := io.memoryResponse.valid && responseForWorker(worker)
     io.clients(worker).response.bits := io.memoryResponse.bits
   }
-  io.memoryResponse.ready := responding.asUInt.orR && MuxLookup(responseOwner, false.B)(
-    (0 until numWorkers).map(i => i.U -> io.clients(i).response.ready))
+  io.memoryResponse.ready := (0 until numWorkers).map { worker =>
+    responseForWorker(worker) && io.clients(worker).response.ready
+  }.reduce(_ || _)
   for (slot <- 0 until maxOutstanding) {
     when(io.memoryResponse.fire && responding(slot)) { valid(slot) := false.B; sent(slot) := false.B }
   }
