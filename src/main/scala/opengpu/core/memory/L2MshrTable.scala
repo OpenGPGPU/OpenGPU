@@ -101,6 +101,9 @@ class L2MshrTable(
   private val fillSent = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val lineAddress = Reg(Vec(entries, UInt(config.xLen.W)))
   private val waiters = RegInit(VecInit(Seq.fill(entries)(0.U(maxOutstanding.W))))
+  // Cache the nonempty predicate on the same edges as the waiter bitmap.
+  // Response arbitration must not wait for a wide reduction of every entry.
+  private val waiterPresent = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val sharers = RegInit(VecInit(Seq.fill(entries)(0.U(numComputeUnits.W))))
   private val refillData = Reg(Vec(entries, UInt((lineBytes * 8).W)))
   private val refillFault = Reg(Vec(entries, Bool()))
@@ -154,6 +157,8 @@ class L2MshrTable(
       lineAddress(allocationEntry) := allocationRequest.lineAddress
       waiters(allocationEntry) := UIntToOH(
         allocationRequest.transactionId, maxOutstanding)
+      waiterPresent(allocationEntry) := UIntToOH(
+        allocationRequest.transactionId, maxOutstanding).orR
       sharers(allocationEntry) := Mux(allocationRequest.trackSharer,
         UIntToOH(allocationRequest.requester, numComputeUnits), 0.U)
       victimSet(allocationEntry) := allocationRequest.victimSet
@@ -161,6 +166,8 @@ class L2MshrTable(
     }.otherwise {
       waiters(allocationEntry) := waiters(allocationEntry) | UIntToOH(
         allocationRequest.transactionId, maxOutstanding)
+      waiterPresent(allocationEntry) := waiterPresent(allocationEntry) ||
+        UIntToOH(allocationRequest.transactionId, maxOutstanding).orR
       when(allocationRequest.trackSharer) {
         sharers(allocationEntry) := sharers(allocationEntry) | UIntToOH(
           allocationRequest.requester, numComputeUnits)
@@ -193,15 +200,27 @@ class L2MshrTable(
   when(io.fill.fire) { fillSent(fillEntry) := true.B }
 
   private val responseCandidates = VecInit((0 until entries).map { entry =>
-    valid(entry) && refilled(entry) && fillSent(entry) && waiters(entry).orR
+    valid(entry) && refilled(entry) && fillSent(entry) && waiterPresent(entry)
   })
   private val responseEntry = PriorityEncoder(responseCandidates)
-  private val responseTransaction = PriorityEncoder(waiters(responseEntry))
+  private val selectedResponseWaiters = waiters(responseEntry)
+  // Encode each registered waiter set before entry selection. This keeps
+  // response-candidate selection off the wide encoder data path.
+  private val responseTransactions = VecInit(waiters.map(word =>
+    L2PriorityEncoder(word)))
+  private val responseTransaction = responseTransactions(responseEntry)
   // Do not retire the final waiter while a merge targeting the same entry is
   // being captured or committed.  Besides making the registered lookup safe,
   // this closes a pre-existing same-cycle multiple-write corner case.
-  private val capturedMergeTargetsResponse = io.request.fire && hasMatch &&
-    matchedEntry === responseEntry
+  // Under a matching entry, request.ready simplifies to !allocationValid
+  // and no duplicate waiter. The selected response entry is then the matched
+  // entry, so read its waiter bit in parallel with incoming line matching.
+  // This is equivalent to request.fire && hasMatch && matchedEntry ==
+  // responseEntry, without putting the match-selected wide waiter read on
+  // the response-valid/arbitration control path.
+  private val capturedMergeTargetsResponse = io.request.valid &&
+    !allocationValid && hasMatch && matchedEntry === responseEntry &&
+    !selectedResponseWaiters(io.request.bits.transactionId)
   private val pendingMergeTargetsResponse = allocationValid &&
     allocationMerged && allocationEntry === responseEntry
   private val responseBlockedForMerge = capturedMergeTargetsResponse ||
@@ -215,6 +234,7 @@ class L2MshrTable(
     val remaining = waiters(responseEntry) &
       ~UIntToOH(responseTransaction, maxOutstanding)
     waiters(responseEntry) := remaining
+    waiterPresent(responseEntry) := remaining.orR
     when(!remaining.orR) {
       valid(responseEntry) := false.B
       refilled(responseEntry) := false.B

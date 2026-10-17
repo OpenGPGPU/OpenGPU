@@ -389,7 +389,7 @@ class SharedL2Slice(
     new ComputeMemoryResponse(lineBytes, maxOutstanding)))
   regularResponse.valid := state === State.respond
   regularResponse.bits := response
-  regularResponse.bits.transactionId := PriorityEncoder(responseWaiters)
+  regularResponse.bits.transactionId := L2PriorityEncoder(responseWaiters)
   private val responseArbiter = Module(new RRArbiter(
     new ComputeMemoryResponse(lineBytes, maxOutstanding), if (uncachedRead.isDefined) 4 else 3))
   responseArbiter.io.in(0) <> regularResponse
@@ -1074,46 +1074,59 @@ class SharedL2Cache(
   // from different slices to return out of order.
   private val memoryArbiter = Module(new RRArbiter(
     new ComputeMemoryRequest(config, lineBytes, maxOutstanding), banks))
-  private val lowerValid =
-    RegInit(VecInit(Seq.fill(maxOutstanding)(false.B)))
-  private val lowerOwner = Reg(Vec(maxOutstanding, UInt(bankWidth.W)))
-  private val lowerOriginalId = Reg(Vec(maxOutstanding,
-    UInt(math.max(1, log2Ceil(maxOutstanding)).W)))
-  private val freeLower = ~lowerValid.asUInt
+  // Keep the outstanding-ID flags as one bitmap instead of independent
+  // scalar enables. Capacity and lowest-free-ID selection are unchanged.
+  private val lowerValid = RegInit(0.U(maxOutstanding.W))
+  // Validity is tracked separately. Capture routing metadata by index
+  // without expanding every inactive row into scalar register enables.
+  private val lowerOwner = Mem(maxOutstanding, UInt(bankWidth.W))
+  private val lowerOriginalId = Mem(maxOutstanding,
+    UInt(math.max(1, log2Ceil(maxOutstanding)).W))
+  private val freeLower = ~lowerValid
   private val hasFreeLower = freeLower.orR
-  private val allocatedLowerId = PriorityEncoder(freeLower)
+  // Keep the exact lowest-free-ID policy, including the all-zero fallback,
+  // without building a priority mux across every outstanding transaction.
+  private val allocatedLowerId = L2PriorityEncoder(freeLower)
+  private val responseId = io.memoryResponse.bits.transactionId
+  private val responseInRange = responseId < maxOutstanding.U
+  private val responseValid = responseInRange && lowerValid(responseId)
+  // Share each asynchronous read across all bank routing consumers.
+  private val responseOwner = lowerOwner(responseId)
+  private val responseOriginalId = lowerOriginalId(responseId)
   for (bank <- 0 until banks) {
     memoryArbiter.io.in(bank).valid := slices(bank).io.memoryRequest.valid
     memoryArbiter.io.in(bank).bits := slices(bank).io.memoryRequest.bits
     slices(bank).io.memoryRequest.ready := memoryArbiter.io.in(bank).ready
-    val responseId = io.memoryResponse.bits.transactionId
-    val responseInRange = responseId < maxOutstanding.U
-    val responseValid = responseInRange && lowerValid(responseId)
     slices(bank).io.memoryResponse.valid :=
-      io.memoryResponse.valid && responseValid && lowerOwner(responseId) === bank.U
+      io.memoryResponse.valid && responseValid && responseOwner === bank.U
     slices(bank).io.memoryResponse.bits := io.memoryResponse.bits
     slices(bank).io.memoryResponse.bits.transactionId :=
-      lowerOriginalId(responseId)
+      responseOriginalId
   }
   io.memoryRequest.valid := memoryArbiter.io.out.valid && hasFreeLower
   io.memoryRequest.bits := memoryArbiter.io.out.bits
   io.memoryRequest.bits.transactionId := allocatedLowerId
   memoryArbiter.io.out.ready := io.memoryRequest.ready && hasFreeLower
   when(io.memoryRequest.fire) {
-    lowerValid(allocatedLowerId) := true.B
-    lowerOwner(allocatedLowerId) := memoryArbiter.io.chosen
-    lowerOriginalId(allocatedLowerId) :=
-      memoryArbiter.io.out.bits.transactionId
+    lowerOwner.write(allocatedLowerId, memoryArbiter.io.chosen)
+    lowerOriginalId.write(allocatedLowerId,
+      memoryArbiter.io.out.bits.transactionId)
   }
-  private val responseId = io.memoryResponse.bits.transactionId
-  private val responseInRange = responseId < maxOutstanding.U
-  private val responseValid = responseInRange && lowerValid(responseId)
   io.memoryResponse.ready := responseValid && (if (banks == 1) {
     slices.head.io.memoryResponse.ready
   } else {
-    VecInit(slices.map(_.io.memoryResponse.ready))(lowerOwner(responseId))
+    VecInit(slices.map(_.io.memoryResponse.ready))(responseOwner)
   })
-  when(io.memoryResponse.fire) { lowerValid(responseId) := false.B }
+  private val newlyAllocatedLower = Mux(io.memoryRequest.fire,
+    UIntToOH(allocatedLowerId, maxOutstanding), 0.U(maxOutstanding.W))
+  private val retiredLower = Mux(io.memoryResponse.fire,
+    UIntToOH(responseId, maxOutstanding), 0.U(maxOutstanding.W))
+  when(io.memoryRequest.fire || io.memoryResponse.fire) {
+    // Retirement retains the original later-assignment priority, including
+    // the same-ID case. Normally allocation uses an old-state free ID, so
+    // it cannot choose the outstanding ID being retired in this cycle.
+    lowerValid := (lowerValid | newlyAllocatedLower) & ~retiredLower
+  }
   when(io.memoryResponse.valid) {
     assert(responseValid,
       "L2 lower response must reference an outstanding transaction")

@@ -1,0 +1,203 @@
+{
+  "recorded_at": 1792227215.597932,
+  "status": "Private only: corrected epoch semantics and cycle improvements pass; all three revisions fail unchanged native timing.",
+  "configuration": {
+    "compute_units": [
+      1,
+      4
+    ],
+    "lanes": 16,
+    "warps": 8,
+    "axi_bytes": 64,
+    "om_credits": 64,
+    "fragment_batch_limit": 112,
+    "scene_size": "64x64",
+    "texture_extent": 64,
+    "prepared_fetch_contexts": 2,
+    "physical_read_credits_per_CU": 4,
+    "blend_datapaths_per_CU": 1,
+    "word_cache_entries_per_CU": 8,
+    "context_count_independent_of_VLEN": true
+  },
+  "measurement_trigger": {
+    "path": "docs/performance/prepared-tap-demand-2026-10-17.json",
+    "sha256": "2d3f8d5d525ae56fca137af11e2fc05db9b1ba35ec84295d0e02ac95402bf90c"
+  },
+  "first_revision": {
+    "source": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window/TextureUnit.scala",
+      "sha256": "812d9c5eb679ed81fc08fccf43845f96de0301e0b1d505e2cf4206d2d827267f"
+    },
+    "source_gates": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window/state.json",
+      "sha256": "3644416e5c80e83f427afef1e687a81815b7b9e642c01f87f32d1d007bb8d652"
+    },
+    "source_test_count": 33,
+    "extra_unmodified_epoch_test": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window/cache-epoch-state.json",
+      "sha256": "2ccb69531fe60fa22f8ede1cba832a2d134e89a1242c637c760564e9cf14f550"
+    },
+    "extra_epoch_passed": false,
+    "timing": {
+      "passed": false,
+      "reported_setup_slacks_ps": [
+        -7.118,
+        -125.256
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "8187ee04075aa809cb8b98ad603eaa29c28ca78e69cd0c8f3edc1f09f8234f92"
+    },
+    "core_pin_mapping": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window/core-pin-details.log",
+      "sha256": "3bb391cc234347a6cc3e994615ca0d147a4c02ad15491b3ae7a5940f3a7284c8"
+    },
+    "scene_current": [
+      {
+        "cus": 4,
+        "baseline_cycles": 11929,
+        "candidate_cycles": 11347,
+        "cycle_reduction_percent": 4.878866627546319,
+        "pixels_depth_metadata_exact": true,
+        "omitted_bytes_preserved": true
+      },
+      {
+        "cus": 1,
+        "baseline_cycles": 35137,
+        "candidate_cycles": 31061,
+        "cycle_reduction_percent": 11.600307368301221,
+        "pixels_depth_metadata_exact": true,
+        "omitted_bytes_preserved": true
+      }
+    ],
+    "decision": "Not eligible: exact cache-epoch regression fails sample15; both core and I/O timing budgets fail. Scene cycle improvement alone is insufficient."
+  },
+  "corrected_revision": {
+    "origin": {
+      "recorded_at": 1792226904.508184,
+      "parent": ".artifacts/shared-cu/prepared-fetch-window",
+      "parent_source_sha256": "812d9c5eb679ed81fc08fccf43845f96de0301e0b1d505e2cf4206d2d827267f",
+      "candidate_source_sha256": "e7061e33a86a27cb6676c931c549046203dcb2bedd925ba7e0fab898d2feb129",
+      "trigger": "Unmodified existing epoch regression fails sample15 in both cases on first two-context prototype; newer input binding was accepted while an older sample still needed its cache lookup.",
+      "change": "Preserve invalidation pulses; drain older prepared fetches before clearing the cache or admitting the new epoch. Remove live invalidate input from the registered-address CAM query.",
+      "regression": "Preserve every pixel/format/epoch/read-count oracle. Define warmed throughput after the fourth initial physical response rather than sample index1, since a two-context window can accept sample1 before the cache is warm. Add one-cycle-pulse coverage.",
+      "core_path": "Read-only original netlist mapping: sampler.state[1] -> sampler.blendedReg[23], -7.118ps. Select shared blend inputs from registered prepared validity; assert that any valid prepared context owns the idle generic FSM."
+    },
+    "source": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-epoch/TextureUnit.scala",
+      "sha256": "e7061e33a86a27cb6676c931c549046203dcb2bedd925ba7e0fab898d2feb129"
+    },
+    "source_gates": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-epoch/state.json",
+      "sha256": "dba75906ebc9faf0a8ece404992b5928dff4492d36e7dc5004b0979662c3392f"
+    },
+    "source_test_count": 35,
+    "changed_executable_modules": [
+      "TextureUnit_1.sv"
+    ],
+    "unchanged_executable_modules": 297,
+    "negative_parent_epoch_control": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/prepared-fetch-window-epoch/negative-epoch-state.json",
+        "sha256": "b969704100d8b1533ea29edfb3f36761548181715c373d0cec2dbc9ff9bd735c"
+      },
+      "expected_failures": 2
+    },
+    "fixed_epoch_regression": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-epoch/PreparedFetchWindowEpochSpec.scala",
+      "sha256": "e4a67f6932e39c095d16dce7e88bccc5197b45bfba514727f9f46a63e93329dc"
+    },
+    "fixed_epoch_log": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-epoch/test-PreparedFetchWindowEpochSpec.log",
+      "sha256": "617ad70ccb3fb6f936c0290f9ca11cabb430e89cde2b4dcf9b9b76c5a966075f"
+    },
+    "inflight_and_credit_regression": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-epoch/PreparedFetchWindowSpec.scala",
+      "sha256": "5e791aac92d5a2f8b79132ea219064ca0cdd0b247028442ae804ee495a33dc7c"
+    },
+    "timing": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/prepared-fetch-window-epoch/native-component-timing-state.json",
+        "sha256": "fc2b7785958503dd62825cd0d83983cb180e7d91361e6f8e7c79cc1aaa7d099b"
+      },
+      "qualification": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -2.759,
+          -16.17
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "98802d2e5261bc4bd3bea51a228d5bbd40da5e53383a82252bb4c0216acc44d2"
+      }
+    },
+    "full_scenes": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/prepared-fetch-window-epoch/scene-state.json",
+        "sha256": "7b9a8d17dae8483f1e1e48acacb73cd904cd3b4767e9a4dda60f7d965533c8ef"
+      },
+      "results": [
+        {
+          "cus": 4,
+          "baseline_cycles": 11929,
+          "candidate_cycles": 11347,
+          "cycle_reduction_percent": 4.878866627546319,
+          "pixels_depth_metadata_exact": true,
+          "omitted_bytes_preserved": true
+        },
+        {
+          "cus": 1,
+          "baseline_cycles": 35137,
+          "candidate_cycles": 31061,
+          "cycle_reduction_percent": 11.600307368301221,
+          "pixels_depth_metadata_exact": true,
+          "omitted_bytes_preserved": true
+        }
+      ]
+    },
+    "decision": "Keep private: unchanged hardware timing still fails despite matching scene improvements."
+  },
+  "remaining_gates": [
+    "Unchanged1GHz25%IO actual native sampler cone timing. Baseline reuse allowed only for exact byte-identical module inputs, preserving original evidence identity.",
+    "Independent pixels/depth/canaries and task-cycle improvement on matched1CU/4CU scenes.",
+    "Actual native model and direct qualified O2/own-profile host comparison; cycle improvement is not a simulator-speed claim.",
+    "Actual current Debian/GTK desktop, strict own traces and manual image review."
+  ],
+  "timing_revision": {
+    "source": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-timing/TextureUnit.scala",
+      "sha256": "1a2c493acec3e5074ab45edac9d92e829f71f17582398980b9c3d46171c9b602"
+    },
+    "source_gates": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-timing/state.json",
+      "sha256": "8eac4a5fc6778273a3fe4b1495b678278acd9797483fa4c98246849e57969ca1"
+    },
+    "source_test_count": 35,
+    "equivalence": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-timing/timing-equivalence.json",
+      "sha256": "a05528d215d86a0cb1fdb1231eeaf8a31991beca082aba5e1c888663de35f822"
+    },
+    "equivalence_passed": true,
+    "timing": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/prepared-fetch-window-timing/native-component-timing-state.json",
+        "sha256": "0b61fd02f69140c11eb944f1af38b6db6d8b32a994b283a270bd2383ea645f3e"
+      },
+      "qualification": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -56.138,
+          -41.616
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "9c1eb3cf122dd2a6cfdd5d00955e1644362ce6af700f3313da01edb833187443"
+      }
+    },
+    "scenes": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-timing/scene-state.json",
+      "sha256": "3a4dece121751dcd9cd02ae2260bf36b3a1e0b561d7cc79e12d42bc9ab34c3fe"
+    },
+    "decision": "Timing fails more severely (-56.138ps core/-41.616ps I/O); scene compilation skipped. Rework the measured critical paths before release qualification."
+  }
+}

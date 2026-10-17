@@ -1,6 +1,6 @@
 {
   "recorded_at": 1792219306.6584861,
-  "status": "private_screen_only_not_promoted",
+  "status": "final_cached_presence_revision_qualified_and_integrated",
   "configuration": {
     "compute_units": 4,
     "lanes": 16,
@@ -660,14 +660,9 @@
       "sha256": "5128565c496a5b4f21050484bc357bc0f0505b34ba95ab4e6c00c71fd5e1eaea"
     }
   },
-  "remaining_gates": [
-    "Native whole-RAM, cycles and DMA comparisons for indexed metadata and hierarchical encoder.",
-    "Quiet balanced host screens, followed by own representative-profile O2/PGO release timings.",
-    "Actual native full-cache timing with characterized SRAM views; isolated allocator pass is insufficient.",
-    "Format/swizzle/staging controls and current Debian/Mesa desktop, strict trace, scanout and visual checks."
-  ],
-  "production_RTL_changed": false,
-  "updated_at": 1792226008.803354,
+  "remaining_gates": [],
+  "production_RTL_changed": true,
+  "updated_at": 1792231452.278154,
   "all_wide_revision": {
     "sources": {
       "L2PriorityEncoder.scala": {
@@ -1261,7 +1256,7 @@
       "path": ".artifacts/shared-cu/l2-waiter-presence/L2MshrTable.scala",
       "sha256": "d1bd191909ec3e9458f167b9f380e9d8ceb79d019f04050c93c0bb5587909933"
     },
-    "status": "40 source tests,298-module emission and all five inductive SAT configurations pass; native build and unchanged full-cache timing running",
+    "status": "Full qualification passed; integrated into main sources.",
     "register_bits_per_entry": 1,
     "capacity_or_protocol_changes": false,
     "source_tests": {
@@ -1311,6 +1306,146 @@
     "harness_recovery": {
       "path": ".artifacts/shared-cu/l2-waiter-presence-native/proof-harness-recovery.json",
       "sha256": "58ac10ffa623a6ea8621fe62502d9bd3d75f5c9ac72e16e67814b750224e110a"
+    },
+    "native9": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-waiter-presence-native/build-state.json",
+        "sha256": "4ff35668c6f6d187ec96feeba2dcecbaa6a5c16ca26d92e435830fbc380d2db4"
+      },
+      "cases": 9,
+      "complete_RAM_task_clocks_and_DMA_exact": true
+    },
+    "strict_Mesa64": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-waiter-presence-native/reference-replay-state.json",
+        "sha256": "38e2bf358516fe02016e2e00054d0f9532b97455413ee4ba78525c465922c147"
+      },
+      "result": {
+        "calls": 45693,
+        "ticks": 3311169,
+        "commits": 46755733,
+        "holds": 148057406,
+        "dma_reads": 39094,
+        "dma_writes": 468192,
+        "dma_bytes": 6005392,
+        "seconds": 34.702054417,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    "sampler_quiet_barrier": {
+      "path": ".artifacts/shared-cu/l2-waiter-presence-native/sampler-epoch-quiet-barrier-update.json",
+      "sha256": "37395b6f2e60f085f15114b5a90241cbc80789f5712a098f880504c0c953f6f1"
+    },
+    "native_full_cache_timing": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-waiter-presence-native/native-component-timing-state.json",
+        "sha256": "ba5301de26e9544ec7b7b42213b9fc2815f74f1479e93077c6467251ac15a00b"
+      },
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          29.503,
+          36.998
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "dfb2fc6b2f7284961a2db94544a000800a4af077abc0bac2c7b91844206ca9d8"
+      }
+    },
+    "optimized_host": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-waiter-presence-native/optimized-host-state.json",
+        "sha256": "2549ce4ec0f953e04eef42bb586418c62726d1da21ef1d4476bbec923174e4d2"
+      },
+      "summary": {
+        "solid64": {
+          "medians": {
+            "baseline": 0.5674117915000001,
+            "candidate": 0.5032827705
+          },
+          "time_saved_percent": 11.302024730658077,
+          "ranges": {
+            "baseline": [
+              0.561584125,
+              0.576506125
+            ],
+            "candidate": [
+              0.4995495,
+              0.507125834
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "spatial64": {
+          "medians": {
+            "baseline": 0.7070687705,
+            "candidate": 0.6195063545
+          },
+          "time_saved_percent": 12.383861323429791,
+          "ranges": {
+            "baseline": [
+              0.704175166,
+              0.710809292
+            ],
+            "candidate": [
+              0.613494209,
+              0.621185583
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "large256": {
+          "medians": {
+            "baseline": 10.834206292000001,
+            "candidate": 9.614155937500001
+          },
+          "time_saved_percent": 11.26109584419569,
+          "ranges": {
+            "baseline": [
+              10.749976417,
+              10.938956208
+            ],
+            "candidate": [
+              9.530930833,
+              9.710763667
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        }
+      }
+    },
+    "main_integration": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-waiter-presence-native/main-integration/state.json",
+        "sha256": "c1e9803ca637ecf456187e91106f998a1f163a37caa7a19df8bac880038ca597"
+      },
+      "sources": 170,
+      "tests": 79,
+      "suites": 16,
+      "executable_modules_equal_to_qualified_runtime": 298
+    },
+    "current_desktop": {
+      "path": ".artifacts/shared-cu/l2-waiter-presence-native/current-desktop-state.json",
+      "sha256": "32802ea3c05b587f563089708df02759a3963f649bd86b08e13d169c318a39e5"
+    },
+    "manual_visual_review": {
+      "path": ".artifacts/shared-cu/l2-waiter-presence-native/full640-visual-review.json",
+      "sha256": "91089aee72b7792b4f3729493d23ea675196e98b359538895a2259440229eb2e"
     }
+  },
+  "final_qualification": {
+    "path": "docs/performance/l2-transaction-remapper-main-qualification-2026-10-17.json",
+    "sha256": "22bc61fc04cd8f6129b270bca4fc21177beed8bbe8de3caa7340104fe3ca80c3"
   }
 }

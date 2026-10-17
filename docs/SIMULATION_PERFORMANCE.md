@@ -1,5 +1,39 @@
 # Full-system simulation performance investigation
 
+## Qualified L2 remapper optimization (2026-10-17)
+
+The lower-memory transaction remapper now stores validity as a bitmap and
+routing metadata by index. Balanced lowest-ID encoders, per-entry response-ID
+selection and cached waiter-presence bits remove wide control dependencies
+while preserving capacity, routing and task cycles.
+
+| Native workload | Previous O2/PGO seconds | New seconds | Time saved |
+| --- | ---: | ---: | ---: |
+| Solid64 | 0.5674 | 0.5033 | 11.30% |
+| Spatial64 | 0.7071 | 0.6195 | 12.38% |
+| Spatial256 | 10.8342 | 9.6142 | 11.26% |
+
+Each variant uses four fresh processes in balanced order. All measured ranges
+are separate. Complete RAM, task cycles and DMA match; this is a simulator
+host-time improvement. Internal hold/commit counts change with the RTL
+representation. The candidate uses its own 72-input representative profile.
+
+Fresh compilation of **170 main sources** passes **79 tests in 16 suites**;
+all **298 emitted executable modules** match the qualified private runtime.
+Native format/swizzle cases, staging controls, O1/O2 comparisons and strict
+traces pass. Full-cache synthesis timing meets the unchanged 1 GHz and 25%
+I/O budgets at **+29.503 ps core / +36.998 ps I/O**. This screen uses pin-matched
+characterized SRAM wrappers; it is not whole-chip placement or routing.
+
+The actual **640×480 Debian/Weston/GTK desktop** and orange redraw pass strict
+scanout checks and manual image review. Full strict replay covers **132,803
+calls and 15,479,814 ticks** without mismatch or a truncated tail. Capture and
+replay overlap, so their elapsed times are functional evidence, not an
+isolated desktop-startup comparison. Main sources contain this revision;
+the installed default QEMU remains unchanged.
+
+See [the pinned main-source, timing, host and desktop qualification](performance/l2-transaction-remapper-main-qualification-2026-10-17.json).
+
 ## Fixed-function texture payload handoff (2026-10-17)
 
 A sampler may accept its successor while delivering the previous result.
@@ -117,6 +151,39 @@ results do not establish a whole-scene or simulator speedup.
 
 See [the admission regression, four-CU result and failing timing paths](performance/prepared-cache-admission-screen-2026-10-17.json).
 
+## Prepared fetch window screen (2026-10-17)
+
+A private two-context window lets a later prepared sample fetch while an
+earlier sample waits. Both contexts share the existing word cache, one blend
+datapath and **four physical read credits per CU**. Context count is independent
+of shader VLEN. In-flight address aliases share one physical request; results
+retire in order under output stalls.
+
+The first revision passes 33 source tests and reduces the four-CU scene from
+**11,929 to 11,347 cycles (4.88%)**, preserving pixels, depth and canaries.
+An additional existing cache-epoch regression exposes an older sample reading
+the newer binding's data. The revision also misses timing at **−7.118 ps core /
+−125.256 ps I/O**, so it is not eligible for promotion.
+
+The corrected revision preserves invalidation pulses and waits for older
+prepared fetches before clearing their cache or admitting the new epoch. It
+also selects blend inputs from registered prepared validity, keeping the
+generic FSM state off the shared multiplier inputs; an assertion checks their
+ownership invariant. All **35 tests** pass, including one-cycle invalidation
+while older samples and the consumer stall. The same epoch regression fails
+both cases on the first revision. Only `TextureUnit_1.sv` changes among 298
+native modules. Matched scenes preserve pixels, depth and canaries and reduce
+**35,137→31,061 cycles (11.60%)** for one CU and **11,929→11,347 (4.88%)** for
+four CUs. However, timing still fails at **−2.759 ps core / −16.170 ps I/O**.
+A further private revision moves axis bias across an existing register boundary
+and removes redundant state guards under a proved ownership invariant. Its
+35 tests and decomposed equivalence checks pass, but timing worsens to
+**−56.138 ps core / −41.616 ps I/O**; scene compilation is skipped. All window
+revisions remain private. Simulator and desktop qualification remain required
+for any future revision that passes hardware timing.
+
+See [the overlap controls, epoch failure/fix and qualification gates](performance/prepared-fetch-window-screen-2026-10-17.json).
+
 ## Exact held-update attribution (2026-10-17)
 
 A read-only observer surrounds existing hold dispatches, without evaluating
@@ -219,9 +286,14 @@ targets the wide reduction before response arbitration without adding a
 pipeline cycle or changing capacity. All **40 source tests** pass; only the
 expected MSHR module changes among 298 emitted modules. Inductive SAT checks
 pass at **2×1, 4×7, 4×17, 4×564 and 8×576**, including simultaneous same-entry
-updates and the original out-of-range one-hot semantics. Native build and
-unchanged-constraint full-cache timing are running. Optimized host measurements
-and actual desktop qualification remain required before production promotion.
+updates and the original out-of-range one-hot semantics. Nine native fixtures
+and strict Mesa64 replay preserve complete RAM, task clocks and DMA.
+The final revision meets unchanged full-cache timing at **+29.503 ps core /
++36.998 ps I/O**. Its own-profile O2 model saves **11.3–12.4% host time** in
+balanced native measurements. The current 640×480 desktop, redraw, strict
+trace replay and manual image review pass. Fresh all-main compilation and
+79 tests bind the qualified runtime to the integrated sources; see the final
+qualification above. Task cycles remain unchanged.
 
 See [the remapper screens, exact-ID proofs and timing limits](performance/l2-transaction-remapper-screen-2026-10-17.json).
 
