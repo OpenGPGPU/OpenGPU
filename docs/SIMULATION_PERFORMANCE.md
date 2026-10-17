@@ -1,5 +1,54 @@
 # Full-system simulation performance investigation
 
+## Qualified immutable invalidation blocks (2026-10-17)
+
+FlashSim commit `efefca8` predecodes dense immutable page-ID lists into fixed eight/four-cell
+increment blocks and scalar remainders. Portable unsigned operations let the
+host compiler vectorize contiguous counters. Every occurrence, including
+duplicates and wraparound, is preserved. Mutable, partial, shadowed and unknown
+uses retain the original helper. `FLASHSIM_COMMIT_BLOCKS=0` selects the legacy
+generation path. This host packing is independent of shader VLEN and RTL lanes.
+
+An exact read-only observer counts **6,222,862,861 page increments** in the
+fixed Mesa64 trace; **84.51%** lie in runs of at least four counters. A first
+variable-length run helper was 1.13–1.55% slower across the four workloads and
+was rejected. Fixed blocks avoid its nested short-run loops. The production
+pass selects **1,724 tables and 4,253 call sites**. Its output is byte-identical
+to the compiled candidate; the header, RTL and unrelated sources are unchanged.
+
+Three balanced fresh-process samples per variant using final packaged O2/PGO
+libraries give:
+
+| Same useful workload | Shared-dispatch main | With blocks | Time saved |
+| --- | ---: | ---: | ---: |
+| Packed-white solid64 | 0.598740 s | 0.579905 s | 3.15% |
+| Packed-white spatial64 | 0.732220 s | 0.703225 s | 3.96% |
+| Packed-white spatial256 | 11.322210 s | 11.117866 s | 1.80% |
+| Fixed actual current Mesa64 trace | 23.500118 s | 22.306446 s | 5.08% |
+
+The same balanced experiment also measures the baseline before both host
+changes: **24.302408 → 22.306446 seconds**, or **8.21% less Mesa64 time**.
+These are direct same-work measurements. The larger preliminary direct-object
+screen gains are not the release result. Idle measures **19.85 → 20.20 MHz**, with zero DMA, commits and holds.
+
+Only the commit caller is rebuilt using its existing compatible CFG profile;
+profile mismatch diagnostics are errors. The new small helper uses O2 without
+PGO, and all remaining selected archive objects match byte for byte. All native
+RAM and counters and all strict trace results match. Qualification passes
+120 package tests, 4,103 sanitized reference cases, 40 native formats plus
+18 controls, nine current packed-white fixtures, 18 VM cases, 21 GLES cases,
+GTK64 white-modulation transitions and the actual 640×480 guest/redraw.
+Both full-resolution scanouts were manually reviewed. Strict full replay
+matches 151,931 calls and 16,856,198 ticks. Its elapsed overlaps functional
+guest work and does not establish a paired whole-desktop gain. The installed
+QEMU executable is unchanged.
+
+The older 39 kHz desktop average and idle benchmark MHz describe different
+activity. Current active-render samples still put L2 evaluation and output
+merging among the next host targets; this result does not establish optimality.
+
+See [the complete qualification, rejected experiment and final samples](performance/invalidation-blocks-main-qualification-2026-10-17.json).
+
 ## Qualified shared pass dispatch (2026-10-17)
 
 FlashSim commit `f86b763` shares generation/data/pending guards across
