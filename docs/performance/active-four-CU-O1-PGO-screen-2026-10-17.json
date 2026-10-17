@@ -1,0 +1,338 @@
+{
+  "recorded_at": 1792195932.425078,
+  "status": "Correctness PASS; reject O1PGO for the selected runtime artifact",
+  "scope": "Private compile-level experiment on exact unchanged qualified sparse-wake4CU model. O1 plus exact same own72-profile PGO versus selectedO2PGO. No model source/RTL/training dataset change. Independent nativeRAM and strictactualMesa trace gates. Timings only after own heavy jobs exit.",
+  "summary": {
+    "large256-fast": {
+      "medians": {
+        "baseline": 12.965865041,
+        "candidate": 13.520573125
+      },
+      "candidate_over_baseline": 1.0427821886349988
+    },
+    "actual-Mesa64-fast": {
+      "medians": {
+        "baseline": 23.598869,
+        "candidate": 24.846024708
+      },
+      "candidate_over_baseline": 1.0528481135261185
+    }
+  },
+  "samples": [
+    {
+      "name": "large256-fast",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 13.420962333,
+        "commits": 24374241,
+        "holds": 158444263,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_counters_exact": true
+    },
+    {
+      "name": "large256-fast",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 13.558025916,
+        "commits": 24374241,
+        "holds": 158444263,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_counters_exact": true
+    },
+    {
+      "name": "large256-fast",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 13.520573125,
+        "commits": 24374241,
+        "holds": 158444263,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_counters_exact": true
+    },
+    {
+      "name": "large256-fast",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 12.9339675,
+        "commits": 24374241,
+        "holds": 158444263,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_counters_exact": true
+    },
+    {
+      "name": "large256-fast",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 12.965865041,
+        "commits": 24374241,
+        "holds": 158444263,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_counters_exact": true
+    },
+    {
+      "name": "large256-fast",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 13.515053042,
+        "commits": 24374241,
+        "holds": 158444263,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64-fast",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 388012071,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 23.822146333,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64-fast",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 388012071,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 24.846024708,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64-fast",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 388012071,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 24.840745417,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64-fast",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 388012071,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 23.578483125,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64-fast",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 388012071,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 23.598869,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64-fast",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 388012071,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 24.875771166,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_counters_exact": true
+    }
+  ],
+  "source_sha256": {
+    "dut_9.cpp": "843e88f235229436342362e8bd01ce9e447b18a039a9419a716781a0f17a0987",
+    "dut_8.cpp": "1ee606234e3ab92c82811b6c1c08e1a154c9f9db709e1293348552d3c9b924b1",
+    "dut_21.cpp": "4a20980238922cb440d3ccc8541657fd408c4cc6292ce7adb6951e04ab2b5b18",
+    "dut_20.cpp": "94f6dc164c066943094428c9d177b6f777475cadf8efb56cea44e366040f872f",
+    "dut_22.cpp": "703c97c2562bd3057f2e28f30413bbf711b4ef3b63dfdcd11c982402449df757",
+    "dut_23.cpp": "1f23626a78922e381f47582442724244888356c14538f59fd7ce786e776dcf64",
+    "dut.h": "b00a97624f596a8107b176d22812155c3c04ca01229d096c9b37d0336391cf17",
+    "dut_27.cpp": "337c223ad86d1d0a01a5cdd843fac99bd8f571c269bd4e13e2a2a9ef5ac69541",
+    "dut_26.cpp": "6ba8d0561931e945bd5724076e038e46565f958139669eb9b446419ac09ff7df",
+    "dut_24.cpp": "6fc32570affbcddb18287d8663f63205f9d808935f92239c0d6674e4818e68a1",
+    "dut_30.cpp": "adc95d0fbacdf9a8412faea6c4dc56012b5c426c419616fda5e5bde4c9b95ad7",
+    "dut_18.cpp": "e8f5a0544d447493bd42701aef7bc58b3c8b42eadf7a6f53cc876b0879ccf818",
+    "dut_19.cpp": "9edd54f79c8c13eeadae410931146ed232a4407473c1be4e2eb12ab72c3e27e2",
+    "dut_31.cpp": "d2ede25d2b19ce33afadaa083f85dea5a630c2518296195ad19cf478148df188",
+    "dut_25.cpp": "2f776854083fa9ba2863e693954b07a2d8ab45825cc761848980ab2cd885c5aa",
+    "dut_28.cpp": "5a4adcdf41f19f7389799ffc5000e5724ade54ca3ce8e5097a7e99914f6616eb",
+    "dut_14.cpp": "d42bb65189f5e85e8a43093d15a0f62d65c556b58a62efe902a327b3373c9c9e",
+    "dut_15.cpp": "62159c8993cf9fd14270d6291a95ff77fd559b35ac535499419b7d3166e407ac",
+    "dut_29.cpp": "ccebcb4199817f10590acd48e0cd93c33d22a1ae0df36cfc878fcdd65c9f797f",
+    "dut_17.cpp": "ea87f4790dd78ffb55566ae385162553b3933708f4a41ee21e3b4a6a0b879304",
+    "dut_16.cpp": "82817e2d6428efed211f226a916e4f13306152ef1cc4097bf67619879268e1a2",
+    "dut_commit_helpers.cpp": "3554c37c2e57c62d716ba1c58c979062b3d00c4e4edf7729294dbb2a3281403e",
+    "arti_rtl_model.h": "1c03023f2d5f1e46a9968eb82ac70beaae4edfc63252300a44bc757ef40990d4",
+    "arti_rtl_model.cpp": "c175500879fd56d74d9fbc60cf5ff9bb00be5f7351bdecdd93d02f6329546c3b",
+    "dut_12.cpp": "0a2ee9a20e40ae8a47e08ce1c24eabcd2b1c6abf177d0e9b32d8cd3a61950422",
+    "dut_13.cpp": "8be2563934734f8e0c925bb7141276300c1dec3ca39d9c24ddae3171531a6a43",
+    "arti_smoke.cpp": "eb3699b736aeae965aa933baf8a648681f9b651d74daa6dd39daf047a805697a",
+    "dut_11.cpp": "7bdf3821c58a151cd151a21738663aea9658dbe22d1cc603ffb6b38d03c484d2",
+    "dut_10.cpp": "481ba8d8899ad3ededcedc55c4b29aab3ed052a347113aa7de5ade8094338335",
+    "dut_0.cpp": "11f532a25ee00d98c30df2363e48a6921e273a6be3849f6c11d0a3c7c47ea7fe",
+    "dut_1.cpp": "a5dd59143caaf6c75725652c84fc7c2cc7ff82164524f02146bf1c7f914a2232",
+    "dut_3.cpp": "f2c46a67c54650e38a2dffe4cde7150c42d594a305100e0f1f087c811d6ef475",
+    "dut_mem_ports.cpp": "307a6c9477e34c3ae6f49e17164f4efae51ac4aad0304a8c468676004d433a19",
+    "dut_commit_chunks.cpp": "e729ad99028b117e1a7c15c1199840c47ae7f2d78ab9bd5150b939640352ab9f",
+    "dut_2.cpp": "37594ba218b0902100040bfa2a78f213024a11a500af2921c3dfa6b8c647b7b5",
+    "dut_6.cpp": "5a59030f08e6a9329218feddd6f3b5c65ac80f947f630663d0836b0c2a3dcb1a",
+    "dut_7.cpp": "74b8258519c75a44b022aa1274f01f895fd342d589fb5db00930e88be439d004",
+    "dut_5.cpp": "06db53e2345913b2bb8139b599da81478f53709955b013c52b7309bab7acdf46",
+    "dut_4.cpp": "c30fa6110a711b379d5309ffc50284c36821cb17849245c807081fd48dbcce4a"
+  },
+  "PGO_profile_sha256": "190d864cf18b0e6c70be6837805c1ba2a23c0515635fb3bdc5d2f56d6bde6a07",
+  "baseline_archive_sha256": "93e5391fa302ca3e6254fc0e1d5958e79dc7190b6f1d701eae3cf3ecaa172901",
+  "candidate_archive_sha256": "d0affcbfeb852459339d6a82c723bd8bc6877cc86553cd1e77d26c1fa7f5f377",
+  "compiler_comparison": {
+    "baseline": "O2 DUT shards, O1 wrapper; same qualified72-profile PGO",
+    "candidate": "O1 DUT shards and wrapper; same exact qualified72-profile PGO",
+    "RTL_unchanged": true,
+    "training_unchanged": true
+  },
+  "compile_measurement": {
+    "child_build_seconds": 344.9615828990936,
+    "workers": 3,
+    "source_count": 36,
+    "scope": "Diagnostic compiler wall time only. The outer launcher was intentionally stopped after launching compilation so functional native work could finish before benchmarks. Use the independent child manifest timing, not launcher stage elapsed. Historical O2 build has different concurrency/cache conditions; no paired compiler-speed ratio."
+  },
+  "decision": "Retain selected O2PGO for simulation runtime. O1 still serves preliminary functional/instrumented validation; these measurements do not justify changing release optimization level.",
+  "limits": [
+    "Balanced actual runtime comparisons start only after own native compilation and functional screens exit. Three fresh-process samples per variant/workload.",
+    "First large baseline sample is colder than the later two; conclusions use medians and remain consistent with both later baseline samples.",
+    "No whole-desktop timing ratio is claimed from these two workloads.",
+    "No production source, runtime default, or installed QEMU change."
+  ],
+  "evidence": {
+    ".artifacts/shared-cu/sparse-hold-wake-o1-pgo/state.json": "cd9e47117263923a0406a267171b415950e0b74f15b3f6a328e1333e550f6db6",
+    ".artifacts/shared-cu/sparse-hold-wake-o1-pgo/optimized/manifest.json": "43b23138c54d6142d0e3d7377f63753e4d1d0887733825b4a6d074fb08ea92f1",
+    ".artifacts/shared-cu/sparse-hold-wake-o1-pgo/build_and_screen.py": "0ffebcc35d83abb030113f092bcedc2f4cb92852f93985de99fb63ad2ba89e07",
+    ".artifacts/shared-cu/sparse-hold-wake-native/optimized/manifest.json": "c4b517ef0319160feb7d5e8b584dd2d771080b7135ddddf04d7f98d0dc371496"
+  }
+}

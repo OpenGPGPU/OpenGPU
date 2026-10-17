@@ -44,6 +44,25 @@ started for it. These are pre-layout estimates, not whole-chip timing closure.
 
 See [the complete texture-port counters, runtime calculation and sampled-host evidence](performance/desktop-texture-port-attribution-2026-10-17.json).
 
+## Active four-CU compiler-level screening (2026-10-17)
+
+Compiling the exact unchanged model at `-O1` with the same representative PGO
+profile passes complete output-RAM and strict Mesa-trace checks, but is slower
+than the selected `-O2` artifact. Three balanced fresh-process samples per
+variant/workload give these runtime medians:
+
+| Workload | Selected O2 + PGO | O1 + same PGO | O1 increase |
+| --- | ---: | ---: | ---: |
+| Packed-white spatial256 | 12.966 s | 13.521 s | 4.28% |
+| Actual packed-white Mesa64 trace | 23.599 s | 24.846 s | 5.28% |
+
+The release runtime remains `-O2`. O1 remains useful for preliminary functional
+and profile-training builds. Its independent child compilation took 344.96 s
+with three workers; compilation overlapped other diagnostic work, so that
+number is not a controlled build-speed comparison. The benchmark launcher
+waited until the other native build and functional checks exited before timing.
+See [the fixed-source comparison and complete evidence](performance/active-four-CU-O1-PGO-screen-2026-10-17.json).
+
 ## Runtime estimate before packed-white modulation (2026-10-17)
 
 The exact complete desktop/GTK trace takes **550.351 seconds** in the qualified
