@@ -77,6 +77,27 @@ cycle-reduction target after the L2 host-work qualification.
 
 See [the per-tick histograms and unchanged-object checks](performance/prepared-sampler-cadence-2026-10-17.json).
 
+## Prepared cache admission screen (2026-10-17)
+
+A private sampler reuses its existing CAM at prepared-request admission.
+Entirely cached samples enter the registered blend directly. Generic and mip
+addressing retain their lookup stage. The regression checks weighted packed
+formats, simultaneous invalidation, stalled results and out-of-order refills;
+24 samples require eight reads across cold and invalidated cache epochs.
+
+All **33 tests** pass, including VLEN1/2/4/8/16/32 coverage. Warm samples are
+accepted every cycle; the unchanged sampler fails that throughput control.
+Only `TextureUnit_1.sv` changes among 298 emitted modules. The fresh four-CU
+scene preserves pixels, depth, layout and canaries but takes **11,929 → 12,044
+cycles**, a **0.96% regression**. The one-CU comparison is still running.
+
+Paired native-cone timing reproduces the baseline's **+7.786 ps core /
++273.148 ps I/O** slack. The candidate misses both budgets at **−8.508 ps /
+−12.748 ps**, so it is not eligible for promotion. These unit throughput
+results do not establish a whole-scene or simulator speedup.
+
+See [the admission regression, four-CU result and failing timing paths](performance/prepared-cache-admission-screen-2026-10-17.json).
+
 ## Exact held-update attribution (2026-10-17)
 
 A read-only observer surrounds existing hold dispatches, without evaluating
@@ -138,8 +159,25 @@ receipts retained, to qualify one shared tree helper at all three wide ID
 selection sites. This complete revision passes **38 tests in five suites**
 and twelve-capacity SAT checks against the original encoder. Only the three
 expected cache modules change among the original 296 native modules; the two
-metadata memories remain added. Full-cache timing, optimized host measurements
-and actual desktop qualification remain required before production promotion.
+metadata memories remain added. Its nine native scenes and strict Mesa64
+reference replay pass. The balanced incremental O1 screen is flat on the large
+scene (**−0.078% saved**, overlapping ranges); small-case ranges also overlap.
+
+The complete native cache now passes the **core** 1 GHz target with **+22.189
+ps** slack. Its response-ID output still fails the unchanged 25% I/O budget by
+**137.830 ps**. The path starts at the saved request address, crosses the
+match-selected duplicate-waiter check, and drives response arbitration.
+
+A new private revision factors that merge-response guard algebraically:
+once the matched entry equals the response entry, the duplicate waiter can be
+read from the selected response entry in parallel with line matching. SAT
+equivalence passes at five entry/capacity combinations, including 4×564, with
+arbitrary matches, waiters, IDs and allocation conditions. **40 tests in seven
+suites** pass, including duplicate-request backpressure and a concurrent new
+merge during final-waiter retirement. Only `L2MshrTable.sv` changes relative to
+the three-tree revision. Its full native and unchanged-constraint timing
+qualification are running. Optimized host measurements and actual desktop
+qualification remain required before production promotion.
 
 See [the remapper screens, exact-ID proofs and timing limits](performance/l2-transaction-remapper-screen-2026-10-17.json).
 

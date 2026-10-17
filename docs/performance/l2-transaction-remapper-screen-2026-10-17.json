@@ -667,7 +667,7 @@
     "Format/swizzle/staging controls and current Debian/Mesa desktop, strict trace, scanout and visual checks."
   ],
   "production_RTL_changed": false,
-  "updated_at": 1792220376.205843,
+  "updated_at": 1792222625.812444,
   "all_wide_revision": {
     "sources": {
       "L2PriorityEncoder.scala": {
@@ -727,7 +727,199 @@
       ],
       "scope": "SAT compares actual Chisel-emitted PriorityEncoder and the actual compiled candidate helper used at all three wide L2-ID selection sites for every input bitmap, including empty input, at power-of-two boundaries and actual native capacity. No traffic assumptions."
     },
+    "native_and_full_cache_timing": "Native9 and strict Mesa64 pass; core1GHz passes, I/O setup fails137.83ps; production/release gates remain closed.",
+    "production_RTL_changed": false,
+    "native_build": {
+      "path": ".artifacts/shared-cu/l2-wide-priority-tree-native/build-state.json",
+      "sha256": "915af1a16a5a027b464b82b13d3344b2bde1d85882b00399cccea5233adf6b9a"
+    },
+    "strict_reference": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-wide-priority-tree-native/reference-replay-state.json",
+        "sha256": "df2e484fbd1dea33b98e2e4530e469bbdb689842febb99f7cd326bb203b625a4"
+      },
+      "result": {
+        "calls": 45693,
+        "ticks": 3311169,
+        "commits": 46754789,
+        "holds": 148057406,
+        "dma_reads": 39094,
+        "dma_writes": 468192,
+        "dma_bytes": 6005392,
+        "seconds": 33.524777208,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "trace_sha256": "b6112abf682c39e0d8c3c2e10b74bd641cd3c40de90e68b9547ca131d059728f"
+    },
+    "incremental_O1_vs_indexed_metadata": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-wide-priority-tree-native/O1-host-state.json",
+        "sha256": "c00faab00f2be097074abb811ebdcebdaf0f051c0b1a5abfdcfc122c8db9cba6"
+      },
+      "summary": {
+        "solid64": {
+          "medians": {
+            "baseline": 1.0054626035,
+            "candidate": 0.985902708
+          },
+          "time_saved_percent": 1.9453628043362703,
+          "ranges": {
+            "baseline": [
+              0.988715042,
+              1.0119355
+            ],
+            "candidate": [
+              0.985394625,
+              1.006298959
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "spatial64": {
+          "medians": {
+            "baseline": 1.2236071665,
+            "candidate": 1.2082518329999998
+          },
+          "time_saved_percent": 1.2549234689367195,
+          "ranges": {
+            "baseline": [
+              1.204666375,
+              1.230713084
+            ],
+            "candidate": [
+              1.196134292,
+              1.223832333
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "spatial256": {
+          "medians": {
+            "baseline": 18.686197063,
+            "candidate": 18.7007229995
+          },
+          "time_saved_percent": -0.07773618383144498,
+          "ranges": {
+            "baseline": [
+              18.631213083,
+              18.744448542
+            ],
+            "candidate": [
+              18.651056959,
+              18.788456542
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        }
+      },
+      "promising": false,
+      "scope": "Matched own O1 instrumented screen. Large workload is flat at-0.078percent saved; small-case ranges overlap. This does not establish a selected O2/PGO release gain."
+    },
+    "full_cache_timing": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-wide-priority-tree-native/native-component-timing-state.json",
+        "sha256": "46b1e80d9e80d5cb4506bc36e8f9368048534b857993cc74b75d42b83af4843d"
+      },
+      "qor": {
+        "setup_worst_slack_ps": 22.189,
+        "core_clock_fmax_mhz": 1022.693
+      },
+      "setup_gate": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          22.189,
+          -137.83
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "f79f94392736459351c753e428ea0a018492d58bcfa29a63b393e2051a0191ea"
+      },
+      "core_target_met": true,
+      "all_reported_groups_met": false,
+      "output_path": {
+        "startpoint": "slices_1.request_address[11]",
+        "endpoint": "io_response_bits_transactionId[8]",
+        "arrival_ps": 887.83,
+        "required_ps": 750.0,
+        "slack_ps": -137.83
+      }
+    }
+  },
+  "merge_response_factoring": {
+    "sources": {
+      "L2MshrTable.scala": {
+        "path": ".artifacts/shared-cu/l2-merge-response-guard/L2MshrTable.scala",
+        "sha256": "7a1dac9d13eab9449f3bd11d7e1d0082b57381805026307fc4750bb051b9065a"
+      },
+      "L2MergeResponseGuardSpec.scala": {
+        "path": ".artifacts/shared-cu/l2-merge-response-guard/L2MergeResponseGuardSpec.scala",
+        "sha256": "02d74cbfa708625e5bce74c7da8c38ee8ea8c5a637da565ce398ad61e5c6c49c"
+      }
+    },
+    "origin": {
+      "recorded_at": 1792221720.753909,
+      "parent": ".artifacts/shared-cu/l2-wide-priority-tree",
+      "old_merge_guard": "  private val capturedMergeTargetsResponse = io.request.fire && hasMatch &&\n    matchedEntry === responseEntry",
+      "new_merge_guard": "  // Under a matching entry, request.ready simplifies to !allocationValid\n  // and no duplicate waiter. The selected response entry is then the matched\n  // entry, so read its waiter bit in parallel with incoming line matching.\n  // This is equivalent to request.fire && hasMatch && matchedEntry ==\n  // responseEntry, without putting the match-selected wide waiter read on\n  // the response-valid/arbitration control path.\n  private val capturedMergeTargetsResponse = io.request.valid &&\n    !allocationValid && hasMatch && matchedEntry === responseEntry &&\n    !selectedResponseWaiters(io.request.bits.transactionId)",
+      "candidate_source_sha256": "7a1dac9d13eab9449f3bd11d7e1d0082b57381805026307fc4750bb051b9065a",
+      "scope": "Private combinational factoring only. Preserve ready, accepted requests, allocation/retirement clocks, lowest waiter selection and duplicate-waiter backpressure. Target measured request-address -> merge hazard -> response-ID output path with -137.83ps slack; no relaxed constraints or pipeline bubbles."
+    },
+    "unit_and_emission": {
+      "path": ".artifacts/shared-cu/l2-merge-response-guard/state.json",
+      "sha256": "2d8d80ec4d196c688aa9b6afe14e97267e03423a8ad5934f8dbac1521f66eab5"
+    },
+    "test_count": 40,
+    "suites": 7,
+    "changed_vs_three_tree_revision": [
+      "L2MshrTable.sv"
+    ],
+    "unchanged_executable_modules": 297,
+    "guard_SAT": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-merge-response-guard/merge-guard-equivalence.json",
+        "sha256": "21ce2c52fa1fcad03c3dbe87af38866ecfdd05f4c20772064c11fe2dc5cb1985"
+      },
+      "configurations": [
+        {
+          "entries": 2,
+          "capacity": 7
+        },
+        {
+          "entries": 4,
+          "capacity": 7
+        },
+        {
+          "entries": 4,
+          "capacity": 17
+        },
+        {
+          "entries": 4,
+          "capacity": 564
+        },
+        {
+          "entries": 8,
+          "capacity": 17
+        }
+      ],
+      "scope": "SAT equivalence of exact old ready/fire merge guard and factored guard for every arbitrary match vector, waiter bitmap, response entry, transaction ID, allocation-valid and free/victim conditions. Includes duplicate waiters and out-of-range transaction encodings. No protocol or data-value assumptions. Not a proof of the entire cache."
+    },
+    "helper_SAT": {
+      "path": ".artifacts/shared-cu/l2-merge-response-guard/priority-equivalence.json",
+      "sha256": "b651a1b4cbece6a63990f226333fd4f2d0f435a580a8d96e7a54da6fb51bebbf"
+    },
     "native_and_full_cache_timing": "running",
-    "production_RTL_changed": false
+    "constraint_changes": false,
+    "task_pipeline_bubbles_added": false
   }
 }

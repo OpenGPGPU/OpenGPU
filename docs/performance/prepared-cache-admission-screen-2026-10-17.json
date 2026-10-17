@@ -1,0 +1,187 @@
+{
+  "recorded_at": 1792222625.815766,
+  "status": "private_sampler_screen_not_promoted",
+  "origin": {
+    "recorded_at": 1792221398.035739,
+    "baseline": "src/main/scala/opengpu/graphics/TextureUnit.scala",
+    "baseline_sha256": "58afc732733adf1ebe07413d3c7fac16f8d3f1fd9dbcd82d25511d7a10c49ccd",
+    "candidate_sha256": "54b9310421701b56bf62eb7adcdafed4930c6410cac4e2459c3adea8fe89dd83",
+    "scope": "Private prepared-cache admission prototype only. Reuse one existing eight-word CAM and blend datapath; four-read limit and generic/mip lookup path retained. Simultaneous invalidation masks early hits; incoming format decodes new cached taps. No production promotion or cycle/wall claim."
+  },
+  "source": {
+    "path": ".artifacts/shared-cu/prepared-cache-admission/TextureUnit.scala",
+    "sha256": "54b9310421701b56bf62eb7adcdafed4930c6410cac4e2459c3adea8fe89dd83"
+  },
+  "regression": {
+    "path": ".artifacts/shared-cu/prepared-cache-admission/PreparedCacheAdmissionSpec.scala",
+    "sha256": "0ab7f21f148d3ff2a056e83bf67782bd735afc4e1426fde8c16273d0001ad6fb"
+  },
+  "unit_and_emission": {
+    "path": ".artifacts/shared-cu/prepared-cache-admission/state.json",
+    "sha256": "4476abb8203b5debc51432f30ef8d81a6f5185c01624e739cc53477697a3079b"
+  },
+  "unit_test_counts": {
+    "TextureUnitSpec": 14,
+    "TexSampleUnitSpec": 8,
+    "PreparedOverlapSpec": 1,
+    "TextureResultHandoffSpec": 2,
+    "PreparedCacheAdmissionSpec": 2,
+    "TexSampleLaneHandoffSpec": 6
+  },
+  "total_tests": 33,
+  "negative_control": {
+    "evidence": {
+      "path": ".artifacts/shared-cu/prepared-cache-admission/negative-original-sampler.log",
+      "sha256": "8dec821f60067ef29db1e9129af918d02297be0e9c7089098e9990e0ba117b94"
+    },
+    "scope": "The identical new regression on unchanged selected sampler fails specifically on the cached-successor lookup bubble. Its independent stalled-output/format/invalidation test passes."
+  },
+  "candidate_stream": {
+    "samples": 24,
+    "physical_requests": 8,
+    "format_values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      7
+    ],
+    "weight_patterns": 4,
+    "cache_invalidation_sample": 16,
+    "warmed_acceptance_interval_cycles": 1,
+    "no_output_stall_cycles": 46,
+    "stalled_output_cycles": 61,
+    "stalled_output_held_cycles": 19,
+    "out_of_order_replies": true,
+    "max_physical_reads": 4,
+    "scope": "Unit stream only; includes cold and invalidated refills. Not a GPU-scene or full-system speedup."
+  },
+  "native_RTL": {
+    "changed_executable_modules": [
+      "TextureUnit_1.sv"
+    ],
+    "unchanged_executable_modules": 297
+  },
+  "running_gates": [
+    "Fresh matched1CU/4CU full VS/FS/FPU scenes, same pixel/depth/layout data and canaries.",
+    "Paired byte-for-byte actual native TexSampleUnit cone,1GHz SLVT TC25percentIO, every reported setup group."
+  ],
+  "remaining_before_promotion": [
+    "Actual native task cycles/traffic and balanced own O1/O2 host timings.",
+    "Own representative72-profile qualification, formats/controls and current Debian/Mesa/full640 strict trace and scanout."
+  ],
+  "production_RTL_changed": false,
+  "native_sampler_timing": {
+    "evidence": {
+      "path": ".artifacts/shared-cu/prepared-cache-admission/native-component-timing-state.json",
+      "sha256": "811807b7a004b9ba40b7d0bec6a5132594bdf53beba1da189c53987d8f7cb933"
+    },
+    "scope": "Paired TexSampleUnit cone copied byte-for-byte from actual full640 native RTL. No wrapper or standalone re-elaboration. ASAP7 SLVT TC1GHz25%IO synthesis estimate; require all reported core and IO setup paths. No whole-chip placement/route closure claim.",
+    "baseline": {
+      "qor": {
+        "setup_worst_slack_ps": 7.786,
+        "core_clock_fmax_mhz": 1007.847
+      },
+      "gate": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          7.786,
+          273.148
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "d18a2f9f1be154f600d9736e937313fba3f9ebc6bc2c15720eee3f928d43517a"
+      }
+    },
+    "candidate": {
+      "qor": {
+        "setup_worst_slack_ps": -8.508,
+        "core_clock_fmax_mhz": 991.564
+      },
+      "gate": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -8.508,
+          -12.748
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "02095a1b457c457628bb3d405a7bc48e7cf5f14189a2e8f7749b5641f63e9289"
+      }
+    },
+    "core_path": {
+      "source": "sampler.levelH[3]",
+      "endpoint": "sampler.biasedYReg[37]",
+      "pin_evidence": {
+        "path": ".artifacts/shared-cu/prepared-cache-admission/pin-details.log",
+        "sha256": "779a806da861e759d35a8ae9b15814f864b6d302259076c24402cdfd392b353d"
+      }
+    },
+    "IO_path": {
+      "source": "laneReg[0]",
+      "endpoint": "io_mem_req_bits_addr[17]"
+    },
+    "promotion_eligible": false
+  },
+  "four_CU_scene": {
+    "baseline_cycles": 11929,
+    "candidate_cycles": 12044,
+    "cycle_reduction_percent": -0.9640372202196268,
+    "pixels_depth_metadata_exact": true,
+    "omitted_bytes_preserved": true,
+    "variants": {
+      "baseline": {
+        "metrics": {
+          "CUs": "4",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "11929",
+          "active_cu_cycles": "26928",
+          "peak_cus": "4",
+          "texture_extent": "64",
+          "buffer_texture_reads": "true",
+          "texture_words": "3676",
+          "texture_lines": "182"
+        },
+        "files": {
+          "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "2a2c189b800554b1307f416c38f7594da5ef71d537745dd9fc7be96afff45dba",
+          "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "a1896b97a60d3e725140a2691d5062007ce2cb9048000db815efa1258ff18186"
+        }
+      },
+      "candidate": {
+        "metrics": {
+          "CUs": "4",
+          "axi_bytes": "64",
+          "side": "64",
+          "alu_loops": "0",
+          "om_inflight": "64",
+          "fragment_batch_limit": "112",
+          "lanes": "16",
+          "warps": "8",
+          "runtime_shader": "true",
+          "cycles": "12044",
+          "active_cu_cycles": "27267",
+          "peak_cus": "4",
+          "texture_extent": "64",
+          "buffer_texture_reads": "true",
+          "texture_words": "3676",
+          "texture_lines": "179"
+        },
+        "files": {
+          "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "2a2c189b800554b1307f416c38f7594da5ef71d537745dd9fc7be96afff45dba",
+          "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "a1896b97a60d3e725140a2691d5062007ce2cb9048000db815efa1258ff18186"
+        }
+      }
+    }
+  },
+  "matched_scenes_status": "Four-CU scene regresses0.964percent, despite matching pixels/depth/metadata. One-CU comparison still running.",
+  "decision": "Do not promote: current native sampler timing fails and current four-CU scene has no cycle gain. Complete one-CU analysis and use real-workload evidence before revising this approach.",
+  "updated_at": 1792223071.259114
+}
