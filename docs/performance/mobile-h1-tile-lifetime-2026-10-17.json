@@ -1,0 +1,866 @@
+{
+  "scope": "H1 bring-up only; no physical qualification or H1 completion claim",
+  "pre_optimization": {
+    "tests": {
+      "hostname": "MacBook-Pro.local",
+      "name": "opengpu.graphics.PersistentTileRenderPipelineSpec",
+      "tests": "4",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "time": "28.796",
+      "timestamp": "2026-10-17T21:41:29"
+    },
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/PersistentTileAttachmentStore.scala": "4c407bf901ba0e37329873caf1f997f4668eda8fd175ab016ee668fe2a0933fa",
+      "src/main/scala/opengpu/graphics/TileRenderPass.scala": "585e4965319cb85aa09ddcdb973aa839e943a944f1e1c6da4ed745bf188106f2",
+      "src/main/scala/opengpu/graphics/RenderPipeline.scala": "de972251eec8ab865af93dcebba4072362d37cde8cb51aafe9c2a1e8c55c5a55"
+    },
+    "cases": [
+      {
+        "mode": 0,
+        "load": false,
+        "reference": [
+          586,
+          586,
+          4819
+        ],
+        "persistent": [
+          0,
+          234,
+          9490
+        ]
+      },
+      {
+        "mode": 0,
+        "load": true,
+        "reference": [
+          586,
+          586,
+          4819
+        ],
+        "persistent": [
+          196,
+          196,
+          10829
+        ]
+      },
+      {
+        "mode": 2,
+        "load": false,
+        "reference": [
+          2409,
+          2409,
+          9479
+        ],
+        "persistent": [
+          0,
+          936,
+          null
+        ]
+      },
+      {
+        "mode": 2,
+        "load": true,
+        "reference": [
+          2409,
+          2409,
+          9479
+        ],
+        "persistent": [
+          810,
+          810,
+          27056
+        ]
+      }
+    ]
+  },
+  "remaining": [
+    "host/unified-command admission and VM/cache-domain dependency publication",
+    "programmable shared-CU pass validation and full desktop milestone smoke",
+    "bounded concurrent attachment transfers and reordered fault drain",
+    "post-route setup/hold, area and representative switching/energy qualification",
+    "complete H0 image/sampler/shader/vertex descriptors and discoverable implemented limits",
+    "H2-H8 as specified; no milestone completion is claimed"
+  ],
+  "optimized_om_response_and_flush_walk": {
+    "passed_tests": 12,
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/TileDrawBinner.scala": "52807d5545dad6bb7dfc2dc2a62406383a0c37e720b28264bb50dcf4c2fc0c35",
+      "src/main/scala/opengpu/graphics/TileAttachmentStore.scala": "d70c7428fc247dcdd427a124bca18bec9d412473d24d5ab7042e5102524f33a7",
+      "src/main/scala/opengpu/graphics/TileRenderPass.scala": "585e4965319cb85aa09ddcdb973aa839e943a944f1e1c6da4ed745bf188106f2",
+      "src/main/scala/opengpu/graphics/PersistentTileAttachmentStore.scala": "c0ca6a09319798aee52e94272f9adee7e28ad117d6e57eb29fb8fec30e59aaa8",
+      "src/test/scala/opengpu/graphics/TileRasterizerSpec.scala": "e8c3b0f27114fdfe97339a67482b18e27ecc9e78a07f8e3a143d953dcafc91f9",
+      "src/test/scala/opengpu/graphics/VertexTileReplaySpec.scala": "5147761e6f1863d4f0a7044f23b6d07cf74e45fbfb99241bfa6896a81f3cda6b",
+      "src/test/scala/opengpu/graphics/PersistentTileRenderPipelineSpec.scala": "72c739a2c270309d2e5dd66a0ed10ec910a2c26807ee8d0863ad2083edded000",
+      "src/test/scala/opengpu/graphics/PersistentTileAttachmentStoreSpec.scala": "ce8d2435bd5f4ea00a057861d0de198106c118cafc3dc39f3207e3e7ead1f9f2",
+      "src/test/scala/opengpu/graphics/TileBinningRenderCoreSpec.scala": "6920819f9829e4d39a7b9ef2fe8fc1dca6e5473ab6a5c712179ed57c3ab81520",
+      "src/test/scala/opengpu/graphics/TileDrawBinnerSpec.scala": "313d2730f02cbff40bbb43b605693713d4c24e5e86f323067c632740ff67c330",
+      "src/test/scala/opengpu/graphics/TileAttachmentStoreSpec.scala": "7f72c44eb0bd440fa89d8e39654ca706fc001fa9fde0d78137c3c5c89a00e5f4",
+      "src/test/scala/opengpu/graphics/TileRenderPipelineSpec.scala": "ce927be402f36024e604917d86fd7f829ed2d2792cbf30220bf3817d42b4c790"
+    },
+    "log_sha256": "4250e24390f812dfe9eece48b547f3718b740e3be179b83d00a8452ecd60a85a",
+    "cases": [
+      {
+        "mode": 0,
+        "load": false,
+        "reference": [
+          586,
+          586,
+          4819
+        ],
+        "persistent": [
+          0,
+          234,
+          6511
+        ]
+      },
+      {
+        "mode": 0,
+        "load": true,
+        "reference": [
+          586,
+          586,
+          4819
+        ],
+        "persistent": [
+          196,
+          196,
+          7899
+        ]
+      },
+      {
+        "mode": 2,
+        "load": false,
+        "reference": [
+          2409,
+          2409,
+          9479
+        ],
+        "persistent": [
+          0,
+          936,
+          15815
+        ]
+      },
+      {
+        "mode": 2,
+        "load": true,
+        "reference": [
+          2409,
+          2409,
+          9479
+        ],
+        "persistent": [
+          810,
+          810,
+          20983
+        ]
+      }
+    ]
+  },
+  "validation_logs": {
+    "response_flush": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/response_flush.log",
+      "sha256": "4250e24390f812dfe9eece48b547f3718b740e3be179b83d00a8452ecd60a85a",
+      "passed_tests": 12,
+      "all_passed": true,
+      "cycles_and_port_words": [
+        {
+          "mode": 0,
+          "load": false,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            0,
+            234,
+            6511
+          ]
+        },
+        {
+          "mode": 0,
+          "load": true,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            196,
+            196,
+            7899
+          ]
+        },
+        {
+          "mode": 2,
+          "load": false,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            0,
+            936,
+            15815
+          ]
+        },
+        {
+          "mode": 2,
+          "load": true,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            810,
+            810,
+            20983
+          ]
+        }
+      ]
+    },
+    "resolve": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/resolve.log",
+      "sha256": "068db728725b8395578e0703d1a3293f4a0e74a5551b286f39465ee12feb40b7",
+      "passed_tests": 17,
+      "all_passed": true,
+      "cycles_and_port_words": [
+        {
+          "mode": 0,
+          "load": false,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            0,
+            234,
+            6511
+          ]
+        },
+        {
+          "mode": 0,
+          "load": true,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            196,
+            196,
+            7899
+          ]
+        },
+        {
+          "mode": 2,
+          "load": false,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            0,
+            936,
+            15815
+          ]
+        },
+        {
+          "mode": 2,
+          "load": true,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            810,
+            810,
+            20983
+          ]
+        }
+      ]
+    },
+    "partial_clear": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/partial_clear.log",
+      "sha256": "f7c1c39ca41ef550a011d1e1d78fbec355ccedbf12788832120f94a15f9481be",
+      "passed_tests": 14,
+      "all_passed": true,
+      "cycles_and_port_words": [
+        {
+          "mode": 0,
+          "load": false,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            0,
+            234,
+            6707
+          ]
+        },
+        {
+          "mode": 0,
+          "load": true,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            196,
+            196,
+            8173
+          ]
+        },
+        {
+          "mode": 2,
+          "load": false,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            0,
+            936,
+            16412
+          ]
+        },
+        {
+          "mode": 2,
+          "load": true,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            810,
+            810,
+            21713
+          ]
+        }
+      ]
+    },
+    "sram": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/sram.log",
+      "sha256": "34b29f444dafbb67d65b598f8bb108378ae7cb7764f307cc13f31f24b9c9b3d2",
+      "passed_tests": 21,
+      "all_passed": true,
+      "cycles_and_port_words": [
+        {
+          "mode": 0,
+          "load": false,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            0,
+            234,
+            7587
+          ]
+        },
+        {
+          "mode": 0,
+          "load": true,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            196,
+            196,
+            8830
+          ]
+        },
+        {
+          "mode": 2,
+          "load": false,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            0,
+            936,
+            19617
+          ]
+        },
+        {
+          "mode": 2,
+          "load": true,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            810,
+            810,
+            25023
+          ]
+        }
+      ]
+    },
+    "tile_classes": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/tile_classes.log",
+      "sha256": "5a671ccde1176cf14e1bb32c91657c78e9e82cbd732f7df243b4e06f16a66bf6",
+      "passed_tests": 17,
+      "all_passed": true,
+      "cycles_and_port_words": [
+        {
+          "mode": 0,
+          "load": false,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            0,
+            234,
+            7587
+          ]
+        },
+        {
+          "mode": 0,
+          "load": true,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            196,
+            196,
+            8830
+          ]
+        },
+        {
+          "mode": 2,
+          "load": false,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            0,
+            936,
+            19617
+          ]
+        },
+        {
+          "mode": 2,
+          "load": true,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            810,
+            810,
+            25023
+          ]
+        }
+      ]
+    },
+    "queued_clear": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/queued_clear.log",
+      "sha256": "dc2a46848f8f6ce76932c6c62895c62fec19646cacb158e6ac274ab5771a97d9",
+      "passed_tests": 18,
+      "all_passed": true,
+      "cycles_and_port_words": [
+        {
+          "mode": 0,
+          "load": false,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            0,
+            234,
+            7587
+          ]
+        },
+        {
+          "mode": 0,
+          "load": true,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            196,
+            196,
+            8830
+          ]
+        },
+        {
+          "mode": 2,
+          "load": false,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            0,
+            936,
+            19617
+          ]
+        },
+        {
+          "mode": 2,
+          "load": true,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            810,
+            810,
+            25023
+          ]
+        }
+      ]
+    },
+    "row_base": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/row_base.log",
+      "sha256": "09197dfb9da6e078a8df3a85b5ad58ea4aa4bc523cdce6818df02b183b545b6d",
+      "passed_tests": 26,
+      "all_passed": true,
+      "cycles_and_port_words": [
+        {
+          "mode": 0,
+          "load": false,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            0,
+            234,
+            7587
+          ]
+        },
+        {
+          "mode": 0,
+          "load": true,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            196,
+            196,
+            8775
+          ]
+        },
+        {
+          "mode": 2,
+          "load": false,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            0,
+            936,
+            19775
+          ]
+        },
+        {
+          "mode": 2,
+          "load": true,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            810,
+            810,
+            25023
+          ]
+        }
+      ]
+    },
+    "integration": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/integration.log",
+      "sha256": "d5c3ad2b233499f9e2e8c7f2791096960d104e69bc8767ac9541a786c3774b9f",
+      "passed_tests": 22,
+      "all_passed": true,
+      "cycles_and_port_words": []
+    },
+    "multiply_pipeline": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/multiply_pipeline.log",
+      "sha256": "72c8a1d5dcb63a9374d14bb7b6f5d03835431a0cec2b69f24599dc65415242b3",
+      "passed_tests": 23,
+      "all_passed": true,
+      "cycles_and_port_words": [
+        {
+          "mode": 0,
+          "load": false,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            0,
+            234,
+            7587
+          ]
+        },
+        {
+          "mode": 0,
+          "load": true,
+          "reference": [
+            586,
+            586,
+            4819
+          ],
+          "persistent": [
+            196,
+            196,
+            8775
+          ]
+        },
+        {
+          "mode": 2,
+          "load": false,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            0,
+            936,
+            19617
+          ]
+        },
+        {
+          "mode": 2,
+          "load": true,
+          "reference": [
+            2409,
+            2409,
+            9479
+          ],
+          "persistent": [
+            810,
+            810,
+            25023
+          ]
+        }
+      ]
+    },
+    "checked_functional": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/checked_functional.log",
+      "sha256": "e226a4275a556f46bbe3b3339c57671edd7ecd3501a845e47fb8fa05dd5bec2f",
+      "passed_tests": 24,
+      "all_passed": true
+    }
+  },
+  "measurement_notes": [
+    "Cycle counts are simulator clocks, not simulator wall time or measured silicon FPS.",
+    "The current four-draw correctness fixture includes a masked partial clear. The reference models that clear as an immediate memory update after draw drain, so reference-vs-candidate cycles are not a fair performance benchmark for the clear operation.",
+    "Clear-start attachment read counts and absence of intermediate writes are asserted during every draw; final color/depth/stencil words match the reference.",
+    "No commercial parity, whole-system clock, energy/frame or physical closure claim follows from these component checks.",
+    "Historical pre_optimization cases were observed before partial-clear support; the missing 4x-clear cycle count remains null."
+  ],
+  "physical_screens": {
+    "sram": {
+      "gate": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -718.556,
+          -925.936
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "294b4249a68592e4d7e696d61ed0986933348a4c87fa48aa68d2de0b3432d4fd"
+      },
+      "qor": {
+        "setup_worst_slack_ps": -718.556,
+        "core_clock_fmax_mhz": 581.884
+      },
+      "manifest": "generated/mobile-h1/physical-sram/manifest.json",
+      "manifest_sha256": "d344b569039642160b518b2a4666fcfa2a48d0beb0bde918eb68b2a919e1a2ff",
+      "emitted_sha256": {
+        "L2SramArray.sv": "d72588e8a9ac8d8aaec7495aae3ec57045cb817695cf11148a7df7b8e3f732f9",
+        "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+        "TileAttachmentClearEngine.sv": "e117dc9fb517648d407388bc968338dd186e3780960362646a8370db8061049f",
+        "PersistentTileAttachmentStore.sv": "01ae8bd0fd18f8c88f5d30ffd6a66f5867cff135ffba623d9b456fe357d257af"
+      },
+      "scope": "synthesis estimate",
+      "sram_macro_models": [
+        "depends/asap7_sram_0p0/generated/LIB/srambank_64x4x32_6t122.lib",
+        "depends/asap7_sram_0p0/generated/LEF/srambank_64x4x32_6t122.lef"
+      ]
+    },
+    "admission": {
+      "gate": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -71.391,
+          69.674
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "ca54f361cb9b88b531f8665fefeed572b26b4da18482c16f5f3a7e1f1af5de17"
+      },
+      "qor": {
+        "setup_worst_slack_ps": -71.391,
+        "core_clock_fmax_mhz": 933.366
+      },
+      "manifest": "generated/mobile-h1/physical-admission/manifest.json",
+      "manifest_sha256": "56340dfe7a598ac71fee898dbaa4fbdeeff4cc1b8860476ec1966032320ff6a6",
+      "emitted_sha256": {
+        "L2SramArray.sv": "d72588e8a9ac8d8aaec7495aae3ec57045cb817695cf11148a7df7b8e3f732f9",
+        "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+        "TileAttachmentClearEngine.sv": "e117dc9fb517648d407388bc968338dd186e3780960362646a8370db8061049f",
+        "TileRenderPassAdmission.sv": "1609b4a7b6222611405305ca5419aed2eca7726daf3bdc6272f1a09c23f931b8",
+        "PersistentTileAttachmentStore.sv": "2ebfa4b89d662e63a7d6b6c5da534c8b913fb7da89e448785520a3dfc08b534b"
+      },
+      "scope": "synthesis estimate",
+      "sram_macro_models": [
+        "depends/asap7_sram_0p0/generated/LIB/srambank_64x4x32_6t122.lib",
+        "depends/asap7_sram_0p0/generated/LEF/srambank_64x4x32_6t122.lef"
+      ]
+    },
+    "rowbase": {
+      "gate": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -35.163,
+          30.841
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "3d4566a3686d998a791eaa94eb90a114de8b044c3d12a2192812eea4bed41e6e"
+      },
+      "qor": {
+        "setup_worst_slack_ps": -35.163,
+        "core_clock_fmax_mhz": 966.031
+      },
+      "manifest": "generated/mobile-h1/physical-rowbase/manifest.json",
+      "manifest_sha256": "4fbf5f4943800434108fe86239ba2b9cbb60bb3f7bf57d8a963a952e188a2508",
+      "emitted_sha256": {
+        "L2SramArray.sv": "d72588e8a9ac8d8aaec7495aae3ec57045cb817695cf11148a7df7b8e3f732f9",
+        "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+        "TileAttachmentClearEngine.sv": "86ba4d76c76df4e0929da729c48a1d710fd00f7a62738845ebc707823bff44a8",
+        "TileRenderPassAdmission.sv": "aa1f981846e6a0c06bb116741e6338c3fbb3e79f7fd0a148db609be48a12227b",
+        "PersistentTileAttachmentStore.sv": "787e225bd6c0daf0f8325ba42bec58834b0a38b6ba400fc3bab734f260510ff8"
+      },
+      "scope": "synthesis estimate",
+      "sram_macro_models": [
+        "depends/asap7_sram_0p0/generated/LIB/srambank_64x4x32_6t122.lib",
+        "depends/asap7_sram_0p0/generated/LEF/srambank_64x4x32_6t122.lef"
+      ]
+    },
+    "multiply_pipeline": {
+      "gate": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          26.67,
+          39.924
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "02a75d75cff59ea7e9024e97510942d758b2272d288b489a2c5e854c06e07554"
+      },
+      "qor": {
+        "setup_worst_slack_ps": 26.67,
+        "core_clock_fmax_mhz": 1027.401
+      },
+      "manifest": "generated/mobile-h1/physical-mulpipe/manifest.json",
+      "manifest_sha256": "b64544c87b93d23f971de84d8212ef2a5da8f1c25332ce2470eb3627dd7b0116",
+      "emitted_sha256": {
+        "L2SramArray.sv": "d72588e8a9ac8d8aaec7495aae3ec57045cb817695cf11148a7df7b8e3f732f9",
+        "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+        "TileAttachmentClearEngine.sv": "86ba4d76c76df4e0929da729c48a1d710fd00f7a62738845ebc707823bff44a8",
+        "TileRenderPassAdmission.sv": "f161dd46e04f56a7e408efa1286c9ef4a8ba5abe7ac17eb7fb607571cea85f9b",
+        "PersistentTileAttachmentStore.sv": "787e225bd6c0daf0f8325ba42bec58834b0a38b6ba400fc3bab734f260510ff8"
+      },
+      "scope": "synthesis estimate",
+      "sram_macro_models": [
+        "depends/asap7_sram_0p0/generated/LIB/srambank_64x4x32_6t122.lib",
+        "depends/asap7_sram_0p0/generated/LEF/srambank_64x4x32_6t122.lef"
+      ]
+    }
+  },
+  "superseded_flop_screen": {
+    "status": "deliberately stopped after replacement by synchronous SRAM design",
+    "result": "no timing qualification",
+    "artifact": "generated/mobile-h1/physical-bringup",
+    "reason": "Asynchronous Mem expanded into roughly 70k state bits and a large logic network; SRAM-backed screens supersede this implementation."
+  },
+  "current_source_sha256": {
+    "src/main/scala/opengpu/config/MobileGpuBudget.scala": "3776937da1a8b7cc865542c1126613c9b337c4ec6051bf146494a5981a08b74e",
+    "src/main/scala/opengpu/config/MobileGpuConfig.scala": "461a1a56b8b1827834d7d50bdcab0a531a22af4780a62e4c48e0cb19ba912cda",
+    "src/main/scala/opengpu/graphics/PersistentTileAttachmentStore.scala": "a6aa61db7e18ab9e7f114ce14899c59a3689bf39ca9a574671dcb253972a6b17",
+    "src/main/scala/opengpu/graphics/RenderPipeline.scala": "a368854da83c769df8666604bd304e5f9ae54105fc435f343399740fe17384f4",
+    "src/main/scala/opengpu/graphics/TileAttachmentClearEngine.scala": "b6f7fbeac3a26d56d1f655d4006735dfb9b17a1f9803b3faab4f42819c21736a",
+    "src/main/scala/opengpu/graphics/TileAttachmentSram.scala": "b618b7a111987f3156dac1bad3b5bc3a8662c2da929529920162db7fc945944a",
+    "src/main/scala/opengpu/graphics/TileAttachmentStore.scala": "d70c7428fc247dcdd427a124bca18bec9d412473d24d5ab7042e5102524f33a7",
+    "src/main/scala/opengpu/graphics/TileDrawBinner.scala": "52807d5545dad6bb7dfc2dc2a62406383a0c37e720b28264bb50dcf4c2fc0c35",
+    "src/main/scala/opengpu/graphics/TileRenderPass.scala": "eee2fcc4c59af25db4f6ba4f325a202a4e8e47332db509cf2c8cf84a29d39ae2",
+    "src/main/scala/opengpu/graphics/TileRenderPassAdmission.scala": "d495042b838a0d000889ffabb57378117fe2f5e13177f7c3d4923083c41b68c8",
+    "src/test/scala/opengpu/config/MobileGpuBudgetSpec.scala": "fb9babe7f2dd36a0e42e6ff302dfbfcf6c4d6a1293296d9eddff8a7f727a58c8",
+    "src/test/scala/opengpu/config/MobileGpuConfigSpec.scala": "60cc0f462ab74702965388a0c1da8a7a31b696b844673b1cefaeae38f493a599",
+    "src/test/scala/opengpu/graphics/PersistentTileAttachmentStoreSpec.scala": "8bcb886d089e77c0baf08b312d703251444df84fc98a98dfe5ca59d234cabf68",
+    "src/test/scala/opengpu/graphics/PersistentTileRenderPipelineSpec.scala": "46cd3a82adca5a2be5ec87b4ce0a884f065322d9d6e96f31011ec517780a8a0e"
+  },
+  "milestones": {
+    "H0": "in progress: proposed resource profile, tile descriptors, stages, events and analytic budgets; broader descriptors/discovery/integration remain",
+    "H1": "in progress: component and fixed-function pipeline coverage; host/VM/cache-domain integration, shared-CU validation, throughput and physical qualification remain",
+    "H2": "pending; original specification remains authoritative",
+    "H3": "pending; original specification remains authoritative",
+    "H4": "pending; original specification remains authoritative",
+    "H5": "pending; original specification remains authoritative",
+    "H6": "pending; original specification remains authoritative",
+    "H7": "pending; original specification remains authoritative",
+    "H8": "pending; original specification remains authoritative"
+  },
+  "physical_route": {
+    "status": "running",
+    "artifact": "generated/mobile-h1/physical-route",
+    "input_rtl": "generated/mobile-h1/mulpipe-rtl",
+    "scope": "standalone component; no whole-GPU claim"
+  },
+  "script_checks": {
+    "command": "python3 -m pytest -q scripts/test_qualify_ppa.py",
+    "passed_tests": 5
+  },
+  "unique_checked_scala_tests": 49,
+  "reproduction": {
+    "functional": "sbt -batch 'testOnly opengpu.config.MobileGpuConfigSpec opengpu.config.MobileGpuBudgetSpec opengpu.graphics.PersistentTileAttachmentStoreSpec opengpu.graphics.PersistentTileRenderPipelineSpec opengpu.graphics.TileAttachmentStoreSpec opengpu.graphics.TileRenderPipelineSpec opengpu.graphics.RenderPipelineSpec opengpu.graphics.TileBinningRenderCoreSpec opengpu.graphics.TileDrawBinnerSpec'",
+    "emit": "sbt -batch 'runMain opengpu.elaboration.EmitPpaRtl persistent-tile-store generated/mobile-h1/reproduced-rtl'",
+    "physical": "Use ChipAgent Python environment: scripts/qualify_ppa.py generated/mobile-h1/reproduced-rtl PersistentTileAttachmentStore --output <new-output-directory>; default 1000 ps, TC/SLVT, 25% I/O budget. Add --stage route for post-route."
+  }
+}

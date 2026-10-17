@@ -78,13 +78,20 @@ class RenderPipeline(
   fragCore: Boolean = false,
   vertCore: Boolean = false,
   graphicsScalarFpu: Boolean = true,
-  sharedShader: Option[SharedCuShaderConfig] = None
+  sharedShader: Option[SharedCuShaderConfig] = None,
+  persistentAttachments: Boolean = false
 ) extends Module {
   require(sharedShader.isEmpty || fragCore,
     "shared shader execution requires programmable fragment graphics")
+  require(!(fragCore || vertCore) || (gpuConfig.lanes >= 4 && gpuConfig.lanes % 4 == 0),
+    "programmable graphics requires complete derivative quads within each warp")
+  require(!persistentAttachments || (config.tileAttachments && !config.tileBinning && !vertCore),
+    "explicit tile passes currently accept externally scheduled triangle records")
   // The shared staging router restores producer-local IDs on responses.
   private val kernelWordOutstanding = SharedCuShaderConfig.kernelWordTransactions(sharedShader)
   val io = IO(new Bundle {
+    val tilePass = if (persistentAttachments) Some(new TileRenderPassPort) else None
+    val tileEvents = if (persistentAttachments) Some(Output(new TileAttachmentEvents)) else None
     val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
       gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val draw = Flipped(Decoupled(if (vertCore) new VertexDrawCommand(config) else new SceneTriangle(config)))
@@ -154,11 +161,24 @@ class RenderPipeline(
   io.shaderFault := false.B
   private val shader = Module(new RasterShader(config, quadMode = fragCore || vertCore))
   private val om = Module(new OutputMerger(config))
-  private val tileStoreOpt = if (config.tileAttachments)
+  private val persistentStore = if (persistentAttachments)
+    Some(Module(new PersistentTileAttachmentStore(config.maxSampleCount,
+      config.screenWidth, config.screenHeight))) else None
+  persistentStore.foreach(_.io.pass <> io.tilePass.get)
+  private val passAcceptingDraws = persistentStore.map(store =>
+    store.io.pass.active && store.io.pass.end.ready &&
+      !io.tilePass.get.end.valid && !io.tilePass.get.cancel).getOrElse(true.B)
+  private val passDescriptor = persistentStore.map(_.io.pass.descriptor)
+  private val renderScreenW = if (persistentAttachments)
+    RegEnable(io.screenW, io.tilePass.get.begin.fire) else io.screenW
+  private val renderScreenH = if (persistentAttachments)
+    RegEnable(io.screenH, io.tilePass.get.begin.fire) else io.screenH
+  private val tileStoreOpt = if (config.tileAttachments && !persistentAttachments)
     Some(Module(new TileAttachmentStore(config.maxSampleCount))) else None
-  private val tilePermit = tileStoreOpt.map(_.io.permit).getOrElse(true.B)
+  private val tilePermit = persistentStore.map(_.io.permit)
+    .getOrElse(tileStoreOpt.map(_.io.permit).getOrElse(true.B))
   private val tileDrained = tileStoreOpt.map(_.io.drained).getOrElse(true.B)
-  private val drawTileGate = if (config.tileBinning) true.B else tileDrained
+  private val drawTileGate = passAcceptingDraws && (if (config.tileBinning) true.B else tileDrained)
   private val upstreamDone = Wire(Bool())
   private val fragmentDrained = Wire(Bool())
   private val textured =
@@ -359,11 +379,11 @@ class RenderPipeline(
     drawHoldValid := true.B
     clipEmitIndex := 0.U
     clipTriangleActive := false.B
-    drawState.colorFormat := io.colorFormat
-    drawState.colorBase := io.colorBase
-    drawState.depthBase := io.depthBase
-    drawState.stride := io.stride
-    drawState.sampleMode := io.sampleMode
+    drawState.colorFormat := passDescriptor.map(_.colorFormat).getOrElse(io.colorFormat)
+    drawState.colorBase := passDescriptor.map(_.color.base).getOrElse(io.colorBase)
+    drawState.depthBase := passDescriptor.map(_.depth.base).getOrElse(io.depthBase)
+    drawState.stride := passDescriptor.map(_.color.rowPitch).getOrElse(io.stride)
+    drawState.sampleMode := passDescriptor.map(_.sampleMode).getOrElse(io.sampleMode)
     if (vertCore && !config.tileBinning) resolveDrawState(vertDrawCmd.get)
     else resolveDrawState(triSource.bits)
   }
@@ -395,8 +415,8 @@ class RenderPipeline(
     geo.io.clip(i).w := clippedVertices(i).w
     geo.io.color(i) := clippedVertices(i).color
   }
-  geo.io.screenW := ScreenLimit(io.screenW, config.screenWidth)
-  geo.io.screenH := ScreenLimit(io.screenH, config.screenHeight)
+  geo.io.screenW := ScreenLimit(renderScreenW, config.screenWidth)
+  geo.io.screenH := ScreenLimit(renderScreenH, config.screenHeight)
 
   // Shader consumes the screen-space triangle (sub-pixel fixed-point) directly.
   shader.io.draw.bits.v0.x := geo.io.out(0).sx(31, 0).asSInt
@@ -417,12 +437,25 @@ class RenderPipeline(
   shader.io.scissorMinY := drawHold.scissorMinY
   shader.io.scissorMaxX := drawHold.scissorMaxX
   shader.io.scissorMaxY := drawHold.scissorMaxY
-  shader.io.screenW := io.screenW
-  shader.io.screenH := io.screenH
+  passDescriptor.foreach { pass =>
+    // Intersect the draw scissor with this tile. Work outside the resident
+    // tile must never block the attachment port waiting for a different owner.
+    shader.io.scissorEnable := true.B
+    shader.io.scissorMinX := Mux(drawHold.scissorEnable && drawHold.scissorMinX > pass.originX,
+      drawHold.scissorMinX, pass.originX)
+    shader.io.scissorMinY := Mux(drawHold.scissorEnable && drawHold.scissorMinY > pass.originY,
+      drawHold.scissorMinY, pass.originY)
+    shader.io.scissorMaxX := Mux(drawHold.scissorEnable && drawHold.scissorMaxX < pass.originX +& pass.tileWidth,
+      drawHold.scissorMaxX, pass.originX + pass.tileWidth)
+    shader.io.scissorMaxY := Mux(drawHold.scissorEnable && drawHold.scissorMaxY < pass.originY +& pass.tileHeight,
+      drawHold.scissorMaxY, pass.originY + pass.tileHeight)
+  }
+  shader.io.screenW := renderScreenW
+  shader.io.screenH := renderScreenH
 
   // The source remains stopped until every triangle in the clipped fan has
   // entered rasterization. This also keeps the source metadata snapshot stable.
-  triSourceReady := !drawHoldValid && !clipper.io.busy && shader.io.draw.ready
+  triSourceReady := !drawHoldValid && !clipper.io.busy && shader.io.draw.ready && passAcceptingDraws
 
   // Texture sampling configuration + word port (sampler owns its fetches).
   textured.io.e0 := shader.io.pixel.bits.e0
@@ -472,7 +505,20 @@ class RenderPipeline(
       store.io.om.req <> om.io.mem.req
       om.io.mem.resp <> store.io.om.resp
       io.mem <> store.io.mem
-    case None => io.mem <> om.io.mem
+    case None => persistentStore match {
+      case Some(store) =>
+        store.io.fragmentX := expander.io.out.bits.x
+        store.io.fragmentY := expander.io.out.bits.y
+        store.io.producerDrained := upstreamDone
+        store.io.omDrained := om.io.drained
+        store.io.wordIndex := om.io.tileWordIndex
+        store.io.depthPlane := om.io.tileDepthPlane
+        store.io.om.req <> om.io.mem.req
+        om.io.mem.resp <> store.io.om.resp
+        io.mem <> store.io.mem
+        io.tileEvents.get := store.io.events
+      case None => io.mem <> om.io.mem
+    }
   }
   io.done := upstreamDone && tileDrained
   io.drawDrained.foreach(_ := fragmentDrained)

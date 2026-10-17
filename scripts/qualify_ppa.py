@@ -79,7 +79,8 @@ def main():
         macro_libs=[str(p) for p in libs] or None,
         macro_lefs=[str(p) for p in lefs] or None,
         macro_placement_tcl=str(ROOT / 'timing/asap7/compute_unit_sram_macro_placement.tcl') if macros else None)
-    tracked = subprocess.check_output(['git', 'ls-files', 'src/main', 'build.sbt',
+    tracked = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard',
+        'src/main', 'build.sbt',
         'scripts/qualify_ppa.py', 'timing/asap7'], cwd=ROOT, text=True).splitlines()
     manifest = dict(timestamp=datetime.now(timezone.utc).isoformat(),
         commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),

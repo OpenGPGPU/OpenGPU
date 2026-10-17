@@ -48,6 +48,12 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "persistent-tile-store" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.PersistentTileAttachmentStore(useSramBlackBoxes = true), stageArgs, firtoolArgs)
+      case "legacy-tile-store" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TileAttachmentStore(), stageArgs, firtoolArgs)
       case "vector-integer" =>
         ChiselStage.emitSystemVerilogFile(
           new VectorIntegerAlu(GpuConfig()), stageArgs, firtoolArgs)
