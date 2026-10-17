@@ -776,5 +776,8 @@ memory operations, prior FILL event dependency, private code mapping and
 physical code-cache publication before restoring the job VM. The aggregate
 27-check run also retains the first queued raster revision's 24 product MSAA
 jobs and 23 integer ALU checks. Later raster revisions need their own replay.
-The Linux guest passed the compute and initial rendering checks but failed
-during paced flip-event delivery; full desktop qualification remains open.
+The first Linux guest run failed during paced flip-event delivery. A fresh
+64x64 fixed-function run with the configurable emulator wait budget passes
+the complete configured DRM smoke on the frozen scissor-only RTL. Subsequent
+arithmetic, queue and resident-path revisions still need their own full-system
+qualification; this is not a 720p or whole-GPU clock result.

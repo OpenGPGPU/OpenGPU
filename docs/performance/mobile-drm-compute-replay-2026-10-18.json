@@ -102,5 +102,36 @@
     "Diagnose Linux paced flip delivery.",
     "Native compute results do not prove raster or720p workload performance.",
     "Original H0-H8 hardware requirements remain incomplete."
-  ]
+  ],
+  "linux_recovery": {
+    "passed": true,
+    "profile": "64x64 fixed-function legacy display/DRM smoke;4CUs16lanes8warps;AXI8bytes;capability-conditional tests",
+    "raster_revision": "frozen scissor-only6962573; later arithmetic/queue/resident-path revisions are NOT covered by this guest",
+    "test_deadline_ms": 30000,
+    "serial": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/fixed_guest_flip30s_pass_serial.log",
+      "sha256": "bbeb55b36f174f45d452302189baf052b257c5bafee45e56270f946a4a8afdc3"
+    },
+    "process_metadata": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/fixed_guest_flip30s.json",
+      "sha256": "b7774384c7258d00b7ce378fccf2124fe2b33b5ce701fc7dc1e86e33795f16e5"
+    },
+    "binary_sha256": {
+      "/Users/duckdonald/workspace/gpu/qemu-build/qemu-system-aarch64": "502aad9cfb992a8348b3f1bbc1e4f43521259c33026d8afb3a9091e3904ef056",
+      "/Users/duckdonald/workspace/arti-work/arti-linux-build/arch/arm64/boot/Image": "f6fe0e264fad947888feb2a80ef850b3443c24dbc19510cf8a6b2022030568d0",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-scissor-fixed/linux-test-flip30s/initramfs.cpio.gz": "bf4b6d0438201a2984df244f9ce1e3e749af609b3ebff8821c68a59b324b3190",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-scissor-fixed/linux-test-flip30s/opengpu_drm_test": "2849465ac833c32be5a654037246e362b850e6096402bbe0c75bc451930f1510",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-scissor-fixed/linux-test-flip30s/arti_driver.ko": "735c35f4831cc631a80e1c6a3a69615eb723471036005cd21364bee970c7856a"
+    },
+    "paced_flip_intervals_us": [
+      34846,
+      65374
+    ],
+    "scope": "Full configured DRMsmoke passed. No720pFPS orwhole-GPUclock/energy claim. Earlier failures retained above.",
+    "archived_qemu": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/qemu-fixed-scissor-qualified",
+      "sha256": "502aad9cfb992a8348b3f1bbc1e4f43521259c33026d8afb3a9091e3904ef056"
+    },
+    "test_source_sha256": "f27f028701f4ded6e94ea29c8e93f287644de355e3aef5a649c014b56a354248"
+  }
 }
