@@ -837,6 +837,21 @@ The V8 STORE/reset/fault replay also passes all 68 jobs on fixed and shared
 profiles. Those clear-only jobs verify ownership and accepted-write drain;
 they do not demonstrate shader activity or qualify later source revisions.
 
+V13 splits each signed32 cross-product multiply into registered half-word
+products and an exact assembly stage. It adds one setup cycle and retains
+512 consecutive quad outputs per sample mode. All 48 component checks pass,
+including 2,673 full signed-product cases; all 24 native product jobs also
+pass on the frozen V13 classes. A universal proof covers all 130 assembly
+input bits. The separate full-multiply bit-level proof timed out after 30
+seconds and remains unproven. Synthesis still fails at -148.267 ps.
+
+V14 replaces wide coefficient negation on top-left flags with sign/zero
+predicates, including the fixed-width minimum-negative corner. All 48
+component checks and the universal 69-input-bit predicate proof pass. The
+overall synthesis result still fails and worsens versus V13; the critical
+path now reaches the area-product register from a plane coefficient. This
+is a remaining native multiply, not a qualified clock or a throughput win.
+
 ## Exact programmable desktop image oracle
 
 [The fragment image replay](performance/mobile-drm-fragment-image-2026-10-18.json)
@@ -851,6 +866,8 @@ initial rendering and recovery, and requires the fragment instructions to
 match the actual 21-word C shader. Both images pass. The C smoke now derives
 its exact count from coverage, quad order and batch capacity; its checks for
 alternate colors and subsequent render/stencil/teardown results remain.
-The corrected full Linux smoke is running on the identical frozen model.
+The corrected full Linux smoke passes on the identical frozen model and
+powers off cleanly. Its archived log and exact binary/kernel/driver/test
+hashes are recorded, including paced flip intervals of 65,980 and 37,802 us.
 This four-lane legacy graphics evidence does not qualify the current raster
 revision or the proposed shared-CU mobile product.

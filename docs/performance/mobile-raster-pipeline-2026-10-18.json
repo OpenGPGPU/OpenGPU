@@ -664,5 +664,126 @@
     "direct_native_product": false,
     "full_system_guest": false,
     "post_route_qualified": false
+  },
+  "followup_v13": {
+    "scope": "Register exact signed32 cross-product partials, assemble them next cycle, then subtract coefficients. One added setup cycle; steady quad stream remains one/cycle. No whole-GPU or routed clock claim.",
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+      "src/main/scala/opengpu/graphics/Rasterizer.scala": "aae1102ef0ed99b1fa8997f7b06555a85d486d095e7ec487596f77d3f79e79cc",
+      "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+      "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+      "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+      "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+      "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+      "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+      "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+      "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+      "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+      "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+      "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+      "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+      "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+      "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+      "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7"
+    },
+    "component_checks": 48,
+    "suites": 13,
+    "numeric_signed_products": 2673,
+    "unit_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v13_unit.log",
+      "sha256": "daf889a99d015a8a5b8ef5d39d9511589e3c61c159990803d7056764c00835ad"
+    },
+    "assembly_proof": {
+      "passed": true,
+      "input_data_bits": 130,
+      "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/signed_product32_join_v13_formal.json",
+      "sha256": "2367d316ec7fd6293c19d5cfb125e5d2051fd7afadb157b6fdb9a67b7029921e"
+    },
+    "full_multiply_proof": {
+      "passed": false,
+      "status": "UNPROVEN: SAT timed out at30s; no counterexample reported. Assembly proof and numeric product tests are separate evidence.",
+      "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/signed_product32_full_v13_formal.json",
+      "sha256": "983a293a19b012429004ffdc465759c7aa4705d0883fb7caf71cd3342ec31cf7"
+    },
+    "direct_native_product": {
+      "passed": true,
+      "checks": 2,
+      "jobs": 24,
+      "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v13.json",
+      "sha256": "5a07971aa3e25d8b76f7aca36134c22e03166d02933576adc4cfebff4a47955c",
+      "logs": [
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v13_shared_0.log",
+          "sha256": "9f4311bed6b20905c6b28451721df3d3c453dcd7bcb50b80227880d2df9b4f59"
+        },
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v13_shared_1.log",
+          "sha256": "a65456bc8e273d65c61eb86a16a9653a7ecac625e7542ba7aa5a2008852b185b"
+        }
+      ],
+      "scope": "Same128KiB4bankL2/AXI256/720pviewport one8/16tile matrix asV10. All stored samples and resolves, fixed/shared,1/2/4samples,Bare/Sv32,clear/load. Added setup affects measured cycles, not a frame-rate qualification."
+    },
+    "synthesis": {
+      "passed": false,
+      "mapping_passed": true,
+      "qualification": "generated/mobile-h1/physical-product-raster-v13-resident-synth/qualification.json",
+      "sha256": "6f989c18bf9c2627cce4eeaf815bdfa88630a0cd112c2c6cad1d25a358593053",
+      "setup_slacks_ps": [
+        -148.267,
+        222.115
+      ],
+      "critical_path": "coeffReg_c_0[2] -> tlReg_2; OpenDB verified area/front through wide coefficient negation."
+    },
+    "post_route_qualified": false,
+    "full_system_guest": false
+  },
+  "followup_v14": {
+    "scope": "Top-left sign/zero predicates replace wide negation, preserving minimum-negative fixed-width overflow. Same stages asV13. V13 direct native results are not directV14 tests.",
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+      "src/main/scala/opengpu/graphics/Rasterizer.scala": "3925531e2692967cc43e5edcb06ff03cb1fe14ea9b9ad71409c176bf664f6385",
+      "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+      "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+      "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+      "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+      "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+      "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+      "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+      "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+      "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+      "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+      "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+      "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+      "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+      "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+      "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+      "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0"
+    },
+    "component_checks": 48,
+    "suites": 13,
+    "unit_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v14_unit.log",
+      "sha256": "bd8894a87f04090874dbf25dae59ea2890318b40282567b451b6c9643e3b00d1"
+    },
+    "formal": {
+      "passed": true,
+      "input_data_bits": 69,
+      "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/raster_top_left_v14_formal.json",
+      "sha256": "a1b5d4f3cb733031610999a0202c1a8e3c1e8818add10d4f429c4bc0842f7727"
+    },
+    "synthesis": {
+      "passed": false,
+      "mapping_passed": true,
+      "qualification": "generated/mobile-h1/physical-product-raster-v14-resident-synth/qualification.json",
+      "sha256": "9b48fa1d4a6b61e8cad5378c4101942c8c5680d4b7e2c2c728847a016a3af455",
+      "setup_slacks_ps": [
+        -167.569,
+        177.28
+      ],
+      "critical_path": "planeB_0[0] -> prodReg_saB[61]; OpenDB verified remaining native coefficient-by-coordinate area multiply. Worst slack regressed versusV13; do not claim an overall timing win."
+    },
+    "post_route_qualified": false,
+    "full_system_guest": false,
+    "direct_native_product": false
   }
 }

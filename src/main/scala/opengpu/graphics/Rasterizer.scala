@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.{BlockPrefixAdder, CarrySavePrefixSum}
+import opengpu.util.{BlockPrefixAdder, CarrySavePrefixSum, SignedProduct32, SignedProduct32Parts}
 
 /** Fixed-point rasterization parameters.
   *
@@ -190,6 +190,19 @@ private[graphics] object FixedPointMath {
       Mux(ab, Mux(bc, c, b), Mux(ac, c, a)))
   }
 
+  /** The top-left predicate needs signs and zero, not full negated buses.
+    * Fixed-width negation of the minimum value remains negative; preserve
+    * that case even though current coordinate differences are narrower.
+    */
+  def topLeft(a: SInt, b: SInt, front: Bool): Bool = {
+    require(a.getWidth == b.getWidth)
+    def negatedIsNegative(x: SInt): Bool =
+      x > 0.S || x === (-(BigInt(1) << (x.getWidth - 1))).S(x.getWidth.W)
+    val aNegative = Mux(front, a < 0.S, negatedIsNegative(a))
+    val bNegative = Mux(front, b < 0.S, negatedIsNegative(b))
+    aNegative || (a === 0.S && bNegative)
+  }
+
   /** Preserve the interface's modular sum without two serial carry chains.
     * Truncation before addition is exact modulo 2^64, including wider signed
     * product terms. Multiplication retains its natural operand widths.
@@ -364,7 +377,8 @@ class QuadCoverage(config: GraphicsConfig) extends Module {
   * chains a multiplier bank into a wide adder tree:
   *
   *   capture  : vertices + cull mode registered (compares only).
-  *   stBounds : padded bounding extremes and individual cross products.
+  *   stBounds : padded bounding extremes and cross-product partials.
+  *   stCross  : assemble the registered cross-product partials.
   *   stCoeffs : A/B differences, registered cross-product subtraction and
   *              viewport/scissor clamping of the registered bounds.
   *   stSetup  : per-edge plane products against the box origin and the two
@@ -420,9 +434,10 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
   // Separate coordinate padding/multiplication from clamping/subtraction.
   private def stIdle = 0.U(3.W)
   private def stBounds = 1.U(3.W)
-  private def stCoeffs = 2.U(3.W)
-  private def stSetup = 3.U(3.W)
-  private def stLoad = 4.U(3.W)
+  private def stCross = 2.U(3.W)
+  private def stCoeffs = 3.U(3.W)
+  private def stSetup = 4.U(3.W)
+  private def stLoad = 5.U(3.W)
   private val setupState = RegInit(0.U(3.W))
   private val active = RegInit(false.B)
   private val outputsDrained = WireDefault(true.B)
@@ -476,6 +491,8 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
     (vHold.v0, vHold.v1))
   private val crossLeft = Reg(Vec(3, SInt(64.W)))
   private val crossRight = Reg(Vec(3, SInt(64.W)))
+  private val crossLeftParts = Reg(Vec(3, new SignedProduct32Parts))
+  private val crossRightParts = Reg(Vec(3, new SignedProduct32Parts))
   private val paddedMinX = Reg(SInt(32.W))
   private val paddedMinY = Reg(SInt(32.W))
   private val paddedMaxX = Reg(SInt(32.W))
@@ -711,7 +728,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
   }
 
   when(setupState === stBounds) {
-    setupState := stCoeffs
+    setupState := stCross
     paddedMinX := bboxMinXW - bboxPad
     paddedMinY := bboxMinYW - bboxPad
     paddedMaxX := bboxMaxXW + bboxPad
@@ -723,8 +740,16 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
     scissorRasterMaxY := (if (quadMode) (scissorMaxYReg - 1.U) & "hfffe".U
       else scissorMaxYReg - 1.U)
     for (((a, b), i) <- edgeVertices.zipWithIndex) {
-      crossLeft(i) := a.x * b.y
-      crossRight(i) := b.x * a.y
+      crossLeftParts(i) := SignedProduct32.split(a.x, b.y)
+      crossRightParts(i) := SignedProduct32.split(b.x, a.y)
+    }
+  }
+
+  when(setupState === stCross) {
+    setupState := stCoeffs
+    for (i <- 0 until 3) {
+      crossLeft(i) := SignedProduct32.join(crossLeftParts(i))
+      crossRight(i) := SignedProduct32.join(crossRightParts(i))
     }
   }
 
@@ -826,9 +851,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
     }
     frontReg := frontN
     tlReg.zipWithIndex.foreach { case (r, i) =>
-      val fa = Mux(frontN, coeffReg.a(i), -coeffReg.a(i))
-      val fb = Mux(frontN, coeffReg.b(i), -coeffReg.b(i))
-      r := (fa < 0.S) || (fa === 0.S && fb < 0.S)
+      r := topLeft(coeffReg.a(i), coeffReg.b(i), frontN)
     }
   }
 }

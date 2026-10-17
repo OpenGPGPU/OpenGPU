@@ -76,13 +76,32 @@
     }
   },
   "revised_guest": {
-    "status": "running",
+    "status": "terminal PASS",
+    "exit_code": 0,
+    "full_marker": true,
     "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/programmable_quad_oracle_guest.json",
-    "pid": 73990,
-    "scope": "Same frozen scissor-only programmable64x64 model and driver as count-negative guest; replace only C smoke image oracle. Full configured assertions still required; not V10 or mobile product qualification."
+    "metadata_sha256": "b7e5e1e6140edb8d779da20f503736d300fe52d45ae752a6567ab2259038b86a",
+    "serial": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/programmable_quad_oracle_pass_serial.log",
+      "sha256": "590fe20900aa891362a7da0cf9ac47a2ca85bbc59a9b484a0085cf0dc6cd1451"
+    },
+    "hashes": {
+      "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1/qemu-programmable-scissor-count-negative": "3ba8e247becf7f4de4d4271d0f055d51e4396f895544dd831e3de8f9eb78e5d0",
+      "/Users/duckdonald/workspace/arti-work/arti-linux-build/arch/arm64/boot/Image": "f6fe0e264fad947888feb2a80ef850b3443c24dbc19510cf8a6b2022030568d0",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-scissor-programmable/linux-test-quad-oracle/initramfs.cpio.gz": "08fbcb68285d8fddecc94f9d314e0d1740fcbef16d8a2b208c9043b707867761",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-scissor-programmable/linux-test-quad-oracle/opengpu_drm_test": "c27ea28161a1f936162f4d2a28184d67619668f5cd9f4802611493ba13042f17",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-scissor-programmable/linux-test-quad-oracle/arti_driver.ko": "64fb2dbee2d97f6fae1ef4ebb5f0aec5da8a3791c3dae7814cb448b68222b21e",
+      "/Users/duckdonald/workspace/gpu/driver/tests/opengpu_drm_test.c": "10a1de39afb2e693940900d1e3afdf48a33165f1d49caec36e1dc3d42b47c823",
+      "/Users/duckdonald/workspace/gpu/driver/tests/opengpu_drm_image_oracle.h": "439bc4a4b0607587673222044d2f68cb49a77032a18a5259e2dbf1094b16eaa1"
+    },
+    "scope": "Same frozen scissor-only programmable64x64 model and driver as count-negative guest; replace only C smoke image oracle. Full configured assertions still required; not V10 or mobile product qualification.",
+    "paced_flip_intervals_us": [
+      65980,
+      37802
+    ],
+    "coverage": "Full configured64x64 programmable/private4lane2warp DRM smoke: vertex passthrough, fragment texture/derivative/discard, compute events, blit/fill/strided/resolve, persistent depth, VM/mapping-failure/reset/reuse/teardown, fault-query and paced vblank. Frozen scissor-only model; notV13/V14/mobile or frame-rate qualification."
   },
   "open_gates": [
-    "Full configured Linux DRM smoke on the corrected test binary; QEMU exit0 alone is insufficient.",
     "Fresh current-raster fixed/programmable guest validation, product frame budgets and original H0-H8 gates."
   ]
 }
