@@ -16,6 +16,7 @@ object TilePassStatus {
   val cancelled = 2
   val memoryFault = 3
   val executionFault = 4
+  val commandFault = 5
 }
 
 /** Stable identity retained through completion and fault drain. Stage tags

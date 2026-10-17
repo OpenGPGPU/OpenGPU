@@ -49,6 +49,15 @@ def test_synthesis_mapping_requires_explicit_evidence():
     assert qualify.synthesis_mapping_gate('ABC RESULTS: 100 NAND cells')['passed']
 
 
+def test_mapping_proof_reads_the_yosys_mapping_log(tmp_path):
+    log = tmp_path / 'flow/orfs-work/logs/base/1_2_yosys.log'
+    log.parent.mkdir(parents=True)
+    log.write_text('ABC RESULTS: 100 NAND cells\n')
+    gate = qualify.mapping_proof({}, tmp_path)
+    assert gate['passed']
+    assert gate['log'] == str(log)
+
+
 @pytest.mark.parametrize('operator', ['sdiv_trunc', 'udiv', 'unknown_operator'])
 def test_skipped_operators_fail_even_when_a_netlist_was_exported(operator):
     log = f"Export to ODB: created 100 instances\n[WARNING SYN-0030] Export to ODB: skipping unexpected instance type '{operator}'\n"

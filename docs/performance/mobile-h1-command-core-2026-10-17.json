@@ -1,0 +1,284 @@
+{
+  "scope": "H1 bounded command-list to resident RenderCore integration. Experimental direct job interface; not unified host/VM/cache publication or full milestone completion.",
+  "reference_checkpoint": "707ddef",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/TileCommandPassController.scala": "4fb773e9c66fc47d7c70cc254a9aa36fa99fcc173fb4e3a705dfdd6de06d8936",
+    "src/main/scala/opengpu/graphics/RenderCore.scala": "1ec0ee98bcaeb287427d6af0ea7deced54bd8893aa5e83c3ca638acd831c0139",
+    "src/main/scala/opengpu/graphics/TileRenderPass.scala": "6746280e8e50632634908ad02c3fc3d2802b0eb2fdda83e694fb0621bd68725f",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "901699c6fc08b54224df277d37d105105c6b17d842788ed9a88cb2269741eebd",
+    "src/test/scala/opengpu/graphics/TileCommandPassControllerSpec.scala": "0c8b6771cfa886b4b5dca56ae04bfa0f570a0a70c2ad8c2c1c1e72c8ebc222bb",
+    "src/test/scala/opengpu/graphics/PersistentTileRenderCoreSpec.scala": "640a0f03d64f11a0ea83363a54a4d949b115c73597b80255c4023d913e6a1b81"
+  },
+  "contract": {
+    "job_version": 1,
+    "command_record_bytes": 160,
+    "command_limit": "Exclusive 33-bit limit, at most 4 GiB; aligned base plus count*160 is checked with its full carry before any fetch.",
+    "job_snapshot": "Pass descriptor, command base/count/limit, viewport and draw defaults captured on job handshake.",
+    "launch_and_end": "Start commands only after attachment admission; end only after command and render drain.",
+    "failure": "Cancel prefetched commands on cancellation, command-response fault or shader failure; retain offered/issued reads until drain.",
+    "completion": "Latch a tagged result after all command/render/attachment ownership drains; late cancel/fault pulses cannot mutate a published result.",
+    "command_fault_status": 5,
+    "status_priority": "Preserve owner errors other than success/cancelled; replace those with the controller command/execution/cancellation cause.",
+    "default_mode": "Existing RenderCore start/register mode remains the default; persistent mode uses tileJob/tileCompletion and keeps legacy start low.",
+    "draw_defaults": "Resolve every HasResolvedDrawState field from the frozen job when a record has no state override; preserve explicit per-record state, including blend and sampler clamps."
+  },
+  "functional": {
+    "logs": {
+      "final": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/command-core-final.log",
+        "sha256": "1a48d830eab04e99f3fe1bc6830a5dd41ec9c9306ad3991659c01ae9631dbb2c",
+        "tests": 6,
+        "passed": true
+      },
+      "legacy_and_initial": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/command-core-legacy_and_initial.log",
+        "sha256": "7a944dfd63d5e31112ae4c77aab90a1e34c21b05e731339a85debd0f4bbe81cc",
+        "tests": 12,
+        "passed": true
+      },
+      "current_complete_defaults": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/command-core-defaults.log",
+        "sha256": "bc5eb7ec36679bf022c80e2835f3afa34fe5a9efe260d4b47203a22cbf8fc7e5",
+        "tests": 13,
+        "passed": true
+      }
+    },
+    "current_final_tests": 13,
+    "controller_tests": 5,
+    "command_core_tests": 1,
+    "command_core_scenarios": [
+      {
+        "phase": "success",
+        "status": 0,
+        "command_reads": 80,
+        "attachment_writes": 128,
+        "cycles": 1380
+      },
+      {
+        "phase": "override",
+        "status": 0,
+        "command_reads": 80,
+        "attachment_writes": 128,
+        "cycles": 1369
+      },
+      {
+        "phase": "jobBlend",
+        "status": 0,
+        "command_reads": 80,
+        "attachment_writes": 128,
+        "cycles": 1391
+      },
+      {
+        "phase": "cancelEarly",
+        "status": 2,
+        "command_reads": 0,
+        "attachment_writes": 0,
+        "cycles": 2
+      },
+      {
+        "phase": "cancel",
+        "status": 2,
+        "command_reads": 85,
+        "attachment_writes": 0,
+        "cycles": 507
+      },
+      {
+        "phase": "commandFault",
+        "status": 5,
+        "command_reads": 85,
+        "attachment_writes": 0,
+        "cycles": 507
+      },
+      {
+        "phase": "attachmentFault",
+        "status": 3,
+        "command_reads": 80,
+        "attachment_writes": 9,
+        "cycles": 930
+      },
+      {
+        "phase": "badVersion",
+        "status": 1,
+        "command_reads": 0,
+        "attachment_writes": 0,
+        "cycles": 3
+      },
+      {
+        "phase": "badBounds",
+        "status": 1,
+        "command_reads": 0,
+        "attachment_writes": 0,
+        "cycles": 3
+      },
+      {
+        "phase": "badPass",
+        "status": 1,
+        "command_reads": 0,
+        "attachment_writes": 0,
+        "cycles": 12
+      },
+      {
+        "phase": "unaligned",
+        "status": 1,
+        "command_reads": 0,
+        "attachment_writes": 0,
+        "cycles": 3
+      },
+      {
+        "phase": "overflow",
+        "status": 1,
+        "command_reads": 0,
+        "attachment_writes": 0,
+        "cycles": 3
+      },
+      {
+        "phase": "badLimit",
+        "status": 1,
+        "command_reads": 0,
+        "attachment_writes": 0,
+        "cycles": 3
+      },
+      {
+        "phase": "boundary",
+        "status": 0,
+        "command_reads": 40,
+        "attachment_writes": 128,
+        "cycles": 1010
+      },
+      {
+        "phase": "empty",
+        "status": 0,
+        "command_reads": 0,
+        "attachment_writes": 128,
+        "cycles": 433
+      },
+      {
+        "phase": "success",
+        "status": 0,
+        "command_reads": 80,
+        "attachment_writes": 128,
+        "cycles": 1374
+      }
+    ],
+    "legacy_RenderCoreSpec_tests": 7,
+    "legacy_scope": "Seven existing RenderCore regressions pass in the same current 13-check cohort; includes actual CU-executed shader scenes and MSAA."
+  },
+  "physical": {
+    "controller_synthesis": {
+      "status": "completed",
+      "artifact": "generated/mobile-h1/physical-command-controller",
+      "gate": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          462.011,
+          413.436
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "6aa162e88d7a08a51c1acfdf7c44af9bf3c398d2e5284bb2b5bbff91c81ef25a"
+      },
+      "mapping_retrospective": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-command-controller/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "750a11a4bca8f2325d25e8099dc815cfa57af8e5112ce2671f86a2ae13aa3b67"
+      },
+      "manifest_sha256": "8ba52c84f7af0542398a75fdf2f08f9753f6de881aed643ff55f39a0c4866aec",
+      "result_sha256": "ace091aab9a9ddc71077dcf4f8fdad8b9b85e472d532e51e1110d78d301d6e3a"
+    },
+    "fixed_function_core_synthesis": {
+      "status": "completed",
+      "passed": false,
+      "artifact": "generated/mobile-h1/physical-persistent-core",
+      "gate": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -837.128,
+          -897.172
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "79beb9f8ceb1ed2f7f2efd7ca60bf458f6c505e41e7f936c5e54b2867c0f840a"
+      },
+      "mapping_retrospective": {
+        "passed": false,
+        "mapping_report_present": true,
+        "skipped_instance_types": [
+          "sdiv_trunc",
+          "udiv"
+        ],
+        "skipped_instance_count": 211,
+        "skipped_instances_by_type": {
+          "sdiv_trunc": 16,
+          "udiv": 195
+        },
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-persistent-core/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "f3f29800ea779c8ddecc3d36c38757f8dda65cb4ef82dcbd2352cf637f30d210"
+      },
+      "manifest_sha256": "995015442317ce995cd9632518dfe02002935eeb275ff1731038bb88004ce2b8",
+      "result_sha256": "f6a6cc21445ede8f1bf5b59ea51c9b49fb3fd54c30441affcb71b3df16aee1db",
+      "scope": "Earlier frozen core before complete default-state materialization. The syn engine omitted 211 division operators; its delay/area cannot qualify the renderer."
+    },
+    "scope": "Component synthesis screens only; no integrated GPU clock or energy/frame claim.",
+    "fixed_function_yosys": {
+      "status": "running",
+      "session": 7268,
+      "container": "c6c3e9b12c7c",
+      "artifact": "generated/mobile-h1/physical-persistent-core-yosys",
+      "note": "Same earlier frozen RTL, alternate supported mapping engine. Revalidate process/container; this record alone is not live proof. Does not qualify current complete-default-state source."
+    },
+    "current_fixed_function_rtl": {
+      "artifact": "generated/mobile-h1/persistent-core-defaults-rtl",
+      "emitted_sha256": {
+        "TriangleRasterizer.sv": "d0fbe4007d25e7ced808b6fcfb9e7a774e8ecdf401031934f45759c2cd88a064",
+        "SampleDepth.sv": "0f760ec9170062043999642af8751ebb52c6d2bc6bbe37d6207329472356e2dd",
+        "GeometryStage.sv": "52b0d5e62a27ca710143bb0a82409ae6ad82bc2bee6fef36a27737142f678d48",
+        "TexUVInterpolator.sv": "be66791ce0b2ac5988eeec7f261fb2773b905069ad0c1be87db5ba247c9f96ff",
+        "Queue8_SceneTriangle.sv": "abc22f43d3c1472bcff19760b6bcd770ed7523f348bd6bcbfa5a7741a2dc55ba",
+        "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+        "RRArbiter16_OmMemoryRequest.sv": "844f1ce207bc2d0350a4b16d3e72558aa10eca2030513ce8c68a10d084d05ac0",
+        "L2SramArray.sv": "d72588e8a9ac8d8aaec7495aae3ec57045cb817695cf11148a7df7b8e3f732f9",
+        "TileCommandPassController.sv": "b04505e71ca26661c121e6d887828f350628c0382ec3224ddd2754b3a125ffe3",
+        "TextureUnit.sv": "07d2e218944b1a999f5d99ecdcf1ba974dfa10a78baaa5d3c69ee558f1ec3441",
+        "SampleExpander.sv": "cdb7f47a55088e0590a01aab6216c6c41a32528f02d6387036b242c7e4c47e67",
+        "OutputMerger.sv": "9ac8c55292b99bcf1f2341ff603a99bd840e7410414a13983223f7aef7b3ffa0",
+        "TileAttachmentTransfer.sv": "1cad4bbe458c422cce996b849bc838c1e45419b4f315b1c3f9e0cb4b9bda39ae",
+        "TileRenderPassAdmission.sv": "01983751f4c4b56fb28fb3c90d8985068ec146a5f850c0c5d4e0545442ea4a68",
+        "PersistentTileAttachmentStore.sv": "fe662fd6fd329b6c9c21a6ca032aba49b2c0a5d814702dcc6fae59b405db610f",
+        "NearClipStage.sv": "0f458634710b15489ca95aa482b6cba3777bf792d97087cb564ec11b3ba58966",
+        "Queue1_TileTransferRequest.sv": "92c1ac8047c81f62d3b63a7c3c2b926d36ae566136c7025493e22561b01b901f",
+        "SampleCoverage.sv": "0b8226fd39a2e14efafac3c0abf1bbca3f9d0b9d6328415516525b3a58168b15",
+        "RenderPipeline.sv": "cdca6b4173c62dc72d4abc7f94c1bcdc98eb95014a2810e29c737bf611cbf518",
+        "RasterShader.sv": "7896f819c52e21ec7c4b216acd53a89539140956bff73dcf0e2a27623d8c9d19",
+        "ram_8x893.sv": "9cd3bc71f75c829fd507081aa1455734f957aa95b65df46be1ade05c5c7f3a79",
+        "FragmentInterpolator.sv": "31bc6fa4cbab5f3dff92d9efda499621ad15decd6ac5d64d4501f509efc10bda",
+        "DepthGradient.sv": "8506c6d6c7a823209e9a273c44833dbdee49ef4f79410ddaf86c235e6a973975",
+        "RRArbiter2_TileTransferRequest.sv": "308a3ea4afc09ae2077ff04b24363b89743706f0ec6591073e072dfd41374313",
+        "TexturedFragStage.sv": "11edabf64f644884ddca6c27197df506a5dc21a42af4f944202b725af60977aa",
+        "CommandBufferStage.sv": "f631d8253101dca4681560d0cce1cf6053f9d00343b942302d353601a071934b",
+        "TileAttachmentClearEngine.sv": "1e2e27a4c15e1269c2caab4e298e35165be3504dac14c21e767863f8b6cfc1b1",
+        "RenderCore.sv": "38b2a8914acc390e78003329a1578096bbf1ee33ce17c0be7912480f038e8749",
+        "TileAttachmentWriteQueue.sv": "b31ec91c7967cd69767cee88a7891c14f7a5f7ab2ded89c0a688cd9d3bcc2967"
+      },
+      "qualification": "not established"
+    },
+    "qualifier_sha256": "0c681ceaa9f30985d796159c9483114c6dc511fbdef345678549f96725655a93",
+    "qualifier_tests": 24
+  },
+  "remaining": [
+    "GpuHostSystemAxi/RenderHost unified-memory descriptor submission and actual VM/context binding",
+    "real shared-system CU-pool execution of command-driven persistent jobs",
+    "render-to-texture/DMA cache-domain publication and barriers",
+    "mixed clear/draw host operations and broader descriptors/discovery",
+    "latest component/integrated setup, hold, area and energy/frame qualification",
+    "all remaining H0-H8 gates in the original document"
+  ],
+  "post_validation_comment_change": "RenderCore Scaladoc and memory-fault sideband comments only; no RTL statements changed after the current thirteen-check cohort."
+}

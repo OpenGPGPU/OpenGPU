@@ -40,18 +40,133 @@
     }
   },
   "route": {
-    "status": "running",
+    "status": "completed",
+    "passed": false,
     "artifact": "generated/mobile-h1/physical-registered-events-closure",
-    "exec_session": 16292,
-    "container": "3f2894fe8547",
     "source_checkpoint": "d27f05d",
-    "last_observed_stage": "detailed routing, optimization iteration 1",
-    "intermediate_cts": {
-      "core_setup_slack_ps": 9.23,
-      "io_setup_slack_ps": 1.71,
-      "hold_slack_ps": 0.29,
-      "report_sha256": "9069f527792e6731f7ac755dd594f1636f8b27382c0eab0c2aff6171fc55e038"
+    "gate": {
+      "passed": false,
+      "checks": {
+        "setup_worst_slack_ps": false,
+        "hold_worst_slack_ps": true,
+        "setup_violation_count": false,
+        "hold_violation_count": true,
+        "route_drc_errors": true,
+        "antenna_violating_nets": true,
+        "antenna_violating_pins": true,
+        "placement_violations": true,
+        "flow_errors": true,
+        "flow_completed": true,
+        "tool_verdict": false
+      },
+      "missing_metrics": [],
+      "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors"
     },
-    "note": "Intermediate report only. Revalidate the live handle; no post-route timing qualification is established."
+    "qor": {
+      "instance_count": 247600,
+      "instance_area": 12008.7,
+      "sequential_cell_count": 7808,
+      "clock_buffer_count": 618,
+      "timing_repair_buffer_count": 3932,
+      "setup_tns_ps": -2.46025,
+      "hold_tns_ps": 0,
+      "setup_worst_slack_ps": -2.46025,
+      "hold_worst_slack_ps": 27.2974,
+      "setup_violation_count": 1,
+      "hold_violation_count": 0,
+      "core_clock_fmax_mhz": 997.546,
+      "virtual_io_clock_fmax_mhz": 1221.86,
+      "reported_fmax_mhz": 997.546,
+      "setup_clock_skew_ps": 36.7532,
+      "hold_clock_skew_ps": 45.803,
+      "total_power_w": 0.160443,
+      "placement_utilization": 23.6537,
+      "placement_violations": 0,
+      "estimated_wirelength": 348405,
+      "route_wirelength": 432831,
+      "route_vias": 755335,
+      "route_drc_errors": 0,
+      "route_drc_report_bytes": 0,
+      "antenna_violating_nets": 0,
+      "antenna_violating_pins": 0,
+      "ir_drop_vdd_worst": 0.0122478,
+      "ir_drop_vss_worst": 0.0119858,
+      "flow_warnings": 20,
+      "flow_errors": 0,
+      "critical_path": {
+        "startpoint": "u40174 (rising edge-triggered flip-flop clocked by core_clock)",
+        "endpoint": "u46361 (rising edge-triggered flip-flop clocked by core_clock)",
+        "group": "core_clock",
+        "slack_ps": -2.46,
+        "arrival_ps": 1210.99,
+        "data_path_delay_ps": 996.11,
+        "cell_delay_ps": 875.65,
+        "net_delay_ps": 120.46,
+        "cell_delay_percent": 87.91,
+        "net_delay_percent": 12.09,
+        "cell_count": 48,
+        "net_count": 48,
+        "dominant_cell_types": [
+          {
+            "cell_type": "MAJx2_ASAP7_75t_SL",
+            "count": 11,
+            "delay_ps": 227.35
+          },
+          {
+            "cell_type": "NAND2x1_ASAP7_75t_SL",
+            "count": 18,
+            "delay_ps": 191.77
+          },
+          {
+            "cell_type": "XOR2x2_ASAP7_75t_SL",
+            "count": 4,
+            "delay_ps": 92.66
+          },
+          {
+            "cell_type": "AND2x2_ASAP7_75t_SL",
+            "count": 2,
+            "delay_ps": 78.02
+          },
+          {
+            "cell_type": "XNOR2x2_ASAP7_75t_SL",
+            "count": 3,
+            "delay_ps": 66.87
+          },
+          {
+            "cell_type": "DFFHQNx3_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 62.66
+          },
+          {
+            "cell_type": "AO32x1_ASAP7_75t_SL",
+            "count": 2,
+            "delay_ps": 40.22
+          },
+          {
+            "cell_type": "BUFx6f_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 24.96
+          }
+        ],
+        "per_group": {
+          "core_clock": {
+            "startpoint": "u40174 (rising edge-triggered flip-flop clocked by core_clock)",
+            "endpoint": "u46361 (rising edge-triggered flip-flop clocked by core_clock)",
+            "slack_ps": -2.46,
+            "arrival_ps": 1210.99
+          },
+          "vclk_core_clock": {
+            "startpoint": "u223 (rising edge-triggered flip-flop clocked by core_clock)",
+            "endpoint": "io_permit (output port clocked by vclk_core_clock)",
+            "slack_ps": 68.84,
+            "arrival_ps": 681.16
+          }
+        }
+      }
+    },
+    "result_sha256": "a126ea2804357b9d62010d95397fe3ad5750a498e8e82121d51797fa268710c2",
+    "manifest_sha256": "a2cb871445a03bfa09f60f0bfe8d92f79ce1f513a28f64b97bcb1723c3c91d61",
+    "critical_source": "admission.descriptor_originY[13] -> admission.startHigh_2[37]",
+    "scope": "Frozen registered-event component before the execution-fault input; TC/SLVT 1000 ps with 25% I/O budget. Includes SRAM. Vectorless power is not energy/frame qualification."
   }
 }

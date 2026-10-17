@@ -32,6 +32,11 @@ import opengpu.core.memory.{
   * record has been consumed and the last read-modify-write has retired.  In
   * vertex-core mode one record references a vertex buffer and may produce
   * multiple triangles.
+  *
+  * Persistent mode instead accepts tileJob and retains its immutable binding
+  * through tileCompletion. done then reports controller idle, including result
+  * delivery; legacy start stays low. Memory ports still use the caller's
+  * translation/cache domain, whose ownership must outlive the tagged job.
   */
 class RenderCore(
   config: GraphicsConfig = GraphicsConfig(),
@@ -39,9 +44,21 @@ class RenderCore(
   fragCore: Boolean = false,
   vertCore: Boolean = false,
   graphicsScalarFpu: Boolean = true,
-  sharedShader: Option[SharedCuShaderConfig] = None
+  sharedShader: Option[SharedCuShaderConfig] = None,
+  persistentAttachments: Boolean = false,
+  tileStoreCredits: Int = 1,
+  useTileSramBlackBoxes: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
+    /** Persistent mode replaces legacy start/register submission with one
+      * immutable, bounded command-list job and a tagged completion. */
+    val tileJob = if (persistentAttachments) Some(Flipped(Decoupled(new TileCommandJob))) else None
+    val tileCompletion = if (persistentAttachments) Some(Decoupled(new TileRenderPassCompletion)) else None
+    val tileCancel = if (persistentAttachments) Some(Input(Bool())) else None
+    /** Sidebands apply to a response accepted on the corresponding port. */
+    val commandMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
+    val attachmentMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
+    val tileEvents = if (persistentAttachments) Some(Output(new TileAttachmentEvents)) else None
     val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
       gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val cmdBase = Input(UInt(32.W))
@@ -113,9 +130,12 @@ class RenderCore(
   // The command payload type must follow the selected front end.  In vertex
   // core mode words 0..6 describe a vertex buffer and vertex shader rather
   // than containing three inline clip-space vertices.
-  private val cb = Module(new CommandBufferStage(config, vertCore))
+  private val cb = Module(new CommandBufferStage(config, vertCore, cancellable = persistentAttachments))
   private val rp = Module(new RenderPipeline(
-    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader))
+    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader,
+    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes))
+  private val tileController = if (persistentAttachments) Some(Module(new TileCommandPassController)) else None
+  private val jobConfig = tileController.map(_.io.config)
   sharedShader.foreach(_ => rp.io.shared.get <> io.shared.get)
   // RenderHost snapshots the legacy registers and queue ownership on the
   // same edge that it presents start.  Delay the parser start one cycle so
@@ -123,14 +143,14 @@ class RenderCore(
   private val startDelay = RegInit(false.B)
   startDelay := io.start
 
-  cb.io.base := io.cmdBase
-  cb.io.count := io.cmdCount
-  cb.io.start := startDelay
+  cb.io.base := jobConfig.map(_.cmdBase).getOrElse(io.cmdBase)
+  cb.io.count := jobConfig.map(_.cmdCount).getOrElse(io.cmdCount)
+  cb.io.start := tileController.map(_.io.startCommands).getOrElse(startDelay)
   cb.io.mem.req <> io.cbMem.req
   cb.io.mem.resp <> io.cbMem.resp
 
-  rp.io.screenW := io.screenW
-  rp.io.screenH := io.screenH
+  rp.io.screenW := jobConfig.map(_.screenW).getOrElse(io.screenW)
+  rp.io.screenH := jobConfig.map(_.screenH).getOrElse(io.screenH)
 
   if (config.tileBinning && vertCore) {
     cb.io.draw <> rp.io.draw
@@ -153,41 +173,69 @@ class RenderCore(
     cb.io.draw <> rp.io.draw
     io.done := cb.io.done && rp.io.done
   }
+  tileController.foreach { controller =>
+    val record = cb.io.draw.bits.asInstanceOf[SceneTriangle]
+    val submitted = rp.io.draw.bits.asInstanceOf[SceneTriangle]
+    when(!record.stateOverride) {
+      // Materialize the complete job default state as a per-draw snapshot.
+      // This includes blendEnable and LOD clamps, which have no legacy
+      // register input on RenderCore. Explicit record overrides keep priority.
+      submitted.stateOverride := true.B
+      for ((name, field) <- controller.io.config.elements if record.elements.contains(name))
+        submitted.elements(name) := field
+    }
+    controller.io.job <> io.tileJob.get
+    io.tileCompletion.get <> controller.io.completion
+    controller.io.cancel := io.tileCancel.get
+    controller.io.commandFault := io.commandMemoryFault.get && io.cbMem.resp.fire
+    controller.io.attachmentFault := io.attachmentMemoryFault.get
+    controller.io.shaderFault := rp.io.shaderFault
+    controller.io.pass <> rp.io.tilePass.get
+    controller.io.admitted := rp.io.tileEvents.get.admitted
+    controller.io.commandsDrained := cb.io.done
+    controller.io.renderDrained := rp.io.done
+    cb.io.cancel.get := controller.io.cancelCommands
+    io.tileEvents.get := rp.io.tileEvents.get
+    // Ownership, including a backpressured tagged completion, is retained
+    // until the explicit job completion handshake in persistent mode.
+    io.done := !controller.io.busy
+    assert(!io.start, "persistent RenderCore uses tileJob rather than legacy start")
+  }
   rp.io.instructionSatp := io.instructionSatp
   rp.io.instructionTlbFlush := io.instructionTlbFlush
   rp.io.vectorSatp := io.vectorSatp
   rp.io.vectorTlbFlush := io.vectorTlbFlush
   io.shaderFault := rp.io.shaderFault
 
-  rp.io.colorFormat := io.colorFormat
-  rp.io.colorBase := io.colorBase
-  rp.io.depthBase := io.depthBase
-  rp.io.stride := io.stride
-  rp.io.depthTestEnable := io.depthTestEnable
-  rp.io.depthFunc := io.depthFunc
-  rp.io.depthWriteEnable := io.depthWriteEnable
-  rp.io.blendCfgEnable := io.blendCfgEnable
-  rp.io.blendSrcFactor := io.blendSrcFactor
-  rp.io.blendDstFactor := io.blendDstFactor
-  rp.io.blendEquation := io.blendEquation
-  rp.io.stencilTestEnable := io.stencilTestEnable
-  rp.io.stencilFunc := io.stencilFunc
-  rp.io.stencilRef := io.stencilRef
-  rp.io.stencilReadMask := io.stencilReadMask
-  rp.io.stencilWriteMask := io.stencilWriteMask
-  rp.io.stencilFailOp := io.stencilFailOp
-  rp.io.stencilZFailOp := io.stencilZFailOp
-  rp.io.stencilZPassOp := io.stencilZPassOp
-  rp.io.cullMode := io.cullMode
+  rp.io.colorFormat := jobConfig.map(_.colorFormat).getOrElse(io.colorFormat)
+  rp.io.colorBase := jobConfig.map(_.colorBase).getOrElse(io.colorBase)
+  rp.io.depthBase := jobConfig.map(_.depthBase).getOrElse(io.depthBase)
+  rp.io.stride := jobConfig.map(_.stride).getOrElse(io.stride)
+  rp.io.depthTestEnable := jobConfig.map(_.depthTestEnable).getOrElse(io.depthTestEnable)
+  rp.io.depthFunc := jobConfig.map(_.depthFunc).getOrElse(io.depthFunc)
+  rp.io.depthWriteEnable := jobConfig.map(_.depthWriteEnable).getOrElse(io.depthWriteEnable)
+  rp.io.blendCfgEnable := jobConfig.map(_.blendCfgEnable).getOrElse(io.blendCfgEnable)
+  rp.io.blendSrcFactor := jobConfig.map(_.blendSrcFactor).getOrElse(io.blendSrcFactor)
+  rp.io.blendDstFactor := jobConfig.map(_.blendDstFactor).getOrElse(io.blendDstFactor)
+  rp.io.blendEquation := jobConfig.map(_.blendEquation).getOrElse(io.blendEquation)
+  rp.io.stencilTestEnable := jobConfig.map(_.stencilTestEnable).getOrElse(io.stencilTestEnable)
+  rp.io.stencilFunc := jobConfig.map(_.stencilFunc).getOrElse(io.stencilFunc)
+  rp.io.stencilRef := jobConfig.map(_.stencilRef).getOrElse(io.stencilRef)
+  rp.io.stencilReadMask := jobConfig.map(_.stencilReadMask).getOrElse(io.stencilReadMask)
+  rp.io.stencilWriteMask := jobConfig.map(_.stencilWriteMask).getOrElse(io.stencilWriteMask)
+  rp.io.stencilFailOp := jobConfig.map(_.stencilFailOp).getOrElse(io.stencilFailOp)
+  rp.io.stencilZFailOp := jobConfig.map(_.stencilZFailOp).getOrElse(io.stencilZFailOp)
+  rp.io.stencilZPassOp := jobConfig.map(_.stencilZPassOp).getOrElse(io.stencilZPassOp)
+  rp.io.cullMode := jobConfig.map(_.cullMode).getOrElse(io.cullMode)
   io.performance := rp.io.performance
-  rp.io.sampleMode := io.sampleMode
-  rp.io.texEnable := io.texEnable
-  rp.io.texFormat := io.texFormat
-  rp.io.texBase := io.texBase
-  rp.io.texWidth := io.texWidth
-  rp.io.texHeight := io.texHeight
-  rp.io.texWrapClamp := io.texWrapClamp
-  rp.io.texMaxLevel := io.texMaxLevel
+  rp.io.sampleMode := jobConfig.map(_.sampleMode).getOrElse(io.sampleMode)
+  rp.io.texEnable := jobConfig.map(_.texEnable).getOrElse(io.texEnable)
+  rp.io.texFormat := jobConfig.map(_.texFormat).getOrElse(io.texFormat)
+  rp.io.texBase := jobConfig.map(_.texBase).getOrElse(io.texBase)
+  rp.io.texWidth := jobConfig.map(_.texWidth).getOrElse(io.texWidth)
+  rp.io.texHeight := jobConfig.map(_.texHeight).getOrElse(io.texHeight)
+  rp.io.texWrapClamp := jobConfig.map(_.texWrapClamp).getOrElse(io.texWrapClamp)
+  rp.io.texMaxLevel := jobConfig.map(_.texMaxLevel).getOrElse(io.texMaxLevel)
   rp.io.mem.req <> io.fbMem.req
   rp.io.mem.resp <> io.fbMem.resp
   rp.io.texMem <> io.texMem

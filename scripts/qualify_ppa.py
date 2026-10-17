@@ -48,7 +48,8 @@ def synthesis_mapping_gate(log):
 
 
 def mapping_proof(result, output):
-    candidates = [output / 'flow/orfs-work/logs/base/1_synth.log']
+    candidates = [output / 'flow/orfs-work/logs/base/1_synth.log',
+                  output / 'flow/orfs-work/logs/base/1_2_yosys.log']
     run_log = (result.get('artifacts') or {}).get('run.log')
     if run_log:
         candidates.append(Path(run_log))

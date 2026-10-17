@@ -329,7 +329,11 @@ I/O; core-only -20.28 ps). Its worst endpoint is the `clearRead` diagnostic
 output. A [registered diagnostic candidate](performance/mobile-h1-registered-events-2026-10-17.json)
 preserves exact event totals with a one-cycle delay and passes 16 concurrent
 component checks. Its synthesis setup screen reports +8.170 ps core and
-+256.364 ps I/O; a new route must establish the actual physical result.
++256.364 ps I/O. Its completed route still fails 1 GHz setup by 2.460 ps on
+one core path; hold is +27.297 ps, I/O setup is +68.84 ps, and DRC/antenna
+checks pass. The remaining worst path is an admission partial product, rather
+than the diagnostic output. This frozen component predates execution-fault input
+changes, so it cannot qualify the latest component or the integrated GPU.
 
 The [execution-failure path](performance/mobile-h1-execution-faults-2026-10-17.json)
 now fails the resident pass on accepted fragment traps, unsuccessful task
@@ -352,11 +356,40 @@ snapshots the command base/count, discards unaccepted records on cancellation,
 and drains offered or issued reads before admitting another binding. Its
 registered sequential address advances only on a read handshake. Eleven checks
 cover both record formats, queued-record discard, bus backpressure and reuse,
-including the three existing decoder regressions. This standalone prerequisite
-is not yet wired into `RenderCore`/`RenderHost`; unified pass submission, command
-allocation bounds, memory-fault attribution and cache-domain publication remain
-required.
+including the three existing decoder regressions. The subsequent command-core
+integration below connects this prerequisite to `RenderCore`. Unified host
+submission, VM/allocation ownership and cache-domain publication remain required.
 With the same eight-record FIFO and 1 GHz synthesis constraints, the optional
 reader reports +503.856 ps core and +456.246 ps I/O setup slack; the existing
 reader reports +285.019 ps and +11.587 ps. These are setup synthesis screens,
 not post-route clocks or whole-frame measurements.
+
+The [bounded command-driven tile core](performance/mobile-h1-command-core-2026-10-17.json)
+adds an optional `RenderCore(persistentAttachments = true)` job interface. A
+`TileCommandJob` snapshots the pass, viewport, draw defaults and command binding;
+the exclusive command limit is checked with 33-bit end arithmetic before fetch.
+Commands start after pass admission, and final store/resolve waits for command
+and render drain. Cancellation, command-memory faults and shader failures stop
+prefetch while retaining outstanding read ownership. The controller latches one
+tagged completion after all traffic drains and keeps it stable under backpressure.
+Command-memory faults use completion status 5; other existing status values stay
+unchanged.
+
+Five controller checks and a sixteen-scenario command-driven rendering check
+cover invalid/overflowing bounds, the exact 4 GiB boundary, empty jobs, descriptor
+mutation, early and in-flight cancellation, command/store faults, final samples,
+completion stability, default blending, per-record overrides and healthy reuse.
+All resolved draw defaults are materialized from the job snapshot for records
+without an override. Seven existing `RenderCore` regressions also pass in the
+same thirteen-check cohort, including actual CU-backed shader rendering. The new job interface is
+still separate from `RenderHost`/unified AXI submission; shared-system CU/VM
+integration, mixed clear/draw host commands and dependency publication remain
+required. Controller and fixed-function core synthesis screens are recorded
+separately; neither is a full-GPU physical or 720p frame-rate qualification.
+The controller passes its 1 GHz synthesis setup screen (+462.011 ps core,
++413.436 ps I/O). The larger fixed-function core screen is rejected because
+the `syn` engine omitted division operators; no renderer frequency follows
+from that partial netlist. A supported Yosys mapping run is tracked separately.
+The [mapping audit](performance/mobile-h1-mapping-audit-2026-10-18.json) records
+the prior screens; the qualifier now rejects omitted operators and missing
+mapping evidence, with 24 Python checks covering mapping and timing gates.

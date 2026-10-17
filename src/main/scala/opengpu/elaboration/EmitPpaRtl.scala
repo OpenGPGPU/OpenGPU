@@ -48,6 +48,16 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "tile-command-controller" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TileCommandPassController, stageArgs, firtoolArgs)
+      case "persistent-render-core" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.RenderCore(opengpu.graphics.GraphicsConfig(
+            screenWidth = 1280, screenHeight = 720, tileSize = 16, tileAttachments = true),
+            persistentAttachments = true,
+            tileStoreCredits = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
+            useTileSramBlackBoxes = true), stageArgs, firtoolArgs)
       case "command-buffer" | "cancellable-command-buffer" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.CommandBufferStage(opengpu.graphics.GraphicsConfig(),
