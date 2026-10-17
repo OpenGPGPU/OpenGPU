@@ -737,3 +737,26 @@ The scissor revision's physical run is separate. The fixed Linux DRM smoke
 also failed a compute-fence timeout; this checkpoint does not claim a passing
 desktop integration. Arithmetic/timing improvements and that investigation
 continue separately. All original H0–H8 requirements remain in force.
+
+## Exact wide arithmetic components
+
+[The isolated arithmetic record](performance/mobile-exact-prefix-arithmetic-2026-10-18.json)
+qualifies reusable block-prefix addition and carry-save three-term summation.
+They preserve full unsigned results and exact signed modular results without
+approximation. Twenty-two numeric checks cover exhaustive small widths,
+partial carry groups, long carries and wider boundary/randomized inputs.
+
+Equal registered-endpoint fixtures produce these routed results at 1 GHz,
+ASAP7 TC/SLVT, 25% I/O delay and 25% utilization:
+
+| Fixture | Implementation | Area, tool units | Sequential cells | Setup, ps | Hold, ps | DRC errors |
+|---|---|---:|---:|---:|---:|---:|
+| Two 64-bit terms plus carry-in | Native | 169.245 | 194 | +209.820 | +49.3737 | 0 |
+| Two 64-bit terms plus carry-in | Block prefix | 146.325 | 194 | +470.042 | +41.1603 | 0 |
+| Three 64-bit terms | Native | 228.337 | 258 | +0.802358 | +44.3334 | 0 |
+| Three 64-bit terms | Carry save plus block prefix | 204.091 | 258 | +185.004 | +44.0361 | 0 |
+
+All four fixtures pass mapping and the complete routed gate. These results
+justify evaluating the primitives in wider raster datapaths. They do not
+qualify an integrated rasterizer, renderer, CU or whole-GPU clock; integration
+requires separate numeric, ordering, throughput and physical evidence.

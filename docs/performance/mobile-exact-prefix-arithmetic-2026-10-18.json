@@ -1,0 +1,371 @@
+{
+  "scope": "Isolated exact integer arithmetic qualification. Does not qualify the rasterizer, renderer, CUs or whole GPU clock, throughput or power.",
+  "reference_checkpoint": "6962573",
+  "source_sha256": {
+    "src/main/scala/opengpu/util/BlockPrefixAdder.scala": "9c836beef941d235c5ff0b57d36304a0ea34db284ccf6682fd2d96a2b0e03b61",
+    "src/main/scala/opengpu/elaboration/EmitWideAdderExperiment.scala": "71935fb9f9242d03265f231413f4ffe0f9bde9e4356ab3d4711e8d5f7d96f78c",
+    "src/test/scala/opengpu/util/BlockPrefixAdderSpec.scala": "75f17796fe01767128cb819be24f15d16d34165f95cc065982acdcf89431e412",
+    "src/main/scala/opengpu/util/CarrySavePrefixSum.scala": "bbe0a512fc8f05af78ce75f7040a50069d83b43385432ec50ce9b6a81e1bc2d4",
+    "src/main/scala/opengpu/elaboration/EmitWideSumExperiment.scala": "6f4a931b677fbe6e750b73a0a58c7c79c928c647761eebb92e6a4d182da4bd1c",
+    "src/test/scala/opengpu/util/CarrySavePrefixSumSpec.scala": "4f51e427d7640fab62aa214383c4674f842c8fb5a08ee9c10c292b426f0cc841"
+  },
+  "contract": {
+    "two_term": "Unsigned width-bit operands plus carry-in; full width+1 result. Four-bit local groups with parallel carry prefixes.",
+    "three_term": "Unsigned width-bit operands; full width+2 result. Carry-save reduction followed by one block-prefix carry propagation. Low-width truncation preserves exact signed modular sums.",
+    "latency": "Combinational primitives; timing fixtures add identical input/output registers for each comparison. No arithmetic approximation."
+  },
+  "functional": {
+    "distinct_checks": 22,
+    "results": [
+      {
+        "component": "adder",
+        "checks": 14,
+        "log": {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/adder_numeric_checks.log",
+          "sha256": "110877f1d00c78a2451caad16541e1c21864ee173987a56eb52ab34a8ed9abf7"
+        },
+        "metadata": {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/adder_experiment.json",
+          "sha256": "0544996f02072584677dcd2b87d25f6ebe8ae256ab45b477d9c778b09a952c8d"
+        }
+      },
+      {
+        "component": "sum",
+        "checks": 8,
+        "log": {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/sum_numeric_checks.log",
+          "sha256": "8049a9587cc6fbfbaa2303c54247de2282d778b2a4e0b427b1bc741c46e8ca7b"
+        },
+        "metadata": {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/sum_experiment.json",
+          "sha256": "a86a48982ebeedeb98279d372fcf5cbfac81669efaeb66f55b46d95132062324"
+        }
+      }
+    ],
+    "scope": "Exhaustive small widths, long carry chains, partial groups, overflow bits and randomized/boundary inputs through67-bit two-term and66-bit three-term sums."
+  },
+  "physical": {
+    "results": [
+      {
+        "component": "adder",
+        "variant": "native",
+        "artifact": "generated/mobile-h1/physical-adder-native-route",
+        "gate": {
+          "passed": true,
+          "checks": {
+            "setup_worst_slack_ps": true,
+            "hold_worst_slack_ps": true,
+            "setup_violation_count": true,
+            "hold_violation_count": true,
+            "route_drc_errors": true,
+            "antenna_violating_nets": true,
+            "antenna_violating_pins": true,
+            "placement_violations": true,
+            "flow_errors": true,
+            "flow_completed": true,
+            "tool_verdict": true
+          },
+          "missing_metrics": [],
+          "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+          "mapping": {
+            "passed": true,
+            "mapping_report_present": true,
+            "skipped_instance_types": [],
+            "skipped_instance_count": 0,
+            "skipped_instances_by_type": {},
+            "unresolved_diagnostics": [],
+            "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+            "log": "generated/mobile-h1/physical-adder-native-route/flow/orfs-work/logs/base/1_synth.log",
+            "log_sha256": "bd686806f19901f5343c43d2f3f4de6bcab5bc2523ed8a6eba0a34529034f6d6"
+          }
+        },
+        "qor": {
+          "instance_area": 169.245,
+          "sequential_cell_count": 194,
+          "setup_worst_slack_ps": 209.82,
+          "hold_worst_slack_ps": 49.3737,
+          "route_drc_errors": 0,
+          "setup_violation_count": 0,
+          "hold_violation_count": 0,
+          "antenna_violating_nets": 0,
+          "antenna_violating_pins": 0
+        },
+        "parameters": {
+          "clock_port": "clock",
+          "clock_port_auto": false,
+          "clock_period": 1000.0,
+          "core_utilization": 25,
+          "place_density": 0.6,
+          "corner": "TC",
+          "cell_vt": "SLVT",
+          "timing_effort": "closure",
+          "synthesis_engine": "syn",
+          "sv_frontend": "native",
+          "enable_retiming": false,
+          "swap_arithmetic_operators": false,
+          "generate_gds": false,
+          "max_fanout": null,
+          "high_fanout_nets": null,
+          "high_fanout_max": 8,
+          "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+          "setup_slack_margin": 0.0,
+          "abc_clock_period_ps": null,
+          "io_delay_percent": 0.25,
+          "io_false_path_ports": null,
+          "post_floorplan_tcl": null,
+          "macros": []
+        },
+        "emitted_sha256": {
+          "WideAdderTiming.sv": "4a18760e77a124289f299d75dd44e650ed97fc8d9ff53e6269cb6413a2f849fb"
+        },
+        "hashes": {
+          "manifest.json": "b3cd58c1899052fd54cae4c507e5ca4344b834c46561f79ed7ba28a7236685f7",
+          "result.json": "bf8eb37fda28efb3eaab2742feca57771d1c813524d09ff623d7f7dc41deac15",
+          "qualification.json": "7d043ba9fb76e8aedbf24160aa150134b84fc77b7bcf397b9b8c54525457d00d"
+        }
+      },
+      {
+        "component": "adder",
+        "variant": "prefix",
+        "artifact": "generated/mobile-h1/physical-adder-prefix-route",
+        "gate": {
+          "passed": true,
+          "checks": {
+            "setup_worst_slack_ps": true,
+            "hold_worst_slack_ps": true,
+            "setup_violation_count": true,
+            "hold_violation_count": true,
+            "route_drc_errors": true,
+            "antenna_violating_nets": true,
+            "antenna_violating_pins": true,
+            "placement_violations": true,
+            "flow_errors": true,
+            "flow_completed": true,
+            "tool_verdict": true
+          },
+          "missing_metrics": [],
+          "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+          "mapping": {
+            "passed": true,
+            "mapping_report_present": true,
+            "skipped_instance_types": [],
+            "skipped_instance_count": 0,
+            "skipped_instances_by_type": {},
+            "unresolved_diagnostics": [],
+            "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+            "log": "generated/mobile-h1/physical-adder-prefix-route/flow/orfs-work/logs/base/1_synth.log",
+            "log_sha256": "56b2dc3c3393d4605004b57c29bfd472b7f1933c54026bf50c13e8ad2eb13617"
+          }
+        },
+        "qor": {
+          "instance_area": 146.325,
+          "sequential_cell_count": 194,
+          "setup_worst_slack_ps": 470.042,
+          "hold_worst_slack_ps": 41.1603,
+          "route_drc_errors": 0,
+          "setup_violation_count": 0,
+          "hold_violation_count": 0,
+          "antenna_violating_nets": 0,
+          "antenna_violating_pins": 0
+        },
+        "parameters": {
+          "clock_port": "clock",
+          "clock_port_auto": false,
+          "clock_period": 1000.0,
+          "core_utilization": 25,
+          "place_density": 0.6,
+          "corner": "TC",
+          "cell_vt": "SLVT",
+          "timing_effort": "closure",
+          "synthesis_engine": "syn",
+          "sv_frontend": "native",
+          "enable_retiming": false,
+          "swap_arithmetic_operators": false,
+          "generate_gds": false,
+          "max_fanout": null,
+          "high_fanout_nets": null,
+          "high_fanout_max": 8,
+          "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+          "setup_slack_margin": 0.0,
+          "abc_clock_period_ps": null,
+          "io_delay_percent": 0.25,
+          "io_false_path_ports": null,
+          "post_floorplan_tcl": null,
+          "macros": []
+        },
+        "emitted_sha256": {
+          "BlockPrefixAdder.sv": "3c2ec11619da9a889e318b59dcf047f3b9917dcb2505b07d3c21f2afe32f8732",
+          "WideAdderTiming.sv": "291d416693cb8aacf3e253ef22de39ee17b04ecb27b4c5e1ef7f2f108494f1c3"
+        },
+        "hashes": {
+          "manifest.json": "a62883924dfb4890954ee733defeec7bc471e0619e2bacb2cdb554baeb815cda",
+          "result.json": "f518dd0e95bd2a8e2664f994b1bbf5e233ebe96e7c3e9f0480f078d319809cc6",
+          "qualification.json": "f235ed50f0d3e70b30466031a9737128857abf8e15f43a629e7f449896e5c0a1"
+        }
+      },
+      {
+        "component": "sum",
+        "variant": "native",
+        "artifact": "generated/mobile-h1/physical-sum-native-route",
+        "gate": {
+          "passed": true,
+          "checks": {
+            "setup_worst_slack_ps": true,
+            "hold_worst_slack_ps": true,
+            "setup_violation_count": true,
+            "hold_violation_count": true,
+            "route_drc_errors": true,
+            "antenna_violating_nets": true,
+            "antenna_violating_pins": true,
+            "placement_violations": true,
+            "flow_errors": true,
+            "flow_completed": true,
+            "tool_verdict": true
+          },
+          "missing_metrics": [],
+          "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+          "mapping": {
+            "passed": true,
+            "mapping_report_present": true,
+            "skipped_instance_types": [],
+            "skipped_instance_count": 0,
+            "skipped_instances_by_type": {},
+            "unresolved_diagnostics": [],
+            "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+            "log": "generated/mobile-h1/physical-sum-native-route/flow/orfs-work/logs/base/1_synth.log",
+            "log_sha256": "32c45921a4c526688181698f4311e7bbc8be797de5c4faf9377439c5eba4d9eb"
+          }
+        },
+        "qor": {
+          "instance_area": 228.337,
+          "sequential_cell_count": 258,
+          "setup_worst_slack_ps": 0.802358,
+          "hold_worst_slack_ps": 44.3334,
+          "route_drc_errors": 0,
+          "setup_violation_count": 0,
+          "hold_violation_count": 0,
+          "antenna_violating_nets": 0,
+          "antenna_violating_pins": 0
+        },
+        "parameters": {
+          "clock_port": "clock",
+          "clock_port_auto": false,
+          "clock_period": 1000.0,
+          "core_utilization": 25,
+          "place_density": 0.6,
+          "corner": "TC",
+          "cell_vt": "SLVT",
+          "timing_effort": "closure",
+          "synthesis_engine": "syn",
+          "sv_frontend": "native",
+          "enable_retiming": false,
+          "swap_arithmetic_operators": false,
+          "generate_gds": false,
+          "max_fanout": null,
+          "high_fanout_nets": null,
+          "high_fanout_max": 8,
+          "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+          "setup_slack_margin": 0.0,
+          "abc_clock_period_ps": null,
+          "io_delay_percent": 0.25,
+          "io_false_path_ports": null,
+          "post_floorplan_tcl": null,
+          "macros": []
+        },
+        "emitted_sha256": {
+          "WideSumTiming.sv": "51278acc7af522711887f64586ed844b632c4f53c5876ab6e89159792468ce59"
+        },
+        "hashes": {
+          "manifest.json": "a31865eabdf5968801939e0195fe73d1b9d31b8b5607ccfd7ea163a5a5b083b4",
+          "result.json": "5a1ddd6870648cf8a3842bd471f427078e872cf4294fe3f52ab0a05c49fdeb72",
+          "qualification.json": "13c97df425016616c7824476c18b8d04455784a1e3a93e1642b0cef4dd5b48a0"
+        }
+      },
+      {
+        "component": "sum",
+        "variant": "prefix",
+        "artifact": "generated/mobile-h1/physical-sum-prefix-route",
+        "gate": {
+          "passed": true,
+          "checks": {
+            "setup_worst_slack_ps": true,
+            "hold_worst_slack_ps": true,
+            "setup_violation_count": true,
+            "hold_violation_count": true,
+            "route_drc_errors": true,
+            "antenna_violating_nets": true,
+            "antenna_violating_pins": true,
+            "placement_violations": true,
+            "flow_errors": true,
+            "flow_completed": true,
+            "tool_verdict": true
+          },
+          "missing_metrics": [],
+          "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+          "mapping": {
+            "passed": true,
+            "mapping_report_present": true,
+            "skipped_instance_types": [],
+            "skipped_instance_count": 0,
+            "skipped_instances_by_type": {},
+            "unresolved_diagnostics": [],
+            "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+            "log": "generated/mobile-h1/physical-sum-prefix-route/flow/orfs-work/logs/base/1_synth.log",
+            "log_sha256": "77f0d0fe7bb5ca288b45fcbae7cbeb74114c4b7fb2e1aa96347d23bbfbe09282"
+          }
+        },
+        "qor": {
+          "instance_area": 204.091,
+          "sequential_cell_count": 258,
+          "setup_worst_slack_ps": 185.004,
+          "hold_worst_slack_ps": 44.0361,
+          "route_drc_errors": 0,
+          "setup_violation_count": 0,
+          "hold_violation_count": 0,
+          "antenna_violating_nets": 0,
+          "antenna_violating_pins": 0
+        },
+        "parameters": {
+          "clock_port": "clock",
+          "clock_port_auto": false,
+          "clock_period": 1000.0,
+          "core_utilization": 25,
+          "place_density": 0.6,
+          "corner": "TC",
+          "cell_vt": "SLVT",
+          "timing_effort": "closure",
+          "synthesis_engine": "syn",
+          "sv_frontend": "native",
+          "enable_retiming": false,
+          "swap_arithmetic_operators": false,
+          "generate_gds": false,
+          "max_fanout": null,
+          "high_fanout_nets": null,
+          "high_fanout_max": 8,
+          "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+          "setup_slack_margin": 0.0,
+          "abc_clock_period_ps": null,
+          "io_delay_percent": 0.25,
+          "io_false_path_ports": null,
+          "post_floorplan_tcl": null,
+          "macros": []
+        },
+        "emitted_sha256": {
+          "BlockPrefixAdder.sv": "226e771deab2daa9532959ccb07cb1e2778543bd67ae2ddbc5379ede068e2958",
+          "CarrySavePrefixSum.sv": "0f5167ff509659f1d867d4d9914e1f8fccb68cc2056b92fceb1ba1a97bdcbc00",
+          "WideSumTiming.sv": "1b24c1b17e3f00038cbf03ffffaafd280de18cadcbc3246672abd9e2d65907d4"
+        },
+        "hashes": {
+          "manifest.json": "e1046a0f0d01fd44e16342ca9b47c411797079c10d9878ad9a7d4c7ddabeb36e",
+          "result.json": "0725aeccc70fd76000320114a2c91de7f9842374942788e38a03f1c8689017cd",
+          "qualification.json": "a999423c8ccf250dceeef6e0a317942ec1ba8ce8e111064ea3b885f94d2f9902"
+        }
+      }
+    ],
+    "scope": "Equal registered endpoints, ASAP7 TC/SLVT,1GHz,25%I/O delay,25%utilization. Standard-cell tool area. No representative switching or energy/frame measurement."
+  },
+  "remaining": [
+    "Integrated rasterizer qualification is separate and remains unfinished.",
+    "These primitives do not close any H0-H8 milestone or establish commercial-GPU parity."
+  ]
+}
