@@ -439,3 +439,24 @@ do not establish full warp occupancy, scaling, bandwidth, FPS or energy. The
 harness pins VM state externally until complete drain; production host/AXI
 submission, context ownership, dependency publication and the remaining H0–H8
 gates are still required.
+
+The [integrated host now enforces a serialized VM boundary](performance/mobile-h1-vm-ownership-2026-10-18.json), advertised as
+`GPU_CAP_PROTECTED_VM_STATE` (bit 29). SATP and TLB-flush writes are rejected
+with AXI `SLVERR` while staged commands, executing graphics/compute/DMA,
+cache invalidations, lower-memory traffic, reset or unconsumed results retain
+ownership. Rejection preserves both SATPs and suppresses the flush pulse.
+The AXI response retains a rejected beat through a backpressured burst result;
+invalid bus addresses cannot drive the register file. This replaces the earlier
+software-only quiescence precondition for the integrated host. Explicit persistent
+job descriptors and host submission, concurrent context scheduling and scoped
+dependency publication remain required.
+
+Twenty-six checks pass on the final VM-guard source, including actual stalled
+descriptor reads, translated compute, software-held completions, buffered and
+unbuffered command clients, twelve-cycle response backpressure and a rejected
+burst whose final beat succeeds. An earlier guard also passes the twenty-three
+existing full-system regression checks; that run predates the final stricter
+response-presentation check. Kernel-free driver tests pass. The protected MMIO
+control block passes its standalone 1 GHz synthesis/mapping screen at +434.332 ps
+core and +306.617 ps I/O; this excludes system quiescence aggregation, the AXI
+adapter and post-route timing.

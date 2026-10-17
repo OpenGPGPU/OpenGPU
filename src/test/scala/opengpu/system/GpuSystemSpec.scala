@@ -363,11 +363,12 @@ class GpuSystemSpec extends AnyFlatSpec {
     }
   }
 
-  it should "route graphics-host line traffic through the shared L2" in {
+  it should "route graphics-host line traffic through the shared L2 and retain VM ownership through response backpressure" in {
     val config = GpuConfig(lanes = 4, warps = 2, l2Sets = 8, l2Ways = 2)
     simulate(new GpuSystem(config, numComputeUnits = 2)) { dut =>
       initialize(dut, 2)
       val line = BigInt("0123456789abcdef", 16)
+      dut.io.graphicsHostResponse.ready.poke(false.B)
 
       dut.io.graphicsHostRequest.bits.address.poke(0x5000.U)
       dut.io.graphicsHostRequest.bits.writeData.poke(0.U)
@@ -378,6 +379,7 @@ class GpuSystemSpec extends AnyFlatSpec {
       dut.io.graphicsHostRequest.bits.cacheResident.poke(false.B)
       dut.io.graphicsHostRequest.bits.transactionId.poke(5.U)
       dut.io.graphicsHostRequest.valid.poke(true.B)
+      dut.io.vmContextIdle.expect(false.B)
       dut.clock.step()
       dut.io.graphicsHostRequest.valid.poke(false.B)
 
@@ -406,6 +408,18 @@ class GpuSystemSpec extends AnyFlatSpec {
       dut.io.graphicsHostResponse.bits.transactionId.expect(5.U)
       dut.io.graphicsHostResponse.bits.readData.expect(line.U)
       dut.io.graphicsHostResponse.bits.fault.expect(false.B)
+      for (_ <- 0 until 12) {
+        dut.io.vmContextIdle.expect(false.B)
+        dut.io.graphicsHostResponse.valid.expect(true.B)
+        dut.io.graphicsHostResponse.bits.readData.expect(line.U)
+        dut.clock.step()
+      }
+      dut.io.graphicsHostResponse.ready.poke(true.B); dut.clock.step()
+      cycles = 0
+      while (!dut.io.vmContextIdle.peek().litToBoolean && cycles < 30) {
+        dut.clock.step(); cycles += 1
+      }
+      dut.io.vmContextIdle.expect(true.B)
     }
   }
 

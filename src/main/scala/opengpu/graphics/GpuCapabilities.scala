@@ -54,6 +54,8 @@ object GpuCapabilities {
   val RenderExtents = 26
   val FragmentInputUsage = 27
   val FragmentOutputUsage = 28
+  /** Unsafe SATP/flush writes fail with AXI SLVERR until every owner retires. */
+  val ProtectedVmState = 29
 }
 
 /** Byte fields of GpuCommandMmioRegs.SHADER_CONFIG and the DRM query. */

@@ -209,7 +209,7 @@ class GpuHostSystemAxi(
       textureFaultReporting = true,
       computeScalarFpu = enableFpuBackend && gpuConfig.enableFpu,
       graphicsScalarFpu = enableFpuBackend && shaderConfig.enableFpu,
-      sharedShader = sharedShader))
+      sharedShader = sharedShader, protectVmState = true))
     val system = Module(new GpuSystem(
       gpuConfig,
       numComputeUnits = numComputeUnits,
@@ -259,6 +259,7 @@ class GpuHostSystemAxi(
     system.io.gpuCommand <> host.io.gpuCommand.get
     host.io.gpuCompletion.get <> system.io.gpuCompletion
     system.io.graphicsDrained := host.io.graphicsDrained
+    host.io.vmContextIdle.get := system.io.vmContextIdle
     system.io.commandResetActive := host.io.commandResetActive.get
     host.io.commandResetDone.get := system.io.commandResetDone
 

@@ -221,6 +221,11 @@ typedef int32_t s32;
 #define GPU_CAP_RENDER_EXTENTS (1u << 26)
 #define GPU_CAP_FRAGMENT_INPUT_USAGE (1u << 27)
 #define GPU_CAP_FRAGMENT_OUTPUT_USAGE (1u << 28)
+/* SATP/TLB_FLUSH writes return AXI SLVERR and leave state unchanged while
+ * any staged/executing command, memory transaction, cache invalidation or
+ * unconsumed completion owns the current VM. POP results and drain before
+ * retrying; this does not provide CPU-cache coherence or per-job contexts. */
+#define GPU_CAP_PROTECTED_VM_STATE (1u << 29)
 /* Trusted kernel metadata in raw draw word32; never accepted from userspace. */
 #define GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT 25u
 #define GPU_DRAW_FRAGMENT_OUTPUT_SKIP_MASK (0xfu << GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT)

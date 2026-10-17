@@ -141,6 +141,16 @@ offsets still require a coordinated ABI migration.
 
 ## Translation and ownership
 
+`CAPABILITIES[29]` (`GPU_CAP_PROTECTED_VM_STATE`) advertises hardware enforcement
+of the shared VM boundary. `GpuHostSystemAxi` enables it. Writes to either SATP
+or `UCMD_TLB_FLUSH` return AXI `SLVERR` and leave the VM state unchanged while
+commands are staged or executing, memory or cache invalidations are pending,
+reset is active, or a completion awaits software `POP`. Retire results and drain
+work before retrying. An error on any beat is retained through the burst's
+write response. This boundary also covers descriptor fetches and legacy host
+DMA engines. Context switching remains serialized across the shared CUs;
+CPU-cache maintenance and dependency publication remain software obligations.
+
 `satp` changes require quiescence. Distinct ASIDs preserve CU and graphics TLB
 entries on a plain VM switch. Both the CU TLBs and the graphics word clients
 implement the same scoped invalidation: a full flush, an ASID-scoped or a
@@ -306,7 +316,8 @@ implies a job ring. Unified command ID owns completion identification.
 | 10 | RTL stencil func 2:0, fail op 5:3, depth-fail op 8:6, depth-pass op 11:9 |
 | 11 | RTL stencil reference 7:0, read mask 15:8, write mask 23:16 |
 | 12 | RTL blend config, same layout as draw word 35 |
-| 13-15 | reserved, zero |
+| 13 | color format in bits 2:0, texture format in bits 6:4 |
+| 14-15 | render width and height; zero selects the snapshotted viewport |
 
 ## Linux and display
 

@@ -107,6 +107,8 @@ class RenderHostRegRequest extends Bundle {
   * the request channel's `ready`), so the response channel only carries reads. */
 class RenderHostRegResponse extends Bundle {
   val data = UInt(32.W)
+  /** Combinational disposition of the current request. The AXI adapter also
+    * samples this on accepted writes; response.valid qualifies read data. */
   val ok = Bool()
 }
 
@@ -126,7 +128,8 @@ class RenderHost(
   commandIdWidth: Int = 8,
   computeScalarFpu: Boolean = false,
   graphicsScalarFpu: Boolean = true,
-  sharedShader: Option[SharedCuShaderConfig] = None
+  sharedShader: Option[SharedCuShaderConfig] = None,
+  protectedVmState: Boolean = false
 ) extends Module {
   override def desiredName: String = "RenderHost"
   private val maxSampleMode = log2Ceil(config.maxSampleCount)
@@ -410,6 +413,7 @@ class RenderHost(
       (if (unifiedCommands) (1 << GpuCapabilities.RenderExtents) else 0) |
       (if (unifiedCommands && fragCore) (1 << GpuCapabilities.FragmentInputUsage) else 0) |
       (if (unifiedCommands && fragCore) (1 << GpuCapabilities.FragmentOutputUsage) else 0) |
+      (if (protectedVmState) (1 << GpuCapabilities.ProtectedVmState) else 0) |
       (1 << GpuCapabilities.ClearEngine) |
       (1 << GpuCapabilities.BlitEngine) |
       (1 << GpuCapabilities.StridedEngine) |

@@ -80,7 +80,8 @@ class GpuCommandMmio(
   commandIdWidth: Int = 8,
   queueDepth: Int = 4,
   shaderComputeUnits: Int = 1,
-  shaderKernargBanks: Int = 2
+  shaderKernargBanks: Int = 2,
+  protectVmState: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 8)
   require(queueDepth > 0)
@@ -104,6 +105,9 @@ class GpuCommandMmio(
     /** Single-cycle pulse from the system: every in-flight command and memory
       * transaction has drained and the command-path state has been reset. */
     val resetDone = Input(Bool())
+    /** Every external owner/translation/memory client has retired. Local
+      * staged commands and the software completion slot are checked here. */
+    val vmContextIdle = if (protectVmState) Some(Input(Bool())) else None
     /** Current Sv32 page-table base/ASID for the vector and instruction MMUs. */
     val vectorSatp = Output(UInt(32.W))
     val instructionSatp = Output(UInt(32.W))
@@ -203,6 +207,13 @@ class GpuCommandMmio(
   private val popCompletion = wFire &&
     io.reg.req.bits.addr === GpuCommandMmioRegs.COMPLETION_POP.U &&
     io.reg.req.bits.data(0)
+  private val vmWriteAllowed = io.vmContextIdle.getOrElse(true.B) &&
+    (if (protectVmState) queue.io.count === 0.U && !completionValid &&
+      !io.completion.valid && !resetActive else true.B)
+  private val vmMutation = io.reg.req.bits.isWrite && (
+    io.reg.req.bits.addr === GpuCommandMmioRegs.VECTOR_SATP.U ||
+    io.reg.req.bits.addr === GpuCommandMmioRegs.INSTRUCTION_SATP.U ||
+    io.reg.req.bits.addr === GpuCommandMmioRegs.TLB_FLUSH.U)
   // Completions arriving mid-reset belong to the aborted stream; consume and
   // discard them so the post-reset slot starts empty.
   io.completion.ready := resetActive || !completionValid || popCompletion
@@ -267,19 +278,23 @@ class GpuCommandMmio(
         sampleMode := io.reg.req.bits.data
       }
       is(GpuCommandMmioRegs.VECTOR_SATP.U) {
-        vectorSatp := merge(vectorSatp, io.reg.req.bits.data,
-                            io.reg.req.bits.strb)
+        when(vmWriteAllowed) {
+          vectorSatp := merge(vectorSatp, io.reg.req.bits.data,
+                              io.reg.req.bits.strb)
+        }
       }
       is(GpuCommandMmioRegs.INSTRUCTION_SATP.U) {
-        instructionSatp := merge(instructionSatp, io.reg.req.bits.data,
-                                 io.reg.req.bits.strb)
+        when(vmWriteAllowed) {
+          instructionSatp := merge(instructionSatp, io.reg.req.bits.data,
+                                   io.reg.req.bits.strb)
+        }
       }
       is(GpuCommandMmioRegs.TLB_FLUSH.U) {
         val data = io.reg.req.bits.data
         val full = data(0)
         val asidValid = data(1) && !full
         val vpnValid = data(2) && !full
-        when(full || asidValid || vpnValid) {
+        when(vmWriteAllowed && (full || asidValid || vpnValid)) {
           tlbFlushValid := true.B
           tlbFlushRequest.virtualPageNumberValid := vpnValid
           tlbFlushRequest.virtualPageNumber :=
@@ -339,5 +354,5 @@ class GpuCommandMmio(
   io.reg.resp.bits.data := readData
   io.reg.resp.bits.ok := io.reg.req.bits.addr >= GpuCommandMmioRegs.COMMAND_ID.U &&
     io.reg.req.bits.addr < GpuCommandMmioRegs.END.U &&
-    io.reg.req.bits.addr(1, 0) === 0.U
+    io.reg.req.bits.addr(1, 0) === 0.U && (!vmMutation || vmWriteAllowed)
 }

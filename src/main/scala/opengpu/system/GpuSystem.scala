@@ -195,6 +195,9 @@ class GpuSystem(
     val graphicsDrained = Input(Bool())
     val commandResetActive = Input(Bool())
     val commandResetDone = Output(Bool())
+    /** Quiescent boundary for shared SATP/TLB state, including queued work,
+      * cache invalidations and lower-memory ownership. */
+    val vmContextIdle = Output(Bool())
     val clearPerformanceCounters = Input(Bool())
     val performance = Output(new GpuPerformanceCounters)
   })
@@ -432,15 +435,28 @@ class GpuSystem(
   commandRouter.io.blockDispatch := false.B
   commandRouter.io.pathReset := false.B
   commandProcessor.io.pathReset := false.B
+  private val contextDrained = io.graphicsDrained && !copyEngine.io.busy && !fillEngine.io.busy &&
+    !stridedCopyEngine.io.busy && !resolveEngine.io.busy &&
+    !resolveActive && !resolveDonePending &&
+    !commandProcessor.io.busy && !dispatcher.io.busy.orR && graphicsCacheDrained &&
+    !dispatcher.io.graphicsCompletion.valid &&
+    l2.io.drained && !commandRouter.io.completion.valid
+  io.vmContextIdle := contextDrained && !commandRouter.io.busy &&
+    !io.command.valid && !io.gpuCommand.valid && !io.copyDescriptor.valid &&
+    !io.fillDescriptor.valid && !io.stridedCopyDescriptor.valid &&
+    !io.graphicsHostRequest.valid && !io.graphicsShaderRequest.valid &&
+    !io.graphicsShaderAtomicRequest.valid && !io.commandResetActive &&
+    // L2.drained is a memory-visibility fence; response presentation can
+    // outlive it. A VM boundary must also retire those client-owned results.
+    !io.graphicsHostResponse.valid && !io.graphicsShaderResponse.valid &&
+    !io.graphicsShaderAtomicResponse.valid && !io.commandCompletion.valid &&
+    !io.copyCompletion.valid && !io.fillCompletion.valid &&
+    !io.stridedCopyCompletion.valid &&
+    !io.graphicsKernels.map(p => p.completion.valid || p.trap.valid).getOrElse(false.B)
   if (enableUnifiedCommands) {
     object ResetState extends ChiselEnum { val idle, draining, resetting = Value }
     val resetState = RegInit(ResetState.idle)
-    val quiesced = io.graphicsDrained && !copyEngine.io.busy && !fillEngine.io.busy &&
-      !stridedCopyEngine.io.busy && !resolveEngine.io.busy &&
-      !resolveActive && !resolveDonePending &&
-      !commandProcessor.io.busy && !dispatcher.io.busy.orR && graphicsCacheDrained &&
-      !dispatcher.io.graphicsCompletion.valid &&
-      l2.io.drained && !commandRouter.io.completion.valid
+    val quiesced = contextDrained
     // Held across the resetting cycle too: otherwise a queue flush and a
     // dispatch fire on the same edge and launch the flushed command.
     commandRouter.io.blockDispatch := resetState =/= ResetState.idle

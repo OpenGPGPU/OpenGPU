@@ -55,8 +55,10 @@ class GpuHostAxi(
   textureFaultReporting: Boolean = false,
   computeScalarFpu: Boolean = false,
   graphicsScalarFpu: Boolean = true,
-  sharedShader: Option[SharedCuShaderConfig] = None
+  sharedShader: Option[SharedCuShaderConfig] = None,
+  protectVmState: Boolean = false
 ) extends Module {
+  require(!protectVmState || unifiedCommandMmio)
   override def desiredName: String = "GpuHostAxi"
 
   val io = IO(new Bundle {
@@ -123,6 +125,7 @@ class GpuHostAxi(
     val instructionSatp = Output(UInt(32.W))
     val tlbFlush = Output(Valid(new VectorTlbFlush(gpuConfig)))
     val textureFault = if (textureFaultReporting) Some(Input(Bool())) else None
+    val vmContextIdle = if (protectVmState) Some(Input(Bool())) else None
 
     // Renderer shared-memory ports (command buffer + framebuffer words, and the
     // core-backed shader kernel's line/coherence side ports) pass straight
@@ -159,7 +162,8 @@ class GpuHostAxi(
       commandIdWidth = commandIdWidth,
       computeScalarFpu = computeScalarFpu,
       graphicsScalarFpu = graphicsScalarFpu,
-      sharedShader = sharedShader))
+      sharedShader = sharedShader,
+      protectedVmState = protectVmState))
     sharedShader.foreach(_ => host.io.shared.get <> io.shared.get)
     host.io.textureFault.foreach(_ := io.textureFault.get)
     io.commandReadsIdle := host.io.commandReadsIdle
@@ -169,7 +173,8 @@ class GpuHostAxi(
       Some(Module(new GpuCommandMmio(
         gpuConfig, commandIdWidth, gpuConfig.commandQueueDepth,
         shaderComputeUnits = sharedShader.map(_.numComputeUnits).getOrElse(1),
-        shaderKernargBanks = sharedShader.map(_.fragmentBanks).getOrElse(2))))
+        shaderKernargBanks = sharedShader.map(_.fragmentBanks).getOrElse(2),
+        protectVmState = protectVmState)))
     } else None
 
     // Command distribution lives here, next to the graphics engine: a render
@@ -215,6 +220,7 @@ class GpuHostAxi(
 
       io.commandResetActive.get := bridge.io.resetActive
       bridge.io.resetDone := io.commandResetDone.get
+      bridge.io.vmContextIdle.foreach(_ := io.vmContextIdle.get && host.io.drained)
     }
     io.vectorSatp := unified.map(_.io.vectorSatp).getOrElse(0.U)
     io.instructionSatp := unified.map(_.io.instructionSatp).getOrElse(0.U)
@@ -267,6 +273,7 @@ class GpuHostAxi(
     val burstReg = RegInit(0.U(2.W))
     val beat = RegInit(0.U(8.W))
     val bPending = RegInit(false.B)
+    val writeError = RegInit(false.B)
 
     // INCR burst addressing: word-at-a-time, byte increment = 1<<sizeReg
     // (4 bytes for a 32-bit device, matching awsize/arsize = 2).  WRAP/FIXED
@@ -297,13 +304,13 @@ class GpuHostAxi(
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
           beatAddr < GpuCommandMmioRegs.END.U)
-    reg.req.valid := busRegValid && !targetUnified
+    reg.req.valid := busRegValid && beatOk && !targetUnified
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)
     reg.req.bits.data := io.s_axi_wdata
     reg.req.bits.strb := io.s_axi_wstrb
     unified.foreach { bridge =>
-      bridge.io.reg.req.valid := busRegValid && targetUnified
+      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified
       bridge.io.reg.req.bits.isWrite := writeActive
       bridge.io.reg.req.bits.addr := beatAddr(9, 0)
       bridge.io.reg.req.bits.data := io.s_axi_wdata
@@ -353,9 +360,14 @@ class GpuHostAxi(
       burstReg := io.s_axi_awburst
       beat := 0.U
       bPending := false.B
+      writeError := false.B
     }
     io.s_axi_wready := writeBeat
     when(wBeatFire) {
+      val registerOk = unified.map(bridge =>
+        Mux(targetUnified, bridge.io.reg.resp.bits.ok, reg.resp.bits.ok))
+        .getOrElse(reg.resp.bits.ok)
+      when(!beatOk || !registerOk) { writeError := true.B }
       when(io.s_axi_wlast) {
         bPending := true.B
       }.otherwise {
@@ -364,7 +376,7 @@ class GpuHostAxi(
     }
 
     io.s_axi_bvalid := bPending
-    io.s_axi_bresp := Mux(beatOk, 0.U, 2.U)
+    io.s_axi_bresp := Mux(writeError, 2.U, 0.U)
     when(io.s_axi_bvalid && io.s_axi_bready) {
       bPending := false.B
       writeActive := false.B

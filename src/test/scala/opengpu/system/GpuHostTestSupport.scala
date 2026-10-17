@@ -63,7 +63,8 @@ trait GpuHostTestSupport {
   protected def axiWrite(
     dut: GpuHostSystemAxi,
     address: Int,
-    data: Int
+    data: Int,
+    expectedResponse: Int = 0
   ): Unit = {
     dut.io.s_axi_awaddr.poke(address.U)
     dut.io.s_axi_awlen.poke(0.U)
@@ -85,8 +86,10 @@ trait GpuHostTestSupport {
         addressDone = true
       if (!dataDone && dut.io.s_axi_wready.peek().litToBoolean)
         dataDone = true
-      if (dut.io.s_axi_bvalid.peek().litToBoolean)
+      if (dut.io.s_axi_bvalid.peek().litToBoolean) {
+        dut.io.s_axi_bresp.expect(expectedResponse.U)
         responseDone = true
+      }
       dut.io.s_axi_aclk.step()
       if (addressDone) dut.io.s_axi_awvalid.poke(false.B)
       if (dataDone) dut.io.s_axi_wvalid.poke(false.B)

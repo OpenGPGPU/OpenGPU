@@ -48,6 +48,11 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "protected-command-mmio" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.GpuCommandMmio(GpuConfig(), queueDepth = 8,
+            shaderComputeUnits = 4, shaderKernargBanks = 8, protectVmState = true),
+          stageArgs, firtoolArgs)
       case "tile-command-controller" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.TileCommandPassController, stageArgs, firtoolArgs)

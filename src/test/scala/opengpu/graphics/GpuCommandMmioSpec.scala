@@ -9,6 +9,57 @@ import org.scalatest.flatspec.AnyFlatSpec
 class GpuCommandMmioSpec extends AnyFlatSpec {
   behavior of "GpuCommandMmio"
 
+  it should "reject VM mutations until staged, executing, completing and resetting owners retire" in {
+    simulate(new GpuCommandMmio(GpuConfig(lanes = 4, warps = 2), protectVmState = true)) { dut =>
+      dut.io.reg.req.valid.poke(false.B); dut.io.reg.resp.ready.poke(true.B)
+      dut.io.command.ready.poke(false.B); dut.io.completion.valid.poke(false.B)
+      dut.io.completion.bits.poke(0.U.asTypeOf(dut.io.completion.bits))
+      dut.io.resetDone.poke(false.B); dut.io.vmContextIdle.get.poke(false.B)
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      var vector = BigInt(0); var instruction = BigInt(0)
+      def mutation(address: Int, value: BigInt, allowed: Boolean): Unit = {
+        dut.io.reg.req.bits.addr.poke(address.U)
+        dut.io.reg.req.bits.data.poke(value.U); dut.io.reg.req.bits.strb.poke(15.U)
+        dut.io.reg.req.bits.isWrite.poke(true.B); dut.io.reg.req.valid.poke(true.B)
+        dut.io.reg.req.ready.expect(true.B)
+        dut.io.reg.resp.bits.ok.expect(allowed.B)
+        dut.clock.step(); dut.io.reg.req.valid.poke(false.B)
+        if (allowed && address == GpuCommandMmioRegs.VECTOR_SATP) vector = value
+        if (allowed && address == GpuCommandMmioRegs.INSTRUCTION_SATP) instruction = value
+        dut.io.vectorSatp.expect(vector.U); dut.io.instructionSatp.expect(instruction.U)
+        if (address == GpuCommandMmioRegs.TLB_FLUSH) dut.io.tlbFlush.valid.expect(allowed.B)
+      }
+      def rejectAll(): Unit = {
+        mutation(GpuCommandMmioRegs.VECTOR_SATP, 0x80000100L, false)
+        mutation(GpuCommandMmioRegs.INSTRUCTION_SATP, 0x80000200L, false)
+        mutation(GpuCommandMmioRegs.TLB_FLUSH, 1, false)
+      }
+      rejectAll() // External CU, graphics or memory ownership.
+      dut.io.vmContextIdle.get.poke(true.B)
+      mutation(GpuCommandMmioRegs.VECTOR_SATP, 0x80000030L, true)
+      mutation(GpuCommandMmioRegs.INSTRUCTION_SATP, 0x80000040L, true)
+      mutation(GpuCommandMmioRegs.TLB_FLUSH, 1, true)
+      write(dut, GpuCommandMmioRegs.SUBMIT, 1)
+      dut.io.command.valid.expect(true.B)
+      rejectAll() // Staged commands already belong to the old context.
+      dut.io.command.ready.poke(true.B); dut.clock.step()
+      dut.io.vmContextIdle.get.poke(false.B)
+      rejectAll() // Executing command after the staging FIFO empties.
+      dut.io.vmContextIdle.get.poke(true.B)
+      dut.io.completion.valid.poke(true.B)
+      mutation(GpuCommandMmioRegs.VECTOR_SATP, 0x80000300L, false)
+      dut.io.completion.valid.poke(false.B)
+      rejectAll() // Completion arriving on the write cycle, then held for POP.
+      write(dut, GpuCommandMmioRegs.COMPLETION_POP, 1)
+      mutation(GpuCommandMmioRegs.VECTOR_SATP, 0x80000300L, true)
+      write(dut, GpuCommandMmioRegs.RESET, 1)
+      rejectAll()
+      dut.io.resetDone.poke(true.B); dut.clock.step(); dut.io.resetDone.poke(false.B)
+      mutation(GpuCommandMmioRegs.INSTRUCTION_SATP, 0x80000400L, true)
+      mutation(GpuCommandMmioRegs.TLB_FLUSH, 1, true)
+    }
+  }
+
   for ((lanes, warps, banks, cus) <- Seq((4, 2, 2, 1), (4, 2, 8, 4), (16, 8, 8, 4))) {
     it should s"report immutable shader resources lanes=$lanes warps=$warps banks=$banks CUs=$cus" in {
       simulate(new GpuCommandMmio(GpuConfig(lanes = lanes, warps = warps),

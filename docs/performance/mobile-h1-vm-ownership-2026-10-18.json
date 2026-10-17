@@ -1,0 +1,132 @@
+{
+  "scope": "H0/H1 shared VM mutation ownership in the integrated host. No persistent-job descriptor/host ABI, independent simultaneous VM contexts, full-renderer clock or product performance qualification.",
+  "reference_checkpoint": "651896c",
+  "source_sha256": {
+    "driver/gpu_abi.h": "9019b919afb98cbea308bf964f3c50c0a754d6e462b59dcccac00fbd08f64d65",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "6697f60e88c68765c86ed7b9d146b16600c15b3f135ed2e6f433d6b68929fa35",
+    "src/main/scala/opengpu/graphics/GpuCapabilities.scala": "dc34164f6aa7109bec094b4e5b67fdfd5b8bf8e41b25189ba65a8ae1aa1de5f1",
+    "src/main/scala/opengpu/graphics/GpuCommandMmio.scala": "687cd25c864c4031d1fd610c9975bed4b8726211bc451b92ac364b0260c7d8f4",
+    "src/main/scala/opengpu/graphics/RenderHost.scala": "73e17284d1bd72cd2b2a51ba8e2ecf5fe8f212f9472040a4179728d610dfee3c",
+    "src/main/scala/opengpu/system/GpuHostAxi.scala": "39c893dfb7fd5a730ac9c57b3df14ece263fd5d9c45355b56449edf2239cc847",
+    "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "0da8d5b67643c31da6b5c3e3236af4fa6c92e6f82e4646139c3927f9c4332861",
+    "src/main/scala/opengpu/system/GpuSystem.scala": "eaf560c1bbfd1a330bb1134ecc79abdcf51bc99f4b12947af3d82e6921b68ef6",
+    "src/test/scala/opengpu/graphics/GpuAbiLayoutSpec.scala": "1b100a8ec87e205eed31076b97926ccf41a08014f226ee43f08744ba5d39abba",
+    "src/test/scala/opengpu/graphics/GpuCommandMmioSpec.scala": "36fd0d0ae2e7a4cfc10f7a5ab2ea54d96bb92bacecd207afc20a94a1824b043a",
+    "src/test/scala/opengpu/system/GpuHostVmOwnershipSpec.scala": "1072235f9c49ef66cd5bebcaae1a8e774e17bd96f5753de7670b4aa487005e64",
+    "src/test/scala/opengpu/system/GpuHostTestSupport.scala": "852a6696064c392f251c3c235c2bf00ac4e44b0ba716ff4a54b60b94ee0d6b5b",
+    "src/test/scala/opengpu/system/GpuSystemSpec.scala": "55b65f5df43555237e4722ab2e4be46252b42c6dd05064e8796138e8625bbc9b"
+  },
+  "contract": {
+    "enabled_in": "GpuHostSystemAxi; standalone GpuHostAxi/GpuCommandMmio require protectVmState=true and an external quiescence owner.",
+    "discovery": "GPU_CAP_PROTECTED_VM_STATE, bit 29.",
+    "mutations": [
+      "VECTOR_SATP",
+      "INSTRUCTION_SATP",
+      "TLB_FLUSH"
+    ],
+    "blocked_by": [
+      "MMIO staged commands or a completion arriving/awaiting software POP",
+      "external graphics/compute/DMA engines and command queues",
+      "cache invalidation and lower-memory ownership",
+      "client responses and completions held after memory visibility",
+      "command reset"
+    ],
+    "rejection": "Accept the control bus access with AXI SLVERR; preserve roots/ASIDs and emit no flush pulse. Writes do not stall waiting for software retirement.",
+    "burst": "Remember an error from any accepted beat, including when the final beat succeeds; retain BRESP under backpressure.",
+    "addressing": "Invalid global AXI addresses cannot drive the truncated register address or modify shadow state.",
+    "visibility": "A global serialized context boundary; CPU cache maintenance and dependency publication retain their existing software contracts."
+  },
+  "functional": {
+    "logs": {
+      "vm_ownership_final": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/vm_ownership_final.log",
+        "sha256": "6c629230915015aad262b776652be1d2b0a167c0a240a82bfe3da634680be4b7"
+      },
+      "vm_ownership_system": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/vm_ownership_system.log",
+        "sha256": "f3eea070f0c6681817b2f032b9849c1d42907a751a90ec7c4846fca54d607722"
+      },
+      "vm_driver": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/vm_driver.log",
+        "sha256": "34cb087f79cab699ae4dff98b5489a70116b0d6f9847734ea521b8f4bebe09b4"
+      }
+    },
+    "current_source_distinct_checks": 26,
+    "current_source_checks": {
+      "GpuCommandMmioSpec": 9,
+      "GpuAbiLayoutSpec": 11,
+      "GpuHostAxiSpec": 3,
+      "GpuHostVmOwnershipSpec": 2,
+      "GpuSystemSpec_selected_response_boundary": 1
+    },
+    "earlier_system_cohort": {
+      "passed": 25,
+      "normal_system_regressions": 23,
+      "vm_ownership": 2,
+      "scope_note": "Runs the guard before the final stricter client-response presentation check; the final 26-check cohort validates that added check. Do not label the combined cohorts as 49 checks of identical source."
+    },
+    "driver_kernel_free_tests": "python3 scripts/test_driver.py passed, including ABI, validators, VM/ASID/MMU and packed shader/texture reference checks.",
+    "coverage": [
+      "Reject vector/instruction roots and full flush while an external owner is active, a command remains staged, a result arrives or awaits POP, or reset is active.",
+      "Actual integrated stalled descriptor AR remains stable while unsafe writes fail, then a fault result remains intact until POP.",
+      "Four-beat write rejects VM mutations while a final harmless read-only beat succeeds; BRESP remains SLVERR across five stalled cycles.",
+      "Out-of-map 0x410 write cannot alias legacy CMD_BASE at 0x10.",
+      "After retirement, remap VA 0x1000 to PA 0x401000 using Sv32; the new descriptor is fetched physically from the new context.",
+      "A translated cease-only kernel executes at PA 0x403000; active compute and its held result prevent VM changes.",
+      "Both buffered and unbuffered command clients run the integration workload.",
+      "Hold a shared-L2 graphics response for twelve cycles; VM ownership stays busy until response consumption."
+    ]
+  },
+  "synthesis": {
+    "artifact": "generated/mobile-h1/physical-protected-mmio",
+    "module": "GpuCommandMmio",
+    "profile": "queue depth 8, shader discovery 4 CUs/16 lanes/8 warps, eight banks, protection enabled. The external context-idle port is a timing boundary.",
+    "period_ps": 1000,
+    "slacks_ps": [
+      434.332,
+      306.617
+    ],
+    "gate": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        434.332,
+        306.617
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "4740e529b0b539c74972f5b7f770b1a39fface42cef6f7677c244aa100bd3342",
+      "setup_passed": true,
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-protected-mmio/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "8b83843bc42b53a22f00ddbb4afb43ce9e7dd4245d5b1f90f056bbdbb95a77ab"
+      }
+    },
+    "qor": {
+      "setup_worst_slack_ps": 434.332,
+      "core_clock_fmax_mhz": 1767.821
+    },
+    "input_hashes": {
+      "result.json": "cd89d1df20d9023211f3cc9d52a7e24797f2999cc84a27c3e7f3211541c45b34",
+      "manifest.json": "a32ef7ed4e4ba82015c026a5ecb86bca4298a9e8fa3b2b0da7f926968e5b4dba",
+      "qualification.json": "9064b7dc7fe45af62d40222f022a7aa28ec41ac628505b3c5e1d4d90f8e8459f"
+    },
+    "emitted_sha256": {
+      "ram_8x522.sv": "63eef11d7b1ef9f770f2fba35a4557a8f197b53018130eb88e8a609688deba5a",
+      "Queue8_GpuCommand.sv": "6519a31ab08227dfc9da4108996e6f45d2847a437b7668e8ca29fced46a19949",
+      "GpuCommandMmio.sv": "e64fc7e573398e5b6731008cce4aecb6a1a44527c71da18c7826dfe40ae2cc1c"
+    },
+    "scope": "Control-bridge synthesis including I/O and complete mapping. Excludes combined system quiescence logic, AXI adapter and post-route timing."
+  },
+  "remaining": [
+    "Explicit bounded persistent-job descriptors and unified host submission.",
+    "Dependency/cache-domain publication for render-to-texture/DMA and CPU visibility.",
+    "Concurrent context scheduling, general resource descriptors and remaining H0-H8 requirements."
+  ]
+}

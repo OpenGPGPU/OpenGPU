@@ -160,6 +160,7 @@ class GpuAbiLayoutSpec extends AnyFlatSpec {
       "GPU_CAP_UNIFIED_RESET" -> (1L << GpuCapabilities.UnifiedReset),
       "GPU_CAP_PERSISTENT_DEPTH" -> (1L << GpuCapabilities.PersistentDepth),
       "GPU_CAP_UNIFIED_RENDER" -> (1L << GpuCapabilities.UnifiedRender),
+      "GPU_CAP_PROTECTED_VM_STATE" -> (1L << GpuCapabilities.ProtectedVmState),
       "GPU_CAP_HW_VBLANK" -> (1L << GpuCapabilities.HwVblank),
       "GPU_CAP_COMPUTE_SCALAR_FPU" -> (1L << GpuCapabilities.ComputeScalarFpu),
       "GPU_CAP_RUNTIME_SHADER_ABI" -> (1L << GpuCapabilities.RuntimeShaderAbi),
