@@ -667,7 +667,7 @@
     "Format/swizzle/staging controls and current Debian/Mesa desktop, strict trace, scanout and visual checks."
   ],
   "production_RTL_changed": false,
-  "updated_at": 1792222625.812444,
+  "updated_at": 1792224739.568958,
   "all_wide_revision": {
     "sources": {
       "L2PriorityEncoder.scala": {
@@ -918,8 +918,194 @@
       "path": ".artifacts/shared-cu/l2-merge-response-guard/priority-equivalence.json",
       "sha256": "b651a1b4cbece6a63990f226333fd4f2d0f435a580a8d96e7a54da6fb51bebbf"
     },
-    "native_and_full_cache_timing": "running",
+    "native_and_full_cache_timing": "Native9 and strict Mesa64 pass; core+32.528ps,IO-95.239ps. Release remains gated closed.",
     "constraint_changes": false,
-    "task_pipeline_bubbles_added": false
+    "task_pipeline_bubbles_added": false,
+    "native_build": {
+      "path": ".artifacts/shared-cu/l2-merge-response-guard-native/build-state.json",
+      "sha256": "412f6ac20542d5d934b60e9dee7590b6a1c80b3622a0620267862bb0ab518ae6"
+    },
+    "strict_reference": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-merge-response-guard-native/reference-replay-state.json",
+        "sha256": "ff4047ebd4989e27b5b67486e843c5a174bd439e504bd694ec45248575eca05f"
+      },
+      "result": {
+        "calls": 45693,
+        "ticks": 3311169,
+        "commits": 46754789,
+        "holds": 148057406,
+        "dma_reads": 39094,
+        "dma_writes": 468192,
+        "dma_bytes": 6005392,
+        "seconds": 34.140143959,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      }
+    },
+    "incremental_O1": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-merge-response-guard-native/O1-host-state.json",
+        "sha256": "bdd199488bd9f9ab04cc5d2f8e22d70828435ea22502bb55c2770463a06d9eb2"
+      },
+      "summary": {
+        "solid64": {
+          "medians": {
+            "baseline": 0.9795513335,
+            "candidate": 0.9897552295
+          },
+          "time_saved_percent": -1.041690787509908,
+          "ranges": {
+            "baseline": [
+              0.968079417,
+              0.995733
+            ],
+            "candidate": [
+              0.983783167,
+              1.00018525
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "spatial64": {
+          "medians": {
+            "baseline": 1.195681396,
+            "candidate": 1.202360875
+          },
+          "time_saved_percent": -0.5586336813757864,
+          "ranges": {
+            "baseline": [
+              1.191175667,
+              1.197600041
+            ],
+            "candidate": [
+              1.19517775,
+              1.218034666
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "spatial256": {
+          "medians": {
+            "baseline": 18.720366354,
+            "candidate": 18.722965833499998
+          },
+          "time_saved_percent": -0.013885836691662767,
+          "ranges": {
+            "baseline": [
+              18.661587584,
+              18.732889416
+            ],
+            "candidate": [
+              18.68081675,
+              18.777106417
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        }
+      },
+      "scope": "Own O1 instrumented factored guard versus all-three-tree baseline. Large workload flat; no direct selected O2/PGO release gain established."
+    },
+    "full_cache_timing": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-merge-response-guard-native/native-component-timing-state.json",
+        "sha256": "27111c11624dc8a0bd7a0cd524fef96bcd5b2f8931303e0ef3fb9dca433ccf9c"
+      },
+      "qor": {
+        "setup_worst_slack_ps": 32.528,
+        "core_clock_fmax_mhz": 1033.622
+      },
+      "setup_gate": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          32.528,
+          -95.239
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "d33100daaba2e753f7d2b093af1df224b1721d9f31a7e30c317b131345d484e4"
+      },
+      "core_target_met": true,
+      "all_reported_groups_met": false,
+      "IO_startpoint": "slices_2.missEngine.table_0.waiters_2[61]",
+      "IO_endpoint": "io_response_bits_transactionId[9]"
+    }
+  },
+  "response_id_preselection": {
+    "origin": {
+      "recorded_at": 1792223717.275533,
+      "parent": ".artifacts/shared-cu/l2-merge-response-guard",
+      "previous_source_sha256": "7a1dac9d13eab9449f3bd11d7e1d0082b57381805026307fc4750bb051b9065a",
+      "candidate_source_sha256": "d4d2ac1cc5feff06ec207df25bdbed2a15484a92cf24c6ab89bd6b024ef23a49",
+      "old_selection": "  private val responseTransaction = L2PriorityEncoder(selectedResponseWaiters)",
+      "new_selection": "  // Encode each registered waiter set before entry selection. This keeps\n  // response-candidate selection off the wide encoder data path.\n  private val responseTransactions = VecInit(waiters.map(word =>\n    L2PriorityEncoder(word)))\n  private val responseTransaction = responseTransactions(responseEntry)",
+      "scope": "Only distribute the pure combinational priority encoder over the existing entry mux. No register, ready/fire, arbiter priority, ID capacity or task pipeline changes. Target measured waiter-state -> response-ID output path with -95.239ps slack; preserve all timing constraints."
+    },
+    "source": {
+      "path": ".artifacts/shared-cu/l2-response-id-preselect/L2MshrTable.scala",
+      "sha256": "d4d2ac1cc5feff06ec207df25bdbed2a15484a92cf24c6ab89bd6b024ef23a49"
+    },
+    "unit_and_emission": {
+      "path": ".artifacts/shared-cu/l2-response-id-preselect/state.json",
+      "sha256": "1fd38f1b6db4618df701c52e4dc4c4e016bb29efa46e4b4ee6b9042a8b313b83"
+    },
+    "test_count": 40,
+    "suites": 7,
+    "changed_executable_modules": [
+      "L2MshrTable.sv"
+    ],
+    "unchanged_executable_modules": 297,
+    "selection_equivalence": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-response-id-preselect/response-selection-equivalence.json",
+        "sha256": "a60c010aa40191621902b39368f5a51e64849ef32273812054f27e1ebfe2727b"
+      },
+      "method": "Exhaustive selector case split",
+      "selector_cases": 22,
+      "configurations": [
+        {
+          "entries": 2,
+          "capacity": 7
+        },
+        {
+          "entries": 4,
+          "capacity": 7
+        },
+        {
+          "entries": 4,
+          "capacity": 17
+        },
+        {
+          "entries": 4,
+          "capacity": 564
+        },
+        {
+          "entries": 8,
+          "capacity": 17
+        }
+      ],
+      "scope": "At every selector value, actual Chisel-emitted encode(selected-word) equals selected(per-word-encodings) for arbitrary waiter bits. Exhaust every selector encoding at power-of-two entry counts2/4/8, including actual4x564. Empty words included. No traffic or data-value assumptions; no register or pipeline change."
+    },
+    "helper_equivalence": {
+      "path": ".artifacts/shared-cu/l2-response-id-preselect/priority-equivalence.json",
+      "sha256": "6b752ce28eb33cfd28a2e0730159b85f4cccd0ed8d23a7810808c4c56ac91f9d"
+    },
+    "proof_method_transition": {
+      "path": ".artifacts/shared-cu/l2-response-id-preselect/selection-proof-transition.json",
+      "sha256": "1945c211cec2013962ae5aefc1d2c3cfe21b15acbf8bdfc40189923e8e974eec"
+    },
+    "native_and_full_cache_timing": "running",
+    "task_pipeline_changes": false,
+    "clock_and_IO_constraint_changes": false
   }
 }

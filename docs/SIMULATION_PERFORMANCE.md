@@ -89,7 +89,8 @@ All **33 tests** pass, including VLEN1/2/4/8/16/32 coverage. Warm samples are
 accepted every cycle; the unchanged sampler fails that throughput control.
 Only `TextureUnit_1.sv` changes among 298 emitted modules. The fresh four-CU
 scene preserves pixels, depth, layout and canaries but takes **11,929 → 12,044
-cycles**, a **0.96% regression**. The one-CU comparison is still running.
+cycles**, a **0.96% regression**. The one-CU scene improves only **35,137 →
+35,018 cycles (0.34%)**. The original all-scenes-improve screen fails.
 
 Paired native-cone timing reproduces the baseline's **+7.786 ps core /
 +273.148 ps I/O** slack. The candidate misses both budgets at **−8.508 ps /
@@ -175,9 +176,22 @@ equivalence passes at five entry/capacity combinations, including 4×564, with
 arbitrary matches, waiters, IDs and allocation conditions. **40 tests in seven
 suites** pass, including duplicate-request backpressure and a concurrent new
 merge during final-waiter retirement. Only `L2MshrTable.sv` changes relative to
-the three-tree revision. Its full native and unchanged-constraint timing
-qualification are running. Optimized host measurements and actual desktop
-qualification remain required before production promotion.
+the three-tree revision. Its nine native scenes and strict Mesa64 replay pass.
+The full-cache core slack improves to **+32.528 ps**, but the output still
+misses by **95.239 ps**. The large O1 workload remains flat versus its parent;
+there is no optimized release claim.
+
+The remaining critical path starts in an MSHR waiter register and ends at the
+response transaction ID. A further revision encodes each entry's waiter ID
+before selecting the entry, keeping selection off the wide encoder data path.
+It passes the same **40 tests**, fresh twelve-capacity encoder proofs and
+**22 exhaustive selector-case SAT proofs** across five configurations,
+including 4×564. All waiter bits remain arbitrary. Case splitting replaces an
+unrestricted packed-vector proof that expanded to 58 million SAT variables;
+it covers every selector without reducing the theorem. This revision's native
+and unchanged-constraint full-cache timing qualification are running.
+Optimized host measurements and actual desktop qualification remain required
+before production promotion.
 
 See [the remapper screens, exact-ID proofs and timing limits](performance/l2-transaction-remapper-screen-2026-10-17.json).
 

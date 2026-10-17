@@ -63,10 +63,7 @@
     ],
     "unchanged_executable_modules": 297
   },
-  "running_gates": [
-    "Fresh matched1CU/4CU full VS/FS/FPU scenes, same pixel/depth/layout data and canaries.",
-    "Paired byte-for-byte actual native TexSampleUnit cone,1GHz SLVT TC25percentIO, every reported setup group."
-  ],
+  "running_gates": [],
   "remaining_before_promotion": [
     "Actual native task cycles/traffic and balanced own O1/O2 host timings.",
     "Own representative72-profile qualification, formats/controls and current Debian/Mesa/full640 strict trace and scanout."
@@ -181,7 +178,132 @@
       }
     }
   },
-  "matched_scenes_status": "Four-CU scene regresses0.964percent, despite matching pixels/depth/metadata. One-CU comparison still running.",
-  "decision": "Do not promote: current native sampler timing fails and current four-CU scene has no cycle gain. Complete one-CU analysis and use real-workload evidence before revising this approach.",
-  "updated_at": 1792223071.259114
+  "matched_scenes_status": "Complete: pixels/depth/metadata/canaries exact. Four-CU regresses0.964percent; one-CU saves0.339percent. Original all-scenes-improve screen fails.",
+  "decision": "Reject current revision for promotion: fails native sampler timing and regresses the matched four-CU scene. Warm unit throughput alone is insufficient; further refinements require real-workload evidence.",
+  "updated_at": 1792224739.5706408,
+  "matched_scenes": {
+    "evidence": {
+      "path": ".artifacts/shared-cu/prepared-cache-admission/scene-state.json",
+      "sha256": "d257a8f689643d3da01ec3601ccde1f3f1f871b690ce1ce062ac149e10e95a11"
+    },
+    "promising": false,
+    "cases": [
+      {
+        "cus": 4,
+        "variants": {
+          "baseline": {
+            "metrics": {
+              "CUs": "4",
+              "axi_bytes": "64",
+              "side": "64",
+              "alu_loops": "0",
+              "om_inflight": "64",
+              "fragment_batch_limit": "112",
+              "lanes": "16",
+              "warps": "8",
+              "runtime_shader": "true",
+              "cycles": "11929",
+              "active_cu_cycles": "26928",
+              "peak_cus": "4",
+              "texture_extent": "64",
+              "buffer_texture_reads": "true",
+              "texture_words": "3676",
+              "texture_lines": "182"
+            },
+            "files": {
+              "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "2a2c189b800554b1307f416c38f7594da5ef71d537745dd9fc7be96afff45dba",
+              "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "a1896b97a60d3e725140a2691d5062007ce2cb9048000db815efa1258ff18186"
+            }
+          },
+          "candidate": {
+            "metrics": {
+              "CUs": "4",
+              "axi_bytes": "64",
+              "side": "64",
+              "alu_loops": "0",
+              "om_inflight": "64",
+              "fragment_batch_limit": "112",
+              "lanes": "16",
+              "warps": "8",
+              "runtime_shader": "true",
+              "cycles": "12044",
+              "active_cu_cycles": "27267",
+              "peak_cus": "4",
+              "texture_extent": "64",
+              "buffer_texture_reads": "true",
+              "texture_words": "3676",
+              "texture_lines": "179"
+            },
+            "files": {
+              "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "2a2c189b800554b1307f416c38f7594da5ef71d537745dd9fc7be96afff45dba",
+              "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "a1896b97a60d3e725140a2691d5062007ce2cb9048000db815efa1258ff18186"
+            }
+          }
+        },
+        "baseline_cycles": 11929,
+        "candidate_cycles": 12044,
+        "cycle_reduction_percent": -0.9640372202196268,
+        "pixels_depth_metadata_exact": true,
+        "omitted_bytes_preserved": true
+      },
+      {
+        "cus": 1,
+        "variants": {
+          "baseline": {
+            "metrics": {
+              "CUs": "1",
+              "axi_bytes": "64",
+              "side": "64",
+              "alu_loops": "0",
+              "om_inflight": "64",
+              "fragment_batch_limit": "112",
+              "lanes": "16",
+              "warps": "8",
+              "runtime_shader": "true",
+              "cycles": "35137",
+              "active_cu_cycles": "25268",
+              "peak_cus": "1",
+              "texture_extent": "64",
+              "buffer_texture_reads": "true",
+              "texture_words": "3676",
+              "texture_lines": "166"
+            },
+            "files": {
+              "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "2a2c189b800554b1307f416c38f7594da5ef71d537745dd9fc7be96afff45dba",
+              "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "3ba60d844e958e6a9cd7aff01401cba38215c00d9d9b343f6840260ce9fb0cb4"
+            }
+          },
+          "candidate": {
+            "metrics": {
+              "CUs": "1",
+              "axi_bytes": "64",
+              "side": "64",
+              "alu_loops": "0",
+              "om_inflight": "64",
+              "fragment_batch_limit": "112",
+              "lanes": "16",
+              "warps": "8",
+              "runtime_shader": "true",
+              "cycles": "35018",
+              "active_cu_cycles": "25149",
+              "peak_cus": "1",
+              "texture_extent": "64",
+              "buffer_texture_reads": "true",
+              "texture_words": "3676",
+              "texture_lines": "166"
+            },
+            "files": {
+              "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "2a2c189b800554b1307f416c38f7594da5ef71d537745dd9fc7be96afff45dba",
+              "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "3ba60d844e958e6a9cd7aff01401cba38215c00d9d9b343f6840260ce9fb0cb4"
+            }
+          }
+        },
+        "baseline_cycles": 35137,
+        "candidate_cycles": 35018,
+        "cycle_reduction_percent": 0.3386743319008456,
+        "pixels_depth_metadata_exact": true,
+        "omitted_bytes_preserved": true
+      }
+    ]
+  }
 }
