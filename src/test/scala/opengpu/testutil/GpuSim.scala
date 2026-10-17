@@ -32,7 +32,10 @@ import scala.jdk.CollectionConverters._
   * Optional `opengpu.simHierarchy=GpuComputeUnit` compiles repeated modules
   * as hierarchy libraries; its flags and control file enter the cache key.
   * Assertions stay enabled; UNOPTFLAT is suppressed at hierarchical DPI
-  * boundaries. `opengpu.simJobs=N` bounds build parallelism. With caching off,
+  * boundaries. `opengpu.simJobs=N` bounds build parallelism.
+  * `opengpu.simLowMem=1` splits the generated C++ and compiles it at `-O0`,
+  * which keeps g++ inside the RAM left beside the JVM on a 16 GB runner.
+  * With caching off,
   * `opengpu.simWorkspace` can isolate temporary files; requested options still
   * apply. Without these properties, the normal flat cache path is unchanged.
   */
@@ -45,6 +48,7 @@ object GpuSim extends PeekPokeAPI {
   private val hierarchy = hierarchyModules.nonEmpty
   private val buildJobs = sys.props.get("opengpu.simJobs").map(_.toInt)
   require(buildJobs.forall(_ > 0), "simulation build jobs must be positive")
+  private val lowMemBuild = sys.props.get("opengpu.simLowMem").contains("1")
   private val cacheSetting = sys.props.get("opengpu.simCache")
   private val enabled = !cacheSetting.contains("off")
   private val root = Paths.get(sys.props.get("opengpu.simWorkspace").getOrElse(
@@ -59,14 +63,14 @@ object GpuSim extends PeekPokeAPI {
 
   private val slots = new AtomicInteger(0)
 
-  private val backend: Backend = if (enabled || hierarchy || buildJobs.nonEmpty) locateVerilator() match {
+  private val backend: Backend = if (enabled || hierarchy || buildJobs.nonEmpty || lowMemBuild) locateVerilator() match {
     case Some(verilator) =>
       val shim = binDirectory.resolve("verilator")
       Files.createDirectories(binDirectory)
       Files.write(shim, shimScript(verilator, cacheDirectory.toAbsolutePath).getBytes("UTF-8"))
       shim.toFile.setExecutable(true)
       new Backend(shim.toAbsolutePath.toString)
-    case None if hierarchy || buildJobs.nonEmpty =>
+    case None if hierarchy || buildJobs.nonEmpty || lowMemBuild =>
       throw new IllegalStateException("Explicit simulation options require Verilator on PATH")
     case None =>
       Backend.initializeFromProcessEnvironment()
@@ -136,6 +140,7 @@ object GpuSim extends PeekPokeAPI {
             "set -- \"$@\" --hierarchical -Wno-UNOPTFLAT gpu-sim-hierarchy.vlt"
         } else ""}
        |${buildJobs.map(n => "set -- \"$@\" --build-jobs " + n).getOrElse("")}
+       |${if (lowMemBuild) "set -- \"$@\" --output-split 10000 --output-split-cfuncs 200 -CFLAGS -O0" else ""}
        |${if (!enabled) "exec \"$verilator\" \"$@\"" else ""}
        |out=''
        |mdir=''

@@ -176,6 +176,14 @@ jobs:
             free -h
             ;;
         esac
+        # system-rt-32 elaborates one 32-lane CU. -Xms6G commits that heap
+        # for the whole step, so firtool and g++ thrash on the rest until
+        # the OOM killer stops the agent. Grow the heap from 1 GB instead.
+        # The shard also passes simLowMem, which compiles the model at -O0.
+        if [ "${{ matrix.shard }}" = "system-rt-32" ]; then
+          export JAVA_OPTS="-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8"
+          export JVM_OPTS="$JAVA_OPTS"
+        fi
         FLAGS=$(bash scripts/ci_shard_tests.sh flags "${{ matrix.shard }}")
         if [ -n "$FLAGS" ]; then
           echo "Simulation flags: $FLAGS"

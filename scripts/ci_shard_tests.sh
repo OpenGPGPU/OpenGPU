@@ -153,10 +153,16 @@ shard_flags() {
   # build stays at two jobs. The wide runtime shards each elaborate one
   # full-GPU model (16-lane also builds the four-CU variant). Two compilers
   # on those models SIGTERM the runner agent, which GitHub reports as
-  # "The operation was canceled." The memory shard has no compute unit, so
-  # it stays flat.
+  # "The operation was canceled." The 32-lane CU is wider than that: one
+  # g++ of its optimized eval function, beside a 6 GB heap, still kills the
+  # agent after the swap file is full. simLowMem splits that C++ and
+  # compiles it at -O0. The memory shard has no compute unit, so it stays
+  # flat.
   case "$1" in
-    system-rt-16|system-rt-32|system-rt-batch)
+    system-rt-32)
+      printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1'
+      ;;
+    system-rt-16|system-rt-batch)
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1'
       ;;
     system-host|system-walk|system-tex|system-wide|system-core|system-pool|system-rt-narrow)
