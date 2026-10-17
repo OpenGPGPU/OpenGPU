@@ -781,3 +781,33 @@ The first Linux guest run failed during paced flip-event delivery. A fresh
 the complete configured DRM smoke on the frozen scissor-only RTL. Subsequent
 arithmetic, queue and resident-path revisions still need their own full-system
 qualification; this is not a 720p or whole-GPU clock result.
+
+## Queued quad rasterization and resident traversal
+
+[The raster integration record](performance/mobile-raster-pipeline-2026-10-18.json)
+tracks the staged setup, registered sample offsets and two non-flowing quad
+queues. Filtering empty quads after the output register removes coverage
+arithmetic from its write enable. Draw admission waits for the final queued
+output, preserving its snapshotted context under backpressure.
+
+Forty-six component checks pass on both V8 and V9, including 512 consecutive
+quad outputs in each sample mode and 144 cycle-for-cycle comparisons between
+tiled and row-major traversal on admitted tile scissors. Persistent passes
+now use the row-major scanner: admission and draw-scissor intersection keep
+each job inside one aligned 8x8/16x16 tile. Attachment storage remains on the
+original engine configuration, and the general tiled walker remains available.
+
+V8 passes 24 native product MSAA jobs on fixed and shared-CU backends with
+the 128 KiB L2, 256-bit AXI and 1280x720 viewport. These are single-tile jobs.
+Universal combinational proofs cover parallel bounds, sample offsets,
+bottom-right quad sums, cross-product subtraction and V9 scan-step additions;
+their individual source versions and arithmetic scopes are recorded.
+
+At unchanged 1 GHz TC/SLVT synthesis constraints, the resident V7 and V8
+screens fail setup at -318.114 ps and -235.250 ps respectively. V9 also fails,
+at -258.308 ps: its critical path now runs from the area/cull calculation to
+wide engine register enables. All three map completely. These are pre-layout
+screens, not routed clock qualifications; V1-V5 use the general tiled profile
+and must not be treated as an isolated arithmetic comparison with V6-V9.
+Direct V9 product replay, current-candidate Linux integration, post-route
+qualification and the original H0-H8 gates remain open.

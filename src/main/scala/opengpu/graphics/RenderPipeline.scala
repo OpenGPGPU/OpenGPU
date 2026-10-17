@@ -161,7 +161,13 @@ class RenderPipeline(
 
   private val geo = Module(new GeometryStage(config))
   io.shaderFault := false.B
-  private val shader = Module(new RasterShader(config, quadMode = fragCore || vertCore))
+  // A persistent pass admits one aligned8x8/16x16 tile and intersects every
+  // draw scissor with it. Row-major rasterization already visits that tile
+  // in the required order; a second tile-to-tile walker has no work to do.
+  // Attachment ownership/storage still uses the original engine config.
+  private val rasterConfig = if (persistentAttachments)
+    config.copy(tileSize = 0, tileAttachments = false, tileBinning = false) else config
+  private val shader = Module(new RasterShader(rasterConfig, quadMode = fragCore || vertCore))
   private val om = Module(new OutputMerger(config))
   private val persistentStore = if (persistentAttachments)
     Some(Module(new PersistentTileAttachmentStore(config.maxSampleCount,
@@ -453,6 +459,12 @@ class RenderPipeline(
       drawHold.scissorMaxX, pass.originX + pass.tileWidth)
     shader.io.scissorMaxY := Mux(drawHold.scissorEnable && drawHold.scissorMaxY < pass.originY +& pass.tileHeight,
       drawHold.scissorMaxY, pass.originY + pass.tileHeight)
+    when(shader.io.draw.fire && shader.io.scissorMinX < shader.io.scissorMaxX &&
+        shader.io.scissorMinY < shader.io.scissorMaxY) {
+      assert(shader.io.scissorMinX(15, 4) === (shader.io.scissorMaxX - 1.U)(15, 4) &&
+        shader.io.scissorMinY(15, 4) === (shader.io.scissorMaxY - 1.U)(15, 4),
+        "resident raster scissor must stay in one admitted16x16 block")
+    }
   }
   shader.io.screenW := renderScreenW
   shader.io.screenH := renderScreenH

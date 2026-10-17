@@ -152,6 +152,12 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new TriangleRasterizer(
           GraphicsConfig(screenWidth = 1280, screenHeight = 720, tileSize = 16),
           quadMode = true), stageArgs, firtoolArgs)
+      case "mobile-resident-raster-quad" =>
+        // Matches RenderPipeline's persistent-pass raster config: attachment
+        // storage has tile ownership; this scanner receives its bounded scissor.
+        ChiselStage.emitSystemVerilogFile(new TriangleRasterizer(
+          GraphicsConfig(screenWidth = 1280, screenHeight = 720),
+          quadMode = true), stageArgs, firtoolArgs)
       case "raster-quad" =>
         // M4b: incremental-edge rasterizer (adds-only steady state; the M1
         // per-cycle 64-bit multiply array is gone).  Emitted standalone so the

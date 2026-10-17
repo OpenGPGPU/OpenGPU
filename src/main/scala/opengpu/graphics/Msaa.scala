@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import opengpu.util.{BlockPrefixAdder, CarrySavePrefixSum}
 
 /** Fixed, centre-relative quarter-pixel sample positions. */
 object Msaa {
@@ -16,6 +17,23 @@ object Msaa {
     case 1 => Seq((-1, -1), (1, 1))
     case 2 => Seq((-1, -1), (1, -1), (-1, 1), (1, 1))
     case _ => throw new IllegalArgumentException("reserved sample mode")
+  }
+}
+
+private[graphics] object RasterSampleOffsetMath {
+  def quarterWidth(coefficientWidth: Int, subPixelBits: Int): Int =
+    math.min(64, coefficientWidth + subPixelBits) - 2
+
+  def quarter(coefficient: SInt, subPixelBits: Int): SInt =
+    if (coefficient.getWidth + subPixelBits <= 64) (coefficient << subPixelBits) >> 2
+    else FixedPointMath.trim64(coefficient << subPixelBits) >> 2
+
+  def offsets(plus: SInt, minus: SInt): Seq[SInt] = {
+    // Each quarter gradient is at most signed62. Widen their signed63
+    // sums/differences before negation, including the positive limit.
+    val p = plus.pad(64)
+    val m = minus.pad(64)
+    Seq(-p, m, -m, p)
   }
 }
 
@@ -38,13 +56,56 @@ class SampleCoverage(maxSampleCount: Int = 4, edgeWidth: Int = 64) extends Modul
       (0 until 3).map { e =>
         val dx = if (x == 0) 0.S else if (x > 0) io.quarterDx(e) else -io.quarterDx(e)
         val dy = if (y == 0) 0.S else if (y > 0) io.quarterDy(e) else -io.quarterDy(e)
-        val value = io.edges(e) +& dx +& dy
+        // Three signed edge-width terms fit exactly in edgeWidth+2 bits.
+        // Preserve the existing fixed-width negations above and avoid two
+        // serial carry propagations in the per-sample coverage path.
+        val value = if (x == 0 && y == 0) io.edges(e) else {
+          val width = edgeWidth + 2
+          val sum = Module(new CarrySavePrefixSum(width))
+          sum.io.terms := VecInit(Seq(io.edges(e), dx, dy).map(_.pad(width).asUInt))
+          sum.io.sum(width - 1, 0).asSInt
+        }
         Mux(io.front, value > 0.S, value < 0.S) ||
           (value === 0.S && io.topLeft(e))
       }.reduce(_ && _)
     }
     // Cat maps the lowest sample index to bit 0; the OR widens the shorter
     // non-power-of-two mode masks to the fixed output width.
+    mode.U -> (0.U(maxSampleCount.W) | Cat(bits.reverse))
+  }
+  io.mask := MuxLookup(io.sampleMode, 0.U(maxSampleCount.W))(masks)
+}
+
+/** Coverage when triangle setup has already registered the four signed
+  * quarter-sample offsets: (--), (+-), (-+), (++). The sum of two edge-width
+  * gradients needs one extra bit; adding the pixel edge needs a second.
+  */
+class PreparedSampleCoverage(maxSampleCount: Int = 4, edgeWidth: Int = 64) extends Module {
+  require(Set(1, 2, 4)(maxSampleCount))
+  val io = IO(new Bundle {
+    val sampleMode = Input(UInt(2.W))
+    val edges = Input(Vec(3, SInt(edgeWidth.W)))
+    val offsets = Input(Vec(4, Vec(3, SInt((edgeWidth + 1).W))))
+    val front = Input(Bool())
+    val topLeft = Input(Vec(3, Bool()))
+    val mask = Output(UInt(maxSampleCount.W))
+  })
+  val masks = (0 to log2Ceil(maxSampleCount)).map { mode =>
+    val bits = Msaa.positions(mode).map { case (x, y) =>
+      (0 until 3).map { e =>
+        val value = if (mode == 0) io.edges(e) else {
+          val slot = (if (x > 0) 1 else 0) | (if (y > 0) 2 else 0)
+          val width = edgeWidth + 2
+          val sum = Module(new BlockPrefixAdder(width))
+          sum.io.a := io.edges(e).pad(width).asUInt
+          sum.io.b := io.offsets(slot)(e).pad(width).asUInt
+          sum.io.carryIn := false.B
+          sum.io.sum(width - 1, 0).asSInt
+        }
+        Mux(io.front, value > 0.S, value < 0.S) ||
+          (value === 0.S && io.topLeft(e))
+      }.reduce(_ && _)
+    }
     mode.U -> (0.U(maxSampleCount.W) | Cat(bits.reverse))
   }
   io.mask := MuxLookup(io.sampleMode, 0.U(maxSampleCount.W))(masks)

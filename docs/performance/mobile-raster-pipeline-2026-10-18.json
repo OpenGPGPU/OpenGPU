@@ -1,0 +1,466 @@
+{
+  "scope": "H0/H1 intermediate raster pipeline integration; original H0-H8 scope remains open. No whole-GPU clock, full-system V8 guest, full-frame FPS or commercial parity claim.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+    "src/main/scala/opengpu/graphics/Rasterizer.scala": "7370604f46f8eda1e115d2f4f2c054e6a79adbf37286068001c481c352b5c4b2",
+    "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+    "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+    "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "983a041dae071549b9f78e5ccbce42613c8b1c4d8d0d2a33ff89d1ff280c1501",
+    "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+    "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+    "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+    "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+    "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+    "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+    "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+    "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d"
+  },
+  "build_metadata": {
+    "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v8_experiment.json",
+    "sha256": "c2314ca765212b77e2442bceaeffec2eea97e8e9bc8558531e70e1ffd8940a4d"
+  },
+  "functional": {
+    "component_checks": 46,
+    "suites": 12,
+    "unit_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v8_unit.log",
+      "sha256": "bd4971acb3dd3f3668ffa900b065a2dd79cabe21a04cbbe7442b9393aa8219e9"
+    },
+    "consecutive_quad_cycles": 512,
+    "msaa_sample_counts": [
+      1,
+      2,
+      4
+    ],
+    "context_ownership": "Draw inputs snapshotted; queued last output retains context; empty candidates drain under downstream stalls.",
+    "resident_comparison": {
+      "jobs": 144,
+      "pixel_accepted_beats": 6902,
+      "quad_accepted_beats": 1971,
+      "scope": "Cycle-for-cycle tile16 vs row-major equivalence only for admitted aligned8/16 tile scissors; not arbitrary full-frame traversal equivalence."
+    },
+    "product": {
+      "checks": 2,
+      "jobs": 24,
+      "logs": [
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v8_shared_0.log",
+          "sha256": "14c3772e5ca85622cc740493722109e9c6214c9ad7a57f7d580720022cb9396d"
+        },
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v8_shared_1.log",
+          "sha256": "f19eee49748928d31929072ded4804a1f202e15daf9f21c8665a39e4bc211b4d"
+        }
+      ],
+      "metadata": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v8.json",
+        "sha256": "d4934b5533e913d36f1b2a6b69c7cf53a4413f9a34b5bcfa224ded1ff750f82d"
+      },
+      "scope": "Fixed and shared4CU16lane/8warp shaders,128KiB4bankL2,AXI256,1280x720viewport,one8/16tile per job,1/2/4samples,Bare/Sv32,clear/load,ordered draw/partial-clear/blend,all stored samples and resolved pixels checked. Not full720p frames."
+    }
+  },
+  "formal": [
+    {
+      "metadata": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_extrema_formal.json",
+        "sha256": "1f280186895e86e4ae5a90ea5f4e76d108d78eebedf747b0ebb16d5874de7541"
+      },
+      "input_data_bits": 96,
+      "scope": "Parallel signed32 min/max for three values; arithmetic helper frozen at V5.",
+      "passed": true
+    },
+    {
+      "metadata": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_offsets_formal.json",
+        "sha256": "c6059fbab9b6cfc88a829efd87d38eefaafa168bfc966287faeefd6939c59940"
+      },
+      "input_data_bits": 68,
+      "scope": "Quarter shifts and four sample offsets for signed34 gradients at precisions 0/1/8/30/31/32; helper frozen at V5.",
+      "passed": true
+    },
+    {
+      "metadata": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/quad_edge_sum_formal.json",
+        "sha256": "83fb3e83d30cfd73411d2888a67d326ac0e4a421f0a2b7123fb02790a1413022"
+      },
+      "input_data_bits": 192,
+      "scope": "Low64 bottom-right quad edge equals the original two additions; helper frozen at V7.",
+      "passed": true
+    },
+    {
+      "metadata": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_cross_difference_v8_formal.json",
+        "sha256": "b16d5da69ab609cff62ec5bedfe404240d1e47ed02dd40293eb7611c2539c25a"
+      },
+      "input_data_bits": 128,
+      "scope": "Low64 registered cross-product subtraction equals the original64-bit subtraction; V8.",
+      "passed": true
+    }
+  ],
+  "physical": {
+    "stage": "Synthesis only, pre-layout",
+    "constraints": {
+      "period_ps": 1000,
+      "corner": "TC",
+      "vt": "SLVT",
+      "io_delay_fraction": 0.25,
+      "utilization_percent": 25,
+      "retiming": false
+    },
+    "variants": [
+      {
+        "version": "v1",
+        "profile": "Generic tile16",
+        "change": "Queue edge and coverage output; modular setup sum.",
+        "critical_path": "edge queue pointer -> coverage -> output queue write enable",
+        "qualification": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-synth/qualification.json",
+          "sha256": "19f11926e9ea12e6bcffc1f37b95b2120cdcfebe087856dc35fe03866d4d443c"
+        },
+        "manifest": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-synth/manifest.json",
+          "sha256": "7b68cf3f537cf6da1de6f5c8b7feb90cea08060681243965420bdb374750298d"
+        },
+        "result": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-synth/result.json",
+          "sha256": "87d9f657899eb1005f8ee6e226ba7260e126907eca1f09b73e0bf32a264b8547"
+        },
+        "passed": false,
+        "setup_slacks_ps": [
+          -663.677,
+          15.136
+        ],
+        "qor": {
+          "setup_worst_slack_ps": -663.677,
+          "core_clock_fmax_mhz": 601.078
+        },
+        "emitted_sha256": {
+          "QuadCoverage.sv": "aa70708dd74a8954b092971214a4e4f3ac2ff9f8b5868c761086166b2ebae0c1",
+          "SampleCoverage.sv": "0b8226fd39a2e14efafac3c0abf1bbca3f9d0b9d6328415516525b3a58168b15",
+          "ram_2x1300.sv": "e5b37a3c5acef5abfb71472c529cb11eca5d2713900c6b1ad1d46d1f41890a7b",
+          "Queue2_RasterQuad.sv": "f5d2caca61d0de51e1aa0ae8972de534d5507c249406506f081f943740c01000",
+          "BlockPrefixAdder.sv": "226e771deab2daa9532959ccb07cb1e2778543bd67ae2ddbc5379ede068e2958",
+          "CarrySavePrefixSum.sv": "0f5167ff509659f1d867d4d9914e1f8fccb68cc2056b92fceb1ba1a97bdcbc00",
+          "TriangleRasterizer.sv": "61465d02399d8ebed8bf2c15b785e83bce7c2bac515ab992f92b23b661b4ebd8"
+        }
+      },
+      {
+        "version": "v2",
+        "profile": "Generic tile16",
+        "change": "Register empty candidates before filtering; exact coverage CSA.",
+        "critical_path": "dyReg -> sample coverage",
+        "qualification": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v2-synth/qualification.json",
+          "sha256": "be46b3b44bbf172f15f7727d361366330e7a64c396ad1aa32abbc92b59d7d23b"
+        },
+        "manifest": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v2-synth/manifest.json",
+          "sha256": "f6bdfc8c585c6400a25b823c317a5af3bd2ea54acb09a1410f61b51cfbdf8f3c"
+        },
+        "result": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v2-synth/result.json",
+          "sha256": "51699e1a76728e4ecdc6542a694f2a2a1c9d0b8f3c8e0ff4fc8950d894c750f6"
+        },
+        "passed": false,
+        "setup_slacks_ps": [
+          -565.146,
+          160.883
+        ],
+        "qor": {
+          "setup_worst_slack_ps": -565.146,
+          "core_clock_fmax_mhz": 638.918
+        },
+        "emitted_sha256": {
+          "QuadCoverage.sv": "aa70708dd74a8954b092971214a4e4f3ac2ff9f8b5868c761086166b2ebae0c1",
+          "BlockPrefixAdder.sv": "546522653798165c4ca7abc53118907cdd06fe529fae77b315a96c3480376b0b",
+          "CarrySavePrefixSum.sv": "e447c6157a4de63fb86e4e83c127fd80ef7e3a3db1a0b81c116fc3d1962efb12",
+          "SampleCoverage.sv": "6762a7b4bb9b80cfb07c9540aa57291332ccfc9855b2d6aa84a4ef862b402e94",
+          "ram_2x1300.sv": "e5b37a3c5acef5abfb71472c529cb11eca5d2713900c6b1ad1d46d1f41890a7b",
+          "Queue2_RasterQuad.sv": "f5d2caca61d0de51e1aa0ae8972de534d5507c249406506f081f943740c01000",
+          "BlockPrefixAdder_90.sv": "5c2947ed197aaf6afb5bc9d634b98bc784ca985cd0a40d87e7278387edba418c",
+          "CarrySavePrefixSum_90.sv": "ef9f99e7acaa895b1faa33e23d2bf353caba3876d02cadede4f488d64ee125f6",
+          "TriangleRasterizer.sv": "a2796ccc1c629c0d21b605104cadb07fd59d2a825db05aa4a4480022324bdbc1"
+        }
+      },
+      {
+        "version": "v3",
+        "profile": "Generic tile16",
+        "change": "Precompute sample offsets once per triangle.",
+        "critical_path": "vHold_v0_y -> maxY[10]",
+        "qualification": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v3-synth/qualification.json",
+          "sha256": "3aedf14d12bf8766c947e85af40931fd4f076dae1e014c320c8567101f5ba20b"
+        },
+        "manifest": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v3-synth/manifest.json",
+          "sha256": "82e4581df706c406f79b961edfd6bfdd47167c8acb83c600ce3eea3fd7900e97"
+        },
+        "result": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v3-synth/result.json",
+          "sha256": "008651372ea76758900accb0c1e17fd72993433d542a076790699e9819336116"
+        },
+        "passed": false,
+        "setup_slacks_ps": [
+          -731.351,
+          143.257
+        ],
+        "qor": {
+          "setup_worst_slack_ps": -731.351,
+          "core_clock_fmax_mhz": 577.584
+        },
+        "emitted_sha256": {
+          "QuadCoverage.sv": "aa70708dd74a8954b092971214a4e4f3ac2ff9f8b5868c761086166b2ebae0c1",
+          "BlockPrefixAdder.sv": "2b930fc74bba0c9a099ee0e56a069bd3bc3be41ae68d12167417f1fb2a030d6f",
+          "PreparedSampleCoverage.sv": "a46ee931b2cc22fd707f87addbf5ab942ab6c037d8c359b136906dae9638f985",
+          "ram_2x1300.sv": "e5b37a3c5acef5abfb71472c529cb11eca5d2713900c6b1ad1d46d1f41890a7b",
+          "Queue2_RasterQuad.sv": "f5d2caca61d0de51e1aa0ae8972de534d5507c249406506f081f943740c01000",
+          "BlockPrefixAdder_90.sv": "5c2947ed197aaf6afb5bc9d634b98bc784ca985cd0a40d87e7278387edba418c",
+          "CarrySavePrefixSum.sv": "a3960dcbc636a0c0ba7ca463f561b15122cbf4892ae265095e147de8811986ce",
+          "TriangleRasterizer.sv": "0f8fe2b2fdcac3de486e6c50021f65b00a1e114815e47a9c7eba86d5eea919d6"
+        }
+      },
+      {
+        "version": "v4",
+        "profile": "Generic tile16",
+        "change": "Register padded bounds and cross products before clamp/subtract.",
+        "critical_path": "vHold_v0_y -> paddedMinY[31]",
+        "qualification": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v4-synth/qualification.json",
+          "sha256": "a6e05cf67b2875904a6ff7660e91e7c8cd107a168863f4096387b982b8b0d94d"
+        },
+        "manifest": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v4-synth/manifest.json",
+          "sha256": "ec8db48bc1cab34fbf7ee93fdbd0d141398e20e3a923662e634d64c14c786c5d"
+        },
+        "result": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v4-synth/result.json",
+          "sha256": "c798127175ac5fd884524aee0c4fef7fea4f64aa3708f11089f64995b27ba8b5"
+        },
+        "passed": false,
+        "setup_slacks_ps": [
+          -585.733,
+          198.507
+        ],
+        "qor": {
+          "setup_worst_slack_ps": -585.733,
+          "core_clock_fmax_mhz": 630.623
+        },
+        "emitted_sha256": {
+          "QuadCoverage.sv": "aa70708dd74a8954b092971214a4e4f3ac2ff9f8b5868c761086166b2ebae0c1",
+          "BlockPrefixAdder.sv": "2b930fc74bba0c9a099ee0e56a069bd3bc3be41ae68d12167417f1fb2a030d6f",
+          "PreparedSampleCoverage.sv": "a46ee931b2cc22fd707f87addbf5ab942ab6c037d8c359b136906dae9638f985",
+          "ram_2x1300.sv": "e5b37a3c5acef5abfb71472c529cb11eca5d2713900c6b1ad1d46d1f41890a7b",
+          "Queue2_RasterQuad.sv": "f5d2caca61d0de51e1aa0ae8972de534d5507c249406506f081f943740c01000",
+          "BlockPrefixAdder_90.sv": "5c2947ed197aaf6afb5bc9d634b98bc784ca985cd0a40d87e7278387edba418c",
+          "CarrySavePrefixSum.sv": "a3960dcbc636a0c0ba7ca463f561b15122cbf4892ae265095e147de8811986ce",
+          "TriangleRasterizer.sv": "7ed7a86bed12733ef0c04419f7a69be91c3843c14017b3c29e848b8b399dded7"
+        }
+      },
+      {
+        "version": "v5",
+        "profile": "Generic tile16",
+        "change": "Use shared parallel pair comparisons for min/max.",
+        "critical_path": "tileEndY[2] -> rowStartReg_e_2[63]",
+        "qualification": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v5-synth/qualification.json",
+          "sha256": "909deff23cd978a6e52e027f05bbb99e424b3f309635b3c3d24249c1c93c76f4"
+        },
+        "manifest": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v5-synth/manifest.json",
+          "sha256": "e5a8aa584f27e2af996759ec7ca00530b6b22a9755d6956c963f57f486028b64"
+        },
+        "result": {
+          "path": "generated/mobile-h1/physical-product-raster-pipeline-v5-synth/result.json",
+          "sha256": "b0d395d6279131b49f01a1bb0950c7e2d0cb769a8be2321671b9c64081c4df7e"
+        },
+        "passed": false,
+        "setup_slacks_ps": [
+          -479.181,
+          172.736
+        ],
+        "qor": {
+          "setup_worst_slack_ps": -479.181,
+          "core_clock_fmax_mhz": 676.05
+        },
+        "emitted_sha256": {
+          "QuadCoverage.sv": "abcfd06933442411e94dcb7055524f1334e29eabbc82a842d1cfd6bf314adc93",
+          "BlockPrefixAdder.sv": "2b930fc74bba0c9a099ee0e56a069bd3bc3be41ae68d12167417f1fb2a030d6f",
+          "PreparedSampleCoverage.sv": "a46ee931b2cc22fd707f87addbf5ab942ab6c037d8c359b136906dae9638f985",
+          "ram_2x1300.sv": "e5b37a3c5acef5abfb71472c529cb11eca5d2713900c6b1ad1d46d1f41890a7b",
+          "Queue2_RasterQuad.sv": "f5d2caca61d0de51e1aa0ae8972de534d5507c249406506f081f943740c01000",
+          "BlockPrefixAdder_90.sv": "5c2947ed197aaf6afb5bc9d634b98bc784ca985cd0a40d87e7278387edba418c",
+          "CarrySavePrefixSum.sv": "a3960dcbc636a0c0ba7ca463f561b15122cbf4892ae265095e147de8811986ce",
+          "TriangleRasterizer.sv": "b031e86ca1db7214a358b7ffce13c61f8d4271efebe972bd009d210a2007cae4"
+        }
+      },
+      {
+        "version": "v6",
+        "profile": "Actual persistent engine tile0",
+        "change": "Remove redundant tile-to-tile traversal only in admitted persistent passes.",
+        "critical_path": "dxReg_e_2[8] -> edge queue RAM[2407]",
+        "qualification": {
+          "path": "generated/mobile-h1/physical-product-raster-v6-resident-synth/qualification.json",
+          "sha256": "70ab0525a043e7f86816a70837777a14334edc7653598cbdf2fc909a4169a6a3"
+        },
+        "manifest": {
+          "path": "generated/mobile-h1/physical-product-raster-v6-resident-synth/manifest.json",
+          "sha256": "88e0b51b583796825d149b5f0adcb72e6ae3fbbfd79d9f71bd6208d551a0c32c"
+        },
+        "result": {
+          "path": "generated/mobile-h1/physical-product-raster-v6-resident-synth/result.json",
+          "sha256": "59077545049a8adc413eb3eab0a1b0a5f40fb3d551cddda0d020eddd911f6f38"
+        },
+        "passed": false,
+        "setup_slacks_ps": [
+          -319.039,
+          204.859
+        ],
+        "qor": {
+          "setup_worst_slack_ps": -319.039,
+          "core_clock_fmax_mhz": 758.128
+        },
+        "emitted_sha256": {
+          "QuadCoverage.sv": "abcfd06933442411e94dcb7055524f1334e29eabbc82a842d1cfd6bf314adc93",
+          "BlockPrefixAdder.sv": "2b930fc74bba0c9a099ee0e56a069bd3bc3be41ae68d12167417f1fb2a030d6f",
+          "PreparedSampleCoverage.sv": "a46ee931b2cc22fd707f87addbf5ab942ab6c037d8c359b136906dae9638f985",
+          "ram_2x1300.sv": "e5b37a3c5acef5abfb71472c529cb11eca5d2713900c6b1ad1d46d1f41890a7b",
+          "Queue2_RasterQuad.sv": "f5d2caca61d0de51e1aa0ae8972de534d5507c249406506f081f943740c01000",
+          "BlockPrefixAdder_90.sv": "5c2947ed197aaf6afb5bc9d634b98bc784ca985cd0a40d87e7278387edba418c",
+          "CarrySavePrefixSum.sv": "a3960dcbc636a0c0ba7ca463f561b15122cbf4892ae265095e147de8811986ce",
+          "TriangleRasterizer.sv": "c91edfd5de5c3f755afd6202d9fec7f5520d76073eeca7e2cef89cda8d21bd0d"
+        }
+      },
+      {
+        "version": "v7",
+        "profile": "Actual persistent engine tile0",
+        "change": "Use exact CSA/prefix bottom-right quad sum.",
+        "critical_path": "crossLeft_0[0] -> coeffReg_c_0[63]",
+        "qualification": {
+          "path": "generated/mobile-h1/physical-product-raster-v7-resident-synth/qualification.json",
+          "sha256": "88fa9ecd0b258a86c636a930ec3ac89f697ab0a1ef85934a1ff68d92fec828ca"
+        },
+        "manifest": {
+          "path": "generated/mobile-h1/physical-product-raster-v7-resident-synth/manifest.json",
+          "sha256": "ac48c7306c6158d80f4e0a4d047e531fb5adde9e03379e049e9832872414a282"
+        },
+        "result": {
+          "path": "generated/mobile-h1/physical-product-raster-v7-resident-synth/result.json",
+          "sha256": "9bcd77bff980b8749677ecc17e0b46359249cd202898ab32cc59646964ae99f7"
+        },
+        "passed": false,
+        "setup_slacks_ps": [
+          -318.114,
+          227.855
+        ],
+        "qor": {
+          "setup_worst_slack_ps": -318.114,
+          "core_clock_fmax_mhz": 758.66
+        },
+        "emitted_sha256": {
+          "BlockPrefixAdder.sv": "226e771deab2daa9532959ccb07cb1e2778543bd67ae2ddbc5379ede068e2958",
+          "CarrySavePrefixSum.sv": "0f5167ff509659f1d867d4d9914e1f8fccb68cc2056b92fceb1ba1a97bdcbc00",
+          "QuadCoverage.sv": "770150553a059fc363b917eefd48ba988c821ada65b2a728d1dd98528479b9e1",
+          "BlockPrefixAdder_3.sv": "8e25b7d5d3e9fbc09cb718c132775ebddfe4c7fd4325daaedeccc66175cdd2f8",
+          "PreparedSampleCoverage.sv": "b764e04bc35dbf288302c9454e135bf15342647d09d5aae2edd2dfcfce96f22f",
+          "ram_2x1300.sv": "e5b37a3c5acef5abfb71472c529cb11eca5d2713900c6b1ad1d46d1f41890a7b",
+          "Queue2_RasterQuad.sv": "f5d2caca61d0de51e1aa0ae8972de534d5507c249406506f081f943740c01000",
+          "TriangleRasterizer.sv": "5e031cc071255a26caf7c990d1179ff4fb48e43bc10b11ac05ac94b9fb3c5396"
+        }
+      },
+      {
+        "version": "v8",
+        "profile": "Actual persistent engine tile0",
+        "change": "Use exact prefix cross-product subtraction.",
+        "critical_path": "dyReg_e_0[8] -> current edge[63] (OpenDB name _quadCov_io_e0_0[63])",
+        "qualification": {
+          "path": "generated/mobile-h1/physical-product-raster-v8-resident-synth/qualification.json",
+          "sha256": "d6742ddee184613be1e974433452b09a001945519cd84b764b9ffbe7f12016b0"
+        },
+        "manifest": {
+          "path": "generated/mobile-h1/physical-product-raster-v8-resident-synth/manifest.json",
+          "sha256": "279c892089f3b243cbc9b8755618698ad3120a19ea29bebfaa19d0d920438852"
+        },
+        "result": {
+          "path": "generated/mobile-h1/physical-product-raster-v8-resident-synth/result.json",
+          "sha256": "c3d0b226e5bfd9b7f73b5c4cf28e65c9607c5d1859bac7fe3055c6e07c1992a5"
+        },
+        "passed": false,
+        "setup_slacks_ps": [
+          -235.25,
+          197.664
+        ],
+        "qor": {
+          "setup_worst_slack_ps": -235.25,
+          "core_clock_fmax_mhz": 809.553
+        },
+        "emitted_sha256": {
+          "BlockPrefixAdder.sv": "226e771deab2daa9532959ccb07cb1e2778543bd67ae2ddbc5379ede068e2958",
+          "CarrySavePrefixSum.sv": "0f5167ff509659f1d867d4d9914e1f8fccb68cc2056b92fceb1ba1a97bdcbc00",
+          "QuadCoverage.sv": "e3d23dc6e36aaa6806560ab8d70f2d13bbd12c7390d62b14d52a44851adfa6bb",
+          "BlockPrefixAdder_3.sv": "8e25b7d5d3e9fbc09cb718c132775ebddfe4c7fd4325daaedeccc66175cdd2f8",
+          "PreparedSampleCoverage.sv": "b764e04bc35dbf288302c9454e135bf15342647d09d5aae2edd2dfcfce96f22f",
+          "ram_2x1300.sv": "e5b37a3c5acef5abfb71472c529cb11eca5d2713900c6b1ad1d46d1f41890a7b",
+          "Queue2_RasterQuad.sv": "f5d2caca61d0de51e1aa0ae8972de534d5507c249406506f081f943740c01000",
+          "BlockPrefixAdder_93.sv": "c56f9b2ca4981a1c5959348b6ebf2f821df0eff1909bad7de447564f14ebe244",
+          "TriangleRasterizer.sv": "1f1f6b031c1a832574b8f00609ad2865c8954edb5990ab843ad862358042ed00"
+        }
+      }
+    ],
+    "comparison_caveat": "V1-V5 are generic tile16; V6-V8 match actual persistent-pass row-major raster. V6 changes the integrated RenderPipeline configuration under checked admission rules; attachment storage and general tiled traversal remain. Cross-profile numbers are not an isolated arithmetic A/B.",
+    "post_route_qualified": false
+  },
+  "open_gates": [
+    "Post-route setup/hold, I/O and physical checks for candidate raster; whole renderer and GPU separate.",
+    "Fresh full-system Linux fixed and programmable replay of current candidate; existing passing fixed baseline covers scissor-only revision.",
+    "Full product STORE/reset/fault regression of current candidate.",
+    "Remaining H0/H1 descriptors/configuration/physical/energy coverage and H2-H8 architecture, feature, throughput and720p workload gates."
+  ],
+  "followup_v9": {
+    "scope": "Same scan update registers/control/latency as V8, replacing row-major native64 addition by exact prefix additions. Native V8 product results do not claim direct V9 integration.",
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+      "src/main/scala/opengpu/graphics/Rasterizer.scala": "b070b934820bb7bfa29eb11e548b95ec0f5f0d9062fe23193641fe9cba2a7fcc",
+      "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+      "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+      "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+      "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "983a041dae071549b9f78e5ccbce42613c8b1c4d8d0d2a33ff89d1ff280c1501",
+      "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+      "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+      "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+      "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+      "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+      "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+      "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+      "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+      "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c"
+    },
+    "component_checks": 46,
+    "suites": 12,
+    "unit_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v9_unit.log",
+      "sha256": "bcbbb5392f3699e2badc9bea7d3a1841d5d0fe050f2fd5f24cb56c9e856df6b9"
+    },
+    "formal": {
+      "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/raster_wide_add_v9_formal.json",
+      "sha256": "3b9b811c9484c5ace8e55ca5993bc9aa0768dceb116a15af0949247330f192cc",
+      "passed": true,
+      "input_data_bits": 128,
+      "scope": "All signed64 base/delta pairs, ordinary and shifted quad steps, same low64 results."
+    },
+    "synthesis": {
+      "qualification": "generated/mobile-h1/physical-product-raster-v9-resident-synth/qualification.json",
+      "sha256": "953fa67fedf1997915705736c12be3d3456e3628ac8a01ee8be72caebe5d903f",
+      "passed": false,
+      "setup_slacks_ps": [
+        -258.308,
+        181.358
+      ],
+      "critical_path": "coeffReg_c_0[2] -> rowStartReg_e_0[59]; area/cull decision on wide engine register enables. OpenDB endpoints verified.",
+      "mapping_passed": true
+    },
+    "direct_native_product": false,
+    "full_system_guest": false,
+    "post_route_qualified": false
+  }
+}
