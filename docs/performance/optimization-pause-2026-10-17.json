@@ -1,0 +1,182 @@
+{
+  "recorded_at": 1792240654.398347,
+  "goal_status": "paused",
+  "reason": "Explicit user request after two days of work.",
+  "objective": "4cu\u7684rtl\u80fd\u6210\u529f\u8fd0\u884cdebian\u684c\u9762\uff0c\u5e76\u4e14\u5c3d\u91cf\u4f18\u5316\u6267\u884c\u6548\u7387\uff0c\u964d\u4f4e\u4efb\u52a1cycle\u6570\uff0c\u53e6\u5916\u4e5f\u8981\u5c3d\u91cf\u4f18\u5316\u4eff\u771f\u901f\u5ea6\uff0c\u964d\u4f4e\u603b\u4f53\u4eff\u771f\u65f6\u95f4\uff0c\u76f4\u5230\u4f60\u8ba4\u4e3a\u6ca1\u6709\u4f18\u5316\u7a7a\u95f4",
+  "last_committed_evidence": "76fff30",
+  "last_qualified_sampler_commit": "28299f5",
+  "qualified_results": {
+    "desktop": "4CU16lane640x480 Debian/GTK with scanout/manual review and complete own strict trace passing.",
+    "L2_host_time_saved_native_percent": "11.3\u201312.4",
+    "L2_commit": "fbddc0e",
+    "sampler_scene_cycles_4CU": [
+      11929,
+      11566
+    ],
+    "sampler_scene_cycles_1CU": [
+      35137,
+      32341
+    ],
+    "sampler_native_spatial256_cycles": [
+      122349,
+      112502
+    ],
+    "sampler_host_wall_time_gain_proven": false,
+    "sampler_scaling": [
+      2.9455,
+      2.7962
+    ],
+    "compiler_storage_option": "FlashSim53fadf2 opt-in; off by default."
+  },
+  "private_experiments": {
+    "om-shared-response-screen": {
+      "states": {
+        "state.json": {
+          "stage": "terminal",
+          "passed": true
+        },
+        "timing-state.json": {
+          "stage": "terminal",
+          "passed": false,
+          "reason": "Candidate failed absolute hardware gate; baseline and native runtime deferred.",
+          "candidate_timing": {
+            "passed": false,
+            "reported_setup_slacks_ps": [
+              -473.813,
+              -560.486
+            ],
+            "reported_path_groups": 2,
+            "scope": "All reported synthesis setup paths, including I/O",
+            "report_sha256": "a8b6a64fa7921ebc1566522cbba2037da85f377291e11b5d63ef3ff1ddc8c444"
+          }
+        },
+        "baseline-timing-state.json": {
+          "stage": "terminal",
+          "passed": false,
+          "baseline_timing": {
+            "passed": false,
+            "reported_setup_slacks_ps": [
+              -448.971,
+              -541.747
+            ],
+            "reported_path_groups": 2,
+            "scope": "All reported synthesis setup paths, including I/O",
+            "report_sha256": "fd3e03e653e2e963c6bbb19f9aa0bcb4a22d7c0c423d44981fcb383658869a4e"
+          }
+        },
+        "config-snapshot-state.json": {
+          "stage": "terminal",
+          "passed": true,
+          "tests": 3
+        }
+      },
+      "sources": {
+        "OutputMerger.scala": "d12a18d0294402fc3a847bcb1f2242ea9caf96226bf658742bb1eaf77c3eb842",
+        "OutputMergerSpec.scala": "3597abf83f87dedd97642b2a9b2e2a335eafb31bcadd7a4b6790eb6057cf2829"
+      },
+      "production_promoted": false
+    },
+    "om-shared-response-validity": {
+      "states": {
+        "state.json": {
+          "stage": "terminal",
+          "passed": true,
+          "test_count": 71
+        },
+        "timing-state.json": {
+          "stage": "terminal",
+          "passed": false,
+          "reason": "Candidate failed absolute hardware gate; baseline and native runtime deferred.",
+          "candidate_timing": {
+            "passed": false,
+            "reported_setup_slacks_ps": [
+              -524.083,
+              -604.658
+            ],
+            "reported_path_groups": 2,
+            "scope": "All reported synthesis setup paths, including I/O",
+            "report_sha256": "ec2a167dd9b8017a3de16c5c284a49193c939af4ef23447fb7b5a0c22b6d51f6"
+          }
+        }
+      },
+      "sources": {
+        "OutputMerger.scala": "d582f7f1e826ec4eddfec95cbc429a4952e92070588a41322a9cb3230d2a3d3f",
+        "OutputMergerSpec.scala": "3597abf83f87dedd97642b2a9b2e2a335eafb31bcadd7a4b6790eb6057cf2829"
+      },
+      "production_promoted": false
+    },
+    "om-shared-address-tree": {
+      "states": {
+        "state.json": {
+          "stage": "terminal",
+          "passed": null,
+          "paused_by_user": true,
+          "incomplete": true,
+          "reason": "User requested stopping this goal; remaining validation was cancelled. Partial results are retained and are not qualification."
+        },
+        "arithmetic-proof-state.json": {
+          "stage": "terminal",
+          "passed": true
+        }
+      },
+      "sources": {
+        "OutputMerger.scala": "98df8e343c76bde0d5819ce8b8b9cc4d013807fd2690c832bc04ae031f0afe69",
+        "EmitArithmeticProof.scala": "eed30e4eac0d5bffe5b44254c3bce117935c881ca02ee0e6713617bd67bbfdc0",
+        "AddressMathSpec.scala": "084323797c8eefb49dccfbc0c768394f2bbfbb5008ac4da0dcaf7d6b46f05f42",
+        "OutputMergerSpec.scala": "3597abf83f87dedd97642b2a9b2e2a335eafb31bcadd7a4b6790eb6057cf2829",
+        "OmAddressMath.scala": "b8bb49be919baf18d9c27a5a647df974792fb89da1070f0c61f35dd9f9f727f6"
+      },
+      "production_promoted": false
+    }
+  },
+  "evidence": {
+    "om-shared-response-screen/decision.json": {
+      "path": ".artifacts/shared-cu/om-shared-response-screen/decision.json",
+      "sha256": "12d4b045b8db9e688a94910afe59eb47aff716f69776e3f37cd48e4d77fd4e23"
+    },
+    "om-shared-response-screen/baseline-timing-state.json": {
+      "path": ".artifacts/shared-cu/om-shared-response-screen/baseline-timing-state.json",
+      "sha256": "51e8fdedd8bcf9bbcbe65dda5fc10757a4ebe4f5e594afce7116501ce8486ed3"
+    },
+    "om-shared-response-validity/state.json": {
+      "path": ".artifacts/shared-cu/om-shared-response-validity/state.json",
+      "sha256": "905f0fee2588659e9db9d6464d21a6b1b9f136fb72499deb34bdc2a906f7a58e"
+    },
+    "om-shared-response-validity/presence-proof-state.json": {
+      "path": ".artifacts/shared-cu/om-shared-response-validity/presence-proof-state.json",
+      "sha256": "3d0717e3c88e50f420db3f21df651ab177f2f17cab2d33bb6dc11044b4197b3f"
+    },
+    "om-shared-response-validity/timing-state.json": {
+      "path": ".artifacts/shared-cu/om-shared-response-validity/timing-state.json",
+      "sha256": "d068a92c4fc46f22261ee8bca547e2ad7795fd1537ece1ba62d8e76bdc9c1939"
+    },
+    "om-shared-address-tree/state.json": {
+      "path": ".artifacts/shared-cu/om-shared-address-tree/state.json",
+      "sha256": "7946407fc3517702e65b480062aae32a1f86f72df8626509fc49041c725c15dd"
+    },
+    "om-shared-address-tree/arithmetic-proof-state.json": {
+      "path": ".artifacts/shared-cu/om-shared-address-tree/arithmetic-proof-state.json",
+      "sha256": "2e51002614ae8d53901245554fdf853d04f32ed0122006d7ab75e589f9cb6a9e"
+    },
+    "om-shared-address-tree/pause-receipt.json": {
+      "path": ".artifacts/shared-cu/om-shared-address-tree/pause-receipt.json",
+      "sha256": "71894e4491b1e44cfb607ca90c71c32947b34bc7bed1e322b3f553f0b4cbb916"
+    }
+  },
+  "shutdown": {
+    "remaining_validation_processes_stopped": true,
+    "process_ids": [
+      76317,
+      84201,
+      84217
+    ],
+    "forced_kill_used": false
+  },
+  "resume_notes": [
+    "Goal remains paused until explicitly resumed; no further optimization or validation jobs should start automatically.",
+    "Shared-response and direct-presence variants pass functional tests but fail the absolute full64-entry OutputMerger synthesis gate. The current committed baseline also fails the address/admission cone gate; these experiments are not qualified for integration.",
+    "Address-tree compressor/prefix primitives pass SAT and the independent address oracle passed. The complete runner was interrupted at user request; its partial results and generated RTL are not a qualified runtime.",
+    "Main source contains the already qualified sampler revision. The private OM sources have not been copied into main.",
+    "Installed default QEMU remains unchanged. Preserve the unrelated timing/README.md edit."
+  ]
+}
