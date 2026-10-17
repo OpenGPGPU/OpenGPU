@@ -54,6 +54,9 @@ object EmitPpaRtl {
       case "legacy-tile-store" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.TileAttachmentStore(), stageArgs, firtoolArgs)
+      case "tile-write-queue" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TileAttachmentWriteQueue(), stageArgs, firtoolArgs)
       case "vector-integer" =>
         ChiselStage.emitSystemVerilogFile(
           new VectorIntegerAlu(GpuConfig()), stageArgs, firtoolArgs)

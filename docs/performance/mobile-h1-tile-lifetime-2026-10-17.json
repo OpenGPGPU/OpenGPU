@@ -851,7 +851,18 @@
     "status": "running",
     "artifact": "generated/mobile-h1/physical-route",
     "input_rtl": "generated/mobile-h1/mulpipe-rtl",
-    "scope": "standalone component; no whole-GPU claim"
+    "scope": "standalone component; no whole-GPU claim",
+    "intermediate_cts": {
+      "scope": "intermediate clock-tree result; routing remains live, not final qualification",
+      "metrics": {
+        "cts__timing__setup__ws": -567.966,
+        "cts__timing__hold__ws": -47.5596,
+        "cts__timing__setup__tns": -495621,
+        "cts__timing__hold__tns": -2487.09,
+        "cts__timing__fmax__clock:core_clock": 692916000.0
+      },
+      "sha256": "b050779be555b53f6e9bf56409d85b7b2868f6e06c43c8b3b4a7c03b80a502cf"
+    }
   },
   "script_checks": {
     "command": "python3 -m pytest -q scripts/test_qualify_ppa.py",

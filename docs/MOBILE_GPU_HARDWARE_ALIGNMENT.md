@@ -296,3 +296,10 @@ component estimates and do not qualify the integrated GPU clock or energy/frame.
 The staged-admission/SRAM component passes its 1 GHz synthesis setup screen
 at TC/SLVT with the stated 25% I/O budget: core slack +26.670 ps and reported
 I/O slack +39.924 ps. Post-route setup/hold qualification remains separate.
+
+A separate [attachment transfer-credit candidate](performance/mobile-h1-transfer-credits-2026-10-17.json)
+passes isolated tests for 1/3/8 credits, reordered acknowledgements, stable
+backpressure, repeated-address serialization and cancellation/fault drain.
+It sustains one request/cycle with a ready port after warm-up and passes its
+standalone 1 GHz synthesis setup screen. It is not yet integrated into the
+tile engine, so the one-outstanding-transaction limitation above still applies.

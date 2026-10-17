@@ -1,0 +1,50 @@
+{
+  "scope": "isolated attachment write queue; not integrated and not a tile-engine speedup claim",
+  "baseline_commit": "60ffc0e",
+  "credits_tested": [
+    1,
+    3,
+    8
+  ],
+  "tests_passed": 4,
+  "checked_properties": [
+    "stable offered request under backpressure",
+    "one ready-port request per cycle for resident credit stream",
+    "reordered address-matched acknowledgements",
+    "repeated-address serialization",
+    "abort and response-fault drain of issued/offered ownership",
+    "drop unoffered work and forbid reuse before drain"
+  ],
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/TileAttachmentWriteQueue.scala": "f90b9efb91ac89405315e38ecd071134d39c6f9a9e77a70acbb4227655cd4cc7",
+    "src/test/scala/opengpu/graphics/TileAttachmentWriteQueueSpec.scala": "3a57e87c54d2c5273aaf8fd8d9004133d367dfe35821f73f7f768891fc2ea45f"
+  },
+  "test_log": ".artifacts/mobile-hardware-alignment/h0-h1/write_queue.log",
+  "test_log_sha256": "c0f56630fb4f1d792a2dfa0050738f7b584d52adc15a54809cfcfc5ebe7e00d3",
+  "synthesis": {
+    "status": "passed setup screen",
+    "scope": "standalone queue, pre-layout; no integrated clock or energy claim",
+    "artifact": "generated/mobile-h1/physical-write-queue",
+    "gate": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        449.746,
+        279.771
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "ccd996f2c1c0d1f75b050404f5ff963a88ecefdd6f375bac87ef36c49d9312a5"
+    },
+    "qor": {
+      "setup_worst_slack_ps": 449.746,
+      "core_clock_fmax_mhz": 1817.343
+    },
+    "manifest_sha256": "145fc6841687cb9e597ffba882536d59107d3b9f3da3621648990a9679b56777"
+  },
+  "next": "Integrate behind pass-lifetime completion with queued-write fault attribution, then compare matched workloads and requalify timing.",
+  "commands": {
+    "functional": "sbt -batch 'testOnly opengpu.graphics.TileAttachmentWriteQueueSpec'",
+    "emit": "sbt -batch 'runMain opengpu.elaboration.EmitPpaRtl tile-write-queue <rtl-directory>'",
+    "synthesis": "ChipAgent Python: scripts/qualify_ppa.py <rtl-directory> TileAttachmentWriteQueue --output <new-output-directory>"
+  }
+}
