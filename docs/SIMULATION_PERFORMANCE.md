@@ -55,6 +55,28 @@ a component estimate rather than whole-chip placement/routing.
 
 See [the sources, every gate, complete samples and trace hashes](performance/prepared-blend-overlap-main-qualification-2026-10-17.json).
 
+## Current prepared-sampler cadence (2026-10-17)
+
+A read-only snapshot at each existing task tick measures the qualified overlap
+model. No RTL evaluator is added; all task ticks are observed, and complete
+RAM, cycles, commits, holds and DMA remain exact. The diagnostic run changes
+only one model object and the fixture's collection checkpoints.
+
+| Workload | Task ticks | Fetch share of active texture-unit clocks | Mean shared texture IDs | Peak IDs |
+| --- | ---: | ---: | ---: | ---: |
+| Spatial64 | 10,826 | 76.98% | 0.94 | 8 / 16 |
+| Spatial256 | 122,349 | 76.17% | 1.22 | 8 / 16 |
+
+The shared ID table never fills in these fixtures. In spatial256, 92,315 fetch
+clocks have one outstanding physical leader, 26,061 have two, and only 549 have
+four. Cache lookup accounts for 31,436 of 154,084 fetch clocks. These counts
+support testing two independent fetch groups under the existing four-read
+budget; they do not establish an achievable speedup or general AXI bandwidth
+sufficiency. Sampler fetching, rather than ID-table capacity, is the next
+cycle-reduction target after the L2 host-work qualification.
+
+See [the per-tick histograms and unchanged-object checks](performance/prepared-sampler-cadence-2026-10-17.json).
+
 ## Exact held-update attribution (2026-10-17)
 
 A read-only observer surrounds existing hold dispatches, without evaluating
@@ -89,11 +111,35 @@ loop improves from **3.12 ns to 0.42 ns**, with **+577.433 ps core / +450.902 ps
 I/O** slack. Full-cache timing is still required; this isolated pass does not
 establish whole-cache or whole-chip frequency.
 
+The packed-bitmap-only full-cache candidate still fails the same target:
+**4.09 ns** core delay and **−3,159.991 ps** I/O slack. Its preliminary host
+gain is therefore insufficient for promotion. The combined candidate must
+pass the actual full-cache gate.
+
 Both indexed owner/original-ID memories and their combination with the
 hierarchical encoder pass 27 cache tests and two render tests. The memories
 share one asynchronous read per table and retain all 564 entries. A separate
 SAT proof excludes observable read/write collisions under the existing
-old-state allocation policy. Native and release qualification are in progress.
+old-state allocation policy. Existing exact hold records attribute another
+**33.55%** of spatial256 hold calls to these two metadata tables, in addition
+to the validity flags' 22.17%. These call shares are not wall-time predictions.
+Nine native scenes now preserve complete RAM, task cycles and DMA with
+**55.7–57.8% fewer hold calls** than the selected model. Strict Mesa64 replay
+also preserves all 45,693 calls, 3,311,169 ticks and DMA results. A separate
+balanced four-sample O1 comparison against the packed-bitmap candidate saves
+another **6.37–6.96%**, with non-overlapping timing ranges. This incremental
+screen is not a direct release comparison against the selected O2/PGO model.
+
+Extra STA on the existing native netlist locates two more independent failing
+cones: regular-response waiter selection has **−3,089.239 ps** core slack, and
+MSHR waiter selection has **−1,843.062 ps**. The lower-pool-only tree cannot
+address these. Its unfinished native build and timing run were stopped, with
+receipts retained, to qualify one shared tree helper at all three wide ID
+selection sites. This complete revision passes **38 tests in five suites**
+and twelve-capacity SAT checks against the original encoder. Only the three
+expected cache modules change among the original 296 native modules; the two
+metadata memories remain added. Full-cache timing, optimized host measurements
+and actual desktop qualification remain required before production promotion.
 
 See [the remapper screens, exact-ID proofs and timing limits](performance/l2-transaction-remapper-screen-2026-10-17.json).
 

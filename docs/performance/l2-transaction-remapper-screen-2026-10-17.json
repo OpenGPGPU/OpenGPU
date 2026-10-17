@@ -193,6 +193,28 @@
         }
       },
       "scope": "Four fresh processes per workload/variant in balanced B,C,C,B,C,B,B,C order. Matching O1 profile-instrumented archives. Whole RAM and each model own counters exact. Final O2/own-profile measurements and current desktop qualification remain."
+    },
+    "full_cache_timing": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-transaction-bitmap-native/native-component-timing-state.json",
+        "sha256": "114370da54bf919b66ae5eaa61d29e6b219f61845963d7d39ff87c487fab7bce"
+      },
+      "qor": {
+        "setup_worst_slack_ps": -3089.239,
+        "core_clock_fmax_mhz": 244.544
+      },
+      "setup_gate": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -3089.239,
+          -3159.991
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "aedd7d30eaae1ab970165c9b4dab9ae4362c28f3f4bd552b7d8a364da4bcc756"
+      },
+      "scope": "Actual SharedL2Cache cone, with only synchronous L2SramArray wrappers replaced by current repository L2SramArray(useBlackBox=true) elaborations using characterized ASAP7 SRAMs. Match every wrapper pin and preserve every surrounding native RTL byte. Avoid synthesizing behavioral SRAMs as620k flip-flop bits. Paired1GHz SLVT TC25%IO synthesis estimate, not full-chip placement/route.",
+      "promotion_eligible": false
     }
   },
   "indexed_metadata": {
@@ -216,7 +238,273 @@
       "path": ".artifacts/shared-cu/l2-transaction-metadata-mem/update-equivalence.json",
       "sha256": "d6a80ed112060f59eee1bb27849d788be878d5567ada039ab330e840b93bad56"
     },
-    "native_qualification": "in_progress"
+    "native_qualification": "native9_and_strict_Mesa64_passed_O1_screen_passed_release_pending",
+    "existing_model_hold_attribution": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/hold-write-attribution-native/metadata-hold-attribution.json",
+        "sha256": "f327212b306abc85776f48a0bbc627528f22fb3d40b381c0ec48654d02e972eb"
+      },
+      "data": {
+        "recorded_at": 1792219702.066217,
+        "scope": "Read-only reclassification of the existing exact per-hold CSVs on current selected sampler-overlap model; no new simulation or elapsed-time claim.",
+        "families": {
+          "lowerValid": 564,
+          "lowerOwner": 564,
+          "lowerOriginalId": 564
+        },
+        "cases": [
+          {
+            "tag": "solid-uniform-alpha1-fast",
+            "total_hold_calls": 8188998,
+            "families": {
+              "lowerValid": {
+                "calls": 1890908,
+                "write_calls": 3938,
+                "zero_write_calls": 1886970,
+                "share_of_all_hold_calls_percent": 23.090834800545807
+              },
+              "lowerOwner": {
+                "calls": 1413164,
+                "write_calls": 1324,
+                "zero_write_calls": 1411840,
+                "share_of_all_hold_calls_percent": 17.256860973711312
+              },
+              "lowerOriginalId": {
+                "calls": 1336147,
+                "write_calls": 1167,
+                "zero_write_calls": 1334980,
+                "share_of_all_hold_calls_percent": 16.31636739928377
+              }
+            },
+            "csv_sha256": "36094f0c4ba640dadc320355b29c90fe3898f11172aad734ebe39423fc7c444c"
+          },
+          {
+            "tag": "spatial-gradient-alpha1-fast",
+            "total_hold_calls": 9726293,
+            "families": {
+              "lowerValid": {
+                "calls": 2235313,
+                "write_calls": 4592,
+                "zero_write_calls": 2230721,
+                "share_of_all_hold_calls_percent": 22.982168026400192
+              },
+              "lowerOwner": {
+                "calls": 1627173,
+                "write_calls": 1481,
+                "zero_write_calls": 1625692,
+                "share_of_all_hold_calls_percent": 16.729631731225865
+              },
+              "lowerOriginalId": {
+                "calls": 1641878,
+                "write_calls": 1417,
+                "zero_write_calls": 1640461,
+                "share_of_all_hold_calls_percent": 16.880819856033536
+              }
+            },
+            "csv_sha256": "67ebf52728edc86a3a857f1a7a9c5af3da16a05ba26d11d363f058640f5c97b3"
+          },
+          {
+            "tag": "large256-gradient-alpha1-fast",
+            "total_hold_calls": 144355044,
+            "families": {
+              "lowerValid": {
+                "calls": 31999183,
+                "write_calls": 66752,
+                "zero_write_calls": 31932431,
+                "share_of_all_hold_calls_percent": 22.167000274683854
+              },
+              "lowerOwner": {
+                "calls": 24629140,
+                "write_calls": 21923,
+                "zero_write_calls": 24607217,
+                "share_of_all_hold_calls_percent": 17.06150288728394
+              },
+              "lowerOriginalId": {
+                "calls": 23797655,
+                "write_calls": 22052,
+                "zero_write_calls": 23775603,
+                "share_of_all_hold_calls_percent": 16.485502924303773
+              }
+            },
+            "csv_sha256": "c0dc71a045cf84a1bc8656e6509302919309b0b771d0f578fe96aa3548db7fc3"
+          }
+        ]
+      }
+    },
+    "native_build": {
+      "path": ".artifacts/shared-cu/l2-transaction-metadata-mem-native/build-state.json",
+      "sha256": "c007526a589f62db2cbb594a1b6c351b6f2953fe509a7aacc07ae2935cbde751"
+    },
+    "native_cases": [
+      {
+        "tag": "solid-uniform-alpha0-fast",
+        "ticks": 8788,
+        "holds": 3439467,
+        "selected_model_hold_call_reduction_percent": 57.771795340230355,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "solid-uniform-alpha1-fast",
+        "ticks": 8823,
+        "holds": 3553952,
+        "selected_model_hold_call_reduction_percent": 56.60089305187277,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "solid-gradient-alpha0-fast",
+        "ticks": 8788,
+        "holds": 3439454,
+        "selected_model_hold_call_reduction_percent": 57.77188754882019,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "solid-gradient-alpha1-fast",
+        "ticks": 8823,
+        "holds": 3555053,
+        "selected_model_hold_call_reduction_percent": 56.59328415932456,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "spatial-uniform-alpha0-fast",
+        "ticks": 10727,
+        "holds": 4021187,
+        "selected_model_hold_call_reduction_percent": 57.24916655167039,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "spatial-uniform-alpha1-fast",
+        "ticks": 10826,
+        "holds": 4144064,
+        "selected_model_hold_call_reduction_percent": 57.02214082643777,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "spatial-gradient-alpha0-fast",
+        "ticks": 10727,
+        "holds": 4099843,
+        "selected_model_hold_call_reduction_percent": 56.774405841456364,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "spatial-gradient-alpha1-fast",
+        "ticks": 10826,
+        "holds": 4228034,
+        "selected_model_hold_call_reduction_percent": 56.52985160944668,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      },
+      {
+        "tag": "large256-gradient-alpha1-fast",
+        "ticks": 122349,
+        "holds": 64014195,
+        "selected_model_hold_call_reduction_percent": 55.65503412544422,
+        "whole_RAM_exact": true,
+        "task_clocks_and_traffic_exact": true
+      }
+    ],
+    "strict_Mesa64_replay": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-transaction-metadata-mem-native/reference-replay-state.json",
+        "sha256": "2dfdbe130a20e95943da2f5f1ccb780e37b02c90116a791b60f9781636ba2271"
+      },
+      "trace_sha256": "b6112abf682c39e0d8c3c2e10b74bd641cd3c40de90e68b9547ca131d059728f",
+      "result": {
+        "calls": 45693,
+        "ticks": 3311169,
+        "commits": 46754789,
+        "holds": 148057406,
+        "dma_reads": 39094,
+        "dma_writes": 468192,
+        "dma_bytes": 6005392,
+        "seconds": 32.94500175,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "scope": "Unchanged strict existing selected-model trace, same calls/ticks/DMA; internal commits/holds change with RTL encoding. Concurrent elapsed is functional only."
+    },
+    "balanced_incremental_O1_screen": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-transaction-metadata-mem-native/O1-host-state.json",
+        "sha256": "a4463b78f7e02b44a3a58e4244fc57bd29a5e6b1e353cf6eef6f6be4138f8c15"
+      },
+      "baseline": "packed-validity only, own O1 instrumented archive",
+      "candidate": "packed validity plus indexed metadata, own O1 instrumented archive",
+      "summary": {
+        "solid64": {
+          "medians": {
+            "baseline": 1.0609738335,
+            "candidate": 0.9933750835
+          },
+          "time_saved_percent": 6.371387103582138,
+          "ranges": {
+            "baseline": [
+              1.057899916,
+              1.076784459
+            ],
+            "candidate": [
+              0.982715041,
+              1.002364792
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "spatial64": {
+          "medians": {
+            "baseline": 1.297280312,
+            "candidate": 1.2102121255
+          },
+          "time_saved_percent": 6.711593916488889,
+          "ranges": {
+            "baseline": [
+              1.292253875,
+              1.301767042
+            ],
+            "candidate": [
+              1.202114666,
+              1.222007
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        },
+        "spatial256": {
+          "medians": {
+            "baseline": 20.019700104,
+            "candidate": 18.6259982705
+          },
+          "time_saved_percent": 6.961651904173816,
+          "ranges": {
+            "baseline": [
+              20.002811916,
+              20.10976475
+            ],
+            "candidate": [
+              18.357299125,
+              18.769048208
+            ]
+          },
+          "samples_per_variant": {
+            "baseline": 4,
+            "candidate": 4
+          }
+        }
+      },
+      "scope": "Matched O1 plus profile-instrumentation native host screen on same external work: packed-validity baseline versus packed-validity plus indexed metadata. Four balanced fresh processes per variant/workload. Preserve complete RAM and each own internal counter; require exact baseline task clocks/DMA. Final O2/PGO, native format/control and actual guest qualification remain before any gain/promotion claim.",
+      "optimized_release_claim": false
+    }
   },
   "priority_encoder": {
     "source": {
@@ -311,7 +599,66 @@
         "sha256": "32287e3e560fda93c9f662c3c45302eae86a018e830bfae0ab011f7b438ae2cd"
       }
     },
-    "full_cache_candidate_qualification": "pending"
+    "full_cache_candidate_qualification": "Lower-pool-only revision superseded: extra native STA proves two independent wide response encoders remain failing. Complete three-site revision l2-wide-priority-tree is under qualification.",
+    "additional_native_paths": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-transaction-priority-tree-native/remaining-encoders-state.json",
+        "sha256": "c6138b6c5a807022611374a158d0a5d9ba37abd63155efb99e916d61b24473ff"
+      },
+      "source_odb_sha256": "1d5038e58ca1479bb48d9e4d301565e92b8f7b8506228ec648a5a829b6c4294a",
+      "families": {
+        "regular_waiters": {
+          "nets": 2256,
+          "setup_slacks_ps": [
+            -3089.239,
+            -3159.991
+          ],
+          "startpoints": [
+            "u7296 (rising edge-triggered flip-flop clocked by core_clock)",
+            "u7296 (rising edge-triggered flip-flop clocked by core_clock)"
+          ],
+          "endpoints": [
+            "u6592 (rising edge-triggered flip-flop clocked by core_clock)",
+            "io_response_bits_transactionId[1]"
+          ]
+        },
+        "mshr_waiters": {
+          "nets": 9024,
+          "setup_slacks_ps": [
+            -1843.062,
+            -1866.897
+          ],
+          "startpoints": [
+            "u54029 (rising edge-triggered flip-flop clocked by core_clock)",
+            "u54029 (rising edge-triggered flip-flop clocked by core_clock)"
+          ],
+          "endpoints": [
+            "u445123 (rising edge-triggered flip-flop clocked by core_clock)",
+            "io_response_bits_transactionId[1]"
+          ]
+        },
+        "lower_pool": {
+          "nets": 564,
+          "setup_slacks_ps": [
+            -2417.26,
+            -2532.095
+          ],
+          "startpoints": [
+            "u1016 (rising edge-triggered flip-flop clocked by core_clock)",
+            "u1016 (rising edge-triggered flip-flop clocked by core_clock)"
+          ],
+          "endpoints": [
+            "u1200 (rising edge-triggered flip-flop clocked by core_clock)",
+            "io_memoryRequest_bits_transactionId[1]"
+          ]
+        }
+      },
+      "scope": "Read-only extra STA on the completed packed-bitmap native-cache netlist, with original libraries and constraints. Separately query wide regular-response and MSHR-waiter encoders before deciding whether further tree conversion is required. No resynthesis, no change to the baseline result or constraints."
+    },
+    "supersession_receipt": {
+      "path": ".artifacts/shared-cu/l2-transaction-priority-tree-native/timing-and-build-supersession.json",
+      "sha256": "5128565c496a5b4f21050484bc357bc0f0505b34ba95ab4e6c00c71fd5e1eaea"
+    }
   },
   "remaining_gates": [
     "Native whole-RAM, cycles and DMA comparisons for indexed metadata and hierarchical encoder.",
@@ -319,5 +666,68 @@
     "Actual native full-cache timing with characterized SRAM views; isolated allocator pass is insufficient.",
     "Format/swizzle/staging controls and current Debian/Mesa desktop, strict trace, scanout and visual checks."
   ],
-  "production_RTL_changed": false
+  "production_RTL_changed": false,
+  "updated_at": 1792220376.205843,
+  "all_wide_revision": {
+    "sources": {
+      "L2PriorityEncoder.scala": {
+        "path": ".artifacts/shared-cu/l2-wide-priority-tree/L2PriorityEncoder.scala",
+        "sha256": "a8cc64801c9ca08a83b39030953bd9c86e79158118e2cf0d8dc15eaedb4b2129"
+      },
+      "L2MshrTable.scala": {
+        "path": ".artifacts/shared-cu/l2-wide-priority-tree/L2MshrTable.scala",
+        "sha256": "a95514ef464925ff71ca5b7c73fb90d5a0c1e0b88cc783d6366872680d5bd318"
+      },
+      "SharedL2Cache.scala": {
+        "path": ".artifacts/shared-cu/l2-wide-priority-tree/SharedL2Cache.scala",
+        "sha256": "058215bff889031c968297b061fa2237f3efb92047d37dec956b9ae284ceb7d2"
+      }
+    },
+    "unit_and_emission": {
+      "path": ".artifacts/shared-cu/l2-wide-priority-tree/state.json",
+      "sha256": "99e55ab4b0e144f65f3cbbe20a893713a1f6c2751a4590ed840c3e341aa2c0d5"
+    },
+    "test_count": 38,
+    "suites": [
+      "RenderCoreL2Spec",
+      "SharedL2CacheSpec",
+      "L2MshrTableSpec",
+      "L2VictimReservationTableSpec",
+      "L2StoreTransactionTableSpec"
+    ],
+    "runner_setup_correction": "Preserved initial class-loader abort: the victim-reservation source filename differs from its actual suite class. Resume ran the actual class and remaining store suite without changing sources or tests.",
+    "changed_executable_modules": [
+      "L2MshrTable.sv",
+      "SharedL2Cache.sv",
+      "SharedL2Slice.sv"
+    ],
+    "unchanged_executable_modules": 293,
+    "added_memory_modules": [
+      "lowerOriginalId_564x10.sv",
+      "lowerOwner_564x2.sv"
+    ],
+    "SAT": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/l2-wide-priority-tree/priority-equivalence.json",
+        "sha256": "00f54e44e945a165b353851b7e25209fd50403ca4d0ee95b88b2e330d14a57f8"
+      },
+      "capacities": [
+        7,
+        8,
+        9,
+        16,
+        17,
+        32,
+        33,
+        64,
+        65,
+        564,
+        576,
+        1024
+      ],
+      "scope": "SAT compares actual Chisel-emitted PriorityEncoder and the actual compiled candidate helper used at all three wide L2-ID selection sites for every input bitmap, including empty input, at power-of-two boundaries and actual native capacity. No traffic assumptions."
+    },
+    "native_and_full_cache_timing": "running",
+    "production_RTL_changed": false
+  }
 }

@@ -1,0 +1,241 @@
+{
+  "recorded_at": 1792219830.847512,
+  "configuration": {
+    "compute_units": 4,
+    "lanes": 16,
+    "warps": 8,
+    "axi_bytes": 64,
+    "shared_texture_owner_slots": 16,
+    "physical_reads_per_sampler": 4
+  },
+  "scope": "Current qualified prepared-overlap RTL, not the older pre-overlap sampler. Read architectural registers at existing tick_nba entry with no lazy accessor or additional RTL evaluation. Samples equal every task tick exactly. Same header and all36 other own72 O2/PGO archive members retained. All complete RAM and existing task counters exact; elapsed is diagnostic and may overlap other qualification work.",
+  "observer": {
+    "path": ".artifacts/shared-cu/prepared-sampler-cadence-native/run.py",
+    "sha256": "01813a1a56359028c4854e869adda68206db6ce4bfc088256b5c4557fb0b1d67"
+  },
+  "state": {
+    "path": ".artifacts/shared-cu/prepared-sampler-cadence-native/state.json",
+    "sha256": "2d6bdc1acd95471dccf32d5dd206ffacce8a173354cb5ca54e352a75e7c73cb8"
+  },
+  "original_archive_sha256": "066e130ab96286b4d9808689b6fd2ec8cf6857ebe23ef5312c94749278dd07f8",
+  "header_sha256": "c5863d475082dc50f8fc77cf261dd04a92d7b452cd73961f4e3e8f093ddf7e5d",
+  "retained_archive_members": {
+    "dut_1.o": "289ab6c817923a83fdb1205abbba77853aa04a54cc21011eb72f4925d344047c",
+    "dut_10.o": "36f98932b39ba6bd9478c60272f57772e9ad893e9313d6f62d9103fe3d7c3edf",
+    "dut_11.o": "e72ea7861ee9b9a5be6cc845ee44e3bbc659ef180926275d87e6bc58981cc9cc",
+    "dut_12.o": "e98b3edc7baf33292ba54b2d121e99266bcaf95079b94cfc79cc5e776fa55c99",
+    "dut_13.o": "98345fe3a833b8f526a00e624afafc5c6eb22d711a5845857d08638109c0426e",
+    "dut_14.o": "09aa7373fdcd3b0efc89f4a518067f862f461ce833974a10bab96be6cd806e1b",
+    "dut_15.o": "550c146fb47cf1129805798b509dc5d479eb7e60023598e50cf69688603d0245",
+    "dut_16.o": "f081e13a86587285847d3c48e6d87e0069d7ae7a6866dcd6fb6f4d1b6a9caf35",
+    "dut_17.o": "2329de0b1ca7317d8bcc3e935e5037590f544272dbf1542ece58bad0ae5e7e20",
+    "dut_18.o": "620e93d4b6dd7902776eaa42beb5603da409155f113c6d0fdc6ae3fc4c2640c4",
+    "dut_19.o": "9040a73b9ea2912786035612399677f90addb58012c61ce4fb96db87c12743a7",
+    "dut_2.o": "452681d5d3fcf8672b3ea580a2ecc78e27d81071d261f5db238a061e474182e5",
+    "dut_20.o": "dc9c0f77c2100d6222d08b86196a2b1ab66b45cb5a53bcc929c57ac3374e9cf1",
+    "dut_21.o": "f6b39d95b1e5e24c8caaa77c54f7de459938f4945e528de4697229ade20f9b55",
+    "dut_22.o": "6c2c0e550f3c6d2847955b05b5db9b29d1dd615c1819742dcd8300a99d7879fd",
+    "dut_23.o": "34761503242cff5c8a1cd01343c120279248e318eaee44fbf0c731e802a7cb97",
+    "dut_24.o": "c1c1fb0b3545a7fffe86a4dafafa6576a2d216a5a2b83260b879f268df8dd1d7",
+    "dut_25.o": "00ceee7461de0e4d8c88cd6ef89b47a0f93f67a4ed304e7878bdfad353b4552a",
+    "dut_26.o": "281fdea08744cfe14433b2f52312ee562f4bd05b0439988a6512b3218f3ee4f2",
+    "dut_27.o": "8fe95d038c70b31a5013483d10433036741d95a915ba635103ecc92a4d39cc02",
+    "dut_28.o": "f599ff46f7bc22817d467fae27cbda5571b9d318626e360b00600901928d84f5",
+    "dut_29.o": "b1561c1e9ac53645cc2b60f5cb6224348894e6dcd26e80e61015dae89c5395bf",
+    "dut_3.o": "33d5d627c4fb60befd918614790a13ebec94bba5d0364ffd05a030f04219663a",
+    "dut_30.o": "f8ba3ab8e7e5d34071bf3cba55964c99c84688ff579439d862bde656de2d409b",
+    "dut_31.o": "7b5f1489fd81e16d915166e90bd1e2cdd67d0da8e6fb3a09ad930b4ff65efbde",
+    "dut_4.o": "1477fb918a875dfb1f73678e0d56f22752a40d82e0dd0f1be4641e73a35565e0",
+    "dut_5.o": "fc1101b5434d7d9ff71dc23b4d03d9eef51d2ed49d8c08194d41f214cab00824",
+    "dut_6.o": "cff16a130d04ae5db74cb38db482885e708d159e455443b387ee1dad2d560e3d",
+    "dut_7.o": "044aa891d1f150455b481d84d4268bee6a3bd4fb8e98877198186d2e02158b89",
+    "dut_8.o": "5f2cc0ede35481f700b546d0ab50ddd088ca1375d0c3e27c5160b6fdeb28fe3a",
+    "dut_9.o": "4418eec043d7e52a8b64477bb39d67d6275ace77d9c8e811bd224d574022de76",
+    "dut_commit_blocks.o": "87e5c167dc9efb0f8137d580566f59161471bac3b6b19c4d5f9cdf03d080653b",
+    "dut_commit_chunks.o": "15bf3a13a4d20d3a113f615b72ab7432bf6af1c7ddcafb29db9795ba5bf848a9",
+    "dut_commit_helpers.o": "b548471cc689579008bae17428d6d2426082acd836402b6bb80dd2fb784392e5",
+    "dut_mem_ports.o": "a8d6a1e57f6194e36e656af3ca5360b90a6cc13e31be4776c96832a4c592fdea",
+    "arti_rtl_model.o": "d18e0a032beef0b5c839b365a5988ca3df2e1f3f6365b70fa4970fe32df52884"
+  },
+  "sampler_state_order": [
+    "idle",
+    "level",
+    "wrap",
+    "index",
+    "tap",
+    "fetch",
+    "blend",
+    "mix",
+    "done"
+  ],
+  "cases": [
+    {
+      "tag": "solid-uniform-alpha1-fast",
+      "ticks": 8823,
+      "whole_RAM_and_all_counters_exact": true,
+      "owner_histogram": [
+        8532,
+        291,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "owner_mean": 0.032981978918735125,
+      "owner_peak": 1,
+      "full_owner_ticks": 0,
+      "worker_active_ticks": 1013,
+      "worker_sampler_state_histogram": [
+        34700,
+        140,
+        0,
+        0,
+        0,
+        452,
+        0,
+        0,
+        0
+      ],
+      "fetch_ticks": 452,
+      "fetch_percent_of_unit_active": 44.61994076999013,
+      "fetch_cache_lookup_ticks": 0,
+      "fetch_outstanding_leader_histogram": [
+        161,
+        291,
+        0,
+        0,
+        0
+      ],
+      "fetch_with_held_result_ticks": 0,
+      "raw_observations": {
+        "path": ".artifacts/shared-cu/prepared-sampler-cadence-native/solid-uniform-alpha1-fast-cadence.json",
+        "sha256": "fc093d2707602069fc63ff2f22340c3d8064c658e0a0bad6ca89cb4885d1a064"
+      }
+    },
+    {
+      "tag": "spatial-gradient-alpha1-fast",
+      "ticks": 10826,
+      "whole_RAM_and_all_counters_exact": true,
+      "owner_histogram": [
+        5021,
+        2525,
+        2546,
+        489,
+        192,
+        28,
+        9,
+        8,
+        8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "owner_mean": 0.9390356549048586,
+      "owner_peak": 8,
+      "full_owner_ticks": 0,
+      "worker_active_ticks": 13986,
+      "worker_sampler_state_histogram": [
+        29742,
+        140,
+        140,
+        140,
+        140,
+        10766,
+        2236,
+        0,
+        0
+      ],
+      "fetch_ticks": 10766,
+      "fetch_percent_of_unit_active": 76.97697697697697,
+      "fetch_cache_lookup_ticks": 2096,
+      "fetch_outstanding_leader_histogram": [
+        2568,
+        6382,
+        1722,
+        36,
+        58
+      ],
+      "fetch_with_held_result_ticks": 2096,
+      "raw_observations": {
+        "path": ".artifacts/shared-cu/prepared-sampler-cadence-native/spatial-gradient-alpha1-fast-cadence.json",
+        "sha256": "335f82af38abd28d0d49b9c45f873d56e709b7c182ccb6bf7da08ac2d82f91d3"
+      }
+    },
+    {
+      "tag": "large256-gradient-alpha1-fast",
+      "ticks": 122349,
+      "whole_RAM_and_all_counters_exact": true,
+      "owner_histogram": [
+        29652,
+        46776,
+        37789,
+        5815,
+        1972,
+        285,
+        52,
+        2,
+        6,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "owner_mean": 1.2217999329786104,
+      "owner_peak": 8,
+      "full_owner_ticks": 0,
+      "worker_active_ticks": 202292,
+      "worker_sampler_state_histogram": [
+        293396,
+        2096,
+        2096,
+        2096,
+        2096,
+        154084,
+        33532,
+        0,
+        0
+      ],
+      "fetch_ticks": 154084,
+      "fetch_percent_of_unit_active": 76.16910209004804,
+      "fetch_cache_lookup_ticks": 31436,
+      "fetch_outstanding_leader_histogram": [
+        34208,
+        92315,
+        26061,
+        951,
+        549
+      ],
+      "fetch_with_held_result_ticks": 31436,
+      "raw_observations": {
+        "path": ".artifacts/shared-cu/prepared-sampler-cadence-native/large256-gradient-alpha1-fast-cadence.json",
+        "sha256": "f813b43c2608aecb19a23c5aa5b8c5e99ffd9788592c5a325bb890fd0fb3a1e0"
+      }
+    }
+  ],
+  "interpretation": [
+    "No observed shared texture-ID capacity exhaustion; peak8 of16 in both spatial workloads. This does not establish arbitrary workload sufficiency or AXI bandwidth saturation.",
+    "Fetch occupies about76% of active texture-unit clocks. Most fetch clocks have one or two outstanding physical leaders; four-leader occupancy is rare.",
+    "A second independent fetch group sharing the existing four-read budget is a candidate for hiding latency; no speedup is established until a full implementation preserves formats, mips, order, masks, VLEN and backpressure and passes native/guest/timing qualification.",
+    "Register state occupancy alone cannot attribute downstream stalls or infer an exact achievable speedup."
+  ]
+}
