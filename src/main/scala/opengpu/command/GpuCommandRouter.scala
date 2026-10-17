@@ -15,6 +15,7 @@ object GpuCommandOpcode {
   val resolve = 4.U(width.W)
   val invalidate = 5.U(width.W)
   val render = 6.U(width.W)
+  val tileRender = 7.U(width.W)
 }
 
 /** One software queue format. Unused payload fields are ignored by opcode. */
@@ -97,6 +98,8 @@ class GpuCommandRouter(
       new InvalidateCompletion(commandIdWidth)))
     val duplicateCommandId = Output(Bool())
     val busy = Output(Bool())
+    /** Queued/executing non-kernel commands retain memory-engine ownership. */
+    val memoryEngineBusy = Output(Bool())
     /** While high the router stops dispatching queued commands to the
       * engines; completion drain continues so in-flight work can retire. */
     val blockDispatch = Input(Bool())
@@ -118,6 +121,7 @@ class GpuCommandRouter(
   val hold1Failed = RegInit(false.B)
   val hold1Valid = RegInit(false.B)
   val reservedIds = RegInit(0.U(idCount.W))
+  val memoryOwners = RegInit(0.U((commandIdWidth + 1).W))
   val commandOpcode = Reg(Vec(idCount,
     UInt(GpuCommandOpcode.width.W)))
   val commandSignalsEvent = Reg(Vec(idCount, Bool()))
@@ -297,5 +301,12 @@ class GpuCommandRouter(
     eventGeneration(eventId) := commandSignalGeneration(completedId)
   }
   io.busy := reservedIds.orR
+  val addMemoryOwner = io.command.fire && io.command.bits.opcode =/= GpuCommandOpcode.kernel
+  val removeMemoryOwner = io.completion.fire && io.completion.bits.opcode =/= GpuCommandOpcode.kernel
+  when(addMemoryOwner =/= removeMemoryOwner) {
+    memoryOwners := Mux(addMemoryOwner, memoryOwners + 1.U, memoryOwners - 1.U)
+  }
+  io.memoryEngineBusy := memoryOwners =/= 0.U ||
+    (io.command.valid && io.command.bits.opcode =/= GpuCommandOpcode.kernel)
   }
 }

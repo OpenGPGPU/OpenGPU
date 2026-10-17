@@ -319,6 +319,78 @@ implies a job ring. Unified command ID owns completion identification.
 | 13 | color format in bits 2:0, texture format in bits 6:4 |
 | 14-15 | render width and height; zero selects the snapshotted viewport |
 
+### Persistent tile descriptor profile
+
+`GpuHostSystemAxi(persistentAttachments = true)` exposes
+`GPU_CAP_PERSISTENT_TILE_JOBS` (bit 30). Submit opcode 7 with `SOURCE` pointing
+to a 64-byte-aligned, immutable `gpu_tile_job_record`. `DESTINATION` contains
+the low 32 bits of its exclusive allocation limit; `PATTERN.bit0` contains
+limit bit 32, and the other pattern bits are zero. `BYTES` must be 256.
+DMA/event dependency flags are zero. The default host retains its existing
+opcode-6 descriptor format. The persistent profile clears `GPU_CAP_UNIFIED_RENDER`
+and rejects opcode 6; current DRM submission still uses the default profile.
+
+The record is exactly 64 little-endian words. Its explicit C layout and every
+field offset are checked by `opengpu_tile_job_abi_test.c`. Word 0 is magic/version
+`0x47545001`, word 1 is 64, and words 2–4 hold context/pass/generation. All
+reserved bits and words 37–63 are zero. Header fields, limits, formats and draw
+defaults are snapshotted before any command record can be fetched.
+
+| Words | Persistent descriptor content |
+|---|---|
+| 5–8 | command base, 16-bit count, exclusive limit low/high |
+| 9–10 | nonzero viewport width/height within the elaborated maximum |
+| 11 | origin X in bits 15:0, Y in bits 31:16 |
+| 12 | tile log2 [2:0], width [12:8], height [20:16], sample mode [25:24], color format [30:28], resolve [31] |
+| 13–18 | color base, limit low/high, row pitch, load/store ops, packed clear |
+| 19–24 | depth base, limit low/high, row pitch, load/store ops, packed clear |
+| 25–28 | resolve base, limit low/high and row pitch |
+| 29 | draw state: depth test [0], function [6:4], write [7], cull [9:8], source-over blend [16], stencil test [17] |
+| 30–32 | stencil ops, stencil masks/reference, blend config using the legacy encodings |
+| 33–36 | texture base, size, sampler config, format |
+
+Limit high words contain only bit 0, permitting an exact 4 GiB end. Attachment
+ops encode load/clear/discard as 0/1/2 in bits 1:0 and store in bit 2. Sampler
+config encodes clamp [0], max mip [5:2], enable [8], min mip [15:12] and signed
+five-bit LOD bias [20:16]. View/load/store/resolve admission retains the checked
+tile contract. Texture and shader bindings retain the existing limited ABI;
+general bounded resources remain part of the hardware-alignment work.
+
+Descriptor fetch uses four 64-byte uncached reads through the existing translated
+DMA line client, reserving its first ID before shader staging begins. The reader
+checks the complete 33-bit descriptor range before its first request. It drains
+offered reads on reset/cancellation and never launches a partially fetched job.
+Faults stop command prefetch and retire one result after all owners drain.
+
+Completion keeps the unified command ID, which software reserves until `POP`.
+Statuses are 0 success, 1 invalid descriptor, 2 cancelled, 3 attachment fault,
+4 execution fault, 5 descriptor/command fault and 6 texture fault. Completion
+bytes count accepted draw-record reads and exclude descriptor lines. The core
+and reader validate context/pass/generation internally; the unified slot uses
+the command ID to identify the caller's immutable record. Reset drains and
+discards the cancelled stream's result through the existing reset protocol.
+
+This profile serializes tile jobs with unified DMA/resolve/invalidate commands
+in queue order. A following transfer waits for tile result publication; a new
+tile waits for older memory-engine completion. Unrelated compute remains
+dispatchable. Legacy host-register DMA also waits for tile ownership to retire.
+CPU cache maintenance and explicit synchronization of shader side effects remain
+caller obligations. Command/texture buffering and framebuffer write coalescing
+are rejected in this first profile because their fault callbacks need an
+extended ownership contract.
+
+For a matching small shared-CU bring-up emission:
+
+```sh
+sbt -J-Xmx8G 'runMain opengpu.elaboration.EmitGpuHostSystemAxi generated/tile-host --persistent-tile-jobs --frag-core --shared-graphics --parallel-graphics --cu-lanes 4 --cu-warps 2 --compute-units 2 --width 16 --height 16 --memory-axi-data-bytes 32'
+```
+
+`--tile-store-credits` selects transfer capacity from the common mobile proposal.
+`--sram-black-boxes` selects the characterized SRAM path for physical emission.
+The profile currently owns one 8x8/16x16 tile, one RGBA8 and one D24S8 attachment,
+and the existing inline-triangle records. Multiple tile engines, broader resource
+descriptors, mixed in-pass clear/draw commands and driver adoption remain pending.
+
 ## Linux and display
 
 The platform owns DRM allocation/registration. Execution owns contexts and

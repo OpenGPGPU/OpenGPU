@@ -48,6 +48,14 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "tile-descriptor-reader" =>
+        val pool = Some(opengpu.system.SharedCuShaderConfig(GpuConfig.MobileComputeUnits,
+          parallelFragments = true))
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TileJobDescriptorReader(GpuConfig(),
+            opengpu.graphics.GraphicsConfig(screenWidth = 1280, screenHeight = 720),
+            memoryTransactions = opengpu.system.SharedCuShaderConfig.kernelWordTransactions(pool),
+            transactionId = opengpu.system.SharedCuShaderConfig.stagingTransactions(pool)), stageArgs, firtoolArgs)
       case "protected-command-mmio" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.GpuCommandMmio(GpuConfig(), queueDepth = 8,

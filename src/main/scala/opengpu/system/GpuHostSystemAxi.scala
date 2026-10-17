@@ -69,10 +69,16 @@ class GpuHostSystemAxi(
   parallelGraphics: Boolean = false,
   coalesceFramebufferWrites: Boolean = false,
   bufferCommandReads: Boolean = false,
-  bufferTextureReads: Boolean = false
+  bufferTextureReads: Boolean = false,
+  persistentAttachments: Boolean = false,
+  tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   require(numComputeUnits > 0)
+  require(!persistentAttachments || (!bufferCommandReads && !bufferTextureReads && !coalesceFramebufferWrites),
+    "persistent jobs require response-aligned word faults; buffered/coalesced fault ownership needs a separate contract")
+  require(!persistentAttachments || !fragCore || sharedGraphics,
+    "programmable persistent jobs use the shared system CU pool")
   require(shaderConfig.xLen == gpuConfig.xLen,
     "graphics and compute CUs must use the same address width")
   require(!vertCore || fragCore,
@@ -209,7 +215,9 @@ class GpuHostSystemAxi(
       textureFaultReporting = true,
       computeScalarFpu = enableFpuBackend && gpuConfig.enableFpu,
       graphicsScalarFpu = enableFpuBackend && shaderConfig.enableFpu,
-      sharedShader = sharedShader, protectVmState = true))
+      sharedShader = sharedShader, protectVmState = true,
+      persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
+      useTileSramBlackBoxes = useBlackBoxes))
     val system = Module(new GpuSystem(
       gpuConfig,
       numComputeUnits = numComputeUnits,
@@ -260,6 +268,7 @@ class GpuHostSystemAxi(
     host.io.gpuCompletion.get <> system.io.gpuCompletion
     system.io.graphicsDrained := host.io.graphicsDrained
     host.io.vmContextIdle.get := system.io.vmContextIdle
+    host.io.graphicsDependencyIdle.foreach(_ := system.io.graphicsDependencyIdle)
     system.io.commandResetActive := host.io.commandResetActive.get
     host.io.commandResetDone.get := system.io.commandResetDone
 
@@ -402,6 +411,11 @@ class GpuHostSystemAxi(
     host.io.textureFault.get :=
       stagingClient.io.fault || dmaClient.io.fault || cbClient.io.fault ||
         fbClient.io.fault || texClient.io.fault
+    if (persistentAttachments) {
+      host.io.commandFault.get := cbClient.io.fault
+      host.io.attachmentFault.get := fbClient.io.fault
+      host.io.tileTextureFault.get := texClient.io.fault
+    }
     stagingClient.io.pageWalkResp.valid :=
       graphicsResponse.valid && responseForStagingTlb
     stagingClient.io.pageWalkResp.bits.readData := graphicsResponse.bits.readData

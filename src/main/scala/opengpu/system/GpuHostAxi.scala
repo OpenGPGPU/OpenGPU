@@ -56,9 +56,13 @@ class GpuHostAxi(
   computeScalarFpu: Boolean = false,
   graphicsScalarFpu: Boolean = true,
   sharedShader: Option[SharedCuShaderConfig] = None,
-  protectVmState: Boolean = false
+  protectVmState: Boolean = false,
+  persistentAttachments: Boolean = false,
+  tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
+  useTileSramBlackBoxes: Boolean = false
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
+  require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
   override def desiredName: String = "GpuHostAxi"
 
   val io = IO(new Bundle {
@@ -126,6 +130,10 @@ class GpuHostAxi(
     val tlbFlush = Output(Valid(new VectorTlbFlush(gpuConfig)))
     val textureFault = if (textureFaultReporting) Some(Input(Bool())) else None
     val vmContextIdle = if (protectVmState) Some(Input(Bool())) else None
+    val commandFault = if (persistentAttachments) Some(Input(Bool())) else None
+    val attachmentFault = if (persistentAttachments) Some(Input(Bool())) else None
+    val tileTextureFault = if (persistentAttachments) Some(Input(Bool())) else None
+    val graphicsDependencyIdle = if (persistentAttachments) Some(Input(Bool())) else None
 
     // Renderer shared-memory ports (command buffer + framebuffer words, and the
     // core-backed shader kernel's line/coherence side ports) pass straight
@@ -163,9 +171,17 @@ class GpuHostAxi(
       computeScalarFpu = computeScalarFpu,
       graphicsScalarFpu = graphicsScalarFpu,
       sharedShader = sharedShader,
-      protectedVmState = protectVmState))
+      protectedVmState = protectVmState,
+      persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
+      useTileSramBlackBoxes = useTileSramBlackBoxes))
     sharedShader.foreach(_ => host.io.shared.get <> io.shared.get)
     host.io.textureFault.foreach(_ := io.textureFault.get)
+    if (persistentAttachments) {
+      host.io.commandFault.get := io.commandFault.get
+      host.io.attachmentFault.get := io.attachmentFault.get
+      host.io.tileTextureFault.get := io.tileTextureFault.get
+      host.io.tileCancel.get := io.commandResetActive.get
+    }
     io.commandReadsIdle := host.io.commandReadsIdle
     io.graphicsDrained := host.io.drained
     io.performance := host.io.performance
@@ -185,25 +201,35 @@ class GpuHostAxi(
     host.io.renderCommand.bits := 0.U.asTypeOf(host.io.renderCommand.bits)
     host.io.renderCompletion.ready := false.B
     unified.foreach { bridge =>
-      val isRender =
-        bridge.io.command.bits.opcode === GpuCommandOpcode.render
-      host.io.renderCommand.valid := bridge.io.command.valid && isRender
+      val renderOpcode = if (persistentAttachments) GpuCommandOpcode.tileRender else GpuCommandOpcode.render
+      val isRender = bridge.io.command.bits.opcode === renderOpcode
+      val dependencyReady = io.graphicsDependencyIdle.getOrElse(true.B)
+      val nonRenderAllowed = if (persistentAttachments)
+        bridge.io.command.bits.opcode === GpuCommandOpcode.kernel || host.io.drained else true.B
+      host.io.renderCommand.valid := bridge.io.command.valid && isRender && dependencyReady
       host.io.renderCommand.bits.descriptorId :=
         bridge.io.command.bits.commandId
       host.io.renderCommand.bits.descriptorAddress :=
         bridge.io.command.bits.sourceAddress
       host.io.renderCommand.bits.bytes := bridge.io.command.bits.bytes
-      io.gpuCommand.get.valid := bridge.io.command.valid && !isRender
+      if (persistentAttachments) {
+        host.io.renderCommand.bits.limit.get := Cat(bridge.io.command.bits.pattern(0),
+          bridge.io.command.bits.destinationAddress)
+        host.io.renderCommand.bits.envelopeValid.get := bridge.io.command.bits.pattern(31, 1) === 0.U &&
+          !bridge.io.command.bits.waitForDma && !bridge.io.command.bits.waitForEvent &&
+          !bridge.io.command.bits.signalEvent
+      }
+      io.gpuCommand.get.valid := bridge.io.command.valid && !isRender && nonRenderAllowed
       io.gpuCommand.get.bits := bridge.io.command.bits
       bridge.io.command.ready := Mux(isRender,
-        host.io.renderCommand.ready, io.gpuCommand.get.ready)
+        host.io.renderCommand.ready && dependencyReady, io.gpuCommand.get.ready && nonRenderAllowed)
 
       // One unified completion slot: the local render completion or the
       // system's command completion.
       val renderResult =
         Wire(new GpuCommandResult(commandIdWidth))
       renderResult.commandId := host.io.renderCompletion.bits.descriptorId
-      renderResult.opcode := GpuCommandOpcode.render
+      renderResult.opcode := renderOpcode
       renderResult.status := host.io.renderCompletion.bits.status
       renderResult.success := host.io.renderCompletion.bits.success
       renderResult.bytesProcessed :=

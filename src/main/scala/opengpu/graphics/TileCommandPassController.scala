@@ -50,13 +50,14 @@ class TileCommandPassController extends Module {
   private val abortStatus = RegInit(TilePassStatus.success.U(TilePassStatus.width.W))
   private val resultBits = Reg(new TileRenderPassCompletion)
   private val active = state =/= idle && state =/= result
-  private val abortNow = io.cancel || io.commandFault || io.textureFault || io.shaderFault
-  private val effectiveStatus = Mux(io.commandFault, TilePassStatus.commandFault.U,
+  private val abortNow = io.cancel || io.attachmentFault || io.commandFault || io.textureFault || io.shaderFault
+  private val effectiveStatus = Mux(io.attachmentFault || abortStatus === TilePassStatus.memoryFault.U,
+    TilePassStatus.memoryFault.U, Mux(io.commandFault, TilePassStatus.commandFault.U,
     Mux(io.textureFault && abortStatus =/= TilePassStatus.commandFault.U, TilePassStatus.textureFault.U,
     Mux(io.shaderFault && abortStatus =/= TilePassStatus.commandFault.U && abortStatus =/= TilePassStatus.textureFault.U,
       TilePassStatus.executionFault.U,
       Mux(io.cancel && abortStatus === TilePassStatus.success.U,
-        TilePassStatus.cancelled.U, abortStatus))))
+        TilePassStatus.cancelled.U, abortStatus)))))
 
   io.job.ready := state === idle && io.commandsDrained && io.renderDrained
   io.busy := state =/= idle

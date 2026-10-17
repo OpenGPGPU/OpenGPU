@@ -357,8 +357,9 @@ and drains offered or issued reads before admitting another binding. Its
 registered sequential address advances only on a read handshake. Eleven checks
 cover both record formats, queued-record discard, bus backpressure and reuse,
 including the three existing decoder regressions. The subsequent command-core
-integration below connects this prerequisite to `RenderCore`. Unified host
-submission, VM/allocation ownership and cache-domain publication remain required.
+integration below connects this prerequisite to `RenderCore`. At that checkpoint,
+unified host submission, VM/allocation ownership and cache-domain publication
+remained required; subsequent host checkpoints below address those interfaces.
 With the same eight-record FIFO and 1 GHz synthesis constraints, the optional
 reader reports +503.856 ps core and +456.246 ps I/O setup slack; the existing
 reader reports +285.019 ps and +11.587 ps. These are setup synthesis screens,
@@ -381,10 +382,11 @@ mutation, early and in-flight cancellation, command/store faults, final samples,
 completion stability, default blending, per-record overrides and healthy reuse.
 All resolved draw defaults are materialized from the job snapshot for records
 without an override. Seven existing `RenderCore` regressions also pass in the
-same thirteen-check cohort, including actual CU-backed shader rendering. The new job interface is
-still separate from `RenderHost`/unified AXI submission; shared-system CU/VM
-integration, mixed clear/draw host commands and dependency publication remain
-required. Controller and fixed-function core synthesis screens are recorded
+same thirteen-check cohort, including actual CU-backed shader rendering. At that
+checkpoint the new job interface was separate from `RenderHost`/unified AXI
+submission. The later host profile below connects it; mixed clear/draw host
+commands and broader dependency publication remain required. Controller and
+fixed-function core synthesis screens are recorded
 separately; neither is a full-GPU physical or 720p frame-rate qualification.
 The controller passes its 1 GHz synthesis setup screen (+462.011 ps core,
 +413.436 ps I/O). The larger fixed-function core screen is rejected because
@@ -474,3 +476,47 @@ This qualifies the eight-credit attachment component with synchronous SRAM,
 including admission, clear, transfer and resolve logic. Integrated renderer
 mapping/timing, broader physical corners and the full performance/product
 qualification remain required.
+
+The [bounded persistent host profile](performance/mobile-h1-persistent-host-2026-10-18.json)
+now connects memory descriptors to `TileCommandJob` through the unified AXI
+host and the protected VM boundary. It is explicitly selected with
+`persistentAttachments = true` or `--persistent-tile-jobs`; the default desktop
+profile keeps its existing descriptor and capability contract. The new profile
+advertises bit 30 and opcode 7, rejects the legacy render opcode, and fetches a
+versioned 256-byte descriptor as four uncached cache-line reads. It validates the
+full 33-bit allocation before fetch, rejects reserved/truncated encodings, then
+retains attachment views and all draw defaults through completion. The descriptor
+reuses one DMA transaction ID before staging starts, adding no simultaneous ID
+owner. The C ABI and every field offset are checked.
+
+Unified DMA/resolve/invalidate commands serialize against tile jobs in queue
+order; unrelated compute remains dispatchable in the same VM. A small outstanding
+memory-owner counter covers queued and executing commands through completion,
+including reset. Native 256-bit AXI tests queue tile → strided DMA → tile: the
+transfer sees all 512 exported tile bytes before the next descriptor fetch, and
+the final blended pass loads and preserves that copy. Descriptor reset/cancellation,
+Sv32 rebinding, failed descriptor/command/attachment reads, shader traps, texture
+faults, stable results and healthy reuse run through the real hierarchy. The
+programmable configuration uses two actual shared CUs with four lanes/two warps.
+Native validation of this host profile at four CUs/sixteen lanes/eight warps
+remains required; the earlier shared-system job harness covers that CU profile.
+
+An attachment-load fault exposed a producer-drain deadlock: the store failed
+while command prefetch kept a later draw live. Accepted attachment faults now
+cancel prefetch, retain attachment-fault status 3 through secondary failures,
+and drain before host retirement. Both fixed-function and shared-CU host tests
+verify zero attachment exports for the failed job. A two-draw load-start pass
+with depth `NEVER` fetches each covered old depth sample once (49 reads) and
+exports nothing; a clear-start pass reads no old attachments and exports exactly
+512 bytes after both draws.
+
+Thirty-six checks pass in the final descriptor/ABI/host/legacy cohort, and
+sixteen controller/router checks pass separately. The descriptor reader passes
+its standalone 1 GHz synthesis/mapping screen (+293.576 ps core, +460.350 ps I/O).
+This screen excludes the host, shared CUs, full renderer and post-route timing.
+The profile currently rejects command/texture buffering and framebuffer write
+coalescing until their fault callbacks carry the required ownership. Mixed
+in-pass clear/draw host commands, broader resources, scoped dependency events,
+driver adoption, multiple tile engines and the remaining H0–H8 gates remain
+required. No frame-rate, energy or commercial-GPU parity follows from this
+single-tile correctness workload.

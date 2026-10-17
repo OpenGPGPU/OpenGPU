@@ -189,7 +189,7 @@ class RenderCore(
     io.tileCompletion.get <> controller.io.completion
     controller.io.cancel := io.tileCancel.get
     controller.io.commandFault := io.commandMemoryFault.get && io.cbMem.resp.fire
-    controller.io.attachmentFault := io.attachmentMemoryFault.get
+    controller.io.attachmentFault := io.attachmentMemoryFault.get && io.fbMem.resp.fire
     controller.io.textureFault := io.textureMemoryFault.get && io.texMem.resp.fire
     controller.io.shaderFault := rp.io.shaderFault
     controller.io.pass <> rp.io.tilePass.get

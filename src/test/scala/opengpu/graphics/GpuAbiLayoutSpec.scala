@@ -41,6 +41,20 @@ class GpuAbiLayoutSpec extends AnyFlatSpec {
     check("GPU_RENDER_STATUS_INVALID_SAMPLE_MODE", RenderStatus.invalidSampleMode.litValue.toLong)
   }
 
+  it should "match the bounded tile descriptor and its precise completion statuses" in {
+    checkAll(Seq(
+      "GPU_TILE_JOB_MAGIC" -> TileJobMemoryLayout.magic.toLong,
+      "GPU_TILE_JOB_WORDS" -> TileJobMemoryLayout.words.toLong,
+      "GPU_TILE_JOB_BYTES" -> TileJobMemoryLayout.bytes.toLong,
+      "GPU_TILE_RESULT_SUCCESS" -> TilePassStatus.success.toLong,
+      "GPU_TILE_RESULT_INVALID" -> TilePassStatus.invalidDescriptor.toLong,
+      "GPU_TILE_RESULT_CANCELLED" -> TilePassStatus.cancelled.toLong,
+      "GPU_TILE_RESULT_ATTACHMENT_FAULT" -> TilePassStatus.memoryFault.toLong,
+      "GPU_TILE_RESULT_EXECUTION_FAULT" -> TilePassStatus.executionFault.toLong,
+      "GPU_TILE_RESULT_COMMAND_FAULT" -> TilePassStatus.commandFault.toLong,
+      "GPU_TILE_RESULT_TEXTURE_FAULT" -> TilePassStatus.textureFault.toLong))
+  }
+
   it should "match the render-host register map" in {
     checkAll(Seq(
       "GPU_REG_ID" -> RenderHostRegs.ID,
@@ -161,6 +175,7 @@ class GpuAbiLayoutSpec extends AnyFlatSpec {
       "GPU_CAP_PERSISTENT_DEPTH" -> (1L << GpuCapabilities.PersistentDepth),
       "GPU_CAP_UNIFIED_RENDER" -> (1L << GpuCapabilities.UnifiedRender),
       "GPU_CAP_PROTECTED_VM_STATE" -> (1L << GpuCapabilities.ProtectedVmState),
+      "GPU_CAP_PERSISTENT_TILE_JOBS" -> (1L << GpuCapabilities.PersistentTileJobs),
       "GPU_CAP_HW_VBLANK" -> (1L << GpuCapabilities.HwVblank),
       "GPU_CAP_COMPUTE_SCALAR_FPU" -> (1L << GpuCapabilities.ComputeScalarFpu),
       "GPU_CAP_RUNTIME_SHADER_ABI" -> (1L << GpuCapabilities.RuntimeShaderAbi),
@@ -212,7 +227,8 @@ class GpuAbiLayoutSpec extends AnyFlatSpec {
       "GPU_UCMD_OP_STRIDED_COPY" -> GpuCommandOpcode.stridedCopy.litValue.toLong,
       "GPU_UCMD_OP_RESOLVE" -> GpuCommandOpcode.resolve.litValue.toLong,
       "GPU_UCMD_OP_INVALIDATE" -> GpuCommandOpcode.invalidate.litValue.toLong,
-      "GPU_UCMD_OP_RENDER" -> GpuCommandOpcode.render.litValue.toLong
+      "GPU_UCMD_OP_RENDER" -> GpuCommandOpcode.render.litValue.toLong,
+      "GPU_UCMD_OP_TILE_RENDER" -> GpuCommandOpcode.tileRender.litValue.toLong
     ))
   }
 

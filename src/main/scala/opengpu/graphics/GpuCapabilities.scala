@@ -56,6 +56,8 @@ object GpuCapabilities {
   val FragmentOutputUsage = 28
   /** Unsafe SATP/flush writes fail with AXI SLVERR until every owner retires. */
   val ProtectedVmState = 29
+  /** Explicit 256-byte bounded tile-job descriptors through opcode 7. */
+  val PersistentTileJobs = 30
 }
 
 /** Byte fields of GpuCommandMmioRegs.SHADER_CONFIG and the DRM query. */

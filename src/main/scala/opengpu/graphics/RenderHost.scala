@@ -129,8 +129,12 @@ class RenderHost(
   computeScalarFpu: Boolean = false,
   graphicsScalarFpu: Boolean = true,
   sharedShader: Option[SharedCuShaderConfig] = None,
-  protectedVmState: Boolean = false
+  protectedVmState: Boolean = false,
+  persistentAttachments: Boolean = false,
+  tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
+  useTileSramBlackBoxes: Boolean = false
 ) extends Module {
+  require(!persistentAttachments || (unifiedCommands && config.tileAttachments && !vertCore && !config.tileBinning))
   override def desiredName: String = "RenderHost"
   private val maxSampleMode = log2Ceil(config.maxSampleCount)
   private val stagingTransactions = SharedCuShaderConfig.stagingTransactions(sharedShader)
@@ -153,6 +157,10 @@ class RenderHost(
     val vectorTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(gpuConfig)))
     /** Pulse when a failed texture response is consumed by the renderer. */
     val textureFault = if (textureFaultReporting) Some(Input(Bool())) else None
+    val commandFault = if (persistentAttachments) Some(Input(Bool())) else None
+    val attachmentFault = if (persistentAttachments) Some(Input(Bool())) else None
+    val tileTextureFault = if (persistentAttachments) Some(Input(Bool())) else None
+    val tileCancel = if (persistentAttachments) Some(Input(Bool())) else None
 
     /** Discard command-line reuse outside a render job, independently of DMA. */
     val commandReadsIdle = Output(Bool())
@@ -177,11 +185,10 @@ class RenderHost(
       val req = Decoupled(new OmMemoryRequest)
       val resp = Flipped(Decoupled(new OmMemoryResponse))
     }
-    /** Unified render command: the VM address of a 16-word render descriptor.
-      * The engine fetches it through the translated command port and returns a
-      * unified completion. */
+    /** VM descriptor binding: legacy word fetch or bounded persistent line
+      * fetch, selected explicitly by the elaborated host profile. */
     val renderCommand = Flipped(Decoupled(
-      new RenderDescriptor(gpuConfig, commandIdWidth)))
+      new RenderDescriptor(gpuConfig, commandIdWidth, persistentAttachments)))
     val renderCompletion = Decoupled(new RenderCompletion(commandIdWidth))
     /** Includes descriptor fetch, launch, execution and unconsumed completion. */
     val drained = Output(Bool())
@@ -189,13 +196,26 @@ class RenderHost(
   })
 
   private val core = Module(new RenderCore(
-    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader))
+    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader,
+    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes))
+  private val tileHost = if (persistentAttachments) Some(Module(new TileJobDescriptorReader(
+    gpuConfig, config, commandIdWidth, kernelWordTransactions, stagingTransactions))) else None
   sharedShader.foreach(_ => core.io.shared.get <> io.shared.get)
   core.io.instructionSatp := io.instructionSatp
   core.io.instructionTlbFlush := io.instructionTlbFlush
   core.io.vectorSatp := io.vectorSatp
   core.io.vectorTlbFlush := io.vectorTlbFlush
   io.performance := core.io.performance
+  tileHost.foreach { host =>
+    core.io.tileJob.get <> host.io.job
+    host.io.passCompletion <> core.io.tileCompletion.get
+    core.io.tileCancel.get := host.io.cancelCore
+    core.io.commandMemoryFault.get := io.commandFault.get
+    core.io.attachmentMemoryFault.get := io.attachmentFault.get
+    core.io.textureMemoryFault.get := io.tileTextureFault.get
+    host.io.cancel := io.tileCancel.get
+    host.io.commandReadAccepted := core.io.cbMem.req.fire
+  }
 
   // The DMA engines share the kernelWordMem line port with the core's
   // staging/sampler bridge. Responses are routed by transaction-ID range:
@@ -222,30 +242,39 @@ class RenderHost(
   private val stridedHeightReg = RegInit(0.U(32.W))
   private val stridedSrcStrideReg = RegInit(0.U(32.W))
   private val stridedDstStrideReg = RegInit(0.U(32.W))
-  // DMA engines win the shared port when they have work; the core's staging
-  // bridge waits. Fixed priority only matters if unsafe software attempts
-  // multiple START writes in one cycle; normal admission is mutually exclusive.
-  io.kernelWordMemReq.valid :=
+  // Descriptor fetch, legacy DMA and core staging use disjoint lifetimes.
+  // The descriptor reuses the first DMA ID before any shader task is launched.
+  private val descriptorRequest = tileHost.map(_.io.memoryRequest)
+  io.kernelWordMemReq.valid := descriptorRequest.map(_.valid).getOrElse(false.B) ||
     fill.io.memoryRequest.valid || blit.io.memoryRequest.valid ||
       strided.io.memoryRequest.valid ||
       core.io.kernelWordMemReq.valid
-  io.kernelWordMemReq.bits := Mux(fill.io.memoryRequest.valid,
+  private val regularWordRequest = Mux(fill.io.memoryRequest.valid,
     fill.io.memoryRequest.bits, Mux(blit.io.memoryRequest.valid,
       blit.io.memoryRequest.bits, Mux(strided.io.memoryRequest.valid,
         strided.io.memoryRequest.bits, core.io.kernelWordMemReq.bits)))
+  io.kernelWordMemReq.bits := descriptorRequest.map(r => Mux(r.valid, r.bits, regularWordRequest))
+    .getOrElse(regularWordRequest)
+  descriptorRequest.foreach(_.ready := io.kernelWordMemReq.ready)
+  private val descriptorOffered = descriptorRequest.map(_.valid).getOrElse(false.B)
   fill.io.memoryRequest.ready :=
-    io.kernelWordMemReq.ready && fill.io.memoryRequest.valid
+    io.kernelWordMemReq.ready && !descriptorOffered && fill.io.memoryRequest.valid
   blit.io.memoryRequest.ready :=
-    io.kernelWordMemReq.ready && !fill.io.memoryRequest.valid &&
+    io.kernelWordMemReq.ready && !descriptorOffered && !fill.io.memoryRequest.valid &&
       blit.io.memoryRequest.valid
   strided.io.memoryRequest.ready :=
-    io.kernelWordMemReq.ready && !fill.io.memoryRequest.valid &&
+    io.kernelWordMemReq.ready && !descriptorOffered && !fill.io.memoryRequest.valid &&
       !blit.io.memoryRequest.valid && strided.io.memoryRequest.valid
   core.io.kernelWordMemReq.ready :=
-    io.kernelWordMemReq.ready && !fill.io.memoryRequest.valid &&
+    io.kernelWordMemReq.ready && !descriptorOffered && !fill.io.memoryRequest.valid &&
       !blit.io.memoryRequest.valid && !strided.io.memoryRequest.valid
 
   private val wordRespIsDma = io.kernelWordMemResp.bits.transactionId >= stagingTransactions.U
+  private val wordRespIsTile = tileHost.map(_.io.fetching).getOrElse(false.B) && wordRespIsDma
+  tileHost.foreach { host =>
+    host.io.memoryResponse.valid := io.kernelWordMemResp.valid && wordRespIsTile
+    host.io.memoryResponse.bits := io.kernelWordMemResp.bits
+  }
   private val wordRespIsBlit = wordRespIsDma && dmaOwner === dmaBlit
   private val wordRespIsFill = wordRespIsDma && dmaOwner === dmaFill
   private val wordRespIsStrided = wordRespIsDma && dmaOwner === dmaStrided
@@ -260,13 +289,16 @@ class RenderHost(
   strided.io.memoryResponse.bits := io.kernelWordMemResp.bits
   core.io.kernelWordMemResp.valid :=
     io.kernelWordMemResp.valid && !wordRespIsFill && !wordRespIsBlit &&
-      !wordRespIsStrided
+      !wordRespIsStrided && !wordRespIsTile
   core.io.kernelWordMemResp.bits := io.kernelWordMemResp.bits
-  io.kernelWordMemResp.ready :=
+  private val regularWordResponseReady =
     Mux(wordRespIsStrided, strided.io.memoryResponse.ready,
       Mux(wordRespIsBlit, blit.io.memoryResponse.ready,
       Mux(wordRespIsFill, fill.io.memoryResponse.ready,
         core.io.kernelWordMemResp.ready)))
+  io.kernelWordMemResp.ready := tileHost.map(h =>
+    Mux(wordRespIsTile, h.io.memoryResponse.ready, regularWordResponseReady))
+    .getOrElse(regularWordResponseReady)
 
   fill.io.descriptor.bits.descriptorId := 0.U
   fill.io.descriptor.bits.destinationAddress := clearBaseReg
@@ -348,10 +380,11 @@ class RenderHost(
   private val memoryFaultNow = (io.textureFault.getOrElse(false.B) || core.io.shaderFault) &&
     (busy || renderFetching || renderLaunch)
   private val validRenderMode = Msaa.validModeWord(renderWords(9), config.maxSampleCount)
-  io.commandReadsIdle := !renderFetching && !renderLaunch && !busy
+  private val tileHostBusy = tileHost.map(_.io.busy).getOrElse(false.B)
+  io.commandReadsIdle := !renderFetching && !renderLaunch && !busy && !tileHostBusy
   io.drained := !renderFetching && !renderLaunch && !busy &&
     !renderDonePending && dmaOwner === dmaIdle &&
-    !fill.io.busy && !blit.io.busy && !strided.io.busy
+    !fill.io.busy && !blit.io.busy && !strided.io.busy && !tileHostBusy
 
   private val id = ((deviceId & 0xffff) << 16 | (version & 0xffff)).U
 
@@ -377,7 +410,7 @@ class RenderHost(
   // resident, those words are newer than external memory, so serialize these
   // operations with render jobs in the opt-in tile-store configuration.
   private val tileDmaAllowed = if (config.tileAttachments)
-    !busy && !renderFetching && !renderLaunch && !renderDonePending
+    !busy && !renderFetching && !renderLaunch && !renderDonePending && !tileHostBusy
   else true.B
   fill.io.descriptor.valid := clearStartWrite && dmaOwner === dmaIdle &&
     !blitStartWrite && !stridedStartWrite && tileDmaAllowed
@@ -426,7 +459,8 @@ class RenderHost(
       (maxSampleMode << GpuCapabilities.MsaaMaxModeShift) |
       (if (unifiedCommands) (1 << GpuCapabilities.UnifiedReset) else 0) |
       (1 << GpuCapabilities.PersistentDepth) |
-      (if (unifiedCommands) (1 << GpuCapabilities.UnifiedRender) else 0) |
+      (if (unifiedCommands && !persistentAttachments) (1 << GpuCapabilities.UnifiedRender) else 0) |
+      (if (persistentAttachments) (1 << GpuCapabilities.PersistentTileJobs) else 0) |
       (1 << GpuCapabilities.HwVblank) |
       // One bit covers every shader profile: flw is admitted for the
       // graphics validators only when the shader CU carries the FP
@@ -668,111 +702,130 @@ class RenderHost(
 
   // Unified render command: fetch the 16-word descriptor over the translated
   // command port, then launch from a packed register snapshot.
-  renderLaunch := false.B
-  io.renderCommand.ready := !renderFetching && !renderLaunch && !busy &&
-    !renderDonePending && (if (config.tileAttachments)
-      dmaOwner === dmaIdle && !clearStartWrite && !blitStartWrite &&
-        !stridedStartWrite else true.B)
-  when(io.renderCommand.fire) {
-    renderFetching := true.B
-    memoryFaulted := false.B
-    invalidSampleMode := false.B
-    done := false.B
-    error := false.B
-    descOutstanding := false.B
-    renderWord := 0.U
-    renderId := io.renderCommand.bits.descriptorId
-    renderAddr := io.renderCommand.bits.descriptorAddress
-    renderBytes := io.renderCommand.bits.bytes
-  }
-  when(renderFetching && io.cbMem.req.fire) { descOutstanding := true.B }
-  when(renderFetching && io.cbMem.resp.fire) {
-    descOutstanding := false.B
-    renderWords(renderWord) := io.cbMem.resp.bits.data
-    when(memoryFaulted || memoryFaultNow) {
-      renderFetching := false.B
+  if (persistentAttachments) {
+    val host = tileHost.get
+    val admissible = core.io.done && dmaOwner === dmaIdle &&
+      !clearStartWrite && !blitStartWrite && !stridedStartWrite
+    host.io.submit.valid := io.renderCommand.valid && admissible
+    host.io.submit.bits.commandId := io.renderCommand.bits.descriptorId
+    host.io.submit.bits.base := io.renderCommand.bits.descriptorAddress
+    host.io.submit.bits.limit := io.renderCommand.bits.limit.get
+    host.io.submit.bits.envelopeValid := io.renderCommand.bits.envelopeValid.get &&
+      io.renderCommand.bits.bytes === TileJobMemoryLayout.bytes.U
+    io.renderCommand.ready := host.io.submit.ready && admissible
+    when(io.renderCommand.fire) { busy := true.B; done := false.B; error := false.B }
+    val resultWasPending = RegNext(host.io.completion.valid, false.B)
+    when(host.io.completion.valid && !resultWasPending) {
+      busy := false.B; done := true.B
+      when(host.io.completion.bits.pass.status =/= TilePassStatus.success.U) { error := true.B }
+    }
+  } else {
+    renderLaunch := false.B
+    io.renderCommand.ready := !renderFetching && !renderLaunch && !busy &&
+      !renderDonePending && (if (config.tileAttachments)
+        dmaOwner === dmaIdle && !clearStartWrite && !blitStartWrite &&
+          !stridedStartWrite else true.B)
+    when(io.renderCommand.fire) {
+      renderFetching := true.B
+      memoryFaulted := false.B
+      invalidSampleMode := false.B
+      done := false.B
+      error := false.B
+      descOutstanding := false.B
+      renderWord := 0.U
+      renderId := io.renderCommand.bits.descriptorId
+      renderAddr := io.renderCommand.bits.descriptorAddress
+      renderBytes := io.renderCommand.bits.bytes
+    }
+    when(renderFetching && io.cbMem.req.fire) { descOutstanding := true.B }
+    when(renderFetching && io.cbMem.resp.fire) {
+      descOutstanding := false.B
+      renderWords(renderWord) := io.cbMem.resp.bits.data
+      when(memoryFaulted || memoryFaultNow) {
+        renderFetching := false.B
+        renderDonePending := true.B
+        done := true.B
+      }.elsewhen(renderWord === 15.U) {
+        renderFetching := false.B
+        renderLaunch := true.B
+      }.otherwise {
+        renderWord := renderWord + 1.U
+      }
+    }
+    when(renderLaunch && !validRenderMode) {
+      invalidSampleMode := true.B
       renderDonePending := true.B
       done := true.B
-    }.elsewhen(renderWord === 15.U) {
-      renderFetching := false.B
-      renderLaunch := true.B
-    }.otherwise {
-      renderWord := renderWord + 1.U
+      error := true.B
     }
-  }
-  when(renderLaunch && !validRenderMode) {
-    invalidSampleMode := true.B
-    renderDonePending := true.B
-    done := true.B
-    error := true.B
-  }
-  when(renderLaunch && validRenderMode && !busy) {
-    busy := true.B
-    done := false.B
-    error := false.B
-    sawBusy := false.B
-    ownerUnified := true.B
-    // Decode the gpu_job_record words into the unified configuration bundle.
-    unifiedCfg.cmdCount := renderWords(0)(31, 16)
-    unifiedCfg.cmdBase := renderWords(1)
-    unifiedCfg.colorBase := renderWords(2)
-    unifiedCfg.depthBase := renderWords(3)
-    unifiedCfg.stride := renderWords(4)
-    // Snapshot the viewport per job. Offscreen targets must not inherit the
-    // display size or change the scanout registers. Zero preserves the older
-    // descriptor ABI, including the last mode while scanout is disabled.
-    unifiedCfg.screenW := Mux(renderWords(14) === 0.U, viewportW,
-      ScreenLimit(renderWords(14), config.screenWidth))
-    unifiedCfg.screenH := Mux(renderWords(15) === 0.U, viewportH,
-      ScreenLimit(renderWords(15), config.screenHeight))
-    unifiedCfg.depthTestEnable := renderWords(5)(0)
-    unifiedCfg.depthFunc := renderWords(5)(6, 4)
-    unifiedCfg.depthWriteEnable := renderWords(5)(7)
-    unifiedCfg.cullMode := renderWords(5)(9, 8)
-    unifiedCfg.stencilTestEnable := renderWords(5)(17)
-    unifiedCfg.texBase := renderWords(6)
-    unifiedCfg.texWidth := renderWords(7)(13, 0)
-    unifiedCfg.texHeight := renderWords(7)(29, 16)
-    unifiedCfg.texWrapClamp := renderWords(8)(0)
-    unifiedCfg.texMaxLevel := renderWords(8)(5, 2)
-    unifiedCfg.texEnable := renderWords(8)(8)
-    unifiedCfg.sampleMode := renderWords(9)(1, 0)
-    unifiedCfg.stencilFunc := renderWords(10)(2, 0)
-    unifiedCfg.stencilFailOp := renderWords(10)(5, 3)
-    unifiedCfg.stencilZFailOp := renderWords(10)(8, 6)
-    unifiedCfg.stencilZPassOp := renderWords(10)(11, 9)
-    unifiedCfg.stencilRef := renderWords(11)(7, 0)
-    unifiedCfg.stencilReadMask := renderWords(11)(15, 8)
-    unifiedCfg.stencilWriteMask := renderWords(11)(23, 16)
-    unifiedCfg.blendCfgEnable := renderWords(12)(0)
-    unifiedCfg.blendSrcFactor := renderWords(12)(7, 4)
-    unifiedCfg.blendDstFactor := renderWords(12)(11, 8)
-    unifiedCfg.blendEquation := renderWords(12)(14, 12)
-    unifiedCfg.colorFormat := renderWords(13)(2, 0)
-    unifiedCfg.texFormat := renderWords(13)(6, 4)
-  }
+    when(renderLaunch && validRenderMode && !busy) {
+      busy := true.B
+      done := false.B
+      error := false.B
+      sawBusy := false.B
+      ownerUnified := true.B
+      // Decode the gpu_job_record words into the unified configuration bundle.
+      unifiedCfg.cmdCount := renderWords(0)(31, 16)
+      unifiedCfg.cmdBase := renderWords(1)
+      unifiedCfg.colorBase := renderWords(2)
+      unifiedCfg.depthBase := renderWords(3)
+      unifiedCfg.stride := renderWords(4)
+      // Snapshot the viewport per job. Offscreen targets must not inherit the
+      // display size or change the scanout registers. Zero preserves the older
+      // descriptor ABI, including the last mode while scanout is disabled.
+      unifiedCfg.screenW := Mux(renderWords(14) === 0.U, viewportW,
+        ScreenLimit(renderWords(14), config.screenWidth))
+      unifiedCfg.screenH := Mux(renderWords(15) === 0.U, viewportH,
+        ScreenLimit(renderWords(15), config.screenHeight))
+      unifiedCfg.depthTestEnable := renderWords(5)(0)
+      unifiedCfg.depthFunc := renderWords(5)(6, 4)
+      unifiedCfg.depthWriteEnable := renderWords(5)(7)
+      unifiedCfg.cullMode := renderWords(5)(9, 8)
+      unifiedCfg.stencilTestEnable := renderWords(5)(17)
+      unifiedCfg.texBase := renderWords(6)
+      unifiedCfg.texWidth := renderWords(7)(13, 0)
+      unifiedCfg.texHeight := renderWords(7)(29, 16)
+      unifiedCfg.texWrapClamp := renderWords(8)(0)
+      unifiedCfg.texMaxLevel := renderWords(8)(5, 2)
+      unifiedCfg.texEnable := renderWords(8)(8)
+      unifiedCfg.sampleMode := renderWords(9)(1, 0)
+      unifiedCfg.stencilFunc := renderWords(10)(2, 0)
+      unifiedCfg.stencilFailOp := renderWords(10)(5, 3)
+      unifiedCfg.stencilZFailOp := renderWords(10)(8, 6)
+      unifiedCfg.stencilZPassOp := renderWords(10)(11, 9)
+      unifiedCfg.stencilRef := renderWords(11)(7, 0)
+      unifiedCfg.stencilReadMask := renderWords(11)(15, 8)
+      unifiedCfg.stencilWriteMask := renderWords(11)(23, 16)
+      unifiedCfg.blendCfgEnable := renderWords(12)(0)
+      unifiedCfg.blendSrcFactor := renderWords(12)(7, 4)
+      unifiedCfg.blendDstFactor := renderWords(12)(11, 8)
+      unifiedCfg.blendEquation := renderWords(12)(14, 12)
+      unifiedCfg.colorFormat := renderWords(13)(2, 0)
+      unifiedCfg.texFormat := renderWords(13)(6, 4)
+    }
 
-  // Completion: the engine must be observed non-idle after launch before its
-  // return to idle counts as done.  `core.done` is high before/at the launch
-  // cycle (the command stage has not yet started), so the sawBusy guard stops
-  // that pre-launch idle from being mistaken for completion.
-  when(busy && !core.io.done) { sawBusy := true.B }
-  when(busy && sawBusy && core.io.done) {
-    busy := false.B
-    done := true.B
-    when(ownerUnified) {
-      renderDonePending := true.B
-    }.otherwise {
-      irqPending := true.B
+    // Completion: the engine must be observed non-idle after launch before its
+    // return to idle counts as done.  `core.done` is high before/at the launch
+    // cycle (the command stage has not yet started), so the sawBusy guard stops
+    // that pre-launch idle from being mistaken for completion.
+    when(busy && !core.io.done) { sawBusy := true.B }
+    when(busy && sawBusy && core.io.done) {
+      busy := false.B
+      done := true.B
+      when(ownerUnified) {
+        renderDonePending := true.B
+      }.otherwise {
+        irqPending := true.B
+      }
     }
+    when(memoryFaultNow) {
+      memoryFaulted := true.B
+      error := true.B
+    }
+    // Preserve failure at completion even if STATUS.ERROR was acknowledged
+    // while the failed draw was still draining.
+    when(busy && sawBusy && core.io.done && memoryFaulted) { error := true.B }
   }
-  when(memoryFaultNow) {
-    memoryFaulted := true.B
-    error := true.B
-  }
-  // Preserve failure at completion even if STATUS.ERROR was acknowledged
-  // while the failed draw was still draining.
-  when(busy && sawBusy && core.io.done && memoryFaulted) { error := true.B }
   // Integrated compute/DMA completions share the same sticky, AXI-visible
   // pending bit and W1C acknowledgement as graphics completions.
   when(io.externalCompletion) { irqPending := true.B }
@@ -801,14 +854,25 @@ class RenderHost(
 
   // The host completion arbiter publishes render results through the shared
   // unified MMIO result slot.
-  io.renderCompletion.valid := renderDonePending
-  io.renderCompletion.bits.descriptorId := renderId
-  io.renderCompletion.bits.status :=
-    Mux(memoryFaulted, RenderStatus.memoryFault,
-      Mux(invalidSampleMode, RenderStatus.invalidSampleMode, RenderStatus.success))
-  io.renderCompletion.bits.success := !memoryFaulted && !invalidSampleMode
-  io.renderCompletion.bits.bytesProcessed := renderBytes
-  when(io.renderCompletion.fire) { renderDonePending := false.B }
+  if (persistentAttachments) {
+    val host = tileHost.get
+    io.renderCompletion.valid := host.io.completion.valid
+    host.io.completion.ready := io.renderCompletion.ready
+    io.renderCompletion.bits.descriptorId := host.io.completion.bits.commandId
+    io.renderCompletion.bits.status := host.io.completion.bits.pass.status
+    io.renderCompletion.bits.success := host.io.completion.bits.pass.status === TilePassStatus.success.U
+    io.renderCompletion.bits.bytesProcessed := host.io.completion.bits.commandBytesFetched
+  } else {
+    io.renderCompletion.valid := renderDonePending
+    io.renderCompletion.bits.descriptorId := renderId
+    io.renderCompletion.bits.status :=
+      Mux(memoryFaulted, RenderStatus.memoryFault,
+        Mux(invalidSampleMode, RenderStatus.invalidSampleMode, RenderStatus.success))
+    io.renderCompletion.bits.success := !memoryFaulted && !invalidSampleMode
+    io.renderCompletion.bits.bytesProcessed := renderBytes
+    when(io.renderCompletion.fire) { renderDonePending := false.B }
+
+  }
 
   // The unified render descriptor is the single configuration source.
   core.io.cmdBase := unifiedCfg.cmdBase
@@ -843,7 +907,7 @@ class RenderHost(
   core.io.sampleMode := unifiedCfg.sampleMode
   core.io.screenW := unifiedCfg.screenW
   core.io.screenH := unifiedCfg.screenH
-  core.io.start := renderLaunch && validRenderMode && !busy
+  core.io.start := (if (persistentAttachments) false.B else renderLaunch && validRenderMode && !busy)
 
   // Separate word ports.  The engine's command stage (draw records) and the
   // job queue's admin agent (descriptor fetches, IH record writes) are distinct

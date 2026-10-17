@@ -226,6 +226,9 @@ typedef int32_t s32;
  * unconsumed completion owns the current VM. POP results and drain before
  * retrying; this does not provide CPU-cache coherence or per-job contexts. */
 #define GPU_CAP_PROTECTED_VM_STATE (1u << 29)
+/* Explicit persistent tile profile: opcode 7, bounded 256-byte descriptors.
+ * Legacy opcode-6 GPU_CAP_UNIFIED_RENDER is not advertised in this profile. */
+#define GPU_CAP_PERSISTENT_TILE_JOBS (1u << 30)
 /* Trusted kernel metadata in raw draw word32; never accepted from userspace. */
 #define GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT 25u
 #define GPU_DRAW_FRAGMENT_OUTPUT_SKIP_MASK (0xfu << GPU_DRAW_FRAGMENT_OUTPUT_SKIP_SHIFT)
@@ -290,6 +293,46 @@ typedef int32_t s32;
  * the render command; the descriptor's state fields replace the legacy
  * snapshotted registers. */
 #define GPU_UCMD_OP_RENDER       6u
+/* SOURCE = 64-byte-aligned descriptor VA; DESTINATION = exclusive limit low;
+ * PATTERN bit0 = limit bit32 (all other bits zero); BYTES must be 256.
+ * DMA/event dependency flags must be zero. Completion bytes count accepted
+ * draw-record read bytes, excluding descriptor reads. SATP remains owned until
+ * the result is popped. The profile rejects legacy opcode 6. */
+#define GPU_UCMD_OP_TILE_RENDER  7u
+
+#define GPU_TILE_JOB_MAGIC       0x47545001u
+#define GPU_TILE_JOB_WORDS       64u
+#define GPU_TILE_JOB_BYTES       256u
+#define GPU_TILE_RESULT_SUCCESS  0u
+#define GPU_TILE_RESULT_INVALID  1u
+#define GPU_TILE_RESULT_CANCELLED 2u
+#define GPU_TILE_RESULT_ATTACHMENT_FAULT 3u
+#define GPU_TILE_RESULT_EXECUTION_FAULT 4u
+#define GPU_TILE_RESULT_COMMAND_FAULT 5u
+#define GPU_TILE_RESULT_TEXTURE_FAULT 6u
+
+/* Little-endian words; all reserved fields/bits must be zero. Layout version
+ * is the low byte of MAGIC. The host retains this immutable allocation through
+ * completion. Bounds use a low word and a high word containing only bit0.
+ * One RGBA8 + D24S8 attachment pair, tile classes 8/16, sample modes 0/1/2.
+ * tile_info: log2[2:0], width[12:8], height[20:16], sample_mode[25:24],
+ * color_format[30:28], resolve[31]. Attachment ops: load[1:0], store[2].
+ * draw_state uses GPU_JOB_STATE plus blend-enable bit16 and stencil-test bit17.
+ * sampler_config: clamp[0], max_mip[5:2], enable[8], min_mip[15:12],
+ * signed five-bit LOD bias[20:16]. Other state layouts match gpu_job_record. */
+struct gpu_tile_job_record {
+    u32 magic, words, context, pass_id, generation;                 /* 0..4 */
+    u32 cmd_base, cmd_count, cmd_limit_lo, cmd_limit_hi;           /* 5..8 */
+    u32 render_width, render_height, origin_xy, tile_info;        /* 9..12 */
+    u32 color_base, color_limit_lo, color_limit_hi, color_pitch; /* 13..16 */
+    u32 color_ops, color_clear;                                 /* 17..18 */
+    u32 depth_base, depth_limit_lo, depth_limit_hi, depth_pitch; /* 19..22 */
+    u32 depth_ops, depth_clear;                                 /* 23..24 */
+    u32 resolve_base, resolve_limit_lo, resolve_limit_hi, resolve_pitch; /* 25..28 */
+    u32 draw_state, stencil_ops, stencil_masks, blend_config;    /* 29..32 */
+    u32 tex_base, tex_size, sampler_config, tex_format;           /* 33..36 */
+    u32 reserved[27];                                           /* 37..63 */
+};
 /* Opcode-specific RENDER completion status. */
 #define GPU_RENDER_STATUS_SUCCESS             0u
 #define GPU_RENDER_STATUS_MEMORY_FAULT        1u

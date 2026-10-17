@@ -45,8 +45,9 @@ object EmitGpuHostSystemAxi {
       "shared graphics requires whole helper quads and an eight-bit batch capacity")
     val gpuConfig = GpuConfig(lanes = cuLanes, warps = cuWarps)
     val memoryAxiDataBytes = intOption("--memory-axi-data-bytes").getOrElse(8)
-    val tileSize = intOption("--tile-size").getOrElse(0)
-    val tileAttachments = rest.contains("--tile-attachments")
+    val persistentAttachments = rest.contains("--persistent-tile-jobs")
+    val tileSize = intOption("--tile-size").getOrElse(if (persistentAttachments) 16 else 0)
+    val tileAttachments = rest.contains("--tile-attachments") || persistentAttachments
     val tileBinning = rest.contains("--tile-binning")
     def isPow2(n: Int): Boolean = n > 0 && (n & (n - 1)) == 0
     require(width >= 16 && height >= 16,
@@ -77,9 +78,13 @@ object EmitGpuHostSystemAxi {
         coalesceFramebufferWrites = rest.contains("--coalesce-framebuffer"),
         bufferCommandReads = rest.contains("--buffer-command-reads"),
         bufferTextureReads = rest.contains("--buffer-texture-reads"),
+        persistentAttachments = persistentAttachments,
+        tileStoreCredits = intOption("--tile-store-credits")
+          .getOrElse(opengpu.config.MobileGpuConfig().attachmentStoreCredits),
         fragCore = fragCore,
         vertCore = vertCore,
         enableFpuBackend = true,
+        useBlackBoxes = rest.contains("--sram-black-boxes"),
         memoryAxiDataBytes = memoryAxiDataBytes),
       Array("--target-dir", targetDir),
       Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")

@@ -1,0 +1,187 @@
+{
+  "scope": "H0/H1 explicit persistent host profile: bounded descriptor fetch, immutable job launch, actual shared-CU/Sv32/AXI integration, memory-engine publication and fault drain. No whole-GPU performance or full milestone closure.",
+  "reference_checkpoint": "c01947d",
+  "source_sha256": {
+    "driver/gpu_abi.h": "7bd8d7941a0a48a82f732fb32488ba69d775b85466e2dc4140fdaea9338634ec",
+    "driver/tests/opengpu_tile_job_abi_test.c": "bee926f6cc67b4c37550c5de0a75e1b7b4830c3f1a773e0054a64207ea9a4811",
+    "scripts/test_driver.py": "96e0890e718c4d3792053c68d111b60d550015e1cce5bdcb0c4c82804ab2453b",
+    "src/main/scala/opengpu/command/GpuCommandRouter.scala": "bf7d3ba71d3fae76a961664855938f517b9111b042683b7cd1b27ff42b4c4046",
+    "src/main/scala/opengpu/command/RenderDescriptor.scala": "1e536af5ba2e88b602fb156414eeac6a38d41a62edb33f07f291abe9e740583a",
+    "src/main/scala/opengpu/graphics/TileJobDescriptorReader.scala": "7665d3db5eb3c0ce2608059ad7b8b766f69f91ab181fe94d0b7de0346f72e479",
+    "src/main/scala/opengpu/graphics/RenderHost.scala": "1ca40eaa3011afa49de8b1a01b4b4f949f2fe045f071f723f2caee32b226ed56",
+    "src/main/scala/opengpu/graphics/RenderCore.scala": "251e433f666223259259626f5ad5deb86cee2df05e5034403745209cc6f604a1",
+    "src/main/scala/opengpu/graphics/TileCommandPassController.scala": "80c6201dc8e4f7d55fc456ae9d9bb98fcdf54eb572466e4d5e482cfe8d0f75e8",
+    "src/main/scala/opengpu/graphics/GpuCapabilities.scala": "339c0d38cd08324ba862ece34f16bda3bfa5098b02b5168b0a043b89ecadf622",
+    "src/main/scala/opengpu/system/GpuSystem.scala": "5985590ad05ee5c920572f6a046dfe33d2da5db277c93d084792e2d89814438a",
+    "src/main/scala/opengpu/system/GpuHostAxi.scala": "0bcbec272f297bc38aee86bd971be6c11b5d03c3bc7031ee34a378ba58e9bee0",
+    "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "8927e8d16fdd222da9dc662a914b375ebf821c7fa1e690e8727e876c2abaeb45",
+    "src/main/scala/opengpu/elaboration/EmitGpuHostSystemAxi.scala": "19d468a331f2bb2042ca52f6a58dede462310dfd3da7d86306edc1a078c2ae04",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "d3150803b874e51173a707a1cfc1e163806de8a1d6cb982698c57ef71945a748",
+    "src/test/scala/opengpu/graphics/TileJobDescriptorReaderSpec.scala": "020d49f1a9daf1a6adeae57e67ea96f0e47954ef098ebd0cd0c84bef1bf63d7e",
+    "src/test/scala/opengpu/graphics/TileCommandPassControllerSpec.scala": "10f13005f9f799eb95583d004c943dabe19b0ba6d609d6d053714ddcff3e3ba9",
+    "src/test/scala/opengpu/graphics/GpuAbiLayoutSpec.scala": "0fa1ac5239c55b556f6df8f87c9551daf508b9386bb22f5727f386a144275d40",
+    "src/test/scala/opengpu/system/PersistentTileHostAxiSpec.scala": "82a587d5be2809ddc4819a39014adee9216f87f7b36e6778cf345fec877e6a60",
+    "src/test/scala/opengpu/command/GpuCommandRouterSpec.scala": "b0abf4c1950cd8788aa9d2cfba1e7e43fc353560ea16e52f38bec09e06d78ae7"
+  },
+  "host_contract": {
+    "selection": "GpuHostSystemAxi(persistentAttachments=true), --persistent-tile-jobs; default desktop profile retains opcode 6.",
+    "discovery": "GPU_CAP_PERSISTENT_TILE_JOBS bit 30; the profile clears legacy GPU_CAP_UNIFIED_RENDER and rejects opcode 6 with status 15.",
+    "submission": "Opcode 7, 64-byte-aligned SOURCE VA, exclusive 33-bit descriptor limit from DESTINATION low32/PATTERN bit0, BYTES=256, no DMA/event dependency flags.",
+    "descriptor": "Explicit 64 little-endian words, magic/version 0x47545001, word count 64; all reserved/truncated encodings rejected. Four 64-byte uncached reads before command launch.",
+    "bindings": "Attachment/command bounds, context/pass/generation, viewport, sample/format state and all existing draw defaults. General bounded shader/texture resources remain pending.",
+    "ownership": "Reuse the first host DMA line ID before shader staging; keep descriptor allocation and submitting VM immutable until completion. Offered reads and offered jobs survive backpressure/cancellation until drained.",
+    "result": "Unified command ID identifies the caller-owned immutable record. Internally validate context/pass/generation against the core result. Status 0..6: success/invalid/cancelled/attachment/execution/descriptor-command/texture. Bytes count accepted draw-record reads, excluding descriptor lines.",
+    "publication": "Serialize tile jobs with unified DMA/resolve/invalidate commands in queue order; legacy host-register DMA also waits. A small outstanding memory-owner counter tracks non-kernel work through completion. Unrelated compute stays dispatchable in the same VM.",
+    "reset": "Drain the accepted descriptor/core job and discard the old completion through the existing unified reset protocol."
+  },
+  "functional": {
+    "logs": {
+      "persistent_host_validation": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/persistent_host_validation.log",
+        "sha256": "c440d4f3af150f4d265887daad52382121c9c6f74349eaa8fa12d415404acb64",
+        "passed": true,
+        "checks": 36
+      },
+      "persistent_host_control": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/persistent_host_control.log",
+        "sha256": "e88842931d71b39dbda81023e0869bdc3e7952de81427ab5aaeb522f2ac44bc0",
+        "passed": true,
+        "checks": 16
+      },
+      "persistent_host_driver": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/persistent_host_driver.log",
+        "sha256": "bd13abb7ee4906e6bdf65261755de3893cfa8e3f209a1ebbf2f546d8922386cd",
+        "passed": true
+      }
+    },
+    "distinct_checks_across_cohorts": 52,
+    "counting": "Final descriptor/host/legacy cohort 36 plus final controller/router cohort 16; the cohorts contain no repeated tests. 52 distinct checks.",
+    "final_cohort": {
+      "TileJobDescriptorReaderSpec": 3,
+      "GpuAbiLayoutSpec": 12,
+      "PersistentTileHostAxiSpec": 2,
+      "RenderHostSpec": 15,
+      "PersistentTileRenderCoreSpec": 1,
+      "GpuHostAxiSpec": 3
+    },
+    "additional_control_checks": {
+      "TileCommandPassControllerSpec": 7,
+      "GpuCommandRouterSpec": 9
+    },
+    "native_profiles": [
+      {
+        "backend": "fixed function",
+        "cus": 1,
+        "lanes": 4,
+        "warps": 2
+      },
+      {
+        "backend": "actual shared shader CUs, FPU enabled",
+        "cus": 2,
+        "lanes": 4,
+        "warps": 2
+      }
+    ],
+    "native_memory": "256-bit AXI, four-bank L2 with 8 sets/two ways, deterministic read delays and 17-cycle write acknowledgements. Bare and Sv32 superpage mapping, descriptor/data/staging/instruction rebinding to +4 MiB.",
+    "native_cases_per_profile": [
+      "clear-start ordered two-draw images",
+      "two-draw LOAD with depth NEVER and untouched attachments",
+      "short allocation",
+      "reserved submission pattern",
+      "wrong descriptor size",
+      "reserved descriptor encoding",
+      "short command allocation",
+      "third descriptor-line fault",
+      "first command-word fault",
+      "attachment depth-load fault",
+      "texture fault on fixed backend / actual shader trap on shared backend",
+      "legacy opcode rejection",
+      "healthy Sv32-rebound job",
+      "reset during first accepted descriptor read",
+      "queued tile + strided DMA + blended LOAD tile"
+    ],
+    "descriptor_matrix": "Direct component tests cover four line faults; bounds, exact 4 GiB and wrap rejection; full-field snapshots; reserved/high fields; cancellation before fetch, during an offered read and during an offered job; result backpressure and reuse.",
+    "c_abi": "sizeof=256 and offsetof for all 37 fields plus reserved tail compile with C11 static assertions; kernel-free driver suite passes."
+  },
+  "bandwidth_checks": {
+    "clear_start": {
+      "descriptor_lines": 4,
+      "logical_descriptor_bytes": 256,
+      "draw_record_bytes": 320,
+      "old_attachment_reads": 0,
+      "final_attachment_store_bytes": 512,
+      "intermediate_exports": 0
+    },
+    "load_never": {
+      "draws": 2,
+      "covered_depth_samples": 49,
+      "external_old_depth_reads": 49,
+      "attachment_store_bytes": 0
+    },
+    "queued_publication": {
+      "first_tile_store_bytes": 512,
+      "strided_copy_bytes": 512,
+      "final_color_load_samples": 49,
+      "final_attachment_store_bytes": 452,
+      "proof": "First DMA source read observes completed tile result; next tile descriptor fetch observes completed DMA result and all copied bytes. Final src-ZERO/dst-ONE blended LOAD preserves the copied image.",
+      "performance_scope": "Correctness/traffic checks, not a frame-rate, scaling or DRAM performance benchmark."
+    }
+  },
+  "fault_fix": {
+    "trigger": "Attachment LOAD fault while later command work is queued.",
+    "prior_failure": "Store fails but command prefetch continues; a queued draw can wait forever on an aborted owner.",
+    "change": "Qualify the attachment sideband on accepted framebuffer response, cancel prefetch on that fault, and retain status 3 through secondary failures.",
+    "observed": "Both native backends complete with status 3 and zero attachment exports; descriptor, command, texture and execution faults retain their distinct status and recover."
+  },
+  "synthesis": {
+    "artifact": "generated/mobile-h1/physical-tile-descriptor-reader",
+    "scope": "Descriptor reader only; default shader configuration 16 lanes/8 warps, IDs derived from a four-CU shared pool (64 line transactions, reserved ID 32). No CUs/host/renderer/AXI adapter or post-route qualification.",
+    "slacks_ps": [
+      293.576,
+      460.35
+    ],
+    "gate": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        293.576,
+        460.35
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "ad3082db5fa857049f74373c53e4222b696eda92255415786d1f91763427d5a5",
+      "setup_passed": true,
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h1/physical-tile-descriptor-reader/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "f3c39add82f8be603714b20015a979a7d927a21f9a715f66f9de45dfe8e3eeb0"
+      }
+    },
+    "qor": {
+      "setup_worst_slack_ps": 293.576,
+      "core_clock_fmax_mhz": 1415.58
+    },
+    "emitted_sha256": {
+      "TileJobDescriptorReader.sv": "2643de3b749f7ae2e1b168b51b0d284bf85549f7c611d10ed38c5d823a1ed855"
+    },
+    "hashes": {
+      "result.json": "98851080332cb52cbdf3a7301a5c957fed6a6941a22c803ad87676a93255da50",
+      "manifest.json": "51ac11ccb0b1e80f339f48e05dbd0a21c8f99873da29e437b1ce7774fda23415",
+      "qualification.json": "a248444afde7296be8f158ea326dcf967db3246fec8d7abc31d29126ce288d57"
+    }
+  },
+  "limitations": [
+    "One resident 8x8/16x16 tile and one RGBA8+D24S8 attachment pair; existing inline triangle records.",
+    "Descriptor fetch currently has one outstanding line. A four-ID prefetch window can reduce latency once reordered response, fault and cancellation drain are verified.",
+    "Full four-CU/16-lane/eight-warp native validation of this host profile remains required. The earlier real-system TileCommandJob harness covers that profile, but not this descriptor/AXI wrapper.",
+    "Command/texture buffering and framebuffer coalescing are rejected until callbacks retain per-response fault ownership.",
+    "Coarse memory-engine publication must evolve into scoped dependencies and concurrent transfer progress for multiple tile engines.",
+    "Mixed in-pass clear/draw host commands, generalized bounded resources, render-to-texture coverage, queries, driver/Mesa adoption and remaining H0-H8 requirements are pending.",
+    "Integrated renderer/GPU physical mapping, clock, 720p frame rates and workload energy remain unqualified."
+  ]
+}

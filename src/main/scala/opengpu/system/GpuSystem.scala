@@ -198,6 +198,8 @@ class GpuSystem(
     /** Quiescent boundary for shared SATP/TLB state, including queued work,
       * cache invalidations and lower-memory ownership. */
     val vmContextIdle = Output(Bool())
+    /** Memory-engine publication boundary; unrelated compute may continue. */
+    val graphicsDependencyIdle = Output(Bool())
     val clearPerformanceCounters = Input(Bool())
     val performance = Output(new GpuPerformanceCounters)
   })
@@ -435,6 +437,11 @@ class GpuSystem(
   commandRouter.io.blockDispatch := false.B
   commandRouter.io.pathReset := false.B
   commandProcessor.io.pathReset := false.B
+  io.graphicsDependencyIdle := !commandRouter.io.memoryEngineBusy &&
+    !copyEngine.io.busy && !fillEngine.io.busy && !stridedCopyEngine.io.busy &&
+    !resolveEngine.io.busy && !resolveActive && !resolveDonePending &&
+    !io.copyDescriptor.valid && !io.fillDescriptor.valid && !io.stridedCopyDescriptor.valid &&
+    !io.copyCompletion.valid && !io.fillCompletion.valid && !io.stridedCopyCompletion.valid
   private val contextDrained = io.graphicsDrained && !copyEngine.io.busy && !fillEngine.io.busy &&
     !stridedCopyEngine.io.busy && !resolveEngine.io.busy &&
     !resolveActive && !resolveDonePending &&

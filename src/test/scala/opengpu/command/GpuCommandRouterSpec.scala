@@ -10,6 +10,40 @@ import org.scalatest.flatspec.AnyFlatSpec
 class GpuCommandRouterSpec extends AnyFlatSpec {
   behavior of "GpuCommandRouter"
 
+  it should "retain memory-engine ownership through queued work and held completion without blocking unrelated compute" in {
+    simulate(new GpuCommandRouter(GpuConfig(lanes = 4), commandIdWidth = 4)) { dut =>
+      initialize(dut)
+      submit(dut, 1, GpuCommandOpcode.kernel)
+      dut.io.busy.expect(true.B); dut.io.memoryEngineBusy.expect(false.B)
+      dut.io.kernel.ready.poke(true.B)
+      submit(dut, 2, GpuCommandOpcode.copy)
+      dut.io.memoryEngineBusy.expect(true.B)
+      awaitValid(dut, dut.io.copy.valid.peek().litToBoolean)
+      dut.io.copy.valid.expect(true.B); dut.io.copy.ready.poke(true.B); dut.clock.step()
+      dut.io.copyCompletion.bits.descriptorId.poke(2.U)
+      dut.io.copyCompletion.bits.success.poke(true.B)
+      dut.io.copyCompletion.valid.poke(true.B); dut.clock.step(); dut.io.copyCompletion.valid.poke(false.B)
+      awaitValid(dut, dut.io.completion.valid.peek().litToBoolean)
+      for (_ <- 0 until 5) { dut.io.memoryEngineBusy.expect(true.B); dut.clock.step() }
+      dut.io.completion.ready.poke(true.B); dut.clock.step(); dut.io.completion.ready.poke(false.B)
+      dut.io.memoryEngineBusy.expect(false.B); dut.io.busy.expect(true.B)
+      dut.io.kernelCompletion.bits.commandId.poke(1.U)
+      dut.io.kernelCompletion.bits.status.poke(KernelCommandStatus.success)
+      dut.io.kernelCompletion.bits.success.poke(true.B)
+      dut.io.kernelCompletion.valid.poke(true.B)
+      dut.io.kernelCompletion.ready.expect(true.B); dut.clock.step(); dut.io.kernelCompletion.valid.poke(false.B)
+      awaitValid(dut, dut.io.completion.valid.peek().litToBoolean)
+      dut.io.completion.valid.expect(true.B)
+      dut.io.completion.ready.poke(true.B); dut.clock.step(); dut.io.completion.ready.poke(false.B)
+      dut.io.busy.expect(false.B)
+      dut.io.blockDispatch.poke(true.B)
+      submit(dut, 3, GpuCommandOpcode.copy)
+      dut.io.memoryEngineBusy.expect(true.B)
+      dut.io.pathReset.poke(true.B); dut.clock.step(); dut.io.pathReset.poke(false.B)
+      dut.io.memoryEngineBusy.expect(false.B); dut.io.busy.expect(false.B)
+    }
+  }
+
   private def initialize(dut: GpuCommandRouter): Unit = {
     dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
     dut.io.command.valid.poke(false.B)

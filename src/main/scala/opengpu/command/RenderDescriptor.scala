@@ -3,18 +3,23 @@ package opengpu.command
 import chisel3._
 import opengpu.config.GpuConfig
 
-/** One unified render command: the virtual address of a 16-word render
-  * descriptor (the `gpu_job_record` layout) in the submitting context's VM.
+/** One unified render command in the submitting context's VM. The default
+  * profile fetches a 16-word `gpu_job_record`; the persistent profile binds
+  * an explicit bounded 256-byte tile descriptor allocation.
   * The graphics engine fetches the descriptor and its command buffer through
   * the translated command client, so a draw needs no dedicated physical word
   * port.
   */
-class RenderDescriptor(config: GpuConfig, val commandIdWidth: Int)
+class RenderDescriptor(config: GpuConfig, val commandIdWidth: Int, persistentAttachments: Boolean = false)
     extends Bundle {
   val descriptorId = UInt(commandIdWidth.W)
   val descriptorAddress = UInt(config.xLen.W)
-  /** Command byte count echoed at completion; the descriptor is always 64 bytes. */
+  /** Legacy caller byte count, or the required descriptor size (256) in the
+    * persistent profile. Persistent completion reports actual command reads. */
   val bytes = UInt(32.W)
+  /** Explicit allocation for the 256-byte persistent descriptor profile. */
+  val limit = if (persistentAttachments) Some(UInt(33.W)) else None
+  val envelopeValid = if (persistentAttachments) Some(Bool()) else None
 }
 
 object RenderStatus {
