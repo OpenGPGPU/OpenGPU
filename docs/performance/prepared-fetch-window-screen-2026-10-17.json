@@ -1,6 +1,6 @@
 {
   "recorded_at": 1792227215.597932,
-  "status": "Private only: corrected epoch semantics and cycle improvements pass; all three revisions fail unchanged native timing.",
+  "status": "Private state-selected precompute revision passes36source tests, unchanged hardware timing and exact1CU/4CU scenes. Native host/desktop qualification remains.",
   "configuration": {
     "compute_units": [
       1,
@@ -199,5 +199,130 @@
       "sha256": "3a4dece121751dcd9cd02ae2260bf36b3a1e0b561d7cc79e12d42bc9ab34c3fe"
     },
     "decision": "Timing fails more severely (-56.138ps core/-41.616ps I/O); scene compilation skipped. Rework the measured critical paths before release qualification."
-  }
+  },
+  "extra_fallback_stage_revision": {
+    "source": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-register-issue/TextureUnit.scala",
+      "sha256": "430a23ab244fc82bc3423295ae53ea222c5d38f6ceb944221c70c720e361f5fe"
+    },
+    "source_gates": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-register-issue/state.json",
+      "sha256": "a56ff168a02fb0c61346d0c4523df3de5350d9c64ebe08ada39a1c22a879ddb0"
+    },
+    "passed": false,
+    "decision": "Reject the extra fallback cycle: original fixed-mip first-read regression requires5cycles, observed6. Keep the timing oracle unchanged."
+  },
+  "admission_precomputed_revision": {
+    "source": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-precompute/TextureUnit.scala",
+      "sha256": "c667a574bed09cb6e20c1b07e62cbf8820b72a009be9162a6a98b37af4ca9856"
+    },
+    "source_gates": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-precompute/state.json",
+      "sha256": "d528fc10868d3b954a6777ef732f78f97df39581ca28d7d813fb4417ab51e1fd"
+    },
+    "source_test_count": 35,
+    "additional_boundary": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-precompute/boundary-state.json",
+      "sha256": "1422267cf6130bb5be642b60ffa445d2c08743ed11394d5616c93ef40dd54dd0"
+    },
+    "timing": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/prepared-fetch-window-precompute/native-component-timing-state.json",
+        "sha256": "d189ba85c3609afbf6201539e09c7c6e3dc454589d738f424fa1ca656d806347"
+      },
+      "qualification": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -194.235,
+          99.182
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "9e683c0e975c50ba5ef16e76010f737a85651b4b8c2c0afef52f94daab6a6258"
+      }
+    },
+    "pins": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-precompute/pin-inspection-state.json",
+      "sha256": "ef40c7d7fc8afe29f6770e459679b94de90e1af958f21826f5e57888e0988ecb"
+    },
+    "decision": "I/O passes(+99.182ps); input-valid to partial-product register fails by194.235ps. Hold private and remove handshake control from arithmetic operand selection."
+  },
+  "state_selected_precompute_revision": {
+    "source": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products/TextureUnit.scala",
+      "sha256": "bd1d5bcd25fa9c672a8e2c016a0f6eeb113d7dac5795c9320b154d17a2ae894a"
+    },
+    "source_gates": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products/state.json",
+      "sha256": "a3f8e04cb97b8c665bc254a7da500a131c374191e97936fd4e3385871e76f704"
+    },
+    "source_test_count": 36,
+    "source_suites": 8,
+    "boundary_oracle_on_original_sampler": {
+      "path": ".artifacts/shared-cu/prepared-fetch-window-state-products/boundary-original-control.json",
+      "sha256": "620724be8b824a1451f031c8914ba0c09fa77c64e1c95c0bee59e0a401fa11b1"
+    },
+    "change": "Select partial-product operands using registered FSM state; enable capture only on the actual handshake or mip-walk edge. Preserve original fixed-mip latency. Keep prepared issue downstream of registered cache lookup.",
+    "changed_executable_modules": [
+      "TextureUnit_1.sv"
+    ],
+    "unchanged_executable_modules": 297,
+    "timing": {
+      "evidence": {
+        "path": ".artifacts/shared-cu/prepared-fetch-window-state-products/native-component-timing-state.json",
+        "sha256": "76c6b6c3d7660338b5cc90660aeefe11d925bd27ab9aa5285b37860d1a3699df"
+      },
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          1.309,
+          123.197
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "265d9dcc9b5f36d04d7b1c746964b4e40240f4da1b6596451de374ac5986910a"
+      },
+      "core_margin_is_narrow": true,
+      "constraints_changed": false
+    },
+    "scenes": {
+      "state_path": ".artifacts/shared-cu/prepared-fetch-window-state-products/scene-state.json",
+      "status_at_recording": "terminal",
+      "evidence": {
+        "path": ".artifacts/shared-cu/prepared-fetch-window-state-products/scene-state.json",
+        "sha256": "4b73984bf3112183db268d6074599066557ebe41e0ac600db3fa3935f5cceace"
+      },
+      "passed": true,
+      "results": [
+        {
+          "cus": 4,
+          "baseline_cycles": 11929,
+          "candidate_cycles": 11566,
+          "cycle_reduction_percent": 3.0430044429541447,
+          "pixels_depth_metadata_exact": true,
+          "omitted_bytes_preserved": true
+        },
+        {
+          "cus": 1,
+          "baseline_cycles": 35137,
+          "candidate_cycles": 32341,
+          "cycle_reduction_percent": 7.95742379827532,
+          "pixels_depth_metadata_exact": true,
+          "omitted_bytes_preserved": true
+        }
+      ]
+    },
+    "production_promoted": false,
+    "remaining": [
+      "Native/O1 controls, own-profile O2 host measurements, complete RAM and clocks/DMA comparisons.",
+      "Actual current Debian desktop, strict current traces, scanout and manual image review."
+    ],
+    "CU_scaling": {
+      "baseline": 2.9455109397267165,
+      "candidate": 2.796213038215459,
+      "scope": "Matched1CU/4CU RTL scene cycles. Absolute cycles improve for both, but1CU benefits more; this is not an improvement in CU scaling."
+    }
+  },
+  "updated_at": 1792232930.8362381
 }

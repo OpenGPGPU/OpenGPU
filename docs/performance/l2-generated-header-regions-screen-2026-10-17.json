@@ -1,0 +1,111 @@
+{
+  "recorded_at": 1792232930.836894,
+  "status": "private_all_object_rebuild_in_progress",
+  "source": {
+    "path": ".artifacts/shared-cu/l2-header-regions-ctor-screen/run.py",
+    "sha256": "1b7eb90a011ed79a58ea9e8468e0e51651ed7ef4d39c055152dd0e867a9f353b"
+  },
+  "layout_evidence": {
+    "path": ".artifacts/shared-cu/l2-header-regions-ctor-screen/state.json",
+    "sha256": "286f0e2190dd9e791d76049d13fd4de8c5da554be4710939f83ea89062fd9289"
+  },
+  "layout": {
+    "all_moved_offsets_exact": 210628,
+    "size": 1806624,
+    "alignment": 32,
+    "trivially_copyable": true,
+    "constructor_bytes_exact": true,
+    "proof_sha256": "6df54c021d771ae70677526be7d56cebed65c9c4e1e8e16c9e01ad4c7b1c7ef2"
+  },
+  "region_count": 205,
+  "constructor_review": {
+    "scope": "Unchanged explicit constructor zeroes the complete object, then initializes fixed bookkeeping arrays/scalars. All new bases contain primitive uninitialized fields only; no base constructor runs. Compare full constructed object bytes after exact size/alignment/offset checks.",
+    "body_sha256": "ba25557444fcffc7c17d66c8f01324cdf1c091f184e5f725820387bb438524bf"
+  },
+  "original_header_sha256": "34c3ac2078589a604762b4b8b5ed09bdcf5c30d94ffcc3b3e4261d6e649e3ded",
+  "grouped_header_sha256": "5aa3bc2d7e1c61728172f6f00363bd899b089d060e044746e83ad55c993a1508",
+  "single_TU_screen": {
+    "evidence": {
+      "path": ".artifacts/shared-cu/l2-header-regions-ctor-screen/compile-paired-state.json",
+      "sha256": "05a3e175d1de688e1313c3905177318d3a1949a1efa82112c08c2572aaa5d7eb"
+    },
+    "samples": [
+      {
+        "variant": "original",
+        "source_sha256": "095c4d22cf2a85d697632bcbd92ad9ccf5d3d524d2ae9bbc7ace6ea6cbab4839",
+        "header_sha256": "34c3ac2078589a604762b4b8b5ed09bdcf5c30d94ffcc3b3e4261d6e649e3ded",
+        "command": [
+          "/opt/homebrew/opt/ccache/libexec/c++",
+          "-std=gnu++17",
+          "-fPIC",
+          "-fPIE",
+          "-Wno-parentheses-equality",
+          "-fbracket-depth=4096",
+          "-I.",
+          "-fprofile-instr-use=/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/l2-waiter-presence-native/qualified.profdata",
+          "-Werror=profile-instr-out-of-date",
+          "-O2",
+          "-c",
+          "dut_10.cpp",
+          "-o",
+          "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/l2-header-regions-ctor-screen/paired-original.o"
+        ],
+        "cwd": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/l2-waiter-presence-native/model",
+        "seconds": 330.6147880409844,
+        "exit_status": 0,
+        "object_sha256": "ee8132d150b2d06d01aba6a4591cd1f757b7b77d2f4dc6523579daa08c85c7c6"
+      },
+      {
+        "variant": "grouped",
+        "source_sha256": "42e9df93eb6d8280e98ff36ae6f527cb006969dfa9e5985db26c82a0a366df22",
+        "header_sha256": "5aa3bc2d7e1c61728172f6f00363bd899b089d060e044746e83ad55c993a1508",
+        "command": [
+          "/opt/homebrew/opt/ccache/libexec/c++",
+          "-std=gnu++17",
+          "-fPIC",
+          "-fPIE",
+          "-Wno-parentheses-equality",
+          "-fbracket-depth=4096",
+          "-I.",
+          "-fprofile-instr-use=/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/l2-waiter-presence-native/qualified.profdata",
+          "-Werror=profile-instr-out-of-date",
+          "-O2",
+          "-c",
+          "dut_10.cpp",
+          "-o",
+          "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/l2-header-regions-ctor-screen/paired-grouped.o"
+        ],
+        "cwd": "/Users/duckdonald/workspace/gpu/.artifacts/shared-cu/l2-header-regions-ctor-screen/model",
+        "seconds": 215.91165841603652,
+        "exit_status": 0,
+        "object_sha256": "7869c59ccf08987189846d713d563a97d59848e6b1c14a00562f50e6c8e42086"
+      }
+    ],
+    "time_saved_percent": 34.69388961837026,
+    "contention": {
+      "path": ".artifacts/shared-cu/l2-header-regions-ctor-screen/compile-paired-contention.json",
+      "sha256": "576d92a7d7398ca1f56b794c22d263df65ae61b6360fa9ad204d1626659cffd3"
+    },
+    "scope": "Sequential fresh compilations with cache disabled, same compiler/O2/qualified profile. Sampler validation overlaps; diagnostic only, no isolated or complete-build speedup claim."
+  },
+  "all_object_rebuild": {
+    "state_path": ".artifacts/shared-cu/l2-header-regions-native/build-state.json",
+    "status_at_recording": "compile-all37",
+    "objects": 37,
+    "all_generated_and_CAPI_sources_byte_identical": true
+  },
+  "native9": {
+    "state_path": ".artifacts/shared-cu/l2-header-regions-native/native9-state.json",
+    "qualification_pending": true
+  },
+  "runtime_qualified": false,
+  "production_promoted": false,
+  "FlashSim_sources_changed": false,
+  "installed_QEMU_changed": false,
+  "remaining": [
+    "All37objects compiled against exactly the same new class definition; no mixed headers.",
+    "Exact native complete RAM and counters, native formats/controls and strict traces.",
+    "Balanced host timings and actual desktop before any runtime promotion.",
+    "A quiet repeated build comparison before claiming isolated or complete-build speedup."
+  ]
+}

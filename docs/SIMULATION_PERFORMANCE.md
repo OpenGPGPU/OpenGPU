@@ -182,7 +182,42 @@ and removes redundant state guards under a proved ownership invariant. Its
 revisions remain private. Simulator and desktop qualification remain required
 for any future revision that passes hardware timing.
 
+A registered-issue revision removes the cache CAM from the physical request
+address path. An extra fallback arithmetic cycle fails the unchanged fixed-mip
+first-read test (**6 cycles versus a 5-cycle limit**). Precomputing 16×14 partial
+products at admission or the preceding mip-walk edge preserves that limit.
+Selecting those operands from registered FSM state keeps input-valid and
+backpressure out of the multiplier's input selector.
+
+This final private revision passes **36 tests in eight suites**. An independent
+address/color oracle also passes the original sampler, including full-width
+coordinates, extent 16,383, clamp and repeat. Only `TextureUnit_1.sv` changes.
+Unchanged native-cone timing passes at **+1.309 ps core / +123.197 ps I/O**;
+the core margin is narrow. Both full scenes preserve pixels, depth, metadata
+and canaries: **35,137→32,341 cycles (7.96%)** for one CU and
+**11,929→11,566 (3.04%)** for four CUs. CU scaling falls from **2.95× to 2.80×**
+because one CU benefits more. This is an absolute-cycle improvement, not an
+improvement in CU scaling. Native host speed and actual desktop qualification
+remain required before promotion.
+
 See [the overlap controls, epoch failure/fix and qualification gates](performance/prepared-fetch-window-screen-2026-10-17.json).
+
+## Generated-header compile screen (2026-10-17)
+
+A private compiler experiment divides the generated flat primitive fields
+into data-only base regions. All **210,628 moved offsets**, object size and
+alignment, trivial copyability and complete constructor bytes match. Every
+evaluator and CAPI source remains byte-identical; all objects must be rebuilt
+against the same header before execution.
+
+A fresh, sequential single-file O2/PGO pair with compiler caching disabled
+measures **330.6→215.9 seconds**. Other sampler validation overlaps, so this is
+a diagnostic screen rather than an isolated or complete-build speed claim.
+The private 37-object rebuild is running; subsequent nine-fixture RAM/counter
+checks are queued. FlashSim sources and the installed QEMU remain unchanged; runtime
+qualification and a quiet repeated build comparison remain required.
+
+See [the layout checks, compile samples and remaining gates](performance/l2-generated-header-regions-screen-2026-10-17.json).
 
 ## Exact held-update attribution (2026-10-17)
 
