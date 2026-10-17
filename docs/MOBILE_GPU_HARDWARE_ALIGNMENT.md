@@ -733,7 +733,8 @@ propagation fails the status assertion as expected.
 Qualification remains incomplete. The real 1280x720 quad rasterizer baseline
 maps fully but fails the routed 1 GHz setup gate at TC/SLVT with 25% I/O delays
 and 25% utilization: setup -966.104 ps, hold +30.8655 ps, DRC errors zero.
-The scissor revision's physical run is separate. The fixed Linux DRM smoke
+The scissor-only revision also fails setup: -965.301 ps, with 1,863 violating
+setup endpoints, hold +31.7091 ps and zero DRC errors. The fixed Linux DRM smoke
 also failed a compute-fence timeout; this checkpoint does not claim a passing
 desktop integration. Arithmetic/timing improvements and that investigation
 continue separately. All original H0–H8 requirements remain in force.
