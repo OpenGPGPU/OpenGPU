@@ -44,6 +44,48 @@ started for it. These are pre-layout estimates, not whole-chip timing closure.
 
 See [the complete texture-port counters, runtime calculation and sampled-host evidence](performance/desktop-texture-port-attribution-2026-10-17.json).
 
+## Same-model idle rate and response-payload screening (2026-10-17)
+
+The selected four-CU O2/PGO model runs at **21.57 MHz** when reset, warmed and
+left without submitted work: three fresh processes each advance exactly one
+million ticks, with a median of 46.363 ms and zero DMA, commits or hold
+dispatches. The same compiled DUT and archive take 13.476 seconds for 139,330
+ticks in the active packed-white 256×256 render (**10.34 kHz**). The desktop
+trace above averages 38.95 kHz and about 325 hold dispatches per tick. Its
+elapsed measurement is diagnostic and was recorded separately. Idle MHz is
+therefore a poor predictor of active desktop throughput. These workload rates
+describe different activity, rather than a backend speedup comparison.
+
+A private RTL candidate zeros an arbiter's 512-bit response payload whenever
+that worker's reply enqueue is invalid. Valid replies, ownership, backpressure
+and registered stalled data remain covered by unit and native checks. Each
+variant uses its own representative 72-profile PGO training set under the same
+protocol. Three balanced fresh-process samples per variant give:
+
+| Workload | Selected O2/PGO | Private candidate | Time saved |
+| --- | ---: | ---: | ---: |
+| Packed-white solid64 | 0.682412 s | 0.651303 s | 4.56% |
+| Packed-white spatial64 | 0.854659 s | 0.799135 s | 6.50% |
+| Packed-white spatial256 | 13.475976 s | 12.402274 s | 7.97% |
+| Actual packed-white Mesa64 trace | 23.485670 s | 22.514231 s | 4.14% |
+
+Task cycles, complete RAM, commits and DMA results match; internal hold
+dispatches decrease. The candidate passes 40 native format cases, 12 staging
+controls, six forced controls, VM/GLES/GTK64 qualification and strict timed
+trace checks in training and optimized builds. The current packed-white guest
+also passes all 21 GLES cases, exact white-modulation transition checks and
+GTK64 scanout. Full 640×480 recording/replay qualification is in progress. These
+figures establish a modest host-runtime gain on the measured workloads;
+production RTL and installed executables remain unchanged.
+
+Separately, FlashSim dead-code elimination now visits each reachable assignment
+once through a worklist. The complete four-CU optimizer output is byte-identical
+to the previous captured IR, and all 114 package tests pass. FlashSim commit
+`656aef3` speeds model generation and verification; it leaves the generated
+simulation code unchanged.
+
+See [the rate probe, paired runtime samples and optimizer equivalence evidence](performance/same-model-idle-and-active-screen-2026-10-17.json).
+
 ## Active four-CU compiler-level screening (2026-10-17)
 
 Compiling the exact unchanged model at `-O1` with the same representative PGO

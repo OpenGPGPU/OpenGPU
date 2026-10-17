@@ -1,0 +1,838 @@
+{
+  "recorded_at": 1792197368.054611,
+  "status": "Idle/active attribution and balanced release host gate PASS; staging-payload RTL candidate remains private pending currentguest/full640 qualification.",
+  "scope": "Matched O2 own72-profile PGO baseline versus staging-response payload quieting. Balanced ABBAAB ordering, identical current packed-white scenes and exact current Mesa timedtrace. CompleteRAM and all ownmodel counters; exact recorded API/clock/DMA trace compatibility. No concurrent own compiler/profiler/guest jobs.",
+  "selected_archive_sha256": "93e5391fa302ca3e6254fc0e1d5958e79dc7190b6f1d701eae3cf3ecaa172901",
+  "same_model_idle": {
+    "samples": [
+      {
+        "ticks": 1000000,
+        "seconds": 0.046363458,
+        "commits": 0,
+        "holds": 0,
+        "holds_wrote": 0,
+        "dma": 0,
+        "shader_config": 67635216
+      },
+      {
+        "ticks": 1000000,
+        "seconds": 0.045821208,
+        "commits": 0,
+        "holds": 0,
+        "holds_wrote": 0,
+        "dma": 0,
+        "shader_config": 67635216
+      },
+      {
+        "ticks": 1000000,
+        "seconds": 0.04661675,
+        "commits": 0,
+        "holds": 0,
+        "holds_wrote": 0,
+        "dma": 0,
+        "shader_config": 67635216
+      }
+    ],
+    "median_seconds": 0.046363458,
+    "cycles_per_second": 21568710.42707815,
+    "scope": "Exact same baseline model/PGOarchive as latest desktop; reset/warmed, no submittedwork, noDMA, one million actual ticks per freshprocess. Different activity by design; not desktop throughput or newoptimization."
+  },
+  "same_model_active": {
+    "workload": "Packed-white spatial256 with exact completeRAM/task/traffic gates",
+    "ticks": 139330,
+    "median_seconds": 13.475976375,
+    "cycles_per_second": 10339.13952672687,
+    "holds": 158444263,
+    "holds_per_tick": 1137.1869877269792
+  },
+  "historical_desktop": {
+    "replay": {
+      "calls": 173947,
+      "ticks": 16529708,
+      "commits": 797248588,
+      "holds": 5369196155,
+      "dma_reads": 507606,
+      "dma_writes": 3212098,
+      "dma_bytes": 56973488,
+      "seconds": 424.366759834,
+      "truncated_tail": false,
+      "warmup_calls": 0,
+      "sample": 0
+    },
+    "cycles_per_second": 38951.46737333043,
+    "holds_per_tick": 324.82099230065046,
+    "scope": "Read-only empirical work-counter estimate for latest qualified white-modulation 4CU trace. Calibration uses independent balanced native rendering fixtures. Not an analytical cycle lower bound, hardware timing closure, or controlled full-desktop speed comparison. Replay elapsed is diagnostic and partially overlaps supplemental guest capture."
+  },
+  "paired_host_summary": {
+    "solid64": {
+      "medians": {
+        "baseline": 0.682411542,
+        "candidate": 0.651303125
+      },
+      "candidate_over_baseline": 0.9544139934843013,
+      "time_saved_percent": 4.558600651569867
+    },
+    "spatial64": {
+      "medians": {
+        "baseline": 0.854658958,
+        "candidate": 0.799134542
+      },
+      "candidate_over_baseline": 0.935033248665721,
+      "time_saved_percent": 6.496675133427898
+    },
+    "large256": {
+      "medians": {
+        "baseline": 13.475976375,
+        "candidate": 12.402274292
+      },
+      "candidate_over_baseline": 0.9203247280106633,
+      "time_saved_percent": 7.9675271989336665
+    },
+    "actual-Mesa64": {
+      "medians": {
+        "baseline": 23.4856695,
+        "candidate": 22.514230708
+      },
+      "candidate_over_baseline": 0.9586369555272843,
+      "time_saved_percent": 4.136304447271566
+    }
+  },
+  "paired_host_samples": [
+    {
+      "name": "solid64",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 8841,
+        "explicit_ticks": 0,
+        "seconds": 0.680210958,
+        "commits": 1418464,
+        "holds": 8774114,
+        "holds_wrote": 1427499,
+        "reads": 894,
+        "writes": 5806,
+        "read_bytes": 57216,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "solid64",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 8841,
+        "explicit_ticks": 0,
+        "seconds": 0.657836459,
+        "commits": 1418464,
+        "holds": 8217010,
+        "holds_wrote": 1427499,
+        "reads": 894,
+        "writes": 5806,
+        "read_bytes": 57216,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "solid64",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 8841,
+        "explicit_ticks": 0,
+        "seconds": 0.645276292,
+        "commits": 1418464,
+        "holds": 8217010,
+        "holds_wrote": 1427499,
+        "reads": 894,
+        "writes": 5806,
+        "read_bytes": 57216,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "solid64",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 8841,
+        "explicit_ticks": 0,
+        "seconds": 0.682411542,
+        "commits": 1418464,
+        "holds": 8774114,
+        "holds_wrote": 1427499,
+        "reads": 894,
+        "writes": 5806,
+        "read_bytes": 57216,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "solid64",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 8841,
+        "explicit_ticks": 0,
+        "seconds": 0.687899792,
+        "commits": 1418464,
+        "holds": 8774114,
+        "holds_wrote": 1427499,
+        "reads": 894,
+        "writes": 5806,
+        "read_bytes": 57216,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "solid64",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 8841,
+        "explicit_ticks": 0,
+        "seconds": 0.651303125,
+        "commits": 1418464,
+        "holds": 8217010,
+        "holds_wrote": 1427499,
+        "reads": 894,
+        "writes": 5806,
+        "read_bytes": 57216,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 11803,
+        "explicit_ticks": 0,
+        "seconds": 0.853078709,
+        "commits": 1616238,
+        "holds": 10440462,
+        "holds_wrote": 1625438,
+        "reads": 1110,
+        "writes": 5776,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 11803,
+        "explicit_ticks": 0,
+        "seconds": 0.796943333,
+        "commits": 1616238,
+        "holds": 9731311,
+        "holds_wrote": 1625438,
+        "reads": 1110,
+        "writes": 5776,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 11803,
+        "explicit_ticks": 0,
+        "seconds": 0.799134542,
+        "commits": 1616238,
+        "holds": 9731311,
+        "holds_wrote": 1625438,
+        "reads": 1110,
+        "writes": 5776,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 11803,
+        "explicit_ticks": 0,
+        "seconds": 0.854658958,
+        "commits": 1616238,
+        "holds": 10440462,
+        "holds_wrote": 1625438,
+        "reads": 1110,
+        "writes": 5776,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 11803,
+        "explicit_ticks": 0,
+        "seconds": 0.856571,
+        "commits": 1616238,
+        "holds": 10440462,
+        "holds_wrote": 1625438,
+        "reads": 1110,
+        "writes": 5776,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "spatial64",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 11803,
+        "explicit_ticks": 0,
+        "seconds": 0.804339042,
+        "commits": 1616238,
+        "holds": 9731311,
+        "holds_wrote": 1625438,
+        "reads": 1110,
+        "writes": 5776,
+        "read_bytes": 71040,
+        "write_bytes": 43152,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 13.475976375,
+        "commits": 24374241,
+        "holds": 158444263,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 12.343615208,
+        "commits": 24374241,
+        "holds": 147062174,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 12.48426675,
+        "commits": 24374241,
+        "holds": 147062174,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 13.506661125,
+        "commits": 24374241,
+        "holds": 158444263,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 13.415519084,
+        "commits": 24374241,
+        "holds": 158444263,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "large256",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "passed": true,
+        "ticks": 139330,
+        "explicit_ticks": 0,
+        "seconds": 12.402274292,
+        "commits": 24374241,
+        "holds": 147062174,
+        "holds_wrote": 24512616,
+        "reads": 15790,
+        "writes": 88300,
+        "read_bytes": 1010560,
+        "write_bytes": 663696,
+        "faults": 0,
+        "completion": 34395,
+        "shader_config": 67635216
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64",
+      "variant": "baseline",
+      "index": 0,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 388012071,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 23.658195583,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64",
+      "variant": "candidate",
+      "index": 1,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 369280653,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 22.557841541,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64",
+      "variant": "candidate",
+      "index": 2,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 369280653,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 22.514230708,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64",
+      "variant": "baseline",
+      "index": 3,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 388012071,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 23.466956041,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64",
+      "variant": "baseline",
+      "index": 4,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 388012071,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 23.4856695,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_own_counters_exact": true
+    },
+    {
+      "name": "actual-Mesa64",
+      "variant": "candidate",
+      "index": 5,
+      "result": {
+        "calls": 46091,
+        "ticks": 3325531,
+        "commits": 46916150,
+        "holds": 369280653,
+        "dma_reads": 39373,
+        "dma_writes": 468128,
+        "dma_bytes": 6025976,
+        "seconds": 22.504116417,
+        "truncated_tail": false,
+        "warmup_calls": 0,
+        "sample": 0
+      },
+      "all_results_and_own_counters_exact": true
+    }
+  ],
+  "candidate_archives": {
+    "baseline": "93e5391fa302ca3e6254fc0e1d5958e79dc7190b6f1d701eae3cf3ecaa172901",
+    "candidate": "ec95279691ef08991541cad5a06cac8e467a52b734ac866a500e8e389f5f9bba"
+  },
+  "O1_O2_native40_controls18_allRAM_and_internal_counters_exact": true,
+  "candidate_qualification_snapshot": {
+    "stage": "actual-current-packedwhite-full640",
+    "at": 1792197464.10207,
+    "full_resolution_pending": true,
+    "source_promoted": false,
+    "installed_defaults_changed": false,
+    "current_packedwhite_guest64_passed": true,
+    "native_GLES_cases": 21,
+    "white_transition_folds": [
+      0,
+      1,
+      0,
+      1,
+      0,
+      1
+    ],
+    "white_transition_pixels_passed": true,
+    "payload_unchanged": true
+  },
+  "optimizer_worklist": {
+    "small_differential_checks": {
+      "started": 1792196696.0960488,
+      "pid": 84089,
+      "stage": "terminal",
+      "scope": "Private worklist reachability for DCE only. Preserve statement/memory roots, all live dependency names, assignment insertion order and body identity. Small independent/differential tests and whole qualified optimizedIR fixed-point check. No DUT/native/generator source files modified.",
+      "baseline_sha256": "5c219b5ebfa093e1fad64e801eabcb27282fd9fd1ebcbef3784b2836d0d19eb7",
+      "candidate_sha256": "cbd1dc2299d8167f750794a2f4b760a82aba258de8ff340c3d882a4e89395906",
+      "small_cases": 1604,
+      "long_chain_assignments": 3001,
+      "long_chain_dependency_visits": 3001,
+      "qualified_input_sha256": "f97ad79adf724bee0962cec3a1d0edfce7dc19324bddf9ef0ea07b9f1df59317",
+      "passed": true,
+      "finished": 1792196713.034752,
+      "qualified_signals": 496219,
+      "qualified_assigns": 428319,
+      "qualified_fixed_point_exact": true,
+      "qualified_fixed_point_seconds": 3.162944542011246
+    },
+    "full_raw_model": {
+      "input_sha256": "cd564a910a425d8df50405ed2d6566689a8eaa6062d3bcf823248cac1796fe2c",
+      "raw_assigns": 1768672,
+      "output_assigns": 428319,
+      "original_pickle_sha256": "f97ad79adf724bee0962cec3a1d0edfce7dc19324bddf9ef0ea07b9f1df59317",
+      "candidate_pickle_sha256": "f97ad79adf724bee0962cec3a1d0edfce7dc19324bddf9ef0ea07b9f1df59317",
+      "pickle_byte_identical": true,
+      "parse_seconds_diagnostic": 34.734130250057206,
+      "optimize_seconds_diagnostic": 83.29564083297737,
+      "scope": "Only DCE traversal changes. PYTHONHASHSEED0, exact fullIR protocol5 pickle bytes including order/sharing. Concurrent earlier compilation makes time diagnostic only. No paired generation-time ratio or simulator-runtime gain claimed."
+    },
+    "main_flashsim_commit": "656aef37be7f4573de1c20f1134be8281e47e8ac",
+    "package_tests": "114 passed in 103.44s",
+    "tests_state": {
+      "started": 1792197267.424336,
+      "pid": 87811,
+      "stage": "terminal",
+      "passed": true,
+      "exit_status": 0,
+      "finished": 1792197413.233783
+    }
+  },
+  "limitations": [
+    "Idle probe submits no commands and disables scanout; active workloads intentionally differ. Rates are workload costs, not equivalent-work backend speedups.",
+    "Idle and native active runners link the exact same selected O2PGO static archive. The desktop recorder/replayer changes the C API wrapper only and retains the same compiledDUT objects.",
+    "Historical complete desktop timing was diagnostic and partly overlapped a supplementalguest. Its rate does not establish a universal simulator limit.",
+    "Host reductions use six balanced runs/workload (three each), O2 own72-profile PGO in both models, identical current Mesa fixtures/trace and allRAM/counter gates. No own heavy jobs overlap these benchmarks.",
+    "Currentpackedwhite actualguest64/full640 and manual screenshot review remain before RTLpromotion.",
+    "Worklist optimization changes generation cost only; exact optimizedIR means no generated-DUT behavior/runtime improvement."
+  ],
+  "evidence": {
+    ".artifacts/shared-cu/staging-response-data-gate-native/optimized-host-state.json": "9d23d481dcdc6c4467979d363cc84f9b465d9b58be705c104864bb4b2c322157",
+    ".artifacts/shared-cu/staging-response-data-gate-native/screen_host_optimized.py": "a3554d10b7939bc0b7af32ab8c8e7e37b0b36c2a688d79043175375939a0e7b8",
+    ".artifacts/shared-cu/staging-response-data-gate-native/idle_rate.cpp": "7da5fb623f626a124d030774aac400f1279c173573b015a8a8a4f09ba8f8f47e",
+    ".artifacts/shared-cu/staging-response-data-gate-native/qualification-state.json": "00a96366f12d8f8be8d5ada67bf633857e0c4fd6927a06ae75c15cc26beaa54f",
+    ".artifacts/shared-cu/worklist-dce/state-v2.json": "d57e389c06c2f61bd8e06f99f9c7b117f34166362eff963f6e912c6b1232e1fd",
+    ".artifacts/shared-cu/generation-phase-profile-worklist/state.json": "47c8d22491b8bfba363e3aca3ec2ab2f521362a66e7243fb5d07d9d1f8e9c049",
+    ".artifacts/shared-cu/worklist-dce/main-test-state.json": "21b0874c3d37bd6244f1c87b2a907ba3554476c58f5e5c665d0290c33775c348",
+    ".artifacts/shared-cu/worklist-dce/main-tests.log": "fe03313ca34b9b32aa606a7f0d9d21a9b6005696dbeeea1335279718868a7060",
+    ".artifacts/shared-cu/staging-response-data-gate-native/guest-current-opt64.json": "9c3e70c518dab6b6d2e52edcceb374ebade74f5a8dce62bdc11a65640b79211a",
+    ".artifacts/srq-current-opt64/shader-modulate.log": "3a261c3154327df360f78928c4e2e5cb79b4de35e5195f1e4e6df656a6901686"
+  },
+  "candidate_current_guest64": {
+    "started": 1792197311.917995,
+    "pid": 87906,
+    "stage": "terminal",
+    "replays": [
+      {
+        "mode": 0,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 0,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 1,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x0",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x0",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x40000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x40000000",
+        "invalidate": 1,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x80000000",
+        "invalidate": 0,
+        "passed": true
+      },
+      {
+        "mode": 2,
+        "base": "0x80000000",
+        "invalidate": 1,
+        "passed": true
+      }
+    ],
+    "qemu_sha256": "51ad6ad37c8c1fc16680debd6d98bb66e285635fb2bc5a9e38c11ccfdfe7dd06",
+    "archive_sha256": "ec95279691ef08991541cad5a06cac8e467a52b734ac866a500e8e389f5f9bba",
+    "proof": "/Users/duckdonald/workspace/gpu/.artifacts/srq-current-opt64",
+    "profile": false,
+    "scope": "Private staging-response payload quieting on current selected fourCU RTL; old training payload preserved or explicit currentpackedwhite payload selected;cap28; explicitfirst9scratchcontract,immutablevalidatedread/writeusage,DMAaliasguard andunchangedMesaoptin. StandaloneDRMdefault/optin/all4096pixels+outputcanaries,18VMreplays,21GLES,quadbatch/offscreen/private-depth/GTK64strictscanout; desktopflagselectsfull640only. Nohostspeedclaim.",
+    "exit_status": 0,
+    "guest_seconds": 77.5460880419705,
+    "markers": {
+      "OPENGPU TRANSIENT STAGING PASS: hardware=1": true,
+      "output_usage=1": true,
+      "GTK Wayland/OpenGPU smoke proof: PASS": true,
+      "Gtk-smoke scanout proof: PASS": true,
+      "fragment staging transient=1": true,
+      "compute completed; RNU=1 RDN=0": true,
+      "OPENGPU PRIVATE DEPTH DISCARD PASS:": true,
+      "Native shader suite: PASS": true,
+      "OPENGPU GL FILL PASS": true,
+      "OPENGPU GL OFFSCREEN PASS:": true
+    },
+    "native_cases": 21,
+    "quad_batch_pass": true,
+    "payload_unchanged": true,
+    "trace_requested": false,
+    "trace_present": true,
+    "passed": true,
+    "finished": 1792197392.254472
+  }
+}
