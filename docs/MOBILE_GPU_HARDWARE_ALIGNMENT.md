@@ -816,9 +816,26 @@ V10 removes the area/cull decision from scan-data register enables. Only
 `active` gates output validity; inactive scan data can load because prior
 outputs must drain before a new draw is admitted. Setup gains no extra cycle.
 All 47 component checks pass, including degenerate/front/back rejection under
-stalls followed by healthy coverage reuse. The fresh product replay is still
-running. Synthesis maps completely but still fails at -222.905 ps; the next
+stalls followed by healthy coverage reuse. V10 also passes all 24 native
+single-tile product jobs on fixed and shared-CU backends. Synthesis maps
+completely but still fails at -222.905 ps; the next
 verified path is vertex X through minimum selection and bound padding.
+
+The signed32 prefix-padding experiment (V11) preserves all bound/offset
+combinations formally and passes the same 47 component checks, but worsens
+synthesis setup to -275.645 ps. That implementation was removed; its frozen
+source, proof and negative timing result remain in the measurement record.
+
+V12 retains native bound padding and uses a prefix carry-out with explicit
+sign selection for the signed comparisons. All 47 component checks and the
+universal 96-input-bit min/max proof pass. Synthesis maps completely and
+improves worst setup to -170.732 ps, with I/O setup +229.416 ps. It still
+fails 1 GHz. The next netlist-confirmed path is a signed32x32 cross-product
+multiply, from `vHold_v1_y[8]` to `crossLeft_2[62]`.
+
+The V8 STORE/reset/fault replay also passes all 68 jobs on fixed and shared
+profiles. Those clear-only jobs verify ownership and accepted-write drain;
+they do not demonstrate shader activity or qualify later source revisions.
 
 ## Exact programmable desktop image oracle
 

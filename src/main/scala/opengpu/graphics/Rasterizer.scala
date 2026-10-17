@@ -171,10 +171,21 @@ private[graphics] object FixedPointMath {
   /** Compare all pairs in parallel, sharing the predicates for both bounds.
     * Reducing min/max separately compares a selected value a second time.
     */
+  private def signedLessEqual32(a: SInt, b: SInt): Bool = {
+    require(a.getWidth == 32 && b.getWidth == 32)
+    // b-a has no unsigned borrow exactly when b>=a. Signed ordering differs
+    // only when the operand signs differ, which needs no carry propagation.
+    val compare = Module(new BlockPrefixAdder(32))
+    compare.io.a := b.asUInt
+    compare.io.b := ~a.asUInt
+    compare.io.carryIn := true.B
+    Mux(a(31) =/= b(31), a(31), compare.io.sum(32))
+  }
+
   def extrema3(a: SInt, b: SInt, c: SInt): (SInt, SInt) = {
-    val ab = a <= b
-    val ac = a <= c
-    val bc = b <= c
+    val ab = signedLessEqual32(a, b)
+    val ac = signedLessEqual32(a, c)
+    val bc = signedLessEqual32(b, c)
     (Mux(ab, Mux(ac, a, c), Mux(bc, b, c)),
       Mux(ab, Mux(bc, c, b), Mux(ac, c, a)))
   }

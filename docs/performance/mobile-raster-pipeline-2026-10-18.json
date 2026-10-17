@@ -57,7 +57,38 @@
         "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v8.json",
         "sha256": "d4934b5533e913d36f1b2a6b69c7cf53a4413f9a34b5bcfa224ded1ff750f82d"
       },
-      "scope": "Fixed and shared4CU16lane/8warp shaders,128KiB4bankL2,AXI256,1280x720viewport,one8/16tile per job,1/2/4samples,Bare/Sv32,clear/load,ordered draw/partial-clear/blend,all stored samples and resolved pixels checked. Not full720p frames."
+      "scope": "Fixed and shared4CU16lane/8warp shaders,128KiB4bankL2,AXI256,1280x720viewport,one8/16tile per job,1/2/4samples,Bare/Sv32,clear/load,ordered draw/partial-clear/blend,all stored samples and resolved pixels checked. Not full720p frames.",
+      "store_faults_v8": {
+        "checks": 2,
+        "jobs": 68,
+        "source_sha256": {
+          "src/main/scala/opengpu/graphics/Rasterizer.scala": "7370604f46f8eda1e115d2f4f2c054e6a79adbf37286068001c481c352b5c4b2",
+          "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+          "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+          "src/test/scala/opengpu/system/PersistentTileStoreFaultSpec.scala": "172ef61f2b1fe3cf047dfe264a943a50f4adf12c33509fd64ae26fdcbfc74afe"
+        },
+        "metadata": {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/fault_pipeline_v8.json",
+          "sha256": "93f6011b978efe7d222b30efa3bd4a4da0db55bde39edfa73cb0fabc23458c93"
+        },
+        "logs": [
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/fault_pipeline_v8_shared_0.log",
+            "sha256": "9c5310638373bceccb15d13a8c2d17239a4fb41c18076eaebd07c0c70f02a0bb"
+          },
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/fault_pipeline_v8_shared_1.log",
+            "sha256": "40e4421958c1aa47300e7a0bec85baa3eab880187a05c077c8b946f788658e6a"
+          }
+        ],
+        "scope": "Frozen V8 clear-only STORE/reset/fault replay. 16x16 viewport,8x8 resident tile,4samples,Bare/Sv32,128KiBL2,AXI256; fixed1CU4lane/2warp and shared4CU16lane/8warp. Clear-only jobs do not demonstrate shader CU activity. Not direct V10/V11 source evidence.",
+        "checks_exercised": [
+          "first/last color, depth and resolve B errors",
+          "reset during STORE and reset combined with a B error",
+          "accepted writes drain before completion/reset discard",
+          "healthy reuse after each fault/reset; accepted prefix writes may change memory"
+        ]
+      }
     }
   },
   "formal": [
@@ -501,10 +532,136 @@
       "mapping_passed": true
     },
     "direct_native_product": {
-      "status": "running",
-      "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v10.json",
-      "scope": "Fresh fixed/shared24-job replay running on frozen V10 classes; not yet a pass."
+      "status": "PASS2nativechecks/24jobs onfrozenv10",
+      "checks": 2,
+      "jobs": 24,
+      "metadata": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v10.json",
+        "sha256": "895f491cfa77319e03fff45276222061709f94a7001937912199366a9e4fdc0b"
+      },
+      "logs": [
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v10_shared_0.log",
+          "sha256": "7e71f46f464961ae27cb23a8a8d02a00636595b489201d46d6456e80404cc5a6"
+        },
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v10_shared_1.log",
+          "sha256": "dfbee071a558e3295b4da33b7decd2f3664a1ff49e84d15d5206505fd8879490"
+        }
+      ],
+      "scope": "Frozen V10 classes. Fixed and shared4CU16lane/8warp,128KiB4bankL2,AXI256,1280x720viewport,single8/16tile per job,1/2/4samples,Bare/Sv32,clear/load,ordered partial-clear/blend. Every stored sample and resolved pixel checked. Not full720p frames or subsequent source revisions."
     },
+    "full_system_guest": false,
+    "post_route_qualified": false
+  },
+  "rejected_v11": {
+    "scope": "Signed32 prefix bound padding. Rejected because synthesis worst setup worsened from V10 -222.905ps to -275.645ps. Implementation removed from main source; immutable artifacts retained.",
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+      "src/main/scala/opengpu/graphics/Rasterizer.scala": "ed4e9aae460bc0f1a492fa613cb747cd5cc1092daf0517912b5facc98942d6ac",
+      "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+      "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+      "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+      "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+      "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+      "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+      "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+      "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+      "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+      "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+      "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+      "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+      "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+      "src/test/scala/opengpu/graphics/RasterBoundPaddingProof.scala": "b2f3941fe88a5ab1827093f2a6b807895e1e74c97af95bb3cc99d43e48f31efa"
+    },
+    "source_archive": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/Rasterizer_pipeline_v11.scala",
+      "sha256": "ed4e9aae460bc0f1a492fa613cb747cd5cc1092daf0517912b5facc98942d6ac"
+    },
+    "proof_source_archive": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/RasterBoundPaddingProof_v11.scala",
+      "sha256": "b2f3941fe88a5ab1827093f2a6b807895e1e74c97af95bb3cc99d43e48f31efa"
+    },
+    "component_checks": 47,
+    "suites": 12,
+    "formal": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_bound_padding_v11_formal.json",
+      "sha256": "9a26e53668fc8045f1495ea529e0cb21bc1c29b4dc0248ea85dd18cbb83c258a",
+      "passed": true,
+      "input_data_bits": 64
+    },
+    "synthesis": {
+      "qualification": "generated/mobile-h1/physical-product-raster-v11-resident-synth/qualification.json",
+      "sha256": "f2929c3f193dc7a1769a9f23531d8273ddc7135589c797f83e7c1c171ce2ee9c",
+      "passed": false,
+      "setup_slacks_ps": [
+        -275.645,
+        204.991
+      ],
+      "mapping_passed": true,
+      "critical_path": "vHold_v1_x[0] -> paddedMaxX[31]; OpenDB endpoints verified."
+    },
+    "post_route_qualified": false,
+    "native_image": {
+      "passed": true,
+      "checks": 1,
+      "renders": 2,
+      "pixels_checked_per_render": 4096,
+      "log": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/drm_fragment_image_v11_unit.log",
+        "sha256": "1591b880f788b8ac9d1d497c8925ef30d6a3b2055ca591001164b0cf95e68d38"
+      },
+      "metadata": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/drm_fragment_image_v11.json",
+        "sha256": "4a71d2def00aedefadb66df74dfe6d3d26aabc5d82c0a5f1bd07d94e446dfdbc"
+      },
+      "scope": "Actual C21-word fragment shader on frozen V11 graphics. Legacy private4lane/2warp,64x64,AXI64. Every pixel of initial and recovery images matches independent quad/coverage oracle. This does not override the negative V11 timing result."
+    }
+  },
+  "followup_v12": {
+    "scope": "Native signed32 padding restored; signed min/max pair comparisons use prefix subtract carry-out plus sign selection. Same setup/scan latency and output contract as V10. No direct V12 product/full-system or post-route claim.",
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+      "src/main/scala/opengpu/graphics/Rasterizer.scala": "00ce5528630b7ff88caf7d322b6aa0916b14c77e921ce5d734c7af2e61a2fc2d",
+      "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+      "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+      "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+      "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+      "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+      "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+      "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+      "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+      "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+      "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+      "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+      "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+      "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c"
+    },
+    "component_checks": 47,
+    "suites": 12,
+    "unit_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v12_unit.log",
+      "sha256": "7af2d6a4b37edc33b56ef8cdec89b9d336128a3d13a3c9b39d52aa0aad562174"
+    },
+    "formal": {
+      "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/raster_extrema_v12_formal.json",
+      "sha256": "6d56b08fa7c71b3f2997d389a335c1633469a909206b94fe7cc05d582a1ffa16",
+      "passed": true,
+      "input_data_bits": 96,
+      "scope": "All signed32 triples, full min/max equivalence to the original chained reductions, including signs and ties."
+    },
+    "synthesis": {
+      "qualification": "generated/mobile-h1/physical-product-raster-v12-resident-synth/qualification.json",
+      "sha256": "b6105f3b322a057451617bde39fb127f40d4ec28dce3bcf2a2fe8a66ad854f12",
+      "passed": false,
+      "setup_slacks_ps": [
+        -170.732,
+        229.416
+      ],
+      "mapping_passed": true,
+      "critical_path": "vHold_v1_y[8] -> crossLeft_2[62]; OpenDB verified. Native signed32x32 cross-product multiplication."
+    },
+    "direct_native_product": false,
     "full_system_guest": false,
     "post_route_qualified": false
   }
