@@ -1,0 +1,729 @@
+{
+  "scope": "H0/H1 raster retiming follow-up. Original hardware alignment H0-H8 remains open. Synthesis is not post-route qualification or whole-GPU clock/FPS evidence.",
+  "variants": {
+    "v15": {
+      "change": "Split signed32 area products over registered partials and assembly; one additional setup cycle versus V14.",
+      "source_sha256": {
+        "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+        "src/main/scala/opengpu/graphics/Rasterizer.scala": "bab9cbc4b2d7c8a16873c8c47be2f1465afa4f5bbf3468c5ee099a05a13cd788",
+        "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+        "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+        "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+        "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+        "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+        "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+        "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+        "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+        "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+        "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+        "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+        "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+        "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+        "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+        "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+        "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0"
+      },
+      "build_metadata_sha256": "5db754472129dc5bfabbffb5756cdefcb52a147434d0d31ca7d9d6e17c2769d4",
+      "component_checks": 48,
+      "suites": 13,
+      "unit_log": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v15_unit.log",
+        "sha256": "27a4a21b1d58eaf6fd844d39b56cdeb0cf8905e036c9817a700d40cb6af40f16"
+      },
+      "post_route_qualified": false,
+      "synthesis": {
+        "passed": false,
+        "mapping_passed": true,
+        "setup_slacks_ps": [
+          -104.445,
+          227.571
+        ],
+        "qualification": "generated/mobile-h1/physical-product-raster-v15-resident-synth/qualification.json",
+        "qualification_sha256": "9c266265f4f17e36b7c8234967d1058edc154fc2aab81aee9cf6d14ee353a2ec",
+        "critical_path": "edges dequeue pointer -> covered payload register; pointer-selected data before coverage."
+      },
+      "direct_product": {
+        "checks": 2,
+        "jobs": 24,
+        "scope": "24nativeproductMSAAjobs onfrozenv15 raster/offsetclasses; nofullsystemguest orclockclaim.",
+        "source_sha256": {
+          "src/main/scala/opengpu/graphics/Rasterizer.scala": "bab9cbc4b2d7c8a16873c8c47be2f1465afa4f5bbf3468c5ee099a05a13cd788",
+          "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+          "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+          "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "cb0fe6521f15c0a75e40e9d71d17b577c87836ad13426216f4e74e188253621d",
+          "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f"
+        },
+        "metadata_sha256": "1c866139a10e5f342b557eeb38b874b69194df3d27e529034a40259ce45c29b4",
+        "logs": [
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v15_shared_0.log",
+            "sha256": "903e2e20ed56e25699ea39db28997b494e67615c331eb96db2002306fa68563c"
+          },
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v15_shared_1.log",
+            "sha256": "1dfd350752dbb20d9da6b2cc7661d46036851c624cd9eed3bd4f6eca42daf46b"
+          }
+        ]
+      }
+    },
+    "v16": {
+      "change": "Replace two Queue2 instances with registered-head FIFOs. Same capacity, admission and latency; no extra setup cycle.",
+      "source_sha256": {
+        "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+        "src/main/scala/opengpu/graphics/Rasterizer.scala": "740a3aed10c4cfc988005a2370bfb9c1a9e21eb5cfaa59300e0fcfad9543f3cb",
+        "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+        "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+        "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+        "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+        "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+        "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+        "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+        "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+        "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+        "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+        "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+        "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+        "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+        "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+        "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+        "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0",
+        "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+        "src/test/scala/opengpu/util/RegisteredQueue2Spec.scala": "9467f1e3688a16142e9b817ee9757835ad01ead0886af94d2a8569ff1fa7e611",
+        "src/test/scala/opengpu/util/RegisteredQueue2ResetSpec.scala": "1aaa843f02c1f6980c9b6250b3b17d16415e2e21de2025c5b55d9eedab3b2ef1"
+      },
+      "build_metadata_sha256": "69a430fa80d46c6d3d73e538cc22ce9dc821541cf01f15a5de7665a97a8aae0b",
+      "component_checks": 52,
+      "suites": 15,
+      "unit_log": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v16_unit.log",
+        "sha256": "b9e75429c61f9e7350edd454eaefdee2febdbf4676dd280c5502e15bcd2ad41f"
+      },
+      "post_route_qualified": false,
+      "synthesis": {
+        "passed": false,
+        "mapping_passed": true,
+        "setup_slacks_ps": [
+          -97.635,
+          627.041
+        ],
+        "qualification": "generated/mobile-h1/physical-product-raster-v16-resident-synth/qualification.json",
+        "qualification_sha256": "9ffac405d14eab195957f02f1af387ce7f0b0dbac12c6078e248d802b2b3c960",
+        "critical_path": "base edge bit8 -> right-lane bit63; native64bit addition."
+      },
+      "direct_product": {
+        "checks": 2,
+        "jobs": 24,
+        "scope": "24nativeproductMSAAjobs onfrozenv16 raster/offsetclasses; nofullsystemguest orclockclaim.",
+        "source_sha256": {
+          "src/main/scala/opengpu/graphics/Rasterizer.scala": "740a3aed10c4cfc988005a2370bfb9c1a9e21eb5cfaa59300e0fcfad9543f3cb",
+          "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+          "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+          "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "cb0fe6521f15c0a75e40e9d71d17b577c87836ad13426216f4e74e188253621d",
+          "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+          "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089"
+        },
+        "metadata_sha256": "3c17a1559eaa313e560468c1cfc721a150766363a488ec9fd0320f7175c98365",
+        "logs": [
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v16_shared_0.log",
+            "sha256": "82cc531d7e878bdb8edbe97849e0ef200714152b63be5a409968c7dacefc9a68"
+          },
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v16_shared_1.log",
+            "sha256": "25784ba80f6a1e9dd3391d43a272b09649a947646e6268cffbdb92c020ebbda4"
+          }
+        ]
+      }
+    },
+    "v17": {
+      "change": "Use shared prefix adders for right/down quad edge values. No extra cycle.",
+      "source_sha256": {
+        "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+        "src/main/scala/opengpu/graphics/Rasterizer.scala": "386faad2b9aa76735d39acab05150bcd537e4e431e8018e93b9772e9fe3e65f0",
+        "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+        "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+        "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+        "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+        "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+        "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+        "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+        "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+        "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+        "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+        "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+        "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+        "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+        "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+        "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+        "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0",
+        "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+        "src/test/scala/opengpu/util/RegisteredQueue2Spec.scala": "9467f1e3688a16142e9b817ee9757835ad01ead0886af94d2a8569ff1fa7e611",
+        "src/test/scala/opengpu/util/RegisteredQueue2ResetSpec.scala": "1aaa843f02c1f6980c9b6250b3b17d16415e2e21de2025c5b55d9eedab3b2ef1"
+      },
+      "build_metadata_sha256": "795c0ac18239b3a00184b41ae823c078913faa1b137145e39bfe2e8e4030eb79",
+      "component_checks": 52,
+      "suites": 15,
+      "unit_log": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v17_unit.log",
+        "sha256": "88399a04d24dde346072c9679c9eef4f0da1c732f3ef6b428f679ffe6d1da6fa"
+      },
+      "post_route_qualified": false,
+      "synthesis": {
+        "passed": false,
+        "mapping_passed": true,
+        "setup_slacks_ps": [
+          -86.459,
+          627.453
+        ],
+        "qualification": "generated/mobile-h1/physical-product-raster-v17-resident-synth/qualification.json",
+        "qualification_sha256": "d6a8ff641116398564eac565502c969c06cb33d9cdd96ca28b8aedbd6b4b25c4",
+        "critical_path": "coeffReg_c_0[2] -> tlReg_2; signed area sum before front decision."
+      },
+      "direct_product": false
+    },
+    "v18": {
+      "change": "Register area before rejection and front/top-left decision. One additional setup cycle versus V17.",
+      "source_sha256": {
+        "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+        "src/main/scala/opengpu/graphics/Rasterizer.scala": "fad5ec4a48c694e0f6f6e6f6d5da2b6bfdfd3bf88db215b4e69814556b017bd5",
+        "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+        "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+        "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+        "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+        "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+        "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+        "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+        "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+        "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+        "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+        "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+        "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+        "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+        "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+        "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+        "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0",
+        "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+        "src/test/scala/opengpu/util/RegisteredQueue2Spec.scala": "9467f1e3688a16142e9b817ee9757835ad01ead0886af94d2a8569ff1fa7e611",
+        "src/test/scala/opengpu/util/RegisteredQueue2ResetSpec.scala": "1aaa843f02c1f6980c9b6250b3b17d16415e2e21de2025c5b55d9eedab3b2ef1"
+      },
+      "build_metadata_sha256": "1abfdc5e57f16fb3a3261d6fb8a412ff59d95b4798df8cede177e8f52242835b",
+      "component_checks": 52,
+      "suites": 15,
+      "unit_log": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v18_unit.log",
+        "sha256": "86af468d34e9e43b9811d67a33e4b820f181f4acd80a73f8a770fac100e61720"
+      },
+      "post_route_qualified": false,
+      "synthesis": {
+        "passed": false,
+        "mapping_passed": true,
+        "setup_slacks_ps": [
+          -83.529,
+          597.75
+        ],
+        "qualification": "generated/mobile-h1/physical-product-raster-v18-resident-synth/qualification.json",
+        "qualification_sha256": "b3302c3d0aed6f9629ff931b48c6bd87d1a5e5720fa4d218399e812ae1b8e37b",
+        "critical_path": "coeffReg_c_1[2] -> rowStartReg_e_1[62]; origin sum."
+      },
+      "direct_product": {
+        "checks": 2,
+        "jobs": 24,
+        "scope": "24nativeproductMSAAjobs onfrozenv18 raster/offsetclasses; nofullsystemguest orclockclaim.",
+        "source_sha256": {
+          "src/main/scala/opengpu/graphics/Rasterizer.scala": "fad5ec4a48c694e0f6f6e6f6d5da2b6bfdfd3bf88db215b4e69814556b017bd5",
+          "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+          "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+          "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "cb0fe6521f15c0a75e40e9d71d17b577c87836ad13426216f4e74e188253621d",
+          "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+          "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089"
+        },
+        "metadata_sha256": "63716a399cfa9112938687e0f1edbf913aeff81dd436a3af0f7e20f0861a69d2",
+        "logs": [
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v18_shared_0.log",
+            "sha256": "3750c5b38c696c8ed550a890d3d9dc7b819443d0cc73b8852ebe582a1445739a"
+          },
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v18_shared_1.log",
+            "sha256": "5f80ddbebaa40db002de974c64773065a7a7461e4dbaa92301eeb19e12569636"
+          }
+        ]
+      }
+    },
+    "v19": {
+      "change": "Compress origin sum in existing area stage, then resolve carry in load stage. Explicit signed59 product truncation retained. Reuse widened64bit origin registers. No extra cycle versus V18.",
+      "source_sha256": {
+        "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+        "src/main/scala/opengpu/graphics/Rasterizer.scala": "f68ffac3594f6d97467bee961c412c0a708665009577cdee54790d8c34306a6f",
+        "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+        "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+        "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+        "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+        "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+        "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+        "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+        "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+        "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+        "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+        "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+        "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+        "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+        "src/test/scala/opengpu/graphics/RasterOriginSumProof.scala": "a53832ac38906a481fd9533b82e4c68b5158dc57f1829dcc32374d9ab9234a42",
+        "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+        "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+        "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0",
+        "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+        "src/test/scala/opengpu/util/RegisteredQueue2Spec.scala": "9467f1e3688a16142e9b817ee9757835ad01ead0886af94d2a8569ff1fa7e611",
+        "src/test/scala/opengpu/util/RegisteredQueue2ResetSpec.scala": "1aaa843f02c1f6980c9b6250b3b17d16415e2e21de2025c5b55d9eedab3b2ef1"
+      },
+      "build_metadata_sha256": "2b05c2e6f12e67b9f1f07fa14da215cf806740050f6b01738776c0cf134c506f",
+      "component_checks": 52,
+      "suites": 15,
+      "unit_log": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v19_unit.log",
+        "sha256": "4f0f469a64493d6fe80aa899b53277259992e3a3a597f1a2d9dfe1aa3b26ab00"
+      },
+      "post_route_qualified": false,
+      "synthesis": {
+        "passed": false,
+        "mapping_passed": true,
+        "setup_slacks_ps": [
+          -62.625,
+          642.831
+        ],
+        "qualification": "generated/mobile-h1/physical-product-raster-v19-resident-synth/qualification.json",
+        "qualification_sha256": "1140a34726ef97965b9769cfb4b1d76a4d0f126a2a7df562a2d0d02b4984257d",
+        "critical_path": "vHold_v0_x[0] -> paddedMinX[31]; OpenDB verified minimum selection followed by bound padding."
+      },
+      "direct_product": false
+    }
+  },
+  "queue_validation": {
+    "bounded_formal": {
+      "passed": true,
+      "exit_code": 0,
+      "scope": "Bounded sequential equivalence to actual Chisel Queue2 for24steps,8payloadbits,arbitrary offer/consume/data eachcycle. Reset asserted atstep1, lowafter; initial registers/memory undefined; equivalence checked steps2..24. Compare ready,valid,count and validpayload. Not an unbounded proof or direct1300bit formal proof.",
+      "source_sha256": {
+        "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+        "src/test/scala/opengpu/util/RegisteredQueue2Spec.scala": "9467f1e3688a16142e9b817ee9757835ad01ead0886af94d2a8569ff1fa7e611"
+      },
+      "rtl_sha256": {
+        "ram_2x8.sv": "8e0a4a711e07b0dec48adbdda037cf78ba3dba529316d627295fe511814ec13f",
+        "Queue2_UInt8.sv": "65a4c5706da807f5661c07aed5cf52989b71edc448f7d20ee48594594b26d3ff",
+        "RegisteredQueue2.sv": "dcd89fe6d9df86e715feeac24a2407ac576fc2956a15e6e6fae8ad240a543c52",
+        "RegisteredQueue2EquivalenceHarness.sv": "b8e30f8654908b512fc5995d6183c396e5a5766790d1af95d38145e033589413"
+      },
+      "script_sha256": "3a694ce7e943318c36f224b74473a537f5f36c432d65bbb3439ff591a46ad604",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h1/registered-queue2-v2-proof-rtl:/rtl:ro",
+        "-v",
+        "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1:/proof:ro",
+        "chipagent/openroad:arm64",
+        "bash",
+        "-lc",
+        "source /OpenROAD-flow-scripts/env.sh >/dev/null && yosys -s /proof/prove_registered_queue2_v2.ys"
+      ],
+      "log": "/tmp/gpu-mobile-h1-registered-queue2-v2-formal.log",
+      "log_sha256": "af344cbd7dd3db6153461083e31339044bc349edfcf4ed73c0d4f588b1660a40"
+    },
+    "cycle_counts": {
+      "passed": true,
+      "jobs": 24,
+      "scope": "All24nativeproduct jobs have identical V15/V16 total GPU-cycle counts and independently checked images, samples and resolves. This is a workload comparison, not unbounded formal equivalence.",
+      "rows": [
+        {
+          "key": [
+            "false",
+            "8",
+            "0",
+            "0",
+            "1",
+            "false",
+            "false"
+          ],
+          "v15_cycles": 3390,
+          "v16_cycles": 3390
+        },
+        {
+          "key": [
+            "false",
+            "8",
+            "8",
+            "8",
+            "1",
+            "true",
+            "true"
+          ],
+          "v15_cycles": 5182,
+          "v16_cycles": 5182
+        },
+        {
+          "key": [
+            "false",
+            "16",
+            "0",
+            "0",
+            "1",
+            "false",
+            "true"
+          ],
+          "v15_cycles": 18389,
+          "v16_cycles": 18389
+        },
+        {
+          "key": [
+            "false",
+            "16",
+            "16",
+            "16",
+            "1",
+            "true",
+            "false"
+          ],
+          "v15_cycles": 16357,
+          "v16_cycles": 16357
+        },
+        {
+          "key": [
+            "false",
+            "8",
+            "0",
+            "0",
+            "2",
+            "false",
+            "false"
+          ],
+          "v15_cycles": 6922,
+          "v16_cycles": 6922
+        },
+        {
+          "key": [
+            "false",
+            "8",
+            "8",
+            "8",
+            "2",
+            "true",
+            "true"
+          ],
+          "v15_cycles": 9651,
+          "v16_cycles": 9651
+        },
+        {
+          "key": [
+            "false",
+            "16",
+            "0",
+            "0",
+            "2",
+            "false",
+            "true"
+          ],
+          "v15_cycles": 33328,
+          "v16_cycles": 33328
+        },
+        {
+          "key": [
+            "false",
+            "16",
+            "16",
+            "16",
+            "2",
+            "true",
+            "false"
+          ],
+          "v15_cycles": 26737,
+          "v16_cycles": 26737
+        },
+        {
+          "key": [
+            "false",
+            "8",
+            "0",
+            "0",
+            "4",
+            "false",
+            "false"
+          ],
+          "v15_cycles": 12910,
+          "v16_cycles": 12910
+        },
+        {
+          "key": [
+            "false",
+            "8",
+            "8",
+            "8",
+            "4",
+            "true",
+            "true"
+          ],
+          "v15_cycles": 17630,
+          "v16_cycles": 17630
+        },
+        {
+          "key": [
+            "false",
+            "16",
+            "0",
+            "0",
+            "4",
+            "false",
+            "true"
+          ],
+          "v15_cycles": 60357,
+          "v16_cycles": 60357
+        },
+        {
+          "key": [
+            "false",
+            "16",
+            "16",
+            "16",
+            "4",
+            "true",
+            "false"
+          ],
+          "v15_cycles": 47320,
+          "v16_cycles": 47320
+        },
+        {
+          "key": [
+            "true",
+            "8",
+            "0",
+            "0",
+            "1",
+            "false",
+            "false"
+          ],
+          "v15_cycles": 5275,
+          "v16_cycles": 5275
+        },
+        {
+          "key": [
+            "true",
+            "8",
+            "8",
+            "8",
+            "1",
+            "true",
+            "true"
+          ],
+          "v15_cycles": 7114,
+          "v16_cycles": 7114
+        },
+        {
+          "key": [
+            "true",
+            "16",
+            "0",
+            "0",
+            "1",
+            "false",
+            "true"
+          ],
+          "v15_cycles": 23125,
+          "v16_cycles": 23125
+        },
+        {
+          "key": [
+            "true",
+            "16",
+            "16",
+            "16",
+            "1",
+            "true",
+            "false"
+          ],
+          "v15_cycles": 21924,
+          "v16_cycles": 21924
+        },
+        {
+          "key": [
+            "true",
+            "8",
+            "0",
+            "0",
+            "2",
+            "false",
+            "false"
+          ],
+          "v15_cycles": 8776,
+          "v16_cycles": 8776
+        },
+        {
+          "key": [
+            "true",
+            "8",
+            "8",
+            "8",
+            "2",
+            "true",
+            "true"
+          ],
+          "v15_cycles": 11600,
+          "v16_cycles": 11600
+        },
+        {
+          "key": [
+            "true",
+            "16",
+            "0",
+            "0",
+            "2",
+            "false",
+            "true"
+          ],
+          "v15_cycles": 37300,
+          "v16_cycles": 37300
+        },
+        {
+          "key": [
+            "true",
+            "16",
+            "16",
+            "16",
+            "2",
+            "true",
+            "false"
+          ],
+          "v15_cycles": 31208,
+          "v16_cycles": 31208
+        },
+        {
+          "key": [
+            "true",
+            "8",
+            "0",
+            "0",
+            "4",
+            "false",
+            "false"
+          ],
+          "v15_cycles": 14770,
+          "v16_cycles": 14770
+        },
+        {
+          "key": [
+            "true",
+            "8",
+            "8",
+            "8",
+            "4",
+            "true",
+            "true"
+          ],
+          "v15_cycles": 19560,
+          "v16_cycles": 19560
+        },
+        {
+          "key": [
+            "true",
+            "16",
+            "0",
+            "0",
+            "4",
+            "false",
+            "true"
+          ],
+          "v15_cycles": 63164,
+          "v16_cycles": 63164
+        },
+        {
+          "key": [
+            "true",
+            "16",
+            "16",
+            "16",
+            "4",
+            "true",
+            "false"
+          ],
+          "v15_cycles": 49933,
+          "v16_cycles": 49933
+        }
+      ]
+    }
+  },
+  "origin_formal_v19": {
+    "passed": true,
+    "exit_code": 0,
+    "argv": [
+      "docker",
+      "run",
+      "--rm",
+      "-v",
+      "/Users/duckdonald/workspace/gpu/generated/mobile-h1/raster-origin-sum-v19-proof-rtl:/rtl:ro",
+      "-v",
+      "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1:/proof:ro",
+      "chipagent/openroad:arm64",
+      "bash",
+      "-lc",
+      "source /OpenROAD-flow-scripts/env.sh >/dev/null && yosys -s /proof/prove_raster_origin_sum_v19.ys"
+    ],
+    "scope": "Combinational equivalence for all184 input data bits: two signed59-bit stored products plus signed66-bit coefficient; carry-save compression followed by prefix addition preserves the low64 origin including overflow. Register scheduling is covered by raster tests, not this proof.",
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+      "src/main/scala/opengpu/graphics/Rasterizer.scala": "f68ffac3594f6d97467bee961c412c0a708665009577cdee54790d8c34306a6f",
+      "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+      "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+      "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+      "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+      "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+      "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+      "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+      "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+      "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+      "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+      "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+      "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+      "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+      "src/test/scala/opengpu/graphics/RasterOriginSumProof.scala": "a53832ac38906a481fd9533b82e4c68b5158dc57f1829dcc32374d9ab9234a42",
+      "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+      "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+      "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0",
+      "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+      "src/test/scala/opengpu/util/RegisteredQueue2Spec.scala": "9467f1e3688a16142e9b817ee9757835ad01ead0886af94d2a8569ff1fa7e611",
+      "src/test/scala/opengpu/util/RegisteredQueue2ResetSpec.scala": "1aaa843f02c1f6980c9b6250b3b17d16415e2e21de2025c5b55d9eedab3b2ef1"
+    },
+    "rtl_sha256": {
+      "BlockPrefixAdder.sv": "a58321c44bae44136dfb195d6ef4b2f3ad959fc063863034192da7cb925a892b",
+      "RasterOriginSumProofHarness.sv": "c40d174fe35433611ba67596b08991080b45d81cd1ae60841cae4e149be95107"
+    },
+    "proof_sha256": "b15af31a4e30d7ca896cfb558a9ab1ca7c98c4e969a10d67db48dfc1b999e435",
+    "log": "/tmp/gpu-mobile-h1-raster-origin-sum-v19-formal.log",
+    "log_sha256": "5431c2bacc9ed05ceca317b91b53516e92d7dd300aa3dd9724d1e12d6b8d5d25"
+  },
+  "fixed_linux_v15": {
+    "scope": "Full fresh V15 fixed-function legacy64x64 Linux smoke; terminal session43269 exit0. Does not qualify V18/V19 or mobile720p.",
+    "qemu": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/qemu-pipeline-v15-fixed-inflight",
+      "sha256": "2a6406d753f28174285efd00b9ac0f254d6fc7cee96528b035b0634b402752e0"
+    },
+    "rtl_emission_metadata_sha256": "3a12f48c3f9039a05f10ff0107cb982f515b2a2554d2292c20f478d05e4f1a5a",
+    "serial": "/Users/duckdonald/workspace/arti-work/mobile-h1-pipeline-v15-fixed/linux-test-quad-oracle/serial.log",
+    "hashes": {
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-pipeline-v15-fixed/linux-test-quad-oracle/initramfs.cpio.gz": "bc5f78a18c920c7654a28bd1d542426a1fd2b12ac38f6c3400774b627738f972",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-pipeline-v15-fixed/linux-test-quad-oracle/opengpu_drm_test": "c27ea28161a1f936162f4d2a28184d67619668f5cd9f4802611493ba13042f17",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-pipeline-v15-fixed/linux-test-quad-oracle/arti_driver.ko": "7f05b643e174b02efa9c33809210805e29baa1742d1d21ca9722bf284f09f8de"
+    },
+    "status": "PASS",
+    "session": 43269,
+    "pid": 76468,
+    "serial_archive": ".artifacts/mobile-hardware-alignment/h0-h1/desktop_pipeline_v15_fixed_pass_serial.log",
+    "serial_sha256": "e6dd62ed0006106e73de92a0182e0fdaa06cca44653e65d5515bb81cfea8a8da",
+    "wrapper_log": "/tmp/gpu-mobile-h1-pipeline-v15-desktop-fixed.log",
+    "wrapper_log_sha256": "b9edb238fdca376ab67fcc79b4dbe1c9c4ea857dbfbba4dfff898de34b5ad0d6"
+  },
+  "open_gates": [
+    "Raster1GHz setup and full route qualification of current candidate.",
+    "Latest raster full Linux fixed/programmable integration pending. V15fixed pass is legacy64x64 only.",
+    "Fullrenderer mapping has211omitted divisions in prior synthesis and failed alternative mapping; isolated raster timing does not qualify GPU.",
+    "H0-H8 resource/geometry/texture/pixel/API semantics, two engines, sustained throughput,720p frames, scaling, physical power/area/bandwidth remain."
+  ]
+}

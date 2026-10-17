@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.{BlockPrefixAdder, CarrySavePrefixSum, SignedProduct32, SignedProduct32Parts}
+import opengpu.util.{BlockPrefixAdder, CarrySavePrefixSum, RegisteredQueue2, SignedProduct32, SignedProduct32Parts}
 
 /** Fixed-point rasterization parameters.
   *
@@ -212,6 +212,17 @@ private[graphics] object FixedPointMath {
     sum.io.terms := VecInit(Seq(a, b, c).map(x => trim64(x).asUInt))
     sum.io.sum(63, 0).asSInt
   }
+
+  /** Two terms with the same modular sum, without propagating a carry.
+    * These can cross an existing register boundary before add64 resolves it.
+    */
+  def compress3To64(a: SInt, b: SInt, c: SInt): (SInt, SInt) = {
+    val x = trim64(a).asUInt
+    val y = trim64(b).asUInt
+    val z = trim64(c).asUInt
+    ((x ^ y ^ z).asSInt,
+      (((x & y) | (x & z) | (y & z)) << 1)(63, 0).asSInt)
+  }
 }
 
 /** Turn three vertices into the per-triangle edge plane coefficients. */
@@ -343,9 +354,10 @@ class QuadCoverage(config: GraphicsConfig) extends Module {
 
   import FixedPointMath._
 
+  private val right = Seq.tabulate(3)(i => add64(io.base(i), io.dx(i)))
+  private val down = Seq.tabulate(3)(i => add64(io.base(i), io.dy(i)))
+
   private def laneEdges(k: Int): Seq[SInt] = {
-    val right = Seq.tabulate(3)(i => add(io.base(i), io.dx(i)))
-    val down = Seq.tabulate(3)(i => add(io.base(i), io.dy(i)))
     k match {
       case 0 => io.base
       case 1 => right
@@ -381,11 +393,13 @@ class QuadCoverage(config: GraphicsConfig) extends Module {
   *   stCross  : assemble the registered cross-product partials.
   *   stCoeffs : A/B differences, registered cross-product subtraction and
   *              viewport/scissor clamping of the registered bounds.
-  *   stSetup  : per-edge plane products against the box origin and the two
-  *              area products registered (one narrow multiply each).
+  *   stSetup  : plane products against the box origin and area-product
+  *              partials registered (one narrow multiply each).
+  *   stArea   : assemble area products and compress the origin sum.
   *   stLoad   : origin edge values / signed area by pure adds off the
-  *              registered products, hoisted top-left flags, cull and
-  *              degenerate decision; engine registers load and scan starts.
+  *              registered products; engine data registers load.
+  *   stStart  : reject/cull and top-left flags from the registered area;
+  *              scanning starts only for an accepted nonempty triangle.
   *   scanning : ONE add per edge per column step (one on row wrap), zero
   *              multiplies.
   *
@@ -437,7 +451,9 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
   private def stCross = 2.U(3.W)
   private def stCoeffs = 3.U(3.W)
   private def stSetup = 4.U(3.W)
-  private def stLoad = 5.U(3.W)
+  private def stArea = 5.U(3.W)
+  private def stLoad = 6.U(3.W)
+  private def stStart = 7.U(3.W)
   private val setupState = RegInit(0.U(3.W))
   private val active = RegInit(false.B)
   private val outputsDrained = WireDefault(true.B)
@@ -468,20 +484,20 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
   }
   private val coeffReg = RegInit(0.U.asTypeOf(new Coeffs))
 
-  // Stage-3 inputs: per-edge plane products against the box origin, plus the
-  // two area products -- all natural-width results of ONE multiply each,
-  // with no further arithmetic behind them (the wide summation happens one
-  // stage later over register values).
+  // Origin registers first hold sign-extended original 59-bit products, then
+  // the 64-bit carry-save pair. Reuse them across the existing area stage.
   private val sampleGradientWidth = RasterSampleOffsetMath.quarterWidth(34, config.subPixelBits)
   private class Products extends Bundle {
-    val pax = Vec(3, SInt(59.W)) // a_k * xOrigin
-    val pby = Vec(3, SInt(59.W)) // b_k * yOrigin
+    val pax = Vec(3, SInt(64.W)) // raw product, then origin sum bits
+    val pby = Vec(3, SInt(64.W)) // raw product, then origin carry bits
     val saA = SInt(67.W)         // a_0 * v0.x
     val saB = SInt(67.W)         // b_0 * v0.y
     val samplePlus = Vec(3, SInt((sampleGradientWidth + 1).W))
     val sampleMinus = Vec(3, SInt((sampleGradientWidth + 1).W))
   }
   private val prodReg = RegInit(0.U.asTypeOf(new Products))
+  private val areaAParts = Reg(new SignedProduct32Parts)
+  private val areaBParts = Reg(new SignedProduct32Parts)
 
   // ---------------------------------------------------------------------
   // Coordinate products and padded extremes are registered before viewport
@@ -560,8 +576,8 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
     // Separate edge generation, sample coverage and consumer backpressure.
     // Non-flowing two-entry queues sustain one quad/cycle without putting
     // wide coverage arithmetic on the scan feedback or public valid path.
-    val edges = Module(new Queue(new RasterQuad(config), 2, pipe = false, flow = false))
-    val covered = Module(new Queue(new RasterQuad(config), 2, pipe = false, flow = false))
+    val edges = Module(new RegisteredQueue2(new RasterQuad(config)))
+    val covered = Module(new RegisteredQueue2(new RasterQuad(config)))
     outputsDrained := !edges.io.deq.valid && !covered.io.deq.valid
     edges.io.enq.valid := active
     quadScanAdvance := edges.io.enq.ready
@@ -783,7 +799,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
   }
 
   when(setupState === stSetup) {
-    setupState := stLoad
+    setupState := stArea
 
     val pxn = (minX << config.subPixelBits)
       .apply(config.subPixelBits + 15, 0).asSInt
@@ -791,11 +807,21 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
       .apply(config.subPixelBits + 15, 0).asSInt
 
     prodReg.pax.zipWithIndex.foreach { case (r, i) =>
-      r := coeffReg.a(i) * pxn }
+      val raw = Wire(SInt(59.W))
+      raw := coeffReg.a(i) * pxn
+      r := raw }
     prodReg.pby.zipWithIndex.foreach { case (r, i) =>
-      r := coeffReg.b(i) * pyn }
-    prodReg.saA := coeffReg.a(0) * vHold.v0.x
-    prodReg.saB := coeffReg.b(0) * vHold.v0.y
+      val raw = Wire(SInt(59.W))
+      raw := coeffReg.b(i) * pyn
+      r := raw }
+    // A/B registers sign-extend the existing natural32 coordinate
+    // differences. Preserve that invariant when feeding the split multiply.
+    val areaA = coeffReg.a(0)(31, 0).asSInt
+    val areaB = coeffReg.b(0)(31, 0).asSInt
+    assert(coeffReg.a(0) === areaA.pad(34) && coeffReg.b(0) === areaB.pad(34),
+      "area coefficients must retain signed32 coordinate differences")
+    areaAParts := SignedProduct32.split(areaA, vHold.v0.x)
+    areaBParts := SignedProduct32.split(areaB, vHold.v0.y)
     for (i <- 0 until 3) {
       // Exactly the same quarter gradients as trim64(A << subPixelBits) >> 2.
       // Keep natural widths when the shifted coefficient cannot overflow.
@@ -806,12 +832,24 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
     }
   }
 
+  when(setupState === stArea) {
+    setupState := stLoad
+    prodReg.saA := SignedProduct32.join(areaAParts)
+    prodReg.saB := SignedProduct32.join(areaBParts)
+    for (i <- 0 until 3) {
+      val (sum, carry) = FixedPointMath.compress3To64(
+        prodReg.pax(i), prodReg.pby(i), coeffReg.c(i))
+      prodReg.pax(i) := sum
+      prodReg.pby(i) := carry
+    }
+  }
+
   when(setupState === stLoad) {
-    setupState := stIdle
+    setupState := stStart
 
     // Pure additions off registered products.
     val originE = (0 until 3).map { k =>
-      FixedPointMath.sum3(prodReg.pax(k), prodReg.pby(k), coeffReg.c(k)) }
+      FixedPointMath.add64(prodReg.pax(k), prodReg.pby(k)) }
     val signedAreaN =
       FixedPointMath.sum3(prodReg.saA, prodReg.saB, coeffReg.c(0))
     for (i <- 0 until 3) {
@@ -819,19 +857,9 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
         .zipWithIndex.foreach { case (value, slot) => sampleOffsetsReg(slot)(i) := value }
     }
 
-    val frontN = signedAreaN >= 0.S
-    val degenerate = signedAreaN === 0.S
-    val culledFinal =
-      Mux(cullReg === 0.U, false.B,
-        Mux(cullReg === 1.U, signedAreaN < 0.S, signedAreaN >= 0.S))
-
-    val emptyScissor = scissorEnableReg &&
-      (scissorMinXReg >= scissorMaxXReg || scissorMinYReg >= scissorMaxYReg)
-    active := !(culledFinal || degenerate || emptyScissor || minX > maxX || minY > maxY)
-    // Only active needs the area/cull decision. Queues are drained before a
-    // new draw is admitted, so inactive scan data may load unconditionally.
-    // Keeping rejection off these wide register enables avoids a sum/sign/
-    // zero-detect/fanout path without adding a setup cycle.
+    // Queues drain before admission. Load data independently of rejection,
+    // then use registered area in stStart to keep arithmetic off control.
+    active := false.B
     curX := minX
     curY := minY
     areaReg := signedAreaN
@@ -849,6 +877,18 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
       tileOriginReg.e.zipWithIndex.foreach { case (r, i) => r := originE(i) }
       tileRowOriginReg.e.zipWithIndex.foreach { case (r, i) => r := originE(i) }
     }
+  }
+
+  when(setupState === stStart) {
+    setupState := stIdle
+    val frontN = areaReg >= 0.S
+    val degenerate = areaReg === 0.S
+    val culledFinal =
+      Mux(cullReg === 0.U, false.B,
+        Mux(cullReg === 1.U, areaReg < 0.S, areaReg >= 0.S))
+    val emptyScissor = scissorEnableReg &&
+      (scissorMinXReg >= scissorMaxXReg || scissorMinYReg >= scissorMaxYReg)
+    active := !(culledFinal || degenerate || emptyScissor || minX > maxX || minY > maxY)
     frontReg := frontN
     tlReg.zipWithIndex.foreach { case (r, i) =>
       r := topLeft(coeffReg.a(i), coeffReg.b(i), frontN)

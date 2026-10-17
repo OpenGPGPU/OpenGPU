@@ -871,3 +871,37 @@ powers off cleanly. Its archived log and exact binary/kernel/driver/test
 hashes are recorded, including paced flip intervals of 65,980 and 37,802 us.
 This four-lane legacy graphics evidence does not qualify the current raster
 revision or the proposed shared-CU mobile product.
+
+## Raster setup and queue retiming follow-up
+
+[The retiming measurements](performance/mobile-raster-retiming-2026-10-18.json)
+record V15–V18 independently, with frozen source hashes and direct product
+replays. V15 stages the area multiply, V16 replaces pointer-selected quad
+queues with registered-head queues, V17 uses prefix additions for adjacent
+quad edges, and V18 registers area before the rejection and winding decision.
+V15 and V18 each add one setup cycle; V16 and V17 add none. V16 preserves all
+24 V15 product-job cycle counts exactly. The queue contract also passes a
+24-step bounded proof against Chisel Queue2, randomized comparisons at three
+payload widths, and reset/reuse tests. This is not an unbounded queue proof.
+
+All 52 V18 component checks and 24 native product jobs pass. The fixed and
+shared-CU product jobs cover one resident tile at a time, including 1x/2x/4x
+samples and Bare/Sv32 memory. Synthesis maps completely, but worst setup
+still fails at -83.529 ps at the unchanged 1 GHz target. The remaining path
+reaches the row-origin register through the origin edge sum. No current
+post-route or whole-renderer clock qualification follows from these results.
+
+The fresh V15 fixed-function Linux smoke also passes and powers off cleanly.
+Its archived binary and serial log identify the legacy 64x64 compatibility
+configuration. That pass does not qualify later raster revisions, the
+programmable configuration, or mobile whole-frame throughput. The original
+H0–H8 capability, scaling and physical acceptance gates remain open.
+
+V19 compresses the three origin terms into sum/carry bits during the existing
+area stage, then resolves the carry during load. The same product registers
+are reused at 64 bits, with the original signed59 product truncations explicit.
+It adds no setup cycle versus V18. All 52 component checks pass, and a
+universal 184-input-bit proof establishes the exact low64 origin result.
+Synthesis maps completely and improves worst setup to -62.625 ps, with I/O
+setup +642.831 ps. The 1 GHz gate still fails; the next OpenDB-confirmed path
+is vertex X through minimum selection and padding into `paddedMinX[31]`.
