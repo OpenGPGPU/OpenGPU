@@ -75,7 +75,11 @@ class FragmentStagingArbiter(config: GpuConfig, numWorkers: Int,
     val replies = Module(new Queue(new QueuedFragmentStagingResponse(config, localOutstanding, slots),
       math.min(slots, localOutstanding), flow = true))
     replies.io.enq.valid := io.memoryResponse.valid && responseExpected && owners(responseId) === worker.U
-    replies.io.enq.bits.response := io.memoryResponse.bits
+    // An empty flow queue exposes its enqueue payload even without a reply.
+    // Keep unrelated workers' wide response buses quiet until they own a
+    // valid response; accepted and backpressured payloads remain unchanged.
+    replies.io.enq.bits.response := Mux(replies.io.enq.valid,
+      io.memoryResponse.bits, 0.U.asTypeOf(io.memoryResponse.bits))
     replies.io.enq.bits.response.transactionId := localIds(responseId)
     replies.io.enq.bits.slot := responseId
     responseReady(worker) := replies.io.enq.ready

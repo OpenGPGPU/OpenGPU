@@ -1,6 +1,42 @@
 # Full-system simulation performance investigation
 
-## Current desktop simulation rate and texture bottleneck (2026-10-17)
+## Qualified staging-response payload quieting (2026-10-17)
+
+The main RTL keeps each staging worker's 512-bit response payload quiet when
+its reply enqueue is invalid. Accepted replies, ready/valid timing, owner
+credits and buffered data under backpressure remain unchanged. Balanced O2/PGO
+measurements on identical workloads save **4.14%** on the current Mesa64 trace
+and **7.97%** on the active 256×256 render, with unchanged task cycles and DMA
+results. The paired measurements and smaller-scene results are below.
+
+Qualification passes 40 native format cases, 12 staging controls, six forced
+controls, 18 VM cases, GLES/GTK64 with both the frozen training payload and
+current packed-white payload, and the full 640×480 Debian/GTK desktop. The
+current white-modulation transition tests pass, and the full-resolution
+scanout and redraw images were manually reviewed. The new complete desktop
+trace replays **159,539 calls and 17,355,197 ticks**, matching every recorded
+API result, clock and DMA event. Its 460.002-second replay overlaps other
+qualification work and uses a different recording from the earlier 39 kHz
+measurement; it is a functional gate, not a paired desktop speed comparison.
+
+Eight regressions pass after compiling the actual main source. All **296
+emitted RTL modules** match the qualified private model after removing only
+source-location comments. Paired synthesis estimates for the two-level staging
+path meet the 1 GHz target, with 117.900 ps core slack and a tight 2.095 ps I/O
+margin. This is a pre-layout estimate; whole-chip timing remains unproven.
+The installed QEMU executable and README screenshot remain unchanged.
+
+The next private candidate sizes texture ownership by physical sampler
+concurrency: four pending reads per worker, or 16 entries for four CUs.
+Differential tests pass for 1/2/4/8 workers, and one/four-CU scenes preserve all
+cycles and results. The combined texture-path estimate improves from 0.070 ps
+to 50.167 ps core slack. Its fresh native simulator is being built; no host
+gain or main capacity change is claimed yet. Shader VLEN does not enter this
+physical four-tap concurrency bound.
+
+See [the complete main-source qualification and evidence](performance/staging-response-quiet-main-qualification-2026-10-17.json).
+
+## Desktop activity cost before payload quieting (2026-10-17)
 
 With qualified packed-white modulation, the complete 640×480 desktop/GTK
 trace contains **16,529,708 ticks** and takes **424.367 seconds** in ordinary
@@ -15,7 +51,7 @@ The same four-CU artifact's rendering-heavy 256×256 packed-white fixture takes
 active logic. Older FlashSim README benchmarks describe a one-CU system and
 an AXI ID read followed by idle cycles; their MHz rates cannot predict active
 four-CU desktop throughput. The model evaluates all four CUs on one host
-thread. Latest qualified guest milestones are 126.692 seconds to wallpaper
+thread. That run's guest milestones are 126.692 seconds to wallpaper
 and 468.710 seconds to the active GTK proof window, measured separately from
 standalone replay; installed default binaries remain unchanged.
 
@@ -46,7 +82,7 @@ See [the complete texture-port counters, runtime calculation and sampled-host ev
 
 ## Same-model idle rate and response-payload screening (2026-10-17)
 
-The selected four-CU O2/PGO model runs at **21.57 MHz** when reset, warmed and
+The pre-quieting four-CU O2/PGO model runs at **21.57 MHz** when reset, warmed and
 left without submitted work: three fresh processes each advance exactly one
 million ticks, with a median of 46.363 ms and zero DMA, commits or hold
 dispatches. The same compiled DUT and archive take 13.476 seconds for 139,330
@@ -56,13 +92,13 @@ elapsed measurement is diagnostic and was recorded separately. Idle MHz is
 therefore a poor predictor of active desktop throughput. These workload rates
 describe different activity, rather than a backend speedup comparison.
 
-A private RTL candidate zeros an arbiter's 512-bit response payload whenever
+The qualified RTL change zeros an arbiter's 512-bit response payload whenever
 that worker's reply enqueue is invalid. Valid replies, ownership, backpressure
 and registered stalled data remain covered by unit and native checks. Each
 variant uses its own representative 72-profile PGO training set under the same
 protocol. Three balanced fresh-process samples per variant give:
 
-| Workload | Selected O2/PGO | Private candidate | Time saved |
+| Workload | Baseline O2/PGO | Payload quieting | Time saved |
 | --- | ---: | ---: | ---: |
 | Packed-white solid64 | 0.682412 s | 0.651303 s | 4.56% |
 | Packed-white spatial64 | 0.854659 s | 0.799135 s | 6.50% |
@@ -70,13 +106,13 @@ protocol. Three balanced fresh-process samples per variant give:
 | Actual packed-white Mesa64 trace | 23.485670 s | 22.514231 s | 4.14% |
 
 Task cycles, complete RAM, commits and DMA results match; internal hold
-dispatches decrease. The candidate passes 40 native format cases, 12 staging
+dispatches decrease. The change passes 40 native format cases, 12 staging
 controls, six forced controls, VM/GLES/GTK64 qualification and strict timed
 trace checks in training and optimized builds. The current packed-white guest
 also passes all 21 GLES cases, exact white-modulation transition checks and
-GTK64 scanout. Full 640×480 recording/replay qualification is in progress. These
+GTK64 scanout. Full 640×480 recording/replay qualification also passes. These
 figures establish a modest host-runtime gain on the measured workloads;
-production RTL and installed executables remain unchanged.
+main RTL now contains the change, while installed executables remain unchanged.
 
 Separately, FlashSim dead-code elimination now visits each reachable assignment
 once through a worklist. The complete four-CU optimizer output is byte-identical
