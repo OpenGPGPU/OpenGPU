@@ -50,6 +50,15 @@ a SAT proof covers every possible 46-bit product. Further timing and desktop
 qualification remain necessary, and these cycle gains establish no desktop
 wall-time speedup.
 
+The revised private implementation passes the 1 GHz synthesis screen with
+**9.284 ps core and 272.409 ps I/O margin**. It retains the equivalent fused
+bias in the generic sampler and separates product/bias in a six-stage elastic
+coordinate lookahead. All sampler tests, 1,200 independent coordinate cases,
+reset with occupied stages, and VLEN 1/2/4/8/16/32 pass. The initial overlap
+also reduces the one-CU scene from **37,041 to 35,137 cycles (5.14%)**; revised
+full-scene/native desktop and wall-time checks remain pending. These are
+component synthesis results before placement and routing.
+
 See [raw counters, observer source and exact validation](performance/current-axi-and-sampler-attribution-2026-10-17.json).
 
 ## Qualified immutable invalidation blocks (2026-10-17)

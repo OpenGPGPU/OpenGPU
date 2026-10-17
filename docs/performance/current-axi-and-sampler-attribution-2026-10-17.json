@@ -2618,5 +2618,416 @@
       "scope": "SAT proof for every arbitrary46-bit product, covering all32x14 coordinate products and all negative-bias/overflow wrap cases. No stimulus restriction or approximation."
     }
   },
-  "prototype_recorded_at": 1792210073.592727
+  "prototype_recorded_at": 1792210073.592727,
+  "revised_private_prototype": {
+    "recorded_at": 1792210422.304001,
+    "promoted": false,
+    "scope": "Revised private candidate; one extra elastic coordinate-lookahead stage separates multiply and bias while generic first-sample addressing stages remain unchanged. Four physical tap reads per worker. Full revised1/4CU scene and fresh native desktop/host qualification remain pending.",
+    "preparation": {
+      "recorded_at": 1792210159.194775,
+      "scope": "Retain fused bias in generic sampler; add one elastic coordinate lookahead stage to separate product from bias. First-sample scalar addressing stage count is unchanged. Pipeline throughput remains one lane per cycle; queue capacity increases5 to6, still within3-bit occupancy. All VLEN and sparse-mask functionality must pass before performance/timing claims.",
+      "candidate_source_sha256": {
+        "TextureUnit.scala": "0ab5874b16cf25a3e9facb40d5db2ed3dc239f9fd6370d3b3894a30d6b8c8931",
+        "TexSampleUnit.scala": "7c931667ef01287d4b6385934adf172354f8dca6cdba5dad8949830996aa7c5f",
+        "TextureCoordinatePipeline.scala": "23e58ae5913e765484dc61ac4e512ee8aac8ee72461c4c3deaf3b0edd9b7f4e5"
+      },
+      "predecessor_source_sha256": {
+        "TextureUnit.scala": "0ab5874b16cf25a3e9facb40d5db2ed3dc239f9fd6370d3b3894a30d6b8c8931",
+        "TexSampleUnit.scala": "7c931667ef01287d4b6385934adf172354f8dca6cdba5dad8949830996aa7c5f",
+        "TextureCoordinatePipeline.scala": "20f45277dd5d709a293df41ca5ceacc6e609d2ac9be4c26d37a88ce4a4ecfadd"
+      }
+    },
+    "unit_stages": [
+      {
+        "name": "compile",
+        "exit_status": 0
+      },
+      {
+        "name": "emit",
+        "exit_status": 0
+      },
+      {
+        "name": "synthesis",
+        "exit_status": 0
+      },
+      {
+        "name": "compile-tests",
+        "exit_status": 0
+      },
+      {
+        "name": "test-TextureCoordinatePipelineSpec",
+        "exit_status": 0
+      },
+      {
+        "name": "test-TextureUnitSpec",
+        "exit_status": 0
+      },
+      {
+        "name": "test-TextureResultHandoffSpec",
+        "exit_status": 0
+      },
+      {
+        "name": "test-PreparedOverlapSpec",
+        "exit_status": 0
+      },
+      {
+        "name": "test-TexSampleUnitSpec",
+        "exit_status": 0
+      },
+      {
+        "name": "test-TexSampleLaneHandoffSpec",
+        "exit_status": 0
+      }
+    ],
+    "timing": {
+      "qor": {
+        "setup_worst_slack_ps": 9.284,
+        "core_clock_fmax_mhz": 1009.371
+      },
+      "strict_gate": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          9.284,
+          272.409
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "21e7caf00b43a7b6d1c75d3ad6e8635bb06a6a263082c102ef3b7a0480257d82"
+      }
+    },
+    "coordinate_oracle_cases": 1200,
+    "lane_cycle_rows": [
+      {
+        "lanes": 1,
+        "operation": 0,
+        "mask": 1,
+        "cycles": 18,
+        "requests": 4
+      },
+      {
+        "lanes": 1,
+        "operation": 1,
+        "mask": 0,
+        "cycles": 1,
+        "requests": 0
+      },
+      {
+        "lanes": 1,
+        "operation": 2,
+        "mask": 0,
+        "cycles": 1,
+        "requests": 0
+      },
+      {
+        "lanes": 1,
+        "operation": 3,
+        "mask": 1,
+        "cycles": 18,
+        "requests": 4
+      },
+      {
+        "lanes": 1,
+        "operation": 4,
+        "mask": 1,
+        "cycles": 18,
+        "requests": 4
+      },
+      {
+        "lanes": 2,
+        "operation": 0,
+        "mask": 3,
+        "cycles": 28,
+        "requests": 8
+      },
+      {
+        "lanes": 2,
+        "operation": 1,
+        "mask": 2,
+        "cycles": 15,
+        "requests": 2
+      },
+      {
+        "lanes": 2,
+        "operation": 2,
+        "mask": 0,
+        "cycles": 2,
+        "requests": 0
+      },
+      {
+        "lanes": 2,
+        "operation": 3,
+        "mask": 2,
+        "cycles": 19,
+        "requests": 4
+      },
+      {
+        "lanes": 2,
+        "operation": 4,
+        "mask": 3,
+        "cycles": 24,
+        "requests": 6
+      },
+      {
+        "lanes": 4,
+        "operation": 0,
+        "mask": 15,
+        "cycles": 47,
+        "requests": 14
+      },
+      {
+        "lanes": 4,
+        "operation": 1,
+        "mask": 6,
+        "cycles": 23,
+        "requests": 4
+      },
+      {
+        "lanes": 4,
+        "operation": 2,
+        "mask": 0,
+        "cycles": 4,
+        "requests": 0
+      },
+      {
+        "lanes": 4,
+        "operation": 3,
+        "mask": 8,
+        "cycles": 20,
+        "requests": 4
+      },
+      {
+        "lanes": 4,
+        "operation": 4,
+        "mask": 15,
+        "cycles": 41,
+        "requests": 12
+      },
+      {
+        "lanes": 8,
+        "operation": 0,
+        "mask": 255,
+        "cycles": 83,
+        "requests": 26
+      },
+      {
+        "lanes": 8,
+        "operation": 1,
+        "mask": 182,
+        "cycles": 48,
+        "requests": 13
+      },
+      {
+        "lanes": 8,
+        "operation": 2,
+        "mask": 0,
+        "cycles": 8,
+        "requests": 0
+      },
+      {
+        "lanes": 8,
+        "operation": 3,
+        "mask": 128,
+        "cycles": 25,
+        "requests": 4
+      },
+      {
+        "lanes": 8,
+        "operation": 4,
+        "mask": 255,
+        "cycles": 78,
+        "requests": 25
+      },
+      {
+        "lanes": 16,
+        "operation": 0,
+        "mask": 65535,
+        "cycles": 160,
+        "requests": 52
+      },
+      {
+        "lanes": 16,
+        "operation": 1,
+        "mask": 28086,
+        "cycles": 95,
+        "requests": 28
+      },
+      {
+        "lanes": 16,
+        "operation": 2,
+        "mask": 0,
+        "cycles": 16,
+        "requests": 0
+      },
+      {
+        "lanes": 16,
+        "operation": 3,
+        "mask": 32768,
+        "cycles": 33,
+        "requests": 4
+      },
+      {
+        "lanes": 16,
+        "operation": 4,
+        "mask": 65535,
+        "cycles": 153,
+        "requests": 48
+      },
+      {
+        "lanes": 32,
+        "operation": 0,
+        "mask": 4294967295,
+        "cycles": 307,
+        "requests": 102
+      },
+      {
+        "lanes": 32,
+        "operation": 1,
+        "mask": 3067833782,
+        "cycles": 189,
+        "requests": 58
+      },
+      {
+        "lanes": 32,
+        "operation": 2,
+        "mask": 0,
+        "cycles": 32,
+        "requests": 0
+      },
+      {
+        "lanes": 32,
+        "operation": 3,
+        "mask": 2147483648,
+        "cycles": 48,
+        "requests": 4
+      },
+      {
+        "lanes": 32,
+        "operation": 4,
+        "mask": 4294967295,
+        "cycles": 305,
+        "requests": 100
+      }
+    ],
+    "initial_completed_scene_cases": [
+      {
+        "cus": 4,
+        "variants": {
+          "baseline": {
+            "metrics": {
+              "CUs": "4",
+              "axi_bytes": "64",
+              "side": "64",
+              "alu_loops": "0",
+              "om_inflight": "64",
+              "fragment_batch_limit": "112",
+              "lanes": "16",
+              "warps": "8",
+              "runtime_shader": "true",
+              "cycles": "12567",
+              "active_cu_cycles": "28980",
+              "peak_cus": "4",
+              "texture_extent": "64",
+              "buffer_texture_reads": "true",
+              "texture_words": "3676",
+              "texture_lines": "182"
+            },
+            "files": {
+              "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "2a2c189b800554b1307f416c38f7594da5ef71d537745dd9fc7be96afff45dba",
+              "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "a1896b97a60d3e725140a2691d5062007ce2cb9048000db815efa1258ff18186"
+            },
+            "omitted_bytes_preserved": true
+          },
+          "candidate": {
+            "metrics": {
+              "CUs": "4",
+              "axi_bytes": "64",
+              "side": "64",
+              "alu_loops": "0",
+              "om_inflight": "64",
+              "fragment_batch_limit": "112",
+              "lanes": "16",
+              "warps": "8",
+              "runtime_shader": "true",
+              "cycles": "11929",
+              "active_cu_cycles": "26928",
+              "peak_cus": "4",
+              "texture_extent": "64",
+              "buffer_texture_reads": "true",
+              "texture_words": "3676",
+              "texture_lines": "182"
+            },
+            "files": {
+              "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "2a2c189b800554b1307f416c38f7594da5ef71d537745dd9fc7be96afff45dba",
+              "cu-4-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "a1896b97a60d3e725140a2691d5062007ce2cb9048000db815efa1258ff18186"
+            },
+            "omitted_bytes_preserved": true
+          }
+        },
+        "baseline_cycles": 12567,
+        "candidate_cycles": 11929,
+        "cycle_reduction_percent": 5.076788414100419,
+        "pixels_depth_and_metadata_exact": true
+      },
+      {
+        "cus": 1,
+        "variants": {
+          "baseline": {
+            "metrics": {
+              "CUs": "1",
+              "axi_bytes": "64",
+              "side": "64",
+              "alu_loops": "0",
+              "om_inflight": "64",
+              "fragment_batch_limit": "112",
+              "lanes": "16",
+              "warps": "8",
+              "runtime_shader": "true",
+              "cycles": "37041",
+              "active_cu_cycles": "27172",
+              "peak_cus": "1",
+              "texture_extent": "64",
+              "buffer_texture_reads": "true",
+              "texture_words": "3676",
+              "texture_lines": "166"
+            },
+            "files": {
+              "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "2a2c189b800554b1307f416c38f7594da5ef71d537745dd9fc7be96afff45dba",
+              "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "3ba60d844e958e6a9cd7aff01401cba38215c00d9d9b343f6840260ce9fb0cb4"
+            },
+            "omitted_bytes_preserved": true
+          },
+          "candidate": {
+            "metrics": {
+              "CUs": "1",
+              "axi_bytes": "64",
+              "side": "64",
+              "alu_loops": "0",
+              "om_inflight": "64",
+              "fragment_batch_limit": "112",
+              "lanes": "16",
+              "warps": "8",
+              "runtime_shader": "true",
+              "cycles": "35137",
+              "active_cu_cycles": "25268",
+              "peak_cus": "1",
+              "texture_extent": "64",
+              "buffer_texture_reads": "true",
+              "texture_words": "3676",
+              "texture_lines": "166"
+            },
+            "files": {
+              "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-pixels.csv": "2a2c189b800554b1307f416c38f7594da5ef71d537745dd9fc7be96afff45dba",
+              "cu-1-axi-64-side-64-alu-0-lanes-16-warps-8-cap-112-om-64-l2-256x4-fpu-true-vert-true-runtime-true-coalesce-true-locality-true-buffer-true-texture-64-texbuffer-true-metadata.json": "3ba60d844e958e6a9cd7aff01401cba38215c00d9d9b343f6840260ce9fb0cb4"
+            },
+            "omitted_bytes_preserved": true
+          }
+        },
+        "baseline_cycles": 37041,
+        "candidate_cycles": 35137,
+        "cycle_reduction_percent": 5.140249993250723,
+        "pixels_depth_and_metadata_exact": true
+      }
+    ],
+    "promotion_documentation_fix": "Clarify TextureUnit.maxOutstandingReads comment: fetch groups remain sequential even though sample fetch and prior filter/result may overlap."
+  }
 }
