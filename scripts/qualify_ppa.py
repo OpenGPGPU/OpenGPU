@@ -19,6 +19,17 @@ ROOT = Path(__file__).resolve().parents[1]
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
+def synthesis_setup_gate(report):
+    """Include every reported path group, including the virtual I/O clock."""
+    paths = re.findall(
+        r'^\s*([-+]?\d+(?:\.\d+)?)\s+slack\s+\((MET|VIOLATED)\)\s*$',
+        report, re.MULTILINE)
+    slacks = [float(value) for value, _ in paths]
+    return dict(passed=bool(paths) and all(value >= 0 for value in slacks)
+                and all(verdict == 'MET' for _, verdict in paths),
+                reported_setup_slacks_ps=slacks,
+                reported_path_groups=len(paths))
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('rtl', type=Path)
@@ -88,6 +99,20 @@ def main():
     status = result.result.get('status')
     if status in ('error', 'missing_tool'):
         raise SystemExit(1)
+    if status == 'failed' and result.result.get('overview', {}).get('verdict') != 'FAIL':
+        raise SystemExit(1)
+    if args.stage == 'synthesis':
+        report_file = result.result.get('artifacts', {}).get('synthesis_sta.log')
+        report_path = Path(report_file) if report_file else None
+        report = (report_path.read_text() if report_path and report_path.is_file()
+                  else result.result.get('report_tail', ''))
+        gate = synthesis_setup_gate(report)
+        gate.update(scope='All reported synthesis setup paths, including I/O',
+                    report_sha256=hashlib.sha256(report.encode()).hexdigest())
+        (args.output / 'qualification.json').write_text(json.dumps(gate, indent=2) + '\n')
+        print(json.dumps({'synthesis_setup_gate': gate}), flush=True)
+        if not gate['passed']:
+            raise SystemExit(2)
     if result.result.get('overview', {}).get('verdict') == 'FAIL':
         raise SystemExit(2)  # Flow completed, but physical qualification failed.
     if status == 'failed':

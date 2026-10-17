@@ -36,6 +36,38 @@ physical four-tap concurrency bound.
 
 See [the complete main-source qualification and evidence](performance/staging-response-quiet-main-qualification-2026-10-17.json).
 
+## Texture capacity screens and explicit I/O qualification (2026-10-17)
+
+The owner-only 64-to-16-entry change passes nine native packed-white cases with
+exact complete RAM, task cycles and memory results. Its preliminary matched
+O1 instrumented host screen is mixed: spatial256 is 3.29% faster, while solid64
+and spatial64 are 2.66% and 7.83% slower. Standalone promotion is deferred;
+these instrumented results do not establish a release O2 regression.
+
+A separate pending-word reduction from 64 to 16 retains all sixteen cache
+lines and every global transaction-ID reservation. Direct comparisons cover
+full word/line capacity, reuse, invalidation and fault retry. The one/four-CU
+scenes preserve all results and 39,360/13,155 cycles. Its combined-path synthesis
+estimate has 290.722 ps core slack and 240.605 ps I/O slack at the 1 GHz target.
+
+With the smaller tables, empty reply-queue forwarding passes core setup but
+still **fails I/O by 1.068 ps**. The vendor tool's core-only overview labels it
+PASS; `scripts/qualify_ppa.py` now separately checks all reported setup paths,
+including the virtual I/O clock. It writes `qualification.json`, preserves the
+raw vendor result and exits 2 for a setup violation. Five regressions pass,
+including a CLI test for this precise false-positive case.
+
+Directly decoding each matching slot into its worker removes the intervening
+binary-owner encode/decode step. That private variant passes legacy-equivalence
+tests with 1/2/3/4/8 workers, and its synthesized forwarding path has 101.814 ps
+core slack and 18.880 ps I/O slack. Full scenes preserve exact results while
+reducing four-CU cycles from 13,155 to 12,567 (4.47%) and one-CU cycles from
+39,360 to 37,041 (5.89%). Fresh native performance qualification is underway.
+All estimates are pre-layout; main RTL retains
+the already qualified staging-payload change.
+
+See [the complete capacity screens and I/O-gate evidence](performance/texture-capacity-and-io-screen-2026-10-17.json).
+
 ## Desktop activity cost before payload quieting (2026-10-17)
 
 With qualified packed-white modulation, the complete 640×480 desktop/GTK
