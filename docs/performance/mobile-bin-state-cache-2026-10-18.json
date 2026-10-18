@@ -1,0 +1,223 @@
+{
+  "scope": "H2 primitive and draw-state caching. PrimitiveStateCache resolves immutable handle records from one 64-byte-line arena into ordered 32-bit words through a bounded direct-mapped cache. This is not the downstream tile engine, does not schedule references, and is not yet wired to TileBinReplayScheduler, RenderPipeline or a real primitive-handle address translation. It is not a page/bin store and it is not integrated-GPU qualified.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/PrimitiveStateCache.scala": "13813bab5233ebf86d7910952bcac4b5f641a24e7c6e10bfd47eb89c28a0ee08",
+    "src/test/scala/opengpu/graphics/PrimitiveStateCacheSpec.scala": "759abd161f102a6e29cf1b9ea9b6204ce08ef232ba8188466a16fa753f2ee8dc",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "c1a636aaec514e5f531f7b0993ed2214dbba808004f1846f989490f58af0b7cd",
+    "src/main/scala/opengpu/graphics/TileBinReplayScheduler.scala": "a7e481f592b1de6cf3f82a55e05b5dae28cebf424939ec777c8d29966f7abb08",
+    "src/main/scala/opengpu/graphics/TileBinDirectory.scala": "458c13dea588233ab0c427bedc72898905e077afb08593ec816b901bd9c98834",
+    "src/main/scala/opengpu/graphics/PrimitiveBinReader.scala": "5ec47144cc4df9f698778c097273a41bffe2087db09aa0aaca537246ee3ecef0",
+    "src/main/scala/opengpu/config/MobileGpuConfig.scala": "747d0513fa857bf18968d3d6a3dcffa15674f2ec8175fa1e35e7e8e0d2efc5e2",
+    "src/test/scala/opengpu/graphics/TileBinReplaySchedulerSpec.scala": "2a81c4a1cdf4ac0c8951be2fbfcc27203de31a5752893f52a26084b7e58ea661",
+    "src/test/scala/opengpu/graphics/TileBinDirectorySpec.scala": "8415b622f0fda775a651950fa85e8b1fabcdf17b8adee55c6e7edc5084bdc2d3",
+    "src/test/scala/opengpu/config/MobileGpuConfigSpec.scala": "2b877c4377475af4d0798539910ee357eca6e3d0a650dd5c5eb0306ef19c054b",
+    "src/test/scala/opengpu/graphics/BinPagePoolSpec.scala": "ef9726cf4c3e57357d14ba3108bf0411957be395a2ae83af6ec5b08117e650e2",
+    "src/test/scala/opengpu/graphics/PrimitiveBinWriterSpec.scala": "28dde1a6ac5b2d6c8fc04d9700c6f58899cf9281ccca94bb9c25f6c964b818e3",
+    "src/test/scala/opengpu/graphics/PrimitiveBinReaderSpec.scala": "825f9bc2cb1d34f61571725fb8927548b806f910fb7825e9968d6e23334eecf5",
+    "src/test/scala/opengpu/graphics/PrimitiveBinStoreSpec.scala": "05bcf9f22493ebacd0dbba4d276ff7c79f587e825be0163de69d0501684e35b3"
+  },
+  "configuration": {
+    "entries": 8,
+    "organization": "direct-mapped",
+    "line_bytes": 64,
+    "words_per_line": 16,
+    "handle_contract": "32-bit arena-relative 64-byte line ordinal; line address = descriptor.base + handle*64; valid while handle*64 < limit-base",
+    "arena_bound": "33-bit exclusive limit, so a one-line arena may end exactly at 4 GiB",
+    "outstanding_reads": 1,
+    "memory_transaction_id": 0,
+    "request": "64-byte uncached read (sizeLog2=6, cacheClient=0, no byte mask or write data)",
+    "residency": "pass-scoped; begin clears all valid entries, and invalidate drops residents mid-pass",
+    "served_words": "one 32-bit word per accepted handshake, index 0..15, last asserted on index 15",
+    "lookups": "one admitted and completed at a time; a miss holds the lookup stream until its read returns"
+  },
+  "cache_contract": {
+    "hit": "a resident handle returns 16 words without a memory request and increments the hit counter",
+    "miss": "a non-resident in-range handle issues one read, fills the indexed entry on the response and then serves 16 words",
+    "conflict": "a direct-mapped conflict evicts the resident line and refetches on the next lookup",
+    "invalid_handle": "a handle outside the arena line count completes with invalidHandle and zero words without touching memory; later valid lookups continue",
+    "invalid_descriptor": "a non-1 version, unaligned base or limit, limit below base, or limit above 4 GiB finishes the pass with invalidDescriptor and admits no lookups",
+    "fault": "a faulted response completes the active lookup with memoryFault and zero words, marks the pass memoryFault and admits no further lookups; data is never substituted with zeros",
+    "cancel": "cancellation stops admission, retains an offered read until its owned response, drops unserved words, delivers only an already offered word, reports the active lookup cancelled and completes the summary after the read, word and lookup completion drain",
+    "end": "end is accepted only after the last word and lookup completion are accepted; the summary is held until its handshake",
+    "integration_limit": "the caller must publish primitive/state stores to this memory domain, translate real primitive/state handles to arena ordinals, and discard outputs from a failed pass"
+  },
+  "functional": {
+    "passed": true,
+    "checks": 69,
+    "suites": 8,
+    "suite_checks": {
+      "PrimitiveStateCacheSpec": 9,
+      "TileBinReplaySchedulerSpec": 6,
+      "TileBinDirectorySpec": 8,
+      "PrimitiveBinWriterSpec": 14,
+      "PrimitiveBinReaderSpec": 11,
+      "PrimitiveBinStoreSpec": 11,
+      "BinPagePoolSpec": 7,
+      "MobileGpuConfigSpec": 3
+    },
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/primitive_state_cache_unit.log",
+    "log_sha256": "113e4cdb777307459ac909e465f6a3b72f14ad0f7b640688329935b2eccff115",
+    "coverage": [
+      "Three lookups over two lines fetch each line once, serve 16 ordered words per lookup, report one hit and two misses, and match all 48 expected words.",
+      "A directly mapped conflict at index 1 evicts the line and refetches it; three lookups issue three line reads and report no hits.",
+      "Two out-of-range handles complete with invalidHandle and zero words without a request while the following in-range lookup fetches and replays normally.",
+      "Five malformed descriptors stop the pass with invalidDescriptor and no memory traffic; a one-line arena ending exactly at 4 GiB fetches its line for handle 0 and rejects handle 1.",
+      "A faulted line reports memoryFault with zero words, emits no data words, sets the pass fault status, and stops admitting lookups.",
+      "Cancellation with an offered read holds the request stable until its response, reports the active lookup cancelled with zero words, and completes the pass cancelled after the read drains.",
+      "Cancellation coinciding with an offered word delivers exactly that word and reports one cancelled word.",
+      "Invalidate drops a resident line and forces a refetch; each new pass also starts with no residency.",
+      "Output backpressure preserves per-lookup word index order and last markers on both lines, and end is not accepted while a word or completion is outstanding."
+    ],
+    "component_cycle_results": [
+      {
+        "workload": "resident line, three lookups",
+        "lookups": 3,
+        "hits": 1,
+        "misses": 2,
+        "words": 48,
+        "cycles": 101
+      }
+    ],
+    "cycle_scope": "Cycles are scripted control-component transactions with one word per handshake; they are not a full-frame or product-bandwidth result.",
+    "proof_limit": "Numeric/protocol simulation against an independent line image; no temporal formal proof."
+  },
+  "timing": {
+    "first_synthesis": "The cache passed synthesis on its first attempt at +70.488 ps (1075.833 MHz); no retiming change was required.",
+    "route": "The closure run with 30 ps repair margin reaches +128.296 ps setup and +30.8866 ps hold at 1411.99 MHz.",
+    "critical_path_note": "The routed worst core path starts at a lookup handle input and ends at state; the reported virtual-I/O path is the word data output. Both are inside the gate."
+  },
+  "emission": {
+    "artifact": "generated/mobile-h2/primitive-state-cache-v1-rtl",
+    "command": "runMain opengpu.elaboration.EmitPpaRtl mobile-bin-state-cache generated/mobile-h2/primitive-state-cache-v1-rtl",
+    "rtl_sha256": {
+      "PrimitiveStateCache.sv": "26fda4f910d1844291075b97ec95d00ab08c6d068042fa98241f94e0d7d8dd18",
+      "filelist.f": "ea1df80410087695cfaf37bdc0d0d4dbc661c6f13fc3bd4b7ef64036d30c9cca"
+    }
+  },
+  "synthesis": {
+    "artifact": "generated/mobile-h2/physical-primitive-state-cache-v1-synth",
+    "manifest_sha256": "a40828db64a478b1385dc1425881d3b0fd9083d49d19fdda88fdb0a9eff3f264",
+    "result_sha256": "0d2f6a8f70b8ef552f745e3ee29b9f6a2c583239f8ccbb12d2a14d7f5b2fba87",
+    "qualification_sha256": "e925b006a9334c2892d2127c93ed7ee7084301e05c36f5f67a45afa2e37a2a7e",
+    "qualification": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        70.488,
+        463.12
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "setup_passed": true,
+      "report_sha256": "10b79751aebf74ae72be3c8542e6e4b9325fc9ba5818910bfd673b1afbedd2d0",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_count": 0,
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h2/physical-primitive-state-cache-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "5b9935bf5a0588c45bb813cc76ecd0882f04bc1c4f48a5adf24a18e58ac089ba"
+      }
+    },
+    "constraints": {
+      "module_name": "PrimitiveStateCache",
+      "clock_port": "clock",
+      "clock_period_ps": 1000,
+      "io_delay_percent": 0.25,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin_ps": 0,
+      "timing_effort": "explore",
+      "synthesis_only": true,
+      "enable_retiming": false
+    },
+    "qor": {
+      "setup_worst_slack_ps": 70.488,
+      "core_clock_fmax_mhz": 1075.833
+    }
+  },
+  "route": {
+    "artifact": "generated/mobile-h2/physical-primitive-state-cache-v1-route-margin30",
+    "manifest_sha256": "e3c341ebdf19a7560669ec0977505768427ed99d98bf9a83848042b34883d8b2",
+    "result_sha256": "8153cb93ca283e37e82d5306f1f548a6c22722a14a44f93d4c22bc1c94dc5bab",
+    "qualification_sha256": "20af10032c5c481cdae2590d2cec366bc9c4ce51c2ace86c683bfab0befce533",
+    "qualification": {
+      "passed": true,
+      "checks": {
+        "setup_worst_slack_ps": true,
+        "hold_worst_slack_ps": true,
+        "setup_violation_count": true,
+        "hold_violation_count": true,
+        "route_drc_errors": true,
+        "antenna_violating_nets": true,
+        "antenna_violating_pins": true,
+        "placement_violations": true,
+        "flow_errors": true,
+        "flow_completed": true,
+        "tool_verdict": true
+      },
+      "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+      "mapping_log_sha256": "85e332a0688a0c6d8cd5d37281cda4188ef6aabda078ef24352151bb6f5f1a9b"
+    },
+    "constraints": {
+      "module_name": "PrimitiveStateCache",
+      "clock_port": "clock",
+      "clock_period_ps": 1000,
+      "io_delay_percent": 0.25,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin_ps": 30,
+      "timing_effort": "closure",
+      "synthesis_only": false,
+      "enable_retiming": false
+    },
+    "qor": {
+      "instance_count": 81206,
+      "instance_area_um2": 3484.75,
+      "sequential_cell_count": 5205,
+      "clock_buffer_count": 450,
+      "timing_repair_buffer_count": 1620,
+      "setup_tns_ps": 0,
+      "hold_tns_ps": 0,
+      "setup_worst_slack_ps": 128.296,
+      "hold_worst_slack_ps": 30.8866,
+      "setup_violation_count": 0,
+      "hold_violation_count": 0,
+      "core_clock_fmax_mhz": 1411.99,
+      "virtual_io_clock_fmax_mhz": 1728.95,
+      "reported_fmax_mhz": 1411.99,
+      "setup_clock_skew_ps": 15.8329,
+      "hold_clock_skew_ps": 19.5146,
+      "total_power_w": 0.0239147,
+      "placement_utilization_percent": 24.303,
+      "placement_violations": 0,
+      "estimated_wirelength": 66650.7,
+      "route_wirelength": 91079,
+      "route_vias": 226169,
+      "route_drc_errors": 0,
+      "route_drc_report_bytes": 0,
+      "antenna_violating_nets": 0,
+      "antenna_violating_pins": 0,
+      "ir_drop_vdd_worst": 0.00250555,
+      "ir_drop_vss_worst": 0.0034874,
+      "flow_warnings": 15,
+      "flow_errors": 0,
+      "critical_path": {
+        "startpoint": "io_lookup_bits_handle[0] (input port clocked by vclk_core_clock)",
+        "endpoint": "u19654 (rising edge-triggered flip-flop clocked by core_clock)",
+        "group": "core_clock",
+        "slack_ps": 128.3,
+        "arrival_ps": 990.5
+      }
+    }
+  },
+  "post_route_qualified": true,
+  "integrated_gpu_qualified": false,
+  "h2_closed": false,
+  "remaining": "Translate real primitive/state handles to arena ordinals and wire the cache to TileBinReplayScheduler references, connect directory->scheduler->cache->tile-engine in RenderPipeline, define cache-domain publication for primitive/state stores, add a full spill/restart policy, measure attachment bytes/frame and realistic bandwidth, and qualify product-frame time."
+}

@@ -1326,6 +1326,29 @@ fetch and cache, cache-domain publication, a full spill policy, downstream
 tile-engine consumption and attachment-bytes/frame and product-frame
 measurements. It does not yet replace the legacy binner.
 
+An [H2 primitive and draw-state cache](performance/mobile-bin-state-cache-2026-10-18.json)
+now resolves immutable handle records from a bounded arena. A handle is an
+arena-relative64-byte line ordinal; an eight-entry direct-mapped cache fetches
+each line once per residency and serves sixteen ordered32-bit words, one per
+handshake. The arena has a33-bit exclusive limit, so a one-line arena can end
+exactly at4 GiB, and an out-of-range handle completes with `invalidHandle` and
+zero words without touching memory. Malformed descriptors admit no lookup, and
+residency is pass-scoped: `begin` clears every entry and `invalidate` drops
+resident lines mid-pass. A faulted line reports `memoryFault` with no
+substituted words and stops admission; cancellation retains an offered read
+until its owned response, delivers only an already offered word, and completes
+the summary after the read, word and lookup completion drain. All69 selected
+checks pass across eight suites including9 cache checks, with residency,
+conflict eviction, invalid handles/descriptors, the4 GiB line, fault isolation,
+both cancellation timings, invalidation and output backpressure. The cache
+passed synthesis on its first attempt at+70.488 ps (1075.833 MHz); the complete
+routed1 GHz component gate passes at+128.296 ps setup/+30.8866 ps hold
+(1411.99 MHz) with zero timing/placement/DRC/antenna violations and complete
+mapping. It still needs real handle-to-ordinal translation, wiring to replay
+references and directory/scheduler/tile-engine integration, cache-domain
+publication for primitive/state stores and product-frame measurements. It is
+not yet connected to the legacy binner.
+
 The separate fixed-function Linux run from the same committed6aed4cd source
 also completes its full configured DRM suite and powers off. Its original
 300-second MSAA waits finish in53,520 ms for render and30,791 ms for resolve.

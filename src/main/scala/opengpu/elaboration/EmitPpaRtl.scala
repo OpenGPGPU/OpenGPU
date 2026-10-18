@@ -71,6 +71,11 @@ object EmitPpaRtl {
           new opengpu.graphics.TileBinReplayScheduler(opengpu.config.GpuConfig(),
             mobile.tileEngines, mobile.binPageBytes),
           stageArgs, firtoolArgs)
+      case "mobile-bin-state-cache" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.PrimitiveStateCache(opengpu.config.GpuConfig(),
+            entries = 8, memoryTransactions = 8),
+          stageArgs, firtoolArgs)
       case "mobile-bin-page-pool" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.BinPagePool(opengpu.config.MobileGpuConfig().binPageBytes),
