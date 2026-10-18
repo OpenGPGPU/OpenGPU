@@ -1114,8 +1114,8 @@ retain both versions and their limits; full renderer qualification remains open.
 
 The V6 clipper also passes all48 distinct native product jobs. Compared with
 V5 at identical viewport/raster/fixture settings, the24 inside-scene jobs save
-67–85 GPU cycles each; the clipped-scene group ranges from
--78 to-78 saved cycles. Both gains and regressions remain in the record.
+67–85 GPU cycles each. Each of the24 clipped-scene jobs uses78 extra GPU
+cycles. Both gains and regressions remain in the record.
 
 A further divider candidate registers zero predicates in8-bit groups without
 adding cycles. Ten arithmetic/reset checks and six clipper checks pass. The
@@ -1123,3 +1123,9 @@ current clipper synthesis margin improves to+125.344 ps; staged viewport
 synthesis moves to its sign-correction path and narrowly fails at−1.755 ps.
 Both current components are queued for routed closure with explicit50 ps
 repair headroom. Their1 GHz/TC/SLVT/25% I/O acceptance gates remain unchanged.
+
+The instrumented frozen-V19 Linux replay has completed its MSAA render and
+resolve waits in180,118 ms and71,933 ms respectively. Both are below the
+original300-second limit, so this replay does not demonstrate that increasing
+the deadline was necessary. The earlier timeout remains unexplained, and
+the current full guest test is still running beyond the MSAA phase.

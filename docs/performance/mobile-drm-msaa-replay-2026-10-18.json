@@ -86,7 +86,30 @@
     "default_msaa_budget_ms": 300000,
     "explicit_probe_budget_ms": 900000,
     "scope": "Both MSAA render/resolve waits log stage,start,elapsed,result,errno. ARTI_GPU_MSAA_WAIT_MS is an explicit test-only compile override; hardware cycle/clock and all pixel/status checks unchanged.",
-    "guest_probe": "Running: drm_msaa_deadline_900s_guest.json; exact archivedQEMU+driver, explicit900s MSAAbudget, allimagechecks preserved."
+    "guest_probe": "Running: drm_msaa_deadline_900s_guest.json; exact archivedQEMU+driver, explicit900s MSAAbudget, allimagechecks preserved.",
+    "partial_progress": {
+      "observed_utc": "2026-10-18T02:04:21.673413+00:00",
+      "pid_confirmed_live": 5403,
+      "full_run_status": "RUNNING, no full-pass verdict",
+      "waits": [
+        {
+          "stage": "render",
+          "elapsed_ms": 180118,
+          "result": 0,
+          "errno": 0
+        },
+        {
+          "stage": "resolve",
+          "elapsed_ms": 71933,
+          "result": 0,
+          "errno": 0
+        }
+      ],
+      "both_within_original300s_budget": true,
+      "partial_serial_archive": ".artifacts/mobile-hardware-alignment/h0-h1/drm_msaa_deadline_900s_msaa_completed_partial_serial.log",
+      "partial_serial_sha256": "2af2705b06cda95c5c8eca891f208722e50cbb814f3e9ec87e110c23c842801e",
+      "diagnosis": "Thisreplay completesMSAArenderandresolvewithintheoriginal300sbudget. Raisingthebudgetisnotshownnecessaryhere; originaltimeoutcause remainsunresolved. PriorFAILretained. Fulltestandpoweroffstillpending."
+    }
   },
   "same_device_modes": {
     "passed": true,
