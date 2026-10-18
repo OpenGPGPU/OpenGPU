@@ -1,0 +1,76 @@
+{
+  "scope": "Viewport arithmetic numeric repair and operand-size reduction; unchanged combinational interface, no added GPU cycles. Not a whole-renderer mapping/clock qualification.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/GeometryStage.scala": "4cf72ade40295861c9a664c7025e387c7ce2a03b8125c53b8c56e8014da4f935",
+    "src/test/scala/opengpu/graphics/GeometryStageSpec.scala": "8dbcdea6ea9456866660dd5172e6773651fc3d0cccfaf7a85eb770ebd7bd6edd",
+    "src/main/scala/opengpu/elaboration/EmitGeometryExperiment.scala": "64671376c79e2ae5e11479f58ac802a59bb27d764b0be88bbca1b6b330ad0553"
+  },
+  "baseline": {
+    "status": "EXPECTED_NUMERIC_FAILURE: validclip y=w=2^30 maps to-184320 instead of+184320 atheight720/subpixel8",
+    "metadata_sha256": "6163d0d3d9e96a2d4d00d3699479c0d9077b7f562480e6b89bc6f199a3f89d7e",
+    "unit_log_sha256": "f24b6d0e43f0990696bdc1086bad808aea74f3ce96526be26e801cad38b258e6"
+  },
+  "candidate": {
+    "status": "PASS2checks: ordinary viewport +296full-positive-w vertices includingoverflow boundaries",
+    "checks": 2,
+    "reference_vertex_cases": 296,
+    "dimension_pairs": [
+      [
+        1280,
+        720
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        65535,
+        65535
+      ],
+      [
+        0,
+        32769
+      ]
+    ],
+    "metadata_sha256": "7fade4e6a109bbc264335c8e3c22101200f63c0ca9b6caf1a100b432323379a4",
+    "unit_log_sha256": "3c6e6927c5a86b666cbc967c767cbe5842ed0596bcc04449872dfd667d3c1c48"
+  },
+  "arithmetic": "Signed32 coordinate+signed32 w is widened to33 before addition. Positive16bit viewport dimension is explicitly zero-extended to signed17. Exact multiply and subpixel shift preserve all numerator bits; denominator2*w requires33 signedbits. Reciprocal2^32 requires33 unsignedbits; observablelow32 semantics retained.",
+  "emitted_width_audit": {
+    "baseline": {
+      "viewport_division_expression_bits": [
+        139,
+        139,
+        139,
+        139,
+        139,
+        139
+      ],
+      "reciprocal_division_expression_bits": [
+        64,
+        64,
+        64
+      ],
+      "sv_sha256": "376c042f7ca102dcdeae4bc737515c292077da486b1998ec3d2dc1044cff41ca"
+    },
+    "bounded": {
+      "viewport_division_expression_bits": [
+        59,
+        59,
+        59,
+        59,
+        59,
+        59
+      ],
+      "reciprocal_division_expression_bits": [
+        33,
+        33,
+        33
+      ],
+      "sv_sha256": "15b7a8c3097aa69737c7318fa8786dc7fa8df1a1e06f4e7fd1f848b834900bb2"
+    }
+  },
+  "mapping_timing": "Yosys synthesis running: generated/mobile-h1/physical-geometry-bounded-synth. No passclaimed.",
+  "native_product": "Frozen boundedviewport+clipV5+rasterV21 matrix running; no passclaimed.",
+  "full_renderer_qualified": false
+}

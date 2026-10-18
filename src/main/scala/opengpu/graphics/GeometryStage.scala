@@ -51,14 +51,19 @@ class GeometryStage(config: GraphicsConfig) extends Module {
   })
 
   private def mapCoord(cl: SInt, w: SInt, dim: UInt): SInt = {
-    val num = (cl + w).pad(64) * dim.pad(64) * (1 << config.subPixelBits).S
-    val den = (w.pad(64) << 1)
-    (num / den)(config.edgeWidth - 1, 0).asSInt
+    // Two signed32 coordinates need33 bits even inside the positive-w
+    // frustum. Keep the unsigned dimension positive without padding both
+    // multiplier operands to64 bits; the subpixel scale is an exact shift.
+    val sum = cl +& w
+    val dimension = Cat(0.U(1.W), dim).asSInt
+    val num = (sum * dimension) << config.subPixelBits
+    val den = w << 1
+    (num / den).pad(config.edgeWidth)(config.edgeWidth - 1, 0).asSInt
   }
 
   private def invW(w: SInt): SInt = {
     val a = w.asUInt
-    ((invWScale.U(64.W) / a)(31, 0)).asSInt
+    ((invWScale.U(33.W) / a)(31, 0)).asSInt
   }
 
   val outs = Wire(Vec(3, new ScreenVertex(config)))

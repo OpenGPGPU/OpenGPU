@@ -47,4 +47,54 @@ class GeometryStageSpec extends AnyFlatSpec {
       }
     }
   }
+
+  it should "map the full positive-w clip range without overflowing the coordinate sum" in {
+    val config = GraphicsConfig(screenWidth = 1280, screenHeight = 720)
+    val random = new scala.util.Random(0x675031L)
+    val limits = Seq(1L, 2L, 65535L, 65536L, (1L << 30) - 1,
+      1L << 30, (1L << 30) + 1, Int.MaxValue.toLong)
+    val boundary = for (w <- limits; x <- Seq(-w, -w + 1, 0L, w - 1, w))
+      yield (x, -x, w)
+    val cases = boundary ++ Seq.fill(256) {
+      val w = 1L + random.nextInt(Int.MaxValue)
+      def coord: Long = java.lang.Long.remainderUnsigned(random.nextLong(), 2 * w + 1) - w
+      (coord, coord, w)
+    }
+    val dimensions = Seq((1280, 720), (1, 1), (65535, 65535), (0, 32769))
+    def signed32(value: BigInt): BigInt = {
+      val bits = value & ((BigInt(1) << 32) - 1)
+      if (bits.testBit(31)) bits - (BigInt(1) << 32) else bits
+    }
+    simulate(new GeometryStage(config)) { dut =>
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      for ((group, index) <- cases.grouped(3).zipWithIndex) {
+        val (width, height) = dimensions(index % dimensions.size)
+        dut.io.screenW.poke(width.U); dut.io.screenH.poke(height.U)
+        val vertices = group.padTo(3, group.last)
+        for (((x, y, w), lane) <- vertices.zipWithIndex) {
+          dut.io.clip(lane).x.poke(x.S(32.W))
+          dut.io.clip(lane).y.poke(y.S(32.W))
+          dut.io.clip(lane).z.poke(0.S)
+          dut.io.clip(lane).w.poke(w.S(32.W))
+          dut.io.color(lane).r.poke((index & 255).U)
+          dut.io.color(lane).g.poke(lane.U)
+          dut.io.color(lane).b.poke(255.U)
+        }
+        dut.clock.step()
+        for (((x, y, w), lane) <- vertices.zipWithIndex) {
+          def mapped(coord: Long, dim: Int): BigInt =
+            ((BigInt(coord) + w) * dim << config.subPixelBits) / (BigInt(w) * 2)
+          assert(dut.io.out(lane).sx.peek().litValue == mapped(x, width),
+            s"x=$x w=$w width=$width")
+          assert(dut.io.out(lane).sy.peek().litValue == mapped(y, height),
+            s"y=$y w=$w height=$height")
+          assert(dut.io.out(lane).invW.peek().litValue == signed32((BigInt(1) << 32) / w))
+          dut.io.out(lane).color.r.expect((index & 255).U)
+          dut.io.out(lane).color.g.expect(lane.U)
+          dut.io.out(lane).color.b.expect(255.U)
+        }
+      }
+      info(s"Viewport BigInt reference: ${cases.size} vertices, four dimension pairs, full positive-w boundaries")
+    }
+  }
 }

@@ -1057,3 +1057,13 @@ is+30.1467 ps with zero hold violations, and mapping/placement/DRC/antenna
 checks pass. Final OpenDB identifies `edgeIndex[1] → outputCount[3]`; the
 `finalCount[0] → io_out_5_y[14]` I/O path also fails at−27.51 ps. Both are
 recorded as open timing work, despite the earlier passing synthesis estimate.
+
+Viewport mapping now widens `coordinate + w` before addition. The previous
+32-bit sum maps a valid `y = w = 2^30` vertex to−184,320 instead of+184,320
+at height720/subpixel8. The new BigInt checks cover296 vertex cases across
+four dimension pairs, including positive-w limits through `Int.MaxValue`;
+both geometry unit tests pass. Explicit operand widths and a scale shift
+reduce emitted viewport division expressions from139 to59 bits and reciprocal
+expressions from64 to33 bits, without adding GPU cycles. Mapping/timing and
+native integration checks remain pending; see
+[the viewport record](performance/mobile-geometry-viewport-2026-10-18.json).
