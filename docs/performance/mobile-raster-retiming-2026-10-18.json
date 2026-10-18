@@ -295,6 +295,76 @@
         "qualification_sha256": "1140a34726ef97965b9769cfb4b1d76a4d0f126a2a7df562a2d0d02b4984257d",
         "critical_path": "vHold_v0_x[0] -> paddedMinX[31]; OpenDB verified minimum selection followed by bound padding."
       },
+      "direct_product": {
+        "checks": 2,
+        "jobs": 24,
+        "scope": "24nativeproductMSAAjobs onfrozenv19 raster/offsetclasses; nofullsystemguest orclockclaim.",
+        "source_sha256": {
+          "src/main/scala/opengpu/graphics/Rasterizer.scala": "f68ffac3594f6d97467bee961c412c0a708665009577cdee54790d8c34306a6f",
+          "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+          "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+          "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "cb0fe6521f15c0a75e40e9d71d17b577c87836ad13426216f4e74e188253621d",
+          "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+          "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089"
+        },
+        "metadata_sha256": "beafd95ad5befb17d162f7be5c16346990a6549bf2a0ebe81a13a60de3c18fd9",
+        "logs": [
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v19_shared_0.log",
+            "sha256": "107966e14504c79a1317e6117ee355e5191fccfc8fe3777e00e6bee5d4aec890"
+          },
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v19_shared_1.log",
+            "sha256": "17c6f6b4afd719102d57926220a3a6f2b757b63b2b64d802b4a87fb6c8426e36"
+          }
+        ]
+      }
+    },
+    "v20": {
+      "change": "Capture min/max bounds in stBounds, apply original signed32 padding in stCross using the same registers. No extra setup cycle versus V19.",
+      "source_sha256": {
+        "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+        "src/main/scala/opengpu/graphics/Rasterizer.scala": "fce2ea14f7fdaefe728f870b2b357ce99faa07b0cb013d735d7260d17820546e",
+        "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+        "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+        "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+        "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+        "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+        "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+        "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+        "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+        "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+        "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+        "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+        "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+        "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+        "src/test/scala/opengpu/graphics/RasterOriginSumProof.scala": "a53832ac38906a481fd9533b82e4c68b5158dc57f1829dcc32374d9ab9234a42",
+        "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+        "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+        "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0",
+        "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+        "src/test/scala/opengpu/util/RegisteredQueue2Spec.scala": "9467f1e3688a16142e9b817ee9757835ad01ead0886af94d2a8569ff1fa7e611",
+        "src/test/scala/opengpu/util/RegisteredQueue2ResetSpec.scala": "1aaa843f02c1f6980c9b6250b3b17d16415e2e21de2025c5b55d9eedab3b2ef1"
+      },
+      "build_metadata_sha256": "1a153d21df608731ccc7a46c1c9f5daaa68566f3f722f447a4661c807e39b6d0",
+      "component_checks": 52,
+      "suites": 15,
+      "unit_log": {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_pipeline_v20_unit.log",
+        "sha256": "414de700af4e8c82fc4238b399db5a6a14fab7ef6291636076c1555fb8fe44a6"
+      },
+      "post_route_qualified": false,
+      "synthesis": {
+        "passed": false,
+        "mapping_passed": true,
+        "setup_slacks_ps": [
+          -18.552,
+          644.731
+        ],
+        "qualification": "generated/mobile-h1/physical-product-raster-v20-resident-synth/qualification.json",
+        "qualification_sha256": "99e8ff4ffda419b20cc03da6eb73cf5a22f65fc48237cc883cc47eec6470b44c",
+        "critical_path": "coeffReg_c_0[2] -> io_planeArea[63]; OpenDB verified signed area three-term sum."
+      },
       "direct_product": false
     }
   },
@@ -698,6 +768,348 @@
     "proof_sha256": "b15af31a4e30d7ca896cfb558a9ab1ca7c98c4e969a10d67db48dfc1b999e435",
     "log": "/tmp/gpu-mobile-h1-raster-origin-sum-v19-formal.log",
     "log_sha256": "5431c2bacc9ed05ceca317b91b53516e92d7dd300aa3dd9724d1e12d6b8d5d25"
+  },
+  "origin_formal_v20_reuse": {
+    "passed": true,
+    "scope": "V20 origin proof RTL byte-identical to universally proven V19 miter; arithmetic proof reused. This does not prove the bounds register scheduling, which passed current raster regressions.",
+    "reused_formal_metadata_sha256": "89a831bb5765fd2bf14353ccf3fa1cee65f450d784f2c5fa8193e621febfe2b3",
+    "rtl_sha256": {
+      "BlockPrefixAdder.sv": "a58321c44bae44136dfb195d6ef4b2f3ad959fc063863034192da7cb925a892b",
+      "RasterOriginSumProofHarness.sv": "c40d174fe35433611ba67596b08991080b45d81cd1ae60841cae4e149be95107"
+    },
+    "build_metadata_sha256": "1a153d21df608731ccc7a46c1c9f5daaa68566f3f722f447a4661c807e39b6d0"
+  },
+  "origin_v19_product_cycles": {
+    "passed": true,
+    "jobs": 24,
+    "scope": "Measured total GPU-cycle counts for independently validated V18/V19 product workloads; not general sequential equivalence.",
+    "keys": [
+      "shared",
+      "tile",
+      "originX",
+      "originY",
+      "samples",
+      "Sv32",
+      "load"
+    ],
+    "rows": [
+      {
+        "key": [
+          "false",
+          "8",
+          "0",
+          "0",
+          "1",
+          "false",
+          "false"
+        ],
+        "v18_cycles": 3393,
+        "v19_cycles": 3393
+      },
+      {
+        "key": [
+          "false",
+          "8",
+          "8",
+          "8",
+          "1",
+          "true",
+          "true"
+        ],
+        "v18_cycles": 5184,
+        "v19_cycles": 5184
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "0",
+          "0",
+          "1",
+          "false",
+          "true"
+        ],
+        "v18_cycles": 18391,
+        "v19_cycles": 18391
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "16",
+          "16",
+          "1",
+          "true",
+          "false"
+        ],
+        "v18_cycles": 16360,
+        "v19_cycles": 16360
+      },
+      {
+        "key": [
+          "false",
+          "8",
+          "0",
+          "0",
+          "2",
+          "false",
+          "false"
+        ],
+        "v18_cycles": 6925,
+        "v19_cycles": 6925
+      },
+      {
+        "key": [
+          "false",
+          "8",
+          "8",
+          "8",
+          "2",
+          "true",
+          "true"
+        ],
+        "v18_cycles": 9653,
+        "v19_cycles": 9653
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "0",
+          "0",
+          "2",
+          "false",
+          "true"
+        ],
+        "v18_cycles": 33330,
+        "v19_cycles": 33330
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "16",
+          "16",
+          "2",
+          "true",
+          "false"
+        ],
+        "v18_cycles": 26740,
+        "v19_cycles": 26740
+      },
+      {
+        "key": [
+          "false",
+          "8",
+          "0",
+          "0",
+          "4",
+          "false",
+          "false"
+        ],
+        "v18_cycles": 12913,
+        "v19_cycles": 12913
+      },
+      {
+        "key": [
+          "false",
+          "8",
+          "8",
+          "8",
+          "4",
+          "true",
+          "true"
+        ],
+        "v18_cycles": 17632,
+        "v19_cycles": 17632
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "0",
+          "0",
+          "4",
+          "false",
+          "true"
+        ],
+        "v18_cycles": 60359,
+        "v19_cycles": 60359
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "16",
+          "16",
+          "4",
+          "true",
+          "false"
+        ],
+        "v18_cycles": 47323,
+        "v19_cycles": 47323
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "0",
+          "0",
+          "1",
+          "false",
+          "false"
+        ],
+        "v18_cycles": 5278,
+        "v19_cycles": 5278
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "8",
+          "8",
+          "1",
+          "true",
+          "true"
+        ],
+        "v18_cycles": 7117,
+        "v19_cycles": 7117
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "0",
+          "0",
+          "1",
+          "false",
+          "true"
+        ],
+        "v18_cycles": 23128,
+        "v19_cycles": 23128
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "16",
+          "16",
+          "1",
+          "true",
+          "false"
+        ],
+        "v18_cycles": 21927,
+        "v19_cycles": 21927
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "0",
+          "0",
+          "2",
+          "false",
+          "false"
+        ],
+        "v18_cycles": 8779,
+        "v19_cycles": 8779
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "8",
+          "8",
+          "2",
+          "true",
+          "true"
+        ],
+        "v18_cycles": 11603,
+        "v19_cycles": 11603
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "0",
+          "0",
+          "2",
+          "false",
+          "true"
+        ],
+        "v18_cycles": 37303,
+        "v19_cycles": 37303
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "16",
+          "16",
+          "2",
+          "true",
+          "false"
+        ],
+        "v18_cycles": 31211,
+        "v19_cycles": 31211
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "0",
+          "0",
+          "4",
+          "false",
+          "false"
+        ],
+        "v18_cycles": 14773,
+        "v19_cycles": 14773
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "8",
+          "8",
+          "4",
+          "true",
+          "true"
+        ],
+        "v18_cycles": 19563,
+        "v19_cycles": 19563
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "0",
+          "0",
+          "4",
+          "false",
+          "true"
+        ],
+        "v18_cycles": 63167,
+        "v19_cycles": 63167
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "16",
+          "16",
+          "4",
+          "true",
+          "false"
+        ],
+        "v18_cycles": 49936,
+        "v19_cycles": 49936
+      }
+    ],
+    "product_metadata_sha256": {
+      "18": "63716a399cfa9112938687e0f1edbf913aeff81dd436a3af0f7e20f0861a69d2",
+      "19": "beafd95ad5befb17d162f7be5c16346990a6549bf2a0ebe81a13a60de3c18fd9"
+    }
   },
   "fixed_linux_v15": {
     "scope": "Full fresh V15 fixed-function legacy64x64 Linux smoke; terminal session43269 exit0. Does not qualify V18/V19 or mobile720p.",

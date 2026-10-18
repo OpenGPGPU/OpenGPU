@@ -389,8 +389,8 @@ class QuadCoverage(config: GraphicsConfig) extends Module {
   * chains a multiplier bank into a wide adder tree:
   *
   *   capture  : vertices + cull mode registered (compares only).
-  *   stBounds : padded bounding extremes and cross-product partials.
-  *   stCross  : assemble the registered cross-product partials.
+  *   stBounds : bounding extremes and cross-product partials.
+  *   stCross  : pad the bounds and assemble cross-product partials.
   *   stCoeffs : A/B differences, registered cross-product subtraction and
   *              viewport/scissor clamping of the registered bounds.
   *   stSetup  : plane products against the box origin and area-product
@@ -745,10 +745,12 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
 
   when(setupState === stBounds) {
     setupState := stCross
-    paddedMinX := bboxMinXW - bboxPad
-    paddedMinY := bboxMinYW - bboxPad
-    paddedMaxX := bboxMaxXW + bboxPad
-    paddedMaxY := bboxMaxYW + bboxPad
+    // Capture extrema before padding; reuse these registers in stCross.
+    // This keeps the signed comparison and padding carry in separate cycles.
+    paddedMinX := bboxMinXW
+    paddedMinY := bboxMinYW
+    paddedMaxX := bboxMaxXW
+    paddedMaxY := bboxMaxYW
     lastScreenX := screenWReg - 1.U
     lastScreenY := screenHReg - 1.U
     scissorRasterMaxX := (if (quadMode) (scissorMaxXReg - 1.U) & "hfffe".U
@@ -763,6 +765,10 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
 
   when(setupState === stCross) {
     setupState := stCoeffs
+    paddedMinX := paddedMinX - bboxPad
+    paddedMinY := paddedMinY - bboxPad
+    paddedMaxX := paddedMaxX + bboxPad
+    paddedMaxY := paddedMaxY + bboxPad
     for (i <- 0 until 3) {
       crossLeft(i) := SignedProduct32.join(crossLeftParts(i))
       crossRight(i) := SignedProduct32.join(crossRightParts(i))

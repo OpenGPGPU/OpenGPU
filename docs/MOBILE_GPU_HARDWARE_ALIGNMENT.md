@@ -905,3 +905,12 @@ universal 184-input-bit proof establishes the exact low64 origin result.
 Synthesis maps completely and improves worst setup to -62.625 ps, with I/O
 setup +642.831 ps. The 1 GHz gate still fails; the next OpenDB-confirmed path
 is vertex X through minimum selection and padding into `paddedMinX[31]`.
+All 24 V19 native product jobs pass with total cycle counts identical to V18.
+
+V20 captures extrema before applying the original signed32 padding in the
+existing cross-product assembly stage. It reuses the same bounds registers
+and adds no setup cycle. All 52 component checks pass; the origin arithmetic
+proof RTL is byte-identical to V19. Complete-mapping synthesis improves worst
+setup to -18.552 ps, with I/O setup +644.731 ps. The remaining path reaches
+the area register through the three-term area sum. This still fails 1 GHz;
+V20 direct product and full-system qualification remain separate gates.
