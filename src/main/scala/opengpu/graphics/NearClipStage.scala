@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.IterativeSignedDivider
+import opengpu.util.{IterativeSignedDivider, SignedProductParts, SplitSignedProduct}
 
 /** A clip-space vertex with every varying needed after clipping. */
 class ClipVertexColor(config: GraphicsConfig) extends Bundle {
@@ -53,7 +53,7 @@ class NearClipStage(config: GraphicsConfig) extends Module {
     val outValid = Output(UInt(log2Ceil(MaxTriangles + 1).W))
   })
 
-  private val sIdle :: sEdges :: sInterpolate :: sDivide :: sRetire :: sAppend :: sAdvance :: Nil = Enum(7)
+  private val sIdle :: sEdges :: sInterpolate :: sParts :: sAssemble :: sDivide :: sRetire :: sAppend :: sAdvance :: Nil = Enum(9)
   private val state = RegInit(sIdle)
   private val ready = RegInit(false.B)
   private val current = Reg(Vec(MaxVertices, new ClipVertexColor(config)))
@@ -73,7 +73,12 @@ class NearClipStage(config: GraphicsConfig) extends Module {
   private val intersectionBase = Reg(UInt(32.W))
   private val numeratorReg = Reg(SInt(68.W))
   private val denominatorReg = Reg(SInt(34.W))
-  private val divider = Module(new IterativeSignedDivider(68, 34))
+  private val deltaReg = Reg(SInt(34.W))
+  private val productParts = Reg(new SignedProductParts(34))
+  // A crossing ratio is in[0,1]. Each field's endpoint difference has
+  // magnitude<=2^32-1, so its intersection quotient fits32 magnitude bits.
+  // Return those exact low32 bits and assert the bound at retirement.
+  private val divider = Module(new IterativeSignedDivider(68, 34, 32))
   divider.io.in.valid := state === sDivide
   divider.io.in.bits.numerator := numeratorReg
   divider.io.in.bits.denominator := denominatorReg
@@ -165,15 +170,23 @@ class NearClipStage(config: GraphicsConfig) extends Module {
       8.U -> edgeCur.uv.u.pad(34).asSInt,
       9.U -> edgeCur.uv.v.pad(34).asSInt
     ))
-    numeratorReg := (b - a) * edgePrevDistance
+    deltaReg := b - a
     denominatorReg := edgePrevDistance - edgeCurDistance
     intersectionBase := a(31, 0)
+    state := sParts
+  }.elsewhen(state === sParts) {
+    productParts := SplitSignedProduct.split(deltaReg, edgePrevDistance)
+    state := sAssemble
+  }.elsewhen(state === sAssemble) {
+    numeratorReg := SplitSignedProduct.join(productParts)
     state := sDivide
   }.elsewhen(state === sDivide) {
     assert(denominatorReg =/= 0.S, "crossing clip edge must have a nonzero distance difference")
     when(divider.io.in.fire) { state := sRetire }
   }.elsewhen(state === sRetire && divider.io.out.fire) {
     assert(!divider.io.out.bits.divideByZero)
+    assert(!divider.io.out.bits.magnitudeOverflow,
+      "crossing interpolation quotient must fit32 magnitude bits")
     // Only low32 result bits are observable; addition commutes with truncation.
     val value = intersectionBase + divider.io.out.bits.quotient(31, 0)
     switch(field) {

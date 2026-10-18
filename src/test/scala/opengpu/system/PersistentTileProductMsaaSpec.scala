@@ -11,13 +11,13 @@ import scala.collection.mutable
   * cache/viewport configuration. This remains one resident tile, not a frame
   * throughput benchmark. The oracle evaluates each covered sample separately.
   */
-class PersistentTileProductMsaaSpec extends AnyFlatSpec with GpuHostTestSupport {
-  behavior of "typed persistent tiles at the mobile execution configuration"
+abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFlatSpec with GpuHostTestSupport {
+  behavior of s"typed persistent tiles at the mobile execution configuration (clipped=$crossing)"
   private val samplePositions = Seq(Seq((0, 0)), Seq((-1, -1), (1, 1)),
     Seq((-1, -1), (1, -1), (-1, 1), (1, 1)))
 
   for (shared <- Seq(false, true)) {
-    it should s"preserve every sample and resolve ordered masked clears with shared=$shared" in {
+    it should s"preserve every sample and resolve ordered masked clears with shared=$shared clipped=$crossing" in {
       assume(Runtime.getRuntime.maxMemory() >= 4L * 1024 * 1024 * 1024,
         "Run sbt -J-Xmx8G 'testOnly opengpu.system.PersistentTileProductMsaaSpec'.")
       val gpu = MobileGpuConfig().execution
@@ -99,7 +99,10 @@ class PersistentTileProductMsaaSpec extends AnyFlatSpec with GpuHostTestSupport 
           address(8 * capacity) ++ Seq(load(6, 3)) ++ address(28 * capacity) ++ Seq(store(6, 3), 0x30500073L)
         def draw(r: Int, g: Int, b: Int, z: Int, last: Boolean = false): Seq[Long] = {
           val w = Array.fill[Long](40)(0)
-          for ((xy, i) <- Seq((-1, -1), (1, -1), (-1, 1)).zipWithIndex) {
+          // Expanding this triangle about the origin preserves its diagonal
+          // inside the viewport but requires side-plane intersections.
+          val extent = if (crossing) 2 else 1
+          for ((xy, i) <- Seq((-extent, -extent), (extent, -extent), (-extent, extent)).zipWithIndex) {
             w(i * 4) = xy._1 * 65536L; w(i * 4 + 1) = xy._2 * 65536L; w(i * 4 + 3) = 65536
             w(12 + i * 3) = r; w(13 + i * 3) = g; w(14 + i * 3) = b; w(21 + i) = z
           }
@@ -213,7 +216,7 @@ class PersistentTileProductMsaaSpec extends AnyFlatSpec with GpuHostTestSupport 
           assert(attachmentBytes + resolveBytes == expectedWrites.size * 4)
           axiWrite(dut, GpuCommandMmioRegs.COMPLETION_POP, 1)
           axiWrite(dut, RenderHostRegs.IRQ, 3)
-          info(s"shared=$shared CUs=$count lanes=${gpu.lanes} warps=${gpu.warps} viewport=1280x720 L2Bytes=131072 tile=$size originX=$originX originY=$originY samples=$activeSamples Sv32=$translated load=$loadStart commandLines=$commandLines attachmentReads=$attachmentReads attachmentBytes=$attachmentBytes resolveBytes=$resolveBytes activeCuCycles=$activeCycles cycles=$cycles")
+          info(s"shared=$shared clipped=$crossing CUs=$count lanes=${gpu.lanes} warps=${gpu.warps} viewport=1280x720 L2Bytes=131072 tile=$size originX=$originX originY=$originY samples=$activeSamples Sv32=$translated load=$loadStart commandLines=$commandLines attachmentReads=$attachmentReads attachmentBytes=$attachmentBytes resolveBytes=$resolveBytes activeCuCycles=$activeCycles cycles=$cycles")
         }
         if (shared) assert(dut.io.performance.get.system.maxActiveComputeUnits.peek().litValue == count,
           "the product matrix did not exercise the complete shared CU pool")
@@ -221,3 +224,6 @@ class PersistentTileProductMsaaSpec extends AnyFlatSpec with GpuHostTestSupport 
     }
   }
 }
+
+class PersistentTileProductMsaaSpec extends PersistentTileProductMsaaChecks(crossing = false)
+class PersistentTileClippedProductMsaaSpec extends PersistentTileProductMsaaChecks(crossing = true)

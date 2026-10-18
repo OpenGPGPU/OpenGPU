@@ -37,9 +37,9 @@ class NearClipStageSpec extends AnyFlatSpec {
     dut.io.start.poke(false.B)
     // Run through all plane/edge phases.
     var i = 0
-    // Every edge can require all fields of a68-bit iterative division.
+    // Every edge can require all fields,32 quotient iterations and setup.
     val limit = NearClipStage.MaxVertices * NearClipStage.PlaneCount *
-      NearClipStage.InterpolatedFields * 80 + 200
+      NearClipStage.InterpolatedFields * 40 + 200
     while (dut.io.busy.peek().litToBoolean && i < limit) { dut.clock.step(); i += 1 }
     assert(i < limit, "clipper did not complete within its bounded edge/field budget")
     dut.clock.step()

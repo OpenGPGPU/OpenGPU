@@ -77,5 +77,103 @@
     "Native product replay is running on frozen clipv1+rasterV21 classes.",
     "Other renderer inferred divisions remain; do not claim complete renderer mapping or qualified clock.",
     "Original H0-H8 capacity/feature/performance/physical requirements remain."
-  ]
+  ],
+  "followup_v2": {
+    "change": "Bound32 quotient magnitude with explicit overflow; zero/unit shortcuts; separate fieldselection/difference, registered17bit halfproducts,68bit assembly anddivision admission. Defaultfullwidthdividerretained.",
+    "source_sha256": {
+      "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "ec1b196d658d01bb08d508da27354677527cf2c074423e27a6d9c07383a9e5a2",
+      "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "f8e2ddd37b448965b8134a5a5a1e9af9ee4b5b4023737857e73eec77cae07969",
+      "src/main/scala/opengpu/graphics/NearClipStage.scala": "7b870af7a64dc73c2b0a9be6f17da59e3867e30619ce4136e4524551d9af2d82",
+      "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "9484db9411504a49b31a3d1fb0fe773854479c51fb1f5274ab686849550e3487",
+      "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "716bec084d5616492ea5008f0fb008076ed82f658bf3d464945cbe4575beec37",
+      "src/main/scala/opengpu/util/SplitSignedProduct.scala": "7bf5b4364ed88a66274a23eff2982a6d017e36a29fa9078138d361bd1e4e89c9",
+      "src/test/scala/opengpu/util/SplitSignedProductSpec.scala": "5a6a974f1a6966d02fa4ebaf058e9a860061ee700027ccde5b4f50b2d37304b3"
+    },
+    "fixture_source_sha256": {
+      "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "ffc730a9596e896b729d89edb621b270d9334f4e738a5a83c943906c0834f1b6"
+    },
+    "build_metadata_sha256": "2cbbfe6ca30e2cce13850965294db69706e684c3bc14bfa6cf1fabb3a5bb3634",
+    "component_checks": 16,
+    "suites": 4,
+    "unit_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/clip_integration_v2_unit.log",
+      "sha256": "19a6dedd31b4ebf8497e0709a80ae8ef1f04139711d1134b58eed229f96ca094"
+    },
+    "arithmetic": {
+      "numerator_bits": 68,
+      "denominator_bits": 34,
+      "quotient_bits": 32,
+      "representation": "Exact low32 quotient bits after truncation towardzero; modular sign correction. Capacity is unsigned quotient magnitude, not signed32 value range.",
+      "bound": "For a crossing edge, abs(prevDistance)/abs(prevDistance-curDistance)<=1. Every samefield endpoint difference has magnitude<=2^32-1. Thus quotient magnitude<2^32; input highremainder<divisor is checked explicitly.",
+      "errors": "Zero divisor or oversized magnitude returns zero with explicit respective flag; clipper asserts neither flag."
+    },
+    "numeric_products": 4338,
+    "partial_assembly_proof": {
+      "passed": true,
+      "exit_code": 0,
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h1/clip-split-product-v2-proof-rtl:/rtl:ro",
+        "-v",
+        "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1:/proof:ro",
+        "chipagent/openroad:arm64",
+        "bash",
+        "-lc",
+        "source /OpenROAD-flow-scripts/env.sh >/dev/null && yosys -s /proof/prove_clip_split_product_v2.ys"
+      ],
+      "scope": "Combinational equivalence for all138 partial-product input bits:34-bit low,35-bit signed mids and34-bit signed high, weighted at0/17/17/34bits; two carry-save reductions andprefix68 preserve the low68 sum. This is an assembly proof, not a full68operand-bit multiplication orsequential proof.",
+      "source_sha256": {
+        "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "ec1b196d658d01bb08d508da27354677527cf2c074423e27a6d9c07383a9e5a2",
+        "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "f8e2ddd37b448965b8134a5a5a1e9af9ee4b5b4023737857e73eec77cae07969",
+        "src/main/scala/opengpu/graphics/NearClipStage.scala": "7b870af7a64dc73c2b0a9be6f17da59e3867e30619ce4136e4524551d9af2d82",
+        "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "9484db9411504a49b31a3d1fb0fe773854479c51fb1f5274ab686849550e3487",
+        "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "716bec084d5616492ea5008f0fb008076ed82f658bf3d464945cbe4575beec37",
+        "src/main/scala/opengpu/util/SplitSignedProduct.scala": "7bf5b4364ed88a66274a23eff2982a6d017e36a29fa9078138d361bd1e4e89c9",
+        "src/test/scala/opengpu/util/SplitSignedProductSpec.scala": "5a6a974f1a6966d02fa4ebaf058e9a860061ee700027ccde5b4f50b2d37304b3"
+      },
+      "rtl_sha256": {
+        "BlockPrefixAdder.sv": "54b501cbe1d2f149da95bf10f36d8666776b4fe543850d102cd518bec8a0bce6",
+        "SplitSignedProductJoinProofHarness.sv": "3cc5809b108577aa45e1e73dfb92384eee262a16837b5e5b9e71799a93379b69"
+      },
+      "proof_sha256": "2f6e684ce937ce8113c6293a9bb356e5c939577d3413cd1d3fda5d17262f032d",
+      "log": "/tmp/gpu-mobile-h1-clip-split-product-v2-formal.log",
+      "log_sha256": "5ef06a07205d9879e897547345d90caa45ac89fbeca1a6a617af568e455e11a6"
+    },
+    "measured_scene_comparison": {
+      "jobs": 20,
+      "compared_fields": 792,
+      "v1_cycles": 48002,
+      "v2_cycles": 22427,
+      "original_combinational_cycles": 1142,
+      "fully_inside_cycles": 28,
+      "scope": "Same independentlychecked integer scenes; not whole-frame throughput or elapsedtime win."
+    },
+    "physical": {
+      "divider": {
+        "passed": false,
+        "mapping_passed": true,
+        "setup_slacks_ps": [
+          -363.631,
+          485.84
+        ],
+        "qualification": "generated/mobile-h1/physical-clip-bounded-divider-v2-synth/qualification.json",
+        "sha256": "4dd4a988ce92ca8671110f41d1aca1b6078775879acfe6c24d435a33eebb001c"
+      },
+      "clipper": {
+        "passed": false,
+        "mapping_passed": true,
+        "setup_slacks_ps": [
+          -223.495,
+          483.896
+        ],
+        "qualification": "generated/mobile-h1/physical-clip-integration-v2-synth/qualification.json",
+        "sha256": "f79d698cac7c8269ee633b7a5d9e953e12ae32546662d0c07d575eb5223e5b4a",
+        "critical_path": "numeratorReg[1] -> divider.quotient[8], verifiedOpenDB; admission combines signconversion withcapacity control."
+      }
+    },
+    "native_product": "V1clippedbaseline andV2inside+clipped matrices running; not passes yet."
+  }
 }

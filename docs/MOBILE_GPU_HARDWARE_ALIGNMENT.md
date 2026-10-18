@@ -952,3 +952,22 @@ critical path is field selection through numerator production into
 `numeratorReg[65]`. Pipelining that calculation and reducing intersection
 latency remain required. Other inferred renderer divisions and the original
 H0–H8 gates remain open; this component result does not qualify the renderer.
+
+Clipping V2 reduces iteration count to32: a crossing-edge interpolation ratio
+has magnitude at most one, and every same-field endpoint difference has
+magnitude at most `2^32-1`. The initial high remainder is checked against the
+divisor; zero divisors and out-of-capacity requests have explicit flags. Only
+the original low32 quotient bits are stored. Zero and unit-divisor shortcuts
+and registered17-bit multiply partials reduce the same20-scene total to22,427
+cycles, while the fully-inside path remains28 cycles. All16 component checks
+and the universal138-input-bit partial assembly proof pass, including4,338
+full-product numeric cases. This proof covers assembly, not full multiplication
+or the entire sequential clipper.
+
+Complete-mapping clipper synthesis improves to -223.495 ps but still fails
+1 GHz. The verified path is now `numeratorReg[1]` to `divider.quotient[8]`
+through divider admission. The bounded divider alone also fails its synthesis
+gate; the earlier full-width divider pass does not qualify this revision.
+Separate native replays now include triangles crossing clip planes with an
+independent final sample/resolve oracle. Their results and further admission
+retiming remain pending.
