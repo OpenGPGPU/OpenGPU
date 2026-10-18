@@ -1,0 +1,78 @@
+{
+  "scope": "Diagnose failedV19programmableLinuxMSAA; nativefrozenV19raster+originalclipper, not currentclipper orLinuxpass.",
+  "guest_failure": {
+    "status": "FAIL: MSAA syncobj wait timed out. FailedownedQEMU88589 terminated after archival; wrapper81857 terminalexit1.",
+    "session": 81857,
+    "scope": "Fresh V19 programmable legacy64x64 Linux compatibility smoke; QEMU88589 confirmed live.4generalCUs16/8,privategraphics4/2,AXI64,defaultL2. Not mobile720p profile.",
+    "rtl_emission_metadata_sha256": "1195c0a305bd8d57f8863cc485df47165b06f10cb6f17b92fc52c091497ff6be",
+    "rtl": "generated/mobile-h1/pipeline-v19-desktop-programmable-rtl",
+    "log": "/tmp/gpu-mobile-h1-pipeline-v19-desktop-programmable.log",
+    "serial": "/Users/duckdonald/workspace/arti-work/mobile-h1-pipeline-v19-programmable/linux-smoke/serial.log",
+    "qemu": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/qemu-pipeline-v19-programmable-inflight",
+      "sha256": "94cb5193e7e44453dd8fe3738d77591873a792a2ed4792f3276b77e0bb3aaca4"
+    },
+    "pid": 88589,
+    "hashes": {
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-pipeline-v19-programmable/linux-smoke/initramfs.cpio.gz": "2e34bb820b9184d79e44fbc9a75cb0c3b66dcf25c004d9c9909a1d7e2703577d",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-pipeline-v19-programmable/linux-smoke/opengpu_drm_test": "c27ea28161a1f936162f4d2a28184d67619668f5cd9f4802611493ba13042f17",
+      "/Users/duckdonald/workspace/arti-work/mobile-h1-pipeline-v19-programmable/linux-smoke/arti_driver.ko": "932b9497e00a2ea8fdec390096b922a14b05ecaf8637bafae879e9e504dd11ee"
+    },
+    "failure": "wait MSAA render syncobj: Timer expired",
+    "syncobj_deadline_ns": 300000000000,
+    "serial_archive": ".artifacts/mobile-hardware-alignment/h0-h1/desktop_pipeline_v19_programmable_msaa_timeout_serial.log",
+    "serial_sha256": "40a63c3e8a8962a18051d3321060e76b24bb271cf080f26e592fa3d6b2a5c058",
+    "diagnosis": "Unknown: needs focused private4lane/2warp programmableMSAA replay; do notattribute tohostload orRTLwithout evidence.",
+    "termination": "SIGTERM sent after definite guestfailure; PID88589 subsequentlyabsent; unrelated97328 preserved."
+  },
+  "native": {
+    "passed": true,
+    "checks": 3,
+    "render_jobs": 6,
+    "checked_sample_words": 57344,
+    "source_sha256": {
+      "src/test/scala/opengpu/system/ProgrammableTextureAxiSpec.scala": "b9317db66d6460a68503515734dbd718e614ad98ec3add3dbff4a5c9b6969fce",
+      "src/test/scala/opengpu/system/DrmFragmentImageAxiSpec.scala": "be2f27557adf5be988a2270b4075a802134de0158b5aa669411ec43eb98eb2b5",
+      "src/test/scala/opengpu/system/DrmProgrammableMsaaAxiSpec.scala": "d98f4d2ce2a93416f27db24533c4112e7fb978e448e065275935ac015653bf1c"
+    },
+    "build_metadata_sha256": "b34ff09a045a0a38fe4268ee1a1541a614e7e74ac1bfb5edee43104557c3cabf",
+    "log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/drm_msaa_v19_replay_v3_unit.log",
+      "sha256": "5fb7292b3384909292dffd13724e306b10a38768fde9b5e3bc7662f7e61dbf67"
+    },
+    "initial_gpu_cycles": [
+      {
+        "sample_mode": 0,
+        "cycles": 172285
+      },
+      {
+        "sample_mode": 2,
+        "cycles": 234166
+      },
+      {
+        "sample_mode": 1,
+        "cycles": 178769
+      }
+    ],
+    "profile": "4generalCUs16/8, explicitprivategraphics4/2 checkedbySHADER_CONFIG, defaultL2/AXI64,64x64; exact21Cfragmentwords, guestvertexprogram/UVs and4x4/2x2/1x1mipchain.",
+    "coverage": "Independent per-sample top-left coverage andwarp0discard mask; initial+freshbuffer recovery in each1x/4x/2x mode. Noresolve orfullLinuxsubmissionhistory in thisnativecheck."
+  },
+  "invalid_probes": [
+    {
+      "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/drm_msaa_v19_replay.json",
+      "sha256": "bb0b9a633b7584aa0bf68898c7b9f9a944b7722723f737f24e87ff69de18a882",
+      "status": "INVALID_FIXTURE_PROFILE: private graphics inherited16/8 instead of required4/2; first1x image mismatch is not an RTL diagnosis."
+    },
+    {
+      "metadata": ".artifacts/mobile-hardware-alignment/h0-h1/drm_msaa_v19_replay_v2.json",
+      "sha256": "82605145a712abd7f96557ae7a2640fc8b54d85425a254f1bf325e0740e8fa2e",
+      "status": "INVALID_POSTCONDITION: 1x initialimage4096samples/1009red andnativecompletion172285cycles observed, thenfixtureincorrectlyrequired baselevelPA; shaderfetches mip1 atPA+64."
+    }
+  ],
+  "diagnosis": "Unresolved. Native success does not rule out mode transitions, priorguesthistory, driver/bridge differences or an emulation deadline. Do not weaken hardwarequalification or claimLinuxpass.",
+  "open_work": [
+    "Native1x-to4x transition in oneDUT, including completion/IDreuse and freshattachments.",
+    "Diagnose/replay fullLinuxMSAAtimeout with exactarchivedmodel; GPUcyclebounds andfunctionalimages remainrequired.",
+    "Latestmainclipper/raster fullLinuxintegration stillpending."
+  ]
+}

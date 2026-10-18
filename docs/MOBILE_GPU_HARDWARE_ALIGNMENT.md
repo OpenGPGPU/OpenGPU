@@ -1000,3 +1000,23 @@ The V21 resident rasterizer's full route finishes with one setup violation at
 Its remaining path reaches a registered cross-product partial from vertex X.
 It still fails the unchanged1 GHz gate, despite the small violation. These
 component results do not establish whole-GPU timing, area or energy closure.
+
+## Programmable Linux MSAA timeout investigation
+
+[The V19 MSAA replay](performance/mobile-drm-msaa-replay-2026-10-18.json)
+records a full Linux smoke failure waiting for the4x render syncobj after a
+300-second guest deadline. Its exact model, initramfs, driver, test and serial
+log are retained. This is a failed V19 integration run, separate from the old
+scissor-only programmable Linux pass.
+
+A focused native replay passes all three1x/2x/4x cases and their fresh-buffer
+recovery renders, checking57,344 stored sample words. It uses the actual guest
+shader/vertex instructions, UV gradients and packed mip chain, four general
+16-lane/8-warp CUs and explicitly checked private4-lane/2-warp graphics cores.
+The4x initial render completes in234,166 GPU cycles. Earlier diagnostic fixture
+errors are retained separately and are not classified as RTL failures.
+
+The Linux timeout remains unexplained. These native cases start each sample
+mode from reset, so same-DUT mode changes and the full guest submission history
+still need investigation. They do not qualify current-main Linux integration
+or justify reporting the failed guest as passed.
