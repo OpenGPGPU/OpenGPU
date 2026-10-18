@@ -1153,3 +1153,17 @@ its two MSAA waits take180,118 ms and71,933 ms, both below the original
 300-second limit. The positive replay and earlier timeout are retained
 separately, with the original cause unresolved. This qualifies that frozen
 legacy64x64 integration run, not current-main mobile rendering or timing.
+
+A normal sbt build of the checked-in sources passes38 checks across10 suites
+covering geometry, divider, clipping, UV and rendering integration. This
+removes dependence on private class overlays for that regression. The old
+compiled base classpath is copied and hashed for historical replay. See
+[the current-source regression](performance/mobile-current-source-regression-2026-10-18.json).
+
+The same frozen V21 raster RTL with30 ps setup-repair headroom still fails
+1 GHz: one−3.50975 ps setup path, with+29.066 ps hold and zero physical
+violations. Final OpenDB again identifies `vHold_v0_x[2]` to
+`crossRightParts_1_midB[29]`, a native partial multiplier. The previous
+margin0 result remains−5.14966 ps; neither run is qualified. A separate
+carry-save/prefix multiplier experiment will measure whether that logic
+can be shortened without adding raster setup cycles.

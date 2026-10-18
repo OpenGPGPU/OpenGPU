@@ -1,0 +1,31 @@
+{
+  "scope": "Normal sbt build of currentcommittedstagedgeometry/divider/clipping/unsignedUVsources; no privateclassoverlays. ThisdoesnotqualifyfullGPUphysicaltiming/API/frameperformance.",
+  "passed": true,
+  "checks": 38,
+  "suites": 10,
+  "commit": "61f4e66baea079dc21096cdb614451a8a3804f70",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/PreparedGeometryStage.scala": "ea0c1203590505f4a0b1f924b2c5975c2e2026fb09321892b6d9f113fa1c8f58",
+    "src/main/scala/opengpu/graphics/RenderPipeline.scala": "8b038b6d75d8afc80aa8d65a23ae7df9d95256803f8067c7f3b7a020febeb1e7",
+    "src/main/scala/opengpu/graphics/GeometryStage.scala": "4cf72ade40295861c9a664c7025e387c7ce2a03b8125c53b8c56e8014da4f935",
+    "src/main/scala/opengpu/graphics/NearClipStage.scala": "7fbfc374b59e020836d8db2ba21272ad2f610ed6da9366636beef66463550d9b",
+    "src/main/scala/opengpu/graphics/TexturedFragStage.scala": "791b255ec59cad5cb962b91fc8af0c3165088cb744b7bb267c3115f592729a11",
+    "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "d1a07fb3df64be1c397711a29e46f2db42eaa9b84a8a52835c008b6db1ceae4a",
+    "src/test/scala/opengpu/graphics/PreparedGeometryStageSpec.scala": "347971e7172f18b160ae730ce4a5fc705f967e8ca29aa5a863014c7ef5647f67",
+    "src/test/scala/opengpu/graphics/TexUVInterpolatorSpec.scala": "c7993b342a01f9ac176623ba022ae8afc034c9473186de35b1b1b9af3fb8cc11",
+    "src/test/scala/opengpu/graphics/TexturedFragStageSpec.scala": "883e77fe56f3be7ce1fb9126ddf311fe12c896333ebff3607db36b9fd62d3b48"
+  },
+  "full_build_metadata_sha256": "48393b58b59c9f98513ad6aa00aca110c165ca945c8203506ae76cf530c36457",
+  "argv": [
+    "/opt/homebrew/bin/sbt",
+    "-J-Xmx6G",
+    "-J-XX:ActiveProcessorCount=4",
+    "-Dsbt.server.autostart=false",
+    "-Dopengpu.simJobs=4",
+    "testOnly opengpu.graphics.TexUVInterpolatorSpec opengpu.graphics.TexturedFragStageSpec opengpu.graphics.PreparedGeometryStageSpec opengpu.graphics.GeometryStageSpec opengpu.util.IterativeSignedDividerSpec opengpu.graphics.NearClipStageSpec opengpu.graphics.ClipperExactDivisionSpec opengpu.graphics.RenderPipelineSpec opengpu.graphics.PersistentTileRenderPipelineSpec opengpu.graphics.TileRenderPipelineSpec"
+  ],
+  "log": ".artifacts/mobile-hardware-alignment/h0-h1/current_staged_uv_sbt_regression.log",
+  "log_sha256": "0393c4ae7aae66abdf62d7a8386b620ec8e9d74bc4bc762b15dc64dcebe37fb2",
+  "prior_global_classpath_snapshot_metadata_sha256": "f78362da9ce8509e72ea0a39e41065735216d0a941ecc535d86a1d1dd6b6cf1e",
+  "prior_replay_note": "Historicalprivateoverlays referencedmutabletarget/classdirectories. Exactpre-rebuildcompiledbasewas copiedandhashed; substitute those copieddirectories whenreplayingtheoldcommands. No frozen nativejobwaslivewhenrebuilding."
+}
