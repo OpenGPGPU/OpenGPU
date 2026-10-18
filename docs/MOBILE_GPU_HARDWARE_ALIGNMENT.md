@@ -1349,6 +1349,39 @@ references and directory/scheduler/tile-engine integration, cache-domain
 publication for primitive/state stores and product-frame measurements. It is
 not yet connected to the legacy binner.
 
+An [H2 bin replay pass](performance/mobile-bin-replay-pass-2026-10-18.json) now
+connects the multi-tile directory to the two-engine scheduler over one tagged
+64-byte memory client. Directory word traffic uses transaction ids0..7 and the
+two replay readers use8..9, so responses demultiplex by id range without a
+second port. A round-robin arbiter feeds a two-entry pipelined queue, letting
+directory writes and replay reads share the client while each engine keeps one
+outstanding line. A sealed tile flows straight from the directory into the
+scheduler, so it can replay while other tiles still append, and one `begin`
+admits both blocks only when both can accept it. The pass ends the scheduler
+after the directory completes, merges statuses with `memoryFault` over
+`cancelled` over the first non-success result, and reports directory and replay
+counts in one summary. Cancellation drives both blocks and stays latched until
+the completion handshake; the scheduler now waits for a `producerDone` signal
+before summarizing, so a directory that reports tiles after the engines drain
+is still counted in full. The offered per-tile result is also latched, so it no
+longer changes when another engine's completion becomes valid under
+backpressure. All78 selected checks pass across nine suites including8 pass
+checks, with interleaved two-tile replay, replay of a sealed tile during
+building, page-link traversal, an empty tile, malformed descriptors, cancel
+accounting, replay-fault isolation and held-request/output stability. The first
+synthesis missed1 GHz by9.66 ps through the reader's descriptor bound, where a
+33-bit limit-minus-base subtract, a page shift and the constant per-page record
+multiply resolved in one cycle; registering the arena page count before the
+multiply moves synthesis to+32.841 ps (1033.956 MHz). The complete routed1 GHz
+component gate passes at+33.8255 ps setup/+22.8047 ps hold (1035.01 MHz) with
+199503 instances and8104.64 µm² of standard cells and zero
+timing/placement/DRC/antenna/flow violations with complete mapping. It still
+needs handle translation and cache insertion between replay references and the
+tile engines, cache-domain publication for primitive/state stores, a full spill
+and restart policy, downstream tile-engine consumption in `RenderPipeline`,
+attachment-bytes/frame measurements and product-frame qualification. It does
+not yet replace the legacy binner.
+
 The separate fixed-function Linux run from the same committed6aed4cd source
 also completes its full configured DRM suite and powers off. Its original
 300-second MSAA waits finish in53,520 ms for render and30,791 ms for resolve.

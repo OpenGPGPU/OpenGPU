@@ -71,7 +71,7 @@ class TileBinReplaySchedulerSpec extends AnyFlatSpec {
     d.io.begin.valid.poke(false.B); d.io.begin.bits.poke(0.U.asTypeOf(d.io.begin.bits))
     d.io.tile.valid.poke(false.B); d.io.tile.bits.poke(0.U.asTypeOf(d.io.tile.bits))
     d.io.end.valid.poke(false.B); d.io.end.bits.poke(false.B)
-    d.io.cancel.poke(false.B)
+    d.io.cancel.poke(false.B); d.io.producerDone.poke(false.B)
     d.io.tileDone.ready.poke(false.B); d.io.completion.ready.poke(false.B)
     d.io.memoryRequest.ready.poke(false.B); d.io.memoryResponse.valid.poke(false.B)
     d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits))
@@ -216,6 +216,8 @@ class TileBinReplaySchedulerSpec extends AnyFlatSpec {
     def cancel(): Unit = { d.io.cancel.poke(true.B); step(); d.io.cancel.poke(false.B) }
 
     def finish(): Summary = {
+      // All tiles have been offered by the time a test asks for the summary.
+      d.io.producerDone.poke(true.B)
       if (!d.io.completion.valid.peek().litToBoolean) {
         d.io.end.valid.poke(true.B); d.io.end.bits.poke(true.B)
         val start = cycle
@@ -346,6 +348,28 @@ class TileBinReplaySchedulerSpec extends AnyFlatSpec {
       assert(s.status == PrimitiveBinStatus.cancelled && s.tiles == 3)
       assert(d.pending.isEmpty,"all reads drained")
       info(s"TILE_REPLAY_CANCEL tiles=3 cycles=${d.cycle}")
+    }
+  }
+
+  it should "consume tile results offered after cancellation" in {
+    simulate(scheduler()) { dut =>
+      val d = new Driver(dut)
+      d.responseDelay = 20
+      val a = image(6,0x10000,0x1111L)
+      d.addImage(a); d.setPool(a.base,a.limit)
+      d.begin(); d.send(a)
+      d.until(d.requests.nonEmpty)
+      d.cancel()
+      // A directory still reporting tile results after the cancel must be
+      // drained; the scheduler reports them as cancelled without replay.
+      val b = image(2,0x10000+pageBytes,0x2222L,firstOrdinal = 1)
+      d.addImage(b)
+      d.send(b)
+      val s = d.finish()
+      assert(s.status == PrimitiveBinStatus.cancelled && s.tiles == 2)
+      assert(d.completions.map(_.tile).toSet == Set(a.tile,b.tile))
+      assert(d.completions.forall(c =>
+        c.status == PrimitiveBinStatus.cancelled && !c.prefixUsable))
     }
   }
 

@@ -44,8 +44,9 @@ class TileBinReplaySummary extends Bundle {
   *
   * Tiles with no usable prefix are reported without memory traffic. Cancel
   * stops dispatch, drains every started reader (irrevocable references still
-  * leave that engine) and reports unstarted jobs as cancelled before the pass
-  * summary. The caller must drain every per-tile completion before `end` can
+  * leave that engine), reports unstarted jobs as cancelled, and consumes tile
+  * completions still offered by the producer as cancelled results so a
+  * directory can finish reporting before the pass summary. The caller must drain every per-tile completion before `end` can
   * be accepted and must keep the arena owned until the summary.
   *
   * This block does not fetch primitive/state handles, integrate a cache
@@ -54,11 +55,15 @@ class TileBinReplaySummary extends Bundle {
 class TileBinReplayScheduler(
   config: GpuConfig = GpuConfig(),
   engines: Int = 2,
-  pageBytes: Int = 4096
+  pageBytes: Int = 4096,
+  memoryTransactions: Int = 0,
+  transactionBase: Int = 0
 ) extends Module {
   require(config.xLen == 32)
   require(engines >= 1 && engines <= 4)
   require(pageBytes >= 64 && pageBytes <= 65536 && (pageBytes & (pageBytes-1)) == 0)
+  private val txCount = if (memoryTransactions == 0) engines else memoryTransactions
+  require(transactionBase >= 0 && transactionBase + engines <= txCount)
   private val engineBits = log2Ceil(engines).max(1)
   val io = IO(new Bundle {
     val begin = Flipped(Decoupled(new TileBinReplayDescriptor))
@@ -66,10 +71,13 @@ class TileBinReplayScheduler(
     val tileDone = Decoupled(new TileBinReplayCompletion)
     val end = Flipped(Decoupled(Bool()))
     val cancel = Input(Bool())
+    /** No further tile completions will be offered. Cancellation uses this to
+      * summarize only after a directory has reported its last tile. */
+    val producerDone = Input(Bool())
     val completion = Decoupled(new TileBinReplaySummary)
     val reference = Vec(engines, Decoupled(new PrimitiveBinReference))
-    val memoryRequest = Decoupled(new ComputeMemoryRequest(config,64,engines))
-    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64,engines)))
+    val memoryRequest = Decoupled(new ComputeMemoryRequest(config,64,txCount))
+    val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64,txCount)))
     val busy = Output(Bool())
     val engineBusy = Output(Vec(engines, Bool()))
   })
@@ -96,9 +104,9 @@ class TileBinReplayScheduler(
   private val doneValid = RegInit(VecInit(Seq.fill(engines)(false.B)))
   private val done = Reg(Vec(engines, new TileBinReplayCompletion))
   private val readers = Seq.tabulate(engines)(e =>
-    Module(new PrimitiveBinReader(config,pageBytes,engines,e)))
+    Module(new PrimitiveBinReader(config,pageBytes,txCount,transactionBase+e)))
   private val arbiter = Module(new RRArbiter(
-    new ComputeMemoryRequest(config,64,engines),engines))
+    new ComputeMemoryRequest(config,64,txCount),engines))
   private val stop = aborting || io.cancel
   private val engineIdBits = 8
 
@@ -115,7 +123,7 @@ class TileBinReplayScheduler(
     arbiter.io.in(e) <> readers(e).io.memoryRequest
     readers(e).io.cancel := active && stop
     readers(e).io.memoryResponse.valid := io.memoryResponse.valid &&
-      io.memoryResponse.bits.transactionId === e.U
+      io.memoryResponse.bits.transactionId === (transactionBase+e).U
     readers(e).io.memoryResponse.bits := io.memoryResponse.bits
   }
   io.memoryRequest <> arbiter.io.out
@@ -126,7 +134,25 @@ class TileBinReplayScheduler(
   private val free = VecInit((0 until engines).map(e => !nextValid(e)))
   private val choices = (0 until engines).map(i => (dispatchIndex + i.U) % engines.U)
   private val pick = PriorityMux(choices.map(e => free(e) -> e))
-  io.tile.ready := active && !stop && free.asUInt.orR
+  private val doneOrder = (0 until engines).map(i => (doneIndex + i.U) % engines.U)
+  private val donePickRaw = PriorityMux(doneOrder.map(e => doneValid(e) -> e))
+  // The offered completion must not change while the consumer withholds
+  // ready: latch the first selected slot until it is accepted, even if an
+  // earlier slot in rotation becomes valid later.
+  private val doneHeadValid = RegInit(false.B)
+  private val doneHead = RegInit(0.U(engineBits.W))
+  private val doneAny = doneValid.asUInt.orR
+  private val donePick = Mux(doneHeadValid, doneHead, donePickRaw)
+  // During cancellation a producer may still offer completed tiles; they are
+  // accepted into a free done slot as cancelled so the producer can finish
+  // reporting. The slot must not also receive a reader or local completion.
+  private val discardFree = VecInit((0 until engines).map(e => !doneValid(e)))
+  private val discardPick = PriorityMux(doneOrder.map(e => discardFree(e) -> e))
+  private val localCompleting = (0 until engines).map(e =>
+    curValid(e) && !curStarted(e) && !doneValid(e) && (stop || !playable(cur(e)))).reduce(_ || _)
+  private val readerCompleting = readers.map(_.io.completion.fire).reduce(_ || _)
+  private val canDiscard = discardFree.asUInt.orR && !localCompleting && !readerCompleting
+  io.tile.ready := active && Mux(stop, canDiscard, free.asUInt.orR)
   private def playable(job: TileBinCompletion): Bool =
     job.prefixUsable && job.headValid &&
       (job.status === PrimitiveBinStatus.success.U ||
@@ -152,6 +178,7 @@ class TileBinReplayScheduler(
     totalReferences := 0.U
     totalPages := 0.U
     totalLines := 0.U
+    doneHeadValid := false.B
     for (e <- 0 until engines) {
       curValid(e) := false.B
       curStarted(e) := false.B
@@ -178,7 +205,17 @@ class TileBinReplayScheduler(
   }
   when(active) {
     when(io.tile.fire) {
-      when(!curValid(pick)) {
+      when(stop) {
+        done(discardPick).identity := io.tile.bits.identity
+        done(discardPick).tile := io.tile.bits.tile
+        done(discardPick).engine := discardPick
+        done(discardPick).status := stopStatus
+        done(discardPick).prefixUsable := false.B
+        done(discardPick).emitted := 0.U
+        done(discardPick).pages := 0.U
+        done(discardPick).readLines := 0.U
+        doneValid(discardPick) := true.B
+      }.elsewhen(!curValid(pick)) {
         cur(pick) := io.tile.bits
         curValid(pick) := true.B
         curStarted(pick) := false.B
@@ -234,10 +271,9 @@ class TileBinReplayScheduler(
       }
     }
   }
-  private val doneOrder = (0 until engines).map(i => (doneIndex + i.U) % engines.U)
-  private val donePick = PriorityMux(doneOrder.map(e => doneValid(e) -> e))
   io.tileDone.bits := done(donePick)
   when(io.tileDone.fire) {
+    doneHeadValid := false.B
     doneValid(donePick) := false.B
     doneIndex := Mux(donePick === (engines-1).U, 0.U, donePick + 1.U)
     tilesCompleted := tilesCompleted + 1.U
@@ -245,14 +281,19 @@ class TileBinReplayScheduler(
     totalPages := totalPages + io.tileDone.bits.pages
     totalLines := totalLines + io.tileDone.bits.readLines
     passStatus := mergeStatus(passStatus, io.tileDone.bits.status)
+  }.elsewhen(doneAny && !doneHeadValid) {
+    doneHeadValid := true.B
+    doneHead := donePickRaw
   }
   when(io.end.fire) { endPending := true.B }
   private val enginesEmpty = (0 until engines).map(e => !curValid(e) && !nextValid(e) &&
     !doneValid(e) && !readers(e).io.busy).reduce(_ && _)
   // Cancellation abandons the remaining work, so a drained pass reports its
-  // summary without requiring a later end.
-  when(active && (endPending || aborting) && enginesEmpty && !summaryValid &&
-      !io.tile.valid) {
+  // summary without requiring a later end. It still waits for the producer to
+  // finish offering tile results so no late completion is omitted from the
+  // counts.
+  when(active && (endPending || (aborting && io.producerDone)) && enginesEmpty &&
+      !summaryValid && !io.tile.valid) {
     result.identity := descriptor.pool.identity
     result.status := passStatus
     result.tiles := tilesCompleted

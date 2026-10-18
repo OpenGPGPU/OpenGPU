@@ -73,7 +73,10 @@ class PrimitiveBinReader(
   private val descriptor = Reg(new PrimitiveBinReadDescriptor)
   private val poolLegal = Reg(Bool())
   private val headLegal = Reg(Bool())
-  private val maximumReferences = Reg(UInt(32.W))
+  // Arena page count is registered separately so the constant-capacity
+  // multiply that bounds the descriptor does not follow the 33-bit subtract
+  // and shift in one cycle.
+  private val pageCapacity = Reg(UInt(33.W))
   private val page = Reg(UInt(32.W))
   private val expectedPageOrdinal = Reg(UInt(32.W))
   private val nextPage = Reg(UInt(32.W))
@@ -150,10 +153,11 @@ class PrimitiveBinReader(
         descriptor.pool.base.pad(33) <= descriptor.pool.limit &&
         descriptor.pool.limit <= (BigInt(1)<<32).U(33.W)
       headLegal := pageInBounds(descriptor.head)
-      maximumReferences := ((descriptor.pool.limit-descriptor.pool.base.pad(33)) >> pageBits) * capacity.U
+      pageCapacity := (descriptor.pool.limit-descriptor.pool.base.pad(33)) >> pageBits
       state := boundsCheck
     }
     is(boundsCheck) {
+      val maximumReferences = pageCapacity * capacity.U
       when(!poolLegal || descriptor.headValid =/= (descriptor.count =/= 0.U) ||
           descriptor.count > maximumReferences || (descriptor.headValid && !headLegal)) {
         status := PrimitiveBinStatus.invalidDescriptor.U
