@@ -14,10 +14,12 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
     omInflight: Int = 16, omLocality: Boolean = false, bufferCommandReads: Boolean = false,
     mesaFormats: Boolean = false, bufferTextureReads: Boolean = false,
     explicitRenderExtent: Boolean = false, drmImageSide: Int = 0,
-    drmSampleMode: Int = 0, drmGuestTexture: Boolean = false)
+    drmSampleMode: Int = 0, drmGuestTexture: Boolean = false,
+    drmModeTransitions: Boolean = false)
     extends AnyFlatSpec with GpuHostTestSupport {
   require(drmSampleMode >= 0 && drmSampleMode <= 2)
   require(drmSampleMode == 0 || drmImageSide > 0)
+  require(!drmModeTransitions || (drmGuestTexture && drmSampleMode == 0))
   for (scenario <- (if (drmImageSide > 0) Seq("instruction vertex DRM image")
       else if (mesaFormats) Seq("Mesa formats") else Seq("translation", "invalid PTE", "page-table bus fault",
       "texture bus fault", "reset during texture read", "texture CPU update", "instruction translation",
@@ -92,25 +94,29 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         // The triangle includes the diagonal and excludes the two coordinate
         // axes. The guest discards warp0 (the first quad of each8-slot batch).
         // Unequal edge-quad populations mean this is not half the pixel area.
-        val samplePositions = drmSampleMode match {
+        def samplePositions(mode: Int): Seq[(Int, Int)] = mode match {
           case 0 => Seq((0, 0))
           case 1 => Seq((-1, -1), (1, 1))
           case 2 => Seq((-1, -1), (1, -1), (-1, 1), (1, 1))
         }
-        val guestLiveSamples = (for (y <- 0 until side by 2; x <- 0 until side by 2)
-          yield (for (dy <- 0 to 1; dx <- 0 to 1; (position, s) <- samplePositions.zipWithIndex
+        def guestLiveSamples(mode: Int): Set[(Int, Int, Int)] = (for (y <- 0 until side by 2; x <- 0 until side by 2)
+          yield (for (dy <- 0 to 1; dx <- 0 to 1; (position, s) <- samplePositions(mode).zipWithIndex
             if (x + dx) * 4 + position._1 > 0 && (y + dy) * 4 + position._2 > 0 &&
               (x + dx + y + dy) * 4 + position._1 + position._2 <= side * 4)
             yield (x + dx, y + dy, s))).filter(_.nonEmpty).zipWithIndex
           .filter(_._2 % 2 == 1).flatMap(_._1).toSet
-        def checkGuestImage(base: Int, sampled: Long, background: Long): Unit = if (drmImage) {
-          assert(side == 64 && (drmSampleMode != 0 || guestLiveSamples.size == 1009))
-          val mismatches = for (y <- 0 until side; x <- 0 until side; s <- 0 until samples;
-            want = if (guestLiveSamples((x, y, s))) sampled else background;
-            got = words.getOrElse(base + ((y * side + x) * samples + s) * 4L, BigInt(0)).toLong
+        def checkGuestImage(base: Int, sampled: Long, background: Long,
+            mode: Int = drmSampleMode): Unit = if (drmImage) {
+          val live = guestLiveSamples(mode)
+          val activeSamples = 1 << mode
+          assert(side == 64 && (mode != 0 || live.size == 1009))
+          val mismatches = for (y <- 0 until side; x <- 0 until side; s <- 0 until activeSamples;
+            want = if (live((x, y, s))) sampled else background;
+            got = words.getOrElse(base + ((y * side + x) * activeSamples + s) * 4L, BigInt(0)).toLong
             if got != want) yield s"($x,$y,$s) got=0x${got.toHexString} expected=0x${want.toHexString}"
-          assert(mismatches.isEmpty, s"DRM image mismatch: ${mismatches.size}; ${mismatches.take(16).mkString(", ")}")
-          info(s"DRM image side=$side samples=$samples checkedSamples=${side * side * samples} sampledSamples=${guestLiveSamples.size}")
+          val mismatchCount = mismatches.size
+          assert(mismatchCount == 0, s"DRM image mismatch: $mismatchCount; ${mismatches.take(16).mkString(", ")}")
+          info(s"DRM image side=$side samples=$activeSamples checkedSamples=${side * side * activeSamples} sampledSamples=${live.size}")
         }
         val vertices = Seq(-65536L, -65536L, 0L, 65536L,
           65536L, -65536L, 0L, 65536L, -65536L, 65536L, 0L, 65536L)
@@ -442,6 +448,37 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
           assert(if (divergentFragment) (0 until side * side).exists(i => words(recoveryColor + i * 4L) == recoveryTexel)
           else words(recoveryColor + 1 * 16L + 1 * 4) == recoveryTexel,
           "framebuffer must contain the sampled physical texel")
+        if (drmModeTransitions) {
+          // Keep the same GPU, code, context mapping and command ID across
+          // mode changes. Fresh attachments avoid CPU/GPU cache aliasing.
+          for ((mode, index) <- Seq(2, 0, 1).zipWithIndex) {
+            axiWrite(dut, GpuCommandMmioRegs.COMPLETION_POP, 1)
+            axiWrite(dut, RenderHostRegs.IRQ, 3)
+            val modeSamples = 1 << mode
+            val targetColor = 0x80000 + index * 0x40000
+            val targetDepth = targetColor + 0x20000
+            val background = 0x31415926L
+            store(descriptor + 8, Seq(targetColor.toLong, targetDepth.toLong, side * modeSamples * 4L))
+            store(descriptor + 9 * 4, Seq(mode.toLong))
+            store(targetColor, Seq.fill(side * side * modeSamples)(background))
+            store(targetDepth, Seq.fill(side * side * modeSamples)(0x00ffffffL))
+            axiWrite(dut, GpuCommandMmioRegs.SAMPLE_MODE, mode)
+            axiWrite(dut, GpuCommandMmioRegs.TLB_FLUSH, 1)
+            reads.clear(); writes.clear()
+            val before = dut.io.performance.get.system.cycles.peek().litValue
+            submit(17)
+            serviceMemoryMaster(dut, readLine, writeAckDelay = 12,
+              maxCycles = 2000000, readResponseDelay = 2)(writeLine) {
+              dut.io.m_irq.peek().litToBoolean
+            }
+            assert((axiRead(dut, RenderHostRegs.STATUS) & 7) == 2)
+            val result = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
+            assert((result & 255) == 17 && result.testBit(15) && ((result >> 11) & 15) == 0)
+            checkGuestImage(targetColor, texel, background, mode)
+            info(s"DRM same-device transition mode=$mode cycles=" +
+              s"${dut.io.performance.get.system.cycles.peek().litValue - before}")
+          }
+        }
         if (mesaFormats) {
           val textureWords = Seq(0x115395d3L, 0xd3955311L, 0xd3115395L, 0x00955311L, 0x00115395L)
           val rgbaAlpha = Seq(0x115395d3L, 0xd3955311L, 0xd3115395L, 0xff955311L, 0xff115395L)

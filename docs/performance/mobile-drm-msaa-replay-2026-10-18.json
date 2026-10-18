@@ -69,11 +69,10 @@
       "status": "INVALID_POSTCONDITION: 1x initialimage4096samples/1009red andnativecompletion172285cycles observed, thenfixtureincorrectlyrequired baselevelPA; shaderfetches mip1 atPA+64."
     }
   ],
-  "diagnosis": "Unresolved. Native success does not rule out mode transitions, priorguesthistory, driver/bridge differences or an emulation deadline. Do not weaken hardwarequalification or claimLinuxpass.",
+  "diagnosis": "Unresolved. Isolated andsame-device nativeMSAA pass. FullLinuxhistory/driverbridge/deadline remainpossible; controlled exactmodel900s replaystarted, no verdictyet.",
   "open_work": [
-    "Native1x-to4x transition in oneDUT, including completion/IDreuse and freshattachments.",
-    "Diagnose/replay fullLinuxMSAAtimeout with exactarchivedmodel; GPUcyclebounds andfunctionalimages remainrequired.",
-    "Latestmainclipper/raster fullLinuxintegration stillpending."
+    "Diagnose/replay fullLinuxMSAAtimeout with exact archivedmodel and elapsedwait logging; unchangedGPUcyclebounds andimagechecks.",
+    "Latestmainclipper/raster/viewport fullLinuxintegration stillpending."
   ],
   "wait_diagnostics": {
     "status": "PASS: default300s/explicit900s compile with warnings-as-errors; zero/negative/overflow rejected; runner shell syntax valid",
@@ -87,6 +86,44 @@
     "default_msaa_budget_ms": 300000,
     "explicit_probe_budget_ms": 900000,
     "scope": "Both MSAA render/resolve waits log stage,start,elapsed,result,errno. ARTI_GPU_MSAA_WAIT_MS is an explicit test-only compile override; hardware cycle/clock and all pixel/status checks unchanged.",
-    "guest_probe": "Prepared; not launched while same-DUT native prerequisite is unverified."
+    "guest_probe": "Running: drm_msaa_deadline_900s_guest.json; exact archivedQEMU+driver, explicit900s MSAAbudget, allimagechecks preserved."
+  },
+  "same_device_modes": {
+    "passed": true,
+    "checks": 1,
+    "render_jobs": 5,
+    "mode_sequence": [
+      0,
+      0,
+      2,
+      0,
+      1
+    ],
+    "checked_sample_words": 36864,
+    "transition_gpu_cycles": [
+      {
+        "mode": 2,
+        "cycles": 234107
+      },
+      {
+        "mode": 0,
+        "cycles": 172229
+      },
+      {
+        "mode": 1,
+        "cycles": 178718
+      }
+    ],
+    "source_sha256": {
+      "src/test/scala/opengpu/system/ProgrammableTextureAxiSpec.scala": "0495a13022b79d23469b449ae71555792f121776c43e4e800c0b5341320a2b94",
+      "src/test/scala/opengpu/system/DrmFragmentImageAxiSpec.scala": "be2f27557adf5be988a2270b4075a802134de0158b5aa669411ec43eb98eb2b5",
+      "src/test/scala/opengpu/system/DrmProgrammableMsaaAxiSpec.scala": "efd0c18dc0c63203d91011b871868b91c83f9a9504c013f627b1a8ee347cd178"
+    },
+    "metadata_sha256": "d763fcf04756e3d968db33fda3d6be0a0e61f75fc1e55e7dd347cdce9136cf63",
+    "log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/drm_msaa_v19_mode_switch_unit.log",
+      "sha256": "4e605ef76c5bfc5d39d5e35637e23757e92f2471bc7b315e3acc450a539558e0"
+    },
+    "coverage": "One frozen V19 DUT, samecode/contextmapping/commandID17, freshattachments; TLBflush at modechanges. Allsampleimages/statuses exact,2M GPUcycle boundperrender. Does not reproduce priorguesttypedresolves/VMhistory."
   }
 }

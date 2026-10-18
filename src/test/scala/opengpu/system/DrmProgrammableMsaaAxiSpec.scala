@@ -11,3 +11,6 @@ class DrmProgrammable2xAxiSpec extends ProgrammableTextureAxiChecks(
 
 class DrmProgrammable4xAxiSpec extends ProgrammableTextureAxiChecks(
   None, drmImageSide = 64, drmSampleMode = 2, drmGuestTexture = true)
+
+class DrmProgrammableModeSwitchAxiSpec extends ProgrammableTextureAxiChecks(
+  None, drmImageSide = 64, drmGuestTexture = true, drmModeTransitions = true)

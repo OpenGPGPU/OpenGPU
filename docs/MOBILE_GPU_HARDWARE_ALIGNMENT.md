@@ -1044,3 +1044,9 @@ binaries compile with warnings treated as errors, and zero, negative and
 out-of-range budgets are rejected. A longer deadline does not qualify GPU
 cycles, physical timing or image correctness; the failed Linux run remains
 failed until a separately identified replay supplies its own evidence.
+
+A frozen-V19 same-device diagnostic also passes five render jobs:1x,
+recovery1x, then4x→1x→2x, with command-ID reuse and36,864 exact sample-word
+checks. Transition jobs take234,107/172,229/178,718 GPU cycles. The fixture
+flushes translation at mode changes and does not replay prior typed resolves
+or the complete Linux history, so the archived Linux timeout is still open.
