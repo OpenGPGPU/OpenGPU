@@ -1020,3 +1020,8 @@ The Linux timeout remains unexplained. These native cases start each sample
 mode from reset, so same-DUT mode changes and the full guest submission history
 still need investigation. They do not qualify current-main Linux integration
 or justify reporting the failed guest as passed.
+
+The V5 clipper route at25% utilization stops before routing:6,937 I/O pins
+exceed the floorplan's6,716 available positions. A22%-utilization retry expands
+the perimeter while retaining the same RTL,1 GHz clock, TC/SLVT corner and25%
+I/O delays. It remains unqualified until the complete routed checks finish.

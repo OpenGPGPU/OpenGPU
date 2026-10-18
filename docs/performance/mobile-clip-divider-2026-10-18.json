@@ -408,8 +408,17 @@
       "log": "/tmp/gpu-mobile-h1-clip-distance-v5-formal.log",
       "log_sha256": "67be0dae8f5ab248eb30ea483010663cbd09eb6dc5dfd518e7f8ca2c903eb57e"
     },
-    "route_status": "Fullroute session73447 running: generated/mobile-h1/physical-clip-integration-v5-route; no finalqualification.",
-    "native_status": "Running corrected per-suite matrix44643; frozenV5+rasterV21,48distinctjobs requested; no passyet."
+    "route_status": "Retry running atutil22, samefrozenRTL/1GHzTC/SLVTIO25%, closureeffort; physical-clip-integration-v5-route-util22. Priorutil25route failedIOplacement, nottimingqualification.",
+    "native_status": "Running corrected per-suite matrix44643; frozenV5+rasterV21,48distinctjobs requested; no passyet.",
+    "route_attempt_util25": {
+      "passed": false,
+      "terminal_exit_code": 2,
+      "stage": "3_2_place_iop",
+      "reason": "6937 IO pins exceed6716availablepositions; requiredperimeter665.95um vs650.62um available.",
+      "qualification": "generated/mobile-h1/physical-clip-integration-v5-route/qualification.json",
+      "qualification_sha256": "6f3c9b4d1bb999926187f46ac628927a21039d39705708f0a0413cd7e888a7a1",
+      "routed_timing_available": false
+    }
   },
   "native_clipped_v1": {
     "metadata_sha256": "969d3c7d690f17fa7bbce5763bde9d7215dae2c30bc269d1e78312b5d2dee7f1",
