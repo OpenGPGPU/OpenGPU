@@ -88,6 +88,11 @@ class BinPagePool(pageBytes: Int = 4096) extends Module {
   private val legal = pool.version === 1.U && pool.pageSizeLog2 === pageBits.U &&
     aligned && pool.base.pad(33) <= pool.limit &&
     pool.limit <= (BigInt(1) << 32).U(33.W)
+  // Elastic page counter: one allocation may sit in `pending` until the next
+  // cycle, when it is absorbed. The late allocation enable then only updates
+  // the pending flag and reply enable, never the carry chain of `count`.
+  private val pending = RegInit(false.B)
+  private val allocatedPages = Mux(pending, count + 1.U, count)
 
   io.begin.ready := state === idle && !io.cancel
   io.allocate.ready := state === active && !exhausted && !io.cancel &&
@@ -103,17 +108,18 @@ class BinPagePool(pageBytes: Int = 4096) extends Module {
   io.allocated := io.allocate.fire && room
   io.allocationFailed := io.allocate.fire && !room
 
+  pending := io.allocate.fire && room
+  count := allocatedPages
   when(io.allocation.fire) { replyValid := false.B }
   when(io.allocate.fire) {
     replyValid := true.B
     reply.identity := pool.identity
     reply.request := io.allocate.bits
-    reply.ordinal := count
+    reply.ordinal := allocatedPages
     reply.status := Mux(room, BinPageStatus.success.U, BinPageStatus.exhausted.U)
     reply.address := Mux(room, nextAddress(31, 0), 0.U)
     when(room) {
       nextAddress := afterPage(32, 0)
-      count := count + 1.U
     }.otherwise {
       exhausted := true.B
       status := BinPageStatus.exhausted.U
@@ -125,6 +131,7 @@ class BinPagePool(pageBytes: Int = 4096) extends Module {
         pool := io.begin.bits
         nextAddress := io.begin.bits.base
         count := 0.U
+        pending := false.B
         exhausted := false.B
         status := BinPageStatus.success.U
         state := validate
@@ -154,7 +161,7 @@ class BinPagePool(pageBytes: Int = 4096) extends Module {
       when(!replyValid) {
         completion.identity := pool.identity
         completion.status := Mux(io.cancel, BinPageStatus.cancelled.U, status)
-        completion.allocatedPages := count
+        completion.allocatedPages := allocatedPages
         state := result
       }
     }

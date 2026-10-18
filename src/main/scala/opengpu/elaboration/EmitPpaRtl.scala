@@ -53,6 +53,12 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.PrimitiveBinWriter(mobile.binPageBytes, mobile.binWriteCredits),
           stageArgs, firtoolArgs)
+      case "mobile-bin-store" =>
+        val mobile = opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.PrimitiveBinStore(opengpu.config.GpuConfig(),
+            mobile.binPageBytes, mobile.binWriteCredits),
+          stageArgs, firtoolArgs)
       case "mobile-bin-page-pool" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.BinPagePool(opengpu.config.MobileGpuConfig().binPageBytes),

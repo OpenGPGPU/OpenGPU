@@ -1,0 +1,304 @@
+{
+  "scope": "H2 memory-backed bin replay. PrimitiveBinReader checks and replays a completed PrimitiveBinWriter page chain; PrimitiveBinStore composes the writer and reader through one tagged 64-byte memory client with a word-to-line adapter and round-robin arbitration. This is not a tile scheduler, multi-tile directory, primitive/state cache or cache-domain integration, and it does not replace TileDrawBinner.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/PrimitiveBinReader.scala": "5ec47144cc4df9f698778c097273a41bffe2087db09aa0aaca537246ee3ecef0",
+    "src/main/scala/opengpu/graphics/PrimitiveBinStore.scala": "dd6b65e8d32980388ba7410fa3ee3e9ebe3a0eb8002187843b6a6c7bacfb7373",
+    "src/main/scala/opengpu/graphics/PrimitiveBinWriter.scala": "6968ce5e33ea9521b3a428f460d165ada2c5427e8c46ca1eca0970c1a012abe1",
+    "src/main/scala/opengpu/graphics/BinPagePool.scala": "c336752358b538ac8095456762fae547d0a574ed5620c26c1caf9a0d87b33c55",
+    "src/main/scala/opengpu/graphics/TileAttachmentWriteQueue.scala": "839351c7074e666217f10aa386f5f859f805613c40543cb966ec8ff932bbbdf9",
+    "src/main/scala/opengpu/graphics/OmWordToLinePort.scala": "f42d48a9b4d7e2ffa78b4cf68c231993c7a63a01df949db04664b0a6e34df2ed",
+    "src/main/scala/opengpu/config/MobileGpuConfig.scala": "9c8c2586f6fc9c10bdc94443e84b8fe5b8879018694883d72e294a4e60579ab2",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "b9b3a6381b7e8e21b5e0a3fd909cee2866f4ed51d2f96e8f6dc75ce5e90e4e46",
+    "src/test/scala/opengpu/graphics/PrimitiveBinReaderSpec.scala": "825f9bc2cb1d34f61571725fb8927548b806f910fb7825e9968d6e23334eecf5",
+    "src/test/scala/opengpu/graphics/PrimitiveBinStoreSpec.scala": "05bcf9f22493ebacd0dbba4d276ff7c79f587e825be0163de69d0501684e35b3",
+    "src/test/scala/opengpu/graphics/BinPagePoolSpec.scala": "ef9726cf4c3e57357d14ba3108bf0411957be395a2ae83af6ec5b08117e650e2",
+    "src/test/scala/opengpu/graphics/PrimitiveBinWriterSpec.scala": "28dde1a6ac5b2d6c8fc04d9700c6f58899cf9281ccca94bb9c25f6c964b818e3"
+  },
+  "configuration": {
+    "page_bytes_default": 4096,
+    "supported_page_bytes": "Power of two64..65536.",
+    "writer_transaction_ids": "0 .. writeCredits-1",
+    "reader_transaction_id": "writeCredits",
+    "memory_transactions": "writeCredits+1",
+    "write_credits_default": 8,
+    "line_bytes": 64,
+    "memory_word": "32-bit little-endian",
+    "unresolved_cache_policy": "uncached requests only; the composing client must make acknowledged stores visible to later reads"
+  },
+  "memory_abi": {
+    "version": 1,
+    "magic": "0x47424901",
+    "header_bytes": 32,
+    "header_words": [
+      "magic",
+      "nextPageAddress (zero terminates the chain)",
+      "committedReferenceCount",
+      "context",
+      "pass",
+      "generation",
+      "tile",
+      "allocationOrdinal"
+    ],
+    "record_bytes": 16,
+    "record_words": [
+      "primitiveHandle",
+      "immutableStateHandle",
+      "primitiveSequence",
+      "restartToken"
+    ],
+    "status": {
+      "success": 0,
+      "invalidDescriptor": 1,
+      "cancelled": 2,
+      "exhausted": 3,
+      "memoryFault": 4,
+      "invalidOrder": 5,
+      "invalidPage": 6
+    }
+  },
+  "reader_contract": {
+    "descriptor_checks": "Version1, page-size log2, page-aligned base/limit, base<=limit<=4GiB, head/headValid and count consistency, and count<=arena-pages*records-per-page.",
+    "page_checks": "Before any record is exposed: address alignment, arena bounds, page magic, context/pass/generation/tile ownership, allocation ordinal, count1..capacity<=remaining, and next-page termination/forward bounds/monotonic link.",
+    "order": "Reference sequences must strictly increase across pages; a duplicate or wrap fails with invalidOrder after the preceding prefix was exposed.",
+    "faults": "A read fault returns memoryFault and never substitutes zero references. Unowned transaction IDs are ignored.",
+    "cancel": "Offered reads are irrevocable; offered references are delivered before completion. A cancelled pass drops only not-yet-offered records.",
+    "pipeline": "One record is staged while the previous one is admitted. The wide sequence compare and line selection terminate at staged registers, and the staged candidate overlaps admission so line-resident replay remains one reference per cycle.",
+    "throughput": "One64-byte uncached line per four16-byte records; one outstanding read and one pending reference."
+  },
+  "store_contract": {
+    "composition": "Writer and reader share one tagged memory port through an RRArbiter and a depth-2 request queue. Writer word stores are widened to64-byte lines by OmWordToLinePort with one full-word byte mask per word.",
+    "descriptor_handoff": "Writer completion supplies the replay descriptor only after the count-store acknowledgement. Replay begins only for a usable committed prefix.",
+    "ownership": "The arena must remain owned from writer begin through reader completion; a failed final binding advertises no usable prefix and exposes no fabricated reference.",
+    "integration_limit": "The memory client must make acknowledged uncached stores visible to replay reads. No CPU cache coherence, multi-tile directory, primitive/state fetch or scheduling is provided."
+  },
+  "functional": {
+    "passed": true,
+    "checks": 51,
+    "suites": 6,
+    "reader_checks": 11,
+    "store_checks": 11,
+    "existing_writer_cohort_checks": 29,
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/primitive_bin_store_v6_reader_pipeline_unit.log",
+    "log_sha256": "0a86f9d5a7fcee5974a3840b01718ac6e14a71e0501c37a4957e3f44e10098a5",
+    "coverage": [
+      "Replay5/20/256 references across64/128/4096-byte pages, including arena-relative page gaps and the last line ending at the exclusive4GiB limit.",
+      "Reject malformed versions, page-size logs, unaligned/out-of-range arenas, inconsistent heads/counts and oversized counts before any memory read.",
+      "Reject corrupt magic, ownership, allocated ordinal, per-page count, remaining-count and forward-link fields before exposing a page.",
+      "Reject duplicate and wrapped reference sequences across page boundaries while retaining the already emitted prefix.",
+      "Retain an offered read through cancellation, ignore unowned response tags, and never replace a faulted line with zero references.",
+      "Write and replay20 references through one shared tagged port at write credits1/3/8 with reordered acknowledgements and stalls.",
+      "Replay only the committed prefix and return the exact restart reference after arena exhaustion.",
+      "Invalidate a binding on payload, commit, header and replay-line faults; preserve only references that were already offered.",
+      "Drain a stalled build on cancellation and rebind a fresh generation/owner on the same arena.",
+      "Admit an empty bin without memory traffic and reject an unsupported descriptor without reads or writes.",
+      "Check the writer-to-reader composition on64-byte pages below the exclusive4GiB limit."
+    ],
+    "component_cycle_results": [
+      {
+        "references": 20,
+        "pages": 4,
+        "credits": 1,
+        "reads": 7,
+        "cycles": 1314
+      },
+      {
+        "references": 20,
+        "pages": 4,
+        "credits": 3,
+        "reads": 7,
+        "cycles": 824
+      },
+      {
+        "references": 20,
+        "pages": 4,
+        "credits": 8,
+        "reads": 7,
+        "cycles": 704
+      }
+    ],
+    "cycle_scope": "Cycles include scripted request/response/output/append stalls. These are control-component workloads, not a full-frame binning or GPU scaling result.",
+    "proof_limit": "Numeric/protocol simulation with independent memory decode, ownership and ordering checks; no universal temporal formal proof."
+  },
+  "timing_retiming": {
+    "initial_failure": "The first store synthesis failed1 GHz at-94.18 ps (913.926 MHz). The critical path ran from reader.index through the record word select and32-bit sequence compare into the enable of the32-bit admitted increment.",
+    "reader_stage": "Staging one record while admitting the previous one moved the compare/select cone to register endpoints while preserving one reference per cycle on line-resident records. Synthesis improved to-13.885 ps (986.305 MHz).",
+    "pool_counter": "The remaining path started at io.memoryResponse.bits.transactionId and ended on writer.pool.count[19]. Explicit constant-add prefix logic was optimised back toward a ripple (+9.05/+11.864 ps in intermediate runs). A dontTouch precomputed increment was also discarded (-13.885 ps).",
+    "elastic_counter": "BinPagePool now keeps one allocation in a pending bit and absorbs it into the wide count on the following cycle. The late allocation enable only updates the pending flag and reply register enable, so it no longer drives the count carry chain. The staged reader plus elastic counter reached+107.298 ps synthesis and passed the routed gate.",
+    "route_margin": "Route used timing-effort closure with30 ps setup repair margin; the final timing gate is unchanged."
+  },
+  "initial_failures": [
+    {
+      "stage": "synthesis",
+      "artifact": "generated/mobile-h2/physical-primitive-bin-store-v1-synth",
+      "setup_worst_slack_ps": -94.18,
+      "fmax_mhz": 913.926,
+      "cause": "Reader record selection and32-bit sequence compare shared one cycle with the admitted/remaining/index updates."
+    },
+    {
+      "stage": "synthesis",
+      "artifact": "generated/mobile-h2/physical-primitive-bin-store-v2-synth",
+      "setup_worst_slack_ps": -13.885,
+      "fmax_mhz": 986.305,
+      "cause": "Pool allocation count carry chain driven by the late memory-response transaction-id control path."
+    }
+  ],
+  "emission": {
+    "artifact": "generated/mobile-h2/primitive-bin-store-v6-rtl",
+    "command": "runMain opengpu.elaboration.EmitPpaRtl mobile-bin-store generated/mobile-h2/primitive-bin-store-v6-rtl",
+    "rtl_sha256": {
+      "BinPagePool.sv": "4125a020cfecf3d2d040dc7f5f42e0e7e9b4e8c6a3faed72baf860ba077f8a6b",
+      "OmWordToLinePort.sv": "35871bee700a0a844e39357a7b795c0797a37db56d99ed8c9c07c883fe9407dd",
+      "PrimitiveBinReader.sv": "c911a4eb13676dfdf5905c74e1b3e12ac759c229f8972666e371fb57d75e78ae",
+      "PrimitiveBinStore.sv": "81fb8876163c7d55020c7c4492613ec862290880c75db2b9d83b8b1e7d5b9b94",
+      "PrimitiveBinWriter.sv": "ae73f6006f90bf132f3fc31d769bdba6de9f3073a295dc7cdf7f2b11e424e7ff",
+      "Queue2_ComputeMemoryRequest.sv": "cb2b856711067a7f11a28682a167bed2629bdd6d45b97ffd13f2707452b78935",
+      "RRArbiter2_ComputeMemoryRequest.sv": "5dd745950c47a5b62754e83e02701864c6bcc9e75074fe1ac899d743c0b12d88",
+      "TileAttachmentWriteQueue.sv": "3f91258ff7939c44cb406327e03777ae49f78ebe073835996181b7af4a915cf3",
+      "ram_2x620.sv": "c82f9d217556f2acbe5e3ee9adfab2ea1794874bfe47ffe6fd79a25316271364"
+    }
+  },
+  "synthesis": {
+    "artifact": "generated/mobile-h2/physical-primitive-bin-store-v6-synth",
+    "qualification": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        107.298,
+        122.65
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "setup_passed": true,
+      "report_sha256": "a962180a53ad3370c9c5da7820ba1a98196851cbe69250fcd359b25853850364",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h2/physical-primitive-bin-store-v6-synth/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "46cd35107f224639d41102645b4d67bad1e1fb0926d1a8840948191ca28b0914"
+      }
+    },
+    "qualification_sha256": "edef43fd40dc333333978e4fb0b129c56110abfb16c52e921d3e4dddb74bf7d9",
+    "manifest_sha256": "fe245fb7c5d852d4fef02c5da30730ed32b43cdcbc3b06f28b0da419d50d3c3c",
+    "result_sha256": "c3aafbe7f22af689a9e5c7652c781f0ca7665f7c406f297e98f8d337cd6031dd",
+    "constraints": {
+      "module_name": "PrimitiveBinStore",
+      "clock_port": "clock",
+      "clock_period_ps": 1000,
+      "io_delay_percent": 0.25,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin_ps": 0,
+      "timing_effort": "explore",
+      "synthesis_only": true,
+      "enable_retiming": false
+    },
+    "qor": {
+      "setup_worst_slack_ps": 107.298,
+      "core_clock_fmax_mhz": 1120.195
+    }
+  },
+  "route": {
+    "artifact": "generated/mobile-h2/physical-primitive-bin-store-v6-route-margin30",
+    "qualification": {
+      "passed": true,
+      "checks": {
+        "setup_worst_slack_ps": true,
+        "hold_worst_slack_ps": true,
+        "setup_violation_count": true,
+        "hold_violation_count": true,
+        "route_drc_errors": true,
+        "antenna_violating_nets": true,
+        "antenna_violating_pins": true,
+        "placement_violations": true,
+        "flow_errors": true,
+        "flow_completed": true,
+        "tool_verdict": true
+      },
+      "missing_metrics": [],
+      "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+      "mapping_log_sha256": "dfc3a4a38dfa7e58dd09b01627fd88679f8b37008cc3147f506522d6ff534bca"
+    },
+    "qualification_sha256": "d6221b3b606a1df810cbfc9f50c80bd1196b28e21e852ad8d7d3880c9468094b",
+    "manifest_sha256": "252521f3295e7447f128db6d93461c8ab318b86a59f6e70d62e4bebf79511385",
+    "result_sha256": "a09a27f6de7ccf659e303c94932e8149f7de0336a383d2a9c41e574bf7afa9fd",
+    "constraints": {
+      "module_name": "PrimitiveBinStore",
+      "clock_port": "clock",
+      "clock_period_ps": 1000,
+      "io_delay_percent": 0.25,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin_ps": 30,
+      "timing_effort": "closure",
+      "synthesis_only": false,
+      "enable_retiming": false
+    },
+    "qor": {
+      "instance_count": 113232,
+      "instance_area_um2": 4574.94,
+      "sequential_cell_count": 6174,
+      "clock_buffer_count": 544,
+      "timing_repair_buffer_count": 3039,
+      "setup_tns_ps": 0,
+      "hold_tns_ps": 0,
+      "setup_worst_slack_ps": 22.5776,
+      "hold_worst_slack_ps": 22.8501,
+      "setup_violation_count": 0,
+      "hold_violation_count": 0,
+      "core_clock_fmax_mhz": 1055.42,
+      "virtual_io_clock_fmax_mhz": 1023.1,
+      "reported_fmax_mhz": 1055.42,
+      "setup_clock_skew_ps": 24.0645,
+      "hold_clock_skew_ps": 31.8068,
+      "total_power_w": 0.0379052,
+      "placement_utilization_percent": 24.0119,
+      "placement_violations": 0,
+      "estimated_wirelength": 159186,
+      "route_wirelength": 190795,
+      "route_vias": 335644,
+      "route_drc_errors": 0,
+      "route_drc_report_bytes": 0,
+      "antenna_violating_nets": 0,
+      "antenna_violating_pins": 0,
+      "ir_drop_vdd_worst": 0.0205434,
+      "ir_drop_vss_worst": 0.0183755,
+      "flow_warnings": 15,
+      "flow_errors": 0,
+      "critical_path": {
+        "startpoint": "io_memoryResponse_bits_transactionId[0]",
+        "endpoint": "io_append_ready",
+        "group": "vclk_core_clock",
+        "slack_ps": 22.58,
+        "arrival_ps": 727.42,
+        "per_group": {
+          "core_clock": {
+            "startpoint": "u5387 (rising edge-triggered flip-flop clocked by core_clock)",
+            "endpoint": "u13626 (rising edge-triggered flip-flop clocked by core_clock)",
+            "slack_ps": 52.51,
+            "arrival_ps": 1071.86
+          },
+          "vclk_core_clock": {
+            "startpoint": "io_memoryResponse_bits_transactionId[0]",
+            "endpoint": "io_append_ready",
+            "slack_ps": 22.58,
+            "arrival_ps": 727.42
+          }
+        }
+      }
+    }
+  },
+  "post_route_qualified": true,
+  "integrated_gpu_qualified": false,
+  "h2_closed": false,
+  "remaining": "Multi-tile head/tail directory, primitive/state handle fetch and cache, cache-domain publication and memory-client integration, full spill/restart and fault policy, scheduler attachment, two independently progressing tile engines, ordering/fairness/double buffering, and realistic bandwidth/throughput and product-frame measurements remain required."
+}

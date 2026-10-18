@@ -1257,6 +1257,28 @@ still needs a hardware reader, multi-tile directory, primitive/state cache,
 memory/cache-domain integration and scheduling. It does not yet replace the
 legacy binner or implement two independently progressing tile engines.
 
+An [H2 memory-backed bin reader and store](performance/mobile-bin-page-reader-store-2026-10-18.json)
+now replays that page chain. The reader validates the descriptor and every
+page header/forward link before exposing a reference, requires strictly
+increasing reference sequences across pages, returns memory faults without
+substituting references, and drains offered reads on cancellation. The store
+places the writer and reader on one tagged64-byte memory client with a
+round-robin request queue and a word-to-line adapter, and exposes only the
+committed prefix handed off after the count acknowledgement. All51 selected
+checks pass, including5/20/256-reference replay across64/128/4096-byte pages,
+reordered acknowledgements at1/3/8 write credits, committed-prefix and
+restart recovery, fault invalidation/rebind, and empty/failed bins. Retiming
+stages one record while the previous one is admitted, keeping one reference
+per cycle on line-resident records, and an elastic allocator counter keeps
+the late memory-response path off the page-count carry chain. The complete
+routed1 GHz component gate passes at+22.5776 ps setup/+22.8501 ps hold
+(synthesis+107.298 ps) with zero timing/placement/DRC/antenna violations and
+complete mapping. These are control-component workloads; the store still
+needs a multi-tile directory, primitive/state fetch and cache, cache-domain
+integration, spill/restart policy and a tile scheduler with two independently
+progressing engines. It does not yet replace the legacy binner or qualify
+bandwidth or product-frame time.
+
 The separate fixed-function Linux run from the same committed6aed4cd source
 also completes its full configured DRM suite and powers off. Its original
 300-second MSAA waits finish in53,520 ms for render and30,791 ms for resolve.
