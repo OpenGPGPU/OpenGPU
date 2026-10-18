@@ -142,7 +142,799 @@
     "core_has_legacy_combinational_geometry": false,
     "scope": "Fullpersistentcoreelaborationonly; nineviewportcombdivisionoperatorsremovedfromitsinstantiateddesign. Remaininginterpolatoroperators stillnotphysicallyqualified."
   },
-  "native_product": "Pending currentstagedpipeline48-jobreplay; priorV6clipper+combinationalviewport matrixrunning.",
+  "native_product": {
+    "passed": true,
+    "checks": 4,
+    "executed_jobs": 48,
+    "distinct_jobs": 48,
+    "metadata_sha256": "fb7a6f29d8407acd69465001388dc62760abb1170ed5faabdf8368e0f6a0861a",
+    "logs": [
+      {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_prepared_geometry_v3_profile_0.log",
+        "sha256": "1448413d2a79abe73ad3bd97aa71f1b13f0c5dfbc86c88ac8ab294f709757a5a"
+      },
+      {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_prepared_geometry_v3_profile_1.log",
+        "sha256": "551e2773e067d515c3fc476cdff9c6aeaf9da4c29d3ede4cc613c99afe1596fc"
+      }
+    ],
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+      "src/main/scala/opengpu/graphics/Rasterizer.scala": "e36b79ebe23d626abd2c720b8088a4e83fa667f1a05fa664ab1433f5c3bb6955",
+      "src/main/scala/opengpu/graphics/RenderPipeline.scala": "8b038b6d75d8afc80aa8d65a23ae7df9d95256803f8067c7f3b7a020febeb1e7",
+      "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "28d864c84c88e5b60033bdaf001e24c018d4615c4dd83cf28a1dc024ba493032",
+      "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+      "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+      "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+      "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+      "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+      "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+      "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+      "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+      "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+      "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+      "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+      "src/test/scala/opengpu/graphics/RasterOriginSumProof.scala": "875e78179e733742a58e22d8a3c8e9119263a2cf1c05afd32540039821804480",
+      "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+      "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+      "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0",
+      "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+      "src/test/scala/opengpu/util/RegisteredQueue2Spec.scala": "9467f1e3688a16142e9b817ee9757835ad01ead0886af94d2a8569ff1fa7e611",
+      "src/test/scala/opengpu/util/RegisteredQueue2ResetSpec.scala": "1aaa843f02c1f6980c9b6250b3b17d16415e2e21de2025c5b55d9eedab3b2ef1",
+      "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "d1a07fb3df64be1c397711a29e46f2db42eaa9b84a8a52835c008b6db1ceae4a",
+      "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "0d54ef575bd6daeeaafac50eab1d9a7ab67aaa29f3e6e6518b37302d63fc071e",
+      "src/main/scala/opengpu/graphics/NearClipStage.scala": "7fbfc374b59e020836d8db2ba21272ad2f610ed6da9366636beef66463550d9b",
+      "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "9484db9411504a49b31a3d1fb0fe773854479c51fb1f5274ab686849550e3487",
+      "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "d39846e79cf3fba106ce183db1b620c9ec4ebe08b8a61a47cd13d79bda5d93b3",
+      "src/main/scala/opengpu/util/SplitSignedProduct.scala": "7bf5b4364ed88a66274a23eff2982a6d017e36a29fa9078138d361bd1e4e89c9",
+      "src/test/scala/opengpu/util/SplitSignedProductSpec.scala": "5a6a974f1a6966d02fa4ebaf058e9a860061ee700027ccde5b4f50b2d37304b3",
+      "src/test/scala/opengpu/graphics/ClipDistanceProof.scala": "7e4ef552d31e3f155ea3da43627eb1690dcafd0b4649fb05ceac09081af61cf8",
+      "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "ffc730a9596e896b729d89edb621b270d9334f4e738a5a83c943906c0834f1b6",
+      "src/main/scala/opengpu/graphics/PreparedGeometryStage.scala": "ea0c1203590505f4a0b1f924b2c5975c2e2026fb09321892b6d9f113fa1c8f58",
+      "src/test/scala/opengpu/graphics/PreparedGeometryStageSpec.scala": "347971e7172f18b160ae730ce4a5fc705f967e8ca29aa5a863014c7ef5647f67"
+    },
+    "scope": "CurrentstagedviewportV3divider+V6clipcontrol+rasterV21 productmatrix; exactsamples/resolves,1280x720viewport,one8/16tile,1/2/4samples,Bare/Sv32,128KiBL2/AXI256,fixed/shared4CUs16/8. Notfullframes orwholeGPUclockqualification.",
+    "version_limit": "FrozenbeforeunsignedUVpatch; itszeroUVdrawrecords do notexercise highunsignedUV. No physicalclock/fullframequalification.",
+    "cycle_comparison": {
+      "scope": "Samefixed/sharedworkloadandmemorysettings, V6clipcontrol/rasterV21; V3dividerandstagedviewport vspriorcombinationalviewport. Addedcyclesaretherealstagingcost; no elapsedtime/FPSclaim.",
+      "groups_by_clipped": {
+        "false": {
+          "jobs": 24,
+          "minimum_extra_cycles": 12,
+          "maximum_extra_cycles": 14,
+          "total_extra_cycles": 290
+        },
+        "true": {
+          "jobs": 24,
+          "minimum_extra_cycles": 24,
+          "maximum_extra_cycles": 24,
+          "total_extra_cycles": 576
+        }
+      },
+      "rows": [
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "1",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 3312,
+          "staged_viewport_cycles": 3324,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "1",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 5117,
+          "staged_viewport_cycles": 5129,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "1",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 18310,
+          "staged_viewport_cycles": 18324,
+          "extra_cycles": 14
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "1",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 16279,
+          "staged_viewport_cycles": 16291,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "2",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 6844,
+          "staged_viewport_cycles": 6856,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "2",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 9585,
+          "staged_viewport_cycles": 9597,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "2",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 33259,
+          "staged_viewport_cycles": 33271,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "2",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 26659,
+          "staged_viewport_cycles": 26671,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "4",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 12832,
+          "staged_viewport_cycles": 12844,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "4",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 17553,
+          "staged_viewport_cycles": 17565,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "4",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 60274,
+          "staged_viewport_cycles": 60286,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "4",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 47242,
+          "staged_viewport_cycles": 47254,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "1",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 5508,
+          "staged_viewport_cycles": 5532,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "1",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 7275,
+          "staged_viewport_cycles": 7299,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "1",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 20484,
+          "staged_viewport_cycles": 20508,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "1",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 18475,
+          "staged_viewport_cycles": 18499,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "2",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 9040,
+          "staged_viewport_cycles": 9064,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "2",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 11745,
+          "staged_viewport_cycles": 11769,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "2",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 35433,
+          "staged_viewport_cycles": 35457,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "2",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 28855,
+          "staged_viewport_cycles": 28879,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "4",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 15028,
+          "staged_viewport_cycles": 15052,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "4",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 19724,
+          "staged_viewport_cycles": 19748,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "4",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 62448,
+          "staged_viewport_cycles": 62472,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "false",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "4",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 49438,
+          "staged_viewport_cycles": 49462,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "1",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 5197,
+          "staged_viewport_cycles": 5209,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "1",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 7047,
+          "staged_viewport_cycles": 7059,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "1",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 23048,
+          "staged_viewport_cycles": 23060,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "1",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 21857,
+          "staged_viewport_cycles": 21869,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "2",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 8699,
+          "staged_viewport_cycles": 8711,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "2",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 11532,
+          "staged_viewport_cycles": 11544,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "2",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 37223,
+          "staged_viewport_cycles": 37235,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "2",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 31141,
+          "staged_viewport_cycles": 31153,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "4",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 14693,
+          "staged_viewport_cycles": 14705,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "4",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 19492,
+          "staged_viewport_cycles": 19504,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "4",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 63087,
+          "staged_viewport_cycles": 63099,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "false",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "4",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 49866,
+          "staged_viewport_cycles": 49878,
+          "extra_cycles": 12
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "1",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 7393,
+          "staged_viewport_cycles": 7417,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "1",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 9232,
+          "staged_viewport_cycles": 9256,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "1",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 25242,
+          "staged_viewport_cycles": 25266,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "1",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 24042,
+          "staged_viewport_cycles": 24066,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "2",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 10894,
+          "staged_viewport_cycles": 10918,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "2",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 13718,
+          "staged_viewport_cycles": 13742,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "2",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 39418,
+          "staged_viewport_cycles": 39442,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "2",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 33326,
+          "staged_viewport_cycles": 33350,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "0",
+            "originY": "0",
+            "samples": "4",
+            "Sv32": "false",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 16888,
+          "staged_viewport_cycles": 16912,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "8",
+            "originX": "8",
+            "originY": "8",
+            "samples": "4",
+            "Sv32": "true",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 21678,
+          "staged_viewport_cycles": 21702,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "0",
+            "originY": "0",
+            "samples": "4",
+            "Sv32": "false",
+            "load": "true"
+          },
+          "old_combinational_viewport_cycles": 65282,
+          "staged_viewport_cycles": 65306,
+          "extra_cycles": 24
+        },
+        {
+          "key": {
+            "shared": "true",
+            "clipped": "true",
+            "tile": "16",
+            "originX": "16",
+            "originY": "16",
+            "samples": "4",
+            "Sv32": "true",
+            "load": "false"
+          },
+          "old_combinational_viewport_cycles": 52051,
+          "staged_viewport_cycles": 52075,
+          "extra_cycles": 24
+        }
+      ]
+    }
+  },
   "post_route_qualified": false,
   "full_renderer_qualified": false,
   "followup_v3": {
@@ -195,7 +987,7 @@
     "critical_path": "FinalsynthOpenDB coordinateDividers_1.quotient[2] -> io_out_bits_quotient[57], sign-correction/outputpath; oldzero-controlpathnolongercritical.",
     "query_log_sha256": "1b606bb494bf43e6fe19ab2bed57ec4957aa013604c048db8a55a425e95f750b",
     "public_emission_metadata_sha256": "14eb5899686dffbb59814de49f0d758026f2df82800755e646ce7e678a08b27a",
-    "native_matrix": "product_prepared_geometry_v3_matrix.json queued/running behindsuccessfulV6matrix; revalidateactualhandle.",
+    "native_matrix": "PASS4checks/48distinctjobs; frozenbeforeunsignedUVfix, exactsamples/resolves, auditrecorded",
     "route": "QueuedserializedafterfrozenrasterV21margin30; currentV3util25/50psrepairheadroom, final1GHz/IO25%globalgateunchanged.",
     "post_route_qualified": false
   }

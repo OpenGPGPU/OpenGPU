@@ -1140,3 +1140,16 @@ high unsigned UV selecting a known texel through the sampler. Current
 RenderCore emission passes; physical interpolation throughput/timing and
 general signed texture-coordinate support remain separate open work. See
 [the unsigned UV record](performance/mobile-uv-unsigned-2026-10-18.json).
+
+The frozen staged-geometry V3 native matrix passes all48 distinct jobs with
+exact stored-sample and resolve checks. Against the same V6 clipper with
+combinational viewport arithmetic, inside jobs add12–14 cycles and
+clipped jobs add24–24 cycles. These are staging costs, not a frame-rate
+result. This matrix predates the unsigned-UV fix and uses zero UV inputs.
+
+The instrumented archived-V19 Linux replay also finishes its full DRM suite
+and powers off successfully. It retains the exact archived QEMU and driver;
+its two MSAA waits take180,118 ms and71,933 ms, both below the original
+300-second limit. The positive replay and earlier timeout are retained
+separately, with the original cause unresolved. This qualifies that frozen
+legacy64x64 integration run, not current-main mobile rendering or timing.

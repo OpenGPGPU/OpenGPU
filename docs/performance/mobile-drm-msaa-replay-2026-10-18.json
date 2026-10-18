@@ -69,10 +69,10 @@
       "status": "INVALID_POSTCONDITION: 1x initialimage4096samples/1009red andnativecompletion172285cycles observed, thenfixtureincorrectlyrequired baselevelPA; shaderfetches mip1 atPA+64."
     }
   ],
-  "diagnosis": "Unresolved. Isolated andsame-device nativeMSAA pass. FullLinuxhistory/driverbridge/deadline remainpossible; controlled exactmodel900s replaystarted, no verdictyet.",
+  "diagnosis": "Original300sMSAAtimeoutcause unresolved. ControlledreplaywithsameQEMU/driver andinstrumentedCpassedthefullLinuxsuiteandpoweroff;bothMSAAwaitscompletedwithin300s,soraisedbudgetisnotshowntohavebeennecessary. Doesnotqualifycurrentstaged/unsignedUVmainRTL.",
   "open_work": [
-    "Diagnose/replay fullLinuxMSAAtimeout with exact archivedmodel and elapsedwait logging; unchangedGPUcyclebounds andimagechecks.",
-    "Latestmainclipper/raster/viewport fullLinuxintegration stillpending."
+    "Currentmainstagedgeometry/clipper/unsignedUV fullLinuxintegration, withnewemittedmodel andstrictimages/statuses.",
+    "OriginalV19timeoutcause unresolved; retainoldFAILandpositiveinstrumentedreplay asseparatedruns."
   ],
   "wait_diagnostics": {
     "status": "PASS: default300s/explicit900s compile with warnings-as-errors; zero/negative/overflow rejected; runner shell syntax valid",
@@ -86,7 +86,7 @@
     "default_msaa_budget_ms": 300000,
     "explicit_probe_budget_ms": 900000,
     "scope": "Both MSAA render/resolve waits log stage,start,elapsed,result,errno. ARTI_GPU_MSAA_WAIT_MS is an explicit test-only compile override; hardware cycle/clock and all pixel/status checks unchanged.",
-    "guest_probe": "Running: drm_msaa_deadline_900s_guest.json; exact archivedQEMU+driver, explicit900s MSAAbudget, allimagechecks preserved.",
+    "guest_probe": "PASS fullfrozenV19Linuxreplay, exactarchivedQEMU/driver, instrumentedexplicit900sMSAAtestbudget;bothMSAAwaitsunderoriginal300s",
     "partial_progress": {
       "observed_utc": "2026-10-18T02:04:21.673413+00:00",
       "pid_confirmed_live": 5403,
@@ -109,6 +109,88 @@
       "partial_serial_archive": ".artifacts/mobile-hardware-alignment/h0-h1/drm_msaa_deadline_900s_msaa_completed_partial_serial.log",
       "partial_serial_sha256": "2af2705b06cda95c5c8eca891f208722e50cbb814f3e9ec87e110c23c842801e",
       "diagnosis": "Thisreplay completesMSAArenderandresolvewithintheoriginal300sbudget. Raisingthebudgetisnotshownnecessaryhere; originaltimeoutcause remainsunresolved. PriorFAILretained. Fulltestandpoweroffstillpending."
+    },
+    "completed_replay": {
+      "status": "PASS",
+      "scope": "Controlled V19 Linux replay with exact archived QEMU and driver; instrumented C test explicitly900s MSAA wall-clock budget. Exact image/resolve/status checks unchanged. Native prerequisite5renders PASS; not current-main qualification.",
+      "qemu": {
+        "path": "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1/qemu-pipeline-v19-programmable-inflight",
+        "sha256": "94cb5193e7e44453dd8fe3738d77591873a792a2ed4792f3276b77e0bb3aaca4"
+      },
+      "kernel_sha256": "f6fe0e264fad947888feb2a80ef850b3443c24dbc19510cf8a6b2022030568d0",
+      "staged_sha256": {
+        "arti_dep_drm_dma_helper.ko": "45cb9aa7925c25408662a321e1b8e51f30d9ad58daae8651ffc4fa6a4178b345",
+        "init": "e159ad7436862316930574e2dfc620c8a77ac9469ca6b00960bb8a37cfcdcaeb",
+        "arti_dep_gpu-sched.ko": "7e012cabf09ce88fdab01356d49aabc9f55f3ebc19441601597c0be595e4f682",
+        "arti_dep_drm_kms_helper.ko": "be576e5533e11fad74bd3076e0dd086cbd89e2bf8fbad89fb4cecfec362ea0ee",
+        "arti_dep_drm_client_lib.ko": "c971eb719eedee524016292030570cf55a67680f48a6b4fe8876a247ae303ed1",
+        "arti_driver_deps": "b759560bf92c66c745c13e5ff850f0df828577c7b2b968ff5ebd79b497a1c578",
+        "arti_dep_drm.ko": "4f20f1d358051eb122afe63dabc396de344188012ecd8d405cb5a9f6e954f52b",
+        "arti_driver.ko": "932b9497e00a2ea8fdec390096b922a14b05ecaf8637bafae879e9e504dd11ee",
+        "opengpu_drm_test": "f01c16143b90968ab0f9566c4055199e96f561894fb02f8424b8bcbf36014e1c",
+        "initramfs.cpio.gz": "0726808984b15d70f1b67c51ecfb3c5a2f76ef1a39ad166f6a986409a0e87521",
+        "arti_dep_drm_exec.ko": "e149e6a438c540afa0cd185bdb274b50e1a2041b5c987cee03f73b0748fd65ec",
+        "arti_dep_backlight.ko": "a939f7a902eabcc33bb8c3fd59410dbd55f4b6a91be1bc7b04ea0d269878d5fe"
+      },
+      "source_build_metadata_sha256": "8c86003e9f75e0b549190e072d04a4c64d317aecc8885751fa80e3f336e2df05",
+      "native_mode_metadata_sha256": "d763fcf04756e3d968db33fda3d6be0a0e61f75fc1e55e7dd347cdce9136cf63",
+      "argv": [
+        "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1/qemu-pipeline-v19-programmable-inflight",
+        "-machine",
+        "virt",
+        "-accel",
+        "tcg",
+        "-cpu",
+        "cortex-a53",
+        "-m",
+        "512M",
+        "-L",
+        "/Users/duckdonald/workspace/arti-work/qemu-pc-bios",
+        "-display",
+        "none",
+        "-monitor",
+        "none",
+        "-serial",
+        "file:/Users/duckdonald/workspace/arti-work/mobile-h1-v19-msaa-deadline-900s/linux-smoke/serial.log",
+        "-kernel",
+        "/Users/duckdonald/workspace/arti-work/arti-linux-build/arch/arm64/boot/Image",
+        "-initrd",
+        "/Users/duckdonald/workspace/arti-work/mobile-h1-v19-msaa-deadline-900s/linux-smoke/initramfs.cpio.gz",
+        "-append",
+        "console=ttyAMA0"
+      ],
+      "environment_overrides": {
+        "ARTI_MODEL_IRQ_PUMP": "16",
+        "ARTI_MODEL_IRQ_PUMP_NS": "200000",
+        "ARTI_MODEL_SETTLE_NS": "8000000"
+      },
+      "serial": "/Users/duckdonald/workspace/arti-work/mobile-h1-v19-msaa-deadline-900s/linux-smoke/serial.log",
+      "log": "/Users/duckdonald/workspace/arti-work/mobile-h1-v19-msaa-deadline-900s/qemu.log",
+      "msaa_budget_ms": 900000,
+      "default_msaa_budget_ms": 300000,
+      "started_unix": 1792286876.447422,
+      "pid": 5403,
+      "exit_code": 0,
+      "elapsed_host_s": 3191.0856149196625,
+      "serial_archive": ".artifacts/mobile-hardware-alignment/h0-h1/drm_msaa_deadline_900s_serial.log",
+      "serial_sha256": "49105b7800b75031a4f07c35494371c1c68ec7318a4762629b8648f14b1ecb90",
+      "qemu_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "full_pass_marker": true,
+      "powered_off": true,
+      "msaa_waits": [
+        [
+          "render",
+          "180118",
+          "0",
+          "0"
+        ],
+        [
+          "resolve",
+          "71933",
+          "0",
+          "0"
+        ]
+      ]
     }
   },
   "same_device_modes": {
