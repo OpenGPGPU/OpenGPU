@@ -44,7 +44,7 @@ class TexturedFragStageSpec extends AnyFlatSpec {
       var sent = 0
       var received = 0
       var cycle = 0
-      val count = 6
+      val count = 7
       while (received < count && cycle < 500) {
         dut.io.fragIn.valid.poke((sent < count).B)
         if (sent < count) {
@@ -57,7 +57,15 @@ class TexturedFragStageSpec extends AnyFlatSpec {
           dut.io.fragIn.bits.color.r.poke(255.U)
           dut.io.fragIn.bits.color.g.poke(255.U)
           dut.io.fragIn.bits.color.b.poke(255.U)
-          dut.io.uv0.u.poke((((sent % 4) * 65536 + 32768) / 4).U)
+          // The last fragment averages a high unsigned UV with two zeros.
+          // 0x8002e000 /3 =0x2aaba000, whose repeat fraction0xa000 is exactly
+          // texel2's centre in this four-texel texture. A signed cast instead
+          // samples between texels0/1 and changes the observed colour.
+          dut.io.e1.poke((if (sent == 6) 1 else 0).S)
+          dut.io.e2.poke((if (sent == 6) 1 else 0).S)
+          val u = if (sent == 6) BigInt("8002e000", 16)
+            else BigInt(((sent % 4) * 65536 + 32768) / 4)
+          dut.io.uv0.u.poke(u.U)
           for (sample <- 0 until gfx.maxSampleCount) {
             dut.io.fragDepths(sample).poke((100 + sent + sample).U)
           }

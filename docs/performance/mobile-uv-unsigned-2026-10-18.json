@@ -1,0 +1,72 @@
+{
+  "scope": "Fix the existing unsignedQ16.16 UV interpolation contract. No new format/API/performance claim; interpolation remains combinational and physically unqualified.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/TexturedFragStage.scala": "791b255ec59cad5cb962b91fc8af0c3165088cb744b7bb267c3115f592729a11",
+    "src/test/scala/opengpu/graphics/TexUVInterpolatorSpec.scala": "c7993b342a01f9ac176623ba022ae8afc034c9473186de35b1b1b9af3fb8cc11",
+    "src/test/scala/opengpu/graphics/TexturedFragStageSpec.scala": "883e77fe56f3be7ce1fb9126ddf311fe12c896333ebff3607db36b9fd62d3b48"
+  },
+  "change": "Zero-extend each unsigned32 UV to33bits beforecastingtoSInt for signed barycentric/perspective products. Previouslybit31becameasignbit. Outputports, truncationtowardzero andobservablelow32bits unchanged.",
+  "baseline": {
+    "status": "EXPECTED_NUMERIC_FAILURE",
+    "edges": [
+      1,
+      1,
+      1
+    ],
+    "inverse_w": [
+      65536,
+      65536,
+      65536
+    ],
+    "u": [
+      "0x80000000",
+      "0x00000000",
+      "0x00000000"
+    ],
+    "observed_u": "0xd5555556",
+    "expected_u": "0x2aaaaaaa",
+    "log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/uv_interpolation_baseline_unit.log",
+      "sha256": "38fd99a255d953f8ca2104e50467bad2d44d8a15f9898d2e9b276a5d7fda2930",
+      "exit_code": 1,
+      "metadata_sha256": "907663db596573bf189989814aab5a19b9a0b746f6c245a5912c9790184b9f75"
+    }
+  },
+  "numeric_reference": {
+    "passed": true,
+    "cases": 260,
+    "coordinate_comparisons": 520,
+    "domain": "Fullunsigned32UVs; positiveandnegativehelperedges; positiveinverseW up2^26; largeedgecase2^48-1; nonzero denominator. IndependentBigIntweightedquotient, modulo2^32 atoutput. Notuniversalformalproof.",
+    "log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/uv_interpolation_unsigned_unit.log",
+      "sha256": "6d498d24cc383c68aa18f3542bc382c6e1d00f27593df6aa0fa0e4537f58c9d4",
+      "exit_code": 0,
+      "metadata_sha256": "633b5e46632b539f7b7a9c7188ba00e7b9ad10c1f9357dbc7140bd74ef2c72f2"
+    },
+    "note": "Thisrunalsoexercisedtheoriginalsixfragmentstream. Numericmain/specsha equalthelatersampledversion."
+  },
+  "sampled_stream": {
+    "passed": true,
+    "fragments": 7,
+    "high_uv_input": "u0=0x8002e000,u1=u2=0; equalpositiveweights",
+    "expected_interpolated_u": "0x2aaba000",
+    "expected_texel": 2,
+    "texture_width": 4,
+    "why": "Repeatfraction0xa000 selects texel2centre. Theold signedcastinstead samplesbetweentexels0/1. Actualfiltered/modulatedcolour,payload,alpha,coverageandallsampledepths are checked withcontinuousinput, memorybackpressure/delayedreplies andstalledoutput.",
+    "log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/uv_interpolation_sampled_unit.log",
+      "sha256": "659932391347782fd961cafd7fbd8feb02de11458d5df95623fded7cecd50aa5",
+      "exit_code": 0,
+      "metadata_sha256": "3f7647e928ba79ba1e8c9761fe46a9f071a32f6b83ce053fbd6bc2c06923ad00"
+    }
+  },
+  "integration_emission": {
+    "passed": true,
+    "artifact": "generated/mobile-h1/persistent-core-unsigned-uv-v1-rtl",
+    "metadata_sha256": "4a23580c44b1e6d9d7944b7dbd1069208917778d290b86b8c5fda91fff275b03",
+    "scope": "CurrentRenderCoreemissionwithstagedgeometryV3+currentdivider+UVcorrection; notfullGPUphysicalqualification."
+  },
+  "native_scope": "In-flight stagedgeometry48-jobmatrixwasfrozenbeforethisUVfix. Itsdrawrecords initializeallUVwordstozero anditsfragmentprogram doesnottexture-sample; itmustnotbeusedas highunsignedUVcoverage. Thetargetedsevenfragmenttestprovidesthatsamplingcheck.",
+  "post_route_qualified": false,
+  "full_renderer_qualified": false
+}

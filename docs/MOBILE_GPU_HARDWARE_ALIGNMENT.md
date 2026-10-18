@@ -1129,3 +1129,14 @@ resolve waits in180,118 ms and71,933 ms respectively. Both are below the
 original300-second limit, so this replay does not demonstrate that increasing
 the deadline was necessary. The earlier timeout remains unexplained, and
 the current full guest test is still running beyond the MSAA phase.
+
+Perspective UV interpolation now preserves the existing unsigned32 Q16.16
+input contract when multiplying by signed barycentric weights. Previously,
+averaging `0x80000000` with two zeros returned `0xd5555556` instead of
+`0x2aaaaaaa`. Zero extension before the signed cast fixes this. All260
+BigInt cases/520 coordinate checks pass, including helper weights and large
+coordinates. The stalled-output stream also checks seven fragments, with a
+high unsigned UV selecting a known texel through the sampler. Current
+RenderCore emission passes; physical interpolation throughput/timing and
+general signed texture-coordinate support remain separate open work. See
+[the unsigned UV record](performance/mobile-uv-unsigned-2026-10-18.json).

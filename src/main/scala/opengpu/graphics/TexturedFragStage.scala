@@ -40,8 +40,10 @@ class TexUVInterpolator(gfxConfig: GraphicsConfig) extends Module {
     io.e0 * io.invW0 + io.e1 * io.invW1 + io.e2 * io.invW2
 
   private def interp(c0: UInt, c1: UInt, c2: UInt): UInt = {
-    val num = io.e0 * io.invW0 * c0.asSInt +
-      io.e1 * io.invW1 * c1.asSInt + io.e2 * io.invW2 * c2.asSInt
+    // UVs are unsigned Q16.16. Preserve their high bit before combining
+    // them with signed barycentric/helper weights.
+    val num = io.e0 * io.invW0 * c0.pad(33).asSInt +
+      io.e1 * io.invW1 * c1.pad(33).asSInt + io.e2 * io.invW2 * c2.pad(33).asSInt
     (num / denom)(31, 0).asUInt
   }
 
