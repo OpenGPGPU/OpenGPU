@@ -21,9 +21,7 @@ class TexSampleRequest extends Bundle {
 
 /** Wrap behaviour applied independently to both axes.
   *
-  *   0 = REPEAT: the texture tiles; requires power-of-two dimensions (asserted
-  *       at request time -- the wrap is a mask, so a non-power-of-two size
-  *       would alias rather than tile).
+  *   0 = REPEAT: the texture tiles at any nonzero supported dimensions.
   *   1 = CLAMP : samples past the edge stick to the edge texels.
   */
 object TexWrap {
@@ -56,12 +54,10 @@ object TexWrap {
   *   biased = (u * width) - 0.5      -- texel-space coordinate with 8
   *                                      fractional bits, half-texel aligned so
   *                                      texel centres sit at u=(i+0.5)/N
-  *   REPEAT: biased &= (width<<8)-1  -- masks index AND fraction in one op;
-  *           wraparound handles the negative phase, tiling cleanly for
-  *           power-of-two extents
+  *   REPEAT: biased = floorMod(biased, width<<8)
   *   CLAMP : saturate biased into [0, (width<<8)-1]
   *   x0 = xs >> 8 ; fx = xs & 0xff
-  *   REPEAT: x1 = (x0 + 1) & (width - 1)   (x0 is already in range)
+  *   REPEAT: x1 = (x0 + 1) % width   (x0 is already in range)
   *   CLAMP : x0 = min(x0, width - 1); x1 = min(x0 + 1, width - 1)
   * and identically for v/y/height.  With zero fractions (sample centre) the
   * blend degenerates to the exact texel value, so NEAREST behaves correctly
@@ -79,9 +75,7 @@ object TexWrap {
   * fits under 2^32, so no fixed-size slicing is needed. When `lodFrac` is
   * non-zero and a following level exists, the unit filters both selected
   * levels and mixes their RGB values with weights `256-lodFrac` and
-  * `lodFrac`; a request at the final level remains a single-level fetch. The REPEAT
-  * power-of-two assert stays on the level-0 dims (halving a power of two
-  * keeps it a power of two until the floor at 1 takes over).
+  * `lodFrac`; a request at the final level remains a single-level fetch.
   *
   * Blend: each channel accumulates the four taps weighted by
   *   w00=(256-fx)(256-fy) w10=fx(256-fy) w01=(256-fx)fy w11=fx*fy
@@ -155,8 +149,6 @@ class TextureUnit(
   private val levelBase = RegInit(0.U(32.W))
   private val levelW = RegInit(1.U(14.W))
   private val levelH = RegInit(1.U(14.W))
-  private val levelWMinusOne = RegInit(0.U(14.W))
-  private val levelHMinusOne = RegInit(0.U(14.W))
   private val levelSteps = RegInit(0.U(4.W))
   private val baseMipLevel = RegInit(0.U(4.W))
   private val lodFracReg = RegInit(0.U(8.W))
@@ -271,24 +263,20 @@ class TextureUnit(
     * so u = (i+0.5)/N hits texel i's centre and u = k/N falls exactly between
     * texel k-1 and k.
     *
-    * The bias is applied before wrapping, using two's-complement wraparound:
-    *   biased = (u*extent) - 0.5            (fixed-point, wide enough never
-    *                                          to lose information)
-    *
-    * A 32-bit coordinate and 14-bit extent produce at most 46 bits.
-    * Subtracting 32768 before taking bits 45:8 is equivalent modulo 2^38
-    * to shifting by eight and subtracting 128. This keeps the multiply
-    * and bias on the sampler's existing register boundary.
+    * Normalize whole repeat periods or bound clamped coordinates before
+    * scaling. The signed coordinate has eight fractional bits and fits in24 bits.
     */
   private def axisBias(coord: UInt, extent: UInt): UInt =
-    ((coord * extent) - 32768.U)(45, 8)
+    TextureCoordinates.bias(TextureCoordinates.scale(coord, extent, io.wrapMode))
 
-  private val biasedXReg = RegInit(0.U(38.W))
-  private val biasedYReg = RegInit(0.U(38.W))
+  private val biasedXReg = RegInit(0.U(24.W))
+  private val biasedYReg = RegInit(0.U(24.W))
   // Capture parallel partial products at admission or the prior mip-walk
   // edge, then combine at sLevel. Preserve the original fallback latency.
   private val axisProducts = if (overlapPrepared)
     Some(RegInit(VecInit(Seq.fill(4)(0.U(30.W))))) else None
+  private val axisClampedHigh = if (overlapPrepared)
+    Some(RegInit(VecInit(Seq.fill(2)(false.B)))) else None
   private val productCapture = WireDefault(false.B)
   // Capture can occur either at a new handshake or during sLevel's mip
   // walk. Select operands from registered state, so live input-valid and
@@ -303,38 +291,19 @@ class TextureUnit(
     when(productCapture) {
       assert(state === sLevel || io.sample.fire,
         "partial-product capture must belong to a mip walk or new sample")
+      // Keep live-coordinate comparisons parallel to the low-half multiply.
+      // REPEAT ignores the whole periods; unsaturated CLAMP needs one high
+      // coordinate bit. Saturated CLAMP bypasses the joined product below.
       axisProducts.get(0) := productU(15, 0) * productW
-      axisProducts.get(1) := productU(31, 16) * productW
+      axisProducts.get(1) := Mux(io.wrapMode && productU(16), productW, 0.U)
       axisProducts.get(2) := productV(15, 0) * productH
-      axisProducts.get(3) := productV(31, 16) * productH
+      axisProducts.get(3) := Mux(io.wrapMode && productV(16), productH, 0.U)
+      axisClampedHigh.get(0) := io.wrapMode && productU >= 98304.U
+      axisClampedHigh.get(1) := io.wrapMode && productV >= 98304.U
     }
   }
   private val inRangeXReg = RegInit(0.U(22.W))
   private val inRangeYReg = RegInit(0.U(22.W))
-
-  /** Stage 2 (captured on the sWrap -> sTap transition): apply the wrap or
-    * clamp to the biased texel-space coordinate.
-    *   REPEAT: biased & ((extent<<8)-1)     -- masks index and fraction; the
-    *           wrapped-negative phase lands on the far side of the period,
-    *           giving seamless tiling for power-of-two extents
-    *   CLAMP : saturate biased into [0, (extent<<8)-1]
-    */
-  private def axisRange(biased: UInt, extent: UInt): UInt = {
-    val signedBiased = biased.asSInt
-
-    val periodLast = (extent << 8) - 1.U
-    val periodLastPad = periodLast.pad(64)
-
-    val clampedSigned = WireDefault(signedBiased.pad(64))
-    when(signedBiased < 0.S) { clampedSigned := 0.S }
-      .elsewhen(signedBiased > periodLastPad.asSInt) {
-        clampedSigned := periodLastPad.asSInt }
-
-    val inRange = Mux(io.wrapMode === TexWrap.clamp,
-      clampedSigned.asUInt,
-      biased.pad(64) & periodLastPad)
-    inRange(21, 0)
-  }
 
   // ---------------------------------------------------------------------
   // Tap addressing: linear RGBA8888, 4 bytes per texel, into the selected
@@ -533,8 +502,6 @@ class TextureUnit(
       levelBase := io.texBase
       levelW := io.texWidth
       levelH := io.texHeight
-      levelWMinusOne := io.texWidth - 1.U
-      levelHMinusOne := io.texHeight - 1.U
       levelSteps := baseMipLevel + 1.U
       secondLevel := true.B
       state := sLevel
@@ -616,13 +583,6 @@ class TextureUnit(
 
   private def acceptSample(): Unit = {
     formatReg := io.texFormat
-    // Power-of-two extents are required for the mask-based REPEAT wrap.
-    when(io.wrapMode === TexWrap.repeat) {
-      assert(
-        (io.texWidth & (io.texWidth - 1.U)) === 0.U &&
-          (io.texHeight & (io.texHeight - 1.U)) === 0.U,
-        "REPEAT wrapping requires power-of-two texture dimensions")
-    }
     assert(io.texWidth =/= 0.U && io.texHeight =/= 0.U,
       "texture dimensions must be non-zero")
     uReg := io.sample.bits.u
@@ -633,8 +593,6 @@ class TextureUnit(
     levelBase := io.texBase
     levelW := io.texWidth
     levelH := io.texHeight
-    levelWMinusOne := io.texWidth - 1.U
-    levelHMinusOne := io.texHeight - 1.U
     val selectedLevel = Mux(io.sample.bits.mipLevel > io.texMaxLevel,
       io.texMaxLevel, io.sample.bits.mipLevel)
     levelSteps := selectedLevel
@@ -672,8 +630,15 @@ class TextureUnit(
         }.otherwise {
           if (overlapPrepared) {
             val products = axisProducts.get
-            biasedXReg := ((products(1) << 8) + products(0)(29, 8) - 128.U)(37, 0)
-            biasedYReg := ((products(3) << 8) + products(2)(29, 8) - 128.U)(37, 0)
+            val scaledX = Wire(UInt(23.W))
+            val scaledY = Wire(UInt(23.W))
+            scaledX := (products(1) << 8) + products(0)(29, 8)
+            scaledY := (products(3) << 8) + products(2)(29, 8)
+            // A positive period sentinel saturates to period-1 at sWrap.
+            biasedXReg := Mux(axisClampedHigh.get(0), (levelW << 8).pad(24),
+              TextureCoordinates.bias(scaledX))
+            biasedYReg := Mux(axisClampedHigh.get(1), (levelH << 8).pad(24),
+              TextureCoordinates.bias(scaledY))
           } else {
             biasedXReg := axisBias(uReg, levelW)
             biasedYReg := axisBias(vReg, levelH)
@@ -685,31 +650,19 @@ class TextureUnit(
         levelBase := levelBase + ((levelW * levelH) << 2)
         levelW := Mux(levelW === 1.U, 1.U, levelW >> 1)
         levelH := Mux(levelH === 1.U, 1.U, levelH >> 1)
-        levelWMinusOne := Mux(levelW === 1.U, 0.U, (levelW >> 1) - 1.U)
-        levelHMinusOne := Mux(levelH === 1.U, 0.U, (levelH >> 1) - 1.U)
         levelSteps := levelSteps - 1.U
       }
     }
     is(sWrap) {
-      inRangeXReg := axisRange(biasedXReg, levelW)
-      inRangeYReg := axisRange(biasedYReg, levelH)
+      inRangeXReg := TextureCoordinates.range(biasedXReg, levelW, io.wrapMode)
+      inRangeYReg := TextureCoordinates.range(biasedYReg, levelH, io.wrapMode)
       state := sIdx
     }
     is(sIdx) {
       // Clamp/wrap decode: corner indices and fractions off the wrapped
       // coordinate.
-      val idx0rawX = inRangeXReg(21, 8)
-      val idx0rawY = inRangeYReg(21, 8)
-      val idx0X = Mux(io.wrapMode === TexWrap.clamp,
-        Mux(idx0rawX > levelWMinusOne, levelWMinusOne, idx0rawX), idx0rawX)
-      val idx0Y = Mux(io.wrapMode === TexWrap.clamp,
-        Mux(idx0rawY > levelHMinusOne, levelHMinusOne, idx0rawY), idx0rawY)
-      val idx1X = Mux(io.wrapMode === TexWrap.clamp,
-        Mux(idx0X + 1.U > levelWMinusOne, levelWMinusOne, idx0X + 1.U),
-        (idx0X + 1.U) & levelWMinusOne)
-      val idx1Y = Mux(io.wrapMode === TexWrap.clamp,
-        Mux(idx0Y + 1.U > levelHMinusOne, levelHMinusOne, idx0Y + 1.U),
-        (idx0Y + 1.U) & levelHMinusOne)
+      val Seq(idx0X, idx1X) = TextureCoordinates.indices(inRangeXReg, levelW, io.wrapMode)
+      val Seq(idx0Y, idx1Y) = TextureCoordinates.indices(inRangeYReg, levelH, io.wrapMode)
       wReg(0) := (256.U - inRangeXReg(7, 0)) * (256.U - inRangeYReg(7, 0))
       wReg(1) := inRangeXReg(7, 0) * (256.U - inRangeYReg(7, 0))
       wReg(2) := (256.U - inRangeXReg(7, 0)) * inRangeYReg(7, 0)

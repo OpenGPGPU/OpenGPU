@@ -1,0 +1,500 @@
+{
+  "scope": "H4 functional step: remove power-of-two-only REPEAT for the existing unsigned Q16.16 coordinate contract. H0-H8, banked cluster throughput, general descriptors and API closure remain open. Synthesis component screens do not qualify the complete GPU clock or energy/frame.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/TextureCoordinates.scala": "24b5b09918de3ad162a1355edf79ae829fd1062c36eb98f2d8d558a7fe70a22f",
+    "src/main/scala/opengpu/graphics/TextureCoordinatePipeline.scala": "a094bb1f6243975ab74e2ba9f9c4885fdf98e11159f36f1ca92e284a741219b2",
+    "src/main/scala/opengpu/graphics/TextureUnit.scala": "420f8546477bec0cceb940f3795fef88c5ba5cb652057b63018047534584ff84",
+    "src/test/scala/opengpu/graphics/TextureCoordinatePipelineSpec.scala": "27df15129b52e21ed42548ce85af8470a30df851ebf0ed046d9e8899efddbaad",
+    "src/test/scala/opengpu/graphics/TextureUnitSpec.scala": "199b40aa6bd0910d26b72d8f37b13765a9590f774d34e776e5ba5f8b2b440a06",
+    "src/test/scala/opengpu/graphics/PartialProductBoundarySpec.scala": "1df31dc408532343a454c3440542acb2f0c473c0c14f00e4b99c0daf5517c564",
+    "src/test/scala/opengpu/graphics/TextureNpotVectorSpec.scala": "7dc6956c77e7b9678cd652b904e13437c153016ef75449523a15c2dece2c689e"
+  },
+  "contract": {
+    "coordinates": "Unsigned 32-bit Q16.16",
+    "extent": "Every nonzero 14-bit width/height, 1..16383",
+    "arithmetic": "Full-precision floor(coord * extent / 256) - 128 in texel Q8, followed by floor-modulo for REPEAT or saturation for CLAMP. No new wrap mode or signed-negative coordinate support.",
+    "mip": "Existing packed chain and serial walk retained; each level halves with floor and a minimum extent of one."
+  },
+  "change": {
+    "coordinate_pipeline": "Shared bounded coordinate arithmetic; 17x14 multiply, 24-bit signed biased coordinate instead of a 32x14 multiply and 38-bit biased value. Six elastic stages retained.",
+    "overlap_sampler": "Capture raw low16 partial products alongside two clamp-high predicates. Ignore whole periods for REPEAT. For unsaturated CLAMP, one high input bit supplies the remaining product; saturated CLAMP selects a positive period sentinel at the existing join stage. No added cycle.",
+    "indices": "Second tap wraps on equality with extent instead of bit masking."
+  },
+  "arithmetic_argument": {
+    "repeat": "Write c = 65536*k + f. floor(c*n/256)-128 = 256*n*k + floor(f*n/256)-128, so discarding k preserves modulo 256*n. The reduced value lies in [-128,256*n), requiring at most one period addition.",
+    "clamp": "For c >= 98304, floor(c*n/256)-128 >= 384*n-128 > 256*n-1 for n>=1. Capping there or supplying a period sentinel preserves the saturated result. Smaller c fits 17 bits.",
+    "width": "At n=16383, the bounded biased maximum is 6290944; minimum is -128. Both fit signed24.",
+    "proof_limit": "Algebraic argument and numeric RTL tests; not a universal RTL formal proof."
+  },
+  "baseline_failure": {
+    "status": "EXPECTED_FAILURE",
+    "width": 3,
+    "height": 5,
+    "u": "0x8000",
+    "v": "0x8000",
+    "base": "0x1000",
+    "observed_first_tap": "0x1000",
+    "expected_first_tap": "0x101c",
+    "expected_texel": [
+      1,
+      2
+    ],
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/texture_npot_baseline.log",
+    "log_sha256": "b88fa466dc1dfa357c1976ece97630df36e31b993cdc83cf4eff50fd05be4e0c",
+    "metadata_sha256": "3b9c298d836b377bf47c994d7ded1b3750c93385a15c242786266e950f422d6d"
+  },
+  "functional": {
+    "checks": 35,
+    "suites": 10,
+    "unit": {
+      "checks": 35,
+      "suites": 10,
+      "log": ".artifacts/mobile-hardware-alignment/h0-h1/texture_npot_v2_unit.log",
+      "sha256": "6dc6d11ac350c8f4d38800d225709e0c1d189d879cc82dd36b7fdbcaecea2074"
+    },
+    "metadata_sha256": "b4432859eb3a22adbe382281d5634d1c67f426893e3ba15ac86a7722f5877655",
+    "coordinate_metadata_requests": 1206,
+    "coordinate_stream": {
+      "results": 512,
+      "latency_cycles": 6,
+      "bubbles": 0,
+      "scope": "Coordinate metadata only, not filtered sample throughput. Stream repeats requests from the numeric set."
+    },
+    "npot_mip_samples": {
+      "scalar": 120,
+      "overlap": 120,
+      "levels": "7x5 -> 3x2 -> 1x1 -> 1x1",
+      "coverage": "Both wrap modes, fractional LOD 0/128/255, seam/period/high unsigned UV, request and result stalls."
+    },
+    "partial_product_boundary_cases": 9,
+    "prepared_vector_jobs": {
+      "jobs": 4,
+      "active_lanes_per_job": 3,
+      "extents": [
+        [
+          3,
+          5
+        ],
+        [
+          7,
+          9
+        ],
+        [
+          16383,
+          16382
+        ]
+      ],
+      "coverage": "REPEAT and large-coordinate CLAMP; final RGBA, every requested tap, masked destination retention, delayed/reordered responses and stalled commit."
+    },
+    "integration": "Existing TextureUnit, TexSampleUnit, prepared-window/epoch/overlap/handoff and seven-fragment TexturedFragStage regressions pass."
+  },
+  "physical": {
+    "baseline_coordinates": {
+      "artifact": "generated/mobile-h1/physical-texture-npot-v1-baseline-coordinates-synth",
+      "qualification_sha256": "a4df5066dba93fcb8480f8fb78e34950555034e92779527cbe747e508df2bf52",
+      "manifest_sha256": "734f0be47d477cb90f8b00a36eece9783c96403de848e218deabbe971c62c1d7",
+      "result_sha256": "b04d38a05a317238cd138cdd77497d2cbcbd2f862bdc7215f0fcc7fc672eee72",
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          76.991,
+          341.959
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "0952195e47af2ec334cddf0a7619d5d933ea0ef23367d3855c9a7eb0f489e87a",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-texture-npot-v1-baseline-coordinates-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "152ac2d8324e6db6e2e1dcbdba96a09d17d106b8ad0da3a3295dd43236c1b203",
+          "logs": [
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-texture-npot-v1-baseline-coordinates-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "152ac2d8324e6db6e2e1dcbdba96a09d17d106b8ad0da3a3295dd43236c1b203"
+            }
+          ],
+          "combined_log_sha256": "152ac2d8324e6db6e2e1dcbdba96a09d17d106b8ad0da3a3295dd43236c1b203"
+        }
+      },
+      "reported_design_area_um2": 1497.0,
+      "constraints": {
+        "reg_code": "",
+        "module_name": "TextureCoordinatePipeline",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 0.0,
+        "timeout": 7200,
+        "synthesis_only": true,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "explore",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      }
+    },
+    "current_coordinates": {
+      "artifact": "generated/mobile-h1/physical-texture-npot-v1-current-coordinates-synth",
+      "qualification_sha256": "742c82eadaf48aa9b5acc22e7463902fcb2894483ccc4be37e2105c950977055",
+      "manifest_sha256": "11374bee006dee9e5a3a7e46c8573bae78127f91cadea7a189f9f95391f77394",
+      "result_sha256": "40c013b866cbe38c5c0a5561ddb43e3953b25e7e54a13bb5c9a54ab575bfa93c",
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          122.056,
+          297.87
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "26909721e686cd034f5d1d0be1966ffd8aefc35b6d500bddc7b1cdacaf413a2d",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-texture-npot-v1-current-coordinates-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "409eb33b9b928b8ae049a0b92b2b27ae88eb201264b688d84a20e634b2454860",
+          "logs": [
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-texture-npot-v1-current-coordinates-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "409eb33b9b928b8ae049a0b92b2b27ae88eb201264b688d84a20e634b2454860"
+            }
+          ],
+          "combined_log_sha256": "409eb33b9b928b8ae049a0b92b2b27ae88eb201264b688d84a20e634b2454860"
+        }
+      },
+      "reported_design_area_um2": 1234.0,
+      "constraints": {
+        "reg_code": "",
+        "module_name": "TextureCoordinatePipeline",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 0.0,
+        "timeout": 7200,
+        "synthesis_only": true,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "explore",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      }
+    },
+    "baseline_sampler": {
+      "artifact": "generated/mobile-h1/physical-texture-npot-v1-baseline-sampler-synth",
+      "qualification_sha256": "1799e86bc441c090e4f03dbafcca8cc82f98f43b64a25e5e6b35b98bf9fcb35a",
+      "manifest_sha256": "50ab8727ec557177ced5cbd17511fc84c84771692a8fe15609f38f0fbabc8199",
+      "result_sha256": "02309776a6afd559f4cf4dba7360d959b4b31291752a24dc579bcc66d18d818d",
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          24.246,
+          87.064
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "b7e12a2d86c960427bb37acb12c5e65e6a5f4cf1545ce68b8a0603d3c18dc63d",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-texture-npot-v1-baseline-sampler-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "74e6dd27dbf597f418960b6fcdf80e8abdc385303a8aeeacf475adee9dfc0e5b",
+          "logs": [
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-texture-npot-v1-baseline-sampler-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "74e6dd27dbf597f418960b6fcdf80e8abdc385303a8aeeacf475adee9dfc0e5b"
+            }
+          ],
+          "combined_log_sha256": "74e6dd27dbf597f418960b6fcdf80e8abdc385303a8aeeacf475adee9dfc0e5b"
+        }
+      },
+      "reported_design_area_um2": 5202.0,
+      "constraints": {
+        "reg_code": "",
+        "module_name": "TextureUnit",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 0.0,
+        "timeout": 7200,
+        "synthesis_only": true,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "explore",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      }
+    },
+    "v1_failed_sampler": {
+      "artifact": "generated/mobile-h1/physical-texture-npot-v1-current-sampler-synth",
+      "qualification_sha256": "7242e62e2c88a7ff9928fd872d506ab0fd3b85d6d5bb27459e9525038d465c9f",
+      "manifest_sha256": "f111ce626ad7bf900982db220f7c5ccb1d3d608a5ec22fc66fe28af1292d1f47",
+      "result_sha256": "1b116b0b83a7d97e495c17bfadd69962bcacf10bf88f01a29471283820076258",
+      "qualification": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -62.597,
+          93.302
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "e50a73d6ad442340f625b98bf48c04d03da583899a006de4ef3a1e0c1e612ac6",
+        "setup_passed": false,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-texture-npot-v1-current-sampler-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "20b9c54fe733f59630f94260b86153b3436e5dee188c2619b371d3f39596aed1",
+          "logs": [
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-texture-npot-v1-current-sampler-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "20b9c54fe733f59630f94260b86153b3436e5dee188c2619b371d3f39596aed1"
+            }
+          ],
+          "combined_log_sha256": "20b9c54fe733f59630f94260b86153b3436e5dee188c2619b371d3f39596aed1"
+        }
+      },
+      "reported_design_area_um2": 4862.0,
+      "constraints": {
+        "reg_code": "",
+        "module_name": "TextureUnit",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 0.0,
+        "timeout": 7200,
+        "synthesis_only": true,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "explore",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      }
+    },
+    "current_sampler": {
+      "artifact": "generated/mobile-h1/physical-texture-npot-v2-sampler-synth",
+      "qualification_sha256": "61b6a3f2f791587d1c64a1a08cefc46a30d41054ec3a1d7a03459ee50d721edc",
+      "manifest_sha256": "0eb8b72603057de186555f79b7701c911575d2fb1cb8981afea5af40cba9caab",
+      "result_sha256": "ea7124a6e4f4a2545e2b886f7bd4bbe4d44719c19f12e1394a8363b9775c3967",
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          21.443,
+          99.757
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "cd588190eed4d355907c5ea5339ca3ef0e77c51479d5321dde47571c91d3ea47",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-texture-npot-v2-sampler-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "deddb1d90e7066779276e360f217e62721c08eb3fdf679fa6010041a3d8b5ffd",
+          "logs": [
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-texture-npot-v2-sampler-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "deddb1d90e7066779276e360f217e62721c08eb3fdf679fa6010041a3d8b5ffd"
+            }
+          ],
+          "combined_log_sha256": "deddb1d90e7066779276e360f217e62721c08eb3fdf679fa6010041a3d8b5ffd"
+        }
+      },
+      "reported_design_area_um2": 4885.0,
+      "constraints": {
+        "reg_code": "",
+        "module_name": "TextureUnit",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 0.0,
+        "timeout": 7200,
+        "synthesis_only": true,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "explore",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      }
+    },
+    "negative_result": "V1 put a clamp comparison before the live UV partial multiply and failed at -62.597ps. V2 captures the predicate in parallel; it passes at +21.443ps. The baseline passes at +24.246ps, so the sampler setup margin is not an improvement.",
+    "coordinate_provenance": "V2 public coordinate emission is byte-identical to the V1 coordinate synthesis inputs.",
+    "baseline_provenance": "Baseline uses immutable pre-NPOT V22 classes, overlaying only the public emitter class. Same constraints; no private hardware-source overlay.",
+    "metadata_sha256": "74dbf7e868269977794ff4fbd1ad3fa9e1c065ea9c6282f62c31c78902dc00cb"
+  },
+  "integration_emission": {
+    "artifact": "generated/mobile-h1/texture-npot-v2-core-rtl",
+    "rtl_sha256": {
+      "BlockPrefixAdder_1.sv": "a0cbd10d48c42b714c26a44220ad7c3a2c34cc44b3fd4e752ad41625dc315bad",
+      "PreparedSampleCoverage.sv": "b1a19e17edbee6baf36fce4e5e3e75c21e754cac09f7d6119e8c91a1b7c9b6c5",
+      "TriangleRasterizer.sv": "e5630feff58a48168efd33cce66877b58993332eb0feb62fd52afc480c01d6f3",
+      "IterativeSignedDivider_9.sv": "7694e996fb6c911fbb494ca6ee65023ca8599810d3586f5084e1b228342890d6",
+      "SampleDepth.sv": "59a5e0bb3f382675b3d583f5b0885e275bb3a0b9e1c6ddcc759b6b12aae6ede5",
+      "TexUVInterpolator.sv": "9f3bb12fc66f86f4f2741b75782c0cb1cefeb04053b300f08b29f41068a304af",
+      "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+      "RRArbiter16_OmMemoryRequest.sv": "844f1ce207bc2d0350a4b16d3e72558aa10eca2030513ce8c68a10d084d05ac0",
+      "L2SramArray.sv": "d72588e8a9ac8d8aaec7495aae3ec57045cb817695cf11148a7df7b8e3f732f9",
+      "BlockPrefixAdder.sv": "c9c698b92611c00edaaa676b0c2fef3986696a65a84ae018c337df3d00b9f556",
+      "TileCommandPassController.sv": "af080f94854f9c1b01b30134b3d3a2a8f46081860afa28d239cec3124a066e28",
+      "TextureUnit.sv": "824c9f34f0553763efc7d80e6f9d2561c068ad135507a647ed50e70c5a701d47",
+      "SampleExpander.sv": "93e810cf997c968521ac7ca36d6a209428ebc3e18c5a9a6b110b6d2f8741b399",
+      "OutputMerger.sv": "9ac8c55292b99bcf1f2341ff603a99bd840e7410414a13983223f7aef7b3ffa0",
+      "IterativeSignedDivider_6.sv": "670ffa62e03dd2e6795f1c8eb0edf981774bc153e16001fc99665dc355d9f63d",
+      "Queue8_CommandBufferStage_Anon.sv": "5b53e1e24b1520c674aa88e3ac3970038c4e935f27b8af7f6d27716e43a998f2",
+      "TileAttachmentTransfer.sv": "1cad4bbe458c422cce996b849bc838c1e45419b4f315b1c3f9e0cb4b9bda39ae",
+      "PreparedGeometryStage.sv": "4fc7461b466cc07597a0d9f4819c1b24bf8e4994a31908a55aafdad258e655af",
+      "TileRenderPassAdmission.sv": "baf5dff224b129631dcdfdaa38390bfe7296043431881b1eb4dfbab2fd742f99",
+      "PersistentTileAttachmentStore.sv": "165b70dec82ae3d2700353cea91945d68b8175013d71e36402ce3f1227a356a3",
+      "NearClipStage.sv": "59090ca2d76412898707403150d3d876596bc863bae625975438af93d5321a84",
+      "ram_8x1013.sv": "3729b450525a09dee0ac2838644f7d9eac97806a92b39f0da17f7a990510905c",
+      "Queue1_TileTransferRequest.sv": "92c1ac8047c81f62d3b63a7c3c2b926d36ae566136c7025493e22561b01b901f",
+      "RenderPipeline.sv": "2b023642a060d3a7feb86c6ac4449f1c7475cef10c667b69965d2d5afff29eca",
+      "RasterShader.sv": "7896f819c52e21ec7c4b216acd53a89539140956bff73dcf0e2a27623d8c9d19",
+      "FragmentInterpolator.sv": "31bc6fa4cbab5f3dff92d9efda499621ad15decd6ac5d64d4501f509efc10bda",
+      "IterativeSignedDivider.sv": "35fc02d8a19449ae659c5f5665b4af1fdd4bdfc5032b32fddffee44a57f3db55",
+      "BlockPrefixAdder_123.sv": "1de6a5e129317c511dcdfbd1615eac5eac69815c0cb76f34691d3966e7c76657",
+      "DepthGradient.sv": "0860da0e6232bd31c43945c5f5d864d86b8e20d77f91e7b2ddd102bce21fe61b",
+      "BlockPrefixAdder_48.sv": "9bd947e2399357e61001f78cc776292a45a6483921f1e2398f341bf461a2230d",
+      "RRArbiter2_TileTransferRequest.sv": "308a3ea4afc09ae2077ff04b24363b89743706f0ec6591073e072dfd41374313",
+      "BlockPrefixAdder_84.sv": "8a65823a8fc6e657c992344ad944b434c6a2770fc6ae83cb08310b52be283567",
+      "TexturedFragStage.sv": "60fef8c1ee2bddd3525c609dde580d4d0c9a1b3f0ff100983700c119e3701b56",
+      "BlockPrefixAdder_36.sv": "2ccd237d0889175fb9959f918309b83c37aa63bd4f57303339bfde5819a00071",
+      "BlockPrefixAdder_57.sv": "6c7c70fda7e647e343c5ebd24a00e061237b392580564bd98533f02386e6a595",
+      "BlockPrefixAdder_2.sv": "a2e76d0cd1fb18230003359d012c55ad0f0475ff745c3f3b39a314962889f28c",
+      "CommandBufferStage.sv": "e7955fa887156379ff0b2454d5d16e46e54c432cc220da84e4c01ee70de9b669",
+      "TileAttachmentClearEngine.sv": "03defb1c7816722f2a148999671e5976297120f55fa21f79e03cbb5261f88c0b",
+      "RenderCore.sv": "84aa0ecf1ce182cbe03e3e0af21d28f7b0b5327ec592093b4bc9beb1b2a38147",
+      "BlockPrefixAdder_42.sv": "3b98c63354ce9265d46a16ef660ab0820bc6602bf120737277edd79877ba8f12",
+      "TileAttachmentWriteQueue.sv": "b31ec91c7967cd69767cee88a7891c14f7a5f7ab2ded89c0a688cd9d3bcc2967",
+      "verification/layers-PersistentTileAttachmentStore-Verification.sv": "45d4550cc43e82d828b93efdc1d7a7fce9b2016574e170988fffbb1ccab13530",
+      "verification/layers-RasterShader-Verification.sv": "1257c5d44cbb0c233af8f371c34067c37636feedfabaddc4dcf1add9a5600b39",
+      "verification/layers-TileAttachmentWriteQueue-Verification.sv": "fbca1764da39f5a973b75153ae67c7312d8b7e1f9ec235ea8b2348da4b27ab71",
+      "verification/layers-TextureUnit-Verification.sv": "b1dfcaa96b7ddaa6191aad8288f8ce4c4dd2f6f7ab21bf0330625513ef140a76",
+      "verification/layers-TriangleRasterizer-Verification.sv": "9bcfc31a6da2a608e7c628b9766d3333c752a6e51e62b0183fa66da372133e53",
+      "verification/layers-PreparedGeometryStage-Verification.sv": "3000d9203ed6afc59218ad1f747c0be6b4f07c404a424feed51b266159e44ab9",
+      "verification/layers-NearClipStage-Verification.sv": "3b7bfc90b8ba40755d07f4a452f88de27e3926f81ee021d8f829a88ff20e6d84",
+      "verification/layers-TexturedFragStage-Verification.sv": "4790f5c875a1abdc980c604481ff02c5c27f135c87fb52f93da6dadbb294e530",
+      "verification/layers-TileCommandPassController-Verification.sv": "a1aafed89704a624b9737bd9179b7253bfb0d5502c47c80311a50fc09f74880f",
+      "verification/layers-TileAttachmentTransfer-Verification.sv": "255435bf69a56a8de347530b30a9a9141db28ca20d76b5a43d690fa62305f32c",
+      "verification/layers-RenderPipeline-Verification.sv": "db49496edf0778377f06ba7c3f751d953c9d4c301bdc4c3a5020868eeebaf308",
+      "verification/layers-TileAttachmentClearEngine-Verification.sv": "67881e3d7b37ea40f94cd3c00fde34ceed62f6566201fa644c33656cb247487c",
+      "verification/layers-RenderCore-Verification.sv": "219e88c4b4e1875d316ed15f087d9d50190a990d019a5ea3f8fca8f094a7febc",
+      "verification/layers-OutputMerger-Verification.sv": "0ca7a445c2c9e582f37624d1f68fab120ece64f51359eedb2f0f27247f72278d",
+      "verification/layers-CommandBufferStage-Verification.sv": "c3ecd1a35ad9c218c14dee258345f4b5626e746b2b2cadde3dfe9ce693e83f7e",
+      "verification/layers-TileAttachmentSram-Verification.sv": "89888ce41f9626e999cadf3172cb57f1c21edc39a58099667cd708ad6160daff",
+      "verification/assume/layers-RenderCore-Verification-Assume.sv": "18a948711ce3462ec42c92d11f0b113f951c858d13d4eed07d221add61dcb163",
+      "verification/assert/layers-PreparedGeometryStage-Verification-Assert.sv": "ae20763d672fa7b68ab89dd05e66d2f9915f148f268b79e2c080d9a1356bcb09",
+      "verification/assert/TileCommandPassController_Verification_Assert.sv": "705ed07b52e2ce6fa0a38c3d86f0ef0747f63223773c3565e53f989952dce418",
+      "verification/assert/RenderCore_Verification_Assert.sv": "4c163c2712458bc00975ed62ff1323b97c5108c23a0ab57533599c93da674386",
+      "verification/assert/layers-TileAttachmentClearEngine-Verification-Assert.sv": "9ac12db58d44e6040224f1062433a1257d234505df7ab840675ee9d97251223d",
+      "verification/assert/CommandBufferStage_Verification_Assert.sv": "e7c41812db8b50583a47c884ba1538d19357f6082fbea6e741158bed2ff50935",
+      "verification/assert/layers-TexturedFragStage-Verification-Assert.sv": "2ba497f8208c7c61d0c9c3bb81598809e7bf048c2de0b839dd399fb56a7d3f04",
+      "verification/assert/layers-TileAttachmentTransfer-Verification-Assert.sv": "0817fc9c8685748d29f3edbdf783c9772aad62351d785466a6df4e2a08f04e6f",
+      "verification/assert/layers-TileCommandPassController-Verification-Assert.sv": "20aee7732a0ee7e72e5c02f20be28926b184add2514ac02bbcd1a5a04b8ab840",
+      "verification/assert/layers-PersistentTileAttachmentStore-Verification-Assert.sv": "e9f43fe87f0a98931973f4b292249ea0f79886392b04a9d5b2c8716e4abdc354",
+      "verification/assert/TextureUnit_Verification_Assert.sv": "cee880c5708e333cc5205a52fe890996c877597941e4d394a6cfdb024265d006",
+      "verification/assert/layers-OutputMerger-Verification-Assert.sv": "14c4ea7f000e2c262f62bcacfa8c3ed44fff75f8c448162328d20ae4dbdbf1f2",
+      "verification/assert/RenderPipeline_Verification_Assert.sv": "abaae44f1f9140f35953a0647d313e6d4462422d87c8a94ca864c1ebb28d75a0",
+      "verification/assert/TileAttachmentClearEngine_Verification_Assert.sv": "b8ba07c809c0c821d0e9f357ad0dde58cbec278d6fc5b1088512a3ac67a21c80",
+      "verification/assert/layers-CommandBufferStage-Verification-Assert.sv": "e1d15b776064fcdfe650132920326c4609a58b3174519a96b3cd2e5bcf01026f",
+      "verification/assert/NearClipStage_Verification_Assert.sv": "375131f9efbd6e4c221febda029212568ec218d01bfbe4778b5abfe3039cec41",
+      "verification/assert/layers-TriangleRasterizer-Verification-Assert.sv": "d6f8a7dffb975230496accd4c62900ba32aea8dcd3e2575791f52894bdb87cde",
+      "verification/assert/PreparedGeometryStage_Verification_Assert.sv": "33b032cd2492f4b19059d2bb351ad95d47157792793690fae76fe227734c54b1",
+      "verification/assert/layers-TileAttachmentSram-Verification-Assert.sv": "6e84ab4401c04765d3d5baae4042c330cbb4da5606015bede09e683ff60cfff9",
+      "verification/assert/TileAttachmentWriteQueue_Verification_Assert.sv": "f7fb3d6466914f53812814c7f8511e63fa67c4aea5258abd6e747ef8a2aab638",
+      "verification/assert/layers-RenderPipeline-Verification-Assert.sv": "52a8dbe92994dd9378f1b7a84a4bb3f91337cb8688198488b18c4c2c57241ee7",
+      "verification/assert/TileAttachmentTransfer_Verification_Assert.sv": "cc31405c6ffeed4edf2d5bc8efe237960f2f3254ba5ec811e36dcea146e5c2af",
+      "verification/assert/layers-RasterShader-Verification-Assert.sv": "d8bc3173a0b204651d71dbebdea2431f1cfcdcc4735ea6df05d093d206dc4431",
+      "verification/assert/layers-RenderCore-Verification-Assert.sv": "a1bacfa9c6471ea77814741c4dae0cb6d98e73556c266bde375527fe2d42c8d0",
+      "verification/assert/PersistentTileAttachmentStore_Verification_Assert.sv": "177ec2612b5736ee50b70378e5a4ac600d98d6b4a2ac18aa3880d45c76875ff5",
+      "verification/assert/OutputMerger_Verification_Assert.sv": "25e77fcb759f2114fb4f64d4a457e0f00cdd4a1c9d36728b46917385dce22fc2",
+      "verification/assert/layers-NearClipStage-Verification-Assert.sv": "f41d8b2bfdb411b32567bd6a150820472f4742601ffb1bca544b7500945077f5",
+      "verification/assert/TriangleRasterizer_Verification_Assert.sv": "53301881264f40e4306af9df94a1890e24c34ccca514ab7d2f0b01d331a9fbb2",
+      "verification/assert/layers-TileAttachmentWriteQueue-Verification-Assert.sv": "401884bdb20e0b23dcc33c7e94d3bda12772911fd0293be2069df531d6662780",
+      "verification/assert/layers-TextureUnit-Verification-Assert.sv": "1070c0d77e93987bb7a9699274cc099a6a635a81e4e220d594f8f97f05223c52",
+      "verification/assert/TileAttachmentSram_Verification_Assert.sv": "740aebcd2d077d198bd00594529836d87144bb3179429063ba331e34b1953156",
+      "verification/cover/layers-RenderCore-Verification-Cover.sv": "3c935613e989655cd5d005be1565d8412f2636c21f0cb9893f71cd3f142598e0"
+    },
+    "scope": "Normal current-source public persistent-render-core emission with staged geometry, unsigned UV interpolation, NPOT sampler and raster V22 candidate. Not whole-core synthesis/physical qualification; interpolation divisions remain."
+  },
+  "post_route_qualified": false,
+  "full_renderer_qualified": false,
+  "remaining": "Banked caches and filters, general image/sampler descriptors, negative/signed coordinates, remaining wrap modes/dimensions/formats, miss/translation stress and render-to-texture qualification at cluster scope, 1 bilinear result/cycle/cluster, physical area/energy and H0-H8 product gates remain required."
+}

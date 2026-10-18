@@ -1183,3 +1183,19 @@ headroom with unchanged final setup/hold and I/O gates. The normal public
 `mobile-clip` emitter produces byte-identical SV to every routed input.
 The [clipper record](performance/mobile-clip-divider-2026-10-18.json)
 preserves the earlier failed routes and this component qualification.
+
+An [H4 texture step](performance/mobile-texture-npot-2026-10-18.json)
+removes the power-of-two REPEAT restriction for unsigned Q16.16 coordinates
+and fixes large-coordinate CLAMP overflow. It uses bounded coordinate
+reduction rather than a variable divider, retaining six coordinate stages
+and the sampler's existing latency. Thirty-five checks across ten suites
+pass, including1206 coordinate requests,512 consecutive metadata results,
+NPOT mip/trilinear filtering, full unsigned UVs and actual masked vector
+samples with reordered replies. The coordinate component synthesis margin
+improves from+76.991 to+122.056 ps and reported design area falls from1497
+to1234 µm². A first sampler integration fails at−62.597 ps; capturing its
+clamp decision beside the partial products restores the1 GHz synthesis
+pass at+21.443 ps, compared with the baseline's+24.246 ps, while reported
+area falls from5202 to4885 µm². These are component synthesis results.
+Banked texture-cluster throughput, resource descriptors, remaining texture
+features and complete renderer physical qualification remain open.

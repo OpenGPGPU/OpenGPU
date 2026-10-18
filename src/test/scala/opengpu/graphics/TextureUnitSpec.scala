@@ -8,10 +8,8 @@ import scala.collection.mutable
 
 /** Verifies the M5b texture unit against an integer-exact software reference.
   *
-  * The reference mirrors the documented hardware maths step for step -- same
-  * scale/shift, same mask-vs-minimum wrap handling, same weight construction
-  * and truncating shift -- so a pass means the hardware decode/filter pipeline
-  * is exactly the specified integer computation, not merely close.
+  * The reference uses full-precision coordinates, floor-modulo repeat and
+  * saturating clamp, independently of the RTL's bounded coordinate reduction.
   */
 class TextureUnitSpec extends AnyFlatSpec {
   behavior of "TextureUnit"
@@ -56,7 +54,7 @@ class TextureUnitSpec extends AnyFlatSpec {
   private def texel(r: Int, g: Int, b: Int): Int =
     (r << 24) | (g << 16) | (b << 8) | 0xff
 
-  /** Integer-exact software mirror of the hardware sampling path. */
+  /** Integer-exact sampling contract without hardware-width truncation. */
   private def refSample(
     mem: TexMem,
     clampMode: Boolean,
@@ -69,14 +67,14 @@ class TextureUnitSpec extends AnyFlatSpec {
       val inRange =
         if (clampMode)
           if (biased < 0L) 0L else math.min(biased, periodLast - 1L)
-        else biased & (periodLast - 1L)
+        else Math.floorMod(biased, periodLast)
       val idx0raw = (inRange >> 8).toInt
       val frac = (inRange & 0xff).toInt
       val idx0 =
         if (clampMode) math.min(idx0raw, extent - 1) else idx0raw
       val idx1 =
         if (clampMode) math.min(idx0 + 1, extent - 1)
-        else (idx0 + 1) & (extent - 1)
+        else (idx0 + 1) % extent
       (idx0, idx1, frac)
     }
     val (x0, x1, fx) = axis(u, mem.width)
@@ -528,6 +526,54 @@ class TextureUnitSpec extends AnyFlatSpec {
       assert(mem.oobReads == 0, "hardware fetched outside the texture")
     }
   }
+  for (overlap <- Seq(false, true)) {
+    it should s"repeat NPOT mip levels and clamp full unsigned coordinates (overlap=$overlap)" in {
+      simulate(new TextureUnit(allowPrepared = overlap, overlapPrepared = overlap)) { dut =>
+        dut.io.prepared.foreach { p =>
+          p.valid.poke(false.B); p.bits.poke(0.U.asTypeOf(p.bits))
+        }
+        dut.io.sample.valid.poke(false.B); dut.io.result.ready.poke(false.B)
+        dut.io.mem.resp.valid.poke(false.B)
+        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+        val mem = new TexMem(0x4000L, 7, 5, levels = 4)
+        for (level <- 0 until 4) {
+          val (_, w, h) = mem.levelInfo(level)
+          for (y <- 0 until h; x <- 0 until w)
+            mem.putLevel(level,x,y,texel((x*53+y*17+level*31)&255,
+              (x*7+y*73+level*47)&255,(x*29+y*11+level*61)&255))
+        }
+        def levelSample(level: Int, clamp: Boolean, u: Long, v: Long): Int = {
+          val (base, w, h) = mem.levelInfo(level)
+          val view = new TexMem(base,w,h)
+          for (y <- 0 until h; x <- 0 until w)
+            view.put(x,y,mem.words(base+(y.toLong*w+x)*4))
+          refSample(view,clamp,u,v)
+        }
+        def mix(a: Int, b: Int, f: Int): Int =
+          Seq(24,16,8,0).foldLeft(0) { (out, shift) =>
+            (out << 8) | ((((a >>> shift)&255)*(256-f)+((b >>> shift)&255)*f) >> 8)
+          }
+        val coordinates = Seq((0L,0L),(0x8000L,0x8000L),
+          (0x10000L,0x10001L),(0xffffffffL,0xfffffffeL),(98303L,98305L))
+        var checked = 0
+        for (clamp <- Seq(false,true); level <- 0 until 4;
+             fraction <- Seq(0,128,255); (u,v) <- coordinates) {
+          attach(dut,mem,wrapClamp=clamp,maxLevel=3)
+          val f = if (level == 3) 0 else fraction
+          val expected = mix(levelSample(level,clamp,u,v),
+            levelSample(math.min(level+1,3),clamp,u,v),f)
+          val got = runSample(dut,mem,u,v,mipLevel=level,lodFrac=fraction,
+            stallCycles=3,requestStallCycles=2)
+          assert(got == expected,
+            s"overlap=$overlap clamp=$clamp mip=$level fraction=$fraction u=$u v=$v")
+          checked += 1
+        }
+        assert(mem.oobReads == 0)
+        info(s"NPOT_MIP_SAMPLES=$checked overlap=$overlap")
+      }
+    }
+  }
+
   for (entries <- Seq(0, 8)) {
     it should s"finish a non-fractional sample without a mix bubble (cache=$entries)" in {
       simulate(new TextureUnit(wordCacheEntries = entries)) { dut =>

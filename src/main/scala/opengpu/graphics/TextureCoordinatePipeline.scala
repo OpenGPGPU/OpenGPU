@@ -43,8 +43,8 @@ class TextureCoordinatePipeline(laneWidth: Int) extends Module {
   }
   private class Biased extends Bundle {
     val texture = new Binding
-    val x = UInt(38.W)
-    val y = UInt(38.W)
+    val x = UInt(24.W)
+    val y = UInt(24.W)
   }
   private class Ranged extends Bundle {
     val texture = new Binding
@@ -60,7 +60,7 @@ class TextureCoordinatePipeline(laneWidth: Int) extends Module {
     val weights = Vec(4, UInt(17.W))
   }
   private val captured = Queue(io.in, 1, pipe = true, flow = false)
-  // Keep the 32x14 product and the half-texel subtraction on different
+  // Keep the bounded 17x14 product and half-texel subtraction on different
   // register stages. Metadata remains elastic and preserves lane ownership.
   private val scale = Wire(Decoupled(new Biased))
   scale.valid := captured.valid
@@ -70,47 +70,33 @@ class TextureCoordinatePipeline(laneWidth: Int) extends Module {
   scale.bits.texture.texWidth := captured.bits.texWidth
   scale.bits.texture.texHeight := captured.bits.texHeight
   scale.bits.texture.clamp := captured.bits.clamp
-  scale.bits.x := (captured.bits.u * captured.bits.texWidth) >> 8
-  scale.bits.y := (captured.bits.v * captured.bits.texHeight) >> 8
+  scale.bits.x := TextureCoordinates.scale(captured.bits.u, captured.bits.texWidth, captured.bits.clamp)
+  scale.bits.y := TextureCoordinates.scale(captured.bits.v, captured.bits.texHeight, captured.bits.clamp)
   private val scaled = Queue(scale, 1, pipe = true, flow = false)
   private val bias = Wire(Decoupled(new Biased))
   bias.valid := scaled.valid
   scaled.ready := bias.ready
   bias.bits.texture := scaled.bits.texture
-  bias.bits.x := scaled.bits.x - 128.U
-  bias.bits.y := scaled.bits.y - 128.U
+  bias.bits.x := TextureCoordinates.bias(scaled.bits.x)
+  bias.bits.y := TextureCoordinates.bias(scaled.bits.y)
   private val biased = Queue(bias, 1, pipe = true, flow = false)
 
-  private def axisRange(value: UInt, extent: UInt, clamp: Bool): UInt = {
-    val signed = value.asSInt
-    val last = ((extent << 8) - 1.U).pad(64)
-    val clamped = Mux(signed < 0.S, 0.S(64.W),
-      Mux(signed > last.asSInt, last.asSInt, signed.pad(64)))
-    Mux(clamp, clamped.asUInt, value.pad(64) & last)(21, 0)
-  }
   private val range = Wire(Decoupled(new Ranged))
   range.valid := biased.valid
   biased.ready := range.ready
   range.bits.texture := biased.bits.texture
-  range.bits.x := axisRange(biased.bits.x, biased.bits.texture.texWidth, biased.bits.texture.clamp)
-  range.bits.y := axisRange(biased.bits.y, biased.bits.texture.texHeight, biased.bits.texture.clamp)
+  range.bits.x := TextureCoordinates.range(biased.bits.x, biased.bits.texture.texWidth, biased.bits.texture.clamp)
+  range.bits.y := TextureCoordinates.range(biased.bits.y, biased.bits.texture.texHeight, biased.bits.texture.clamp)
   private val ranged = Queue(range, 1, pipe = true, flow = false)
 
-  private def indices(value: UInt, extent: UInt, clamp: Bool): Seq[UInt] = {
-    val last = extent - 1.U
-    val raw = value(21, 8)
-    val first = Mux(clamp, Mux(raw > last, last, raw), raw)
-    val next = first + 1.U
-    Seq(first, Mux(clamp, Mux(next > last, last, next), next & last))
-  }
   private val index = Wire(Decoupled(new Indexed))
   index.valid := ranged.valid
   ranged.ready := index.ready
   index.bits.lane := ranged.bits.texture.lane
   index.bits.base := ranged.bits.texture.base
   index.bits.texWidth := ranged.bits.texture.texWidth
-  index.bits.x := VecInit(indices(ranged.bits.x, ranged.bits.texture.texWidth, ranged.bits.texture.clamp))
-  index.bits.y := VecInit(indices(ranged.bits.y, ranged.bits.texture.texHeight, ranged.bits.texture.clamp))
+  index.bits.x := VecInit(TextureCoordinates.indices(ranged.bits.x, ranged.bits.texture.texWidth, ranged.bits.texture.clamp))
+  index.bits.y := VecInit(TextureCoordinates.indices(ranged.bits.y, ranged.bits.texture.texHeight, ranged.bits.texture.clamp))
   private val fx = ranged.bits.x(7, 0)
   private val fy = ranged.bits.y(7, 0)
   index.bits.weights(0) := (256.U - fx) * (256.U - fy)

@@ -19,10 +19,10 @@ class PartialProductBoundarySpec extends AnyFlatSpec {
       val mask32 = (BigInt(1) << 32) - 1
       def raw(a: BigInt): BigInt = ((a >> 2) * BigInt("01030507", 16) + BigInt("12345678", 16)) & mask32
       def axis(c: BigInt, n: Int, clamp: Boolean): BigInt = {
-        val biased = ((c * n - 32768) >> 8) & ((BigInt(1) << 38) - 1)
-        val signed = if (biased.testBit(37)) biased - (BigInt(1) << 38) else biased
-        val last = BigInt(n) * 256 - 1
-        if (clamp) signed.max(BigInt(0)).min(last) else biased & last
+        val biased = (c * n >> 8) - 128
+        val period = BigInt(n) * 256
+        if (clamp) biased.max(BigInt(0)).min(period - 1)
+        else ((biased % period) + period) % period
       }
       val cases = Seq(
         (8192, 8192, BigInt(0x6000), BigInt(0xa000), true),
@@ -30,7 +30,10 @@ class PartialProductBoundarySpec extends AnyFlatSpec {
         (8192, 4096, mask32, BigInt("80000000", 16), false),
         (16383, 8193, mask32, mask32, true),
         (127, 63, BigInt(0), BigInt(0), true),
-        (8192, 8192, BigInt(0), BigInt(0), false))
+        (8192, 8192, BigInt(0), BigInt(0), false),
+        (3, 5, BigInt(0x8000), BigInt(0x8000), false),
+        (16383, 8193, mask32, mask32, false),
+        (7, 9, BigInt(0), BigInt(0), false))
       for ((w,h,u,v,clamp) <- cases) {
         d.io.texWidth.poke(w.U); d.io.texHeight.poke(h.U); d.io.wrapMode.poke(clamp.B)
         d.io.sample.bits.u.poke(u.U); d.io.sample.bits.v.poke(v.U)
@@ -41,7 +44,7 @@ class PartialProductBoundarySpec extends AnyFlatSpec {
         val x = axis(u,w,clamp); val y = axis(v,h,clamp)
         def indices(c: BigInt, n: Int): Seq[BigInt] = {
           val first = if (clamp) (c >> 8).min(BigInt(n-1)) else c >> 8
-          Seq(first, if (clamp) (first+1).min(BigInt(n-1)) else (first+1) & (n-1))
+          Seq(first, if (clamp) (first+1).min(BigInt(n-1)) else (first+1) % n)
         }
         val xs=indices(x,w);val ys=indices(y,h)
         val addresses=for (j <- 0 until 2; i <- 0 until 2) yield (BigInt(0x3000)+(ys(j)*w+xs(i))*4)&mask32
