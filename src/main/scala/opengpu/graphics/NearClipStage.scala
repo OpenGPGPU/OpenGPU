@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.{IterativeSignedDivider, SignedProductParts, SplitSignedProduct}
+import opengpu.util.{BlockPrefixAdder, IterativeSignedDivider, SignedProductParts, SplitSignedProduct}
 
 /** A clip-space vertex with every varying needed after clipping. */
 class ClipVertexColor(config: GraphicsConfig) extends Bundle {
@@ -23,6 +23,24 @@ object NearClipStage {
   val MaxVertices = 3 + PlaneCount
   val MaxTriangles = MaxVertices - 2
   val InterpolatedFields = 11
+}
+
+/** Preserve every signed34 distance while sharing a bounded carry tree.
+  * Select the coordinate before arithmetic; all planes use w +/- coordinate.
+  */
+private[graphics] object ClipDistanceMath {
+  def apply(v: ClipVertexColor, which: UInt, near: UInt): SInt = {
+    val coordinate = MuxLookup(which, near.pad(34).asSInt)(Seq(
+      1.U -> v.x.pad(34), 2.U -> v.x.pad(34),
+      3.U -> v.y.pad(34), 4.U -> v.y.pad(34),
+      5.U -> v.z.pad(34), 6.U -> v.z.pad(34)))
+    val add = which === 1.U || which === 3.U || which === 5.U
+    val adder = Module(new BlockPrefixAdder(34))
+    adder.io.a := v.w.pad(34).asUInt
+    adder.io.b := Mux(add, coordinate.asUInt, ~coordinate.asUInt)
+    adder.io.carryIn := !add
+    adder.io.sum(33, 0).asSInt
+  }
 }
 
 /** Sequential Sutherland-Hodgman clipping against the complete view volume.
@@ -83,22 +101,9 @@ class NearClipStage(config: GraphicsConfig) extends Module {
   divider.io.in.bits.numerator := numeratorReg
   divider.io.in.bits.denominator := denominatorReg
   divider.io.out.ready := state === sRetire
-  private val wNearSInt = io.wNear.pad(34).asSInt
-
   /** Signed distance with inside represented by distance >= 0. */
-  private def distance(v: ClipVertexColor, which: UInt): SInt = {
-    val d = Wire(SInt(34.W))
-    d := MuxLookup(which, v.w.pad(34) - wNearSInt)(Seq(
-      0.U -> (v.w.pad(34) - wNearSInt),
-      1.U -> (v.x.pad(34) + v.w.pad(34)), // left:   x >= -w
-      2.U -> (v.w.pad(34) - v.x.pad(34)), // right:  x <=  w
-      3.U -> (v.y.pad(34) + v.w.pad(34)), // bottom: y >= -w
-      4.U -> (v.w.pad(34) - v.y.pad(34)), // top:    y <=  w
-      5.U -> (v.z.pad(34) + v.w.pad(34)), // near:   z >= -w
-      6.U -> (v.w.pad(34) - v.z.pad(34))  // far:    z <=  w
-    ))
-    d
-  }
+  private def distance(v: ClipVertexColor, which: UInt): SInt =
+    ClipDistanceMath(v, which, io.wNear)
 
   when(state === sIdle && io.start) {
     for (i <- 0 until 3) { current(i) := io.tri(i) }
@@ -118,18 +123,24 @@ class NearClipStage(config: GraphicsConfig) extends Module {
     val prevIn = prevDistance >= 0.S
     val curIn = curDistance >= 0.S
 
+    // Capture edge payload independently of classification. Only crossing
+    // edges consume it. Likewise, an uncounted next-polygon slot may hold a
+    // temporary current vertex: append overwrites it for crossing edges,
+    // later accepted vertices overwrite dropped edges, and inputCount bounds
+    // all subsequent reads. Keep distance/sign logic off wide write enables.
+    edgePrev := prev
+    edgeCur := cur
+    edgePrevDistance := prevDistance
+    edgeCurDistance := curDistance
+    edgeEntering := curIn
+    when(outputCount < MaxVertices.U) { next(outputCount) := cur }
+
     when(curIn =/= prevIn) {
-      edgePrev := prev
-      edgeCur := cur
-      edgePrevDistance := prevDistance
-      edgeCurDistance := curDistance
-      edgeEntering := curIn
       field := 0.U
       state := sInterpolate
     }.elsewhen(curIn) {
       assert(outputCount < MaxVertices.U,
         "frustum clip polygon exceeded its vertex bound")
-      next(outputCount) := cur
       outputCount := outputCount + 1.U
     }
 

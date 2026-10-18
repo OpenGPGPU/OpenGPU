@@ -458,6 +458,115 @@
             "sha256": "f74e03d5aacc27cf3a3d54cdc25be463b2a1941fe69c5ff717e2f5bc4def1f28"
           }
         ]
+      },
+      "route": {
+        "passed": false,
+        "qualification": "generated/mobile-h1/physical-product-raster-v21-resident-route/qualification.json",
+        "qualification_sha256": "21735010562b7bd8a12a7744c8dc8e00c4bd66434a925cf26f64a85a216cb358",
+        "qor": {
+          "instance_count": 395997,
+          "instance_area": 15391.7,
+          "sequential_cell_count": 9760,
+          "clock_buffer_count": 833,
+          "timing_repair_buffer_count": 4615,
+          "setup_tns_ps": -5.14966,
+          "hold_tns_ps": 0,
+          "setup_worst_slack_ps": -5.14966,
+          "hold_worst_slack_ps": 29.4184,
+          "setup_violation_count": 1,
+          "hold_violation_count": 0,
+          "core_clock_fmax_mhz": 994.877,
+          "virtual_io_clock_fmax_mhz": null,
+          "reported_fmax_mhz": 994.877,
+          "setup_clock_skew_ps": 24.4992,
+          "hold_clock_skew_ps": 24.8807,
+          "total_power_w": 0.356291,
+          "placement_utilization": 23.5376,
+          "placement_violations": 0,
+          "estimated_wirelength": 515696,
+          "route_wirelength": 620754,
+          "route_vias": 1205500,
+          "route_drc_errors": 0,
+          "route_drc_report_bytes": 0,
+          "antenna_violating_nets": 0,
+          "antenna_violating_pins": 0,
+          "ir_drop_vdd_worst": 0.0326491,
+          "ir_drop_vss_worst": 0.0397925,
+          "flow_warnings": 15,
+          "flow_errors": 0,
+          "critical_path": {
+            "startpoint": "u27777 (rising edge-triggered flip-flop clocked by core_clock)",
+            "endpoint": "u91208 (rising edge-triggered flip-flop clocked by core_clock)",
+            "group": "core_clock",
+            "slack_ps": -5.15,
+            "arrival_ps": 1180.75,
+            "data_path_delay_ps": 978.93,
+            "cell_delay_ps": 807.32,
+            "net_delay_ps": 171.61,
+            "cell_delay_percent": 82.47,
+            "net_delay_percent": 17.53,
+            "cell_count": 40,
+            "net_count": 40,
+            "dominant_cell_types": [
+              {
+                "cell_type": "XOR2x2_ASAP7_75t_SL",
+                "count": 8,
+                "delay_ps": 172.14
+              },
+              {
+                "cell_type": "MAJx2_ASAP7_75t_SL",
+                "count": 7,
+                "delay_ps": 141.63
+              },
+              {
+                "cell_type": "NAND2x1_ASAP7_75t_SL",
+                "count": 11,
+                "delay_ps": 122.2
+              },
+              {
+                "cell_type": "AND2x2_ASAP7_75t_SL",
+                "count": 2,
+                "delay_ps": 69.85
+              },
+              {
+                "cell_type": "DFFHQNx3_ASAP7_75t_SL",
+                "count": 1,
+                "delay_ps": 64.44
+              },
+              {
+                "cell_type": "OA211x2_ASAP7_75t_SL",
+                "count": 2,
+                "delay_ps": 48.01
+              },
+              {
+                "cell_type": "BUFx3_ASAP7_75t_SL",
+                "count": 1,
+                "delay_ps": 43.74
+              },
+              {
+                "cell_type": "XNOR2x2_ASAP7_75t_SL",
+                "count": 1,
+                "delay_ps": 23.68
+              }
+            ],
+            "per_group": {
+              "core_clock": {
+                "startpoint": "u27777 (rising edge-triggered flip-flop clocked by core_clock)",
+                "endpoint": "u91208 (rising edge-triggered flip-flop clocked by core_clock)",
+                "slack_ps": -5.15,
+                "arrival_ps": 1180.75
+              },
+              "vclk_core_clock": {
+                "startpoint": "u0 (rising edge-triggered flip-flop clocked by core_clock)",
+                "endpoint": "io_draw_ready (output port clocked by vclk_core_clock)",
+                "slack_ps": 271.13,
+                "arrival_ps": 478.87
+              }
+            }
+          }
+        },
+        "critical_nets": "vHold_v0_x[2] -> crossRightParts_1_midB[29], OpenDB6_final verified; signed16-by-unsigned16 partial multiplication.",
+        "scope": "Resident720p rasterizeronly. Vectorlesscomponentpowerestimate is not wholeGPUenergy orfull-frame FPS. Same1GHzTC/SLVTIO25%util25 andzero setuprepairmargin."
       }
     }
   },

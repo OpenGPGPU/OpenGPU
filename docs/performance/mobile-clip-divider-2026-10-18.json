@@ -174,7 +174,60 @@
         "critical_path": "numeratorReg[1] -> divider.quotient[8], verifiedOpenDB; admission combines signconversion withcapacity control."
       }
     },
-    "native_product": "V1clippedbaseline andV2inside+clipped matrices running; not passes yet."
+    "native_product": {
+      "metadata_sha256": "885a4f4f5821a4931b274a644542ee6a40cd259fba02ed5946cc0f54be696583",
+      "audit": {
+        "checks": 6,
+        "executed_jobs": 72,
+        "distinct_jobs": 48,
+        "duplicate_executions": 24,
+        "duplicates_cycle_identical": true,
+        "logs": [
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_clip_v2_matrix_profile_0.log",
+            "sha256": "c175c21a6c6e8e9290684db7689ac6be1623719d80bcbcc8221f3bb32fa05b3f"
+          },
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_clip_v2_matrix_profile_1.log",
+            "sha256": "b470a7a97cfcbbb7fcf4c61ca04ab63bee288588bfd722c4cefc95e9c54e2afa"
+          }
+        ],
+        "scope": "All recorded jobs independently check storedsamples/resolves; counts audited from actualScalaTest logs, not requested suite filters.",
+        "note": "V2 multi-suite -z selection applied to final suite, so inside jobs were repeated. Keep all realexecutions but count distinct jobs separately; future wrapper uses one suite per JVM."
+      },
+      "source_sha256": {
+        "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+        "src/main/scala/opengpu/graphics/Rasterizer.scala": "e36b79ebe23d626abd2c720b8088a4e83fa667f1a05fa664ab1433f5c3bb6955",
+        "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+        "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+        "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+        "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+        "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+        "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+        "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+        "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+        "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+        "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+        "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+        "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+        "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+        "src/test/scala/opengpu/graphics/RasterOriginSumProof.scala": "875e78179e733742a58e22d8a3c8e9119263a2cf1c05afd32540039821804480",
+        "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+        "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+        "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0",
+        "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+        "src/test/scala/opengpu/util/RegisteredQueue2Spec.scala": "9467f1e3688a16142e9b817ee9757835ad01ead0886af94d2a8569ff1fa7e611",
+        "src/test/scala/opengpu/util/RegisteredQueue2ResetSpec.scala": "1aaa843f02c1f6980c9b6250b3b17d16415e2e21de2025c5b55d9eedab3b2ef1",
+        "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "ec1b196d658d01bb08d508da27354677527cf2c074423e27a6d9c07383a9e5a2",
+        "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "f8e2ddd37b448965b8134a5a5a1e9af9ee4b5b4023737857e73eec77cae07969",
+        "src/main/scala/opengpu/graphics/NearClipStage.scala": "7b870af7a64dc73c2b0a9be6f17da59e3867e30619ce4136e4524551d9af2d82",
+        "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "9484db9411504a49b31a3d1fb0fe773854479c51fb1f5274ab686849550e3487",
+        "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "716bec084d5616492ea5008f0fb008076ed82f658bf3d464945cbe4575beec37",
+        "src/main/scala/opengpu/util/SplitSignedProduct.scala": "7bf5b4364ed88a66274a23eff2982a6d017e36a29fa9078138d361bd1e4e89c9",
+        "src/test/scala/opengpu/util/SplitSignedProductSpec.scala": "5a6a974f1a6966d02fa4ebaf058e9a860061ee700027ccde5b4f50b2d37304b3",
+        "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "ffc730a9596e896b729d89edb621b270d9334f4e738a5a83c943906c0834f1b6"
+      }
+    }
   },
   "followup_v3": {
     "change": "Capture magnitude/sign before capacity checks, reusing quotient andavailableoutput registers; addsone preparation cycle perinterpolated field.",
@@ -229,5 +282,532 @@
       }
     },
     "native_product": false
+  },
+  "followup_v4": {
+    "source_sha256": {
+      "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "5d5f10ef42a07dafc534b6caaa62abb35e24609487b33bc156c49dc9fa20f20e",
+      "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "0d54ef575bd6daeeaafac50eab1d9a7ab67aaa29f3e6e6518b37302d63fc071e",
+      "src/main/scala/opengpu/graphics/NearClipStage.scala": "6c95e06a989c980a498a464c35d3e33ed67863305754860ba33b29cfede1c10d",
+      "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "9484db9411504a49b31a3d1fb0fe773854479c51fb1f5274ab686849550e3487",
+      "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "716bec084d5616492ea5008f0fb008076ed82f658bf3d464945cbe4575beec37",
+      "src/main/scala/opengpu/util/SplitSignedProduct.scala": "7bf5b4364ed88a66274a23eff2982a6d017e36a29fa9078138d361bd1e4e89c9",
+      "src/test/scala/opengpu/util/SplitSignedProductSpec.scala": "5a6a974f1a6966d02fa4ebaf058e9a860061ee700027ccde5b4f50b2d37304b3"
+    },
+    "build_metadata_sha256": "6558247c38ec97ec3057660c03bc6667bea6daf0f74cb113caf44555acc86bf9",
+    "component_checks": 17,
+    "suites": 4,
+    "unit_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/clip_integration_v4_unit.log",
+      "sha256": "44f29d0b68a19bf5d112c932af6d5b69e8c954a079417eca253fea0e08894438"
+    },
+    "scene_cycles": 23087,
+    "fully_inside_cycles": 28,
+    "synthesis": {
+      "passed": false,
+      "mapping_passed": true,
+      "setup_slacks_ps": [
+        -101.386,
+        483.385
+      ],
+      "qualification": "generated/mobile-h1/physical-clip-integration-v4-synth/qualification.json",
+      "sha256": "f10c9185bb79681c357c6fe2f0ba670f4a6d84ae7301c4f26677744fcc942400"
+    },
+    "native_product": false,
+    "post_route_qualified": false,
+    "change": "Load edge payload and uncounted temporary polygon slots independently of classification. Counts,observed vertices/order andcycles unchanged.",
+    "proof_and_divider_reuse": {
+      "splitproof": {
+        "passed": true,
+        "scope": "V4splitproof emittedRTLbyteidentical to V3; exact previous component evidence reused. Does not qualify the changed fullclipper.",
+        "rtl_sha256": {
+          "BlockPrefixAdder.sv": "54b501cbe1d2f149da95bf10f36d8666776b4fe543850d102cd518bec8a0bce6",
+          "SplitSignedProductJoinProofHarness.sv": "3cc5809b108577aa45e1e73dfb92384eee262a16837b5e5b9e71799a93379b69"
+        },
+        "reused_metadata_sha256": "37337b6d79746aec2c5b475c358428328f460d7ad2899c0e6458cbff5b7617ce"
+      },
+      "boundeddivider": {
+        "passed": true,
+        "scope": "V4boundeddivider emittedRTLbyteidentical to V3; exact previous component evidence reused. Does not qualify the changed fullclipper.",
+        "rtl_sha256": {
+          "BlockPrefixAdder.sv": "fee9b18580d6b4c8126f85f1c0f229db1a65a2f94252fde93e576116e65e427d",
+          "BlockPrefixAdder_1.sv": "7d6d4791a87e113d59b092557cac3811e4d7f67955851e16dff7627eeb7d2bf6",
+          "BlockPrefixAdder_2.sv": "39a707edc18a387812b52c9c25aa593ea15b4092088a60ea8d0f9bcf95cc610d",
+          "BlockPrefixAdder_3.sv": "f249a7e99394b0f7df840d5c2bff295a6668b9cada72df888a47936662e253c6",
+          "BlockPrefixAdder_4.sv": "bd285e409c5286ba072e690f7f449457a841bb5a965b98972df58abb0593e483",
+          "IterativeSignedDivider.sv": "fa3da2a3f5c09d35d87eae878c7ff15b7481742f090998cf546e83de8cd46c0c"
+        },
+        "reused_qualification_sha256": "ebb9375c9c2dbbd2d419c263c0970f5c29e7f939ac720bf0589d9efa2226cee1"
+      }
+    }
+  },
+  "followup_v5": {
+    "source_sha256": {
+      "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "5d5f10ef42a07dafc534b6caaa62abb35e24609487b33bc156c49dc9fa20f20e",
+      "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "0d54ef575bd6daeeaafac50eab1d9a7ab67aaa29f3e6e6518b37302d63fc071e",
+      "src/main/scala/opengpu/graphics/NearClipStage.scala": "eb65e466ec4bc5c18b2d9cf7663b48e38739ba854c1ba657a6492f418600c768",
+      "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "9484db9411504a49b31a3d1fb0fe773854479c51fb1f5274ab686849550e3487",
+      "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "716bec084d5616492ea5008f0fb008076ed82f658bf3d464945cbe4575beec37",
+      "src/main/scala/opengpu/util/SplitSignedProduct.scala": "7bf5b4364ed88a66274a23eff2982a6d017e36a29fa9078138d361bd1e4e89c9",
+      "src/test/scala/opengpu/util/SplitSignedProductSpec.scala": "5a6a974f1a6966d02fa4ebaf058e9a860061ee700027ccde5b4f50b2d37304b3",
+      "src/test/scala/opengpu/graphics/ClipDistanceProof.scala": "7e4ef552d31e3f155ea3da43627eb1690dcafd0b4649fb05ceac09081af61cf8"
+    },
+    "build_metadata_sha256": "eed73a9f304db6dbb8becb7171df92c108bcf6fc22fd0e71b42703d9d4b17ab9",
+    "component_checks": 17,
+    "suites": 4,
+    "unit_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/clip_integration_v5_unit.log",
+      "sha256": "591890f427a5a95761d8bbcbe4f042de17d87a23861c7ba671722b14e07055e6"
+    },
+    "scene_cycles": 23087,
+    "fully_inside_cycles": 28,
+    "synthesis": {
+      "passed": true,
+      "mapping_passed": true,
+      "setup_slacks_ps": [
+        58.046,
+        483.896
+      ],
+      "qualification": "generated/mobile-h1/physical-clip-integration-v5-synth/qualification.json",
+      "sha256": "379dc14290f4683fc4fc515ae934ec6c10b7a7f77f5699862e285b6fdac6cc31"
+    },
+    "native_product": false,
+    "post_route_qualified": false,
+    "change": "Select plane coordinate before sharedprefix34 arithmetic, preserving all147inputbits of originaldistance logic; no addedcycle.",
+    "distance_formal": {
+      "passed": true,
+      "exit_code": 0,
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h1/clip-distance-v5-proof-rtl:/rtl:ro",
+        "-v",
+        "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1:/proof:ro",
+        "chipagent/openroad:arm64",
+        "bash",
+        "-lc",
+        "source /OpenROAD-flow-scripts/env.sh >/dev/null && yosys -s /proof/prove_clip_distance_v5.ys"
+      ],
+      "scope": "Combinational equivalence for all147 inputbits: signed32 x/y/z/w, unsigned16 near and3bitplane, includingdefaultplane7. Sharedselected-coordinate prefix34 distance equals originalparallel arithmetic andmux. Not a fullsequentialclipper proof.",
+      "source_sha256": {
+        "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "5d5f10ef42a07dafc534b6caaa62abb35e24609487b33bc156c49dc9fa20f20e",
+        "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "0d54ef575bd6daeeaafac50eab1d9a7ab67aaa29f3e6e6518b37302d63fc071e",
+        "src/main/scala/opengpu/graphics/NearClipStage.scala": "eb65e466ec4bc5c18b2d9cf7663b48e38739ba854c1ba657a6492f418600c768",
+        "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "9484db9411504a49b31a3d1fb0fe773854479c51fb1f5274ab686849550e3487",
+        "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "716bec084d5616492ea5008f0fb008076ed82f658bf3d464945cbe4575beec37",
+        "src/main/scala/opengpu/util/SplitSignedProduct.scala": "7bf5b4364ed88a66274a23eff2982a6d017e36a29fa9078138d361bd1e4e89c9",
+        "src/test/scala/opengpu/util/SplitSignedProductSpec.scala": "5a6a974f1a6966d02fa4ebaf058e9a860061ee700027ccde5b4f50b2d37304b3",
+        "src/test/scala/opengpu/graphics/ClipDistanceProof.scala": "7e4ef552d31e3f155ea3da43627eb1690dcafd0b4649fb05ceac09081af61cf8"
+      },
+      "rtl_sha256": {
+        "BlockPrefixAdder.sv": "1440dea647cff92f72147873fc2528cfdb4e9cc735dc76992716b4a6c3c452f7",
+        "ClipDistanceProofHarness.sv": "9bfb39b41b2beb57cdc372fb112aabae717adf0c2f5182e220e1be10f203afdf"
+      },
+      "proof_sha256": "2a6f1b8fe09b401ec21f8ef6a92fc0836c1fdbfe2452d99aa139bc8d33b265c5",
+      "log": "/tmp/gpu-mobile-h1-clip-distance-v5-formal.log",
+      "log_sha256": "67be0dae8f5ab248eb30ea483010663cbd09eb6dc5dfd518e7f8ca2c903eb57e"
+    },
+    "route_status": "Fullroute session73447 running: generated/mobile-h1/physical-clip-integration-v5-route; no finalqualification.",
+    "native_status": "Running corrected per-suite matrix44643; frozenV5+rasterV21,48distinctjobs requested; no passyet."
+  },
+  "native_clipped_v1": {
+    "metadata_sha256": "969d3c7d690f17fa7bbce5763bde9d7215dae2c30bc269d1e78312b5d2dee7f1",
+    "audit": {
+      "checks": 2,
+      "executed_jobs": 24,
+      "distinct_jobs": 24,
+      "duplicate_executions": 0,
+      "duplicates_cycle_identical": true,
+      "logs": [
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_clip_v1_matrix_profile_0.log",
+          "sha256": "522327284fb3f9f622d1c625e7bc6d952985d33447f787e5301189ecf8eb60ab"
+        },
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_clip_v1_matrix_profile_1.log",
+          "sha256": "d1c5332ad3b105197d246908889d2fa2939a2584c88bb2b678c6f902eb11b2b7"
+        }
+      ],
+      "scope": "All recorded jobs independently check storedsamples/resolves; counts audited from actualScalaTest logs, not requested suite filters.",
+      "note": "V2 multi-suite -z selection applied to final suite, so inside jobs were repeated. Keep all realexecutions but count distinct jobs separately; future wrapper uses one suite per JVM."
+    },
+    "source_sha256": {
+      "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+      "src/main/scala/opengpu/graphics/Rasterizer.scala": "e36b79ebe23d626abd2c720b8088a4e83fa667f1a05fa664ab1433f5c3bb6955",
+      "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+      "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+      "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+      "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+      "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+      "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+      "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+      "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+      "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+      "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+      "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+      "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+      "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+      "src/test/scala/opengpu/graphics/RasterOriginSumProof.scala": "875e78179e733742a58e22d8a3c8e9119263a2cf1c05afd32540039821804480",
+      "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+      "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+      "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0",
+      "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+      "src/test/scala/opengpu/util/RegisteredQueue2Spec.scala": "9467f1e3688a16142e9b817ee9757835ad01ead0886af94d2a8569ff1fa7e611",
+      "src/test/scala/opengpu/util/RegisteredQueue2ResetSpec.scala": "1aaa843f02c1f6980c9b6250b3b17d16415e2e21de2025c5b55d9eedab3b2ef1",
+      "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "9aaf4df082d95fd3d51918bfec9b3749d507a30fe06d4779e321e201025e2d22",
+      "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "6266f5f01e49e587e734da4457adcf3963a80be6ab2b576e4d857069573535c6",
+      "src/main/scala/opengpu/graphics/NearClipStage.scala": "8acdf5c906a2fb3c12129a9bcd5248a0e8073ca0f23465ee300bab94ed0535b7",
+      "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "c9a174ea4150a2a4a5af38debef3e22d63db77cab66e2727f1526faa19e697f0",
+      "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "716bec084d5616492ea5008f0fb008076ed82f658bf3d464945cbe4575beec37",
+      "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "ffc730a9596e896b729d89edb621b270d9334f4e738a5a83c943906c0834f1b6"
+    }
+  },
+  "v1_v2_clipped_product_cycle_comparison": {
+    "passed": true,
+    "jobs": 24,
+    "rows": [
+      {
+        "key": [
+          "false",
+          "8",
+          "0",
+          "0",
+          "1",
+          "false",
+          "false"
+        ],
+        "v1_cycles": 17706,
+        "v2_cycles": 5232,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "false",
+          "8",
+          "8",
+          "8",
+          "1",
+          "true",
+          "true"
+        ],
+        "v1_cycles": 19473,
+        "v2_cycles": 6999,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "0",
+          "0",
+          "1",
+          "false",
+          "true"
+        ],
+        "v1_cycles": 32682,
+        "v2_cycles": 20208,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "16",
+          "16",
+          "1",
+          "true",
+          "false"
+        ],
+        "v1_cycles": 30673,
+        "v2_cycles": 18199,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "false",
+          "8",
+          "0",
+          "0",
+          "2",
+          "false",
+          "false"
+        ],
+        "v1_cycles": 21238,
+        "v2_cycles": 8764,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "false",
+          "8",
+          "8",
+          "8",
+          "2",
+          "true",
+          "true"
+        ],
+        "v1_cycles": 23943,
+        "v2_cycles": 11469,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "0",
+          "0",
+          "2",
+          "false",
+          "true"
+        ],
+        "v1_cycles": 47631,
+        "v2_cycles": 35157,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "16",
+          "16",
+          "2",
+          "true",
+          "false"
+        ],
+        "v1_cycles": 41053,
+        "v2_cycles": 28579,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "false",
+          "8",
+          "0",
+          "0",
+          "4",
+          "false",
+          "false"
+        ],
+        "v1_cycles": 27226,
+        "v2_cycles": 14752,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "false",
+          "8",
+          "8",
+          "8",
+          "4",
+          "true",
+          "true"
+        ],
+        "v1_cycles": 31922,
+        "v2_cycles": 19448,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "0",
+          "0",
+          "4",
+          "false",
+          "true"
+        ],
+        "v1_cycles": 74646,
+        "v2_cycles": 62172,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "false",
+          "16",
+          "16",
+          "16",
+          "4",
+          "true",
+          "false"
+        ],
+        "v1_cycles": 61636,
+        "v2_cycles": 49162,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "0",
+          "0",
+          "1",
+          "false",
+          "false"
+        ],
+        "v1_cycles": 19591,
+        "v2_cycles": 7117,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "8",
+          "8",
+          "1",
+          "true",
+          "true"
+        ],
+        "v1_cycles": 21430,
+        "v2_cycles": 8956,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "0",
+          "0",
+          "1",
+          "false",
+          "true"
+        ],
+        "v1_cycles": 37440,
+        "v2_cycles": 24966,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "16",
+          "16",
+          "1",
+          "true",
+          "false"
+        ],
+        "v1_cycles": 36240,
+        "v2_cycles": 23766,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "0",
+          "0",
+          "2",
+          "false",
+          "false"
+        ],
+        "v1_cycles": 23092,
+        "v2_cycles": 10618,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "8",
+          "8",
+          "2",
+          "true",
+          "true"
+        ],
+        "v1_cycles": 25916,
+        "v2_cycles": 13442,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "0",
+          "0",
+          "2",
+          "false",
+          "true"
+        ],
+        "v1_cycles": 51616,
+        "v2_cycles": 39142,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "16",
+          "16",
+          "2",
+          "true",
+          "false"
+        ],
+        "v1_cycles": 45524,
+        "v2_cycles": 33050,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "0",
+          "0",
+          "4",
+          "false",
+          "false"
+        ],
+        "v1_cycles": 29086,
+        "v2_cycles": 16612,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "8",
+          "8",
+          "8",
+          "4",
+          "true",
+          "true"
+        ],
+        "v1_cycles": 33876,
+        "v2_cycles": 21402,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "0",
+          "0",
+          "4",
+          "false",
+          "true"
+        ],
+        "v1_cycles": 77480,
+        "v2_cycles": 65006,
+        "saved_cycles": 12474
+      },
+      {
+        "key": [
+          "true",
+          "16",
+          "16",
+          "16",
+          "4",
+          "true",
+          "false"
+        ],
+        "v1_cycles": 64249,
+        "v2_cycles": 51775,
+        "saved_cycles": 12474
+      }
+    ],
+    "scope": "Clipped fixed/shared product jobs with independent exact sample/resolve images; nativecyclecomparison only, not elapsedtime orfull-frame FPS.",
+    "metadata_sha256": {
+      "1": "969d3c7d690f17fa7bbce5763bde9d7215dae2c30bc269d1e78312b5d2dee7f1",
+      "2": "885a4f4f5821a4931b274a644542ee6a40cd259fba02ed5946cc0f54be696583"
+    }
   }
 }

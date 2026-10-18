@@ -980,3 +980,23 @@ in both full-width and bounded preparation/iteration/output states. The same
 The full clipper still fails synthesis timing at -123.825 ps; its next verified
 path goes from `edgeIndex[2]` to `next_1_x[0]`, through classification-controlled
 polygon writes. This is not full-clipper timing closure.
+
+Clipping V4 loads uncounted temporary polygon slots independently of edge
+classification, preserving counts/order and all17 checks with no extra cycle.
+Synthesis still fails at -101.386 ps. V5 then selects a coordinate before a
+shared34-bit prefix distance calculation. All17 checks and the universal147-bit
+distance proof pass. Complete-mapping synthesis passes1 GHz at +58.046 ps core
+setup and +483.896 ps I/O setup. The20-scene total remains23,087 cycles. V5 full
+route and direct native replay are running; synthesis is not routed closure.
+
+The frozen V2 product replay passes48 distinct jobs with exact sample/resolve
+images. Its audited logs contain72 executions across6 checks because the
+multi-suite selector repeated24 inside-volume jobs. Every one of the24 clipped
+jobs saves12,474 GPU cycles versus V1. This is a workload cycle comparison,
+not full-frame FPS or an elapsed-time claim for an unqualified renderer.
+
+The V21 resident rasterizer's full route finishes with one setup violation at
+-5.14966 ps; hold slack is +29.4184 ps, with zero placement/DRC/antenna violations.
+Its remaining path reaches a registered cross-product partial from vertex X.
+It still fails the unchanged1 GHz gate, despite the small violation. These
+component results do not establish whole-GPU timing, area or energy closure.
