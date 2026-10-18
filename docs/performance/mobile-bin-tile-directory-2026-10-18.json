@@ -1,0 +1,240 @@
+{
+  "scope": "H2 multi-tile primitive-bin directory. TileBinDirectory builds independently appendable, independently sealable tile page chains in one shared BinPagePool arena and publishes per-tile heads/tails/counts with exact restart references on exhaustion. This is not a replay scheduler, primitive/state handle cache, spill policy or cache-domain integration, and it does not replace TileDrawBinner or implement two independently progressing tile engines.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/TileBinDirectory.scala": "458c13dea588233ab0c427bedc72898905e077afb08593ec816b901bd9c98834",
+    "src/main/scala/opengpu/graphics/PrimitiveBinWriter.scala": "7d6094a289d05246ce4e3cc59784eaa6ae528c1f4055c0de4acee276177f221f",
+    "src/main/scala/opengpu/graphics/BinPagePool.scala": "c336752358b538ac8095456762fae547d0a574ed5620c26c1caf9a0d87b33c55",
+    "src/main/scala/opengpu/graphics/TileAttachmentWriteQueue.scala": "839351c7074e666217f10aa386f5f859f805613c40543cb966ec8ff932bbbdf9",
+    "src/main/scala/opengpu/config/MobileGpuConfig.scala": "747d0513fa857bf18968d3d6a3dcffa15674f2ec8175fa1e35e7e8e0d2efc5e2",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "984297bb3fa8cbf27273d9071cb7a902f4c80ad6aa73d6ea1fec6709dfec4c67",
+    "src/test/scala/opengpu/graphics/TileBinDirectorySpec.scala": "8415b622f0fda775a651950fa85e8b1fabcdf17b8adee55c6e7edc5084bdc2d3",
+    "src/test/scala/opengpu/config/MobileGpuConfigSpec.scala": "2b877c4377475af4d0798539910ee357eca6e3d0a650dd5c5eb0306ef19c054b",
+    "src/test/scala/opengpu/graphics/BinPagePoolSpec.scala": "ef9726cf4c3e57357d14ba3108bf0411957be395a2ae83af6ec5b08117e650e2",
+    "src/test/scala/opengpu/graphics/PrimitiveBinWriterSpec.scala": "28dde1a6ac5b2d6c8fc04d9700c6f58899cf9281ccca94bb9c25f6c964b818e3",
+    "src/test/scala/opengpu/graphics/PrimitiveBinReaderSpec.scala": "825f9bc2cb1d34f61571725fb8927548b806f910fb7825e9968d6e23334eecf5",
+    "src/test/scala/opengpu/graphics/PrimitiveBinStoreSpec.scala": "05bcf9f22493ebacd0dbba4d276ff7c79f587e825be0163de69d0501684e35b3"
+  },
+  "configuration": {
+    "tile_slots_default": 8,
+    "supported_tile_slots": "1..64",
+    "tile_id_width": 32,
+    "tile_table_index_width": "log2Ceil(tileSlots), truncated index of the 32-bit tile id",
+    "page_bytes_default": 4096,
+    "supported_page_bytes": "Power of two 64..65536.",
+    "write_credits_default": 8,
+    "memory_transactions": "writeCredits stores plus pool allocation/completion traffic",
+    "line_bytes": 64,
+    "memory_word": "32-bit little-endian"
+  },
+  "memory_abi": {
+    "version": 1,
+    "magic": "0x47424901",
+    "header_bytes": 32,
+    "record_bytes": 16,
+    "page_ownership": "Each page header carries context, pass, generation and tile; a chain's pages need not be contiguous in the arena.",
+    "status": {
+      "success": 0,
+      "invalidDescriptor": 1,
+      "cancelled": 2,
+      "exhausted": 3,
+      "memoryFault": 4,
+      "invalidOrder": 5,
+      "invalidPage": 6,
+      "closed": 7
+    }
+  },
+  "directory_contract": {
+    "chains": "Each open tile owns an independent head/tail page chain, committed count, per-page fill and strictly increasing reference sequence in the shared arena.",
+    "allocation": "BinPagePool allocation ordinals are global and interleaved across tiles, so one chain's ordinals are generally non-contiguous.",
+    "seal": "Sealing one tile publishes its completion and rejects later appends with closed=7 while other tiles keep appending. An empty seal allocates no page.",
+    "ordering": "A duplicate or non-increasing sequence seals only the violating tile with invalidOrder; its committed prefix stays exact and other tiles continue.",
+    "exhaustion": "Arena exhaustion seals the requesting tile with exhausted and its exact uncommitted restart reference; the committed prefix remains usable.",
+    "cancellation": "Cancellation or a memory fault stops admission, drains irrevocable writes and allocation state, answers the pending append once, and reports every unreported open tile with prefixUsable low.",
+    "end": "End accepts only in the ready state, walks every unreported opened or sealed tile, then ends the pool and reports the pass total.",
+    "counters": "A running committed total is incremented once per acknowledged commit; the pass completion reads that register instead of summing per-tile counters combinationally.",
+    "integration_limit": "The caller must drain all consumers before ending the binding or rebinding the arena. No replay, primitive/state fetch, cache-domain publication or scheduling is provided."
+  },
+  "functional": {
+    "passed": true,
+    "checks": 54,
+    "suites": 6,
+    "suite_checks": {
+      "TileBinDirectorySpec": 8,
+      "PrimitiveBinWriterSpec": 14,
+      "PrimitiveBinReaderSpec": 11,
+      "PrimitiveBinStoreSpec": 11,
+      "BinPagePoolSpec": 7,
+      "MobileGpuConfigSpec": 3
+    },
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/primitive_bin_directory_v2_unit.log",
+    "log_sha256": "a3991779ea49f38a512f827d2383b411770f2762669841fbe838c41d59c20579",
+    "coverage": [
+      "Three tiles append interleaved references under one pass; sealing tile 1 mid-pass does not disturb tiles 0 and 2, and the sealed chain replays exactly.",
+      "With two tile slots and 64-byte pages, tiles 0 and 1 receive interleaved allocation ordinals 0/2/4 and 1/3/5; each chain walks its own forward links.",
+      "A cross-tile ordering violation seals only the offending tile; the other tile continues, and a later append to the sealed tile returns closed.",
+      "Appends to an unknown tile return invalidDescriptor with no memory write or pool allocation.",
+      "Sealing an empty tile returns an empty completion and allocates no page.",
+      "A bounded arena exhausted by one tile returns that tile's exact restart reference and a usable committed prefix; the pass total and per-tile counts stay exact.",
+      "A stalled append drains on cancellation, is answered once, and every unreported open tile is reported unusable.",
+      "A memory fault invalidates the whole pass and every open tile without exposing a fabricated prefix."
+    ],
+    "component_cycle_results": [
+      {
+        "tiles": 3,
+        "pages": 3,
+        "credits": 3,
+        "writes": 89,
+        "cycles": 574
+      },
+      {
+        "tiles": 2,
+        "interleaved_pages": 6,
+        "writes": 102,
+        "cycles": 542
+      }
+    ],
+    "cycle_scope": "Cycles include scripted memory-write acknowledgements, stalls and per-tile completion handshakes. These are control-component workloads, not a full-frame binning or GPU scaling result.",
+    "proof_limit": "Numeric/protocol simulation with an independent memory model, per-tile replay checks and sealed-page write monitoring; no universal temporal formal proof."
+  },
+  "timing_retiming": {
+    "initial_failure": "The first directory synthesis missed 1 GHz at -0.789 ps (999.212 MHz). The critical path started at a per-tile count register and ended at the pass-completion register through the combinational 8-way 32-bit sum of per-tile committed counts.",
+    "running_total": "A totalCommitted register is reset at begin and incremented once per acknowledged commit. Pass completion reads the register, so the wide sum no longer sits between the last commit and the completion reply. Per-tile counts remain for tile completions and restart accounting.",
+    "result": "Synthesis improved to +117.719 ps (1133.426 MHz). The routed closure run reaches +47.0712 ps setup and +28.2811 ps hold at 1049.4 MHz."
+  },
+  "emission": {
+    "artifact": "generated/mobile-h2/primitive-bin-directory-v2-rtl",
+    "command": "runMain opengpu.elaboration.EmitPpaRtl mobile-bin-directory generated/mobile-h2/primitive-bin-directory-v2-rtl",
+    "rtl_sha256": {
+      "BinPagePool.sv": "9890474bbaecf91a2180a60d79a22763e247d79a54d7fdf6ee21aec4c891109b",
+      "TileAttachmentWriteQueue.sv": "ca10dd5eb0ec40a371cf714e38b531d4944ebb37b42e68054a262ebdb2835aa2",
+      "TileBinDirectory.sv": "1e54cf7b5556e88439a1a90d4cdd0b0b9a385d1b182c8dddcf32c2c9e81e79d0",
+      "filelist.f": "d57dd7ea5bc5dc26470bcc2aa0aa42092a3c5fc9d310934e19a755ae316fe8e6"
+    }
+  },
+  "synthesis": {
+    "artifact": "generated/mobile-h2/physical-primitive-bin-directory-v2-synth",
+    "qualification": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        117.719,
+        175.145
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "setup_passed": true,
+      "report_sha256": "31fff7e3e6ff068aa46f31d13ac36962ce75178ab1be220d508807a1c98d4384",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_count": 0,
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h2/physical-primitive-bin-directory-v2-synth/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "2807adf8988a553ec8ddc6acd1c6177a6fa023718a2a5611e3c36f8517de8a3c"
+      }
+    },
+    "manifest_sha256": "926ea84a9ca1d495081a4690dc226a7c0791a441e079c17e0a792ca9ba3ec41d",
+    "result_sha256": "b047da6768a5df7c6d4c9656f605665e7058726b840e821c205e9676c94b48d2",
+    "qualification_sha256": "dcea6f90cf0fa909dba464c9cbbe328d91cf3ef9daa4c3e6af566e55b39fe1cb",
+    "constraints": {
+      "module_name": "TileBinDirectory",
+      "clock_port": "clock",
+      "clock_period_ps": 1000,
+      "io_delay_percent": 0.25,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin_ps": 0,
+      "timing_effort": "explore",
+      "synthesis_only": true,
+      "enable_retiming": false
+    },
+    "qor": {
+      "setup_worst_slack_ps": 117.719,
+      "core_clock_fmax_mhz": 1133.426
+    }
+  },
+  "route": {
+    "artifact": "generated/mobile-h2/physical-primitive-bin-directory-v2-route-margin30",
+    "qualification": {
+      "passed": true,
+      "checks": {
+        "setup_worst_slack_ps": true,
+        "hold_worst_slack_ps": true,
+        "setup_violation_count": true,
+        "hold_violation_count": true,
+        "route_drc_errors": true,
+        "antenna_violating_nets": true,
+        "antenna_violating_pins": true,
+        "placement_violations": true,
+        "flow_errors": true,
+        "flow_completed": true,
+        "tool_verdict": true
+      },
+      "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+      "mapping_log_sha256": "01399888172c5996534b69ecc63c413742de39484e469e29abbfc1e39e5cf3dd"
+    },
+    "manifest_sha256": "9588b5bb8ef52bf0d0a8445327223f5136deee0886c8b9f1c1a7e2a8113e35fb",
+    "result_sha256": "a69776aa7c69e4d35fb8ad93ff0123729b93b53591c014c430f47ff6076202dc",
+    "qualification_sha256": "80f1651b07e643e60a3b3315298818954b5d8e2325a6944e19d44e5e69397a7a",
+    "constraints": {
+      "module_name": "TileBinDirectory",
+      "clock_port": "clock",
+      "clock_period_ps": 1000,
+      "io_delay_percent": 0.25,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin_ps": 30,
+      "timing_effort": "closure",
+      "synthesis_only": false,
+      "enable_retiming": false
+    },
+    "qor": {
+      "instance_count": 81167,
+      "instance_area_um2": 3354.27,
+      "sequential_cell_count": 4217,
+      "clock_buffer_count": 361,
+      "timing_repair_buffer_count": 1922,
+      "setup_tns_ps": 0,
+      "hold_tns_ps": 0,
+      "setup_worst_slack_ps": 47.0712,
+      "hold_worst_slack_ps": 28.2811,
+      "setup_violation_count": 0,
+      "hold_violation_count": 0,
+      "core_clock_fmax_mhz": 1049.4,
+      "virtual_io_clock_fmax_mhz": 1086.33,
+      "reported_fmax_mhz": 1049.4,
+      "setup_clock_skew_ps": 22.0038,
+      "hold_clock_skew_ps": 27.7567,
+      "total_power_w": 0.0291586,
+      "placement_utilization_percent": 23.0123,
+      "placement_violations": 0,
+      "estimated_wirelength": 103421,
+      "route_wirelength": 140981,
+      "route_vias": 271943,
+      "route_drc_errors": 0,
+      "route_drc_report_bytes": 0,
+      "antenna_violating_nets": 0,
+      "antenna_violating_pins": 0,
+      "ir_drop_vdd_worst": 0.00310152,
+      "ir_drop_vss_worst": 0.00359607,
+      "flow_warnings": 15,
+      "flow_errors": 0,
+      "critical_path": {
+        "startpoint": "u2814 (rising edge-triggered flip-flop clocked by core_clock)",
+        "endpoint": "u313 (rising edge-triggered flip-flop clocked by core_clock)",
+        "group": "core_clock",
+        "slack_ps": 47.07,
+        "arrival_ps": 1071.24
+      }
+    }
+  },
+  "post_route_qualified": true,
+  "integrated_gpu_qualified": false,
+  "h2_closed": false,
+  "remaining": "Replay scheduler and two independently progressing tile engines (independent readers, double buffering, fairness/backpressure), primitive/state handle fetch and cache, cache-domain publication and memory-client integration, full spill/restart policy, scheduler attachment, attachment-bytes/frame and realistic bandwidth/throughput and product-frame measurements remain required."
+}

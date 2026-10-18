@@ -1279,6 +1279,27 @@ integration, spill/restart policy and a tile scheduler with two independently
 progressing engines. It does not yet replace the legacy binner or qualify
 bandwidth or product-frame time.
 
+An [H2 multi-tile bin directory](performance/mobile-bin-tile-directory-2026-10-18.json)
+now builds independently appendable, independently sealable tile chains in one
+shared page arena. Each tile owns a head/tail page chain, per-page fill,
+committed count and strictly increasing reference sequence, while allocation
+ordinals interleave globally. A tile can be sealed mid-pass and replayed while
+other tiles keep appending; later appends to it return the new `closed` status.
+An ordering violation seals only the offending tile, arena exhaustion returns
+that tile's exact restart reference with a usable committed prefix, and
+cancellation or a memory fault drains irrevocable writes and reports every
+unreported tile unusable. All54 selected checks pass across six suites
+including8 directory checks, with two-tile interleaved allocations, three
+independent chains, mid-pass sealing, empty seals and fault invalidation. The
+first synthesis missed1 GHz by0.789 ps through the combinational8-way per-tile
+count sum; a running committed-total register moves that sum off the
+completion path. The complete routed1 GHz component gate passes at+47.0712 ps
+setup/+28.2811 ps hold (synthesis+117.719 ps) with zero
+timing/placement/DRC/antenna violations and complete mapping. The directory
+still needs replay scheduling with two independently progressing engines,
+primitive/state fetch and cache, cache-domain integration, a spill policy and
+product-frame measurements. It does not yet replace the legacy binner.
+
 The separate fixed-function Linux run from the same committed6aed4cd source
 also completes its full configured DRM suite and powers off. Its original
 300-second MSAA waits finish in53,520 ms for render and30,791 ms for resolve.

@@ -37,6 +37,8 @@ object PrimitiveBinStatus {
   val exhausted = 3
   val memoryFault = 4
   val invalidOrder = 5
+  /** Append to a tile whose chain was already sealed. */
+  val closed = 7
 }
 
 class PrimitiveBinAppendResult extends Bundle {
