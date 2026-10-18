@@ -1199,3 +1199,18 @@ pass at+21.443 ps, compared with the baseline's+24.246 ps, while reported
 area falls from5202 to4885 µm². These are component synthesis results.
 Banked texture-cluster throughput, resource descriptors, remaining texture
 features and complete renderer physical qualification remain open.
+
+An [H2 page-allocation component](performance/mobile-bin-page-pool-2026-10-18.json)
+snapshots a versioned, context/pass/generation-tagged software arena and
+allocates disjoint full pages within checked bounds, including an allocation
+ending exactly at4 GiB. On exhaustion it returns the caller's unchanged
+tile/token and stops admission, allowing the bin writer to retain an exact
+restart request. End/cancel drains offered allocation replies before held
+completion or rebinding. Ten hardware/configuration checks pass, including
+64 consecutive replies at one/cycle, backpressure, malformed/empty arenas,
+cancellation, rebinding and reset. The standalone1 GHz synthesis screen
+passes at+204.350/+248.006 ps with complete mapping; reported design area
+is330 µm². This is allocation control, without page memory transactions.
+It is not yet connected to the bin writer or tile scheduler: the existing
+eight-record binner limit, primitive/state cache, spill/restart integration
+and independent tile engines remain required H2 work.

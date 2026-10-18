@@ -1,0 +1,118 @@
+{
+  "scope": "H2 allocation-control component only. Software-backed page storage, primitive/state caching, bin append/replay, restart/spill integration and two independent tile engines remain open. TileDrawBinner still has its eight-record chunk capacity.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/BinPagePool.scala": "a05f6bdf6e5b193df33507595866716a6e02014f6223b80c895b061e45f54ac2",
+    "src/main/scala/opengpu/graphics/TileRenderPass.scala": "8823923b5d70941206f63c47d11b75f2fd7abc2d39419c8f7764055453174f7c",
+    "src/main/scala/opengpu/config/MobileGpuConfig.scala": "209fae471f90269c6f7afa4d06f601f0018365f26367eeba3a045867748ccc9b",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "bafe8c1909f964482701a81cfc72ac1f864082c7e86f81eec1f1ac7835f2c159",
+    "src/test/scala/opengpu/graphics/BinPagePoolSpec.scala": "ef9726cf4c3e57357d14ba3108bf0411957be395a2ae83af6ec5b08117e650e2",
+    "src/test/scala/opengpu/config/MobileGpuConfigSpec.scala": "ff62bbe87985d4c002e5dacd0463a894f479142e2abc3d4c7ea6618458dcadde"
+  },
+  "contract": {
+    "page_bytes": "Elaboration capacity: power of two,64..65536. MobileGpuConfig.binPageBytes defaults to4096. External backing pages are excluded from the368KiB proposed on-chip array total.",
+    "binding": "Version1 snapshots context/pass/generation,32-bit base,33-bit exclusive limit and page-size log2. Base/limit must be aligned, base<=limit<=4GiB; empty arenas are legal and exhaust on first allocation. Unsupported versions/page sizes or malformed bounds fail before allocation.",
+    "allocation": "Monotonic disjoint full pages. Reply carries immutable identity, tile, opaque token, address and ordinal. Successful allocations alone advance the address/counter. Full4GiB exclusive bound and terminal nextAddress are retained without32-bit wrap.",
+    "exhaustion": "The first exhausted request returns its original tile/token and zero address with explicit exhausted status. Admission then stops until end/cancel. The caller retains this uncommitted primitive as its restart point. This component does not implement primitive commit or retries.",
+    "ownership": "No reuse/rebind until all offered allocation replies are accepted and completion retires. End/cancel stops admission; an offered reply remains stable under backpressure, including cancellation. The caller must separately drain page memory users before ending/recycling its arena.",
+    "progress": "One allocation/reply per cycle with a ready consumer after admission; a stalled consumer backpressures the allocator. Invalid descriptors and cancellation produce tagged held completions.",
+    "events": "Per-cycle successful/failed allocation events; sticky exhaustion and binding descriptor retained until a new binding. Reset discards local replies, not external memory ownership."
+  },
+  "functional": {
+    "checks": 10,
+    "suites": 2,
+    "hardware_checks": 7,
+    "configuration_checks": 3,
+    "page_sizes": [
+      64,
+      4096,
+      65536
+    ],
+    "coverage": [
+      "Four-page bounds with a fifth exhausted request and exact restart token; adversarial reply stalls and no success/failure counter pulses while stalled.",
+      "Six malformed views, empty view, stable context/pass/generation and held completion.",
+      "Last page ending exactly at4GiB, exhaustion without wrapping, cancellation with offered reply, generation rebinding.",
+      "Sixty-four consecutive allocation replies at one/cycle.",
+      "End with a pending reply blocks new allocation and delays completion; reset discards a pending reply.",
+      "Proposed storage total remains368KiB; invalid bin-page sizes rejected."
+    ],
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/bin_page_pool_v1_unit.log",
+    "log_sha256": "f8a515139ad4f310ecf5f40a3703d833e39c6eb5107f041e928083608752bd9f",
+    "proof_limit": "Numeric/protocol RTL simulation and arithmetic bounds reasoning; not a universal temporal formal proof."
+  },
+  "emission": {
+    "artifact": "generated/mobile-h2/bin-page-pool-v1-rtl",
+    "command": "runMain opengpu.elaboration.EmitPpaRtl mobile-bin-page-pool generated/mobile-h2/bin-page-pool-v1-rtl",
+    "rtl_sha256": {
+      "BinPagePool.sv": "797634ae703dc425e272b768fc9819666e43e353606d6e448464414525171e9a",
+      "verification/layers-BinPagePool-Verification.sv": "dc208012ec2ed75e0b706a59a1e64ed69e83dbbe002308d2887506a408130af3",
+      "verification/assume/layers-BinPagePool-Verification-Assume.sv": "43bdc34856ca9c13b35af1188a1c5daee1d03ef89881b9ca2aa3590d44c367c7",
+      "verification/assert/layers-BinPagePool-Verification-Assert.sv": "6404ae0644076b10c8476f445c8b6e4188eaeb5aa355d9a6ff442f657c1ee165",
+      "verification/cover/layers-BinPagePool-Verification-Cover.sv": "aa974369ae7a3a27b11833318afe42d1bf2b65ff9e36bab7c940c761b91cd4bf"
+    }
+  },
+  "synthesis": {
+    "artifact": "generated/mobile-h2/physical-bin-page-pool-v1-synth",
+    "qualification": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        204.35,
+        248.006
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "781ae2b0dbb7931c53bff11b7e5355c0573da018c3f420dec82913c0213f72d9",
+      "setup_passed": true,
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h2/physical-bin-page-pool-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "678a652a913172f4fd8fb3300cb772d1267038d72cbec7f74dc21a7516dfb4b4",
+        "logs": [
+          {
+            "path": "generated/mobile-h2/physical-bin-page-pool-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+            "sha256": "678a652a913172f4fd8fb3300cb772d1267038d72cbec7f74dc21a7516dfb4b4"
+          }
+        ],
+        "combined_log_sha256": "678a652a913172f4fd8fb3300cb772d1267038d72cbec7f74dc21a7516dfb4b4"
+      }
+    },
+    "qualification_sha256": "2f15602ed37c94cf106f3c15d47ffd4396df33c70d230ccc5ff0d568739e0b51",
+    "manifest_sha256": "a7a089d0d84c9d3f9d20d32e701dd353731c2ebba321560ab8f8c89c6751dc3c",
+    "result_sha256": "447628357b022f2abac54acf9467a189e62b0475c9f9ab91872b6496ce868b1c",
+    "reported_design_area_um2": 330,
+    "constraints": {
+      "reg_code": "",
+      "module_name": "BinPagePool",
+      "clock_port": "clock",
+      "clock_period": 1000,
+      "io_delay_percent": 0.25,
+      "io_false_path_ports": null,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "enable_retiming": false,
+      "sv_frontend": "native",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin": 0.0,
+      "timeout": 7200,
+      "synthesis_only": true,
+      "cache": false,
+      "clean": false,
+      "generate_gds": false,
+      "timing_effort": "explore",
+      "macro_libs": null,
+      "macro_lefs": null,
+      "macro_placement_tcl": null
+    },
+    "scope": "Standalone combinational/control mapping and synthesis setup screen, including I/O. No routed hold or whole-GPU clock/area/energy qualification."
+  },
+  "post_route_qualified": false,
+  "h2_closed": false,
+  "integration_remaining": "Connect a bounded page writer with immutable primitive/state references, memory faults/ack drain and exact committed restart position; replace eight-record bin replay; preserve per-tile order and page ownership through two independent engines, spill, restart and cancellation."
+}

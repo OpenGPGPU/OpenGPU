@@ -11,6 +11,9 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
     assert(c.dataStorageBytes == 368 * 1024)
     assert(c.l2Bytes == 128 * 1024 && c.tileSlotBytes == 32 * 1024)
     assert(c.attachmentStoreCredits == 8 && c.attachmentCreditIdWidth == 3)
+    assert(c.binPageBytes == 4096)
+    assert(c.copy(binPageBytes = 65536).dataStorageBytes == c.dataStorageBytes,
+      "software bin backing pages are not additional on-chip data arrays")
     assert(c.tileClass(Seq.fill(4)(4), 4, 4) == 16)
     assert(c.tileClass(Seq.fill(4)(8), 4, 4) == 8)
     assert(c.tileClass(Seq(4), 4, 4) == 16)
@@ -31,6 +34,9 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
     intercept[IllegalArgumentException] { MobileGpuConfig(textureWordBanks = 3) }
     intercept[IllegalArgumentException] { MobileGpuConfig(axiBytes = 24) }
     intercept[IllegalArgumentException] { MobileGpuConfig(tileSlotsPerEngine = 16) }
+    for (bytes <- Seq(0,32,96,131072)) {
+      intercept[IllegalArgumentException] { MobileGpuConfig(binPageBytes = bytes) }
+    }
     intercept[IllegalArgumentException] {
       MobileGpuConfig().validateImplementedGraphics(GraphicsConfig(fragmentBatchLimit = 132))
     }

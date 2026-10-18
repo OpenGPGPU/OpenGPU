@@ -48,6 +48,10 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "mobile-bin-page-pool" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.BinPagePool(opengpu.config.MobileGpuConfig().binPageBytes),
+          stageArgs, firtoolArgs)
       case "mobile-clip" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.NearClipStage(GraphicsConfig(
