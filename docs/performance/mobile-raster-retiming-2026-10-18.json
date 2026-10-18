@@ -365,7 +365,30 @@
         "qualification_sha256": "99e8ff4ffda419b20cc03da6eb73cf5a22f65fc48237cc883cc47eec6470b44c",
         "critical_path": "coeffReg_c_0[2] -> io_planeArea[63]; OpenDB verified signed area three-term sum."
       },
-      "direct_product": false
+      "direct_product": {
+        "checks": 2,
+        "jobs": 24,
+        "scope": "24nativeproductMSAAjobs onfrozenv20 raster/offsetclasses; nofullsystemguest orclockclaim.",
+        "source_sha256": {
+          "src/main/scala/opengpu/graphics/Rasterizer.scala": "fce2ea14f7fdaefe728f870b2b357ce99faa07b0cb013d735d7260d17820546e",
+          "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+          "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+          "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "cb0fe6521f15c0a75e40e9d71d17b577c87836ad13426216f4e74e188253621d",
+          "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+          "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089"
+        },
+        "metadata_sha256": "1efcea07d473a17d2ee98a092dc43fed339646b754a472400ed27b5db14ec74d",
+        "logs": [
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v20_shared_0.log",
+            "sha256": "beee19c0fcc426cbfc92a79cce1a98c5766f53dbfc9e10d8c130ee65a9825fe0"
+          },
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v20_shared_1.log",
+            "sha256": "6d6fa5122595d3b73332a7e19d16de652bdcc19029e66cfa0e61a1482f86a377"
+          }
+        ]
+      }
     },
     "v21": {
       "change": "Compress the two assembled area products andC in stArea, then prefix-add the registered sum/carry pair in stLoad. Reuse saA/saB with explicit low64 arithmetic; no extra setup cycle versus V20.",
@@ -412,7 +435,30 @@
         "qualification_sha256": "e3e5aa457ca5fbbad656ec3e5071955cd2bf6329cd9d4c2dc112675d2de7b721",
         "critical_path": "_quadCov_io_e0_0[10] -> edges.tail_lanes_3_e0[61]; OpenDB verified registered edge-state alias through wide edge update."
       },
-      "direct_product": false
+      "direct_product": {
+        "checks": 2,
+        "jobs": 24,
+        "scope": "24nativeproductMSAAjobs onfrozenv21 raster/offsetclasses; nofullsystemguest orclockclaim.",
+        "source_sha256": {
+          "src/main/scala/opengpu/graphics/Rasterizer.scala": "e36b79ebe23d626abd2c720b8088a4e83fa667f1a05fa664ab1433f5c3bb6955",
+          "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+          "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+          "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "cb0fe6521f15c0a75e40e9d71d17b577c87836ad13426216f4e74e188253621d",
+          "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+          "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089"
+        },
+        "metadata_sha256": "62a036b5556d4afd9ebc7e406edb43bb1fa95e82c7a7e07a229dfb41e5fe853d",
+        "logs": [
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v21_shared_0.log",
+            "sha256": "04139c5f778966e67f7582ca30f8fcf4790113a25714d5a76a60837c7f23c744"
+          },
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_pipeline_v21_shared_1.log",
+            "sha256": "f74e03d5aacc27cf3a3d54cdc25be463b2a1941fe69c5ff717e2f5bc4def1f28"
+          }
+        ]
+      }
     }
   },
   "queue_validation": {

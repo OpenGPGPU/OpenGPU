@@ -1,0 +1,81 @@
+{
+  "scope": "H0/H1 work toward mapping the complete renderer: replace clipping192bit inferred division with an exact68/34 iterative unit. Intermediate candidate, not timing or clipping throughput closure.",
+  "source_sha256": {
+    "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "9aaf4df082d95fd3d51918bfec9b3749d507a30fe06d4779e321e201025e2d22",
+    "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "6266f5f01e49e587e734da4457adcf3963a80be6ab2b576e4d857069573535c6",
+    "src/main/scala/opengpu/graphics/NearClipStage.scala": "8acdf5c906a2fb3c12129a9bcd5248a0e8073ca0f23465ee300bab94ed0535b7",
+    "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "c9a174ea4150a2a4a5af38debef3e22d63db77cab66e2727f1526faa19e697f0",
+    "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "716bec084d5616492ea5008f0fb008076ed82f658bf3d464945cbe4575beec37"
+  },
+  "component_checks": 11,
+  "baseline_model_checks": 1,
+  "arithmetic_contract": {
+    "numerator_bits": 68,
+    "denominator_bits": 34,
+    "rounding": "toward zero",
+    "quotient_bits": 68,
+    "zero_divisor": "zero quotient with error flag; impossible at a crossing clip edge and asserted",
+    "reset": "cancel in-flight division and pending output"
+  },
+  "build_metadata_sha256": "be1b89c971694e44a537adc5cf63fa760277fd59c872ee6ea5fd2e1e541902a9",
+  "baseline_metadata_sha256": "d5f09e86baeec75dd52c6044b8896c124912726e461900ad62bef211c2fa5e96",
+  "logs": {
+    "component": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/clip_integration_v1_component.log",
+      "sha256": "050acbe7b8d1bfee3f9a6e8622c3f29d22f68911a5e507d4b827a32adf84040a"
+    },
+    "baseline": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/clip_integration_v1_baseline.log",
+      "sha256": "bf0229417315b1077783a3aa1c1738039e7b90a417f0d006e206ecb21151d4a0"
+    }
+  },
+  "physical": {
+    "divider": {
+      "passed": true,
+      "mapping_passed": true,
+      "setup_slacks_ps": [
+        192.149,
+        484.045
+      ],
+      "qualification": "generated/mobile-h1/physical-clip-divider-v2-synth/qualification.json",
+      "sha256": "e202f277f86543092baff1ed664e409c67c94795a4a296ad6c8aa29303b9fdfe"
+    },
+    "clipper": {
+      "passed": false,
+      "mapping_passed": true,
+      "setup_slacks_ps": [
+        -629.846,
+        483.895
+      ],
+      "qualification": "generated/mobile-h1/physical-clip-integration-v1-synth/qualification.json",
+      "sha256": "9335cf8b75d1863283bab0df276ae73faf5e183bc11a153100d01aa8c8842c56",
+      "critical_path": "field[0] -> numeratorReg[65], OpenDB query archived; field selection/subtraction and native multiply share a cycle."
+    }
+  },
+  "full_renderer_qualified": false,
+  "native_product": false,
+  "measured_scene_comparison": {
+    "jobs": 20,
+    "compared_output_fields": 792,
+    "original_total_cycles": 1142,
+    "iterative_total_cycles": 48002,
+    "fully_inside_cycles_before": 28,
+    "fully_inside_cycles_after": 28,
+    "scope": "Same independent BigInt reference test on originalcfee59e classes and newclipper. Includes signed32 coordinates/depth, unsigned32 UV extremes, all clipping planes, result hold, busy-input mutation and reset/reuse. Not exhaustive fullrenderer proof.",
+    "tradeoff": "Clipped intersections become substantially slower in GPU cycles. Original combinational divider has no valid physical qualification; no elapsed-time performance win is established."
+  },
+  "constraints": {
+    "clock_period_ps": 1000,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "io_delay_percent": 0.25,
+    "core_utilization": 25
+  },
+  "open_gates": [
+    "Clipper synthesis still fails1GHz; divider-only pass is not fullclipper timing.",
+    "Reduce clipped-scene latency and pipeline numerator production before throughput closure.",
+    "Native product replay is running on frozen clipv1+rasterV21 classes.",
+    "Other renderer inferred divisions remain; do not claim complete renderer mapping or qualified clock.",
+    "Original H0-H8 capacity/feature/performance/physical requirements remain."
+  ]
+}

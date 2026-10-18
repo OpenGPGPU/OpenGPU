@@ -924,3 +924,29 @@ setup +634.440 ps, with 25% I/O delays and 25% core utilization. The resident
 720p quad rasterizer is the measured component; this does not qualify the
 whole renderer. Routed setup/hold and physical checks, direct V21 product
 replay and full-system integration remain open.
+
+## Exact clipping divider bring-up
+
+[The clipping measurements](performance/mobile-clip-divider-2026-10-18.json)
+replace one 192-bit inferred division with a shared iterative signed divider.
+The selected signed32 or unsigned32 fields and their differences fit signed34;
+the product with the signed34 edge distance fits signed68. The original34-bit
+distance subtraction and low32 field results are retained. The divider uses
+one quotient bit per cycle, separate sign correction and a held output. Reset
+cancels both an active calculation and pending output.
+
+Eleven component checks pass. An independent integer clipping model checks all
+792 observable fields from 20 scenes against both the original clipper and the
+new implementation, including all planes, extreme attributes, held results,
+input mutation while busy and reset/reuse. The fully-inside path remains 28
+cycles. Clipped scenes are substantially slower in simulated GPU cycles:
+48,002 total versus 1,142 for the original combinational model. No elapsed-time
+performance improvement is established.
+
+The isolated68/34 divider maps completely and passes 1 GHz synthesis with
+core setup +192.149 ps and I/O setup +484.045 ps. The complete clipper also
+maps without omitted operators, but fails timing at -629.846 ps. Its verified
+critical path is field selection through numerator production into
+`numeratorReg[65]`. Pipelining that calculation and reducing intersection
+latency remain required. Other inferred renderer divisions and the original
+H0–H8 gates remain open; this component result does not qualify the renderer.

@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import opengpu.util.IterativeSignedDivider
 
 /** A clip-space vertex with every varying needed after clipping. */
 class ClipVertexColor(config: GraphicsConfig) extends Bundle {
@@ -21,6 +22,7 @@ object NearClipStage {
   val PlaneCount = 7
   val MaxVertices = 3 + PlaneCount
   val MaxTriangles = MaxVertices - 2
+  val InterpolatedFields = 11
 }
 
 /** Sequential Sutherland-Hodgman clipping against the complete view volume.
@@ -51,7 +53,7 @@ class NearClipStage(config: GraphicsConfig) extends Module {
     val outValid = Output(UInt(log2Ceil(MaxTriangles + 1).W))
   })
 
-  private val sIdle :: sEdges :: sInterpolate :: sAppend :: sAdvance :: Nil = Enum(5)
+  private val sIdle :: sEdges :: sInterpolate :: sDivide :: sRetire :: sAppend :: sAdvance :: Nil = Enum(7)
   private val state = RegInit(sIdle)
   private val ready = RegInit(false.B)
   private val current = Reg(Vec(MaxVertices, new ClipVertexColor(config)))
@@ -68,6 +70,14 @@ class NearClipStage(config: GraphicsConfig) extends Module {
   private val edgeCurDistance = Reg(SInt(34.W))
   private val edgeEntering = RegInit(false.B)
   private val intersection = Reg(new ClipVertexColor(config))
+  private val intersectionBase = Reg(UInt(32.W))
+  private val numeratorReg = Reg(SInt(68.W))
+  private val denominatorReg = Reg(SInt(34.W))
+  private val divider = Module(new IterativeSignedDivider(68, 34))
+  divider.io.in.valid := state === sDivide
+  divider.io.in.bits.numerator := numeratorReg
+  divider.io.in.bits.denominator := denominatorReg
+  divider.io.out.ready := state === sRetire
   private val wNearSInt = io.wNear.pad(34).asSInt
 
   /** Signed distance with inside represented by distance >= 0. */
@@ -126,38 +136,46 @@ class NearClipStage(config: GraphicsConfig) extends Module {
       }
     }
   }.elsewhen(state === sInterpolate) {
-    // Select one attribute per cycle so all eleven fields share the same exact
-    // signed divider instead of instantiating a combinational divider array.
-    val a = MuxLookup(field, edgePrev.x.pad(64))(Seq(
-      0.U -> edgePrev.x.pad(64),
-      1.U -> edgePrev.y.pad(64),
-      2.U -> edgePrev.z.pad(64),
-      3.U -> edgePrev.w.pad(64),
-      4.U -> edgePrev.color.r.pad(64).asSInt,
-      5.U -> edgePrev.color.g.pad(64).asSInt,
-      6.U -> edgePrev.color.b.pad(64).asSInt,
-      10.U -> edgePrev.alpha.pad(64).asSInt,
-      7.U -> edgePrev.depth.pad(64),
-      8.U -> edgePrev.uv.u.pad(64).asSInt,
-      9.U -> edgePrev.uv.v.pad(64).asSInt
+    // Signed32 positions/depth and unsigned32 UVs all fit in signed34.
+    // Their difference fits signed34 too; multiplying by a signed34 edge
+    // distance needs68 bits. Preserve the original34-bit denominator subtract.
+    val a = MuxLookup(field, edgePrev.x.pad(34))(Seq(
+      0.U -> edgePrev.x.pad(34),
+      1.U -> edgePrev.y.pad(34),
+      2.U -> edgePrev.z.pad(34),
+      3.U -> edgePrev.w.pad(34),
+      4.U -> edgePrev.color.r.pad(34).asSInt,
+      5.U -> edgePrev.color.g.pad(34).asSInt,
+      6.U -> edgePrev.color.b.pad(34).asSInt,
+      10.U -> edgePrev.alpha.pad(34).asSInt,
+      7.U -> edgePrev.depth.pad(34),
+      8.U -> edgePrev.uv.u.pad(34).asSInt,
+      9.U -> edgePrev.uv.v.pad(34).asSInt
     ))
-    val b = MuxLookup(field, edgeCur.x.pad(64))(Seq(
-      0.U -> edgeCur.x.pad(64),
-      1.U -> edgeCur.y.pad(64),
-      2.U -> edgeCur.z.pad(64),
-      3.U -> edgeCur.w.pad(64),
-      4.U -> edgeCur.color.r.pad(64).asSInt,
-      5.U -> edgeCur.color.g.pad(64).asSInt,
-      6.U -> edgeCur.color.b.pad(64).asSInt,
-      10.U -> edgeCur.alpha.pad(64).asSInt,
-      7.U -> edgeCur.depth.pad(64),
-      8.U -> edgeCur.uv.u.pad(64).asSInt,
-      9.U -> edgeCur.uv.v.pad(64).asSInt
+    val b = MuxLookup(field, edgeCur.x.pad(34))(Seq(
+      0.U -> edgeCur.x.pad(34),
+      1.U -> edgeCur.y.pad(34),
+      2.U -> edgeCur.z.pad(34),
+      3.U -> edgeCur.w.pad(34),
+      4.U -> edgeCur.color.r.pad(34).asSInt,
+      5.U -> edgeCur.color.g.pad(34).asSInt,
+      6.U -> edgeCur.color.b.pad(34).asSInt,
+      10.U -> edgeCur.alpha.pad(34).asSInt,
+      7.U -> edgeCur.depth.pad(34),
+      8.U -> edgeCur.uv.u.pad(34).asSInt,
+      9.U -> edgeCur.uv.v.pad(34).asSInt
     ))
-    val numerator = (b.pad(96) - a.pad(96)) * edgePrevDistance.pad(96)
-    val denominator = (edgePrevDistance - edgeCurDistance).pad(192)
-    val value = a.pad(192) + numerator / denominator
-
+    numeratorReg := (b - a) * edgePrevDistance
+    denominatorReg := edgePrevDistance - edgeCurDistance
+    intersectionBase := a(31, 0)
+    state := sDivide
+  }.elsewhen(state === sDivide) {
+    assert(denominatorReg =/= 0.S, "crossing clip edge must have a nonzero distance difference")
+    when(divider.io.in.fire) { state := sRetire }
+  }.elsewhen(state === sRetire && divider.io.out.fire) {
+    assert(!divider.io.out.bits.divideByZero)
+    // Only low32 result bits are observable; addition commutes with truncation.
+    val value = intersectionBase + divider.io.out.bits.quotient(31, 0)
     switch(field) {
       is(0.U) { intersection.x := value(31, 0).asSInt }
       is(1.U) { intersection.y := value(31, 0).asSInt }
@@ -175,6 +193,7 @@ class NearClipStage(config: GraphicsConfig) extends Module {
       state := sAppend
     }.otherwise {
       field := field + 1.U
+      state := sInterpolate
     }
   }.elsewhen(state === sAppend) {
     when(edgeEntering) {
