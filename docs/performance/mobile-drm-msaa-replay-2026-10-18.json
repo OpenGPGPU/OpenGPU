@@ -74,5 +74,19 @@
     "Native1x-to4x transition in oneDUT, including completion/IDreuse and freshattachments.",
     "Diagnose/replay fullLinuxMSAAtimeout with exactarchivedmodel; GPUcyclebounds andfunctionalimages remainrequired.",
     "Latestmainclipper/raster fullLinuxintegration stillpending."
-  ]
+  ],
+  "wait_diagnostics": {
+    "status": "PASS: default300s/explicit900s compile with warnings-as-errors; zero/negative/overflow rejected; runner shell syntax valid",
+    "build_metadata_sha256": "8c86003e9f75e0b549190e072d04a4c64d317aecc8885751fa80e3f336e2df05",
+    "source_sha256": {
+      "driver/tests/opengpu_drm_test.c": "8849c5d38bb17325bfde1a5ef76669aee9f9833278ed9ff4b75c5617cec7da58",
+      "driver/tests/opengpu_drm_image_oracle.h": "439bc4a4b0607587673222044d2f68cb49a77032a18a5259e2dbf1094b16eaa1",
+      "driver/opengpu_drm.h": "066b68caf487bdd61d51c2e745ee59eb32597f7894beeb3b9ea26d9c8962dcc1",
+      "scripts/run_arti_gpu.sh": "5e61d57322ad3ef6b4b66c385ce2060b91da92737fd4d483a563b09809d85ba8"
+    },
+    "default_msaa_budget_ms": 300000,
+    "explicit_probe_budget_ms": 900000,
+    "scope": "Both MSAA render/resolve waits log stage,start,elapsed,result,errno. ARTI_GPU_MSAA_WAIT_MS is an explicit test-only compile override; hardware cycle/clock and all pixel/status checks unchanged.",
+    "guest_probe": "Prepared; not launched while same-DUT native prerequisite is unverified."
+  }
 }

@@ -103,6 +103,7 @@ ARTI_GPU_FENCE_SLICE_MS="${ARTI_GPU_FENCE_SLICE_MS:-4}"
 # The 4-CU Verilated model measured 710 ms per idle MMIO; one page flip needs
 # several scanout/status transactions before its event can be delivered.
 ARTI_GPU_FLIP_WAIT_MS="${ARTI_GPU_FLIP_WAIT_MS:-30000}"
+ARTI_GPU_MSAA_WAIT_MS="${ARTI_GPU_MSAA_WAIT_MS:-300000}"
 QEMU_VERSION="${QEMU_VERSION:-11.1.0}"
 LINUX_VERSION="${LINUX_VERSION:-7.2}"
 BUSYBOX_DIR="${BUSYBOX_DIR:-$ARTI_WORK/busybox-1.36.1}"
@@ -150,6 +151,7 @@ echo "AXI beat    : ${GPU_MEMORY_AXI_DATA_BYTES} bytes"
 echo "Tile binning: $GPU_TILE_BINNING"
 echo "Fence slice : ${ARTI_GPU_FENCE_SLICE_MS}ms (0 = one blocking wait)"
 echo "Flip wait   : ${ARTI_GPU_FLIP_WAIT_MS}ms (emulator event delivery budget)"
+echo "MSAA wait   : ${ARTI_GPU_MSAA_WAIT_MS}ms (userspace wall-clock budget)"
 echo "ARTI work   : $ARTI_WORK"
 [ "$GPU_FRAG_CORE" = "0" ] || [ "$GPU_FRAG_CORE" = "1" ] || \
     fail "GPU_FRAG_CORE must be 0 or 1"
@@ -487,6 +489,7 @@ GUEST_DRM_TEST="$DRIVER_OUTPUT/opengpu_drm_test"
     -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" \
     -DTEST_WIDTH="$GPU_WIDTH" -DTEST_HEIGHT="$GPU_HEIGHT" \
     -DOPENGPU_TEST_FLIP_TIMEOUT_MS="$ARTI_GPU_FLIP_WAIT_MS" \
+    -DOPENGPU_TEST_MSAA_WAIT_MS="$ARTI_GPU_MSAA_WAIT_MS" \
     -o "$GUEST_DRM_TEST" "$GPU_DIR/driver/tests/opengpu_drm_test.c"
 if [ "${BUILD_ONLY:-0}" = "1" ]; then
     echo "ARTI GPU build ready: QEMU=$QEMU_BUILD/qemu-system-aarch64 DRIVER=$DRIVER_KO TEST=$GUEST_DRM_TEST"

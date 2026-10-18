@@ -44,6 +44,14 @@
 #if OPENGPU_TEST_FLIP_TIMEOUT_MS <= 0 || OPENGPU_TEST_FLIP_TIMEOUT_MS > 2147483647
 #error "flip timeout must fit a positive poll timeout"
 #endif
+/* Emulator diagnostics may explicitly allow a longer MSAA wait. This is a
+ * userspace wall-clock budget, independent of GPU cycle and timing gates. */
+#ifndef OPENGPU_TEST_MSAA_WAIT_MS
+#define OPENGPU_TEST_MSAA_WAIT_MS 300000
+#endif
+#if OPENGPU_TEST_MSAA_WAIT_MS <= 0 || OPENGPU_TEST_MSAA_WAIT_MS > 2147483647
+#error "MSAA wait must fit a positive millisecond budget"
+#endif
 /* Overridable so the ARTI runner can compile the guest test for the same
  * resolution the RTL was elaborated with (-DTEST_WIDTH/-DTEST_HEIGHT). */
 #ifndef TEST_WIDTH
@@ -1343,6 +1351,23 @@ static int wait_syncobjs(int fd, uint32_t *handles, uint32_t count)
     return wait_syncobjs_for(fd, handles, count, 300000000000ll);
 }
 
+static int wait_msaa_syncobj(int fd, uint32_t handle, const char *stage)
+{
+    uint64_t start_ms = monotonic_ms();
+    int ret, saved_errno;
+
+    fprintf(stderr, "MSAA wait stage=%s start_ms=%llu budget_ms=%d\n",
+            stage, (unsigned long long)start_ms, OPENGPU_TEST_MSAA_WAIT_MS);
+    ret = wait_syncobjs_for(fd, &handle, 1,
+                           OPENGPU_TEST_MSAA_WAIT_MS * 1000000ll);
+    saved_errno = errno;
+    fprintf(stderr, "MSAA wait stage=%s elapsed_ms=%llu result=%d errno=%d\n",
+            stage, (unsigned long long)(monotonic_ms() - start_ms), ret,
+            ret < 0 ? saved_errno : 0);
+    errno = saved_errno;
+    return ret;
+}
+
 static int expect_syncobj_status(int fd, uint32_t handle, int expected)
 {
     struct drm_syncobj_handle export = {
@@ -2115,13 +2140,13 @@ int main(void)
                   vertex_shader_slot, vertex_kernarg_slot, msaa_max_mode,
                   0, render_sync),
               "queue multisample render");
-        CHECK(wait_syncobjs(fd, &render_sync, 1),
+        CHECK(wait_msaa_syncobj(fd, render_sync, "render"),
               "wait MSAA render syncobj");
         CHECK(submit_resolve(fd, context_id, &msaa_target, &resolved, 0, 0,
                              TEST_WIDTH, TEST_HEIGHT, msaa_target.pitch,
                              resolved.pitch, msaa_max_mode, 0, resolve_sync, 0),
               "queue MSAA resolve");
-        CHECK(wait_syncobjs(fd, &resolve_sync, 1),
+        CHECK(wait_msaa_syncobj(fd, resolve_sync, "resolve"),
               "wait MSAA resolve syncobj");
 
         for (uint32_t y = 0; y < TEST_HEIGHT; y++) {

@@ -1036,3 +1036,11 @@ This isolated trial uses an explicit30 ps setup-repair margin. The qualifier's
 new `--setup-slack-margin-ps` option records that optimization target; it does
 not alter the final clock or acceptance checks. All30 Python qualifier checks
 pass, including rejection of failed I/O timing with a positive repair margin.
+
+The Linux test now logs elapsed time for the MSAA render and resolve waits.
+Its default remains300 seconds; `ARTI_GPU_MSAA_WAIT_MS` can explicitly select
+a diagnostic wall-clock budget. Default300-second and explicit900-second
+binaries compile with warnings treated as errors, and zero, negative and
+out-of-range budgets are rejected. A longer deadline does not qualify GPU
+cycles, physical timing or image correctness; the failed Linux run remains
+failed until a separately identified replay supplies its own evidence.
