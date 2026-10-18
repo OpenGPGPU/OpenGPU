@@ -914,3 +914,13 @@ proof RTL is byte-identical to V19. Complete-mapping synthesis improves worst
 setup to -18.552 ps, with I/O setup +644.731 ps. The remaining path reaches
 the area register through the three-term area sum. This still fails 1 GHz;
 V20 direct product and full-system qualification remain separate gates.
+
+V21 compresses the assembled area products and the constant edge term in
+the existing area stage. Load then resolves the registered sum/carry pair.
+It reuses the area registers and adds no setup cycle. All 52 component checks
+and a universal 200-input-bit area-sum proof pass. Complete-mapping synthesis
+passes at the unchanged 1 GHz TC/SLVT target: core setup +34.557 ps and I/O
+setup +634.440 ps, with 25% I/O delays and 25% core utilization. The resident
+720p quad rasterizer is the measured component; this does not qualify the
+whole renderer. Routed setup/hold and physical checks, direct V21 product
+replay and full-system integration remain open.

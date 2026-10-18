@@ -395,7 +395,7 @@ class QuadCoverage(config: GraphicsConfig) extends Module {
   *              viewport/scissor clamping of the registered bounds.
   *   stSetup  : plane products against the box origin and area-product
   *              partials registered (one narrow multiply each).
-  *   stArea   : assemble area products and compress the origin sum.
+  *   stArea   : assemble area products; compress area and origin sums.
   *   stLoad   : origin edge values / signed area by pure adds off the
   *              registered products; engine data registers load.
   *   stStart  : reject/cull and top-left flags from the registered area;
@@ -490,8 +490,8 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
   private class Products extends Bundle {
     val pax = Vec(3, SInt(64.W)) // raw product, then origin sum bits
     val pby = Vec(3, SInt(64.W)) // raw product, then origin carry bits
-    val saA = SInt(67.W)         // a_0 * v0.x
-    val saB = SInt(67.W)         // b_0 * v0.y
+    val saA = SInt(67.W)         // signed area sum bits, sign-extended
+    val saB = SInt(67.W)         // signed area carry bits, sign-extended
     val samplePlus = Vec(3, SInt((sampleGradientWidth + 1).W))
     val sampleMinus = Vec(3, SInt((sampleGradientWidth + 1).W))
   }
@@ -840,8 +840,10 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
 
   when(setupState === stArea) {
     setupState := stLoad
-    prodReg.saA := SignedProduct32.join(areaAParts)
-    prodReg.saB := SignedProduct32.join(areaBParts)
+    val (areaSum, areaCarry) = FixedPointMath.compress3To64(
+      SignedProduct32.join(areaAParts), SignedProduct32.join(areaBParts), coeffReg.c(0))
+    prodReg.saA := areaSum
+    prodReg.saB := areaCarry
     for (i <- 0 until 3) {
       val (sum, carry) = FixedPointMath.compress3To64(
         prodReg.pax(i), prodReg.pby(i), coeffReg.c(i))
@@ -857,7 +859,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
     val originE = (0 until 3).map { k =>
       FixedPointMath.add64(prodReg.pax(k), prodReg.pby(k)) }
     val signedAreaN =
-      FixedPointMath.sum3(prodReg.saA, prodReg.saB, coeffReg.c(0))
+      FixedPointMath.add64(FixedPointMath.trim64(prodReg.saA), FixedPointMath.trim64(prodReg.saB))
     for (i <- 0 until 3) {
       RasterSampleOffsetMath.offsets(prodReg.samplePlus(i), prodReg.sampleMinus(i))
         .zipWithIndex.foreach { case (value, slot) => sampleOffsetsReg(slot)(i) := value }
