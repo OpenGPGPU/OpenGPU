@@ -1227,3 +1227,16 @@ remains unproven. Current normal public emission is byte-identical to every
 routed V22 SV input. See the [raster record](performance/mobile-raster-retiming-2026-10-18.json).
 This qualifies the raster component under the recorded constraints; whole
 GPU timing, power, product FPS and current V22 Linux integration remain open.
+
+A fresh [Linux regression of committed6aed4cd](performance/mobile-linux-staged-npot-2026-10-18.json)
+passes its full configured programmable DRM suite and powers off successfully.
+The isolated normal sbt build, model, driver and C test include staged
+viewport arithmetic and the unsigned/NPOT texture changes, with baseline V21
+raster. MSAA render and resolve waits finish in103,654 and34,150 ms under
+the original300-second userspace limit. The shared QEMU source and binary
+remain byte-identical; the test uses a separate linked executable. Its
+legacy64x64 configuration has four general16-lane/8-warp CUs and private
+4-lane/2-warp graphics execution, rather than the mobile shared-CU product.
+This is compatibility evidence for that exact revision/profile. Fixed-path
+and newer V22 integration, persistent tile locality,720p performance and
+full hardware/API closure remain separate gates.

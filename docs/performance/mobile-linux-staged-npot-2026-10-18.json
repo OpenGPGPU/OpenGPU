@@ -1,0 +1,112 @@
+{
+  "scope": "Full configured programmable Linux DRM compatibility regression for exact committed6aed4cd, with staged viewportV3, current clipper and unsigned/NPOT texture corrections. Legacy64x64 only. Not V22 raster, H2 allocator/writer, shared mobile CUs, persistent tile-pass locality,720p performance, desktop visual validation or whole-GPU physical qualification.",
+  "commit": "6aed4cd1e62180711bf368c57aa5d4a757ca6cc1",
+  "normal_build": {
+    "checkout": "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1/committed-6aed4cd-checkout",
+    "source_overlay": false,
+    "class_overlay": false,
+    "emission_metadata_sha256": "3b2fff730a5153c86f9bfaf0099ccc1808b4a4c7c7a50de0c0087a0c9ca82623",
+    "rtl_artifact": "generated/mobile-h1/committed-6aed4cd-desktop-programmable-rtl",
+    "prepared_geometry_present": true,
+    "old_combinational_geometry_absent": true,
+    "other_profile": "Fixed RTL emitted from same commit; separate fixed model/guest has not yet passed."
+  },
+  "profile": {
+    "width": 64,
+    "height": 64,
+    "general_compute_cus": 4,
+    "general_lanes": 16,
+    "general_warps": 8,
+    "graphics_execution": "Legacy private4-lane/2-warp shader execution, not the mobile shared-CU profile.",
+    "memory_axi_bytes": 8,
+    "l2": "Frozen default configuration, not a demonstrated128KiB mobile profile.",
+    "qemu_machine": "virt",
+    "accel": "tcg",
+    "cpu": "cortex-a53",
+    "memory_mib": 512,
+    "environment_overrides": {
+      "ARTI_MODEL_IRQ_PUMP": "16",
+      "ARTI_MODEL_IRQ_PUMP_NS": "200000",
+      "ARTI_MODEL_SETTLE_NS": "8000000"
+    },
+    "limits": "Simulation wall-clock progress budgets are not silicon clock/FPS measurements. Optional test cases remain conditional on reported capabilities."
+  },
+  "fresh_inputs": {
+    "model_archive": {
+      "path": "/Users/duckdonald/workspace/arti-work/mobile-h1-committed-6aed4cd-programmable-v3/generated/embedded/verilated/libarti_rtl_model.a",
+      "sha256": "a7419908966923e8b12227e972fe7b2dcaf6262a3f65ed00e7f1ae9af247f7da"
+    },
+    "qemu": {
+      "path": "/Users/duckdonald/workspace/gpu/.artifacts/mobile-hardware-alignment/h0-h1/qemu-committed-6aed4cd-programmable-v4",
+      "sha256": "b0fa98d650fcf798ae543cbc31cdbe112e5b4618e3e1aaf5195d1b8ec223384d"
+    },
+    "private_device_source_sha256": "f7e42a326c8e66a943d54b8baecd2fac04786564c69aeb748ee7df38bd212734",
+    "private_device_object_sha256": "9e4075a583d6eefcb9953424cbafbc9b7777be01fb816bf9269ce77aada89945",
+    "header_abi_byte_identical": true,
+    "model_link_metadata_sha256": "c736ff589de5487f27130702d8f98b23037f75ddee39a685c03a46e9bacb13b2",
+    "driver_test_build_metadata_sha256": "264dfc323e176c5e12ea816c6991a4f08a3c44810c2332145784b4d31adf2cb0",
+    "driver_test_outputs": {
+      "gpu_drv.ko": "efc49b184ed14d10501cb9e83d16a10ee2a44a7418f3680d1c53fbcbc94774c4",
+      "opengpu_drm_test": "46b504aebced5bbc103318d4e283223b561d53b0dca143f2a8607f01d0fb0667",
+      "simulation-driver.json": "4f66b2145012b5e3756ac6b039a2778cf4f22a600ff9af91632ce23ab2de35f0"
+    },
+    "kernel_sha256": "f6fe0e264fad947888feb2a80ef850b3443c24dbc19510cf8a6b2022030568d0",
+    "staged_manifest_metadata_sha256": "459312db230b08419e15157b04fe8a6a037ce394dd0d7738418e5c4689da35a5",
+    "boot_harness": "Reused frozen7.2 init/kernel harness and recursive DRM dependencies. Driver and C test rebuilt from the exact isolated committed checkout."
+  },
+  "result": {
+    "passed": true,
+    "exit_code": 0,
+    "full_pass_marker": true,
+    "powered_off": true,
+    "elapsed_host_s": 1376.5050301551819,
+    "serial": ".artifacts/mobile-hardware-alignment/h0-h1/committed_6aed4cd_programmable_guest_v2_serial.log",
+    "serial_sha256": "c2a685efb18c9793333051f9809fec3bb93219d0412251eb157ed68a6b6cade0",
+    "qemu_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "marker_scope": "Full configured C DRM test: queued vertex/fragment render, explicit sync, validated shader/texture/derivative/discard, compute, blit/fill, advertised resolve modes, depth persistence, VM/fault recovery, context teardown and vblank. This marker does not imply unadvertised hardware/API features or persistent on-chip tile lifetime.",
+    "msaa_wait_budget_ms": 300000,
+    "msaa_waits": [
+      {
+        "stage": "render",
+        "elapsed_ms": 103654,
+        "result": 0,
+        "errno": 0
+      },
+      {
+        "stage": "resolve",
+        "elapsed_ms": 34150,
+        "result": 0,
+        "errno": 0
+      }
+    ],
+    "msaa_conclusion": "Both waits succeed within the original300-second userspace budget. This new-revision pass does not explain the earlier frozenV19 timeout or establish hardware rendering FPS."
+  },
+  "shared_qemu_unchanged": {
+    "passed": true,
+    "before": {
+      "/Users/duckdonald/workspace/qemu/hw/misc/arti-rtl.c": "f7e42a326c8e66a943d54b8baecd2fac04786564c69aeb748ee7df38bd212734",
+      "/Users/duckdonald/workspace/qemu/hw/misc/arti_rtl_model.h": "67edb935100bf2ecd0742c94083a053b78be8d18f4c3fdcd644615eceb6b09b0",
+      "/Users/duckdonald/workspace/qemu/hw/misc/libarti_rtl_model.a": "b057df4cbb0870e18faf720ee9118a956ec563568b3d28c3b4857b97eb436ea7",
+      "/Users/duckdonald/workspace/gpu/qemu-build/qemu-system-aarch64": "94cb5193e7e44453dd8fe3738d77591873a792a2ed4792f3276b77e0bb3aaca4"
+    },
+    "after": {
+      "/Users/duckdonald/workspace/qemu/hw/misc/arti-rtl.c": "f7e42a326c8e66a943d54b8baecd2fac04786564c69aeb748ee7df38bd212734",
+      "/Users/duckdonald/workspace/qemu/hw/misc/arti_rtl_model.h": "67edb935100bf2ecd0742c94083a053b78be8d18f4c3fdcd644615eceb6b09b0",
+      "/Users/duckdonald/workspace/qemu/hw/misc/libarti_rtl_model.a": "b057df4cbb0870e18faf720ee9118a956ec563568b3d28c3b4857b97eb436ea7",
+      "/Users/duckdonald/workspace/gpu/qemu-build/qemu-system-aarch64": "94cb5193e7e44453dd8fe3738d77591873a792a2ed4792f3276b77e0bb3aaca4"
+    }
+  },
+  "build_history": {
+    "preserved_attempts": [
+      "committed_6aed4cd_programmable_model.json: CLI rejected block-style YAML source list before model generation.",
+      "committed_6aed4cd_programmable_model_v2.json: source list did not put top module first; rejected before model generation.",
+      "committed_6aed4cd_programmable_model_v3.json: model compiled successfully; wrapper then rejected an already-integrated display patch.",
+      "committed_6aed4cd_programmable_model_link_v4.json: reused that exact compiled archive, verified built-in display fixes and ABI, compiled private device and linked separate QEMU successfully."
+    ],
+    "original_guest_queue": "committed_6aed4cd_programmable_guest.json terminated at the wrapper failure without boot. Actual successful boot is guest_v2; preserve both records."
+  },
+  "fixed_profile_qualified": false,
+  "latest_v22_linux_qualified": false,
+  "full_renderer_qualified": false,
+  "original_h0_h8_complete": false
+}
