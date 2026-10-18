@@ -84,7 +84,11 @@ class ClipperExactDivisionSpec extends AnyFlatSpec {
         (0, 131072, 0), (0, 0, -131072), (0, 0, 131072)).map { case (x, y, z) =>
         Vector(vertex(x, y, z, 65536, 0), inside(1), inside(2))
       }
-      val cases = Vector((inside, 1), (extremes, 65535)) ++
+      val boundaryInside = Vector(
+        vertex(Int.MaxValue, 0, 0, Int.MaxValue, 0),
+        vertex(-Int.MaxValue, Int.MaxValue, 0, Int.MaxValue, 1),
+        vertex(0, -Int.MaxValue, -Int.MaxValue, Int.MaxValue, 2))
+      val cases = Vector((inside, 1), (extremes, 65535), (boundaryInside, 65535)) ++
         sides.map((_, 1)) ++ Vector.fill(12) {
           ((0 until 3).map(i => vertex(random.nextInt(393217) - 196608,
             random.nextInt(393217) - 196608, random.nextInt(393217) - 196608,
@@ -110,7 +114,9 @@ class ClipperExactDivisionSpec extends AnyFlatSpec {
         val expected = reference(triangle, near)
         dut.io.done.expect(true.B); dut.io.outValid.expect((expected.size / 3).U)
         expected.zipWithIndex.foreach { case (v, i) => assert(read(dut.io.out(i)) == v, s"job=$job vertex=$i") }
-        if (job == 0) assert(cycles == 28, s"fully-inside path gained cycles: $cycles")
+        for (i <- expected.size until NearClipStage.MaxTriangles * 3)
+          assert(read(dut.io.out(i)) == Vector.fill(11)(BigInt(0)), s"job=$job invalid vertex=$i")
+        if (job == 0 || job == 2) assert(cycles == 1, s"fully-inside fast path took $cycles cycles")
         dut.clock.step(3)
         expected.zipWithIndex.foreach { case (v, i) => assert(read(dut.io.out(i)) == v) }
         totalCycles += cycles; vertices += expected.size
@@ -119,10 +125,10 @@ class ClipperExactDivisionSpec extends AnyFlatSpec {
       dut.io.busy.expect(true.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.busy.expect(false.B); dut.io.done.expect(false.B); dut.io.outValid.expect(0.U)
-      launch(inside, 1); dut.clock.step(28)
+      launch(inside, 1); dut.clock.step()
       dut.io.done.expect(true.B); dut.io.outValid.expect(1.U)
       reference(inside, 1).zipWithIndex.foreach { case (v, i) => assert(read(dut.io.out(i)) == v) }
-      info(s"jobs=${cases.size} comparedFields=${vertices * 11} totalCycles=$totalCycles insideCycles=28 resetReuse=true")
+      info(s"jobs=${cases.size} comparedFields=${vertices * 11} totalCycles=$totalCycles insideCycles=1 resetReuse=true")
     }
   }
 }

@@ -1067,3 +1067,12 @@ reduce emitted viewport division expressions from139 to59 bits and reciprocal
 expressions from64 to33 bits, without adding GPU cycles. Mapping/timing and
 native integration checks remain pending; see
 [the viewport record](performance/mobile-geometry-viewport-2026-10-18.json).
+
+The V6 clipper registers edge distances before classification/count feedback
+and registers per-triangle valid controls for the wide output fan. A complete-
+inside check bypasses the polygon walk. All17 component checks pass, including
+21 golden-model scenes/825 valid fields, zero invalid outputs and reset/reuse.
+Fully inside latency falls from28 to1 cycle after admission; the common20
+scene aggregate rises from23,087 to23,386 cycles because clipped edges gain
+a stage. The distance, product-join and divider proof/fixture RTL is byte-
+identical to V5. V6 physical timing and native integration are still pending.

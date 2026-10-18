@@ -71,7 +71,7 @@ class NearClipStage(config: GraphicsConfig) extends Module {
     val outValid = Output(UInt(log2Ceil(MaxTriangles + 1).W))
   })
 
-  private val sIdle :: sEdges :: sInterpolate :: sParts :: sAssemble :: sDivide :: sRetire :: sAppend :: sAdvance :: Nil = Enum(9)
+  private val sIdle :: sCheckInside :: sEdges :: sClassify :: sInterpolate :: sParts :: sAssemble :: sDivide :: sRetire :: sAppend :: sAdvance :: Nil = Enum(11)
   private val state = RegInit(sIdle)
   private val ready = RegInit(false.B)
   private val current = Reg(Vec(MaxVertices, new ClipVertexColor(config)))
@@ -79,6 +79,7 @@ class NearClipStage(config: GraphicsConfig) extends Module {
   private val inputCount = RegInit(0.U(countWidth.W))
   private val outputCount = RegInit(0.U(countWidth.W))
   private val finalCount = RegInit(0.U(countWidth.W))
+  private val triangleValid = RegInit(VecInit(Seq.fill(MaxTriangles)(false.B)))
   private val edgeIndex = RegInit(0.U(countWidth.W))
   private val plane = RegInit(0.U(planeWidth.W))
   private val field = RegInit(0.U(fieldWidth.W))
@@ -110,18 +111,31 @@ class NearClipStage(config: GraphicsConfig) extends Module {
     inputCount := 3.U
     outputCount := 0.U
     finalCount := 0.U
+    triangleValid.foreach(_ := false.B)
     edgeIndex := 0.U
     plane := 0.U
     ready := false.B
-    state := sEdges
+    state := sCheckInside
+  }.elsewhen(state === sCheckInside) {
+    // Most triangles need no intersections. Check the captured vertices in
+    // parallel before entering the serial polygon walk. Constant plane
+    // selectors remove the coordinate-selection muxes from this check.
+    val inside = (for (i <- 0 until 3; p <- 0 until PlaneCount)
+      yield distance(current(i), p.U) >= 0.S).reduce(_ && _)
+    when(inside) {
+      finalCount := 3.U
+      triangleValid(0) := true.B
+      ready := true.B
+      state := sIdle
+    }.otherwise {
+      state := sEdges
+    }
   }.elsewhen(state === sEdges) {
     val cur = current(edgeIndex)
     val prevIndex = Mux(edgeIndex === 0.U, inputCount - 1.U, edgeIndex - 1.U)
     val prev = current(prevIndex)
     val prevDistance = distance(prev, plane)
     val curDistance = distance(cur, plane)
-    val prevIn = prevDistance >= 0.S
-    val curIn = curDistance >= 0.S
 
     // Capture edge payload independently of classification. Only crossing
     // edges consume it. Likewise, an uncounted next-polygon slot may hold a
@@ -132,9 +146,13 @@ class NearClipStage(config: GraphicsConfig) extends Module {
     edgeCur := cur
     edgePrevDistance := prevDistance
     edgeCurDistance := curDistance
-    edgeEntering := curIn
     when(outputCount < MaxVertices.U) { next(outputCount) := cur }
-
+    // Register distance/sign arithmetic before polygon-count feedback.
+    state := sClassify
+  }.elsewhen(state === sClassify) {
+    val prevIn = edgePrevDistance >= 0.S
+    val curIn = edgeCurDistance >= 0.S
+    edgeEntering := curIn
     when(curIn =/= prevIn) {
       field := 0.U
       state := sInterpolate
@@ -149,6 +167,7 @@ class NearClipStage(config: GraphicsConfig) extends Module {
         state := sAdvance
       }.otherwise {
         edgeIndex := edgeIndex + 1.U
+        state := sEdges
       }
     }
   }.elsewhen(state === sInterpolate) {
@@ -246,6 +265,9 @@ class NearClipStage(config: GraphicsConfig) extends Module {
       state := sIdle
     }.elsewhen(plane === (PlaneCount - 1).U) {
       finalCount := outputCount
+      for (i <- 0 until MaxTriangles) {
+        triangleValid(i) := outputCount >= (i + 3).U
+      }
       ready := true.B
       state := sIdle
     }.otherwise {
@@ -263,7 +285,9 @@ class NearClipStage(config: GraphicsConfig) extends Module {
 
   // Fan triangulation: triangle i = polygon vertices (0, i+1, i+2).
   for (i <- 0 until MaxTriangles) {
-    val valid = ready && i.U < io.outValid
+    // Registered per-triangle enables avoid finalCount decode on every wide
+    // output. They clear on admission/reset and publish only the final fan.
+    val valid = triangleValid(i)
     io.out(i * 3) := Mux(valid, current(0),
       0.U.asTypeOf(new ClipVertexColor(config)))
     io.out(i * 3 + 1) := Mux(valid, current(i + 1),

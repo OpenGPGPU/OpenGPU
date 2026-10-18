@@ -1084,5 +1084,79 @@
       "enable_retiming": false
     },
     "scope": "Isolated exact68/34/32 divider hardware, byteidenticalV3/V4/V5; not fullclipper/renderer clock orwholeframeenergy."
+  },
+  "followup_v6": {
+    "status": "PASS17componentchecks; synthesis/route/native pending",
+    "change": "Register edge distances before polygon classification/count feedback, register final per-triangle valid flags, and add captured-triangle complete-inside shortcut using exact existing distance math.",
+    "source_sha256": {
+      "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "5d5f10ef42a07dafc534b6caaa62abb35e24609487b33bc156c49dc9fa20f20e",
+      "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "0d54ef575bd6daeeaafac50eab1d9a7ab67aaa29f3e6e6518b37302d63fc071e",
+      "src/main/scala/opengpu/graphics/NearClipStage.scala": "7fbfc374b59e020836d8db2ba21272ad2f610ed6da9366636beef66463550d9b",
+      "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "9484db9411504a49b31a3d1fb0fe773854479c51fb1f5274ab686849550e3487",
+      "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "d39846e79cf3fba106ce183db1b620c9ec4ebe08b8a61a47cd13d79bda5d93b3",
+      "src/main/scala/opengpu/util/SplitSignedProduct.scala": "7bf5b4364ed88a66274a23eff2982a6d017e36a29fa9078138d361bd1e4e89c9",
+      "src/test/scala/opengpu/util/SplitSignedProductSpec.scala": "5a6a974f1a6966d02fa4ebaf058e9a860061ee700027ccde5b4f50b2d37304b3",
+      "src/test/scala/opengpu/graphics/ClipDistanceProof.scala": "7e4ef552d31e3f155ea3da43627eb1690dcafd0b4649fb05ceac09081af61cf8"
+    },
+    "build_metadata_sha256": "f217cb11ee6260785c9c83a6e6d10d374dfa2fc0c98e4ae104a840bc20a97645",
+    "component_checks": 17,
+    "suites": 4,
+    "golden_scenes": 21,
+    "compared_valid_fields": 825,
+    "invalid_vertices_zero_checked": true,
+    "fully_inside_cycles_after_admission": 1,
+    "previous_fully_inside_cycles_after_admission": 28,
+    "all21_scene_cycles": 23387,
+    "common20_scene_cycles": 23386,
+    "previous_common20_scene_cycles": 23087,
+    "tradeoff": "The extra edge-classification stage adds clipped-edge cycles; common20sceneaggregate is299cycles higher. The added21st scene is a full-rangeboundary-inside triangle taking1cycle. No clock/wholeframe improvementclaim untilphysical/native gates.",
+    "unit_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/clip_integration_v6_unit.log",
+      "sha256": "d93ace0a1fbc3ea87957335645304348831e1d7e5d97f05cdbed7cf5944daad3"
+    },
+    "unchanged_arithmetic_emission_audit": [
+      {
+        "old": "clip-distance-v5-proof-rtl",
+        "new": "clip-distance-v6-proof-rtl",
+        "equal_sv_sha256": {
+          "BlockPrefixAdder.sv": "1440dea647cff92f72147873fc2528cfdb4e9cc735dc76992716b4a6c3c452f7",
+          "ClipDistanceProofHarness.sv": "9bfb39b41b2beb57cdc372fb112aabae717adf0c2f5182e220e1be10f203afdf",
+          "verification/layers-ClipDistanceProofHarness-Verification.sv": "aa6fe8cad21488afc4df013178e953aaf2f1422a25bb51b27945d8985dae03be",
+          "verification/assume/layers-ClipDistanceProofHarness-Verification-Assume.sv": "31cdc45efb2399343e5c86f5e4f663343286f340c2115681c26882851d19da33",
+          "verification/assert/layers-ClipDistanceProofHarness-Verification-Assert.sv": "5dd5566e68d0e19ad096ad872eba1a12bdb19d804a13b823fb94a1b2e0611e08",
+          "verification/cover/layers-ClipDistanceProofHarness-Verification-Cover.sv": "e55432c407d91f39f7a1d7b347633d368cdd3a4319d9a00ff26f7f71286e0064"
+        }
+      },
+      {
+        "old": "clip-split-product-v5-proof-rtl",
+        "new": "clip-split-product-v6-proof-rtl",
+        "equal_sv_sha256": {
+          "BlockPrefixAdder.sv": "54b501cbe1d2f149da95bf10f36d8666776b4fe543850d102cd518bec8a0bce6",
+          "SplitSignedProductJoinProofHarness.sv": "3cc5809b108577aa45e1e73dfb92384eee262a16837b5e5b9e71799a93379b69",
+          "verification/layers-SplitSignedProductJoinProofHarness-Verification.sv": "08630525502124e0c24924bd1752014ee8c43c71973f9368515408f612733c12",
+          "verification/assume/layers-SplitSignedProductJoinProofHarness-Verification-Assume.sv": "1b8cf30c2922f7fcff08d374b039c6c300e76a14af7086912cd49e53fde249eb",
+          "verification/assert/layers-SplitSignedProductJoinProofHarness-Verification-Assert.sv": "1f98b7513124700dd5f11d5c5ee8f5e1f45a217b9d9459eaa55a7296b61d3708",
+          "verification/cover/layers-SplitSignedProductJoinProofHarness-Verification-Cover.sv": "10b42804a059d53915a904c4e5765c7c2f937a0ee0edd7ff0d041071b25f92b8"
+        }
+      },
+      {
+        "old": "clip-bounded-divider-v5-rtl",
+        "new": "clip-bounded-divider-v6-rtl",
+        "equal_sv_sha256": {
+          "BlockPrefixAdder_1.sv": "7d6d4791a87e113d59b092557cac3811e4d7f67955851e16dff7627eeb7d2bf6",
+          "BlockPrefixAdder_4.sv": "bd285e409c5286ba072e690f7f449457a841bb5a965b98972df58abb0593e483",
+          "BlockPrefixAdder.sv": "fee9b18580d6b4c8126f85f1c0f229db1a65a2f94252fde93e576116e65e427d",
+          "IterativeSignedDivider.sv": "fa3da2a3f5c09d35d87eae878c7ff15b7481742f090998cf546e83de8cd46c0c",
+          "BlockPrefixAdder_3.sv": "f249a7e99394b0f7df840d5c2bff295a6668b9cada72df888a47936662e253c6",
+          "BlockPrefixAdder_2.sv": "39a707edc18a387812b52c9c25aa593ea15b4092088a60ea8d0f9bcf95cc610d",
+          "verification/layers-IterativeSignedDivider-Verification.sv": "0bdbcf0f7288e1d3388f8c7d3337e0adcce9bd0e7d55772340933f079895ceeb",
+          "verification/assume/layers-IterativeSignedDivider-Verification-Assume.sv": "3de2ecc71207f37b545c5bc0486508dd48997ee9d4534fd2a993287bae901e25",
+          "verification/assert/layers-IterativeSignedDivider-Verification-Assert.sv": "2e05a9149316b547f7e23ad7c5bbc72c48a6b53fba79d980ff477c6509452715",
+          "verification/cover/layers-IterativeSignedDivider-Verification-Cover.sv": "f2e01b9fdb47d751fa6e035305cf4b44dffa3e88b774da7a8d72be961bbf69c1"
+        }
+      }
+    ],
+    "post_route_qualified": false,
+    "full_renderer_qualified": false
   }
 }
