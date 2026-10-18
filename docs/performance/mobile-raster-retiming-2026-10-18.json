@@ -1261,6 +1261,17 @@
     "log": "/tmp/gpu-mobile-h1-raster-area-sum-v21-formal.log",
     "log_sha256": "e8fd80db4651bbd091ca83edafd919c722f7c55c5c1136b164e6161b9b6005df"
   },
+  "v19_v20_v21_product_cycles": {
+    "passed": true,
+    "matched_jobs": 24,
+    "max_cycle_delta": 0,
+    "scope": "All24 independently validated product jobs have identical total GPU-cycle counts across frozenV19/V20/V21 raster revisions. All three use original combinational clipper. Not general sequential equivalence and not evidence for newiterativeclipper.",
+    "product_metadata_sha256": {
+      "19": "beafd95ad5befb17d162f7be5c16346990a6549bf2a0ebe81a13a60de3c18fd9",
+      "20": "1efcea07d473a17d2ee98a092dc43fed339646b754a472400ed27b5db14ec74d",
+      "21": "62a036b5556d4afd9ebc7e406edb43bb1fa95e82c7a7e07a229dfb41e5fe853d"
+    }
+  },
   "fixed_linux_v15": {
     "scope": "Full fresh V15 fixed-function legacy64x64 Linux smoke; terminal session43269 exit0. Does not qualify V18/V19 or mobile720p.",
     "qemu": {

@@ -922,8 +922,10 @@ and a universal 200-input-bit area-sum proof pass. Complete-mapping synthesis
 passes at the unchanged 1 GHz TC/SLVT target: core setup +34.557 ps and I/O
 setup +634.440 ps, with 25% I/O delays and 25% core utilization. The resident
 720p quad rasterizer is the measured component; this does not qualify the
-whole renderer. Routed setup/hold and physical checks, direct V21 product
-replay and full-system integration remain open.
+whole renderer. All 24 native product jobs pass on the frozen V21 raster
+with the original clipper; V19/V20/V21 total GPU-cycle counts are identical
+for these jobs. Routed setup/hold, physical checks and full-system integration
+remain open. These replays do not cover the subsequent iterative clipper.
 
 ## Exact clipping divider bring-up
 
