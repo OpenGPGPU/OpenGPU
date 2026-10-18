@@ -1121,14 +1121,14 @@ A further divider candidate registers zero predicates in8-bit groups without
 adding cycles. Ten arithmetic/reset checks and six clipper checks pass. The
 current clipper synthesis margin improves to+125.344 ps; staged viewport
 synthesis moves to its sign-correction path and narrowly fails at−1.755 ps.
-Both current components are queued for routed closure with explicit50 ps
-repair headroom. Their1 GHz/TC/SLVT/25% I/O acceptance gates remain unchanged.
+Both components subsequently pass routed closure with explicit50 ps repair
+headroom, as detailed below. Their1 GHz/TC/SLVT/25% I/O gates remain unchanged.
 
 The instrumented frozen-V19 Linux replay has completed its MSAA render and
 resolve waits in180,118 ms and71,933 ms respectively. Both are below the
 original300-second limit, so this replay does not demonstrate that increasing
 the deadline was necessary. The earlier timeout remains unexplained, and
-the current full guest test is still running beyond the MSAA phase.
+the completed replay is reported below.
 
 Perspective UV interpolation now preserves the existing unsigned32 Q16.16
 input contract when multiplying by signed barycentric weights. Previously,
@@ -1165,8 +1165,8 @@ The same frozen V21 raster RTL with30 ps setup-repair headroom still fails
 violations. Final OpenDB again identifies `vHold_v0_x[2]` to
 `crossRightParts_1_midB[29]`, a native partial multiplier. The previous
 margin0 result remains−5.14966 ps; neither run is qualified. A separate
-carry-save/prefix multiplier experiment will measure whether that logic
-can be shortened without adding raster setup cycles.
+carry-save/prefix multiplier experiment produces the V22 results below
+without adding raster setup cycles.
 
 Current staged geometry V3 passes the complete routed1 GHz component gate:
 +50.3801 ps setup,+21.4209 ps hold, zero timing/placement/DRC/antenna
@@ -1214,3 +1214,16 @@ is330 µm². This is allocation control, without page memory transactions.
 It is not yet connected to the bin writer or tile scheduler: the existing
 eight-record binner limit, primitive/state cache, spill/restart integration
 and independent tile engines remain required H2 work.
+
+Raster V22 passes the complete routed1 GHz component gate with30 ps repair
+headroom: +16.6418 ps setup,+28.1936 ps hold, zero timing/placement/DRC/antenna
+violations and complete mapping. It replaces the two mixed-sign partial
+products with carry-save/prefix trees. All23 selected checks and48 distinct
+native sample/resolve jobs pass; all48 cycle counts match staged V21.
+Sequential cell count stays9760; routed instance area rises from15395.5
+to15638.3 µm². The vectorless power estimate also rises, so energy/frame
+improvement is not established. The mixed-product SAT run times out and
+remains unproven. Current normal public emission is byte-identical to every
+routed V22 SV input. See the [raster record](performance/mobile-raster-retiming-2026-10-18.json).
+This qualifies the raster component under the recorded constraints; whole
+GPU timing, power, product FPS and current V22 Linux integration remain open.

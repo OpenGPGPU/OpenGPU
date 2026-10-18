@@ -568,6 +568,985 @@
         "critical_nets": "vHold_v0_x[2] -> crossRightParts_1_midB[29], OpenDB6_final verified; signed16-by-unsigned16 partial multiplication.",
         "scope": "Resident720p rasterizeronly. Vectorlesscomponentpowerestimate is not wholeGPUenergy orfull-frame FPS. Same1GHzTC/SLVTIO25%util25 andzero setuprepairmargin."
       }
+    },
+    "v22": {
+      "change": "Replace only the two mixed unsigned16 x signed16 partial products with exact Baugh-Wooley rows, balanced carry-save compression and final prefix carry. Native low/high products, partial bundle, join and all register cuts unchanged; no added setup cycle.",
+      "source_sha256": {
+        "src/main/scala/opengpu/util/CarrySaveMultiplier.scala": "f5b2238c8a7df29aefc66822ed51affeda216450339686747963097936d0d622",
+        "src/main/scala/opengpu/util/SignedProduct32.scala": "fe9183175917353ca2508552dd8abf6d0a04498253bf4ed2efdfd294ac8eeb43",
+        "src/main/scala/opengpu/util/BlockPrefixAdder.scala": "9c836beef941d235c5ff0b57d36304a0ea34db284ccf6682fd2d96a2b0e03b61",
+        "src/main/scala/opengpu/util/CarrySavePrefixSum.scala": "bbe0a512fc8f05af78ce75f7040a50069d83b43385432ec50ce9b6a81e1bc2d4",
+        "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+        "src/main/scala/opengpu/graphics/Rasterizer.scala": "e36b79ebe23d626abd2c720b8088a4e83fa667f1a05fa664ab1433f5c3bb6955",
+        "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+        "src/test/scala/opengpu/util/CarrySaveMultiplierSpec.scala": "a15b846950a90a56659f393bf6a2f836759195c3fb12d398f074cc0d5c62ae5d",
+        "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7"
+      },
+      "build_metadata_sha256": "fe61cd31abf3ceb5d78f014d080776f86038d6f31c55e2b7d625b8871c9f9b07",
+      "build_argument_failure": "Initial --stage synth was rejected before any physical flow. Corrected --stage synthesis is recorded separately; no failed hardware result is concealed.",
+      "component_checks": 23,
+      "suites": 7,
+      "unit_log": {
+        "checks": 23,
+        "suites": 7,
+        "carry_save_numeric_products": 5108,
+        "full_signed32_products": 2673,
+        "log": ".artifacts/mobile-hardware-alignment/h0-h1/raster_csa_v22_unit.log",
+        "sha256": "ce8ef38181669249aff0d600ae121751ae1e20ff027dfe624f9ec620a4987668"
+      },
+      "numeric_limit": "5108 helper products and2673 full signed32 products, plus signed-extrema, coverage, traversal and full-quad-stream regressions. Numeric tests are not a universal multiplication proof.",
+      "synthesis": {
+        "artifact": "generated/mobile-h1/physical-raster-csa-v22-resident-synth",
+        "setup_slacks_ps": [
+          42.346,
+          650.474
+        ],
+        "mapping_passed": true,
+        "reported_design_area_um2": 16217,
+        "baseline_setup_slacks_ps": [
+          34.557,
+          634.44
+        ],
+        "baseline_reported_design_area_um2": 15975,
+        "metadata_sha256": "f43097a59b7244b3c5cca4999fd048245db4b87710cc82489ca006ae30592a2f"
+      },
+      "direct_product": {
+        "passed": true,
+        "checks": 4,
+        "executed_jobs": 48,
+        "distinct_jobs": 48,
+        "audit_metadata_sha256": "9145ccddc207c0b6beaf94c4da40e1754cd5336310daae5ff93b8708198fded1",
+        "logs": [
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_csa_v22_native_profile_0.log",
+            "sha256": "6c58b1d6a9775b2d4acabe5a0a1ad0af6f69968f6384c7929bab244731efe30e"
+          },
+          {
+            "path": ".artifacts/mobile-hardware-alignment/h0-h1/raster_csa_v22_native_profile_1.log",
+            "sha256": "a9fa01abd441d678dbe5f865fa0c6ca9bfd472f37c9b5bb2d50fe7d26d6cc77e"
+          }
+        ],
+        "cycle_comparison": {
+          "all_48_identical": true,
+          "baseline_metadata_sha256": "fb7a6f29d8407acd69465001388dc62760abb1170ed5faabdf8368e0f6a0861a",
+          "scope": "Same staged geometry V3 and clipper V8 control with V21 versus V22 raster. Baseline predates unsigned UV fix; all fixture UV words are zero and shader does not texture-sample. No setup/admission-cycle change observed.",
+          "rows": [
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "1",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 3324,
+              "v22_cycles": 3324,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "1",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 5129,
+              "v22_cycles": 5129,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "1",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 18324,
+              "v22_cycles": 18324,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "1",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 16291,
+              "v22_cycles": 16291,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "2",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 6856,
+              "v22_cycles": 6856,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "2",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 9597,
+              "v22_cycles": 9597,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "2",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 33271,
+              "v22_cycles": 33271,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "2",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 26671,
+              "v22_cycles": 26671,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "4",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 12844,
+              "v22_cycles": 12844,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "4",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 17565,
+              "v22_cycles": 17565,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "4",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 60286,
+              "v22_cycles": 60286,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "4",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 47254,
+              "v22_cycles": 47254,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "1",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 5532,
+              "v22_cycles": 5532,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "1",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 7299,
+              "v22_cycles": 7299,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "1",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 20508,
+              "v22_cycles": 20508,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "1",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 18499,
+              "v22_cycles": 18499,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "2",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 9064,
+              "v22_cycles": 9064,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "2",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 11769,
+              "v22_cycles": 11769,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "2",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 35457,
+              "v22_cycles": 35457,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "2",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 28879,
+              "v22_cycles": 28879,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "4",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 15052,
+              "v22_cycles": 15052,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "4",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 19748,
+              "v22_cycles": 19748,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "4",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 62472,
+              "v22_cycles": 62472,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "false",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "4",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 49462,
+              "v22_cycles": 49462,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "1",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 5209,
+              "v22_cycles": 5209,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "1",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 7059,
+              "v22_cycles": 7059,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "1",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 23060,
+              "v22_cycles": 23060,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "1",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 21869,
+              "v22_cycles": 21869,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "2",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 8711,
+              "v22_cycles": 8711,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "2",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 11544,
+              "v22_cycles": 11544,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "2",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 37235,
+              "v22_cycles": 37235,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "2",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 31153,
+              "v22_cycles": 31153,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "4",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 14705,
+              "v22_cycles": 14705,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "4",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 19504,
+              "v22_cycles": 19504,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "4",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 63099,
+              "v22_cycles": 63099,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "false",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "4",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 49878,
+              "v22_cycles": 49878,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "1",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 7417,
+              "v22_cycles": 7417,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "1",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 9256,
+              "v22_cycles": 9256,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "1",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 25266,
+              "v22_cycles": 25266,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "1",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 24066,
+              "v22_cycles": 24066,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "2",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 10918,
+              "v22_cycles": 10918,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "2",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 13742,
+              "v22_cycles": 13742,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "2",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 39442,
+              "v22_cycles": 39442,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "2",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 33350,
+              "v22_cycles": 33350,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "0",
+                "originY": "0",
+                "samples": "4",
+                "Sv32": "false",
+                "load": "false"
+              },
+              "baseline_cycles": 16912,
+              "v22_cycles": 16912,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "8",
+                "originX": "8",
+                "originY": "8",
+                "samples": "4",
+                "Sv32": "true",
+                "load": "true"
+              },
+              "baseline_cycles": 21702,
+              "v22_cycles": 21702,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "0",
+                "originY": "0",
+                "samples": "4",
+                "Sv32": "false",
+                "load": "true"
+              },
+              "baseline_cycles": 65306,
+              "v22_cycles": 65306,
+              "extra_cycles": 0
+            },
+            {
+              "key": {
+                "shared": "true",
+                "clipped": "true",
+                "tile": "16",
+                "originX": "16",
+                "originY": "16",
+                "samples": "4",
+                "Sv32": "true",
+                "load": "false"
+              },
+              "baseline_cycles": 52075,
+              "v22_cycles": 52075,
+              "extra_cycles": 0
+            }
+          ]
+        },
+        "scope": "Frozen normal sbt V22 classes: current staged viewport/clipper, unsigned UV fix, carry-save raster mixed products. One 8/16 tile of 1280x720 viewport, 1/2/4x MSAA, Bare/Sv32, clear/load, fixed/shared 4 CUs 16/8, L2 128KiB and AXI256. Exact stored samples/resolves; not a full frame or textured high-UV workload.",
+        "version_limit": "Frozen V22 before NPOT. It includes the unsigned UV interpolation fix, but fixtures use zero UV and do not texture-sample. Not high-UV sampling evidence, current NPOT integration, whole-frame performance or physical clock qualification."
+      },
+      "formal": {
+        "status": "UNPROVEN_TIMEOUT",
+        "scope": "Universal32rawinputbit unsigned16xsigned16 product equivalence; exactBaughWooley/CSA/prefix result vsnative Chiselmultiply. No full32x32 proof.",
+        "input_bits": 32,
+        "solver_timeout_s": 60,
+        "original_metadata_sha256": "42842de4ba1e6ed34e2d55452bd49968a73b97b435f4469593eaf822c7b96966",
+        "log": ".artifacts/mobile-hardware-alignment/h0-h1/carry_save_product_v5_formal.log",
+        "log_sha256": "4e7277df5ca6ad224608b626de418bb1280e0b9dbc05018cdf410b2208d1276b",
+        "note": "No proof and no counterexample established. Existing partial-assembly proof is not a full multiplier equivalence proof."
+      },
+      "route": {
+        "artifact": "generated/mobile-h1/physical-raster-csa-v22-resident-route-margin30",
+        "qualification": {
+          "passed": true,
+          "checks": {
+            "setup_worst_slack_ps": true,
+            "hold_worst_slack_ps": true,
+            "setup_violation_count": true,
+            "hold_violation_count": true,
+            "route_drc_errors": true,
+            "antenna_violating_nets": true,
+            "antenna_violating_pins": true,
+            "placement_violations": true,
+            "flow_errors": true,
+            "flow_completed": true,
+            "tool_verdict": true
+          },
+          "missing_metrics": [],
+          "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+          "mapping": {
+            "passed": true,
+            "mapping_report_present": true,
+            "skipped_instance_types": [],
+            "skipped_instance_count": 0,
+            "skipped_instances_by_type": {},
+            "unresolved_diagnostics": [],
+            "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+            "log": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-raster-csa-v22-resident-route-margin30/flow/orfs-work/logs/base/1_synth.log",
+            "log_sha256": "8f7ce7efabc1a1ab351167e3ffb3ea33b2e06098e7cffe01f4fe508a65eb890d",
+            "logs": [
+              {
+                "path": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-raster-csa-v22-resident-route-margin30/flow/orfs-work/logs/base/1_synth.log",
+                "sha256": "8f7ce7efabc1a1ab351167e3ffb3ea33b2e06098e7cffe01f4fe508a65eb890d"
+              }
+            ],
+            "combined_log_sha256": "8f7ce7efabc1a1ab351167e3ffb3ea33b2e06098e7cffe01f4fe508a65eb890d"
+          }
+        },
+        "qualification_sha256": "13c5b8485b5723efefb62e05507bc1c4ef642fc2e6b337ba6ceb417bb4ca271d",
+        "manifest_sha256": "01e5627eb7bfc52ffb1ffa192f761577a45e00803c0ace9c24468005c5c9bccc",
+        "result_sha256": "52141c97745830f1a63a1cdcbda0f2dea45454b377eb53e1acf51338160491c7",
+        "qor": {
+          "instance_count": 402976,
+          "instance_area": 15638.3,
+          "sequential_cell_count": 9760,
+          "clock_buffer_count": 842,
+          "timing_repair_buffer_count": 4746,
+          "setup_tns_ps": 0,
+          "hold_tns_ps": 0,
+          "setup_worst_slack_ps": 16.6418,
+          "hold_worst_slack_ps": 28.1936,
+          "setup_violation_count": 0,
+          "hold_violation_count": 0,
+          "core_clock_fmax_mhz": 1016.92,
+          "virtual_io_clock_fmax_mhz": null,
+          "reported_fmax_mhz": 1016.92,
+          "setup_clock_skew_ps": 36.0808,
+          "hold_clock_skew_ps": 41.4767,
+          "total_power_w": 0.380102,
+          "placement_utilization": 23.5532,
+          "placement_violations": 0,
+          "estimated_wirelength": 525532,
+          "route_wirelength": 628427,
+          "route_vias": 1229701,
+          "route_drc_errors": 0,
+          "route_drc_report_bytes": 0,
+          "antenna_violating_nets": 0,
+          "antenna_violating_pins": 0,
+          "ir_drop_vdd_worst": 0.0415541,
+          "ir_drop_vss_worst": 0.0422773,
+          "flow_warnings": 15,
+          "flow_errors": 0,
+          "critical_path": {
+            "startpoint": "u1312 (rising edge-triggered flip-flop clocked by core_clock)",
+            "endpoint": "u34474 (rising edge-triggered flip-flop clocked by core_clock)",
+            "group": "core_clock",
+            "slack_ps": 16.64,
+            "arrival_ps": 1167.0,
+            "data_path_delay_ps": 962.38,
+            "cell_delay_ps": 886.29,
+            "net_delay_ps": 76.09,
+            "cell_delay_percent": 92.09,
+            "net_delay_percent": 7.91,
+            "cell_count": 47,
+            "net_count": 47,
+            "dominant_cell_types": [
+              {
+                "cell_type": "MAJx2_ASAP7_75t_SL",
+                "count": 18,
+                "delay_ps": 361.4
+              },
+              {
+                "cell_type": "AOI21x1_ASAP7_75t_SL",
+                "count": 7,
+                "delay_ps": 120.03
+              },
+              {
+                "cell_type": "NOR2x1_ASAP7_75t_SL",
+                "count": 9,
+                "delay_ps": 99.99
+              },
+              {
+                "cell_type": "AO21x1_ASAP7_75t_SL",
+                "count": 3,
+                "delay_ps": 64.07
+              },
+              {
+                "cell_type": "DFFHQNx2_ASAP7_75t_SL",
+                "count": 1,
+                "delay_ps": 44.6
+              },
+              {
+                "cell_type": "CKINVDCx8_ASAP7_75t_SL",
+                "count": 1,
+                "delay_ps": 36.8
+              },
+              {
+                "cell_type": "OA211x2_ASAP7_75t_SL",
+                "count": 1,
+                "delay_ps": 31.82
+              },
+              {
+                "cell_type": "BUFx6f_ASAP7_75t_SL",
+                "count": 1,
+                "delay_ps": 29.69
+              }
+            ],
+            "per_group": {
+              "core_clock": {
+                "startpoint": "u1312 (rising edge-triggered flip-flop clocked by core_clock)",
+                "endpoint": "u34474 (rising edge-triggered flip-flop clocked by core_clock)",
+                "slack_ps": 16.64,
+                "arrival_ps": 1167.0
+              },
+              "vclk_core_clock": {
+                "startpoint": "u1313 (rising edge-triggered flip-flop clocked by core_clock)",
+                "endpoint": "io_planeA_0[2] (output port clocked by vclk_core_clock)",
+                "slack_ps": 290.8,
+                "arrival_ps": 459.2
+              }
+            }
+          }
+        },
+        "constraints": {
+          "reg_code": "",
+          "module_name": "TriangleRasterizer",
+          "clock_port": "clock",
+          "clock_period": 1000,
+          "io_delay_percent": 0.25,
+          "io_false_path_ports": null,
+          "cell_vt": "SLVT",
+          "corner": "TC",
+          "synthesis_engine": "syn",
+          "enable_retiming": false,
+          "sv_frontend": "native",
+          "core_utilization": 25,
+          "place_density": 0.6,
+          "setup_slack_margin": 30.0,
+          "timeout": 7200,
+          "synthesis_only": false,
+          "cache": false,
+          "clean": false,
+          "generate_gds": false,
+          "timing_effort": "closure",
+          "macro_libs": null,
+          "macro_lefs": null,
+          "macro_placement_tcl": null
+        },
+        "metadata_sha256": "31b26f7963f2fb06c644106af54d1a12342a614ec9937b1a619c7f1717fa37f0",
+        "comparison": "Same 30ps repair headroom and final gates as V21. V21 route fails -3.50975ps with one setup violation; V22 passes +16.6418ps, zero setup/hold/DRC/antenna/placement violations. Routed instance area rises15395.5->15638.3um2 (~1.6%), sequential cell count remains9760.",
+        "power_limit": "Vectorless component estimate rises0.356334->0.380102W. No switching-activity, energy/frame or whole-GPU power improvement is established."
+      },
+      "current_public_emission": {
+        "all_sv_byte_identical": true,
+        "metadata_sha256": "e485d665ff71934bca2f74b3935455be886603bf2e4c70086ebdd0a05c9f0203",
+        "artifact": "generated/mobile-h1/raster-csa-v22-current-public-rtl",
+        "scope": "Normal current-source sbt classes/public emitter after H2 additions, no overlays; all SV bytes equal the frozen qualified V22 raster."
+      },
+      "post_route_qualified": true,
+      "full_renderer_qualified": false,
+      "linux": "The live committed6aed4cd Linux guest uses staged geometry/NPOT with baseline V21 raster, not V22. Current V22 full Linux fixed/programmable integration remains open."
     }
   },
   "queue_validation": {
@@ -1403,10 +2382,9 @@
     "wrapper_log_sha256": "b9edb238fdca376ab67fcc79b4dbe1c9c4ea857dbfbba4dfff898de34b5ad0d6"
   },
   "open_gates": [
-    "Raster1GHz setup and full route qualification of current candidate.",
-    "Latest raster full Linux fixed/programmable integration pending. V15fixed pass is legacy64x64 only.",
-    "Fullrenderer mapping has211omitted divisions in prior synthesis and failed alternative mapping; isolated raster timing does not qualify GPU.",
-    "H0-H8 resource/geometry/texture/pixel/API semantics, two engines, sustained throughput,720p frames, scaling, physical power/area/bandwidth remain."
+    "Full current V22 GPU Linux fixed/programmable integration remains open. The isolated committed6aed4cd staged/NPOT legacy64x64 programmable guest is running, with baseline V21 raster.",
+    "Prior whole-renderer mapping omitted211 divisions and failed an alternative mapping. Nine combinational viewport divisions have since been replaced by staged arithmetic; remaining fragment/UV/depth interpolation mapping and throughput are unqualified. No new whole-renderer mapping count is asserted.",
+    "H0-H8 resource/geometry/texture/pixel/API semantics, two engines, sustained throughput,720p frames, scaling and physically qualified whole-GPU area/energy/bandwidth remain required."
   ],
   "setup_repair_margin_control": {
     "checks": {

@@ -1,7 +1,6 @@
 package opengpu.util
 
 import chisel3._
-import chisel3.util.Cat
 
 /** Exact partial products for a signed32 by signed32 multiply. Low halves
   * are unsigned; high halves are signed. No carry propagation follows the
@@ -20,11 +19,11 @@ object SignedProduct32 {
     val parts = Wire(new SignedProduct32Parts)
     val aHigh = a(31, 16).asSInt
     val bHigh = b(31, 16).asSInt
-    val aLow = Cat(0.U(1.W), a(15, 0)).asSInt
-    val bLow = Cat(0.U(1.W), b(15, 0)).asSInt
-    parts.low := a(15, 0) * b(15, 0)
-    parts.midA := aHigh * bLow
-    parts.midB := aLow * bHigh
+    val aLow = a(15, 0)
+    val bLow = b(15, 0)
+    parts.low := aLow * bLow
+    parts.midA := CarrySaveMultiplier(bLow, aHigh.asUInt, false, true).asSInt.pad(33)
+    parts.midB := CarrySaveMultiplier(aLow, bHigh.asUInt, false, true).asSInt.pad(33)
     parts.high := aHigh * bHigh
     parts
   }
