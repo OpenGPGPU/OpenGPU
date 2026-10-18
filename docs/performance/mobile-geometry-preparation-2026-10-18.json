@@ -1,0 +1,148 @@
+{
+  "scope": "ExactstagedviewportintegratedintoRenderPipeline. Component1GHzsynthesispass, notrouted/wholeGPUqualification.",
+  "source_sha256": {
+    "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "f0d6d340e550852d2569abe9e2b31cd11f89cc00491c4cfd4cbad83b70a832cf",
+    "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "0d54ef575bd6daeeaafac50eab1d9a7ab67aaa29f3e6e6518b37302d63fc071e",
+    "src/main/scala/opengpu/graphics/PreparedGeometryStage.scala": "ea0c1203590505f4a0b1f924b2c5975c2e2026fb09321892b6d9f113fa1c8f58",
+    "src/test/scala/opengpu/graphics/PreparedGeometryStageSpec.scala": "347971e7172f18b160ae730ce4a5fc705f967e8ca29aa5a863014c7ef5647f67",
+    "src/main/scala/opengpu/graphics/RenderPipeline.scala": "8b038b6d75d8afc80aa8d65a23ae7df9d95256803f8067c7f3b7a020febeb1e7",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "28d864c84c88e5b60033bdaf001e24c018d4615c4dd83cf28a1dc024ba493032"
+  },
+  "arithmetic_contract": "33bitcoordinate+w sum, signed34 splitproduct withunsigned16 viewport dimension, exactsigned50product andsubpixelshift; full-widthsignedcoordinatequotient andunsignedraw-wreciprocal, observablelowbits preserved. No approximation.",
+  "execution": "6coordinate+3reciprocal iterative dividersinparallel. Allpositivepower-of-two w andnonnegativecoordinatesums useexactshift shortcut. Start ignoredwhilebusy; inputs snapshotted, results/donehelduntilnextstart;resetcancelsall9dividers. RenderPipeline tracksonepreparationperfantriangle, waitsfordonebeforedispatch andholdsgeometrythroughrasterdrain.",
+  "component_checks": {
+    "v1": {
+      "status": "PASS2checks/70normaljobs+4resetreuserenders; exactBigIntoracle atsubpixel2/8, shortcut3cycles afteradmission, generalboundediteration. Physical/nativeintegration pending.",
+      "source_sha256": {
+        "src/main/scala/opengpu/graphics/PreparedGeometryStage.scala": "ea0c1203590505f4a0b1f924b2c5975c2e2026fb09321892b6d9f113fa1c8f58",
+        "src/test/scala/opengpu/graphics/PreparedGeometryStageSpec.scala": "347971e7172f18b160ae730ce4a5fc705f967e8ca29aa5a863014c7ef5647f67"
+      },
+      "metadata_sha256": "a5f4154418d87be33b0879946daa65d55d6cbc56aa655e5fc0f3bed4eb5033cf",
+      "checks": 2,
+      "log": ".artifacts/mobile-hardware-alignment/h0-h1/prepared_geometry_v1_unit.log",
+      "log_sha256": "2326c9eab768a8266bfa3e39acdf8646870f56e0838b2d11a2b1721dd718b249"
+    },
+    "v2": {
+      "status": "PASS10checks: divider8+preparedgeometry2/70normaljobs+4resetreuserenders; exactBigIntoracle atsubpixel2/8, shortcut3cycles afteradmission, generalboundediteration. Physical/nativeintegration pending.",
+      "source_sha256": {
+        "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "f0d6d340e550852d2569abe9e2b31cd11f89cc00491c4cfd4cbad83b70a832cf",
+        "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "0d54ef575bd6daeeaafac50eab1d9a7ab67aaa29f3e6e6518b37302d63fc071e",
+        "src/main/scala/opengpu/graphics/PreparedGeometryStage.scala": "ea0c1203590505f4a0b1f924b2c5975c2e2026fb09321892b6d9f113fa1c8f58",
+        "src/test/scala/opengpu/graphics/PreparedGeometryStageSpec.scala": "347971e7172f18b160ae730ce4a5fc705f967e8ca29aa5a863014c7ef5647f67"
+      },
+      "metadata_sha256": "e36da868bd4fdba38ada2f00838f41507afe5ee90a003ddd6e7daf00ca90d1b2",
+      "checks": 10,
+      "log": ".artifacts/mobile-hardware-alignment/h0-h1/prepared_geometry_v2_unit.log",
+      "log_sha256": "f0f0e9a9ce0ed413c553552c37e7b8049f5af0f6ea0ea6668d32822f0fd46808"
+    },
+    "pipeline_v1": {
+      "status": "PASS directpipelineintegrationchecks; auditexacttestcountfromlog",
+      "source_sha256": {
+        "src/main/scala/opengpu/graphics/RenderPipeline.scala": "0a2c6cb4ba5d6a29f7f1bb21955b7e073ddb394fb8e23bc563c5dbf43e8c7a84",
+        "src/test/scala/opengpu/graphics/RenderPipelineSpec.scala": "ff81dde2acee017c53fc08fc0b6fc5e675602a045f5ad26eee0dd266baa41bb9",
+        "src/test/scala/opengpu/graphics/PersistentTileRenderPipelineSpec.scala": "7083feebd8409ad30182b5a719bea90eddf632e94cd33ceb619027c9db7227e9",
+        "src/test/scala/opengpu/graphics/TileRenderPipelineSpec.scala": "ce927be402f36024e604917d86fd7f829ed2d2792cbf30220bf3817d42b4c790"
+      },
+      "metadata_sha256": "521b461dd0afebe74b1233811958608f890dec5314119fddc1e786bcb1a3abde",
+      "checks": 18,
+      "log": ".artifacts/mobile-hardware-alignment/h0-h1/prepared_geometry_pipeline_v1_unit.log",
+      "log_sha256": "411b273aac45310648357a9e5ea72ff191262878c7770db094350068c8c1238d"
+    }
+  },
+  "observed_latency_after_admission": {
+    "shortcut_cycles": 3,
+    "general_max_subpixel2": 58,
+    "general_max_subpixel8": 64,
+    "normal_jobs": 70,
+    "reset_reuse_renders": 4
+  },
+  "physical": {
+    "v1": {
+      "artifact": "generated/mobile-h1/physical-prepared-geometry-v1-synth",
+      "qualification": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -85.512,
+          689.369
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "a1be7166b08268c39219d273398dd0275cc5c2f480fac902faa0a569f5aae00e",
+        "setup_passed": false,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-prepared-geometry-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "683b79011ee69203f5049d089f719591ea8e39c61cf21b1e26cdef1964781aec",
+          "logs": [
+            {
+              "path": "generated/mobile-h1/physical-prepared-geometry-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "683b79011ee69203f5049d089f719591ea8e39c61cf21b1e26cdef1964781aec"
+            }
+          ],
+          "combined_log_sha256": "683b79011ee69203f5049d089f719591ea8e39c61cf21b1e26cdef1964781aec"
+        }
+      },
+      "manifest_sha256": "d3bb6ae3f7d6fd26c1516869eeb6856cbaa64e63a7a0ee6c4508c71133e3f6dd",
+      "result_sha256": "ec16f069df2acb08e47e1cd82316f5835edb8706a2d730273ea7e2e421894cea",
+      "qualification_sha256": "e29de7d99ddf19487e7d370b106ab1315d5f7627822db3b2ca0f02d94da88d86",
+      "query_log": ".artifacts/mobile-hardware-alignment/h0-h1/prepared_geometry_v1_netlist_query.log",
+      "query_log_sha256": "0ba37581d50d6a773ce33e3951fb6f05ac6c1c0b98913d559c886e170c510f56"
+    },
+    "v2": {
+      "artifact": "generated/mobile-h1/physical-prepared-geometry-v2-synth",
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          19.1,
+          689.109
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "177d4a76fd860d092a09d80becd8dd4e4afc4910d7d05cf547af6ddbd31cc80f",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-prepared-geometry-v2-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "193c865d350612b2b6fe2dc122ec9f86c9f0c8444bf3023da9598979b212e70b",
+          "logs": [
+            {
+              "path": "generated/mobile-h1/physical-prepared-geometry-v2-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "193c865d350612b2b6fe2dc122ec9f86c9f0c8444bf3023da9598979b212e70b"
+            }
+          ],
+          "combined_log_sha256": "193c865d350612b2b6fe2dc122ec9f86c9f0c8444bf3023da9598979b212e70b"
+        }
+      },
+      "manifest_sha256": "1543d46eadf0ba8654af7958accf6e86104342a4bc784fdfea9c29c86e13306e",
+      "result_sha256": "a0aa7a297255da9eb2d38edc54f5f4b1b96263da97caf0020296ac029f21f2f7",
+      "qualification_sha256": "eeff554d314ad79b53dc2c9f54f7662221afe835152f858ba34fc8e98723b774",
+      "query_log": ".artifacts/mobile-hardware-alignment/h0-h1/prepared_geometry_v2_netlist_query.log",
+      "query_log_sha256": "db7c2ad89bddb4393a8fcf9da5afb090f33f67c78b102b5b2ef1bdac389d461c"
+    }
+  },
+  "v2_change": "UnconditionalremainderinitializationinsPrepare removesirrelevantwidezero/unitdivisorcheckfromremainderwriteenable. No latency/protocolchange; all8dividerchecks pass and6clipperchecks(21scenes/825fields) retain23387aggregatecycles.",
+  "remaining_synthesis_path": "V2 quotient[2] -> divider out.valid (widezero-detectioncontrol), +19.1ps setup; possible furthercontrol optimization, postrouteneeded.",
+  "public_emission": {
+    "block": "mobile-geometry",
+    "metadata_sha256": "93ed37dc99de2c71bbd04aa4a12fb0b92ac8180d46733ee3bb0f34531f2b17c5",
+    "core_artifact": "generated/mobile-h1/persistent-core-prepared-geometry-v2-rtl",
+    "core_has_prepared_geometry": true,
+    "core_has_legacy_combinational_geometry": false,
+    "scope": "Fullpersistentcoreelaborationonly; nineviewportcombdivisionoperatorsremovedfromitsinstantiateddesign. Remaininginterpolatoroperators stillnotphysicallyqualified."
+  },
+  "native_product": "Pending currentstagedpipeline48-jobreplay; priorV6clipper+combinationalviewport matrixrunning.",
+  "post_route_qualified": false,
+  "full_renderer_qualified": false
+}

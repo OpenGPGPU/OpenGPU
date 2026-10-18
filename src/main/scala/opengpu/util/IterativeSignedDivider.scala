@@ -93,6 +93,9 @@ class IterativeSignedDivider(
   }
 
   when(state === sPrepare) {
+    // Initializing an unused remainder is harmless on a shortcut/error.
+    // Keep the wide zero/unit-divisor predicates off its register enable.
+    remainder := highNumerator
     when(divisor === 0.U) {
       outputValid := true.B
       outputBits.quotient := 0.S
@@ -113,7 +116,6 @@ class IterativeSignedDivider(
     }.otherwise {
       // highNumerator < divisor is exactly the quotient-magnitude bound.
       // It is the initial remainder before processing the low qWidth bits.
-      remainder := highNumerator
       state := sIterate
     }
   }

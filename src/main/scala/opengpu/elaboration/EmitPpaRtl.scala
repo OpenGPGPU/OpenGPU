@@ -48,6 +48,10 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "mobile-geometry" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.PreparedGeometryStage(GraphicsConfig(
+            screenWidth = 1280, screenHeight = 720)), stageArgs, firtoolArgs)
       case "buffered-command-client" =>
         val pool = Some(opengpu.system.SharedCuShaderConfig(GpuConfig.MobileComputeUnits,
           parallelFragments = true))

@@ -53,7 +53,7 @@ private class DrawRenderState extends Bundle with HasResolvedDrawState {
 
 /** Top-of-pipeline renderer.
   *
-  * Chains GeometryStage (perspective divide + viewport) -> RasterShader
+  * Chains PreparedGeometryStage (perspective divide + viewport) -> RasterShader
   * (rasterize + interpolate) -> OutputMerger (depth test + write) for one
   * triangle at a time, writing the depth-tested result through the shared
   * memory port into the software-allocated colour/depth buffers.  Draw calls
@@ -159,7 +159,7 @@ class RenderPipeline(
     val tileInputDone = if (config.tileBinning && vertCore) Some(Input(Bool())) else None
   })
 
-  private val geo = Module(new GeometryStage(config))
+  private val geo = Module(new PreparedGeometryStage(config))
   io.shaderFault := false.B
   // A persistent pass admits one aligned8x8/16x16 tile and intersects every
   // draw scissor with it. Row-major rasterization already visits that tile
@@ -313,6 +313,7 @@ class RenderPipeline(
   private val clipper = Module(new NearClipStage(config))
   private val clipEmitIndex = RegInit(0.U(log2Ceil(NearClipStage.MaxTriangles).W))
   private val clipTriangleActive = RegInit(false.B)
+  private val geometryIssued = RegInit(false.B)
   clipper.io.start := triSource.fire
   clipper.io.wNear := 64.U // Q16.16 1/1024: keep the perspective divide finite.
   for (i <- 0 until 3) {
@@ -389,6 +390,7 @@ class RenderPipeline(
     drawHoldValid := true.B
     clipEmitIndex := 0.U
     clipTriangleActive := false.B
+    geometryIssued := false.B
     drawState.colorFormat := passDescriptor.map(_.colorFormat).getOrElse(io.colorFormat)
     drawState.colorBase := passDescriptor.map(_.color.base).getOrElse(io.colorBase)
     drawState.depthBase := passDescriptor.map(_.depth.base).getOrElse(io.depthBase)
@@ -408,6 +410,7 @@ class RenderPipeline(
   // until the rasterizer returns to idle, then advance to the next one.
   when(clipTriangleActive && shader.io.done) {
     clipTriangleActive := false.B
+    geometryIssued := false.B
     when(clipEmitIndex + 1.U >= clipper.io.outValid) {
       drawHoldValid := false.B
     }.otherwise {
@@ -427,6 +430,10 @@ class RenderPipeline(
   }
   geo.io.screenW := ScreenLimit(renderScreenW, config.screenWidth)
   geo.io.screenH := ScreenLimit(renderScreenH, config.screenHeight)
+  geo.io.start := drawHoldValid && !clipTriangleActive && clipper.io.done &&
+    clipEmitIndex < clipper.io.outValid && !geometryIssued && !geo.io.busy
+  when(geo.io.start) { geometryIssued := true.B }
+  private val geometryReady = geometryIssued && geo.io.done
 
   // Shader consumes the screen-space triangle (sub-pixel fixed-point) directly.
   shader.io.draw.bits.v0.x := geo.io.out(0).sx(31, 0).asSInt
@@ -471,7 +478,8 @@ class RenderPipeline(
 
   // The source remains stopped until every triangle in the clipped fan has
   // entered rasterization. This also keeps the source metadata snapshot stable.
-  triSourceReady := !drawHoldValid && !clipper.io.busy && shader.io.draw.ready && passAcceptingDraws
+  triSourceReady := !drawHoldValid && !clipper.io.busy && !geo.io.busy &&
+    shader.io.draw.ready && passAcceptingDraws
 
   // Texture sampling configuration + word port (sampler owns its fetches).
   textured.io.e0 := shader.io.pixel.bits.e0
@@ -678,7 +686,7 @@ class RenderPipeline(
     kernelShader.io.globalAtomicResponse <> io.kernelGlobalAtomicResponse
 
     val ctxFifo = Module(new DrawContextFifo(2))
-    val clippedDrawValid = drawHoldValid && !clipTriangleActive && clipper.io.done &&
+    val clippedDrawValid = drawHoldValid && !clipTriangleActive && clipper.io.done && geometryReady &&
       clipEmitIndex < clipper.io.outValid
     shader.io.draw.valid := clippedDrawValid && ctxFifo.io.enq.ready
     ctxFifo.io.enq.valid := shader.io.draw.fire
@@ -920,12 +928,12 @@ class RenderPipeline(
     // Vertex draws also keep the pipeline busy until KernelVertStage returns
     // to idle; otherwise a just-accepted vertex command looks drained before
     // its shader has fetched a single instruction.
-    fragmentDrained := !drawHoldValid && shader.io.done && kernelFrag.drained &&
+    fragmentDrained := !drawHoldValid && !geo.io.busy && shader.io.done && kernelFrag.drained &&
       expander.io.drained && om.io.drained && !ctxFifo.io.headValid && stagingRouterDrained
     upstreamDone := fragmentDrained && kernelVert.map(_.io.done).getOrElse(true.B) &&
       vertBinnerOpt.map(_.io.done).getOrElse(true.B)
   } else {
-    shader.io.draw.valid := drawHoldValid && !clipTriangleActive && clipper.io.done &&
+    shader.io.draw.valid := drawHoldValid && !clipTriangleActive && clipper.io.done && geometryReady &&
       clipEmitIndex < clipper.io.outValid
     om.io.colorFormat := drawState.colorFormat
     om.io.colorBase := drawState.colorBase
@@ -1017,7 +1025,7 @@ class RenderPipeline(
     io.kernelGlobalAtomicRequest.bits :=
       0.U.asTypeOf(io.kernelGlobalAtomicRequest.bits)
     io.kernelGlobalAtomicResponse.ready := true.B
-    fragmentDrained := !drawHoldValid && shader.io.done && textured.io.drained &&
+    fragmentDrained := !drawHoldValid && !geo.io.busy && shader.io.done && textured.io.drained &&
       expander.io.drained && om.io.drained
     upstreamDone := fragmentDrained
   }

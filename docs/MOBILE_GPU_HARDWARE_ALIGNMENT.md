@@ -1092,3 +1092,22 @@ division timing. The qualifier now reads the separate Yosys statistics report
 alongside both engine logs, with37 checks covering missed reports and residual
 internal operators. The original failed qualification is retained; a log-format
 reassessment confirms mapping while preserving the timing failure.
+
+`RenderPipeline` now prepares viewport geometry through an exact staged
+engine, replacing its nine combinational viewport division operators. Six
+coordinate and three reciprocal dividers run in parallel; an exact positive-
+power-of-two-w shortcut takes3 cycles after admission, while the measured
+general path takes at most64 cycles at subpixel8. Inputs/results and fan
+ownership remain stable across stalls. All70 numeric jobs plus4 reset/reuse
+renders pass, alongside18 direct pipeline checks covering clipping, depth,
+programmable MSAA, persistent attachments and tile boundaries.
+
+The first staged geometry misses synthesis setup by85.512 ps. Initializing
+the divider remainder independently of unused shortcut predicates removes
+that path without changing cycles or results. The revised engine passes
+complete-mapping1 GHz synthesis at+19.1 ps core and+689.109 ps I/O setup.
+Eight divider and six clipper checks also pass after this change. Routed
+qualification and the staged native product matrix remain pending. The
+`mobile-geometry` PPA emitter and
+[the staged geometry record](performance/mobile-geometry-preparation-2026-10-18.json)
+retain both versions and their limits; full renderer qualification remains open.
