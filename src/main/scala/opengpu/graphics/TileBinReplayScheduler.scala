@@ -131,10 +131,12 @@ class TileBinReplayScheduler(
 
   // Pick the first free engine, rotating the starting point so neither engine
   // is preferred when both have room.
+  private def rotate(start: UInt, offset: Int): UInt =
+    ((start +& offset.U) % engines.U)(engineBits-1,0)
   private val free = VecInit((0 until engines).map(e => !nextValid(e)))
-  private val choices = (0 until engines).map(i => (dispatchIndex + i.U) % engines.U)
+  private val choices = (0 until engines).map(i => rotate(dispatchIndex,i))
   private val pick = PriorityMux(choices.map(e => free(e) -> e))
-  private val doneOrder = (0 until engines).map(i => (doneIndex + i.U) % engines.U)
+  private val doneOrder = (0 until engines).map(i => rotate(doneIndex,i))
   private val donePickRaw = PriorityMux(doneOrder.map(e => doneValid(e) -> e))
   // The offered completion must not change while the consumer withholds
   // ready: latch the first selected slot until it is accepted, even if an
@@ -295,7 +297,7 @@ class TileBinReplayScheduler(
   when(active && (endPending || (aborting && io.producerDone)) && enginesEmpty &&
       !summaryValid && !io.tile.valid) {
     result.identity := descriptor.pool.identity
-    result.status := passStatus
+    result.status := Mux(stop,mergeStatus(passStatus,PrimitiveBinStatus.cancelled.U),passStatus)
     result.tiles := tilesCompleted
     result.references := totalReferences
     result.pages := totalPages
@@ -309,8 +311,10 @@ class TileBinReplayScheduler(
   }
   when(active && io.cancel && !aborting) {
     aborting := true.B
-    when(passStatus === PrimitiveBinStatus.success.U) {
-      passStatus := PrimitiveBinStatus.cancelled.U
-    }
+    // Include a completion accepted on this edge before merging cancellation,
+    // so a simultaneous memory fault retains priority.
+    val completedStatus = Mux(io.tileDone.fire,
+      mergeStatus(passStatus,io.tileDone.bits.status),passStatus)
+    passStatus := mergeStatus(completedStatus,PrimitiveBinStatus.cancelled.U)
   }
 }

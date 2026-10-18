@@ -347,6 +347,42 @@ class TileBinReplayPassSpec extends AnyFlatSpec {
 
   behavior of "tile bin replay pass"
 
+  it should "retain a pending summary and admit the next pass only after its acceptance" in {
+    simulate(replayPass()) { dut =>
+      val d = new Driver(dut)
+      d.begin(pageCount=8,tiles=tileSlots)
+      d.end()
+      d.until(dut.io.completion.valid.peek().litToBoolean)
+      val summary = dut.io.completion.bits.peek().litValue
+      val b = dut.io.begin.bits
+      b.version.poke(1.U); b.pool.version.poke(1.U)
+      b.pool.identity.context.poke(context.U); b.pool.identity.pass.poke(pass.U)
+      b.pool.identity.generation.poke(generation.U)
+      b.pool.base.poke(base.U); b.pool.limit.poke((base+8*pageBytes).U)
+      b.pool.pageSizeLog2.poke(Integer.numberOfTrailingZeros(pageBytes).U)
+      b.tileCount.poke(tileSlots.U)
+      dut.io.begin.valid.poke(true.B)
+      for (_ <- 0 until 5) {
+        dut.io.begin.ready.expect(false.B)
+        dut.io.completion.ready.expect(false.B)
+        d.step()
+        dut.io.completion.valid.expect(true.B)
+        assert(dut.io.completion.bits.peek().litValue == summary)
+      }
+      dut.io.completion.ready.poke(true.B)
+      d.step(); dut.io.completion.ready.poke(false.B)
+      dut.io.begin.ready.expect(true.B)
+      d.step(); dut.io.begin.valid.poke(false.B)
+      b.poke(0.U.asTypeOf(b))
+      d.until(dut.io.append.ready.peek().litToBoolean)
+      d.append(0,references(0,1).head)
+      d.end()
+      val result = d.finish()
+      assert(result.status == PrimitiveBinStatus.success && result.tiles == 1 &&
+        result.references == 1 && result.committed == 1)
+    }
+  }
+
   it should "build, seal and replay two tiles over one shared line client" in {
     simulate(replayPass()) { dut =>
       val d = new Driver(dut)

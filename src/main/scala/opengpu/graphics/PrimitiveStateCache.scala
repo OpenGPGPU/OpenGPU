@@ -140,6 +140,7 @@ class PrimitiveStateCache(
   private val readLines = RegInit(0.U(32.W))
   private val wordsOut = RegInit(0.U(32.W))
   private val stop = cancelled || io.cancel
+  private val faultNow = io.memoryResponse.fire && io.memoryResponse.bits.fault
   private def effectiveStatus: UInt = Mux(stop && passStatus === PrimitiveStateStatus.success.U,
     PrimitiveStateStatus.cancelled.U,passStatus)
   private def mergeStatus(a: UInt,b: UInt): UInt =
@@ -303,7 +304,7 @@ class PrimitiveStateCache(
   when(io.end.fire) { endPending := true.B }
   when(io.cancel && active && state =/= idle && state =/= done && !cancelled) {
     cancelled := true.B
-    when(passStatus === PrimitiveStateStatus.success.U) {
+    when(passStatus === PrimitiveStateStatus.success.U && !faultNow) {
       passStatus := PrimitiveStateStatus.cancelled.U
     }
   }

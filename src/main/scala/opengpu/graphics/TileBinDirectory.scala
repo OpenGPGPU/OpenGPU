@@ -82,7 +82,8 @@ class TileBinDirectory(
     val begin = Flipped(Decoupled(new TileBinDirectoryDescriptor))
     val append = Flipped(Decoupled(new TileBinAppend))
     val appended = Decoupled(new TileBinAppendResult)
-    /** Close one tile without ending the pass. */
+    /** Close one tile without ending the pass. Repeated seals of an already
+      * reported tile are accepted as no-ops. */
     val seal = Flipped(Decoupled(UInt(32.W)))
     val tileClosed = Decoupled(new TileBinCompletion)
     val end = Flipped(Decoupled(Bool()))
@@ -167,9 +168,7 @@ class TileBinDirectory(
   private val currentPageCount = pageCount(currentIdx)
   private val currentLastSequence = lastSequence(currentIdx)
   private val currentHeadValid = headValid(currentIdx)
-  private val selectSeal = io.seal.valid
-  private val selectAppend = io.append.valid && !selectSeal
-  private val readyToAccept = state === ready && !stop && !io.end.valid
+  private val readyToAccept = state === ready && !stop
   writes.io.abort := stop
   writes.io.begin := io.begin.fire
   writes.io.enqueue.valid := false.B
@@ -190,9 +189,11 @@ class TileBinDirectory(
     writes.io.drained && !pending && !allocationPending && !replyValid && !tileReplyValid
   // Ready must not depend on the corresponding valid: an idle caller has to
   // observe capacity before it offers work.
-  io.append.ready := readyToAccept && !selectSeal
-  io.seal.ready := readyToAccept && selectSeal
-  io.end.ready := state === ready && !stop && !io.append.valid && !io.seal.valid
+  // Seal wins over append, and both precede end. Keep ready and the state
+  // transitions consistent when independent producers offer work together.
+  io.append.ready := readyToAccept && !io.seal.valid
+  io.seal.ready := readyToAccept
+  io.end.ready := readyToAccept && !io.append.valid && !io.seal.valid
   io.appended.valid := replyValid
   io.appended.bits := replyBits
   io.tileClosed.valid := tileReplyValid
@@ -297,17 +298,21 @@ class TileBinDirectory(
     }
     is(binding) { when(pool.io.allocate.ready && !stop) { state := ready } }
     is(ready) {
-      when(selectSeal) {
+      when(io.seal.fire) {
         val tile = io.seal.bits
         val valid = tile < descriptor.tileCount.pad(32)
-        closedSlot(tile(indexBits - 1, 0)) := true.B
-        tileReplyBits := tileCompletionBits(tile, Mux(valid,
-          Mux(aborting, effectiveStatus, tileStatus(tile(indexBits - 1, 0))),
-          PrimitiveBinStatus.invalidDescriptor.U(PrimitiveBinStatus.width.W)))
-        tileReplyNext := 0.U
-        tileReplyValid := true.B
-        state := tileReply
-      }.elsewhen(selectAppend) {
+        val index = tile(indexBits - 1, 0)
+        when(valid) { closedSlot(index) := true.B }
+        // tileClosed is a replay descriptor, not a seal acknowledgement:
+        // publishing it twice would execute the same primitives twice.
+        when(!valid || !reported(index)) {
+          tileReplyBits := tileCompletionBits(tile, Mux(valid,
+            tileStatus(index), PrimitiveBinStatus.invalidDescriptor.U(PrimitiveBinStatus.width.W)))
+          tileReplyNext := 0.U
+          tileReplyValid := true.B
+          state := tileReply
+        }
+      }.elsewhen(io.append.fire) {
         current := io.append.bits
         pending := true.B
         workPage := tail(io.append.bits.tile(indexBits - 1, 0))

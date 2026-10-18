@@ -275,6 +275,25 @@ class PrimitiveStateCacheSpec extends AnyFlatSpec {
     }
   }
 
+  it should "preserve a memory fault when cancellation arrives on the response cycle" in {
+    simulate(cache(8)) { dut =>
+      val d = new Driver(dut,8)
+      d.responseDelay = 1
+      d.setLine(0)
+      d.faultAddress = Some(base)
+      d.holdResponses = true
+      d.begin(); d.lookup(0)
+      d.until(d.pending.nonEmpty)
+      for (_ <- 0 until 3) d.step()
+      d.holdResponses = false
+      d.cancel()
+      val result = d.finish()
+      assert(d.completions.head.status == PrimitiveStateStatus.memoryFault)
+      assert(result.status == PrimitiveStateStatus.memoryFault && result.faults == 1)
+      assert(result.words == 0 && result.lines == 1)
+    }
+  }
+
   it should "retain an offered read through cancellation and report the pass cancelled" in {
     simulate(cache(8)) { dut =>
       val d = new Driver(dut,8); d.responseDelay = 1

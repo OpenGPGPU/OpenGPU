@@ -82,14 +82,17 @@ class TileBinReplayPass(
   private val summaryValid = RegInit(false.B)
   private val result = Reg(new TileBinReplayPassCompletion)
 
+  // Child completions are consumed internally before the public summary.
+  // Keep the pass and its arena owned until that summary is accepted.
+  private val canBegin = !started && !summaryValid && !io.cancel
   private val beginFire = io.begin.valid && directory.io.begin.ready &&
-    scheduler.io.begin.ready && !io.cancel
+    scheduler.io.begin.ready && canBegin
   directory.io.begin.valid := beginFire
   directory.io.begin.bits := io.begin.bits
   scheduler.io.begin.valid := beginFire
   scheduler.io.begin.bits.version := 1.U
   scheduler.io.begin.bits.pool := io.begin.bits.pool
-  io.begin.ready := directory.io.begin.ready && scheduler.io.begin.ready && !io.cancel
+  io.begin.ready := directory.io.begin.ready && scheduler.io.begin.ready && canBegin
   when(io.begin.fire) {
     identity := io.begin.bits.pool.identity
     started := true.B

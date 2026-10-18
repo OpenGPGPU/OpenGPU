@@ -199,10 +199,13 @@ class TileBinDirectorySpec extends AnyFlatSpec {
       assert(got.tile == tile && got.reference == r)
       got
     }
-    def seal(tile: Long): TileResult = {
-      val before = tileResults.size
+    def requestSeal(tile: Long): Unit = {
       sealedRequest = Some(tile)
       until(sealedRequest.isEmpty)
+    }
+    def seal(tile: Long): TileResult = {
+      val before = tileResults.size
+      requestSeal(tile)
       until(tileResults.size == before+1)
       tileResults.last
     }
@@ -305,6 +308,63 @@ class TileBinDirectorySpec extends AnyFlatSpec {
       assert(finished.map(_.tile) == Seq(1L,0L,2L),"sealed tile replied immediately; end walks the rest in order")
       for (t <- finished) assert(d.decode(t) == byTile(t.tile.toInt))
       info(s"TILE_BINS=3 pages=3 credits=3 writes=${d.requests} cycles=${d.tickCount}")
+    }
+  }
+
+  it should "reject an invalid seal without closing an aliased valid tile" in {
+    simulate(new TileBinDirectory(tileSlots=4,pageBytes=128,writeCredits=3)) { dut =>
+      val d = new Driver(dut,128)
+      d.begin(0x10000,8,tiles=2)
+      assert(d.seal(4).status == PrimitiveBinStatus.invalidDescriptor)
+      assert(d.send(0,ref(0)).status == PrimitiveBinStatus.success)
+      val result = d.finish()
+      assert(result.status == PrimitiveBinStatus.success && result.count == 1)
+      assert(d.decode(d.tileResults.find(_.tile == 0).get) == Vector(ref(0)))
+    }
+  }
+
+  it should "accept repeated seals without publishing another replay descriptor" in {
+    simulate(new TileBinDirectory(tileSlots=4,pageBytes=128,writeCredits=3)) { dut =>
+      val d = new Driver(dut,128)
+      d.begin(0x10000,8,tiles=2)
+      assert(d.send(0,ref(0)).status == PrimitiveBinStatus.success)
+      d.seal(0); d.seal(1)
+      d.requestSeal(0); d.requestSeal(1)
+      for (_ <- 0 until 8) d.step()
+      assert(d.tileResults.map(_.tile).toVector == Vector(0L,1L))
+      val result = d.finish()
+      assert(result.status == PrimitiveBinStatus.success && result.count == 1)
+      assert(d.tileResults.size == 2)
+    }
+  }
+
+  it should "accept an append before a simultaneously offered end exactly once" in {
+    simulate(new TileBinDirectory(tileSlots=4,pageBytes=128,writeCredits=3)) { dut =>
+      val d = new Driver(dut,128)
+      d.begin(0x10000,8,tiles=2)
+      dut.io.end.valid.poke(true.B)
+      d.send(0,ref(0))
+      d.until(dut.io.end.ready.peek().litToBoolean)
+      d.step(); dut.io.end.valid.poke(false.B)
+      val result = d.finish(close=false)
+      assert(result.status == PrimitiveBinStatus.success && result.count == 1)
+      assert(d.replies.size == 1 && d.tileResults.size == 1)
+      assert(d.decode(d.tileResults.head) == Vector(ref(0)))
+    }
+  }
+
+  it should "accept a seal before a simultaneously offered end exactly once" in {
+    simulate(new TileBinDirectory(tileSlots=4,pageBytes=128,writeCredits=3)) { dut =>
+      val d = new Driver(dut,128)
+      d.begin(0x10000,8,tiles=2)
+      d.send(0,ref(0))
+      dut.io.end.valid.poke(true.B)
+      d.seal(0)
+      d.until(dut.io.end.ready.peek().litToBoolean)
+      d.step(); dut.io.end.valid.poke(false.B)
+      val result = d.finish(close=false)
+      assert(result.status == PrimitiveBinStatus.success && result.count == 1)
+      assert(d.tileResults.size == 1)
     }
   }
 

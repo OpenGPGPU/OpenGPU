@@ -249,6 +249,54 @@ class TileBinReplaySchedulerSpec extends AnyFlatSpec {
 
   behavior of "tile bin replay scheduler"
 
+  it should "dispatch and complete through wrapped three-engine rotations" in {
+    simulate(new TileBinReplayScheduler(GpuConfig(lanes=4),engines=3,pageBytes=128)) { dut =>
+      val d = new Driver(dut)
+      d.setPool(0x10000,0x11000)
+      val jobs = Vector.tabulate(9)(n => image(if (Set(2,3,5,6).contains(n)) 1 else 0,
+        0x10000+n*128,n,firstOrdinal=n))
+      jobs.foreach(d.addImage)
+      d.begin()
+      d.send(jobs(0)); d.until(d.completions.size == 1)
+      d.send(jobs(1)); d.until(d.completions.size == 2)
+      // Engines 2 and 0 wait for memory while engine 1 completes tile 4.
+      d.holdResponses = true
+      d.send(jobs(2)); d.send(jobs(3)); d.send(jobs(4))
+      d.until(d.completions.size == 3)
+      assert(d.completions.last.tile == 4 && d.completions.last.engine == 1)
+      // Fill both blocked engines' buffered slots. After dispatching tile 7
+      // to engine 1, rotation starts at 2 with only engine 1 still free.
+      d.send(jobs(5)); d.send(jobs(6)); d.send(jobs(7))
+      d.until(d.completions.size == 4)
+      d.send(jobs(8)); d.until(d.completions.size == 5)
+      assert(d.completions.takeRight(2).map(_.tile).toVector == Vector(7L,8L))
+      assert(d.completions.takeRight(2).forall(_.engine == 1))
+      d.holdResponses = false
+      d.until(d.completions.size == 9)
+      val result = d.finish()
+      assert(d.completions.map(_.tile).sorted.toVector == (0L until 9L).toVector)
+      assert(result.status == PrimitiveBinStatus.success && result.tiles == 9 &&
+        result.references == 4)
+    }
+  }
+
+  it should "preserve a fault completion accepted on the cancellation cycle" in {
+    simulate(scheduler()) { dut =>
+      val d = new Driver(dut)
+      val job = image(1,0x10000,0)
+      d.addImage(job); d.setPool(job.base,job.limit)
+      d.faultAddresses = Set(job.head)
+      d.holdDone = true
+      d.begin(); d.send(job)
+      d.until(dut.io.tileDone.valid.peek().litToBoolean)
+      dut.io.tileDone.bits.status.expect(PrimitiveBinStatus.memoryFault.U)
+      d.holdDone = false
+      d.cancel()
+      val result = d.finish()
+      assert(result.status == PrimitiveBinStatus.memoryFault && result.tiles == 1)
+    }
+  }
+
   it should "replay two tile chains concurrently with independent engines" in {
     simulate(scheduler()) { dut =>
       val a = image(6,0x10000,0x87654321L,seed = 0)
