@@ -71,6 +71,25 @@
     }
   },
   "mapping_timing": "Yosys synthesis running: generated/mobile-h1/physical-geometry-bounded-synth. No passclaimed.",
-  "native_product": "Frozen boundedviewport+clipV5+rasterV21 matrix running; no passclaimed.",
+  "native_product": {
+    "passed": true,
+    "checks": 4,
+    "executed_jobs": 48,
+    "distinct_jobs": 48,
+    "duplicate_executions": 0,
+    "metadata_sha256": "c2bb66b565a4b965c01858a23820d45691519f50baf00f45df5863dc269b2052",
+    "logs": [
+      {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_geometry_bounded_matrix_profile_0.log",
+        "sha256": "2ac68c27a850b7a8b597e1a14ad7862e429078dff58976ff1d12684dd94b368f"
+      },
+      {
+        "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_geometry_bounded_matrix_profile_1.log",
+        "sha256": "ccd9bf9b46fc2e6044c71ab8f1bc25b959c4ec3d7e83ef27076977ac5448bf9b"
+      }
+    ],
+    "cycle_comparison": "All48jobs have exactlythe sameGPUcyclecount asV5clipper+rasterV21 witholdviewport arithmetic. Doesnotcoverextremegeometryimages; thosehaveBigIntunitchecks.",
+    "scope": "Boundedviewport+frozenclipv5+rasterV21; insideandclipped scenes, per-suite sharedfilter; independent sample/resolve imageoracle, 1280x720viewport, one8/16tile,1/2/4samples,Bare/Sv32,128KiBL2AXI256. Not fullframes orclockqualification."
+  },
   "full_renderer_qualified": false
 }

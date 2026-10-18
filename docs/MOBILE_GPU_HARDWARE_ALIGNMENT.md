@@ -1076,3 +1076,11 @@ Fully inside latency falls from28 to1 cycle after admission; the common20
 scene aggregate rises from23,087 to23,386 cycles because clipped edges gain
 a stage. The distance, product-join and divider proof/fixture RTL is byte-
 identical to V5. V6 physical timing and native integration are still pending.
+
+The bounded viewport change passes all48 distinct native product jobs across
+fixed/shared execution, inside/clipped triangles,1x/2x/4x samples, both tile
+classes and Bare/Sv32. Every GPU cycle count equals the corresponding V5
+clipper baseline. This is one resident tile per submission, not full-frame
+qualification. The V6 clipper separately passes complete-mapping1 GHz
+synthesis with+49.639 ps core setup and+624.781 ps reported I/O setup slack;
+its routed/native checks remain open.

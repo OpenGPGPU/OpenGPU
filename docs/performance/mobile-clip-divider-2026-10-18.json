@@ -1086,7 +1086,7 @@
     "scope": "Isolated exact68/34/32 divider hardware, byteidenticalV3/V4/V5; not fullclipper/renderer clock orwholeframeenergy."
   },
   "followup_v6": {
-    "status": "PASS17componentchecks; synthesis/route/native pending",
+    "status": "PASS17componentchecks and1GHz synthesisincludingIO; routed/nativepending",
     "change": "Register edge distances before polygon classification/count feedback, register final per-triangle valid flags, and add captured-triangle complete-inside shortcut using exact existing distance math.",
     "source_sha256": {
       "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "5d5f10ef42a07dafc534b6caaa62abb35e24609487b33bc156c49dc9fa20f20e",
@@ -1157,6 +1157,35 @@
       }
     ],
     "post_route_qualified": false,
-    "full_renderer_qualified": false
+    "full_renderer_qualified": false,
+    "synthesis": {
+      "artifact": "generated/mobile-h1/physical-clip-integration-v6-synth",
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          49.639,
+          624.781
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "33672a08a17685aeef1d9933c514ce00ed995c55c76473b69b465064d8091c5f",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-clip-integration-v6-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "b833c12dc9a0e7dd505bf5a52fad55bdf73e287248f14c00fc4cd167e3ae706d"
+        }
+      },
+      "manifest_sha256": "e075120ff1536d11b6a4b39eebb1cb98d4faf893142872dd1a2e512fa93813f4",
+      "result_sha256": "4b1ff03f6dcd876db6340e70d7d17556e06d08a353f3e575c25d0307fffe2c70",
+      "qualification_sha256": "5b3da744e73e8711b15b48cb344acc8817cc2dfec3b03c72390ff77ae6300eb2",
+      "scope": "1GHz TC/SLVT,25%IOdelay,default0setuprepairmargin,completeoperator mapping; notroutedqualification."
+    }
   }
 }
