@@ -61,6 +61,38 @@ class GpuAbiLayoutSpec extends AnyFlatSpec {
       "GPU_TILE_RESULT_TEXTURE_FAULT" -> TilePassStatus.textureFault.toLong))
   }
 
+  it should "match the explicit GBJ1 host resource map and distinct status encodings" in {
+    checkAll(Seq(
+      "GPU_REG_BIN_CAPABILITY_PTR" -> TileBinHostRegs.DISCOVERY.toLong,
+      "GPU_REG_BIN_CAPABILITIES" -> TileBinHostRegs.CAPABILITIES.toLong,
+      "GPU_REG_BIN_CAPABILITIES_END" -> TileBinHostRegs.END.toLong,
+      "GPU_BIN_CAP_MAGIC" -> 0x47424301L, "GPU_BIN_CAP_WORDS" -> 8L,
+      "GPU_UCMD_OP_BIN_RENDER" -> GpuCommandOpcode.tileRender.litValue.toLong,
+      "GPU_BIN_JOB_MAGIC" -> TileBinJobMemoryLayout.magic.toLong,
+      "GPU_BIN_JOB_WORDS" -> TileBinJobMemoryLayout.words.toLong,
+      "GPU_BIN_JOB_BYTES" -> TileBinJobMemoryLayout.bytes.toLong,
+      "GPU_BIN_APPEND_BYTES" -> TileBinJobMemoryLayout.appendBytes.toLong,
+      "GPU_BIN_RESULT_SUCCESS" -> PrimitiveBinStatus.success.toLong,
+      "GPU_BIN_RESULT_INVALID" -> PrimitiveBinStatus.invalidDescriptor.toLong,
+      "GPU_BIN_RESULT_CANCELLED" -> PrimitiveBinStatus.cancelled.toLong,
+      "GPU_BIN_RESULT_EXHAUSTED" -> PrimitiveBinStatus.exhausted.toLong,
+      "GPU_BIN_RESULT_MEMORY_FAULT" -> PrimitiveBinStatus.memoryFault.toLong,
+      "GPU_BIN_RESULT_INVALID_ORDER" -> PrimitiveBinStatus.invalidOrder.toLong,
+      "GPU_BIN_RESULT_INVALID_PAGE" -> PrimitiveBinReadStatus.invalidPage.toLong,
+      "GPU_BIN_RESULT_CLOSED" -> PrimitiveBinStatus.closed.toLong,
+      "GPU_BIN_RESULT_INVALID_HANDLE" -> ResolvedTileBinStatus.invalidHandle.toLong,
+      "GPU_BIN_RESULT_ENCODING" -> TileBinRenderStatus.invalidEncoding.toLong,
+      "GPU_BIN_RESULT_ATTACHMENT_FAULT" -> TileBinRenderStatus.attachmentFault.toLong,
+      "GPU_BIN_RESULT_SHADER_FAULT" -> TileBinRenderStatus.shaderFault.toLong,
+      "GPU_BIN_RESULT_TEXTURE_FAULT" -> TileBinRenderStatus.textureFault.toLong))
+  }
+
+  it should "match physical publication range failure statuses" in {
+    checkAll(Seq(
+      "GPU_INVALIDATE_RESULT_SUCCESS" -> opengpu.command.InvalidateStatus.success.litValue.toLong,
+      "GPU_INVALIDATE_RESULT_ADDRESS_OVERFLOW" -> opengpu.command.InvalidateStatus.addressOverflow.litValue.toLong))
+  }
+
   it should "match the render-host register map" in {
     checkAll(Seq(
       "GPU_REG_ID" -> RenderHostRegs.ID,

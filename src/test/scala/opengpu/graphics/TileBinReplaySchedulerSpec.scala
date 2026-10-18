@@ -16,7 +16,7 @@ class TileBinReplaySchedulerSpec extends AnyFlatSpec {
   case class Image(base: Long,limit: Long,head: Long,references: Vector[Ref],
     words: mutable.LongMap[Long],tile: Long)
   case class Done(tile: Long,engine: Int,status: Int,prefixUsable: Boolean,
-    emitted: Int,pages: Int,lines: Int)
+    emitted: Int,pages: Int,lines: Int,restart: Option[Ref])
   case class Summary(status: Int,tiles: Int,references: Int,pages: Int,lines: Int)
 
   private def reference(n: Int): Ref =
@@ -146,7 +146,10 @@ class TileBinReplaySchedulerSpec extends AnyFlatSpec {
         assert(images.contains(tile))
         completions += Done(tile,b.engine.peek().litValue.toInt,b.status.peek().litValue.toInt,
           b.prefixUsable.peek().litToBoolean,b.emitted.peek().litValue.toInt,
-          b.pages.peek().litValue.toInt,b.readLines.peek().litValue.toInt)
+          b.pages.peek().litValue.toInt,b.readLines.peek().litValue.toInt,
+          if (b.restartValid.peek().litToBoolean) Some(Ref(
+            b.restart.primitive.peek().litValue.toLong,b.restart.state.peek().litValue.toLong,
+            b.restart.sequence.peek().litValue.toLong,b.restart.token.peek().litValue.toLong)) else None)
         assert(b.emitted.peek().litValue.toInt == outputs.getOrElse(tile,0),
           s"tile$tile emitted ${b.emitted.peek().litValue} but consumed ${outputs.getOrElse(tile,0)}")
       }
@@ -190,7 +193,8 @@ class TileBinReplaySchedulerSpec extends AnyFlatSpec {
     }
 
     def send(tile: Image,status: Int = 0,prefixUsable: Option[Boolean] = None,
-             headValid: Option[Boolean] = None,count: Option[Int] = None): Unit = {
+             headValid: Option[Boolean] = None,count: Option[Int] = None,
+             restart: Option[Ref] = None): Unit = {
       val b = d.io.tile.bits
       b.identity.context.poke(context.U); b.identity.pass.poke(pass.U)
       b.identity.generation.poke(generation.U); b.tile.poke(tile.tile.U)
@@ -199,9 +203,10 @@ class TileBinReplaySchedulerSpec extends AnyFlatSpec {
       b.headValid.poke(headValid.getOrElse(tile.references.nonEmpty).B)
       b.head.poke(tile.head.U); b.tail.poke(tile.head.U)
       b.committedCount.poke(count.getOrElse(tile.references.size).U)
-      b.restartValid.poke(false.B)
-      b.restart.primitive.poke(0.U); b.restart.state.poke(0.U)
-      b.restart.sequence.poke(0.U); b.restart.token.poke(0.U)
+      b.restartValid.poke(restart.nonEmpty.B)
+      val r=restart.getOrElse(Ref(0,0,0,0))
+      b.restart.primitive.poke(r.primitive.U); b.restart.state.poke(r.state.U)
+      b.restart.sequence.poke(r.sequence.U); b.restart.token.poke(r.token.U)
       d.io.tile.valid.poke(true.B)
       until(d.io.tile.ready.peek().litToBoolean)
       step(); d.io.tile.valid.poke(false.B); b.poke(0.U.asTypeOf(b))
@@ -374,6 +379,30 @@ class TileBinReplaySchedulerSpec extends AnyFlatSpec {
         c.status == PrimitiveBinStatus.memoryFault && !c.prefixUsable))
       assert(s.status == PrimitiveBinStatus.memoryFault)
       assert(s.references == d.outputs.values.sum)
+    }
+  }
+
+  it should "retain exact restart tags only for successfully replayed exhausted prefixes" in {
+    simulate(scheduler()) { dut =>
+      val full=image(6,0x10000,0x1111L)
+      val empty=image(0,0x10100,0x2222L)
+      val bad=image(2,0x10200,0x3333L,firstOrdinal=1)
+      val d=new Driver(dut)
+      Seq(full,empty,bad).foreach(d.addImage)
+      d.setPool(full.base,bad.limit)
+      d.begin()
+      val restarts=Seq(reference(6),reference(20),reference(30))
+      for ((img,r) <- Seq(full,empty,bad).zip(restarts))
+        d.send(img,status=PrimitiveBinStatus.exhausted,restart=Some(r))
+      d.until(d.completions.size==3)
+      val s=d.finish()
+      for ((img,r) <- Seq(full,empty).zip(restarts)) {
+        val c=d.completions.find(_.tile==img.tile).get
+        assert(c.prefixUsable && c.status==PrimitiveBinStatus.exhausted && c.restart.contains(r))
+      }
+      val failed=d.completions.find(_.tile==bad.tile).get
+      assert(!failed.prefixUsable && failed.restart.isEmpty && failed.status!=PrimitiveBinStatus.exhausted)
+      assert(s.tiles==3 && s.references==6)
     }
   }
 

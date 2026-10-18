@@ -136,6 +136,14 @@ typedef int32_t s32;
  * Lanes/warps describe one shader CU; banks count fragment staging banks;
  * CUs count executors available to graphics, including the shared pool. */
 #define GPU_REG_SHADER_CONFIG        0x158
+/* Safe discovery: 0x68 is always mapped and reads zero on legacy profiles.
+ * A nonzero pointer names the read-only GBC1 resource record. No retired
+ * job-ring capability bit is reused. Legacy extended-range reads are SLVERR. */
+#define GPU_REG_BIN_CAPABILITY_PTR  0x068
+#define GPU_REG_BIN_CAPABILITIES     0x160
+#define GPU_REG_BIN_CAPABILITIES_END 0x180
+#define GPU_BIN_CAP_MAGIC            0x47424301u
+#define GPU_BIN_CAP_WORDS            8u
 #define GPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define GPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define GPU_SHADER_CONFIG_BANKS_SHIFT 16u
@@ -285,8 +293,13 @@ typedef int32_t s32;
 /* Host line invalidate: drop every 64-byte L2 line in [SOURCE, SOURCE+BYTES)
  * and snoop its L1 holders, with no lower-memory traffic.  A driver uses it to
  * make CPU-written memory visible to later GPU reads; the operation completes
- * reporting the aligned extent. */
+ * reporting the aligned extent. Unaligned byte ranges cover both intersected
+ * boundary lines; an exclusive end of 2^32 is legal. A wrapped range fails
+ * with ADDRESS_OVERFLOW before cache traffic. Empty ranges are successful
+ * no-ops. This operation does not flush CPU caches or private GPU I-caches. */
 #define GPU_UCMD_OP_INVALIDATE   5u
+#define GPU_INVALIDATE_RESULT_SUCCESS          0u
+#define GPU_INVALIDATE_RESULT_ADDRESS_OVERFLOW 1u
 /* Render: run one graphics submission.  SOURCE carries the virtual address of
  * a 16-word render descriptor (the gpu_job_record layout); the device fetches
  * the descriptor and its command buffer through the context VM, so a draw no
@@ -300,6 +313,27 @@ typedef int32_t s32;
  * draw-record read bytes, excluding descriptor reads. SATP remains owned until
  * the result is popped. The profile rejects legacy opcode 6. */
 #define GPU_UCMD_OP_TILE_RENDER  7u
+/* When GBC1 is present, opcode 7 instead selects the 512-byte GBJ1 ABI.
+ * Flags must be zero. Completion bytes count requested append-line bytes,
+ * including padding/faults, excluding descriptor reads. */
+#define GPU_UCMD_OP_BIN_RENDER   7u
+#define GPU_BIN_JOB_MAGIC        0x47424a01u
+#define GPU_BIN_JOB_WORDS        128u
+#define GPU_BIN_JOB_BYTES        512u
+#define GPU_BIN_APPEND_BYTES     32u
+#define GPU_BIN_RESULT_SUCCESS   0u
+#define GPU_BIN_RESULT_INVALID   1u
+#define GPU_BIN_RESULT_CANCELLED 2u
+#define GPU_BIN_RESULT_EXHAUSTED 3u
+#define GPU_BIN_RESULT_MEMORY_FAULT 4u
+#define GPU_BIN_RESULT_INVALID_ORDER 5u
+#define GPU_BIN_RESULT_INVALID_PAGE 6u
+#define GPU_BIN_RESULT_CLOSED    7u
+#define GPU_BIN_RESULT_INVALID_HANDLE 8u
+#define GPU_BIN_RESULT_ENCODING  9u
+#define GPU_BIN_RESULT_ATTACHMENT_FAULT 10u
+#define GPU_BIN_RESULT_SHADER_FAULT 11u
+#define GPU_BIN_RESULT_TEXTURE_FAULT 12u
 
 #define GPU_TILE_JOB_MAGIC       0x47545001u
 #define GPU_TILE_JOB_TYPED_MAGIC 0x47545002u

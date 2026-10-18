@@ -18,6 +18,7 @@ abstract class GpuHostSystemAxiChecks(bufferCommandReads: Boolean = false) exten
       simulate(new GpuHostSystemAxi(gfx, gpu, numComputeUnits = 2,
         fragCore = true, sharedGraphics = shared, bufferCommandReads = bufferCommandReads)) { dut =>
         initialize(dut)
+        assert(axiRead(dut, opengpu.graphics.TileBinHostRegs.DISCOVERY)==0)
         val caps = axiRead(dut, RenderHostRegs.CAPABILITIES)
         assert((caps & (1L << opengpu.graphics.GpuCapabilities.ShaderConfigInfo)) != 0)
         assert((caps & (1L << opengpu.graphics.GpuCapabilities.RuntimeShaderAbi)) != 0)

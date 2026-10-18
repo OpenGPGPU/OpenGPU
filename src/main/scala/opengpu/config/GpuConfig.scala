@@ -27,7 +27,8 @@ case class GpuConfig(
   fillDescriptorQueueDepth: Int = 4,
   stridedCopyDescriptorQueueDepth: Int = 4,
   enableFpu: Boolean = true,
-  enableVector: Boolean = true
+  enableVector: Boolean = true,
+  l2StoreEntries: Int = 2
 ) {
   require(xLen == 32, "the initial implementation supports RV32 only")
   require(lanes > 0, "a warp must contain at least one lane")
@@ -50,6 +51,8 @@ case class GpuConfig(
     "each L2 bank must contain at least two sets")
   require(l2RequestQueueDepth > 0,
     "each L2 bank request queue must contain at least one entry")
+  require(l2StoreEntries >= 2 && l2StoreEntries <= 16 && (l2StoreEntries & (l2StoreEntries-1)) == 0,
+    "L2 write-through store entries must be a power of two from two through sixteen")
   require(commandQueueDepth > 0,
     "the kernel command queue must contain at least one entry")
   require(completionQueueDepth > 0,

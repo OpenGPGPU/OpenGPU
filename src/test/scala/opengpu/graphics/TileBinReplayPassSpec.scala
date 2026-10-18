@@ -34,7 +34,7 @@ class TileBinReplayPassSpec extends AnyFlatSpec {
         tile*0x1000L+i+1,0xc0000000L+tile*0x1000000L+i)
     }
 
-  private class Driver(val d: TileBinReplayPass) {
+  private class Driver(val d: TileBinReplayPass,val paged: Boolean=false) {
     case class Pending(address: Long,tid: Int,due: Int,isWrite: Boolean,
       writeData: BigInt,byteMask: BigInt)
     val memory = mutable.LongMap.empty[Long]
@@ -85,7 +85,15 @@ class TileBinReplayPassSpec extends AnyFlatSpec {
         out | (BigInt(word) << (32*n))
       }
 
+    private val backing=0x600000L
+    private var frameTiles=0
+    private val metadataId=writeCredits+engines
     private def applyWrite(p: Pending): Unit = {
+      if (paged && p.tid==metadataId) {
+        assert(p.byteMask==(BigInt(1)<<64)-1)
+        for (n <- 0 until 16) memory(p.address+n*4L)=((p.writeData>>(n*32))&0xffffffffL).toLong
+        return
+      }
       val mask = p.byteMask
       assert(mask.bitCount == 4,s"word write mask $mask")
       val word = mask.lowestSetBit/4
@@ -230,10 +238,13 @@ class TileBinReplayPassSpec extends AnyFlatSpec {
         p.cachePolicy.expect(CachePolicy.uncached)
         p.cacheClient.expect(false.B); p.cacheResident.expect(false.B)
         assert(address%lineBytes == 0,s"unaligned line $address")
-        assert(address >= poolBase && address+lineBytes <= poolLimit,
+        assert((address >= poolBase && address+lineBytes <= poolLimit) ||
+          (paged && address >= backing && address+lineBytes <= backing+frameTiles*64L),
           s"out-of-arena line $address")
         assert(!outstanding.contains(tid),s"transaction $tid reused while outstanding")
-        if (isWrite) {
+        if (paged && tid==metadataId) {
+          assert(byteMask==(if (isWrite) (BigInt(1)<<64)-1 else BigInt(0)))
+        } else if (isWrite) {
           assert(tid < writeCredits,s"word write used replay id $tid")
           assert(byteMask != 0,"word write without a byte mask")
         } else {
@@ -263,7 +274,10 @@ class TileBinReplayPassSpec extends AnyFlatSpec {
       assert(pending.isEmpty && expected.isEmpty)
       poolBase = base; poolLimit = base+pageCount.toLong*pageBytes
       val b = d.io.begin.bits
-      b.version.poke(version.U)
+      frameTiles=tiles
+      b.directoryBase.poke((if (paged) backing else 0L).U)
+      b.directoryLimit.poke((if (paged) backing+tiles*64L else 0L).U)
+      b.version.poke((if (paged && version==1) 2 else version).U)
       b.pool.version.poke(1.U)
       b.pool.identity.context.poke(context.U); b.pool.identity.pass.poke(pass.U)
       b.pool.identity.generation.poke(generation.U)
@@ -344,6 +358,29 @@ class TileBinReplayPassSpec extends AnyFlatSpec {
   private def replayPass(): TileBinReplayPass =
     new TileBinReplayPass(GpuConfig(lanes = 4),engines = engines,pageBytes = pageBytes,
       writeCredits = writeCredits,tileSlots = tileSlots)
+
+  it should "replay a paged directory beyond 64 tiles while a reader is backpressured" in {
+    val count=96
+    simulate(new TileBinReplayPass(GpuConfig(lanes=4),engines,pageBytes,writeCredits,
+      tileSlots=4,pagedCapacity=16384)) { dut=>
+      val d=new Driver(dut,paged=true)
+      d.begin(pageCount=2*count,tiles=count)
+      for (n <- 0 until 8; tile <- 0 until count)
+        d.append(tile,Ref(0x80000000L+tile*1024+n*16,0x90000000L+tile,n+1,0xc0000000L+tile*16+n))
+      d.holdOutputs(0)=true
+      d.end()
+      d.until(d.done.count(_.engine==1)>=12,max=100000)
+      assert(d.done.forall(_.engine==1),"blocked reader unexpectedly consumed references")
+      d.holdOutputs(0)=false
+      d.until(dut.io.completion.valid.peek().litToBoolean,max=100000)
+      assert(dut.io.completion.bits.directoryReadBytes.peek().litValue>0)
+      assert(dut.io.completion.bits.directoryWriteBytes.peek().litValue>=count*64L)
+      val result=d.finish()
+      assert(result.status==0 && result.tiles==count && result.references==8*count &&
+        result.allocatedPages==2*count && d.done.map(_.tile).distinct.size==count)
+      info(s"PAGED_REPLAY tiles=$count resident=4 references=${result.references} pages=${result.allocatedPages} cycles=${d.cycle}")
+    }
+  }
 
   behavior of "tile bin replay pass"
 

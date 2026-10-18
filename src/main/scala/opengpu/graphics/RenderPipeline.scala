@@ -81,8 +81,12 @@ class RenderPipeline(
   sharedShader: Option[SharedCuShaderConfig] = None,
   persistentAttachments: Boolean = false,
   tileStoreCredits: Int = 1,
-  useTileSramBlackBoxes: Boolean = false
+  useTileSramBlackBoxes: Boolean = false,
+  normalizedTextureModulation: Boolean = false,
+  doubleBufferedAttachments: Boolean = false,
+  coalesceAttachments: Boolean = true
 ) extends Module {
+  require(!doubleBufferedAttachments || persistentAttachments)
   require(sharedShader.isEmpty || fragCore,
     "shared shader execution requires programmable fragment graphics")
   require(!(fragCore || vertCore) || (gpuConfig.lanes >= 4 && gpuConfig.lanes % 4 == 0),
@@ -94,6 +98,11 @@ class RenderPipeline(
   val io = IO(new Bundle {
     val tilePass = if (persistentAttachments) Some(new TileRenderPassPort) else None
     val tileEvents = if (persistentAttachments) Some(Output(new TileAttachmentEvents)) else None
+    val tileCompletionBytes = if (doubleBufferedAttachments) Some(Output(new TileAttachmentByteCounts)) else None
+    val tileMemoryRequest = if (doubleBufferedAttachments) Some(Vec(2,Decoupled(
+      new ComputeMemoryRequest(gpuConfig,64,tileStoreCredits+1)))) else None
+    val tileMemoryResponse = if (doubleBufferedAttachments) Some(Vec(2,Flipped(Decoupled(
+      new ComputeMemoryResponse(64,tileStoreCredits+1))))) else None
     val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
       gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val draw = Flipped(Decoupled(if (vertCore) new VertexDrawCommand(config) else new SceneTriangle(config)))
@@ -169,30 +178,43 @@ class RenderPipeline(
     config.copy(tileSize = 0, tileAttachments = false, tileBinning = false) else config
   private val shader = Module(new RasterShader(rasterConfig, quadMode = fragCore || vertCore))
   private val om = Module(new OutputMerger(config))
-  private val persistentStore = if (persistentAttachments)
+  private val bufferedStore = if (doubleBufferedAttachments) Some(Module(new DoubleBufferedTileAttachmentStore(
+    gpuConfig,config.maxSampleCount,config.screenWidth,config.screenHeight,useTileSramBlackBoxes,tileStoreCredits,
+    externalArbitration=true,coalesceTransfers=coalesceAttachments))) else None
+  private val persistentStore: Option[PersistentTileAttachmentStoreIO] = if (persistentAttachments && !doubleBufferedAttachments)
     Some(Module(new PersistentTileAttachmentStore(config.maxSampleCount,
-      config.screenWidth, config.screenHeight, useTileSramBlackBoxes, tileStoreCredits))) else None
-  persistentStore.foreach(_.io.pass <> io.tilePass.get)
+      config.screenWidth, config.screenHeight, useTileSramBlackBoxes, tileStoreCredits)).io)
+    else bufferedStore.map(_.io)
+  bufferedStore.foreach { store=>
+    io.tileMemoryRequest.get <> store.io.slotMemoryRequest.get
+    store.io.slotMemoryResponse.get <> io.tileMemoryResponse.get
+    store.io.memoryRequest.ready := false.B
+    store.io.memoryResponse.valid := false.B
+    store.io.memoryResponse.bits := 0.U.asTypeOf(store.io.memoryResponse.bits)
+    io.tileCompletionBytes.get := store.io.completionBytes
+  }
+  persistentStore.foreach(_.pass <> io.tilePass.get)
   private val fragmentExecutionFault = WireDefault(false.B)
-  persistentStore.foreach(_.io.executionFault := fragmentExecutionFault)
+  persistentStore.foreach(_.executionFault := fragmentExecutionFault)
   private val passAcceptingDraws = persistentStore.map(store =>
-    store.io.pass.active && store.io.pass.end.ready &&
+    store.pass.active && bufferedStore.map(_.io.acceptingDraws).getOrElse(store.pass.end.ready) &&
       !io.tilePass.get.end.valid && !io.tilePass.get.cancel).getOrElse(true.B)
-  private val passDescriptor = persistentStore.map(_.io.pass.descriptor)
+  private val passDescriptor = persistentStore.map(_.pass.descriptor)
   private val renderScreenW = if (persistentAttachments)
     RegEnable(io.screenW, io.tilePass.get.begin.fire) else io.screenW
   private val renderScreenH = if (persistentAttachments)
     RegEnable(io.screenH, io.tilePass.get.begin.fire) else io.screenH
   private val tileStoreOpt = if (config.tileAttachments && !persistentAttachments)
     Some(Module(new TileAttachmentStore(config.maxSampleCount))) else None
-  private val tilePermit = persistentStore.map(_.io.permit)
+  private val tilePermit = persistentStore.map(_.permit)
     .getOrElse(tileStoreOpt.map(_.io.permit).getOrElse(true.B))
   private val tileDrained = tileStoreOpt.map(_.io.drained).getOrElse(true.B)
   private val drawTileGate = passAcceptingDraws && (if (config.tileBinning) true.B else tileDrained)
   private val upstreamDone = Wire(Bool())
   private val fragmentDrained = Wire(Bool())
   private val textured =
-    Module(new TexturedFragStage(config, quadUv = fragCore || vertCore))
+    Module(new TexturedFragStage(config, quadUv = fragCore || vertCore,
+      normalizedModulation = normalizedTextureModulation))
   private val expander = Module(new SampleExpander(config.maxSampleCount))
 
   // Triangle source: when vertCore=true, triangles come from KernelVertStage;
@@ -531,16 +553,16 @@ class RenderPipeline(
       io.mem <> store.io.mem
     case None => persistentStore match {
       case Some(store) =>
-        store.io.fragmentX := expander.io.out.bits.x
-        store.io.fragmentY := expander.io.out.bits.y
-        store.io.producerDrained := upstreamDone
-        store.io.omDrained := om.io.drained
-        store.io.wordIndex := om.io.tileWordIndex
-        store.io.depthPlane := om.io.tileDepthPlane
-        store.io.om.req <> om.io.mem.req
-        om.io.mem.resp <> store.io.om.resp
-        io.mem <> store.io.mem
-        io.tileEvents.get := store.io.events
+        store.fragmentX := expander.io.out.bits.x
+        store.fragmentY := expander.io.out.bits.y
+        store.producerDrained := upstreamDone
+        store.omDrained := om.io.drained
+        store.wordIndex := om.io.tileWordIndex
+        store.depthPlane := om.io.tileDepthPlane
+        store.om.req <> om.io.mem.req
+        om.io.mem.resp <> store.om.resp
+        io.mem <> store.mem
+        io.tileEvents.get := store.events
       case None => io.mem <> om.io.mem
     }
   }

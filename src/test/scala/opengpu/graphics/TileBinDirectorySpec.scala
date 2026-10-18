@@ -165,7 +165,7 @@ class TileBinDirectorySpec extends AnyFlatSpec {
       assert(condition,s"directory stopped progressing at cycle$tickCount")
     }
     def begin(start: Long, pageCount: Int, tiles: Int, generation: Int = 19, version: Int = 1,
-              context: Long = 0x13579bdfL, pass: Long = 0x2468ace0L): Unit = {
+              context: Long = 0x13579bdfL, pass: Long = 0x2468ace0L,resume: Boolean = false): Unit = {
       assert(pending.isEmpty)
       base = start; limit = start+pageCount.toLong*pageBytes
       this.context = context; this.pass = pass; this.generation = generation
@@ -173,6 +173,7 @@ class TileBinDirectorySpec extends AnyFlatSpec {
       requests = 0; commits = 0; pages = 0; faultInjected = false
       admitted.clear(); watchedPages.clear()
       d.io.begin.bits.version.poke(version.U)
+      d.io.begin.bits.resume.poke(resume.B)
       d.io.begin.bits.pool.version.poke(1.U)
       d.io.begin.bits.pool.identity.context.poke(context.U)
       d.io.begin.bits.pool.identity.pass.poke(pass.U)
@@ -513,4 +514,25 @@ class TileBinDirectorySpec extends AnyFlatSpec {
       assert(d.decode(tile0,requireUsable=false) == Vector(ref(0)))
     }
   }
+  it should "retain resident per-tile sequence history across drained version-three batches" in {
+    simulate(new TileBinDirectory(4,128,2)) { dut=>
+      val d=new Driver(dut,128)
+      d.begin(0x10000,4,4,version=3)
+      assert(d.send(0,ref(0,10)).status==0 && d.send(2,ref(2,20)).status==0)
+      assert(d.finish().status==0)
+      d.begin(0x10000,4,4,version=3,resume=true)
+      assert(d.send(2,ref(3,21)).status==0); assert(d.finish().status==0)
+      d.begin(0x10000,4,4,version=3,resume=true)
+      val writes=d.requests
+      assert(d.send(0,ref(4,10)).status==PrimitiveBinStatus.invalidOrder)
+      assert(d.requests==writes && d.finish().status==PrimitiveBinStatus.invalidOrder)
+      d.begin(0x10000,4,4,version=3,resume=true)
+      assert(d.finish(close=false).status==PrimitiveBinStatus.invalidDescriptor)
+      d.begin(0x10000,4,4,version=3)
+      assert(d.send(0,ref(5,1)).status==0 && d.finish().status==0)
+      d.begin(0x10000,4,4,version=3,generation=20,resume=true)
+      assert(d.finish(close=false).status==PrimitiveBinStatus.invalidDescriptor)
+    }
+  }
+
 }

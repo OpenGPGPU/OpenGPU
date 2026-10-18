@@ -116,15 +116,19 @@ class TileRenderPassPort extends Bundle {
   val descriptor = Output(new TileRenderPassDescriptor)
 }
 
-/** Cycle events, not accumulated totals; byte counts count port handshakes. */
+/** Cycle events, not accumulated totals. Byte counts are useful attachment
+  * bytes: loaded words delivered to the SRAM owner and issued write masks.
+  * Two independent slots can issue up to 128 useful write bytes in a cycle.
+  * Line-bus request counts are separate from these logical byte totals.
+  */
 class TileAttachmentEvents extends Bundle {
   val resident = Bool()
   val admitted = Bool()
   val completed = Bool()
-  val loadBytes = UInt(3.W)
-  val storeBytes = UInt(3.W)
+  val loadBytes = UInt(8.W)
+  val storeBytes = UInt(8.W)
   /** Subset of storeBytes belonging to resolved single-sample output. */
-  val resolveBytes = UInt(3.W)
+  val resolveBytes = UInt(8.W)
   /** Clear-tag read accepted on the preceding cycle; count once per pulse. */
   val clearRead = Bool()
   val attachmentStall = Bool()

@@ -1,0 +1,591 @@
+{
+  "date": "2026-10-18",
+  "title": "H2 bounded primitive/state handle resolution over shared bin replay memory",
+  "based_on_commit": "217b10b3eb6dd910c73723e6e8aeedc64d0cf1de",
+  "source_scope": "Uncommitted component changes; exact source and emitted RTL hashes below. Existing unrelated roadmap/timing edits are outside this evidence.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/ResolvedTileBinReplayPass.scala": "1ab23b0a6c3e1345f2181e4f794be2f981c28e6c1235700960173fffac83f4f0",
+    "src/main/scala/opengpu/config/MobileGpuConfig.scala": "a03bb048190d114afa039e9741262bf71ec07ae43c08e91f18cfe449c567359c",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "c5935f14494aa0d06f4262be625d55d09231404aaa592ebc03907271e9262df2",
+    "src/test/scala/opengpu/graphics/ResolvedTileBinReplayPassSpec.scala": "8b2322f3eb6e93dee60ad4ec255d5eede11d045e6d4d21ee528d5ecfd154f710",
+    "src/test/scala/opengpu/config/MobileGpuConfigSpec.scala": "a399e1084e958cca1d9441d85c46036f263a8f03a9446899674d3706083b6a1a"
+  },
+  "configuration": {
+    "scope": "Physical emission profile; component workload overrides are recorded separately.",
+    "tile_engines": 2,
+    "page_bytes": 4096,
+    "write_credits": 8,
+    "tile_slots": 8,
+    "cache_entries_per_engine": 8,
+    "record_bytes": 64,
+    "implemented_record_cache_bytes": 1024,
+    "primitive_state_budget_bytes": 32768,
+    "line_bytes": 64,
+    "memory_transactions": 12,
+    "transaction_ownership": {
+      "directory_words": [
+        0,
+        7
+      ],
+      "bin_replay": [
+        8,
+        9
+      ],
+      "record_fills": [
+        10,
+        11
+      ]
+    }
+  },
+  "contract": {
+    "handle": "firstHandle+n names records.base+64*n; one line per immutable record; primitive and state share an arena",
+    "admission": "Snapshot descriptors; require matching context/pass/generation, aligned bounded records, nonoverlap with a nonempty bin arena and a nonwrapping 32-bit handle interval.",
+    "output": "Only fully fetched primitive/state pairs are offered, with original identity, tile, ordinal, handles, sequence and token; failed pairs emit no substitute record.",
+    "invalid_handle": "Check both handles before either read. Wrapper status 8 preserves all original bin statuses including invalidPage=6 and closed=7.",
+    "completion": "Per-engine ordered outputs and tile results. A tile waits for all offered pairs. Each engine reserves tileSlots result entries so empty/cancelled results cannot block the shared replay result port.",
+    "faults": "A record fault poisons only that engine for the pass. Other engines continue. Consumers discard failed tile outputs; memoryFault takes precedence over cancelled.",
+    "cancellation": "Retain offered reads and complete pairs, discard unfinished pairs and drain every result before pass rebinding; held published results stay stable.",
+    "lifetime": "Pass begin invalidates every cache entry; records remain immutable and published to this uncached memory domain through the held summary.",
+    "counters": "Raw replay references and bin lines are distinct from resolved pairs and record lookups/hits/misses/readLines."
+  },
+  "functional": {
+    "passed": true,
+    "checks": 106,
+    "suites": 11,
+    "suite_checks": {
+      "TileBinReplaySchedulerSpec": 9,
+      "MobileGpuBudgetSpec": 2,
+      "MobileGpuConfigSpec": 3,
+      "PrimitiveStateCacheSpec": 10,
+      "PrimitiveBinReaderSpec": 11,
+      "BinPagePoolSpec": 7,
+      "TileBinReplayPassSpec": 9,
+      "TileBinDirectorySpec": 12,
+      "PrimitiveBinStoreSpec": 11,
+      "PrimitiveBinWriterSpec": 14,
+      "ResolvedTileBinReplayPassSpec": 18
+    },
+    "command": "sbt -batch 'testOnly opengpu.graphics.BinPagePoolSpec opengpu.config.MobileGpuBudgetSpec opengpu.config.MobileGpuConfigSpec opengpu.graphics.PrimitiveBinReaderSpec opengpu.graphics.PrimitiveBinStoreSpec opengpu.graphics.PrimitiveBinWriterSpec opengpu.graphics.PrimitiveStateCacheSpec opengpu.graphics.ResolvedTileBinReplayPassSpec opengpu.graphics.TileBinDirectorySpec opengpu.graphics.TileBinReplayPassSpec opengpu.graphics.TileBinReplaySchedulerSpec'",
+    "log": ".artifacts/resolved-bin-v4-regression.log",
+    "log_sha256": "22ad8839ad01fb6ed89c58a853c1ce6ca40059eea1202cfee02067f17158e5c2",
+    "coverage": [
+      "One/two/three/four engines with independent ordered retirement and disjoint transaction ownership.",
+      "Multi-page replay with the proposed mobile page size, write credits and cache capacity.",
+      "A blocked record or tile consumer leaves the other engine progressing; empty results also drain without global head-of-line blocking.",
+      "Both handle bounds checked before either record fetch, preserving a later valid reference after invalid pairs.",
+      "Second-record fault discards the partially assembled pair, isolates engines, and allows new-generation reuse; a bin replay fault also leaves the other engine resolving records.",
+      "Offered and accepted record reads drain on cancel; complete offered pairs remain stable until consumed.",
+      "Early cancellation during descriptor admission and late record-fault priority; cancellation results for unstarted tiles do not release or inherit another tile accounting.",
+      "The last physical line and last 32-bit handle end exactly at 4 GiB without wrap.",
+      "Malformed versions, identity mismatch, alignment, inverted/excessive bounds, overlapping arenas and wrapping handle intervals issue no memory traffic.",
+      "Descriptor mutation after admission and cancellation after summary publication preserve snapshots and results."
+    ],
+    "cancel_attribution_regression": {
+      "log": ".artifacts/resolved-bin-cancel-attribution-before.log",
+      "log_sha256": "17be6038bd0d680cb18189c1eb853652cfe00095b2335828067989e322c5be4d",
+      "reproduced": true,
+      "fix": "Match queued completion tile IDs to live engine ownership; unstarted cancelled tile results retire with zero resolved pairs without clearing the live tile counters."
+    }
+  },
+  "component_workloads": [
+    {
+      "references": 12,
+      "lookups": 24,
+      "hits": 20,
+      "misses": 4,
+      "record_read_lines": 4,
+      "cycles": 901,
+      "tile_engines": 2,
+      "tile_slots": 4,
+      "page_bytes": 128,
+      "write_credits": 2,
+      "cache_entries_per_engine": 4
+    },
+    {
+      "references": 259,
+      "lookups": 518,
+      "hits": 514,
+      "misses": 4,
+      "record_read_lines": 4,
+      "cycles": 16742,
+      "tile_engines": 2,
+      "tile_slots": 4,
+      "page_bytes": 4096,
+      "write_credits": 8,
+      "cache_entries_per_engine": 8
+    }
+  ],
+  "workload_scope": "Deterministic delayed/reordered 64-byte memory service with port and consumer backpressure; includes bin build/replay and word assembly. Not AXI/DRAM, renderer or frame throughput.",
+  "timing_history": {
+    "retimed_v3_synthesis": {
+      "artifact": "generated/mobile-h2/physical-resolved-pass-v3-synth",
+      "manifest_sha256": "cdc19303247091940c1eb11ba05830316021232f574e15c7b6a1056479a29331",
+      "result_sha256": "c8c828061eb9a5f6df61e6624f9d46a962240e6013c638f0d446a5edeb946040",
+      "qualification_sha256": "3025f03127745a5d6b354853c28ffc8e5da01d9537c6ae5bff76d2a7aa31d250",
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          55.163,
+          54.915
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "271180dfa1644c8e0b0670c33cd3064fd7fb756601cb730665a777744eb97ecc",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h2/physical-resolved-pass-v3-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "46f724eb7561bc06df15246e68f4cec072050abdec2203dbbf013289e211b444",
+          "logs": [
+            {
+              "path": "generated/mobile-h2/physical-resolved-pass-v3-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "46f724eb7561bc06df15246e68f4cec072050abdec2203dbbf013289e211b444"
+            }
+          ],
+          "combined_log_sha256": "46f724eb7561bc06df15246e68f4cec072050abdec2203dbbf013289e211b444"
+        }
+      },
+      "constraints": {
+        "reg_code": "",
+        "rtl_files": [
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/BinPagePool.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/TileAttachmentWriteQueue.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/TileBinDirectory.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/PrimitiveBinReader.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/PrimitiveBinReader_1.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/RRArbiter2_ComputeMemoryRequest.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/TileBinReplayScheduler.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/OmWordToLinePort.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/ram_2x620.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/Queue2_ComputeMemoryRequest.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/TileBinReplayPass.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/PrimitiveStateCache.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/PrimitiveStateCache_1.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/RRArbiter3_ComputeMemoryRequest.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/ram_8x236.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/Queue8_TileBinReplayCompletion.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v3-rtl/ResolvedTileBinReplayPass.sv"
+        ],
+        "module_name": "ResolvedTileBinReplayPass",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 0.0,
+        "output_dir": "/Users/duckdonald/workspace/gpu/generated/mobile-h2/physical-resolved-pass-v3-synth/flow",
+        "timeout": 7200,
+        "synthesis_only": true,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "explore",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      },
+      "qor": {
+        "setup_worst_slack_ps": 55.163,
+        "core_clock_fmax_mhz": 1058.384
+      }
+    },
+    "superseded_v3_route": "Stopped during floorplanning after the cancellation accounting regression was reproduced; no routed qualification for v3.",
+    "first_synthesis": {
+      "artifact": "generated/mobile-h2/physical-resolved-pass-v1-synth",
+      "manifest_sha256": "5509c7c33e436dd6d2d67ef4ab54484b8d44cebdfcf69ad27e0f1cc37a4cb40d",
+      "result_sha256": "a9591d303f6b534d89e53f014b9ff8c91bc0794358afd507bb6f7eb14e7cede2",
+      "qualification_sha256": "54c3d844409c90ae5a5321bf132629b9d900556aff276a62bdac11797f4c4f69",
+      "qualification": {
+        "passed": false,
+        "reported_setup_slacks_ps": [
+          -189.774,
+          43.657
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "ce793953f80abe9bb78a20462687865858160616531063eaa89c5ac7e1a30423",
+        "setup_passed": false,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h2/physical-resolved-pass-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "c0af81ccd8591acc91031372254f7c3a16c020111122e11369ffccfb4c87a511",
+          "logs": [
+            {
+              "path": "generated/mobile-h2/physical-resolved-pass-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "c0af81ccd8591acc91031372254f7c3a16c020111122e11369ffccfb4c87a511"
+            }
+          ],
+          "combined_log_sha256": "c0af81ccd8591acc91031372254f7c3a16c020111122e11369ffccfb4c87a511"
+        }
+      },
+      "constraints": {
+        "reg_code": "",
+        "rtl_files": [
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/BinPagePool.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/TileAttachmentWriteQueue.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/TileBinDirectory.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/PrimitiveBinReader.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/PrimitiveBinReader_1.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/RRArbiter2_ComputeMemoryRequest.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/TileBinReplayScheduler.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/OmWordToLinePort.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/ram_2x620.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/Queue2_ComputeMemoryRequest.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/TileBinReplayPass.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/PrimitiveStateCache.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/PrimitiveStateCache_1.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/RRArbiter3_ComputeMemoryRequest.sv",
+          "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v1-rtl/ResolvedTileBinReplayPass.sv"
+        ],
+        "module_name": "ResolvedTileBinReplayPass",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 0.0,
+        "output_dir": "/Users/duckdonald/workspace/gpu/generated/mobile-h2/physical-resolved-pass-v1-synth/flow",
+        "timeout": 7200,
+        "synthesis_only": true,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "explore",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      },
+      "qor": {
+        "setup_worst_slack_ps": -189.774,
+        "core_clock_fmax_mhz": 840.496
+      }
+    },
+    "first_path": "OpenDB confirms enginePhase_1[0] to caches_1.misses[31], through phase-selected handle subtraction, hit detection and the miss counter. It fails synthesis at -189.774 ps.",
+    "retiming": "Register primitive and state ordinals on reference acceptance. Drive cache admission from a dedicated registered handle; switch to the registered state ordinal only after the primitive lookup completes. Component workload cycle counts remain identical. The final version also reserves bounded per-engine tile-result queues."
+  },
+  "emission": {
+    "artifact": "generated/mobile-h2/resolved-pass-v4-rtl",
+    "command": "sbt -batch \"runMain opengpu.elaboration.EmitPpaRtl mobile-bin-resolved-pass generated/mobile-h2/resolved-pass-v4-rtl\"",
+    "rtl_sha256": {
+      "BinPagePool.sv": "c70583d2c15ee34d39b64a347f3c0a7d2ae59165aed67e82980dd8c7d1200ee8",
+      "OmWordToLinePort.sv": "35871bee700a0a844e39357a7b795c0797a37db56d99ed8c9c07c883fe9407dd",
+      "PrimitiveBinReader.sv": "6ff3ddc5c72ee14cc30446de43a88d3ec352e3300f2dbb13e03115445afa6026",
+      "PrimitiveBinReader_1.sv": "6911b0664807d7c5f3ea1362288d63f9c0614b4ce5f02b694e41ab476958f5cd",
+      "PrimitiveStateCache.sv": "8d351f84269439b8c4d53c5f49482e58b7b05c9b19753d0a43e5138348ad4092",
+      "PrimitiveStateCache_1.sv": "70471f3124c8bfe7ccf9a2c59607dbc9a744449e872af08c1797406900af4afe",
+      "Queue2_ComputeMemoryRequest.sv": "ffb9a1ee72ad022bc5a440a065473b5241e7b32b82a39f0b9431ee5c371fa548",
+      "Queue8_TileBinReplayCompletion.sv": "8b936b5e861205f6cee46b275218650d5c6c7b4992e722d69c915d29b930d090",
+      "RRArbiter2_ComputeMemoryRequest.sv": "a083c0ae9b2ba1637ca8687f2ec1a39e204cfd3bc760084eefbd0545abe5786f",
+      "RRArbiter3_ComputeMemoryRequest.sv": "ecdf1ce885a5b649db58ff21d2d548946b27591b236f0baace4589ec6bc89014",
+      "ResolvedTileBinReplayPass.sv": "0e6744a1ac0ac96c1ebff560fed412fa7fba5a5dc1c39fac7cdf40419c28d1d1",
+      "TileAttachmentWriteQueue.sv": "3f91258ff7939c44cb406327e03777ae49f78ebe073835996181b7af4a915cf3",
+      "TileBinDirectory.sv": "76c612bab6515267712c0a004e6af0d7c3f42b5c7aedd33e1b720ac9b8026034",
+      "TileBinReplayPass.sv": "94bbcaba4ad685b863a8ed17e25ed864778846e925c170110c16b959f8abd5c8",
+      "TileBinReplayScheduler.sv": "993110463425ec05bd48c8e242485eab9fba08d4c7806160a9d7f7820e8fcfbf",
+      "ram_2x620.sv": "c82f9d217556f2acbe5e3ee9adfab2ea1794874bfe47ffe6fd79a25316271364",
+      "ram_8x236.sv": "789af740dfb493ac540bc877c6b7663fd69316124279fa0187faee75142d0397",
+      "filelist.f": "d4996edfb586532597a79f3ede02031734bb318652b1d296e38b84517e4efb90"
+    }
+  },
+  "synthesis": {
+    "artifact": "generated/mobile-h2/physical-resolved-pass-v4-synth",
+    "manifest_sha256": "5d14e1dc6b56c4a0977eef64a70a841c14587a8981cc95e2c6974b6e144c57cd",
+    "result_sha256": "e90b23d14d8c806201ffc7f023fa5c8a399d0715da2724df14f27a322c9a1a9e",
+    "qualification_sha256": "4fb84fcb5da6cd05090b86e90ca4760bcdee77b9dc74385caaf0370ac877019e",
+    "qualification": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        10.148,
+        38.251
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "0028d8b7001f4ef41cce68469e8120e41aa07d05e4a737daa0ecefdcd80063ae",
+      "setup_passed": true,
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h2/physical-resolved-pass-v4-synth/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "c59eaad76ba9d6535d4c933cfca20497f4fa0e8b5bd74682a2ba11f94dcbca5c",
+        "logs": [
+          {
+            "path": "generated/mobile-h2/physical-resolved-pass-v4-synth/flow/orfs-work/logs/base/1_synth.log",
+            "sha256": "c59eaad76ba9d6535d4c933cfca20497f4fa0e8b5bd74682a2ba11f94dcbca5c"
+          }
+        ],
+        "combined_log_sha256": "c59eaad76ba9d6535d4c933cfca20497f4fa0e8b5bd74682a2ba11f94dcbca5c"
+      }
+    },
+    "constraints": {
+      "reg_code": "",
+      "rtl_files": [
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/BinPagePool.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/TileAttachmentWriteQueue.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/TileBinDirectory.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/PrimitiveBinReader.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/PrimitiveBinReader_1.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/RRArbiter2_ComputeMemoryRequest.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/TileBinReplayScheduler.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/OmWordToLinePort.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/ram_2x620.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/Queue2_ComputeMemoryRequest.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/TileBinReplayPass.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/PrimitiveStateCache.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/PrimitiveStateCache_1.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/RRArbiter3_ComputeMemoryRequest.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/ram_8x236.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/Queue8_TileBinReplayCompletion.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/ResolvedTileBinReplayPass.sv"
+      ],
+      "module_name": "ResolvedTileBinReplayPass",
+      "clock_port": "clock",
+      "clock_period": 1000,
+      "io_delay_percent": 0.25,
+      "io_false_path_ports": null,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "enable_retiming": false,
+      "sv_frontend": "native",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin": 0.0,
+      "output_dir": "/Users/duckdonald/workspace/gpu/generated/mobile-h2/physical-resolved-pass-v4-synth/flow",
+      "timeout": 7200,
+      "synthesis_only": true,
+      "cache": false,
+      "clean": false,
+      "generate_gds": false,
+      "timing_effort": "explore",
+      "macro_libs": null,
+      "macro_lefs": null,
+      "macro_placement_tcl": null
+    },
+    "qor": {
+      "setup_worst_slack_ps": 10.148,
+      "core_clock_fmax_mhz": 1010.252
+    }
+  },
+  "post_route_qualified": true,
+  "integrated_gpu_qualified": false,
+  "h2_closed": false,
+  "remaining": "Define the opaque record raster/draw-state layout and integrate resolved outputs into RenderPipeline; implement cache-domain publication and full spill/restart policy; qualify attachment bytes/frame, desktop integration, realistic bandwidth, whole-GPU physical timing and product-frame workloads. H0-H8 exit gates remain required.",
+  "route": {
+    "artifact": "generated/mobile-h2/physical-resolved-pass-v4-route-margin30",
+    "manifest_sha256": "d2c7492b76dd05d3211ea7998d3e6b68ec8d4757ec17233e4f463f7f09367f7f",
+    "result_sha256": "31c9dad2226875600cc3fc326021ad948f00b7c26acc314dde6891445e692478",
+    "qualification_sha256": "4b6a70f0a5ef711d616b6471cd876f7237ecd1758af8a1a85c330cb45eddd7e3",
+    "qualification": {
+      "passed": true,
+      "checks": {
+        "setup_worst_slack_ps": true,
+        "hold_worst_slack_ps": true,
+        "setup_violation_count": true,
+        "hold_violation_count": true,
+        "route_drc_errors": true,
+        "antenna_violating_nets": true,
+        "antenna_violating_pins": true,
+        "placement_violations": true,
+        "flow_errors": true,
+        "flow_completed": true,
+        "tool_verdict": true
+      },
+      "missing_metrics": [],
+      "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h2/physical-resolved-pass-v4-route-margin30/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "c5286a9e15d0b73280c65968b5e062b7eebd8a3cfa534c5173af3d2985112813",
+        "logs": [
+          {
+            "path": "generated/mobile-h2/physical-resolved-pass-v4-route-margin30/flow/orfs-work/logs/base/1_synth.log",
+            "sha256": "c5286a9e15d0b73280c65968b5e062b7eebd8a3cfa534c5173af3d2985112813"
+          }
+        ],
+        "combined_log_sha256": "c5286a9e15d0b73280c65968b5e062b7eebd8a3cfa534c5173af3d2985112813"
+      }
+    },
+    "constraints": {
+      "reg_code": "",
+      "rtl_files": [
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/BinPagePool.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/TileAttachmentWriteQueue.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/TileBinDirectory.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/PrimitiveBinReader.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/PrimitiveBinReader_1.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/RRArbiter2_ComputeMemoryRequest.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/TileBinReplayScheduler.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/OmWordToLinePort.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/ram_2x620.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/Queue2_ComputeMemoryRequest.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/TileBinReplayPass.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/PrimitiveStateCache.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/PrimitiveStateCache_1.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/RRArbiter3_ComputeMemoryRequest.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/ram_8x236.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/Queue8_TileBinReplayCompletion.sv",
+        "/Users/duckdonald/workspace/gpu/generated/mobile-h2/resolved-pass-v4-rtl/ResolvedTileBinReplayPass.sv"
+      ],
+      "module_name": "ResolvedTileBinReplayPass",
+      "clock_port": "clock",
+      "clock_period": 1000,
+      "io_delay_percent": 0.25,
+      "io_false_path_ports": null,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "enable_retiming": false,
+      "sv_frontend": "native",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin": 30.0,
+      "output_dir": "/Users/duckdonald/workspace/gpu/generated/mobile-h2/physical-resolved-pass-v4-route-margin30/flow",
+      "timeout": 7200,
+      "synthesis_only": false,
+      "cache": false,
+      "clean": false,
+      "generate_gds": false,
+      "timing_effort": "closure",
+      "macro_libs": null,
+      "macro_lefs": null,
+      "macro_placement_tcl": null
+    },
+    "qor": {
+      "instance_count": 482688,
+      "instance_area": 20180.8,
+      "sequential_cell_count": 29653,
+      "clock_buffer_count": 2546,
+      "timing_repair_buffer_count": 10249,
+      "setup_tns_ps": 0,
+      "hold_tns_ps": 0,
+      "setup_worst_slack_ps": 13.6724,
+      "hold_worst_slack_ps": 17.5442,
+      "setup_violation_count": 0,
+      "hold_violation_count": 0,
+      "core_clock_fmax_mhz": 1013.86,
+      "virtual_io_clock_fmax_mhz": 1021.29,
+      "reported_fmax_mhz": 1013.86,
+      "setup_clock_skew_ps": 32.0529,
+      "hold_clock_skew_ps": 54.9951,
+      "total_power_w": 0.134758,
+      "placement_utilization": 23.5484,
+      "placement_violations": 0,
+      "estimated_wirelength": 693092,
+      "route_wirelength": 865415,
+      "route_vias": 1482256,
+      "route_drc_errors": 0,
+      "route_drc_report_bytes": 0,
+      "antenna_violating_nets": 0,
+      "antenna_violating_pins": 0,
+      "ir_drop_vdd_worst": 0.0188757,
+      "ir_drop_vss_worst": 0.0210459,
+      "flow_warnings": 15,
+      "flow_errors": 0,
+      "critical_path": {
+        "startpoint": "u61948 (rising edge-triggered flip-flop clocked by core_clock)",
+        "endpoint": "u115537 (rising edge-triggered flip-flop clocked by core_clock)",
+        "group": "core_clock",
+        "slack_ps": 13.67,
+        "arrival_ps": 1218.39,
+        "data_path_delay_ps": 969.6,
+        "cell_delay_ps": 921.99,
+        "net_delay_ps": 47.61,
+        "cell_delay_percent": 95.09,
+        "net_delay_percent": 4.91,
+        "cell_count": 54,
+        "net_count": 54,
+        "dominant_cell_types": [
+          {
+            "cell_type": "AND2x4_ASAP7_75t_SL",
+            "count": 21,
+            "delay_ps": 276.15
+          },
+          {
+            "cell_type": "OA222x2_ASAP7_75t_SL",
+            "count": 10,
+            "delay_ps": 228.5
+          },
+          {
+            "cell_type": "AO221x1_ASAP7_75t_SL",
+            "count": 4,
+            "delay_ps": 61.46
+          },
+          {
+            "cell_type": "OR5x2_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 45.49
+          },
+          {
+            "cell_type": "AND4x1_ASAP7_75t_SL",
+            "count": 2,
+            "delay_ps": 45.21
+          },
+          {
+            "cell_type": "OA21x2_ASAP7_75t_SL",
+            "count": 3,
+            "delay_ps": 44.15
+          },
+          {
+            "cell_type": "DFFHQNx1_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 38.76
+          },
+          {
+            "cell_type": "OA33x2_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 31.25
+          }
+        ],
+        "per_group": {
+          "core_clock": {
+            "startpoint": "u61948 (rising edge-triggered flip-flop clocked by core_clock)",
+            "endpoint": "u115537 (rising edge-triggered flip-flop clocked by core_clock)",
+            "slack_ps": 13.67,
+            "arrival_ps": 1218.39
+          },
+          "vclk_core_clock": {
+            "startpoint": "io_memoryResponse_bits_transactionId[2]",
+            "endpoint": "io_end_ready (output port clocked by vclk_core_clock)",
+            "slack_ps": 20.84,
+            "arrival_ps": 729.16
+          }
+        }
+      }
+    }
+  }
+}

@@ -8,8 +8,9 @@ import opengpu.config.GpuConfig
   *
   * Lower IDs are the entry index plus lowerIdBase. The original requester ID
   * is restored only after the write acknowledgement, allowing lower responses
-  * to return out of order. Requests to an already-active cache line are held
-  * to preserve write ordering.
+  * to return out of order. Overlapping bytes in an active cache line remain
+  * ordered. Aligned masked line writes with disjoint byte masks commute and
+  * can occupy independent entries. Read hazards still cover the whole line.
   */
 class L2StoreTransactionTable(
   config: GpuConfig = GpuConfig(),
@@ -60,11 +61,17 @@ class L2StoreTransactionTable(
 
   private val incomingLine = io.allocate.bits.address(
     config.xLen - 1, offsetWidth)
+  private def overlaps(other: ComputeMemoryRequest): Bool = {
+    val aligned = io.allocate.bits.sizeLog2 === offsetWidth.U &&
+      io.allocate.bits.address(offsetWidth-1,0) === 0.U &&
+      other.sizeLog2 === offsetWidth.U && other.address(offsetWidth-1,0) === 0.U
+    !aligned || (other.byteMask & io.allocate.bits.byteMask).orR
+  }
   private val lineConflict = VecInit((0 until entries).map { entry =>
     state(entry) =/= EntryState.free &&
-      requests(entry).address(config.xLen - 1, offsetWidth) === incomingLine
+      requests(entry).address(config.xLen - 1, offsetWidth) === incomingLine && overlaps(requests(entry))
   }).asUInt.orR || (allocationPending &&
-    pendingRequest.address(config.xLen - 1, offsetWidth) === incomingLine)
+    pendingRequest.address(config.xLen - 1, offsetWidth) === incomingLine && overlaps(pendingRequest))
   private val queryLine = io.queryAddress(config.xLen - 1, offsetWidth)
   io.queryConflict := (0 until entries).map { entry =>
     state(entry) =/= EntryState.free &&

@@ -19,7 +19,8 @@ import opengpu.graphics.{
   OmMemoryRequest,
   OmMemoryResponse,
   RenderHost,
-  RenderHostRegs
+  RenderHostRegs,
+  TileBinHostCommandPort, TileBinHostRegs, TileBinJobCompletion, TileJobDescriptorRequest
 }
 
 /** AXI4 slave control interface for the graphics renderer.
@@ -59,14 +60,16 @@ class GpuHostAxi(
   protectVmState: Boolean = false,
   persistentAttachments: Boolean = false,
   tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
-  useTileSramBlackBoxes: Boolean = false
+  useTileSramBlackBoxes: Boolean = false,
+  externalBinnedRender: Boolean = false
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
+  require(!externalBinnedRender || (unifiedCommandMmio && protectVmState && !persistentAttachments))
   override def desiredName: String = "GpuHostAxi"
 
   val io = IO(new Bundle {
-    val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
+    val shared = sharedShader.filter(_ => !externalBinnedRender).map(pool => Flipped(new SharedCuGraphicsPort(
       gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val s_axi_aclk = Input(Clock())
     val s_axi_aresetn = Input(Bool())
@@ -133,7 +136,13 @@ class GpuHostAxi(
     val commandFault = if (persistentAttachments) Some(Input(Bool())) else None
     val attachmentFault = if (persistentAttachments) Some(Input(Bool())) else None
     val tileTextureFault = if (persistentAttachments) Some(Input(Bool())) else None
-    val graphicsDependencyIdle = if (persistentAttachments) Some(Input(Bool())) else None
+    val graphicsDependencyIdle = if (persistentAttachments || externalBinnedRender) Some(Input(Bool())) else None
+
+    val binSubmit = if (externalBinnedRender) Some(Decoupled(new TileJobDescriptorRequest(commandIdWidth))) else None
+    val binCompletion = if (externalBinnedRender) Some(Flipped(Decoupled(new TileBinJobCompletion(commandIdWidth)))) else None
+    val binCapabilityWords = if (externalBinnedRender) Some(Input(Vec(8,UInt(32.W)))) else None
+    val binDrained = if (externalBinnedRender) Some(Input(Bool())) else None
+    val binCancel = if (externalBinnedRender) Some(Output(Bool())) else None
 
     // Renderer shared-memory ports (command buffer + framebuffer words, and the
     // core-backed shader kernel's line/coherence side ports) pass straight
@@ -173,8 +182,8 @@ class GpuHostAxi(
       sharedShader = sharedShader,
       protectedVmState = protectVmState,
       persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
-      useTileSramBlackBoxes = useTileSramBlackBoxes))
-    sharedShader.foreach(_ => host.io.shared.get <> io.shared.get)
+      useTileSramBlackBoxes = useTileSramBlackBoxes, externalBinnedRender = externalBinnedRender))
+    sharedShader.filter(_ => !externalBinnedRender).foreach(_ => host.io.shared.get <> io.shared.get)
     host.io.textureFault.foreach(_ := io.textureFault.get)
     if (persistentAttachments) {
       host.io.commandFault.get := io.commandFault.get
@@ -182,8 +191,9 @@ class GpuHostAxi(
       host.io.tileTextureFault.get := io.tileTextureFault.get
       host.io.tileCancel.get := io.commandResetActive.get
     }
+    val binCompletionDrained=WireDefault(true.B)
     io.commandReadsIdle := host.io.commandReadsIdle
-    io.graphicsDrained := host.io.drained
+    io.graphicsDrained := host.io.drained && io.binDrained.getOrElse(true.B) && binCompletionDrained
     io.performance := host.io.performance
     val unified = if (unifiedCommandMmio) {
       Some(Module(new GpuCommandMmio(
@@ -201,52 +211,68 @@ class GpuHostAxi(
     host.io.renderCommand.bits := 0.U.asTypeOf(host.io.renderCommand.bits)
     host.io.renderCompletion.ready := false.B
     unified.foreach { bridge =>
-      val renderOpcode = if (persistentAttachments) GpuCommandOpcode.tileRender else GpuCommandOpcode.render
-      val isRender = bridge.io.command.bits.opcode === renderOpcode
-      val dependencyReady = io.graphicsDependencyIdle.getOrElse(true.B)
-      val nonRenderAllowed = if (persistentAttachments)
-        bridge.io.command.bits.opcode === GpuCommandOpcode.kernel || host.io.drained else true.B
-      host.io.renderCommand.valid := bridge.io.command.valid && isRender && dependencyReady
-      host.io.renderCommand.bits.descriptorId :=
-        bridge.io.command.bits.commandId
-      host.io.renderCommand.bits.descriptorAddress :=
-        bridge.io.command.bits.sourceAddress
-      host.io.renderCommand.bits.bytes := bridge.io.command.bits.bytes
-      if (persistentAttachments) {
-        host.io.renderCommand.bits.limit.get := Cat(bridge.io.command.bits.pattern(0),
-          bridge.io.command.bits.destinationAddress)
-        host.io.renderCommand.bits.envelopeValid.get := bridge.io.command.bits.pattern(31, 1) === 0.U &&
-          !bridge.io.command.bits.waitForDma && !bridge.io.command.bits.waitForEvent &&
-          !bridge.io.command.bits.signalEvent
+      if (externalBinnedRender) {
+        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth))
+        port.io.command <> bridge.io.command
+        io.binSubmit.get <> port.io.submit
+        port.io.renderCompletion <> io.binCompletion.get
+        io.gpuCommand.get <> port.io.otherCommand
+        port.io.otherCompletion <> io.gpuCompletion.get
+        bridge.io.completion <> port.io.completion
+        port.io.dependencyIdle:=io.graphicsDependencyIdle.get && host.io.drained
+        port.io.renderIdle:=io.binDrained.get
+        port.io.resetActive:=bridge.io.resetActive
+        io.binCancel.get:=port.io.cancel
+        host.io.externalRenderBusy.get:=port.io.renderPending
+        binCompletionDrained:=port.io.drained
+      } else {
+        val renderOpcode = if (persistentAttachments) GpuCommandOpcode.tileRender else GpuCommandOpcode.render
+        val isRender = bridge.io.command.bits.opcode === renderOpcode
+        val dependencyReady = io.graphicsDependencyIdle.getOrElse(true.B)
+        val nonRenderAllowed = if (persistentAttachments)
+          bridge.io.command.bits.opcode === GpuCommandOpcode.kernel || host.io.drained else true.B
+        host.io.renderCommand.valid := bridge.io.command.valid && isRender && dependencyReady
+        host.io.renderCommand.bits.descriptorId :=
+          bridge.io.command.bits.commandId
+        host.io.renderCommand.bits.descriptorAddress :=
+          bridge.io.command.bits.sourceAddress
+        host.io.renderCommand.bits.bytes := bridge.io.command.bits.bytes
+        if (persistentAttachments) {
+          host.io.renderCommand.bits.limit.get := Cat(bridge.io.command.bits.pattern(0),
+            bridge.io.command.bits.destinationAddress)
+          host.io.renderCommand.bits.envelopeValid.get := bridge.io.command.bits.pattern(31, 1) === 0.U &&
+            !bridge.io.command.bits.waitForDma && !bridge.io.command.bits.waitForEvent &&
+            !bridge.io.command.bits.signalEvent
+        }
+        io.gpuCommand.get.valid := bridge.io.command.valid && !isRender && nonRenderAllowed
+        io.gpuCommand.get.bits := bridge.io.command.bits
+        bridge.io.command.ready := Mux(isRender,
+          host.io.renderCommand.ready && dependencyReady, io.gpuCommand.get.ready && nonRenderAllowed)
+
+        // One unified completion slot: the local render completion or the
+        // system's command completion.
+        val renderResult =
+          Wire(new GpuCommandResult(commandIdWidth))
+        renderResult.commandId := host.io.renderCompletion.bits.descriptorId
+        renderResult.opcode := renderOpcode
+        renderResult.status := host.io.renderCompletion.bits.status
+        renderResult.success := host.io.renderCompletion.bits.success
+        renderResult.bytesProcessed :=
+          host.io.renderCompletion.bits.bytesProcessed
+        val completionArb = Module(new RRArbiter(
+          new GpuCommandResult(commandIdWidth), 2))
+        completionArb.io.in(0).valid := host.io.renderCompletion.valid
+        completionArb.io.in(0).bits := renderResult
+        host.io.renderCompletion.ready := completionArb.io.in(0).ready
+        completionArb.io.in(1).valid := io.gpuCompletion.get.valid
+        completionArb.io.in(1).bits := io.gpuCompletion.get.bits
+        io.gpuCompletion.get.ready := completionArb.io.in(1).ready
+        bridge.io.completion <> completionArb.io.out
+
       }
-      io.gpuCommand.get.valid := bridge.io.command.valid && !isRender && nonRenderAllowed
-      io.gpuCommand.get.bits := bridge.io.command.bits
-      bridge.io.command.ready := Mux(isRender,
-        host.io.renderCommand.ready && dependencyReady, io.gpuCommand.get.ready && nonRenderAllowed)
-
-      // One unified completion slot: the local render completion or the
-      // system's command completion.
-      val renderResult =
-        Wire(new GpuCommandResult(commandIdWidth))
-      renderResult.commandId := host.io.renderCompletion.bits.descriptorId
-      renderResult.opcode := renderOpcode
-      renderResult.status := host.io.renderCompletion.bits.status
-      renderResult.success := host.io.renderCompletion.bits.success
-      renderResult.bytesProcessed :=
-        host.io.renderCompletion.bits.bytesProcessed
-      val completionArb = Module(new RRArbiter(
-        new GpuCommandResult(commandIdWidth), 2))
-      completionArb.io.in(0).valid := host.io.renderCompletion.valid
-      completionArb.io.in(0).bits := renderResult
-      host.io.renderCompletion.ready := completionArb.io.in(0).ready
-      completionArb.io.in(1).valid := io.gpuCompletion.get.valid
-      completionArb.io.in(1).bits := io.gpuCompletion.get.bits
-      io.gpuCompletion.get.ready := completionArb.io.in(1).ready
-      bridge.io.completion <> completionArb.io.out
-
       io.commandResetActive.get := bridge.io.resetActive
       bridge.io.resetDone := io.commandResetDone.get
-      bridge.io.vmContextIdle.foreach(_ := io.vmContextIdle.get && host.io.drained)
+      bridge.io.vmContextIdle.foreach(_ := io.vmContextIdle.get && host.io.drained && io.binDrained.getOrElse(true.B) && binCompletionDrained)
     }
     io.vectorSatp := unified.map(_.io.vectorSatp).getOrElse(0.U)
     io.instructionSatp := unified.map(_.io.instructionSatp).getOrElse(0.U)
@@ -312,9 +338,14 @@ class GpuHostAxi(
     // 0xC4..0x130, the RESET register at 0x138 and the SAMPLE_MODE / satp /
     // TLB_FLUSH registers at 0x148..0x154, plus shader resources at 0x158.
     // The overall map ends at GpuCommandMmioRegs.END (0x15c); non-unified
-    // builds read the unified range as reserved zero.
+    // builds read the unified range as reserved zero. Binned profiles additionally
+    // expose the read-only discovery pointer at 0x68 and GBC1 at 0x160..0x17c;
+    // 0x15c remains unmapped, and legacy profiles retain their original map.
     val mappedEnd = GpuCommandMmioRegs.END.U
-    val beatOk = (beatAddr & 0x3.U) === 0.U && beatAddr < mappedEnd
+    val targetBinDiscovery = if (externalBinnedRender) beatAddr===TileBinHostRegs.DISCOVERY.U else false.B
+    val targetBinCapabilities = if (externalBinnedRender)
+      beatAddr>=TileBinHostRegs.CAPABILITIES.U && beatAddr<TileBinHostRegs.END.U else false.B
+    val beatOk = (beatAddr & 0x3.U) === 0.U && (beatAddr < mappedEnd || targetBinCapabilities)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -330,13 +361,13 @@ class GpuHostAxi(
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
           beatAddr < GpuCommandMmioRegs.END.U)
-    reg.req.valid := busRegValid && beatOk && !targetUnified
+    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)
     reg.req.bits.data := io.s_axi_wdata
     reg.req.bits.strb := io.s_axi_wstrb
     unified.foreach { bridge =>
-      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified
+      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery
       bridge.io.reg.req.bits.isWrite := writeActive
       bridge.io.reg.req.bits.addr := beatAddr(9, 0)
       bridge.io.reg.req.bits.data := io.s_axi_wdata
@@ -364,6 +395,10 @@ class GpuHostAxi(
       rdata := unified.map { bridge =>
         Mux(targetUnified, bridge.io.reg.resp.bits.data, reg.resp.bits.data)
       }.getOrElse(reg.resp.bits.data)
+      if (externalBinnedRender) {
+        when(targetBinDiscovery) { rdata:=TileBinHostRegs.CAPABILITIES.U }
+          .elsewhen(targetBinCapabilities) { rdata:=io.binCapabilityWords.get(((beatAddr-TileBinHostRegs.CAPABILITIES.U)>>2)(2,0)) }
+      }
       when(rBeatFire) {
         when(lastBeat) {
           readActive := false.B
@@ -390,9 +425,10 @@ class GpuHostAxi(
     }
     io.s_axi_wready := writeBeat
     when(wBeatFire) {
-      val registerOk = unified.map(bridge =>
+      val normalRegisterOk = unified.map(bridge =>
         Mux(targetUnified, bridge.io.reg.resp.bits.ok, reg.resp.bits.ok))
         .getOrElse(reg.resp.bits.ok)
+      val registerOk = !targetBinCapabilities && !targetBinDiscovery && normalRegisterOk
       when(!beatOk || !registerOk) { writeError := true.B }
       when(io.s_axi_wlast) {
         bPending := true.B

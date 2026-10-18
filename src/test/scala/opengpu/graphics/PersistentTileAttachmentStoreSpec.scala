@@ -656,6 +656,25 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
     }
   }
 
+  for(fault <- Seq(false,true)) {
+    it should s"retain late cancellation after a local resolve completes until its external write drains fault=$fault" in {
+      simulate(store()) { dut=>
+        val d=new Driver(dut)
+        val p=Pass(mode=2,width=1,height=1,colorStore=false,depthStore=false,resolve=true)
+        d.begin(p);d.deliverResponses=false;d.end()
+        d.waitFor(d.requests.nonEmpty)
+        assert(d.requests.size==1 && d.requests.head.write && d.requests.head.address==p.resolveAddress(0,0))
+        for(_ <- 0 until 12) { d.tick();dut.io.pass.active.expect(true.B);dut.io.pass.completion.valid.expect(false.B) }
+        dut.io.pass.cancel.poke(true.B);d.tick();dut.io.pass.cancel.poke(false.B)
+        for(_ <- 0 until 5) { d.tick();dut.io.pass.completion.valid.expect(false.B) }
+        d.faultNextResponse=fault;d.deliverResponses=true
+        d.complete(if(fault)TilePassStatus.memoryFault else TilePassStatus.cancelled)
+        assert(d.requests.size==1)
+        d.begin(Pass(id=8,generation=12,colorStore=false,depthStore=false));d.end();d.complete()
+      }
+    }
+  }
+
   if (credits > 1) {
     it should "resolve load misses while old stores wait and attribute a late reordered write fault" in {
       simulate(store()) { dut =>

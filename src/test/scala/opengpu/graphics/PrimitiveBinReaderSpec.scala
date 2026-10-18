@@ -126,7 +126,8 @@ class PrimitiveBinReaderSpec extends AnyFlatSpec {
     def begin(i: Image,version: Int = 1,poolVersion: Int = 1,
       headValid: Option[Boolean] = None,head: Option[Long] = None,
       count: Option[Long] = None,base: Option[Long] = None,
-      limit: Option[Long] = None,pageLog: Option[Int] = None): Unit = {
+      limit: Option[Long] = None,pageLog: Option[Int] = None,
+      mutate: BinPagePoolDescriptor=>Unit = _=>()): Unit = {
       assert(pending.isEmpty)
       active = i; requests.clear(); outputs.clear(); outputCycles.clear(); returnedFaults = 0
       val b = d.io.begin.bits
@@ -135,6 +136,7 @@ class PrimitiveBinReaderSpec extends AnyFlatSpec {
       b.pool.identity.generation.poke(i.generation.U); b.tile.poke(i.tile.U)
       b.pool.base.poke(base.getOrElse(i.base).U); b.pool.limit.poke(limit.getOrElse(i.limit).U)
       b.pool.pageSizeLog2.poke(pageLog.getOrElse(Integer.numberOfTrailingZeros(pageBytes)).U)
+      mutate(b.pool)
       b.headValid.poke(headValid.getOrElse(i.references.nonEmpty).B)
       b.head.poke(head.getOrElse(i.head).U); b.count.poke(count.getOrElse(i.references.size.toLong).U)
       d.io.begin.valid.poke(true.B); until(d.io.begin.ready.peek().litToBoolean)
@@ -337,4 +339,43 @@ class PrimitiveBinReaderSpec extends AnyFlatSpec {
       assert(d.requests.toVector == Vector(0xffffffc0L))
     }
   }
+  it should "replay segmented chains and reject heads or forward links into reserved gaps before fetching them" in {
+    simulate(reader(128)) { dut=>
+      val d=new Driver(dut,128)
+      val i=image(128,20,gap=8)
+      def segments(p: BinPagePoolDescriptor): Unit = {
+        p.initialLimit.poke((i.base+128).U); p.spillCount.poke(3.U)
+        for (n <- 0 until 3) {
+          p.spills(n).base.poke((i.base+(n+1)*8*128).U)
+          p.spills(n).limit.poke((i.base+(n+1)*8*128+128).U)
+        }
+      }
+      d.begin(i,poolVersion=2,mutate=segments)
+      val good=d.finish()
+      assert(good.status==PrimitiveBinStatus.success && good.emitted==20 && good.pages==4)
+      assert(d.requests.forall(a=>(a-i.base)%(8*128)<128))
+      d.begin(i,poolVersion=2,head=Some(i.base+128),mutate=segments)
+      val head=d.finish()
+      assert(head.status==PrimitiveBinStatus.invalidDescriptor && head.lines==0 && head.emitted==0)
+      val badLink=image(128,20,gap=8)
+      badLink.words(badLink.head+4)=badLink.base+128
+      d.begin(badLink,poolVersion=2,mutate=segments)
+      val link=d.finish()
+      assert(link.status==PrimitiveBinReadStatus.invalidPage && link.emitted==0)
+      assert(d.requests.toVector==Vector(i.base))
+      d.begin(i,poolVersion=2,count=Some(25),mutate=segments)
+      val capacity=d.finish()
+      assert(capacity.status==PrimitiveBinStatus.invalidDescriptor && capacity.lines==0)
+      d.begin(i,poolVersion=2,mutate=p=>{segments(p); p.spills(2).base.poke((i.base+128).U)})
+      val malformed=d.finish()
+      assert(malformed.status==PrimitiveBinStatus.invalidDescriptor && malformed.lines==0)
+      // Cancellation during sequential segment validation must not offer a read.
+      d.begin(i,poolVersion=2,mutate=segments); d.step(); d.cancel()
+      val cancelled=d.finish()
+      assert(cancelled.status==PrimitiveBinStatus.cancelled && cancelled.lines==0)
+      d.begin(i,poolVersion=2,mutate=segments)
+      assert(d.finish().status==PrimitiveBinStatus.success)
+    }
+  }
+
 }

@@ -59,8 +59,9 @@ class SharedShaderTaskRouterSpec extends AnyFlatSpec {
           port.launch.bits.launch.kernelPc.poke((0x1000 + client * 64).U)
           port.launch.valid.poke(true.B)
           port.launch.ready.expect(true.B)
-          pool.launch.bits.commandId.expect(client.U)
           dut.clock.step(); port.launch.valid.poke(false.B)
+          pool.launch.valid.expect(true.B); pool.launch.bits.commandId.expect(client.U)
+          dut.clock.step()
         }
         launch(0, 0x55); launch(1, 0x55)
         // Client zero runs on the last CU, client one on CU zero. Neither
@@ -157,6 +158,7 @@ class SharedShaderTaskRouterSpec extends AnyFlatSpec {
       dut.io.clients(2).invalidate.bits.lineAddress.poke(0x8000.U)
       dut.io.clients(2).invalidate.ready.expect(true.B)
       dut.clock.step(); dut.io.clients(2).invalidate.valid.poke(false.B)
+      pool.invalidate.valid.expect(true.B); dut.clock.step()
       dut.io.clients(0).invalidate.valid.poke(true.B)
       dut.io.clients(0).invalidate.bits.lineAddress.poke(0x9000.U)
       dut.io.clients(2).invalidateDone.ready.poke(false.B)
@@ -171,14 +173,139 @@ class SharedShaderTaskRouterSpec extends AnyFlatSpec {
       dut.clock.step(3)
       dut.io.clients(2).invalidateDone.ready.poke(true.B)
       dut.clock.step(); pool.invalidateDone.valid.poke(false.B)
+      dut.io.clients(0).invalidate.ready.expect(true.B)
+      dut.clock.step(); dut.io.clients(0).invalidate.valid.poke(false.B)
       pool.invalidate.valid.expect(true.B)
       pool.invalidate.bits.lineAddress.expect(0x9000.U)
-      dut.clock.step(); dut.io.clients(0).invalidate.valid.poke(false.B)
+      dut.clock.step()
       pool.invalidateDone.bits.lineAddress.poke(0x9000.U)
       pool.invalidateDone.valid.poke(true.B)
       dut.io.clients(0).invalidateDone.valid.expect(true.B)
       dut.clock.step(); pool.invalidateDone.valid.poke(false.B)
       dut.io.drained.expect(true.B)
+    }
+  }
+
+  it should "retain multiple live local tags per tile engine and restore reordered faults and completions" in {
+    simulate(new SharedShaderTaskRouter(GpuConfig(lanes=4,warps=2),4,2,tasksPerClient=3)) { d =>
+      initialize(d)
+      def launch(client: Int,local: Int,slot: Int): Unit = {
+        val c=d.io.clients(client)
+        c.launch.bits.commandId.poke(local.U); c.launch.valid.poke(true.B)
+        c.launch.ready.expect(true.B)
+        d.clock.step(); c.launch.valid.poke(false.B)
+        d.io.pool.launch.valid.expect(true.B); d.io.pool.launch.bits.commandId.expect(slot.U)
+        d.clock.step()
+      }
+      def complete(slot: Int,client: Int,local: Int,success: Boolean=true): Unit = {
+        d.io.pool.completion.valid.poke(true.B)
+        d.io.pool.completion.bits.commandId.poke(slot.U)
+        d.io.pool.completion.bits.success.poke(success.B)
+        d.io.clients(client).completion.valid.expect(true.B)
+        d.io.clients(client).completion.bits.commandId.expect(local.U)
+        d.io.clients(client).completion.bits.success.expect(success.B)
+        d.clock.step(); d.io.pool.completion.valid.poke(false.B)
+      }
+      launch(0,0x55,0); launch(0,0x66,1); launch(1,0x55,3)
+      d.io.pool.owned.poke(7.U)
+      d.io.pool.taskIds(0).poke(1.U); d.io.pool.taskIds(1).poke(3.U); d.io.pool.taskIds(2).poke(0.U)
+      d.io.clients(0).owned.expect(5.U); d.io.clients(1).owned.expect(2.U)
+      d.io.clients(0).taskIds(0).expect(0x66.U); d.io.clients(0).taskIds(2).expect(0x55.U)
+      d.io.clients(1).taskIds(1).expect(0x55.U)
+      d.io.clients(0).launch.bits.commandId.poke(0x55.U); d.io.clients(0).launch.valid.poke(true.B)
+      d.io.clients(0).launch.ready.expect(false.B)
+      d.clock.step(); d.io.clients(0).launch.valid.poke(false.B)
+      d.io.pool.owned.poke(0.U)
+      d.io.clients(0).completion.ready.poke(false.B)
+      d.io.pool.completion.valid.poke(true.B); d.io.pool.completion.bits.commandId.poke(1.U)
+      for (_ <- 0 until 4) {
+        d.io.clients(0).completion.bits.commandId.expect(0x66.U)
+        d.io.pool.completion.ready.expect(false.B); d.clock.step()
+      }
+      d.io.clients(0).completion.ready.poke(true.B); d.clock.step()
+      d.io.pool.completion.valid.poke(false.B)
+      launch(0,0x77,1); launch(0,0x88,2)
+      d.io.clients(0).launch.bits.commandId.poke(0x99.U); d.io.clients(0).launch.valid.poke(true.B)
+      d.io.clients(0).launch.ready.expect(false.B); d.clock.step(); d.io.clients(0).launch.valid.poke(false.B)
+      d.io.pool.trap.valid.poke(true.B); d.io.pool.trap.bits.taskId.poke(2.U)
+      d.io.clients(0).trap.valid.expect(true.B); d.io.clients(0).trap.bits.taskId.expect(0x88.U)
+      d.io.clients(1).trap.valid.expect(false.B)
+      d.clock.step(); d.io.pool.trap.valid.poke(false.B)
+      d.io.drained.expect(false.B)
+      complete(2,0,0x88,success=false); complete(0,0,0x55)
+      complete(3,1,0x55); complete(1,0,0x77)
+      d.io.drained.expect(true.B)
+    }
+  }
+
+  it should "freeze an offered invalidation and its owner when another client arrives" in {
+    simulate(new SharedShaderTaskRouter(GpuConfig(lanes=4,warps=2),2,3)) { d =>
+      initialize(d)
+      val pool=d.io.pool
+      // Establish a known arbitration rotation before stalling the next
+      // offer, independent of uninitialized round-robin pointer values.
+      val seed=d.io.clients(0)
+      seed.invalidate.valid.poke(true.B); seed.invalidate.bits.lineAddress.poke(0x7000.U)
+      val issued=pool.invalidate.valid.peek().litToBoolean
+      seed.invalidate.ready.expect(true.B); d.clock.step(); seed.invalidate.valid.poke(false.B)
+      if (!issued) { pool.invalidate.valid.expect(true.B); d.clock.step() }
+      pool.invalidateDone.valid.poke(true.B); pool.invalidateDone.bits.lineAddress.poke(0x7000.U)
+      d.clock.step(); pool.invalidateDone.valid.poke(false.B)
+      pool.invalidate.ready.poke(false.B)
+      val first=d.io.clients(2); val second=d.io.clients(1)
+      first.invalidate.valid.poke(true.B); first.invalidate.bits.lineAddress.poke(0x8000.U)
+      val accepted=first.invalidate.ready.peek().litToBoolean
+      d.clock.step()
+      if (accepted) first.invalidate.valid.poke(false.B)
+      pool.invalidate.valid.expect(true.B); pool.invalidate.bits.lineAddress.expect(0x8000.U)
+      second.invalidate.valid.poke(true.B); second.invalidate.bits.lineAddress.poke(0x9000.U)
+      for (_ <- 0 until 5) {
+        pool.invalidate.valid.expect(true.B); pool.invalidate.bits.lineAddress.expect(0x8000.U)
+        second.invalidate.ready.expect(false.B); d.io.drained.expect(false.B); d.clock.step()
+      }
+      pool.invalidate.ready.poke(true.B); d.clock.step(); first.invalidate.valid.poke(false.B)
+      pool.invalidateDone.valid.poke(true.B); pool.invalidateDone.bits.lineAddress.poke(0x8000.U)
+      first.invalidateDone.valid.expect(true.B); second.invalidateDone.valid.expect(false.B)
+      d.clock.step(); pool.invalidateDone.valid.poke(false.B)
+      second.invalidate.ready.expect(true.B)
+      if (!pool.invalidate.valid.peek().litToBoolean) d.clock.step()
+      pool.invalidate.valid.expect(true.B); pool.invalidate.bits.lineAddress.expect(0x9000.U)
+      d.clock.step(); second.invalidate.valid.poke(false.B)
+      pool.invalidateDone.valid.poke(true.B); pool.invalidateDone.bits.lineAddress.poke(0x9000.U)
+      second.invalidateDone.valid.expect(true.B); first.invalidateDone.valid.expect(false.B)
+      d.clock.step(); pool.invalidateDone.valid.poke(false.B); d.io.drained.expect(true.B)
+    }
+  }
+
+  it should "hold an offered pool launch when a completion frees an earlier task slot" in {
+    simulate(new SharedShaderTaskRouter(GpuConfig(lanes=4,warps=2),2,1,tasksPerClient=3)) { d =>
+      initialize(d)
+      val c=d.io.clients(0)
+      c.launch.bits.commandId.poke(0x55.U); c.launch.valid.poke(true.B)
+      d.clock.step(); c.launch.valid.poke(false.B)
+      d.io.pool.launch.bits.commandId.expect(0.U); d.clock.step()
+      d.io.pool.launch.ready.poke(false.B)
+      c.launch.bits.commandId.poke(0x66.U); c.launch.valid.poke(true.B)
+      d.clock.step(); c.launch.valid.poke(false.B)
+      d.io.pool.launch.valid.expect(true.B); d.io.pool.launch.bits.commandId.expect(1.U)
+      val held=d.io.pool.launch.bits.peek().litValue
+      d.io.pool.completion.valid.poke(true.B); d.io.pool.completion.bits.commandId.poke(0.U)
+      d.clock.step(); d.io.pool.completion.valid.poke(false.B)
+      c.launch.bits.commandId.poke(0x77.U); c.launch.valid.poke(true.B)
+      d.clock.step(); c.launch.valid.poke(false.B)
+      for (_ <- 0 until 5) {
+        d.io.pool.launch.valid.expect(true.B); assert(d.io.pool.launch.bits.peek().litValue==held)
+        d.clock.step()
+      }
+      d.io.pool.launch.ready.poke(true.B); d.clock.step()
+      d.io.pool.launch.valid.expect(true.B); d.io.pool.launch.bits.commandId.expect(0.U)
+      d.clock.step(); d.io.pool.launch.valid.expect(false.B)
+      for ((slot,local) <- Seq((1,0x66),(0,0x77))) {
+        d.io.pool.completion.valid.poke(true.B); d.io.pool.completion.bits.commandId.poke(slot.U)
+        c.completion.bits.commandId.expect(local.U); d.clock.step()
+        d.io.pool.completion.valid.poke(false.B)
+      }
+      d.io.drained.expect(true.B)
     }
   }
 }

@@ -10,7 +10,7 @@ class PrimitiveBinStoreSpec extends AnyFlatSpec {
   case class Ref(primitive: Long,state: Long,sequence: Long,token: Long)
   case class Reply(status: Int,reference: Ref,address: Long,count: Long)
   case class Completion(status: Int,usable: Boolean,committed: Long,emitted: Long,
-    pages: Long,restart: Option[Ref])
+    pages: Long,restart: Option[Ref],spills: Int)
   private def ref(n: Int): Ref =
     Ref(0x80000000L+n*16,0xf0000000L+n*8,n*3L+1,0xffff0000L+n)
   private def lines(records: Int): Int = (32+records*16+63)/64
@@ -28,6 +28,7 @@ class PrimitiveBinStoreSpec extends AnyFlatSpec {
     var cycle = 0
     var base = 0L
     var limit = 0L
+    var segments=Vector.empty[(Long,Long)]
     var context = 0x13579bdfL
     var pass = 0x2468ace0L
     var tile = 0x87654321L
@@ -143,6 +144,7 @@ class PrimitiveBinStoreSpec extends AnyFlatSpec {
         assert(address%64 == 0,s"unaligned line request $address")
         assert(BigInt(address) >= BigInt(base) && BigInt(address)+64 <= BigInt(limit),
           s"line $address outside [$base,$limit)")
+        assert(segments.exists { case (start,end)=>address>=start && address+64<=end },"bin traffic entered a reserved gap")
         assert(!pending.exists(_.id == id),"reused a live memory transaction id")
         if (isWrite) {
           assert(id < writeCredits,"writer used the reader's transaction id")
@@ -170,7 +172,8 @@ class PrimitiveBinStoreSpec extends AnyFlatSpec {
     }
     def begin(start: Long,pages: Int,generation: Int = 19,version: Int = 1,
               context: Long = 0x13579bdfL,pass: Long = 0x2468ace0L,
-              tile: Long = 0x87654321L,refs: Vector[Ref] = Vector.empty): Unit = {
+              tile: Long = 0x87654321L,refs: Vector[Ref] = Vector.empty,
+              mutate: BinPagePoolDescriptor=>Unit = _=>()): Unit = {
       assert(pending.isEmpty)
       base = start; limit = start+pages.toLong*pageBytes
       this.context = context; this.pass = pass; this.tile = tile; this.generation = generation
@@ -184,6 +187,14 @@ class PrimitiveBinStoreSpec extends AnyFlatSpec {
       b.pool.base.poke(base.U); b.pool.limit.poke(limit.U)
       b.pool.pageSizeLog2.poke(Integer.numberOfTrailingZeros(pageBytes).U)
       b.tile.poke(tile.U)
+      mutate(b.pool)
+      limit=b.pool.limit.peek().litValue.toLong
+      segments=if (b.pool.version.peek().litValue==2) {
+        Vector((base,b.pool.initialLimit.peek().litValue.toLong)) ++
+          (0 until b.pool.spillCount.peek().litValue.toInt.min(8)).map { n=>
+            (b.pool.spills(n).base.peek().litValue.toLong,b.pool.spills(n).limit.peek().litValue.toLong)
+          }
+      } else Vector((base,limit))
       d.io.begin.valid.poke(true.B); until(d.io.begin.ready.peek().litToBoolean)
       step(); d.io.begin.valid.poke(false.B); b.poke(0.U.asTypeOf(b))
     }
@@ -214,7 +225,8 @@ class PrimitiveBinStoreSpec extends AnyFlatSpec {
       val result = Completion(b.status.peek().litValue.toInt,
         b.prefixUsable.peek().litToBoolean,b.committed.peek().litValue.toLong,
         b.emitted.peek().litValue.toLong,b.allocatedPages.peek().litValue.toLong,
-        if (b.restartValid.peek().litToBoolean) Some(peekReference(b.restart)) else None)
+        if (b.restartValid.peek().litToBoolean) Some(peekReference(b.restart)) else None,
+        b.spillTransitions.peek().litValue.toInt)
       assert(result.emitted == outputs.size &&
         outputs.toVector == expected.take(outputs.size),"replayed prefix mismatch")
       assert(result.committed == replies.count(_.status == PrimitiveBinStatus.success))
@@ -418,4 +430,38 @@ class PrimitiveBinStoreSpec extends AnyFlatSpec {
       assert(d.memory.keysIterator.forall(_ >= 0xffffff80L))
     }
   }
+  it should "write and replay spill segments automatically and fault a later-segment payload without publishing a prefix" in {
+    simulate(store(128,3)) { dut=>
+      val d=new Driver(dut,128,3)
+      val expected=Vector.tabulate(20)(ref)
+      val pages=Vector(0x10000L,0x11000L,0x11080L,0x14000L)
+      def binding(p: BinPagePoolDescriptor): Unit = {
+        p.version.poke(2.U); p.initialLimit.poke(0x10080.U); p.limit.poke(0x14080.U)
+        p.spillCount.poke(2.U)
+        p.spills(0).base.poke(0x11000.U); p.spills(0).limit.poke(0x11100.U)
+        p.spills(1).base.poke(0x14000.U); p.spills(1).limit.poke(0x14080.U)
+      }
+      d.begin(0x10000,4,refs=expected,mutate=binding)
+      expected.foreach(r=>assert(d.send(r).status==PrimitiveBinStatus.success))
+      d.close(); val good=d.finish()
+      assert(good.status==0 && good.usable && good.committed==20 && good.emitted==20 && good.pages==4 && good.spills==2)
+      for ((page,n) <- pages.zipWithIndex) {
+        assert(d.memory(page+28)==(page-0x10000)/128)
+        assert(d.memory(page+4)==pages.lift(n+1).getOrElse(0L))
+      }
+      assert(d.reads.toVector==pages.zip(Seq(6,6,6,2)).flatMap {case (page,count)=>(0 until lines(count)).map(n=>page+n*64L)})
+      d.begin(0x10000,4,generation=20,refs=expected,mutate=binding)
+      expected.take(6).foreach(r=>assert(d.send(r).status==0))
+      d.faultRequest=(write,address)=>write && address==0x11020L
+      assert(d.send(expected(6)).status==PrimitiveBinStatus.memoryFault)
+      val failed=d.finish()
+      assert(failed.status==PrimitiveBinStatus.memoryFault && !failed.usable && failed.emitted==0 && failed.restart.isEmpty)
+      assert(d.reads.isEmpty)
+      d.faultRequest=(_,_)=>false
+      d.begin(0x10000,4,generation=21,refs=expected.take(7),mutate=binding)
+      expected.take(7).foreach(r=>assert(d.send(r).status==0))
+      d.close(); assert(d.finish().status==0)
+    }
+  }
+
 }

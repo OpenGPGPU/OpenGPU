@@ -21,6 +21,11 @@ class TileBinReplayCompletion extends Bundle {
   val engine = UInt(8.W)
   val status = UInt(PrimitiveBinStatus.width.W)
   val prefixUsable = Bool()
+  /** Exact first uncommitted reference when a usable prefix exhausted its
+    * backing arena. It must survive every replay/resolution wrapper.
+    */
+  val restartValid = Bool()
+  val restart = new BinPrimitiveReference
   val emitted = UInt(32.W)
   val pages = UInt(32.W)
   val readLines = UInt(32.W)
@@ -57,7 +62,8 @@ class TileBinReplayScheduler(
   engines: Int = 2,
   pageBytes: Int = 4096,
   memoryTransactions: Int = 0,
-  transactionBase: Int = 0
+  transactionBase: Int = 0,
+  externalDispatchCredits: Boolean = false
 ) extends Module {
   require(config.xLen == 32)
   require(engines >= 1 && engines <= 4)
@@ -80,6 +86,8 @@ class TileBinReplayScheduler(
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64,txCount)))
     val busy = Output(Bool())
     val engineBusy = Output(Vec(engines, Bool()))
+    val dispatchPermit = if (externalDispatchCredits) Some(Input(Vec(engines,Bool()))) else None
+    val tileAssigned = if (externalDispatchCredits) Some(Output(Vec(engines,Bool()))) else None
   })
   private val descriptor = Reg(new TileBinReplayDescriptor)
   private val active = RegInit(false.B)
@@ -107,6 +115,12 @@ class TileBinReplayScheduler(
     Module(new PrimitiveBinReader(config,pageBytes,txCount,transactionBase+e)))
   private val arbiter = Module(new RRArbiter(
     new ComputeMemoryRequest(config,64,txCount),engines))
+  // Reader arrivals may change arbitration priority while external memory
+  // withholds ready. Freeze the selected request/ID before offering it on
+  // the public memory port; the reader retains its response credit until
+  // that request and its response drain, including cancellation.
+  private val requests = Module(new Queue(
+    new ComputeMemoryRequest(config,64,txCount),2,pipe=true))
   private val stop = aborting || io.cancel
   private val engineIdBits = 8
 
@@ -126,14 +140,16 @@ class TileBinReplayScheduler(
       io.memoryResponse.bits.transactionId === (transactionBase+e).U
     readers(e).io.memoryResponse.bits := io.memoryResponse.bits
   }
-  io.memoryRequest <> arbiter.io.out
+  requests.io.enq <> arbiter.io.out
+  io.memoryRequest <> requests.io.deq
   io.memoryResponse.ready := readers.map(_.io.memoryResponse.ready).reduce(_ || _)
 
   // Pick the first free engine, rotating the starting point so neither engine
   // is preferred when both have room.
   private def rotate(start: UInt, offset: Int): UInt =
     ((start +& offset.U) % engines.U)(engineBits-1,0)
-  private val free = VecInit((0 until engines).map(e => !nextValid(e)))
+  private def permitted(e: Int): Bool = io.dispatchPermit.map(_(e)).getOrElse(true.B)
+  private val free = VecInit((0 until engines).map(e => !nextValid(e) && permitted(e)))
   private val choices = (0 until engines).map(i => rotate(dispatchIndex,i))
   private val pick = PriorityMux(choices.map(e => free(e) -> e))
   private val doneOrder = (0 until engines).map(i => rotate(doneIndex,i))
@@ -148,13 +164,16 @@ class TileBinReplayScheduler(
   // During cancellation a producer may still offer completed tiles; they are
   // accepted into a free done slot as cancelled so the producer can finish
   // reporting. The slot must not also receive a reader or local completion.
-  private val discardFree = VecInit((0 until engines).map(e => !doneValid(e)))
+  private val discardFree = VecInit((0 until engines).map(e => !doneValid(e) && permitted(e)))
   private val discardPick = PriorityMux(doneOrder.map(e => discardFree(e) -> e))
   private val localCompleting = (0 until engines).map(e =>
     curValid(e) && !curStarted(e) && !doneValid(e) && (stop || !playable(cur(e)))).reduce(_ || _)
   private val readerCompleting = readers.map(_.io.completion.fire).reduce(_ || _)
   private val canDiscard = discardFree.asUInt.orR && !localCompleting && !readerCompleting
   io.tile.ready := active && Mux(stop, canDiscard, free.asUInt.orR)
+  io.tileAssigned.foreach { assigned=>
+    for (e <- 0 until engines) assigned(e):=io.tile.fire && Mux(stop,discardPick,pick)===e.U
+  }
   private def playable(job: TileBinCompletion): Bool =
     job.prefixUsable && job.headValid &&
       (job.status === PrimitiveBinStatus.success.U ||
@@ -213,6 +232,8 @@ class TileBinReplayScheduler(
         done(discardPick).engine := discardPick
         done(discardPick).status := stopStatus
         done(discardPick).prefixUsable := false.B
+        done(discardPick).restartValid := false.B
+        done(discardPick).restart := 0.U.asTypeOf(done(discardPick).restart)
         done(discardPick).emitted := 0.U
         done(discardPick).pages := 0.U
         done(discardPick).readLines := 0.U
@@ -247,6 +268,9 @@ class TileBinReplayScheduler(
         done(e).engine := e.U(engineIdBits.W)
         done(e).status := Mux(stop, stopStatus, cur(e).status)
         done(e).prefixUsable := cur(e).prefixUsable && !stop
+        done(e).restartValid := !stop && cur(e).prefixUsable && cur(e).restartValid &&
+          cur(e).status === PrimitiveBinStatus.exhausted.U
+        done(e).restart := cur(e).restart
         done(e).emitted := 0.U
         done(e).pages := 0.U
         done(e).readLines := 0.U
@@ -264,6 +288,10 @@ class TileBinReplayScheduler(
           cur(e).status, reader.io.completion.bits.status)
         done(e).prefixUsable := cur(e).prefixUsable &&
           reader.io.completion.bits.status === PrimitiveBinStatus.success.U
+        done(e).restartValid := cur(e).prefixUsable && cur(e).restartValid &&
+          cur(e).status === PrimitiveBinStatus.exhausted.U &&
+          reader.io.completion.bits.status === PrimitiveBinStatus.success.U
+        done(e).restart := cur(e).restart
         done(e).emitted := reader.io.completion.bits.emitted
         done(e).pages := reader.io.completion.bits.pages
         done(e).readLines := reader.io.completion.bits.readLines

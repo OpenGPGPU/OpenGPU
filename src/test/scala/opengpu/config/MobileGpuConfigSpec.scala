@@ -8,10 +8,17 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
 
   it should "fit the proposed tile layouts and account for every data array" in {
     val c = MobileGpuConfig()
-    assert(c.dataStorageBytes == 368 * 1024)
+    assert(c.dataStorageBytes == 369 * 1024)
+    assert(c.attachmentReadCacheBytes==1024 && c.attachmentGatherBufferBytes==512)
     assert(c.l2Bytes == 128 * 1024 && c.tileSlotBytes == 32 * 1024)
     assert(c.attachmentStoreCredits == 8 && c.attachmentCreditIdWidth == 3)
+    assert(c.execution.l2StoreEntries == 4)
     assert(c.binPageBytes == 4096 && c.binWriteCredits == 8 && c.binTileSlots == 8)
+    assert(c.binDirectoryTiles==16384 && c.binDirectoryReportBytes==2048 && c.binDirectoryBackingBytes==1024*1024)
+    assert(c.copy(binDirectoryTiles=0,binTileSlots=3).binDirectoryReportBytes==0)
+    assert(c.binRecordCacheEntries == 8 && c.binRecordCacheBytes == 1024)
+    assert(c.copy(binRecordCacheEntries = 32).dataStorageBytes == c.dataStorageBytes,
+      "replay record caches consume the existing primitive/state storage budget")
     assert(c.copy(binPageBytes = 65536).dataStorageBytes == c.dataStorageBytes,
       "software bin backing pages are not additional on-chip data arrays")
     assert(c.tileClass(Seq.fill(4)(4), 4, 4) == 16)
@@ -31,9 +38,20 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
       c.validateImplementedGraphics(GraphicsConfig())
     }
     intercept[IllegalArgumentException] { MobileGpuConfig(execution = GpuConfig(lanes = 2)) }
+    for (capacity <- Seq(-1,1,65536)) intercept[IllegalArgumentException] { MobileGpuConfig(binDirectoryTiles=capacity) }
+    intercept[IllegalArgumentException] { MobileGpuConfig(binTileSlots=3) }
+    intercept[IllegalArgumentException] { MobileGpuConfig(primitiveBytes=2048) }
+    val persistent=GraphicsConfig(tileSize=16,tileAttachments=true)
+    intercept[IllegalArgumentException] { MobileGpuConfig(tileSlotsPerEngine=4).validateImplementedGraphics(persistent) }
+    intercept[IllegalArgumentException] { MobileGpuConfig(tileEngines=4).validateImplementedGraphics(persistent) }
+    intercept[IllegalArgumentException] { MobileGpuConfig(attachmentStoreCredits=32).validateImplementedGraphics(persistent) }
+    MobileGpuConfig(tileEngines=4,execution=GpuConfig(l2StoreEntries=8)).validateImplementedGraphics(persistent)
     intercept[IllegalArgumentException] { MobileGpuConfig(textureWordBanks = 3) }
     intercept[IllegalArgumentException] { MobileGpuConfig(axiBytes = 24) }
     intercept[IllegalArgumentException] { MobileGpuConfig(tileSlotsPerEngine = 16) }
+    for (entries <- Seq(0,1,3,32)) {
+      intercept[IllegalArgumentException] { GpuConfig(l2StoreEntries = entries) }
+    }
     for (bytes <- Seq(0,32,96,131072)) {
       intercept[IllegalArgumentException] { MobileGpuConfig(binPageBytes = bytes) }
     }
@@ -43,6 +61,10 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
     for (slots <- Seq(0,65)) {
       intercept[IllegalArgumentException] { MobileGpuConfig(binTileSlots = slots) }
     }
+    for (entries <- Seq(0,3,64)) {
+      intercept[IllegalArgumentException] { MobileGpuConfig(binRecordCacheEntries = entries) }
+    }
+    intercept[IllegalArgumentException] { MobileGpuConfig(primitiveBytes = 512) }
     intercept[IllegalArgumentException] {
       MobileGpuConfig().validateImplementedGraphics(GraphicsConfig(fragmentBatchLimit = 132))
     }

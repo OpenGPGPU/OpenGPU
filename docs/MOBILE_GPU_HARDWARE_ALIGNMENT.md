@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: proposed hardware architecture with H0/H1 implementation in progress, 2026-10-18. Baseline: `d038228`.
+Status: proposed hardware architecture with H0/H1/H2 implementation in progress, 2026-10-19. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
 Evolve OpenGPU into a mobile rendering architecture by extending the shared CU pool with persistent tile storage, GPU geometry fetching, scalable texture and pixel backends, and general graphics resource descriptors. Keep shader arithmetic on the existing CUs. The first functional target is hardware sufficient for a complete GLES 3.0 implementation; a Mali-G31-class commercial comparison requires further feature, performance, and physical qualification.
 
@@ -22,7 +22,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 | Configuration | `GpuConfig` defaults to 16 lanes and eight warps; the mobile CU-count constant is four | One compute/graphics execution configuration; discoverable resource limits and explicit supported configuration combinations |
 | Interstage transport | CU-scaled fragment workers, staging transactions and ordered output retirement | On-chip payload storage, export queues and tile-local retirement; avoid mandatory global-memory staging of every batch |
 | Geometry | Clip, viewport, triangle setup and quad rasterization exist | Native index/attribute fetch, vertex reuse, instancing and complete required primitive behavior |
-| Tiling | Optional single resident 16x16 tile, RGBA8 plus D24S8, up to four samples; binner replays eight triangle records per chunk | Render-pass attachment lifetime, scalable bin storage, multiple tile engines and spill/restart handling |
+| Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
 | Pixel operations | Depth/stencil/blending and MSAA exist; OM has configurable concurrent RMW slots | Banked tile-local pixel pipelines, legal early rejection, multiple color outputs and complete format semantics |
 | Memory | Shared banked L2, Sv32 translation, GPU cache invalidation and AXI memory master | Aggregate bandwidth and outstanding budgets, context-tagged tile/texture state, scoped barriers and robust bin/payload memory |
@@ -98,7 +98,7 @@ The tile data calculation is:
 
 A 32 KiB slot therefore handles four RGBA8 attachments at 4x but requires smaller tiles for the illustrated four-RGBA16F layout. Support 8x8 and 16x16 tile classes through a shared descriptor and address calculation. Select a fitting tile class at pass admission. RGBA16F rendering/blending is a later product feature with explicit semantics; it is not implied to be required by base GLES 3.0.
 
-The proposed tile, texture, payload, primitive and 128 KiB L2 arrays total 368 KiB of data storage. This excludes CU register files, instruction/data caches, shared memory, tags, queues and other state. SRAM area and energy depend on the selected technology and port organization; this is a capacity budget rather than a chip-area estimate.
+The proposed tile, texture, payload, primitive and 128 KiB L2 arrays, plus four 64-byte attachment read-cache lines per slot, total 369 KiB of data storage. The read caches contribute 1 KiB over two engines and two slots per engine. This excludes CU register files, instruction/data caches, shared memory, tags, queues and other state, including 512 bytes of registered attachment write-gather data. SRAM area and energy depend on the selected technology and port organization; this is a capacity budget rather than a chip-area estimate. Earlier frozen evidence retains its original 368 KiB budget.
 
 Payload occupancy must also be counted in bytes. For example, 64 FP32 varying components across 128 resident threads occupy 32 KiB of input values per CU before outputs or metadata. A 64 KiB shared payload budget cannot hold that case for all four CUs simultaneously. Admission must reduce concurrency, interpolate values on demand, or spill through the defined fallback; it must never assume maximum varying count and maximum task residency are free to combine.
 
@@ -180,6 +180,14 @@ Geometry and tessellation are part of the GLES 3.2 specification, so they belong
 
 ## Performance model and acceptance gates
 
+For the current development stage, the user selected synthesis-only PPA
+screening on 2026-10-18. Use mapped synthesis timing (including I/O), area and
+explicit SRAM assumptions to guide RTL iterations. Do not require new
+place-and-route runs for these iterations. Existing routed reports remain
+historical evidence for their frozen emissions. Full physical and product
+qualification below remains a later milestone gate, not a claim supported by
+synthesis alone.
+
 For a selected workload, calculate a lower bound in cycles:
 
 `C >= max(warp instructions / sustained issue rate, FP operations / sustained FP rate, texture samples / sustained sample rate, sample updates / sustained pixel rate, setup work / setup rate, payload bytes / payload service rate, external bytes / sustained bytes per cycle)`
@@ -221,7 +229,7 @@ Existing OM screening also failed the 1 GHz timing gate for both baseline and sh
 | H7 | GLES 3.1 hardware closure | Storage/image access, atomics, barriers, indirect work and resource-limit matrix verified | CU memory, descriptor tables, command processor and shared cache/translation fabric |
 | H8 | GLES 3.2 hardware closure | Geometry/tessellation, bounded amplification, stage ordering and remaining feature matrix verified | Shared task scheduling, patch SRAM, primitive generation and graphics backends |
 
-H3 and H4 depend on the H0 interfaces but can be developed against unit harnesses before H2 completes. H5 payload and geometry changes should be separate reviewable series. Bring up one attachment and existing formats first; add MRT and the wider format contract after ownership and ordering are stable. Apply synthesis/timing gates throughout rather than postponing physical work until H6.
+H3 and H4 depend on the H0 interfaces but can be developed against unit harnesses before H2 completes. H5 payload and geometry changes should be separate reviewable series. Bring up one attachment and existing formats first; add MRT and the wider format contract after ownership and ordering are stable. Apply synthesis/timing gates throughout. Place-and-route and broader physical closure belong to later qualification under the current synthesis-only development policy.
 
 The first implementation slice should be **H0 plus H1**: define the hardware contract, then make several compatible draws render into one resident tile without intermediate attachment writeback. This creates a measurable bandwidth result and a stable base for subsequent parallel engines.
 
@@ -1390,3 +1398,1281 @@ Both legacy64x64 compatibility profiles are now recorded in the
 fresh models, drivers and tests and unchanged shared QEMU source/binary.
 They use baseline V21 raster and do not qualify the newer V22/H2 integration,
 the mobile shared-CU product,720p rendering budgets or full API closure.
+
+## Implementation evidence: resolved primitive and state replay
+
+The [resolved replay record](performance/mobile-bin-resolved-pass-2026-10-18.json)
+connects `TileBinReplayPass` to one `PrimitiveStateCache` per engine through
+`ResolvedTileBinReplayPass`. A versioned binding snapshots the bin arena,
+immutable record arena, context/pass/generation and first handle. Handle
+`firstHandle + n` names the 64-byte record at `records.base + 64*n`.
+The complete handle interval must fit in 32 bits, both arenas must be disjoint
+when nonempty, and record views must have aligned, checked 33-bit bounds and
+the same identity as the bin pass. A malformed binding issues no memory traffic.
+Both handles are validated before either lookup; an invalid pair is reported
+with the distinct four-bit wrapper status `invalidHandle = 8`, preserving
+the existing bin statuses, including `invalidPage = 6` and `closed = 7`.
+
+Each engine assembles a complete primitive line and state line before offering
+one tagged output. Partial or faulted pairs never become resolved records.
+Per-engine result ports preserve ordered record retirement and report tile
+completion only after the last offered pair drains. Each engine reserves
+`binTileSlots` completion slots, enough for every tile the bounded directory
+can report. Empty or cancelled tiles can therefore leave the shared replay
+result port even when that engine's consumer stalls. A record read fault
+poisons that engine's cache for the pass; the other engine continues.
+Cancellation preserves offered reads and complete outputs, discards unfinished
+pairs and retains ownership through every tile result and the held pass summary.
+Cancelled unstarted tile results never inherit another tile's resolved count
+or release its ownership. A regression reproduced that attribution bug before
+the tile-identity check was added. Memory faults take priority over cancellation,
+and fresh admission invalidates every engine cache before handles can be reused.
+
+The mobile configuration now records `binRecordCacheEntries = 8`, consuming
+1 KiB across two engines within the existing 32 KiB primitive/state capacity
+budget. This is the implemented replay cache capacity, not qualification of
+the full proposed storage. Directory writes, bin replay reads and record fills
+use disjoint transaction IDs on one tagged 64-byte memory port. Counters report
+resolved pairs, cache lookups/hits/misses and record line reads separately
+from the existing bin traffic and replay-reference counts.
+
+All 106 selected checks pass across eleven suites, including eighteen new
+resolved-pass checks. Coverage includes one/two/three/four engines, multi-page
+replay, blocked record and tile consumers, empty-tile completion isolation,
+preflight handle rejection, bin and second-record faults, pass rebinding,
+descriptor mutation, early/in-flight cancellation, late fault priority,
+stable published results, cancellation attribution while another tile owns
+records, and the last physical record and handle ending exactly at 4 GiB.
+With mobile 4 KiB pages, eight write credits and eight cache
+entries per engine, 259 references retire in 16,742 component cycles:
+518 record lookups, 514 hits and four external record-line reads. This is
+a deterministic component service model, not AXI/DRAM or frame throughput.
+
+The first synthesis fails 1 GHz by 189.774 ps. OpenDB identifies a path from
+engine phase selection through handle subtraction and cache-hit detection to
+the cache miss counter. Registering both translated handles before lookup
+removes that chain without changing workload cycles. The corrected final
+revision passes the standalone 1 GHz synthesis/mapping gate at +10.148 ps
+core and +38.251 ps I/O with the recorded TC/SLVT and 25% boundary budget.
+The same emitted RTL passes the complete routed 1 GHz component gate with
+30 ps repair margin: +13.6724 ps worst setup, +17.5442 ps worst hold and
++20.84 ps I/O setup. Timing, placement, DRC, antenna and flow-error counts
+are zero, with complete mapping. Reported standard-cell area is 20,180.8 µm².
+The power estimate has no workload switching and does not qualify frame energy;
+this result covers the bounded replay/resolution component at the recorded
+corner and interface budget, not the integrated GPU or proposed full SRAM capacity.
+
+The record lines remain opaque to replay. Defining their raster/draw-state
+layout and connecting the resolved outputs to `RenderPipeline`, cache-domain
+publication of immutable records, full spill/restart policy, attachment
+bytes/frame, desktop integration and product-frame/whole-GPU qualification
+remain required. This component does not close H2 or the original H0–H8 gates.
+
+## Implementation evidence: binned rendering on two tile engines
+
+The [binned rendering record](performance/mobile-bin-render-pipeline-2026-10-18.json)
+freezes the source/configuration, emitted RTL and workload evidence. All 145
+selected checks pass across eighteen suites, including the existing shared-CU
+system profiles through four CUs with sixteen lanes and eight warps. Those
+compatibility profiles are distinct from the new two-engine integration tests,
+which execute on a two-CU system.
+
+`TileBinRenderPipeline` now connects the resolved bin stream to two independent
+persistent `RenderPipeline` instances. This advances the integration work left
+open by the preceding frozen replay-component result. Each tile has one
+attachment owner. Its completion waits for ordered draw retirement, attachment
+store acknowledgements and resolved-input drain. Per-engine completion queues
+allow the other engine to progress while one consumer or attachment transfer
+is stalled. Ending a pass also seals empty tiles, which still perform their
+specified attachment load/clear/store operations.
+
+The versioned draw ABI uses two consecutive 64-byte primitive lines and one
+64-byte state line. Words are little-endian and explicitly decoded rather than
+depending on Scala Bundle packing. The primitive stores a version/magic,
+scissor, twelve full-width clip-coordinate words, three canonical RGBA colors,
+three signed depths and six Q16.16 UV words. The state stores a version/magic,
+depth/stencil/blend/culling flags, texture LOD state, shader PC, staging offset
+and bank stride, and a texture base/extent/format binding. Reserved bits and
+words must be zero. Invalid records return a distinct encoding error and
+never become substitute triangles. Multi-line handle resolution checks the
+whole primitive span before issuing either primitive or state reads.
+
+Whole-grid admission validates every generated tile before any bin or image
+traffic. Tiles form a disjoint row-major grid with partial right/bottom edges;
+bin and record arenas must be separate from attachment allocations. In
+programmable mode, the shader staging arena has disjoint per-engine windows,
+also separate from bins, immutable records and images. State-record staging
+addresses are offsets in those windows. Admission of a draw checks alignment,
+bank stride and the complete staging span before relocating the offset to its
+engine's window. This bounds the existing memory-backed shader ABI; it does
+not implement the H5 on-chip payload/export path or general resource closure.
+
+The shared-CU variant connects both render engines to the existing system CU
+pool and shared memory/translation fabric. It allocates no private graphics
+CUs. `SharedShaderTaskRouter` reserves a bounded task window per client,
+preserves local tags through reordered completions and traps, and queues
+offered launches so downstream backpressure cannot change their global tags.
+Within a client, live local tags cannot be reused. Different clients may use
+the same local tag. The existing default remains one task per client.
+Invalidation requests also capture the requesting owner before being offered
+to the pool, retaining that owner through the untagged acknowledgement. A
+seeded-arbitration regression reproduces a new client replacing an earlier
+stalled invalidate address before this boundary was registered.
+
+Replay memory arbitration now has a two-entry request buffer. A three-engine
+rotation test reproduces an offered transaction ID changing from two to zero
+when a different reader becomes ready under external backpressure. Freezing
+the arbitration result at this boundary fixes the unstable offer; reader
+response ownership still drains before cancellation can complete.
+
+The new binned path opts into exact rounded UNORM8 texture modulation for all
+four RGBA components. The arithmetic is exhaustively checked against
+`(a*b+127)/255` for all 65,536 input pairs. The legacy renderer retains its
+existing default arithmetic profile. Native image tests use an independently
+ordered renderer as the oracle for depth/stencil, blending, partial tiles,
+4x MSAA and resolve. Texture rebinding also checks white identity, colored
+texels, nonopaque alpha and texture-fault recovery. Shared-system tests execute
+real fragment shader instructions in both bare-address and Sv32 modes, with
+fresh address-space generations and physical backings, shader/staging faults,
+an invalid bin mapping, and healthy pass reuse after faults.
+
+Arena exhaustion now retains the first rejected reference, including primitive
+and state handles, sequence and token, through replay/resolution and the final
+tile result. A tile advertises a usable attachment prefix only after all its
+draws retire and both attachment planes finish storing successfully. Discarded
+attachments, encoding/read/export faults and cancelled tiles cannot advertise
+this restart capability. The caller must also check the final pass status:
+a later fault in another tile invalidates the pass image.
+
+The native restart test exhausts two 128-byte bin pages after six references
+per tile, then resumes both tiles at sequence seven in a new load-start pass.
+Twelve prefix draws plus six resumed draws match the complete uninterrupted
+nine-draw-per-tile blend/depth/stencil image. Prefix clear/store traffic is
+1,024 bytes; the resumed depth/stencil-only path loads and stores 224 useful
+bytes each, for 1,248 total stored bytes in 4,312 component cycles. These are
+useful word bytes from the deterministic test memory service, not AXI/DRAM
+traffic or a frame-rate measurement. Zero-reference exhaustion, discarded
+attachments, export faults and healthy reuse are checked separately. This is
+an explicit caller-driven restart contract; automatic spill allocation and
+host submission of continuations remain open.
+
+Following the synthesis-only screening decision, the current shared-task router
+is emitted separately for two render clients, four system CUs and five task
+slots per client. It passes the mapped 1 GHz synthesis gate at ASAP7 TC/SLVT
+with the same 25% boundary timing budget: +479.851 ps core and +288.512 ps I/O
+setup slack, complete mapping, 6,499 standard cells and 921.398 µm² of
+synthesized cell area. This is a pre-layout component estimate; it does not
+qualify integrated renderer timing or frame power. No new routing run is
+required at the current development stage.
+
+Two frozen component emissions pass full routed 1 GHz gates at ASAP7 TC/SLVT,
+25% input/output delay and 30 ps setup-repair margin. Both have complete
+mapping and zero setup/hold, placement, DRC, antenna or flow errors:
+
+| Component | Worst setup slack | Worst hold slack | Standard-cell area |
+|---|---:|---:|---:|
+| Draw decoder | +401.850 ps | +38.4511 ps | 1,017.06 µm² |
+| Eight-tile grid admission | +123.308 ps | +10.4814 ps | 7,348.47 µm² |
+
+The first decoder floorplan fails because its 3,196 boundary pins exceed the
+available perimeter. Reducing target core utilization from 25% to 10% provides
+the required perimeter; it does not relax the clock or boundary timing budget.
+These are wide standalone component boundaries, not a chip-level pin plan.
+The frozen flip-flop-memory two-engine renderer synthesis attempt times out after 900 seconds,
+before a qualified mapped netlist or timing/area result. It provides no
+integrated-renderer clock claim. Neither component's power estimate includes
+representative workload switching, so it does not qualify frame energy.
+
+At that frozen revision the directory is bounded to at most 64 resident entries
+(eight in the mobile emission profile), and attachment transfer uses one slot
+per engine. A 1280x720 configuration sets coordinate limits; it does not prove
+a complete 720p frame. The following checkpoint adds double buffering.
+Full-frame directory paging, automatic spill/restart integration, producer
+cache publication, host command integration and product-frame/whole-GPU
+qualification remain open. H2 and the H0–H8 milestone gates are not closed.
+
+## Implementation evidence: double-buffered attachment ownership
+
+The [double-buffered attachment record](performance/mobile-double-buffered-attachments-2026-10-18.json)
+freezes the source, SRAM model, emitted RTL, regression and synthesis inputs
+for this checkpoint. All 221 tests in 24 suites pass. The regression includes
+the legacy single-slot paths and real shared-system profiles through four
+CUs with sixteen lanes and eight warps, alongside the new ownership checks.
+
+`DoubleBufferedTileAttachmentStore` gives each binned render engine two
+independent attachment SRAM slots while retaining one raster/shader/OM
+producer. A drained tile end releases that producer before its stores or
+resolves finish. The next tile can load and update the other slot while the
+older slot prepares transfers and awaits acknowledgements. Each slot retains
+its own descriptor, clear/dirty state, transfer credits and byte counters.
+Ordered completion retains a slot until its result is consumed; a later
+tile cannot inherit an older transfer's bytes or fault. The binned frontend
+queues two retirement records per engine separately from live draw admission.
+
+The implemented RGBA8 plus D24S8 layout uses 8 KiB per slot at 4x MSAA,
+16 KiB per engine, within the proposed 64 KiB-per-engine budget. The wider
+MRT/format capacities in that budget remain proposed. Two slots may share
+identical image views only for disjoint tile rectangles; otherwise their
+allocations must be disjoint. An overlapping younger owner is rejected
+without image traffic. Context/translation state must remain pinned, and
+the caller must exclude virtual aliases of overlapping physical storage.
+
+Each slot exports a separate tagged line client. Combining those clients
+before checking write hazards would hide a younger slot's load behind an
+older blocked store. The binned arbiter therefore checks attachment requests
+before combining them, reserves export credits per engine and retains those
+credits through response consumption. Overlapping write bytes serialize;
+disjoint masked word writes can proceed independently. Reads conflict with
+the whole older write line, preserving coherent refill semantics.
+
+The mobile execution profile now selects four write-through L2 store entries
+per slice. The renderer reserves at most half for bulk exports, with one
+reserved export credit per engine in the default two-engine profile. Shader
+staging and unrelated compute retain the other headroom. The generic legacy
+`GpuConfig` default remains two entries. L2 lower IDs derive from this count:
+four load MSHRs, the configured store range, one blocking AMO ID and an
+optional uncached-read ID. The old two-entry ID layout remains unchanged.
+The store table permits concurrent aligned line writes only when their byte
+masks are disjoint; narrow writes remain conservative. Whole-line read
+hazards persist through the final upstream store response.
+
+This reservation is required by the shared-system integration: the first
+four-tile Sv32 overlap experiment stalls with an unacknowledged older export.
+A younger same-line store can otherwise hold the L2 lookup controller and
+block the shader traffic needed for the next tile. Slot-level arbitration,
+byte hazards and explicit store headroom remove that dependency. The direct
+native test and the real shared-CU/Sv32 test both keep older export
+acknowledgements withheld while the next slots execute; each final image is
+compared with a separate ordered unbinned renderer simulation. That reference
+shares arithmetic/backend RTL, so it checks the binned integration and ordering
+rather than independently proving the shared arithmetic. Cancellation during overlap,
+late export-fault attribution, empty tiles ahead of prefetched draws, exact
+MSAA/resolve accounting and reuse after drain are separate checks.
+
+The native four-tile overlap scene executes twelve draws. Both engines accept
+younger-slot loads while older-slot store acknowledgements remain withheld;
+the exact final image uses 1,800 useful load bytes and 1,800 useful store
+bytes in 8,869 deterministic component cycles. The four-tile shared-Sv32
+case executes real shader instructions on two shared CUs and repeats with
+fresh translation roots and physical backing, totaling 44,707 cycles for
+the two healthy submissions. These are test-service measurements, not
+representative DRAM throughput or 720p frame times.
+
+Both new standalone components pass the mapped 1 GHz synthesis gate at
+ASAP7 TC/SLVT with 25% boundary timing budgets and no omitted operators:
+
+| Component | Core setup slack | I/O setup slack | Standard-cell area | SRAM macro area |
+|---|---:|---:|---:|---:|
+| Two attachment slots, one engine | +10.920 ps | +119.095 ps | 21,775.00 µm² | 6,643.81 µm² |
+| Four-entry L2 store table | +465.547 ps | +350.498 ps | 1,875.99 µm² | 0 µm² |
+
+The attachment-store emission contains sixteen characterized SRAM macros;
+its small positive setup margin is a pre-layout result. The L2 table emission
+excludes the rest of the cache. Neither result qualifies whole-renderer or
+whole-GPU timing. Default-activity synthesis power does not measure frame
+energy. Current-stage PPA work uses synthesis only, as requested; no new
+placement or routing run is required.
+
+The same checkpoint emits the bounded two-engine renderer with SRAM macros
+enabled. Its synthesis run reaches the 900-second limit during logic
+optimization, before complete mapping or a timing/area report. The leftover
+container is stopped; the frozen run is recorded as unqualified. This attempt
+does not establish a whole-renderer clock, area or power result. It includes
+fixed-function rendering and eight resident tile entries, with CUs and the
+actual shared L2 outside the synthesis top.
+
+The default binned client now has 50 transaction IDs: twelve bin/record IDs,
+two groups of eighteen attachment IDs (nine per slot), and one texture ID per
+engine. The smaller test profile has twenty IDs. These are ownership
+namespaces, not a claim of fifty simultaneous DRAM requests or qualified
+memory bandwidth. At this checkpoint H2 still requires full-frame directory paging, automatic
+spill/restart and host integration, producer publication, realistic transfer
+throughput and the original workload gates. H3–H8 remain required.
+
+## Implementation evidence: paged bin directory and bounded retirement
+
+The [paged-directory record](performance/mobile-paged-bin-directory-2026-10-18.json)
+freezes the next optional bin/replay checkpoint. `TileBinDirectory`,
+`TileBinReplayPass` and `ResolvedTileBinReplayPass` accept a positive
+`pagedCapacity`; `tileSlots` then specifies a bounded direct-mapped metadata
+cache with a power-of-two entry count from 1 to 64, rather than the number of
+tiles in a pass. The mobile emission uses
+eight resident entries and capacity for 16,384 tiles, enough for the 3,600
+16x16 or 14,400 8x8 tiles of a 1280x720 grid. The generic maximum is 65,535
+tiles. The resident version-1 path remains available.
+
+A version-2 bin descriptor binds `directoryBase` and the exclusive 33-bit
+`directoryLimit` alongside its version-1 page pool. Hardware validates
+alignment, the full tile-count span, 32-bit address bounds and separation
+from the bin arena before memory traffic. Resolved replay also excludes
+overlap with immutable primitive/state records. The caller owns and pins
+these allocations and their translation context through pass completion;
+virtual aliases of physically overlapping allocations remain a caller
+precondition.
+
+Hardware initializes every backing entry before admitting appends, including
+when a caller reuses the same identity and addresses. Dirty victims write back
+as full 64-byte uncached lines, and clean completion flushes the remaining
+resident entries. Refill checks owner identity, tile, flags, status, counts
+and page bounds before permitting further bin writes. An acknowledged line
+must be visible to later reads in this memory domain. These transactions do
+not provide CPU-cache coherence or publication of external record producers.
+
+The explicit little-endian 64-byte entry layout is:
+
+| Word | Contents |
+|---|---|
+| 0 | Entry-format magic `0x47444401`; an initialized empty entry is all zero |
+| 1–3 | Context, pass, generation |
+| 4 | Tile ID |
+| 5 | Head-valid, opened, closed, reported and restart-valid bits 0–4; status bits 8–11; remaining bits zero |
+| 6–7 | Head and tail page addresses |
+| 8–10 | Committed reference count, tail-page count, last sequence |
+| 11–14 | Exact restart primitive, state, sequence and token |
+| 15 | Reserved zero |
+
+The directory retains report state independently of faultable backing in a
+packed one-bit-per-tile SRAM. Its 16,384-tile emission uses two characterized
+256x32 banks, totaling 2 KiB. Updates serialize a two-cycle word read/modify/write;
+fault scanning waits for an outstanding update. If backing fails, the bitmap
+prevents re-reporting tiles already handed to replay. Unavailable nonresident
+chain/count fields are zero and unusable in failed reports; the pass summary
+still preserves the exact physically acknowledged commit total. Cancellation
+drains offered metadata transactions and completes accepted-read validation,
+so a late transport or integrity fault retains priority over cancellation.
+
+Paged passes can also exceed the bounded per-engine result queues. Resolved
+replay now reserves result capacity before scheduler assignment and releases
+it only when the final resolved tile result is consumed. The scheduler uses
+these permits for both normal jobs and cancellation reports. A stalled engine's
+empty results therefore cannot fill its queue and pin the shared result port
+ahead of work for another engine. Queues remain bounded by resident capacity;
+they do not grow to the full frame's tile count.
+
+Verification builds and closes all 3,600 one-reference chains of a 16x16 720p
+grid with eight resident entries, checking every page chain against the input
+references. Directory traffic is 460,800 read bytes and 691,200 write bytes,
+including initialization and dirty flush, in addition to bin-page traffic.
+The two-reader path replays 768 ordered references across 192 pages for 96
+tiles with four resident entries while one reader is backpressured. Resolved
+replay checks 96 tiles, immutable records, metadata fault recovery and reuse
+under new generations. A separate blocked-empty-result workload checks that
+the other engine continues retiring work.
+
+The real SRAM model also initializes a 14,400-tile 8x8-grid directory, seals
+empty tiles at both bank boundaries and the final tile, then cancels and
+checks exactly one result for every tile. This verifies directory ownership
+and report SRAM coverage; it does not render a 720p image. Other checks cover
+one-entry caching, repeated eviction, page links, invalid ordering, exact
+exhaustion/restart, duplicate seals, malformed backing, metadata read/write
+and final-flush faults, corrupt refills, and cancellation during validation.
+
+The broad regression passes 238 tests in 25 suites. After the final byte-counter
+retiming, all 69 affected directory/scheduler/replay checks pass again alongside
+18 accumulator and prefix-adder checks, for 87 follow-up checks in seven suites.
+The evidence retains the source snapshots and exact changed files for both
+runs. Randomized 64-bit accumulation checks include wrap, idle cycles and
+clear priority; the accumulator's original observation path remains the default.
+
+Synthesis screening at ASAP7 TC/SLVT, 1 GHz and 25% input/output timing budgets
+identifies and removes three successive critical paths:
+
+| Emission | Core setup slack | I/O setup slack |
+|---|---:|---:|
+| Initial metadata validation | −96.777 ps | −82.424 ps |
+| Registered response and validation | −95.015 ps | +123.686 ps |
+| Carry-save byte counters | −115.424 ps | +43.997 ps |
+| Prefix addition for registered counter observation | +40.938 ps | +127.332 ps |
+
+The final emission passes complete mapping and every reported synthesis setup
+path. It contains 41,579 standard cells and two SRAM macros: 5,965.86 µm² of
+standard-cell area plus 830.477 µm² of SRAM, totaling 6,796.34 µm². Its
+default-activity power estimate is 0.0387182 W, without representative workload
+switching. The small positive margin is pre-layout and applies to this directory
+component, excluding replay readers, render engines, CUs and shared L2. It does
+not qualify their integrated clock, hold timing, frame energy or frame rate.
+
+At this frozen checkpoint the renderer frontend still admits and retains a bounded table of per-tile
+attachment descriptors. Connecting this paged backend requires replacing
+that table with bounded grid-descriptor generation and carrying the new
+metadata client through rendering and host submission. Full-frame image and
+transfer-throughput qualification, automatic spill/restart, producer
+publication and the remaining H0–H8 gates remain open. Current PPA work uses
+synthesis only.
+
+## Implementation evidence: rendering across a paged full-frame grid
+
+The [paged-rendering record](performance/mobile-paged-rendering-2026-10-18.json)
+connects the paged directory and immutable record replay to both render
+engines. A positive `TileBinRenderPipeline.pagedCapacity` selects version-2
+bin backing. The outer render descriptor and immutable record ABI retain
+their existing versions. The resident path remains available with capacity
+zero; no production host command or capability-discovery ABI is implied.
+
+Paged admission walks and validates the complete grid before allowing any
+memory traffic. It retains no per-tile descriptor array: its result contains
+only status. Each render engine has one `TileGridDescriptorLookup`, which
+snapshots the pass and divides a 16-bit tile ordinal by the column count over
+sixteen cycles. It then regenerates the tile origin and partial-edge extents.
+This bounded state replaces the renderer's descriptor table. The per-frame
+sealed bitmap is also absent in paged mode; the directory's persistent
+closed/reported state makes repeated seals idempotent. Result queues,
+retirement queues, caches and descriptor lookups remain bounded independently
+of frame tile count.
+
+Admission also checks that complete color, depth and optional resolve
+allocations are disjoint. Per-tile touched-span checks alone can miss color
+data in one tile aliasing depth data in a different tile. Paged metadata must
+be separate from bin pages, immutable records, attachments and programmable
+shader windows. Full-precision tile checks still reject a last-tile image
+overflow before initialization or partial rendering starts. Physical virtual
+aliases and translation/allocator ownership remain caller responsibilities.
+
+Descriptor results remain stable under backpressure. Cancellation drains a
+lookup even if its attachment owner has not begun, and the final completion
+waits for every lookup to become idle. A later binding cannot inherit an old
+descriptor. Tests enumerate all 3,600 16x16 and 14,400 8x8 tile descriptors of
+a 1280x720 grid, including non-power-of-two column counts, partial edges,
+nonzero origins, wide legal coordinates, malformed ordinals and cancellation.
+
+The rendering checks include an 81-tile clear-start frame with 243 ordered
+draws. Its complete blend/depth/stencil image matches a separate unbinned
+renderer, with 41,472 useful store bytes. A blocked final empty-tile result
+stream on one engine does not stop the other engine from retiring more than
+the bounded result capacity. Metadata read faults invalidate the image and
+drain before healthy same-backing reuse.
+
+A complete sparse 1280x720 frame runs with real attachment and report SRAM
+models, four resident directory entries and all 3,600 tiles. Nine draws touch
+three tiles spanning the first, middle and last portions of the frame. The
+pass uses load-start attachments initialized to known values. All 1,843,200
+color/depth words match the unbinned reference, including untouched pixels;
+every tile reports once. Useful attachment loads and stores are 5,896 bytes
+each in 666,015 deterministic component cycles. Empty untouched tiles report
+zero attachment traffic. The reference shares raster/arithmetic/backend RTL,
+so this verifies paged integration and ordering rather than independently
+proving those shared blocks or API rasterization semantics.
+
+The programmable integration renders a 70-tile grid through two actual shared
+CUs, coherent L2 and Sv32 translation. It compares complete images under
+fresh roots and physical backing, injects a metadata-read fault, and reuses
+the renderer after drain. The three submissions total 34,386 test-service
+cycles; peak graphics CU ownership is two and both engine clients execute
+shader tasks. Common shader payloads remain memory-backed, so H5 is open.
+
+The default emitted mobile profile has 16,384 directory tiles and eight
+resident entries. Its report bitmap occupies 2 KiB of the existing primitive/
+state budget alongside the 1 KiB record caches; the proposed 368 KiB aggregate
+data-array budget is unchanged. Directory backing needs up to 1 MiB in memory
+and is not an on-chip array. Implemented persistent profiles check the
+two-slot credit limit, at most four engines and the reserved L2 store headroom.
+The complete line namespace is now 51 IDs: thirteen bin/record/metadata IDs,
+two eighteen-ID attachment groups, and two texture IDs. The smaller tests
+use 21 IDs. The shared-system harness derives translation and host namespaces
+from these counts.
+
+All 270 regression checks in 28 suites pass on the frozen source, including
+the complete 720p image, the paged shared-CU/Sv32 case, the resident paths,
+MSAA/resolve, prefix restart, faults, backpressure and arithmetic checks.
+
+Both new control components pass mapped 1 GHz synthesis setup screening at
+ASAP7 TC/SLVT with 25% input/output timing budgets and complete mapping:
+
+| Component | Core setup slack | I/O setup slack | Standard cells | Cell area |
+|---|---:|---:|---:|---:|
+| One grid descriptor lookup | +189.467 ps | +485.830 ps | 6,406 | 895.941 µm² |
+| Paged fixed-function admission | +256.767 ps | +486.672 ps | 37,772 | 5,100.48 µm² |
+
+These emissions have no SRAM or CUs. The admission result has no descriptor
+table and this timing scope does not include programmable shader-window
+validation. Neither component result establishes integrated renderer/GPU
+timing or hold closure. Power estimates use default synthesis activity and
+do not measure frame energy.
+
+The complete fixed-function paged renderer is emitted with 34 SRAM macros
+(32 attachment banks and two report banks). Its synthesis attempt reaches
+the 900-second limit during logic optimization, before a qualified mapped
+netlist or timing/area result. The leftover run container is stopped. The
+record preserves that failed attempt; it provides no integrated clock or
+power claim and does not include CUs or shared L2.
+
+These are sparse-image and controlled-memory correctness workloads. They do
+not establish a realistic 720p frame budget, DRAM throughput, whole-GPU clock
+or frame energy. Automatic spill/restart, host submission, producer cache
+publication, workload throughput, broader formats/resources and H0–H8 closure
+remain required. Current PPA screening uses synthesis only.
+
+## Implementation evidence: automatic spill into preallocated bin segments
+
+The [segmented-spill record](performance/mobile-segmented-bin-spill-2026-10-18.json)
+adds automatic bin-page fallback through the writer/reader store, resident and
+paged directories, and both render engines. The pool descriptor now accepts
+version 2 independently of the directory descriptor version. The outer render,
+resolved-record and page-header versions remain unchanged. These are typed RTL
+interfaces; this checkpoint does not define a production host binary ABI.
+
+A version-2 pool reserves the exclusive virtual envelope `[base,limit)` and
+uses its initial prefix `[base,initialLimit)` followed by up to eight
+preallocated fallback segments. The initial prefix may be empty. Each used
+fallback is nonempty, page aligned, increasing, nonoverlapping and contained
+in the envelope. Inactive entries must be zero; the last used end must equal
+`limit`. Version 1 retains its contiguous arena and ignores extension fields.
+The caller preallocates and pins all used backing before submission. Hardware
+crosses a checked boundary with one allocation bubble, without closing a tile
+or resubmitting its primitive. This is bounded automatic spillover, not an OS
+allocator or automatic continuation after every segment fills.
+
+Pool, reader and whole-pass admission validate the eight segment entries
+sequentially before memory traffic. Admission uses the same elaborated page
+size as the renderer's children. The whole reserved envelope, including gaps,
+remains exclusive from record, attachment, metadata and shader arenas. Gaps
+may be unmapped: allocation, replay heads/links and evicted directory head/tail
+checks exclude them before any bin access. Replay capacity counts actual
+segment pages rather than reserved gaps. Page-header ordinals retain their
+address-offset meaning, `(pageAddress-pool.base)/pageBytes`, across gaps.
+
+Next-segment activation can happen without an allocation request. This lets
+an empty initial prefix progress through writer/directory binding, whose
+admission waits for allocator readiness. Offered allocation replies remain
+stable across boundary activation, backpressure and cancellation. Completion
+propagates a four-bit `spillTransitions` count through the writer, store,
+directory and replay pass. It counts fallback activations, including an
+eagerly activated but unused next segment; `allocatedPages` counts actual
+successful allocations. After all segments fill, the exact first rejected
+reference and committed attachment prefix remain available for caller-driven
+restart. Automatic continuation/restart remains open.
+
+The native checks cross all eight fallback boundaries with both empty and
+nonempty initial backing, stalled replies and exact exhausted tokens. They
+cover malformed counts, alignment, overlap/order, inactive entries, final
+bounds, cancellation during validation and the final exclusive 4 GiB page.
+Reader tests reject a head or forward link into a reserved gap before
+fetching it. Paged-directory tests corrupt an evicted head/tail into a gap
+and verify that no subsequent bin write occurs. A twenty-reference writer/
+reader chain crosses two fallbacks, verifies address-offset headers and
+ordering, faults a later-segment payload and recovers with a fresh generation.
+
+Resident and paged rendering each execute thirteen ordered draws per tile
+across two fallbacks, with 26 committed/resolved references, no resubmission,
+zero attachment loads and 1,024 useful store bytes. Complete blend/depth/
+stencil images match the separate unbinned RTL reference. Every bin request
+is checked against actual segments, including reads. A separate exhaustion
+case fills an initial page and one fallback, retains both sequence-seven
+restart references, and compares the exported/loaded continuation image to
+uninterrupted draw order. That continuation is still caller-driven.
+
+The 70-tile programmable case uses an empty initial pool and two one-page
+fallbacks through actual shared CUs, coherent L2 and Sv32. Healthy, metadata-
+read-fault and healthy-reuse submissions use fresh roots/physical backing;
+healthy complete images match and both shader clients execute. Existing
+sparse 720p SRAM-image, MSAA/resolve, attachment-slot, L2, arithmetic and
+resident compatibility checks remain in the regression. All 279 checks in
+28 suites pass on the recorded source. The image oracle shares raster,
+arithmetic and backend RTL and does not independently qualify GLES semantics.
+
+The changed components pass mapped synthesis setup screening at 1 GHz,
+ASAP7 TC/SLVT and 25% I/O timing budgets:
+
+| Component | Core setup slack | I/O setup slack | Standard cells | Cell area |
+|---|---:|---:|---:|---:|
+| Segmented page allocator | +405.006 ps | +270.371 ps | 5,620 | 905.549 µm² |
+| Segmented writer/reader store | +97.102 ps | +128.447 ps | 44,648 | 6,214.35 µm² |
+| Paged fixed-function admission | +242.091 ps | +489.487 ps | 40,864 | 5,566.03 µm² |
+
+All operators map and all reported setup groups, including I/O, pass. These
+4096-byte-page component emissions contain no SRAM, render engines, CUs or
+shared L2; admission excludes programmable shader-window validation. The
+results do not establish current whole-renderer/GPU timing, hold closure or
+frame energy. Default-activity power estimates are recorded separately from
+representative workload power. No new place-and-route run is performed.
+
+H2 still requires continuation/restart automation after all backing fills,
+host submission/capability integration, producer publication and realistic
+transfer/workload throughput. H3–H8 and the original H0/H1 acceptance gates
+remain required. Current PPA iteration continues with synthesis only.
+
+## Implementation evidence: bounded automatic bin continuation
+
+The [continuation record](performance/mobile-bin-continuation-2026-10-18.json)
+adds `ContinuingTileBinRenderPipeline` and its hardware controller. One
+version-1 streaming descriptor supplies the original render pass and a 16-bit
+restart budget. The producer submits each append once; hardware retains a
+rejected reference, drains the exhausted batch, reloads its exported image and
+retries that exact reference before admitting another append. Successful
+producer appends are never resubmitted. The original explicitly sealable
+renderer remains available. The streaming interface owns its tile seals:
+input end or exhaustion establishes a batch boundary.
+
+Positive restart budgets require both color and depth/stencil stores, matching
+the existing usable-prefix contract. A zero budget allows one batch with the
+ordinary attachment modes. All original admission checks remain active,
+including the original resolve allocation even while intermediate resolve is
+suppressed. A child batch must finish with success/exhaustion, every tile
+prefix must be usable and the batch must commit a reference before an internal
+retry. Cancellation, faults, unsafe prefixes, zero progress and exhausted
+budgets terminate after drain. The limit permits at most 65,535 restarts and
+65,536 batches; it does not hide an unbounded no-progress loop.
+
+The controller keeps one accepted producer append and offers exactly one
+producer reply after its commit or terminal rejection. Offered replies and
+tile events remain stable under backpressure. A submission stays busy through
+all internal drain/rebind gaps and until its public completion is consumed.
+VM, immutable records, bin/metadata/image allocations and shader staging must
+remain pinned throughout that interval. The child summary and all tile events
+must drain before the same bin arena is recycled. On a later fault, earlier
+exported tiles do not validate the final image.
+
+Tile events carry `(batch,tile)` and describe individual visits. The logical
+submission has one final completion, a 17-bit batch count, a 16-bit actual
+restart count and 64-bit aggregate work/traffic counters. Nested cache counters
+in `last` explicitly describe the last batch. Append `recordAddress` and
+`committedCount` are also scoped to their tagged batch: older bin addresses
+are recycled and are not durable handles. This is a typed RTL submission
+interface, not a production host command ABI.
+
+Version-3 directory bindings retain strict per-tile sequence history across
+internal batches. Resident mode keeps validity/sequence registers; paged mode
+reuses the existing 64-byte metadata entry. Its magic is `0x47444402`, flag bit
+5 records sequence validity, and word 10 holds the last committed sequence.
+Every version-3 end closes/reports all logical tiles, including untouched
+ones, and flushes their nonzero owner-tagged entries. Resume requires a safely
+completed predecessor and the identical identity, complete pool descriptor,
+grid count and metadata allocation. Changed or failed ownership rejects the
+binding before traffic.
+
+Paged resume reads and validates the complete previous journal before new
+appends. It retains sequence validity/value while resetting current chain,
+count, closed/reported and restart fields. Empty, unreported, foreign or
+malformed history is a fault, so cleared metadata cannot silently erase an
+older sequence. An accepted read is still validated through cancellation;
+corruption wins over cancellation and prevents reset writes. Existing pointer
+membership and reserved-gap checks remain active. Sequence history adds no
+full-frame SRAM array or memory transaction ID. Versions 1 and 2 retain their
+existing fresh-binding behavior.
+
+After the first batch, attachment load operations select the exported image.
+Empty untouched load-start tiles remain lazy. Resolve executes only after the
+final input end; intermediate batches export sample storage without resolving.
+The controller therefore preserves blend, depth and stencil ordering and the
+original clear/load semantics across arena reuse.
+
+The frozen regression includes these complete native images, with two
+128-byte bin pages and two render engines:
+
+| Mode | References | Batches / restarts | Useful loads | Useful stores | Useful resolve bytes |
+|---|---:|---:|---:|---:|---:|
+| Resident, 1x | 38 | 4 / 3 | 672 B | 1,696 B | 0 B |
+| Paged, 1x | 38 | 4 / 3 | 672 B | 1,696 B | 0 B |
+| Paged, 4x MSAA | 18 | 2 / 1 | 3,068 B | 5,628 B | 512 B |
+
+Store bytes include resolve stores. Each input receives one reply. Every
+RGBA8/D24S8 word matches the separate unbinned reference; the MSAA resolve also
+matches the rounded average of the four final samples. Another workload leaves
+an older tile absent from an internal batch, accepts its next ordered reference
+and rejects a duplicate after that boundary. Tests cover zero/one restart
+budgets, zero available pages, reload faults, journal eviction/corruption,
+cleared/unpublished history, cancellation and stable held outputs. The
+unbinned oracle shares raster/arithmetic/backend RTL and does not independently
+qualify GLES raster or numeric semantics.
+
+A 70-tile programmable frame runs this controller through actual shared CUs,
+coherent L2 and Sv32, using an empty initial pool and two fallback pages.
+Healthy submissions execute 18 references over two batches and one restart;
+complete images match. The sequence includes a metadata-read fault, a
+post-restart attachment reload fault and healthy reuse with fresh roots and
+physical backing. Both engine clients execute shaders and peak CU ownership
+is two. VM remains fixed across internal batches. The broader regression also
+retains the existing complete sparse 720p SRAM image, explicit-prefix restart,
+MSAA/resolve, double buffering, shared L2, shader routing and arithmetic checks.
+All 299 checks in 29 suites pass on the recorded source.
+
+The changed components pass mapped 1 GHz synthesis setup screening at ASAP7
+TC/SLVT with 25% input/output timing budgets:
+
+| Component | Core setup slack | I/O setup slack | Standard cells | Cell area |
+|---|---:|---:|---:|---:|
+| Continuation controller | +183.783 ps | +373.772 ps | 29,410 | 4,746.69 µm² |
+| Paged directory with sequence journal | +20.999 ps | +180.489 ps | 52,177 | 7,395.31 µm² |
+| Paged fixed-function admission | +250.258 ps | +478.082 ps | 40,874 | 5,548.27 µm² |
+
+The directory also contains two report SRAM macros totaling 830.477 µm²;
+that macro area is separate from the table's standard-cell area. Mapping and
+all reported setup groups pass. Controller/admission have no SRAM. None of
+these emissions contains render engines, CUs or shared L2. Admission excludes
+programmable shader-window validation. Default-activity power is recorded
+without interpreting it as workload power or frame energy.
+
+The full fixed-function continuation renderer is emitted with the same 34
+SRAM macros: 32 attachment banks and two report banks. Its default profile
+retains 16,384 directory tiles, eight resident entries, 4 KiB bin pages and 51
+memory IDs. Sequence history reuses metadata backing, so the proposed 368 KiB
+data-array budget is unchanged. This structural emission does not establish
+whole-renderer/GPU mapped timing or later hold/physical closure. No new
+place-and-route run is performed.
+
+Host submission/capability integration, producer cache publication, full-frame
+automatic-continuation SRAM workloads, realistic transfer/frame throughput,
+independent API oracles and the remaining H0–H8 requirements stay open. Current
+PPA screening continues with synthesis only.
+
+## Implementation evidence: attachment line transfers and SRAM continuation
+
+The [attachment-transfer record](performance/mobile-attachment-line-transfer-2026-10-19.json)
+adds `TileAttachmentLinePort` to both attachment SRAM slots per engine. It
+collects disjoint 32-bit writes into masked 64-byte requests and scatters each
+line acknowledgement back into exactly one acknowledgement per accepted
+word. The default eight write-word credits use two gather groups, with a
+separate reserved read credit. This preserves the existing nine-ID namespace
+per slot and the full renderer's 51 reserved memory IDs. Only IDs 0/1 for
+write groups and 8 for the read can issue from a default slot.
+
+Full masks, a full unsealed gathering window, group pressure, a same-line
+read or 32 idle cycles seal a partial group. Counting unsealed gathering
+members prevents old completed replies from prematurely sealing a new group.
+Offered line payloads remain immutable under backpressure; unused data words
+are zero. Line responses may reorder and are captured independently of held
+word replies. A read can complete while all eight write acknowledgements are
+withheld. Fault and cancellation paths drop only unoffered work; offered and
+issued transactions retain ownership until their replies drain. Slot
+completion and rebinding require the line port to drain completely.
+
+Four pass-local read-cache lines per slot cover color/depth at two quad rows.
+Faulted fills never become cache hits, writes invalidate matching lines and
+every new owner invalidates the cache after drain. Tag lookup and word return
+are registered. The contiguous and quad-working-set tests return 64 exact
+words using four line fills and 60 hits, including subsequent write
+invalidation and owner-rebinding checks.
+
+Useful loads count returned requested words, including cache hits, rather
+than complete line fills. Stores and resolves count actual issued byte-mask
+bytes, including faulted issued writes; resolve bytes are a subset of store
+bytes. Dropped unoffered work adds no external stores. Events widen to eight
+bits for the two-slot sum; per-slot totals remain 16 bits and submission
+aggregates remain 64 bits. Logical load bytes therefore cannot be inferred
+by multiplying physical read requests by four or by 64.
+
+The default data-array budget increases from 368 to 369 KiB for 1 KiB of
+read-cache data over two engines and two slots. The additional 512 bytes of
+registered gather data, 144 bytes of registered word-reply data, tags, masks
+and control remain queue/state costs outside that major-array sum. Existing
+attachment capacity is still 16 KiB per engine, compared with the proposed
+64 KiB per engine; coalescing does not enlarge the attachment SRAM.
+
+Two controlled comparisons use identical 80-cycle responses and one external
+write credit. The word-port stream offers one word every six cycles when
+credits permit. The SRAM case clears a 16x16 RGBA8+D24S8 tile, updates 32
+selected color/depth words, then checks every exported word:
+
+| Workload | Baseline writes / cycles | Coalesced writes / cycles | Cycle speedup |
+|---|---:|---:|---:|
+| 64-word port stream | 64 / 5,231 | 8 / 1,066 | 4.91x |
+| 512-word real SRAM export | 512 / 42,185 | 64 / 7,245 | 5.82x |
+
+Both SRAM variants export the exact 512-word image, with 2,048 useful store
+bytes and zero old attachment reads. These measurements qualify this latency
+and credit model, not DRAM bandwidth or frame rate. Buffering also adds
+latency: the small low-latency 4x MSAA continuation case increases from the
+previous frozen source's 14,895 cycles to 17,021 cycles. The baseline
+remains selectable with `coalesceAttachments=false`; the measured export
+speedup is not universal. Serial SRAM export preparation remains open.
+
+A new complete sparse 1280x720 test exercises automatic continuation through
+actual SRAM functional models. Three active tiles, 0/1799/3599, receive 27
+ordered references once from the producer. Three 128-byte bin pages force one
+hardware restart, two batches and 7,200 unique `(batch,tile)` visits over
+3,600 logical tiles. All 1,843,200 final RGBA8/D24S8 words match uninterrupted
+unbinned RTL. Untouched empty visits issue no attachment traffic. The run
+records 8,844 useful load bytes, 8,844 useful store bytes,
+162 physical attachment read lines, 1,128 masked write
+lines and 1,379,856 simulator cycles. This remains a sparse functional
+workload; the oracle shares raster/arithmetic/pixel backend implementation
+and does not independently qualify GLES semantics or dense frame throughput.
+
+The current-source regression also repeats the actual shared-CU/coherent-L2/
+Sv32 70-tile continuation sequence, including metadata and reload faults and
+healthy reuse. Both engine clients execute shaders and peak ownership is two
+CUs. All 312 checks in 30 suites pass on the frozen 463-file source,
+including credit windows 1/2/8/16, sparse/full masks, reordered replies,
+read reservation, held outputs, abort/rebind and prior image/order checks.
+
+A subsequent test-composition correction qualifies common response-ready
+by the selected transaction range and asserts exactly one downstream response
+handshake per accepted common response. An unrelated ready client can no
+longer consume a stalled client's response. The new test checks every pairing
+of 128 transaction IDs and 64 client-ready masks, including unowned IDs. All
+five affected actual shared-CU image/fault/reuse scenarios also pass again.
+These six focused checks use a second frozen 464-file snapshot; only the
+validation composition and its new test differ. Main RTL, build configuration
+and synthesis emissions are unchanged. The two runs cover 313 unique checks
+in 31 suites; they are not one 313-check invocation.
+
+Mapped synthesis screening uses 1 GHz, ASAP7 TC/SLVT and 25% I/O timing budgets:
+
+| Component | Core setup slack | I/O setup slack | Standard cells | Cell area |
+|---|---:|---:|---:|---:|
+| One attachment line port | +364.228 ps | +234.961 ps | 20,552 | 2,904.58 µm² |
+| Two-slot coalesced store | +54.424 ps | +231.975 ps | 205,032 | 27,113.9 µm² |
+| Same-source baseline store | +23.924 ps | +126.924 ps | 164,355 | 21,614.2 µm² |
+
+Both store variants additionally contain the same 16 attachment SRAM macros,
+with 6,643.81 µm² of macro area, separate from standard cells. The line port
+has no SRAM macro. All reported setup groups and complete-mapping checks
+pass. Default-activity power estimates are 0.00805052 W for the port,
+0.319839 W for the coalesced store and 0.291331 W for the baseline; these are
+not representative workload power or energy/frame. The cost of buffering is
+therefore reported alongside traffic and cycle improvements.
+
+The full fixed-function continuation emission still contains 34 SRAM macros,
+32 attachment banks and two report banks. Structural emission and component
+synthesis do not establish current-source whole-renderer/GPU mapped timing,
+hold closure or frame rate. Current PPA evaluation uses synthesis only.
+
+Host submission/capability discovery, producer cache publication, realistic
+transfer/frame budgets, independent API oracles and the remaining H0–H8
+requirements remain open. This checkpoint continues functional hardware
+development alongside component synthesis screening.
+
+## Implementation evidence: bounded memory submission
+
+The [memory-submission record](performance/mobile-memory-bin-submission-2026-10-19.json)
+adds `TileBinJobReader` and `MemoryTileBinRenderPipeline`. A bounded descriptor
+request now feeds the continuing renderer without an external RTL producer
+supplying every begin/append/end. The [version-1 memory ABI](MOBILE_TILE_BIN_JOB_ABI.md)
+defines the complete 512-byte descriptor and 32-byte append-record layouts,
+reserved bits, exclusive limits, completion fields and resource record.
+It is separate from the existing opcode-7 single-tile ABI.
+
+Eight independently tagged descriptor reads may return out of order. One
+64-byte append-line buffer supplies two records, retaining each accepted
+reference through its producer reply and any internal bin restart. A zero
+record count executes the requested empty-grid attachment operations without
+reading the append arena. Full-precision count/size arithmetic and aligned,
+padded append allocations prevent four-GiB wrap or overfetch. Descriptor and
+append envelopes cannot overlap enabled writable bin, metadata, image,
+resolve or programmable-staging allocations. The bin envelope protects its
+reserved spill gaps as well as allocated segments. Ordinary whole-grid,
+segment, handle, format and shader-window admission remains in the renderer.
+
+Every offered external read stays immutable through cancellation and retains
+its ID until response. An offered begin is also retained; cancellation reaches
+the renderer after begin acceptance. Accepted append replies, queued reads
+and the renderer summary drain before host completion. Faulted data never
+becomes a successful input. Frontend errors merge with the final renderer
+status, preserving late read-fault priority. Completion distinguishes frontend
+status, accepted producer appends, requested input bytes and the nested
+renderer summary. A held final completion remains stable and retains busy.
+Per-tile diagnostic pulses are drained internally, so software need not read
+individual events to permit completion.
+
+A separate eight-word `0x47424301` resource record reports the descriptor
+magic/sizes, engine and tile capacities, sample limit, mode flags, page/credit
+sizes, restart limit and line-ID count. These are read-only output signals
+for host integration; they do not alter the existing capability word or add
+a production MMIO register. The default engine reserves nine frontend IDs
+and the existing 51 renderer IDs, totaling 60, with a registered output queue
+and response selection qualified by the destination transaction range.
+
+Complete 16x8 images exercise one public memory submission with 18 producer
+references and one internal restart:
+
+| Mode | Backing | Batches / restarts | Descriptor / append reads | Compared sample words | Test cycles |
+|---|---|---:|---:|---:|---:|
+| 1x | Empty initial prefix, two fallback segments | 2 / 1 | 512 B / 576 B | 256 | 6,741 |
+| 4x MSAA | Two contiguous pages, actual SRAM models | 2 / 1 | 512 B / 576 B | 1,024 | 21,917 |
+
+The segmented case counts four spill transitions and checks that no bin
+request enters a reserved gap. All final color/depth/stencil words match a
+separate unbinned RTL renderer; the MSAA resolve matches the rounded average
+of the four final samples. The oracle shares raster/arithmetic/backend RTL
+and does not independently qualify GLES semantics. Additional cases cover
+stream-read faults followed by healthy reuse, malformed records, queued-read
+cancellation with late faults, empty 8x8-grid clears and a partial 16x16 tile.
+
+Actual shared CUs, coherent L2 and two-level Sv32 run the memory-submitted
+path through healthy, descriptor-page-fault, append-page-fault, shader-fault
+and healthy-reuse scenarios. Descriptor, append and immutable-record pages
+are read-only. Public submissions use fresh roots/physical backing, with VM
+fixed throughout each internal continuation. Healthy complete images match;
+both engine clients execute shaders and peak ownership is two CUs. The five
+scenarios take 49,324 cumulative test cycles on two four-lane/two-warp CUs.
+All 56 checks in eight suites pass, including 18 reader cases, six integrated
+pipeline cases and retained legacy descriptor, continuation, ABI, routing and
+mobile configuration/budget suites. Earlier render-core RTL is unchanged;
+the preceding 312-check regression and routing follow-up remain separately
+frozen evidence.
+
+Both standalone paged reader variants pass complete-mapping synthesis setup
+screening at 1 GHz, ASAP7 TC/SLVT and 25% I/O budgets:
+
+| Reader | Core setup slack | I/O setup slack | Standard cells | Cell area |
+|---|---:|---:|---:|---:|
+| Fixed-function | +218.187 ps | +334.106 ps | 43,651 | 6,410.16 µm² |
+| Programmable staging checks | +167.470 ps | +350.820 ps | 44,204 | 6,464.17 µm² |
+
+Neither reader emission contains SRAM, render engines, CUs or L2. Default-
+activity power estimates are 0.0314472 W and 0.0314 W respectively, separate
+from representative workload power or frame energy. The functional snapshot
+extends two test fixtures after the synthesis snapshot; all main RTL/build
+sources match exactly, and emitted RTL/report hashes are checked.
+
+The full fixed-function memory-submission hierarchy is emitted with the same
+34 SRAM macros, 32 attachment banks and two report banks. Descriptor words
+and the append cache add 576 bytes of fetch registers, plus the decoded
+snapshot, queues and control, outside the unchanged 369 KiB major-array
+budget. Structural emission and reader synthesis do not establish current
+whole-renderer/GPU timing, hold closure or frame throughput. PPA remains
+synthesis-only at this development stage.
+
+The next host integration must connect this engine/resource record to unified
+commands, protected VM changes and safe command reset. Producer-cache
+publication, physical-alias/allocation ownership, CPU-visible coherence,
+representative frame budgets and the remaining H0–H8 requirements stay open.
+
+## Implementation evidence: binned-render unified AXI host
+
+The [host-integration record](performance/mobile-binned-host-integration-2026-10-19.json)
+connects the memory-submitted renderer to the production `GpuHostSystemAxi`
+under the explicit `binnedRendering=Some(MobileGpuConfig(...))` profile. The
+normal emitter selects it with `--binned-tile-jobs`; adding `--frag-core
+--shared-graphics --parallel-graphics` uses the real shared shader CU pool.
+The default is four 16-lane/eight-warp CUs, two tile engines, 1280x720,
+128 KiB L2 and a 256-bit AXI data bus. Existing profiles retain their command
+contracts and pass regression. See the [host ABI](MOBILE_TILE_BIN_JOB_ABI.md)
+for submission fields, statuses and software obligations.
+
+The reserved discovery word at `0x068` reads zero on legacy profiles and
+`0x160` on the new profile. Eight read-only GBC1 words occupy `0x160..0x17c`;
+writes fail with SLVERR. No old capability bit is repurposed, and the old
+single-tile descriptor format is not advertised by this profile. Opcode 7
+now selects GBJ1 only when this resource record is present. A command supplies
+the descriptor virtual base, exclusive 33-bit limit and exact 512-byte size;
+unsupported flags and obsolete descriptor sizes fail before input traffic.
+Unified completion retains command ID, opcode, status and success, with
+`bytesProcessed` counting requested padded append-line bytes, including
+faulted reads, excluding descriptor bytes.
+
+Binned work waits for earlier nonkernel system commands and legacy DMA
+acknowledgements. Unified copy/fill/resolve/invalidate commands wait for the
+renderer to drain; compute may overlap in the same pinned VM. Legacy register
+fill/blit/strided kicks reject while a bin command is pending or active.
+Completion arbitration has a registered queue and preserves stalled results.
+Legacy DMA/scanout/IRQ control remains available, without adding another
+shader core or attachment store. Bin software uses unified STATUS/COMPLETION;
+the legacy render STATUS and fragment/OM/texture counters do not measure GBJ1.
+
+The new line fabric has independent translators for legacy DMA, the root
+memory renderer and each engine's shader staging. Its default namespace
+contains 192 data IDs and four walker IDs in a 256-ID interface. Including
+the rest of `GpuSystem` uses 308 IDs and a nine-bit external AXI ID. Requests
+are queued; response readiness is qualified by the selected transaction
+range. Outstanding ownership includes local translation faults and stalled
+upper replies. SATP/flush exclusion extends through command queues, renderer
+and translator ownership, queued adapter results and retained software
+completions. Translation counters separately cover legacy DMA, root traffic,
+stage zero and the remaining stages.
+
+Safe command reset cancels rendering and drains every offered or accepted
+memory operation before ACK, including late descriptor and attachment faults.
+Old-epoch completions are discarded, queued commands abort, and healthy reuse
+remains possible. Software still publishes immutable inputs before submission
+and pins the mappings and backing allocations; physical alias ownership and
+CPU-visible coherence are not established by virtual envelope checks.
+
+The main regression passes 104 checks in 13 suites. Three end-to-end host
+profiles run two submissions each, first bare and then remapped with Sv32:
+fixed-function rendering with one system CU, two small shared shader CUs, and
+four shared 16-lane/eight-warp CUs. The complete 16x8 or 32x16 sample images match an unbinned RTL reference,
+with 18 references, two batches and one internal restart per submission.
+Queued copies start after final attachment export, held completions retain
+VM ownership, and peak shader ownership reaches two/four CUs. These host tests
+use eight L2 sets/two ways; the emitted default has 512 sets/four ways. The
+reference shares raster/arithmetic/backend RTL and is not an independent API
+oracle.
+
+Seven fresh-VM fault/recovery scenarios check obsolete sizes, unsupported
+flags, old unified render opcodes, descriptor/append bus faults, shader traps
+and healthy reuse. A real unified compute command also completes. Reset tests
+hold a descriptor read or attachment write through late fault replies, abort
+queued DMA, reject VM mutation until ACK and verify healthy reuse. A separate
+end-to-end check verifies Sv32 legacy fill, blit and strided copy with exact
+physical outputs; a queued bin cannot read its descriptor before the earlier
+fill's B acknowledgement. Together these are 105 passing checks in 14 suites.
+The additional DMA fixture is qualified after the frozen primary run; all
+476 primary source/ABI files remain byte-identical, with one test file added.
+
+Both new standalone components pass complete-mapping synthesis setup at
+1 GHz, ASAP7 TC/SLVT and 25% I/O budgets:
+
+| Component | Core setup slack | I/O setup slack | Standard cells | Cell area |
+|---|---:|---:|---:|---:|
+| Command adapter | +603.993 ps | +415.567 ps | 896 | 122.093 µm² |
+| Translated memory fabric | +296.897 ps | +304.988 ps | 219,781 | 29,569.5 µm² |
+
+Neither component contains renderer/CU/L2/SRAM arrays. Default-activity power
+estimates are 0.000607577 W and 0.146202 W respectively; representative
+workload power and energy/frame remain unmeasured. Main RTL/build sources,
+emitted RTL and synthesis report hashes are checked against the frozen run.
+No new place/route is performed.
+
+The complete default host structurally emits four shared CUs and one memory
+bin engine, with 114 32-bit and 1,184 64-bit SRAM macros across the hierarchy.
+The bin subtree retains 34 32-bit macros: 32 attachment and two report banks.
+Legacy host control adds no private CU or SRAM macro. Whole-host macro counts
+include CU register/cache/shared-memory and L2 banks; the proposed 369 KiB
+major-array capacity budget is not total implemented chip storage or area.
+This structural emission and the component results do not qualify whole-host
+mapped timing, hold closure or frame throughput.
+
+Unified host/reset/VM integration is implemented for this opt-in profile.
+Producer-cache publication, physical allocation ownership, CPU coherence,
+dense/clear-heavy frame budgets, independent numeric/API validation and all
+remaining H0–H8 requirements stay open. Functional development continues with
+synthesis as the current PPA gate.
+
+## Implementation evidence: GPU input publication and physical invalidate ranges
+
+The [input-publication record](performance/mobile-bin-input-publication-2026-10-19.json)
+qualifies an actual GPU producer feeding the binned renderer. The publication
+audit found write-through CU data caches and L2, so successful store replies
+follow lower-memory acknowledgements. There are no dirty cache lines to
+write back. It also found that private instruction caches are not snooped by
+data stores. The [ABI publication sequence](MOBILE_TILE_BIN_JOB_ABI.md#publishing-gpu-produced-inputs)
+therefore requires successful producer completion before submission, result
+retirement, and an idle-only instruction/TLB flush if executable bytes change.
+Queue order alone is not a compute-to-bin dependency; GBJ1 still rejects
+DMA/event dependency flags and permits unrelated compute to overlap rendering.
+
+The new test warms a rendered image and shader code, then runs a real RVV
+producer on the shared CU pool. It copies 1,728 bytes in 108 masked writes:
+512-byte descriptor, 640-byte append stream, 384 bytes of primitives, a
+64-byte state record and 128 bytes of shader instructions. Two Sv32 virtual
+superpages alias the same physical backing. The producer writes through the
+upper alias while the renderer reads the lower alias. Original target bytes
+are restored before the GPU starts; only actual GPU stores update live inputs.
+
+A 97-cycle B-response model delays the producer stores. While the first B is
+held, VM changes reject and 41 additional paused-memory clocks cannot produce
+a completion. All 108 acknowledgements precede the successful producer result,
+and every generated packet word matches. The dependent 20-reference render
+observes changed primitive geometry/depth, the changed shader entry point and
+new instructions in a previously fetched code line. All 256 color/depth/stencil
+sample words match a separate unbinned renderer. This oracle shares raster,
+arithmetic and pixel RTL and does not independently qualify API semantics.
+The test uses two four-lane/two-warp CUs, two engines and a reduced eight-set,
+two-way L2 with a 256-bit AXI data bus.
+
+The same audit found a concrete publication-range bug. `LineInvalidateEngine`
+rounded byte counts with a truncating addition and did not include an unaligned
+first-line offset or reject a wrapped physical end. New focused checks
+reproduce two failures on the original engine. The corrected engine captures
+the request, checks its original exclusive end at full precision, aligns the
+first line, then walks the rounded extent. An end of exactly four GiB is legal;
+a greater end returns `ADDRESS_OVERFLOW` (1), zero processed bytes and no cache
+requests. Empty ranges succeed without traffic. Each issued line retains
+ownership through its matching acknowledgement and held completions stay stable.
+
+Boundary checks include a two-byte range spanning adjacent lines, single-line
+unaligned ranges, the last physical byte, an end exactly at four GiB, overflow
+rejection and healthy reuse. Three near-full-address-space cases inspect the
+decoded four-GiB extent and the first three line handshakes; they do not simulate
+a full 67,108,864-line sweep. The actual AXI host also rejects a wrapped physical
+range and completes an unaligned two-line invalidate with 128 processed bytes,
+under an active Sv32 context and without DRAM reads or writes. Opcode 5 remains
+a physical L2/private-data-cache operation; it does not clean CPU caches or
+invalidate private GPU instruction caches.
+
+The primary regression passes 61 checks in seven suites: invalidate range
+validation, the six-case GBJ1 host suite, ABI, command routing, existing host
+resolve/VM behavior, translated legacy DMA and fixed/two/four-CU
+render-to-texture visibility. A final fixture-only follow-up moves the valid
+physical invalidate outside all input/code packets and reruns the producer
+case, preventing that operation from masking stale L2 instruction data.
+All 476 other source/build/ABI files remain byte-identical to the primary
+run and synthesis snapshot; the evidence distinguishes these two runs.
+
+The standalone corrected invalidate engine passes complete-mapping synthesis
+setup at 1 GHz, ASAP7 TC/SLVT and 25% I/O budgets: +176.174 ps core and
++177.871 ps I/O slack, 1,038 standard cells and 140.333 µm² cell area. It has
+no SRAM. Default-activity power is 0.00119236 W, separate from representative
+workload power or frame energy. This is pre-layout setup screening; no new
+place/route is performed.
+
+The default 1280x720/four-CU/two-engine/128-KiB-L2 host is regenerated with real
+SRAM black boxes and both corrected invalidate engines. Structural SRAM counts
+remain 114 32-bit and 1,184 64-bit macros; this is not a whole-host mapped timing
+result. All current source/build/ABI hashes and emitted/report hashes are
+recorded. Existing renderer/host/cache RTL is unchanged; only the invalidate
+engine, its status contract, emitter and validation fixtures change in this
+checkpoint. Earlier component synthesis remains separately scoped evidence.
+
+This establishes a sequential GPU-producer publication path. Automatic producer
+dependencies, full physical ownership/alias exclusion between independent
+writable allocations, CPU/SoC coherence, representative full-frame budgets and
+the remaining H0–H8 gates stay open. Legal aliases of one resource in this test
+do not establish protection against conflicting allocations.
+
+## Streamed attachment export and complete 720p clear/store budget
+
+The [frozen export-stream checkpoint](performance/mobile-attachment-export-stream-2026-10-19.json)
+qualifies `TileAttachmentExport`: one synchronous SRAM-result stage, two
+registered export entries and exact private acknowledgement ownership. The
+scanner overlaps the next SRAM read or clear preparation with queued export
+words and acknowledgement retirement. A stalled SRAM result is captured once;
+inactive `SyncReadMem` output need not retain its value. All credit profiles
+use the bounded transfer owner. One credit retains one total external owner;
+wider windows retain an independent read credit. Fault/cancel stops new
+preparation, drops only unoffered work and drains offered/issued ownership
+before completion or slot reuse.
+
+Identical vendor-SRAM benchmark sources and exact color/depth/stencil images
+measure these export-only cycles; preparation, useful bytes and line counts
+are checked separately and remain equal before/after:
+
+| Tile | Before | Current |
+|---|---:|---:|
+| 1x clear | 2,149 | 1,696 |
+| 1x fully dirty | 2,576 | 1,696 |
+| 4x clear | 8,549 | 6,736 |
+| 4x fully dirty | 10,256 | 6,736 |
+
+The isolated pipeline prepares 160 consecutive words in 163 total cycles.
+Its stalled test deliberately poisons inactive SRAM output and takes 1,367
+cycles without losing or duplicating words. The 80-cycle-response benchmark
+with one external write credit takes 42,185 cycles through the generic adapter
+and 6,808 through coalescing, compared with the earlier 7,245 coalesced cycles;
+all transfer the same 2,048 useful bytes. A measured one-credit compatibility
+cost remains in the fixed-32-cycle word benchmark: 39,942 to 41,005 cycles;
+the eight-credit case moves from 11,548 to 11,535. These measurements do not
+claim every profile improves.
+
+The primary regression passes 120 checks in 16 suites. A separate
+eight-credit run passes 19 checks in two suites, including independent read
+progress and reordered late faults. Partial clears, 1x/4x resolve, cancellation,
+fault priority, slot overlap, legacy and binned host paths, shared CUs/Sv32 and
+render-to-texture visibility remain covered. All 479 source/build/ABI hashes
+match the final runs and emitted synthesis inputs. The initial parallel 8 GiB
+JVM exhausted heap; its unchanged-source retry serializes suites with a 16 GiB
+heap. The failed run is retained separately and is not passing evidence.
+
+The complete 1280x720 clear/store workload visits every one of 3,600 tiles
+through two tile engines, two SRAM slots per engine, a paged 16,384-entry
+directory, 4 KiB pages and eight word credits. It checks all 1,843,200 final
+RGBA8/D24S8 words, zero attachment loads and exactly 7,372,800 useful store
+bytes. The bounded line-service model has 80-cycle response latency plus
+transaction-ID skew, at most four external writes, reordered eligible replies
+and request backpressure every fifth cycle. It completes in
+**10,938,945 cycles**, issuing 230,400 masked 64-byte writes
+with 14,745,600 bytes of line payload. Useful mask efficiency
+is 50%: the eight-word credit window currently
+seals half-lines. Useful bytes and line payload are distinct accounting units.
+
+At an assumed 1 GHz, these cycles consume
+32.82% of a 30 FPS frame budget and
+65.63% of a 60 FPS budget. This
+is cycle-budget arithmetic for a clear/store service workload. The bench uses
+actual fixed-function tile engines and vendor SRAM models served directly by
+a bounded line model; it contains no CUs, shared L2, MMU/AXI controller or
+display. It does not establish physical FPS, dense shader performance, DRAM
+bandwidth or frame energy.
+
+Both components pass complete-mapping synthesis setup at 1 GHz, ASAP7 TC/SLVT
+and 25% I/O budgets. The export pipeline has +680.204 ps core/+469.163 ps I/O
+slack, 1,114 standard cells and 150.582 µm² cell area. The two-slot store has
++90.177/+214.451 ps, 205,292 standard cells and 27,265.3 µm² standard-cell area,
+plus the unchanged 16 SRAM macros occupying 6,643.81 µm². Its historical
+mapped standard-cell area rises about 0.56%. Default-activity synthesis power
+is separately recorded and does not measure workload power. No new place/route
+is performed; hold and whole-GPU mapped timing remain unqualified.
+
+The default host is regenerated with four shared CUs and four export pipelines.
+Transaction namespaces and SRAM macro counts remain unchanged: 114 32-bit and
+1,184 64-bit macros across the complete host, 34 32-bit macros in the bin subtree
+and 16 per two-slot attachment store. Structural emission does not establish
+whole-host mapping or timing. The proposed 369 KiB major-array capacity budget
+is unchanged; pipeline registers and FIFO bookkeeping are additional storage.
+
+Dense/texture/shader/overdraw/MSAA full-frame service budgets, representative
+activity power, dependency/alias/coherence closure and the original H0–H8 gates
+remain open. One prepared export word/cycle does not establish H3's four
+complete RGBA8+D24S8 sample updates/cycle. Functional hardware development
+continues with synthesis as the current PPA screen.
+
+## Buffered attachment capture, ordered issue and complete-frame transfer
+
+The [buffered-write checkpoint](performance/mobile-buffered-attachment-writes-2026-10-19.json)
+qualifies private capture acknowledgements while the existing two 64-byte gather
+buffers per slot retain actual external write ownership. The enclosing owner
+waits for both private and external drain before completion or reuse. Late
+write faults retain their original slot and override cancellation; an older
+response cannot modify a recycled private reply. A fully drained held result
+remains stable.
+
+A FIFO of existing write-slot handles preserves enqueue order. Recycled low
+slots cannot repeatedly overtake older words and split a contiguous line.
+Acknowledgements may reorder. Abort drops unoffered data, drains discarded
+handles and retains every offered/issued owner. Repeated unoffered captures
+keep the final word value and its final resolve classification, preserving
+neighboring words' classifications. The configured eight-word credit window
+and transaction namespace remain unchanged; they do not describe simultaneous
+DRAM request count. The added FIFO holds 24 payload bits per owner plus control.
+No new major data array or characterized SRAM macro is introduced.
+
+The final source passes 55 focused checks, 136 checks in the 16-suite integration
+regression, and 21 checks in the separate eight-credit variant. These are
+executions under their stated configurations. Coverage includes held replies,
+read-after-write visibility, continuous credit reuse, reordered late faults,
+partial clears, resolve, overlapping slots, shared CUs/Sv32, GPU publication,
+legacy and binned host paths, safe reset and render-to-texture visibility.
+
+Identical 512-word vendor-SRAM images transfer 2,048 useful bytes. The generic,
+strict-coalesced and buffered paths issue 512, 64 and 32 lines respectively.
+At 80-cycle latency and one external write credit they take 42,185, 6,808 and
+2,735 cycles. At the lower-latency setting, export-only cycles improve as follows;
+preparation and every final color/depth/stencil word remain independently checked:
+
+| Tile | Previous | Buffered |
+|---|---:|---:|
+| 1x clear | 1,696 | 1,042 |
+| 1x fully dirty | 1,696 | 1,042 |
+| 4x clear | 6,736 | 4,114 |
+| 4x fully dirty | 6,736 | 4,115 |
+
+The complete 1280x720 clear/store frame checks all 3,600 tiles and 1,843,200 final
+RGBA8/D24S8 words with zero attachment loads and 7,372,800 useful store bytes.
+It takes **5,937,039 cycles**, compared with 10,938,945 in the preceding frozen
+checkpoint: a 45.73% cycle reduction. The 115,200 full-line attachment writes
+carry 7,372,800 bytes of payload, giving 100% useful mask efficiency for this
+full-tile workload; partial rectangles retain masked writes. The service model
+still has 80-cycle latency plus ID skew, four global write credits, reordered
+eligible responses and request backpressure every fifth cycle.
+
+The test-only native idle driver first reproduced the old hardware's complete
+frame, all words and exact 10,938,945-cycle/230,400-line result. A smaller test
+also matched all 1,072 timestamped request/response payloads, complete memory,
+tile records and peak activity. Thus the driver change is separately qualified
+before comparing hardware. It reduces verification wall time and is not itself
+a GPU performance result.
+
+At an assumed 1 GHz, the new frame consumes 17.81% of a 30 FPS budget or 35.62%
+of a 60 FPS budget. This bench uses actual fixed-function tile engines and vendor
+SRAM models directly served by the bounded line model. It contains no CUs, shared
+L2, MMU/AXI controller or display. It does not establish physical FPS, dense-shader
+performance, DRAM bandwidth or frame energy.
+
+The changed two-slot store passes complete-mapping synthesis setup at 1 GHz,
+ASAP7 TC/SLVT and 25% I/O budgets: +109.271 ps core and +227.648 ps I/O slack,
+206,230 standard cells and 27,253.7 µm² standard-cell area, plus the unchanged
+16 SRAM macros occupying 6,643.81 µm². Default-activity power is 0.332160 W;
+representative workload power remains unqualified. No new place/route is run.
+The regenerated default host retains four CUs, one bin-job root, four export
+pipelines, 114 32-bit and 1,184 64-bit SRAM macros. The bin subtree has 34 32-bit
+macros. Structural emission and component synthesis do not establish whole-host
+mapping or timing. The proposed 369 KiB major-array capacity budget is unchanged.
+
+The evidence retains the initial 33-line gather failure, the enqueue-order fix,
+and the final-resolve-bit reproducer (four bytes counted instead of zero). The
+intermediate broad run was intentionally stopped for that correctness fix;
+only the final source's complete results qualify this checkpoint. All 479
+source/build/ABI hashes, the recoverable source archive, emissions and reports
+are recorded. Dense/shared-memory full-frame budgets, H3's complete pixel
+backend, H4–H8, dependency/alias/coherence closure and whole-GPU timing remain open.

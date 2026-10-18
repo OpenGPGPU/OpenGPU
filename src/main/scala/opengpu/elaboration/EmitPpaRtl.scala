@@ -48,6 +48,12 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "tile-attachment-export" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileAttachmentExport,
+          stageArgs,firtoolArgs)
+      case "line-invalidate" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.core.memory.LineInvalidateEngine(),
+          stageArgs,firtoolArgs)
       case "mobile-bin-writer" =>
         val mobile = opengpu.config.MobileGpuConfig()
         ChiselStage.emitSystemVerilogFile(
@@ -78,6 +84,94 @@ object EmitPpaRtl {
             mobile.tileEngines, mobile.binPageBytes, mobile.binWriteCredits,
             mobile.binTileSlots),
           stageArgs, firtoolArgs)
+      case "mobile-bin-resolved-pass" =>
+        val mobile = opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.ResolvedTileBinReplayPass(opengpu.config.GpuConfig(),
+            mobile.tileEngines, mobile.binPageBytes, mobile.binWriteCredits,
+            mobile.binTileSlots, mobile.binRecordCacheEntries),
+          stageArgs, firtoolArgs)
+      case "mobile-bin-continuation-controller" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileBinContinuationController(
+          opengpu.config.MobileGpuConfig().tileEngines,paged=true),stageArgs,firtoolArgs)
+      case "mobile-bin-host-command" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileBinHostCommandPort(
+          opengpu.config.MobileGpuConfig().execution),stageArgs,firtoolArgs)
+      case "mobile-bin-host-memory" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.system.TileBinHostMemoryFabric(
+          mobile.execution,60,mobile.tileEngines,64,32,programmable=true),stageArgs,firtoolArgs)
+      case "mobile-bin-job-reader" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileBinJobReader(
+          opengpu.config.MobileGpuConfig().execution,programmable=true),stageArgs,firtoolArgs)
+      case "mobile-bin-job-reader-fixed" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileBinJobReader(
+          opengpu.config.MobileGpuConfig().execution,programmable=false),stageArgs,firtoolArgs)
+      case "mobile-memory-bin-render" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.MemoryTileBinRenderPipeline(
+          GraphicsConfig(screenWidth=1280,screenHeight=720,tileSize=16,tileAttachments=true),
+          mobile.execution,engines=mobile.tileEngines,pageBytes=mobile.binPageBytes,
+          writeCredits=mobile.binWriteCredits,tileSlots=mobile.binTileSlots,
+          cacheEntries=mobile.binRecordCacheEntries,storeCredits=mobile.attachmentStoreCredits,
+          useTileSramBlackBoxes=true,pagedCapacity=mobile.binDirectoryTiles),stageArgs,firtoolArgs)
+      case "mobile-continuing-bin-render" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ContinuingTileBinRenderPipeline(
+          GraphicsConfig(screenWidth=1280,screenHeight=720,tileSize=16,tileAttachments=true),
+          mobile.execution,mobile.tileEngines,mobile.binPageBytes,mobile.binWriteCredits,
+          mobile.binTileSlots,mobile.binRecordCacheEntries,mobile.attachmentStoreCredits,
+          useTileSramBlackBoxes=true,pagedCapacity=mobile.binDirectoryTiles),stageArgs,firtoolArgs)
+      case "mobile-paged-bin-directory" =>
+        val mobile = opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileBinDirectory(
+          mobile.binTileSlots,mobile.binPageBytes,mobile.binWriteCredits,
+          pagedCapacity=mobile.binDirectoryTiles,config=mobile.execution,useDirectorySramBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-paged-bin-pass" =>
+        val mobile = opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileBinReplayPass(
+          mobile.execution,mobile.tileEngines,mobile.binPageBytes,mobile.binWriteCredits,
+          mobile.binTileSlots,pagedCapacity=mobile.binDirectoryTiles,useDirectorySramBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-tile-grid-lookup" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileGridDescriptorLookup,stageArgs,firtoolArgs)
+      case "mobile-paged-render-admission" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileBinRenderPassAdmission(
+          GraphicsConfig(screenWidth=1280,screenHeight=720,tileSize=16,tileAttachments=true),
+          mobile.binTileSlots,pagedCapacity=mobile.binDirectoryTiles),stageArgs,firtoolArgs)
+      case "mobile-paged-bin-render" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileBinRenderPipeline(
+          GraphicsConfig(screenWidth=1280,screenHeight=720,tileSize=16,tileAttachments=true),
+          mobile.execution,mobile.tileEngines,mobile.binPageBytes,mobile.binWriteCredits,
+          mobile.binTileSlots,mobile.binRecordCacheEntries,mobile.attachmentStoreCredits,
+          useTileSramBlackBoxes=true,pagedCapacity=mobile.binDirectoryTiles),stageArgs,firtoolArgs)
+      case "mobile-bin-render" | "mobile-bin-render-sram" =>
+        val mobile = opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TileBinRenderPipeline(GraphicsConfig(
+            screenWidth = 1280, screenHeight = 720, tileSize = 16, tileAttachments = true),
+            mobile.execution, mobile.tileEngines, mobile.binPageBytes, mobile.binWriteCredits,
+            mobile.binTileSlots, mobile.binRecordCacheEntries, mobile.attachmentStoreCredits,
+            useTileSramBlackBoxes = args(0) == "mobile-bin-render-sram"),
+          stageArgs, firtoolArgs)
+      case "mobile-bin-shared-router" =>
+        val mobile = opengpu.config.MobileGpuConfig()
+        val pool = mobile.sharedShaders
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.SharedShaderTaskRouter(mobile.execution,
+            pool.numComputeUnits, mobile.tileEngines, pool.taskIdWidth,
+            tasksPerClient = pool.fragmentWorkers + 1), stageArgs, firtoolArgs)
+      case "mobile-bin-draw-decoder" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TileBinDrawDecoder(GraphicsConfig(
+            screenWidth = 1280, screenHeight = 720)), stageArgs, firtoolArgs)
+      case "mobile-bin-render-admission" =>
+        val mobile = opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TileBinRenderPassAdmission(GraphicsConfig(
+            screenWidth = 1280, screenHeight = 720, tileSize = 16, tileAttachments = true),
+            mobile.binTileSlots), stageArgs, firtoolArgs)
       case "mobile-bin-state-cache" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.PrimitiveStateCache(opengpu.config.GpuConfig(),
@@ -148,6 +242,26 @@ object EmitPpaRtl {
             storeCredits = args.lift(2).map(_.toInt)
               .getOrElse(opengpu.config.MobileGpuConfig().attachmentStoreCredits)),
           stageArgs, firtoolArgs)
+      case "mobile-attachment-line-port" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileAttachmentLinePort(
+          mobile.execution,mobile.attachmentStoreCredits+1),stageArgs,firtoolArgs)
+      case "mobile-tile-double-legacy" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.DoubleBufferedTileAttachmentStore(
+          mobile.execution,screenWidth=1280,screenHeight=720,useSramBlackBoxes=true,
+          storeCredits=mobile.attachmentStoreCredits,externalArbitration=true,coalesceTransfers=false),stageArgs,firtoolArgs)
+      case "mobile-tile-double" =>
+        val mobile = opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.DoubleBufferedTileAttachmentStore(mobile.execution,
+            screenWidth=1280,screenHeight=720,useSramBlackBoxes=true,
+            storeCredits=mobile.attachmentStoreCredits,externalArbitration=true), stageArgs, firtoolArgs)
+      case "mobile-l2-store-table" =>
+        val mobile = opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.core.memory.L2StoreTransactionTable(mobile.execution,
+            entries=mobile.execution.l2StoreEntries,maxOutstanding=32), stageArgs, firtoolArgs)
       case "legacy-tile-store" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.TileAttachmentStore(), stageArgs, firtoolArgs)

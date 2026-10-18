@@ -109,6 +109,34 @@ class L2StoreTransactionTableSpec extends AnyFlatSpec {
     }
   }
 
+  it should "overlap disjoint masked words while retaining byte ordering and whole-line read hazards" in {
+    simulate(new L2StoreTransactionTable(GpuConfig(lanes=4),entries=4)) { dut=>
+      initialize(dut)
+      dut.io.allocate.bits.sizeLog2.poke(6.U)
+      dut.io.allocate.bits.byteMask.poke(0xf.U)
+      allocate(dut,0x1000,0)
+      // Also check the allocation staging register before the first entry
+      // is installed: its disjoint bytes must not cause a false conflict.
+      dut.io.allocate.bits.address.poke(0x1000.U); dut.io.allocate.bits.byteMask.poke(0xf0.U)
+      dut.io.allocate.ready.expect(true.B)
+      val first=lowerRequest(dut)
+      allocate(dut,0x1000,1); val second=lowerRequest(dut)
+      assert(first!=second)
+      dut.io.queryAddress.poke(0x103c.U); dut.io.queryConflict.expect(true.B)
+      dut.io.allocate.bits.byteMask.poke(8.U); dut.io.allocate.ready.expect(false.B)
+      dut.io.allocate.bits.byteMask.poke(0x100.U); dut.io.allocate.ready.expect(true.B)
+      dut.io.allocate.bits.sizeLog2.poke(2.U); dut.io.allocate.ready.expect(false.B)
+      acknowledge(dut,second)
+      acknowledge(dut,first,fault=true)
+      dut.io.response.valid.expect(true.B); dut.io.response.bits.transactionId.expect(0.U)
+      dut.io.response.bits.fault.expect(true.B)
+      dut.io.response.ready.poke(true.B); dut.clock.step()
+      dut.io.queryConflict.expect(true.B)
+      dut.io.response.bits.transactionId.expect(1.U); dut.io.response.bits.fault.expect(false.B)
+      dut.clock.step(); dut.io.queryConflict.expect(false.B); dut.io.active.expect(false.B)
+    }
+  }
+
   it should "report read hazards through allocation, lower acknowledgement and stalled reply" in {
     simulate(new L2StoreTransactionTable(GpuConfig(lanes = 4), entries = 2)) { dut =>
       initialize(dut)

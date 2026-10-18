@@ -50,13 +50,18 @@ class TileAttachmentTransfer(credits: Int = 8) extends Module {
   io.fault := io.mem.resp.fire && io.mem.responseFault
   private val abortNow = io.abort || io.fault
   private val stopAdmission = aborting || abortNow
+  private val ackAvailable = !localAckValid || io.local.resp.ready
+  // The historical one-credit word port has one total external owner. Wider
+  // windows retain the independent read credit needed for resolve progress.
+  private val writeAllowed = if(credits==1) !readLive else true.B
+  private val readAllowed = if(credits==1) writes.io.drained && !requestBuffer.io.deq.valid else true.B
   writes.io.begin := io.begin
   writes.io.abort := stopAdmission
   writes.io.responseFault := io.mem.responseFault
   writes.io.response.valid := io.mem.resp.valid && io.mem.resp.bits.write
   writes.io.response.bits := io.mem.resp.bits
   writes.io.enqueue.valid := io.local.req.valid && io.local.req.bits.write &&
-    !localAckValid && !stopAdmission
+    ackAvailable && !stopAdmission && writeAllowed
   writes.io.enqueue.bits.address := io.local.req.bits.addr
   writes.io.enqueue.bits.data := io.local.req.bits.data
   writes.io.enqueue.bits.resolve := io.resolve
@@ -67,11 +72,12 @@ class TileAttachmentTransfer(credits: Int = 8) extends Module {
   arbiter.io.in(1).bits.resolve := writes.io.request.bits.resolve
   writes.io.request.ready := arbiter.io.in(1).ready
   arbiter.io.in(0).valid := io.local.req.valid && !io.local.req.bits.write &&
-    !readLive && !localAckValid && !stopAdmission
+    !readLive && ackAvailable && !stopAdmission && readAllowed
   arbiter.io.in(0).bits.memory := io.local.req.bits
   arbiter.io.in(0).bits.resolve := false.B
-  io.local.req.ready := !localAckValid && Mux(stopAdmission, true.B,
-    Mux(io.local.req.bits.write, writes.io.enqueue.ready, arbiter.io.in(0).ready && !readLive))
+  io.local.req.ready := ackAvailable && Mux(stopAdmission, true.B,
+    Mux(io.local.req.bits.write, writes.io.enqueue.ready && writeAllowed,
+      arbiter.io.in(0).ready && !readLive && readAllowed))
 
   private val readResponse = io.mem.resp.valid && !io.mem.resp.bits.write && readLive
   io.local.resp.valid := localAckValid || readResponse

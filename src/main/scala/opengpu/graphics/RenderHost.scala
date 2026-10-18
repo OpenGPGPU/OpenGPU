@@ -132,16 +132,18 @@ class RenderHost(
   protectedVmState: Boolean = false,
   persistentAttachments: Boolean = false,
   tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
-  useTileSramBlackBoxes: Boolean = false
+  useTileSramBlackBoxes: Boolean = false,
+  externalBinnedRender: Boolean = false
 ) extends Module {
   require(!persistentAttachments || (unifiedCommands && config.tileAttachments && !vertCore && !config.tileBinning))
+  require(!externalBinnedRender || (unifiedCommands && !persistentAttachments))
   override def desiredName: String = "RenderHost"
   private val maxSampleMode = log2Ceil(config.maxSampleCount)
   private val stagingTransactions = SharedCuShaderConfig.stagingTransactions(sharedShader)
   private val kernelWordTransactions = SharedCuShaderConfig.kernelWordTransactions(sharedShader)
 
   val io = IO(new Bundle {
-    val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
+    val shared = sharedShader.filter(_ => !externalBinnedRender).map(pool => Flipped(new SharedCuGraphicsPort(
       gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val reg = new Bundle {
       val req = Flipped(Decoupled(new RenderHostRegRequest))
@@ -191,16 +193,19 @@ class RenderHost(
       new RenderDescriptor(gpuConfig, commandIdWidth, persistentAttachments)))
     val renderCompletion = Decoupled(new RenderCompletion(commandIdWidth))
     /** Includes descriptor fetch, launch, execution and unconsumed completion. */
+    val externalRenderBusy = if (externalBinnedRender) Some(Input(Bool())) else None
     val drained = Output(Bool())
     val performance = Output(new GraphicsPerformanceEvents)
   })
 
   private val core = Module(new RenderCore(
-    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader,
-    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes))
+    if (externalBinnedRender) config.copy(tileAttachments=false,tileSize=0,tileBinning=false) else config,
+    gpuConfig, if (externalBinnedRender) false else fragCore, if (externalBinnedRender) false else vertCore,
+    graphicsScalarFpu, if (externalBinnedRender) None else sharedShader,
+    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes && !externalBinnedRender))
   private val tileHost = if (persistentAttachments) Some(Module(new TileJobDescriptorReader(
     gpuConfig, config, commandIdWidth, kernelWordTransactions, stagingTransactions))) else None
-  sharedShader.foreach(_ => core.io.shared.get <> io.shared.get)
+  sharedShader.filter(_ => !externalBinnedRender).foreach(_ => core.io.shared.get <> io.shared.get)
   core.io.instructionSatp := io.instructionSatp
   core.io.instructionTlbFlush := io.instructionTlbFlush
   core.io.vectorSatp := io.vectorSatp
@@ -249,10 +254,12 @@ class RenderHost(
     fill.io.memoryRequest.valid || blit.io.memoryRequest.valid ||
       strided.io.memoryRequest.valid ||
       core.io.kernelWordMemReq.valid
+  private val coreWordRequest=Wire(new ComputeMemoryRequest(gpuConfig,64,kernelWordTransactions))
+  coreWordRequest:=core.io.kernelWordMemReq.bits
   private val regularWordRequest = Mux(fill.io.memoryRequest.valid,
     fill.io.memoryRequest.bits, Mux(blit.io.memoryRequest.valid,
       blit.io.memoryRequest.bits, Mux(strided.io.memoryRequest.valid,
-        strided.io.memoryRequest.bits, core.io.kernelWordMemReq.bits)))
+        strided.io.memoryRequest.bits, coreWordRequest)))
   io.kernelWordMemReq.bits := descriptorRequest.map(r => Mux(r.valid, r.bits, regularWordRequest))
     .getOrElse(regularWordRequest)
   descriptorRequest.foreach(_.ready := io.kernelWordMemReq.ready)
@@ -410,8 +417,8 @@ class RenderHost(
   // resident, those words are newer than external memory, so serialize these
   // operations with render jobs in the opt-in tile-store configuration.
   private val tileDmaAllowed = if (config.tileAttachments)
-    !busy && !renderFetching && !renderLaunch && !renderDonePending && !tileHostBusy
-  else true.B
+    !busy && !renderFetching && !renderLaunch && !renderDonePending && !tileHostBusy && !io.externalRenderBusy.getOrElse(false.B)
+  else !io.externalRenderBusy.getOrElse(false.B)
   fill.io.descriptor.valid := clearStartWrite && dmaOwner === dmaIdle &&
     !blitStartWrite && !stridedStartWrite && tileDmaAllowed
   blit.io.descriptor.valid := blitStartWrite && dmaOwner === dmaIdle &&
@@ -459,7 +466,7 @@ class RenderHost(
       (maxSampleMode << GpuCapabilities.MsaaMaxModeShift) |
       (if (unifiedCommands) (1 << GpuCapabilities.UnifiedReset) else 0) |
       (1 << GpuCapabilities.PersistentDepth) |
-      (if (unifiedCommands && !persistentAttachments) (1 << GpuCapabilities.UnifiedRender) else 0) |
+      (if (unifiedCommands && !persistentAttachments && !externalBinnedRender) (1 << GpuCapabilities.UnifiedRender) else 0) |
       (if (persistentAttachments) (1 << GpuCapabilities.PersistentTileJobs) else 0) |
       (if (persistentAttachments) (1L << GpuCapabilities.TypedTileCommands) else 0L) |
       (1 << GpuCapabilities.HwVblank) |
@@ -908,7 +915,7 @@ class RenderHost(
   core.io.sampleMode := unifiedCfg.sampleMode
   core.io.screenW := unifiedCfg.screenW
   core.io.screenH := unifiedCfg.screenH
-  core.io.start := (if (persistentAttachments) false.B else renderLaunch && validRenderMode && !busy)
+  core.io.start := (if (persistentAttachments || externalBinnedRender) false.B else renderLaunch && validRenderMode && !busy)
 
   // Separate word ports.  The engine's command stage (draw records) and the
   // job queue's admin agent (descriptor fetches, IH record writes) are distinct
@@ -948,5 +955,11 @@ class RenderHost(
   io.reg.resp.bits.data := readReg
   private val aligned = (rAddr & 0x3.U) === 0.U
   private val mapped = rAddr < RenderHostRegs.END.U
-  io.reg.resp.bits.ok := aligned && mapped
+  private val externalDmaBlocked = io.externalRenderBusy.getOrElse(false.B) &&
+    (clearStartWrite || blitStartWrite || stridedStartWrite)
+  io.reg.resp.bits.ok := aligned && mapped && !externalDmaBlocked
+  if (externalBinnedRender) {
+    io.renderCommand.ready := false.B
+    io.renderCompletion.valid := false.B
+  }
 }

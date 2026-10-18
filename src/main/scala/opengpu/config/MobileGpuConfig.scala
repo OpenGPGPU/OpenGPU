@@ -9,7 +9,7 @@ import opengpu.system.SharedCuShaderConfig
   * Runtime resource bindings belong in versioned descriptors instead.
   */
 case class MobileGpuConfig(
-  execution: GpuConfig = GpuConfig(l2Sets = 512),
+  execution: GpuConfig = GpuConfig(l2Sets = 512,l2StoreEntries = 4),
   computeUnits: Int = GpuConfig.MobileComputeUnits,
   tileEngines: Int = 2,
   textureClusters: Int = 2,
@@ -25,7 +25,9 @@ case class MobileGpuConfig(
   axiBytes: Int = 32,
   binPageBytes: Int = 4096,
   binWriteCredits: Int = 8,
-  binTileSlots: Int = 8
+  binTileSlots: Int = 8,
+  binRecordCacheEntries: Int = 8,
+  binDirectoryTiles: Int = 16384
 ) {
   private def powerOfTwo(n: Int): Boolean = n > 0 && (n & (n - 1)) == 0
   require(computeUnits > 0 && computeUnits <= 255)
@@ -44,17 +46,28 @@ case class MobileGpuConfig(
   require(powerOfTwo(binPageBytes) && binPageBytes >= 64 && binPageBytes <= 65536)
   require(binWriteCredits > 0 && binWriteCredits <= 32)
   require(binTileSlots >= 1 && binTileSlots <= 64)
+  require(binDirectoryTiles==0 || (binDirectoryTiles>=binTileSlots && binDirectoryTiles<=65535 && powerOfTwo(binTileSlots)))
+  require(powerOfTwo(binRecordCacheEntries) && binRecordCacheEntries <= 32)
+  require(binRecordCacheBytes + binDirectoryReportBytes <= primitiveBytes,
+    "record caches and report SRAM must fit the primitive/state storage budget")
   require(colorAttachments >= 1 && colorAttachments <= 4)
   require(Set(4, 8, 16, 32, 64)(axiBytes))
 
   def tileSlotBytes: Int = tileBytesPerEngine / tileSlotsPerEngine
+  def binRecordCacheBytes: Long = tileEngines.toLong * binRecordCacheEntries * 64
+  def binDirectoryReportBytes: Long = if (binDirectoryTiles==0) 0L else ((binDirectoryTiles+8191L)/8192)*1024
+  def binDirectoryBackingBytes: Long = binDirectoryTiles.toLong*64
   def tileEngineIdWidth: Int = math.max(1, log2Ceil(tileEngines))
   def attachmentCreditIdWidth: Int = math.max(1, log2Ceil(attachmentStoreCredits))
   def textureFillIdWidth: Int = math.max(1, log2Ceil(textureFillsPerCluster))
   def payloadAddressWidth: Int = math.max(1, log2Ceil(payloadBytes))
+  /** Four pass-local 64-byte read lines per attachment SRAM slot. */
+  def attachmentReadCacheBytes: Long = tileEngines.toLong*tileSlotsPerEngine*MobileGpuConfig.AttachmentReadCacheLines*64
+  /** Additional registered write queues; excluded from the major-array sum. */
+  def attachmentGatherBufferBytes: Long = tileEngines.toLong*tileSlotsPerEngine*math.min(2,attachmentStoreCredits)*64
   def l2Bytes: Long = execution.l2Sets.toLong * execution.l2Ways * 64
   def dataStorageBytes: Long = tileBytesPerEngine.toLong * tileEngines +
-    textureBytesPerCluster.toLong * textureClusters + payloadBytes + primitiveBytes + l2Bytes
+    textureBytesPerCluster.toLong * textureClusters + payloadBytes + primitiveBytes + l2Bytes + attachmentReadCacheBytes
   def sharedShaders: SharedCuShaderConfig =
     SharedCuShaderConfig(computeUnits, parallelFragments = true)
 
@@ -73,12 +86,19 @@ case class MobileGpuConfig(
   /** Validate the currently implemented path separately from future sizing. */
   def validateImplementedGraphics(graphics: GraphicsConfig): Unit = {
     require(graphics.maxSampleCount <= 4)
+    if (graphics.tileAttachments) {
+      require(tileEngines<=4 && attachmentStoreCredits<=16)
+      require(tileSlotsPerEngine==2,"implemented attachment transfer has exactly two SRAM owners per engine")
+      require(execution.l2StoreEntries>=2*tileEngines,
+        "implemented tile engines reserve L2 export credits and equal shader-progress headroom")
+    }
     require(graphics.fragmentBatchLimit == 0 ||
       graphics.fragmentBatchLimit <= execution.lanes * execution.warps)
   }
 }
 
 object MobileGpuConfig {
+  val AttachmentReadCacheLines = 4
   def balanced(computeUnits: Int): MobileGpuConfig = MobileGpuConfig(
     computeUnits = computeUnits, tileEngines = (computeUnits + 1) / 2,
     textureClusters = (computeUnits + 1) / 2)

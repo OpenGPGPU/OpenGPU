@@ -1,0 +1,956 @@
+{
+  "date": "2026-10-18",
+  "title": "H2 typed bin records, two persistent render engines, shared CUs and exact prefix restart",
+  "based_on_commit": "217b10b3eb6dd910c73723e6e8aeedc64d0cf1de",
+  "scope": "Uncommitted optional hardware integration; no production host command ABI or full-frame qualification.",
+  "current_stage_ppa_policy": "Synthesis-only screening, selected by the user on 2026-10-18; new routing runs deferred.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/TileBinRenderPipeline.scala": "41f4dbee709437c1c60a2d9f374ccdad65eab7d296cecbd7075fcf0b3e6b11f5",
+    "src/main/scala/opengpu/graphics/TileBinRenderPassAdmission.scala": "010df1054ea378d41200168f4e61fd93be7177a2be64e6484db56dfd02600e2c",
+    "src/main/scala/opengpu/graphics/TileBinDrawDecoder.scala": "d6f442aeba815fd113d6a58b3a3725248b9e12daeea40def7bdcd267fd0edbdd",
+    "src/main/scala/opengpu/graphics/ResolvedTileBinReplayPass.scala": "b6dafb704bef763ec8b088af15f34084a823b4b9ae6c2d62f7095d904a8a0f76",
+    "src/main/scala/opengpu/graphics/TileBinReplayPass.scala": "8c4097e29a4c2cd83bae8b7f1ad0ec1f1ff493ecdcd555f49be5b04c3d7c4f74",
+    "src/main/scala/opengpu/graphics/TileBinReplayScheduler.scala": "5c0f6e24adb8597349d784de8ca60668b9ba2f3b60c1aa5858cbc9e38ee6f1e3",
+    "src/main/scala/opengpu/graphics/TileBinDirectory.scala": "14bb27161c7d8793192cf436ea4969426d9434cc7662dba0e0ff93d85ed4271a",
+    "src/main/scala/opengpu/graphics/PrimitiveStateCache.scala": "ee869642e83b0a09248d4c20647e15bf75922be30fc40d2e0b01ef25e6a21c99",
+    "src/main/scala/opengpu/graphics/RenderPipeline.scala": "32037816d3946021215b0d3d41ab8368c7c9b41c29a7da89bfc0d253492eda7b",
+    "src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala": "4f31868fc0b55b27f25721a9c37ddb6305a997441b3985838af78d656e0580e8",
+    "src/main/scala/opengpu/graphics/TexturedFragStage.scala": "540d8e6254fc907473692f5baa74ee7a5685d37b601b1056041d0cbe2789ddd4",
+    "src/main/scala/opengpu/config/MobileGpuConfig.scala": "a03bb048190d114afa039e9741262bf71ec07ae43c08e91f18cfe449c567359c",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "2424138ec8b41e70c3ccc1eacb0cbedeb7b8ce86f906ec8241ab8079e1ad6eca",
+    "src/test/scala/opengpu/graphics/TileBinRenderPassAdmissionSpec.scala": "99e22f12bea2cc45799439453140cf294b20be20217dda9cd12c3dbb65926d9f",
+    "src/test/scala/opengpu/graphics/TileBinRenderPipelineSpec.scala": "4b3e42667c7cc6a1afd9e2c58ce5b8ed8cf143fe5b19e088f35d72ff49847189",
+    "src/test/scala/opengpu/graphics/TileBinRenderTestData.scala": "7ed556408f6ddeb771672deec993f39a19e6ac52552759b13eb65d07ef06d52f",
+    "src/test/scala/opengpu/graphics/TileBinSharedSystemHarness.scala": "20631d16d0b664b257e38d1d0606362f738ecdbfb979bcd37e150e583f07517b",
+    "src/test/scala/opengpu/graphics/TileBinDrawDecoderSpec.scala": "601ad3471880b1f0a5234a73a9730cad023722a602254ae97481b17cba71d87d",
+    "src/test/scala/opengpu/graphics/Unorm8ProductSpec.scala": "14eca0939cede5b93187a39c422115fe2ae0dbc9063a92e53b50bc858c56a330",
+    "src/test/scala/opengpu/graphics/ResolvedTileBinReplayPassSpec.scala": "ecc7e53cafbc83de37d925b73c8b9c15279ec49f02b501e265b925ecfe441cae",
+    "src/test/scala/opengpu/graphics/SharedShaderTaskRouterSpec.scala": "f5c7090ba4f0a888ef52da052cb278d376020e559ebf35374b7af60d45760121",
+    "src/test/scala/opengpu/graphics/TileBinReplaySchedulerSpec.scala": "038eeef1dfce03fdcd44d4556923fa52620797dbe16499ff0de3c6c974a43240",
+    "src/test/scala/opengpu/graphics/PersistentTileSharedSystemSpec.scala": "d17a430a34dc5e2c931d95e0f0e74567e8b1b89ab885cf01d70579ba2420a308",
+    "src/test/scala/opengpu/graphics/TexturedFragStageSpec.scala": "8606c1dd428948340d2d056f6153f2594d7dce52f89362b99b0a3158eb013573"
+  },
+  "full_scala_source_snapshot": {
+    "artifact": ".artifacts/mobile-bin-render-final-source.json",
+    "sha256": "d6461ba300f06c1b073606ac48a0a154f046e3a59f044da17e5b66ccf369491d",
+    "files": 450
+  },
+  "abi": {
+    "version": 1,
+    "line_bytes": 64,
+    "primitive_lines": 2,
+    "primitive_words": 32,
+    "state_words": 16,
+    "primitive_magic": "0x47505201",
+    "state_magic": "0x47535401",
+    "addressing": "firstHandle+n -> records.base+64*n; primitive consumes two consecutive handles.",
+    "fields": "Full 32-bit clip XYZW, RGBA alpha, depth, Q16.16 UV, scissor and immutable per-draw state/texture binding.",
+    "validation": "Reject unknown versions, reserved words/bits and unsupported state; preflight the complete primitive span before reads."
+  },
+  "admission": {
+    "grid": "Disjoint row-major 8x8/16x16 tiles with partial edges; check every tile before memory traffic.",
+    "ownership": "Snapshot context/pass/generation; disjoint bin/record/image arenas; retain ownership through completion.",
+    "shader": "Disjoint per-engine windows; relative staging offsets, aligned strides and full bank spans checked before relocation."
+  },
+  "configuration": {
+    "emitted": {
+      "screen_limits": [
+        1280,
+        720
+      ],
+      "tile_engines": 2,
+      "tile_slots": 8,
+      "max_tile_slots": 64,
+      "page_bytes": 4096,
+      "write_credits": 8,
+      "store_credits_per_engine": 8,
+      "record_cache_lines_per_engine": 8,
+      "memory_transactions": 30,
+      "programmable": false,
+      "tile_sram_blackboxes": false
+    },
+    "native_tests": {
+      "screen": [
+        16,
+        8
+      ],
+      "tile_engines": 2,
+      "tile_slots": 4,
+      "tile_extent": 8,
+      "page_bytes": 128,
+      "write_credits": 2,
+      "store_credits_per_engine": 2,
+      "memory_transactions": 12,
+      "samples": [
+        1,
+        4
+      ]
+    },
+    "shared_system_tests": {
+      "tile_engines": 2,
+      "compute_units": 2,
+      "lanes": 4,
+      "warps": 2,
+      "bare": true,
+      "sv32": true,
+      "private_graphics_cus": false,
+      "shared_l2": true,
+      "shared_translation": true,
+      "memory": "Translated bin/image/texture line client and separate translated per-engine staging clients."
+    }
+  },
+  "functional": {
+    "passed": true,
+    "checks": 145,
+    "suites": 18,
+    "suite_checks": {
+      "BinPagePoolSpec": 7,
+      "SharedShaderTaskRouterSpec": 6,
+      "Unorm8ProductSpec": 1,
+      "PrimitiveStateCacheSpec": 10,
+      "TileBinDrawDecoderSpec": 2,
+      "TileBinRenderPassAdmissionSpec": 3,
+      "PrimitiveBinReaderSpec": 11,
+      "MobileGpuBudgetSpec": 2,
+      "TileBinReplaySchedulerSpec": 10,
+      "TexturedFragStageSpec": 2,
+      "PrimitiveBinStoreSpec": 11,
+      "TileBinReplayPassSpec": 9,
+      "MobileGpuConfigSpec": 3,
+      "TileBinDirectorySpec": 12,
+      "PrimitiveBinWriterSpec": 14,
+      "ResolvedTileBinReplayPassSpec": 21,
+      "TileBinRenderPipelineSpec": 17,
+      "PersistentTileSharedSystemSpec": 4
+    },
+    "log": ".artifacts/mobile-bin-render-final-regression.log",
+    "log_sha256": "243ef7ee3fde1906fac6506c1317be5fbc0fd9285c3df4c409aa3e82e806e13f",
+    "command": "sbt -J-Xmx8G -batch 'testOnly opengpu.graphics.BinPagePoolSpec opengpu.config.MobileGpuBudgetSpec opengpu.config.MobileGpuConfigSpec opengpu.graphics.PersistentTileSharedSystemSpec opengpu.graphics.PrimitiveBinReaderSpec opengpu.graphics.PrimitiveBinStoreSpec opengpu.graphics.PrimitiveBinWriterSpec opengpu.graphics.PrimitiveStateCacheSpec opengpu.graphics.ResolvedTileBinReplayPassSpec opengpu.graphics.SharedShaderTaskRouterSpec opengpu.graphics.TexturedFragStageSpec opengpu.graphics.TileBinDirectorySpec opengpu.graphics.TileBinDrawDecoderSpec opengpu.graphics.TileBinRenderPassAdmissionSpec opengpu.graphics.TileBinRenderPipelineSpec opengpu.graphics.TileBinReplayPassSpec opengpu.graphics.TileBinReplaySchedulerSpec opengpu.graphics.Unorm8ProductSpec'",
+    "measured_test_messages": [
+      "BIN_RENDER_IMAGE draws=6 samples=128 loadBytes=0 storeBytes=1024 cycles=1852 ",
+      "BIN_RENDER_MSAA draws=6 samples=364 storeBytes=3276 resolveBytes=364 cycles=6148 ",
+      "BIN_RENDER_PAGES references=18 draws=18 stores=1024 cycles=3442 ",
+      "BIN_RENDER_RESTART prefixDraws=12 resumedDraws=6 loads=224 stores=1248 cycles=4312 ",
+      "BIN_RENDER_SHARED Sv32=false cycles=17244 peakOwned=2 engineMask=3 ",
+      "BIN_RENDER_SHARED Sv32=true cycles=17524 peakOwned=2 engineMask=3 ",
+      "shared system cycles=14153 peak graphics CUs=2; mixed CU occupancy, trap, walks=0, command faults=0 ",
+      "shared system cycles=14498 peak graphics CUs=2; mixed CU occupancy, trap, walks=37, command faults=1 ",
+      "shared system cycles=11367 peak graphics CUs=4; mixed CU occupancy, trap, walks=67, command faults=1 ",
+      "shared system cycles=10402 peak graphics CUs=4; mixed CU occupancy, trap, walks=78, command faults=1 "
+    ],
+    "coverage": [
+      "Ordered independent-image comparison for depth/stencil, blending, partial tiles, 4x MSAA/resolve and untouched guard pixels.",
+      "More than eight references per tile across linked bin pages.",
+      "Independent engine progress with held attachment acknowledgements and tile completions.",
+      "Malformed draw records, multi-line read faults, attachment load/store faults, texture/shader faults, offered-request cancellation and healthy reuse.",
+      "Real fragment instructions on system CUs in bare and Sv32 modes, fresh address-space generations/backings, staging-span rejection and invalid bin mapping.",
+      "Bounded per-client shared task windows, duplicate local tag exclusion, reordered faults/completions and stable launches/invalidation owners under backpressure.",
+      "Exact UNORM8 RGBA texture modulation; exhaustive 65536-pair product oracle and white/colored/nonopaque texture image checks.",
+      "Exact exhaustion restart tags for empty and nonempty prefixes; load-and-resume image matches uninterrupted ordering; discard and export-fault suppression.",
+      "Existing shared-system two/four-CU profiles through 16 lanes/eight warps, bounded compute-memory stall with simultaneous graphics progress and fault recovery."
+    ]
+  },
+  "restart": {
+    "policy": "Caller-driven continuation after draining the whole binding; require final pass success/exhaustion, both attachment planes stored, then load saved attachments and submit the first rejected reference exactly once.",
+    "fields": [
+      "primitive",
+      "state",
+      "sequence",
+      "token"
+    ],
+    "prefix_draws": 12,
+    "resumed_draws": 6,
+    "prefix_store_bytes": 1024,
+    "resume_load_bytes": 224,
+    "resume_store_bytes": 224,
+    "total_component_cycles": 4312,
+    "automatic_spill": false
+  },
+  "backpressure_regressions": {
+    "replay_request": {
+      "log": ".artifacts/mobile-bin-render-before-request-buffer-regression.log",
+      "log_sha256": "4be2ae23e68293f4f4d9925a5f50bc5a48cfd17162359885644d318d5039b526",
+      "result": "Three-engine rotation reproduced a stalled memory offer changing transaction ID from 2 to 0.",
+      "fix": "Two-entry request queue freezes arbitration result and retains reader response ownership through cancellation/drain."
+    },
+    "invalidation": {
+      "log": ".artifacts/mobile-bin-invalidate-seeded-before.log",
+      "log_sha256": "a712613fd064e7728346c828edf4e218d579fa0a05078ee230e49ce5b1b35a83",
+      "result": "With a known arbitration rotation, a new client replaces a stalled invalidation address 0x8000 with 0x9000.",
+      "fix": "Capture invalidate request and requesting owner before offering to the pool; retain both through the untagged acknowledgement."
+    }
+  },
+  "shared_compute_regression": {
+    "initial_log": ".artifacts/mobile-bin-render-regression.log",
+    "initial_log_sha256": "5402fbdbabb6486c87267ab75405b1354162b31369092ac35ccfb60cc892701d",
+    "diagnosis_log": ".artifacts/mobile-bin-render-restart-v3.log",
+    "diagnosis_log_sha256": "60c9dd3b3170f594a8bb0b620a31edcd5d59684f31ff45d9b42c040af8d28248",
+    "initial_result": "136/137 pass; bare two-CU test saw no simultaneous compute/graphics occupancy.",
+    "diagnosis": "Trace shows compute runs in cycles 1136-1214, entirely inside the gap before the next graphics wave at 1268. Both workloads complete.",
+    "correction": "Keep simultaneous-occupancy assertion; delay the independent compute payload response by 512 cycles so the test exercises graphics progress while compute awaits memory."
+  },
+  "emission": {
+    "artifact": "generated/mobile-h2/bin-render-v3-rtl",
+    "command": "runMain opengpu.elaboration.EmitPpaRtl mobile-bin-render generated/mobile-h2/bin-render-v3-rtl",
+    "rtl_sha256": {
+      "BinPagePool.sv": "fe0dcc7a2f9f8f58bd507fa23b6ecad7b939e29f7fcc15ff28f52acb7e8fd31d",
+      "BlockPrefixAdder.sv": "c9c698b92611c00edaaa676b0c2fef3986696a65a84ae018c337df3d00b9f556",
+      "BlockPrefixAdder_1.sv": "a0cbd10d48c42b714c26a44220ad7c3a2c34cc44b3fd4e752ad41625dc315bad",
+      "BlockPrefixAdder_123.sv": "1de6a5e129317c511dcdfbd1615eac5eac69815c0cb76f34691d3966e7c76657",
+      "BlockPrefixAdder_2.sv": "a2e76d0cd1fb18230003359d012c55ad0f0475ff745c3f3b39a314962889f28c",
+      "BlockPrefixAdder_36.sv": "2ccd237d0889175fb9959f918309b83c37aa63bd4f57303339bfde5819a00071",
+      "BlockPrefixAdder_42.sv": "3b98c63354ce9265d46a16ef660ab0820bc6602bf120737277edd79877ba8f12",
+      "BlockPrefixAdder_48.sv": "9bd947e2399357e61001f78cc776292a45a6483921f1e2398f341bf461a2230d",
+      "BlockPrefixAdder_57.sv": "6c7c70fda7e647e343c5ebd24a00e061237b392580564bd98533f02386e6a595",
+      "BlockPrefixAdder_84.sv": "8a65823a8fc6e657c992344ad944b434c6a2770fc6ae83cb08310b52be283567",
+      "CarrySaveAccumulator.sv": "64369963ca6d3330b3afd8d86adc2ba15e1da50eb525418980f90e910cb5a900",
+      "CarrySaveAccumulator_6.sv": "cb08a6a7e3ad30b3b5084114519aea589d9900fe4e6e7f538dd16f2557ab0f63",
+      "DepthGradient.sv": "0860da0e6232bd31c43945c5f5d864d86b8e20d77f91e7b2ddd102bce21fe61b",
+      "FragmentInterpolator.sv": "31bc6fa4cbab5f3dff92d9efda499621ad15decd6ac5d64d4501f509efc10bda",
+      "IterativeSignedDivider.sv": "35fc02d8a19449ae659c5f5665b4af1fdd4bdfc5032b32fddffee44a57f3db55",
+      "IterativeSignedDivider_6.sv": "670ffa62e03dd2e6795f1c8eb0edf981774bc153e16001fc99665dc355d9f63d",
+      "IterativeSignedDivider_9.sv": "7694e996fb6c911fbb494ca6ee65023ca8599810d3586f5084e1b228342890d6",
+      "L2SramArray.sv": "c1104c24dbda2c1e4b6688300e1168baef38ac07eeed8876af67c032584397b7",
+      "NearClipStage.sv": "af75b5d520c081f94629482eb629b5c419521cb327ebaa0df8a5a4de32a84dcd",
+      "OmWordToLinePort.sv": "5d2af97ebf4d624eadb4d5eef643c30400f6f2d73a29b5744f7b3baa02383580",
+      "OmWordToLinePort_3.sv": "4fc119acdb8c8d953b6dada7fd775833ccd1684438c76b384848a4a7d5d59310",
+      "OutputMerger.sv": "96fb2293c117267901e80ace4becf2aa826dac3693758a9d9a3bd08295ca7efc",
+      "PersistentTileAttachmentStore.sv": "8d669981724f17ad2f17ef7034be655ac99c3b73a306c6e21a3a2d23d26d6c32",
+      "PreparedGeometryStage.sv": "4fc7461b466cc07597a0d9f4819c1b24bf8e4994a31908a55aafdad258e655af",
+      "PreparedSampleCoverage.sv": "b1a19e17edbee6baf36fce4e5e3e75c21e754cac09f7d6119e8c91a1b7c9b6c5",
+      "PrimitiveBinReader.sv": "a68c566afb2cec790d5a122ead7ccb8d2dc134945fafe12a9b9bf5675b49d10e",
+      "PrimitiveBinReader_1.sv": "fd37f445f0424508fd50e7ee6c1b5324f98b2ffc05d38c07ef269d3d32c4180e",
+      "PrimitiveStateCache.sv": "8d351f84269439b8c4d53c5f49482e58b7b05c9b19753d0a43e5138348ad4092",
+      "PrimitiveStateCache_1.sv": "70471f3124c8bfe7ccf9a2c59607dbc9a744449e872af08c1797406900af4afe",
+      "Queue1_TileTransferRequest.sv": "92c1ac8047c81f62d3b63a7c3c2b926d36ae566136c7025493e22561b01b901f",
+      "Queue2_ComputeMemoryRequest.sv": "ffb9a1ee72ad022bc5a440a065473b5241e7b32b82a39f0b9431ee5c371fa548",
+      "Queue2_ComputeMemoryRequest_3.sv": "6450c8d49d1de425c0c2101ad7b39f14f443c2d2a7a339bafe908adca864f3b4",
+      "Queue8_TileBinRenderTileCompletion.sv": "1425992040f730fe939df06c9e03d8467a96b52072bab212e49fd845c0d0e8bc",
+      "Queue8_TileBinReplayCompletion.sv": "dc3d381fb11c31a1430c61c84d00d74dd15cd478ff955a38a3f56e3382575de4",
+      "RRArbiter16_OmMemoryRequest.sv": "844f1ce207bc2d0350a4b16d3e72558aa10eca2030513ce8c68a10d084d05ac0",
+      "RRArbiter2_ComputeMemoryRequest.sv": "7c2482b71a7dfc4c4cd89d892fde06a16d1ae5bf358f1e34579baefb788caba8",
+      "RRArbiter2_TileTransferRequest.sv": "308a3ea4afc09ae2077ff04b24363b89743706f0ec6591073e072dfd41374313",
+      "RRArbiter3_ComputeMemoryRequest.sv": "ecdf1ce885a5b649db58ff21d2d548946b27591b236f0baace4589ec6bc89014",
+      "RRArbiter5_ComputeMemoryRequest.sv": "261cb58e8ace794b636c012be5ad291278e7cc66eea3b43b2a346570daf8bf69",
+      "RasterShader.sv": "7896f819c52e21ec7c4b216acd53a89539140956bff73dcf0e2a27623d8c9d19",
+      "RenderPipeline.sv": "eee47da54bd154087de703b95e0f525dff842a088bef551a6ba669397af04d2c",
+      "ResolvedTileBinReplayPass.sv": "683ee3cd7d96798518f82dd4d68db477749cee05aa07ab15ece364840adf3984",
+      "SampleDepth.sv": "59a5e0bb3f382675b3d583f5b0885e275bb3a0b9e1c6ddcc759b6b12aae6ede5",
+      "SampleExpander.sv": "93e810cf997c968521ac7ca36d6a209428ebc3e18c5a9a6b110b6d2f8741b399",
+      "TexUVInterpolator.sv": "f81335bcf4b48a706741f37a36efd16f22e220454a897d7b449f947854fbb2e0",
+      "TextureUnit.sv": "43d82e893411005f0b6686ad593591356536ed3028f639cb249a7b53905a6a74",
+      "TexturedFragStage.sv": "2f6b182ce73040e795c84e9ae09b75335f0eb1c0c1a2e60c8b3ce7735a50da8b",
+      "TileAttachmentClearEngine.sv": "1e2e27a4c15e1269c2caab4e298e35165be3504dac14c21e767863f8b6cfc1b1",
+      "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+      "TileAttachmentTransfer.sv": "9738d79f86e917986a7327106e8ff985c0cb7a7b2d000a77b525f6e4ac165f09",
+      "TileAttachmentWriteQueue.sv": "0976748b2733300231ace593644c831989035c207cb353c8e96a56a7874a92da",
+      "TileBinDirectory.sv": "8263ce36ee55f11b8eae090bc4aafbb05749aff669cfd4edf0dc04492680b23a",
+      "TileBinDrawDecoder.sv": "93ce65ba007e5ac5a53fbf4fcc3802a8fc88f7cf9c5829e4251d6692bb33df52",
+      "TileBinRenderPassAdmission.sv": "a77bbc3f9aa8e9348127d0203e7661d370cd796e29f8bddd74d459e75557c9d7",
+      "TileBinRenderPipeline.sv": "4d8e3f88b57b283f76b2331261bdeb21096b96794363d4191fbafb8f495499f0",
+      "TileBinReplayPass.sv": "37e1f3c0c6da43db1f6a219ffb8bf9bc9f16a330a1191026923649d3983d170e",
+      "TileBinReplayScheduler.sv": "ca1556807ac8d0a4e5d046ff8110788754779773ec01fdc3958ee2cf1bf7e474",
+      "TileRenderPassAdmission.sv": "baf5dff224b129631dcdfdaa38390bfe7296043431881b1eb4dfbab2fd742f99",
+      "TriangleRasterizer.sv": "fc3db381de86eb4b3f3f674edcd00b1a4d620dd249be08074c4b6973b571f709",
+      "memory_256x32.sv": "c765dcd3e2ed7ffda1221fab77bcf0223da27de002849560a9eb01fdcb1832d3",
+      "ram_2x620.sv": "c82f9d217556f2acbe5e3ee9adfab2ea1794874bfe47ffe6fd79a25316271364",
+      "ram_2x621.sv": "e8e634f79534c4387489b430e59d34db7f972f450a0a353a793bec6777debc1d",
+      "ram_8x293.sv": "4fcb18aed9bff8aca9cf349b04a9dfcd8353428d72a4c76b0158d71a94dfc8a1",
+      "ram_8x382.sv": "258c68aad1f7af06b8c8e8499feb7499e0c13c5f158bf9463c3636bdf34b2e22",
+      "filelist.f": "96c3b773fde7909e5f557feb37528300926fbd1c2ab07dc1f246ffbfe95a9621"
+    },
+    "ppa_qualified": false
+  },
+  "synthesis": {
+    "decoder": {
+      "artifact": "generated/mobile-h2/physical-draw-decoder-v1-synth",
+      "manifest_sha256": "3e8ae5cede7c269fd73ff620d58c38a9f5830c42315ce808067dbfb905c8cacf",
+      "result_sha256": "9d87bc03442653e9c28bb42fcb266d5402190dff6b149f4c95fd6a5f71136899",
+      "emitted_sha256": {
+        "TileBinDrawDecoder.sv": "c3152a3909a7dc544013d4e1674823fca0c75fad495ce44913778610f09573c5"
+      },
+      "constraints": {
+        "module_name": "TileBinDrawDecoder",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 0.0,
+        "output_dir": "/Users/duckdonald/workspace/gpu/generated/mobile-h2/physical-draw-decoder-v1-synth/flow",
+        "timeout": 7200,
+        "synthesis_only": true,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "explore",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      },
+      "status": "success",
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          590.906,
+          492.808
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "dd2024ee37f8d6859650ef5ac3987c7fdc4c70cb49a830427d1e1d2885f5ea8e",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h2/physical-draw-decoder-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "a6200566b1b24b0c8f28f3bc3c277fde9cf5bb97cafd6b5eb88cf4b07a26b985",
+          "logs": [
+            {
+              "path": "generated/mobile-h2/physical-draw-decoder-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "a6200566b1b24b0c8f28f3bc3c277fde9cf5bb97cafd6b5eb88cf4b07a26b985"
+            }
+          ],
+          "combined_log_sha256": "a6200566b1b24b0c8f28f3bc3c277fde9cf5bb97cafd6b5eb88cf4b07a26b985"
+        }
+      },
+      "qualification_sha256": "6bd0f06570ba6ef4c6df012c21243f1c5d0e45b4db54feffffdf37e685bbe530",
+      "qor": {
+        "setup_worst_slack_ps": 590.906,
+        "core_clock_fmax_mhz": 2444.426
+      },
+      "synthesis_statistics_artifact": "generated/mobile-h2/physical-draw-decoder-v1-synth/flow/orfs-work/logs/base/1_synth.json",
+      "synthesis_statistics_sha256": "55b73d6ba5aa6b1b46be8717e78e6a41a71eae35d5c4e15789f00b064f9b9778",
+      "synthesis_statistics": {
+        "synth__design__instance__count": 4384,
+        "synth__design__instance__area": 743.682,
+        "synth__design__instance__count__macros": 0,
+        "synth__design__instance__area__macros": 0,
+        "synth__power__total": 0.00311098
+      },
+      "power_scope": "Default synthesis activity only; no workload switching or frame-energy qualification.",
+      "failure_tail": null
+    },
+    "admission": {
+      "artifact": "generated/mobile-h2/physical-render-admission-v2-synth",
+      "manifest_sha256": "f993e925e6b6503b266c280eeabcbb366baf44da598bb3c3f13b6acba65ab9f9",
+      "result_sha256": "4a8250a7be927a75fbb4dffe211fcf9555f4fe6af4a704ad1992c999ed2ad180",
+      "emitted_sha256": {
+        "TileRenderPassAdmission.sv": "a9e4d92c2bdcbc5b0e7bfebd1bf7428485714d8bb45073e8aabfb7a192ff96aa",
+        "TileBinRenderPassAdmission.sv": "13aec013867dcfd0fa89cfe53b3af5a5fdd8ee5485d38509037863cecd7a12d2"
+      },
+      "constraints": {
+        "module_name": "TileBinRenderPassAdmission",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 0.0,
+        "output_dir": "/Users/duckdonald/workspace/gpu/generated/mobile-h2/physical-render-admission-v2-synth/flow",
+        "timeout": 7200,
+        "synthesis_only": true,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "explore",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      },
+      "status": "success",
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          245.868,
+          481.008
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "45087827a636dd734763764e292d81c2df922d59a7c847ca5b25ceb3e38243a8",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h2/physical-render-admission-v2-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "012128124ef96dacd7dd5d7371f1ea3d775192fb6ef934508d02ec2ffae0d008",
+          "logs": [
+            {
+              "path": "generated/mobile-h2/physical-render-admission-v2-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "012128124ef96dacd7dd5d7371f1ea3d775192fb6ef934508d02ec2ffae0d008"
+            }
+          ],
+          "combined_log_sha256": "012128124ef96dacd7dd5d7371f1ea3d775192fb6ef934508d02ec2ffae0d008"
+        }
+      },
+      "qualification_sha256": "33332d21db5d96a815cad28d0c9ef4c13a747af345663af3899545e01ecc9723",
+      "qor": {
+        "setup_worst_slack_ps": 245.868,
+        "core_clock_fmax_mhz": 1326.028
+      },
+      "synthesis_statistics_artifact": "generated/mobile-h2/physical-render-admission-v2-synth/flow/orfs-work/logs/base/1_synth.json",
+      "synthesis_statistics_sha256": "e84364cc245dadb06b09a3385aa52f73e9aa2ab31e80e42c705e4630ea6bae61",
+      "synthesis_statistics": {
+        "synth__design__instance__count": 49853,
+        "synth__design__instance__area": 7293.75,
+        "synth__design__instance__count__macros": 0,
+        "synth__design__instance__area__macros": 0,
+        "synth__power__total": 0.173687
+      },
+      "power_scope": "Default synthesis activity only; no workload switching or frame-energy qualification.",
+      "failure_tail": null
+    },
+    "shared_task_router": {
+      "artifact": "generated/mobile-h2/physical-bin-shared-router-v1-synth",
+      "manifest_sha256": "16a99e032959bb4330206799c85b43a2a0b807cd520f2599b8a7035967276289",
+      "result_sha256": "4d7f737f446fc43a33cbe5b687290c3e8d6f71c4aa57e811f16a8f9c9b3797f0",
+      "emitted_sha256": {
+        "RRArbiter2_TaggedKernelLaunch.sv": "6501209d314118d11801c640edc45a7d42c5e5e9462ac172eb2a72005276a23a",
+        "ram_2x216.sv": "2311a63f30212becebb9a7b78baf2a1ad50b955aae44e481200f717aeabc48fe",
+        "Queue2_TaggedKernelLaunch.sv": "ec56e068ddffe6ea6aa89cc7f2694d8b9a8ccd62c6c1fe01e250d40ec3438e2b",
+        "RRArbiter2_CacheLineInvalidate.sv": "fe3c48af4ddb55254e2a014987a89fa690d482d363fb5e228a13e91ce4fed935",
+        "SharedShaderTaskRouter.sv": "ebb5960d172bff8fe99dc22408ecb589f1536f5e7af36845ddee5787c1852906"
+      },
+      "constraints": {
+        "module_name": "SharedShaderTaskRouter",
+        "clock_port": "clock",
+        "clock_period": 1000.0,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 0.0,
+        "output_dir": "/Users/duckdonald/workspace/gpu/generated/mobile-h2/physical-bin-shared-router-v1-synth/flow",
+        "timeout": 600,
+        "synthesis_only": true,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "explore",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      },
+      "status": "success",
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          479.851,
+          288.512
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "d9358c3a8434dca1389188da79fe0c035819c69695e698d43f8b8dd48f13f926",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h2/physical-bin-shared-router-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "15d4de616e7f754045728b6d0a07d6e8789e861b1a768ccab1247b14c2941c6b",
+          "logs": [
+            {
+              "path": "generated/mobile-h2/physical-bin-shared-router-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "15d4de616e7f754045728b6d0a07d6e8789e861b1a768ccab1247b14c2941c6b"
+            }
+          ],
+          "combined_log_sha256": "15d4de616e7f754045728b6d0a07d6e8789e861b1a768ccab1247b14c2941c6b"
+        }
+      },
+      "qualification_sha256": "eb777c8511127236c750fc5f83f27745879c223a8156034d39de5fd53719bd28",
+      "qor": {
+        "setup_worst_slack_ps": 479.851,
+        "core_clock_fmax_mhz": 1922.526
+      },
+      "synthesis_statistics_artifact": "generated/mobile-h2/physical-bin-shared-router-v1-synth/flow/orfs-work/logs/base/1_synth.json",
+      "synthesis_statistics_sha256": "013cc96d63aa9202aed3213f1773c00312e3fd2df7ef984715509f28c4e9683e",
+      "synthesis_statistics": {
+        "synth__design__instance__count": 6499,
+        "synth__design__instance__area": 921.398,
+        "synth__design__instance__count__macros": 0,
+        "synth__design__instance__area__macros": 0,
+        "synth__power__total": 0.00249895
+      },
+      "power_scope": "Default synthesis activity only; no workload switching or frame-energy qualification.",
+      "failure_tail": null
+    },
+    "superseded_full_renderer": {
+      "artifact": "generated/mobile-h2/physical-bin-render-v2-synth",
+      "manifest_sha256": "c000518358ee513453fd07f7a183f6919f8d72b4359d441122b7a9146dfe1c87",
+      "result_sha256": "02b5fb3796228822c3eb60531b7a62461de1559c0f8df8920a3af99c9b6ff121",
+      "emitted_sha256": {
+        "BinPagePool.sv": "ed774a076905b586963f2628259d6dddda20737139940d0ac6e9039071ebe9c8",
+        "TileAttachmentWriteQueue.sv": "0976748b2733300231ace593644c831989035c207cb353c8e96a56a7874a92da",
+        "TileBinDirectory.sv": "2397aecc451cc142e869ce9b505ad7bd8bfef16dc8fc014659c4fcaf8c81efe4",
+        "PrimitiveBinReader.sv": "a68c566afb2cec790d5a122ead7ccb8d2dc134945fafe12a9b9bf5675b49d10e",
+        "PrimitiveBinReader_1.sv": "fd37f445f0424508fd50e7ee6c1b5324f98b2ffc05d38c07ef269d3d32c4180e",
+        "RRArbiter2_ComputeMemoryRequest.sv": "a083c0ae9b2ba1637ca8687f2ec1a39e204cfd3bc760084eefbd0545abe5786f",
+        "TileBinReplayScheduler.sv": "5c4a908ace5387f0f83b94dd0805c1068e741a6458abf44e454fcd5d0054ada9",
+        "OmWordToLinePort.sv": "5d2af97ebf4d624eadb4d5eef643c30400f6f2d73a29b5744f7b3baa02383580",
+        "ram_2x620.sv": "c82f9d217556f2acbe5e3ee9adfab2ea1794874bfe47ffe6fd79a25316271364",
+        "Queue2_ComputeMemoryRequest.sv": "ffb9a1ee72ad022bc5a440a065473b5241e7b32b82a39f0b9431ee5c371fa548",
+        "TileBinReplayPass.sv": "8605344e27572f8d266e5e37cd7a58da9ea9e97d777f47835ee99fafa2847605",
+        "PrimitiveStateCache.sv": "8d351f84269439b8c4d53c5f49482e58b7b05c9b19753d0a43e5138348ad4092",
+        "PrimitiveStateCache_1.sv": "70471f3124c8bfe7ccf9a2c59607dbc9a744449e872af08c1797406900af4afe",
+        "RRArbiter3_ComputeMemoryRequest.sv": "ecdf1ce885a5b649db58ff21d2d548946b27591b236f0baace4589ec6bc89014",
+        "ram_8x163.sv": "59c28654114e3ab2b3974c017ab777840da61f2328d13b463ea355d97da86f1b",
+        "Queue8_TileBinReplayCompletion.sv": "aefabe8485dec4d7d7849d5ab8d8e5ea445786bd9e3fe29941479b63da51164c",
+        "ResolvedTileBinReplayPass.sv": "0793b78fa36807d67c25345e76c9f9fe02a9107d1c1003e31d6bcd9bbf884bbd",
+        "TileRenderPassAdmission.sv": "baf5dff224b129631dcdfdaa38390bfe7296043431881b1eb4dfbab2fd742f99",
+        "TileBinRenderPassAdmission.sv": "a77bbc3f9aa8e9348127d0203e7661d370cd796e29f8bddd74d459e75557c9d7",
+        "BlockPrefixAdder.sv": "c9c698b92611c00edaaa676b0c2fef3986696a65a84ae018c337df3d00b9f556",
+        "BlockPrefixAdder_1.sv": "a0cbd10d48c42b714c26a44220ad7c3a2c34cc44b3fd4e752ad41625dc315bad",
+        "BlockPrefixAdder_2.sv": "a2e76d0cd1fb18230003359d012c55ad0f0475ff745c3f3b39a314962889f28c",
+        "IterativeSignedDivider.sv": "35fc02d8a19449ae659c5f5665b4af1fdd4bdfc5032b32fddffee44a57f3db55",
+        "IterativeSignedDivider_6.sv": "670ffa62e03dd2e6795f1c8eb0edf981774bc153e16001fc99665dc355d9f63d",
+        "BlockPrefixAdder_36.sv": "2ccd237d0889175fb9959f918309b83c37aa63bd4f57303339bfde5819a00071",
+        "BlockPrefixAdder_42.sv": "3b98c63354ce9265d46a16ef660ab0820bc6602bf120737277edd79877ba8f12",
+        "PreparedGeometryStage.sv": "4fc7461b466cc07597a0d9f4819c1b24bf8e4994a31908a55aafdad258e655af",
+        "BlockPrefixAdder_48.sv": "9bd947e2399357e61001f78cc776292a45a6483921f1e2398f341bf461a2230d",
+        "BlockPrefixAdder_57.sv": "6c7c70fda7e647e343c5ebd24a00e061237b392580564bd98533f02386e6a595",
+        "PreparedSampleCoverage.sv": "b1a19e17edbee6baf36fce4e5e3e75c21e754cac09f7d6119e8c91a1b7c9b6c5",
+        "BlockPrefixAdder_84.sv": "8a65823a8fc6e657c992344ad944b434c6a2770fc6ae83cb08310b52be283567",
+        "TriangleRasterizer.sv": "b07773c9ee61dd481404f96cbc2073f20c64f331a0bce42391bef88d36a1ae65",
+        "FragmentInterpolator.sv": "31bc6fa4cbab5f3dff92d9efda499621ad15decd6ac5d64d4501f509efc10bda",
+        "DepthGradient.sv": "0860da0e6232bd31c43945c5f5d864d86b8e20d77f91e7b2ddd102bce21fe61b",
+        "SampleDepth.sv": "59a5e0bb3f382675b3d583f5b0885e275bb3a0b9e1c6ddcc759b6b12aae6ede5",
+        "RasterShader.sv": "7896f819c52e21ec7c4b216acd53a89539140956bff73dcf0e2a27623d8c9d19",
+        "RRArbiter16_OmMemoryRequest.sv": "844f1ce207bc2d0350a4b16d3e72558aa10eca2030513ce8c68a10d084d05ac0",
+        "OutputMerger.sv": "96fb2293c117267901e80ace4becf2aa826dac3693758a9d9a3bd08295ca7efc",
+        "memory_256x32.sv": "c765dcd3e2ed7ffda1221fab77bcf0223da27de002849560a9eb01fdcb1832d3",
+        "L2SramArray.sv": "c1104c24dbda2c1e4b6688300e1168baef38ac07eeed8876af67c032584397b7",
+        "TileAttachmentSram.sv": "34a74f43fc68624eaa6ada9e0b075df7f6c15d324f8b157a84a579a6cf039fa2",
+        "TileAttachmentClearEngine.sv": "1e2e27a4c15e1269c2caab4e298e35165be3504dac14c21e767863f8b6cfc1b1",
+        "RRArbiter2_TileTransferRequest.sv": "308a3ea4afc09ae2077ff04b24363b89743706f0ec6591073e072dfd41374313",
+        "Queue1_TileTransferRequest.sv": "92c1ac8047c81f62d3b63a7c3c2b926d36ae566136c7025493e22561b01b901f",
+        "TileAttachmentTransfer.sv": "9738d79f86e917986a7327106e8ff985c0cb7a7b2d000a77b525f6e4ac165f09",
+        "PersistentTileAttachmentStore.sv": "8d669981724f17ad2f17ef7034be655ac99c3b73a306c6e21a3a2d23d26d6c32",
+        "TexUVInterpolator.sv": "9f3bb12fc66f86f4f2741b75782c0cb1cefeb04053b300f08b29f41068a304af",
+        "TextureUnit.sv": "43d82e893411005f0b6686ad593591356536ed3028f639cb249a7b53905a6a74",
+        "TexturedFragStage.sv": "4f9da0c0a9a938e4d3e7e0580ab69cd50045ece82d3ec5796fc3ed123fe8066c",
+        "SampleExpander.sv": "93e810cf997c968521ac7ca36d6a209428ebc3e18c5a9a6b110b6d2f8741b399",
+        "BlockPrefixAdder_123.sv": "1de6a5e129317c511dcdfbd1615eac5eac69815c0cb76f34691d3966e7c76657",
+        "IterativeSignedDivider_9.sv": "7694e996fb6c911fbb494ca6ee65023ca8599810d3586f5084e1b228342890d6",
+        "NearClipStage.sv": "3527ccf35eea63570cd7edd598ad268cb4e4ddc88849733e66c8fd8eaa0e9924",
+        "RenderPipeline.sv": "49d253eddc493b5065ef52af285e24196c2a9e1c2f6ec7714d571a4e61675476",
+        "TileBinDrawDecoder.sv": "93ce65ba007e5ac5a53fbf4fcc3802a8fc88f7cf9c5829e4251d6692bb33df52",
+        "ram_8x252.sv": "8294d1b1da1dfde9a69fd7067365ecb02e4f2026c8fcf2d3500f03d31a793e63",
+        "Queue8_TileBinRenderTileCompletion.sv": "2d725c90a19f2117e854a2190ac5cc0228440110f1cfaf8dca92887a4f98f6a7",
+        "OmWordToLinePort_3.sv": "4fc119acdb8c8d953b6dada7fd775833ccd1684438c76b384848a4a7d5d59310",
+        "RRArbiter5_ComputeMemoryRequest.sv": "261cb58e8ace794b636c012be5ad291278e7cc66eea3b43b2a346570daf8bf69",
+        "ram_2x621.sv": "e8e634f79534c4387489b430e59d34db7f972f450a0a353a793bec6777debc1d",
+        "Queue2_ComputeMemoryRequest_2.sv": "7ede40eb8cd2309ca25351c874a92b8a36d703059eaa17a02b1eeb5889a53ed1",
+        "CarrySaveAccumulator.sv": "64369963ca6d3330b3afd8d86adc2ba15e1da50eb525418980f90e910cb5a900",
+        "CarrySaveAccumulator_6.sv": "cb08a6a7e3ad30b3b5084114519aea589d9900fe4e6e7f538dd16f2557ab0f63",
+        "TileBinRenderPipeline.sv": "7755ab2d328b796b4378124116d96687aa6bb2d3a44ce2be2c7e3419092f9998"
+      },
+      "constraints": {
+        "module_name": "TileBinRenderPipeline",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 0.0,
+        "output_dir": "/Users/duckdonald/workspace/gpu/generated/mobile-h2/physical-bin-render-v2-synth/flow",
+        "timeout": 900,
+        "synthesis_only": true,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "explore",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      },
+      "status": "failed",
+      "qualification": null,
+      "qualification_sha256": null,
+      "qor": null,
+      "synthesis_statistics_artifact": null,
+      "synthesis_statistics_sha256": null,
+      "synthesis_statistics": null,
+      "power_scope": "Default synthesis activity only; no workload switching or frame-energy qualification.",
+      "failure_tail": "037  lev = 158\nRefactor:  syn             : pi = 249962  po = 247059  and = 3361080  lev = 158\nBalance:   syn             : pi = 249962  po = 247059  and = 3340732  lev = 157\nRewrite:   syn             : pi = 249962  po = 247059  and = 3299036  lev = 157\n\n\n[stderr]\n\nFlow timed out after 900 seconds."
+    }
+  },
+  "historical_route": {
+    "decoder": {
+      "artifact": "generated/mobile-h2/physical-draw-decoder-v1-route-util10",
+      "manifest_sha256": "bffa76f2102d2c5ea0b2b3406977b7edfbb22d4d71759cc6b54b232d44659714",
+      "result_sha256": "01ad7fdf124a84a53a9e594df9c67b14d8cc7bf0aed867c5b5af6501984183e4",
+      "emitted_sha256": {
+        "TileBinDrawDecoder.sv": "c3152a3909a7dc544013d4e1674823fca0c75fad495ce44913778610f09573c5"
+      },
+      "constraints": {
+        "module_name": "TileBinDrawDecoder",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 10,
+        "place_density": 0.6,
+        "setup_slack_margin": 30.0,
+        "output_dir": "/Users/duckdonald/workspace/gpu/generated/mobile-h2/physical-draw-decoder-v1-route-util10/flow",
+        "timeout": 7200,
+        "synthesis_only": false,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "closure",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      },
+      "status": "success",
+      "qualification": {
+        "passed": true,
+        "checks": {
+          "setup_worst_slack_ps": true,
+          "hold_worst_slack_ps": true,
+          "setup_violation_count": true,
+          "hold_violation_count": true,
+          "route_drc_errors": true,
+          "antenna_violating_nets": true,
+          "antenna_violating_pins": true,
+          "placement_violations": true,
+          "flow_errors": true,
+          "flow_completed": true,
+          "tool_verdict": true
+        },
+        "missing_metrics": [],
+        "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h2/physical-draw-decoder-v1-route-util10/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "707ac9b6b5e8df6827c3d4ed8db219f62e15d8ab41b583d35b13b860abc597f8",
+          "logs": [
+            {
+              "path": "generated/mobile-h2/physical-draw-decoder-v1-route-util10/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "707ac9b6b5e8df6827c3d4ed8db219f62e15d8ab41b583d35b13b860abc597f8"
+            }
+          ],
+          "combined_log_sha256": "707ac9b6b5e8df6827c3d4ed8db219f62e15d8ab41b583d35b13b860abc597f8"
+        }
+      },
+      "qualification_sha256": "638573fc879de4f711150b5d242630a0002e955e6e7bd17fc8670345d1a3fbea",
+      "qor": {
+        "instance_count": 37197,
+        "instance_area": 1017.06,
+        "sequential_cell_count": 1364,
+        "clock_buffer_count": 122,
+        "timing_repair_buffer_count": 3270,
+        "setup_tns_ps": 0,
+        "hold_tns_ps": 0,
+        "setup_worst_slack_ps": 401.85,
+        "hold_worst_slack_ps": 38.4511,
+        "setup_violation_count": 0,
+        "hold_violation_count": 0,
+        "core_clock_fmax_mhz": 2003.7,
+        "virtual_io_clock_fmax_mhz": 1766.51,
+        "reported_fmax_mhz": 2003.7,
+        "setup_clock_skew_ps": 7.408,
+        "hold_clock_skew_ps": 15.5359,
+        "total_power_w": 0.00650759,
+        "placement_utilization": 13.0306,
+        "placement_violations": 0,
+        "estimated_wirelength": 67209.8,
+        "route_wirelength": 72076,
+        "route_vias": 72066,
+        "route_drc_errors": 0,
+        "route_drc_report_bytes": 0,
+        "antenna_violating_nets": 0,
+        "antenna_violating_pins": 0,
+        "ir_drop_vdd_worst": 0.00317227,
+        "ir_drop_vss_worst": 0.00366572,
+        "flow_warnings": 15,
+        "flow_errors": 0,
+        "critical_path": {
+          "startpoint": "io_cancel (input port clocked by vclk_core_clock)",
+          "endpoint": "u1084 (rising edge-triggered flip-flop clocked by core_clock)",
+          "group": "core_clock",
+          "slack_ps": 401.85,
+          "arrival_ps": 677.42,
+          "data_path_delay_ps": 0.0,
+          "cell_delay_ps": 0.0,
+          "net_delay_ps": 0.0,
+          "cell_delay_percent": null,
+          "net_delay_percent": null,
+          "cell_count": 0,
+          "net_count": 0,
+          "dominant_cell_types": [],
+          "per_group": {
+            "core_clock": {
+              "startpoint": "io_cancel (input port clocked by vclk_core_clock)",
+              "endpoint": "u1084 (rising edge-triggered flip-flop clocked by core_clock)",
+              "slack_ps": 401.85,
+              "arrival_ps": 677.42
+            },
+            "vclk_core_clock": {
+              "startpoint": "io_cancel (input port clocked by vclk_core_clock)",
+              "endpoint": "io_in_ready (output port clocked by vclk_core_clock)",
+              "slack_ps": 433.91,
+              "arrival_ps": 316.09
+            }
+          }
+        }
+      },
+      "synthesis_statistics_artifact": "generated/mobile-h2/physical-draw-decoder-v1-route-util10/flow/orfs-work/logs/base/1_synth.json",
+      "synthesis_statistics_sha256": "55b73d6ba5aa6b1b46be8717e78e6a41a71eae35d5c4e15789f00b064f9b9778",
+      "synthesis_statistics": {
+        "synth__design__instance__count": 4384,
+        "synth__design__instance__area": 743.682,
+        "synth__design__instance__count__macros": 0,
+        "synth__design__instance__area__macros": 0,
+        "synth__power__total": 0.00311098
+      },
+      "power_scope": "Default synthesis activity only; no workload switching or frame-energy qualification.",
+      "failure_tail": null
+    },
+    "admission": {
+      "artifact": "generated/mobile-h2/physical-render-admission-v2-route",
+      "manifest_sha256": "229fa318c1a38cc39bc7ce0eb6986c9d54319f3329db5fc037dbeb072a20dd5c",
+      "result_sha256": "9ed2ec65fc0d33303980b09390498d98c8e19b2163476dab6d336b9a74ea5627",
+      "emitted_sha256": {
+        "TileRenderPassAdmission.sv": "a9e4d92c2bdcbc5b0e7bfebd1bf7428485714d8bb45073e8aabfb7a192ff96aa",
+        "TileBinRenderPassAdmission.sv": "13aec013867dcfd0fa89cfe53b3af5a5fdd8ee5485d38509037863cecd7a12d2"
+      },
+      "constraints": {
+        "module_name": "TileBinRenderPassAdmission",
+        "clock_port": "clock",
+        "clock_period": 1000,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "cell_vt": "SLVT",
+        "corner": "TC",
+        "synthesis_engine": "syn",
+        "enable_retiming": false,
+        "sv_frontend": "native",
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "setup_slack_margin": 30.0,
+        "output_dir": "/Users/duckdonald/workspace/gpu/generated/mobile-h2/physical-render-admission-v2-route/flow",
+        "timeout": 7200,
+        "synthesis_only": false,
+        "cache": false,
+        "clean": false,
+        "generate_gds": false,
+        "timing_effort": "closure",
+        "macro_libs": null,
+        "macro_lefs": null,
+        "macro_placement_tcl": null
+      },
+      "status": "success",
+      "qualification": {
+        "passed": true,
+        "checks": {
+          "setup_worst_slack_ps": true,
+          "hold_worst_slack_ps": true,
+          "setup_violation_count": true,
+          "hold_violation_count": true,
+          "route_drc_errors": true,
+          "antenna_violating_nets": true,
+          "antenna_violating_pins": true,
+          "placement_violations": true,
+          "flow_errors": true,
+          "flow_completed": true,
+          "tool_verdict": true
+        },
+        "missing_metrics": [],
+        "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h2/physical-render-admission-v2-route/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "c196399301d1345e24bf1b639b6e73f2928398607c84239aa29daeff01c7582e",
+          "logs": [
+            {
+              "path": "generated/mobile-h2/physical-render-admission-v2-route/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "c196399301d1345e24bf1b639b6e73f2928398607c84239aa29daeff01c7582e"
+            }
+          ],
+          "combined_log_sha256": "c196399301d1345e24bf1b639b6e73f2928398607c84239aa29daeff01c7582e"
+        }
+      },
+      "qualification_sha256": "31be869988ea4fec6ca32582751220bb951244ef892568fcbce6b39b6fd5af71",
+      "qor": {
+        "instance_count": 177325,
+        "instance_area": 7348.47,
+        "sequential_cell_count": 8294,
+        "clock_buffer_count": 695,
+        "timing_repair_buffer_count": 6333,
+        "setup_tns_ps": 0,
+        "hold_tns_ps": 0,
+        "setup_worst_slack_ps": 123.308,
+        "hold_worst_slack_ps": 10.4814,
+        "setup_violation_count": 0,
+        "hold_violation_count": 0,
+        "core_clock_fmax_mhz": 1140.65,
+        "virtual_io_clock_fmax_mhz": 1402.1,
+        "reported_fmax_mhz": 1140.65,
+        "setup_clock_skew_ps": 43.0682,
+        "hold_clock_skew_ps": 47.1005,
+        "total_power_w": 0.200479,
+        "placement_utilization": 24.2777,
+        "placement_violations": 0,
+        "estimated_wirelength": 279674,
+        "route_wirelength": 335406,
+        "route_vias": 557178,
+        "route_drc_errors": 0,
+        "route_drc_report_bytes": 0,
+        "antenna_violating_nets": 0,
+        "antenna_violating_pins": 0,
+        "ir_drop_vdd_worst": 0.0330514,
+        "ir_drop_vss_worst": 0.0382178,
+        "flow_warnings": 15,
+        "flow_errors": 0,
+        "critical_path": {
+          "startpoint": "u4143 (rising edge-triggered flip-flop clocked by core_clock)",
+          "endpoint": "u8004 (rising edge-triggered flip-flop clocked by core_clock)",
+          "group": "core_clock",
+          "slack_ps": 123.31,
+          "arrival_ps": 1036.34,
+          "data_path_delay_ps": 869.88,
+          "cell_delay_ps": 762.02,
+          "net_delay_ps": 107.86,
+          "cell_delay_percent": 87.6,
+          "net_delay_percent": 12.4,
+          "cell_count": 23,
+          "net_count": 23,
+          "dominant_cell_types": [
+            {
+              "cell_type": "OR5x1_ASAP7_75t_SL",
+              "count": 7,
+              "delay_ps": 286.6
+            },
+            {
+              "cell_type": "AO221x1_ASAP7_75t_SL",
+              "count": 6,
+              "delay_ps": 121.72
+            },
+            {
+              "cell_type": "NAND2x1_ASAP7_75t_SL",
+              "count": 2,
+              "delay_ps": 83.04
+            },
+            {
+              "cell_type": "AND4x1_ASAP7_75t_SL",
+              "count": 2,
+              "delay_ps": 71.16
+            },
+            {
+              "cell_type": "DFFHQNx1_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 69.86
+            },
+            {
+              "cell_type": "OR4x1_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 57.39
+            },
+            {
+              "cell_type": "AO21x1_ASAP7_75t_SL",
+              "count": 2,
+              "delay_ps": 29.2
+            },
+            {
+              "cell_type": "OA222x2_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 28.57
+            }
+          ],
+          "per_group": {
+            "core_clock": {
+              "startpoint": "u4143 (rising edge-triggered flip-flop clocked by core_clock)",
+              "endpoint": "u8004 (rising edge-triggered flip-flop clocked by core_clock)",
+              "slack_ps": 123.31,
+              "arrival_ps": 1036.34
+            },
+            "vclk_core_clock": {
+              "startpoint": "io_cancel (input port clocked by vclk_core_clock)",
+              "endpoint": "io_in_ready (output port clocked by vclk_core_clock)",
+              "slack_ps": 286.78,
+              "arrival_ps": 463.22
+            }
+          }
+        }
+      },
+      "synthesis_statistics_artifact": "generated/mobile-h2/physical-render-admission-v2-route/flow/orfs-work/logs/base/1_synth.json",
+      "synthesis_statistics_sha256": "e84364cc245dadb06b09a3385aa52f73e9aa2ab31e80e42c705e4630ea6bae61",
+      "synthesis_statistics": {
+        "synth__design__instance__count": 49853,
+        "synth__design__instance__area": 7293.75,
+        "synth__design__instance__count__macros": 0,
+        "synth__design__instance__area__macros": 0,
+        "synth__power__total": 0.173687
+      },
+      "power_scope": "Default synthesis activity only; no workload switching or frame-energy qualification.",
+      "failure_tail": null
+    },
+    "scope": "Frozen component emissions only. No integrated GPU qualification; no representative switching/energy evidence."
+  },
+  "h2_closed": false,
+  "integrated_renderer_ppa_qualified": false,
+  "integrated_gpu_qualified": false,
+  "remaining": [
+    "Full-frame directory paging/windowing beyond 64 resident tile entries.",
+    "Double-buffered attachment transfer and measured throughput/fairness gates.",
+    "Automatic spill/restart and production host submission of continuations.",
+    "Producer cache-domain publication of immutable bin records and dependent images.",
+    "H3 banked pixel backend, H4 texture clusters, H5 on-chip payload/export and GPU geometry.",
+    "H6 format/resource/720p product coverage, H7 GLES 3.1 and H8 GLES 3.2 hardware closure.",
+    "Qualified synthesis of the current full renderer and later whole-GPU physical/product qualification."
+  ]
+}

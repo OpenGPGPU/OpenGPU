@@ -13,6 +13,7 @@ class PrimitiveBinStoreCompletion extends Bundle {
   val committed = UInt(32.W)
   val emitted = UInt(32.W)
   val allocatedPages = UInt(32.W)
+  val spillTransitions = UInt(4.W)
   val restartValid = Bool()
   val restart = new BinPrimitiveReference
 }
@@ -112,6 +113,7 @@ class PrimitiveBinStore(
     result.committed := write.committedCount
     result.emitted := emitted
     result.allocatedPages := write.allocatedPages
+    result.spillTransitions:=write.spillTransitions
     result.restartValid := status === PrimitiveBinStatus.exhausted.U && write.restartValid
     result.restart := write.restart
     phase := done

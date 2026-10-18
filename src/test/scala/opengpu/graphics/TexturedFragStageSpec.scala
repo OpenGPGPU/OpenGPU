@@ -6,9 +6,10 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 class TexturedFragStageSpec extends AnyFlatSpec {
-  it should "preserve each fragment payload under continuous input and stalled output" in {
+  for (normalized <- Seq(false,true)) {
+  it should s"preserve fragment payload under backpressure with normalized modulation=$normalized" in {
     val gfx = GraphicsConfig(screenWidth = 16, screenHeight = 16)
-    simulate(new TexturedFragStage(gfx)) { dut =>
+    simulate(new TexturedFragStage(gfx,normalizedModulation=normalized)) { dut =>
       dut.io.fragIn.valid.poke(false.B)
       dut.io.fragIn.bits.poke(0.U.asTypeOf(dut.io.fragIn.bits))
       dut.io.out.ready.poke(false.B)
@@ -38,7 +39,7 @@ class TexturedFragStageSpec extends AnyFlatSpec {
       def texel(index: Int): BigInt =
         (BigInt(40 + index * 20) << 24) |
           (BigInt(80 + index * 10) << 16) |
-          (BigInt(120 + index * 5) << 8) | 255
+          (BigInt(120 + index * 5) << 8) | (if (normalized) 80+index*20 else 255)
 
       val replies = mutable.Queue.empty[(Int, BigInt)]
       var sent = 0
@@ -83,12 +84,13 @@ class TexturedFragStageSpec extends AnyFlatSpec {
           dut.io.out.bits.x.expect((10 + received).S)
           dut.io.out.bits.y.expect((20 + received).S)
           dut.io.out.bits.depth.expect((100 + received).S)
-          dut.io.out.bits.alpha.expect((200 + received).U)
           dut.io.out.bits.coverageMask.expect(1.U)
           val color = texel(received % 4)
-          dut.io.out.bits.color.r.expect((((color >> 24) & 255) * 255 >> 8).U)
-          dut.io.out.bits.color.g.expect((((color >> 16) & 255) * 255 >> 8).U)
-          dut.io.out.bits.color.b.expect((((color >> 8) & 255) * 255 >> 8).U)
+          val alpha=if (normalized) ((200+received)*(color.toInt&255)+127)/255 else 200+received
+          dut.io.out.bits.alpha.expect(alpha.U)
+          dut.io.out.bits.color.r.expect((if (normalized) ((color >> 24) & 255) else (((color >> 24) & 255) * 255 >> 8)).U)
+          dut.io.out.bits.color.g.expect((if (normalized) ((color >> 16) & 255) else (((color >> 16) & 255) * 255 >> 8)).U)
+          dut.io.out.bits.color.b.expect((if (normalized) ((color >> 8) & 255) else (((color >> 8) & 255) * 255 >> 8)).U)
           for (sample <- 0 until gfx.maxSampleCount) {
             dut.io.outDepths(sample).expect((100 + received + sample).U)
           }
@@ -117,5 +119,6 @@ class TexturedFragStageSpec extends AnyFlatSpec {
       dut.io.drained.expect(true.B)
       dut.io.out.valid.expect(false.B)
     }
+  }
   }
 }

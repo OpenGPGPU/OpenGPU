@@ -7,8 +7,8 @@ import chisel3._
   * A plain `counter + 1.U` commonly becomes a 64-bit ripple chain in the
   * open-source ASAP7 flow. Keeping the count as `sum + carry` makes the
   * every-cycle feedback update bitwise; the carry-propagate addition exists
-  * only on the observation output and cannot become a register-to-register
-  * critical path. The architectural value and one-event-per-cycle throughput
+  * only on the observation output. A registered observer may still need the
+  * optional prefix adder to bound its observation path. The architectural value and one-event-per-cycle throughput
   * remain unchanged.
   */
 class CarrySaveEventCounter(
@@ -35,7 +35,8 @@ class CarrySaveEventCounter(
   * addend is zero, so observation stays bit-exact.
   */
 class CarrySaveAccumulator(
-  width: Int = 64
+  width: Int = 64,
+  prefixValue: Boolean = false
 ) extends Module {
   require(width > 0)
 
@@ -60,5 +61,9 @@ class CarrySaveAccumulator(
     carry := nextCarry
   }
 
-  io.value := (sum +& carry)(width - 1, 0)
+  if (prefixValue) {
+    val finish = Module(new BlockPrefixAdder(width))
+    finish.io.a := sum; finish.io.b := carry; finish.io.carryIn := false.B
+    io.value := finish.io.sum(width-1,0)
+  } else io.value := (sum +& carry)(width - 1, 0)
 }

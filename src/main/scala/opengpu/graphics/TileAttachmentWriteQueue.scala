@@ -9,8 +9,9 @@ class TileAttachmentWrite extends Bundle {
   val resolve = Bool()
 }
 
-/** Bounded credits for one pass owner's attachment stores. Address-matched
-  * acknowledgements may reorder. Repeated addresses wait for older writes.
+/** Bounded credits for one pass owner's attachment stores. Requests issue in
+  * enqueue order; address-matched acknowledgements may reorder. Repeated
+  * addresses wait for older writes.
   * Abort drops unoffered work, retains a backpressured offered request, and
   * drains every issued credit before another pass can reuse the slots.
   */
@@ -45,10 +46,18 @@ class TileAttachmentWriteQueue(credits: Int = 8) extends Module {
     entries(i).address === io.enqueue.bits.address)).asUInt.orR
   private val free = VecInit(live.map(!_))
   private val freeSlot = PriorityEncoder(free)
-  io.enqueue.ready := free.asUInt.orR && !duplicate && !aborting && !abortNow
+  // Slot numbers are recycled as replies arrive. Choosing the lowest waiting
+  // slot lets newer words repeatedly overtake old high slots, splitting a
+  // gathered line even on a contiguous export. Queue only the bounded slot
+  // handles; data and acknowledgement ownership remain in the credit table.
+  private val order = Module(new Queue(UInt(slotBits.W),credits))
+  private val admit = free.asUInt.orR && !duplicate && !aborting && !abortNow
+  order.io.enq.valid := io.enqueue.valid && admit
+  order.io.enq.bits := freeSlot
+  io.enqueue.ready := order.io.enq.ready && admit
   io.request.valid := offered
   io.request.bits := (if (credits == 1) entries.head else entries(offeredSlot))
-  io.drained := !live.asUInt.orR && !offered
+  io.drained := !live.asUInt.orR && !offered && !order.io.deq.valid
   io.occupancy := PopCount(live)
 
   when(io.begin) {
@@ -60,11 +69,12 @@ class TileAttachmentWriteQueue(credits: Int = 8) extends Module {
     live(freeSlot) := true.B
     issued(freeSlot) := false.B
   }
-  private val waiting = VecInit((0 until credits).map(i => live(i) && !issued(i) &&
-    !(io.request.fire && offeredSlot === i.U)))
+  // Abort drops queued work without offering it. Drain those stale handles
+  // before rebinding; an already offered request retains its original slot.
+  order.io.deq.ready := aborting || abortNow || !offered || io.request.fire
   when(!offered || io.request.fire) {
-    when(waiting.asUInt.orR && !aborting && !abortNow) {
-      offeredSlot := PriorityEncoder(waiting)
+    when(order.io.deq.valid && !aborting && !abortNow) {
+      offeredSlot := order.io.deq.bits
       offered := true.B
     }.otherwise { offered := false.B }
   }

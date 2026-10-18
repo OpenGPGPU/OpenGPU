@@ -62,6 +62,7 @@ class PrimitiveBinCompletion extends Bundle {
   val tail = UInt(32.W)
   val committedCount = UInt(32.W)
   val allocatedPages = UInt(32.W)
+  val spillTransitions = UInt(4.W)
   val restartValid = Bool()
   val restart = new BinPrimitiveReference
 }
@@ -338,6 +339,7 @@ class PrimitiveBinWriter(pageBytes: Int = 4096, writeCredits: Int = 8) extends M
     result.tail := page
     result.committedCount := count
     result.allocatedPages := pool.io.completion.bits.allocatedPages
+    result.spillTransitions:=pool.io.completion.bits.spillTransitions
     result.restartValid := status === PrimitiveBinStatus.exhausted.U
     result.restart := restart
     state := done

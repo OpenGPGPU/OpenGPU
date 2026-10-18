@@ -39,8 +39,11 @@ class SharedL2Slice(
   require(maxOutstanding > 0)
   require(numComputeUnits > 0)
   require(maxOutstanding >= numComputeUnits * transactionsPerCu)
-  require(maxOutstanding > 6,
-    "four load MSHRs, two stores, and one blocking AMO ID are required")
+  private val storeEntries = config.l2StoreEntries
+  private val blockingLowerId = 4+storeEntries
+  private val uncachedLowerId = blockingLowerId+1
+  require(maxOutstanding > blockingLowerId,
+    "four load MSHRs, configured stores, and one blocking AMO ID are required")
 
   private val offsetWidth = log2Ceil(lineBytes)
   private val indexWidth = log2Ceil(sets)
@@ -174,10 +177,10 @@ class SharedL2Slice(
     numComputeUnits = numComputeUnits, lineBytes = lineBytes,
     sets = sets, ways = ways))
   private val storeTable = Module(new L2StoreTransactionTable(
-    config, entries = 2, lineBytes = lineBytes,
+    config, entries = storeEntries, lineBytes = lineBytes,
     maxOutstanding = maxOutstanding, lowerIdBase = 4))
-  private val uncachedRead = if (maxOutstanding >= 8)
-    Some(Module(new L2UncachedRead(config, maxOutstanding, lowerId = 7))) else None
+  private val uncachedRead = if (maxOutstanding > uncachedLowerId)
+    Some(Module(new L2UncachedRead(config, maxOutstanding, lowerId = uncachedLowerId))) else None
   private val uncachedIdle = uncachedRead.map(r => !r.io.active).getOrElse(true.B)
   private val loadHitCounter = Module(new CarrySaveEventCounter())
   private val loadMissCounter = Module(new CarrySaveEventCounter())
@@ -419,7 +422,7 @@ class SharedL2Slice(
   blockingMemoryRequest.valid := (state === State.lower ||
     state === State.atomicRead || state === State.atomicWrite) && !lowerIssued
   blockingMemoryRequest.bits := request
-  blockingMemoryRequest.bits.transactionId := 6.U
+  blockingMemoryRequest.bits.transactionId := blockingLowerId.U
   when(state === State.atomicRead) {
     blockingMemoryRequest.bits.address := atomicLineAddress
     blockingMemoryRequest.bits.writeData := 0.U
@@ -449,14 +452,14 @@ class SharedL2Slice(
 
   private val responseIsMiss = io.memoryResponse.bits.transactionId < 4.U
   private val responseIsStore = io.memoryResponse.bits.transactionId >= 4.U &&
-    io.memoryResponse.bits.transactionId < 6.U
+    io.memoryResponse.bits.transactionId < blockingLowerId.U
   missEngine.io.lowerResponse.valid := io.memoryResponse.valid && responseIsMiss
   missEngine.io.lowerResponse.bits := io.memoryResponse.bits
   storeTable.io.lowerResponse.valid :=
     io.memoryResponse.valid && responseIsStore
   storeTable.io.lowerResponse.bits := io.memoryResponse.bits
   private val responseIsUncached = uncachedRead.map(_ =>
-    io.memoryResponse.bits.transactionId === 7.U).getOrElse(false.B)
+    io.memoryResponse.bits.transactionId === uncachedLowerId.U).getOrElse(false.B)
   uncachedRead.foreach { slot =>
     slot.io.lowerResponse.valid := io.memoryResponse.valid && responseIsUncached
     slot.io.lowerResponse.bits := io.memoryResponse.bits
@@ -474,7 +477,7 @@ class SharedL2Slice(
     !responseIsMiss && !responseIsStore && !responseIsUncached
   when(io.memoryResponse.valid) {
     assert(responseIsMiss || responseIsStore || responseIsUncached ||
-      io.memoryResponse.bits.transactionId === 6.U,
+      io.memoryResponse.bits.transactionId === blockingLowerId.U,
       "L2 slice response must identify a load, store, or blocking transaction")
   }
   storeTable.io.allocate.valid := state === State.storeAllocate

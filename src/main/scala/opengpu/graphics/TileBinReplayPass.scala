@@ -9,7 +9,11 @@ class TileBinReplayPassCompletion extends Bundle {
   val identity = new GraphicsWorkIdentity
   val status = UInt(PrimitiveBinStatus.width.W)
   val tilesOpened = UInt(16.W)
+  val directoryReadBytes = UInt(64.W)
+  val directoryWriteBytes = UInt(64.W)
+  val directoryMisses = UInt(32.W)
   val allocatedPages = UInt(32.W)
+  val spillTransitions = UInt(4.W)
   val committed = UInt(32.W)
   val tiles = UInt(32.W)
   val references = UInt(32.W)
@@ -43,14 +47,18 @@ class TileBinReplayPass(
   engines: Int = 2,
   pageBytes: Int = 4096,
   writeCredits: Int = 8,
-  tileSlots: Int = 8
+  tileSlots: Int = 8,
+  pagedCapacity: Int = 0,
+  useDirectorySramBlackBoxes: Boolean = false,
+  externalDispatchCredits: Boolean = false
 ) extends Module {
   require(config.xLen == 32)
   require(engines >= 1 && engines <= 4)
   require(pageBytes >= 64 && pageBytes <= 65536 && (pageBytes & (pageBytes-1)) == 0)
   require(writeCredits >= 1 && writeCredits <= 32)
   require(tileSlots >= 1 && tileSlots <= 64)
-  private val txCount = writeCredits + engines
+  private val metadataId = writeCredits+engines
+  private val txCount = metadataId+(if (pagedCapacity > 0) 1 else 0)
   val io = IO(new Bundle {
     val begin = Flipped(Decoupled(new TileBinDirectoryDescriptor))
     val append = Flipped(Decoupled(new TileBinAppend))
@@ -65,12 +73,14 @@ class TileBinReplayPass(
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64,txCount)))
     val busy = Output(Bool())
     val engineBusy = Output(Vec(engines, Bool()))
+    val dispatchPermit = if (externalDispatchCredits) Some(Input(Vec(engines,Bool()))) else None
+    val tileAssigned = if (externalDispatchCredits) Some(Output(Vec(engines,Bool()))) else None
   })
-  private val directory = Module(new TileBinDirectory(tileSlots,pageBytes,writeCredits))
+  private val directory = Module(new TileBinDirectory(tileSlots,pageBytes,writeCredits,pagedCapacity,config,useDirectorySramBlackBoxes))
   private val scheduler = Module(new TileBinReplayScheduler(
-    config,engines,pageBytes,txCount,writeCredits))
+    config,engines,pageBytes,txCount,writeCredits,externalDispatchCredits))
   private val words = Module(new OmWordToLinePort(config,64,writeCredits,uncached=true))
-  private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config,64,txCount),2))
+  private val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(config,64,txCount),if (pagedCapacity > 0) 3 else 2))
   private val requests = Module(new Queue(new ComputeMemoryRequest(config,64,txCount),2,pipe=true))
   private val started = RegInit(false.B)
   private val cancelled = RegInit(false.B)
@@ -112,6 +122,10 @@ class TileBinReplayPass(
   io.tileDone <> scheduler.io.tileDone
   for (e <- 0 until engines) { io.reference(e) <> scheduler.io.reference(e) }
   io.engineBusy := scheduler.io.engineBusy
+  if (externalDispatchCredits) {
+    scheduler.io.dispatchPermit.get:=io.dispatchPermit.get
+    io.tileAssigned.get:=scheduler.io.tileAssigned.get
+  }
 
   directory.io.end.valid := io.end.valid
   directory.io.end.bits := io.end.bits
@@ -150,7 +164,11 @@ class TileBinReplayPass(
     result.identity := identity
     result.status := mergeStatus(dirResult.status,replayResult.status)
     result.tilesOpened := dirResult.tilesOpened
+    result.directoryReadBytes := dirResult.directoryReadBytes
+    result.directoryWriteBytes := dirResult.directoryWriteBytes
+    result.directoryMisses := dirResult.directoryMisses
     result.allocatedPages := dirResult.allocatedPages
+    result.spillTransitions:=dirResult.spillTransitions
     result.committed := dirResult.committedCount
     result.tiles := replayResult.tiles
     result.references := replayResult.references
@@ -181,11 +199,23 @@ class TileBinReplayPass(
   directory.io.mem.responseFault := words.io.memoryResponse.bits.fault
   private val wordResponse = io.memoryResponse.bits.transactionId < writeCredits.U
   private val replayResponse = io.memoryResponse.bits.transactionId >= writeCredits.U &&
-    io.memoryResponse.bits.transactionId < txCount.U
+    io.memoryResponse.bits.transactionId < metadataId.U
   scheduler.io.memoryResponse.valid := io.memoryResponse.valid && replayResponse
   scheduler.io.memoryResponse.bits := io.memoryResponse.bits
   words.io.memoryResponse.valid := io.memoryResponse.valid && wordResponse
   words.io.memoryResponse.bits := io.memoryResponse.bits
   io.memoryResponse.ready := Mux(replayResponse,scheduler.io.memoryResponse.ready,
     wordResponse && words.io.memoryResponse.ready)
+  if (pagedCapacity > 0) {
+    val request=directory.io.directoryMemoryRequest.get
+    val response=directory.io.directoryMemoryResponse.get
+    arbiter.io.in(2).valid:=request.valid
+    arbiter.io.in(2).bits:=request.bits
+    arbiter.io.in(2).bits.transactionId:=metadataId.U
+    request.ready:=arbiter.io.in(2).ready
+    val selected=io.memoryResponse.bits.transactionId===metadataId.U
+    response.valid:=io.memoryResponse.valid && selected
+    response.bits:=io.memoryResponse.bits; response.bits.transactionId:=0.U
+    when(selected) { io.memoryResponse.ready:=response.ready }
+  }
 }

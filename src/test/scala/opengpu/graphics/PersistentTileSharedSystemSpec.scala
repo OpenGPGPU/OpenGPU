@@ -195,7 +195,9 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
         var peakOwned = 0
         var sawTrap = false
         var computeDone = false
+        var delayedComputeRequests = 0
         var sawMixed = false
+        val ownershipTrace = mutable.ArrayBuffer.empty[(Int,BigInt,BigInt)]
         var commandFaults = 0
         var walks = 0
         def tick(): Unit = {
@@ -218,8 +220,16 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
               f"request escaped the active physical context: 0x$address%x")
             assert(!pending.exists(_.id == id) && !reply.exists(r => r.id == id && !responseFire),
               "reused a live system transaction ID")
+            // A three-instruction compute task can fit wholly between two
+            // fragment waves (the bare two-CU profile does exactly that).
+            // Delay its independent payload line to exercise a CU awaiting
+            // memory while graphics dispatches on another CU. Other response
+            // IDs remain serviceable; keep the mixed-occupancy assertion.
+            val computeDelay = if (address == physicalOffset + 0xe000L) 512 else 0
+            if (computeDelay != 0) delayedComputeRequests += 1
             pending += Pending(id, address, r.writeData.peek().litValue,
-              r.byteMask.peek().litValue, r.isWrite.peek().litToBoolean, cycle + 4 + rng.nextInt(17))
+              r.byteMask.peek().litValue, r.isWrite.peek().litToBoolean,
+              cycle + 4 + rng.nextInt(17) + computeDelay)
             if (isWalk) walks += 1
           }
           if (dut.io.computeCompletion.valid.peek().litToBoolean) {
@@ -229,7 +239,10 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
           }
           peakOwned = math.max(peakOwned, dut.io.owned.peek().litValue.bitCount)
           val owned = dut.io.owned.peek().litValue
-          sawMixed ||= owned != 0 && (dut.io.busyCUs.peek().litValue & (((BigInt(1) << count) - 1) ^ owned)) != 0
+          val busy = dut.io.busyCUs.peek().litValue
+          if (ownershipTrace.lastOption.forall(t=>t._2!=owned || t._3!=busy))
+            ownershipTrace += ((cycle,owned,busy))
+          sawMixed ||= owned != 0 && (busy & (((BigInt(1) << count) - 1) ^ owned)) != 0
           if (dut.io.commandFault.peek().litToBoolean) commandFaults += 1
           sawTrap ||= dut.io.shaderFault.peek().litToBoolean
           if (responseFire) {
@@ -339,7 +352,8 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
         assert(peakOwned == count, s"only $peakOwned of $count CUs owned by graphics")
         assert(sawTrap, "illegal shader did not report its failure")
         assert(computeDone, "compute did not complete")
-        assert(sawMixed, "graphics and compute never occupied separate CUs simultaneously")
+        assert(delayedComputeRequests > 0, "compute payload stall was not exercised")
+        assert(sawMixed, s"graphics and compute never occupied separate CUs simultaneously; ownership transitions=${ownershipTrace.mkString(",")}")
         assert(word(0xe000 + (if (translated) 0x400000L else 0L)) == 0x123)
         assert(if (translated) commandFaults == 1 && walks > 0 else commandFaults == 0 && walks == 0)
         info(s"shared system cycles=$cycle peak graphics CUs=$peakOwned; mixed CU occupancy, trap, walks=$walks, command faults=$commandFaults")

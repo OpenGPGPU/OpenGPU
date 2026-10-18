@@ -3,6 +3,18 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
+/** Exact round-to-nearest UNORM8 multiplication. The correction implements
+  * (a*b+127)/255 over the entire 8-bit product domain without a divider.
+  */
+private[graphics] object Unorm8Product {
+  def apply(a: UInt,b: UInt): UInt = {
+    require(a.getWidth == 8 && b.getWidth == 8)
+    val rounded = (a*b) +& 128.U(16.W)
+    val corrected = rounded +& (rounded >> 8)
+    corrected(15,8)
+  }
+}
+
 /** Per-vertex texture coordinates, unsigned Q16.16 over the unit square.
   *
   * Coordinates larger than one unit reach the sampler's wrap/clamp machinery;
@@ -61,9 +73,11 @@ class TexUVInterpolator(gfxConfig: GraphicsConfig) extends Module {
   * as latency.  X/Y/depth and the sampled/modulated colour registers are
   * single-source updated (learned twice the hard way in M4b/M5b).
   */
+
 class TexturedFragStage(
   gfxConfig: GraphicsConfig = GraphicsConfig(),
-  quadUv: Boolean = false
+  quadUv: Boolean = false,
+  normalizedModulation: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val fragIn = Flipped(Decoupled(new RasterFragment(gfxConfig)))
@@ -181,7 +195,8 @@ class TexturedFragStage(
   private val heldE = Seq(RegInit(0.S(gfxConfig.edgeWidth.W)),
     RegInit(0.S(gfxConfig.edgeWidth.W)), RegInit(0.S(gfxConfig.edgeWidth.W)))
 
-  private def modulate(fc: UInt, tc: UInt): UInt = (fc * tc)(15, 8)
+  private def modulate(fc: UInt, tc: UInt): UInt =
+    if (normalizedModulation) Unorm8Product(fc,tc) else (fc * tc)(15,8)
 
   // A sampler may accept its successor while delivering the previous result.
   // This stage has one fragment payload slot, held until that output retires.
@@ -207,7 +222,8 @@ class TexturedFragStage(
   io.out.bits.color.r := modulate(heldColor(0), texelWord(31, 24))
   io.out.bits.color.g := modulate(heldColor(1), texelWord(23, 16))
   io.out.bits.color.b := modulate(heldColor(2), texelWord(15, 8))
-  io.out.bits.alpha := heldAlpha
+  io.out.bits.alpha := (if (normalizedModulation)
+    Unorm8Product(heldAlpha,texelWord(7,0)) else heldAlpha)
 
   // Payload latch happens on the accept edge; the sampler completes several
   // cycles later, so its result is observed on its own when -- independent of

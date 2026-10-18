@@ -27,17 +27,26 @@ class LineInvalidateEngine(
   })
 
   private object State extends ChiselEnum {
-    val idle, issue, waiting, respond = Value
+    val idle, decode, issue, waiting, respond = Value
   }
   require(commandIdWidth > 0)
   private val offsetWidth = 6
   private val state = RegInit(State.idle)
   private val address = Reg(UInt(config.xLen.W))
+  private val bytes = Reg(UInt(32.W))
   private val descriptorId = Reg(UInt(commandIdWidth.W))
   private val lines = Reg(UInt(32.W))
   private val index = Reg(UInt(32.W))
+  private val status = Reg(UInt(InvalidateStatus.width.W))
 
-  private val lineCount = (io.request.bits.bytes + 63.U) >> offsetWidth
+  // Validate the original exclusive end before rounding. Exactly 2^32 is
+  // legal; an overflowing byte range must never wrap into another allocation.
+  // Include the first line's byte offset and retain the carry when rounding,
+  // including the nearly-four-GiB case whose aligned extent is four GiB.
+  private val end = address +& bytes
+  private val overflow = end > (BigInt(1) << config.xLen).U
+  private val rounding = address(offsetWidth-1,0) +& (63.U(offsetWidth.W))
+  private val lineCount = (bytes +& rounding) >> offsetWidth
 
   io.request.ready := state === State.idle
   io.hostInvalidate.valid := state === State.issue
@@ -45,26 +54,33 @@ class LineInvalidateEngine(
   io.hostInvalidateDone.ready := state === State.waiting
   io.completion.valid := state === State.respond
   io.completion.bits.descriptorId := descriptorId
-  io.completion.bits.status := InvalidateStatus.success
-  io.completion.bits.success := true.B
+  io.completion.bits.status := status
+  io.completion.bits.success := status === InvalidateStatus.success
   io.completion.bits.bytesInvalidated := (lines << offsetWidth).pad(64)
 
   switch(state) {
     is(State.idle) {
       when(io.request.fire) {
         address := io.request.bits.address
+        bytes := io.request.bits.bytes
         descriptorId := io.request.bits.descriptorId
-        lines := lineCount
         index := 0.U
-        state := Mux(io.request.bits.bytes === 0.U,
-          State.respond, State.issue)
+        state := State.decode
       }
+    }
+    is(State.decode) {
+      address := Cat(address(config.xLen-1,offsetWidth),0.U(offsetWidth.W))
+      lines := Mux(overflow || bytes === 0.U,0.U,lineCount)
+      status := Mux(overflow,InvalidateStatus.addressOverflow,InvalidateStatus.success)
+      state := Mux(overflow || bytes === 0.U,State.respond,State.issue)
     }
     is(State.issue) {
       when(io.hostInvalidate.fire) { state := State.waiting }
     }
     is(State.waiting) {
       when(io.hostInvalidateDone.fire) {
+        assert(io.hostInvalidateDone.bits.lineAddress === io.hostInvalidate.bits.lineAddress,
+          "publication acknowledgement must match the owned physical cache line")
         when(index === lines - 1.U) {
           state := State.respond
         }.otherwise {

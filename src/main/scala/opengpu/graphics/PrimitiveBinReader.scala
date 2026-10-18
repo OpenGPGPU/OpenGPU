@@ -68,7 +68,7 @@ class PrimitiveBinReader(
     val readBytes = Output(UInt(7.W))
   })
   private val Seq(idle,bounds,boundsCheck,headerPrepare,offer,waiting,
-    headerCheck,emit,finish,done) = Enum(10)
+    headerCheck,emit,finish,done,segments) = Enum(11)
   private val state = RegInit(idle)
   private val descriptor = Reg(new PrimitiveBinReadDescriptor)
   private val poolLegal = Reg(Bool())
@@ -76,6 +76,8 @@ class PrimitiveBinReader(
   // Arena page count is registered separately so the constant-capacity
   // multiply that bounds the descriptor does not follow the 33-bit subtract
   // and shift in one cycle.
+  private val segmentIndex=Reg(UInt(3.W))
+  private val previousLimit=Reg(UInt(33.W))
   private val pageCapacity = Reg(UInt(33.W))
   private val page = Reg(UInt(32.W))
   private val expectedPageOrdinal = Reg(UInt(32.W))
@@ -108,8 +110,7 @@ class PrimitiveBinReader(
     PrimitiveBinStatus.cancelled.U,status)
 
   private def pageInBounds(address: UInt): Bool =
-    (address & (pageBytes-1).U) === 0.U && address >= descriptor.pool.base &&
-      (address.pad(33) +& pageBytes.U) <= descriptor.pool.limit.pad(34)
+    BinPagePoolRules.pageInBounds(address,descriptor.pool,pageBytes)
 
   io.begin.ready := state === idle && !io.cancel
   io.reference.valid := referenceValid
@@ -146,15 +147,22 @@ class PrimitiveBinReader(
       }
     }
     is(bounds) {
-      poolLegal := descriptor.version === 1.U && descriptor.pool.version === 1.U &&
-        descriptor.pool.pageSizeLog2 === pageBits.U &&
-        (descriptor.pool.base & (pageBytes-1).U) === 0.U &&
-        (descriptor.pool.limit & (pageBytes-1).U) === 0.U &&
-        descriptor.pool.base.pad(33) <= descriptor.pool.limit &&
-        descriptor.pool.limit <= (BigInt(1)<<32).U(33.W)
+      poolLegal := descriptor.version === 1.U && BinPagePoolRules.headerLegal(descriptor.pool,pageBytes)
       headLegal := pageInBounds(descriptor.head)
-      pageCapacity := (descriptor.pool.limit-descriptor.pool.base.pad(33)) >> pageBits
-      state := boundsCheck
+      pageCapacity := (Mux(descriptor.pool.version===2.U,descriptor.pool.initialLimit,descriptor.pool.limit)-descriptor.pool.base.pad(33)) >> pageBits
+      segmentIndex:=0.U; previousLimit:=descriptor.pool.initialLimit
+      state := Mux(descriptor.pool.version===2.U,segments,boundsCheck)
+    }
+    is(segments) {
+      val p=descriptor.pool
+      val valid=BinPagePoolRules.segmentLegal(p,segmentIndex,previousLimit,pageBytes)
+      val last=Mux(segmentIndex<p.spillCount,p.spills(segmentIndex).limit,previousLimit)
+      when(!valid || (segmentIndex===(BinPagePoolRules.maxSpills-1).U && last=/=p.limit)) { poolLegal:=false.B }
+      when(segmentIndex<p.spillCount) {
+        pageCapacity:=pageCapacity+((p.spills(segmentIndex).limit-p.spills(segmentIndex).base.pad(33))>>pageBits)
+      }
+      previousLimit:=last; segmentIndex:=segmentIndex+1.U
+      when(segmentIndex===(BinPagePoolRules.maxSpills-1).U) { state:=boundsCheck }
     }
     is(boundsCheck) {
       val maximumReferences = pageCapacity * capacity.U

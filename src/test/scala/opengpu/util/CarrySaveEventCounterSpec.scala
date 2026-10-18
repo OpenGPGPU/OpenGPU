@@ -47,4 +47,29 @@ class CarrySaveEventCounterSpec extends AnyFlatSpec {
       dut.io.value.expect(0.U)
     }
   }
+  for (prefix <- Seq(false,true)) {
+    it should s"preserve exact wide accumulation, wrap and clear priority with prefix=$prefix" in {
+      simulate(new CarrySaveAccumulator(64,prefixValue=prefix)) { dut=>
+        val mask=(BigInt(1)<<64)-1
+        val random=new scala.util.Random(0x47444401L)
+        dut.io.addend.poke(0.U); dut.io.clear.poke(false.B)
+        dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+        var expected=BigInt(0)
+        for (n <- 0 until 1024) {
+          val addend=n%8 match {
+            case 0=>mask
+            case 1=>BigInt(1)
+            case 2=>BigInt(0)
+            case 3=>BigInt(64)
+            case _=>BigInt(64,random)
+          }
+          val clear=n%97==0
+          dut.io.addend.poke(addend.U); dut.io.clear.poke(clear.B); dut.clock.step()
+          expected=if (clear) BigInt(0) else (expected+addend)&mask
+          dut.io.value.expect(expected.U)
+        }
+      }
+    }
+  }
+
 }
