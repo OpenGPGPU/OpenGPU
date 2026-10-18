@@ -48,6 +48,17 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "mobile-clip" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.NearClipStage(GraphicsConfig(
+            screenWidth = 1280, screenHeight = 720)), stageArgs, firtoolArgs)
+      case "texture-coordinates" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TextureCoordinatePipeline(laneWidth = 4), stageArgs, firtoolArgs)
+      case "texture-sampler" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TextureUnit(wordCacheEntries = 8,
+            allowPrepared = true, overlapPrepared = true), stageArgs, firtoolArgs)
       case "mobile-geometry" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.PreparedGeometryStage(GraphicsConfig(

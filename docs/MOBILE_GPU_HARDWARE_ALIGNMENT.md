@@ -1175,3 +1175,11 @@ TC/SLVT,25% I/O delays and25% utilization; the final gates are unchanged.
 The normal sbt/public `mobile-geometry` emitter produces byte-identical SV
 to every routed input file. This qualifies viewport preparation, not the
 remaining raster/texture/interpolation paths or whole GPU.
+
+Current clipper V8 also passes its complete routed1 GHz component gate:
++33.5254 ps setup,+27.6347 ps hold, zero timing/placement/DRC/antenna
+violations and complete mapping. It uses22% utilization and50 ps repair
+headroom with unchanged final setup/hold and I/O gates. The normal public
+`mobile-clip` emitter produces byte-identical SV to every routed input.
+The [clipper record](performance/mobile-clip-divider-2026-10-18.json)
+preserves the earlier failed routes and this component qualification.
