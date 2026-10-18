@@ -458,7 +458,7 @@
       "log": "/tmp/gpu-mobile-h1-clip-distance-v5-formal.log",
       "log_sha256": "67be0dae8f5ab248eb30ea483010663cbd09eb6dc5dfd518e7f8ca2c903eb57e"
     },
-    "route_status": "Retry running atutil22, samefrozenRTL/1GHzTC/SLVTIO25%, closureeffort; physical-clip-integration-v5-route-util22. Priorutil25route failedIOplacement, nottimingqualification.",
+    "route_status": "TerminalFAIL: utilization22 resolved IOplacement but globalsetup-28.6644ps/56violations,hold+30.1467ps/0violations; physicalchecks clean. Not qualified1GHz.",
     "native_status": "PASS4checks/48distinctinside+clippedjobs onfrozenV5+rasterV21",
     "route_attempt_util25": {
       "passed": false,
@@ -468,6 +468,146 @@
       "qualification": "generated/mobile-h1/physical-clip-integration-v5-route/qualification.json",
       "qualification_sha256": "6f3c9b4d1bb999926187f46ac628927a21039d39705708f0a0413cd7e888a7a1",
       "routed_timing_available": false
+    },
+    "route_util22": {
+      "artifact": "generated/mobile-h1/physical-clip-integration-v5-route-util22",
+      "manifest_sha256": "0f60a4369e11d94e113e4191748781e1b8454cbc5068f7b7aa6bc7968e4bf765",
+      "result_sha256": "9f81cc7ded8759a2b8ca851b59d18d19ab6aced0bf6476da8738ba8c2c081208",
+      "qualification_sha256": "fb0316edec577554f268129abb65990806ba5b0dd49332591ca916b3959e0e70",
+      "qualification": {
+        "passed": false,
+        "checks": {
+          "setup_worst_slack_ps": false,
+          "hold_worst_slack_ps": true,
+          "setup_violation_count": false,
+          "hold_violation_count": true,
+          "route_drc_errors": true,
+          "antenna_violating_nets": true,
+          "antenna_violating_pins": true,
+          "placement_violations": true,
+          "flow_errors": true,
+          "flow_completed": true,
+          "tool_verdict": false
+        },
+        "missing_metrics": [],
+        "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-clip-integration-v5-route-util22/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "64c2f670b0fe4eb78344f69fae98cafb5041e57ed639c04a85418a5344737b61"
+        }
+      },
+      "qor": {
+        "instance_count": 181001,
+        "instance_area": 6693.21,
+        "sequential_cell_count": 6468,
+        "clock_buffer_count": 583,
+        "timing_repair_buffer_count": 8514,
+        "setup_tns_ps": -783.052,
+        "hold_tns_ps": 0,
+        "setup_worst_slack_ps": -28.6644,
+        "hold_worst_slack_ps": 30.1467,
+        "setup_violation_count": 56,
+        "hold_violation_count": 0,
+        "core_clock_fmax_mhz": 972.134,
+        "virtual_io_clock_fmax_mhz": null,
+        "reported_fmax_mhz": 972.134,
+        "setup_clock_skew_ps": 20.919,
+        "hold_clock_skew_ps": 25.2006,
+        "total_power_w": 0.117485,
+        "placement_utilization": 21.7546,
+        "placement_violations": 0,
+        "estimated_wirelength": 453702,
+        "route_wirelength": 533837,
+        "route_vias": 609718,
+        "route_drc_errors": 0,
+        "route_drc_report_bytes": 0,
+        "antenna_violating_nets": 0,
+        "antenna_violating_pins": 0,
+        "ir_drop_vdd_worst": 0.0299454,
+        "ir_drop_vss_worst": 0.027885,
+        "flow_warnings": 15,
+        "flow_errors": 0,
+        "critical_path": {
+          "startpoint": "u8744 (rising edge-triggered flip-flop clocked by core_clock)",
+          "endpoint": "u13351 (rising edge-triggered flip-flop clocked by core_clock)",
+          "group": "core_clock",
+          "slack_ps": -28.66,
+          "arrival_ps": 1185.27,
+          "data_path_delay_ps": 1023.5,
+          "cell_delay_ps": 811.16,
+          "net_delay_ps": 212.34,
+          "cell_delay_percent": 79.25,
+          "net_delay_percent": 20.75,
+          "cell_count": 41,
+          "net_count": 41,
+          "dominant_cell_types": [
+            {
+              "cell_type": "BUFx6f_ASAP7_75t_SL",
+              "count": 5,
+              "delay_ps": 133.24
+            },
+            {
+              "cell_type": "AND2x4_ASAP7_75t_SL",
+              "count": 7,
+              "delay_ps": 105.3
+            },
+            {
+              "cell_type": "AO32x1_ASAP7_75t_SL",
+              "count": 2,
+              "delay_ps": 97.37
+            },
+            {
+              "cell_type": "OA211x2_ASAP7_75t_SL",
+              "count": 3,
+              "delay_ps": 85.5
+            },
+            {
+              "cell_type": "DFFHQNx3_ASAP7_75t_SL",
+              "count": 1,
+              "delay_ps": 57.14
+            },
+            {
+              "cell_type": "AND2x2_ASAP7_75t_SL",
+              "count": 3,
+              "delay_ps": 56.16
+            },
+            {
+              "cell_type": "OR3x1_ASAP7_75t_SL",
+              "count": 3,
+              "delay_ps": 47.97
+            },
+            {
+              "cell_type": "AOI22x1_ASAP7_75t_SL",
+              "count": 3,
+              "delay_ps": 44.16
+            }
+          ],
+          "per_group": {
+            "core_clock": {
+              "startpoint": "u8744 (rising edge-triggered flip-flop clocked by core_clock)",
+              "endpoint": "u13351 (rising edge-triggered flip-flop clocked by core_clock)",
+              "slack_ps": -28.66,
+              "arrival_ps": 1185.27
+            },
+            "vclk_core_clock": {
+              "startpoint": "u12 (rising edge-triggered flip-flop clocked by core_clock)",
+              "endpoint": "io_out_5_y[14] (output port clocked by vclk_core_clock)",
+              "slack_ps": -27.51,
+              "arrival_ps": 777.51
+            }
+          }
+        }
+      },
+      "critical_registers": "FinalOpenDB edgeIndex[1] -> outputCount[3]. IO path finalCount[0] -> io_out_5_y[14] alsofails(-27.51ps).",
+      "netlist_query_log": ".artifacts/mobile-hardware-alignment/h0-h1/clip_v5_route_netlist_query.log",
+      "netlist_query_sha256": "503c90445ab05c74e878a48a8ad89f36eb9e1255ea157fa5e42e2a7c6eac1989"
     }
   },
   "native_clipped_v1": {

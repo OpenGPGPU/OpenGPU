@@ -1050,3 +1050,10 @@ recovery1x, then4x→1x→2x, with command-ID reuse and36,864 exact sample-word
 checks. Transition jobs take234,107/172,229/178,718 GPU cycles. The fixture
 flushes translation at mode changes and does not replay prior typed resolves
 or the complete Linux history, so the archived Linux timeout is still open.
+
+The22%-utilization V5 clipper route completes physical implementation but
+fails the unchanged1 GHz setup gate:−28.6644 ps across56 paths. Hold slack
+is+30.1467 ps with zero hold violations, and mapping/placement/DRC/antenna
+checks pass. Final OpenDB identifies `edgeIndex[1] → outputCount[3]`; the
+`finalCount[0] → io_out_5_y[14]` I/O path also fails at−27.51 ps. Both are
+recorded as open timing work, despite the earlier passing synthesis estimate.
