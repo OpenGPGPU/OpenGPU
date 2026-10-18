@@ -43,8 +43,11 @@ def synthesis_mapping_gate(log):
     skipped = re.findall(r"skipping unexpected instance type ['\"]([^'\"]+)['\"]", log or '')
     unresolved = [line.strip() for line in (log or '').splitlines()
                   if re.search(r'used but has no driver|unmapped (?:cell|instance)|'
-                               r'found and reported [1-9]\d* problems', line, re.I)]
-    mapped = bool(re.search(r'Export to ODB: created \d+ instances|ABC RESULTS:|Number of cells:', log or ''))
+                               r'found and reported [1-9]\d* problems', line, re.I)
+                  or re.search(r'^\s*[1-9]\d*\s+(?:\S+\s+\d+\s+\S+\s+)?\$\S+\s*$', line)]
+    mapped = bool(re.search(r'Export to ODB: created \d+ instances|ABC RESULTS:|Number of cells:|'
+                            r'^\s*[1-9]\d*\s+\S+\s+\d+\s+\S+\s+cells\s*$',
+                            log or '', re.MULTILINE))
     return dict(passed=mapped and not skipped and not unresolved,
                 mapping_report_present=mapped, skipped_instance_types=sorted(set(skipped)),
                 skipped_instance_count=len(skipped),
@@ -55,15 +58,25 @@ def synthesis_mapping_gate(log):
 
 def mapping_proof(result, output):
     candidates = [output / 'flow/orfs-work/logs/base/1_synth.log',
-                  output / 'flow/orfs-work/logs/base/1_2_yosys.log']
+                  output / 'flow/orfs-work/logs/base/1_2_yosys.log',
+                  output / 'flow/orfs-work/reports/base/synth_stat.txt']
+    paths = [p for p in candidates if p.is_file()]
     run_log = (result.get('artifacts') or {}).get('run.log')
-    if run_log:
-        candidates.append(Path(run_log))
-    path = next((p for p in candidates if p.is_file()), None)
-    log = path.read_text() if path else ''
-    gate = synthesis_mapping_gate(log)
-    gate.update(log=str(path) if path else None,
-                log_sha256=hashlib.sha256(log.encode()).hexdigest() if path else None)
+    if not paths and run_log and Path(run_log).is_file():
+        paths.append(Path(run_log))
+    logs = [(path, path.read_text()) for path in paths]
+    combined = '\n'.join(log for _, log in logs)
+    gate = synthesis_mapping_gate(combined)
+    # A Yosys run can have an OpenROAD-only 1_synth.log and put its mapping
+    # statistics in a separate report. Inspect every engine log for failures.
+    primary = next(((p, log) for p, log in logs
+                    if synthesis_mapping_gate(log)['mapping_report_present']),
+                   logs[0] if logs else (None, ''))
+    gate.update(log=str(primary[0]) if primary[0] else None,
+                log_sha256=hashlib.sha256(primary[1].encode()).hexdigest() if primary[0] else None,
+                logs=[dict(path=str(p), sha256=hashlib.sha256(log.encode()).hexdigest())
+                      for p, log in logs],
+                combined_log_sha256=hashlib.sha256(combined.encode()).hexdigest() if logs else None)
     return gate
 
 

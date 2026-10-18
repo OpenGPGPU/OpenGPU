@@ -1084,3 +1084,11 @@ clipper baseline. This is one resident tile per submission, not full-frame
 qualification. The V6 clipper separately passes complete-mapping1 GHz
 synthesis with+49.639 ps core setup and+624.781 ps reported I/O setup slack;
 its routed/native checks remain open.
+
+The bounded combinational viewport fixture completes Yosys mapping to117,140
+cells but fails1 GHz synthesis setup by21,428.42 ps. Operand narrowing fixes
+the numeric overflow and reduces widths; it does not solve combinational
+division timing. The qualifier now reads the separate Yosys statistics report
+alongside both engine logs, with37 checks covering missed reports and residual
+internal operators. The original failed qualification is retained; a log-format
+reassessment confirms mapping while preserving the timing failure.

@@ -70,7 +70,52 @@
       "sv_sha256": "15b7a8c3097aa69737c7318fa8786dc7fa8df1a1e06f4e7fd1f848b834900bb2"
     }
   },
-  "mapping_timing": "Yosys synthesis running: generated/mobile-h1/physical-geometry-bounded-synth. No passclaimed.",
+  "mapping_timing": {
+    "artifact": "generated/mobile-h1/physical-geometry-bounded-synth",
+    "status": "FAIL1GHzsetup-21428.42ps; complete mapping confirmed fromallenginereports",
+    "reported_setup_slacks_ps": [
+      -21428.42,
+      694.915
+    ],
+    "result_sha256": "8c96c3b0697dc0f6070b78b81bb108c2554688982b4e378b12848e1861f5ff2f",
+    "original_qualification_sha256": "efd4f5af707dfde53f1b26c61c4ede962afd3bd14728ecbab29338e642cc8e2f",
+    "mapping_reassessment_sha256": "e83d316dbd4903846152e057a3e9a1e43699da48cc3e947d48816d5f7cece2a5",
+    "mapping_reassessment": {
+      "original_qualification_sha256": "efd4f5af707dfde53f1b26c61c4ede962afd3bd14728ecbab29338e642cc8e2f",
+      "qualifier_sha256": "46d168b4d3dd0df8fc5902fae152d6759bd49cd2e8a3fa894fc4e788713d7cc2",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-geometry-bounded-synth/flow/orfs-work/reports/base/synth_stat.txt",
+        "log_sha256": "b556c3ab0511fd616b5e308299b52ca6709b2879acc7f7ff774d9673bc3b2627",
+        "logs": [
+          {
+            "path": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-geometry-bounded-synth/flow/orfs-work/logs/base/1_synth.log",
+            "sha256": "b864e6505589cfd8822eb68366fde1c5480f0c4e01ac6d88b95048cb5ac9b989"
+          },
+          {
+            "path": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-geometry-bounded-synth/flow/orfs-work/logs/base/1_2_yosys.log",
+            "sha256": "68606468b9d37b8df38149e14ef28de92a928c529683a547400b20ef5a42ea4e"
+          },
+          {
+            "path": "/Users/duckdonald/workspace/gpu/generated/mobile-h1/physical-geometry-bounded-synth/flow/orfs-work/reports/base/synth_stat.txt",
+            "sha256": "b556c3ab0511fd616b5e308299b52ca6709b2879acc7f7ff774d9673bc3b2627"
+          }
+        ],
+        "combined_log_sha256": "bc36b529aa1b74b93ea47330794012f5bc4b79343b439c4574cfa53b7b88a24a"
+      },
+      "setup_passed": false,
+      "passed": false,
+      "scope": "Retrospective log-format assessment only. OriginalimmutablePPAartifacts retained. Mappingstats separatefrom1_synth.log; actualsetupstillfails by21.428ns."
+    },
+    "mapped_cells": 117140,
+    "scope": "Registeredendpointcombinationalviewportfixture; Yosyscorepathincludesunrolleddivision. Notproductionclockqualification."
+  },
   "native_product": {
     "passed": true,
     "checks": 4,
@@ -91,5 +136,14 @@
     "cycle_comparison": "All48jobs have exactlythe sameGPUcyclecount asV5clipper+rasterV21 witholdviewport arithmetic. Doesnotcoverextremegeometryimages; thosehaveBigIntunitchecks.",
     "scope": "Boundedviewport+frozenclipv5+rasterV21; insideandclipped scenes, per-suite sharedfilter; independent sample/resolve imageoracle, 1280x720viewport, one8/16tile,1/2/4samples,Bare/Sv32,128KiBL2AXI256. Not fullframes orclockqualification."
   },
-  "full_renderer_qualified": false
+  "full_renderer_qualified": false,
+  "qualifier_log_support": {
+    "source_sha256": {
+      "scripts/qualify_ppa.py": "46d168b4d3dd0df8fc5902fae152d6759bd49cd2e8a3fa894fc4e788713d7cc2",
+      "scripts/test_qualify_ppa.py": "c4e57ed0483ebc3daa25c3bbb2c2ca692117ce3f5e5c9a452ba629e14fdf1b3d"
+    },
+    "checks": 37,
+    "unit_log_sha256": "720de4d197dadb0d549911f6572e6818fa523f2a0babd1976c5822b45576fabf",
+    "change": "Inspect1_synth/1_2_yosys/separatesynth_stat together; acceptnewYosysstatisticsandfailanyloggedskipped/unmapped/internaloperator. Executionmessagealoneisnotmappingevidence. Finaltiminggatesunchanged."
+  }
 }

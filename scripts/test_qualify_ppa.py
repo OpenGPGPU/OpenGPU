@@ -58,6 +58,46 @@ def test_mapping_proof_reads_the_yosys_mapping_log(tmp_path):
     assert gate['log'] == str(log)
 
 
+def test_mapping_proof_uses_separate_yosys_statistics(tmp_path):
+    logs = tmp_path / 'flow/orfs-work/logs/base'
+    reports = tmp_path / 'flow/orfs-work/reports/base'
+    logs.mkdir(parents=True)
+    reports.mkdir(parents=True)
+    (logs / '1_synth.log').write_text('OpenROAD\nlink_design Top\n')
+    (logs / '1_2_yosys.log').write_text('15.1.1. Executed ABC.\n')
+    stats = reports / 'synth_stat.txt'
+    stats.write_text('=== Top ===\n 100 1.25E+04 100 1.25E+04 cells\n'
+                     ' 100 1.25E+04 100 1.25E+04 AND2x2_ASAP7_75t_SL\n')
+    gate = qualify.mapping_proof({}, tmp_path)
+    assert gate['passed']
+    assert gate['log'] == str(stats)
+    assert len(gate['logs']) == 3
+
+
+@pytest.mark.parametrize('source', ['1_synth.log', '1_2_yosys.log'])
+def test_mapping_proof_retains_failures_in_every_engine_log(tmp_path, source):
+    logs = tmp_path / 'flow/orfs-work/logs/base'
+    logs.mkdir(parents=True)
+    (logs / '1_synth.log').write_text('Export to ODB: created 100 instances\n')
+    (logs / '1_2_yosys.log').write_text('Number of cells: 100\n')
+    with (logs / source).open('a') as out:
+        out.write('unmapped cell $div\n')
+    assert not qualify.mapping_proof({}, tmp_path)['passed']
+
+
+@pytest.mark.parametrize('row', ['1 - 1 - $div', '1 - 0 - $div', '1 $div'])
+def test_yosys_statistics_reject_internal_operators(row):
+    report = ' 100 1.25E+04 100 1.25E+04 cells\n ' + row + '\n'
+    gate = qualify.synthesis_mapping_gate(report)
+    assert gate['mapping_report_present']
+    assert not gate['passed']
+    assert gate['unresolved_diagnostics'] == [row]
+
+
+def test_yosys_execution_message_is_not_mapping_evidence():
+    assert not qualify.synthesis_mapping_gate('15.1.1. Executed ABC.\n')['passed']
+
+
 @pytest.mark.parametrize('operator', ['sdiv_trunc', 'udiv', 'unknown_operator'])
 def test_skipped_operators_fail_even_when_a_netlist_was_exported(operator):
     log = f"Export to ODB: created 100 instances\n[WARNING SYN-0030] Export to ODB: skipping unexpected instance type '{operator}'\n"
