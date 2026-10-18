@@ -48,6 +48,14 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "resident-tile-samples" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ResidentTileSampleBackend(useBlackBoxes=true),
+          stageArgs,firtoolArgs)
+      case "tile-sample-merge" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileSampleMergePipeline, stageArgs, firtoolArgs)
+      case "banked-tile-sample" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.BankedTileSampleSram(useBlackBoxes=true),
+          stageArgs,firtoolArgs)
       case "tile-attachment-export" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileAttachmentExport,
           stageArgs,firtoolArgs)

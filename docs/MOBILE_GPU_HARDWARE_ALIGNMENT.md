@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: proposed hardware architecture with H0/H1/H2 implementation in progress, 2026-10-19. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
+Status: proposed hardware architecture with H0/H1/H2/H3 implementation in progress, 2026-10-19. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
 Evolve OpenGPU into a mobile rendering architecture by extending the shared CU pool with persistent tile storage, GPU geometry fetching, scalable texture and pixel backends, and general graphics resource descriptors. Keep shader arithmetic on the existing CUs. The first functional target is hardware sufficient for a complete GLES 3.0 implementation; a Mali-G31-class commercial comparison requires further feature, performance, and physical qualification.
 
@@ -2676,3 +2676,122 @@ only the final source's complete results qualify this checkpoint. All 479
 source/build/ABI hashes, the recoverable source archive, emissions and reports
 are recorded. Dense/shared-memory full-frame budgets, H3's complete pixel
 backend, H4–H8, dependency/alias/coherence closure and whole-GPU timing remain open.
+
+## H3 banked sample storage service
+
+The [banked-storage checkpoint](performance/mobile-banked-sample-sram-2026-10-19.json)
+adds `BankedTileSampleSram`, with four tagged read ports and four write ports over
+eight paired RGBA8/D24S8 single-port banks. Each pair arbitrates one operation
+per cycle. Independent full-word enables preserve either attachment plane.
+Sample mode is captured at begin; local replies and the producer must be
+quiescent before rebinding. The logical maximum is 1,024 samples, or 8 KiB.
+The sixteen characterized 256x32 macros occupy 16 KiB because each bank uses
+128 logical rows. This fits within the proposed 32 KiB single-slot budget.
+
+A read port owns one synchronous SRAM-result stage and two registered response
+entries. Stalled SRAM data is captured exactly once, before another port can
+reuse the bank or an inactive behavioral read output changes. Replies retain
+index/ticket ownership and per-port order under backpressure. The row-major
+quad mapping is `bank={x1,y0 XOR s1,x0 XOR s0}` and
+`row={y3:y1,x3:x2,s1:s0}`; paired adjacent quads use disjoint bank sets.
+
+Six tests pass in the main build, covering all logical words at 1x/2x/4x,
+independent plane masks, mixed reads/writes, changing input sample mode,
+blocked responses during other-port bank reuse, tagged ownership and conflict
+fairness. Behavioral and vendor SRAM paths both pass. A 64-cycle disjoint-bank
+stream accepts four raw tuple reads and four raw tuple writes per cycle and
+returns four replies per cycle after warm-up. It reads and writes different
+sample addresses. This does not demonstrate complete pixel read/modify/write.
+
+The component passes complete-mapping synthesis setup at 1 GHz, ASAP7 TC/SLVT
+and 25% I/O budgets: +357.898 ps core/+91.454 ps I/O slack, 11,194 standard
+cells and 1,397.99 µm² cell area, plus 16 SRAM macros occupying 6,643.81 µm².
+Default-activity power is 0.0735603 W. No new place/route is performed; this is
+component setup screening, without workload power or integrated timing proof.
+
+The default renderer does not instantiate this new service yet. Its scalar
+sample-expander/output-merger ingress still limits that path to one sample
+per cycle. H3 still requires wide ingress, a complete merge pipeline, sample
+reservations and ordering, valid/dirty and refill ownership, clear/resolve/export
+integration, cancellation and legal early rejection before shader dispatch.
+The four-complete-updates gate and H4–H8 remain open.
+
+## H3 pipelined sample merge arithmetic
+
+The [sample-merge checkpoint](performance/mobile-sample-merge-pipeline-2026-10-19.json)
+adds a three-stage elastic RGBA8/D24S8 arithmetic pipeline. The stages perform
+depth/stencil comparison and factor selection, rounded blend products, then
+equations and channel masks. Every accepted sample captures its state, index
+and ticket. Output payload remains stable under backpressure. Rounded division
+by 255 uses an exact bounded correction instead of a hardware divider.
+
+Four tests pass: 5,432 independent-model semantic cases with changing state and
+stalls, a 512-sample continuous stream, and 131,072 exhaustive product/convex-sum
+rounding cases. With continuous readiness, one instance accepts one sample per
+cycle and returns one arithmetic result per cycle after three-cycle warm-up.
+The component retains the existing raw OutputMerger contract, including its
+zero-stencil depth-write path and raw blend-factor behavior; this is not GLES
+API or numerical closure.
+
+Complete-mapping synthesis passes at 1 GHz, ASAP7 TC/SLVT and 25% I/O budgets:
++246.173 ps core/+422.913 ps I/O setup slack, 7,925 standard cells and
+1,024.11 µm² cell area, without SRAM macros. Default-activity power is 0.017656 W.
+No new place/route is performed. All 483 source/build/ABI hashes, the source
+archive, regression log, emitted RTL and synthesis reports are recorded.
+
+This arithmetic block is not yet instantiated in the default renderer and
+does not own SRAM requests, reservations, refill/dirty state, cancellation or
+export. Its one-result-per-cycle rate is not complete sample-update throughput.
+The next H3 integration must combine four lanes with banked storage and retain
+each sample reservation through actual writeback, before wide renderer ingress
+and legal early rejection can close the complete pixel-backend gate.
+
+## H3 resident quad read/modify/write backend
+
+The [resident-backend checkpoint](performance/mobile-resident-sample-backend-2026-10-19.json)
+now composes the banked SRAM with four arithmetic merge lanes in
+`ResidentTileSampleBackend`. `TileSampleQuadMerge` atomically admits each native
+quad's active lanes, reserves their samples and retains each reservation through
+the actual SRAM write commit. Active lanes must use distinct banks; a 2x2 quad
+at one sample satisfies this contract. Eight packet contexts retire in acceptance
+order while lanes and banks may progress independently. Sparse and empty masks
+are supported, and every sample carries its accepted state and ownership tag.
+
+Cancellation stops admission and drains each accepted owner. Unoffered work can
+be discarded, while an already offered read or write retains valid and payload
+until acceptance. Per-packet completion masks distinguish committed color/depth
+writes from canceled samples. Concurrent lane terminal events are combined.
+The exclusive maintenance interface provides initialized old values and later
+inspection; attachment valid/dirty, refill and export policy remain parent duties.
+
+Fifteen tests across four suites pass on the final frozen source. With both
+behavioral and vendor SRAM, 128 consecutive quads perform 512 complete RGBA8
+source-over/D24 test-and-write/S8 test-and-increment updates. Actual SRAM write
+commits are four samples on each of 128 consecutive cycles. Admission through
+ordered completion takes 135 cycles, excluding initialization and inspection.
+This measures resident old-value reads, merge arithmetic and writeback together.
+It is not a full renderer, shared-CU, DRAM or frame-rate measurement.
+
+The regression also checks 768 changing-state sparse/empty packets at 1x/2x/4x
+with repeated sample overlaps and stalled completion, comparing final SRAM to
+an independent ordered integer model. Cancellation checks reconstruct final
+SRAM from committed/canceled masks, rebind and reuse the same sample addresses.
+An explicit test stalls all four already offered reads or writes across cancel,
+then verifies stable payload, exact drain, held completion and reservation reuse.
+
+Complete-mapping synthesis passes at 1 GHz, ASAP7 TC/SLVT and 25% I/O budgets:
++133.670 ps core/+47.425 ps I/O setup slack, 84,545 standard cells and
+11,884.5 µm² cell area, plus 16 SRAM macros occupying 6,643.81 µm².
+Default-activity power is 0.195952 W. These are resident-component setup results;
+no new place/route, workload-power or whole-GPU timing claim is made. All 487
+source/build/ABI hashes, the recoverable source archive, regression and emitted
+RTL/report hashes are recorded. A test-only refinement adds explicit write-cycle
+assertions; its production RTL is byte-identical to the first combined run.
+
+The existing production `RenderPipeline` and persistent attachment store still
+use their scalar composition. The resident component demonstrates the local
+four-complete-updates rate, but H3 remains open until attachment clear/load/refill,
+valid/dirty ownership, store/resolve and fault/cancel handling are integrated,
+renderer and shader-export ingress are widened, and legal early rejection is
+verified before shader dispatch. The original workload and remaining H0–H8 gates
+remain required. Current PPA screening continues with synthesis only.
