@@ -81,15 +81,17 @@ class IterativeSignedDividerSpec extends AnyFlatSpec {
     }
   }
 
-  it should "cancel an in-flight divide or stalled result on reset and accept fresh work" in {
-    simulate(new IterativeSignedDivider(68, 34)) { dut =>
+  for (q <- Seq(68, 32)) {
+  it should s"cancel preparation, iteration or stalled output and reuse $q quotient bits" in {
+    simulate(new IterativeSignedDivider(68, 34, q)) { dut =>
       dut.io.in.valid.poke(false.B); dut.io.out.ready.poke(false.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
-      for (resetAfter <- Seq(1, 35, 68, 72)) {
-        dut.io.in.bits.numerator.poke((-123456789012345L).S)
+      for (resetAfter <- Seq(0, 1, q / 2, q, q + 4)) {
+        dut.io.in.bits.numerator.poke((-123456789012L).S)
         dut.io.in.bits.denominator.poke(37.S)
         dut.io.in.valid.poke(true.B); dut.io.in.ready.expect(true.B)
-        dut.clock.step(); dut.io.in.valid.poke(false.B); dut.clock.step(resetAfter)
+        dut.clock.step(); dut.io.in.valid.poke(false.B)
+        if (resetAfter > 0) dut.clock.step(resetAfter)
         dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
         dut.io.out.valid.expect(false.B); dut.io.in.ready.expect(true.B)
         dut.io.in.bits.numerator.poke(9876543210L.S)
@@ -97,10 +99,10 @@ class IterativeSignedDividerSpec extends AnyFlatSpec {
         dut.io.in.valid.poke(true.B); dut.clock.step(); dut.io.in.valid.poke(false.B)
         dut.io.out.ready.poke(true.B)
         var cycles = 0
-        while (!dut.io.out.valid.peek().litToBoolean && cycles < 72) {
+        while (!dut.io.out.valid.peek().litToBoolean && cycles < q + 5) {
           dut.clock.step(); cycles += 1
         }
-        assert(cycles < 72)
+        assert(cycles < q + 5)
         dut.io.out.bits.quotient.expect((BigInt(9876543210L) / -19).S)
         dut.io.out.bits.divideByZero.expect(false.B)
         dut.io.out.bits.magnitudeOverflow.expect(false.B)
@@ -108,8 +110,9 @@ class IterativeSignedDividerSpec extends AnyFlatSpec {
       }
     }
   }
+  }
 
-  it should "retire zero and unit-divisor cases one cycle after acceptance" in {
+  it should "retire zero and unit-divisor cases after the preparation cycle" in {
     simulate(new IterativeSignedDivider(68, 34, 32)) { dut =>
       dut.io.in.valid.poke(false.B); dut.io.out.ready.poke(true.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
@@ -118,6 +121,7 @@ class IterativeSignedDividerSpec extends AnyFlatSpec {
         dut.io.in.valid.poke(true.B); dut.io.in.ready.expect(true.B)
         dut.io.in.bits.numerator.poke(a.S); dut.io.in.bits.denominator.poke(b.S)
         dut.clock.step(); dut.io.in.valid.poke(false.B)
+        dut.io.out.valid.expect(false.B); dut.clock.step()
         dut.io.out.valid.expect(true.B)
         dut.io.out.bits.quotient.expect(signed(a / b, 32).S)
         dut.io.out.bits.divideByZero.expect(false.B); dut.io.out.bits.magnitudeOverflow.expect(false.B)

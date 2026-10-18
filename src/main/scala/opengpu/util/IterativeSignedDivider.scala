@@ -43,8 +43,8 @@ class IterativeSignedDivider(
     adder.io.sum(bits.getWidth - 1, 0)
   }
 
-  private val busy = RegInit(false.B)
-  private val finishing = RegInit(false.B)
+  private val sIdle :: sPrepare :: sIterate :: sFinish :: Nil = Enum(4)
+  private val state = RegInit(sIdle)
   private val count = Reg(UInt(math.max(1, log2Ceil(qWidth)).W))
   private val quotient = Reg(UInt(qWidth.W))
   private val divisor = Reg(UInt(denominatorWidth.W))
@@ -53,7 +53,7 @@ class IterativeSignedDivider(
   private val outputValid = RegInit(false.B)
   private val outputBits = Reg(new SignedDivisionResult(qWidth))
   private val outputAvailable = !outputValid || io.out.ready
-  io.in.ready := !busy && outputAvailable
+  io.in.ready := state === sIdle && outputAvailable
   io.out.valid := outputValid
   io.out.bits := outputBits
 
@@ -66,43 +66,55 @@ class IterativeSignedDivider(
   private val denominatorMagnitude =
     Mux(denominator(denominatorWidth - 1), negate(denominator), denominator)
   private val highNumerator = if (qWidth == numeratorWidth) 0.U(1.W)
-    else numeratorMagnitude(numeratorWidth - 1, qWidth)
+    else Reg(UInt((numeratorWidth - qWidth).W))
   private val magnitudeOverflow = if (qWidth == numeratorWidth) false.B else {
     val width = math.max(highNumerator.getWidth, denominatorWidth)
     val compare = Module(new BlockPrefixAdder(width))
     compare.io.a := highNumerator.pad(width)
-    compare.io.b := ~denominatorMagnitude.pad(width)
+    compare.io.b := ~divisor.pad(width)
     compare.io.carryIn := true.B
     compare.io.sum(width)
   }
 
   when(io.in.fire) {
-    when(denominator === 0.U) {
+    // Capture sign conversion before capacity/control checks. Reuse the
+    // quotient register for low magnitude bits and the output slot for the
+    // unit-divisor result. The output slot is available at this accept edge.
+    quotient := numeratorMagnitude(qWidth - 1, 0)
+    divisor := denominatorMagnitude
+    if (qWidth < numeratorWidth) {
+      highNumerator := numeratorMagnitude(numeratorWidth - 1, qWidth)
+    }
+    negative := numerator(numeratorWidth - 1) ^ denominator(denominatorWidth - 1)
+    outputBits.quotient :=
+      Mux(denominator(denominatorWidth - 1), negatedNumerator, numerator)(qWidth - 1, 0).asSInt
+    count := 0.U
+    state := sPrepare
+  }
+
+  when(state === sPrepare) {
+    when(divisor === 0.U) {
       outputValid := true.B
       outputBits.quotient := 0.S
       outputBits.divideByZero := true.B
       outputBits.magnitudeOverflow := false.B
+      state := sIdle
     }.elsewhen(magnitudeOverflow) {
       outputValid := true.B
       outputBits.quotient := 0.S
       outputBits.divideByZero := false.B
       outputBits.magnitudeOverflow := true.B
-    }.elsewhen(numerator === 0.U || denominatorMagnitude === 1.U) {
+      state := sIdle
+    }.elsewhen((quotient === 0.U && highNumerator === 0.U) || divisor === 1.U) {
       outputValid := true.B
-      outputBits.quotient := Mux(numerator === 0.U, 0.U,
-        Mux(denominator(denominatorWidth - 1), negatedNumerator, numerator))(qWidth - 1, 0).asSInt
       outputBits.divideByZero := false.B
       outputBits.magnitudeOverflow := false.B
+      state := sIdle
     }.otherwise {
-      busy := true.B
-      finishing := false.B
-      count := 0.U
-      quotient := numeratorMagnitude(qWidth - 1, 0)
-      divisor := denominatorMagnitude
       // highNumerator < divisor is exactly the quotient-magnitude bound.
       // It is the initial remainder before processing the low qWidth bits.
       remainder := highNumerator
-      negative := numerator(numeratorWidth - 1) ^ denominator(denominatorWidth - 1)
+      state := sIterate
     }
   }
 
@@ -120,19 +132,17 @@ class IterativeSignedDivider(
     else Cat(quotient(qWidth - 2, 0), subtracts)
   private val correctedQuotient = Mux(negative, negate(quotient), quotient)
 
-  when(busy) {
-    when(finishing) {
-      busy := false.B
-      finishing := false.B
-      outputValid := true.B
-      outputBits.quotient := correctedQuotient.asSInt
-      outputBits.divideByZero := false.B
-      outputBits.magnitudeOverflow := false.B
-    }.otherwise {
-      quotient := nextQuotient
-      remainder := nextRemainder
-      count := count + 1.U
-      when(count === (qWidth - 1).U) { finishing := true.B }
-    }
+  when(state === sFinish) {
+    state := sIdle
+    outputValid := true.B
+    outputBits.quotient := correctedQuotient.asSInt
+    outputBits.divideByZero := false.B
+    outputBits.magnitudeOverflow := false.B
+  }
+  when(state === sIterate) {
+    quotient := nextQuotient
+    remainder := nextRemainder
+    count := count + 1.U
+    when(count === (qWidth - 1).U) { state := sFinish }
   }
 }

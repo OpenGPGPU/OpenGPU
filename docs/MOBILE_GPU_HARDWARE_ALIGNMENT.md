@@ -971,3 +971,12 @@ gate; the earlier full-width divider pass does not qualify this revision.
 Separate native replays now include triangles crossing clip planes with an
 independent final sample/resolve oracle. Their results and further admission
 retiming remain pending.
+
+Clipping V3 registers sign conversion before admission checks. Its bounded
+divider passes complete-mapping 1 GHz synthesis at +155.710 ps core setup and
++481.521 ps I/O setup. All17 component checks pass, now including cancellation
+in both full-width and bounded preparation/iteration/output states. The same
+20-scene replay takes23,087 cycles and retains the28-cycle fully-inside path.
+The full clipper still fails synthesis timing at -123.825 ps; its next verified
+path goes from `edgeIndex[2]` to `next_1_x[0]`, through classification-controlled
+polygon writes. This is not full-clipper timing closure.

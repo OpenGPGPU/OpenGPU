@@ -175,5 +175,59 @@
       }
     },
     "native_product": "V1clippedbaseline andV2inside+clipped matrices running; not passes yet."
+  },
+  "followup_v3": {
+    "change": "Capture magnitude/sign before capacity checks, reusing quotient andavailableoutput registers; addsone preparation cycle perinterpolated field.",
+    "source_sha256": {
+      "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "5d5f10ef42a07dafc534b6caaa62abb35e24609487b33bc156c49dc9fa20f20e",
+      "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "e9aa7a3d4d609213f986bba6553addbab1d53ff1db05fdff28bd791f8738c3d9",
+      "src/main/scala/opengpu/graphics/NearClipStage.scala": "7b870af7a64dc73c2b0a9be6f17da59e3867e30619ce4136e4524551d9af2d82",
+      "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "9484db9411504a49b31a3d1fb0fe773854479c51fb1f5274ab686849550e3487",
+      "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "716bec084d5616492ea5008f0fb008076ed82f658bf3d464945cbe4575beec37",
+      "src/main/scala/opengpu/util/SplitSignedProduct.scala": "7bf5b4364ed88a66274a23eff2982a6d017e36a29fa9078138d361bd1e4e89c9",
+      "src/test/scala/opengpu/util/SplitSignedProductSpec.scala": "5a6a974f1a6966d02fa4ebaf058e9a860061ee700027ccde5b4f50b2d37304b3"
+    },
+    "build_metadata_sha256": "625197a35e9780d67ee390d74c340d18e69a42606e9bacc8c6cd7b5607bc834d",
+    "component_checks": 17,
+    "suites": 4,
+    "unit_log": {
+      "path": ".artifacts/mobile-hardware-alignment/h0-h1/clip_integration_v3_unit.log",
+      "sha256": "fcd8207be89ed34ff470ec0e41a1491d4ad477d9a566360ad8dd43e3c6bb1b97"
+    },
+    "scene_cycles": 23087,
+    "fully_inside_cycles": 28,
+    "proof_reuse": {
+      "passed": true,
+      "scope": "V3 splitproduct assembly proof RTLbyteidentical to provedV2 miter; reuse covers138partialinputbits, not multiplication/sequential/division.",
+      "rtl_sha256": {
+        "BlockPrefixAdder.sv": "54b501cbe1d2f149da95bf10f36d8666776b4fe543850d102cd518bec8a0bce6",
+        "SplitSignedProductJoinProofHarness.sv": "3cc5809b108577aa45e1e73dfb92384eee262a16837b5e5b9e71799a93379b69"
+      },
+      "reused_metadata_sha256": "31debb560fdc4a16b8616ea1bd88ac7f9752f83b1347b64b3647a77f225559e8"
+    },
+    "physical": {
+      "divider": {
+        "passed": true,
+        "mapping_passed": true,
+        "setup_slacks_ps": [
+          155.71,
+          481.521
+        ],
+        "qualification": "generated/mobile-h1/physical-clip-bounded-divider-v3-synth/qualification.json",
+        "sha256": "ebb9375c9c2dbbd2d419c263c0970f5c29e7f939ac720bf0589d9efa2226cee1"
+      },
+      "clipper": {
+        "passed": false,
+        "mapping_passed": true,
+        "setup_slacks_ps": [
+          -123.825,
+          483.896
+        ],
+        "qualification": "generated/mobile-h1/physical-clip-integration-v3-synth/qualification.json",
+        "sha256": "2cc28be6feec3d60a0008bc7ae79d14c9e2796a08856f8b9558419b5ce2833ef",
+        "critical_path": "edgeIndex[2] -> next_1_x[0], OpenDBverified: edge classification controls wide nextpolygon data writes."
+      }
+    },
+    "native_product": false
   }
 }
