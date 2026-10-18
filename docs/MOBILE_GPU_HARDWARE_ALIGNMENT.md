@@ -1025,3 +1025,14 @@ The V5 clipper route at25% utilization stops before routing:6,937 I/O pins
 exceed the floorplan's6,716 available positions. A22%-utilization retry expands
 the perimeter while retaining the same RTL,1 GHz clock, TC/SLVT corner and25%
 I/O delays. It remains unqualified until the complete routed checks finish.
+
+The latest V5 clipper passes all48 distinct native inside/clipped product jobs
+on fixed and shared-CU profiles. The same exact stored-sample/resolve oracle
+checks every job; this remains one resident tile per submission.
+
+The68/34/32 divider also passes the complete routed1 GHz gate at +150.318 ps
+setup and +36.1654 ps hold, with zero timing/placement/DRC/antenna violations.
+This isolated trial uses an explicit30 ps setup-repair margin. The qualifier's
+new `--setup-slack-margin-ps` option records that optimization target; it does
+not alter the final clock or acceptance checks. All30 Python qualifier checks
+pass, including rejection of failed I/O timing with a positive repair margin.

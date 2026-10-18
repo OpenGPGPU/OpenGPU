@@ -17,6 +17,12 @@ from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
 
+def nonnegative_picoseconds(value):
+    margin = float(value)
+    if not math.isfinite(margin) or margin < 0:
+        raise argparse.ArgumentTypeError('Expected finite nonnegative picoseconds')
+    return margin
+
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -90,6 +96,8 @@ def main():
     parser.add_argument('--density', type=float, default=0.6)
     parser.add_argument('--timeout', type=int, default=7200)
     parser.add_argument('--timing-effort', choices=['explore', 'closure', 'closure_no_cts'])
+    parser.add_argument('--setup-slack-margin-ps', type=nonnegative_picoseconds, default=0.0,
+                        help='Extra setup repair headroom; the final timing gate is unchanged')
     parser.add_argument('--synthesis-engine', choices=['syn', 'yosys'], default='syn')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
@@ -123,6 +131,7 @@ def main():
         cell_vt='SLVT', corner='TC', synthesis_engine=args.synthesis_engine,
         enable_retiming=False, sv_frontend='native',
         core_utilization=args.utilization, place_density=args.density,
+        setup_slack_margin=args.setup_slack_margin_ps,
         output_dir=str(args.output.resolve() / 'flow'), timeout=args.timeout,
         synthesis_only=args.stage == 'synthesis', cache=False, clean=False,
         generate_gds=False,

@@ -1407,5 +1407,33 @@
     "Latest raster full Linux fixed/programmable integration pending. V15fixed pass is legacy64x64 only.",
     "Fullrenderer mapping has211omitted divisions in prior synthesis and failed alternative mapping; isolated raster timing does not qualify GPU.",
     "H0-H8 resource/geometry/texture/pixel/API semantics, two engines, sustained throughput,720p frames, scaling, physical power/area/bandwidth remain."
-  ]
+  ],
+  "setup_repair_margin_control": {
+    "checks": {
+      "status": "PASS30Pythonchecks",
+      "scope": "Finite nonnegative setuprepairmargin reaches toolinputs andmanifest; clock1000ps/IO25%/no falsepaths/retimingfalse unchanged; evenpositive repairmargin cannotmakefailedI/Otimingpass.",
+      "source_sha256": {
+        "scripts/qualify_ppa.py": "3e4cbfc0cbf18b50db55de14cdbf837fcbd49ea619bfb4750634770b6ffb636c",
+        "scripts/test_qualify_ppa.py": "7650089ba0a4bd7177f8f4b4a8c1551b276f97ef1928f76c54457fb54106c470"
+      },
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "scripts/test_qualify_ppa.py"
+      ],
+      "log": "/tmp/gpu-mobile-h1-ppa-margin-unit.log",
+      "log_sha256": "670684a4067054d1ddfc1161677f7b3a23c1db1608a14aa5c8c24f0f82a43e89",
+      "physical_probe": "Smallboundeddivider route startedwith30psrepairmargin; nofinalpassyet."
+    },
+    "end_to_end_probe": {
+      "passed": true,
+      "artifact": "generated/mobile-h1/physical-clip-bounded-divider-v3-route-margin30",
+      "qualification_sha256": "711cd22e1c4c82f33ecd46039542d21cc86967866c8a8c6ddf438fbb2a008489",
+      "setup_worst_slack_ps": 150.318,
+      "hold_worst_slack_ps": 36.1654
+    },
+    "scope": "Newexplicitoptimizationheadroom flag; final1GHz/mapping/globalI/O/hold/physicalacceptance unchanged. FrozenrasterV21positive-marginretry pending afterfullclipperroute."
+  }
 }

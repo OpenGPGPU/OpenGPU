@@ -101,7 +101,8 @@ def test_route_cannot_hide_failed_or_invalid_checks_behind_a_pass_verdict(metric
     assert not qualify.post_route_gate(result)['passed']
 
 
-def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypatch):
+@pytest.mark.parametrize('margin', [0.0, 0.5, 30.0])
+def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypatch, margin):
     rtl = tmp_path / 'rtl'
     rtl.mkdir()
     (rtl / 'Top.sv').write_text('module Top(input clock); endmodule\n')
@@ -112,6 +113,12 @@ def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypa
     payload = dict(status='success', overview=dict(verdict='PASS'),
                    artifacts={'synthesis_sta.log': str(report), 'run.log': str(mapping_log)},
                    report_tail='101.675 slack (MET)\n')
+    captured_inputs = {}
+
+    def run(context):
+        captured_inputs.update(context.inputs)
+        return types.SimpleNamespace(result=payload)
+
     modules = {
         'chipagent': types.ModuleType('chipagent'),
         'chipagent.models': types.SimpleNamespace(TaskObject=types.SimpleNamespace),
@@ -119,7 +126,7 @@ def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypa
         'chipagent.tools.base': types.SimpleNamespace(ToolContext=types.SimpleNamespace),
         'chipagent.tools.phys_flow_asap7': types.SimpleNamespace(
             ASAP7PhysicalFlowTool=lambda: types.SimpleNamespace(
-                run=lambda context: types.SimpleNamespace(result=payload))),
+                run=run)),
     }
     for name, module in modules.items():
         monkeypatch.setitem(qualify.sys.modules, name, module)
@@ -128,10 +135,29 @@ def test_cli_rejects_io_failure_and_preserves_raw_tool_result(tmp_path, monkeypa
                         lambda args, **kwargs: 'abc123\n' if args[1] == 'rev-parse' else '')
     output = tmp_path / 'proof'
     monkeypatch.setattr(qualify.sys, 'argv',
-                        ['qualify_ppa.py', str(rtl), 'Top', '--output', str(output)])
+                        ['qualify_ppa.py', str(rtl), 'Top', '--output', str(output),
+                         '--setup-slack-margin-ps', str(margin)])
     with pytest.raises(SystemExit) as error:
         qualify.main()
     assert error.value.code == 2
     assert not json.loads((output / 'qualification.json').read_text())['passed']
     assert json.loads((output / 'qualification.json').read_text())['mapping']['passed']
     assert json.loads((output / 'result.json').read_text()) == payload
+    inputs = json.loads((output / 'manifest.json').read_text())['inputs']
+    assert inputs['setup_slack_margin'] == margin == captured_inputs['setup_slack_margin']
+    assert inputs['clock_period'] == 1000
+    assert inputs['io_delay_percent'] == 0.25
+    assert inputs['io_false_path_ports'] is None
+    assert inputs['enable_retiming'] is False
+
+
+@pytest.mark.parametrize('margin', ['-1', 'nan', 'inf', '-inf'])
+def test_invalid_repair_margin_cannot_start_a_physical_run(tmp_path, monkeypatch, margin):
+    output = tmp_path / 'never-created'
+    monkeypatch.setattr(qualify.sys, 'argv', [
+        'qualify_ppa.py', str(tmp_path / 'rtl'), 'Top', '--output', str(output),
+        '--setup-slack-margin-ps=' + margin])
+    with pytest.raises(SystemExit) as error:
+        qualify.main()
+    assert error.value.code == 2
+    assert not output.exists()

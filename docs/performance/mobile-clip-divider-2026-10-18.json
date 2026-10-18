@@ -370,7 +370,57 @@
       "qualification": "generated/mobile-h1/physical-clip-integration-v5-synth/qualification.json",
       "sha256": "379dc14290f4683fc4fc515ae934ec6c10b7a7f77f5699862e285b6fdac6cc31"
     },
-    "native_product": false,
+    "native_product": {
+      "passed": true,
+      "checks": 4,
+      "distinct_jobs": 48,
+      "executions": 48,
+      "source_sha256": {
+        "src/main/scala/opengpu/graphics/Msaa.scala": "7bbd7f6dcb47423cb3cbf16e264d1b88372d163b74b230e9060c6142e7b45e7d",
+        "src/main/scala/opengpu/graphics/Rasterizer.scala": "e36b79ebe23d626abd2c720b8088a4e83fa667f1a05fa664ab1433f5c3bb6955",
+        "src/main/scala/opengpu/graphics/RenderPipeline.scala": "86b72ceec7130de7c2677ec07c8a06e814afc4a06fce62f3c674fb016d183b74",
+        "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "f111a1810601f98dfab20eaa653bc2dc2f17eaff22164b86d5cee4c63bd2b411",
+        "src/test/scala/opengpu/graphics/RasterSetupSumSpec.scala": "8c7ebe5b5a624089e0cfe9ea70f601353bb1f4cded0ab3920baaa0313bfffa65",
+        "src/test/scala/opengpu/graphics/PipelinedRasterizerSpec.scala": "2910e491971fc5a5e67b14c24b5c1ec7cb304f05a7aca2164150f38239d25dfb",
+        "src/test/scala/opengpu/graphics/SampleCoverageCarrySpec.scala": "13293b02e9f707e5b1dc118699a2074bb4e44a3171f634a8cb3bf84a20a13fb1",
+        "src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala": "d0d93e3b4419532d56f2634ffae7c9b6b5744d334d5eefa7b40ebd019b9041e5",
+        "src/test/scala/opengpu/graphics/RasterSampleOffsetsSpec.scala": "bcb95953bb79b16a078e9b3979e16a3e31bc59100fbdb85563d3f24acbf71ed9",
+        "src/test/scala/opengpu/graphics/QuadCoverageCarrySpec.scala": "f41cc5bb1b42d03aa417404e3b58badc6f5960456a983d0a8a84f5b5d1df3d7e",
+        "src/test/scala/opengpu/graphics/RasterExtremaSpec.scala": "d51e31e095e702785068991f96a3d3ce55274ad2c8f09526f0e1b73735ed945c",
+        "src/test/scala/opengpu/graphics/ResidentRasterTraversalSpec.scala": "7926973c771118d99d8f48cf968ab4f9d92d704b06bc2bd9be537ca24435a116",
+        "src/test/scala/opengpu/graphics/QuadEdgeSumProof.scala": "930c6341dc9424099d5366cf109beb9ee01a3d728b17dfb0fa85e49aab722d15",
+        "src/test/scala/opengpu/graphics/RasterCrossDifferenceProof.scala": "8badefc920898d09c80b2dd985bff99c6792de04791052868d70a47acf87d30d",
+        "src/test/scala/opengpu/graphics/RasterWideAddProof.scala": "9df4fd911ce5fb340f06ea60f669f63d44b04b99163d6980eb7ce7e5c6c4c85c",
+        "src/test/scala/opengpu/graphics/RasterOriginSumProof.scala": "875e78179e733742a58e22d8a3c8e9119263a2cf1c05afd32540039821804480",
+        "src/main/scala/opengpu/util/SignedProduct32.scala": "fd23859517fe68ac8d414fb3e7c01395d96ed3f862b77509f30cd3334af35b0f",
+        "src/test/scala/opengpu/util/SignedProduct32Spec.scala": "ffa90ea7770abe665c663b1e545f4241ab156d9d2dc928dce481002b9f3432e7",
+        "src/test/scala/opengpu/graphics/RasterTopLeftProof.scala": "397ec154bc07b6e7005e14776b320326859383a675f8adeaa3bab8d97f6ac9d0",
+        "src/main/scala/opengpu/util/RegisteredQueue2.scala": "ebeac6f50620b89d289fec45586f91a6136701b165e583516f9bf4f295420089",
+        "src/test/scala/opengpu/util/RegisteredQueue2Spec.scala": "9467f1e3688a16142e9b817ee9757835ad01ead0886af94d2a8569ff1fa7e611",
+        "src/test/scala/opengpu/util/RegisteredQueue2ResetSpec.scala": "1aaa843f02c1f6980c9b6250b3b17d16415e2e21de2025c5b55d9eedab3b2ef1",
+        "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "5d5f10ef42a07dafc534b6caaa62abb35e24609487b33bc156c49dc9fa20f20e",
+        "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "0d54ef575bd6daeeaafac50eab1d9a7ab67aaa29f3e6e6518b37302d63fc071e",
+        "src/main/scala/opengpu/graphics/NearClipStage.scala": "eb65e466ec4bc5c18b2d9cf7663b48e38739ba854c1ba657a6492f418600c768",
+        "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "9484db9411504a49b31a3d1fb0fe773854479c51fb1f5274ab686849550e3487",
+        "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "716bec084d5616492ea5008f0fb008076ed82f658bf3d464945cbe4575beec37",
+        "src/main/scala/opengpu/util/SplitSignedProduct.scala": "7bf5b4364ed88a66274a23eff2982a6d017e36a29fa9078138d361bd1e4e89c9",
+        "src/test/scala/opengpu/util/SplitSignedProductSpec.scala": "5a6a974f1a6966d02fa4ebaf058e9a860061ee700027ccde5b4f50b2d37304b3",
+        "src/test/scala/opengpu/graphics/ClipDistanceProof.scala": "7e4ef552d31e3f155ea3da43627eb1690dcafd0b4649fb05ceac09081af61cf8",
+        "src/test/scala/opengpu/system/PersistentTileProductMsaaSpec.scala": "ffc730a9596e896b729d89edb621b270d9334f4e738a5a83c943906c0834f1b6"
+      },
+      "metadata_sha256": "aaf72a8f238cb1e2426c182e5dada1a0586d05e1ce5785087027f766f02d3a94",
+      "logs": [
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_clip_v5_matrix_profile_0.log",
+          "sha256": "ddb404baafee5f31584230cb36019a6d6cfce040ef7cfb89e6d38e6c04360f6d"
+        },
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_clip_v5_matrix_profile_1.log",
+          "sha256": "42a9cb99ae01314d2ae5500d52c7790887e045550fb1e9058b83c1422555fa75"
+        }
+      ],
+      "scope": "Frozenclipv5+rasterV21; insideandclipped scenes, per-suite sharedfilter; independent sample/resolve imageoracle, 1280x720viewport, one8/16tile,1/2/4samples,Bare/Sv32,128KiBL2AXI256. Not fullframes orclockqualification."
+    },
     "post_route_qualified": false,
     "change": "Select plane coordinate before sharedprefix34 arithmetic, preserving all147inputbits of originaldistance logic; no addedcycle.",
     "distance_formal": {
@@ -409,7 +459,7 @@
       "log_sha256": "67be0dae8f5ab248eb30ea483010663cbd09eb6dc5dfd518e7f8ca2c903eb57e"
     },
     "route_status": "Retry running atutil22, samefrozenRTL/1GHzTC/SLVTIO25%, closureeffort; physical-clip-integration-v5-route-util22. Priorutil25route failedIOplacement, nottimingqualification.",
-    "native_status": "Running corrected per-suite matrix44643; frozenV5+rasterV21,48distinctjobs requested; no passyet.",
+    "native_status": "PASS4checks/48distinctinside+clippedjobs onfrozenV5+rasterV21",
     "route_attempt_util25": {
       "passed": false,
       "terminal_exit_code": 2,
@@ -818,5 +868,81 @@
       "1": "969d3c7d690f17fa7bbce5763bde9d7215dae2c30bc269d1e78312b5d2dee7f1",
       "2": "885a4f4f5821a4931b274a644542ee6a40cd259fba02ed5946cc0f54be696583"
     }
+  },
+  "bounded_divider_v3_route_margin30": {
+    "passed": true,
+    "qualification": "generated/mobile-h1/physical-clip-bounded-divider-v3-route-margin30/qualification.json",
+    "qualification_sha256": "711cd22e1c4c82f33ecd46039542d21cc86967866c8a8c6ddf438fbb2a008489",
+    "qor": {
+      "instance_count": 5446,
+      "instance_area": 214.107,
+      "sequential_cell_count": 179,
+      "clock_buffer_count": 25,
+      "timing_repair_buffer_count": 150,
+      "setup_tns_ps": 0,
+      "hold_tns_ps": 0,
+      "setup_worst_slack_ps": 150.318,
+      "hold_worst_slack_ps": 36.1654,
+      "setup_violation_count": 0,
+      "hold_violation_count": 0,
+      "core_clock_fmax_mhz": 1435.75,
+      "virtual_io_clock_fmax_mhz": 1678.53,
+      "reported_fmax_mhz": 1435.75,
+      "setup_clock_skew_ps": 6.95859,
+      "hold_clock_skew_ps": 13.1672,
+      "total_power_w": 0.00152851,
+      "placement_utilization": 24.9505,
+      "placement_violations": 0,
+      "estimated_wirelength": 3935.85,
+      "route_wirelength": 5091,
+      "route_vias": 15142,
+      "route_drc_errors": 0,
+      "route_drc_report_bytes": 0,
+      "antenna_violating_nets": 0,
+      "antenna_violating_pins": 0,
+      "ir_drop_vdd_worst": 0.00180836,
+      "ir_drop_vss_worst": 0.00177623,
+      "flow_warnings": 15,
+      "flow_errors": 0,
+      "critical_path": {
+        "startpoint": "io_in_bits_numerator[1] (input port clocked by vclk_core_clock)",
+        "endpoint": "u123 (rising edge-triggered flip-flop clocked by core_clock)",
+        "group": "core_clock",
+        "slack_ps": 150.32,
+        "arrival_ps": 897.26,
+        "data_path_delay_ps": 0.0,
+        "cell_delay_ps": 0.0,
+        "net_delay_ps": 0.0,
+        "cell_delay_percent": null,
+        "net_delay_percent": null,
+        "cell_count": 0,
+        "net_count": 0,
+        "dominant_cell_types": [],
+        "per_group": {
+          "core_clock": {
+            "startpoint": "io_in_bits_numerator[1] (input port clocked by vclk_core_clock)",
+            "endpoint": "u123 (rising edge-triggered flip-flop clocked by core_clock)",
+            "slack_ps": 150.32,
+            "arrival_ps": 897.26
+          },
+          "vclk_core_clock": {
+            "startpoint": "io_out_ready (input port clocked by vclk_core_clock)",
+            "endpoint": "io_in_ready (output port clocked by vclk_core_clock)",
+            "slack_ps": 404.24,
+            "arrival_ps": 345.76
+          }
+        }
+      }
+    },
+    "constraints": {
+      "clock_period": 1000,
+      "io_delay_percent": 0.25,
+      "corner": "TC",
+      "cell_vt": "SLVT",
+      "core_utilization": 25,
+      "setup_slack_margin": 30.0,
+      "enable_retiming": false
+    },
+    "scope": "Isolated exact68/34/32 divider hardware, byteidenticalV3/V4/V5; not fullclipper/renderer clock orwholeframeenergy."
   }
 }
