@@ -1240,3 +1240,19 @@ legacy64x64 configuration has four general16-lane/8-warp CUs and private
 This is compatibility evidence for that exact revision/profile. Fixed-path
 and newer V22 integration, persistent tile locality,720p performance and
 full hardware/API closure remain separate gates.
+
+An [H2 memory-backed bin writer](performance/mobile-bin-page-writer-2026-10-18.json)
+connects the page allocator to bounded write credits. Each page stores an
+explicit ownership/header record and ordered16-byte primitive/state references.
+It acknowledges header initialization before linking a page and all reference
+words before committing their count. Exhaustion returns the exact uncommitted
+reference and a usable prefix; memory faults invalidate the binding and drain
+owned writes. A count store acknowledged during cancellation is counted once,
+while the final binding remains cancelled. All29 selected checks pass,
+including multi-page memory replay, fault/rebind ownership, late cancellation,
+the4 GiB boundary and256 references across default4 KiB pages. The complete
+routed1 GHz component gate passes at+42.3053 ps setup/+23.4914 ps hold with
+zero timing/placement/DRC/antenna violations and complete mapping. This writer
+still needs a hardware reader, multi-tile directory, primitive/state cache,
+memory/cache-domain integration and scheduling. It does not yet replace the
+legacy binner or implement two independently progressing tile engines.

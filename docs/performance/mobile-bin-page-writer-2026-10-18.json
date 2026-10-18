@@ -1,0 +1,375 @@
+{
+  "scope": "H2 bounded page writer component. Integrates BinPagePool and bounded write credits to store one ordered chain of immutable primitive/state references. Not connected to RenderCore, a multi-tile directory or replay engine; legacy eight-record TileDrawBinner limit remains. Original H0-H8 goal is unchanged.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/PrimitiveBinWriter.scala": "6968ce5e33ea9521b3a428f460d165ada2c5427e8c46ca1eca0970c1a012abe1",
+    "src/main/scala/opengpu/graphics/BinPagePool.scala": "a05f6bdf6e5b193df33507595866716a6e02014f6223b80c895b061e45f54ac2",
+    "src/main/scala/opengpu/graphics/TileAttachmentWriteQueue.scala": "839351c7074e666217f10aa386f5f859f805613c40543cb966ec8ff932bbbdf9",
+    "src/main/scala/opengpu/config/MobileGpuConfig.scala": "9c8c2586f6fc9c10bdc94443e84b8fe5b8879018694883d72e294a4e60579ab2",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "585b60736b73c473bf58649e9a6461fe4575aaf55a4189ef590f38399246bf7a",
+    "src/test/scala/opengpu/graphics/PrimitiveBinWriterSpec.scala": "28dde1a6ac5b2d6c8fc04d9700c6f58899cf9281ccca94bb9c25f6c964b818e3",
+    "src/test/scala/opengpu/graphics/BinPagePoolSpec.scala": "ef9726cf4c3e57357d14ba3108bf0411957be395a2ae83af6ec5b08117e650e2",
+    "src/test/scala/opengpu/graphics/TileAttachmentWriteQueueSpec.scala": "4379336364b492c865ead3b4aa856571cd1a4cfdbc6b3c2668cef87e451900fd",
+    "src/test/scala/opengpu/config/MobileGpuConfigSpec.scala": "6f8cc5067254f7779723ea762e0a49e0b7029b90ad55a9e0f68206989d7921ad"
+  },
+  "configuration": {
+    "page_bytes_default": 4096,
+    "write_credits_default": 8,
+    "supported_page_bytes": "Power of two64..65536, inherited from BinPagePool.",
+    "write_credits": "1..32, independently configured by MobileGpuConfig.binWriteCredits.",
+    "storage": "One pending reference and bounded control/write queues, not the proposed32KiB primitive/state cache. External pages remain software-owned; no new on-chip array capacity is claimed."
+  },
+  "memory_abi": {
+    "version": 1,
+    "byte_order": "Explicit32-bit little-endian memory words, independent of Bundle packing.",
+    "header_bytes": 32,
+    "header_words": [
+      "magic0x47424901",
+      "nextPageAddress (zero terminates; headValid separately permits a head at address zero)",
+      "committedReferenceCount",
+      "context",
+      "pass",
+      "generation",
+      "tile",
+      "allocationOrdinal"
+    ],
+    "record_bytes": 16,
+    "record_words": [
+      "primitiveHandle",
+      "immutableStateHandle",
+      "primitiveSequence",
+      "restartToken"
+    ],
+    "default_records_per_page": 254,
+    "primitive_state_contract": "Opaque32-bit handles. The caller supplies immutable, ownership-checked records; this writer does not fetch or validate referenced primitive/state resources.",
+    "sequence": "Strictly increasing unsigned32 sequence within a binding; gaps allowed. Repeat or wrap fails before storing that reference."
+  },
+  "commit_contract": {
+    "initialization": "All header stores acknowledge before a page is linked; all four reference stores acknowledge before its count store is admitted.",
+    "commit_point": "Successful acknowledgement of the count store. Append success and committed-count events occur exactly once at that point.",
+    "exhaustion": "No new reference store on allocation failure. Return the exact reference/token and a usable completed prefix with head/tail/count. Stop append admission until end/cancel. A higher-level controller must consume the prefix and restart the uncommitted reference without violating tile order.",
+    "fault": "An errored write may already have changed memory. Drain all offered/issued writes and invalidate the whole binding; no usable prefix is advertised. The returned count is the last known successful commit count.",
+    "cancellation": "Preserve a stalled offered memory request and already offered append reply. A count store acknowledged during cancel drain is still counted and returns immutable append success; final binding completion remains cancelled/unusable.",
+    "rebind": "No new binding until write/allocation/append ownership drains and completion retires. The caller must separately drain dependent readers before recycling an arena.",
+    "visibility": "Acknowledgements complete this memory port. Publication/invalidation in dependent cache domains is a separate integration responsibility; no CPU coherence or cached-reader visibility is inferred."
+  },
+  "functional": {
+    "passed": true,
+    "checks": 29,
+    "suites": 4,
+    "writer_checks": 14,
+    "pool_checks": 7,
+    "write_credit_checks": 5,
+    "configuration_checks": 3,
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/primitive_bin_writer_v2_qualified_unit.log",
+    "log_sha256": "0296459b5f4c6a4f60909604cc307dacee90e24b94d8cc915647f574599b3f4c",
+    "coverage": [
+      "Twenty references span four128-byte pages at credits1/3/8. Decode every memory word/reference in sequence, with reordered acknowledgements and backpressure.",
+      "Exhaust two64-byte pages after four commits, return exact fifth reference, then rebind/retry to obtain the exact concatenated five-reference stream.",
+      "Header/link/payload/count-store faults, including a faulted count store that modifies the memory model; prefix must be unusable.",
+      "Fault recovery with different context/pass/generation/tile on reused addresses; every offered append reply/completion and page header carries the new owner.",
+      "Cancel a stalled offered write; do not withdraw it or complete before its acknowledgement.",
+      "Cancel before a count store acknowledges; count its eventual successful physical commit once, keep reply stable, fail final binding.",
+      "Preserve an already offered success reply during cancellation.",
+      "Reject unsupported descriptor, duplicate/wrapped sequence; handle empty arena/bin.",
+      "Last reference word at0xfffffffc with exclusive4GiB limit.",
+      "Default4096-byte pages with256 references: page counts254/2 and global count256, exact high-bit address/counter boundaries.",
+      "Successful/failed allocation events, byte events and final commit/page accounting checked through stalls and reuse."
+    ],
+    "component_cycle_results": [
+      {
+        "references": 20,
+        "pages": 4,
+        "credits": 1,
+        "word_writes": 135,
+        "cycles": 1554
+      },
+      {
+        "references": 20,
+        "pages": 4,
+        "credits": 3,
+        "word_writes": 135,
+        "cycles": 875
+      },
+      {
+        "references": 20,
+        "pages": 4,
+        "credits": 8,
+        "word_writes": 135,
+        "cycles": 798
+      },
+      {
+        "references": 256,
+        "pages": 2,
+        "credits": 8,
+        "page_bytes": 4096,
+        "word_writes": 1297,
+        "cycles": 8292
+      }
+    ],
+    "cycle_scope": "Cycles include scripted request/response/append/completion stalls. These are control-component workloads, not realistic full-frame/binning throughput or a GPU scaling result.",
+    "proof_limit": "Numeric/protocol simulation with independent memory decode and commit/ownership checks; no universal temporal formal proof."
+  },
+  "initial_failure": {
+    "passed": 5,
+    "failed": 5,
+    "source_metadata_sha256": "074da3c433e4688a0e60c48f876a98ff5e3d8414c98f9650f138fbafde3ef900",
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/primitive_bin_writer_v1_unit.log",
+    "sha256": "3406cd3e8dbb78be5c1ad7470ec282fc0cba4fdc9292ed53d9fa2b4da8aef0cf",
+    "cause": "Global stop handler reasserted abortDrain and prevented exit to pool completion. Exclude abortDrain so its own drain/reply/completion transitions can proceed."
+  },
+  "emission": {
+    "artifact": "generated/mobile-h2/primitive-bin-writer-v2-rtl",
+    "rtl_sha256": {
+      "BinPagePool.sv": "74124846e0d3a9d7d10b0299ef37f37efffd2218262db15962704ba3c5f4a548",
+      "PrimitiveBinWriter.sv": "0bb73c8bea089370efb660ab93e46485de02430d04f95197459f72bb87cbef30",
+      "TileAttachmentWriteQueue.sv": "ca10dd5eb0ec40a371cf714e38b531d4944ebb37b42e68054a262ebdb2835aa2",
+      "verification/layers-TileAttachmentWriteQueue-Verification.sv": "fbca1764da39f5a973b75153ae67c7312d8b7e1f9ec235ea8b2348da4b27ab71",
+      "verification/layers-PrimitiveBinWriter-Verification.sv": "768aa4d0803c22d7a8a866a5dce2fd585c1780b080b1159088a8bbfec965827d",
+      "verification/assume/layers-PrimitiveBinWriter-Verification-Assume.sv": "cacb726498ce8194fa48f193d196bd1816c2b7ea15cb5c270dcf15764e81f98f",
+      "verification/assert/PrimitiveBinWriter_Verification_Assert.sv": "c227c0692dfd6de003a85789e65d58d120641587b238fc2e716aebf2c0c59c1b",
+      "verification/assert/TileAttachmentWriteQueue_Verification_Assert.sv": "f7fb3d6466914f53812814c7f8511e63fa67c4aea5258abd6e747ef8a2aab638",
+      "verification/assert/layers-PrimitiveBinWriter-Verification-Assert.sv": "13d06d162a21af911e9e19d52e2d6eb7af50d766e64c92d681cbabd330bcbb9f",
+      "verification/assert/layers-TileAttachmentWriteQueue-Verification-Assert.sv": "401884bdb20e0b23dcc33c7e94d3bda12772911fd0293be2069df531d6662780",
+      "verification/cover/layers-PrimitiveBinWriter-Verification-Cover.sv": "4b62ac6296e9599851da94c334329d21c6596e0057e13a806d093f94b015cfc2"
+    },
+    "command": "runMain opengpu.elaboration.EmitPpaRtl mobile-bin-writer generated/mobile-h2/primitive-bin-writer-v2-rtl",
+    "test_refinement": "Owner assertions and default-page stress were added after emission; all production source hashes and every frozen SV byte remain unchanged."
+  },
+  "synthesis": {
+    "artifact": "generated/mobile-h2/physical-primitive-bin-writer-v2-synth",
+    "qualification": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        151.9,
+        186.16
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "fb21d0962ff54ddf9ec7b4c2d0e9ba9fbe2eeda6e074d6e53ba3acdd54ef7e36",
+      "setup_passed": true,
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h2/physical-primitive-bin-writer-v2-synth/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "ec1de91da94f8f4809a7322d4fc6f034369a76f2e1fb118077be9d3620e88520",
+        "logs": [
+          {
+            "path": "generated/mobile-h2/physical-primitive-bin-writer-v2-synth/flow/orfs-work/logs/base/1_synth.log",
+            "sha256": "ec1de91da94f8f4809a7322d4fc6f034369a76f2e1fb118077be9d3620e88520"
+          }
+        ],
+        "combined_log_sha256": "ec1de91da94f8f4809a7322d4fc6f034369a76f2e1fb118077be9d3620e88520"
+      }
+    },
+    "qualification_sha256": "a644b11b4ec32bfb58f64bf1edd93f2cd73c88aeecec81167f3a3127c1b6f400",
+    "manifest_sha256": "88383e0dc779bbca97493d563e360b4015613d0cf72b443a2ea226cc5361da5e",
+    "result_sha256": "3e5a4e23795cdea3bea0f25e32b8d382bbc09536911c5b5b7d177a9036dd631d",
+    "constraints": {
+      "reg_code": "",
+      "module_name": "PrimitiveBinWriter",
+      "clock_port": "clock",
+      "clock_period": 1000,
+      "io_delay_percent": 0.25,
+      "io_false_path_ports": null,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "enable_retiming": false,
+      "sv_frontend": "native",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin": 0.0,
+      "timeout": 7200,
+      "synthesis_only": true,
+      "cache": false,
+      "clean": false,
+      "generate_gds": false,
+      "timing_effort": "explore",
+      "macro_libs": null,
+      "macro_lefs": null,
+      "macro_placement_tcl": null
+    },
+    "qor": {
+      "setup_worst_slack_ps": 151.9,
+      "core_clock_fmax_mhz": 1179.106
+    }
+  },
+  "route": {
+    "artifact": "generated/mobile-h2/physical-primitive-bin-writer-v2-route-margin30",
+    "qualification": {
+      "passed": true,
+      "checks": {
+        "setup_worst_slack_ps": true,
+        "hold_worst_slack_ps": true,
+        "setup_violation_count": true,
+        "hold_violation_count": true,
+        "route_drc_errors": true,
+        "antenna_violating_nets": true,
+        "antenna_violating_pins": true,
+        "placement_violations": true,
+        "flow_errors": true,
+        "flow_completed": true,
+        "tool_verdict": true
+      },
+      "missing_metrics": [],
+      "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h2/physical-primitive-bin-writer-v2-route-margin30/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "74c2eb5886cc7fd2df629a9923dcd718c262c563ecadc68dfdd952e4033d1783",
+        "logs": [
+          {
+            "path": "generated/mobile-h2/physical-primitive-bin-writer-v2-route-margin30/flow/orfs-work/logs/base/1_synth.log",
+            "sha256": "74c2eb5886cc7fd2df629a9923dcd718c262c563ecadc68dfdd952e4033d1783"
+          }
+        ],
+        "combined_log_sha256": "74c2eb5886cc7fd2df629a9923dcd718c262c563ecadc68dfdd952e4033d1783"
+      }
+    },
+    "qualification_sha256": "b7f9d0771c5165ce98185742f9fedb489afad6e963f554bdad6463f32777095e",
+    "manifest_sha256": "94f17eccc066cd2035fe6310a133cc89870ee18028c5fef1b0e40f23811192c4",
+    "result_sha256": "ad30df5233dd88803758348d56954fabe3f0cf8f61514bb13181362b32574fd6",
+    "constraints": {
+      "reg_code": "",
+      "module_name": "PrimitiveBinWriter",
+      "clock_port": "clock",
+      "clock_period": 1000,
+      "io_delay_percent": 0.25,
+      "io_false_path_ports": null,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "enable_retiming": false,
+      "sv_frontend": "native",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin": 30.0,
+      "timeout": 7200,
+      "synthesis_only": false,
+      "cache": false,
+      "clean": false,
+      "generate_gds": false,
+      "timing_effort": "closure",
+      "macro_libs": null,
+      "macro_lefs": null,
+      "macro_placement_tcl": null
+    },
+    "qor": {
+      "instance_count": 37399,
+      "instance_area": 1524.78,
+      "sequential_cell_count": 2077,
+      "clock_buffer_count": 168,
+      "timing_repair_buffer_count": 1328,
+      "setup_tns_ps": 0,
+      "hold_tns_ps": 0,
+      "setup_worst_slack_ps": 42.3053,
+      "hold_worst_slack_ps": 23.4914,
+      "setup_violation_count": 0,
+      "hold_violation_count": 0,
+      "core_clock_fmax_mhz": 1044.17,
+      "virtual_io_clock_fmax_mhz": 1057.26,
+      "reported_fmax_mhz": 1044.17,
+      "setup_clock_skew_ps": 24.3325,
+      "hold_clock_skew_ps": 24.1232,
+      "total_power_w": 0.0121238,
+      "placement_utilization": 24.1479,
+      "placement_violations": 0,
+      "estimated_wirelength": 45059.6,
+      "route_wirelength": 55174,
+      "route_vias": 109049,
+      "route_drc_errors": 0,
+      "route_drc_report_bytes": 0,
+      "antenna_violating_nets": 0,
+      "antenna_violating_pins": 0,
+      "ir_drop_vdd_worst": 0.00277182,
+      "ir_drop_vss_worst": 0.00258585,
+      "flow_warnings": 15,
+      "flow_errors": 0,
+      "critical_path": {
+        "startpoint": "u2537 (rising edge-triggered flip-flop clocked by core_clock)",
+        "endpoint": "u1940 (rising edge-triggered flip-flop clocked by core_clock)",
+        "group": "core_clock",
+        "slack_ps": 42.31,
+        "arrival_ps": 1039.01,
+        "data_path_delay_ps": 937.51,
+        "cell_delay_ps": 870.41,
+        "net_delay_ps": 67.1,
+        "cell_delay_percent": 92.84,
+        "net_delay_percent": 7.16,
+        "cell_count": 43,
+        "net_count": 43,
+        "dominant_cell_types": [
+          {
+            "cell_type": "AND2x4_ASAP7_75t_SL",
+            "count": 7,
+            "delay_ps": 109.3
+          },
+          {
+            "cell_type": "NOR2x1_ASAP7_75t_SL",
+            "count": 5,
+            "delay_ps": 93.47
+          },
+          {
+            "cell_type": "NAND2x1_ASAP7_75t_SL",
+            "count": 5,
+            "delay_ps": 87.36
+          },
+          {
+            "cell_type": "OA211x2_ASAP7_75t_SL",
+            "count": 2,
+            "delay_ps": 64.69
+          },
+          {
+            "cell_type": "BUFx3_ASAP7_75t_SL",
+            "count": 2,
+            "delay_ps": 55.59
+          },
+          {
+            "cell_type": "AND2x2_ASAP7_75t_SL",
+            "count": 3,
+            "delay_ps": 49.88
+          },
+          {
+            "cell_type": "NAND2x2_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 47.25
+          },
+          {
+            "cell_type": "DFFHQNx1_ASAP7_75t_SL",
+            "count": 1,
+            "delay_ps": 45.68
+          }
+        ],
+        "per_group": {
+          "core_clock": {
+            "startpoint": "u2537 (rising edge-triggered flip-flop clocked by core_clock)",
+            "endpoint": "u1940 (rising edge-triggered flip-flop clocked by core_clock)",
+            "slack_ps": 42.31,
+            "arrival_ps": 1039.01
+          },
+          "vclk_core_clock": {
+            "startpoint": "io_mem_resp_bits_addr[27] (input port clocked by vclk_core_clock)",
+            "endpoint": "io_pageAllocated (output port clocked by vclk_core_clock)",
+            "slack_ps": 54.16,
+            "arrival_ps": 695.84
+          }
+        }
+      }
+    }
+  },
+  "post_route_qualified": true,
+  "integrated_gpu_qualified": false,
+  "h2_closed": false,
+  "remaining": "Hardware page reader/replay, multi-tile head/tail directory, primitive/state cache, cache-domain publication and memory-client integration, full spill/restart and faults, two independently progressing engines, ordering/fairness/double buffering, realistic bandwidth/throughput and product frames remain required."
+}

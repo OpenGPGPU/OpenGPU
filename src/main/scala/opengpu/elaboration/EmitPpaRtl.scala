@@ -48,6 +48,11 @@ object EmitPpaRtl {
     val firtoolArgs = Array(
       "--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
+      case "mobile-bin-writer" =>
+        val mobile = opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.PrimitiveBinWriter(mobile.binPageBytes, mobile.binWriteCredits),
+          stageArgs, firtoolArgs)
       case "mobile-bin-page-pool" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.BinPagePool(opengpu.config.MobileGpuConfig().binPageBytes),

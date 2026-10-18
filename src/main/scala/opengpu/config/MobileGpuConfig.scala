@@ -23,7 +23,8 @@ case class MobileGpuConfig(
   primitiveBytes: Int = 32 * 1024,
   colorAttachments: Int = 4,
   axiBytes: Int = 32,
-  binPageBytes: Int = 4096
+  binPageBytes: Int = 4096,
+  binWriteCredits: Int = 8
 ) {
   private def powerOfTwo(n: Int): Boolean = n > 0 && (n & (n - 1)) == 0
   require(computeUnits > 0 && computeUnits <= 255)
@@ -40,6 +41,7 @@ case class MobileGpuConfig(
   require(attachmentStoreCredits > 0 && attachmentStoreCredits <= 32)
   require(powerOfTwo(payloadBytes) && powerOfTwo(primitiveBytes))
   require(powerOfTwo(binPageBytes) && binPageBytes >= 64 && binPageBytes <= 65536)
+  require(binWriteCredits > 0 && binWriteCredits <= 32)
   require(colorAttachments >= 1 && colorAttachments <= 4)
   require(Set(4, 8, 16, 32, 64)(axiBytes))
 
