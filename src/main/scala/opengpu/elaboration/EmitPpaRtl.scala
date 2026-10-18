@@ -65,6 +65,12 @@ object EmitPpaRtl {
           new opengpu.graphics.TileBinDirectory(mobile.binTileSlots,
             mobile.binPageBytes, mobile.binWriteCredits),
           stageArgs, firtoolArgs)
+      case "mobile-bin-replay" =>
+        val mobile = opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TileBinReplayScheduler(opengpu.config.GpuConfig(),
+            mobile.tileEngines, mobile.binPageBytes),
+          stageArgs, firtoolArgs)
       case "mobile-bin-page-pool" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.BinPagePool(opengpu.config.MobileGpuConfig().binPageBytes),

@@ -1,0 +1,225 @@
+{
+  "scope": "H2 replay scheduling. TileBinReplayScheduler distributes completed per-tile chains from TileBinDirectory across two independently progressing PrimitiveBinReader engines sharing one tagged memory port. This is not a primitive/state handle cache, cache-domain integration, spill policy, downstream tile engine or full binner replacement, and it is not integrated into RenderPipeline yet.",
+  "source_sha256": {
+    "src/main/scala/opengpu/graphics/TileBinReplayScheduler.scala": "a7e481f592b1de6cf3f82a55e05b5dae28cebf424939ec777c8d29966f7abb08",
+    "src/main/scala/opengpu/graphics/TileBinDirectory.scala": "458c13dea588233ab0c427bedc72898905e077afb08593ec816b901bd9c98834",
+    "src/main/scala/opengpu/graphics/PrimitiveBinReader.scala": "5ec47144cc4df9f698778c097273a41bffe2087db09aa0aaca537246ee3ecef0",
+    "src/main/scala/opengpu/config/MobileGpuConfig.scala": "747d0513fa857bf18968d3d6a3dcffa15674f2ec8175fa1e35e7e8e0d2efc5e2",
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "31abed0752c2f902b649de6abcc1c1c9935103f4937cf83efccce80861f4b95e",
+    "src/test/scala/opengpu/graphics/TileBinReplaySchedulerSpec.scala": "2a81c4a1cdf4ac0c8951be2fbfcc27203de31a5752893f52a26084b7e58ea661",
+    "src/test/scala/opengpu/graphics/TileBinDirectorySpec.scala": "8415b622f0fda775a651950fa85e8b1fabcdf17b8adee55c6e7edc5084bdc2d3",
+    "src/test/scala/opengpu/config/MobileGpuConfigSpec.scala": "2b877c4377475af4d0798539910ee357eca6e3d0a650dd5c5eb0306ef19c054b",
+    "src/test/scala/opengpu/graphics/BinPagePoolSpec.scala": "ef9726cf4c3e57357d14ba3108bf0411957be395a2ae83af6ec5b08117e650e2",
+    "src/test/scala/opengpu/graphics/PrimitiveBinWriterSpec.scala": "28dde1a6ac5b2d6c8fc04d9700c6f58899cf9281ccca94bb9c25f6c964b818e3",
+    "src/test/scala/opengpu/graphics/PrimitiveBinReaderSpec.scala": "825f9bc2cb1d34f61571725fb8927548b806f910fb7825e9968d6e23334eecf5",
+    "src/test/scala/opengpu/graphics/PrimitiveBinStoreSpec.scala": "05bcf9f22493ebacd0dbba4d276ff7c79f587e825be0163de69d0501684e35b3"
+  },
+  "configuration": {
+    "engines_default": 2,
+    "supported_engines": "1..4",
+    "engine_queue_depth": 2,
+    "reader_transaction_ids": "0 .. engines-1",
+    "memory_client": "one tagged 64-byte read port with an RRArbiter; one outstanding line per engine",
+    "page_bytes_default": 4096,
+    "line_bytes": 64,
+    "job_input": "TileBinCompletion from TileBinDirectory.tileClosed (identity, tile, status, prefixUsable, head, committedCount, restart)"
+  },
+  "scheduler_contract": {
+    "dispatch": "Completed tiles enter per-engine two-entry queues in rotating order; each engine starts its buffered job as soon as its reader is free.",
+    "independence": "Each engine has its own PrimitiveBinReader, reference stream, completion register and error status. A fault or output stall on one engine does not stop the other from fetching and replaying.",
+    "ordering": "Per-engine reference and completion order is preserved; the reference ordinal is the exact per-tile ordinal from replay.",
+    "unusable_tiles": "Tiles with no usable prefix or no head complete without memory traffic and retain the directory status; an empty successful chain reports success with zero emitted.",
+    "status": "A replay error overrides the directory status; otherwise exhausted or success is retained. A memory fault dominates the pass summary.",
+    "cancel": "Cancellation stops dispatch, drains every started reader (offered references still leave that engine), reports buffered jobs cancelled, and auto-completes the summary once the engines are empty.",
+    "end": "End is accepted only after every queue and reader is idle and every per-tile completion has been consumed; the summary then reports tiles, references, pages and read lines.",
+    "integration_limit": "The caller must keep the arena owned through the summary, publish directory stores to the replay memory domain, and drain every per-tile completion."
+  },
+  "functional": {
+    "passed": true,
+    "checks": 60,
+    "suites": 7,
+    "suite_checks": {
+      "TileBinReplaySchedulerSpec": 6,
+      "TileBinDirectorySpec": 8,
+      "PrimitiveBinWriterSpec": 14,
+      "PrimitiveBinReaderSpec": 11,
+      "PrimitiveBinStoreSpec": 11,
+      "BinPagePoolSpec": 7,
+      "MobileGpuConfigSpec": 3
+    },
+    "log": ".artifacts/mobile-hardware-alignment/h0-h1/primitive_bin_replay_unit.log",
+    "log_sha256": "444f6a86b49292b8f150462c4e2027a7d48bb41aed7187cdc700b110f52c47c3",
+    "coverage": [
+      "Two tile chains replay concurrently on separate engines; both engines are busy in the same cycle, each stream reports its own tile and the per-tile ordinals and references match the stored image (6 references and 1 page per tile).",
+      "Four tiles are accepted behind two running jobs through the two-entry engine queues; each engine processes two tiles and all 12 references replay.",
+      "Empty and unusable tiles complete without any memory request, retain their status, and the invalid-order status reaches the pass summary.",
+      "A faulted header line on one engine reports memoryFault with an unusable prefix while the other engine replays its five references and reports success.",
+      "Cancellation with reads outstanding drains started readers, reports all buffered jobs cancelled, leaves no pending read, and completes the summary as cancelled.",
+      "Per-engine output backpressure across nine references and three pages per tile preserves per-tile order and ordinals on both engines."
+    ],
+    "component_cycle_results": [
+      {
+        "workload": "two concurrent tiles",
+        "tiles": 2,
+        "references": 12,
+        "pages": 2,
+        "cycles": 41
+      },
+      {
+        "workload": "four buffered tiles",
+        "tiles": 4,
+        "references": 12,
+        "pages": 4,
+        "cycles": 61
+      },
+      {
+        "workload": "cancel with three tiles",
+        "tiles": 3,
+        "cycles": 39
+      }
+    ],
+    "cycle_scope": "Cycles include scripted read latency, request stalls and per-engine completion handshakes. These are control-component workloads, not a full-frame or product-bandwidth result.",
+    "proof_limit": "Numeric/protocol simulation with per-engine references checked against independent images; no universal temporal formal proof."
+  },
+  "timing": {
+    "first_synthesis": "The scheduler passed synthesis on its first attempt at +31.578 ps (1032.608 MHz); no retiming change was required.",
+    "route": "The closure run with 30 ps repair margin reaches +40.6475 ps setup and +24.0397 ps hold at 1042.37 MHz."
+  },
+  "emission": {
+    "artifact": "generated/mobile-h2/primitive-bin-replay-v1-rtl",
+    "command": "runMain opengpu.elaboration.EmitPpaRtl mobile-bin-replay generated/mobile-h2/primitive-bin-replay-v1-rtl",
+    "rtl_sha256": {
+      "PrimitiveBinReader.sv": "1a179961aef5d52634c3f0f569ce897d410f3f72dd4cdedf7c4636d724bd2856",
+      "PrimitiveBinReader_1.sv": "3b92e6b613b92fe3e6efa43cf470cec224aa4e65103c2669da089f87a9e77fcb",
+      "RRArbiter2_ComputeMemoryRequest.sv": "13368d0acf657a75b0d5db6240029e2c816cb7ca606afb1fc253aac65784ea22",
+      "TileBinReplayScheduler.sv": "3a0e31d4ffef76a74f6d207fe62a9dfa21f37f445b00262c0ca8e783909eb9e5",
+      "filelist.f": "d892a56eefc2bdafa465a32505fb71e06b72558b6c1368e3f91ab8f42ea0bd27"
+    }
+  },
+  "synthesis": {
+    "artifact": "generated/mobile-h2/physical-primitive-bin-replay-v1-synth",
+    "qualification": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        31.578,
+        435.627
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "setup_passed": true,
+      "report_sha256": "ca2935a9655a9c44889af66c23291d087f6076b3ccd362a15c7e5d77258decb2",
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_count": 0,
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "generated/mobile-h2/physical-primitive-bin-replay-v1-synth/flow/orfs-work/logs/base/1_synth.log",
+        "log_sha256": "4f3b4e5bd9dc964c07025017f6152b0ec3110262e5d83e0cea52ddef7a02a822"
+      }
+    },
+    "manifest_sha256": "2f12f5ba9909a9ce804b6917ab85c73254ae04d55aa42385e0e5d43a778b6013",
+    "result_sha256": "0653f14fc6764447df8e2f110c50af0da40f67a65a6ea8f3506d4b95ec3ca914",
+    "qualification_sha256": "b173ec9d63c597a9cc8fdda402f96836a82dbe145e6516d16d933d05a276e78f",
+    "constraints": {
+      "module_name": "TileBinReplayScheduler",
+      "clock_port": "clock",
+      "clock_period_ps": 1000,
+      "io_delay_percent": 0.25,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin_ps": 0,
+      "timing_effort": "explore",
+      "synthesis_only": true,
+      "enable_retiming": false
+    },
+    "qor": {
+      "setup_worst_slack_ps": 31.578,
+      "core_clock_fmax_mhz": 1032.608
+    }
+  },
+  "route": {
+    "artifact": "generated/mobile-h2/physical-primitive-bin-replay-v1-route-margin30",
+    "qualification": {
+      "passed": true,
+      "checks": {
+        "setup_worst_slack_ps": true,
+        "hold_worst_slack_ps": true,
+        "setup_violation_count": true,
+        "hold_violation_count": true,
+        "route_drc_errors": true,
+        "antenna_violating_nets": true,
+        "antenna_violating_pins": true,
+        "placement_violations": true,
+        "flow_errors": true,
+        "flow_completed": true,
+        "tool_verdict": true
+      },
+      "scope": "Post-route global setup/hold including I/O; placement, DRC, antenna and flow errors",
+      "mapping_log_sha256": "8eee199d2491cf437606a86f5f972c2faf920c3d3de4c866a57aad04808a1bb2"
+    },
+    "manifest_sha256": "b16601d1fbecd665cc2ff3d84abbbbe774cdca85f1d4d14f398ff70b2fe85d9a",
+    "result_sha256": "4c34bfb424d30d02b3f16ae33930ccd9a7b6283571fc840f8807dbadafa2d7be",
+    "qualification_sha256": "5f5f8ef0a9df449f295ae3e4f96039eaf6efc49c7bbd741c1703cc693ac9cc95",
+    "constraints": {
+      "module_name": "TileBinReplayScheduler",
+      "clock_port": "clock",
+      "clock_period_ps": 1000,
+      "io_delay_percent": 0.25,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "syn",
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "setup_slack_margin_ps": 30,
+      "timing_effort": "closure",
+      "synthesis_only": false,
+      "enable_retiming": false
+    },
+    "qor": {
+      "instance_count": 112404,
+      "instance_area_um2": 4538.87,
+      "sequential_cell_count": 5818,
+      "clock_buffer_count": 508,
+      "timing_repair_buffer_count": 2446,
+      "setup_tns_ps": 0,
+      "hold_tns_ps": 0,
+      "setup_worst_slack_ps": 40.6475,
+      "hold_worst_slack_ps": 24.0397,
+      "setup_violation_count": 0,
+      "hold_violation_count": 0,
+      "core_clock_fmax_mhz": 1042.37,
+      "virtual_io_clock_fmax_mhz": 1548.91,
+      "reported_fmax_mhz": 1042.37,
+      "setup_clock_skew_ps": 19.1065,
+      "hold_clock_skew_ps": 24.8298,
+      "total_power_w": 0.0281871,
+      "placement_utilization_percent": 23.9354,
+      "placement_violations": 0,
+      "estimated_wirelength": 171878,
+      "route_wirelength": 204057,
+      "route_vias": 346092,
+      "route_drc_errors": 0,
+      "route_drc_report_bytes": 0,
+      "antenna_violating_nets": 0,
+      "antenna_violating_pins": 0,
+      "ir_drop_vdd_worst": 0.00356757,
+      "ir_drop_vss_worst": 0.00415686,
+      "flow_warnings": 15,
+      "flow_errors": 0,
+      "critical_path": {
+        "startpoint": "u4821 (rising edge-triggered flip-flop clocked by core_clock)",
+        "endpoint": "u14407 (rising edge-triggered flip-flop clocked by core_clock)",
+        "group": "core_clock",
+        "slack_ps": 40.65,
+        "arrival_ps": 1085.66
+      }
+    }
+  },
+  "post_route_qualified": true,
+  "integrated_gpu_qualified": false,
+  "h2_closed": false,
+  "remaining": "Wire TileBinDirectory into the scheduler and the scheduler into a tile-engine consumer, add primitive/state handle fetch and cache, cache-domain publication, a full spill/restart policy, load balancing/fairness measurements, attachment-bytes/frame and realistic bandwidth/product-frame measurements."
+}

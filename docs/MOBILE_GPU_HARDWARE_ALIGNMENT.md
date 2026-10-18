@@ -1300,6 +1300,32 @@ still needs replay scheduling with two independently progressing engines,
 primitive/state fetch and cache, cache-domain integration, a spill policy and
 product-frame measurements. It does not yet replace the legacy binner.
 
+An [H2 bin replay scheduler](performance/mobile-bin-replay-scheduler-2026-10-18.json)
+now replays those completed tile chains on two independently progressing
+engines. Each engine owns a running job, one buffered job and its own bin
+reader, so a completion, backpressure or fault on one engine does not stop the
+other from fetching and replaying. Engines take jobs from the pass-level input
+in rotating order and share one tagged64-byte read port through a round-robin
+arbiter that keeps one outstanding line per engine. References and completions
+leave per engine, so per-tile order is preserved even when one output stalls;
+a replay error overrides the directory status, while an exhausted build that
+replays its committed prefix still reports exhausted. Tiles with no usable
+prefix complete without memory traffic. Cancellation stops dispatch, drains
+every started reader, reports buffered jobs cancelled and completes the pass
+summary once the engines are empty; a pass without cancellation still requires
+every per-tile completion to be drained before `end` is accepted. All60
+selected checks pass across seven suites including6 scheduler checks, with
+concurrent two-engine replay, four-tile buffering balanced2/2 across the
+queues, empty and unusable tiles without memory traffic, fault isolation,
+cancellation drain and per-engine output backpressure. The scheduler passed
+synthesis on its first attempt at+31.578 ps (1032.608 MHz); the complete
+routed1 GHz component gate passes at+40.6475 ps setup/+24.0397 ps hold
+(1042.37 MHz) with zero timing/placement/DRC/antenna violations and complete
+mapping. It still needs directory-to-scheduler wiring, primitive/state handle
+fetch and cache, cache-domain publication, a full spill policy, downstream
+tile-engine consumption and attachment-bytes/frame and product-frame
+measurements. It does not yet replace the legacy binner.
+
 The separate fixed-function Linux run from the same committed6aed4cd source
 also completes its full configured DRM suite and powers off. Its original
 300-second MSAA waits finish in53,520 ms for render and30,791 ms for resolve.
