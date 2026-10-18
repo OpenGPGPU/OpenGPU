@@ -1256,3 +1256,12 @@ zero timing/placement/DRC/antenna violations and complete mapping. This writer
 still needs a hardware reader, multi-tile directory, primitive/state cache,
 memory/cache-domain integration and scheduling. It does not yet replace the
 legacy binner or implement two independently progressing tile engines.
+
+The separate fixed-function Linux run from the same committed6aed4cd source
+also completes its full configured DRM suite and powers off. Its original
+300-second MSAA waits finish in53,520 ms for render and30,791 ms for resolve.
+Both legacy64x64 compatibility profiles are now recorded in the
+[Linux evidence](performance/mobile-linux-staged-npot-2026-10-18.json), with
+fresh models, drivers and tests and unchanged shared QEMU source/binary.
+They use baseline V21 raster and do not qualify the newer V22/H2 integration,
+the mobile shared-CU product,720p rendering budgets or full API closure.
