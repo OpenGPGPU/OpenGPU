@@ -50,6 +50,10 @@ class IterativeSignedDivider(
   private val divisor = Reg(UInt(denominatorWidth.W))
   private val remainder = Reg(UInt(denominatorWidth.W))
   private val negative = Reg(Bool())
+  // Capture short raw-input zero predicates alongside sign conversion. A
+  // full-width reduction in preparation otherwise becomes a control path
+  // from every quotient bit into completion and state-register enables.
+  private val zeroGroups = Reg(Vec((numeratorWidth + 7) / 8, Bool()))
   private val outputValid = RegInit(false.B)
   private val outputBits = Reg(new SignedDivisionResult(qWidth))
   private val outputAvailable = !outputValid || io.out.ready
@@ -77,6 +81,9 @@ class IterativeSignedDivider(
   }
 
   when(io.in.fire) {
+    for (i <- 0 until zeroGroups.length) {
+      zeroGroups(i) := !numerator(math.min(numeratorWidth - 1, i * 8 + 7), i * 8).orR
+    }
     // Capture sign conversion before capacity/control checks. Reuse the
     // quotient register for low magnitude bits and the output slot for the
     // unit-divisor result. The output slot is available at this accept edge.
@@ -108,7 +115,7 @@ class IterativeSignedDivider(
       outputBits.divideByZero := false.B
       outputBits.magnitudeOverflow := true.B
       state := sIdle
-    }.elsewhen((quotient === 0.U && highNumerator === 0.U) || divisor === 1.U) {
+    }.elsewhen(zeroGroups.asUInt.andR || divisor === 1.U) {
       outputValid := true.B
       outputBits.divideByZero := false.B
       outputBits.magnitudeOverflow := false.B

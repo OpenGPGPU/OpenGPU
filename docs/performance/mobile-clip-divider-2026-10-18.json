@@ -1086,7 +1086,7 @@
     "scope": "Isolated exact68/34/32 divider hardware, byteidenticalV3/V4/V5; not fullclipper/renderer clock orwholeframeenergy."
   },
   "followup_v6": {
-    "status": "PASS17componentchecks and1GHz synthesisincludingIO; routed/nativepending",
+    "status": "PASS17componentchecks,1GHzsynthesis and4nativechecks/48distinctjobs. NoV6routedpass.",
     "change": "Register edge distances before polygon classification/count feedback, register final per-triangle valid flags, and add captured-triangle complete-inside shortcut using exact existing distance math.",
     "source_sha256": {
       "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "5d5f10ef42a07dafc534b6caaa62abb35e24609487b33bc156c49dc9fa20f20e",
@@ -1186,6 +1186,819 @@
       "result_sha256": "4b1ff03f6dcd876db6340e70d7d17556e06d08a353f3e575c25d0307fffe2c70",
       "qualification_sha256": "5b3da744e73e8711b15b48cb344acc8817cc2dfec3b03c72390ff77ae6300eb2",
       "scope": "1GHz TC/SLVT,25%IOdelay,default0setuprepairmargin,completeoperator mapping; notroutedqualification."
+    },
+    "native_product": {
+      "passed": true,
+      "checks": 4,
+      "executed_jobs": 48,
+      "distinct_jobs": 48,
+      "metadata_sha256": "e18f56fe8e6d1aec1d373dfc01bba2f0334c6340a55c592308452d5238bf42b2",
+      "logs": [
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_clip_v6_geometry_profile_0.log",
+          "sha256": "0da2d853dc44ca01eabeec2115001815e4a93c93bf14e8e6f6e27e5f47518157"
+        },
+        {
+          "path": ".artifacts/mobile-hardware-alignment/h0-h1/product_clip_v6_geometry_profile_1.log",
+          "sha256": "5e1e4a844b2d0242be2e0936006506d0ae28fc36b5d320d9669eb9285514bace"
+        }
+      ],
+      "comparison": {
+        "scope": "Same frozenboundedviewport/rasterV21/fixtures, V5vsV6clipcontrol, originaldivider; exactsamples/resolves inall48jobs. Counts andGPUcyclesonly, notclock/FPS/energy.",
+        "groups_by_clipped": {
+          "false": {
+            "jobs": 24,
+            "minimum_saved_cycles": 67,
+            "maximum_saved_cycles": 85,
+            "total_saved_cycles": 1840
+          },
+          "true": {
+            "jobs": 24,
+            "minimum_saved_cycles": -78,
+            "maximum_saved_cycles": -78,
+            "total_saved_cycles": -1872
+          }
+        },
+        "rows": [
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "1",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 3393,
+            "v6_cycles": 3312,
+            "saved_cycles": 81
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "1",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 5184,
+            "v6_cycles": 5117,
+            "saved_cycles": 67
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "1",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 18391,
+            "v6_cycles": 18310,
+            "saved_cycles": 81
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "1",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 16360,
+            "v6_cycles": 16279,
+            "saved_cycles": 81
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "2",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 6925,
+            "v6_cycles": 6844,
+            "saved_cycles": 81
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "2",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 9653,
+            "v6_cycles": 9585,
+            "saved_cycles": 68
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "2",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 33330,
+            "v6_cycles": 33259,
+            "saved_cycles": 71
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "2",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 26740,
+            "v6_cycles": 26659,
+            "saved_cycles": 81
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "4",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 12913,
+            "v6_cycles": 12832,
+            "saved_cycles": 81
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "4",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 17632,
+            "v6_cycles": 17553,
+            "saved_cycles": 79
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "4",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 60359,
+            "v6_cycles": 60274,
+            "saved_cycles": 85
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "4",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 47323,
+            "v6_cycles": 47242,
+            "saved_cycles": 81
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "1",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 5430,
+            "v6_cycles": 5508,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "1",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 7197,
+            "v6_cycles": 7275,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "1",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 20406,
+            "v6_cycles": 20484,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "1",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 18397,
+            "v6_cycles": 18475,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "2",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 8962,
+            "v6_cycles": 9040,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "2",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 11667,
+            "v6_cycles": 11745,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "2",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 35355,
+            "v6_cycles": 35433,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "2",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 28777,
+            "v6_cycles": 28855,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "4",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 14950,
+            "v6_cycles": 15028,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "4",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 19646,
+            "v6_cycles": 19724,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "4",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 62370,
+            "v6_cycles": 62448,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "false",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "4",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 49360,
+            "v6_cycles": 49438,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "1",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 5278,
+            "v6_cycles": 5197,
+            "saved_cycles": 81
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "1",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 7117,
+            "v6_cycles": 7047,
+            "saved_cycles": 70
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "1",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 23128,
+            "v6_cycles": 23048,
+            "saved_cycles": 80
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "1",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 21927,
+            "v6_cycles": 21857,
+            "saved_cycles": 70
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "2",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 8779,
+            "v6_cycles": 8699,
+            "saved_cycles": 80
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "2",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 11603,
+            "v6_cycles": 11532,
+            "saved_cycles": 71
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "2",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 37303,
+            "v6_cycles": 37223,
+            "saved_cycles": 80
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "2",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 31211,
+            "v6_cycles": 31141,
+            "saved_cycles": 70
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "4",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 14773,
+            "v6_cycles": 14693,
+            "saved_cycles": 80
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "4",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 19563,
+            "v6_cycles": 19492,
+            "saved_cycles": 71
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "4",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 63167,
+            "v6_cycles": 63087,
+            "saved_cycles": 80
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "false",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "4",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 49936,
+            "v6_cycles": 49866,
+            "saved_cycles": 70
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "1",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 7315,
+            "v6_cycles": 7393,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "1",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 9154,
+            "v6_cycles": 9232,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "1",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 25164,
+            "v6_cycles": 25242,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "1",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 23964,
+            "v6_cycles": 24042,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "2",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 10816,
+            "v6_cycles": 10894,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "2",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 13640,
+            "v6_cycles": 13718,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "2",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 39340,
+            "v6_cycles": 39418,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "2",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 33248,
+            "v6_cycles": 33326,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "0",
+              "originY": "0",
+              "samples": "4",
+              "Sv32": "false",
+              "load": "false"
+            },
+            "v5_cycles": 16810,
+            "v6_cycles": 16888,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "8",
+              "originX": "8",
+              "originY": "8",
+              "samples": "4",
+              "Sv32": "true",
+              "load": "true"
+            },
+            "v5_cycles": 21600,
+            "v6_cycles": 21678,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "0",
+              "originY": "0",
+              "samples": "4",
+              "Sv32": "false",
+              "load": "true"
+            },
+            "v5_cycles": 65204,
+            "v6_cycles": 65282,
+            "saved_cycles": -78
+          },
+          {
+            "key": {
+              "shared": "true",
+              "clipped": "true",
+              "tile": "16",
+              "originX": "16",
+              "originY": "16",
+              "samples": "4",
+              "Sv32": "true",
+              "load": "false"
+            },
+            "v5_cycles": 51973,
+            "v6_cycles": 52051,
+            "saved_cycles": -78
+          }
+        ]
+      }
     }
+  },
+  "followup_v7": {
+    "status": "PASS6clipchecks/21scenes825validfields23387cycles withV2divider preparewrite; no standalonephysicalpassclaimed",
+    "metadata_sha256": "a9f268d34a3bf1304a8f5e83ea866e8f35f02dd9003c6343820e76bf720746d5"
+  },
+  "followup_v8": {
+    "status": "PASS6clipchecks/21goldenscenes andcurrentclipper1GHzsynthesis; noaddedcycles; routed/nativepending.",
+    "source_sha256": {
+      "src/main/scala/opengpu/util/IterativeSignedDivider.scala": "d1a07fb3df64be1c397711a29e46f2db42eaa9b84a8a52835c008b6db1ceae4a",
+      "src/test/scala/opengpu/util/IterativeSignedDividerSpec.scala": "0d54ef575bd6daeeaafac50eab1d9a7ab67aaa29f3e6e6518b37302d63fc071e",
+      "src/main/scala/opengpu/graphics/NearClipStage.scala": "7fbfc374b59e020836d8db2ba21272ad2f610ed6da9366636beef66463550d9b",
+      "src/test/scala/opengpu/graphics/NearClipStageSpec.scala": "9484db9411504a49b31a3d1fb0fe773854479c51fb1f5274ab686849550e3487",
+      "src/test/scala/opengpu/graphics/ClipperExactDivisionSpec.scala": "d39846e79cf3fba106ce183db1b620c9ec4ebe08b8a61a47cd13d79bda5d93b3",
+      "src/main/scala/opengpu/util/SplitSignedProduct.scala": "7bf5b4364ed88a66274a23eff2982a6d017e36a29fa9078138d361bd1e4e89c9",
+      "src/test/scala/opengpu/util/SplitSignedProductSpec.scala": "5a6a974f1a6966d02fa4ebaf058e9a860061ee700027ccde5b4f50b2d37304b3",
+      "src/test/scala/opengpu/graphics/ClipDistanceProof.scala": "7e4ef552d31e3f155ea3da43627eb1690dcafd0b4649fb05ceac09081af61cf8",
+      "src/main/scala/opengpu/graphics/PreparedGeometryStage.scala": "ea0c1203590505f4a0b1f924b2c5975c2e2026fb09321892b6d9f113fa1c8f58",
+      "src/test/scala/opengpu/graphics/PreparedGeometryStageSpec.scala": "347971e7172f18b160ae730ce4a5fc705f967e8ca29aa5a863014c7ef5647f67"
+    },
+    "metadata_sha256": "b29225ee8daf0dfd0a3fa57b539fd690b3295259dbaf751f83d164ef802cd2a3",
+    "change": "SameV6clipcontrol, V3divider groupedraw-inputzero predicates. Numericprotocol/cyclecountsunchanged; sixclipchecks PASS.",
+    "synthesis": {
+      "artifact": "generated/mobile-h1/physical-clip-integration-v8-synth",
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          125.344,
+          624.781
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "2ec0cbdb0eb20136de3dbdf9f27447a2ddd664808f952cca91b6df8d2c1ce7eb",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "generated/mobile-h1/physical-clip-integration-v8-synth/flow/orfs-work/logs/base/1_synth.log",
+          "log_sha256": "44e98e58fd4ef02996564a1796ffe73a2b0afa0733782ce64fe79cfc23e3657b",
+          "logs": [
+            {
+              "path": "generated/mobile-h1/physical-clip-integration-v8-synth/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "44e98e58fd4ef02996564a1796ffe73a2b0afa0733782ce64fe79cfc23e3657b"
+            }
+          ],
+          "combined_log_sha256": "44e98e58fd4ef02996564a1796ffe73a2b0afa0733782ce64fe79cfc23e3657b"
+        }
+      },
+      "manifest_sha256": "e388ee16df16cba0e7c7eafc25ea1fe94a4091a68bfc8629a0071fee8efcb446",
+      "result_sha256": "c7833523b6a3c8022e296e3808fc678528458bccb741ef9a8fde0627ceeb19ba"
+    },
+    "route": "Queuedaftercurrentraster andpreparedgeometryroute,util22,explicit50psrepairheadroom; nofinalpassyet.",
+    "post_route_qualified": false
   }
 }
