@@ -1167,3 +1167,11 @@ violations. Final OpenDB again identifies `vHold_v0_x[2]` to
 margin0 result remains−5.14966 ps; neither run is qualified. A separate
 carry-save/prefix multiplier experiment will measure whether that logic
 can be shortened without adding raster setup cycles.
+
+Current staged geometry V3 passes the complete routed1 GHz component gate:
++50.3801 ps setup,+21.4209 ps hold, zero timing/placement/DRC/antenna
+violations and complete mapping. It uses explicit50 ps repair headroom,
+TC/SLVT,25% I/O delays and25% utilization; the final gates are unchanged.
+The normal sbt/public `mobile-geometry` emitter produces byte-identical SV
+to every routed input file. This qualifies viewport preparation, not the
+remaining raster/texture/interpolation paths or whole GPU.
