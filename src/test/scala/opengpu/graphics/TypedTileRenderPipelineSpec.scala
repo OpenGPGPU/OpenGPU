@@ -162,7 +162,7 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
     val names=Vector("RGBA8","RGBA32UI","RGBA8I","RGBA16F");val offsets=Vector(4096,8192,16384,20480)
     val initial=mutable.Map.empty[Int,Int];val model=mutable.Map.empty[Int,Int];val changed=mutable.Set.empty[Int]
     var ordinal=0;var func=1;var depthWrite=true;var depthEnable=true;var frontFunction=6;var backFunction=6
-    var control=61;var overrideDepth=fp(0.125);var passing=0;var rejected=0
+    var blendState=TypedBlendReference.State(enable=false);var control=61;var overrideDepth=fp(0.125);var passing=0;var rejected=0
     def defaultWord(a: Int): BigInt=(0 until 8).foldLeft(BigInt(0))((v,b)=>v|(BigInt(initial.getOrElse(a*8+b,0))<<(8*b)))
     def get(a: Int,n: Int): BigInt=(0 until n).foldLeft(BigInt(0))((v,b)=>v|(BigInt(model.getOrElse(a+b,initial.getOrElse(a+b,0)))<<(8*b)))
     def store(a: Int,n: Int,v: BigInt): Unit={for(b<-0 until n)model(a+b)=((v>>(8*b))&255).toInt;for(w<-a/8 to(a+n-1)/8)changed+=w}
@@ -217,9 +217,9 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
       d.io.begin.valid.poke(true.B);until(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
       until(d.io.draw.ready.peek().litToBoolean)
     }
-    def descriptor(depthFunction: Int=1,write: Boolean=true,enabled: Boolean=true,front: Int=6,back: Int=6,ctrl: Int=61): Unit={
+    def descriptor(depthFunction: Int=1,write: Boolean=true,enabled: Boolean=true,front: Int=6,back: Int=6,ctrl: Int=61,blended: Boolean=false): Unit={
       accepted=0;held=None;expected=fragmentReference(view,settings);func=depthFunction;depthWrite=write;depthEnable=enabled;frontFunction=front;backFunction=back;control=ctrl
-      val all=d.io.draw.bits;zero(all);all.version.poke(1.U);val packet=all.shaders;packet.version.poke(1.U)
+      val all=d.io.draw.bits;zero(all);all.version.poke(1.U);blendState=TypedBlendReference.State(enable=blended);TypedBlendReference.poke(all.blend,blendState);val packet=all.shaders;packet.version.poke(1.U)
       val tests=all.tests;tests.version.poke(1.U);tests.depthEnable.poke(enabled.B);tests.depthWrite.poke(write.B);tests.depthFunction.poke(func.U);tests.stencilEnable.poke(true.B)
       for((face,i)<-Seq(tests.front,tests.back).zipWithIndex){face.function.poke((if(i==0)front else back).U);face.reference.poke((if(i==0)17 else 34).U)
         face.readMask.poke(255.U);face.writeMask.poke((if(i==0)0x55 else 0xaa).U);face.fail.poke(5.U);face.depthFail.poke(7.U);face.depthPass.poke(6.U)}
@@ -266,7 +266,9 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
           if(n!=oldS){next=(next&BigInt(0xffffff))|(BigInt(n)<<24);ds+=1}
           if(next!=old || (pass && depthEnable && depthWrite))store(a,4,next)
           if(pass){passed+=1
-            for(c<-names.indices if (control&(1<<(c+2)))!=0){val f=format(names(c));store(offsets(c)+index*f.bytes,f.bytes,encode(names(c),colors(c))._1)}
+            for(c<-names.indices if (control&(1<<(c+2)))!=0){val f=format(names(c));val address=offsets(c)+index*f.bytes
+              val values=TypedBlendReference.blend(names(c),colors(c),get(address,f.bytes),blendState)
+              store(address,f.bytes,encode(names(c),values)._1)}
           }
         }
       }
@@ -305,7 +307,7 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
     simulate(new TypedTileRenderHarness(local)){d=>val t=new Driver(d);var total=0
       for(mode<-Seq(0,2)){
         t.begin(mode);for((function,ctrl)<-Seq((1,61),(0,61),(1,63),(6,0))){
-          t.descriptor(depthFunction=function,ctrl=ctrl);t.submit()
+          t.descriptor(depthFunction=function,ctrl=ctrl,blended=ctrl==63 || function==0);t.submit();d.io.draw.bits.blend.enable.poke(false.B)
           d.io.draw.bits.tests.depthEnable.poke(false.B);d.io.context.poke(999.U)
           d.io.draw.bits.shaders.fragment.shaderPc.poke(0.U)
           t.finish();total+=t.accepted;t.verify();d.io.context.poke(101.U)
@@ -314,7 +316,7 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
       }
       assert(t.vertexLaunches>0 && t.fragmentLaunches>0)
       assert((t.vertexStaging==0)==local && (t.fragmentStaging==0)==local)
-      info(s"TYPED_RENDER local=$local CUs=2 draws=8 quads=$total sampleModes=2 typedMRT=4 residentAcrossDraws=true exactFinalBytes=true shaderDiscard=true shaderDepthOverride=true lateReject=true helperSuppression=true snapshots=true clearAttachmentReads=0 actualVmContextHeld=true")
+      info(s"TYPED_RENDER local=$local CUs=2 draws=8 quads=$total sampleModes=2 typedMRT=4 residentAcrossDraws=true exactFinalBytes=true shaderDiscard=true shaderDepthOverride=true typedBlend=true lateReject=true helperSuppression=true snapshots=true clearAttachmentReads=0 actualVmContextHeld=true")
     }
   }
   it should "make fragment spill progress while a vertex lease occupies the only payload slot" in {
@@ -343,6 +345,8 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
     simulate(new TypedTileRenderHarness()){d=>val t=new Driver(d)
       val invalid=Seq[()=>Unit](
         ()=>d.io.draw.bits.version.poke(0.U),()=>d.io.draw.bits.tests.version.poke(0.U),
+        ()=>{d.io.draw.bits.blend.enable.poke(true.B);d.io.draw.bits.blend.version.poke(0.U)},
+        ()=>{TypedBlendReference.poke(d.io.draw.bits.blend,TypedBlendReference.State());d.io.draw.bits.blend.dstRGB.poke(15.U)},
         ()=>d.io.draw.bits.shaders.fragment.identity.generation.poke(10.U),()=>d.io.draw.bits.shaders.fragment.sampleMode.poke(2.U),
         ()=>d.io.draw.bits.shaders.fragment.colorTypes(1).poke(0.U),()=>d.io.draw.bits.shaders.vertex.raster.screenW.poke(8.U),
         ()=>d.io.draw.bits.shaders.vertex.raster.screenW.poke(0.U))
@@ -351,7 +355,7 @@ class TypedTileRenderPipelineSpec extends AnyFlatSpec {
       t.checkOutputs=false;t.begin();t.descriptor();t.fault=(a,w)=>a==0x4000 && !w;t.submit();t.finish(3,2)
       t.until(d.io.passCompletion.valid.peek().litToBoolean);d.io.passCompletion.bits.faultAddress.expect(0x4000.U);t.end(3,2,true)
       t.fault=(_,_)=>false;t.checkOutputs=true;t.begin();t.descriptor();t.submit();t.finish();t.verify();t.end()
-      info("TYPED_RENDER preflightErrors=7 noInvalidAccess=true screenDefaultBoundsChecked=true sourcePreflight=true sourceFaultAddress=true childDrain=true healthyReuse=true")
+      info("TYPED_RENDER preflightErrors=9 noInvalidAccess=true screenDefaultBoundsChecked=true sourcePreflight=true sourceFaultAddress=true childDrain=true healthyReuse=true")
     }
   }
   it should "retain queued shader launches and pixel results through cancellation and wait for external pass completion" in {

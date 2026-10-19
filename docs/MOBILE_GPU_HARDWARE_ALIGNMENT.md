@@ -4304,3 +4304,68 @@ Native host/bin/pass descriptors, backing attachment transfers and publication,
 format-aware blending/dithering/resolve, resource/alias validation, broader
 primitive/texture support and the original H0–H8 gates remain open. This internal
 composition supplies neither API closure nor a new throughput or frame-rate claim.
+
+### Resident format-aware blending, 2026-10-19
+
+The [typed blend checkpoint](performance/mobile-typed-blending-2026-10-19.json)
+adds a destination decoder and serialized blend service to the existing resident
+color owner. General shared-CU draws capture blend state with their shader and
+late-test descriptors. Passing samples gather their own destination record,
+blend and repack before the next sample or draw can overtake them. Depth/stencil
+rejection, helper/discard masks and disabled locations avoid this work.
+
+Version-1 blend state supplies separate RGB/alpha source and destination factors,
+separate equations and four constant components. All 15 factors and five equations
+are represented. Integer targets bypass blending and retain typed saturation.
+Normalized targets clamp source/constant/factors to [0,1], decode destination
+components at their stored precision, apply the equations and clamp on storage.
+MIN/MAX ignore factors. Missing destination alpha is one; absent RGB is zero.
+An sRGB destination is decoded to linear RGB before blending, with alpha left
+linear; the existing encoder converts the result back to sRGB. These contracts
+follow [GLES 3.0.6 sections 4.1.7–4.1.8](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
+The additional binary16/binary32 formats support an explicit internal floating
+blend policy; they do not advertise base-API renderability or extension support.
+
+UNORM decoding uses the repeating binary expansion of n/(2^b-1). Forty repeated
+fraction bits suffice for exact FP32 nearest/even rounding at every supported
+component width, with no divide unit or normalized lookup table. Binary16 expands
+exactly, including gradual values and signed zero; signed/unsigned integers retain
+their types. A fixed 256-entry FP32 inverse-sRGB table is generated with 100-digit
+decimal arithmetic and nearest/even neighbor selection. Its checked-in bytes are
+reproducible and RTL elaboration uses no host transfer-function calculation.
+
+One existing FP32 FMA implementation supplies the blend arithmetic. Products and
+sum round separately to nearest/even; zero/one factor products retain their exact
+identities. Floating targets retain range, signed zeros and gradual values. The
+internal MIN/MAX policy selects a numeric operand over a NaN and orders signed
+zeros; arithmetic NaNs canonicalize. Blend arithmetic flags remain diagnostic.
+This is serialized fixed-function work, not an extra shader CU or a throughput
+claim. Destination gathering and masked word writes preserve packed neighbors,
+per-sample values and untouched component bits without adding attachment SRAM.
+
+Shared preflight rejects malformed enabled blend state before depth/stencil
+updates; the composed draw owner rejects it before shader admission. State stays
+snapshotted through codec, arithmetic and refill backpressure. Cancellation drains
+an already offered blend request, accepted arithmetic and cold gathers; it cannot
+flush an irrevocable request or publish successful pass completion after failure.
+The backing-memory publication boundary remains external.
+
+All **44 checks** pass on a frozen **565-source** archive. Regression evidence
+includes exhaustive binary16/UNORM decoding, all sRGB codes,
+all factor pairs across normalized/sRGB/floating targets, separate alpha state,
+nonfinite/signed-zero/gradual values, all 36 resident formats with packed masks,
+changing constants and integer bypass, canceled arithmetic and cold refills,
+invalid preflight and exact shared-CU draw results at 1x/4x. The source archive,
+qualified logs, ROM check and emitted decoder/blender/render hierarchy are frozen
+in the evidence record. The decoder/blender/composed render emissions contain
+**6/19/154 files**. The composed owner retains **33 SRAM macros, 66 KiB**, including
+the 32 KiB attachment slot and 8,192 attachment bitmap register bits. It adds
+**one fixed-function FMA instance**, with no additional divider, CU or payload
+pool; the three prior fixed-function FMA/divider pairs remain. Packet/control
+registers and inverse-sRGB constants are additional. These counts are structural
+audits; PPA evaluation remains synthesis only.
+
+Native host/bin/pass integration, backing resource/alias validation, attachment
+loads/stores/publication, dither/resolve, complete primitive/texture/resource
+semantics and the original H0–H8 qualification gates remain open. This checkpoint
+closes an internal blending gap without claiming native framebuffer/API closure.

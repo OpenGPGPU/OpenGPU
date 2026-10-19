@@ -6,7 +6,7 @@ import chisel3.util._
 /** Late per-sample depth/stencil followed by typed MRT color writes in the same
   * resident slot. No early depth/stencil side effects precede shader discard or
   * depth override. The backing-memory and final publication owner remains
-  * external; format-aware color blending is a separate unfinished stage.
+  * external; color blending is supplied by the shared typed color service.
   */
 class TypedTilePixelBackend(p: TypedTileColorConfig=TypedTileColorConfig(),useBlackBoxes: Boolean=false) extends Module {
   val io=IO(new Bundle{
@@ -91,7 +91,7 @@ class TypedTilePixelBackend(p: TypedTileColorConfig=TypedTileColorConfig(),useBl
   when(colors.io.begin.fire){beginOffered:=false.B;started:=true.B}
   // Pending private offers must be accepted before cancellation reaches the child.
   colors.io.cancel:=started && (status=/=0.U || io.cancel) && !memoryOffered && !colorOffered
-  colors.io.in.valid:=colorOffered;colors.io.in.bits.quad:=input.color.quad;colors.io.in.bits.samples:=qualified
+  colors.io.in.valid:=colorOffered;colors.io.in.bits.quad:=input.color.quad;colors.io.in.bits.samples:=qualified;colors.io.in.bits.blend:=input.color.blend
   when(colors.io.in.fire){colorOffered:=false.B;colorAccepted:=true.B}
   colors.io.out.ready:=colorAccepted && !colorReturned
   when(colors.io.out.fire){colorQuadResult:=colors.io.out.bits;colorReturned:=true.B

@@ -7,7 +7,7 @@ import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,ShaderPay
 import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
 
 class TypedTileRenderDraw(p: VertexShaderStageConfig,f: FragmentShaderConfig) extends Bundle {
-  val version=UInt(8.W);val shaders=new VertexFragmentDraw(p,f);val tests=new TypedLateTestState
+  val version=UInt(8.W);val shaders=new VertexFragmentDraw(p,f);val tests=new TypedLateTestState;val blend=new TypedBlendState
 }
 class TypedTileRenderDrawCompletion extends Bundle {
   val identity=new GraphicsWorkIdentity;val ordinal=UInt(64.W);val status=UInt(3.W)
@@ -23,7 +23,7 @@ class TypedTileRenderCompletion extends Bundle {
 
 /** One resident tile pass, multiple ordered shared-CU vertex/fragment draws.
   * Child completion is local retirement, not backing-image publication. Native
-  * bin/host admission, transfers and format-aware blending remain external.
+  * bin/host admission and backing attachment transfers remain external.
   */
 class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
@@ -79,7 +79,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
   // Once offered, delay child cancellation until that irrevocable offer drains.
   source.io.out.ready:=sourceStarted && (stop || (!queued && pixels.io.in.ready))
   when(source.io.out.fire){when(stop){dropped:=dropped+1.U}.otherwise{
-    packet.color.quad:=source.io.out.bits;packet.state:=draw.tests
+    packet.color.quad:=source.io.out.bits;packet.state:=draw.tests;packet.color.blend:=draw.blend
     for(i<-0 until 4)packet.color.samples(i):=source.io.out.bits.lanes(i).coverageMask
     queued:=true.B
   }}
@@ -144,7 +144,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
         hiX.zext<=d.originX.pad(33)+d.tileWidth.zext && hiY.zext<=d.originY.pad(33)+d.tileHeight.zext)
       val matching=f.identity.asUInt===d.identity.asUInt && f.sampleMode===d.sampleMode && r.sampleMode===d.sampleMode
       val types=d.colors.zipWithIndex.map{case(v,i)=> !v.enabled || i.U>=f.colorSlots || f.colorTypes(i)===TypedColorFormat.kind(v.format)}.reduce(_ && _)
-      when(stop){phase:=State.closing}.elsewhen(draw.version=/=1.U || draw.tests.version=/=1.U || !within || !matching || !types){fail(1.U,1.U);phase:=State.closing}
+      when(stop){phase:=State.closing}.elsewhen(draw.version=/=1.U || draw.tests.version=/=1.U || TypedBlendState.invalid(draw.blend) || !within || !matching || !types){fail(1.U,1.U);phase:=State.closing}
         .otherwise{sourceOffered:=true.B;phase:=State.drawing}
     }
     is(State.drawing){when(drawDrained){formDrawResult()}}

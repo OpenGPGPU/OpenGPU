@@ -21,7 +21,7 @@ class TypedTileColorDescriptor extends Bundle {
 class TypedTileColorQuad extends Bundle {
   val quad=new FragmentShaderQuad(FragmentShaderConfig(),GraphicsConfig())
   /** Visibility already qualified by the late depth/stencil owner. */
-  val samples=Vec(4,UInt(4.W))
+  val samples=Vec(4,UInt(4.W));val blend=new TypedBlendState
 }
 class TypedTileColorQuadCompletion extends Bundle {
   val identity=new GraphicsWorkIdentity;val sequence=UInt(64.W);val primitiveId=UInt(32.W);val instanceId=UInt(32.W);val partIndex=UInt(3.W)
@@ -61,7 +61,7 @@ object TypedTileColorRules {
         (v.colorMask>>q.colorSlots).orR || v.x.pad(33)=/=q.lanes(0).x.pad(33)+(l%2).S || v.y.pad(33)=/=q.lanes(0).y.pad(33)+(l/2).S ||
         (input.samples(l).orR && (x<0.S || y<0.S || x>=d.tileWidth.zext || y>=d.tileHeight.zext))){bad:=true.B}
     }
-    bad || q.lanes(0).x(0) || q.lanes(0).y(0)
+    bad || q.lanes(0).x(0) || q.lanes(0).y(0) || TypedBlendState.invalid(input.blend)
   }
 }
 /** Serialized correctness profile for resident raw typed MRT colors. The late
@@ -69,7 +69,8 @@ object TypedTileColorRules {
   * data. Clear/discard tags supply nonresident words, independent component masks
   * preserve packed neighbors, and one quad holds all sample/location order until
   * its completion is consumed. Refills are bounded and irrevocable once offered.
-  * This service does not implement blend/depth/stencil tests or external image
+  * Blending serializes destination gather, FP32 arithmetic and typed packing.
+  * This service does not implement depth/stencil tests or external image
   * transfer/publication; those owners remain explicit integration requirements.
   */
 class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlackBoxes: Boolean=false) extends Module {
@@ -82,7 +83,7 @@ class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlac
   })
   private object State extends ChiselEnum {
     val idle,validate,clearNext,clearEncode,active,checkQuad,lane,nextLocation,encode,waitEncode,sample,word,read,readReply,refillWait,write,
-      locationDone,quadDone,emit,maintenance,maintenanceRead,maintenanceReply,finish,complete=Value
+      blendReadWord,blendGather,blendOffer,blendWait,blendEncode,locationDone,quadDone,emit,maintenance,maintenanceRead,maintenanceReply,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTileColorDescriptor);private val input=Reg(new TypedTileColorQuad)
   private val output=Reg(new TypedTileColorQuadCompletion);private val result=Reg(new TypedTileColorCompletion)
@@ -94,6 +95,16 @@ class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlac
   private val writeData=Reg(UInt(64.W));private val writeMask=Reg(UInt(64.W));private val oldData=Reg(UInt(64.W));private val row=Reg(UInt(p.addressBits.W))
   private val quadOwned=RegInit(false.B);private val codecOffered=RegInit(false.B);private val codecPending=RegInit(false.B)
   private val codecRequest=Reg(new TypedColorEncodeRequest);private val codec=Module(new TypedColorEncoder)
+  private val blender=Module(new TypedColorBlend);private val blendOffered=RegInit(false.B);private val blendPending=RegInit(false.B)
+  private val destinationWords=Reg(Vec(3,UInt(64.W)));private val blendingRead=RegInit(false.B)
+  private val blendActive=input.blend.enable && TypedColorFormat.kind(descriptor.colors(color).format)===0.U
+  private val gathered=Cat(destinationWords.reverse)>>(address(2,0)<<3)
+  blender.io.in.valid:=blendOffered;blender.io.in.bits.source:=input.quad.lanes(lane).colors(color)
+  blender.io.in.bits.destination:=gathered(127,0);blender.io.in.bits.format:=descriptor.colors(color).format
+  blender.io.in.bits.state:=input.blend;blender.io.in.bits.tag:=color
+  blender.io.out.ready:=blendPending
+  when(blender.io.in.fire){blendOffered:=false.B;blendPending:=true.B}
+  when(blender.io.out.fire){blendPending:=false.B}
   private val refillOffered=RegInit(false.B);private val refillPending=RegInit(false.B)
   private val touched=RegInit(0.U(16.W));private val locations=RegInit(0.U(7.W));private val writes=RegInit(0.U(8.W));private val bits=RegInit(0.U(14.W))
   private val totalQuads=RegInit(0.U(99.W));private val totalWrites=RegInit(0.U(110.W))
@@ -101,6 +112,7 @@ class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlac
   private val maintenanceOwned=RegInit(false.B)
   private val running=phase=/=State.idle && phase=/=State.complete
   private val stop=passStatus=/=0.U || io.cancel
+  blender.io.cancel:=stop && !blendOffered
   private val memoryBanks=Seq.fill((p.words+255)/256)(Module(new L2SramArray(256,64,useBlackBoxes)))
   private val readEnable=WireDefault(false.B);private val writeEnable=WireDefault(false.B)
   private val memoryAddress=WireDefault(row);private val memoryWriteData=WireDefault(writeData)
@@ -196,25 +208,34 @@ class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlac
           val y=(input.quad.lanes(lane).y.pad(33)-descriptor.originY.pad(33)).asUInt
           val pixel=(y<<descriptor.tileLog2)+x
           address:=descriptor.colors(color).offset+((pixel<<descriptor.sampleMode)+sample)*byteCount
-          word:=0.U;phase:=State.word
+          word:=0.U;phase:=Mux(blendActive,State.blendReadWord,State.word)
         }.otherwise{when(sample===(1.U<<descriptor.sampleMode)-1.U){nextLocation()}.otherwise{sample:=sample+1.U}}
       }
       is(State.word){
         val index=(address>>3)+word
         val mask=(shiftedMask>>(word<<6))(63,0)
         when(!mask.orR){when(word+1.U===wordCount){phase:=State.locationDone}.otherwise{word:=word+1.U}}
-          .otherwise{row:=index;writeData:=(shiftedData>>(word<<6))(63,0);writeMask:=mask;phase:=State.read}
+          .otherwise{row:=index;writeData:=(shiftedData>>(word<<6))(63,0);writeMask:=mask
+            when(blendActive){oldData:=destinationWords(word);phase:=State.write}.otherwise{blendingRead:=false.B;phase:=State.read}}
       }
       is(State.read){
         val (available,value,load)=virtualWord(row)
         when(valid(row)){readEnable:=true.B;phase:=State.readReply}
-          .elsewhen(available){oldData:=value;phase:=State.write}
+          .elsewhen(available){oldData:=value;phase:=Mux(blendingRead,State.blendGather,State.write)}
           .elsewhen(load){refillOffered:=true.B;phase:=State.refillWait}
           .otherwise{fail(3.U,row<<3);phase:=State.quadDone}
       }
-      is(State.readReply){oldData:=memoryReadData;phase:=State.write}
+      is(State.readReply){oldData:=memoryReadData;phase:=Mux(blendingRead,State.blendGather,State.write)}
       is(State.refillWait){when(io.refillReply.fire){when(io.refillReply.bits.fault){fail(3.U,row<<3);phase:=State.quadDone}
-        .otherwise{oldData:=io.refillReply.bits.data;phase:=State.write}}}
+        .otherwise{oldData:=io.refillReply.bits.data;phase:=Mux(blendingRead,State.blendGather,State.write)}}}
+      is(State.blendReadWord){row:=(address>>3)+word;blendingRead:=true.B;phase:=State.read}
+      is(State.blendGather){destinationWords(word):=oldData
+        when(word+1.U===wordCount){phase:=State.blendOffer}.otherwise{word:=word+1.U;phase:=State.blendReadWord}}
+      is(State.blendOffer){blendOffered:=true.B;phase:=State.blendWait}
+      is(State.blendWait){when(blender.io.out.fire){assert(blender.io.out.bits.status===0.U)
+        encode(blender.io.out.bits.rgba,descriptor.colors(color).format,descriptor.colors(color).channelMask);phase:=State.blendEncode}}
+      is(State.blendEncode){when(codec.io.out.fire){assert(codec.io.out.bits.status===0.U)
+        encoded:=codec.io.out.bits.value;encodedMask:=codec.io.out.bits.mask;word:=0.U;phase:=State.word}}
       is(State.write){writeEnable:=true.B;memoryWriteData:=(oldData& ~writeMask)|(writeData&writeMask)
         valid:=valid|mark(row);dirty:=dirty|mark(row);writes:=writes+1.U;bits:=bits+PopCount(writeMask);totalWrites:=totalWrites+1.U
         touched:=touched|(1.U(16.W)<<((lane<<2)+sample))
@@ -249,7 +270,7 @@ class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlac
     }
   }
   when(running && stop && phase=/=State.emit && phase=/=State.maintenanceReply && phase=/=State.finish){
-    when(!codecOffered && !codecPending && !refillOffered && !refillPending){
+    when(!codecOffered && !codecPending && !refillOffered && !refillPending && !blendOffered && !blendPending){
       when(quadOwned){formQuadResult()}.elsewhen(maintenanceOwned){maintenanceResult:=0.U.asTypeOf(maintenanceResult);maintenanceResult.fault:=true.B;phase:=State.maintenanceReply}
         .otherwise{phase:=State.finish}
     }

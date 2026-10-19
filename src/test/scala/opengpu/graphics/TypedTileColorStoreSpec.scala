@@ -67,8 +67,8 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
       if(f.kind==0)Vector(fp((seed+lane+1)*0.13),fp(0.5),if(seed%2==0)BigInt("7fc01234",16)else fp(1.5),fp(0.7))
       else Vector(BigInt("ffffffff",16)-seed,BigInt(0x80000000L+lane),BigInt(123456+seed*17+lane),BigInt(seed+lane))
     }
-    def packet(seed: Int,allHelpers: Boolean=false,x0: Option[Int]=None,y0: Int=0,allVisible: Boolean=false): (Int,Int,Int,Int)={
-      val b=d.io.in.bits;zero(b);val q=b.quad;identity(q.identity);q.sequence.poke((seed+100).U);q.primitiveId.poke((seed+20).U)
+    def packet(seed: Int,allHelpers: Boolean=false,x0: Option[Int]=None,y0: Int=0,allVisible: Boolean=false,blend: Option[TypedBlendReference.State]=None): (Int,Int,Int,Int)={
+      val b=d.io.in.bits;zero(b);blend.foreach(s=>TypedBlendReference.poke(b.blend,s));val q=b.quad;identity(q.identity);q.sequence.poke((seed+100).U);q.primitiveId.poke((seed+20).U)
       q.instanceId.poke(2.U);q.partIndex.poke((seed%7).U);q.colorSlots.poke(views.size.U);q.sampleMode.poke(mode.U)
       for((v,i)<-views.zipWithIndex)q.colorTypes(i).poke(format(v.name).kind.U)
       val max=(1<<(1<<mode))-1;var wordWrites=0;var writtenBits=0;var locationWrites=0;var samples=0
@@ -81,9 +81,11 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
           val(data,mask)=encode(v.name,values,v.mask);val f=format(v.name)
           if((locations&(1<<c))!=0 && mask!=0)for(s<-0 until (1<<mode) if (selected&(1<<s))!=0){
             val byteAddress=v.offset+(((y<<tileLog)+x)*(1<<mode)+s)*f.bytes
+            val packed=(0 until f.bytes).foldLeft(BigInt(0))((z,n)=>z|(BigInt(model(byteAddress+n))<<(8*n)))
+            val blendedData=blend.map(s=>encode(v.name,TypedBlendReference.blend(v.name,values,packed,s),v.mask)._1).getOrElse(data)
             val shift=8*(byteAddress%8);val base=byteAddress/8
             for(w<-0 until ((byteAddress%8+f.bytes+7)/8)){val m=((mask<<shift)>>(64*w))&((BigInt(1)<<64)-1)
-              if(m!=0){val a=base+w;val old=word(a);val next=(old& ~m)|(((data<<shift)>>(64*w))&m)
+              if(m!=0){val a=base+w;val old=word(a);val next=(old& ~m)|(((blendedData<<shift)>>(64*w))&m)
                 for(z<-0 until 8)model(a*8+z)=((next>>(8*z))&255).toInt
                 touchedWords+=a;wordWrites+=1;writtenBits+=m.bitCount}}
             locationWrites+=1
@@ -209,4 +211,33 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
       info("TYPED_TILE cleanFill=true noResidentOverwrite=true noPartialFill=true mutationDirty=true")
     }
   }
+  it should "blend all36 resident formats with masked packed neighbors and changing constants before typed writes" in {
+    simulate(new TypedTileColorStore()){d=>val t=new Driver(d);var quads=0
+      for((group,index)<-names.grouped(4).zipWithIndex){var offset=64
+        val views=group.zipWithIndex.map{case(name,i)=>val v=View(name,offset,Vector(15,5,10,8)(i));offset+=64*4*format(name).bytes;v}.toVector
+        t.prepare(views);t.begin()
+        for(n<-0 until 2){val s=TypedBlendReference.State(11,12,4,5,(index+n)%5,(index+2*n)%5,
+          Vector(0.2+n*0.3,0.4,0.6,0.8).map(fp))
+          val expected=t.packet(0,blend=Some(s));t.submit();d.io.in.bits.blend.enable.poke(false.B);t.output(expected=Some(expected));quads+=1}
+        t.verify();t.finish()
+      }
+      info(s"TYPED_TILE_BLEND formats=36 groups=9 quads=$quads sampleMode=4x perSampleDestination=true maskedPackedNeighbors=true changingConstants=true integerBypass=true halfAndFloat=true sRGBLinear=true snapshots=true")
+    }
+  }
+  it should "drain cancelled blend arithmetic and cold gathers without partial writes then reject invalid blend state" in {
+    simulate(new TypedTileColorStore()){d=>val t=new Driver(d);val s=TypedBlendReference.State(11,12,13,14)
+      t.prepare(Vector(View("RGB32F",64,7)),m=0);t.begin();t.packet(0,blend=Some(s));t.submit()
+      for(_<-0 until 80)t.tick();d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      t.output(4,Some((0,0,0,0)));t.finish(4,true)
+      t.prepare(Vector(View("RGB32F",64,7,0)),m=0);t.begin();t.blockRefill=true;t.packet(0,blend=Some(s));t.submit()
+      t.until(d.io.refill.valid.peek().litToBoolean);val held=d.io.refill.bits.peek().litValue;d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      for(_<-0 until 5){t.tick();assert(d.io.refill.bits.peek().litValue==held);d.io.completion.valid.expect(false.B)}
+      t.blockRefill=false;t.output(4,Some((0,0,0,0)));t.finish(4,true)
+      t.prepare(Vector(View("RGB32F",64,7,0)),m=0);t.begin();t.refillFault=true;t.packet(0,blend=Some(s));t.submit();t.output(3,Some((0,0,0,0)));t.finish(3,true);t.refillFault=false
+      t.prepare(Vector(View("RGBA8",64)),m=0);t.begin();t.packet(0,blend=Some(s));d.io.in.bits.blend.equationRGB.poke(7.U);t.submit();t.output(6,Some((0,0,0,0)));t.finish(6,true)
+      t.prepare(Vector(View("RGB32F",64,7,0)),m=0);t.begin();val expected=t.packet(0,blend=Some(s));t.submit();t.output(expected=Some(expected));t.verify();t.finish()
+      info("TYPED_TILE_BLEND arithmeticCancel=true coldGatherCancel=true refillFault=true zeroPrefixWrites=true invalidStateBeforeWrites=true loadGather=true healthyReuse=true")
+    }
+  }
+
 }

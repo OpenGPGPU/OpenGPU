@@ -98,6 +98,10 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedColorEncoder(),stageArgs,firtoolArgs)
       case "mobile-typed-tile-colors" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTileColorStore(useBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-typed-color-decoder" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedColorDecoder,stageArgs,firtoolArgs)
+      case "mobile-typed-color-blend" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedColorBlend,stageArgs,firtoolArgs)
       case "mobile-typed-render" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTileRenderPipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)

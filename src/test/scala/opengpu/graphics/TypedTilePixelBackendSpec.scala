@@ -185,9 +185,11 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
       for((a,b)<-Seq((View(7,0),View(0,0)),(View(4,0),View(6,1024)),(View(1,1),View(0,0)),(View(1,0),View(2,1024)))){
         t.prepare(a,b);t.submitBegin();t.finish(1,true)}
       t.begin(View(4,0));t.packet(apply=false);d.io.in.bits.color.quad.colorTypes(0).poke(1.U);t.submit();t.output(6,Some(Expected(0,0,0,0,0,0,0,0,0)));t.finish(6,true)
+      t.begin(View(4,0));t.packet(apply=false);d.io.in.bits.color.blend.enable.poke(true.B);d.io.in.bits.color.blend.version.poke(1.U)
+      d.io.in.bits.color.blend.srcRGB.poke(15.U);t.submit();t.output(6,Some(Expected(0,0,0,0,0,0,0,0,0)));t.finish(6,true)
       t.begin(View(3,0));t.packet(z=BigInt("7fc00001",16),apply=false);t.submit();t.output(7,Some(Expected(0,0,0,0,0,0,0,0,0)));t.finish(7,true)
       for(f<-Seq(0,4,5,6)){t.begin(View(3,0,0,z=BigInt("7fc00001",16)));val e=t.packet(state=Tests(function=f,stencil=false));t.submit();t.output(expected=Some(e));t.verify();t.finish()}
-      info("TYPED_PIXEL invalidLayouts=4 invalidQuadBeforeDS=true sourceNaNRejected=true storedNaNUnordered=true healthyRebind=true")
+      info("TYPED_PIXEL invalidLayouts=4 invalidQuadBeforeDS=true invalidBlendBeforeDS=true sourceNaNRejected=true storedNaNUnordered=true healthyRebind=true")
     }
   }
   it should "drain cancelled depth and color refills and retain a held final pixel completion" in {
