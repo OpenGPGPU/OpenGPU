@@ -34,6 +34,7 @@ class GpuHostPerformanceCounters extends Bundle {
   val payloadReleaseBlocked=UInt(32.W)
   val payloadDataOffers=UInt(32.W)
   val activeComputeUnits=UInt(32.W)
+  val maxGraphicsLocalX=UInt(16.W)
   val lowerReadBytes = UInt(64.W)
   val lowerWriteBytes = UInt(64.W)
   val textureWordReads = UInt(64.W)
@@ -642,6 +643,13 @@ class GpuHostSystemAxi(
         counter
       }
       perf.system := system.io.performance
+      val maxGraphicsLocalX=RegInit(0.U(16.W))
+      system.io.graphicsKernels.foreach { port=>
+        when(port.launch.fire && port.launch.bits.launch.localSize(0)>maxGraphicsLocalX) {
+          maxGraphicsLocalX:=port.launch.bits.launch.localSize(0)
+        }
+      }
+      perf.maxGraphicsLocalX:=maxGraphicsLocalX
       for(e <- 0 until 4) {
         val engine=binned.filter(_.io.committedSamples.length>e)
         val accepted=engine.map(_.io.acceptedSamples(e)).getOrElse(0.U(3.W))

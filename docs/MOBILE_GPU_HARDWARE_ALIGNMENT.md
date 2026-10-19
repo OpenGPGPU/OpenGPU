@@ -3423,3 +3423,29 @@ qualification. These are selected instruction/resource interaction checks with b
 SRAM and reduced caches; general FP32 numeric behavior, derivatives/divergence,
 resource families, representative throughput, geometry and remaining H0-H8
 requirements remain open. No synthesis or place-and-route claim is added.
+
+
+### Full eight-warp FP32/texture workgroups, 2026-10-19
+
+The [full-batch checkpoint](performance/mobile-local-payload-full-batch-2026-10-19.json)
+extends the preceding shader checks with complete 128-thread workgroups on the
+four-CU, sixteen-lane, eight-warp host. Oversized clip-space triangles fill both
+native tiles, and `fragmentBatchLimit=0` selects the configured 128-thread
+capacity. Exact color/depth/stencil images, changed textures in two
+fresh VMs, queued DMA ordering, all-CU activity, zero global staging and complete
+lease release remain required.
+
+`maxGraphicsLocalX` reports the largest X dimension actually accepted on the
+shared graphics launch port since hardware reset. It is a sixteen-bit thread
+count on the optional performance interface, not a new MMIO register. The full
+case observes 128; compatibility cases observe eight for the small programmable
+host and zero for fixed-function rendering. Shared graphics workgroups here
+have Y=Z=1, so 128 work-items at sixteen lanes require all eight logical warps.
+
+Three AXI checks qualify the counter and full-batch workload on a new frozen
+515-source snapshot. Production RTL is also emitted with performance exposure
+disabled. All 798 SystemVerilog files match the prior production default after
+comment/whitespace removal; the counter is absent from that product profile. This closes the selected
+FP32/texture full-workgroup gap above. General shader/numeric/resource coverage,
+representative throughput, geometry, synthesis and remaining H0-H8 requirements
+stay open.

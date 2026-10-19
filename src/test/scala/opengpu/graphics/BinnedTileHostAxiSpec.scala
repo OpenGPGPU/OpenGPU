@@ -242,6 +242,7 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
         }
         if(shared)assert(d.io.performance.get.system.maxActiveComputeUnits.peek().litValue==count)
         val perf=d.io.performance.get
+        if(!shared)perf.maxGraphicsLocalX.expect(0.U)
         val allocations=perf.payloadAllocations.peek().litValue;val spills=perf.payloadSpills.peek().litValue
         val releases=perf.payloadReleases.peek().litValue
         val localReads=perf.payloadStagingReadBytes.peek().litValue;val localWrites=perf.payloadStagingWriteBytes.peek().litValue
@@ -276,7 +277,7 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
 
   for((mode,count,lanes,warps,bytes) <- Seq(
     ("resident",2,4,2,4096),("mixed",2,4,2,512),("oversized",2,4,2,64),
-    ("global",2,4,2,65536),("resident",4,16,8,65536)))
+    ("global",2,4,2,65536),("resident",4,16,8,65536),("full-batch",4,16,8,65536)))
   it should s"compute FP32 coordinates and sample textures through native AXI payloads mode=$mode CUs=$count lanes=$lanes warps=$warps" in {
     val width=if(lanes==16)32 else 16;val height=if(lanes==16)16 else 8
     val edge=if(lanes==16)16 else 8;val pageBytes=if(lanes==16)4096 else 128
@@ -285,9 +286,13 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
       binWriteCredits=if(lanes==16)8 else 2,attachmentStoreCredits=if(lanes==16)8 else 2,
       binTileSlots=if(lanes==16)8 else 4,payloadBytes=bytes)
     val mobile=if(mode=="global")base.copy(localShaderPayloads=false)else base
+    val fullBatch=mode=="full-batch"
+    val shaderDraws=if(fullBatch)draws.map(_.copy(clip=Vector(
+      (-65536L,-65536L,0L,65536L),(196608L,-65536L,0L,65536L),
+      (-65536L,196608L,0L,65536L))))else draws
     val colors=Vector(0xffff00ffL,0x00ffffffL)
     val expected=colors.map { color=>
-      val sequence=TileBinJobTestData.references(18).map(r=>draws(((r.primitive-firstHandle)/2).toInt)
+      val sequence=TileBinJobTestData.references(18).map(r=>shaderDraws(((r.primitive-firstHandle)/2).toInt)
         .copy(color=color,scissor=Some((r.tile.toInt*edge,0,r.tile.toInt*edge+edge,edge))))
       reference(0,width,height,sequence,width,height)
     }
@@ -309,7 +314,7 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
       broadcast(1,10),broadcast(2,10),(1L<<26)|(1L<<25)|(2<<20)|(1<<15)|(3<<7)|0x2bL)++
       offset(24*capacity)++Seq(store(3))++offset(8*capacity)++Seq(load(4))++
       offset(28*capacity)++Seq(store(4),0x30500073L)
-    simulate(new GpuHostSystemAxi(cfg.copy(screenWidth=width,screenHeight=height,fragmentBatchLimit=math.max(8,lanes)),
+    simulate(new GpuHostSystemAxi(cfg.copy(screenWidth=width,screenHeight=height,fragmentBatchLimit=if(fullBatch)0 else math.max(8,lanes)),
       gpu,numComputeUnits=count,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       enableFpuBackend=true,memoryAxiDataBytes=32,exposePerformance=true,binnedRendering=Some(mobile))) { d=>
       initialize(d);val f=new Fixture(d,true,lanes,warps,width,height,edge,pageBytes)
@@ -325,6 +330,7 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
         axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,satp.toInt)
         axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
         f.prepare();f.put(0x3000,program)
+        if(fullBatch)for((draw,i)<-shaderDraws.zipWithIndex)f.put(recordBase+i*128L,primitive(draw))
         val binding=state.toArray;binding(1)|=1L<<10;binding(6)=0x3000;binding(8)=0x10000
         binding(9)=0xc0000;binding(10)=2L|(2L<<16)
         f.put(recordBase+32*64L,binding.toSeq)
@@ -351,13 +357,15 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
       val localReads=perf.payloadStagingReadBytes.peek().litValue;val localWrites=perf.payloadStagingWriteBytes.peek().litValue
       val globalReads=perf.stagingReadBytes.peek().litValue;val globalWrites=perf.stagingWriteBytes.peek().litValue
       assert(allocations==releases)
-      if(mode=="resident")assert(allocations>0 && spills==0 && localReads>0 && localWrites>0 && globalReads==0 && globalWrites==0)
+      if(mode=="resident" || fullBatch)assert(allocations>0 && spills==0 && localReads>0 && localWrites>0 && globalReads==0 && globalWrites==0)
       if(mode=="mixed")assert(allocations>0 && spills>0 && localReads>0 && localWrites>0 && globalReads>0 && globalWrites>0)
       if(mode=="oversized")assert(allocations==0 && spills>0 && localReads==0 && localWrites==0 && globalReads>0 && globalWrites>0)
       if(mode=="global")assert(allocations==0 && spills==0 && localReads==0 && localWrites==0 && globalReads>0 && globalWrites>0)
       assert(perf.system.maxActiveComputeUnits.peek().litValue==count)
+      val maxLocalX=perf.maxGraphicsLocalX.peek().litValue
+      assert(maxLocalX==(if(fullBatch)capacity else math.max(8,lanes)))
       for(e <- 0 until mobile.tileEngines)assert(perf.binCommittedSamples(e).peek().litValue>0)
-      info(s"BIN_PAYLOAD_FP32_TEXTURE mode=$mode CUs=$count lanes=$lanes warps=$warps allocations=$allocations spills=$spills releases=$releases localReadBytes=$localReads localWriteBytes=$localWrites globalReadBytes=$globalReads globalWriteBytes=$globalWrites freshVMs=2 changedTexture=true exactWords=${width*height*2} queuedCopies=2 reserved=0")
+      info(s"BIN_PAYLOAD_FP32_TEXTURE mode=$mode CUs=$count lanes=$lanes warps=$warps allocations=$allocations spills=$spills releases=$releases localReadBytes=$localReads localWriteBytes=$localWrites globalReadBytes=$globalReads globalWriteBytes=$globalWrites freshVMs=2 changedTexture=true exactWords=${width*height*2} queuedCopies=2 reserved=0 maxLocalX=$maxLocalX")
     }
   }
 
