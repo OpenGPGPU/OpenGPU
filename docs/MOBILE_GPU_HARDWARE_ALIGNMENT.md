@@ -5029,3 +5029,27 @@ AXI regression and a fresh synthesis run are still in progress at this commit;
 no improved Fmax or full-system qualification is claimed here. See the
 [component evidence](performance/mobile-typed-image-refill-decoder-2026-10-20.json).
 PPA remains synthesis only, and H0-H8 remain open.
+
+## Broader refill-decoder qualification (2026-10-20)
+
+The bounded decoder at `8a9c4fe` now passes **44 checks across six suites** on
+the same 604 frozen sources. The two immutable logs contain 39 image/transfer/
+replay/combined-owner checks and five separately selected native AXI checks.
+The evidence records the initial incorrect native test package selector rather
+than treating an unselected suite as tested.
+
+Real shared-CU coverage includes local/global payloads, indexed instances,
+4x MSAA, exact guarded MRT/depth source and resolve bytes, cached consumers,
+primary faults, held outputs, leases, final physical acknowledgements and
+healthy reuse. Existing ordinary GTJ1 native AXI coverage also passes translated
+resource permissions, shader instruction permissions, physical store faults and
+live shader/publication reset drain. These host checks do not qualify the new
+GNJ1 binned owner/fabric under development.
+
+The combined default emission remains 267 files, 114 KiB of characterized SRAM,
+one vertex stage, two fragment stages, six FMA lanes and four dividers, with no
+private CU or payload pool. Both existing ABI byte checks pass. See the
+[two-log qualification](performance/mobile-typed-image-refill-validation-2026-10-20.json).
+Repeat synthesis is separate and still running at this checkpoint; functional
+success establishes no improved Fmax. Full Mobile rates/budgets, new native
+binned host integration, resource provenance and H0-H8 remain open.
