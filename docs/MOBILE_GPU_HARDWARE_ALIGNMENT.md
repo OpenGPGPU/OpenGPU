@@ -23,7 +23,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 | Shader execution | Shared compute CUs already execute vertex and fragment tasks; vector FP32 arithmetic, including FMA, is connected | Improve task input/output transport, occupancy, control-flow/resource contracts and sustained issue/writeback throughput |
 | Configuration | `GpuConfig` defaults to 16 lanes and eight warps; the mobile CU-count constant is four | One compute/graphics execution configuration; discoverable resource limits and explicit supported configuration combinations |
 | Interstage transport | Eligible Mobile fragments default to local payloads through the parallel/tile/AXI hierarchy; a generic vertex client also qualifies local/global staging and export ownership | Integrate native vertex/fragment ownership and budget the vertex client's additional SRAM; qualify broader resources and throughput |
-| Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly and bounded FP32 clipping are connected as components; legacy triangle rasterization exists | Native geometry submission/binning, FP32 viewport/fragment interpolation, point/line rasterization and post-transform reuse |
+| Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly, FP32 clipping/viewport and quad interpolation exist, with center-raster stream checks | Native geometry submission/binning/fragment ownership, qualifier closure, point/line rasterization and post-transform reuse |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
 | Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Integrated synthesis/timing, legal early rejection, representative throughput, multiple color outputs and complete format semantics |
@@ -3779,3 +3779,62 @@ native geometry descriptors and producer/bin wiring, host/VM/reset/physical
 ownership, broader invariance and API numeric policy, formats/resources,
 post-transform reuse, production budgets, throughput and remaining H0-H8 gates
 remain open.
+
+
+### FP32 quad interpolation and pixel-center raster profile, 2026-10-19
+
+The [fragment-interpolation checkpoint](performance/mobile-fp32-fragment-interpolation-2026-10-19.json)
+adds `Fp32FragmentInterpolator`, accepting one triangle's `WindowPrimitive`
+and a complete `RasterQuad`. All four lanes retain pixel positions, coverage
+masks and helper identities. Each lane exports up to 64 raw/FP32 components,
+window depth, packed fragment reciprocal W and its extended value.
+
+Smooth components evaluate `sum(edge * reciprocalW * value) / sum(edge * reciprocalW)`;
+depth evaluates `sum(edge * windowDepth) / area` and clamps the packed result
+to [0,1]. Fragment reciprocal W divides the perspective denominator by area.
+Signed 64-bit edges, including the minimum value, convert to 24-bit RNE
+significands without exponent loss; every scalar operation rounds separately,
+and values pack only for shader export. Flat components bypass arithmetic and
+copy the clipping stream's canonical values, retaining integer/NaN bit patterns.
+This follows the interpolation structure in [GLES 3.0.6 section 3.6.1](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf);
+precision/invariance and complete API numeric behavior remain unqualified.
+
+Preflight checks triangle metadata, active slot/mask bounds, vertex identity,
+positive legal reciprocal W, bounded finite vertex depth, common nonzero signed
+area, exact edge sums and covered/mask consistency. Invalid inputs return
+internal status 1 before arithmetic/output. A covered center with a nonpositive
+perspective denominator returns status 7; native API policy for such extrapolated
+MSAA centers remains open. Helpers with nonpositive denominators keep their
+quad position, depth and flat values, flag invalid perspective, and use zero
+smooth values. Smooth NaNs follow the arithmetic lanes. Cancellation drains
+accepted/offered math and retains an offered complete quad; completion remains
+immutable until accepted. No partial quad is published after a fault.
+
+`TriangleRasterizer(pixelCenter=true)` evaluates coverage and exported edges
+at half-integer pixel centers, including center-relative MSAA offsets. Origin
+products retain a leading zero for large unsigned screen coordinates. Existing
+packed-color clients retain the integer-anchor profile pending native migration;
+merely instantiating the new interpolator does not change their image semantics.
+Actual-raster integration tests compare center edges, complete coverage masks,
+all required covered pixels and interpolated values against independent integer
+and exact rational references in both windings at 1x and 4x. Source state is
+snapshotted and output/completion stalls are exercised.
+
+All 108 tests pass on 536 frozen sources: 85 preceding geometry/ABI checks,
+11 existing raster checks, eight interpolation checks and four actual-raster
+integration cases. Default emissions audit 26 interpolator files and 15
+center-raster files, with no SRAM in either component. Directed/random checks
+cover signed-64 conversion ties/bounds, negative area, inactive slots, raw flat
+NaNs, smooth NaNs, reciprocal exponent 149, invalid helper denominators, malformed
+records, cancellation/reuse, minimum one-slot/one-sample operation and the full
+64-component four-lane interface. The full all-smooth case uses 1,584 scalar
+operations, counted in 16 bits. This serialized functional stage has no sustained
+quad-rate claim. It adds one scalar FMA/divider pair, private record/control
+registers and no SRAM/private CU/payload pool; production register/arithmetic
+budgets and synthesis PPA remain open. PPA screening remains synthesis only.
+
+Native geometry/bin/raster/fragment producer ownership, guard-band handling,
+point/line rasterization and interpolation, centroid/sample qualifiers,
+per-sample depth integration, complete fragment built-ins, invariance/numeric
+qualification, formats/resources, queries/watchdog behavior and remaining
+H0-H8 requirements remain open.

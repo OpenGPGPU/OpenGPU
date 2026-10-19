@@ -83,6 +83,10 @@ object EmitPpaRtl {
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-fp32-viewport" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.Fp32ViewportStage(),stageArgs,firtoolArgs)
+      case "mobile-fp32-fragment-interpolation" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.Fp32FragmentInterpolator(),stageArgs,firtoolArgs)
+      case "mobile-fp32-center-raster" =>
+        ChiselStage.emitSystemVerilogFile(new TriangleRasterizer(GraphicsConfig(),quadMode=true,pixelCenter=true),stageArgs,firtoolArgs)
       case "mobile-vertex-viewport" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexViewportPipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)

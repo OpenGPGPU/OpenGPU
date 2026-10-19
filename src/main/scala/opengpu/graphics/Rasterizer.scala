@@ -417,7 +417,10 @@ class QuadCoverage(config: GraphicsConfig) extends Module {
   * execution; the default mode keeps the fixed-function covered-only scalar
   * contract on `pixel`.
   */
-class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) extends Module {
+class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
+    pixelCenter: Boolean = false) extends Module {
+  require(!pixelCenter || config.subPixelBits>=1,
+    "pixel-center rasterization requires at least one fractional coordinate bit")
   val io = IO(new Bundle {
     val draw = Flipped(Decoupled(new TriangleVertices(config)))
     val cullMode = Input(UInt(2.W))
@@ -807,17 +810,22 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false) exte
   when(setupState === stSetup) {
     setupState := stArea
 
-    val pxn = (minX << config.subPixelBits)
-      .apply(config.subPixelBits + 15, 0).asSInt
-    val pyn = (minY << config.subPixelBits)
-      .apply(config.subPixelBits + 15, 0).asSInt
+    // The FP32 path uses GLES half-integer fragment centers. Retain the
+    // established integer-anchor profile for existing packed-color clients.
+    // Include a leading zero before signed conversion at large extents.
+    def samplePosition(pixel: UInt): SInt = if(pixelCenter)
+      ((pixel << config.subPixelBits) | (BigInt(1) << (config.subPixelBits-1)).U)
+        .pad(17+config.subPixelBits).asSInt
+    else (pixel << config.subPixelBits).apply(config.subPixelBits+15,0).asSInt
+    val pxn = samplePosition(minX)
+    val pyn = samplePosition(minY)
 
     prodReg.pax.zipWithIndex.foreach { case (r, i) =>
-      val raw = Wire(SInt(59.W))
+      val raw = Wire(SInt((if(pixelCenter)51+config.subPixelBits else 59).W))
       raw := coeffReg.a(i) * pxn
       r := raw }
     prodReg.pby.zipWithIndex.foreach { case (r, i) =>
-      val raw = Wire(SInt(59.W))
+      val raw = Wire(SInt((if(pixelCenter)51+config.subPixelBits else 59).W))
       raw := coeffReg.b(i) * pyn
       r := raw }
     // A/B registers sign-extend the existing natural32 coordinate
