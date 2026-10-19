@@ -24,7 +24,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 | Geometry | Clip, viewport, triangle setup and quad rasterization exist | Native index/attribute fetch, vertex reuse, instancing and complete required primitive behavior |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
-| Pixel operations | Depth/stencil/blending and MSAA exist; OM has configurable concurrent RMW slots | Banked tile-local pixel pipelines, legal early rejection, multiple color outputs and complete format semantics |
+| Pixel operations | Optional persistent banked RGBA8/D24S8 merging sustains four resident sample commits/cycle in RTL tests; the production renderer retains scalar OM | Integrated timing, wide renderer ingress, legal early rejection, multiple color outputs and complete format semantics |
 | Memory | Shared banked L2, Sv32 translation, GPU cache invalidation and AXI memory master | Aggregate bandwidth and outstanding budgets, context-tagged tile/texture state, scoped barriers and robust bin/payload memory |
 
 The constructor default AXI beat is eight bytes, while emission supports 4 through 64 bytes. Benchmark configurations must record the selected width; there is no single width shared by every existing artifact. See [GpuHostSystemAxi](../src/main/scala/opengpu/system/GpuHostSystemAxi.scala) and [the emitter](../src/main/scala/opengpu/elaboration/EmitGpuHostSystemAxi.scala).
@@ -2795,3 +2795,52 @@ valid/dirty ownership, store/resolve and fault/cancel handling are integrated,
 renderer and shader-export ingress are widened, and legal early rejection is
 verified before shader dispatch. The original workload and remaining H0–H8 gates
 remain required. Current PPA screening continues with synthesis only.
+
+## H3 persistent banked attachment integration
+
+The [persistent banked checkpoint](performance/mobile-persistent-banked-attachments-2026-10-19.json)
+connects `TileSampleQuadMerge` to the existing persistent attachment lifetime
+through the opt-in `bankedSamples=true` profile. Lazy clear/discard values feed
+the merge arithmetic without preinitializing SRAM or reading external old data.
+Missing load-start planes use a fifth, fairly arbitrated SRAM write port while
+their sample reservations remain live. Valid and dirty updates combine all
+simultaneous quad commits and refill events; loads do not mark samples dirty.
+
+The ordered scalar/partial-clear/export/resolve path uses an exclusive one-cycle
+compatibility port after quad completion drain. A waiting scalar request cannot
+block an older quad's refill. An offered stalled refill retains its external
+response and payload until SRAM commit, including across cancellation. SRAM and
+merge ownership begin only after descriptor validation, so invalid modes fail
+admission without initializing unsupported internal state. Native, RGBA, BGRA,
+RGBX and BGRX formats decode before native channel masks and blending, then
+encode at writeback using the admitted descriptor snapshot.
+
+The final source passes 38 banked/resident checks across six suites, 57 default
+compatibility checks across five suites, and 19 banked eight-credit checks.
+These counts describe configuration runs, not distinct API requirements.
+Behavioral and vendor SRAM both commit four samples on each of 128 consecutive
+cycles after a lazy-clear start, with blending, depth and stencil enabled and
+no external attachment traffic before pass end. The same tests then perform
+masked partial clears, overlapping quads and an MSAA resolve with color-store
+discard. Final stores and byte-wise rounded resolves match an independent
+ordered model. Load-start repeats fetch exactly four color and four depth
+words once; a newer scalar request waits while those loads progress. Clear
+boundaries, held completion, canceled/faulted refills and identity reuse pass.
+All five memory orders and native channel masks retain the bound format through
+resolve despite mutation of the incoming descriptor. The default buffered
+512-word export reproduces 32 full lines and 2,735 cycles.
+
+The mapped synthesis screen completes with no omitted operators, but **fails
+1 GHz setup** at ASAP7 TC/SLVT and 25% I/O budgets: −594.959 ps core and
+−291.176 ps I/O slack. It reports 213,018 standard cells, 28,310.7 µm² cell
+area, and 16 SRAM macros occupying 6,643.81 µm². Default-activity power is
+0.265079 W. The cycle benchmark does not demonstrate operation at 1 GHz;
+timing remains open. No new place/route is performed. All 489 source/build/ABI
+hashes, the recoverable archive, passing regression logs, emitted RTL and the
+failing synthesis reports are frozen in the measurement record.
+
+The production renderer and double-buffered host composition still select the
+scalar profile. Next work must cut the reported integrated timing paths and
+route wide ingress through both attachment slots and shader exports, then add
+legal early rejection before expensive dispatch. H3 and the remaining H0–H8
+workload, resource, visibility and API gates remain open.

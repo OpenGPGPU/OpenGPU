@@ -244,6 +244,11 @@ object EmitPpaRtl {
       case "persistent-tile-store" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.PersistentTileAttachmentStore(useSramBlackBoxes = true), stageArgs, firtoolArgs)
+      case "persistent-tile-store-banked" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.PersistentTileAttachmentStore(useSramBlackBoxes=true,
+            storeCredits=opengpu.config.MobileGpuConfig().attachmentStoreCredits,bankedSamples=true),
+          stageArgs,firtoolArgs)
       case "persistent-tile-store-concurrent" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.PersistentTileAttachmentStore(useSramBlackBoxes = true,
