@@ -102,7 +102,7 @@ The device ISA is defined by the Chisel decoders in
 | M1 MC scalar | `XOpengpu` feature + `barrier`/`tex.sample`/`cease` | done; encodings match, round-trip works |
 | M2 MC complete | vector custom instrs + branch/join | bit-exact + round-trip |
 | M3 triple + CPU | `opengpu` resolves to RISCV | `llvm-mc -triple=opengpu` works; Lanai target retired |
-| M4 CodeGen + ABI | `llc -mcpu=opengpu` | passes `opengpu_shader_validate_words` |
+| M4 CodeGen + ABI | `llc -mcpu=opengpu` | done; scalar/float/vector/branch kernels pass `opengpu_shader_validate_words` |
 | M5 clang | `clang --target=opengpu -S` | compiles a kernel |
 | M6 runtime | fatbin + loader | end-to-end execution |
 
@@ -136,3 +136,17 @@ The device ISA is defined by the Chisel decoders in
   identity is intended to survive.
 - `llvm-mc -mattr=+xopengpu` works today. `clang -march=rv32imafv_xopengpu`
   additionally needs the `RISCVISAInfo.cpp` registration from M3.
+- M4 kernarg lowering: `CallingConv::RISCV_OpenGPU` (a kernel CC) takes no
+  register arguments; `x1` is the kernarg base and arguments are read from
+  fixed kernarg offsets. `LowerFormalArguments` turns pointer arguments into
+  `x1`-relative addresses and scalars into loads, keeping every access in the
+  `imm(x1)` form the sandbox admits.
+- M4 vtype: the sandbox only admits the `e32,m1` **tail/mask-undisturbed**
+  (`vta=vma=0`) configuration; LLVM emits `ta,ma` by default, so the ABI pass
+  clears the policy bits. `tu`/`mu` is a strictly stronger guarantee.
+- M4 reserved registers: `x1`, `x8`, `x9`, `x30`, `x31` are reserved for the
+  ABI so shader code cannot clobber the preloaded kernarg base, local index,
+  launch capacity, staging stride or uniform base.
+- Known limitation: at `-O0` LLVM leaves a redundant `vsetvli x0,x0` (VLMAX)
+  that the sandbox rejects; build shaders at the default (`-O2`) or any
+  `-O1+` level. Revisit if unoptimized device code must be admitted.
