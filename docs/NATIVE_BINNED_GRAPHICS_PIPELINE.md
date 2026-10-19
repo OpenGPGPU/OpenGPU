@@ -134,3 +134,20 @@ It independently checks all twelve words, exact stage/address attribution before
 any memory access, held reads, read-only writes, protected VM state and zero
 visibility after POP. This is an admission-path check; translated shader/bin/image
 fault details and both full-host reset phases remain pending for GNX1.
+
+
+## Base host composition qualification
+
+The corrected base host run passes all five cases, including eight attributed
+faults with an exact healthy frame after each, and reset during a live shader or
+an unacknowledged empty-frame image write. Both reset phases discard queued DMA,
+block VM mutation, drain allocations/pins and permit exact healthy reuse.
+Nine compatibility/fabric checks also pass. See the [14-check base host record](performance/mobile-native-binned-host-composition-2026-10-20.json).
+
+This record uses the earlier GNC1 profile with 24 discovery fields, before GNX1
+and the bounded color-clear change. Native tests use 619 frozen source/ABI files;
+the compatibility snapshot differs only in the unselected native host fixture.
+The production RTL and all selected compatibility sources are identical. GNX1
+and color each have separate passing evidence; their combined full-host runtime
+qualification is still pending. Physical provenance, translated aliases, full
+Mobile workloads/rates/budgets and H0-H8 remain open.

@@ -5135,3 +5135,22 @@ CU or payload pool. These are structural counts. See the
 The synthesis run remains separate; functional success does not establish a new
 Fmax or area. Combined production AXI/Sv32/GNX1 composition, physical provenance,
 full Mobile workloads/rates/budgets and H0-H8 remain open. PPA is synthesis only.
+
+
+## Base native binned AXI host composition qualification (2026-10-20)
+
+The [14-check base host record](performance/mobile-native-binned-host-composition-2026-10-20.json)
+qualifies the native owner, Sv32/physical fabric and production command/MMIO host.
+Local/global actual shaders, four MRTs plus D32F, guarded pitched source/resolve
+images, cached consumers, 1x/4x MSAA, empty six-tile frames and indexed instances
+pass. Eight fault cases each allow an exact healthy frame. Both live-shader and
+unacknowledged-publication reset phases discard queued DMA/old completions,
+protect the VM and release payload ownership before exact healthy reuse.
+
+This is the earlier 24-field GNC1 profile, before the separately tested GNX1
+extension and new color-clear pipeline. The five-case rerun passes on 619 frozen
+files after correcting its permission-injection and AXI-driver assumptions; nine
+compatibility checks use the same production RTL. The default 768-file four-CU
+host emission is structural evidence. Combined GNX1/color host qualification,
+physical provenance, translated aliases, full Mobile rates/budgets and H0-H8
+remain open. PPA remains synthesis only.
