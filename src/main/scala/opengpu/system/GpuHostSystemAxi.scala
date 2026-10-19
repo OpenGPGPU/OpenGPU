@@ -114,7 +114,7 @@ class GpuHostSystemAxi(
     require(!bufferCommandReads && !bufferTextureReads && !coalesceFramebufferWrites,
       "legacy word-port buffering options do not apply to the binned line engine")
   }
-  private val localPayload=binnedRendering.flatMap(_.shaderPayload)
+  private val localPayload=binnedRendering.filter(_=>fragCore && sharedGraphics && parallelGraphics).flatMap(_.shaderPayload)
   require(localPayload.isEmpty || (fragCore && sharedGraphics && parallelGraphics && binnedRendering.get.bankedAttachments),
     "local Mobile payloads require banked binned rendering with parallel shared fragments")
   private val sharedShader = if (sharedGraphics)

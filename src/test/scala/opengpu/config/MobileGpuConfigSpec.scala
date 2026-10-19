@@ -71,16 +71,20 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
     }
   }
 
-  it should "size explicit local payload owners and pin every renderer queue tier" in {
-    val mobile=MobileGpuConfig(localShaderPayloads=true)
+  it should "default native payload owners and pin every renderer queue tier with an explicit global override" in {
+    val mobile=MobileGpuConfig()
     val p=mobile.shaderPayload.get;val shared=mobile.sharedShaders
     assert(p.capacityBytes==65536 && p.maxPayloadBytes==4608 && p.slots==14)
     assert(p.owners==8 && p.ports==12 && shared.rendererPayloadPins==10)
     assert(shared.tasksPerEngine==5 && shared.binPayloadProducers(2)==8 && shared.binPayloadPins(2)==32)
-    assert(MobileGpuConfig().shaderPayload.isEmpty)
+    assert(mobile.localShaderPayloads && mobile.copy(localShaderPayloads=false).shaderPayload.isEmpty)
     assert(mobile.copy(payloadBytes=64).shaderPayload.get.maxPayloadBytes==64)
-    intercept[IllegalArgumentException]{mobile.copy(bankedAttachments=false)}
+    assert(mobile.copy(bankedAttachments=false).shaderPayload.isEmpty)
     intercept[IllegalArgumentException]{opengpu.system.SharedCuShaderConfig(4,shaderPayload=Some(p))}
+    intercept[IllegalArgumentException]{opengpu.elaboration.EmitGpuHostSystemAxi.main(
+      Array("unused","--local-shader-payloads","--global-shader-payloads"))}
+    intercept[IllegalArgumentException]{opengpu.elaboration.EmitGpuHostSystemAxi.main(
+      Array("unused","--binned-tile-jobs","--frag-core","--shared-graphics","--local-shader-payloads"))}
   }
 
   it should "reject a programmable graphics elaboration without complete per-warp quads" in {

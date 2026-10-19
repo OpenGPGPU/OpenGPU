@@ -17,6 +17,11 @@ object EmitGpuHostSystemAxi {
     val vertCore = rest.contains("--vert-core")
     val sharedGraphics = rest.contains("--shared-graphics")
     val parallelGraphics = rest.contains("--parallel-graphics")
+    val forceLocalPayloads = rest.contains("--local-shader-payloads")
+    val globalPayloads = rest.contains("--global-shader-payloads")
+    require(!forceLocalPayloads || !globalPayloads, "choose one shader payload transport")
+    require(!forceLocalPayloads || (binnedJobs && fragCore && sharedGraphics && parallelGraphics),
+      "--local-shader-payloads requires binned jobs with parallel shared fragments")
     require(!parallelGraphics || sharedGraphics, "--parallel-graphics requires --shared-graphics")
     require(!vertCore || fragCore,
       "--vert-core requires --frag-core because both stages share the shader CU")
@@ -89,7 +94,7 @@ object EmitGpuHostSystemAxi {
           computeUnits=computeUnits,tileEngines=tileEngines,axiBytes=memoryAxiDataBytes,
           attachmentStoreCredits=intOption("--tile-store-credits").getOrElse(8),
           payloadBytes=intOption("--payload-bytes").getOrElse(64*1024),
-          localShaderPayloads=rest.contains("--local-shader-payloads"))) else None,
+          localShaderPayloads= !globalPayloads)) else None,
         tileStoreCredits = intOption("--tile-store-credits")
           .getOrElse(opengpu.config.MobileGpuConfig().attachmentStoreCredits),
         fragCore = fragCore,

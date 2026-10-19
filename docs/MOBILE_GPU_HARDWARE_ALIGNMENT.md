@@ -3308,8 +3308,9 @@ place-and-route result is claimed.
 allocation/data ports, task bindings and pins through the parallel fragment
 workers, both tile engines, nested shared-task routers and AXI host to one shared
 payload pool. `--local-shader-payloads` selects this configuration in the host
-emitter; capability bit 21 reports it. The default remains the existing global
-staging path. The unused compatibility renderer receives no local payload port.
+emitter; capability bit 21 reports it. At this checkpoint the default remained
+the existing global staging path. The unused compatibility renderer receives no
+local payload port.
 
 The [renderer qualification packet](performance/mobile-local-payload-renderer-2026-10-19.json)
 records eight local-path AXI checks on 515 frozen sources. Two-CU tests exercise
@@ -3363,3 +3364,34 @@ hierarchy inspection for the optional path; it adds no new runtime or PPA
 claim. Default promotion, representative shader/workload qualification, GPU
 geometry fetching/reuse, synthesis and the remaining H0-H8 requirements remain
 open. Current PPA qualification remains synthesis only.
+
+
+### Default local payloads for eligible Mobile rendering, 2026-10-19
+
+The [default-selection packet](performance/mobile-default-local-payload-2026-10-19.json)
+changes `MobileGpuConfig` to prefer local shader payloads. A binned host selects
+the shared pool when fragments are programmable, graphics use the shared CUs,
+parallel fragment workers are enabled and attachments use the native banked
+path. Fixed-function, scalar shared graphics, unbanked attachments and non-binned
+hosts retain their existing transport. `localShaderPayloads=false` or the emitter's
+`--global-shader-payloads` selects global staging explicitly. The existing
+`--local-shader-payloads` remains accepted and rejects unsupported or conflicting
+CLI selections.
+
+Default construction is exercised by exact-image AXI tests for fixed-function,
+two-CU and four-CU/sixteen-lane/eight-warp rendering, with queued DMA, fresh VM
+ownership and capability checks. Resident programmable defaults require zero
+global staging bytes and release every payload allocation. Eighteen config/ABI
+checks cover sizing, overrides, invalid CLI combinations and the unchanged ABI
+bit assignments. This adds 21 checks on a new frozen 515-source snapshot.
+
+Production emission covers the implicit local default (799 files), an explicit
+global override (724 files) and scalar shared graphics (690 files). The latter
+two contain no payload store or controller. All 798 emitted SystemVerilog files
+for the default match the preceding explicit-local production host after
+removing comments and whitespace. The prior opt-in renderer and production
+hierarchy packets remain the evidence for spill, publication, fault/reset drain
+and the unchanged payload datapath. This default change closes the mandatory
+global fragment-staging gap for the covered native profiles. General shader
+coverage, representative workload throughput, GPU geometry fetching/reuse,
+synthesis and the other H0-H8 requirements remain open.

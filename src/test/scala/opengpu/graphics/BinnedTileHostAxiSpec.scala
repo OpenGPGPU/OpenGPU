@@ -169,18 +169,21 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
       axiWrite(d,reg,if(reg==GpuCommandMmioRegs.TLB_FLUSH)1 else 0x80000300,expectedResponse=2)
     def awaitRead(): Unit={var i=0;while(!d.io.m_axi_arvalid.peek().litToBoolean && i<10000){d.io.s_axi_aclk.step();i+=1};d.io.m_axi_arvalid.expect(true.B)}
   }
-  for ((shared,count,lanes,warps,banked,local,payloadBytes) <- Seq(
-    (false,1,4,2,false,false,65536),(false,1,4,2,true,false,65536),
-    (true,2,4,2,true,false,65536),(true,4,16,8,true,false,65536),
-    (true,2,4,2,true,true,4096),(true,2,4,2,true,true,512),
-    (true,2,4,2,true,true,64),(true,4,16,8,true,true,65536))) {
-    it should s"expose GBJ1 on AXI with exact images, queued DMA and VM ownership shared=$shared CUs=$count lanes=$lanes warps=$warps banked=$banked local=$local payloadBytes=$payloadBytes" in {
+  for ((shared,count,lanes,warps,banked,local,payloadBytes,defaultPayload) <- Seq(
+    (false,1,4,2,false,false,65536,false),(false,1,4,2,true,false,65536,false),
+    (true,2,4,2,true,false,65536,false),(true,4,16,8,true,false,65536,false),
+    (true,2,4,2,true,true,4096,false),(true,2,4,2,true,true,512,false),
+    (true,2,4,2,true,true,64,false),(true,4,16,8,true,true,65536,false),
+    (false,1,4,2,true,false,65536,true),(true,2,4,2,true,true,4096,true),
+    (true,4,16,8,true,true,65536,true))) {
+    it should s"expose GBJ1 on AXI with exact images, queued DMA and VM ownership shared=$shared CUs=$count lanes=$lanes warps=$warps banked=$banked local=$local payloadBytes=$payloadBytes defaultPayload=$defaultPayload" in {
       val width=if(lanes==16)32 else 16;val height=if(lanes==16)16 else 8;val edge=if(lanes==16)16 else 8
       val gpu=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2,l2StoreEntries=4)
       val graphics=cfg.copy(screenWidth=width,screenHeight=height,fragmentBatchLimit=math.max(8,lanes))
-      val m=MobileGpuConfig(execution=gpu,computeUnits=count,axiBytes=32,binPageBytes=if(lanes==16)4096 else 128,
+      val base=MobileGpuConfig(execution=gpu,computeUnits=count,axiBytes=32,binPageBytes=if(lanes==16)4096 else 128,
         binWriteCredits=if(lanes==16)8 else 2,attachmentStoreCredits=if(lanes==16)8 else 2,binTileSlots=if(lanes==16)8 else 4,
-        bankedAttachments=banked,localShaderPayloads=local,payloadBytes=payloadBytes)
+        bankedAttachments=banked,payloadBytes=payloadBytes)
+      val m=if(defaultPayload)base else base.copy(localShaderPayloads=local)
       val scene=TileBinJobTestData.references(18).map(r=>draws(((r.primitive-firstHandle)/2).toInt)
         .copy(scissor=Some((r.tile.toInt*edge,0,r.tile.toInt*edge+edge,height))))
       val expected=reference(0,width,height,scene,width=width,height=height)
@@ -257,7 +260,7 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           assert(allocations==0 && spills==0 && releases==0 && localReads==0 && localWrites==0)
           if(shared)assert(globalReads>0 && globalWrites>0)
         }
-        info(s"BIN_PAYLOAD local=$local CUs=$count lanes=$lanes warps=$warps bytes=$payloadBytes allocations=$allocations spills=$spills releases=$releases localReadBytes=$localReads localWriteBytes=$localWrites globalReadBytes=$globalReads globalWriteBytes=$globalWrites peakReserved=${perf.payloadPeakReservedBytes.peek().litValue} reserved=0")
+        info(s"BIN_PAYLOAD local=$local CUs=$count lanes=$lanes warps=$warps bytes=$payloadBytes allocations=$allocations spills=$spills releases=$releases localReadBytes=$localReads localWriteBytes=$localWrites globalReadBytes=$globalReads globalWriteBytes=$globalWrites peakReserved=${perf.payloadPeakReservedBytes.peek().litValue} reserved=0 defaultPayload=$defaultPayload")
         for(e <- 0 until m.tileEngines) {
           val accepted=d.io.performance.get.binAcceptedSamples(e).peek().litValue
           val committed=d.io.performance.get.binCommittedSamples(e).peek().litValue
