@@ -5053,3 +5053,42 @@ private CU or payload pool. Both existing ABI byte checks pass. See the
 Repeat synthesis is separate and still running at this checkpoint; functional
 success establishes no improved Fmax. Full Mobile rates/budgets, new native
 binned host integration, resource provenance and H0-H8 remain open.
+
+## Native memory jobs through general bins and typed images (2026-10-20)
+
+`MemoryNativeBinnedGraphicsPipeline` now joins GPU-memory job/frame/draw snapshots
+to actual shared-CU vertex processing, general post-transform bins and independent
+typed image engines. Payload contexts are captured at submit before descriptor
+fetch. Descriptor and renderer memory ranges are disjoint; physical image ranges
+are separate from virtual geometry/bin/state/staging traffic. The new standalone
+Sv32 fabric adds independent DMA/walker ranges and immutable buffered replies.
+
+The unpublished prototype job magic collided with legacy GBJ1. The current
+**GNJ1/GNF1/GND1** records use distinct magic values while retaining the same
+512/2048/2048-byte fixed layouts and 563 scalar fields. A regression checks the
+namespace against existing bin, typed-image and fragment-state records. Published
+legacy interfaces are unchanged.
+
+All **18 checks across five suites** pass on **614 frozen source/ABI files**.
+Actual local/global native jobs publish exact four-MRT/depth source and resolve
+bytes across 17x9 partial tiles, including indexed instances and 4x MSAA. Both
+CUs are observed busy simultaneously. A held result leaves the other tile engine
+progressing; cancellation after shader retirement retains the final physical
+acknowledgement and then recovers with an exact healthy frame. Standalone reader/
+fabric coverage includes capacity/alias/padding rejection, exclusive 4 GiB ends,
+fault/cancel drain, translated state reads, both physical image ranges, independent
+walkers, write permissions and held output lifetimes. Both ABI byte checks and
+an independent C11 probe pass.
+
+Default reader/renderer/fabric emissions contain **7/278/35 files**. The renderer
+retains 114 KiB of characterized SRAM, one vertex stage, two fragment stages, six
+FMA lanes and four dividers, with four external CU ports and no private CU or
+payload pool. Its native memory namespace is 256 IDs; the fabric uses 512 IDs
+and two translators. These counts are structural. See the [native owner/fabric
+contract](NATIVE_BINNED_GRAPHICS_PIPELINE.md) and [frozen evidence](performance/mobile-native-binned-image-2026-10-20.json).
+
+Actual shader tests use Bare mode; fabric Sv32 checks are standalone. Production
+owner/fabric/host/MMIO/reset composition is the next step. Trusted image physical
+provenance and translated cross-resource aliases, full Mobile runtime/rates/
+budgets and H0-H8 remain open. PPA remains synthesis only; the separate replay
+engine synthesis is still running and establishes no new timing result here.
