@@ -54,3 +54,24 @@ remain enclosing responsibilities; numeric admission checks do not establish
 physical provenance. Runtime uses four lanes/two warps and small images, while
 the full default is emitted only. Full Mobile runtime/rates/budgets and H0-H8
 remain open. PPA remains synthesis only; no new timing or power result is claimed.
+
+## Production host integration checkpoint
+
+The optional `GpuHostSystemAxi.nativeBinnedGraphics` profile now connects the
+native owner, translated memory fabric, shared CUs and optional payload pool to
+the existing command/MMIO host. It supplies completion and drain signals and
+uses the separate GNC1 discovery namespace (`0x474e4301`). Eight discovery words
+report runtime frame, shader, engine and payload limits independently of the
+fixed record capacities. The generated C header and JSON layout describe 24
+fields; payload slot capacity is reported in 64-byte lines.
+
+This is a development checkpoint. Main and test Scala sources compile, the
+discovery ABI generator runs successfully, and an independent C11/schema probe
+checks the 32-byte discovery layout, masks and non-overlapping fields. The first
+translated full-frame host test passes with local payloads: four ordered draws
+across twelve tiles, four MRTs, depth, exact source/resolve guards, 1x/4x MSAA,
+cached compute consumers and VM writes rejected while a completion is held. The
+global-payload fixture is present but has not run at this checkpoint. Fault and
+reset composition, default host emission and full host qualification remain
+pending. This initial host test is separate from the eighteen-check frozen
+qualification above.

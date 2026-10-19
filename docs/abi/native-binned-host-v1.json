@@ -1,0 +1,28 @@
+{
+  "magic":"0x474e4301","words":8,"fields":[
+    {"name":"MAGIC","word":0,"shift":0,"bits":32,"unit":"GNC1"},
+    {"name":"WORD_COUNT","word":1,"shift":0,"bits":32,"unit":"words"},
+    {"name":"JOB_MAGIC","word":2,"shift":0,"bits":32,"unit":"GNJ1"},
+    {"name":"JOB_BYTES","word":3,"shift":0,"bits":16,"unit":"bytes"},
+    {"name":"FRAME_BYTES","word":3,"shift":16,"bits":16,"unit":"bytes"},
+    {"name":"DRAW_BYTES","word":4,"shift":0,"bits":16,"unit":"bytes"},
+    {"name":"ATTRIBUTES","word":4,"shift":16,"bits":5,"unit":"slots"},
+    {"name":"BINDINGS","word":4,"shift":21,"bits":5,"unit":"slots"},
+    {"name":"VARYINGS","word":4,"shift":26,"bits":5,"unit":"vec4 slots"},
+    {"name":"FRAME_WIDTH","word":5,"shift":0,"bits":16,"unit":"pixels"},
+    {"name":"FRAME_HEIGHT","word":5,"shift":16,"bits":16,"unit":"pixels"},
+    {"name":"STORAGE_BYTES","word":6,"shift":0,"bits":17,"unit":"bytes per color slot"},
+    {"name":"SUBPIXEL_BITS","word":6,"shift":17,"bits":4,"unit":"bits"},
+    {"name":"COLORS","word":6,"shift":21,"bits":3,"unit":"locations"},
+    {"name":"SAMPLES","word":6,"shift":24,"bits":3,"unit":"samples"},
+    {"name":"ENGINES","word":6,"shift":27,"bits":3,"unit":"engines"},
+    {"name":"TILE8","word":6,"shift":30,"bits":1,"unit":"supported"},
+    {"name":"TILE16","word":6,"shift":31,"bits":1,"unit":"supported"},
+    {"name":"CUS","word":7,"shift":0,"bits":8,"unit":"CUs"},
+    {"name":"NATIVE_ID_BITS","word":7,"shift":8,"bits":4,"unit":"bits"},
+    {"name":"PAYLOAD_OWNERS","word":7,"shift":12,"bits":3,"unit":"owners"},
+    {"name":"LOCAL_PAYLOAD","word":7,"shift":15,"bits":1,"unit":"enabled"},
+    {"name":"PAYLOAD_CAPACITY_LOG2","word":7,"shift":16,"bits":5,"unit":"log2 bytes; zero if absent"},
+    {"name":"PAYLOAD_SLOT_LINES","word":7,"shift":21,"bits":11,"unit":"64-byte lines; zero if absent"}
+  ]
+}
