@@ -1,0 +1,278 @@
+package opengpu.graphics
+
+import chisel3._
+import opengpu.command.GpuCommandOpcode
+import opengpu.config.GpuConfig
+import opengpu.system.{GpuHostSystemAxi,GpuHostTestSupport}
+import opengpu.testutil.GpuSim._
+import org.scalatest.flatspec.AnyFlatSpec
+import scala.collection.mutable
+
+class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
+  private val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
+  private val graphics=GraphicsConfig(screenWidth=8,screenHeight=8)
+  private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);private val f=FragmentShaderConfig(2,4)
+  private def profile(local: Boolean): NativeTypedGraphicsConfig=NativeTypedGraphicsConfig(p,f,
+    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=2,ports=4))else None)
+  private def addi(rd: Int,rs: Int,n: Int): BigInt=(BigInt(n&4095)<<20)|(BigInt(rs)<<15)|(BigInt(rd)<<7)|0x13
+  private def vm(base: Int,v: Int,write: Boolean): BigInt=(BigInt(1)<<25)|(BigInt(base)<<15)|(BigInt(6)<<12)|(BigInt(v)<<7)|(if(write)0x27 else 7)
+  private val vertexProgram={
+    val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16))
+    for((input,output)<-((0 until 4).map(i=>(i,11+i))++(0 until 4).map(i=>(4+i,15+i))))
+      code++=Seq(addi(5,7,input*32),vm(5,1,false),addi(6,7,output*32),vm(6,1,true))
+    code+=BigInt("30500073",16);code.toVector
+  }
+  private val fragmentProgram={
+    val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16))
+    for(c<-0 until 4;i<-0 until 4)code++=Seq(addi(5,7,(6+i)*32),vm(5,1,false),addi(6,7,(10+c*4+i)*32),vm(6,1,true))
+    code++=Seq(addi(13,1,896),(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3,
+      (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,
+      addi(6,7,27*32),vm(6,1,true),BigInt("30500073",16));code.toVector
+  }
+  private class Image(val d: GpuHostSystemAxi){
+    val memory=mutable.Map.empty[BigInt,Int];val initial=mutable.Map.empty[BigInt,Int]
+    val reads=mutable.ArrayBuffer.empty[BigInt];val writes=mutable.ArrayBuffer.empty[BigInt]
+    def pa(va: BigInt): BigInt=va+0x400000
+    def word(a: BigInt,v: BigInt): Unit=for(b<-0 until 4)memory(a+b)=((v>>(b*8))&255).toInt
+    def record(va: Int,words: Int,magic: BigInt,fields: Map[Int,BigInt]): Unit={
+      for(w<-0 until words)word(pa(va+w*4),fields.getOrElse(w,BigInt(0)))
+      word(pa(va),magic);word(pa(va+4),words*4);word(pa(va+8),1)
+    }
+    val names=Vector("RGBA8","RGB8","RGBA16F","SRGB8_ALPHA8")
+    val clear=Vector(0.25,0.5,0.75,1.0).map(Fp32ViewportReference.fp)
+    case class View(base: BigInt,pitch: Int,samples: Int,bytes: Int,kind: Int,color: Int)
+    var views=Vector.empty[View];var imageOffset=0
+    def viewFields(start: Int,region: Int,mode: Int,kind: Int,color: Int=0,bytes: Int=4): Map[Int,BigInt]={
+      val base=BigInt(region)+59;val samples=1<<mode;val pitch=7*samples*bytes+5
+      val limit=base+4*pitch+7*samples*bytes;val allocationLimit=(limit+63)& ~BigInt(63)
+      for(a<-BigInt(region) until allocationLimit){memory(a)=0xa7;initial(a)=0xa7}
+      views :+=View(base,pitch,samples,bytes,kind,color)
+      Map(start->base,(start+1)->limit,(start+2)->0,(start+3)->BigInt(region),(start+4)->allocationLimit,
+        (start+5)->0,(start+6)->7,(start+7)->5,(start+8)->pitch,(start+9)->0,(start+10)->1,(start+11)->1)
+    }
+    def setup(mode: Int,count: Int=0,mrt: Boolean=false): Unit={
+      memory.clear();initial.clear();reads.clear();writes.clear();views=Vector.empty;imageOffset=if(mode==0)0 else 0x400000
+      word(0x30004,((BigInt(0x800000)>>12)<<10)|0xcf)
+      var pass=Map[Int,BigInt](16->1,17->1,18->1,19->7,20->8,21->9,24->3,25->4,26->4,27->mode,28->1024,
+        32->4,34->1,35->BigInt("3f800000",16),36->5,64->1,65->TypedColorFormat.id("RGBA8"),66->1024,67->15,68->1,
+        69->BigInt("3e800000",16),70->BigInt("3f000000",16),71->BigInt("3f400000",16),72->BigInt("3f800000",16),224->1,288->1)
+      val colors=if(mrt)4 else 1
+      for(c<-0 until colors){val start=64+c*16;val bytes=TypedColorReference.format(names(c)).bytes
+        pass++=Map[Int,BigInt](start->1,(start+1)->TypedColorFormat.id(names(c)),(start+2)->Vector(1024,2048,3072,5120)(c),
+          (start+3)->15,(start+4)->1,(start+5)->clear(0),(start+6)->clear(1),(start+7)->clear(2),(start+8)->clear(3),(224+c*16)->1)
+        pass++=viewFields(128+c*16,0x1000000+imageOffset+c*0x10000,mode,0,c,bytes)
+      }
+      pass++=viewFields(192,0x1040000+imageOffset,mode,1)
+      for(c<-0 until colors)pass++=viewFields(225+c*16,0x1080000+imageOffset+c*0x10000,0,2,c,TypedColorReference.format(names(c)).bytes)
+      pass++=viewFields(289,0x10c0000+imageOffset,0,3)
+      record(0x411000,320,BigInt("47544901",16),pass)
+      record(0x410000,128,BigInt("47544a01",16),Map[Int,BigInt](3->7,4->8,5->9,6->0x411000,7->(0x411000+1280),
+        9->0x412000,10->(0x412000+(count-1).max(0)*4096+2560),12->count,13->4096))
+    }
+    private val positionSets=Vector(Vector(Vector(-1.0,-1.0,-0.5,1.0),Vector(1.0,-1.0,0.5,1.0),Vector(-1.0,1.0,0.0,1.0)),
+      Vector(Vector(-0.5,0.0,0.0,1.0),Vector(0.5,0.0,0.0,1.0)),Vector(Vector(-0.5,-0.5,-0.5,1.0)))
+    def shaderDraws(mode: Int): Unit={
+      setup(mode,3,mrt=true)
+      word(0x3000c,(((BigInt(0x1000000)+imageOffset)>>12)<<10)|0xcf)
+      vertexProgram.zipWithIndex.foreach{case(w,i)=>word(pa(0x401000+4*i),w)}
+      fragmentProgram.zipWithIndex.foreach{case(w,i)=>word(pa(0x402000+4*i),w)}
+      // Ordinary scalar kernel reads a prewarmed image cache line and stores
+      // its aligned word through the same CUs after native image publication.
+      val consumer=Seq(BigInt("0000a283",16),BigInt("0040a303",16),BigInt("0002a383",16),BigInt("00732023",16),BigInt("30500073",16))
+      consumer.zipWithIndex.foreach{case(w,i)=>word(pa(0x403000+4*i),w)}
+      word(pa(0x450000),0xc0003c);word(pa(0x450004),0x450040)
+      for(n<-0 until 3){
+        val positions=positionSets(n);val positionBase=0x420000+n*0x100;val colorBase=0x421000+n*0x100
+        for(i<-positions.indices;c<-0 until 4){word(pa(positionBase+i*16+c*4),Fp32ViewportReference.fp(positions(i)(c)))
+          word(pa(colorBase+i*16+c*4),Fp32ViewportReference.fp(if(c==n || c==3)1.0 else 0.0))}
+        val vs=0x430000+n*0x1000;val fs=0x440000+n*0x1000;word(pa(fs+896),61)
+        var draw=Map[Int,BigInt](16->1,17->1,18->Seq(4,1,0)(n),32->1,33->0x401000,34->2,35->1,36->15,
+          40->vs,41->(vs+608),43->vs,44->(vs+640),64->1,65->7,66->8,67->9,68->positions.size,69->1,
+          96->1,99->4,112->1,113->1,115->4,
+          480->1,483->4,484->4,486->BigInt("3f800000",16),496->1,497->4,498->4,500->1,501->mode,
+          502->Fp32ViewportReference.fp(2.0),503->BigInt("3f800000",16),
+          512->1,513->7,514->8,515->9,516->0x402000,520->fs,521->(fs+900),523->fs,524->(fs+960),
+          528->1,529->4,530->15,536->mode,560->1,561->1,562->1,563->1)
+        for((base,slot)<-Seq((positionBase,352),(colorBase,360)))draw++=Map[Int,BigInt](slot->base,(slot+1)->(base+positions.size*16),
+          (slot+3)->base,(slot+4)->(base+64),(slot+6)->16)
+        record(0x412000+n*4096,640,BigInt("47544401",16),draw)
+      }
+    }
+    def verifyDraws(mode: Int): Unit={
+      val count=1<<mode;val colors=Array.fill(4,4,count)(-1);val depths=Array.fill(4,4,count)(BigInt("ffffff",16))
+      val coords=Vector(Vector((0,0),(1024,0),(0,1024)),Vector((256,512),(768,512),(0,0)),Vector((256,256),(0,0),(0,0)))
+      val settings=TriangleRasterReference.Settings(width=4,height=4,mode=mode,maxX=4,maxY=4)
+      for(n<-0 until 3){val kind=Seq(2,1,0)(n)
+        val zs=positionSets(n).map(v=>Fp32ViewportReference.fp(v(2)*0.5+0.5)).padTo(3,BigInt(0))
+        val t=TriangleRasterReference.base.copy(coords=coords(n).map{case(x,y)=>(BigInt(x),BigInt(y))},values=TriangleRasterReference.base.values.copy(depth=zs))
+        val quads=if(kind==2)TriangleRasterReference.raster(t,settings,graphics)else PointLineReference.raster(t,kind,settings,graphics,PointLineReference.Sizes(point=2))
+        for(q<-quads){val values=SampleDepthReference.depths(t,kind,q.samples,mode,graphics)
+          for(l<-0 until 4;s<-0 until count if(q.samples(l).mask&(1<<s))!=0){val x=q.samples(l).x;val y=q.samples(l).y;val z=TypedDepthReference.encode(values(l)(s),4)
+            if(z<=depths(y)(x)(s)){colors(y)(x)(s)=n;depths(y)(x)(s)=z}}}
+      }
+      def color(c: Int,x: Int,y: Int,s: Int): BigInt={val n=colors(y)(x)(s)
+        val values=if(n<0)clear else Vector.tabulate(4)(j=>Fp32ViewportReference.fp(if(j==n || j==3)1.0 else 0.0))
+        TypedColorReference.encode(names(c),values)._1}
+      val expected=mutable.Map.empty[BigInt,Int]++initial
+      for(v<-views;y<-0 until 4;x<-0 until 4;s<-0 until v.samples){
+        val raw=if(v.kind==0)color(v.color,x,y,s)else if(v.kind==1)(BigInt(5)<<24)|depths(y)(x)(s)
+          else if(v.kind==3)(BigInt(5)<<24)|depths(y)(x)(0)
+          else TypedResolveReference.resolve(names(v.color),Vector.tabulate(count)(s=>color(v.color,x,y,s)),mode)
+        val address=v.base+y*v.pitch+(x*v.samples+s)*v.bytes
+        for(b<-0 until v.bytes)expected(address+b)=((raw>>(8*b))&255).toInt}
+      for((a,v)<-expected)assert(memory(a)==v,s"native shader image byte${a.toString(16)} observed=${memory(a)} expected=$v mode=$mode")
+      assert(reads.exists(a=>a>=pa(0x420000) && a<pa(0x422000)))
+      assert(!reads.exists(a=>a>=0x400000 && a<0x800000),"shader and descriptor VAs must be translated before physical issue")
+    }
+    def consumer(id: Int): BigInt={
+      axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,0)
+      axiWrite(d,GpuCommandMmioRegs.KERNEL_PC,0x403000);axiWrite(d,GpuCommandMmioRegs.KERNARG,0x450000)
+      for(r<-Seq(GpuCommandMmioRegs.GRID_X,GpuCommandMmioRegs.GRID_Y,GpuCommandMmioRegs.GRID_Z,GpuCommandMmioRegs.LOCAL_X,GpuCommandMmioRegs.LOCAL_Y,GpuCommandMmioRegs.LOCAL_Z))axiWrite(d,r,1)
+      axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+      serviceMemoryMaster(d,read,writeAckDelay=3,maxCycles=50000)(write){d.io.m_irq.peek().litToBoolean}
+      val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);assert((result&255)==id && ((result>>15)&1)==1,s"native consumer failed=${result.toString(16)}")
+      val value=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(pa(0x450040)+b,0))<<(8*b)))
+      pop();value
+    }
+    def read(a: BigInt): BigInt={reads+=a;val base=a& ~BigInt(63)
+      (0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(base+b,0))<<(8*b)))}
+    def write(a: BigInt,data: BigInt,mask: BigInt): Unit={writes+=a
+      for(b<-0 until 64 if mask.testBit(b))memory(a+b)=((data>>(8*b))&255).toInt}
+    def submit(id: Int=23): Unit={
+      axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
+      axiWrite(d,GpuCommandMmioRegs.SOURCE,0x410000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x410000+512)
+      axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+    }
+    def run(status: Int=0,id: Int=23,readFault: BigInt=>Boolean=_=>false,
+      writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false): Unit={
+      serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=300000,writeFault=writeFault)(write){d.io.m_irq.peek().litToBoolean}
+      val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
+      assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),s"native AXI result=${result.toString(16)}")
+    }
+    def pop(): Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)}
+    def verifyClear(): Unit={
+      val expected=mutable.Map.empty[BigInt,Int]++initial
+      for(v<-views;y<-0 until 4;x<-0 until 4;s<-0 until v.samples){val raw=if(v.kind%2==0)TypedColorReference.encode(names(v.color),clear)._1 else BigInt("05ffffff",16)
+        val address=v.base+y*v.pitch+(x*v.samples+s)*v.bytes
+        for(b<-0 until v.bytes)expected(address+b)=((raw>>(8*b))&255).toInt}
+      for((a,v)<-expected)assert(memory(a)==v,s"native image byte${a.toString(16)} observed=${memory(a)} expected=$v")
+      assert(writes.exists(_>=0x1000000) && !reads.exists(a=>a>=0x400000 && a<0x800000),"virtual descriptors must not escape onto physical AXI")
+    }
+  }
+  it should "submit a translated native clear pass and publish trusted physical source and resolve views over the production AXI host" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(false)))){d=>
+      initialize(d);val image=new Image(d)
+      assert(axiRead(d,TileBinHostRegs.DISCOVERY)==0x160)
+      assert(axiRead(d,0x160)==BigInt("47544301",16));assert(axiRead(d,0x168)==BigInt("47544a01",16))
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      for(mode<-Seq(0,2)){image.setup(mode);image.submit();image.run();image.verifyClear()
+        // A software-held completion still pins the native job's VM.
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==BigInt("80000030",16));image.pop()
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+      }
+      info("NATIVE_TYPED_AXI CUs=2 nativeSubmit=true GTJ1=true translatedDescriptors=true physicalImageViews=true clearPass=true modes1x4x=true sourceStores=true resolve=true guardedPitches=true heldCompletionPinsVM=true")
+    }
+  }
+  for(local<-Seq(true,false))
+  it should s"execute GPU-memory triangle line and point shader draws with translated resources and cached image consumers local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      initialize(d);val image=new Image(d)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      for(mode<-Seq(0,2)){
+        image.shaderDraws(mode);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        assert(image.consumer(30+mode)==BigInt("a7a7a7a7",16))
+        image.submit();image.run();image.verifyDraws(mode)
+        assert(axiRead(d,GpuCommandMmioRegs.COMPLETION_BYTES_LO)==3*2560);image.pop()
+        val sourceWord=image.views.head.base+1;val sourceLine=sourceWord& ~BigInt(63)
+        val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory(sourceWord+b))<<(8*b)))
+        assert(image.consumer(40+mode)==expected)
+        val sourceReads=image.reads.count(a=>a>=sourceLine && a<sourceLine+64)
+        assert(image.consumer(50+mode)==expected)
+        assert(image.reads.count(a=>a>=sourceLine && a<sourceLine+64)==sourceReads)
+      }
+      val perf=d.io.performance.get
+      assert(perf.maxGraphicsLocalX.peek().litValue>0 && perf.maxGraphicsLocalX.peek().litValue<=8)
+      assert((perf.stagingWriteBytes.peek().litValue==0)==local)
+      assert((perf.payloadAllocations.peek().litValue>0)==local)
+      info(s"NATIVE_TYPED_AXI local=$local CUs=2 shaderDraws=6 modes1x4x=true primitiveKinds=3 GPUDescriptorABI=true virtualVertexAndScratch=true instructionPermissions=true slopedSampleDepth=true exactPhysicalMRTAndDepth=true typedResolve=true prewarmedCachedConsumer=true sharedPayloadPool=true")
+    }
+  }
+  it should "reject native envelope descriptor permission shader and physical store faults without publishing a successful image" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(false)))){d=>
+      initialize(d);val image=new Image(d);axiWrite(d,RenderHostRegs.IRQ,1)
+      val cases=Seq(("envelope",1),("header",1),("descriptor-read",3),("draw-read",3),("scratch-alias",1),("write-permission",3),("execute-permission",5),("physical-store",3),("reuse",0))
+      for(((name,status),index)<-cases.zipWithIndex){
+        image.shaderDraws(0)
+        if(name=="header")image.word(image.pa(0x410000+127*4),1)
+        if(name=="scratch-alias")image.word(image.pa(0x412000+40*4),0x412000)
+        if(name=="write-permission")image.word(0x30004,(BigInt(0x800)<<10)|0x43)
+        if(name=="execute-permission")image.word(0x31004,(BigInt(0x800)<<10)|0xc7)
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030)
+        axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,if(name=="execute-permission")0x80000031 else 0x80000030)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        val id=70+index
+        if(name=="envelope"){
+          axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
+          axiWrite(d,GpuCommandMmioRegs.SOURCE,0x410000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x410200)
+          axiWrite(d,GpuCommandMmioRegs.BYTES,256);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+        }else image.submit(id)
+        val readFaults=if(name=="descriptor-read")Set(image.pa(0x410000))else if(name=="draw-read")Set(image.pa(0x413000))else Set.empty[BigInt]
+        var readFailures=0;var writeFailures=0
+        image.run(status,id,a=>{val fail=readFaults(a);if(fail)readFailures+=1;fail},(a,_,_)=>{
+          val fail=name=="physical-store" && a>=0x1000000;if(fail)writeFailures+=1;fail})
+        if(name=="envelope")assert(image.reads.isEmpty && image.writes.isEmpty)
+        if(readFaults.nonEmpty)assert(readFailures>0)
+        if(name=="physical-store")assert(writeFailures>0)
+        else if(status!=0)assert(!image.writes.exists(_>=0x1000000),s"failed native job published backing bytes: $name")
+        if(name=="execute-permission")assert(!image.reads.contains(image.pa(0x401000)),"execute-denied instruction must not reach physical AXI")
+        if(status==0)image.verifyDraws(0)
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
+      }
+      info("NATIVE_TYPED_AXI faultScenarios=8 healthyReuse=true envelopeBeforeAccess=true reservedBeforeShaders=true lateDrawReadFault=true scratchDescriptorAlias=true Sv32WritePermission=true instructionExecutePermission=true physicalStoreFault=true noFalsePublication=true attributedCommand=true")
+    }
+  }
+  it should "drain live native shader payloads queued DMA and physical publication before reset releases the VM" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(true)))){d=>
+      initialize(d);val image=new Image(d);val perf=d.io.performance.get
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      for(phase<-0 until 2){
+        if(phase==0)image.shaderDraws(0)else image.setup(2)
+        image.submit(100+phase)
+        if(phase==0){
+          axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,120);axiWrite(d,GpuCommandMmioRegs.OPCODE,GpuCommandOpcode.fill.litValue.toInt)
+          axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x460000);axiWrite(d,GpuCommandMmioRegs.BYTES,64)
+          axiWrite(d,GpuCommandMmioRegs.PATTERN,0xdeadbeef);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+        }
+        var requested=false;var live=BigInt(0)
+        def resetAtBoundary(): Unit={
+          requested=true;live=perf.payloadReservedBytes.peek().litValue
+          if(phase==0)assert(live>0,"a native shader fetch must own its payload reservation")
+          axiWrite(d,GpuCommandMmioRegs.RESET,1)
+          axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        }
+        serviceMemoryMaster(d,image.read,writeAckDelay=29,readResponseDelay=17,maxCycles=300000,
+          onReadAccepted=a=>if(phase==0 && !requested && a==image.pa(0x401000))resetAtBoundary(),
+          onWriteAccepted=a=>if(phase==1 && !requested && a>=0x1000000)resetAtBoundary())(image.write){requested && d.io.m_irq.peek().litToBoolean}
+        assert(requested && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
+        assert(!image.writes.exists(a=>a>=image.pa(0x460000) && a<image.pa(0x460040)),"reset must discard the queued DMA command")
+        perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+        axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        image.shaderDraws(if(phase==0)0 else 2);image.submit(140+phase);image.run(id=140+phase);image.verifyDraws(if(phase==0)0 else 2);image.pop()
+        perf.payloadReservedBytes.expect(0.U)
+        info(s"NATIVE_TYPED_RESET phase=$phase livePayloadBytes=$live queuedDMAAborted=true oldCompletionsDiscarded=true physicalAckDrain=true VMWriteRejected=true reservationsReleased=true exactHealthyReuse=true")
+      }
+    }
+  }
+}

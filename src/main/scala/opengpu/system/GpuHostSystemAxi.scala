@@ -7,7 +7,7 @@ import opengpu.core.memory.{
   ComputeMemoryRequest, ComputeMemoryResponse, TranslatedLineClient,
   TranslatedWordClient
 }
-import opengpu.graphics.{GraphicsConfig, TextureUnit,MemoryTileBinRenderPipeline}
+import opengpu.graphics.{GraphicsConfig, TextureUnit,MemoryTileBinRenderPipeline,NativeTypedGraphicsConfig,MemoryNativeTypedGraphicsPipeline}
 
 /** Optional simulation counters; the default product port list is unchanged. */
 class GpuHostPerformanceCounters extends Bundle {
@@ -87,9 +87,19 @@ class GpuHostSystemAxi(
   bufferTextureReads: Boolean = false,
   persistentAttachments: Boolean = false,
   tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
-  binnedRendering: Option[MobileGpuConfig] = None
+  binnedRendering: Option[MobileGpuConfig] = None,
+  typedGraphics: Option[NativeTypedGraphicsConfig] = None
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
+  private val externalRender=binnedRendering.nonEmpty || typedGraphics.nonEmpty
+  require(binnedRendering.isEmpty || typedGraphics.isEmpty,"select one native render submission ABI")
+  typedGraphics.foreach { _=>
+    require(fragCore && sharedGraphics && parallelGraphics && !vertCore && !persistentAttachments,
+      "native typed graphics uses the general vertex/fragment clients on the shared CU pool")
+    require(shaderConfig==gpuConfig && graphicsConfig.maxSampleCount==4)
+    require(!bufferCommandReads && !bufferTextureReads && !coalesceFramebufferWrites,
+      "legacy word buffering does not apply to native typed graphics")
+  }
   require(numComputeUnits > 0)
   require(!persistentAttachments || (!bufferTextureReads && !coalesceFramebufferWrites),
     "persistent texture buffering and framebuffer combining need response-aligned fault ownership")
@@ -115,9 +125,9 @@ class GpuHostSystemAxi(
     require(!bufferCommandReads && !bufferTextureReads && !coalesceFramebufferWrites,
       "legacy word-port buffering options do not apply to the binned line engine")
   }
-  private val localPayload=binnedRendering.filter(_=>fragCore && sharedGraphics && parallelGraphics).flatMap(_.shaderPayload)
-  require(localPayload.isEmpty || (fragCore && sharedGraphics && parallelGraphics && binnedRendering.get.bankedAttachments),
-    "local Mobile payloads require banked binned rendering with parallel shared fragments")
+  private val localPayload=binnedRendering.filter(_=>fragCore && sharedGraphics && parallelGraphics).flatMap(_.shaderPayload).orElse(typedGraphics.flatMap(_.payload))
+  require(localPayload.isEmpty || (fragCore && sharedGraphics && parallelGraphics && (typedGraphics.nonEmpty || binnedRendering.exists(_.bankedAttachments))),
+    "local payloads require a native shared-CU renderer")
   private val sharedShader = if (sharedGraphics)
     Some(SharedCuShaderConfig(numComputeUnits, commandIdWidth, parallelGraphics,localPayload)) else None
 
@@ -141,7 +151,7 @@ class GpuHostSystemAxi(
       stagingTransactions + dmaTransactions
   private val binnedMemoryIds=binnedRendering.map(m=>9+m.binWriteCredits+2*m.tileEngines+
     (if (m.binDirectoryTiles>0) 1 else 0)+m.tileEngines*(2*(m.attachmentStoreCredits+1)+1)).getOrElse(0)
-  private val graphicsHostTransactions = binnedRendering.map(m=>TileBinHostMemoryFabric.transactions(
+  private val graphicsHostTransactions = if(typedGraphics.nonEmpty)NativeTypedGraphicsMemoryFabric.transactions else binnedRendering.map(m=>TileBinHostMemoryFabric.transactions(
     binnedMemoryIds,m.tileEngines,kernelWordTransactions,fragCore)).getOrElse(1 << log2Ceil(usedExact))
   private val clientBases: Seq[Int] = translatedWordClients.indices
     .scanLeft(kernelWordTransactions)((base, _) => base + wordPortTransactions)
@@ -158,7 +168,7 @@ class GpuHostSystemAxi(
   private val cbTlbBase = tlbBases(1)
   private val fbTlbBase = tlbBases(2)
   private val usedGraphicsTransactionsWithTlb = tlbBases.last
-  require(binnedRendering.nonEmpty || usedGraphicsTransactionsWithTlb <= graphicsHostTransactions,
+  require(externalRender || usedGraphicsTransactionsWithTlb <= graphicsHostTransactions,
     s"graphics host ID budget $graphicsHostTransactions < used " +
       s"$usedGraphicsTransactionsWithTlb")
   private val systemTransactions = GpuSystem.totalMemoryTransactions(
@@ -249,7 +259,7 @@ class GpuHostSystemAxi(
       graphicsScalarFpu = enableFpuBackend && shaderConfig.enableFpu,
       sharedShader = sharedShader.map(_.copy(shaderPayload=None)), protectVmState = true,
       persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
-      useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = binnedRendering.nonEmpty))
+      useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = externalRender))
     val system = Module(new GpuSystem(
       gpuConfig,
       numComputeUnits = numComputeUnits,
@@ -265,13 +275,15 @@ class GpuHostSystemAxi(
       vectorCacheSets = vectorCacheSets,
       vectorCacheWays = vectorCacheWays,
       enableGraphicsKernels = sharedGraphics,shaderPayload=localPayload,
-      producerPayloadPins=if(localPayload.nonEmpty)sharedShader.get.binPayloadPins(binnedRendering.get.tileEngines)else 0,
+      producerPayloadPins=if(localPayload.nonEmpty){if(typedGraphics.nonEmpty)4 else sharedShader.get.binPayloadPins(binnedRendering.get.tileEngines)}else 0,
       drainGraphicsPayloadWork=localPayload.nonEmpty))
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
       graphicsConfig,gpuConfig,commandIdWidth,m.tileEngines,m.binPageBytes,m.binWriteCredits,
       m.binTileSlots,m.binRecordCacheEntries,m.attachmentStoreCredits,fragCore,sharedShader,
       useBlackBoxes,m.binDirectoryTiles,bankedAttachments=m.bankedAttachments)))
-    if (binnedRendering.isEmpty) sharedShader.foreach(_ => system.io.graphicsKernels.get <> host.io.shared.get)
+    val typed=typedGraphics.map(n=>Module(new MemoryNativeTypedGraphicsPipeline(
+      gpuConfig,n,sharedShader.get,graphicsConfig,commandIdWidth,useSramBlackBoxes=useBlackBoxes)))
+    if (!externalRender) sharedShader.foreach(_ => system.io.graphicsKernels.get <> host.io.shared.get)
 
     host.io.s_axi_aclk := io.s_axi_aclk
     host.io.s_axi_aresetn := io.s_axi_aresetn
@@ -326,7 +338,7 @@ class GpuHostSystemAxi(
     val translationStalls=WireDefault(VecInit(Seq.fill(4)(0.U(3.W))))
     val translationMisses=WireDefault(VecInit(Seq.fill(4)(0.U(3.W))))
     val translationWalks=WireDefault(VecInit(Seq.fill(4)(0.U(3.W))))
-    if (binnedRendering.isEmpty) {
+    if (!externalRender) {
     // Staging (kernarg/VB) and fill/blit/strided DMA share the kernel-word
     // port under VECTOR_SATP. Staging and DMA have disjoint ID ranges. Command,
     // framebuffer and texture word clients each keep their own TLB.
@@ -518,6 +530,45 @@ class GpuHostSystemAxi(
       translationMisses(index+1):=client.io.translationMiss.asUInt
       translationWalks(index+1):=client.io.walkActive.asUInt
     }
+    } else if(typedGraphics.nonEmpty) {
+      val renderer=typed.get
+      val fabric=Module(new NativeTypedGraphicsMemoryFabric(gpuConfig,kernelWordTransactions,stagingTransactions))
+      renderer.io.submit<>host.io.binSubmit.get;renderer.io.cancel:=host.io.binCancel.get
+      renderer.io.out.ready:=true.B
+      val completion=host.io.binCompletion.get
+      completion.valid:=renderer.io.completion.valid;completion.bits:=0.U.asTypeOf(completion.bits)
+      completion.bits.commandId:=renderer.io.completion.bits.commandId;completion.bits.status:=renderer.io.completion.bits.status
+      completion.bits.descriptorReadBytes:=renderer.io.completion.bits.descriptorReadBytes(15,0)
+      completion.bits.appendReadBytes:=renderer.io.completion.bits.drawReadBytes
+      completion.bits.acceptedAppends:=renderer.io.completion.bits.completedDraws
+      renderer.io.completion.ready:=completion.ready
+      host.io.binCapabilityWords.get:=renderer.io.capabilityWords
+      host.io.binDrained.get:= !renderer.io.busy && fabric.io.drained
+      renderer.io.shared<>system.io.graphicsKernels.get
+      localPayload.foreach { _=>
+        val management=system.io.payloadManagement.get
+        system.io.graphicsPayload.get:=renderer.io.poolPayload.get
+        system.io.payloadProducerPins.get:=renderer.io.payloadPins.get
+        for(owner<-0 until 2){val port=renderer.io.payload.get(owner)
+          management.control(owner)<>port.control;port.controlResponse<>management.controlResponse(owner)
+          management.request(owner)<>port.request;port.response<>management.response(owner)
+          port.context:=host.io.vectorSatp;port.cancel:=host.io.binCancel.get
+        }
+      }
+      fabric.io.renderRequest<>renderer.io.memoryRequest;renderer.io.memoryResponse<>fabric.io.renderResponse
+      fabric.io.dmaRequest<>host.io.kernelWordMemReq;host.io.kernelWordMemResp<>fabric.io.dmaResponse
+      fabric.io.satp:=host.io.vectorSatp;fabric.io.flush:=host.io.tlbFlush
+      system.io.graphicsHostRequest<>fabric.io.memoryRequest;fabric.io.memoryResponse<>system.io.graphicsHostResponse
+      val request=renderer.io.memoryRequest
+      val staging=request.bits.transactionId>=16.U && request.bits.transactionId<24.U
+      stagingReadEvent:=Mux(request.fire && staging && !request.bits.isWrite,1.U(16.W)<<request.bits.sizeLog2,0.U)
+      stagingWriteEvent:=Mux(request.fire && staging && request.bits.isWrite,PopCount(request.bits.byteMask),0.U)
+      for(port<-Seq(host.io.cbMem,host.io.fbMem,host.io.texMem)){
+        port.req.ready:=false.B;port.resp.valid:=false.B;port.resp.bits:=0.U.asTypeOf(port.resp.bits)
+        assert(!port.req.valid,"native typed host must not dispatch the legacy word renderer")
+      }
+      host.io.textureFault.get:=false.B
+      translationStalls:=fabric.io.translationStall;translationMisses:=fabric.io.translationMiss;translationWalks:=fabric.io.walkActive
     } else {
       val renderer=binned.get
       val mobile=binnedRendering.get

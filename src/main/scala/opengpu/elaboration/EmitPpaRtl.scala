@@ -109,6 +109,19 @@ object EmitPpaRtl {
       case "mobile-typed-image-render" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTileImagePipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
+      case "mobile-native-typed-reader" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.NativeTypedGraphicsJobReader(),stageArgs,firtoolArgs)
+      case "mobile-native-typed-memory" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.system.NativeTypedGraphicsMemoryFabric(),stageArgs,firtoolArgs)
+      case "mobile-native-typed-render" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.MemoryNativeTypedGraphicsPipeline(
+          useSramBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-native-typed-host" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new GpuHostSystemAxi(
+          GraphicsConfig(screenWidth=1280,screenHeight=720),mobile.execution,numComputeUnits=mobile.computeUnits,
+          fragCore=true,sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,
+          memoryAxiDataBytes=mobile.axiBytes,useBlackBoxes=true,typedGraphics=Some(opengpu.graphics.NativeTypedGraphicsConfig())),stageArgs,firtoolArgs)
       case "mobile-typed-color-decoder" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedColorDecoder,stageArgs,firtoolArgs)
       case "mobile-typed-color-blend" =>

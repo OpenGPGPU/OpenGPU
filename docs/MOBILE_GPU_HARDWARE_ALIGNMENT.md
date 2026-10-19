@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: proposed hardware architecture with H0/H1/H2/H3/H5/H6 implementation in progress, 2026-10-19. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
+Status: proposed hardware architecture with H0/H1/H2/H3/H5/H6 implementation in progress, 2026-10-20. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
 Evolve OpenGPU into a mobile rendering architecture by extending the shared CU pool with persistent tile storage, GPU geometry fetching, scalable texture and pixel backends, and general graphics resource descriptors. Keep shader arithmetic on the existing CUs. The first functional target is hardware sufficient for a complete GLES 3.0 implementation; a Mali-G31-class commercial comparison requires further feature, performance, and physical qualification.
 
@@ -23,7 +23,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 | Shader execution | Shared compute CUs already execute vertex and fragment tasks; vector FP32 arithmetic, including FMA, is connected | Improve task input/output transport, occupancy, control-flow/resource contracts and sustained issue/writeback throughput |
 | Configuration | `GpuConfig` defaults to 16 lanes and eight warps; the mobile CU-count constant is four | One compute/graphics execution configuration; discoverable resource limits and explicit supported configuration combinations |
 | Interstage transport | Eligible Mobile fragments default to local payloads through the parallel/tile/AXI hierarchy; a composed generic vertex/raster/fragment owner qualifies two-client payload and shared-CU task lifetime | Integrate native bin/host and typed attachment ownership; budget composed SRAM and qualify broader resources and sustained transport |
-| Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly, FP32 clipping/viewport, owned point/line/triangle raster/interpolation and fragment shaders connect GPU vertex work to ordered typed exports and bounded image publication | Native geometry submission/binning/resource ownership, qualifier/guard-band closure and post-transform reuse |
+| Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly, FP32 clipping/viewport, owned point/line/triangle raster/interpolation and fragment shaders connect GPU vertex work to native GTJ1 submission and bounded typed image publication | General native binning/resource ownership, qualifier/guard-band closure, full Mobile runtime and post-transform reuse |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
 | Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Integrated synthesis/timing, legal early rejection, representative throughput, multiple color outputs and complete format semantics |
@@ -4658,3 +4658,70 @@ ownership, full precision/invariance, centroid/sample varying qualifiers,
 polygon offset, unrepresentable guard bands, post-transform reuse, queries and
 feedback, broader textures and representative throughput remain open. PPA stays
 **synthesis only**. The original H0–H8 development goal remains open.
+
+## Native GPU-memory typed graphics submission
+
+The [native typed submission checkpoint](performance/mobile-native-typed-submission-2026-10-20.json)
+connects the general vertex/fragment image path to `GpuHostSystemAxi`. Its
+optional `typedGraphics` profile accepts bounded GPU-memory jobs through the
+existing opcode-7 queue, shares the system CUs and payload pool, and retains
+the existing compute/DMA ordering, protected VM controls, reset and completion
+handling. The older GBJ1 binned profile remains a separate selectable profile.
+
+The [GTJ1/GTI1/GTD1 ABI](NATIVE_TYPED_GRAPHICS_ABI.md) defines explicit
+512/1,280/2,560-byte job, image-pass and draw records. Its generated
+[C header](../driver/opengpu_native_typed_abi.h) and
+[JSON map](abi/native-typed-graphics-v1.json) describe all 548 scalar fields.
+Offsets are independent of Bundle packing and lane count. Four tagged line
+reads may return out of order into private snapshots. Bounds, stride, padding,
+reserved bits and active capacity are checked before child work. All three
+record kinds can end exactly at the 4 GiB exclusive limit. Shader scratch
+prefixes cannot overwrite the immutable command arenas.
+
+One native job owns a declared tile image pass and its ordered GPU-memory
+draws through acknowledged source stores and resolves. Descriptors, geometry,
+shader staging and sampler traffic use `VECTOR_SATP`; CU instruction fetch
+retains `INSTRUCTION_SATP` execute checks. Physical image views bypass translation
+using a disjoint transaction range. Legacy DMA and both page walkers retain
+independent IDs, including local translation faults and stalled replies.
+Physical views and their permission flags remain trusted pinned allocator
+metadata; general virtual resource-table binding is separate work.
+
+Cancellation and reset retain offered descriptor requests and child controls,
+then drain tasks, payload leases, private queues and physical acknowledgements.
+Software-held completions continue to block VM mutation. Reset discards queued
+DMA and stale completions only after drain. The software result preserves its
+command ID, status and accepted draw-record read bytes; detailed internal
+native fault stage/address/draw records are not yet exposed in MMIO.
+
+All **18 checks across seven suites** pass on one frozen archive of **586 source files**.
+The production two-CU AXI path executes triangle, line and point shaders at
+1x/4x using both local and global payloads. Six draws per profile verify four
+simultaneous RGBA8/RGB8/RGBA16F/sRGB attachments, sloped sample depth, exact
+multisample source/resolve/depth bytes and pitched guards. Prewarmed ordinary
+GPU kernels observe published data. Eight fault scenarios cover envelopes,
+descriptor/later-draw reads, aliases, write/execute permissions and physical
+stores. Reset tests interrupt a live 1,024-byte shader lease and delayed stores,
+reject VM mutation, release all leases/pins, discard queued DMA, and recover
+with exact images. Legacy opcode-7, translated fabric, DMA and ordinary shader
+discovery regressions also pass. ABI regeneration and independent C size/offset
+assertions pass. The preceding 90-check component checkpoint is retained as
+separate evidence and is not counted in these 18 checks.
+
+Reader/fabric/native-image/full-host RTL emissions contain **7/31/177/666 files**.
+The reader and host fabric add control/register logic without SRAM or floating
+arithmetic instances. The native image owner retains **35 SRAM macros, 70 KiB**,
+four fixed FMA units and three dividers. The full Mobile emission contains
+**four shared CUs and one shared payload pool**, with no private graphics CU.
+Its complete hierarchy includes 144 characterized 256x32 and 1,219 characterized
+256x64 SRAM macros, including CU storage, caches, shared memory, L2, the payload
+pool and graphics storage. These are structural counts, not synthesis PPA.
+
+Runtime checks use four lanes, two warps and two CUs with reduced descriptor
+capacities; the default 16-lane/eight-warp/four-CU hierarchy is structurally
+emitted here. Full Mobile native runtime, occupancy and rate qualification
+remain open. This milestone does not connect general geometry to paged bins or
+multi-engine scheduling, close physical allocation/resource-table provenance,
+or finish the remaining texture, attribute, guard-band, qualifier, numeric,
+query/feedback and H7–H8 requirements. PPA remains **synthesis only**, and the
+original H0–H8 acceptance gates remain open.
