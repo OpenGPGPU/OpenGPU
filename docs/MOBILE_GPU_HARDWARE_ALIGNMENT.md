@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: proposed hardware architecture with H0/H1/H2/H3 implementation in progress, 2026-10-19. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
+Status: proposed hardware architecture with H0/H1/H2/H3/H5 implementation in progress, 2026-10-19. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
 Evolve OpenGPU into a mobile rendering architecture by extending the shared CU pool with persistent tile storage, GPU geometry fetching, scalable texture and pixel backends, and general graphics resource descriptors. Keep shader arithmetic on the existing CUs. The first functional target is hardware sufficient for a complete GLES 3.0 implementation; a Mali-G31-class commercial comparison requires further feature, performance, and physical qualification.
 
@@ -20,7 +20,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 |---|---|---|
 | Shader execution | Shared compute CUs already execute vertex and fragment tasks; vector FP32 arithmetic, including FMA, is connected | Improve task input/output transport, occupancy, control-flow/resource contracts and sustained issue/writeback throughput |
 | Configuration | `GpuConfig` defaults to 16 lanes and eight warps; the mobile CU-count constant is four | One compute/graphics execution configuration; discoverable resource limits and explicit supported configuration combinations |
-| Interstage transport | CU-scaled fragment workers, staging transactions and ordered output retirement | On-chip payload storage, export queues and tile-local retirement; avoid mandatory global-memory staging of every batch |
+| Interstage transport | Optional banked payload store, shared CU/client bindings and completion lifetime are qualified; renderer workers still use global staging | Connect fragment allocation/staging, bounded spill and export retirement through the renderer; avoid mandatory global-memory staging of every batch |
 | Geometry | Clip, viewport, triangle setup and quad rasterization exist | Native index/attribute fetch, vertex reuse, instancing and complete required primitive behavior |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
@@ -3212,3 +3212,49 @@ H3 remains open for legal pre-shader rejection, representative throughput,
 integrated synthesis/timing and its remaining gates. Shader staging still uses
 the existing global-memory transport in this native host checkpoint. No new
 place-and-route work was run.
+
+
+### Optional shared shader payload transport, 2026-10-19
+
+The optional 64 KiB payload store uses sixteen word banks and 64 characterized
+SRAM macros. It reserves fourteen complete 4,608-byte SoA input/output slots
+(64,512 reserved bytes). Allocation zeroes a fresh generation; masked writes use
+serialized synchronous read/modify/write service. This implementation makes no
+one-line-per-cycle claim. Full/oversized reservations can return a spill decision,
+but the producer still owns the separate memory-backed transport.
+
+`GpuSystem(shaderPayload=Some(...))` connects one shared store, independent
+physical management owner ports and one bound data port per CU. Local accesses
+bypass the CU private cache and translation; uniforms outside the bound prefix
+retain the existing VM path, including mixed tail lines. Compute and explicit
+memory-backed graphics tasks remain unbound. Unsupported local AMOs fault
+instead of modifying the unrelated global alias; normal global AMOs retain their
+existing path. CU retirement waits for both data and atomic transport drain.
+
+Accepted leases remain pinned through producer completion consumption. The
+optional shader-client router snapshots each binding with its reserved task
+slot, restores local tags independently of physical CU selection, and exports
+pins for accepted queued tasks and prospective client offers. These producer
+pins join the system's dispatch pins, preventing lease recycling before a
+queued launch reaches a CU. Faults retain ownership through drain; reset blocks
+new allocation/staging while accepted leases can cancel or release.
+
+The [shared-pool qualification](performance/mobile-shared-payload-pool-2026-10-19.json)
+records 76 checks and emitted four-CU/sixteen-lane/eight-warp RTL with one pool,
+four line routers, four atomic guards and 64 payload macros. The
+[client-router checkpoint](performance/mobile-shader-client-payload-routing-2026-10-19.json)
+adds 13 checks and default-size producer-pin emission. Actual two-CU tests
+retain three distinct payloads at the same VA, with shared local task tags,
+blocked pre-admission releases, held completion and zero external payload
+transactions. Unit routing covers one, two and four CUs. A
+[combined-source checkpoint](performance/mobile-native-payload-integration-2026-10-19.json)
+checks two routed payload scenarios, strict native restart and native shared-CU
+AXI rendering after merging the attachment and payload changes.
+
+This optional transport is not yet wired through the renderer hierarchy.
+`KernelFragStage` allocation, local input/default-output staging, local output
+reads, explicit spill and ownership transfer through exports/draw retirement
+remain open. Payload bindings must also be constrained to the global address
+space outside the CU shared-memory window. The default Mobile renderer still
+uses global staging. GPU index/attribute fetching and reuse remain part of H5;
+no H0-H8 milestone or synthesis gate is closed by this checkpoint.

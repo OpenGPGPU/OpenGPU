@@ -135,7 +135,7 @@ CU arithmetic alone does not supply those contracts.
 
 | Gate | Current evidence | Required next result |
 |---|---|---|
-| On-chip shader payloads | SHD stages batch inputs/outputs through global memory | Banked payload handles, reserved output capacity, memory fallback and cancel/fault drain through actual CUs |
+| On-chip shader payloads | [Optional shared pool](performance/mobile-shared-payload-pool-2026-10-19.json) and [queued client bindings](performance/mobile-shader-client-payload-routing-2026-10-19.json) pass actual-CU checks; SHD renderer staging still uses global memory | Connect renderer allocation, local staging/export ownership, address bounds and explicit spill transport |
 | Texture cluster throughput | TEX issues four tap reads across the shared word fabric | Banked hits and filters sustain one bilinear sample/cycle/cluster; include conflicts, refills and faults |
 | Pixel throughput | PIX's resident backend supports four sample commits/cycle in component tests | Native integrated workload gates, legal early/late equivalence and synthesis timing |
 | Native Mobile integration | [74 native renderer/AXI checks and production hierarchy audit](performance/mobile-native-binned-host-2026-10-19.json) pass, including the four-CU host profile | Integrate the remaining payload/features and qualify representative workloads and synthesis |
