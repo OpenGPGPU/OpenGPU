@@ -1,6 +1,7 @@
 # OpenGPU LLVM Toolchain Plan
 
-Status, 2026-10-19: M1–M5 are done, M6's software path is done, and the host
+Status, 2026-10-19: M1–M5 are done, including the M2 custom-2
+vector-branch and `join` assembler round-trip. M6's software path is done, and the host
 regression is wired into `scripts/test_scripts.sh`. The sources live in the
 sibling checkout `../llvm-project` on branch `opengpu` (not in this
 repository). This repo contains the fatbin reader (`userspace/libopengpu`),
@@ -8,7 +9,30 @@ the compute submission example (`userspace/examples/compute_offload.c`), and
 `scripts/validate_offload_kernel.py` (LLVM kernels versus the shader-corpus
 validator, including `fragment_color.c` and `vertex_passthrough.c`).
 On 2026-10-19 the vertex+fragment Verilator guest ran
-`opengpu_compute_offload` and checked `kadd` (`1 + 2 + 3 = 6`).
+`opengpu_compute_offload` and checked `kadd` (`1 + 2 + 3 = 6`), then
+`pipe_vertex_draw` (1009 pixels, `0xff0000ff`) and `pipe_resolve`.
+The same day's fragment-only guest (`GPU_VERT_CORE=0`, RTL in
+`generated/frag-only`) printed `OPENGPU USERSPACE EXAMPLES PASS`.
+That run includes clang `fragment_tint` (2016 pixels), `fragment_fp`
+(`0xbec0ffff`), `fragment_fp_scalar` (`0xbea0ffff`), `kadd` (`6`),
+every `fp_*` program, `widen_alu` (`8` / `0xfffffffe` / `15`),
+`fixed_width`, the pipe draws, and `pipe_vertex_draw` skipping because
+there is no vertex core. `vfrsqrt7`/`vfrec7` use the RVV vs1 selectors
+(`4` and `5`); the clang builtins are the guest image.
+Compute and blit examples wait 300 seconds. A 30-second fence expires
+on this model before a short kernel retires.
+That draw binds clang `fragment_texture.c` and `vertex_passthrough.c`
+(`clang --target=opengpu -O2 -mno-relax`), not the hand-written
+`fragment_texture.S` image. The guest images for `fragment_tint`,
+`fragment_fp`, `fragment_fp_scalar`, and the compute programs
+`fp_unary`, `fp_binary`, `fp_fma`, `fp_div`, `fp_compare`, `fp_scalar`,
+`fp_reduce`, `widen_alu`, and `fixed_width` are the same kind of clang
+`.text`. `pipe_present` and `pipe_desktop` bind clang `vertex_passthrough`
+when a vertex core is present.
+On 2026-10-20, `clang --target=opengpu -O0 -mno-relax` of every shader in
+`scripts/validate_offload_kernel.py` passes `opengpu_shader_validate_words`.
+A fresh `-O2` compile of those guest images still matches
+`userspace/gallium/opengpu_shaders.h`.
 Hardware work that changes the CU ISA or the shader ABI below has to update
 the LLVM branch in the same change.
 
@@ -53,8 +77,7 @@ The device ISA is defined by the Chisel decoders in
 - **Triple**: a distinct `opengpu` triple identifies device code (fatbin /
   offload bundling) while resolving to the RISCV backend.
 - **Code object**: RV32 little-endian ELF. Device-code identity is carried by
-  the bundle triple string; the `e_machine` choice is an open decision (see
-  Section 6).
+  the bundle triple string. `e_machine` is standard `EM_RISCV` (Section 6).
 
 ## 3. Layered plan
 
@@ -110,20 +133,20 @@ The device ISA is defined by the Chisel decoders in
      device kernels with `clang --target=opengpu`, admits them with the corpus
      validator profiles, and checks `compute_increment` / `vertex_offset`
      against the gcc corpus binaries (same `lw`/`addi`/`sw`/`cease`
-     operations; registers may differ). `fragment_color.c` and
-     `vertex_passthrough.c` lower to the per-lane `x1+(x8<<2)` vector copy
-     and pass the fragment and vertex profiles. Gallium still binds the
-     hand-written words. Texture and quad assembly stays on
-     `validate_shader_corpus.py`. The host CI job `scripts/test_scripts.sh`
-     runs the script and skips it when the OpenGPU clang is absent.
+     operations; registers may differ). Every Gallium menu program, including
+     `vertex_mvp2.c`, lowers to the per-lane `x1+(x8<<2)` vector form and
+     passes its existing profile. `opengpu_shader_lower_runtime_abi` retargets
+     that form, and Gallium binds the clang words. The host CI job
+     `scripts/test_scripts.sh` runs the script and skips it when the OpenGPU
+     clang is absent.
 
 ## 4. Milestones
 
 | Milestone | Deliverable | Acceptance |
 | --- | --- | --- |
 | M1 MC scalar | `XOpengpu` feature + `barrier`/`tex.sample`/`cease` | done; encodings match, round-trip works |
-| M2 MC complete | vector custom instrs + branch/join | bit-exact + round-trip |
-| M3 triple + CPU | `opengpu` resolves to RISCV | `llvm-mc -triple=opengpu` works; Lanai target retired |
+| M2 MC complete | vector custom instrs + branch/join | done; `llvm/test/MC/RISCV/xopengpu-valid.s` round-trips `barrier`, `tex.sample`, `cease`, `vtex.sample`, `vquad.dfdx`/`dfdy`, `vbeq`/`vbne`/`vblt`/`vbge`/`vbltu`/`vbgeu` and `join` bit-exact against the Chisel patterns. Codegen does not select the branch/join forms |
+| M3 triple + CPU | `opengpu` resolves to RISCV | done; `llvm-mc -triple=opengpu` works; Lanai target retired |
 | M4 CodeGen + ABI | `llc -mcpu=opengpu` | done; scalar/float/vector/branch kernels pass `opengpu_shader_validate_words` |
 | M5 clang | `clang --target=opengpu -S` | done; compiles a kernel to assembly that `llvm-mc -triple=opengpu` assembles |
 | M6 runtime | fatbin + loader | software round-trip passes; 2026-10-19 Verilator guest `kadd` returned 6 |
@@ -157,8 +180,9 @@ The device ISA is defined by the Chisel decoders in
   `Triple::opengpu` / `EM_OPENGPU` / `R_OPENGPU_*`. This is temporary scaffolding
   for the triple plumbing and is retired at M3; only the `opengpu` triple
   identity is intended to survive.
-- `llvm-mc -mattr=+xopengpu` works today. `clang -march=rv32imafv_xopengpu`
-  additionally needs the `RISCVISAInfo.cpp` registration from M3.
+- `clang -march=rv32imafv_zicsr_zifencei_xopengpu` is registered in
+  `RISCVISAInfo.cpp`. `llvm-mc -triple=opengpu -mcpu=opengpu` round-trips the
+  custom instructions.
 - M4 kernarg lowering: `CallingConv::RISCV_OpenGPU` (a kernel CC) takes no
   register arguments; `x1` is the kernarg base and arguments are read from
   fixed kernarg offsets. `LowerFormalArguments` turns pointer arguments into
@@ -170,23 +194,39 @@ The device ISA is defined by the Chisel decoders in
 - M4 reserved registers: `x1`, `x8`, `x9`, `x30`, `x31` are reserved for the
   ABI so shader code cannot clobber the preloaded kernarg base, local index,
   launch capacity, staging stride or uniform base.
-- Known limitation: at `-O0` LLVM leaves a redundant `vsetvli x0,x0` (VLMAX)
-  that the sandbox rejects; build shaders at the default (`-O2`) or any
-  `-O1+` level. Revisit if unoptimized device code must be admitted.
+- `-O0` device kernels pass the same validator profiles as `-O2`. Clang does
+  not mark an `opengpu` function `optnone`, does not allocate a frame pointer,
+  promotes allocas, inlines helpers defined in the module, folds constant
+  branches, and unrolls the small counted loops (the sandbox admits only
+  forward branches). Register allocation is the optimized allocator, so a tied
+  vector operand stays in one register. The ABI pass rewrites `ret` to
+  `opengpu.cease`, clears the `ta`/`ma` vtype bits, drops `vsetvli x0,x0`,
+  replaces `vmv1r.v` with `vmv.v.v`, and deletes a branch to the layout
+  successor. A stack, a call, or a backward branch is still rejected.
 - M5 clang: `OpenGPUTargetInfo` derives `RISCV32TargetInfo` (ILP32 layout/ABI)
   and defines `__opengpu__`/`__OPENGPU__`; it is allocated for the `opengpu`
   triple. The Driver routes `opengpu` through the BareMetal RISCV toolchain,
   defaults `-march` to `rv32imafv_zicsr_zifencei_xopengpu` and `-mcpu` to
-  `opengpu`, forwards the RISCV feature list to cc1, and uses the RISCV default
-  frame-pointer policy (leaf kernels must not allocate a stack). Device kernels
+  `opengpu`, forwards the RISCV feature list to cc1, and never emits a frame
+  pointer, because `x8` is the lane index and the device ABI has no stack. Device kernels
    are marked with `__attribute__((device_kernel))`, which the target maps to
   `CallingConv::RISCV_OpenGPU` so the backend reads arguments from the kernarg
   base; a clang-built kernel now assembles and passes the driver sandbox.
   The `opengpu` triple uses the RISC-V builtin emitter, so `<riscv_vector.h>`
-  lowers on that target. `fragment_color.c` reads the reserved lane index
-  with `slli rd, x8, 2`, adds the kernarg base, and copies one slice with
-  `vle32.v`/`vse32.v`. `vertex_passthrough.c` copies eight slices the same
-  way. Both pass the fragment and vertex validator profiles.
+  lowers on that target. Menu kernels read the reserved lane index with
+  `slli rd, x8, 2`, add the kernarg base, and address each slice from that
+  lane. `vtex.sample` and `vquad.dfdx` are inline asm. All twelve Gallium
+  programs pass the profile their assembly already used, and Gallium binds
+  those words. `fragment_texture.c` is the same kind of program for the
+  pipe spike: lane 0 stores zero and stops, and the other lanes store
+  `vquad.dfdx` of U plus the texel. It passes profile 3. The pipe spike
+  binds that image and clang `vertex_passthrough` directly. The remaining
+  guest shaders (`fragment_fp`, `fragment_fp_scalar`, `fp_unary`,
+  `fp_binary`, `fp_fma`, `fp_div`, `fp_compare`, `fp_scalar`, `fp_reduce`,
+  `widen_alu`, `fixed_width`) are clang `-O2 -mno-relax` images too.
+  `vwadd`/`vwsub`/`vwmul` are `.insn` encodings of funct6 `0x30`..`0x32`,
+  because the standard mnemonics are different ops on this core. Compute
+  programs that store with VL=1 stay out of the Gallium runtime-ABI list.
 - M6 runtime: `userspace/libopengpu/opengpu_offload.{h,c}` is a dependency-free
   reader for the LLVM offload-binary **version 3** container
   (`clang-offload-packager`/`llvm-offload-binary` output). It decodes the header
@@ -206,7 +246,9 @@ The device ISA is defined by the Chisel decoders in
   `opengpu_kadd.fatbin` are staged by `scripts/run_arti_gpu.sh` and
   `scripts/build_userspace_guest.sh` and run from the userspace-example init.
   The fence wait is 300 seconds, matching the other simulator compute
-  examples. The 2026-10-19 vertex+fragment guest printed
-  `offload compute completed; kadd 1+2+3=6` and then
+  examples.   The 2026-10-19 vertex+fragment guest printed
+  `offload compute completed; kadd 1+2+3=6`,
+  `pipe vertex_draw completed; coloured=1009 sample=0xff0000ff`,
+  `pipe resolve completed; mode=2x expected=0x80808080`, and then
   `OPENGPU USERSPACE EXAMPLES PASS`.
 
