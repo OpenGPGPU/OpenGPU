@@ -138,7 +138,7 @@ CU arithmetic alone does not supply those contracts.
 | On-chip shader payloads | SHD stages batch inputs/outputs through global memory | Banked payload handles, reserved output capacity, memory fallback and cancel/fault drain through actual CUs |
 | Texture cluster throughput | TEX issues four tap reads across the shared word fabric | Banked hits and filters sustain one bilinear sample/cycle/cluster; include conflicts, refills and faults |
 | Pixel throughput | PIX's resident backend supports four sample commits/cycle in component tests | Native integrated workload gates, legal early/late equivalence and synthesis timing |
-| Native Mobile integration | TILE/HOST initial two-engine AXI checks pass | Complete current full regression and production hierarchy audit |
+| Native Mobile integration | [74 native renderer/AXI checks and production hierarchy audit](performance/mobile-native-binned-host-2026-10-19.json) pass, including the four-CU host profile | Integrate the remaining payload/features and qualify representative workloads and synthesis |
 | Representative frame budget | Earlier checkpoints measure specific component/frame workloads | Full agreed 720p suite with all phases, bounded bandwidth and qualified clock |
 | Current PPA screen | Synthesis-only policy; integrated renderer synthesis remains unqualified | Complete mapped area/power and all-I/O setup reports on frozen sources |
 

@@ -24,7 +24,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 | Geometry | Clip, viewport, triangle setup and quad rasterization exist | Native index/attribute fetch, vertex reuse, instancing and complete required primitive behavior |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
-| Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Full native integration qualification, integrated timing, legal early rejection, multiple color outputs and complete format semantics |
+| Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Integrated synthesis/timing, legal early rejection, representative throughput, multiple color outputs and complete format semantics |
 | Memory | Shared banked L2, Sv32 translation, GPU cache invalidation and AXI memory master | Aggregate bandwidth and outstanding budgets, context-tagged tile/texture state, scoped barriers and robust bin/payload memory |
 
 The constructor default AXI beat is eight bytes, while emission supports 4 through 64 bytes. Benchmark configurations must record the selected width; there is no single width shared by every existing artifact. See [GpuHostSystemAxi](../src/main/scala/opengpu/system/GpuHostSystemAxi.scala) and [the emitter](../src/main/scala/opengpu/elaboration/EmitGpuHostSystemAxi.scala).
@@ -3177,3 +3177,38 @@ AXI/legacy DMA host checks and the production Mobile RTL audit are queued after
 it. Their final results remain pending. Integrated synthesis/timing, pre-shader visibility
 rejection, payload integration, the remaining H3 gates and H0-H8 requirements
 remain open. Current PPA evaluation continues with synthesis only.
+
+
+### Native Mobile banked host qualification, 2026-10-19
+
+The repaired native path passes 66 configuration, ABI, memory-bin and tile-bin
+checks plus eight AXI host/legacy-DMA checks. The strict arena-exhaustion restart
+case retains the exact output and its original 224-byte load/store assertions.
+The AXI matrix includes scalar fallback, native fixed-function rendering,
+two shared four-lane CUs, and four shared sixteen-lane/eight-warp CUs. It checks
+queued DMA, VM ownership/rebinding, GPU input publication, translation faults,
+and reset drain. The full-size CU host case uses a small 32x16 image and reduced
+caches; it does not establish representative frame throughput.
+
+The complete 1280x720 clear/store image covers 3,600 tiles and 1,843,200 color
+plus depth words in 5,937,039 cycles. The sparse rendered image checks the same
+word count with three active tiles in 663,762 cycles. Automatic continuation
+covers 7,200 visits, 27 references and one restart in 1,370,465 cycles, with
+8,844 load bytes and 8,844 store bytes. These are simulated workload cycles;
+a qualified rendering clock remains open.
+
+Production RTL emission uses the Mobile 1280x720, four-CU/sixteen-lane/eight-warp
+profile, two tile engines, 32-byte AXI beats and black-box SRAMs. Its reachable
+hierarchy contains two native render pipelines, four attachment stores, eight
+fragment workers, four shared CUs and 64 attachment SRAM macros. A third scalar
+render pipeline remains inside the compatibility host; it contains no banked
+stores or fragment workers and is not one of the two native tile engines.
+
+The [frozen qualification packet](performance/mobile-native-binned-host-2026-10-19.json)
+records all 74 checks, frame markers, 500 source hashes, source archive and 714
+emitted-file hashes. This completes the bounded native integration regression
+and hierarchy audit previously pending at the default-selection checkpoint.
+H3 remains open for legal pre-shader rejection, representative throughput,
+integrated synthesis/timing and its remaining gates. Shader staging still uses
+the existing global-memory transport in this native host checkpoint. No new
+place-and-route work was run.
