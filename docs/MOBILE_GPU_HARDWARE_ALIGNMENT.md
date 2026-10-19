@@ -2929,3 +2929,40 @@ runs from a quad input queue into depth-valid state; timing is still open.
 Next functional work routes quads through both attachment slots with completion
 drain before end/cancel handoff, then connects production renderer/shader export
 ingress. Legal early rejection and all remaining H0–H8 gates remain required.
+
+## H3 two-slot banked attachment integration
+
+The [two-slot banked checkpoint](performance/mobile-banked-double-functional-2026-10-19.json)
+routes native four-sample quads and ordered results through the active producer
+slot of `DoubleBufferedTileAttachmentStore(bankedSamples=true)`. Both combined
+memory and externally arbitrated per-slot ports are supported. Accepted and
+committed sample events reflect actual handshakes and SRAM writes.
+
+Producer handoff now waits for accepted local work, refill responses, held quad
+results and accepted clear completions, as well as upstream drain. Pulsed
+cancellation remains pending until this boundary drains. A held end still permits
+older upstream quads while that producer is not drained. This also fixes a default
+scalar-profile bug reproduced on the preceding commit: cancellation could release
+the producer while an accepted clear result remained backpressured. The next tile
+must now wait for that result. Response fault metadata is valid-qualified without
+using ready, avoiding a refill ready/fault combinational cycle.
+
+The frozen source passes 64 banked checks across eight suites and 58 default
+compatibility checks across five suites. New tests exercise behavioral and vendor
+SRAM, both memory port configurations, old-slot write-response stalls, a late
+old-slot fault while the next slot holds its quad result, held end, pulsed cancel,
+cold-read cancellation and slot reuse. Exact per-pass identities, useful byte
+counts and stored color/depth words are checked independently.
+
+In the synthetic two-slot workload, the first 4x tile commits 512 samples in
+128 consecutive cycles with four actual writes per cycle. While its external
+write responses remain stalled, the next 2x BGRA tile loads eight useful words
+through four physical 64-byte reads, updates them twice without reloading, and
+stores eight dirty words. Each next-slot useful transfer count is 32 bytes.
+This is a component benchmark; production renderer and shader wide ingress,
+legal early rejection, full H3 workload gates and remaining H0-H8 requirements
+are still open. The default renderer profile remains scalar.
+
+This functional checkpoint makes no new PPA claim. The synthesis-only run for
+the two-slot Mobile profile uses the original 1 GHz and 25% I/O constraints;
+its final mapping and all-I/O setup results will be recorded separately.
