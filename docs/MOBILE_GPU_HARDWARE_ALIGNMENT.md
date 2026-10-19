@@ -2844,3 +2844,48 @@ scalar profile. Next work must cut the reported integrated timing paths and
 route wide ingress through both attachment slots and shader exports, then add
 legal early rejection before expensive dispatch. H3 and the remaining H0–H8
 workload, resource, visibility and API gates remain open.
+
+## H3 staged refill addresses and scalar request ownership
+
+The [banked staging checkpoint](performance/mobile-banked-attachment-staging-2026-10-19.json)
+splits quad refill addressing into registered steps. It captures the selected
+index and missing plane first, computes paired 4x16 row-pitch products and
+column bytes, joins the row product, adds the admitted tile base, then adds the
+column. Four preparation cycles are added to a missing-plane load; the warm
+resident quad path retains four actual sample commits per cycle. Cancellation
+in preparation drains the accepted quad without creating an unnecessary new
+memory request. Already offered external and SRAM refill owners still drain.
+
+The opt-in banked scalar interface now owns one registered request entry. It
+captures the memory request, rebased sample index and plane at acceptance.
+Changing external sidebands afterward cannot redirect the request. One newer
+request can wait behind a stalled older response without changing that response.
+Queue occupancy participates in clear/quad admission and pass close, preserving
+ordering across the extra stage. The default scalar profile keeps its direct
+path. The clear-read diagnostic observes actual internal word-service admission
+after banked scalar capture.
+
+The frozen source passes 41 banked/resident checks across six suites, 57 default
+compatibility checks across five suites, and 19 banked eight-credit checks.
+New checks cover scalar sideband mutation and response replacement, rows 14/15
+with large pitches and nonzero low-half product carries at 1x/2x/4x, high-address
+depth bases, and cancellation at eleven delays across preparation/offered-read
+phases followed by identity reuse. Behavioral and vendor SRAM retain the same
+128 consecutive four-sample commit cycles after lazy clear. Default buffered
+transfer and 1x/4x export cycle measurements are unchanged.
+
+At unchanged 1 GHz ASAP7 TC/SLVT constraints with 25% I/O budgets, complete
+mapping passes but setup still fails: −245.621 ps core and −113.085 ps I/O.
+Margins improve by 349.338 ps and 178.091 ps over the preceding checkpoint.
+The all-I/O qualification report supersedes the intermediate −55 ps I/O result.
+The mapped design has 210,488 standard cells and 27,874 µm² cell area, plus
+the same 16 SRAM macros occupying 6,643.81 µm². Default-activity power is
+0.268293 W. No new place/route or workload-power claim is made.
+
+All 489 source/build/ABI hashes, the recoverable archive, regression logs,
+emissions and failing synthesis reports are frozen. A test-only refinement adds
+the low-half carry cases; its emitted production RTL is byte-identical to the
+version used for synthesis. The original constraints and throughput target
+remain in force. Remaining work includes the integrated SRAM arbitration paths,
+wide ingress through both attachment slots and production shader exports,
+legal early rejection, and all remaining H0–H8 integration and workload gates.

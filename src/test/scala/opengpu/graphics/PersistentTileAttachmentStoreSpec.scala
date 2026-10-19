@@ -14,7 +14,7 @@ private[graphics] object TilePassTestData {
     colorClear: Long = 0x10203040L, depthClear: Long = 0x5affffffL,
     id: Int = 7, generation: Int = 11, resolve: Boolean = false,
     resolveBase: Long = 0x30000, resolvePitch: Long = 512, tileLog2: Int = 4,
-    context: Long = 3,format: Int = PixelFormat.native) {
+    context: Long = 3,format: Int = PixelFormat.native,allocationBytes: Long = 65536) {
     val samples: Int = 1 << mode
     def index(x: Int, y: Int, sample: Int = 0): Int =
       (((originY + y) & 15) * 16 + ((originX + x) & 15)) * samples + sample
@@ -45,7 +45,7 @@ private[graphics] object TilePassTestData {
       (d.color, p.colorBase, p.colorLoad, p.colorStore, p.colorClear),
       (d.depth, p.depthBase, p.depthLoad, p.depthStore, p.depthClear))) {
       view.base.poke(base.U)
-      view.limit.poke(math.min(1L << 32, base + 65536).U)
+      view.limit.poke(math.min(1L << 32, base + p.allocationBytes).U)
       view.rowPitch.poke(p.pitch.U)
       view.loadOp.poke(load.U)
       view.store.poke(store.B)
@@ -75,6 +75,7 @@ class PersistentTileAttachmentStoreSpec extends AnyFlatSpec {
         // Mutation after admission must not change the snapshot or owner.
         pokeDescriptor(dut.io.pass.begin.bits, p.copy(colorBase = 0x30000, id = 99))
         d.issue(1, 1, p.samples - 1, depth = true)
+        if(dut.io.quad.nonEmpty)d.waitFor(dut.io.events.clearRead.peek().litToBoolean)
         assert(d.clearReads == priorClearReads, "clear read diagnostic must be registered")
         dut.io.events.clearRead.expect(true.B)
         d.response(p.depthClear)

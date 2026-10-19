@@ -238,4 +238,62 @@ class BankedPersistentTileAttachmentStoreSpec extends AnyFlatSpec {
       }
     }
   }
+  it should "capture scalar sidebands and queue one newer request without changing a held older response" in {
+    simulate(new PersistentTileAttachmentStore(storeCredits=8,bankedSamples=true)) { dut=>
+      val d=new QuadDriver(dut)
+      val p=Pass(mode=2,width=8,height=8,originX=24,originY=24,tileLog2=3,id=70)
+      d.begin(p)
+      val index=(2*16+1)*p.samples+3;val value=0x98765432L
+      d.issue(1,2,3,write=true,data=value)
+      dut.io.wordIndex.poke(p.index(7,7,0).U);dut.io.depthPlane.poke(true.B)
+      dut.io.om.req.bits.addr.poke(0.U);dut.io.om.req.bits.data.poke(0.U)
+      d.response(0);d.color(index)=value;d.colorDirty+=index
+      d.issue(1,2,3)
+      dut.io.wordIndex.poke(0.U);dut.io.depthPlane.poke(true.B)
+      d.waitFor(dut.io.om.resp.valid.peek().litToBoolean)
+      dut.io.om.resp.bits.addr.expect(p.address(1,2,3,false).U)
+      val held=dut.io.om.resp.bits.peek().litValue
+      val depthIndex=(3*16+2)*p.samples+1;val ds=0x81234567L
+      d.issue(2,3,1,depth=true,write=true,data=ds)
+      assert(dut.io.om.resp.bits.peek().litValue==held,"buffered newer scalar request overwrote the held older reply")
+      dut.io.wordIndex.poke(0.U);dut.io.depthPlane.poke(false.B)
+      dut.io.om.req.bits.addr.poke(0.U);dut.io.om.req.bits.data.poke(0.U)
+      d.response(value);d.response(0);d.depth(depthIndex)=ds;d.depthDirty+=depthIndex
+      d.end();d.complete();d.checkStored()
+    }
+  }
+  it should "retain every row-pitch bit and high-address carry in staged quad refills at all sample modes" in {
+    simulate(new PersistentTileAttachmentStore(storeCredits=8,bankedSamples=true)) { dut=>
+      val d=new QuadDriver(dut)
+      for(mode <- 0 until 3;pitch <- Seq(0x07000000L,0x07001234L)) {
+        val p=Pass(mode=mode,width=2,height=16,originX=0,originY=0,pitch=pitch,
+          colorBase=0,depthBase=0x80000000L,colorLoad=0,depthLoad=0,allocationBytes=0x70000000L,id=75+mode)
+        d.requests.clear()
+        for(z <- Seq(false,true);y <- 0 until p.height;x <- 0 until p.width;s <- 0 until p.samples)
+          d.memory(p.address(x,y,s,z))=if(z)0x7fabcdefL else(0x11223344L+y*257+x+s)&0xffffffffL
+        d.begin(p);d.send(quad(56+64*(p.samples-1),mode));d.drainQuads()
+        assert(d.requests.size==8 && d.requests.forall(!_.write))
+        val wanted=(for(z <- Seq(false,true);y <- Seq(14,15);x <- Seq(0,1))yield p.address(x,y,p.samples-1,z)).toSet
+        assert(d.requests.map(_.address).toSet==wanted,"staged refill truncated a pitch product or address carry")
+        d.end();d.complete();d.checkStored()
+      }
+    }
+  }
+  it should "drain cancellation across the refill preparation and offered-read phases before admitting a new owner" in {
+    simulate(new PersistentTileAttachmentStore(storeCredits=8,bankedSamples=true)) { dut=>
+      val d=new QuadDriver(dut)
+      for(delay <- 0 to 10) {
+        d.requests.clear();d.allowCanceled=true;d.deliverResponses=false
+        d.begin(Pass(mode=delay%3,width=8,height=8,colorLoad=0,depthLoad=0,id=80+delay))
+        d.send(quad(0,delay%3))
+        for(_ <- 0 until delay)d.tick()
+        dut.io.pass.cancel.poke(true.B);d.deliverResponses=true
+        d.complete(TilePassStatus.cancelled)
+        assert(d.expected.isEmpty && d.requests.forall(!_.write))
+        dut.io.pass.cancel.poke(false.B);d.allowCanceled=false
+      }
+      d.requests.clear();d.begin(Pass(width=8,height=8,id=91))
+      d.send(quad(0,0));d.drainQuads();d.end();d.complete();d.checkStored()
+    }
+  }
 }
