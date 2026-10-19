@@ -69,6 +69,9 @@ object EmitPpaRtl {
           stageArgs, firtoolArgs)
       case "mobile-vertex-input-fetch" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexInputFetcher(),stageArgs,firtoolArgs)
+      case "mobile-vertex-shader" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexShaderStage(
+          useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-bin-store" =>
         val mobile = opengpu.config.MobileGpuConfig()
         ChiselStage.emitSystemVerilogFile(

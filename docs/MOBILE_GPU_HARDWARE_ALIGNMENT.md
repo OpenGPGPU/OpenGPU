@@ -20,8 +20,8 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 |---|---|---|
 | Shader execution | Shared compute CUs already execute vertex and fragment tasks; vector FP32 arithmetic, including FMA, is connected | Improve task input/output transport, occupancy, control-flow/resource contracts and sustained issue/writeback throughput |
 | Configuration | `GpuConfig` defaults to 16 lanes and eight warps; the mobile CU-count constant is four | One compute/graphics execution configuration; discoverable resource limits and explicit supported configuration combinations |
-| Interstage transport | Optional local fragment-worker staging, shared pool/client bindings and export lifetime are qualified; the integrated renderer still uses global staging | Wire the parallel/tile/host hierarchy, then qualify bounded spill and multi-engine local rendering |
-| Geometry | Clip, viewport, triangle setup and quad rasterization exist | Native index/attribute fetch, vertex reuse, instancing and complete required primitive behavior |
+| Interstage transport | Eligible Mobile fragments default to local payloads through the parallel/tile/AXI hierarchy; a generic vertex client also qualifies local/global staging and export ownership | Integrate native vertex/fragment ownership and budget the vertex client's additional SRAM; qualify broader resources and throughput |
+| Geometry | Clip, viewport, triangle setup and quad rasterization exist; bounded GPU index/attribute fetch and generic indexed/instanced shared-CU vertex execution are qualified as components | Native geometry submission, primitive assembly/restart consumption, vertex reuse and complete required primitive behavior |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
 | Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Integrated synthesis/timing, legal early rejection, representative throughput, multiple color outputs and complete format semantics |
@@ -3365,7 +3365,6 @@ claim. Default promotion, representative shader/workload qualification, GPU
 geometry fetching/reuse, synthesis and the remaining H0-H8 requirements remain
 open. Current PPA qualification remains synthesis only.
 
-
 ### Default local payloads for eligible Mobile rendering, 2026-10-19
 
 The [default-selection packet](performance/mobile-default-local-payload-2026-10-19.json)
@@ -3498,3 +3497,60 @@ native GPU geometry submission remain next. The enclosing owner must publish
 and pin immutable inputs, translation and allocation ownership through drain.
 The legacy draw/job ABI is unchanged; H5 and remaining H0-H8 requirements stay
 open. Current PPA qualification remains synthesis only.
+
+### Generic GPU vertex execution on shared CUs, 2026-10-19
+
+The [vertex-shader checkpoint](performance/mobile-vertex-shader-stage-2026-10-19.json)
+connects `VertexInputFetcher` to a new `VertexShaderStage` shared-CU client.
+Its internal version-1 descriptor declares up to sixteen attribute slots and
+sixteen four-component varyings. SoA inputs contain the attributes followed by
+vertex ID, draw-relative instance ID and base instance. Outputs contain four
+FP32 clip-position words followed by the declared varying arrays; a component
+mask controls varying readback, with disabled components exported as zero.
+Array stride is four times physical CU thread capacity. Uniforms start beyond
+the complete prefix, preserving existing x1/x8/x9 kernarg/local-base/capacity
+preloads. This adds no native draw memory ABI or compiler implementation.
+
+Batches retain per-record identity and ordinals and may span instances. A
+restart token waits for all older shaded vertices and reservation release,
+then appears in stream order without launching a shader. Each nonempty batch
+owns its scratch/payload reservation through scatter acknowledgements, shared
+CU and sampler completion, output readback and accepted exports. Resident
+allocation initialization or masked global output clearing supplies zero
+defaults without overwriting input arrays or the uniform tail. Empty and
+restart-only draws allocate no payload.
+
+Descriptor preflight checks declared counts/masks, PC alignment, logical and
+padded scratch bounds, the 4 GiB endpoint and virtual overlaps with used input,
+index and shared-memory views before input access. Offered reads, writes,
+invalidations, launches and exports remain irrevocable through cancellation.
+Accepted input/memory/texture/CU operations drain before reservation release
+and held completion. Faults suppress unpublished results; a shader watchdog
+and interruption contract remain open.
+
+Twenty-eight checks pass on 519 frozen sources: seven stage cases, seven input
+cases and fourteen existing ABI checks. Actual two-CU system harnesses verify
+indexed/instanced FP32 transforms, all IDs, restart order, cross-instance batch
+boundaries, descriptor/context snapshots, local/global staging and forced
+full-pool spill with exact values. Coverage also includes twenty invalid
+layouts, empty/restart-only draws, vertex textures and texture faults, held
+launch/export cancellation, offered global writes, input/scatter/clear/readback
+faults, shader traps and healthy reuse. At sixteen lanes/eight warps, one
+resident batch accepts 128 threads across eight instances. A separate draw
+enables all sixteen attributes and copies all 64 varying components through a
+69,120-byte full-interface prefix, explicitly spilling beyond a 64 KiB pool
+while preserving its uniform tail. The test shader remains within 512 words.
+
+Default-size standalone RTL emission audits 46 files, one shared shader
+adapter, one fetcher, one payload transport and no private CU or embedded pool.
+Metadata and a transposed sixteen-vertex readback window use ten characterized
+256x64 SRAM macro references: **20 KiB additional physical SRAM**, separate from
+the shared payload pool. Production admission and SRAM accounting must include
+that cost when this component is integrated. No new synthesis result is claimed.
+
+Native geometry submission, VM/reset/physical allocation ownership, shared
+vertex/fragment producer wiring, primitive assembly, general clipping and
+interpolation, post-transform reuse and native bin production remain open.
+Normalized/packed/half input conversion, general resources, transform feedback,
+representative throughput, synthesis and the remaining H0-H8 gates also remain
+open. Current PPA evaluation continues with synthesis only.

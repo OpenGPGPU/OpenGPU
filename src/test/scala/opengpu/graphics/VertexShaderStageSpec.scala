@@ -1,0 +1,386 @@
+package opengpu.graphics
+
+import chisel3._
+import chisel3.util._
+import chisel3.reflect.DataMirror
+import opengpu.config.GpuConfig
+import opengpu.core.memory._
+import opengpu.system.{GpuSystem,SharedCuShaderConfig}
+import opengpu.testutil.GpuSim._
+import org.scalatest.flatspec.AnyFlatSpec
+import scala.collection.mutable
+
+private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false) extends Module {
+  val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
+  val vp=if(fullInterface)VertexShaderStageConfig()else VertexShaderStageConfig(VertexInputFetchConfig(4,3),2)
+  val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
+    maxPayloadBytes=if(fullInterface)65536 else vp.prefixBytes(lanes*warps,2,1),owners=2,ports=4)
+  private val slots=GpuSystem.totalMemoryTransactions(2,4,4)
+  val io=IO(new Bundle {
+    val draw=Flipped(Decoupled(new VertexShaderDraw(vp)))
+    val out=Decoupled(new ShadedVertexRecord(vp))
+    val completion=Decoupled(new VertexShaderCompletion)
+    val memoryRequest=Decoupled(new ComputeMemoryRequest(cfg,64,slots))
+    val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,slots)))
+    val pressure=Flipped(Decoupled(new ShaderPayloadControlRequest(pp)))
+    val pressureResponse=Decoupled(new ShaderPayloadControlResponse(pp))
+    val context=Input(UInt(32.W));val cancel=Input(Bool());val blockLaunch=Input(Bool())
+    val launchOffered=Output(Bool());val launched=Output(Bool());val globalStaging=Output(Bool())
+    val reservedBytes=Output(UInt(32.W));val poolDrained=Output(Bool());val idle=Output(Bool())
+    val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
+  })
+  private val stage=Module(new VertexShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None))
+  private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,
+    graphicsHostTransactions=4,instructionCacheSets=4,instructionCacheWays=1,
+    vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None))
+  private def tie(data: Data): Unit=data match {
+    case r: Record=>r.elements.values.foreach(tie)
+    case v: Vec[_]=>v.foreach(tie)
+    case b: Bool if DataMirror.directionOf(b)==ActualDirection.Input=>b:=false.B
+    case s: SInt if DataMirror.directionOf(s)==ActualDirection.Input=>s:=0.S
+    case u: UInt if DataMirror.directionOf(u)==ActualDirection.Input=>u:=0.U
+    case _=>()
+  }
+  tie(system.io)
+  stage.io.draw<>io.draw;io.out<>stage.io.out;io.completion<>stage.io.completion;stage.io.cancel:=io.cancel
+  system.io.graphicsKernels.get<>stage.io.shared
+  system.io.graphicsKernels.get.launch.valid:=stage.io.shared.launch.valid && !io.blockLaunch
+  stage.io.shared.launch.ready:=system.io.graphicsKernels.get.launch.ready && !io.blockLaunch
+  io.launchOffered:=stage.io.shared.launch.valid;io.launched:=stage.io.shared.launch.fire
+  system.io.graphicsHostRequest<>stage.io.memoryRequest;stage.io.memoryResponse<>system.io.graphicsHostResponse
+  io.globalStaging:=stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId===1.U
+  system.io.graphicsDrained:= !stage.io.busy
+  system.io.graphicsShaderL1Invalidate.ready:=true.B
+  io.memoryRequest<>system.io.memoryRequest;system.io.memoryResponse<>io.memoryResponse
+  io.idle:=system.io.vmContextIdle && !stage.io.busy;io.busy:=stage.io.busy
+  io.task:=0.U.asTypeOf(io.task);io.reservedBytes:=0.U;io.poolDrained:=true.B
+  io.pressure.ready:=false.B;io.pressureResponse.valid:=false.B;io.pressureResponse.bits:=0.U.asTypeOf(io.pressureResponse.bits)
+  if(local) {
+    val port=stage.io.payload.get;val management=system.io.payloadManagement.get
+    management.control(0)<>port.control;port.controlResponse<>management.controlResponse(0)
+    management.request(0)<>port.request;port.response<>management.response(0)
+    management.control(1)<>io.pressure;io.pressureResponse<>management.controlResponse(1)
+    port.context:=io.context;port.cancel:=io.cancel;system.io.graphicsPayload.get:=port.task;io.task:=port.task
+    io.reservedBytes:=management.reservedBytes;io.poolDrained:=management.drained
+  }
+}
+
+class VertexShaderStageSpec extends AnyFlatSpec {
+  private def zero(data: Data): Unit=data match {
+    case r: Record=>r.elements.values.foreach(zero)
+    case v: Vec[_]=>v.foreach(zero)
+    case b: Bool if DataMirror.directionOf(b)==ActualDirection.Input=>b.poke(false.B)
+    case s: SInt if DataMirror.directionOf(s)==ActualDirection.Input=>s.poke(0.S)
+    case u: UInt if DataMirror.directionOf(u)==ActualDirection.Input=>u.poke(0.U)
+    case _=>()
+  }
+  private def fp(f: Float): BigInt=BigInt(java.lang.Float.floatToRawIntBits(f).toLong&0xffffffffL)
+  private def addi(rd: Int,rs: Int,imm: Int): BigInt=(BigInt(imm&4095)<<20)|(BigInt(rs)<<15)|(BigInt(rd)<<7)|0x13
+  private def add(rd: Int,a: Int,b: Int): BigInt=(BigInt(b)<<20)|(BigInt(a)<<15)|(BigInt(rd)<<7)|0x33
+  private def address(rd: Int,base: Int,offset: Int): Seq[BigInt]={
+    val hi=(offset+2048)>>12;val lo=offset-(hi<<12)
+    if(hi==0)Seq(addi(rd,base,lo))else Seq((BigInt(hi)<<12)|(BigInt(rd)<<7)|0x37,add(rd,base,rd),addi(rd,rd,lo))
+  }
+  private def vectorMemory(base: Int,reg: Int,write: Boolean): BigInt=
+    (BigInt(1)<<25)|(BigInt(base)<<15)|(BigInt(6)<<12)|(BigInt(reg)<<7)|(if(write)0x27 else 7)
+  private val cease=BigInt("30500073",16)
+  private def program(lanes: Int,warps: Int,attributes: Int=2,varyings: Int=1): Seq[BigInt]={
+    val stride=4*lanes*warps;val inputs=4*attributes+3
+    val code=mutable.ArrayBuffer[BigInt](
+      (BigInt(2)<<20)|(BigInt(8)<<15)|(BigInt(1)<<12)|(BigInt(7)<<7)|0x13,
+      add(7,1,7),(BigInt(3)<<30)|(BigInt(0x10)<<20)|(BigInt(lanes)<<15)|(BigInt(7)<<12)|0x57)
+    def load(array: Int,v: Int): Unit={code++=address(5,7,array*stride);code+=vectorMemory(5,v,false)}
+    def store(array: Int,v: Int): Unit={code++=address(6,7,array*stride);code+=vectorMemory(6,v,true)}
+    load(0,1);load(4*attributes,2)
+    code+=(BigInt(0x12)<<26)|(BigInt(1)<<25)|(BigInt(2)<<20)|(BigInt(3)<<15)|(BigInt(1)<<12)|(BigInt(3)<<7)|0x57
+    code+=(BigInt(1)<<25)|(BigInt(1)<<20)|(BigInt(3)<<15)|(BigInt(1)<<12)|(BigInt(4)<<7)|0x57
+    store(inputs,4)
+    for(c<-1 until 4){load(c,1);store(inputs+c,1)}
+    store(inputs+4,2);load(4*attributes+1,2);store(inputs+5,2)
+    load(4*attributes+2,2);store(inputs+6,2);load(4,2)
+    code++=address(13,1,(inputs+4+4*varyings)*stride)
+    code+=(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3
+    code+=(BigInt(1)<<25)|(BigInt(2)<<20)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(2)<<7)|0x57
+    store(inputs+7,2);code+=cease;code.toVector
+  }
+  private case class Export(ordinal: BigInt,id: BigInt,instance: BigInt,base: BigInt,restart: Boolean,position: Vector[BigInt],varyings: Vector[BigInt])
+  private class Driver(val d: VertexShaderHarness) {
+    val cap=d.cfg.lanes*d.cfg.warps;val stride=4*cap;val prefix=d.vp.prefixBytes(cap,2,1)
+    val scratch=BigInt(0x100000);val memory=mutable.Map.empty[BigInt,BigInt]
+    def put(address: BigInt,value: BigInt): Unit=for(b<-0 until 4)memory(address+b)=(value>>(8*b))&255
+    def word(address: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(address+b,BigInt(0))<<(8*b)))
+    zero(d.io);d.io.context.poke(101.U);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+    program(d.cfg.lanes,d.cfg.warps).zipWithIndex.foreach{case(w,i)=>put(0x1000+4*i,w)}
+    for(i<-0 until 16;c<-0 until 4)put(0x4000+i*16+c*4,fp((10*i+c+1).toFloat))
+    for(i<-0 until 16)put(0x5000+i*4,100+i)
+    val indices=Seq(3,1,2,255,1,3,0,2,1)
+    indices.zipWithIndex.foreach{case(v,i)=>memory(BigInt(0x6000+i))=v}
+    for(i<-0 until prefix+128 by 4)put(scratch+i,BigInt("deadbeef",16))
+    put(scratch+prefix,17)
+    case class Reply(id: BigInt,data: BigInt,due: Int,fault: Boolean)
+    val pending=mutable.ArrayBuffer.empty[Reply];var offered: Option[Reply]=None
+    var cycle=0;var launches=0;var globalStaging=0;var requests=0
+    var blockMemory=false;var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
+    val exports=mutable.ArrayBuffer.empty[Export]
+    def tick(): Unit={
+      d.io.memoryRequest.ready.poke((!blockMemory && cycle%7<5).B)
+      if(d.io.launched.peek().litToBoolean)launches+=1
+      if(d.io.globalStaging.peek().litToBoolean)globalStaging+=1
+      if(d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
+        val r=d.io.out.bits;r.identity.context.expect(7.U);r.identity.pass.expect(8.U);r.identity.generation.expect(9.U)
+        exports+=Export(r.ordinal.peek().litValue,r.vertexId.peek().litValue,r.instanceId.peek().litValue,r.baseInstance.peek().litValue,
+          r.restart.peek().litToBoolean,r.position.map(_.peek().litValue).toVector,r.varyings.flatten.map(_.peek().litValue).toVector)
+      }
+      if(offered.isEmpty) {
+        val due=pending.indices.filter(i=>pending(i).due<=cycle)
+        if(due.nonEmpty)offered=Some(pending.remove(if(cycle%2==0)due.last else due.head))
+      }
+      d.io.memoryResponse.valid.poke(offered.nonEmpty.B)
+      offered.foreach { r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U);d.io.memoryResponse.bits.fault.poke(r.fault.B) }
+      if(offered.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean)offered=None
+      if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean) {
+        requests+=1;val r=d.io.memoryRequest.bits;val addr=r.address.peek().litValue;val write=r.isWrite.peek().litToBoolean
+        val failed=fault(addr,write)
+        if(write && !failed) {
+          val mask=r.byteMask.peek().litValue;val data=r.writeData.peek().litValue
+          for(b<-0 until 64 if mask.testBit(b))memory(addr+b)=(data>>(8*b))&255
+        }
+        val data=if(write)BigInt(0)else(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(addr+b,BigInt(0))<<(8*b)))
+        pending+=Reply(r.transactionId.peek().litValue,data,cycle+5+(requests%4),failed)
+      }
+      d.clock.step();cycle+=1
+    }
+    def until(condition: => Boolean): Unit={var n=0;while(!condition && n<40000){tick();n+=1};assert(condition,s"vertex stage stalled cycle=$cycle launches=$launches exports=${exports.size} pending=${pending.size}")}
+    def view(v: VertexInputView,base: BigInt,bytes: Int): Unit={
+      v.base.poke(base.U);v.limit.poke((base+bytes).U);v.allocationBase.poke((base& ~BigInt(63)).U)
+      v.allocationLimit.poke(((base+bytes+63)& ~BigInt(63)).U)
+    }
+    def descriptor(indexed: Boolean=true,instances: Int=2,count: Int=9,first: Int=0): Unit={
+      val q=d.io.draw.bits;zero(q);q.version.poke(1.U);q.input.version.poke(1.U)
+      q.input.identity.context.poke(7.U);q.input.identity.pass.poke(8.U);q.input.identity.generation.poke(9.U)
+      q.input.count.poke(count.U);q.input.instances.poke(instances.U);q.input.baseInstance.poke(2.U)
+      q.input.firstVertex.poke(first.U);q.input.indexFormat.poke((if(indexed)1 else 0).U);q.input.restart.poke(indexed.B)
+      view(q.input.indices,0x6000,9)
+      view(q.input.bindings(0),0x4000,256);q.input.bindings(0).stride.poke(16.U)
+      view(q.input.bindings(1),0x5000,64);q.input.bindings(1).stride.poke(4.U);q.input.bindings(1).divisor.poke(2.U)
+      val a=q.input.attributes(0);a.enabled.poke(true.B);a.components.poke(4.U);a.format.poke(VertexInputFormat.float32.U)
+      val b=q.input.attributes(1);b.enabled.poke(true.B);b.bindingIndex.poke(1.U);b.components.poke(1.U);b.format.poke(VertexInputFormat.uint32.U)
+      q.shaderPc.poke(0x1000.U);view(q.scratch,scratch,prefix+4);q.attributeSlots.poke(2.U);q.varyingSlots.poke(1.U);q.varyingMask.poke(15.U)
+      q.sampler.texWidth.poke(1.U);q.sampler.texHeight.poke(1.U)
+    }
+    def submit(): Unit={d.io.draw.valid.poke(true.B);until(d.io.draw.ready.peek().litToBoolean);tick();d.io.draw.valid.poke(false.B)}
+    def complete(status: Int): Unit={
+      until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.status.expect(status.U)
+      val held=d.io.completion.bits.peek().litValue
+      for(_<-0 until 9){d.io.draw.ready.expect(false.B);tick();assert(d.io.completion.bits.peek().litValue==held)}
+      d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B)
+      until(d.io.idle.peek().litToBoolean);assert(pending.isEmpty && offered.isEmpty)
+      d.io.poolDrained.expect(true.B)
+    }
+    def pressure(op: Int,handle: BigInt=0,generation: BigInt=0): (BigInt,BigInt)={
+      val q=d.io.pressure;q.bits.operation.poke(op.U);q.bits.bytes.poke(prefix.U);q.bits.context.poke(55.U)
+      q.bits.handle.poke(handle.U);q.bits.generation.poke(generation.U);q.valid.poke(true.B)
+      until(q.ready.peek().litToBoolean);tick();q.valid.poke(false.B)
+      val r=d.io.pressureResponse;until(r.valid.peek().litToBoolean);r.bits.fault.expect(false.B);r.bits.spill.expect(false.B)
+      val value=(r.bits.handle.peek().litValue,r.bits.generation.peek().litValue)
+      r.ready.poke(true.B);tick();r.ready.poke(false.B);value
+    }
+    def check(indexed: Boolean=true,instances: Int=2,count: Int=9,first: Int=0): Unit={
+      val expected=for(inst<-0 until instances;i<-0 until count)yield {
+        val id=if(indexed)indices(i)else first+i
+        val restart=indexed && id==255
+        val pos=if(restart)Vector.fill(4)(BigInt(0))else Vector(fp((11*id+1).toFloat),fp((10*id+2).toFloat),fp((10*id+3).toFloat),fp((10*id+4).toFloat))
+        val vary=if(restart)Vector.fill(8)(BigInt(0))else Vector(BigInt(id),BigInt(inst),BigInt(2),BigInt(119+inst/2))++Vector.fill(4)(BigInt(0))
+        Export(i,if(restart)BigInt(0)else BigInt(id),inst,2,restart,pos,vary)
+      }
+      assert(exports.toVector==expected.toVector,s"exports differ:\n${exports.mkString("\n")}\nexpected:\n${expected.mkString("\n")}")
+      assert(word(scratch+prefix)==17,"output clear or shader clobbered uniform tail")
+    }
+  }
+
+  for(local<-Seq(true,false))
+  it should s"execute ordered indexed instanced vertex shaders on shared CUs with local=$local" in {
+    simulate(new VertexShaderHarness(local)) { d=>
+      val t=new Driver(d);t.descriptor();t.submit();d.io.context.poke(999.U)
+      // Mutating an unoffered descriptor cannot alter an accepted draw.
+      d.io.draw.bits.shaderPc.poke(0.U);d.io.draw.bits.attributeSlots.poke(0.U)
+      d.io.draw.bits.input.identity.context.poke(999.U);d.io.draw.bits.input.count.poke(0.U)
+      t.until(d.io.out.valid.peek().litToBoolean)
+      val held=d.io.out.bits.peek().litValue
+      if(local){d.io.task.valid.expect(true.B);d.io.task.bits.context.expect(101.U);d.io.reservedBytes.expect(d.pp.slotBytes.U)}
+      for(_<-0 until 17){t.tick();assert(d.io.out.bits.peek().litValue==held);if(local)d.io.reservedBytes.expect(d.pp.slotBytes.U)}
+      d.io.out.ready.poke(true.B);t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.vertices.expect(16.U);d.io.completion.bits.restarts.expect(2.U);d.io.completion.bits.batches.expect(3.U)
+      d.io.completion.bits.localBatches.expect((if(local)3 else 0).U);d.io.completion.bits.maxLocalX.expect(8.U)
+      t.check();t.complete(0);assert(t.launches==3);assert((t.globalStaging==0)==local)
+      if(local) {
+        val leases=Vector.fill(d.pp.slots)(t.pressure(ShaderPayloadControl.allocate))
+        t.exports.clear();t.descriptor();t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+        d.io.completion.bits.localBatches.expect(0.U);d.io.completion.bits.spilledBatches.expect(3.U)
+        t.check();d.io.completion.ready.poke(true.B);t.tick();d.io.completion.ready.poke(false.B)
+        leases.foreach{case(h,g)=>t.pressure(ShaderPayloadControl.release,h,g)}
+        t.until(d.io.idle.peek().litToBoolean);d.io.poolDrained.expect(true.B);assert(t.globalStaging>0)
+      }
+      info(s"VERTEX_SHADER local=$local CUs=2 indexed=true instances=2 vertices=16 restarts=2 batches=3 maxLocalX=8 FP32=true IDs=true uniformTail=true heldExport=true forcedSpill=$local")
+    }
+  }
+
+  it should "reject invalid layouts before input access and retire empty and restart-only draws without allocation" in {
+    simulate(new VertexShaderHarness()) { d=>
+      val t=new Driver(d);val q=d.io.draw.bits
+      val bad=Seq[(Int,()=>Unit)](
+        (1,()=>q.version.poke(0.U)),(1,()=>q.shaderPc.poke(0.U)),(1,()=>q.shaderPc.poke(0x1002.U)),
+        (1,()=>q.attributeSlots.poke(5.U)),(1,()=>q.attributeSlots.poke(1.U)),
+        (1,()=>q.varyingSlots.poke(3.U)),(1,()=>q.varyingMask.poke(16.U)),
+        (1,()=>q.scratch.base.poke((t.scratch+4).U)),
+        (1,()=>q.scratch.allocationBase.poke((t.scratch+4).U)),
+        (1,()=>q.scratch.allocationBase.poke((t.scratch+64).U)),
+        (1,()=>q.scratch.allocationLimit.poke((t.scratch+639).U)),
+        (1,()=>q.scratch.allocationLimit.poke(((BigInt(1)<<32)+64).U)),
+        (1,()=>q.scratch.allocationLimit.poke(t.scratch.U)),
+        (1,()=>q.scratch.limit.poke((t.scratch-1).U)),
+        (1,()=>q.scratch.limit.poke((t.scratch+641).U)),
+        (2,()=>q.scratch.limit.poke((t.scratch+t.prefix-1).U)),
+        (1,()=>t.view(q.input.bindings(0),t.scratch,256)),
+        (1,()=>t.view(q.input.indices,t.scratch,9)),
+        (1,()=>t.view(q.scratch,d.cfg.sharedMemoryBase,t.prefix+4)),
+        (2,()=>{
+          q.scratch.base.poke(((BigInt(1)<<32)-64).U)
+          q.scratch.allocationBase.poke(((BigInt(1)<<32)-64).U)
+          q.scratch.limit.poke((BigInt(1)<<32).U);q.scratch.allocationLimit.poke((BigInt(1)<<32).U)
+        }))
+      for((status,mutate)<-bad) {
+        t.descriptor();val requests=t.requests;mutate();t.submit();t.complete(status)
+        assert(t.requests==requests && t.exports.isEmpty && t.launches==0);d.io.reservedBytes.expect(0.U)
+      }
+      for((instances,count)<-Seq((0,9),(2,0))) {
+        t.descriptor(false,instances,count);q.shaderPc.poke(0.U);t.submit();t.complete(0)
+        assert(t.requests==0 && t.launches==0 && t.exports.isEmpty)
+      }
+      for(i<-0 until 3)t.memory(BigInt(0x6000+i))=255
+      t.descriptor(true,1,3);d.io.out.ready.poke(true.B);t.submit();t.complete(0)
+      assert(t.exports.size==3 && t.exports.forall(_.restart));assert(t.launches==0 && t.globalStaging==0)
+      assert(t.exports.map(_.ordinal).toVector==Vector(0,1,2));d.io.reservedBytes.expect(0.U)
+      info("VERTEX_SHADER invalidLayouts=20 noInvalidInputAccess=true emptyDraws=2 restartOnly=3 noEmptyAllocation=true snapshots=true")
+    }
+  }
+
+  it should "sample vertex textures on shared CUs and drain a texture memory fault before reuse" in {
+    simulate(new VertexShaderHarness()) { d=>
+      val t=new Driver(d)
+      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
+      val sample=(BigInt(1)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(7)<<7)|0x2b
+      val code=program(4,2).dropRight(1)++Seq(broadcast|(BigInt(5)<<7)|0x57,broadcast|(BigInt(6)<<7)|0x57,sample)++
+        address(6,7,18*t.stride)++Seq(vectorMemory(6,7,true),cease)
+      code.zipWithIndex.foreach{case(w,i)=>t.put(0x3000+4*i,w)}
+      def draw(texture: Int): Unit={
+        t.descriptor(false,1,3);d.io.draw.bits.shaderPc.poke(0x3000.U)
+        d.io.draw.bits.sampler.base.poke(texture.U);d.io.draw.bits.sampler.format.poke(PixelFormat.native.U)
+        t.submit()
+      }
+      d.io.out.ready.poke(true.B);t.put(0x8000,BigInt("123456ff",16));draw(0x8000)
+      t.until(d.io.completion.valid.peek().litToBoolean)
+      assert(t.exports.size==3 && t.exports.forall(_.varyings(3)==BigInt("123456ff",16)));t.complete(0)
+      t.exports.clear();t.fault=(addr,write)=>addr==0x9000 && !write;draw(0x9000)
+      t.complete(VertexInputStatus.memoryFault);assert(t.exports.isEmpty)
+      t.fault=(_,_)=>false;t.put(0xa000,BigInt("abcdef12",16));draw(0xa000)
+      t.until(d.io.completion.valid.peek().litToBoolean)
+      assert(t.exports.size==3 && t.exports.forall(_.varyings(3)==BigInt("abcdef12",16)));t.complete(0)
+      info("VERTEX_SHADER vertexTexture=true textureFault=true noFaultedExports=true freshTextureReuse=true")
+    }
+  }
+
+  it should "drain held launches, exports, input faults and shader traps before healthy reuse" in {
+    simulate(new VertexShaderHarness()) { d=>
+      val t=new Driver(d)
+      // A launch offer is irrevocable even when cancellation arrives before admission.
+      t.descriptor(false,1,3);d.io.blockLaunch.poke(true.B);t.submit()
+      t.until(d.io.launchOffered.peek().litToBoolean);d.io.cancel.poke(true.B)
+      for(_<-0 until 11){d.io.launchOffered.expect(true.B);d.io.busy.expect(true.B);d.io.completion.valid.expect(false.B);t.tick()}
+      d.io.blockLaunch.poke(false.B);t.until(d.io.completion.valid.peek().litToBoolean);assert(t.exports.isEmpty)
+      d.io.cancel.poke(false.B);t.complete(VertexInputStatus.cancelled)
+      // An offered export retains its reservation and value until it is consumed.
+      t.descriptor(false,1,3);t.submit();t.until(d.io.out.valid.peek().litToBoolean)
+      val held=d.io.out.bits.peek().litValue;d.io.cancel.poke(true.B)
+      for(_<-0 until 13){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.reservedBytes.expect(d.pp.slotBytes.U)}
+      d.io.out.ready.poke(true.B);t.until(d.io.completion.valid.peek().litToBoolean);d.io.cancel.poke(false.B)
+      assert(t.exports.size==1);t.complete(VertexInputStatus.cancelled)
+      // The failing input record cannot become a partially shaded/exported vertex.
+      t.exports.clear();t.fault=(addr,write)=>addr==0x7000 && !write
+      t.descriptor(false,1,3);t.view(d.io.draw.bits.input.bindings(0),0x7000,256)
+      t.submit();t.complete(VertexInputStatus.memoryFault);assert(t.exports.isEmpty)
+      t.fault=(_,_)=>false
+      t.put(0x2000,0);t.descriptor(false,1,3);d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit()
+      t.complete(VertexShaderStatus.shaderFault);assert(t.exports.isEmpty)
+      t.descriptor(false,1,3);t.submit();t.until(d.io.completion.valid.peek().litToBoolean);t.check(false,1,3);t.complete(0)
+      info("VERTEX_SHADER cancelHeldLaunch=true cancelHeldExport=true inputFault=true shaderTrap=true healthyReuse=true")
+    }
+  }
+
+  it should "drain offered global writes and staging faults without exporting partial results" in {
+    simulate(new VertexShaderHarness(false)) { d=>
+      val t=new Driver(d);t.descriptor(false,1,3);t.submit()
+      t.until(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.address.peek().litValue>=t.scratch)
+      t.blockMemory=true;val held=d.io.memoryRequest.bits.peek().litValue;d.io.cancel.poke(true.B)
+      for(_<-0 until 13){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==held);d.io.completion.valid.expect(false.B)}
+      t.blockMemory=false;t.until(d.io.completion.valid.peek().litToBoolean);d.io.cancel.poke(false.B)
+      t.complete(VertexInputStatus.cancelled);assert(t.exports.isEmpty)
+      for(mode<-Seq("inputWrite","outputClear","readback")) {
+        t.fault=(addr,write)=>mode match {
+          case "inputWrite"=>addr==t.scratch && write
+          case "outputClear"=>addr==t.scratch+384 && write
+          case _=>addr==t.scratch+384 && !write
+        }
+        t.descriptor(false,1,3);t.submit();t.complete(VertexInputStatus.memoryFault);assert(t.exports.isEmpty)
+      }
+      t.fault=(_,_)=>false;d.io.out.ready.poke(true.B);t.descriptor(false,1,3);t.submit()
+      t.until(d.io.completion.valid.peek().litToBoolean);t.check(false,1,3);t.complete(0)
+      info("VERTEX_SHADER cancelOfferedWrite=true scatterFault=true clearFault=true readbackFault=true partialExportSuppressed=true healthyReuse=true")
+    }
+  }
+
+  it should "execute 128 threads and explicitly spill a full sixteen-attribute sixteen-varying interface" in {
+    simulate(new VertexShaderHarness(true,16,8,true)) { d=>
+      val t=new Driver(d);d.io.out.ready.poke(true.B)
+      t.descriptor(false,8,16);t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.vertices.expect(128.U);d.io.completion.bits.batches.expect(1.U)
+      d.io.completion.bits.localBatches.expect(1.U);d.io.completion.bits.maxLocalX.expect(128.U)
+      // Same shader, one batch spanning eight instances; disabled outputs stay zero.
+      assert(t.exports.size==128)
+      for((r,i)<-t.exports.zipWithIndex) {
+        val id=i%16;val inst=i/16
+        assert(r.ordinal==id && r.id==id && r.instance==inst && r.base==2 && !r.restart)
+        assert(r.position==Vector(fp((11*id+1).toFloat),fp((10*id+2).toFloat),fp((10*id+3).toFloat),fp((10*id+4).toFloat)))
+        assert(r.varyings.take(4)==Vector(BigInt(id),BigInt(inst),BigInt(2),BigInt(119+inst/2)))
+        assert(r.varyings.drop(4).forall(_==0))
+      }
+      t.complete(0);assert(t.globalStaging==0)
+      val fullPrefix=d.vp.prefixBytes(t.cap,16,16)
+      assert(fullPrefix==69120 && fullPrefix>d.pp.capacityBytes)
+      val copyAll=mutable.ArrayBuffer.empty[BigInt]
+      copyAll++=address(5,7,0);copyAll++=address(6,7,71*t.stride)
+      for(_<-0 until 64)copyAll++=Seq(vectorMemory(5,1,false),vectorMemory(6,1,true),addi(5,5,t.stride),addi(6,6,t.stride))
+      val allProgram=program(16,8,16,16).dropRight(1)++copyAll.toVector++Seq(cease)
+      assert(allProgram.size<=512)
+      allProgram.zipWithIndex.foreach{case(w,i)=>t.put(0x3000+4*i,w)}
+      t.put(t.scratch+fullPrefix,17);t.exports.clear();t.descriptor(false,1,1)
+      d.io.draw.bits.shaderPc.poke(0x3000.U);d.io.draw.bits.attributeSlots.poke(16.U);d.io.draw.bits.varyingSlots.poke(16.U)
+      d.io.draw.bits.varyingMask.poke(((BigInt(1)<<64)-1).U)
+      t.view(d.io.draw.bits.input.bindings(2),0x20000,256);d.io.draw.bits.input.bindings(2).stride.poke(256.U)
+      for(a<-1 until 16) {
+        val attr=d.io.draw.bits.input.attributes(a)
+        attr.enabled.poke(true.B);attr.bindingIndex.poke(2.U);attr.components.poke(4.U)
+        attr.format.poke(VertexInputFormat.uint32.U);attr.offset.poke((16*a).U)
+        for(c<-0 until 4)t.put(0x20000+16*a+4*c,BigInt("90000000",16)+a*4+c)
+      }
+      t.view(d.io.draw.bits.scratch,t.scratch,fullPrefix+4);t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.localBatches.expect(0.U);d.io.completion.bits.spilledBatches.expect(1.U)
+      assert(t.exports.size==1);val r=t.exports.head
+      assert(r.position==Vector(fp(1),fp(2),fp(3),fp(4)))
+      val allVaryings=(for(a<-0 until 16;c<-0 until 4)yield if(a==0)fp((c+1).toFloat)else BigInt("90000000",16)+a*4+c).toVector
+      assert(r.varyings==allVaryings);assert(t.word(t.scratch+fullPrefix)==17)
+      t.complete(0);assert(t.globalStaging>0)
+      info("VERTEX_SHADER lanes=16 warps=8 acceptedLocalX=128 instances=8 enabledAttributes=16 varyingComponents=64 prefixBytes=69120 controlledOversizeSpill=true uniformTail=true")
+    }
+  }
+}
