@@ -147,3 +147,60 @@ class ShaderPayloadMemoryRouter(config: GpuConfig,p: ShaderPayloadConfig) extend
   io.memoryBytesAccepted:=Mux(io.memoryRequest.fire,PopCount(memoryMask),0.U)
   io.splitLine:=state===State.classify && issueAllowed && classifiedLocal.orR && classifiedMemory.orR
 }
+
+/** Payload SRAM currently supports ordinary loads/stores. Reject an AMO that
+  * overlaps its bound bytes instead of modifying the unrelated global-memory
+  * copy at the same address. Retain normal AMOs through their actual reply.
+  */
+class ShaderPayloadAtomicGuard(config: GpuConfig,p: ShaderPayloadConfig) extends Module {
+  val io=IO(new Bundle {
+    val task=Input(Valid(new ShaderPayloadBinding(config,p)))
+    val cancel=Input(Bool())
+    val in=Flipped(Decoupled(new SharedAtomicRequest(config)))
+    val out=Decoupled(new SharedAtomicResponse(config))
+    val memoryRequest=Decoupled(new SharedAtomicRequest(config))
+    val memoryResponse=Flipped(Decoupled(new SharedAtomicResponse(config)))
+    val drained=Output(Bool())
+  })
+  private object State extends ChiselEnum {val idle,classify,request,response,reply=Value}
+  private val state=RegInit(State.idle)
+  private val request=Reg(new SharedAtomicRequest(config))
+  private val task=Reg(Valid(new ShaderPayloadBinding(config,p)))
+  private val canceled=RegInit(false.B)
+  private val result=Reg(new SharedAtomicResponse(config))
+  io.in.ready:=state===State.idle
+  when(io.in.fire) {
+    request:=io.in.bits;task:=io.task;canceled:=io.cancel
+    state:=State.classify
+  }
+  when(state=/=State.idle && io.cancel){canceled:=true.B}
+  private val end=task.bits.base+&task.bits.bytes
+  private val wellFormed=task.bits.base(5,0)===0.U && task.bits.bytes=/=0.U &&
+    task.bits.bytes<=p.maxPayloadBytes.U && end<=(BigInt(1)<<config.xLen).U((config.xLen+1).W) &&
+    task.bits.handle<p.slots.U && task.bits.owner<p.owners.U
+  private val overlaps=request.address<end && (request.address+&4.U)>task.bits.base
+  when(state===State.classify) {
+    when(canceled || io.cancel || (task.valid && (!wellFormed || overlaps))) {
+      result.warpId:=request.warpId;result.oldValue:=0.U;result.fault:=true.B
+      state:=State.reply
+    }.otherwise {state:=State.request}
+  }
+  io.memoryRequest.valid:=state===State.request
+  io.memoryRequest.bits:=request
+  when(io.memoryRequest.fire){state:=State.response}
+  io.memoryResponse.ready:=state===State.response
+  when(io.memoryResponse.valid) {
+    assert(state===State.response || (state===State.request && io.memoryRequest.fire),
+      "atomic reply requires an issued CU request")
+    assert(io.memoryResponse.bits.warpId===request.warpId,"atomic reply lost its warp owner")
+  }
+  when(io.memoryResponse.fire) {
+    result:=io.memoryResponse.bits
+    result.fault:=io.memoryResponse.bits.fault || canceled || io.cancel
+    result.oldValue:=Mux(io.memoryResponse.bits.fault || canceled || io.cancel,0.U,io.memoryResponse.bits.oldValue)
+    state:=State.reply
+  }
+  io.out.valid:=state===State.reply;io.out.bits:=result
+  when(io.out.fire){state:=State.idle}
+  io.drained:=state===State.idle
+}
