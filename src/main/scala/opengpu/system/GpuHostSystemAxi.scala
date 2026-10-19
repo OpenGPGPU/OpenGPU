@@ -266,7 +266,8 @@ class GpuHostSystemAxi(
       graphicsScalarFpu = enableFpuBackend && shaderConfig.enableFpu,
       sharedShader = sharedShader.map(_.copy(shaderPayload=None)), protectVmState = true,
       persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
-      useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = externalRender,nativeCompletionInfo=nativeBinnedGraphics.nonEmpty))
+      useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = externalRender,nativeCompletionInfo=nativeBinnedGraphics.nonEmpty,
+      nativeVertexInput=typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty))
     val system = Module(new GpuSystem(
       gpuConfig,
       numComputeUnits = numComputeUnits,

@@ -20,7 +20,7 @@ import opengpu.graphics.{
   OmMemoryResponse,
   RenderHost,
   RenderHostRegs,
-  TileBinHostCommandPort, TileBinHostRegs, TileBinJobCompletion, TileJobDescriptorRequest, NativeBinnedCompletionInfo
+  TileBinHostCommandPort, TileBinHostRegs, TileBinJobCompletion, TileJobDescriptorRequest, NativeBinnedCompletionInfo, NativeVertexInputCapabilities
 }
 
 /** AXI4 slave control interface for the graphics renderer.
@@ -62,12 +62,14 @@ class GpuHostAxi(
   tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
   useTileSramBlackBoxes: Boolean = false,
   externalBinnedRender: Boolean = false,
-  nativeCompletionInfo: Boolean = false
+  nativeCompletionInfo: Boolean = false,
+  nativeVertexInput: Boolean = false
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
   require(!externalBinnedRender || (unifiedCommandMmio && protectVmState && !persistentAttachments))
   require(!nativeCompletionInfo || externalBinnedRender)
+  require(!nativeVertexInput || externalBinnedRender)
   override def desiredName: String = "GpuHostAxi"
 
   val io = IO(new Bundle {
@@ -332,11 +334,15 @@ class GpuHostAxi(
     val bPending = RegInit(false.B)
     val writeError = RegInit(false.B)
 
-    // INCR burst addressing: word-at-a-time, byte increment = 1<<sizeReg
-    // (4 bytes for a 32-bit device, matching awsize/arsize = 2).  WRAP/FIXED
-    // burst modes hold the base address constant.
-    val beatAddr =
-      Mux(burstReg === 0.U, addrReg + (beat << sizeReg), addrReg)
+    // AXI FIXED=0 retains the address; INCR=1 advances by one control word.
+    // Reject unsupported sizes/WRAP/reserved bursts and 4 KiB crossings before
+    // offering any register mutation. Retain the carry to prevent high-address
+    // bursts from wrapping into the low register map.
+    val beatAddrWide=Mux(burstReg===1.U,addrReg+&(beat<<2),Cat(0.U(1.W),addrReg))
+    val beatAddr=beatAddrWide(31,0)
+    val burstEnd=addrReg(11,0)+&Mux(burstReg===1.U,(lenReg+&1.U)<<2,4.U)
+    val transferOk=sizeReg===2.U && burstReg<=1.U && burstEnd<=4096.U &&
+      (burstReg=/=0.U || lenReg<16.U)
     val lastBeat = beat === lenReg
     // RenderHost owns 0x000..0xC4, MSAA_CONFIG at 0x134, and the
     // stencil/blend registers at 0x13C..0x144; the unified block owns
@@ -351,7 +357,9 @@ class GpuHostAxi(
     val targetBinCapabilities = if (externalBinnedRender)
       beatAddr>=TileBinHostRegs.CAPABILITIES.U && beatAddr<TileBinHostRegs.END.U else false.B
     val targetNativeDetails=if(nativeCompletionInfo)beatAddr>=NativeBinnedCompletionInfo.base.U && beatAddr<NativeBinnedCompletionInfo.end.U else false.B
-    val beatOk = (beatAddr & 0x3.U) === 0.U && (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails)
+    val targetNativeInput=if(nativeVertexInput)beatAddr>=NativeVertexInputCapabilities.base.U && beatAddr<NativeVertexInputCapabilities.end.U else false.B
+    val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
+      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -367,13 +375,13 @@ class GpuHostAxi(
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
           beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails
-    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery
+    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)
     reg.req.bits.data := io.s_axi_wdata
     reg.req.bits.strb := io.s_axi_wstrb
     unified.foreach { bridge =>
-      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery
+      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput
       bridge.io.reg.req.bits.isWrite := writeActive
       bridge.io.reg.req.bits.addr := beatAddr(9, 0)
       bridge.io.reg.req.bits.data := io.s_axi_wdata
@@ -405,6 +413,9 @@ class GpuHostAxi(
         when(targetBinDiscovery) { rdata:=TileBinHostRegs.CAPABILITIES.U }
           .elsewhen(targetBinCapabilities) { rdata:=io.binCapabilityWords.get(((beatAddr-TileBinHostRegs.CAPABILITIES.U)>>2)(2,0)) }
       }
+      if(nativeVertexInput)when(targetNativeInput){
+        rdata:=VecInit(NativeVertexInputCapabilities.words.map(_.U(32.W)))(((beatAddr-NativeVertexInputCapabilities.base.U)>>2)(1,0))
+      }
       when(rBeatFire) {
         when(lastBeat) {
           readActive := false.B
@@ -413,7 +424,7 @@ class GpuHostAxi(
         }
       }
     }
-    io.s_axi_rdata := rdata
+    io.s_axi_rdata := Mux(beatOk,rdata,0.U)
 
     // ---------------------------------------------------------------------
     // Write channel.
@@ -434,7 +445,7 @@ class GpuHostAxi(
       val normalRegisterOk = unified.map(bridge =>
         Mux(targetUnified, bridge.io.reg.resp.bits.ok, reg.resp.bits.ok))
         .getOrElse(reg.resp.bits.ok)
-      val registerOk = !targetBinCapabilities && !targetBinDiscovery && normalRegisterOk
+      val registerOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && normalRegisterOk
       when(!beatOk || !registerOk) { writeError := true.B }
       when(io.s_axi_wlast) {
         bPending := true.B

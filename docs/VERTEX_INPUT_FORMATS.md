@@ -43,8 +43,9 @@ Native typed and binned record offsets, sizes and magic values are unchanged.
 Each attribute format has a dedicated 32-bit wire word; five low bits now carry
 its ID and the remaining bits are zero. Generated headers publish all 25 IDs
 and the maximum input version. Older version-1 records retain their original
-encodings. Runtime capability discovery for this format extension and complete
-native host qualification remain separate integration requirements.
+encodings. [GVI1](NATIVE_VERTEX_INPUT_CAPABILITIES.md) advertises the extension
+on native typed and binned host profiles. Complete native host qualification
+remains an integration requirement.
 
 The initial component run passes nine checks, including 217,680 exact numeric
 cases, all binary16 patterns, exhaustive normalized 8/16-bit domains, packed and
