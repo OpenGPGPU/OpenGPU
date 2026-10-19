@@ -41,6 +41,9 @@ class ShaderPayloadLease(p: ShaderPayloadConfig) extends Bundle {
   val generation=UInt(p.generationBits.W)
   val context=UInt(32.W)
 }
+class ShaderPayloadPin(p: ShaderPayloadConfig) extends ShaderPayloadLease(p) {
+  val owner=UInt(p.ownerWidth.W)
+}
 
 class ShaderPayloadControlRequest(p: ShaderPayloadConfig) extends ShaderPayloadLease(p) {
   val operation=UInt(2.W)
@@ -102,13 +105,16 @@ private class ScheduledShaderPayloadOperation(p: ShaderPayloadConfig) extends Bu
   * Oversized/full-pool spill responses reserve no SRAM; the caller owns the
   * separate memory-backed fallback protocol.
   */
-class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useBlackBoxes: Boolean=false)
+class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useBlackBoxes: Boolean=false,
+    taskPins: Int=0)
     extends Module {
+  require(taskPins>=0)
   val io=IO(new Bundle {
     val control=Vec(p.owners,Flipped(Decoupled(new ShaderPayloadControlRequest(p))))
     val controlResponse=Vec(p.owners,Decoupled(new ShaderPayloadControlResponse(p)))
     val request=Vec(p.ports,Flipped(Decoupled(new ShaderPayloadRequest(p))))
     val response=Vec(p.ports,Decoupled(new ShaderPayloadResponse(p)))
+    val pins=if(taskPins>0)Some(Input(Vec(taskPins,Valid(new ShaderPayloadPin(p)))))else None
     val reservedBytes=Output(UInt(32.W))
     val liveBytes=Output(UInt(32.W))
     val initializing=Output(Bool())
@@ -154,10 +160,13 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     val alloc=req.bits.operation===ShaderPayloadControl.allocate.U
     val release=req.bits.operation===ShaderPayloadControl.release.U
     val initializerBusy=state=/=State.idle && operation.initialize && operationSlot===slot
+    val pinned=io.pins.map(pins=>VecInit(pins.map(pin=>pin.valid && pin.bits.handle===req.bits.handle &&
+      pin.bits.generation===req.bits.generation && pin.bits.context===req.bits.context &&
+      pin.bits.owner===i.U)).asUInt.orR).getOrElse(false.B)
     val oversized=req.bits.bytes>p.maxPayloadBytes.U || req.bits.bytes===0.U
     val eligible=controlReplies(i).io.enq.ready &&
       Mux(alloc,oversized || free.orR || req.bits.allowSpill,
-        !release || !validLease || (inFlight(slot)===0.U && !initializerBusy))
+        !release || !validLease || (inFlight(slot)===0.U && !initializerBusy && !pinned))
     controls.io.in(i).valid:=req.valid && eligible
     controls.io.in(i).bits:=req.bits
     req.ready:=controls.io.in(i).ready && eligible

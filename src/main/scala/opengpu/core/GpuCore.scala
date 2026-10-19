@@ -29,6 +29,7 @@ import opengpu.core.memory.{
   SharedCacheLinePort,
   ShaderPayloadAccessPort,
   ShaderPayloadMemoryRouter,
+  ShaderPayloadAtomicGuard,
   VectorTlb,
   VectorTlbFlush,
   CacheLineInvalidate,
@@ -223,8 +224,6 @@ class GpuCore(
   vectorMemoryRouter.io.localResponse <> sharedMemory.io.out
   sharedMemory.io.atomicIn <> scalar.io.sharedAtomicRequest
   scalar.io.sharedAtomicResponse <> sharedMemory.io.atomicOut
-  io.globalAtomicRequest <> scalar.io.globalAtomicRequest
-  scalar.io.globalAtomicResponse <> io.globalAtomicResponse
   vector.io.memoryResponse <> vectorMemoryRouter.io.out
   sharedCachePort.io.vectorRequest <> vectorCoalescer.io.cacheRequest
   vectorCoalescer.io.cacheResponse <> sharedCachePort.io.vectorResponse
@@ -233,14 +232,26 @@ class GpuCore(
   shaderPayload match {
     case Some(p)=>
       val router=Module(new ShaderPayloadMemoryRouter(config,p))
+      val atomics=Module(new ShaderPayloadAtomicGuard(config,p))
       router.io.in <> sharedCachePort.io.sharedRequest
       sharedCachePort.io.sharedResponse <> router.io.out
       vectorTlb.io.in <> router.io.memoryRequest
       router.io.memoryResponse <> vectorTlb.io.out
-      router.io.payload <> io.payload.get
+      router.io.payload.task:=io.payload.get.task
+      router.io.payload.cancel:=io.payload.get.cancel
+      io.payload.get.request <> router.io.payload.request
+      router.io.payload.response <> io.payload.get.response
+      atomics.io.task:=io.payload.get.task;atomics.io.cancel:=io.payload.get.cancel
+      atomics.io.in <> scalar.io.globalAtomicRequest
+      scalar.io.globalAtomicResponse <> atomics.io.out
+      io.globalAtomicRequest <> atomics.io.memoryRequest
+      atomics.io.memoryResponse <> io.globalAtomicResponse
+      io.payload.get.drained:=router.io.payload.drained && atomics.io.drained
     case None=>
       vectorTlb.io.in <> sharedCachePort.io.sharedRequest
       sharedCachePort.io.sharedResponse <> vectorTlb.io.out
+      io.globalAtomicRequest <> scalar.io.globalAtomicRequest
+      scalar.io.globalAtomicResponse <> io.globalAtomicResponse
   }
   vectorDataCache.io.in <> vectorTlb.io.physicalRequest
   vectorTlb.io.physicalResponse <> vectorDataCache.io.out

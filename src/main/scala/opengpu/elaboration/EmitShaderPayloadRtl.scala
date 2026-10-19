@@ -3,6 +3,7 @@ package opengpu.elaboration
 import circt.stage.ChiselStage
 import opengpu.config.MobileGpuConfig
 import opengpu.core.GpuComputeUnit
+import opengpu.system.GpuSystem
 import opengpu.graphics.{BankedShaderPayloadStore,ShaderPayloadConfig}
 
 /** Storage or one CU's optional payload port; shared task/renderer binding is
@@ -18,7 +19,10 @@ object EmitShaderPayloadRtl {
       owners=owners,ports=owners+mobile.computeUnits)
     val macros = !args.contains("--behavioral")
     ChiselStage.emitSystemVerilogFile(
-      if(args.contains("--cu"))new GpuComputeUnit(mobile.execution,useBlackBoxes=macros,
+      if(args.contains("--system"))new GpuSystem(mobile.execution,numComputeUnits=mobile.computeUnits,
+        useBlackBoxes=macros,enableFpuBackend=true,enableUnifiedCommands=true,
+        enableGraphicsKernels=true,shaderPayload=Some(p))
+      else if(args.contains("--cu"))new GpuComputeUnit(mobile.execution,useBlackBoxes=macros,
         enableFpuBackend=true,shaderPayload=Some(p))
       else new BankedShaderPayloadStore(p,useBlackBoxes=macros),
       Array("--target-dir",target),

@@ -14,7 +14,7 @@ import opengpu.core.memory._
 import opengpu.core.trap.CoreTrapEvent
 import opengpu.dispatch._
 import opengpu.dma._
-import opengpu.graphics.{MsaaResolveEngine, OmWordToLinePort}
+import opengpu.graphics.{MsaaResolveEngine, OmWordToLinePort,ShaderPayloadConfig,BankedShaderPayloadStore,ShaderPayloadControl}
 import opengpu.util.{CarrySaveAccumulator, CarrySaveEventCounter}
 
 class GpuPerformanceCounters extends Bundle {
@@ -66,9 +66,12 @@ class GpuSystem(
   instructionCacheMissEntries: Int = 4,
   vectorCacheSets: Int = 64,
   vectorCacheWays: Int = 2,
-  enableGraphicsKernels: Boolean = false
+  enableGraphicsKernels: Boolean = false,
+  shaderPayload: Option[ShaderPayloadConfig] = None
 ) extends Module {
   require(numComputeUnits > 0)
+  require(shaderPayload.isEmpty || enableGraphicsKernels,"local shader payloads require the shared graphics task interface")
+  shaderPayload.foreach(p=>require(p.ports>=p.owners+numComputeUnits,"reserve independent staging and CU payload response ports"))
   require(graphicsHostTransactions > 0 && isPow2(graphicsHostTransactions),
     "graphics-host transaction count must be a positive power of two")
   private val totalTransactions = numComputeUnits * transactionsPerCu
@@ -99,6 +102,8 @@ class GpuSystem(
   val io = IO(new Bundle {
     val graphicsKernels = if (enableGraphicsKernels)
       Some(new SharedCuGraphicsPort(config, commandIdWidth, numComputeUnits)) else None
+    val graphicsPayload=shaderPayload.map(p=>Input(Valid(new ShaderPayloadBinding(config,p))))
+    val payloadManagement=shaderPayload.map(p=>new ShaderPayloadManagementPort(p))
     val command = Flipped(Decoupled(
       new KernelCommand(config, commandIdWidth)))
     val commandCompletion = Decoupled(
@@ -211,7 +216,7 @@ class GpuSystem(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
     completionQueueDepth = config.completionQueueDepth))
   private val dispatcher = Module(new SharedCuKernelDispatcher(
-    config, numComputeUnits, commandIdWidth))
+    config, numComputeUnits, commandIdWidth,shaderPayload))
   private val memory = Module(new SharedComputeMemoryInterconnect(
     config, numComputeUnits, 64, transactionsPerCu))
   private val l2 = Module(new SharedL2Cache(
@@ -233,8 +238,9 @@ class GpuSystem(
         instructionCacheMissEntries,
         vectorCacheSets,
         vectorCacheWays,
-        finishOnTrap = true))
+        finishOnTrap = true,shaderPayload=shaderPayload))
   }
+  private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(p,useBlackBoxes,numComputeUnits+1)))
   // The generic compute system has no graphics sampler. Keep the optional
   // texture-instruction sideband quiescent; graphics top levels connect it to
   // TexSampleUnit instead.
@@ -294,6 +300,39 @@ class GpuSystem(
   commandProcessor.io.dispatchCompletion <> dispatcher.io.completion
   private val graphicsDispatchBlocked = WireDefault(false.B)
   private val graphicsCacheDrained = WireDefault(true.B)
+  private val payloadContextDrained=WireDefault(true.B)
+  private val payloadInputsIdle=WireDefault(true.B)
+  shaderPayload.foreach { p=>
+    val pool=payloadStore.get
+    val producer=io.payloadManagement.get
+    dispatcher.io.graphicsPayload.get:=io.graphicsPayload.get
+    pool.io.pins.get:=dispatcher.io.payloadPins.get
+    for(i <- 0 until p.owners) {
+      val command=producer.control(i)
+      val allowed= !graphicsDispatchBlocked ||
+        (command.bits.operation=/=ShaderPayloadControl.allocate.U && !pool.io.drained)
+      pool.io.control(i).valid:=command.valid && allowed
+      pool.io.control(i).bits:=command.bits
+      command.ready:=pool.io.control(i).ready && allowed
+      producer.controlResponse(i)<>pool.io.controlResponse(i)
+      pool.io.request(i).valid:=producer.request(i).valid && !graphicsDispatchBlocked
+      pool.io.request(i).bits:=producer.request(i).bits
+      pool.io.request(i).bits.owner:=i.U
+      producer.request(i).ready:=pool.io.request(i).ready && !graphicsDispatchBlocked
+      producer.response(i)<>pool.io.response(i)
+    }
+    for(i <- p.owners+numComputeUnits until p.ports) {
+      pool.io.request(i).valid:=false.B
+      pool.io.request(i).bits:=0.U.asTypeOf(pool.io.request(i).bits)
+      pool.io.response(i).ready:=true.B
+    }
+    producer.reservedBytes:=pool.io.reservedBytes
+    producer.liveBytes:=pool.io.liveBytes
+    producer.drained:=pool.io.drained
+    payloadContextDrained:=pool.io.drained
+    payloadInputsIdle:= !producer.control.map(_.valid).reduce(_ || _) &&
+      !producer.request.map(_.valid).reduce(_ || _) && !io.graphicsKernels.get.launch.valid
+  }
   if (enableGraphicsKernels) {
     val graphics = io.graphicsKernels.get
     dispatcher.io.graphicsLaunch.valid := graphics.launch.valid && !graphicsDispatchBlocked
@@ -445,10 +484,10 @@ class GpuSystem(
   private val contextDrained = io.graphicsDrained && !copyEngine.io.busy && !fillEngine.io.busy &&
     !stridedCopyEngine.io.busy && !resolveEngine.io.busy &&
     !resolveActive && !resolveDonePending &&
-    !commandProcessor.io.busy && !dispatcher.io.busy.orR && graphicsCacheDrained &&
+    !commandProcessor.io.busy && !dispatcher.io.busy.orR && graphicsCacheDrained && payloadContextDrained &&
     !dispatcher.io.graphicsCompletion.valid &&
     l2.io.drained && !commandRouter.io.completion.valid
-  io.vmContextIdle := contextDrained && !commandRouter.io.busy &&
+  io.vmContextIdle := contextDrained && payloadInputsIdle && !commandRouter.io.busy &&
     !io.command.valid && !io.gpuCommand.valid && !io.copyDescriptor.valid &&
     !io.fillDescriptor.valid && !io.stridedCopyDescriptor.valid &&
     !io.graphicsHostRequest.valid && !io.graphicsShaderRequest.valid &&
@@ -845,6 +884,16 @@ class GpuSystem(
 
   for (cu <- 0 until numComputeUnits) {
     val unit = computeUnits(cu)
+    shaderPayload.foreach { p=>
+      val abort=RegInit(false.B)
+      when(dispatcher.io.cuLaunch(cu).fire){abort:=false.B}
+        .elsewhen(unit.io.trap.valid && dispatcher.io.graphicsOwner(cu)){abort:=true.B}
+      unit.io.payload.get.task:=dispatcher.io.cuPayload.get(cu)
+      unit.io.payload.get.cancel:=abort || (unit.io.trap.valid && dispatcher.io.graphicsOwner(cu))
+      dispatcher.io.cuPayloadDrained.get(cu):=unit.io.payload.get.drained
+      payloadStore.get.io.request(p.owners+cu)<>unit.io.payload.get.request
+      unit.io.payload.get.response<>payloadStore.get.io.response(p.owners+cu)
+    }
     unit.io.kernel <> dispatcher.io.cuLaunch(cu)
     dispatcher.io.cuCompletion(cu) <> unit.io.completion
     memory.io.cuRequest(cu) <> unit.io.memoryRequest
