@@ -2966,3 +2966,13 @@ are still open. The default renderer profile remains scalar.
 This functional checkpoint makes no new PPA claim. The synthesis-only run for
 the two-slot Mobile profile uses the original 1 GHz and 25% I/O constraints;
 its final mapping and all-I/O setup results will be recorded separately.
+
+The completed [two-slot synthesis checkpoint](performance/mobile-banked-double-attachments-2026-10-19.json)
+qualifies source commit `3f458d2`, with all 491 frozen source/build/ABI hashes
+matching that committed tree. Complete mapping passes with no omitted operators
+or undriven logic, but setup fails at the unchanged 1 GHz ASAP7 TC/SLVT and
+25% I/O constraints: -164.141 ps core and -85.471 ps I/O slack. The design maps
+to 477,562 standard cells occupying 63,263.2 µm² and 32 SRAM macros occupying
+13,287.6 µm². Default-activity power is 0.801501 W. These are two-slot component
+results, not an optimization delta against the earlier single-slot profile.
+Timing remains open; no new place/route or whole-GPU performance claim is made.
