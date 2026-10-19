@@ -151,3 +151,21 @@ The production RTL and all selected compatibility sources are identical. GNX1
 and color each have separate passing evidence; their combined full-host runtime
 qualification is still pending. Physical provenance, translated aliases, full
 Mobile workloads/rates/budgets and H0-H8 remain open.
+
+
+## Combined GNC1/GNX1/color qualification
+
+The combined profile passes **30 checks across six suites** on 621 frozen source/
+ABI files. Actual local/global shaders, cached consumers, empty/indexed frames,
+1x/4x MSAA and exact guarded four-MRT/D32F source/resolve images pass with the
+bounded clear decoder and registered maintenance writes. All eight native fault
+cases and both reset phases pass with GNX1 stage/status/tile records, zeroed
+invalid snapshots, zero compute/reset records, protected VM state and exact
+healthy reuse. Legacy typed graphics and AXI/MMIO controls also pass.
+
+Three ABI checks, the independent C11 probe and the combined 768-file default
+four-CU host emission pass. See the [combined source, log and RTL evidence](performance/mobile-native-binned-combined-host-2026-10-20.json).
+This closes the earlier pending combination within the GNC1 physical-view profile.
+GNC2 image translation/permissions are separate ongoing work. Physical provenance,
+translated aliases, full Mobile runtime/rates/budgets, new timing/power and H0-H8
+remain open. SRAM/hierarchy counts are structural, and PPA remains synthesis only.

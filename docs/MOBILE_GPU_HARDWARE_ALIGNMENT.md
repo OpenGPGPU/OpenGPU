@@ -5154,3 +5154,21 @@ compatibility checks use the same production RTL. The default 768-file four-CU
 host emission is structural evidence. Combined GNX1/color host qualification,
 physical provenance, translated aliases, full Mobile rates/budgets and H0-H8
 remain open. PPA remains synthesis only.
+
+
+## Combined native host, diagnostics and color qualification (2026-10-20)
+
+The [30-check combined checkpoint](performance/mobile-native-binned-combined-host-2026-10-20.json)
+passes on 621 frozen source/ABI files. GNC1 native submission, GNX1 completion
+diagnostics and the bounded clear/registered maintenance pipeline now pass
+actual local/global shader, cached publication, indexed/empty frame, 1x/4x MSAA,
+eight fault/reuse and both reset/drain cases together. Nested vertex faults and
+image fault tiles remain attributed; stale details cannot survive POP/reset or
+be inherited by compute results. Legacy typed rendering and AXI/MMIO controls
+pass in the same run.
+
+All three ABI checks, C11/schema evidence and the combined 768-file four-CU host
+emission pass. These tests use small runtime configurations and trusted physical
+GNC1 image views. GNC2 image-VM protection, physical provenance/alias admission,
+full Mobile workloads/rates/budgets and H0-H8 remain open. The separate color
+synthesis is still pending; no new Fmax, area or power is established here.
