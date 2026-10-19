@@ -87,6 +87,10 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.Fp32FragmentInterpolator(),stageArgs,firtoolArgs)
       case "mobile-fp32-center-raster" =>
         ChiselStage.emitSystemVerilogFile(new TriangleRasterizer(GraphicsConfig(),quadMode=true,pixelCenter=true),stageArgs,firtoolArgs)
+      case "mobile-point-line-coverage" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PointLineRasterizer(),stageArgs,firtoolArgs)
+      case "mobile-fp32-primitive-raster" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.Fp32PrimitiveRasterStage(),stageArgs,firtoolArgs)
       case "mobile-fp32-triangle-raster" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.Fp32TriangleRasterStage(),stageArgs,firtoolArgs)
       case "mobile-vertex-raster" =>

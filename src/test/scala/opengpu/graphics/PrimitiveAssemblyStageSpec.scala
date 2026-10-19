@@ -21,8 +21,10 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
   private case class V(ordinal: Int,instance: Int,id: Int,restart: Boolean=false,degenerate: Boolean=false) {
     def position(c: Int): BigInt=BigInt("7fc00000",16)+instance*4096+(if(degenerate)id else ordinal)*4+c
     def varying(c: Int): BigInt=BigInt("80000000",16)+instance*65536+ordinal*64+c
+    def pointSize: BigInt=BigInt("3f800000",16)+ordinal*0x10000+instance*0x80000
+    def pointSizeWritten: Boolean= !restart && ordinal%2==1
     def bits(flat: BigInt,provoking: V): BigInt=pack(
-      identity->96,BigInt(ordinal)->32,BigInt(id)->32,BigInt(instance)->32,BigInt(2)->32,BigInt(if(restart)1 else 0)->1,
+      identity->96,BigInt(ordinal)->32,BigInt(id)->32,BigInt(instance)->32,BigInt(2)->32,BigInt(if(restart)1 else 0)->1,pointSize->32,BigInt(if(pointSizeWritten)1 else 0)->1,
       vector((0 until 4).map(position),32)->128,
       vector((0 until 64).map(c=>if(flat.testBit(c))provoking.varying(c)else varying(c)),32)->2048)
   }
@@ -51,7 +53,7 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
     (result.toVector,discarded)
   }
   private def primitiveBits(primitive: Prim,id: Int,sequence: Int,mode: Int,flat: BigInt): BigInt={
-    val values=primitive.values;val kind=values.size-1;val vertexWidth=96+32*4+1+128+2048
+    val values=primitive.values;val kind=values.size-1;val vertexWidth=96+32*4+1+32+1+128+2048
     pack(identity->96,BigInt(sequence)->64,BigInt(id)->32,BigInt(values.last.instance)->32,BigInt(2)->32,
       BigInt(mode)->4,BigInt(kind)->2,BigInt(values.size)->2,BigInt(values.size-1)->2,BigInt(if(primitive.closing)1 else 0)->1,
       BigInt(16)->5,flat->64,
@@ -84,7 +86,7 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
     }
     def offer(v: V): Unit={
       val r=d.io.in.bits;r.identity.context.poke(7.U);r.identity.pass.poke(8.U);r.identity.generation.poke(9.U)
-      r.ordinal.poke(v.ordinal.U);r.vertexId.poke(v.id.U);r.instanceId.poke(v.instance.U);r.baseInstance.poke(2.U);r.restart.poke(v.restart.B)
+      r.ordinal.poke(v.ordinal.U);r.vertexId.poke(v.id.U);r.instanceId.poke(v.instance.U);r.baseInstance.poke(2.U);r.restart.poke(v.restart.B);r.pointSize.poke(v.pointSize.U);r.pointSizeWritten.poke(v.pointSizeWritten.B)
       for(c<-0 until 4)r.position(c).poke(v.position(c).U)
       for(c<-0 until 64)r.varyings(c/4)(c%4).poke(v.varying(c).U)
       d.io.in.valid.poke(true.B)

@@ -19,7 +19,7 @@ class VertexRasterCompletion extends Bundle {
   val faultPartIndex=UInt(3.W);val faultX=SInt(32.W);val faultY=SInt(32.W);val faultLane=UInt(2.W)
 }
 
-/** Shared-CU GPU vertex execution through clipping, viewport, triangle raster
+/** Shared-CU GPU vertex execution through clipping, viewport, primitive raster
   * and general FP32 quad interpolation. This owner retains VM context through
   * final fragment input and held completion, after upstream payload release.
   * Native bin allocation and fragment-shader launch are separate consumers.
@@ -39,7 +39,7 @@ class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageCon
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val source=Module(new VertexViewportPipeline(config,p,shared,viewport,useSramBlackBoxes,payload,payloadOwner))
-  private val raster=Module(new Fp32TriangleRasterStage(p,g))
+  private val raster=Module(new Fp32PrimitiveRasterStage(p,g))
   private val descriptor=Reg(new VertexRasterDraw(p));private val summary=Reg(new VertexViewportCompletion)
   private val result=Reg(new VertexRasterCompletion)
   private val active=RegInit(false.B);private val offered=RegInit(false.B);private val started=RegInit(false.B)
@@ -59,7 +59,7 @@ class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageCon
   when(io.draw.fire){
     descriptor:=io.draw.bits;active:=true.B;offered:=true.B;started:=false.B;sourceDone:=false.B;done:=false.B
     val topology=io.draw.bits.vertex.geometry.topology
-    status:=Mux(Fp32RasterState.legal(io.draw.bits.raster,g) && topology>=4.U && topology<=6.U,0.U,1.U)
+    status:=Mux(Fp32RasterState.legal(io.draw.bits.raster,g) && topology<=6.U,0.U,1.U)
     received:=0.U;rasterParts:=0.U;culled:=0.U;quads:=0.U;covered:=0.U;helpers:=0.U;samples:=0.U;raw:=0.U;discarded:=0.U;operations:=0.U
     arithmeticFlags:=0.U;packingFlags:=0.U;fault:=false.B;interpolationFault:=false.B
     faultSequence:=0.U;faultPrimitive:=0.U;faultInstance:=0.U;faultPart:=0.U;faultX:=0.S;faultY:=0.S;faultLane:=0.U

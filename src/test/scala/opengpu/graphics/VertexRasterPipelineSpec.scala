@@ -80,6 +80,8 @@ class VertexRasterPipelineSpec extends AnyFlatSpec {
       addi(5,7,4*32),vm(5,1,false),(BigInt(1)<<25)|(BigInt(1)<<20)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,
       addi(6,7,14*32),vm(6,1,true),BigInt("30500073",16));code.toVector
   }
+  private val pointProgram=program.dropRight(1).map(w=>if(w==addi(13,1,480))addi(13,1,512)else w)++
+    Seq(addi(5,7,3*32),vm(5,1,false),addi(6,7,15*32),vm(6,1,true),BigInt("30500073",16))
   private case class Expected(values: Vector[V],sequence: Int,primitiveId: Int,instance: Int,provoking: Int,part: Int,parts: Int,clipped: Boolean)
   private def reference(kind: Int): Vector[Expected]={
     val out=mutable.ArrayBuffer.empty[Expected];val perInstance=12/(kind+1)
@@ -94,13 +96,15 @@ class VertexRasterPipelineSpec extends AnyFlatSpec {
     out.toVector
   }
   private val rasterConfig=GraphicsConfig(screenWidth=8,screenHeight=8)
-  private case class FragmentExpected(quad: TriangleRasterReference.Quad,sequence: Int,primitiveId: Int,instance: Int,part: Int)
-  private def fragmentReference(view: View,settings: TriangleRasterReference.Settings): Vector[FragmentExpected]={
-    reference(2).flatMap { e=>
+  private case class FragmentExpected(quad: TriangleRasterReference.Quad,sequence: Int,primitiveId: Int,instance: Int,part: Int,point: Option[(BigInt,BigInt)]=None,size: Double=1)
+  private def fragmentReference(view: View,settings: TriangleRasterReference.Settings,kind: Int=2,shaderSize: Boolean=false): Vector[FragmentExpected]={
+    reference(kind).flatMap { e=>
       val prepared=e.values.map(v=>Fp32ViewportReference.project(v.position,view,Fp32ViewportConfig()))
       val data=FragmentInterpolationReference.Data(prepared.map(_.reciprocal),prepared.map(_.depth),e.values.map(_.varyings),8,1)
       val triangle=TriangleRasterReference.Triangle(prepared.map(v=>(v.x,v.y)),data)
-      TriangleRasterReference.raster(triangle,settings,rasterConfig).map(q=>FragmentExpected(q,e.sequence,e.primitiveId,e.instance,e.part))
+      val size=if(shaderSize)java.lang.Float.intBitsToFloat(e.values.head.position(3).toInt).toDouble else 1.0
+      val quads=if(kind==2)TriangleRasterReference.raster(triangle,settings,rasterConfig)else PointLineReference.raster(triangle,kind,settings,rasterConfig,PointLineReference.Sizes(point=size))
+      quads.map(q=>FragmentExpected(q,e.sequence,e.primitiveId,e.instance,e.part,if(kind==0)Some((prepared.head.x,prepared.head.y))else None,size))
     }
   }
   private class Driver(val d: VertexRasterHarness) {
@@ -108,6 +112,7 @@ class VertexRasterPipelineSpec extends AnyFlatSpec {
     val memory=mutable.Map.empty[BigInt,BigInt]
     def put(address: BigInt,value: BigInt): Unit=for(b<-0 until 4)memory(address+b)=(value>>(8*b))&255
     program.zipWithIndex.foreach{case(w,i)=>put(0x1000+4*i,w)}
+    pointProgram.zipWithIndex.foreach{case(w,i)=>put(0x3000+4*i,w)};put(0x120000+512,17)
     for(i<-positions.indices;c<-0 until 4)put(0x4000+i*16+c*4,positions(i)(c))
     for(i<-0 until 12)memory(BigInt(0x6000+i))=i
     for(i<-0 until 512 by 4)put(0x100000+i,BigInt("deadbeef",16));put(0x100000+480,17)
@@ -122,7 +127,15 @@ class VertexRasterPipelineSpec extends AnyFlatSpec {
         val bits=d.io.out.bits.peek().litValue;held.foreach(v=>assert(v==bits,"held clipped output changed"))
         if(d.io.out.ready.peek().litToBoolean) {
           assert(accepted<expected.size);val e=expected(accepted);val o=d.io.out.bits
+          if(kind==0){val uniform=(0 until 4).foldLeft(BigInt(0))((a,b)=>a|(memory.getOrElse(BigInt(0x120000+512+b),BigInt(0))<<(8*b)))
+            assert(uniform==17,s"point uniform memory changed: $uniform")
+            for(i<-0 until 4)assert(o.values.lanes(i).varyings(0)(3).peek().litValue==e.quad.lanes(i).values(3),
+              s"point varying mismatch sequence=${e.sequence} lane=$i actual=${o.values.lanes(i).varyings(0)(3).peek().litValue} expected=${e.quad.lanes(i).values(3)} uniform=$uniform")}
           TriangleRasterReference.check(o,e.quad,settings,e.sequence,e.primitiveId,e.instance)
+          o.values.primitiveKind.expect(kind.U)
+          e.point.foreach { center=>for(i<-0 until 4;c<-0 until 2){
+            val q=e.quad.samples(i);val want=PointLineReference.pointCoord(center,q.x,q.y,PointLineReference.Sizes(point=e.size),rasterConfig)(c)
+            o.values.lanes(i).pointCoord(c).expect(want.U)}}
           o.values.identity.context.expect(7.U);o.values.identity.pass.expect(8.U);o.values.identity.generation.expect(9.U)
           o.values.partIndex.expect(e.part.U);o.values.flatMask.expect(8.U);o.values.varyingSlots.expect(1.U)
 
@@ -147,20 +160,20 @@ class VertexRasterPipelineSpec extends AnyFlatSpec {
       d.clock.step();cycle+=1
     }
     def until(condition: => Boolean): Unit={var n=0;while(!condition && n<1000000){tick();n+=1};assert(condition,s"vertex raster stalled cycle=$cycle outputs=$accepted")}
-    def descriptor(primitiveKind: Int=2): Unit={
-      kind=primitiveKind;accepted=0;expected=fragmentReference(view,settings);val packet=d.io.draw.bits;zero(packet);val q=packet.vertex.geometry
+    def descriptor(primitiveKind: Int=2,shaderSize: Boolean=false): Unit={
+      kind=primitiveKind;accepted=0;expected=fragmentReference(view,settings,kind,shaderSize);val packet=d.io.draw.bits;zero(packet);val q=packet.vertex.geometry
       TriangleRasterReference.state(packet.raster,settings)
       packet.vertex.viewport.version.poke(1.U);packet.vertex.viewport.x.poke(view.x.S);packet.vertex.viewport.y.poke(view.y.S)
       packet.vertex.viewport.extentX.poke(view.width.U);packet.vertex.viewport.extentY.poke(view.height.U)
       packet.vertex.viewport.nearDepth.poke(view.near.U);packet.vertex.viewport.farDepth.poke(view.far.U)
       q.topology.poke((if(kind==0)0 else if(kind==1)1 else 4).U);q.flatMask.poke(8.U)
-      val v=q.vertex;v.version.poke(1.U);v.shaderPc.poke(0x1000.U);v.attributeSlots.poke(1.U);v.varyingSlots.poke(1.U);v.varyingMask.poke(15.U)
+      val v=q.vertex;v.version.poke((if(shaderSize)2 else 1).U);v.shaderPc.poke((if(shaderSize)0x3000 else 0x1000).U);v.attributeSlots.poke(1.U);v.varyingSlots.poke(1.U);v.varyingMask.poke(15.U)
       v.input.version.poke(1.U);v.input.identity.context.poke(7.U);v.input.identity.pass.poke(8.U);v.input.identity.generation.poke(9.U)
       v.input.count.poke(12.U);v.input.instances.poke(2.U);v.input.baseInstance.poke(3.U);v.input.indexFormat.poke(1.U)
       def bufferView(s: VertexInputView,base: Int,bytes: Int): Unit={s.base.poke(base.U);s.limit.poke((base+bytes).U);s.allocationBase.poke(base.U);s.allocationLimit.poke(((base+bytes+63)& ~63).U)}
       bufferView(v.input.indices,0x6000,12);bufferView(v.input.bindings(0),0x4000,192);v.input.bindings(0).stride.poke(16.U)
       v.input.attributes(0).enabled.poke(true.B);v.input.attributes(0).components.poke(4.U);v.input.attributes(0).format.poke(VertexInputFormat.float32.U)
-      bufferView(v.scratch,0x100000,484);v.sampler.texWidth.poke(1.U);v.sampler.texHeight.poke(1.U)
+      bufferView(v.scratch,if(shaderSize)0x120000 else 0x100000,if(shaderSize)516 else 484);v.sampler.texWidth.poke(1.U);v.sampler.texHeight.poke(1.U)
     }
     def submit(): Unit={d.io.draw.valid.poke(true.B);until(d.io.draw.ready.peek().litToBoolean);tick();d.io.draw.valid.poke(false.B)}
     def finish(status: Int=0): Unit={
@@ -200,7 +213,7 @@ class VertexRasterPipelineSpec extends AnyFlatSpec {
       t.descriptor();t.expected=Vector.empty;t.submit();d.io.poolCancel.poke(true.B)
       t.until(d.io.completion.valid.peek().litToBoolean);d.io.poolCancel.poke(false.B);t.finish(4);assert(t.requests==0)
       val invalid=Seq[()=>Unit](()=>d.io.draw.bits.raster.version.poke(0.U),()=>d.io.draw.bits.raster.sampleMode.poke(3.U),
-        ()=>d.io.draw.bits.vertex.geometry.topology.poke(0.U))
+        ()=>d.io.draw.bits.vertex.geometry.topology.poke(7.U))
       for(change<-invalid){t.descriptor();t.expected=Vector.empty;change();t.submit();t.finish(1);assert(t.requests==0)}
       t.descriptor();t.expected=Vector.empty;d.io.draw.bits.vertex.viewport.extentX.poke(0.U);t.submit()
       t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.rasterParts.expect(0.U)
@@ -231,4 +244,17 @@ class VertexRasterPipelineSpec extends AnyFlatSpec {
       info("VERTEX_RASTER upstreamFaults=2 firstAndLaterPrimitive=true nestedAttribution=true noFaultedPrimitiveOutput=true rasterDrain=true healthyReuse=true")
     }
   }
+  for(local<-Seq(true,false))
+  it should s"rasterize real shared-CU points with shader sizes and clipped lines with local=$local" in {
+    simulate(new VertexRasterHarness(local)){d=>val t=new Driver(d);var quads=0
+      for(kind<-0 to 1;mode<-Seq(0,2)){
+        t.settings=TriangleRasterReference.Settings(mode=mode);t.descriptor(kind,shaderSize=kind==0);assert(t.expected.nonEmpty);t.submit()
+        t.until(d.io.completion.valid.peek().litToBoolean);val r=d.io.completion.bits
+        r.source.source.source.source.vertices.expect(24.U);r.inputParts.expect(reference(kind).size.U);r.rasterParts.expect(reference(kind).size.U)
+        assert(t.accepted==t.expected.size);quads+=t.accepted;t.finish()
+      }
+      info(s"VERTEX_POINT_LINE local=$local CUs=2 draws=4 quads=$quads indexedInstanced=true shaderPointSizeV2=true pointCoord=true clippedLine=true perspectiveLine=true flatRaw=true modes1x4x=true VMDrain=true")
+    }
+  }
+
 }

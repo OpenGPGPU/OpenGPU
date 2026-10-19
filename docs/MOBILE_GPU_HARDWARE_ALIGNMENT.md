@@ -23,7 +23,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 | Shader execution | Shared compute CUs already execute vertex and fragment tasks; vector FP32 arithmetic, including FMA, is connected | Improve task input/output transport, occupancy, control-flow/resource contracts and sustained issue/writeback throughput |
 | Configuration | `GpuConfig` defaults to 16 lanes and eight warps; the mobile CU-count constant is four | One compute/graphics execution configuration; discoverable resource limits and explicit supported configuration combinations |
 | Interstage transport | Eligible Mobile fragments default to local payloads through the parallel/tile/AXI hierarchy; a composed generic vertex/raster/fragment owner qualifies two-client payload and shared-CU task lifetime | Integrate native bin/host and typed attachment ownership; budget composed SRAM and qualify broader resources and sustained transport |
-| Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly, FP32 clipping/viewport, owned triangle raster/interpolation and fragment shaders connect GPU vertex work to ordered typed raw exports | Native geometry submission/binning/typed attachment ownership, qualifier closure, point/line rasterization and post-transform reuse |
+| Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly, FP32 clipping/viewport, owned point/line/triangle raster/interpolation and fragment shaders connect GPU vertex work to ordered typed exports and bounded image publication | Native geometry submission/binning/resource ownership, qualifier/guard-band closure and post-transform reuse |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
 | Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Integrated synthesis/timing, legal early rejection, representative throughput, multiple color outputs and complete format semantics |
@@ -4512,3 +4512,91 @@ shader-resource alias ownership, texture/CPU dependency closure, dithering,
 remaining primitive/texture/API semantics, workload/rate qualification,
 synthesis PPA and the original H0–H8 gates remain open. This closes the typed
 pass's internal resolve/publication gap without claiming full hardware completion.
+
+### Point and line rasterization through shared-CU image passes, 2026-10-19
+
+The [point/line checkpoint](performance/mobile-point-line-raster-2026-10-19.json)
+replaces the triangle-only draw consumer with one primitive raster owner. Points,
+line lists/loops/strips and triangles use the existing assembled/clipped/window
+records. The owner selects triangle or point/line coverage and shares one scalar
+interpolation engine; it does not instantiate a second shader CU or interpolation
+FMA/divider pair. The triangle-only wrapper retains its constructor and triangle-only admission
+policy. Native geometry/bin/host admission remains separate work.
+
+Point coverage uses a square centered on the subpixel window position, with
+independent coverage bits at the existing 1x/2x/4x sample locations. Draw point
+size and line width are FP32, clamped to the internal supported range [1,64]; zero
+in the internal draw state selects the compatible default of one. A shader-written
+point size takes precedence. Nonpositive/NaN shader sizes use a deterministic
+minimum-size policy for their undefined case; positive infinity clamps to the
+maximum. Point and line fragments are front-facing and ignore polygon culling.
+The coverage engine applies runtime screen/scissor bounds and preserves every
+helper lane in each nonempty 2x2 quad.
+
+Basic lines use the diamond-exit rule with symbolic epsilon and epsilon-squared
+endpoint perturbations. Rational interval comparisons retain the boundary terms
+rather than choosing a finite perturbation that could alter a difficult endpoint.
+The final endpoint is excluded, so connected segments do not shade it twice.
+Aliased widths round to nearest/even integer; wide lines offset by (w-1)/2 in the
+minor direction and replicate the resulting coverage. Multisample lines use the
+finite butt rectangle, tested by center projection and squared cross distance,
+with per-sample masks. Integer coverage arithmetic is serialized, with a retained
+quad offer and no private SRAM. It is a correctness profile, not the proposed
+one-quad-per-cycle throughput qualification.
+
+Line interpolation uses the pixel-center projection onto the original segment,
+with two endpoint weights and a zero third weight. Reciprocal W and smooth data
+remain perspective-correct; depth is linear in screen space and flat components
+retain the provoking value. Unused vertex records cannot inject NaNs into the
+weighted sum. Points copy their raw vertex values, including flat/NaN payloads,
+and evaluate gl_PointCoord from the unrounded viewport position. A small
+fractional residual is combined with the exact integer screen-center difference,
+keeping a large integer viewport origin out of FP32 cancellation. Point-coordinate
+arithmetic reuses the same scalar service and retains accepted work on cancel.
+
+Two optional internal shader ABI versions make these values executable on the
+shared CUs. Version 1 keeps all existing array offsets and uniform locations.
+Vertex ABI version 2 appends one FP32 point-size array after the position and
+varying outputs; its prefix includes that array. Fragment ABI version 2 appends
+pointCoord.xy after the varying input arrays and puts primitive kind in flag
+bits 6:5. Fragment outputs and uniforms follow the extended input prefix. The
+existing flag bits, typed color/depth/control outputs and legacy native vertex/
+fragment ABIs are unchanged. No CU instruction encoding changes. A version switch
+changes the uniform prefix, so resource bindings must describe the corresponding
+layout; the tests use independent immutable uniform views for the two versions.
+
+Signed64 bounds rejection precedes coordinate narrowing. Unsafe overlapping
+coordinates or unrepresentable interpolation weights produce a numeric fault
+instead of wrapping. Invalid state/layouts produce no partial raster output.
+The enclosing vertex/fragment/image owners retain primitive order, payload and VM
+ownership, irrevocable quad offers and final completion until coverage, scalar
+math, shader exports and physical image acknowledgements drain. The complete
+path supports late depth/stencil, typed blending and independently selected
+source stores/resolves with cached GPU visibility.
+
+Qualification covers **93 distinct checks across 14 suites** on the frozen
+**575-source** archive. The assembly oracle now includes the 33 added point-size
+and flag bits and nonzero metadata values. Its six checks pass after a test-only
+correction; 87 passing checks are reused with identical production and test
+source hashes. Both immutable source archives/logs and the exact reuse proof are
+recorded in the checkpoint. The checks include independent arbitrary-precision diamond/rectangle coverage,
+fractional point sizes, connected endpoints, helper interpolation, unrounded point
+coordinates, exact large origins, shader size override, cancellation and numeric
+faults. Real two-CU local/global tests execute ABI v2 shaders and publish guarded
+pitched typed images at 1x/4x, including resolve-only publication and cached reads.
+Broader triangle, assembly/clipping/viewport, shader/payload and image ownership
+regressions qualify the extended internal records and version-1 behavior.
+
+The coverage/primitive/composed image emissions contain **6/43/166 files**. The
+composed owner retains **33 characterized SRAM macros, 66 KiB**, including the
+32 KiB attachment slot, with four fixed-function FMA and three divider instances.
+The additional integer coverage service and expanded records/state add logic and
+registers; no SRAM macro, floating arithmetic lane, shader CU or payload pool is
+added. These are structural measurements, not synthesis PPA.
+
+This checkpoint does not establish unrepresentable guard-band reconstruction,
+complete invariance/precision, per-sample depth and centroid behavior, native
+resource/host/bin binding,
+post-transform reuse, queries/transform feedback, broader texture semantics or
+workload/rate closure. PPA remains **synthesis only**; emitted hierarchy/storage
+counts are not PPA results. The original H0–H8 development goal remains open.

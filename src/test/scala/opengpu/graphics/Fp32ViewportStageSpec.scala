@@ -21,8 +21,8 @@ private[graphics] object Fp32ViewportReference {
   private def rounded(n: BigInt,d: BigInt): (BigInt,Boolean)={
     val(q,r)=n /% d;(q+(if(r*2>d || (r*2==d && q.testBit(0)))1 else 0),r!=0)
   }
-  private def rational(v: E): (BigInt,BigInt)={val e=v.exponent-23;val n=v.sig*(if(v.sign)-1 else 1);if(e>=0)(n<<e,BigInt(1))else(n,BigInt(1)<<(-e))}
-  private def normalize(n: BigInt,d: BigInt,negativeZero: Boolean): E={
+  def rational(v: E): (BigInt,BigInt)={val e=v.exponent-23;val n=v.sig*(if(v.sign)-1 else 1);if(e>=0)(n<<e,BigInt(1))else(n,BigInt(1)<<(-e))}
+  def normalize(n: BigInt,d: BigInt,negativeZero: Boolean): E={
     if(n==0)return E(negativeZero)
     val a=n.abs;val b=d.abs;var e=a.bitLength-b.bitLength
     if(if(e>=0)a<(b<<e)else(a<<(-e))<b)e-=1

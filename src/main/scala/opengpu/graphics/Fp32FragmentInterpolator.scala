@@ -28,7 +28,7 @@ private[graphics] object FragmentEdgeFloat {
   }
 }
 class FragmentInterpolationRequest(p: VertexShaderStageConfig,g: GraphicsConfig) extends Bundle {
-  val primitive=new WindowPrimitive(p);val quad=new RasterQuad(g)
+  val primitive=new WindowPrimitive(p);val quad=new RasterQuad(g);val pointSize=UInt(32.W)
 }
 class Fp32InterpolatedLane(p: VertexShaderStageConfig,g: GraphicsConfig) extends Bundle {
   val x=SInt(32.W);val y=SInt(32.W);val covered=Bool();val coverageMask=UInt(g.maxSampleCount.W)
@@ -36,11 +36,11 @@ class Fp32InterpolatedLane(p: VertexShaderStageConfig,g: GraphicsConfig) extends
   /** False for helper centers with a nonpositive perspective denominator.
     * Such lanes retain flat values/depth and use zero for smooth values.
     */
-  val perspectiveValid=Bool();val varyings=Vec(p.varyings,Vec(4,UInt(32.W)))
+  val perspectiveValid=Bool();val pointCoord=Vec(2,UInt(32.W));val varyings=Vec(p.varyings,Vec(4,UInt(32.W)))
 }
 class Fp32InterpolatedQuad(p: VertexShaderStageConfig,g: GraphicsConfig) extends Bundle {
   val identity=new GraphicsWorkIdentity;val sequence=UInt(64.W);val primitiveId=UInt(32.W);val instanceId=UInt(32.W)
-  val partIndex=UInt(3.W);val varyingSlots=UInt(5.W);val flatMask=UInt((p.varyings*4).W)
+  val partIndex=UInt(3.W);val primitiveKind=UInt(2.W);val varyingSlots=UInt(5.W);val flatMask=UInt((p.varyings*4).W)
   val lanes=Vec(4,new Fp32InterpolatedLane(p,g))
 }
 class FragmentInterpolationCompletion extends Bundle {
@@ -49,13 +49,15 @@ class FragmentInterpolationCompletion extends Bundle {
   val arithmeticOperations=UInt(16.W);val arithmeticStatus=UInt(5.W);val packingStatus=UInt(5.W)
 }
 
-/** One privately owned triangle/quad, preserving all helper lanes and masks.
+/** One privately owned primitive/quad, preserving all helper lanes and masks.
   * Smooth f = sum(edge_i * reciprocalW_i * f_i) / sum(edge_i * reciprocalW_i).
   * Depth is linear in screen space; fragment reciprocalW divides that same
   * denominator by signed area. Edge conversion and every scalar operation use
   * RNE with extended exponents; only exported shader values pack to FP32.
   * Flat values bypass arithmetic, using the clipper's canonical vertex values.
-  * This center-sampling client does not implement centroid/sample qualifiers.
+  * Lines use center-projected two-endpoint weights and ignore the unused third
+  * record. Points copy raw vertex values and evaluate pointCoord with the same
+  * scalar service. This center client does not implement centroid qualifiers.
   */
 class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig()) extends Module {
   val io=IO(new Bundle {
@@ -65,7 +67,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   })
   private object State extends ChiselEnum {
     val idle,validate,startLane,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
-      startValues,product,saveProduct,addProduct,divide,saveValue,component,nextLane,waitMath,emit,abort,finish,complete=Value
+      pointX,pointY,pointValue,pointResidual,pointDivide,pointOffset,pointSave,startValues,product,saveProduct,addProduct,divide,saveValue,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val input=Reg(new FragmentInterpolationRequest(p,g))
   private val output=Reg(new Fp32InterpolatedQuad(p,g));private val result=Reg(new FragmentInterpolationCompletion)
@@ -110,30 +112,59 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         operations:=0.U;arithmeticFlags:=0.U;packingFlags:=0.U;lane:=0.U;phase:=State.validate
       }}
       is(State.validate){
-        val metadata=primitive.kind===2.U && primitive.vertexCount===3.U && primitive.topology>=4.U && primitive.topology<=6.U &&
-          primitive.provokingVertex<3.U && primitive.varyingSlots<=p.varyings.U && !(primitive.flatMask>>(primitive.varyingSlots<<2)).orR &&
+        val topology=MuxLookup(primitive.kind,false.B)(Seq(0.U->(primitive.topology===0.U),1.U->(primitive.topology>=1.U && primitive.topology<=3.U),2.U->(primitive.topology>=4.U && primitive.topology<=6.U)))
+        val metadata=primitive.kind<=2.U && primitive.vertexCount===primitive.kind+&1.U && topology &&
+          primitive.provokingVertex<primitive.vertexCount && primitive.varyingSlots<=p.varyings.U && !(primitive.flatMask>>(primitive.varyingSlots<<2)).orR &&
           input.primitive.clipped.partCount>=1.U && input.primitive.clipped.partCount<=7.U && input.primitive.clipped.partIndex<input.primitive.clipped.partCount
         val records=(0 until 3).map { i=>val v=input.primitive.vertices(i);val r=primitive.vertices(i)
-          r.identity.asUInt===primitive.identity.asUInt && r.instanceId===primitive.instanceId && r.baseInstance===primitive.baseInstance && !r.restart &&
+          i.U>=primitive.vertexCount || ((primitive.kind=/=0.U || (ClipFloat.legal(v.localX) && ClipFloat.legal(v.localY) && v.localX.special===0.U && v.localY.special===0.U)) && r.identity.asUInt===primitive.identity.asUInt && r.instanceId===primitive.instanceId && r.baseInstance===primitive.baseInstance && !r.restart &&
           ClipFloat.legal(v.reciprocalW) && v.reciprocalW.special===0.U && !v.reciprocalW.negative && v.reciprocalW.significand=/=0.U &&
-          v.windowDepth(30,23)=/=255.U && !PrimitiveClipStage.less(v.windowDepth,0.U) && !PrimitiveClipStage.less("h3f800000".U,v.windowDepth)
+          v.windowDepth(30,23)=/=255.U && !PrimitiveClipStage.less(v.windowDepth,0.U) && !PrimitiveClipStage.less("h3f800000".U,v.windowDepth))
         }.reduce(_ && _)
         val samples=(0 until 4).map { i=>val s=input.quad.lanes(i)
           s.area=/=0.S && s.area===input.quad.lanes(0).area && (s.e0+&s.e1+&s.e2)===s.area && s.covered===s.coverageMask.orR
         }.reduce(_ && _)
-        when(!metadata || !records || !samples){status:=1.U;phase:=State.abort}
+        when(!metadata || !records || !samples || (primitive.kind===0.U && !Fp32RasterState.sizeLegal(input.pointSize))){status:=1.U;phase:=State.abort}
           .otherwise {
             output.identity:=primitive.identity;output.sequence:=primitive.sequence;output.primitiveId:=primitive.primitiveId;output.instanceId:=primitive.instanceId
-            output.partIndex:=input.primitive.clipped.partIndex;output.varyingSlots:=primitive.varyingSlots;output.flatMask:=primitive.flatMask
+            output.partIndex:=input.primitive.clipped.partIndex;output.primitiveKind:=primitive.kind;output.varyingSlots:=primitive.varyingSlots;output.flatMask:=primitive.flatMask
             for(i<-0 until 4){val o=output.lanes(i);val s=input.quad.lanes(i);o.x:=s.x;o.y:=s.y;o.covered:=s.covered;o.coverageMask:=s.coverageMask}
             phase:=State.startLane
           }
       }
       is(State.startLane){
+        when(primitive.kind===0.U){
+          val o=output.lanes(lane);val v=input.primitive.vertices(0)
+          o.reciprocalW:=v.reciprocalW;o.fragCoordW:=ClipFloat.toFp32(v.reciprocalW).bits;packingFlags:=packingFlags|ClipFloat.toFp32(v.reciprocalW).status;o.windowDepth:=v.windowDepth;o.perspectiveValid:=true.B
+          for(s<-0 until p.varyings;c<-0 until 4)when(s.U<primitive.varyingSlots){o.varyings(s)(c):=primitive.vertices(0).varyings(s)(c)}
+          phase:=State.pointX
+        }
         edges(0):=FragmentEdgeFloat(pixel.e0);edges(1):=FragmentEdgeFloat(pixel.e1);edges(2):=FragmentEdgeFloat(pixel.e2)
-        vertex:=0.U;phase:=State.weight
+        vertex:=0.U;when(primitive.kind=/=0.U){phase:=State.weight}
       }
-      is(State.weight){calculate(edges(vertex),input.primitive.vertices(vertex).reciprocalW,ClipFloatOperation.multiply,State.saveWeight)}
+      is(State.pointX){depth:=false.B;phase:=State.pointValue}
+      is(State.pointY){depth:=true.B;phase:=State.pointValue}
+      is(State.pointValue){
+        // Keep the exact integer viewport origin out of FP32 cancellation.
+        // local - quantizedLocal is a small residual; subtract it from the
+        // exact pixel-center minus quantized screen coordinate instead.
+        val screen=Mux(depth,input.primitive.vertices(0).screenY,input.primitive.vertices(0).screenX)
+        val origin=Mux(depth,input.primitive.viewport.y,input.primitive.viewport.x)
+        val local=Mux(depth,input.primitive.vertices(0).localY,input.primitive.vertices(0).localX)
+        val quantized=screen-(origin.pad(64)<<g.subPixelBits)
+        val fixed=ViewportCoordinate.scaled(FragmentEdgeFloat(quantized(63,0).asSInt),-g.subPixelBits)
+        calculate(local,fixed,ClipFloatOperation.subtract,State.pointResidual)
+      }
+      is(State.pointResidual){
+        val center=(Mux(depth,pixel.y,pixel.x).pad(64)<<g.subPixelBits)+(BigInt(1)<<(g.subPixelBits-1)).S
+        val coordinate=Mux(depth,input.primitive.vertices(0).screenY,input.primitive.vertices(0).screenX)
+        val delta=ViewportCoordinate.scaled(FragmentEdgeFloat((center-coordinate)(63,0).asSInt),-g.subPixelBits)
+        calculate(Mux(depth,mathValue,delta),Mux(depth,delta,mathValue),ClipFloatOperation.subtract,State.pointDivide)
+      }
+      is(State.pointDivide){calculate(mathValue,ClipFloat.fromFp32(Fp32RasterState.size(input.pointSize)),ClipFloatOperation.divide,State.pointOffset)}
+      is(State.pointOffset){calculate(mathValue,ClipFloat.fromFp32("h3f000000".U),ClipFloatOperation.add,State.pointSave)}
+      is(State.pointSave){output.lanes(lane).pointCoord(depth):=mathPacked;phase:=Mux(depth,State.nextLane,State.pointY)}
+      is(State.weight){calculate(edges(vertex),Mux(vertex<primitive.vertexCount,input.primitive.vertices(vertex).reciprocalW,ClipFloat.zero),ClipFloatOperation.multiply,State.saveWeight)}
       is(State.saveWeight){weights(vertex):=mathValue;when(vertex===2.U){phase:=State.sumWeight}.otherwise{vertex:=vertex+1.U;phase:=State.weight}}
       is(State.sumWeight){calculate(weights(0),weights(1),ClipFloatOperation.add,State.addWeight)}
       is(State.addWeight){calculate(mathValue,weights(2),ClipFloatOperation.add,State.reciprocal)}
@@ -146,7 +177,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       }
       is(State.startValues){vertex:=0.U;phase:=State.product}
       is(State.product){calculate(Mux(depth,edges(vertex),weights(vertex)),
-        ClipFloat.fromFp32(Mux(depth,input.primitive.vertices(vertex).windowDepth,rawVarying)),ClipFloatOperation.multiply,State.saveProduct)}
+        Mux(vertex<primitive.vertexCount,ClipFloat.fromFp32(Mux(depth,input.primitive.vertices(vertex).windowDepth,rawVarying)),ClipFloat.zero),ClipFloatOperation.multiply,State.saveProduct)}
       is(State.saveProduct){
         when(vertex===0.U){sum:=mathValue;vertex:=1.U;phase:=State.product}
           .otherwise{term:=mathValue;phase:=State.addProduct}

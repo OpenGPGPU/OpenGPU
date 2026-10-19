@@ -8,9 +8,9 @@ import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
 
 case class VertexShaderStageConfig(input: VertexInputFetchConfig=VertexInputFetchConfig(),varyings: Int=16) {
   require(varyings>=1 && varyings<=16)
-  val outputWords: Int=4+4*varyings
-  def prefixBytes(capacity: Int,attributes: Int,varyingSlots: Int): Int=
-    (4*attributes+3+4+4*varyingSlots)*capacity*4
+  val outputWords: Int=5+4*varyings
+  def prefixBytes(capacity: Int,attributes: Int,varyingSlots: Int,version: Int=1): Int=
+    (4*attributes+3+4+4*varyingSlots+(if(version==2)1 else 0))*capacity*4
 }
 class VertexShaderSampler extends Bundle {
   val format=UInt(PixelFormat.width.W);val base=UInt(32.W)
@@ -22,7 +22,9 @@ class VertexShaderSampler extends Bundle {
   * outputs are four FP32 clip-position arrays, then 4*varyingSlots raw arrays.
   * Uniforms begin after that prefix. Disabled varying components export zero.
   * The kernel retains x1/x8/x9's existing kernarg/local-base/capacity ABI.
-  * This does not change the legacy eight-field vertex shader ABI.
+  * Version2 appends one FP32 point-size output after varying arrays; its
+  * uniform prefix includes that array. Version1 and the legacy ABI keep their
+  * existing array positions.
   */
 class VertexShaderDraw(p: VertexShaderStageConfig) extends Bundle {
   val version=UInt(8.W)
@@ -38,6 +40,7 @@ class ShadedVertexRecord(p: VertexShaderStageConfig) extends Bundle {
   val ordinal=UInt(32.W);val vertexId=UInt(32.W)
   val instanceId=UInt(32.W);val baseInstance=UInt(32.W)
   val restart=Bool()
+  val pointSize=UInt(32.W);val pointSizeWritten=Bool()
   val position=Vec(4,UInt(32.W))
   val varyings=Vec(p.varyings,Vec(4,UInt(32.W)))
 }
@@ -270,7 +273,8 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   when(field===(inputWords-3.U)){inputData:=input.io.out.bits.vertexId}
   when(field===(inputWords-2.U)){inputData:=input.io.out.bits.instanceId}
   when(field===(inputWords-1.U)){inputData:=input.io.out.bits.baseInstance}
-  private val requested=slice<4.U || ((draw.varyingMask>>(slice-4.U))(0) && slice<outputWords)
+  private val pointSizeSlice=4.U+(draw.varyingSlots<<2)
+  private val requested=(draw.version===2.U && slice===pointSizeSlice) || slice<4.U || ((draw.varyingMask>>(slice-4.U))(0) && slice<outputWords)
   private val chunkCount=Mux(count-chunk>16.U,16.U,count-chunk)
   private val chunkBytes=chunkCount<<2
   private val cacheAddress=outputStart+slice*stride.U+(chunk<<2)
@@ -287,7 +291,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       .otherwise{slice:=slice+1.U;phase:=cacheSlice}
   }
   private def recordMetadata(value: UInt): Unit={
-    record:=0.U.asTypeOf(record);record.identity:=draw.input.identity
+    record:=0.U.asTypeOf(record);record.identity:=draw.input.identity;record.pointSizeWritten:=draw.version===2.U
     record.ordinal:=value(31,0);record.vertexId:=value(63,32)
     record.instanceId:=value(95,64);record.baseInstance:=value(127,96)
   }
@@ -302,7 +306,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       draw:=io.draw.bits;status:=0.U;faultAddress:=0.U;count:=0.U;outputValid:=false.B
       inputStarted:=false.B;inputDone:=false.B;inputResult:=0.U.asTypeOf(inputResult);inputResult.identity:=io.draw.bits.input.identity
       vertices:=0.U;restarts:=0.U;batches:=0.U;localBatches:=0.U;spilledBatches:=0.U;writeBytes:=0.U;readBytes:=0.U;maxLocalX:=0.U
-      val in=(io.draw.bits.attributeSlots<<2)+3.U;val out=(io.draw.bits.varyingSlots<<2)+4.U
+      val in=(io.draw.bits.attributeSlots<<2)+3.U;val out=(io.draw.bits.varyingSlots<<2)+4.U+(io.draw.bits.version===2.U).asUInt
       inputWords:=in;outputWords:=out;inputBytes:=in*stride.U;prefixBytes:=(in+&out)*stride.U
       payloadContext:=io.payload.map(_.context).getOrElse(0.U);phase:=validate
     }}
@@ -319,7 +323,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
         used && overlap(s.base,prefixEnd,draw.input.bindings(i))
       }.reduce(_ || _) || (draw.input.indexFormat=/=0.U && overlap(s.base,prefixEnd,draw.input.indices))
       val sharedAlias=s.base<(config.sharedMemoryBase+config.sharedMemoryBytes).U && prefixEnd>config.sharedMemoryBase.U
-      when(draw.version=/=1.U || !fields || (work && (!view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || aliases || sharedAlias))) {
+      when((draw.version=/=1.U && draw.version=/=2.U) || !fields || (work && (!view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || aliases || sharedAlias))) {
         fail(VertexInputStatus.invalidDescriptor.U,s.base);phase:=drain
       }.elsewhen(work && (prefixEnd>s.limit || prefixEnd>(BigInt(1)<<32).U || ((prefixEnd+63.U)&(~63.U(34.W)))>s.allocationLimit)) {
         fail(VertexInputStatus.bounds.U,s.base);phase:=drain
@@ -374,7 +378,8 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     is(gatherReply){
       val word=(cache.io.readData>>(emitIndex.pad(4)(3,0)<<5))(31,0)
       when(slice<4.U){record.position(slice(1,0)):=word}
-      for(v<-0 until p.varyings;c<-0 until 4)when(slice===(4+4*v+c).U){record.varyings(v)(c):=word}
+      for(v<-0 until p.varyings;c<-0 until 4)when(v.U<draw.varyingSlots && slice===(4+4*v+c).U){record.varyings(v)(c):=word}
+      when(draw.version===2.U && slice===pointSizeSlice){record.pointSize:=word}
       when(slice===outputWords-1.U){outputValid:=true.B;phase:=emitVertex}.otherwise{slice:=slice+1.U;phase:=gather}
     }
     is(emitVertex){when(io.out.fire){
