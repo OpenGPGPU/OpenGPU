@@ -1,6 +1,7 @@
 # Mobile GPU hardware capability inventory
 
-Source baseline: `d588b50`, 2026-10-19. This inventory supports H0 and the
+Initial source inventory: `d588b50`, 2026-10-19. Later evidence is cited per row.
+This inventory supports H0 and the
 [hardware alignment plan](MOBILE_GPU_HARDWARE_ALIGNMENT.md). It records hardware
 contracts and evidence gaps; it does not advertise an API version. Compiler,
 driver and API object management remain separate work, while the hardware
@@ -25,6 +26,7 @@ an exhaustive specification-clause or conformance-test mapping.
 |---|---|---|
 | CFG | [Mobile configuration](../src/main/scala/opengpu/config/MobileGpuConfig.scala), [capability words](../src/main/scala/opengpu/graphics/GpuCapabilities.scala) | [Configuration checks](../src/test/scala/opengpu/config/MobileGpuConfigSpec.scala), [C ABI checks](../src/test/scala/opengpu/graphics/GpuAbiLayoutSpec.scala) |
 | VTX | [Vertex task stage](../src/main/scala/opengpu/graphics/KernelVertStage.scala) | [Vertex execution](../src/test/scala/opengpu/graphics/KernelVertStageSpec.scala), [index-width regression](../src/test/scala/opengpu/graphics/KernelVertIndexWidthSpec.scala) |
+| VIF | [GPU input fetch](../src/main/scala/opengpu/graphics/VertexInputFetcher.scala) | [Input acquisition checks](../src/test/scala/opengpu/graphics/VertexInputFetcherSpec.scala), [frozen component checkpoint](performance/mobile-vertex-input-fetch-2026-10-19.json); native shader/submission wiring remains open |
 | GEO | [Clip stage](../src/main/scala/opengpu/graphics/NearClipStage.scala), [prepared geometry](../src/main/scala/opengpu/graphics/PreparedGeometryStage.scala), [rasterizer](../src/main/scala/opengpu/graphics/Rasterizer.scala) | [Prepared geometry checks](../src/test/scala/opengpu/graphics/PreparedGeometryStageSpec.scala), [sample coverage checks](../src/test/scala/opengpu/graphics/PreparedSampleCoverageSpec.scala) |
 | SHD | [Fragment tasks](../src/main/scala/opengpu/graphics/KernelFragStage.scala), [shared task router](../src/main/scala/opengpu/graphics/SharedShaderTaskRouter.scala), [CU](../src/main/scala/opengpu/core/GpuComputeUnit.scala) | [Quad export checkpoint](performance/mobile-shader-quad-exports-2026-10-19.json), [task routing checks](../src/test/scala/opengpu/graphics/SharedShaderTaskRouterSpec.scala) |
 | TEX | [Sampler](../src/main/scala/opengpu/graphics/TextureUnit.scala), [coordinates](../src/main/scala/opengpu/graphics/TextureCoordinates.scala), [worker memory fabric](../src/main/scala/opengpu/graphics/FragmentWorkerMemory.scala) | [Sampler checks](../src/test/scala/opengpu/graphics/TextureUnitSpec.scala), [NPOT vector checks](../src/test/scala/opengpu/graphics/TextureNpotVectorSpec.scala), [coordinate checks](../src/test/scala/opengpu/graphics/TextureCoordinatePipelineSpec.scala) |
@@ -46,9 +48,9 @@ assessments are engineering conclusions from the linked RTL, not Khronos claims.
 
 | ID | Requirement group | Current evidence and gap | State | Owner |
 |---|---|---|---|---|
-| V01 | Attribute formats | VTX reads a fixed eight-word vertex record. General attribute tables, conversion and component defaults need a bounded descriptor contract. | Partial | H5/H6 |
-| V02 | Indices and restart | VTX batches triangle-list vertices. Its internal index-width test does not prove GPU element-buffer fetching or restart. Add native index types, bounds and restart ownership. | Open | H5 |
-| V03 | Instancing and divisors | VTX descriptor has no general instance/divisor layout. Add instance/vertex IDs, per-binding rates and exact repeated-index tests. | Open | H5 |
+| V01 | Attribute formats | VTX retains its fixed eight-word record. VIF adds sixteen canonical slots with raw float32/integer formats and component/constant defaults; normalized/packed/half conversion and native shader wiring remain open. | Partial | H5/H6 |
+| V02 | Indices and restart | VIF reads bounded GPU 8/16/32-bit elements and emits restart tokens before checked signed base-vertex bias. Primitive assembly/restart consumption, post-transform reuse and native shader/submission integration remain open. | Partial | H5 |
+| V03 | Instancing and divisors | VIF provides vertex/instance IDs, base-instance addressing and per-binding divisor counters with exact repeated-index tests. Shader builtin/attribute ABI propagation and native integrated instanced draws remain open. | Partial | H5 |
 | V04 | Vertex shader execution | VTX and SHD execute kernels; input/output layouts are fixed. Verify general varyings, resource bindings and supported vertex execution in the binned Mobile path. | Partial | H5/H6 |
 | V05 | Uniforms and blocks | SHD/VTX expose a kernarg tail. Resource-table binding, layout, range protection and per-stage limits remain unqualified. | Partial | H0/H5/H6 |
 | V06 | Varying interpolation | GEO/SHD carry selected color, UV and depth values. Add general component layouts and per-varying interpolation/provoking-vertex state. | Partial | H5/H6 |

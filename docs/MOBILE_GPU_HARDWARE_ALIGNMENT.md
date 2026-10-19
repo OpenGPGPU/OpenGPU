@@ -3449,3 +3449,52 @@ comment/whitespace removal; the counter is absent from that product profile. Thi
 FP32/texture full-workgroup gap above. General shader/numeric/resource coverage,
 representative throughput, geometry, synthesis and remaining H0-H8 requirements
 stay open.
+
+
+### Bounded GPU vertex input fetching, 2026-10-19
+
+The [vertex-input component checkpoint](performance/mobile-vertex-input-fetch-2026-10-19.json)
+adds `VertexInputFetcher`, an internal descriptor/record stream with sixteen
+attribute slots, sixteen buffer bindings and four canonical words per
+attribute. It reads arrays or unsigned 8/16/32-bit GPU indices, applies checked
+signed base-vertex bias, emits fixed restart tokens before that bias, and
+retains draw-relative vertex ordinals, effective vertex IDs, instance IDs and
+base instance. Instanced bindings use `baseInstance + floor(instanceId/divisor)`;
+divisor zero selects per-vertex data. Per-binding recurrence counters implement
+positive divisors without a combinational divide.
+
+Float32 bits and signed/unsigned 32/16/8-bit integer elements are supported.
+Narrow integers expand to 32 bits. Enabled arrays supply typed zero/one defaults
+for absent components; disabled arrays supply four explicit constants. Multiple
+attributes may share arbitrary bindings and interleaved bytes. Normalized,
+packed and half formats are explicitly rejected in this component version.
+
+Logical byte bounds are checked separately from padded allocation bounds. Each
+64-byte read stays inside its allocation, while every scalar component and index
+stays inside its logical view, including retained-line hits and the final byte
+of a 4 GiB allocation. Split 16x16 address products and registered sums preserve
+high bits through bounds checks. One private output record and one outstanding
+read bound ownership. Cancellation retains offered reads/records and drains
+accepted replies before completion; faults never publish a partial vertex.
+Two 64-byte response registers reuse index/attribute bytes and are invalidated
+on every draw. They provide no post-transform reuse.
+
+Twenty-one checks pass on 517 frozen sources: seven component cases plus fourteen
+existing ABI checks. Coverage includes all sixteen slots, minimum stream width,
+all supported formats/index widths, signed bias and restart, independent
+divisors including 3 and 4294967295, descriptor snapshots, eighteen invalid
+layouts, eleven bounds scenarios, three memory-fault paths, 4 GiB endpoints and
+held-read/record/completion cancellation. A shared interleaved line serves 64
+logical component reads across two instances with one line fetch. Default-size
+RTL emission exposes all 64 canonical output words and five prefix adders, with
+no division/modulo operator or private CU/SRAM instance. Read-line data occupies
+128 bytes of registers; descriptor/output/arithmetic state is additional. No
+area or timing result is claimed.
+
+This is a component boundary, not native indexed-draw support or a new memory
+ABI/capability bit. Vertex shader input/ID propagation, primitive assembly and
+restart consumption, post-transform reuse, vertex payload/export ownership and
+native GPU geometry submission remain next. The enclosing owner must publish
+and pin immutable inputs, translation and allocation ownership through drain.
+The legacy draw/job ABI is unchanged; H5 and remaining H0-H8 requirements stay
+open. Current PPA qualification remains synthesis only.
