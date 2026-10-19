@@ -4,10 +4,10 @@ import circt.stage.ChiselStage
 import opengpu.config.MobileGpuConfig
 import opengpu.core.GpuComputeUnit
 import opengpu.system.GpuSystem
-import opengpu.graphics.{BankedShaderPayloadStore,ShaderPayloadConfig,SharedShaderTaskRouter}
+import opengpu.graphics.{BankedShaderPayloadStore,ShaderPayloadConfig,SharedShaderTaskRouter,KernelFragStage,GraphicsConfig}
 
-/** Storage or one CU's optional payload port; shared task/renderer binding is
-  * still a separate integration step.
+/** Emit the optional payload service, CU, client router, shared system or
+  * fragment worker. Full renderer hierarchy integration is a separate step.
   */
 object EmitShaderPayloadRtl {
   def main(args: Array[String]): Unit={
@@ -20,7 +20,9 @@ object EmitShaderPayloadRtl {
     val macros = !args.contains("--behavioral")
     val producerPins=args.find(_.startsWith("--producer-pins=")).map(_.stripPrefix("--producer-pins=").toInt).getOrElse(0)
     ChiselStage.emitSystemVerilogFile(
-      if(args.contains("--router"))new SharedShaderTaskRouter(mobile.execution,mobile.computeUnits,2,
+      if(args.contains("--fragment"))new KernelFragStage(mobile.execution,GraphicsConfig(),
+        stagingTransactions=8,quadExports=true,shaderPayload=Some(p))
+      else if(args.contains("--router"))new SharedShaderTaskRouter(mobile.execution,mobile.computeUnits,2,
         tasksPerClient=mobile.computeUnits,shaderPayload=Some(p))
       else if(args.contains("--system"))new GpuSystem(mobile.execution,numComputeUnits=mobile.computeUnits,
         useBlackBoxes=macros,enableFpuBackend=true,enableUnifiedCommands=true,

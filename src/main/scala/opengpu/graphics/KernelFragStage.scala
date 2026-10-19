@@ -112,7 +112,8 @@ object KernelFragFrontendIO {
 
 /** Standalone fragment worker ports, retaining the existing shader ABI. */
 class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig, stagingTransactions: Int = 2,
-  quadExports: Boolean=false) extends KernelFragFrontendIO(config, gfxConfig,quadExports) {
+  quadExports: Boolean=false, shaderPayload: Option[ShaderPayloadConfig]=None) extends KernelFragFrontendIO(config, gfxConfig,quadExports) {
+  val payload=shaderPayload.map(p=>new FragmentPayloadPort(config,p))
   val performance = Output(new FragmentPerformanceEvents)
   /** One-cycle failure events; ownership lasts until drained/draw retirement. */
   val executionFault = Output(Bool())
@@ -243,7 +244,9 @@ class KernelFragStage(
   config: GpuConfig = GpuConfig(),
   gfxConfig: GraphicsConfig = GraphicsConfig(),
   stagingTransactions: Int = 2,
-  quadExports: Boolean = false
+  quadExports: Boolean = false,
+  shaderPayload: Option[ShaderPayloadConfig] = None,
+  payloadOwner: Int = 0
 ) extends Module {
   def this(config: GpuConfig, gfxConfig: GraphicsConfig) = this(config, gfxConfig, 2)
   require(stagingTransactions >= 2 && isPow2(stagingTransactions))
@@ -253,7 +256,12 @@ class KernelFragStage(
   // Per-array byte stride of the SoA kernarg layout (see the class doc).
   private val arrayStride = 4 * batchCap
 
-  val io = IO(new KernelFragStageIO(config, gfxConfig, stagingTransactions,quadExports))
+  val io = IO(new KernelFragStageIO(config, gfxConfig, stagingTransactions,quadExports,shaderPayload))
+  private val stagingResponse=Wire(Decoupled(new ComputeMemoryResponse(64,stagingTransactions)))
+  private val payloadTransport=shaderPayload.map(p=>Module(new FragmentPayloadTransport(config,p,payloadOwner,stagingTransactions)))
+  payloadTransport.foreach(t=>t.io.pool<>io.payload.get)
+  private val payloadAbort=shaderPayload.map(_=>RegInit(false.B))
+  private val payloadExportAllowed=payloadAbort.map(a=> !a && !io.payload.get.cancel).getOrElse(true.B)
   private val exportValid=Wire(Bool())
   private val exportReady=if(quadExports)io.quadOut.get.ready else io.out.ready
   private val exportFire=exportValid && exportReady
@@ -309,7 +317,7 @@ class KernelFragStage(
   io.kernelSimtBranch.ready := true.B
   io.executionFault := io.kernelTrap.fire ||
     (io.kernelCompletion.fire && !io.kernelCompletion.bits.success) ||
-    (io.wordMemResp.fire && io.wordMemResp.bits.fault)
+    (stagingResponse.fire && stagingResponse.bits.fault)
 
   io.memReq.valid := false.B
   io.memReq.bits := 0.U.asTypeOf(io.memReq.bits)
@@ -389,8 +397,9 @@ class KernelFragStage(
     io.kernargBase + io.kernargBankStride,
     io.kernargBase)
 
-  private val sIdle :: sWrite :: sLaunch :: sRun :: sRead :: sEmit :: Nil =
-    Enum(6)
+  private val sIdle :: sWrite :: sLaunch :: sRun :: sRead :: sEmit :: sAllocate :: sRelease :: Nil =
+    Enum(8)
+  private val writeStart=if(shaderPayload.nonEmpty)sAllocate else sWrite
   private val state = RegInit(sIdle)
 
   private val execCount = RegInit(0.U(countWidth.W))
@@ -502,14 +511,14 @@ class KernelFragStage(
   private val lineFields = Reg(Vec(stagingTransactions, chiselTypeOf(field)))
   private val lineScanDone = RegInit(false.B)
   private val lineFault = RegInit(false.B)
-  private val stagingFaultNow = lineFault || (io.wordMemResp.fire && io.wordMemResp.bits.fault)
-  when(io.wordMemResp.fire && io.wordMemResp.bits.fault) { lineFault := true.B }
+  private val stagingFaultNow = lineFault || (stagingResponse.fire && stagingResponse.bits.fault)
+  when(stagingResponse.fire && stagingResponse.bits.fault) { lineFault := true.B }
   private val freeLineId = PriorityEncoder(~lineBusy.asUInt)
-  private val responseField = lineFields(io.wordMemResp.bits.transactionId)
+  private val responseField = lineFields(stagingResponse.bits.transactionId)
   if (coalesceStaging) {
-    when(io.wordMemResp.fire) {
-      assert(lineBusy(io.wordMemResp.bits.transactionId))
-      lineBusy(io.wordMemResp.bits.transactionId) := false.B
+    when(stagingResponse.fire) {
+      assert(lineBusy(stagingResponse.bits.transactionId))
+      lineBusy(stagingResponse.bits.transactionId) := false.B
     }
   }
 
@@ -553,6 +562,8 @@ class KernelFragStage(
   private val wpAbi1 = Reg(Bool())
   private val wpInputSkip = Reg(UInt(6.W))
   private val wpOutputSkip = Reg(UInt(4.W))
+  private val wpPayloadContext=shaderPayload.map(_=>Reg(UInt(32.W)))
+  private val slotPayloadContext=shaderPayload.map(_=>Reg(Vec(2,UInt(32.W))))
 
   io.fragIn.ready := !pendingValid && prodCount < batchCap.U
   io.drained := state === sIdle && !pendingValid
@@ -577,6 +588,8 @@ class KernelFragStage(
   private val execFailed = RegInit(false.B)
   private val outputRetirePending = RegInit(false.B)
   private val outputRetireEntry = Reg(UInt(1.W))
+  private val payloadRetireWait=shaderPayload.map(_=>RegInit(false.B))
+  private val payloadRetireEntry=shaderPayload.map(_=>Reg(UInt(1.W)))
 
   private val prevFlush = RegInit(true.B)
   prevFlush := io.flush
@@ -615,6 +628,7 @@ class KernelFragStage(
     wpAbi1 := io.abi1
     wpInputSkip := io.inputSkip
     wpOutputSkip := io.outputSkip
+    shaderPayload.foreach(_=>wpPayloadContext.get:=io.payload.get.context)
     wpKernarg := bankedKernarg(prodSlot)
     wpTexBase := io.texBase
     wpTexWidth := io.texWidth
@@ -660,6 +674,7 @@ class KernelFragStage(
       slotAbi1(wpSlot) := wpAbi1
       slotInputSkip(wpSlot) := wpInputSkip
       slotOutputSkip(wpSlot) := wpOutputSkip
+      shaderPayload.foreach(_=>slotPayloadContext.get(wpSlot):=wpPayloadContext.get)
     }
   }
 
@@ -684,7 +699,7 @@ class KernelFragStage(
       requestQuadLoaded := false.B
       field := 0.U
       wordPending := false.B
-      state := sWrite
+      state := writeStart
     }.otherwise {
       // Consumer busy: park the batch; the drain swaps it in.
       pendingValid := true.B
@@ -701,7 +716,7 @@ class KernelFragStage(
   // scans trailing empty quads; its last registered output still owns the
   // context until accepted. Only a truly drained draw retires immediately.
   private val bindPending = pendingValid && !pendingCarries
-  private val bindExec = !pendingValid && state =/= sIdle && !execCarries
+  private val bindExec = !pendingValid && state =/= sIdle && state =/= sRelease && !execCarries
   when(flushRise && !commitFlush) {
     when(bindPending) {
       pendingCarries := true.B
@@ -711,10 +726,13 @@ class KernelFragStage(
       execCarries := true.B
       execEntryIdx := qTail
       pushEntry(false.B)
-    }.elsewhen(state === sIdle && !pendingValid && exportValid &&
+    }.elsewhen((state === sIdle || state === sRelease) && !pendingValid && exportValid &&
         !exportReady && !outputRetirePending) {
       outputRetirePending := true.B
       outputRetireEntry := qTail
+      shaderPayload.foreach { _=>
+        when(state===sRelease){payloadRetireWait.get:=true.B;payloadRetireEntry.get:=qTail}
+      }
       pushEntry(false.B)
     }.otherwise {
       pushEntry(true.B)
@@ -809,8 +827,8 @@ class KernelFragStage(
   private val outCanStep = !outValidReg || exportReady
   private val emitAdvance = state === sEmit && emitQuadValid && outCanStep
   private val emitLast=index===(execCount-(if(quadExports)4 else 1).U)
-  private val emitHasOutput=if(quadExports)VecInit((0 until 4).map(p=>
-    emitHitQ(p) && emitQuad(p).coverageMask.orR)).asUInt.orR else emitHitQ(laneIdx)
+  private val emitHasOutput=payloadExportAllowed && (if(quadExports)VecInit((0 until 4).map(p=>
+    emitHitQ(p) && emitQuad(p).coverageMask.orR)).asUInt.orR else emitHitQ(laneIdx))
   private val emitQuadEnd = emitAdvance && (if(quadExports)true.B else laneIdx === 3.U) && !emitLast
   private val emitLoad = state === sEmit && (!emitQuadValid || emitQuadEnd)
   when(emitLoad) {
@@ -941,6 +959,52 @@ class KernelFragStage(
     emitQuadPtr := 0.U
     emitQuadSel := 1.U
     state := sEmit
+  }
+
+  private def advanceBatch(): Unit = {
+          when(pendingValid) {
+            execSlot := pendingSlot
+            execCount := slotCount(pendingSlot)
+            execCarries := pendingCarries
+            execEntryIdx := pendingEntryIdx
+            slotCount(pendingSlot) := 0.U
+            pendingValid := false.B
+            prodSlot := execSlot
+            index := 0.U
+            requestQuadIdx := 0.U
+            requestQuadSel := 1.U
+            requestLaneIdx := 0.U
+            requestQuadLoaded := false.B
+            field := 0.U
+            wordPending := false.B
+            state := writeStart
+          }.otherwise {
+            state := sIdle
+          }
+  }
+  payloadTransport.foreach { transport=>
+    when(state=/=sIdle && io.payload.get.cancel){payloadAbort.get:=true.B}
+    when(transport.io.begin.fire){payloadAbort.get:=io.payload.get.cancel}
+    transport.io.begin.valid:=state===sAllocate && !(wpValid && wpSlot===execSlot)
+    transport.io.begin.bits.base:=slotKernarg(execSlot)
+    transport.io.begin.bits.bytes:=(9*arrayStride).U
+    transport.io.begin.bits.context:=slotPayloadContext.get(execSlot)
+    transport.io.prepared.ready:=state===sAllocate
+    when(transport.io.prepared.fire) {
+      when(transport.io.prepared.bits.fault) {
+        for(lane <- 0 until batchCap)outValid(lane):=false.B
+        beginStagingEmit()
+      }.otherwise {state:=sWrite}
+    }
+    when(io.drawRetire.fire && qHead===payloadRetireEntry.get){payloadRetireWait.get:=false.B}
+    transport.io.finish.valid:=state===sRelease && !exportValid && !payloadRetireWait.get
+    transport.io.finish.bits:=true.B
+    transport.io.done.ready:=state===sRelease
+    when(transport.io.done.fire){advanceBatch()}
+    io.executionFault:=io.kernelTrap.fire ||
+    (io.kernelCompletion.fire && !io.kernelCompletion.bits.success) ||
+    (stagingResponse.fire && stagingResponse.bits.fault) || (transport.io.prepared.fire && transport.io.prepared.bits.fault) ||
+      (transport.io.done.fire && transport.io.done.bits)
   }
 
   switch(state) {
@@ -1118,14 +1182,14 @@ class KernelFragStage(
           lineReqValid := false.B
           advanceStagingRead()
         }
-        when(io.wordMemResp.fire) {
+        when(stagingResponse.fire) {
           for (line <- outputFirstLine to outputLastLine) {
             when(responseField === line.U) {
               for (word <- 0 until 16) {
                 val position = line * 16 + word
                 val slice = position / batchCap
                 val lane = position % batchCap
-                val data = io.wordMemResp.bits.readData(32 * word + 31, 32 * word)
+                val data = stagingResponse.bits.readData(32 * word + 31, 32 * word)
                 if (slice == 6) outWords(lane) := data
                 else if (slice == 7) {
                   when(!slotOutputSkip(execSlot)(0)) { outDepth(lane) := data.asSInt }
@@ -1219,25 +1283,11 @@ class KernelFragStage(
           }
           execCarries := false.B
           slotCount(execSlot) := 0.U
-          when(pendingValid) {
-            execSlot := pendingSlot
-            execCount := slotCount(pendingSlot)
-            execCarries := pendingCarries
-            execEntryIdx := pendingEntryIdx
-            slotCount(pendingSlot) := 0.U
-            pendingValid := false.B
-            prodSlot := execSlot
-            index := 0.U
-            requestQuadIdx := 0.U
-            requestQuadSel := 1.U
-            requestLaneIdx := 0.U
-            requestQuadLoaded := false.B
-            field := 0.U
-            wordPending := false.B
-            state := sWrite
-          }.otherwise {
-            state := sIdle
-          }
+          if(shaderPayload.nonEmpty) {
+            payloadRetireWait.get:=execCarries
+            payloadRetireEntry.get:=execEntryIdx
+            state:=sRelease
+          }else {advanceBatch()}
         }.otherwise {
           index := index + (if(quadExports)4 else 1).U
         }
@@ -1257,23 +1307,39 @@ class KernelFragStage(
     wordMemReqPipe.io.enq.valid := lineReqValid
     wordMemReqPipe.io.enq.bits := lineReqReg.get
     bridge.io.memoryRequest.ready := false.B
-    io.wordMemResp.ready := (state === sWrite || state === sRead) &&
-      lineBusy(io.wordMemResp.bits.transactionId)
+    stagingResponse.ready := (state === sWrite || state === sRead) &&
+      lineBusy(stagingResponse.bits.transactionId)
     bridge.io.memoryResponse.valid := false.B
     bridge.io.memoryResponse.bits := 0.U.asTypeOf(bridge.io.memoryResponse.bits)
   } else {
     wordMemReqPipe.io.enq.valid := bridge.io.memoryRequest.valid
     wordMemReqPipe.io.enq.bits := bridge.io.memoryRequest.bits
     bridge.io.memoryRequest.ready := wordMemReqPipe.io.enq.ready
-    io.wordMemResp.ready := bridge.io.memoryResponse.ready
-    bridge.io.memoryResponse.valid := io.wordMemResp.valid
-    bridge.io.memoryResponse.bits := io.wordMemResp.bits
+    stagingResponse.ready := bridge.io.memoryResponse.ready
+    bridge.io.memoryResponse.valid := stagingResponse.valid
+    bridge.io.memoryResponse.bits := stagingResponse.bits
   }
   for (phase <- 0 until 6)
     io.performance.phaseWorkers(phase) := (state === phase.U).asUInt
+  if(shaderPayload.nonEmpty) {
+    // Reservation/release waits are charged to staging/output ownership.
+    io.performance.phaseWorkers(1):=(state===sWrite || state===sAllocate).asUInt
+    io.performance.phaseWorkers(5):=(state===sEmit || state===sRelease).asUInt
+  }
   io.performance.stagingOutstanding :=
     (if (coalesceStaging) PopCount(lineBusy) else wordPending.asUInt)
-  io.performance.stagingBlocked := io.wordMemReq.valid && !io.wordMemReq.ready
+  io.performance.stagingBlocked := wordMemReqPipe.io.deq.valid && !wordMemReqPipe.io.deq.ready
   io.performance.outputBlocked := exportValid && !exportReady
-  io.wordMemReq <> wordMemReqPipe.io.deq
+  payloadTransport match {
+    case Some(t)=>
+      t.io.stageRequest<>wordMemReqPipe.io.deq
+      stagingResponse<>t.io.stageResponse
+      io.wordMemReq<>t.io.memoryRequest
+      t.io.memoryResponse<>io.wordMemResp
+    case None=>
+      io.wordMemReq<>wordMemReqPipe.io.deq
+      stagingResponse.valid:=io.wordMemResp.valid
+      stagingResponse.bits:=io.wordMemResp.bits
+      io.wordMemResp.ready:=stagingResponse.ready
+  }
 }

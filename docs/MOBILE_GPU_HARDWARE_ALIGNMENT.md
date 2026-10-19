@@ -20,7 +20,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 |---|---|---|
 | Shader execution | Shared compute CUs already execute vertex and fragment tasks; vector FP32 arithmetic, including FMA, is connected | Improve task input/output transport, occupancy, control-flow/resource contracts and sustained issue/writeback throughput |
 | Configuration | `GpuConfig` defaults to 16 lanes and eight warps; the mobile CU-count constant is four | One compute/graphics execution configuration; discoverable resource limits and explicit supported configuration combinations |
-| Interstage transport | Optional banked payload store, shared CU/client bindings and completion lifetime are qualified; renderer workers still use global staging | Connect fragment allocation/staging, bounded spill and export retirement through the renderer; avoid mandatory global-memory staging of every batch |
+| Interstage transport | Optional local fragment-worker staging, shared pool/client bindings and export lifetime are qualified; the integrated renderer still uses global staging | Wire the parallel/tile/host hierarchy, then qualify bounded spill and multi-engine local rendering |
 | Geometry | Clip, viewport, triangle setup and quad rasterization exist | Native index/attribute fetch, vertex reuse, instancing and complete required primitive behavior |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
@@ -3252,9 +3252,50 @@ checks two routed payload scenarios, strict native restart and native shared-CU
 AXI rendering after merging the attachment and payload changes.
 
 This optional transport is not yet wired through the renderer hierarchy.
-`KernelFragStage` allocation, local input/default-output staging, local output
-reads, explicit spill and ownership transfer through exports/draw retirement
-remain open. Payload bindings must also be constrained to the global address
-space outside the CU shared-memory window. The default Mobile renderer still
-uses global staging. GPU index/attribute fetching and reuse remain part of H5;
-no H0-H8 milestone or synthesis gate is closed by this checkpoint.
+The fragment-worker checkpoint below adds allocation, local staging/readback,
+full-pool memory fallback and export/retirement ownership in `KernelFragStage`.
+Forwarding those interfaces through the parallel workers, tile engines and host
+remains open. The fragment producer validates aligned, non-wrapping bounds
+outside CU shared memory; other future payload producers need the same contract.
+The default Mobile renderer still uses global staging. GPU index/attribute
+fetching and reuse remain part of H5; no H0-H8 milestone or synthesis gate is
+closed by these checkpoints.
+
+
+### Fragment-worker payload staging and export lifetime, 2026-10-19
+
+`KernelFragStage(shaderPayload=Some(...))` now reserves one complete SoA slot
+before staging a batch and supplies its trusted binding to the shared CU.
+Local staging/readback uses the producer's masked pool port. A full/oversized
+spill decision leaves the shader unbound and retains the existing memory-backed
+staging port. Fresh local output colors start at zero; the fallback preserves
+existing global output contents. Depth/control defaults and helper coverage
+retain their raster semantics. Local admission rejects unaligned, wrapping or
+CU-shared-memory-overlapping extents before allocation or shader launch.
+
+A reservation remains owned until accepted staging work, actual exports and
+any bound draw-retirement event drain. Pending batches acquire a fresh
+generation; a late flush cannot retire a held last quad or recycle its lease.
+Cancellation retains already offered allocation/data requests and export
+payloads, poisons unfinished work, suppresses younger exports and drains the
+lease before reuse. Line service is blocking; throughput remains unqualified.
+
+The [frozen fragment-worker packet](performance/mobile-fragment-payload-staging-2026-10-19.json)
+records 25 passing checks, 514 source hashes and full-size worker RTL emission.
+Actual one-CU tests use four lanes/two warps and sixteen lanes/eight warps.
+Three full 128-thread draws emit 384 fragments in 3,781 simulated cycles with
+zero global staging requests. A forced-full-pool fallback emits 24 fragments
+across three draws using 21 global staging requests. Tests also cover a pending
+partial batch, fresh generations, helper masks, held exports/retirement, late
+flush, three invalid address classes, cancellation at allocation/staging/export,
+shader faults and healthy reuse. Eleven compatibility checks retain the
+existing quad export, overlap, kernarg-bank and draw-retirement behavior.
+
+This qualifies a fragment-worker harness with reduced caches, behavioral
+payload SRAM and integer/RVV copy kernels plus an ordinary uniform load. It is
+not a two-engine renderer or general shader qualification. The emitted worker
+contains one payload controller and external pool/CU ports; it instantiates no
+private CU or payload store. Parallel-worker management, queued task bindings,
+producer pins, tile cancellation/context and AXI-host wiring remain next, with
+real multi-CU rendering and explicit spill qualification before Mobile selects
+the local path. No new synthesis or place-and-route result is claimed.
