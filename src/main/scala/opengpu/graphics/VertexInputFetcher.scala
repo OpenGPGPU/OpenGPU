@@ -13,10 +13,26 @@ case class VertexInputFetchConfig(attributes: Int=16,bindings: Int=16) {
 }
 
 object VertexInputFormat {
-  val width=4
+  val width=5
   val float32=0;val uint32=1;val sint32=2
   val uint16=3;val sint16=4;val uint8=5;val sint8=6
-  def sizeLog2(format: UInt): UInt=Mux(format>=5.U,0.U(2.W),Mux(format>=3.U,1.U(2.W),2.U(2.W)))
+  val float16=7;val uint8Float=8;val sint8Float=9;val uint16Float=10;val sint16Float=11
+  val uint32Float=12;val sint32Float=13;val unorm8=14;val snorm8=15;val unorm16=16;val snorm16=17
+  val unorm32=18;val snorm32=19;val unorm2101010=20;val snorm2101010=21
+  val uint2101010Float=22;val sint2101010Float=23;val fixed16_16=24
+  val version=2
+  val formats=Seq("FLOAT32"->float32,"UINT32"->uint32,"SINT32"->sint32,"UINT16"->uint16,"SINT16"->sint16,
+    "UINT8"->uint8,"SINT8"->sint8,"FLOAT16"->float16,"UINT8_FLOAT"->uint8Float,"SINT8_FLOAT"->sint8Float,
+    "UINT16_FLOAT"->uint16Float,"SINT16_FLOAT"->sint16Float,"UINT32_FLOAT"->uint32Float,"SINT32_FLOAT"->sint32Float,
+    "UNORM8"->unorm8,"SNORM8"->snorm8,"UNORM16"->unorm16,"SNORM16"->snorm16,"UNORM32"->unorm32,"SNORM32"->snorm32,
+    "UNORM2101010_REV"->unorm2101010,"SNORM2101010_REV"->snorm2101010,
+    "UINT2101010_REV_FLOAT"->uint2101010Float,"SINT2101010_REV_FLOAT"->sint2101010Float,"FIXED16_16"->fixed16_16)
+  require(formats.map(_._2)==(0 to fixed16_16))
+  def packed(format: UInt): Bool=format>=unorm2101010.U && format<=sint2101010Float.U
+  def floating(format: UInt): Bool=format===float32.U || format>=float16.U
+  def sizeLog2(format: UInt): UInt=MuxLookup(format,2.U(2.W))(Seq(
+    uint16,sint16,float16,uint16Float,sint16Float,unorm16,snorm16).map(_.U->1.U(2.W))++
+    Seq(uint8,sint8,uint8Float,sint8Float,unorm8,snorm8).map(_.U->0.U(2.W)))
   def expand(word: UInt,format: UInt): UInt=MuxLookup(format,word)(Seq(
     uint16.U->Cat(0.U(16.W),word(15,0)),sint16.U->Cat(Fill(16,word(15)),word(15,0)),
     uint8.U->Cat(0.U(24.W),word(7,0)),sint8.U->Cat(Fill(24,word(7)),word(7,0))))
@@ -102,7 +118,8 @@ class VertexInputCompletion extends Bundle {
   * bindings fetch baseInstance + floor(instanceId/divisor), using per-binding
   * counters rather than a combinational divider. Address products have three
   * registered cuts. Narrow integer formats expand to canonical 32-bit values;
-  * float32 bits are preserved. Normalized/packed/half formats are rejected.
+  * float32 bits are preserved. Input version 2 additionally accepts converted
+  * integer, normalized, half, fixed and packed REV components as FP32 bits.
   * Cancel retains offered memory requests and records through their handshakes
   * and drains every accepted response before a held completion permits reuse.
   */
@@ -118,7 +135,7 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     val busy=Output(Bool())
   })
   private val Seq(idle,validate,vertex,index,waitIndex,attribute,middle,multiply,addressBase,
-    address,waitAttribute,publish,emit,advance,drain,finish,complete)=Enum(17)
+    address,waitAttribute,convertAttribute,publish,emit,advance,drain,finish,complete)=Enum(18)
   private val phase=RegInit(idle)
   private val draw=Reg(new VertexInputDraw(p))
   private val record=Reg(new VertexInputRecord(p))
@@ -181,6 +198,7 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     phase:=(if(isAttribute)waitAttribute else waitIndex)
   }
   private val currentAttribute=draw.attributes(attr)
+  private val attributeWord=Reg(UInt(32.W))
   private val bindingIndex=Mux(currentAttribute.bindingIndex<p.bindings.U,currentAttribute.bindingIndex,0.U)
   private val binding=draw.bindings(bindingIndex)
   private val selectedElement=Mux(binding.divisor===0.U,Cat(0.U(1.W),record.vertexId),instanceElement(bindingIndex))
@@ -205,9 +223,7 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     }
   }
   private def consumeAttribute(word: UInt): Unit={
-    record.values(attr)(component):=VertexInputFormat.expand(word,currentAttribute.format)
-    when(component===currentAttribute.components-1.U){nextAttribute()}
-      .otherwise{component:=component+1.U;phase:=address}
+    attributeWord:=word;phase:=convertAttribute
   }
   private val ll=Reg(UInt(32.W));private val lh=Reg(UInt(32.W))
   private val hl=Reg(UInt(32.W));private val hh=Reg(UInt(32.W))
@@ -215,7 +231,7 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
   private val baseOffset=Reg(UInt(33.W));private val elementAddress=Reg(UInt(65.W))
   private val join=Module(new BlockPrefixAdder(64))
   join.io.a:=Cat(hh,ll);join.io.b:=Cat(0.U(15.W),mid,0.U(16.W));join.io.carryIn:=false.B
-  private val wideAddress=elementAddress+&(component<<size)
+  private val wideAddress=elementAddress+&Mux(VertexInputFormat.packed(currentAttribute.format),0.U,component<<size)
   private val byteAddress=wideAddress(31,0)
   private val lineAddress=Cat(byteAddress(31,6),0.U(6.W))
   private val attributeInBounds=wideAddress>=binding.base &&
@@ -245,7 +261,9 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
         val b=draw.bindings(Mux(a.bindingIndex<p.bindings.U,a.bindingIndex,0.U))
         val mask=(1.U(4.W)<<VertexInputFormat.sizeLog2(a.format))-1.U
         !a.enabled || (a.bindingIndex<p.bindings.U && a.components>=1.U && a.components<=4.U &&
-          a.format<=VertexInputFormat.sint8.U && ((b.base+&a.offset)&mask)===0.U && (b.stride&mask)===0.U)
+          a.format<=Mux(draw.version===2.U,VertexInputFormat.fixed16_16.U,VertexInputFormat.sint8.U) &&
+          (!VertexInputFormat.packed(a.format) || a.components===4.U) &&
+          ((b.base+&a.offset)&mask)===0.U && (b.stride&mask)===0.U)
       }.reduce(_ && _)
       val bindingsValid=(0 until p.bindings).map { i=>
         val used=draw.attributes.map(a=>a.enabled && a.bindingIndex===i.U).reduce(_ || _)
@@ -253,7 +271,7 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
       }.reduce(_ && _)
       val indexUsed=work && draw.indexFormat=/=0.U
       val indexMask=(1.U(4.W)<<indexSize)-1.U
-      val layout=draw.version===1.U && (!draw.restart || draw.indexFormat=/=0.U) && attributesValid && bindingsValid &&
+      val layout=(draw.version===1.U || draw.version===2.U) && (!draw.restart || draw.indexFormat=/=0.U) && attributesValid && bindingsValid &&
         (!indexUsed || (validView(draw.indices) && (draw.indices.base&indexMask)===0.U))
       val indexEnd=draw.indices.base+&((draw.firstIndex+&draw.count)<<indexSize)
       val arraysEnd=draw.firstVertex+&draw.count
@@ -288,7 +306,7 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     is(attribute) {
       when(!currentAttribute.enabled){record.values(attr):=currentAttribute.constant;nextAttribute()}
         .otherwise {
-          for(k<-0 until 4)record.values(attr)(k):=(if(k==3)Mux(currentAttribute.format===VertexInputFormat.float32.U,"h3f800000".U,1.U)else 0.U)
+          for(k<-0 until 4)record.values(attr)(k):=(if(k==3)Mux(VertexInputFormat.floating(currentAttribute.format),"h3f800000".U,1.U)else 0.U)
           when(selectedElement(32)){fail(VertexInputStatus.bounds,binding.base,true.B)}
             .otherwise {
               ll:=partialLL;lh:=partialLH;hl:=partialHL;hh:=partialHH
@@ -304,6 +322,11 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
         .elsewhen(attrValid && attrAddress===lineAddress) {
           reusedReads:=reusedReads+1.U;consumeAttribute((attrData>>(byteAddress(5,0)<<3))(31,0))
         }.otherwise{queue(byteAddress,true,size)}
+    }
+    is(convertAttribute) {
+      record.values(attr)(component):=VertexInputConversion(attributeWord,currentAttribute.format,component)
+      when(component===currentAttribute.components-1.U){nextAttribute()}
+        .otherwise{component:=component+1.U;phase:=address}
     }
     is(waitAttribute) {
       when(io.memoryResponse.fire && !stop) {

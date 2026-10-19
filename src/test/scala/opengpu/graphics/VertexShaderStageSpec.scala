@@ -225,6 +225,40 @@ class VertexShaderStageSpec extends AnyFlatSpec {
     }
   }
 
+  for(local<-Seq(true,false))
+  it should s"execute converted half normalized packed and fixed vertex inputs on actual shared CUs local=$local" in {
+    simulate(new VertexShaderHarness(local)) { d=>
+      val t=new Driver(d);d.io.out.ready.poke(true.B)
+      for(format<-Seq(7,20,17,24)) {
+        t.exports.clear();t.descriptor(indexed=false,instances=2,count=3)
+        val q=d.io.draw.bits;q.input.version.poke(2.U);q.input.attributes(0).format.poke(format.U)
+        val values=Vector.tabulate(3) { vertex=>
+          val raw=if(format==20)Vector.fill(4)((BigInt(2)<<30)|(BigInt(768+vertex)<<20)|(BigInt(512+vertex)<<10)|BigInt(128+vertex))
+            else Vector.tabulate(4) { c=>
+              if(format==7)BigInt(0x3c00+vertex*16+c*64)
+              else if(format==17)BigInt(0x8000+vertex*128+c*64)
+              else BigInt((vertex*4+c-6)*65536+123)&VertexInputReference.mask
+            }
+          if(format==20)t.put(0x4000+vertex*16,raw.head)
+          else for(c<-0 until 4;b<-0 until VertexInputReference.bytes(format))
+            t.memory(BigInt(0x4000+vertex*16+c*VertexInputReference.bytes(format)+b))=(raw(c)>>(8*b))&255
+          Vector.tabulate(4)(c=>VertexInputReference.decode(raw(c),format,c))
+        }
+        t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+        val expected=(for(instance<-0 until 2;vertex<-0 until 3)yield {
+          val x=java.lang.Float.intBitsToFloat(values(vertex)(0).toInt)+vertex.toFloat
+          Export(vertex,vertex,instance,2,false,Vector(fp(x))++values(vertex).tail,
+            Vector(BigInt(vertex),BigInt(instance),BigInt(2),BigInt(119))++Vector.fill(4)(BigInt(0)))
+        }).toVector
+        assert(t.exports.toVector==expected,s"converted shader exports differ for format=$format local=$local")
+        assert(t.word(t.scratch+t.prefix)==17);d.io.completion.bits.vertices.expect(6.U)
+        d.io.completion.bits.localBatches.expect((if(local)1 else 0).U);t.complete(0)
+      }
+      assert(t.launches==4 && (t.globalStaging==0)==local)
+      info(s"VERTEX_SHADER convertedInputs=true local=$local CUs=2 formats=half,unorm2101010,snorm16,fixed16_16 exactFP32Positions=true instances=2 uniformTail=true poolDrain=true")
+    }
+  }
+
   it should "reject invalid layouts before input access and retire empty and restart-only draws without allocation" in {
     simulate(new VertexShaderHarness()) { d=>
       val t=new Driver(d);val q=d.io.draw.bits
