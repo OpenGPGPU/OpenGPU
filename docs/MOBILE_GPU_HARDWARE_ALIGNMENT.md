@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: proposed hardware architecture with H0/H1/H2/H3/H5 implementation in progress, 2026-10-19. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
+Status: proposed hardware architecture with H0/H1/H2/H3/H5/H6 implementation in progress, 2026-10-19. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
 Evolve OpenGPU into a mobile rendering architecture by extending the shared CU pool with persistent tile storage, GPU geometry fetching, scalable texture and pixel backends, and general graphics resource descriptors. Keep shader arithmetic on the existing CUs. The first functional target is hardware sufficient for a complete GLES 3.0 implementation; a Mali-G31-class commercial comparison requires further feature, performance, and physical qualification.
 
@@ -23,7 +23,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 | Shader execution | Shared compute CUs already execute vertex and fragment tasks; vector FP32 arithmetic, including FMA, is connected | Improve task input/output transport, occupancy, control-flow/resource contracts and sustained issue/writeback throughput |
 | Configuration | `GpuConfig` defaults to 16 lanes and eight warps; the mobile CU-count constant is four | One compute/graphics execution configuration; discoverable resource limits and explicit supported configuration combinations |
 | Interstage transport | Eligible Mobile fragments default to local payloads through the parallel/tile/AXI hierarchy; a generic vertex client also qualifies local/global staging and export ownership | Integrate native vertex/fragment ownership and budget the vertex client's additional SRAM; qualify broader resources and throughput |
-| Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly, FP32 clipping/viewport and quad interpolation exist, with center-raster stream checks | Native geometry submission/binning/fragment ownership, qualifier closure, point/line rasterization and post-transform reuse |
+| Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly, FP32 clipping/viewport, owned triangle raster and quad interpolation connect GPU vertex work to fragment inputs | Native geometry submission/binning/fragment ownership, qualifier closure, point/line rasterization and post-transform reuse |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
 | Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Integrated synthesis/timing, legal early rejection, representative throughput, multiple color outputs and complete format semantics |
@@ -3838,3 +3838,67 @@ point/line rasterization and interpolation, centroid/sample qualifiers,
 per-sample depth integration, complete fragment built-ins, invariance/numeric
 qualification, formats/resources, queries/watchdog behavior and remaining
 H0-H8 requirements remain open.
+
+
+### Owned FP32 triangle raster and shared-CU fragment-input stream, 2026-10-19
+
+The [triangle-raster checkpoint](performance/mobile-fp32-triangle-raster-2026-10-19.json)
+adds `Fp32TriangleRasterStage` and `VertexRasterPipeline`. Generic GPU indexed/
+instanced input, shared-CU vertex execution, assembly, clipping, FP32 viewport,
+pixel-center triangle raster and general quad interpolation now connect under
+one draw owner. Outputs are fragment inputs; native bin allocation, actual
+fragment-shader input delivery and launch remain open.
+
+The triangle owner snapshots versioned raster state: screen extent, sample mode,
+front-face convention, cull mode and scissor. It carries facing and sample mode
+with each complete quad. Both windings, both front-face conventions, all three
+cull modes and 1x/2x/4x sampling are checked. Invalid state/records reject before
+raster launch. Signed64 bounds rejection handles guaranteed off-screen triangles
+before narrowing, including extreme integer viewport origins. Overlapping
+coordinates must fit the signed32 raster interface and safe signed32 coordinate
+spans; otherwise internal numeric status 7 prevents wrapping. Guard-band
+reconstruction and wider/general raster range remain open. This client accepts
+triangles; point/line backends remain separate required work.
+
+Cancellation drains queued/offered raster candidates and accepted interpolation
+instead of resetting child pipelines. Offered fragment-input quads remain stable,
+even after cancellation. Earlier accepted quads survive a later interpolation
+fault, which records quad X/Y and lane. Per-primitive completion is held until
+accepted; draw completion waits for the full vertex, viewport, raster and
+interpolation hierarchy. Actual VM-context idle remains false through final
+held output and held draw completion after source payload release. Assertions
+check child drain at both completion boundaries.
+
+Per-primitive raster/output/discard counts use 32 bits, covered/helper lanes
+34, covered samples 36 and interpolation operations 48. Draw sums use 67-bit
+part totals, 99-bit quads, 101-bit lane totals, 103-bit sample totals and 115-bit
+operation totals. These conservatively sum fewer than 2^67 amplified parts,
+with fewer than 2^32 quads/part, four lanes and at most four samples/lane, and
+fewer than 2^16 arithmetic operations/quad. Exported widths are audited.
+
+All 43 focused checks pass against a frozen 540-source snapshot: seven new
+owner tests, four actual-CU pipeline tests and 32 upstream checks. Default RTL
+emissions audit 42 owner files and 109 composed-pipeline files. The unchanged
+earlier blocks retain the prior 108-check interpolation checkpoint. Owner tests compare exact quad order, sample coverage, facing,
+helper lanes, FP32 values/depth and counters against independent integer/rational
+references. They cover directed and random draws, runtime extents/scissor,
+far-origin culling, unsafe overlap rejection, malformed state, full 64-component
+output, cancellation/reuse and a later numeric fault after one accepted quad.
+Actual two-CU local/global tests use real GPU indices and two instances, varying
+W, smooth FP32 values, raw flat data, clipping amplification/culling and 1x/4x
+sample modes. Additional actual-CU draws cover pre-admission cancellation,
+invalid raster state before memory access, zero-size viewport source execution,
+upstream viewport faults, held final fragment input and healthy reuse.
+
+The standalone owner contains one scalar FMA/divider pair and no SRAM. The
+composed client contains three such fixed-function pairs (clipping, viewport,
+interpolation) and the preceding 14 SRAM macros (28 KiB physical). Neither
+embeds a private CU or payload pool; private records, queues, descriptors and
+control are additional. Production storage/arithmetic budgets, throughput and
+synthesis remain open. PPA screening remains synthesis only.
+
+Native geometry/bin/fragment ownership and shader delivery, host/VM/reset/
+physical allocation, point/line and guard-band rasterization, centroid/sample
+qualifiers, per-sample depth and polygon offset, complete built-ins, numeric/
+invariance qualification, formats/resources, queries/watchdog behavior and the
+remaining H0-H8 requirements remain open.
