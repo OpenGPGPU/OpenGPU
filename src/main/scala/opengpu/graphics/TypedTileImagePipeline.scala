@@ -12,6 +12,7 @@ class TypedTileImageCompletion extends Bundle {
   val faultStage=UInt(2.W);val faultAddress=UInt(32.W)
   val renderer=new TypedTileRenderCompletion;val transfers=new TypedTileImageTransferCompletion
 }
+class TypedTileImageTransferFault extends Bundle {val status=UInt(3.W);val address=UInt(32.W)}
 /** Typed shared-CU tile draws with physical backing views. Stores precede local
   * end; pass completion additionally owns every physical memory acknowledgement.
   * The external port must preserve the existing coherent L2 store contract.
@@ -28,6 +29,10 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val draw=Flipped(Decoupled(new TypedTileRenderDraw(p,f)));val drawCompletion=Decoupled(new TypedTileRenderDrawCompletion)
     val primitive=if(preparedGeometry)Some(Input(new WindowPrimitive(p)))else None
     val out=Decoupled(new TypedTilePixelQuadCompletion);val completion=Decoupled(new TypedTileImageCompletion)
+    /** Latched primary transfer failure, before cancellation of an active draw
+      * can retire that draw with status 4. Retained through complete drain.
+      */
+    val transferFailure=Output(Valid(new TypedTileImageTransferFault))
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
     val payload=payloadConfig.map(q=>Vec(2,new FragmentPayloadPort(config,q)))
     val poolPayload=payloadConfig.map(q=>Output(Valid(new ShaderPayloadBinding(config,q))))
@@ -52,6 +57,8 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   private val transferFault=transferStarted && transfers.io.status=/=0.U
   private val stop=status=/=0.U || externalCancel || renderFault || transferFault
   private val active=phase=/=State.idle && phase=/=State.complete
+  io.transferFailure.valid:=active && status=/=0.U && status=/=4.U && faultStage===2.U
+  io.transferFailure.bits.status:=status;io.transferFailure.bits.address:=faultAddress
   private def fail(code: UInt,stage: UInt,address: UInt=0.U): Unit=when(status===0.U && !externalCancel){status:=code;faultStage:=stage;faultAddress:=address}
   io.shared<>renderer.io.shared
   payload.foreach{_=>for(i<-0 until 2){io.payload.get(i)<>renderer.io.payload.get(i);renderer.io.payload.get(i).context:=contexts(i)

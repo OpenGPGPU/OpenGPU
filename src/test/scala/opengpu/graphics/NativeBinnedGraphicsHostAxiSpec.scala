@@ -70,12 +70,26 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       NativeBinnedGraphicsLayout.frameFields(new NativeBinnedGraphicsFrameRecord),name,value)
     def patchDraw(name: String,value: BigInt): Unit=patchRecord(region+0x12000,
       NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord),name,value)
-    def setup(sampleMode: Int=0,indexedInstances: Int=1,empty: Boolean=false,badShader: Boolean=false,loadImages: Boolean=false): Unit={
+    def setup(sampleMode: Int=0,indexedInstances: Int=1,empty: Boolean=false,badShader: Boolean=false,loadImages: Boolean=false,
+        vertexFormat: Int=VertexInputFormat.float32): Unit={
       region=BigInt(0x400000)+BigInt(serial)*0x400000;imageBase=BigInt(0x4000000)+BigInt(serial)*0x1000000
       imageVaBase=BigInt(0x40000000)+BigInt(serial)*0x400000
       generation=9+serial;serial+=1;mode=sampleMode;instances=indexedInstances;drawCount=if(empty)0 else 2
       initial.clear();reads.clear();writes.clear();backings.clear()
       word(0x30000+(region>>22)*4,((pa(region)>>12)<<10)|0xcf)
+      val converted=vertexFormat!=VertexInputFormat.float32
+      val vertexBase=if(converted)region+0x23000 else BigInt(0x421000)
+      val vertexStride=if(!converted)16 else if(vertexFormat==VertexInputFormat.float16)8 else 4
+      if(converted){
+        require(Set(VertexInputFormat.float16,VertexInputFormat.snorm2101010)(vertexFormat))
+        for((v,i)<-Vector(Vector(-1,-1,0,1),Vector(1,-1,0,1),Vector(-1,1,0,1)).zipWithIndex){
+          val raw=v.zipWithIndex.foldLeft(BigInt(0)){case(bits,(n,c))=>
+            val value=if(vertexFormat==VertexInputFormat.float16){if(n<0)0xbc00 else if(n>0)0x3c00 else 0}
+              else if(c==3)1 else if(n<0)512 else if(n>0)511 else 0
+            bits|(BigInt(value)<<(c*(if(vertexFormat==VertexInputFormat.float16)16 else 10)))}
+          for(b<-0 until vertexStride)memory(pa(vertexBase)+i*vertexStride+b)=((raw>>(b*8))&255).toInt
+        }
+      }
       word(0x30400,((imageBase>>12)<<10)|0xcf)
       if(virtualImages)word(0x30000+(imageVaBase>>22)*4,((imageBase>>12)<<10)|0xcf)
       word(pa(region+0x130000),0x4000003c);word(pa(region+0x130004),region+0x130040)
@@ -130,12 +144,12 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         "draw.vertex.geometry.vertex.sampler.texWidth"->1,"draw.vertex.geometry.vertex.sampler.texHeight"->1,
         "draw.vertex.geometry.vertex.scratch.base"->(region+0x30000),"draw.vertex.geometry.vertex.scratch.limit"->(region+0x301e0),
         "draw.vertex.geometry.vertex.scratch.allocationBase"->(region+0x30000),"draw.vertex.geometry.vertex.scratch.allocationLimit"->(region+0x30200),
-        "draw.vertex.geometry.vertex.input.version"->1,"draw.vertex.geometry.vertex.input.count"->3,"draw.vertex.geometry.vertex.input.instances"->instances,
+        "draw.vertex.geometry.vertex.input.version"->(if(converted)2 else 1),"draw.vertex.geometry.vertex.input.count"->3,"draw.vertex.geometry.vertex.input.instances"->instances,
         "draw.vertex.geometry.vertex.input.attributes[0].enabled"->1,"draw.vertex.geometry.vertex.input.attributes[0].components"->4,
-        "draw.vertex.geometry.vertex.input.attributes[0].format"->VertexInputFormat.float32,
-        "draw.vertex.geometry.vertex.input.bindings[0].base"->0x421000,"draw.vertex.geometry.vertex.input.bindings[0].limit"->0x421030,
-        "draw.vertex.geometry.vertex.input.bindings[0].allocationBase"->0x421000,"draw.vertex.geometry.vertex.input.bindings[0].allocationLimit"->0x421040,
-        "draw.vertex.geometry.vertex.input.bindings[0].stride"->16,"draw.raster.version"->1,"draw.raster.screenW"->17,"draw.raster.screenH"->9,
+        "draw.vertex.geometry.vertex.input.attributes[0].format"->vertexFormat,
+        "draw.vertex.geometry.vertex.input.bindings[0].base"->vertexBase,"draw.vertex.geometry.vertex.input.bindings[0].limit"->(vertexBase+3*vertexStride),
+        "draw.vertex.geometry.vertex.input.bindings[0].allocationBase"->vertexBase,"draw.vertex.geometry.vertex.input.bindings[0].allocationLimit"->(vertexBase+64),
+        "draw.vertex.geometry.vertex.input.bindings[0].stride"->vertexStride,"draw.raster.version"->1,"draw.raster.screenW"->17,"draw.raster.screenH"->9,
         "draw.raster.sampleMode"->mode,"draw.raster.frontFaceCCW"->1)++identity("draw.vertex.geometry.vertex.input.identity.")
         if(instances>1){for(i<-0 until 3)memory(pa(region+0x22000+i))=i
           val k="draw.vertex.geometry.vertex.input."
@@ -174,8 +188,9 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     def run(status: Int=0,id: Int=23,readFault: BigInt=>Boolean=_=>false,writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false): Unit={
       serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=1000000,writeFault=writeFault)(write){d.io.m_irq.peek().litToBoolean}
       val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
-      assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),s"native binned completion=${result.toString(16)}")
       val details=(0 until 12).map(i=>axiRead(d,0x180+i*4))
+      assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),
+        s"native binned completion=${result.toString(16)} expectedStatus=$status GNX1=${details.map(_.toString(16)).mkString(",")}")
       assert(details.head==BigInt("474e5801",16) && (details(1)&7)==status && details(11)==0)
       if(status==0)assert(details(1)==0 && details(5)==0 && details.slice(6,9)==Seq[BigInt](7,8,generation))
     }
@@ -210,14 +225,18 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       val expected=Vector[BigInt](BigInt(if(virtualImages)"474e4302"else"474e4301",16),8,BigInt("474e4a01",16),BigInt("08000200",16),
         BigInt("88420800",16),BigInt("00090011",16),BigInt("d4908000",16),if(local)BigInt("020cb802",16)else BigInt("00000802",16))
       for((word,i)<-expected.zipWithIndex)assert(axiRead(d,0x160+i*4)==word,s"GNC1 word $i differs")
+      for((word,i)<-Vector[BigInt](BigInt("47564901",16),4,0x502,0x1ffffff).zipWithIndex)
+        assert(axiRead(d,0x1b0+i*4)==word,s"GVI1 word $i differs")
+      axiWrite(d,0x1b0,0,expectedResponse=2)
       for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0)
       axiWrite(d,0x180,0,expectedResponse=2)
-      for(mode<-Seq(0,2)){image.setup(mode);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+      for(mode<-Seq(0,2)){image.setup(mode,vertexFormat=if(mode==0)VertexInputFormat.float16 else VertexInputFormat.snorm2101010)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
         assert(image.consumer(10+mode)==BigInt("a7a7a7a7",16));image.submit();image.run();image.verify()
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==BigInt("80000030",16));image.pop()
         val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedBytes(image.imageBase+60+b))<<(b*8)))
         assert(image.consumer(30+mode)==expected);d.io.performance.get.payloadReservedBytes.expect(0.U)}
-      info(s"NATIVE_BINNED_AXI local=$local CUs=2 GNJ1=true Sv32=true virtualImages=$virtualImages draws=4 tiles=12 modes1x4x=true exactFourMRTDepthResolveGuards=true cachedConsumer=true heldCompletionPinsVM=true")}
+      info(s"NATIVE_BINNED_AXI local=$local CUs=2 GNJ1=true GVI1=true convertedVertexInputs=half,snorm2101010 Sv32=true virtualImages=$virtualImages draws=4 tiles=12 modes1x4x=true exactFourMRTDepthResolveGuards=true cachedConsumer=true heldCompletionPinsVM=true")}
   }
   it should "publish every empty tile and execute indexed instanced native draws through Sv32" in {
     simulate(host(false)){d=>initialize(d);val image=new Image(d);vm(d)
@@ -239,7 +258,12 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         ("write-permission",3),("execute-permission",5),("shader-trap",5),("physical-store",3))++
         (if(virtualImages)Seq(("image-write-permission",3),("image-read-permission",3),
           ("image-alias-job",1),("image-alias-state",1),("image-alias-bin",1),("scratch-image-alias",1))else Seq.empty)
-      for(((name,status),index)<-cases.zipWithIndex){
+      val selected=sys.props.get("opengpu.nativeFaultCase").map(_.split(",").toSet)
+      require(selected.forall(_.subsetOf(cases.map(_._1).toSet)),"unknown native fault-case selection")
+      val work=cases.zipWithIndex.filter{case((name,_),_)=>selected.forall(_(name))}
+      require(work.nonEmpty)
+      info(s"NATIVE_BINNED_FAULT_SELECTION virtualImages=$virtualImages cases=${work.map(_._1._1).mkString(",")} filtered=${selected.nonEmpty}")
+      for(((name,status),index)<-work){
         image.setup(badShader=name=="shader-trap",loadImages=name=="image-read-permission")
         image.word(0x30004,((BigInt(0x800000)>>12)<<10)|(if(name=="execute-permission")0xc7 else 0xcf))
         if(name=="header")image.word(image.pa(image.region+0x10000+508),1)

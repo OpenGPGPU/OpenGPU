@@ -142,6 +142,12 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     recordResult.status:=Mux(externalCancel && status===0.U,4.U,status);recordResult.faultStage:=faultStage
     recordResult.renderStarted:=drawStarted;recordResult.stateReadLines:=currentLines;recordResult.stateHit:=currentHit;recordResult.render:=renderResult;phase:=State.emit
   }
+  // An image load fault cancels the active draw. Capture its authoritative
+  // transfer cause before a canceled draw completion can become the first
+  // replay failure. Keep this after child-result handlers for same-cycle ties.
+  when(active && imageStarted && image.io.transferFailure.valid){
+    fail(image.io.transferFailure.bits.status,2,image.io.transferFailure.bits.address)
+  }
   when(active && externalCancel && status===0.U){status:=4.U;faultStage:=0.U;faultRecordValid:=false.B}
   switch(phase){
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;faultStage:=0.U;faultAddress:=0.U;faultRecordValid:=false.B
