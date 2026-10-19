@@ -1,0 +1,325 @@
+package opengpu.graphics
+
+import chisel3._
+import chisel3.util._
+import opengpu.core.memory.L2SramArray
+
+/** Capacity bounds reserved addressable bytes, independent of live bytes.
+  * Small configurations still occupy the characterized 256-row macro minimum.
+  * The default fixed SoA payload is nine arrays for a 128-lane batch. Fourteen
+  * complete reservations fit in 64 KiB; a fifteenth must wait or spill.
+  */
+case class ShaderPayloadConfig(
+  capacityBytes: Int=64*1024,maxPayloadBytes: Int=9*128*4,
+  owners: Int=8,ports: Int=12,responseDepth: Int=2,generationBits: Int=16
+) {
+  require(capacityBytes>=64 && isPow2(capacityBytes) && maxPayloadBytes>0 && maxPayloadBytes<=capacityBytes)
+  require(owners>0 && ports>0 && responseDepth>0 && generationBits>0)
+  val slotBytes: Int=((maxPayloadBytes+63)/64)*64
+  val slots: Int=capacityBytes/slotBytes
+  require(slots>0)
+  val slotLines: Int=slotBytes/64
+  val rows: Int=slots*slotLines
+  val arrayRows: Int=1<<log2Ceil(math.max(2,rows))
+  val segmentRows: Int=math.min(256,arrayRows)
+  val segments: Int=arrayRows/segmentRows
+  val handleWidth: Int=math.max(1,log2Ceil(slots))
+  val ownerWidth: Int=math.max(1,log2Ceil(owners))
+  val reservedBytes: Int=slots*slotBytes
+  val physicalBytes: Int=segments*256*64
+  val countWidth: Int=math.max(1,log2Ceil(ports*responseDepth+2))
+}
+
+object ShaderPayloadControl {
+  val allocate=0
+  val cancel=1
+  val release=2
+}
+
+class ShaderPayloadLease(p: ShaderPayloadConfig) extends Bundle {
+  val handle=UInt(p.handleWidth.W)
+  val generation=UInt(p.generationBits.W)
+  val context=UInt(32.W)
+}
+
+class ShaderPayloadControlRequest(p: ShaderPayloadConfig) extends ShaderPayloadLease(p) {
+  val operation=UInt(2.W)
+  val tag=UInt(8.W)
+  val bytes=UInt(32.W)
+  /** A full pool can return a fallback decision instead of holding admission. */
+  val allowSpill=Bool()
+}
+
+class ShaderPayloadControlResponse(p: ShaderPayloadConfig) extends ShaderPayloadLease(p) {
+  val operation=UInt(2.W)
+  val tag=UInt(8.W)
+  val bytes=UInt(32.W)
+  val resident=Bool()
+  val spill=Bool()
+  val fault=Bool()
+}
+
+class ShaderPayloadRequest(p: ShaderPayloadConfig) extends ShaderPayloadLease(p) {
+  /** Supplied by the trusted task binding, never by a shader address. */
+  val owner=UInt(p.ownerWidth.W)
+  val tag=UInt(8.W)
+  val offset=UInt(32.W)
+  val write=Bool()
+  val data=UInt(512.W)
+  /** Requested bytes for reads and writes, including partial tail lines. */
+  val mask=UInt(64.W)
+}
+
+class ShaderPayloadResponse(p: ShaderPayloadConfig) extends ShaderPayloadLease(p) {
+  val tag=UInt(8.W)
+  val data=UInt(512.W)
+  val fault=Bool()
+}
+
+private class QueuedShaderPayloadResponse(p: ShaderPayloadConfig) extends Bundle {
+  val response=new ShaderPayloadResponse(p)
+  val charged=Bool()
+  val slot=UInt(p.handleWidth.W)
+}
+
+private class ScheduledShaderPayloadOperation(p: ShaderPayloadConfig) extends Bundle {
+  val request=new ShaderPayloadRequest(p)
+  val initialize=Bool()
+}
+
+/** Shared banked payload storage with explicit reservation and drain ownership.
+  *
+  * Sixteen single-port word banks deliver one 64-byte line. Each bank is split
+  * into characterized <=256-row arrays. Masked writes read/modify/write under
+  * the same global operation owner; no uncharacterized byte-write SRAM port is
+  * assumed. This first service serializes line operations across three phases.
+  * It makes no one-line-per-cycle throughput claim.
+  *
+  * Allocation reserves the complete input/output slot. Background zeroing is
+  * fairly arbitrated with live traffic, and matching accesses wait for it.
+  * Cancellation rejects new accesses and poisons unfinished operations, while
+  * retaining the lease until every held reply and initializer has drained.
+  * Oversized/full-pool spill responses reserve no SRAM; the caller owns the
+  * separate memory-backed fallback protocol.
+  */
+class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useBlackBoxes: Boolean=false)
+    extends Module {
+  val io=IO(new Bundle {
+    val control=Vec(p.owners,Flipped(Decoupled(new ShaderPayloadControlRequest(p))))
+    val controlResponse=Vec(p.owners,Decoupled(new ShaderPayloadControlResponse(p)))
+    val request=Vec(p.ports,Flipped(Decoupled(new ShaderPayloadRequest(p))))
+    val response=Vec(p.ports,Decoupled(new ShaderPayloadResponse(p)))
+    val reservedBytes=Output(UInt(32.W))
+    val liveBytes=Output(UInt(32.W))
+    val initializing=Output(Bool())
+    val drained=Output(Bool())
+    val readIssued=Output(Bool())
+    val writeCommitted=Output(Bool())
+  })
+  private val active=RegInit(VecInit(Seq.fill(p.slots)(false.B)))
+  private val canceled=RegInit(VecInit(Seq.fill(p.slots)(false.B)))
+  private val initialized=RegInit(VecInit(Seq.fill(p.slots)(false.B)))
+  private val owner=Reg(Vec(p.slots,UInt(p.ownerWidth.W)))
+  private val context=Reg(Vec(p.slots,UInt(32.W)))
+  private val generation=RegInit(VecInit(Seq.fill(p.slots)(0.U(p.generationBits.W))))
+  private val bytes=Reg(Vec(p.slots,UInt(32.W)))
+  private val inFlight=RegInit(VecInit(Seq.fill(p.slots)(0.U(p.countWidth.W))))
+  private val initLine=Reg(Vec(p.slots,UInt(math.max(1,log2Ceil(p.slotLines)).W)))
+  private val memories=Seq.fill(16)(Seq.fill(p.segments)(
+    Module(new L2SramArray(p.segmentRows,32,useBlackBoxes))))
+  private val replies=Seq.fill(p.ports)(Module(new Queue(new QueuedShaderPayloadResponse(p),p.responseDepth)))
+  private val controlReplies=Seq.fill(p.owners)(Module(new Queue(new ShaderPayloadControlResponse(p),1)))
+  private object State extends ChiselEnum {val idle,memory,complete=Value}
+  private val state=RegInit(State.idle)
+  private val operation=Reg(new ScheduledShaderPayloadOperation(p))
+  private val operationPort=Reg(UInt(math.max(1,log2Ceil(p.ports+1)).W))
+  private val operationSlot=Reg(UInt(p.handleWidth.W))
+  private val heldSlot=if(p.slots==1)0.U else operationSlot
+  private val operationFault=Reg(Bool())
+  private val operationCharged=Reg(Bool())
+
+  private def safeSlot(handle: UInt): UInt=if(p.slots==1)0.U else Mux(handle<p.slots.U,handle,0.U)
+  private def matches(lease: ShaderPayloadLease,who: UInt): Bool={
+    val slot=safeSlot(lease.handle)
+    lease.handle<p.slots.U && active(slot) && generation(slot)===lease.generation &&
+      owner(slot)===who && context(slot)===lease.context
+  }
+  private val controls=Module(new RRArbiter(new ShaderPayloadControlRequest(p),p.owners))
+  private val free = ~active.asUInt
+  private val freeSlot=if(p.slots==1)0.U(p.handleWidth.W)else PriorityEncoder(free)
+  for(i <- 0 until p.owners) {
+    val req=io.control(i)
+    val slot=safeSlot(req.bits.handle)
+    val validLease=matches(req.bits,i.U)
+    val alloc=req.bits.operation===ShaderPayloadControl.allocate.U
+    val release=req.bits.operation===ShaderPayloadControl.release.U
+    val initializerBusy=state=/=State.idle && operation.initialize && operationSlot===slot
+    val oversized=req.bits.bytes>p.maxPayloadBytes.U || req.bits.bytes===0.U
+    val eligible=controlReplies(i).io.enq.ready &&
+      Mux(alloc,oversized || free.orR || req.bits.allowSpill,
+        !release || !validLease || (inFlight(slot)===0.U && !initializerBusy))
+    controls.io.in(i).valid:=req.valid && eligible
+    controls.io.in(i).bits:=req.bits
+    req.ready:=controls.io.in(i).ready && eligible
+    io.controlResponse(i)<>controlReplies(i).io.deq
+    controlReplies(i).io.enq.valid:=controls.io.out.fire && controls.io.chosen===i.U
+    controlReplies(i).io.enq.bits:=0.U.asTypeOf(controlReplies(i).io.enq.bits)
+  }
+  controls.io.out.ready:=true.B
+  private val command=controls.io.out.bits
+  private val commandSlot=safeSlot(command.handle)
+  private val commandMatches=matches(command,controls.io.chosen)
+  private val commandAlloc=command.operation===ShaderPayloadControl.allocate.U
+  private val commandCancel=command.operation===ShaderPayloadControl.cancel.U
+  private val commandRelease=command.operation===ShaderPayloadControl.release.U
+  private val allocationFits=command.bytes=/=0.U && command.bytes<=p.maxPayloadBytes.U
+  private val allocate=controls.io.out.fire && commandAlloc && allocationFits && free.orR
+  private val cancel=controls.io.out.fire && commandCancel && commandMatches
+  private val release=controls.io.out.fire && commandRelease && commandMatches
+  private def mutating(slot: UInt): Bool=(cancel || release) && commandSlot===slot
+  for(i <- 0 until p.owners) {
+    val response=controlReplies(i).io.enq.bits
+    response.operation:=command.operation
+    response.tag:=command.tag
+    response.handle:=Mux(allocate,freeSlot,command.handle)
+    response.generation:=Mux(allocate,generation(freeSlot)+1.U,command.generation)
+    response.context:=command.context
+    response.bytes:=Mux(commandAlloc,command.bytes,Mux(commandMatches,bytes(commandSlot),0.U))
+    response.resident:=Mux(commandAlloc,allocate,commandMatches && !commandRelease)
+    response.spill:=commandAlloc && command.bytes=/=0.U &&
+      (!allocationFits || (!free.orR && command.allowSpill))
+    response.fault:=Mux(commandAlloc,command.bytes===0.U,
+      !commandMatches || !(commandCancel || commandRelease))
+  }
+  when(allocate) {
+    active(freeSlot):=true.B
+    canceled(freeSlot):=false.B
+    initialized(freeSlot):=false.B
+    generation(freeSlot):=generation(freeSlot)+1.U
+    owner(freeSlot):=controls.io.chosen
+    context(freeSlot):=command.context
+    bytes(freeSlot):=command.bytes
+    initLine(freeSlot):=0.U
+    assert(inFlight(freeSlot)===0.U,"a payload reservation cannot recycle outstanding replies")
+  }
+  when(cancel) {canceled(commandSlot):=true.B}
+  when(release) {
+    active(commandSlot):=false.B
+    initialized(commandSlot):=false.B
+  }
+
+  private val scheduled=Module(new RRArbiter(new ScheduledShaderPayloadOperation(p),p.ports+1))
+  for(i <- 0 until p.ports) {
+    val req=io.request(i)
+    val slot=safeSlot(req.bits.handle)
+    val validLease=matches(req.bits,req.bits.owner)
+    val waitingForInit=validLease && !canceled(slot) && !initialized(slot)
+    val eligible=replies(i).io.enq.ready && !waitingForInit && !mutating(slot)
+    scheduled.io.in(i).valid:=req.valid && eligible
+    scheduled.io.in(i).bits.request:=req.bits
+    scheduled.io.in(i).bits.initialize:=false.B
+    req.ready:=scheduled.io.in(i).ready && eligible
+    io.response(i).valid:=replies(i).io.deq.valid
+    io.response(i).bits:=replies(i).io.deq.bits.response
+    replies(i).io.deq.ready:=io.response(i).ready
+  }
+  private val initializers=Module(new RRArbiter(UInt(p.handleWidth.W),p.slots))
+  for(i <- 0 until p.slots) {
+    initializers.io.in(i).valid:=active(i) && !initialized(i) && !canceled(i) && !mutating(i.U)
+    initializers.io.in(i).bits:=i.U
+  }
+  private val initializingSlot=if(p.slots==1)0.U else initializers.io.out.bits
+  private val init=scheduled.io.in(p.ports)
+  init.valid:=initializers.io.out.valid
+  init.bits:=0.U.asTypeOf(init.bits)
+  init.bits.initialize:=true.B
+  init.bits.request.handle:=initializingSlot
+  init.bits.request.generation:=generation(initializingSlot)
+  init.bits.request.context:=context(initializingSlot)
+  init.bits.request.owner:=owner(initializingSlot)
+  init.bits.request.offset:=initLine(initializingSlot)<<6
+  init.bits.request.write:=true.B
+  init.bits.request.mask:=Fill(64,1.U(1.W))
+  initializers.io.out.ready:=init.ready
+  scheduled.io.out.ready:=state===State.idle
+  private val offered=scheduled.io.out.bits.request
+  private val offeredSlot=safeSlot(offered.handle)
+  private val offeredMatches=matches(offered,offered.owner)
+  private val offeredBytes=VecInit((0 until 64).map(b=>
+    !offered.mask(b) || (offered.offset+&b.U)<bytes(offeredSlot))).asUInt.andR
+  private val offeredBounds=offered.offset(5,0)===0.U && offered.offset<p.slotBytes.U && offeredBytes
+  when(scheduled.io.out.fire) {
+    operation:=scheduled.io.out.bits
+    operationPort:=scheduled.io.chosen
+    operationSlot:=offeredSlot
+    operationCharged:=offeredMatches && !scheduled.io.out.bits.initialize
+    operationFault := !offeredMatches || canceled(offeredSlot) ||
+      (!scheduled.io.out.bits.initialize && !offeredBounds)
+    state:=State.memory
+  }
+  private val validOperation=matches(operation.request,operation.request.owner) &&
+    !canceled(heldSlot) && !mutating(heldSlot) && !operationFault
+  private val row=heldSlot*p.slotLines.U+(operation.request.offset>>6)
+  private val segment=if(p.segments==1)0.U else row>>log2Ceil(p.segmentRows)
+  private val address=row(log2Ceil(p.segmentRows)-1,0)
+  private val readWords=Wire(Vec(16,UInt(32.W)))
+  for(bank <- 0 until 16) {
+    readWords(bank):=Mux1H((0 until p.segments).map(s=>(segment===s.U)->memories(bank)(s).io.readData))
+    val mask=operation.request.mask(4*bank+3,4*bank)
+    val replacement=VecInit((0 until 4).map(b=>Mux(mask(b),
+      operation.request.data(32*bank+8*b+7,32*bank+8*b),readWords(bank)(8*b+7,8*b)))).asUInt
+    for(s <- 0 until p.segments) {
+      val ram=memories(bank)(s).io
+      val selected=segment===s.U
+      ram.readEnable:=state===State.memory && !operation.initialize && validOperation && selected
+      ram.readAddress:=address
+      ram.writeEnable:=selected && validOperation &&
+        ((state===State.memory && operation.initialize) ||
+         (state===State.complete && !operation.initialize && operation.request.write && mask.orR))
+      ram.writeAddress:=address
+      ram.writeData:=Mux(operation.initialize,0.U,replacement)
+    }
+  }
+  when(state===State.memory) {state:=State.complete}
+  for(i <- 0 until p.ports) {
+    val enq=replies(i).io.enq
+    enq.valid:=state===State.complete && !operation.initialize && operationPort===i.U
+    enq.bits:=0.U.asTypeOf(enq.bits)
+    enq.bits.response.handle:=operation.request.handle
+    enq.bits.response.generation:=operation.request.generation
+    enq.bits.response.context:=operation.request.context
+    enq.bits.response.tag:=operation.request.tag
+    enq.bits.response.fault := !validOperation
+    enq.bits.response.data:=Mux(validOperation && !operation.request.write,
+      VecInit((0 until 64).map(b=>Mux(operation.request.mask(b),
+        readWords.asUInt(8*b+7,8*b),0.U(8.W)))).asUInt,0.U)
+    enq.bits.charged:=operationCharged
+    enq.bits.slot:=operationSlot
+    when(enq.valid) {assert(enq.ready,"accepted payload operation must retain reply capacity")}
+  }
+  when(state===State.complete) {
+    state:=State.idle
+    when(operation.initialize && validOperation) {
+      when(initLine(heldSlot)===(p.slotLines-1).U) {
+        initialized(heldSlot):=true.B
+      }.otherwise {initLine(heldSlot):=initLine(heldSlot)+1.U}
+    }
+  }
+  for(i <- 0 until p.slots) {
+    val increment=scheduled.io.out.fire && !scheduled.io.out.bits.initialize && offeredMatches && offeredSlot===i.U
+    val decrements=PopCount(replies.map(q=>q.io.deq.fire && q.io.deq.bits.charged && q.io.deq.bits.slot===i.U))
+    when(increment || decrements=/=0.U) {
+      assert((inFlight(i)+&increment.asUInt)>=decrements,"payload reply ownership underflow")
+      inFlight(i):=inFlight(i)+increment.asUInt-decrements
+    }
+    when(!active(i)) {assert(inFlight(i)===0.U,"free payload slot retains data replies")}
+  }
+  io.reservedBytes:=PopCount(active)*p.slotBytes.U
+  io.liveBytes:=(0 until p.slots).map(i=>Mux(active(i),bytes(i),0.U(32.W))).reduce(_+& _)
+  io.initializing:=(0 until p.slots).map(i=>active(i) && !initialized(i) && !canceled(i)).reduce(_ || _)
+  io.drained := !active.asUInt.orR && state===State.idle &&
+    !replies.map(_.io.deq.valid).reduce(_ || _) && !controlReplies.map(_.io.deq.valid).reduce(_ || _)
+  io.readIssued:=state===State.memory && !operation.initialize && validOperation
+  io.writeCommitted:=state===State.complete && !operation.initialize && operation.request.write &&
+    validOperation && operation.request.mask.orR
+}
