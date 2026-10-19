@@ -3031,3 +3031,13 @@ frozen. Integrated renderer synthesis is recorded separately at the original
 Programmable shader exports, production host/two-engine integration, legal early
 rejection, integrated timing closure, full H3 workload gates and remaining H0-H8
 requirements are still open.
+
+The [integrated fixed-function synthesis attempt](performance/mobile-banked-fixed-renderer-synthesis-2026-10-19.json)
+uses the exact `d0ebf88` source and emitted Mobile RTL. All 496 source/build/ABI
+hashes match that committed tree and the recoverable archive. The synthesis-only
+run retained 1 GHz ASAP7 TC/SLVT and 25% I/O constraints, but timed out after
+900 seconds in `1_synth` following ABC logic optimization. No final complete-
+mapping or setup qualification report was produced. Intermediate AIG statistics
+are not mapped cell area, power or timing; no integrated PPA result is claimed.
+The immutable manifest, emitted/macro hashes, run log and failure result are
+preserved. Complete integrated synthesis and timing closure remain open.
