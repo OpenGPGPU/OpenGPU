@@ -11,6 +11,8 @@ class PersistentTileAttachmentStoreIO(externalTransfers: Boolean=false,bankedSam
   val quadCompletion=if(bankedSamples) Some(Decoupled(new TileSampleQuadCompletion)) else None
   val acceptedSamples=if(bankedSamples) Some(Output(UInt(3.W))) else None
   val committedSamples=if(bankedSamples) Some(Output(UInt(3.W))) else None
+  /** Accepted local producer work/results drained; external exports may remain. */
+  val localDrained=if(bankedSamples) Some(Output(Bool())) else None
   val pass = new TileRenderPassPort
   val fragmentX = Input(UInt(16.W))
   val fragmentY = Input(UInt(16.W))
@@ -79,6 +81,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   private val depthIo=if(!bankedSamples) Module(new TileAttachmentSram(planeWords,useSramBlackBoxes)).io
     else Wire(new TileAttachmentSramIO(planeWords))
   private val quadDrained=WireDefault(true.B)
+  private val quadRefillDrained=WireDefault(true.B)
   private val scalarDrained=WireDefault(true.B)
   private val quadColorMask=WireDefault(0.U(planeWords.W))
   private val quadDepthMask=WireDefault(0.U(planeWords.W))
@@ -523,6 +526,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     val legacy=banks.io.legacy.get
     val quadFillActive=missForQuad && (state===missRequest || state===missResponse ||
       state===quadMissProducts || state===quadMissRow || state===quadMissBase || state===quadMissAddress)
+    quadRefillDrained:= !quadFillActive
     // Canceled arithmetic may drain before an already offered refill commits.
     // Retain tagged SRAM ownership until that refill response has drained too.
     legacy.exclusive:=merge.io.drained && !quadFillActive
@@ -626,6 +630,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     when(quadDepthMask.orR){depthDirty:=depthDirty|quadDepthMask}
   }
 
+  io.localDrained.foreach(_:=quadDrained && quadRefillDrained && scalarDrained && !responseValid && !clearEngine.io.busy)
   io.events.resident := io.pass.active
   io.events.admitted := admission.io.out.fire && admission.io.out.bits.valid && !failed && !abortNow
   io.events.completed := io.pass.completion.fire

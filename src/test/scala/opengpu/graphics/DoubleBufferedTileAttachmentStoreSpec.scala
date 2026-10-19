@@ -20,8 +20,8 @@ private[graphics] class TileSramSimulationResources extends BlackBox with HasBla
 
 }
 
-private class SramBackedDoubleTile(coalesced: Boolean=true,buffered: Boolean=true) extends DoubleBufferedTileAttachmentStore(GpuConfig(lanes=4,warps=2),
-  screenWidth=64,screenHeight=64,storeCredits=8,useSramBlackBoxes=true,coalesceTransfers=coalesced,bufferedWriteAcks=buffered) {
+private class SramBackedDoubleTile(coalesced: Boolean=true,buffered: Boolean=true,banked: Boolean=false) extends DoubleBufferedTileAttachmentStore(GpuConfig(lanes=4,warps=2),
+  screenWidth=64,screenHeight=64,storeCredits=8,useSramBlackBoxes=true,coalesceTransfers=coalesced,bufferedWriteAcks=buffered,bankedSamples=banked) {
   val macroModelPresent=IO(Output(Bool()))
   private val resources=Module(new TileSramSimulationResources)
   macroModelPresent:=resources.io.present
@@ -31,133 +31,12 @@ class DoubleBufferedTileAttachmentStoreSpec extends AnyFlatSpec {
   import TilePassTestData._
   private val credits=2
   private val perSlot=credits+1
+  private val bankedSamples=sys.props.get("opengpu.bankedDoubleSamples").contains("true")
   private def store(blackBoxes: Boolean=false,window: Int=credits,coalesced: Boolean=true,buffered: Boolean=true): DoubleBufferedTileAttachmentStore =
-    if (blackBoxes) { require(window==8); new SramBackedDoubleTile(coalesced,buffered) }
+    if (blackBoxes) { require(window==8); new SramBackedDoubleTile(coalesced,buffered,bankedSamples) }
     else new DoubleBufferedTileAttachmentStore(GpuConfig(lanes=4,warps=2),
-      screenWidth=64,screenHeight=64,storeCredits=window,coalesceTransfers=coalesced,bufferedWriteAcks=buffered)
-  case class Request(tid: Int,address: Long,write: Boolean,data: BigInt,mask: BigInt,due: Int)
-  case class Result(id: Int,status: Int,loads: Long,stores: Long,resolves: Long)
-
-  private class Driver(val d: DoubleBufferedTileAttachmentStore,window: Int=credits,latency: Int=2,writeLimit: Int=100,maxWait: Int=20000) {
-    private val perSlot=window+1
-    val memory=mutable.LongMap.empty[Long]
-    val pending=mutable.ArrayBuffer.empty[Request]
-    val acceptedWrites=mutable.ArrayBuffer.empty[Request]
-    val live=mutable.Set.empty[Int]
-    var returning=Option.empty[Request]
-    var responseData=BigInt(0)
-    var responseFault=false
-    var holdRequests=false
-    val holdWrites=Array(false,false)
-    var faultSlot=Option.empty[Int]
-    val reads=Array(0,0); val writes=Array(0,0); val writeWords=Array(0,0)
-    var cycle=0
-    private var held=Option.empty[BigInt]
-    d.io.pass.begin.valid.poke(false.B); d.io.pass.begin.bits.poke(0.U.asTypeOf(d.io.pass.begin.bits))
-    d.io.pass.end.valid.poke(false.B); d.io.pass.end.bits.poke(true.B)
-    d.io.pass.clear.valid.poke(false.B); d.io.pass.clear.bits.poke(0.U.asTypeOf(d.io.pass.clear.bits))
-    d.io.pass.clearDone.ready.poke(true.B); d.io.pass.completion.ready.poke(false.B)
-    d.io.pass.cancel.poke(false.B); d.io.pass.memoryFault.poke(false.B)
-    d.io.fragmentX.poke(0.U); d.io.fragmentY.poke(0.U)
-    d.io.producerDrained.poke(true.B); d.io.omDrained.poke(true.B); d.io.executionFault.poke(false.B)
-    d.io.wordIndex.poke(0.U); d.io.depthPlane.poke(false.B)
-    d.io.om.req.valid.poke(false.B); d.io.om.req.bits.poke(0.U.asTypeOf(d.io.om.req.bits))
-    d.io.om.resp.ready.poke(false.B)
-    d.io.mem.req.ready.poke(false.B); d.io.mem.resp.valid.poke(false.B)
-    d.io.mem.resp.bits.poke(0.U.asTypeOf(d.io.mem.resp.bits))
-    d.io.memoryRequest.ready.poke(false.B); d.io.memoryResponse.valid.poke(false.B)
-    d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits))
-    d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
-    def step(): Unit = {
-      val writeLive=pending.count(_.write)+returning.count(_.write)
-      val ready= !holdRequests && cycle%5!=2 &&
-        !(d.io.memoryRequest.bits.isWrite.peek().litToBoolean && writeLive>=writeLimit)
-      d.io.memoryRequest.ready.poke(ready.B)
-      held.foreach { bits=>d.io.memoryRequest.valid.expect(true.B); assert(d.io.memoryRequest.bits.peek().litValue==bits) }
-      held=if (d.io.memoryRequest.valid.peek().litToBoolean && !ready) Some(d.io.memoryRequest.bits.peek().litValue) else None
-      if (returning.isEmpty) {
-        val i=pending.lastIndexWhere(r=>r.due<=cycle && !(r.write && holdWrites(r.tid/perSlot)))
-        if (i>=0) {
-          returning=Some(pending.remove(i))
-          val r=returning.get
-          responseData=(0 until 16).foldLeft(BigInt(0))((v,n)=>v|
-            (BigInt(memory.getOrElse(r.address+n*4L,0xdeadbeefL))<<(32*n)))
-          responseFault=faultSlot.contains(r.tid/perSlot)
-          if (responseFault) faultSlot=None
-        }
-      }
-      d.io.memoryResponse.valid.poke(returning.nonEmpty.B)
-      returning.foreach { r=>
-        d.io.memoryResponse.bits.transactionId.poke(r.tid.U)
-        d.io.memoryResponse.bits.readData.poke(responseData.U(512.W))
-        d.io.memoryResponse.bits.fault.poke(responseFault.B)
-      }
-      if (returning.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean) {
-        val r=returning.get
-        if (r.write && !responseFault) for (n <- 0 until 16 if ((r.mask>>(4*n))&15)==15)
-          memory(r.address+n*4L)=((r.data>>(32*n))&0xffffffffL).toLong
-        assert(live.remove(r.tid)); returning=None
-      }
-      if (d.io.memoryRequest.valid.peek().litToBoolean && ready) {
-        val b=d.io.memoryRequest.bits; val tid=b.transactionId.peek().litValue.toInt
-        assert(live.add(tid)); assert(tid<2*perSlot)
-        val write=b.isWrite.peek().litToBoolean
-        if (write) { writes(tid/perSlot)+=1; writeWords(tid/perSlot)+=b.byteMask.peek().litValue.bitCount/4 } else reads(tid/perSlot)+=1
-        val request=Request(tid,b.address.peek().litValue.toLong,write,b.writeData.peek().litValue,
-          b.byteMask.peek().litValue,cycle+latency+tid%4)
-        pending+=request
-        if(write)acceptedWrites+=request
-      }
-      d.io.mem.req.valid.expect(false.B)
-      d.clock.step(); cycle+=1
-    }
-    def until(p: => Boolean,max: Int=maxWait): Unit = {
-      val start=cycle
-      while (!p && cycle-start<max) step()
-      assert(p,s"stalled at $cycle live=$live pending=$pending")
-    }
-    def begin(p: Pass): Unit = {
-      pokeDescriptor(d.io.pass.begin.bits,p); d.io.pass.begin.valid.poke(true.B)
-      until(d.io.pass.begin.ready.peek().litToBoolean); step(); d.io.pass.begin.valid.poke(false.B)
-      d.io.pass.begin.bits.poke(0.U.asTypeOf(d.io.pass.begin.bits))
-      until(d.io.pass.end.ready.peek().litToBoolean || d.io.pass.completion.valid.peek().litToBoolean)
-    }
-    def om(p: Pass,x: Int,y: Int,depth: Boolean,data: Option[Long]=None,sample: Int=0): Long = {
-      d.io.producerDrained.poke(false.B); d.io.omDrained.poke(false.B)
-      d.io.fragmentX.poke((p.originX+x).U); d.io.fragmentY.poke((p.originY+y).U)
-      d.io.wordIndex.poke(p.index(x,y,sample).U); d.io.depthPlane.poke(depth.B)
-      d.io.om.req.bits.addr.poke(p.address(x,y,sample,depth).U)
-      d.io.om.req.bits.write.poke(data.nonEmpty.B); d.io.om.req.bits.data.poke(data.getOrElse(0L).U)
-      d.io.om.req.valid.poke(true.B); until(d.io.om.req.ready.peek().litToBoolean)
-      step(); d.io.om.req.valid.poke(false.B)
-      until(d.io.om.resp.valid.peek().litToBoolean)
-      val result=d.io.om.resp.bits.data.peek().litValue.toLong
-      d.io.om.resp.bits.addr.expect(p.address(x,y,sample,depth).U)
-      d.io.om.resp.ready.poke(true.B); step(); d.io.om.resp.ready.poke(false.B)
-      d.io.producerDrained.poke(true.B); d.io.omDrained.poke(true.B)
-      result
-    }
-    def end(): Unit = {
-      d.io.pass.end.valid.poke(true.B); until(d.io.pass.end.ready.peek().litToBoolean)
-      step(); d.io.pass.end.valid.poke(false.B)
-    }
-    def retire(): Result = {
-      until(d.io.pass.completion.valid.peek().litToBoolean)
-      val bits=d.io.pass.completion.bits.peek().litValue
-      val counts=d.io.completionBytes.peek().litValue
-      val result=Result(d.io.pass.completion.bits.identity.pass.peek().litValue.toInt,
-        d.io.pass.completion.bits.status.peek().litValue.toInt,
-        d.io.completionBytes.loadBytes.peek().litValue.toLong,
-        d.io.completionBytes.storeBytes.peek().litValue.toLong,
-        d.io.completionBytes.resolveBytes.peek().litValue.toLong)
-      for (_ <- 0 until 4) {
-        step(); d.io.pass.completion.valid.expect(true.B)
-        assert(d.io.pass.completion.bits.peek().litValue==bits && d.io.completionBytes.peek().litValue==counts)
-      }
-      d.io.pass.completion.ready.poke(true.B); step(); d.io.pass.completion.ready.poke(false.B)
-      result
-    }
-  }
+      screenWidth=64,screenHeight=64,storeCredits=window,coalesceTransfers=coalesced,bufferedWriteAcks=buffered,bankedSamples=bankedSamples)
+  import DoubleBufferedTileAttachmentStoreTestSupport._
 
   it should "load and render a second tile while the first retains every store acknowledgement" in {
     simulate(store()) { dut=>
@@ -366,4 +245,32 @@ class DoubleBufferedTileAttachmentStoreSpec extends AnyFlatSpec {
     }
   }
 
+
+  it should "retain a canceled clear completion before handing its producer slot to another tile" in {
+    simulate(store()) { dut=>
+      val d=new Driver(dut)
+      val p=Pass(width=8,height=8,originX=0,originY=0,pitch=128,tileLog2=3,colorStore=false,depthStore=false)
+      d.begin(p)
+      dut.io.pass.clearDone.ready.poke(false.B)
+      val c=dut.io.pass.clear.bits;c.poke(0.U.asTypeOf(c))
+      c.maxX.poke(8.U);c.maxY.poke(8.U);c.colorMask.poke(0xffffffffL.U);c.colorValue.poke(0x12345678L.U)
+      dut.io.pass.clear.valid.poke(true.B);d.until(dut.io.pass.clear.ready.peek().litToBoolean)
+      d.step();dut.io.pass.clear.valid.poke(false.B)
+      dut.io.pass.cancel.poke(true.B);d.step();dut.io.pass.cancel.poke(false.B)
+      d.until(dut.io.pass.clearDone.valid.peek().litToBoolean)
+      dut.io.pass.clearDone.bits.expect(false.B)
+      val next=p.copy(originX=8,id=8)
+      pokeDescriptor(dut.io.pass.begin.bits,next);dut.io.pass.begin.valid.poke(true.B)
+      for(_ <- 0 until 8) {
+        dut.io.pass.begin.ready.expect(false.B)
+        dut.io.pass.clearDone.valid.expect(true.B);dut.io.pass.clearDone.bits.expect(false.B)
+        d.step()
+      }
+      dut.io.pass.begin.valid.poke(false.B);dut.io.pass.clearDone.ready.poke(true.B);d.step()
+      d.begin(next);d.end()
+      assert(d.retire()==Result(7,TilePassStatus.cancelled,0,0,0))
+      assert(d.retire()==Result(8,TilePassStatus.success,0,0,0))
+      dut.io.occupied.expect(0.U)
+    }
+  }
 }

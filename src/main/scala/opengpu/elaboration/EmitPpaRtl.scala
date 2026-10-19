@@ -270,6 +270,11 @@ object EmitPpaRtl {
           new opengpu.graphics.DoubleBufferedTileAttachmentStore(mobile.execution,
             screenWidth=1280,screenHeight=720,useSramBlackBoxes=true,
             storeCredits=mobile.attachmentStoreCredits,externalArbitration=true), stageArgs, firtoolArgs)
+      case "mobile-tile-double-banked" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.DoubleBufferedTileAttachmentStore(mobile.execution,
+          screenWidth=1280,screenHeight=720,useSramBlackBoxes=true,storeCredits=mobile.attachmentStoreCredits,
+          externalArbitration=true,bankedSamples=true),stageArgs,firtoolArgs)
       case "mobile-l2-store-table" =>
         val mobile = opengpu.config.MobileGpuConfig()
         ChiselStage.emitSystemVerilogFile(
