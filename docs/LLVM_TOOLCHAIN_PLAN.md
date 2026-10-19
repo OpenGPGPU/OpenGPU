@@ -155,7 +155,7 @@ The device ISA is defined by the Chisel decoders in
   triple. The Driver routes `opengpu` through the BareMetal RISCV toolchain,
   defaults `-march` to `rv32imafv_zicsr_zifencei_xopengpu` and `-mcpu` to
   `opengpu`, forwards the RISCV feature list to cc1, and uses the RISCV default
-  frame-pointer policy (leaf kernels must not allocate a stack). No kernel
-  attribute/CC wiring yet: functions use the standard C CC, so arguments arrive
-  in `a0...` rather than from the kernarg base. Specializing that is the next
-  clang step.
+  frame-pointer policy (leaf kernels must not allocate a stack). Device kernels
+  are marked with `__attribute__((device_kernel))`, which the target maps to
+  `CallingConv::RISCV_OpenGPU` so the backend reads arguments from the kernarg
+  base; a clang-built kernel now assembles and passes the driver sandbox.
