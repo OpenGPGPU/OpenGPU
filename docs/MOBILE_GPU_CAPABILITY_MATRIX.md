@@ -135,7 +135,7 @@ CU arithmetic alone does not supply those contracts.
 
 | Gate | Current evidence | Required next result |
 |---|---|---|
-| On-chip shader payloads | [Local fragment staging](performance/mobile-fragment-payload-staging-2026-10-19.json), shared pool and queued client bindings pass actual-CU checks; the integrated renderer still uses global memory | Wire parallel/tile/host ownership and qualify real multi-engine local rendering, context/fault drain and explicit spill |
+| On-chip shader payloads | [Opt-in AXI renderer](performance/mobile-local-payload-renderer-2026-10-19.json) connects shared storage through both tile engines; exact resident/mixed/spill images, four-CU occupancy, publication, faults and live-reset reuse pass | Promote the Mobile default after broader qualification; production hierarchy, representative shaders/workloads, geometry and synthesis remain open |
 | Texture cluster throughput | TEX issues four tap reads across the shared word fabric | Banked hits and filters sustain one bilinear sample/cycle/cluster; include conflicts, refills and faults |
 | Pixel throughput | PIX's resident backend supports four sample commits/cycle in component tests | Native integrated workload gates, legal early/late equivalence and synthesis timing |
 | Native Mobile integration | [74 native renderer/AXI checks and production hierarchy audit](performance/mobile-native-binned-host-2026-10-19.json) pass, including the four-CU host profile | Integrate the remaining payload/features and qualify representative workloads and synthesis |

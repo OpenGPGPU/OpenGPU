@@ -3251,11 +3251,11 @@ transactions. Unit routing covers one, two and four CUs. A
 checks two routed payload scenarios, strict native restart and native shared-CU
 AXI rendering after merging the attachment and payload changes.
 
-This optional transport is not yet wired through the renderer hierarchy.
-The fragment-worker checkpoint below adds allocation, local staging/readback,
-full-pool memory fallback and export/retirement ownership in `KernelFragStage`.
-Forwarding those interfaces through the parallel workers, tile engines and host
-remains open. The fragment producer validates aligned, non-wrapping bounds
+At this checkpoint the optional transport was not yet wired through the renderer
+hierarchy. The fragment-worker checkpoint below adds allocation, local
+staging/readback, full-pool memory fallback and export/retirement ownership in
+`KernelFragStage`. The later renderer checkpoint below connects the parallel
+workers, tile engines and host. The fragment producer validates aligned, non-wrapping bounds
 outside CU shared memory; other future payload producers need the same contract.
 The default Mobile renderer still uses global staging. GPU index/attribute
 fetching and reuse remain part of H5; no H0-H8 milestone or synthesis gate is
@@ -3295,7 +3295,48 @@ This qualifies a fragment-worker harness with reduced caches, behavioral
 payload SRAM and integer/RVV copy kernels plus an ordinary uniform load. It is
 not a two-engine renderer or general shader qualification. The emitted worker
 contains one payload controller and external pool/CU ports; it instantiates no
-private CU or payload store. Parallel-worker management, queued task bindings,
-producer pins, tile cancellation/context and AXI-host wiring remain next, with
-real multi-CU rendering and explicit spill qualification before Mobile selects
-the local path. No new synthesis or place-and-route result is claimed.
+private CU or payload store. The following renderer checkpoint extends this
+worker qualification through parallel-worker management, queued task bindings,
+producer pins, tile cancellation/context and AXI-host wiring. Mobile default
+selection and broader workload qualification remain open. No new synthesis or
+place-and-route result is claimed.
+
+
+### Optional local payloads through the AXI renderer, 2026-10-19
+
+`MobileGpuConfig(localShaderPayloads=true)` now connects fixed producer owners,
+allocation/data ports, task bindings and pins through the parallel fragment
+workers, both tile engines, nested shared-task routers and AXI host to one shared
+payload pool. `--local-shader-payloads` selects this configuration in the host
+emitter; capability bit 21 reports it. The default remains the existing global
+staging path. The unused compatibility renderer receives no local payload port.
+
+The [renderer qualification packet](performance/mobile-local-payload-renderer-2026-10-19.json)
+records eight local-path AXI checks on 515 frozen sources. Two-CU tests exercise
+4 KiB resident storage, a 512-byte mixed resident/spill pool and 64-byte oversized
+fallback. The four-CU, sixteen-lane, eight-warp profile uses 64 KiB, reaches all
+four CUs, compares 1,024 final words across two submissions and fresh VMs, and
+releases all 360 allocations with zero global staging bytes. Both native tile
+engines perform sample work. These tests retain queued DMA ordering, exact
+images and bounded completion checks. Another 47 compatibility checks cover
+configuration/ABI, actual-CU fragment payload behavior, quad exports/overlap,
+generic reset admission and all seven original global-path AXI cases. All 55
+checks pass on the same frozen source, which matches code commit `5f94b40`.
+
+GPU-produced input/code publication, seven fault scenarios and reset/reuse
+checks run with local payloads enabled. Reset during live shader fetch observes
+1,280 reserved bytes and six producer pins in each of two fresh VMs, aborts
+queued DMA, drains every reservation and then renders the exact healthy image.
+For this internal renderer, accepted jobs may finish their staging, launch and
+invalidation sub-operations while command reset drains them. The generic
+external graphics interface keeps its existing admission-blocking policy.
+A release-edge handoff repair also consumes a batch committed simultaneously
+with the previous release and retains a simultaneous queued flush.
+
+Host staging-byte and fragment-phase counters now observe the active binned
+renderer. Local bytes count accepted masked producer requests; global bytes
+count accepted fallback word requests. These are traffic observations for the
+covered scenes, not a throughput or general shader claim. Default promotion,
+production hierarchy qualification, GPU geometry fetching/reuse, representative
+workloads and remaining H0-H8 requirements stay open. No new PPA result is
+claimed; current PPA qualification remains synthesis only.
