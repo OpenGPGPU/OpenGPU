@@ -4725,3 +4725,67 @@ multi-engine scheduling, close physical allocation/resource-table provenance,
 or finish the remaining texture, attribute, guard-band, qualifier, numeric,
 query/feedback and H7–H8 requirements. PPA remains **synthesis only**, and the
 original H0–H8 acceptance gates remain open.
+
+## General post-transform primitive bins and full-record replay
+
+The [general bin checkpoint](performance/mobile-window-primitive-bins-2026-10-20.json)
+adds `WindowPrimitiveBinReplayPass`, connecting a complete post-viewport stream
+to the existing paged tile directory and multi-engine bin scheduler. Each
+nonempty primitive is stored once, then referenced by every affected tile.
+Separate readers resolve the complete primitive for each replay engine. This
+establishes the geometry storage/replay boundary needed to avoid repeating
+vertex/clip/viewport work per tile; actual vertex-draw and native rendering
+ownership are not connected to this new path yet.
+
+The [internal record contract](WINDOW_PRIMITIVE_BIN_RECORDS.md) retains all
+16 varying slots, shaded vertex and clipping metadata, draw-local 64-bit
+sequence, exact viewport origins, signed 64-bit subpixel coordinates, extended
+local coordinates/reciprocal W, window depth, point-size output and raster
+state. Each record also names immutable fragment/test/blend state and its
+pass-wide bin sequence/token. The configuration-specific GWP1 word format
+contains **329 payload scalars in 1,472 bytes / 23 lines** at full capacity.
+It is independent of Bundle bit packing and is not a new native host ABI.
+
+Widened address checks permit a complete record ending exactly at 4 GiB without
+wrapping. Header, identity, signed/unsigned padding and reserved words are
+checked before a successful read is published. Every record store acknowledgement
+precedes its first bin-reference offer. Bounds use widened signed arithmetic,
+screen/scissor intersection and conservative point/line size expansion.
+Unavailable guard-band fixed coordinates fan out across the effective scissor
+while retaining the original data; downstream guard clipping/numeric policy
+remains required. Empty bounds consume no record space.
+
+The pass owner checks disjoint record/page/directory arenas and matching
+identity/grid. Pass-wide sequences strictly increase across draws and clipped
+parts. Each engine owns a tile through the final full-record output and tile
+result. A stalled engine leaves independent dispatch and memory capacity for
+the others. Cancellation drains held producer appends, record transfers,
+queued requests, tile outputs/results and all acknowledgements before the pass
+summary. Record exhaustion retains the exact unpublished input; a rejected bin
+append may have a partial fanout and invalidates the pass. Resume bindings are
+rejected until continuation retains the corresponding record allocations.
+
+All **36 checks across five suites** pass on **592 frozen source files**.
+Thirteen new checks qualify complete full-capacity scalar round trips, bounds,
+corrupt encoding, signed extremes/scissors, point-size and guard fallback,
+ordering, exhaustion, held requests/results and fault/cancel reuse. The actual
+paged directory uses two resident entries for nine tiles and feeds two bin
+readers plus two complete-record readers. Four stored records replay as
+**26 exact, ordered references**; engine 1 completes at least three tiles while
+engine 0 holds its output. Six integrated fault cases each recover with exact
+healthy data. Twenty-three unchanged directory/replay regressions also pass.
+Window fixtures here are not actual shader outputs and are not rasterized.
+
+Transfer/producer/Mobile replay emissions contain **7/11/57 RTL files**.
+The 1280x720 two-engine Mobile replay uses a 16,384-entry paged directory,
+three record-transfer units and two characterized 256x32 report SRAM macros
+(2 KiB). Full-record private snapshots, metadata, queues and control add
+register storage. No CU, payload pool, FMA or divider is added by these blocks.
+These structural counts do not prove the complete Mobile storage budget or PPA.
+
+Actual vertex-to-bin draw ownership, immutable fragment-state resolution,
+multi-engine raster/FS/typed images, tile scissor selection and native host/VM/
+reset/publication integration remain open. Indexed-vertex post-transform reuse,
+continuation lifetimes, guard-band reconstruction, resource-table provenance,
+production storage/rate qualification and the original H0–H8 gates remain open.
+PPA evaluation remains **synthesis only**.

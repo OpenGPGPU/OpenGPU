@@ -111,6 +111,16 @@ object EmitPpaRtl {
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-native-typed-reader" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.NativeTypedGraphicsJobReader(),stageArgs,firtoolArgs)
+      case "mobile-window-record-transfer" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.WindowPrimitiveRecordTransfer(),stageArgs,firtoolArgs)
+      case "mobile-window-bin-producer" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.WindowPrimitiveBinProducer(),stageArgs,firtoolArgs)
+      case "mobile-window-bin-replay" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.WindowPrimitiveBinReplayPass(
+          g=GraphicsConfig(screenWidth=1280,screenHeight=720),engines=mobile.tileEngines,pageBytes=mobile.binPageBytes,
+          writeCredits=mobile.binWriteCredits,tileSlots=mobile.binTileSlots,pagedCapacity=mobile.binDirectoryTiles,
+          useDirectorySramBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-native-typed-memory" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.system.NativeTypedGraphicsMemoryFabric(),stageArgs,firtoolArgs)
       case "mobile-native-typed-render" =>
