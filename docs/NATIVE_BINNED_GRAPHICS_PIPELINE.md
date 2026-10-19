@@ -126,3 +126,11 @@ and the default 768-file four-CU host emission pass. See the
 [control checkpoint](performance/mobile-native-binned-completion-info-2026-10-20.json).
 Real native shader/Sv32/MMIO fault-detail and reset composition is still pending;
 this does not close full host or H0-H8 qualification. Structural counts are not PPA.
+
+
+A further [production AXI envelope check](performance/mobile-native-binned-completion-axi-2026-10-20.json)
+passes on the same production RTL, bringing bounded GNX1 control checks to 17.
+It independently checks all twelve words, exact stage/address attribution before
+any memory access, held reads, read-only writes, protected VM state and zero
+visibility after POP. This is an admission-path check; translated shader/bin/image
+fault details and both full-host reset phases remain pending for GNX1.

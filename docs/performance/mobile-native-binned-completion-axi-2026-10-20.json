@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "milestone": "GNX1 production AXI envelope diagnostics",
+  "source_files": 621,
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-binned-fault-info-source-v2.json",
+    "sha256": "fd8f6afb94bc900f8a4c46dd6be351543e1f6c98ae90f06d8244ad7635707607"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-binned-fault-info-source-v2.tar.gz",
+    "sha256": "506fda760bd0d1a60663a14eff9cf2ee72dc645aeb6850713cb2c16e73f1c81e"
+  },
+  "control_evidence": {
+    "path": ".artifacts/mobile-native-binned-fault-info-v1-worktree/docs/performance/mobile-native-binned-completion-info-2026-10-20.json",
+    "sha256": "f0de5b2877b551dc81f3809e68700045a31cac0cb748879a887e0360468fe5db"
+  },
+  "qualification": {
+    "additional_axi_tests": 1,
+    "combined_bounded_tests": 17,
+    "control_tests": 16,
+    "production_sources_identical_to_control_snapshot": true,
+    "log": {
+      "path": ".artifacts/mobile-native-binned-fault-info-axi-smoke-v1.log",
+      "sha256": "d75ff0b1f7ef71ff1d7828618407cb1eb3a30c488a233a4d7c2d6ae443db3e28"
+    },
+    "markers": [
+      "NATIVE_GNX1_AXI envelopeBeforeMemory=true exactRecordedAddress=true stage1=true heldImmutable=true readOnly=true VMProtected=true popClearsAllWords=true "
+    ]
+  },
+  "runtime_configuration": {
+    "lanes": 4,
+    "warps": 2,
+    "cus": 2,
+    "engines": 2,
+    "local_payload": false,
+    "axi_bits": 256
+  },
+  "coverage": [
+    "Exact twelve-word GNX1 record for command201 rejected before any physical memory request",
+    "Stage1 and recorded address survive held reads, failed read-only writes and rejected vector SATP mutation",
+    "POP makes every detail register zero"
+  ],
+  "limitations": [
+    "This AXI case rejects its envelope before memory or shaders; it does not qualify translated shader/bin/image fault details",
+    "The separate color-pipeline change is outside this source snapshot; combined full-host qualification remains pending",
+    "No new synthesis PPA, full Mobile runtime/rates/budgets, physical provenance or H0-H8 closure claim"
+  ]
+}

@@ -176,6 +176,18 @@ class NativeBinnedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
   }
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
+  it should "expose exact GNX1 diagnostics for rejected envelopes through the production AXI registers" in {
+    simulate(host(false)){d=>initialize(d);val image=new Image(d);vm(d);image.setup(empty=true)
+      image.submit(201,bytes=256);image.run(status=1,id=201)
+      assert(image.reads.isEmpty && image.writes.isEmpty,"a rejected envelope must precede every memory access")
+      val expected=Vector[BigInt](BigInt("474e5801",16),9,image.region+0x10000,0,0,0,0,0,0,0,0,0)
+      for((v,i)<-expected.zipWithIndex)assert(axiRead(d,0x180+i*4)==v,s"rejected envelope GNX1 word $i differs")
+      axiWrite(d,0x180,0,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+      for((v,i)<-expected.zipWithIndex)assert(axiRead(d,0x180+i*4)==v)
+      image.pop()
+      info("NATIVE_GNX1_AXI envelopeBeforeMemory=true exactRecordedAddress=true stage1=true heldImmutable=true readOnly=true VMProtected=true popClearsAllWords=true")
+    }
+  }
   for(local<-Seq(true,false))
   it should s"discover GNC1 submit translated multi-tile shaders and publish exact cached source and resolve images local=$local" in {
     simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
