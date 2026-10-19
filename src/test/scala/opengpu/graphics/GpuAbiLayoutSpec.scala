@@ -67,6 +67,7 @@ class GpuAbiLayoutSpec extends AnyFlatSpec {
       "GPU_REG_BIN_CAPABILITIES" -> TileBinHostRegs.CAPABILITIES.toLong,
       "GPU_REG_BIN_CAPABILITIES_END" -> TileBinHostRegs.END.toLong,
       "GPU_BIN_CAP_MAGIC" -> 0x47424301L, "GPU_BIN_CAP_WORDS" -> 8L,
+      "GPU_BIN_CAP_BANKED_SAMPLES" -> (1L<<TileBinCapabilityFlags.BankedSamples),
       "GPU_UCMD_OP_BIN_RENDER" -> GpuCommandOpcode.tileRender.litValue.toLong,
       "GPU_BIN_JOB_MAGIC" -> TileBinJobMemoryLayout.magic.toLong,
       "GPU_BIN_JOB_WORDS" -> TileBinJobMemoryLayout.words.toLong,

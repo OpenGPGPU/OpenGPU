@@ -97,6 +97,8 @@ class TileBinRenderDatapathIO(gpuConfig: GpuConfig,engines: Int,transactions: In
     val attachmentLoadAccepted = Output(Vec(engines,Vec(2,Bool())))
     /** Useful word traffic; physical line requests are observed separately. */
     val attachmentEvents = Output(Vec(engines,new TileAttachmentEvents))
+    val acceptedSamples=Output(Vec(engines,UInt(3.W)))
+    val committedSamples=Output(Vec(engines,UInt(3.W)))
     val busy = Output(Bool())
 }
 
@@ -150,7 +152,8 @@ class TileBinRenderPipeline(
     * the original resolve allocation before any memory traffic.
     */
   deferResolveUntilEnd: Boolean = false,
-  coalesceAttachments: Boolean = true
+  coalesceAttachments: Boolean = true,
+  bankedAttachments: Boolean = false
 ) extends Module {
   require(config.tileAttachments && config.tileSize == 16 && !config.tileBinning)
   require(engines >= 1 && engines <= 4)
@@ -175,7 +178,8 @@ class TileBinRenderPipeline(
   private val pipes = Seq.fill(engines)(Module(new RenderPipeline(config,gpuConfig,
     fragCore=fragCore,sharedShader=sharedShader,persistentAttachments=true,
     tileStoreCredits=storeCredits,useTileSramBlackBoxes=useTileSramBlackBoxes,
-    normalizedTextureModulation=true,doubleBufferedAttachments=true,coalesceAttachments=coalesceAttachments)))
+    normalizedTextureModulation=true,doubleBufferedAttachments=true,coalesceAttachments=coalesceAttachments,
+    bankedAttachments=bankedAttachments)))
   private val sharedRouter = sharedShader.map(pool => Module(new SharedShaderTaskRouter(
     gpuConfig,pool.numComputeUnits,engines,pool.taskIdWidth,
     tasksPerClient=if (pool.parallelFragments) pool.fragmentWorkers+1 else 1)))
@@ -302,6 +306,8 @@ class TileBinRenderPipeline(
   }
 
   for (e <- 0 until engines) {
+    io.acceptedSamples(e):=pipes(e).io.tileAcceptedSamples.getOrElse(0.U)
+    io.committedSamples(e):=pipes(e).io.tileCommittedSamples.getOrElse(0.U)
     io.descriptorLookupBusy(e):=(if (paged) gridLookups(e).io.busy else false.B)
     val rp = pipes(e); val pass = rp.io.tilePass.get
     val decoder = decoders(e); val in = replay.io.reference(e)

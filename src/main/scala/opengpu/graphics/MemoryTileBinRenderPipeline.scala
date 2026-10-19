@@ -6,6 +6,8 @@ import opengpu.config.GpuConfig
 import opengpu.core.memory.ComputeMemoryRequest
 import opengpu.system.SharedCuShaderConfig
 
+object TileBinCapabilityFlags {val BankedSamples=20}
+
 class MemoryTileBinRenderPipelineIO(config: GpuConfig,engines: Int,transactions: Int,
   kernelWords: Int,sharedShader: Option[SharedCuShaderConfig],commandIdWidth: Int)
   extends TileBinRenderDatapathIO(config,engines,transactions,kernelWords,sharedShader) {
@@ -31,7 +33,7 @@ class MemoryTileBinRenderPipeline(config: GraphicsConfig,
   tileSlots: Int=8,cacheEntries: Int=8,storeCredits: Int=8,
   fragCore: Boolean=false,sharedShader: Option[SharedCuShaderConfig]=None,
   useTileSramBlackBoxes: Boolean=false,pagedCapacity: Int=16384,
-  coalesceAttachments: Boolean=true) extends Module {
+  coalesceAttachments: Boolean=true,bankedAttachments: Boolean=false) extends Module {
   private val readerIds=TileBinJobMemoryLayout.transactions
   private val renderIds=writeCredits+2*engines+(if (pagedCapacity>0) 1 else 0)+engines*(2*(storeCredits+1)+1)
   private val total=readerIds+renderIds
@@ -41,7 +43,7 @@ class MemoryTileBinRenderPipeline(config: GraphicsConfig,
   private val reader=Module(new TileBinJobReader(gpuConfig,commandIdWidth,pagedCapacity>0,fragCore))
   private val renderer=Module(new ContinuingTileBinRenderPipeline(config,gpuConfig,engines,pageBytes,
     writeCredits,tileSlots,cacheEntries,storeCredits,fragCore,sharedShader,useTileSramBlackBoxes,
-    pagedCapacity,coalesceAttachments))
+    pagedCapacity,coalesceAttachments,bankedAttachments))
   private val excluded=Set("memoryRequest","memoryResponse","busy","submit","cancel","completion","tileEvents","capabilityWords")
   for ((name,data) <- io.elements if !excluded(name)) { data <> renderer.io.elements(name) }
   reader.io.submit <> io.submit; reader.io.cancel:=io.cancel
@@ -78,7 +80,8 @@ class MemoryTileBinRenderPipeline(config: GraphicsConfig,
   // tile capacity/resident entries, page/credit sizes, restart/ID limits.
   private val flags=engines | (log2Ceil(config.maxSampleCount)<<8) |
     (if (pagedCapacity>0) 1<<16 else 0) | (if (fragCore) 1<<17 else 0) |
-    (if (sharedShader.nonEmpty) 1<<18 else 0) | (if (coalesceAttachments) 1<<19 else 0)
+    (if (sharedShader.nonEmpty) 1<<18 else 0) | (if (coalesceAttachments) 1<<19 else 0) |
+    (if (bankedAttachments) 1<<TileBinCapabilityFlags.BankedSamples else 0)
   io.capabilityWords:=VecInit(Seq(BigInt("47424301",16),BigInt(8),TileBinJobMemoryLayout.magic,
     BigInt(TileBinJobMemoryLayout.bytes)|(BigInt(TileBinJobMemoryLayout.appendBytes)<<16),
     BigInt(flags),BigInt(if (pagedCapacity>0) pagedCapacity else tileSlots)|(BigInt(tileSlots)<<16),

@@ -32,7 +32,8 @@ class ContinuingTileBinRenderPipeline(
   tileSlots: Int = 8,cacheEntries: Int = 8,storeCredits: Int = 8,
   fragCore: Boolean = false,sharedShader: Option[SharedCuShaderConfig] = None,
   useTileSramBlackBoxes: Boolean = false,pagedCapacity: Int = 0,
-  coalesceAttachments: Boolean = true
+  coalesceAttachments: Boolean = true,
+  bankedAttachments: Boolean = false
 ) extends Module {
   private val transactions=writeCredits+2*engines+(if (pagedCapacity>0) 1 else 0)+engines*(2*(storeCredits+1)+1)
   private val words=SharedCuShaderConfig.kernelWordTransactions(sharedShader)
@@ -40,7 +41,7 @@ class ContinuingTileBinRenderPipeline(
   private val controller=Module(new TileBinContinuationController(engines,pagedCapacity>0))
   private val child=Module(new TileBinRenderPipeline(config,gpuConfig,engines,pageBytes,
     writeCredits,tileSlots,cacheEntries,storeCredits,fragCore,sharedShader,useTileSramBlackBoxes,
-    pagedCapacity,deferResolveUntilEnd=true,coalesceAttachments=coalesceAttachments))
+    pagedCapacity,deferResolveUntilEnd=true,coalesceAttachments=coalesceAttachments,bankedAttachments=bankedAttachments))
   private val controls=Set("begin","append","appended","end","cancel","tileDone","completion","busy")
   for ((name,data) <- io.elements if !controls(name)) { data <> child.io.elements(name) }
   controller.io.begin <> io.begin; controller.io.append <> io.append

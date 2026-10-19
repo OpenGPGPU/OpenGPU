@@ -12,7 +12,8 @@ private[graphics] class ContinuingTileBinRenderTestAdapter(
   config: GraphicsConfig,gpu: GpuConfig,engines: Int=2,pageBytes: Int=128,
   writeCredits: Int=2,tileSlots: Int=4,cacheEntries: Int=8,storeCredits: Int=2,
   fragCore: Boolean=false,sharedShader: Option[SharedCuShaderConfig]=None,pagedCapacity: Int=0,
-  useTileSramBlackBoxes: Boolean=false,coalesceAttachments: Boolean=true
+  useTileSramBlackBoxes: Boolean=false,coalesceAttachments: Boolean=true,
+  bankedAttachments: Boolean=sys.props.get("opengpu.bankedBins").contains("true")
 ) extends Module {
   private val tx=writeCredits+2*engines+(if (pagedCapacity>0) 1 else 0)+engines*(2*(storeCredits+1)+1)
   val io=IO(new TileBinRenderPipelineIO(gpu,engines,tx,SharedCuShaderConfig.kernelWordTransactions(sharedShader),sharedShader))
@@ -22,7 +23,7 @@ private[graphics] class ContinuingTileBinRenderTestAdapter(
   val appendedBatch=IO(Output(UInt(16.W)))
   private val child=Module(new ContinuingTileBinRenderPipeline(config,gpu,engines,pageBytes,
     writeCredits,tileSlots,cacheEntries,storeCredits,fragCore,sharedShader,
-    useTileSramBlackBoxes=useTileSramBlackBoxes,pagedCapacity=pagedCapacity,coalesceAttachments=coalesceAttachments))
+    useTileSramBlackBoxes=useTileSramBlackBoxes,pagedCapacity=pagedCapacity,coalesceAttachments=coalesceAttachments,bankedAttachments=bankedAttachments))
   private val controls=Set("begin","append","appended","seal","end","cancel","tileDone","completion")
   for ((name,data) <- io.elements if !controls(name)) { data <> child.io.elements(name) }
   child.io.begin.valid:=io.begin.valid; child.io.begin.bits.version:=1.U; child.io.begin.bits.render:=io.begin.bits

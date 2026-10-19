@@ -122,14 +122,14 @@ object EmitPpaRtl {
           mobile.execution,engines=mobile.tileEngines,pageBytes=mobile.binPageBytes,
           writeCredits=mobile.binWriteCredits,tileSlots=mobile.binTileSlots,
           cacheEntries=mobile.binRecordCacheEntries,storeCredits=mobile.attachmentStoreCredits,
-          useTileSramBlackBoxes=true,pagedCapacity=mobile.binDirectoryTiles),stageArgs,firtoolArgs)
+          useTileSramBlackBoxes=true,pagedCapacity=mobile.binDirectoryTiles,bankedAttachments=mobile.bankedAttachments),stageArgs,firtoolArgs)
       case "mobile-continuing-bin-render" =>
         val mobile=opengpu.config.MobileGpuConfig()
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ContinuingTileBinRenderPipeline(
           GraphicsConfig(screenWidth=1280,screenHeight=720,tileSize=16,tileAttachments=true),
           mobile.execution,mobile.tileEngines,mobile.binPageBytes,mobile.binWriteCredits,
           mobile.binTileSlots,mobile.binRecordCacheEntries,mobile.attachmentStoreCredits,
-          useTileSramBlackBoxes=true,pagedCapacity=mobile.binDirectoryTiles),stageArgs,firtoolArgs)
+          useTileSramBlackBoxes=true,pagedCapacity=mobile.binDirectoryTiles,bankedAttachments=mobile.bankedAttachments),stageArgs,firtoolArgs)
       case "mobile-paged-bin-directory" =>
         val mobile = opengpu.config.MobileGpuConfig()
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TileBinDirectory(
@@ -153,7 +153,7 @@ object EmitPpaRtl {
           GraphicsConfig(screenWidth=1280,screenHeight=720,tileSize=16,tileAttachments=true),
           mobile.execution,mobile.tileEngines,mobile.binPageBytes,mobile.binWriteCredits,
           mobile.binTileSlots,mobile.binRecordCacheEntries,mobile.attachmentStoreCredits,
-          useTileSramBlackBoxes=true,pagedCapacity=mobile.binDirectoryTiles),stageArgs,firtoolArgs)
+          useTileSramBlackBoxes=true,pagedCapacity=mobile.binDirectoryTiles,bankedAttachments=mobile.bankedAttachments),stageArgs,firtoolArgs)
       case "mobile-bin-render" | "mobile-bin-render-sram" =>
         val mobile = opengpu.config.MobileGpuConfig()
         ChiselStage.emitSystemVerilogFile(
@@ -161,7 +161,7 @@ object EmitPpaRtl {
             screenWidth = 1280, screenHeight = 720, tileSize = 16, tileAttachments = true),
             mobile.execution, mobile.tileEngines, mobile.binPageBytes, mobile.binWriteCredits,
             mobile.binTileSlots, mobile.binRecordCacheEntries, mobile.attachmentStoreCredits,
-            useTileSramBlackBoxes = args(0) == "mobile-bin-render-sram"),
+            useTileSramBlackBoxes = args(0) == "mobile-bin-render-sram",bankedAttachments=mobile.bankedAttachments),
           stageArgs, firtoolArgs)
       case "mobile-bin-shared-router" =>
         val mobile = opengpu.config.MobileGpuConfig()

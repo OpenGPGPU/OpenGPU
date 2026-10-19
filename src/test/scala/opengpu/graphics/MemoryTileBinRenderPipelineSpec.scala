@@ -11,11 +11,12 @@ import scala.collection.mutable
 
 class MemoryTileBinRenderPipelineSpec extends AnyFlatSpec {
   import TileBinRenderTestData._
+  private val banked=sys.props.get("opengpu.bankedBins").contains("true")
   private val screenW=16; private val screenH=8
   private val cfg=GraphicsConfig(screenWidth=screenW,screenHeight=screenH,
     tileSize=16,tileAttachments=true,omInflight=2)
   private class MacroRenderer extends MemoryTileBinRenderPipeline(cfg,GpuConfig(lanes=4,warps=2,l2StoreEntries=4),
-    pageBytes=128,writeCredits=2,tileSlots=4,storeCredits=2,useTileSramBlackBoxes=true) {
+    pageBytes=128,writeCredits=2,tileSlots=4,storeCredits=2,useTileSramBlackBoxes=true,bankedAttachments=banked) {
     val macroPresent=IO(Output(Bool()))
     private val resources=Module(new TileSramSimulationResources)
     macroPresent:=resources.io.present
@@ -221,14 +222,14 @@ class MemoryTileBinRenderPipelineSpec extends AnyFlatSpec {
   }
   private def renderer(macros: Boolean=false): MemoryTileBinRenderPipeline=
     if (macros) new MacroRenderer else new MemoryTileBinRenderPipeline(cfg,GpuConfig(lanes=4,warps=2,l2StoreEntries=4),
-      pageBytes=128,writeCredits=2,tileSlots=4,storeCredits=2)
+      pageBytes=128,writeCredits=2,tileSlots=4,storeCredits=2,bankedAttachments=banked)
 
   for (mode <- Seq(0,2)) {
     it should s"render the exact memory-submitted image through automatic restart with MSAA=$mode" in {
       val expected=reference(mode,screenW,screenH,scene(18))
       simulate(renderer(macros=mode==2)) { h=>
         h.io.capabilityWords(0).expect("h47424301".U); h.io.capabilityWords(2).expect("h47424a01".U)
-        h.io.capabilityWords(3).expect("h00200200".U); h.io.capabilityWords(4).expect("h00090202".U)
+        h.io.capabilityWords(3).expect("h00200200".U); h.io.capabilityWords(4).expect((0x90202 | (if(banked)1<<TileBinCapabilityFlags.BankedSamples else 0)).U)
         h.io.capabilityWords(5).expect("h00044000".U); h.io.capabilityWords(7).expect("h001effff".U)
         val d=new Driver(h.io,h.clock,h.reset,mode)
         d.prepare(18,x=>if (mode==0) x.updated(17,0x12080L).updated(19,0x10000L).updated(21,0x202L)

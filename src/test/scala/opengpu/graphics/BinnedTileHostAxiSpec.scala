@@ -169,13 +169,14 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
       axiWrite(d,reg,if(reg==GpuCommandMmioRegs.TLB_FLUSH)1 else 0x80000300,expectedResponse=2)
     def awaitRead(): Unit={var i=0;while(!d.io.m_axi_arvalid.peek().litToBoolean && i<10000){d.io.s_axi_aclk.step();i+=1};d.io.m_axi_arvalid.expect(true.B)}
   }
-  for ((shared,count,lanes,warps) <- Seq((false,1,4,2),(true,2,4,2),(true,4,16,8))) {
-    it should s"expose GBJ1 on AXI with exact images, queued DMA and VM ownership shared=$shared CUs=$count lanes=$lanes warps=$warps" in {
+  for ((shared,count,lanes,warps,banked) <- Seq((false,1,4,2,false),(false,1,4,2,true),(true,2,4,2,true),(true,4,16,8,true))) {
+    it should s"expose GBJ1 on AXI with exact images, queued DMA and VM ownership shared=$shared CUs=$count lanes=$lanes warps=$warps banked=$banked" in {
       val width=if(lanes==16)32 else 16;val height=if(lanes==16)16 else 8;val edge=if(lanes==16)16 else 8
       val gpu=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2,l2StoreEntries=4)
       val graphics=cfg.copy(screenWidth=width,screenHeight=height,fragmentBatchLimit=math.max(8,lanes))
       val m=MobileGpuConfig(execution=gpu,computeUnits=count,axiBytes=32,binPageBytes=if(lanes==16)4096 else 128,
-        binWriteCredits=if(lanes==16)8 else 2,attachmentStoreCredits=if(lanes==16)8 else 2,binTileSlots=if(lanes==16)8 else 4)
+        binWriteCredits=if(lanes==16)8 else 2,attachmentStoreCredits=if(lanes==16)8 else 2,binTileSlots=if(lanes==16)8 else 4,
+        bankedAttachments=banked)
       val scene=TileBinJobTestData.references(18).map(r=>draws(((r.primitive-firstHandle)/2).toInt)
         .copy(scissor=Some((r.tile.toInt*edge,0,r.tile.toInt*edge+edge,height))))
       val expected=reference(0,width,height,scene,width=width,height=height)
@@ -190,6 +191,7 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
         assert(axiRead(d,TileBinHostRegs.CAPABILITIES)==0x47424301L)
         assert(axiRead(d,TileBinHostRegs.CAPABILITIES+8)==0x47424a01L)
         assert(axiRead(d,TileBinHostRegs.CAPABILITIES+12)==0x00200200L)
+        assert(axiRead(d,TileBinHostRegs.CAPABILITIES+16).testBit(TileBinCapabilityFlags.BankedSamples)==m.bankedAttachments)
         axiWrite(d,TileBinHostRegs.CAPABILITIES,0,expectedResponse=2)
         assert(axiRead(d,TileBinHostRegs.CAPABILITIES)==0x47424301L)
         axiWrite(d,RenderHostRegs.IRQ,1)
@@ -219,6 +221,14 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           assert(axiRead(d,GpuCommandMmioRegs.COMPLETION)==stable);f.pop()
         }
         if(shared)assert(d.io.performance.get.system.maxActiveComputeUnits.peek().litValue==count)
+        for(e <- 0 until m.tileEngines) {
+          val accepted=d.io.performance.get.binAcceptedSamples(e).peek().litValue
+          val committed=d.io.performance.get.binCommittedSamples(e).peek().litValue
+          val quads=d.io.performance.get.binFourSampleCycles(e).peek().litValue
+          if(banked)assert(accepted>=committed && committed>0 && quads>0,s"native engine $e was not exercised")
+          else assert(accepted==0 && committed==0 && quads==0)
+          info(s"BIN_NATIVE_ENGINE banked=$banked shared=$shared CUs=$count lanes=$lanes engine=$e accepted=$accepted committed=$committed fourSampleCycles=$quads")
+        }
         info(s"BIN_HOST_AXI shared=$shared CUs=$count lanes=$lanes warps=$warps exactWords=${expected.size} submissions=2 queuedCopies=2")
       }
     }

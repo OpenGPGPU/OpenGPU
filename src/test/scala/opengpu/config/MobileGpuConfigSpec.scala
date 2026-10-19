@@ -12,6 +12,7 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
     assert(c.attachmentReadCacheBytes==1024 && c.attachmentGatherBufferBytes==512)
     assert(c.l2Bytes == 128 * 1024 && c.tileSlotBytes == 32 * 1024)
     assert(c.attachmentStoreCredits == 8 && c.attachmentCreditIdWidth == 3)
+    assert(c.bankedAttachments && !c.copy(bankedAttachments=false).bankedAttachments)
     assert(c.execution.l2StoreEntries == 4)
     assert(c.binPageBytes == 4096 && c.binWriteCredits == 8 && c.binTileSlots == 8)
     assert(c.binDirectoryTiles==16384 && c.binDirectoryReportBytes==2048 && c.binDirectoryBackingBytes==1024*1024)

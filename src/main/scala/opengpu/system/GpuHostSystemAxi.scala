@@ -30,6 +30,9 @@ class GpuHostPerformanceCounters extends Bundle {
   val translationStallCycles = Vec(4, UInt(64.W))
   val translationMisses = Vec(4, UInt(64.W))
   val walkCycles = Vec(4, UInt(64.W))
+  val binAcceptedSamples=Vec(4,UInt(64.W))
+  val binCommittedSamples=Vec(4,UInt(64.W))
+  val binFourSampleCycles=Vec(4,UInt(64.W))
 }
 
 /** AXI-controlled graphics host attached to the GPU-internal shared L2.
@@ -250,7 +253,7 @@ class GpuHostSystemAxi(
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
       graphicsConfig,gpuConfig,commandIdWidth,m.tileEngines,m.binPageBytes,m.binWriteCredits,
       m.binTileSlots,m.binRecordCacheEntries,m.attachmentStoreCredits,fragCore,sharedShader,
-      useBlackBoxes,m.binDirectoryTiles)))
+      useBlackBoxes,m.binDirectoryTiles,bankedAttachments=m.bankedAttachments)))
     if (binnedRendering.isEmpty) sharedShader.foreach(_ => system.io.graphicsKernels.get <> host.io.shared.get)
 
     host.io.s_axi_aclk := io.s_axi_aclk
@@ -606,6 +609,14 @@ class GpuHostSystemAxi(
         counter
       }
       perf.system := system.io.performance
+      for(e <- 0 until 4) {
+        val engine=binned.filter(_.io.committedSamples.length>e)
+        val accepted=engine.map(_.io.acceptedSamples(e)).getOrElse(0.U(3.W))
+        val committed=engine.map(_.io.committedSamples(e)).getOrElse(0.U(3.W))
+        perf.binAcceptedSamples(e):=count(accepted)
+        perf.binCommittedSamples(e):=count(committed)
+        perf.binFourSampleCycles(e):=count((committed===4.U).asUInt)
+      }
       perf.textureWordReads := count(textureWordAccepted.asUInt)
       perf.textureLineReads := count(textureLineAccepted.asUInt)
       perf.omStallCycles := count(host.io.performance.omStall.asUInt)

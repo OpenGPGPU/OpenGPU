@@ -47,7 +47,7 @@ private[graphics] class TileBinSharedSystemHarness(height: Int = 8,pagedCapacity
     graphics,cfg,fragCore=true,sharedShader=Some(pool),pagedCapacity=pagedCapacity))) else None
   private val renderer=if (continuing) continuingRenderer.get.io else Module(new TileBinRenderPipeline(
     graphics,cfg,engines=2,pageBytes=128,writeCredits=2,tileSlots=4,cacheEntries=8,storeCredits=2,
-    fragCore=true,sharedShader=Some(pool),pagedCapacity=pagedCapacity)).io
+    fragCore=true,sharedShader=Some(pool),pagedCapacity=pagedCapacity,bankedAttachments=sys.props.get("opengpu.bankedBins").contains("true"))).io
   continuingRenderer.foreach(_.restartLimit:=io.restartLimit)
   io.batches:=continuingRenderer.map(_.batches).getOrElse(0.U)
   io.restarts:=continuingRenderer.map(_.restarts).getOrElse(0.U)

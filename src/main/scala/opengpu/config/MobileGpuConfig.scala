@@ -27,7 +27,8 @@ case class MobileGpuConfig(
   binWriteCredits: Int = 8,
   binTileSlots: Int = 8,
   binRecordCacheEntries: Int = 8,
-  binDirectoryTiles: Int = 16384
+  binDirectoryTiles: Int = 16384,
+  bankedAttachments: Boolean = true
 ) {
   private def powerOfTwo(n: Int): Boolean = n > 0 && (n & (n - 1)) == 0
   require(computeUnits > 0 && computeUnits <= 255)

@@ -24,7 +24,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 | Geometry | Clip, viewport, triangle setup and quad rasterization exist | Native index/attribute fetch, vertex reuse, instancing and complete required primitive behavior |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
-| Pixel operations | Optional persistent banked RGBA8/D24S8 merging sustains four resident sample commits/cycle in RTL tests; the production renderer retains scalar OM | Integrated timing, wide renderer ingress, legal early rejection, multiple color outputs and complete format semantics |
+| Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Full native integration qualification, integrated timing, legal early rejection, multiple color outputs and complete format semantics |
 | Memory | Shared banked L2, Sv32 translation, GPU cache invalidation and AXI memory master | Aggregate bandwidth and outstanding budgets, context-tagged tile/texture state, scoped barriers and robust bin/payload memory |
 
 The constructor default AXI beat is eight bytes, while emission supports 4 through 64 bytes. Benchmark configurations must record the selected width; there is no single width shared by every existing artifact. See [GpuHostSystemAxi](../src/main/scala/opengpu/system/GpuHostSystemAxi.scala) and [the emitter](../src/main/scala/opengpu/elaboration/EmitGpuHostSystemAxi.scala).
@@ -3099,3 +3099,34 @@ still the existing global-memory protocol; on-chip payload/export storage, legal
 early rejection, cold refill throughput, integrated synthesis/timing closure,
 full H3 workload gates and remaining H0-H8 requirements remain open. No new PPA
 result is claimed by this functional checkpoint.
+
+## H3 native Mobile binned host integration checkpoint
+
+The [integration checkpoint](performance/mobile-native-binned-host-integration-2026-10-19.json)
+enables banked attachments by default in `MobileGpuConfig` and forwards the
+selection through the tile-bin, continuing and memory-submitted pipelines into
+`GpuHostSystemAxi`. Generic pipeline constructors retain their explicit scalar
+fallback. Mobile PPA emitters use the same selection. GBC1 capability word 4 bit
+20 reports the selected path through `GPU_BIN_CAP_BANKED_SAMPLES`; command and
+descriptor layouts are unchanged.
+
+Twenty initial checks pass: 17 configuration/C ABI checks and three AXI host
+cases covering the scalar fixed fallback, native fixed rendering and native
+programmable rendering on two four-lane CUs. Each host case checks exact images,
+two submissions, two queued DMA copies and VM ownership. Both native engines
+perform sample updates: engine 0 accepts/commits 720 samples with 80 four-sample
+commit cycles, and engine 1 accepts/commits 288 with 16 such cycles. Scalar
+fallback observations remain zero. Optional performance counters expose these
+actual events; this is an integration observation, not a frame throughput claim.
+
+The final 500-file source snapshot and recoverable archive are frozen. The
+initial runs preceded later PPA emitter forwarding and deep-test fixture edits.
+The full native memory/tile-bin regression, including SRAM-backed 720p frames,
+and the complete AXI host/legacy DMA regression are still running at this
+checkpoint. The four-CU, sixteen-lane/eight-warp host case and production Mobile
+RTL hierarchy audit remain pending; they are not counted among the 20 checks.
+Subsequent qualification results will be recorded separately.
+
+On-chip shader payload/export storage, legal early rejection, cold refill
+throughput, integrated synthesis/timing qualification and the remaining H0-H8
+requirements remain open. Current PPA evaluation continues with synthesis only.

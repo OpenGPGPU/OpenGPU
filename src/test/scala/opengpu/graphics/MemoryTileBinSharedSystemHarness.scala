@@ -31,7 +31,7 @@ private[graphics] class MemoryTileBinSharedSystemHarness extends Module {
     tileSize=16,tileAttachments=true,omInflight=2,fragmentBatchLimit=8)
   private val renderer=Module(new MemoryTileBinRenderPipeline(graphics,cfg,
     pageBytes=128,writeCredits=2,tileSlots=4,storeCredits=2,
-    fragCore=true,sharedShader=Some(pool))).io
+    fragCore=true,sharedShader=Some(pool),bankedAttachments=sys.props.get("opengpu.bankedBins").contains("true"))).io
   private val system=Module(new GpuSystem(cfg,numComputeUnits=count,enableFpuBackend=true,
     graphicsHostTransactions=hostSlots,instructionCacheSets=4,instructionCacheWays=1,
     vectorCacheSets=4,vectorCacheWays=1,enableGraphicsKernels=true))

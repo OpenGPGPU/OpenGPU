@@ -11,6 +11,7 @@ import scala.collection.mutable
 
 class TileBinRenderPipelineSpec extends AnyFlatSpec {
   import TileBinRenderTestData._
+  private val banked=sys.props.get("opengpu.bankedBins").contains("true")
   private val screenW=16
   private val screenH=8
   private val engineCount=2
@@ -22,7 +23,7 @@ class TileBinRenderPipelineSpec extends AnyFlatSpec {
     tileSize=16,tileAttachments=true,omInflight=2)
   private class MacroBinnedRenderer(height: Int,width: Int,pagedCapacity: Int) extends TileBinRenderPipeline(cfg.copy(screenWidth=width,screenHeight=height),
     GpuConfig(lanes=4,warps=2,l2StoreEntries=4),engines=engineCount,pageBytes=128,
-    writeCredits=writeCredits,tileSlots=4,cacheEntries=8,storeCredits=storeCredits,useTileSramBlackBoxes=true,pagedCapacity=pagedCapacity) {
+    writeCredits=writeCredits,tileSlots=4,cacheEntries=8,storeCredits=storeCredits,useTileSramBlackBoxes=true,pagedCapacity=pagedCapacity,bankedAttachments=banked) {
     val macroModelPresent=IO(Output(Bool()))
     private val resources=Module(new TileSramSimulationResources)
     macroModelPresent:=resources.io.present
@@ -31,7 +32,7 @@ class TileBinRenderPipelineSpec extends AnyFlatSpec {
     if (blackBoxes) new MacroBinnedRenderer(height,width,pagedCapacity)
     else new TileBinRenderPipeline(cfg.copy(screenWidth=width,screenHeight=height),
       GpuConfig(lanes=4,warps=2,l2StoreEntries=4),engines=engineCount,pageBytes=128,
-      writeCredits=writeCredits,tileSlots=4,cacheEntries=8,storeCredits=storeCredits,pagedCapacity=pagedCapacity)
+      writeCredits=writeCredits,tileSlots=4,cacheEntries=8,storeCredits=storeCredits,pagedCapacity=pagedCapacity,bankedAttachments=banked)
   private class ContinuingHarness(pagedCapacity: Int=0) extends ContinuingTileBinRenderTestAdapter(
     cfg,GpuConfig(lanes=4,warps=2,l2StoreEntries=4),pagedCapacity=pagedCapacity)
   private class MacroContinuingRenderer(width: Int,height: Int) extends ContinuingTileBinRenderTestAdapter(
@@ -44,7 +45,7 @@ class TileBinRenderPipelineSpec extends AnyFlatSpec {
   private class FullFrameTransferRenderer(width: Int=1280,height: Int=720) extends TileBinRenderPipeline(
     cfg.copy(screenWidth=width,screenHeight=height),GpuConfig(l2Sets=512,l2StoreEntries=4),
     engines=2,pageBytes=4096,writeCredits=8,tileSlots=8,cacheEntries=8,storeCredits=8,
-    useTileSramBlackBoxes=true,pagedCapacity=16384) {
+    useTileSramBlackBoxes=true,pagedCapacity=16384,bankedAttachments=banked) {
     val macroModelPresent=IO(Output(Bool()))
     private val resources=Module(new TileSramSimulationResources)
     macroModelPresent:=resources.io.present
