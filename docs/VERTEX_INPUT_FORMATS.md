@@ -51,5 +51,10 @@ The initial component run passes nine checks, including 217,680 exact numeric
 cases, all binary16 patterns, exhaustive normalized 8/16-bit domains, packed and
 32-bit rounding boundaries, converted indexed/instanced fetches, cross-line
 reads, typed defaults, logical bounds and legacy fault/cancellation controls.
-The expanded conversion-cancellation and actual shared-CU shader checks are
-pending. No new throughput or synthesis PPA result is claimed.
+The expanded conversion-cancellation check passes. Two actual shared-CU tests
+now pass converted half, packed normalized, signed normalized and fixed inputs
+with both local and global payloads. Each rewritten input allocation is published
+through the hardware invalidate command and its held acknowledgement before
+reuse; CPU backing writes alone do not invalidate GPU caches. The first broader
+run passed 27 of 28 checks before this fixture correction. A full rerun on the
+corrected source is pending. No new throughput or synthesis PPA result is claimed.

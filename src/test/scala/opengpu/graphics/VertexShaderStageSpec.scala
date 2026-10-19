@@ -4,13 +4,14 @@ import chisel3._
 import chisel3.util._
 import chisel3.reflect.DataMirror
 import opengpu.config.GpuConfig
+import opengpu.command.{GpuCommand,GpuCommandResult,GpuCommandOpcode}
 import opengpu.core.memory._
 import opengpu.system.{GpuSystem,SharedCuShaderConfig}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false) extends Module {
+private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,coherentUpdates: Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=if(fullInterface)VertexShaderStageConfig()else VertexShaderStageConfig(VertexInputFetchConfig(4,3),2)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
@@ -28,11 +29,13 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
     val launchOffered=Output(Bool());val launched=Output(Bool());val globalStaging=Output(Bool())
     val reservedBytes=Output(UInt(32.W));val poolDrained=Output(Bool());val idle=Output(Bool())
     val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
+    val publish=if(coherentUpdates)Some(Flipped(Decoupled(new GpuCommand(cfg,8))))else None
+    val published=if(coherentUpdates)Some(Decoupled(new GpuCommandResult(8)))else None
   })
   private val stage=Module(new VertexShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None))
   private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,
     graphicsHostTransactions=4,instructionCacheSets=4,instructionCacheWays=1,
-    vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None))
+    vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None,enableUnifiedCommands=coherentUpdates))
   private def tie(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(tie)
     case v: Vec[_]=>v.foreach(tie)
@@ -42,6 +45,7 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
     case _=>()
   }
   tie(system.io)
+  if(coherentUpdates){system.io.gpuCommand<>io.publish.get;io.published.get<>system.io.gpuCompletion}
   stage.io.draw<>io.draw;io.out<>stage.io.out;io.completion<>stage.io.completion;stage.io.cancel:=io.cancel
   system.io.graphicsKernels.get<>stage.io.shared
   system.io.graphicsKernels.get.launch.valid:=stage.io.shared.launch.valid && !io.blockLaunch
@@ -169,6 +173,18 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       q.sampler.texWidth.poke(1.U);q.sampler.texHeight.poke(1.U)
     }
     def submit(): Unit={d.io.draw.valid.poke(true.B);until(d.io.draw.ready.peek().litToBoolean);tick();d.io.draw.valid.poke(false.B)}
+    def publishInput(address: BigInt,bytes: Int): Unit={
+      val command=d.io.publish.get;command.bits.poke(0.U.asTypeOf(command.bits))
+      command.bits.commandId.poke(85.U);command.bits.opcode.poke(GpuCommandOpcode.invalidate)
+      command.bits.sourceAddress.poke(address.U);command.bits.bytes.poke(bytes.U);command.valid.poke(true.B)
+      until(command.ready.peek().litToBoolean);tick();command.valid.poke(false.B)
+      val result=d.io.published.get;until(result.valid.peek().litToBoolean)
+      result.bits.commandId.expect(85.U);result.bits.opcode.expect(GpuCommandOpcode.invalidate)
+      result.bits.success.expect(true.B);result.bits.bytesProcessed.expect(bytes.U)
+      val held=result.bits.peek().litValue
+      for(_<-0 until 7){tick();result.valid.expect(true.B);assert(result.bits.peek().litValue==held)}
+      result.ready.poke(true.B);tick();result.ready.poke(false.B)
+    }
     def complete(status: Int): Unit={
       until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.status.expect(status.U)
       val held=d.io.completion.bits.peek().litValue
@@ -227,7 +243,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
 
   for(local<-Seq(true,false))
   it should s"execute converted half normalized packed and fixed vertex inputs on actual shared CUs local=$local" in {
-    simulate(new VertexShaderHarness(local)) { d=>
+    simulate(new VertexShaderHarness(local,coherentUpdates=true)) { d=>
       val t=new Driver(d);d.io.out.ready.poke(true.B)
       for(format<-Seq(7,20,17,24)) {
         t.exports.clear();t.descriptor(indexed=false,instances=2,count=3)
@@ -244,6 +260,10 @@ class VertexShaderStageSpec extends AnyFlatSpec {
             t.memory(BigInt(0x4000+vertex*16+c*VertexInputReference.bytes(format)+b))=(raw(c)>>(8*b))&255
           Vector.tabulate(4)(c=>VertexInputReference.decode(raw(c),format,c))
         }
+        // Host backing writes are not coherent with a warm GPU L2 line.
+        // Publish the changed input through the actual invalidate engine and
+        // retain its acknowledgement before reusing this allocation.
+        t.publishInput(0x4000,64)
         t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
         val expected=(for(instance<-0 until 2;vertex<-0 until 3)yield {
           val x=java.lang.Float.intBitsToFloat(values(vertex)(0).toInt)+vertex.toFloat
@@ -255,7 +275,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
         d.io.completion.bits.localBatches.expect((if(local)1 else 0).U);t.complete(0)
       }
       assert(t.launches==4 && (t.globalStaging==0)==local)
-      info(s"VERTEX_SHADER convertedInputs=true local=$local CUs=2 formats=half,unorm2101010,snorm16,fixed16_16 exactFP32Positions=true instances=2 uniformTail=true poolDrain=true")
+      info(s"VERTEX_SHADER convertedInputs=true local=$local CUs=2 formats=half,unorm2101010,snorm16,fixed16_16 exactFP32Positions=true instances=2 acknowledgedInputPublication=true uniformTail=true poolDrain=true")
     }
   }
 
