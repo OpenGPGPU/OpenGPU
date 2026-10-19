@@ -22,8 +22,8 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 |---|---|---|
 | Shader execution | Shared compute CUs already execute vertex and fragment tasks; vector FP32 arithmetic, including FMA, is connected | Improve task input/output transport, occupancy, control-flow/resource contracts and sustained issue/writeback throughput |
 | Configuration | `GpuConfig` defaults to 16 lanes and eight warps; the mobile CU-count constant is four | One compute/graphics execution configuration; discoverable resource limits and explicit supported configuration combinations |
-| Interstage transport | Eligible Mobile fragments default to local payloads through the parallel/tile/AXI hierarchy; a generic vertex client also qualifies local/global staging and export ownership | Integrate native vertex/fragment ownership and budget the vertex client's additional SRAM; qualify broader resources and throughput |
-| Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly, FP32 clipping/viewport, owned triangle raster and quad interpolation connect GPU vertex work to fragment inputs | Native geometry submission/binning/fragment ownership, qualifier closure, point/line rasterization and post-transform reuse |
+| Interstage transport | Eligible Mobile fragments default to local payloads through the parallel/tile/AXI hierarchy; a composed generic vertex/raster/fragment owner qualifies two-client payload and shared-CU task lifetime | Integrate native bin/host and typed attachment ownership; budget composed SRAM and qualify broader resources and sustained transport |
+| Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly, FP32 clipping/viewport, owned triangle raster/interpolation and fragment shaders connect GPU vertex work to ordered typed raw exports | Native geometry submission/binning/typed attachment ownership, qualifier closure, point/line rasterization and post-transform reuse |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
 | Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Integrated synthesis/timing, legal early rejection, representative throughput, multiple color outputs and complete format semantics |
@@ -4048,3 +4048,78 @@ buffer/texture binding, dynamic helper/discard behavior, complete built-ins and
 qualifiers, point/line/guard-band rasterization, precision/invariance, queries/
 transform feedback or the remaining H0-H8 requirements. Hardware development is
 still in progress.
+
+### Shared-CU vertex-to-fragment draw ownership, 2026-10-19
+
+The [composed draw checkpoint](performance/mobile-vertex-fragment-pipeline-2026-10-19.json)
+connects generic GPU indexed/instanced vertex execution, primitive assembly,
+clipping, viewport, owned triangle raster and interpolation directly to the
+FP32 fragment shader client. Both shader stages use one enclosing physical CU
+pool. Their internal task tags, texture traffic and payload bindings pass through
+one two-client router; neither stage embeds a private CU or payload pool. Ordered
+exports retain the raw typed location interface, identity, primitive order,
+clipped part, facing, coverage, helpers and depth.
+
+A version-1 draw snapshots both descriptors and both payload-context inputs at
+outer acceptance. Before offering either child draw, admission checks fragment
+layout/bounds, identity, varying count, sample mode and payload-context agreement.
+The declared scratch views, including uniform tails, must not overlap each
+other. Fragment scratch must also avoid enabled vertex binding and index views.
+Both children retain their own descriptor/resource checks. This checks declared
+virtual views; translation pinning, physical alias detection and non-aliasing
+with general resources remain enclosing allocation-owner requirements.
+
+Each child owns an independent staging/payload port and payload owner. The router
+forwards four prospective/queued task pins to the enclosing pool. Eight public
+memory transaction IDs retain the source client and its four local IDs; a queued
+arbiter holds public offers and an outstanding counter gates completion. Vertex
+and fragment prefixes and uniform tails remain separate. The fragment descriptor
+checks are shared with the standalone stage so admission and execution use one
+layout/bounds definition. ISA encodings, register preloads, host ABI and both
+legacy shader kernarg layouts remain unchanged.
+
+Source completion is the fragment client's explicit EOF, with identity, status
+and the exact number of accepted quads. A fragment failure cancels upstream
+geometry/raster work; the source still drains offered quads and produces EOF.
+A source failure reaches the fragment stage through EOF. Fragment completion
+asserts agreement with source input and downstream export counts. The draw
+summary retains both nested results, separates preflight/source/fragment faults
+and preserves source memory fault addresses and nested numeric attribution.
+Completion waits for both children, task/invalidation routing, queued memory and
+accepted replies. Held final exports retain payload and actual VM context, and
+held draw completion remains immutable until accepted.
+
+Cancellation is remembered across child admission, including a one-cycle pulse
+coincident with child draw acceptance. Accepted queued launches, prospective
+payload pins and memory offers drain before completion. A local reservation
+cannot recycle while its task remains queued. A full pool does not create an
+allocation dependency cycle: fragment work can use bounded global spill while a
+vertex release remains backpressured. A one-slot actual-CU case exercises that
+progress path explicitly, then releases the owner and completes the draw.
+
+Actual two-CU checks compare indexed/instanced vertex-to-fragment results with the
+existing rational clipping/viewport/interpolation/raster reference. Local and
+memory-backed modes each exercise 68 quads across 1x and 4x sampling, varying W,
+clipped parts, flat raw values, three raw typed locations, helper/coverage masks,
+uniform tails and held final exports. Additional cases cover cross-stage
+preflight/alias errors before access, empty draws, empty viewports with vertex
+execution, source/fragment memory and shader faults, numeric source attribution,
+pulsed/queued-launch/final-export cancellation, healthy reuse and distinct
+vertex/fragment samplers with descriptor snapshots. Standalone fragment and
+shared task/payload-router regressions qualify the same frozen source. All
+**27 checks** pass on a frozen **548-source** archive, including **seven new
+composed checks**. The default RTL audit covers **136 emitted files**.
+
+The default emitted owner composes the prior 28 KiB vertex/raster storage and
+6 KiB fragment metadata/transpose storage: **17 characterized SRAM macros /
+34 KiB**, outside the existing shared payload pool. It retains the three existing
+clip/viewport/interpolation arithmetic pairs. Default interfaces carry 64 raw
+varying components and four typed raw output locations; actual composed shader
+checks use a bounded representative profile. These are RTL/storage audits, not
+synthesis PPA. PPA screening remains synthesis only.
+
+Native bin/host draw admission, persistent geometry/state publication and typed
+attachment consumption remain open. The composed internal stream does not close
+API MRT/format semantics, physical allocation/alias validation, general resource
+binding, point/line/guard-band rasterization, complete built-ins/qualifiers,
+precision/invariance, queries/transform feedback or remaining H0-H8 gates.

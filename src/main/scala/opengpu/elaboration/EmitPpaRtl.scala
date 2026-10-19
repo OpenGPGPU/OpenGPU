@@ -92,6 +92,9 @@ object EmitPpaRtl {
       case "mobile-vertex-raster" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexRasterPipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
+      case "mobile-vertex-fragment" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexFragmentPipeline(
+          useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-fragment-shader" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.FragmentShaderStage(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)

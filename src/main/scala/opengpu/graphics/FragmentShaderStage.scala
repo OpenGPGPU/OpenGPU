@@ -24,6 +24,23 @@ class FragmentShaderDraw(p: FragmentShaderConfig) extends Bundle {
   val colorMask=UInt(4.W);val colorTypes=Vec(p.colors,UInt(2.W));val allowDepthOverride=Bool();val sampleMode=UInt(2.W)
   val sampler=new VertexShaderSampler
 }
+/** Pure descriptor checks shared by the standalone client and draw admission. */
+object FragmentShaderDescriptor {
+  def errors(draw: FragmentShaderDraw,p: FragmentShaderConfig,g: GraphicsConfig,config: GpuConfig): (Bool,Bool)={
+    val s=draw.scratch;val stride=config.lanes*config.warps*4
+    val prefix=(8.U+&(draw.varyingSlots<<2)+&(draw.colorSlots<<2))*stride.U
+    val end=s.base+&prefix
+    val view=s.allocationBase(5,0)===0.U && s.allocationLimit(5,0)===0.U && s.allocationLimit<=(BigInt(1)<<32).U &&
+      s.allocationLimit>s.allocationBase && s.base>=s.allocationBase && s.base(5,0)===0.U && s.limit>=s.base && s.limit<=s.allocationLimit
+    val types=draw.colorTypes.zipWithIndex.map{case(t,i)=>i.U>=draw.colorSlots || t=/=3.U}.reduce(_ && _)
+    val fields=draw.varyingSlots<=p.varyings.U && draw.colorSlots<=p.colors.U && !(draw.colorMask>>draw.colorSlots).orR &&
+      types && draw.sampleMode<=log2Ceil(g.maxSampleCount).U
+    val sharedAlias=s.base<(config.sharedMemoryBase+config.sharedMemoryBytes).U && end>config.sharedMemoryBase.U
+    val invalid=draw.version=/=1.U || !fields || !view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || sharedAlias
+    val bounds=end>s.limit || end>(BigInt(1)<<32).U || ((end+63.U)&(~63.U(40.W)))>s.allocationLimit
+    (invalid,bounds)
+  }
+}
 class FragmentInputCompletion extends Bundle {
   val identity=new GraphicsWorkIdentity;val status=UInt(3.W);val quads=UInt(99.W)
 }
@@ -292,18 +309,10 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
         payloadContext:=io.payload.map(_.context).getOrElse(0.U);helperQuads.foreach(_:=0.U);phase:=State.validate
       }}
       is(State.validate){
-        val s=draw.scratch
-        val view=s.allocationBase(5,0)===0.U && s.allocationLimit(5,0)===0.U && s.allocationLimit<=(BigInt(1)<<32).U &&
-          s.allocationLimit>s.allocationBase && s.base>=s.allocationBase && s.base(5,0)===0.U && s.limit>=s.base && s.limit<=s.allocationLimit
-        val types=draw.colorTypes.zipWithIndex.map{case(t,i)=>i.U>=draw.colorSlots || t=/=3.U}.reduce(_ && _)
-        val fields=draw.varyingSlots<=p.varyings.U && draw.colorSlots<=p.colors.U && !(draw.colorMask>>draw.colorSlots).orR &&
-          types && draw.sampleMode<=log2Ceil(g.maxSampleCount).U
-        val sharedAlias=s.base<(config.sharedMemoryBase+config.sharedMemoryBytes).U && prefixEnd>config.sharedMemoryBase.U
-        when(draw.version=/=1.U || !fields || !view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || sharedAlias){
-          fail(1.U,1.U,s.base);phase:=State.drain
-        }.elsewhen(prefixEnd>s.limit || prefixEnd>(BigInt(1)<<32).U || ((prefixEnd+63.U)&(~63.U(34.W)))>s.allocationLimit){
-          fail(2.U,1.U,s.base);phase:=State.drain
-        }.otherwise{phase:=State.collect}
+        val (invalid,bounds)=FragmentShaderDescriptor.errors(draw,p,g,config)
+        when(invalid){fail(1.U,1.U,draw.scratch.base);phase:=State.drain}
+          .elsewhen(bounds){fail(2.U,1.U,draw.scratch.base);phase:=State.drain}
+          .otherwise{phase:=State.collect}
       }
       is(State.collect){
         when(count===capacity.U || (inputDone && count=/=0.U)){phase:=State.invalidate}
