@@ -83,11 +83,15 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     val completion=Decoupled(new TypedTileImageTransferCompletion);val cancel=Input(Bool());val cancelSource=Output(Bool())
     val bound=Output(Bool());val busy=Output(Bool());val status=Output(UInt(3.W));val faultAddress=Output(UInt(32.W))
   })
-  private object State extends ChiselEnum {val idle,validate,active,refillStart,refillByte,refillReply,scan,localOffer,localWait,storePrepare,busOffer,busWait,advance,resolveScan,resolveByte,resolveOffer,resolveWait,resolveStore,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,validate,active,refillStart,refillLocate,refillByte,refillReply,scan,localOffer,localWait,storePrepare,busOffer,busWait,advance,resolveScan,resolveByte,resolveOffer,resolveWait,resolveStore,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTileImageDescriptor);private val result=Reg(new TypedTileImageTransferCompletion)
   private val status=RegInit(0.U(3.W));private val fault=RegInit(0.U(32.W));private val bound=RegInit(false.B)
   private val closing=RegInit(false.B);private val refilling=RegInit(false.B);private val view=RegInit(0.U(3.W))
   private val row=RegInit(0.U(5.W));private val offset=RegInit(0.U(17.W));private val byte=RegInit(0.U(4.W))
+  // Admission limits rows to 8/16 and row strides to 16*4*16=1024 bytes.
+  // Decode a refill's row in four bounded compare/subtract steps instead of a
+  // descriptor-dependent combinational divide/remainder (including RGB strides).
+  private val refillStride=Reg(UInt(11.W));private val refillBit=Reg(UInt(2.W))
   private val word=Reg(UInt(p.addressBits.W));private val data=Reg(UInt(64.W));private val refillResult=Reg(new TypedTileColorRefillReply)
   private val localRequest=Reg(new TypedTileColorMemoryRequest(p));private val localOffered=RegInit(false.B);private val localPending=RegInit(false.B)
   private val busRequest=Reg(new ComputeMemoryRequest(config,64,1));private val busOffered=RegInit(false.B);private val busPending=RegInit(false.B)
@@ -183,9 +187,15 @@ class TypedTileImageTransfer(config: GpuConfig=GpuConfig(),p: TypedTileColorConf
     is(State.refillStart){
       val matches=VecInit((0 until 6).map(i=>enabled(i) && (word<<3)>=offsets(i) && (word<<3)<offsets(i)+&(((1.U(6.W)<<tile.tileLog2)<<tile.sampleMode)*sizes(i)*(1.U(6.W)<<tile.tileLog2))))
       val selected=PriorityEncoder(matches)
-      val selectedRowBytes=((1.U(6.W)<<tile.tileLog2)<<tile.sampleMode)*sizes(selected)
+      val selectedRowBytes=(Mux(tile.tileLog2===3.U,8.U(5.W),16.U(5.W))<<tile.sampleMode)*sizes(selected)
       when(!matches.asUInt.orR || loads(selected)=/=AttachmentLoadOp.load.U){fail(3.U,0.U)}.otherwise{
-        val local=(word<<3)-offsets(selected);view:=selected;row:=local/selectedRowBytes;offset:=local%selectedRowBytes;phase:=State.refillByte}
+        view:=selected;row:=0.U;offset:=(word<<3)-offsets(selected)
+        refillStride:=selectedRowBytes;refillBit:=3.U;phase:=State.refillLocate}
+    }
+    is(State.refillLocate){
+      val stride=(refillStride<<refillBit)(13,0)
+      when(offset>=stride){offset:=offset-stride;row:=row|(1.U(5.W)<<refillBit)(4,0)}
+      when(refillBit===0.U){phase:=State.refillByte}.otherwise{refillBit:=refillBit-1.U}
     }
     is(State.refillByte){when(byte===8.U){
       when(resolving){sourceData:=data;sourceWord:=localRequest.address;sourceValid:=true.B;loadBytes:=loadBytes+refillUseful;phase:=State.resolveByte}

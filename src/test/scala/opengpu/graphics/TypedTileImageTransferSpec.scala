@@ -20,7 +20,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     val memory=mutable.Map.empty[BigInt,Int];val initial=mutable.Map.empty[BigInt,Int];val expected=mutable.Map.empty[BigInt,Int]
     val resident=mutable.Map.empty[Int,(BigInt,Boolean)];var views=Vector.empty[View]
     var destinations=Vector.empty[(View,BigInt,Int)];var resolvedIssued=0;var resolvedAcked=0
-    var mode=2;var ox=1;var oy=2;var width=5;var height=3;var cycle=0
+    var mode=2;var edge=8;var ox=1;var oy=2;var width=5;var height=3;var cycle=0
     var blockBus=false;var blockLocal=false;var blockAck=false;var faultRead=false;var faultWrite=false;var cancelOnStore=false
     var delivered=0;var reads=0;var writes=0;var locals=0;var issuedBytes=0;var storedBytes=0
     case class Bus(data: BigInt,due: Int,fault: Boolean)
@@ -28,8 +28,8 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     var heldBus: Option[BigInt]=None;var heldLocal: Option[BigInt]=None
     def slotWord(v: View,index: Int): BigInt=(0 until 8).foldLeft(BigInt(0)){(a,b)=>val n=index*8+b-v.offset
       a|(((v.clear>>(8*(n%v.bytes)))&255)<<(8*b))}
-    def find(word: Int): View=views.find(v=>word*8>=v.offset && word*8<v.offset+64*(1<<mode)*v.bytes).get
-    def physical(v: View,localByte: Int): Option[BigInt]={val n=localByte-v.offset;val row=n/(8*(1<<mode)*v.bytes);val col=n%(8*(1<<mode)*v.bytes)
+    def find(word: Int): View=views.find(v=>word*8>=v.offset && word*8<v.offset+edge*edge*(1<<mode)*v.bytes).get
+    def physical(v: View,localByte: Int): Option[BigInt]={val n=localByte-v.offset;val row=n/(edge*(1<<mode)*v.bytes);val col=n%(edge*(1<<mode)*v.bytes)
       if(row<height && col<width*(1<<mode)*v.bytes)Some(v.base+(oy+row)*v.pitch+ox*(1<<mode)*v.bytes+col)else None}
     def refillValue(word: Int): BigInt={val v=find(word);(0 until 8).foldLeft(BigInt(0))((a,b)=>a|(BigInt(physical(v,word*8+b).map(initial).getOrElse(0))<<(8*b)))}
     def tick(): Unit={
@@ -41,7 +41,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
           r.cachePolicy.expect(opengpu.config.CachePolicy.uncached);r.sizeLog2.expect(6.U)
           val write=r.isWrite.peek().litToBoolean;val mask=r.byteMask.peek().litValue;val data=r.writeData.peek().litValue
           val failed=if(write)faultWrite else faultRead
-          if(write){writes+=1;issuedBytes+=mask.bitCount;val resolving=destinations.exists{case(_,base,pitch)=>address+64>base && address<base+9*pitch}
+          if(write){writes+=1;issuedBytes+=mask.bitCount;val resolving=destinations.exists{case(v,base,pitch)=>address+64>base && address<base+v.height*pitch}
             if(resolving)resolvedIssued+=mask.bitCount
             if(!failed){storedBytes+=mask.bitCount;if(resolving)resolvedAcked+=mask.bitCount
             for(b<-0 until 64 if mask.testBit(b))memory(address+b)=((data>>(8*b))&255).toInt}
@@ -64,22 +64,23 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       d.clock.step();cycle+=1
     }
     def until(p: => Boolean): Unit={var n=0;while(!p && n<100000){tick();n+=1};assert(p,s"transfer stalled cycle=$cycle reads=$reads writes=$writes local=$locals")}
-    def prepare(names: Vector[String],load: Int=1,depth: Int=1,stencil: Boolean=true,sampleMode: Int=2): Unit={
+    def prepare(names: Vector[String],load: Int=1,depth: Int=1,stencil: Boolean=true,sampleMode: Int=2,
+        tileLog2: Int=3,tileWidth: Int=5,tileHeight: Int=3,imageWidth: Int=13,imageHeight: Int=9): Unit={
       memory.clear();initial.clear();expected.clear();resident.clear();views=Vector.empty;delivered=0;reads=0;writes=0;locals=0;issuedBytes=0;storedBytes=0
       destinations=Vector.empty;resolvedIssued=0;resolvedAcked=0
-      mode=sampleMode;ox=1;oy=2;width=5;height=3
+      mode=sampleMode;edge=1<<tileLog2;ox=1;oy=2;width=tileWidth;height=tileHeight
       val b=d.io.begin.bits;zero(b);b.version.poke(1.U);val q=b.pixels;q.version.poke(1.U);val c=q.colors;c.version.poke(1.U)
       c.identity.context.poke(7.U);c.identity.pass.poke(8.U);c.identity.generation.poke(9.U)
-      c.tileLog2.poke(3.U);c.tileWidth.poke(width.U);c.tileHeight.poke(height.U);c.originX.poke(ox.S);c.originY.poke(oy.S);c.sampleMode.poke(mode.U)
+      c.tileLog2.poke(tileLog2.U);c.tileWidth.poke(width.U);c.tileHeight.poke(height.U);c.originX.poke(ox.S);c.originY.poke(oy.S);c.sampleMode.poke(mode.U)
       var offset=0
-      def add(index: Int,bytes: Int,clear: BigInt): Unit={val base=BigInt(0x400000+index*0x10000+59);val pitch=13*(1<<mode)*bytes+7
-        val v=View(index,offset,bytes,load,clear,base,pitch);views :+=v;val a=b.views(index);a.base.poke(base.U)
-        a.limit.poke((base+8*pitch+13*(1<<mode)*bytes).U);a.allocationBase.poke((base& ~BigInt(63)).U)
-        a.allocationLimit.poke(((base+9*pitch+63)& ~BigInt(63)).U);a.imageWidth.poke(13.U);a.imageHeight.poke(9.U);a.rowPitch.poke(pitch.U)
+      def add(index: Int,bytes: Int,clear: BigInt): Unit={val base=BigInt(0x400000+index*0x10000+59);val pitch=imageWidth*(1<<mode)*bytes+7
+        val v=View(index,offset,bytes,load,clear,base,pitch,imageWidth,imageHeight);views :+=v;val a=b.views(index);a.base.poke(base.U)
+        a.limit.poke((base+(imageHeight-1)*pitch+imageWidth*(1<<mode)*bytes).U);a.allocationBase.poke((base& ~BigInt(63)).U)
+        a.allocationLimit.poke(((base+imageHeight*pitch+63)& ~BigInt(63)).U);a.imageWidth.poke(imageWidth.U);a.imageHeight.poke(imageHeight.U);a.rowPitch.poke(pitch.U)
         a.readable.poke(true.B);a.writable.poke(true.B);a.store.poke(true.B)
-        val start=base& ~BigInt(63);val end=(base+9*pitch+63)& ~BigInt(63)
+        val start=base& ~BigInt(63);val end=(base+imageHeight*pitch+63)& ~BigInt(63)
         for(a<-start until end){val x=((a*73+17)&255).toInt;memory(a)=x;initial(a)=x;expected(a)=x}
-        offset+=64*(1<<mode)*bytes
+        offset+=edge*edge*(1<<mode)*bytes
       }
       if(depth!=0){val z=TypedDepthReference.encode(fp(0.75),depth);val st=if(TypedDepthReference.hasStencil(depth))BigInt(0x65)<<TypedDepthReference.stencilShift(depth)else BigInt(0)
         q.depth.format.poke(depth.U);q.depth.offset.poke(offset.U);q.depth.loadOp.poke(load.U);q.depth.clearDepth.poke(fp(0.75).U);q.depth.clearStencil.poke(0x65.U)
@@ -91,25 +92,25 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
         add(i,f.bytes,if(load==2)BigInt(0)else encode(name,values)._1)}
     }
     def expectedStores(): Unit={
-      for(v<-views if v.store;y<-0 until height;x<-0 until width*(1<<mode)*v.bytes){val localByte=v.offset+y*8*(1<<mode)*v.bytes+x;val word=localByte/8
+      for(v<-views if v.store;y<-0 until height;x<-0 until width*(1<<mode)*v.bytes){val localByte=v.offset+y*edge*(1<<mode)*v.bytes+x;val word=localByte/8
         val value=resident.get(word)
         if(value.exists(_._2) || v.load!=0){val data=value.map(_._1).getOrElse(slotWord(v,word));expected(physical(v,localByte).get)=((data>>(8*(localByte%8)))&255).toInt}}
     }
     def enableResolves(sourceStore: Boolean=false): Unit={
       views=views.map(_.copy(store=sourceStore))
       for(v<-views){d.io.begin.bits.views(v.index).store.poke(sourceStore.B)
-        val base=BigInt(0x800000+v.index*0x10000+61);val pitch=13*v.bytes+11;val r=d.io.begin.bits.resolves(v.index)
-        r.enable.poke(true.B);val a=r.destination;a.base.poke(base.U);a.limit.poke((base+8*pitch+13*v.bytes).U)
-        a.allocationBase.poke((base& ~BigInt(63)).U);a.allocationLimit.poke(((base+9*pitch+63)& ~BigInt(63)).U)
-        a.imageWidth.poke(13.U);a.imageHeight.poke(9.U);a.rowPitch.poke(pitch.U);a.writable.poke(true.B);a.store.poke(true.B)
+        val base=BigInt(0x800000+v.index*0x10000+61);val pitch=v.width*v.bytes+11;val r=d.io.begin.bits.resolves(v.index)
+        r.enable.poke(true.B);val a=r.destination;a.base.poke(base.U);a.limit.poke((base+(v.height-1)*pitch+v.width*v.bytes).U)
+        a.allocationBase.poke((base& ~BigInt(63)).U);a.allocationLimit.poke(((base+v.height*pitch+63)& ~BigInt(63)).U)
+        a.imageWidth.poke(v.width.U);a.imageHeight.poke(v.height.U);a.rowPitch.poke(pitch.U);a.writable.poke(true.B);a.store.poke(true.B)
         destinations :+=((v,base,pitch))
-        for(a<-(base& ~BigInt(63)) until((base+9*pitch+63)& ~BigInt(63))){memory(a)=0xa5;initial(a)=0xa5;expected(a)=0xa5}
+        for(a<-(base& ~BigInt(63)) until((base+v.height*pitch+63)& ~BigInt(63))){memory(a)=0xa5;initial(a)=0xa5;expected(a)=0xa5}
       }
     }
     def expectedResolves(names: Vector[String]): Unit={
       for((v,base,pitch)<-destinations;y<-0 until height;x<-0 until width){
         val values=Vector.tabulate(4){sample=>if(sample>=(1<<mode))BigInt(0)else {
-          (0 until v.bytes).foldLeft(BigInt(0)){(r,b)=>val local=v.offset+((y*8+x)*(1<<mode)+sample)*v.bytes+b;val word=local/8
+          (0 until v.bytes).foldLeft(BigInt(0)){(r,b)=>val local=v.offset+((y*edge+x)*(1<<mode)+sample)*v.bytes+b;val word=local/8
             val value=resident.get(word).map(_._1).getOrElse(if(v.load==0)refillValue(word)else slotWord(v,word))
             r|(((value>>(8*(local%8)))&255)<<(8*b))}}}
         val value=TypedResolveReference.resolve(if(v.index<4)names(v.index)else "R8",values,mode,depth=v.index>=4)
@@ -133,6 +134,53 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       assert(bus.isEmpty && local.isEmpty && heldBus.isEmpty && heldLocal.isEmpty)
       if(verify)assert(memory==expected,"pitched image bytes or allocation guard bytes changed")
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
+    }
+  }
+  it should "decode every legal tile row and sample stride including packed RGB and the highest 64 KiB slot word" in {
+    simulate(new TypedTileImageTransfer(p=TypedTileColorConfig(65536))){d=>val t=new Driver(d);var bindings=0;var refills=0;var highest=0
+      def checkRows(): Unit={
+        t.begin()
+        for(v<-t.views.reverse;y<-0 until t.edge){
+          val stride=t.edge*(1<<t.mode)*v.bytes;val active=t.width*(1<<t.mode)*v.bytes
+          for(x<-Vector(0,active/8,stride/8-1).distinct if x<stride/8){
+            val word=(v.offset+y*stride)/8+x;t.refill(word);refills+=1;highest=highest.max(word)
+          }
+        }
+        t.flush(false);t.finish();assert(t.writes==0 && t.locals==0);bindings+=1
+      }
+      for(log2<-Seq(3,4);mode<-0 to 2;group<-TypedColorFormat.formats.map(_.name).grouped(4)){
+        t.prepare(group.toVector,0,depth=0,stencil=false,sampleMode=mode,tileLog2=log2,
+          tileWidth=(1<<log2)-1,tileHeight=(1<<log2)-1,imageWidth=27,imageHeight=21)
+        checkRows()
+      }
+      for(mode<-0 to 2;depth<-1 to 6){
+        t.prepare(Vector("R8"),0,depth=depth,stencil=false,sampleMode=mode,tileLog2=4,
+          tileWidth=15,tileHeight=15,imageWidth=27,imageHeight=21)
+        checkRows()
+      }
+      t.prepare(Vector.fill(4)("RGBA32F"),0,depth=0,stencil=false,sampleMode=2,tileLog2=4,
+        tileWidth=15,tileHeight=15,imageWidth=27,imageHeight=21)
+      checkRows();assert(highest==8191)
+      info(s"TYPED_IMAGE_REFILL_ROWS bindings=$bindings refills=$refills tileSizes8x16=true samples1x2x4=true colors36=true depthFormats6=true packed3x6x12=true allRows=true highestWord=$highest croppedPaddingZero=true guardsUnchanged=true")
+    }
+  }
+  it should "cancel during refill selection and every bounded row decode step without issuing physical traffic then recover" in {
+    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
+      for(delay<-0 to 5){
+        t.prepare(Vector("RGB32F"),0,depth=0,stencil=false,sampleMode=2,tileLog2=4,
+          tileWidth=15,tileHeight=15,imageWidth=27,imageHeight=21)
+        t.begin();d.io.refill.bits.address.poke((14*16*4*12/8).U);d.io.refill.valid.poke(true.B)
+        t.until(d.io.refill.ready.peek().litToBoolean);t.tick();d.io.refill.valid.poke(false.B)
+        for(_<-0 until delay)t.tick()
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+        t.until(d.io.refillReply.valid.peek().litToBoolean);d.io.refillReply.bits.fault.expect(true.B)
+        val held=d.io.refillReply.bits.peek().litValue
+        for(_<-0 until 4){t.tick();assert(d.io.refillReply.bits.peek().litValue==held);d.io.completion.valid.expect(false.B)}
+        d.io.refillReply.ready.poke(true.B);t.tick();d.io.refillReply.ready.poke(false.B)
+        t.flush(false);t.finish(4);assert(t.reads==0 && t.writes==0 && t.locals==0)
+        t.prepare(Vector("RGB8"),0,depth=0,stencil=false);t.begin();t.refill(2*8*4*3/8+2);t.flush(false);t.finish()
+      }
+      info("TYPED_IMAGE_REFILL_CANCEL arrivalPhases=6 heldFaultReply=true noPhysicalAccess=true boundedDrain=true exactHealthyReuse=true")
     }
   }
   it should "export all36 typed colors with edge crops unaligned pitches and depth stencil defaults while skipping clean load words" in {

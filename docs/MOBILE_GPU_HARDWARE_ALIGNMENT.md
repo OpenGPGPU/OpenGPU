@@ -5005,3 +5005,27 @@ checkout metadata explicitly. See the [negative synthesis result and artifact
 hashes](performance/mobile-typed-replay-image-synthesis-2026-10-20.json).
 PPA remains **synthesis only**. No place/route or power result is claimed;
 full Mobile timing/rates/budgets and H0-H8 remain open.
+
+## Bounded typed-image refill row decoder (2026-10-20)
+
+The measured sample-mode-to-transfer-offset path contained a descriptor-dependent
+combinational division/remainder. `TypedTileImageTransfer` now locates a refill
+word's row with four bounded compare/subtract steps. Admission already limits
+views to 8/16 rows and 1024 bytes per row, so this preserves packed 3/6/12-byte
+formats without a general divider. It adds four cycles per explicit refill;
+physical byte gathering, cache reuse, publication and ownership remain unchanged.
+
+All **12 transfer checks** pass on 604 frozen sources. New coverage verifies
+**7,520 refills across 73 bindings**, both tile sizes, 1x/2x/4x samples, all 36
+color formats, six depth formats, cropped padding and the highest 64 KiB slot
+word. Six cancellation arrival phases retain a held fault reply, issue no
+physical traffic and recover with exact healthy reuse. Existing clear/load/
+store/resolve, fault, guard, alias and exclusive-4-GiB tests also pass.
+
+Both replay-engine and standalone-transfer RTL emit successfully; the transfer
+module has no division/remainder operator. Structural replay-engine counts
+remain 133 files and 21 SRAM macros. The broader image/replay/combined-owner/native
+AXI regression and a fresh synthesis run are still in progress at this commit;
+no improved Fmax or full-system qualification is claimed here. See the
+[component evidence](performance/mobile-typed-image-refill-decoder-2026-10-20.json).
+PPA remains synthesis only, and H0-H8 remain open.
