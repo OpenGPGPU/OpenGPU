@@ -4858,3 +4858,29 @@ host MMU/reset integration and acknowledged image publication remain open.
 Indexed-vertex reuse, continuation lifetimes, guard-band/qualifier/numeric and
 texture/resource semantics, production budgets/rates and the original H0–H8
 qualification gates also remain open. PPA remains **synthesis only**.
+
+
+## Immutable typed fragment-state reader checkpoint — 2026-10-20
+
+`TypedFragmentStateReader` now fetches GFS1 immutable GPU-memory fragment state:
+512-byte records with 71 explicit scalar fields, fragment/test/blend state and
+four independent engine scratch views. Four reserved memory tags permit reordered
+line replies into a private snapshot. Canonical encoding, identity, bounds,
+shader-prefix capacity and active-view separation are checked before publication.
+One exact-key cache entry supports explicit invalidation, including suppression
+of an in-flight fill. Cancellation retains offered requests/results and drains
+all tags before reuse.
+
+All **six reader checks** pass on **599 frozen standalone source files**, without
+the pending prepared-geometry/replay renderer changes. Tests include a final
+entry ending at the exclusive 4 GiB limit, malformed padding/headers, scratch
+aliases, reordered reads, faults, cancellation, held results and healthy reuse.
+The generated GFS1 C/JSON maps match byte for byte; the existing native descriptor
+maps also pass their generator check. An independent C11 offset/size probe passes
+and confirms unchanged GTJ1/GTI1/GTD1 sizes. See the [state ABI contract](TYPED_FRAGMENT_STATE_ABI.md)
+and [frozen evidence](performance/mobile-typed-fragment-state-2026-10-20.json).
+
+This checkpoint qualifies the reader component. Prepared-geometry typed image
+execution, multi-engine bin-to-image composition, native admission/MMU/reset,
+resource provenance, full Mobile runtime/rates and H0–H8 qualification remain
+open. There are no new synthesis results; PPA remains **synthesis only**.
