@@ -67,6 +67,8 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.PrimitiveBinWriter(mobile.binPageBytes, mobile.binWriteCredits),
           stageArgs, firtoolArgs)
+      case "mobile-vertex-input-fetch" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexInputFetcher(),stageArgs,firtoolArgs)
       case "mobile-bin-store" =>
         val mobile = opengpu.config.MobileGpuConfig()
         ChiselStage.emitSystemVerilogFile(
