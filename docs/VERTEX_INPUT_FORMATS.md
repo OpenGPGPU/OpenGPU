@@ -56,5 +56,7 @@ now pass converted half, packed normalized, signed normalized and fixed inputs
 with both local and global payloads. Each rewritten input allocation is published
 through the hardware invalidate command and its held acknowledgement before
 reuse; CPU backing writes alone do not invalidate GPU caches. The first broader
-run passed 27 of 28 checks before this fixture correction. A full rerun on the
-corrected source is pending. No new throughput or synthesis PPA result is claimed.
+run passed 27 of 28 checks before this fixture correction. The [corrected-source qualification](performance/mobile-vertex-input-conversion-2026-10-20.json)
+passes all 28 checks across five suites on 624 frozen source/ABI files. All three
+ABI checks and default fetcher RTL generation pass. No new throughput or
+synthesis PPA result is claimed.

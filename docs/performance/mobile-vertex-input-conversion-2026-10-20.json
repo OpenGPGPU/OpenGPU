@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "title": "Version 2 native vertex input conversion",
+  "code_revision": "d682aab09884eec278de46cd18c5f08700c29eae",
+  "scope": "Component conversion/fetch, native descriptor readers and actual shared-CU vertex execution; full native host rendering remains separate",
+  "source_files": 624,
+  "source_manifest": {
+    "path": ".artifacts/mobile-vertex-input-conversion-source-v3.json",
+    "sha256": "fc4f0203f2b5a985307223f7c7f1824fe18bdfdd04994c8bb76133ef67525915"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-vertex-input-conversion-source-v3.tar.gz",
+    "sha256": "eb8cbe7264f0af394b5ccfe92ddfa021e1d24878fd620061b286f35758224bc0"
+  },
+  "changed_source_sha256": {
+    "docs/abi/native-binned-graphics-v1.json": "b851d98da95cf791133a928609b157e6ef8a340ffd859876ca0231977c9c258c",
+    "docs/abi/native-typed-graphics-v1.json": "59233c629e502099633e509301bce664caf2703599ae9c97d469516a501f2900",
+    "driver/opengpu_native_binned_abi.h": "f75bc8ce9d461647084c795045f4825f1feba3453c9bc7e42480414544a4454f",
+    "driver/opengpu_native_typed_abi.h": "66aa095ca917c12159fa4c4a93c90f4a42cdb7bd87d57f9237db50bb220df2d0",
+    "src/main/scala/opengpu/elaboration/EmitNativeBinnedGraphicsAbi.scala": "d858017e38fca2c2a0d988fa29d81c399ac4b6b65ce4c862303fb6b36a0692b6",
+    "src/main/scala/opengpu/elaboration/EmitNativeTypedGraphicsAbi.scala": "7d48f68185bd55f758c6dd2ccee47825a4a1b3f72b6d68095604f7dee9930a04",
+    "src/main/scala/opengpu/graphics/VertexInputConversion.scala": "f1e7f3aaa3454d9cfcef41cc9599f61cdf931cb5edd4428f771d9f352879af46",
+    "src/main/scala/opengpu/graphics/VertexInputFetcher.scala": "c7173e53961a4c56dbe7edfbc5ac22b5579aa0260d40052badaca6888e66f2e4",
+    "src/test/scala/opengpu/graphics/VertexInputConversionSpec.scala": "958454472d5a93150f42b5fbaeb5d83c18e818c82d0edc80cc65b094762a74c3",
+    "src/test/scala/opengpu/graphics/VertexInputFetcherSpec.scala": "3ae32226e2a0f13dd48a7272ba3e284dafeb2f41da1d84ceceea7aa5c8ef7281",
+    "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala": "6cdfc25aedb17615c7edb8becd05096f350cc6c2c0f2db8307f28f8cf40c21b0"
+  },
+  "contract": {
+    "versions": "Input version 1 retains raw format IDs 0-6; input version 2 accepts IDs 0-24. Input version is independent of shader export ABI.",
+    "formats": [
+      "FP32",
+      "UINT32",
+      "SINT32",
+      "UINT16",
+      "SINT16",
+      "UINT8",
+      "SINT8",
+      "FP16",
+      "UINT8_FLOAT",
+      "SINT8_FLOAT",
+      "UINT16_FLOAT",
+      "SINT16_FLOAT",
+      "UINT32_FLOAT",
+      "SINT32_FLOAT",
+      "UNORM8",
+      "SNORM8",
+      "UNORM16",
+      "SNORM16",
+      "UNORM32",
+      "SNORM32",
+      "UNORM2101010_REV",
+      "SNORM2101010_REV",
+      "UINT2101010_REV_FLOAT",
+      "SINT2101010_REV_FLOAT",
+      "FIXED16_16"
+    ],
+    "rounding": "RNE FP32 conversion; exact rational UNORM, signed normalization with most-negative clamp, exact half expansion with canonical quiet NaNs. Raw FP32 bits are preserved.",
+    "packed": "Four components per naturally aligned logical four-byte word; X/Y/Z/W low 10/10/10/2 bits. No per-component address stepping.",
+    "stage": "Capture one component word before conversion; one additional cycle per consumed component, including legacy raw formats.",
+    "ABI": "Dedicated format wire words use five low bits. Record offsets, sizes and magic are unchanged; padding remains zero.",
+    "publication": "Host backing changes require explicit cache publication. Actual local/global shader tests reuse the same allocation through driver invalidate and held completion acknowledgement."
+  },
+  "validation": {
+    "checks": 28,
+    "suites": [
+      "VertexInputConversionSpec",
+      "VertexInputFetcherSpec",
+      "VertexShaderStageSpec",
+      "NativeBinnedGraphicsJobReaderSpec",
+      "NativeTypedGraphicsJobReaderSpec"
+    ],
+    "qualified_log": {
+      "path": ".artifacts/mobile-vertex-input-conversion-qualified-v3.log",
+      "sha256": "9df3516ee8a169d3c3d619d6c78ad29073d45eded13db11b12220c7724ce6c7d"
+    },
+    "result": {
+      "returncode": 0,
+      "source_unchanged": true,
+      "elapsed_seconds": 355.8025387499947,
+      "finished_utc": "2026-10-19T23:54:33.012394+00:00"
+    },
+    "markers": [
+      "NATIVE_TYPED_READER layouts=3 fixedSlotABI=true scalarWords=true signedPadding=true limit33=true tags=4 reorderedReplies=true orderedDraws=2 heldBegin=true heldPublication=true immutableCompletion=true clearOnlyPass=true",
+      "NATIVE_TYPED_READER invalidDescriptors=15 noOutOfBoundsRead=true noMalformedDraw=true reservedAndSignPadding=true noTruncatedCapacity=true scratchCannotOverwriteCommands=true healthyReuse=true",
+      "NATIVE_TYPED_READER readFaults=3 acknowledgedPrefixes=true heldMemoryCancel=true heldBeginCancel=true heldDrawCancel=true heldEndCancel=true noEarlyVMRelease=true healthyReuse=true",
+      "NATIVE_TYPED_READER highestRecords=3 headerPassDraw=true exclusive4GiB=true noAddressWrap=true countersClassifyHighDraws=true",
+      "VERTEX_CONVERSION cases=217680 halfPatterns=65536 normalized16Patterns=131072 normalized8Patterns=512 packedComponents=16 exactRationalRNE=true signedMinimumClamp=true fixed16_16=true legacyRaw=true",
+      "VERTEX_INPUT attributes=16 formats=7 snapshots=true defaults=true signedExpansion=true freshDrawRefetch=true",
+      "VERTEX_INPUT indices=8,16,32 restartBeforeBase=true repeatedIndices=true baseInstance=2 divisors=1,2,3,4294967295 instances=3,5",
+      "VERTEX_INPUT convertedFormats=18 version2=true records=18 indexedInstances=true crossLine=true packedSingleWord=true exactLogicalBounds=true cancelConversion=true defaults=true healthyReuse=true",
+      "VERTEX_INPUT invalidLayouts=37 boundFailures=11 memoryFaults=3 highProductLimbs=true partialAttributeSuppressed=true empty=true healthyReuse=true",
+      "VERTEX_INPUT exclusive4GiB=true finalByte=true finalWord=true noWrappedRequests=true",
+      "VERTEX_INPUT cancelOffered=true cancelAccepted=true cancelHeldRecord=true heldCompletion=true lateFaultDrain=true healthyReuse=true",
+      "VERTEX_INPUT attributes=1 bindings=1 subword=true indexLines=1 attributeLines=1",
+      "VERTEX_INPUT interleaved=true nonIdentityBindings=true unusedBindingsIgnored=true disabledFormatsIgnored=true attributeLines=1 reusedReads=63",
+      "NATIVE_GNC2_ADMISSION rejectedAliases=10 mutableDescriptorStateProtected=true binScratchRolesProtected=true readOnlyDescriptorAliasAllowed=true noInvalidDraw=true healthyReuse=true",
+      "NATIVE_BINNED_READER layouts=3 reorderedTags=4 exactSnapshots=true signedFields=true exclusive4GiB=true emptyFrameBeginEnd=true heldCompletion=true",
+      "NATIVE_BINNED_ADMISSION cases=23 fixedCapacityFit=true allAttributesChecked=true canonicalPadding=true immutableDescriptorSpans=true noInvalidDraw=true healthyReuse=true",
+      "NATIVE_BINNED_FAULTS recordKinds=3 primaryMemoryFault=true nestedVertexFault=true fullFrameTileAttribution=true drain=true exactHealthyReuse=true",
+      "NATIVE_BINNED_CANCEL phases=5 heldOffers=true liveDescriptorTags=true noEarlyChildCancel=true heldPublication=true noEarlyCompletion=true exactHealthyReuse=true",
+      "VERTEX_SHADER local=true CUs=2 indexed=true instances=2 vertices=16 restarts=2 batches=3 maxLocalX=8 FP32=true IDs=true uniformTail=true heldExport=true forcedSpill=true",
+      "VERTEX_SHADER local=false CUs=2 indexed=true instances=2 vertices=16 restarts=2 batches=3 maxLocalX=8 FP32=true IDs=true uniformTail=true heldExport=true forcedSpill=false",
+      "VERTEX_SHADER convertedInputs=true local=true CUs=2 formats=half,unorm2101010,snorm16,fixed16_16 exactFP32Positions=true instances=2 acknowledgedInputPublication=true uniformTail=true poolDrain=true",
+      "VERTEX_SHADER convertedInputs=true local=false CUs=2 formats=half,unorm2101010,snorm16,fixed16_16 exactFP32Positions=true instances=2 acknowledgedInputPublication=true uniformTail=true poolDrain=true",
+      "VERTEX_SHADER invalidLayouts=20 noInvalidInputAccess=true emptyDraws=2 restartOnly=3 noEmptyAllocation=true snapshots=true",
+      "VERTEX_SHADER vertexTexture=true textureFault=true noFaultedExports=true freshTextureReuse=true",
+      "VERTEX_SHADER cancelHeldLaunch=true cancelHeldExport=true inputFault=true shaderTrap=true healthyReuse=true",
+      "VERTEX_SHADER cancelOfferedWrite=true scatterFault=true clearFault=true readbackFault=true partialExportSuppressed=true healthyReuse=true",
+      "VERTEX_SHADER lanes=16 warps=8 acceptedLocalX=128 instances=8 enabledAttributes=16 varyingComponents=64 prefixBytes=69120 controlledOversizeSpill=true uniformTail=true"
+    ],
+    "numeric_cases": 217680,
+    "half_patterns": 65536,
+    "normalized16_patterns": 131072,
+    "normalized8_patterns": 512,
+    "native_ABI_checks": 3,
+    "independent_C11_and_schema_checks": {
+      "path": ".artifacts/mobile-vertex-input-conversion-abi-checks-v1.json",
+      "sha256": "ac2e20cd324895c30df125f1d3ea7d18c37883628f2af3b5b840277989dcc723"
+    },
+    "coverage": [
+      "All 25 format IDs, 18 converted layouts; exact rational arithmetic, signed minima, 32-bit rounding boundaries, fixed point and packed channels.",
+      "Indexed/instanced cross-line fetch, all 16 attribute slots, typed defaults, packed logical limits, conversion-cycle cancellation, ordinary faults/drain/reuse and 4 GiB exclusive limits.",
+      "Actual two-CU local/global converted vertex positions and cached allocation reuse through acknowledged invalidate; legacy indexed instances, texture faults, held exports, spill and shader/staging faults.",
+      "16 lanes/eight warps, 128 threads, 16 enabled attributes and 64 varying components through a 69120-byte controlled oversize spill; native fixed-word readers retain exact snapshots, padding and drain."
+    ],
+    "previous_run": {
+      "log": {
+        "path": ".artifacts/mobile-vertex-input-conversion-qualified-v2.log",
+        "sha256": "705de71d338e886ebf282d8f9e8f1a029b0d0f45dd7370202c74d06f66051e11"
+      },
+      "passed": 27,
+      "failed": 1,
+      "cause": "The new fixture rewrote backing bytes behind a warm L2 line. Corrected tests issue and acknowledge actual driver invalidate, preserving the same allocation and exact output checks."
+    }
+  },
+  "emission": {
+    "rtl": {
+      "emitted_sha256": {
+        "BlockPrefixAdder.sv": "70d4e628611cfe0a1876912f6912343bb158b35389dc047ff94f95c49d7d2181",
+        "BlockPrefixAdder_4.sv": "68ba8ae0ec78b3a83cca6b252deca73c6e7f82b30a4fa729b0a35aae8ac8be8a",
+        "VertexInputFetcher.sv": "830349110ba44fd9a33641c06977a65da93c6b2af6378546b340dd42c56cb846",
+        "filelist.f": "c28cce8f54460c0110974702c6950472430c1eddda425607136c371b607a24f5",
+        "verification/assert/VertexInputFetcher_Verification_Assert.sv": "d3fe6c0419f83304979e70be2d6af712d03984cffb52128e3e7e45c7f3d3c279",
+        "verification/assert/layers-VertexInputFetcher-Verification-Assert.sv": "0e16687210d610ead342537d487061b7147a08ca59567c441c4335f95e17f09b",
+        "verification/assume/layers-VertexInputFetcher-Verification-Assume.sv": "9e5fcb4c11bed4587566b4ebe3b6541353c98ad539c087c5d9ba0649c0332f74",
+        "verification/cover/layers-VertexInputFetcher-Verification-Cover.sv": "d9287e5d1196aa589c9445c9fc41edaa3359a21dba457f963383398903c760eb",
+        "verification/layers-VertexInputFetcher-Verification.sv": "5f99ea0f0d42585097be8640e2cf43db5e8aa1d546aed3cf23106499de51a0b7"
+      },
+      "reachable_instances": {
+        "BlockPrefixAdder": 4,
+        "BlockPrefixAdder_4": 1,
+        "VertexInputFetcher": 1
+      },
+      "existing_sram_macros": {},
+      "file_count": 9,
+      "selected_ports": {
+        "io_draw_bits_attributes_15_format": 5,
+        "io_out_bits_values_15_3": 32,
+        "io_memoryRequest_bits_byteMask": 64,
+        "io_completion_bits_vertices": 64
+      }
+    },
+    "scope": "Default 16-attribute/binding standalone fetcher; no new CU, payload pool, SRAM, FMA or divider lane. Structural evidence only."
+  },
+  "limitations": [
+    "GVI1 discovery has separate native control evidence; complete converted native rendering/MMU/image/host composition remains pending.",
+    "General resource/allocation provenance, physical aliases, complete geometry reuse/semantics, Mobile runtime/rates/budgets and H0-H8 remain open.",
+    "No throughput, new synthesis PPA, power or routed clock claim."
+  ]
+}
