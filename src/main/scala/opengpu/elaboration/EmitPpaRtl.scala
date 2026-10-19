@@ -122,6 +122,12 @@ object EmitPpaRtl {
           payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-typed-fragment-state" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedFragmentStateReader(),stageArgs,firtoolArgs)
+      case "mobile-typed-vertex-bin-image" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedVertexBinImagePipeline(
+          engines=mobile.tileEngines,pageBytes=mobile.binPageBytes,writeCredits=mobile.binWriteCredits,
+          tileSlots=mobile.binTileSlots,pagedCapacity=mobile.binDirectoryTiles,useSramBlackBoxes=true,
+          payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-prepared-typed-image" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedTileImagePipeline(useSramBlackBoxes=true,
           payload=Some(opengpu.graphics.ShaderPayloadConfig()),preparedGeometry=true),stageArgs,firtoolArgs)

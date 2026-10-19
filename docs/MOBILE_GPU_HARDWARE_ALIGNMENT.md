@@ -4954,3 +4954,32 @@ regressions cover the ordinary path, not native admission/MMU/reset for these
 new replay engines. Resource provenance, native frame integration, full Mobile
 runtime/budgets/rates and the original H0–H8 gates remain open. PPA remains
 **synthesis only**.
+
+## Shared-CU vertex/bin/typed-image composition (2026-10-20)
+
+`TypedVertexBinImagePipeline` now composes actual shared-CU vertex draws, general
+post-transform bins and two independent typed replay image engines. Vertex work
+executes once; replay launches fragment tasks. Whole-grid admission validates
+partial edges before work, and the version-3 directory publishes all tiles,
+including empty tiles. Per-engine renderer credits extend through physical
+image publication and queued tile results, preserving progress when another
+engine's result is held.
+
+All **24 checks across four suites** pass on **604 frozen source files**. Two-CU
+local/global tests publish exact four-MRT/depth source and resolve bytes across a
+17x9 frame, including indexed instances, 4x MSAA and partial tiles. Record-read,
+fragment-trap and physical-store failures retain primary attribution; cancellation
+retains held primitive results, queued launches/live leases and final physical
+acknowledgements. Every fault/cancel case drains and then renders a healthy frame.
+Existing vertex/bin regression checks also pass.
+
+The combined default emits 267 RTL files, 56 characterized 256x64 SRAM macros
+and two 256x32 macros (**114 KiB**), one vertex stage, two fragment stages, six
+FMA lanes and four dividers, with no private CU or payload pool. These are
+structural counts. See the [owner contract](TYPED_VERTEX_BIN_IMAGE_PIPELINE.md)
+and [source/log/RTL evidence](performance/mobile-typed-vertex-bin-image-2026-10-20.json).
+
+This is an internal physical-address owner. Native admission/MMU/host/reset for
+the combined path, resource provenance, full Mobile runtime/rates/budgets and
+H0-H8 remain open. Runtime uses four lanes/two warps and small images. PPA remains
+**synthesis only**.

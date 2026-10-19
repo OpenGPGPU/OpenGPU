@@ -36,7 +36,8 @@ class WindowPrimitiveBinReplayCompletion(p: VertexShaderStageConfig) extends Bun
   */
 class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     g: GraphicsConfig=GraphicsConfig(),engines: Int=2,pageBytes: Int=4096,writeCredits: Int=8,
-    tileSlots: Int=8,pagedCapacity: Int=0,useDirectorySramBlackBoxes: Boolean=false) extends Module {
+    tileSlots: Int=8,pagedCapacity: Int=0,useDirectorySramBlackBoxes: Boolean=false,
+    rendererCredits: Boolean=false) extends Module {
   require(engines>=1 && engines<=4)
   private val binTransactions=writeCredits+engines+(if(pagedCapacity>0)1 else 0)
   private val writerId=binTransactions;private val transactions=binTransactions+1+engines
@@ -45,6 +46,10 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
     val in=Flipped(Decoupled(new WindowPrimitiveRecord(p)));val end=Flipped(Decoupled(Bool()))
     val out=Vec(engines,Decoupled(new WindowPrimitiveReplay(p)))
     val tileDone=Decoupled(new WindowPrimitiveTileCompletion)
+    /** An enclosing image owner retains its credit through image publication.
+      * Return credits during cancellation too, so terminal tile reports drain.
+      */
+    val rendererPermit=if(rendererCredits)Some(Input(Vec(engines,Bool())))else None
     val completion=Decoupled(new WindowPrimitiveBinReplayCompletion(p))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,transactions))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,transactions)))
@@ -114,7 +119,7 @@ class WindowPrimitiveBinReplayPass(config: GpuConfig=GpuConfig(),p: VertexShader
   for(e<-0 until engines){
     val r=readers(e)
     // Cancelled directory reports still need an unowned scheduler result slot.
-    bins.io.dispatchPermit.get(e):= !owned(e)
+    bins.io.dispatchPermit.get(e):= !owned(e) && io.rendererPermit.map(_(e)).getOrElse(true.B)
     when(bins.io.tileAssigned.get(e)){owned(e):=true.B;tileStatus(e):=0.U}
     bins.io.reference(e).ready:= !pending(e)
     when(bins.io.reference(e).fire){when(!stop){source(e):=bins.io.reference(e).bits;pending(e):=true.B;offered(e):=true.B}}

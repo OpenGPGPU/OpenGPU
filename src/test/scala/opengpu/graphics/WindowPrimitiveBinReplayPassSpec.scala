@@ -74,6 +74,32 @@ class WindowPrimitiveBinReplayPassSpec extends AnyFlatSpec {
     def healthy(): Unit={begin();send(0,0,Seq((1,1)));sourceIdle();end();result(0);assert(outputs.map(x=>(x._1,x._2)).toSeq==Seq((0,0)))}
   }
   behavior of "WindowPrimitiveBinReplayPass"
+  it should "retain outer renderer credits through publication and return cancelled tiles after credits resume" in {
+    simulate(new WindowPrimitiveBinReplayPass(p=p,g=g,engines=2,pageBytes=128,writeCredits=2,
+      tileSlots=2,pagedCapacity=16,rendererCredits=true)){d=>val t=new Driver(d)
+      t.prepareBegin();d.io.begin.bits.bins.version.poke(3.U);t.submitBegin();t.sourceIdle()
+      t.send(0,2,Seq((0,0),(1,0),(0,1)),guard=true);t.sourceIdle();t.end()
+      for(_<-0 until 80)t.tick()
+      assert(t.outputs.isEmpty && t.tiles.isEmpty);d.io.completion.valid.expect(false.B)
+      d.io.rendererPermit.get(1).poke(true.B);t.until(t.tiles.size>=3)
+      assert(t.outputs.size==3 && t.outputs.forall(_._3==1));assert(t.tiles.forall(_._2==1))
+      d.io.rendererPermit.get(1).poke(false.B)
+      for(_<-0 until 80)t.tick()
+      assert(t.tiles.size==3 && t.outputs.size==3);d.io.completion.valid.expect(false.B)
+      d.io.rendererPermit.get(0).poke(true.B);t.result(0)
+      assert(t.tiles.size==9 && t.outputs.size==9)
+      assert(t.tiles.count(_._2==0)==6 && t.tiles.count(_._2==1)==3)
+      assert(t.outputs.map(_._1).toSet==(0 until 9).toSet)
+
+      for(e<-0 until 2)d.io.rendererPermit.get(e).poke(false.B)
+      t.begin();t.send(0,0,Seq((1,1)));t.sourceIdle();t.end();d.io.cancel.poke(true.B)
+      for(_<-0 until 20){t.tick();d.io.completion.valid.expect(false.B)}
+      assert(t.tiles.isEmpty && t.outputs.isEmpty)
+      for(e<-0 until 2)d.io.rendererPermit.get(e).poke(true.B)
+      t.result(4);d.io.cancel.poke(false.B);t.healthy()
+      info("WINDOW_BIN_RENDERER_CREDITS tiles=9 heldEngine0=true engine1Tiles=3 withheldReuse=true cancelDrainAfterCreditReturn=true healthyReuse=true")
+    }
+  }
   it should "replay complete generic records in per-tile order through two independent engines and a paged directory" in {
     simulate(design){d=>val t=new Driver(d);t.begin()
       t.send(0,2,Seq((1,1),(18,1),(1,16)));t.sourceIdle()
