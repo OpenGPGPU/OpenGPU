@@ -96,7 +96,7 @@ class VertexRasterPipelineSpec extends AnyFlatSpec {
     out.toVector
   }
   private val rasterConfig=GraphicsConfig(screenWidth=8,screenHeight=8)
-  private case class FragmentExpected(quad: TriangleRasterReference.Quad,sequence: Int,primitiveId: Int,instance: Int,part: Int,point: Option[(BigInt,BigInt)]=None,size: Double=1)
+  private case class FragmentExpected(quad: TriangleRasterReference.Quad,sequence: Int,primitiveId: Int,instance: Int,part: Int,point: Option[(BigInt,BigInt)]=None,size: Double=1,sampleDepths: Vector[Vector[BigInt]]=Vector.empty)
   private def fragmentReference(view: View,settings: TriangleRasterReference.Settings,kind: Int=2,shaderSize: Boolean=false): Vector[FragmentExpected]={
     reference(kind).flatMap { e=>
       val prepared=e.values.map(v=>Fp32ViewportReference.project(v.position,view,Fp32ViewportConfig()))
@@ -104,7 +104,7 @@ class VertexRasterPipelineSpec extends AnyFlatSpec {
       val triangle=TriangleRasterReference.Triangle(prepared.map(v=>(v.x,v.y)),data)
       val size=if(shaderSize)java.lang.Float.intBitsToFloat(e.values.head.position(3).toInt).toDouble else 1.0
       val quads=if(kind==2)TriangleRasterReference.raster(triangle,settings,rasterConfig)else PointLineReference.raster(triangle,kind,settings,rasterConfig,PointLineReference.Sizes(point=size))
-      quads.map(q=>FragmentExpected(q,e.sequence,e.primitiveId,e.instance,e.part,if(kind==0)Some((prepared.head.x,prepared.head.y))else None,size))
+      quads.map(q=>FragmentExpected(q,e.sequence,e.primitiveId,e.instance,e.part,if(kind==0)Some((prepared.head.x,prepared.head.y))else None,size,SampleDepthReference.depths(triangle,kind,q.samples,settings.mode,rasterConfig)))
     }
   }
   private class Driver(val d: VertexRasterHarness) {
@@ -132,6 +132,7 @@ class VertexRasterPipelineSpec extends AnyFlatSpec {
             for(i<-0 until 4)assert(o.values.lanes(i).varyings(0)(3).peek().litValue==e.quad.lanes(i).values(3),
               s"point varying mismatch sequence=${e.sequence} lane=$i actual=${o.values.lanes(i).varyings(0)(3).peek().litValue} expected=${e.quad.lanes(i).values(3)} uniform=$uniform")}
           TriangleRasterReference.check(o,e.quad,settings,e.sequence,e.primitiveId,e.instance)
+          SampleDepthReference.check(o.values,e.sampleDepths)
           o.values.primitiveKind.expect(kind.U)
           e.point.foreach { center=>for(i<-0 until 4;c<-0 until 2){
             val q=e.quad.samples(i);val want=PointLineReference.pointCoord(center,q.x,q.y,PointLineReference.Sizes(point=e.size),rasterConfig)(c)

@@ -26,7 +26,8 @@ private class RasterFp32InterpolationHarness(p: VertexShaderStageConfig,g: Graph
   raster.io.scissorMaxX:=g.screenWidth.U;raster.io.scissorMaxY:=g.screenHeight.U
   raster.io.screenW:=g.screenWidth.U;raster.io.screenH:=g.screenHeight.U;raster.io.pixel.ready:=true.B
   interpolation.io.in.valid:=raster.io.quad.valid;interpolation.io.in.bits.primitive:=primitive
-  interpolation.io.in.bits.quad:=raster.io.quad.bits;raster.io.quad.ready:=interpolation.io.in.ready
+  interpolation.io.in.bits.quad:=raster.io.quad.bits;interpolation.io.in.bits.pointSize:=0.U
+  interpolation.io.in.bits.sampleDepthEnable:=true.B;interpolation.io.in.bits.sampleMode:=io.sampleMode;raster.io.quad.ready:=interpolation.io.in.ready
   interpolation.io.cancel:=false.B;io.out<>interpolation.io.out;io.completion<>interpolation.io.completion
   io.admitted:=interpolation.io.in.fire;io.sample:=interpolation.io.in.bits.quad
   io.busy:= !raster.io.draw.ready || interpolation.io.busy
@@ -102,6 +103,7 @@ class RasterFp32InterpolationSpec extends AnyFlatSpec {
           val bits=d.io.out.bits.peek().litValue;held.foreach(h=>assert(h==bits))
           if(d.io.out.ready.peek().litToBoolean) {
             assert(pending.nonEmpty);val ss=pending.dequeue();val o=d.io.out.bits
+            SampleDepthReference.check(o,SampleDepthReference.depths(TriangleRasterReference.Triangle(coords,values),2,ss.map(_._1),mode,g))
             o.sequence.expect(11.U);o.primitiveId.expect(12.U);o.identity.context.expect(5.U)
             for(i<-0 until 4) {
               val(s,e)=ss(i);val v=o.lanes(i);v.x.expect(s.x.S);v.y.expect(s.y.S);v.coverageMask.expect(s.mask.U);v.covered.expect((s.mask!=0).B)

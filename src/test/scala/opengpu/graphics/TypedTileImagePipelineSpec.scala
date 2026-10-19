@@ -83,6 +83,9 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
     (-2.0,-0.5,0.0,1.0),(0.5,-0.5,0.0,1.0),(0.0,0.5,0.0,1.0),
     (-0.5,-0.5,2.0,1.0),(0.5,-0.5,2.0,1.0),(0.0,0.5,2.0,1.0),
     (-2.0,-2.0,0.0,1.0),(2.0,-2.0,0.0,1.0),(0.0,2.0,0.0,1.0)).map{case(x,y,z,w)=>Vector(x,y,z,w).map(fp)}
+  private val slopedPositions=positions.zipWithIndex.map { case(v,i)=>
+    if(i>=6 && i<9)v else v.updated(2,fp(Vector(-0.75,0.5,0.875)(i%3)*java.lang.Float.intBitsToFloat(v(3).toInt).toDouble))
+  }
   private def zero(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(zero)
     case v: Vec[_]=>v.foreach(zero)
@@ -104,12 +107,13 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
   private val pointVertexProgram=vertexProgram.dropRight(1).map(w=>if(w==addi(13,1,480))addi(13,1,512)else w)++
     Seq(addi(5,7,3*32),vm(5,1,false),addi(6,7,15*32),vm(6,1,true),BigInt("30500073",16))
   private case class Expected(values: Vector[V],sequence: Int,primitiveId: Int,instance: Int,provoking: Int,part: Int,parts: Int,clipped: Boolean)
-  private def reference(kind: Int): Vector[Expected]={
+  private def reference(kind: Int,sloped: Boolean=false): Vector[Expected]={
+    val inputPositions=if(sloped)slopedPositions else positions
     val out=mutable.ArrayBuffer.empty[Expected];val perInstance=12/(kind+1)
     for(inst<-0 until 2;primitive<-0 until perInstance) {
       val first=primitive*(kind+1);val provoking=first+kind
       val input=Vector.tabulate(kind+1) { j=>val i=first+j
-        V(positions(i),positions(i).take(3)++Vector(BigInt(i+17),BigInt(0),BigInt(0),BigInt(0),BigInt(0)),i,i)
+        V(inputPositions(i),inputPositions(i).take(3)++Vector(BigInt(i+17),BigInt(0),BigInt(0),BigInt(0),BigInt(0)),i,i)
       }
       val answer=clip(input,kind,8,1,kind)
       for((part,index)<-answer.parts.zipWithIndex)out+=Expected(part,inst*perInstance+primitive,primitive,inst,provoking,index,answer.parts.size,answer.planes!=0)
@@ -117,15 +121,15 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
     out.toVector
   }
   private val rasterConfig=GraphicsConfig(screenWidth=8,screenHeight=8)
-  private case class FragmentExpected(quad: TriangleRasterReference.Quad,sequence: Int,primitiveId: Int,instance: Int,part: Int,point: Option[(BigInt,BigInt)]=None,size: Double=1)
-  private def fragmentReference(view: View,settings: TriangleRasterReference.Settings,kind: Int=2,abi2: Boolean=false): Vector[FragmentExpected]={
-    reference(kind).flatMap { e=>
+  private case class FragmentExpected(quad: TriangleRasterReference.Quad,sequence: Int,primitiveId: Int,instance: Int,part: Int,point: Option[(BigInt,BigInt)]=None,size: Double=1,sampleDepths: Vector[Vector[BigInt]]=Vector.empty)
+  private def fragmentReference(view: View,settings: TriangleRasterReference.Settings,kind: Int=2,abi2: Boolean=false,sloped: Boolean=false): Vector[FragmentExpected]={
+    reference(kind,sloped).flatMap { e=>
       val prepared=e.values.map(v=>Fp32ViewportReference.project(v.position,view,Fp32ViewportConfig()))
       val data=FragmentInterpolationReference.Data(prepared.map(_.reciprocal),prepared.map(_.depth),e.values.map(_.varyings),8,1)
       val triangle=TriangleRasterReference.Triangle(prepared.map(v=>(v.x,v.y)),data)
       val size=if(abi2 && kind==0)java.lang.Float.intBitsToFloat(e.values.head.position(3).toInt).toDouble else 1.0
       val quads=if(kind==2)TriangleRasterReference.raster(triangle,settings,rasterConfig)else PointLineReference.raster(triangle,kind,settings,rasterConfig,PointLineReference.Sizes(point=size))
-      quads.map(q=>FragmentExpected(q,e.sequence,e.primitiveId,e.instance,e.part,if(kind==0)Some((prepared.head.x,prepared.head.y))else None,size))
+      quads.map(q=>FragmentExpected(q,e.sequence,e.primitiveId,e.instance,e.part,if(kind==0)Some((prepared.head.x,prepared.head.y))else None,size,SampleDepthReference.depths(triangle,kind,q.samples,settings.mode,rasterConfig)))
     }
   }
   private val fragmentProgram: Seq[BigInt]={
@@ -164,7 +168,7 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
     fragmentProgram.zipWithIndex.foreach{case(w,i)=>put(0x2000+4*i,w)}
     pointVertexProgram.zipWithIndex.foreach{case(w,i)=>put(0x3000+4*i,w)}
     pointFragmentProgram.zipWithIndex.foreach{case(w,i)=>put(0x5000+4*i,w)};put(0x120000+512,17)
-    for(i<-positions.indices;c<-0 until 4)put(0x4000+i*16+c*4,positions(i)(c))
+    for(i<-positions.indices;c<-0 until 4){put(0x4000+i*16+c*4,positions(i)(c));put(0x7000+i*16+c*4,slopedPositions(i)(c))}
     for(i<-0 until 12)memory(BigInt(0x6000+i))=i
     put(0x100000+480,17);put(0x110000+896,BigInt("badc0ffe",16))
     case class Reply(id: BigInt,data: BigInt,due: Int,fault: Boolean,attachmentStore: Boolean=false,storeOrdinal: Int=0)
@@ -183,6 +187,7 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
     var expected=Vector.empty[FragmentExpected]
     val names=Vector("RGB8","RGBA32UI","RGBA8I","RGBA16F");val offsets=Vector(4096,8192,16384,20480)
     val initial=mutable.Map.empty[Int,Int];val model=mutable.Map.empty[Int,Int];val changed=mutable.Set.empty[Int]
+    var sampleDepthDifferences=0
     var primitiveKind=2;var shaderABI2=false
     var ordinal=0;var func=1;var depthWrite=true;var depthEnable=true;var frontFunction=6;var backFunction=6
     var blendState=TypedBlendReference.State(enable=false);var control=61;var overrideDepth=fp(0.125);var passing=0;var rejected=0
@@ -221,7 +226,7 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
     def bufferView(s: VertexInputView,base: Int,bytes: Int): Unit={s.base.poke(base.U);s.limit.poke((base+bytes).U)
       s.allocationBase.poke(base.U);s.allocationLimit.poke(((base+bytes+63)& ~63).U)}
     def begin(mode: Int=0,load: Boolean=false,mutate: ()=>Unit=()=>(),pulseCancel: Boolean=false,pulsePoolCancel: Boolean=false,resolve: Boolean=false,sourceStore: Boolean=true): Unit={
-      sourceStored=sourceStore;resolveBackings=Vector.empty;ordinal=0;attachmentWrites=0;holdStoreAt=None;loadStart=load;physicalInitial.clear();backings=Vector.empty;settings=settings.copy(mode=mode);model.clear();initial.clear();changed.clear();refills=0;passing=0;rejected=0
+      sourceStored=sourceStore;resolveBackings=Vector.empty;sampleDepthDifferences=0;ordinal=0;attachmentWrites=0;holdStoreAt=None;loadStart=load;physicalInitial.clear();backings=Vector.empty;settings=settings.copy(mode=mode);model.clear();initial.clear();changed.clear();refills=0;passing=0;rejected=0
       val begin=d.io.begin.bits;zero(begin);begin.version.poke(1.U);val q=begin.pixels;q.version.poke(1.U);val c=q.colors;c.version.poke(1.U)
       c.identity.context.poke(7.U);c.identity.pass.poke(8.U);c.identity.generation.poke(9.U)
       c.tileLog2.poke(3.U);c.tileWidth.poke(4.U);c.tileHeight.poke(4.U);c.sampleMode.poke(mode.U);c.reservedBytes.poke(4096.U)
@@ -256,8 +261,8 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
       if(pulseCancel || pulsePoolCancel){val cancel=if(pulsePoolCancel)d.io.poolCancel else d.io.cancel;cancel.poke(true.B);tick();cancel.poke(false.B)}
       until(d.io.draw.ready.peek().litToBoolean || d.io.passCompletion.valid.peek().litToBoolean)
     }
-    def descriptor(depthFunction: Int=1,write: Boolean=true,enabled: Boolean=true,front: Int=6,back: Int=6,ctrl: Int=61,blended: Boolean=false,kind: Int=2,abi2: Boolean=false): Unit={
-      primitiveKind=kind;shaderABI2=abi2;accepted=0;held=None;expected=fragmentReference(view,settings,kind,abi2);func=depthFunction;depthWrite=write;depthEnable=enabled;frontFunction=front;backFunction=back;control=ctrl
+    def descriptor(depthFunction: Int=1,write: Boolean=true,enabled: Boolean=true,front: Int=6,back: Int=6,ctrl: Int=61,blended: Boolean=false,kind: Int=2,abi2: Boolean=false,sloped: Boolean=false): Unit={
+      primitiveKind=kind;shaderABI2=abi2;accepted=0;held=None;expected=fragmentReference(view,settings,kind,abi2,sloped);func=depthFunction;depthWrite=write;depthEnable=enabled;frontFunction=front;backFunction=back;control=ctrl
       val all=d.io.draw.bits;zero(all);all.version.poke(1.U);blendState=TypedBlendReference.State(enable=blended);TypedBlendReference.poke(all.blend,blendState);val packet=all.shaders;packet.version.poke(1.U)
       val tests=all.tests;tests.version.poke(1.U);tests.depthEnable.poke(enabled.B);tests.depthWrite.poke(write.B);tests.depthFunction.poke(func.U);tests.stencilEnable.poke(true.B)
       for((face,i)<-Seq(tests.front,tests.back).zipWithIndex){face.function.poke((if(i==0)front else back).U);face.reference.poke((if(i==0)17 else 34).U)
@@ -271,7 +276,7 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
       val v=q.vertex;v.version.poke((if(abi2)2 else 1).U);v.shaderPc.poke((if(abi2)0x3000 else 0x1000).U);v.attributeSlots.poke(1.U);v.varyingSlots.poke(1.U);v.varyingMask.poke(15.U)
       v.input.version.poke(1.U);v.input.identity.context.poke(7.U);v.input.identity.pass.poke(8.U);v.input.identity.generation.poke(9.U)
       v.input.count.poke(12.U);v.input.instances.poke(2.U);v.input.baseInstance.poke(3.U);v.input.indexFormat.poke(1.U)
-      bufferView(v.input.indices,0x6000,12);bufferView(v.input.bindings(0),0x4000,192);v.input.bindings(0).stride.poke(16.U)
+      bufferView(v.input.indices,0x6000,12);bufferView(v.input.bindings(0),if(sloped)0x7000 else 0x4000,192);v.input.bindings(0).stride.poke(16.U)
       v.input.attributes(0).enabled.poke(true.B);v.input.attributes(0).components.poke(4.U);v.input.attributes(0).format.poke(VertexInputFormat.float32.U)
       bufferView(v.scratch,if(abi2)0x120000 else 0x100000,if(abi2)516 else 484);v.sampler.texWidth.poke(1.U);v.sampler.texHeight.poke(1.U)
       val f=packet.fragment;f.version.poke((if(abi2)2 else 1).U);f.identity.context.poke(7.U);f.identity.pass.poke(8.U);f.identity.generation.poke(9.U)
@@ -298,7 +303,9 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
         for(sample<-0 until(1<<settings.mode) if (s.mask&(1<<sample))!=0 && (control&1)!=0){
           tested+=1;val index=(s.y*8+s.x)*(1<<settings.mode)+sample;val a=index*4;val old=get(a,4);val oldS=(old>>24).toInt
           val sp=TypedDepthReference.compare(if(e.quad.front)17 else 34,oldS,if(e.quad.front)frontFunction else backFunction)
-          val z=TypedDepthReference.encode(if((control&2)!=0)overrideDepth else v.depth,4)
+          val selectedDepth=if((control&2)!=0)overrideDepth else e.sampleDepths(l)(sample)
+          if((control&2)==0 && selectedDepth!=v.depth)sampleDepthDifferences+=1
+          val z=TypedDepthReference.encode(selectedDepth,4)
           val dp= !depthEnable || !sp || TypedDepthReference.compare(z,old&0xffffff,func)
           val pass=sp&&dp;val op=if(!sp)5 else if(!dp)7 else 6;val mask=if(e.quad.front)0x55 else 0xaa
           val n=(TypedDepthReference.operation(oldS,if(e.quad.front)17 else 34,op)&mask)|(oldS&(~mask&255))
@@ -450,6 +457,22 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
         t.end()
       }
       info(s"TYPED_POINT_LINE local=$local CUs=2 draws=4 quads=$quads modes1x4x=true shaderPointSizeV2=true pointCoordShaderV2=true linePerspective=true lateDepthStencil=true typedBlend=true resolveOnlyPublication=true cachedVisibility=true exactGuardedImages=true")
+    }
+  }
+
+  for(local<-Seq(true,false))
+  it should s"publish sloped per-sample default depths and retain them while shader overrides change color local=$local" in {
+    simulate(new TypedTileImageHarness(local)){d=>val t=new Driver(d);var differences=0;var quads=0
+      for(kind<-0 to 2;mode<-Seq(0,2)){
+        t.begin(mode,resolve=true,sourceStore=true)
+        t.descriptor(depthFunction=0,front=6,back=6,ctrl=61,kind=kind,abi2=true,sloped=true);t.submit();t.finish();t.verify();quads+=t.accepted
+        if(kind!=0 && mode!=0)assert(t.sampleDepthDifferences>0,"sloped MSAA depths collapsed to center")
+        differences+=t.sampleDepthDifferences
+        // Explicit shader depth changes late visibility without replacing the earlier default depth records.
+        t.descriptor(depthFunction=0,write=false,front=6,back=6,ctrl=63,blended=true,kind=kind,abi2=true,sloped=true)
+        t.submit();t.finish();t.verify();quads+=t.accepted;t.end()
+      }
+      info(s"TYPED_SAMPLE_DEPTH_IMAGE local=$local CUs=2 draws=12 quads=$quads centerSampleDifferences=$differences kinds=3 modes1x4x=true defaultSampleDepth=true shaderOverrideBroadcast=true noOverrideDepthWrite=true typedBlend=true exactMultisampleBacking=true resolve=true cachedVisibility=true noIntermediateStores=true")
     }
   }
 

@@ -94,7 +94,7 @@ class Fp32TriangleRasterStageSpec extends AnyFlatSpec {
       d.io.out.ready.poke((!holdAt.contains(accepted) && cycle%7<5).B)
       if(d.io.out.valid.peek().litToBoolean){
         val bits=d.io.out.bits.peek().litValue;held.foreach(h=>assert(h==bits,"raster quad changed under stall/cancel"))
-        if(d.io.out.ready.peek().litToBoolean){assert(accepted<expected.size);check(d.io.out.bits,expected(accepted),settings);accepted+=1;held=None}
+        if(d.io.out.ready.peek().litToBoolean){assert(accepted<expected.size);check(d.io.out.bits,expected(accepted),settings);SampleDepthReference.check(d.io.out.bits.values,SampleDepthReference.depths(triangle,2,expected(accepted).samples,settings.mode,g));accepted+=1;held=None}
         else held=Some(bits)
       }else assert(held.isEmpty,"raster quad withdrawn")
       d.clock.step();cycle+=1

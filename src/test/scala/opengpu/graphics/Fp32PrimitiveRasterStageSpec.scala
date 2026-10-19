@@ -19,6 +19,7 @@ class Fp32PrimitiveRasterStageSpec extends AnyFlatSpec {
           assert(d.io.out.bits.values.lanes(0).x.peek().litValue==e.samples.head.x && d.io.out.bits.values.lanes(0).y.peek().litValue==e.samples.head.y,
             s"quad mismatch kind=$kind sampleMode=${settings.mode} sizes=$sizes coords=${source.coords} index=$accepted actual=${d.io.out.bits.values.lanes.map(v=>(v.x.peek().litValue,v.y.peek().litValue,v.coverageMask.peek().litValue))} expected=${e.samples}")
           check(d.io.out.bits,e,settings)
+          SampleDepthReference.check(d.io.out.bits.values,SampleDepthReference.depths(source,kind,e.samples,settings.mode,g))
           d.io.out.bits.values.primitiveKind.expect(kind.U)
           for(i<-0 until 4;c<-0 until 2){val want=if(kind==0)exactLocal.map(v=>exactPointCoord(v,origin,e.samples(i).x,e.samples(i).y,sizes)(c)).getOrElse(pointCoord(source.coords.head,e.samples(i).x,e.samples(i).y,sizes,g)(c))else BigInt(0)
             d.io.out.bits.values.lanes(i).pointCoord(c).expect(want.U)}

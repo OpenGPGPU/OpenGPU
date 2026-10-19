@@ -80,7 +80,7 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
     }
     private def sourceColor(i: Int,l: Int,seed: Int): Vector[BigInt]=if(format(colorNames(i)).kind==0)Vector(fp(0.15*(seed+l+1)),fp(0.5),fp(1),fp(0.75))
       else Vector(BigInt("ffffffff",16),BigInt(0x80000000L+l),BigInt(seed*100+l),BigInt(l+1))
-    def packet(seed: Int=0,state: Tests=Tests(),front: Boolean=true,z: BigInt=fp(0.25),masks: Vector[Int]=Vector(15,1,0,0),allLanes: Boolean=false,apply: Boolean=true): Expected={
+    def packet(seed: Int=0,state: Tests=Tests(),front: Boolean=true,z: BigInt=fp(0.25),masks: Vector[Int]=Vector(15,1,0,0),allLanes: Boolean=false,apply: Boolean=true,depthValues: Option[Vector[Vector[BigInt]]]=None,overrideDepth: Boolean=true): Expected={
       val b=d.io.in.bits;zero(b);val q=b.color.quad;identity(q.identity);q.sequence.poke((100+seed).U);q.primitiveId.poke((20+seed).U)
       q.partIndex.poke((seed%7).U);q.instanceId.poke(2.U);q.sampleMode.poke(mode.U);q.colorSlots.poke(colorNames.size.U);q.frontFacing.poke(front.B)
       b.state.version.poke(1.U);b.state.depthEnable.poke(state.depth.B);b.state.depthWrite.poke(state.write.B);b.state.depthFunction.poke(state.function.U)
@@ -98,7 +98,8 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
         if(!validDS(address)){validDS+=address;fills+=1}}
       for(l<-0 until 4){val x=l%2;val y=l/2;val coverage=if(l==3 && !allLanes)0 else(1<<(1<<mode))-1
         val selected=coverage&masks(l);val r=q.lanes(l)
-        r.x.poke(x.S);r.y.poke(y.S);r.depth.poke(z.U);r.depthOverride.poke(true.B);r.helper.poke((coverage==0).B)
+        r.x.poke(x.S);r.y.poke(y.S);r.depth.poke(z.U);r.depthOverride.poke(overrideDepth.B);r.sampleDepthValid.poke(depthValues.nonEmpty.B)
+        for(s<-0 until 4)r.sampleDepth(s).poke(depthValues.map(_(l)(s)).getOrElse(BigInt(0)).U);r.helper.poke((coverage==0).B)
         r.coverageMask.poke(coverage.U);r.colorMask.poke((if(coverage==0)0 else(1<<colorNames.size)-1).U);b.color.samples(l).poke(selected.U)
         for(i<-colorNames.indices)r.colors(i).zip(sourceColor(i,l,seed)).foreach{case(a,b)=>a.poke(b.U)}
         if(apply)for(s<-0 until(1<<mode) if (selected&(1<<s))!=0){tested+=1;val index=((y*8+x)<<mode)+s
@@ -109,7 +110,8 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
           val sp= !doStencil || TypedDepthReference.compare(f.reference&f.readMask,oldS&f.readMask,f.function)
           if(sp && doDepth && !(doStencil && stencilView==primary))read(primary,index)
           val oldZ=if(doDepth)get(primaryAddress,TypedDepthReference.bytes(primary.f))&TypedDepthReference.depthMask(primary.f)else BigInt(0)
-          val newZ=TypedDepthReference.encode(z,primary.f)
+          val effective=if(depthValues.nonEmpty && !overrideDepth)depthValues.get(l)(s)else z
+          val newZ=if(doDepth)TypedDepthReference.encode(effective,primary.f)else BigInt(0)
           val dp= !doDepth || !sp || TypedDepthReference.compare(newZ,oldZ,state.function,primary.f==3 || primary.f==5)
           val pass=sp&&dp;if(!sp)sfail+=1 else if(!dp)zfail+=1
           val op=if(!sp)f.fail else if(!dp)f.zfail else f.zpass
@@ -213,4 +215,34 @@ class TypedTilePixelBackendSpec extends AnyFlatSpec {
       info("TYPED_PIXEL heldDepthRefillCancel=true heldColorRefillCancel=true depthRefillFault=true heldPixelCompletion=true childMemoryDrain=true cancellationLatched=true healthyReuse=true")
     }
   }
+  it should "test independent sample depths in every depth layout and broadcast explicit shader overrides" in {
+    simulate(new TypedTilePixelBackend()){d=>val t=new Driver(d);var quads=0
+      val values=Vector(Vector(0.125,0.625,0.875,0.375),Vector(0.875,0.375,0.125,0.625),Vector(0.25,0.5,0.75,1.0),Vector(0.75,0.25,0.5,0.0)).map(_.map(fp))
+      for(f<-1 to 5;mode<-0 to 2){val separate=if(f<=2)View(6,2048)else View(0,0)
+        t.begin(View(f,0,z=fp(0.5)),separate,m=mode,colors=Vector("RGBA8","RGBA32UI","RGBA16F","RGBA8I"))
+        val tests=Tests(function=0,front=Face(function=6,zfail=6,zpass=2),back=Face(function=6,zfail=7,zpass=5))
+        val first=t.packet(state=tests,masks=Vector(15,15,15,15),allLanes=true,depthValues=Some(values),overrideDepth=false);t.submit();t.output(expected=Some(first));quads+=1
+        if(mode!=0)assert(first.passed>0 && first.zfail>0)
+        val second=t.packet(state=tests.copy(function=3),front=false,z=fp(0.2),masks=Vector(15,7,5,3),allLanes=true,depthValues=Some(values),overrideDepth=true)
+        t.submit();t.output(expected=Some(second));quads+=1;t.verify();t.finish()
+      }
+      info(s"TYPED_SAMPLE_DEPTH layouts=5 modes=3 quads=$quads independentSampleCompare=true mixedSampleVisibility=true shaderOverrideBroadcast=true typedMRT=4 stencilOutcomes=true paddingPreserved=true")
+    }
+  }
+  it should "preflight only selected effective depths and ignore inactive NaNs or overridden sample metadata" in {
+    simulate(new TypedTilePixelBackend()){d=>val t=new Driver(d);val nan=BigInt("7fc00001",16)
+      val values=Vector.fill(4)(Vector(fp(0.1),nan,nan,nan));val tests=Tests(function=1,stencil=false)
+      t.begin(View(3,0));val active=t.packet(state=tests,z=nan,masks=Vector(1,0,0,0),depthValues=Some(values),overrideDepth=false)
+      t.submit();t.output(expected=Some(active));t.verify();t.finish()
+      t.begin(View(3,0));val overrideValues=Vector.fill(4)(Vector.fill(4)(nan))
+      val overridden=t.packet(state=tests,z=fp(0.1),masks=Vector(15,0,0,0),depthValues=Some(overrideValues),overrideDepth=true)
+      t.submit();t.output(expected=Some(overridden));t.verify();t.finish()
+      t.begin(View(3,0));t.packet(state=tests,masks=Vector(3,0,0,0),apply=false,depthValues=Some(values),overrideDepth=false)
+      t.submit();t.output(7,Some(Expected(0,0,0,0,0,0,0,0,0)));t.finish(7,true)
+      t.begin(View(4,0));val disabled=t.packet(state=tests.copy(depth=false),masks=Vector(15,0,0,0),depthValues=Some(overrideValues),overrideDepth=false)
+      t.submit();t.output(expected=Some(disabled));t.verify();t.finish()
+      info("TYPED_SAMPLE_DEPTH selectedNaNBeforeSideEffects=true unselectedNaNIgnored=true unusedCenterNaNIgnored=true overrideIgnoresRasterNaN=true disabledDepthIgnoresNaN=true healthyReuse=true")
+    }
+  }
+
 }

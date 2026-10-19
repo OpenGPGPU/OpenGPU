@@ -48,6 +48,7 @@ class FragmentInputCompletion extends Bundle {
 }
 private class FragmentLaneMetadata(g: GraphicsConfig) extends Bundle {
   val x=SInt(32.W);val y=SInt(32.W);val depth=UInt(32.W);val coverage=UInt(g.maxSampleCount.W)
+  val sampleDepthValid=Bool();val sampleDepth=Vec(g.maxSampleCount,UInt(32.W))
 }
 private class FragmentQuadMetadata(g: GraphicsConfig) extends Bundle {
   val identity=new GraphicsWorkIdentity;val sequence=UInt(64.W);val primitiveId=UInt(32.W);val instanceId=UInt(32.W);val partIndex=UInt(3.W)
@@ -55,6 +56,7 @@ private class FragmentQuadMetadata(g: GraphicsConfig) extends Bundle {
 }
 class FragmentShaderLane(p: FragmentShaderConfig,g: GraphicsConfig) extends Bundle {
   val x=SInt(32.W);val y=SInt(32.W);val depth=UInt(32.W);val coverageMask=UInt(g.maxSampleCount.W)
+  val sampleDepthValid=Bool();val sampleDepth=Vec(g.maxSampleCount,UInt(32.W))
   val helper=Bool();val discarded=Bool();val depthOverride=Bool();val colorMask=UInt(4.W)
   val colors=Vec(p.colors,Vec(4,UInt(32.W)))
 }
@@ -274,7 +276,8 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   inputMeta.primitiveId:=inputQuad.values.primitiveId;inputMeta.instanceId:=inputQuad.values.instanceId
   inputMeta.partIndex:=inputQuad.values.partIndex;inputMeta.frontFacing:=inputQuad.frontFacing;inputMeta.sampleMode:=inputQuad.sampleMode
   for(i<-0 until 4){val l=inputQuad.values.lanes(i);inputMeta.lanes(i).x:=l.x;inputMeta.lanes(i).y:=l.y
-    inputMeta.lanes(i).depth:=l.windowDepth;inputMeta.lanes(i).coverage:=l.coverageMask}
+    inputMeta.lanes(i).depth:=l.windowDepth;inputMeta.lanes(i).coverage:=l.coverageMask;inputMeta.lanes(i).sampleDepthValid:=l.sampleDepthValid
+    for(s<-0 until g.maxSampleCount)inputMeta.lanes(i).sampleDepth(s):=Mux(l.sampleDepthValid && l.coverageMask(s),l.sampleDepth(s),0.U)}
   private val savedMeta=metaBuffer.asUInt(metaWidth-1,0).asTypeOf(new FragmentQuadMetadata(g))
   metadataAddress:=Mux(phase===State.writeMetadata,(count>>2)*metaRows.U+metaRow,(emitIndex>>2)*metaRows.U+metaRow)
   metadataRead:=phase===State.readMetadata && !stop
@@ -328,7 +331,9 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
           val shape=l.x.pad(33)=/=top.x.pad(33)+(i%2).S || l.y.pad(33)=/=top.y.pad(33)+(i/2).S
           val reciprocal=ClipFloat.legal(l.reciprocalW) && l.reciprocalW.special===0.U && !l.reciprocalW.negative && l.reciprocalW.significand.orR
           val depth=l.windowDepth(30,23)=/=255.U && !PrimitiveClipStage.less(l.windowDepth,0.U) && !PrimitiveClipStage.less("h3f800000".U,l.windowDepth)
-          shape || l.covered=/=l.coverageMask.orR || (l.coverageMask>>sampleCount).orR ||
+          val sampleDepth=(0 until g.maxSampleCount).map(s=> !l.sampleDepthValid || !l.coverageMask(s) ||
+            (l.sampleDepth(s)(30,23)=/=255.U && !PrimitiveClipStage.less(l.sampleDepth(s),0.U) && !PrimitiveClipStage.less("h3f800000".U,l.sampleDepth(s)))).reduce(_ && _)
+          !sampleDepth || shape || l.covered=/=l.coverageMask.orR || (l.coverageMask>>sampleCount).orR ||
             (l.covered && (!l.perspectiveValid || !reciprocal || !depth))
         })
         val header=q.identity.asUInt=/=draw.identity.asUInt || q.varyingSlots=/=draw.varyingSlots ||
@@ -392,6 +397,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
         output.frontFacing:=savedMeta.frontFacing;output.sampleMode:=savedMeta.sampleMode;output.colorSlots:=draw.colorSlots;output.colorTypes:=draw.colorTypes
         for(i<-0 until 4){output.lanes(i).x:=savedMeta.lanes(i).x;output.lanes(i).y:=savedMeta.lanes(i).y
           output.lanes(i).depth:=savedMeta.lanes(i).depth;output.lanes(i).coverageMask:=savedMeta.lanes(i).coverage
+          output.lanes(i).sampleDepthValid:=savedMeta.lanes(i).sampleDepthValid;output.lanes(i).sampleDepth:=savedMeta.lanes(i).sampleDepth
           output.lanes(i).helper:= !savedMeta.lanes(i).coverage.orR}
         field:=0.U;phase:=State.readFirst
       }

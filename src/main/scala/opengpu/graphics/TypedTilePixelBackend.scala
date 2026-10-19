@@ -52,7 +52,8 @@ class TypedTilePixelBackend(p: TypedTileColorConfig=TypedTileColorConfig(),useBl
   private def byteAddress(v: TypedDepthView): UInt=(v.offset+sampleIndex*TypedDepthFormat.bytes(v.format))(16,0)
   private val primaryAddress=byteAddress(descriptor.depth);private val secondaryAddress=byteAddress(descriptor.stencil)
   private val chosenView=Mux(readSecondary,descriptor.stencil,descriptor.depth)
-  private val sourceDepth=TypedDepthFormat.encode(input.color.quad.lanes(lane).depth,descriptor.depth.format)
+  private def selectedDepth(l: FragmentShaderLane,s: UInt): UInt=Mux(l.sampleDepthValid && !l.depthOverride,l.sampleDepth(s),l.depth)
+  private val sourceDepth=TypedDepthFormat.encode(selectedDepth(input.color.quad.lanes(lane),sample),descriptor.depth.format)
   private def fail(code: UInt,offset: UInt): Unit={when(status===0.U && !io.cancel){status:=code;fault:=offset;when(quadOwned){quadStatus:=code}}}
   private def requestMemory(write: Boolean,address: UInt,data: UInt,next: State.Type,kind: Int=0,updates: UInt=0.U,fill: Bool=false.B): Unit={
     assert(!memoryOffered && !memoryPending)
@@ -148,7 +149,7 @@ class TypedTilePixelBackend(p: TypedTileColorConfig=TypedTileColorConfig(),useBl
       }
       is(State.checkQuad){
         val numeric=TypedDepthFormat.depth(descriptor.depth.format) && input.state.depthEnable &&
-          (0 until 4).map(i=>input.color.samples(i).orR && Fp32ViewportState.nan(input.color.quad.lanes(i).depth)).reduce(_ || _)
+          (for(i<-0 until 4;s<-0 until 4)yield input.color.samples(i)(s) && Fp32ViewportState.nan(selectedDepth(input.color.quad.lanes(i),s.U))).reduce(_ || _)
         when(input.state.version=/=1.U || TypedTileColorRules.invalidQuad(input.color,descriptor.colors)){fail(6.U,0.U);phase:=State.quadDone}
           .elsewhen(numeric){fail(7.U,0.U);phase:=State.quadDone}.otherwise{lane:=0.U;sample:=0.U;phase:=State.sample}
       }

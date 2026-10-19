@@ -114,7 +114,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
     if(varyings!=16){code++=address(6,7,(inputs+14)*stride);code+=vectorMemory(6,1,true)}
     copy(12,16);copy(13,17);code+=cease;code.toVector
   }
-  private case class Lane(x: BigInt,y: BigInt,depth: BigInt,coverage: BigInt,helper: Boolean,discard: Boolean,overrideDepth: Boolean,mask: BigInt,colors: Vector[BigInt])
+  private case class Lane(x: BigInt,y: BigInt,depth: BigInt,coverage: BigInt,helper: Boolean,discard: Boolean,overrideDepth: Boolean,mask: BigInt,colors: Vector[BigInt],sampleDepthValid: Boolean=false,sampleDepths: Vector[BigInt]=Vector.fill(4)(BigInt(0)))
   private case class Export(sequence: BigInt,primitive: BigInt,instance: BigInt,part: BigInt,front: Boolean,lanes: Vector[Lane])
   private class Driver(val d: FragmentShaderHarness) {
     val cap=d.cfg.lanes*d.cfg.warps;val stride=4*cap;val varyingSlots=d.vp.varyings
@@ -127,6 +127,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
     for(i<-0 until prefix+128 by 4)put(scratch+i,BigInt("deadbeef",16));put(scratch+prefix,BigInt("bead1234",16))
     case class Reply(id: BigInt,data: BigInt,due: Int,fault: Boolean)
     val pending=mutable.ArrayBuffer.empty[Reply];var offered: Option[Reply]=None
+    var sampleDepthEnabled=false
     var cycle=0;var launches=0;var globalStaging=0;var requests=0
     var blockMemory=false;var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
     val exports=mutable.ArrayBuffer.empty[Export]
@@ -140,7 +141,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         exports+=Export(r.sequence.peek().litValue,r.primitiveId.peek().litValue,r.instanceId.peek().litValue,r.partIndex.peek().litValue,
           r.frontFacing.peek().litToBoolean,r.lanes.map(l=>Lane(l.x.peek().litValue,l.y.peek().litValue,l.depth.peek().litValue,
             l.coverageMask.peek().litValue,l.helper.peek().litToBoolean,l.discarded.peek().litToBoolean,l.depthOverride.peek().litToBoolean,
-            l.colorMask.peek().litValue,l.colors.flatten.map(_.peek().litValue).toVector)).toVector)
+            l.colorMask.peek().litValue,l.colors.flatten.map(_.peek().litValue).toVector,l.sampleDepthValid.peek().litToBoolean,l.sampleDepth.map(_.peek().litValue).toVector)).toVector)
       }
       if(offered.isEmpty){val due=pending.indices.filter(i=>pending(i).due<=cycle)
         if(due.nonEmpty)offered=Some(pending.remove(if(cycle%2==0)due.last else due.head))}
@@ -178,12 +179,14 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       case 7=>BigInt(control(q,l))
       case _=>(BigInt(0x1234567)+BigInt(q+1)*0x9e3779b9L+BigInt(l+1)*0x85ebca6bL+BigInt(c+1)*BigInt(c+7)*0xc2b2ae35L)&BigInt("ffffffff",16)
     }
+    def sampleDepth(q: Int,l: Int,s: Int): BigInt=fp((1+(q*7+l*5+s*3)%17)/18.0f)
     def input(q: Int): Unit={
       val r=d.io.in.bits;zero(r);identity(r.values.identity);r.values.sequence.poke((q+100).U)
       r.values.primitiveId.poke((q+20).U);r.values.instanceId.poke((q/2).U);r.values.partIndex.poke((q%7).U)
       r.frontFacing.poke((q%2==0).B);r.sampleMode.poke(2.U);r.values.varyingSlots.poke(varyingSlots.U)
       for(l<-0 until 4){val a=r.values.lanes(l);a.x.poke((2*q+l%2).S);a.y.poke((-4+l/2).S)
         a.covered.poke((coverage(q,l)!=0).B);a.coverageMask.poke(coverage(q,l).U);a.windowDepth.poke(fp(0.5f).U)
+        a.sampleDepthValid.poke(sampleDepthEnabled.B);for(s<-0 until 4)a.sampleDepth(s).poke(sampleDepth(q,l,s).U)
         a.fragCoordW.poke(fp(2f).U);a.perspectiveValid.poke(true.B);a.reciprocalW.significand.poke((1<<23).U)
         a.reciprocalW.exponent.poke(1.S)
         for(c<-0 until 4*varyingSlots)a.varyings(c/4)(c%4).poke(varying(q,l,c).U)
@@ -216,7 +219,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         val colors=if(varyingSlots==16)(0 until 16).map(c=>(0 until 4).map(group=>varying(q,l,c+16*group)).reduce(_^_)).toVector else Vector(fp((2*q+l%2+0.5f)),fp((-4+l/2+0.5f)),fp(0.5f),fp(2f))++
           (0 until 8).map(c=>varying(q,l,c))++Vector(BigInt((if(q%2==0)1 else 0)|(2<<3)|4|(if(covered)0 else 2)),BigInt(coverage(q,l)),BigInt("bead1234",16),BigInt(0))
         Lane(2*q+l%2,-4+l/2,if(overrideDepth)fp(if(q%2==0)0f else 1f)else fp(0.5f),
-          if(emitted)coverage(q,l)else 0,!covered,covered && !emitted,overrideDepth,if(emitted)(if(l==2)5 else 15)else 0,colors.toVector)
+          if(emitted)coverage(q,l)else 0,!covered,covered && !emitted,overrideDepth,if(emitted)(if(l==2)5 else 15)else 0,colors.toVector,sampleDepthEnabled,Vector.tabulate(4)(s=>if(sampleDepthEnabled && (coverage(q,l)&(1<<s))!=0)sampleDepth(q,l,s)else BigInt(0)))
       }.toVector)}.toVector
       assert(exports.toVector==expected,s"fragment exports differ:\n${exports.mkString("\n")}\nexpected:\n${expected.mkString("\n")}")
       assert(word(scratch+prefix)==BigInt("bead1234",16),"private prefix clobbered uniform tail")
@@ -327,7 +330,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
   for(oversize<-Seq(false,true))
   it should s"carry all64 varying components and128 physical lanes with oversizeSpill=$oversize" in {
     simulate(new FragmentShaderHarness(true,16,8,true,oversize)) {d=>
-      val t=new Driver(d);assert(t.prefix==45056);t.descriptor();t.submit()
+      val t=new Driver(d);t.sampleDepthEnabled=true;assert(t.prefix==45056);t.descriptor();t.submit()
       for(q<-0 until 32)t.send(q)
       t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
       for(_<-0 until 9){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.idle.expect(false.B)
@@ -337,18 +340,18 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       r.inputQuads.expect(35.U);r.outputQuads.expect(35.U);r.shadedLanes.expect(140.U);r.batches.expect(2.U);r.maxLocalX.expect(128.U)
       r.localBatches.expect((if(oversize)0 else 2).U);r.spilledBatches.expect((if(oversize)2 else 0).U)
       t.check(35);t.complete(0);assert(t.launches==2);assert((t.globalStaging>0)==oversize)
-      info(s"FRAGMENT_SHADER fullInterface=true components=64 colors=4 lanes=128 prefix=45056 quads=35 batches=2 oversizeSpill=$oversize rawAllInputs=true bankedMetadata=true transposeWindows=true")
+      info(s"FRAGMENT_SHADER fullInterface=true components=64 colors=4 lanes=128 prefix=45056 quads=35 batches=2 oversizeSpill=$oversize rawAllInputs=true bankedMetadata=true transposeWindows=true perSampleDepthMetadata=true")
     }
   }
 
   for(local<-Seq(false,true))
   it should s"transpose a non-power-of-two12lane batch across staging line boundaries local=$local" in {
     simulate(new FragmentShaderHarness(local,4,3)) {d=>
-      val t=new Driver(d);t.descriptor();t.submit();d.io.out.ready.poke(true.B)
+      val t=new Driver(d);t.sampleDepthEnabled=true;t.descriptor();t.submit();d.io.out.ready.poke(true.B)
       for(q<-0 until 3)t.send(q,q==2)
       t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.batches.expect(1.U)
       d.io.completion.bits.maxLocalX.expect(12.U);t.check(3);t.complete(0)
-      info(s"FRAGMENT_SHADER nonPowerOfTwoCapacity=12 splitCacheLines=true local=$local")
+      info(s"FRAGMENT_SHADER nonPowerOfTwoCapacity=12 splitCacheLines=true perSampleDepthMetadata=true local=$local")
     }
   }
 
@@ -397,4 +400,32 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       info("FRAGMENT_SHADER fragmentTexture=true allHelperQuad=true textureFault=true noFaultedExports=true freshTextureReuse=true")
     }
   }
+  for(local<-Seq(true,false))
+  it should s"retain protected per-sample raster depths through actual shader discard overrides and held exports local=$local" in {
+    simulate(new FragmentShaderHarness(local)){d=>val t=new Driver(d);t.sampleDepthEnabled=true;t.descriptor();t.submit()
+      t.send(0);t.send(1);t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
+      for(_<-0 until 11){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.idle.expect(false.B)}
+      d.io.out.ready.poke(true.B);for(q<-2 until 5)t.send(q,q==4)
+      t.until(d.io.completion.valid.peek().litToBoolean);t.check(5);t.complete(0)
+      assert((t.globalStaging==0)==local)
+      info(s"FRAGMENT_SAMPLE_DEPTH local=$local CUs=2 quads=5 samples=4 distinctRasterDepths=true protectedMetadata=true discardCoverage=true overrideKeepsProvenance=true heldExport=true shaderABIUnchanged=true VMDrain=true")
+    }
+  }
+  it should "reject invalid active sample depths before shader access and ignore inactive or unavailable metadata" in {
+    simulate(new FragmentShaderHarness()){d=>val t=new Driver(d);t.sampleDepthEnabled=true;d.io.out.ready.poke(true.B)
+      for(value<-Seq(BigInt("7fc00001",16),BigInt("7f800000",16),fp(-0.25f),fp(1.25f))){
+        t.descriptor();val before=t.requests;t.submit();t.input(0);d.io.in.bits.values.lanes(0).sampleDepth(0).poke(value.U)
+        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1);t.complete(6)
+        assert(t.requests==before && t.launches==0 && t.exports.isEmpty)
+      }
+      t.descriptor();t.submit();t.input(0);val nan=BigInt("7fc00001",16)
+      d.io.in.bits.values.lanes(1).sampleDepth(0).poke(nan.U);for(s<-0 until 4)d.io.in.bits.values.lanes(3).sampleDepth(s).poke(nan.U)
+      d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1);t.complete(0);t.check(1)
+      t.exports.clear();t.sampleDepthEnabled=false;t.descriptor();t.submit();t.input(0)
+      for(s<-0 until 4)d.io.in.bits.values.lanes(0).sampleDepth(s).poke(nan.U)
+      d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1);t.complete(0);t.check(1)
+      info("FRAGMENT_SAMPLE_DEPTH invalidActiveValues=4 noInvalidShaderAccess=true inactiveNaNIgnored=true legacyMetadataIgnored=true noMetadataLeak=true healthyReuse=true")
+    }
+  }
+
 }
