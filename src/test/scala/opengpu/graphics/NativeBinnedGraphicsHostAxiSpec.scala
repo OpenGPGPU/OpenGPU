@@ -18,6 +18,12 @@ class NativeBinnedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
   private def host(local: Boolean)=new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
     memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
     exposePerformance=true,nativeBinnedGraphics=Some(profile(local)))
+  private def parkMemory(d: GpuHostSystemAxi): Unit={
+    // MMIO can advance the DUT between driver calls. Accept no memory request
+    // until serviceMemoryMaster owns and records every AXI handshake.
+    d.io.m_axi_arready.poke(false.B);d.io.m_axi_awready.poke(false.B);d.io.m_axi_wready.poke(false.B)
+    d.io.m_axi_rvalid.poke(false.B);d.io.m_axi_bvalid.poke(false.B)
+  }
   private def addi(rd: Int,rs: Int,n: Int): BigInt=(BigInt(n&4095)<<20)|(BigInt(rs)<<15)|(BigInt(rd)<<7)|0x13
   private def vm(base: Int,v: Int,write: Boolean): BigInt=(BigInt(1)<<25)|(BigInt(base)<<15)|(BigInt(6)<<12)|(BigInt(v)<<7)|(if(write)0x27 else 7)
   private val startup=Vector[BigInt](BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16))
@@ -147,15 +153,15 @@ class NativeBinnedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
       assert(!reads.exists(a=>a>=0x400000 && a<0x800000),"VAs must not reach physical AXI")}
     def read(a: BigInt): BigInt={reads+=a;val base=a& ~BigInt(63);(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(base+b,0))<<(b*8)))}
     def write(a: BigInt,data: BigInt,mask: BigInt): Unit={writes+=a;for(b<-0 until 64 if mask.testBit(b))memory(a+b)=((data>>(b*8))&255).toInt}
-    def submit(id: Int=23): Unit={axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
+    def submit(id: Int=23,bytes: Int=512): Unit={parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
       axiWrite(d,GpuCommandMmioRegs.SOURCE,(region+0x10000).toInt);axiWrite(d,GpuCommandMmioRegs.DESTINATION,(region+0x10200).toInt)
-      axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)}
+      axiWrite(d,GpuCommandMmioRegs.BYTES,bytes);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)}
     def run(status: Int=0,id: Int=23,readFault: BigInt=>Boolean=_=>false,writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false): Unit={
       serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=1000000,writeFault=writeFault)(write){d.io.m_irq.peek().litToBoolean}
       val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
       assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),s"native binned completion=${result.toString(16)}")}
     def pop(): Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)}
-    def consumer(id: Int): BigInt={axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,0)
+    def consumer(id: Int): BigInt={parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,0)
       axiWrite(d,GpuCommandMmioRegs.KERNEL_PC,0x403000);axiWrite(d,GpuCommandMmioRegs.KERNARG,(region+0x130000).toInt)
       for(a<-Seq(GpuCommandMmioRegs.GRID_X,GpuCommandMmioRegs.GRID_Y,GpuCommandMmioRegs.GRID_Z,GpuCommandMmioRegs.LOCAL_X,GpuCommandMmioRegs.LOCAL_Y,GpuCommandMmioRegs.LOCAL_Z))axiWrite(d,a,1)
       axiWrite(d,GpuCommandMmioRegs.SUBMIT,1);serviceMemoryMaster(d,read,maxCycles=100000)(write){d.io.m_irq.peek().litToBoolean}
@@ -177,5 +183,90 @@ class NativeBinnedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
         val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedBytes(image.imageBase+60+b))<<(b*8)))
         assert(image.consumer(30+mode)==expected);d.io.performance.get.payloadReservedBytes.expect(0.U)}
       info(s"NATIVE_BINNED_AXI local=$local CUs=2 GNJ1=true Sv32=true draws=4 tiles=12 modes1x4x=true exactFourMRTDepthResolveGuards=true cachedConsumer=true heldCompletionPinsVM=true")}
+  }
+  it should "publish every empty tile and execute indexed instanced native draws through Sv32" in {
+    simulate(host(false)){d=>initialize(d);val image=new Image(d);vm(d)
+      for(mode<-Seq(0,2)){
+        image.setup(mode,empty=true);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        image.submit();image.run();image.verify();image.pop()
+        assert(!image.reads.contains(image.pa(0x401000)),"an empty frame must not execute a vertex shader")
+      }
+      image.setup(2,indexedInstances=2);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+      image.submit();image.run();image.verify();image.pop()
+      assert(image.reads.exists(a=>a>=image.pa(image.region+0x22000) && a<image.pa(image.region+0x22040)),"indexed instances must fetch translated indices")
+      d.io.performance.get.payloadReservedBytes.expect(0.U)
+      info("NATIVE_BINNED_AXI emptyFrames=2 allSixTiles=true modes1x4x=true indexedInstances=2 exactMRTDepthResolveGuards=true")
+    }
+  }
+  it should "attribute envelope descriptor Sv32 shader and physical publication faults and permit exact healthy reuse" in {
+    simulate(host(false)){d=>initialize(d);val image=new Image(d);vm(d)
+      val cases=Seq(("envelope",1),("header",1),("descriptor-read",3),("draw-read",3),
+        ("write-permission",3),("execute-permission",5),("shader-trap",5),("physical-store",3))
+      for(((name,status),index)<-cases.zipWithIndex){
+        image.setup(badShader=name=="shader-trap")
+        image.word(0x30004,((BigInt(0x800000)>>12)<<10)|(if(name=="execute-permission")0xc7 else 0xcf))
+        if(name=="header")image.word(image.pa(image.region+0x10000+508),1)
+        if(name=="write-permission"){
+          // Deny only the vertex staging page. Bins, descriptors and states
+          // stay writable, so a bin failure cannot win the first-fault race.
+          val table=BigInt(0x50000)+index*4096
+          image.word(0x30000+(image.region>>22)*4,((table>>12)<<10)|1)
+          for(page<-0 until 1024)image.word(table+page*4,((image.pa(image.region+page*4096)>>12)<<10)|(if(page==0x30)0x4b else 0xcf))
+        }
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        val id=70+index;image.submit(id,if(name=="envelope")256 else 512)
+        val denied=if(name=="descriptor-read")Set(image.pa(image.region+0x10040))
+          else if(name=="draw-read")Set(image.pa(image.region+0x13000))else Set.empty[BigInt]
+        var failedReads=0;var failedWrites=0
+        image.run(status,id,a=>{val fail=denied(a);if(fail)failedReads+=1;fail},(a,_,_)=>{
+          val fail=name=="physical-store" && a>=image.imageBase && a<image.imageBase+0x100000
+          if(fail)failedWrites+=1;fail})
+        if(name=="envelope")assert(image.reads.isEmpty && image.writes.isEmpty)
+        if(denied.nonEmpty)assert(failedReads>0,s"fault injection was not reached: $name")
+        if(name=="physical-store")assert(failedWrites>0)
+        if(name=="execute-permission")assert(!image.reads.contains(image.pa(0x401000)),"execute-denied code must not reach physical AXI")
+        if(name=="write-permission")assert(!image.writes.exists(a=>a>=image.pa(image.region+0x30000) && a<image.pa(image.region+0x31000)),
+          "write-denied vertex staging must not reach physical AXI")
+        if(!Set("shader-trap","physical-store")(name))assert(!image.writes.exists(a=>a>=image.imageBase),s"early fault published an image: $name")
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
+        image.word(0x30004,((BigInt(0x800000)>>12)<<10)|0xcf)
+        image.setup();axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        image.submit(90+index);image.run(id=90+index);image.verify();image.pop()
+        d.io.performance.get.payloadReservedBytes.expect(0.U)
+        info(s"NATIVE_BINNED_FAULT case=$name status=$status attributedCommand=true exactHealthyReuse=true")
+      }
+    }
+  }
+  it should "retain shader and physical acknowledgement ownership through reset and discard queued DMA" in {
+    simulate(host(true)){d=>initialize(d);val image=new Image(d);val perf=d.io.performance.get;vm(d)
+      for(phase<-0 until 2){
+        image.setup(if(phase==0)0 else 2,empty=phase==1);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        image.submit(110+phase)
+        val dma=image.region+0x140000
+        axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,120+phase);axiWrite(d,GpuCommandMmioRegs.OPCODE,GpuCommandOpcode.fill.litValue.toInt)
+        axiWrite(d,GpuCommandMmioRegs.DESTINATION,dma.toInt);axiWrite(d,GpuCommandMmioRegs.BYTES,64)
+        axiWrite(d,GpuCommandMmioRegs.PATTERN,0xdeadbeef);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+        var requested=false;var live=BigInt(0)
+        def resetAtBoundary(): Unit={requested=true;live=perf.payloadReservedBytes.peek().litValue
+          if(phase==0)assert(live>0,"the live vertex shader must retain its payload reservation")
+          else assert(live==0,"empty-frame publication must not depend on a shader payload")
+          axiWrite(d,GpuCommandMmioRegs.RESET,1)
+          axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        }
+        serviceMemoryMaster(d,image.read,writeAckDelay=29,readResponseDelay=17,maxCycles=1000000,
+          onReadAccepted=a=>if(phase==0 && !requested && a==image.pa(0x401000))resetAtBoundary(),
+          onWriteAccepted=a=>if(phase==1 && !requested && a>=image.imageBase)resetAtBoundary())(image.write){d.io.m_irq.peek().litToBoolean}
+        assert(requested,s"native reset phase=$phase completed before the required shader/publication boundary; completion=${axiRead(d,GpuCommandMmioRegs.COMPLETION).toString(16)}")
+        assert((axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
+        assert(!image.writes.exists(a=>a>=image.pa(dma) && a<image.pa(dma+64)),"reset must discard the queued DMA command")
+        perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+        axiWrite(d,RenderHostRegs.IRQ,3)
+        image.setup(if(phase==0)0 else 2);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        image.submit(140+phase);image.run(id=140+phase);image.verify();image.pop()
+        perf.payloadReservedBytes.expect(0.U)
+        info(s"NATIVE_BINNED_RESET phase=$phase livePayloadBytes=$live queuedDMAAborted=true oldCompletionsDiscarded=true physicalAckDrain=true VMWriteRejected=true exactHealthyReuse=true")
+      }
+    }
   }
 }

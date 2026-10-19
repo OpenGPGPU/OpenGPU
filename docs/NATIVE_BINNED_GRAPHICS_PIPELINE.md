@@ -75,3 +75,19 @@ global-payload fixture is present but has not run at this checkpoint. Fault and
 reset composition, default host emission and full host qualification remain
 pending. This initial host test is separate from the eighteen-check frozen
 qualification above.
+
+## Expanded host validation in progress
+
+The default four-CU 1280x720-capacity host now has a dedicated RTL emitter. It
+emits 768 files with four actual CUs, one shared payload pool, two image engines
+and a 256-bit AXI data path. Nine existing host/fabric compatibility checks pass.
+These structural and regression results do not establish a new PPA result.
+
+The first expanded five-case native host run passes local/global full frames and
+empty/indexed frames, but fails its broad write-permission expectation and the
+second reset trigger. The permission fixture now uses 4 KiB pages to deny only
+vertex staging, excluding unrelated bin failures from the first-fault race. The
+fixture also parks memory handshakes during command MMIO and diagnoses completion
+before a reset trigger. The corrected sources compile; the full five-case rerun
+is pending. Eight fault cases, both reset phases and full host qualification must
+not be reported as passing until that rerun finishes.

@@ -122,6 +122,14 @@ object EmitPpaRtl {
           useSramBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-native-binned-fabric" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.system.NativeBinnedGraphicsMemoryFabric(),stageArgs,firtoolArgs)
+      case "mobile-native-binned-host" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        val native=opengpu.graphics.NativeBinnedGraphicsConfig(engines=mobile.tileEngines,pageBytes=mobile.binPageBytes,
+          writeCredits=mobile.binWriteCredits,tileSlots=mobile.binTileSlots,pagedCapacity=mobile.binDirectoryTiles)
+        ChiselStage.emitSystemVerilogFile(new GpuHostSystemAxi(
+          GraphicsConfig(screenWidth=1280,screenHeight=720),mobile.execution,numComputeUnits=mobile.computeUnits,
+          fragCore=true,sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,
+          memoryAxiDataBytes=mobile.axiBytes,useBlackBoxes=true,nativeBinnedGraphics=Some(native)),stageArgs,firtoolArgs)
       case "mobile-window-record-transfer" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.WindowPrimitiveRecordTransfer(),stageArgs,firtoolArgs)
       case "mobile-vertex-bin" =>
