@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "title": "Native vertex-input discovery and corrected AXI control bursts",
+  "code_revision": "2330570a9c8ea698a0b85ea80425b957161db933",
+  "scope": "GVI1 native host discovery and word-control AXI burst behavior; bounded control checks and full default hierarchy emission",
+  "source_files": 626,
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-input-capabilities-source-v1.json",
+    "sha256": "5c6bbd24efa5e36da74794ae1a34d116decea5d2171e878152cb6ce35841fca7"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-input-capabilities-source-v1.tar.gz",
+    "sha256": "aef47ccfae98da40179274da853c1d80c965c0f23846374b7d899f08b46e5697"
+  },
+  "changed_source_sha256": {
+    "driver/opengpu_native_binned_abi.h": "101a273b7c7524658bdc2d434ce2559ae67e804b0d6e2fdd5eb40de7509c619e",
+    "driver/opengpu_native_typed_abi.h": "1b3e88d2d9231cddd7e9376c75fd3b94c0d2e02aff2aaec91c3225054be824a1",
+    "src/main/scala/opengpu/elaboration/EmitNativeBinnedGraphicsAbi.scala": "7ae99c5ef08b9dc9405a90af86e22ab7637698e99d99c477d9dcff9a417cf069",
+    "src/main/scala/opengpu/elaboration/EmitNativeTypedGraphicsAbi.scala": "5888d478629f2c6bd8b17df29e0e97d6223b983f4b10a6b8dc3a3593caf9ca90",
+    "src/main/scala/opengpu/graphics/NativeVertexInputCapabilities.scala": "568876b42dc9e302816d755b47e11e36c639b9016674b1d235b4eff496fd15bc",
+    "src/main/scala/opengpu/system/GpuHostAxi.scala": "6bd4c40691732ba36787b193046fee5db878a2d87b9824e181dac8fd4058817c",
+    "src/main/scala/opengpu/system/GpuHostSystemAxi.scala": "9f71dfe8250c7c214dcca200dd9366e6d3815536a3a98f75f96fde92ec9b95f5",
+    "src/test/scala/opengpu/system/GpuHostAxiSpec.scala": "d5302baa553323589ade6acd6731748b48e0291f3d3b33d2114b0f6956aa2db4",
+    "src/test/scala/opengpu/system/GpuHostVmOwnershipSpec.scala": "c5d8647187059554f8cbcdbb79e0d85d6774be1d053682b07cc14d766227b7b9",
+    "src/test/scala/opengpu/system/NativeVertexInputCapabilitiesAxiSpec.scala": "f2f0b65ec3d60d23126cf16459ae4b7b5e6863d9f1053b5e4468c26ab2a0972a"
+  },
+  "discovery": {
+    "magic": "0x47564901",
+    "base": 432,
+    "words": [
+      1196837121,
+      4,
+      1282,
+      33554431
+    ],
+    "maximum_input_version": 2,
+    "format_id_bits": 5,
+    "formats": 25,
+    "profiles": "Native typed and binned GpuHostSystemAxi; legacy profile leaves GVI1 unmapped",
+    "immutable": true,
+    "descriptor_layouts": "Offsets/sizes/magic, GNC and GNX1 unchanged"
+  },
+  "AXI_contract": {
+    "FIXED": 0,
+    "INCR": 1,
+    "word_bytes": 4,
+    "max_fixed_beats": 16,
+    "max_incrementing_beats": 256,
+    "errors": "Reject WRAP/reserved encodings, unsupported size, unaligned words, 4 KiB crossings and carried addresses before register mutation; invalid read beats return zero.",
+    "normative_reference": "https://developer.arm.com/-/media/Arm%20Developer%20Community/PDF/IHI0022H_amba_axi_protocol_spec.pdf",
+    "section": "A3.4/table A3-3"
+  },
+  "validation": {
+    "checks": 7,
+    "suites": [
+      "opengpu.system.NativeVertexInputCapabilitiesAxiSpec",
+      "opengpu.system.GpuHostAxiSpec",
+      "opengpu.system.GpuHostVmOwnershipSpec"
+    ],
+    "qualified_controls_log": {
+      "path": ".artifacts/mobile-native-input-capabilities-controls-v2.log",
+      "sha256": "2111b6536a5b48e64199d09e9eaaf21227ffd772943d6bfbb519ad49b76e4cb9"
+    },
+    "markers": [
+      "NATIVE_VERTEX_CAPS enabled=true GVI1=true version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=false ",
+      "NATIVE_VERTEX_CAPS enabled=false GVI1=true version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=true "
+    ],
+    "coverage": [
+      "Enabled GVI1 and legacy unmapped map; exact independent capability literals; held R/B offers; all write strobes including zero; no data on invalid reads.",
+      "INCR and FIXED reads/writes to writable staging registers; unsupported burst/size/FIXED length and 4 GiB wrap attempts leave staging unchanged.",
+      "Boundaries and high-address aliases; active VM ownership and reset; legacy register programming, reset IRQ and fill engine; buffered and unbuffered VM pins."
+    ],
+    "ABI_checks": 3,
+    "emission_result": {
+      "returncode": 0,
+      "source_unchanged": true,
+      "elapsed_seconds": 52.08941958309151,
+      "finished_utc": "2026-10-19T23:47:32.173223+00:00"
+    },
+    "ABI_emission_log": {
+      "path": ".artifacts/mobile-native-input-capabilities-emission-v1.log",
+      "sha256": "df51ec431a9fe95a7e34812458c16a13b1500b8e78919fc8f8db55436476c2f6"
+    },
+    "C11_probe": {
+      "path": ".artifacts/mobile-native-input-capabilities-abi-probe-v1.c",
+      "sha256": "d80ffa10a9d5ac67c254afafa52d24cf110abed54436819a0d1d7b220b6eb486"
+    },
+    "initial_failed_log": {
+      "path": ".artifacts/mobile-native-input-capabilities-controls-v1.log",
+      "sha256": "7a70c50757ea02088a1791954ce769451fa81b3af343323e9f9e070ed4b44e3e"
+    },
+    "initial_failure": "Unaligned GVI1 read correctly returned SLVERR but retained selected magic data. Invalid reads now return zero; standard burst encodings and malformed burst rejection are checked in the corrected run."
+  },
+  "emission": {
+    "rtl_files": 768,
+    "group_counts": {
+      "GpuComputeUnit": 4,
+      "BankedShaderPayloadStore": 1,
+      "MemoryNativeBinnedGraphicsPipeline": 1,
+      "TypedReplayTileImagePipeline": 2,
+      "GpuCommandMmio": 1,
+      "TileBinHostCommandPort": 1
+    },
+    "existing_sram_macros": {
+      "srambank_64x4x32_6t122": 146,
+      "srambank_64x4x64_6t122": 1240
+    },
+    "physical_sram_bytes": 2689024,
+    "ports": {
+      "io_m_axi_wdata": 256,
+      "io_m_axi_arid": 10
+    },
+    "audit": {
+      "path": ".artifacts/mobile-native-input-capabilities-rtl-audit-v1.json",
+      "sha256": "52ae426d356e4c3a333f22c171ee11f9a4e3b618299453e44199dbbf9fc80d3f"
+    }
+  },
+  "limitations": [
+    "Control and default-emission evidence only. Full native host rendering with GVI1 and converted inputs remains pending.",
+    "Vertex conversion full requalification is separate; its first broader run passed 27 of 28 before a coherent-input publication fixture correction.",
+    "No complete AXI/API conformance, physical allocation/alias provenance, Mobile runtime/rates/budgets or new PPA claim. H0-H8 remain open."
+  ]
+}

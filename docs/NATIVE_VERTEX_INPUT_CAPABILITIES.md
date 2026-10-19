@@ -37,3 +37,8 @@ and both buffered/unbuffered VM-owner tests also pass: seven checks across three
 suites. Full native-host integration is pending.
 These bounded checks do not establish complete AXI or API conformance, Mobile
 rate/budget closure or a new synthesis PPA result.
+
+All three ABI byte checks, a C11 probe and the 768-file default host emission
+pass on 626 frozen source/ABI files. The hierarchy retains four shared CUs,
+one payload pool, two image engines and the existing SRAM macro counts. See the
+[frozen control/emission record](performance/mobile-native-input-capabilities-2026-10-20.json).
