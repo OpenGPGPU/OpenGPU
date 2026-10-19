@@ -1,0 +1,185 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "module": "TypedReplayTileImagePipeline",
+  "scope": "Single prepared-geometry typed replay image engine; ASAP7 synthesis and pre-layout setup STA only",
+  "functional_revision": "ce6e3854d0db755b473dae38ed33e53cc3762805",
+  "qualified_source_and_rtl_evidence": {
+    "path": ".artifacts/mobile-h5-payload-v1-worktree/docs/performance/mobile-typed-replay-image-2026-10-20.json",
+    "sha256": "992d097a460bf448a804438eb787a2796ce5b26b33dbc24dc673bc62c662b212"
+  },
+  "input_reconciliation": {
+    "wrapper_recorded_revision": "63055b383da6718485d229a7c8251ad9211080c3",
+    "wrapper_recorded_dirty": true,
+    "active_rtl_files": 64,
+    "all_active_rtl_match_committed_qualified_emission": true,
+    "emitted_sha256": {
+      "KernelEmit.sv": "77a943beebba3d8bdb1f3e9b381022bd5b21859b061dbaa8ff2c217d22605a69",
+      "RRArbiter4_ScalarIssuedInstruction.sv": "ea58a02b4b88d63a6c9dd3e92565abc374a7751906f93786bff9a8587edb45ef",
+      "RRArbiter4_VectorTextureRequest.sv": "287761000c20d59aabd38efd7b3ea585c30241253afc8449c11e52cc4942aec5",
+      "KernelShaderStage.sv": "9794d3f01b1d09f07b52090c488d85197e0f67377ea80497e5def8b593a5dff1",
+      "TextureUnit.sv": "1d61ffae0512adab83abf847d2668bf439c87e7b080edbd99314b906712fa8ed",
+      "Queue1_TextureCoordinateRequest.sv": "5977ebeb21d01dbbdf8179c787a3d0b3ff41d7d192e37d91e36a04322c256f4c",
+      "Queue1_Biased.sv": "a254a9246dc7c4a913747140ac4bf7aa20acc0a36457e241b1a27bc4f33c39f1",
+      "Queue1_Ranged.sv": "eacf222950c1bedd986f114540c894c24a81ba4051bb5bfb8011d2d033fb57cf",
+      "Queue1_Indexed.sv": "79f1bc8d83715f3b6df5945974293d439f62852773576fa397e28f9c0b750f9a",
+      "Queue1_TextureCoordinateResult.sv": "0f831abd7a5417d892a18d554dd5427ff5a2c195df85f6e3dea6413e2242c45e",
+      "TextureCoordinatePipeline.sv": "72938a0a7b2cfbac4825c16e422ba81d0da08677f7b770ae360379d763c791b5",
+      "TexSampleUnit.sv": "218c0508160689ac10bbf163db0f62d7b983909ecc68bfcfc941d29fe86f5d68",
+      "OmWordToLinePort.sv": "bbcaa9a49fe7fcdb5677fd65b5ace308536e3911ef06f071dc74a39db1c4529f",
+      "FragmentPayloadTransport.sv": "5e8bf60961b64ec519d7c218212a200e0538b444cdbff43be2c6a6530424af96",
+      "L2SramArray.sv": "2f34395bff085e37336c6c7a5c89810ade8dc96b2f3d6845f9b21b37921ec64f",
+      "RRArbiter2_ComputeMemoryRequest.sv": "8c6a1063869301ff0d44db490d5569232680d9ebed7f6733214a55bf72c2a34e",
+      "Queue1_ComputeMemoryRequest.sv": "a56e38ede68973b8264d9712a2833bdd536f7c05d8ad3eb866bf0d02ade2c560",
+      "FragmentShaderStage.sv": "8af1175751f1b0a1dbcdbcd98b6a2dcaadb6969fc3d79e792c97d5a31241ff02",
+      "RRArbiter2_TaggedKernelLaunch.sv": "82f403867dcf9d783f4b70e96e9565b085c7fe0134930e3fc5bc07ac8f4f2ad1",
+      "ram_2x408.sv": "eb767d9d86a66384ba37af675b6c2f2b74d21c35bb6f79f04928e72555a57531",
+      "Queue2_TaggedKernelLaunch.sv": "5e537782a4ef394f9b01e75e779662ef8a4eaf12a64fb1158ca38e3cbdb7aeb9",
+      "RRArbiter2_CacheLineInvalidate.sv": "751c55a9451e986b68f569ea25f794ace2d3ca80e1f17dd55d8326d4e3f26e2d",
+      "SharedShaderTaskRouter.sv": "4a8c6e401ae76542466fda7a6dd7ced43e305e312c726da6b4847f6054a7463c",
+      "BlockPrefixAdder.sv": "3c2ec11619da9a889e318b59dcf047f3b9917dcb2505b07d3c21f2afe32f8732",
+      "BlockPrefixAdder_6.sv": "e8542b267ac9b4af075e14dbb1f35f668e170e7a0cbae153f8d4f585244d0b27",
+      "CarrySavePrefixSum.sv": "255b59d726d87dd96e73de6d5e6870f1aae085a14c024e09638687bfde5dc75d",
+      "QuadCoverage.sv": "f1bae9ffd5926028b5f51f79b0eccb4d1f020690508de2b3ed4599678dd8e126",
+      "BlockPrefixAdder_9.sv": "a9367fbf41d5ce424ec89e7d918579d07bb1a39d4dc73b6dc20155d40bc18023",
+      "PreparedSampleCoverage.sv": "32ad1043ae5b1c5b6bd76989014a360f04cf23336be234cb51e1d03ab0b1507e",
+      "RegisteredQueue2.sv": "7ccfd954837a53a6a0f00ec54303c09613256449bd5ea450ef2d260c9e8acc2a",
+      "BlockPrefixAdder_108.sv": "61a15e6848056ca4f6b74c6488d914819c623907261f4dbe26430d327a5c4115",
+      "TriangleRasterizer.sv": "f6f5507a6b335cacf0e944dd58aa41577433bb1be03f99404b13c517cea1c898",
+      "BoothEncoderF64F32F16.sv": "16935207228e6b9e21d2b3e79d6d90e2ff07f68a4c426184748d14135ed96dfd",
+      "CSA3to2.sv": "e328aaa001d5b077857cd3c91af9b856881a4fc4b59d4c7956d20dadddadcb9f",
+      "CSA4to2.sv": "715d5b1fbc9c3d7fdaedfffdde3166edbdf60501e9ffe8c34c53e0d690cbe7dd",
+      "CSA_Nto2With3to2MainPipeline.sv": "6f33d39b6c1139d3c81649a6fda2e9654aa624b57f06128b9d055ead53c24ab2",
+      "FloatFMA.sv": "53f7ec11d39a02eb913e164ca94358c9ca6794f647b09fbd0602fc2dc428697c",
+      "ram_5x45.sv": "c00d54df0821577d31b82cffa39b87fb9fdc316c7d4c356275bc637430a98090",
+      "Queue5_Fp32Response.sv": "739176df8bbab38de1682ac0804815d45a36f36392db1b84a260cbcfb537ccd8",
+      "Fp32FmaLane.sv": "f13144c76687651b5d0c59e99d5c765d29b7261781a98df749510d62b6141ae2",
+      "Fp32DivLane.sv": "ec86d3608593267672feee1d043774f3a3b85e067d935982f4f9c2c3abf452e2",
+      "ClipFloatArithmetic.sv": "a32aef27024c91dda495389ff1a01a9483c4dfff16b4a79d69a1eb864301dc06",
+      "Fp32FragmentInterpolator.sv": "c39969e4b37d450c60a1e91bc7e1595b6a54dc5083034e6fa0c2c228e0ea05fc",
+      "PointLineRasterizer.sv": "b250c6ac78c23e25c27db974e2afc5e68f65f9de2e96ea9e49f230f6c3a57997",
+      "Fp32PrimitiveRasterStage.sv": "3bc78ea447c3c93e16fef393ce795f3ed88e5696109520c161deab8f614bc17c",
+      "RRArbiter2_ComputeMemoryRequest_1.sv": "d8659358391348ff17e9ebf0213a55e13d7c1f963c8aac340081a68b7f5f94c7",
+      "Queue1_ComputeMemoryRequest_1.sv": "869f823d4b59c572cb6192a8ce268cb0c12ab36e76d4b19de8f348e1d0290baa",
+      "VertexFragmentPipeline.sv": "39b4c60b7a20960d7de2189113af1280e61b6161388ab31963a4742ca22cc78c",
+      "TypedColorEncoder.sv": "edea5afb95be74d458267ab7437b2afec5e527be72542d68b00e10d25cb2ae7e",
+      "TypedColorDecoder.sv": "66c25dcdc70dcae93125529216df4108f286f81a5d1c3c84c877f6e46b9caa17",
+      "TypedColorBlend.sv": "c65ef0898530de495718f4e3b49f9b8b6c4bed1cb40645d4c1b9a6d6439088bf",
+      "TypedTileColorStore.sv": "cca8d2203894a2b415fb8f0cb7a941773291c1a6e0e020780790a8be763332f5",
+      "TypedTilePixelBackend.sv": "acaebac7e8a225e8ed2a453718d59511716d0c20ba03f29ae72a0dd5df5d2779",
+      "TypedTileRenderPipeline.sv": "c3a917b9c6fc115ffe876172058117395494551ae8173d57e5de8bee14f7854f",
+      "TypedSampleResolve.sv": "357c02b4d64cdfceef2422087ce11c546dd3172208d0aa3d71dcbb5e257bb9da",
+      "TypedTileImageTransfer.sv": "883f35df2b78109c3764101c8beb5d5fcd83c97be66db127577e37a0acb94d32",
+      "RRArbiter2_ComputeMemoryRequest_2.sv": "d1fac9cfa9f2abd20b808a91a087cf5a60416e55e18a867d35fd41180dd2d6b2",
+      "Queue1_ComputeMemoryRequest_2.sv": "27bf2793a2d4aad3ba098cecab90c91efa0660b7a86815c8b275a41c89d152f4",
+      "TypedTileImagePipeline.sv": "b5a509844f055f428aad7198856097485644e87ef216458303941da86b6f04f6",
+      "TypedFragmentStateReader.sv": "f6701d9a67141764af4be2aad1f2f50d3977677766c0e4b7ca76f5d22304c1f1",
+      "RRArbiter2_ComputeMemoryRequest_3.sv": "1bb5c1631a7a662dd02d70ba5c62bb60432c429647f95531da98a237d59d6cf5",
+      "ram_2x621.sv": "e8e634f79534c4387489b430e59d34db7f972f450a0a353a793bec6777debc1d",
+      "Queue2_ComputeMemoryRequest.sv": "7a511d5f6181099f73b7dfd3470b3f9628bef938a4fb42eb19ddb2636722b746",
+      "TypedReplayTileImagePipeline.sv": "f054fc71f4ceae5985ede6c703ba545aebd316ae8b837929f140f5b66e78f158"
+    },
+    "macro_sha256": {
+      "depends/asap7_sram_0p0/generated/LIB/srambank_64x4x64_6t122.lib": "0d5ddf857939a6bdf5108417b944076e8f3680ab3911bdeeb5e7e1dea48b039e",
+      "depends/asap7_sram_0p0/generated/LEF/srambank_64x4x64_6t122.lef": "497002d3593528156129e8b9648945ff98f2edf2831a38d44d51873e555d5df5"
+    },
+    "explanation": "The wrapper recorded a broader dirty checkout at launch. Every active synthesis RTL file is byte-identical to the frozen replay-engine emission recorded in the committed functional evidence; no combined vertex/bin/image owner is included."
+  },
+  "artifacts": {
+    "manifest": {
+      "path": "generated/qualification/ppa/mobile-typed-replay-image-2026-10-20-v1/manifest.json",
+      "sha256": "b973cb16d7450c7330346aa7f99e01303d86c0cc93069cc39d137a7463c27753"
+    },
+    "result": {
+      "path": "generated/qualification/ppa/mobile-typed-replay-image-2026-10-20-v1/result.json",
+      "sha256": "59b69b5929adcba8dce656f63d22879b323c6b8bb4b6ad5d5dedbba9d5659528"
+    },
+    "qualification": {
+      "path": "generated/qualification/ppa/mobile-typed-replay-image-2026-10-20-v1/qualification.json",
+      "sha256": "5116060ce42c0c47933fe48bf60d581b5dd2814c749919af38420e0f268c313c"
+    },
+    "setup_report": {
+      "path": "generated/qualification/ppa/mobile-typed-replay-image-2026-10-20-v1/flow/synthesis_sta.log",
+      "sha256": "0df6f6665d5c43e74c08edafe15019b3b721d23acddb9493241ed9a2102aac37"
+    },
+    "cell_statistics": {
+      "path": "generated/qualification/ppa/mobile-typed-replay-image-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+      "sha256": "0375742647fb67bf47cac04fd103e83bc0c06c712e4a52b5461e73ce638cb4cf"
+    },
+    "metrics": {
+      "path": "generated/qualification/ppa/mobile-typed-replay-image-2026-10-20-v1/flow/orfs-work/logs/base/1_synth.json",
+      "sha256": "afa0b395d213bc32b824189c3d7dc2f0f8dbdee2e6a211bf0a8507f1a699f87d"
+    },
+    "sdc": {
+      "path": "generated/qualification/ppa/mobile-typed-replay-image-2026-10-20-v1/flow/orfs-work/designs/asap7/TypedReplayTileImagePipeline/constraint.sdc",
+      "sha256": "04d4cee17c058a956505617dd5d3eb95f2a2f9810db63f377f934ee1db8bbc44"
+    }
+  },
+  "synthesis": {
+    "engine": "yosys",
+    "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+    "platform": "ASAP7",
+    "corner": "TC",
+    "vt": "SLVT",
+    "clock_period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "retiming": false,
+    "false_path_ports": null,
+    "clock_network": "ideal",
+    "setup_gate_passed": false,
+    "mapping_gate": {
+      "passed": true,
+      "mapping_report_present": true,
+      "skipped_instance_types": [],
+      "skipped_instance_count": 0,
+      "skipped_instances_by_type": {},
+      "unresolved_diagnostics": [],
+      "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+      "log": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-typed-replay-image-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+      "log_sha256": "0375742647fb67bf47cac04fd103e83bc0c06c712e4a52b5461e73ce638cb4cf",
+      "logs": [
+        {
+          "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-typed-replay-image-2026-10-20-v1/flow/orfs-work/logs/base/1_synth.log",
+          "sha256": "5719bdb355f27e13dc79f5bc630b7fe3ceb4897c94f27b2a821a5318b771b1cb"
+        },
+        {
+          "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-typed-replay-image-2026-10-20-v1/flow/orfs-work/logs/base/1_2_yosys.log",
+          "sha256": "5582f7c747ce3b349ac804d447bf76770546e3bc2a9ed45938fc046ef6b9c0bf"
+        },
+        {
+          "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-typed-replay-image-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "0375742647fb67bf47cac04fd103e83bc0c06c712e4a52b5461e73ce638cb4cf"
+        }
+      ],
+      "combined_log_sha256": "7b474d6684d727354eda4c7605e905d376ae288d86ef9656178c3bf349f74ca4"
+    },
+    "reported_setup_slacks_ps": [
+      -5867.27,
+      99.894
+    ],
+    "worst_setup_slack_ps": -5867.27,
+    "core_clock_fmax_mhz": 145.618,
+    "cell_count_including_macros": 1309402,
+    "standard_cell_count": 1309381,
+    "macro_count": 21,
+    "mapped_area_including_macros_um2": 174148.273079,
+    "sequential_cell_area_um2": 49739.67,
+    "standard_cell_area_um2_rounded": 158452,
+    "macro_area_um2_rounded": 15696,
+    "critical_core_path": {
+      "start": "image.transfers.descriptor_pixels_colors_sampleMode[0]",
+      "end": "image.transfers.offset[10]"
+    },
+    "power": null,
+    "place_and_route": false
+  },
+  "next_work": "Inspect the typed image transfer sample/address/offset datapath identified by setup STA, implement a measured timing fix and repeat functional validation plus synthesis on a new immutable source iteration.",
+  "limitations": [
+    "Setup fails at the 1 GHz target; functional test success does not close timing",
+    "This single replay engine is not the combined vertex/bin/image owner or whole GPU",
+    "Area includes characterized SRAM macros and is mapped synthesis area, not placed area",
+    "No power, routed timing, hold or clock-tree result; no place-and-route was run",
+    "Tool ODB/ORD/STA warnings remain in the raw logs; mapping qualification reports no skipped operators or unresolved diagnostics",
+    "Full Mobile rates, product budgets and H0-H8 remain open"
+  ]
+}

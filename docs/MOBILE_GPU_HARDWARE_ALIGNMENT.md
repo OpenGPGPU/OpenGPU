@@ -4983,3 +4983,25 @@ This is an internal physical-address owner. Native admission/MMU/host/reset for
 the combined path, resource provenance, full Mobile runtime/rates/budgets and
 H0-H8 remain open. Runtime uses four lanes/two warps and small images. PPA remains
 **synthesis only**.
+
+## Typed replay image engine synthesis screen (2026-10-20)
+
+The completed single-engine ASAP7 TC/SLVT mapped synthesis screen **fails setup**
+at a 1000 ps clock and 25% I/O delays. Worst setup slack is **-5867.270 ps**;
+the core Fmax estimate is **145.618 MHz**. The other reported setup group has
++99.894 ps slack. Mapping qualification passes with zero skipped operators and
+no unresolved diagnostics. Functional correctness remains separate evidence.
+
+The critical register path starts at
+`image.transfers.descriptor_pixels_colors_sampleMode[0]` and ends at
+`image.transfers.offset[10]`. The next timing work must address the measured
+transfer datapath. Synthesis reports 1,309,402 cells including 21 SRAM macros
+and 174,148.273079 square micrometres of total mapped area. This is a single
+replay engine, not the combined vertex/bin/image owner or the whole GPU.
+
+All 64 active synthesis RTL inputs match the frozen emission in the committed
+replay-engine qualification; the evidence reconciles the wrapper's older dirty
+checkout metadata explicitly. See the [negative synthesis result and artifact
+hashes](performance/mobile-typed-replay-image-synthesis-2026-10-20.json).
+PPA remains **synthesis only**. No place/route or power result is claimed;
+full Mobile timing/rates/budgets and H0-H8 remain open.
