@@ -109,13 +109,15 @@ int main(void)
         load_module("/arti_driver.ko", "arti_driver") < 0) {
         putstr("OPENGPU USERSPACE DRM FAIL: module load\r\n");
 #ifdef OPENGPU_RUN_USERSPACE_VERTEX
-    } else if (run_program("/opengpu_pipe_vertex_draw") < 0 ||
+    } else if (run_program("/opengpu_compute_offload") < 0 ||
+               run_program("/opengpu_pipe_vertex_draw") < 0 ||
                run_program("/opengpu_pipe_resolve") < 0) {
         putstr("OPENGPU USERSPACE EXAMPLES FAIL\r\n");
 #elif defined(OPENGPU_RUN_USERSPACE_FRAG)
     } else if (run_program("/opengpu_fragment_tint") < 0 ||
                run_program("/opengpu_fragment_fp") < 0 ||
                run_program("/opengpu_fragment_fp_scalar") < 0 ||
+               run_program("/opengpu_compute_offload") < 0 ||
                run_program("/opengpu_fp_unary") < 0 ||
                run_program("/opengpu_fp_binary") < 0 ||
                run_program("/opengpu_fp_fma") < 0 ||
@@ -139,6 +141,7 @@ int main(void)
         putstr("OPENGPU USERSPACE EXAMPLES FAIL\r\n");
 #elif defined(OPENGPU_RUN_USERSPACE_EXAMPLES)
     } else if (run_program("/opengpu_compute_example") < 0 ||
+               run_program("/opengpu_compute_offload") < 0 ||
                run_program("/opengpu_fp_unary") < 0 ||
                run_program("/opengpu_fp_binary") < 0 ||
                run_program("/opengpu_fp_fma") < 0 ||

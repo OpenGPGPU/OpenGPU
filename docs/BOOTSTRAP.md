@@ -13,6 +13,7 @@ machinery lives in ARTI, and everything OpenGPU-specific lives here.
 | ARTI | Generic full-system **platform**: QEMU co-simulation host, AArch64 Linux kernel, rootfs images, cloud-init, embedded RTL model, and the device-agnostic runners. Knows nothing about OpenGPU. | `../arti` (`ARTI_DIR`) |
 | FlashSim | Cycle-accurate RTL **backend** used when `GPU_SIM=flashsim`. | `../FlashSim` (`FLASHSIM_DIR`) |
 | QEMU fork | Upstream QEMU carrying the generated `arti-rtl` SysBus device. Required as a sibling by the GPU flow. | `../qemu` (`QEMU_SRC`) |
+| llvm-project fork | OpenGPU device compiler: RISC-V vendor extension `XOpengpu` and the `opengpu` clang triple, branch `opengpu`. Not required to build RTL, the driver, or the desktop. Status is [LLVM_TOOLCHAIN_PLAN.md](LLVM_TOOLCHAIN_PLAN.md). | `../llvm-project` |
 
 The rule of thumb: **if it is device-agnostic it belongs to ARTI; if it is
 OpenGPU it belongs here.** The GPU repo never re-implements a platform step; it

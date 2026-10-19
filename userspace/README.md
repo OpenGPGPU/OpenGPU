@@ -27,6 +27,13 @@ RISC-V source, through private shader and kernarg bindings. It checks that
 the same input rounds to 1 under RNU and 0 under RDN. Pass the shader binary
 as the second argument when running outside the guest.
 
+`examples/compute_offload` loads an LLVM offload fatbin
+(`libopengpu/opengpu_offload.h`), copies the OpenGPU `.text` into the 64-byte
+compute-shader binding, and submits it with `opengpu_compute`. The default
+image is `/opengpu_kadd.fatbin` (`void kadd(int *p, int n) { *p = *p + n + 3; }`,
+kernarg word 0 in/out, word 1 = `n`). Pass the DRM node and fatbin path as
+the first and second arguments when running outside the guest.
+
 `examples/fp_unary` loads the corpus `fp_unary` shader and checks exact RTL
 reference results for `vfsqrt` / `vfrsqrt7` / `vfrec7` / `vfclass` (default
 `/opengpu_fp_unary.bin`).

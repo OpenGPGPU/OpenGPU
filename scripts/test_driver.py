@@ -55,5 +55,14 @@ def main():
             str(ROOT / "userspace/tests/pixel_format.c"), "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
 
+        binary = Path(directory) / "offload"
+        subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+            "-I" + str(ROOT / "userspace/libopengpu"), "-I" + str(ROOT / "driver"),
+            str(ROOT / "userspace/libopengpu/tests/opengpu_offload_test.c"),
+            str(ROOT / "userspace/libopengpu/opengpu_offload.c"),
+            "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+        print("offload container reader: PASS", flush=True)
+
 if __name__ == "__main__":
     main()

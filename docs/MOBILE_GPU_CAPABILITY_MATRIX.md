@@ -5,7 +5,9 @@ This inventory supports H0 and the
 [hardware alignment plan](MOBILE_GPU_HARDWARE_ALIGNMENT.md). It records hardware
 contracts and evidence gaps; it does not advertise an API version. Compiler,
 driver and API object management remain separate work, while the hardware
-interfaces they require remain in scope.
+interfaces they require remain in scope. The device compiler is the sibling
+`../llvm-project` branch `opengpu`; its status and the ISA/ABI it already
+consumes are in [LLVM_TOOLCHAIN_PLAN.md](LLVM_TOOLCHAIN_PLAN.md).
 
 `Partial` means relevant RTL exists but the complete requirement is unproven.
 `Open` means the inspected production contract does not provide the required

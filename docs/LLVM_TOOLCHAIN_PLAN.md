@@ -1,5 +1,16 @@
 # OpenGPU LLVM Toolchain Plan
 
+Status, 2026-10-19: M1–M5 are done, M6's software path is done, and the host
+regression is wired into `scripts/test_scripts.sh`. The sources live in the
+sibling checkout `../llvm-project` on branch `opengpu` (not in this
+repository). This repo contains the fatbin reader (`userspace/libopengpu`),
+the compute submission example (`userspace/examples/compute_offload.c`), and
+`scripts/validate_offload_kernel.py` (LLVM kernels versus the shader-corpus
+validator). On 2026-10-19 the vertex+fragment Verilator guest ran
+`opengpu_compute_offload` and checked `kadd` (`1 + 2 + 3 = 6`).
+Hardware work that changes the CU ISA or the shader ABI below has to update
+the LLVM branch in the same change.
+
 This document defines the plan for a shader/compute toolchain for the OpenGPU
 RISC-V SIMT GPU. It supersedes the earlier "independent LLVM target" sketch and
 records the decisions made while grounding the work in the actual device ISA.
@@ -94,6 +105,14 @@ The device ISA is defined by the Chisel decoders in
 6. **Verification / regression**
    - Cross-check LLVM-generated device code against the existing Gallium TGSI
      emitter and the `scripts/validate_shader_corpus.py` corpus; wire into CI.
+   - Done for the C subset: `scripts/validate_offload_kernel.py` compiles
+     device kernels with `clang --target=opengpu`, admits them with the corpus
+     validator profiles, and checks `compute_increment` / `vertex_offset`
+     against the gcc corpus binaries (same `lw`/`addi`/`sw`/`cease`
+     operations; registers may differ). Gallium's hand-written assembly
+     (`fragment_color.S`, `vertex_passthrough.S`, texture samples) stays on
+     `validate_shader_corpus.py`. The host CI job `scripts/test_scripts.sh`
+     runs the script and skips it when the OpenGPU clang is absent.
 
 ## 4. Milestones
 
@@ -104,7 +123,8 @@ The device ISA is defined by the Chisel decoders in
 | M3 triple + CPU | `opengpu` resolves to RISCV | `llvm-mc -triple=opengpu` works; Lanai target retired |
 | M4 CodeGen + ABI | `llc -mcpu=opengpu` | done; scalar/float/vector/branch kernels pass `opengpu_shader_validate_words` |
 | M5 clang | `clang --target=opengpu -S` | done; compiles a kernel to assembly that `llvm-mc -triple=opengpu` assembles |
-| M6 runtime | fatbin + loader | end-to-end execution |
+| M6 runtime | fatbin + loader | software round-trip passes; 2026-10-19 Verilator guest `kadd` returned 6 |
+| Regression | LLVM vs corpus | `scripts/validate_offload_kernel.py` in `scripts/test_scripts.sh`; skips without the OpenGPU clang |
 
 ## 5. Repository layout
 
@@ -156,6 +176,29 @@ The device ISA is defined by the Chisel decoders in
   defaults `-march` to `rv32imafv_zicsr_zifencei_xopengpu` and `-mcpu` to
   `opengpu`, forwards the RISCV feature list to cc1, and uses the RISCV default
   frame-pointer policy (leaf kernels must not allocate a stack). Device kernels
-  are marked with `__attribute__((device_kernel))`, which the target maps to
+   are marked with `__attribute__((device_kernel))`, which the target maps to
   `CallingConv::RISCV_OpenGPU` so the backend reads arguments from the kernarg
   base; a clang-built kernel now assembles and passes the driver sandbox.
+- M6 runtime: `userspace/libopengpu/opengpu_offload.{h,c}` is a dependency-free
+  reader for the LLVM offload-binary **version 3** container
+  (`clang-offload-packager`/`llvm-offload-binary` output). It decodes the header
+  and entry tables explicitly (no buffer aliasing), matches a device image by
+  triple (exact or component-prefix abbreviations such as `opengpu`), and
+  extracts executable code: the `.text` section when the image is an ELF32
+  object, or the raw bytes for a pre-linked blob. `opengpu_offload_shader`
+  copies that stream into a caller buffer. Compute shader bindings are
+  64-byte aligned, so `userspace/examples/compute_offload.c` zeroes a 64-byte
+  GEM, copies the stream at offset 0, and submits it with `opengpu_compute`.
+  The packaged kernel is `kadd` (`*p = *p + n + 3`); kernarg word 0 is the
+  in/out value and word 1 is `n`. End-to-end software verification is
+  `scripts/validate_offload_kernel.py`: `clang --target=opengpu` ->
+  `clang-offload-packager` -> reader -> `opengpu_shader_validate_words`. Host
+  unit tests live in `userspace/libopengpu/tests/opengpu_offload_test.c` and
+  the reader runs in `scripts/test_driver.py`. The guest binary and
+  `opengpu_kadd.fatbin` are staged by `scripts/run_arti_gpu.sh` and
+  `scripts/build_userspace_guest.sh` and run from the userspace-example init.
+  The fence wait is 300 seconds, matching the other simulator compute
+  examples. The 2026-10-19 vertex+fragment guest printed
+  `offload compute completed; kadd 1+2+3=6` and then
+  `OPENGPU USERSPACE EXAMPLES PASS`.
+

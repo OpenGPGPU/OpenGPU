@@ -17,7 +17,8 @@ EXAMPLES := examples/compute examples/triangle examples/fragment_tint \
 	examples/pipe_clear_draw examples/pipe_compute examples/pipe_blit \
 	examples/pipe_resolve examples/pipe_texture_draw examples/pipe_vertex_draw \
 	examples/pipe_strided_blit examples/pipe_depth_pass examples/pipe_msaa_draw \
-	examples/pipe_present examples/pipe_desktop
+	examples/pipe_present examples/pipe_desktop \
+	examples/compute_offload
 
 all: $(EXAMPLES) shaders/round_modes.bin
 
@@ -29,6 +30,12 @@ pipe_opengpu.o: pipe_opengpu.c pipe_opengpu.h opengpu_pixel_format.h opengpu.h .
 
 examples/compute: examples/compute.c opengpu.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $< opengpu.o
+
+libopengpu/opengpu_offload.o: libopengpu/opengpu_offload.c libopengpu/opengpu_offload.h
+	$(CC) $(CPPFLAGS) -Ilibopengpu $(CFLAGS) -c -o $@ $<
+
+examples/compute_offload: examples/compute_offload.c opengpu.o libopengpu/opengpu_offload.o
+	$(CC) $(CPPFLAGS) -Ilibopengpu $(CFLAGS) -o $@ $< opengpu.o libopengpu/opengpu_offload.o
 
 examples/triangle: examples/triangle.c opengpu.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $< opengpu.o
@@ -111,7 +118,7 @@ shaders/round_modes.bin: shaders/round_modes.S
 	rm -f shaders/round_modes.o
 
 clean:
-	rm -f opengpu.o pipe_opengpu.o $(EXAMPLES) \
+	rm -f opengpu.o pipe_opengpu.o libopengpu/opengpu_offload.o $(EXAMPLES) \
 		shaders/round_modes.o shaders/round_modes.bin
 
 .PHONY: all clean

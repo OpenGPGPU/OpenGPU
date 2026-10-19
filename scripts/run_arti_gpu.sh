@@ -261,6 +261,10 @@ fi
 echo "Linux source: $LINUX_SRC (valid)"
 
 echo "=== 1/4 Emit GpuHostSystemAxi RTL ==="
+# Homebrew sbt otherwise caps the JVM near 1G, and a background-thread OOM can
+# still exit 0 while leaving the previous SystemVerilog in place.
+SBT_EMIT=(sbt -J-Xms2G -J-Xmx8G)
+emit_stamp=""
 if [ "${SKIP_RTL_EMIT:-0}" = "1" ]; then
     echo "Skipping RTL emit (SKIP_RTL_EMIT=1); reusing $GPU_RTL_DIR"
     if [ "$GPU_VERT_CORE" = "1" ] || [ "$GPU_FRAG_CORE" = "1" ]; then
@@ -270,23 +274,31 @@ if [ "${SKIP_RTL_EMIT:-0}" = "1" ]; then
         TIMEOUT="${TIMEOUT:-600}"
     fi
 elif [ "$GPU_VERT_CORE" = "1" ]; then
+    emit_stamp="$(mktemp)"
     (cd "$GPU_DIR" && \
-        sbt "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --frag-core --vert-core --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
+        "${SBT_EMIT[@]}" "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --frag-core --vert-core --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
     TIMEOUT="${TIMEOUT:-3600}"
 elif [ "$GPU_FRAG_CORE" = "1" ]; then
+    emit_stamp="$(mktemp)"
     (cd "$GPU_DIR" && \
-        sbt "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --frag-core --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
+        "${SBT_EMIT[@]}" "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --frag-core --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
     # The 3-draw fragment stencil job has a 15x watchdog; allow the full
     # userspace suite to continue after that job completes.
     TIMEOUT="${TIMEOUT:-2400}"
 else
+    emit_stamp="$(mktemp)"
     (cd "$GPU_DIR" && \
-        sbt "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
+        "${SBT_EMIT[@]}" "runMain opengpu.elaboration.EmitGpuHostSystemAxi $GPU_RTL_DIR --width $GPU_WIDTH --height $GPU_HEIGHT $EMIT_OPTIONS $TILE_OPTIONS")
     # FF + MSAA/persistent-depth DRM suite needs ~5+ minutes under FlashSim.
     TIMEOUT="${TIMEOUT:-600}"
 fi
 [ -f "$GPU_RTL_DIR/GpuHostSystemAxi.sv" ] || \
     fail "RTL emission did not produce $GPU_RTL_DIR/GpuHostSystemAxi.sv"
+if [ -n "$emit_stamp" ]; then
+    [ "$GPU_RTL_DIR/GpuHostSystemAxi.sv" -nt "$emit_stamp" ] || \
+        fail "RTL emission did not refresh $GPU_RTL_DIR/GpuHostSystemAxi.sv"
+    rm -f "$emit_stamp"
+fi
 [ -f "$GPU_RTL_DIR/filelist.f" ] || \
     fail "RTL emission did not produce $GPU_RTL_DIR/filelist.f"
 
@@ -503,6 +515,20 @@ WORK="${WORK:-$ARTI_WORK/linux-test}"
 mkdir -p "$WORK"
 cp "$GUEST_DRM_TEST" "$WORK/opengpu_drm_test"
 if [ "${GPU_USERSPACE_EXAMPLES:-0}" = "1" ]; then
+    # Host tool writes the fatbin; it must not be packed into the guest image.
+    "${CC:-cc}" -std=c11 -O2 -Wall -Wextra -Werror \
+        -I"$GPU_DIR/userspace/libopengpu" \
+        -o "$WORK/emit_kadd_fatbin" \
+        "$GPU_DIR/userspace/libopengpu/tools/emit_kadd_fatbin.c"
+    "$WORK/emit_kadd_fatbin" "$WORK/opengpu_kadd.fatbin"
+    rm -f "$WORK/emit_kadd_fatbin"
+    "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
+        -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
+        -I"$GPU_DIR/userspace/libopengpu" \
+        -o "$WORK/opengpu_compute_offload" \
+        "$GPU_DIR/userspace/opengpu.c" \
+        "$GPU_DIR/userspace/libopengpu/opengpu_offload.c" \
+        "$GPU_DIR/userspace/examples/compute_offload.c"
     if [ "$GPU_FRAG_CORE" = "1" ]; then
         # Programmable GPU path: tint + vtex.sample texture draw + pipe demos.
         python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \

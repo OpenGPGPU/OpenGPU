@@ -5,6 +5,26 @@ What the graphics path implements today, and what remains. Contracts:
 Functional qualification: [FUNCTIONAL_QUALIFICATION.md](FUNCTIONAL_QUALIFICATION.md).
 Physical numbers: [../timing/README.md](../timing/README.md).
 
+Hardware architecture proposal dated 2026-10-17:
+[Mobile GPU hardware alignment](MOBILE_GPU_HARDWARE_ALIGNMENT.md).
+It defines proposed resource sizing and implementation gates separately from
+the implemented capabilities and historical measurements below.
+
+Shader compiler, 2026-10-19: device code is compiled by LLVM/clang in the
+sibling checkout `../llvm-project` on branch `opengpu`, not by anything in
+this Chisel tree. That work is a RISC-V vendor extension `XOpengpu` plus the
+triple `opengpu-unknown-none-elf`. MC, the triple, codegen/ABI and
+`clang --target=opengpu` are done. This repo now reads the resulting fatbin
+(`userspace/libopengpu`) and submits it through the existing compute ioctl
+(`examples/compute_offload`). The 2026-10-19 vertex+fragment Verilator guest
+ran that example and checked `kadd` (`1 + 2 + 3 = 6`). Status and the ISA/ABI
+contract live in
+[LLVM_TOOLCHAIN_PLAN.md](LLVM_TOOLCHAIN_PLAN.md). Hardware that changes
+decoder encodings, `opengpu.cease` / `barrier` / texture opcodes, reserved
+registers `x1`, `x8`, `x9`, `x30`, `x31`, the kernarg `imm(x1)` convention, or
+the `e32,m1,tu,mu` vtype policy has to update that LLVM branch as well. The
+driver validator remains the admission gate.
+
 **functional** = behavioral coverage on the unified path. **physical** = PPA.
 A passing sim is not silicon; a completed tool run is not timing closure.
 
@@ -1011,7 +1031,10 @@ opengpu.system.GpuHostSystemAxiSpec -- -z "replay randomized commands"'`.
   physical invalidate addresses; engine/resolve traffic uses private DMA VAs
   under the context ASID where applicable. No resumable page faults or full
   removal of the Bare identity table yet.
-- Shader ISA growth is validation-profile driven, not a real compiler corpus.
+- A device compiler exists in the sibling `llvm-project` `opengpu` branch
+  ([LLVM_TOOLCHAIN_PLAN.md](LLVM_TOOLCHAIN_PLAN.md)). This repo's shader
+  corpus and `opengpu_shader_validate_words` still decide which encodings the
+  CU admits. Decoder or ABI changes belong in both places.
 
 ## Later / out of scope
 

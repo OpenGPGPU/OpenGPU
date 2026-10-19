@@ -45,6 +45,17 @@ rm -f "$DRIVER_OUTPUT/opengpu_compute_shader.o"
 "$CROSS_GCC" "${CFLAGS[@]}" \
     -o "$DRIVER_OUTPUT/opengpu_compute_example" \
     "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/examples/compute.c"
+"${CC:-cc}" -std=c11 -O2 -Wall -Wextra -Werror \
+    -I"$GPU_DIR/userspace/libopengpu" \
+    -o "$DRIVER_OUTPUT/emit_kadd_fatbin" \
+    "$GPU_DIR/userspace/libopengpu/tools/emit_kadd_fatbin.c"
+"$DRIVER_OUTPUT/emit_kadd_fatbin" "$DRIVER_OUTPUT/opengpu_kadd.fatbin"
+rm -f "$DRIVER_OUTPUT/emit_kadd_fatbin"
+"$CROSS_GCC" "${CFLAGS[@]}" -I"$GPU_DIR/userspace/libopengpu" \
+    -o "$DRIVER_OUTPUT/opengpu_compute_offload" \
+    "$GPU_DIR/userspace/opengpu.c" \
+    "$GPU_DIR/userspace/libopengpu/opengpu_offload.c" \
+    "$GPU_DIR/userspace/examples/compute_offload.c"
 python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
     --emit fp_unary "$DRIVER_OUTPUT/opengpu_fp_unary.bin"
 python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
@@ -141,6 +152,8 @@ ls -1 "$DRIVER_OUTPUT"/opengpu_kms_present \
     "$DRIVER_OUTPUT"/opengpu_triangle_present \
     "$DRIVER_OUTPUT"/opengpu_pipe_* \
     "$DRIVER_OUTPUT"/opengpu_compute_example \
+    "$DRIVER_OUTPUT"/opengpu_compute_offload \
+    "$DRIVER_OUTPUT"/opengpu_kadd.fatbin \
     "$DRIVER_OUTPUT"/opengpu_fp_unary* \
     "$DRIVER_OUTPUT"/opengpu_fp_binary* \
     "$DRIVER_OUTPUT"/opengpu_fp_fma* \

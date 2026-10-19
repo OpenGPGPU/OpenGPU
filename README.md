@@ -61,6 +61,7 @@ single list of instruction names:
 | **Memory and commands** | Shared memory and L2, translated accesses with Sv32/TLBs, unified compute/render/DMA commands, backpressure, completions, fences, and fault reporting. |
 | **Graphics** | Transform and clipping, triangle rasterization, perspective interpolation, depth/stencil/blend, texture sampling, MSAA/resolve, clear/blit/strided-copy, and scanout. Vertex and fragment shaders use the unified SIMT path. |
 | **Linux stack** | GEM resources, validated bindings, GPU virtual memory, DRM/KMS modesetting, queued jobs, sync objects, and fence-backed page flips in `gpu_drv.ko`. |
+| **Device compiler** | LLVM/clang in the sibling `../llvm-project` branch `opengpu`: RISC-V vendor extension `XOpengpu`, triple `opengpu-unknown-none-elf`, kernarg ABI, and a fatbin loader in `userspace/libopengpu`. See [docs/LLVM_TOOLCHAIN_PLAN.md](docs/LLVM_TOOLCHAIN_PLAN.md). The Verilator guest has run the compiled `kadd` kernel. |
 | **System proof** | Deterministic userspace examples, host-side driver validation, ARTI guest DRM tests, Mesa/Gallium draw lowering, and a real Weston desktop in QEMU. |
 
 The detailed capability matrix and the honest “implemented vs. next” boundary
@@ -188,6 +189,7 @@ Choose the path that matches what you want to learn or change:
   [docs/GTK_COVERAGE.md](docs/GTK_COVERAGE.md).
 - **Run or extend the C examples:** [`userspace/README.md`](userspace/README.md).
 - **Work on physical implementation:** [`timing/README.md`](timing/README.md).
+- **Device compiler (sibling LLVM tree):** [docs/LLVM_TOOLCHAIN_PLAN.md](docs/LLVM_TOOLCHAIN_PLAN.md).
 
 The project is still an active hardware/software co-design effort. The next
 work is concentrated on broader shader and Gallium coverage, faster large-frame
