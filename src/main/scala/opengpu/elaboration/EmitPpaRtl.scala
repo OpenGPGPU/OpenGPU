@@ -120,6 +120,8 @@ object EmitPpaRtl {
           engines=mobile.tileEngines,pageBytes=mobile.binPageBytes,writeCredits=mobile.binWriteCredits,
           tileSlots=mobile.binTileSlots,pagedCapacity=mobile.binDirectoryTiles,useSramBlackBoxes=true,
           payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
+      case "mobile-typed-fragment-state" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TypedFragmentStateReader(),stageArgs,firtoolArgs)
       case "mobile-window-bin-producer" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.WindowPrimitiveBinProducer(),stageArgs,firtoolArgs)
       case "mobile-window-bin-replay" =>

@@ -4884,3 +4884,22 @@ This checkpoint qualifies the reader component. Prepared-geometry typed image
 execution, multi-engine bin-to-image composition, native admission/MMU/reset,
 resource provenance, full Mobile runtime/rates and H0–H8 qualification remain
 open. There are no new synthesis results; PPA remains **synthesis only**.
+
+
+## Typed fragment-state synthesis checkpoint — 2026-10-20
+
+The [standalone state-reader synthesis record](performance/mobile-typed-fragment-state-synthesis-2026-10-20.json)
+passes the existing **1 GHz ASAP7 TC/SLVT** setup screen with a 25% I/O delay
+budget and no false-path ports. The two reported setup groups have slack
+**+299.608 ps** and **+418.452 ps**. Mapping checks find no omitted operators or
+undriven logic. The mapped **23,374 cells** occupy **3,036.664080 µm²**, including
+1,119.744 µm² of sequential cells; this block contains no SRAM macro. The
+critical core path runs from the fragment varying-slot snapshot to status.
+
+All seven emitted files reproduce byte for byte from **599 frozen standalone
+sources** with only the reader emission case added to `63055b3`. Pending typed
+replay/image changes are excluded from that reproduction. The initial synthesis
+wrapper's dirty-worktree flag is retained in the evidence and reconciled with
+those identical input hashes. This is pre-layout setup and cell-area evidence;
+it does not establish power, hold, routed timing or whole-GPU closure. H0–H8
+remain open. PPA continues to use **synthesis only**.
