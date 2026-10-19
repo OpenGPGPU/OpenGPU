@@ -81,6 +81,11 @@ object EmitPpaRtl {
       case "mobile-vertex-clip" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexClipPipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
+      case "mobile-fp32-viewport" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.Fp32ViewportStage(),stageArgs,firtoolArgs)
+      case "mobile-vertex-viewport" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexViewportPipeline(
+          useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-vertex-geometry" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexGeometryStage(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)

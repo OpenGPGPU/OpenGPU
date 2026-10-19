@@ -3726,3 +3726,54 @@ point/line rasterization, post-transform reuse, remaining formats/resources,
 transform feedback/query integration, watchdog termination, production budgets,
 throughput, synthesis and the remaining H0-H8 requirements also remain open.
 PPA evaluation continues with synthesis only.
+
+
+### FP32 perspective and viewport preparation, 2026-10-19
+
+The [viewport checkpoint](performance/mobile-fp32-viewport-2026-10-19.json)
+adds `Fp32ViewportStage` and `VertexViewportPipeline`. The internal shared-CU
+vertex stream now connects input fetching, shading, assembly, clipping and
+window-coordinate preparation. Viewport/depth state is captured once per draw.
+Native host binding and bin/raster consumption remain open.
+
+The viewport computes local X/Y and reciprocal W with extended exponents and
+24-bit RNE significands, then rounds local coordinates to subpixels before
+adding the exact signed integer origin. Default output uses signed 64-bit
+coordinates with eight fractional bits. Point/line coordinates beyond that
+range retain their extended local values and explicitly clear `fixedValid` and
+set `guardBandRequired`; a raster consumer must honor those flags. Reciprocal W
+remains extended, including exponent 149 for minimum-subnormal W. Depth endpoints
+copy exactly; interior depth is bounded by the normalized near/far range.
+Dimensions clamp to implementation limits, depth endpoints clamp to [0,1], and
+negative dimension encodings or NaN depth state return internal status 1.
+Nonempty views require finite positions and positive W (otherwise status 7).
+Empty views still execute source vertex work, then cull without viewport math.
+These internal policies do not establish native API conformance.
+
+Raw varyings, flat values, clipping provenance and part identity pass through.
+Cancellation drains accepted arithmetic and retains offered window primitives.
+The composed client retains actual VM context ownership through its last output
+and held completion, including after source payload release. Numeric faults
+retain earlier accepted outputs and report sequence, primitive, instance, part
+and vertex. Part counters use 67 bits and arithmetic totals use 80 bits.
+
+Ten new checks cover exact rational directed/random preparation, all 64 varying
+components, large origins, reversed/constant depth, extreme reciprocal W,
+signed-64 boundaries, guard-band output, invalid state, cancellation and reuse.
+Actual two-CU local/global tests each prepare 42 outputs across point, line and
+triangle draws; additional draws verify invalid state before memory access,
+first/later zero-W fault attribution, empty-view source execution and actual
+`GpuSystem.vmContextIdle` retention. All 85 regression checks pass against an immutable 533-source snapshot;
+standalone and composed RTL emissions audit 26 and 87 files respectively.
+
+The standalone stage adds one scalar FMA/divider pair and no SRAM. The composed
+client includes two such fixed-function pairs (clipping plus viewport) and the
+preceding 14 SRAM macros (28 KiB physical), with private records/control in
+addition. It embeds no private CU or payload pool. RTL emission is not a
+synthesis PPA result. PPA evaluation remains synthesis only.
+
+Smooth fragment interpolation, guard-band/point/line raster consumption,
+native geometry descriptors and producer/bin wiring, host/VM/reset/physical
+ownership, broader invariance and API numeric policy, formats/resources,
+post-transform reuse, production budgets, throughput and remaining H0-H8 gates
+remain open.
