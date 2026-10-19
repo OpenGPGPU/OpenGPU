@@ -114,13 +114,19 @@ The device ISA is defined by the Chisel decoders in
   pattern and pins `llvm-project` to a specific commit once the milestone
   stabilizes.
 
-## 6. Open decisions
+## 6. Resolved decisions
 
-1. **Triple string**: `opengpu-unknown-none-elf`, or keep a vendor/OS/env
-   component (e.g. `opengpu-opengpu-none`)?
-2. **`e_machine`**: standard `EM_RISCV`, or a custom `EM_OPENGPU`?
-3. **RVV subset boundary**: only the decoder allow-list, or a wider set?
-4. **ABI pass location**: inside the LLVM target, or in the runtime/loader?
+1. **Triple string**: canonical form is `opengpu-unknown-none-elf`
+   (arch `opengpu`, neutral vendor/os/env). `-triple=opengpu` is the tested
+   short form.
+2. **`e_machine`**: standard `EM_RISCV`. Device-code identity is carried by the
+   bundle/triple, not by a custom machine number.
+3. **RVV subset boundary**: keep the full `V` surface in the backend for now;
+   `opengpu_shader_validate_words` remains the allow-list gate. A target-side
+   subset can be added later if codegen produces rejected encodings.
+4. **ABI pass location**: a target-side MachineFunctionPass in the RISCV
+   backend (guarded by the `opengpu` triple), so `llc -mcpu=opengpu` alone
+   produces validator-clean code.
 
 ## 7. Implementation notes
 
