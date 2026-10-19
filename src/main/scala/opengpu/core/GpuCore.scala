@@ -27,6 +27,8 @@ import opengpu.core.memory.{
   PageTableMemoryResponse,
   Sv32PageTableWalker,
   SharedCacheLinePort,
+  ShaderPayloadAccessPort,
+  ShaderPayloadMemoryRouter,
   VectorTlb,
   VectorTlbFlush,
   CacheLineInvalidate,
@@ -44,7 +46,8 @@ class GpuCore(
   useBlackBoxes: Boolean = false,
   enableFpuBackend: Boolean = false,
   vectorCacheSets: Int = 64,
-  vectorCacheWays: Int = 2
+  vectorCacheWays: Int = 2,
+  shaderPayload: Option[opengpu.graphics.ShaderPayloadConfig] = None
 ) extends Module {
   val io = IO(new Bundle {
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
@@ -68,6 +71,7 @@ class GpuCore(
     val vectorMemoryResponse =
       Flipped(Decoupled(new VectorLowerMemoryResponse()))
     val vectorSatp = Input(UInt(32.W))
+    val payload=shaderPayload.map(p=>new ShaderPayloadAccessPort(config,p))
     val vectorTlbFlush = Flipped(Valid(new VectorTlbFlush(config)))
     val vectorPageTableRequest =
       Decoupled(new PageTableMemoryRequest(config))
@@ -226,8 +230,18 @@ class GpuCore(
   vectorCoalescer.io.cacheResponse <> sharedCachePort.io.vectorResponse
   sharedCachePort.io.scalarRequest <> scalar.io.cacheRequest
   scalar.io.cacheResponse <> sharedCachePort.io.scalarResponse
-  vectorTlb.io.in <> sharedCachePort.io.sharedRequest
-  sharedCachePort.io.sharedResponse <> vectorTlb.io.out
+  shaderPayload match {
+    case Some(p)=>
+      val router=Module(new ShaderPayloadMemoryRouter(config,p))
+      router.io.in <> sharedCachePort.io.sharedRequest
+      sharedCachePort.io.sharedResponse <> router.io.out
+      vectorTlb.io.in <> router.io.memoryRequest
+      router.io.memoryResponse <> vectorTlb.io.out
+      router.io.payload <> io.payload.get
+    case None=>
+      vectorTlb.io.in <> sharedCachePort.io.sharedRequest
+      sharedCachePort.io.sharedResponse <> vectorTlb.io.out
+  }
   vectorDataCache.io.in <> vectorTlb.io.physicalRequest
   vectorTlb.io.physicalResponse <> vectorDataCache.io.out
   vectorTlb.io.translationEnabled := io.vectorSatp(31)

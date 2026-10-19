@@ -27,7 +27,8 @@ class GpuComputeUnit(
   instructionCacheMissEntries: Int = 4,
   vectorCacheSets: Int = 64,
   vectorCacheWays: Int = 2,
-  finishOnTrap: Boolean = false
+  finishOnTrap: Boolean = false,
+  shaderPayload: Option[opengpu.graphics.ShaderPayloadConfig] = None
 ) extends Module {
   val io = IO(new Bundle {
     val kernel = Flipped(Decoupled(new KernelLaunch(config)))
@@ -39,6 +40,7 @@ class GpuComputeUnit(
     val instructionSatp = Input(UInt(32.W))
     val instructionTlbFlush = Flipped(Valid(new VectorTlbFlush(config)))
     val vectorSatp = Input(UInt(32.W))
+    val payload=shaderPayload.map(p=>new ShaderPayloadAccessPort(config,p))
     val vectorTlbFlush = Flipped(Valid(new VectorTlbFlush(config)))
 
     val fpu = Decoupled(new FpuDecodeResponse(config))
@@ -75,7 +77,8 @@ class GpuComputeUnit(
       useBlackBoxes,
       enableFpuBackend,
       vectorCacheSets,
-      vectorCacheWays))
+      vectorCacheWays,shaderPayload))
+  shaderPayload.foreach(_=>core.io.payload.get <> io.payload.get)
   private val system = Module(new WarpSystemControl(config))
   private val barrier = Module(new WorkgroupBarrierController(config))
   private val instructionCache = Module(
