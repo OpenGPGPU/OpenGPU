@@ -117,6 +117,47 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
     }
   }
 
+  it should "repeat exact clear bytes over every word of each pixel width at the highest slot addresses" in {
+    simulate(new TypedTileColorStore(TypedTileColorConfig(65536))){d=>val t=new Driver(d);var words=0;var updates=0
+      for(name<-Seq("R8","RG8","RGB8","RGBA8","RGB16F","RGBA16F","RGB32F","RGBA32F")){
+        val span=1024*format(name).bytes;val first=(65536-span)/8;val last=65536/8
+        t.prepare(Vector(View(name,first*8)),m=2,log=4);t.begin()
+        for(a<-first until last){val read=t.maintenance(a)
+          assert(read._1==t.word(a) && read._2 && !read._3 && !read._4,s"virtual clear differs format=$name word=$a")
+          words+=1
+          if(a==first || a==last-1 || (a-first)%31==0){
+            val data=BigInt("e182c364a5468708",16);val mask=0xa5
+            assert(!t.maintenance(a,true,data,mask)._4)
+            for(b<-0 until 8 if (mask&(1<<b))!=0)t.model(a*8+b)=((data>>(8*b))&255).toInt
+            val changed=t.maintenance(a);assert(changed._1==t.word(a) && changed._2 && changed._3 && !changed._4)
+            updates+=1
+          }
+        }
+        val expected=t.packet(0,x0=Some(14),y0=14,allVisible=true);t.submit();t.output(expected=Some(expected));t.verify();t.finish()
+      }
+      info(s"TYPED_COLOR_CLEAR words=$words maskedUpdates=$updates pixelBytes1x2x3x4x6x8x12x16=true highestSlotByte65535=true everyRepetitionPhase=true exactPackedNeighbors=true")
+    }
+  }
+  it should "drain cancelled accepted maintenance writes before releasing the pass and allow healthy reuse" in {
+    simulate(new TypedTileColorStore()){d=>val t=new Driver(d)
+      for(delay<-Seq(0,1)){
+        t.prepare(Vector(View("RGB32F",64)));t.begin()
+        d.io.maintenance.poke(true.B);d.io.memory.bits.address.poke(8.U);d.io.memory.bits.write.poke(true.B)
+        d.io.memory.bits.fill.poke(false.B);d.io.memory.bits.data.poke(BigInt("deadbeef",16).U);d.io.memory.bits.byteMask.poke(3.U)
+        d.io.memory.valid.poke(true.B);t.until(d.io.memory.ready.peek().litToBoolean);t.tick();d.io.memory.valid.poke(false.B)
+        for(_<-0 until delay)t.tick()
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+        t.until(d.io.reply.valid.peek().litToBoolean);d.io.reply.bits.fault.expect(true.B)
+        val held=d.io.reply.bits.peek().litValue
+        for(_<-0 until 5){t.tick();assert(d.io.reply.bits.peek().litValue==held);d.io.completion.valid.expect(false.B);d.io.begin.ready.expect(false.B)}
+        d.io.reply.ready.poke(true.B);t.tick();d.io.reply.ready.poke(false.B);d.io.maintenance.poke(false.B);t.finish(4,true)
+        t.prepare(Vector(View("RGB32F",64)));t.begin();assert(t.maintenance(8)._1==t.word(8))
+        assert(!t.maintenance(8,true,BigInt("aa",16),1)._4);t.model(64)=0xaa
+        assert(t.maintenance(8)._1==t.word(8));t.finish()
+      }
+      info("TYPED_COLOR_MAINTENANCE_CANCEL acceptedPhases=2 heldFaultReply=true passRetained=true healthyMaskedReuse=true")
+    }
+  }
   it should "store all36 typed formats with four MRT views, clear tags, channel masks and visibility-qualified MSAA samples" in {
     simulate(new TypedTileColorStore()){d=>val t=new Driver(d);var total=0
       for((group,index)<-names.grouped(4).zipWithIndex){var offset=64

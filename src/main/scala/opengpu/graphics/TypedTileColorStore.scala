@@ -42,6 +42,27 @@ class TypedTileColorRefillReply extends Bundle {val data=UInt(64.W);val fault=Bo
 
 /** Shared preflight before any color or depth/stencil side effect. */
 object TypedTileColorRules {
+  /** Byte repetition for the supported 1/2/3/4/6/8/12/16-byte encodings.
+    * Base-four digits have weight one modulo three. Reduce their bounded sum,
+    * then combine its residue with the low one/two bits for six/twelve bytes.
+    * This avoids a general variable divider on the row-to-clear-data path.
+    */
+  def clearIndex(offset: UInt,bytes: UInt,b: Int): UInt={
+    def sumTree(xs: Seq[UInt]): UInt=if(xs.size==1)xs.head else{
+      val (a,c)=xs.splitAt(xs.size/2);sumTree(a)+&sumTree(c)
+    }
+    val digits=(0 until offset.getWidth by 2).map(i=>offset(math.min(i+1,offset.getWidth-1),i))
+    val sum=sumTree(digits);val maximum=digits.map(d=>(1<<d.getWidth)-1).sum
+    val r3=MuxCase(sum(1,0),(1 to maximum/3).reverse.map(k=>(sum>=(k*3).U)->(sum-(k*3).U)(1,0)))
+    val r6=Mux(r3(0)===offset(0),r3,r3+&3.U)
+    val step=(r3-offset(1,0))(1,0)
+    val r12=(r3+&(step+&(step<<1)))(3,0)
+    val start=MuxLookup(bytes,0.U(4.W))(Seq(1.U->0.U,2.U->offset(0),3.U->r3,4.U->offset(1,0),
+      6.U->r6,8.U->offset(2,0),12.U->r12,16.U->offset(3,0)))
+    val increment=MuxLookup(bytes,0.U(4.W))(Seq(1,2,3,4,6,8,12,16).map(n=>n.U->(b%n).U(4.W)))
+    val total=start+&increment
+    Mux(total>=bytes,total-bytes,total)(3,0)
+  }
   def ends(d: TypedTileColorDescriptor): Seq[UInt]=d.colors.map(v=>v.offset+&((1.U(18.W)<<((d.tileLog2<<1)+&d.sampleMode))*TypedColorFormat.bytes(v.format)))
   def invalid(d: TypedTileColorDescriptor,p: TypedTileColorConfig): Bool={
     val edge=1.U(6.W)<<d.tileLog2;val end=ends(d)
@@ -83,7 +104,7 @@ class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlac
   })
   private object State extends ChiselEnum {
     val idle,validate,clearNext,clearEncode,active,checkQuad,lane,nextLocation,encode,waitEncode,sample,word,read,readReply,refillWait,write,
-      blendReadWord,blendGather,blendOffer,blendWait,blendEncode,locationDone,quadDone,emit,maintenance,maintenanceRead,maintenanceReply,finish,complete=Value
+      blendReadWord,blendGather,blendOffer,blendWait,blendEncode,locationDone,quadDone,emit,maintenance,maintenanceRead,maintenanceWrite,maintenanceReply,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTileColorDescriptor);private val input=Reg(new TypedTileColorQuad)
   private val output=Reg(new TypedTileColorQuadCompletion);private val result=Reg(new TypedTileColorCompletion)
@@ -130,7 +151,7 @@ class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlac
       val selected=v.enabled && (address<<3)>=v.offset && (address<<3)<(v.offset+&spans(c))
       // Repetition continues across64-bit boundaries for3/6/12-byte pixels.
       val bytes=Mux(TypedColorFormat.valid(v.format),TypedColorFormat.bytes(v.format),1.U);val data=Wire(Vec(8,UInt(8.W)))
-      for(b<-0 until 8){val index=(offset+b.U)%bytes;data(b):=(clearValues(c)>>(index(3,0)<<3))(7,0)}
+      for(b<-0 until 8){val index=TypedTileColorRules.clearIndex(offset,bytes,b);data(b):=(clearValues(c)>>(index<<3))(7,0)}
       when(selected){available:=v.loadOp=/=AttachmentLoadOp.load.U;load:=v.loadOp===AttachmentLoadOp.load.U
         value:=Mux(v.loadOp===AttachmentLoadOp.clear.U,data.asUInt,0.U)}
     }
@@ -251,16 +272,21 @@ class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlac
           maintenanceResult.fault:=true.B;phase:=State.maintenanceReply
         }.elsewhen(valid(row)){readEnable:=true.B;phase:=State.maintenanceRead}
           .otherwise{oldData:=value;maintenanceResult.available:=available
-            when(maintenanceRequest.write){when(available || maintenanceRequest.byteMask===255.U){phase:=State.maintenanceReply
+            when(maintenanceRequest.write){when(available || maintenanceRequest.byteMask===255.U){phase:=State.maintenanceWrite
               val mask=Cat((0 until 8).reverse.map(b=>Fill(8,maintenanceRequest.byteMask(b))))
-              writeEnable:=true.B;memoryWriteData:=(value& ~mask)|(maintenanceRequest.data&mask);valid:=valid|mark(row);when(!maintenanceRequest.fill){dirty:=dirty|mark(row)}
+              writeData:=(value& ~mask)|(maintenanceRequest.data&mask)
             }.otherwise{maintenanceResult.fault:=true.B;phase:=State.maintenanceReply}}
             .otherwise{maintenanceResult.data:=value;phase:=State.maintenanceReply}}
       }
       is(State.maintenanceRead){
         maintenanceResult.available:=true.B;maintenanceResult.data:=memoryReadData
         when(maintenanceRequest.write){val mask=Cat((0 until 8).reverse.map(b=>Fill(8,maintenanceRequest.byteMask(b))))
-          writeEnable:=true.B;memoryWriteData:=(memoryReadData& ~mask)|(maintenanceRequest.data&mask);dirty:=dirty|mark(row)}
+          writeData:=(memoryReadData& ~mask)|(maintenanceRequest.data&mask)}
+        phase:=Mux(maintenanceRequest.write,State.maintenanceWrite,State.maintenanceReply)
+      }
+      is(State.maintenanceWrite){
+        writeEnable:=true.B;valid:=valid|mark(row)
+        when(!maintenanceRequest.fill){dirty:=dirty|mark(row)}
         phase:=State.maintenanceReply
       }
       is(State.maintenanceReply){when(io.reply.fire){maintenanceOwned:=false.B;phase:=Mux(stop,State.finish,State.active)}}
