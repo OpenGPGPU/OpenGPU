@@ -113,6 +113,13 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.NativeTypedGraphicsJobReader(),stageArgs,firtoolArgs)
       case "mobile-window-record-transfer" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.WindowPrimitiveRecordTransfer(),stageArgs,firtoolArgs)
+      case "mobile-vertex-bin" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexBinPipeline(mobile.execution,
+          shared=opengpu.system.SharedCuShaderConfig(mobile.computeUnits),g=GraphicsConfig(screenWidth=1280,screenHeight=720),
+          engines=mobile.tileEngines,pageBytes=mobile.binPageBytes,writeCredits=mobile.binWriteCredits,
+          tileSlots=mobile.binTileSlots,pagedCapacity=mobile.binDirectoryTiles,useSramBlackBoxes=true,
+          payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-window-bin-producer" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.WindowPrimitiveBinProducer(),stageArgs,firtoolArgs)
       case "mobile-window-bin-replay" =>

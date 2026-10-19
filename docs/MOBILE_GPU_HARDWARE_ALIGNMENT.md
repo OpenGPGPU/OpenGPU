@@ -4789,3 +4789,72 @@ reset/publication integration remain open. Indexed-vertex post-transform reuse,
 continuation lifetimes, guard-band reconstruction, resource-table provenance,
 production storage/rate qualification and the original H0–H8 gates remain open.
 PPA evaluation remains **synthesis only**.
+
+## Shared-CU vertex draw ownership for general bins
+
+The [vertex/bin checkpoint](performance/mobile-vertex-bin-pipeline-2026-10-20.json)
+adds `VertexBinPipeline`, connecting actual GPU vertex input and shared-CU
+execution through assembly, clipping and viewport preparation to the general
+record/bin/replay path. A pass accepts multiple ordered draw snapshots; every
+window part receives a pass-wide sequence while retaining its original
+draw-local sequence, clipped part, instance and provoking metadata. Raster
+state, immutable fragment-state handle and token belong to the producing draw.
+Replay does not re-execute the vertex shader for another tile.
+
+The [draw/ownership contract](VERTEX_BIN_PIPELINE.md) checks pass identity,
+raster/viewport/topology encoding and known vertex input/index/scratch aliases
+against writable record/page/directory arenas before source start. The scratch
+check includes its uniform tail. General code, texture and immutable fragment
+state allocation provenance remains external. A successful draw result waits
+for source retirement and its final record store/bin append acknowledgements.
+Pass completion also waits for all replay records, tile results and queued
+memory acknowledgements; it does not retire downstream pixels or publish an
+image. Empty untouched geometry bins produce no tile result.
+
+The owner preserves primary source attribution and the failing draw ordinal.
+Source cancellation caused by a bin failure cannot replace that bin status.
+A replay fault after draw retirement leaves the draw attribution explicitly
+unavailable. Cancellation retains accepted child controls and offered source
+parts, tasks, payload leases, record outputs and tile results through drain.
+The payload context is captured at pass begin. Connecting `graphicsDrained`
+to the owner keeps the actual shared system's VM boundary held after source
+payload release and through held draw/pass results.
+
+All **27 checks across five suites** pass on **594 frozen source files**.
+Ten new owner checks execute real shared-CU indexed/instanced kernels with
+local and global payloads. Each three-draw profile shades **54 source vertices
+in nine tasks**, prepares **24 window parts** and replays **54 exact ordered
+tile references**. Replay launches no additional vertex task. The independent
+clip/viewport oracle checks generated vertices, smooth/flat values, metadata,
+local coordinates, reciprocal W, exact fixed coordinates and depth. One replay
+engine continues while another holds its record, with payload storage already
+released and the system VM boundary still owned.
+
+Seven ordered draws cover all seven topologies, two instances and indexed
+restart: **82 prepared parts, 240 exact references and 22 vertex tasks**.
+Restart flushes partial batches of 3/8/1/6 vertices in one draw; the other six
+draws use three batches each. Other checks cover empty pass/input/viewport,
+draw/end priority, eight admission failures before source access, three nested
+source faults and four bin/record failures with healthy reuse. A delayed final
+record acknowledgement prevents early draw completion after payload release.
+Pool cancellation interrupts both pre-admission work and a live shader lease
+with an instruction fill held. Replay cancellation retains held records and
+tile results. Seventeen unchanged record/bin/vertex-source regressions pass.
+
+Runtime uses four lanes, two warps, two implemented varying slots (one active)
+and two available CUs. The sequential vertex client uses CU0 in these fixtures;
+this is not an occupancy/rate result. The default 16-lane/eight-warp Mobile
+emission has four external shared-CU ports, 16 varying slots, two replay engines
+and a 16,384-entry paged directory. Its **147 RTL files** include fourteen
+characterized 256x64 and two 256x32 SRAM macros (**30 KiB**) plus additional
+private/control registers. Existing clipping/viewport math supplies two FMA
+units and two dividers. No CU or shared payload store is instantiated inside
+this owner. These are structural counts, not synthesis PPA or total Mobile
+storage-budget closure.
+
+Immutable fragment-state fetching, multi-engine raster/fragment/typed image
+execution, native GPU-memory admission, general allocation/resource permissions,
+host MMU/reset integration and acknowledged image publication remain open.
+Indexed-vertex reuse, continuation lifetimes, guard-band/qualifier/numeric and
+texture/resource semantics, production budgets/rates and the original H0–H8
+qualification gates also remain open. PPA remains **synthesis only**.

@@ -102,6 +102,8 @@ and all shader/image resource bindings until every replay engine, raster/FS
 consumer and image publication acknowledgement has retired. This stream pass
 completion proves its own bin/record drain; it does not prove downstream pixel
 retirement or backing-image publication. All outputs of a failed pass must be
-discarded. Native GTJ1 admission, general vertex-to-bin draw ownership,
-fragment-state fetching, multi-engine typed rendering and VM/reset integration
-remain required before this path can replace native per-tile vertex execution.
+discarded. [VertexBinPipeline](VERTEX_BIN_PIPELINE.md) now supplies actual
+shared-CU vertex-to-bin draw ownership and retains source/payload/VM drain.
+Native GTJ1 admission, fragment-state fetching, multi-engine typed rendering
+and enclosing VM/reset/publication integration remain required before this
+path can replace native per-tile vertex execution.
