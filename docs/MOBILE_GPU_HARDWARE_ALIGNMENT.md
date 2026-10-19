@@ -4247,3 +4247,60 @@ transfers, native host/bin/pass ownership and connection to the general shader
 pipeline remain open. This checkpoint supplies component correctness and an RTL
 storage audit; it supplies no new throughput or PPA result. PPA acceptance remains
 **synthesis only**, and the wider H0–H8 development goal remains open.
+
+### Shared-CU shaders in a resident typed tile pass, 2026-10-19
+
+The [typed tile render checkpoint](performance/mobile-typed-tile-render-2026-10-19.json)
+connects GPU vertex fetching, shared-CU vertex execution, clipping/viewport,
+triangle raster/interpolation and shared-CU fragment execution to late typed
+sample tests and four resident color views. A pass binds one tile; multiple
+ordered draws share its attachment contents until explicit end or failure.
+Draw completion waits for every accepted pixel result, so a younger draw cannot
+overtake a held depth/stencil/color update. Empty shader sources and empty scissors
+retire without resetting attachments.
+
+Pass identity, attachment layout and payload contexts are captured at begin.
+Each draw snapshots its shader and front/back test state. Admission checks pass
+identity, sample count, selected color types and the effective screen/scissor
+rectangle before shader access. Raster zero/oversize screen dimensions use the
+same elaboration-limit fallback as the existing rasterizer when checking bounds.
+A nonempty effective rectangle must fit inside the bound tile; a scissor can
+restrict a larger screen to that tile. This owner handles one tile and does not
+replace the native bin scheduler or expose a framebuffer address ABI.
+
+Final shader coverage, discard and optional depth override feed the pixel owner.
+The pixel owner applies late stencil/depth tests before typed color storage.
+A retained quad packet carries the accepted draw state through downstream
+backpressure. Captured packets remain irrevocable across cancellation; further
+source exports drain with an explicit dropped count. Pixel failure cancels the
+shader source, shader failure cancels the pixel owner, and first fault details
+survive the resulting cancellation. Held pixel, draw and pass completions are
+immutable. Child memory/refill traffic, payload pins and queued task launches
+must drain before pass completion. The enclosing VM context remains busy through
+held completions and between draws, even after the payload pool becomes empty.
+
+All **38 checks** pass on a frozen **560-source** archive, including seven new
+integration checks. The record covers real two-CU execution with local and global payloads,
+indexed/instanced vertices and four mixed normalized/integer/floating color targets
+at 1x and 4x. Repeated draws exercise retained depth, rejection, shader depth
+override and discard, and compare final attachment words with independent raster,
+interpolation, quantization and byte-level models. Clear-start draws require no
+attachment refills. Other checks cover load refill, reverse pixel fault
+propagation, source faults, empty work, tile/scissor admission, simultaneous last
+draw/end, pulsed cancellation and a one-slot payload pool where fragment spilling
+progresses while a vertex release is held.
+
+The default owner retains one existing vertex/fragment pipeline and one typed
+pixel backend, with a shared external CU/payload interface. Attachment data remains
+32 KiB, with 34 KiB of existing geometry/fragment private SRAM: **33 characterized
+256x64 macros, 66 KiB total**. The 25 logical SRAM wrappers can span multiple
+physical macros. The **149-file** RTL audit retains the existing three fixed-function
+FMA/divider pairs for clipping, viewport and interpolation. It adds no shader
+arithmetic lane or duplicate CU/payload pool. Packet, descriptor, bitmap and control
+registers are additional. These structural counts are not synthesis PPA
+measurements; PPA screening remains synthesis only.
+
+Native host/bin/pass descriptors, backing attachment transfers and publication,
+format-aware blending/dithering/resolve, resource/alias validation, broader
+primitive/texture support and the original H0–H8 gates remain open. This internal
+composition supplies neither API closure nor a new throughput or frame-rate claim.
