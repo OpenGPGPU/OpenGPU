@@ -164,6 +164,11 @@ Use SRAM macros or characterized SRAM models for tile and cache arrays. Include 
 
 ## Capability closure contract
 
+The [source-linked capability inventory](MOBILE_GPU_CAPABILITY_MATRIX.md) records
+the current partial interfaces, unimplemented contracts and required evidence
+for H0–H8. It is an initial implementation inventory; its grouped rows still
+require individual format, operation and limit cases before capability closure.
+
 The first hardware feature matrix should trace each GLES 3.0 requirement to native hardware, CU-executed support, or an explicit unsupported milestone. Selected minimum limits include four draw buffers, 16 vertex attributes, 2048-square 2D/cube textures, 256 array layers and a 256-texel 3D dimension. Cover uniforms, shader texture access in both stages, varying precision, integer operations, required formats, transform feedback, queries and synchronization in the complete matrix. [GLES 3.0 specification](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf)
 
 Architectural capacity does not require fully parallel hardware for each binding. Descriptor tables and serialized operations may satisfy functional capacity while a smaller number of texture/filter/pixel pipelines provide throughput. Hardware capabilities must describe implemented limits accurately; Mesa exposure and conformance follow as a separate integration effort.
