@@ -66,10 +66,11 @@ class VectorTextureRequest(config: GpuConfig) extends Bundle {
 /** Connected RVV backend with per-warp configuration and writeback. */
 class VectorBackend(
   config: GpuConfig = GpuConfig(),
-  useBlackBox: Boolean = false
+  useBlackBox: Boolean = false, helperInvocations: Boolean = false
 ) extends Module {
   private val vectorWidth = config.lanes * config.xLen
   val io = IO(new Bundle {
+    val invocations = if(helperInvocations)Some(Input(Vec(config.warps,new opengpu.core.memory.WarpInvocationPolicy(config))))else None
     val in = Flipped(Decoupled(new VectorDecodeResponse(config)))
     val scalarRead = Output(new ScalarRegisterRead(config))
     val scalarRs1Data = Input(UInt(config.xLen.W))
@@ -112,7 +113,7 @@ class VectorBackend(
   private val reduceAlu = Module(new VectorFReduceAlu(config))
   private val divAlu = Module(new VectorFdivAlu(config))
   private val configuration = Module(new VectorConfigurationUnit(config))
-  private val memory = Module(new VectorMemoryUnit(config))
+  private val memory = Module(new VectorMemoryUnit(config,helperInvocations=helperInvocations))
   private val writebackArbiter =
     Module(new RRArbiter(new VectorCommitRequest(config), 12))
   private val completionQueue =
@@ -144,6 +145,7 @@ class VectorBackend(
   io.scalarFpRead := issue.io.scalarFpRead
   issue.io.scalarFpData := io.scalarFpData
   issue.io.scalarFpBusy := io.scalarFpBusy
+  if(helperInvocations)memory.io.invocations.get:=io.invocations.get
   io.memoryRequest <> memory.io.memoryRequest
   memory.io.memoryResponse <> io.memoryResponse
 

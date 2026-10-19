@@ -8,6 +8,7 @@ import opengpu.config.GpuConfig
   * dimensions count work-items within each workgroup.
   */
 class KernelLaunch(config: GpuConfig) extends Bundle {
+  val invocations = new opengpu.core.memory.KernelInvocationPolicy(config)
   val kernelPc = UInt(config.xLen.W)
   val kernargAddress = UInt(config.xLen.W)
   val gridSize = Vec(3, UInt(32.W))
@@ -15,6 +16,7 @@ class KernelLaunch(config: GpuConfig) extends Bundle {
 }
 
 class WorkgroupTask(config: GpuConfig) extends Bundle {
+  val invocations = new opengpu.core.memory.KernelInvocationPolicy(config)
   val kernelPc = UInt(config.xLen.W)
   val kernargAddress = UInt(config.xLen.W)
   val gridSize = Vec(3, UInt(32.W))
@@ -24,6 +26,7 @@ class WorkgroupTask(config: GpuConfig) extends Bundle {
 
 /** A contiguous group of lanes belonging to one logical warp. */
 class WarpTask(config: GpuConfig) extends Bundle {
+  val invocations = new opengpu.core.memory.WarpInvocationPolicy(config)
   val kernelPc = UInt(config.xLen.W)
   val kernargAddress = UInt(config.xLen.W)
   val gridSize = Vec(3, UInt(32.W))

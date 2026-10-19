@@ -20,10 +20,11 @@ class ScalarMemoryFault(config: GpuConfig) extends Bundle {
 
 class ScalarMemoryUnit(
   config: GpuConfig = GpuConfig(),
-  lineBytes: Int = 64
+  lineBytes: Int = 64, helperInvocations: Boolean = false
 ) extends Module {
   private val offsetWidth = log2Ceil(lineBytes)
   val io = IO(new Bundle {
+    val invocations=if(helperInvocations)Some(Input(Vec(config.warps,new WarpInvocationPolicy(config))))else None
     val in = Flipped(Decoupled(new ScalarIssuedInstruction(config)))
     val cacheRequest = Decoupled(new VectorCacheLineRequest(config, lineBytes))
     val cacheResponse = Flipped(Decoupled(new VectorCacheLineResponse(lineBytes)))
@@ -38,6 +39,7 @@ class ScalarMemoryUnit(
   private val instruction = Reg(new ScalarIssuedInstruction(config))
   private val address = Reg(UInt(config.xLen.W))
   private val misaligned = Reg(Bool())
+  private val suppressed = RegInit(false.B)
   private val response = Reg(new VectorCacheLineResponse(lineBytes))
 
   private val funct3 = instruction.decode.instruction(14, 12)
@@ -62,7 +64,7 @@ class ScalarMemoryUnit(
   ))
 
   io.in.ready := state === State.idle
-  io.cacheRequest.valid := state === State.request && !misaligned
+  io.cacheRequest.valid := state === State.request && !misaligned && !suppressed
   io.cacheRequest.bits.warpId := instruction.decode.warpId
   io.cacheRequest.bits.lineAddress :=
     Cat(address(config.xLen - 1, offsetWidth), 0.U(offsetWidth.W))
@@ -99,7 +101,11 @@ class ScalarMemoryUnit(
     instruction := io.in.bits
     val effectiveAddress = io.in.bits.rs1Data + io.in.bits.decode.decoded.immediate
     address := effectiveAddress
+    response:=0.U.asTypeOf(response)
     val requestSize = io.in.bits.decode.instruction(13, 12)
+    suppressed:=(if(helperInvocations)io.in.bits.decode.decoded.memoryWrite &&
+      !HelperInvocationPolicy.store(config,HelperInvocationPolicy.select(io.invocations.get,io.in.bits.decode.warpId),io.in.bits.decode.activeMask,effectiveAddress,1.U(4.W)<<requestSize)
+      else false.B)
     misaligned := MuxLookup(requestSize, false.B)(Seq(
       1.U -> effectiveAddress(0),
       2.U -> effectiveAddress(1, 0).orR
@@ -107,7 +113,8 @@ class ScalarMemoryUnit(
     state := State.request
   }
   when(state === State.request) {
-    when(misaligned) { state := State.fault }
+    when(suppressed){state:=State.commit}
+      .elsewhen(misaligned) { state := State.fault }
       .elsewhen(io.cacheRequest.fire) { state := State.response }
   }
   when(io.cacheResponse.fire) {

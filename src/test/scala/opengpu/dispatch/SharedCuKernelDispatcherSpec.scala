@@ -13,6 +13,9 @@ class SharedCuKernelDispatcherSpec extends AnyFlatSpec {
 
   private def task(port: DecoupledIO[TaggedKernelLaunch], id: Int): Unit = {
     port.bits.commandId.poke(id.U)
+    port.bits.launch.invocations.helpers.poke(((id*37+11)&255).U)
+    port.bits.launch.invocations.privateBase.poke((0x8000+id*64).U)
+    port.bits.launch.invocations.privateBytes.poke(288.U)
     port.bits.launch.kernelPc.poke((0x1000 + id * 4).U)
     port.bits.launch.kernargAddress.poke((0x8000 + id * 64).U)
     for (d <- 0 until 3) {
@@ -94,6 +97,10 @@ class SharedCuKernelDispatcherSpec extends AnyFlatSpec {
             val cu = (0 until count).find(i => dut.io.cuLaunch(i).valid.peek().litToBoolean).get
             assert(running(cu).isEmpty)
             dut.io.cuLaunch(cu).bits.kernelPc.expect((0x1000 + next(owner) * 4).U)
+            val policy=dut.io.cuLaunch(cu).bits.invocations
+            policy.helpers.expect((if(owner==0)0 else (next(owner)*37+11)&255).U)
+            policy.privateBase.expect((if(owner==0)0 else 0x8000+next(owner)*64).U)
+            policy.privateBytes.expect((if(owner==0)0 else 288).U)
             val success = (next(owner) % 5) != 0
             running(cu) = Some(Running(owner == 1, next(owner), success, rng.nextInt(6) + 1))
             pending((owner == 1, next(owner))) = success

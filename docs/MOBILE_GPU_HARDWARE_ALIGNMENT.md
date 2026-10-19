@@ -3902,3 +3902,79 @@ physical allocation, point/line and guard-band rasterization, centroid/sample
 qualifiers, per-sample depth and polygon offset, complete built-ins, numeric/
 invariance qualification, formats/resources, queries/watchdog behavior and the
 remaining H0-H8 requirements remain open.
+
+
+### Helper invocation side-effect policy on the shared CUs, 2026-10-19
+
+The [helper-invocation checkpoint](performance/mobile-helper-invocations-2026-10-19.json)
+adds trusted launch metadata for a workgroup helper bitmap and a bounded private
+scratch/payload range. Dispatch splits the bitmap by logical warp and masks tail
+bits; physical warp initialization snapshots the resulting policy in `GpuCore`.
+Helpers remain active for normal instructions, loads and existing quad exchange.
+Execution masks and register/derivative participation are not replaced with
+coverage masks. Memory instructions snapshot policy before offering a request.
+
+Vector stores filter helper lanes after effective-address formation and before
+local/global routing, coalescing and translation. An all-suppressed store retires
+without an external request. Returned fault masks include only lanes sent to
+memory. Scalar integer/FP stores issue when the instruction has an active real
+invocation; helper-only paths suppress external stores before alignment or
+translation faults. Whole accesses inside the trusted private range can still
+write spills and per-invocation outputs. Overflowed ranges and ranges overlapping
+the CU shared-memory window grant no private exception. Helper-only local/global
+scalar AMOs retire without a request and return an internal zero value. Real
+invocations retain the existing AMO behavior; this is not a new per-lane atomic
+ISA or a complete graphics atomic-resource implementation.
+
+The private range must come from validated owner storage and must not alias
+externally visible buffer/image/framebuffer resources. It is an internal spill/
+payload exception, not a general writable-resource binding. Invocation-private
+addressing remains a compiler/owner contract. Native fragment
+workers derive helper masks from their covered-lane records and snapshot the
+existing nine-array kernarg prefix as private state. Serial and parallel launch
+paths carry that policy without changing kernarg offsets. Host compute queues
+clear graphics invocation metadata, including raw compute entries to the shared
+CU dispatcher. Host MMIO registers, instruction encodings, shader register
+preloads and the sibling compiler's ISA contract remain unchanged.
+
+This implements the hardware plan's separation of helper execution and memory
+side effects. The later [GLSL ES 3.20 helper-invocation rules](https://registry.khronos.org/OpenGL/specs/es/3.2/GLSL_ES_Specification_3.20.html)
+also describe suppressed image/buffer stores and atomics; no ES 3.20 capability
+or conformance claim follows from this checkpoint. Dynamic discard/demotion,
+shader-visible helper built-ins, resource tables and broader divergent-control/
+fault semantics remain open.
+
+Policy tests cover scalar/FP private boundaries, suppressed misaligned external
+stores, normal helper loads, active-path masks, indexed/strided/byte/halfword
+vector stores, filtered faults, private/shared overlap, wrapped ranges, snapshots
+and held replies. They exercise all nine scalar AMO operations on local/global
+paths, tail warps, a non-power-of-two warp count and the default 128-bit helper
+bitmap. Actual four-lane/two-warp CUs execute mixed, all-helper, whole-helper-warp
+and helper-free kernels in both SRAM and memory-backed private modes. Every
+helper contributes to existing quad exchange and writes its private outputs,
+while external vector stores, scalar/FP stores and AMOs follow the real masks.
+Kernel reuse, held completion and absence of local-payload VM leakage are checked.
+A fragment producer check overlaps two batches with masks `0x2a`/`0xa5`, verifies
+288-byte private prefixes and bank snapshots, and retires nine covered outputs.
+Native shared-CU payload tests retain cancellation/fault/release ownership; host
+compute/graphics dispatcher tests check trusted policy routing and compute
+sanitization.
+
+All 42 frozen core/dispatch/memory checks and 28 native fragment/routing checks
+pass, with a 544-source archive. Default CU/renderer emissions audit 271 and
+205 files and verify all four worker policy connections. The native checks used
+unchanged hardware/test sources; the later archive adds vector policy cases
+covered by the 42-check run. The
+default CU has eight per-warp policy records of 16 helper bits plus two 32-bit
+bounds (**640 register bits**), with dispatch/queue/instruction snapshots and
+combinational checks additional. No SRAM array, arithmetic lane or private CU
+is added for the policy. The programmable renderer emission retains four
+fragment workers using the shared pool. These are RTL audits; synthesis PPA,
+production register/timing/power budgets and sustained rates remain open.
+PPA screening remains synthesis only.
+
+General FP32 fragment-input shader delivery, native bin/geometry/fragment
+ownership, physical allocation/alias validation, general image/buffer resources,
+point/line/guard-band rasterization, qualifier and built-in closure, dynamic
+invocation termination, precision/invariance, queries/transform feedback and
+remaining H0-H8 requirements remain open.

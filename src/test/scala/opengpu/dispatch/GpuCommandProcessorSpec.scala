@@ -32,6 +32,9 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
                            dmaSource: Int = 0,
                            dmaDescriptorId: Int = 0): Unit = {
     dut.io.command.bits.commandId.poke(id.U)
+    dut.io.command.bits.launch.invocations.helpers.poke(0xff.U)
+    dut.io.command.bits.launch.invocations.privateBase.poke(0x9000.U)
+    dut.io.command.bits.launch.invocations.privateBytes.poke(4096.U)
     dut.io.command.bits.launch.kernelPc.poke(pc.U)
     dut.io.command.bits.launch.kernargAddress.poke(kernarg.U)
     dut.io.command.bits.waitForDma.poke(waitForDma.B)
@@ -83,6 +86,9 @@ class GpuCommandProcessorSpec extends AnyFlatSpec {
       dut.io.dispatch.valid.expect(true.B)
       dut.io.dispatch.bits.commandId.expect(3.U)
       dut.io.dispatch.bits.launch.kernelPc.expect(0x1000.U)
+      dut.io.dispatch.bits.launch.invocations.helpers.expect(0.U)
+      dut.io.dispatch.bits.launch.invocations.privateBase.expect(0.U)
+      dut.io.dispatch.bits.launch.invocations.privateBytes.expect(0.U)
 
       dut.io.dispatch.ready.poke(true.B)
       dut.clock.step()

@@ -38,7 +38,8 @@ import opengpu.system.{SharedCuGraphicsPort, SharedCuShaderConfig}
 class KernelShaderStage(
   config: GpuConfig = GpuConfig(),
   enableScalarFpu: Boolean = true,
-  sharedShader: Option[SharedCuShaderConfig] = None
+  sharedShader: Option[SharedCuShaderConfig] = None,
+  helperInvocations: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val shared = sharedShader.map { pool =>
@@ -49,6 +50,7 @@ class KernelShaderStage(
     val vectorSatp = Input(UInt(32.W))
     val vectorTlbFlush = Flipped(Valid(new opengpu.core.memory.VectorTlbFlush(config)))
     val launch = new Bundle {
+      val invocations=if(helperInvocations)Some(Input(new opengpu.core.memory.KernelInvocationPolicy(config)))else None
       val valid = Input(Bool())
       val ready = Output(Bool())
       val kernelPc = Input(UInt(config.xLen.W))
@@ -91,6 +93,7 @@ class KernelShaderStage(
     io.launch.ready := cu.io.kernel.ready
     cu.io.kernel.valid := io.launch.valid
     cu.io.kernel.bits := emit.io.kernel
+    if(helperInvocations)cu.io.kernel.bits.invocations:=io.launch.invocations.get
 
     emit.io.kernelPc := io.launch.kernelPc
     emit.io.kernargAddress := io.launch.kernargAddress
@@ -142,6 +145,7 @@ class KernelShaderStage(
     shared.launch.valid := io.launch.valid && !busy
     shared.launch.bits.commandId := 0.U
     shared.launch.bits.launch := emit.io.kernel
+    if(helperInvocations)shared.launch.bits.launch.invocations:=io.launch.invocations.get
     io.launch.ready := shared.launch.ready && !busy
     emit.io.kernelPc := io.launch.kernelPc
     emit.io.kernargAddress := io.launch.kernargAddress

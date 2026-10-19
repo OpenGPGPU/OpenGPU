@@ -174,6 +174,7 @@ class GpuCommandMmio(
   when(submit && resetActive) { resetRejected := true.B }
   queue.io.enq.bits.commandId := commandId(commandIdWidth - 1, 0)
   queue.io.enq.bits.opcode := opcode
+  queue.io.enq.bits.launch.invocations := 0.U.asTypeOf(queue.io.enq.bits.launch.invocations)
   queue.io.enq.bits.launch.kernelPc := kernelPc
   queue.io.enq.bits.launch.kernargAddress := kernarg
   for (axis <- 0 until 3) {

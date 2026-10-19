@@ -132,6 +132,7 @@ class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig, stagingTra
   val globalAtomicRequest = Decoupled(new SharedAtomicRequest(config))
   val globalAtomicResponse = Flipped(Decoupled(new SharedAtomicResponse(config)))
   val kernelLaunch = new Bundle {
+    val invocations=Output(new opengpu.core.memory.KernelInvocationPolicy(config))
     val valid = Output(Bool())
     val ready = Input(Bool())
     val kernelPc = Output(UInt(config.xLen.W))
@@ -304,6 +305,7 @@ class KernelFragStage(
   io.texMem.req <> texUnit.io.mem.req
   texUnit.io.mem.resp <> io.texMem.resp
 
+  io.kernelLaunch.invocations:=0.U.asTypeOf(io.kernelLaunch.invocations)
   io.kernelLaunch.kernelPc := 0.U
   io.kernelLaunch.kernargAddress := 0.U
   io.kernelLaunch.gridX := 1.U
@@ -1115,6 +1117,12 @@ class KernelFragStage(
       }
     }
     is(sLaunch) {
+      // Every helper keeps executing for quad derivatives. Its trusted private
+      // prefix permits spills/outputs; external memory effects are suppressed.
+      io.kernelLaunch.invocations.helpers:=VecInit((0 until batchCap).map(i=>
+        i.U<execCount && !fragRecords(execSlot)(i/4).lanes(i%4).covered)).asUInt
+      io.kernelLaunch.invocations.privateBase:=slotKernarg(execSlot)
+      io.kernelLaunch.invocations.privateBytes:=(9*arrayStride).U
       io.kernelLaunch.kernelPc := slotShaderPc(execSlot)
       io.kernelLaunch.kernargAddress := slotKernarg(execSlot)
       io.kernelLaunch.localX := execCount

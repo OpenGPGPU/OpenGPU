@@ -31,7 +31,7 @@ private class KernelFragPayloadHarness(lanes: Int=4,warps: Int=2,capacity: Int=1
     val globalStaging=Output(Bool())
   })
   private val frag=Module(new KernelFragStage(cfg,GraphicsConfig(),2,true,Some(p),0))
-  private val shader=Module(new KernelShaderStage(cfg,false,Some(SharedCuShaderConfig(1))))
+  private val shader=Module(new KernelShaderStage(cfg,false,Some(SharedCuShaderConfig(1)),helperInvocations=true))
   private val system=Module(new GpuSystem(cfg,numComputeUnits=1,graphicsHostTransactions=2,
     enableGraphicsKernels=true,instructionCacheSets=4,instructionCacheWays=1,
     vectorCacheSets=4,vectorCacheWays=1,shaderPayload=Some(p)))
@@ -46,6 +46,7 @@ private class KernelFragPayloadHarness(lanes: Int=4,warps: Int=2,capacity: Int=1
   tie(frag.io);tie(shader.io);tie(system.io)
   KernelFragFrontendIO.connect(io.front,frag.io)
   shader.io.shared.get<>system.io.graphicsKernels.get
+  shader.io.launch.invocations.get:=frag.io.kernelLaunch.invocations
   shader.io.launch.valid:=frag.io.kernelLaunch.valid
   frag.io.kernelLaunch.ready:=shader.io.launch.ready
   shader.io.launch.kernelPc:=frag.io.kernelLaunch.kernelPc

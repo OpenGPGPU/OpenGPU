@@ -58,7 +58,7 @@ class KernelFragStageWithKernel(
   })
 
   private val frag = Module(new KernelFragStage(config, gfxConfig))
-  private val kernel = Module(new KernelShaderStage(config))
+  private val kernel = Module(new KernelShaderStage(config,helperInvocations=true))
   kernel.io.instructionSatp := 0.U
   kernel.io.instructionTlbFlush := 0.U.asTypeOf(kernel.io.instructionTlbFlush)
   kernel.io.vectorSatp := 0.U
@@ -93,6 +93,7 @@ class KernelFragStageWithKernel(
   io.texMem <> frag.io.texMem
 
   // Connect kernel internally: frag's kernel ports <-> kernel's IO
+  kernel.io.launch.invocations.get:=frag.io.kernelLaunch.invocations
   kernel.io.launch.valid := frag.io.kernelLaunch.valid
   kernel.io.launch.kernelPc := frag.io.kernelLaunch.kernelPc
   kernel.io.launch.kernargAddress := frag.io.kernelLaunch.kernargAddress

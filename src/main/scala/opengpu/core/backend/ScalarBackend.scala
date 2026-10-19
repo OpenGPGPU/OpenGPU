@@ -35,9 +35,10 @@ import opengpu.core.memory.{
   */
 class ScalarBackend(
   config: GpuConfig = GpuConfig(),
-  useBlackBoxes: Boolean = false
+  useBlackBoxes: Boolean = false, helperInvocations: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
+    val invocations = if(helperInvocations)Some(Input(Vec(config.warps,new opengpu.core.memory.WarpInvocationPolicy(config))))else None
     val in = Flipped(Decoupled(new ScalarDecodeResponse(config)))
     val initialize = Flipped(Decoupled(new ScalarRegisterWrite(config)))
     val redirect = Decoupled(new SimtPath(config))
@@ -72,8 +73,9 @@ class ScalarBackend(
   private val multiply = Module(new MultiplyExecuteStage(config))
   private val divide = Module(new DivideExecuteStage(config))
   private val branch = Module(new ScalarBranchExecuteStage(config))
-  private val memoryUnit = Module(new ScalarMemoryUnit(config))
-  private val atomic = Module(new SharedAtomicExecuteStage(config))
+  private val memoryUnit = Module(new ScalarMemoryUnit(config,helperInvocations=helperInvocations))
+  private val atomic = Module(new SharedAtomicExecuteStage(config,helperInvocations=helperInvocations))
+  if(helperInvocations){memoryUnit.io.invocations.get:=io.invocations.get;atomic.io.invocations.get:=io.invocations.get}
   private val integerAdapter = Module(new IntegerCommitAdapter(config))
   private val multiplyAdapter = Module(new IntegerCommitAdapter(config))
   private val divideAdapter = Module(new IntegerCommitAdapter(config))

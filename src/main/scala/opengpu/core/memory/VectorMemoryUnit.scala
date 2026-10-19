@@ -70,14 +70,16 @@ class VectorMemoryFault(config: GpuConfig) extends Bundle {
   * owns banking, replay, and physical memory timing; architectural completion
   * occurs only after its response.
   */
-class VectorMemoryUnit(config: GpuConfig = GpuConfig()) extends Module {
+class VectorMemoryUnit(config: GpuConfig = GpuConfig(),helperInvocations: Boolean=false) extends Module {
   val io = IO(new Bundle {
+    val invocations=if(helperInvocations)Some(Input(Vec(config.warps,new WarpInvocationPolicy(config))))else None
     val in = Flipped(Decoupled(new VectorMemoryExecuteRequest(config)))
     val memoryRequest = Decoupled(new VectorMemoryTransaction(config))
     val memoryResponse = Flipped(Decoupled(new VectorMemoryResponse(config)))
     val out = Decoupled(new VectorMemoryResult(config))
   })
 
+  private val policy=if(helperInvocations)Some(Reg(new WarpInvocationPolicy(config)))else None
   private val requestValid = RegInit(false.B)
   private val requestBits = Reg(new VectorMemoryExecuteRequest(config))
   private val issued = RegInit(false.B)
@@ -92,6 +94,7 @@ class VectorMemoryUnit(config: GpuConfig = GpuConfig()) extends Module {
   when(io.in.fire) {
     requestValid := true.B
     requestBits := io.in.bits
+    if(helperInvocations)policy.get:=HelperInvocationPolicy.select(io.invocations.get,io.in.bits.warpId)
     issued := false.B
     for (lane <- 0 until config.lanes) {
       val laneNumber = lane.U(config.xLen.W)
@@ -109,14 +112,22 @@ class VectorMemoryUnit(config: GpuConfig = GpuConfig()) extends Module {
     }
   }
 
-  io.memoryRequest.valid := requestValid && !issued
+  private val permitted=if(helperInvocations)VecInit((0 until config.lanes).map { lane=>
+    !requestBits.isStore || !policy.get.helpers(lane) || HelperInvocationPolicy.privateAccess(config,policy.get,precomputedAddresses(lane),1.U(4.W)<<requestBits.elementSize)
+  }).asUInt else Fill(config.lanes,1.U(1.W))
+  private val memoryMask=requestBits.activeMask & permitted
+  private val suppressed=if(helperInvocations)requestBits.isStore && !memoryMask.orR else false.B
+  io.memoryRequest.valid := requestValid && !issued && !suppressed
   io.memoryRequest.bits.warpId := requestBits.warpId
-  io.memoryRequest.bits.laneMask := requestBits.activeMask
+  io.memoryRequest.bits.laneMask := memoryMask
   io.memoryRequest.bits.elementSize := requestBits.elementSize
   io.memoryRequest.bits.isStore := requestBits.isStore
   for (lane <- 0 until config.lanes) {
     io.memoryRequest.bits.addresses(lane) := precomputedAddresses(lane)
     io.memoryRequest.bits.writeData(lane) := requestBits.storeData(lane)
+  }
+  when(requestValid && !issued && suppressed){
+    issued:=true.B;responsePending:=true.B;responseBits:=0.U.asTypeOf(responseBits)
   }
   when(io.memoryRequest.fire) {
     issued := true.B
@@ -139,7 +150,7 @@ class VectorMemoryUnit(config: GpuConfig = GpuConfig()) extends Module {
     outputBits.vd := requestBits.vd
     outputBits.writesVd := !requestBits.isStore
     outputBits.faultMask :=
-      responseBits.faultMask & requestBits.activeMask
+      responseBits.faultMask & memoryMask
     outputBits.pageFault := responseBits.pageFault
     outputBits.isStore := requestBits.isStore
     outputBits.addresses := precomputedAddresses

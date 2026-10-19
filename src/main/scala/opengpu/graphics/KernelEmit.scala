@@ -29,6 +29,7 @@ class KernelEmit(config: GpuConfig = GpuConfig()) extends Module {
     val kernel = new KernelLaunch(config)
   })
 
+  io.kernel.invocations := 0.U.asTypeOf(io.kernel.invocations)
   io.kernel.kernelPc := io.kernelPc
   io.kernel.kernargAddress := io.kernargAddress
   io.kernel.gridSize(0) := io.gridX

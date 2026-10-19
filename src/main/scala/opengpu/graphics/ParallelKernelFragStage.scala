@@ -53,9 +53,10 @@ class ParallelKernelFragStage(
     }
     events(workerId) := worker.io.performance
     executionFaults(workerId) := worker.io.executionFault
-    val shader = Module(new KernelShaderStage(config, graphicsScalarFpu, Some(sharedShader)))
+    val shader = Module(new KernelShaderStage(config, graphicsScalarFpu, Some(sharedShader),helperInvocations=true))
     KernelFragFrontendIO.connect(scheduler.io.workers(workerId), worker.io)
     shader.io.shared.get <> sharedClients(workerId)
+    shader.io.launch.invocations.get:=worker.io.kernelLaunch.invocations
     shader.io.launch.valid := worker.io.kernelLaunch.valid
     worker.io.kernelLaunch.ready := shader.io.launch.ready
     shader.io.launch.kernelPc := worker.io.kernelLaunch.kernelPc
@@ -135,6 +136,7 @@ class ParallelKernelFragStage(
   io.globalAtomicRequest.bits := 0.U.asTypeOf(io.globalAtomicRequest.bits)
   io.globalAtomicResponse.ready := true.B
   io.kernelLaunch.valid := false.B
+  io.kernelLaunch.invocations:=0.U.asTypeOf(io.kernelLaunch.invocations)
   io.kernelLaunch.kernelPc := 0.U
   io.kernelLaunch.kernargAddress := 0.U
   io.kernelLaunch.gridX := 1.U

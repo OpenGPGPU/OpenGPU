@@ -40,6 +40,11 @@ class WorkgroupDispatcher(config: GpuConfig = GpuConfig()) extends Module {
 
   io.workgroup.ready := state === idle
   io.warp.valid := state === active && issuedWarps < totalWarps
+  private val helperSlices=VecInit((0 until config.warps).map(i=>task.invocations.helpers((i+1)*config.lanes-1,i*config.lanes)))
+  private val warpHelpers=if(config.warps==1)helperSlices(0)else helperSlices(issuedWarps(log2Ceil(config.warps)-1,0))
+  io.warp.bits.invocations.helpers := Mux(issuedWarps<config.warps.U,warpHelpers,0.U) & Mux(lastWarp,tailMask,fullMask)
+  io.warp.bits.invocations.privateBase := task.invocations.privateBase
+  io.warp.bits.invocations.privateBytes := task.invocations.privateBytes
   io.warp.bits.kernelPc := task.kernelPc
   io.warp.bits.kernargAddress := task.kernargAddress
   io.warp.bits.gridSize := task.gridSize

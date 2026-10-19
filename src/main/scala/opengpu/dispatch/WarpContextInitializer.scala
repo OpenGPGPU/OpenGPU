@@ -80,6 +80,7 @@ class WarpContextInitializer(config: GpuConfig = GpuConfig()) extends Module {
   }
 
   io.launch.valid := state === launchWarp
+  io.launch.bits.invocations := task.invocations
   io.launch.bits.warpId := warpId
   io.launch.bits.startPc := task.kernelPc
   io.launch.bits.activeMask := task.activeMask

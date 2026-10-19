@@ -47,9 +47,10 @@ private class FpuMappedEntry(config: GpuConfig, tagWidth: Int) extends Bundle {
 
 /** Scalar FP32 backend. FMA, divide, square root, sign/min-max/compare/
   * classify/move, and conversions retire here; FP memory is a separate unit. */
-class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16)
+class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16, helperInvocations: Boolean = false)
     extends Module {
   val io = IO(new Bundle {
+    val invocations = if(helperInvocations)Some(Input(Vec(config.warps,new opengpu.core.memory.WarpInvocationPolicy(config))))else None
     val in = Flipped(Decoupled(new FpuDecodeResponse(config)))
     val redirect = Decoupled(new SimtPath(config))
     val committedWriteback = Valid(new FpuRegisterWrite(config))
@@ -81,7 +82,7 @@ class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16)
   private val exact = Module(new Fp32ExactUnit(tagWidth))
   private val div = Module(new Fp32DivLane(tagWidth))
   private val sqrt = Module(new Fp32SqrtLane(tagWidth))
-  private val memory = Module(new FpuMemoryUnit(config))
+  private val memory = Module(new FpuMemoryUnit(config,helperInvocations=helperInvocations))
   private val fmaMetadata = Module(
     new Queue(new FpuIssuedInstruction(config), 8))
   private val exactMetadata = Module(
@@ -228,6 +229,7 @@ class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16)
   fma.io.flush := io.flush
   div.io.flush := io.flush
   sqrt.io.flush := io.flush
+  if(helperInvocations)memory.io.invocations.get:=io.invocations.get
   io.memoryRequest <> memory.io.cacheRequest
   memory.io.cacheResponse <> io.memoryResponse
   io.memoryFault <> memory.io.fault

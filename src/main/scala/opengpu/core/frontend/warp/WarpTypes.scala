@@ -12,6 +12,7 @@ import opengpu.config.GpuConfig
   * `launch.fire` would mismatch the initialized context.
   */
 class WarpLaunch(config: GpuConfig) extends Bundle {
+  val invocations = new opengpu.core.memory.WarpInvocationPolicy(config)
   val warpId = UInt(config.warpIdWidth.W)
   val startPc = UInt(config.xLen.W)
   val activeMask = UInt(config.lanes.W)

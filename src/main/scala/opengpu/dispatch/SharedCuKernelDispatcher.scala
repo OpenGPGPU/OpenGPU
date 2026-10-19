@@ -64,6 +64,7 @@ class SharedCuKernelDispatcher(
     val credit = outstanding(owner) < numComputeUnits.U
     launches.io.in(owner).valid := port.valid && credit
     launches.io.in(owner).bits := port.bits
+    if(owner==0)launches.io.in(owner).bits.launch.invocations:=0.U.asTypeOf(launches.io.in(owner).bits.launch.invocations)
     port.ready := launches.io.in(owner).ready && credit
   }
 

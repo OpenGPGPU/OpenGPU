@@ -92,6 +92,9 @@ object EmitPpaRtl {
       case "mobile-vertex-raster" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexRasterPipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
+      case "mobile-helper-cu" =>
+        ChiselStage.emitSystemVerilogFile(new GpuComputeUnit(GpuConfig(),useBlackBoxes=true,
+          enableFpuBackend=true,finishOnTrap=true,shaderPayload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-vertex-viewport" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexViewportPipeline(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)

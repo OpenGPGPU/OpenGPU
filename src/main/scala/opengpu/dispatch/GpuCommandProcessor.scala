@@ -55,6 +55,8 @@ class GpuCommandProcessor(
 
   commands.io.enq.valid := io.command.valid && !incomingDuplicate
   commands.io.enq.bits := io.command.bits
+  // Host compute descriptors cannot select graphics helper/private policy.
+  commands.io.enq.bits.launch.invocations := 0.U.asTypeOf(commands.io.enq.bits.launch.invocations)
   io.command.ready := commands.io.enq.ready && !incomingDuplicate
   io.duplicateCommandId := io.command.valid && incomingDuplicate
 

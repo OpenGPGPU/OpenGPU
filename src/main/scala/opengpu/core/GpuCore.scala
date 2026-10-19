@@ -103,8 +103,8 @@ class GpuCore(
   })
 
   private val frontend = Module(new GpuFrontend(config))
-  private val scalar = Module(new ScalarBackend(config, useBlackBoxes))
-  private val vector = Module(new VectorBackend(config, useBlackBoxes))
+  private val scalar = Module(new ScalarBackend(config, useBlackBoxes,helperInvocations=true))
+  private val vector = Module(new VectorBackend(config, useBlackBoxes,helperInvocations=true))
   private val scalarVectorRead =
     Module(new opengpu.core.backend.register.ScalarRegisterFile(config))
   private val scalarFpuRead =
@@ -119,6 +119,12 @@ class GpuCore(
   private val trapArbiter = Module(new CoreTrapArbiter(config))
   private val sharedCachePort = Module(new SharedCacheLinePort(config))
 
+  private val invocationPolicies=RegInit(VecInit(Seq.fill(config.warps)(0.U.asTypeOf(new opengpu.core.memory.WarpInvocationPolicy(config)))))
+  when(io.launch.fire){
+    if(config.warps==1)invocationPolicies(0):=io.launch.bits.invocations
+    else invocationPolicies(io.launch.bits.warpId):=io.launch.bits.invocations
+  }
+  scalar.io.invocations.get:=invocationPolicies;vector.io.invocations.get:=invocationPolicies
   frontend.io.launch <> io.launch
   io.fetchRequest <> frontend.io.fetchRequest
   frontend.io.fetchResponse <> io.fetchResponse
@@ -140,7 +146,8 @@ class GpuCore(
     0.U.asTypeOf(io.committedFpuIntegerWriteback.bits)
 
   if (enableFpuBackend && config.enableFpu) {
-    val fpu = Module(new FpuBackend(config))
+    val fpu = Module(new FpuBackend(config,helperInvocations=true))
+    fpu.io.invocations.get:=invocationPolicies
     fpu.io.in <> frontend.io.fpuOut
     fpu.io.unimplemented.ready := io.fpu.ready
     io.fpu.valid := fpu.io.unimplemented.valid

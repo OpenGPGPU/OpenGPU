@@ -36,6 +36,7 @@ class MultiCuKernelDispatcher(
   for (cu <- 0 until numComputeUnits) {
     io.cuLaunch(cu).valid := io.launch.valid && hasFree && selected === cu.U
     io.cuLaunch(cu).bits := io.launch.bits.launch
+    io.cuLaunch(cu).bits.invocations:=0.U.asTypeOf(io.cuLaunch(cu).bits.invocations)
   }
   io.launch.ready := hasFree && io.cuLaunch(selected).ready
 

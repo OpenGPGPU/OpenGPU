@@ -648,7 +648,7 @@ class RenderPipeline(
       workers.payloadCancel.get:=payloadCanceled
       for(w <- 0 until sharedShader.get.fragmentWorkers)io.payload.get.producer(w)<>workers.payloadProducers.get(w)
     }
-    val kernelShader = Module(new KernelShaderStage(gpuConfig, graphicsScalarFpu, sharedShader))
+    val kernelShader = Module(new KernelShaderStage(gpuConfig, graphicsScalarFpu, sharedShader,helperInvocations=true))
     if (parallelFrag.nonEmpty) {
       val pool = sharedShader.get
       val router = Module(new SharedShaderTaskRouter(gpuConfig, pool.numComputeUnits,
@@ -686,6 +686,7 @@ class RenderPipeline(
     val selectVertLaunch = vertLaunchValid
 
     kernelShader.io.launch.valid := vertLaunchValid || fragLaunchValid
+    kernelShader.io.launch.invocations.get:=Mux(selectVertLaunch,0.U.asTypeOf(kernelFrag.kernelLaunch.invocations),kernelFrag.kernelLaunch.invocations)
     kernelShader.io.launch.kernelPc := Mux(selectVertLaunch,
       kernelVert.map(_.io.kernelLaunch.kernelPc).getOrElse(0.U),
       kernelFrag.kernelLaunch.kernelPc)

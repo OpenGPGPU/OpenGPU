@@ -36,6 +36,7 @@ class JobDispatcher(config: GpuConfig = GpuConfig()) extends Module {
   private val nonEmptyGrid = io.launch.bits.gridSize.map(_ =/= 0.U).reduce(_ && _)
   io.launch.ready := state === idle
   io.workgroup.valid := state === dispatch
+  io.workgroup.bits.invocations := command.invocations
   io.workgroup.bits.kernelPc := command.kernelPc
   io.workgroup.bits.kernargAddress := command.kernargAddress
   io.workgroup.bits.gridSize := command.gridSize
