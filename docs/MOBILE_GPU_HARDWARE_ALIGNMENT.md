@@ -3340,3 +3340,26 @@ covered scenes, not a throughput or general shader claim. Default promotion,
 production hierarchy qualification, GPU geometry fetching/reuse, representative
 workloads and remaining H0-H8 requirements stay open. No new PPA result is
 claimed; current PPA qualification remains synthesis only.
+
+
+### Production local-payload AXI hierarchy, 2026-10-19
+
+The [production host packet](performance/mobile-local-payload-production-host-2026-10-19.json)
+adds full 1280x720, four-CU, sixteen-lane, eight-warp RTL emission using SRAM
+black boxes on the same 515 sources as the preceding 55-check packet. Emission
+completed in 59 seconds and produced 799 files. Reachable-instance inspection
+finds one shared payload store with 64 payload SRAM macros, eight fragment
+payload controllers, four CU payload line routers and four atomic guards.
+Both native tile renderers have four fragment workers and two attachment
+stores; the compatibility renderer has no fragment worker or payload controller.
+The complete host has 162 SRAM wrappers, including 64 attachment wrappers.
+
+The shared store exposes eight physical producer owners and twelve data ports.
+The source defines 32 renderer pins and five dispatcher pins. RTL optimization
+removes four unused vertex-client entries, leaving 28 renderer pins and five
+dispatcher pins. Inspection checks all 165 retained valid/owner/handle/generation/
+context field connections into the shared store. This closes production
+hierarchy inspection for the optional path; it adds no new runtime or PPA
+claim. Default promotion, representative shader/workload qualification, GPU
+geometry fetching/reuse, synthesis and the remaining H0-H8 requirements remain
+open. Current PPA qualification remains synthesis only.
