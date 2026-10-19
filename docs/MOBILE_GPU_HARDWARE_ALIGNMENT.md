@@ -3978,3 +3978,73 @@ ownership, physical allocation/alias validation, general image/buffer resources,
 point/line/guard-band rasterization, qualifier and built-in closure, dynamic
 invocation termination, precision/invariance, queries/transform feedback and
 remaining H0-H8 requirements remain open.
+
+### General FP32 fragment-input shader client, 2026-10-19
+
+The [fragment shader stage checkpoint](performance/mobile-fragment-shader-stage-2026-10-19.json)
+adds a generic shared-CU consumer for the complete FP32 quad stream. Its internal
+version-1 SoA ABI carries `fragCoord.xyzw`, front/helper/perspective/sample flags,
+original sample coverage and up to 64 raw varying components. Pixel-center X/Y
+convert signed raster coordinates to FP32 with RNE. Varying words retain their
+bits, including integer encodings and NaN payloads. Four-lane quads remain intact
+through batches, physical warp allocation, readback and ordered exports. This
+interface preserves the existing shader ISA/register preloads and the native
+nine-array fragment ABI.
+
+A draw selects zero to four raw RGBA32 output locations, with float/uint/sint
+location metadata, per-lane location masks, emit/discard and optional depth
+override. Color words start at zero; depth and emit/mask defaults come from the
+source quad. Disabled locations remain zero. Covered lanes with reserved control
+bits, an enabled mask outside the draw mask, a forbidden depth override or a live
+NaN override fault the whole unpublished quad. Valid override depth clamps to
+`[0,1]`; source depth otherwise survives. Helpers retain shader participation and
+private outputs while exporting no coverage or color mask. These typed raw
+locations are an internal producer interface; attachment format conversion,
+blending and native MRT ownership remain separate requirements.
+
+The producer validates the descriptor, scratch allocation/view bounds, alignment,
+shared-memory overlap, input identity/layout, TL/TR/BL/BR coordinates, coverage,
+covered-lane perspective state and depth. A trusted non-aliasing private scratch
+allocation remains an enclosing owner contract. Each batch snapshots the helper
+bitmap and private prefix bounds into the existing shared-CU launch metadata.
+Local allocation uses the existing payload service; full and oversize decisions
+spill explicitly into bounded memory-backed scratch. Every batch invalidates the
+shared L1 state before launch. Uniforms follow the full prefix and survive output
+initialization. No private CU or payload pool is embedded in this stage.
+
+The stream has explicit source EOF, carrying identity, status and the number of
+accepted quads. EOF may coincide with the final input and is required for empty,
+faulted and canceled streams. `cancelSource` asks the enclosing source to drain.
+Accepted launch and memory offers remain irrevocable; held output quads retain
+their values and lease. Completion waits for source EOF, accepted shader/texture/
+memory work, held exports and payload release. Its counters and attributed fault
+record remain immutable while held, and retain VM-context ownership through the
+completion handshake.
+
+Storage uses narrow synchronous SRAM rows: default 128-lane metadata occupies two
+256x64 macros, and the sixteen-lane transpose window occupies one, totaling
+**three macros / 6 KiB** outside the existing pool. Full 64-component/four-color
+payloads need **45,056 bytes**. The default 64 KiB pool's existing 4,608-byte maximum
+slot is unchanged, so this case explicitly oversize-spills; a configured
+45,056-byte slot also executes locally. Smaller and partial batches retain the
+physical CU-capacity array stride. A non-power-of-two twelve-lane check exercises
+split-line readback.
+
+Qualification uses two actual shared CUs and covers local/global multi-batch
+streams, raw integer/NaN varyings, front flags, negative centers, whole-helper
+quads/batches, masks, discard, depth clamps, uniform tails and held exports. It
+also checks descriptor/input/EOF rejection, staging/shader/export faults, pool
+pressure, canceled launch/export/staging offers, explicit EOF drain, empty and
+depth-only draws, texture sampling/fault/reuse, and all 64 varying components
+across 128 physical lanes in local and oversize-spilled modes. Upstream
+raster/interpolation and helper policy/CU checks run on the same frozen source.
+All **31 checks** pass on a frozen **546-source** archive, including **11 new
+fragment checks**. The default RTL audit covers **39 emitted files**. RTL emission and SRAM counts are not synthesis PPA; PPA screening
+remains synthesis only.
+
+Composition with the generic vertex/raster owner, native bin/host allocation and
+typed attachment writes remains open. This client does not close general image/
+buffer/texture binding, dynamic helper/discard behavior, complete built-ins and
+qualifiers, point/line/guard-band rasterization, precision/invariance, queries/
+transform feedback or the remaining H0-H8 requirements. Hardware development is
+still in progress.
