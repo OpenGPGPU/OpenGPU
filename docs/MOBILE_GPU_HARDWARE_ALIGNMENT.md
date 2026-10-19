@@ -21,7 +21,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 | Shader execution | Shared compute CUs already execute vertex and fragment tasks; vector FP32 arithmetic, including FMA, is connected | Improve task input/output transport, occupancy, control-flow/resource contracts and sustained issue/writeback throughput |
 | Configuration | `GpuConfig` defaults to 16 lanes and eight warps; the mobile CU-count constant is four | One compute/graphics execution configuration; discoverable resource limits and explicit supported configuration combinations |
 | Interstage transport | Eligible Mobile fragments default to local payloads through the parallel/tile/AXI hierarchy; a generic vertex client also qualifies local/global staging and export ownership | Integrate native vertex/fragment ownership and budget the vertex client's additional SRAM; qualify broader resources and throughput |
-| Geometry | Clip, viewport, triangle setup and quad rasterization exist; bounded GPU index/attribute fetch and generic indexed/instanced shared-CU vertex execution are qualified as components | Native geometry submission, primitive assembly/restart consumption, vertex reuse and complete required primitive behavior |
+| Geometry | Bounded GPU fetch, generic indexed/instanced shared-CU vertex execution and seven-topology primitive assembly are connected as components; legacy triangle clipping/rasterization exists | Native geometry submission/binning, general clipping/interpolation, point/line rasterization and post-transform reuse |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
 | Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Integrated synthesis/timing, legal early rejection, representative throughput, multiple color outputs and complete format semantics |
@@ -3554,3 +3554,63 @@ interpolation, post-transform reuse and native bin production remain open.
 Normalized/packed/half input conversion, general resources, transform feedback,
 representative throughput, synthesis and the remaining H0-H8 gates also remain
 open. Current PPA evaluation continues with synthesis only.
+
+### Ordered primitive assembly after generic vertex shaders, 2026-10-19
+
+The [primitive-assembly checkpoint](performance/mobile-primitive-assembly-2026-10-19.json)
+adds `PrimitiveAssemblyStage` and the composed `VertexGeometryStage` input,
+shader and assembly client. The internal stream supports points, independent
+lines, line loops, line strips, independent triangles, triangle strips and
+triangle fans. Two retained vertex records preserve connectivity across shader
+batches. Restart and instance boundaries reset connectivity and strip parity;
+incomplete tails are discarded. Loops close once per segment, including both
+directed edges of a two-vertex loop. Degenerate positions still advance strip
+parity and primitive numbering.
+
+Each output carries identity, source ordinals/IDs, instance/base instance, a
+draw-wide sequence and an instance-local primitive ID that continues through
+restart. Triangle strips reorder their first two vertices on alternate
+triangles while preserving the last submitted provoking vertex. A component
+mask replicates raw flat values before clipping; varying-slot and flat-mask
+metadata also travel with every primitive so later stages can bypass arithmetic
+on those components. The loop-closing edge uses its first loop vertex as the
+provoking endpoint, following [GLES 3.0.6 section 2.17/table 2.12](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
+Unused vertex slots are zero; positions and unmasked varyings retain their bits.
+
+Preflight checks versions, topology and declared varying/mask bounds. Ordered
+record identity/ordinal/instance/base-instance checks and source completion
+identity/count/length checks detect malformed streams. Cancellation and faults
+retain any offered primitive, suppress younger assembly, consume draining
+source records and require source completion before retirement. The composed
+client snapshots both child admissions and gates cancellation until an offered
+child draw is accepted. Invalid topology cancels before input access. The final
+geometry completion remains held and keeps system/context ownership active.
+
+Thirty-seven checks pass on 523 frozen sources: six assembly cases, three
+actual-CU geometry cases and the preceding 28 vertex/input/ABI checks. An
+independent reference covers 210 topology/length/restart/flat-mask draws, two
+instances and 686 exact primitives under stalls. Additional checks cover
+degenerate positions, long input gaps, 48 reference primitives, loop closure,
+incomplete tails, full 64-component flat masks, the minimum varying interface,
+malformed streams, invalid layouts, cancellation and healthy reuse. Actual
+two-CU local/global paths each run four topologies with 44 shaded vertices and
+six restarts per draw, producing 120 exact primitives per path. Shader batches
+cross primitive and instance boundaries. A held final primitive remains valid
+after its source payload releases, while geometry/context ownership stays busy.
+
+Standalone default-size emissions audit six assembler files and 51 composed
+client files. Assembly adds no private CU or SRAM macro: it retains two complete
+history records plus up to three private output records, independent of draw
+length. Their maximum record data is 12,005 register bits, with primitive
+headers, descriptors, counters and other control additional. The composed
+client retains the preceding ten vertex-stage SRAM references (20 KiB) outside
+the shared payload pool. Production admission, register/SRAM budgeting and
+throughput still need integrated qualification; no synthesis result is added.
+
+This connects GPU input, vertex execution and assembly as an internal client.
+Native memory descriptors, host/VM/reset/physical allocation ownership,
+vertex/fragment producer wiring and bin generation remain open. General FP32
+clipping/viewport/interpolation, point/line rasterization, post-transform reuse,
+remaining formats/resources, transform feedback/query integration, watchdog
+termination, representative throughput, synthesis and the remaining H0-H8
+requirements remain open. PPA evaluation continues with synthesis only.

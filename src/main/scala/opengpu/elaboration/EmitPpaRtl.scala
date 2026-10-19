@@ -72,6 +72,11 @@ object EmitPpaRtl {
       case "mobile-vertex-shader" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexShaderStage(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
+      case "mobile-primitive-assembly" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PrimitiveAssemblyStage(),stageArgs,firtoolArgs)
+      case "mobile-vertex-geometry" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexGeometryStage(
+          useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-bin-store" =>
         val mobile = opengpu.config.MobileGpuConfig()
         ChiselStage.emitSystemVerilogFile(
