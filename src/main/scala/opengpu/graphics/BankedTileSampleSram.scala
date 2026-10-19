@@ -28,6 +28,8 @@ private class BankedTileSampleOperation extends Bundle {
   val depthStencilEnable=Bool()
 }
 class BankedTileSampleLegacyPort extends Bundle {
+  /** Whole-service ownership. Tagged producers/replies must be drained first. */
+  val exclusive=Input(Bool())
   val readEnable=Input(Bool());val readIndex=Input(UInt(10.W))
   val colorData=Output(UInt(32.W));val depthStencilData=Output(UInt(32.W))
   val writeEnable=Input(Bool());val writeIndex=Input(UInt(10.W))
@@ -133,7 +135,9 @@ class BankedTileSampleSram(useBlackBoxes: Boolean=false,writePorts: Int=4,
     }
     val directRead=legacyRead && legacyReadLocation._1===bank.U
     val directWrite=legacyWrite && legacyWriteLocation._1===bank.U
-    arb.io.out.ready:= !directRead && !directWrite
+    // Compatibility access already requires quiescent tagged producers.
+    // Gate arbitration by ownership, not its address or read/write decode.
+    arb.io.out.ready:=io.legacy.map(p=> !p.exclusive).getOrElse(true.B)
     val read=arb.io.out.fire && !arb.io.out.bits.write
     val write=arb.io.out.fire && arb.io.out.bits.write
     for(memory <- Seq(colors(bank),depths(bank))) {
@@ -155,10 +159,12 @@ class BankedTileSampleSram(useBlackBoxes: Boolean=false,writePorts: Int=4,
     val bank=RegEnable(legacyReadLocation._1,legacyRead)
     p.colorData:=colorData(bank);p.depthStencilData:=depthData(bank)
     assert(!(p.readEnable && p.writeEnable),"legacy attachment access is single-port")
-    when(p.readEnable || p.writeEnable) {
+    when(p.exclusive) {
       assert(!VecInit(io.read.map(_.valid)).asUInt.orR && !VecInit(io.write.map(_.valid)).asUInt.orR,
-        "legacy attachment access requires quiescent tagged producers")
+        "exclusive attachment ownership requires quiescent tagged producers")
+      assert(io.drained,"exclusive attachment ownership must drain tagged replies")
     }
+    when(p.readEnable || p.writeEnable){assert(p.exclusive,"legacy attachment access requires its exclusive owner")}
     when(io.begin){assert(!p.readEnable && !p.writeEnable,"legacy producer must be quiescent at begin")}
   }
   for(port <- 0 until 4) {

@@ -2889,3 +2889,43 @@ version used for synthesis. The original constraints and throughput target
 remain in force. Remaining work includes the integrated SRAM arbitration paths,
 wide ingress through both attachment slots and production shader exports,
 legal early rejection, and all remaining H0–H8 integration and workload gates.
+
+## H3 exclusive attachment SRAM ownership
+
+The [exclusive-bank checkpoint](performance/mobile-exclusive-attachment-banks-2026-10-19.json)
+gives the optional scalar/clear/export/resolve SRAM service an explicit
+exclusive owner. Tagged bank arbitration now depends on that owner rather than
+the compatibility address, index, sample-mode decode or read/write enables.
+Compatibility operations require quiescent tagged producers and drained replies;
+assertions enforce both directions of this ownership contract.
+
+The parent retains tagged ownership while any quad refill preparation, external
+request or response is live. Canceled arithmetic can finish before an offered
+fifth-port refill write commits, so arithmetic drain alone cannot grant exclusive
+access. This guard preserves refill progress and its exact response/data owner.
+The change adds one internal compatibility-service bit, with no persistent-store
+or host pins, command ABI changes, extra banks, data capacity or transfer credits.
+
+The frozen source passes 43 banked/resident checks across six suites, 57 default
+compatibility checks across five suites, and 19 banked eight-credit checks.
+New behavioral/vendor SRAM tests change both tagged and compatibility addresses
+during exclusive accesses, verify that tagged readiness stays blocked, then
+release ownership and verify tagged replies and all sample contents. Existing
+partial-clear/load/store/resolve/format, scalar staging, address-carry and cancel/
+fault tests pass. Both SRAM models retain 128 consecutive four-sample commit
+cycles after lazy clear without external old-data reads before pass end.
+
+Complete-mapping synthesis at unchanged 1 GHz ASAP7 TC/SLVT and 25% I/O budgets
+reports −175.595 ps core and −7.087 ps I/O setup slack. These improve by
+70.026 ps and 105.998 ps over the preceding checkpoint, but setup still fails.
+The final all-I/O result supersedes the intermediate positive I/O result.
+The mapped design has 212,260 standard cells and 28,281.5 µm² cell area, plus
+the same 16 SRAM macros occupying 6,643.81 µm². Default-activity power is
+0.246604 W. No new place/route or workload-power claim is made.
+
+All 489 source/build/ABI hashes, the recoverable source archive, regression logs,
+emitted RTL and failing synthesis reports are frozen. The remaining worst path
+runs from a quad input queue into depth-valid state; timing is still open.
+Next functional work routes quads through both attachment slots with completion
+drain before end/cancel handoff, then connects production renderer/shader export
+ingress. Legal early rejection and all remaining H0–H8 gates remain required.

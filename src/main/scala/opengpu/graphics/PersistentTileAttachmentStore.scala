@@ -521,6 +521,11 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
       }
     }
     val legacy=banks.io.legacy.get
+    val quadFillActive=missForQuad && (state===missRequest || state===missResponse ||
+      state===quadMissProducts || state===quadMissRow || state===quadMissBase || state===quadMissAddress)
+    // Canceled arithmetic may drain before an already offered refill commits.
+    // Retain tagged SRAM ownership until that refill response has drained too.
+    legacy.exclusive:=merge.io.drained && !quadFillActive
     legacy.readEnable:=colorIo.readEnable || depthIo.readEnable
     legacy.readIndex:=Mux(depthIo.readEnable,depthIo.readAddress,colorIo.readAddress)
     colorIo.readData:=legacy.colorData;depthIo.readData:=legacy.depthStencilData

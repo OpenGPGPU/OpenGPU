@@ -14,15 +14,15 @@ private class BankedSampleSramResources extends BlackBox with HasBlackBoxInline 
   setInline("BankedSampleSramResources.sv",
     "module BankedSampleSramResources(output present); assign present=1'b1; endmodule\n"+vendor)
 }
-private class MacroBankedTileSamples extends BankedTileSampleSram(true) {
+private class MacroBankedTileSamples(legacy: Boolean=false) extends BankedTileSampleSram(true,legacyPort=legacy) {
   val macroModelPresent=IO(Output(Bool()))
   private val resources=Module(new BankedSampleSramResources)
   macroModelPresent:=resources.io.present
 }
 
 class BankedTileSampleSramSpec extends AnyFlatSpec {
-  private def model(macros: Boolean): BankedTileSampleSram=
-    if(macros)new MacroBankedTileSamples else new BankedTileSampleSram(false)
+  private def model(macros: Boolean,legacy: Boolean=false): BankedTileSampleSram=
+    if(macros)new MacroBankedTileSamples(legacy) else new BankedTileSampleSram(false,legacyPort=legacy)
   private case class Read(index: Int,ticket: Int)
   private case class Write(index: Int,color: Long,depth: Long,colorEnable: Boolean=true,depthEnable: Boolean=true)
   private case class Reply(index: Int,ticket: Int,color: Long,depth: Long,due: Int)
@@ -38,6 +38,11 @@ class BankedTileSampleSramSpec extends AnyFlatSpec {
     var cycle=0;var mode=0
     var readCount=0;var writeCount=0;var replyCount=0
     dut.io.begin.poke(false.B);dut.io.sampleMode.poke(0.U)
+    dut.io.legacy.foreach { p=>
+      p.exclusive.poke(false.B);p.readEnable.poke(false.B);p.readIndex.poke(0.U)
+      p.writeEnable.poke(false.B);p.writeIndex.poke(0.U);p.colorEnable.poke(false.B)
+      p.depthStencilEnable.poke(false.B);p.color.poke(0.U);p.depthStencil.poke(0.U)
+    }
     for(p <- 0 until 4) {
       dut.io.read(p).valid.poke(false.B);dut.io.read(p).bits.poke(0.U.asTypeOf(dut.io.read(p).bits))
       dut.io.write(p).valid.poke(false.B);dut.io.write(p).bits.poke(0.U.asTypeOf(dut.io.write(p).bits))
@@ -188,6 +193,32 @@ class BankedTileSampleSramSpec extends AnyFlatSpec {
         for(p <- 0 until 4)accepted(p)=accepted(p)||fire.read(p)
       }
       assert(accepted.forall(identity));d.drain()
+    }
+  }
+  for(macros <- Seq(false,true))it should s"hand exclusive attachment ownership back to tagged service without address-dependent arbitration macros=$macros" in {
+    simulate(model(macros,legacy=true)) { dut=>
+      val d=new Driver(dut);d.begin(2);d.seed();d.drain()
+      val p=dut.io.legacy.get;p.exclusive.poke(true.B)
+      val indices=Vector(0,1,4,64,1023)
+      for((index,n) <- indices.zipWithIndex) {
+        for(port <- 0 until 4) {
+          dut.io.read(port).bits.index.poke(((index+port*37)&1023).U)
+          dut.io.write(port).bits.index.poke(((1023-index+port*53)&1023).U)
+          dut.io.read(port).ready.expect(false.B);dut.io.write(port).ready.expect(false.B)
+        }
+        val c=0x12340000L+n;val z=0x87650000L+n
+        p.writeEnable.poke(true.B);p.writeIndex.poke(index.U)
+        p.colorEnable.poke(true.B);p.depthStencilEnable.poke(true.B)
+        p.color.poke(c.U);p.depthStencil.poke(z.U);d.step();d.memory(index)=(c,z)
+        p.writeEnable.poke(false.B)
+        p.readEnable.poke(true.B);p.readIndex.poke(index.U);d.step()
+        p.colorData.expect(c.U);p.depthStencilData.expect(z.U)
+        p.readEnable.poke(false.B)
+      }
+      p.exclusive.poke(false.B)
+      d.submit(Vector.tabulate(4)(port=>indices.map(i=>Read(i,port*32+i%32))),Vector.fill(4)(Vector.empty[Write]))
+      d.drain();d.verifyAll()
+      p.exclusive.poke(true.B);d.step();dut.io.drained.expect(true.B)
     }
   }
 }
