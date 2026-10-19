@@ -1,0 +1,668 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "milestone": "Bounded clear repetition and registered maintenance writes across typed pixels, shared-CU images and native binned owners",
+  "component_revision": "e94edd48a2f213732b04c0b8a015eb2cb2e37a68",
+  "source_files": 619,
+  "source_manifest": {
+    "path": ".artifacts/mobile-typed-color-clear-pipeline-source-v1.json",
+    "sha256": "35c0e0beebc365085c7cec7b8ebf12b8f652bb307ff06b178702a8d1bde18874"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-typed-color-clear-pipeline-source-v1.tar.gz",
+    "sha256": "6a4563bdac87409a04d26f7b15df383acb2ec2b85ee4d94f6eb5981bdca7e49f"
+  },
+  "component_evidence": {
+    "path": ".artifacts/mobile-native-binned-v1-worktree/docs/performance/mobile-typed-color-clear-pipeline-2026-10-20.json",
+    "sha256": "408bd878b4bcbb16e6b66d5545bb58a857fd99c72614f1a94301b0496cb1f2df"
+  },
+  "qualification": {
+    "tests": 66,
+    "suites": 8,
+    "component_tests": 11,
+    "broader_tests": 55,
+    "suite_counts": {
+      "TypedTileColorStoreSpec": 11,
+      "TypedTilePixelBackendSpec": 7,
+      "TypedTileRenderPipelineSpec": 7,
+      "TypedTileImageTransferSpec": 12,
+      "TypedTileImagePipelineSpec": 9,
+      "TypedReplayTileImagePipelineSpec": 9,
+      "TypedVertexBinImageSharedSystemSpec": 6,
+      "MemoryNativeBinnedGraphicsPipelineSpec": 5
+    },
+    "logs": [
+      {
+        "path": ".artifacts/mobile-typed-color-clear-pipeline-test-v1.log",
+        "sha256": "f22a8a7dc1e0c2dee4298fab31603e683b57dcfb940a017e19a4d3bd9df0de0b"
+      },
+      {
+        "path": ".artifacts/mobile-typed-color-clear-pipeline-regression-v1.log",
+        "sha256": "d9566d765c92455f22e263a48b0018dcffb13ef9c14a2768f4fe8f4e59eebfbe"
+      }
+    ],
+    "checks": [
+      {
+        "suite": "TypedTileColorStoreSpec",
+        "test": "should repeat exact clear bytes over every word of each pixel width at the highest slot addresses"
+      },
+      {
+        "suite": "TypedTileColorStoreSpec",
+        "test": "should drain cancelled accepted maintenance writes before releasing the pass and allow healthy reuse"
+      },
+      {
+        "suite": "TypedTileColorStoreSpec",
+        "test": "should store all36 typed formats with four MRT views, clear tags, channel masks and visibility-qualified MSAA samples"
+      },
+      {
+        "suite": "TypedTileColorStoreSpec",
+        "test": "should refill load-start words once, preserve resident updates and support discard and partial maintenance"
+      },
+      {
+        "suite": "TypedTileColorStoreSpec",
+        "test": "should reject invalid layouts and quads before updates and enforce the32KiB slot budget"
+      },
+      {
+        "suite": "TypedTileColorStoreSpec",
+        "test": "should drain faulted and cancelled refill offers and retain an already offered quad completion"
+      },
+      {
+        "suite": "TypedTileColorStoreSpec",
+        "test": "should support the advertised slot capacity boundary bytes=1024"
+      },
+      {
+        "suite": "TypedTileColorStoreSpec",
+        "test": "should support the advertised slot capacity boundary bytes=65536"
+      },
+      {
+        "suite": "TypedTileColorStoreSpec",
+        "test": "should initialize load words cleanly without overwriting resident or partial rows"
+      },
+      {
+        "suite": "TypedTileColorStoreSpec",
+        "test": "should blend all36 resident formats with masked packed neighbors and changing constants before typed writes"
+      },
+      {
+        "suite": "TypedTileColorStoreSpec",
+        "test": "should drain cancelled blend arithmetic and cold gathers without partial writes then reject invalid blend state"
+      },
+      {
+        "suite": "TypedTilePixelBackendSpec",
+        "test": "should qualify shared typed colors with every depth stencil layout and preserve load padding and face snapshots"
+      },
+      {
+        "suite": "TypedTilePixelBackendSpec",
+        "test": "should implement every compare and stencil operation with ordered overlap and disabled depth writes"
+      },
+      {
+        "suite": "TypedTilePixelBackendSpec",
+        "test": "should skip separate depth refills on stencil rejection and use clean load fills"
+      },
+      {
+        "suite": "TypedTilePixelBackendSpec",
+        "test": "should reject invalid layouts or quads before depth side effects and preserve unordered floating comparisons"
+      },
+      {
+        "suite": "TypedTilePixelBackendSpec",
+        "test": "should drain cancelled depth and color refills and retain a held final pixel completion"
+      },
+      {
+        "suite": "TypedTilePixelBackendSpec",
+        "test": "should test independent sample depths in every depth layout and broadcast explicit shader overrides"
+      },
+      {
+        "suite": "TypedTilePixelBackendSpec",
+        "test": "should preflight only selected effective depths and ignore inactive NaNs or overridden sample metadata"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should decode every legal tile row and sample stride including packed RGB and the highest 64 KiB slot word"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should cancel during refill selection and every bounded row decode step without issuing physical traffic then recover"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should export all36 typed colors with edge crops unaligned pitches and depth stencil defaults while skipping clean load words"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should reject invalid allocations permissions aliases and image bounds before memory access"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should hold physical and private offers through cancellation and wait for actual store acknowledgements"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should propagate load and store faults without publishing success"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should allow an allocation ending at four GiB and clear line-cache ownership on rebind"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should share immutable load sources while rejecting overlapping stored views"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should resolve all typed views through cold loads virtual clears and packed pitched guarded destinations independently of source stores"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should reject resolve bounds permissions output aliases and late source aliases before memory access"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should drain held resolve reads private requests stores and cancellation while preserving acknowledged prefixes"
+      },
+      {
+        "suite": "TypedTileImageTransferSpec",
+        "test": "should resolve into the highest physical bytes with a four GiB exclusive destination limit"
+      },
+      {
+        "suite": "TypedTileRenderPipelineSpec",
+        "test": "should retain typed MRT and depth stencil across actual shared CU draws and late shader overrides local=true"
+      },
+      {
+        "suite": "TypedTileRenderPipelineSpec",
+        "test": "should retain typed MRT and depth stencil across actual shared CU draws and late shader overrides local=false"
+      },
+      {
+        "suite": "TypedTileRenderPipelineSpec",
+        "test": "should make fragment spill progress while a vertex lease occupies the only payload slot"
+      },
+      {
+        "suite": "TypedTileRenderPipelineSpec",
+        "test": "should intersect scissors with tile bounds and retire empty draws without ending attachment residency"
+      },
+      {
+        "suite": "TypedTileRenderPipelineSpec",
+        "test": "should reject tile mismatches and unsafe raster bounds before shader access and preserve source fault attribution"
+      },
+      {
+        "suite": "TypedTileRenderPipelineSpec",
+        "test": "should retain queued shader launches and pixel results through cancellation and wait for external pass completion"
+      },
+      {
+        "suite": "TypedTileRenderPipelineSpec",
+        "test": "should drain held attachment load refills and propagate pixel faults back through the shader owner"
+      },
+      {
+        "suite": "MemoryNativeBinnedGraphicsPipelineSpec",
+        "test": "should fetch native draws and shade once through shared CUs into exact independently published frame tiles local=true"
+      },
+      {
+        "suite": "MemoryNativeBinnedGraphicsPipelineSpec",
+        "test": "should fetch native draws and shade once through shared CUs into exact independently published frame tiles local=false"
+      },
+      {
+        "suite": "MemoryNativeBinnedGraphicsPipelineSpec",
+        "test": "should decode indexed instanced native draws without repeating vertex work during full-frame replay"
+      },
+      {
+        "suite": "MemoryNativeBinnedGraphicsPipelineSpec",
+        "test": "should publish native four-sample typed images and resolves across partial edge tiles"
+      },
+      {
+        "suite": "MemoryNativeBinnedGraphicsPipelineSpec",
+        "test": "should retain native publication ownership after shader leases retire and recover after cancellation"
+      },
+      {
+        "suite": "TypedTileImagePipelineSpec",
+        "test": "should publish pitched typed attachments from actual shared CU draws and retain cached visibility local=true"
+      },
+      {
+        "suite": "TypedTileImagePipelineSpec",
+        "test": "should publish pitched typed attachments from actual shared CU draws and retain cached visibility local=false"
+      },
+      {
+        "suite": "TypedTileImagePipelineSpec",
+        "test": "should reject backing views before shader access and wait for store acknowledgements or faults before releasing VM ownership"
+      },
+      {
+        "suite": "TypedTileImagePipelineSpec",
+        "test": "should retain an offered local end while cancellation races with final publication"
+      },
+      {
+        "suite": "TypedTileImagePipelineSpec",
+        "test": "should retain VM ownership through the final resolve acknowledgement cancellation and physical resolve faults"
+      },
+      {
+        "suite": "TypedTileImagePipelineSpec",
+        "test": "should publish shared-CU point-coordinate shaders and lines through typed late tests blend and resolve local=true"
+      },
+      {
+        "suite": "TypedTileImagePipelineSpec",
+        "test": "should publish shared-CU point-coordinate shaders and lines through typed late tests blend and resolve local=false"
+      },
+      {
+        "suite": "TypedTileImagePipelineSpec",
+        "test": "should publish sloped per-sample default depths and retain them while shader overrides change color local=true"
+      },
+      {
+        "suite": "TypedTileImagePipelineSpec",
+        "test": "should publish sloped per-sample default depths and retain them while shader overrides change color local=false"
+      },
+      {
+        "suite": "TypedVertexBinImageSharedSystemSpec",
+        "test": "should shade vertices once and publish ordered full-frame typed images through independent tile engines local=true"
+      },
+      {
+        "suite": "TypedVertexBinImageSharedSystemSpec",
+        "test": "should shade vertices once and publish ordered full-frame typed images through independent tile engines local=false"
+      },
+      {
+        "suite": "TypedVertexBinImageSharedSystemSpec",
+        "test": "should retain indexed instance boundaries and state ordering without repeating vertex tasks during tile replay"
+      },
+      {
+        "suite": "TypedVertexBinImageSharedSystemSpec",
+        "test": "should publish exact four-sample backing and resolves across full-frame partial tiles"
+      },
+      {
+        "suite": "TypedVertexBinImageSharedSystemSpec",
+        "test": "should drain record reads fragment traps and physical store faults with the primary stage and exact reuse"
+      },
+      {
+        "suite": "TypedVertexBinImageSharedSystemSpec",
+        "test": "should retain held primitive results queued launches leases and final physical acknowledgements through cancellation"
+      },
+      {
+        "suite": "TypedReplayTileImagePipelineSpec",
+        "test": "should fetch immutable state and publish exact guarded typed images from prepared primitives with local=true"
+      },
+      {
+        "suite": "TypedReplayTileImagePipelineSpec",
+        "test": "should fetch immutable state and publish exact guarded typed images from prepared primitives with local=false"
+      },
+      {
+        "suite": "TypedReplayTileImagePipelineSpec",
+        "test": "should execute two fragment engines concurrently with private state slots and coherent shared-line stores oneSlot=false"
+      },
+      {
+        "suite": "TypedReplayTileImagePipelineSpec",
+        "test": "should execute two fragment engines concurrently with private state slots and coherent shared-line stores oneSlot=true"
+      },
+      {
+        "suite": "TypedReplayTileImagePipelineSpec",
+        "test": "should preserve raw integer MRTs and the other engine's uniform slots at 1x and 4x"
+      },
+      {
+        "suite": "TypedReplayTileImagePipelineSpec",
+        "test": "should clear empty tiles and reject scratch arena role and per-state slot aliases before shader access"
+      },
+      {
+        "suite": "TypedReplayTileImagePipelineSpec",
+        "test": "should reject misrouted reordered mismatched and out-of-range records before shader execution"
+      },
+      {
+        "suite": "TypedReplayTileImagePipelineSpec",
+        "test": "should drain state shader and physical publication faults while retaining the primary stage and exact reuse"
+      },
+      {
+        "suite": "TypedReplayTileImagePipelineSpec",
+        "test": "should retain offered results launches leases and physical acknowledgements through cancellation"
+      }
+    ],
+    "markers": [
+      "TYPED_COLOR_CLEAR words=6656 maskedUpdates=227 pixelBytes1x2x3x4x6x8x12x16=true highestSlotByte65535=true everyRepetitionPhase=true exactPackedNeighbors=true ",
+      "TYPED_COLOR_MAINTENANCE_CANCEL acceptedPhases=2 heldFaultReply=true passRetained=true healthyMaskedReuse=true ",
+      "TYPED_TILE formats=36 groups=9 MRT=4 sampleMode=4x quads=27 packedNeighbors=true componentMasks=true helperSuppression=true lateVisibilityMasks=true reservedDepthPrefix=true clearTags=true heldOutputs=true snapshots=true ",
+      "TYPED_TILE loadRefill=true residentReuse=true discardZero=true partialMaintenance=true taggedWordReplies=true noRepeatedRefill=true ",
+      "TYPED_TILE invalidDescriptors=10 invalidQuads=6 noPartialInvalidUpdates=true slotBudget32768=true smallerTileFits=true newPassReuse=true ",
+      "TYPED_TILE refillFault=true heldRefillCancel=true noCancelledRefillCommit=true partialPrefixWords=1 partialPrefixBits=64 heldQuadCompletion=true cancellationLatched=true simultaneousLastInputEnd=true healthyReuse=true ",
+      "TYPED_TILE capacityBoundary=1024 allRGBA32=true endExclusive=true macroMinimum=true highestWordWritten=true maxCounters=true exactStoredWords=true ",
+      "TYPED_TILE capacityBoundary=65536 allRGBA32=true endExclusive=true macroMinimum=true highestWordWritten=true maxCounters=true exactStoredWords=true ",
+      "TYPED_TILE cleanFill=true noResidentOverwrite=true noPartialFill=true mutationDirty=true ",
+      "TYPED_TILE_BLEND formats=36 groups=9 quads=18 sampleMode=4x perSampleDestination=true maskedPackedNeighbors=true changingConstants=true integerBypass=true halfAndFloat=true sRGBLinear=true snapshots=true ",
+      "TYPED_TILE_BLEND arithmeticCancel=true coldGatherCancel=true refillFault=true zeroPrefixWrites=true invalidStateBeforeWrites=true loadGather=true healthyReuse=true ",
+      "TYPED_PIXEL layouts=7 quads=21 typedMRT=4 depth16and24and32F=true combinedD24S8D32FS8=true separateStencil8=true paddingPreserved=true frontBackSnapshots=true residentColorVisibility=true ",
+      "TYPED_PIXEL changingStateQuads=64 functions=8 operations=8 overlapOrder=true disabledDepthNeverWrites=true maskedReferenceAndWrites=true sampleRejectCounts=true ",
+      "TYPED_PIXEL stencilFirst=true noRejectedDepthRefill=true cleanDepthFill=true readOnlyDepthRemainsClean=true ",
+      "TYPED_PIXEL invalidLayouts=4 invalidQuadBeforeDS=true invalidBlendBeforeDS=true sourceNaNRejected=true storedNaNUnordered=true healthyRebind=true ",
+      "TYPED_PIXEL heldDepthRefillCancel=true heldColorRefillCancel=true depthRefillFault=true heldPixelCompletion=true childMemoryDrain=true cancellationLatched=true healthyReuse=true ",
+      "TYPED_SAMPLE_DEPTH layouts=5 modes=3 quads=30 independentSampleCompare=true mixedSampleVisibility=true shaderOverrideBroadcast=true typedMRT=4 stencilOutcomes=true paddingPreserved=true ",
+      "TYPED_SAMPLE_DEPTH selectedNaNBeforeSideEffects=true unselectedNaNIgnored=true unusedCenterNaNIgnored=true overrideIgnoresRasterNaN=true disabledDepthIgnoresNaN=true healthyReuse=true ",
+      "TYPED_IMAGE_REFILL_ROWS bindings=73 refills=7520 tileSizes8x16=true samples1x2x4=true colors36=true depthFormats6=true packed3x6x12=true allRows=true highestWord=8191 croppedPaddingZero=true guardsUnchanged=true ",
+      "TYPED_IMAGE_REFILL_CANCEL arrivalPhases=6 heldFaultReply=true noPhysicalAccess=true boundedDrain=true exactHealthyReuse=true ",
+      "TYPED_IMAGE_TRANSFER bindings=32 colors=36 depthStencilLayouts=7 loadClearDiscard=true activeEdge=5x3 physicalBaseUnaligned=true oddPitches=true packedRows=true guardedBytes=true cleanLoadSkip=true noStoreReads=true ",
+      "TYPED_IMAGE_TRANSFER invalidDescriptors=13 noInvalidAccess=true physicalAliases=true permissions=true overflow=true healthyReuse=true ",
+      "TYPED_IMAGE_TRANSFER heldPhysicalCancel=true heldPrivateCancel=true storeAckHeld=true committedPrefixCounted=true cancellationLatched=true healthyReuse=true ",
+      "TYPED_IMAGE_TRANSFER invalidSlotRefill=true noInvalidPhysicalRead=true readFault=true writeFault=true noFaultedStoreCommit=true noFalseSuccess=true healthyReuse=true ",
+      "TYPED_IMAGE_TRANSFER exclusive4GiB=true highestByte=true fullLineBounds=true coldRefillOnRebind=true noStaleGenerationData=true ",
+      "TYPED_IMAGE_TRANSFER storeDiscardNoBacking=true sharedLoadAlias=true singleStoredAlias=true snapshotBeforeExport=true cacheLineReuse=true overlappingStoresRejected=true ",
+      "TYPED_IMAGE_RESOLVE bindings=81 colors=36 depthStencilLayouts=7 modes=3 loadClearDiscard=true independentSourceStore=true coldPackedGather=true exactGuardedBytes=true unalignedResolveBase=true oddResolvePitch=true ",
+      "TYPED_IMAGE_RESOLVE invalidDescriptors=10 noInvalidAccess=true outputSourceAlias=true outputOutputAlias=true lateLoadSourceAlias=true clearResolveWithoutSourceBacking=true ",
+      "TYPED_IMAGE_RESOLVE heldReadCancel=true heldPrivateCancel=true heldResolveAck=true heldResolveOfferCancel=true acknowledgedPrefix=true resolveReadFault=true resolveWriteFault=true noFalseSuccess=true healthyReuse=true ",
+      "TYPED_IMAGE_RESOLVE destinationExclusive4GiB=true highestByte=true coldLoadResolve=true exactHighestLine=true ",
+      "TYPED_RENDER local=true CUs=2 draws=8 quads=272 sampleModes=2 typedMRT=4 residentAcrossDraws=true exactFinalBytes=true shaderDiscard=true shaderDepthOverride=true typedBlend=true lateReject=true helperSuppression=true snapshots=true clearAttachmentReads=0 actualVmContextHeld=true ",
+      "TYPED_RENDER local=false CUs=2 draws=8 quads=272 sampleModes=2 typedMRT=4 residentAcrossDraws=true exactFinalBytes=true shaderDiscard=true shaderDepthOverride=true typedBlend=true lateReject=true helperSuppression=true snapshots=true clearAttachmentReads=0 actualVmContextHeld=true ",
+      "TYPED_RENDER oneSlotPool=true heldVertexRelease=true fragmentSpillProgress=true residentAttachments=true payloadPins=true noAllocationCycle=true ",
+      "TYPED_RENDER tileScissor=true emptyScissor=true emptyVertexEOF=true residencyAcrossEmptyDraws=true simultaneousLastDrawEnd=true ",
+      "TYPED_RENDER preflightErrors=9 noInvalidAccess=true screenDefaultBoundsChecked=true sourcePreflight=true sourceFaultAddress=true childDrain=true healthyReuse=true ",
+      "TYPED_RENDER pulsedPreStartCancel=true pulsedCancel=true queuedLaunchStable=true payloadPins=true heldPixelResult=true drawAndPassCompletionsHeld=true actualVmContextHeld=true healthyReuse=true ",
+      "TYPED_RENDER attachmentLoad=true heldRefillCancel=true poolCancelLatched=true pixelFaultStage=true reverseShaderCancel=true noLostExports=true healthyReuse=true ",
+      "NATIVE_BINNED_IMAGE local=true CUs=2 peakBusy=2 draws=2 vertexTasks=2 sourceVertices=6 tiles=6 references=12 cycles=116886 fourDescriptorTags=true disjointMemoryIDs=true independentProgress=true exactFourMRTDepthResolve=true immutableSubmitContexts=true noReplayVertexTasks=true ",
+      "NATIVE_BINNED_IMAGE local=false CUs=2 peakBusy=2 draws=2 vertexTasks=2 sourceVertices=6 tiles=6 references=12 cycles=123090 fourDescriptorTags=true disjointMemoryIDs=true independentProgress=true exactFourMRTDepthResolve=true immutableSubmitContexts=true noReplayVertexTasks=true ",
+      "NATIVE_BINNED_INSTANCES indexed=true instances=2 draws=2 vertexTasks=2 parts=4 references=24 tiles=6 cycles=215208 exactFourMRTDepthResolve=true ",
+      "NATIVE_BINNED_MSAA samples=4 draws=2 vertexTasks=2 tiles=6 perSampleOracle=true exactFourMRTDepthResolveGuards=true ",
+      "NATIVE_BINNED_CANCEL finalPhysicalAckHeld=true shadersRetired=true VMHeld=true noEarlyCompletion=true exactHealthyReuse=true ",
+      "TYPED_IMAGE_PIPELINE local=true CUs=2 draws=4 quads=136 modes=2 typedMRT=4 packedRGB8=true unalignedViews=true loadClear=true noIntermediateStores=true exactBackingBytes=true guardedPitches=true blendAndLateDepth=true typedResolve=true sourceStoreDiscard=true cachedResolveConsumer=true cachedConsumerSeesPublished=true actualVmContextHeld=true ",
+      "TYPED_IMAGE_PIPELINE local=false CUs=2 draws=4 quads=136 modes=2 typedMRT=4 packedRGB8=true unalignedViews=true loadClear=true noIntermediateStores=true exactBackingBytes=true guardedPitches=true blendAndLateDepth=true typedResolve=true sourceStoreDiscard=true cachedResolveConsumer=true cachedConsumerSeesPublished=true actualVmContextHeld=true ",
+      "TYPED_IMAGE_PIPELINE pulsedPreStartCancel=true noInvalidShaderAccess=true cancelledStoreAckHeld=true actualFinalStoreAckHeld=true noEarlyPublication=true physicalStoreFault=true firstFaultPreserved=true noFalseSuccess=true actualVmContextHeld=true healthyReuse=true ",
+      "TYPED_IMAGE_PIPELINE finalAckCancelOffsets=11 directAndPoolCancel=true offeredLocalEndRetained=true immutablePassResult=true noPublicationDrainCycle=true healthyReuse=true ",
+      "TYPED_IMAGE_PIPELINE_RESOLVE CUs=2 modes=4x mixedMRT=true lateDepthStencil=true noSourceStores=true finalResolveAckHeld=true cachedResolveVisibility=true invalidResolveBeforeShaders=true poolCancelDrains=true resolveFault=true healthyReuse=true ",
+      "TYPED_POINT_LINE local=true CUs=2 draws=4 quads=56 modes1x4x=true shaderPointSizeV2=true pointCoordShaderV2=true linePerspective=true lateDepthStencil=true typedBlend=true resolveOnlyPublication=true cachedVisibility=true exactGuardedImages=true ",
+      "TYPED_POINT_LINE local=false CUs=2 draws=4 quads=56 modes1x4x=true shaderPointSizeV2=true pointCoordShaderV2=true linePerspective=true lateDepthStencil=true typedBlend=true resolveOnlyPublication=true cachedVisibility=true exactGuardedImages=true ",
+      "TYPED_SAMPLE_DEPTH_IMAGE local=true CUs=2 draws=12 quads=252 centerSampleDifferences=232 kinds=3 modes1x4x=true defaultSampleDepth=true shaderOverrideBroadcast=true noOverrideDepthWrite=true typedBlend=true exactMultisampleBacking=true resolve=true cachedVisibility=true noIntermediateStores=true ",
+      "TYPED_SAMPLE_DEPTH_IMAGE local=false CUs=2 draws=12 quads=252 centerSampleDifferences=232 kinds=3 modes1x4x=true defaultSampleDepth=true shaderOverrideBroadcast=true noOverrideDepthWrite=true typedBlend=true exactMultisampleBacking=true resolve=true cachedVisibility=true noIntermediateStores=true ",
+      "TYPED_VERTEX_BIN_IMAGE_SHARED local=true CUs=2 draws=2 vertexTasks=2 sourceVertices=6 references=12 tiles=6 cycles=115979 independentProgress=true fourMRT=true lateDepthBlend=true exactSourceResolveGuards=true immutableContexts=true noReplayVertexTasks=true ",
+      "TYPED_VERTEX_BIN_IMAGE_SHARED local=false CUs=2 draws=2 vertexTasks=2 sourceVertices=6 references=12 tiles=6 cycles=121974 independentProgress=true fourMRT=true lateDepthBlend=true exactSourceResolveGuards=true immutableContexts=true noReplayVertexTasks=true ",
+      "TYPED_VERTEX_BIN_IMAGE_INSTANCES indexed=true instances=2 draws=2 sourceVertices=12 vertexTasks=2 parts=4 references=24 tiles=6 cycles=214218 exactMRTDepthResolve=true independentProgress=true ",
+      "TYPED_VERTEX_BIN_IMAGE_MSAA samples=4 draws=2 vertexTasks=2 parts=2 references=12 tiles=6 perSampleOracle=true fourMRTDepth=true exactSourceResolveGuards=true ",
+      "TYPED_VERTEX_BIN_IMAGE_FAULTS recordRead=true fragmentTrap=true physicalStore=true primaryStage=true attributedTile=true allLeasesDrained=true exactHealthyReuse=true ",
+      "TYPED_VERTEX_BIN_IMAGE_CANCEL heldPrimitive=true heldLaunchAndLease=true physicalAckAfterAllShaders=true VMHeld=true poolDrained=true exactHealthyReuse=true ",
+      "TYPED_REPLAY_IMAGE local=true modes1x4x=true MRTs=4 trianglePointLine=true stateCache=true perSampleDepth=true shaderOverride=true blend=true sourceResolveGuards=true noVertexTasks=true ",
+      "TYPED_REPLAY_IMAGE local=false modes1x4x=true MRTs=4 trianglePointLine=true stateCache=true perSampleDepth=true shaderOverride=true blend=true sourceResolveGuards=true noVertexTasks=true ",
+      "TYPED_REPLAY_PARALLEL engines=2 CUs=2 usedCuMask=3 oneSlot=false simultaneousCUOwnership=true privateStateSlots=true sourceResolveGuards=true cachedSharedBoundary=true heldConsumerInvalidation=true cachedConsumer=true repeatedReadHit=true ",
+      "TYPED_REPLAY_PARALLEL engines=2 CUs=2 usedCuMask=3 oneSlot=true simultaneousCUOwnership=true privateStateSlots=true sourceResolveGuards=true cachedSharedBoundary=true heldConsumerInvalidation=true cachedConsumer=true repeatedReadHit=true ",
+      "TYPED_REPLAY_INTEGER formats=4 modes1x4x=true uintSintRaw=true engine0And1=true crossEngineScratchUntouched=true ",
+      "TYPED_REPLAY_ADMISSION emptyClear=true bindingRejects=3 stateSlotRejects=3 beforeShader=true noFailedPublication=true healthyReuse=true ",
+      "TYPED_REPLAY_RECORDS rejected=5 tileOrdinalTokenIdentityHandle=true noShader=true noFailedPublication=true healthyReuse=true ",
+      "TYPED_REPLAY_FAULTS stateRead=true shaderTrap=true physicalStore=true primaryStage=true faultRecordValidity=true exactHealthyReuse=true ",
+      "TYPED_REPLAY_CANCEL heldPrimitiveResult=true heldLaunchAndLease=true heldPhysicalAck=true VMHeld=true exactHealthyReuse=true "
+    ]
+  },
+  "rtl": {
+    "store": {
+      "emitted_sha256": {
+        "BoothEncoderF64F32F16.sv": "16935207228e6b9e21d2b3e79d6d90e2ff07f68a4c426184748d14135ed96dfd",
+        "CSA3to2.sv": "e328aaa001d5b077857cd3c91af9b856881a4fc4b59d4c7956d20dadddadcb9f",
+        "CSA4to2.sv": "715d5b1fbc9c3d7fdaedfffdde3166edbdf60501e9ffe8c34c53e0d690cbe7dd",
+        "CSA_Nto2With3to2MainPipeline.sv": "6f33d39b6c1139d3c81649a6fda2e9654aa624b57f06128b9d055ead53c24ab2",
+        "FloatFMA.sv": "53f7ec11d39a02eb913e164ca94358c9ca6794f647b09fbd0602fc2dc428697c",
+        "Fp32FmaLane.sv": "1a7b4441e581dc5494da520956454058083d1ea531e26d4c1afe6fd27d74c978",
+        "L2SramArray.sv": "2f34395bff085e37336c6c7a5c89810ade8dc96b2f3d6845f9b21b37921ec64f",
+        "Queue5_Fp32Response.sv": "22fb0ef1d9d66ff430ba33b10dd9c8c9202cd6a10c844519bf7d1ae1f32a5099",
+        "TypedColorBlend.sv": "4f0389821dc4e64a6f8d458e92ba9991277b6391cbdfe521cd05a4abd1dfe7d0",
+        "TypedColorDecoder.sv": "66c25dcdc70dcae93125529216df4108f286f81a5d1c3c84c877f6e46b9caa17",
+        "TypedColorEncoder.sv": "0ae202080b8631d3f060052b3dee4ddde06dfc8fa9ffeb066dd0560702565e4c",
+        "TypedTileColorStore.sv": "46ebae19e8b9ecbd599188ecc0294cedbdd240641f4f3e6c2cf2cdc850acba9a",
+        "filelist.f": "becb97a2f93b821a524b95cf3b808e2ab7c7e2dfca9298ea2d42483ff826d051",
+        "ram_5x40.sv": "2e5918ee09e6e1f53bb43ef7b56631026bbc467adca552f26de694382debfec6",
+        "verification/assert/Fp32FmaLane_Verification_Assert.sv": "51a4ca59a940a9f09af740c07913b396bbb00fe420da8850c90aa8dd6efb9d45",
+        "verification/assert/TypedColorBlend_Verification_Assert.sv": "21e86ddbaaf153e93e82b6a5ef9eb4bd6c962b7f5f94e2d4088c9b74f1c236aa",
+        "verification/assert/TypedTileColorStore_Verification_Assert.sv": "960b96840e6ace41c4dcd8c5b581717b81163d26487044c2e5ea84c8ed4a74a9",
+        "verification/assert/layers-Fp32FmaLane-Verification-Assert.sv": "6baa7ea12a4ba7dac639eadd06da5652bb3f8d097b36d91c33bd26efa7ec085e",
+        "verification/assert/layers-TypedColorBlend-Verification-Assert.sv": "d59ef08d5dab61acf80bb796d7c171e8dbde0fa9e702f3adda28109ecc273bac",
+        "verification/assert/layers-TypedTileColorStore-Verification-Assert.sv": "f566ca981973c19f97fa82fd45f0b09639a0246bec0b77ca9d6012e87782de15",
+        "verification/assume/layers-TypedTileColorStore-Verification-Assume.sv": "fbd29431a4a12d89182551ec331d909757984e6960bb2b7b2205045c84343211",
+        "verification/cover/layers-TypedTileColorStore-Verification-Cover.sv": "e6bf0c395ac379f4c1eac054346400f30432c3c11d513a830f4cbd68f02d8fe5",
+        "verification/layers-Fp32FmaLane-Verification.sv": "d8f7fb03b74a13fc138e465c6d8c0c9746cca9b4bf288fa160ecf5a9ce97b8bc",
+        "verification/layers-TypedColorBlend-Verification.sv": "5596d6755dcd0d4e546dd8a76dbd8f11ca7a495e7080f32f28047c6e35df6717",
+        "verification/layers-TypedTileColorStore-Verification.sv": "541a8d39596c005760c356b7b14bf0e460b947387f3548efd7a762d47a81351b"
+      },
+      "reachable_instances": {
+        "BoothEncoderF64F32F16": 1,
+        "CSA3to2": 20,
+        "CSA4to2": 3,
+        "CSA_Nto2With3to2MainPipeline": 1,
+        "FloatFMA": 1,
+        "Fp32FmaLane": 1,
+        "L2SramArray": 16,
+        "Queue5_Fp32Response": 1,
+        "TypedColorBlend": 1,
+        "TypedColorDecoder": 1,
+        "TypedColorEncoder": 1,
+        "TypedTileColorStore": 1,
+        "ram_5x40": 1
+      },
+      "existing_sram_macros": {
+        "srambank_64x4x64_6t122": 16
+      },
+      "file_count": 25,
+      "private_cus": 0,
+      "private_payload_pools": 0
+    },
+    "replay": {
+      "emitted_sha256": {
+        "BlockPrefixAdder.sv": "3c2ec11619da9a889e318b59dcf047f3b9917dcb2505b07d3c21f2afe32f8732",
+        "BlockPrefixAdder_108.sv": "61a15e6848056ca4f6b74c6488d914819c623907261f4dbe26430d327a5c4115",
+        "BlockPrefixAdder_6.sv": "e8542b267ac9b4af075e14dbb1f35f668e170e7a0cbae153f8d4f585244d0b27",
+        "BlockPrefixAdder_9.sv": "a9367fbf41d5ce424ec89e7d918579d07bb1a39d4dc73b6dc20155d40bc18023",
+        "BoothEncoderF64F32F16.sv": "16935207228e6b9e21d2b3e79d6d90e2ff07f68a4c426184748d14135ed96dfd",
+        "CSA3to2.sv": "e328aaa001d5b077857cd3c91af9b856881a4fc4b59d4c7956d20dadddadcb9f",
+        "CSA4to2.sv": "715d5b1fbc9c3d7fdaedfffdde3166edbdf60501e9ffe8c34c53e0d690cbe7dd",
+        "CSA_Nto2With3to2MainPipeline.sv": "6f33d39b6c1139d3c81649a6fda2e9654aa624b57f06128b9d055ead53c24ab2",
+        "CarrySavePrefixSum.sv": "255b59d726d87dd96e73de6d5e6870f1aae085a14c024e09638687bfde5dc75d",
+        "ClipFloatArithmetic.sv": "a32aef27024c91dda495389ff1a01a9483c4dfff16b4a79d69a1eb864301dc06",
+        "FloatFMA.sv": "53f7ec11d39a02eb913e164ca94358c9ca6794f647b09fbd0602fc2dc428697c",
+        "Fp32DivLane.sv": "ec86d3608593267672feee1d043774f3a3b85e067d935982f4f9c2c3abf452e2",
+        "Fp32FmaLane.sv": "f13144c76687651b5d0c59e99d5c765d29b7261781a98df749510d62b6141ae2",
+        "Fp32FragmentInterpolator.sv": "c39969e4b37d450c60a1e91bc7e1595b6a54dc5083034e6fa0c2c228e0ea05fc",
+        "Fp32PrimitiveRasterStage.sv": "3bc78ea447c3c93e16fef393ce795f3ed88e5696109520c161deab8f614bc17c",
+        "FragmentPayloadTransport.sv": "5e8bf60961b64ec519d7c218212a200e0538b444cdbff43be2c6a6530424af96",
+        "FragmentShaderStage.sv": "8af1175751f1b0a1dbcdbcd98b6a2dcaadb6969fc3d79e792c97d5a31241ff02",
+        "KernelEmit.sv": "77a943beebba3d8bdb1f3e9b381022bd5b21859b061dbaa8ff2c217d22605a69",
+        "KernelShaderStage.sv": "9794d3f01b1d09f07b52090c488d85197e0f67377ea80497e5def8b593a5dff1",
+        "L2SramArray.sv": "2f34395bff085e37336c6c7a5c89810ade8dc96b2f3d6845f9b21b37921ec64f",
+        "OmWordToLinePort.sv": "bbcaa9a49fe7fcdb5677fd65b5ace308536e3911ef06f071dc74a39db1c4529f",
+        "PointLineRasterizer.sv": "b250c6ac78c23e25c27db974e2afc5e68f65f9de2e96ea9e49f230f6c3a57997",
+        "PreparedSampleCoverage.sv": "32ad1043ae5b1c5b6bd76989014a360f04cf23336be234cb51e1d03ab0b1507e",
+        "QuadCoverage.sv": "f1bae9ffd5926028b5f51f79b0eccb4d1f020690508de2b3ed4599678dd8e126",
+        "Queue1_Biased.sv": "a254a9246dc7c4a913747140ac4bf7aa20acc0a36457e241b1a27bc4f33c39f1",
+        "Queue1_ComputeMemoryRequest.sv": "a56e38ede68973b8264d9712a2833bdd536f7c05d8ad3eb866bf0d02ade2c560",
+        "Queue1_ComputeMemoryRequest_1.sv": "869f823d4b59c572cb6192a8ce268cb0c12ab36e76d4b19de8f348e1d0290baa",
+        "Queue1_ComputeMemoryRequest_2.sv": "27bf2793a2d4aad3ba098cecab90c91efa0660b7a86815c8b275a41c89d152f4",
+        "Queue1_Indexed.sv": "79f1bc8d83715f3b6df5945974293d439f62852773576fa397e28f9c0b750f9a",
+        "Queue1_Ranged.sv": "eacf222950c1bedd986f114540c894c24a81ba4051bb5bfb8011d2d033fb57cf",
+        "Queue1_TextureCoordinateRequest.sv": "5977ebeb21d01dbbdf8179c787a3d0b3ff41d7d192e37d91e36a04322c256f4c",
+        "Queue1_TextureCoordinateResult.sv": "0f831abd7a5417d892a18d554dd5427ff5a2c195df85f6e3dea6413e2242c45e",
+        "Queue2_ComputeMemoryRequest.sv": "7a511d5f6181099f73b7dfd3470b3f9628bef938a4fb42eb19ddb2636722b746",
+        "Queue2_TaggedKernelLaunch.sv": "5e537782a4ef394f9b01e75e779662ef8a4eaf12a64fb1158ca38e3cbdb7aeb9",
+        "Queue5_Fp32Response.sv": "739176df8bbab38de1682ac0804815d45a36f36392db1b84a260cbcfb537ccd8",
+        "RRArbiter2_CacheLineInvalidate.sv": "751c55a9451e986b68f569ea25f794ace2d3ca80e1f17dd55d8326d4e3f26e2d",
+        "RRArbiter2_ComputeMemoryRequest.sv": "8c6a1063869301ff0d44db490d5569232680d9ebed7f6733214a55bf72c2a34e",
+        "RRArbiter2_ComputeMemoryRequest_1.sv": "d8659358391348ff17e9ebf0213a55e13d7c1f963c8aac340081a68b7f5f94c7",
+        "RRArbiter2_ComputeMemoryRequest_2.sv": "d1fac9cfa9f2abd20b808a91a087cf5a60416e55e18a867d35fd41180dd2d6b2",
+        "RRArbiter2_ComputeMemoryRequest_3.sv": "1bb5c1631a7a662dd02d70ba5c62bb60432c429647f95531da98a237d59d6cf5",
+        "RRArbiter2_TaggedKernelLaunch.sv": "82f403867dcf9d783f4b70e96e9565b085c7fe0134930e3fc5bc07ac8f4f2ad1",
+        "RRArbiter4_ScalarIssuedInstruction.sv": "ea58a02b4b88d63a6c9dd3e92565abc374a7751906f93786bff9a8587edb45ef",
+        "RRArbiter4_VectorTextureRequest.sv": "287761000c20d59aabd38efd7b3ea585c30241253afc8449c11e52cc4942aec5",
+        "RegisteredQueue2.sv": "7ccfd954837a53a6a0f00ec54303c09613256449bd5ea450ef2d260c9e8acc2a",
+        "SharedShaderTaskRouter.sv": "4a8c6e401ae76542466fda7a6dd7ced43e305e312c726da6b4847f6054a7463c",
+        "TexSampleUnit.sv": "218c0508160689ac10bbf163db0f62d7b983909ecc68bfcfc941d29fe86f5d68",
+        "TextureCoordinatePipeline.sv": "72938a0a7b2cfbac4825c16e422ba81d0da08677f7b770ae360379d763c791b5",
+        "TextureUnit.sv": "1d61ffae0512adab83abf847d2668bf439c87e7b080edbd99314b906712fa8ed",
+        "TriangleRasterizer.sv": "f6f5507a6b335cacf0e944dd58aa41577433bb1be03f99404b13c517cea1c898",
+        "TypedColorBlend.sv": "c65ef0898530de495718f4e3b49f9b8b6c4bed1cb40645d4c1b9a6d6439088bf",
+        "TypedColorDecoder.sv": "66c25dcdc70dcae93125529216df4108f286f81a5d1c3c84c877f6e46b9caa17",
+        "TypedColorEncoder.sv": "edea5afb95be74d458267ab7437b2afec5e527be72542d68b00e10d25cb2ae7e",
+        "TypedFragmentStateReader.sv": "f6701d9a67141764af4be2aad1f2f50d3977677766c0e4b7ca76f5d22304c1f1",
+        "TypedReplayTileImagePipeline.sv": "f054fc71f4ceae5985ede6c703ba545aebd316ae8b837929f140f5b66e78f158",
+        "TypedSampleResolve.sv": "357c02b4d64cdfceef2422087ce11c546dd3172208d0aa3d71dcbb5e257bb9da",
+        "TypedTileColorStore.sv": "2fe4c201bfa1252fb3c937c5b313510b1790ac38209e6b586fc182a573cbce01",
+        "TypedTileImagePipeline.sv": "b5a509844f055f428aad7198856097485644e87ef216458303941da86b6f04f6",
+        "TypedTileImageTransfer.sv": "f5576686a50a42ee33887c9405f2273e9257dc932883237901564592d600354b",
+        "TypedTilePixelBackend.sv": "f9dffa751c799f0a1181f66ef5c06cc0074f88f317eec1eea64c26007edd9563",
+        "TypedTileRenderPipeline.sv": "c3a917b9c6fc115ffe876172058117395494551ae8173d57e5de8bee14f7854f",
+        "VertexFragmentPipeline.sv": "39b4c60b7a20960d7de2189113af1280e61b6161388ab31963a4742ca22cc78c",
+        "filelist.f": "c31e391171d9743365c78128388c786eeffda07ac437d0928b8e0920ea3cbf46",
+        "ram_2x408.sv": "eb767d9d86a66384ba37af675b6c2f2b74d21c35bb6f79f04928e72555a57531",
+        "ram_2x621.sv": "e8e634f79534c4387489b430e59d34db7f972f450a0a353a793bec6777debc1d",
+        "ram_5x45.sv": "c00d54df0821577d31b82cffa39b87fb9fdc316c7d4c356275bc637430a98090",
+        "verification/assert/ClipFloatArithmetic_Verification_Assert.sv": "c70199a77ffd370b7a828e6ff33ffbe59517073b6e9d578e3d2fdfee95765b2d",
+        "verification/assert/Fp32DivLane_Verification_Assert.sv": "eb52bb2694f6b6b2f6e400a5aaf62a9bde5d4f189421f11b268127a7bd5de4b7",
+        "verification/assert/Fp32FmaLane_Verification_Assert.sv": "51a4ca59a940a9f09af740c07913b396bbb00fe420da8850c90aa8dd6efb9d45",
+        "verification/assert/Fp32FragmentInterpolator_Verification_Assert.sv": "277497a18d7c6af7fc34ab67cad90b12c9539b3fe483b9e3e112a29bc91d4931",
+        "verification/assert/Fp32PrimitiveRasterStage_Verification_Assert.sv": "9855c0db6d7ef584abce554653ae74b9b2b08afaf6f986e24debecb4ff150edf",
+        "verification/assert/FragmentPayloadTransport_Verification_Assert.sv": "8e37a59a38d931f90fe1ba19dff40931419bb40fcf80fc861b5d51872a14f85d",
+        "verification/assert/FragmentShaderStage_Verification_Assert.sv": "11fd6a93232eb162095269cf8f681f8d4b6470394392dea0726ea8fc8bd84913",
+        "verification/assert/KernelShaderStage_Verification_Assert.sv": "e61b1b01bf092a09e1b0de00b8bee4ca4492f73863dd9532c2e0a03e06710604",
+        "verification/assert/OmWordToLinePort_Verification_Assert.sv": "331dfcb88a5797d3793c5634fad326be7a9daef33faf857b9cecf2766ba4c1c6",
+        "verification/assert/SharedShaderTaskRouter_Verification_Assert.sv": "a2ca7205c99febf8cdaf3588e8f8dbae21ec780dd91deb9010aaa6122eacad0e",
+        "verification/assert/TexSampleUnit_Verification_Assert.sv": "d970a2315a80c11c23eef7e8a46354525a686ab16dc45c7b27ae8988faf2ee40",
+        "verification/assert/TextureUnit_Verification_Assert.sv": "d93fd12c2cf40e57c684babdfbe1274dea8a51fb4602e41d0ae139367a095808",
+        "verification/assert/TriangleRasterizer_Verification_Assert.sv": "3a798ed70b1c998694e659e636abe63ce17b836bba4986c017e44566c5dbbcc6",
+        "verification/assert/TypedColorBlend_Verification_Assert.sv": "21e86ddbaaf153e93e82b6a5ef9eb4bd6c962b7f5f94e2d4088c9b74f1c236aa",
+        "verification/assert/TypedFragmentStateReader_Verification_Assert.sv": "0372674238241d42ffe5127b259e79a086c0dfbbec94ec81015ce9f2fa3687b5",
+        "verification/assert/TypedReplayTileImagePipeline_Verification_Assert.sv": "0daccf9ee9aa1e77123c2a97c12aaa878cb78ea527154b2548d413071446caab",
+        "verification/assert/TypedTileColorStore_Verification_Assert.sv": "960b96840e6ace41c4dcd8c5b581717b81163d26487044c2e5ea84c8ed4a74a9",
+        "verification/assert/TypedTileImagePipeline_Verification_Assert.sv": "3880a9e4e03bb3380a134cd5e3b6ab6ea16d1ee68b3cff56ad572073df8f1e03",
+        "verification/assert/TypedTileImageTransfer_Verification_Assert.sv": "819351b289b3d9f135fba8da30abfe464994d9efc08cfc4f8821fc95fc9ea0f2",
+        "verification/assert/TypedTilePixelBackend_Verification_Assert.sv": "c3a0d7d77687a7163a15bf28d555073767f07d0c147f530642a57ed4f39a9b7d",
+        "verification/assert/TypedTileRenderPipeline_Verification_Assert.sv": "227ffa6dd7c290c1327f0bbd3f14200f91cc17cbb3ee8f3fc3d6b32adfdb26ae",
+        "verification/assert/VertexFragmentPipeline_Verification_Assert.sv": "bc6d96d25e1a18596b421e0d605ef6e911a2c57ec78d0a879354765f87712144",
+        "verification/assert/layers-ClipFloatArithmetic-Verification-Assert.sv": "28cb358073ffbfd678bf0502cd1fe0be252fa5c6ae6fecb5bbd13c8cd9daa4c1",
+        "verification/assert/layers-Fp32DivLane-Verification-Assert.sv": "f827123862b737278d5d2bfd2c3beeb1f20cb752eeb204e047458d2d7a06c411",
+        "verification/assert/layers-Fp32FmaLane-Verification-Assert.sv": "6baa7ea12a4ba7dac639eadd06da5652bb3f8d097b36d91c33bd26efa7ec085e",
+        "verification/assert/layers-Fp32FragmentInterpolator-Verification-Assert.sv": "ae3985c2f83ed5c6d5c7f107c613599182506567a0cb3d0855adda583a975761",
+        "verification/assert/layers-Fp32PrimitiveRasterStage-Verification-Assert.sv": "ee18fa496a64adca7a2d76de73c51afee7887989d8d0c66b4758e532b437e7a0",
+        "verification/assert/layers-FragmentPayloadTransport-Verification-Assert.sv": "09634deb232ddd3141c46de74e64bc610fd45b9a6621d83c6932b1df46e1a78c",
+        "verification/assert/layers-FragmentShaderStage-Verification-Assert.sv": "15d07496acd5e21fa339694154ea1e442f4b8ccf83b91ecf01b1d241ae67ecd1",
+        "verification/assert/layers-KernelShaderStage-Verification-Assert.sv": "e7f6fbe63f104c3d5c30b04d7824a6804a48ef6589ef20afb138ca0330abc7c2",
+        "verification/assert/layers-OmWordToLinePort-Verification-Assert.sv": "80ea44946ea51c83f91de8cc867f01f428356eeaf820aa299fe21db6ad43635d",
+        "verification/assert/layers-SharedShaderTaskRouter-Verification-Assert.sv": "8482d5183d8ad58c1b17e9f23314acf9857dc0b14b614dce66d14201a8e06a60",
+        "verification/assert/layers-TexSampleUnit-Verification-Assert.sv": "eda71e7b5c7e9a6c6def10128bd1a082d86a391d05115f4859dfe91dad3968e3",
+        "verification/assert/layers-TextureUnit-Verification-Assert.sv": "1070c0d77e93987bb7a9699274cc099a6a635a81e4e220d594f8f97f05223c52",
+        "verification/assert/layers-TriangleRasterizer-Verification-Assert.sv": "d6f8a7dffb975230496accd4c62900ba32aea8dcd3e2575791f52894bdb87cde",
+        "verification/assert/layers-TypedColorBlend-Verification-Assert.sv": "d59ef08d5dab61acf80bb796d7c171e8dbde0fa9e702f3adda28109ecc273bac",
+        "verification/assert/layers-TypedFragmentStateReader-Verification-Assert.sv": "9db4f6e8bc99b3688c6ccbee0becf2de02e9f1ffe822e995fb37d2dcdec26a0d",
+        "verification/assert/layers-TypedReplayTileImagePipeline-Verification-Assert.sv": "81b6abf60c575d1ca1c41878e2a4bab6e54507ae7a290001ed5f797ffbba6a66",
+        "verification/assert/layers-TypedTileColorStore-Verification-Assert.sv": "f566ca981973c19f97fa82fd45f0b09639a0246bec0b77ca9d6012e87782de15",
+        "verification/assert/layers-TypedTileImagePipeline-Verification-Assert.sv": "0496b95bb5ad33c1cdbc2c89ac2bacfce33545f8e8c76208af5ed761113af5e4",
+        "verification/assert/layers-TypedTileImageTransfer-Verification-Assert.sv": "7b2891dcee8237dbc4ad428610d47fb1c26f02151b9aee1d8136463b7259284a",
+        "verification/assert/layers-TypedTilePixelBackend-Verification-Assert.sv": "c2a28b5d2739b5d5ee908c3e9167ce567f5e0606e5171887a73c3524887d56fb",
+        "verification/assert/layers-TypedTileRenderPipeline-Verification-Assert.sv": "441b7edf123ee83a9477084b20ac8d2a567a903580f8dc802461e5db8648ade6",
+        "verification/assert/layers-VertexFragmentPipeline-Verification-Assert.sv": "93920fbf8210d9fedaa50e4131e00e2f14e0b2f7c6846ee5fe0f10ad3332b238",
+        "verification/assume/layers-TypedReplayTileImagePipeline-Verification-Assume.sv": "bc13d829b4320adc4d4a0b1553c05d54ca69a9e5f6825a8df962cbff16e30e8a",
+        "verification/cover/layers-TypedReplayTileImagePipeline-Verification-Cover.sv": "d6564df7d624194e931e1af52e81dd540c4fa8b6bab07e0c8c69d46a2a1d83a1",
+        "verification/layers-ClipFloatArithmetic-Verification.sv": "3aeaf1631aac7d260f1a8816d7013ef3a7752a62f8fd9f6fe21ff281d63d3f92",
+        "verification/layers-Fp32DivLane-Verification.sv": "fc811e00fbe0096e9ecb3330a4efa0a130050eb32f82d754ec93ab93dfd9e0aa",
+        "verification/layers-Fp32FmaLane-Verification.sv": "d8f7fb03b74a13fc138e465c6d8c0c9746cca9b4bf288fa160ecf5a9ce97b8bc",
+        "verification/layers-Fp32FragmentInterpolator-Verification.sv": "57fd966492d4ce2137bb6610e48d9fc24db4d144dcfab4e8255c89b6a0de936d",
+        "verification/layers-Fp32PrimitiveRasterStage-Verification.sv": "054eabec6117ce24a639e047d7e4964e195bac616dcb1d2e2413c0effc25274a",
+        "verification/layers-FragmentPayloadTransport-Verification.sv": "a4c3901a3850b9b22fcf15bfc622c36333fdea0730ac203c2cc3fd6271cdf43f",
+        "verification/layers-FragmentShaderStage-Verification.sv": "573b29869a9740ad57e5c63593874747997b9fba4a896a3f8cb481e4338a7726",
+        "verification/layers-KernelShaderStage-Verification.sv": "4d994b3c0e64cdbc4a31586437f2af12e08a29c6b584debd3d8e00c2f78a0eb1",
+        "verification/layers-OmWordToLinePort-Verification.sv": "c4a7c3bc9c4e379e1ca86f4e8cd8df9fbf5d7dcfad1ea97197c4a187f28f0b41",
+        "verification/layers-SharedShaderTaskRouter-Verification.sv": "2c1b00b04dbf522bbbd195e38b4d4fe2aad98f7e079843e1947a62288e35216e",
+        "verification/layers-TexSampleUnit-Verification.sv": "7daf0bc7d4f544bd42296144de7861e3e14088c0d1904a6f74d8a503f145e4cd",
+        "verification/layers-TextureUnit-Verification.sv": "b1dfcaa96b7ddaa6191aad8288f8ce4c4dd2f6f7ab21bf0330625513ef140a76",
+        "verification/layers-TriangleRasterizer-Verification.sv": "9bcfc31a6da2a608e7c628b9766d3333c752a6e51e62b0183fa66da372133e53",
+        "verification/layers-TypedColorBlend-Verification.sv": "5596d6755dcd0d4e546dd8a76dbd8f11ca7a495e7080f32f28047c6e35df6717",
+        "verification/layers-TypedFragmentStateReader-Verification.sv": "1d20c364837e410cb76e2e46decc09a063aeaad436fe3d68004a0e28f1826896",
+        "verification/layers-TypedReplayTileImagePipeline-Verification.sv": "52ac230102ed4098f2e0d05988f191c175937a0bda7f3bf79acb42adbfe8765c",
+        "verification/layers-TypedTileColorStore-Verification.sv": "541a8d39596c005760c356b7b14bf0e460b947387f3548efd7a762d47a81351b",
+        "verification/layers-TypedTileImagePipeline-Verification.sv": "68db4c3ac544285a99f9bf0a55c54dad592f6e742e1be9e3b31f95937890cf1e",
+        "verification/layers-TypedTileImageTransfer-Verification.sv": "180ea02af01c31e70650473187602aa606f8d4e9270605b25d5f2ca41a3a812a",
+        "verification/layers-TypedTilePixelBackend-Verification.sv": "7f6fdfdbaae6137dbb2a8c05151edcd0cae85fe0c813f3b3ea627a10665f1c33",
+        "verification/layers-TypedTileRenderPipeline-Verification.sv": "e36aaeabe13b84bd390a46f8e2069cb3618f61adc0acda5b85f20003c0ef8ad3",
+        "verification/layers-VertexFragmentPipeline-Verification.sv": "1234fb97ec7c58f1555b2804760cbd8f0076240f6573521a7c0edc8bb756b7cc"
+      },
+      "reachable_instances": {
+        "BlockPrefixAdder": 30,
+        "BlockPrefixAdder_108": 22,
+        "BlockPrefixAdder_6": 3,
+        "BlockPrefixAdder_9": 72,
+        "BoothEncoderF64F32F16": 2,
+        "CSA3to2": 40,
+        "CSA4to2": 6,
+        "CSA_Nto2With3to2MainPipeline": 2,
+        "CarrySavePrefixSum": 3,
+        "ClipFloatArithmetic": 1,
+        "FloatFMA": 2,
+        "Fp32DivLane": 1,
+        "Fp32FmaLane": 2,
+        "Fp32FragmentInterpolator": 1,
+        "Fp32PrimitiveRasterStage": 1,
+        "FragmentPayloadTransport": 1,
+        "FragmentShaderStage": 1,
+        "KernelEmit": 1,
+        "KernelShaderStage": 1,
+        "L2SramArray": 21,
+        "OmWordToLinePort": 1,
+        "PointLineRasterizer": 1,
+        "PreparedSampleCoverage": 4,
+        "QuadCoverage": 1,
+        "Queue1_Biased": 2,
+        "Queue1_ComputeMemoryRequest": 1,
+        "Queue1_ComputeMemoryRequest_1": 1,
+        "Queue1_ComputeMemoryRequest_2": 1,
+        "Queue1_Indexed": 1,
+        "Queue1_Ranged": 1,
+        "Queue1_TextureCoordinateRequest": 1,
+        "Queue1_TextureCoordinateResult": 1,
+        "Queue2_ComputeMemoryRequest": 1,
+        "Queue2_TaggedKernelLaunch": 1,
+        "Queue5_Fp32Response": 2,
+        "RRArbiter2_CacheLineInvalidate": 1,
+        "RRArbiter2_ComputeMemoryRequest": 1,
+        "RRArbiter2_ComputeMemoryRequest_1": 1,
+        "RRArbiter2_ComputeMemoryRequest_2": 1,
+        "RRArbiter2_ComputeMemoryRequest_3": 1,
+        "RRArbiter2_TaggedKernelLaunch": 1,
+        "RRArbiter4_ScalarIssuedInstruction": 1,
+        "RRArbiter4_VectorTextureRequest": 1,
+        "RegisteredQueue2": 2,
+        "SharedShaderTaskRouter": 1,
+        "TexSampleUnit": 1,
+        "TextureCoordinatePipeline": 1,
+        "TextureUnit": 1,
+        "TriangleRasterizer": 1,
+        "TypedColorBlend": 1,
+        "TypedColorDecoder": 1,
+        "TypedColorEncoder": 2,
+        "TypedFragmentStateReader": 1,
+        "TypedReplayTileImagePipeline": 1,
+        "TypedSampleResolve": 1,
+        "TypedTileColorStore": 1,
+        "TypedTileImagePipeline": 1,
+        "TypedTileImageTransfer": 1,
+        "TypedTilePixelBackend": 1,
+        "TypedTileRenderPipeline": 1,
+        "VertexFragmentPipeline": 1,
+        "ram_2x408": 1,
+        "ram_2x621": 1,
+        "ram_5x45": 2
+      },
+      "existing_sram_macros": {
+        "srambank_64x4x64_6t122": 21
+      },
+      "file_count": 133,
+      "private_cus": 0,
+      "private_payload_pools": 0
+    }
+  },
+  "synthesis_inputs": {
+    "manifest_sha256": "b6b26ed6aae6267e691f816948a524d9b86457b94bbbfefaff90c04707a21b1f",
+    "active_rtl_files": 64,
+    "all_active_match_audited_emission": true,
+    "changed_active_files": [
+      "TypedTileColorStore.sv",
+      "TypedTilePixelBackend.sv",
+      "TypedTileImageTransfer.sv"
+    ],
+    "changed_after_removing_comments_and_whitespace": [
+      "TypedTileColorStore.sv"
+    ],
+    "neighbor_differences": "Source location comments move after adding clearIndex in the shared rules object; neighboring module logic remains identical.",
+    "same_macro_sha256": true,
+    "source_files": 619,
+    "source_unchanged_after_component_commit": true
+  },
+  "scope": [
+    "Every supported pixel byte width repeats exact virtual clear bytes; 6656 highest-slot words, 227 masked updates, accepted-write cancellation and held replies are checked",
+    "Pixel/depth/stencil/blend and source/resolve transfer ownership retain exact bytes, invalid-input rejection, fault/cancel drain, per-sample depth, cached publication and lease progress",
+    "Actual local/global shared-CU prepared and native binned jobs retain indexed instances, four-sample images, independent engines, immutable contexts and exact healthy reuse"
+  ],
+  "limitations": [
+    "The new color pipeline is not yet qualified through the complete production AXI/Sv32 host; the native owner tests here use Bare mode",
+    "The separate GNX1 control extension is not included in this frozen source set; combined host/color/GNX1 validation remains necessary",
+    "The new synthesis run is still separate; no improved Fmax or new mapped area is established by functional tests or structural counts",
+    "No place-and-route, power, physical provenance, full Mobile runtime/rates/budgets or H0-H8 closure claim"
+  ]
+}

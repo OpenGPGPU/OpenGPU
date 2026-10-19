@@ -5114,3 +5114,24 @@ The functional decoder adds four cycles per private refill, so the core Fmax
 change alone is not a workload speedup claim. This is synthesis-only evidence
 for one replay engine; native/full-host timing, power, full Mobile rates/budgets
 and H0-H8 remain open.
+
+
+## Typed color clear and maintenance regression (2026-10-20)
+
+The bounded clear-byte decoder and registered maintenance write path pass
+**66 checks across eight suites** on 619 frozen source/ABI files: eleven storage
+checks and 55 pixel/render/transfer/image/replay/shared-CU/native-owner checks.
+Every supported 1/2/3/4/6/8/12/16-byte pixel width preserves clear repetition;
+6,656 virtual clear words, 227 masked high-slot updates and two accepted-write
+cancellation phases are independently checked. Maintenance writes add one cycle.
+
+Actual local/global shared-CU owners preserve typed blending, per-sample depth,
+pitched source/resolve guards, cached publication, independent tile engines,
+indexed instances, immutable contexts and exact fault/cancel reuse. Default
+color/replay emissions remain 25/133 files with 16/21 SRAM macros and no private
+CU or payload pool. These are structural counts. See the
+[66-check regression and frozen inputs](performance/mobile-typed-color-clear-validation-2026-10-20.json).
+
+The synthesis run remains separate; functional success does not establish a new
+Fmax or area. Combined production AXI/Sv32/GNX1 composition, physical provenance,
+full Mobile workloads/rates/budgets and H0-H8 remain open. PPA is synthesis only.
