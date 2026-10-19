@@ -7,6 +7,9 @@
  * projection at byte 512 without a second scale. A negative coefficient
  * is multiplied as its absolute value, then the integer product is negated.
  * The same vertex program copies colour and the Q16.16 UVs.
+ * clang --target=opengpu can compile the same fragment_color and
+ * vertex_passthrough copies (userspace/shaders/*.c). This header still
+ * binds the assembly words. fragment_sample needs a vtex.sample builtin.
  * The fragment core copies the interpolated colour, samples a texture,
  * multiplies that texel by the interpolated colour, or multiplies again
  * by the opacity word at byte 288 of the fragment kernarg bank, or

@@ -10,10 +10,12 @@ allocation may differ; the load, add-immediate, store and ``cease`` operations
 must match. ``kadd`` is also packaged with ``clang-offload-packager`` and
 loaded back through ``libopengpu``.
 
-Gallium still emits its own assembly (``fragment_color.S``,
-``vertex_passthrough.S``, and the rest of the assembly corpus). Those shaders
-use custom texture and quad ops that this C subset does not generate. They
-stay on ``validate_shader_corpus.py``.
+``userspace/shaders/fragment_color.c`` and ``vertex_passthrough.c`` are the
+same per-lane copies as the Gallium assembly, written with an ``x8`` lane
+base and RVV loads and stores. They are admitted on the fragment and vertex
+profiles. Texture and quad assembly (``vtex.sample``, ``vquad.dfdx``) stays
+on ``validate_shader_corpus.py`` until a clang builtin exists. Gallium still
+binds the assembly words.
 
 The script skips when the OpenGPU clang is not available, so the host CI job
 can call it unconditionally. Set ``OPENGPU_CLANG`` to override the sibling
@@ -120,6 +122,13 @@ def mem_ops(words):
     return ops
 
 
+# profile, source path. These need the OpenGPU clang RVV builtin path.
+VECTOR_KERNELS = (
+    (1, ROOT / "userspace/shaders/fragment_color.c"),
+    (2, ROOT / "userspace/shaders/vertex_passthrough.c"),
+)
+
+
 def compile_device(clang, objcopy, source, work, name):
     src = work / f"{name}.c"
     obj = work / f"{name}.o"
@@ -159,6 +168,10 @@ def main():
             binaries.append((binary, profile, corpus_name))
             if "void kadd(" in source:
                 kadd_obj = work / f"{name}.o"
+        for profile, path in VECTOR_KERNELS:
+            binary = compile_device(args.clang, objcopy, path.read_text(),
+                                    work, path.stem)
+            binaries.append((binary, profile, None))
 
         validator = work / "validate"
         run([args.host_cc, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",

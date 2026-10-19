@@ -23,7 +23,10 @@ contract live in
 decoder encodings, `opengpu.cease` / `barrier` / texture opcodes, reserved
 registers `x1`, `x8`, `x9`, `x30`, `x31`, the kernarg `imm(x1)` convention, or
 the `e32,m1,tu,mu` vtype policy has to update that LLVM branch as well. The
-driver validator remains the admission gate.
+driver validator remains the admission gate. `fragment_color.c` and
+`vertex_passthrough.c` now compile with that clang and pass the fragment
+and vertex profiles. Gallium still binds the hand-written words, and
+`fragment_sample` still needs a `vtex.sample` builtin.
 
 **functional** = behavioral coverage on the unified path. **physical** = PPA.
 A passing sim is not silicon; a completed tool run is not timing closure.

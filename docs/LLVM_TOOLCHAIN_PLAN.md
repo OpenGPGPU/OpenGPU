@@ -6,7 +6,8 @@ sibling checkout `../llvm-project` on branch `opengpu` (not in this
 repository). This repo contains the fatbin reader (`userspace/libopengpu`),
 the compute submission example (`userspace/examples/compute_offload.c`), and
 `scripts/validate_offload_kernel.py` (LLVM kernels versus the shader-corpus
-validator). On 2026-10-19 the vertex+fragment Verilator guest ran
+validator, including `fragment_color.c` and `vertex_passthrough.c`).
+On 2026-10-19 the vertex+fragment Verilator guest ran
 `opengpu_compute_offload` and checked `kadd` (`1 + 2 + 3 = 6`).
 Hardware work that changes the CU ISA or the shader ABI below has to update
 the LLVM branch in the same change.
@@ -109,8 +110,10 @@ The device ISA is defined by the Chisel decoders in
      device kernels with `clang --target=opengpu`, admits them with the corpus
      validator profiles, and checks `compute_increment` / `vertex_offset`
      against the gcc corpus binaries (same `lw`/`addi`/`sw`/`cease`
-     operations; registers may differ). Gallium's hand-written assembly
-     (`fragment_color.S`, `vertex_passthrough.S`, texture samples) stays on
+     operations; registers may differ). `fragment_color.c` and
+     `vertex_passthrough.c` lower to the per-lane `x1+(x8<<2)` vector copy
+     and pass the fragment and vertex profiles. Gallium still binds the
+     hand-written words. Texture and quad assembly stays on
      `validate_shader_corpus.py`. The host CI job `scripts/test_scripts.sh`
      runs the script and skips it when the OpenGPU clang is absent.
 
@@ -179,6 +182,11 @@ The device ISA is defined by the Chisel decoders in
    are marked with `__attribute__((device_kernel))`, which the target maps to
   `CallingConv::RISCV_OpenGPU` so the backend reads arguments from the kernarg
   base; a clang-built kernel now assembles and passes the driver sandbox.
+  The `opengpu` triple uses the RISC-V builtin emitter, so `<riscv_vector.h>`
+  lowers on that target. `fragment_color.c` reads the reserved lane index
+  with `slli rd, x8, 2`, adds the kernarg base, and copies one slice with
+  `vle32.v`/`vse32.v`. `vertex_passthrough.c` copies eight slices the same
+  way. Both pass the fragment and vertex validator profiles.
 - M6 runtime: `userspace/libopengpu/opengpu_offload.{h,c}` is a dependency-free
   reader for the LLVM offload-binary **version 3** container
   (`clang-offload-packager`/`llvm-offload-binary` output). It decodes the header
