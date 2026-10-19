@@ -1,8 +1,9 @@
 # Native binned graphics ABI draft
 
-This development checkpoint defines records and generated interfaces only.
-No native binned descriptor reader, translated memory fabric or host submission
-path is implemented here. The draft is not an advertised production capability.
+The original development checkpoint defined records and generated interfaces.
+A subsequent [standalone reader](NATIVE_BINNED_GRAPHICS_READER.md) now validates
+and fetches these records. Translated memory fabric and host submission are
+still pending; the draft is not an advertised production capability.
 Existing GTJ1/GTI1/GTD1 and GFS1 formats are unchanged.
 
 `NativeBinnedGraphicsLayout` defines GBJ1 job, GBF1 frame and GBD1 draw snapshots
@@ -23,5 +24,6 @@ ownership through fault, cancellation, VM changes and reset.
 Development validation compiled the generator, emitted all three layouts and
 passed `EmitNativeBinnedGraphicsAbi --check` for 563 scalar fields. A C11 probe
 checks fixed sizes, magic values and selected independently specified offsets.
-Reader decode/validation, fault/cancel tests, native memory routing, host/MMIO
-discovery, actual shared-CU rendering and production reset are still required.
+Reader decode/validation and fault/cancel component checks are documented in the
+reader checkpoint. Native memory routing, host/MMIO discovery, actual shared-CU
+rendering and production reset are still required.

@@ -111,6 +111,8 @@ object EmitPpaRtl {
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-native-typed-reader" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.NativeTypedGraphicsJobReader(),stageArgs,firtoolArgs)
+      case "mobile-native-binned-reader" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.NativeBinnedGraphicsJobReader(),stageArgs,firtoolArgs)
       case "mobile-window-record-transfer" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.WindowPrimitiveRecordTransfer(),stageArgs,firtoolArgs)
       case "mobile-vertex-bin" =>

@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "milestone": "Native binned job/frame/draw snapshot reader",
+  "base_revision": "b6a4838e66155c4ca894d4d207d50b47c4869f25",
+  "scope": "Standalone descriptor reader with simulated child controls/completions; no actual CU/render/MMU/host integration in these tests",
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-binned-reader-source-v1.json",
+    "sha256": "bb5f501d7bd4656c0243e44bb020685e21bf5c24fd622adc8a28c59cd794e2bc"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-binned-reader-source-v1.tar.gz",
+    "sha256": "39bc12c05060d5131e79424396cea65d1521b84a4e4ddbe5426d84b206fcded6"
+  },
+  "changed_source_sha256": {
+    "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala": "babeefeadf6b08608e222002a92ee8301166ff5f70012cd0d02d039363db9610",
+    "src/main/scala/opengpu/graphics/NativeBinnedGraphicsDescriptors.scala": "e8cf7cad8b3ddc11a5b387d96a8e1f76643dee8e67eb488f6e9ba93e759d5879",
+    "src/main/scala/opengpu/graphics/NativeBinnedGraphicsJobReader.scala": "1553856c0aa03d38ef56b9e851ce568b26d245fe17ea893e60368fc665bd15da",
+    "src/test/scala/opengpu/graphics/NativeBinnedGraphicsJobReaderSpec.scala": "1f96eab9c7081ffb383909408c092bc5bef80798a89706b0ef16592b67e961e4"
+  },
+  "qualification": {
+    "log": {
+      "path": ".artifacts/mobile-native-binned-reader-qualified-v1.log",
+      "sha256": "f4836e88a985527da204678d128d703452cc6b687ad1de33bf993097d1f8cecb"
+    },
+    "tests": 8,
+    "suites": 2,
+    "markers": [
+      "NATIVE_TYPED_READER layouts=3 fixedSlotABI=true scalarWords=true signedPadding=true limit33=true tags=4 reorderedReplies=true orderedDraws=2 heldBegin=true heldPublication=true immutableCompletion=true clearOnlyPass=true ",
+      "NATIVE_TYPED_READER invalidDescriptors=15 noOutOfBoundsRead=true noMalformedDraw=true reservedAndSignPadding=true noTruncatedCapacity=true scratchCannotOverwriteCommands=true healthyReuse=true ",
+      "NATIVE_TYPED_READER readFaults=3 acknowledgedPrefixes=true heldMemoryCancel=true heldBeginCancel=true heldDrawCancel=true heldEndCancel=true noEarlyVMRelease=true healthyReuse=true ",
+      "NATIVE_TYPED_READER highestRecords=3 headerPassDraw=true exclusive4GiB=true noAddressWrap=true countersClassifyHighDraws=true ",
+      "NATIVE_BINNED_READER layouts=3 reorderedTags=4 exactSnapshots=true signedFields=true exclusive4GiB=true emptyFrameBeginEnd=true heldCompletion=true ",
+      "NATIVE_BINNED_ADMISSION cases=23 fixedCapacityFit=true allAttributesChecked=true canonicalPadding=true immutableDescriptorSpans=true noInvalidDraw=true healthyReuse=true ",
+      "NATIVE_BINNED_FAULTS recordKinds=3 primaryMemoryFault=true nestedVertexFault=true fullFrameTileAttribution=true drain=true exactHealthyReuse=true ",
+      "NATIVE_BINNED_CANCEL phases=5 heldOffers=true liveDescriptorTags=true noEarlyChildCancel=true heldPublication=true noEarlyCompletion=true exactHealthyReuse=true "
+    ]
+  },
+  "rtl": {
+    "file_count": 7,
+    "emitted_sha256": {
+      "NativeBinnedGraphicsJobReader.sv": "2712ce34a6d46a1c64aa0ef2be308141f873a45cfe242665d5421f40f65d6bd1",
+      "filelist.f": "9e35ba0e25bb83bbd81d56cede9e49375804cbdeb62e78508edcf6627b3bd8fa",
+      "verification/assert/NativeBinnedGraphicsJobReader_Verification_Assert.sv": "a412c633eb3d564cf134df07a930b8f99e1d97243d8cca1950532c7564f96748",
+      "verification/assert/layers-NativeBinnedGraphicsJobReader-Verification-Assert.sv": "62d203ed2d1555d0651c4c4e6904609109a33b79c093e009ee1e9570bb5f62d4",
+      "verification/assume/layers-NativeBinnedGraphicsJobReader-Verification-Assume.sv": "977aee96d33eee53ab07f57d9ac1900af0bdd89cbd36c8873f2dd30068f2af9c",
+      "verification/cover/layers-NativeBinnedGraphicsJobReader-Verification-Cover.sv": "dd6d70f510dffd468d98c5125f83cfbd4a18256eeef200098efad75a4d524a84",
+      "verification/layers-NativeBinnedGraphicsJobReader-Verification.sv": "dc2aa5c71fbf11a579bda787376c30f8b42a74d6cc936ca007f9a7cc05caf160"
+    },
+    "sram_macros": {},
+    "private_cus": 0,
+    "private_payload_pools": 0,
+    "fma_lanes": 0,
+    "divider_lanes": 0,
+    "memory_tag_bits": 2,
+    "is_synthesis_ppa": false
+  },
+  "abi": {
+    "layout_version": 1,
+    "scalar_fields": 563,
+    "record_bytes": [
+      512,
+      2048,
+      2048
+    ],
+    "generated_header_sha256": "f65d93e53684eb47cd33fb0a30931bd29b184d92c48e8d539aeb60c3d5ceb699",
+    "generated_json_sha256": "d4316dc2a9bdaf15101424353d5e65927aeb2521c4f307892cb290c112966e2c",
+    "legacy_abi_unchanged": true,
+    "c_probe": {
+      "path": ".artifacts/mobile-native-binned-abi-probe-v1.c",
+      "sha256": "54d5f038ae9e2ad9891fcccde02da98a3d1977497c9f9bf23db6e3fa7a436dd3"
+    },
+    "c11_probe_returncode": 0
+  },
+  "ownership": [
+    "Four independently tagged uncached reads assemble complete private snapshots; canonical headers/padding and bounds gate child offers",
+    "All enabled vertex attributes must fit runtime capacity; fixed16-slot wire layouts are unchanged",
+    "Writable bin/page/directory/fragment staging and vertex prefixes cannot alias job/frame/draw descriptor storage",
+    "Cancellation retains offered memory/begin/draw/end controls and live tags; child and full frame result ownership drain before completion",
+    "Nested vertex address and complete child frame/tile attribution are retained; a child frame without an aggregate address reports zero address and retains its structured fault metadata"
+  ],
+  "development_issue": {
+    "initial_log": {
+      "path": ".artifacts/mobile-native-binned-reader-test-v1.log",
+      "sha256": "e0c2f4cfa11dbb679a6bcf0e91ab8330fc5e724054f0084bfe547c915b27638c"
+    },
+    "cause": "Simulator DPI generated overlong nested completion identifiers; C++ bridge compilation failed before RTL execution",
+    "resolution": "Test-only short completion port aliases preserve the complete production fields and assertions; no production interface or test data was removed"
+  },
+  "limitations": [
+    "Combined renderer composition, real shared CUs/payload, translated virtual/physical namespaces and native host/MMIO/reset are not connected yet",
+    "Image descriptors are trusted physical metadata; allocator provenance and cross-domain physical alias checks remain enclosing responsibilities",
+    "This reader does not independently validate every child image/bin rule; the combined child must complete its whole-grid admission before accessing resources",
+    "No synthesis PPA or full Mobile rate/budget/product closure; all H0-H8 remain open"
+  ]
+}

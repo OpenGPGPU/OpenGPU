@@ -49,7 +49,7 @@ object NativeBinnedGraphicsLayout {
     h.attributes===16.U && h.bindings===16.U && h.varyings===16.U && h.colors===4.U && h.engineViews===4.U
   def fit(d: VertexBinDraw,p: VertexShaderStageConfig): Bool={
     val v=d.vertex.geometry.vertex;val i=v.input
-    val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ || _)
+    val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
     active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U &&
       !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(d.vertex.geometry.flatMask>>(v.varyingSlots<<2)).orR
   }
