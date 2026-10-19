@@ -159,13 +159,19 @@ class NativeBinnedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
     def run(status: Int=0,id: Int=23,readFault: BigInt=>Boolean=_=>false,writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false): Unit={
       serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=1000000,writeFault=writeFault)(write){d.io.m_irq.peek().litToBoolean}
       val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
-      assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),s"native binned completion=${result.toString(16)}")}
-    def pop(): Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)}
+      assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),s"native binned completion=${result.toString(16)}")
+      val details=(0 until 12).map(i=>axiRead(d,0x180+i*4))
+      assert(details.head==BigInt("474e5801",16) && (details(1)&7)==status && details(11)==0)
+      if(status==0)assert(details(1)==0 && details(5)==0 && details.slice(6,9)==Seq[BigInt](7,8,generation))
+    }
+    def pop(): Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
+      for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"popped native details must not remain visible")}
     def consumer(id: Int): BigInt={parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,0)
       axiWrite(d,GpuCommandMmioRegs.KERNEL_PC,0x403000);axiWrite(d,GpuCommandMmioRegs.KERNARG,(region+0x130000).toInt)
       for(a<-Seq(GpuCommandMmioRegs.GRID_X,GpuCommandMmioRegs.GRID_Y,GpuCommandMmioRegs.GRID_Z,GpuCommandMmioRegs.LOCAL_X,GpuCommandMmioRegs.LOCAL_Y,GpuCommandMmioRegs.LOCAL_Z))axiWrite(d,a,1)
       axiWrite(d,GpuCommandMmioRegs.SUBMIT,1);serviceMemoryMaster(d,read,maxCycles=100000)(write){d.io.m_irq.peek().litToBoolean}
       val result=axiRead(d,GpuCommandMmioRegs.COMPLETION);assert((result&255)==id && ((result>>15)&1)==1)
+      for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"ordinary compute must not inherit native completion details")
       val v=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(pa(region+0x130040)+b,0))<<(b*8)));pop();v}
   }
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
@@ -175,8 +181,10 @@ class NativeBinnedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
     simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
       assert(axiRead(d,TileBinHostRegs.DISCOVERY)==0x160)
       val expected=Vector[BigInt](BigInt("474e4301",16),8,BigInt("474e4a01",16),BigInt("08000200",16),
-        BigInt("08420800",16),BigInt("00090011",16),BigInt("d4908000",16),if(local)BigInt("020cb802",16)else BigInt("00000802",16))
+        BigInt("88420800",16),BigInt("00090011",16),BigInt("d4908000",16),if(local)BigInt("020cb802",16)else BigInt("00000802",16))
       for((word,i)<-expected.zipWithIndex)assert(axiRead(d,0x160+i*4)==word,s"GNC1 word $i differs")
+      for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0)
+      axiWrite(d,0x180,0,expectedResponse=2)
       for(mode<-Seq(0,2)){image.setup(mode);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
         assert(image.consumer(10+mode)==BigInt("a7a7a7a7",16));image.submit();image.run();image.verify()
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==BigInt("80000030",16));image.pop()
@@ -221,6 +229,14 @@ class NativeBinnedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
         image.run(status,id,a=>{val fail=denied(a);if(fail)failedReads+=1;fail},(a,_,_)=>{
           val fail=name=="physical-store" && a>=image.imageBase && a<image.imageBase+0x100000
           if(fail)failedWrites+=1;fail})
+        val flags=axiRead(d,0x184);val statuses=axiRead(d,0x194)
+        assert(((flags>>3)&3)==(if(Set("envelope","header")(name))1 else if(denied.nonEmpty)2 else 3),s"native reader fault stage differs: $name")
+        if(name=="write-permission" || name=="execute-permission"){
+          assert(((flags>>7)&3)==2 && ((flags>>11)&1)==1,"vertex faults must preserve their source stage")
+          assert(((statuses>>24)&7)==status,"vertex fault status must not be confused with bin rejection")
+        }
+        if(name=="shader-trap" || name=="physical-store")assert(((flags>>5)&3)==3 && ((flags>>9)&1)==1,
+          "image execution/publication faults must retain the fault tile")
         if(name=="envelope")assert(image.reads.isEmpty && image.writes.isEmpty)
         if(denied.nonEmpty)assert(failedReads>0,s"fault injection was not reached: $name")
         if(name=="physical-store")assert(failedWrites>0)
@@ -261,6 +277,7 @@ class NativeBinnedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSuppor
         assert(!image.writes.exists(a=>a>=image.pa(dma) && a<image.pa(dma+64)),"reset must discard the queued DMA command")
         perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
         assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+        for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"reset must discard aborted native details")
         axiWrite(d,RenderHostRegs.IRQ,3)
         image.setup(if(phase==0)0 else 2);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
         image.submit(140+phase);image.run(id=140+phase);image.verify();image.pop()

@@ -20,7 +20,7 @@ import opengpu.graphics.{
   OmMemoryResponse,
   RenderHost,
   RenderHostRegs,
-  TileBinHostCommandPort, TileBinHostRegs, TileBinJobCompletion, TileJobDescriptorRequest
+  TileBinHostCommandPort, TileBinHostRegs, TileBinJobCompletion, TileJobDescriptorRequest, NativeBinnedCompletionInfo
 }
 
 /** AXI4 slave control interface for the graphics renderer.
@@ -61,11 +61,13 @@ class GpuHostAxi(
   persistentAttachments: Boolean = false,
   tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
   useTileSramBlackBoxes: Boolean = false,
-  externalBinnedRender: Boolean = false
+  externalBinnedRender: Boolean = false,
+  nativeCompletionInfo: Boolean = false
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
   require(!externalBinnedRender || (unifiedCommandMmio && protectVmState && !persistentAttachments))
+  require(!nativeCompletionInfo || externalBinnedRender)
   override def desiredName: String = "GpuHostAxi"
 
   val io = IO(new Bundle {
@@ -140,6 +142,7 @@ class GpuHostAxi(
 
     val binSubmit = if (externalBinnedRender) Some(Decoupled(new TileJobDescriptorRequest(commandIdWidth))) else None
     val binCompletion = if (externalBinnedRender) Some(Flipped(Decoupled(new TileBinJobCompletion(commandIdWidth)))) else None
+    val binCompletionDetails=if(nativeCompletionInfo)Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
     val binCapabilityWords = if (externalBinnedRender) Some(Input(Vec(8,UInt(32.W)))) else None
     val binDrained = if (externalBinnedRender) Some(Input(Bool())) else None
     val binCancel = if (externalBinnedRender) Some(Output(Bool())) else None
@@ -200,7 +203,7 @@ class GpuHostAxi(
         gpuConfig, commandIdWidth, gpuConfig.commandQueueDepth,
         shaderComputeUnits = sharedShader.map(_.numComputeUnits).getOrElse(1),
         shaderKernargBanks = sharedShader.map(_.fragmentBanks).getOrElse(2),
-        protectVmState = protectVmState)))
+        protectVmState = protectVmState,nativeCompletionInfo=nativeCompletionInfo)))
     } else None
 
     // Command distribution lives here, next to the graphics engine: a render
@@ -212,13 +215,15 @@ class GpuHostAxi(
     host.io.renderCompletion.ready := false.B
     unified.foreach { bridge =>
       if (externalBinnedRender) {
-        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth))
+        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo))
         port.io.command <> bridge.io.command
         io.binSubmit.get <> port.io.submit
         port.io.renderCompletion <> io.binCompletion.get
         io.gpuCommand.get <> port.io.otherCommand
         port.io.otherCompletion <> io.gpuCompletion.get
         bridge.io.completion <> port.io.completion
+        if(nativeCompletionInfo){port.io.renderCompletionDetails.get:=io.binCompletionDetails.get
+          bridge.io.completionDetails.get:=port.io.completionDetails.get}
         port.io.dependencyIdle:=io.graphicsDependencyIdle.get && host.io.drained
         port.io.renderIdle:=io.binDrained.get
         port.io.resetActive:=bridge.io.resetActive
@@ -345,7 +350,8 @@ class GpuHostAxi(
     val targetBinDiscovery = if (externalBinnedRender) beatAddr===TileBinHostRegs.DISCOVERY.U else false.B
     val targetBinCapabilities = if (externalBinnedRender)
       beatAddr>=TileBinHostRegs.CAPABILITIES.U && beatAddr<TileBinHostRegs.END.U else false.B
-    val beatOk = (beatAddr & 0x3.U) === 0.U && (beatAddr < mappedEnd || targetBinCapabilities)
+    val targetNativeDetails=if(nativeCompletionInfo)beatAddr>=NativeBinnedCompletionInfo.base.U && beatAddr<NativeBinnedCompletionInfo.end.U else false.B
+    val beatOk = (beatAddr & 0x3.U) === 0.U && (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -360,7 +366,7 @@ class GpuHostAxi(
         beatAddr < RenderHostRegs.MSAA_CONFIG.U) ||
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
-          beatAddr < GpuCommandMmioRegs.END.U)
+          beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails
     reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)

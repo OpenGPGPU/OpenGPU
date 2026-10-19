@@ -81,7 +81,8 @@ class GpuCommandMmio(
   queueDepth: Int = 4,
   shaderComputeUnits: Int = 1,
   shaderKernargBanks: Int = 2,
-  protectVmState: Boolean = false
+  protectVmState: Boolean = false,
+  nativeCompletionInfo: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 8)
   require(queueDepth > 0)
@@ -96,6 +97,7 @@ class GpuCommandMmio(
     val command = Decoupled(new GpuCommand(config, commandIdWidth))
     val completion = Flipped(Decoupled(
       new GpuCommandResult(commandIdWidth)))
+    val completionDetails=if(nativeCompletionInfo)Some(Input(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
     val completionEvent = Output(Bool())
     /** Held from a RESET request until the system's command path reports a
       * completed drain and state reset via `resetDone`.  While active this
@@ -205,6 +207,7 @@ class GpuCommandMmio(
 
   private val completionValid = RegInit(false.B)
   private val completion = Reg(new GpuCommandResult(commandIdWidth))
+  private val completionDetails=if(nativeCompletionInfo)Some(Reg(Vec(NativeBinnedCompletionInfo.wordCount,UInt(32.W))))else None
   private val popCompletion = wFire &&
     io.reg.req.bits.addr === GpuCommandMmioRegs.COMPLETION_POP.U &&
     io.reg.req.bits.data(0)
@@ -218,9 +221,10 @@ class GpuCommandMmio(
   // Completions arriving mid-reset belong to the aborted stream; consume and
   // discard them so the post-reset slot starts empty.
   io.completion.ready := resetActive || !completionValid || popCompletion
-  io.completionEvent := (io.completion.fire && !resetActive) || io.resetDone
-  when(io.completion.fire && !resetActive) {
+  io.completionEvent := (io.completion.fire && !resetActive && !resetRequest) || io.resetDone
+  when(io.completion.fire && !resetActive && !resetRequest) {
     completion := io.completion.bits
+    completionDetails.foreach(_:=io.completionDetails.get)
     completionValid := true.B
   }.elsewhen(popCompletion || resetRequest ||
     (io.completion.fire && resetActive)) {
@@ -348,12 +352,14 @@ class GpuCommandMmio(
     GpuCommandMmioRegs.STATUS.U -> status,
     GpuCommandMmioRegs.COMPLETION.U -> completionMeta,
     GpuCommandMmioRegs.COMPLETION_BYTES_LO.U -> completion.bytesProcessed(31, 0),
-    GpuCommandMmioRegs.COMPLETION_BYTES_HI.U -> completion.bytesProcessed(63, 32)))
+    GpuCommandMmioRegs.COMPLETION_BYTES_HI.U -> completion.bytesProcessed(63, 32))++
+    completionDetails.toSeq.flatMap(ws=>ws.zipWithIndex.map{case(word,i)=>(NativeBinnedCompletionInfo.base+i*4).U -> Mux(completionValid && !resetActive,word,0.U)}))
 
   io.reg.req.ready := true.B
   io.reg.resp.valid := io.reg.req.valid && !io.reg.req.bits.isWrite
   io.reg.resp.bits.data := readData
-  io.reg.resp.bits.ok := io.reg.req.bits.addr >= GpuCommandMmioRegs.COMMAND_ID.U &&
+  val detailAddress=if(nativeCompletionInfo)io.reg.req.bits.addr>=NativeBinnedCompletionInfo.base.U && io.reg.req.bits.addr<NativeBinnedCompletionInfo.end.U else false.B
+  io.reg.resp.bits.ok := ((io.reg.req.bits.addr >= GpuCommandMmioRegs.COMMAND_ID.U &&
     io.reg.req.bits.addr < GpuCommandMmioRegs.END.U &&
-    io.reg.req.bits.addr(1, 0) === 0.U && (!vmMutation || vmWriteAllowed)
+    (!vmMutation || vmWriteAllowed)) || (detailAddress && !io.reg.req.bits.isWrite)) && io.reg.req.bits.addr(1,0)===0.U
 }

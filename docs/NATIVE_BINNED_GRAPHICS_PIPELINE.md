@@ -91,3 +91,38 @@ fixture also parks memory handshakes during command MMIO and diagnoses completio
 before a reset trigger. The corrected sources compile; the full five-case rerun
 is pending. Eight fault cases, both reset phases and full host qualification must
 not be reported as passing until that rerun finishes.
+
+
+## GNX1 completion-detail control checkpoint
+
+GNC1 word 4 bit 31 now advertises twelve read-only GNX1 words at 0x180..0x1ac.
+The record accompanies the held native completion; ordinary compute/DMA results
+and empty/reset slots read zero. Its words are:
+
+| Word | Meaning |
+|---|---|
+| 0 | GNX1 magic, `0x474e5801` |
+| 1 | Native status; reader/frame/geometry stages; tile/draw/source/viewport/clip validity |
+| 2–4 | Raw recorded address, reader draw index, valid fault tile |
+| 5 | Nine nested owner statuses, including bin rejection and vertex shader status |
+| 6–8 | Context, pass and generation |
+| 9–10 | Valid 64-bit geometry draw ordinal |
+| 11 | Reserved zero |
+
+Invalid source snapshots and tile/geometry indices are zeroed. The recorded
+address remains a raw owner field: some child/pass failures do not carry an
+address, and zero does not establish a known address. Use stage and valid fields
+when interpreting the record. The generated C/JSON layout defines every field.
+
+The command port queues details with each result, and MMIO captures the complete
+record on the same handshake as the software completion. Backpressure and reads
+retain it; POP/reset remove visibility, and simultaneous POP/replacement swaps
+all words together. A completion on the RESET-write edge is now discarded before
+it can survive reset or emit a stale completion event. Legacy profiles retain
+that fix without gaining the native register block.
+
+Sixteen control/codec checks on 621 frozen source/ABI files, C11/schema checks
+and the default 768-file four-CU host emission pass. See the
+[control checkpoint](performance/mobile-native-binned-completion-info-2026-10-20.json).
+Real native shader/Sv32/MMIO fault-detail and reset composition is still pending;
+this does not close full host or H0-H8 qualification. Structural counts are not PPA.

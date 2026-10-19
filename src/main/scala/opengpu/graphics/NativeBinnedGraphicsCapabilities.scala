@@ -12,6 +12,7 @@ object NativeBinnedGraphicsCapabilities {
   val fields=Seq(Field("MAGIC",0,0,32,"GNC1"),Field("WORD_COUNT",1,0,32,"words"),Field("JOB_MAGIC",2,0,32,"GNJ1"),
     Field("JOB_BYTES",3,0,16,"bytes"),Field("FRAME_BYTES",3,16,16,"bytes"),Field("DRAW_BYTES",4,0,16,"bytes"),
     Field("ATTRIBUTES",4,16,5,"slots"),Field("BINDINGS",4,21,5,"slots"),Field("VARYINGS",4,26,5,"vec4 slots"),
+    Field("COMPLETION_INFO",4,31,1,"GNX1 completion detail registers present"),
     Field("FRAME_WIDTH",5,0,16,"pixels"),Field("FRAME_HEIGHT",5,16,16,"pixels"),Field("STORAGE_BYTES",6,0,17,"bytes per color slot"),
     Field("SUBPIXEL_BITS",6,17,4,"bits"),Field("COLORS",6,21,3,"locations"),Field("SAMPLES",6,24,3,"samples"),
     Field("ENGINES",6,27,3,"engines"),Field("TILE8",6,30,1,"supported"),Field("TILE16",6,31,1,"supported"),
@@ -24,7 +25,7 @@ object NativeBinnedGraphicsCapabilities {
     n.payload.foreach(q=>require(q.owners<8 && q.slotLines<2048,"GNC1 payload fields must represent the configured pool"))
     Seq(magic,BigInt(wordCount),NativeBinnedGraphicsLayout.jobMagic,
       BigInt(NativeBinnedGraphicsLayout.jobBytes)|(BigInt(NativeBinnedGraphicsLayout.frameBytes)<<16),
-      BigInt(NativeBinnedGraphicsLayout.drawBytes)|(BigInt(n.vertex.input.attributes)<<16)|(BigInt(n.vertex.input.bindings)<<21)|(BigInt(n.vertex.varyings)<<26),
+      BigInt(NativeBinnedGraphicsLayout.drawBytes)|(BigInt(n.vertex.input.attributes)<<16)|(BigInt(n.vertex.input.bindings)<<21)|(BigInt(n.vertex.varyings)<<26)|(BigInt(1)<<31),
       BigInt(g.screenWidth)|(BigInt(g.screenHeight)<<16),
       BigInt(n.storage.bytes)|(BigInt(g.subPixelBits)<<17)|(BigInt(n.fragment.colors)<<21)|(BigInt(g.maxSampleCount)<<24)|
         (BigInt(n.engines)<<27)|(BigInt(3)<<30),

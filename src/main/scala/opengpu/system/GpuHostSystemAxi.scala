@@ -8,7 +8,7 @@ import opengpu.core.memory.{
   TranslatedWordClient
 }
 import opengpu.graphics.{GraphicsConfig, TextureUnit,MemoryTileBinRenderPipeline,NativeTypedGraphicsConfig,MemoryNativeTypedGraphicsPipeline,
-  NativeBinnedGraphicsConfig,MemoryNativeBinnedGraphicsPipeline,NativeBinnedGraphicsCapabilities,TypedVertexBinImagePipeline}
+  NativeBinnedGraphicsConfig,MemoryNativeBinnedGraphicsPipeline,NativeBinnedGraphicsCapabilities,TypedVertexBinImagePipeline,NativeBinnedCompletionInfo}
 
 /** Optional simulation counters; the default product port list is unchanged. */
 class GpuHostPerformanceCounters extends Bundle {
@@ -266,7 +266,7 @@ class GpuHostSystemAxi(
       graphicsScalarFpu = enableFpuBackend && shaderConfig.enableFpu,
       sharedShader = sharedShader.map(_.copy(shaderPayload=None)), protectVmState = true,
       persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
-      useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = externalRender))
+      useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = externalRender,nativeCompletionInfo=nativeBinnedGraphics.nonEmpty))
     val system = Module(new GpuSystem(
       gpuConfig,
       numComputeUnits = numComputeUnits,
@@ -553,6 +553,7 @@ class GpuHostSystemAxi(
       completion.bits.descriptorReadBytes:=renderer.io.completion.bits.descriptorReadBytes(15,0)
       completion.bits.appendReadBytes:=renderer.io.completion.bits.drawReadBytes
       completion.bits.acceptedAppends:=renderer.io.completion.bits.completedDraws
+      host.io.binCompletionDetails.get:=VecInit(NativeBinnedCompletionInfo.words(renderer.io.completion.bits))
       renderer.io.completion.ready:=completion.ready
       host.io.binCapabilityWords.get:=VecInit(NativeBinnedGraphicsCapabilities.words(n,numComputeUnits,graphicsConfig).map(_.U(32.W)))
       host.io.binDrained.get:= !renderer.io.busy && fabric.io.drained
