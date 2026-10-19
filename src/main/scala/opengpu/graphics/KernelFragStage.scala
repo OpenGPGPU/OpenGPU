@@ -567,6 +567,7 @@ class KernelFragStage(
 
   io.fragIn.ready := !pendingValid && prodCount < batchCap.U
   io.drained := state === sIdle && !pendingValid
+  assert(!(state===sIdle && pendingValid),"an idle fragment consumer cannot strand a committed batch")
 
   // ---------------------------------------------------------------------
   // Draw-boundary commit and the ordered retire queue.
@@ -962,25 +963,25 @@ class KernelFragStage(
   }
 
   private def advanceBatch(): Unit = {
-          when(pendingValid) {
-            execSlot := pendingSlot
-            execCount := slotCount(pendingSlot)
-            execCarries := pendingCarries
-            execEntryIdx := pendingEntryIdx
-            slotCount(pendingSlot) := 0.U
-            pendingValid := false.B
-            prodSlot := execSlot
-            index := 0.U
-            requestQuadIdx := 0.U
-            requestQuadSel := 1.U
-            requestLaneIdx := 0.U
-            requestQuadLoaded := false.B
-            field := 0.U
-            wordPending := false.B
-            state := writeStart
-          }.otherwise {
-            state := sIdle
-          }
+    // A producer can commit on the consumer's final edge, including the
+    // release acknowledgement. Consume that incoming batch directly instead
+    // of parking it while simultaneously returning the consumer to idle.
+    when(pendingValid || commitAny) {
+      val takePending=pendingValid
+      val nextSlot=Mux(takePending,pendingSlot,prodSlot)
+      val bindPendingNow=flushRise && bindPending
+      execSlot:=nextSlot
+      execCount:=Mux(takePending,slotCount(pendingSlot),prodCountNext)
+      execCarries:=Mux(takePending,pendingCarries || bindPendingNow,commitFlush)
+      execEntryIdx:=Mux(takePending && !bindPendingNow,pendingEntryIdx,qTail)
+      slotCount(nextSlot):=0.U
+      pendingValid:=false.B
+      prodSlot:=execSlot
+      index:=0.U
+      requestQuadIdx:=0.U;requestQuadSel:=1.U;requestLaneIdx:=0.U
+      requestQuadLoaded:=false.B;field:=0.U;wordPending:=false.B
+      state:=writeStart
+    }.otherwise {state:=sIdle}
   }
   payloadTransport.foreach { transport=>
     when(state=/=sIdle && io.payload.get.cancel){payloadAbort.get:=true.B}

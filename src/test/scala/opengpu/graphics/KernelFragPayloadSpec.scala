@@ -22,6 +22,7 @@ private class KernelFragPayloadHarness(lanes: Int=4,warps: Int=2,capacity: Int=1
     val pressureResponse=Decoupled(new ShaderPayloadControlResponse(p))
     val context=Input(UInt(32.W));val cancel=Input(Bool())
     val controlReady=Input(Bool());val dataReady=Input(Bool())
+    val releaseResponseReady=Input(Bool());val releaseReplyValid=Output(Bool())
     val controlOffer=Output(Valid(new ShaderPayloadControlRequest(p)))
     val dataOffer=Output(Valid(new ShaderPayloadRequest(p)))
     val task=Output(Valid(new ShaderPayloadBinding(cfg,p)))
@@ -56,6 +57,11 @@ private class KernelFragPayloadHarness(lanes: Int=4,warps: Int=2,capacity: Int=1
   shader.io.vectorTexSample<>frag.io.kernelVectorTexSample;frag.io.kernelVectorTexWriteback<>shader.io.vectorTexWriteback
   val local=frag.io.payload.get;val management=system.io.payloadManagement.get
   management.control(0)<>local.control;local.controlResponse<>management.controlResponse(0)
+  val releaseReply=management.controlResponse(0).bits.operation===ShaderPayloadControl.release.U
+  val replyAllowed= !releaseReply || io.releaseResponseReady
+  local.controlResponse.valid:=management.controlResponse(0).valid && replyAllowed
+  management.controlResponse(0).ready:=local.controlResponse.ready && replyAllowed
+  io.releaseReplyValid:=management.controlResponse(0).valid && releaseReply
   management.control(0).valid:=local.control.valid && io.controlReady
   local.control.ready:=management.control(0).ready && io.controlReady
   io.controlOffer.valid:=local.control.valid;io.controlOffer.bits:=local.control.bits
@@ -106,7 +112,7 @@ class KernelFragPayloadSpec extends AnyFlatSpec {
   private class Driver(val d: KernelFragPayloadHarness) {
     val cap=d.cfg.lanes*d.cfg.warps;val stride=4*cap
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
-    d.io.controlReady.poke(true.B);d.io.dataReady.poke(true.B)
+    d.io.controlReady.poke(true.B);d.io.dataReady.poke(true.B);d.io.releaseResponseReady.poke(true.B)
     d.io.front.shaderPc.poke(0x1000.U);d.io.front.kernargBase.poke(0x8000.U)
     d.io.front.abi1.poke(true.B);d.io.context.poke(101.U)
     d.io.front.texWidth.poke(1.U);d.io.front.texHeight.poke(1.U)
@@ -226,6 +232,38 @@ class KernelFragPayloadSpec extends AnyFlatSpec {
         assert(pixel._4==(if(i==2 && k==2)0 else 1))
       }
       info(s"FRAGMENT_PAYLOAD_PENDING batches=2 fragments=12 distinctGenerations=${generations.size} helperCoverage=true orderedRetirement=true globalStaging=${t.staging} cycles=${t.cycle}")
+    }
+  }
+
+  it should "consume a new full batch committed on the previous lease release acknowledgement" in {
+    simulate(new KernelFragPayloadHarness) { d=>
+      val t=new Driver(d)
+      d.io.releaseResponseReady.poke(false.B)
+      d.io.front.quadOut.get.ready.poke(true.B);d.io.front.drawRetire.ready.poke(true.B)
+      t.quad(0,0);t.quad(1,0);t.flush()
+      t.until(t.retired==1 && d.io.releaseReplyValid.peek().litToBoolean)
+      t.quad(0,1)
+      d.io.releaseResponseReady.poke(true.B);t.tick()
+      t.quad(1,1);t.flush()
+      t.until(t.retired==2 && d.io.idle.peek().litToBoolean)
+      assert(t.quads.size==4 && t.launches==2 && t.faults==0 && t.staging==0)
+      assert(t.quads(2).head._1==16 && t.quads(3).last._1==23)
+      info(s"FRAGMENT_PAYLOAD_RELEASE_RACE incomingFullBatch=true exports=16 retirement=2 drained=true cycles=${t.cycle}")
+    }
+  }
+
+  it should "bind a queued batch flush on the previous lease release acknowledgement" in {
+    simulate(new KernelFragPayloadHarness) { d=>
+      val t=new Driver(d);d.io.releaseResponseReady.poke(false.B)
+      d.io.front.quadOut.get.ready.poke(true.B);d.io.front.drawRetire.ready.poke(true.B)
+      t.quad(0,0);t.quad(1,0);t.flush()
+      t.until(t.retired==1 && d.io.releaseReplyValid.peek().litToBoolean)
+      t.quad(0,1);t.quad(1,1)
+      d.io.releaseResponseReady.poke(true.B);t.tick();t.flush()
+      t.until(t.retired==2 && d.io.idle.peek().litToBoolean)
+      assert(t.quads.size==4 && t.launches==2 && t.faults==0 && t.staging==0)
+      assert(t.quads(2).head._1==16 && t.quads(3).last._1==23)
+      info(s"FRAGMENT_PAYLOAD_RELEASE_RACE queuedLateFlush=true exports=16 retirement=2 drained=true cycles=${t.cycle}")
     }
   }
 
