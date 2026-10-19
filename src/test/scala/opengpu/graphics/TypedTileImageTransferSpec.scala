@@ -19,6 +19,7 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
     zero(d.io);d.reset.poke(true.B);d.clock.step(2);d.reset.poke(false.B)
     val memory=mutable.Map.empty[BigInt,Int];val initial=mutable.Map.empty[BigInt,Int];val expected=mutable.Map.empty[BigInt,Int]
     val resident=mutable.Map.empty[Int,(BigInt,Boolean)];var views=Vector.empty[View]
+    var destinations=Vector.empty[(View,BigInt,Int)];var resolvedIssued=0;var resolvedAcked=0
     var mode=2;var ox=1;var oy=2;var width=5;var height=3;var cycle=0
     var blockBus=false;var blockLocal=false;var blockAck=false;var faultRead=false;var faultWrite=false;var cancelOnStore=false
     var delivered=0;var reads=0;var writes=0;var locals=0;var issuedBytes=0;var storedBytes=0
@@ -40,7 +41,9 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
           r.cachePolicy.expect(opengpu.config.CachePolicy.uncached);r.sizeLog2.expect(6.U)
           val write=r.isWrite.peek().litToBoolean;val mask=r.byteMask.peek().litValue;val data=r.writeData.peek().litValue
           val failed=if(write)faultWrite else faultRead
-          if(write){writes+=1;issuedBytes+=mask.bitCount;if(!failed){storedBytes+=mask.bitCount
+          if(write){writes+=1;issuedBytes+=mask.bitCount;val resolving=destinations.exists{case(_,base,pitch)=>address+64>base && address<base+9*pitch}
+            if(resolving)resolvedIssued+=mask.bitCount
+            if(!failed){storedBytes+=mask.bitCount;if(resolving)resolvedAcked+=mask.bitCount
             for(b<-0 until 64 if mask.testBit(b))memory(address+b)=((data>>(8*b))&255).toInt}
             if(cancelOnStore)d.io.cancel.poke(true.B)
           }else reads+=1
@@ -61,9 +64,10 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       d.clock.step();cycle+=1
     }
     def until(p: => Boolean): Unit={var n=0;while(!p && n<100000){tick();n+=1};assert(p,s"transfer stalled cycle=$cycle reads=$reads writes=$writes local=$locals")}
-    def prepare(names: Vector[String],load: Int=1,depth: Int=1,stencil: Boolean=true): Unit={
+    def prepare(names: Vector[String],load: Int=1,depth: Int=1,stencil: Boolean=true,sampleMode: Int=2): Unit={
       memory.clear();initial.clear();expected.clear();resident.clear();views=Vector.empty;delivered=0;reads=0;writes=0;locals=0;issuedBytes=0;storedBytes=0
-      mode=2;ox=1;oy=2;width=5;height=3
+      destinations=Vector.empty;resolvedIssued=0;resolvedAcked=0
+      mode=sampleMode;ox=1;oy=2;width=5;height=3
       val b=d.io.begin.bits;zero(b);b.version.poke(1.U);val q=b.pixels;q.version.poke(1.U);val c=q.colors;c.version.poke(1.U)
       c.identity.context.poke(7.U);c.identity.pass.poke(8.U);c.identity.generation.poke(9.U)
       c.tileLog2.poke(3.U);c.tileWidth.poke(width.U);c.tileHeight.poke(height.U);c.originX.poke(ox.S);c.originY.poke(oy.S);c.sampleMode.poke(mode.U)
@@ -91,6 +95,27 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
         val value=resident.get(word)
         if(value.exists(_._2) || v.load!=0){val data=value.map(_._1).getOrElse(slotWord(v,word));expected(physical(v,localByte).get)=((data>>(8*(localByte%8)))&255).toInt}}
     }
+    def enableResolves(sourceStore: Boolean=false): Unit={
+      views=views.map(_.copy(store=sourceStore))
+      for(v<-views){d.io.begin.bits.views(v.index).store.poke(sourceStore.B)
+        val base=BigInt(0x800000+v.index*0x10000+61);val pitch=13*v.bytes+11;val r=d.io.begin.bits.resolves(v.index)
+        r.enable.poke(true.B);val a=r.destination;a.base.poke(base.U);a.limit.poke((base+8*pitch+13*v.bytes).U)
+        a.allocationBase.poke((base& ~BigInt(63)).U);a.allocationLimit.poke(((base+9*pitch+63)& ~BigInt(63)).U)
+        a.imageWidth.poke(13.U);a.imageHeight.poke(9.U);a.rowPitch.poke(pitch.U);a.writable.poke(true.B);a.store.poke(true.B)
+        destinations :+=((v,base,pitch))
+        for(a<-(base& ~BigInt(63)) until((base+9*pitch+63)& ~BigInt(63))){memory(a)=0xa5;initial(a)=0xa5;expected(a)=0xa5}
+      }
+    }
+    def expectedResolves(names: Vector[String]): Unit={
+      for((v,base,pitch)<-destinations;y<-0 until height;x<-0 until width){
+        val values=Vector.tabulate(4){sample=>if(sample>=(1<<mode))BigInt(0)else {
+          (0 until v.bytes).foldLeft(BigInt(0)){(r,b)=>val local=v.offset+((y*8+x)*(1<<mode)+sample)*v.bytes+b;val word=local/8
+            val value=resident.get(word).map(_._1).getOrElse(if(v.load==0)refillValue(word)else slotWord(v,word))
+            r|(((value>>(8*(local%8)))&255)<<(8*b))}}}
+        val value=TypedResolveReference.resolve(if(v.index<4)names(v.index)else "R8",values,mode,depth=v.index>=4)
+        for(b<-0 until v.bytes)expected(base+(oy+y)*pitch+(ox+x)*v.bytes+b)=((value>>(8*b))&255).toInt
+      }
+    }
     def begin(): Unit={d.io.begin.valid.poke(true.B);until(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
       until(d.io.bound.peek().litToBoolean || d.io.completion.valid.peek().litToBoolean)}
     def refill(word: Int,code: Boolean=false): Unit={d.io.refill.bits.address.poke(word.U);d.io.refill.valid.poke(true.B);until(d.io.refill.ready.peek().litToBoolean);tick();d.io.refill.valid.poke(false.B)
@@ -100,7 +125,10 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       d.io.refillReply.ready.poke(true.B);tick();d.io.refillReply.ready.poke(false.B)}
     def flush(success: Boolean=true): Unit={d.io.flush.bits.poke(success.B);d.io.flush.valid.poke(true.B);until(d.io.flush.ready.peek().litToBoolean);tick();d.io.flush.valid.poke(false.B)}
     def finish(code: Int=0,verify: Boolean=true): Unit={until(d.io.completion.valid.peek().litToBoolean);val r=d.io.completion.bits;r.status.expect(code.U)
-      r.loadBytes.expect(delivered.U);r.readLines.expect(reads.U);r.writeLines.expect(writes.U);r.issuedStoreBytes.expect(issuedBytes.U);r.storedBytes.expect(storedBytes.U)
+      if(destinations.isEmpty)r.loadBytes.expect(delivered.U)else assert(r.loadBytes.peek().litValue>=delivered)
+      r.issuedResolveBytes.expect(resolvedIssued.U);r.resolvedBytes.expect(resolvedAcked.U)
+      if(code==0)r.resolvedPixels.expect((destinations.size*width*height).U)
+      r.readLines.expect(reads.U);r.writeLines.expect(writes.U);r.issuedStoreBytes.expect((issuedBytes-resolvedIssued).U);r.storedBytes.expect((storedBytes-resolvedAcked).U)
       val held=r.peek().litValue;for(_<-0 until 4){tick();assert(r.peek().litValue==held);d.io.begin.ready.expect(false.B)}
       assert(bus.isEmpty && local.isEmpty && heldBus.isEmpty && heldLocal.isEmpty)
       if(verify)assert(memory==expected,"pitched image bytes or allocation guard bytes changed")
@@ -188,6 +216,64 @@ class TypedTileImageTransferSpec extends AnyFlatSpec {
       for(v<-t.views){val q=d.io.begin.bits.views(v.index);zero(q)}
       t.begin();t.flush();t.finish();assert(t.reads==0 && t.writes==0 && t.locals==0)
       info("TYPED_IMAGE_TRANSFER storeDiscardNoBacking=true sharedLoadAlias=true singleStoredAlias=true snapshotBeforeExport=true cacheLineReuse=true overlappingStoresRejected=true")
+    }
+  }
+
+  it should "resolve all typed views through cold loads virtual clears and packed pitched guarded destinations independently of source stores" in {
+    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d);var bindings=0
+      for((group,g)<-TypedColorFormat.formats.map(_.name).grouped(4).zipWithIndex;load<-0 to 2;mode<-0 to 2){
+        val names=group.toVector;t.prepare(names,load,depth=(g%6)+1,stencil=g%6<3,sampleMode=mode)
+        for(v<-t.views)t.resident(v.offset/8)=(BigInt("3f4000003e800000",16),true)
+        t.enableResolves(sourceStore=(load+mode)%2==0);t.expectedStores();t.expectedResolves(names)
+        t.begin();t.flush();t.finish();assert(t.resolvedAcked==t.destinations.map(_._1.bytes).sum*t.width*t.height)
+        if(load!=0)assert(t.reads==0);bindings+=1
+      }
+      info(s"TYPED_IMAGE_RESOLVE bindings=$bindings colors=36 depthStencilLayouts=7 modes=3 loadClearDiscard=true independentSourceStore=true coldPackedGather=true exactGuardedBytes=true unalignedResolveBase=true oddResolvePitch=true")
+    }
+  }
+  it should "reject resolve bounds permissions output aliases and late source aliases before memory access" in {
+    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
+      val changes=Seq[()=>Unit](
+        ()=>d.io.begin.bits.resolves(0).destination.writable.poke(false.B),()=>d.io.begin.bits.resolves(0).destination.store.poke(false.B),
+        ()=>d.io.begin.bits.resolves(0).destination.limit.poke(1.U),()=>d.io.begin.bits.resolves(0).destination.rowPitch.poke(1.U),
+        ()=>d.io.begin.bits.resolves(0).destination.imageWidth.poke(1.U),()=>d.io.begin.bits.resolves(0).destination.allocationLimit.poke((BigInt(1)<<32|1).U),
+        ()=>d.io.begin.bits.resolves(0).destination.poke(d.io.begin.bits.views(0).peek()),
+        ()=>d.io.begin.bits.resolves(1).destination.poke(d.io.begin.bits.resolves(0).destination.peek()),
+        ()=>d.io.begin.bits.resolves(3).enable.poke(true.B),
+        ()=>{d.io.begin.bits.views(1).poke(d.io.begin.bits.views(0).peek());d.io.begin.bits.views(1).store.poke(true.B)})
+      for(change<-changes){t.prepare(Vector("RGB8","RGB8"),0,depth=0,stencil=false);t.enableResolves();change();t.begin();t.finish(1);assert(t.locals==0 && t.reads==0 && t.writes==0)}
+      t.prepare(Vector("RGBA8"),1,depth=0,stencil=false);t.enableResolves();zero(d.io.begin.bits.views(0));t.expectedResolves(Vector("RGBA8"));t.begin();t.flush();t.finish()
+      info(s"TYPED_IMAGE_RESOLVE invalidDescriptors=${changes.size} noInvalidAccess=true outputSourceAlias=true outputOutputAlias=true lateLoadSourceAlias=true clearResolveWithoutSourceBacking=true")
+    }
+  }
+  it should "drain held resolve reads private requests stores and cancellation while preserving acknowledged prefixes" in {
+    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
+      t.prepare(Vector("RGBA32F"),0,depth=0,stencil=false);t.enableResolves();t.begin();t.blockBus=true;t.flush();t.until(d.io.memoryRequest.valid.peek().litToBoolean)
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);for(_<-0 until 4)t.tick();t.blockBus=false;t.finish(4)
+      t.prepare(Vector("RGBA8"),1,depth=0,stencil=false);t.enableResolves();t.begin();t.blockLocal=true;t.flush();t.until(d.io.memory.valid.peek().litToBoolean)
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);t.tick();t.blockLocal=false;t.finish(4)
+      t.prepare(Vector("RGBA32F"),1,depth=0,stencil=false);t.enableResolves();t.begin();t.blockAck=true;t.cancelOnStore=true;t.flush();t.until(t.writes==1);t.cancelOnStore=false;d.io.cancel.poke(false.B)
+      for(_<-0 until 6){t.tick();d.io.completion.valid.expect(false.B)};t.blockAck=false;t.finish(4,false);assert(t.resolvedAcked>0 && t.writes==1)
+      t.prepare(Vector("RGBA8"),1,depth=0,stencil=false);t.enableResolves();t.begin();t.blockBus=true;t.flush();t.until(d.io.memoryRequest.valid.peek().litToBoolean)
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B);for(_<-0 until 5)t.tick();t.blockBus=false;t.finish(4,false);assert(t.writes==1 && t.resolvedAcked>0)
+      t.prepare(Vector("RGBA8"),0,depth=0,stencil=false);t.enableResolves();t.begin();t.faultRead=true;t.flush();t.finish(3);t.faultRead=false
+      t.prepare(Vector("RGBA8"),1,depth=0,stencil=false);t.enableResolves();t.begin();t.faultWrite=true;t.flush();t.finish(3);t.faultWrite=false;assert(t.resolvedAcked==0)
+      t.prepare(Vector("SRGB8_ALPHA8"),1,depth=0,stencil=false);t.enableResolves();t.expectedResolves(Vector("SRGB8_ALPHA8"));t.begin();t.flush();t.finish()
+      info("TYPED_IMAGE_RESOLVE heldReadCancel=true heldPrivateCancel=true heldResolveAck=true heldResolveOfferCancel=true acknowledgedPrefix=true resolveReadFault=true resolveWriteFault=true noFalseSuccess=true healthyReuse=true")
+    }
+  }
+
+  it should "resolve into the highest physical bytes with a four GiB exclusive destination limit" in {
+    simulate(new TypedTileImageTransfer()){d=>val t=new Driver(d)
+      t.prepare(Vector("RGBA8"),0,depth=0,stencil=false);t.width=4;t.height=4;t.ox=0;t.oy=0
+      val tile=d.io.begin.bits.pixels.colors;tile.originX.poke(0.S);tile.originY.poke(0.S);tile.tileWidth.poke(4.U);tile.tileHeight.poke(4.U)
+      t.enableResolves();val base=BigInt("ffffffc0",16);val end=BigInt(1)<<32
+      t.destinations=Vector((t.views.head,base,16));val r=d.io.begin.bits.resolves(0).destination
+      r.base.poke(base.U);r.limit.poke(end.U);r.allocationBase.poke(base.U);r.allocationLimit.poke(end.U)
+      r.imageWidth.poke(4.U);r.imageHeight.poke(4.U);r.rowPitch.poke(16.U)
+      for(a<-base until end){t.memory(a)=0xa5;t.initial(a)=0xa5;t.expected(a)=0xa5}
+      t.expectedResolves(Vector("RGBA8"));t.begin();t.flush();t.finish();assert(t.resolvedAcked==64 && t.reads>0)
+      info("TYPED_IMAGE_RESOLVE destinationExclusive4GiB=true highestByte=true coldLoadResolve=true exactHighestLine=true")
     }
   }
 

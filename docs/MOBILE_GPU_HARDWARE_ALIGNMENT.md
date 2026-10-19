@@ -4441,3 +4441,74 @@ are functional and structural checks; PPA evaluation remains synthesis only.
 Native bin/host integration, virtual image/resource descriptors and general
 permission/alias ownership, texture dependency closure, dither/resolve, workload
 and rate qualification and the remaining H0–H8 gates remain open.
+
+### Typed multisample resolve and physical publication, 2026-10-19
+
+The [typed resolve checkpoint](performance/mobile-typed-multisample-resolve-2026-10-19.json)
+extends the same shared-CU image pass with optional single-sample destinations
+for four colors, primary depth/stencil and separate stencil. Format and pixel
+coordinates come from the source; the destination is implicitly the same format
+at one sample per pixel. Its pitched image, active rectangle, allocation bounds
+and trusted write permission are validated before shader or memory admission.
+Each enabled destination requires store intent and must be disjoint from every
+active source backing and other resolve output envelope. Source store intent is
+independent: a multisample source can be discarded while its resolve is published.
+Clear/discard sources with no source store need no source backing metadata.
+
+The policy follows the choices allowed by
+[GLES 3.0.6 section 4.3.3](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
+One-sample copies preserve raw records. Integer colors and depth/stencil select
+sample zero; combined depth/stencil retains both components and record padding.
+Two/four-sample normalized and floating colors average decoded FP32 components.
+sRGB RGB is decoded to linear light before averaging and encoded on output;
+alpha follows UNORM rules. The internal eight floating color encodings remain
+hardware capabilities rather than an API renderability claim.
+
+A serialized resolve service accumulates finite components exactly in signed
+281-bit units of 2^-149, divides by the sample count and rounds once to FP32
+before the existing format encoder. This prevents intermediate floating addition
+overflow, premature subnormal truncation and loss from cancellation. All-negative
+zero resolves to negative zero; mixed exact zero resolves to positive zero.
+Nonzero negative values rounded to zero retain their sign. Arithmetic NaNs and
+mixed infinities canonicalize to NaN; otherwise infinity retains its sign. Raw
+one-sample copies and selected depth/stencil records preserve their stored bits.
+General depth-NaN/API rules remain unqualified.
+
+After selected source stores, resolve walks the active rectangle and reads
+resident or virtual slot words through the existing maintenance port. Untouched
+depth/stencil clear/discard words use the established defaults. Cold load words
+gather bounded active image bytes through the physical line cache without
+installing or dirtying slot storage. A tagged 64-bit register retains a source
+word across packed record boundaries. Admission rejects an earlier source store
+aliasing a different cold load-start resolve source, preserving its backing
+snapshot; existing aliases without late resolve retain their preceding contract.
+
+Masked resolved stores split 8-byte staging chunks and 64-byte line crossings,
+preserving pixels outside the tile, row-pitch gaps and allocation guards. The
+outer owner waits for resolve arithmetic, private offers and all physical
+acknowledgements before local renderer end, pass completion or VM release.
+Fault/cancel drains irrevocable traffic and retains a counted committed prefix.
+Issued/acknowledged source and resolve bytes have separate counters; completed
+resolve pixels count on their final successful acknowledgement, including after
+cancellation. Useful load bytes include completed cold resolve gathers; aborted
+assemblies do not count and repeated gathers may count again.
+
+All **47 checks** pass on the frozen **571-source** archive: two numeric resolve
+checks, ten transfer checks, five image-pipeline checks and thirty numeric/pixel/
+storage regressions. They cover numeric extremes, all formats/sample modes and packed transfer bytes,
+invalid bounds/aliases, cancellation/fault drain, the highest physical byte and
+actual local/global shared-CU draws with cached consumer visibility. The design
+emits **7/9/165 files** for the standalone resolve/transfer/composed owner. SRAM
+remains **33 characterized macros, 66 KiB**, including the 32 KiB attachment slot;
+the existing four fixed-function FMA and three divider instances remain. It
+adds one serialized integer resolve service and a format encoder, including
+accumulator, sample/word/result, descriptor and control registers and conversion
+constants. It adds no SRAM macro, floating arithmetic lane, shader CU or payload
+pool. These structural checks do not constitute PPA; evaluation remains
+**synthesis only**.
+
+Native bin/host scheduling, translated image/resource admission and general
+shader-resource alias ownership, texture/CPU dependency closure, dithering,
+remaining primitive/texture/API semantics, workload/rate qualification,
+synthesis PPA and the original H0–H8 gates remain open. This closes the typed
+pass's internal resolve/publication gap without claiming full hardware completion.

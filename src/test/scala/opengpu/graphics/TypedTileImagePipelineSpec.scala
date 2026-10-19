@@ -157,6 +157,7 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
     var holdAt: Option[Int]=None;var held: Option[BigInt]=None;var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
     var attachmentWrites=0;var blockStoreAck=false;var holdStoreAt: Option[Int]=None;var passSerial=0;var loadStart=false
     var backings=Vector.empty[(Int,Int,BigInt,Int)]
+    var resolveBackings=Vector.empty[(Int,Int,BigInt,Int)];var sourceStored=true
     val physicalInitial=mutable.Map.empty[BigInt,BigInt]
     var checkOutputs=true;var blockMemory=false;var blockRefill=false;var refillFault=false
     val view=View(0,0,4,4,Fp32ViewportReference.fp(0.75),Fp32ViewportReference.fp(0.25))
@@ -200,8 +201,8 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
       assert(condition,s"typed tile render stalled cycle=$cycle outputs=$accepted requests=$requests launches=$vertexLaunches/$fragmentLaunches")}
     def bufferView(s: VertexInputView,base: Int,bytes: Int): Unit={s.base.poke(base.U);s.limit.poke((base+bytes).U)
       s.allocationBase.poke(base.U);s.allocationLimit.poke(((base+bytes+63)& ~63).U)}
-    def begin(mode: Int=0,load: Boolean=false,mutate: ()=>Unit=()=>(),pulseCancel: Boolean=false,pulsePoolCancel: Boolean=false): Unit={
-      ordinal=0;attachmentWrites=0;holdStoreAt=None;loadStart=load;physicalInitial.clear();backings=Vector.empty;settings=settings.copy(mode=mode);model.clear();initial.clear();changed.clear();refills=0;passing=0;rejected=0
+    def begin(mode: Int=0,load: Boolean=false,mutate: ()=>Unit=()=>(),pulseCancel: Boolean=false,pulsePoolCancel: Boolean=false,resolve: Boolean=false,sourceStore: Boolean=true): Unit={
+      sourceStored=sourceStore;resolveBackings=Vector.empty;ordinal=0;attachmentWrites=0;holdStoreAt=None;loadStart=load;physicalInitial.clear();backings=Vector.empty;settings=settings.copy(mode=mode);model.clear();initial.clear();changed.clear();refills=0;passing=0;rejected=0
       val begin=d.io.begin.bits;zero(begin);begin.version.poke(1.U);val q=begin.pixels;q.version.poke(1.U);val c=q.colors;c.version.poke(1.U)
       c.identity.context.poke(7.U);c.identity.pass.poke(8.U);c.identity.generation.poke(9.U)
       c.tileLog2.poke(3.U);c.tileWidth.poke(4.U);c.tileHeight.poke(4.U);c.sampleMode.poke(mode.U);c.reservedBytes.poke(4096.U)
@@ -217,11 +218,19 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
         val allocation=BigInt(0x400000+passSerial*0x100000+index*0x10000);val base=allocation+59;val pitch=13*(1<<mode)*bytes+7
         val v=begin.views(index);v.base.poke(base.U);v.limit.poke((base+8*pitch+13*(1<<mode)*bytes).U)
         v.allocationBase.poke(allocation.U);v.allocationLimit.poke(((base+9*pitch+63)& ~BigInt(63)).U)
-        v.imageWidth.poke(13.U);v.imageHeight.poke(9.U);v.rowPitch.poke(pitch.U);v.readable.poke(true.B);v.writable.poke(true.B);v.store.poke(true.B)
+        v.imageWidth.poke(13.U);v.imageHeight.poke(9.U);v.rowPitch.poke(pitch.U);v.readable.poke(true.B);v.writable.poke(true.B);v.store.poke(sourceStore.B)
         for(a<-allocation until((base+9*pitch+63)& ~BigInt(63))){memory(a)=0xa7;physicalInitial(a)=0xa7}
         for(y<-0 until 9;x<-0 until 13*(1<<mode);b<-0 until bytes){val a=base+y*pitch+x*bytes+b
           val value=BigInt(initial.getOrElse(offset+b,0));memory(a)=value;physicalInitial(a)=value}
         backings :+=(offset,bytes,base,pitch)
+        if(resolve){val allocation=BigInt(0x480000+passSerial*0x100000+index*0x10000);val base=allocation+61;val pitch=13*bytes+11
+          val r=begin.resolves(index);r.enable.poke(true.B);val v=r.destination
+          v.base.poke(base.U);v.limit.poke((base+8*pitch+13*bytes).U);v.allocationBase.poke(allocation.U)
+          v.allocationLimit.poke(((base+9*pitch+63)& ~BigInt(63)).U);v.imageWidth.poke(13.U);v.imageHeight.poke(9.U)
+          v.rowPitch.poke(pitch.U);v.writable.poke(true.B);v.store.poke(true.B)
+          for(a<-allocation until((base+9*pitch+63)& ~BigInt(63))){memory(a)=0xa5;physicalInitial(a)=0xa5}
+          resolveBackings :+=(offset,bytes,base,pitch)
+        }
       }
       passSerial+=1;mutate()
       d.io.begin.valid.poke(true.B);until(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
@@ -297,9 +306,14 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
     }
     def verify(): Unit=assert(attachmentWrites==0,"attachment store escaped before pass end")
     def verifyBacking(): Unit={val wanted=mutable.Map.from(physicalInitial)
-      for((offset,bytes,base,pitch)<-backings;y<-0 until 4;x<-0 until 4*(1<<settings.mode);b<-0 until bytes){
+      for((offset,bytes,base,pitch)<-backings if sourceStored;y<-0 until 4;x<-0 until 4*(1<<settings.mode);b<-0 until bytes){
         val local=offset+(y*8*(1<<settings.mode)+x)*bytes+b
         wanted(base+y*pitch+x*bytes+b)=BigInt(model.getOrElse(local,initial.getOrElse(local,0)))
+      }
+      for((offset,bytes,base,pitch)<-resolveBackings;y<-0 until 4;x<-0 until 4){
+        val samples=Vector.tabulate(4)(s=>get(offset+((y*8+x)*(1<<settings.mode)+s)*bytes,bytes))
+        val index=offsets.indexOf(offset);val value=TypedResolveReference.resolve(if(index<0)"R8"else names(index),samples,settings.mode,depth=index<0)
+        for(b<-0 until bytes)wanted(base+y*pitch+x*bytes+b)=(value>>(8*b))&255
       }
       for((a,value)<-wanted)assert(memory.getOrElse(a,BigInt(0))==value,s"backing byte$a actual=${memory.getOrElse(a,BigInt(0))} expected=$value")
     }
@@ -311,8 +325,11 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
       d.io.consumerResponse.bits.readData.expect(expected.U);d.io.consumerResponse.ready.poke(true.B);tick();d.io.consumerResponse.ready.poke(false.B)
     }
     def fullStoreRequests(): Int={var count=0
-      for((_,bytes,base,pitch)<-backings;y<-0 until 4;offset<-0 until 4*(1<<settings.mode)*bytes by 8){
+      for((_,bytes,base,pitch)<-backings if sourceStored;y<-0 until 4;offset<-0 until 4*(1<<settings.mode)*bytes by 8){
         val n=math.min(8,4*(1<<settings.mode)*bytes-offset);val address=base+y*pitch+offset
+        count+=1+(if((address&63)+n>64)1 else 0)}
+      for((_,bytes,base,pitch)<-resolveBackings;y<-0 until 4;x<-0 until 4;offset<-0 until bytes by 8){
+        val n=math.min(8,bytes-offset);val address=base+y*pitch+x*bytes+offset
         count+=1+(if((address&63)+n>64)1 else 0)};count
     }
     def verifyCached(address: BigInt): Unit={cachedRead(address);val before=requests;cachedRead(address)
@@ -322,7 +339,11 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
       until(d.io.passCompletion.valid.peek().litToBoolean);val r=d.io.passCompletion.bits;r.status.expect(status.U);r.faultStage.expect(stage.U);r.renderer.draws.expect(ordinal.U)
       if(status==0){verifyBacking();verifyCached(backings.head._3)
         if(loadStart)assert(r.transfers.readLines.peek().litValue>0)else {r.transfers.readLines.expect(0.U);r.transfers.writeLines.expect(fullStoreRequests().U);assert(attachmentWrites==fullStoreRequests())}
-        assert(r.transfers.storedBytes.peek().litValue>0)}
+        if(sourceStored)assert(r.transfers.storedBytes.peek().litValue>0)else r.transfers.storedBytes.expect(0.U)
+        r.transfers.resolvedPixels.expect((resolveBackings.size*16).U)
+        r.transfers.resolvedBytes.expect((resolveBackings.map(_._2).sum*16).U)
+        r.transfers.issuedResolveBytes.expect((resolveBackings.map(_._2).sum*16).U)
+        if(resolveBackings.nonEmpty)verifyCached(resolveBackings.head._3)}
       val held=r.peek().litValue;for(_<-0 until 7){tick();assert(r.peek().litValue==held);d.io.begin.ready.expect(false.B);d.io.idle.expect(false.B)}
       assert(pending.isEmpty && offered.isEmpty && fill.isEmpty);d.io.passCompletion.ready.poke(true.B);tick();d.io.passCompletion.ready.poke(false.B)
       until(d.io.idle.peek().litToBoolean);d.io.busy.expect(false.B)
@@ -334,13 +355,13 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
   it should s"publish pitched typed attachments from actual shared CU draws and retain cached visibility local=$local" in {
     simulate(new TypedTileImageHarness(local)){d=>val t=new Driver(d);var quads=0
       for(mode<-Seq(0,2)){
-        t.begin(mode,load=mode==2)
+        t.begin(mode,load=mode==2,resolve=true,sourceStore=mode==0)
         for((function,ctrl)<-Seq((0,61),(1,63))){t.descriptor(depthFunction=function,ctrl=ctrl,blended=ctrl==63);t.submit()
           d.io.begin.bits.views(0).base.poke(0.U);d.io.draw.bits.blend.enable.poke(false.B);t.finish();t.verify();quads+=t.accepted}
         t.verifyCached(t.backings.head._3);t.end()
       }
       assert((t.vertexStaging==0)==local && (t.fragmentStaging==0)==local)
-      info(s"TYPED_IMAGE_PIPELINE local=$local CUs=2 draws=4 quads=$quads modes=2 typedMRT=4 packedRGB8=true unalignedViews=true loadClear=true noIntermediateStores=true exactBackingBytes=true guardedPitches=true blendAndLateDepth=true cachedConsumerSeesPublished=true actualVmContextHeld=true")
+      info(s"TYPED_IMAGE_PIPELINE local=$local CUs=2 draws=4 quads=$quads modes=2 typedMRT=4 packedRGB8=true unalignedViews=true loadClear=true noIntermediateStores=true exactBackingBytes=true guardedPitches=true blendAndLateDepth=true typedResolve=true sourceStoreDiscard=true cachedResolveConsumer=true cachedConsumerSeesPublished=true actualVmContextHeld=true")
     }
   }
   it should "reject backing views before shader access and wait for store acknowledgements or faults before releasing VM ownership" in {
@@ -376,6 +397,25 @@ class TypedTileImagePipelineSpec extends AnyFlatSpec {
         t.end(if(completed)0 else 4,0,true)
       }
       info("TYPED_IMAGE_PIPELINE finalAckCancelOffsets=11 directAndPoolCancel=true offeredLocalEndRetained=true immutablePassResult=true noPublicationDrainCycle=true healthyReuse=true")
+    }
+  }
+
+  it should "retain VM ownership through the final resolve acknowledgement cancellation and physical resolve faults" in {
+    simulate(new TypedTileImageHarness()){d=>val t=new Driver(d)
+      val before=t.requests;t.begin(resolve=true,sourceStore=false,mutate=()=>d.io.begin.bits.resolves(0).destination.writable.poke(false.B));t.end(1,2,true);assert(t.requests==before)
+      t.begin(2,resolve=true,sourceStore=false);t.descriptor();t.submit();t.finish();t.verify();t.verifyCached(t.resolveBackings.head._3)
+      t.holdStoreAt=Some(t.fullStoreRequests());t.blockStoreAck=true
+      d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B);t.until(d.io.end.ready.peek().litToBoolean);t.tick();d.io.end.valid.poke(false.B)
+      t.until(t.attachmentWrites==t.fullStoreRequests());for(_<-0 until 11){t.tick();d.io.passCompletion.valid.expect(false.B);d.io.idle.expect(false.B)}
+      t.blockStoreAck=false;t.end(automatic=true)
+      t.begin(2,resolve=true,sourceStore=false);t.blockStoreAck=true
+      d.io.end.valid.poke(true.B);d.io.end.bits.poke(true.B);t.until(d.io.end.ready.peek().litToBoolean);t.tick();d.io.end.valid.poke(false.B)
+      t.until(t.attachmentWrites==1);d.io.poolCancel.poke(true.B);t.tick();d.io.poolCancel.poke(false.B)
+      for(_<-0 until 7){t.tick();d.io.passCompletion.valid.expect(false.B);d.io.idle.expect(false.B)}
+      t.blockStoreAck=false;t.end(4,0,true);assert(t.attachmentWrites==1)
+      t.begin(2,resolve=true,sourceStore=false);t.fault=(a,w)=>a>=0x400000 && w;t.end(3,2);assert(t.attachmentWrites==1);t.fault=(_,_)=>false
+      t.begin(2,resolve=true,sourceStore=false);t.end()
+      info("TYPED_IMAGE_PIPELINE_RESOLVE CUs=2 modes=4x mixedMRT=true lateDepthStencil=true noSourceStores=true finalResolveAckHeld=true cachedResolveVisibility=true invalidResolveBeforeShaders=true poolCancelDrains=true resolveFault=true healthyReuse=true")
     }
   }
 
