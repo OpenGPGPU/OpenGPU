@@ -103,7 +103,7 @@ The device ISA is defined by the Chisel decoders in
 | M2 MC complete | vector custom instrs + branch/join | bit-exact + round-trip |
 | M3 triple + CPU | `opengpu` resolves to RISCV | `llvm-mc -triple=opengpu` works; Lanai target retired |
 | M4 CodeGen + ABI | `llc -mcpu=opengpu` | done; scalar/float/vector/branch kernels pass `opengpu_shader_validate_words` |
-| M5 clang | `clang --target=opengpu -S` | compiles a kernel |
+| M5 clang | `clang --target=opengpu -S` | done; compiles a kernel to assembly that `llvm-mc -triple=opengpu` assembles |
 | M6 runtime | fatbin + loader | end-to-end execution |
 
 ## 5. Repository layout
@@ -150,3 +150,12 @@ The device ISA is defined by the Chisel decoders in
 - Known limitation: at `-O0` LLVM leaves a redundant `vsetvli x0,x0` (VLMAX)
   that the sandbox rejects; build shaders at the default (`-O2`) or any
   `-O1+` level. Revisit if unoptimized device code must be admitted.
+- M5 clang: `OpenGPUTargetInfo` derives `RISCV32TargetInfo` (ILP32 layout/ABI)
+  and defines `__opengpu__`/`__OPENGPU__`; it is allocated for the `opengpu`
+  triple. The Driver routes `opengpu` through the BareMetal RISCV toolchain,
+  defaults `-march` to `rv32imafv_zicsr_zifencei_xopengpu` and `-mcpu` to
+  `opengpu`, forwards the RISCV feature list to cc1, and uses the RISCV default
+  frame-pointer policy (leaf kernels must not allocate a stack). No kernel
+  attribute/CC wiring yet: functions use the standard C CC, so arguments arrive
+  in `a0...` rather than from the kernarg base. Specializing that is the next
+  clang step.
