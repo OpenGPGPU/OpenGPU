@@ -4123,3 +4123,81 @@ attachment consumption remain open. The composed internal stream does not close
 API MRT/format semantics, physical allocation/alias validation, general resource
 binding, point/line/guard-band rasterization, complete built-ins/qualifiers,
 precision/invariance, queries/transform feedback or remaining H0-H8 gates.
+
+### Resident typed MRT color storage, 2026-10-19
+
+The [typed color checkpoint](performance/mobile-typed-tile-colors-2026-10-19.json)
+adds an explicit format encoder and a resident four-location color service.
+The format inventory follows the 28 color-renderbuffer formats in
+[GLES 3.0.6 section 3.8.3.1/table 3.13](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
+Eight additional R/RG/RGB/RGBA binary16/binary32 encodings provide internal
+floating storage; they do not advertise API renderability or conformance. The
+machine evidence records all 36 internal format IDs. Legacy packed-color formats,
+shader ABI, native pixel backend and CU ISA remain unchanged.
+
+Inputs retain four raw RGBA32 locations and float/uint/sint location types. The
+late visibility owner supplies per-lane sample masks that must be subsets of
+shader coverage. The service validates quad identity/layout, coordinates, types,
+helper/discard restrictions and selected sample bounds before updating storage.
+Attachment location masks, RGBA component masks and sample coverage have separate
+units. Component bit zero means R here; the legacy packed-color mask starts at
+alpha. Helpers, discarded lanes, rejected samples and disabled locations cannot
+change color data.
+
+Byte/half/word formats store R at the lowest address. Packed 565/4444/5551 use
+conventional high-R positions; 10:10:10:2 uses low R. Narrow integers saturate.
+UNORM conversion multiplies the exact FP32 significand by the component maximum
+and rounds once to nearest/even. Binary16 uses nearest/even and gradual underflow;
+binary32 preserves raw bits. UNORM/sRGB NaNs map to zero, while binary16 NaNs
+canonicalize. These are explicit hardware numeric policies. A shared sRGB encoder
+performs eight threshold-search steps per selected RGB component and leaves alpha
+as UNORM8. Its 255 fixed FP32 thresholds have a reproducible 100-digit decimal
+generator; RTL elaboration does not depend on host `libm`.
+
+A version-1 descriptor snapshots tile identity/origin, 8x8 or 16x16 storage class,
+active extent, 1x/2x/4x sampling and four disjoint format/view spans. Layout checks
+include actual component bytes and sample count. A reserved prefix protects
+other owner data such as depth/stencil. The default slot has **32 KiB in sixteen
+256x64 SRAM macros**, plus **8,192 valid/dirty bitmap register bits** and additional
+control/descriptor registers. Logical slot capacities from 1 KiB through 64 KiB
+retain macro minimums. Four RGBA16F colors plus depth at 16x16/4x exceed the 32 KiB
+slot; the checked smaller tile fits. Wider formats are not budgeted as one packed
+32-bit color per sample.
+
+Clear/discard tags supply nonresident typed defaults. Three-, six- and twelve-byte
+pixels repeat correctly across word boundaries. Load-start misses issue one
+bounded 64-bit refill and retain it through backpressure, faults and cancellation.
+Once materialized, valid words preserve resident updates and avoid repeat refills.
+Maintenance reads report availability/dirty state; maintenance writes are explicit
+dirty mutations. Reserved words remain available to their enclosing owner.
+External backing views, permission/translation checks, transfers, whole-clear
+export and publication remain that owner's responsibilities.
+
+One quad serializes its lane/sample/location read/modify/write operations through
+completion, preserving packed neighbors and unselected component bits. Completion
+reports touched samples, completed sample/location records, physical word writes
+and written mask bits. A failed or canceled pass can retain a counted committed prefix
+and must not publish a successful image. Offered codec/refill work and already
+offered quad/maintenance replies drain before rebinding. A final input offered
+with end is accepted first; end waits for its completion. Local pass completion
+is not an external-memory visibility fence.
+
+All **16 checks** pass on a frozen **554-source** archive: eight new numeric/storage
+checks and eight legacy pixel regressions. Numeric checks cover 2,637 format/mask
+vectors, 765 sRGB transition-neighbor cases and 76,744 binary16 cases including
+all 65,536 encodings. Storage checks cover all 36 formats in nine four-MRT groups,
+MSAA visibility, packed neighbors/masks, protected prefix, virtual clear/discard,
+refill/reuse/fault/cancel with a counted one-word partial prefix, invalid
+layouts/quads, end/input simultaneity, held
+results and 1 KiB/64 KiB capacity boundaries. Boundary writes reach the highest
+logical word and exercise 128 writes, 8,192 written mask bits, 64 location records and
+16 touched samples in one quad. The default encoder/store RTL audits
+cover six/nine files. Existing behavioral/macro RGBA8/D24S8 regression checks retain
+four complete sample updates/cycle; this new serialized service makes no such
+throughput claim. These are RTL/storage audits; PPA remains synthesis only.
+
+Connecting general shader outputs, late depth/stencil qualification, format-aware
+blending and this storage service under a native tile/pass owner remains open.
+Dithering, resolve/transfer/publication, backing resource/alias validation, native
+bin/host geometry, remaining format semantics and H0-H8 qualification are still
+required. This component is not native typed framebuffer or API closure.
