@@ -166,6 +166,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       initialize(d);val image=new Image(d)
       assert(axiRead(d,TileBinHostRegs.DISCOVERY)==0x160)
       assert(axiRead(d,0x160)==BigInt("47544301",16));assert(axiRead(d,0x168)==BigInt("47544a01",16))
+      for((word,i)<-Vector[BigInt](BigInt("47564901",16),4,0x502,0x1ffffff).zipWithIndex)
+        assert(axiRead(d,0x1b0+i*4)==word,s"typed GVI1 word $i differs")
+      axiWrite(d,0x1b0,0,expectedResponse=2)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
       for(mode<-Seq(0,2)){image.setup(mode);image.submit();image.run();image.verifyClear()
         // A software-held completion still pins the native job's VM.
