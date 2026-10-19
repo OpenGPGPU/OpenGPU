@@ -4201,3 +4201,49 @@ blending and this storage service under a native tile/pass owner remains open.
 Dithering, resolve/transfer/publication, backing resource/alias validation, native
 bin/host geometry, remaining format semantics and H0-H8 qualification are still
 required. This component is not native typed framebuffer or API closure.
+
+### Shared-slot late depth/stencil and typed MRT, 2026-10-19
+
+The [late pixel checkpoint](performance/mobile-typed-late-pixels-2026-10-19.json)
+composes per-sample depth/stencil qualification with the resident typed MRT color
+service. It accepts final shader depth and pre-test sample masks, then submits only
+passing samples to color storage. Quad and attachment validation precede depth or
+stencil effects. Helper/discard restrictions and color type mismatches cannot leave
+an accidental depth update.
+
+The internal layouts cover D16, D24, D32F, D24S8, D32FS8, stencil-only S8 and a
+separate S8 plane. Missing attachments pass without writes. Front/back stencil
+functions, reference/read/write masks and all eight operations are captured per
+quad. Stencil rejection skips a separate depth read/refill. Disabled depth testing
+also disables depth writes, following
+[GLES 3.0.6 sections 4.1.4–4.1.5](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
+Fixed-depth encoding rounds the exact FP32 value once to nearest/even at 16 or 24
+bits; floating depth preserves signed zero and handles stored NaNs as unordered.
+Selected source NaNs are rejected before effects when depth testing is active.
+D24 and D32FS8 padding survives updates and load materialization.
+
+Depth/stencil shares the existing **32 KiB slot**, sixteen characterized 256x64
+SRAM macros and **8,192 valid/dirty bitmap bits** with color. Aligned disjoint
+planes must fit the reserved prefix. Cold load fills initialize a full absent word
+without making it dirty; resident or partial clean fills are rejected. Clear and
+discard materialization and actual mutations remain dirty. External maintenance
+and internal sample operations have exclusive ownership. Depth/stencil counters
+separate initialization fills from update writes; read counts describe successful
+maintenance read commands, not every physical SRAM access.
+
+All **24 checks** pass against the frozen **558-source** archive: two depth/stencil
+arithmetic checks, five combined backend checks, seven color storage checks, two
+color encoding checks and eight legacy pixel regressions. Coverage includes 20,475
+depth conversion cases, 8,192 stencil cases, 1,296 comparisons, seven attachment
+layouts, 64 changing-state overlap quads, stencil-first cold-read avoidance,
+read-only clean loads, padding, invalid preflight, faulted refills and cancellation
+of held depth/color refills. Offered replies remain stable and all child memory,
+refill and completion work drains before reuse. A failed pass can retain a counted
+committed prefix and cannot publish success.
+
+One quad serializes its sample tests and color writes. Local completion is not
+external image publication. Format-aware blending, dithering, resolve, backing
+transfers, native host/bin/pass ownership and connection to the general shader
+pipeline remain open. This checkpoint supplies component correctness and an RTL
+storage audit; it supplies no new throughput or PPA result. PPA acceptance remains
+**synthesis only**, and the wider H0–H8 development goal remains open.

@@ -32,7 +32,7 @@ class TypedTileColorCompletion extends Bundle {
   val identity=new GraphicsWorkIdentity;val status=UInt(3.W);val inputQuads=UInt(99.W);val wordWrites=UInt(110.W);val faultOffset=UInt(17.W)
 }
 class TypedTileColorMemoryRequest(p: TypedTileColorConfig) extends Bundle {
-  val address=UInt(p.addressBits.W);val write=Bool();val data=UInt(64.W);val byteMask=UInt(8.W)
+  val address=UInt(p.addressBits.W);val write=Bool();val fill=Bool();val data=UInt(64.W);val byteMask=UInt(8.W)
 }
 class TypedTileColorMemoryReply extends Bundle {
   val data=UInt(64.W);val available=Bool();val dirty=Bool();val fault=Bool()
@@ -40,6 +40,30 @@ class TypedTileColorMemoryReply extends Bundle {
 class TypedTileColorRefill(p: TypedTileColorConfig) extends Bundle {val address=UInt(p.addressBits.W)}
 class TypedTileColorRefillReply extends Bundle {val data=UInt(64.W);val fault=Bool()}
 
+/** Shared preflight before any color or depth/stencil side effect. */
+object TypedTileColorRules {
+  def ends(d: TypedTileColorDescriptor): Seq[UInt]=d.colors.map(v=>v.offset+&((1.U(18.W)<<((d.tileLog2<<1)+&d.sampleMode))*TypedColorFormat.bytes(v.format)))
+  def invalid(d: TypedTileColorDescriptor,p: TypedTileColorConfig): Bool={
+    val edge=1.U(6.W)<<d.tileLog2;val end=ends(d)
+    val layout=d.colors.zipWithIndex.map{case(v,i)=> !v.enabled || (TypedColorFormat.valid(v.format) && v.offset(5,0)===0.U &&
+      v.offset>=d.reservedBytes && end(i)<=p.bytes.U && v.loadOp<=2.U)}.reduce(_ && _)
+    val overlap=(for(a<-0 until 4;b<-a+1 until 4)yield d.colors(a).enabled && d.colors(b).enabled &&
+      d.colors(a).offset<end(b) && d.colors(b).offset<end(a)).reduce(_ || _)
+    d.version=/=1.U || (d.tileLog2=/=3.U && d.tileLog2=/=4.U) || d.sampleMode>2.U || d.tileWidth===0.U || d.tileHeight===0.U ||
+      d.tileWidth>edge || d.tileHeight>edge || d.reservedBytes>p.bytes.U || d.reservedBytes(5,0)=/=0.U || !layout || overlap
+  }
+  def invalidQuad(input: TypedTileColorQuad,d: TypedTileColorDescriptor): Bool={
+    val q=input.quad;val bad=WireDefault(q.identity.asUInt=/=d.identity.asUInt || q.sampleMode=/=d.sampleMode || q.colorSlots>4.U)
+    for(c<-0 until 4)when(d.colors(c).enabled && c.U<q.colorSlots && q.colorTypes(c)=/=TypedColorFormat.kind(d.colors(c).format)){bad:=true.B}
+    for(l<-0 until 4){val v=q.lanes(l);val x=v.x.pad(33)-d.originX.pad(33);val y=v.y.pad(33)-d.originY.pad(33)
+      when((input.samples(l)& ~v.coverageMask).orR || (input.samples(l)>>(1.U<<d.sampleMode)).orR ||
+        (v.coverageMask>>(1.U<<d.sampleMode)).orR || ((v.helper || v.discarded) && (input.samples(l).orR || v.coverageMask.orR || v.colorMask.orR)) ||
+        (v.colorMask>>q.colorSlots).orR || v.x.pad(33)=/=q.lanes(0).x.pad(33)+(l%2).S || v.y.pad(33)=/=q.lanes(0).y.pad(33)+(l/2).S ||
+        (input.samples(l).orR && (x<0.S || y<0.S || x>=d.tileWidth.zext || y>=d.tileHeight.zext))){bad:=true.B}
+    }
+    bad || q.lanes(0).x(0) || q.lanes(0).y(0)
+  }
+}
 /** Serialized correctness profile for resident raw typed MRT colors. The late
   * visibility owner submits qualified sample masks and initializes/refills load
   * data. Clear/discard tags supply nonresident words, independent component masks
@@ -137,15 +161,9 @@ class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlac
       is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;valid:=0.U;dirty:=0.U;passStatus:=0.U;quadStatus:=0.U;faultOffset:=0.U
         totalQuads:=0.U;totalWrites:=0.U;quadOwned:=false.B;maintenanceOwned:=false.B;phase:=State.validate}}
       is(State.validate){
-        val d=descriptor;val edge=1.U(6.W)<<d.tileLog2
-        val ends=d.colors.map(v=>v.offset+&((1.U(18.W)<<((d.tileLog2<<1)+&d.sampleMode))*TypedColorFormat.bytes(v.format)))
-        val layout=d.colors.zipWithIndex.map{case(v,i)=> !v.enabled || (TypedColorFormat.valid(v.format) && v.offset(5,0)===0.U &&
-          v.offset>=d.reservedBytes && ends(i)<=p.bytes.U && v.loadOp<=2.U)}.reduce(_ && _)
-        val overlap=(for(a<-0 until 4;b<-a+1 until 4)yield d.colors(a).enabled && d.colors(b).enabled &&
-          d.colors(a).offset<ends(b) && d.colors(b).offset<ends(a)).reduce(_ || _)
-        when(d.version=/=1.U || (d.tileLog2=/=3.U && d.tileLog2=/=4.U) || d.sampleMode>2.U || d.tileWidth===0.U || d.tileHeight===0.U ||
-          d.tileWidth>edge || d.tileHeight>edge || d.reservedBytes>p.bytes.U || d.reservedBytes(5,0)=/=0.U || !layout || overlap){fail(1.U,0.U);phase:=State.finish}
-        .otherwise{for(c<-0 until 4)spans(c):=ends(c)-d.colors(c).offset;color:=0.U;phase:=State.clearNext}
+        val ends=TypedTileColorRules.ends(descriptor)
+        when(TypedTileColorRules.invalid(descriptor,p)){fail(1.U,0.U);phase:=State.finish}
+        .otherwise{for(c<-0 until 4)spans(c):=ends(c)-descriptor.colors(c).offset;color:=0.U;phase:=State.clearNext}
       }
       is(State.clearNext){val v=descriptor.colors(color)
         when(v.enabled && v.loadOp===AttachmentLoadOp.clear.U){encode(v.clear,v.format,15.U);phase:=State.clearEncode}
@@ -160,17 +178,8 @@ class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlac
         when(io.end.fire){when(!io.end.bits){fail(5.U,0.U)};phase:=State.finish}
       }
       is(State.checkQuad){
-        val q=input.quad;val bad=WireDefault(q.identity.asUInt=/=descriptor.identity.asUInt || q.sampleMode=/=descriptor.sampleMode || q.colorSlots>4.U)
-        for(c<-0 until 4)when(descriptor.colors(c).enabled && c.U<q.colorSlots && q.colorTypes(c)=/=TypedColorFormat.kind(descriptor.colors(c).format)){bad:=true.B}
-        for(l<-0 until 4){val v=q.lanes(l);val x=v.x.pad(33)-descriptor.originX.pad(33);val y=v.y.pad(33)-descriptor.originY.pad(33)
-          when((input.samples(l)& ~v.coverageMask).orR || (input.samples(l)>>(1.U<<descriptor.sampleMode)).orR ||
-            (v.coverageMask>>(1.U<<descriptor.sampleMode)).orR ||
-            ((v.helper || v.discarded) && (input.samples(l).orR || v.coverageMask.orR || v.colorMask.orR)) ||
-            (v.colorMask>>q.colorSlots).orR || v.x.pad(33)=/=q.lanes(0).x.pad(33)+(l%2).S || v.y.pad(33)=/=q.lanes(0).y.pad(33)+(l/2).S ||
-            (input.samples(l).orR && (x<0.S || y<0.S || x>=descriptor.tileWidth.zext || y>=descriptor.tileHeight.zext))){bad:=true.B}
-        }
-        when(q.lanes(0).x(0) || q.lanes(0).y(0)){bad:=true.B}
-        when(bad){fail(6.U,0.U);phase:=State.quadDone}.otherwise{lane:=0.U;phase:=State.lane}
+        when(TypedTileColorRules.invalidQuad(input,descriptor)){fail(6.U,0.U);phase:=State.quadDone}
+          .otherwise{lane:=0.U;phase:=State.lane}
       }
       is(State.lane){color:=0.U;phase:=State.nextLocation}
       is(State.nextLocation){val v=descriptor.colors(color)
@@ -217,11 +226,13 @@ class TypedTileColorStore(p: TypedTileColorConfig=TypedTileColorConfig(),useBlac
       is(State.emit){when(io.out.fire){quadOwned:=false.B;phase:=Mux(stop,State.finish,State.active)}}
       is(State.maintenance){val (available,value,_)=virtualWord(row)
         maintenanceResult:=0.U.asTypeOf(maintenanceResult);maintenanceResult.dirty:=dirty(row)
-        when(valid(row)){readEnable:=true.B;phase:=State.maintenanceRead}
+        when(maintenanceRequest.fill && (valid(row) || !maintenanceRequest.write || maintenanceRequest.byteMask=/=255.U)){
+          maintenanceResult.fault:=true.B;phase:=State.maintenanceReply
+        }.elsewhen(valid(row)){readEnable:=true.B;phase:=State.maintenanceRead}
           .otherwise{oldData:=value;maintenanceResult.available:=available
             when(maintenanceRequest.write){when(available || maintenanceRequest.byteMask===255.U){phase:=State.maintenanceReply
               val mask=Cat((0 until 8).reverse.map(b=>Fill(8,maintenanceRequest.byteMask(b))))
-              writeEnable:=true.B;memoryWriteData:=(value& ~mask)|(maintenanceRequest.data&mask);valid:=valid|mark(row);dirty:=dirty|mark(row)
+              writeEnable:=true.B;memoryWriteData:=(value& ~mask)|(maintenanceRequest.data&mask);valid:=valid|mark(row);when(!maintenanceRequest.fill){dirty:=dirty|mark(row)}
             }.otherwise{maintenanceResult.fault:=true.B;phase:=State.maintenanceReply}}
             .otherwise{maintenanceResult.data:=value;phase:=State.maintenanceReply}}
       }

@@ -54,8 +54,8 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
     }
     def begin(): Unit={d.io.begin.valid.poke(true.B);until(d.io.begin.ready.peek().litToBoolean);tick();d.io.begin.valid.poke(false.B)
       until(d.io.in.ready.peek().litToBoolean || d.io.completion.valid.peek().litToBoolean)}
-    def maintenance(address: Int,write: Boolean=false,data: BigInt=0,mask: Int=255): (BigInt,Boolean,Boolean,Boolean)={
-      d.io.maintenance.poke(true.B);d.io.memory.bits.address.poke(address.U);d.io.memory.bits.write.poke(write.B)
+    def maintenance(address: Int,write: Boolean=false,data: BigInt=0,mask: Int=255,fill: Boolean=false): (BigInt,Boolean,Boolean,Boolean)={
+      d.io.maintenance.poke(true.B);d.io.memory.bits.address.poke(address.U);d.io.memory.bits.write.poke(write.B);d.io.memory.bits.fill.poke(fill.B)
       d.io.memory.bits.data.poke(data.U);d.io.memory.bits.byteMask.poke(mask.U);d.io.memory.valid.poke(true.B)
       until(d.io.memory.ready.peek().litToBoolean);tick();d.io.memory.valid.poke(false.B);until(d.io.reply.valid.peek().litToBoolean)
       val r=d.io.reply.bits;val result=(r.data.peek().litValue,r.available.peek().litToBoolean,r.dirty.peek().litToBoolean,r.fault.peek().litToBoolean)
@@ -194,6 +194,19 @@ class TypedTileColorStoreSpec extends AnyFlatSpec {
       if(max)assert(expected==(128,8192,64,16))
       t.submit();t.output(expected=Some(expected));t.verify();t.finish()
       info(s"TYPED_TILE capacityBoundary=$bytes allRGBA32=true endExclusive=true macroMinimum=true highestWordWritten=true maxCounters=true exactStoredWords=true")
+    }
+  }
+
+  it should "initialize load words cleanly without overwriting resident or partial rows" in {
+    simulate(new TypedTileColorStore()){d=>val t=new Driver(d)
+      t.prepare(Vector(View("RGBA8",64,15,0)),m=0);t.begin()
+      val value=BigInt("0123456789abcdef",16)
+      assert(!t.maintenance(0,true,value,fill=true)._4)
+      val read=t.maintenance(0);assert(read._1==value && read._2 && !read._3)
+      assert(t.maintenance(0,true,0,fill=true)._4);assert(t.maintenance(1,true,value,mask=1,fill=true)._4)
+      assert(!t.maintenance(1)._2);assert(!t.maintenance(0,true,BigInt(0xaa),mask=1)._4)
+      val changed=t.maintenance(0);assert(changed._1==((value& ~BigInt(255))|0xaa) && changed._3);t.finish()
+      info("TYPED_TILE cleanFill=true noResidentOverwrite=true noPartialFill=true mutationDirty=true")
     }
   }
 }
