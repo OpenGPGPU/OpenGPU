@@ -23,6 +23,17 @@ class GpuHostPerformanceCounters extends Bundle {
   val fragmentTrace = UInt(64.W)
   val stagingReadBytes = UInt(64.W)
   val stagingWriteBytes = UInt(64.W)
+  val payloadAllocations=UInt(64.W)
+  val payloadSpills=UInt(64.W)
+  val payloadReleases=UInt(64.W)
+  val payloadStagingReadBytes=UInt(64.W)
+  val payloadStagingWriteBytes=UInt(64.W)
+  val payloadReservedBytes=UInt(32.W)
+  val payloadPeakReservedBytes=UInt(32.W)
+  val payloadPinsActive=UInt(32.W)
+  val payloadReleaseBlocked=UInt(32.W)
+  val payloadDataOffers=UInt(32.W)
+  val activeComputeUnits=UInt(32.W)
   val lowerReadBytes = UInt(64.W)
   val lowerWriteBytes = UInt(64.W)
   val textureWordReads = UInt(64.W)
@@ -103,8 +114,11 @@ class GpuHostSystemAxi(
     require(!bufferCommandReads && !bufferTextureReads && !coalesceFramebufferWrites,
       "legacy word-port buffering options do not apply to the binned line engine")
   }
+  private val localPayload=binnedRendering.flatMap(_.shaderPayload)
+  require(localPayload.isEmpty || (fragCore && sharedGraphics && parallelGraphics && binnedRendering.get.bankedAttachments),
+    "local Mobile payloads require banked binned rendering with parallel shared fragments")
   private val sharedShader = if (sharedGraphics)
-    Some(SharedCuShaderConfig(numComputeUnits, commandIdWidth, parallelGraphics)) else None
+    Some(SharedCuShaderConfig(numComputeUnits, commandIdWidth, parallelGraphics,localPayload)) else None
 
   // Kernel-word IDs reserve a CU-scaled staging range followed by four
   // host-DMA IDs. Command, framebuffer and
@@ -232,7 +246,7 @@ class GpuHostSystemAxi(
       textureFaultReporting = true,
       computeScalarFpu = enableFpuBackend && gpuConfig.enableFpu,
       graphicsScalarFpu = enableFpuBackend && shaderConfig.enableFpu,
-      sharedShader = sharedShader, protectVmState = true,
+      sharedShader = sharedShader.map(_.copy(shaderPayload=None)), protectVmState = true,
       persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
       useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = binnedRendering.nonEmpty))
     val system = Module(new GpuSystem(
@@ -249,7 +263,9 @@ class GpuHostSystemAxi(
       instructionCacheMissEntries = instructionCacheMissEntries,
       vectorCacheSets = vectorCacheSets,
       vectorCacheWays = vectorCacheWays,
-      enableGraphicsKernels = sharedGraphics))
+      enableGraphicsKernels = sharedGraphics,shaderPayload=localPayload,
+      producerPayloadPins=if(localPayload.nonEmpty)sharedShader.get.binPayloadPins(binnedRendering.get.tileEngines)else 0,
+      drainGraphicsPayloadWork=localPayload.nonEmpty))
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
       graphicsConfig,gpuConfig,commandIdWidth,m.tileEngines,m.binPageBytes,m.binWriteCredits,
       m.binTileSlots,m.binRecordCacheEntries,m.attachmentStoreCredits,fragCore,sharedShader,
@@ -304,6 +320,8 @@ class GpuHostSystemAxi(
       system.io.graphicsShaderAtomicResponse
     val textureWordAccepted=WireDefault(false.B)
     val textureLineAccepted=WireDefault(false.B)
+    val stagingReadEvent=Wire(UInt(16.W));stagingReadEvent:=host.io.performance.stagingReadBytes
+    val stagingWriteEvent=Wire(UInt(16.W));stagingWriteEvent:=host.io.performance.stagingWriteBytes
     val translationStalls=WireDefault(VecInit(Seq.fill(4)(0.U(3.W))))
     val translationMisses=WireDefault(VecInit(Seq.fill(4)(0.U(3.W))))
     val translationWalks=WireDefault(VecInit(Seq.fill(4)(0.U(3.W))))
@@ -510,10 +528,25 @@ class GpuHostSystemAxi(
       renderer.io.cancel:=host.io.binCancel.get
       host.io.binDrained.get:= !renderer.io.busy && fabric.io.drained
       sharedShader.foreach(_=>renderer.io.shared.get <> system.io.graphicsKernels.get)
+      localPayload.foreach { p=>
+        val payload=renderer.io.payload.get;val management=system.io.payloadManagement.get
+        system.io.graphicsPayload.get:=payload.task
+        system.io.payloadProducerPins.get:=payload.pinsOut
+        for(owner <- 0 until p.owners) {
+          management.control(owner)<>payload.producer(owner).control
+          payload.producer(owner).controlResponse<>management.controlResponse(owner)
+          management.request(owner)<>payload.producer(owner).request
+          payload.producer(owner).response<>management.response(owner)
+        }
+      }
       renderer.io.instructionSatp:=host.io.instructionSatp
       renderer.io.vectorSatp:=host.io.vectorSatp
       renderer.io.instructionTlbFlush:=host.io.tlbFlush
       renderer.io.vectorTlbFlush:=host.io.tlbFlush
+      stagingReadEvent:=(0 until mobile.tileEngines).map(e=>Mux(renderer.io.kernelWordMemReq(e).fire &&
+        !renderer.io.kernelWordMemReq(e).bits.isWrite,1.U(16.W)<<renderer.io.kernelWordMemReq(e).bits.sizeLog2,0.U(16.W))).reduce(_+& _)
+      stagingWriteEvent:=(0 until mobile.tileEngines).map(e=>Mux(renderer.io.kernelWordMemReq(e).fire &&
+        renderer.io.kernelWordMemReq(e).bits.isWrite,1.U(16.W)<<renderer.io.kernelWordMemReq(e).bits.sizeLog2,0.U(16.W))).reduce(_+& _)
       fabric.io.renderRequest <> renderer.io.memoryRequest
       renderer.io.memoryResponse <> fabric.io.renderResponse
       fabric.io.dmaRequest <> host.io.kernelWordMemReq
@@ -622,7 +655,7 @@ class GpuHostSystemAxi(
       perf.omStallCycles := count(host.io.performance.omStall.asUInt)
       perf.omConflictCycles := count(host.io.performance.omConflict.asUInt)
       perf.rasterStallCycles := count(host.io.performance.rasterStall.asUInt)
-      val fragmentEvents = host.io.performance.fragment
+      val fragmentEvents = binned.map(_.io.fragmentEvents).getOrElse(host.io.performance.fragment)
       for (phase <- 0 until 6)
         perf.fragmentPhaseWorkerCycles(phase) := count(fragmentEvents.phaseWorkers(phase))
       perf.stagingOutstandingCycles := count(fragmentEvents.stagingOutstanding)
@@ -633,8 +666,25 @@ class GpuHostSystemAxi(
         host.io.performance.omStall, fragmentEvents.outputBlocked,
         fragmentEvents.stagingBlocked, fragmentEvents.stagingOutstanding,
         fragmentEvents.phaseWorkers.asUInt)
-      perf.stagingReadBytes := count(host.io.performance.stagingReadBytes)
-      perf.stagingWriteBytes := count(host.io.performance.stagingWriteBytes)
+      perf.stagingReadBytes := count(stagingReadEvent)
+      perf.stagingWriteBytes := count(stagingWriteEvent)
+      val management=system.io.payloadManagement
+      def controlEvent(operation: Int,predicate: opengpu.graphics.ShaderPayloadControlResponse=>Bool): UInt=
+        management.map(m=>PopCount(VecInit(m.controlResponse.map(r=>r.fire && r.bits.operation===operation.U && predicate(r.bits))))).getOrElse(0.U)
+      perf.payloadAllocations:=count(controlEvent(opengpu.graphics.ShaderPayloadControl.allocate,r=>r.resident && !r.fault))
+      perf.payloadSpills:=count(controlEvent(opengpu.graphics.ShaderPayloadControl.allocate,r=>r.spill && !r.fault))
+      perf.payloadReleases:=count(controlEvent(opengpu.graphics.ShaderPayloadControl.release,r=> !r.fault))
+      val localReads=management.map(m=>m.request.map(r=>Mux(r.fire && !r.bits.write,PopCount(r.bits.mask),0.U)).reduce(_+& _)).getOrElse(0.U)
+      val localWrites=management.map(m=>m.request.map(r=>Mux(r.fire && r.bits.write,PopCount(r.bits.mask),0.U)).reduce(_+& _)).getOrElse(0.U)
+      perf.payloadStagingReadBytes:=count(localReads);perf.payloadStagingWriteBytes:=count(localWrites)
+      val reserved=management.map(_.reservedBytes).getOrElse(0.U(32.W))
+      val peak=RegInit(0.U(32.W));when(reserved>peak){peak:=reserved}
+      perf.payloadReservedBytes:=reserved;perf.payloadPeakReservedBytes:=peak
+      perf.payloadPinsActive:=system.io.payloadProducerPins.map(p=>PopCount(p.map(_.valid))).getOrElse(0.U)
+      perf.payloadReleaseBlocked:=management.map(m=>PopCount(m.control.map(c=>c.valid &&
+        c.bits.operation===opengpu.graphics.ShaderPayloadControl.release.U && !c.ready))).getOrElse(0.U)
+      perf.payloadDataOffers:=management.map(m=>PopCount(m.request.map(_.valid))).getOrElse(0.U)
+      perf.activeComputeUnits:=PopCount(system.io.busyComputeUnits)
       for (slot <- 0 until 4) {
         perf.translationStallCycles(slot):=count(translationStalls(slot))
         perf.translationMisses(slot):=count(translationMisses(slot))

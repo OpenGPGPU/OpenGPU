@@ -85,8 +85,13 @@ class RenderPipeline(
   normalizedTextureModulation: Boolean = false,
   doubleBufferedAttachments: Boolean = false,
   coalesceAttachments: Boolean = true,
-  bankedAttachments: Boolean = false
+  bankedAttachments: Boolean = false,
+  payloadOwnerBase: Int = 0
 ) extends Module {
+  private val shaderPayload=sharedShader.flatMap(_.shaderPayload)
+  require(shaderPayload.isEmpty || (fragCore && !vertCore && persistentAttachments && bankedAttachments),
+    "local renderer payloads require native persistent programmable fragments")
+  shaderPayload.foreach(p=>require(payloadOwnerBase>=0 && payloadOwnerBase+sharedShader.get.fragmentWorkers<=p.owners))
   require(!doubleBufferedAttachments || persistentAttachments)
   require(!bankedAttachments || (persistentAttachments && !vertCore),
     "banked renderer ingress requires externally scheduled persistent passes")
@@ -99,6 +104,8 @@ class RenderPipeline(
   // The shared staging router restores producer-local IDs on responses.
   private val kernelWordOutstanding = SharedCuShaderConfig.kernelWordTransactions(sharedShader)
   val io = IO(new Bundle {
+    val payload=shaderPayload.map(p=>new ShaderPayloadRendererPort(gpuConfig,p,
+      sharedShader.get.fragmentWorkers,sharedShader.get.rendererPayloadPins))
     val tilePass = if (persistentAttachments) Some(new TileRenderPassPort) else None
     val tileEvents = if (persistentAttachments) Some(Output(new TileAttachmentEvents)) else None
     val tileCompletionBytes = if (doubleBufferedAttachments) Some(Output(new TileAttachmentByteCounts)) else None
@@ -628,18 +635,32 @@ class RenderPipeline(
 
   if (fragCore || vertCore) {
     val parallelFrag = sharedShader.filter(_.parallelFragments).map { pool =>
-      Module(new ParallelKernelFragStage(gpuConfig, config, pool, graphicsScalarFpu,quadExports=bankedAttachments))
+      Module(new ParallelKernelFragStage(gpuConfig, config, pool, graphicsScalarFpu,quadExports=bankedAttachments,payloadOwnerBase=payloadOwnerBase))
     }
     val kernelFrag: KernelFragStageIO = parallelFrag.map(_.io)
       .getOrElse(Module(new KernelFragStage(gpuConfig, config,quadExports=bankedAttachments)).io)
     io.performance.fragment := kernelFrag.performance
-    fragmentExecutionFault := kernelFrag.executionFault
+    val payloadCanceled=if(shaderPayload.nonEmpty)io.tilePass.get.cancel else false.B
+    fragmentExecutionFault := kernelFrag.executionFault && !payloadCanceled
+    shaderPayload.foreach { _=>
+      val workers=parallelFrag.get
+      workers.payloadContext.get:=io.vectorSatp
+      workers.payloadCancel.get:=payloadCanceled
+      for(w <- 0 until sharedShader.get.fragmentWorkers)io.payload.get.producer(w)<>workers.payloadProducers.get(w)
+    }
     val kernelShader = Module(new KernelShaderStage(gpuConfig, graphicsScalarFpu, sharedShader))
     if (parallelFrag.nonEmpty) {
       val pool = sharedShader.get
       val router = Module(new SharedShaderTaskRouter(gpuConfig, pool.numComputeUnits,
-        pool.fragmentWorkers + 1, pool.taskIdWidth))
+        pool.fragmentWorkers + 1, pool.taskIdWidth,shaderPayload=shaderPayload))
       router.io.pool <> io.shared.get
+      shaderPayload.foreach { _=>
+        router.io.clientPayload.get(0).valid:=false.B
+        router.io.clientPayload.get(0).bits:=0.U.asTypeOf(router.io.clientPayload.get(0).bits)
+        for(w <- 0 until pool.fragmentWorkers)router.io.clientPayload.get(w+1):=parallelFrag.get.payloadTasks.get(w)
+        io.payload.get.task:=router.io.poolPayload.get
+        io.payload.get.pinsOut:=router.io.payloadPins.get
+      }
       router.io.clients(0) <> kernelShader.io.shared.get
       for (worker <- 0 until pool.fragmentWorkers)
         router.io.clients(worker + 1) <> parallelFrag.get.sharedClients(worker)
@@ -650,8 +671,8 @@ class RenderPipeline(
     kernelShader.io.instructionTlbFlush := io.instructionTlbFlush
     kernelShader.io.vectorSatp := io.vectorSatp
     kernelShader.io.vectorTlbFlush := io.vectorTlbFlush
-    io.shaderFault := kernelFrag.executionFault || kernelShader.io.trap.fire ||
-      parallelFrag.map(_.shaderFault).getOrElse(false.B)
+    io.shaderFault := (kernelFrag.executionFault || kernelShader.io.trap.fire ||
+      parallelFrag.map(_.shaderFault).getOrElse(false.B)) && !payloadCanceled
 
     // A vertex draw is fully transformed before it enters rasterization, so a
     // single SIMT CU can safely serve vertex and fragment launches in turn.

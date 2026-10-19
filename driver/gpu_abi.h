@@ -146,6 +146,7 @@ typedef int32_t s32;
 #define GPU_BIN_CAP_WORDS            8u
 /* GBC1 word4: native banked sample updates are enabled in this profile. */
 #define GPU_BIN_CAP_BANKED_SAMPLES   (1u << 20)
+#define GPU_BIN_CAP_LOCAL_PAYLOADS   (1u << 21)
 #define GPU_SHADER_CONFIG_LANES_SHIFT 0u
 #define GPU_SHADER_CONFIG_WARPS_SHIFT 8u
 #define GPU_SHADER_CONFIG_BANKS_SHIFT 16u

@@ -169,14 +169,18 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
       axiWrite(d,reg,if(reg==GpuCommandMmioRegs.TLB_FLUSH)1 else 0x80000300,expectedResponse=2)
     def awaitRead(): Unit={var i=0;while(!d.io.m_axi_arvalid.peek().litToBoolean && i<10000){d.io.s_axi_aclk.step();i+=1};d.io.m_axi_arvalid.expect(true.B)}
   }
-  for ((shared,count,lanes,warps,banked) <- Seq((false,1,4,2,false),(false,1,4,2,true),(true,2,4,2,true),(true,4,16,8,true))) {
-    it should s"expose GBJ1 on AXI with exact images, queued DMA and VM ownership shared=$shared CUs=$count lanes=$lanes warps=$warps banked=$banked" in {
+  for ((shared,count,lanes,warps,banked,local,payloadBytes) <- Seq(
+    (false,1,4,2,false,false,65536),(false,1,4,2,true,false,65536),
+    (true,2,4,2,true,false,65536),(true,4,16,8,true,false,65536),
+    (true,2,4,2,true,true,4096),(true,2,4,2,true,true,512),
+    (true,2,4,2,true,true,64),(true,4,16,8,true,true,65536))) {
+    it should s"expose GBJ1 on AXI with exact images, queued DMA and VM ownership shared=$shared CUs=$count lanes=$lanes warps=$warps banked=$banked local=$local payloadBytes=$payloadBytes" in {
       val width=if(lanes==16)32 else 16;val height=if(lanes==16)16 else 8;val edge=if(lanes==16)16 else 8
       val gpu=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2,l2StoreEntries=4)
       val graphics=cfg.copy(screenWidth=width,screenHeight=height,fragmentBatchLimit=math.max(8,lanes))
       val m=MobileGpuConfig(execution=gpu,computeUnits=count,axiBytes=32,binPageBytes=if(lanes==16)4096 else 128,
         binWriteCredits=if(lanes==16)8 else 2,attachmentStoreCredits=if(lanes==16)8 else 2,binTileSlots=if(lanes==16)8 else 4,
-        bankedAttachments=banked)
+        bankedAttachments=banked,localShaderPayloads=local,payloadBytes=payloadBytes)
       val scene=TileBinJobTestData.references(18).map(r=>draws(((r.primitive-firstHandle)/2).toInt)
         .copy(scissor=Some((r.tile.toInt*edge,0,r.tile.toInt*edge+edge,height))))
       val expected=reference(0,width,height,scene,width=width,height=height)
@@ -192,6 +196,7 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
         assert(axiRead(d,TileBinHostRegs.CAPABILITIES+8)==0x47424a01L)
         assert(axiRead(d,TileBinHostRegs.CAPABILITIES+12)==0x00200200L)
         assert(axiRead(d,TileBinHostRegs.CAPABILITIES+16).testBit(TileBinCapabilityFlags.BankedSamples)==m.bankedAttachments)
+        assert(axiRead(d,TileBinHostRegs.CAPABILITIES+16).testBit(TileBinCapabilityFlags.LocalPayloads)==local)
         axiWrite(d,TileBinHostRegs.CAPABILITIES,0,expectedResponse=2)
         assert(axiRead(d,TileBinHostRegs.CAPABILITIES)==0x47424301L)
         axiWrite(d,RenderHostRegs.IRQ,1)
@@ -208,12 +213,24 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           axiWrite(d,RenderHostRegs.CLEAR_START,1,expectedResponse=2)
           f.copy(38+run*2)
           var observed=false
+          var diagnosticCycle=0
+          try {
           serviceMemoryMaster(d,f.read,writeAckDelay=23,readResponseDelay=5,maxCycles=200000,
-            onWriteAccepted=a=>if(a-offset>=0x70000 && a-offset<0x70000+width*height*4L && !observed) {
+            onCycle=()=>{
+              diagnosticCycle+=1
+              if(local && Set(1000,5000,20000,100000,199999)(diagnosticCycle)) {
+                val p=d.io.performance.get
+                println(s"PAYLOAD_HOST_DIAGNOSTIC cycle=$diagnosticCycle irq=${d.io.m_irq.peek().litToBoolean} alloc=${p.payloadAllocations.peek().litValue} spill=${p.payloadSpills.peek().litValue} release=${p.payloadReleases.peek().litValue} reserved=${p.payloadReservedBytes.peek().litValue} pins=${p.payloadPinsActive.peek().litValue} releaseBlocked=${p.payloadReleaseBlocked.peek().litValue} dataOffers=${p.payloadDataOffers.peek().litValue} activeCUs=${p.activeComputeUnits.peek().litValue} localRead=${p.payloadStagingReadBytes.peek().litValue} localWrite=${p.payloadStagingWriteBytes.peek().litValue} phases=${p.fragmentPhaseWorkerCycles.map(_.peek().litValue).mkString(",")}")
+              }
+            },onWriteAccepted=a=>if(a-offset>=0x70000 && a-offset<0x70000+width*height*4L && !observed) {
               assert(f.image==expected,"queued DMA began before the final image was exported")
               f.checkResult(37+run*2,0);assert(axiRead(d,GpuCommandMmioRegs.COMPLETION_BYTES_LO)==576)
               f.rejectVm();f.pop();observed=true
             })(f.write){observed && d.io.m_irq.peek().litToBoolean}
+          }catch {case error: AssertionError=>
+            if(local){f.pause();println(s"PAYLOAD_HOST_RESULT status=${axiRead(d,GpuCommandMmioRegs.STATUS)} completion=${axiRead(d,GpuCommandMmioRegs.COMPLETION).toString(16)}")}
+            throw error
+          }
           f.pause();f.checkResult(38+run*2,0,1)
           assert(f.image==expected && f.copied==width*height*4)
           assert((0 until width*height).forall(i=>f.memory(f.physical(0x70000+i*4L))==expected(i)))
@@ -221,6 +238,26 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
           assert(axiRead(d,GpuCommandMmioRegs.COMPLETION)==stable);f.pop()
         }
         if(shared)assert(d.io.performance.get.system.maxActiveComputeUnits.peek().litValue==count)
+        val perf=d.io.performance.get
+        val allocations=perf.payloadAllocations.peek().litValue;val spills=perf.payloadSpills.peek().litValue
+        val releases=perf.payloadReleases.peek().litValue
+        val localReads=perf.payloadStagingReadBytes.peek().litValue;val localWrites=perf.payloadStagingWriteBytes.peek().litValue
+        val globalReads=perf.stagingReadBytes.peek().litValue;val globalWrites=perf.stagingWriteBytes.peek().litValue
+        perf.payloadReservedBytes.expect(0.U)
+        if(local) {
+          assert(allocations==releases,"completed host leaked a payload reservation")
+          if(payloadBytes==64)assert(allocations==0 && spills>0 && globalReads>0 && globalWrites>0)
+          else {
+            assert(allocations>0 && localReads>0 && localWrites>0)
+            if(payloadBytes==512)assert(spills>0 && globalReads>0 && globalWrites>0)
+            else assert(spills==0 && globalReads==0 && globalWrites==0,"resident rendering used global staging")
+          }
+          assert(perf.payloadPeakReservedBytes.peek().litValue<=payloadBytes)
+        }else {
+          assert(allocations==0 && spills==0 && releases==0 && localReads==0 && localWrites==0)
+          if(shared)assert(globalReads>0 && globalWrites>0)
+        }
+        info(s"BIN_PAYLOAD local=$local CUs=$count lanes=$lanes warps=$warps bytes=$payloadBytes allocations=$allocations spills=$spills releases=$releases localReadBytes=$localReads localWriteBytes=$localWrites globalReadBytes=$globalReads globalWriteBytes=$globalWrites peakReserved=${perf.payloadPeakReservedBytes.peek().litValue} reserved=0")
         for(e <- 0 until m.tileEngines) {
           val accepted=d.io.performance.get.binAcceptedSamples(e).peek().litValue
           val committed=d.io.performance.get.binCommittedSamples(e).peek().litValue
@@ -234,10 +271,11 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
     }
   }
 
-  it should "publish GPU-produced bin inputs and shader code through physical aliases after acknowledged completion" in {
+  for(local <- Seq(false,true))
+  it should s"publish GPU-produced bin inputs and shader code through physical aliases after acknowledged completion local=$local" in {
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2,l2StoreEntries=4)
     val mobile=MobileGpuConfig(execution=gpu,computeUnits=2,axiBytes=32,binPageBytes=128,
-      binWriteCredits=2,attachmentStoreCredits=2,binTileSlots=4)
+      binWriteCredits=2,attachmentStoreCredits=2,binTileSlots=4,localShaderPayloads=local,payloadBytes=if(local)4096 else 65536)
     val newColor=0x88442280L
     val changed=draws.zipWithIndex.map { case (draw,i)=>draw.copy(color=newColor,depth=0x200000L+i*0x100000L,
       clip=draw.clip.map { case (x,y,z,w)=>(-x,y,z,w) }) }
@@ -351,18 +389,19 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
       assert(f.image==newExpected,"dependent renderer used stale GPU-produced inputs or shader instructions")
       assert(f.reads.count(a=>a>=f.physical(0x3000) && a<f.physical(0x3080))>codeReadsBefore)
       f.pop();axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0)
-      info(s"BIN_GPU_PUBLICATION Sv32=true alias=true bytes=$written writes=$offered acknowledgements=$acknowledged producerWords=${producer.size} exactWords=${newExpected.size} replacedCode=true physicalInvalidate=true wrapRejected=true")
+      info(s"BIN_GPU_PUBLICATION local=$local Sv32=true alias=true bytes=$written writes=$offered acknowledgements=$acknowledged producerWords=${producer.size} exactWords=${newExpected.size} replacedCode=true physicalInvalidate=true wrapRejected=true")
     }
   }
 
-  it should "attribute input and shader faults on the unified queue and recover in fresh VMs" in {
+  for(local <- Seq(false,true))
+  it should s"attribute input and shader faults on the unified queue and recover in fresh VMs local=$local" in {
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2,l2StoreEntries=4)
     val m=MobileGpuConfig(execution=gpu,computeUnits=2,axiBytes=32,binPageBytes=128,binWriteCredits=2,
-      attachmentStoreCredits=2,binTileSlots=4)
+      attachmentStoreCredits=2,binTileSlots=4,localShaderPayloads=local,payloadBytes=if(local)4096 else 65536)
     val expected=reference(0,16,8,TileBinJobTestData.references(18).map(r=>draws(((r.primitive-firstHandle)/2).toInt)
       .copy(scissor=Some((r.tile.toInt*8,0,r.tile.toInt*8+8,8)))))
     simulate(new GpuHostSystemAxi(cfg.copy(fragmentBatchLimit=8),gpu,numComputeUnits=2,fragCore=true,
-      sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,memoryAxiDataBytes=32,binnedRendering=Some(m))) { d=>
+      sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,memoryAxiDataBytes=32,exposePerformance=true,binnedRendering=Some(m))) { d=>
       initialize(d);val f=new Fixture(d,true,4,2,16,8,8,128);axiWrite(d,RenderHostRegs.IRQ,1)
       val scenarios=Seq(("old-size",1,7,256,0),("flags",1,7,512,1),("old-opcode",15,6,512,0),
         ("descriptor-fault",4,7,512,0),("append-fault",4,7,512,0),("shader-fault",11,7,512,0),("healthy-reuse",0,7,512,0))
@@ -389,16 +428,17 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
       f.submit(110,opcode=0)
       serviceMemoryMaster(d,f.read,maxCycles=200000)(f.write){d.io.m_irq.peek().litToBoolean}
       f.pause();f.checkResult(110,0,0);f.pop()
-      info("BIN_HOST_FAULTS scenarios=7 freshVMs=true inputFault=4 shaderFault=11 healthyReuse=true computeCommand=true")
+      info(s"BIN_HOST_FAULTS local=$local scenarios=7 freshVMs=true inputFault=4 shaderFault=11 healthyReuse=true computeCommand=true")
     }
   }
 
-  it should "drain descriptor and attachment ownership before safe reset and discard old completions" in {
+  for(local <- Seq(false,true))
+  it should s"drain descriptor and attachment ownership before safe reset and discard old completions local=$local" in {
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2,l2StoreEntries=4)
     val m=MobileGpuConfig(execution=gpu,computeUnits=2,axiBytes=32,binPageBytes=128,binWriteCredits=2,
-      attachmentStoreCredits=2,binTileSlots=4)
+      attachmentStoreCredits=2,binTileSlots=4,localShaderPayloads=local,payloadBytes=if(local)4096 else 65536)
     simulate(new GpuHostSystemAxi(cfg.copy(fragmentBatchLimit=8),gpu,numComputeUnits=2,fragCore=true,
-      sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,memoryAxiDataBytes=32,binnedRendering=Some(m))) { d=>
+      sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,memoryAxiDataBytes=32,exposePerformance=true,binnedRendering=Some(m))) { d=>
       initialize(d);val f=new Fixture(d,true,4,2,16,8,8,128);axiWrite(d,RenderHostRegs.IRQ,1)
       for ((stage,run) <- Seq("descriptor","attachment").zipWithIndex) {
         f.prepare();f.submit(80+run);f.copy(90+run)
@@ -423,7 +463,53 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
       serviceMemoryMaster(d,f.read,writeAckDelay=11,maxCycles=200000)(f.write){d.io.m_irq.peek().litToBoolean}
       f.pause();f.checkResult(99,0);f.pop()
       assert(f.image.take(128).forall(_==colorClear) && f.image.drop(128).forall(_==depthClear))
-      info("BIN_HOST_RESET descriptorAndAttachment=true lateFaultsDrained=true queuedDMAAborted=true healthyReuse=true")
+      info(s"BIN_HOST_RESET local=$local descriptorAndAttachment=true lateFaultsDrained=true queuedDMAAborted=true healthyReuse=true")
     }
   }
+
+  it should "drain live local payload jobs through reset and recover in fresh VMs" in {
+    val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2,l2StoreEntries=4)
+    val m=MobileGpuConfig(execution=gpu,computeUnits=2,axiBytes=32,binPageBytes=128,
+      binWriteCredits=2,attachmentStoreCredits=2,binTileSlots=4,localShaderPayloads=true,payloadBytes=4096)
+    val scene=TileBinJobTestData.references(18).map(r=>draws(((r.primitive-firstHandle)/2).toInt)
+      .copy(scissor=Some((r.tile.toInt*8,0,r.tile.toInt*8+8,8))))
+    val expected=reference(0,16,8,scene)
+    simulate(new GpuHostSystemAxi(cfg.copy(fragmentBatchLimit=8),gpu,numComputeUnits=2,fragCore=true,
+      sharedGraphics=true,parallelGraphics=true,enableFpuBackend=true,memoryAxiDataBytes=32,
+      exposePerformance=true,binnedRendering=Some(m))) { d=>
+      initialize(d);val f=new Fixture(d,true,4,2,16,8,8,128)
+      val perf=d.io.performance.get
+      axiWrite(d,RenderHostRegs.IRQ,1)
+      for(run <- 0 until 2) {
+        f.physicalOffset=(run+1L)*0x400000
+        val root=0x300000L+run*4096L
+        f.memory(BigInt(root))=((f.physicalOffset>>12)<<10)|0xcfL
+        val satp=0x80000000L|((run+1L)<<22)|(root>>12)
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,satp.toInt)
+        axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,satp.toInt)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        f.prepare();f.submit(100+run);f.copy(120+run)
+        var requested=false;var live=BigInt(0);var queuedPins=BigInt(0)
+        serviceMemoryMaster(d,f.read,writeAckDelay=29,readResponseDelay=17,maxCycles=200000,
+          onReadAccepted=a=>if(!requested && a==f.physical(0x3000)) {
+            requested=true;live=perf.payloadReservedBytes.peek().litValue
+            queuedPins=perf.payloadPinsActive.peek().litValue
+            assert(live>0,"shader fetch did not retain its payload lease")
+            axiWrite(d,GpuCommandMmioRegs.RESET,1);f.rejectVm()
+          })(f.write){requested && d.io.m_irq.peek().litToBoolean}
+        f.pause();assert(requested && f.copied==0)
+        assert((axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
+        perf.payloadReservedBytes.expect(0.U)
+        assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+        axiWrite(d,RenderHostRegs.IRQ,3)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        f.prepare();f.submit(140+run)
+        serviceMemoryMaster(d,f.read,writeAckDelay=11,readResponseDelay=5,maxCycles=200000)(f.write){d.io.m_irq.peek().litToBoolean}
+        f.pause();f.checkResult(140+run,0);assert(f.image==expected);f.pop()
+        perf.payloadReservedBytes.expect(0.U)
+        info(s"BIN_PAYLOAD_LIVE_RESET run=$run liveAtReset=$live pinsAtReset=$queuedPins queuedDMAAborted=true reservationsReleased=true healthyReuse=true exactWords=${expected.size}")
+      }
+    }
+  }
+
 }

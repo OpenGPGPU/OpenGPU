@@ -71,6 +71,18 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
     }
   }
 
+  it should "size explicit local payload owners and pin every renderer queue tier" in {
+    val mobile=MobileGpuConfig(localShaderPayloads=true)
+    val p=mobile.shaderPayload.get;val shared=mobile.sharedShaders
+    assert(p.capacityBytes==65536 && p.maxPayloadBytes==4608 && p.slots==14)
+    assert(p.owners==8 && p.ports==12 && shared.rendererPayloadPins==10)
+    assert(shared.tasksPerEngine==5 && shared.binPayloadProducers(2)==8 && shared.binPayloadPins(2)==32)
+    assert(MobileGpuConfig().shaderPayload.isEmpty)
+    assert(mobile.copy(payloadBytes=64).shaderPayload.get.maxPayloadBytes==64)
+    intercept[IllegalArgumentException]{mobile.copy(bankedAttachments=false)}
+    intercept[IllegalArgumentException]{opengpu.system.SharedCuShaderConfig(4,shaderPayload=Some(p))}
+  }
+
   it should "reject a programmable graphics elaboration without complete per-warp quads" in {
     val error = intercept[IllegalArgumentException] {
       circt.stage.ChiselStage.emitSystemVerilog(new opengpu.graphics.RenderPipeline(

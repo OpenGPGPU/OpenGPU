@@ -87,7 +87,9 @@ object EmitGpuHostSystemAxi {
         persistentAttachments = persistentAttachments,
         binnedRendering = if(binnedJobs) Some(MobileGpuConfig(execution=gpuConfig,
           computeUnits=computeUnits,tileEngines=tileEngines,axiBytes=memoryAxiDataBytes,
-          attachmentStoreCredits=intOption("--tile-store-credits").getOrElse(8))) else None,
+          attachmentStoreCredits=intOption("--tile-store-credits").getOrElse(8),
+          payloadBytes=intOption("--payload-bytes").getOrElse(64*1024),
+          localShaderPayloads=rest.contains("--local-shader-payloads"))) else None,
         tileStoreCredits = intOption("--tile-store-credits")
           .getOrElse(opengpu.config.MobileGpuConfig().attachmentStoreCredits),
         fragCore = fragCore,

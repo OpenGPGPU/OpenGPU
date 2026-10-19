@@ -68,9 +68,11 @@ class GpuSystem(
   vectorCacheWays: Int = 2,
   enableGraphicsKernels: Boolean = false,
   shaderPayload: Option[ShaderPayloadConfig] = None,
-  producerPayloadPins: Int = 0
+  producerPayloadPins: Int = 0,
+  drainGraphicsPayloadWork: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
+  require(!drainGraphicsPayloadWork || (shaderPayload.nonEmpty && enableGraphicsKernels))
   require(shaderPayload.isEmpty || enableGraphicsKernels,"local shader payloads require the shared graphics task interface")
   require(producerPayloadPins>=0 && (producerPayloadPins==0 || shaderPayload.nonEmpty))
   shaderPayload.foreach(p=>require(p.ports>=p.owners+numComputeUnits,"reserve independent staging and CU payload response ports"))
@@ -303,6 +305,10 @@ class GpuSystem(
   dispatcher.io.launch <> commandProcessor.io.dispatch
   commandProcessor.io.dispatchCompletion <> dispatcher.io.completion
   private val graphicsDispatchBlocked = WireDefault(false.B)
+  // A renderer's accepted job owns its later staging/launch sub-operations.
+  // They must drain before graphicsDrained can rise during command reset.
+  private val drainingPayloadWork=if(drainGraphicsPayloadWork) !io.graphicsDrained else false.B
+  private val graphicsWorkAllowed= !graphicsDispatchBlocked || drainingPayloadWork
   private val graphicsCacheDrained = WireDefault(true.B)
   private val payloadContextDrained=WireDefault(true.B)
   private val payloadInputsIdle=WireDefault(true.B)
@@ -314,16 +320,16 @@ class GpuSystem(
     for(i <- 0 until producerPayloadPins)pool.io.pins.get(numComputeUnits+1+i):=io.payloadProducerPins.get(i)
     for(i <- 0 until p.owners) {
       val command=producer.control(i)
-      val allowed= !graphicsDispatchBlocked ||
+      val allowed=graphicsWorkAllowed ||
         (command.bits.operation=/=ShaderPayloadControl.allocate.U && !pool.io.drained)
       pool.io.control(i).valid:=command.valid && allowed
       pool.io.control(i).bits:=command.bits
       command.ready:=pool.io.control(i).ready && allowed
       producer.controlResponse(i)<>pool.io.controlResponse(i)
-      pool.io.request(i).valid:=producer.request(i).valid && !graphicsDispatchBlocked
+      pool.io.request(i).valid:=producer.request(i).valid && graphicsWorkAllowed
       pool.io.request(i).bits:=producer.request(i).bits
       pool.io.request(i).bits.owner:=i.U
-      producer.request(i).ready:=pool.io.request(i).ready && !graphicsDispatchBlocked
+      producer.request(i).ready:=pool.io.request(i).ready && graphicsWorkAllowed
       producer.response(i)<>pool.io.response(i)
     }
     for(i <- p.owners+numComputeUnits until p.ports) {
@@ -340,9 +346,9 @@ class GpuSystem(
   }
   if (enableGraphicsKernels) {
     val graphics = io.graphicsKernels.get
-    dispatcher.io.graphicsLaunch.valid := graphics.launch.valid && !graphicsDispatchBlocked
+    dispatcher.io.graphicsLaunch.valid := graphics.launch.valid && graphicsWorkAllowed
     dispatcher.io.graphicsLaunch.bits := graphics.launch.bits
-    graphics.launch.ready := dispatcher.io.graphicsLaunch.ready && !graphicsDispatchBlocked
+    graphics.launch.ready := dispatcher.io.graphicsLaunch.ready && graphicsWorkAllowed
     graphics.completion <> dispatcher.io.graphicsCompletion
     graphics.owned := dispatcher.io.graphicsOwner
     graphics.taskIds := dispatcher.io.taskIds
@@ -880,9 +886,9 @@ class GpuSystem(
     Some(Module(new SharedCuCacheInvalidation(config, numComputeUnits))) else None
   graphicsInvalidation.foreach { broadcast =>
     val request = io.graphicsKernels.get.invalidate
-    broadcast.io.request.valid := request.valid && !graphicsDispatchBlocked
+    broadcast.io.request.valid := request.valid && graphicsWorkAllowed
     broadcast.io.request.bits := request.bits
-    request.ready := broadcast.io.request.ready && !graphicsDispatchBlocked
+    request.ready := broadcast.io.request.ready && graphicsWorkAllowed
     io.graphicsKernels.get.invalidateDone <> broadcast.io.done
     graphicsCacheDrained := broadcast.io.drained
   }

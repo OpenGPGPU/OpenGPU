@@ -1,7 +1,7 @@
 package opengpu.config
 
 import chisel3.util.log2Ceil
-import opengpu.graphics.GraphicsConfig
+import opengpu.graphics.{GraphicsConfig,ShaderPayloadConfig}
 import opengpu.system.SharedCuShaderConfig
 
 /** Elaboration capacities for the mobile architecture, in bytes unless named
@@ -28,10 +28,12 @@ case class MobileGpuConfig(
   binTileSlots: Int = 8,
   binRecordCacheEntries: Int = 8,
   binDirectoryTiles: Int = 16384,
-  bankedAttachments: Boolean = true
+  bankedAttachments: Boolean = true,
+  localShaderPayloads: Boolean = false
 ) {
   private def powerOfTwo(n: Int): Boolean = n > 0 && (n & (n - 1)) == 0
   require(computeUnits > 0 && computeUnits <= 255)
+  require(!localShaderPayloads || bankedAttachments,"local payload rendering uses the native banked attachment path")
   require(execution.enableVector && execution.enableFpu,
     "mobile graphics requires vector and FP32 execution")
   require(execution.lanes >= 4 && execution.lanes % 4 == 0,
@@ -69,8 +71,11 @@ case class MobileGpuConfig(
   def l2Bytes: Long = execution.l2Sets.toLong * execution.l2Ways * 64
   def dataStorageBytes: Long = tileBytesPerEngine.toLong * tileEngines +
     textureBytesPerCluster.toLong * textureClusters + payloadBytes + primitiveBytes + l2Bytes + attachmentReadCacheBytes
+  def shaderPayload: Option[ShaderPayloadConfig] = if(localShaderPayloads)Some(ShaderPayloadConfig(
+    capacityBytes=payloadBytes,maxPayloadBytes=math.min(payloadBytes,9*execution.lanes*execution.warps*4),
+    owners=tileEngines*computeUnits,ports=tileEngines*computeUnits+computeUnits))else None
   def sharedShaders: SharedCuShaderConfig =
-    SharedCuShaderConfig(computeUnits, parallelFragments = true)
+    SharedCuShaderConfig(computeUnits, parallelFragments = true,shaderPayload=shaderPayload)
 
   /** Admission chooses a class that actually fits; wider formats do not
     * silently overcommit the per-slot storage budget.

@@ -15,10 +15,16 @@ class ParallelKernelFragStage(
   gfxConfig: GraphicsConfig,
   sharedShader: SharedCuShaderConfig,
   graphicsScalarFpu: Boolean = true,
-  quadExports: Boolean = false
+  quadExports: Boolean = false,
+  payloadOwnerBase: Int = 0
 ) extends Module {
   require(sharedShader.parallelFragments)
   private val count = sharedShader.fragmentWorkers
+  private val payload=sharedShader.shaderPayload
+  val payloadProducers=payload.map(p=>IO(Vec(count,new ShaderPayloadProducerPort(p))))
+  val payloadTasks=payload.map(p=>IO(Output(Vec(count,Valid(new opengpu.core.memory.ShaderPayloadBinding(config,p))))))
+  val payloadContext=payload.map(_=>IO(Input(UInt(32.W))))
+  val payloadCancel=payload.map(_=>IO(Input(Bool())))
   val io = IO(new KernelFragStageIO(config, gfxConfig, sharedShader.fragmentStagingTransactions,quadExports))
   val sharedClients = IO(Vec(count, Flipped(new SharedCuGraphicsPort(
     config, sharedShader.taskIdWidth, sharedShader.numComputeUnits))))
@@ -37,7 +43,14 @@ class ParallelKernelFragStage(
   KernelFragFrontendIO.connect(io, scheduler.io.front)
 
   for (workerId <- 0 until count) {
-    val worker = Module(new KernelFragStage(config, gfxConfig, sharedShader.fragmentStagingPerWorker,quadExports))
+    val worker = Module(new KernelFragStage(config, gfxConfig, sharedShader.fragmentStagingPerWorker,quadExports,payload,payloadOwnerBase+workerId))
+    payload.foreach { _=>
+      val bus=payloadProducers.get(workerId);val source=worker.io.payload.get
+      bus.control<>source.control;source.controlResponse<>bus.controlResponse
+      bus.request<>source.request;source.response<>bus.response
+      payloadTasks.get(workerId):=source.task
+      source.context:=payloadContext.get;source.cancel:=payloadCancel.get
+    }
     events(workerId) := worker.io.performance
     executionFaults(workerId) := worker.io.executionFault
     val shader = Module(new KernelShaderStage(config, graphicsScalarFpu, Some(sharedShader)))

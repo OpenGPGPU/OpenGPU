@@ -5,11 +5,14 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,ShaderPayloadBinding}
 
-class FragmentPayloadPort(config: GpuConfig,p: ShaderPayloadConfig) extends Bundle {
+class ShaderPayloadProducerPort(p: ShaderPayloadConfig) extends Bundle {
   val control=Decoupled(new ShaderPayloadControlRequest(p))
   val controlResponse=Flipped(Decoupled(new ShaderPayloadControlResponse(p)))
   val request=Decoupled(new ShaderPayloadRequest(p))
   val response=Flipped(Decoupled(new ShaderPayloadResponse(p)))
+}
+
+class FragmentPayloadPort(config: GpuConfig,p: ShaderPayloadConfig) extends ShaderPayloadProducerPort(p) {
   val task=Output(Valid(new ShaderPayloadBinding(config,p)))
   val context=Input(UInt(32.W))
   val cancel=Input(Bool())

@@ -3,6 +3,7 @@ package opengpu.system
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
+import opengpu.graphics.ShaderPayloadConfig
 import opengpu.core.backend.{VectorCommitRequest, VectorTextureRequest}
 import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
@@ -13,12 +14,18 @@ import opengpu.dispatch.{TaggedKernelCompletion, TaggedKernelLaunch}
 case class SharedCuShaderConfig(
   numComputeUnits: Int,
   taskIdWidth: Int = 8,
-  parallelFragments: Boolean = false
+  parallelFragments: Boolean = false,
+  shaderPayload: Option[ShaderPayloadConfig] = None
 ) {
   require(numComputeUnits > 0)
   require(taskIdWidth > 0)
+  require(shaderPayload.isEmpty || parallelFragments,"local renderer payloads use parallel shared fragment workers")
   val fragmentWorkers: Int = if (parallelFragments) numComputeUnits else 1
   val fragmentBanks: Int = fragmentWorkers * 2
+  val tasksPerEngine: Int = if(parallelFragments)fragmentWorkers+1 else 1
+  val rendererPayloadPins: Int = 2*(fragmentWorkers+1)
+  def binPayloadPins(engines: Int): Int=engines*rendererPayloadPins+engines*(tasksPerEngine+1)
+  def binPayloadProducers(engines: Int): Int=engines*fragmentWorkers
   val fragmentStagingPerWorker: Int = 8
   // Match global credits to each worker's independent local transactions. Round the shared
   // credit window up for non-power-of-two CU counts; no shader ABI changes.

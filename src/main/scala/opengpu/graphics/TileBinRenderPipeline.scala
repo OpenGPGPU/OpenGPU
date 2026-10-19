@@ -74,6 +74,8 @@ private class TileBinRenderPending extends Bundle {
 
 class TileBinRenderDatapathIO(gpuConfig: GpuConfig,engines: Int,transactions: Int,
   kernelWords: Int,sharedShader: Option[SharedCuShaderConfig] = None) extends Bundle {
+    val payload=sharedShader.flatMap(_.shaderPayload).map(p=>new ShaderPayloadRendererPort(gpuConfig,p,
+      sharedShader.get.binPayloadProducers(engines),sharedShader.get.binPayloadPins(engines)))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(gpuConfig,64,transactions))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64,transactions)))
     val sharedOwners = sharedShader.map(pool => Output(Vec(engines,UInt(pool.numComputeUnits.W))))
@@ -99,6 +101,7 @@ class TileBinRenderDatapathIO(gpuConfig: GpuConfig,engines: Int,transactions: In
     val attachmentEvents = Output(Vec(engines,new TileAttachmentEvents))
     val acceptedSamples=Output(Vec(engines,UInt(3.W)))
     val committedSamples=Output(Vec(engines,UInt(3.W)))
+    val fragmentEvents=Output(new FragmentPerformanceEvents)
     val busy = Output(Bool())
 }
 
@@ -175,15 +178,37 @@ class TileBinRenderPipeline(
     writeCredits,tileSlots,cacheEntries,primitiveLines=TileBinDrawLayout.primitiveLines,pagedCapacity=pagedCapacity,
     useDirectorySramBlackBoxes=useTileSramBlackBoxes))
   private val admission = Module(new TileBinRenderPassAdmission(config,tileSlots,fragCore,engines,pagedCapacity,pageBytes))
-  private val pipes = Seq.fill(engines)(Module(new RenderPipeline(config,gpuConfig,
+  private val pipes = Seq.tabulate(engines)(e=>Module(new RenderPipeline(config,gpuConfig,
     fragCore=fragCore,sharedShader=sharedShader,persistentAttachments=true,
     tileStoreCredits=storeCredits,useTileSramBlackBoxes=useTileSramBlackBoxes,
     normalizedTextureModulation=true,doubleBufferedAttachments=true,coalesceAttachments=coalesceAttachments,
-    bankedAttachments=bankedAttachments)))
+    bankedAttachments=bankedAttachments,payloadOwnerBase=e*sharedShader.map(_.fragmentWorkers).getOrElse(1))))
+  for(phase <- 0 until 6)
+    io.fragmentEvents.phaseWorkers(phase):=pipes.map(_.io.performance.fragment.phaseWorkers(phase)).reduce(_+& _)
+  io.fragmentEvents.stagingOutstanding:=pipes.map(_.io.performance.fragment.stagingOutstanding).reduce(_+& _)
+  io.fragmentEvents.stagingBlocked:=pipes.map(_.io.performance.fragment.stagingBlocked).reduce(_ || _)
+  io.fragmentEvents.outputBlocked:=pipes.map(_.io.performance.fragment.outputBlocked).reduce(_ || _)
   private val sharedRouter = sharedShader.map(pool => Module(new SharedShaderTaskRouter(
     gpuConfig,pool.numComputeUnits,engines,pool.taskIdWidth,
-    tasksPerClient=if (pool.parallelFragments) pool.fragmentWorkers+1 else 1)))
-  sharedRouter.foreach(router => router.io.pool <> io.shared.get)
+    tasksPerClient=pool.tasksPerEngine,shaderPayload=pool.shaderPayload)))
+  sharedRouter.foreach { router=>
+    router.io.pool<>io.shared.get
+    sharedShader.get.shaderPayload.foreach { p=>
+      val pool=sharedShader.get
+      require(p.owners>=pool.binPayloadProducers(engines),"every fragment producer needs a fixed payload owner")
+      io.payload.get.task:=router.io.poolPayload.get
+      val innerPins=engines*pool.rendererPayloadPins
+      for(e <- 0 until engines) {
+        router.io.clientPayload.get(e):=pipes(e).io.payload.get.task
+        for(w <- 0 until pool.fragmentWorkers)
+          io.payload.get.producer(e*pool.fragmentWorkers+w)<>pipes(e).io.payload.get.producer(w)
+        for(i <- 0 until pool.rendererPayloadPins)
+          io.payload.get.pinsOut(e*pool.rendererPayloadPins+i):=pipes(e).io.payload.get.pinsOut(i)
+      }
+      for(i <- 0 until engines*(pool.tasksPerEngine+1))
+        io.payload.get.pinsOut(innerPins+i):=router.io.payloadPins.get(i)
+    }
+  }
   private val decoders = Seq.fill(engines)(Module(new TileBinDrawDecoder(config)))
   private val results = Seq.fill(engines)(Module(new Queue(new TileBinRenderTileCompletion,tileSlots)))
   private val pending = Seq.fill(engines)(Module(new Queue(new TileBinRenderPending,2)))
