@@ -4600,3 +4600,61 @@ resource/host/bin binding,
 post-transform reuse, queries/transform feedback, broader texture semantics or
 workload/rate closure. PPA remains **synthesis only**; emitted hierarchy/storage
 counts are not PPA results. The original H0–H8 development goal remains open.
+
+## Covered-sample FP32 default depth through typed image publication
+
+The [sample-depth checkpoint](performance/mobile-fp32-sample-depth-2026-10-19.json)
+extends the general point/line/triangle raster and shared-CU fragment path with
+independent default depths for every covered sample. At 1x the depth remains the
+existing center result. At 2x/4x triangle planes and line projections are evaluated
+at the established sample positions; point depth remains constant. The existing
+scalar arithmetic service performs the additional work serially. Sample weights
+must fit signed 64-bit values before conversion, or the quad fails without
+partial output.
+
+Shader-visible FragCoord.z, reciprocalW, varyings and pointCoord retain their
+center behavior. Private fragment metadata carries the sample-depth vector and
+validity through batching, local/global payload execution, discard and held
+exports. Covered values must be finite and in [0, 1] before shader access;
+unavailable and uncovered values are zeroed. Shader ABI array layouts (versions
+1 and 2) and the CU ISA remain unchanged. Standalone interpolation can retain
+its center-only contract with
+`sampleDepthEnable` disabled; the general primitive owner always enables it.
+
+Late depth/stencil tests select each raster sample depth unless the shader
+explicitly overrides depth, in which case the shader value applies to every
+selected sample. Preflight checks only effective selected depths when testing
+is enabled, so an unused center or overridden/uncovered sample cannot spuriously
+fault a quad. Existing late discard, stencil, blend and acknowledged image
+publication ordering remain. Raw multisample source stores preserve every
+sample; depth resolve retains the existing raw sample 0 rule.
+
+All **90 checks across 14 suites** pass on one frozen archive containing
+**576 source files**.
+Independent direct sample-position references check sloped triangle/line depth,
+points, reversed signed areas, 1x/2x/4x, helpers, backpressure and cancellation.
+Thirty typed pixel quads cover five depth layouts and all sample modes with mixed
+visibility, stencil outcomes, typed MRT bytes and shader overrides. Real two-CU
+local/global tests retain metadata through shaders with all 64 varying components,
+128-lane and 12-lane batches, and publish 12 draws per profile across all primitive
+kinds at 1x/4x.
+The image oracle checks exact multisample backing, resolve destinations, packed
+guards and cached consumer visibility, including override color updates with
+depth writes disabled. Existing raster, composed draw, transfer and resolve
+ownership regressions also pass.
+
+Primitive and render RTL emissions contain **43/166 files**, respectively.
+Default private fragment metadata grows from 630 to 1,146 bits per quad and from
+10 to 18 rows. Its allocation grows from 512 to 1,024 64-bit words for 128 physical
+lanes. This adds **two 256x64 SRAM macros, 4 KiB total**. The composed owner now
+has **35 characterized macros, 70 KiB**, including the 32 KiB attachment slot,
+across 27 logical SRAM wrappers.
+Four fixed-function FMA and three divider instances remain; no floating lane,
+shader CU or payload pool is added. These counts are structural RTL accounting,
+not synthesis PPA.
+
+This checkpoint covers the bounded general raster path. Native host/bin/resource
+ownership, full precision/invariance, centroid/sample varying qualifiers,
+polygon offset, unrepresentable guard bands, post-transform reuse, queries and
+feedback, broader textures and representative throughput remain open. PPA stays
+**synthesis only**. The original H0–H8 development goal remains open.
