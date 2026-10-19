@@ -1,9 +1,9 @@
 # GFS1 immutable typed fragment state
 
 `TypedFragmentStateReader` reads a bounded, immutable GPU-memory state table.
-A replay renderer can use its entries to rasterize and shade resolved
-post-transform records without executing a vertex shader again. That consumer
-is being developed separately from this state-reader milestone. This format
+[TypedReplayTileImagePipeline](TYPED_REPLAY_TILE_IMAGE.md) uses its entries to
+rasterize and shade resolved post-transform records without executing a vertex
+shader again. This format
 does not add a native host opcode or change GTJ1/GTI1/GTD1 or the shader ISA.
 
 ## Word format

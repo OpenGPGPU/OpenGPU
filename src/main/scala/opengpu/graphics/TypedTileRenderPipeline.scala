@@ -29,12 +29,13 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     storage: TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false) extends Module {
   require(f.colors==4 && g.maxSampleCount==4,"typed pixel interface requires four color locations and four sample-mask bits")
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val begin=Flipped(Decoupled(new TypedTilePixelDescriptor));val end=Flipped(Decoupled(Bool()))
     val draw=Flipped(Decoupled(new TypedTileRenderDraw(p,f)));val drawCompletion=Decoupled(new TypedTileRenderDrawCompletion)
+    val primitive=if(preparedGeometry)Some(Input(new WindowPrimitive(p)))else None
     val out=Decoupled(new TypedTilePixelQuadCompletion);val completion=Decoupled(new TypedTileRenderCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
     val payload=payloadConfig.map(q=>Vec(2,new FragmentPayloadPort(config,q)))
@@ -45,7 +46,9 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     val refill=Decoupled(new TypedTileColorRefill(storage));val refillReply=Flipped(Decoupled(new TypedTileColorRefillReply))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner))
+  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry))
+  private val primitive=if(preparedGeometry)Some(Reg(new WindowPrimitive(p)))else None
+  primitive.foreach(p=>source.io.primitive.get:=p)
   private val pixels=Module(new TypedTilePixelBackend(storage,useSramBlackBoxes))
   private object State extends ChiselEnum {val idle,validatePass,bind,active,validateDraw,drawing,emitDraw,externalReply,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTilePixelDescriptor);private val draw=Reg(new TypedTileRenderDraw(p,f))
@@ -124,12 +127,14 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
       draws:=0.U;admitted:=0.U;retired:=0.U;dropped:=0.U;pixelResult:=0.U.asTypeOf(pixelResult)
       for(i<-0 until 2)contexts(i):=io.payload.map(_(i).context).getOrElse(0.U)
       phase:=State.validatePass}}
-    is(State.validatePass){when(contexts(0)=/=contexts(1)){fail(1.U,1.U);phase:=State.closing}
+    is(State.validatePass){when(!preparedGeometry.B && contexts(0)=/=contexts(1)){fail(1.U,1.U);phase:=State.closing}
       .elsewhen(stop){phase:=State.closing}.otherwise{pixelOffered:=true.B;phase:=State.bind}}
     is(State.bind){when(stop || pixelDone){phase:=State.closing}.elsewhen(pixelStarted && pixels.io.in.ready){phase:=State.active}}
     is(State.active){when(stop){phase:=State.closing}.otherwise{
       when(io.draw.fire){draw:=io.draw.bits;drawOwned:=true.B;draws:=draws+1.U;sourceStarted:=false.B;sourceDone:=false.B
-        admitted:=0.U;retired:=0.U;dropped:=0.U;sourceResult:=0.U.asTypeOf(sourceResult);phase:=State.validateDraw}
+        primitive.foreach(_:=io.primitive.get)
+        admitted:=0.U;retired:=0.U;dropped:=0.U;sourceResult:=0.U.asTypeOf(sourceResult)
+        sourceResult.preparedGeometry:=preparedGeometry.B;phase:=State.validateDraw}
       when(io.memory.fire){phase:=State.externalReply}
       when(io.end.fire){when(!io.end.bits){fail(5.U,1.U)};phase:=State.closing}
     }}

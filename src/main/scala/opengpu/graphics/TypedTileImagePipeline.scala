@@ -21,11 +21,12 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     storage: TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false) extends Module {
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val begin=Flipped(Decoupled(new TypedTileImageDescriptor));val end=Flipped(Decoupled(Bool()))
     val draw=Flipped(Decoupled(new TypedTileRenderDraw(p,f)));val drawCompletion=Decoupled(new TypedTileRenderDrawCompletion)
+    val primitive=if(preparedGeometry)Some(Input(new WindowPrimitive(p)))else None
     val out=Decoupled(new TypedTilePixelQuadCompletion);val completion=Decoupled(new TypedTileImageCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
     val payload=payloadConfig.map(q=>Vec(2,new FragmentPayloadPort(config,q)))
@@ -34,7 +35,8 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val renderer=Module(new TypedTileRenderPipeline(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner))
+  private val renderer=Module(new TypedTileRenderPipeline(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner,preparedGeometry))
+  if(preparedGeometry)renderer.io.primitive.get:=io.primitive.get
   private val transfers=Module(new TypedTileImageTransfer(config,storage))
   private object State extends ChiselEnum {val idle,bindTransfer,bindRender,run,flush,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedTileImageDescriptor);private val result=Reg(new TypedTileImageCompletion)

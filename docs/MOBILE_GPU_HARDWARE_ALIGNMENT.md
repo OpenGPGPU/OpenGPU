@@ -4903,3 +4903,54 @@ wrapper's dirty-worktree flag is retained in the evidence and reconciled with
 those identical input hashes. This is pre-layout setup and cell-area evidence;
 it does not establish power, hold, routed timing or whole-GPU closure. H0–H8
 remain open. PPA continues to use **synthesis only**.
+
+
+## Typed image execution from post-transform replay — 2026-10-20
+
+`TypedReplayTileImagePipeline` now fetches immutable GFS1 state and renders
+complete post-transform `WindowPrimitiveReplay` records through the existing
+typed image owner. Its prepared-geometry mode starts at primitive rasterization:
+vertex fetch/shading, assembly, clipping and viewport work are not repeated.
+The default vertex-to-image mode and GTJ1/GTI1/GTD1 layouts remain intact.
+Per-engine/per-state scratch slots protect concurrent prefixes and the uniform
+tails needed when a later tile replays another state. The raster scissor is
+intersected with the tile and runtime screen before narrowing.
+
+All **33 checks across five suites** pass on **601 frozen source files**.
+Two actual fragment engines use two shared CUs and one payload pool. Tests
+require simultaneous ownership of both CUs, use distinct first states so task
+or payload swaps are observable, and repeat with a one-slot pool that forces
+global fallback. A prewarmed cached consumer reads the cache line straddling
+the tile boundary. Holding its invalidation acknowledgement delays publication;
+after source/resolve acknowledgement, exact shared-line bytes and repeated cache
+hits are checked. No private CU or payload pool is added.
+
+Resolved triangle, point and line fixtures cover local/global payloads, four
+MRT locations, floating/sRGB and integer formats, per-sample default depth,
+shader overrides, blending, original scissor intersection, 1x/4x backing and
+resolve bytes, and unaligned pitched guards. Empty tiles clear and publish
+without state reads or shader work. Admission/record checks reject scratch
+roles/slots, mismatched identities/ordinals/tokens and out-of-range handles
+before shader access. State reads, shader traps and physical store faults
+retain their stage and attribution through healthy reuse. Cancellation retains
+held primitive results, launches, leases and final physical acknowledgements.
+Twenty-four state-reader/default-image/native-reader/native-AXI regressions also
+pass, including translated native resources and production reset drain.
+
+The default 16-lane/eight-warp/16-varying single-engine emission contains
+**133 RTL files**, one raster stage, one fragment stage, two FMA lanes and one
+divider. Its 21 characterized 256x64 SRAM macros account for **42 KiB** plus
+private/control registers. Vertex shader, clipper, viewport, CU and shared
+payload-store instance counts are zero in this owner. These counts are
+structural; the separately running engine synthesis is not qualified by this
+functional checkpoint. The standalone state-reader synthesis result is already
+recorded above. See the [replay image contract](TYPED_REPLAY_TILE_IMAGE.md) and
+[frozen evidence](performance/mobile-typed-replay-image-2026-10-20.json).
+
+The new tests inject resolved geometry fixtures. Actual shared-CU vertex-to-bin
+execution has separate VBIN evidence; production bin-to-image composition and
+full-frame empty-tile scheduling are still being developed. The native AXI
+regressions cover the ordinary path, not native admission/MMU/reset for these
+new replay engines. Resource provenance, native frame integration, full Mobile
+runtime/budgets/rates and the original H0–H8 gates remain open. PPA remains
+**synthesis only**.
