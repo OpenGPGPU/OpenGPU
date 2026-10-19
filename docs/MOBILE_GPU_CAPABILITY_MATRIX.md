@@ -169,7 +169,7 @@ CU arithmetic alone does not supply those contracts.
 | Pixel throughput | PIX's resident backend supports four sample commits/cycle in component tests | Native integrated workload gates, legal early/late equivalence and synthesis timing |
 | Native Mobile integration | [74 native renderer/AXI checks and production hierarchy audit](performance/mobile-native-binned-host-2026-10-19.json) pass, including the four-CU host profile | Integrate the remaining payload/features and qualify representative workloads and synthesis |
 | Representative frame budget | Earlier checkpoints measure specific component/frame workloads | Full agreed 720p suite with all phases, bounded bandwidth and qualified clock |
-| Current PPA screen | Synthesis-only policy; standalone state reader passes 1 GHz. [Single replay image engine](performance/mobile-typed-replay-image-synthesis-2026-10-20.json) maps but fails setup: 145.618 MHz core estimate, -5867.270 ps slack at 1 GHz | Fix the measured transfer datapath and repeat synthesis; integrated/full-GPU area, power and timing remain unqualified |
+| Current PPA screen | Synthesis-only policy; standalone state reader passes 1 GHz. [Refill decoder iteration](performance/mobile-typed-image-refill-synthesis-2026-10-20.json) improves the single replay engine from 145.618 to 224.000 MHz and reduces mapped area 0.537%, but still fails setup: -3464.279 ps at 1 GHz | Pipeline the measured typed color SRAM-write path and repeat synthesis; integrated/full-GPU area, power and timing remain unqualified |
 
 Adding this inventory closes no implementation milestone. H0–H8 retain their
 original deliverables and acceptance gates in the alignment plan.

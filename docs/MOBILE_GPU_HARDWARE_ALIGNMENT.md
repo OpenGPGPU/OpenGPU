@@ -5092,3 +5092,25 @@ owner/fabric/host/MMIO/reset composition is the next step. Trusted image physica
 provenance and translated cross-resource aliases, full Mobile runtime/rates/
 budgets and H0-H8 remain open. PPA remains synthesis only; the separate replay
 engine synthesis is still running and establishes no new timing result here.
+
+## Typed image refill decoder synthesis result (2026-10-20)
+
+The bounded row decoder improves the single replay engine's mapped ASAP7
+TC/SLVT core Fmax estimate from **145.618 to 224.000 MHz** (+53.83%). Setup
+still fails at 1000 ps: **-3464.279 ps**, compared with -5867.270 ps before.
+The other reported setup group has +27.511 ps slack. Mapping passes with no
+skipped operators or unresolved diagnostics.
+
+Mapped area falls from 174,148.273079 to **173,213.286839 square micrometres**
+(-0.537%); the 1,295,620 mapped cells include the same 21 SRAM macros. Exactly
+one of the 64 active RTL inputs changes: `TypedTileImageTransfer.sv`. Macro
+bytes, SDC and flow parameters match the baseline. The new critical path runs
+from `image.renderer.pixels.colors.row[1]` to
+`image.renderer.pixels.colors.memoryBanks_0.memory/wd[46]`; the next timing
+iteration must pipeline that measured color-storage datapath.
+
+See the [decoder synthesis comparison and artifact hashes](performance/mobile-typed-image-refill-synthesis-2026-10-20.json).
+The functional decoder adds four cycles per private refill, so the core Fmax
+change alone is not a workload speedup claim. This is synthesis-only evidence
+for one replay engine; native/full-host timing, power, full Mobile rates/budgets
+and H0-H8 remain open.
