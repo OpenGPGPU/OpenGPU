@@ -4369,3 +4369,75 @@ Native host/bin/pass integration, backing resource/alias validation, attachment
 loads/stores/publication, dither/resolve, complete primitive/texture/resource
 semantics and the original H0–H8 qualification gates remain open. This checkpoint
 closes an internal blending gap without claiming native framebuffer/API closure.
+
+### Typed attachment backing and publication, 2026-10-19
+
+The [typed backing checkpoint](performance/mobile-typed-image-publication-2026-10-19.json)
+adds bounded physical image views and a gather/scatter owner around the resident
+shared-CU renderer. Four color views, primary depth/stencil and optional separate
+stencil share the existing slot. Each backing view describes a selected single
+image layer with physical base, exclusive view/allocation limits, image extent,
+row pitch, trusted read/write permissions and store intent. Allocation endpoints
+are 64-byte aligned; view bases and row pitches may be unaligned. Validation
+checks the complete pitched image footprint, tile rectangle, arithmetic overflow,
+permissions and overlapping stored-view envelopes before shader or memory work.
+Immutable load sources can alias; a single stored view may overlap a read-only
+source because all draw loads precede export. Unused clear/discard views with no
+store require no backing allocation. These are internal physical views; VM
+translation, permission provenance and native resource-table admission remain
+separate requirements.
+
+Cold 64-bit slot words gather only active tile bytes from bounded 64-byte physical
+reads, with a one-line register cache. Bytes outside a partial tile are zero-filled
+without touching the backing image. Cache identity resets on every binding.
+Store/export walks active rows and selected views, reads resident or virtual
+color defaults, and supplies untouched depth/stencil clear/discard defaults.
+Clear/discard-start views export their deterministic active contents; load-start
+views export dirty words and leave clean/unavailable words unchanged. Masked line
+stores preserve image pixels outside the tile, row-pitch gaps and allocation guard
+bytes. Packed 3/6/12-byte formats, separate stencil and combined depth/stencil keep
+their established storage layouts and padding policies. Resolve and dithering
+remain separate work.
+
+The outer pass owner accepts several ordered draws with no intermediate attachment
+stores. It intercepts successful end, exports the selected views, waits for every
+physical acknowledgement, then forwards local renderer end and retires the pass.
+A tagged arbiter shares the existing physical line interface with shader staging;
+attachment requests use the existing uncached coherent-L2 store contract. A
+cached L2 consumer can observe new data after completion even when a formerly
+cached line must refill. Store acknowledgement is distinct from CPU cache
+coherence and does not imply a CPU visibility fence.
+
+Failed or canceled passes stop new work, drain accepted/refill/private/end offers
+and retain counted successful store prefixes. Invalid slot refills issue no
+physical reads; failed stores cannot advertise successful publication. Direct
+and payload-pool cancellation retain already offered local end/maintenance
+commands before reaching the renderer. The VM/context and immutable pass result
+remain owned until all shader/payload/memory traffic and completion handshakes
+drain. Useful load bytes count successful refill replies; issued and acknowledged
+store bytes and physical read/write request counts have separate counters.
+
+All **40 checks** pass on a frozen **569-source** archive: ten new transfer/image
+checks and thirty numeric/pixel/storage regressions. Transfer checks cover all
+36 colors, seven depth/stencil layouts, clear/load/discard,
+5x3 edges, odd pitches, unaligned bases, physical aliases, permissions, stale-cache
+rebinding, the last byte of a 4 GiB allocation, invalid slot refills and cancellation
+or read/store faults. Real two-CU local/global tests render blended indexed/instanced
+geometry into four mixed typed views at 1x/4x and compare exact backing bytes,
+including untouched image and allocation bytes. They verify no intermediate
+stores, warm/cold cached-consumer visibility, held final store acknowledgements,
+pre-admission cancellation, physical faults and cancellation timing around the
+forwarded local end.
+
+The source snapshots, qualification logs and emitted transfer/composed hierarchy
+are frozen in the evidence record. The transfer/composed render audits cover
+**7/164 emitted files**. SRAM remains **33 characterized macros, 66 KiB**, including
+32 KiB of attachment data and 8,192 attachment bitmap register bits. A 512-bit
+load-cache register and other line/request/descriptor/control registers are
+additional. The existing four fixed-function FMA and three divider instances
+remain; the transfer adds no SRAM, shader CU, payload pool or floating arithmetic
+lane. These
+are functional and structural checks; PPA evaluation remains synthesis only.
+Native bin/host integration, virtual image/resource descriptors and general
+permission/alias ownership, texture dependency closure, dither/resolve, workload
+and rate qualification and the remaining H0–H8 gates remain open.

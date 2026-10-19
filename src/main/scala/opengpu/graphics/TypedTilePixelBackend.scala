@@ -54,14 +54,6 @@ class TypedTilePixelBackend(p: TypedTileColorConfig=TypedTileColorConfig(),useBl
   private val chosenView=Mux(readSecondary,descriptor.stencil,descriptor.depth)
   private val sourceDepth=TypedDepthFormat.encode(input.color.quad.lanes(lane).depth,descriptor.depth.format)
   private def fail(code: UInt,offset: UInt): Unit={when(status===0.U && !io.cancel){status:=code;fault:=offset;when(quadOwned){quadStatus:=code}}}
-  private def initialWord(v: TypedDepthView): UInt={
-    val z=TypedDepthFormat.encode(v.clearDepth,v.format);val s=v.clearStencil
-    val record=MuxLookup(v.format,0.U(64.W))(Seq(
-      TypedDepthFormat.d16.U->Fill(4,z(15,0)),TypedDepthFormat.d24.U->Fill(2,Cat(0.U(8.W),z(23,0))),
-      TypedDepthFormat.d32f.U->Fill(2,z),TypedDepthFormat.d24s8.U->Fill(2,Cat(s,z(23,0))),
-      TypedDepthFormat.d32fs8.U->Cat(0.U(24.W),s,z),TypedDepthFormat.s8.U->Fill(8,s)))
-    Mux(v.loadOp===AttachmentLoadOp.clear.U,record,0.U)
-  }
   private def requestMemory(write: Boolean,address: UInt,data: UInt,next: State.Type,kind: Int=0,updates: UInt=0.U,fill: Bool=false.B): Unit={
     assert(!memoryOffered && !memoryPending)
     memoryRequest.address:=address;memoryRequest.write:=write.B;memoryRequest.fill:=fill;memoryRequest.data:=data;memoryRequest.byteMask:=255.U
@@ -142,13 +134,7 @@ class TypedTilePixelBackend(p: TypedTileColorConfig=TypedTileColorConfig(),useBl
       is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;status:=0.U;fault:=0.U;started:=false.B;colorDone:=false.B;quadOwned:=false.B
         colorAccepted:=false.B;colorReturned:=false.B;inputQuads:=0.U;totalWrites:=0.U;totalFills:=0.U;colorPassResult:=0.U.asTypeOf(colorPassResult);phase:=State.validate}}
       is(State.validate){
-        val d=descriptor;val vs=Seq(d.depth,d.stencil)
-        val end=vs.map(v=>v.offset+&((1.U(18.W)<<((d.colors.tileLog2<<1)+&d.colors.sampleMode))*TypedDepthFormat.bytes(v.format)))
-        val validViews=vs.zipWithIndex.map{case(v,i)=>v.format===0.U || (TypedDepthFormat.valid(v.format) && v.offset(5,0)===0.U &&
-          v.loadOp<=2.U && end(i)<=d.colors.reservedBytes && !(TypedDepthFormat.depth(v.format) && v.loadOp===1.U && Fp32ViewportState.nan(v.clearDepth)))}.reduce(_ && _)
-        val overlap=d.depth.format=/=0.U && d.stencil.format=/=0.U && d.depth.offset<end(1) && d.stencil.offset<end(0)
-        when(d.version=/=1.U || TypedTileColorRules.invalid(d.colors,p) || !validViews || overlap ||
-          (d.stencil.format=/=0.U && d.stencil.format=/=TypedDepthFormat.s8.U) || (TypedDepthFormat.stencil(d.depth.format) && d.stencil.format=/=0.U)){
+        when(TypedTilePixelRules.invalid(descriptor,p)){
           fail(1.U,0.U);phase:=State.closing
         }.otherwise{beginOffered:=true.B;phase:=State.bind}
       }
@@ -182,7 +168,7 @@ class TypedTilePixelBackend(p: TypedTileColorConfig=TypedTileColorConfig(),useBl
       is(State.depthRead){when(!doDepth || primaryLoaded){phase:=State.evaluate}.otherwise{requestRead(false.B,State.evaluate)}}
       is(State.readDone){when(memoryAvailable){saveWord(memoryData)}.elsewhen(chosenView.loadOp===AttachmentLoadOp.load.U){
         refillAddress:=memoryRequest.address;refillOffered:=true.B;phase:=State.refillWait
-      }.otherwise{fetchedWord:=initialWord(chosenView);phase:=State.fillRequest}}
+      }.otherwise{fetchedWord:=TypedTilePixelRules.initialWord(chosenView);phase:=State.fillRequest}}
       is(State.fillRequest){requestMemory(true,memoryRequest.address,fetchedWord,State.fillDone,kind=1,fill=chosenView.loadOp===AttachmentLoadOp.load.U)}
       is(State.fillDone){saveWord(fetchedWord)}
       is(State.evaluate){

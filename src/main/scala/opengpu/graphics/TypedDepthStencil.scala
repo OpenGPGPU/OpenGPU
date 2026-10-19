@@ -32,6 +32,26 @@ object TypedDepthFormat {
   def operation(old: UInt,ref: UInt,op: UInt): UInt=MuxLookup(op,old)(Seq(0.U->old,1.U->0.U,2.U->ref,
     3.U->Mux(old===255.U,255.U,(old+1.U)(7,0)),4.U->Mux(old===0.U,0.U,(old-1.U)(7,0)),5.U->(~old)(7,0),6.U->(old+1.U)(7,0),7.U->(old-1.U)(7,0)))
 }
+object TypedTilePixelRules {
+  def invalid(d: TypedTilePixelDescriptor,p: TypedTileColorConfig): Bool={
+    val vs=Seq(d.depth,d.stencil)
+    val end=vs.map(v=>v.offset+&((1.U(18.W)<<((d.colors.tileLog2<<1)+&d.colors.sampleMode))*TypedDepthFormat.bytes(v.format)))
+    val validViews=vs.zipWithIndex.map{case(v,i)=>v.format===0.U || (TypedDepthFormat.valid(v.format) && v.offset(5,0)===0.U &&
+      v.loadOp<=2.U && end(i)<=d.colors.reservedBytes && !(TypedDepthFormat.depth(v.format) && v.loadOp===1.U && Fp32ViewportState.nan(v.clearDepth)))}.reduce(_ && _)
+    val overlap=d.depth.format=/=0.U && d.stencil.format=/=0.U && d.depth.offset<end(1) && d.stencil.offset<end(0)
+    d.version=/=1.U || TypedTileColorRules.invalid(d.colors,p) || !validViews || overlap ||
+      (d.stencil.format=/=0.U && d.stencil.format=/=TypedDepthFormat.s8.U) || (TypedDepthFormat.stencil(d.depth.format) && d.stencil.format=/=0.U)
+  }
+  def initialWord(v: TypedDepthView): UInt={
+    val z=TypedDepthFormat.encode(v.clearDepth,v.format);val s=v.clearStencil
+    val record=MuxLookup(v.format,0.U(64.W))(Seq(
+      TypedDepthFormat.d16.U->Fill(4,z(15,0)),TypedDepthFormat.d24.U->Fill(2,Cat(0.U(8.W),z(23,0))),
+      TypedDepthFormat.d32f.U->Fill(2,z),TypedDepthFormat.d24s8.U->Fill(2,Cat(s,z(23,0))),
+      TypedDepthFormat.d32fs8.U->Cat(0.U(24.W),s,z),TypedDepthFormat.s8.U->Fill(8,s)))
+    Mux(v.loadOp===AttachmentLoadOp.clear.U,record,0.U)
+  }
+}
+
 class TypedStencilFace extends Bundle {
   val function=UInt(3.W);val reference=UInt(8.W);val readMask=UInt(8.W);val writeMask=UInt(8.W)
   val fail=UInt(3.W);val depthFail=UInt(3.W);val depthPass=UInt(3.W)
