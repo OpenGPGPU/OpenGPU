@@ -6,7 +6,7 @@ and fetches these records. Translated memory fabric and host submission are
 still pending; the draft is not an advertised production capability.
 Existing GTJ1/GTI1/GTD1 and GFS1 formats are unchanged.
 
-`NativeBinnedGraphicsLayout` defines GBJ1 job, GBF1 frame and GBD1 draw snapshots
+`NativeBinnedGraphicsLayout` defines GNJ1 job, GNF1 frame and GND1 draw snapshots
 with 512/2048/2048-byte fixed sizes. The first three words hold magic, byte size
 and layout version. Capacity fields occupy words 3-7; words 8-15 are reserved.
 Payload fields start at word 16 and multiword fields do not cross a 64-byte
@@ -27,3 +27,7 @@ checks fixed sizes, magic values and selected independently specified offsets.
 Reader decode/validation and fault/cancel component checks are documented in the
 reader checkpoint. Native memory routing, host/MMIO discovery, actual shared-CU
 rendering and production reset are still required.
+
+The unpublished prototype previously used the legacy bin job magic. The
+current GNJ1/GNF1/GND1 namespace avoids that collision; earlier frozen evidence
+retains the prototype values as historical data. No published legacy ABI changed.

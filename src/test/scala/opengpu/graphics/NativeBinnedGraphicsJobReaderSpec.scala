@@ -146,6 +146,12 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
     def healthy(): Unit={prepare();submit();complete(0,2);assert(acceptedBegins==1 && acceptedEnds==1 && peak==4 && reordered)}
   }
 
+  it should "use distinct record magic values without reusing legacy bin typed-image or fragment-state ABI identifiers" in {
+    val current=Set(jobMagic,frameMagic,drawMagic)
+    val legacy=Set(TileBinJobMemoryLayout.magic,NativeTypedGraphicsLayout.jobMagic,NativeTypedGraphicsLayout.passMagic,
+      NativeTypedGraphicsLayout.drawMagic,TypedFragmentStateLayout.magic)
+    assert(current.size==3 && (current&legacy).isEmpty)
+  }
   it should "snapshot three canonical records through four reordered tags and preserve fixed-capacity fields at the four GiB boundary" in {
     simulate(new Harness){d=>val t=new Driver(d);t.healthy()
       for(kind<-0 until 3){val end=BigInt(1)<<32

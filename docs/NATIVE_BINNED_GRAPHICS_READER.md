@@ -1,6 +1,6 @@
 # Native binned graphics descriptor reader
 
-`NativeBinnedGraphicsJobReader` reads GBJ1 jobs, GBF1 frames and ordered GBD1
+`NativeBinnedGraphicsJobReader` reads GNJ1 jobs, GNF1 frames and ordered GND1
 vertex draws from GPU memory. The fixed layouts retain 16 attribute, binding and
 varying slots, four colors and four engine views; smaller implementations reject
 unsupported active fields before copying them into child controls. The existing
@@ -44,3 +44,7 @@ and the [wire-layout draft](NATIVE_BINNED_GRAPHICS_ABI_DRAFT.md).
 Connecting the reader to the combined renderer, real shared CUs/payload,
 virtual/physical memory translation, native host/MMIO discovery and reset remains
 open. Counts are structural, PPA remains synthesis only, and H0-H8 remain open.
+
+The unpublished prototype previously used the legacy bin job magic. The
+current GNJ1/GNF1/GND1 namespace avoids that collision; earlier frozen evidence
+retains the prototype values as historical data. No published legacy ABI changed.

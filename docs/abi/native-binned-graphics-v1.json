@@ -1,5 +1,5 @@
 {
-  "job": {"magic":"0x47424a01","words":128,"bytes":512,"fields":[
+  "job": {"magic":"0x474e4a01","words":128,"bytes":512,"fields":[
     {"name":"header.attributes","word":3,"bits":32,"signed":false},
     {"name":"header.bindings","word":4,"bits":32,"signed":false},
     {"name":"header.varyings","word":5,"bits":32,"signed":false},
@@ -15,7 +15,7 @@
     {"name":"job.identity.generation","word":25,"bits":32,"signed":false},
     {"name":"job.identity.pass","word":26,"bits":32,"signed":false}
   ]},
-  "frame": {"magic":"0x47424601","words":512,"bytes":2048,"fields":[
+  "frame": {"magic":"0x474e4601","words":512,"bytes":2048,"fields":[
     {"name":"header.attributes","word":3,"bits":32,"signed":false},
     {"name":"header.bindings","word":4,"bits":32,"signed":false},
     {"name":"header.varyings","word":5,"bits":32,"signed":false},
@@ -263,7 +263,7 @@
     {"name":"frame.states.version","word":298,"bits":8,"signed":false},
     {"name":"frame.version","word":299,"bits":8,"signed":false}
   ]},
-  "draw": {"magic":"0x47424401","words":512,"bytes":2048,"fields":[
+  "draw": {"magic":"0x474e4401","words":512,"bytes":2048,"fields":[
     {"name":"header.attributes","word":3,"bits":32,"signed":false},
     {"name":"header.bindings","word":4,"bits":32,"signed":false},
     {"name":"header.varyings","word":5,"bits":32,"signed":false},

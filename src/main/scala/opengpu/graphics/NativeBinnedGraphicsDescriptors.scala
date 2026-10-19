@@ -22,14 +22,15 @@ class NativeBinnedGraphicsDrawRecord extends Bundle {
   val header=new NativeBinnedGraphicsHeader;val draw=new VertexBinDraw(VertexShaderStageConfig())
 }
 
-/** GBJ1/GBF1/GBD1 are separate from the existing GTJ1/GTI1/GTD1 ABI.
+/** GNJ1/GNF1/GND1 are separate from both legacy bin jobs (GBJ1) and
+  * the existing GTJ1/GTI1/GTD1 ABI.
   * Fields use explicit little-endian 32-bit words, fixed 16-slot capacities,
   * canonical padding and line-contained multiword values. No Bundle packing
   * or reduced runtime capacity changes the published word offsets.
   */
 object NativeBinnedGraphicsLayout {
   val version=1
-  val jobMagic=BigInt("47424a01",16);val frameMagic=BigInt("47424601",16);val drawMagic=BigInt("47424401",16)
+  val jobMagic=BigInt("474e4a01",16);val frameMagic=BigInt("474e4601",16);val drawMagic=BigInt("474e4401",16)
   val jobWords=128;val frameWords=512;val drawWords=512
   val jobBytes=jobWords*4;val frameBytes=frameWords*4;val drawBytes=drawWords*4
   private def headerFields(h: NativeBinnedGraphicsHeader): Seq[NativeTypedGraphicsLayout.Field]=

@@ -14,7 +14,7 @@ class NativeBinnedGraphicsCompletion(commandIdWidth: Int,p: VertexShaderStageCon
   val frame=new TypedVertexBinImageCompletion(p)
 }
 
-/** Four-tag GPU-memory GBJ1/GBF1/GBD1 snapshot reader for the combined frame
+/** Four-tag GPU-memory GNJ1/GNF1/GND1 snapshot reader for the combined frame
   * owner. Records and all descriptor replies remain owned until drain. Offered
   * begin/draw/end controls survive cancellation, then the child is cancelled.
   * Writable virtual bin/fragment/vertex staging cannot alias descriptor storage.
