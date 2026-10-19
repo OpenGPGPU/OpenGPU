@@ -76,6 +76,11 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PrimitiveAssemblyStage(),stageArgs,firtoolArgs)
       case "mobile-clip-float-arithmetic" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ClipFloatArithmetic(),stageArgs,firtoolArgs)
+      case "mobile-primitive-clip" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PrimitiveClipStage(useSramBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-vertex-clip" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexClipPipeline(
+          useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-vertex-geometry" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexGeometryStage(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)

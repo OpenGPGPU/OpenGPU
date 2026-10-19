@@ -21,7 +21,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 | Shader execution | Shared compute CUs already execute vertex and fragment tasks; vector FP32 arithmetic, including FMA, is connected | Improve task input/output transport, occupancy, control-flow/resource contracts and sustained issue/writeback throughput |
 | Configuration | `GpuConfig` defaults to 16 lanes and eight warps; the mobile CU-count constant is four | One compute/graphics execution configuration; discoverable resource limits and explicit supported configuration combinations |
 | Interstage transport | Eligible Mobile fragments default to local payloads through the parallel/tile/AXI hierarchy; a generic vertex client also qualifies local/global staging and export ownership | Integrate native vertex/fragment ownership and budget the vertex client's additional SRAM; qualify broader resources and throughput |
-| Geometry | Bounded GPU fetch, generic indexed/instanced shared-CU vertex execution and seven-topology primitive assembly are connected as components; legacy triangle clipping/rasterization exists | Native geometry submission/binning, general clipping/interpolation, point/line rasterization and post-transform reuse |
+| Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly and bounded FP32 clipping are connected as components; legacy triangle rasterization exists | Native geometry submission/binning, FP32 viewport/fragment interpolation, point/line rasterization and post-transform reuse |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
 | Texturing | Per-worker samplers; four physical tap-read credits per sampler; bilinear and mip/trilinear paths; a shared single-word request/response fabric | Banked texture hits, scalable filtering throughput, general image/sampler descriptors, more dimensions and formats |
 | Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Integrated synthesis/timing, legal early rejection, representative throughput, multiple color outputs and complete format semantics |
@@ -3662,3 +3662,67 @@ generated-vertex storage, flat-mask bypass and deterministic shared-edge
 intersections remain next. Viewport/interpolation, native geometry/bin/host/VM
 wiring, post-transform reuse, point/line rasterization and all remaining H0-H8
 requirements remain open. PPA evaluation continues with synthesis only.
+
+### Bounded FP32 clipping on the shared-CU geometry stream, 2026-10-19
+
+The [FP32 primitive-clipping checkpoint](performance/mobile-fp32-primitive-clip-2026-10-19.json)
+adds `PrimitiveClipStage` and the composed `VertexClipPipeline`. GPU input,
+indexed/instanced shared-CU vertex shading, primitive assembly and clipping now
+connect through internal streams. Points and lines clip against near/far while
+preserving X/Y for their raster backends; triangles clip against all six
+canonical half-spaces. This follows [GLES 3.0.6 sections 2.18–2.18.1](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
+Native host submission and API conformance are not established by this client.
+
+FP32 comparisons classify half-spaces without overflowing distances. Strict
+crossings always interpolate inside-to-outside and independently divide both
+endpoint weights using `ClipFloatArithmetic`, retaining tiny contributions and
+large distances. Finite interpolants are bounded by endpoint values; generated
+positions snap to the current plane and retain processed half-space bounds.
+Boundary endpoints copy exactly, avoiding duplicate polygon intersections.
+There is no arbitrary positive-W epsilon. Zero-W output is reported for later
+viewport handling. Nonfinite positions return internal numeric status 7; its
+native API policy remains unqualified. Smooth varying special values follow
+the arithmetic units, while flat components bypass arithmetic and retain bits.
+
+Two nine-vertex SRAM banks bound polygon storage and export an ordered fan of
+at most seven triangles. Every part carries source sequence/primitive/instance,
+part index/count, varying-slot/flat-mask metadata, original provoking IDs and
+generated-vertex flags. Copied vertices retain IDs; generated vertices have
+explicit flags and zero source ordinal/ID. Offered parts survive cancellation,
+accepted math drains before completion, and capacity failure is explicit.
+The composed owner retains context through final parts and held completion,
+including after the source payload pool drains. A clipping fault reports its
+sequence/primitive/instance and preserves earlier accepted outputs while
+cancelling/draining younger work. Amplified output, intersection and arithmetic
+totals use 67, 72 and 80 bits; source/culled primitive counts remain 64 bits.
+
+Seventy-five checks pass on 529 frozen sources: nine clipping cases, three
+actual-CU pipeline cases and the preceding 63 arithmetic/geometry/ABI checks.
+Directed and exact rational-reference coverage includes every triangle plane,
+point/line X/Y preservation, signed zero, tiny/large finite crossings, reversed
+and adjacent shared edges, 36 random triangles, negative W, boundary copies,
+smooth special values, raw flat NaNs and the minimum interface. A 64-component
+case reaches nine polygon vertices and all seven fan parts after clipping away
+the original provoking vertex. Tests also cover five cancellation offsets,
+held parts, ten invalid layouts, three nonfinite positions and healthy reuse.
+Actual two-CU local/global paths each exercise all three primitive kinds over
+two instances and produce 42 exact clipped outputs across three draws. The
+actual `GpuSystem.vmContextIdle` stays false through held output/completion.
+Numeric failure is checked both before any output and after a valid earlier
+primitive, including exact fault sequence attribution.
+
+Default standalone emissions audit 27 clipper files and 79 pipeline files.
+Clipping uses four characterized 256x64 SRAM macros (**8 KiB physical**) for
+684 logical 64-bit rows padded to 1,024 rows. The full internal client contains
+14 SRAM macros (**28 KiB**) including the preceding vertex-stage storage,
+outside the shared payload pool. One scalar FMA/divider engine services clip
+arithmetic; descriptors, private records, queues and other control are additional.
+No private CU or payload pool is embedded, and no synthesis result is claimed.
+
+General FP32 viewport/perspective division, smooth fragment interpolation,
+broader invariance/numeric qualification and zero-W/nonfinite API policy remain
+open. Native descriptors, host/VM/reset/physical ownership, producer/bin wiring,
+point/line rasterization, post-transform reuse, remaining formats/resources,
+transform feedback/query integration, watchdog termination, production budgets,
+throughput, synthesis and the remaining H0-H8 requirements also remain open.
+PPA evaluation continues with synthesis only.
