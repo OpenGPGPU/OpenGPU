@@ -5,6 +5,7 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.CacheLineInvalidate
 import opengpu.dispatch.TaggedKernelLaunch
+import opengpu.core.memory.ShaderPayloadBinding
 import opengpu.system.SharedCuGraphicsPort
 
 /** Connect independent shader clients to one physical CU pool. Each client
@@ -18,7 +19,8 @@ class SharedShaderTaskRouter(
   numComputeUnits: Int,
   numClients: Int,
   taskIdWidth: Int = 8,
-  tasksPerClient: Int = 1
+  tasksPerClient: Int = 1,
+  shaderPayload: Option[ShaderPayloadConfig] = None
 ) extends Module {
   require(numComputeUnits > 0 && numClients > 0)
   require(taskIdWidth > 0 && tasksPerClient > 0)
@@ -29,6 +31,13 @@ class SharedShaderTaskRouter(
   val io = IO(new Bundle {
     val clients = Vec(numClients, new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits))
     val pool = Flipped(new SharedCuGraphicsPort(config, taskIdWidth, numComputeUnits))
+    val clientPayload=shaderPayload.map(p=>Input(Vec(numClients,Valid(new ShaderPayloadBinding(config,p)))))
+    val poolPayload=shaderPayload.map(p=>Output(Valid(new ShaderPayloadBinding(config,p))))
+    /** Accepted queued/executing tasks and each prospective client offer.
+      * Connect these to the shared store's producer pins across every router
+      * tier, so a lease cannot recycle before its launch reaches the CUs.
+      */
+    val payloadPins=shaderPayload.map(p=>Output(Vec(slots+numClients,Valid(new ShaderPayloadPin(p)))))
     val drained = Output(Bool())
   })
   private val active = RegInit(VecInit(Seq.fill(slots)(false.B)))
@@ -36,6 +45,7 @@ class SharedShaderTaskRouter(
   private def clientActive(tag: UInt): Bool =
     if (slots == 1) active(0) else active(tag(slotWidth - 1, 0))
   private val tags = Reg(Vec(slots, UInt(taskIdWidth.W)))
+  private val payloads=shaderPayload.map(p=>Reg(Vec(slots,Valid(new ShaderPayloadBinding(config,p)))))
   private def localTag(tag: UInt): UInt =
     if (slots == 1) tags(0) else tags(tag(slotWidth-1,0))
   private def belongs(tag: UInt,client: Int): Bool =
@@ -59,6 +69,7 @@ class SharedShaderTaskRouter(
       active(chosen) := true.B
       issued(chosen) := false.B
       tags(chosen) := port.launch.bits.commandId
+      shaderPayload.foreach { _=>payloads.get(chosen):=io.clientPayload.get(client) }
     }
     port.completion.valid := io.pool.completion.valid && belongs(io.pool.completion.bits.commandId,client)
     port.completion.bits.commandId := localTag(io.pool.completion.bits.commandId)
@@ -94,6 +105,23 @@ class SharedShaderTaskRouter(
   }
   launchQueue.io.enq <> launches.io.out
   io.pool.launch <> launchQueue.io.deq
+  shaderPayload.foreach { _=>
+    val head=if(slots==1)0.U else io.pool.launch.bits.commandId(slotWidth-1,0)
+    io.poolPayload.get.bits:=payloads.get(head).bits
+    io.poolPayload.get.valid:=io.pool.launch.valid && payloads.get(head).valid
+    def assign(pin: ShaderPayloadPin,binding: ShaderPayloadBinding): Unit={
+      pin.handle:=binding.handle;pin.generation:=binding.generation
+      pin.context:=binding.context;pin.owner:=binding.owner
+    }
+    for(slot <- 0 until slots) {
+      io.payloadPins.get(slot).valid:=active(slot) && payloads.get(slot).valid
+      assign(io.payloadPins.get(slot).bits,payloads.get(slot).bits)
+    }
+    for(client <- 0 until numClients) {
+      io.payloadPins.get(slots+client).valid:=io.clients(client).launch.valid && io.clientPayload.get(client).valid
+      assign(io.payloadPins.get(slots+client).bits,io.clientPayload.get(client).bits)
+    }
+  }
   when(io.pool.launch.fire) {
     if (slots == 1) issued(0) := true.B
     else issued(io.pool.launch.bits.commandId(slotWidth-1,0)) := true.B

@@ -67,10 +67,12 @@ class GpuSystem(
   vectorCacheSets: Int = 64,
   vectorCacheWays: Int = 2,
   enableGraphicsKernels: Boolean = false,
-  shaderPayload: Option[ShaderPayloadConfig] = None
+  shaderPayload: Option[ShaderPayloadConfig] = None,
+  producerPayloadPins: Int = 0
 ) extends Module {
   require(numComputeUnits > 0)
   require(shaderPayload.isEmpty || enableGraphicsKernels,"local shader payloads require the shared graphics task interface")
+  require(producerPayloadPins>=0 && (producerPayloadPins==0 || shaderPayload.nonEmpty))
   shaderPayload.foreach(p=>require(p.ports>=p.owners+numComputeUnits,"reserve independent staging and CU payload response ports"))
   require(graphicsHostTransactions > 0 && isPow2(graphicsHostTransactions),
     "graphics-host transaction count must be a positive power of two")
@@ -104,6 +106,8 @@ class GpuSystem(
       Some(new SharedCuGraphicsPort(config, commandIdWidth, numComputeUnits)) else None
     val graphicsPayload=shaderPayload.map(p=>Input(Valid(new ShaderPayloadBinding(config,p))))
     val payloadManagement=shaderPayload.map(p=>new ShaderPayloadManagementPort(p))
+    val payloadProducerPins=if(producerPayloadPins>0)
+      shaderPayload.map(p=>Input(Vec(producerPayloadPins,Valid(new opengpu.graphics.ShaderPayloadPin(p)))))else None
     val command = Flipped(Decoupled(
       new KernelCommand(config, commandIdWidth)))
     val commandCompletion = Decoupled(
@@ -240,7 +244,7 @@ class GpuSystem(
         vectorCacheWays,
         finishOnTrap = true,shaderPayload=shaderPayload))
   }
-  private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(p,useBlackBoxes,numComputeUnits+1)))
+  private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(p,useBlackBoxes,numComputeUnits+1+producerPayloadPins)))
   // The generic compute system has no graphics sampler. Keep the optional
   // texture-instruction sideband quiescent; graphics top levels connect it to
   // TexSampleUnit instead.
@@ -306,7 +310,8 @@ class GpuSystem(
     val pool=payloadStore.get
     val producer=io.payloadManagement.get
     dispatcher.io.graphicsPayload.get:=io.graphicsPayload.get
-    pool.io.pins.get:=dispatcher.io.payloadPins.get
+    for(i <- 0 until numComputeUnits+1)pool.io.pins.get(i):=dispatcher.io.payloadPins.get(i)
+    for(i <- 0 until producerPayloadPins)pool.io.pins.get(numComputeUnits+1+i):=io.payloadProducerPins.get(i)
     for(i <- 0 until p.owners) {
       val command=producer.control(i)
       val allowed= !graphicsDispatchBlocked ||
