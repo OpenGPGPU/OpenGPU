@@ -47,7 +47,8 @@ class RenderCore(
   sharedShader: Option[SharedCuShaderConfig] = None,
   persistentAttachments: Boolean = false,
   tileStoreCredits: Int = 1,
-  useTileSramBlackBoxes: Boolean = false
+  useTileSramBlackBoxes: Boolean = false,
+  bankedAttachments: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     /** Persistent mode replaces legacy start/register submission with one
@@ -60,6 +61,8 @@ class RenderCore(
     val attachmentMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
     val textureMemoryFault = if (persistentAttachments) Some(Input(Bool())) else None
     val tileEvents = if (persistentAttachments) Some(Output(new TileAttachmentEvents)) else None
+    val tileAcceptedSamples=if(bankedAttachments)Some(Output(UInt(3.W)))else None
+    val tileCommittedSamples=if(bankedAttachments)Some(Output(UInt(3.W)))else None
     val shared = sharedShader.map(pool => Flipped(new SharedCuGraphicsPort(
       gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val cmdBase = Input(UInt(32.W))
@@ -135,7 +138,9 @@ class RenderCore(
     cancellable = persistentAttachments, tileCommands = persistentAttachments))
   private val rp = Module(new RenderPipeline(
     config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader,
-    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes))
+    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes,bankedAttachments=bankedAttachments))
+  io.tileAcceptedSamples.foreach(_:=rp.io.tileAcceptedSamples.get)
+  io.tileCommittedSamples.foreach(_:=rp.io.tileCommittedSamples.get)
   private val tileController = if (persistentAttachments) Some(Module(new TileCommandPassController)) else None
   private val jobConfig = tileController.map(_.io.config)
   sharedShader.foreach(_ => rp.io.shared.get <> io.shared.get)
@@ -190,7 +195,9 @@ class RenderCore(
     io.tileCompletion.get <> controller.io.completion
     controller.io.cancel := io.tileCancel.get
     controller.io.commandFault := io.commandMemoryFault.get && io.cbMem.resp.fire
-    controller.io.attachmentFault := io.attachmentMemoryFault.get && io.fbMem.resp.fire
+    // Refill readiness can depend on fault metadata. Keep metadata independent
+    // of ready, and register the accepted fault before feeding cancellation back.
+    controller.io.attachmentFault := RegNext(io.attachmentMemoryFault.get && io.fbMem.resp.fire,false.B)
     controller.io.textureFault := io.textureMemoryFault.get && io.texMem.resp.fire
     controller.io.shaderFault := rp.io.shaderFault
     controller.io.invalidCommand := cb.io.encodingFault.get
@@ -198,6 +205,7 @@ class RenderCore(
     cb.io.clearComplete.get := controller.io.clearComplete
     cb.io.typedCommands.get := controller.io.typedCommands
     controller.io.pass <> rp.io.tilePass.get
+    rp.io.tilePass.get.memoryFault:=io.attachmentMemoryFault.get && io.fbMem.resp.valid
     controller.io.admitted := rp.io.tileEvents.get.admitted
     controller.io.commandsDrained := cb.io.done
     controller.io.renderDrained := rp.io.done

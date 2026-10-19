@@ -3041,3 +3041,61 @@ mapping or setup qualification report was produced. Intermediate AIG statistics
 are not mapped cell area, power or timing; no integrated PPA result is claimed.
 The immutable manifest, emitted/macro hashes, run log and failure result are
 preserved. Complete integrated synthesis and timing closure remain open.
+
+## H3 programmable shader quad exports
+
+The [shader quad-export checkpoint](performance/mobile-shader-quad-exports-2026-10-19.json)
+adds an optional registered four-pixel result port to `KernelFragStage`, its
+parallel scheduler and shared-worker wrapper. Each lane keeps its effective
+coverage and independently selected sample depths. ABI 0 retains its nonzero
+emit/depth convention; ABI 1 retains emit, discard, reserved-bit and depth-override
+behavior. Helpers and discarded lanes carry zero coverage. Empty quad groups
+produce no packet. This groups the existing shader outputs without changing the
+SoA memory ABI or host command/descriptor encodings.
+
+The emit cache advances four lanes per packet, can replace a consumed packet
+every cycle and retains the entire packet under stalls. Batch and draw retirement
+wait for the packet that owns the final output, including a late raster flush
+after a full batch. The parallel scheduler routes both packet data and readiness
+through its ordered worker token, so faster younger workers retain their results
+until older batches retire. `RenderPipeline` snapshots each packet's attachment
+state in the common sample-major expander before advancing the draw context.
+`RenderCore(bankedAttachments=true)` exposes this path for persistent jobs.
+The fixed-function and programmable paths share the attachment ownership boundary.
+
+Integration exposed response-ready/cancellation cycles in the command owner and
+its translated word client. Word bridges now provide valid-qualified fault
+metadata that stays with each offered reply, including buffered commands,
+texture fills and every member of combined reads/writes. The existing consumed-
+line fault pulse remains unchanged. `RenderCore` supplies immediate fault metadata
+to the attachment store and registers the accepted word-fault event before feeding
+cancellation back through the command controller. The coherent host uses the new
+word metadata for attachment faults. Queued replies preserve their own error bit
+through stalls, invalidation and slot reuse.
+
+The frozen 500-file source passes 143 checks: 79 native/bridge checks across
+11 suites, 42 scalar shader compatibility checks across seven suites, 16 fixed-
+function image/termination checks, four actual shared-CU configurations and two
+overlapping quad output-contract cases. The full-size case instantiates four CUs
+with 16 lanes and eight warps; its small system uses an eight-set/two-way L2
+and a 16-fragment dispatch limit. All source/build/ABI hashes are frozen, and
+the added overlapping-contract test leaves the prior 499 hashes unchanged.
+
+The raw worker test emits 32 consecutive quad packets from a 128-lane batch under
+continuous readiness after shader results are available. This proves the result
+port's packet rate; shader execution and global staging are still separate costs.
+The real-CU tests check exact attachment images, graphics/compute overlap, task
+ownership, shader traps, command faults, context/TLB changes, completion stalls and
+subsequent reuse. MSAA protocol tests independently check exact stored words at
+1x/2x/4x for both serial and parallel fragment workers. These component and small
+system workloads do not establish whole-frame mobile throughput.
+
+The emitted 1280x720 Mobile programmable renderer has two banked attachment slots
+and four shared shader workers. Its CUs are external pool interfaces; the real-CU
+harness verifies actual CU instances separately. Source snapshots, recoverable
+archives, logs and emitted hierarchy hashes are frozen. The default production
+binned/two-engine host still requires native-path integration. Shader staging is
+still the existing global-memory protocol; on-chip payload/export storage, legal
+early rejection, cold refill throughput, integrated synthesis/timing closure,
+full H3 workload gates and remaining H0-H8 requirements remain open. No new PPA
+result is claimed by this functional checkpoint.

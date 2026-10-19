@@ -437,7 +437,7 @@ class GpuHostSystemAxi(
         fbClient.io.fault || texClient.io.fault
     if (persistentAttachments) {
       host.io.commandFault.get := cbClient.io.commandResponseFault.getOrElse(cbClient.io.fault)
-      host.io.attachmentFault.get := fbClient.io.fault
+      host.io.attachmentFault.get := fbClient.io.responseFault
       host.io.tileTextureFault.get := texClient.io.fault
     }
     stagingClient.io.pageWalkResp.valid :=

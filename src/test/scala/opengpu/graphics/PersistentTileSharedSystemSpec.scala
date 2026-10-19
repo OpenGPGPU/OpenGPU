@@ -15,7 +15,7 @@ import scala.collection.mutable
   * This is a validation harness, not a new host submission ABI. Context/TLB
   * changes are made only at drained boundaries by the test owner.
   */
-private class PersistentTileSharedSystemHarness(cfg: GpuConfig, count: Int) extends Module {
+private class PersistentTileSharedSystemHarness(cfg: GpuConfig, count: Int,banked: Boolean=false) extends Module {
   private val pool = SharedCuShaderConfig(count, parallelFragments = true)
   private val stagingSlots = SharedCuShaderConfig.kernelWordTransactions(Some(pool))
   private val words = 16
@@ -42,10 +42,12 @@ private class PersistentTileSharedSystemHarness(cfg: GpuConfig, count: Int) exte
     val shaderFault = Output(Bool())
     val commandFault = Output(Bool())
     val idle = Output(Bool())
+    val committedSamples=Output(UInt(3.W))
   })
   val core = Module(new RenderCore(GraphicsConfig(screenWidth = 16, screenHeight = 16,
     tileSize = 16, tileAttachments = true, fragmentBatchLimit = math.max(8, cfg.lanes)), cfg, fragCore = true,
-    sharedShader = Some(pool), persistentAttachments = true, tileStoreCredits = 8))
+    sharedShader = Some(pool), persistentAttachments = true, tileStoreCredits = 8,bankedAttachments=banked))
+  io.committedSamples:=core.io.tileCommittedSamples.getOrElse(0.U)
   val system = Module(new GpuSystem(cfg, numComputeUnits = count,
     enableFpuBackend = true, graphicsHostTransactions = hostSlots,
     instructionCacheSets = 4, instructionCacheWays = 1,
@@ -102,7 +104,7 @@ private class PersistentTileSharedSystemHarness(cfg: GpuConfig, count: Int) exte
     client.io.satp := io.dataSatp; client.io.flush := io.flush
   }
   core.io.commandMemoryFault.get := cb.io.fault
-  core.io.attachmentMemoryFault.get := fb.io.fault
+  core.io.attachmentMemoryFault.get := fb.io.responseFault
   core.io.textureMemoryFault.get := tex.io.fault
   io.commandFault := cb.io.fault
   val arbiter = Module(new RRArbiter(new ComputeMemoryRequest(cfg, 64, hostSlots), 8))
@@ -138,6 +140,7 @@ private class PersistentTileSharedSystemHarness(cfg: GpuConfig, count: Int) exte
 class PersistentTileSharedSystemSpec extends AnyFlatSpec {
   import TilePassTestData._
   behavior of "persistent jobs on the system CU pool"
+  private val banked=sys.props.get("opengpu.bankedRenderer").contains("true")
 
   for ((count, translated, lanes, warps) <- Seq((2, false, 4, 2), (2, true, 4, 2),
       (4, true, 4, 2), (4, true, 16, 8))) {
@@ -145,7 +148,7 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
       if (lanes == 16) assume(Runtime.getRuntime.maxMemory() >= 4L * 1024 * 1024 * 1024,
         "The four-CU 16-lane/eight-warp elaboration needs a larger JVM heap; run sbt -J-Xmx8G 'testOnly opengpu.graphics.PersistentTileSharedSystemSpec'.")
       val cfg = GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2)
-      simulate(new PersistentTileSharedSystemHarness(cfg, count)) { dut =>
+      simulate(new PersistentTileSharedSystemHarness(cfg, count,banked)) { dut =>
         def zeroInputs(d: Data): Unit = d match {
           case r: Record => r.elements.values.foreach(zeroInputs)
           case v: Vec[_] => v.foreach(zeroInputs)
@@ -192,6 +195,8 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
         var replyData = BigInt(0)
         val rng = new scala.util.Random(20261018)
         var cycle = 0
+        var nativeSamples=0L
+        var nativeQuadCycles=0
         var peakOwned = 0
         var sawTrap = false
         var computeDone = false
@@ -201,6 +206,9 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
         var commandFaults = 0
         var walks = 0
         def tick(): Unit = {
+          val n=dut.io.committedSamples.peek().litValue.toInt
+          nativeSamples+=n
+          if(n==4)nativeQuadCycles+=1
           dut.io.memoryRequest.ready.poke((cycle % 5 != 0).B)
           if (reply.isEmpty) pending.indices.filter(i => pending(i).due <= cycle).lastOption.foreach { i =>
             reply = Some(pending.remove(i)); replyData = line(reply.get.addr)
@@ -350,6 +358,7 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
           waitFor(dut.io.idle.peek().litToBoolean && pending.isEmpty && reply.isEmpty)
         }
         assert(peakOwned == count, s"only $peakOwned of $count CUs owned by graphics")
+        if(banked)assert(nativeQuadCycles>0,"shared-CU shader results never reached four-sample SRAM commits")
         assert(sawTrap, "illegal shader did not report its failure")
         assert(computeDone, "compute did not complete")
         assert(delayedComputeRequests > 0, "compute payload stall was not exercised")
@@ -357,6 +366,7 @@ class PersistentTileSharedSystemSpec extends AnyFlatSpec {
         assert(word(0xe000 + (if (translated) 0x400000L else 0L)) == 0x123)
         assert(if (translated) commandFaults == 1 && walks > 0 else commandFaults == 0 && walks == 0)
         info(s"shared system cycles=$cycle peak graphics CUs=$peakOwned; mixed CU occupancy, trap, walks=$walks, command faults=$commandFaults")
+        if(banked)info(s"SHARED_BANKED cus=$count lanes=$lanes warps=$warps translated=$translated samples=$nativeSamples fourSampleCycles=$nativeQuadCycles")
       }
     }
   }

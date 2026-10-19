@@ -32,6 +32,7 @@ class BufferedTextureWordPort(
     if (values.length == 1) values(0) else values(index)
   private val lineTag = Reg(Vec(cacheLines, UInt(26.W)))
   private val lineData = Reg(Vec(cacheLines, UInt(512.W)))
+  private val lineFault=Reg(Vec(cacheLines,Bool()))
   private val pending = RegInit(VecInit(Seq.fill(cacheLines)(false.B)))
   private val ready = RegInit(VecInit(Seq.fill(cacheLines)(false.B)))
   // A pending fill may serve its original waiters after invalidation, but it
@@ -97,6 +98,7 @@ class BufferedTextureWordPort(
       "texture fill response must identify a pending line")
   }
   when(p.memoryResponse.fire) {
+    at(lineFault,responseLine):=p.memoryResponse.bits.fault
     at(pending, responseLine) := false.B
     at(ready, responseLine) := true.B
     at(lineData, responseLine) := Mux(p.memoryResponse.bits.fault, 0.U,
@@ -113,15 +115,23 @@ class BufferedTextureWordPort(
     replies.io.in(w).bits := w.U
   }
   // Refill a consumed reply on the same edge, sustaining one word per cycle.
-  private val output = Module(new Queue(new OmMemoryResponse, 1, pipe = true, flow = true))
+  private class WordReply extends Bundle {
+    val response=new OmMemoryResponse
+    val fault=Bool()
+  }
+  private val output = Module(new Queue(new WordReply, 1, pipe = true, flow = true))
   private val replyingWord = replies.io.out.bits
   output.io.enq.valid := replies.io.out.valid
   private val replyingAddress = at(wordAddress, replyingWord)
-  output.io.enq.bits.addr := replyingAddress
-  output.io.enq.bits.write := false.B
-  output.io.enq.bits.data :=
+  output.io.enq.bits.response.addr := replyingAddress
+  output.io.enq.bits.response.write := false.B
+  output.io.enq.bits.fault:=at(lineFault,at(wordLine,replyingWord))
+  output.io.enq.bits.response.data :=
     (at(lineData, at(wordLine, replyingWord)) >> (replyingAddress(5, 2) << 5))(31, 0)
   replies.io.out.ready := output.io.enq.ready
   when(replies.io.out.fire) { at(wordValid, replyingWord) := false.B }
-  p.out <> output.io.deq
+  p.out.valid:=output.io.deq.valid
+  p.out.bits:=output.io.deq.bits.response
+  p.responseFault:=p.out.valid && output.io.deq.bits.fault
+  output.io.deq.ready:=p.out.ready
 }

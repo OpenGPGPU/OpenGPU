@@ -8,6 +8,8 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 class OmWordToLineIO(config: GpuConfig, lineBytes: Int, maxOutstanding: Int) extends Bundle {
   val in = Flipped(Decoupled(new OmMemoryRequest))
   val out = Decoupled(new OmMemoryResponse)
+  /** Fault metadata for the offered word, independent of response readiness. */
+  val responseFault=Output(Bool())
   val memoryRequest = Decoupled(new ComputeMemoryRequest(config, lineBytes, maxOutstanding))
   val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(lineBytes, maxOutstanding)))
 }
@@ -89,6 +91,7 @@ class OmWordToLinePort(
   private val responseIdInRange = responseId < maxOutstanding.U
   private val responseIdValid = responseIdInRange && transactionValid(responseId)
   io.out.valid := responseIdValid && io.memoryResponse.valid
+  io.responseFault:=io.out.valid && io.memoryResponse.bits.fault
   io.out.bits.data :=
     (io.memoryResponse.bits.readData >> (transactionWord(responseId) * 32.U))(31, 0)
   io.out.bits.write := transactionWrite(responseId)

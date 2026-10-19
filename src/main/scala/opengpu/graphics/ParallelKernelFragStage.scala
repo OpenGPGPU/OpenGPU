@@ -14,15 +14,16 @@ class ParallelKernelFragStage(
   config: GpuConfig,
   gfxConfig: GraphicsConfig,
   sharedShader: SharedCuShaderConfig,
-  graphicsScalarFpu: Boolean = true
+  graphicsScalarFpu: Boolean = true,
+  quadExports: Boolean = false
 ) extends Module {
   require(sharedShader.parallelFragments)
   private val count = sharedShader.fragmentWorkers
-  val io = IO(new KernelFragStageIO(config, gfxConfig, sharedShader.fragmentStagingTransactions))
+  val io = IO(new KernelFragStageIO(config, gfxConfig, sharedShader.fragmentStagingTransactions,quadExports))
   val sharedClients = IO(Vec(count, Flipped(new SharedCuGraphicsPort(
     config, sharedShader.taskIdWidth, sharedShader.numComputeUnits))))
   val shaderFault = IO(Output(Bool()))
-  private val scheduler = Module(new ParallelFragmentScheduler(config, gfxConfig, count))
+  private val scheduler = Module(new ParallelFragmentScheduler(config, gfxConfig, count,quadExports=quadExports))
   private val staging = Module(new FragmentStagingArbiter(config, count,
     slots = sharedShader.fragmentStagingTransactions,
     localOutstanding = sharedShader.fragmentStagingPerWorker))
@@ -36,7 +37,7 @@ class ParallelKernelFragStage(
   KernelFragFrontendIO.connect(io, scheduler.io.front)
 
   for (workerId <- 0 until count) {
-    val worker = Module(new KernelFragStage(config, gfxConfig, sharedShader.fragmentStagingPerWorker))
+    val worker = Module(new KernelFragStage(config, gfxConfig, sharedShader.fragmentStagingPerWorker,quadExports))
     events(workerId) := worker.io.performance
     executionFaults(workerId) := worker.io.executionFault
     val shader = Module(new KernelShaderStage(config, graphicsScalarFpu, Some(sharedShader)))

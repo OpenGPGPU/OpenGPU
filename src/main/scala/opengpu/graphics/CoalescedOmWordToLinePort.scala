@@ -30,6 +30,7 @@ class CoalescedOmWordToLinePort(
   private val addresses = Reg(Vec(maxOutstanding, UInt(32.W)))
   private val writes = Reg(Vec(maxOutstanding, Bool()))
   private val readData = Reg(Vec(maxOutstanding, UInt(32.W)))
+  private val responseFault=Reg(Vec(maxOutstanding,Bool()))
   private val freeWords = ~valid.asUInt
   private val wordId = PriorityEncoder(freeWords)
   private val conflict = (0 until maxOutstanding).map(i =>
@@ -178,13 +179,14 @@ class CoalescedOmWordToLinePort(
         when(readMembers(i)(j)) {
           readData(j) := responseWords(addresses(j)(5, 2))
           done(j) := true.B
+          responseFault(j):=io.memoryResponse.bits.fault
         }
       }
     }
     when(io.memoryResponse.fire && writeResponses(i)) {
       groupValid(i) := false.B
       for (j <- 0 until maxOutstanding) {
-        when(groupMembers(i)(j)) { done(j) := true.B }
+        when(groupMembers(i)(j)) { done(j) := true.B;responseFault(j):=io.memoryResponse.bits.fault }
       }
     }
   }
@@ -192,16 +194,19 @@ class CoalescedOmWordToLinePort(
   private class WordReply extends Bundle {
     val id = UInt(idWidth.W)
     val response = new OmMemoryResponse
+    val fault=Bool()
   }
   private val replies = Module(new RRArbiter(new WordReply, maxOutstanding))
   private val replyQueue = Module(new Queue(new WordReply, 2, pipe = true))
   replyQueue.io.enq <> replies.io.out
   io.out.valid := replyQueue.io.deq.valid
   io.out.bits := replyQueue.io.deq.bits.response
+  io.responseFault:=io.out.valid && replyQueue.io.deq.bits.fault
   replyQueue.io.deq.ready := io.out.ready
   for (i <- 0 until maxOutstanding) {
     replies.io.in(i).valid := valid(i) && done(i)
     replies.io.in(i).bits.id := i.U
+    replies.io.in(i).bits.fault:=responseFault(i)
     replies.io.in(i).bits.response.addr := addresses(i)
     replies.io.in(i).bits.response.write := writes(i)
     replies.io.in(i).bits.response.data := Mux(writes(i), 0.U, readData(i))

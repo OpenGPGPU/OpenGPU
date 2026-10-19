@@ -22,7 +22,8 @@ class ParallelFragmentScheduler(
   config: GpuConfig,
   gfxConfig: GraphicsConfig,
   numWorkers: Int,
-  maxDraws: Int = 2
+  maxDraws: Int = 2,
+  quadExports: Boolean = false
 ) extends Module {
   require(numWorkers > 0 && numWorkers <= ShaderResourceConfig.FieldMask / 2)
   require(maxDraws > 0)
@@ -38,8 +39,8 @@ class ParallelFragmentScheduler(
   private val quadCountWidth = math.max(1, log2Ceil(quadsPerBatch + 1))
 
   val io = IO(new Bundle {
-    val front = new KernelFragFrontendIO(config, gfxConfig)
-    val workers = Vec(numWorkers, Flipped(new KernelFragFrontendIO(config, gfxConfig)))
+    val front = new KernelFragFrontendIO(config, gfxConfig,quadExports)
+    val workers = Vec(numWorkers, Flipped(new KernelFragFrontendIO(config, gfxConfig,quadExports)))
     val assignedWorkers = Output(UInt(numWorkers.W))
   })
   private val tokens = Module(new Queue(new FragmentRetirementToken(workerWidth), numWorkers + maxDraws))
@@ -112,6 +113,10 @@ class ParallelFragmentScheduler(
   io.front.depthOverride := (0 until numWorkers).map { worker =>
     headWorker(worker) && io.workers(worker).depthOverride
   }.reduce(_ || _)
+  if(quadExports) {
+    io.front.quadOut.get.valid:=(0 until numWorkers).map(w=>headWorker(w) && io.workers(w).quadOut.get.valid).reduce(_||_)
+    io.front.quadOut.get.bits:=Mux1H((0 until numWorkers).map(w=>headWorker(w)->io.workers(w).quadOut.get.bits))
+  }
   io.front.drawRetire.valid := tokens.io.deq.valid && tokens.io.deq.bits.drawEnd
   io.front.drawRetire.bits := true.B
   private val batchRetired = (0 until numWorkers).map { worker =>
@@ -142,6 +147,7 @@ class ParallelFragmentScheduler(
     port.texMinLevel := io.front.texMinLevel
     port.flush := sealedBatch(worker)
     port.out.ready := headWorker(worker) && io.front.out.ready
+    port.quadOut.foreach(_.ready:=headWorker(worker) && io.front.quadOut.get.ready)
     port.drawRetire.ready := headWorker(worker)
 
     when(io.front.fragIn.fire && chosen === worker.U) {

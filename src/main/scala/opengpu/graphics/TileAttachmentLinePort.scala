@@ -19,7 +19,6 @@ class TileAttachmentLinePortIO(config: GpuConfig,transactions: Int)
   val begin=Input(Bool())
   val abort=Input(Bool())
   val resolve=Input(Bool())
-  val responseFault=Output(Bool())
   /** Actual failed write-line acknowledgement, independent of word replies. */
   val writeFault=Output(Bool())
   val drained=Output(Bool())
@@ -167,7 +166,7 @@ class TileAttachmentLinePort(config: GpuConfig=GpuConfig(),transactions: Int=9,
     PriorityEncoder(completedRead & remainingComplete),PriorityEncoder(remainingComplete))
   io.out.valid:=replyValid
   io.out.bits.addr:=addresses(replySlot); io.out.bits.write:=writes(replySlot); io.out.bits.data:=data(replySlot)
-  io.responseFault:=faults(replySlot)
+  io.responseFault:=io.out.valid && faults(replySlot)
   when(!replyValid || io.out.fire) {
     replyValid:=remainingComplete.orR
     when(remainingComplete.orR) { replySlot:=nextReply }

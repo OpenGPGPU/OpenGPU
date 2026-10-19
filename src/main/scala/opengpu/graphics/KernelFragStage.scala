@@ -42,13 +42,15 @@ private class KernelFragEmitLane(gfxConfig: GraphicsConfig) extends Bundle {
 }
 
 /** Fragment batch producer/consumer contract, independent of its executor. */
-class KernelFragFrontendIO(config: GpuConfig, gfxConfig: GraphicsConfig) extends Bundle {
+class KernelFragFrontendIO(config: GpuConfig, gfxConfig: GraphicsConfig,val quadExports: Boolean=false) extends Bundle {
   val fragIn = Flipped(Decoupled(new FragmentQuad(gfxConfig)))
   /** Per-lane perspective-correct UVs of the presented quad. */
   val fragUv = Input(Vec(4, new TexUV))
   /** Per-lane rasterizer-derived per-sample depths of the presented quad. */
   val fragDepths = Input(Vec(4, Vec(gfxConfig.maxSampleCount, UInt(30.W))))
   val out = Decoupled(new RasterFragment(gfxConfig))
+  /** Selected shader depth and effective coverage stay attached to each lane. */
+  val quadOut=if(quadExports) Some(Decoupled(Vec(4,new SamplePixel(gfxConfig.maxSampleCount)))) else None
   /** Per-sample depths selected for the presented fragment. */
   val outDepths = Output(Vec(gfxConfig.maxSampleCount, UInt(30.W)))
   /** The shader-depth word overrides the per-sample raster depths. */
@@ -80,12 +82,14 @@ class KernelFragFrontendIO(config: GpuConfig, gfxConfig: GraphicsConfig) extends
 /** Connect a producer frontend to its fragment worker. */
 object KernelFragFrontendIO {
   def connect(front: KernelFragFrontendIO, worker: KernelFragFrontendIO): Unit = {
+    require(front.quadExports==worker.quadExports)
     worker.fragIn <> front.fragIn
     worker.fragUv := front.fragUv
     worker.fragDepths := front.fragDepths
     front.out <> worker.out
     front.outDepths := worker.outDepths
     front.depthOverride := worker.depthOverride
+    front.quadOut.foreach(_ <> worker.quadOut.get)
     worker.shaderPc := front.shaderPc
     worker.inputSkip := front.inputSkip
     worker.outputSkip := front.outputSkip
@@ -107,8 +111,8 @@ object KernelFragFrontendIO {
 }
 
 /** Standalone fragment worker ports, retaining the existing shader ABI. */
-class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig, stagingTransactions: Int = 2)
-    extends KernelFragFrontendIO(config, gfxConfig) {
+class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig, stagingTransactions: Int = 2,
+  quadExports: Boolean=false) extends KernelFragFrontendIO(config, gfxConfig,quadExports) {
   val performance = Output(new FragmentPerformanceEvents)
   /** One-cycle failure events; ownership lasts until drained/draw retirement. */
   val executionFault = Output(Bool())
@@ -238,7 +242,8 @@ class KernelFragStageIO(config: GpuConfig, gfxConfig: GraphicsConfig, stagingTra
 class KernelFragStage(
   config: GpuConfig = GpuConfig(),
   gfxConfig: GraphicsConfig = GraphicsConfig(),
-  stagingTransactions: Int = 2
+  stagingTransactions: Int = 2,
+  quadExports: Boolean = false
 ) extends Module {
   def this(config: GpuConfig, gfxConfig: GraphicsConfig) = this(config, gfxConfig, 2)
   require(stagingTransactions >= 2 && isPow2(stagingTransactions))
@@ -248,7 +253,10 @@ class KernelFragStage(
   // Per-array byte stride of the SoA kernarg layout (see the class doc).
   private val arrayStride = 4 * batchCap
 
-  val io = IO(new KernelFragStageIO(config, gfxConfig, stagingTransactions))
+  val io = IO(new KernelFragStageIO(config, gfxConfig, stagingTransactions,quadExports))
+  private val exportValid=Wire(Bool())
+  private val exportReady=if(quadExports)io.quadOut.get.ready else io.out.ready
+  private val exportFire=exportValid && exportReady
 
   // Word-client request/response interface to the bridge (driven by the FSM).
   private val wordValid = Wire(Bool())
@@ -703,8 +711,8 @@ class KernelFragStage(
       execCarries := true.B
       execEntryIdx := qTail
       pushEntry(false.B)
-    }.elsewhen(state === sIdle && !pendingValid && io.out.valid &&
-        !io.out.ready && !outputRetirePending) {
+    }.elsewhen(state === sIdle && !pendingValid && exportValid &&
+        !exportReady && !outputRetirePending) {
       outputRetirePending := true.B
       outputRetireEntry := qTail
       pushEntry(false.B)
@@ -717,7 +725,7 @@ class KernelFragStage(
   // A covered last lane completes only when its output register drains.
   // Keep this tied to its own entry so a later draw cannot suppress an
   // already-presented retirement under backpressure.
-  when(io.out.fire && outputRetirePending) {
+  when(exportFire && outputRetirePending) {
     qDone(outputRetireEntry) := true.B
     outputRetirePending := false.B
   }
@@ -785,13 +793,11 @@ class KernelFragStage(
   // The payload is held until the consumer accepts it, so `bits` stays stable
   // while `valid && !ready`.
   private val outValidReg = RegInit(false.B)
-  private val outBitsReg = Reg(new RasterFragment(gfxConfig))
-  private val outDepthsReg = Reg(Vec(gfxConfig.maxSampleCount, UInt(30.W)))
-  private val outOverrideReg = RegInit(false.B)
-  io.out.valid := outValidReg
-  io.out.bits := outBitsReg
-  io.outDepths := outDepthsReg
-  io.depthOverride := outOverrideReg
+  exportValid:=outValidReg
+  io.out.valid:=false.B
+  io.out.bits:=0.U.asTypeOf(io.out.bits)
+  io.outDepths:=0.U.asTypeOf(io.outDepths)
+  io.depthOverride:=false.B
 
   // Emit cache fill: capture quad 0 on entry to sEmit, then reload quad N+1 on
   // the edge that steps out of quad N's last lane.  `execCount` is always a
@@ -800,10 +806,12 @@ class KernelFragStage(
   // and makes the next quad visible exactly at lane 0.
   // Advance the lane presentation once the output register can take the next
   // fragment (it is empty, or its current payload fires this cycle).
-  private val outCanStep = !outValidReg || io.out.ready
+  private val outCanStep = !outValidReg || exportReady
   private val emitAdvance = state === sEmit && emitQuadValid && outCanStep
-  private val emitQuadEnd = emitAdvance && laneIdx === 3.U &&
-    index =/= (execCount - 1.U)
+  private val emitLast=index===(execCount-(if(quadExports)4 else 1).U)
+  private val emitHasOutput=if(quadExports)VecInit((0 until 4).map(p=>
+    emitHitQ(p) && emitQuad(p).coverageMask.orR)).asUInt.orR else emitHitQ(laneIdx)
+  private val emitQuadEnd = emitAdvance && (if(quadExports)true.B else laneIdx === 3.U) && !emitLast
   private val emitLoad = state === sEmit && (!emitQuadValid || emitQuadEnd)
   when(emitLoad) {
     emitQuadValid := true.B
@@ -830,27 +838,50 @@ class KernelFragStage(
   // Load the presented fragment into the output register.  Clearing on the
   // accept edge after the load keeps the last fragment of a batch visible
   // after the FSM has already left sEmit.
-  when(io.out.fire) { outValidReg := false.B }
-  when(emitAdvance) {
-    outValidReg := emitHitQ(laneIdx)
-    outBitsReg.x := emitQuad(laneIdx).x
-    outBitsReg.y := emitQuad(laneIdx).y
-    outBitsReg.depth := emitDepthQ(laneIdx)
-    outBitsReg.e0 := emitQuad(laneIdx).e0
-    outBitsReg.e1 := emitQuad(laneIdx).e1
-    outBitsReg.e2 := emitQuad(laneIdx).e2
-    outBitsReg.covered := emitQuad(laneIdx).covered
-    // ABI 1 bit 0 gates emit; the effective coverage mask is the raster mask
-    // only for lanes that actually emit (helpers and discards clear to zero).
-    outBitsReg.coverageMask :=
-      Mux(emitHitQ(laneIdx), emitQuad(laneIdx).coverageMask, 0.U)
-    outBitsReg.color.r := emitColorQ(laneIdx)(31, 24)
-    outBitsReg.color.g := emitColorQ(laneIdx)(23, 16)
-    outBitsReg.color.b := emitColorQ(laneIdx)(15, 8)
-    outBitsReg.alpha := emitColorQ(laneIdx)(7, 0)
-    outOverrideReg := emitOverrideQ(laneIdx)
-    for (s <- 0 until gfxConfig.maxSampleCount)
-      outDepthsReg(s) := emitDepthsQ(laneIdx)(s)
+  when(exportFire) { outValidReg := false.B }
+  when(emitAdvance) {outValidReg:=emitHasOutput}
+  if(quadExports) {
+    val packet=Reg(Vec(4,new SamplePixel(gfxConfig.maxSampleCount)))
+    io.quadOut.get.valid:=outValidReg
+    io.quadOut.get.bits:=packet
+    when(emitAdvance) {
+      for(p <- 0 until 4) {
+        packet(p).x:=emitQuad(p).x(15,0).asUInt
+        packet(p).y:=emitQuad(p).y(15,0).asUInt
+        packet(p).color:=emitColorQ(p)
+        packet(p).coverageMask:=Mux(emitHitQ(p),emitQuad(p).coverageMask,0.U)
+        for(s <- 0 until gfxConfig.maxSampleCount)
+          packet(p).depths(s):=Mux(emitOverrideQ(p),emitDepthQ(p)(23,0).asUInt.pad(30),emitDepthsQ(p)(s))
+      }
+    }
+  }else {
+    val outBitsReg=Reg(new RasterFragment(gfxConfig))
+    val outDepthsReg=Reg(Vec(gfxConfig.maxSampleCount,UInt(30.W)))
+    val outOverrideReg=RegInit(false.B)
+    io.out.valid:=outValidReg
+    io.out.bits:=outBitsReg
+    io.outDepths:=outDepthsReg
+    io.depthOverride:=outOverrideReg
+    when(emitAdvance) {
+      outBitsReg.x := emitQuad(laneIdx).x
+      outBitsReg.y := emitQuad(laneIdx).y
+      outBitsReg.depth := emitDepthQ(laneIdx)
+      outBitsReg.e0 := emitQuad(laneIdx).e0
+      outBitsReg.e1 := emitQuad(laneIdx).e1
+      outBitsReg.e2 := emitQuad(laneIdx).e2
+      outBitsReg.covered := emitQuad(laneIdx).covered
+      // ABI 1 bit 0 gates emit; the effective coverage mask is the raster mask
+      // only for lanes that actually emit (helpers and discards clear to zero).
+      outBitsReg.coverageMask :=
+        Mux(emitHitQ(laneIdx), emitQuad(laneIdx).coverageMask, 0.U)
+      outBitsReg.color.r := emitColorQ(laneIdx)(31, 24)
+      outBitsReg.color.g := emitColorQ(laneIdx)(23, 16)
+      outBitsReg.color.b := emitColorQ(laneIdx)(15, 8)
+      outBitsReg.alpha := emitColorQ(laneIdx)(7, 0)
+      outOverrideReg := emitOverrideQ(laneIdx)
+      for (s <- 0 until gfxConfig.maxSampleCount)
+        outDepthsReg(s) := emitDepthsQ(laneIdx)(s)
+    }
   }
 
   // Cache-line payloads select individual record fields, avoiding aggregate
@@ -1177,9 +1208,9 @@ class KernelFragStage(
     }
     is(sEmit) {
       when(emitAdvance) {
-        when(index === execCount - 1.U) {
+        when(emitLast) {
           when(execCarries) {
-            when(emitHitQ(laneIdx)) {
+            when(emitHasOutput) {
               outputRetirePending := true.B
               outputRetireEntry := execEntryIdx
             }.otherwise {
@@ -1208,7 +1239,7 @@ class KernelFragStage(
             state := sIdle
           }
         }.otherwise {
-          index := index + 1.U
+          index := index + (if(quadExports)4 else 1).U
         }
       }
     }
@@ -1243,6 +1274,6 @@ class KernelFragStage(
   io.performance.stagingOutstanding :=
     (if (coalesceStaging) PopCount(lineBusy) else wordPending.asUInt)
   io.performance.stagingBlocked := io.wordMemReq.valid && !io.wordMemReq.ready
-  io.performance.outputBlocked := io.out.valid && !io.out.ready
+  io.performance.outputBlocked := exportValid && !exportReady
   io.wordMemReq <> wordMemReqPipe.io.deq
 }

@@ -88,8 +88,8 @@ class RenderPipeline(
   bankedAttachments: Boolean = false
 ) extends Module {
   require(!doubleBufferedAttachments || persistentAttachments)
-  require(!bankedAttachments || (persistentAttachments && !fragCore && !vertCore),
-    "banked renderer ingress currently supports fixed-function persistent passes")
+  require(!bankedAttachments || (persistentAttachments && !vertCore),
+    "banked renderer ingress requires externally scheduled persistent passes")
   require(sharedShader.isEmpty || fragCore,
     "shared shader execution requires programmable fragment graphics")
   require(!(fragCore || vertCore) || (gpuConfig.lanes >= 4 && gpuConfig.lanes % 4 == 0),
@@ -226,6 +226,41 @@ class RenderPipeline(
     Module(new TexturedFragStage(config, quadUv = fragCore || vertCore,
       normalizedModulation = normalizedTextureModulation))
   private val expander = Module(new SampleExpander(config.maxSampleCount))
+  private val bankedWide=if(bankedAttachments) Some(Module(new TileSampleQuadExpander(config.maxSampleCount))) else None
+  bankedWide.foreach { wide=>
+    val store=persistentStore.get
+    wide.io.in.valid:=false.B
+    wide.io.in.bits:=0.U.asTypeOf(wide.io.in.bits)
+    wide.io.in.bits.sampleMode:=om.io.sampleMode
+    wide.io.in.bits.originX:=store.pass.descriptor.originX
+    wide.io.in.bits.originY:=store.pass.descriptor.originY
+    val controls=wide.io.in.bits.state
+    controls.depthTestEnable:=om.io.depthTestEnable
+    controls.depthFunc:=om.io.depthFunc
+    controls.depthWriteEnable:=om.io.depthWriteEnable
+    controls.stencilTestEnable:=om.io.stencilTestEnable
+    controls.stencilFunc:=om.io.stencilFunc
+    controls.stencilRef:=om.io.stencilRef
+    controls.stencilReadMask:=om.io.stencilReadMask
+    controls.stencilWriteMask:=om.io.stencilWriteMask
+    controls.stencilFailOp:=om.io.stencilFailOp
+    controls.stencilZFailOp:=om.io.stencilZFailOp
+    controls.stencilZPassOp:=om.io.stencilZPassOp
+    controls.blendEnable:=om.io.blendEnable
+    controls.blendCfgEnable:=om.io.blendCfgEnable
+    controls.blendSrcFactor:=om.io.blendSrcFactor
+    controls.blendDstFactor:=om.io.blendDstFactor
+    controls.blendEquation:=om.io.blendEquation
+    controls.colorMask:=15.U
+    val aborted=RegInit(false.B)
+    when(io.tilePass.get.begin.fire){aborted:=false.B}
+      .elsewhen(store.localAborted.get){aborted:=true.B}
+    val dropping=aborted || store.localAborted.get
+    store.quad.get.valid:=wide.io.out.valid && !dropping
+    store.quad.get.bits:=wide.io.out.bits
+    wide.io.out.ready:=store.quad.get.ready || dropping
+  }
+  private val bankedLocalDrained=bankedWide.map(w=>w.io.drained && persistentStore.get.localDrained.get).getOrElse(true.B)
 
   // Triangle source: when vertCore=true, triangles come from KernelVertStage;
   // otherwise they come from io.draw directly.
@@ -582,6 +617,7 @@ class RenderPipeline(
   io.performance.omStall := expander.io.out.valid &&
     !(om.io.fragIn.ready && tilePermit)
   io.performance.omConflict := om.io.addressConflict
+  if(bankedAttachments)io.performance.omStall:=bankedWide.get.io.out.valid && !bankedWide.get.io.out.ready
   io.performance.rasterStall := (if (fragCore || vertCore || bankedAttachments)
     shader.io.quad.valid && !shader.io.quad.ready
     else shader.io.pixel.valid && !shader.io.pixel.ready)
@@ -592,10 +628,10 @@ class RenderPipeline(
 
   if (fragCore || vertCore) {
     val parallelFrag = sharedShader.filter(_.parallelFragments).map { pool =>
-      Module(new ParallelKernelFragStage(gpuConfig, config, pool, graphicsScalarFpu))
+      Module(new ParallelKernelFragStage(gpuConfig, config, pool, graphicsScalarFpu,quadExports=bankedAttachments))
     }
     val kernelFrag: KernelFragStageIO = parallelFrag.map(_.io)
-      .getOrElse(Module(new KernelFragStage(gpuConfig, config)).io)
+      .getOrElse(Module(new KernelFragStage(gpuConfig, config,quadExports=bankedAttachments)).io)
     io.performance.fragment := kernelFrag.performance
     fragmentExecutionFault := kernelFrag.executionFault
     val kernelShader = Module(new KernelShaderStage(gpuConfig, graphicsScalarFpu, sharedShader))
@@ -768,7 +804,8 @@ class RenderPipeline(
     // OM-independent, so a draw-N pixel could still be inside the expander
     // while the head advanced to draw N+1 and the OM latched it against
     // draw N+1's render-target state.
-    ctxFifo.io.retire := kernelFrag.drawRetire.valid && expander.io.drained
+    ctxFifo.io.retire := kernelFrag.drawRetire.valid && expander.io.drained &&
+      bankedWide.map(_.io.drained).getOrElse(true.B)
     kernelFrag.drawRetire.ready := ctxFifo.io.retire
     // Per-draw overlap: the rasterizer is the only shared front-end resource,
     // so the next draw is admitted as soon as it is idle and the fragment
@@ -842,6 +879,15 @@ class RenderPipeline(
     om.io.fragIn.bits.sampleIndex := expander.io.out.bits.sampleIndex
     expander.io.out.ready := om.io.fragIn.ready && tilePermit
     textured.io.out.ready := om.io.fragIn.ready
+    if(bankedAttachments) {
+      val wide=bankedWide.get
+      wide.io.in.valid:=kernelFrag.quadOut.get.valid
+      wide.io.in.bits.pixels:=kernelFrag.quadOut.get.bits
+      kernelFrag.quadOut.get.ready:=wide.io.in.ready
+      kernelFrag.out.ready:=false.B
+      expander.io.in.valid:=false.B
+      om.io.fragIn.valid:=false.B
+    }
 
     // Share the CU-scaled staging range with vertex traffic, restoring
     // producer/local ownership on return.
@@ -961,7 +1007,7 @@ class RenderPipeline(
     // to idle; otherwise a just-accepted vertex command looks drained before
     // its shader has fetched a single instruction.
     fragmentDrained := !drawHoldValid && !geo.io.busy && shader.io.done && kernelFrag.drained &&
-      expander.io.drained && om.io.drained && !ctxFifo.io.headValid && stagingRouterDrained
+      expander.io.drained && om.io.drained && !ctxFifo.io.headValid && stagingRouterDrained && bankedLocalDrained
     upstreamDone := fragmentDrained && kernelVert.map(_.io.done).getOrElse(true.B) &&
       vertBinnerOpt.map(_.io.done).getOrElse(true.B)
   } else {
@@ -1045,7 +1091,7 @@ class RenderPipeline(
     shader.io.quad.ready := false.B // scalar mode: quad port is tied off
 
     if(bankedAttachments) {
-      val wide=Module(new TileSampleQuadExpander(config.maxSampleCount))
+      val wide=bankedWide.get
       val serial=Module(new FragmentQuadSerializer(rasterConfig))
       val store=persistentStore.get
       serial.io.in.valid:=shader.io.quad.valid && drawState.texEnable
@@ -1060,28 +1106,6 @@ class RenderPipeline(
       serial.io.out.ready:=textured.io.fragIn.ready && drawState.texEnable
 
       wide.io.in.valid:=Mux(drawState.texEnable,textured.io.out.valid,shader.io.quad.valid)
-      wide.io.in.bits:=0.U.asTypeOf(wide.io.in.bits)
-      wide.io.in.bits.sampleMode:=om.io.sampleMode
-      wide.io.in.bits.originX:=store.pass.descriptor.originX
-      wide.io.in.bits.originY:=store.pass.descriptor.originY
-      val controls=wide.io.in.bits.state
-      controls.depthTestEnable:=om.io.depthTestEnable
-      controls.depthFunc:=om.io.depthFunc
-      controls.depthWriteEnable:=om.io.depthWriteEnable
-      controls.stencilTestEnable:=om.io.stencilTestEnable
-      controls.stencilFunc:=om.io.stencilFunc
-      controls.stencilRef:=om.io.stencilRef
-      controls.stencilReadMask:=om.io.stencilReadMask
-      controls.stencilWriteMask:=om.io.stencilWriteMask
-      controls.stencilFailOp:=om.io.stencilFailOp
-      controls.stencilZFailOp:=om.io.stencilZFailOp
-      controls.stencilZPassOp:=om.io.stencilZPassOp
-      controls.blendEnable:=om.io.blendEnable
-      controls.blendCfgEnable:=om.io.blendCfgEnable
-      controls.blendSrcFactor:=om.io.blendSrcFactor
-      controls.blendDstFactor:=om.io.blendDstFactor
-      controls.blendEquation:=om.io.blendEquation
-      controls.colorMask:=15.U
       for(p <- 0 until 4) {
         val pixel=wide.io.in.bits.pixels(p)
         val raster=shader.io.quad.bits.lanes(p)
@@ -1102,13 +1126,6 @@ class RenderPipeline(
           }
         }
       }
-      val aborted=RegInit(false.B)
-      when(io.tilePass.get.begin.fire){aborted:=false.B}
-        .elsewhen(store.localAborted.get){aborted:=true.B}
-      val dropping=aborted || store.localAborted.get
-      store.quad.get.valid:=wide.io.out.valid && !dropping
-      store.quad.get.bits:=wide.io.out.bits
-      wide.io.out.ready:=store.quad.get.ready || dropping
       textured.io.out.ready:=wide.io.in.ready && drawState.texEnable
       shader.io.quad.ready:=Mux(drawState.texEnable,serial.io.in.ready,wide.io.in.ready)
       shader.io.pixel.ready:=false.B

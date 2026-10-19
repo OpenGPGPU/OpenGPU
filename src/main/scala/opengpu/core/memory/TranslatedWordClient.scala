@@ -41,6 +41,8 @@ class TranslatedWordClient(
     val flush = Flipped(Valid(new VectorTlbFlush(config)))
     /** A translated or fault response for this client was consumed. */
     val fault = Output(Bool())
+    /** Stable word-reply metadata, including replies buffered after line fire. */
+    val responseFault=Output(Bool())
     /** Buffered command word status; consumed with out.fire, not line fire. */
     val commandResponseFault = if (bufferCommandReads) Some(Output(Bool())) else None
     val translationStall = Output(Bool())
@@ -79,6 +81,7 @@ class TranslatedWordClient(
   io.in.ready := bridge.in.ready
   io.out.valid := bridge.out.valid
   io.out.bits := bridge.out.bits
+  io.responseFault:=bridge.responseFault
   bridge.out.ready := io.out.ready
 
   private val translator = Module(new GraphicsAddressTranslator(

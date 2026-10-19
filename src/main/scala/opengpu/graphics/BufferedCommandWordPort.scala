@@ -46,6 +46,7 @@ class BufferedCommandWordPort(config: GpuConfig = GpuConfig(),
   p.out.valid := state === State.respond
   p.out.bits := response
   io.responseFault := p.out.valid && responseFault
+  p.responseFault:=io.responseFault
 
   when(p.in.fire) {
     pendingAddress := p.in.bits.addr
