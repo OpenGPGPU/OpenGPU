@@ -48,6 +48,9 @@ class TileSampleQuadMerge extends Module {
     val in=Flipped(Decoupled(new TileSampleQuad))
     val out=Decoupled(new TileSampleQuadCompletion)
     val read=Vec(4,Decoupled(new BankedTileSampleRead))
+    /** Stable head metadata while the parent services a deferred color load. */
+    val readState=Output(Vec(4,new TileSampleMergeState))
+    val readDepth=Output(Vec(4,UInt(24.W)))
     val response=Vec(4,Flipped(Decoupled(new BankedTileSampleReply)))
     val write=Vec(4,Decoupled(new BankedTileSampleWrite))
     val drained=Output(Bool())
@@ -111,6 +114,8 @@ class TileSampleQuadMerge extends Module {
     io.read(p).valid:=q.io.deq.valid && meta.io.enq.ready && !discardInput
     io.read(p).bits.index:=q.io.deq.bits.index
     io.read(p).bits.ticket:=Cat(0.U(3.W),q.io.deq.bits.slot,p.U(2.W))
+    io.readState(p):=q.io.deq.bits.state
+    io.readDepth(p):=q.io.deq.bits.depth
     meta.io.enq.valid:=io.read(p).fire;meta.io.enq.bits:=q.io.deq.bits
     q.io.deq.ready:=discardInput || (meta.io.enq.ready && io.read(p).ready)
     when(io.read(p).valid && !io.read(p).ready){readOffered(p):=true.B}

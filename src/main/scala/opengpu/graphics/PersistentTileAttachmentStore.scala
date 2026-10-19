@@ -512,7 +512,8 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     banks.io.begin:=admitted;banks.io.sampleMode:=descriptor.sampleMode
     merge.io.begin:=admitted;merge.io.sampleMode:=descriptor.sampleMode
     merge.io.cancel:=failed || abortNow
-    quadDrained:=merge.io.drained && banks.io.drained
+    val probesDrained=Wire(Bool())
+    quadDrained:=merge.io.drained && banks.io.drained && probesDrained
     val permitQuad=state===running && !closing && !failed && !abortNow &&
       !clearEngine.io.busy && (!io.pass.clear.valid || !io.producerDrained) &&
       (!io.pass.end.valid || !io.producerDrained) &&
@@ -536,7 +537,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     quadRefillDrained:= !quadFillActive
     // Canceled arithmetic may drain before an already offered refill commits.
     // Retain tagged SRAM ownership until that refill response has drained too.
-    legacy.exclusive:=merge.io.drained && !quadFillActive
+    legacy.exclusive:=merge.io.drained && !quadFillActive && probesDrained
     legacy.readEnable:=colorIo.readEnable || depthIo.readEnable
     legacy.readIndex:=Mux(depthIo.readEnable,depthIo.readAddress,colorIo.readAddress)
     colorIo.readData:=legacy.colorData;depthIo.readData:=legacy.depthStencilData
@@ -549,28 +550,89 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     }
     class QuadMiss extends BankedTileSampleRead {val depth=Bool()}
     val misses=Module(new RRArbiter(new QuadMiss,4))
+    val probePending=RegInit(VecInit(Seq.fill(4)(false.B)))
+    val probeKnown=RegInit(VecInit(Seq.fill(4)(false.B)))
+    val probePass=Reg(Vec(4,Bool()))
+    val probeReply=Reg(Vec(4,new BankedTileSampleReply))
+    val probeDeliver=RegInit(VecInit(Seq.fill(4)(false.B)))
+    val bankReadOffered=RegInit(VecInit(Seq.fill(4)(false.B)))
+    val bankReadIsProbe=Reg(Vec(4,Bool()))
+    probesDrained:= !(probePending.asUInt|probeKnown.asUInt|probeDeliver.asUInt|bankReadOffered.asUInt).orR
+    when(admitted){assert(probesDrained,"provisional reads must drain before tile reuse")}
     for(p <- 0 until 4) {
       val read=merge.io.read(p)
       val index=read.bits.index(indexBits-1,0)
       val colorMiss= !colorValid(index) && descriptor.color.loadOp===AttachmentLoadOp.load.U
       val depthMiss= !depthValid(index) && descriptor.depth.loadOp===AttachmentLoadOp.load.U
-      val needsLoad=(colorMiss || depthMiss) && !failed && !abortNow
-      banks.io.read(p).valid:=read.valid && !needsLoad
+      val testsEnabled=merge.io.readState(p).depthTestEnable || merge.io.readState(p).stencilTestEnable
+      val aborted=failed || abortNow
+      // Cold color is not needed by a rejected sample. Keep the merge's
+      // original read pending while a tagged depth/stencil probe runs under
+      // that sample's existing reservation. Resident reads keep the fast path.
+      val needsProbe=colorMiss && testsEnabled && !depthMiss && !probeKnown(p) && !aborted
+      val returnProbe=probeKnown(p) && (!probePass(p) || aborted)
+      val colorLoad=colorMiss && (!testsEnabled || (probeKnown(p) && probePass(p)))
+      val needsLoad=(depthMiss || colorLoad) && !aborted && !returnProbe
+      val available= !probePending(p) && !probeDeliver(p)
+      val normal= !needsLoad && !needsProbe && !returnProbe
+      val issuingProbe=Mux(bankReadOffered(p),bankReadIsProbe(p),needsProbe)
+      banks.io.read(p).valid:=read.valid && available && (bankReadOffered(p) || normal || needsProbe)
       banks.io.read(p).bits:=read.bits
-      read.ready:=banks.io.read(p).ready && !needsLoad
-      misses.io.in(p).valid:=read.valid && needsLoad
+      banks.io.read(p).bits.ticket:=Mux(issuingProbe,read.bits.ticket|128.U,read.bits.ticket)
+      read.ready:=available && Mux(bankReadOffered(p),!bankReadIsProbe(p) && banks.io.read(p).ready,
+        returnProbe || (normal && banks.io.read(p).ready))
+      when(banks.io.read(p).valid && !banks.io.read(p).ready && !bankReadOffered(p)) {
+        bankReadOffered(p):=true.B;bankReadIsProbe(p):=needsProbe
+      }
+      when(banks.io.read(p).fire){bankReadOffered(p):=false.B}
+      val wasHeld=RegNext(banks.io.read(p).valid && !banks.io.read(p).ready,false.B)
+      val heldRead=RegEnable(banks.io.read(p).bits.asUInt,banks.io.read(p).valid && !banks.io.read(p).ready)
+      when(wasHeld){assert(banks.io.read(p).valid && banks.io.read(p).bits.asUInt===heldRead,
+        "offered normal/provisional SRAM read must survive cancellation unchanged")}
+      when(banks.io.read(p).fire && issuingProbe) {
+        assert(!read.bits.ticket(7),"the parent reserves bit7 for provisional reads")
+        probePending(p):=true.B
+      }
+      when(read.fire) {
+        probeKnown(p):=false.B
+        when(returnProbe && !bankReadOffered(p)){probeDeliver(p):=true.B}
+      }
+      misses.io.in(p).valid:=read.valid && available && !bankReadOffered(p) && needsLoad
       misses.io.in(p).bits.index:=read.bits.index
       misses.io.in(p).bits.ticket:=read.bits.ticket
-      misses.io.in(p).bits.depth:= !colorMiss
-      merge.io.response(p).valid:=banks.io.response(p).valid
-      merge.io.response(p).bits:=banks.io.response(p).bits
-      val responseIndex=banks.io.response(p).bits.index(indexBits-1,0)
+      // Read depth/stencil first when both planes are cold, so the probe can
+      // suppress a color refill without changing late stencil/depth updates.
+      misses.io.in(p).bits.depth:=depthMiss
+      val bankResponse=banks.io.response(p)
+      val isProbe=bankResponse.bits.ticket(7)
+      val responseIndex=bankResponse.bits.index(indexBits-1,0)
+      val oldDepth=Mux(depthValid(responseIndex),bankResponse.bits.depthStencil,
+        Mux(descriptor.depth.loadOp===AttachmentLoadOp.clear.U,descriptor.depth.clearValue,0.U))
+      when(bankResponse.fire && isProbe) {
+        assert(probePending(p) && !probeKnown(p) && !probeDeliver(p),"unowned provisional SRAM reply")
+        assert(bankResponse.bits.index===read.bits.index &&
+          bankResponse.bits.ticket===(read.bits.ticket|128.U),"provisional read lost sample ownership")
+        probePending(p):=false.B;probeKnown(p):=true.B
+        probePass(p):=TileSampleTests.passes(merge.io.readDepth(p),oldDepth,merge.io.readState(p))
+        probeReply(p):=bankResponse.bits
+        probeReply(p).ticket:=bankResponse.bits.ticket&127.U
+        probeReply(p).depthStencil:=oldDepth
+        probeReply(p).color:=0.U
+      }
+      // Capture effective clear/load values at the first offer, and enqueue a
+      // provisional result behind any older normal reply. The flow path keeps
+      // continuously ready resident reads at their original throughput.
+      val replies=Module(new Queue(new BankedTileSampleReply,1,pipe=true,flow=true))
+      replies.io.enq.valid:=probeDeliver(p) || (bankResponse.valid && !isProbe)
+      replies.io.enq.bits:=banks.io.response(p).bits
       val packedColor=Mux(colorValid(responseIndex),banks.io.response(p).bits.color,
         Mux(descriptor.color.loadOp===AttachmentLoadOp.clear.U,descriptor.color.clearValue,0.U))
-      merge.io.response(p).bits.color:=PixelFormat.decode(packedColor,descriptor.colorFormat)
-      merge.io.response(p).bits.depthStencil:=Mux(depthValid(responseIndex),banks.io.response(p).bits.depthStencil,
-        Mux(descriptor.depth.loadOp===AttachmentLoadOp.clear.U,descriptor.depth.clearValue,0.U))
-      banks.io.response(p).ready:=merge.io.response(p).ready
+      replies.io.enq.bits.color:=PixelFormat.decode(packedColor,descriptor.colorFormat)
+      replies.io.enq.bits.depthStencil:=oldDepth
+      when(probeDeliver(p)) {replies.io.enq.bits:=probeReply(p)}
+      merge.io.response(p) <> replies.io.deq
+      bankResponse.ready:=Mux(isProbe,true.B,replies.io.enq.ready && !probeDeliver(p))
+      when(replies.io.enq.fire && probeDeliver(p)){probeDeliver(p):=false.B}
       banks.io.write(p) <> merge.io.write(p)
       banks.io.write(p).bits.color:=PixelFormat.encode(merge.io.write(p).bits.color,descriptor.colorFormat)
     }

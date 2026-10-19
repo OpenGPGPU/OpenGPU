@@ -3135,3 +3135,45 @@ Subsequent qualification results will be recorded separately.
 On-chip shader payload/export storage, legal early rejection, cold refill
 throughput, integrated synthesis/timing qualification and the remaining H0-H8
 requirements remain open. Current PPA evaluation continues with synthesis only.
+
+## H3 depth-first cold color refills
+
+The [deferred color-refill checkpoint](performance/mobile-deferred-color-refills-2026-10-19.json)
+repairs a failure found by the full native binned regression. That frozen run
+passed 65 of 66 checks. Restarting an exported prefix produced the exact image
+and 224 stored bytes, but loaded 448 bytes for 56 samples rejected by depth and
+stencil. The scalar reference loaded only the required 224 depth/stencil bytes.
+The original strict byte assertions remain in place; failure and diagnostic
+logs are preserved.
+
+The banked attachment owner now refills depth/stencil first. When color is cold
+and tests are enabled, a tagged provisional SRAM read evaluates the existing
+comparison contract under the sample's reservation. A rejected sample advances
+with captured depth/stencil and leaves color invalid and clean. A passing
+sample fills color before its normal merge read. The provisional test commits
+no depth or stencil state; final arithmetic and actual SRAM writes retain that
+responsibility. This avoids unneeded color loads after shading, and does not
+close the separate legal early-rejection requirement before expensive dispatch.
+
+Offered normal and provisional SRAM reads retain their tag and identity through
+cancellation. A flow/pipe reply queue captures effective load/clear values and
+keeps private provisional replies behind older normal replies. Probes, held
+reads, refills and merge work must drain before scalar/export ownership or pass
+reuse. Resident traffic retains its flow path.
+
+The frozen 500-file source passes 32 focused checks across five suites plus the
+strict restart case. Independent comparison tests cover all eight depth and
+stencil functions at 1x/2x/4x in both behavioral and vendor SRAM models, followed
+by passing blends that must fetch previously rejected colors. Both models also
+cover 21 cancellation/reuse phases and retain 128 consecutive four-sample
+commit cycles. Two-slot overlap, fault/end/cancel ownership and renderer reuse
+checks pass. The repaired restart loads and stores 224 bytes and matches the
+reference image; its small workload completes in 2,879 cycles versus 3,892 for
+the scalar baseline. These are focused workload measurements, not frame-rate
+or whole-GPU performance claims.
+
+The complete 66-check native regression is running on this source. Eight
+AXI/legacy DMA host checks and the production Mobile RTL audit are queued after
+it. Their final results remain pending. Integrated synthesis/timing, pre-shader visibility
+rejection, payload integration, the remaining H3 gates and H0-H8 requirements
+remain open. Current PPA evaluation continues with synthesis only.
