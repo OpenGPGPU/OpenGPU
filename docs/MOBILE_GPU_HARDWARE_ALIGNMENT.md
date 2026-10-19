@@ -3614,3 +3614,51 @@ clipping/viewport/interpolation, point/line rasterization, post-transform reuse,
 remaining formats/resources, transform feedback/query integration, watchdog
 termination, representative throughput, synthesis and the remaining H0-H8
 requirements remain open. PPA evaluation continues with synthesis only.
+
+### Range-preserving FP32 clip arithmetic prerequisite, 2026-10-19
+
+The [clip-arithmetic checkpoint](performance/mobile-clip-float-arithmetic-2026-10-19.json)
+adds `ClipFloatArithmetic` for the general clipping work following primitive
+assembly. This is an arithmetic prerequisite; it does not clip a primitive or
+generate a vertex. Finite FP32 coordinates can overflow a `w +/- coordinate`
+intermediate, and a crossing weight can underflow even when its product with
+an endpoint is representable. A plain FP32 intermediate would lose that value.
+
+The internal representation retains a normalized 24-bit significand and a
+legal exponent range of -512 through 511 in twelve-bit signed storage. One
+existing `Fp32FmaLane` implementation and one `Fp32DivLane` instance operate on
+normalized significands while exponent arithmetic remains separate. Each
+add/subtract/multiply/divide rounds its significand to nearest/even. A separate
+convenience FP32 result reports gradual underflow, overflow and packing flags
+without discarding the extended result. This is a fixed-function internal
+representation, with no shader-visible scalar format or numeric-contract change.
+
+One accepted operation owns its captured operands/tag through response drain.
+Cancellation never flushes accepted arithmetic; an already offered response
+remains immutable. Malformed encodings and out-of-envelope results return
+explicit errors. Codecs preserve all FP32 classes, signed zero and raw NaN
+payloads; arithmetic special-value behavior follows the reused scalar units.
+The initial codec run exposed an eight-bit signed subtraction wrapping the
+minimum subnormal exponent; the qualified implementation widens it explicitly.
+
+Sixty-three checks pass on 525 frozen sources: five new cases, the preceding
+37 geometry/vertex/input/ABI checks and 21 direct FMA/divider cases. New coverage
+includes 2,065 exact codec roundtrips and 904 exact BigInt rational-reference
+arithmetic comparisons, controlled range errors, snapshots and held responses.
+A coefficient below FP32 range retains a contribution that packs to a nonzero
+subnormal after multiplication; independent endpoint weights recover the
+expected sum. Two maximum finite FP32 inputs also form an extended distance
+that can be divided back without losing its value to intermediate overflow.
+The future clipper must compute both weights independently, avoiding loss from
+subtracting a rounded near-one coefficient from one. Halfway packing, gradual
+underflow, signed zero, special operands, malformed encodings, accepted-divider
+cancellation and healthy reuse are also checked.
+
+Standalone emission audits 22 files with one FMA lane, one divider, a small
+response queue and no private CU or SRAM macro. This additional fixed-function
+arithmetic area/storage has not been integrated into the Mobile budget, and no
+synthesis result is claimed. Six-plane point/line/polygon clipping, bounded
+generated-vertex storage, flat-mask bypass and deterministic shared-edge
+intersections remain next. Viewport/interpolation, native geometry/bin/host/VM
+wiring, post-transform reuse, point/line rasterization and all remaining H0-H8
+requirements remain open. PPA evaluation continues with synthesis only.
