@@ -573,7 +573,7 @@ class GpuHostSystemAxi(
       system.io.graphicsHostRequest<>fabric.io.memoryRequest;fabric.io.memoryResponse<>system.io.graphicsHostResponse
       val request=renderer.io.memoryRequest
       val virtualRenderer=request.bits.transactionId>=MemoryNativeBinnedGraphicsPipeline.renderBase.U &&
-        !MemoryNativeBinnedGraphicsPipeline.physical(request.bits.transactionId,n)
+        !MemoryNativeBinnedGraphicsPipeline.imageTransfer(request.bits.transactionId,n)
       stagingReadEvent:=Mux(request.fire && virtualRenderer && !request.bits.isWrite,1.U(16.W)<<request.bits.sizeLog2,0.U)
       stagingWriteEvent:=Mux(request.fire && virtualRenderer && request.bits.isWrite,PopCount(request.bits.byteMask),0.U)
       for(port<-Seq(host.io.cbMem,host.io.fbMem,host.io.texMem)){

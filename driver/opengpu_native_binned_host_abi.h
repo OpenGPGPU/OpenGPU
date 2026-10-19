@@ -1,11 +1,13 @@
-/* Generated GNC1 discovery layout. Records/resources are virtual; image views are trusted physical addresses.
+/* Generated native discovery layout. GNC2 translates all image views through the job VM.
+ * Legacy GNC1 uses trusted physical image views. Select address interpretation by exact discovery magic.
  * Runtime limits below are separate from fixed GNJ1/GNF1/GND1 record capacities.
  * Payload fields are zero when LOCAL_PAYLOAD is clear. Slot bytes = SLOT_LINES * 64. */
 #ifndef OPENGPU_NATIVE_BINNED_HOST_ABI_H
 #define OPENGPU_NATIVE_BINNED_HOST_ABI_H
 #include <stdint.h>
 
-#define OPENGPU_NATIVE_BINNED_HOST_MAGIC 0x474e4301u
+#define OPENGPU_NATIVE_BINNED_HOST_MAGIC 0x474e4302u
+#define OPENGPU_NATIVE_BINNED_HOST_PHYSICAL_MAGIC 0x474e4301u
 #define OPENGPU_NATIVE_BINNED_HOST_WORDS 8u
 #define OPENGPU_NATIVE_BINNED_HOST_MAGIC_WORD 0u
 #define OPENGPU_NATIVE_BINNED_HOST_MAGIC_SHIFT 0u

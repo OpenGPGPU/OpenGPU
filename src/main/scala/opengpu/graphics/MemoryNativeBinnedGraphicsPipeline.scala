@@ -9,7 +9,8 @@ import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
 case class NativeBinnedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShaderStageConfig(),
     fragment: FragmentShaderConfig=FragmentShaderConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),
     engines: Int=2,pageBytes: Int=4096,writeCredits: Int=8,tileSlots: Int=8,pagedCapacity: Int=16384,
-    payload: Option[ShaderPayloadConfig]=Some(ShaderPayloadConfig(maxPayloadBytes=16*1024,owners=3,ports=8))) {
+    payload: Option[ShaderPayloadConfig]=Some(ShaderPayloadConfig(maxPayloadBytes=16*1024,owners=3,ports=8)),
+    translateImageViews: Boolean=true) {
   require(engines>=1 && engines<=4 && vertex.varyings==fragment.varyings && fragment.colors==4)
   payload.foreach(q=>require(q.owners>=engines+1,"vertex and fragment engines need distinct payload owners"))
 }
@@ -19,19 +20,20 @@ object MemoryNativeBinnedGraphicsPipeline {
   def binSlots(n: NativeBinnedGraphicsConfig): Int=VertexBinPipeline.memoryTransactions(n.engines,n.writeCredits,n.pagedCapacity)
   def renderSlots(n: NativeBinnedGraphicsConfig): Int=TypedVertexBinImagePipeline.memoryTransactions(n.engines,n.writeCredits,n.pagedCapacity)
   def transactions(n: NativeBinnedGraphicsConfig): Int=1<<log2Ceil(renderBase+renderSlots(n))
-  /** Only typed-image source/resolve transfers are trusted physical addresses.
-    * State records at engine-local16..19 remain virtual, as do bins/staging.
-    */
-  def physical(id: UInt,n: NativeBinnedGraphicsConfig): Bool=(0 until n.engines).map{e=>
+  /** Image transfer IDs are stable in both address-space profiles. */
+  def imageTransfer(id: UInt,n: NativeBinnedGraphicsConfig): Bool=(0 until n.engines).map{e=>
     val base=renderBase+binSlots(n)+32*e
     id>=(base+8).U && id<(base+16).U
   }.reduce(_ || _)
+  /** GNC2 translates every request. GNC1 retains trusted physical image views. */
+  def physical(id: UInt,n: NativeBinnedGraphicsConfig): Bool=if(n.translateImageViews)false.B else imageTransfer(id,n)
 }
 
 /** Native GPU-memory job -> actual shared-CU vertex/bin/image ownership.
   * Descriptor and renderer transactions occupy disjoint tagged ranges. The
-  * enclosing host supplies translation for virtual requests, preserves physical
-  * image requests, and pins allocation/code/VM ownership through held completion.
+  * enclosing host translates GNC2 image views as well as descriptor/resource
+  * requests; only GNC1 preserves trusted physical image requests. Allocation,
+  * code and VM ownership remain pinned through held completion.
   */
 class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: NativeBinnedGraphicsConfig=NativeBinnedGraphicsConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),g: GraphicsConfig=GraphicsConfig(),commandIdWidth: Int=8,
@@ -56,7 +58,7 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val reader=Module(new NativeBinnedGraphicsJobReader(config,commandIdWidth,p,engines))
+  private val reader=Module(new NativeBinnedGraphicsJobReader(config,commandIdWidth,p,engines,native.translateImageViews))
   private val image=Module(new TypedVertexBinImagePipeline(config,p,f,shared,g,viewport,engines,
     native.pageBytes,native.writeCredits,native.tileSlots,native.pagedCapacity,native.storage,useSramBlackBoxes,payload))
   val recordBytes=image.recordBytes

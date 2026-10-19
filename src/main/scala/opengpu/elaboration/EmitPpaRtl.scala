@@ -112,7 +112,7 @@ object EmitPpaRtl {
       case "mobile-native-typed-reader" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.NativeTypedGraphicsJobReader(),stageArgs,firtoolArgs)
       case "mobile-native-binned-reader" =>
-        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.NativeBinnedGraphicsJobReader(),stageArgs,firtoolArgs)
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.NativeBinnedGraphicsJobReader(virtualImageViews=true),stageArgs,firtoolArgs)
       case "mobile-native-binned-render" =>
         val mobile=opengpu.config.MobileGpuConfig()
         val native=opengpu.graphics.NativeBinnedGraphicsConfig(engines=mobile.tileEngines,pageBytes=mobile.binPageBytes,

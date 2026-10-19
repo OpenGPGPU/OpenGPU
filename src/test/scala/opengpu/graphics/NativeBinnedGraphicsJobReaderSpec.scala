@@ -12,8 +12,8 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
   // Keep the complete nested result while avoiding the simulator's DPI name
   // length limit. The production interface and all result fields are preserved.
-  private class Harness extends Module {
-    val core=Module(new NativeBinnedGraphicsJobReader(p=p))
+  private class Harness(virtualImages: Boolean=false) extends Module {
+    val core=Module(new NativeBinnedGraphicsJobReader(p=p,virtualImageViews=virtualImages))
     val io=IO(new Bundle {
       val submit=chiselTypeOf(core.io.submit);val begin=chiselTypeOf(core.io.begin)
       val draw=chiselTypeOf(core.io.draw);val end=chiselTypeOf(core.io.end)
@@ -151,6 +151,25 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
     val legacy=Set(TileBinJobMemoryLayout.magic,NativeTypedGraphicsLayout.jobMagic,NativeTypedGraphicsLayout.passMagic,
       NativeTypedGraphicsLayout.drawMagic,TypedFragmentStateLayout.magic)
     assert(current.size==3 && (current&legacy).isEmpty)
+  }
+  it should "protect descriptor state bin and staging roles from virtual image aliases while permitting shared read-only descriptor data" in {
+    simulate(new Harness(true)){d=>val t=new Driver(d)
+      def image(base: BigInt,store: Boolean=true): Unit={
+        val values=Map[String,BigInt]("frame.image.pixels.colors.colors[0].enabled"->1,
+          "frame.image.pixels.colors.colors[0].loadOp"->(if(store)1 else 0),
+          "frame.image.views[0].store"->(if(store)1 else 0),"frame.image.views[0].allocationBase"->base,
+          "frame.image.views[0].allocationLimit"->(base+256))
+        t.frameValues++=values
+        for((n,v)<-values)t.set(t.frameBase,t.ff,n,v)
+      }
+      val aliases=Seq[BigInt](0x1000,0x2000,0x4000,0x200000,0x300000,0x400000,0x500000,0x700000)
+      for(base<-aliases){t.prepare();image(base);t.submit();t.complete(1);assert(t.acceptedBegins==0 && t.acceptedDraws==0)}
+      t.prepare();image(0x200000,store=false);t.submit();t.complete(1);assert(t.acceptedBegins==0)
+      t.prepare();image(0x100000);t.submit();t.complete(1);assert(t.acceptedBegins==1 && t.acceptedDraws==0)
+      t.prepare(0);image(0x1000,store=false);t.submit();t.complete(0);assert(t.acceptedBegins==1 && t.acceptedEnds==1)
+      t.healthy()
+      info("NATIVE_GNC2_ADMISSION rejectedAliases=10 mutableDescriptorStateProtected=true binScratchRolesProtected=true readOnlyDescriptorAliasAllowed=true noInvalidDraw=true healthyReuse=true")
+    }
   }
   it should "snapshot three canonical records through four reordered tags and preserve fixed-capacity fields at the four GiB boundary" in {
     simulate(new Harness){d=>val t=new Driver(d);t.healthy()
