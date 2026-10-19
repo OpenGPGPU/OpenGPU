@@ -26,6 +26,20 @@ class TileSampleMergeState extends Bundle {
   val blendEquation=UInt(3.W)
   val colorMask=UInt(4.W)
 }
+/** The provisional refill check and final arithmetic use identical legacy
+  * comparison encodings. A provisional check never commits depth/stencil.
+  */
+object TileSampleTests {
+  def compare(a: UInt,b: UInt,func: UInt): Bool=MuxLookup(func,true.B)(Seq(
+    0.U->(a<b),1.U->(a<=b),2.U->(a>b),3.U->(a>=b),4.U->(a===b),5.U->(a=/=b),6.U->true.B,7.U->false.B))
+  def stencilPass(old: UInt,state: TileSampleMergeState): Bool=
+    !state.stencilTestEnable || compare(state.stencilRef&state.stencilReadMask,
+      old(31,24)&state.stencilReadMask,state.stencilFunc)
+  def depthPass(source: UInt,old: UInt,state: TileSampleMergeState): Bool=
+    !state.depthTestEnable || compare(source,old(23,0),state.depthFunc)
+  def passes(source: UInt,old: UInt,state: TileSampleMergeState): Bool=
+    stencilPass(old,state) && depthPass(source,old,state)
+}
 class TileSampleMergeInput extends Bundle {
   val index=UInt(10.W)
   val ticket=UInt(8.W)
@@ -89,8 +103,6 @@ class TileSampleMergePipeline extends Module {
   io.in.ready:=r1;io.out.valid:=v3;io.out.bits:=result
   io.drained:= !v1 && !v2 && !v3
 
-  private def compare(a: UInt,b: UInt,func: UInt): Bool=MuxLookup(func,true.B)(Seq(
-    0.U->(a<b),1.U->(a<=b),2.U->(a>b),3.U->(a>=b),4.U->(a===b),5.U->(a=/=b),6.U->true.B,7.U->false.B))
   private def stencil(op: UInt,stored: UInt,ref: UInt): UInt=MuxLookup(op,stored)(Seq(
     0.U->stored,1.U->0.U(8.W),2.U->ref,
     3.U->Mux(stored===255.U,255.U(8.W),(stored+1.U)(7,0)),
@@ -111,8 +123,8 @@ class TileSampleMergePipeline extends Module {
     when(io.in.valid) {
       val in=io.in.bits;val cfg=in.state
       val oldStencil=in.oldDepthStencil(31,24);val oldDepth=in.oldDepthStencil(23,0)
-      val sp= !cfg.stencilTestEnable || compare(cfg.stencilRef&cfg.stencilReadMask,oldStencil&cfg.stencilReadMask,cfg.stencilFunc)
-      val dp= !cfg.depthTestEnable || compare(in.sourceDepth,oldDepth,cfg.depthFunc)
+      val sp=TileSampleTests.stencilPass(in.oldDepthStencil,cfg)
+      val dp=TileSampleTests.depthPass(in.sourceDepth,in.oldDepthStencil,cfg)
       val pass=sp && dp
       val op=Mux(!sp,cfg.stencilFailOp,Mux(!dp,cfg.stencilZFailOp,cfg.stencilZPassOp))
       val updated=stencil(op,oldStencil,cfg.stencilRef)

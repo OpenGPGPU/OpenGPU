@@ -24,8 +24,12 @@ class BankedPersistentTileAttachmentStoreSpec extends AnyFlatSpec {
   import TilePassTestData._
   import PersistentTileAttachmentStoreTestSupport._
   private case class Quad(index: Vector[Int],color: Vector[Long],depth: Vector[Int],ticket: Int,
-    mask: Int=15,func: Int=6,colorMask: Int=15)
+    mask: Int=15,func: Int=6,colorMask: Int=15,stencilFunc: Int=6,stencilRef: Int=0,stencilReadMask: Int=255)
   private case class Completion(ticket: Int,mask: Int,passed: Int,color: Int,depth: Int)
+  private def compare(a: Int,b: Int,func: Int): Boolean=func match {
+    case 0=>a<b;case 1=>a<=b;case 2=>a>b;case 3=>a>=b
+    case 4=>a==b;case 5=>a!=b;case 6=>true;case 7=>false
+  }
   private def decode(w: Long,f: Int): Long = {
     if(f==0)w else {
       val b=Vector.tabulate(4)(i=>(w>>>(8*i))&255)
@@ -62,9 +66,10 @@ class BankedPersistentTileAttachmentStoreSpec extends AnyFlatSpec {
       var pm=0;var cm=0;var zm=0
       for(p <- 0 until 4 if (q.mask&(1<<p))!=0) {
         val i=q.index(p);val old=decode(color(i),pass.format);val ds=depth(i);val z=(ds&0xffffffL).toInt
-        val passes=q.func match {case 0=>q.depth(p)<z;case 6=>true;case 7=>false}
         val stencil=(ds>>>24).toInt
-        val nextStencil=if(passes)math.min(255,stencil+1)else 255-stencil
+        val sp=compare(q.stencilRef&q.stencilReadMask,stencil&q.stencilReadMask,q.stencilFunc)
+        val passes=sp && compare(q.depth(p),z,q.func)
+        val nextStencil=if(!sp)stencil else if(passes)math.min(255,stencil+1)else 255-stencil
         val zw=passes || nextStencil!=stencil
         if(passes) {
           pm|=1<<p
@@ -113,8 +118,9 @@ class BankedPersistentTileAttachmentStoreSpec extends AnyFlatSpec {
       b.ticket.poke(q.ticket.U);b.mask.poke(q.mask.U)
       for(p <- 0 until 4){b.index(p).poke(q.index(p).U);b.color(p).poke(q.color(p).U);b.depth(p).poke(q.depth(p).U)}
       val c=b.state;c.poke(0.U.asTypeOf(c));c.depthTestEnable.poke(true.B);c.depthFunc.poke(q.func.U)
-      c.depthWriteEnable.poke(true.B);c.stencilTestEnable.poke(true.B);c.stencilFunc.poke(6.U)
-      c.stencilReadMask.poke(255.U);c.stencilWriteMask.poke(255.U);c.stencilZPassOp.poke(3.U)
+      c.depthWriteEnable.poke(true.B);c.stencilTestEnable.poke(true.B);c.stencilFunc.poke(q.stencilFunc.U)
+      c.stencilRef.poke(q.stencilRef.U);c.stencilReadMask.poke(q.stencilReadMask.U)
+      c.stencilWriteMask.poke(255.U);c.stencilZPassOp.poke(3.U)
       c.stencilZFailOp.poke(5.U);c.blendEnable.poke(true.B);c.colorMask.poke(q.colorMask.U)
       in.valid.poke(true.B);waitFor(in.ready.peek().litToBoolean);tick();in.valid.poke(false.B);offered=None
     }
@@ -155,6 +161,60 @@ class BankedPersistentTileAttachmentStoreSpec extends AnyFlatSpec {
     Quad(Vector(y*16+x,y*16+x+1,(y+1)*16+x,(y+1)*16+x+1).map(p=>(p<<mode)|sample),
       Vector.tabulate(4)(p=>(0x21436587L+n*0x010305L+p*0x080503L)&0xffffffffL),
       Vector.tabulate(4)(p=>(n*8191+p*37+1)&0xffffff),n&255,mask,func,colorMask)
+  }
+  for(macros <- Seq(false,true)) {
+  it should s"refill cold color only for passing depth stencil lanes and retain rejected colors for a later draw macros=$macros" in {
+    simulate(if(macros)new MacroBankedPersistentStore else new PersistentTileAttachmentStore(storeCredits=8,bankedSamples=true)) { dut=>
+      val d=new QuadDriver(dut)
+      for(mode <- 0 until 3;stencilCase <- Seq(false,true);func <- 0 until 8) {
+        val p=Pass(mode=mode,width=8,height=8,colorLoad=0,depthLoad=0,id=110+mode)
+        d.requests.clear()
+        for(z <- Seq(false,true);y <- 0 until p.height;x <- 0 until p.width;s <- 0 until p.samples) {
+          val i=p.index(x,y,s)
+          d.memory(p.address(x,y,s,z))=if(z)((31L+(i%4))<<24)|(0x400000L+i*17)
+            else(0x12345678L+i*0x010307L)&0xffffffffL
+        }
+        val original=quad(0,mode)
+        val q=original.copy(func=if(stencilCase)6 else func,
+          stencilFunc=if(stencilCase)func else 6,stencilRef=32,
+          depth=original.index.zipWithIndex.map{case(i,lane)=>0x400000+i*17+(lane%3)-1})
+        val passed=q.index.zipWithIndex.filter {case(i,lane)=>
+          compare(q.stencilRef,31+i%4,q.stencilFunc) && compare(q.depth(lane),0x400000+i*17,q.func)}
+          .map(_._1).toSet
+        d.begin(p);d.send(q);d.drainQuads()
+        def address(i: Int,z: Boolean): Long={val pixel=i>>mode;p.address(pixel%16,pixel/16,i%p.samples,z)}
+        val wanted=q.index.map(i=>address(i,true)).toSet++passed.map(i=>address(i,false))
+        assert(d.requests.forall(!_.write) && d.requests.map(_.address).toSet==wanted &&
+          d.requests.size==wanted.size,s"cold refill mismatch mode=$mode stencil=$stencilCase func=$func")
+        // Rejected color words remain cold. A later passing blend must fetch
+        // those original values rather than use the probe's zero placeholder.
+        d.send(original.copy(ticket=1));d.drainQuads()
+        assert(d.requests.size==8 && d.requests.map(_.address).distinct.size==8)
+        d.end();d.complete();d.checkStored()
+      }
+      println(s"BANKED_DEFERRED_COLOR macros=$macros comparisons=48 laterPassingDraws=48")
+    }
+  }
+  it should s"drain cancellation around provisional cold reads and held completions before healthy reuse macros=$macros" in {
+    simulate(if(macros)new MacroBankedPersistentStore else new PersistentTileAttachmentStore(storeCredits=8,bankedSamples=true)) { dut=>
+      val d=new QuadDriver(dut)
+      for(delay <- 0 to 20) {
+        val p=Pass(width=8,height=8,colorLoad=0,depthLoad=0,id=130+delay)
+        d.requests.clear();d.allowCanceled=true;d.quadReady=false
+        d.begin(p);d.send(quad(0,0,func=7))
+        d.waitFor(d.requests.count(r=> !r.write && r.address>=p.depthBase)==4)
+        for(_ <- 0 until delay)d.tick()
+        dut.io.pass.cancel.poke(true.B);d.quadReady=true
+        d.complete(TilePassStatus.cancelled)
+        assert(d.expected.isEmpty && d.requests.forall(r=> !r.write && r.address>=p.depthBase),
+          "rejected/canceled cold samples fetched or exported color")
+        dut.io.pass.cancel.poke(false.B);d.allowCanceled=false
+        d.requests.clear();d.begin(Pass(width=8,height=8,id=160+delay))
+        d.send(quad(0,0));d.drainQuads();d.end();d.complete();d.checkStored()
+      }
+      println(s"BANKED_DEFERRED_CANCEL macros=$macros phases=21 healthyReuse=21")
+    }
+  }
   }
   for(macros <- Seq(false,true))it should s"merge lazy-clear quads at four commits per cycle then preserve partial clears and MSAA resolve macros=$macros" in {
     simulate(if(macros)new MacroBankedPersistentStore else new PersistentTileAttachmentStore(storeCredits=8,bankedSamples=true)) { dut=>

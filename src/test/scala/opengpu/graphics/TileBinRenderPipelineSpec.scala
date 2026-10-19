@@ -1032,10 +1032,11 @@ class TileBinRenderPipelineSpec extends AnyFlatSpec {
       // All resumed depths fail against the nearer committed depth. The
       // stencil z-fail operation touches only these depth/stencil words;
       // lazy load and dirty export leave the saved color plane untouched.
+      assert(d.image==expected,"restarted blend/depth/stencil image differs from uninterrupted ordering")
+      info(s"BIN_RENDER_RESTART_CHECK banked=$banked touchedSamples=$touchedSamples status=${resumed.status} draws=${resumed.draws} committed=${resumed.committed} loads=${resumed.loads} stores=${resumed.stores} expectedBytes=${touchedSamples*4L}")
       assert(resumed.status==0 && resumed.draws==6 && resumed.committed==6 &&
         resumed.loads==touchedSamples*4L && resumed.stores==touchedSamples*4L)
       assert(d.tiles.forall(t=>t.prefixUsable && t.restart.isEmpty))
-      assert(d.image==expected,"restarted blend/depth/stencil image differs from uninterrupted ordering")
       info(s"BIN_RENDER_RESTART prefixDraws=${prefix.draws} resumedDraws=${resumed.draws} loads=${resumed.loads} stores=${prefix.stores+resumed.stores} cycles=${d.cycle}")
     }
   }
