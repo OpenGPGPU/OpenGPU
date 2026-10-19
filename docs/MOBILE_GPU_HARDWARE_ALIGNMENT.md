@@ -3395,3 +3395,31 @@ and the unchanged payload datapath. This default change closes the mandatory
 global fragment-staging gap for the covered native profiles. General shader
 coverage, representative workload throughput, GPU geometry fetching/reuse,
 synthesis and the other H0-H8 requirements remain open.
+
+
+### FP32 texture shaders on the native payload path, 2026-10-19
+
+The [FP32/texture checkpoint](performance/mobile-local-payload-fp32-texture-2026-10-19.json)
+adds five exact-image AXI cases on the default local renderer and its spill/
+global alternatives. The shader moves scalar FP32 operands, multiplies 0.75 by
+65536, converts the result to Q16.16 coordinates, broadcasts them to vector
+lanes, samples a 2x2 texture and exports color plus the original fragment depth.
+Distinct alternate texels make an incorrect coordinate affect the image.
+
+Each case uses two fresh Sv32 VMs with different physical mappings and changed
+texture contents. A texture-read callback verifies that VM-control writes remain
+blocked while the shader owns the job. Queued DMA starts only after the exact
+color/depth image is exported. Native depth/stencil/blend and coverage remain
+compared with the ordered reference renderer.
+
+Two-CU/four-lane/two-warp cases cover resident storage, mixed resident/spill,
+oversized fallback and the explicit global override. The resident case also
+runs on four CUs with sixteen lanes/eight warps. Both tile engines perform
+sample work; all CUs become active. Resident runs require zero global staging
+bytes. Every allocated reservation is released, including across VM reuse.
+Fragment batch limits are eight threads on the four-lane profile and sixteen
+on the sixteen-lane profile; full eight-warp FP32/texture workgroups still need
+qualification. These are selected instruction/resource interaction checks with behavioral
+SRAM and reduced caches; general FP32 numeric behavior, derivatives/divergence,
+resource families, representative throughput, geometry and remaining H0-H8
+requirements remain open. No synthesis or place-and-route claim is added.

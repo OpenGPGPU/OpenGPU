@@ -274,6 +274,93 @@ class BinnedTileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
     }
   }
 
+  for((mode,count,lanes,warps,bytes) <- Seq(
+    ("resident",2,4,2,4096),("mixed",2,4,2,512),("oversized",2,4,2,64),
+    ("global",2,4,2,65536),("resident",4,16,8,65536)))
+  it should s"compute FP32 coordinates and sample textures through native AXI payloads mode=$mode CUs=$count lanes=$lanes warps=$warps" in {
+    val width=if(lanes==16)32 else 16;val height=if(lanes==16)16 else 8
+    val edge=if(lanes==16)16 else 8;val pageBytes=if(lanes==16)4096 else 128
+    val gpu=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2,l2StoreEntries=4)
+    val base=MobileGpuConfig(execution=gpu,computeUnits=count,axiBytes=32,binPageBytes=pageBytes,
+      binWriteCredits=if(lanes==16)8 else 2,attachmentStoreCredits=if(lanes==16)8 else 2,
+      binTileSlots=if(lanes==16)8 else 4,payloadBytes=bytes)
+    val mobile=if(mode=="global")base.copy(localShaderPayloads=false)else base
+    val colors=Vector(0xffff00ffL,0x00ffffffL)
+    val expected=colors.map { color=>
+      val sequence=TileBinJobTestData.references(18).map(r=>draws(((r.primitive-firstHandle)/2).toInt)
+        .copy(color=color,scissor=Some((r.tile.toInt*edge,0,r.tile.toInt*edge+edge,edge))))
+      reference(0,width,height,sequence,width,height)
+    }
+    def addi(rd: Int,rs: Int,n: Int): Long=((n&4095).toLong<<20)|(rs<<15)|(rd<<7)|0x13L
+    def add(rd: Int,a: Int,b: Int): Long=(b.toLong<<20)|(a<<15)|(rd<<7)|0x33L
+    def slli(rd: Int,rs: Int,n: Int): Long=(n.toLong<<20)|(rs<<15)|(1<<12)|(rd<<7)|0x13L
+    def offset(n: Int): Seq[Long]=Seq(addi(7,0,n/16),slli(7,7,4),add(6,5,7))
+    def load(v: Int): Long=(1L<<25)|(6<<15)|(6<<12)|(v<<7)|7L
+    def store(v: Int): Long=(1L<<25)|(6<<15)|(6<<12)|(v<<7)|0x27L
+    def moveFp(f: Int,x: Int): Long=(0x78L<<25)|(x<<15)|(f<<7)|0x53L
+    def broadcast(v: Int,x: Int): Long=(0x17L<<26)|(1L<<25)|(x<<15)|(4<<12)|(v<<7)|0x57L
+    val capacity=lanes*warps
+    // 0.75f * 65536.0f -> 49152 (Q16.16), then sample texel (1,1).
+    // Other texels are distinct poisons: a wrong FP result changes the image.
+    val program=Seq(slli(5,8,2),add(5,1,5),(3L<<30)|(0x10L<<20)|(lanes.toLong<<15)|(7<<12)|0x57L,
+      0x3f400000L|(10<<7)|0x37L,moveFp(0,10),0x47800000L|(11<<7)|0x37L,moveFp(1,11),
+      (8L<<25)|(1L<<20)|(2<<7)|0x53L, // fmul.s f2,f0,f1
+      (0x60L<<25)|(2<<15)|(1<<12)|(10<<7)|0x53L, // fcvt.w.s x10,f2,rtz
+      broadcast(1,10),broadcast(2,10),(1L<<26)|(1L<<25)|(2<<20)|(1<<15)|(3<<7)|0x2bL)++
+      offset(24*capacity)++Seq(store(3))++offset(8*capacity)++Seq(load(4))++
+      offset(28*capacity)++Seq(store(4),0x30500073L)
+    simulate(new GpuHostSystemAxi(cfg.copy(screenWidth=width,screenHeight=height,fragmentBatchLimit=math.max(8,lanes)),
+      gpu,numComputeUnits=count,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      enableFpuBackend=true,memoryAxiDataBytes=32,exposePerformance=true,binnedRendering=Some(mobile))) { d=>
+      initialize(d);val f=new Fixture(d,true,lanes,warps,width,height,edge,pageBytes)
+      val perf=d.io.performance.get
+      assert(axiRead(d,TileBinHostRegs.CAPABILITIES+16).testBit(TileBinCapabilityFlags.LocalPayloads)==(mode!="global"))
+      axiWrite(d,RenderHostRegs.IRQ,1)
+      for(run <- 0 until 2) {
+        f.physicalOffset=(run+1L)*0x400000
+        val root=0x300000L+run*4096L
+        f.memory(BigInt(root))=((f.physicalOffset>>12)<<10)|0xcfL
+        val satp=0x80000000L|((run+1L)<<22)|(root>>12)
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,satp.toInt)
+        axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,satp.toInt)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        f.prepare();f.put(0x3000,program)
+        val binding=state.toArray;binding(1)|=1L<<10;binding(6)=0x3000;binding(8)=0x10000
+        binding(9)=0xc0000;binding(10)=2L|(2L<<16)
+        f.put(recordBase+32*64L,binding.toSeq)
+        f.put(0xc0000,Seq(0x110000ffL,0x002200ffL,0x000033ffL,colors(run)))
+        f.submit(150+run*2);f.copy(151+run*2)
+        var textureRead=false;var copied=false
+        serviceMemoryMaster(d,f.read,writeAckDelay=23,readResponseDelay=7,maxCycles=200000,
+          onReadAccepted=a=>if(!textureRead && a>=f.physical(0xc0000) && a<f.physical(0xc0040)) {
+            textureRead=true;f.rejectVm()
+          },onWriteAccepted=a=>if(!copied && a>=f.physical(0x70000) && a<f.physical(0x70000+width*height*4L)) {
+            f.checkResult(150+run*2,0)
+            val actual=f.image;val complete=actual==expected(run)
+            assert(complete,s"queued DMA overtook FP32 textured exports: ${actual.indices.filter(i=>actual(i)!=expected(run)(i)).take(4).map(i=>s"$i:${actual(i).toHexString}/${expected(run)(i).toHexString}")}")
+            f.pop();copied=true
+          })(f.write){copied && d.io.m_irq.peek().litToBoolean}
+        f.pause();f.checkResult(151+run*2,0,1)
+        assert(textureRead,"shader texture data did not use the translated AXI memory path")
+        assert(f.image==expected(run) && f.copied==width*height*4)
+        assert((0 until width*height).forall(i=>f.memory(f.physical(0x70000+i*4L))==expected(run)(i)))
+        perf.payloadReservedBytes.expect(0.U);f.pop()
+      }
+      val allocations=perf.payloadAllocations.peek().litValue;val spills=perf.payloadSpills.peek().litValue
+      val releases=perf.payloadReleases.peek().litValue
+      val localReads=perf.payloadStagingReadBytes.peek().litValue;val localWrites=perf.payloadStagingWriteBytes.peek().litValue
+      val globalReads=perf.stagingReadBytes.peek().litValue;val globalWrites=perf.stagingWriteBytes.peek().litValue
+      assert(allocations==releases)
+      if(mode=="resident")assert(allocations>0 && spills==0 && localReads>0 && localWrites>0 && globalReads==0 && globalWrites==0)
+      if(mode=="mixed")assert(allocations>0 && spills>0 && localReads>0 && localWrites>0 && globalReads>0 && globalWrites>0)
+      if(mode=="oversized")assert(allocations==0 && spills>0 && localReads==0 && localWrites==0 && globalReads>0 && globalWrites>0)
+      if(mode=="global")assert(allocations==0 && spills==0 && localReads==0 && localWrites==0 && globalReads>0 && globalWrites>0)
+      assert(perf.system.maxActiveComputeUnits.peek().litValue==count)
+      for(e <- 0 until mobile.tileEngines)assert(perf.binCommittedSamples(e).peek().litValue>0)
+      info(s"BIN_PAYLOAD_FP32_TEXTURE mode=$mode CUs=$count lanes=$lanes warps=$warps allocations=$allocations spills=$spills releases=$releases localReadBytes=$localReads localWriteBytes=$localWrites globalReadBytes=$globalReads globalWriteBytes=$globalWrites freshVMs=2 changedTexture=true exactWords=${width*height*2} queuedCopies=2 reserved=0")
+    }
+  }
+
   for(local <- Seq(false,true))
   it should s"publish GPU-produced bin inputs and shader code through physical aliases after acknowledged completion local=$local" in {
     val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2,l2StoreEntries=4)
