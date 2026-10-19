@@ -145,6 +145,8 @@ class DoubleBufferedTileAttachmentStore(config: GpuConfig = GpuConfig(),
     io.acceptedSamples.get:=stores.map(_.io.acceptedSamples.get).reduce(_+&_)
     io.committedSamples.get:=stores.map(_.io.committedSamples.get).reduce(_+&_)
     io.localDrained.get:= !currentValid || currentLocalDrained
+    io.localAborted.get:=currentValid && (cancelProducer || io.pass.cancel || Mux(current===0.U,
+      stores(0).io.localAborted.get,stores(1).io.localAborted.get))
     for(s <- 0 until 2) {
       stores(s).io.quad.get.valid:=io.quad.get.valid && admit && current===s.U
       stores(s).io.quad.get.bits:=io.quad.get.bits

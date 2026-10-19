@@ -237,6 +237,12 @@ object EmitPpaRtl {
             persistentAttachments = true,
             tileStoreCredits = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
             useTileSramBlackBoxes = true), stageArgs, firtoolArgs)
+      case "mobile-banked-fixed-render" =>
+        val mobile=opengpu.config.MobileGpuConfig()
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.RenderPipeline(
+          GraphicsConfig(screenWidth=1280,screenHeight=720,tileSize=16,tileAttachments=true),
+          mobile.execution,persistentAttachments=true,tileStoreCredits=mobile.attachmentStoreCredits,
+          useTileSramBlackBoxes=true,doubleBufferedAttachments=true,bankedAttachments=true),stageArgs,firtoolArgs)
       case "command-buffer" | "cancellable-command-buffer" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.CommandBufferStage(opengpu.graphics.GraphicsConfig(),

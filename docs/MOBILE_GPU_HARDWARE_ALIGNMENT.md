@@ -2976,3 +2976,58 @@ to 477,562 standard cells occupying 63,263.2 µm² and 32 SRAM macros occupying
 13,287.6 µm². Default-activity power is 0.801501 W. These are two-slot component
 results, not an optimization delta against the earlier single-slot profile.
 Timing remains open; no new place/route or whole-GPU performance claim is made.
+
+## H3 native quad ingress into the fixed-function renderer
+
+The [banked fixed-function renderer checkpoint](performance/mobile-banked-fixed-renderer-2026-10-19.json)
+connects `RenderPipeline(bankedAttachments=true)` to either one persistent store
+or the two externally arbitrated attachment slots. Quad rasterization retains
+four pixel lanes through a registered sample-major expander. Each output visits
+one sample index across the quad, skips uncovered lanes and empty sample indices,
+and snapshots local coordinates, sample depths, color and merge state. At 1x,
+complete quads can replace one another every cycle. The optional renderer events
+count actual backend admissions and SRAM commits.
+
+Fixed-function texture sampling retains its existing scalar service. A quad
+serializer filters helper/zero-coverage lanes and carries the matching edge and
+sample-depth sidebands through texture stalls; textured pixels then enter the
+same banked backend. This preserves functionality without widening texture
+throughput. The default renderer profile remains scalar, and this opt-in profile
+currently rejects programmable/vertex-core paths until shader quad exports are
+connected. No host command or descriptor ABI changes are introduced.
+
+Queued clear/end commands now let older upstream quads finish before closing
+admission. Selected-slot abort metadata drains raster work after cancellation or
+an attachment fault. A focused integration test exposed an abort-reset ordering
+error in the new path: a fresh one-slot pass could report success with zero
+commits. The final implementation gives an accepted begin priority over the old
+abort latch. Termination tests require the reused pass to render another draw
+and make actual SRAM commits, in addition to checking status and completion drain.
+
+The frozen 496-file source passes 52 banked checks across six suites, six renderer
+termination/reuse checks, and 58 default compatibility checks. Exact-image
+comparisons cover clear/load starts at 1x/2x/4x, nonzero-origin 8x8 tiles, textured
+1x/4x draws, varying per-vertex depth, blending, stencil, queued partial clear and
+scissor intersections. Both one-slot and two-slot renderers pass early end,
+pulsed cancellation during a cold read, actual read faults, held completion and
+subsequent draw reuse. Existing behavioral/vendor SRAM and old-slot fault tests
+also pass.
+
+In the 32x32 synthetic four-draw workload, clear-start banked draw work takes
+441/827/1,472 cycles at 1x/2x/4x, versus 1,719/3,317/6,531 for the scalar reference
+with identical inputs. The 4x case accepts and commits 1,407 samples, with
+106 four-sample commit cycles. Load-start draw work remains slower through the
+current word-refill service: 3,121/6,218/12,356 cycles versus the same scalar
+reference figures. These are draw-stage/component measurements, not complete
+frame or whole-GPU throughput. Export credits and memory stalls are measured
+separately; cold refill throughput remains open.
+
+The 1280x720 Mobile emission includes one renderer, two banked stores, one quad
+expander, one texture serializer and 32 reachable SRAM macro instances. Sample
+arrays provide 16 KiB logical capacity in 32 KiB physical macros across the two
+slots. The source archive, regression logs, emitted RTL and hierarchy hashes are
+frozen. Integrated renderer synthesis is recorded separately at the original
+1 GHz/25% I/O constraints; this functional checkpoint makes no new PPA claim.
+Programmable shader exports, production host/two-engine integration, legal early
+rejection, integrated timing closure, full H3 workload gates and remaining H0-H8
+requirements are still open.

@@ -84,9 +84,12 @@ class RenderPipeline(
   useTileSramBlackBoxes: Boolean = false,
   normalizedTextureModulation: Boolean = false,
   doubleBufferedAttachments: Boolean = false,
-  coalesceAttachments: Boolean = true
+  coalesceAttachments: Boolean = true,
+  bankedAttachments: Boolean = false
 ) extends Module {
   require(!doubleBufferedAttachments || persistentAttachments)
+  require(!bankedAttachments || (persistentAttachments && !fragCore && !vertCore),
+    "banked renderer ingress currently supports fixed-function persistent passes")
   require(sharedShader.isEmpty || fragCore,
     "shared shader execution requires programmable fragment graphics")
   require(!(fragCore || vertCore) || (gpuConfig.lanes >= 4 && gpuConfig.lanes % 4 == 0),
@@ -99,6 +102,8 @@ class RenderPipeline(
     val tilePass = if (persistentAttachments) Some(new TileRenderPassPort) else None
     val tileEvents = if (persistentAttachments) Some(Output(new TileAttachmentEvents)) else None
     val tileCompletionBytes = if (doubleBufferedAttachments) Some(Output(new TileAttachmentByteCounts)) else None
+    val tileAcceptedSamples = if (bankedAttachments) Some(Output(UInt(3.W))) else None
+    val tileCommittedSamples = if (bankedAttachments) Some(Output(UInt(3.W))) else None
     val tileMemoryRequest = if (doubleBufferedAttachments) Some(Vec(2,Decoupled(
       new ComputeMemoryRequest(gpuConfig,64,tileStoreCredits+1)))) else None
     val tileMemoryResponse = if (doubleBufferedAttachments) Some(Vec(2,Flipped(Decoupled(
@@ -176,14 +181,14 @@ class RenderPipeline(
   // Attachment ownership/storage still uses the original engine config.
   private val rasterConfig = if (persistentAttachments)
     config.copy(tileSize = 0, tileAttachments = false, tileBinning = false) else config
-  private val shader = Module(new RasterShader(rasterConfig, quadMode = fragCore || vertCore))
+  private val shader = Module(new RasterShader(rasterConfig, quadMode = fragCore || vertCore || bankedAttachments))
   private val om = Module(new OutputMerger(config))
   private val bufferedStore = if (doubleBufferedAttachments) Some(Module(new DoubleBufferedTileAttachmentStore(
     gpuConfig,config.maxSampleCount,config.screenWidth,config.screenHeight,useTileSramBlackBoxes,tileStoreCredits,
-    externalArbitration=true,coalesceTransfers=coalesceAttachments))) else None
+    externalArbitration=true,coalesceTransfers=coalesceAttachments,bankedSamples=bankedAttachments))) else None
   private val persistentStore: Option[PersistentTileAttachmentStoreIO] = if (persistentAttachments && !doubleBufferedAttachments)
     Some(Module(new PersistentTileAttachmentStore(config.maxSampleCount,
-      config.screenWidth, config.screenHeight, useTileSramBlackBoxes, tileStoreCredits)).io)
+      config.screenWidth, config.screenHeight, useTileSramBlackBoxes, tileStoreCredits,bankedSamples=bankedAttachments)).io)
     else bufferedStore.map(_.io)
   bufferedStore.foreach { store=>
     io.tileMemoryRequest.get <> store.io.slotMemoryRequest.get
@@ -196,6 +201,11 @@ class RenderPipeline(
   persistentStore.foreach(_.pass <> io.tilePass.get)
   private val fragmentExecutionFault = WireDefault(false.B)
   persistentStore.foreach(_.executionFault := fragmentExecutionFault)
+  if(bankedAttachments) {
+    io.tileAcceptedSamples.get:=persistentStore.get.acceptedSamples.get
+    io.tileCommittedSamples.get:=persistentStore.get.committedSamples.get
+    persistentStore.get.quadCompletion.get.ready:=true.B
+  }
   private val passAcceptingDraws = persistentStore.map(store =>
     store.pass.active && bufferedStore.map(_.io.acceptingDraws).getOrElse(store.pass.end.ready) &&
       !io.tilePass.get.end.valid && !io.tilePass.get.cancel).getOrElse(true.B)
@@ -572,7 +582,7 @@ class RenderPipeline(
   io.performance.omStall := expander.io.out.valid &&
     !(om.io.fragIn.ready && tilePermit)
   io.performance.omConflict := om.io.addressConflict
-  io.performance.rasterStall := (if (fragCore || vertCore)
+  io.performance.rasterStall := (if (fragCore || vertCore || bankedAttachments)
     shader.io.quad.valid && !shader.io.quad.ready
     else shader.io.pixel.valid && !shader.io.pixel.ready)
   io.performance.stagingReadBytes := Mux(io.kernelWordMemReq.fire &&
@@ -955,6 +965,7 @@ class RenderPipeline(
     upstreamDone := fragmentDrained && kernelVert.map(_.io.done).getOrElse(true.B) &&
       vertBinnerOpt.map(_.io.done).getOrElse(true.B)
   } else {
+    val bankedDrained=WireDefault(true.B)
     shader.io.draw.valid := drawHoldValid && !clipTriangleActive && clipper.io.done && geometryReady &&
       clipEmitIndex < clipper.io.outValid
     om.io.colorFormat := drawState.colorFormat
@@ -983,7 +994,7 @@ class RenderPipeline(
     // done; admission stays additionally gated on OM slot availability and on
     // the sample expander having emitted its last sample.
     io.draw.ready := triSource.ready && shader.io.draw.ready && shader.io.done &&
-      textured.io.drained && expander.io.drained && om.io.drained && drawTileGate
+      textured.io.drained && expander.io.drained && om.io.drained && drawTileGate && bankedDrained
     // Fragment stream: sampled-and-modulated when texturing is enabled, else
     // straight from the interpolator.  The bypass path keeps disabled draws
     // free of sampler latency and frees its memory port entirely.
@@ -1033,6 +1044,80 @@ class RenderPipeline(
       expander.io.in.ready)
     shader.io.quad.ready := false.B // scalar mode: quad port is tied off
 
+    if(bankedAttachments) {
+      val wide=Module(new TileSampleQuadExpander(config.maxSampleCount))
+      val serial=Module(new FragmentQuadSerializer(rasterConfig))
+      val store=persistentStore.get
+      serial.io.in.valid:=shader.io.quad.valid && drawState.texEnable
+      serial.io.in.bits.quad:=shader.io.quad.bits
+      serial.io.in.bits.depths:=shader.io.quadDepths
+      textured.io.fragIn.valid:=serial.io.out.valid && drawState.texEnable
+      textured.io.fragIn.bits:=serial.io.out.bits
+      textured.io.fragDepths:=serial.io.depths
+      textured.io.e0:=serial.io.out.bits.e0
+      textured.io.e1:=serial.io.out.bits.e1
+      textured.io.e2:=serial.io.out.bits.e2
+      serial.io.out.ready:=textured.io.fragIn.ready && drawState.texEnable
+
+      wide.io.in.valid:=Mux(drawState.texEnable,textured.io.out.valid,shader.io.quad.valid)
+      wide.io.in.bits:=0.U.asTypeOf(wide.io.in.bits)
+      wide.io.in.bits.sampleMode:=om.io.sampleMode
+      wide.io.in.bits.originX:=store.pass.descriptor.originX
+      wide.io.in.bits.originY:=store.pass.descriptor.originY
+      val controls=wide.io.in.bits.state
+      controls.depthTestEnable:=om.io.depthTestEnable
+      controls.depthFunc:=om.io.depthFunc
+      controls.depthWriteEnable:=om.io.depthWriteEnable
+      controls.stencilTestEnable:=om.io.stencilTestEnable
+      controls.stencilFunc:=om.io.stencilFunc
+      controls.stencilRef:=om.io.stencilRef
+      controls.stencilReadMask:=om.io.stencilReadMask
+      controls.stencilWriteMask:=om.io.stencilWriteMask
+      controls.stencilFailOp:=om.io.stencilFailOp
+      controls.stencilZFailOp:=om.io.stencilZFailOp
+      controls.stencilZPassOp:=om.io.stencilZPassOp
+      controls.blendEnable:=om.io.blendEnable
+      controls.blendCfgEnable:=om.io.blendCfgEnable
+      controls.blendSrcFactor:=om.io.blendSrcFactor
+      controls.blendDstFactor:=om.io.blendDstFactor
+      controls.blendEquation:=om.io.blendEquation
+      controls.colorMask:=15.U
+      for(p <- 0 until 4) {
+        val pixel=wide.io.in.bits.pixels(p)
+        val raster=shader.io.quad.bits.lanes(p)
+        pixel.x:=raster.x(15,0).asUInt
+        pixel.y:=raster.y(15,0).asUInt
+        pixel.color:=Cat(raster.color.r,raster.color.g,raster.color.b,raster.alpha)
+        pixel.coverageMask:=Mux(raster.covered,raster.coverageMask,0.U)
+        pixel.depths:=shader.io.quadDepths(p)
+        when(drawState.texEnable) {
+          pixel:=0.U.asTypeOf(pixel)
+          if(p==0) {
+            pixel.x:=textured.io.out.bits.x(15,0).asUInt
+            pixel.y:=textured.io.out.bits.y(15,0).asUInt
+            pixel.color:=Cat(textured.io.out.bits.color.r,textured.io.out.bits.color.g,
+              textured.io.out.bits.color.b,textured.io.out.bits.alpha)
+            pixel.coverageMask:=textured.io.out.bits.coverageMask
+            pixel.depths:=textured.io.outDepths
+          }
+        }
+      }
+      val aborted=RegInit(false.B)
+      when(io.tilePass.get.begin.fire){aborted:=false.B}
+        .elsewhen(store.localAborted.get){aborted:=true.B}
+      val dropping=aborted || store.localAborted.get
+      store.quad.get.valid:=wide.io.out.valid && !dropping
+      store.quad.get.bits:=wide.io.out.bits
+      wide.io.out.ready:=store.quad.get.ready || dropping
+      textured.io.out.ready:=wide.io.in.ready && drawState.texEnable
+      shader.io.quad.ready:=Mux(drawState.texEnable,serial.io.in.ready,wide.io.in.ready)
+      shader.io.pixel.ready:=false.B
+      expander.io.in.valid:=false.B
+      om.io.fragIn.valid:=false.B
+      io.performance.omStall:=wide.io.out.valid && !wide.io.out.ready
+      bankedDrained:=wide.io.drained && serial.io.drained && store.localDrained.get
+    }
+
     io.kernelMemReq.valid := false.B
     io.kernelMemReq.bits := 0.U.asTypeOf(io.kernelMemReq.bits)
     io.kernelMemResp.ready := false.B
@@ -1048,7 +1133,7 @@ class RenderPipeline(
       0.U.asTypeOf(io.kernelGlobalAtomicRequest.bits)
     io.kernelGlobalAtomicResponse.ready := true.B
     fragmentDrained := !drawHoldValid && !geo.io.busy && shader.io.done && textured.io.drained &&
-      expander.io.drained && om.io.drained
+      expander.io.drained && om.io.drained && bankedDrained
     upstreamDone := fragmentDrained
   }
 }

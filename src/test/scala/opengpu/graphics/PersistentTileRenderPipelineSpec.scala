@@ -9,13 +9,15 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
   import TilePassTestData._
   behavior of "render-pass attachment lifetime"
   private val configuredCredits = sys.props.get("opengpu.tileStoreCredits").map(_.toInt).getOrElse(1)
+  private val configuredBanked = sys.props.get("opengpu.bankedRenderer").contains("true")
 
   private case class Result(color: Seq[Long], depth: Seq[Long], reads: Int, writes: Int,
     cycles: Int, drawCycles: Int, peakOutstanding: Int)
   private case class Response(write: Boolean, address: Long, data: Long, due: Int)
 
   private def render(persistent: Boolean, mode: Int, load: Boolean, tileLog2: Int = 4,
-    storeCredits: Int = configuredCredits, memoryLatency: Int = 0, memoryWindow: Int = 8): Result = {
+    storeCredits: Int = configuredCredits, memoryLatency: Int = 0, memoryWindow: Int = 8,
+    texture: Boolean=false): Result = {
     val p = Pass(mode = mode, width = if (tileLog2 == 3) 8 else 13,
       height = if (tileLog2 == 3) 8 else 9, tileLog2 = tileLog2,
       originX = if (tileLog2 == 3) 8 else 0, originY = if (tileLog2 == 3) 8 else 16,
@@ -24,7 +26,9 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
     val cfg = GraphicsConfig(screenWidth = 32, screenHeight = 32,
       tileSize = if (persistent) 16 else 0, tileAttachments = persistent)
     var result = Result(Nil, Nil, 0, 0, 0, 0, 0)
-    simulate(new RenderPipeline(cfg, persistentAttachments = persistent, tileStoreCredits = storeCredits)) { dut =>
+    val banked=persistent && configuredBanked
+    simulate(new RenderPipeline(cfg, persistentAttachments = persistent, tileStoreCredits = storeCredits,
+      bankedAttachments=banked)) { dut =>
       val memory = mutable.Map.empty[Long, Long].withDefaultValue(0xdeadbeefL)
       for (y <- 0 until p.height; x <- 0 until p.width; s <- 0 until p.samples) {
         memory(p.address(x, y, s, depth = false)) = p.colorClear
@@ -33,6 +37,10 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
       val rng = new scala.util.Random(12345)
       val queue = mutable.ArrayBuffer.empty[Response]
       var response: Option[Response] = None
+      val textureQueue=mutable.ArrayBuffer.empty[Response]
+      var textureResponse=Option.empty[Response]
+      var acceptedSamples=0L;var committedSamples=0L;var fullQuadCycles=0
+      for(n <- 0 until 16)memory(0x80000L+n*4)=((0x204060ffL+n*0x07030100L)&0xffffffffL)
       var cycles = 0
       var reads = 0
       var writes = 0
@@ -64,12 +72,12 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
       dut.io.stencilZFailOp.poke(0.U)
       dut.io.stencilZPassOp.poke(0.U)
       dut.io.cullMode.poke(0.U)
-      dut.io.texEnable.poke(false.B)
+      dut.io.texEnable.poke(texture.B)
       dut.io.texFormat.poke(0.U)
-      dut.io.texBase.poke(0.U)
-      dut.io.texWidth.poke(1.U)
-      dut.io.texHeight.poke(1.U)
-      dut.io.texWrapClamp.poke(false.B)
+      dut.io.texBase.poke(0x80000.U)
+      dut.io.texWidth.poke(4.U)
+      dut.io.texHeight.poke(4.U)
+      dut.io.texWrapClamp.poke(true.B)
       dut.io.texMaxLevel.poke(0.U)
       dut.io.texMem.req.ready.poke(true.B)
       dut.io.texMem.resp.valid.poke(false.B)
@@ -92,6 +100,29 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
       dut.reset.poke(false.B)
 
       def tick(): Unit = {
+        dut.io.texMem.req.ready.poke((cycles%5!=1).B)
+        if(textureResponse.isEmpty) {
+          val i=textureQueue.lastIndexWhere(_.due<=cycles)
+          if(i>=0)textureResponse=Some(textureQueue.remove(i))
+        }
+        dut.io.texMem.resp.valid.poke(textureResponse.nonEmpty.B)
+        textureResponse.foreach { r=>
+          dut.io.texMem.resp.bits.addr.poke(r.address.U)
+          dut.io.texMem.resp.bits.write.poke(false.B)
+          dut.io.texMem.resp.bits.data.poke(r.data.U)
+        }
+        val textureFire=textureResponse.nonEmpty && dut.io.texMem.resp.ready.peek().litToBoolean
+        if(dut.io.texMem.req.valid.peek().litToBoolean && dut.io.texMem.req.ready.peek().litToBoolean) {
+          val address=dut.io.texMem.req.bits.addr.peek().litValue.toLong
+          dut.io.texMem.req.bits.write.expect(false.B)
+          textureQueue+=Response(false,address,memory(address),cycles+3+(cycles%7))
+        }
+        if(banked) {
+          acceptedSamples+=dut.io.tileAcceptedSamples.get.peek().litValue.toLong
+          val n=dut.io.tileCommittedSamples.get.peek().litValue.toInt
+          committedSamples+=n
+          if(n==4)fullQuadCycles+=1
+        }
         dut.io.mem.req.ready.poke((if (memoryLatency > 0) outstanding < memoryWindow
           else rng.nextInt(4) != 0).B)
         if (response.isEmpty) {
@@ -123,6 +154,7 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
         dut.clock.step()
         cycles += 1
         if (responseFire) { response = None; outstanding -= 1 }
+        if(textureFire)textureResponse=None
         peakOutstanding = math.max(peakOutstanding, outstanding)
       }
       def waitFor(condition: => Boolean): Unit = {
@@ -152,6 +184,7 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
       for (drawIndex <- 0 until 4) {
         draw.poke(0.U.asTypeOf(new SceneTriangle(cfg)))
         draw.stateOverride.poke(true.B)
+        draw.texEnable.poke(texture.B)
         draw.depthTestEnable.poke(true.B)
         draw.depthFunc.poke(0.U)
         draw.depthWriteEnable.poke(true.B)
@@ -180,7 +213,9 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
           draw.color(i).g.poke((if (drawIndex % 2 == 0) 40 else 210).U)
           draw.color(i).b.poke((40 + drawIndex * 30).U)
           draw.alpha(i).poke((80 + drawIndex * 35).U)
-          draw.depth(i).poke(Seq(0x700000, 0x300000, 0x500000, 0x100000)(drawIndex).S)
+          draw.depth(i).poke((Seq(0x700000, 0x300000, 0x500000, 0x100000)(drawIndex)+i*0x1000).S)
+          draw.uv(i).u.poke((if(i==1)65536 else 0).U)
+          draw.uv(i).v.poke((if(i==2)65536 else 0).U)
         }
         waitFor(dut.io.draw.ready.peek().litToBoolean)
         dut.io.draw.valid.poke(true.B)
@@ -237,6 +272,12 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
         tick()
       }
       assert(queue.isEmpty && response.isEmpty)
+      assert(textureQueue.isEmpty && textureResponse.isEmpty)
+      if(banked) {
+        assert(acceptedSamples>20 && committedSamples>0 && committedSamples<=acceptedSamples)
+        if(!texture)assert(fullQuadCycles>0,"renderer never performed a four-sample SRAM commit")
+        info(s"BANKED_RENDER mode=$mode load=$load texture=$texture accepted=$acceptedSamples committed=$committedSamples fullQuadCycles=$fullQuadCycles drawCycles=$drawCycles")
+      }
       val color = for (y <- 0 until p.height; x <- 0 until p.width; s <- 0 until p.samples)
         yield memory(p.address(x, y, s, depth = false))
       val depth = for (y <- 0 until p.height; x <- 0 until p.width; s <- 0 until p.samples)
@@ -249,15 +290,24 @@ class PersistentTileRenderPipelineSpec extends AnyFlatSpec {
     result
   }
 
-  for (mode <- Seq(0, 2); load <- Seq(false, true)) {
+  for (mode <- (if(configuredBanked)Seq(0,1,2)else Seq(0,2)); load <- Seq(false, true)) {
     it should s"match ordered blending and depth/stencil across four draws at ${1 << mode}x with load=$load" in {
       val reference = render(persistent = false, mode, load)
       val candidate = render(persistent = true, mode, load)
       assert(candidate.color == reference.color)
       assert(candidate.depth == reference.depth)
       assert(candidate.reads < reference.reads && candidate.writes < reference.writes)
+      if(configuredBanked && !load)assert(candidate.drawCycles<reference.drawCycles)
       info(s"mode=$mode load=$load reference reads/writes/cycles=${reference.reads}/${reference.writes}/${reference.cycles}; " +
-        s"persistent=${candidate.reads}/${candidate.writes}/${candidate.cycles}; credits=$configuredCredits")
+        s"persistent=${candidate.reads}/${candidate.writes}/${candidate.cycles}; credits=$configuredCredits; " +
+        s"referenceDrawCycles=${reference.drawCycles} candidateDrawCycles=${candidate.drawCycles}")
+    }
+  }
+  if(configuredBanked)for(mode <- Seq(0,2)) {
+    it should s"match textured sparse quads with per-sample depths at ${1<<mode}x" in {
+      val reference=render(persistent=false,mode,load=false,tileLog2=3,texture=true)
+      val candidate=render(persistent=true,mode,load=false,tileLog2=3,texture=true)
+      assert(candidate.color==reference.color && candidate.depth==reference.depth)
     }
   }
   for (mode <- Seq(0, 2)) {

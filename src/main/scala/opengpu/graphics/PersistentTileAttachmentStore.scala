@@ -13,6 +13,7 @@ class PersistentTileAttachmentStoreIO(externalTransfers: Boolean=false,bankedSam
   val committedSamples=if(bankedSamples) Some(Output(UInt(3.W))) else None
   /** Accepted local producer work/results drained; external exports may remain. */
   val localDrained=if(bankedSamples) Some(Output(Bool())) else None
+  val localAborted=if(bankedSamples) Some(Output(Bool())) else None
   val pass = new TileRenderPassPort
   val fragmentX = Input(UInt(16.W))
   val fragmentY = Input(UInt(16.W))
@@ -137,6 +138,11 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   private val responseForClear = RegInit(false.B)
 
   io.pass.end.ready := state === running && !closing && !clearEngine.io.busy && !io.pass.clear.valid
+  if(bankedSamples) {
+    // A closing command must not prevent older upstream quads reaching SRAM.
+    io.pass.end.ready:=state===running && !closing && !clearEngine.io.busy && !io.pass.clear.valid &&
+      io.producerDrained && io.omDrained && quadDrained && quadRefillDrained && scalarDrained && !responseValid
+  }
   io.pass.active := state =/= idle && (state =/= completed || !allTransfersDrained)
   io.pass.descriptor := descriptor
   io.pass.completion.valid := state === completed && allTransfersDrained
@@ -508,7 +514,8 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
     merge.io.cancel:=failed || abortNow
     quadDrained:=merge.io.drained && banks.io.drained
     val permitQuad=state===running && !closing && !failed && !abortNow &&
-      !clearEngine.io.busy && !io.pass.clear.valid && !io.pass.end.valid &&
+      !clearEngine.io.busy && (!io.pass.clear.valid || !io.producerDrained) &&
+      (!io.pass.end.valid || !io.producerDrained) &&
       !io.om.req.valid && scalarDrained && !responseValid
     merge.io.in.valid:=io.quad.get.valid && permitQuad
     merge.io.in.bits:=io.quad.get.bits
@@ -631,6 +638,7 @@ class PersistentTileAttachmentStore(maxSampleCount: Int = 4,
   }
 
   io.localDrained.foreach(_:=quadDrained && quadRefillDrained && scalarDrained && !responseValid && !clearEngine.io.busy)
+  io.localAborted.foreach(_:=failed || abortNow)
   io.events.resident := io.pass.active
   io.events.admitted := admission.io.out.fire && admission.io.out.bits.valid && !failed && !abortNow
   io.events.completed := io.pass.completion.fire
