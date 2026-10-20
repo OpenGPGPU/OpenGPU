@@ -29,9 +29,10 @@ class TextureGradientLodUnit extends Module {
     val in=Flipped(Decoupled(new TextureGradientLodRequest));val out=Decoupled(new TextureGradientLodResult)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,check,product,candidate,choose,next,initializeLog,logProduct,logSum,logStep,packNormalize,packRound,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,check,selectProduct,product,candidate,choose,next,initializeLog,logProduct,logSum,logStep,packNormalize,packRound,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureGradientLodRequest);private val result=Reg(new TextureGradientLodResult)
   private val status=RegInit(0.U(3.W));private val index=Reg(UInt(3.W));private val product=Reg(UInt(38.W))
+  private val productSignificand=Reg(UInt(24.W));private val productExtent=Reg(UInt(14.W));private val productExponent=Reg(SInt(12.W))
   private val candidateExponent=Reg(SInt(12.W));private val candidateSignificand=Reg(UInt(40.W));private val candidateZero=Reg(Bool())
   private val peakExponent=Reg(SInt(12.W));private val peakSignificand=Reg(UInt(40.W));private val found=RegInit(false.B)
   private val x=Reg(UInt(40.W));private val fraction=Reg(UInt(40.W));private val iteration=Reg(UInt(6.W))
@@ -54,12 +55,16 @@ class TextureGradientLodUnit extends Module {
       val badExtent=(0 until 3).map(a=>a.U<request.dimensions && request.extents(a)===0.U).reduce(_ || _)
       when(stop){phase:=State.finish}.elsewhen(request.dimensions=/=2.U && request.dimensions=/=3.U){status:=1.U;phase:=State.finish}
         .elsewhen(badScalar){status:=6.U;phase:=State.finish}.elsewhen(badExtent){status:=5.U;phase:=State.finish}
-        .otherwise{phase:=State.product}
+        .otherwise{phase:=State.selectProduct}
     }
-    is(State.product){product:=scalar.significand*request.extents(axis);phase:=Mux(stop,State.finish,State.candidate)}
+    is(State.selectProduct){
+      productSignificand:=scalar.significand;productExtent:=request.extents(axis);productExponent:=scalar.exponent
+      phase:=Mux(stop,State.finish,State.product)
+    }
+    is(State.product){product:=productSignificand*productExtent;phase:=Mux(stop,State.finish,State.candidate)}
     is(State.candidate){
       val leading=PriorityEncoder(Reverse(product));val normalized=(product<<leading)(37,0)
-      candidateSignificand:=Cat(normalized,0.U(2.W));candidateExponent:=scalar.exponent+14.S-leading.zext
+      candidateSignificand:=Cat(normalized,0.U(2.W));candidateExponent:=productExponent+14.S-leading.zext
       candidateZero:=product===0.U;phase:=Mux(stop,State.finish,State.choose)
     }
     is(State.choose){
@@ -70,7 +75,7 @@ class TextureGradientLodUnit extends Module {
     }
     is(State.next){
       when(stop){phase:=State.finish}.elsewhen(index===Mux(request.dimensions===3.U,5.U,4.U)){phase:=State.initializeLog}
-        .otherwise{index:=Mux(request.dimensions===2.U && index===1.U,3.U,index+1.U);phase:=State.product}
+        .otherwise{index:=Mux(request.dimensions===2.U && index===1.U,3.U,index+1.U);phase:=State.selectProduct}
     }
     is(State.initializeLog){
       when(stop){phase:=State.finish}.elsewhen(!found){lod:="hff800000".U;phase:=State.finish}
