@@ -67,8 +67,9 @@ per-endpoint warp banks; the single-task shared-CU adapter owns at most one CU.
 Shader execution and resource/VM publication stay pinned through retirement.
 
 Storage is `16 * lanes * warps * 4` data bytes plus16 validity bits per warp/lane,
-for each instantiated native endpoint. Default8-lane/4-warp storage is2048 data
-bytes plus64 valid bytes. This implementation uses registers and muxes; it makes
+for each instantiated native endpoint. The default16-lane/8-warp profile uses8192 data
+bytes plus256 valid bytes. The4-lane/2-warp shared-CU fixtures use512 data
+bytes plus16 valid bytes. This implementation uses registers and muxes; it makes
 no SRAM macro area or bandwidth assumption. Include every endpoint instance and
 its mapped cell cost in later H0/H8 sizing; raster quads do not introduce a
 second shader VLEN.
