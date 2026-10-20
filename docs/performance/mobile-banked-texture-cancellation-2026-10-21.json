@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "short_cancel_pulse_regression_reproduced_and_all_nine_component_checks_pass_after_fix",
+  "before": {
+    "returncode": 1,
+    "source_unchanged": true,
+    "elapsed_seconds": 84.9674792920705,
+    "commit": "6d4d21e43600729f073f14257a86881ec67c4215",
+    "source_files": 808,
+    "manifest_sha256": "0370000d0efb24e126baf345752bc18bf36838a44b1a64b95cb5b089bb6bed12",
+    "archive_sha256": "11a75724ead0972beac3e2c86d01c99487b26142d80db6ca7237d8704855b87c",
+    "git_archive_and_worktree_exact": true
+  },
+  "after": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 20.168136625085026,
+    "commit": "822f0783b984deed39c6d7c27a4fd9e765c918cd",
+    "source_files": 808,
+    "manifest_sha256": "0290c6767ffc4ac91f7cbf864971ccb5c2f584f44d674fc53bf264a740d88551",
+    "archive_sha256": "f224e1672c115aedb667638eb9fb6355223ea5dfdea9c277aa2977e90815f650",
+    "git_archive_and_worktree_exact": true
+  },
+  "before_after_changed_inputs": [
+    "src/main/scala/opengpu/graphics/BankedRgba8TextureHits.scala"
+  ],
+  "regression_identical_before_after": true,
+  "failure": "The internal product stage behind a held immutable public result forgot a one-cycle cancel pulse and incorrectly returned a successful hit.",
+  "fix": "Latch cancellation,clear hit and missing mask while the internal product stage is blocked. Preserve the already offered public result.",
+  "passed_tests": 9,
+  "suites": {
+    "BankedRgba8TextureHitsSpec": 8,
+    "BankedTextureLineStoreSpec": 1
+  },
+  "coverage": [
+    "96 conflict-free complete samples and384 taps at II1",
+    "distinct same-bank and duplicate tap arbitration",
+    "128 unique64-byte lines across8KiB",
+    "explicit misses,physical/context/generation/view identity",
+    "failed fill and invalidate/no-publish drain",
+    "13 cancellation cut points",
+    "one-cycle cancellation behind held public result",
+    "opposite-pair reads during8-cycle refill",
+    "192 samples under long asymmetric output backpressure",
+    "96 continuously contended word requests with fairness and reply reservations"
+  ],
+  "store_synthesis_carry": {
+    "old_source_manifest_sha256": "34dd28002ae9c156dd38f9ec69cdcbc33dc44980a34fa00a9554f04d7c2d61ea",
+    "new_source_manifest_sha256": "0290c6767ffc4ac91f7cbf864971ccb5c2f584f44d674fc53bf264a740d88551",
+    "store_active_RTL_exact": true,
+    "active_RTL_sha256": {
+      "RRArbiter4_BankedTextureLookup.sv": "44f5c4d55e71da506ce442baaa53d0cee63783ff3042be6b6b932314c7b8555a",
+      "ram_2x49.sv": "ed05bb02a8624ddc37ebbe6559251780d3f76af9eb21d192ee3ec9526c21bf72",
+      "Queue2_BankedTextureWord.sv": "4147738d593b53700a1ba5d327c93bf8f38d395e9c4af75df57a4b1474bf2dc4",
+      "memory_256x32.sv": "c765dcd3e2ed7ffda1221fab77bcf0223da27de002849560a9eb01fdcb1832d3",
+      "L2SramArray.sv": "c1104c24dbda2c1e4b6688300e1168baef38ac07eeed8876af67c032584397b7",
+      "BankedTextureLineStore.sv": "662adc1b69667b62a34500346efad2990482fbcf697c02e3e31a14567cba6f0d"
+    },
+    "store_qualification": "generated/qualification/ppa/mobile-banked-texture-store-2026-10-21-v3/qualification.json",
+    "store_qualification_sha256": "b22ef13bb1aed708d825817acfcb5dd470578706a96920ebface2b9f7fcdeff3",
+    "cluster_requires_fresh_synthesis": true
+  },
+  "cluster_synthesis": "Fresh fixed-source screen running;the earlier successful cluster screen does not qualify the cancellation fix.",
+  "artifacts_sha256": {
+    ".artifacts/mobile-banked-texture-cancel-pulse-before-v1.log": "ca0de53762be12d8fc0ec2ed388a76f8bad1c3afd3986ebe7a7e3c8fe5cc1d6e",
+    ".artifacts/mobile-banked-texture-cancel-pulse-before-v1-result.json": "f3fe44327a9e16d2192eaf4df7e12c04045a2e7d48f6c4d205dd4b830a98d831",
+    ".artifacts/mobile-banked-texture-cancel-pulse-before-v1-source.json": "0370000d0efb24e126baf345752bc18bf36838a44b1a64b95cb5b089bb6bed12",
+    ".artifacts/mobile-banked-texture-cancel-pulse-before-v1-source.tar.gz": "11a75724ead0972beac3e2c86d01c99487b26142d80db6ca7237d8704855b87c",
+    ".artifacts/mobile-banked-texture-cancel-pulse-after-v1.log": "bf93b78254d7ffa61a5f43356688e915be2fff65d148f61a34a321b785c5d0d5",
+    ".artifacts/mobile-banked-texture-cancel-pulse-after-v1-result.json": "841d440ed23d4ec7c27da8adaabf8f794b48841c89971de0cf8b4ae3dd6daf8b",
+    ".artifacts/mobile-banked-texture-cancel-pulse-after-v1-source.json": "0290c6767ffc4ac91f7cbf864971ccb5c2f584f44d674fc53bf264a740d88551",
+    ".artifacts/mobile-banked-texture-cancel-pulse-after-v1-source.tar.gz": "f224e1672c115aedb667638eb9fb6355223ea5dfdea9c277aa2977e90815f650"
+  },
+  "remaining": [
+    "sixteen outstanding translated line fills,joining and fault fanout",
+    "owner-scoped cancellation and native shader integration",
+    "whole-path throughput,precision and coherence",
+    "full H0-H8 requirements"
+  ],
+  "PPA": "synthesis only"
+}
