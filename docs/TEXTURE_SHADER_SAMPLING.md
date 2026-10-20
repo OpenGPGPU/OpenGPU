@@ -30,9 +30,13 @@ verified before claiming the H5 common-path requirement.
 
 | Mode | Vertex | Fragment |
 | --- | --- | --- |
-| Automatic | Effective lambda +0; no helper requirement | Complete fine helper differences, then clamped shader bias |
-| Explicit | Supplied effective lambda | Supplied effective lambda |
+| Automatic | Pre-clamp lambda +0; no helper requirement | Complete fine helper differences, then clamped shader bias |
+| Explicit | Supplied lambda | Supplied lambda |
 | Gradient | Original-coordinate explicit gradients | Original-coordinate explicit gradients |
+
+Vertex automatic selection follows [GLES 3.0.6 section 2.12.9.4](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf):
+the pre-bias lambda starts at zero. Sampler min/max LOD clamps still apply after
+this stage policy.
 
 Bias must have canonical zero bits outside fragment automatic mode. Invalid
 mode, offset range or missing fragment helper mask fails before root reads.
