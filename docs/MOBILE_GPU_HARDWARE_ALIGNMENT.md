@@ -5239,8 +5239,9 @@ The [standalone synthesis comparison](performance/mobile-point-line-synthesis-20
 changes the point/line core estimate from 273.089 to 278.539 MHz (+2.00%), with
 mapped area up 2.78%. Including measured setup cycles gives 1.26–1.94% lower
 estimated latency for those small fixtures. Both versions still fail 1 GHz
-setup. This component result does not replace the 255.537 MHz prepared replay
-engine estimate; composed synthesis and image/native regressions are pending.
+setup. This component result does not establish composed speedup. The later
+composed screen below reports 255.397 MHz; image/native regression results are
+recorded in the following paragraph.
 
 The [host AXI ownership correction](HOST_AXI_RESPONSE_OWNERSHIP.md) fixes two
 independently reproduced failures: simultaneous AR/AW acceptance into one address
@@ -5373,3 +5374,29 @@ run and the earlier pre-polygon 102-check composition are separate gates.
 GPU-memory binned offset publication, all five depth formats, numeric precision,
 clipping/perspective cases, complete faults/reset, cycles, synthesis and H0–H8
 remain open. PPA remains synthesis only.
+
+## Point/line composed replay synthesis result (2026-10-20)
+
+The [completed single-engine screen](performance/mobile-point-line-replay-synthesis-2026-10-20.json)
+passes complete mapping but **fails 1 GHz setup**. With unchanged ASAP7 TC/SLVT,
+1000 ps period, 25% I/O delay, ideal clock and no retiming, its core estimate
+changes from **255.537 to 255.397 MHz** (-0.055%). Core setup slack worsens by
+2.149 ps to **-2915.477 ps**; reported I/O slack is +117.184 ps. Area including
+the same 21 characterized SRAM macros increases from 172654.027199 to
+**173950.116299 um²** (+0.751%), with 16965 additional mapped cells.
+
+All 64 active RTL inputs match the qualified emission, the overlapping wrapper
+inputs match the frozen 627-file source/ABI snapshot, and its additional script,
+placement and README inputs are hashed separately. Source hashes remain
+unchanged through the run. The first attempt stopped before mapping because
+the SRAM LIB was missing; the completed v2 run uses the exact baseline LIB/LEF
+hashes. The earlier 37 passing component/native checks remain scoped separately.
+
+The worst core path now runs from point/line `sampleMode[0]` to `mask[0]`.
+The standalone +2.00% estimate did not improve the composed clock estimate;
+two/three additional setup cycles still apply. Carry corrections and triangle
+admission changes accompany staging, so the comparison does not isolate staging
+alone. Further timing work must cut the measured per-sample coverage path.
+This maps one replay engine and predates centroid/polygon-offset integration;
+native host/four-CU timing, representative frame rates, full budgets and H0-H8
+remain open. PPA remains **synthesis only**.
