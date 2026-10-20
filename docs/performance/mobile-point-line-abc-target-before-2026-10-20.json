@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "abc900_unchanged_rtl_gate_same_setup_miss",
+  "source_files": 674,
+  "terminal": {
+    "returncode": 2,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 247.59681870788336,
+    "finished_utc": "2026-10-20T09:11:48.597683+00:00"
+  },
+  "reported_setup_slacks_ps": [
+    -24.602,
+    639.059
+  ],
+  "gate_proof": {
+    "schema": 1,
+    "rtl_byte_identical": true,
+    "declared_gate_sdc_byte_identical": true,
+    "gate_sdc_sha256": "b83b6b6693ab29ae8a50532609e1127ab2544fbd711196dcb20109bcefc19123",
+    "declared_clock_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "abc_optimization_target_ps": 900,
+    "retiming": false,
+    "qualifier_script_sha256": "38fe4b1cad315d3e8c137536ebe35175c54aced270334305565cfa63238f325c",
+    "scope": "Mapping target changes only;hardware RTL and declared setup constraints stay exact."
+  },
+  "cli_validation": {
+    "passed": true,
+    "cases": [
+      {
+        "value": "0",
+        "returncode": 2,
+        "no_output_created": true
+      },
+      {
+        "value": "-1",
+        "returncode": 2,
+        "no_output_created": true
+      },
+      {
+        "value": "nan",
+        "returncode": 2,
+        "no_output_created": true
+      },
+      {
+        "value": "inf",
+        "returncode": 2,
+        "no_output_created": true
+      },
+      {
+        "value": "-inf",
+        "returncode": 2,
+        "no_output_created": true
+      },
+      {
+        "engine": "syn",
+        "returncode": 2,
+        "no_output_created": true
+      }
+    ],
+    "script_sha256": "38fe4b1cad315d3e8c137536ebe35175c54aced270334305565cfa63238f325c"
+  },
+  "artifacts": {
+    "generated/qualification/ppa/mobile-point-line-admission-balanced-2026-10-20-v3/result.json": "b4babbeae4541c059e42b381641b49b901100ec873e723c24ff9e9f1eef69bcc",
+    "generated/qualification/ppa/mobile-point-line-admission-balanced-2026-10-20-v3/qualification.json": "de4df9d08f7fdca1d2ded791a77c599f42b85186810817f8a6b96355866239ef",
+    "generated/qualification/ppa/mobile-point-line-admission-balanced-2026-10-20-v3/manifest.json": "152243123f935858d943b35a1faca387ee9a904f6f09cb7b3da122072e5b5795",
+    "generated/qualification/ppa/mobile-point-line-admission-balanced-2026-10-20-v3/flow/synthesis_sta.log": "033c3a39a114a4736798652f62f0a976f8da49bc211ef8669547a9f3e610b872",
+    ".artifacts/mobile-point-line-abc-gate-proof-v1.json": "82a7529887cb04264172c7ef645a8de85cb6a3390935946a28251d3fa8ddfc1b"
+  },
+  "limits": [
+    "Mapping target900ps did not improve the reported24.602ps setup miss.",
+    "Declared clock1000ps and I/O25 percent stayed exact;no clock relaxation or retiming.",
+    "No positive setup,native clock,route or power claim."
+  ]
+}

@@ -6257,3 +6257,14 @@ remaining path is viewport width to scan admission. This result stays negative.
 A separately recorded900ps ABC mapping target is being tested against the same
 1000ps SDC clock,I/O budget and exact RTL;no clock relaxation or retiming is used.
 No native clock,product rate or full H0-H8 result is claimed.
+
+
+## Retained mapping-target experiment (2026-10-20)
+
+The [ABC900ps experiment](performance/mobile-point-line-abc-target-before-2026-10-20.json)
+uses byte-identical RTL and SDC to the standard balanced screen. The tool log
+confirms900ps mapping optimization,but the actual1000ps gate still misses by
+24.602ps,with identical I/O+639.059ps. This experiment does not qualify timing.
+The new optional CLI target rejects6 invalid cases before output creation and
+preserves the unset default. A register cut between clipped bounds and scan
+admission will now be measured with the standard mapping target.
