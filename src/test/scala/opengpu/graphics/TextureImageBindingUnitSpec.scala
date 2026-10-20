@@ -88,7 +88,7 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
   }
   private def image(target: Int=0,format: Int=35,baseLevel: Int=0,maxLevel: Int=15,w: Int=7,h: Int=5,d: Int=3,layers: Int=3,
     reverse: Boolean=false): Image={
-    val bytes=TypedColorReference.format(TypedColorReference.names(format)).bytes
+    val bytes=ImageFormatReference.format(ImageFormatReference.names(format)).bytes
     var cursor=BigInt(0x100003);val views=mutable.Map.empty[Int,View]
     for(level<-(if(reverse)(0 until 16).reverse else 0 until 16)){
       val width=1.max(w>>level);val height=1.max((if(target==2)w else h)>>level)
@@ -145,8 +145,8 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
         b.selected.handle.expect((i.first+lastLevel).U);b.selected.level.expect(lastLevel.U);b.view.base.expect(v.base.U)
         b.view.texWidth.expect(v.w.U);b.view.texHeight.expect(v.h.U);b.view.texDepth.expect(v.d.U);b.view.layers.expect(v.layers.U)
         if(fetch){val s=o.sample.sample;s.status.expect(0.U);s.viewValid.expect(true.B);s.address.expect(address.U);s.bytes.expect(v.bytes.U);s.raw.expect(raw.U)
-          val name=TypedColorReference.names(i.format);o.sample.rgba.zip(TypedBlendReference.decode(name,raw)).foreach{case(a,b)=>a.expect(b.U)}
-          o.sample.colorType.expect(TypedColorReference.format(name).kind.U)}
+          val name=ImageFormatReference.names(i.format);o.sample.rgba.zip(ImageFormatReference.decode(name,raw)).foreach{case(a,b)=>a.expect(b.U)}
+          o.sample.colorType.expect(ImageFormatReference.format(name).kind.U)}
       }else{b.format.expect(0.U);assert(values(b.view).values.forall(_==0));assert(values(b.selected).values.forall(_==0))
         if(fetch){o.sample.sample.status.expect(status.U);o.sample.sample.viewValid.expect(false.B);o.sample.sample.address.expect(0.U);o.sample.sample.raw.expect(0.U)
           o.sample.rgba.foreach(_.expect(0.U));o.sample.colorType.expect(0.U)}}
@@ -157,7 +157,7 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
   }
   it should "bind authoritative formats and validate complete target mip chains before fetching typed texels" in {
     simulate(new ImageBindingHarness()){d=>val t=new Driver(d);val random=new scala.util.Random(0x47584901);var queries=0
-      for(target<-0 to 3;format<-0 until 36){val i=image(target,format,reverse=(format%2==0));val level=format%3;val v=i.views(level)
+      for(target<-0 to 3;format<-0 until 54 if !(target==3 && ImageFormatReference.format(ImageFormatReference.names(format)).depth)){val i=image(target,format,reverse=(format%2==0));val level=format%3;val v=i.views(level)
         val x=v.w-1;val y=v.h-1;val z=v.d-1;val l=v.layers-1;val face=if(target==2)5 else 0;val a=v.address(x,y,z,l,face)
         val raw=BigInt(v.bytes*8,random);t.install(i);t.payload(a,v.bytes,raw);t.invalidate()
         t.memory.holdResponses=true;t.query(level,tag=0xfedc0000L+queries,x=x,y=y,z=z,layer=l,face=face)
@@ -168,7 +168,7 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
         for(_<-0 until 3){t.tick();assert(d.io.out.bits.peek().litValue==held)}
         t.pop();d.io.cancel.poke(false.B);d.io.invalidate.poke(false.B);queries+=1}
       assert(t.memory.seen.exists(_.tag==0) && t.memory.seen.exists(_.tag==7))
-      info(s"IMAGE_BINDING_FETCH targets4=true formats36=true queries=$queries completeNPOTMipChains=true reversedDisjointLayouts=true authoritativeFormatNoCallerFormat=true allCubeFacesAndArrayVolume=true exactGuardedTypedTexels=true disjointThreeOwnerTags=true reorderedImageHeader=true immutableHeldResults=true")
+      info(s"IMAGE_BINDING_FETCH targets4=true formats54=true queries=$queries completeNPOTMipChains=true reversedDisjointLayouts=true authoritativeFormatNoCallerFormat=true allCubeFacesAndArrayVolume=true exactGuardedTypedTexels=true disjointThreeOwnerTags=true reorderedImageHeader=true immutableHeldResults=true")
     }
   }
   it should "apply base max and dimensional mip rules and distinguish selected-only from full-chain cache identities" in {
@@ -194,11 +194,13 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
     simulate(new ImageBindingHarness()){d=>val t=new Driver(d);val i=image();val corrupt=Seq(0->BigInt(0),1->BigInt(64),2->BigInt(2),3->BigInt(8),6->BigInt(1),
         7->BigInt(8),8->BigInt(64),9->BigInt(16),11->BigInt(16384),14->BigInt(65536),17->BigInt(2),18->BigInt(256),21->BigInt(2))++(23 until 32).map(_->BigInt(1))
       for((word,bits)<-corrupt){t.install(i);t.memory.putWord(0x1000+4*word,bits);t.invalidate();val n=t.dataReads;t.query();t.check(7,stage=4);t.pop();assert(t.dataReads==n)}
-      for((word,bits,status)<-Seq((8,BigInt(36),6),(7,BigInt(4),1),(11,BigInt(0),1),(10,BigInt(0),0),
+      for((word,bits,status)<-Seq((8,BigInt(54),6),(7,BigInt(4),1),(11,BigInt(0),1),(10,BigInt(0),0),
         (16,BigInt(0),2),(18,BigInt(0),2),(19,BigInt(0x2001),2),(20,BigInt(0x2080),2)) if status!=0){
         t.install(i);t.memory.putWord(0x1000+4*word,bits);t.invalidate();val n=t.dataReads;val before=t.memory.seen.size
         t.query();t.check(status,stage=4);t.pop();assert(t.dataReads==n)
         if(word==8)assert(!t.memory.seen.drop(before).exists(_.tag<2))}
+      for(format<-49 to 53){val invalid=image(target=3,format=format);t.install(invalid);t.invalidate();val before=t.memory.seen.size
+        t.query();t.check(1,stage=4);t.pop();assert(!t.memory.seen.drop(before).exists(_.tag<2),"depth3D must fail before level/data reads")}
       val later=i.levelAddress(2)
       for((word,bits)<-Seq(13->BigInt(3),14->BigInt(0),24->BigInt(8),9->BigInt(0),16->BigInt(2),12->i.views(0).base)){
         t.install(i);t.memory.putWord(later+word*4,bits);t.invalidate();val n=t.dataReads;t.query(level=0)
@@ -212,7 +214,7 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
     simulate(new ImageBindingHarness()){d=>val t=new Driver(d);val old=image(format=3,maxLevel=0);t.install(old);val a=old.views(0).base
       val raw=BigInt(0x3f800000);t.payload(a,4,raw);t.query();t.check(i=old,raw=raw,address=a);t.pop()
       val fresh=old.copy(format=29) // R32F has identical four-byte storage and a distinct interpretation.
-      assert(TypedColorReference.names(fresh.format)=="R32F");t.install(fresh)
+      assert(ImageFormatReference.names(fresh.format)=="R32F");t.install(fresh)
       val n=t.memory.seen.size;t.query(tag=6);t.check(i=old,raw=raw,address=a);d.io.out.bits.image.hit.expect(true.B);t.pop()
       assert(t.memory.seen.size==n+1)
       t.invalidate();t.memory.holdResponses=true;t.query(tag=7);t.until(t.memory.pending.size==2);t.invalidate()

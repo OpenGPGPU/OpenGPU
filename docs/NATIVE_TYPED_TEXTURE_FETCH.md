@@ -1,6 +1,9 @@
 # Native shader resource bindings and typed component fetch
 
-Status: qualified native hardware path with 114 distinct targeted controls,
+Current: the [54-format image extension](performance/mobile-texture-image-formats-2026-10-20.json)
+passes 119 distinct targeted controls and four standalone synthesis screens.
+
+Original 36-format qualification: native hardware path with 114 targeted controls,
 including typed and legacy native execution, metadata/decoder/image coverage,
 1/4/16/32-lane component execution, nine ABI checks and combined C11 headers.
 The [source record](performance/mobile-native-typed-texture-fetch-2026-10-20.json)
@@ -9,13 +12,16 @@ All four [standalone synthesis setup screens](performance/mobile-native-typed-te
 pass at standard 1000 ps, 25% I/O, TC/SLVT and no retiming. GTX1 now advertises
 hardware typed component fetch with feature bit512. Existing driver shader
 admission and LLVM mnemonics/codegen still need separate integration. General
-sampling/filtering, LOD application and compressed/depth formats remain open.
+sampling/filtering, LOD application, compressed formats and depth comparison remain open.
+The later [54-format catalog](TEXTURE_IMAGE_FORMATS.md) extends uncompressed image
+decode and adds GTF1 runtime discovery; the114-control results below describe the
+original36-format snapshot.
 
 Native vertex and fragment shader owners now route typed texel component fetch
 through independent per-stage GPU resource roots. Integer coordinates retain
 all 32 bits, including invalid negative encodings, until the existing checked
 image address pipeline rejects out-of-range values. Typed decoding reuses GXI1,
-GXS1, GXL1 and the 36 packed format decoder; shader arithmetic stays on the CUs.
+GXS1, GXL1 and the independent image format decoder; shader arithmetic stays on the CUs.
 The fixed-function path selects and decodes a texel, then returns one raw typed
 32-bit component. Four ordinary instructions can fill four independent scalar
 or vector destination registers without introducing a register-tuple scoreboard.

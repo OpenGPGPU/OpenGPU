@@ -19,6 +19,6 @@ object NativeTextureCapabilities {
     "TEXTURE_CAP_SIGNED_COORDINATES"->"8u","TEXTURE_CAP_INDEPENDENT_AXES"->"16u",
     "TEXTURE_CAP_CAPTURED_BINDING"->"32u","TEXTURE_CAP_TRAPPED_COORDINATE_FAULT"->"64u",
     "TEXTURE_CAP_SCALAR"->"128u","TEXTURE_CAP_VECTOR"->"256u",
-    "TEXTURE_CAP_TYPED_COMPONENT_FETCH"->"512u","TYPED_FETCH_BINDINGS_PER_STAGE"->"32u","TYPED_FETCH_FORMAT_COUNT"->"36u"
-  ).map{case(n,v)=>s"#define $prefix$n $v\n"}.mkString
+    "TEXTURE_CAP_TYPED_COMPONENT_FETCH"->"512u","TYPED_FETCH_BINDINGS_PER_STAGE"->"32u","TYPED_FETCH_FORMAT_COUNT"->s"${TextureImageFormat.formats.size}u"
+  ).map{case(n,v)=>s"#define $prefix$n $v\n"}.mkString+NativeTextureFormatCapabilities.header(prefix)
 }

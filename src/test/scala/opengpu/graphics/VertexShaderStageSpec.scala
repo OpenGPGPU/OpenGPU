@@ -488,7 +488,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       val id=Seq[BigInt](7,8,9);val texData=NativeTextureFetchTestData
       texData.roots(t.put,stage=0,id=id)
       val formats=Seq("RGBA32UI","RGBA32I","RGBA32F","RGBA8").map(TypedColorReference.names.indexOf)
-      val views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,formats(u),u,0,id))
+      var views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,formats(u),u,0,id))
       for(u<-0 until 4){texData.coordinates(t.put,target=u,id=id,address=texData.packet+u*64);t.put(0x5000+u*4,texData.packet+u*64)}
       val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
       def code(c: Int,scalar: Boolean): Seq[BigInt]={
@@ -516,6 +516,15 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       }
       for(scalar<-Seq(false,true);c<-0 until 4)run(c,scalar)
       run(0,false,bad=true);run(2,false,cancelled=true);run(3,true)
+      var addedDraws=0
+      for(group<-(36 until 54).grouped(4)){
+        val ids=group.padTo(4,group.head)
+        views=(0 until 4).map{u=>val target=if(u==3 && ImageFormatReference.format(ImageFormatReference.names(ids(u))).depth)0 else u
+          texData.coordinates(t.put,target=target,id=id,address=texData.packet+u*64)
+          texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),target,0,id)}
+        for(scalar<-Seq(false,true);c<-0 until 4){run(c,scalar);addedDraws+=1}
+      }
+      info(s"NATIVE_IMAGE_FORMAT_CU stage=vertex local=$local newFormats18=true scalarVector=true addedDraws=$addedDraws")
       info(s"NATIVE_TYPED_FETCH_CU stage=vertex local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true mixedRawTypes=true perLaneBindings=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
     }
   }

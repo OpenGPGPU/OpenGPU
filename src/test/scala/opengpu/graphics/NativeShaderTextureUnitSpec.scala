@@ -55,11 +55,11 @@ class NativeShaderTextureUnitSpec extends AnyFlatSpec {
   it should s"fetch every typed component and target through independent stage bindings with stage=$stage" in {
     simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage)
       var checks=0
-      for(target<-0 to 3;format<-0 until 36){val unit=(format+target)%32;val v=install(t.put,t.byte,unit,format,target,stage)
+      for(target<-0 to 3;format<-0 until 54 if !(target==3 && ImageFormatReference.format(ImageFormatReference.names(format)).depth)){val unit=(format+target)%32;val v=install(t.put,t.byte,unit,format,target,stage)
         coordinates(t.put,target);d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
         for(c<-0 until 4){t.scalarRequest(c,unit);t.scalarResult(v.expected(c));checks+=1}}
-      assert(checks==576)
-      info(s"NATIVE_TYPED_TEXTURE stage=$stage targets4=true formats36=true componentChecks=$checks bindingSlots32=true twoPhysicalCredits=true fullRawTypes=true heldResults=true snapshotPoisoned=true")
+      assert(checks==844)
+      info(s"NATIVE_TYPED_TEXTURE stage=$stage targets4=true formats54=true componentChecks=$checks bindingSlots32=true twoPhysicalCredits=true fullRawTypes=true heldResults=true snapshotPoisoned=true")
     }
   }
   it should "retain inactive vector lanes and suppress every destination lane on a later active lane fault" in {

@@ -140,7 +140,7 @@ class TextureImageTypedFetchRequest extends Bundle {val resource=new TextureImag
 class TextureImageTypedFetchResult extends Bundle {
   val sample=new TextureImageDataFetchResult;val rgba=Vec(4,UInt(32.W));val colorType=UInt(2.W)
 }
-/** Register component extraction before the shared numeric decode operations.
+/** Register extraction, numeric preparation and final rounding separately.
   * The existing TypedColorDecoder and its users keep their original latency.
   */
 private[graphics] class TextureImageFetchDecoder extends Module {
@@ -148,33 +148,71 @@ private[graphics] class TextureImageFetchDecoder extends Module {
     val in=Flipped(Decoupled(new TypedColorDecodeRequest));val out=Decoupled(new TypedColorDecodeResult)
     val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,select,decode,respond=Value}
+  private object State extends ChiselEnum {val idle,select,prepare,decode,respond=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TypedColorDecodeRequest)
   private val result=Reg(new TypedColorDecodeResult);private val c=RegInit(0.U(2.W))
-  private val raw=Reg(UInt(32.W));private val bits=Reg(UInt(6.W));private val encoding=Reg(UInt(3.W))
+  private val raw=Reg(UInt(32.W));private val bits=Reg(UInt(6.W));private val encoding=Reg(UInt(4.W))
+  private val sharedExponent=Reg(UInt(5.W))
+  private val preparedValue=Reg(UInt(32.W));private val normalized=Reg(Bool())
+  private val mantissa=Reg(UInt(24.W));private val guard=Reg(Bool());private val exponent=Reg(UInt(8.W))
+  private val negative=Reg(Bool());private val zero=Reg(Bool())
   private val present=Reg(Bool());private val alpha=Reg(Bool());private val defaultValue=Reg(UInt(32.W))
   io.in.ready:=phase===State.idle;io.out.valid:=phase===State.respond;io.out.bits:=result;io.busy:=phase=/=State.idle
   when(io.in.fire){request:=io.in.bits;result:=0.U.asTypeOf(result);result.tag:=io.in.bits.tag
-    result.colorType:=TypedColorFormat.kind(io.in.bits.format);c:=0.U
-    when(TypedColorFormat.valid(io.in.bits.format)){phase:=State.select}.otherwise{result.status:=1.U;phase:=State.respond}}
+    result.colorType:=TextureImageFormat.kind(io.in.bits.format);c:=0.U
+    when(TextureImageFormat.valid(io.in.bits.format)){phase:=State.select}.otherwise{result.status:=1.U;phase:=State.respond}}
   when(phase===State.select){
-    val width=TypedColorFormat.componentWidth(request.format,c)
-    val shift=TypedColorFormat.componentOffset(request.format,c)
+    val width=TextureImageFormat.componentWidth(request.format,c)
+    val shift=TextureImageFormat.componentOffset(request.format,c)
     raw:=(request.value>>shift)(31,0)&((1.U(33.W)<<width)-1.U)(31,0)
-    bits:=width;encoding:=TypedColorFormat.encoding(request.format);present:=width=/=0.U;alpha:=c===3.U
-    defaultValue:=Mux(c===3.U,Mux(TypedColorFormat.kind(request.format)===0.U,"h3f800000".U,1.U),0.U)
-    phase:=State.decode
+    bits:=width;encoding:=TextureImageFormat.encoding(request.format);present:=width=/=0.U;alpha:=c===3.U
+    sharedExponent:=request.value(31,27)
+    defaultValue:=Mux(c===3.U,Mux(TextureImageFormat.kind(request.format)===0.U,"h3f800000".U,1.U),0.U)
+    phase:=State.prepare
   }
   private val signed=((raw<<(32.U-bits))(31,0).asSInt>>(32.U-bits)).asUInt
   private val decoded=MuxLookup(encoding,raw)(Seq(0.U->TypedColorDecode.unorm(raw,bits),2.U->signed,
     3.U->TypedColorDecode.half(raw(15,0)),5.U->Mux(alpha,TypedColorDecode.unorm(raw,8.U),Srgb8Decode.values(raw(7,0)))))
-  when(phase===State.decode){result.rgba(c):=Mux(present,decoded,defaultValue)
+  // Signed normalized and16/24-bit depth need more than the legacy40
+  // fractional bits. Eighty bits retain all rounding information even at D24's
+  // smallest nonzero value. Odd denominators cannot produce binary midpoints.
+  private val magnitude=Mux(raw(7),(0.U(8.W)-raw(7,0))(7,0),raw(7,0))
+  private val numerator=Mux(encoding===6.U,Mux(magnitude>127.U,127.U,magnitude).pad(32),raw)
+  private val fractionBits=Mux(encoding===6.U,7.U,bits)
+  private val repeated=MuxLookup(fractionBits,0.U(80.W))(Seq(7,16,24).map{b=>
+    val count=(80+b-1)/b;val size=count*b;b.U->Fill(count,numerator(b-1,0))(size-1,size-80)})
+  private val leading=PriorityEncoder(Reverse(repeated))
+  private val shifted=(repeated<<leading)(79,0)
+  private def miniFloat(n: UInt,fractionBits: Int): UInt={
+    val fraction=n(fractionBits-1,0);val e=n(fractionBits+4,fractionBits)
+    val leading=PriorityEncoder(Reverse(fraction))
+    val sub=(fraction.pad(24)<<(leading+&(24-fractionBits).U))(22,0)
+    Mux(e===31.U,Mux(fraction.orR,"h7fc00000".U,"h7f800000".U),
+      Mux(e===0.U,Mux(fraction.orR,Cat(0.U(1.W),(112.U(8.W)-leading)(7,0),sub),0.U),
+        Cat(0.U(1.W),(e+&112.U)(7,0),fraction,0.U((23-fractionBits).W))))
+  }
+  private val sharedMantissa=raw(8,0)
+  private val sharedLeading=PriorityEncoder(Reverse(sharedMantissa))
+  private val sharedFraction=(sharedMantissa.pad(24)<<(sharedLeading+&15.U))(22,0)
+  private val sharedValue=Mux(sharedMantissa.orR,
+    Cat(0.U(1.W),(111.U(8.W)+sharedExponent-sharedLeading)(7,0),sharedFraction),0.U)
+  when(phase===State.prepare){
+    normalized:=encoding===6.U || encoding===9.U
+    mantissa:=shifted(79,56);guard:=shifted(55);exponent:=126.U-leading
+    zero:=numerator===0.U;negative:=encoding===6.U && raw(7) && numerator=/=0.U
+    preparedValue:=Mux(encoding===7.U,Mux(bits===10.U,miniFloat(raw,5),miniFloat(raw,6)),
+      Mux(encoding===8.U,sharedValue,decoded))
+    phase:=State.decode
+  }
+  private val rounded=mantissa+&guard
+  private val normalizedValue=Mux(zero,0.U,Cat(negative,(exponent+rounded(24))(7,0),rounded(22,0)))
+  when(phase===State.decode){result.rgba(c):=Mux(present,Mux(normalized,normalizedValue,preparedValue),defaultValue)
     when(c===3.U){phase:=State.respond}.otherwise{c:=c+1.U;phase:=State.select}}
   when(io.out.fire){phase:=State.idle}
 }
-/** Typed36-format fetch. Format is captured at admission; its byte size must
+/** Typed54-format fetch. Format is captured at admission; its byte size must
   * agree with the GPU level layout before texture data can be read. Integer
-  * outputs remain raw typed values; normalized/half/sRGB use the shared decoder.
+  * outputs remain raw typed values; normalized/half/sRGB and packed/depth values use image decode.
   */
 class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig()) extends Module {
   val io=IO(new Bundle {
@@ -194,7 +232,7 @@ class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
   io.memoryRequest<>fetch.io.memoryRequest;fetch.io.memoryResponse<>io.memoryResponse
   fetch.io.invalidate:=io.invalidate || stop;fetch.io.cancel:=fetchStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   fetch.io.in.valid:=phase===State.offerFetch;fetch.io.in.bits.resource:=request.resource
-  fetch.io.in.bits.block4x4:=false.B;fetch.io.in.bits.blockBytes:=TypedColorFormat.bytes(request.format)
+  fetch.io.in.bits.block4x4:=false.B;fetch.io.in.bits.blockBytes:=TextureImageFormat.bytes(request.format)
   fetch.io.out.ready:=phase===State.waitFetch
   decoder.io.in.valid:=phase===State.offerDecode;decoder.io.in.bits.value:=sample.raw
   decoder.io.in.bits.format:=request.format;decoder.io.in.bits.tag:=request.resource.tag(7,0)
@@ -206,7 +244,7 @@ class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
       request:=io.in.bits;sample:=0.U.asTypeOf(sample);rgba.foreach(_:=0.U);colorType:=0.U
       status:=0.U;fetchStarted:=false.B;phase:=State.check
     }}
-    is(State.check){when(stop){phase:=State.finish}.elsewhen(!TypedColorFormat.valid(request.format)){
+    is(State.check){when(stop){phase:=State.finish}.elsewhen(!TextureImageFormat.valid(request.format)){
       status:=TextureImageFetchStatus.format.U;phase:=State.finish
     }.otherwise{phase:=State.offerFetch}}
     is(State.offerFetch){when(fetch.io.in.fire){fetchStarted:=true.B;phase:=State.waitFetch}}

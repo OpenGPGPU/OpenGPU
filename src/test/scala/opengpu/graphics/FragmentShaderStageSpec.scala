@@ -519,7 +519,8 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       t.expectedColorTypes=Vector(0,1,2,1)
       texData.roots(t.put,stage=1,id=id)
       val format=TypedColorReference.names.indexOf("RGBA32UI")
-      val views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,format,u,1,id,
+      var outputKind=1
+      var views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,format,u,1,id,
         raw=BigInt("fedcba98765432100123456789abcdef",16)+u))
       for(u<-0 until 4)texData.coordinates(t.put,target=u,id=id,address=texData.packet+u*64)
       val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
@@ -536,7 +537,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       def run(c: Int,scalar: Boolean,bad: Boolean=false,cancelled: Boolean=false): Unit={
         t.exports.clear();t.descriptor();d.io.draw.bits.shaderPc.poke((0x60000+(if(scalar)0x10000 else 0)+c*0x1000).U)
         d.io.draw.bits.resources.version.poke(1.U);d.io.draw.bits.resources.address.poke(texData.root.U)
-        d.io.draw.bits.colorTypes(3).poke(1.U)
+        t.expectedColorTypes=Vector(0,1,2,outputKind);d.io.draw.bits.colorTypes(3).poke(outputKind.U)
         var rootRead=false;val faultLine=views(3).address& ~BigInt(63)
         t.fault=(a,w)=>{if(!w && a==texData.root)rootRead=true;bad && !w && a==faultLine}
         t.submit();d.io.draw.bits.resources.version.poke(3.U);d.io.draw.bits.resources.address.poke("hffffffff".U)
@@ -552,6 +553,15 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       }
       for(scalar<-Seq(false,true);c<-0 until 4)run(c,scalar)
       run(0,false,bad=true);run(2,false,cancelled=true);run(3,true)
+      var addedDraws=0
+      for(kind<-0 to 2;group<-(36 until 54).filter(n=>ImageFormatReference.format(ImageFormatReference.names(n)).kind==kind).grouped(4)){
+        outputKind=kind;val ids=group.padTo(4,group.head)
+        views=(0 until 4).map{u=>val target=if(u==3 && ImageFormatReference.format(ImageFormatReference.names(ids(u))).depth)0 else u
+          texData.coordinates(t.put,target=target,id=id,address=texData.packet+u*64)
+          texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),target,1,id)}
+        for(scalar<-Seq(false,true);c<-0 until 4){run(c,scalar);addedDraws+=1}
+      }
+      info(s"NATIVE_IMAGE_FORMAT_CU stage=fragment local=$local newFormats18=true scalarVector=true addedDraws=$addedDraws")
       info(s"NATIVE_TYPED_FETCH_CU stage=fragment local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true integerRawTypes=true helperInputs=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
     }
   }

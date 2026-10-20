@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "four_standalone_full_mapping_and_setup_screens_pass",
+  "source_files": 696,
+  "source_manifest_sha256": "1ef88dbfc60dd6468ea1a74060cec85b3346cc50a2fadf904ba110a09dc58dba",
+  "source_commit": "472f185976f4ddbf493e55f1fbeabf3dbe4ca11b",
+  "production_manifest_and_emitted_rtl_match_current_source": true,
+  "constraints": {
+    "clock_period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "engine": "yosys",
+    "abc_target": "standard",
+    "retiming": false,
+    "synthesis_only": true
+  },
+  "profiles": {
+    "typed": {
+      "module": "TextureImageTypedFetchUnit",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 83.2559891671408,
+        "finished_utc": "2026-10-20T11:39:45.585103+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        24.587,
+        431.712
+      ],
+      "mapped_cells": 57038,
+      "reported_cell_area": 6814.73574,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "production_sources": 328,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-texture-formats-typed-2026-10-20-v2/result.json": "4ce4c4f60a3d7f6355a87b528e4256386dcd97297074f9f8082c8f57f89c2f9a",
+        "generated/qualification/ppa/mobile-texture-formats-typed-2026-10-20-v2/qualification.json": "7f87dbf14cf78f69e830978c949efb10bb8a9f46e2d0c86e2dac0974d7327947",
+        "generated/qualification/ppa/mobile-texture-formats-typed-2026-10-20-v2/manifest.json": "4a00961616a67f606aae7fe98935906f4a44c243ebf8e7584a85c3f16f5475dc",
+        "generated/qualification/ppa/mobile-texture-formats-typed-2026-10-20-v2/flow/synthesis_sta.log": "eceb5316189552f613ccad3a0df8243cf5da36be4fc27d74356eec522806780a"
+      }
+    },
+    "sampler": {
+      "module": "TextureImageSamplerBindingUnit",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 91.35064508300275,
+        "finished_utc": "2026-10-20T11:39:53.679785+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        74.313,
+        429.292
+      ],
+      "mapped_cells": 70298,
+      "reported_cell_area": 9031.84344,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "production_sources": 328,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-texture-formats-sampler-2026-10-20-v2/result.json": "e0f4b98b3217199917829d6a06eb09eb10c7c7d15c066742dc6369f13006977c",
+        "generated/qualification/ppa/mobile-texture-formats-sampler-2026-10-20-v2/qualification.json": "25f2242d7bfd6105a599de20be7879bf839d333730e8dc83325445c0d76eca16",
+        "generated/qualification/ppa/mobile-texture-formats-sampler-2026-10-20-v2/manifest.json": "b32b5516bee799f5f720050134535783f405a0297097c0c1b64a29be895b6265",
+        "generated/qualification/ppa/mobile-texture-formats-sampler-2026-10-20-v2/flow/synthesis_sta.log": "9120ba46c696170b82b00b3722ea0d0560799f84e6b24c777d4bebbecf3841df"
+      }
+    },
+    "endpoint": {
+      "module": "ShaderTextureFetchUnit",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 178.15677775000222,
+        "finished_utc": "2026-10-20T11:41:20.486387+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        27.187,
+        377.732
+      ],
+      "mapped_cells": 111686,
+      "reported_cell_area": 13677.14808,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "production_sources": 328,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-texture-formats-endpoint-2026-10-20-v2/result.json": "dd9f8a8d1482edb44f48ba6bc89a4a1c5be3ec039e7558bb05e690eeb63b559f",
+        "generated/qualification/ppa/mobile-texture-formats-endpoint-2026-10-20-v2/qualification.json": "62889ad92e67ccae1bce252c992e14f26574204291f27f2b075ba9c34605b85e",
+        "generated/qualification/ppa/mobile-texture-formats-endpoint-2026-10-20-v2/manifest.json": "f2d28be71de235255a56dbcfd7d46dd2f98235784741ef17dae3964ce301b4ca",
+        "generated/qualification/ppa/mobile-texture-formats-endpoint-2026-10-20-v2/flow/synthesis_sta.log": "efcbc05774d1cac389d457cec488a3d8dbdc8bec6d24bf3cad588b06de223771"
+      }
+    },
+    "native": {
+      "module": "NativeShaderTextureUnit",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 305.3731148750521,
+        "finished_utc": "2026-10-20T11:43:27.716521+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        43.025,
+        173.002
+      ],
+      "mapped_cells": 192891,
+      "reported_cell_area": 23019.7788,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "production_sources": 328,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-texture-formats-native-2026-10-20-v2/result.json": "3ab49afb9c2a1065ded5d092004c4e9ad1bf903379068310e3475a180c93d688",
+        "generated/qualification/ppa/mobile-texture-formats-native-2026-10-20-v2/qualification.json": "6993b461bf22ef59601b0b77fb88ad7a8a810fde284e74254106f311d8127554",
+        "generated/qualification/ppa/mobile-texture-formats-native-2026-10-20-v2/manifest.json": "b9d11f3f0b56700af778ea16c20e2f99cb692f9516f042fe19b1fe597401500c",
+        "generated/qualification/ppa/mobile-texture-formats-native-2026-10-20-v2/flow/synthesis_sta.log": "26fab6df40537a2a57c9cc2561ccf9d0b27cf38de47f4c91d45bfdda9860c1d5"
+      }
+    }
+  },
+  "limits": [
+    "Standalone pre-layout synthesis setup only; no whole-host clock, hold, route, power or frame-throughput qualification.",
+    "Image decoder adds four cycles per four-component decode. No sampling throughput improvement is claimed."
+  ],
+  "matched_scope_comparison": {
+    "baseline_record": "docs/performance/mobile-native-typed-texture-synthesis-2026-10-20.json",
+    "baseline_record_sha256": "4599475f883a82ba184a8a65a029aa9a3953c1411c4870176e1a939557fd4aa4",
+    "same_top_constraints_and_standard_ABC": true,
+    "profiles": {
+      "endpoint": {
+        "baseline_module": "ShaderTextureFetchUnit",
+        "baseline_mapped_cells": 111700,
+        "mapped_cell_change_percent": -0.012533572068040844,
+        "baseline_setup_slacks_ps": [
+          28.238,
+          395.772
+        ],
+        "setup_slack_change_ps": [
+          -1.0509999999999984,
+          -18.039999999999964
+        ]
+      },
+      "native": {
+        "baseline_module": "NativeShaderTextureUnit",
+        "baseline_mapped_cells": 190372,
+        "mapped_cell_change_percent": 1.3231987897379893,
+        "baseline_setup_slacks_ps": [
+          51.162,
+          173.914
+        ],
+        "setup_slack_change_ps": [
+          -8.137,
+          -0.9119999999999777
+        ]
+      }
+    },
+    "latency_tradeoff": "Decoder increases8 to12 component decode cycles; complete fetch also includes descriptors, memory and retirement."
+  }
+}

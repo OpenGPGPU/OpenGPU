@@ -108,8 +108,8 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
       s.faultAddressValid.expect(fault.nonEmpty.B);s.faultAddress.expect(fault.getOrElse(BigInt(0)).U)
       if(status==0){s.address.expect(address.U);s.bytes.expect(bytes.U);s.raw.expect(raw.U)
         val n=if((address%64).toInt+bytes>64)2 else 1;s.dataReadLines.expect(n.U)
-        if(typed){val name=TypedColorReference.names(lastFormat);o.colorType.expect(TypedColorReference.format(name).kind.U)
-          o.rgba.zip(TypedBlendReference.decode(name,raw)).foreach{case(a,b)=>a.expect(b.U)}}
+        if(typed){val name=ImageFormatReference.names(lastFormat);o.colorType.expect(ImageFormatReference.format(name).kind.U)
+          o.rgba.zip(ImageFormatReference.decode(name,raw)).foreach{case(a,b)=>a.expect(b.U)}}
       }else{assert(values(s.view).values.forall(_==0));s.address.expect(0.U);s.bytes.expect(0.U);s.raw.expect(0.U)
         o.rgba.foreach(_.expect(0.U));o.colorType.expect(0.U)}
       assert(memory.pending.isEmpty && memory.reply.isEmpty);d.io.busy.expect(true.B);d.io.in.ready.expect(false.B)
@@ -120,8 +120,8 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
   it should "fetch every typed storage format at every line offset with exact guarded bytes and fresh data on cache hits" in {
     simulate(new ImageFetchHarness()){d=>val t=new Driver(d);val random=new scala.util.Random(0x47584c01)
       var queries=0;var crossings=0
-      for((name,id)<-TypedColorReference.names.zipWithIndex;offset<-0 until 64){
-        val bytes=TypedColorReference.format(name).bytes;val v=View(base=BigInt(0x100000)+offset,bytes=bytes,row=bytes)
+      for((name,id)<-ImageFormatReference.names.zipWithIndex;offset<-0 until 64){
+        val bytes=ImageFormatReference.format(name).bytes;val v=View(base=BigInt(0x100000)+offset,bytes=bytes,row=bytes)
         val raw=BigInt(bytes*8,random);t.install(v);t.payload(v.base,bytes,raw);t.invalidate()
         t.query(format=id,tag=BigInt(0xfedc0000L)+queries);t.check(address=v.base,bytes=bytes,raw=raw)
         d.io.out.bits.sample.hit.expect(false.B);d.io.out.bits.sample.readLines.expect(2.U)
@@ -135,7 +135,7 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
       t.payload(v.base,16,fresh);t.query(tag=0xabcdef12L);t.check(raw=fresh)
       d.io.out.bits.sample.hit.expect(true.B);d.io.out.bits.sample.readLines.expect(0.U);t.pop()
       assert(t.memory.seen.size==count+2)
-      info(s"TEXTURE_FETCH_FORMATS formats36=true offsets64=true queries=$queries crossings=$crossings exactGuardedRaw=true independentTypedOracle=true immutableHeldResult=true descriptorHitFreshData=true capturedFormatAndTag=true")
+      info(s"TEXTURE_FETCH_FORMATS formats54=true offsets64=true queries=$queries crossings=$crossings exactGuardedRaw=true independentTypedOracle=true immutableHeldResult=true descriptorHitFreshData=true capturedFormatAndTag=true")
     }
   }
   it should "gather raw compressed blocks and selected cube array volume spans including the 4 GiB boundary" in {
@@ -160,14 +160,14 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
   }
   it should "reject invalid formats layouts descriptors and coordinates before texture data reads then recover" in {
     simulate(new ImageFetchHarness()){d=>val t=new Driver(d);t.install(View())
-      for(id<-36 until 64){val count=t.memory.seen.size;t.query(format=id);t.check(6,source=3);t.pop();assert(t.memory.seen.size==count)}
+      for(id<-54 until 64){val count=t.memory.seen.size;t.query(format=id);t.check(6,source=3);t.pop();assert(t.memory.seen.size==count)}
       for(v<-Seq(View(bytes=8,row=8),View(block=true,w=4,h=4),View(w=0),View())){
         t.install(v);t.invalidate();val n=t.dataReads;t.query(x=if(v==View())BigInt(0xffffffffL)else BigInt(0))
         val status=if(v.w==0)1 else if(v==View())5 else 6
         t.check(status,source=if(status==6)3 else 1);t.pop();assert(t.dataReads==n)}
       t.install(View());t.memory.putWord(0x2000,0);t.invalidate();val n=t.dataReads;t.query();t.check(7,source=1);t.pop();assert(t.dataReads==n)
       t.install(View());t.payload(0x10003c,16,17);t.query();t.check(raw=17);t.pop()
-      info("TEXTURE_FETCH_REJECT invalidFormats28=true noInvalidFormatReads=true packedByteMismatch=true blockMismatch=true invalidView=true fullWidthCoordinate=true corruptHeader=true noRejectedDataReads=true exactHealthyReuse=true")
+      info("TEXTURE_FETCH_REJECT invalidFormats10=true noInvalidFormatReads=true packedByteMismatch=true blockMismatch=true invalidView=true fullWidthCoordinate=true corruptHeader=true noRejectedDataReads=true exactHealthyReuse=true")
     }
   }
   it should "attribute descriptor and data faults drain reordered tags and retain the primary fault through cancellation" in {

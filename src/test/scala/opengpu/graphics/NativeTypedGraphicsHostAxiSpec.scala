@@ -94,10 +94,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       else if(expected && c==1 && sampledGreen.nonEmpty)sampledGreen.get
       else Fp32ViewportReference.fp(if(centroid){if(c==3)1.0 else ((vertex+1)*(c+1)+primitive)/16.0}else if(c==primitive || c==3)1.0 else 0.0)}
     def shaderDraws(mode: Int,centroid: Boolean=false,version: Int=1,polygon: Boolean=false,sign: Int=1,
-        depthFormat: Int=TypedDepthFormat.d24s8,allocation: Int=0,generation: Int=0,facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0): Unit={
+        depthFormat: Int=TypedDepthFormat.d24s8,allocation: Int=0,generation: Int=0,facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0,sourceBias: Int=0): Unit={
       require(!facing || !polygon)
       setup(mode,3,mrt=true,depthFormat=depthFormat,allocation=allocation)
-      sourceOffset=(if(centroid)0x20000+version*0x1000+mode*0x10000 else 0)+(if(polygon)0x50000 else 0)+allocation*0x10000+generation*0x1000
+      sourceOffset=(if(centroid)0x20000+version*0x1000+mode*0x10000 else 0)+(if(polygon)0x50000 else 0)+allocation*0x10000+generation*0x1000+sourceBias
       val fragmentPc=if(polygon)0x406000+(if(version==4)0x2000 else 0)else if(version==4)0x404000 else 0x402000
       val prefix=(if(version==4)30 else 28)*32
       word(0x3000c,(((BigInt(0x1000000)+imageOffset)>>12)<<10)|0xcf)
@@ -482,6 +482,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       initialize(d);val image=new Image(d)
       val cap=Vector[BigInt](BigInt("47545801",16),8,3,0x3ff,7,16,16383,0x1f)
       for((value,i)<-cap.zipWithIndex)assert(axiRead(d,0x200+i*4)==value)
+      val formatCap=Vector[BigInt](BigInt("47544601",16),8,1,6,54,0xffffffffL,0x003fffff,0)
+      for((value,i)<-formatCap.zipWithIndex)assert(axiRead(d,0x220+i*4)==value)
+      axiWrite(d,0x220,0,expectedResponse=2)
       axiWrite(d,0x200,0,expectedResponse=2)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
       axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
@@ -547,14 +550,18 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         else constants++Seq(broadcast|(BigInt(12)<<15)|(BigInt(5)<<7)|0x57,
           broadcast|(BigInt(13)<<15)|(BigInt(6)<<7)|0x57,texData.vector(c,7,5,6))
       }
-      def run(c: Int,bad: Boolean=false): Unit={
-        val mode=if(c%2==0)0 else 2;val vc=(c+1)%4
-        image.sampledRed=Some(rgba(c));image.sampledGreen=Some(rgba(vc));image.shaderDraws(mode,generation=frames+1)
+      def run(c: Int,bad: Boolean=false,format: Int=35): Unit={
+        val mode=if(c%2==0)0 else 2;val vc=(c+1)%4;val target=if(format>=49)0 else 3
+        val decoded=ImageFormatReference.decode(ImageFormatReference.names(format),raw)
+        image.sampledRed=Some(decoded(c));image.sampledGreen=Some(decoded(vc));image.shaderDraws(mode,generation=frames+1,sourceBias=0x90000)
+        // Twenty-four frames must not advance source attributes into native
+        // scratch at0x430000..0x443000 or the growing shader code below0x4a0000.
+        assert(0x420000+image.sourceOffset>=0x4b0000 && 0x422000+image.sourceOffset<=0x500000)
         def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
         texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
-        texData.install(put,byte,31,35,3,0,id,raw,vo);texData.install(put,byte,17,35,2,1,id,raw,fo)
-        texData.coordinates(put,target=3,id=id,offset=vo);texData.coordinates(put,target=2,id=id,offset=fo)
+        texData.install(put,byte,31,format,target,0,id,raw,vo);texData.install(put,byte,17,format,2,1,id,raw,fo)
+        texData.coordinates(put,target=target,id=id,offset=vo);texData.coordinates(put,target=2,id=id,offset=fo)
         val vp=0x470000+frames*0x2000;val fp=vp+0x1000
         val vcode=vertexProgram.dropRight(1)++fetch(vc,31,vo+texData.packet,scalar=c%2==1)++Seq(addi(6,7,16*32),vm(6,7,true),BigInt("30500073",16))
         val fcode=fragmentProgram().dropRight(1)++fetch(c,17,fo+texData.packet,scalar=c%2==0)++
@@ -573,7 +580,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           val denied=(fo+texData.samplers+17*64)>>12
           image.word(pt+(denied&1023)*4,((image.pa(denied<<12)>>12)<<10)|0x49)
         }
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit();image.run(if(bad)3 else 0)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit();withClue(s"format=$format frame=$frames component=$c mode=$mode local=$local "){image.run(if(bad)3 else 0)}
         if(bad){val page=image.pa((fo+texData.samplers)& ~BigInt(4095));assert(!image.reads.exists(a=>a>=page && a<page+4096))}
         else{
           image.verifyDraws(mode)
@@ -584,7 +591,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop();frames+=1
       }
       for(c<-0 until 4)run(c);run(0,bad=true);run(3)
-      info(s"NATIVE_TYPED_FETCH_AXI local=$local CUs=2 frames=$frames draws=18 GTD1RootReferences=true bothStages=true scalarVector=true components4=true bindings31And17=true volumeAndCube=true realSv32=true deniedSamplerNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
+      for(format<-36 until 54)run(format%4,format=format)
+      assert(frames==24)
+      info(s"NATIVE_TYPED_FETCH_AXI local=$local CUs=2 frames=$frames draws=72 newFormats18=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true bindings31And17=true volumeAndCube=true realSv32=true deniedSamplerNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
     }
   }
 
