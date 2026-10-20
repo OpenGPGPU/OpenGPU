@@ -6792,3 +6792,11 @@ results. Shared native cluster/resource/translation admission,task-scoped fault
 attribution,coordinate and weight-generation precision,whole-native rates,
 render-to-texture visibility and all remaining H0-H8 gates stay open. PPA
 remains synthesis only.
+
+The [current-main composition candidate](performance/mobile-banked-texture-fp32-main-candidate-2026-10-21.json)
+now passes53 fresh checks on819 frozen inputs:the30 banked/FP32 controls plus
+23 native execute-owner query,projective-compatibility and integer mip controls.
+Three fresh profiles retain byte-identical active banked RTL to their component
+qualifications;the read-through profile matches after removing comments only. Existing native query/projective production,driver,ABI and test
+inputs remain exact to current main. Complete-service synthesis is still pending;
+this candidate has not been merged into main.
