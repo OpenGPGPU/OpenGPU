@@ -6829,8 +6829,10 @@ native shared-CU/resource/coordinate wiring remain open.
 Packed read-through now passes the [second-pipeline synthesis screen](performance/mobile-banked-texture-shared-admission-2026-10-21.json)
 at1000ps including I/O (+41.862/+11.396ps). Complete FP32 improves but remains
 negative (-6.794/-48.922ps),with its remaining path crossing shared-owner
-cancellation and return credits. Translated synthesis is still active. A scalar
-epoch-control correction removes per-owner cancellation lookups and registers
+cancellation and return credits. Translated synthesis now passes 1000 ps including
+I/O (+46.194/+193.375 ps), with 943,830 fully mapped cells and no skipped
+instances on unchanged 822-input source. A scalar epoch-control correction
+removes per-owner cancellation lookups and registers
 untagged telemetry on a separate branch;fresh functional/timing evidence is
 required before main integration.
 
