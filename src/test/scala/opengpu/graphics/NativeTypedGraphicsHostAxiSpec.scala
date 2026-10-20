@@ -55,15 +55,16 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
     def setup(mode: Int,count: Int=0,mrt: Boolean=false,depthFormat: Int=TypedDepthFormat.d24s8,allocation: Int=0): Unit={
       require(depthFormat>=TypedDepthFormat.d16 && depthFormat<=TypedDepthFormat.d32fs8)
       boundDepthFormat=depthFormat;val depthBytes=if(depthFormat==TypedDepthFormat.d16)2 else if(depthFormat==TypedDepthFormat.d32fs8)8 else 4
+      val depthReserve=1024.max(64*(1<<mode)*depthBytes)
       memory.clear();initial.clear();reads.clear();writes.clear();views=Vector.empty
       imageOffset=(if(mode==0)0 else 0x400000)+(if(allocation==0)0 else 0x2000000+allocation*0x800000)
       word(0x30004,((BigInt(0x800000)>>12)<<10)|0xcf)
-      var pass=Map[Int,BigInt](16->1,17->1,18->1,19->7,20->8,21->9,24->3,25->4,26->4,27->mode,28->1024,
+      var pass=Map[Int,BigInt](16->1,17->1,18->1,19->7,20->8,21->9,24->3,25->4,26->4,27->mode,28->depthReserve,
         32->depthFormat,34->1,35->BigInt("3f800000",16),36->5,64->1,65->TypedColorFormat.id("RGBA8"),66->1024,67->15,68->1,
         69->BigInt("3e800000",16),70->BigInt("3f000000",16),71->BigInt("3f400000",16),72->BigInt("3f800000",16),224->1,288->1)
       val colors=if(mrt)4 else 1
       for(c<-0 until colors){val start=64+c*16;val bytes=TypedColorReference.format(names(c)).bytes
-        pass++=Map[Int,BigInt](start->1,(start+1)->TypedColorFormat.id(names(c)),(start+2)->Vector(1024,2048,3072,5120)(c),
+        pass++=Map[Int,BigInt](start->1,(start+1)->TypedColorFormat.id(names(c)),(start+2)->(Vector(1024,2048,3072,5120)(c)+depthReserve-1024),
           (start+3)->15,(start+4)->1,(start+5)->clear(0),(start+6)->clear(1),(start+7)->clear(2),(start+8)->clear(3),(224+c*16)->1)
         pass++=viewFields(128+c*16,0x1000000+imageOffset+c*0x10000,mode,0,c,bytes)
       }

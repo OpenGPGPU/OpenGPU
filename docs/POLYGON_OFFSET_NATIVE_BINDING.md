@@ -74,3 +74,11 @@ fragment fetch after biased raster work, and physical image publication, with
 queued DMA discarded and VM/payload ownership retained through drain. These
 external boundaries supplement the separately qualified scalar-client
 cancellation cuts; they do not identify a reset inside the offset arithmetic.
+
+The [first matrix result](performance/mobile-polygon-depth-formats-before-2026-10-20.json)
+retains 0/2 tests with 56 completed frame markers. Both profiles reached
+D32FS8 at 4x and received invalid-descriptor status: the fixture reserved only
+1,024 depth bytes for an 8x8x4x8-byte layout requiring 2,048. The corrected
+fixture expands that reservation and shifts color offsets, preserving all
+other format/sample layouts and every production byte. A new frozen 638-file
+snapshot reruns the full 60-frame matrix; success remains pending.
