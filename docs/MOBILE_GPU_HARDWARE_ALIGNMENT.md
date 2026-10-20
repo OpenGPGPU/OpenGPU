@@ -6873,3 +6873,19 @@ All six use identical804-input hardware and disjoint two-page source leases.
 This closes the source-alias fixture limitation for these matrices;banked native
 integration,whole-path precision/rates/coherence and all remaining H0-H8 gates
 remain open.
+
+## H4 epoch-control composition with current main
+
+The [822-input main composition candidate](performance/mobile-banked-texture-epoch-main-2026-10-21.json)
+passes 69 fresh checks across nine suites: the 46 banked service checks and
+23 native query, projective compatibility and integer mip controls. Six fresh
+banked emissions are raw-byte identical to the epoch-control qualification.
+Fresh complete vertex/fragment native texture endpoints each retain all 77
+active RTL files byte for byte, preserving their prior synthesis results.
+
+The merge of current main changes only documentation. Packed read-through and
+Q16-normalized FP32 synthesis pass 1000 ps including I/O; translated epoch-control
+synthesis is still pending, so this candidate has not yet been merged into main.
+Native FP32 numeric filtering and shared-CU/resource/coordinate wiring remain
+separate work. Component checks do not complete whole-native rates/coherence
+or the full H0-H8 hardware goal.
