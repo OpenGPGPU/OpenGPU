@@ -11,8 +11,7 @@ private[graphics] object SampleDepthReference {
   import Fp32ViewportReference._
   import FragmentInterpolationReference.{Sample,edge}
   def linear(edges: Vector[BigInt],area: BigInt,depth: Vector[BigInt]): BigInt={
-    val terms=edges.zip(depth).map{case(e,z)=>calc(edge(e),decode(z),2)}
-    clamp(pack(calc(calc(calc(terms(0),terms(1),0),terms(2),0),edge(area),3)))
+    clamp(pack(FragmentInterpolationReference.linearDepth(edges,area,depth)))
   }
   def depths(t: TriangleRasterReference.Triangle,kind: Int,pixels: Vector[Sample],mode: Int,g: GraphicsConfig): Vector[Vector[BigInt]]={
     val unit=BigInt(1)<<g.subPixelBits;val half=unit/2;val quarter=unit/4

@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "directed_negative_reproduced_corrected_session_and_original_reset_pass",
+  "result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "test_counts": [
+        2,
+        1
+      ],
+      "polygon_reset_phases": 3,
+      "passed_tasks": 2
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 122.84614941687323
+  },
+  "source_files": 643,
+  "changed_from_failed_depth_source": [
+    "src/test/scala/opengpu/system/AxiStimulusOrderingSpec.scala",
+    "src/test/scala/opengpu/system/GpuHostTestSupport.scala"
+  ],
+  "production_rtl_and_original_native_reset_test_identical": true,
+  "diagnosis": "The memory-service loop returned with ARREADY and other memory handshakes still asserted. Control MMIO clocks between service sessions could accept a new request without adding it to any pending queue. The reproduced polygon phase1 recorded zero accepted reads, no writes, no live payloads and no reset request. Pause AR/AW/W ready and R/B valid on return before unrelated control clocks.",
+  "directed_controls": "Both response-chained read/write controls fail on the old helper with ARREADY observed high. Both pass after correction, including a second service session separated by eight clock edges and exact repeated transactions.",
+  "native_control": "The original polygon=true reset test passes all three phases and exact healthy reuse without a timeout increase or production change.",
+  "evidence": {
+    "mobile-depth-reset-diagnostic-v2.log": {
+      "path": ".artifacts/mobile-depth-reset-diagnostic-v2.log",
+      "sha256": "777729d70f8b27d7c978bdc9817d0563273a7e991e65c144f94bc861b5e13f69"
+    },
+    "mobile-depth-reset-diagnostic-v2-result.json": {
+      "path": ".artifacts/mobile-depth-reset-diagnostic-v2-result.json",
+      "sha256": "a783ce9bc2d3321c5f978d500c0ef8fa826a02eb3fd249914af9e123b4f67ff2"
+    },
+    "mobile-depth-reset-diagnostic-v2-source.json": {
+      "path": ".artifacts/mobile-depth-reset-diagnostic-v2-source.json",
+      "sha256": "cbb6087b159d6eb66944e00f054e135809a35619f65afda87167c032bb4e4fd5"
+    },
+    "mobile-depth-reset-diagnostic-v2-source.tar.gz": {
+      "path": ".artifacts/mobile-depth-reset-diagnostic-v2-source.tar.gz",
+      "sha256": "a796bbcd0a4f9ad97d90f9d7e33e24bc327b351e037dc491ed075ee6eab5d1f6"
+    },
+    "mobile-axi-service-boundary-negative-v1.log": {
+      "path": ".artifacts/mobile-axi-service-boundary-negative-v1.log",
+      "sha256": "e46895b8299ac95d533ba0000cff006d5da50caa07610c517c674b76f9e60904"
+    },
+    "mobile-axi-service-boundary-negative-v1-result.json": {
+      "path": ".artifacts/mobile-axi-service-boundary-negative-v1-result.json",
+      "sha256": "2b3621ec401e8e6212cbaf069d959664b89ae01ce93a07fe5c0ff2d2e74f7515"
+    },
+    "mobile-axi-service-boundary-negative-v1-source.json": {
+      "path": ".artifacts/mobile-axi-service-boundary-negative-v1-source.json",
+      "sha256": "3cd85f848ef75aa0a5e623a1adfc33604b593f25ddd6ab0f82a85df4202528de"
+    },
+    "mobile-depth-reset-boundary-v1.log": {
+      "path": ".artifacts/mobile-depth-reset-boundary-v1.log",
+      "sha256": "6389f1a300a192ca1d0048454a6a79fdc6a047906eb3018ad585856badcf6695"
+    },
+    "mobile-depth-reset-boundary-v1-result.json": {
+      "path": ".artifacts/mobile-depth-reset-boundary-v1-result.json",
+      "sha256": "0dc5ba36c54d2fa0d96b727e4147e2dd777ce08a0e4f33700f3e3ae7c39e8dd9"
+    },
+    "mobile-depth-reset-boundary-v1-source.json": {
+      "path": ".artifacts/mobile-depth-reset-boundary-v1-source.json",
+      "sha256": "f000a5d3825f28f3a2ad2463dab5bc2cff388f476b6856d90a7868a4b5906655"
+    },
+    "mobile-depth-reset-boundary-v1-source.tar.gz": {
+      "path": ".artifacts/mobile-depth-reset-boundary-v1-source.tar.gz",
+      "sha256": "3b525fbc6b19a4305322d11acc7f6d9d36f63f2af666bf6b4174f680b2c35b7a"
+    }
+  },
+  "limits": [
+    "Three corrected controls pass. The complete depth/composed regression on the corrected/reconciled source remains required before depth promotion.",
+    "This fixture correction has no area, timing, power or throughput implication. PPA remains synthesis only."
+  ]
+}

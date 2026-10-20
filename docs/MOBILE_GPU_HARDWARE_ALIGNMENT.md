@@ -5621,3 +5621,22 @@ now integrated into main, with replay then default native-host emissions,
 TC/SLVT, a 1000 ps period, 25 percent I/O budget and retiming disabled.
 The [launch record](performance/mobile-native-texture-policy-synthesis-launch-2026-10-20.json)
 records immutable RTL and SRAM-library inputs. No completed PPA result is claimed.
+
+
+## Isolated depth, facing and native texture reconciliation (2026-10-20)
+
+The [AXI service-session correction](performance/mobile-axi-service-session-boundary-2026-10-20.json)
+resolves the reproduced polygon-reset timeout without a production RTL change.
+Two directed read/write tests fail on the original helper and pass after return
+pauses memory handshakes. The unchanged native reset case then passes all three
+vertex/fragment/publication phases and exact healthy reuse. The terminal175/176
+result remains preserved; it is not rewritten as a full corrected pass.
+
+This isolated [combined candidate](performance/mobile-depth-texture-reconciliation-pending-2026-10-20.json)
+reconciles depth and facing with the main native sampler extension. The ABI audit
+preserves every prior field and C define from both inputs: polygon words354..356
+and sampler words480..483 coexist in GND1; GTD1 and GFS1 fixed slots stay stable.
+GRI1 and GTX1 remain separate read-only records. The planned206-check composition,
+CI, four ABI checks and both full RTL emissions must qualify this source before
+main promotion. PPA remains synthesis only; broader resource and H0-H8 closure
+remain open.

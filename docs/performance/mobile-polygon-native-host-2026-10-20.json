@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Two focused native typed AXI host controls for polygon offset through live shared-CU geometry and Sv32",
+  "based_on_commit": "78f3ed7",
+  "source_files": 638,
+  "source_manifest": {
+    "path": ".artifacts/mobile-polygon-native-host-source-v1.json",
+    "sha256": "f947459facccc84061af3c581d650b038b3088dcfce8e3a7ef05916b3364f99d"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-polygon-native-host-source-v1.tar.gz",
+    "sha256": "6979bf6cf78afb893aebde70eede45be0a9f18c6ad4368556b490b8210161468"
+  },
+  "result": {
+    "path": ".artifacts/mobile-polygon-native-host-controls-v1-result.json",
+    "sha256": "2f0a72021ea780d599c2c77c1ce3c93cdf9452118fae9aca5e316fcf5c29e618"
+  },
+  "log": {
+    "path": ".artifacts/mobile-polygon-native-host-controls-v1.log",
+    "sha256": "b9f3aa9ef7ffbada7de820a88c3e0c5e3ded1a5ed9a7c7446814423c2beb84f3"
+  },
+  "checks": 2,
+  "suites": 1,
+  "source_unchanged": true,
+  "production_sources_identical_to_binding_snapshot": true,
+  "only_changed_source_from_binding": "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+  "coverage": [
+    "Both local/global payload profiles use two actual CUs, three live GTD1 triangle/line/point draws per frame, two frames each (1x/version3 positive and 4x/version4 negative), four total frames and twelve draws.",
+    "Raster version2 fields bind signed factor=+/-2 and units=+/-3 to immutable D24S8 attachment resolution. Default sample depths and shader fragCoord.z in MRT red agree with the scalar reference; line/point offsets are bypassed.",
+    "All four MRT source/resolve formats, D24S8 depth/stencil and guard bytes are checked. Mixed centroid/center/flat inputs and protected uniform tails remain intact.",
+    "Prewarmed cached consumers observe image publication; held completion rejects VM rewrites, and payload reservations drain. Fresh shader/vertex allocations avoid unsupported host rewrites behind warm caches."
+  ],
+  "limitations": [
+    "Only two focused controls on the frozen source. Full legacy/native fault/reset regression on the new polygon hardware is still required.",
+    "This qualifies live native GTD1 with D24S8, not GPU-memory binned GND1 prepared publication, every depth format, clipping/perspective precision or every version/sample combination.",
+    "No new RTL emission or synthesis clock, power, route, representative rate, full Mobile budget or H0-H8 closure is claimed. PPA remains synthesis only."
+  ]
+}

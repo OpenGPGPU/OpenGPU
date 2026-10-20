@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Retained negative all-format matrix: D32FS8 4x fixture undersized its depth reservation",
+  "source_files": 638,
+  "source_manifest": {
+    "path": ".artifacts/mobile-polygon-depth-formats-source-v1.json",
+    "sha256": "caba0f82e8bb7b1376584e1bfa61b24ef90a44006f911f05211fd506d472ecbd"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-polygon-depth-formats-source-v1.tar.gz",
+    "sha256": "1c2ef633b8c05837e47f3128665398a4c7955af6bd51ead2adb5fafa99840228"
+  },
+  "result": {
+    "path": ".artifacts/mobile-polygon-depth-formats-controls-v1-result.json",
+    "sha256": "c3e5187c71344f2226d151bc5ddbcbd12101f1e8461809d6541e5fc87efc0df7"
+  },
+  "log": {
+    "path": ".artifacts/mobile-polygon-depth-formats-controls-v1.log",
+    "sha256": "4d48bcfacb4355c2b27f40c5050380f83926579bd2868dde5990c3dcf5a5abb5"
+  },
+  "passed_tests": 0,
+  "failed_tests": 2,
+  "completed_frame_markers": 56,
+  "failure": {
+    "format": "D32FS8",
+    "sample_mode": 2,
+    "bytes_per_sample": 8,
+    "tile_pixels": 64,
+    "required_depth_bytes": 2048,
+    "fixture_reserved_bytes": 1024,
+    "observed_native_status": 1
+  },
+  "diagnosis": "TypedTilePixelRules rejects depth.offset+64*4*8 > colors.reservedBytes. The fixture retained a 1024-byte D24S8 prefix. Shift color offsets by the added depth reservation; keep production RTL unchanged.",
+  "next_run": "Repeat the complete 60-frame matrix on a new frozen source after the fixture correction.",
+  "limitations": [
+    "Fifty-six completed frame markers are retained evidence, not a full passing two-test matrix. The repaired snapshot is pending.",
+    "This rejection is consistent with the explicit storage-bound guard; the corrected rerun must validate the diagnosis."
+  ]
+}

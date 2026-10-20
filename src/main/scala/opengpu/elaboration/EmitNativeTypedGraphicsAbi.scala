@@ -43,6 +43,7 @@ object EmitNativeTypedGraphicsAbi {
     header.append(FragmentInputAbi.header(prefix))
     header.append(NativeTextureCapabilities.header(prefix))
     header.append(NativeFragmentInputCapabilities.header(prefix))
+    header.append(NativeRasterCapabilities.header(prefix))
     for((name,id)<-VertexInputFormat.formats)header.append(s"#define ${prefix}INPUT_FORMAT_$name ${id}u\n")
     for((name,value)<-Seq("OPCODE"->"7u","DISCOVERY"->"0x68u","CAPABILITIES"->"0x160u","CAPABILITY_MAGIC"->"0x47544301u",
       "CAP_LOCAL_PAYLOAD"->"1u","CAP_PHYSICAL_IMAGES"->"2u","CAP_SHADER_ABI2"->"4u",

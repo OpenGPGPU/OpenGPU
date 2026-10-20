@@ -150,6 +150,22 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
       info("CENTROID_NATIVE_READER fixedWords538And539=true versions3And4=true immutableOffer=true highMaskRejectedBeforeAdapt=true oldVersionsRequireZero=true healthyReuse=true")
     }
   }
+  it should "snapshot polygon raster words without moving old fields and reject noncanonical enables" in {
+    simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
+      t.prepare(1);t.blockDraw=true
+      t.drawValues++=Map[String,BigInt]("raster.version"->2,"raster.polygonOffsetEnable"->1,
+        "raster.polygonOffsetFactor"->Fp32ViewportReference.fp(-1.5),"raster.polygonOffsetUnits"->Fp32ViewportReference.fp(3.25))
+      t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues);t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+      d.io.draw.bits.shaders.vertex.raster.version.expect(2.U)
+      d.io.draw.bits.shaders.vertex.raster.polygonOffsetFactor.expect(Fp32ViewportReference.fp(-1.5).U)
+      val held=d.io.draw.bits.peek().litValue;t.memory(0x4000+541*4)=0
+      for(_<-0 until 8){t.tick();assert(d.io.draw.bits.peek().litValue==held)}
+      t.blockDraw=false;t.complete(0,1)
+      t.prepare(1);t.memory(0x4000+540*4)=2;t.submit();t.complete(1);assert(t.acceptedDraws==0)
+      t.prepare(1);t.submit();t.complete(0,1)
+      info("POLYGON_NATIVE_TYPED_READER words540To542=true rasterVersion2=true signedFactorUnits=true immutableOffer=true narrowPaddingRejected=true legacyReuse=true")
+    }
+  }
   it should "reject malformed bounds encodings and capacity adaptation before issuing invalid child work" in {
     simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
       for(change<-Seq[()=>Unit](()=>d.io.submit.bits.envelopeValid.poke(false.B),()=>d.io.submit.bits.base.poke(0x1004.U),()=>d.io.submit.bits.limit.poke(0x11ff.U))){

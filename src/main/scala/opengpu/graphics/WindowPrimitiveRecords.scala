@@ -36,7 +36,8 @@ object WindowPrimitiveRecordLayout {
   }
   def fields(d: WindowPrimitiveRecord): Seq[Field]={
     var word=16
-    leaves(d).map{case(n,x)=>val count=(x.getWidth+31)/32
+    val (added,legacy)=leaves(d).partition{case(name,_)=>name.startsWith("raster.polygonOffset")}
+    (legacy++added).map{case(n,x)=>val count=(x.getWidth+31)/32
       if(word%16+count>16)word=(word+15)/16*16
       val f=Field(n,word,x);word+=count;f}
   }

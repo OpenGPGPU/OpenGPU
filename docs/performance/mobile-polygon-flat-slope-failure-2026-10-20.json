@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Negative standalone polygon-offset semantic control: flat depth amplified by a large factor",
+  "based_on_commit": "1f8be05",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-polygon-slope-before-source-v1.json",
+    "sha256": "208163df227a111ae7b90a3d73ea0caf99e9decf9711871180011e1c282fd207"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-polygon-slope-before-source-v1.tar.gz",
+    "sha256": "f14801bea6828d672fd96e96dc343a053c871ad620b06d85b1a5e2580b427672"
+  },
+  "result": {
+    "path": ".artifacts/mobile-polygon-slope-before-v1-result.json",
+    "sha256": "202bcf159528abe635648c58c1abae05a85fdc820f7af5d4a1053785eb225632"
+  },
+  "log": {
+    "path": ".artifacts/mobile-polygon-slope-before-v1.log",
+    "sha256": "85a4add281bb4b9efb168851c4e1e485b0c760c9057818b349ff01b632533b8d"
+  },
+  "software_witness": {
+    "path": ".artifacts/mobile-polygon-slope-software-witness-v1.json",
+    "sha256": "14ac78cadb7b87afda1f3b0baef31759b9bc335211c9dc05d1b7ce61f9f8a3d7"
+  },
+  "passed": 0,
+  "failed": 1,
+  "source_unchanged": true,
+  "rtl_failure_observed": true,
+  "witness": {
+    "subpixel_bits": 8,
+    "x": [
+      0,
+      128000,
+      25600
+    ],
+    "y": [
+      0,
+      25600,
+      102400
+    ],
+    "vertex_depth": "0x3f000001",
+    "factor": "0x49800000",
+    "factor_value": 1048576,
+    "units": 0,
+    "expected_offset": 0,
+    "observed_offset": {
+      "negative": false,
+      "exponent": -15,
+      "significand": 11573807,
+      "value": 4.210526458336972e-05
+    }
+  },
+  "next_work": "Validate the anchored derivative candidate on all32 flat cases and the complete numeric/ownership regression, then qualify native images and the combined source.",
+  "limitations": [
+    "The new test stops at its first case. Its later levels, windings, factor signs and nonzero units terms are not reached by this negative run.",
+    "This directly tests the scalar client and its real shared arithmetic harness; native clipping/raster/image publication is outside the run.",
+    "The included FPI depth anchor is not exercised by this standalone client test. Full G04/H6/H0-H8 precision remains open."
+  ]
+}

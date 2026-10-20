@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "isolated_reconciled_source_pending_full_qualification",
+  "source_files": 650,
+  "components": [
+    "Main native texture policy, GTX1 and registered texture-fault routing",
+    "Depth range/rounding/resolution and native bound polygon state with GRI1",
+    "Native facing/culling/stencil matrix and two additional numeric/raster unit controls",
+    "Corrected AXI service session boundary; original polygon reset now passes without production changes"
+  ],
+  "abi_reconciliation": {
+    "path": ".artifacts/mobile-depth-texture-abi-reconciliation-v1.json",
+    "sha256": "8d7c9605746465f51058d96e794b715d71e9b311453fd6db6d94bba22c14aee3"
+  },
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-texture-composed-source-v1.json",
+    "sha256": "4cd5de331d3bba534643968d63f085743d7ec250b25fe7f9d5dbb556bba11193"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-texture-composed-source-v1.tar.gz",
+    "sha256": "4474397fe6aa2469d13c84d069d800630c2ef363f4824ea5d0e9bf0549b57797"
+  },
+  "planned_test_counts": [
+    113,
+    16,
+    3,
+    13,
+    24,
+    37
+  ],
+  "planned_total": 206,
+  "scope": "Complete original176-check depth regression plus native sampler controls, scalar/vector fault backends, facing matrices, two numerical/raster unit cases and session-boundary controls; overlapping suites are counted once.",
+  "limits": [
+    "All pre-existing record headers/sizes, fields and generated C defines from both inputs are preserved. This does not prove combined runtime behavior.",
+    "Combined CI, four ABI checks, two complete RTL emissions, C11 headers and206 runtime checks must pass before promotion.",
+    "No completed combined PPA result; evaluation remains synthesis only. General H0-H8/GLES/resource/rate closure remains open."
+  ]
+}
