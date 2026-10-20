@@ -48,3 +48,10 @@ descriptor layouts are preserved.
 Pending gates include full native owner regression, actual shared-CU/AXI query
 programs, fresh whole-endpoint synthesis, compiler/API lowering and the remaining
 H0-H8 requirements. PPA remains synthesis only.
+
+Both [complete native endpoints](performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json)
+now fully map and pass1000ps synthesis,including I/O:vertex+67.048/+156.884ps
+and fragment+105.752/+122.410ps,at TC/SLVT,25% I/O,standard ABC and no
+retiming. Default endpoint sizing is16 shader lanes/eight warps. The full
+shared-CU and translated query AXI jobs remain separate;no whole-GPU clock
+or hardware completion is established by these synthesis results.
