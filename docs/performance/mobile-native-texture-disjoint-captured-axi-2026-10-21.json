@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "four_captured_AXI_tests_pass_with_paired_typed_regression_also_complete",
+  "source": {
+    "commit": "2bba1597935af597338630c21bbcff9dbad4a3d5",
+    "source_files": 804,
+    "manifest_sha256": "42b20884620ade6ff8a3e6aca1686fd4a349fa86ae2b306d04aef5976f6ae0ba",
+    "archive_sha256": "2208709a39913d800ab930411a1bb6bfd4ac83f1698608187e2d64dd5a76e0ca",
+    "git_archive_and_worktree_exact": true,
+    "all804_inputs_exact_to_size_query_source_lease_snapshot": true,
+    "runner_pid": 84402,
+    "started_utc": "2026-10-20T20:40:01.286701+00:00"
+  },
+  "functional_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 4178.109158540843,
+    "planned_tests": 4,
+    "planned_frames": 292,
+    "scope": "Corrected nonoverlapping two-page source allocations;new function6 production owner remains present. Captured floating72 and integer74 frames per payload mode;typed34 per mode.",
+    "commit": "2bba1597935af597338630c21bbcff9dbad4a3d5",
+    "source_files": 804,
+    "manifest_sha256": "42b20884620ade6ff8a3e6aca1686fd4a349fa86ae2b306d04aef5976f6ae0ba",
+    "archive_sha256": "2208709a39913d800ab930411a1bb6bfd4ac83f1698608187e2d64dd5a76e0ca",
+    "git_archive_and_worktree_exact": true,
+    "all804_inputs_exact_to_size_query_source_lease_snapshot": true,
+    "runner_pid": 84402,
+    "started_utc": "2026-10-20T20:40:01.286701+00:00"
+  },
+  "passed_tests": 4,
+  "actual_submitted_frames": 292,
+  "successful_frames": 284,
+  "expected_error_frames": 8,
+  "cases": [
+    {
+      "operation": "FLOAT_SAMPLE",
+      "local": true,
+      "frames": 72
+    },
+    {
+      "operation": "FLOAT_SAMPLE",
+      "local": false,
+      "frames": 72
+    },
+    {
+      "operation": "INTEGER_FETCH",
+      "local": true,
+      "frames": 74
+    },
+    {
+      "operation": "INTEGER_FETCH",
+      "local": false,
+      "frames": 74
+    }
+  ],
+  "coverage": {
+    "CUs": 2,
+    "payload_modes": [
+      "local",
+      "spill"
+    ],
+    "stages": [
+      "vertex",
+      "fragment"
+    ],
+    "forms": [
+      "scalar",
+      "vector"
+    ],
+    "components": 4,
+    "storage_formats": 64,
+    "targets": 4,
+    "floating_lod_modes": [
+      "automatic",
+      "explicit",
+      "gradient"
+    ],
+    "integer_base_levels": [
+      0,
+      1,
+      2
+    ],
+    "integer_offsets": "signed offsets before bounds,including out-of-range probes",
+    "faults": "Denied sampler pages never issue physical reads;missing task operand tuples do not reuse stale state. Each path drains and reuses the GPU.",
+    "output": "Exact MRT,depth,MSAA resolve and guard checks;held completion pins VM.",
+    "operand_packet_reads": false,
+    "source_leases": "Each frame generation owns two disjoint source pages at0x640000+generation*0x2000,skipping0x680000..0x681fff operand pages."
+  },
+  "main_dependency_carry": {
+    "parent_commit": "f6d8b1c08995e5b965fdb933eaf2f7dac702c2b1",
+    "changed_inputs": [
+      "src/test/scala/opengpu/core/backend/FpuBackendSpec.scala",
+      "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala",
+      "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala",
+      "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"
+    ],
+    "all_production_driver_ABI_and_selected_native_AXI_suite_inputs_exact": true,
+    "scope": "The four changed files contain other suite additions and controls. The selected NativeTypedGraphicsHostAxiSpec bodies/helpers and every production input remain byte-identical.",
+    "prior_main_record": "mobile-native-size-projective-main-2026-10-21.json"
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-texture-disjoint-axi-v1-source-proof.json": "b81b7f643278e93119f5f9ad66a01e2a46f240260150a26e6e7a04ed017912b8",
+    ".artifacts/mobile-native-texture-disjoint-axi-v1-source.json": "42b20884620ade6ff8a3e6aca1686fd4a349fa86ae2b306d04aef5976f6ae0ba",
+    ".artifacts/mobile-native-texture-disjoint-axi-v1-source.tar.gz": "2208709a39913d800ab930411a1bb6bfd4ac83f1698608187e2d64dd5a76e0ca",
+    ".artifacts/mobile-native-texture-disjoint-axi-v1-captured-result.json": "1013333c0706c1c9b84eb07e3faaba88d71599532db86a9dc7bbbd4cdb7dc42f",
+    ".artifacts/mobile-native-texture-disjoint-axi-v1-captured.log": "7c110ffe9d95ab86343fc93aa5d3e6429e397973b9e0178d52ebe0d3d1c9bfae"
+  },
+  "remaining": [
+    "banked shared-cluster native integration,whole-path rates and coherence",
+    "hardware capability/API/precision closure and full H0-H8 requirements"
+  ],
+  "claims": "This replaces the adjacent-generation source-alias fixture limitation for these four matrices. It is not whole-GPU timing,power,route,720p performance or complete GLES qualification.",
+  "typed_packet_regression": {
+    "passed_tests": 2,
+    "frames": 68,
+    "successful": 66,
+    "expected_errors": 2,
+    "record": "mobile-native-texture-disjoint-axi-2026-10-21.json"
+  }
+}
