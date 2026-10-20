@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6 implementation in progress, 2026-10-20. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
+Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6 implementation in progress, 2026-10-21. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
 Latest point/line checkpoint: [23 fresh targeted checks](performance/mobile-point-line-bounded-2026-10-20.json) pass on 674 frozen source files. The [standalone synthesis setup screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json) passes at 1000 ps with core +25.772 ps and I/O +619.101 ps. This does not qualify the whole GPU clock or complete H0-H8.
 
@@ -20,7 +20,7 @@ The hardware contract must cover shader execution, geometry, texture resources, 
 
 Latest texture checkpoint: [native captured-operand execution](TEXTURE_NATIVE_EXECUTION.md) connects scalar/vector floating sampling to both shared-CU shader stages, with task-scoped operands, helper tuples, fault drain and all64 storage formats. Its [803-input qualification](performance/mobile-native-texture-execution-2026-10-21.json) passes144 distinct tests, nine descriptor ABI checks and fresh full vertex/fragment native endpoint synthesis at1000ps including I/O. The [main audit](performance/mobile-native-texture-execution-main-2026-10-21.json) preserves the qualified bytes. The [translated AXI qualification](performance/mobile-native-floating-axi-2026-10-21.json) adds two passing local/spill tests and144 submitted frames (140 successful, four expected errors); the earlier144 tests, nine ABI checks and two synthesis screens carry by exact dependency hashes. [Captured integer fetch](TEXTURE_INTEGER_OPERANDS.md) is now integrated on main with checked signed offsets and base-relative shader LOD. Its [154-test qualification](performance/mobile-native-integer-execution-qualified-2026-10-21.json) covers both real shared-CU stages and both payload modes, plus nine ABI checks and positive whole vertex/fragment endpoint synthesis at1000ps (core/I/O +101.893/+183.062ps and +97.808/+171.998ps). The [integer main audit](performance/mobile-native-integer-main-2026-10-21.json) preserves803 exact inputs. [Directed nonzero-base AXI proof](performance/mobile-native-integer-mip-axi-directed-2026-10-21.json) now passes four frames across both payload modes;the [complete74-frame integer matrix per mode](performance/mobile-native-integer-mip-axi-full-2026-10-21.json) also passes (148 frames total,144 successful,four expected errors). The [corrected disjoint-source regression](performance/mobile-native-texture-disjoint-captured-axi-2026-10-21.json) now passes four captured floating/integer AXI matrices with292 frames (284 successful,eight expected errors). The [paired typed packet-fetch matrix](performance/mobile-native-texture-disjoint-axi-2026-10-21.json) also passes68 frames;all six corrected-source tests now pass360 frames. [Size queries](TEXTURE_SIZE_QUERIES.md) and [projective shader execution](TEXTURE_PROJECTIVE_EXECUTION.md) are now [integrated on main](performance/mobile-native-size-projective-main-2026-10-21.json):23 fresh composed sampling checks preserve the integer mip probes,the query AXI matrix passes148 disjoint-source frames,and the14 projective/backend/payload checks retain their qualified inputs. Other older-opcode disjoint-source AXI matrices,native banked throughput/precision integration and coherence remain open.
 
-Latest H4 hit-service checkpoint: the [banked RGBA8 resident pipeline](BANKED_TEXTURE_HITS.md) is integrated on main with [808 exact inputs](performance/mobile-banked-texture-main-2026-10-21.json). Nine checks cover the8KiB/four-bank store,16 sample slots,duplicate taps,backpressure and sticky cancellation. A conflict-free stream sustains one complete group/cycle from admitted physical addresses and weights. [Mapped synthesis](performance/mobile-banked-texture-synthesis-2026-10-21.json) passes1000ps including I/O (store +211.412/+40.422ps;complete hit cluster +172.334/+85.011ps). The [sixteen-fill physical owner](BANKED_TEXTURE_FILLS.md) is also integrated with [810 exact inputs](performance/mobile-banked-texture-fills-main-2026-10-21.json),thirteen combined checks and [positive synthesis](performance/mobile-banked-texture-fills-synthesis-2026-10-21.json) (+269.786/+181.849ps). It joins32 waiting consumers,handles reordered reads and retains invalidation through delayed refill drain. Word/sample miss forwarding,upstream translation/permission admission,native sampler integration,whole-path precision/rates and coherence remain required for H4.
+Latest H4 banked-service checkpoint: [read-through](BANKED_TEXTURE_READTHROUGH.md), [Q16-normalized FP32 output](BANKED_TEXTURE_FP32.md) and [virtual tap admission](BANKED_TEXTURE_TRANSLATION.md) are now [integrated on main with 822 exact inputs](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json). The composed candidate passes 69 checks and eight emissions. All three complete component synthesis screens pass 1000 ps including I/O: packed read-through +95.013/+44.671 ps, normalized FP32 +95.245/+59.166 ps, and translated admission +8.538/+181.588 ps. The service retains the 8 KiB/four-bank data store, sixteen physical sample slots, sixteen fills, thirty-two translated admission rows, precise virtual faults, uncached policy and scoped cancellation. It accepts prechecked spans and Q16 weights. Native unquantized FP32 filtering, resource/coordinate planning, shared-CU routing, whole-path precision/rates and coherence remain required for H4; the new FP32 service is qualified separately on its development branch.
 
 ## Current hardware and gaps
 
@@ -31,7 +31,7 @@ Latest H4 hit-service checkpoint: the [banked RGBA8 resident pipeline](BANKED_TE
 | Interstage transport | Eligible Mobile fragments default to local payloads through the parallel/tile/AXI hierarchy; a composed generic vertex/raster/fragment owner qualifies two-client payload and shared-CU task lifetime | Integrate native bin/host and typed attachment ownership; budget composed SRAM and qualify broader resources and sustained transport |
 | Geometry | Bounded GPU fetch, indexed/instanced shared-CU vertex execution, seven-topology assembly, FP32 clipping/viewport, owned point/line/triangle raster/interpolation and fragment shaders connect GPU vertex work to native GTJ1 submission and bounded typed image publication | General native binning/resource ownership, qualifier/guard-band closure, full Mobile runtime and post-transform reuse |
 | Tiling | Optional pass-lifetime RGBA8 plus D24S8 attachments with two SRAM slots per engine; paged rendering, two engines, automatic continuation, masked line transfers, bounded unified AXI host submission/reset/VM and sequential GPU input publication | Concurrent producer dependencies, physical allocation ownership and representative transfer/frame throughput |
-| Texturing | Native per-worker samplers retain the shared word fabric; an independent8KiB/four-bank RGBA8 resident hit/filter service now passes nine checks and synthesis | Word/sample miss forwarding,translation and native banked integration;whole-path format/precision,throughput and coherence |
+| Texturing | Native per-worker samplers retain the shared word fabric; independent banked read-through, Q16-normalized FP32 and virtual-tap services now pass 69 composed checks and three synthesis screens | Native unquantized FP32 filtering, resource/coordinate and shared-CU cluster integration; whole-path format/precision, throughput and coherence |
 | Pixel operations | Mobile binned rendering defaults to banked RGBA8/D24S8 attachments with fixed/programmed quad ingress; initial AXI checks exercise four-sample commits on both engines | Integrated synthesis/timing, legal early rejection, representative throughput, multiple color outputs and complete format semantics |
 | Memory | Shared banked L2, Sv32 translation, GPU cache invalidation and AXI memory master | Aggregate bandwidth and outstanding budgets, context-tagged tile/texture state, scoped barriers and robust bin/payload memory |
 
@@ -6844,7 +6844,8 @@ plus768 backpressured tap events and complete group II1. Scoped cancellation
 continues to isolate identity/tag rows in the translated parent. Packed
 read-through and normalized FP32 synthesis now pass the unchanged 1000 ps gate,
 including I/O (+95.013/+44.671 ps and +95.245/+59.166 ps), with no skipped
-instances. Translated epoch-control synthesis remains active. Existing
+instances. Translated epoch-control synthesis also passes (+8.538/+181.588 ps),
+with 942,150 fully mapped cells and no skipped instances. Existing
 native FP32 coordinate/filter semantics still need explicit preservation when
 connecting this Q16-weighted service to shared CU sampling;H0-H8 remain open.
 
@@ -6884,11 +6885,28 @@ Fresh complete vertex/fragment native texture endpoints each retain all 77
 active RTL files byte for byte, preserving their prior synthesis results.
 
 The merge of current main changes only documentation. Packed read-through and
-Q16-normalized FP32 synthesis pass 1000 ps including I/O; translated epoch-control
-synthesis is still pending, so this candidate has not yet been merged into main.
+Q16-normalized FP32 and translated epoch-control synthesis all pass 1000 ps
+including I/O. This qualified candidate is now integrated on main; see the
+[main audit](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json).
 Native FP32 numeric filtering and shared-CU/resource/coordinate wiring remain
 separate work. Component checks do not complete whole-native rates/coherence
 or the full H0-H8 hardware goal.
+
+## H4 qualified banked service integration on main
+
+The [main audit](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json)
+confirms merge `73a1295` preserves all 822 inputs of the qualified 69-check
+candidate. Packed read-through, Q16-normalized FP32 and translated service
+synthesis all pass 1000 ps including I/O with no skipped instances. Eight
+fresh emissions cover six banked profiles and both complete native endpoints;
+the latter retain their qualified 77 active files each. Driver/ABI inputs remain
+unchanged, and the nine ABI checks carry by exact inputs.
+
+These blocks are now available on main. The native CU sampler still uses its
+existing word path; Q16 rational normalization does not replace native FP32
+interpolation semantics. Connecting native FP32 filtering and shared-CU/resource/
+coordinate admission, measuring whole-native rates under contention and closing
+render-to-texture visibility remain required. All H0-H8 exit gates remain open.
 
 ## H4 unquantized FP32 bilinear pipeline
 

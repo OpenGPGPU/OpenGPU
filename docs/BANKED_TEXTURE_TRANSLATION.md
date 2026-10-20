@@ -69,8 +69,16 @@ tap events with unchanged input/output II1. Standalone normalizer and resident
 cluster active RTL remain raw-byte identical. Packed read-through and normalized
 FP32 now pass synthesis at 1000 ps including I/O (+95.013/+44.671 ps and
 +95.245/+59.166 ps), with 748,345 and 755,029 fully mapped cells. Translated
-epoch-control synthesis remains active. Native FP32 filter integration is a
+epoch-control synthesis also passes (+8.538/+181.588 ps), with 942,150 fully
+mapped cells and no skipped instances. Native FP32 filter integration is a
 separate numeric and timing qualification.
+
+The current epoch-control service is now on main with 69 composed checks and
+positive complete translated synthesis (+8.538/+181.588 ps).
+The [822-input main audit](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json)
+preserves the frozen qualification. Native resource/coordinate admission,
+unquantized FP32 filtering, shared-CU routing and whole-path rates/coherence
+remain separate integration work.
 
 The [native FP32 follow-up](TRANSLATED_RGBA8_FP32_TEXTURE_SERVICE.md) now connects
 an optional raw-tap result to RGBA8 decode and the unquantized native filter.

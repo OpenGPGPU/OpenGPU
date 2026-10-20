@@ -66,3 +66,10 @@ service fails1000ps (-28.888/-85.788ps),with756,320 fully mapped cells. The
 remaining path crosses pending-miss selection and fill-key allocation,also
 reaching `io_joined`. Shared fill-admission registration remains required;the
 standalone normalizer result does not close this gate.
+
+The current epoch-control service is now on main with 69 composed checks and
+positive complete normalized FP32 synthesis (+95.245/+59.166 ps).
+The [822-input main audit](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json)
+preserves the frozen qualification. Native resource/coordinate admission,
+unquantized FP32 filtering, shared-CU routing and whole-path rates/coherence
+remain separate integration work.

@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "integrated_on_main_exact_to_69_check_three_synthesis_candidate",
+  "merge_commit": "73a12953803cdce78833aafc0ff93f3fa7b59d35",
+  "source": {
+    "commit": "73a12953803cdce78833aafc0ff93f3fa7b59d35",
+    "source_files": 822,
+    "manifest_sha256": "3b7d2ed75f972a113575897567b8329a23de9cf517a68883b66a38d8f9743448",
+    "archive_sha256": "e9be5bdbf51231d86bf8a9753cc6feb45b0c1b3780a974194ddcec5cc2f17108",
+    "git_archive_and_worktree_exact": true,
+    "same_manifest_as_qualified_epoch_control": true,
+    "same_manifest_as_sixty_nine_check_main_composition": true,
+    "protected_user_files_outside_manifest": true
+  },
+  "qualification_record": "mobile-banked-texture-epoch-main-2026-10-21.json",
+  "component_synthesis_record": "mobile-banked-texture-epoch-control-2026-10-21.json",
+  "distinct_fresh_composed_checks": 69,
+  "fresh_emissions": 8,
+  "native_endpoint_active_files_raw_exact_each": 77,
+  "native_endpoint_synthesis_slacks_ps_carried": {
+    "vertex": [
+      67.048,
+      156.884
+    ],
+    "fragment": [
+      105.752,
+      122.41
+    ]
+  },
+  "banked_synthesis": {
+    "readthrough": {
+      "passed": true,
+      "slacks_ps": [
+        95.013,
+        44.671
+      ],
+      "fully_mapped": true,
+      "mapped_cells": 748345,
+      "mapped_library_area": 95686.484219
+    },
+    "fp32": {
+      "passed": true,
+      "slacks_ps": [
+        95.245,
+        59.166
+      ],
+      "fully_mapped": true,
+      "mapped_cells": 755029,
+      "mapped_library_area": 96456.29364
+    },
+    "translated": {
+      "passed": true,
+      "slacks_ps": [
+        8.538,
+        181.588
+      ],
+      "fully_mapped": true,
+      "mapped_cells": 942150,
+      "mapped_library_area": 122416.94592
+    }
+  },
+  "driver_ABI_inputs_unchanged": {
+    "baseline_manifest_sha256": "a5e08abb115f9fd11880f57350a3bb7bb7e3976c2bd340f57efc2d70e8cb701f",
+    "matched_inputs": 86,
+    "nine_ABI_checks_carried": true
+  },
+  "numeric_contract": "Q16 weights sum exactly to65536. Retain full weighted-byte numerators and round n/(255*65536) once to FP32. Unquantized native FP32 filtering remains a separate development branch.",
+  "features": [
+    "Shared registered miss admission, complete read-through forwarding and sixteen retained physical fills.",
+    "Exact Q16-normalized FP32 output with exhaustive normalizer evidence carried by unchanged numeric RTL.",
+    "Four-port virtual tap admission before physical lookup, including resident hits.",
+    "Uncached page policy, precise original virtual fault attribution and drained VM publication.",
+    "Identity/tag-scoped cancellation and immutable public result lifetime."
+  ],
+  "native_AXI_reference": "mobile-native-texture-disjoint-axi-2026-10-21.json",
+  "native_AXI_rerun_this_merge": false,
+  "synthesis_policy": "Synthesis only,1000 ps,TC/SLVT,25% I/O,standard ABC,no retiming or place/route.",
+  "remaining": [
+    "Connect native unquantized FP32 filtering, resource/coordinate planning and shared-CU texture routing.",
+    "Finish new FMA/native endpoint timing and translated native FP32 service synthesis on its separate frozen source.",
+    "Whole-native precision/rates with contention, render-to-texture coherence and full H0-H8 hardware requirements."
+  ],
+  "artifacts_sha256": {
+    ".artifacts/mobile-banked-texture-epoch-integrated-main-v1-source.json": "3b7d2ed75f972a113575897567b8329a23de9cf517a68883b66a38d8f9743448",
+    ".artifacts/mobile-banked-texture-epoch-integrated-main-v1-source.tar.gz": "e9be5bdbf51231d86bf8a9753cc6feb45b0c1b3780a974194ddcec5cc2f17108",
+    ".artifacts/mobile-banked-texture-epoch-integrated-main-v1-source-proof.json": "12ee3f0979f9db87a89411fdec5d5d21a4f2e2208bcfca03edc018d36c4e4f3c",
+    ".artifacts/mobile-banked-texture-epoch-main-native-v1-carry.json": "02cfcb1bd92e19ae014cabd3671b302c45aec9c1820abb4a489f340d600f51c7",
+    ".artifacts/mobile-banked-texture-epoch-main-v1-result.json": "4bdc8c18300c607bc6c8c04301f577d64b2c5a5d79262a1250cef20487cc249b",
+    ".artifacts/mobile-banked-texture-epoch-main-v1-emission-result.json": "59ef06ed7ca93427041b666fb896bcf3379f3cdd69ad371c4adb65a1a2446d3a"
+  }
+}
