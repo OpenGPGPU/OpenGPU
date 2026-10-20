@@ -10,16 +10,16 @@ private[graphics] object NativeTextureFetchTestData {
     words(put,address+offset,Seq[BigInt](BigInt("47585201",16),128,1)++id++Seq[BigInt](stage,count,bindings+offset,bindings+offset+2048,0,images+offset,images+offset+4096,0,samplers+offset,0,samplers+offset+2048,0),32)
   }
   case class View(address: BigInt,format: Int,raw: BigInt,target: Int) {
-    val name=TypedColorReference.names(format);val expected=TypedBlendReference.decode(name,raw)
+    val name=ImageFormatReference.names(format);val expected=ImageFormatReference.decode(name,raw)
   }
   def install(put: (BigInt,BigInt)=>Unit,byte: (BigInt,Int)=>Unit,unit: Int,format: Int=3,target: Int=0,stage: Int=0,
     id: Seq[BigInt]=defaultIdentity,raw: BigInt=BigInt("fedcba98765432100123456789abcdef",16),offset: BigInt=0): View={
-    val bytes=TypedColorReference.format(TypedColorReference.names(format)).bytes
+    val bytes=ImageFormatReference.format(ImageFormatReference.names(format)).bytes
     val base=offset+BigInt(0x20000)+unit*4096;val data=base+60;val row=2*bytes+5;val plane=row+2*bytes
     val slice=if(target==3)plane+7 else 0;val layer=if(target==1 || target==2)plane+11 else 0
     val count=if(target==1)3 else 1;val depth=if(target==3)2 else 1
     words(put,bindings+offset+unit*64,Seq[BigInt](BigInt("47584201",16),64,1)++id++Seq[BigInt](stage,unit,unit,unit,
-      TypedColorReference.format(TypedColorReference.names(format)).kind,target),16)
+      ImageFormatReference.format(ImageFormatReference.names(format)).kind,target),16)
     words(put,images+offset+unit*128,Seq[BigInt](BigInt("47584901",16),128,1)++id++Seq[BigInt](unit,target,format,0,0,2,2,depth,count,
       base,base+4096,0,1,levels+offset+unit*128,levels+offset+(unit+1)*128,0,0),32)
     words(put,levels+offset+unit*128,Seq[BigInt](BigInt("47584c01",16),128,1)++id++Seq[BigInt](0,target,0,base,base+4096,0,

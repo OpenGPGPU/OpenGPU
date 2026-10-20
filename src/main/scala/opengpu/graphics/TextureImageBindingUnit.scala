@@ -159,8 +159,8 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
         Mux(array,snapshot.layers<=p.maxLayers.U,snapshot.layers===1.U) && (!cube || snapshot.rootWidth===snapshot.rootHeight)
       lastLevel:=TextureImageMipRange.last(snapshot.rootWidth,snapshot.rootHeight,snapshot.rootDepth,snapshot.target,snapshot.baseLevel,snapshot.maxLevel)
       when(stop){phase:=State.finish}
-        .elsewhen(!TypedColorFormat.valid(snapshot.format)){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
-        .elsewhen(snapshot.target>3.U || !dimensions || snapshot.maxLevel<snapshot.baseLevel){status:=TextureImageResourceStatus.view.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
+        .elsewhen(!TextureImageFormat.valid(snapshot.format)){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
+        .elsewhen(!TextureImageFormat.targetLegal(snapshot.format,snapshot.target) || !dimensions || snapshot.maxLevel<snapshot.baseLevel){status:=TextureImageResourceStatus.view.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .elsewhen(snapshot.allocationLimit<=snapshot.allocationBase || snapshot.allocationLimit>(BigInt(1)<<32).U){
           status:=TextureImageResourceStatus.bounds.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .otherwise{phase:=State.checkSelectedLevel}
@@ -216,7 +216,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
     is(State.verifyLevel){
       val v=levelResult.view;val end=levelResult.address+&levelResult.bytes
       val matched=v.target===snapshot.target && v.texWidth===width && v.texHeight===height && v.texDepth===depth && v.layers===snapshot.layers &&
-        v.allocationBase===snapshot.allocationBase && v.allocationLimit===snapshot.allocationLimit && !v.block4x4 && v.blockBytes===TypedColorFormat.bytes(snapshot.format)
+        v.allocationBase===snapshot.allocationBase && v.allocationLimit===snapshot.allocationLimit && !v.block4x4 && v.blockBytes===TextureImageFormat.bytes(snapshot.format)
       val overlap=(0 until 16).map(i=>i.U<checked && v.base<ends(i) && end>bases(i)).reduce(_ || _)
       when(stop){phase:=State.finish}.elsewhen(!matched || overlap){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .otherwise{bases(checked(3,0)):=v.base;ends(checked(3,0)):=end;checked:=checked+1.U

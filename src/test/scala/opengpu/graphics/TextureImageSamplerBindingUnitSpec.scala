@@ -66,7 +66,7 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
       for((w,n)<-words.zipWithIndex)memory.putWord(base+handle*64+n*4,w)
     }
     def image(format: Int=3,base: BigInt=0x1000,handle: BigInt=0,brokenMip: Boolean=false,levels: BigInt=0x2000): Unit={
-      val bytes=TypedColorReference.format(TypedColorReference.names(format)).bytes
+      val bytes=ImageFormatReference.format(ImageFormatReference.names(format)).bytes
       val words=Seq[BigInt](BigInt("47584901",16),128,1,7,11,13,handle,0,format,0,15,4,4,1,1,
         0x100000,0x110000,0,1,levels,levels+384,0,0).padTo(32,BigInt(0))
       for((w,n)<-words.zipWithIndex)memory.putWord(base+handle*128+n*4,w)
@@ -137,11 +137,11 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
       t.query(tag=0x102,level=1);t.check(6,2);t.pop();t.image();t.invalidate();t.query(level=1);t.check()
       d.io.out.bits.image.level.expect(1.U);d.io.out.bits.image.view.texWidth.expect(2.U);t.pop()
       var cases=0
-      for(format<-0 until 36;min<-0 to 5;mag<-0 to 1){
+      for(format<-0 until 54;min<-0 to 5;mag<-0 to 1){
         t.image(format);t.sampler(min,mag);t.invalidate()
-        val info=TypedColorReference.format(TypedColorReference.names(format))
+        val info=ImageFormatReference.format(ImageFormatReference.names(format))
         // This oracle uses storage names, independently of RTL encoding lookup.
-        val name=TypedColorReference.names(format);val filterable=info.kind==0 && !name.endsWith("32F")
+        val name=ImageFormatReference.names(format);val filterable=info.filterable
         val allowed=filterable || (mag==0 && (min==0 || min==2))
         t.query(kind=info.kind);t.check(if(allowed)0 else 6,if(allowed)0 else 3)
         if(allowed)d.io.out.bits.image.mipChainChecked.expect((min>=2).B)
@@ -149,7 +149,7 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
       }
       for(kind<-0 to 2){t.image(if(kind==0)3 else if(kind==1)10 else 9);t.sampler();t.invalidate()
         // Wrong scalar/vector result interpretation is never silently converted.
-        val actual=TypedColorReference.format(TypedColorReference.names(if(kind==0)3 else if(kind==1)10 else 9)).kind
+        val actual=ImageFormatReference.format(ImageFormatReference.names(if(kind==0)3 else if(kind==1)10 else 9)).kind
         t.query(kind=(actual+1)%3);t.check(6,3);t.pop()}
       t.image();t.sampler(compare=1);t.invalidate();t.query();t.check(6,3);t.pop()
       val before=t.memory.seen.size;t.query(tag=0x103,context=8);t.check(1,3);t.pop();t.query(tag=0x104,kind=3);t.check(1,3);t.pop()

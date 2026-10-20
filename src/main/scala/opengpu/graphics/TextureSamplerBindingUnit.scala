@@ -28,8 +28,8 @@ object TextureSamplerState {
     * nearest-only sampling; extensions can add a separately versioned policy.
     */
   def compatible(s: TextureSamplerState,format: UInt,expectedType: UInt): Bool={
-    val filterable=TypedColorFormat.kind(format)===0.U && TypedColorFormat.encoding(format)=/=4.U
-    TypedColorFormat.valid(format) && expectedType===TypedColorFormat.kind(format) &&
+    val filterable=TextureImageFormat.filterable(format)
+    TextureImageFormat.valid(format) && expectedType===TextureImageFormat.kind(format) &&
       !s.compareEnable && (filterable || nearestOnly(s))
   }
 }
