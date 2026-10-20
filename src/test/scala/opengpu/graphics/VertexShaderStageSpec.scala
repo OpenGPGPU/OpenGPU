@@ -655,6 +655,9 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       val cases=for(scalar<-Seq(false,true);target<-Seq(0,3,4);mode<-0 to 2;step<-Seq(0.25f,0.75f))yield(scalar,target,mode,step)
       def run(scalar: Boolean,target: Int,mode: Int,step: Float,offset: Int=0,bad: Boolean=false,cancelled: Boolean=false): Unit={
         val volume=target==3;val shadow=target==4
+        // Every case starts with one populated texel. Reusing the same4KiB
+        // allocation must not retain the previous2D texel in volume slice0.
+        t.memory.keysIterator.filter(a=>a>=0x20000 && a<0x21000).toVector.foreach(t.memory.remove)
         val view=tex.install(t.put,(a,b)=>t.memory(a)=BigInt(b),0,if(shadow)49 else 3,if(volume)3 else 0,0,id,
           raw=if(shadow)BigInt(0x7fff)else BigInt(0xff0000ffL))
         t.put(tex.samplers+7*4,1);if(shadow)t.put(tex.samplers+14*4,1)
