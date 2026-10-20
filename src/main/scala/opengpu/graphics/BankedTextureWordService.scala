@@ -19,6 +19,11 @@ private class QueuedTextureReadResult(tagWidth: Int, indexWidth: Int) extends Bu
   val result = new BankedTextureReadResult(tagWidth)
 }
 
+private class QueuedTextureMiss(tagWidth: Int, indexWidth: Int) extends Bundle {
+  val owner = UInt(indexWidth.W)
+  val request = new BankedTextureLookup(tagWidth)
+}
+
 /** Four-bank physical read-through service. Every input word requires successful
   * upstream translation/permission admission. A resident hit retains bank II1;
   * misses share sixteen line reads and forward their exact returned word after
@@ -80,8 +85,11 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
   io.occupiedFills := miss.io.occupiedFills; io.joined := miss.io.joined
 
   private val fillArbiter = Module(new RRArbiter(new BankedTextureFillRequest, 4))
+  // Register the complete lookup metadata before MSHR matching. Cache reply
+  // credits must not depend on the owner lookup plus the miss-join ready path.
+  private val pendingMisses = Seq.fill(4)(Module(new Queue(new QueuedTextureMiss(tagWidth, indexWidth), 2)))
   private val outputs = Seq.fill(4)(Module(new Queue(new QueuedTextureReadResult(tagWidth, indexWidth), 2)))
-  private val resultArbiters = Seq.fill(4)(Module(new RRArbiter(new QueuedTextureReadResult(tagWidth, indexWidth), 2)))
+  private val resultArbiters = Seq.fill(4)(Module(new RRArbiter(new QueuedTextureReadResult(tagWidth, indexWidth), 3)))
   private val fillIndex = miss.io.out.bits.tag(indexWidth - 1, 0)
   private val fillPort = fillIndex(indexWidth - 1, slotBits)
   private val fillSlot = fillIndex(slotBits - 1, 0)
@@ -112,16 +120,41 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
     result.bits.result.data := Mux(result.bits.result.hit, word.bits.data, 0.U)
     result.bits.result.cancelled := wasCancelled
     result.bits.result.invalidated := wasInvalidated
-    val fill = fillArbiter.io.in(b)
-    fill.valid := word.valid && !direct
-    fill.bits := 0.U.asTypeOf(fill.bits)
-    fill.bits.identity := request.identity
-    fill.bits.textureKey := request.textureKey
-    fill.bits.address := Cat(request.address(31, 6), 0.U(6.W))
-    fill.bits.rowParity := request.rowParity
-    fill.bits.tag := index
-    word.ready := Mux(direct, result.ready, fill.ready)
+    val pending = pendingMisses(b)
+    pending.io.enq.valid := word.valid && !direct
+    pending.io.enq.bits.owner := index
+    pending.io.enq.bits.request := request
+    word.ready := Mux(direct, result.ready, pending.io.enq.ready)
     when(word.valid) { assert(alive(port)(slot), "banked word response lost its lookup owner") }
+
+    val queued = pending.io.deq
+    val queuedIndex = queued.bits.owner
+    val queuedPort = queuedIndex(indexWidth - 1, slotBits)
+    val queuedSlot = queuedIndex(slotBits - 1, 0)
+    val queuedRequest = queued.bits.request
+    val queuedCancelled = cancelled(queuedPort)(queuedSlot) || io.cancel
+    val queuedInvalidated = invalidated(queuedPort)(queuedSlot) || io.invalidate || draining
+    val queuedStopped = queuedCancelled || queuedInvalidated
+    val fill = fillArbiter.io.in(b)
+    fill.valid := queued.valid && !queuedStopped
+    fill.bits := 0.U.asTypeOf(fill.bits)
+    fill.bits.identity := queuedRequest.identity
+    fill.bits.textureKey := queuedRequest.textureKey
+    fill.bits.address := Cat(queuedRequest.address(31, 6), 0.U(6.W))
+    fill.bits.rowParity := queuedRequest.rowParity
+    fill.bits.tag := queuedIndex
+    // Stopped misses bypass new fill admission,which is closed during drain.
+    // Their lookup owners remain pinned until the public word reply retires.
+    val poison = resultArbiters(b).io.in(2)
+    poison.valid := queued.valid && queuedStopped
+    poison.bits := 0.U.asTypeOf(poison.bits)
+    poison.bits.owner := queuedIndex
+    poison.bits.result.tag := queuedRequest.tag
+    poison.bits.result.address := queuedRequest.address
+    poison.bits.result.cancelled := queuedCancelled
+    poison.bits.result.invalidated := queuedInvalidated
+    queued.ready := Mux(queuedStopped, poison.ready, fill.ready)
+    when(queued.valid) { assert(alive(queuedPort)(queuedSlot), "queued texture miss lost its lookup owner") }
 
     val forwarded = resultArbiters(b).io.in(1)
     forwarded.valid := miss.io.out.valid && fillBank === b.U
@@ -150,7 +183,8 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
   miss.io.in <> fillArbiter.io.out
   miss.io.out.ready := fillReady.asUInt.orR
   when(miss.io.out.valid) { assert(alive(fillPort)(fillSlot), "fill forwarding lost its lookup owner") }
-  io.busy := alive.asUInt.orR || cache.io.busy || miss.io.busy || outputs.map(_.io.deq.valid).reduce(_ || _)
+  io.busy := alive.asUInt.orR || cache.io.busy || miss.io.busy || outputs.map(_.io.deq.valid).reduce(_ || _) ||
+    pendingMisses.map(_.io.deq.valid).reduce(_ || _)
   when((io.cancel || io.invalidate) && io.busy) { draining := true.B }
   when(!io.busy) { draining := false.B }
 }

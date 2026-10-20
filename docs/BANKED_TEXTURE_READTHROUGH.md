@@ -1,11 +1,17 @@
 # Banked RGBA8 read-through service
 
-Status: [nineteen distinct component checks](performance/mobile-banked-texture-readthrough-2026-10-21.json)
+Baseline: [nineteen distinct component checks](performance/mobile-banked-texture-readthrough-2026-10-21.json)
 pass on812 frozen inputs. Eighteen checks pass together;an appended fault/cancel
 race passes on otherwise identical inputs with all prior test bodies retained.
 Resident-default synthesis passes1000ps including I/O (+172.334/+85.011ps);
-the full read-through synthesis screen remains active. Native shader
-resource/translation integration and the H4 exit gates remain open.
+the full read-through profile fails the same gate (-408.901ps internal,
+-507.155ps including I/O),with741,251 fully mapped cells and94,839.225840
+library area units. Its source and emitted RTL remained unchanged during
+the run. Both reported paths begin at `_1356524_`;the internal path ends
+at `count[4]` and the I/O path at `io_tapIssues[1]`. Mapped signal attribution
+and a control-path pipeline correction remain required before another
+synthesis screen. Native shader resource/translation integration and the
+H4 exit gates remain open.
 
 `BankedRgba8TextureHits(readThrough=true)` connects the four-bank8KiB cache,
 sixteen-line fill owner and bounded bilinear association/filter pipeline.
@@ -58,3 +64,13 @@ active SystemVerilog byte matches after removing comments while preserving
 strings and whitespace. The changed resident-default filter and complete
 read-through profile receive fresh synthesis screens. SRAM is behavioral in
 these screens;no characterized macro area,power,route or GPU clock is claimed.
+
+The [registered miss-admission update](performance/mobile-banked-texture-readthrough-pipeline-2026-10-21.json)
+passes twenty component tests on812 frozen inputs. Two complete miss records
+per bank separate cache reply credits from fill matching. Stopped queued misses
+return poisoned words without waiting for fill admission during drain;their
+lookup owners remain pinned through public completion. Saturation checks retain
+a held physical offer across cancellation and invalidation,retire every accepted
+group,and verify healthy reuse. Resident-only active RTL remains byte-identical
+to its positive synthesis inputs. Fresh read-through synthesis is running under
+the same1000ps constraints;timing closure remains unproven.

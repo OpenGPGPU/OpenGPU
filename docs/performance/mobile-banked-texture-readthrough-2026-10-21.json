@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "nineteen_checks_and_fresh_resident_default_synthesis_pass_readthrough_synthesis_running",
+  "status": "nineteen_checks_pass_resident_default_synthesis_pass_readthrough_synthesis_timing_failed",
   "source": {
     "returncode": 0,
     "source_unchanged": true,
@@ -126,7 +126,7 @@
   "new_synthesis": {
     "readthrough_session": 95475,
     "default_cluster_session": 25284,
-    "status": "resident_default_pass;readthrough_running",
+    "status": "resident_default_pass;readthrough_timing_failed",
     "policy": "1000ps,TC/SLVT,25% I/O,standard ABC,no retiming;synthesis only",
     "resident_default": {
       "terminal": {
@@ -179,6 +179,50 @@
         ".artifacts/mobile-banked-texture-cluster-synthesis-v2-inputs.json": "b27ab5194d874d45b1bca9c0812bc630bfb99df440e647fbf69a3880c84f7be4",
         ".artifacts/mobile-banked-texture-cluster-synthesis-v2-result.json": "5b108fd90a68f71132ad425fcaac43d307339f9a35a2222b185dafb89f93142a"
       }
+    },
+    "readthrough": {
+      "terminal": {
+        "returncode": 2,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 1557.0054822079837,
+        "finished_utc": "2026-10-20T21:05:44.922269+00:00"
+      },
+      "passed": false,
+      "slacks_ps": [
+        -408.901,
+        -507.155
+      ],
+      "fully_mapped": true,
+      "skipped_instance_count": 0,
+      "mapped_cells": 741251,
+      "mapped_library_area": 94839.22584,
+      "policy": "1000ps,TC/SLVT,25% I/O,standard ABC,no retiming;synthesis only",
+      "reported_paths": [
+        {
+          "startpoint": "_1356524_",
+          "endpoint": "count[4]$_SDFFE_PP0P_",
+          "group": "core_clock",
+          "slack_ps": -408.901
+        },
+        {
+          "startpoint": "_1356524_",
+          "endpoint": "io_tapIssues[1]",
+          "group": "vclk_core_clock",
+          "slack_ps": -507.155
+        }
+      ],
+      "interpretation": "Functional checks remain valid;the read-through profile does not meet the 1000ps synthesis gate. Trace the mapped startpoint and pipeline its control path before repeating the unchanged synthesis constraints. No physical flow or whole-native sampler qualification.",
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-banked-texture-readthrough-2026-10-21-readthrough-v2/qualification.json": "7e8a2c9d174fcde80b81fadcc9556f8d86555dc4e0c09f5e14e7f5ab4b76b636",
+        "generated/qualification/ppa/mobile-banked-texture-readthrough-2026-10-21-readthrough-v2/result.json": "c82628df007da7f46401360efc5a9e70553d3bec689fb41d3acd609556ae9647",
+        "generated/qualification/ppa/mobile-banked-texture-readthrough-2026-10-21-readthrough-v2/manifest.json": "2af92b9b8cd244c6920206cb3e6efbd0b9cf3b53b3c0e803b7fd1887fc9db7c8",
+        "generated/qualification/ppa/mobile-banked-texture-readthrough-2026-10-21-readthrough-v2/flow/flow_manifest.json": "be9a75ca96132dab4c8e2786f8982c500c6b8d80fe5cdda21bc9c65f217b4031",
+        "generated/qualification/ppa/mobile-banked-texture-readthrough-2026-10-21-readthrough-v2/flow/synthesis_sta.log": "1955041e09255672b4c41e4f090762ecd7062ac30f1e6ce1001235d7cd27deb0",
+        "generated/qualification/ppa/mobile-banked-texture-readthrough-2026-10-21-readthrough-v2/flow/orfs-work/reports/base/synth_stat.txt": "686483fee8f6a03da263ab779368cb8064c50ece0bd8c986c3e3755b7a866198",
+        ".artifacts/mobile-banked-texture-readthrough-synthesis-v2-inputs.json": "547f3d15d67caecb898f91bc0485f9a87eff1a3a9d0b1eb77352477f6e98a38a",
+        ".artifacts/mobile-banked-texture-readthrough-synthesis-v2-result.json": "dd08161af226ac969addc582c21dcbed156198f93b923748f3b39dcf52ada4d4"
+      }
     }
   },
   "artifacts_sha256": {
@@ -194,7 +238,7 @@
     ".artifacts/mobile-banked-texture-readthrough-v2-carry.json": "3a2d57468a7d5815b6245fd49927b2fbfa9b2ecd90a166d8997d98c11f30817c"
   },
   "remaining": [
-    "collect both new synthesis results",
+    "trace and pipeline the failing read-through control path,then repeat the 1000ps synthesis gate",
     "native coordinate/resource/translation and precise task-fault integration",
     "scoped cancellation and whole-path numeric precision",
     "whole-native-path throughput and render-to-texture visibility",
