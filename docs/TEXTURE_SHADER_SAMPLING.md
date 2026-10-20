@@ -1,15 +1,13 @@
 # Resource-bound shader sampling development
 
-Status: the [800-input checkpoint](performance/mobile-shader-resource-sampling-checkpoint-2026-10-21.json)
+Status: the [800-input qualification](performance/mobile-shader-resource-sampling-2026-10-21.json)
 passes 128 distinct tests across 21 suites and nine unchanged ABI checks.
-It includes 299 successful resource-bound queries per shader stage, root address
-zero and exact 4 GiB end, fourteen malformed root/binding cases and eighteen
-cancellation cuts per stage. Eight child/standalone RTL profiles are byte-exact
-to their positive parent screens. The [first stage-owner synthesis record](performance/mobile-shader-resource-sampling-v1-2026-10-21.json)
-passes fragment setup at +5.035/+390.042ps core/I/O, while vertex setup misses
-by 14.454ps (+394.554ps I/O). Both map completely at unchanged 1000ps. The
-critical index-to-magnitude-product path needs a register cut; no combined
-owner timing pass is claimed. This is an internal resource/operand endpoint. CU instruction decoding,
+Five fresh mapped synthesis screens pass at unchanged 1000ps. Fragment stage
+core/I/O slack is +106.918/+385.404ps and vertex +113.710/+394.863ps. The
+selected magnitude operands are registered before multiplication. Five other
+standalone emissions remain byte-identical to their qualified parents. The
+[first revision's vertex setup miss](performance/mobile-shader-resource-sampling-v1-2026-10-21.json)
+remains recorded. This is an internal resource/operand endpoint. CU instruction decoding,
 scalar/vector operand transport and retirement, compiler/validator adoption and
 native frame integration remain open. No software record, native opcode or
 capability is changed or advertised here.
@@ -82,6 +80,6 @@ the 24x14 extent multiplication. The revised logarithm owner captures selected
 significand, extent and exponent before multiplication, preserving exact products
 and results while adding one state per used gradient component. All sixteen
 focused numeric/composed tests pass, including 3,207 magnitude/log cases, 4,617
-monotonic checks and 170 cancellation cuts. Fresh aggregate and unchanged-clock
-synthesis must qualify this revised source; the retained vertex miss remains
-the original revision's result.
+monotonic checks and 170 cancellation cuts. The fresh aggregate and unchanged-clock
+synthesis qualify this revised source; the retained vertex miss remains the
+original revision's result.

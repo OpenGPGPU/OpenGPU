@@ -6734,3 +6734,34 @@ Native floating scalar/vector transport, compiler/validator integration, actual
 helper delivery, vertex stage policy, texture queries/projective lowering,
 on-chip parameter transport, banking/throughput/coherence and full H0-H8 remain
 open. PPA remains synthesis only; no whole-GPU or product qualification is claimed.
+
+## Qualified resource-bound shader sampler (2026-10-21)
+
+The [800-input qualification](performance/mobile-shader-resource-sampling-2026-10-21.json)
+passes128 distinct tests across21 suites and nine unchanged ABI checks.
+`ShaderTextureSampleUnit` captures operands on its internal port, validates
+existing per-stage GXR1/GXB1 bindings and resolves them into the composed
+floating sampler. Vertex automatic mode starts lambda at zero; fragment
+automatic mode uses complete helper snapshots and shader bias. Explicit and
+gradient modes, integer offsets, all64 formats and component selection retain
+the common image/sampler lifetime. No GPU-memory floating parameter packet or
+new software capability is introduced by this internal owner.
+
+The tests include299 successful bound queries per stage, root address zero and
+exact4GiB end, malformed identity/padding/bounds, full-width units, first faults
+and18 cancellation cuts per stage. Both stages retain immutable completion and
+drain logical ID15 root/binding reads separately from sample IDs.
+
+Five fresh mapped synthesis screens pass with TC/SLVT,1000ps,25% I/O, standard
+ABC and no retiming: standalone LOD core/I/O +249.495/+470.694ps, resolver
++214.034/+477.487ps, full internal sampler +141.297/+409.865ps, fragment owner
++106.918/+385.404ps and vertex owner +113.710/+394.863ps. Five standalone
+arithmetic/axis emissions retain byte-exact parent qualification. Registering
+selected magnitude operands fixes the retained first revision's14.454ps vertex
+setup miss.
+
+CU instruction transport/retirement, compiler/validator adoption, actual shared
+CU/helper/AXI integration, queries/projective lowering, banked throughput and
+coherence plus the remaining H0-H8 requirements stay open in this source. PPA
+is synthesis only; no whole-GPU clock, routing, hold, power or product pass is
+claimed.
