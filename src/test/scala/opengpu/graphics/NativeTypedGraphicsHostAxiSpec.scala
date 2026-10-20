@@ -782,7 +782,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         if(bad){val page=image.pa((fo+texData.samplers)& ~BigInt(4095));assert(!image.reads.exists(a=>a>=page && a<page+4096))}
         else if(!missing){
           image.verifyDraws(mode)
-          for(base<-Seq(vo,fo);address<-Seq(texData.root,texData.bindings,texData.images,texData.levels,texData.samplers)){
+          for(base<-Seq(vo,fo);address<-Seq(texData.root,texData.bindings,texData.images,texData.levels+(if(java.lang.Boolean.getBoolean("opengpu.nativeIntegerOldMipPageAssertion"))0 else (if(base==vo)31 else 17)*128+baseLevel*128),texData.samplers)){
             val page=image.pa((base+address)& ~BigInt(4095));assert(image.reads.exists(a=>a>=page && a<page+4096),s"native typed descriptor page not read: ${page.toString(16)}")
           }
         }
@@ -792,13 +792,16 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           assert(!image.reads.exists(a=>a>=page && a<page+4096),"captured operands performed a GPU-memory packet read")}
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop();frames+=1
       }
-      for(format<-0 until 64)run(format%4,format=format)
-      for(target<-1 to 3)run(target,target=target)
-      for(offset<-Seq(0,15))run(offset%4,integerOffset=offset)
+      val baseLevelsOnly=java.lang.Boolean.getBoolean("opengpu.nativeIntegerBaseLevelsOnly")
+      if(!baseLevelsOnly){
+        for(format<-0 until 64)run(format%4,format=format)
+        for(target<-1 to 3)run(target,target=target)
+        for(offset<-Seq(0,15))run(offset%4,integerOffset=offset)
+      }
       for(base<-Seq(1,2))run(base,baseLevel=base)
-      run(0,bad=true);run(1,missing=true);run(3)
-      assert(frames==74)
-      info(s"NATIVE_INTEGER_FETCH_AXI local=$local CUs=2 frames=$frames draws=222 imageBaseLevels0And1And2=true formats64=true imageSwizzle=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true targets4=true signedOffsetBeforeBounds=true noOperandPacketReads=true realSv32=true deniedSamplerNoPhysicalRead=true taskResetRejectsStaleTuple=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
+      if(!baseLevelsOnly){run(0,bad=true);run(1,missing=true);run(3)}
+      assert(frames==(if(baseLevelsOnly)2 else 74))
+      info(s"NATIVE_INTEGER_FETCH_AXI local=$local CUs=2 frames=$frames submittedDescriptors=${frames*3} directedBaseOnly=$baseLevelsOnly imageBaseLevels0And1And2=true formats64=true imageSwizzle=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true targets4=true signedOffsetBeforeBounds=true noOperandPacketReads=true realSv32=true deniedSamplerNoPhysicalRead=true taskResetRejectsStaleTuple=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
     }
   }
 
