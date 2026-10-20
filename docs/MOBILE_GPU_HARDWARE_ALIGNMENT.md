@@ -5502,3 +5502,20 @@ The remaining 24 prepared/bin image and 33 native-host image/fault/reset checks
 and final host emission continue on the same live process. The frozen log
 prefix records this partial result; full composition, resources, precision,
 representative rates and H0–H8 remain open. PPA is synthesis only.
+
+
+## Native depth binned image checkpoint (2026-10-20)
+
+The [next eleven binned image checks](performance/mobile-depth-native-binned-controls-2026-10-20.json)
+pass in the same unchanged 643-file full-depth run: five memory-native and six
+shared-CU typed vertex/bin checks. Together with the earlier 106 control and
+thirteen vertex checks, 130 checks have completed. Local/global publication,
+indexed instances, 4x MSAA, record/fragment/store faults, cancellation with
+queued launches/leases, final physical acknowledgements, VM ownership and
+healthy reuse retain exact image/depth/resolve/guard behavior.
+
+The thirteen prepared replay/image and thirty-three host checks, plus final
+host RTL emission, remain pending. The same SBT process is live; no source
+changes or restart are made. This partial checkpoint does not qualify the
+complete 176-check candidate or promote production into main. H0-H8 and the
+remaining depth/face requirements stay open. PPA remains synthesis only.
