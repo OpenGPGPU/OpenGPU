@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "qualified_banked_resident_hit_component_integrated_on_main_with_exact808_inputs",
+  "merge_commit": "30f8ffa2abfcb09f1fe48e49833870d10af4a330",
+  "qualified_code_commit": "822f0783b984deed39c6d7c27a4fd9e765c918cd",
+  "source_files": 808,
+  "source_manifest_sha256": "0290c6767ffc4ac91f7cbf864971ccb5c2f584f44d674fc53bf264a740d88551",
+  "main_archive_sha256": "e998a52fdf2664c08ab5bbd2ce8bd039459595fb25dec38c5954ad28e4ca218c",
+  "main_archive_and_worktree_match_qualified_inputs": true,
+  "all803_preexisting_inputs_preserved": true,
+  "new_input_files": [
+    "src/main/scala/opengpu/elaboration/EmitBankedTextureHits.scala",
+    "src/main/scala/opengpu/graphics/BankedRgba8TextureHits.scala",
+    "src/main/scala/opengpu/graphics/BankedTextureLineStore.scala",
+    "src/test/scala/opengpu/graphics/BankedRgba8TextureHitsSpec.scala",
+    "src/test/scala/opengpu/graphics/BankedTextureLineStoreSpec.scala"
+  ],
+  "functional_tests": 9,
+  "functional_record": "docs/performance/mobile-banked-texture-cancellation-2026-10-21.json",
+  "synthesis_record": "docs/performance/mobile-banked-texture-synthesis-2026-10-21.json",
+  "commits_audited_for_exactly_one_agent_trailer": [
+    "30f8ffa2abfcb09f1fe48e49833870d10af4a330",
+    "a565c39adcb9f52b1a675b584b400ed87bf85823",
+    "183aede47a569e4b4b88fb26a4e18b35d4f9364f",
+    "681f364fb4fbc68098b584ef41c0aa41dd2f9273",
+    "822f0783b984deed39c6d7c27a4fd9e765c918cd",
+    "6d4d21e43600729f073f14257a86881ec67c4215",
+    "0019838b62a6e208f1fd9bbe4825d192839dfc9c",
+    "cdb209fb5eeb5a0f5cde75ecf71cf950f90657bf",
+    "7f6fd97c076e1577a28b28fd3eeec1238590236a"
+  ],
+  "user_files_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": "0o644"
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": "0o644"
+    }
+  },
+  "scope": "Independent8KiB resident physical hit/filter component;no native shader sampler replacement or H4 closure.",
+  "remaining": [
+    "sixteen outstanding translated fills,miss joining,fault fanout and refill arbitration",
+    "native resource/coordinate/format integration and owner-scoped cancellation",
+    "whole-path RGBA8 rate/precision and render-to-texture coherence",
+    "full H0-H8 hardware requirements"
+  ],
+  "PPA": "synthesis only"
+}
