@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "merge_commit": "bbe6dbb03293fb092fb4683a01819c9533895e32",
+  "source_files": 649,
+  "all_committed_and_working_hashes_match": true,
+  "preserved_preexisting_dirty_files": 20,
+  "contents_and_modes_preserved": true,
+  "index_empty": true,
+  "passed_checks_carried_by_source_identity": 11,
+  "ABI_checks": 5,
+  "RTL_emissions": 2,
+  "C11_and_CI_passed": true,
+  "synthesis_resource_setup_slack_ps": 53.957,
+  "synthesis_default_setup_slack_ps": 70.945,
+  "period_ps": 1000,
+  "audit": {
+    "path": ".artifacts/mobile-texture-level-resource-main-preservation-v1.json",
+    "sha256": "e92855d81873aea6f837a04c717f6a8ca0f395a367845cebe5e2efa0abbaf7f4"
+  },
+  "functional_qualification": "mobile-texture-level-resource-2026-10-20.json",
+  "synthesis_qualification": "mobile-texture-level-resource-synthesis-2026-10-20.json",
+  "limits": [
+    "The completed qualification is carried by exact committed/working source identity, not a separately rerun main regression.",
+    "GPU level-layout loading and checked addressing are integrated as components. No native shader binding, format fetch/decode/filtering or complete mip-chain capability is enabled.",
+    "Both standalone screens pass mapped synthesis setup including I/O at TC/SLVT with no retiming; no place/route, power or native-host timing/rate result.",
+    "The separate206-check depth/facing/texture composition remains on frozen source in its isolated worktree."
+  ]
+}

@@ -1,6 +1,6 @@
 # GPU-memory texture level records and checked spans
 
-Status: [11 controls pass](performance/mobile-texture-level-resource-2026-10-20.json)
+Status: components integrated into local main; [11 controls pass](performance/mobile-texture-level-resource-2026-10-20.json)
 on unchanged 649-file source, together with five ABI checks, C11 headers, CI
 selection and two full emissions. Native sampler integration remains open.
 

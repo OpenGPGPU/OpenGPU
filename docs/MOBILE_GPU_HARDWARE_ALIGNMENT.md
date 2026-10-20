@@ -5747,3 +5747,20 @@ stages sustain one address per cycle in held-stream controls. These are
 not a native-host/product timing result. Image/format objects, indexed bindings,
 complete mip rules, texel fetch/decode/filtering and native integration remain
 open; no native capability or H4/H6/GLES closure is claimed.
+
+
+## GPU texture level owner main integration (2026-10-20)
+
+The [main source audit](performance/mobile-texture-level-resource-main-2026-10-20.json)
+verifies all 649 committed and working qualification files against the completed
+11-check source. Five ABI checks, C11 headers, CI selection and two full emissions
+are carried by exact source identity. All twenty pre-existing dirty files retain
+identical contents and modes. This is not a separately rerun main regression.
+
+The loader's four-stage checked-address path and the preserved three-stage default
+both pass standalone 1 GHz synthesis setup including I/O at TC/SLVT, with no
+retiming: +53.957 ps and +70.945 ps respectively. Initial functional-fixture and
+synthesis failures remain recorded. These components do not enable native image
+bindings, format decode/filtering or general shader resources. The separate
+206-check depth/facing/texture composition remains isolated and in progress;
+its pending results are not claimed by this promotion. PPA remains synthesis only.
