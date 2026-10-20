@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "passed",
+  "scope": "Actual native facing/culling/two-sided stencil plus affected native centroid and polygon controls",
+  "based_on_commit": "b780d79",
+  "source_files": 645,
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-facing-source-v1.json",
+    "sha256": "4d6d2b8dcd02a6fad48391e3ed3420bf843eb90d8bcd1fe9becda425b012689e"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-facing-source-v1.tar.gz",
+    "sha256": "4c7ff04d4f27d64bd287a95a2edc67dd77fb65172c89190db19715f37fb64f95"
+  },
+  "log": {
+    "path": ".artifacts/mobile-native-facing-controls-v1.log",
+    "sha256": "ee5f19bf22ba0a6a8bde8dc543e3e54d75ea9a0afc103bf0b5d6806725c121e7"
+  },
+  "result": {
+    "path": ".artifacts/mobile-native-facing-controls-v1-result.json",
+    "sha256": "fe30250a3fd7effa8c9dcad23c84b44bef5788daf43ead5a78e83af9b33e8470"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "test_counts": [
+        2,
+        2,
+        2
+      ],
+      "success_tasks": 3,
+      "facing_frames": 72,
+      "facing_matrix": 2,
+      "centroid": 2,
+      "polygon": 2
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 2307.0025841670576,
+    "finished_utc": "2026-10-20T04:16:44.260268+00:00"
+  },
+  "passed_checks": 6,
+  "facing_checks": 2,
+  "legacy_centroid_checks": 2,
+  "legacy_polygon_checks": 2,
+  "facing_frames": 72,
+  "facing_submitted_draws": 216,
+  "total_frames": 80,
+  "total_submitted_draws": 240,
+  "visible_triangle_frames": 48,
+  "culled_triangle_frames": 24,
+  "properties": [
+    "Both local-payload and global-staging profiles execute actual two-CU fragment shaders.",
+    "All combinations of front convention, winding, triangle cull mode and1x/2x/4x samples pass facing flags in four MRTs plus front/back stencil replacement.",
+    "Lines and points remain front-facing and bypass triangle cull.",
+    "Exact physical source/resolve/depth/stencil/guard bytes, cached consumers, immutable bindings, uniform tails, held VM completion and fresh resource reuse pass."
+  ],
+  "limits": [
+    "The complete six-check facing run passes. The176-check native depth composition remains separately live; no complete native depth integration is claimed.",
+    "Version3 runs at1x/2x and version4 at4x; this is not every descriptor-version/sample crossproduct.",
+    "No production RTL or ABI changes relative to the still-pending depth source; only test coverage is added. Main promotion still requires that production candidate qualification and source reconciliation.",
+    "No G04/H6/H0-H8, GLES3 or new PPA closure. PPA remains synthesis only."
+  ]
+}

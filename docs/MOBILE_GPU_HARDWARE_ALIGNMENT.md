@@ -5475,3 +5475,20 @@ large gradients with negative bias. Invalid mip intervals join the no-read
 fault path. Qualification is pending; task/native descriptor transport and
 fault-owner integration remain open. Legacy default RTL and ISA stability
 remain required gates. No H4/H6 or PPA closure is claimed.
+
+
+## Independent native qualification update (2026-10-20)
+
+The [six-check native facing regression](performance/mobile-native-facing-2026-10-20.json)
+passes on its unchanged 645-file development source, including the 72-frame
+facing/culling/stencil matrix and four affected centroid/polygon controls.
+Across all six checks, 80 frames and 240 submitted draws pass exact shader,
+color/depth/stencil/resolve/guard and VM ownership checks. This source shares
+the separately pending depth candidate; it is not the main production source.
+
+The [full-depth run checkpoint](performance/mobile-depth-native-binned-controls-2026-10-20.json)
+now contains 130 completed checks on its unchanged 643-file source: the earlier
+119 controls plus eleven native/shared binned image checks. Thirteen prepared
+replay/image and thirty-three host checks, plus final host RTL emission, remain
+pending in the original live process. These evidence records do not promote
+that production source or close the remaining native depth/G04/H6 requirements.
