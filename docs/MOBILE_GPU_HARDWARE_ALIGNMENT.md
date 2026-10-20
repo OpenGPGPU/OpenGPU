@@ -2,6 +2,8 @@
 
 Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6 implementation in progress, 2026-10-20. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
+Latest point/line checkpoint: [23 fresh targeted checks](performance/mobile-point-line-bounded-2026-10-20.json) pass on 674 frozen source files. The [standalone synthesis setup screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json) passes at 1000 ps with core +25.772 ps and I/O +619.101 ps. This does not qualify the whole GPU clock or complete H0-H8.
+
 Evolve OpenGPU into a mobile rendering architecture by extending the shared CU pool with persistent tile storage, GPU geometry fetching, scalable texture and pixel backends, and general graphics resource descriptors. Keep shader arithmetic on the existing CUs. The first functional target is hardware sufficient for a complete GLES 3.0 implementation; a Mali-G31-class commercial comparison requires further feature, performance, and physical qualification.
 
 The configuration and rates below are design targets, not measured capabilities. Implementation should proceed in bounded milestones, with correctness, throughput and timing gates before integration. Compiler and driver implementation are outside this plan; hardware interfaces needed by them are included.
@@ -6341,3 +6343,16 @@ retain every output and exact parent latency. The typed numerator proof covers
 all15 subpixel precisions2..16. Native integration checks remain pending for
 this source;no whole-GPU clock,hold,frame rate,route,power or full H0-H8 closure
 is claimed from this standalone setup screen.
+
+
+## Qualified diamond pipeline integration (2026-10-20)
+
+All 23 fresh targeted controls pass on the final unchanged 674-file source:
+13 comparator/coverage controls, six primitive-owner controls, two real shared-CU
+payload modes and two production native AXI modes. CI test selection passes.
+Both groups of 15 cycle fixtures preserve every quad field; the parent control
+also preserves total cycles and first-offer latency. The final source passes
+the standard standalone synthesis setup screen recorded above. Earlier pending
+entries describe historical checkpoints. The prior host synthesis run timed
+out before mapping and remains a separate retained result. General native
+image/sampler binding, typed shader transport and remaining H0-H8 work are open.

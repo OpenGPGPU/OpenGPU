@@ -1,5 +1,20 @@
 # Point/line coverage preparation and coordinate carries
 
+The current [bounded diamond and admission pipeline](performance/mobile-point-line-bounded-2026-10-20.json)
+passes 23 fresh targeted checks: 13 component checks, six primitive-owner checks,
+two shared-CU checks and two native AXI checks. All 674 frozen source files match.
+The [standalone synthesis screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json)
+passes full mapping and setup at 1000 ps, 25% I/O, TC/SLVT, standard ABC target and
+no retiming: core +25.772 ps, I/O +619.101 ps, 136,328 mapped cells.
+
+All [15 baseline fixtures](performance/mobile-point-line-diamond-final-cycles-2026-10-20.json)
+retain every output field. Unit-width basic lines take 877 cycles versus 489;
+4x lines take 1071 versus 811; points add two cycles. The additional registers
+trade cycles for timing closure. The 15 parent controls retain exact latency.
+This is a component setup result; whole-GPU clock and frame throughput remain
+unqualified. The sections below retain earlier checkpoints and timing misses.
+
+
 The later [overlapped sample pipeline](performance/mobile-point-line-sample-overlap-2026-10-20.json)
 registers sample arithmetic and streams consecutive MSAA line samples with aligned
 indices and dot predicates. Its [15 matched fixtures](performance/mobile-point-line-sample-cycles-2026-10-20.json)

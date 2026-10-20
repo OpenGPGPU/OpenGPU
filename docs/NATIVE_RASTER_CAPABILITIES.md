@@ -9,6 +9,11 @@ carries those checks by exact native source and RTL identity. This describes
 implemented raster state and numeric policy, not complete GLES conformance or
 production throughput.
 
+The later [674-file raster qualification](performance/mobile-point-line-bounded-2026-10-20.json)
+changes point/line arithmetic and passes 23 fresh targeted checks, including
+both native AXI payload modes. The historical 206-check result above belongs to
+its frozen source; it is not a full regression of this later raster source.
+
 | Word | Meaning | Value |
 |---|---|---|
 | 0 | Magic/version | `0x47524901` |

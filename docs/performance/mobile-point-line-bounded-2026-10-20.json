@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "13_bounded_component_controls_pass_integration_cycles_synthesis_pending",
+  "status": "23_fresh_targeted_controls_pass_positive_standard_synthesis_setup",
   "source_files": 674,
   "source_manifest_sha256": "987d2682521218b808c39e2aec7340c205fb206ba548190bff6107b4c6743e81",
   "source_sha256": {
@@ -682,7 +682,7 @@
   },
   "behavior": "Parameterize exact fraction comparison width,retaining generic64-bit support. Raster owner uses36-bit signed numerators and72-bit real differences. With signed35 centers,signed33 endpoint axes and half<=2^15,abs(n)<=2^34+2^32+2^15<2^35. Slab arithmetic retains37-bit difference carries with explicit canonical-fit assertions before owner specialization;external32-bit endpoints and subpixel2..16 limits are unchanged.",
   "validation": {
-    "checks": 13,
+    "checks": 23,
     "rank_order_cases": 39015,
     "arithmetic_cases_by_numerator_bits": {
       "36": 4871,
@@ -695,15 +695,27 @@
     "log": {
       "path": ".artifacts/mobile-point-line-bounded-v6.log",
       "sha256": "73e2c8e7d4b72f4234fffb9322fb232527ceb0010132b08fb46d07d9a1d1a0d4"
-    }
+    },
+    "component_checks": 13,
+    "fresh_checks_by_group": {
+      "component": 13,
+      "primitive": 6,
+      "shared_cu": 2,
+      "native_axi": 2
+    },
+    "logs": {
+      ".artifacts/mobile-point-line-bounded-v6.log": "73e2c8e7d4b72f4234fffb9322fb232527ceb0010132b08fb46d07d9a1d1a0d4",
+      ".artifacts/mobile-point-line-bounded-integration-v6.log": "fd271fd247bdccf9ee92e68d9ad66ba7acb78aa950b362f77efca7e3078e399a",
+      ".artifacts/mobile-point-line-bounded-ci-v6.log": "33564c66837704a225331df4bb30af6f3d40f6608d0b3c18aec257a98a54e2b0"
+    },
+    "ci_selection": "PASS"
   },
   "prior_record": "docs/performance/mobile-point-line-products-before-2026-10-20.json",
-  "pending": [
-    "Fresh primitive/shared-CU/production AXI integration.",
-    "Fresh15-case cycle comparisons against baseline and parent.",
-    "Fresh standard-target synthesis at1000ps,25 percent I/O,TC/SLVT,no retiming."
-  ],
+  "pending": [],
   "limits": [
-    "No positive setup,native clock,route,power or full H0-H8 result yet."
-  ]
+    "Targeted regression only; historical206 controls are not rerun or carried across changed raster source.",
+    "Standalone synthesis setup passes; no whole GPU clock,route,power or H0-H8 closure."
+  ],
+  "synthesis": "docs/performance/mobile-point-line-diamond-synthesis-2026-10-20.json",
+  "cycles": "docs/performance/mobile-point-line-diamond-final-cycles-2026-10-20.json"
 }
