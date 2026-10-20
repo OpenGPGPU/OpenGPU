@@ -1,6 +1,9 @@
 # Native shader resource bindings and typed component fetch
 
-Status: qualified native hardware path with 114 distinct targeted controls,
+Current: the [54-format image extension](performance/mobile-texture-image-formats-2026-10-20.json)
+passes 119 distinct targeted controls and four standalone synthesis screens.
+
+Original 36-format qualification: native hardware path with 114 targeted controls,
 including typed and legacy native execution, metadata/decoder/image coverage,
 1/4/16/32-lane component execution, nine ABI checks and combined C11 headers.
 The [source record](performance/mobile-native-typed-texture-fetch-2026-10-20.json)

@@ -79,3 +79,10 @@ rejected; no ETC2/EAC support is advertised.
 The format inventory, noncomparison depth rules, depth expansion and packed float
 semantics follow GLES 3.0.6 sections 3.8.3.1,3.8.13,3.8.15,3.8.17 and3.9.2.1:
 [official specification](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
+
+The [qualification record](performance/mobile-texture-image-formats-2026-10-20.json)
+retains 119 distinct targeted tests, source identity, nine generated ABI checks,
+combined C11 headers and both failing/corrected AXI fixtures. Four standalone
+[synthesis screens](performance/mobile-texture-image-formats-synthesis-2026-10-20.json)
+pass full mapping/setup at standard 1000 ps, 25% I/O, TC/SLVT without retiming.
+The native wrapper maps 192,891 cells; decoder latency grows 8 to 12 cycles.

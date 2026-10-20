@@ -6480,3 +6480,45 @@ artifacts and production inputs match,and every560/570/76 older native field
 mapping remains unchanged. Both pre-existing local edits and an empty index
 are preserved. No push was performed. The114 targeted controls establish this
 native typed-fetch path; general sampling and the full hardware goal remain open.
+
+
+## Uncompressed image formats and runtime discovery (2026-10-20)
+
+The independent [image catalog](TEXTURE_IMAGE_FORMATS.md) now supplies all 54
+uncompressed GLES 3.0 sized formats to native indexed component fetch. IDs0–35
+retain their layouts; IDs36–53 add SNORM8, RGB integers, SRGB8, unsigned packed
+floats, shared-exponent RGB and five noncomparison depth/depth-stencil formats.
+The attachment catalog remains 36. GTX1 values and existing descriptor/instruction
+layouts stay stable; the read-only GTF1 block at 0x220..0x23c enumerates 54 image
+IDs. Older GTX1 typed-fetch hardware without GTF1 falls back to 36 IDs.
+
+The [functional record](performance/mobile-texture-image-formats-2026-10-20.json)
+qualifies 119 distinct targeted tests on 696 frozen source dependencies, including
+exhaustive SNORM8/mini-float/RGB9_E5/D16 numeric checks, D24 boundaries/random
+rounding, 3,456 format/line-offset queries, 211 legal GXI1 target/format combinations,
+648 sampler filter pairs and 844 native component checks per shader stage.
+Expanded actual-CU controls exercise 204 stage draws; translated native AXI
+controls exercise 48 typed frames/144 primitive draws and retain the 14-frame
+legacy sampler regression. Both payload modes, scalar/vector retirement, denied
+sampler-page suppression, fault/cancel drains and held-completion VM ownership
+are checked. Nine generated ABI checks, combined C11 headers and CI selection pass.
+
+The first expanded AXI matrix correctly rejected frame 14 because its advancing
+color input reached vertex scratch at 0x430000. The diagnostic and both original
+failed cases are retained. Corrected sources occupy a separate region with
+explicit bounds. Only one test fixture changed after the synthesis snapshot;
+all production and other test sources remain byte exact.
+
+All four [standalone synthesis screens](performance/mobile-texture-image-formats-synthesis-2026-10-20.json)
+pass full mapping and setup at unchanged standard 1000 ps, 25% I/O, TC/SLVT,
+no retiming: typed fetch core/I/O +24.587/+431.712 ps, sampler admission
++74.313/+429.292 ps, shader endpoint +27.187/+377.732 ps and native wrapper
++43.025/+173.002 ps. The wrapper maps 192,891 cells, 1.32% more than its prior
+36-format scope. Image decode takes 12 instead of 8 cycles for four components;
+no sampling-throughput improvement or whole-host clock is claimed.
+
+GXI1 rejects 3D depth before child reads; noncomparison depth, integer and FP32
+color require nearest-only sampler state. ETC2/EAC, general filtering/LOD,
+swizzle, depth comparison, compiler/driver adoption, representative workloads,
+whole-GPU synthesis and full H0–H8/GLES closure remain open. Functional hardware
+development continues; PPA remains synthesis only.

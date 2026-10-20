@@ -1,0 +1,335 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "119_distinct_targeted_tests_and_four_standalone_synthesis_screens_pass",
+  "source_files": 696,
+  "source_base_record": "docs/performance/mobile-native-typed-texture-fetch-2026-10-20.json",
+  "source_base_record_sha256": "9dfd665b8e4527a986a964a3233c11898f367f8376fc4869a5ef5e56c9dbd3b1",
+  "source_changes_sha256": {
+    "docs/abi/texture-image-format-v1.json": "b97211efa303e9433146d1ce20d3668937ebf4c6feb46791af0d54449e49ad4c",
+    "driver/opengpu_native_binned_abi.h": "b16ed6e0132e3dc2d9d17f85eb7fa1fad71c53bd179985fd77c2c7ebeab0d07f",
+    "driver/opengpu_native_typed_abi.h": "b7fb7b6692a1f7a01890a347590fd676b2226e676d2b5f23956f34b5c84cbfd3",
+    "driver/opengpu_texture_image_format_abi.h": "ffd0d36f3419c3faf9d047041e9106394d3ee6580566718a7563eb0729fa0412",
+    "driver/opengpu_typed_fragment_state_abi.h": "246ba3d64181ba3d35c31610b3b3f152b2c46d833d67bf7f49cfb12231f447d0",
+    "src/main/scala/opengpu/elaboration/EmitTextureImageFormatAbi.scala": "85933a40e00e9f3ad5bdcebe4f6587b07ebaf81920f4e73dcf902d71fd31a1b2",
+    "src/main/scala/opengpu/graphics/NativeTextureCapabilities.scala": "9bbf6c6b571403bf5f5771a98f8b1d31ef077ed936c1eafbcdffe0d74ff466ac",
+    "src/main/scala/opengpu/graphics/TextureImageBindingUnit.scala": "b021484176f870f3e20126a2516b2a393869e4171de1977a06068ed1368920a1",
+    "src/main/scala/opengpu/graphics/TextureImageFetchUnit.scala": "b436d1ca2d55a50b298152f3c29756e220b7334e62bf57b2380b36da9516ad17",
+    "src/main/scala/opengpu/graphics/TextureSamplerBindingUnit.scala": "70e24e8967c2d2f2003f8d32f885c6b91b3d5ba3e0219fca4376370ea85f8476",
+    "src/main/scala/opengpu/system/GpuHostAxi.scala": "4df9ac466960b8ee76e6617bee24539a58e4b6ea8b7b2dd8aea5c200403d3cf9",
+    "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala": "588cf9ac0a103cc358b26b69744a72b2ef7cc4e8c16d602f9ee63fc3bc5bf629",
+    "src/test/scala/opengpu/graphics/NativeShaderTextureUnitSpec.scala": "a4dc2564431a2217938a09e1b6cf47a77a0559fe82b78dc02c8807288db6c994",
+    "src/test/scala/opengpu/graphics/NativeTextureFetchTestData.scala": "082ca59863ea2df529ddf3f223e93f5add1c49af2c319741654e1a61c18a6fef",
+    "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala": "e74727de99bae6fa280de76cfe5784bcf511fda28827b7a6b5648a0dbafabe0c",
+    "src/test/scala/opengpu/graphics/TextureImageBindingUnitSpec.scala": "ca2928284e1e7f3eeb645e9a4e8fb5d5f47304eb969a00515c2380db2565dfed",
+    "src/test/scala/opengpu/graphics/TextureImageFetchUnitSpec.scala": "00d5c15892beed29700fb546326b05f156674c8d5756a91aaee4253704dd451d",
+    "src/test/scala/opengpu/graphics/TextureImageSamplerBindingUnitSpec.scala": "158a8889325b2e109af866d32f6f39421a2bb465a5f96a4502acb0cd574b55c6",
+    "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala": "308a5a189640ea2c0e02e074028ca97f4f924737a86b36806ca9de89ad251263"
+  },
+  "source_additions_sha256": {
+    "src/main/scala/opengpu/graphics/TextureImageFormat.scala": "2f1f823c8990d2352976dc5b637b8d5ab83213048d627fd40ee8531336ca956a",
+    "src/test/scala/opengpu/graphics/TextureImageFormatSpec.scala": "4b87d5b5c9e9bd83962f8634e8a2e9c6089dc8ef2461de9030246a4c54ee671b"
+  },
+  "source_manifest_sha256": "d81bb985ef84c6c37ed5010c472680a990379552f98e9b41e588f85d34f12123",
+  "source_commit": "8e4950d67a17389146df4befc4e782a3dc53bf78",
+  "source_archive_proof": {
+    "commit": "8e4950d67a17389146df4befc4e782a3dc53bf78",
+    "files": 696,
+    "git_archive_byte_exact": true,
+    "source_manifest_sha256": "d81bb985ef84c6c37ed5010c472680a990379552f98e9b41e588f85d34f12123",
+    "v2_source_manifest_sha256": "1ef88dbfc60dd6468ea1a74060cec85b3346cc50a2fadf904ba110a09dc58dba",
+    "changes_from_v2": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala"
+    ],
+    "all_production_and_other_test_sources_byte_exact": true
+  },
+  "distinct_targeted_tests": 119,
+  "checks": {
+    "components": {
+      "log": ".artifacts/mobile-texture-formats-qualified-v2.log",
+      "sha256": "07e31fbe1d019b8becf716f30ce8843f4c64f3bf3fbafa9a8a5c8cc43c997043",
+      "test_cases": 54,
+      "by_suite": {
+        "GpuAbiLayoutSpec": 14,
+        "TextureImageSamplerBindingUnitSpec": 10,
+        "TextureImageBindingUnitSpec": 10,
+        "TextureImageFetchUnitSpec": 6,
+        "NativeShaderTextureUnitSpec": 9,
+        "TextureImageFormatSpec": 5
+      },
+      "cases": [
+        "GpuAbiLayoutSpec::should match render completion status encodings",
+        "GpuAbiLayoutSpec::should match the bounded tile descriptor and its precise completion statuses",
+        "GpuAbiLayoutSpec::should match the explicit GBJ1 host resource map and distinct status encodings",
+        "GpuAbiLayoutSpec::should match physical publication range failure statuses",
+        "GpuAbiLayoutSpec::should match the render-host register map",
+        "GpuAbiLayoutSpec::should match the unified-command register bank",
+        "GpuAbiLayoutSpec::should match the scoped TLB-flush and satp field encoding",
+        "GpuAbiLayoutSpec::should match the capability-word bit assignments",
+        "GpuAbiLayoutSpec::should match shader resource fields across hardware and the DRM UAPI",
+        "GpuAbiLayoutSpec::should match the fragment output-control ABI",
+        "GpuAbiLayoutSpec::should match the unified-command opcodes",
+        "GpuAbiLayoutSpec::should match the draw, vertex and job record sizes",
+        "GpuAbiLayoutSpec::should match the blend and stencil encoding shifts",
+        "GpuAbiLayoutSpec::should match the job-state stencil-test encoding",
+        "TextureImageSamplerBindingUnitSpec::should load all sampler filter wrap combinations with exact LOD bits and tag independent immutable cache reuse",
+        "TextureImageSamplerBindingUnitSpec::should reject malformed sampler encodings semantic enums NaNs and overflowing tables before publishing state",
+        "TextureImageSamplerBindingUnitSpec::should derive sampler dependent mip completeness and enforce every packed format filter and shader numeric type",
+        "TextureImageSamplerBindingUnitSpec::should invalidate every sampler cache identity field and prevent invalidated active fills from repopulating",
+        "TextureImageSamplerBindingUnitSpec::should drain stalled offers and cancellation cuts then retain healthy reuse with composed=false",
+        "TextureImageSamplerBindingUnitSpec::should drain stalled offers and cancellation cuts then retain healthy reuse with composed=true",
+        "TextureImageSamplerBindingUnitSpec::should preserve primary sampler image and level faults including valid address zero across later cancellation",
+        "TextureImageSamplerBindingUnitSpec::should translate independent sampler image and level tables and reject denied pages without physical reads",
+        "TextureImageSamplerBindingUnitSpec::should retain the selected view while draining a stalled nonmip base validation and its primary fault",
+        "TextureImageSamplerBindingUnitSpec::should backpressure reserved response IDs without consuming the owned sampler transaction",
+        "TextureImageBindingUnitSpec::should derive mip ranges against original dimension reduction for every root size and base level",
+        "TextureImageBindingUnitSpec::should bind authoritative formats and validate complete target mip chains before fetching typed texels",
+        "TextureImageBindingUnitSpec::should apply base max and dimensional mip rules and distinguish selected-only from full-chain cache identities",
+        "TextureImageBindingUnitSpec::should reject malformed image encoding and inconsistent later mips without any texture-data access",
+        "TextureImageBindingUnitSpec::should require explicit invalidation retain published formats and prevent invalidated fills from populating the cache",
+        "TextureImageBindingUnitSpec::should attribute header level and texel faults retain primary errors and stop prompt-fault descriptor issue",
+        "TextureImageBindingUnitSpec::should retain held offers and cancel across complete mip admission texel fetch decode and held completion",
+        "TextureImageBindingUnitSpec::should translate image level and cross-page texel records and enforce each read permission before physical access",
+        "TextureImageBindingUnitSpec::should own exact 4 GiB descriptor and texel ends reject invalid image tables and retain context cache identity",
+        "TextureImageBindingUnitSpec::should preserve primary faults across nested cancellation including address zero and reject full-width caller coordinates before data",
+        "TextureImageFetchUnitSpec::should fetch every typed storage format at every line offset with exact guarded bytes and fresh data on cache hits",
+        "TextureImageFetchUnitSpec::should gather raw compressed blocks and selected cube array volume spans including the 4 GiB boundary",
+        "TextureImageFetchUnitSpec::should reject invalid formats layouts descriptors and coordinates before texture data reads then recover",
+        "TextureImageFetchUnitSpec::should attribute descriptor and data faults drain reordered tags and retain the primary fault through cancellation",
+        "TextureImageFetchUnitSpec::should retain backpressured data offers and cancel across admission fetching decoding and held results",
+        "TextureImageFetchUnitSpec::should translate descriptor and cross-page texel reads enforce each page permission and recover after flush",
+        "NativeShaderTextureUnitSpec::should fetch every typed component and target through independent stage bindings with stage=0",
+        "NativeShaderTextureUnitSpec::should fetch every typed component and target through independent stage bindings with stage=1",
+        "NativeShaderTextureUnitSpec::should retain inactive vector lanes and suppress every destination lane on a later active lane fault",
+        "NativeShaderTextureUnitSpec::should reject root stage binding identity malformed packets and full width indices before unsafe reads",
+        "NativeShaderTextureUnitSpec::should retain mapped read offers through cancellation cuts and preserve primary faults before healthy reuse",
+        "NativeShaderTextureUnitSpec::should select explicit mip texels and validate the sampler required chain before reading any data",
+        "NativeShaderTextureUnitSpec::should preserve explicit fetch vector width and high masked lanes for lanes=1",
+        "NativeShaderTextureUnitSpec::should preserve explicit fetch vector width and high masked lanes for lanes=16",
+        "NativeShaderTextureUnitSpec::should preserve explicit fetch vector width and high masked lanes for lanes=32",
+        "TextureImageFormatSpec::should retain all legacy layouts and independently enumerate54 uncompressed image formats without expanding attachments",
+        "TextureImageFormatSpec::should reject texture-only IDs at the unchanged attachment decoder",
+        "TextureImageFormatSpec::should decode every SNORM8 code per channel family and every unsigned mini-float code with stable held results",
+        "TextureImageFormatSpec::should decode every shared exponent and mantissa and every16-bit depth value with exact FP32 rounding",
+        "TextureImageFormatSpec::should cover depth24 rounding boundaries ignored stencil padding raw depth floats and every format with poisoned requests"
+      ]
+    },
+    "controls": {
+      "log": ".artifacts/mobile-texture-formats-controls-v2-prefix.log",
+      "sha256": "04173f75179fb100c400cf0dfe95966467c5a4565ad91a2393dbc6cda430e527",
+      "test_cases": 57,
+      "by_suite": {
+        "TypedTextureDecodeSpec": 1,
+        "DecoderSpec": 3,
+        "TextureLineCreditAdapterSpec": 1,
+        "ExtensionDecoderSpec": 4,
+        "ExtendedDecoderSpec": 7,
+        "TextureImageResourceAddressUnitSpec": 6,
+        "TypedFragmentStateReaderSpec": 9,
+        "TextureImageAddressUnitSpec": 5,
+        "NativeTypedGraphicsJobReaderSpec": 8,
+        "NativeBinnedGraphicsJobReaderSpec": 9,
+        "FragmentShaderStageSpec": 2,
+        "VertexShaderStageSpec": 2
+      },
+      "cases": [
+        "TypedTextureDecodeSpec::should route all typed scalar and vector component encodings with ordinary register dependencies",
+        "DecoderSpec::should decode RV32I register and immediate ALU instructions",
+        "DecoderSpec::should decode control flow and RV32M while rejecting unsupported encodings",
+        "DecoderSpec::should decode CSR, system, and GPU warp-control instructions",
+        "TextureLineCreditAdapterSpec::should map reordered replies retain stalled leases and reuse only retired physical IDs",
+        "ExtensionDecoderSpec::should classify FPU operations independently",
+        "ExtensionDecoderSpec::should classify RVV operations independently",
+        "ExtensionDecoderSpec::should decode single-width scaling shifts without source-pair restrictions",
+        "ExtensionDecoderSpec::should decode narrowing shifts and clips in wv, wx, and wi forms",
+        "ExtendedDecoderSpec::should route scalar floating-point instructions to the FPU",
+        "ExtendedDecoderSpec::should route RVV arithmetic, configuration, and memory instructions",
+        "ExtendedDecoderSpec::should report reserved and unsupported encodings as illegal instructions",
+        "ExtendedDecoderSpec::should classify CSR and warp-control instructions as system operations",
+        "ExtendedDecoderSpec::should carry illegal-instruction reporting through the decode pipe",
+        "ExtendedDecoderSpec::should preserve decode output while the pipe is backpressured",
+        "ExtendedDecoderSpec::should decode the guest ellipse multiply and convert words",
+        "TextureImageResourceAddressUnitSpec::should load all target mip records with reordered tags and return exact checked cached spans",
+        "TextureImageResourceAddressUnitSpec::should retain exact cache identity and prevent invalidated fills from becoming reusable views",
+        "TextureImageResourceAddressUnitSpec::should accept records and images ending at 4 GiB and reject invalid lookup envelopes before reads",
+        "TextureImageResourceAddressUnitSpec::should reject corrupt headers canonical padding view bounds and coordinates without publishing partial state",
+        "TextureImageResourceAddressUnitSpec::should drain held reads memory faults and cancelled address work before allowing healthy reuse",
+        "TextureImageResourceAddressUnitSpec::should apply configured image and layer limits to GPU loaded views",
+        "TypedFragmentStateReaderSpec::should decode centroid versions and all sixty four qualifier bits without shifting legacy state",
+        "TypedFragmentStateReaderSpec::should fetch four reordered tags publish complete state and reuse only an exact immutable cache key",
+        "TypedFragmentStateReaderSpec::should accept a final state ending at 4 GiB and reject invalid envelopes without memory traffic",
+        "TypedFragmentStateReaderSpec::should reject reserved words malformed headers and noncanonical signed or unsigned padding",
+        "TypedFragmentStateReaderSpec::should validate every active engine scratch view and reject aliasing inactive garbage and shader bounds",
+        "TypedFragmentStateReaderSpec::should drain faulted and cancelled requests before reuse without caching partial state",
+        "TypedFragmentStateReaderSpec::should prevent an invalidated in-flight fill from repopulating the cache",
+        "TypedFragmentStateReaderSpec::should retain versioned sampler policy in state cache and reject malformed sampler encodings",
+        "TypedFragmentStateReaderSpec::should snapshot native texture roots without shifting legacy state and reject invalid reference versions or ends",
+        "TextureImageAddressUnitSpec::should address pitched image array cube and volume levels including packed and compressed block boundaries",
+        "TextureImageAddressUnitSpec::should reject malformed views out of range coordinates overlapping pitches and full level allocation escapes",
+        "TextureImageAddressUnitSpec::should sustain one address each cycle and preserve every captured request through backpressure pipelineBounds=false",
+        "TextureImageAddressUnitSpec::should sustain one address each cycle and preserve every captured request through backpressure pipelineBounds=true",
+        "TextureImageAddressUnitSpec::should enforce configured dimensions volume extent and array layers at their exact boundaries",
+        "NativeTypedGraphicsJobReaderSpec::should decode fixed native layouts with out of order replies and retain complete pass draw and publication ownership",
+        "NativeTypedGraphicsJobReaderSpec::should snapshot centroid native words and reject unsupported masks before a child draw offer",
+        "NativeTypedGraphicsJobReaderSpec::should snapshot polygon raster words without moving old fields and reject noncanonical enables",
+        "NativeTypedGraphicsJobReaderSpec::should reject malformed bounds encodings and capacity adaptation before issuing invalid child work",
+        "NativeTypedGraphicsJobReaderSpec::should drain held descriptor offers child controls and physical publication after cancellation or memory faults",
+        "NativeTypedGraphicsJobReaderSpec::should read each native record through the highest physical bytes with a four GiB exclusive limit",
+        "NativeTypedGraphicsJobReaderSpec::should snapshot versioned native sampler policies without shifting legacy words and reject malformed policies",
+        "NativeTypedGraphicsJobReaderSpec::should snapshot stage texture resource references in reserved native draw words and reject illegal roots",
+        "NativeBinnedGraphicsJobReaderSpec::should snapshot appended polygon raster fields and reject noncanonical enables before offering a draw",
+        "NativeBinnedGraphicsJobReaderSpec::should use distinct record magic values without reusing legacy bin typed-image or fragment-state ABI identifiers",
+        "NativeBinnedGraphicsJobReaderSpec::should protect descriptor state bin and staging roles from virtual image aliases while permitting shared read-only descriptor data",
+        "NativeBinnedGraphicsJobReaderSpec::should snapshot three canonical records through four reordered tags and preserve fixed-capacity fields at the four GiB boundary",
+        "NativeBinnedGraphicsJobReaderSpec::should reject malformed envelopes capacities padding bounds and writable descriptor aliases before exposing invalid work",
+        "NativeBinnedGraphicsJobReaderSpec::should retain descriptor memory and nested child faults through cancellation drain and exact healthy reuse",
+        "NativeBinnedGraphicsJobReaderSpec::should retain offered memory begin draw end and child publication ownership across cancellation",
+        "NativeBinnedGraphicsJobReaderSpec::should snapshot versioned binned sampler extension words and reject malformed policies before draw offers",
+        "NativeBinnedGraphicsJobReaderSpec::should retain binned vertex texture root references without moving legacy descriptor words",
+        "FragmentShaderStageSpec::should execute native typed component fetches through real shared CUs and preserve fault drain local=true",
+        "FragmentShaderStageSpec::should execute native typed component fetches through real shared CUs and preserve fault drain local=false",
+        "VertexShaderStageSpec::should execute native typed component fetches through real shared CUs and preserve fault drain local=true",
+        "VertexShaderStageSpec::should execute native typed component fetches through real shared CUs and preserve fault drain local=false"
+      ]
+    },
+    "execution": {
+      "log": ".artifacts/mobile-texture-formats-integration-v4.log",
+      "sha256": "8cdb9442e8e085567175090b61b1980feb6db1add68f9a06e0bb86f9f64bd1ca",
+      "test_cases": 8,
+      "by_suite": {
+        "NativeTypedGraphicsHostAxiSpec": 4,
+        "VertexShaderStageSpec": 2,
+        "FragmentShaderStageSpec": 2
+      },
+      "cases": [
+        "NativeTypedGraphicsHostAxiSpec::should execute GPU bound typed fetches in both native shader stages with translated descriptor ownership local=true",
+        "NativeTypedGraphicsHostAxiSpec::should execute GPU bound typed fetches in both native shader stages with translated descriptor ownership local=false",
+        "VertexShaderStageSpec::should execute captured native texture policies and trap coordinate faults before reuse local=true",
+        "VertexShaderStageSpec::should execute captured native texture policies and trap coordinate faults before reuse local=false",
+        "FragmentShaderStageSpec::should execute captured native texture policies and trap coordinate faults before reuse local=true",
+        "FragmentShaderStageSpec::should execute captured native texture policies and trap coordinate faults before reuse local=false",
+        "NativeTypedGraphicsHostAxiSpec::should publish native sampler policies through actual vertex and fragment texture instructions local=true",
+        "NativeTypedGraphicsHostAxiSpec::should publish native sampler policies through actual vertex and fragment texture instructions local=false"
+      ]
+    }
+  },
+  "integration_evidence": {
+    "shared_cu_stage_draws": 204,
+    "new_format_draws_per_stage_and_payload": 40,
+    "typed_native_axi_frames": 48,
+    "typed_native_axi_primitive_draws": 144,
+    "typed_and_legacy_payload_modes": true,
+    "legacy_shared_cu_stage_draws": 84,
+    "legacy_native_axi_frames": 14,
+    "legacy_native_axi_primitive_draws": 42,
+    "runtime_GTF1_reads_and_write_rejection": true,
+    "real_Sv32_denied_sampler_no_physical_read": true,
+    "held_completion_pins_VM": true
+  },
+  "numeric_evidence": {
+    "SNORM8_all_codes_per_family": 256,
+    "mini_float_11_all_codes": 2048,
+    "mini_float_10_all_codes": 1024,
+    "RGB9_E5_exponents": 32,
+    "RGB9_E5_mantissas_per_exponent": 512,
+    "D16_all_codes": 65536,
+    "D24_boundaries_and_random_per_format": true,
+    "raw_FP32_depth_and_ignored_stencil_padding": true,
+    "image_formats_at_all64_line_offsets": 3456,
+    "GXI1_legal_format_target_pairs": 211,
+    "sampler_format_filter_pairs": 648,
+    "native_selected_component_checks_per_stage": 844
+  },
+  "abi_checks": 9,
+  "combined_c11_and_ci_selection": {
+    "combined_c11": {
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "ci_selection": {
+      "returncode": 0,
+      "stdout": "Integration test selection: PASS\n",
+      "stderr": ""
+    }
+  },
+  "legacy_abi_proof": {
+    "docs/abi/native-typed-graphics-v1.json": {
+      "byte_exact": true,
+      "sha256": "86769ae87b5513dca3582e22adabbc454f4002865970e53d02b8e7b33a862d05"
+    },
+    "docs/abi/native-binned-graphics-v1.json": {
+      "byte_exact": true,
+      "sha256": "33748b61279f3234634b364a8af9df6d53fcc7e97e846a1178fb3629ab806767"
+    },
+    "docs/abi/typed-fragment-state-v1.json": {
+      "byte_exact": true,
+      "sha256": "9b65f1333aadae0c9e9ecd86c5627227a9f70a218758f316de8ebd6212797bef"
+    },
+    "docs/abi/texture-image-level-v1.json": {
+      "byte_exact": true,
+      "sha256": "55b134415d56648441513768989042c248d7c09c95c29180396a7dcc4fb2cda3"
+    },
+    "docs/abi/texture-image-binding-v1.json": {
+      "byte_exact": true,
+      "sha256": "60a1bc35436e3c2dad9d6a9fa546de7e7d66b90d056aa348e82f8a97ae15e7b9"
+    },
+    "docs/abi/texture-sampler-v1.json": {
+      "byte_exact": true,
+      "sha256": "b0d31b693602ec71e6b4a2f85fad6af3bdde96ac1aaa6e992ad4e0805f9778d7"
+    },
+    "docs/abi/native-texture-v1.json": {
+      "byte_exact": true,
+      "sha256": "cf5dc89cc1ed165c45eef352bc30ab08e14c81fd77fbd439930520e5a03026fc"
+    },
+    "legacy_image_ids_0_to_35": {
+      "original_fields_unchanged": true,
+      "old_count": 36,
+      "new_count": 54
+    }
+  },
+  "synthesis_record": "docs/performance/mobile-texture-image-formats-synthesis-2026-10-20.json",
+  "limits": [
+    "All54 uncompressed sized image storage formats are implemented; complete GLES/H0-H8 is not achieved.",
+    "ETC2/EAC, general filtering/LOD, swizzle, depth comparison, throughput and whole-host synthesis remain open.",
+    "Attachment catalog remains36. Original image IDs and descriptor/instruction layouts are stable.",
+    "Decoder adds four cycles per four-component image decode. No throughput gain is claimed.",
+    "Compiler/driver instruction admission and API upload conversion remain separate integration work."
+  ],
+  "retained_failed_controls": {
+    "first_matrix": {
+      "log": ".artifacts/mobile-texture-formats-integration-v2.log",
+      "sha256": "f3267707cce90f75d7aa11a99dc875b42f5282a21f5c214d666682c8f4fd5bf9",
+      "failed_native_axi_cases": 2,
+      "source_manifest_sha256": "1ef88dbfc60dd6468ea1a74060cec85b3346cc50a2fadf904ba110a09dc58dba"
+    },
+    "diagnostic": {
+      "log": ".artifacts/mobile-texture-formats-axi-diagnostic-v3.log",
+      "sha256": "983dc5a86051e3e671b2020e9ceb646287b03c3af35e1b2ff05e546b5403efce",
+      "failed_cases": 1,
+      "frame": 14,
+      "format": 44,
+      "source_manifest_sha256": "11aca27923d42f2a2da43388b128692fc5b3483bf57759ed49b34ff51c32a508",
+      "source_reconstructed_from_v2_with_sole_diagnostic_clue_edit": true
+    },
+    "cause": "Fixture color input reached0x430000, aliasing vertex scratch. Hardware correctly rejected the overlap. SourceBias0x90000 and explicit fixture bounds keep all24 frames disjoint. No production RTL fix was needed."
+  },
+  "successful_prefix_provenance": {
+    "original_log_sha256": "f3267707cce90f75d7aa11a99dc875b42f5282a21f5c214d666682c8f4fd5bf9",
+    "prefix_log_sha256": "04173f75179fb100c400cf0dfe95966467c5a4565ad91a2393dbc6cda430e527",
+    "prefix_bytes": 16473,
+    "prior_successful_tests": 57,
+    "failed_AXI_group_excluded": true
+  },
+  "synthesis_and_prior_test_carry_proof": {
+    "commit": "8e4950d67a17389146df4befc4e782a3dc53bf78",
+    "files": 696,
+    "git_archive_byte_exact": true,
+    "source_manifest_sha256": "d81bb985ef84c6c37ed5010c472680a990379552f98e9b41e588f85d34f12123",
+    "v2_source_manifest_sha256": "1ef88dbfc60dd6468ea1a74060cec85b3346cc50a2fadf904ba110a09dc58dba",
+    "changes_from_v2": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala"
+    ],
+    "all_production_and_other_test_sources_byte_exact": true
+  }
+}
