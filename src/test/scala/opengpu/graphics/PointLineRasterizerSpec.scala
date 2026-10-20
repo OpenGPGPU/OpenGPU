@@ -166,6 +166,30 @@ class PointLineRasterizerSpec extends AnyFlatSpec {
     }
   }
 
+  it should "cancel and reset every cycle before the first quad across all point and line sample stages" in {
+    val geometry=g.copy(screenWidth=2,screenHeight=2)
+    simulate(new PointLineRasterizer(geometry)){d=>val t=new Driver(d,geometry)
+      val coords=Vector((BigInt(128),BigInt(128)),(BigInt(384),BigInt(384)))
+      var cuts=0
+      for(kind<-0 to 1;mode<-0 to 2){
+        val shape=if(kind==0)coords.take(1)else coords
+        val settings=Settings(mode=mode);val sizes=Sizes(point=1.5,line=2.5)
+        t.hold=true;t.send(shape,kind,settings,sizes);val start=t.cycle
+        t.until(d.io.out.valid.peek().litToBoolean);val latency=t.cycle-start
+        assert(latency>0);t.hold=false;t.finish()
+        for(reset<-Seq(false,true);cut<-0 until latency){
+          t.send(shape,kind,settings,sizes);for(_<-0 until cut)t.tick()
+          d.io.out.valid.expect(false.B)
+          if(reset)d.reset.poke(true.B)else d.io.cancel.poke(true.B)
+          t.tick();d.io.busy.expect(false.B);d.io.out.valid.expect(false.B);d.io.fault.expect(false.B)
+          d.reset.poke(false.B);d.io.cancel.poke(false.B)
+          t.run(shape,kind,settings,sizes);cuts+=1
+        }
+      }
+      info(s"POINT_LINE_SAMPLE_PIPELINE cancelAndResetCuts=$cuts modes=3 pointsAndLines=true everyPreOfferCycle=true exactHealthyReuse=true")
+    }
+  }
+
   it should "reject malformed sample modes and sizes without scanning or exposing a partial quad" in {
     simulate(new PointLineRasterizer(g)){d=>val t=new Driver(d)
       for(change<-Seq[()=>Unit](()=>d.io.in.bits.state.sampleMode.poke(3.U),()=>d.io.in.bits.state.lineWidth.poke(fp(-1).U),

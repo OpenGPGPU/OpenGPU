@@ -6024,3 +6024,16 @@ Validation remains 206 native checks carried by exact source/RTL identity plus
 The four standalone image synthesis results carry by identical RTL logic and
 unchanged constraints. Native general image/sampler binding, typed shader
 transport, remaining formats/filtering and full H0-H8 completion remain open.
+
+
+## Registered point/line sample coverage (2026-10-20)
+
+The [sample-pipeline candidate](performance/mobile-point-line-sample-pipeline-2026-10-20.json)
+breaks the historical native point/line mask path into registered coordinates,
+products, cross/dot results and exact squared distance. All 9 component controls
+pass, including independent point/line coverage, four subpixel widths and 848
+cancellation/reset cuts with exact reuse. Default RTL emission passes and the
+672-file source stays frozen. Sample/lane ordering and full-width arithmetic
+remain exact; additional cycles do not establish a throughput improvement.
+Primitive/shared-CU/AXI integration and standalone synthesis remain pending.
+No native replay/host timing or broader H0-H8 completion is claimed.

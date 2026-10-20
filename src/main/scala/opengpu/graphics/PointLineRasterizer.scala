@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import opengpu.util.{SignedProductParts, SplitSignedProduct}
 
 class PointLineRasterRequest extends Bundle {
   val point=Bool();val x0=SInt(32.W);val y0=SInt(32.W);val x1=SInt(32.W);val y1=SInt(32.W)
@@ -29,8 +30,9 @@ private[graphics] object DiamondFraction {
   * lines use exact perturbed diamond exit; multisample lines use the butt
   * rectangle. Wide basic lines replicate the one-pixel line along its minor
   * axis after integer width rounding. Each nonempty quad retains all helpers.
-  * Per-request size/delta/product stages precede scanning; sample sequencing
-  * is unchanged. Keep coordinate carries until the checked 64-bit exports.
+  * Per-request size/delta/product stages precede scanning. Sample coordinates,
+  * products, cross/dot sums and squared distance have register boundaries;
+  * sample and lane order is unchanged. Keep coordinate carries until the checked 64-bit exports.
   * Integer arithmetic only; no private SRAM or floating arithmetic lane.
   */
 class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
@@ -39,7 +41,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     val in=Flipped(Decoupled(new PointLineRasterRequest));val out=Decoupled(new RasterQuad(g))
     val cancel=Input(Bool());val busy=Output(Bool());val fault=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,decode,measure,bounds,threshold,startQuad,startLane,sample,diamondU,diamondV,diamondDone,nextSample,nextLane,emit,advance=Value}
+  private object State extends ChiselEnum {val idle,decode,measure,bounds,threshold,startQuad,startLane,sample,sampleRelative,sampleProducts,sampleCombine,sampleSquare,sampleSquareJoin,sampleCompare,diamondU,diamondV,diamondDone,nextSample,nextLane,emit,advance=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new PointLineRasterRequest);private val output=Reg(new RasterQuad(g))
   private val x=Reg(UInt(16.W));private val y=Reg(UInt(16.W));private val minX=Reg(UInt(16.W));private val maxX=Reg(UInt(16.W));private val maxY=Reg(UInt(16.W))
   private val lane=RegInit(0.U(2.W));private val sample=RegInit(0.U(2.W));private val mask=RegInit(0.U(g.maxSampleCount.W));private val any=RegInit(false.B)
@@ -58,10 +60,17 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   // Wide aliased lines translate the diamond center along the minor axis.
   private val repeat=RegInit(0.U(7.W))
   private val translation=((repeat.zext<<1)-(integerWidth.zext-1.S))*half.S
-  private val qx=cx+sampleX-Mux(!request.point && request.state.sampleMode===0.U && !majorX,translation,0.S)
-  private val qy=cy+sampleY-Mux(!request.point && request.state.sampleMode===0.U && majorX,translation,0.S)
-  private val rx=qx-&request.x0;private val ry=qy-&request.y0
-  private val cross=rx*dy-&ry*dx;private val dot=rx*dx+&ry*dy
+  private val nextQx=cx+sampleX-Mux(!request.point && request.state.sampleMode===0.U && !majorX,translation,0.S)
+  private val nextQy=cy+sampleY-Mux(!request.point && request.state.sampleMode===0.U && majorX,translation,0.S)
+  private val qx=Reg(chiselTypeOf(nextQx));private val qy=Reg(chiselTypeOf(nextQy))
+  private val nextRx=qx-&request.x0;private val nextRy=qy-&request.y0
+  private val rx=Reg(chiselTypeOf(nextRx));private val ry=Reg(chiselTypeOf(nextRy))
+  private val crossA=Reg(chiselTypeOf(rx*dy));private val crossB=Reg(chiselTypeOf(ry*dx))
+  private val dotA=Reg(chiselTypeOf(rx*dx));private val dotB=Reg(chiselTypeOf(ry*dy))
+  private val nextCross=crossA-&crossB;private val dot=dotA+&dotB
+  private val cross=Reg(chiselTypeOf(nextCross));private val withinLength=Reg(Bool())
+  private val squareParts=Reg(new SignedProductParts(cross.getWidth))
+  private val square=Reg(SInt((2*cross.getWidth).W))
   private val lowX=Mux(request.state.scissorEnable,request.state.scissorMinX,0.U);private val lowY=Mux(request.state.scissorEnable,request.state.scissorMinY,0.U)
   private val width=ScreenLimit(request.state.screenW,g.screenWidth);private val height=ScreenLimit(request.state.screenH,g.screenHeight)
   private val highX=Mux(request.state.scissorEnable && request.state.scissorMaxX<width,request.state.scissorMaxX,width)
@@ -119,14 +128,23 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     }
     is(State.sample){
       when(!inClip){phase:=State.nextLane}
-        .elsewhen(request.point){
+        .otherwise{qx:=nextQx;qy:=nextQy;phase:=State.sampleRelative}
+    }
+    is(State.sampleRelative){rx:=nextRx;ry:=nextRy;phase:=State.sampleProducts}
+    is(State.sampleProducts){
+      when(request.point){
           val hit=rx*2.S>= -pointSize.zext && rx*2.S<pointSize.zext &&
             ry*2.S>= -pointSize.zext && ry*2.S<pointSize.zext
           when(hit){mask:=mask|(1.U(g.maxSampleCount.W)<<sample)};nextSample()
         }.elsewhen(request.state.sampleMode=/=0.U){
-          val distance=cross*cross*4.S
-          when(dot>=0.S && dot<length && distance.asUInt<lineBound){mask:=mask|(1.U(g.maxSampleCount.W)<<sample)};nextSample()
+          crossA:=rx*dy;crossB:=ry*dx;dotA:=rx*dx;dotB:=ry*dy;phase:=State.sampleCombine
         }.otherwise{lower:=DiamondFraction.constant(0);upper:=DiamondFraction.constant(1);valid:=true.B;inside:=true.B;phase:=State.diamondU}
+    }
+    is(State.sampleCombine){cross:=nextCross;withinLength:=dot>=0.S && dot<length;phase:=State.sampleSquare}
+    is(State.sampleSquare){squareParts:=SplitSignedProduct.split(cross,cross);phase:=State.sampleSquareJoin}
+    is(State.sampleSquareJoin){square:=SplitSignedProduct.join(squareParts);phase:=State.sampleCompare}
+    is(State.sampleCompare){
+      when(withinLength && (square.asUInt<<2)<lineBound){mask:=mask|(1.U(g.maxSampleCount.W)<<sample)};nextSample()
     }
     is(State.diamondU){slab(request.x0.pad(64)+request.y0,request.x1.pad(64)+request.y1,qx+&qy,second=false);phase:=State.diamondV}
     is(State.diamondV){slab(request.x0.pad(64)-request.y0,request.x1.pad(64)-request.y1,qx-&qy,second=true);phase:=State.diamondDone}
