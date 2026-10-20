@@ -25,6 +25,7 @@ private class RasterFp32InterpolationHarness(p: VertexShaderStageConfig,g: Graph
   raster.io.scissorEnable:=false.B;raster.io.scissorMinX:=0.U;raster.io.scissorMinY:=0.U
   raster.io.scissorMaxX:=g.screenWidth.U;raster.io.scissorMaxY:=g.screenHeight.U
   raster.io.screenW:=g.screenWidth.U;raster.io.screenH:=g.screenHeight.U;raster.io.pixel.ready:=true.B
+  interpolation.io.in.bits:=0.U.asTypeOf(interpolation.io.in.bits)
   interpolation.io.in.valid:=raster.io.quad.valid;interpolation.io.in.bits.primitive:=primitive
   interpolation.io.in.bits.quad:=raster.io.quad.bits;interpolation.io.in.bits.pointSize:=0.U
   interpolation.io.in.bits.sampleDepthEnable:=true.B;interpolation.io.in.bits.sampleMode:=io.sampleMode;raster.io.quad.ready:=interpolation.io.in.ready
