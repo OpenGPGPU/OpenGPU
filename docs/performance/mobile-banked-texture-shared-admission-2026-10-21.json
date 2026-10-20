@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "forty_six_checks_and_six_emissions_pass_three_full_synthesis_screens_running",
+  "status": "forty_six_checks_and_packed_synthesis_pass_FP32_timing_failed_translated_synthesis_running",
   "source": {
     "commit": "18668e44343de5a3253b07b9c128e709111d0223",
     "source_files": 822,
@@ -126,7 +126,7 @@
   "synthesis_policy": "1000ps,TC/SLVT,25% I/O,standard ABC,no retiming;synthesis only",
   "synthesis_jobs": {
     "readthrough": {
-      "status": "running",
+      "status": "passed",
       "session": 11038,
       "start": {
         "wrapper_pid": 23589,
@@ -150,10 +150,60 @@
           "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-readthrough-v1"
         ],
         "started_utc": "2026-10-20T21:41:09.405842+00:00"
+      },
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 1127.5057484998833,
+        "finished_utc": "2026-10-20T21:59:56.932292+00:00"
+      },
+      "passed": true,
+      "slacks_ps": [
+        41.862,
+        11.396
+      ],
+      "fully_mapped": true,
+      "mapped_cells": 750012,
+      "mapped_library_area": 95576.28858,
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "yosys",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-readthrough-v1/qualification.json": "797ecf1ad5c254f7cd20d2aa0b647103095dc5e3eb78a82c8e4d103f73cd5847",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-readthrough-v1/result.json": "3535f4255f054415cb91cd60e0030a4f7f9c325b1e4f353a0b148ecbd814d69e",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-readthrough-v1/manifest.json": "d52a68d2d0f36995a437fb508c9eca0e733531cd4f5a678a3475e319fe5896c8",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-readthrough-v1/flow/flow_manifest.json": "049e6a8ca75d431ebf9912bc72f19470aabcb74869546bc0d8cbc57d07971d08",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-readthrough-v1/flow/synthesis_sta.log": "94d6f2f951a34cf4aec692fa0ed5d9e9dc61ccac3499dbe850e9fb95dcdb9974",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-readthrough-v1/flow/orfs-work/reports/base/synth_stat.txt": "2dd47fdd31206a32f3085f5499c10d54396f93341e06e64eef385585d0f6a748",
+        ".artifacts/mobile-banked-texture-shared-admission-readthrough-synthesis-v1-inputs.json": "3b13a6ce70e85546b5801b2bab50d9d15918576f0f72229085ff5a09fe9738db",
+        ".artifacts/mobile-banked-texture-shared-admission-readthrough-synthesis-v1-result.json": "1adc6584a531a466e7d0436ac5c0109db956a036c4e5a95f9161d90617457657"
       }
     },
     "fp32": {
-      "status": "running",
+      "status": "timing_failed",
       "session": 7671,
       "start": {
         "wrapper_pid": 23624,
@@ -177,6 +227,64 @@
           "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-fp32-v1"
         ],
         "started_utc": "2026-10-20T21:41:10.558540+00:00"
+      },
+      "terminal": {
+        "returncode": 2,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 1132.4539453748148,
+        "finished_utc": "2026-10-20T22:00:03.033189+00:00"
+      },
+      "passed": false,
+      "slacks_ps": [
+        -6.794,
+        -48.922
+      ],
+      "fully_mapped": true,
+      "mapped_cells": 754779,
+      "mapped_library_area": 96442.73424,
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "yosys",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-fp32-v1/qualification.json": "f8534cca22c7dbf8bb2b6a5d68e66475965e784bdeee3cae9a65e33a85c7ba91",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-fp32-v1/result.json": "aa6b5fca711565d3e4107871fd1919d6b5aa9b4adc4a30fc22be0d96ea08daae",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-fp32-v1/manifest.json": "2f587f9dd4a3ff6c4eb37a60f62b1cf3843096ffb5cb95ccf94cd6eab70fc214",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-fp32-v1/flow/flow_manifest.json": "cf452b828c783b2a843e8d320b955f94ff8b8e60148eeeeeab43bd78cf9c4b13",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-fp32-v1/flow/synthesis_sta.log": "10e8a8824f5c0403e67f93f0db398cd73401ea607f6f3eb8229b818e0e347f1c",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-fp32-v1/flow/orfs-work/reports/base/synth_stat.txt": "8e4b587a7639477ed19a180b0a6e05f39a7bd280ddec7adb23693e5d8cd9da5b",
+        ".artifacts/mobile-banked-texture-shared-admission-fp32-synthesis-v1-inputs.json": "cbd03fdfe35216c6b6b3c74a3204aa1725f16990a57ffa03e140e638a4a7eb16",
+        ".artifacts/mobile-banked-texture-shared-admission-fp32-synthesis-v1-result.json": "88d8c17e7074fb9247b463cace1d1194b9f92f7dfb6eb8ecb9b47f7cf5606f99"
+      },
+      "mapped_path": {
+        "startpoint": "_1379985_",
+        "startpoint_D": "_0210257_",
+        "same_D_and_clock_as": "groups.service.fillInputs.deq_ptr_value$_SDFFE_PP0P_",
+        "core_endpoint": "groups.count[4]$_SDFFE_PP0P_",
+        "IO_endpoint": "io_tapIssues[1]",
+        "diagnosis": "Shared owner selection feeds cancellation/poison routing and the return-credit chain. Global epoch flags and registered untagged telemetry are being qualified separately."
       }
     },
     "translated": {
@@ -223,7 +331,7 @@
     ".artifacts/mobile-banked-texture-shared-admission-translated-synthesis-v1-start.json": "b6c1e6e1105aacf35b84c801cb7d7ba8508c2be57c8d898bbc075ff0909c93b4"
   },
   "remaining": [
-    "collect and inspect all three fresh synthesis results before main integration",
+    "collect translated synthesis and qualify the scalar epoch-control correction before main integration",
     "native resource/coordinate planning and shared-CU texture-cluster wiring",
     "whole-native numeric precision/rates with memory contention",
     "render-to-texture visibility and full H0-H8 gates"

@@ -48,6 +48,10 @@ now passes46 fresh checks on822 inputs with six emissions. Two complete word
 records after bank arbitration separate that selection from fill-key matching.
 Stopped shared admissions retire through a fourth word-completion source,with
 all original owners retained. The `joined` performance pulse is registered by
-one cycle;event counts and warm input/output II1 remain unchanged. Three fresh
-full synthesis screens cover packed read-through,FP32 and translated profiles
-at the same1000ps target. Timing closure remains unproven until those complete.
+one cycle;event counts and warm input/output II1 remain unchanged. Packed read-through
+synthesis now passes1000ps including I/O (+41.862/+11.396ps),with750,012
+fully mapped cells. FP32 improves but fails (-6.794/-48.922ps),with754,779
+mapped cells. Its remaining path crosses shared-owner cancellation selection,
+return credits and tap telemetry. Translated synthesis remains active;scalar
+epoch-control and registered telemetry are qualified separately before main
+integration.
