@@ -11,6 +11,10 @@ class TextureImageLevelSampleRequest extends Bundle {
   val linear=Bool();val shadow=Bool();val reference=UInt(32.W)
   /** False defers swizzle until a parent finishes mip interpolation. */
   val applySwizzle=Bool();val tag=UInt(32.W)
+  /** A mip parent may supply its first level. Reuse this owner's filter after
+    * sampling the second level, then perform the final swizzle once.
+    */
+  val blendPrevious=Bool();val previous=Vec(4,UInt(32.W));val mipWeight=UInt(32.W)
 }
 class TextureImageLevelSampleResult extends Bundle {
   val rgba=Vec(4,UInt(32.W));val colorType=UInt(2.W);val tag=UInt(32.W)
@@ -55,6 +59,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   private val locations=Reg(Vec(8,new TextureSampleTapLocation));private val colors=Reg(Vec(8,Vec(4,UInt(32.W))))
   private val planned=Reg(new TextureImageTypedFetchRequest);private val plannedLocation=Reg(new TextureSampleTapLocation)
   private val filtered=Reg(Vec(4,UInt(32.W)));private val uniqueTaps=Reg(UInt(4.W));private val readLines=Reg(UInt(5.W))
+  private val blending=RegInit(false.B)
   private val fetchStarted=RegInit(false.B);private val filterStarted=RegInit(false.B)
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
   private val view=request.image.view;private val volume=view.target===TextureImageTarget.image3D.U
@@ -70,6 +75,9 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   filter.io.in.valid:=phase===State.offerFilter;filter.io.in.bits.values:=colors
   filter.io.in.bits.axes:=Mux(request.linear,Mux(volume,3.U,2.U),0.U);filter.io.in.bits.tag:=request.tag
   filter.io.in.bits.weights:=VecInit(axes.map(_.weight));filter.io.out.ready:=phase===State.waitFilter
+  when(blending){filter.io.in.bits.values:=0.U.asTypeOf(filter.io.in.bits.values)
+    filter.io.in.bits.values(0):=request.previous;filter.io.in.bits.values(1):=filtered
+    filter.io.in.bits.axes:=1.U;filter.io.in.bits.weights:=VecInit(Seq(request.mipWeight,0.U(32.W),0.U(32.W)))}
   filter.io.cancel:=filterStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   coordinate.io.in.valid:=phase===State.axes && axisIssued<3.U
   coordinate.io.in.bits.coordinate:=Mux(axisIssued===2.U && !volume,0.U,request.coordinates(axisIssued))
@@ -99,6 +107,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       request:=io.in.bits;status:=0.U;source:=0.U;faultValid:=false.B;faultAddress:=0.U;noFill:=io.invalidate
       axisIssued:=0.U;axisReceived:=0.U;tap:=0.U;validTap.foreach(_:=false.B);colors.foreach(_.foreach(_:=0.U));filtered.foreach(_:=0.U)
       uniqueTaps:=0.U;readLines:=0.U;fetchStarted:=false.B;filterStarted:=false.B;phase:=State.check
+      blending:=false.B
     }}
     is(State.check){
       val admitted=request.image.validBinding && request.image.status===0.U && request.sampler.validSampler && request.sampler.status===0.U &&
@@ -107,7 +116,8 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       val compatible=TextureSamplerState.legal(request.sampler.state) && TextureSamplerState.compatibleSampling(request.sampler.state,request.image.format,
         TextureImageFormat.kind(request.image.format),request.shadow) && TextureImageSwizzle.legal(request.image.swizzle) &&
         TextureImageFormat.targetLegal(request.image.format,view.target) && view.block4x4===TextureImageFormat.block4x4(request.image.format) &&
-        view.blockBytes===TextureImageFormat.bytes(request.image.format) && (!request.linear || request.shadow || TextureImageFormat.filterable(request.image.format))
+        view.blockBytes===TextureImageFormat.bytes(request.image.format) && ((!request.linear && !request.blendPrevious) || request.shadow || TextureImageFormat.filterable(request.image.format)) &&
+        (!request.blendPrevious || (!request.mipWeight(31) && request.mipWeight>0.U && request.mipWeight<"h3f800000".U))
       val selected= Mux(array,request.layer<view.layers,request.layer===0.U) && Mux(cube,request.face<6.U,request.face===0.U)
       when(stop){phase:=State.finish}.elsewhen(!admitted){fail(TextureImageResourceStatus.view.U,3)}
         .elsewhen(!compatible){fail(TextureImageFetchStatus.format.U,3)}
@@ -156,7 +166,8 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
     is(State.waitFilter){when(filter.io.out.fire){
       filterStarted:=false.B;assert(filter.io.out.bits.tag===request.tag);val code=filter.io.out.bits.status
       when((code=/=0.U && code=/=TextureImageResourceStatus.cancelled.U) || !stop){status:=code;when(code=/=0.U){source:=3.U}}
-      when(!stop && code===0.U){filtered:=filter.io.out.bits.rgba};phase:=State.finish
+      when(!stop && code===0.U){filtered:=filter.io.out.bits.rgba}
+      when(!stop && code===0.U && request.blendPrevious && !blending){blending:=true.B;phase:=State.offerFilter}.otherwise{phase:=State.finish}
     }}
     is(State.finish){
       assert(!fetch.io.busy && !filter.io.busy && !coordinate.io.out.valid,"sample completion escaped coordinate/fetch/filter drain")

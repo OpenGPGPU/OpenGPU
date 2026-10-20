@@ -37,7 +37,8 @@ object TextureSamplerState {
     */
   def compatibleSampling(s: TextureSamplerState,format: UInt,expectedType: UInt,shadow: Bool): Bool={
     val kindMatches=TextureImageFormat.valid(format) && expectedType===TextureImageFormat.kind(format)
-    kindMatches && s.compareEnable===shadow && Mux(shadow,TextureImageFormat.depth(format) && expectedType===0.U,
+    val depth=TextureImageFormat.depth(format)
+    kindMatches && Mux(depth,s.compareEnable===shadow,!shadow) && Mux(shadow,depth && expectedType===0.U,
       TextureImageFormat.filterable(format) || nearestOnly(s))
   }
 }

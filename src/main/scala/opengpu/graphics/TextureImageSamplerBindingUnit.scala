@@ -10,6 +10,7 @@ class TextureImageSamplerBindingRequest extends Bundle {
   val imageHandle=UInt(32.W);val samplerHandle=UInt(32.W);val level=UInt(32.W);val tag=UInt(32.W)
   val expectedType=UInt(2.W)
   val selectBaseLevel=Bool()
+  val sampling=Bool();val shadow=Bool()
 }
 object TextureImageSamplerFaultSource {val none=0;val sampler=1;val image=2;val compatibility=3}
 class TextureImageSamplerBindingResult extends Bundle {
@@ -67,7 +68,7 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
     }}
     is(State.check){
       when(stop){phase:=State.finish}
-        .elsewhen(request.images.identity.asUInt=/=request.samplers.identity.asUInt || request.expectedType>2.U || (request.selectBaseLevel && request.level=/=0.U)){
+        .elsewhen(request.images.identity.asUInt=/=request.samplers.identity.asUInt || request.expectedType>2.U || (request.selectBaseLevel && request.level=/=0.U) || (!request.sampling && request.shadow)){
           status:=TextureImageResourceStatus.view.U;source:=TextureImageSamplerFaultSource.compatibility.U;phase:=State.finish
         }.otherwise{phase:=State.offerSampler}
     }
@@ -97,7 +98,9 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
       phase:=Mux(stop || code=/=0.U,State.finish,State.compatibility)
     }}
     is(State.compatibility){
-      when(!stop && !TextureSamplerState.compatible(samplerResult.state,imageResult.format,request.expectedType)){
+      val compatible=Mux(request.sampling,TextureSamplerState.compatibleSampling(samplerResult.state,imageResult.format,request.expectedType,request.shadow),
+        TextureSamplerState.compatible(samplerResult.state,imageResult.format,request.expectedType))
+      when(!stop && !compatible){
         status:=TextureImageFetchStatus.format.U;source:=TextureImageSamplerFaultSource.compatibility.U
       };phase:=State.finish
     }

@@ -91,6 +91,7 @@ class TextureImageBoundFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
       result.sample.sample.level:=binding.level(3,0)
       when(stop){result.image.validBinding:=false.B;result.image.format:=0.U;result.image.baseLevel:=0.U;result.image.lastLevel:=0.U
         result.image.swizzle:=0.U.asTypeOf(result.image.swizzle)
+        result.image.levelMask:=0.U;result.image.levels:=0.U.asTypeOf(result.image.levels)
         result.image.mipChainChecked:=false.B;result.image.selected:=0.U.asTypeOf(result.image.selected);result.image.view:=0.U.asTypeOf(result.image.view)
         result.sample.sample.viewValid:=false.B;result.sample.sample.view:=0.U.asTypeOf(result.sample.sample.view)
         result.sample.sample.address:=0.U;result.sample.sample.bytes:=0.U;result.sample.sample.raw:=0.U
