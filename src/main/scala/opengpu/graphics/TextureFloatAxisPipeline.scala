@@ -8,7 +8,7 @@ import chisel3.util._
   */
 class TextureFloatAxisRequest extends Bundle {
   val coordinate=UInt(32.W);val extent=UInt(14.W);val wrap=UInt(2.W)
-  val linear=Bool();val tag=UInt(32.W)
+  val linear=Bool();val offset=SInt(5.W);val tag=UInt(32.W)
 }
 class TextureFloatAxisResult extends Bundle {
   val first=SInt(16.W);val second=SInt(16.W);val weight=UInt(32.W)
@@ -19,7 +19,7 @@ object TextureFloatAxisWrap {val repeat=0;val clamp=1;val mirroredRepeat=2;val c
 /** Exact binary-rational tap selection, followed by RNE binary32 weight
   * conversion. Retain149 fractional bits, including every FP32 subnormal;
   * reducing periods before multiplication bounds arbitrary finite inputs.
-  * Seven elastic stages accept one axis per cycle when unstalled. Two-entry
+  * Eight elastic stages accept one axis per cycle when unstalled. Two-entry
   * stage queues break the ready path. There is no memory or cancellation
   * ownership here: parents drain every accepted tag before retiring work.
   */
@@ -30,18 +30,19 @@ class TextureFloatAxisPipeline extends Module {
   })
   private class Meta extends Bundle {
     val extent=UInt(14.W);val wrap=UInt(2.W);val linear=Bool();val tag=UInt(32.W);val invalid=Bool()
+    val offset=SInt(5.W);val periodicOffset=UInt(15.W)
   }
   private class Reduced extends Bundle {
     val meta=new Meta;val negative=Bool();val aboveOne=Bool();val aboveTwo=Bool()
-    val mantissa=UInt(24.W);val shift=UInt(8.W)
+    val aboveSixteen=Bool();val mantissa=UInt(24.W);val shift=UInt(8.W)
   }
   private class Product extends Bundle {
     val meta=new Meta;val negative=Bool();val aboveOne=Bool();val aboveTwo=Bool()
-    val product=UInt(38.W);val shift=UInt(8.W)
+    val aboveSixteen=Bool();val product=UInt(38.W);val shift=UInt(8.W)
   }
-  private class Aligned extends Bundle {val meta=new Meta;val scaled=SInt(166.W)}
+  private class Aligned extends Bundle {val meta=new Meta;val scaled=SInt(170.W)}
   private class Located extends Bundle {
-    val meta=new Meta;val first=SInt(18.W);val second=SInt(18.W);val fraction=UInt(149.W)
+    val meta=new Meta;val first=SInt(22.W);val second=SInt(22.W);val fraction=UInt(149.W)
   }
   private class Leading extends Bundle {
     val result=new TextureFloatAxisResult;val fraction=UInt(149.W);val leading=UInt(8.W);val zero=Bool()
@@ -54,6 +55,7 @@ class TextureFloatAxisPipeline extends Module {
   private val products=Module(new Queue(new Product,2)).io
   private val aligned=Module(new Queue(new Aligned,2)).io
   private val located=Module(new Queue(new Located,2)).io
+  private val adjusted=Module(new Queue(new Located,2)).io
   private val leading=Module(new Queue(new Leading,2)).io
   private val normalized=Module(new Queue(new Normalized,2)).io
   private val rounded=Module(new Queue(new TextureFloatAxisResult,2)).io
@@ -67,26 +69,46 @@ class TextureFloatAxisPipeline extends Module {
   private val mask=((1.U(25.W)<<keptBits)-1.U)(23,0)
   reduced.enq.bits.meta.extent:=input.extent;reduced.enq.bits.meta.wrap:=input.wrap
   reduced.enq.bits.meta.linear:=input.linear;reduced.enq.bits.meta.tag:=input.tag
-  reduced.enq.bits.meta.invalid:=exponent===255.U || input.extent===0.U
+  reduced.enq.bits.meta.invalid:=exponent===255.U || input.extent===0.U || input.offset<(-8).S || input.offset>7.S ||
+    (input.wrap===TextureFloatAxisWrap.cubeBorder.U && input.offset=/=0.S)
+  reduced.enq.bits.meta.offset:=input.offset
+  // Normalize the bounded integer offset modulo 2N. Only N<8 can need
+  // multiple periods; their five-bit constant remainders avoid a wide divider.
+  private val twoExtent=(input.extent<<1).zext
+  private val largeOffset=Mux(input.offset<0.S,twoExtent+input.offset,input.offset.pad(17)).asUInt
+  private val smallOffsets=(1 until 8).map{n=>
+    val positive=input.offset.pad(6)+(((8+2*n-1)/(2*n))*2*n).S(6.W)
+    n.U->(positive.asUInt % (2*n).U)
+  }
+  reduced.enq.bits.meta.periodicOffset:=MuxLookup(input.extent,largeOffset)(smallOffsets)
   reduced.enq.bits.negative:=input.coordinate(31)
   reduced.enq.bits.aboveOne:=input.coordinate(30,0)>="h3f800000".U
   reduced.enq.bits.aboveTwo:=input.coordinate(30,0)>="h40000000".U
-  reduced.enq.bits.mantissa:=Mux(exponent>=151.U,0.U,significand&mask)
+  reduced.enq.bits.aboveSixteen:=input.coordinate(30,0)>="h41800000".U
+  reduced.enq.bits.mantissa:=Mux(input.wrap===TextureFloatAxisWrap.clamp.U && input.offset=/=0.S && exponent<131.U,
+    significand,Mux(exponent>=151.U,0.U,significand&mask))
   reduced.enq.bits.shift:=Mux(exponent===0.U || exponent>=151.U,0.U,exponent-1.U)
 
   products.enq.valid:=reduced.deq.valid;reduced.deq.ready:=products.enq.ready
   products.enq.bits.meta:=reduced.deq.bits.meta;products.enq.bits.negative:=reduced.deq.bits.negative
   products.enq.bits.aboveOne:=reduced.deq.bits.aboveOne;products.enq.bits.aboveTwo:=reduced.deq.bits.aboveTwo
+  products.enq.bits.aboveSixteen:=reduced.deq.bits.aboveSixteen
   products.enq.bits.shift:=reduced.deq.bits.shift
   products.enq.bits.product:=reduced.deq.bits.mantissa*reduced.deq.bits.meta.extent
 
   aligned.enq.valid:=products.deq.valid;products.deq.ready:=aligned.enq.ready
   private val p=products.deq.bits
-  private val magnitude=((p.product.pad(165)<<p.shift)(164,0)).pad(166).asSInt
-  private val unit=Cat(p.meta.extent,0.U(149.W)).pad(166).asSInt
-  private val period=Cat(p.meta.extent,0.U(150.W)).pad(166).asSInt
+  private val magnitude=((p.product.pad(169)<<p.shift)(168,0)).pad(170).asSInt
+  private val unit=Cat(p.meta.extent,0.U(149.W)).pad(170).asSInt
+  private val period=Cat(p.meta.extent,0.U(150.W)).pad(170).asSInt
   private val periodic=Mux(p.negative && magnitude=/=0.S,period-magnitude,magnitude)
-  private val clamped=Mux(p.negative,0.S,Mux(p.aboveOne,unit,magnitude))
+  private val clampZero=Mux(p.negative,0.S,Mux(p.aboveOne,unit,magnitude))
+  // With a nonzero offset retain original coordinates until integer tap
+  // selection. Saturation at +/-16N is outside every reachable edge even
+  // for N=1 and offsets[-8,7]; saturating at u=0/1 would be incorrect.
+  private val clampMagnitude=Mux(p.aboveSixteen,(unit<<4).asSInt,magnitude)
+  private val clampOffset=Mux(p.negative,-clampMagnitude,clampMagnitude)
+  private val clamped=Mux(p.meta.offset===0.S,clampZero,clampOffset)
   // Outside[-1,2], both border taps coincide. Saturating there preserves
   // their value while keeping both integer coordinates tightly bounded.
   private val border=Mux(p.negative,Mux(p.aboveOne,-unit,-magnitude),Mux(p.aboveTwo,period,magnitude))
@@ -96,17 +118,28 @@ class TextureFloatAxisPipeline extends Module {
 
   located.enq.valid:=aligned.deq.valid;aligned.deq.ready:=located.enq.ready
   private val a=aligned.deq.bits;private val scaled=a.scaled.asUInt
-  private val whole=scaled(165,149).asSInt.pad(18)
+  private val whole=scaled(169,149).asSInt.pad(22)
   private val halfBorrow=a.meta.linear && !scaled(148)
-  private val first=whole-halfBorrow.asUInt.zext
+  private val isPeriodic=a.meta.wrap===TextureFloatAxisWrap.repeat.U || a.meta.wrap===TextureFloatAxisWrap.mirroredRepeat.U
+  private val texelOffset=Mux(isPeriodic,a.meta.periodicOffset.zext,a.meta.offset.pad(22))
+  private val first=whole+texelOffset-halfBorrow.asUInt.zext
   located.enq.bits.meta:=a.meta;located.enq.bits.first:=first
   located.enq.bits.second:=Mux(a.meta.linear,first+1.S,first)
   located.enq.bits.fraction:=Mux(a.meta.linear,scaled(148,0)^(BigInt(1)<<148).U(149.W),0.U)
 
-  leading.enq.valid:=located.deq.valid;located.deq.ready:=leading.enq.ready
-  private val l=located.deq.bits
+  adjusted.enq.valid:=located.deq.valid;located.deq.ready:=adjusted.enq.ready
+  adjusted.enq.bits:=located.deq.bits
+  private val loc=located.deq.bits
+  private val locN=loc.meta.extent.zext.pad(22);private val locTwoN=(loc.meta.extent<<1).zext.pad(22)
+  private def reduceOffsetIndex(index: SInt): SInt={
+    val periodic=loc.meta.wrap===TextureFloatAxisWrap.repeat.U || loc.meta.wrap===TextureFloatAxisWrap.mirroredRepeat.U
+    Mux(periodic,Mux(index>=locTwoN,index-locTwoN,index),Mux(index<(-1).S,(-1).S,Mux(index>locN,locN,index)))
+  }
+  adjusted.enq.bits.first:=reduceOffsetIndex(loc.first);adjusted.enq.bits.second:=reduceOffsetIndex(loc.second)
+  leading.enq.valid:=adjusted.deq.valid;adjusted.deq.ready:=leading.enq.ready
+  private val l=adjusted.deq.bits
   private def wrap(index: SInt): SInt={
-    val n=l.meta.extent.zext.pad(18);val twoN=(l.meta.extent<<1).zext.pad(18)
+    val n=l.meta.extent.zext.pad(22);val twoN=(l.meta.extent<<1).zext.pad(22)
     // Period reduction bounds repeat/mirror indices to[-1,2N]. The two
     // exceptional endpoints are known constants, so choose them directly
     // instead of chaining modulo addition/subtraction into a second subtract.
