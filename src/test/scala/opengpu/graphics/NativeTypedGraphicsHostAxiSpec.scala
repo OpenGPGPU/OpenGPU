@@ -22,10 +22,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       code++=Seq(addi(5,7,input*32),vm(5,1,false),addi(6,7,output*32),vm(6,1,true))
     code+=BigInt("30500073",16);code.toVector
   }
-  private def fragmentProgram(version: Int=1)={
+  private def fragmentProgram(version: Int=1,depthColor: Boolean=false)={
     val inputWords=if(version==4)12 else 10;val prefix=(inputWords+18)*32
     val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16))
-    for(c<-0 until 4;i<-0 until 4)code++=Seq(addi(5,7,(6+i)*32),vm(5,1,false),addi(6,7,(inputWords+c*4+i)*32),vm(6,1,true))
+    for(c<-0 until 4;i<-0 until 4)code++=Seq(addi(5,7,(if(depthColor && i==0)2 else 6+i)*32),vm(5,1,false),addi(6,7,(inputWords+c*4+i)*32),vm(6,1,true))
     code++=Seq(addi(13,1,prefix),(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3,
       (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,
       addi(6,7,(inputWords+17)*32),vm(6,1,true),BigInt("30500073",16));code.toVector
@@ -33,6 +33,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   private class Image(val d: GpuHostSystemAxi){
     val memory=mutable.Map.empty[BigInt,Int];val initial=mutable.Map.empty[BigInt,Int]
     val reads=mutable.ArrayBuffer.empty[BigInt];val writes=mutable.ArrayBuffer.empty[BigInt]
+    var expectedImage=Map.empty[BigInt,Int]
     def pa(va: BigInt): BigInt=va+0x400000
     def word(a: BigInt,v: BigInt): Unit=for(b<-0 until 4)memory(a+b)=((v>>(b*8))&255).toInt
     def record(va: Int,words: Int,magic: BigInt,fields: Map[Int,BigInt]): Unit={
@@ -74,14 +75,14 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       Vector(Vector(-0.5,0.0,0.0,1.0),Vector(0.5,0.0,0.0,1.0)),Vector(Vector(-0.5,-0.5,-0.5,1.0)))
     def colorWords(primitive: Int,vertex: Int,centroid: Boolean): Vector[BigInt]=Vector.tabulate(4){c=>
       Fp32ViewportReference.fp(if(centroid){if(c==3)1.0 else ((vertex+1)*(c+1)+primitive)/16.0}else if(c==primitive || c==3)1.0 else 0.0)}
-    def shaderDraws(mode: Int,centroid: Boolean=false,version: Int=1): Unit={
+    def shaderDraws(mode: Int,centroid: Boolean=false,version: Int=1,polygon: Boolean=false,sign: Int=1): Unit={
       setup(mode,3,mrt=true)
-      sourceOffset=if(centroid)0x20000+version*0x1000+mode*0x10000 else 0
-      val fragmentPc=if(version==4)0x404000 else 0x402000
+      sourceOffset=(if(centroid)0x20000+version*0x1000+mode*0x10000 else 0)+(if(polygon)0x50000 else 0)
+      val fragmentPc=if(polygon)0x406000+(if(version==4)0x2000 else 0)else if(version==4)0x404000 else 0x402000
       val prefix=(if(version==4)30 else 28)*32
       word(0x3000c,(((BigInt(0x1000000)+imageOffset)>>12)<<10)|0xcf)
       vertexProgram.zipWithIndex.foreach{case(w,i)=>word(pa(0x401000+4*i),w)}
-      fragmentProgram(version).zipWithIndex.foreach{case(w,i)=>word(pa(fragmentPc+4*i),w)}
+      fragmentProgram(version,depthColor=polygon).zipWithIndex.foreach{case(w,i)=>word(pa(fragmentPc+4*i),w)}
       // Ordinary scalar kernel reads a prewarmed image cache line and stores
       // its aligned word through the same CUs after native image publication.
       val consumer=Seq(BigInt("0000a283",16),BigInt("0040a303",16),BigInt("0002a383",16),BigInt("00732023",16),BigInt("30500073",16))
@@ -99,12 +100,13 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           502->Fp32ViewportReference.fp(2.0),503->BigInt("3f800000",16),
           512->version,513->7,514->8,515->9,516->fragmentPc,520->fs,521->(fs+prefix+4),523->fs,524->(fs+((prefix+4+63)& ~63)),
           528->1,529->4,530->15,536->mode,538->(if(centroid)5 else 0),19->(if(centroid)8 else 0),560->1,561->1,562->1,563->1)
+        if(polygon)draw++=Map[Int,BigInt](496->2,540->1,541->Fp32ViewportReference.fp(sign*2),542->Fp32ViewportReference.fp(sign*3))
         for((base,slot)<-Seq((positionBase,352),(colorBase,360)))draw++=Map[Int,BigInt](slot->base,(slot+1)->(base+positions.size*16),
           (slot+3)->base,(slot+4)->(base+64),(slot+6)->16)
         record(0x412000+n*4096,640,BigInt("47544401",16),draw)
       }
     }
-    def verifyDraws(mode: Int,centroid: Boolean=false): Unit={
+    def verifyDraws(mode: Int,centroid: Boolean=false,polygon: Boolean=false,sign: Int=1): Unit={
       val count=1<<mode;val colors=Array.fill(4,4,count)(Vector.empty[BigInt]);val depths=Array.fill(4,4,count)(BigInt("ffffff",16))
       val coords=Vector(Vector((0,0),(1024,0),(0,1024)),Vector((256,512),(768,512),(0,0)),Vector((256,256),(0,0),(0,0)))
       val settings=TriangleRasterReference.Settings(width=4,height=4,mode=mode,maxX=4,maxY=4)
@@ -113,10 +115,22 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         val t=TriangleRasterReference.base.copy(coords=coords(n).map{case(x,y)=>(BigInt(x),BigInt(y))},values=TriangleRasterReference.base.values.copy(depth=zs,inv=Vector.fill(3)(Fp32ViewportReference.decode(Fp32ViewportReference.fp(1.0))),
           flat=if(centroid)8 else 0,values=Vector.tabulate(3)(i=>if(i<positionSets(n).size)colorWords(n,i,centroid).padTo(8,BigInt(0))else Vector.fill(8)(BigInt(0)))))
         val quads=if(kind==2)TriangleRasterReference.raster(t,settings,graphics)else PointLineReference.raster(t,kind,settings,graphics,PointLineReference.Sizes(point=2))
+        import Fp32ViewportReference.{E,fp,decode,calc,pack,clamp,rational}
+        import FragmentInterpolationReference.edge
+        val bias=if(!polygon || kind!=2)E()else{
+          val area=TriangleRasterReference.edgeAt(t,0,t.coords.head._1,t.coords.head._2)
+          val slopes=Vector.tabulate(2){axis=>val terms=Vector.tabulate(3){i=>val a=t.coords((i+1)%3);val b=t.coords((i+2)%3)
+            calc(edge((if(axis==0)a._2-b._2 else b._1-a._1)*256),decode(t.values.depth(i)),2)}
+            calc(calc(calc(terms(0),terms(1),0),terms(2),0),edge(area),3).copy(sign=false)}
+          val(xn,xd)=rational(slopes(0));val(yn,yd)=rational(slopes(1));val m=if(xn*yd>yn*xd)slopes(0)else slopes(1)
+          calc(calc(m,decode(fp(sign*2)),2),calc(decode(BigInt("33c00000",16)),decode(fp(sign*3)),2),0)
+        }
+        def shifted(z: BigInt): BigInt=if(bias.sig==0)z else clamp(pack(calc(decode(z),bias,0)))
         for(raw<-quads){val q=CentroidRasterReference(t,kind,raw,mode,if(centroid)5 else 0,graphics)
           val values=SampleDepthReference.depths(t,kind,q.samples,mode,graphics)
-          for(l<-0 until 4;s<-0 until count if(q.samples(l).mask&(1<<s))!=0){val x=q.samples(l).x;val y=q.samples(l).y;val z=TypedDepthReference.encode(values(l)(s),4)
-            if(z<=depths(y)(x)(s)){colors(y)(x)(s)=q.lanes(l).values.take(4);depths(y)(x)(s)=z}}}
+          for(l<-0 until 4;s<-0 until count if(q.samples(l).mask&(1<<s))!=0){val x=q.samples(l).x;val y=q.samples(l).y;val z=TypedDepthReference.encode(shifted(values(l)(s)),4)
+            val color=q.lanes(l).values.take(4)
+            if(z<=depths(y)(x)(s)){colors(y)(x)(s)=if(polygon)color.updated(0,shifted(q.lanes(l).depth))else color;depths(y)(x)(s)=z}}}
       }
       def color(c: Int,x: Int,y: Int,s: Int): BigInt={val n=colors(y)(x)(s)
         val values=if(n.isEmpty)clear else n
@@ -128,6 +142,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           else TypedResolveReference.resolve(names(v.color),Vector.tabulate(count)(s=>color(v.color,x,y,s)),mode)
         val address=v.base+y*v.pitch+(x*v.samples+s)*v.bytes
         for(b<-0 until v.bytes)expected(address+b)=((raw>>(8*b))&255).toInt}
+      expectedImage=expected.toMap
       for((a,v)<-expected)assert(memory(a)==v,s"native shader image byte${a.toString(16)} observed=${memory(a)} expected=$v mode=$mode")
       assert(reads.exists(a=>a>=pa(0x420000+sourceOffset) && a<pa(0x422000+sourceOffset)))
       assert(!reads.exists(a=>a>=0x400000 && a<0x800000),"shader and descriptor VAs must be translated before physical issue")
@@ -238,6 +253,31 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       val perf=d.io.performance.get
       assert((perf.stagingWriteBytes.peek().litValue==0)==local)
       info(s"NATIVE_CENTROID local=$local CUs=2 GFI1=true versions3And4=true modes2x4x=true primitiveKinds=3 mixedCenterCentroidFlat=true gradientMRTs=4 pointCoordPrefix=true freshVertexAndProgramAllocations=true exactSourceAndResolve=true uniformTail=true heldCompletionPinsVM=true")
+    }
+  }
+  for(local<-Seq(true,false))
+  it should s"publish native polygon offset depth and shader fragCoord through immutable attachment binding local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      initialize(d);val image=new Image(d)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      for((mode,version,sign)<-Seq((0,3,1),(2,4,-1))){
+        image.shaderDraws(mode,centroid=true,version=version,polygon=true,sign=sign);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        assert(image.consumer(80+mode)==BigInt("a7a7a7a7",16))
+        image.submit(70+mode);image.run(id=70+mode);image.verifyDraws(mode,centroid=true,polygon=true,sign=sign)
+        assert(axiRead(d,GpuCommandMmioRegs.COMPLETION_BYTES_LO)==3*2560)
+        val prefix=(if(version==4)30 else 28)*32
+        for(n<-0 until 3){val a=image.pa(0x440000+n*0x1000+prefix)
+          val value=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory(a+b))<<(b*8)));assert(value==61)}
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
+        val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedImage(BigInt(0x1000000+image.imageOffset+60+b)))<<(b*8)))
+        assert(image.consumer(90+mode)==expected)
+      }
+      val perf=d.io.performance.get;assert((perf.stagingWriteBytes.peek().litValue==0)==local)
+      perf.payloadReservedBytes.expect(0.U)
+      info(s"NATIVE_POLYGON_OFFSET local=$local CUs=2 GTD1=true rasterVersion2=true boundD24S8=true signedFactorUnits=true modes1x4x=true fragmentVersions3And4=true shaderFragCoordZInMRT=true exactDefaultSampleDepth=true centroidGradients=true linePointBypass=true exactMRTDepthResolveGuards=true prewarmedCachedConsumer=true uniformTails=true heldCompletionPinsVM=true")
     }
   }
   it should "reject native envelope descriptor permission shader and physical store faults without publishing a successful image" in {

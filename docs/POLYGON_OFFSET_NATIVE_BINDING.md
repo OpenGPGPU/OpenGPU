@@ -35,3 +35,12 @@ Further work includes complete interpolation precision, all five depth formats,
 biased centroid/perspective/clipping cases, native host image/fault/reset
 qualification, accurate raster capability discovery, setup cycles and integrated
 synthesis. The format policy remains a candidate. PPA remains synthesis only.
+
+The native AXI host fixture now includes two pending local/global two-CU
+controls. Each submits live GTD1 draws through Sv32 with a bound D24S8
+attachment, positive/negative coefficients at 1x/4x sampling, fragment versions
+3/4, and fragCoord.z written into MRT color. The controls check source/resolve
+bytes and guards, line/point bypass, uniform tails, prewarmed image consumers
+and VM ownership during held completion. All 285 main and 341 test Scala
+sources compile. Runtime results are still pending on the frozen 638-file
+snapshot; this checkpoint does not claim those two controls pass.
