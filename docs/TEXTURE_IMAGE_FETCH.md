@@ -1,6 +1,7 @@
 # Texture image fetch and typed decoding
 
-Status: [19 controls pass](performance/mobile-texture-image-fetch-pipelined-2026-10-20.json)
+Status: integrated into local main with [exact source verification](performance/mobile-texture-image-fetch-main-2026-10-20.json).
+[19 controls pass](performance/mobile-texture-image-fetch-pipelined-2026-10-20.json)
 on unchanged 655-file source, together with six ABI checks, combined C11 headers,
 CI selection and both raw/typed RTL emissions. Both standalone synthesis screens
 pass. Native integration remains open. This component does not establish completion of H4/H6

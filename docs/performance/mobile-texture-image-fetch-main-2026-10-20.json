@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "qualified_component_integrated_local_main",
+  "audit": {
+    "before_commit": "7fede31b36121f7d95e677fef01f6a6e53c393f7",
+    "merged_commit": "76b12da39fe8c8f19f5d7159a2b743a45d427fc6",
+    "committed_source_files": 655,
+    "working_source_files": 655,
+    "committed_and_working_source_match_qualification": true,
+    "preserved_dirty_files": 20,
+    "contents_and_modes_preserved": true,
+    "status_unchanged": true,
+    "index_empty": true,
+    "source_manifest_sha256": "31810825ddc6e12300c5e31bbb756805495317ee2f9a77706659c8e33feb4e61"
+  },
+  "carried_evidence": "Exact committed and working source identity carries nineteen checks, six ABI checks, C11 headers, CI selection and both emissions. This is not a separately rerun main regression.",
+  "synthesis": {
+    "raw": {
+      "setup_passed": true,
+      "mapping_passed": true,
+      "worst_setup_slack_ps": 53.933,
+      "mapped_cells": 43489
+    },
+    "typed": {
+      "setup_passed": true,
+      "mapping_passed": true,
+      "worst_setup_slack_ps": 41.228,
+      "mapped_cells": 55079
+    }
+  },
+  "scope": "Optional serialized raw and typed image fetch component; no existing native instruction, decoder, binding or capability changes.",
+  "remaining": [
+    "Authoritative native per-stage image/sampler bindings and VM/context lifetime integration.",
+    "Complete mip rules, coordinate/LOD/filtering, compressed-block decode and general shader resources.",
+    "Separate full206-check depth/facing/native-texture composition and old640-source native PPA remain independent.",
+    "Full H0-H8/GLES hardware completion and measured texture-cluster/product throughput remain open."
+  ],
+  "ppa_scope": "Synthesis only, default raw/typed components. TC/SLVT, 1000 ps target, 25 percent I/O delay, no retiming, no SRAM macro, no place/route or power. All reported setup paths include I/O. No native, texture-cluster throughput or whole-GPU clock claim."
+}

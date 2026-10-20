@@ -5806,3 +5806,22 @@ Revised synthesis passes mapping and setup including I/O for raw +53.933 ps and
 typed +41.228 ps at TC/SLVT, 1000 ps, 25 percent I/O delay and no retiming. No
 relaxed constraint or native capability change is introduced. These component
 screens establish no whole-GPU clock or texture-cluster throughput.
+
+## Texture-data fetch main integration (2026-10-20)
+
+The [main source audit](performance/mobile-texture-image-fetch-main-2026-10-20.json)
+verifies all 655 committed and working qualification files against the completed
+19-check source. Six ABI checks, combined C11 headers, CI selection and both
+emissions are carried by exact source identity; this is not a separately rerun
+main regression. All twenty pre-existing dirty files retain their contents and
+modes, and the index remains empty after integration.
+
+Both standalone synthesis mapping/setup gates pass at the same TC/SLVT,
+1000 ps and 25 percent I/O budget without retiming: raw +53.933 ps and typed
++41.228 ps. The initial prompt-fault and typed timing failures remain recorded.
+All 649 existing dependencies remain unchanged, including native shader sampling
+and the legacy typed decoder. Native image/sampler binding, authoritative format
+identity, typed shader transport, mip/LOD/filtering and compressed decoding remain
+required. The independent 206-check depth/facing/texture run excludes these new
+components and remains in progress. H4/H6 and the full hardware goal remain open;
+PPA evaluation remains synthesis only.
