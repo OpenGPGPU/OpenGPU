@@ -323,6 +323,9 @@ object EmitPpaRtl {
       case "texture-coordinates" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.TextureCoordinatePipeline(laneWidth = 4), stageArgs, firtoolArgs)
+      case "texture-sampler-coordinate-policy" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TextureUnit(wordCacheEntries=8,coordinatePolicyInput=true),stageArgs,firtoolArgs)
       case "texture-sampler" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.TextureUnit(wordCacheEntries = 8,
