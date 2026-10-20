@@ -1,0 +1,111 @@
+{
+  "status": "checkpoint_qualification_pending",
+  "recorded_utc": "2026-10-20T17:49:09.501939+00:00",
+  "source": {
+    "commit": "3773a1c3d4ae5d35974fa4f1d9d0c05eb70eb5a2",
+    "source_files": 803,
+    "manifest_sha256": "59a8a69703b558b9d06c00d1b9d18a76c7bbb4596eb1d4308ad37b2f434faf57",
+    "archive_sha256": "f691f772c86e2e7ae2441b75e2834d13f849e90403a9d03cd2c5da1b772bb469",
+    "git_archive_and_worktree_exact": true
+  },
+  "emission": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 12.726630958961323,
+    "commit": "3773a1c3d4ae5d35974fa4f1d9d0c05eb70eb5a2",
+    "source_files": 803,
+    "manifest_sha256": "59a8a69703b558b9d06c00d1b9d18a76c7bbb4596eb1d4308ad37b2f434faf57",
+    "archive_sha256": "f691f772c86e2e7ae2441b75e2834d13f849e90403a9d03cd2c5da1b772bb469",
+    "git_archive_and_worktree_exact": true
+  },
+  "completed_focused_evidence": {
+    ".artifacts/mobile-native-execute-controls-v3.log": {
+      "sha256": "3134adbc7b370b3fb48035595eaccbf4dc6a5f26bfe62af72e0d00c0d73ef7a4",
+      "scope": "9 tests /3 suites"
+    },
+    ".artifacts/mobile-native-execute-lane-groups-v1.log": {
+      "sha256": "dac42e84e9733977a0a2f72f0e3a761fd1d22b115d889fe2cb8d5760a8f1a279",
+      "scope": "3 additional tests /1 overlapping suite"
+    },
+    ".artifacts/mobile-native-floating-shared-cu-v1.log": {
+      "sha256": "8ce51c0dcda01b96f505453d709ee2e5b7e2125609d582ab5d97bb08a3518d6d",
+      "scope": "4 tests /2 suites, vertex/fragment local and spill"
+    },
+    ".artifacts/mobile-native-texture-llvm-tests-v5.log": {
+      "sha256": "ff520beefbf94fb354c4595e1de9a863bfc2d7696330a9603df2ab7a8a2f57d7",
+      "scope": "4 LLVM/Clang tests, paired LLVM67545a6ed"
+    }
+  },
+  "fresh_qualification": {
+    "session_id": 54576,
+    "runner": ".artifacts/run-mobile-native-execute-v1.py",
+    "runner_sha256": "a4750803bd5b21f5b1cc6e9e707eef88f4a6a282cfa3546812003b15993dad7f",
+    "log": ".artifacts/mobile-native-execute-v1-qualified.log",
+    "state": "running_when_recorded"
+  },
+  "synthesis": {
+    "vertex": {
+      "session_id": 71478,
+      "state": "running_when_recorded",
+      "start": {
+        "wrapper_pid": 62898,
+        "flow_pid": 62923,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-native-texture-execute-v1-worktree/generated/mobile-h4/native-execute-vertex-v1-rtl",
+          "NativeShaderTextureUnit",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-native-execute-vertex-2026-10-21-v1"
+        ],
+        "started_utc": "2026-10-20T17:48:52.986443+00:00"
+      },
+      "inputs_sha256": "1492e89e1c78b784857711139fd1af9c9990c0d061dd1e2397c2b1618366ee83"
+    },
+    "fragment": {
+      "session_id": 37291,
+      "state": "running_when_recorded",
+      "start": {
+        "wrapper_pid": 63157,
+        "flow_pid": 63229,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-native-texture-execute-v1-worktree/generated/mobile-h4/native-execute-fragment-v1-rtl",
+          "NativeShaderTextureUnit",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-native-execute-fragment-2026-10-21-v1"
+        ],
+        "started_utc": "2026-10-20T17:48:54.079127+00:00"
+      },
+      "inputs_sha256": "98f8cab0eb0df7ab9575dd8e7ad0cb0ce7b8597730abe9f09abe20220a5327c0"
+    }
+  },
+  "scope": "Full native endpoint synthesis only, 1000ps TC/SLVT with25% I/O; standard ABC, no retiming or route. Existing descriptor ABIs retained; new instructions paired with LLVM and driver. Full H0-H8 remains open.",
+  "remaining": [
+    "Fresh aggregate/ABI/driver/CU terminal results",
+    "Both full native endpoint synthesis results",
+    "Native floating AXI/frame tests",
+    "Texture queries, on-chip integer fetch, banked throughput/coherence and remaining H0-H8 requirements"
+  ]
+}
