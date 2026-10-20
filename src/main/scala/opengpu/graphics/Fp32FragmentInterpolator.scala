@@ -33,6 +33,8 @@ class FragmentInterpolationRequest(p: VertexShaderStageConfig,g: GraphicsConfig)
   val sampleDepthEnable=Bool();val sampleMode=UInt(2.W)
   /** Per-component centroid qualifiers. Flat components ignore this mask. */
   val centroidMask=UInt((p.varyings*4).W)
+  /** Already computed once by the primitive owner; apply before depth clamp. */
+  val depthOffset=new ClipFloat
 }
 class Fp32InterpolatedLane(p: VertexShaderStageConfig,g: GraphicsConfig) extends Bundle {
   val x=SInt(32.W);val y=SInt(32.W);val covered=Bool();val coverageMask=UInt(g.maxSampleCount.W)
@@ -67,15 +69,19 @@ class FragmentInterpolationCompletion extends Bundle {
   * scalar service. Centroid smooth components use the lowest covered sample
   * for multisampling; single-sample and helper lanes retain center values.
   */
-class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig()) extends Module {
+class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig(),
+    externalArithmetic: Boolean=false) extends Module {
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new FragmentInterpolationRequest(p,g)))
     val out=Decoupled(new Fp32InterpolatedQuad(p,g));val completion=Decoupled(new FragmentInterpolationCompletion)
     val cancel=Input(Bool());val busy=Output(Bool())
+    val mathRequest=if(externalArithmetic)Some(Decoupled(new ClipFloatRequest(8)))else None
+    val mathResponse=if(externalArithmetic)Some(Flipped(Decoupled(new ClipFloatResponse(8))))else None
+    val mathCancel=if(externalArithmetic)Some(Output(Bool()))else None
   })
   private object State extends ChiselEnum {
     val idle,validate,startLane,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
-      pointX,pointY,pointValue,pointResidual,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,startValues,product,saveProduct,addProduct,divide,saveValue,component,nextLane,waitMath,emit,abort,finish,complete=Value
+      pointX,pointY,pointValue,pointResidual,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,startValues,product,saveProduct,addProduct,divide,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val input=Reg(new FragmentInterpolationRequest(p,g))
   private val output=Reg(new Fp32InterpolatedQuad(p,g));private val result=Reg(new FragmentInterpolationCompletion)
@@ -92,7 +98,15 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val status=RegInit(0.U(3.W));private val faultLane=RegInit(0.U(2.W));private val exported=RegInit(false.B)
   private val invalidHelpers=RegInit(0.U(4.W));private val operations=RegInit(0.U(16.W))
   private val arithmeticFlags=RegInit(0.U(5.W));private val packingFlags=RegInit(0.U(5.W))
-  private val arithmetic=Module(new ClipFloatArithmetic())
+  private val mathRequest=Wire(Decoupled(new ClipFloatRequest(8)))
+  private val mathResponse=Wire(Flipped(Decoupled(new ClipFloatResponse(8))))
+  private val mathCancel=Wire(Bool())
+  if(externalArithmetic){
+    io.mathRequest.get<>mathRequest;mathResponse<>io.mathResponse.get;io.mathCancel.get:=mathCancel
+  }else{
+    val service=Module(new ClipFloatArithmetic())
+    service.io.in<>mathRequest;mathResponse<>service.io.out;service.io.cancel:=mathCancel
+  }
   private val offered=RegInit(false.B);private val pending=RegInit(false.B)
   private val request=Reg(new ClipFloatRequest(8));private val continuation=Reg(State())
   private val active=phase=/=State.idle && phase=/=State.complete
@@ -119,19 +133,35 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val rawVarying=primitive.vertices(vertex).varyings(slotIndex)(component(1,0))
   private val centroidComponent=centroidActive && (input.centroidMask(componentIndex) || fallbackPerspective)
   private val needsCentroid=((input.centroidMask & ~primitive.flatMask).orR || fallbackPerspective) && pixel.covered && input.sampleMode=/=0.U
-  arithmetic.io.in.valid:=offered;arithmetic.io.in.bits:=request
-  arithmetic.io.out.ready:=pending;arithmetic.io.cancel:=stop && pending
-  when(arithmetic.io.in.fire){offered:=false.B;pending:=true.B;operations:=operations+1.U}
-  when(arithmetic.io.out.fire) {
-    assert(arithmetic.io.out.bits.tag===request.tag)
-    pending:=false.B;mathValue:=arithmetic.io.out.bits.value;mathPacked:=arithmetic.io.out.bits.fp32
-    arithmeticFlags:=arithmeticFlags|arithmetic.io.out.bits.arithmeticStatus
-    packingFlags:=packingFlags|arithmetic.io.out.bits.packingStatus
-    when(arithmetic.io.out.bits.error=/=0.U && status===0.U && !io.cancel){status:=7.U;faultLane:=lane}
+  mathRequest.valid:=offered;mathRequest.bits:=request
+  mathResponse.ready:=pending;mathCancel:=stop && pending
+  when(mathRequest.fire){offered:=false.B;pending:=true.B;operations:=operations+1.U}
+  when(mathResponse.fire) {
+    assert(mathResponse.bits.tag===request.tag)
+    pending:=false.B;mathValue:=mathResponse.bits.value;mathPacked:=mathResponse.bits.fp32
+    arithmeticFlags:=arithmeticFlags|mathResponse.bits.arithmeticStatus
+    packingFlags:=packingFlags|mathResponse.bits.packingStatus
+    when(mathResponse.bits.error=/=0.U && status===0.U && !io.cancel){status:=7.U;faultLane:=lane}
   }
   private def calculate(a: ClipFloat,b: ClipFloat,operation: Int,next: State.Type): Unit={
     request.a:=a;request.b:=b;request.operation:=operation.U;request.tag:=operations(7,0)
     offered:=true.B;continuation:=next;phase:=State.waitMath
+  }
+  private def saveDepth(): Unit={
+    when(resamplingDepth){
+      output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(mathPacked)
+      resamplingDepth:=false.B;depth:=false.B;component:=0.U;phase:=State.component
+    }.elsewhen(sampling){
+      output.lanes(lane).sampleDepth(sampleIndex):=Fp32ViewportState.clampDepth(mathPacked)
+      sample:=sample+1.U;phase:=State.sampleDepth
+    }.otherwise{
+      output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(mathPacked);output.lanes(lane).sampleDepthValid:=input.sampleDepthEnable
+      when(input.sampleDepthEnable && input.sampleMode=/=0.U){sample:=0.U;sampling:=true.B;phase:=State.sampleDepth}
+        .otherwise{
+          when(input.sampleDepthEnable){output.lanes(lane).sampleDepth(0):=Mux(pixel.covered,Fp32ViewportState.clampDepth(mathPacked),0.U)}
+          depth:=false.B;component:=0.U;phase:=Mux(needsCentroid,State.startCentroid,State.component)
+        }
+    }
   }
   io.in.ready:=phase===State.idle && !io.cancel;io.busy:=phase=/=State.idle
   io.out.valid:=phase===State.emit;io.out.bits:=output
@@ -157,7 +187,9 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         val samples=(0 until 4).map { i=>val s=input.quad.lanes(i)
           s.area=/=0.S && s.area===input.quad.lanes(0).area && (s.e0+&s.e1+&s.e2)===s.area && s.covered===s.coverageMask.orR && (!(input.sampleDepthEnable || input.centroidMask.orR) || !(s.coverageMask>>(1.U(3.W)<<input.sampleMode)).orR)
         }.reduce(_ && _)
-        when(!metadata || !records || !samples || ((input.sampleDepthEnable || input.centroidMask.orR) && !sampleModeLegal) || (primitive.kind===0.U && !Fp32RasterState.sizeLegal(input.pointSize))){status:=1.U;phase:=State.abort}
+        val offsetValid=ClipFloat.legal(input.depthOffset) && input.depthOffset.special===0.U &&
+          (!input.depthOffset.significand.orR || primitive.kind===2.U)
+        when(!metadata || !records || !samples || !offsetValid || ((input.sampleDepthEnable || input.centroidMask.orR) && !sampleModeLegal) || (primitive.kind===0.U && !Fp32RasterState.sizeLegal(input.pointSize))){status:=1.U;phase:=State.abort}
           .otherwise {
             output.identity:=primitive.identity;output.sequence:=primitive.sequence;output.primitiveId:=primitive.primitiveId;output.instanceId:=primitive.instanceId
             output.partIndex:=input.primitive.clipped.partIndex;output.primitiveKind:=primitive.kind;output.varyingSlots:=primitive.varyingSlots;output.flatMask:=primitive.flatMask
@@ -247,19 +279,16 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
           .elsewhen(depth){
             when(mathValue.special=/=0.U){status:=7.U;faultLane:=lane;phase:=State.abort}
               .otherwise{
-                when(resamplingDepth){
-                  output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(mathPacked)
-                  resamplingDepth:=false.B;depth:=false.B;component:=0.U;phase:=State.component
-                }.elsewhen(sampling){output.lanes(lane).sampleDepth(sampleIndex):=Fp32ViewportState.clampDepth(mathPacked);sample:=sample+1.U;phase:=State.sampleDepth}
-                  .otherwise{output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(mathPacked);output.lanes(lane).sampleDepthValid:=input.sampleDepthEnable
-                    when(input.sampleDepthEnable && input.sampleMode=/=0.U){sample:=0.U;sampling:=true.B;phase:=State.sampleDepth}
-                      .otherwise{when(input.sampleDepthEnable){output.lanes(lane).sampleDepth(0):=Mux(pixel.covered,Fp32ViewportState.clampDepth(mathPacked),0.U)}
-                        depth:=false.B;component:=0.U;phase:=Mux(needsCentroid,State.startCentroid,State.component)}}
+                when(input.depthOffset.significand.orR){calculate(mathValue,input.depthOffset,ClipFloatOperation.add,State.saveOffsetDepth)}
+                  .otherwise{saveDepth()}
               }
           }.otherwise{
             output.lanes(lane).varyings(slotIndex)(component(1,0)):=mathPacked
             component:=component+1.U;phase:=State.component
           }
+      }
+      is(State.saveOffsetDepth){
+        when(mathValue.special=/=0.U){status:=7.U;faultLane:=lane;phase:=State.abort}.otherwise{saveDepth()}
       }
       is(State.sampleDepth){
         when(sample>=(1.U(3.W)<<input.sampleMode)){sampling:=false.B;depth:=false.B;component:=0.U;phase:=Mux(needsCentroid,State.startCentroid,State.component)}
@@ -286,9 +315,9 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
           .otherwise{phase:=State.startValues}
       }
       is(State.nextLane){when(lane===3.U){phase:=State.emit}.otherwise{lane:=lane+1.U;phase:=State.startLane}}
-      is(State.waitMath){when(arithmetic.io.out.fire && arithmetic.io.out.bits.error===0.U){phase:=continuation}}
+      is(State.waitMath){when(mathResponse.fire && mathResponse.bits.error===0.U){phase:=continuation}}
       is(State.emit){when(io.out.fire){exported:=true.B;phase:=Mux(stop,State.abort,State.finish)}}
-      is(State.abort){when(!offered && !pending && !arithmetic.io.busy){phase:=State.finish}}
+      is(State.abort){when(!offered && !pending){phase:=State.finish}}
       is(State.finish){
         result.identity:=primitive.identity;result.sequence:=primitive.sequence;result.primitiveId:=primitive.primitiveId;result.instanceId:=primitive.instanceId
         result.partIndex:=input.primitive.clipped.partIndex;result.status:=Mux(io.cancel && status===0.U,4.U,status);result.faultLane:=faultLane

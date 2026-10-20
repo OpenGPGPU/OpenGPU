@@ -3,6 +3,15 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 
+/** Internal primitive binding; resolution is selected by the attachment owner. */
+class PolygonDepthOffsetBinding extends Bundle {
+  val enabled=Bool();val factor=UInt(32.W);val units=UInt(32.W);val resolution=UInt(32.W)
+}
+object PolygonDepthOffsetBinding {
+  def legal(b: PolygonDepthOffsetBinding): Bool= !b.enabled || (
+    b.factor(30,23)=/=255.U && b.units(30,23)=/=255.U && b.resolution(30,23)=/=255.U &&
+    !b.resolution(31) && b.resolution(30,0).orR && !PrimitiveClipStage.less("h3f800000".U,b.resolution))
+}
 class PolygonDepthOffsetRequest extends Bundle {
   val identity=new GraphicsWorkIdentity;val sequence=UInt(64.W);val primitiveId=UInt(32.W)
   val enabled=Bool();val primitiveKind=UInt(2.W)

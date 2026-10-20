@@ -69,6 +69,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val raster=Module(new Fp32PrimitiveRasterStage(p,g))
     raster.io.in.valid:=vertexDraw.valid;raster.io.in.bits.primitive:=primitive.get;raster.io.in.bits.state:=vertexDraw.bits.raster
     raster.io.in.bits.centroidMask:=centroidMask
+    raster.io.in.bits.depthOffset:=0.U.asTypeOf(raster.io.in.bits.depthOffset)
     vertexDraw.ready:=raster.io.in.ready;vertexOut<>raster.io.out;vertexBusy:=raster.io.busy;raster.io.cancel:=vertexCancel
     vertexCompletion.valid:=raster.io.completion.valid;raster.io.completion.ready:=vertexCompletion.ready
     val r=raster.io.completion.bits;val c=vertexCompletion.bits

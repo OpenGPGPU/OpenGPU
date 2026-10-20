@@ -74,6 +74,7 @@ class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageCon
   raster.io.in.valid:=active && !stop && source.io.out.valid && raster.io.in.ready
   raster.io.in.bits.primitive:=source.io.out.bits;raster.io.in.bits.state:=descriptor.raster
   raster.io.in.bits.centroidMask:=centroidMask
+  raster.io.in.bits.depthOffset:=0.U.asTypeOf(raster.io.in.bits.depthOffset)
   source.io.out.ready:=active && (stop || raster.io.in.ready)
   when(source.io.out.fire){received:=received+1.U}
   io.out<>raster.io.out
