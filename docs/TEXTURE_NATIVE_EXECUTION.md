@@ -105,8 +105,10 @@ requires defined sources and a complete tuple before sampling, and retains the
 existing memory bounds. Scalar legacy integer packets must be proven aligned
 64-byte spans in the immutable kernarg uniform tail; private local payloads and
 loaded/unknown pointers are rejected. Vector packet-pointer provenance remains
-unadmitted by this profile. Dynamic integer texel-fetch lowering still needs an
-on-chip path; the legacy packet interface is not H5 closure for that operation.
+unadmitted by this profile. [Captured integer fetch](TEXTURE_INTEGER_OPERANDS.md)
+now supplies the on-chip function5 path with signed offsets and base-relative
+LOD;154 component/native/CU tests,nine ABI checks and both full native endpoint
+synthesis screens pass. Its corrected AXI matrix remains running.
 
 ## Evidence and remaining work
 
@@ -135,7 +137,7 @@ reads and healthy reuse are checked. Nonuniform helper delivery and projective
 programs need separate qualification.
 
 DRM resource-root publication and capability adoption, complete compiler/API
-texture lowering, integer fetch/offsets,
+texture lowering, corrected integer AXI qualification,
 queries/projective forms, banked texture throughput/coherence and remaining
 H0-H8 gates remain open. Generated descriptor layouts remain unchanged; the
 new instruction extension is paired with the sibling LLVM and driver updates.

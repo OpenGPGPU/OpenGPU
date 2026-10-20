@@ -1,8 +1,10 @@
 # Captured integer texel fetch
 
-Status: implemented on `codex/mobile-native-integer-execute`, under functional
-qualification. [Thirty-four focused and compatibility checks](performance/mobile-native-integer-operands-2026-10-21.json)
-pass; fresh composed regression and synthesis remain pending. This
+Status: integrated into local main after [154 component/native/CU tests](performance/mobile-native-integer-execution-qualified-2026-10-21.json),
+nine descriptor ABI checks and two positive whole-endpoint synthesis screens.
+The [main audit](performance/mobile-native-integer-main-2026-10-21.json) verifies803
+exact inputs and preserved artifact hashes. Corrected translated AXI qualification
+remains running. This
 extends the task-scoped operand bank described in
 [Native texture execution](TEXTURE_NATIVE_EXECUTION.md); it adds no second bank
 or GPU-memory coordinate packet.

@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "integer_native_execution_merged_exact803_source_and_qualification_artifacts_preserved",
+  "main_merge": "917b186ff049845d14e19a163f5fd5faf52cce68",
+  "main_before": "ff434444dd214b8a5df50c1603b9768ae6877111",
+  "parents": [
+    "ff434444dd214b8a5df50c1603b9768ae6877111",
+    "416f9afcc15763b8f52c57f9c2004a62fcbe61f5"
+  ],
+  "source_commit": "87a40d849a9904816b423b88061e02962c7be8ad",
+  "source_files": 803,
+  "manifest_sha256": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+  "root_and_archive_source_exact": true,
+  "main_archive_sha256": "98390b524d20ea69cc8d7f27f0339ec86690661588bf3267e723094340b098aa",
+  "qualification_record": "docs/performance/mobile-native-integer-execution-qualified-2026-10-21.json",
+  "qualification_record_sha256": "8a3c7a82ab78f070967eada433720d3363c01c6fa59fd96dca2571e685a5bdd1",
+  "distinct_component_native_CU_tests": 154,
+  "suites": 26,
+  "generated_descriptor_ABIs": 9,
+  "synthesis_profiles": [
+    "vertex",
+    "fragment"
+  ],
+  "qualification_artifact_hashes_exact": true,
+  "new_commits": [
+    "917b186ff049845d14e19a163f5fd5faf52cce68",
+    "416f9afcc15763b8f52c57f9c2004a62fcbe61f5",
+    "a71b8533a44d450853f111bf56c3be41a7ddfc52",
+    "87a40d849a9904816b423b88061e02962c7be8ad",
+    "1d8d67c235008d8aadb16af4ee5e3e3c82675ad8",
+    "1b6efe75815f8317838ffc258ce0e8cd7ce59b75",
+    "ed87d8a9d64262aa969e337b759b8aca4d32af81",
+    "8883392b21c9c437e2c9f41ae97198a0b6e495b5",
+    "d56161e6587c32382d7d110661310505a70b1f68",
+    "346fec806e7446629034d556e62c0fe90f812c13",
+    "4c4ca022b406acab620769ba5932c766c10e2d34",
+    "95d3677b959066f0fb4e4abb39fbddd3df7f1c73",
+    "09f2ff471f5d3caadf005423a249476b76afc21a",
+    "1ae8e68414947acae9241284358460d3ba73c841",
+    "c8ca021642f8a456708417cfd2d6c1a6cd4636a2",
+    "5d24811cd231de2831413893023b7ffcfaaacb4b",
+    "70d324daccb9b4b29a9f0599c3aa15f7fd0122ba",
+    "c8c9b06db299cbe14e52ce40afc757a337431f01",
+    "f193a4bbab73ee88faebcf0b23cfd8156eda1f7a",
+    "971bc4502175bf720168be9f88200332770b238f",
+    "0e1c05eb1e116e292b030106243702f206331141",
+    "055fa99beb802883b19ad3125f8dc27a3e63282a",
+    "87a5bd6f6d574c824a22978146333200e129891b",
+    "c6f6c61d0a4bcf79bd862a9b38e22a4a06903699"
+  ],
+  "exactly_one_agent_trailer_per_new_commit": true,
+  "protected_user_file_hashes": {
+    "AGENTS.md": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+    "timing/README.md": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47"
+  },
+  "protected_user_file_modes": "0644",
+  "conflict_resolution": "The sole add-at-end AXI test conflict resolves to the exact frozen branch file. All prior floating cases remain;root803 inputs match the qualified/followup catalog.",
+  "remaining": [
+    "Collect corrected integer AXI before/after and full matrix",
+    "Size-query and projective development branches are not merged",
+    "Banked texture throughput/coherence and remaining full H0-H8 requirements"
+  ],
+  "scope": "Exact-source integration audit; current PPA remains synthesis only. No pending AXI pass,whole-GPU clock or full hardware completion claim."
+}
