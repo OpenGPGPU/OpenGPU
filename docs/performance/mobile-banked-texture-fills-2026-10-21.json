@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "sixteen_fill_owner_and_real_banked_store_thirteen_checks_pass_synthesis_running",
+  "functional_source": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 16.755938374903053,
+    "commit": "874aa716140cef3225ccb5473d745d6b04a02b70",
+    "source_files": 810,
+    "manifest_sha256": "ef31e6c211658e0e731fee945eab242f365069ef1c59868cf255677903698f81",
+    "archive_sha256": "c40afaaf8c45e471db9415f697f4c242fb8478eb0a2da8450c40ef9c27a40359",
+    "git_archive_and_worktree_exact": true
+  },
+  "emission_source": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 6.459410292096436,
+    "commit": "925c3374d900ebf73bf0e54f07c795fa71a90a4f",
+    "source_files": 810,
+    "manifest_sha256": "18189793b0d8a9ab4ab0fc4f5278ed1b57a2fdc7041ad9d5c34b96298260e0d1",
+    "archive_sha256": "528544967d03d5b15bf9e479eb6871c125a74032786f0a93cf21823a99b11919",
+    "git_archive_and_worktree_exact": true,
+    "changed_from13_test_source": [
+      "src/main/scala/opengpu/elaboration/EmitBankedTextureHits.scala"
+    ],
+    "all_functional_dependencies_exact": true
+  },
+  "initial_twelve_test_snapshot": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 90.1925136661157,
+    "commit": "27a8cee8d0f12ccbee676ec6a788cafed3c08c3d",
+    "source_files": 810,
+    "manifest_sha256": "b1abc0d779f30959d1b7e274f6ef7a04e5bafe481378a47135733f51942f1194",
+    "archive_sha256": "59da35ae7900b8bc96a12939549bce6ef840e3e44c026a5374fec20bedea2738",
+    "git_archive_and_worktree_exact": true
+  },
+  "invalidation_before": {
+    "returncode": 1,
+    "source_unchanged": true,
+    "elapsed_seconds": 11.484299124917015,
+    "commit": "d492182973103e24702a659568b174de063ef7d8",
+    "source_files": 810,
+    "manifest_sha256": "f56b475e4cb8e07d4da51d39fc7c9c173129f28046beef54a13779b9b0c38b2f",
+    "archive_sha256": "e215385f1f81a5538588e918ecedaae4f7f5a99218de0b450adeb95de421a1b8",
+    "git_archive_and_worktree_exact": true
+  },
+  "invalidation_before_after_changed_inputs": [
+    "src/main/scala/opengpu/graphics/BankedTextureFillOwner.scala"
+  ],
+  "regression_test_identical_before_after": true,
+  "failure": "An already offered refill was accepted after a one-cycle invalidation ended and installed stale data in the real cache,despite its consumer completion being marked invalidated.",
+  "fix": "Hold cache invalidation and next-epoch admission through read/refill/waiter/public-completion drain for both cancellation and invalidation.",
+  "tests_passed": 13,
+  "suites": {
+    "BankedTextureFillOwnerSpec": 4,
+    "BankedRgba8TextureHitsSpec": 8,
+    "BankedTextureLineStoreSpec": 1
+  },
+  "fill_service": {
+    "default_fill_slots": 16,
+    "default_waiter_table_entries": 32,
+    "additional_public_completion_registers": 1,
+    "simultaneous_physical_reads_measured": 16,
+    "joined_consumers_measured": 32,
+    "physical_reads_for32_consumers": 16,
+    "reordered_memory_replies": true,
+    "exact_real_SRAM_cache_words": true,
+    "key": [
+      "physical64-byte line",
+      "context/pass/generation",
+      "texture/publication key",
+      "row parity"
+    ],
+    "memory_ID_retained_through_held_completion": true,
+    "completed_fills_not_joined": true,
+    "failed_cancelled_invalidated_data_never_installs": true
+  },
+  "synthesis": {
+    "session": 69572,
+    "status": "running;not_a_pass",
+    "profile": "16 fills,32 waiting slots,physical read port,registered refill/completions",
+    "PPA": "synthesis only,1000ps,TC/SLVT,25% I/O,standard ABC,no retiming"
+  },
+  "scope": "Physical miss/fill ownership component connected to the actual banked SRAM in tests. Every waiter requires upstream translation/permission admission. No new native shader sampler integration or H4 closure.",
+  "remaining": [
+    "collect fill-owner synthesis",
+    "connect miss/replay service to bilinear groups and retain native result association",
+    "translation/permission and scoped task cancellation integration",
+    "whole-native-path precision,throughput and render-to-texture visibility",
+    "full H0-H8 hardware requirements"
+  ],
+  "artifacts_sha256": {
+    ".artifacts/mobile-texture-fill-invalidation-before-v1.log": "06021119c67306136672573ab8180d027bffed48e4a6aa96e90beaa1e2601ce4",
+    ".artifacts/mobile-texture-fill-invalidation-before-v1-result.json": "5b5b497dda69034a3964736a17f35cd121fc5dd5315de8fa1a34eeda9a93fbc3",
+    ".artifacts/mobile-texture-fill-invalidation-before-v1-source.json": "f56b475e4cb8e07d4da51d39fc7c9c173129f28046beef54a13779b9b0c38b2f",
+    ".artifacts/mobile-texture-fill-invalidation-before-v1-source.tar.gz": "e215385f1f81a5538588e918ecedaae4f7f5a99218de0b450adeb95de421a1b8",
+    ".artifacts/mobile-texture-fill-invalidation-after-v1.log": "5a970344dba68871afd472f7ec32b0ed6219816f133e718bbb1e81af63f928cf",
+    ".artifacts/mobile-texture-fill-invalidation-after-v1-result.json": "a8997c69c7bc743532c1f07bfe658aab2834fc05ac3e84567bd6c915ff53924d",
+    ".artifacts/mobile-texture-fill-invalidation-after-v1-source.json": "ef31e6c211658e0e731fee945eab242f365069ef1c59868cf255677903698f81",
+    ".artifacts/mobile-texture-fill-invalidation-after-v1-source.tar.gz": "c40afaaf8c45e471db9415f697f4c242fb8478eb0a2da8450c40ef9c27a40359",
+    ".artifacts/mobile-texture-fill-owner-v2-source.json": "18189793b0d8a9ab4ab0fc4f5278ed1b57a2fdc7041ad9d5c34b96298260e0d1",
+    ".artifacts/mobile-texture-fill-owner-v2-source.tar.gz": "528544967d03d5b15bf9e479eb6871c125a74032786f0a93cf21823a99b11919",
+    ".artifacts/mobile-texture-fill-owner-v2-emission-result.json": "6fbb5ac3c6d24b74fdd2642914ff12ee0cc57854e93a8da413c6059641d9596f"
+  }
+}
