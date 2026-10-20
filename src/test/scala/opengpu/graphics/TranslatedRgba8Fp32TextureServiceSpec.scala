@@ -117,14 +117,17 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
       input
     }
     def until(p: =>Boolean): Unit={var n=0;while(!p && n<6000){tick();n+=1};assert(p,s"translated service stalled cycle=$cycle data=${reads.size} walks=${walks.size} results=${results.map(_.tag)}")}
-    def submit(q: Group): Unit={
+    def offer(q: Group): Unit={
       val b=d.io.in.bits;b.identity.context.poke(7.U);b.identity.pass.poke(8.U);b.identity.generation.poke(9.U)
       b.tag.poke(q.tag.U);b.textureKey.poke(1.U)
       for(t<-0 until 4){b.addresses(t).poke(q.addresses(t).U);b.rowParity(t).poke(q.rows(t).B)}
       for(axis<-0 until 2)b.axisWeights(axis).poke(q.weights(axis).U)
       expected(q.tag)=oracle(q);d.io.in.valid.poke(true.B)
+    }
+    def submit(q: Group): Unit={
+      offer(q)
       var n=0;var fire=false;while(!fire && n<6000){fire=tick();n+=1};assert(fire)
-      d.io.in.valid.poke(false.B);b.textureKey.poke("hdeadbeef".U);b.identity.generation.poke(99.U)
+      d.io.in.valid.poke(false.B);d.io.in.bits.textureKey.poke("hdeadbeef".U);d.io.in.bits.identity.generation.poke(99.U)
     }
     def good(r: Result): Unit={
       assert(r.hit && !r.fault && !r.cancelled && r.source==0 && r.address==0,r.toString)
@@ -144,7 +147,11 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
       t.until(t.results.size==exact.size);t.results.foreach(t.good)
       t.results.zip(exact).foreach{case(r,w)=>assert(r.values==Vector.fill(4)(w),s"unquantized weight $w became ${r.values}")}
       t.drain();assert(t.reads.size==2)
-      info("BANKED_NATIVE_FP32_PRECISION minimumSubnormalWeight=true allWeightsRetained=true byteDecodeBeforeFiltering=true hierarchicalFP32=true noQ16Interpolation=true")
+      d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B);t.drain()
+      t.backing=(a,_)=>if((a&4)==0)BigInt(0)else BigInt(0xff807f00L)
+      t.submit(group(99).copy(weights=Vector[BigInt](1,0)));t.until(t.results.size==8);t.good(t.results.last);t.drain()
+      assert(t.results.last.values==Vector[BigInt](0,0,1,1),"minimum subnormal contribution rounded at the wrong RGBA8 byte boundary")
+      info("BANKED_NATIVE_FP32_PRECISION minimumSubnormalWeight=true gradualUnderflowByte127and128=true allWeightsRetained=true byteDecodeBeforeFiltering=true hierarchicalFP32=true noQ16Interpolation=true")
     }
   }
   it should "check tiny active weights before physical lookup and skip exact endpoint taps" in {
@@ -204,17 +211,52 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
       assert(t.reads.size==16 && t.reads.forall(r=>r.address>=0x101000 && r.address<0x102000))
       assert(t.walks.size==8 && t.walks.map(_.id).toSet==Set(0,1,2,3))
       val mark=t.results.size;val walks=t.walks.size
-      for(n<-0 until 96)t.submit(group(1000+n,n%8))
-      t.until(t.results.size==mark+96);t.results.drop(mark).foreach(t.good)
+      for(n<-0 until 192)t.submit(group(1000+n,n%8))
+      t.until(t.results.size==mark+192);t.results.drop(mark).foreach(t.good)
       val issued=t.inputCycles.filter(_._1>=1000).map(_._2);val retired=t.results.drop(mark).map(_.cycle)
-      assert(issued.size==96 && issued.sliding(2).forall(p=>p(1)-p(0)==1),"translated resident input II exceeded one")
-      assert(retired.size==96 && retired.sliding(2).forall(p=>p(1)-p(0)==1),"translated complete output II exceeded one")
+      assert(issued.size==192 && issued.sliding(2).forall(p=>p(1)-p(0)==1),"translated resident input II exceeded one")
+      assert(retired.size==192 && retired.sliding(2).forall(p=>p(1)-p(0)==1),"translated complete output II exceeded one")
       t.resultReady=c=>c%19<7
-      for(n<-0 until 192)t.submit(group(2000+n,n%8))
-      t.until(t.results.size==mark+288);t.results.drop(mark+96).foreach(t.good)
+      for(n<-0 until 384)t.submit(group(2000+n,n%8))
+      t.until(t.results.size==mark+576);t.results.drop(mark+192).foreach(t.good)
       assert(t.reads.size==16 && t.walks.size==walks)
       t.resultReady=_=>true;t.drain()
-      info("BANKED_NATIVE_FP32_RATE nonidentitySv32=true TLBPorts4=true coldDataReads16=true warmGroups96=true inputII1=true completeOutputII1=true backpressureGroups192=true noHotPTEOrDataReads=true")
+      info("BANKED_NATIVE_FP32_RATE nonidentitySv32=true TLBPorts4=true coldDataReads16=true warmGroups192=true inputII1=true completeOutputII1=true ownerRingWrap=true backpressureGroups384=true noHotPTEOrDataReads=true")
+    }
+  }
+  it should "drain saturated native owners and a held physical offer across cancel and invalidation" in {
+    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+      val t=new Driver(d);t.mapping(0x401000,0x101000);t.mapping(0x402000,0x102000)
+      t.submit(group(0));t.until(t.results.size==1);t.good(t.results.last);t.drain()
+      var acceptedHot=0;var acceptedCold=0
+      for(cold<-Seq(false,true)){
+        t.resultReady=_=>false;t.dataReady=_ => !cold
+        val mark=t.results.size;val base=if(cold)2000 else 1000
+        var accepted=0;var fired=true
+        while(accepted<256 && fired){
+          t.offer(group(base+accepted,if(cold)32+(accepted%8)else 0))
+          fired=t.tick();if(fired)accepted+=1
+        }
+        assert(accepted>0 && accepted<=128 && accepted<256)
+        d.io.in.valid.poke(false.B);zero(d.io.in.bits)
+        if(cold){t.until(d.io.memoryRequest.valid.peek().litToBoolean);d.io.invalidate.poke(true.B);acceptedCold=accepted}
+        else{
+          assert(accepted==128,"warm native owner table did not fill to its architectural bound")
+          t.until(d.io.out.valid.peek().litToBoolean);for(_<-0 until 200)t.tick()
+          d.io.cancel.poke(true.B);acceptedHot=accepted
+        }
+        val offered=d.io.out.valid.peek().litToBoolean
+        t.tick();d.io.cancel.poke(false.B);d.io.invalidate.poke(false.B)
+        for(_<-0 until 8){d.io.in.ready.expect(false.B);t.tick()}
+        t.dataReady=_=>true;t.resultReady=_=>true
+        t.until(t.results.size==mark+accepted);t.drain()
+        val retired=t.results.drop(mark)
+        assert(retired.map(_.tag)==(base until base+accepted))
+        if(offered)t.good(retired.head)
+        assert(retired.drop(if(offered)1 else 0).forall(r=>r.cancelled && !r.hit && !r.fault && r.values.forall(_==0)))
+        t.submit(group(base+500));t.until(t.results.size==mark+accepted+1);t.good(t.results.last);t.drain()
+      }
+      info(s"BANKED_NATIVE_FP32_SATURATION warmOwners=$acceptedHot coldAccepted=$acceptedCold actualInputBackpressure=true heldMemoryOfferImmutable=true cancelAndInvalidate=true exactRetirement=true healthyReuse=true")
     }
   }
   it should "fault before any physical read and recheck permission before reusing a resident physical alias" in {
