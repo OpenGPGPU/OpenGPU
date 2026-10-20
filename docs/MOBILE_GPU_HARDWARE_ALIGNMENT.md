@@ -5872,3 +5872,25 @@ others remain exact. Binding/bound-fetch and both affected fetch synthesis scree
 are pending under unchanged synthesis-only constraints. Additional nested
 primary-fault/cancel and caller-coordinate checks, native integration, sampler
 semantics, formats and the full hardware objective remain open.
+
+
+## Registered image binding and boundary qualification (2026-10-20)
+
+The [initial four synthesis screens](performance/mobile-texture-image-binding-synthesis-initial-2026-10-20.json)
+all map completely. Raw/typed setup passes at +123.434/+10.117 ps; binding and
+bound fetch miss at -565.280/-675.490 ps. These are identical-constraint standalone
+screens on the frozen27-check source. The original source, reports and failures
+are retained.
+
+The [revised28-check source](performance/mobile-texture-image-binding-pipelined-2026-10-20.json)
+registers natural mip selection, 33-bit level handles and 41-bit table extents
+before comparisons. Wide level validation precedes narrowing and exact4GiB ends
+remain legal. All28 controls, seven ABI checks and four emissions pass on
+unchanged662-file source. Added direct checks preserve earlier image/level/data
+faults through nested cancellation, including address zero at all three owners;
+seven invalid caller-coordinate cases issue no texel reads. The ABI is unchanged.
+
+Revised binding/bound synthesis remains pending at the same TC/SLVT, 1000 ps,
+25 percent I/O and no retiming. Existing raw/typed results can carry only by exact
+active-RTL/source proof. Native bindings, typed shader transport, complete sampler
+semantics/formats, throughput and the full hardware objective remain open.

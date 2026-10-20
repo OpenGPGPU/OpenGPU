@@ -262,4 +262,32 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
       info("IMAGE_BINDING_BOUNDS exactHeader4GiBEnd=true exactLevelTable4GiBEnd=true fullArray4GiBTexelEnd=true invalidImageEnvelopes6BeforeReads=true noHandleWrap=true contextIdentityBeforeCache=true exactHealthyReuse=true")
     }
   }
+  it should "preserve primary faults across nested cancellation including address zero and reject full-width caller coordinates before data" in {
+    simulate(new ImageBindingHarness()){d=>val t=new Driver(d);val i=image(maxLevel=0);val a=i.views(0).base
+      t.install(i);t.payload(a,16,17)
+      for((fault,stage)<-Seq((BigInt(0x1000),1),(i.levelAddress(0),2),(a& ~BigInt(63),3))){
+        t.invalidate();t.memory.faultAt=Set(fault);val before=t.replies.size;t.query()
+        t.until(t.replies.drop(before).exists(_._1==fault));d.io.cancel.poke(true.B)
+        t.check(3,stage=stage,fault=Some(fault));t.pop();d.io.cancel.poke(false.B);t.memory.faultAt=Set.empty
+        t.query();t.check(i=i,raw=17,address=a);t.pop()}
+      // Independently exercise a zero address at all three nested fault owners.
+      val tiny=image(w=1,h=1,maxLevel=0);t.install(tiny,header=0);t.invalidate();t.memory.faultAt=Set(BigInt(0))
+      val h=t.replies.size;t.query(table=0,limit=128);t.until(t.replies.drop(h).exists(_._1==0));d.io.cancel.poke(true.B)
+      t.check(3,stage=1,fault=Some(BigInt(0)));t.pop();d.io.cancel.poke(false.B)
+      val zeroLevel=tiny.copy(levelsBase=0,levelsLimit=128,first=0,views=Map(0->tiny.views(0)))
+      t.install(zeroLevel);t.invalidate();val l=t.replies.size;t.query();t.until(t.replies.drop(l).exists(_._1==0));d.io.cancel.poke(true.B)
+      t.check(3,stage=2,fault=Some(BigInt(0)));t.pop();d.io.cancel.poke(false.B)
+      val v=View(0,1,1,1,1,4,0,0,4,0);val zeroData=image(format=3,w=1,h=1,maxLevel=0).copy(lo=0,hi=4,views=Map(0->v))
+      t.install(zeroData);t.payload(0,4,0x3f800000);t.invalidate();val z=t.replies.size;t.query()
+      t.until(t.replies.drop(z).exists(_._1==0));d.io.cancel.poke(true.B);t.check(3,stage=3,fault=Some(BigInt(0)))
+      t.pop();d.io.cancel.poke(false.B);t.memory.faultAt=Set.empty;t.query();t.check(i=zeroData,raw=0x3f800000,address=0);t.pop()
+      t.install(i);t.invalidate();t.query();t.check(i=i,raw=17,address=a);t.pop()
+      for((x,y,z,l,face)<-Seq((BigInt(0xffffffffL),BigInt(0),0,0,0),(BigInt(0),BigInt(0xffffffffL),0,0,0),
+        (BigInt(7),BigInt(0),0,0,0),(BigInt(0),BigInt(5),0,0,0),(BigInt(0),BigInt(0),1,0,0),
+        (BigInt(0),BigInt(0),0,1,0),(BigInt(0),BigInt(0),0,0,1))){
+        val before=t.dataReads;t.query(x=x,y=y,z=z,layer=l,face=face);t.check(5,stage=5);t.pop();assert(t.dataReads==before)}
+      t.query();t.check(i=i,raw=17,address=a);t.pop()
+      info("IMAGE_BINDING_BOUNDARY earlierFaultBeforeNestedCancelStages3=true validZeroFaultAddressStages3=true noTruncatedCallerCoordinates=true invalidAxisCases7=true noInvalidTexelReads=true zeroErrorViewsAndColors=true exactHealthyReuse=true")
+    }
+  }
 }

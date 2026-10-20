@@ -55,7 +55,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val invalidate=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,check,readHeader,verifyHeader,checkImage,prepareLevel,offerLevel,waitLevel,verifyLevel,advance,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,check,readHeader,verifyHeader,checkImage,levelHandles,levelExtent,checkLevelTable,prepareLevel,offerLevel,waitLevel,verifyLevel,advance,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageBindingRequest)
   private val snapshot=Reg(new TextureImageBindingRecord);private val result=Reg(new TextureImageBindingResult)
   private val status=RegInit(0.U(3.W));private val faultStage=RegInit(0.U(3.W));private val faultValid=RegInit(false.B)
@@ -66,6 +66,8 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
   private val lineMap=Reg(Vec(2,UInt(1.W)));private val offered=RegInit(false.B)
   private val headerRequest=Reg(new ComputeMemoryRequest(config,64,4))
   private val currentLevel=Reg(UInt(4.W));private val lastLevel=Reg(UInt(4.W))
+  private val firstHandle=Reg(UInt(33.W));private val lastHandle=Reg(UInt(33.W))
+  private val levelBegin=Reg(UInt(41.W));private val levelEnd=Reg(UInt(41.W))
   private val levelRequest=Reg(new TextureImageResourceAddressRequest);private val levelResult=Reg(new TextureImageResourceAddressResult)
   private val selectedView=Reg(new TextureImageLevelView);private val selectedLookup=Reg(new TextureImageLevelLookup)
   private val selectedValid=RegInit(false.B);private val levelStarted=RegInit(false.B)
@@ -146,19 +148,34 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       val maximum=Mux(baseWidth>baseHeight,baseWidth,baseHeight);val largest=Mux(baseDepth>maximum,baseDepth,maximum)
       val natural=snapshot.baseLevel+&(13.U-PriorityEncoder(Reverse(largest.pad(14))))
       val last=Mux(snapshot.maxLevel<natural,snapshot.maxLevel,natural)(3,0)
-      val firstHandle=snapshot.firstLevelHandle.pad(64)+Mux(request.requireMipChain,snapshot.baseLevel,request.level)
-      val lastHandle=snapshot.firstLevelHandle.pad(64)+Mux(request.requireMipChain,last,request.level)
-      val begin=snapshot.levelsBase.pad(64)+(firstHandle<<7);val end=snapshot.levelsBase.pad(64)+(lastHandle<<7)+128.U
-      val table=snapshot.levelsVersion===1.U && snapshot.levelsBase(5,0)===0.U && snapshot.levelsLimit>snapshot.levelsBase &&
-        snapshot.levelsLimit<=(BigInt(1)<<32).U && (snapshot.levelsLimit-snapshot.levelsBase)(6,0)===0.U &&
-        firstHandle<=(BigInt(1)<<32).U-1.U && lastHandle<=(BigInt(1)<<32).U-1.U && begin>=snapshot.levelsBase && end<=snapshot.levelsLimit
       lastLevel:=last
       when(stop){phase:=State.finish}
         .elsewhen(!TypedColorFormat.valid(snapshot.format)){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .elsewhen(snapshot.target>3.U || !dimensions || snapshot.maxLevel<snapshot.baseLevel){status:=TextureImageResourceStatus.view.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .elsewhen(request.level<snapshot.baseLevel || request.level>last){status:=TextureImageResourceStatus.coordinate.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
-        .elsewhen(snapshot.allocationLimit<=snapshot.allocationBase || snapshot.allocationLimit>(BigInt(1)<<32).U || !table){
+        .elsewhen(snapshot.allocationLimit<=snapshot.allocationBase || snapshot.allocationLimit>(BigInt(1)<<32).U){
           status:=TextureImageResourceStatus.bounds.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
+        .otherwise{phase:=State.levelHandles}
+    }
+    is(State.levelHandles){
+      // Full32-bit request level was checked before this narrowing. A32-bit
+      // first handle plus a4-bit level fits33 bits, including its carry.
+      firstHandle:=snapshot.firstLevelHandle.pad(33)+Mux(request.requireMipChain,snapshot.baseLevel,request.level(3,0))
+      lastHandle:=snapshot.firstLevelHandle.pad(33)+Mux(request.requireMipChain,lastLevel,request.level(3,0))
+      phase:=Mux(stop,State.finish,State.levelExtent)
+    }
+    is(State.levelExtent){
+      // Preserve handle carry until bounds checking. The full shifted33-bit
+      // index,32-bit base and128-byte exclusive end fit within41 bits.
+      levelBegin:=snapshot.levelsBase.pad(41)+(firstHandle<<7)
+      levelEnd:=snapshot.levelsBase.pad(41)+(lastHandle<<7)+128.U
+      phase:=Mux(stop,State.finish,State.checkLevelTable)
+    }
+    is(State.checkLevelTable){
+      val legal=snapshot.levelsVersion===1.U && snapshot.levelsBase(5,0)===0.U && snapshot.levelsLimit>snapshot.levelsBase &&
+        snapshot.levelsLimit<=(BigInt(1)<<32).U && (snapshot.levelsLimit-snapshot.levelsBase)(6,0)===0.U &&
+        !firstHandle(32) && !lastHandle(32) && levelBegin>=snapshot.levelsBase && levelEnd<=snapshot.levelsLimit
+      when(stop){phase:=State.finish}.elsewhen(!legal){status:=TextureImageResourceStatus.bounds.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .otherwise{currentLevel:=Mux(request.requireMipChain,snapshot.baseLevel,request.level(3,0));phase:=State.prepareLevel}
     }
     is(State.prepareLevel){

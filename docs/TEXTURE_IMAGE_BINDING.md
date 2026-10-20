@@ -1,10 +1,10 @@
 # GPU image format, mip binding and bound texel fetch
 
-Status: [27 controls pass](performance/mobile-texture-image-binding-2026-10-20.json)
-on unchanged 662-file source in `codex/mobile-texture-image-binding`, together
+Status: [28 controls pass](performance/mobile-texture-image-binding-pipelined-2026-10-20.json)
+on unchanged 662-file source in `codex/mobile-texture-image-binding-pipeline`, together
 with seven ABI checks, four RTL emissions, combined C11 headers and CI selection.
-Further fault/coordinate boundary controls, synthesis and native integration
-remain pending. No new native capability is advertised.
+Revised binding synthesis and native integration remain pending. No new native
+capability is advertised.
 
 `TextureImageBindingUnit` loads a GXI1 image record that owns format identity,
 allocation bounds, target, dimensional sequence and a GXL1 level table. A texel
@@ -90,6 +90,17 @@ New coverage includes 144 authoritative format/target fetches, NPOT and reversed
 mip layouts, base/max and array/volume rules, selected/full-chain cache identity,
 22 encoding corruptions, later mip mismatches/overlap with zero data reads,
 240 cancellation points, Sv32 permissions on image/level/data pages, and image
-records, level tables and a full array texel ending exactly at 4 GiB. Additional
-direct checks of nested primary faults across cancellation and caller-coordinate
-boundaries remain required before integration.
+records, level tables and a full array texel ending exactly at 4 GiB. A ninth
+control directly checks primary-fault preservation across nested cancellation,
+valid zero fault addresses at image/level/data owners, and seven invalid caller
+coordinate cases with zero texel reads and exact healthy reuse.
+
+The [initial four synthesis screens](performance/mobile-texture-image-binding-synthesis-initial-2026-10-20.json)
+all map fully. Raw/typed setup passes at +123.434/+10.117 ps; image binding and
+bound fetch miss at -565.280/-675.490 ps. The binding critical path starts at
+base-level state and ends at current-level capture. The revised owner adds three
+admission stages separating natural mip selection, 33-bit handle formation,
+41-bit table extents and their comparisons. Full-width level rejection precedes
+narrowing; handle carries and exclusive 4 GiB ends stay checked. All 28 controls
+and seven ABI checks pass after this change. Revised binding/bound synthesis
+uses the same TC/SLVT, 1000 ps, 25 percent I/O and no-retiming constraints.

@@ -1,0 +1,207 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "all_four_profiles_map_binding_and_bound_setup_fail_raw_and_typed_pass",
+  "source_files": 662,
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-image-binding-qualified-v1-source.json",
+    "sha256": "6de4be8256df2095235238ad633f708692fa7ac5b8692398e6a5f8101d625bfb"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-texture-image-binding-qualified-v1-source.tar.gz",
+    "sha256": "fa638f74879d168c0a23f1d91766e69ae29dd0d9269a8c142336428d92d0bed0"
+  },
+  "source_unchanged": true,
+  "profiles": {
+    "binding": {
+      "runtime": {
+        "returncode": 2,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 78.36698829196393,
+        "finished_utc": "2026-10-20T06:32:38.676529+00:00"
+      },
+      "setup_passed": false,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        -565.28,
+        428.211
+      ],
+      "worst_setup_slack_ps": -565.28,
+      "estimated_core_clock_fmax_mhz": 638.863,
+      "mapped_cells": 53903,
+      "critical_startpoint": "snapshot_baseLevel[1]$_SDFFE_PP0P_",
+      "critical_endpoint": "currentLevel[3]$_DFFE_PP_",
+      "evidence": {
+        "qualification.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v1/qualification.json",
+          "sha256": "fbf446f9ef30ab91143e1ab7db657bc0c4b74720a5e3d58f9c7dd73c0fa68447"
+        },
+        "result.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v1/result.json",
+          "sha256": "8c9a7d794fb404ca40ae12d7bf15e8f81d2f81aab37cb62e20e1702a31d6e5ff"
+        },
+        "manifest.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v1/manifest.json",
+          "sha256": "672b238049433ee5419f40a79efb07745e5f340b9fb881bf13957f95acf6ef35"
+        },
+        "flow/synthesis_sta.log": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v1/flow/synthesis_sta.log",
+          "sha256": "fc368d26196c56e010ee00dd026120f7b6757bda9e4550d27878a0bc6f65e92c"
+        },
+        "flow/orfs-work/reports/base/synth_stat.txt": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "b56a8511a49cc324eaee81a0d9f9097b5c8c744a0019104b302ae2378f8d3272"
+        }
+      },
+      "inputs": {
+        "path": ".artifacts/mobile-texture-image-binding-binding-synthesis-v1-inputs.json",
+        "sha256": "d3a4692c1d0459e55b49c611d6da481c0280d2174acef90c5ac9a31e706d6144"
+      }
+    },
+    "bound": {
+      "runtime": {
+        "returncode": 2,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 165.1461067078635,
+        "finished_utc": "2026-10-20T06:35:23.841693+00:00"
+      },
+      "setup_passed": false,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        -675.49,
+        417.339
+      ],
+      "worst_setup_slack_ps": -675.49,
+      "estimated_core_clock_fmax_mhz": 596.84,
+      "mapped_cells": 114134,
+      "critical_startpoint": "image.snapshot_baseLevel[1]$_SDFFE_PP0P_",
+      "critical_endpoint": "image.status[1]$_SDFF_PP0_",
+      "evidence": {
+        "qualification.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-bound-2026-10-20-v1/qualification.json",
+          "sha256": "9f67fc1a93bb81861be126e48f3d192ac3d7e9f59284faaeea6290032f00c0f6"
+        },
+        "result.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-bound-2026-10-20-v1/result.json",
+          "sha256": "ee6d73dfa60ba5eff9abcfcf2adf5e641f8ac1eca6a3df155dee72120d03c5b1"
+        },
+        "manifest.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-bound-2026-10-20-v1/manifest.json",
+          "sha256": "3bf5967cec67d50ae9e4d2d94612eeb85c807f7aa2d542063177b68de9f48f4f"
+        },
+        "flow/synthesis_sta.log": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-bound-2026-10-20-v1/flow/synthesis_sta.log",
+          "sha256": "61acc4237a5be2eac6a29dfde6fe8a1be2696c411106c68b145cd1ed76545c22"
+        },
+        "flow/orfs-work/reports/base/synth_stat.txt": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-bound-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "59f0886b0410abc76982fab65b87dbdacc42bd578cb3292978044f89aa9c91a4"
+        }
+      },
+      "inputs": {
+        "path": ".artifacts/mobile-texture-image-binding-bound-synthesis-v1-inputs.json",
+        "sha256": "e739ae7ea3bced2e8711695c631f76f8a2144e12d04792fbd4da0a23c4ffb0bb"
+      }
+    },
+    "raw": {
+      "runtime": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 62.07500325003639,
+        "finished_utc": "2026-10-20T06:36:25.938047+00:00"
+      },
+      "setup_passed": true,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        123.434,
+        423.032
+      ],
+      "worst_setup_slack_ps": 123.434,
+      "estimated_core_clock_fmax_mhz": 1140.815,
+      "mapped_cells": 44287,
+      "critical_startpoint": "location.address.captured_q.ram[397]$_DFFE_PP_",
+      "critical_endpoint": "location.address.products_q.ram[219]$_DFFE_PP_",
+      "evidence": {
+        "qualification.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-raw-2026-10-20-v1/qualification.json",
+          "sha256": "228b5a79237e69fb52b1c0cfceca2c43613883df5757d99a67830ae8a35350f7"
+        },
+        "result.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-raw-2026-10-20-v1/result.json",
+          "sha256": "0e657df6fff583d38130918d78af6bb5d18ae4cf3a0822f1a211902ff180d88e"
+        },
+        "manifest.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-raw-2026-10-20-v1/manifest.json",
+          "sha256": "ffae4c2fb97d7164ab1bd49c7af09ed0ce63145f2b46fd988b1b663a115f2c2a"
+        },
+        "flow/synthesis_sta.log": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-raw-2026-10-20-v1/flow/synthesis_sta.log",
+          "sha256": "b49fb7071004e397fdcb9619fda9244adcf30f9be5c0e487031609286cc4078b"
+        },
+        "flow/orfs-work/reports/base/synth_stat.txt": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-raw-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "d2b008158c02c92628f2b9dfa1cf725ede6bda5978b3340803c4281c10939ed5"
+        }
+      },
+      "inputs": {
+        "path": ".artifacts/mobile-texture-image-binding-raw-synthesis-v1-inputs.json",
+        "sha256": "d358bcb0a6d476a3e2c6045da9a391b84f48a5785703d86fc4de798a0970396a"
+      }
+    },
+    "typed": {
+      "runtime": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 104.18537662504241,
+        "finished_utc": "2026-10-20T06:38:10.149370+00:00"
+      },
+      "setup_passed": true,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        10.117,
+        418.06
+      ],
+      "worst_setup_slack_ps": 10.117,
+      "estimated_core_clock_fmax_mhz": 1010.22,
+      "mapped_cells": 54830,
+      "critical_startpoint": "fetch.location.address.captured_q.ram[268]$_DFFE_PP_",
+      "critical_endpoint": "fetch.location.address.products_q.ram[315]$_DFFE_PP_",
+      "evidence": {
+        "qualification.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-typed-2026-10-20-v1/qualification.json",
+          "sha256": "7e7975ba178ee873cd261007fa127e4c162e6bd54574754a3f2e609c71bf9b3e"
+        },
+        "result.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-typed-2026-10-20-v1/result.json",
+          "sha256": "da473bfd53ed0bf21c561400231dfb1409856ae9edc3584021f29d5906d84656"
+        },
+        "manifest.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-typed-2026-10-20-v1/manifest.json",
+          "sha256": "f7456c6f5f0b3b29ca9891e234bb3bbc830b0c402bdca9b7dd4f0353af26f7dd"
+        },
+        "flow/synthesis_sta.log": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-typed-2026-10-20-v1/flow/synthesis_sta.log",
+          "sha256": "5f345b2c71e599ed440b7fe6362d0f59c41bb248717a048c40512679e968e08a"
+        },
+        "flow/orfs-work/reports/base/synth_stat.txt": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-typed-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "319b9db389d9eeb5f8a79a34295222374f48911f81ff76c110ff1d80df34029b"
+        }
+      },
+      "inputs": {
+        "path": ".artifacts/mobile-texture-image-binding-typed-synthesis-v1-inputs.json",
+        "sha256": "9fc4be16ee679d57b67bf56e489ad69e7751cbe1f6405be945fe8f65ae54d17a"
+      }
+    }
+  },
+  "scope": "Standalone synthesis only; TC/SLVT,1000ps,25 percent I/O,no retiming/place-route/power. Include both reported core and I/O path groups.",
+  "next_step": "Registered image-level selection/handle/extent boundaries require separate functional qualification and identical-constraint rescreen. Additional caller-coordinate and nested primary-fault/cancel controls remain required.",
+  "limits": [
+    "No positive binding/bound setup or native texture capability result.",
+    "Raw/typed pass on the corrected shared GXL1 reader; a later image-binding-only/test change can carry these results only by exact active-RTL and source proofs."
+  ]
+}
