@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "four_disjoint_source_captured_AXI_matrices_pass_typed_packet_matrix_running",
+  "status": "four_captured_AXI_tests_pass_with_paired_typed_regression_also_complete",
   "source": {
     "commit": "2bba1597935af597338630c21bbcff9dbad4a3d5",
     "source_files": 804,
@@ -107,9 +107,15 @@
     ".artifacts/mobile-native-texture-disjoint-axi-v1-captured.log": "7c110ffe9d95ab86343fc93aa5d3e6429e397973b9e0178d52ebe0d3d1c9bfae"
   },
   "remaining": [
-    "collect the separate two typed packet-fetch tests and68 frames",
     "banked shared-cluster native integration,whole-path rates and coherence",
     "hardware capability/API/precision closure and full H0-H8 requirements"
   ],
-  "claims": "This replaces the adjacent-generation source-alias fixture limitation for these four matrices. It is not whole-GPU timing,power,route,720p performance or complete GLES qualification."
+  "claims": "This replaces the adjacent-generation source-alias fixture limitation for these four matrices. It is not whole-GPU timing,power,route,720p performance or complete GLES qualification.",
+  "typed_packet_regression": {
+    "passed_tests": 2,
+    "frames": 68,
+    "successful": 66,
+    "expected_errors": 2,
+    "record": "mobile-native-texture-disjoint-axi-2026-10-21.json"
+  }
 }
