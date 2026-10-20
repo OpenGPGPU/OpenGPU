@@ -490,7 +490,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       val formats=Seq("RGBA32UI","RGBA32I","RGBA32F","RGBA8").map(TypedColorReference.names.indexOf)
       var views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,formats(u),u,0,id))
       for(u<-0 until 4){texData.coordinates(t.put,target=u,id=id,address=texData.packet+u*64);t.put(0x5000+u*4,texData.packet+u*64)}
-      var nativeMode=false;var skipParameters=false;var nativeControl=1
+      var integerMode=false;var nativeMode=false;var skipParameters=false;var nativeControl=1
       val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
       def code(c: Int,scalar: Boolean): Seq[BigInt]={
         val fetch=if(scalar)Seq((BigInt(0x80)<<12)|(BigInt(12)<<7)|0x37,addi(12,12,3*64),addi(13,0,3),
@@ -500,26 +500,30 @@ class VertexShaderStageSpec extends AnyFlatSpec {
         program(4,2).dropRight(1)++fetch++address(6,7,(11+7)*t.stride)++Seq(vectorMemory(6,7,true),cease)
       }
       def floatPc(c: Int,scalar: Boolean,missing: Boolean,mode: Int): Int=
-        0xa0000+(if(scalar)0x10000 else 0)+(if(missing)0x20000 else 0)+mode*0x4000+c*0x1000
+        0xa0000+(if(integerMode)0x40000 else 0)+(if(scalar)0x10000 else 0)+(if(missing)0x20000 else 0)+mode*0x4000+c*0x1000
       def floatingCode(c: Int,scalar: Boolean,missing: Boolean,mode: Int): Seq[BigInt]={
         def param(pair: Int,x: Int,y: Int): BigInt=(BigInt(3)<<(if(scalar)25 else 26))|
           (if(scalar)BigInt(0)else BigInt(1)<<25)|(BigInt(y)<<20)|(BigInt(x)<<15)|(BigInt(pair)<<12)|(if(scalar)0x0b else 0x2b)
         val initialize=Seq((BigInt(0x3f400)<<12)|(BigInt(12)<<7)|0x37,
           broadcast|(BigInt(12)<<15)|(BigInt(10)<<7)|0x57,broadcast|(BigInt(11)<<7)|0x57,
-          broadcast|(BigInt(12)<<15)|0x57)
+          broadcast|(BigInt(12)<<15)|0x57)++(if(integerMode)Seq(addi(12,0,1),broadcast|(BigInt(12)<<15)|(BigInt(10)<<7)|0x57)else Seq.empty)
         val first=if(missing)Seq.empty else Seq(param(0,if(scalar)12 else 10,if(scalar)12 else 10))
         val rest=if(missing)Seq.empty else (1 until 8).map(p=>param(p,if(scalar)0 else 11,if(scalar)0 else 11))
         val sample=if(scalar)Seq(addi(13,0,3),addi(14,0,mode),
-          (BigInt(4)<<25)|(BigInt(14)<<20)|(BigInt(13)<<15)|(BigInt(c)<<12)|(BigInt(15)<<7)|0x0b,
+          (BigInt(if(integerMode)5 else 4)<<25)|(BigInt(14)<<20)|(BigInt(13)<<15)|(BigInt(c)<<12)|(BigInt(15)<<7)|0x0b,
           broadcast|(BigInt(15)<<15)|(BigInt(7)<<7)|0x57)
         else address(5,7,8*t.stride)++Seq(vectorMemory(5,6,false),addi(13,0,mode),
           broadcast|(BigInt(13)<<15)|(BigInt(5)<<7)|0x57,
-          (BigInt(4)<<26)|(BigInt(1)<<25)|(BigInt(5)<<20)|(BigInt(6)<<15)|(BigInt(c)<<12)|(BigInt(7)<<7)|0x2b)
+          (BigInt(if(integerMode)5 else 4)<<26)|(BigInt(1)<<25)|(BigInt(5)<<20)|(BigInt(6)<<15)|(BigInt(c)<<12)|(BigInt(7)<<7)|0x2b)
         program(4,2).dropRight(1)++initialize++first++address(6,7,(11+6)*t.stride)++
           Seq(vectorMemory(6,0,true))++rest++sample++address(6,7,(11+7)*t.stride)++Seq(vectorMemory(6,7,true),cease)
       }
       for(scalar<-Seq(false,true);c<-0 until 4;missing<-Seq(false,true);mode<-0 to 2){
         floatingCode(c,scalar,missing,mode).zipWithIndex.foreach{case(w,n)=>t.put(floatPc(c,scalar,missing,mode)+n*4,w)}}
+      integerMode=true
+      for(scalar<-Seq(false,true);c<-0 until 4;missing<-Seq(false,true)){
+        floatingCode(c,scalar,missing,0).zipWithIndex.foreach{case(w,n)=>t.put(floatPc(c,scalar,missing,0)+n*4,w)}}
+      integerMode=false
       for(scalar<-Seq(false,true);c<-0 until 4){val pc=0x60000+(if(scalar)0x10000 else 0)+c*0x1000
         code(c,scalar).zipWithIndex.foreach{case(w,n)=>t.put(pc+n*4,w)}}
       d.io.out.ready.poke(true.B)
@@ -560,6 +564,18 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       for(mode<-Seq(0,2)){nativeControl=mode;run(0,false);run(3,true);floatingDraws+=2}
       nativeControl=1;skipParameters=true;run(0,false);run(0,true);skipParameters=false
       run(0,false,bad=true);run(1,false,cancelled=true);run(3,true)
+      integerMode=true;nativeControl=0;var integerDraws=0
+      for(group<-(0 until 64).grouped(4)){
+        val ids=group.padTo(4,group.head)
+        views=(0 until 4).map{u=>val v=texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),0,0,id,
+          swizzle=Seq(Seq(3,2,1,0),Seq(5,4,0,5),Seq(0,0,0,0),Seq(0,1,2,3))(u))
+          if(ids(u)>=54){t.put(texData.images+u*128+11*4,2);t.put(texData.images+u*128+12*4,2)
+            t.put(texData.levels+u*128+13*4,2);t.put(texData.levels+u*128+14*4,2)};v}
+        for(scalar<-Seq(false,true);c<-0 until 4){run(c,scalar);integerDraws+=1}
+      }
+      skipParameters=true;run(0,false);run(0,true);skipParameters=false
+      run(0,false,bad=true);run(1,false,cancelled=true);run(3,true)
+      info(s"NATIVE_INTEGER_FETCH_CU stage=vertex local=$local formats64=true scalarVector=true components4=true successfulDraws=$integerDraws v0Preserved=true noCoordinatePacketTransport=true taskResetRejectsStaleTuple=true faultAndCancelDrain=true healthyReuse=true")
       info(s"NATIVE_FLOAT_SAMPLE_CU stage=vertex local=$local formats64=true scalarVectorParameterInstructions=true scalarVectorSampleInstructions=true successfulDraws=$floatingDraws automaticAndGradient=true v0Preserved=true taskResetRejectsStaleTuple=true faultAndCancelDrain=true healthyReuse=true onChipParameterBank=true")
       info(s"NATIVE_IMAGE_FORMAT_CU stage=vertex local=$local formats64=true imageSwizzle=true scalarVector=true addedDraws=$addedDraws")
       info(s"NATIVE_TYPED_FETCH_CU stage=vertex local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true mixedRawTypes=true perLaneBindings=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")

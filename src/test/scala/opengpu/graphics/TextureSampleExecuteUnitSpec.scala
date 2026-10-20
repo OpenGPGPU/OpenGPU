@@ -94,6 +94,10 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
         if((l/4)%2==0)fp(java.lang.Float.intBitsToFloat(raw.toInt)*0.25f)else raw
       }}
       t.retire(true,false,expected)
+      t.parameters(Seq[BigInt](1,1)++Seq.fill(14)(BigInt(0)))
+      t.issue(true,false,0,(0 until lanes).map(l=>BigInt(l/4)),Seq.fill(lanes)(BigInt(0)),mask=selected,integer=true)
+      t.retire(true,false,(0 until lanes).map(l=>if(selected.testBit(l))views(l/4).expected(0)else BigInt(0xabc00000L+l)))
+      info(s"NATIVE_INTEGER_LANE_GROUPS lanes=$lanes highMaskBits=true perQuadBindings=true inactiveOldVd=true")
       info(s"NATIVE_FLOAT_LANE_GROUPS lanes=$lanes completeQuads=${lanes/4} highMaskBits=true perQuadBindings=true independentGradientMinMag=true inactiveOldVd=true logicalVLENFromGpuConfig=true")
     }
   }
@@ -103,6 +107,10 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
       t.sample();t.retire(false,false,Seq(v.expected(0)))
       t.sample(vector=true);t.retire(true,false,Seq(v.expected(0)))
       t.sample(vector=true,control=0);t.retire(true,false,Seq(BigInt(0)),fault=true);assert(t.memory.seen.size==t.before)
+      t.parameters(Seq[BigInt](1,1)++Seq.fill(14)(BigInt(0)))
+      for(vector<-Seq(false,true)){
+        t.issue(vector,false,0,Seq(BigInt(0)),Seq(BigInt(0)),integer=true);t.retire(vector,false,Seq(v.expected(0)))}
+      info("NATIVE_INTEGER_SINGLE_LANE scalarVector=true capturedCoordinates=true noHelperRequirement=true")
       info("NATIVE_FLOAT_SINGLE_LANE explicitScalarVector=true implicitUnavailableBeforeReads=true noSecondVLEN=true")
     }
   }
