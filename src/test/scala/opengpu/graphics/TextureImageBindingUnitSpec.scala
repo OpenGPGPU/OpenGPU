@@ -135,19 +135,23 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
       d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q)
       lastTag=tag;lastLevel=level;lastHandle=handle;lastContext=context
     }
-    def check(status: Int=0,i: Image=image(),raw: BigInt=0,address: BigInt=0,stage: Int=0,fault: Option[BigInt]=None): Unit={
+    def check(status: Int=0,i: Image=image(),raw: BigInt=0,address: BigInt=0,stage: Int=0,fault: Option[BigInt]=None,swizzle: Seq[Int]=Seq.empty): Unit={
       until(d.io.out.valid.peek().litToBoolean);val o=d.io.out.bits;val b=o.image
       b.status.expect(status.U);b.tag.expect(lastTag.U);b.level.expect(lastLevel.U);b.handle.expect(lastHandle.U);b.identity.context.expect(lastContext.U)
       b.identity.pass.expect(11.U);b.identity.generation.expect(13.U);b.validBinding.expect((status==0).B);b.faultStage.expect(stage.U)
       b.faultAddressValid.expect(fault.nonEmpty.B);b.faultAddress.expect(fault.getOrElse(BigInt(0)).U)
       if(status==0){val v=i.views(lastLevel.toInt);b.format.expect(i.format.U);b.baseLevel.expect(i.baseLevel.U);b.lastLevel.expect(i.last.U)
+        b.swizzle.version.expect((if(swizzle.isEmpty)0 else 1).U)
+        Seq(b.swizzle.r,b.swizzle.g,b.swizzle.b,b.swizzle.a).zip(if(swizzle.isEmpty)Seq.fill(4)(0)else swizzle).foreach{case(v,e)=>v.expect(e.U)}
         b.selected.table.base.expect(i.levelsBase.U);b.selected.table.limit.expect(i.levelsLimit.U);b.selected.table.version.expect(1.U)
         b.selected.handle.expect((i.first+lastLevel).U);b.selected.level.expect(lastLevel.U);b.view.base.expect(v.base.U)
         b.view.texWidth.expect(v.w.U);b.view.texHeight.expect(v.h.U);b.view.texDepth.expect(v.d.U);b.view.layers.expect(v.layers.U)
         if(fetch){val s=o.sample.sample;s.status.expect(0.U);s.viewValid.expect(true.B);s.address.expect(address.U);s.bytes.expect(v.bytes.U);s.raw.expect(raw.U)
-          val name=ImageFormatReference.names(i.format);o.sample.rgba.zip(ImageFormatReference.decode(name,raw)).foreach{case(a,b)=>a.expect(b.U)}
+          val name=ImageFormatReference.names(i.format);val decoded=ImageFormatReference.decode(name,raw)
+          val options=decoded++Seq(BigInt(0),if(ImageFormatReference.format(name).kind==0)BigInt(0x3f800000L)else BigInt(1))
+          o.sample.rgba.zip(if(swizzle.isEmpty)decoded else swizzle.map(options)).foreach{case(a,b)=>a.expect(b.U)}
           o.sample.colorType.expect(ImageFormatReference.format(name).kind.U)}
-      }else{b.format.expect(0.U);assert(values(b.view).values.forall(_==0));assert(values(b.selected).values.forall(_==0))
+      }else{b.format.expect(0.U);assert(values(b.view).values.forall(_==0));assert(values(b.selected).values.forall(_==0));assert(values(b.swizzle).values.forall(_==0))
         if(fetch){o.sample.sample.status.expect(status.U);o.sample.sample.viewValid.expect(false.B);o.sample.sample.address.expect(0.U);o.sample.sample.raw.expect(0.U)
           o.sample.rgba.foreach(_.expect(0.U));o.sample.colorType.expect(0.U)}}
       assert(memory.pending.isEmpty && memory.reply.isEmpty);d.io.busy.expect(true.B);d.io.in.ready.expect(false.B)
@@ -171,6 +175,48 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
       info(s"IMAGE_BINDING_FETCH targets4=true formats54=true queries=$queries completeNPOTMipChains=true reversedDisjointLayouts=true authoritativeFormatNoCallerFormat=true allCubeFacesAndArrayVolume=true exactGuardedTypedTexels=true disjointThreeOwnerTags=true reorderedImageHeader=true immutableHeldResults=true")
     }
   }
+  it should "swizzle decoded components for every uncompressed format without changing raw fetches" in {
+    simulate(new ImageBindingHarness()){d=>val t=new Driver(d);val random=new scala.util.Random(0x53575a31);var cases=0
+      for(format<-0 until 54;selectors<-Seq(Seq(3,2,1,0),Seq(5,4,0,5),Seq(0,0,0,0),Seq(0,1,2,3))){
+        val i=image(format=format,maxLevel=0);val a=i.views(0).base;val raw=BigInt(i.views(0).bytes*8,random)
+        t.install(i);t.memory.putWord(0x1000+23*4,1)
+        selectors.zipWithIndex.foreach{case(s,c)=>t.memory.putWord(0x1000+(24+c)*4,s)}
+        t.payload(a,i.views(0).bytes,raw);t.invalidate();t.query(chain=false)
+        t.check(i=i,raw=raw,address=a,swizzle=selectors);t.pop();cases+=1
+      }
+      info(s"IMAGE_BINDING_SWIZZLE formats54=true maps4=true queries=$cases decodedDefaults=true typedConstants=true rawAndAddressUnchanged=true explicitRRRRDistinctFromLegacyIdentity=true")
+    }
+  }
+  it should "retain captured swizzles through cache hits and held results and preserve faults for constant maps" in {
+    simulate(new ImageBindingHarness()){d=>val t=new Driver(d);val i=image(format=35,maxLevel=0);val a=i.views(0).base
+      val raw=BigInt("123456787fc12345800000003f800000",16);val old=Seq(3,2,1,0);val fresh=Seq(5,4,5,4)
+      def mapping(s: Seq[Int]): Unit={t.memory.putWord(0x1000+23*4,1);s.zipWithIndex.foreach{case(v,c)=>t.memory.putWord(0x1000+(24+c)*4,v)}}
+      t.install(i);mapping(old);t.payload(a,16,raw);t.query(chain=false);t.check(i=i,raw=raw,address=a,swizzle=old)
+      val held=d.io.out.bits.peek().litValue;mapping(fresh)
+      for(_<-0 until 7){t.tick();assert(d.io.out.bits.peek().litValue==held)};t.pop()
+      val before=t.memory.seen.size;t.query(chain=false,tag=6);t.check(i=i,raw=raw,address=a,swizzle=old)
+      d.io.out.bits.image.hit.expect(true.B);t.pop();assert(t.memory.seen.size==before+1)
+      t.invalidate();t.query(chain=false,tag=7);t.check(i=i,raw=raw,address=a,swizzle=fresh);t.pop()
+      val reads=t.dataReads;t.query(chain=false,x=7);t.check(5,stage=5);t.pop();assert(t.dataReads==reads)
+      t.memory.faultAt=Set(a& ~BigInt(63));t.query(chain=false)
+      t.check(3,stage=3,fault=Some(a& ~BigInt(63)));t.pop();assert(t.dataReads>reads)
+      t.memory.faultAt=Set.empty;t.query(chain=false);t.check(i=i,raw=raw,address=a,swizzle=fresh);t.pop()
+      info("IMAGE_BINDING_SWIZZLE_LIFETIME snapshot=true heldImmutable7=true cacheHitRetainsOldMapping=true explicitInvalidationPublishesNewMapping=true constantMapStillChecksCoordinatesAndMemory=true faultsSuppressAllComponents=true healthyReuse=true")
+    }
+  }
+  it should "reject unsupported swizzle states and padding before any level or data request" in {
+    simulate(new ImageBindingHarness()){d=>val t=new Driver(d);val i=image();var cases=0
+      val states=Seq(Seq(2,0,0,0,0),Seq(3,0,0,0,0),Seq(4,0,0,0,0))++
+        (0 until 4).flatMap(c=>Seq(6,7,8).map(v=>Seq(1)++Seq.tabulate(4)(n=>if(n==c)v else n)))++
+        (0 until 4).map(c=>Seq(0)++Seq.tabulate(4)(n=>if(n==c)1 else 0))
+      for(state<-states){t.install(i);state.zipWithIndex.foreach{case(v,n)=>t.memory.putWord(0x1000+(23+n)*4,v)}
+        t.invalidate();val before=t.memory.seen.size;t.query()
+        t.check(if(state.head==4 || state.tail.contains(8))7 else 1,stage=4);t.pop()
+        assert(t.memory.seen.drop(before).forall(r=>r.address==0x1000 || r.address==0x1040));cases+=1
+      }
+      info(s"IMAGE_BINDING_SWIZZLE_REJECT cases=$cases unsupportedVersions=true everySelectorPosition=true narrowPadding=true canonicalLegacy=true headerOnlyReads=true")
+    }
+  }
   it should "apply base max and dimensional mip rules and distinguish selected-only from full-chain cache identities" in {
     simulate(new ImageBindingHarness(fetch=false)){d=>val t=new Driver(d,fetch=false);var queries=0
       val cases=(0 to 3).map(target=>image(target,format=0,baseLevel=2,w=17,h=9,d=5))++Seq(
@@ -192,7 +238,8 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
   }
   it should "reject malformed image encoding and inconsistent later mips without any texture-data access" in {
     simulate(new ImageBindingHarness()){d=>val t=new Driver(d);val i=image();val corrupt=Seq(0->BigInt(0),1->BigInt(64),2->BigInt(2),3->BigInt(8),6->BigInt(1),
-        7->BigInt(8),8->BigInt(64),9->BigInt(16),11->BigInt(16384),14->BigInt(65536),17->BigInt(2),18->BigInt(256),21->BigInt(2))++(23 until 32).map(_->BigInt(1))
+        7->BigInt(8),8->BigInt(64),9->BigInt(16),11->BigInt(16384),14->BigInt(65536),17->BigInt(2),18->BigInt(256),21->BigInt(2),23->BigInt(4))++
+        (24 until 28).map(_->BigInt(8))++(28 until 32).map(_->BigInt(1))
       for((word,bits)<-corrupt){t.install(i);t.memory.putWord(0x1000+4*word,bits);t.invalidate();val n=t.dataReads;t.query();t.check(7,stage=4);t.pop();assert(t.dataReads==n)}
       for((word,bits,status)<-Seq((8,BigInt(54),6),(7,BigInt(4),1),(11,BigInt(0),1),(10,BigInt(0),0),
         (16,BigInt(0),2),(18,BigInt(0),2),(19,BigInt(0x2001),2),(20,BigInt(0x2080),2)) if status!=0){

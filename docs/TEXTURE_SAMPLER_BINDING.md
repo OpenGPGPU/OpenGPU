@@ -55,8 +55,8 @@ The generated C header and JSON schema map every RTL record field exactly once.
 This is a resolved internal hardware layout, not GL enumeration values. LOD
 fields preserve infinities, signed zero and reversed clamp ranges. NaN is
 rejected by this internal contract. This owner stores the values; it does not
-perform LOD clamping. Texture swizzle belongs to the image view and remains
-separate work.
+perform LOD clamping. [Texture swizzle](TEXTURE_IMAGE_SWIZZLE.md) belongs to the
+captured image view and is applied by typed-fetch consumers after decoding.
 
 ## Ownership and fault behavior
 

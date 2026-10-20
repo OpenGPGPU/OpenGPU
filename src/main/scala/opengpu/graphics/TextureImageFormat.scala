@@ -62,12 +62,13 @@ object NativeTextureFormatCapabilities {
   val magic=BigInt("47544601",16)
   val mask=(BigInt(1)<<TextureImageFormat.formats.size)-1
   val words: Seq[BigInt]=Seq(magic,BigInt(wordCount),BigInt(1),BigInt(TextureImageFormat.width),
-    BigInt(TextureImageFormat.formats.size),mask&BigInt("ffffffff",16),mask>>32,BigInt(0))
+    BigInt(TextureImageFormat.formats.size),mask&BigInt("ffffffff",16),mask>>32,BigInt(1))
   def header(prefix: String): String=Seq(
     "TEXTURE_FORMAT_CAPABILITIES"->"0x220u","TEXTURE_FORMAT_CAPABILITY_MAGIC"->"0x47544601u",
     "TEXTURE_FORMAT_CAPABILITY_WORDS"->"8u","TEXTURE_FORMAT_CAPABILITY_VERSION_WORD"->"2u",
     "TEXTURE_FORMAT_CAPABILITY_BITS_WORD"->"3u","TEXTURE_FORMAT_CAPABILITY_COUNT_WORD"->"4u",
     "TEXTURE_FORMAT_CAPABILITY_MASK_LOW_WORD"->"5u","TEXTURE_FORMAT_CAPABILITY_MASK_HIGH_WORD"->"6u",
-    "TEXTURE_FORMAT_CAPABILITY_RESERVED_WORD"->"7u","TYPED_FETCH_LEGACY_FORMAT_COUNT"->"36u"
+    "TEXTURE_FORMAT_CAPABILITY_RESERVED_WORD"->"7u","TEXTURE_FORMAT_CAPABILITY_FEATURES_WORD"->"7u",
+    "TEXTURE_FORMAT_CAP_IMAGE_SWIZZLE"->"1u","TYPED_FETCH_LEGACY_FORMAT_COUNT"->"36u"
   ).map{case(n,v)=>s"#define $prefix$n $v\n"}.mkString
 }

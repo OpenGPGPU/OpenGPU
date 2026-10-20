@@ -85,6 +85,36 @@ class NativeShaderTextureUnitSpec extends AnyFlatSpec {
       info(s"NATIVE_COMPRESSED_TEXTURE stage=$stage formats10=true targets2DArrayCube=true blockCoordinates16=true NPOT7x5And7x7=true allLayersAndFaces=true outOfExtentRejected=true volumeRejected=true componentChecks=$checks")
     }
   }
+  for(stage<-0 to 1)
+  it should s"apply image-view swizzle after every native format decode with stage=$stage" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage);var cases=0
+      for(format<-0 until 64;selectors<-Seq(Seq(3,2,1,0),Seq(5,4,0,5),Seq(0,0,0,0))){
+        val unit=format%32;val target=if(format>=49)format%3 else format%4
+        val v=install(t.put,t.byte,unit,format,target,stage);coordinates(t.put,target)
+        t.put(images+unit*128+23*4,1);selectors.zipWithIndex.foreach{case(s,c)=>t.put(images+unit*128+(24+c)*4,s)}
+        d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
+        val kind=if(format>=54)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind
+        val decoded=if(format>=54)CompressedImageReference.decode(format,v.raw,1,1)else v.expected
+        val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
+        for(c<-0 until 4){t.scalarRequest(c,unit);t.scalarResult(options(selectors(c)));cases+=1}
+      }
+      info(s"NATIVE_IMAGE_SWIZZLE stage=$stage formats64=true maps3=true componentChecks=$cases rawSignedUnsignedFloatAndCompressed=true capturedResult=true")
+    }
+  }
+  it should "retain inactive swizzled lanes and suppress all writes on constant-map coordinate or data faults" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);roots(t.put)
+      val views=(0 until 4).map(u=>install(t.put,t.byte,u,if(u%2==0)35 else 63))
+      for(u<-0 until 4){coordinates(t.put,address=packet+u*64);t.put(images+u*128+23*4,1)
+        for(c<-0 until 4)t.put(images+u*128+(24+c)*4,if(c%2==0)5 else 4)}
+      t.vectorRequest(0,mask=5);t.vectorResult(Seq(BigInt(0x3f800000L),BigInt(0xabc00001L),BigInt(0x3f800000L),BigInt(0xabc00003L)))
+      coordinates(t.put,address=packet+2*64,x=0xffffffffL);t.vectorRequest(0,mask=5)
+      t.vectorResult(Seq.fill(4)(BigInt(0)),fault=true)
+      coordinates(t.put,address=packet+2*64);t.memory.faultAt=Set(views(2).address& ~BigInt(63))
+      t.vectorRequest(0,mask=5);t.vectorResult(Seq.fill(4)(BigInt(0)),fault=true)
+      t.memory.faultAt=Set.empty;t.vectorRequest(1,mask=15);t.vectorResult(Seq.fill(4)(BigInt(0)))
+      info("NATIVE_IMAGE_SWIZZLE_VECTOR inactiveOldVd=true lateLaneCoordinateFaultAtomic=true constantMapDataFaultAtomic=true healthyReuse=true")
+    }
+  }
   it should "retain inactive vector lanes and suppress every destination lane on a later active lane fault" in {
     simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);roots(t.put)
       val values=(0 until 4).map(i=>install(t.put,t.byte,i,if(i%2==0)35 else 10,raw=BigInt(i+1)<<96|BigInt(0xfedcba98L+i)))

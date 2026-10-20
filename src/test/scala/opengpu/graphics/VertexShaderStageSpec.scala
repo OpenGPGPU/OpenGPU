@@ -517,14 +517,14 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       for(scalar<-Seq(false,true);c<-0 until 4)run(c,scalar)
       run(0,false,bad=true);run(2,false,cancelled=true);run(3,true)
       var addedDraws=0
-      for(group<-(36 until 64).grouped(4)){
+      for(group<-(0 until 64).grouped(4)){
         val ids=group.padTo(4,group.head)
         views=(0 until 4).map{u=>val target=if(u==3 && (ids(u)>=54 || ImageFormatReference.format(ImageFormatReference.names(ids(u))).depth))0 else u
           texData.coordinates(t.put,target=target,id=id,address=texData.packet+u*64)
-          texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),target,0,id)}
+          texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),target,0,id,swizzle=Seq(Seq(3,2,1,0),Seq(5,4,0,5),Seq(0,0,0,0),Seq(0,1,2,3))(u))}
         for(scalar<-Seq(false,true);c<-0 until 4){run(c,scalar);addedDraws+=1}
       }
-      info(s"NATIVE_IMAGE_FORMAT_CU stage=vertex local=$local newUncompressed18AndCompressed10=true scalarVector=true addedDraws=$addedDraws")
+      info(s"NATIVE_IMAGE_FORMAT_CU stage=vertex local=$local formats64=true imageSwizzle=true scalarVector=true addedDraws=$addedDraws")
       info(s"NATIVE_TYPED_FETCH_CU stage=vertex local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true mixedRawTypes=true perLaneBindings=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
     }
   }

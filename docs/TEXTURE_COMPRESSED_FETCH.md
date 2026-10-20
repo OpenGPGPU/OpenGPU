@@ -58,9 +58,13 @@ compressed byte order. Both failures and subsequent controls are retained under
 
 The format rules follow GLES 3.0.6 section 3.8.6 and Appendix C:
 [official specification](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
-General filtering/LOD, swizzle, depth comparison, decoded-block caching, Mobile
+General filtering/LOD, depth comparison, decoded-block caching, Mobile
 throughput, compiler/driver admission and complete hardware qualification remain
 separate outstanding requirements.
+
+[Image-view component swizzle](TEXTURE_IMAGE_SWIZZLE.md) is now captured at
+GXI1 admission and applied after compressed reconstruction by typed-fetch
+consumers.
 
 
 The composed address owner registers target/block coefficient preparation before

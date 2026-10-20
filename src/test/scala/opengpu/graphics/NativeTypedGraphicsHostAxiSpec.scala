@@ -482,7 +482,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       initialize(d);val image=new Image(d)
       val cap=Vector[BigInt](BigInt("47545801",16),8,3,0x3ff,7,16,16383,0x1f)
       for((value,i)<-cap.zipWithIndex)assert(axiRead(d,0x200+i*4)==value)
-      val formatCap=Vector[BigInt](BigInt("47544601",16),8,1,6,64,0xffffffffL,0xffffffffL,0)
+      val formatCap=Vector[BigInt](BigInt("47544601",16),8,1,6,64,0xffffffffL,0xffffffffL,1)
       for((value,i)<-formatCap.zipWithIndex)assert(axiRead(d,0x220+i*4)==value)
       axiWrite(d,0x220,0,expectedResponse=2)
       axiWrite(d,0x200,0,expectedResponse=2)
@@ -553,14 +553,18 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       def run(c: Int,bad: Boolean=false,format: Int=35): Unit={
         val mode=if(c%2==0)0 else 2;val vc=(c+1)%4;val target=if(format>=49)0 else 3
         val decoded=if(format>=54)CompressedImageReference.decode(format,raw)else ImageFormatReference.decode(ImageFormatReference.names(format),raw)
-        image.sampledRed=Some(decoded(c));image.sampledGreen=Some(decoded(vc));image.shaderDraws(mode,generation=frames+1,sourceBias=0x90000)
+        val swizzle=if(format>=36)Seq(3,2,5,4)else Seq.empty[Int]
+        val kind=if(format>=54)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind
+        val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
+        val mapped=if(swizzle.isEmpty)decoded else swizzle.map(options)
+        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,sourceBias=0x90000)
         // Thirty-four frames must not advance source attributes into native
         // scratch at0x430000..0x443000 or the growing shader code; all selected frame input ranges stay disjoint.
         assert(0x420000+image.sourceOffset>=0x4b0000 && 0x422000+image.sourceOffset<=0x500000)
         def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
         texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
-        texData.install(put,byte,31,format,target,0,id,raw,vo);texData.install(put,byte,17,format,2,1,id,raw,fo)
+        texData.install(put,byte,31,format,target,0,id,raw,vo,swizzle);texData.install(put,byte,17,format,2,1,id,raw,fo,swizzle)
         texData.coordinates(put,target=target,id=id,offset=vo);texData.coordinates(put,target=2,id=id,offset=fo)
         val vp=0x470000+frames*0x2000;val fp=vp+0x1000
         val vcode=vertexProgram.dropRight(1)++fetch(vc,31,vo+texData.packet,scalar=c%2==1)++Seq(addi(6,7,16*32),vm(6,7,true),BigInt("30500073",16))
@@ -593,7 +597,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       for(c<-0 until 4)run(c);run(0,bad=true);run(3)
       for(format<-36 until 64)run(format%4,format=format)
       assert(frames==34)
-      info(s"NATIVE_TYPED_FETCH_AXI local=$local CUs=2 frames=$frames draws=102 newUncompressed18AndCompressed10=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true bindings31And17=true volumeAndCube=true realSv32=true deniedSamplerNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
+      info(s"NATIVE_TYPED_FETCH_AXI local=$local CUs=2 frames=$frames draws=102 newUncompressed18AndCompressed10=true imageSwizzle=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true bindings31And17=true volumeAndCube=true realSv32=true deniedSamplerNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
     }
   }
 

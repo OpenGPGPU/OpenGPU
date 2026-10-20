@@ -62,7 +62,7 @@ class TextureImageFormatSpec extends AnyFlatSpec {
     for((name,id)<-names.zipWithIndex){val actual=TextureImageFormat.formats(id);val expected=format(name)
       assert(actual.bytes==expected.bytes && actual.kind==expected.kind && actual.depth==expected.depth && actual.filterable==expected.filterable)
       if(id<36){val old=TypedColorFormat.formats(id);assert(actual.widths==old.widths && actual.offsets==old.offsets && actual.encoding==old.encoding)}}
-    assert(NativeTextureFormatCapabilities.words==Seq[BigInt](BigInt("47544601",16),8,1,6,64,0xffffffffL,0xffffffffL,0))
+    assert(NativeTextureFormatCapabilities.words==Seq[BigInt](BigInt("47544601",16),8,1,6,64,0xffffffffL,0xffffffffL,1))
   }
   it should "reject texture-only IDs at the unchanged attachment decoder" in {
     simulate(new TypedColorDecoder){d=>d.io.in.valid.poke(false.B);d.io.out.ready.poke(false.B)

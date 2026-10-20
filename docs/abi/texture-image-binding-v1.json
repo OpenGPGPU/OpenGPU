@@ -18,6 +18,11 @@
     {"name":"levelsVersion","word":18,"bits":8,"signed":false},
     {"name":"levelsBase","word":19,"bits":32,"signed":false},
     {"name":"levelsLimit","word":20,"bits":33,"signed":false},
-    {"name":"firstLevelHandle","word":22,"bits":32,"signed":false}
+    {"name":"firstLevelHandle","word":22,"bits":32,"signed":false},
+    {"name":"swizzle.version","word":23,"bits":2,"signed":false},
+    {"name":"swizzle.r","word":24,"bits":3,"signed":false},
+    {"name":"swizzle.g","word":25,"bits":3,"signed":false},
+    {"name":"swizzle.b","word":26,"bits":3,"signed":false},
+    {"name":"swizzle.a","word":27,"bits":3,"signed":false}
   ]
 }
