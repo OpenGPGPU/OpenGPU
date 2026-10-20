@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Centroid component and coherent covered-sample fallback through actual shared-CU staging; native qualifier descriptor binding is a later source",
+  "source_files": 628,
+  "source_unchanged": true,
+  "source_manifest": {
+    "path": ".artifacts/mobile-centroid-partial-source-v2.json",
+    "sha256": "cbac72b434d45c3c71d7ec33dd1e4cfbd60963873c6f70115707665bcecfaae0"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-centroid-partial-source-v2.tar.gz",
+    "sha256": "4fbe9e661ef5907600d853c2728e15ff0987650e79370ec7c8ab44da91ed5c3a"
+  },
+  "result": {
+    "path": ".artifacts/mobile-centroid-partial-controls-v2-result.json",
+    "sha256": "818797ac0bc742e7cbccba28def52a1da54b2cde3a324fe32750ac4d158f3d6d"
+  },
+  "log": {
+    "path": ".artifacts/mobile-centroid-partial-controls-v2.log",
+    "sha256": "7c8ecdbad8fad17f59e6ebc1c48f193e3fcecb8622f736ad88e7ddd5683713a4"
+  },
+  "suites": {
+    "Fp32CentroidInterpolationSpec": 4,
+    "Fp32FragmentInterpolatorSpec": 8,
+    "Fp32SampleDepthSpec": 2,
+    "FragmentShaderStageSpec_selected": 4
+  },
+  "checks": [
+    "[info]   + CENTROID_INTERPOLATION quads=50 modes=3 allCoverageMasks=true bothWindings=true primitiveKinds=3 directAbsoluteSampleReference=true mixedQualifiers=true flatNaNBits=true centerReciprocalAndDepth=true coveredSampleDepth=true helpersAtCenter=true snapshot=true heldOutput=true changedValues=440",
+    "[info]   + CENTROID_OWNERSHIP invalidRequests=3 cancelCuts=4 heldQuadCancel=true immutableCompletion=true noPartialOutput=true exactHealthyReuse=true",
+    "[info]   + CENTROID_CAPACITY components=64 highestQualifierBit=true highCentroidAndFlat=true exactRawFlatNaN=true noTruncatedValues=true",
+    "[info]   + CENTROID_PARTIAL_PERSPECTIVE draws=16 modes=2 windings=2 qualifierMasks=2 negativeAndZeroCenter=true coveredSamplePositive=true noDroppedFragment=true exactFallbackValues=true",
+    "[info]   + FRAGMENT_SHADER local=true CUs=2 quads=5 batches=3 FP32=true rawNaNInteger=true helpers=true discard=true depthOverride=true heldExport=true",
+    "[info]   + FRAGMENT_SHADER local=false CUs=2 quads=5 batches=3 FP32=true rawNaNInteger=true helpers=true discard=true depthOverride=true heldExport=true",
+    "[info]   + FRAGMENT_SAMPLE_LOCATION local=true CUs=2 modes=2 sampleChoices=6 coherentXYZW=true protectedSampleDepths=true invalidLocations=3 noInvalidShaderAccess=true heldExports=true exactHealthyReuse=true uniformGuard=true",
+    "[info]   + FRAGMENT_SAMPLE_LOCATION local=false CUs=2 modes=2 sampleChoices=6 coherentXYZW=true protectedSampleDepths=true invalidLocations=3 noInvalidShaderAccess=true heldExports=true exactHealthyReuse=true uniformGuard=true"
+  ],
+  "negative": {
+    "result": {
+      "path": ".artifacts/mobile-centroid-partial-before-v1-result.json",
+      "sha256": "2db2dede5ffab38f0d844593663c7520e74b693b642362eef59dc9c310f5d9f5"
+    },
+    "source": {
+      "path": ".artifacts/mobile-centroid-partial-source-before-v1.json",
+      "sha256": "a9d89ad61e346a0c216897fd1b13b1d32302987fffab619ffc87b2ab13539a89"
+    },
+    "log": {
+      "path": ".artifacts/mobile-centroid-partial-before-v1.log",
+      "sha256": "46d69805dc4f57b012549ed35f68a77a1ee9dfdba497590bb44d7f77c5ea2a18"
+    }
+  },
+  "limits": [
+    "The three invalid staging metadata cases cover a sample-mode mismatch, an uncovered sample and an inactive helper location; the first also has an out-of-mode mask, so it does not isolate the index bound.",
+    "The primitive owner mask is tied to zero on this frozen source; native centroid descriptor binding, discovery and exact native centroid images remain open.",
+    "No composed timing, area, power or API/H6 closure claim."
+  ]
+}

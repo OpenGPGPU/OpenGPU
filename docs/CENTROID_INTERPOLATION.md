@@ -53,7 +53,12 @@ multisample fragCoord at a sample location; section 4.3.9 permits ordinary smoot
 inputs there as well. Staging rejects inactive, out-of-mode or uncovered sample
 location metadata before any shader access.
 
-The focused negative-center correction passes all eight mode/winding/qualifier
-cases. Expanded zero-denominator, legacy interpolation/depth and actual shared-CU
-local/global staging checks are running on a frozen combined source; their
-passing result and native composition remain to be established.
+The [expanded 18-check regression](performance/mobile-centroid-partial-perspective-2026-10-20.json)
+passes on 628 unchanged source/ABI files. It includes sixteen negative/zero-center
+mode/winding/qualifier cases, all existing interpolation/sample-depth controls,
+and real two-CU local/global staging. All six sample choices across 2x/4x produce
+exact matching shader fragCoord.xyzw, guarded uniforms, protected sample depths
+and held exports. Three malformed metadata scenarios reject before shader access;
+the mode-mismatch case also has an out-of-mode mask and does not isolate the
+sample-index bound. Native qualifier binding/discovery and native images remain
+separate pending work.
