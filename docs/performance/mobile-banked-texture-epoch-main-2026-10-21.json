@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "sixty_nine_checks_eight_emissions_pass_packed_FP32_synthesis_pass_translated_pending",
+  "main_baseline": "ee3cdf86ee6936b9b1e17f2e5df238783f9091d7",
+  "source": {
+    "commit": "05b728deb98ed289dfd5293c9a1420af740acbd0",
+    "source_files": 822,
+    "manifest_sha256": "3b7d2ed75f972a113575897567b8329a23de9cf517a68883b66a38d8f9743448",
+    "archive_sha256": "f572027262eede08ed85b4e5550d8267e39e45f23b636a4a7e2ce62aaf496732",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [],
+    "added_inputs": [],
+    "runner_pid": 15250,
+    "started_utc": "2026-10-20T22:44:47.071584+00:00"
+  },
+  "functional_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 259.03310362505727,
+    "commit": "05b728deb98ed289dfd5293c9a1420af740acbd0",
+    "source_files": 822,
+    "manifest_sha256": "3b7d2ed75f972a113575897567b8329a23de9cf517a68883b66a38d8f9743448",
+    "archive_sha256": "f572027262eede08ed85b4e5550d8267e39e45f23b636a4a7e2ce62aaf496732",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [],
+    "added_inputs": [],
+    "runner_pid": 15250,
+    "started_utc": "2026-10-20T22:44:47.071584+00:00"
+  },
+  "banked_emission_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 10.671097000129521
+  },
+  "native_endpoint_emission_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "manifest_sha256": "3b7d2ed75f972a113575897567b8329a23de9cf517a68883b66a38d8f9743448",
+    "elapsed_seconds": 12.716729833045974
+  },
+  "distinct_passed_tests": 69,
+  "suites": {
+    "TextureSampleExecuteUnitSpec": 23,
+    "Rgba8WeightedToFp32Spec": 3,
+    "BankedRgba8FloatTextureServiceSpec": 7,
+    "BankedRgba8TextureHitsSpec": 8,
+    "BankedTextureLineStoreSpec": 1,
+    "BankedTextureFillOwnerSpec": 4,
+    "BankedTextureReadThroughSpec": 7,
+    "BankedRgba8CachePolicySpec": 8,
+    "TranslatedBankedRgba8TextureServiceSpec": 8
+  },
+  "source_identical_to_qualified_epoch_control": true,
+  "main_merge_changes": "Documentation only. All822 hardware/driver/ABI/test inputs retain the epoch-control source manifest.",
+  "banked_active_RTL": {
+    "banked-readthrough": {
+      "active_files": 18,
+      "raw_exact_to_epoch_control": true,
+      "candidate": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-readthrough-epoch-main-v1-rtl"
+    },
+    "banked-fp32": {
+      "active_files": 20,
+      "raw_exact_to_epoch_control": true,
+      "candidate": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-fp32-epoch-main-v1-rtl"
+    },
+    "banked-translated": {
+      "active_files": 29,
+      "raw_exact_to_epoch_control": true,
+      "candidate": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-translated-epoch-main-v1-rtl"
+    },
+    "banked-page-policy": {
+      "active_files": 20,
+      "raw_exact_to_epoch_control": true,
+      "candidate": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-page-policy-epoch-main-v1-rtl"
+    },
+    "rgba8-normalize": {
+      "active_files": 1,
+      "raw_exact_to_epoch_control": true,
+      "candidate": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/rgba8-normalize-epoch-main-v1-rtl"
+    },
+    "banked-cluster": {
+      "active_files": 7,
+      "raw_exact_to_epoch_control": true,
+      "candidate": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-cluster-epoch-main-v1-rtl"
+    }
+  },
+  "native_endpoint_carry": {
+    "vertex": {
+      "active_files": 77,
+      "raw_exact": true,
+      "baseline": ".artifacts/mobile-native-texture-size-v1-worktree/generated/mobile-h4/native-size-vertex-v3-rtl",
+      "candidate": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/epoch-main-native-vertex-v1-rtl"
+    },
+    "fragment": {
+      "active_files": 77,
+      "raw_exact": true,
+      "baseline": ".artifacts/mobile-native-texture-size-v1-worktree/generated/mobile-h4/native-size-fragment-v3-rtl",
+      "candidate": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/epoch-main-native-fragment-v1-rtl"
+    }
+  },
+  "native_endpoint_synthesis_slacks_ps_carried": {
+    "vertex": [
+      67.048,
+      156.884
+    ],
+    "fragment": [
+      105.752,
+      122.41
+    ]
+  },
+  "banked_synthesis_reference": "mobile-banked-texture-epoch-control-2026-10-21.json",
+  "banked_synthesis": {
+    "readthrough": {
+      "status": "passed",
+      "slacks_ps": [
+        95.013,
+        44.671
+      ]
+    },
+    "fp32": {
+      "status": "passed",
+      "slacks_ps": [
+        95.245,
+        59.166
+      ]
+    },
+    "translated": {
+      "status": "running",
+      "session": 35515
+    }
+  },
+  "numeric_scope": "The weighted physical service is exact Q16 rational normalization. Native FP32 filter semantics and integration remain separate.",
+  "synthesis_policy": "1000 ps, TC/SLVT,25% I/O,standard ABC,no retiming; synthesis only.",
+  "remaining": [
+    "Collect actual translated epoch-control timing before merging this candidate into main.",
+    "Native FP32 filtering, resource/coordinate planning and shared-CU texture-cluster integration.",
+    "Whole-native precision/rates/coherence and full H0-H8 hardware gates."
+  ],
+  "artifacts_sha256": {
+    ".artifacts/mobile-banked-texture-epoch-main-v1-source.json": "3b7d2ed75f972a113575897567b8329a23de9cf517a68883b66a38d8f9743448",
+    ".artifacts/mobile-banked-texture-epoch-main-v1-source.tar.gz": "f572027262eede08ed85b4e5550d8267e39e45f23b636a4a7e2ce62aaf496732",
+    ".artifacts/mobile-banked-texture-epoch-main-v1-source-proof.json": "dc490666ae81caafc9b140aa18d48bf8f2cd28ce28bec7d8381db5d533b54a1c",
+    ".artifacts/mobile-banked-texture-epoch-main-v1-result.json": "4bdc8c18300c607bc6c8c04301f577d64b2c5a5d79262a1250cef20487cc249b",
+    ".artifacts/mobile-banked-texture-epoch-main-v1.log": "315a74d60ca1369049929e0a34319c49f91d18a0c5774ac330385aa7fc6726c9",
+    ".artifacts/mobile-banked-texture-epoch-main-v1-emission-result.json": "59ef06ed7ca93427041b666fb896bcf3379f3cdd69ad371c4adb65a1a2446d3a",
+    ".artifacts/mobile-banked-texture-epoch-main-v1-emission.log": "c046bd922fe821547ea56eab1b1001fc4e2e45f4a7d5a6af934d8380bac7db7d",
+    ".artifacts/mobile-banked-texture-epoch-main-native-v1-result.json": "d7526ebf079780d18692b4d5f4aefa537841fa8f31efdf570a3793a9b3f4ab8f",
+    ".artifacts/mobile-banked-texture-epoch-main-native-v1.log": "c085476b954178341e5f00c6febe86f77ab6916988170d66d6aa24d535b29017",
+    ".artifacts/mobile-banked-texture-epoch-main-native-v1-carry.json": "02cfcb1bd92e19ae014cabd3671b302c45aec9c1820abb4a489f340d600f51c7"
+  }
+}

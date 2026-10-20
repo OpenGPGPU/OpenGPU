@@ -95,3 +95,10 @@ descriptor page and preserve exact image guards and VM ownership. The same
 frozen source reproduces the old origin-page assertion failure. This directed
 run does not cover the full format/fault matrix;the unflagged74-frame cases
 remain running.
+
+The [disjoint-source captured regression](performance/mobile-native-texture-disjoint-captured-axi-2026-10-21.json)
+passes both complete integer AXI matrices with corrected source leases:148
+frames,144 successful and four expected errors. Nonzero image bases0/1/2 and
+signed offsets retain exact selected-mip,output,fault and VM-drain checks. The
+same run also passes144 floating frames. Production and selected AXI suite
+inputs are identical on current main;the [paired typed packet matrix](performance/mobile-native-texture-disjoint-axi-2026-10-21.json) also passes68 frames. All six corrected-source tests pass360 frames.

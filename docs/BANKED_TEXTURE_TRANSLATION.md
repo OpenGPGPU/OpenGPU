@@ -66,5 +66,8 @@ per-owner cancel/invalidation lookup arrays. Selective identity/tag cancellation
 remains in the translated parent and preserves unrelated groups. Tap/conflict
 telemetry is registered by one cycle;tests verify384 hot and768 backpressured
 tap events with unchanged input/output II1. Standalone normalizer and resident
-cluster active RTL remain raw-byte identical. Fresh packed,FP32 and translated
-synthesis screens are running at1000ps;their timing closure is still unproven.
+cluster active RTL remain raw-byte identical. Packed read-through and normalized
+FP32 now pass synthesis at 1000 ps including I/O (+95.013/+44.671 ps and
++95.245/+59.166 ps), with 748,345 and 755,029 fully mapped cells. Translated
+epoch-control synthesis remains active. Native FP32 filter integration is a
+separate numeric and timing qualification.
