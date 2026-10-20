@@ -1,9 +1,9 @@
 # Polygon depth-offset arithmetic client
 
-This component is a prerequisite for the open G04 raster requirement. It is not
-connected to production rasterization or native state yet. The enclosing owner
-must supply the depth attachment's resolution policy and apply its result to
-default depths. GLES 3.0.6 section 3.6.2 permits the maximum absolute x/y plane
+This component is a prerequisite for the open G04 raster requirement. Internal
+primitive raster integration now shares its scalar service and applies the
+result to default depths as described below. Live/native callers still tie the
+binding to zero; attachment-format and native state binding remain open. GLES 3.0.6 section 3.6.2 permits the maximum absolute x/y plane
 derivative as the slope approximation and combines slope and resolution terms.
 Fixed and floating depth representations require different resolution policies.
 [Official specification](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf)
@@ -50,3 +50,39 @@ API support or H0–H8 closure is established by this component checkpoint.
 The [candidate resolution selector](POLYGON_DEPTH_RESOLUTION.md) now has separate
 format/rounding evidence, including exhaustive fixed-depth add/encode envelopes.
 Its full raster precision and attachment binding remain pending.
+
+## Primitive raster integration
+
+The [42-check primitive regression](performance/mobile-polygon-offset-raster-2026-10-20.json)
+passes on 638 unchanged source/ABI files. An internal `PolygonDepthOffsetBinding`
+is snapshotted with each primitive. Enabled triangles compute the offset once
+before raster launch; disabled and line/point paths bypass it. The primitive
+owner routes tagged setup and interpolation requests exclusively through one
+`ClipFloatArithmetic` service. Standalone primitive emission confirms exactly
+one FMA lane and one divider, with one offset client and one interpolator and
+no CU or SRAM.
+
+Interpolation adds the extended offset to default center/sample depth before
+clamping and packing. The same save path handles coherent covered-location
+fallback. Zero offset adds no depth arithmetic. Twelve signed biased draws
+across both windings and 1x/2x/4x match exact depth references; operation counts
+prove fifteen setup operations per triangle plus one addition per evaluated
+depth. Extrapolated helpers distinguish pre-clamp addition from biasing an
+already clamped depth. Tests also cover culling, line bypass, bad bindings, three
+setup cancellation cuts, held biased quads, immutable completion and healthy
+reuse. Existing interpolation, centroid/pole, sample-depth and point/line checks
+pass in the same run; the centroid/pole cases use zero bias. All four native ABI
+checks remain byte-reproducible.
+
+The first run passed 33/38. Four failures were missing optional defaults in an
+older direct-raster harness; the fifth assumed positive zero for reverse-winding
+helper varyings. Aggregate defaults and the existing bit-exact interpolation
+reference correct those fixtures. No primitive-path RTL changed between runs;
+the separately qualified policy selector and emitter entry were added. Both
+frozen results are retained.
+
+Production live/prepared callers intentionally keep the internal binding zero.
+Versioned raster descriptors, bound-format resolution/precision, actual-CU
+fragCoord and shader depth override, clipped/centroid biased images, native
+binned publication, full resource ownership and integrated rate/synthesis gates
+remain required. The original H0–H8 scope is unchanged.

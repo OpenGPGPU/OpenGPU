@@ -5333,3 +5333,25 @@ FP32 source checks across every D16/D24 quantization cell. Floating selection
 covers every usable exponent, subnormal spacing and all vertex locations.
 This qualifies a post-interpolation conversion envelope; full raster precision,
 immutable attachment binding and complete polygon-offset publication remain open.
+
+
+## Primitive polygon-offset depth and shared-service checkpoint (2026-10-20)
+
+The [42-check primitive regression](performance/mobile-polygon-offset-raster-2026-10-20.json)
+passes on 638 unchanged source/ABI files. An internal polygon binding computes
+one offset per triangle and shares the existing scalar service with interpolation.
+Default center/sample depth is biased before clamping; zero bias adds no depth
+math. Exact signed, winding, sample-mode, pre-clamp helper, counter, cancellation
+and held-quad checks pass alongside interpolation/centroid/sample/point-line
+regressions. All four ABI checks and primitive emission complete. The emitted
+owner contains one FMA lane, one divider, one offset client and one interpolator,
+with no extra CU or SRAM.
+
+The first 33/38 result is retained: four legacy harness inputs lacked defaults,
+and one new varying assertion assumed positive zero. Only those fixtures changed
+in the primitive path for the complete rerun. Live/native/prepared callers still
+tie the internal binding to zero. Versioned raster state, immutable attachment
+resolution, full raster precision, actual-CU default/override and native binned
+publication, cycle and synthesis qualification remain open. This source is
+separate from the earlier frozen 102-check merged-source regression still in
+flight. No G04/H6/H0–H8 or production rate closure is claimed.
