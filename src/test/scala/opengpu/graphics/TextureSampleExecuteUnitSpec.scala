@@ -257,4 +257,34 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
     }
   }
 
+  for(stage<-0 to 1)it should s"add the captured image base level to shader integer LOD without wrapping stage=$stage" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage);t.clear()
+      install(t.put,t.byte,0,3,0,stage)
+      t.put(images+10*4,15);t.put(images+11*4,8);t.put(images+12*4,8);t.put(images+20*4,levels+16*128)
+      t.put(samplers+7*4,2) // Mipmapped nearest keeps every selected defined level complete.
+      for(level<-0 until 16){val size=(8>>level).max(1);val address=BigInt(0x20000+level*256)
+        NativeTextureFetchTestData.words(t.put,levels+level*128,Seq[BigInt](BigInt("47584c01",16),128,1,7,11,13,
+          level,0,level,address,address+size*size*4,0,address,size,size,1,1,size*4,0,0,0,0,0,0,4),32)
+        for(y<-0 until size;x<-0 until size)t.put(address+(y*size+x)*4,BigInt(0xff000000L+level+1))
+      }
+      var checks=0
+      for(base<-1 until 16){t.put(images+9*4,base)
+        for(lod<-0 to (3-base).max(0)){
+          t.parameters(Seq.fill(16)(BigInt(0)).updated(5,BigInt(lod)))
+          for(vector<-Seq(false,true)){
+            t.issue(vector,false,0,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),integer=true)
+            val expected=ImageFormatReference.decode("RGBA8",BigInt(0xff000000L+base+lod+1))(0)
+            t.retire(vector,false,Seq.fill(4)(expected));checks+=1
+          }
+        }
+        for(lod<-Seq(BigInt(16-base),BigInt(0xffffffffL),BigInt(0x10000000L))){
+          t.parameters(Seq.fill(16)(BigInt(0)).updated(5,lod))
+          t.issue(false,false,0,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),integer=true)
+          t.retire(false,false,Seq(BigInt(0)),fault=true);checks+=1
+        }
+      }
+      info(s"NATIVE_INTEGER_RELATIVE_LOD stage=$stage checks=$checks baseLevels15=true relativeLOD0to2=true exactDifferentMipTexels=true fullWidthInvalidAndNegativeRejected=true noLevelWrap=true scalarVector=true")
+    }
+  }
+
 }
