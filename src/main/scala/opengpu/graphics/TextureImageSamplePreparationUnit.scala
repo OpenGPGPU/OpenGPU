@@ -27,11 +27,12 @@ class TextureImageSamplePreparationUnit(config: GpuConfig=GpuConfig(),p: Texture
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,8));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,8)))
     val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,check,offerAdmission,waitAdmission,geometry,offerCube,waitCube,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,check,offerAdmission,waitAdmission,geometry,roundLayer,clampLayer,offerCube,waitCube,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageSamplePreparationRequest)
   private val admitted=Reg(new TextureImageSamplerBindingResult);private val projected=Reg(new TextureCubeProjectionResult)
   private val result=Reg(new TextureImageSamplePreparationResult);private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(3.W))
   private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W));private val layer=Reg(UInt(16.W))
+  private val layerParts=Reg(new TextureArrayLayerParts);private val roundedLayer=Reg(UInt(24.W))
   private val admissionStarted=RegInit(false.B);private val cubeStarted=RegInit(false.B);private val noFill=RegInit(false.B)
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
   private val admission=Module(new TextureImageSamplerBindingUnit(config,p));private val cube=Module(new TextureCubeProjectionUnit)
@@ -68,9 +69,11 @@ class TextureImageSamplePreparationUnit(config: GpuConfig=GpuConfig(),p: Texture
         (array && request.layer(30,23)===255.U)
       when(stop){phase:=State.finish}.elsewhen(admitted.image.view.target=/=request.target){status:=6.U;source:=3.U;phase:=State.finish}
         .elsewhen(badFloat){status:=5.U;source:=4.U;phase:=State.finish}
-        .otherwise{layer:=Mux(array,TextureSampleSelection.layer(request.layer,admitted.image.view.layers),0.U)
-          phase:=Mux(isCube,State.offerCube,State.finish)}
+        .otherwise{layerParts:=TextureSampleSelection.layerParts(request.layer)
+          phase:=Mux(array,State.roundLayer,Mux(isCube,State.offerCube,State.finish))}
     }
+    is(State.roundLayer){roundedLayer:=TextureSampleSelection.roundLayer(layerParts);phase:=Mux(stop,State.finish,State.clampLayer)}
+    is(State.clampLayer){layer:=TextureSampleSelection.clampLayer(layerParts,roundedLayer,admitted.image.view.layers);phase:=State.finish}
     is(State.offerCube){when(cube.io.in.fire){cubeStarted:=true.B;phase:=State.waitCube}}
     is(State.waitCube){when(cube.io.out.fire){
       cubeStarted:=false.B;projected:=cube.io.out.bits;assert(cube.io.out.bits.tag===request.tag);val code=cube.io.out.bits.status

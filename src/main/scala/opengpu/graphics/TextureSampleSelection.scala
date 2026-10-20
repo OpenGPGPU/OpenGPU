@@ -10,6 +10,7 @@ class TextureLodSelection extends Bundle {
 class TextureLodParts extends Bundle {
   val raw=UInt(32.W);val small=Bool();val floor=UInt(4.W);val residual=UInt(24.W);val exponent=UInt(8.W)
 }
+class TextureArrayLayerParts extends Bundle {val zero=Bool();val huge=Bool();val scaled=UInt(24.W)}
 object TextureSampleSelection {
   private def fp(value: Int): UInt=BigInt(java.lang.Float.floatToRawIntBits(value.toFloat).toLong&0xffffffffL).U(32.W)
   def lower(raw: UInt,state: TextureSamplerState): UInt=Mux(PrimitiveClipStage.less(raw,state.minLod),state.minLod,raw)
@@ -65,13 +66,19 @@ object TextureSampleSelection {
     * Round the original FP32 value before clamping to the array layer count.
     * Positive huge finite values saturate without a narrowing overflow.
     */
-  def layer(raw: UInt,count: UInt): UInt={
+  def layerParts(raw: UInt): TextureArrayLayerParts={
+    val out=Wire(new TextureArrayLayerParts)
     val exponent=raw(30,23);val mantissa=Cat(exponent=/=0.U,raw(22,0))
     val distance=150.U(9.W)-exponent;val shift=Mux(distance>24.U,24.U,distance)(4,0)
-    val integer=mantissa>>shift;val residual=mantissa&((1.U(25.W)<<shift)-1.U)(23,0)
-    val half=(1.U(25.W)<<(shift-1.U))(23,0)
-    val rounded=integer+&(residual>=half)
-    val last=count-1.U
-    Mux(raw(31) || exponent<126.U,0.U,Mux(exponent>=150.U || rounded>=count,last,rounded))(15,0)
+    out.zero:=raw(31) || exponent<126.U;out.huge:=exponent>=150.U
+    // floor(x+0.5) needs only the guard bit, including exact half ties.
+    // Extract integer and guard together rather than building residual masks.
+    out.scaled:=mantissa>>(shift-1.U);out
   }
+  def roundLayer(parts: TextureArrayLayerParts): UInt=(parts.scaled>>1)+&parts.scaled(0)
+  def clampLayer(parts: TextureArrayLayerParts,rounded: UInt,count: UInt): UInt={
+    val last=count-1.U
+    Mux(parts.zero,0.U,Mux(parts.huge || rounded>=count,last,rounded))(15,0)
+  }
+  def layer(raw: UInt,count: UInt): UInt={val parts=layerParts(raw);clampLayer(parts,roundLayer(parts),count)}
 }

@@ -107,9 +107,11 @@ class TextureFloatAxisPipeline extends Module {
   private val l=located.deq.bits
   private def wrap(index: SInt): SInt={
     val n=l.meta.extent.zext.pad(18);val twoN=(l.meta.extent<<1).zext.pad(18)
-    val modulo=Mux(index<0.S,index+twoN,Mux(index>=twoN,index-twoN,index))
-    val repeat=Mux(modulo>=n,modulo-n,modulo)
-    val mirror=Mux(modulo>=n,twoN-1.S-modulo,modulo)
+    // Period reduction bounds repeat/mirror indices to[-1,2N]. The two
+    // exceptional endpoints are known constants, so choose them directly
+    // instead of chaining modulo addition/subtraction into a second subtract.
+    val repeat=Mux(index<0.S,n-1.S,Mux(index>=twoN,0.S,Mux(index>=n,index-n,index)))
+    val mirror=Mux(index<0.S || index>=twoN,0.S,Mux(index>=n,twoN+(~index.asUInt).asSInt,index))
     val clamp=Mux(index<0.S,0.S,Mux(index>=n,n-1.S,index))
     val border=Mux(index<(-1).S,(-1).S,Mux(index>n,n,index))
     MuxLookup(l.meta.wrap,repeat)(Seq(TextureFloatAxisWrap.clamp.U->clamp,
