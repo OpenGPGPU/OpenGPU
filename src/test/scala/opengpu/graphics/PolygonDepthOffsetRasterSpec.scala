@@ -106,6 +106,23 @@ class PolygonDepthOffsetRasterSpec extends AnyFlatSpec {
       info("POLYGON_OFFSET_ORDER extrapolatedHelpers=true biasBeforeClamp=true culledNoQuads=true linesIgnoreOffset=true sharedArithmetic=true exactReuse=true")
     }
   }
+  it should "enforce versioned raster offset state before launching primitive work" in {
+    simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d)
+      for((version,enabled,factor,units)<-Seq(
+          (1,true,BigInt(0),BigInt(0)),(1,false,fp(1),BigInt(0)),(1,false,BigInt(0),BigInt("80000000",16)),
+          (2,true,BigInt("7fc00000",16),fp(1)),(2,false,fp(1),BigInt("7f800000",16)),
+          (0,false,BigInt(0),BigInt(0)),(3,false,BigInt(0),BigInt(0)))){
+        t.prepare(enabled=false,model=false);val r=d.io.in.bits.state;r.version.poke(version.U)
+        r.polygonOffsetEnable.poke(enabled.B);r.polygonOffsetFactor.poke(factor.U);r.polygonOffsetUnits.poke(units.U)
+        t.submit();t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.launched.expect(false.B)
+        assert(t.finish(1)==0)
+      }
+      t.prepare();val r=d.io.in.bits.state;r.version.poke(2.U);r.polygonOffsetEnable.poke(true.B)
+      r.polygonOffsetFactor.poke(fp(2).U);r.polygonOffsetUnits.poke(fp(3).U);t.submit();t.finish()
+      t.run(enabled=false)
+      info("POLYGON_RASTER_VERSION invalidStates=7 legacyRequiresZero=true version2Finite=true validOffset=true rejectedBeforeRaster=true legacyReuse=true")
+    }
+  }
   it should "reject bad bindings and drain setup arithmetic or held biased quads before cancellation retires" in {
     simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d)
       for((factor,resolution)<-Seq((BigInt("7fc00000",16),fp(1.0/256)),(fp(2),BigInt(0)))){

@@ -3,7 +3,8 @@
 This component is a prerequisite for the open G04 raster requirement. Internal
 primitive raster integration now shares its scalar service and applies the
 result to default depths as described below. Live/native callers still tie the
-binding to zero; attachment-format and native state binding remain open. GLES 3.0.6 section 3.6.2 permits the maximum absolute x/y plane
+binding to zero at that checkpoint. Later [version-2 raster/attachment binding](POLYGON_OFFSET_NATIVE_BINDING.md)
+is implemented with validation pending. GLES 3.0.6 section 3.6.2 permits the maximum absolute x/y plane
 derivative as the slope approximation and combines slope and resolution terms.
 Fixed and floating depth representations require different resolution policies.
 [Official specification](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf)
@@ -81,7 +82,7 @@ reference correct those fixtures. No primitive-path RTL changed between runs;
 the separately qualified policy selector and emitter entry were added. Both
 frozen results are retained.
 
-Production live/prepared callers intentionally keep the internal binding zero.
+At that checkpoint, production live/prepared callers keep the internal binding zero.
 Versioned raster descriptors, bound-format resolution/precision, actual-CU
 fragCoord and shader depth override, clipped/centroid biased images, native
 binned publication, full resource ownership and integrated rate/synthesis gates

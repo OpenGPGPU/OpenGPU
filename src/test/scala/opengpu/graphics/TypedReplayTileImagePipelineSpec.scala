@@ -109,10 +109,10 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
     for(location<-0 until 4;c<-0 until 4)scalar(896+location*16+c*4,10+location*4+c)
     scalar(960,27);scalar(964,26);code+=BigInt("30500073",16);code.toVector
   }
-  private def centroidProgram(version: Int): Vector[BigInt]={
+  private def centroidProgram(version: Int,depthColor: Boolean=false): Vector[BigInt]={
     val inputs=if(version==4)12 else 10;val prefix=(inputs+18)*32
     val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16))
-    for(location<-0 until 4;c<-0 until 4)code++=Seq(addi(5,7,(6+c)*32),vm(5,1,false),addi(6,7,(inputs+location*4+c)*32),vm(6,1,true))
+    for(location<-0 until 4;c<-0 until 4)code++=Seq(addi(5,7,(if(depthColor && c==0)2 else 6+c)*32),vm(5,1,false),addi(6,7,(inputs+location*4+c)*32),vm(6,1,true))
     def scalar(offset: Int,array: Int): Unit={code++=Seq(addi(13,1,offset),(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3,
       (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,
       addi(6,7,array*32),vm(6,1,true))}
@@ -125,10 +125,29 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       d.io.memoryResponse.valid,d.io.memoryResponse.ready)
     program.zipWithIndex.foreach{case(w,i)=>memory.putWord(0x1000+i*4,w)}
     val fields=TypedFragmentStateLayout.fields(new TypedFragmentState(FragmentShaderConfig(2,4)))
-    var centroid=false;var fragmentVersion=3
+    var centroid=false;var fragmentVersion=3;var polygonOffset=false
     def privatePrefix: Int=if(centroid && fragmentVersion==4)960 else 896
     def shaderPc: Int=if(centroid)0x6000+fragmentVersion*0x1000 else 0x1000
     def qualifier(state: Int): BigInt=if(!centroid)0 else if(state==0)5 else 3
+    def offsetSign(ordinal: Int): Int=if((ordinal&1)==0)1 else -1
+    def offsetValue(t: TriangleRasterReference.Triangle,kind: Int,ordinal: Int): Fp32ViewportReference.E={
+      import Fp32ViewportReference.{E,decode,calc,rational}
+      import FragmentInterpolationReference.edge
+      if(!polygonOffset || kind!=2)return E()
+      val area=TriangleRasterReference.edgeAt(t,0,t.coords.head._1,t.coords.head._2)
+      val slopes=Vector.tabulate(2){axis=>
+        val terms=Vector.tabulate(3){i=>val a=t.coords((i+1)%3);val b=t.coords((i+2)%3)
+          calc(edge((if(axis==0)a._2-b._2 else b._1-a._1)*256),decode(t.values.depth(i)),2)}
+        calc(calc(calc(terms(0),terms(1),0),terms(2),0),edge(area),3).copy(sign=false)
+      }
+      val(xn,xd)=rational(slopes(0));val(yn,yd)=rational(slopes(1));val m=if(xn*yd>yn*xd)slopes(0)else slopes(1)
+      val max=t.values.depth.max;val resolution=fp(java.lang.Math.ulp(java.lang.Float.intBitsToFloat(max.toInt)).toDouble)
+      calc(calc(m,decode(fp(offsetSign(ordinal)*2)),2),calc(decode(resolution),decode(fp(offsetSign(ordinal)*3)),2),0)
+    }
+    def offsetDepth(raw: BigInt,bias: Fp32ViewportReference.E): BigInt={
+      import Fp32ViewportReference.{decode,calc,pack,clamp}
+      if(bias.sig==0)raw else clamp(pack(calc(decode(raw),bias,0)))
+    }
     def shape(kind: Int,state: Int): TriangleRasterReference.Triangle={
       val t=triangle(kind)
       if(!centroid)t else t.copy(values=t.values.copy(flat=8,values=Vector.tabulate(3,8){(v,c)=>
@@ -196,7 +215,7 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
     def until(condition: =>Boolean,limit: Int=300000): Unit={var n=0;while(!condition && n<limit){tick();n+=1};assert(condition,s"replay timeout n=$n done=${done.toSeq} pixels=${pixels.toSeq} pending=${memory.pending.size}")}
     def prepare(sampleMode: Int=0,integer: Boolean=false,engines: Set[Int]=Set(0,1)): Unit={
       active=engines;mode=sampleMode
-      if(centroid)centroidProgram(fragmentVersion).zipWithIndex.foreach{case(w,i)=>memory.putWord(shaderPc+i*4,w)}
+      if(centroid)centroidProgram(fragmentVersion,depthColor=polygonOffset).zipWithIndex.foreach{case(w,i)=>memory.putWord(shaderPc+i*4,w)}
       names=if(integer)Vector("RGBA8UI","RGBA16I","RGB10_A2UI","RGBA32UI")else Vector("RGBA8","RGB8","RGBA16F","SRGB8_ALPHA8")
       region=BigInt(0x1000000)+serial*0x100000;serial+=1;initial.clear();backings.clear();model.clear();depth.clear();expected.clear();expectedStatus=0
       for(e<-0 until 2){done(e)=0;pixels(e)=0;history(e).clear();d.io.context(e).poke(101.U)}
@@ -236,15 +255,18 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
     def settings(e: Int,ordinal: Int): TriangleRasterReference.Settings=TriangleRasterReference.Settings(width=16,height=8,mode=mode,scissor=true,
       minX=(if(ordinal==2)4 else 0).max(e*8),minY=if(ordinal==2)3 else 0,maxX=(if(ordinal==2)12 else 16).min(e*8+8),maxY=if(ordinal==2)5 else 8)
     def update(e: Int,ordinal: Int,kind: Int,state: Int): Unit={
-      val t=shape(kind,state);val s=settings(e,ordinal)
+      val t=shape(kind,state);val s=settings(e,ordinal);val bias=offsetValue(t,kind,ordinal)
       val quads=if(kind==2)TriangleRasterReference.raster(t,s,g)else PointLineReference.raster(t,kind,s,g,PointLineReference.Sizes(point=4,line=2))
       expected((e,ordinal))=quads.size
       for(raw<-quads){val q=CentroidRasterReference(t,kind,raw,mode,qualifier(state),g);val depths=SampleDepthReference.depths(t,kind,q.samples,mode,g)
         for((p,lane)<-q.samples.zipWithIndex;sample<-0 until(1<<mode) if(p.mask&(1<<sample))!=0){
-          val z=if(state==0)depths(lane)(sample)else fp(0.125)
+          val z=if(state==0)offsetDepth(depths(lane)(sample),bias)else fp(0.125)
           if(TypedColorReference.value(z)<=TypedColorReference.value(depth((p.x,p.y,sample)))){
             depth((p.x,p.y,sample))=z
-            for(i<-0 until 4){val old=model((i,p.x,p.y,sample));val rgbaOut=TypedBlendReference.blend(names(i),if(centroid)q.lanes(lane).values.take(4)else rgba(state,i),old,TypedBlendReference.State(enable=state!=0))
+            for(i<-0 until 4){val old=model((i,p.x,p.y,sample))
+              val rawColor=if(centroid)q.lanes(lane).values.take(4)else rgba(state,i)
+              val color=if(polygonOffset)rawColor.updated(0,offsetDepth(q.lanes(lane).depth,bias))else rawColor
+              val rgbaOut=TypedBlendReference.blend(names(i),color,old,TypedBlendReference.State(enable=state!=0))
               model((i,p.x,p.y,sample))=encode(names(i),rgbaOut)._1}
           }
         }
@@ -264,6 +286,8 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
         }else {zero(m.vertices(i));zero(q.record.primitive.vertices(i))}}
       if(kind==0){m.vertices(0).pointSizeWritten.poke(true.B);m.vertices(0).pointSize.poke(fp(4).U)}
       val raster=q.record.raster;raster.version.poke(1.U);raster.screenW.poke(16.U);raster.screenH.poke(8.U);raster.sampleMode.poke(mode.U);raster.frontFaceCCW.poke(true.B);raster.lineWidth.poke(fp(2).U)
+      if(polygonOffset){raster.version.poke(2.U);raster.polygonOffsetEnable.poke(true.B)
+        raster.polygonOffsetFactor.poke(fp(offsetSign(ordinal)*2).U);raster.polygonOffsetUnits.poke(fp(offsetSign(ordinal)*3).U)}
       if(ordinal==2){raster.scissorEnable.poke(true.B);raster.scissorMinX.poke(4.U);raster.scissorMinY.poke(3.U);raster.scissorMaxX.poke(12.U);raster.scissorMaxY.poke(5.U)}
       update(e,ordinal,kind,state)
     }
@@ -310,6 +334,31 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       assert(memory.bytes(address)==0x6d,"another engine's prefix was overwritten")}
   }
   behavior of "TypedReplayTileImagePipeline"
+  for(local<-Seq(true,false))
+  it should s"bind polygon offsets to the depth attachment and preserve shader override through prepared replay local=$local" in {
+    simulate(new TypedReplayImageHarness(local)){d=>val t=new Driver(d);t.centroid=true;t.polygonOffset=true
+      for(mode<-0 to 2){
+        t.fragmentVersion=if(mode==2)4 else 3;t.prepare(mode);t.start()
+        t.send(0);t.waitRecord(0);t.send(1);t.waitRecord(1)
+        t.send(2,2,1);t.waitRecord(2);t.send(3,1,1);t.waitRecord(3);t.send(4,0,1);t.waitRecord(4)
+        val backing=t.backings.find(b=>b.location==0 && !b.resolve).get
+        val address=(backing.base+8*(1<<mode)*backing.bytes-1)& ~BigInt(63)
+        assert(t.consumer(address)==t.line(t.initial.toMap,address))
+        assert(!t.memory.seen.exists(r=>r.write && t.initial.contains(r.address)))
+        d.io.blockConsumerInvalidate.poke(true.B);t.end();t.until(d.io.consumerInvalidateOffered.peek().litToBoolean)
+        for(_<-0 until 7){t.tick();d.io.idle.expect(false.B)}
+        d.io.blockConsumerInvalidate.poke(false.B)
+        t.until((0 until 2).forall(e=>d.io.completion(e).valid.peek().litToBoolean))
+        assert(t.consumer(address)==t.line(t.expectedBytes,address));t.finish()
+        def word(a: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(t.memory.bytes(a+b))<<(b*8)))
+        for(e<-0 until 2;h<-0 until 2){val base=t.region+(e+1)*0x10000+h*4096+t.privatePrefix
+          for(i<-0 until 4;c<-0 until 4)assert(word(base+i*16+c*4)==t.rgba(h,i)(c))
+          assert(word(base+64)==(if(h==0)61 else 63) && word(base+68)==fp(0.125))}
+      }
+      assert(t.ownedMask==3 && t.launches.forall(_>0));assert((t.staging.sum==0)==local)
+      info(s"POLYGON_OFFSET_PREPARED local=$local engines=2 CUs=2 rasterVersion2=true boundD32F=true modes1x2x4x=true signedDefaultOffsets=true sameStateDifferentRaster=true shaderFragCoordZInMRT=true triangleShaderDepthOverrideBypassesBias=true centroidGradients=true linePointBypass=true exactSourcesResolvesGuards=true noIntermediateStores=true heldCachedConsumerInvalidation=true uniformTails=true")
+    }
+  }
   for(local<-Seq(true,false))
   it should s"publish centroid gradients from cached native state across both prepared replay engines local=$local" in {
     simulate(new TypedReplayImageHarness(local)){d=>val t=new Driver(d);t.centroid=true

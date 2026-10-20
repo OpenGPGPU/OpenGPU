@@ -38,7 +38,9 @@ object NativeBinnedGraphicsLayout {
       .zipWithIndex.map{case((name,value),i)=>NativeTypedGraphicsLayout.Field("header."+name,3+i,value)}
   private def payloadFields(prefix: String,d: Data): Seq[NativeTypedGraphicsLayout.Field]={
     var word=16
-    WindowPrimitiveRecordLayout.leaves(d).map{case(name,value)=>
+    val leaves=WindowPrimitiveRecordLayout.leaves(d)
+    val (added,legacy)=leaves.partition{case(name,_)=>name.startsWith("raster.polygonOffset")}
+    (legacy++added).map{case(name,value)=>
       val count=(value.getWidth+31)/32
       if(word%16+count>16)word=(word+15)/16*16
       val f=NativeTypedGraphicsLayout.Field(prefix+name,word,value);word+=count;f}

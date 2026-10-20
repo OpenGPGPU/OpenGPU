@@ -146,6 +146,20 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
     def healthy(): Unit={prepare();submit();complete(0,2);assert(acceptedBegins==1 && acceptedEnds==1 && peak==4 && reordered)}
   }
 
+  it should "snapshot appended polygon raster fields and reject noncanonical enables before offering a draw" in {
+    simulate(new Harness()){d=>val t=new Driver(d);t.prepare(1);t.blockDraw=true
+      t.drawValues++=Map[String,BigInt]("draw.raster.version"->2,"draw.raster.polygonOffsetEnable"->1,
+        "draw.raster.polygonOffsetFactor"->Fp32ViewportReference.fp(2.5),"draw.raster.polygonOffsetUnits"->Fp32ViewportReference.fp(-4))
+      t.put(t.drawBase,drawWords,drawMagic,t.df,t.drawValues);t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+      d.io.draw.bits.raster.version.expect(2.U);d.io.draw.bits.raster.polygonOffsetUnits.expect(Fp32ViewportReference.fp(-4).U)
+      val held=d.io.draw.bits.peek().litValue;t.set(t.drawBase,t.df,"draw.raster.polygonOffsetFactor",0)
+      for(_<-0 until 8){t.tick();assert(d.io.draw.bits.peek().litValue==held)}
+      t.blockDraw=false;t.complete(0,1)
+      t.prepare(1);t.set(t.drawBase,t.df,"draw.raster.polygonOffsetEnable",2);t.submit();t.complete(1);assert(t.acceptedDraws==0)
+      t.healthy()
+      info("POLYGON_NATIVE_BINNED_READER appendedFields=true rasterVersion2=true signedFactorUnits=true immutableOffer=true narrowPaddingRejected=true legacyReuse=true")
+    }
+  }
   it should "use distinct record magic values without reusing legacy bin typed-image or fragment-state ABI identifiers" in {
     val current=Set(jobMagic,frameMagic,drawMagic)
     val legacy=Set(TileBinJobMemoryLayout.magic,NativeTypedGraphicsLayout.jobMagic,NativeTypedGraphicsLayout.passMagic,
