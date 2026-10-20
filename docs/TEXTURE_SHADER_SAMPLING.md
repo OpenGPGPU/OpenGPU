@@ -74,3 +74,14 @@ The endpoint serializes one sample lifetime. It does not qualify banked texture
 hit delivery, one bilinear result per cycle, CU/raster helper execution, general
 shader instruction support, or full H0-H8 closure. Fresh aggregate and synthesis
 qualification are required for this new owner.
+
+## Registered magnitude operands
+
+The retained first stage-owner screen exposes gradient-index selection feeding
+the 24x14 extent multiplication. The revised logarithm owner captures selected
+significand, extent and exponent before multiplication, preserving exact products
+and results while adding one state per used gradient component. All sixteen
+focused numeric/composed tests pass, including 3,207 magnitude/log cases, 4,617
+monotonic checks and 170 cancellation cuts. Fresh aggregate and unchanged-clock
+synthesis must qualify this revised source; the retained vertex miss remains
+the original revision's result.
