@@ -55,3 +55,11 @@ This contract starts at admitted physical taps and Q16 weights. Coordinate,
 LOD,weight-generation and general-format precision require native integration
 and their own evidence. The packed-byte resident default keeps its existing
 interface. No whole-native shader rate,power,route or GPU clock is claimed.
+
+The [composed registered-miss service](performance/mobile-banked-texture-fp32-pipeline-2026-10-21.json)
+passes thirty fresh tests across six suites on817 frozen inputs,including
+saturated cancellation/invalidation through final FP32 retirement. Its standalone
+normalizer RTL is byte-identical to the exhaustive numeric and positive synthesis
+inputs. The resident default also retains its positive synthesis logic after
+removing source-location comments only. Fresh synthesis of the complete FP32
+service is running at1000ps;the standalone result does not close that gate.

@@ -6767,3 +6767,28 @@ CU/helper/AXI integration, queries/projective lowering, banked throughput and
 coherence plus the remaining H0-H8 requirements stay open in this source. PPA
 is synthesis only; no whole-GPU clock, routing, hold, power or product pass is
 claimed.
+
+## H4 registered miss admission and normalized FP32 service
+
+The development branch now composes [registered read-through miss admission](BANKED_TEXTURE_READTHROUGH.md)
+and [full weighted RGBA8-to-FP32 output](BANKED_TEXTURE_FP32.md). The
+[817-input qualification](performance/mobile-banked-texture-fp32-pipeline-2026-10-21.json)
+passes thirty fresh checks across six suites. Two queued complete miss records
+per bank break the cache reply/owner-selection/fill-ready path. Cancellation
+and invalidation drain saturated accepted work while retaining an already
+offered physical request and the final public result.
+
+The FP32 pipeline retains all24 weighted-byte bits and rounds the exact
+Q16-weighted rational once. An assertion-enabled exhaustive RTL stream checks
+all16,711,681 legal numerators in each of four channels against independent
+rational rounding. Complete physical-input sample streams sustain II1 after
+warm-up. The standalone32-bit-tag normalizer passes1000ps synthesis including
+I/O (+524.629/+372.277ps);that result covers only this component.
+
+The preceding unpipelined read-through service failed the same1000ps gate
+(-408.901/-507.155ps). Fresh registered read-through and complete FP32 service
+synthesis runs remain active. Main integration waits for their actual timing
+results. Shared native cluster/resource/translation admission,task-scoped fault
+attribution,coordinate and weight-generation precision,whole-native rates,
+render-to-texture visibility and all remaining H0-H8 gates stay open. PPA
+remains synthesis only.
