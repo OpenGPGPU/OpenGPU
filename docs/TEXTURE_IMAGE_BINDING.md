@@ -1,11 +1,14 @@
 # GPU image format, mip binding and bound texel fetch
 
-Status: integrated into local main with [exact source verification](performance/mobile-texture-image-binding-main-2026-10-20.json).
-[29 controls pass](performance/mobile-texture-image-binding-mip-range-2026-10-20.json)
-on unchanged 662-file source, together
-with seven ABI checks, four RTL emissions, combined C11 headers and CI selection.
-All four standalone synthesis screens pass. Native integration remains open;
-no new native capability is advertised.
+Status: integrated into local main with [672-file source verification](performance/mobile-depth-texture-main-2026-10-20.json).
+The [reconciled qualification](performance/mobile-depth-texture-main-reconciled-2026-10-20.json)
+runs all 29 component controls fresh alongside seven ABI checks, combined C11
+headers, CI selection and six RTL emissions. It carries 206 native checks by
+exact native source and RTL identity. The earlier 662-file binding qualification
+remains a historical checkpoint. All four standalone synthesis screens carry
+by identical RTL logic and unchanged constraints; source-location comments can
+differ. Native image/sampler integration remains open; no new native texture
+capability is advertised.
 
 `TextureImageBindingUnit` loads a GXI1 image record that owns format identity,
 allocation bounds, target, dimensional sequence and a GXL1 level table. A texel

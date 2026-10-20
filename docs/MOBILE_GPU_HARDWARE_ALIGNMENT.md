@@ -6012,3 +6012,15 @@ and working672-file source verification and preservation of the pre-existing
 worktree changes. Native general image/sampler binding, typed shader transport,
 remaining sampler/formats, native point/line timing and the full H0-H8/GLES
 hardware objective remain open.
+
+## Reconciled main integration audit (2026-10-20)
+
+Local main merge `629767f` integrates the qualified native depth/facing/texture
+composition with the current image components. The [main audit](performance/mobile-depth-texture-main-2026-10-20.json)
+verifies all 672 committed and working source files against the qualification
+manifest and preserves the contents and modes of all 20 pre-existing dirty files.
+Validation remains 206 native checks carried by exact source/RTL identity plus
+29 fresh image-component checks; no additional main regression is claimed.
+The four standalone image synthesis results carry by identical RTL logic and
+unchanged constraints. Native general image/sampler binding, typed shader
+transport, remaining formats/filtering and full H0-H8 completion remain open.

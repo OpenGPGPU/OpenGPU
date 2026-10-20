@@ -1,5 +1,11 @@
 # Texture image fetch and typed decoding
 
+Current main [672-file integration](performance/mobile-depth-texture-main-2026-10-20.json)
+includes the qualified native depth/facing/texture composition. Its 29 image
+component controls run fresh; 206 native checks carry by exact native source/RTL
+identity. Standalone synthesis results carry by identical RTL logic and unchanged
+constraints. The 662-file and 655-file records below describe earlier checkpoints.
+
 The later [image-binding integration](performance/mobile-texture-image-binding-main-2026-10-20.json)
 includes the prompt GXL1 descriptor-fault issue correction and 29 controls on
 exact 662-file source. Its [current raw/typed synthesis screens](performance/mobile-texture-image-binding-synthesis-2026-10-20.json)

@@ -2,9 +2,12 @@
 
 GRI1 is an optional, read-only block at `0x1d0..0x1ec`, alongside native GVI1
 and GFI1. Legacy hosts without native input support leave the range unmapped.
-The branch implements this contract; AXI, generated-header and regression
-qualification are pending. This describes implemented raster state and numeric
-policy, not complete GLES conformance or production throughput.
+Local main implements this contract. The [combined qualification](performance/mobile-depth-texture-composed-2026-10-20.json)
+passes 206 native controls, including AXI discovery and generated-header checks;
+the [672-file main integration](performance/mobile-depth-texture-main-2026-10-20.json)
+carries those checks by exact native source and RTL identity. This describes
+implemented raster state and numeric policy, not complete GLES conformance or
+production throughput.
 
 | Word | Meaning | Value |
 |---|---|---|

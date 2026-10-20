@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "reconciled672_source_integrated_local_main",
+  "audit": {
+    "before_commit": "177721d3e388c19bb6aea9ecc4463ac936710906",
+    "merged_commit": "629767f460877b0fb6321875f525b27b86d57c35",
+    "committed_and_working_source_files": 672,
+    "source_matches_qualification": true,
+    "preserved_dirty_files": 20,
+    "contents_and_modes_preserved": true,
+    "status_unchanged": true,
+    "index_empty": true
+  },
+  "validation_scope": "206 original native controls carried by exact650-file source and byte-identical65/375-file RTL;29 component controls run fresh on672-file union with seven ABI checks,C11/CI,six emissions. No fresh235-test run or new main rerun claimed.",
+  "reconciled_record": "docs/performance/mobile-depth-texture-main-reconciled-2026-10-20.json",
+  "source_manifest_sha256": "14d9779b7193f20d63a8c47e04b179505343346ecdbe219882d6528860593f5b",
+  "scope": "Numerical depth/polygon offset,facing/stencil,native texture policy and new checked image resources coexist without layout/interface loss.",
+  "remaining": [
+    "Native general image/sampler binding,typed shader transport,remaining sampler/filter/format requirements.",
+    "Historical native replay point/line arithmetic setup miss and corrected host synthesis; no positive native/composed clock or rate claim.",
+    "Full H0-H8/GLES hardware completion and representative throughput/product qualification."
+  ]
+}
