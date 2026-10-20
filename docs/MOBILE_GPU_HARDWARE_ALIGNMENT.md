@@ -5460,3 +5460,18 @@ match exactly after integration. All twenty pre-existing dirty/untracked
 driver/userspace files are preserved byte-for-byte. This is source identity
 with the completed regression, rather than a separately rerun main test group.
 The long native depth and facing regressions remain separate and in progress.
+
+
+## Texture instruction policy transport development (2026-10-20)
+
+An optional TexSampleUnit path now captures signed/per-axis coordinate policy
+and complete scalar/vector texture bindings at instruction admission. Direct
+and prepared requests share that snapshot. Coordinate faults accompany held
+completion, aggregate across executed lanes and suppress destination writes;
+empty vector masks preserve the old destination without sampling or faults.
+Signed gradient differences preserve opposite-sign endpoints. The full
+46-bit gradient exponent is biased before mip-range narrowing, including
+large gradients with negative bias. Invalid mip intervals join the no-read
+fault path. Qualification is pending; task/native descriptor transport and
+fault-owner integration remain open. Legacy default RTL and ISA stability
+remain required gates. No H4/H6 or PPA closure is claimed.

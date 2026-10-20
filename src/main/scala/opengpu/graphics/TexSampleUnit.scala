@@ -24,8 +24,10 @@ import opengpu.core.backend.writeback.ScalarCommitRequest
   */
 class TexSampleUnit(
   config: GpuConfig = GpuConfig(),
-  gfxConfig: GraphicsConfig = GraphicsConfig()
+  gfxConfig: GraphicsConfig = GraphicsConfig(),
+  coordinatePolicyInput: Boolean = false
 ) extends Module {
+  def this(config: GpuConfig, gfxConfig: GraphicsConfig) = this(config, gfxConfig, false)
   require(config.lanes < 4 || config.lanes % 4 == 0,
     "texture vectors must contain complete derivative quads")
   val io = IO(new Bundle {
@@ -38,6 +40,11 @@ class TexSampleUnit(
     val texWidth = Input(UInt(14.W))
     val texHeight = Input(UInt(14.W))
     val wrapClamp = Input(Bool())
+    val coordinatePolicy = if (coordinatePolicyInput) Some(Input(new TextureCoordinatePolicy)) else None
+    /** Meaningful with scalar/vector commit.valid. Owners must handle faults
+      * before normal completion; faulted instructions suppress destination writes.
+      */
+    val coordinateFault = if (coordinatePolicyInput) Some(Output(Bool())) else None
     val texMaxLevel = Input(UInt(4.W))
     /** Signed integer bias applied after gradient LOD selection. */
     val lodBias = Input(SInt(5.W))
@@ -49,7 +56,8 @@ class TexSampleUnit(
     }
   })
 
-  private val sampler = Module(new TextureUnit(gfxConfig, wordCacheEntries = 8, allowPrepared = true, overlapPrepared = true))
+  private val sampler = Module(new TextureUnit(gfxConfig, wordCacheEntries = 8, allowPrepared = true, overlapPrepared = true,
+    coordinatePolicyInput = coordinatePolicyInput))
 
   // Reuse is limited to one instruction. A later operation may observe
   // changed texture memory, format, binding, or address translation.
@@ -93,13 +101,16 @@ class TexSampleUnit(
   private val requestLane = RegInit(0.U(log2Ceil(config.lanes + 1).W))
   private val requestIndex = requestLane(laneWidth - 1, 0)
   private val preparedRequestActive = requestLane < config.lanes.U && executionMaskReg(requestIndex)
-  private val coordinatePipeline = Module(new TextureCoordinatePipeline(laneWidth))
+  private val coordinatePipeline = Module(new TextureCoordinatePipeline(laneWidth, coordinatePolicyInput))
   private val preparedModeReg = RegInit(false.B)
   private val firstSampleReg = RegInit(true.B)
   private val prepareLane = RegInit(0.U(log2Ceil(config.lanes + 1).W))
   private val texBaseReg = RegInit(0.U(32.W))
   private val texFormatReg = RegInit(0.U(PixelFormat.width.W))
   private val wrapClampReg = RegInit(false.B)
+  private val policyReg = if (coordinatePolicyInput) Some(Reg(new TextureCoordinatePolicy)) else None
+  private val coordinateFaultReg = if (coordinatePolicyInput) Some(RegInit(false.B)) else None
+  io.coordinateFault.foreach(_ := coordinateFaultReg.get)
 
   // Latch the coordinates at accept: the upstream issued-instruction bits are
   // only stable through the handshake cycle (same race class as M4b/M5b).
@@ -118,7 +129,16 @@ class TexSampleUnit(
 
   /** One nearest mip per quad. UV differences remain Q16.16; multiplying by
     * the base extent converts them to texels-per-pixel in Q16.16. */
-  private def absDiff(a: UInt, b: UInt): UInt = Mux(a >= b, a - b, b - a)
+  private def absDiff(a: UInt, b: UInt): UInt = {
+    if (coordinatePolicyInput) {
+      // Flipping the sign bit orders S16.16 monotonically without narrowing
+      // its full 32-bit difference (including opposite-sign endpoints).
+      val sign = Mux(policyReg.get.signed, "h80000000".U(32.W), 0.U(32.W))
+      val orderedA = a ^ sign
+      val orderedB = b ^ sign
+      Mux(orderedA >= orderedB, orderedA - orderedB, orderedB - orderedA)
+    } else Mux(a >= b, a - b, b - a)
+  }
   private val diffReg = Reg(Vec(8, UInt(32.W)))
   private val diffPairReg = Reg(Vec(4, UInt(32.W)))
   private val diffAxisReg = Reg(Vec(2, UInt(32.W)))
@@ -152,9 +172,11 @@ class TexSampleUnit(
       gradReg(i) := gradLoReg(i) + (gradHiReg(i) << 16)
     }
   }
-  private val automaticMip = WireDefault(0.U(4.W))
+  // Full coordinate differences times a 14-bit extent can reach exponent29.
+  // Apply bias before narrowing to the descriptor's 0..15 mip interval.
+  private val automaticMip = WireDefault(0.U((if (coordinatePolicyInput) 5 else 4).W))
   if (config.lanes >= 4) {
-    for (level <- 1 until 16) {
+    for (level <- 1 until (if (coordinatePolicyInput) 30 else 16)) {
       when(rhoReg >= (BigInt(1) << (16 + level)).U) {
         automaticMip := level.U
       }
@@ -165,9 +187,10 @@ class TexSampleUnit(
   // lower mip than requested; keep one extra bit so the upper clamp sees the
   // true positive value.  The scalar path adds no automatic level, so its
   // five-bit bias already fits and is left unchanged.
-  private val biasedMip = automaticMip.pad(6).asSInt + lodBiasReg.pad(6)
-  private val clampedMip = Mux(biasedMip < minLevelReg.pad(6).asSInt,
-    minLevelReg, Mux(biasedMip > maxLevelReg.pad(6).asSInt,
+  private val lodSumWidth = if (coordinatePolicyInput) 7 else 6
+  private val biasedMip = automaticMip.pad(lodSumWidth).asSInt + lodBiasReg.pad(lodSumWidth)
+  private val clampedMip = Mux(biasedMip < minLevelReg.pad(lodSumWidth).asSInt,
+    minLevelReg, Mux(biasedMip > maxLevelReg.pad(lodSumWidth).asSInt,
       maxLevelReg, biasedMip.asUInt(3, 0)))
   // The sampler consumes an 8-bit trilinear weight.  Normalise rho into
   // [1,2), then look up frac(log2(rho)) from the top eight fractional bits.
@@ -193,12 +216,22 @@ class TexSampleUnit(
   io.vectorIn.ready := state === sIdle && selectVector
   io.in.ready := state === sIdle && !selectVector
 
-  sampler.io.texBase := Mux(preparedModeReg, texBaseReg, io.texBase)
-  sampler.io.texFormat := Mux(preparedModeReg, texFormatReg, io.texFormat)
-  sampler.io.texWidth := Mux(preparedModeReg, texWidthReg, io.texWidth)
-  sampler.io.texHeight := Mux(preparedModeReg, texHeightReg, io.texHeight)
-  sampler.io.wrapMode := Mux(preparedModeReg, wrapClampReg, io.wrapClamp)
-  sampler.io.texMaxLevel := Mux(preparedModeReg, maxLevelReg, io.texMaxLevel)
+  if (coordinatePolicyInput) {
+    sampler.io.texBase := texBaseReg
+    sampler.io.texFormat := texFormatReg
+    sampler.io.texWidth := texWidthReg
+    sampler.io.texHeight := texHeightReg
+    sampler.io.wrapMode := wrapClampReg
+    sampler.io.texMaxLevel := maxLevelReg
+    sampler.io.coordinatePolicy.get := policyReg.get
+  } else {
+    sampler.io.texBase := Mux(preparedModeReg, texBaseReg, io.texBase)
+    sampler.io.texFormat := Mux(preparedModeReg, texFormatReg, io.texFormat)
+    sampler.io.texWidth := Mux(preparedModeReg, texWidthReg, io.texWidth)
+    sampler.io.texHeight := Mux(preparedModeReg, texHeightReg, io.texHeight)
+    sampler.io.wrapMode := Mux(preparedModeReg, wrapClampReg, io.wrapClamp)
+    sampler.io.texMaxLevel := Mux(preparedModeReg, maxLevelReg, io.texMaxLevel)
+  }
 
   private val prepareIndex = prepareLane(laneWidth - 1, 0)
   private val prepareActive = executionMaskReg(prepareIndex)
@@ -211,6 +244,7 @@ class TexSampleUnit(
   coordinatePipeline.io.in.bits.texWidth := texWidthReg
   coordinatePipeline.io.in.bits.texHeight := texHeightReg
   coordinatePipeline.io.in.bits.clamp := wrapClampReg
+  coordinatePipeline.io.in.bits.coordinatePolicy.foreach(_ := policyReg.get)
   when(prepareMore && (!prepareActive || coordinatePipeline.io.in.fire)) {
     prepareLane := prepareLane + 1.U
   }
@@ -233,6 +267,7 @@ class TexSampleUnit(
   private val usePrepared = preparedModeReg && !firstSampleReg
   sampler.io.prepared.get.valid := usePrepared && coordinatePipeline.io.out.valid
   sampler.io.prepared.get.bits := coordinatePipeline.io.out.bits.sample
+  sampler.io.preparedCoordinateFault.foreach(_ := coordinatePipeline.io.out.bits.coordinateFault.get)
   coordinatePipeline.io.out.ready := usePrepared && sampler.io.sample.fire
   when(preparedModeReg && sampler.io.sample.fire) { firstSampleReg := false.B }
   when(usePrepared && sampler.io.sample.fire) {
@@ -259,7 +294,7 @@ class TexSampleUnit(
   io.commit.bits.warpId := warpIdReg
   io.commit.bits.nextPc := pcReg + 4.U
   io.commit.bits.activeMask := activeMaskReg
-  io.commit.bits.writeRd := true.B
+  io.commit.bits.writeRd := coordinateFaultReg.map(!_).getOrElse(true.B)
   io.commit.bits.rd := rdReg
   io.commit.bits.data := dataReg
 
@@ -268,7 +303,7 @@ class TexSampleUnit(
   io.vectorCommit.bits.writeback.vd := rdReg
   io.vectorCommit.bits.writeback.data := vectorDataReg
   io.vectorCommit.bits.saturated := false.B
-  io.vectorCommit.bits.writesVd := true.B
+  io.vectorCommit.bits.writesVd := coordinateFaultReg.map(!_).getOrElse(true.B)
   io.vectorCommit.bits.writesScalar := false.B
   io.vectorCommit.bits.scalarData := 0.U
   io.vectorCommit.bits.writesFloat := false.B
@@ -293,6 +328,26 @@ class TexSampleUnit(
         when(laneReg(1, 0) === 3.U && nextQuadActive &&
           minLevelReg =/= maxLevelReg) { state := sGrad }
       }
+    }
+  }
+
+  if (coordinatePolicyInput) {
+    when(io.in.fire || io.vectorIn.fire) {
+      policyReg.get := io.coordinatePolicy.get
+      // Reject an inverted mip interval through the same no-read fault path.
+      when(io.minLevel > io.texMaxLevel) { policyReg.get.wrapU := 3.U }
+      coordinateFaultReg.get := false.B
+      texBaseReg := io.texBase
+      texFormatReg := io.texFormat
+      texWidthReg := io.texWidth
+      texHeightReg := io.texHeight
+      wrapClampReg := io.wrapClamp
+      maxLevelReg := io.texMaxLevel
+      minLevelReg := io.minLevel
+      lodBiasReg := io.lodBias
+    }
+    when(sampler.io.result.fire) {
+      coordinateFaultReg.get := coordinateFaultReg.get || sampler.io.coordinateFault.get
     }
   }
 
@@ -398,8 +453,8 @@ class TexSampleUnit(
       // Stage 8: select the nearest mip and register the normalized rho used
       // by the fractional-LOD lookup.
       rhoNormalReg := rhoReg >> automaticMip
-      lodIsClampedReg := biasedMip < minLevelReg.pad(6).asSInt ||
-        biasedMip > maxLevelReg.pad(6).asSInt
+      lodIsClampedReg := biasedMip < minLevelReg.pad(lodSumWidth).asSInt ||
+        biasedMip > maxLevelReg.pad(lodSumWidth).asSInt
       mipLevelReg := clampedMip
       state := sFrac
     }

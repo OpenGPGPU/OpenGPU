@@ -320,6 +320,16 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.NearClipStage(GraphicsConfig(
             screenWidth = 1280, screenHeight = 720)), stageArgs, firtoolArgs)
+      case "texture-execute-coordinate-policy" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TexSampleUnit(coordinatePolicyInput = true), stageArgs, firtoolArgs)
+      case "texture-execute" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TexSampleUnit(), stageArgs, firtoolArgs)
+      case "texture-execute-1" | "texture-execute-4" | "texture-execute-32" =>
+        val lanes = args(0).stripPrefix("texture-execute-").toInt
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TexSampleUnit(GpuConfig(lanes = lanes, warps = 2)), stageArgs, firtoolArgs)
       case "texture-coordinates" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.TextureCoordinatePipeline(laneWidth = 4), stageArgs, firtoolArgs)

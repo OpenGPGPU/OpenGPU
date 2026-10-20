@@ -62,3 +62,12 @@ the prepared-capable sampler. The existing nineteen checks pass again.
 Legacy coordinate and cached/prepared sampler synthesis-active SV, ports and
 hierarchy match independently emitted pre-extension baselines. New optional
 emissions contain no FPU, CU or SRAM; no new rate or PPA result is claimed.
+
+The next development step adds optional `TexSampleUnit` policy/fault transport.
+It snapshots scalar/vector instruction bindings, forwards prepared faults,
+aggregates faults through held completion and suppresses destination writes on
+a fault. Signed implicit LOD uses the full coordinate difference and applies
+bias before narrowing the full gradient exponent into the selected mip range.
+Qualification is pending. Instruction encodings and default legacy hardware
+remain unchanged; native descriptors and task-owner fault integration remain
+required before exposure.
