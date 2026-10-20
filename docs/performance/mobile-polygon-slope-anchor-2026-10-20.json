@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Anchored slope arithmetic and constant-depth controls; full sloped resolution remains open",
+  "based_on_commit": "af53799",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-polygon-slope-anchor-source-v2.json",
+    "sha256": "a3ffa237551d8dcb5ba30824c81e0ab6c81a98e70f1c7ea63a8fda67d01647fb"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-polygon-slope-anchor-source-v2.tar.gz",
+    "sha256": "7612d3484b5fe8a4e921d2416a42c25cb106c6baca1e9f3b8b51141fea5d011e"
+  },
+  "result": {
+    "path": ".artifacts/mobile-polygon-slope-anchor-controls-v2-result.json",
+    "sha256": "e2da98ac0f78dcb05930f4ed8447185e8c2ffe00a58f36b981d0bb57669fd2db"
+  },
+  "log": {
+    "path": ".artifacts/mobile-polygon-slope-anchor-controls-v2.log",
+    "sha256": "78976082261f70112882925a9eae2829c1c07b08c9a5181f28b3d07ff5937d7e"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "test_counts": [
+        1,
+        44
+      ],
+      "success_tasks": 7,
+      "depth_pairs": 12,
+      "depth_complete": 1,
+      "flat_slope": 1
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 407.38239424999995,
+    "finished_utc": "2026-10-20T03:08:28.259865+00:00"
+  },
+  "passed": 45,
+  "flat_depth_cases": 32,
+  "arithmetic_cases": 87,
+  "abi_checks": 4,
+  "setup_operations": 13,
+  "primitive_audit": {
+    "path": ".artifacts/mobile-polygon-slope-anchor-primitive-rtl-audit-v1.json",
+    "sha256": "f8379ee26be4cb7a9643ec1dea62185effdc61d9a3c1d8c55fae02e20eff9a4b"
+  },
+  "limits": [
+    "This corrects the actual flat-slope defect and passes scoped component/raster controls on this frozen source.",
+    "Native/binned/image integration has not been repeated on the anchored production changes.",
+    "The separate sloped common-depth-step collapse remains unresolved; no full depth-resolution contract, API, G04/H6/H0-H8 or PPA closure."
+  ]
+}

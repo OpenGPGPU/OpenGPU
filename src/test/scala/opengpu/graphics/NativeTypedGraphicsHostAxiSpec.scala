@@ -123,11 +123,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         import Fp32ViewportReference.{E,fp,decode,calc,pack,clamp,rational}
         import FragmentInterpolationReference.edge
         val bias=if(!polygon || kind!=2)E()else{
-          val area=TriangleRasterReference.edgeAt(t,0,t.coords.head._1,t.coords.head._2)
-          val slopes=Vector.tabulate(2){axis=>val terms=Vector.tabulate(3){i=>val a=t.coords((i+1)%3);val b=t.coords((i+2)%3)
-            calc(edge((if(axis==0)a._2-b._2 else b._1-a._1)*256),decode(t.values.depth(i)),2)}
-            calc(calc(calc(terms(0),terms(1),0),terms(2),0),edge(area),3).copy(sign=false)}
-          val(xn,xd)=rational(slopes(0));val(yn,yd)=rational(slopes(1));val m=if(xn*yd>yn*xd)slopes(0)else slopes(1)
+          val m=PolygonDepthOffsetReference.maximum(t.coords.map(_._1),t.coords.map(_._2),t.values.depth)
           val resolution=boundDepthFormat match {
             case TypedDepthFormat.d16=>BigInt("37804001",16)
             case TypedDepthFormat.d24|TypedDepthFormat.d24s8=>BigInt("33c00000",16)

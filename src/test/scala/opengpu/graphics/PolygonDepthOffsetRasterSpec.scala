@@ -16,14 +16,7 @@ class PolygonDepthOffsetRasterSpec extends AnyFlatSpec {
     FragmentInterpolationReference.linearDepth(s.edges,s.area,t.values.depth)
   }
   private def offset(t: Triangle,factor: BigInt,units: BigInt,resolution: BigInt): E={
-    val area=TriangleRasterReference.edgeAt(t,0,t.coords(0)._1,t.coords(0)._2)
-    val slopes=Vector.tabulate(2){axis=>
-      val terms=Vector.tabulate(3){i=>val a=t.coords((i+1)%3);val b=t.coords((i+2)%3)
-        calc(edge((if(axis==0)a._2-b._2 else b._1-a._1)*256),decode(t.values.depth(i)),2)}
-      calc(calc(calc(terms(0),terms(1),0),terms(2),0),edge(area),3).copy(sign=false)
-    }
-    val(xn,xd)=rational(slopes(0));val(yn,yd)=rational(slopes(1))
-    val maximum=if(xn*yd>yn*xd)slopes(0)else slopes(1)
+    val maximum=PolygonDepthOffsetReference.maximum(t.coords.map(_._1),t.coords.map(_._2),t.values.depth)
     calc(calc(maximum,decode(factor),2),calc(decode(resolution),decode(units),2),0)
   }
   private class Driver(val d: Fp32PrimitiveRasterStage){
@@ -87,10 +80,10 @@ class PolygonDepthOffsetRasterSpec extends AnyFlatSpec {
         val quads=TriangleRasterReference.raster(triangle,Settings(mode=mode),g)
         val additions=quads.size*4+(if(mode==0)0 else quads.flatMap(_.samples).map(s=>Integer.bitCount(s.mask)).sum)
         for(sign<-Seq(-1,1)){val operations=t.run(triangle,mode,factor=fp(sign*2),units=fp(sign*3))
-          assert(operations-baseline==15+additions,s"offset was not prepared once: delta=${operations-baseline} expected=${15+additions}");draws+=1}
+          assert(operations-baseline==13+additions,s"offset was not prepared once: delta=${operations-baseline} expected=${13+additions}");draws+=1}
         val zero=t.run(triangle,mode,factor=0,units=0);assert(zero==baseline)
       }
-      info(s"POLYGON_OFFSET_RASTER biasedDraws=$draws modes=3 windings=2 exactCenterAndSamples=true unchangedVaryings=true preparedOnce=true fifteenSetupOperations=true zeroNoExtraMath=true descriptorSnapshot=true heldQuads=true")
+      info(s"POLYGON_OFFSET_RASTER biasedDraws=$draws modes=3 windings=2 exactCenterAndSamples=true unchangedVaryings=true preparedOnce=true thirteenSetupOperations=true zeroNoExtraMath=true descriptorSnapshot=true heldQuads=true")
     }
   }
   it should "apply offset before clamping extrapolated helper depth and preserve culling and line bypass" in {

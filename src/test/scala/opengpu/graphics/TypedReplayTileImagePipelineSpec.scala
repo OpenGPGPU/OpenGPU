@@ -134,13 +134,7 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       import Fp32ViewportReference.{E,decode,calc,rational}
       import FragmentInterpolationReference.edge
       if(!polygonOffset || kind!=2)return E()
-      val area=TriangleRasterReference.edgeAt(t,0,t.coords.head._1,t.coords.head._2)
-      val slopes=Vector.tabulate(2){axis=>
-        val terms=Vector.tabulate(3){i=>val a=t.coords((i+1)%3);val b=t.coords((i+2)%3)
-          calc(edge((if(axis==0)a._2-b._2 else b._1-a._1)*256),decode(t.values.depth(i)),2)}
-        calc(calc(calc(terms(0),terms(1),0),terms(2),0),edge(area),3).copy(sign=false)
-      }
-      val(xn,xd)=rational(slopes(0));val(yn,yd)=rational(slopes(1));val m=if(xn*yd>yn*xd)slopes(0)else slopes(1)
+      val m=PolygonDepthOffsetReference.maximum(t.coords.map(_._1),t.coords.map(_._2),t.values.depth)
       val max=t.values.depth.max;val resolution=fp(java.lang.Math.ulp(java.lang.Float.intBitsToFloat(max.toInt)).toDouble)
       calc(calc(m,decode(fp(offsetSign(ordinal)*2)),2),calc(decode(resolution),decode(fp(offsetSign(ordinal)*3)),2),0)
     }
