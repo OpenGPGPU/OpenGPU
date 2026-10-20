@@ -19,13 +19,16 @@ constant-depth witness with eight subpixel bits:
 - The software replay produces `0x3f000001` for both center depths.
 
 The replay rounds edge conversion, each product, each sum and division
-separately. This is a candidate counterexample until reproduced in RTL.
+separately. The [actual RTL run](performance/mobile-depth-resolution-raster-failure-2026-10-20.json)
+reproduces the collapse: 0/1 tests pass, and both observed center depths are
+`0x3f000001`. The failing pair is retained on an unchanged source snapshot.
 The new `Fp32DepthResolutionRasterSpec` uses actual primitive coverage,
 single-pixel scissoring, immutable held quads and healthy reuse. It requires
 distinct center depth and exact constant center/helper/covered-sample depth in
 both windings and all three sample modes. No offset or clamping is involved.
 
 The frozen 640-file reproduction preserves all combined production/ABI bytes.
-RTL reproduction is queued; no passing precision or full G04/H6 result is
+RTL reproduction confirms the first pair; later windings/sample modes are not
+reached by that failing run. No passing precision or full G04/H6 result is
 claimed. Any arithmetic correction must rerun the relevant numeric, ownership,
 image and combined-source checks before integration.
