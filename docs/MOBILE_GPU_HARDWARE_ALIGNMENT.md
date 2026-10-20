@@ -5534,3 +5534,16 @@ matrix, and final default host RTL emission remain live in the original
 process. No source change, restart, full 176-check claim or main production
 promotion is made. Remaining depth/G04/H6 work and PPA qualification stay
 open; evaluation remains synthesis only.
+
+
+## Native depth composed regression failure (2026-10-20)
+
+The [terminal full-depth result](performance/mobile-depth-native-reset-failure-2026-10-20.json)
+contains 175 passing checks and one failure on the unchanged 643-file source.
+The 60-frame depth-format/sample-mode/sign matrix passes, along with reader,
+numerical, stage, replay/image, native binned and affected host controls.
+The polygon-reset test times out after its completed vertex-reset phase; the
+fragment and publication reset phases remain unqualified. Final host emission
+was not reached because the host group failed. The source stays outside main
+while an isolated diagnostic reproduction determines the cause. No complete
+176-check, reset, depth/G04/H6 or PPA closure is claimed.

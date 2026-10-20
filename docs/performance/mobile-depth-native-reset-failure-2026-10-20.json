@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "175_passed_one_polygon_reset_timeout",
+  "source_files": 643,
+  "source_unchanged": true,
+  "result": {
+    "returncode": 1,
+    "source_unchanged": true,
+    "coverage": {
+      "test_counts": [
+        106,
+        13,
+        24,
+        33
+      ],
+      "passed_tasks": 3,
+      "success_tasks": 8,
+      "fault_markers": 22,
+      "converted_profiles": 4,
+      "unfiltered_profiles": 2,
+      "native_centroid": 2,
+      "prepared_centroid": 2,
+      "binned_centroid": 4,
+      "prepared_polygon": 2,
+      "native_polygon": 2,
+      "binned_polygon": 4,
+      "depth_matrix": 2,
+      "depth_cases": 60,
+      "raster_discovery": 4,
+      "polygon_fault_profiles": 1,
+      "polygon_reset_phases": 1,
+      "translated_pairs": 18,
+      "constant_pairs": 12,
+      "boundary": 1,
+      "floating_helpers": 1
+    },
+    "coverage_ok": false,
+    "expected_coverage": {
+      "test_counts": [
+        106,
+        13,
+        24,
+        33
+      ],
+      "passed_tasks": 4,
+      "success_tasks": 10,
+      "fault_markers": 22,
+      "converted_profiles": 4,
+      "unfiltered_profiles": 2,
+      "native_centroid": 2,
+      "prepared_centroid": 2,
+      "binned_centroid": 4,
+      "prepared_polygon": 2,
+      "native_polygon": 2,
+      "binned_polygon": 4,
+      "depth_matrix": 2,
+      "depth_cases": 60,
+      "raster_discovery": 4,
+      "polygon_fault_profiles": 1,
+      "polygon_reset_phases": 3,
+      "translated_pairs": 18,
+      "constant_pairs": 12,
+      "boundary": 1,
+      "floating_helpers": 1
+    },
+    "elapsed_seconds": 6552.625469666207,
+    "finished_utc": "2026-10-20T05:12:24.625926+00:00"
+  },
+  "passed_tests": 175,
+  "failed_tests": 1,
+  "failed_test": "NativeTypedGraphicsHostAxiSpec: drain live native shader payloads queued DMA and physical publication before reset releases the VM polygon=true",
+  "failure": "AXI memory master service timed out at NativeTypedGraphicsHostAxiSpec.scala:403. Only polygon reset phase0 reported completion; phase1/2 are unqualified.",
+  "passed_depth_matrix_frames": 60,
+  "host_emission": "Not reached because host tests failed; the initial replay emission and four ABI checks passed.",
+  "evidence": {
+    "mobile-depth-native-composed-source-v1.json": {
+      "path": ".artifacts/mobile-depth-native-composed-source-v1.json",
+      "sha256": "42f94258ec699a2a35f1a841579d122c9e4b39006bed94e6155f00431bdc3a57"
+    },
+    "mobile-depth-native-composed-source-v1.tar.gz": {
+      "path": ".artifacts/mobile-depth-native-composed-source-v1.tar.gz",
+      "sha256": "68de99e6934a86bf578ceaca533ba880648fde47057973cb7b46c433ac2fa2bd"
+    },
+    "mobile-depth-native-composed-qualified-v1.log": {
+      "path": ".artifacts/mobile-depth-native-composed-qualified-v1.log",
+      "sha256": "94c1dda27b207f01e99628535fcab2a828f545525fe4fbfbfdd76e7d34cf0b0c"
+    },
+    "mobile-depth-native-composed-qualified-v1-result.json": {
+      "path": ".artifacts/mobile-depth-native-composed-qualified-v1-result.json",
+      "sha256": "de974e15f42668a54c268c63d4c184ea97f9ba9f55b479448d944651b3634278"
+    },
+    "mobile-depth-native-composed-qualified-v1-start.json": {
+      "path": ".artifacts/mobile-depth-native-composed-qualified-v1-start.json",
+      "sha256": "ae25afee641b988906544e94e0765ce61ba1c200bced9a21367a99a1cdb3de2b"
+    }
+  },
+  "next_action": "Reproduce the unchanged failure with isolated diagnostics; distinguish a missing trigger from a genuine cancel/drain failure before correcting and requalifying.",
+  "limits": [
+    "The source is not qualified for production promotion. No passing176-check result or complete reset/fault closure is claimed.",
+    "The original run is terminal; original source, log and result remain frozen.",
+    "PPA remains synthesis only; general H0-H8/GLES3.0 development remains open."
+  ]
+}
