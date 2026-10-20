@@ -1,0 +1,227 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "fifty_three_fresh_tests_and_four_emissions_pass_complete_service_synthesis_pending",
+  "source": {
+    "commit": "f7c678c7a2591322c9916836d32a2fe09590f792",
+    "source_files": 819,
+    "manifest_sha256": "7389b492047b110751d1d77e03d30bb4e51e3a17ce0f39c2a742765cef113660",
+    "archive_sha256": "f3d5dbf092060d587546a92d750c17118e0a920bef7982e2f76041f1d194d05c",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/main/scala/opengpu/elaboration/EmitBankedTextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedRgba8TextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedTextureFillOwner.scala"
+    ],
+    "added_inputs": [],
+    "runner_pid": 46238,
+    "started_utc": "2026-10-20T21:21:16.339651+00:00"
+  },
+  "distinct_passed_tests": 53,
+  "suites": {
+    "TextureSampleExecuteUnitSpec": 23,
+    "Rgba8WeightedToFp32Spec": 3,
+    "BankedRgba8FloatTextureServiceSpec": 7,
+    "BankedRgba8TextureHitsSpec": 8,
+    "BankedTextureLineStoreSpec": 1,
+    "BankedTextureFillOwnerSpec": 4,
+    "BankedTextureReadThroughSpec": 7
+  },
+  "functional_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 340.36850883299485,
+    "commit": "f7c678c7a2591322c9916836d32a2fe09590f792",
+    "source_files": 819,
+    "manifest_sha256": "7389b492047b110751d1d77e03d30bb4e51e3a17ce0f39c2a742765cef113660",
+    "archive_sha256": "f3d5dbf092060d587546a92d750c17118e0a920bef7982e2f76041f1d194d05c",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/main/scala/opengpu/elaboration/EmitBankedTextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedRgba8TextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedTextureFillOwner.scala"
+    ],
+    "added_inputs": [],
+    "runner_pid": 46238,
+    "started_utc": "2026-10-20T21:21:16.339651+00:00"
+  },
+  "emission_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 10.740448374999687
+  },
+  "parent_main_dependency_audit": {
+    "commit": "f6d8b1c08995e5b965fdb933eaf2f7dac702c2b1",
+    "inputs": 812,
+    "changed_inputs": [
+      "src/main/scala/opengpu/elaboration/EmitBankedTextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedRgba8TextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedTextureFillOwner.scala"
+    ],
+    "added_inputs": [
+      "src/main/scala/opengpu/graphics/BankedRgba8FloatTextureService.scala",
+      "src/main/scala/opengpu/graphics/BankedTextureWordService.scala",
+      "src/main/scala/opengpu/graphics/Rgba8WeightedToFp32.scala",
+      "src/test/cpp/rgba8_weighted_fp32.cpp",
+      "src/test/scala/opengpu/graphics/BankedRgba8FloatTextureServiceSpec.scala",
+      "src/test/scala/opengpu/graphics/BankedTextureReadThroughSpec.scala",
+      "src/test/scala/opengpu/graphics/Rgba8WeightedToFp32Spec.scala"
+    ],
+    "native_query_projective_driver_ABI_and_existing_test_inputs_exact": true,
+    "carry_record": "mobile-native-size-projective-main-2026-10-21.json"
+  },
+  "active_emission_raw_identity_to_component_qualification": {
+    "fp32": {
+      "RRArbiter4_BankedTextureLookup.sv": "4d1eed03a3b92470b494278bb5b3c32306d07a9a3d3be464afa4b05019b15201",
+      "ram_2x39.sv": "7fccf5d414831ac374f05a9a10c91b39b7ca40b956e5c24b94f80bdebc1ef5e8",
+      "Queue2_BankedTextureWord.sv": "fbcd4e6dd3a8370f56786b109229d719c8ac92cc9b7a11f18e46e0da2f85f3a1",
+      "memory_256x32.sv": "c765dcd3e2ed7ffda1221fab77bcf0223da27de002849560a9eb01fdcb1832d3",
+      "L2SramArray.sv": "c1104c24dbda2c1e4b6688300e1168baef38ac07eeed8876af67c032584397b7",
+      "BankedTextureLineStore.sv": "1633049427912181d4790db0c7a0eb6ebcf25eb255271e759bde9116dfc764a4",
+      "Queue1_ComputeMemoryRequest.sv": "db47b152389226eaae140050102cfee11a8645e23040870ded453ecfea9ebf8d",
+      "RRArbiter16_UInt4.sv": "22d916563145dc05156de54321a140562a4217c0a08816174678ed90aea62c2f",
+      "RRArbiter32_UInt5.sv": "386bd8b22c1195d06d546ef54bc47dd98b3ee17067f3064c628ae99ecb8f0dee",
+      "BankedTextureFillOwner.sv": "9af0d99d805dea65bde351487aa43796305ac77c39c2699f1eaef24237421e3c",
+      "RRArbiter4_BankedTextureFillRequest.sv": "ae18c09052ecb2e7ac1f81682ab8f4849eb04c88b08cac06ebc9e6fcf71b8b0f",
+      "ram_2x205.sv": "d9f4eadbcc2fcee3819e2c16904c651101087e5e68d2cb48b92345a85d2d6f78",
+      "Queue2_QueuedTextureMiss.sv": "2a4ff9686fe34684b5b52e0acd77646e417573e74cd7030c14e3e9252c853837",
+      "ram_2x80.sv": "00844348eb09a98d2064ad65617e8c6f1d3ae1bb05e01669fa845a3722db62eb",
+      "Queue2_QueuedTextureReadResult.sv": "ec14ae820627fb0b65c6420f5a16b71e58df8b23704ce1d224c20c2ca0a9cce8",
+      "RRArbiter3_QueuedTextureReadResult.sv": "74cfe466d6e6bca799d4985c60abb15f704416cb06d69e4c9d355f9a1b836920",
+      "BankedTextureWordService.sv": "6e021753e95264f19aaa806dcc2b83f3b3a0ed980d59644b783c1def0549bbaf",
+      "BankedRgba8TextureHits.sv": "9b449516546aca4b0959f68975266dc9a6f56f5d5ca1e251220eb481d040b2a9",
+      "Rgba8WeightedToFp32.sv": "0aacfd18eee4185cf3a5ea2f14d1bdded6749cf4f5eb2efce404b2c0a0d52ccb",
+      "BankedRgba8FloatTextureService.sv": "a37dfc3fbd838e238b94ad71cf37f77ca7ee9b4a49fd3bd3a3e1d1b7dbb039a5"
+    },
+    "normalize": {
+      "Rgba8WeightedToFp32.sv": "19b85cf20d26198d1025baa89d9d7be3b547af44ff20af5aaa67d39d52650913"
+    },
+    "cluster": {
+      "RRArbiter4_BankedTextureLookup.sv": "4d1eed03a3b92470b494278bb5b3c32306d07a9a3d3be464afa4b05019b15201",
+      "ram_2x39.sv": "7fccf5d414831ac374f05a9a10c91b39b7ca40b956e5c24b94f80bdebc1ef5e8",
+      "Queue2_BankedTextureWord.sv": "31f17c66ba551488b397f1ed6d704380afc2d057842c9dc032fb18dfc13e222d",
+      "memory_256x32.sv": "c765dcd3e2ed7ffda1221fab77bcf0223da27de002849560a9eb01fdcb1832d3",
+      "L2SramArray.sv": "c1104c24dbda2c1e4b6688300e1168baef38ac07eeed8876af67c032584397b7",
+      "BankedTextureLineStore.sv": "36969ef6d501102e38c33567a04a97ae8e46fce2cdf78a694fb2f28f79eb1863",
+      "BankedRgba8TextureHits.sv": "9825e9b157f4b5c1b90b9888c4f9ffa54cf15e85197858bf1452ce9098d6c9af"
+    }
+  },
+  "readthrough_comment_only_identity": {
+    "RRArbiter4_BankedTextureLookup.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "c7b10e9120b283314bc9212f15b8fddfd5fd8a04e8f408727745cc0140fce0a9"
+    },
+    "ram_2x39.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "4fc6db3cf80396e7946fb1572c3c47d7ac19f753ca158ea9e392b4d1b34d9b15"
+    },
+    "Queue2_BankedTextureWord.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "eaf31c509bc38517e174d5f9064e0e47f095049ee236d2314af37e115138070f"
+    },
+    "memory_256x32.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "3f1c8c537b5e9b88aae26f7226d087c43d831402cd7fa843bd33e8a3db5ea21a"
+    },
+    "L2SramArray.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "a0345187bb321195349a33f61fcc16830bf48def1822b2d9a240e764d02e2ad0"
+    },
+    "BankedTextureLineStore.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "41bc9f9e70347c6926961c328b02dc2aadfc4677eac3675ad08ff8aa5adb7d97"
+    },
+    "Queue1_ComputeMemoryRequest.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "a3b1dc1a4ad8fb02ba7584a9abdeea2b6c3c7cd3154fed040beb4d577c373d28"
+    },
+    "RRArbiter16_UInt4.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "ba4f6ad968ea904700bf893848d8d42fb6d922297136cecd9a2f930976813d7f"
+    },
+    "RRArbiter32_UInt5.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "f0386cb967d839e7f1a77d22f988a075da4976b82a0e46fbed9b3d0b37c10731"
+    },
+    "BankedTextureFillOwner.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "10620123cdf76e674097ecd8031014885d3b2933f4c2648416dc40ba2fd8f73b"
+    },
+    "RRArbiter4_BankedTextureFillRequest.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "a04b12d70e818d503834485439d41581e4ee399a27f1dac19da238ec2b3ebaee"
+    },
+    "ram_2x205.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "ece4c97ecfe9498788cb3ac0174a089b168e6a93243f16c1198d00a441aa43cf"
+    },
+    "Queue2_QueuedTextureMiss.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "97e70676570ef9982710e17ebae19f58e6d427e89e47b38dfe15a472d94c4700"
+    },
+    "ram_2x80.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "d13b9af92dc5675ad8345aa56709502cf4bd8e3ac593e70e3e5e086f128c9c01"
+    },
+    "Queue2_QueuedTextureReadResult.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "6047d50f0868e4555f082f23288197dfb5cfd49bde619864b02cab2a4beb5c25"
+    },
+    "RRArbiter3_QueuedTextureReadResult.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "0e66cf43fab5e65cb42f025534d235ed8448f5b3d9053c6b304e5905d1d78e2f"
+    },
+    "BankedTextureWordService.sv": {
+      "raw_exact": true,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "182db7d1705cb9403f1c7df461a383153235e251be4c0669ae63724d59d25107"
+    },
+    "BankedRgba8TextureHits.sv": {
+      "raw_exact": false,
+      "comment_stripped_bytes_exact": true,
+      "comment_stripped_sha256": "044c327ef52be33bd38908334e6f2a4cbe548b3efc8a73d59ddacaf18747024f"
+    }
+  },
+  "exhaustive_FP32_values_carried": 66846724,
+  "standalone_normalizer_synthesis_slacks_ps": [
+    524.629,
+    372.277
+  ],
+  "full_service_synthesis": {
+    "status": "running",
+    "scope": "Same complete-service active RTL bytes as the running FP32 pipeline synthesis. No current positive timing claim.",
+    "runner": ".artifacts/run-mobile-banked-texture-fp32-pipeline-synthesis-v1.py",
+    "session": 29116
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-banked-texture-fp32-main-v1-source-proof.json": "d5d95b620146e8099bf0339aaaedee3803dbdc141a550f542f3ad2ad368c1cf2",
+    ".artifacts/mobile-banked-texture-fp32-main-v1-source.json": "7389b492047b110751d1d77e03d30bb4e51e3a17ce0f39c2a742765cef113660",
+    ".artifacts/mobile-banked-texture-fp32-main-v1-source.tar.gz": "f3d5dbf092060d587546a92d750c17118e0a920bef7982e2f76041f1d194d05c",
+    ".artifacts/mobile-banked-texture-fp32-main-v1-result.json": "b20880598b5a6b48316b619169ba40654dea8a48f8834c168dfcf8e42cfef344",
+    ".artifacts/mobile-banked-texture-fp32-main-v1.log": "67769f2afe14a692ca5f8ba4ee12f6bab4c820ada2fe394ec3c53ee326f25aac",
+    ".artifacts/mobile-banked-texture-fp32-main-v1-emission-result.json": "781c6fe3d6414351f98c1316222344b5e7bfc5f655b08f219f3d6afd66a29c05",
+    ".artifacts/mobile-banked-texture-fp32-main-v1-emission.log": "823359b5adc3068791b54edfbc28b848d4a3ee1e02566b8345dd3f48bd9e5293"
+  },
+  "remaining": [
+    "inspect complete-service synthesis before main merge",
+    "native shared-cluster resource/coordinate/translation and fault admission",
+    "PTE cache policy and scoped cancellation integration",
+    "whole-native precision/rates,render-to-texture visibility and H0-H8"
+  ]
+}
