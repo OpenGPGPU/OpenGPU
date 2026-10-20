@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "19_fresh_controls_and_cycle_comparisons_pass_standalone_setup_fails",
+  "source_files": 672,
+  "source_manifest_sha256": "a6523167ef4584116f6d7221cc56ebc970725a1b45f030421ca6cea8e6a0eca5",
+  "source_base_record": {
+    "path": "docs/performance/mobile-point-line-sample-pipeline-2026-10-20.json",
+    "sha256": "d0ab579d24940e850fac6f981f88a95a6542c66ca95357b681da2bf0189a36e1"
+  },
+  "source_changes": {
+    "src/main/scala/opengpu/graphics/PointLineRasterizer.scala": {
+      "before": "b1d4a990d308ecdbf1221f127a5e188d80cb1894b31923cd12264e58a76faa6f",
+      "after": "98df71e8499a1b1371b54abd5a70f1face74928219242d7fbfb0b122d4155c9c"
+    }
+  },
+  "behavior": "Consecutive multisample line samples overlap through six tagged register stages. Lane and request remain pinned until the final sample retires. Dot acceptance advances alongside square data. Point and basic-line coverage bypass the sample arithmetic pipeline.",
+  "validation": {
+    "checks": 9,
+    "cancel_and_reset_cuts": 468,
+    "line_draws": 95,
+    "point_draws": 120,
+    "extreme_subpixel_bits": [
+      2,
+      4,
+      8,
+      16
+    ],
+    "source_unchanged": true,
+    "log": {
+      "path": ".artifacts/mobile-point-line-sample-pipeline-v2.log",
+      "sha256": "fb2adfb41b469e4d1be740b1e939090b942daee5ca565c0d21ada40ccad9b02e"
+    },
+    "rtl_emission": true
+  },
+  "prior_serialized_evidence": "docs/performance/mobile-point-line-sample-synthesis-before-2026-10-20.json",
+  "pending": [
+    "Aliased diamond interval timing still misses1000ps.",
+    "Native general image/sampler bindings,typed shader transport and full H0-H8 functional and workload closure."
+  ],
+  "limits": [
+    "No positive setup or native/composed clock,throughput,power or route claim.",
+    "General native texture binding,typed shader transport and full H0-H8 closure remain open.",
+    "Earlier206 native controls remain prior-source evidence;no fresh206 or blanket exact-source carry is claimed for the changed raster."
+  ],
+  "integration": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "source_files": 672,
+    "test_counts": [
+      9,
+      6,
+      2,
+      2
+    ],
+    "total_checks": 19,
+    "log_sha256": {
+      ".artifacts/mobile-point-line-sample-pipeline-v2.log": "fb2adfb41b469e4d1be740b1e939090b942daee5ca565c0d21ada40ccad9b02e",
+      ".artifacts/mobile-point-line-sample-integration-v2.log": "472e8e7ad52373b264677e639c595f7725abc95283d56501ae450b111076f402"
+    },
+    "scope": "Targeted point/line coverage,primitive interpolation,shared-CU vertex and native AXI image integration;not a full native206 rerun.",
+    "finished_utc": "2026-10-20T07:51:19.552972+00:00"
+  },
+  "cycle_record": "docs/performance/mobile-point-line-sample-cycles-2026-10-20.json",
+  "synthesis_record": "docs/performance/mobile-point-line-sample-synthesis-2026-10-20.json"
+}

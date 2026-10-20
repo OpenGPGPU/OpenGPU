@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import opengpu.util.{SignedProductParts, SplitSignedProduct}
 
 class PointLineRasterRequest extends Bundle {
   val point=Bool();val x0=SInt(32.W);val y0=SInt(32.W);val x1=SInt(32.W);val y1=SInt(32.W)
@@ -29,8 +30,10 @@ private[graphics] object DiamondFraction {
   * lines use exact perturbed diamond exit; multisample lines use the butt
   * rectangle. Wide basic lines replicate the one-pixel line along its minor
   * axis after integer width rounding. Each nonempty quad retains all helpers.
-  * Per-request size/delta/product stages precede scanning; sample sequencing
-  * is unchanged. Keep coordinate carries until the checked 64-bit exports.
+  * Per-request size/delta/product stages precede scanning. Sample coordinates,
+  * products, cross/dot sums and squared distance have register boundaries.
+  * Multisample line samples overlap with explicit tags; point/basic-line
+  * sequencing is unchanged and each quad retains all helpers. Keep coordinate carries until the checked 64-bit exports.
   * Integer arithmetic only; no private SRAM or floating arithmetic lane.
   */
 class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
@@ -39,7 +42,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     val in=Flipped(Decoupled(new PointLineRasterRequest));val out=Decoupled(new RasterQuad(g))
     val cancel=Input(Bool());val busy=Output(Bool());val fault=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,decode,measure,bounds,threshold,startQuad,startLane,sample,diamondU,diamondV,diamondDone,nextSample,nextLane,emit,advance=Value}
+  private object State extends ChiselEnum {val idle,decode,measure,bounds,threshold,startQuad,startLane,sample,sampleStream,diamondU,diamondV,diamondDone,nextSample,nextLane,emit,advance=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new PointLineRasterRequest);private val output=Reg(new RasterQuad(g))
   private val x=Reg(UInt(16.W));private val y=Reg(UInt(16.W));private val minX=Reg(UInt(16.W));private val maxX=Reg(UInt(16.W));private val maxY=Reg(UInt(16.W))
   private val lane=RegInit(0.U(2.W));private val sample=RegInit(0.U(2.W));private val mask=RegInit(0.U(g.maxSampleCount.W));private val any=RegInit(false.B)
@@ -58,10 +61,22 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   // Wide aliased lines translate the diamond center along the minor axis.
   private val repeat=RegInit(0.U(7.W))
   private val translation=((repeat.zext<<1)-(integerWidth.zext-1.S))*half.S
-  private val qx=cx+sampleX-Mux(!request.point && request.state.sampleMode===0.U && !majorX,translation,0.S)
-  private val qy=cy+sampleY-Mux(!request.point && request.state.sampleMode===0.U && majorX,translation,0.S)
-  private val rx=qx-&request.x0;private val ry=qy-&request.y0
-  private val cross=rx*dy-&ry*dx;private val dot=rx*dx+&ry*dy
+  private val nextQx=cx+sampleX-Mux(!request.point && request.state.sampleMode===0.U && !majorX,translation,0.S)
+  private val nextQy=cy+sampleY-Mux(!request.point && request.state.sampleMode===0.U && majorX,translation,0.S)
+  private val qx=Reg(chiselTypeOf(nextQx));private val qy=Reg(chiselTypeOf(nextQy))
+  private val nextRx=qx-&request.x0;private val nextRy=qy-&request.y0
+  private val rx=Reg(chiselTypeOf(nextRx));private val ry=Reg(chiselTypeOf(nextRy))
+  private val crossA=Reg(chiselTypeOf(rx*dy));private val crossB=Reg(chiselTypeOf(ry*dx))
+  private val dotA=Reg(chiselTypeOf(rx*dx));private val dotB=Reg(chiselTypeOf(ry*dy))
+  private val nextCross=crossA-&crossB;private val dot=dotA+&dotB
+  private val cross=Reg(chiselTypeOf(nextCross));private val withinLength=Reg(Bool())
+  private val squareParts=Reg(new SignedProductParts(cross.getWidth))
+  private val square=Reg(SInt((2*cross.getWidth).W))
+  private val sampleValid=RegInit(VecInit(Seq.fill(6)(false.B)))
+  private val sampleIndex=Reg(Vec(6,UInt(2.W)))
+  private val sampleIssued=Reg(UInt(3.W));private val sampleRetired=Reg(UInt(3.W))
+  private val withinSquare=Reg(Bool());private val withinCompare=Reg(Bool())
+  private val sampleCount=1.U(3.W)<<request.state.sampleMode
   private val lowX=Mux(request.state.scissorEnable,request.state.scissorMinX,0.U);private val lowY=Mux(request.state.scissorEnable,request.state.scissorMinY,0.U)
   private val width=ScreenLimit(request.state.screenW,g.screenWidth);private val height=ScreenLimit(request.state.screenH,g.screenHeight)
   private val highX=Mux(request.state.scissorEnable && request.state.scissorMaxX<width,request.state.scissorMaxX,width)
@@ -80,6 +95,27 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   }
   io.in.ready:=phase===State.idle;io.out.valid:=phase===State.emit;io.out.bits:=output
   io.busy:=phase=/=State.idle;io.fault:=fault
+  // Each stage owns one sample and its index. The lane and immutable request
+  // stay pinned until the final index retires, so consecutive mask hits cannot
+  // overwrite a different lane or mistake a predecessor's distance predicate.
+  sampleValid(0):=false.B
+  for(i<-1 until 6){
+    sampleValid(i):=sampleValid(i-1) && phase===State.sampleStream
+    when(sampleValid(i-1)){sampleIndex(i):=sampleIndex(i-1)}
+  }
+  when(phase===State.sampleStream){
+    when(sampleValid(0)){rx:=nextRx;ry:=nextRy}
+    when(sampleValid(1)){crossA:=rx*dy;crossB:=ry*dx;dotA:=rx*dx;dotB:=ry*dy}
+    when(sampleValid(2)){cross:=nextCross;withinLength:=dot>=0.S && dot<length}
+    when(sampleValid(3)){squareParts:=SplitSignedProduct.split(cross,cross);withinSquare:=withinLength}
+    when(sampleValid(4)){square:=SplitSignedProduct.join(squareParts);withinCompare:=withinSquare}
+    when(sampleValid(5)){
+      assert(sampleIndex(5)===sampleRetired(1,0),"sample distance must retire in index order")
+      when(withinCompare && (square.asUInt<<2)<lineBound){mask:=mask|(1.U(g.maxSampleCount.W)<<sampleIndex(5))}
+      sampleRetired:=sampleRetired+1.U
+      when(sampleRetired+&1.U===sampleCount){phase:=State.nextLane}
+    }
+  }
   switch(phase){
     is(State.idle){when(io.in.fire){request:=io.in.bits;fault:=false.B;phase:=State.decode}}
     is(State.decode){
@@ -115,18 +151,27 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
       val ex=cx-&request.x0;val ey=cy-&request.y0;val parameter=ex*dx+&ey*dy;val remaining=length-&parameter
       val safe=parameter===parameter(63,0).asSInt && remaining===remaining(63,0).asSInt
       val o=output.lanes(lane);o.x:=px.zext;o.y:=py.zext;o.area:=Mux(request.point,1.S,length);o.e0:=Mux(request.point,1.S,remaining);o.e1:=Mux(request.point,0.S,parameter);o.e2:=0.S
-      when(!request.point && !safe){fault:=true.B;phase:=State.idle}.otherwise{sample:=0.U;mask:=0.U;repeat:=0.U;phase:=State.sample}
+      when(!request.point && !safe){fault:=true.B;phase:=State.idle}.otherwise{sample:=0.U;mask:=0.U;repeat:=0.U;sampleIssued:=0.U;sampleRetired:=0.U
+        phase:=Mux(!inClip,State.nextLane,Mux(!request.point && request.state.sampleMode=/=0.U,State.sampleStream,State.sample))}
     }
     is(State.sample){
       when(!inClip){phase:=State.nextLane}
         .elsewhen(request.point){
-          val hit=rx*2.S>= -pointSize.zext && rx*2.S<pointSize.zext &&
-            ry*2.S>= -pointSize.zext && ry*2.S<pointSize.zext
+          val pointRx=nextQx-&request.x0;val pointRy=nextQy-&request.y0
+          val hit=pointRx*2.S>= -pointSize.zext && pointRx*2.S<pointSize.zext &&
+            pointRy*2.S>= -pointSize.zext && pointRy*2.S<pointSize.zext
           when(hit){mask:=mask|(1.U(g.maxSampleCount.W)<<sample)};nextSample()
-        }.elsewhen(request.state.sampleMode=/=0.U){
-          val distance=cross*cross*4.S
-          when(dot>=0.S && dot<length && distance.asUInt<lineBound){mask:=mask|(1.U(g.maxSampleCount.W)<<sample)};nextSample()
-        }.otherwise{lower:=DiamondFraction.constant(0);upper:=DiamondFraction.constant(1);valid:=true.B;inside:=true.B;phase:=State.diamondU}
+        }.otherwise{
+          qx:=nextQx;qy:=nextQy
+          lower:=DiamondFraction.constant(0);upper:=DiamondFraction.constant(1)
+          valid:=true.B;inside:=true.B;phase:=State.diamondU
+        }
+    }
+    is(State.sampleStream){
+      when(sampleIssued<sampleCount){
+        qx:=nextQx;qy:=nextQy;sampleValid(0):=true.B;sampleIndex(0):=sample
+        sample:=sample+1.U;sampleIssued:=sampleIssued+1.U
+      }
     }
     is(State.diamondU){slab(request.x0.pad(64)+request.y0,request.x1.pad(64)+request.y1,qx+&qy,second=false);phase:=State.diamondV}
     is(State.diamondV){slab(request.x0.pad(64)-request.y0,request.x1.pad(64)-request.y1,qx-&qy,second=true);phase:=State.diamondDone}
@@ -141,5 +186,5 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     is(State.advance){when(x+&2.U>maxX){x:=minX;when(y+&2.U>maxY){phase:=State.idle}.otherwise{y:=y+2.U;phase:=State.startQuad}}
       .otherwise{x:=x+2.U;phase:=State.startQuad}}
   }
-  when(io.cancel && phase=/=State.idle && phase=/=State.emit){phase:=State.idle}
+  when(io.cancel && phase=/=State.idle && phase=/=State.emit){phase:=State.idle;sampleValid.foreach(_:=false.B)}
 }

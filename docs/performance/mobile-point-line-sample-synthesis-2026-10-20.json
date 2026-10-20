@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "overlapped_samples_full_mapping_pass_setup_fail",
+  "source_files": 672,
+  "source_manifest_sha256": "a6523167ef4584116f6d7221cc56ebc970725a1b45f030421ca6cea8e6a0eca5",
+  "source_unchanged": true,
+  "rtl_unchanged": true,
+  "reported_setup_slacks_ps": [
+    -1107.758,
+    641.366
+  ],
+  "mapped_cells": 163555,
+  "core_fmax_estimate_mhz": 474.438,
+  "core_path": {
+    "start": "request_y0[0]$_DFFE_PP_",
+    "end": "lower_numerator[30]$_SDFFCE_PP0P_"
+  },
+  "constraints": {
+    "scope": "Standalone synthesis only",
+    "period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "retiming": false
+  },
+  "artifacts": {
+    "generated/qualification/ppa/mobile-point-line-sample-2026-10-20-v2/result.json": "995657f2902328409a2e28e535de258e9235e20064ebccc6e0136a223953b0cd",
+    "generated/qualification/ppa/mobile-point-line-sample-2026-10-20-v2/qualification.json": "8e4f21a8a1d7a3288bfc0768de7eaa09341ecf121c22d1e932c03d01c541de8a",
+    "generated/qualification/ppa/mobile-point-line-sample-2026-10-20-v2/manifest.json": "cab658c3b3da6bed8e01b4af6ea4bcb73dfd2119374ebab4410a65ece76134e1",
+    "generated/qualification/ppa/mobile-point-line-sample-2026-10-20-v2/flow/synthesis_sta.log": "babe32bfbad2742c149d5f02e1379f11d3ac6fd81e31c0484105840f9a3da29f",
+    ".artifacts/mobile-point-line-sample-synthesis-v2-result.json": "f27e474e7b17c813172de097b961a6a73dd944850f0be930c731c1f19885553f",
+    ".artifacts/mobile-point-line-sample-synthesis-v2-inputs.json": "9e83b3ca1236360224a0f93cd9c7cecf9b0506a23e14366e5f03096f76192ef7"
+  },
+  "limits": [
+    "Aliased diamond interval path still misses1000ps; no positive core setup.",
+    "No native/composed clock,frame throughput,power or route claim.",
+    "Previous full-replay and standalone screens retain their distinct RTL/context scopes."
+  ]
+}

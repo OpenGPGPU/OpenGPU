@@ -49,10 +49,17 @@ int main(int argc, char **argv) {
                 d.io_in_bits_state_version = 1;
                 d.io_in_bits_state_screenW = d.io_in_bits_state_screenH = 8;
                 d.io_in_bits_state_cullMode = 0;
+#ifdef OPENGPU_POINT_LINE_HAS_FRONT_FACE
                 d.io_in_bits_state_frontFaceCCW = 1;
+#endif
                 d.io_in_bits_state_sampleMode = mode;
                 d.io_in_bits_state_pointSize = bits(point ? size : 1.f);
                 d.io_in_bits_state_lineWidth = bits(point ? 1.f : size);
+#ifdef OPENGPU_POINT_LINE_HAS_POLYGON_OFFSET
+                d.io_in_bits_state_polygonOffsetEnable = 0;
+                d.io_in_bits_state_polygonOffsetFactor = 0;
+                d.io_in_bits_state_polygonOffsetUnits = 0;
+#endif
                 d.io_in_bits_state_scissorEnable = 0;
                 d.io_in_bits_state_scissorMinX = d.io_in_bits_state_scissorMinY = 0;
                 d.io_in_bits_state_scissorMaxX = d.io_in_bits_state_scissorMaxY = 8;

@@ -6024,3 +6024,73 @@ Validation remains 206 native checks carried by exact source/RTL identity plus
 The four standalone image synthesis results carry by identical RTL logic and
 unchanged constraints. Native general image/sampler binding, typed shader
 transport, remaining formats/filtering and full H0-H8 completion remain open.
+
+
+## Registered point/line sample coverage (2026-10-20)
+
+The [sample-pipeline candidate](performance/mobile-point-line-sample-pipeline-2026-10-20.json)
+breaks the historical native point/line mask path into registered coordinates,
+products, cross/dot results and exact squared distance. All 9 component controls
+pass, including independent point/line coverage, four subpixel widths and 848
+cancellation/reset cuts with exact reuse. Default RTL emission passes and the
+672-file source stays frozen. Sample/lane ordering and full-width arithmetic
+remain exact; additional cycles do not establish a throughput improvement.
+Primitive/shared-CU/AXI integration and standalone synthesis remain pending.
+No native replay/host timing or broader H0-H8 completion is claimed.
+
+
+## Sample pipeline integration and retained timing miss (2026-10-20)
+
+All 19 targeted checks pass on the frozen 672-file sample-pipeline source:9
+coverage controls,6 primitive interpolation controls,2 shared-CU point/line
+controls and2 production AXI triangle/line/point controls. The [standalone screen](performance/mobile-point-line-sample-synthesis-before-2026-10-20.json)
+passes full mapping but fails setup at -1152.545 ps, with I/O +627.933 ps. The
+remaining path reaches the aliased diamond interval denominator from an endpoint.
+All [15 matched cycle fixtures](performance/mobile-point-line-sample-cycles-before-2026-10-20.json)
+retain every quad field, but serialized sample stages add substantial cycles
+(e.g. unit-width4x line683 to2219). This candidate stays isolated while sample
+stages are overlapped and point/basic-line overhead is removed. No positive
+native timing or throughput result is claimed; PPA remains synthesis only.
+
+
+## Overlapped line samples and original point/basic-line branches (2026-10-20)
+
+The [overlap candidate](performance/mobile-point-line-sample-overlap-2026-10-20.json)
+streams consecutive multisample line samples through six tagged register stages,
+retaining the lane/request until the last index retires. Dot acceptance follows
+the same sample as its squared distance. Points and basic lines bypass these
+arithmetic stages. All9 controls pass, including468 cancellation/reset cuts,
+exact reuse and four extreme-coordinate subpixel configurations; RTL emission
+passes on the frozen672-file source. Fresh native integration, matched cycle
+comparison and standalone synthesis remain pending. The retained aliased diamond
+setup miss, native general resources and full H0-H8 objective remain open.
+
+
+## Overlap cycle and standalone synthesis measurements (2026-10-20)
+
+All [15 matched fixtures](performance/mobile-point-line-sample-cycles-2026-10-20.json)
+retain every quad field. Point/basic-line cycle counts match the prior main
+component. Unit-width4x line cycles are811, versus683 before sample pipelining
+and2219 for the first serial candidate;2x remains683 versus427. The revised
+checked-in probe also preserves all15 historical setup-policy assertions.
+The [fresh standalone synthesis](performance/mobile-point-line-sample-synthesis-2026-10-20.json)
+passes full mapping with163555 cells but misses setup by1107.758ps; I/O setup
+is+641.366ps. The aliased diamond interval update remains critical. No native
+clock, frame throughput, power or route qualification is claimed.
+
+
+## Completed overlap integration controls (2026-10-20)
+
+The [overlap source](performance/mobile-point-line-sample-overlap-2026-10-20.json)
+passes all19 fresh targeted controls on unchanged672-file hardware/test source:
+9 coverage,6 primitive interpolation,2 actual shared-CU vertex and2 production
+AXI image controls. Both local payload modes preserve exact point/line inputs,
+source/resolve images, depth and cached consumers. All15 cycle fixtures and15
+legacy setup-policy controls pass with the checked-in measurement tool.
+
+Standalone mapping passes, but the aliased diamond path still misses setup by
+1107.758ps. The earlier206 native checks remain evidence for their prior source,
+not a fresh206 run or blanket carry to this raster revision. Main promotion
+requires exact committed/working source and probe hashes, preservation of the
+unrelated Gallium commit and the remaining worktree edit. Full H0-H8 functional
+closure and representative throughput remain open; PPA remains synthesis only.
