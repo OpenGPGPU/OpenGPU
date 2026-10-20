@@ -5221,7 +5221,11 @@ independently reproduced failures: simultaneous AR/AW acceptance into one addres
 state and live status changes leaking into a stalled RDATA response. Exclusive
 transaction grants and a first-stall holding register preserve the existing
 unstalled beat rate. All nine control/discovery/burst/reset/fill/VM-owner checks
-pass on 627 unchanged source/ABI files. Full converted-input native image,
-fault/reset composition and default four-CU emission are being requalified on
-the combined source. These feature-branch checkpoints do not close H0-H8,
+pass on 627 unchanged source/ABI files. The [complete 37-check composition](performance/mobile-host-axi-native-composition-2026-10-20.json)
+also passes on that same source: twenty component/image-owner and seventeen
+native host cases, all 22 unfiltered faults, four converted-input profiles,
+cached sources/resolves, held completion and reset/reuse. Default four-CU
+emission completes with 371 active RTL files and unchanged SRAM/AXI capacities.
+Later centroid and current-main core changes require their separate merged-source
+regression. These feature-branch checkpoints do not close H0-H8,
 GLES resource/format coverage, full Mobile throughput or physical qualification.
