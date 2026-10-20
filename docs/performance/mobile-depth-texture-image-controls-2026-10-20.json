@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "169_controls_passed_final_host_group_live",
+  "observed_utc": "2026-10-20T06:16:52.278000+00:00",
+  "source_files": 650,
+  "source_unchanged_at_checkpoint": true,
+  "passed_groups": [
+    113,
+    16,
+    3,
+    13,
+    24
+  ],
+  "passed_checks": 169,
+  "expected_total": 206,
+  "remaining_checks": 37,
+  "remaining_groups": [
+    37
+  ],
+  "sbt_pid_confirmed_live": 80768,
+  "coverage": "All24 image controls pass: actual shared-CU native/typed vertex-bin and replay publication; local/global payloads; indexed instances; 1x/4x four-MRT/depth/resolve guard-byte oracles; two-engine concurrency and one-slot/cached paths; raw integer replay; malformed admission/records; primary faults; held launch/lease/physical-ack cancellation; exact healthy reuse.",
+  "markers": [
+    "NATIVE_BINNED_IMAGE local=true CUs=2 peakBusy=2 draws=2 vertexTasks=2 sourceVertices=6 tiles=6 references=12 cycles=114570 fourDescriptorTags=true disjointMemoryIDs=true independentProgress=true exactFourMRTDepthResolve=true immutableSubmitContexts=true noReplayVertexTasks=true",
+    "NATIVE_BINNED_IMAGE local=false CUs=2 peakBusy=2 draws=2 vertexTasks=2 sourceVertices=6 tiles=6 references=12 cycles=120782 fourDescriptorTags=true disjointMemoryIDs=true independentProgress=true exactFourMRTDepthResolve=true immutableSubmitContexts=true noReplayVertexTasks=true",
+    "NATIVE_BINNED_INSTANCES indexed=true instances=2 draws=2 vertexTasks=2 parts=4 references=24 tiles=6 cycles=210584 exactFourMRTDepthResolve=true",
+    "NATIVE_BINNED_MSAA samples=4 draws=2 vertexTasks=2 tiles=6 perSampleOracle=true exactFourMRTDepthResolveGuards=true",
+    "TYPED_VERTEX_BIN_IMAGE_SHARED local=true CUs=2 draws=2 vertexTasks=2 sourceVertices=6 references=12 tiles=6 cycles=113663 independentProgress=true fourMRT=true lateDepthBlend=true exactSourceResolveGuards=true immutableContexts=true noReplayVertexTasks=true",
+    "TYPED_VERTEX_BIN_IMAGE_SHARED local=false CUs=2 draws=2 vertexTasks=2 sourceVertices=6 references=12 tiles=6 cycles=119663 independentProgress=true fourMRT=true lateDepthBlend=true exactSourceResolveGuards=true immutableContexts=true noReplayVertexTasks=true",
+    "TYPED_VERTEX_BIN_IMAGE_INSTANCES indexed=true instances=2 draws=2 sourceVertices=12 vertexTasks=2 parts=4 references=24 tiles=6 cycles=209579 exactMRTDepthResolve=true independentProgress=true",
+    "TYPED_VERTEX_BIN_IMAGE_MSAA samples=4 draws=2 vertexTasks=2 parts=2 references=12 tiles=6 perSampleOracle=true fourMRTDepth=true exactSourceResolveGuards=true",
+    "TYPED_VERTEX_BIN_IMAGE_FAULTS recordRead=true fragmentTrap=true physicalStore=true primaryStage=true attributedTile=true allLeasesDrained=true exactHealthyReuse=true",
+    "TYPED_VERTEX_BIN_IMAGE_CANCEL heldPrimitive=true heldLaunchAndLease=true physicalAckAfterAllShaders=true VMHeld=true poolDrained=true exactHealthyReuse=true",
+    "TYPED_REPLAY_IMAGE local=true modes1x4x=true MRTs=4 trianglePointLine=true stateCache=true perSampleDepth=true shaderOverride=true blend=true sourceResolveGuards=true noVertexTasks=true",
+    "TYPED_REPLAY_IMAGE local=false modes1x4x=true MRTs=4 trianglePointLine=true stateCache=true perSampleDepth=true shaderOverride=true blend=true sourceResolveGuards=true noVertexTasks=true",
+    "TYPED_REPLAY_PARALLEL engines=2 CUs=2 usedCuMask=3 oneSlot=false simultaneousCUOwnership=true privateStateSlots=true sourceResolveGuards=true cachedSharedBoundary=true heldConsumerInvalidation=true cachedConsumer=true repeatedReadHit=true",
+    "TYPED_REPLAY_PARALLEL engines=2 CUs=2 usedCuMask=3 oneSlot=true simultaneousCUOwnership=true privateStateSlots=true sourceResolveGuards=true cachedSharedBoundary=true heldConsumerInvalidation=true cachedConsumer=true repeatedReadHit=true",
+    "TYPED_REPLAY_INTEGER formats=4 modes1x4x=true uintSintRaw=true engine0And1=true crossEngineScratchUntouched=true",
+    "TYPED_REPLAY_ADMISSION emptyClear=true bindingRejects=3 stateSlotRejects=3 beforeShader=true noFailedPublication=true healthyReuse=true",
+    "TYPED_REPLAY_RECORDS rejected=5 tileOrdinalTokenIdentityHandle=true noShader=true noFailedPublication=true healthyReuse=true",
+    "TYPED_REPLAY_FAULTS stateRead=true shaderTrap=true physicalStore=true primaryStage=true faultRecordValidity=true exactHealthyReuse=true",
+    "TYPED_REPLAY_CANCEL heldPrimitiveResult=true heldLaunchAndLease=true heldPhysicalAck=true VMHeld=true exactHealthyReuse=true"
+  ],
+  "evidence": {
+    "mobile-depth-texture-composed-source-v1.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-source-v1.json",
+      "sha256": "4cd5de331d3bba534643968d63f085743d7ec250b25fe7f9d5dbb556bba11193"
+    },
+    "mobile-depth-texture-composed-source-v1.tar.gz": {
+      "path": ".artifacts/mobile-depth-texture-composed-source-v1.tar.gz",
+      "sha256": "4474397fe6aa2469d13c84d069d800630c2ef363f4824ea5d0e9bf0549b57797"
+    },
+    "mobile-depth-texture-image-controls-prefix-v1.log": {
+      "path": ".artifacts/mobile-depth-texture-image-controls-prefix-v1.log",
+      "sha256": "cf9db3a81104a540955c71a2646590b779c562666e6b23d92e27a5840f66fc70"
+    },
+    "mobile-depth-texture-composed-qualified-v1-start.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-qualified-v1-start.json",
+      "sha256": "c9b430e8fb4c5448ddcb0f79abd8538233ddb1e5ff3220ff726332aee30b0560"
+    }
+  },
+  "limits": [
+    "Completed169-check prefix on isolated650-file source; the final37 native host checks, including composed matrices/reset, remain pending.",
+    "This source is not promoted. Independently qualified image address/level/fetch components on main are excluded from this650-file run.",
+    "No completed composed synthesis, H0-H8/GLES/resource closure or place-and-route result is claimed. PPA remains synthesis only."
+  ]
+}

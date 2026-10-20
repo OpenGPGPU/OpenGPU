@@ -5531,7 +5531,6 @@ legacy-equivalence evidence is not an integration result for this source.
 No new mode is advertised on main, and H4/H6/general resources remain open.
 PPA evaluation remains synthesis only.
 
-
 ## Native texture actual-CU stage checkpoint (2026-10-20)
 
 The [four actual-CU stage controls](performance/mobile-native-texture-policy-stage-controls-2026-10-20.json)
@@ -5825,3 +5824,16 @@ identity, typed shader transport, mip/LOD/filtering and compressed decoding rema
 required. The independent 206-check depth/facing/texture run excludes these new
 components and remains in progress. H4/H6 and the full hardware goal remain open;
 PPA evaluation remains synthesis only.
+
+## Combined typed/native image checkpoint (2026-10-20)
+
+The [169-check completed prefix](performance/mobile-depth-texture-image-controls-2026-10-20.json)
+adds all 24 typed/native image controls to the earlier 145 checks on unchanged
+650-file source. Actual shared-CU vertex-bin and replay publication, indexed
+instances, local/global payloads, 1x/4x MRT/depth/resolve guards, two-engine
+concurrency, one-slot/cached paths, raw integer replay and primary fault/cancel
+drain with exact healthy reuse pass. The final 37 native host controls remain
+live in their original process; their composed matrices/reset results remain
+pending. This candidate remains isolated and excludes the independently qualified
+address/level/fetch components now on main. No complete 206-check or composed
+synthesis result is claimed. The full hardware goal remains open.
