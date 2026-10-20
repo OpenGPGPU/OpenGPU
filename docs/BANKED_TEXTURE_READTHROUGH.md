@@ -3,7 +3,8 @@
 Status: [nineteen distinct component checks](performance/mobile-banked-texture-readthrough-2026-10-21.json)
 pass on812 frozen inputs. Eighteen checks pass together;an appended fault/cancel
 race passes on otherwise identical inputs with all prior test bodies retained.
-Read-through and resident-default synthesis are running. Native shader
+Resident-default synthesis passes1000ps including I/O (+172.334/+85.011ps);
+the full read-through synthesis screen remains active. Native shader
 resource/translation integration and the H4 exit gates remain open.
 
 `BankedRgba8TextureHits(readThrough=true)` connects the four-bank8KiB cache,
