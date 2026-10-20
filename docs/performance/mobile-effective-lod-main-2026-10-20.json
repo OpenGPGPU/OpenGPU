@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "qualified_effective_LOD_sampling_merged_and_audited_on_main",
+  "main_commit": "51be53f0291f1d531ef11e65d18bf4a1b0e40126",
+  "qualified_source_commit": "261cd8168cf76afffe605e6f5f8505e2b5217e03",
+  "source_files": 788,
+  "source_manifest_sha256": "339c297f3d7cde125c5b9e9c76b398e8d697f13b03749b486e7dd99a6e3ad78c",
+  "parent_catalog_plus_delta_exact": true,
+  "root_main_and_qualified_worktree_source_exact": true,
+  "main_git_archive_source_exact": true,
+  "main_archive_sha256": "cb8b492adc0fc6503b2d92e78a2e74f433ad719f61a1945b23b317dee04cde4e",
+  "distinct_tests": 107,
+  "ABI_checks": 9,
+  "existing_software_ABIs_unchanged": true,
+  "test_and_synthesis_artifact_hashes_exact": true,
+  "synthesis_profiles": {
+    "sample": [
+      179.638,
+      408.384
+    ],
+    "div": [
+      324.168,
+      390.675
+    ]
+  },
+  "new_commits_with_exactly_one_agent_trailer": 17,
+  "root_user_files_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": 420
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": 420
+    }
+  },
+  "qualification_record": "docs/performance/mobile-effective-lod-sampling-2026-10-20.json",
+  "synthesis_record": "docs/performance/mobile-effective-lod-synthesis-2026-10-20.json",
+  "limits": [
+    "Internal endpoint consumes an explicit effective FP32 lambda; native floating packet/instruction transport, shader bias, gradient and implicit quad/helper LOD remain open.",
+    "One request owns serialized admission, cube arithmetic, tap fetching and reused FMA filtering; no texture-cluster throughput claim.",
+    "Parent pins publication and address translation until retirement and explicitly invalidates on rebinding. No new software capability is advertised.",
+    "Banked texture caches, miss joining, coherence, broader integration and the original H0-H8 requirements remain open.",
+    "Cube double-border corners select one available current-face corner texel as permitted by GLES3.",
+    "Synthesis only; no routing, power, whole-GPU clock or frame-rate closure."
+  ]
+}
