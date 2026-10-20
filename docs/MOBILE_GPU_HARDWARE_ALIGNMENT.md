@@ -5487,3 +5487,18 @@ The remaining 13 vertex, 24 prepared/bin image and 33 native-host image/fault/
 reset checks are still running. Final default-host emission follows those
 groups. This is a partial qualification, with G04/H6/H0–H8, full precision,
 rates and PPA open. PPA remains synthesis only.
+
+
+## Live vertex depth-composition controls completed (2026-10-20)
+
+The [119 completed checks](performance/mobile-depth-native-vertex-controls-2026-10-20.json)
+now include all 106 initial controls and all thirteen vertex/raster/fragment
+pipeline checks on the same unchanged 643-file source. Actual-CU local/global
+paths retain indexed/instanced inputs, point/line/clipped geometry, guarded
+uniforms, payload spill/progress, distinct stage samplers, held exports, VM
+ownership and fault/cancellation drain.
+
+The remaining 24 prepared/bin image and 33 native-host image/fault/reset checks
+and final host emission continue on the same live process. The frozen log
+prefix records this partial result; full composition, resources, precision,
+representative rates and H0–H8 remain open. PPA is synthesis only.

@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Completed106 controls and13 live vertex/pipeline checks in the ongoing176 composition",
+  "source_files": 643,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-native-composed-source-v1.json",
+    "sha256": "42f94258ec699a2a35f1a841579d122c9e4b39006bed94e6155f00431bdc3a57"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-native-composed-source-v1.tar.gz",
+    "sha256": "68de99e6934a86bf578ceaca533ba880648fde47057973cb7b46c433ac2fa2bd"
+  },
+  "completed_log_prefix": {
+    "path": ".artifacts/mobile-depth-native-composed-vertex-controls-v1.log",
+    "sha256": "ef42adf502779027f889b5c053eb894f2d0112fb8f143147dea92a85dae78d30"
+  },
+  "passed_groups": [
+    106,
+    13
+  ],
+  "passed_total": 119,
+  "vertex_suites": {
+    "VertexRasterPipelineSpec": 6,
+    "VertexFragmentPipelineSpec": 7
+  },
+  "source_unchanged_at_checkpoint": true,
+  "vertex_coverage": [
+    "Actual shared-CU indexed/instanced vertex-to-raster/fragment paths with local/global payloads and guarded uniforms.",
+    "Point sizes, point coordinates, clipped lines, perspective/flat values and held exports with VM ownership.",
+    "Cross-stage admission, empty source/viewport, one-slot spill/progress, cancellation and primary fault attribution.",
+    "Distinct vertex/fragment texture bindings through the same physical CUs, texture snapshots and drain."
+  ],
+  "remaining_groups": [
+    24,
+    33
+  ],
+  "remaining_checks": 57,
+  "sbt_pid_confirmed_live": 20063,
+  "observed_utc": "2026-10-20T03:47:37.186464+00:00",
+  "limits": [
+    "The57 prepared/bin/native image/fault/reset cases and final host emission are still running; this is not a176-check success.",
+    "These bounded two-CU runtime profiles do not establish full mobile rates or every capacity/resource combination.",
+    "No new PPA, general precision/invariance, API or H0-H8 closure."
+  ]
+}
