@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "standalone_full_mapping_and_all_reported_setup_pass",
+  "module": "PointLineRasterizer",
+  "source_files": 674,
+  "source_manifest_sha256": "987d2682521218b808c39e2aec7340c205fb206ba548190bff6107b4c6743e81",
+  "terminal": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 236.12408641609363,
+    "finished_utc": "2026-10-20T10:06:41.086622+00:00"
+  },
+  "reported_setup_slacks_ps": [
+    25.772,
+    619.101
+  ],
+  "mapped_cells": 136328,
+  "core_fmax_estimate_mhz": 1026.454,
+  "matched_inputs": {
+    "port_signature_byte_identical": true,
+    "port_signature_sha256": "1b7d6ff8262be505582f24ef6127bbd1e685cfdbe750b418681d10a129311a24",
+    "declared_gate_sdc_byte_identical": true,
+    "gate_sdc_sha256": "b83b6b6693ab29ae8a50532609e1127ab2544fbd711196dcb20109bcefc19123",
+    "matching_constraints": {
+      "module_name": "PointLineRasterizer",
+      "clock_port": "clock",
+      "clock_period": 1000.0,
+      "io_delay_percent": 0.25,
+      "cell_vt": "SLVT",
+      "corner": "TC",
+      "synthesis_engine": "yosys",
+      "enable_retiming": false,
+      "sv_frontend": "native",
+      "synthesis_only": true,
+      "timing_effort": "explore",
+      "macro_libs": null,
+      "macro_lefs": null
+    },
+    "abc_optimization_target_ps": null,
+    "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+    "qualifier_script_sha256": "38fe4b1cad315d3e8c137536ebe35175c54aced270334305565cfa63238f325c"
+  },
+  "artifacts": {
+    "generated/qualification/ppa/mobile-point-line-bounded-2026-10-20-v6/result.json": "58f74f4ad74797d14c7aa39130caf11ea00c4342d3c033fc11a43ed5c4e3b261",
+    "generated/qualification/ppa/mobile-point-line-bounded-2026-10-20-v6/qualification.json": "53826ce5450687e7666d25486c14e5cbb774e87fa02452c208e1c1b2c3aee55d",
+    "generated/qualification/ppa/mobile-point-line-bounded-2026-10-20-v6/manifest.json": "2e0cd2a3648ad249cf51cb8cff987f53fab713ffb47524edd6ecd75e1cde60f3",
+    "generated/qualification/ppa/mobile-point-line-bounded-2026-10-20-v6/flow/synthesis_sta.log": "a6ceaac2d17601cc39d378025888fecbcb947bad4a3c59a7346c0f14e0b92de2",
+    ".artifacts/mobile-point-line-bounded-synthesis-v6-inputs.json": "2d860aefa443dd01bc073d033c01dc8c2a44c6d64b6af575b8a545ecbdfc0b32"
+  },
+  "limits": [
+    "Standalone pre-layout setup screen at1000ps and25 percent I/O,TC/SLVT,standard ABC target,no retiming,no SRAM macros.",
+    "No native/composed clock,hold,frame throughput,route,power or full H0-H8 qualification.",
+    "All preceding functional,timing and tool-timeout records remain retained."
+  ]
+}

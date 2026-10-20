@@ -1,0 +1,405 @@
+{
+  "started_utc": "2026-10-20T10:02:44.938433+00:00",
+  "harness_sha256": "558aef327d6e7329f1b8641491e6dfdc78b13a2e24a2a4a70fac5cf857f7dcc1",
+  "runner_sha256": "c1f524a807f0b48d06c1a1e1776b84017bc5b3a94d3d34c04e820774b7be0848",
+  "verilator_version": "Verilator 5.050 2026-07-01 rev vUNKNOWN-built20260701",
+  "build_jobs": 2,
+  "cxx_standard": "c++17",
+  "cycle_policy": "report",
+  "scope": "Standalone default component, 8x8 view, always-ready output; 15 common-domain primitives",
+  "cycle_definition": "Acceptance edge counts as cycle 1; count through the edge that clears busy. First offer is observed before its accepting edge.",
+  "quad_layout": "Four lanes each containing raw unsigned x,y,e0,e1,e2,area,covered,coverageMask",
+  "inputs": {
+    "subpixel_bits": 8,
+    "screen": [
+      8,
+      8
+    ],
+    "state_version": 1,
+    "line_endpoints": [
+      [
+        128,
+        128
+      ],
+      [
+        1792,
+        1280
+      ]
+    ],
+    "point_center": [
+      896,
+      1024
+    ],
+    "scissor": false
+  },
+  "models": {
+    "baseline": {
+      "rtl_path": "/Users/duckdonald/workspace/gpu/.artifacts/mobile-point-line-sample-pipeline-v1-worktree/generated/mobile-h6/point-line-sample-pipeline-v2-rtl",
+      "rtl_sha256": "69cff6235f078d7f9e300d95d36ea991d6d1162b5c1306979e6d073ab8ce7d82",
+      "rtl_files_sha256": {
+        "BlockPrefixAdder.sv": "060f871d4b38ee579dcecef8bc33a2ac4c839a5edfd80100dd90272fdb99c172",
+        "PointLineRasterizer.sv": "69cff6235f078d7f9e300d95d36ea991d6d1162b5c1306979e6d073ab8ce7d82"
+      },
+      "optional_input_defines": [
+        "-DOPENGPU_POINT_LINE_HAS_FRONT_FACE",
+        "-DOPENGPU_POINT_LINE_HAS_POLYGON_OFFSET"
+      ],
+      "executable_sha256": "37b9e1f6dae202ba2d5206d9ca2496b535774cffd25e4d1c2897a770a7be87ff",
+      "results_sha256": "974d5f1b5190444a8b6c8caf1ee3fefb0256f8b9ee206d661f3055d9a755d067"
+    },
+    "candidate": {
+      "rtl_path": "/Users/duckdonald/workspace/gpu/.artifacts/mobile-point-line-admission-pipeline-v1-worktree/generated/mobile-h6/point-line-bounded-v6-rtl",
+      "rtl_sha256": "1943dae5038561ae35685b1b30f47b96850922dcde1be716e4f04e5654ca9211",
+      "rtl_files_sha256": {
+        "BlockPrefixAdder.sv": "70d4e628611cfe0a1876912f6912343bb158b35389dc047ff94f95c49d7d2181",
+        "BlockPrefixAdder_2.sv": "ec1e2702a1e3f0e25bd4d5a96a7392edab4fe806b8d650aebd1b4f92a6a388a4",
+        "BlockPrefixAdder_6.sv": "cbf55c5a52d8aed9617d06212073a8feb955d1667cbdec4d108c8615ce03ab12",
+        "BlockPrefixAdder_8.sv": "94b54af524c65e427b81a9b8c91c28e1648b6236da6ef01c648c03d3c06cfbbc",
+        "BlockPrefixAdder_36.sv": "176cfbfde86d169de3408c6427a6bc539fff62894bdd918d8ba614255ebcfaa5",
+        "BlockPrefixAdder_38.sv": "4a335bdf6b900fbf93bffa66a110a387728aa719ef592a743968d2b905914eb1",
+        "BlockPrefixAdder_42.sv": "e2ad00145b990c50f5b4b5e0f285b64396bb40becf4e7730103b757092248b63",
+        "BlockPrefixAdder_47.sv": "4b63bc1e633e34b2ce5211db2baf58d8964e202d8682fdfd36fd06a2944c02cb",
+        "BlockPrefixAdder_48.sv": "94fbbbe77293a891ad0a7ab5017541a00bc4eb8c7001907a6e15b61a8bc4271e",
+        "PointLineRasterizer.sv": "1943dae5038561ae35685b1b30f47b96850922dcde1be716e4f04e5654ca9211"
+      },
+      "optional_input_defines": [
+        "-DOPENGPU_POINT_LINE_HAS_FRONT_FACE",
+        "-DOPENGPU_POINT_LINE_HAS_POLYGON_OFFSET"
+      ],
+      "executable_sha256": "181b1c865f85b9aed718e4628c689795941ab0889ad56e521eee099dbeebb459",
+      "results_sha256": "3c91b94e0d23fcbb4cdedb9956a8e44c081ce97a77c25b73b84cc8e8853276e2"
+    }
+  },
+  "comparisons": [
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 0,
+      "baseline_cycles": 489,
+      "candidate_cycles": 877,
+      "added_cycles": 388,
+      "first_offer_delta": 28,
+      "quads": 5,
+      "all_quad_fields_equal": true,
+      "output_sha256": "1e51710e690090f7b63b19b2adb197ffdfc845c7467f943ccddc4225e4f90186"
+    },
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 1,
+      "baseline_cycles": 683,
+      "candidate_cycles": 943,
+      "added_cycles": 260,
+      "first_offer_delta": 20,
+      "quads": 6,
+      "all_quad_fields_equal": true,
+      "output_sha256": "9d864a3bf040dc8637175346dcd08a587aad06db8b35701b93b637914339a338"
+    },
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 2,
+      "baseline_cycles": 811,
+      "candidate_cycles": 1071,
+      "added_cycles": 260,
+      "first_offer_delta": 20,
+      "quads": 6,
+      "all_quad_fields_equal": true,
+      "output_sha256": "294e339bd83411bff7d8cd5afec057b4c6d9bacacae9bc52b10632ff84ccb09c"
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 0,
+      "baseline_cycles": 721,
+      "candidate_cycles": 1225,
+      "added_cycles": 504,
+      "first_offer_delta": 32,
+      "quads": 5,
+      "all_quad_fields_equal": true,
+      "output_sha256": "98b53de8a24353f4ae243a6c68caa5fcf78825c85912a1a4a9ac9342356ac4b7"
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 1,
+      "baseline_cycles": 685,
+      "candidate_cycles": 945,
+      "added_cycles": 260,
+      "first_offer_delta": 20,
+      "quads": 8,
+      "all_quad_fields_equal": true,
+      "output_sha256": "fbf1adebaa6c0cabc31f142654216452488b06710b29c9c7bac8bc6021e6c057"
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 2,
+      "baseline_cycles": 815,
+      "candidate_cycles": 1075,
+      "added_cycles": 260,
+      "first_offer_delta": 20,
+      "quads": 10,
+      "all_quad_fields_equal": true,
+      "output_sha256": "a6248350d563dd4975d542440a13c94150b90ecea18a071361a0d44892893fc0"
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 0,
+      "baseline_cycles": 10896,
+      "candidate_cycles": 16484,
+      "added_cycles": 5588,
+      "first_offer_delta": 280,
+      "quads": 12,
+      "all_quad_fields_equal": true,
+      "output_sha256": "1808228ae12c5088b2376ecf3c7c287dfa84d2b11b282d50325a439d33abfa22"
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 1,
+      "baseline_cycles": 692,
+      "candidate_cycles": 952,
+      "added_cycles": 260,
+      "first_offer_delta": 20,
+      "quads": 15,
+      "all_quad_fields_equal": true,
+      "output_sha256": "c5505f7cc3ea41bf881d7615abb8d0bea8b969ff1a16219714d4e1f908d1dfa1"
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 2,
+      "baseline_cycles": 820,
+      "candidate_cycles": 1080,
+      "added_cycles": 260,
+      "first_offer_delta": 20,
+      "quads": 15,
+      "all_quad_fields_equal": true,
+      "output_sha256": "efc0a68b0157dfd30bad5f37d3418c5c0839f4128cbd68743155d9a08436752a"
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 0,
+      "baseline_cycles": 296,
+      "candidate_cycles": 298,
+      "added_cycles": 2,
+      "first_offer_delta": 2,
+      "quads": 4,
+      "all_quad_fields_equal": true,
+      "output_sha256": "f1167222a2cda63b948a2e6bebc6dcb03dbeb6f4468757f18a822fe12c414ea6"
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 1,
+      "baseline_cycles": 424,
+      "candidate_cycles": 426,
+      "added_cycles": 2,
+      "first_offer_delta": 2,
+      "quads": 4,
+      "all_quad_fields_equal": true,
+      "output_sha256": "30c9ef6478113d2f2a6b4d04168e1ee13dabef8ac2790644450bc33c85c35082"
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 2,
+      "baseline_cycles": 680,
+      "candidate_cycles": 682,
+      "added_cycles": 2,
+      "first_offer_delta": 2,
+      "quads": 4,
+      "all_quad_fields_equal": true,
+      "output_sha256": "1a2afd14a7f687f74aee559d0bf3f862b4e0a96fdf76903cb04037d240103114"
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 0,
+      "baseline_cycles": 308,
+      "candidate_cycles": 310,
+      "added_cycles": 2,
+      "first_offer_delta": 2,
+      "quads": 16,
+      "all_quad_fields_equal": true,
+      "output_sha256": "cef5e345f7d731941e550527bf95128f504881f7fd2ca8a2d8d5a58dd9b30463"
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 1,
+      "baseline_cycles": 436,
+      "candidate_cycles": 438,
+      "added_cycles": 2,
+      "first_offer_delta": 2,
+      "quads": 16,
+      "all_quad_fields_equal": true,
+      "output_sha256": "f26d2fde51b92c564a3dfbe90118260965dd343eea8fc93cb503c079716f6830"
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 2,
+      "baseline_cycles": 692,
+      "candidate_cycles": 694,
+      "added_cycles": 2,
+      "first_offer_delta": 2,
+      "quads": 16,
+      "all_quad_fields_equal": true,
+      "output_sha256": "ed3c81ced1198eb540dcd9203d0dffd8cb5703d043b281753b2965b4ba4e8bb0"
+    }
+  ],
+  "passed": true,
+  "finished_utc": "2026-10-20T10:02:58.199196+00:00",
+  "parent_latency_control": {
+    "path": ".artifacts/mobile-point-line-bounded-latency-v6/comparison.json",
+    "sha256": "fae614f38686c71e3f0e0d9b3d202f16b68403cee69e1dffcf4ec38bd7520acc",
+    "cases": 15,
+    "all_output_fields_total_cycles_and_first_offer_equal": true
+  },
+  "owner_width_proof": {
+    "schema": 1,
+    "proof": "Typed center magnitude plus typed axis magnitude plus half pixel is less than2^35;37-bit difference carries are asserted canonical by the owner. No public endpoint or configuration limit changes.",
+    "rows": [
+      {
+        "subpixel_bits": 2,
+        "coordinate_bits": 20,
+        "center_bits": 21,
+        "axis_bits": 33,
+        "half": 2,
+        "numerator_abs_bound": 4296015874,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 3,
+        "coordinate_bits": 21,
+        "center_bits": 22,
+        "axis_bits": 33,
+        "half": 4,
+        "numerator_abs_bound": 4297064452,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 4,
+        "coordinate_bits": 22,
+        "center_bits": 23,
+        "axis_bits": 33,
+        "half": 8,
+        "numerator_abs_bound": 4299161608,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 5,
+        "coordinate_bits": 23,
+        "center_bits": 24,
+        "axis_bits": 33,
+        "half": 16,
+        "numerator_abs_bound": 4303355920,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 6,
+        "coordinate_bits": 24,
+        "center_bits": 25,
+        "axis_bits": 33,
+        "half": 32,
+        "numerator_abs_bound": 4311744544,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 7,
+        "coordinate_bits": 25,
+        "center_bits": 26,
+        "axis_bits": 33,
+        "half": 64,
+        "numerator_abs_bound": 4328521792,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 8,
+        "coordinate_bits": 26,
+        "center_bits": 27,
+        "axis_bits": 33,
+        "half": 128,
+        "numerator_abs_bound": 4362076288,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 9,
+        "coordinate_bits": 27,
+        "center_bits": 28,
+        "axis_bits": 33,
+        "half": 256,
+        "numerator_abs_bound": 4429185280,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 10,
+        "coordinate_bits": 28,
+        "center_bits": 29,
+        "axis_bits": 33,
+        "half": 512,
+        "numerator_abs_bound": 4563403264,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 11,
+        "coordinate_bits": 29,
+        "center_bits": 30,
+        "axis_bits": 33,
+        "half": 1024,
+        "numerator_abs_bound": 4831839232,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 12,
+        "coordinate_bits": 30,
+        "center_bits": 31,
+        "axis_bits": 33,
+        "half": 2048,
+        "numerator_abs_bound": 5368711168,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 13,
+        "coordinate_bits": 31,
+        "center_bits": 32,
+        "axis_bits": 33,
+        "half": 4096,
+        "numerator_abs_bound": 6442455040,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 14,
+        "coordinate_bits": 32,
+        "center_bits": 33,
+        "axis_bits": 33,
+        "half": 8192,
+        "numerator_abs_bound": 8589942784,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 15,
+        "coordinate_bits": 33,
+        "center_bits": 34,
+        "axis_bits": 33,
+        "half": 16384,
+        "numerator_abs_bound": 12884918272,
+        "fits_signed36": true
+      },
+      {
+        "subpixel_bits": 16,
+        "coordinate_bits": 34,
+        "center_bits": 35,
+        "axis_bits": 33,
+        "half": 32768,
+        "numerator_abs_bound": 21474869248,
+        "fits_signed36": true
+      }
+    ],
+    "all_supported_subpixel_precisions_proven": true
+  }
+}

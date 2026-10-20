@@ -6327,3 +6327,17 @@ subpixel configurations remain supported. All13 controls pass on unchanged674
 source files:4871 arithmetic cases at each width,39015 order cases,2401 lattice
 lines and600 cancellation/reset cuts. Fresh integration,cycles and standard
 synthesis remain pending;no positive clock or full H0-H8 result is claimed.
+
+
+## Positive standard point/line synthesis screen (2026-10-20)
+
+The [bounded raster owner screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json)
+passes full mapping and all reported setup groups at unchanged1000ps,25 percent
+I/O,TC/SLVT and no retiming:core+25.772ps and I/O+619.101ps,with136328 mapped
+cells. The standalone port signature,SDC and tool commit match the earlier
+source;ABC uses its standard target,not the failed900ps experiment.
+All [15 cycle fixtures](performance/mobile-point-line-diamond-final-cycles-2026-10-20.json)
+retain every output and exact parent latency. The typed numerator proof covers
+all15 subpixel precisions2..16. Native integration checks remain pending for
+this source;no whole-GPU clock,hold,frame rate,route,power or full H0-H8 closure
+is claimed from this standalone setup screen.
