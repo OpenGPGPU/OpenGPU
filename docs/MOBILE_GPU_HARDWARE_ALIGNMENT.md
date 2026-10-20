@@ -5373,3 +5373,24 @@ alone. Further timing work must cut the measured per-sample coverage path.
 This maps one replay engine and predates centroid/polygon-offset integration;
 native host/four-CU timing, representative frame rates, full budgets and H0-H8
 remain open. PPA remains **synthesis only**.
+
+
+## Qualified centroid main integration (2026-10-20)
+
+The [promotion reconciliation](performance/mobile-centroid-main-promotion-2026-10-20.json)
+retains the 99 production-path checks from the completed 102-check composition,
+excluding three isolated checks and the unused polygon-offset candidate after
+its later flat-slope failure. Of 633 retained source/ABI files, 631 match the
+qualified snapshot exactly. The remaining two remove the unused emitter case
+and default optional inputs in a legacy direct-raster test harness.
+
+On this promoted source, all four direct-raster checks and four ABI checks pass,
+and CI selection passes. Re-emitted replay and default four-CU host RTL match
+every prior emitted SystemVerilog file after comments/whitespace are removed,
+including ports, reachable hierarchy and SRAM macros. This preserves the
+qualified active hardware; it does not claim a newly executed 103-check suite.
+
+The host retains four CUs, one shared payload pool and two replay engines.
+Polygon offset and general depth precision corrections remain on development
+branches. The recorded synthesis screen still misses 1 GHz setup; no new
+frame-rate or power claim, and H0–H8 remain open. PPA is synthesis only.

@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Qualified pre-polygon centroid main promotion with unused failed candidate excluded",
+  "based_on_commit": "525d22bd26d3559afa5234c06099989e73a63761",
+  "source_files": 633,
+  "source_manifest": {
+    "path": ".artifacts/mobile-centroid-main-promotion-source-v1.json",
+    "sha256": "0b0cbd312dc03f1d98d252d709bb1c1ed25687530e08dc03c6d4112e3131a504"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-centroid-main-promotion-source-v1.tar.gz",
+    "sha256": "b3229b676899954eac71078018d9a943b6d1eb79554df14ed80589ff1080225a"
+  },
+  "result": {
+    "path": ".artifacts/mobile-centroid-main-promotion-v1-result.json",
+    "sha256": "dc8d01113f03fe62ff8fd2bb90ec51cc036eb4ee2f4ec02c3ce2b6a3ddc6eddb"
+  },
+  "log": {
+    "path": ".artifacts/mobile-centroid-main-promotion-v1.log",
+    "sha256": "fbd25f34e129c1a5b8de436385307978b52037fc2b09c5dca8754124cb876f07"
+  },
+  "rtl_audit": {
+    "path": ".artifacts/mobile-centroid-main-promotion-rtl-audit-v1.json",
+    "sha256": "e0044410543c736b2a40c4885cc7fea6e25ee09b2c0f659248cfecca0a217828"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "tests": [
+        4
+      ],
+      "success_tasks": 7
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 220.6710483750794,
+    "finished_utc": "2026-10-20T03:11:09.614338+00:00"
+  },
+  "source_reconciliation": {
+    "prior_qualified_source_files": 635,
+    "identical_retained_files": 631,
+    "removed": [
+      "src/main/scala/opengpu/graphics/PolygonDepthOffset.scala",
+      "src/test/scala/opengpu/graphics/PolygonDepthOffsetSpec.scala"
+    ],
+    "changed": [
+      "src/main/scala/opengpu/elaboration/EmitPpaRtl.scala",
+      "src/test/scala/opengpu/graphics/RasterFp32InterpolationSpec.scala"
+    ],
+    "changes_scope": "Remove only the unused candidate emitter case; default optional inputs in the direct-raster test harness. All other production and ABI bytes match the completed 102-check source."
+  },
+  "regression_provenance": {
+    "prior_checks_executed": 102,
+    "prior_production_path_checks": 99,
+    "excluded_isolated_candidate_checks": 3,
+    "new_promotion_direct_raster_checks": 4,
+    "new_abi_checks": 4,
+    "ci_selection": "PASS",
+    "prior_evidence": "mobile-centroid-composed-2026-10-20.json"
+  },
+  "emissions": {
+    "replay": {
+      "top": "TypedReplayTileImagePipeline",
+      "directory": "generated/mobile-h6/centroid-main-promotion-replay-v1-rtl",
+      "normalized_sv_files_equal": 132,
+      "all_emitted_sv_logic_equal": true,
+      "ports_equal": true,
+      "hierarchy_equal": true,
+      "sram_macros_equal": true,
+      "group_counts": {
+        "GpuComputeUnit": 0,
+        "BankedShaderPayloadStore": 0,
+        "TypedReplayTileImagePipeline": 1,
+        "ClipFloatArithmetic": 1,
+        "Fp32FmaLane": 2,
+        "Fp32DivLane": 1,
+        "PolygonDepthOffset": 0
+      }
+    },
+    "host": {
+      "top": "GpuHostSystemAxi",
+      "directory": "generated/mobile-h6/centroid-main-promotion-host-v1-rtl",
+      "normalized_sv_files_equal": 768,
+      "all_emitted_sv_logic_equal": true,
+      "ports_equal": true,
+      "hierarchy_equal": true,
+      "sram_macros_equal": true,
+      "group_counts": {
+        "GpuComputeUnit": 4,
+        "BankedShaderPayloadStore": 1,
+        "TypedReplayTileImagePipeline": 2,
+        "ClipFloatArithmetic": 4,
+        "Fp32FmaLane": 78,
+        "Fp32DivLane": 72,
+        "PolygonDepthOffset": 0
+      }
+    }
+  },
+  "limitations": [
+    "The 99 production-path checks were executed on the recorded prior snapshot; four direct-raster controls and both emissions were repeated on this promoted source. This is source/RTL reconciliation, not a claim that a new full 103-check regression ran.",
+    "Depth precision defects and later polygon/discovery/rounding development remain outside this integration; G04/H6/H0-H8 stay open.",
+    "The four-CU emission is structural evidence. No new clock/rate/power or physical result; PPA remains synthesis only."
+  ]
+}
