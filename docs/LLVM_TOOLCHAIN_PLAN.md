@@ -253,3 +253,16 @@ The device ISA is defined by the Chisel decoders in
   `pipe resolve completed; mode=2x expected=0x80808080`, and then
   `OPENGPU USERSPACE EXAMPLES PASS`.
 
+
+
+## Native typed texture hardware interface (2026-10-20)
+
+The hardware now has [native resource roots and typed component fetch](NATIVE_TYPED_TEXTURE_FETCH.md).
+Existing `XOpengpu` instruction encodings remain unchanged. New scalar custom0
+funct7=2 and vector custom1 funct6=2 reserve funct3 values0..3 for a returned
+component, using packet pointers and binding indices as the two operands.
+Vector vm retains mask semantics. The [generated hardware header](../driver/opengpu_native_texture_abi.h)
+and JSON publish GXR1/GXB1/GXQ1 layouts and instruction constants. The sibling
+LLVM table was inspected and has no encoding collision. Mnemonic/intrinsic
+selection and current driver shader admission are not implemented by this
+hardware change; native hardware fixtures use encoded words.

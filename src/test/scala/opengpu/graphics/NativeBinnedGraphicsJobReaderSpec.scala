@@ -268,4 +268,20 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       info("NATIVE_TEXTURE_POLICY_READER binned=true extensionWords480to483=true immutableOffer=true invalidPolicies=8 noInvalidChild=true legacyReuse=true")
     }
   }
+  it should "retain binned vertex texture root references without moving legacy descriptor words" in {
+    simulate(new Harness()){d=>val t=new Driver(d);val prefix="draw.vertex.geometry.vertex.resources."
+      val mapped=t.df.map(f=>f.name->f.word).toMap;assert(mapped(prefix+"version")==496 && mapped(prefix+"address")==497)
+      t.prepare(1);t.drawValues++=Map(prefix+"version"->BigInt(1),prefix+"address"->BigInt(0x9000))
+      t.put(t.drawBase,drawWords,drawMagic,t.df,t.drawValues);t.blockDraw=true;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+      d.io.draw.bits.vertex.geometry.vertex.resources.version.expect(1.U);d.io.draw.bits.vertex.geometry.vertex.resources.address.expect(0x9000.U)
+      val held=d.io.draw.bits.peek().litValue;for(_<-0 until 9){t.tick();assert(d.io.draw.bits.peek().litValue==held)}
+      t.blockDraw=false;t.complete(0,1)
+      for((version,address)<-Seq((2,BigInt(0)),(0,BigInt(64)),(1,BigInt(1)),(1,(BigInt(1)<<32)-64))){
+        t.prepare(1);t.drawValues++=Map(prefix+"version"->BigInt(version),prefix+"address"->address)
+        t.put(t.drawBase,drawWords,drawMagic,t.df,t.drawValues);t.submit();t.complete(1);assert(t.acceptedDraws==0)
+      }
+      t.healthy();info("NATIVE_TEXTURE_ROOT_READER binned=true words496And497=true immutableOffer=true invalidRoots4BeforeChild=true legacyReuse=true")
+    }
+  }
+
 }

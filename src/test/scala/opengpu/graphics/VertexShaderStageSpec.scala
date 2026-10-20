@@ -501,20 +501,22 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       for(scalar<-Seq(false,true);c<-0 until 4){val pc=0x60000+(if(scalar)0x10000 else 0)+c*0x1000
         code(c,scalar).zipWithIndex.foreach{case(w,n)=>t.put(pc+n*4,w)}}
       d.io.out.ready.poke(true.B)
-      def run(c: Int,scalar: Boolean,bad: Boolean=false): Unit={
+      def run(c: Int,scalar: Boolean,bad: Boolean=false,cancelled: Boolean=false): Unit={
         t.exports.clear();t.descriptor();d.io.draw.bits.input.bindings(1).divisor.poke(0.U);d.io.draw.bits.shaderPc.poke((0x60000+(if(scalar)0x10000 else 0)+c*0x1000).U)
         d.io.draw.bits.resources.version.poke(1.U);d.io.draw.bits.resources.address.poke(texData.root.U)
-        val faultLine=views(3).address& ~BigInt(63);t.fault=(a,w)=>bad && !w && a==faultLine
+        var rootRead=false;val faultLine=views(3).address& ~BigInt(63)
+        t.fault=(a,w)=>{if(!w && a==texData.root)rootRead=true;bad && !w && a==faultLine}
         t.submit();d.io.draw.bits.resources.version.poke(3.U);d.io.draw.bits.resources.address.poke("hffffffff".U)
-        t.complete(if(bad)3 else 0)
-        if(bad)assert(t.exports.isEmpty)else{
+        if(cancelled){t.until(rootRead);d.io.cancel.poke(true.B)}
+        t.complete(if(cancelled)4 else if(bad)3 else 0);if(cancelled)d.io.cancel.poke(false.B)
+        if(bad || cancelled)assert(t.exports.isEmpty)else{
           val vertices=t.exports.filterNot(_.restart);assert(vertices.nonEmpty)
           for(v<-vertices){val unit=if(scalar)3 else v.id.toInt;assert(v.varyings(3)==views(unit).expected(c),s"typed vertex export differs c=$c scalar=$scalar unit=$unit")}
         }
       }
       for(scalar<-Seq(false,true);c<-0 until 4)run(c,scalar)
-      run(0,false,bad=true);run(3,true)
-      info(s"NATIVE_TYPED_FETCH_CU stage=vertex local=$local CUs=2 draws=10 scalarVector=true components4=true targets4=true mixedRawTypes=true perLaneBindings=true descriptorSnapshot=true faultDrain=true healthyReuse=true")
+      run(0,false,bad=true);run(2,false,cancelled=true);run(3,true)
+      info(s"NATIVE_TYPED_FETCH_CU stage=vertex local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true mixedRawTypes=true perLaneBindings=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
     }
   }
 

@@ -243,4 +243,25 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
       info("NATIVE_TEXTURE_POLICY_READER typed=true extensionWords56And552=true immutableOffer=true invalidPolicies=16 noInvalidChild=true legacyReuse=true")
     }
   }
+  it should "snapshot stage texture resource references in reserved native draw words and reject illegal roots" in {
+    simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
+      val mapped=drawFields(d.io.draw.bits).map(f=>f.name->f.word).toMap
+      assert(mapped("vertex.resources.version")==608 && mapped("vertex.resources.address")==609)
+      assert(mapped("fragment.resources.version")==624 && mapped("fragment.resources.address")==625)
+      t.prepare(1);t.drawValues++=Map("vertex.resources.version"->BigInt(1),"vertex.resources.address"->BigInt(0),
+        "fragment.resources.version"->BigInt(1),"fragment.resources.address"->((BigInt(1)<<32)-128))
+      t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues);t.blockDraw=true;t.submit()
+      t.until(d.io.draw.valid.peek().litToBoolean);t.check(drawFields(d.io.draw.bits),t.drawValues)
+      val held=d.io.draw.bits.peek().litValue;t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),Map.empty)
+      for(_<-0 until 9){t.tick();assert(d.io.draw.bits.peek().litValue==held)}
+      t.blockDraw=false;t.complete(0,1)
+      for(prefix<-Seq("vertex.resources.","fragment.resources.");(version,address)<-Seq((2,BigInt(0)),(0,BigInt(64)),(1,BigInt(1)),(1,(BigInt(1)<<32)-64))){
+        t.prepare(1);t.drawValues++=Map(prefix+"version"->BigInt(version),prefix+"address"->address)
+        t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues);t.submit();t.complete(1);assert(t.acceptedDraws==0)
+      }
+      t.prepare(1);t.submit();t.complete(0,1)
+      info("NATIVE_TEXTURE_ROOT_READER typed=true words608And624=true immutableOffer=true validAddressZero=true exact4GiBEnd=true invalidRoots8BeforeChild=true legacyReuse=true")
+    }
+  }
+
 }

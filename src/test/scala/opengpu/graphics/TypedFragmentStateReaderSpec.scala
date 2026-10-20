@@ -101,7 +101,7 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
     simulate(new TypedFragmentStateReader(cfg,f,g)){d=>val t=new Driver(d)
       val bias=t.fields.find(_.name=="fragment.sampler.bias").get.word
       val version=t.fields.find(_.name=="fragment.version").get.word
-      for((word,bits)<-Seq(0->BigInt(0),1->BigInt(64),3->BigInt(2),4->BigInt(17),7->BigInt(1),8->BigInt(1),127->BigInt(1),
+      for((word,bits)<-Seq(0->BigInt(0),1->BigInt(64),3->BigInt(2),4->BigInt(17),7->BigInt(1),8->BigInt(1),126->BigInt(4),
         bias->BigInt(27),version->BigInt(0x102))){t.install();t.memory.putWord(0x2000+word*4,bits);t.lookup();t.result(7)}
       t.install();t.lookup();t.result(0)
     }
@@ -161,4 +161,16 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
       info("NATIVE_TEXTURE_POLICY_STATE extensionWords120to123=true heldResult=true cachedSnapshot=true invalidPolicies=8 noInvalidState=true legacyReuse=true")
     }
   }
+  it should "snapshot native texture roots without shifting legacy state and reject invalid reference versions or ends" in {
+    simulate(new TypedFragmentStateReader(cfg,f,g)){d=>val t=new Driver(d)
+      for((version,address,status)<-Seq((1,BigInt(0),0),(1,(BigInt(1)<<32)-128,0),(2,BigInt(0),1),
+        (0,BigInt(64),1),(1,BigInt(1),1),(1,(BigInt(1)<<32)-64,1))){
+        val values=t.contents++Map("fragment.resources.version"->BigInt(version),"fragment.resources.address"->address)
+        t.invalidate();t.install(values=values);t.lookup();t.until(d.io.result.valid.peek().litToBoolean)
+        if(status==0)t.check(values);t.result(status)
+      }
+      info("GFS_NATIVE_TEXTURE_ROOT fields126And127=true legacyOffsetsRetained=true validAddressZero=true exact4GiBEnd=true canonicalDisabled=true versionsAndAlignmentChecked=true")
+    }
+  }
+
 }

@@ -1,10 +1,13 @@
 # Native shader resource bindings and typed component fetch
 
-Status: development path. Four direct endpoint controls pass; actual shared-CU,
-native descriptor, cancellation, translation and synthesis qualification are in
-progress. Existing native texture capability bits and driver shader admission
-remain unchanged. General texture filtering, normalized floating coordinates,
-implicit/explicit LOD application and compressed/depth sampling remain open.
+Status: native hardware path implemented, with final qualification in progress.
+The [source record](performance/mobile-native-typed-texture-fetch-2026-10-20.json)
+retains component/shared-CU/native AXI results and the original fixture failures.
+All four [standalone synthesis setup screens](performance/mobile-native-typed-texture-synthesis-2026-10-20.json)
+pass at standard 1000 ps, 25% I/O, TC/SLVT and no retiming. GTX1 now advertises
+hardware typed component fetch with feature bit512. Existing driver shader
+admission and LLVM mnemonics/codegen still need separate integration. General
+sampling/filtering, LOD application and compressed/depth formats remain open.
 
 Native vertex and fragment shader owners now route typed texel component fetch
 through independent per-stage GPU resource roots. Integer coordinates retain
@@ -73,3 +76,9 @@ fault/cancel drain. Parents pin published roots, binding/image/sampler/level
 tables and address-space state until final draw completion. Invalidating an
 active instruction suppresses child cache refills. Metadata is currently read
 serially; no new cache-hit or frame-throughput claim follows from connectivity.
+
+
+The sibling LLVM `opengpu` branch was inspected: its existing texture and quad
+encodings remain byte-compatible, and the new funct7/funct6 value2 was unused.
+Hardware fixtures issue encoded words using the generated ABI constants; this
+does not claim compiler intrinsic or driver allow-list support for the new path.

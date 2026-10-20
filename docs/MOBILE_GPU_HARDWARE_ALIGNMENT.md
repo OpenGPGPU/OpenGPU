@@ -6437,3 +6437,19 @@ and record sizes preserved. Four direct endpoint controls pass; real shared-CU
 and broader native, ABI, cancellation and synthesis checks remain in progress.
 Existing opcodes retain their encodings. Driver admission and native capability
 advertisement are unchanged while the hardware path is being qualified.
+
+
+## Native typed texture component and execution checkpoint (2026-10-20)
+
+The [typed resource path](performance/mobile-native-typed-texture-fetch-2026-10-20.json)
+passes34 component/metadata controls, including full explicit mip selection,
+240 cancellation cuts, exact two-credit reply ownership and332 decode cases.
+Current native shared-CU controls pass44 typed draws with fault/cancellation
+recovery. The first two full native AXI controls pass12 frames/36 primitive draws
+with both stage roots, bindings31/17, cube/volume texels, exact MRT/depth/resolve
+and a denied Sv32 sampler page with no physical read. Final native/legacy and
+width controls remain in progress. All four synthesis profiles map fully and
+pass setup at standard1000ps: endpoint+28.238ps, execution+19.027ps,
+native wrapper+51.162ps and credit adapter+634.832ps. No host clock or frame rate
+is inferred. GTX1 bit512 describes the hardware path; compiler/driver admission,
+general sampling/filtering and full H0-H8 closure remain open.
