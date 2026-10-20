@@ -3,8 +3,10 @@
 The [component qualification](performance/mobile-banked-texture-fp32-2026-10-21.json)
 passes nine tests on817 frozen inputs and an exhaustive RTL stream of66,846,724
 scalar conversions. Native shader integration and complete-service timing
-closure remain open. The standalone32-bit-tag normalizer synthesis is running
-at1000ps;that screen does not qualify the entire sampler.
+closure remain open. The standalone32-bit-tag normalizer passes1000ps
+synthesis including I/O (+524.629/+372.277ps),with5,568 fully mapped cells
+and700.321140 library area units. That screen does not qualify the entire
+sampler.
 
 `BankedRgba8FloatTextureService` completes physical RGBA8 tap groups through the
 banked cache and joined fills,then returns four binary32 channel values. The

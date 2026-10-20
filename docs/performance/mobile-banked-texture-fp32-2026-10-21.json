@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "nine_component_tests_and_exhaustive_RTL_pass_standalone_normalizer_synthesis_running",
+  "status": "nine_component_tests_exhaustive_RTL_and_standalone_normalizer_synthesis_pass",
   "source": {
     "commit": "06e16df959e085c80f80e723e7a437022d8af922",
     "source_files": 817,
@@ -85,10 +85,60 @@
   },
   "standalone_normalizer_synthesis": {
     "session": 19832,
-    "status": "running",
+    "status": "passed",
     "tag_width": 32,
     "policy": "1000ps,TC/SLVT,25% I/O,standard ABC,no retiming;synthesis only",
-    "scope": "Standalone four-channel normalizer;not the full FP32 service or native sampler."
+    "scope": "Standalone four-channel normalizer;not the full FP32 service or native sampler.",
+    "terminal": {
+      "returncode": 0,
+      "source_unchanged": true,
+      "rtl_unchanged": true,
+      "elapsed_seconds": 10.65915458300151,
+      "finished_utc": "2026-10-20T21:16:53.614377+00:00"
+    },
+    "slacks_ps": [
+      524.629,
+      372.277
+    ],
+    "fully_mapped": true,
+    "skipped_instance_count": 0,
+    "mapped_cells": 5568,
+    "mapped_library_area": 700.32114,
+    "parameters": {
+      "clock_port": "clock",
+      "clock_port_auto": false,
+      "clock_period": 1000.0,
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "corner": "TC",
+      "cell_vt": "SLVT",
+      "timing_effort": "explore",
+      "synthesis_engine": "yosys",
+      "sv_frontend": "native",
+      "enable_retiming": false,
+      "swap_arithmetic_operators": false,
+      "generate_gds": false,
+      "max_fanout": null,
+      "high_fanout_nets": null,
+      "high_fanout_max": 8,
+      "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+      "setup_slack_margin": 0.0,
+      "abc_clock_period_ps": null,
+      "io_delay_percent": 0.25,
+      "io_false_path_ports": null,
+      "post_floorplan_tcl": null,
+      "macros": []
+    },
+    "artifacts_sha256": {
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/qualification.json": "bdd25b2855ee905cbaac41b63d56dd6330df824b7440d54b01129e3dbcc6369b",
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/result.json": "13517c861bbf1dc080d7641e273199c0240688775ed55e158e57603ead7f9707",
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/manifest.json": "8e502ef56711b4a9e7b63d3424622d0ca98d51adbc4ae7bfca1791cee01548c6",
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/flow/flow_manifest.json": "a572133b91c475eb9c7530d057cfc72dfb0afdf9b824e6e864518d2c4957f9e7",
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/flow/synthesis_sta.log": "bab56688f673b4c93a114268af9d1c93f4497d64f6ca3529f3febbbf8f3388c8",
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/flow/orfs-work/reports/base/synth_stat.txt": "4b76006adaeece28bc169251aeeb03c0b85a8f15eeaa4f57122dcd7f55e648f1",
+      ".artifacts/mobile-banked-texture-fp32-normalize-synthesis-v1-inputs.json": "12ec191f162e2f2d1972e3f2ee7ab483c9244e52e95f09d6c7b88bb2bc1773a3",
+      ".artifacts/mobile-banked-texture-fp32-normalize-synthesis-v1-result.json": "c4233d454f28cb2961840c409e59863f235c31591b2b5f7582debd7747894324"
+    }
   },
   "artifacts_sha256": {
     ".artifacts/mobile-banked-texture-fp32-v1-result.json": "6c1a824a2e1ce8a8d8fa4d0297f1870dc2eece00b1d09e308081ef2f0fbda75b",
