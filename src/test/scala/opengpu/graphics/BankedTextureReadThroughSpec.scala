@@ -230,8 +230,17 @@ class BankedTextureReadThroughSpec extends AnyFlatSpec {
       for((invalidate,phase) <- Vector(false,true).zipWithIndex) {
         t.auto=false; d.io.memoryRequest.get.ready.poke(false.B); d.io.out.ready.poke(false.B)
         val start=t.results.size; val reads=t.reads.size
-        for(n <- 0 until 16)t.sample(group(10000+phase*100+n,32+phase*32+n))
-        for(_ <- 0 until 100)t.tick()
+        var admitted=0
+        // A full fill/waiter window must backpressure later groups. Count the
+        // actual admission boundary rather than assuming all sixteen fit.
+        d.io.in.valid.poke(true.B)
+        for(_ <- 0 until 200) {
+          val q=group(10000+phase*100+admitted,32+phase*32+admitted)
+          t.poke(q); t.accepted(q.tag)=q; t.expected(q.tag)=oracle(q,t.epoch)
+          if(t.tick())admitted+=1
+        }
+        assert(admitted>=8 && admitted<16)
+        d.io.in.ready.expect(false.B); d.io.in.valid.poke(false.B)
         assert(t.reads.size==reads && t.peakFills==16)
         assert(t.joins>=16*(phase+1), "miss waiters did not saturate the sixteen fill owners")
         d.io.memoryRequest.get.valid.expect(true.B); d.io.out.valid.expect(false.B)
@@ -240,13 +249,13 @@ class BankedTextureReadThroughSpec extends AnyFlatSpec {
         for(_ <- 0 until 8)t.tick()
         t.auto=true; t.latency=3
         d.io.memoryRequest.get.ready.poke(true.B); d.io.out.ready.poke(true.B)
-        t.until(t.results.size==start+16); t.drain()
+        t.until(t.results.size==start+admitted); t.drain()
         val results=t.results.drop(start)
-        assert(results.size==16 && results.forall(r => r.cancelled && !r.hit && !r.fault && r.color==0))
-        assert(results.map(_.tag).toVector==(0 until 16).map(10000+phase*100+_).toVector)
+        assert(results.size==admitted && results.forall(r => r.cancelled && !r.hit && !r.fault && r.color==0))
+        assert(results.map(_.tag).toVector==(0 until admitted).map(10000+phase*100+_).toVector)
         assert(t.reads.size>reads, "the irrevocable held physical offer was withdrawn")
         val good=group(10050+phase*100,32+phase*32)
-        t.sample(good); t.until(t.results.size==start+17); t.good(t.results.last); t.drain()
+        t.sample(good); t.until(t.results.size==start+admitted+1); t.good(t.results.last); t.drain()
       }
       info("BANKED_READTHROUGH_MISS_QUEUE heldPhysicalOffer=true fullFillWindow=true queuedMissCancelDrain=true queuedMissInvalidateDrain=true allAcceptedGroupsRetired=true healthyReuse=true")
     }
