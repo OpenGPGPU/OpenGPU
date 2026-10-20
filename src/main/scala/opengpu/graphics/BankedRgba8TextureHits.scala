@@ -9,13 +9,14 @@ class BankedRgba8Sample extends Bundle {
   val identity=new GraphicsWorkIdentity;val textureKey=UInt(64.W);val tag=UInt(32.W)
   val addresses=Vec(4,UInt(32.W));val rowParity=Vec(4,Bool());val weights=Vec(4,UInt(17.W))
 }
-class BankedRgba8Result(readThrough: Boolean=false) extends Bundle {
+class BankedRgba8Result(readThrough: Boolean=false,weightedOutput: Boolean=false) extends Bundle {
   val identity=new GraphicsWorkIdentity;val tag=UInt(32.W)
   val hit=Bool();val cancelled=Bool();val missingTaps=UInt(4.W)
   /** Logical packed RGBA:R at bits31:24,unlike little-endian input texels. */
   val color=UInt(32.W)
   val fault=if(readThrough)Some(Bool())else None
   val faultAddress=if(readThrough)Some(UInt(32.W))else None
+  val weightedSums=if(weightedOutput)Some(Vec(4,UInt(24.W)))else None
 }
 /** Resident RGBA8 bilinear service:four banked taps and a two-stage weighted
   * filter,with bounded sample association and duplicate-tap coalescing.
@@ -26,11 +27,11 @@ class BankedRgba8Result(readThrough: Boolean=false) extends Bundle {
   * outside this block. It is not yet wired into the general shader sampler.
   */
 class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: Boolean=false,
-    readThrough: Boolean=false) extends Module {
+    readThrough: Boolean=false,weightedOutput: Boolean=false) extends Module {
   require(isPow2(entries) && entries>=4 && entries<=64)
   private val slotBits=log2Ceil(entries)
   val io=IO(new Bundle {
-    val in=Flipped(Decoupled(new BankedRgba8Sample));val out=Decoupled(new BankedRgba8Result(readThrough))
+    val in=Flipped(Decoupled(new BankedRgba8Sample));val out=Decoupled(new BankedRgba8Result(readThrough,weightedOutput))
     val refill=Flipped(Decoupled(new BankedTextureRefill));val refillDone=Decoupled(new BankedTextureRefillCompletion)
     val invalidate=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
     val tapIssues=Output(UInt(3.W));val bankConflicts=Output(UInt(3.W))
@@ -109,8 +110,8 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
     }
   }
   private val productValid=RegInit(false.B);private val sumValid=RegInit(false.B)
-  private val products=Reg(Vec(4,Vec(4,UInt(25.W))));private val productResult=Reg(new BankedRgba8Result(readThrough))
-  private val result=Reg(new BankedRgba8Result(readThrough))
+  private val products=Reg(Vec(4,Vec(4,UInt(25.W))));private val productResult=Reg(new BankedRgba8Result(readThrough,weightedOutput))
+  private val result=Reg(new BankedRgba8Result(readThrough,weightedOutput))
   io.out.valid:=sumValid;io.out.bits:=result
   private val sumReady= !sumValid || io.out.ready
   private val productReady= !productValid || sumReady
@@ -128,6 +129,9 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
       result.missingTaps:=Mux(stopped,0.U,productResult.missingTaps)
       val channels=(0 until 4).map(c=>products(c).reduce(_+& _)(23,16))
       result.color:=Mux(productResult.hit && !stopped,Cat(channels),0.U)
+      result.weightedSums.foreach{values=>
+        for(c<-0 until 4)values(c):=Mux(productResult.hit && !stopped,products(c).reduce(_+& _)(23,0),0.U)
+      }
     }
   }
   when(productReady){productValid:=completed
