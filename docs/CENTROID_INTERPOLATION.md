@@ -101,8 +101,8 @@ exact matching shader fragCoord.xyzw, guarded uniforms, protected sample depths
 and held exports. Three malformed metadata scenarios reject before shader access;
 the mode-mismatch case also has an out-of-mode mask and does not isolate the
 sample-index bound. The later binding/discovery controls above cover descriptor
-transport. Native centroid images are qualified below; prepared replay remains
-separate pending work.
+transport. Native and prepared centroid images are qualified below on separate
+frozen snapshots.
 
 ## Native centroid gradient images
 
@@ -126,3 +126,20 @@ This structural audit does not establish four-CU runtime performance. The image
 tests use W=1 and two sample/version pairs; perspective-pole controls above and
 prepared GFS1/binned replay remain distinct gates. No new timing or rate result
 is claimed; PPA remains synthesis only on its separately frozen source.
+
+## Prepared replay centroid images
+
+The [two focused prepared-replay checks](performance/mobile-centroid-prepared-replay-2026-10-20.json)
+pass on 631 unchanged source/ABI files. Each actual-CU local/global profile
+replays sixteen records across two tile engines: 2x/version-3 and 4x/version-4,
+two triangles followed by a line and point per engine. GFS1 state handles carry
+different centroid masks (5/3), with exact cache hit/read-line counts. Four MRT
+gradients exercise center/centroid/flat mixing, state-1 blending and depth
+override, sloped default sample depths, exact source/resolve bytes and guards.
+
+Both engines hold launches and own CUs concurrently. Image storage remains
+resident before end; a prewarmed cached shared line updates after the held
+invalidation acknowledgement. Completion retains ownership, and all private
+engine/state uniform tails remain intact through reuse. These W=1 prepared
+fixtures do not establish native bin production, perspective-pole images, the
+nine legacy tests on this modified fixture, or full composition/rate closure.
