@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "projective_shared_CU_scalar_backend_and_legacy_payload_qualification_pass",
+  "source_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 179.51723808399402,
+    "commit": "186e27008c760cbbb268ce075eef5b08615935e7",
+    "source_files": 805,
+    "manifest_sha256": "51b1cb14e4617c7e8d23bd99d48bea87c63903f662937a69ab3b1b8a6c9e20eb",
+    "archive_sha256": "fb2460253ea987037011d3a5dcbd3e225e1b2be0adf71a84c2ae6b2d243d65c3",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/test/scala/opengpu/core/backend/FpuBackendSpec.scala",
+      "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala",
+      "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"
+    ],
+    "added_inputs": [
+      "src/test/scala/opengpu/graphics/NativeProjectiveShaderTestData.scala"
+    ],
+    "all_production_driver_ABI_and_emission_inputs_exact": true,
+    "runner_pid": 75317,
+    "started_utc": "2026-10-20T19:28:45.515154+00:00"
+  },
+  "legacy_payload_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 254.69076770893298,
+    "qualified_source_commit": "186e27008c760cbbb268ce075eef5b08615935e7",
+    "source_files": 805,
+    "source_manifest_sha256": "51b1cb14e4617c7e8d23bd99d48bea87c63903f662937a69ab3b1b8a6c9e20eb",
+    "source_archive_sha256": "fb2460253ea987037011d3a5dcbd3e225e1b2be0adf71a84c2ae6b2d243d65c3",
+    "prior_v4_pass": true,
+    "planned_tests": 2,
+    "profile": "Original positional FragmentShaderHarness(true,16,8,true,oversize);scalarFpu defaults false. Both oversizeSpill=false/true must retain local/spilled batches,128 physical lanes,all64 varyings."
+  },
+  "tests": 14,
+  "suites": {
+    "FpuBackendSpec": 8,
+    "VertexShaderStageSpec": 2,
+    "FragmentShaderStageSpec": 4
+  },
+  "projective": {
+    "tests": 4,
+    "submitted_draws": 160,
+    "successful_draws": 152,
+    "expected_fault_cancel_draws": 8,
+    "stages": [
+      "vertex",
+      "fragment"
+    ],
+    "payload_modes": [
+      "local",
+      "spill"
+    ],
+    "shader_lanes": 4,
+    "warps": 2,
+    "compute_units": 2,
+    "scalar_FPU_backend": true,
+    "scope": [
+      "Scalar/vector FP32 divide before task-scoped operand capture",
+      "2D,3D and2D-shadow projected reference",
+      "Automatic vertex lambda0 and fragment gradients from projected helper coordinates",
+      "Explicit lambda and already-projected explicit gradients",
+      "Per-helper Q2/4/8/16;only BR fragment covered",
+      "Separate projected-coordinate and exact dyadic sample-weight oracles",
+      "Signed offset after projection,texel fault,cancel,held completion and healthy reuse",
+      "No GPU-memory parameter packet reads"
+    ]
+  },
+  "scalar_backend": {
+    "tests": 8,
+    "includes_new_in_place_division_and_dependent_bit_moves": true
+  },
+  "legacy_payload": {
+    "tests": 2,
+    "shader_lanes": 16,
+    "warps": 8,
+    "resident_invocation_capacity": 128,
+    "varying_components": 64,
+    "prefix_bytes": 45056,
+    "quads_per_case": 35,
+    "batches_per_case": 2,
+    "scalar_FPU_backend": false,
+    "local_and_oversized_spill_paths": true,
+    "original_positional_constructor_binding_preserved": true
+  },
+  "identity_to_query_parent": {
+    "changed_inputs_only": [
+      "src/test/scala/opengpu/core/backend/FpuBackendSpec.scala",
+      "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala",
+      "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"
+    ],
+    "added_test_inputs": [
+      "src/test/scala/opengpu/graphics/NativeProjectiveShaderTestData.scala"
+    ],
+    "all_production_driver_ABI_emission_inputs_exact": true,
+    "no_duplicate_PPA": true,
+    "limitation": "The parent query whole-endpoint synthesis is separate and does not qualify the whole shared-CU scalar-FPU profile clock."
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-projective-v4.log": "a68c9bbcc61f2fe840a4abffef32b21101486665c691229f9a8d3bddd98a32fa",
+    ".artifacts/mobile-native-projective-v4-result.json": "9a77be7918bc39f18151cd60244b426cd3f19b4fc379e9ddea7a50e8a69f3d11",
+    ".artifacts/mobile-native-projective-v4-source.json": "51b1cb14e4617c7e8d23bd99d48bea87c63903f662937a69ab3b1b8a6c9e20eb",
+    ".artifacts/mobile-native-projective-v4-source.tar.gz": "fb2460253ea987037011d3a5dcbd3e225e1b2be0adf71a84c2ae6b2d243d65c3",
+    ".artifacts/mobile-native-projective-legacy-payload-v1.log": "5fcc310795ba460f25b75b648c3d560e09a3e7fd1c53d2624ba6b5743bb3d2d4",
+    ".artifacts/mobile-native-projective-legacy-payload-v1-result.json": "bb1bb0cc0b7762659c4885acd56d0c392d4d0274e61bf1a5a332e91ffd7a4c71"
+  },
+  "retained_failure_record": "docs/performance/mobile-native-projective-initial-2026-10-21.json",
+  "remaining": [
+    "Combine with size-query functional/AXI and synthesis results before main merge",
+    "Complete banked texture hit/miss/translation integration,throughput and coherence",
+    "Full H0-H8 hardware requirements remain open"
+  ],
+  "PPA": "Synthesis-only policy;no whole-GPU clock,power,place/route or full GLES conformance result."
+}

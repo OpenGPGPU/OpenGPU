@@ -10,7 +10,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false) extends Module {
+private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=if(fullInterface)FragmentShaderConfig()else FragmentShaderConfig(2,4)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
@@ -32,7 +32,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
   })
   private val stage=Module(new FragmentShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None))
-  private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,
+  private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,enableFpuBackend=scalarFpu,
     graphicsHostTransactions=4,instructionCacheSets=4,instructionCacheWays=1,
     vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None))
   private def tie(data: Data): Unit=data match {
@@ -680,6 +680,59 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         run(0,false,bad=true);run(1,true,bad=true);run(0,false,cancelled=true);run(2,true);sizeDraws+=1
         info(s"NATIVE_TEXTURE_SIZE_CU stage=fragment local=$local successfulDraws=$sizeDraws formats64=true targets4=true scalarVector=true components3=true noParameterInstructions=true imageBaseLevels0And1And2=true v0Preserved=true metadataFaultDrain=true cancelAndHealthyReuse=true")
       }
+    }
+  }
+
+
+  for(local<-Seq(true,false))it should s"execute projective samples after CU division and retain uncovered helper gradients local=$local" in {
+    simulate(new FragmentShaderHarness(local,scalarFpu=true)){d=>val t=new Driver(d);val tex=NativeTextureFetchTestData;val id=Seq[BigInt](7,8,9)
+      tex.roots(t.put,stage=1,id=id);d.io.out.ready.poke(true.B)
+      var draws=0;var traffic=Vector.empty[BigInt]
+      val badData=scala.collection.mutable.Set.empty[BigInt]
+      t.fault=(a,w)=>{if(!w)traffic=traffic:+a; !w && badData.contains(a)}
+      val cases=for(scalar<-Seq(false,true);target<-Seq(0,3,4);mode<-0 to 2;step<-Seq(0.25f,0.75f))yield(scalar,target,mode,step)
+      def run(scalar: Boolean,target: Int,mode: Int,step: Float,offset: Int=0,bad: Boolean=false,cancelled: Boolean=false): Unit={
+        val volume=target==3;val shadow=target==4
+        // Every case starts with one populated texel. Reusing the same4KiB
+        // allocation must not retain the previous2D texel in volume slice0.
+        t.memory.keysIterator.filter(a=>a>=0x20000 && a<0x21000).toVector.foreach(t.memory.remove)
+        val view=tex.install(t.put,(a,b)=>t.memory(a)=BigInt(b),0,if(shadow)49 else 3,if(volume)3 else 0,1,id,
+          raw=if(shadow)BigInt(0x7fff)else BigInt(0xff0000ffL))
+        t.put(tex.samplers+7*4,1);if(shadow)t.put(tex.samplers+14*4,1)
+        val pc=BigInt(0x380000)+draws*4096
+        require(pc+4096<=t.scratch || pc>=t.scratch+t.prefix+64)
+        def load(i: Int,v: Int): Seq[BigInt]=address(5,7,(6+i)*t.stride)++Seq(vectorMemory(5,v,false))
+        val code=program(4,2).dropRight(1)++NativeProjectiveShaderTestData.operandCode(scalar,volume,shadow,mode,offset,load)++
+          address(6,7,(6+4*t.varyingSlots+14)*t.stride)++Seq(vectorMemory(6,10,true))++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
+        require(code.length<=512);code.zipWithIndex.foreach{case(word,n)=>t.put(pc+n*4,word)}
+        val coords=NativeProjectiveShaderTestData.coordinates(scalar,step,shadow,volume)
+        t.exports.clear();traffic=Vector.empty;badData.clear();if(bad)badData+=view.address& ~BigInt(63)
+        t.descriptor();d.io.draw.bits.shaderPc.poke(pc.U)
+        d.io.draw.bits.resources.version.poke(1.U);d.io.draw.bits.resources.address.poke(tex.root.U);t.submit();t.input(0)
+        for(l<-0 until 4){val a=d.io.in.bits.values.lanes(l)
+          a.covered.poke((l==3).B);a.coverageMask.poke((if(l==3)8 else 0).U)
+          for(c<-0 until 4)a.varyings(0)(c).poke(fp(coords(l)(c)).U)
+        }
+        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
+        if(cancelled){t.until(traffic.contains(tex.root));d.io.cancel.poke(true.B)}
+        t.complete(if(cancelled)4 else if(bad)3 else 0)
+        if(cancelled)d.io.cancel.poke(false.B)
+        if(bad || cancelled)assert(t.exports.isEmpty)else{
+          assert(t.exports.size==1);val lanes=t.exports.head.lanes
+          for(l<-0 until 4){assert(lanes(l).helper==(l!=3));assert(lanes(l).coverage==(if(l==3)8 else 0))}
+          val projected=if(scalar)0.75f else 0.5f
+          assert(lanes(3).colors(14)==fp(projected),s"projected fragment X differs scalar=$scalar")
+          val expected=NativeProjectiveShaderTestData.expected(scalar,step,volume,shadow,mode,offset,3,true)
+          assert(lanes(3).colors(15)==fp(expected),s"projective fragment sample differs scalar=$scalar target=$target mode=$mode step=$step expected=$expected got=${lanes(3).colors(15).toString(16)}")
+        }
+        assert(!traffic.exists(a=>a>=tex.packet && a<tex.packet+64),"projective operands read a GPU packet")
+        if(local)assert(t.globalStaging==0)
+        draws+=1
+      }
+      for((scalar,target,mode,step)<-cases)run(scalar,target,mode,step)
+      run(true,0,0,0.25f,offset=15);run(false,0,1,0.75f,bad=true);run(false,3,2,0.75f,cancelled=true);run(false,4,0,0.75f)
+      assert(draws==40)
+      info(s"NATIVE_PROJECTIVE_CU stage=fragment local=$local draws=$draws scalarVectorFP32Division=true scalarFpuExplicitlyEnabled=true targets2D3DShadow=true modesImplicitLodGradient=true projectedReference=true gradientsAlreadyProjected=true varyingQPerHelper=true uncoveredHelpers3=true privateCodeDisjoint=true signedOffsetAfterProjection=true faultCancelDrain=true healthyReuse=true noOperandPackets=true")
     }
   }
 
