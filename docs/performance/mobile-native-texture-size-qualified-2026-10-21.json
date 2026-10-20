@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "native_texture_size_query_complete_disjoint_source_AXI_matrices_pass",
+  "source": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 1478.6166141661815,
+    "scope": {
+      "tests": 2,
+      "frames_per_mode": 74,
+      "expected": "all148 frames,including four expected errors"
+    },
+    "args": [
+      "sbt",
+      "-J-Xmx4G",
+      "testOnly opengpu.graphics.NativeTypedGraphicsHostAxiSpec -- -z \"execute native texture size queries through native AXI frames and translated descriptor ownership\""
+    ],
+    "commit": "2cb132b281f46786d5032689f1f923964a282443",
+    "source_files": 804,
+    "manifest_sha256": "42b20884620ade6ff8a3e6aca1686fd4a349fa86ae2b306d04aef5976f6ae0ba",
+    "archive_sha256": "31d33e5f7a2c8256df77f173fe4243fc6bbb2c4d465f237b41d15f00e4f0aeb1",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs_only": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala"
+    ],
+    "all_production_driver_ABI_emission_and_shared_CU_inputs_exact": true,
+    "runner_pid": 46645,
+    "started_utc": "2026-10-20T20:12:23.084269+00:00"
+  },
+  "fresh_AXI_tests": 2,
+  "frames": 148,
+  "frames_per_payload_mode": 74,
+  "successful_frames": 144,
+  "expected_error_frames": 4,
+  "created_draw_descriptors": 444,
+  "created_descriptors_are_not_completed_GPU_draws": true,
+  "profile": {
+    "compute_units": 2,
+    "shader_lanes": 4,
+    "warps": 2,
+    "AXI_bytes": 32,
+    "translation": "real Sv32",
+    "payload_modes": [
+      "local",
+      "spill"
+    ]
+  },
+  "coverage": [
+    "all64 image formats with ignored sampler swizzle",
+    "2D,array,cube and3D query dimensions",
+    "ordinary scalar/vector operands and three integer components",
+    "relative base levels0/1/2 and positive relative LOD",
+    "selected GXL physical-page checks",
+    "no parameter,texel or sampler memory reads",
+    "denied image page faults without a physical image read",
+    "negative signed LOD faults before wrapped table access",
+    "denied unused sampler page remains healthy",
+    "exact MRT,depth,resolve and guard bytes",
+    "source page-pair leases disjoint and outside operand packets",
+    "completion pins VM and healthy reuse after errors"
+  ],
+  "parent_carry": {
+    "fresh_component_tests": 40,
+    "real_shared_CU_tests": 4,
+    "descriptor_ABI_checks": 9,
+    "strict_C_validator": true,
+    "LLVM_tests": 4,
+    "mapped_synthesis_screens": 3,
+    "source_reason": "Only NativeTypedGraphicsHostAxiSpec.scala differs from all804 inputs of the qualified query parent."
+  },
+  "parent_records": [
+    "docs/performance/mobile-native-texture-size-shared-CU-2026-10-21.json",
+    "docs/performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json",
+    "docs/performance/mobile-native-texture-size-owner-synthesis-2026-10-21.json"
+  ],
+  "same_source_failure_fix_record": "docs/performance/mobile-native-texture-size-source-leases-2026-10-21.json",
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-full.log": "84b8a0192f29b3bcfc917a2067d3a56d94d2f371792f4d269cd65aefb13f46b8",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-full-result.json": "db1bf064ef45fbd6fec187081e42545cff35fd3dffbfc478ec2db45c495036a4",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-negative.log": "78e6860dbd2d4fb7d83214ed2c382e6466f99c526ab24ef384d293ad05b9f513",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-negative-result.json": "88617527de4a8a5e64894359826c4d8cf4da77091b615711b0ca3ad574ba5858",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-positive.log": "3d88e28886365533ab060e7903c343cca287cb9bd07b6acdb483ada328502b50",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-positive-result.json": "5e47a4f2129d5245a27eeedabac5fd34b963c84652b5225ea87b6b2190290316",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-source.json": "42b20884620ade6ff8a3e6aca1686fd4a349fa86ae2b306d04aef5976f6ae0ba",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-source.tar.gz": "31d33e5f7a2c8256df77f173fe4243fc6bbb2c4d465f237b41d15f00e4f0aeb1"
+  },
+  "remaining": [
+    "main integration with existing integer mip probes and projective harness checks",
+    "other disjoint-source typed/floating/integer AXI matrices running on the same804 inputs",
+    "native banked sampler translation/precision/coherence and whole-path rates",
+    "full H0-H8 requirements"
+  ],
+  "PPA": "synthesis only;no whole-CU/GPU clock,power,route or H0-H8 completion claim"
+}
