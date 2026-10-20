@@ -46,8 +46,10 @@ All five primitive-owner checks pass after this correction, including the new
 extreme lines through interpolation/depth and full signed-64 overlap rejection.
 The corrected source now passes all 19 coverage, primitive, interpolation and
 sample-depth checks across four suites, including exact extreme-line helper
-inputs and covered-sample depths. Actual-CU image/native-host checks and the
-full-renderer synthesis comparison remain pending; H0-H8 stay open.
+inputs and covered-sample depths. The [complete 39-check regression](performance/mobile-point-line-pipeline-validation-2026-10-20.json)
+also passes all six actual-CU vertex/raster checks, nine typed-image checks and
+five native typed AXI host checks on the same unchanged 626 source/ABI files.
+Full-renderer synthesis, broader binned native composition and H0-H8 remain open.
 
 Run a matched standalone cycle comparison with:
 

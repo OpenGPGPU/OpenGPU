@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Point/line carry and preparation corrections through interpolation, actual-CU vertex/raster, typed image and native typed AXI hosts",
+  "source_files": 626,
+  "source_unchanged": true,
+  "passed": 39,
+  "failed": 0,
+  "suites": {
+    "PointLineRasterizerSpec": 8,
+    "Fp32PrimitiveRasterStageSpec": 5,
+    "Fp32SampleDepthSpec": 2,
+    "RasterFp32InterpolationSpec": 4,
+    "VertexRasterPipelineSpec": 6,
+    "TypedTileImagePipelineSpec": 9,
+    "NativeTypedGraphicsHostAxiSpec": 5
+  },
+  "source_manifest": {
+    "path": ".artifacts/mobile-point-line-pipeline-source-v2.json",
+    "sha256": "bd67906fdf326e08fb03b0680c2ffaa6674674cd4cd6b1dc35ae0c4773d68215"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-point-line-pipeline-source-v2.tar.gz",
+    "sha256": "1bb16870b5948d598ab5bf9b2b785794eb6f43739dac807e7655620606e2bc6c"
+  },
+  "result": {
+    "path": ".artifacts/mobile-point-line-pipeline-job-v2-result.json",
+    "sha256": "6fe45e46fe47ef803b49c78098bf9b1cfa0372781e2a8e0f36d79da573a27844"
+  },
+  "log": {
+    "path": ".artifacts/mobile-point-line-pipeline-qualified-v2.log",
+    "sha256": "0386f3d31577587bce9c4d4fe52d7e61718e87069013b44c6323e27590c81583"
+  },
+  "prior_failure": {
+    "path": ".artifacts/mobile-point-line-pipeline-job-v1-result.json",
+    "sha256": "0f441fad41a77216c1bffc1f142f0b5b3d460eda991ea04cbf51c72899e8b908"
+  },
+  "limits": [
+    "This frozen source precedes the AXI response-owner and centroid/perspective fallback changes; those are separately qualified.",
+    "No full GNC2/binned native qualification or composed-clock result is established by these 39 checks.",
+    "H0-H8 and full API/resource/rate closure remain open."
+  ]
+}
