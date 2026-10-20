@@ -7,8 +7,11 @@ and [both whole native endpoints](performance/mobile-native-texture-size-whole-s
 pass1000ps synthesis including I/O. All [four fresh shared-CU checks](performance/mobile-native-texture-size-shared-CU-2026-10-21.json)
 also pass,including the full existing typed/floating/integer matrices and109
 successful query draws per case. The translated AXI spill case passes74 frames;
-the local case fails an exact image comparison near fault recovery and is under
-investigation. This owner is not merged into main yet.
+the original local failure is now traced to adjacent frame source-page aliasing
+in the test fixture. A [same-source old/new allocation proof](performance/mobile-native-texture-size-source-leases-2026-10-21.json)
+reproduces the old failure and passes six directed recovery frames across both
+payload modes with disjoint sources. The full148-frame corrected query run is
+still active. This owner is not merged into main yet.
 
 `opengpu.tex.size.c` uses custom0/function6; `opengpu.vtex.size.c` uses
 custom1/function6 with normal RVV masks. Components0/1/2 return width, height,
@@ -46,7 +49,7 @@ It adds all three scalar/vector component forms, masked MC cases, extension
 checks and an ordinary scalar C inline-assembly helper. Existing encodings and
 descriptor layouts are preserved.
 
-Pending gates include local-payload AXI recovery,compiler/API lowering and the
+Pending gates include the full corrected AXI matrix,compiler/API lowering and the
 remaining H0-H8 requirements. PPA remains synthesis only.
 
 Both [complete native endpoints](performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json)

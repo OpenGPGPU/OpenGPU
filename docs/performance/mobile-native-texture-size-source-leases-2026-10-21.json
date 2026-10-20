@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "same_source_old_allocation_fails_and_disjoint_source_recovery_passes_both_payload_modes_full_matrix_running",
+  "source": {
+    "commit": "2cb132b281f46786d5032689f1f923964a282443",
+    "source_files": 804,
+    "manifest_sha256": "42b20884620ade6ff8a3e6aca1686fd4a349fa86ae2b306d04aef5976f6ae0ba",
+    "archive_sha256": "31d33e5f7a2c8256df77f173fe4243fc6bbb2c4d465f237b41d15f00e4f0aeb1",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs_only": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala"
+    ],
+    "all_production_driver_ABI_emission_and_shared_CU_inputs_exact": true,
+    "runner_pid": 46645,
+    "started_utc": "2026-10-20T20:12:23.084269+00:00"
+  },
+  "negative": {
+    "returncode": 1,
+    "source_unchanged": true,
+    "elapsed_seconds": 38.23889287491329,
+    "scope": {
+      "tests": 1,
+      "frames": [
+        71,
+        72
+      ],
+      "expected": "exact image failure after a negative-LOD vertex fault;old source page alias"
+    },
+    "args": [
+      "sbt",
+      "-J-Xmx4G",
+      "-Dopengpu.textureSize.frames=71,72",
+      "-Dopengpu.textureSize.sourceAlias=true",
+      "testOnly opengpu.graphics.NativeTypedGraphicsHostAxiSpec -- -z \"execute native texture size queries through native AXI frames and translated descriptor ownership local=true\""
+    ],
+    "commit": "2cb132b281f46786d5032689f1f923964a282443",
+    "source_files": 804,
+    "manifest_sha256": "42b20884620ade6ff8a3e6aca1686fd4a349fa86ae2b306d04aef5976f6ae0ba",
+    "archive_sha256": "31d33e5f7a2c8256df77f173fe4243fc6bbb2c4d465f237b41d15f00e4f0aeb1",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs_only": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala"
+    ],
+    "all_production_driver_ABI_emission_and_shared_CU_inputs_exact": true,
+    "runner_pid": 46645,
+    "started_utc": "2026-10-20T20:12:23.084269+00:00"
+  },
+  "positive": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 126.08960808394477,
+    "scope": {
+      "tests": 2,
+      "frames": [
+        71,
+        72,
+        73
+      ],
+      "expected": "six total frames,including two expected LOD faults;four exact image successes"
+    },
+    "args": [
+      "sbt",
+      "-J-Xmx4G",
+      "-Dopengpu.textureSize.frames=71,72,73",
+      "testOnly opengpu.graphics.NativeTypedGraphicsHostAxiSpec -- -z \"execute native texture size queries through native AXI frames and translated descriptor ownership\""
+    ],
+    "commit": "2cb132b281f46786d5032689f1f923964a282443",
+    "source_files": 804,
+    "manifest_sha256": "42b20884620ade6ff8a3e6aca1686fd4a349fa86ae2b306d04aef5976f6ae0ba",
+    "archive_sha256": "31d33e5f7a2c8256df77f173fe4243fc6bbb2c4d465f237b41d15f00e4f0aeb1",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs_only": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala"
+    ],
+    "all_production_driver_ABI_emission_and_shared_CU_inputs_exact": true,
+    "runner_pid": 46645,
+    "started_utc": "2026-10-20T20:12:23.084269+00:00"
+  },
+  "root_cause": {
+    "old_position_page_frame71": "0x5f8000",
+    "old_color_page_frame71": "0x5f9000",
+    "old_position_page_frame72": "0x5f9000",
+    "mechanism": "A4KiB generation step aliases the previous color page and the next position page. The shader vertex fault leaves the previous color cache line resident;testbench CPU memory edits bypass GPU cache publication. The next triangle reads(1,0,0,1) for every position and becomes degenerate.",
+    "trace": "Temporary opt-in RTL diagnostics proved three identical shaded triangle vertices,zero triangle fragment quads,and correct later line/point draws. Those diagnostics were removed;production inputs are exact to the qualified query parent.",
+    "fix": "Reserve two disjoint pages per generation in0x640000..0x700000,skipping0x680000..0x682000 to preserve operand-packet no-read checks. Apply the allocator to typed,floating,integer and size-query AXI matrices. Preserve existing default helper behavior for other callers."
+  },
+  "directed_scope": {
+    "tests_passed": 2,
+    "frames": 6,
+    "successful_exact_images": 4,
+    "expected_negative_LOD_vertex_error_frames": 2,
+    "format": 35,
+    "target": 0,
+    "LOD_controls": [
+      -1,
+      0
+    ],
+    "payload_modes": [
+      "local",
+      "spill"
+    ],
+    "queries_ignore_denied_unused_sampler": true,
+    "healthy_reuse_after_error": true,
+    "not_the_full64_format_matrix": true
+  },
+  "parent_evidence_carries": {
+    "fresh_component_tests": 40,
+    "real_shared_CU_tests": 4,
+    "ABI_checks": 9,
+    "strict_C_validator": true,
+    "LLVM_tests": 4,
+    "mapped_synthesis_profiles": [
+      "standalone_size_owner",
+      "complete_vertex_native_endpoint",
+      "complete_fragment_native_endpoint"
+    ],
+    "reason": "Only NativeTypedGraphicsHostAxiSpec.scala differs among all804 inputs."
+  },
+  "full_matrix": {
+    "session": 4752,
+    "planned_tests": 2,
+    "planned_frames_per_mode": 74,
+    "status": "running;not_yet_a_pass"
+  },
+  "other_allocator_cases": "Typed/floating/integer AXI matrices use the corrected allocator in this snapshot;their new-layout qualification remains separate.",
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-negative.log": "78e6860dbd2d4fb7d83214ed2c382e6466f99c526ab24ef384d293ad05b9f513",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-negative-result.json": "88617527de4a8a5e64894359826c4d8cf4da77091b615711b0ca3ad574ba5858",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-positive.log": "3d88e28886365533ab060e7903c343cca287cb9bd07b6acdb483ada328502b50",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-positive-result.json": "5e47a4f2129d5245a27eeedabac5fd34b963c84652b5225ea87b6b2190290316",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-source.json": "42b20884620ade6ff8a3e6aca1686fd4a349fa86ae2b306d04aef5976f6ae0ba",
+    ".artifacts/mobile-native-texture-size-axi-source-leases-v1-source.tar.gz": "31d33e5f7a2c8256df77f173fe4243fc6bbb2c4d465f237b41d15f00e4f0aeb1",
+    ".artifacts/mobile-native-texture-size-axi-recovery-trace-v1.log": "384568aaef6edcd294a49260deaaa7bfaf84513e97ef69775abaf18273498090",
+    ".artifacts/mobile-native-texture-size-axi-recovery-trace-v1-result.json": "cd77a2259a33104d0c1b3ce1d1f4763f8fa0c1aa5a41631c4a133728975205ce"
+  },
+  "remaining": [
+    "collect full148-frame query qualification",
+    "qualify other AXI matrices with disjoint input leases",
+    "combine query/projective changes with current main",
+    "sixteen-fill and native banked sampler integration and coherence",
+    "full H0-H8 hardware requirements"
+  ],
+  "PPA": "synthesis only"
+}
