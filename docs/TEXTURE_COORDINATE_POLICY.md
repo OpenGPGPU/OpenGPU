@@ -71,3 +71,8 @@ bias before narrowing the full gradient exponent into the selected mip range.
 Qualification is pending. Instruction encodings and default legacy hardware
 remain unchanged; native descriptors and task-owner fault integration remain
 required before exposure.
+
+In the optional instruction unit, one- and two-lane vectors support fixed mip
+sampling. An implicit-LOD vector request without a complete four-lane quad
+returns a no-read fault; an empty execution mask remains a no-op. Scalar
+sampling still supports accepted bias/min/max selection in those profiles.

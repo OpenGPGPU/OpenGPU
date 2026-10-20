@@ -335,6 +335,11 @@ class TexSampleUnit(
       policyReg.get := io.coordinatePolicy.get
       // Reject an inverted mip interval through the same no-read fault path.
       when(io.minLevel > io.texMaxLevel) { policyReg.get.wrapU := 3.U }
+      if (config.lanes < 4) {
+        when(io.vectorIn.fire && io.minLevel =/= io.texMaxLevel) {
+          policyReg.get.wrapU := 3.U
+        }
+      }
       coordinateFaultReg.get := false.B
       texBaseReg := io.texBase
       texFormatReg := io.texFormat
@@ -396,6 +401,13 @@ class TexSampleUnit(
           state := sSample
         }.otherwise {
           state := sGrad
+          if (coordinatePolicyInput && config.lanes < 4) {
+            // Partial quads have no implicit derivative contract. Return a
+            // held no-read fault instead of selecting an undefined gradient.
+            mipLevelReg := 0.U
+            mipFracReg := 0.U
+            state := sSample
+          }
         }
       }.elsewhen(io.in.fire) {
         vectorModeReg := false.B

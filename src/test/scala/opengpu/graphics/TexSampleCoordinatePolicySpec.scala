@@ -83,7 +83,8 @@ class TexSampleCoordinatePolicySpec extends AnyFlatSpec {
         val u=if(us.nonEmpty)us else Vector.tabulate(lanes)(i=>uv((i+operation)%uv.size))
         val v=if(vs.nonEmpty)vs else Vector.tabulate(lanes)(i=>uv((i*5+operation+3)%uv.size))
         val old=Vector.tabulate(lanes)(i=>BigInt("dead0000",16)+operation*64+i)
-        val fault=b.fault && (!vector || mask!=0)
+        val partialQuad=vector && lanes<4 && b.minimum!=b.maximum
+        val fault=(b.fault || partialQuad) && (!vector || mask!=0)
         val pc=0x400+operation*4
         d.io.texBase.poke(b.base.U);d.io.texWidth.poke(b.w.U);d.io.texHeight.poke(b.h.U)
         d.io.texFormat.poke(b.format.U);d.io.wrapClamp.poke(false.B)
@@ -175,6 +176,9 @@ class TexSampleCoordinatePolicySpec extends AnyFlatSpec {
       val invalid=Seq(Binding(u=3),Binding(v=3),Binding(w=0),Binding(h=0),Binding(minimum=2,maximum=1))
       for(b<-invalid){run(b);run(b,vector=false)}
       run(Binding(u=3,w=0),mask=0);run(Binding(),mask=0);run(Binding());run(Binding(),vector=false)
+      run(Binding(maximum=3,bias=2),vector=false)
+      run(Binding(minimum=1,maximum=3,bias= -16),vector=false)
+      if(lanes<4){run(Binding(maximum=1));run(Binding(maximum=1),mask=0)}
       if(lanes>=4){
         def repeated(q: Seq[Long]): Seq[Long]=Vector.tabulate(lanes)(i=>q(i%4))
         val crossing=repeated(Seq(0xffffe000L,0x4000L,0xffffe000L,0x4000L))
@@ -192,8 +196,8 @@ class TexSampleCoordinatePolicySpec extends AnyFlatSpec {
         run(Binding(w=17,h=9,maximum=4,bias= -2),mask=full,us=manyU,vs=manyV);mipCases+=1
         run(Binding(w=17,h=9,maximum=4,minimum=1,bias= -16),mask=BigInt(1),us=manyU,vs=manyV);mipCases+=1
       }
-      assert(faults==10 && empty>=2)
-      info(s"TEXTURE_EXECUTE_POLICY lanes=$lanes vectors=$vectors scalars=$scalars faults=$faults emptyVectors=$empty reads=$reads reordered=$reordered implicitLodCases=$mipCases capturedAllBindings=true signedCrossing=true fullGradientBeforeBias=true mixedAxisModes=9 formats=5 heldCommitFault=true suppressFaultWrites=true noInvalidReads=true rebindingInvalidates=true healthyReuse=true")
+      assert(faults==(if(lanes<4)11 else 10) && empty>=2)
+      info(s"TEXTURE_EXECUTE_POLICY lanes=$lanes vectors=$vectors scalars=$scalars faults=$faults emptyVectors=$empty reads=$reads reordered=$reordered implicitLodCases=$mipCases partialQuadFaults=${if(lanes<4)1 else 0} capturedAllBindings=true signedCrossing=true fullGradientBeforeBias=true mixedAxisModes=9 formats=5 heldCommitFault=true suppressFaultWrites=true noInvalidReads=true rebindingInvalidates=true healthyReuse=true")
     }
   }
   it should "arbitrate scalar and vector owners while retaining each captured policy and held fault" in {
