@@ -5705,3 +5705,45 @@ Both full emissions, four ABI checks, C11 and CI selection already passed.
 The remaining thirteen vertex/raster, 24 image and 37 native host checks stay
 live. The candidate remains isolated; no full 206-check, main promotion or
 composed PPA result is claimed. PPA evaluation remains synthesis only.
+
+
+## GPU-memory texture level resource development (2026-10-20)
+
+The isolated [GXL1 level resource candidate](TEXTURE_IMAGE_LEVEL_RESOURCE.md)
+connects two reordered GPU descriptor reads to the checked image-address unit.
+A versioned 128-byte record carries immutable identity, selected mip, allocation,
+extents, independent row/slice/layer pitches and packed/block span layout.
+The owner checks envelopes and canonical records before publication, caches only
+verified views under an exact identity/table/handle/level key, and drains offered
+reads plus address work before returning a held result. Descriptor-memory faults
+retain their first line address with an explicit validity flag, including zero.
+
+Six resource controls plus the four existing address controls pass on the prior
+frozen candidate. Expanded cache-key probes, five ABI checks and a full emission
+are running on the final 649-file source. Native sampler descriptors and shader
+ISA remain unchanged. Image/format objects, indexed bindings, complete mip-chain
+rules, texture fetch/decode/filtering and native integration remain required;
+no H4/H6/GLES closure or new native capability is claimed. PPA remains synthesis
+only.
+
+
+## GPU-memory texture level resource qualification (2026-10-20)
+
+The [11-check qualification](performance/mobile-texture-level-resource-2026-10-20.json)
+passes on unchanged 649-file source, including six GPU level-owner controls and
+five address controls. Five ABI checks, combined C11 headers, CI selection and
+both full emissions pass. The128-query target/mip matrix returns exact checked
+spans from reordered tagged reads; independent identity/mip/table cache checks,
+canonical padding, full4GiB endpoints, first memory-fault line including address
+zero, immutable held results and actual address-pipeline cancellation all pass.
+
+The initial composed [synthesis miss](performance/mobile-texture-level-resource-synthesis-before-2026-10-20.json)
+is retained. An optional elastic register between final sums and bounds checks
+changes that screen from -88.594 ps to +53.957 ps at1GHz, TC/SLVT, with I/O
+constraints and no retiming. The default three-stage profile remains equivalent
+after five internal net renamings and re-screens at +70.945 ps. Both three/four
+stages sustain one address per cycle in held-stream controls. These are
+[standalone synthesis results](performance/mobile-texture-level-resource-synthesis-2026-10-20.json),
+not a native-host/product timing result. Image/format objects, indexed bindings,
+complete mip rules, texel fetch/decode/filtering and native integration remain
+open; no native capability or H4/H6/GLES closure is claimed.

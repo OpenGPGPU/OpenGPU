@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "mapping_pass_setup_fail_1GHz",
+  "scope": "Standalone GPU level owner composed with the default three-stage address unit; synthesis only",
+  "result": {
+    "returncode": 2,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 37.513187208911404,
+    "finished_utc": "2026-10-20T05:49:15.213686+00:00"
+  },
+  "qualification": {
+    "passed": false,
+    "reported_setup_slacks_ps": [
+      -88.594,
+      457.486
+    ],
+    "reported_path_groups": 2,
+    "scope": "All reported synthesis setup paths, including I/O",
+    "report_sha256": "4d4f50a885efcd1e260359d9a54712924e09268bdcbd9df774ea85b57204e755",
+    "setup_passed": false,
+    "mapping": {
+      "passed": true,
+      "mapping_report_present": true,
+      "skipped_instance_types": [],
+      "skipped_instance_count": 0,
+      "skipped_instances_by_type": {},
+      "unresolved_diagnostics": [],
+      "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+      "log": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+      "log_sha256": "e10d356b0ddb7a7b69ea22858452d3771d9cdcfe18303825e5901fa46468c83b",
+      "logs": [
+        {
+          "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v1/flow/orfs-work/logs/base/1_synth.log",
+          "sha256": "4ecb3ad50c7c936cce8d6f15399942619070687a9d08159abbd282d92ce8a4a7"
+        },
+        {
+          "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v1/flow/orfs-work/logs/base/1_2_yosys.log",
+          "sha256": "e57d3a73c65c90250afe470f36c92375b9ae5b8428b249636a8abcfdfb643bf2"
+        },
+        {
+          "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "e10d356b0ddb7a7b69ea22858452d3771d9cdcfe18303825e5901fa46468c83b"
+        }
+      ],
+      "combined_log_sha256": "9b55f7e121b73448add634f0daf72b1b090a4a998ae6c91b2ca190ef33d956ec"
+    }
+  },
+  "qor": {
+    "setup_worst_slack_ps": -88.594,
+    "core_clock_fmax_mhz": 918.616
+  },
+  "critical_path": {
+    "start": "address.products_q.ram[64]",
+    "end": "address.result_q.ram[16]",
+    "meaning": "Address final sums and bounds checks after product registers"
+  },
+  "evidence": {
+    ".artifacts/mobile-texture-level-resource-synthesis-v1-result.json": {
+      "sha256": "a5d96a5ef313bb880aff0c209517a6160201f2be3bc286f2a9169f2018aead14"
+    },
+    ".artifacts/mobile-texture-level-resource-synthesis-v1-inputs.json": {
+      "sha256": "2532e5e663a8c3249c12667d6e46bf0a6e770b4811e94ae1a0307662f256d2c2"
+    },
+    "generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v1/manifest.json": {
+      "sha256": "1db31eec6d8ef819bc86d49c85c2a0eda620a1c5b181f2a71410853b85bd81cd"
+    },
+    "generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v1/qualification.json": {
+      "sha256": "178b5230c890f3b6f51869e59218374d8f810a196cafdaab304a53157de096e9"
+    },
+    "generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v1/flow/synthesis_sta.log": {
+      "sha256": "4d4f50a885efcd1e260359d9a54712924e09268bdcbd9df774ea85b57204e755"
+    }
+  },
+  "next_change": "Add an optional elastic bounds register cut for composed use while preserving the default three-stage component path and one-address-per-cycle throughput. Requalify runtime and resynthesize at the same constraints.",
+  "limits": [
+    "No place and route, power or product clock result.",
+    "Ten functional controls passed on this frozen source, but 1GHz timing qualification failed."
+  ]
+}
