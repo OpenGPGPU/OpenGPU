@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "shared_CU_qualification_running",
+  "source": {
+    "commit": "055fa99beb802883b19ad3125f8dc27a3e63282a",
+    "source_files": 803,
+    "manifest_sha256": "223056a990d27f1a822ec26b769e0582087a5f5e8647952822d01514a1cf867b",
+    "archive_sha256": "2457a81d933d98237481e775b1ca96d204c1df80cdb29caf21d886e850ac30b7",
+    "git_archive_and_worktree_exact": true
+  },
+  "parent_component_record": "mobile-native-integer-operands-2026-10-21.json",
+  "parent_component_record_sha256": "2f688d3a5d2385dcea33ac88ebd19aa6554ddb6a92048fd18550efd1c70cd6b5",
+  "source_delta_from_component_snapshot": [
+    "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala",
+    "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala",
+    "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"
+  ],
+  "all_production_driver_and_ABI_inputs_unchanged_from_component_snapshot": true,
+  "emission": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 12.993481749901548,
+    "commit": "055fa99beb802883b19ad3125f8dc27a3e63282a",
+    "source_files": 803,
+    "manifest_sha256": "223056a990d27f1a822ec26b769e0582087a5f5e8647952822d01514a1cf867b",
+    "archive_sha256": "2457a81d933d98237481e775b1ca96d204c1df80cdb29caf21d886e850ac30b7",
+    "git_archive_and_worktree_exact": true
+  },
+  "fresh_qualification": {
+    "session_id": 81839,
+    "runner": ".artifacts/run-mobile-native-integer-v2.py",
+    "runner_sha256": "b5ed2befb69d4b5d327b4b10bf412bfbf670d1e039bd28a0c182917a17e023fc",
+    "log": ".artifacts/mobile-native-integer-v2-qualified.log",
+    "state": "running_when_recorded",
+    "expected_aggregate_tests": 146,
+    "expected_shared_CU_tests": 4,
+    "descriptor_ABI_checks": 9
+  },
+  "PPA": {
+    "state": "fresh_integer_endpoint_synthesis_not_started",
+    "reason": "Earlier floating-only native endpoint runs are still live; their source differs and does not qualify integer execution.",
+    "floating_native_synthesis_sessions": {
+      "vertex": 71478,
+      "fragment": 37291
+    },
+    "scope": "Synthesis only,1000ps TC/SLVT,25 percent I/O,standard ABC,no retiming or route."
+  },
+  "remaining": [
+    "Terminal146-test aggregate and9 generated descriptor ABI checks",
+    "Four real shared-CU integer/float/legacy controls in local/spill modes",
+    "Fresh integer native endpoint synthesis and integer AXI frames",
+    "Queries, banked texture throughput/coherence and all remaining H0-H8 requirements"
+  ]
+}
