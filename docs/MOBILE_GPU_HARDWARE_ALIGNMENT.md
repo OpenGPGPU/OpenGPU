@@ -6162,3 +6162,14 @@ cuts. Default emission passes. The preceding paired-only [15 cycle fixtures](per
 retain every output and reduce unit basic-line cycles1257 to617 (prior main489).
 Fresh weighted integration,cycle costs and synthesis remain pending;no positive
 clock or throughput result is claimed.
+
+
+## Retained weighted qualification before length cut (2026-10-20)
+
+All22 targeted controls pass on unchanged674-file paired/weighted source. All
+[15 cycle fixtures](performance/mobile-point-line-diamond-weight-cycles-before-2026-10-20.json)
+retain every output;point cycle counts remain exact,unit basic-line cycles are873
+(prior main489),and unit4x line1067 (prior main811). The [standalone screen](performance/mobile-point-line-diamond-weight-synthesis-before-2026-10-20.json)
+passes full mapping but misses setup by124.115ps;I/O setup is+641.966ps. The
+remaining path is dy[32] to squared length[66]. No positive clock,throughput or
+full H0-H8 result is claimed;the measured length path is the next cut.
