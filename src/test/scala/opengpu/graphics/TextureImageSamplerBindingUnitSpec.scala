@@ -65,9 +65,9 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
       val words=Seq[BigInt](BigInt("47585301",16),64,1,context,11,13,handle,min,mag,s,t,r,lo,hi,compare,function)
       for((w,n)<-words.zipWithIndex)memory.putWord(base+handle*64+n*4,w)
     }
-    def image(format: Int=3,base: BigInt=0x1000,handle: BigInt=0,brokenMip: Boolean=false,levels: BigInt=0x2000): Unit={
+    def image(format: Int=3,base: BigInt=0x1000,handle: BigInt=0,brokenMip: Boolean=false,levels: BigInt=0x2000,baseLevel: Int=0): Unit={
       val bytes=if(format>=54)CompressedImageReference.format(format).bytes else ImageFormatReference.format(ImageFormatReference.names(format)).bytes
-      val words=Seq[BigInt](BigInt("47584901",16),128,1,7,11,13,handle,0,format,0,15,4,4,1,1,
+      val words=Seq[BigInt](BigInt("47584901",16),128,1,7,11,13,handle,0,format,baseLevel,15,4,4,1,1,
         0x100000,0x110000,0,1,levels,levels+384,0,0).padTo(32,BigInt(0))
       for((w,n)<-words.zipWithIndex)memory.putWord(base+handle*128+n*4,w)
       for(level<-0 to 2){val size=4>>level;val row=size*bytes
@@ -76,11 +76,12 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
         for((w,n)<-data.zipWithIndex)memory.putWord(levels+level*128+n*4,w)}
     }
     def query(tag: BigInt=0x80000001L,level: BigInt=0,kind: Int=0,sbase: BigInt=0x3000,slimit: BigInt=0x4000,
-      shandle: BigInt=0,ibase: BigInt=0x1000,ilimit: BigInt=0x1800,ihandle: BigInt=0,context: Int=7,sversion: Int=1): Unit={
+      shandle: BigInt=0,ibase: BigInt=0x1000,ilimit: BigInt=0x1800,ihandle: BigInt=0,context: Int=7,sversion: Int=1,selectBase: Boolean=false): Unit={
       val q=d.io.in.bits;zero(q);identity(q.images.identity);identity(q.samplers.identity);q.samplers.identity.context.poke(context.U)
       q.images.version.poke(1.U);q.images.base.poke(ibase.U);q.images.limit.poke(ilimit.U)
       q.samplers.version.poke(sversion.U);q.samplers.base.poke(sbase.U);q.samplers.limit.poke(slimit.U)
       q.imageHandle.poke(ihandle.U);q.samplerHandle.poke(shandle.U);q.level.poke(level.U);q.tag.poke(tag.U);q.expectedType.poke(kind.U)
+      q.selectBaseLevel.poke(selectBase.B)
       d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q);currentTag=tag
     }
     def check(status: Int=0,source: Int=0,fault: Option[BigInt]=None): Unit={
@@ -93,6 +94,20 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
     }
     def identityCheck(x: GraphicsWorkIdentity): Unit={x.context.expect(7.U);x.pass.expect(11.U);x.generation.expect(13.U)}
     def pop(): Unit={d.io.out.ready.poke(true.B);tick();d.io.out.ready.poke(false.B);d.io.busy.expect(false.B)}
+  }
+  it should "admit a captured image base before LOD selection with sampler-derived completeness" in {
+    simulate(new ImageSamplerHarness()){d=>val t=new Driver(d);var cases=0
+      for(base<-0 to 2;filter<-0 to 5){t.image(baseLevel=base);t.sampler(min=filter);t.invalidate()
+        val before=t.memory.seen.size;t.query(selectBase=true);t.check()
+        val o=d.io.out.bits;o.level.expect(base.U);o.image.level.expect(base.U);o.image.baseLevel.expect(base.U)
+        o.image.selected.level.expect(base.U);o.image.view.texWidth.expect((4>>base).U)
+        o.image.mipChainChecked.expect((filter>=2).B);o.image.levelsChecked.expect((if(filter>=2)3-base else 1).U)
+        assert(t.memory.seen.drop(before).count(r=>r.address==0x1000 || r.address==0x1040)==2,"base selection must not trigger another header walk")
+        t.pop();cases+=1
+      }
+      val before=t.memory.seen.size;t.query(level=1,selectBase=true);t.check(1,source=3);t.pop();assert(t.memory.seen.size==before)
+      info(s"IMAGE_SAMPLER_SELECT_BASE queries=$cases filters6=true baseLevels3=true capturedBaseAndExtent=true samplerDerivedMipChain=true noRedundantNonmipBaseWalk=true canonicalUnusedLevelBeforeReads=true")
+    }
   }
   it should "load all sampler filter wrap combinations with exact LOD bits and tag independent immutable cache reuse" in {
     simulate(new ImageSamplerHarness(composed=false)){d=>val t=new Driver(d,false);var cases=0

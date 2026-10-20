@@ -84,11 +84,11 @@ class TextureImageBoundFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
       result:=0.U.asTypeOf(result);result.image:=binding;result.sample:=sample
       result.sample.rgba:=TextureImageSwizzle(sample.rgba,sample.colorType,binding.swizzle)
       result.image.identity:=request.image.table.identity;result.image.handle:=request.image.handle
-      result.image.level:=request.image.level;result.image.tag:=request.image.tag
+      result.image.level:=binding.level;result.image.tag:=request.image.tag
       val finalStatus=Mux(io.cancel && status===0.U,TextureImageResourceStatus.cancelled.U,status)
       result.image.status:=finalStatus;result.sample.sample.status:=finalStatus
       result.sample.sample.identity:=request.image.table.identity;result.sample.sample.tag:=request.image.tag
-      result.sample.sample.level:=request.image.level(3,0)
+      result.sample.sample.level:=binding.level(3,0)
       when(stop){result.image.validBinding:=false.B;result.image.format:=0.U;result.image.baseLevel:=0.U;result.image.lastLevel:=0.U
         result.image.swizzle:=0.U.asTypeOf(result.image.swizzle)
         result.image.mipChainChecked:=false.B;result.image.selected:=0.U.asTypeOf(result.image.selected);result.image.view:=0.U.asTypeOf(result.image.view)

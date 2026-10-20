@@ -14,8 +14,8 @@ successor. The fractional part supplies the second tap's weight. Nearest uses
 
 ## Axis interface and arithmetic
 
-Requests contain raw FP32 coordinate bits, a nonzero14-bit extent, a two-bit wrap
-mode, a linear flag and a32-bit tag. Responses contain two signed16-bit indices,
+Requests contain raw FP32 coordinate bits, a nonzero 14-bit extent, a two-bit wrap
+mode, a linear flag and a 32-bit tag. Responses contain two signed 16-bit indices,
 the raw FP32 weight, status and the original tag.
 
 | Mode | Meaning | Output index range |
@@ -25,13 +25,13 @@ the raw FP32 weight, status and the original tag.
 | 2 | Mirrored repeat | `0..N-1` |
 | 3 | Internal cube border clamping | `-1..N` |
 
-Mode3 is an internal coordinate operation. GXS1 still rejects wrap mode3. A
+Mode 3 is an internal coordinate operation. GXS1 still rejects wrap mode3. A
 future cube owner must choose the face, project the direction, select clamp to
 edge for nearest and border clamping for linear, and map border taps to adjoining
 faces. This unit does not implement those steps.
 
-The implementation reduces exact binary periods before multiplying the24-bit
-significand by the14-bit extent. It retains149 fractional bits through integer
+The implementation reduces exact binary periods before multiplying the 24-bit
+significand by the 14-bit extent. It retains 149 fractional bits through integer
 tap selection, including the smallest FP32 subnormal. Negative values, integer
 parity and huge finite exponents therefore cannot silently collapse to a
 different texel. Weight conversion rounds to nearest, ties to even.
@@ -40,26 +40,44 @@ For clamp coordinates outside`[0,1]`, and border coordinates outside`[-1,2]`,
 canonical endpoint coordinates generate the weight. Both selected taps coincide
 in those regions, so this changes no filtered value. Other weights come from
 the original exact fractional position. NaN, infinity and zero extent return
-coordinate status5, zero indices and zero weight, retaining the caller tag.
+coordinate status 5, zero indices and zero weight, retaining the caller tag.
 
 Seven stages use two-entry queues to bound the ready path and retain accepted
 requests through backpressure. With no stalls the latency is seven cycles and
-the initiation interval is one axis per cycle. Up to14 requests can be buffered.
+the initiation interval is one axis per cycle. Up to 14 requests can be buffered.
 This arithmetic pipeline owns no memory transactions and has no cancel input;
 the parent must drain all accepted tags before retiring cancelled work.
+
+## Base-level admission
+
+The internal image and image/sampler requests now have `selectBaseLevel`. A
+sampling owner sets it with explicit level zero; admission selects the actual
+captured GXI1 base level, returns its extent and preserves sampler-derived mip
+completeness. The resolved level also follows bound fetches and data faults.
+This avoids guessing level zero before LOD calculation. Existing integer fetch
+callers leave the flag clear and retain explicit full-width level checks.
+
+The mode participates in image cache identity. Nonzero unused explicit levels
+are rejected before descriptor reads. Nonmip base selection avoids a redundant
+base validation walk. The focused checks cover all 16 base levels, all targets,
+swizzle, cache separation, data faults and all six sampler minification filters.
+The image/sampler/native regression passes 41 tests; focused reruns add checks
+for a cache collision at the same raw level and fault reporting after selection.
+These are internal interfaces; software record layouts and capability words do
+not change. General filtering and comparison admission remain required.
 
 ## Standalone evidence and remaining integration
 
 The [qualification record](performance/mobile-float-axis-synthesis-2026-10-20.json)
-records two passing tests with91,135 exact-rational reference queries. These
-cover all256 FP32 exponent encodings, both signs, all16,383 nonzero extents,
+records two passing tests with 91,135 exact-rational reference queries. These
+cover all 256 FP32 exponent encodings, both signs, all 16,383 nonzero extents,
 representative significands, wrap/filter combinations, half-texel ULP neighbors,
 random coordinates, rejected inputs, held output stability and ordered tags.
 The dense stream checks the seven-cycle latency and one-cycle interval.
 
-Fresh synthesis at1000ps, TC/SLVT,25% I/O, default ABC and no retiming passes
-mapping and setup: core+194.895ps, I/O+632.673ps,19,046 mapped cells. Library cell
-area is2229.52986 units; this is not physical die area. No route or power
+Fresh synthesis at 1000 ps, TC/SLVT, 25% I/O, default ABC and no retiming passes
+mapping and setup: core +194.895 ps, I/O +632.673 ps, 19,046 mapped cells. Library cell
+area is 2229.52986 units; this is not physical die area. No route or power
 qualification is claimed.
 
 Required next work is the complete native floating sampling path: coordinate

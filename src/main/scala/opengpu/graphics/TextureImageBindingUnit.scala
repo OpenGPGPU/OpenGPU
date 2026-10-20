@@ -33,6 +33,10 @@ class TextureImageBindingRequest extends Bundle {
   val table=new TextureImageLevelTable;val handle=UInt(32.W);val level=UInt(32.W);val tag=UInt(32.W)
   /** From captured sampler policy. False validates selected level only. */
   val requireMipChain=Bool()
+  /** General sampling starts at the captured base level before choosing LOD.
+    * This internal mode requires the unused explicit level to be zero.
+    */
+  val selectBaseLevel=Bool()
 }
 object TextureImageBindingFaultStage {
   val none=0;val image=1;val level=2;val data=3;val layout=4;val coordinate=5
@@ -131,6 +135,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
   private def dimension(n: UInt,level: UInt): UInt=Mux((n>>level)===0.U,1.U,n>>level)
   private val width=dimension(snapshot.rootWidth,currentLevel);private val height=dimension(snapshot.rootHeight,currentLevel)
   private val depth=Mux(snapshot.target===3.U,dimension(snapshot.rootDepth,currentLevel),1.U)
+  private val selectedLevel=Mux(request.selectBaseLevel,snapshot.baseLevel,request.level)
   switch(phase){
     is(State.idle){when(io.in.fire){
       assert(drained && !child.io.busy,"image admission abandoned old ownership")
@@ -145,7 +150,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       val cacheKey=WireDefault(request);cacheKey.tag:=0.U
       val cacheHit=cached && !noFill && !io.invalidate && cachedKey.asUInt===cacheKey.asUInt
       start:=begin(32,0)
-      when(stop){phase:=State.finish}.elsewhen(!legal){status:=TextureImageResourceStatus.view.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
+      when(stop){phase:=State.finish}.elsewhen(!legal || (request.selectBaseLevel && request.level=/=0.U)){status:=TextureImageResourceStatus.view.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .elsewhen(cacheHit){result:=cachedResult;hit:=true.B;phase:=State.finish}
         .otherwise{cached:=false.B;phase:=State.readHeader}
     }
@@ -171,14 +176,15 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
     }
     is(State.checkSelectedLevel){
       when(stop){phase:=State.finish}
-        .elsewhen(request.level<snapshot.baseLevel || request.level>lastLevel){status:=TextureImageResourceStatus.coordinate.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
+        .elsewhen(selectedLevel<snapshot.baseLevel || selectedLevel>lastLevel){status:=TextureImageResourceStatus.coordinate.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .otherwise{phase:=State.levelHandles}
     }
     is(State.levelHandles){
-      // Full32-bit request level was checked before this narrowing. A32-bit
+      // The explicit32-bit or captured4-bit base level was checked before
+      // this narrowing. A32-bit
       // first handle plus a4-bit level fits33 bits, including its carry.
-      firstHandle:=snapshot.firstLevelHandle.pad(33)+Mux(request.requireMipChain,snapshot.baseLevel,request.level(3,0))
-      lastHandle:=snapshot.firstLevelHandle.pad(33)+Mux(request.requireMipChain,lastLevel,request.level(3,0))
+      firstHandle:=snapshot.firstLevelHandle.pad(33)+Mux(request.requireMipChain,snapshot.baseLevel,selectedLevel(3,0))
+      lastHandle:=snapshot.firstLevelHandle.pad(33)+Mux(request.requireMipChain,lastLevel,selectedLevel(3,0))
       phase:=Mux(stop,State.finish,State.levelExtent)
     }
     is(State.levelExtent){
@@ -193,7 +199,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
         snapshot.levelsLimit<=(BigInt(1)<<32).U && (snapshot.levelsLimit-snapshot.levelsBase)(6,0)===0.U &&
         !firstHandle(32) && !lastHandle(32) && levelBegin>=snapshot.levelsBase && levelEnd<=snapshot.levelsLimit
       when(stop){phase:=State.finish}.elsewhen(!legal){status:=TextureImageResourceStatus.bounds.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
-        .otherwise{currentLevel:=Mux(request.requireMipChain,snapshot.baseLevel,request.level(3,0));phase:=State.prepareLevel}
+        .otherwise{currentLevel:=Mux(request.requireMipChain,snapshot.baseLevel,selectedLevel(3,0));phase:=State.prepareLevel}
     }
     is(State.prepareLevel){
       levelRequest:=0.U.asTypeOf(levelRequest);levelRequest.lookup.table.version:=snapshot.levelsVersion
@@ -224,7 +230,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       val overlap=(0 until 16).map(i=>i.U<checked && v.base<ends(i) && end>bases(i)).reduce(_ || _)
       when(stop){phase:=State.finish}.elsewhen(!matched || overlap){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .otherwise{bases(checked(3,0)):=v.base;ends(checked(3,0)):=end;checked:=checked+1.U
-          when(currentLevel===request.level){selectedView:=v;selectedLookup:=levelRequest.lookup;selectedValid:=true.B}
+          when(currentLevel===selectedLevel){selectedView:=v;selectedLookup:=levelRequest.lookup;selectedValid:=true.B}
           phase:=State.advance}
     }
     is(State.advance){
@@ -239,7 +245,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       fresh.faultStage:=faultStage;fresh.faultAddressValid:=faultValid;fresh.faultAddress:=Mux(faultValid,faultAddress,0.U)
       fresh.imageReadLines:=headerLines;fresh.levelReadLines:=levelLines;fresh.levelsChecked:=checked;fresh.hit:=hit
       when(!stop && !hit){assert(selectedValid,"successful image binding lacks selected level")
-        fresh.validBinding:=true.B;fresh.format:=snapshot.format;fresh.baseLevel:=snapshot.baseLevel;fresh.lastLevel:=lastLevel
+        fresh.validBinding:=true.B;fresh.level:=selectedLevel;fresh.format:=snapshot.format;fresh.baseLevel:=snapshot.baseLevel;fresh.lastLevel:=lastLevel
         fresh.mipChainChecked:=request.requireMipChain;fresh.selected:=selectedLookup;fresh.view:=selectedView;fresh.swizzle:=snapshot.swizzle}
       when(hit && !stop){fresh:=cachedResult;fresh.tag:=request.tag;fresh.hit:=true.B;fresh.imageReadLines:=0.U;fresh.levelReadLines:=0.U;fresh.levelsChecked:=0.U}
       result:=fresh
