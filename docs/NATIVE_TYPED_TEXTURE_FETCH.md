@@ -1,6 +1,8 @@
 # Native shader resource bindings and typed component fetch
 
-Status: native hardware path implemented, with final qualification in progress.
+Status: qualified native hardware path with 114 distinct targeted controls,
+including typed and legacy native execution, metadata/decoder/image coverage,
+1/4/16/32-lane component execution, nine ABI checks and combined C11 headers.
 The [source record](performance/mobile-native-typed-texture-fetch-2026-10-20.json)
 retains component/shared-CU/native AXI results and the original fixture failures.
 All four [standalone synthesis setup screens](performance/mobile-native-typed-texture-synthesis-2026-10-20.json)
@@ -82,3 +84,24 @@ The sibling LLVM `opengpu` branch was inspected: its existing texture and quad
 encodings remain byte-compatible, and the new funct7/funct6 value2 was unused.
 Hardware fixtures issue encoded words using the generated ABI constants; this
 does not claim compiler intrinsic or driver allow-list support for the new path.
+
+
+## Final qualification scope
+
+The final 694-file source passes 114 distinct targeted controls. Native typed
+execution covers 44 shared-CU stage draws plus 12 AXI frames/36 primitive draws,
+with both shader stages, scalar/vector components, explicit binding slots31/17,
+integer/raw values, cube/volume resources, fault/cancellation recovery and exact
+MRT/depth/resolve publication. Legacy regression adds84 stage draws and14 native
+AXI frames. A denied sampler page produces no physical read. Held completions
+continue to pin VM ownership. Metadata readers reject malformed root references
+before child launch; all560/570/76 older native field mappings retain offsets.
+
+All nine generated ABI checks, combined headers and CI selection pass. The
+synthesis screens use default16-lane components and standard1000ps,25% I/O,
+TC/SLVT,no retiming. Core/I/O slack is endpoint+28.238/+395.772ps,
+execution+19.027/+378.444ps,native wrapper+51.162/+173.914ps and
+credit adapter+634.832/+447.491ps. Mapping is complete for all four. Only the
+GFS header capability constants and additional direct width tests changed after
+synthesis; every production manifest entry and emitted RTL file remains exact.
+These results do not establish a native host clock,frame rate,route or power.

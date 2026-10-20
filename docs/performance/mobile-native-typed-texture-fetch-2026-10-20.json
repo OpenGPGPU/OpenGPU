@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "component_and_native_typed_controls_pass_final_integration_and_wide_controls_running",
+  "status": "114_distinct_targeted_tests_and_four_standalone_synthesis_screens_pass",
   "source_files": 694,
   "source_base_record": "docs/performance/mobile-image-sampler-binding-2026-10-20.json",
   "source_base_record_sha256": "1d6a8ff7ef955ff9092cc4ba5114fe4094d34d63430b8ed25df6a204d566acb9",
@@ -77,13 +77,114 @@
     "reason": "The vertex fixture inherited a per-instance divisor for per-vertex packet pointers. The fragment fixture checker retained its default output type after an integer output was selected. Both fixtures were corrected; no production change was needed."
   },
   "synthesis_record": "docs/performance/mobile-native-typed-texture-synthesis-2026-10-20.json",
-  "pending": [
-    "Finish native typed/legacy integration and five scheduled ABI checks.",
-    "Run added1/16/32-lane controls and broader decoder/image controls on the final snapshot."
-  ],
+  "pending": [],
   "limits": [
     "Current compiler mnemonics/codegen and driver allow-list do not yet admit the new typed fetch operations; hardware encodings and descriptor headers are published.",
     "General coordinate sampling,filtering,LOD/depth/compressed formats,throughput and full H0-H8 closure remain open.",
-    "Current native execution controls use two shared CUs with4 lanes/2 warps; default16-lane component synthesis is not a whole GPU clock result."
-  ]
+    "Native execution controls use two shared CUs with4 lanes/2 warps; direct execution also passes1/16/32 lanes. Default16-lane component synthesis is not a whole GPU clock result."
+  ],
+  "validation": {
+    "distinct_targeted_tests": 114,
+    "source_files": 694,
+    "source_unchanged": true,
+    "scope": "Targeted component,metadata,decoder,existing image/native legacy,and native typed execution controls; not a full repository or H0-H8 regression.",
+    "groups": {
+      "components_v3": {
+        "log_sha256": "29a275913a02c7575a5dd423308bf4b0e4609461956adfe57b5927d8c511e2d2",
+        "test_cases": 34,
+        "by_suite": {
+          "TypedTextureDecodeSpec": 1,
+          "TextureLineCreditAdapterSpec": 1,
+          "TypedFragmentStateReaderSpec": 9,
+          "NativeTypedGraphicsJobReaderSpec": 8,
+          "NativeShaderTextureUnitSpec": 6,
+          "NativeBinnedGraphicsJobReaderSpec": 9
+        }
+      },
+      "integration_v3": {
+        "log_sha256": "df1b3b2ea1495fdd766b0a7245ca3d42d0d0b205c0ef8576d5a9c2ed7e794d1a",
+        "test_cases": 12,
+        "by_suite": {
+          "FragmentShaderStageSpec": 4,
+          "VertexShaderStageSpec": 4,
+          "NativeTypedGraphicsHostAxiSpec": 4
+        }
+      },
+      "broad_v4": {
+        "log_sha256": "3a9109676b08bef55aa2ad7e83d45c359676d48a595474311da18a47695b4c80",
+        "test_cases": 76,
+        "by_suite": {
+          "TypedTextureDecodeSpec": 1,
+          "GpuAbiLayoutSpec": 14,
+          "DecoderSpec": 3,
+          "TextureImageResourceAddressUnitSpec": 6,
+          "TextureLineCreditAdapterSpec": 1,
+          "ExtensionDecoderSpec": 4,
+          "TextureImageAddressUnitSpec": 5,
+          "ExtendedDecoderSpec": 7,
+          "TextureImageSamplerBindingUnitSpec": 10,
+          "TextureImageBindingUnitSpec": 10,
+          "TextureImageFetchUnitSpec": 6,
+          "NativeShaderTextureUnitSpec": 9
+        }
+      }
+    },
+    "source_proof": {
+      "v3_source_manifest_sha256": "fa083884316cf6aee2d93d4e7617b6dad62b451a85b249fe3a49c0338eb581a5",
+      "v4_source_manifest_sha256": "37f477d3c6d964d5aeddf93fbe4523a01035a6ac4805a3adeb6ae0ea7d9bcc00",
+      "changed_files": [
+        "driver/opengpu_typed_fragment_state_abi.h",
+        "src/test/scala/opengpu/graphics/NativeShaderTextureUnitSpec.scala"
+      ],
+      "all_production_scala_and_emitted_rtl_dependencies_unchanged": true,
+      "reason": "Synchronize three capability constants in the generated GFS header and add vector-width controls. The running native integration uses identical production and native test inputs; generator checking reads the corrected header."
+    },
+    "native_integration": {
+      "returncode": 0,
+      "checks_by_group": [
+        4,
+        2,
+        4,
+        2
+      ],
+      "total_checks": 12,
+      "typed_shared_cu_draws": 44,
+      "typed_native_axi_frames": 12,
+      "typed_native_primitive_draws": 36,
+      "legacy_shared_cu_draws": 84,
+      "legacy_native_axi_frames": 14,
+      "legacy_native_primitive_draws": 42,
+      "abi_generators_checked": 5,
+      "log_sha256": "df1b3b2ea1495fdd766b0a7245ca3d42d0d0b205c0ef8576d5a9c2ed7e794d1a",
+      "all_production_and_native_integration_inputs_match_final_v4": true,
+      "source_files": 694
+    },
+    "abi_generators_checked": 9,
+    "combined_c11_and_ci": {
+      "combined_c11": {
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "ci_selection": {
+        "returncode": 0,
+        "stdout": "Integration test selection: PASS\n",
+        "stderr": ""
+      }
+    },
+    "widths": [
+      1,
+      4,
+      16,
+      32
+    ],
+    "component_fetches_per_stage": 576,
+    "cancellation_cuts": 240,
+    "decode_cases": 332,
+    "legacy_native_offsets_preserved": {
+      "typed_fields": 560,
+      "binned_fields": 570,
+      "fragment_state_fields": 76
+    }
+  }
 }

@@ -6453,3 +6453,19 @@ pass setup at standard1000ps: endpoint+28.238ps, execution+19.027ps,
 native wrapper+51.162ps and credit adapter+634.832ps. No host clock or frame rate
 is inferred. GTX1 bit512 describes the hardware path; compiler/driver admission,
 general sampling/filtering and full H0-H8 closure remain open.
+
+
+## Qualified native indexed typed fetch (2026-10-20)
+
+The [final694-file checkpoint](performance/mobile-native-typed-texture-fetch-2026-10-20.json)
+passes114 distinct targeted controls,including44 typed shared-CU stage draws,
+12 typed native AXI frames/36 primitive draws,84 legacy stage draws and14 legacy
+native frames. Both local/spilled payload modes,all four returned components,
+work snapshots,explicit mips,cube/volume bindings,denied sampler pages,full-width
+bounds,cancellation and healthy reuse are checked. Direct execution also passes
+1/16/32 lanes. All nine ABI generators,combined C11 headers and CI selection pass.
+All older native field offsets and record sizes remain stable. The four positive
+standalone synthesis screens use standard1000ps,25% I/O,TC/SLVT and no retiming.
+This connects native per-stage resource selection and typed integer texel-fetch
+transport. General normalized-coordinate sampling,filtering/LOD application,
+remaining formats,throughput,compiler/driver adoption and full H0-H8 remain open.
