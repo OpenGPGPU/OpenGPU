@@ -6148,3 +6148,17 @@ weak-order cases,4871 full-width arithmetic cases and2401 independent boundary
 lattice lines. The lane-weight body remains byte identical to the source whose
 standalone safety path missed709.573ps;that path will be cut before the next
 combined synthesis screen. No new setup or native clock result is claimed.
+
+
+## Registered line center weights after paired diamonds (2026-10-20)
+
+The [weighted paired candidate](performance/mobile-point-line-diamond-weights-2026-10-20.json)
+cuts the measured request-to-repeat safety path with signed partial products,
+joined products,prefix parameter addition and prefix remaining subtraction.
+Full-width safety checks still precede signed64 export;points bypass these
+stages. All12 controls pass on unchanged674-file source,including39015 order
+cases,4871 arithmetic cases,2401 boundary lattice lines and564 cancellation/reset
+cuts. Default emission passes. The preceding paired-only [15 cycle fixtures](performance/mobile-point-line-diamond-pair-cycles-before-2026-10-20.json)
+retain every output and reduce unit basic-line cycles1257 to617 (prior main489).
+Fresh weighted integration,cycle costs and synthesis remain pending;no positive
+clock or throughput result is claimed.

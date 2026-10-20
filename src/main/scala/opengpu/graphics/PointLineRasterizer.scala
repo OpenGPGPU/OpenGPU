@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.{SignedProductParts, SplitSignedProduct}
+import opengpu.util.{BlockPrefixAdder, SignedProductParts, SplitSignedProduct}
 
 class PointLineRasterRequest extends Bundle {
   val point=Bool();val x0=SInt(32.W);val y0=SInt(32.W);val x1=SInt(32.W);val y1=SInt(32.W)
@@ -39,7 +39,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     val in=Flipped(Decoupled(new PointLineRasterRequest));val out=Decoupled(new RasterQuad(g))
     val cancel=Input(Bool());val busy=Output(Bool());val fault=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,decode,measure,bounds,threshold,startQuad,startLane,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
+  private object State extends ChiselEnum {val idle,decode,measure,bounds,threshold,startQuad,startLane,laneProducts,laneParameter,laneRemaining,laneExport,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new PointLineRasterRequest);private val output=Reg(new RasterQuad(g))
   private val x=Reg(UInt(16.W));private val y=Reg(UInt(16.W));private val minX=Reg(UInt(16.W));private val maxX=Reg(UInt(16.W));private val maxY=Reg(UInt(16.W))
   private val lane=RegInit(0.U(2.W));private val sample=RegInit(0.U(2.W));private val mask=RegInit(0.U(g.maxSampleCount.W));private val any=RegInit(false.B)
@@ -64,6 +64,21 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val widthSquared=Reg(UInt(48.W));private val lineBound=Reg(UInt(115.W))
   private val px=x+&lane(0);private val py=y+&lane(1)
   private val cx=(px.zext<<g.subPixelBits)+half.S;private val cy=(py.zext<<g.subPixelBits)+half.S
+  private val laneEx=cx-&request.x0;private val laneEy=cy-&request.y0
+  private val laneOperandWidth=math.max(33,math.max(laneEx.getWidth,laneEy.getWidth))
+  private val laneProductWidth=2*laneOperandWidth;private val laneParameterWidth=laneProductWidth+1
+  private val laneRemainingWidth=math.max(67,laneParameterWidth)+1
+  private val lanePartsX=Reg(new SignedProductParts(laneOperandWidth))
+  private val lanePartsY=Reg(new SignedProductParts(laneOperandWidth))
+  private val laneProductX=Reg(SInt(laneProductWidth.W));private val laneProductY=Reg(SInt(laneProductWidth.W))
+  private val laneParameter=Reg(SInt(laneParameterWidth.W));private val laneRemaining=Reg(SInt(laneRemainingWidth.W))
+  private val joinedLaneX=SplitSignedProduct.join(lanePartsX);private val joinedLaneY=SplitSignedProduct.join(lanePartsY)
+  private val laneSum=Module(new BlockPrefixAdder(laneParameterWidth))
+  laneSum.io.a:=laneProductX.pad(laneParameterWidth).asUInt;laneSum.io.b:=laneProductY.pad(laneParameterWidth).asUInt
+  laneSum.io.carryIn:=false.B
+  private val remainingSum=Module(new BlockPrefixAdder(laneRemainingWidth))
+  remainingSum.io.a:=length.pad(laneRemainingWidth).asUInt;remainingSum.io.b:= ~laneParameter.pad(laneRemainingWidth).asUInt
+  remainingSum.io.carryIn:=true.B
   private val sampleX=Mux(request.state.sampleMode===0.U,0.S,Mux(sample(0),quarter.S,(-quarter).S))
   private val sampleY=Mux(request.state.sampleMode===0.U,0.S,
     Mux(request.state.sampleMode===1.U,Mux(sample(0),quarter.S,(-quarter).S),Mux(sample(1),quarter.S,(-quarter).S)))
@@ -92,6 +107,10 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val highY=Mux(request.state.scissorEnable && request.state.scissorMaxY<height,request.state.scissorMaxY,height)
   private val inClip=px>=lowX && px<highX && py>=lowY && py<highY
   private def nextSample(): Unit={phase:=State.nextSample}
+  private def beginSamples(): Unit={
+    sample:=0.U;mask:=0.U;repeat:=0.U;sampleIssued:=0.U;sampleRetired:=0.U
+    phase:=Mux(!inClip,State.nextLane,Mux(!request.point && request.state.sampleMode=/=0.U,State.sampleStream,State.sample))
+  }
   private def slab(axis: Int,center: SInt): (DiamondFraction,DiamondFraction,Bool,Bool)={
     val a=axisA(axis).pad(64);val b=axisB(axis).pad(64)
     val lo=center-half.S;val hi=center+half.S
@@ -170,11 +189,22 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     is(State.threshold){lineBound:=widthSquared*length.asUInt;phase:=State.startQuad}
     is(State.startQuad){output:=0.U.asTypeOf(output);lane:=0.U;any:=false.B;phase:=State.startLane}
     is(State.startLane){
-      val ex=cx-&request.x0;val ey=cy-&request.y0;val parameter=ex*dx+&ey*dy;val remaining=length-&parameter
-      val safe=parameter===parameter(63,0).asSInt && remaining===remaining(63,0).asSInt
-      val o=output.lanes(lane);o.x:=px.zext;o.y:=py.zext;o.area:=Mux(request.point,1.S,length);o.e0:=Mux(request.point,1.S,remaining);o.e1:=Mux(request.point,0.S,parameter);o.e2:=0.S
-      when(!request.point && !safe){fault:=true.B;phase:=State.idle}.otherwise{sample:=0.U;mask:=0.U;repeat:=0.U;sampleIssued:=0.U;sampleRetired:=0.U
-        phase:=Mux(!inClip,State.nextLane,Mux(!request.point && request.state.sampleMode=/=0.U,State.sampleStream,State.sample))}
+      when(request.point){
+        val o=output.lanes(lane);o.x:=px.zext;o.y:=py.zext;o.area:=1.S;o.e0:=1.S;o.e1:=0.S;o.e2:=0.S
+        beginSamples()
+      }.otherwise{
+        lanePartsX:=SplitSignedProduct.split(laneEx.pad(laneOperandWidth),dx.pad(laneOperandWidth))
+        lanePartsY:=SplitSignedProduct.split(laneEy.pad(laneOperandWidth),dy.pad(laneOperandWidth))
+        phase:=State.laneProducts
+      }
+    }
+    is(State.laneProducts){laneProductX:=joinedLaneX;laneProductY:=joinedLaneY;phase:=State.laneParameter}
+    is(State.laneParameter){laneParameter:=laneSum.io.sum(laneParameterWidth-1,0).asSInt;phase:=State.laneRemaining}
+    is(State.laneRemaining){laneRemaining:=remainingSum.io.sum(laneRemainingWidth-1,0).asSInt;phase:=State.laneExport}
+    is(State.laneExport){
+      val safe=laneParameter===laneParameter(63,0).asSInt && laneRemaining===laneRemaining(63,0).asSInt
+      val o=output.lanes(lane);o.x:=px.zext;o.y:=py.zext;o.area:=length;o.e0:=laneRemaining;o.e1:=laneParameter;o.e2:=0.S
+      when(!safe){fault:=true.B;phase:=State.idle}.otherwise{beginSamples()}
     }
     is(State.sample){
       when(!inClip){phase:=State.nextLane}

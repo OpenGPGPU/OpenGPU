@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "12_paired_component_controls_pass_lane_weight_cut_pending",
+  "status": "12_paired_component_controls_and15_cycle_fixtures_pass_before_weight_cut",
   "source_files": 674,
   "source_manifest_sha256": "779b0e540992b81dd62e3206df3d26195241eb9d52eb7e5fc171f4d294609fd5",
   "source_base_record": {
@@ -39,8 +39,7 @@
   "unchanged_weight_body_sha256": "c4a45d82997fce8be3af68d434ca3a4c97fbae3e087550a9ce2157ba8c84746b",
   "measured_weight_path_record": "docs/performance/mobile-point-line-diamond-serial-synthesis-before-2026-10-20.json",
   "pending": [
-    "Cut the measured unchanged lane weight safety arithmetic.",
-    "Measure paired interval cycle cost.",
-    "Fresh combined integration and standalone synthesis;no positive timing or full hardware result claimed."
-  ]
+    "Qualify measured weight-path cut in the combined next revision."
+  ],
+  "cycle_record": "docs/performance/mobile-point-line-diamond-pair-cycles-before-2026-10-20.json"
 }
