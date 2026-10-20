@@ -60,7 +60,7 @@ class BankedRgba8FloatTextureService(dataBytes: Int = 8192, entries: Int = 16,
   for(c <- 0 until 4) normalize.io.in.bits.numerators(c) :=
     Mux(groups.io.out.bits.hit, groups.io.out.bits.weightedSums.get(c), 0.U)
   normalize.io.cancel := io.cancel || io.invalidate
-  val result = normalize.io.out.bits.tag.asTypeOf(new Rgba8FloatMetadata)
+  private val result = normalize.io.out.bits.tag.asTypeOf(new Rgba8FloatMetadata)
   io.out.valid := normalize.io.out.valid; normalize.io.out.ready := io.out.ready
   io.out.bits.identity := result.identity; io.out.bits.tag := result.tag
   io.out.bits.values := normalize.io.out.bits.values
