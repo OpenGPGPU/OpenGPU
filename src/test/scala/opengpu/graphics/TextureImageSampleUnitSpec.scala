@@ -1,11 +1,44 @@
 package opengpu.graphics
 
 import chisel3._
+import chisel3.util._
+import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 import opengpu.config.GpuConfig
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
+private class TextureSampleTestHarness(config: GpuConfig=GpuConfig(),val nativeSampling: Boolean=false,val shaderStage: Int=1) extends Module {
+  val io=IO(new Bundle {
+    val in=Flipped(Decoupled(new TextureImageSampleRequest));val out=Decoupled(new TextureImageMipSampleResult)
+    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
+    val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
+    val component=Input(UInt(2.W));val resources=Input(new ShaderTextureResources);val value=Output(UInt(32.W));val nativeSource=Output(UInt(4.W))
+  })
+  if(nativeSampling){
+    val child=Module(new ShaderTextureSampleUnit(config,shaderStage));val q=io.in.bits;val r=child.io.in.bits
+    child.io.in.valid:=io.in.valid;io.in.ready:=child.io.in.ready;r:=0.U.asTypeOf(r)
+    r.resources:=io.resources;r.identity:=q.preparation.images.identity
+    r.unit:=q.preparation.imageHandle;r.component:=io.component;r.tag:=q.preparation.tag
+    val v=r.parameters;v.mode:=Mux(q.gradient && q.implicitLod,3.U,Mux(q.gradient,2.U,Mux(q.implicitLod,0.U,1.U)))
+    v.coordinates:=q.preparation.coordinates;v.layer:=q.preparation.layer;v.reference:=q.preparation.reference;v.shadow:=q.preparation.shadow
+    v.lod:=q.lod;v.bias:=q.bias;v.offsets:=q.offsets;v.gradients:=q.gradients
+    v.quadCoordinates:=q.quadCoordinates;v.quadLane:=q.quadLane;v.quadValidMask:=q.quadValidMask
+    io.out.valid:=child.io.out.valid;child.io.out.ready:=io.out.ready;io.out.bits:=child.io.out.bits.sample
+    io.out.bits.sample.status:=child.io.out.bits.status;io.out.bits.sample.tag:=child.io.out.bits.tag
+    io.out.bits.sample.faultSource:=Mux(child.io.out.bits.faultSource===4.U,child.io.out.bits.sample.sample.faultSource,
+      Mux(child.io.out.bits.faultSource===0.U,0.U,3.U))
+    io.out.bits.sample.faultAddressValid:=child.io.out.bits.faultAddressValid;io.out.bits.sample.faultAddress:=child.io.out.bits.faultAddress
+    io.value:=child.io.out.bits.value;io.nativeSource:=child.io.out.bits.faultSource
+    io.memoryRequest<>child.io.memoryRequest;child.io.memoryResponse<>io.memoryResponse
+    child.io.cancel:=io.cancel;child.io.invalidate:=io.invalidate;io.busy:=child.io.busy
+  }else{
+    val child=Module(new TextureImageSampleUnit(config));child.io.in<>io.in;io.out<>child.io.out
+    io.memoryRequest<>child.io.memoryRequest;child.io.memoryResponse<>io.memoryResponse
+    child.io.cancel:=io.cancel;child.io.invalidate:=io.invalidate;io.busy:=child.io.busy
+    io.value:=child.io.out.bits.sample.rgba(io.component);io.nativeSource:=0.U
+  }
+}
 class TextureImageSampleUnitSpec extends AnyFlatSpec {
   import WindowRecordTest._
   import TextureFilterReference.{bits,value,filter}
@@ -57,18 +90,24 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
     val extents=Seq(v.w,v.h,v.depth);val rho=(for(row<-0 to 1;a<-0 until(if(i.target==3)3 else 2))yield math.abs(projected(row)(a))*extents(a)).max
     if(rho==0)Float.NegativeInfinity else (java.lang.StrictMath.log(rho)/java.lang.StrictMath.log(2.0)).toFloat
   }
-  private class Driver(val d: TextureImageSampleUnit) {
-    zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+  private class Driver(val d: TextureSampleTestHarness) {
+    zero(d.io);d.io.resources.version.poke(1.U);d.io.resources.address.poke(0x4000.U);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
     val memory=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,d.io.memoryRequest.valid,d.io.memoryRequest.ready,d.io.memoryResponse.valid,d.io.memoryResponse.ready)
     var tag=0;var startRead=0;var image=Image();var sample=Sample();var checks=0
     val completedReplies=mutable.ArrayBuffer.empty[BigInt]
-    memory.beforeRequest=r=>{assert(!r.write && (r.tag<=4 || r.tag==10 || r.tag==11));assert(r.address%64==0 && r.mask==(BigInt(1)<<64)-1)}
+    memory.beforeRequest=r=>{assert(!r.write && (r.tag<=4 || r.tag==10 || r.tag==11 || d.nativeSampling && r.tag==15));assert(r.address%64==0 && r.mask==(BigInt(1)<<64)-1)}
     def tick(): Unit={memory.drive();if(memory.reply.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean)completedReplies+=memory.reply.get.address
       memory.capture();d.clock.step()}
     def until(p: =>Boolean): Unit={var n=0;while(!p && n<30000){tick();n+=1};assert(p,s"sample did not drain tag=$tag reads=${memory.seen.takeRight(8)}")}
     def invalidate(): Unit={d.io.invalidate.poke(true.B);tick();d.io.invalidate.poke(false.B)}
     def install(i: Image,s: Sample): Unit={
       image=i;sample=s
+      if(d.nativeSampling){
+        val root=Seq[BigInt](BigInt("47585201",16),128,1,7,11,13,d.shaderStage,32,0x5000,0x5800,0,0x1000,0x1800,0,0x3000,0,0x3400,0).padTo(32,BigInt(0))
+        root.zipWithIndex.foreach{case(v,n)=>memory.putWord(0x4000+n*4,v)}
+        for(unit<-0 until 32){val binding=Seq[BigInt](BigInt("47584201",16),64,1,7,11,13,d.shaderStage,unit,0,0,i.kind,i.target).padTo(16,BigInt(0))
+          binding.zipWithIndex.foreach{case(v,n)=>memory.putWord(0x5000+unit*64+n*4,v)}}
+      }
       val header=Seq[BigInt](BigInt("47584901",16),128,1,7,11,13,0,i.target,i.format,i.base,i.last,7,if(i.target==2)7 else 5,
         if(i.target==3)3 else 1,i.layers,0x100000,0x140000,0,1,0x2000,0x2800,0,0,1)++s.swizzle.map(BigInt(_))++Seq.fill(4)(BigInt(0))
       for((w,n)<-header.zipWithIndex)memory.putWord(0x1000+n*4,w)
@@ -143,7 +182,7 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
       if(status==0){val (rgba,first,second,weight,linear,taps)=reference()
         assert(r.rgba.map(_.peek().litValue)==rgba,s"tag=$tag format=${image.format} target=${image.target} sample=$sample got=${r.rgba.map(_.peek().litValue.toString(16))} expected=${rgba.map(_.toString(16))}")
         o.first.expect(first.U);o.second.expect(second.U);o.weight.expect(weight.U);o.linear.expect(linear.B);o.uniqueTaps.expect(taps.U)
-        r.colorType.expect(image.kind.U);o.dataReadLines.expect(memory.seen.drop(startRead).count(_.tag>=8).U)
+        r.colorType.expect(image.kind.U);o.dataReadLines.expect(memory.seen.drop(startRead).count(r=>r.tag>=8 && r.tag<12).U)
       }else{r.rgba.foreach(_.expect(0.U));r.colorType.expect(0.U)}
       assert(memory.pending.isEmpty && memory.reply.isEmpty)
       val held=o.peek().litValue;d.io.cancel.poke(holdMutation.B);d.io.invalidate.poke(holdMutation.B)
@@ -152,8 +191,77 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
       d.io.busy.expect(false.B);checks+=1
     }
   }
+  for(stage<-0 to 1)it should s"sample captured shader operands through real per-stage resource bindings stage=$stage" in {
+    simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2),nativeSampling=true,shaderStage=stage)){d=>val t=new Driver(d)
+      for(format<-0 until 64;component<-0 until 4){
+        val i=Image(format,target=if(format>=49)format%3 else format%4);val s=Sample(min=2,mag=0)
+        t.install(i,s);t.invalidate();d.io.component.poke(component.U)
+        t.query(edit=q=>q.preparation.imageHandle.poke(((format+component)%32).U))
+        t.until(d.io.out.valid.peek().litToBoolean);d.io.value.expect(t.reference()._1(component).U);d.io.nativeSource.expect(0.U);t.check()
+        assert(t.memory.seen.drop(t.startRead).filter(_.tag==15).map(_.address)==Seq(BigInt(0x4000),BigInt(0x4040),BigInt(0x5000+((format+component)%32)*64)))
+      }
+      for(format<-Seq(3,8,49,54);target<-0 to 3 if !(target==3 && format>=49);mode<-0 to 2){
+        val i=Image(format,target,base=1);val coords=if(target==2)Seq(1f,0.3f,-0.7f)else Seq(0.4f,0.6f,0.3f)
+        val quad=(0 until 4).map(l=>coords.zipWithIndex.map{case(v,a)=>v+(if(a==0 && l%2==1 || a==1 && l>=2)0.125f else 0f)})
+        val s=Sample(min=if(format==8)2 else 5,mag=if(format==8)0 else 1,shadow=format==49,coordinates=coords,
+          gradients=if(mode==1)Some(Seq(Seq(0.25f,0.5f,0f),Seq(0.25f,0f,-0.25f)))else None,
+          quad=if(mode==2)Some(quad)else None,bias=if(mode==2 && stage==1)0.75f else 0f,
+          offsets=if(target==2)Seq(0,0,0)else Seq(7,-8,if(target==3)7 else 0))
+        t.install(i,s);t.invalidate();t.query(edit=q=>q.preparation.imageHandle.poke(31.U))
+        if(mode==2 && stage==0)t.sample=s.copy(quad=None,lod=0f)
+        t.until(d.io.out.valid.peek().litToBoolean);d.io.value.expect(t.reference()._1(3).U);t.check()
+      }
+      val i=Image();val s=Sample();t.install(i,s);t.invalidate();t.query()
+      t.until(t.memory.seen.drop(t.startRead).exists(r=>r.tag!=15))
+      t.memory.putWord(0x4000,0);t.memory.putWord(0x5000,0);t.check()
+      info(s"SHADER_FLOAT_SAMPLING stage=$stage queries=${t.checks} allFormats64=true allComponents4=true bindingSlots32=true realGXR_GXB_GXI_GXL_GXS=true scalarOperandCapture=true modesExplicitGradientAutomatic=true vertexAutomaticLambdaZero=true fragmentHelperBias=true offsets=true immutableRootBinding=true noGlobalParameterPacket=true")
+    }
+  }
+  for(stage<-0 to 1)it should s"reject unsafe shader bindings and drain native floating sampling before reuse stage=$stage" in {
+    simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2),nativeSampling=true,shaderStage=stage)){d=>val t=new Driver(d);val i=Image();val s=Sample()
+      for((address,word,code,source)<-Seq((0x4000,BigInt(0),7,1),(0x4018,BigInt(1-stage),7,1),
+        (0x407c,BigInt(1),7,1),(0x400c,BigInt(8),7,1),(0x4010,BigInt(12),7,1),(0x4014,BigInt(14),7,1),
+        (0x500c,BigInt(8),7,2),(0x5010,BigInt(12),7,2),(0x5014,BigInt(14),7,2),(0x5018,BigInt(1-stage),7,2),(0x501c,BigInt(1),7,2),(0x5030,BigInt(1),7,2),
+        (0x5028,BigInt(3),1,2),(0x502c,BigInt(4),1,2))){
+        t.install(i,s);t.invalidate();t.memory.putWord(address,word);t.query();t.check(code,3);d.io.nativeSource.expect(source.U)
+        assert(t.memory.seen.drop(t.startRead).forall(_.tag==15))
+      }
+      for(unit<-Seq(BigInt(32),BigInt(0x10000000L),BigInt(0xffffffffL))){t.install(i,s);t.invalidate();t.query(edit=q=>q.preparation.imageHandle.poke(unit.U));t.check(1,3)
+        assert(t.memory.seen.drop(t.startRead).map(_.address)==Seq(BigInt(0x4000),BigInt(0x4040)))}
+      for(edit<-Seq[TextureImageSampleRequest=>Unit](q=>{q.gradient.poke(true.B);q.implicitLod.poke(true.B)},q=>q.bias.poke(bits(1f).U),q=>q.offsets(0).poke(8.S))){
+        t.install(i,s);t.invalidate();t.query(edit=edit);t.check(1,3);assert(t.memory.seen.size==t.startRead)
+      }
+      for(address<-Seq(BigInt(0x4000),BigInt(0x4040),BigInt(0x5000))){
+        t.install(i,s);t.invalidate();t.memory.faultAt=Set(address);t.query();t.until(d.io.out.valid.peek().litToBoolean)
+        d.io.cancel.poke(true.B);t.check(3,3,Some(address));d.io.nativeSource.expect((if(address<0x5000)1 else 2).U)
+        t.memory.faultAt=Set.empty;t.install(i,s);t.query();t.check()
+      }
+      for((version,address)<-Seq((0,BigInt(0)),(1,BigInt(0x4001)),(1,BigInt("ffffffc0",16)))){
+        t.install(i,s);t.invalidate();d.io.resources.version.poke(version.U);d.io.resources.address.poke(address.U)
+        t.query();t.check(1,3);d.io.nativeSource.expect(1.U);assert(t.memory.seen.size==t.startRead)
+      }
+      d.io.resources.version.poke(1.U)
+      for(address<-Seq(BigInt(0),BigInt("ffffff80",16))){
+        t.install(i,s);t.invalidate();for(n<-0 until 128)t.memory.bytes(address+n)=t.memory.bytes(BigInt(0x4000+n))
+        d.io.resources.address.poke(address.U);t.query();t.check()
+        assert(t.memory.seen.drop(t.startRead).filter(_.tag==15).take(2).map(_.address)==Seq(address,address+64))
+      }
+      d.io.resources.address.poke(0x4000.U)
+      t.install(i,s);t.invalidate();t.memory.putWord(0x502c,1);t.query();t.check(6,3);d.io.nativeSource.expect(4.U)
+      assert(!t.memory.seen.drop(t.startRead).exists(r=>r.tag>=8 && r.tag<12))
+      var cancelled=0;var held=0
+      for(cut<-Seq(0,1,5,10,15,20,30,40,60,80,120,180,250,400,700,1000,1500,2500)){
+        t.install(i,s);t.invalidate();t.query();for(_<-0 until cut)t.tick()
+        val complete=d.io.out.valid.peek().litToBoolean;d.io.cancel.poke(true.B);t.check(if(complete)0 else 4)
+        if(complete)held+=1 else cancelled+=1
+        t.install(i,s);t.query();t.check()
+      }
+      assert(cancelled>0 && held>0)
+      info(s"SHADER_FLOAT_SAMPLING_DRAIN stage=$stage malformedRootBinding14=true fullWidthUnits3=true preReadParameterRejects3=true metadataFaults3=true rootEnvelopeRejects3=true rootZeroAnd4GiBEnd=true targetMismatchBeforeTexels=true cancellationCuts18=true cancelled=$cancelled held=$held healthyReuse=true firstFaultRetained=true noAbandonedLogicalID15=true")
+    }
+  }
   it should "sample integer texel offsets across mip modes gradients implicit helpers and array layers" in {
-    simulate(new TextureImageSampleUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d)
+    simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d)
       for(format<-Seq(3,8,49,54);target<-Seq(0,1,3) if !(target==3 && format>=49);
         min<-Seq(2,5) if format!=8 || min==2;offset<- -8 to 7;mode<-0 to 2){
         val coordinates=(offset+8)%4 match {
@@ -187,7 +295,7 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
     }
   }
   it should "sample implicit helper quads with extended differences and bias before sampler clamps" in {
-    simulate(new TextureImageSampleUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d)
+    simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d)
       val flat=Seq(Seq(0.25f,0.25f,0.25f),Seq(0.5f,0.25f,0.75f),Seq(0.25f,0.75f,0.5f),Seq(0.5f,0.75f,1f))
       val cube=Seq(Seq(0f,0f,1f),Seq(0.25f,0f,1f),Seq(0f,0.5f,1f),Seq(0.25f,0.5f,1f))
       for(format<-Seq(3,8,49);target<-0 to 3 if !(format==49 && target==3);base<-0 to 1;lane<-0 until 4;bias<-Seq(-2f,0f,0.75f,64f,-64f)){
@@ -224,7 +332,7 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
     }
   }
   it should "drain helper cube logarithm bias and texel work through implicit cancellation" in {
-    simulate(new TextureImageSampleUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);var cancelled=0;var held=0
+    simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);var cancelled=0;var held=0
       val q=Seq(Seq(0f,0f,1f),Seq(0.25f,0f,1f),Seq(0f,0.5f,1f),Seq(0.25f,0.5f,1f))
       for(target<-Seq(0,2);cut<-(0 until 48)++Seq(64,96,128,160,192,224,256,320,384,512,768,1024,1536)){
         val i=Image(target=target);val s=Sample(coordinates=q(3),quad=Some(q),lane=3,bias=0.75f)
@@ -237,7 +345,7 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
     }
   }
   it should "sample real images using base extent gradients cube Jacobians and sampler clamps" in {
-    simulate(new TextureImageSampleUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d)
+    simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d)
       val directions=(0 to 2).flatMap(a=>Seq(-1f,1f).map{sign=>val v=Array.fill(3)(0f);v(a)=sign;v.toSeq})++Seq(Seq(1f,1f,1f))
       for(format<-Seq(3,8,49);target<-0 to 3 if !(format==49 && target==3);base<-0 to 1;
         vector<- (if(target==2)directions else Seq(Seq(0.4f,0.6f,0.3f)));scale<-Seq(0f,0.125f,0.25f,1f)){
@@ -255,7 +363,7 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
     }
   }
   it should "drain gradient and logarithm work before cancellation completion and retain healthy reuse" in {
-    simulate(new TextureImageSampleUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);var cancelled=0;var held=0
+    simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);var cancelled=0;var held=0
       for(target<-Seq(0,2);cut<-(0 until 64)++Seq(80,96,128,160,192,224,256,384,512,768,1024,1536)){
         val i=Image(target=target);val s=Sample(coordinates=Seq(1f,0.3f,-0.7f),gradients=Some(Seq(Seq(0.25f,-0.5f,1f),Seq(-1f,0.5f,0.25f))))
         t.install(i,s);t.invalidate();t.query();for(_<-0 until cut)t.tick()
@@ -268,7 +376,7 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
     }
   }
   it should "sample real GXI GXL GXS records across all formats targets min mag and mip modes" in {
-    simulate(new TextureImageSampleUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d)
+    simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d)
       for(format<-0 until 64){val i=Image(format,target=if(format>=49)format%3 else format%4)
         val s=Sample(min=2,mag=0,lod=0.75f);t.install(i,s);t.invalidate();t.query();t.check()}
       for(format<-Seq(3,8,35,49,51,54,59);target<-0 to 3 if !(target==3 && format>=49);min<-0 to 5 if Image(format).filterable || min==0 || min==2 || format==49 || format==51){
@@ -285,7 +393,7 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
     }
   }
   it should "retain admitted mip snapshots and reject malformed resources and coordinates before data" in {
-    simulate(new TextureImageSampleUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);val i=Image();val s=Sample()
+    simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);val i=Image();val s=Sample()
       t.install(i,s);t.query();t.until(t.memory.seen.exists(_.tag>=8))
       val reads=t.memory.seen.count(_.tag<8)
       for(a<-Seq(0x1000,0x2000,0x2080,0x2100,0x3000))t.memory.putWord(a,0)
@@ -305,7 +413,7 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
     }
   }
   it should "retain a second mip data fault across cancellation even with constant swizzles" in {
-    simulate(new TextureImageSampleUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);val i=Image()
+    simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);val i=Image()
       val s=Sample(min=4,mag=0,lod=0.75f,swizzle=Seq(4,5,4,5));t.install(i,s)
       val v=i.levels(1);val a=v.address(1,1,0,0,0)& ~BigInt(63);t.memory.faultAt=Set(a)
       t.query();t.until(d.io.out.valid.peek().litToBoolean)
@@ -320,7 +428,7 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
     }
   }
   it should "drain descriptor and texel offers on cancellation then recover without partial color" in {
-    simulate(new TextureImageSampleUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);val i=Image(target=2);val s=Sample(coordinates=Seq(1f,-0.3f,0.8f))
+    simulate(new TextureSampleTestHarness(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);val i=Image(target=2);val s=Sample(coordinates=Seq(1f,-0.3f,0.8f))
       for(cut<-Seq(0,1,5,10,20,40,80,120,180,250,400,700,1000,1500)){
         t.install(i,s);t.invalidate();t.query();for(_<-0 until cut)t.tick()
         val done=d.io.out.valid.peek().litToBoolean;d.io.cancel.poke(true.B);t.check(if(done)0 else 4)

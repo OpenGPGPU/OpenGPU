@@ -5,7 +5,7 @@ import opengpu.graphics._
 
 object EmitTextureImageSample {
   def main(args: Array[String]): Unit={
-    require(args.nonEmpty && args.length<=2,"EmitTextureImageSample <filter|captured|level|cube|preparation|mip|sample|gradient-product|cube-gradient|gradient-lod|gradient-resolver|quad-gradient|lod-bias> [target-dir]")
+    require(args.nonEmpty && args.length<=2,"EmitTextureImageSample <filter|captured|level|cube|preparation|mip|sample|shader-sample|shader-vertex-sample|gradient-product|cube-gradient|gradient-lod|gradient-resolver|quad-gradient|lod-bias> [target-dir]")
     val stage=Array("--target-dir",args.lift(1).getOrElse("generated/mobile-h4/texture-image-sample-rtl"))
     val lowering=Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args(0) match {
@@ -15,6 +15,8 @@ object EmitTextureImageSample {
       case "cube"=>ChiselStage.emitSystemVerilogFile(new TextureCubeProjectionUnit(),stage,lowering)
       case "preparation"=>ChiselStage.emitSystemVerilogFile(new TextureImageSamplePreparationUnit(),stage,lowering)
       case "mip"=>ChiselStage.emitSystemVerilogFile(new TextureImageMipSampleUnit(),stage,lowering)
+      case "shader-sample"=>ChiselStage.emitSystemVerilogFile(new ShaderTextureSampleUnit(stage=1),stage,lowering)
+      case "shader-vertex-sample"=>ChiselStage.emitSystemVerilogFile(new ShaderTextureSampleUnit(stage=0),stage,lowering)
       case "sample"=>ChiselStage.emitSystemVerilogFile(new TextureImageSampleUnit(),stage,lowering)
       case "gradient-product"=>ChiselStage.emitSystemVerilogFile(new TextureGradientProductDifferenceUnit(),stage,lowering)
       case "cube-gradient"=>ChiselStage.emitSystemVerilogFile(new TextureCubeGradientUnit(),stage,lowering)
