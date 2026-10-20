@@ -110,3 +110,27 @@ Outside helper centers retain extrapolation, and fixed formats retain RNE.
 This adds comparisons and policy state, with no new FPU/divider or math calls.
 GRI1 policy3 distinguishes the bounded candidate from the failed policy2;
 header constants1 and2 remain available. Qualification is pending.
+
+
+## Interior floating-depth range correction qualified locally (2026-10-20)
+
+The [59-check regression](performance/mobile-depth-convex-range-2026-10-20.json)
+passes on 640 unchanged source/ABI files. The retained interior boundary pair
+now produces `0x3efffffe` and `0x3effffff`, replacing the failed pair at 0.5.
+Eighteen sloped normal/subnormal/binade-neighbor pairs, twelve constant-depth
+pairs, floating helper extrapolation/bias ordering, scalar arithmetic, legacy
+fixed-format ties, sample/centroid paths, cancellation/reuse and discovery pass.
+All four ABI checks, combined C11 headers and primitive/default host emission
+pass. The host retains four CUs, one payload pool, two replay engines and
+2,689,024 SRAM bytes; the primitive retains one FMA and one divider.
+
+Floating policy3 bounds unbiased depth only at convex interpolation locations
+before polygon bias, while outside helper extrapolation and fixed-format RNE
+remain intact. All 2,420 prior native-header defines retain their values; only
+the two newer policy IDs are added per header.
+
+The full 176-check native/prepared/binned image/fault/reset/format composition
+is a separate queued gate with updated exact-rational image expectations and
+identical production/ABI bytes. These local results do not prove every numeric
+case, native integration, G04/H6, representative rates or H0–H8. No new PPA
+result is claimed; evaluation remains synthesis only.

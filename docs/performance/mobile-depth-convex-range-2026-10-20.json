@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Interior floating depth range correction and scoped numeric/ownership controls; integrated native/images pending",
+  "based_on_commit": "0693adc",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-convex-range-source-v1.json",
+    "sha256": "4e67d0bbfc0b600c303b594f9dbe2c12460f02a3a456c09857232f41a58fbc45"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-convex-range-source-v1.tar.gz",
+    "sha256": "538911102260a804c7187e42eb38a176e7299c0f3f278ba4f77cb4a32764083e"
+  },
+  "result": {
+    "path": ".artifacts/mobile-depth-convex-range-controls-v1-result.json",
+    "sha256": "e112ac91cff2940925b19c18f12eef805b15a27b5a51c2f4f098022bc916410d"
+  },
+  "log": {
+    "path": ".artifacts/mobile-depth-convex-range-controls-v1.log",
+    "sha256": "953e7946b50be424019661d4fd8e8b7a20f1390aaeb9526fe9a7d13e2e5a77bc"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "tests": [
+        3,
+        56
+      ],
+      "success_tasks": 8,
+      "translated_pairs": 18,
+      "constant_pairs": 12,
+      "directed_complete": 1,
+      "caps": 4,
+      "boundary": 1,
+      "floating_helpers": 1
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 321.01720345788635,
+    "finished_utc": "2026-10-20T03:23:11.546196+00:00"
+  },
+  "passed": 59,
+  "abi_checks": 4,
+  "floating_policy": 3,
+  "boundary_before": [
+    "3f000000",
+    "3f000000"
+  ],
+  "boundary_after": [
+    "3efffffe",
+    "3effffff"
+  ],
+  "negative_evidence": "mobile-depth-directed-boundary-failure-2026-10-20.json",
+  "header_audit": {
+    "path": ".artifacts/mobile-depth-policy3-header-audit-v1.json",
+    "sha256": "227ad04361c34c30677c69f6a35beafb079fa940679a9553b1c840055d753847"
+  },
+  "combined_c11": {
+    "path": ".artifacts/mobile-depth-policy3-c11-result-v1.json",
+    "sha256": "605a42220edabad8bd1504a8736327e709dac37fe3eb085385381d05df5c693b"
+  },
+  "emissions": {
+    "primitive": {
+      "directory": "generated/mobile-h6/depth-convex-range-primitive-v1-rtl",
+      "audit": {
+        "path": ".artifacts/mobile-depth-convex-range-primitive-rtl-audit-v1.json",
+        "sha256": "c794548b6a96be78a84c22d8b1e7fafa92d599ab955dfbe64695dad8842ca3ca"
+      },
+      "sv_files": 46,
+      "physical_sram_bytes": 0,
+      "group_counts": {
+        "Fp32FmaLane": 1,
+        "Fp32DivLane": 1,
+        "GpuComputeUnit": 0,
+        "BankedShaderPayloadStore": 0,
+        "TypedReplayTileImagePipeline": 0,
+        "PolygonDepthOffset": 1
+      }
+    },
+    "host": {
+      "directory": "generated/mobile-h6/depth-convex-range-host-v1-rtl",
+      "audit": {
+        "path": ".artifacts/mobile-depth-convex-range-host-rtl-audit-v1.json",
+        "sha256": "a0ab6d17132ab94add645a1c9f16be40f31a8bf0fb127dd0b6635dd4f178bc4a"
+      },
+      "sv_files": 772,
+      "physical_sram_bytes": 2689024,
+      "group_counts": {
+        "Fp32FmaLane": 78,
+        "Fp32DivLane": 72,
+        "GpuComputeUnit": 4,
+        "BankedShaderPayloadStore": 1,
+        "TypedReplayTileImagePipeline": 2,
+        "PolygonDepthOffset": 2
+      }
+    }
+  },
+  "reasoning": "An exact common representable source-depth shift leaves the anchored differences and residual unchanged. Directed final quantization needs the interior result to stay within the active source-depth range so it cannot cross to a coarser binade. Exact edge signs guard this bound; outside helper extrapolation is preserved until bias.",
+  "limitations": [
+    "The retained actual boundary witness, eighteen sloped pairs and twelve constant-depth pairs pass, with scalar, legacy fixed, sample, centroid, cancellation and discovery controls. This is not a universal numeric proof.",
+    "Live/prepared/binned image, fault/reset, full depth-format matrix and full-source composition are queued separately on identical production/ABI bytes with updated exact-rational native test expectations.",
+    "Four-CU emission is structural evidence, not runtime scaling or a new clock estimate. No new PPA, API, G04/H6 or H0-H8 closure; PPA remains synthesis only."
+  ]
+}
