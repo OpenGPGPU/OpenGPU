@@ -55,3 +55,12 @@ source/resolve/guard bytes. Fresh programs/vertices, GND1 records, GFS1 state,
 cached consumers, uniform tails and held-completion VM ownership are checked.
 The direct absolute-sample oracle applies the extended offset before packing.
 This is pending test coverage, not a passing publication claim.
+
+A separate pending native typed-host matrix now iterates D16, D24, D32F,
+D24S8 and D32FS8, all three sample modes and both coefficient signs for each
+local/global two-CU profile. Its 60 total frames check 180 live triangle/line/
+point draws, shader fragCoord.z, exact format-specific backing and sample-zero
+depth resolve, stencil/padding/guard bytes, uniform tails, cached consumers and
+VM ownership. Each frame uses fresh image/vertex allocations. The frozen
+638-file snapshot changes only the native-host fixture; no passing all-format
+result is claimed until the running matrix completes.
