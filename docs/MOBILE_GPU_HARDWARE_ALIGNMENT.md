@@ -5456,3 +5456,20 @@ is a separate queued gate with updated exact-rational image expectations and
 identical production/ABI bytes. These local results do not prove every numeric
 case, native integration, G04/H6, representative rates or H0–H8. No new PPA
 result is claimed; evaluation remains synthesis only.
+
+
+## Full depth composition launched (2026-10-20)
+
+The [176-check composition](performance/mobile-depth-native-composed-pending-2026-10-20.json)
+is running after its 59-check prerequisite passed. Its 643-file snapshot
+adds an exact-rational floating-depth image oracle and freezes CI selection;
+all production/ABI bytes match the focused qualification. Scala test compilation
+and CI partition checks pass. The four groups cover numeric/ownership controls,
+live vertex work, prepared images and native/binned image/fault/reset work,
+including the corrected full depth-format reservation.
+
+This records a live launch, not a completed regression. Newer floating-depth
+and polygon changes remain on `codex/mobile-depth-native-composed` until full
+source qualification. Main retains the earlier qualified centroid integration.
+General precision, G04/H6/H0–H8, full resources and rates remain open; PPA
+continues to use synthesis only.

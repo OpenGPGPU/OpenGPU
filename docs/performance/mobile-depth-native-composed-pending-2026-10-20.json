@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "running_at_checkpoint",
+  "observed_utc": "2026-10-20T03:24:10.957039+00:00",
+  "scope": "Full production composition after directed floating quantization, interior depth bounds and anchored polygon slope",
+  "source_commit": "6fef8db",
+  "source_files": 643,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-native-composed-source-v1.json",
+    "sha256": "42f94258ec699a2a35f1a841579d122c9e4b39006bed94e6155f00431bdc3a57"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-native-composed-source-v1.tar.gz",
+    "sha256": "68de99e6934a86bf578ceaca533ba880648fde47057973cb7b46c433ac2fa2bd"
+  },
+  "queue": {
+    "path": ".artifacts/mobile-depth-native-composed-qualified-v1-queue.json",
+    "sha256": "8525c15df5a9a58397002c9c5fbfda98db78d7c0b0f4ab53198eceb230757ea8"
+  },
+  "start": {
+    "path": ".artifacts/mobile-depth-native-composed-qualified-v1-start.json",
+    "sha256": "ae25afee641b988906544e94e0765ce61ba1c200bced9a21367a99a1cdb3de2b"
+  },
+  "source_reconciliation": {
+    "path": ".artifacts/mobile-depth-native-composed-source-reconciliation-v1.json",
+    "sha256": "4ae64e9054fb894f11c9a8dc46297d17184ffa72a99ebd2b7275f98bb64bac83"
+  },
+  "compile_result": {
+    "path": ".artifacts/mobile-depth-native-composed-qualified-v1-compile-result.json",
+    "sha256": "54c7d93871f63fa27b9be4ca95baf63a155b3ad19e8a0323355d5a970fce37b6"
+  },
+  "compile_log": {
+    "path": ".artifacts/mobile-depth-native-composed-qualified-v1-compile.log",
+    "sha256": "ffac0c266ed210113cc5e7a5f9384db28e61af3d53006bb0c832c08e0e347a99"
+  },
+  "ci_selection": "PASS before freeze; unchanged CI script hashes are in the source manifest",
+  "focused_evidence": "mobile-depth-convex-range-2026-10-20.json",
+  "expected_tests": [
+    106,
+    13,
+    24,
+    33
+  ],
+  "expected_total": 176,
+  "expected_coverage": "Numeric/ownership/discovery, live vertex and prepared paths, native/prepared/binned centroid and polygon images, five-depth-format sixty-frame matrix, all22 unfiltered faults, polygon-enabled fault/reset and healthy reuse",
+  "sbt_pid": 20063,
+  "qualification_result_path": ".artifacts/mobile-depth-native-composed-qualified-v1-result.json",
+  "scope_limits": [
+    "This record proves compilation, frozen source identity, successful focused prerequisite and live launch, not a passing176-check result.",
+    "All production and ABI bytes match the59-check snapshot. Native references now use exact rational directed addition/packing and absolute sample locations, preserving fixed-format expectations.",
+    "The newer production changes remain isolated from main pending full qualification. PPA remains synthesis only; general precision, G04/H6/H0-H8 and rates remain open."
+  ]
+}
