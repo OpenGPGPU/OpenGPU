@@ -1,7 +1,9 @@
 # Projective texture execution on shared CUs
 
-Status: four actual-CU cases are running on `codex/mobile-native-projective-shaders`.
-The frozen805-input source is `7c0b4ae`. This adds two shader-stage tests and a
+Status: [four initial actual-CU cases pass](performance/mobile-native-projective-initial-2026-10-21.json)
+on805 frozen inputs (`f872b6f`),with160 submitted draws across both shader stages
+and local/spilled payloads. Constructor-compatible requalification and the
+existing128-lane payload cases remain running on `codex/mobile-native-projective-shaders`. This adds two shader-stage tests and a
 shared program/oracle fixture; production RTL, driver, ABI and emission inputs
 match the size-query source exactly. No new instruction or sampler hardware is
 required to project coordinates before captured sampling.
