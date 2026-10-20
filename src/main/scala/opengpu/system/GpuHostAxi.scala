@@ -20,7 +20,7 @@ import opengpu.graphics.{
   OmMemoryResponse,
   RenderHost,
   RenderHostRegs,
-  TileBinHostCommandPort, TileBinHostRegs, TileBinJobCompletion, TileJobDescriptorRequest, NativeBinnedCompletionInfo, NativeVertexInputCapabilities, NativeFragmentInputCapabilities
+  TileBinHostCommandPort, TileBinHostRegs, TileBinJobCompletion, TileJobDescriptorRequest, NativeBinnedCompletionInfo, NativeVertexInputCapabilities, NativeFragmentInputCapabilities, NativeRasterCapabilities
 }
 
 /** AXI4 slave control interface for the graphics renderer.
@@ -368,8 +368,9 @@ class GpuHostAxi(
     val targetNativeDetails=if(nativeCompletionInfo)beatAddr>=NativeBinnedCompletionInfo.base.U && beatAddr<NativeBinnedCompletionInfo.end.U else false.B
     val targetNativeInput=if(nativeVertexInput)beatAddr>=NativeVertexInputCapabilities.base.U && beatAddr<NativeVertexInputCapabilities.end.U else false.B
     val targetFragmentInput=if(nativeVertexInput)beatAddr>=NativeFragmentInputCapabilities.base.U && beatAddr<NativeFragmentInputCapabilities.end.U else false.B
+    val targetRaster=if(nativeVertexInput)beatAddr>=NativeRasterCapabilities.base.U && beatAddr<NativeRasterCapabilities.end.U else false.B
     val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
-      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput)
+      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetRaster)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -385,13 +386,13 @@ class GpuHostAxi(
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
           beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails
-    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput
+    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetRaster
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)
     reg.req.bits.data := io.s_axi_wdata
     reg.req.bits.strb := io.s_axi_wstrb
     unified.foreach { bridge =>
-      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput
+      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetRaster
       bridge.io.reg.req.bits.isWrite := writeActive
       bridge.io.reg.req.bits.addr := beatAddr(9, 0)
       bridge.io.reg.req.bits.data := io.s_axi_wdata
@@ -429,6 +430,9 @@ class GpuHostAxi(
       }
       if(nativeVertexInput)when(targetFragmentInput){
         rdata:=VecInit(NativeFragmentInputCapabilities.words(config.maxSampleCount).map(_.U(32.W)))(((beatAddr-NativeFragmentInputCapabilities.base.U)>>2)(1,0))
+      }
+      if(nativeVertexInput)when(targetRaster){
+        rdata:=VecInit(NativeRasterCapabilities.words(config.maxSampleCount).map(_.U(32.W)))(((beatAddr-NativeRasterCapabilities.base.U)>>2)(2,0))
       }
       when(rBeatFire) {
         when(lastBeat) {
@@ -469,7 +473,7 @@ class GpuHostAxi(
       val normalRegisterOk = unified.map(bridge =>
         Mux(targetUnified, bridge.io.reg.resp.bits.ok, reg.resp.bits.ok))
         .getOrElse(reg.resp.bits.ok)
-      val registerOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && normalRegisterOk
+      val registerOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetRaster && normalRegisterOk
       when(!beatOk || !registerOk) { writeError := true.B }
       when(io.s_axi_wlast) {
         bPending := true.B
