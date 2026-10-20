@@ -182,6 +182,17 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         for(b<-0 until v.bytes)expected(address+b)=((raw>>(8*b))&255).toInt}
       lastPrimitiveQuads=primitiveQuads.toVector
       expectedImage=expected.toMap
+      if(sys.props.contains("opengpu.textureSize.frames") && expected.exists{case(a,v)=>memory(a)!=v}){
+        for((view,index)<-views.zipWithIndex){
+          val bad=for(y<-0 until 4;x<-0 until 4;sample<-0 until view.samples)yield{
+            val address=view.base+y*view.pitch+(x*view.samples+sample)*view.bytes
+            def packed(values: collection.Map[BigInt,Int]): BigInt=(0 until view.bytes).foldLeft(BigInt(0))((v,b)=>v|(BigInt(values(address+b))<<(8*b)))
+            val actual=packed(memory);val wanted=packed(expected)
+            if(actual!=wanted)Some(s"($x,$y,$sample):${actual.toString(16)}/${wanted.toString(16)}")else None
+          }
+          println(s"NATIVE_SIZE_RECOVERY_IMAGE view=$index kind=${view.kind} color=${view.color} mismatches=${bad.flatten.mkString(",")}")
+        }
+      }
       for((a,v)<-expected)assert(memory(a)==v,s"native shader image byte${a.toString(16)} observed=${memory(a)} expected=$v mode=$mode")
       assert(reads.exists(a=>a>=pa(0x420000+sourceOffset) && a<pa(0x422000+sourceOffset)))
       assert(!reads.exists(a=>a>=0x400000 && a<0x800000),"shader and descriptor VAs must be translated before physical issue")
@@ -816,7 +827,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       val id=Seq[BigInt](7,8,9);val vo=BigInt(0x500000);val fo=BigInt(0x600000)
       val rgba=Vector(0.125,0.25,0.5,1.0).map(Fp32ViewportReference.fp)
       val raw=rgba.zipWithIndex.map{case(v,c)=>v<<(32*c)}.reduce(_|_)
-      var frames=0
+      var frames=0;var executed=0
       def sample(c: Int,unit: Int,scalar: Boolean,target: Int,mode: Int,missing: Boolean,offset: Int): Seq[BigInt]={
         val constants=Seq(addi(13,0,unit),addi(14,0,mode))
         constants++(if(scalar)Seq((BigInt(6)<<25)|(BigInt(14)<<20)|(BigInt(13)<<15)|(BigInt(c)<<12)|(BigInt(15)<<7)|0x0b,
@@ -827,6 +838,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       def run(c: Int,bad: Boolean=false,format: Int=35,target: Int=0,modeControl: Int=0,missing: Boolean=false,integerOffset: Int=0,baseLevel: Int=0,denySampler: Boolean=false): Unit={
         val selected=sys.props.get("opengpu.textureSize.frames").map(_.split(",").map(_.toInt).toSet)
         if(selected.exists(!_.contains(frames))){frames+=1;return}
+        executed+=1
         val mode=if(c%2==0)0 else 2;val vc=(c+1)%3
         val dims=Vector(if(format>=54)7 else 2,if(format>=54){if(target==2)7 else 5}else 2,
           if(target==1)3 else if(target==3)2 else 0)
@@ -896,7 +908,8 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       run(0,baseLevel=1,modeControl=1)
       run(0,bad=true);run(1,modeControl= -1,missing=true);run(2,denySampler=true);run(0)
       assert(frames==74)
-      info(s"NATIVE_TEXTURE_SIZE_AXI local=$local CUs=2 frames=$frames submittedDescriptors=${frames*3} formats64=true imageSwizzleIgnored=true bothStages=true scalarVector=true components3=true targets4=true imageBases0And1And2=true positiveRelativeLOD=true noParameterOrTexelOrSamplerReads=true realSv32=true deniedImageNoPhysicalRead=true deniedSamplerHealthy=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
+      if(sys.props.contains("opengpu.textureSize.frames"))info(s"NATIVE_TEXTURE_SIZE_AXI_DIRECTED local=$local originalFrames=${sys.props("opengpu.textureSize.frames")} executed=$executed exactImages=true")
+      else info(s"NATIVE_TEXTURE_SIZE_AXI local=$local CUs=2 frames=$frames submittedDescriptors=${frames*3} formats64=true imageSwizzleIgnored=true bothStages=true scalarVector=true components3=true targets4=true imageBases0And1And2=true positiveRelativeLOD=true noParameterOrTexelOrSamplerReads=true realSv32=true deniedImageNoPhysicalRead=true deniedSamplerHealthy=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
     }
   }
 
