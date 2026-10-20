@@ -41,3 +41,12 @@ Primitive/interpolation, sample-depth, actual-CU image and native typed host
 checks are pending. Their new extreme-endpoint case follows the corrected
 weights through interpolation and covered-sample depth. Matched standalone
 synthesis and wider integration remain necessary; H0-H8 stay open.
+
+The first wider run passes 18 of 19 checks and exposes the enclosing primitive
+owner's shared signed-31 span guard. That guard remains required for triangles;
+lines now use the coverage engine's signed-33 differences and checked signed-64
+length/weight limits. Expanded signed-64 bounds retain their carry as well, so
+an overlapping unrepresentable line cannot wrap into an outside-bounds success.
+All five primitive-owner checks pass after this correction, including the new
+extreme lines through interpolation/depth and full signed-64 overlap rejection.
+The complete corrected-source rerun and candidate synthesis remain pending.

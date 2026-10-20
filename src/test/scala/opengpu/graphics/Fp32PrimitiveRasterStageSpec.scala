@@ -41,7 +41,8 @@ class Fp32PrimitiveRasterStageSpec extends AnyFlatSpec {
     }
     def submit(): Unit={d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B)}
     def finish(status: Int=0): Unit={until(d.io.completion.valid.peek().litToBoolean);val r=d.io.completion.bits;r.status.expect(status.U);r.outputQuads.expect(accepted.U)
-      if(status==0){assert(accepted==expected.size);val pixels=expected.flatMap(_.samples);r.coveredLanes.expect(pixels.count(_.mask!=0).U);r.coveredSamples.expect(pixels.map(x=>Integer.bitCount(x.mask)).sum.U)}
+      if(status==0){assert(accepted==expected.size,s"primitive outputs=$accepted expected=${expected.size} kind=$kind mode=${settings.mode} coords=${source.coords} launched=${r.launched.peek().litValue} empty=${r.emptyBounds.peek().litValue}")
+        val pixels=expected.flatMap(_.samples);r.coveredLanes.expect(pixels.count(_.mask!=0).U);r.coveredSamples.expect(pixels.map(x=>Integer.bitCount(x.mask)).sum.U)}
       val held=r.peek().litValue;for(_<-0 until 6){tick();d.io.busy.expect(true.B);assert(r.peek().litValue==held)}
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)}
     def run(k: Int,t: Triangle=base,s: Settings=Settings(),z: Sizes=Sizes()): Unit={prepare(k,t,s,z);submit();finish()}
@@ -94,8 +95,12 @@ class Fp32PrimitiveRasterStageSpec extends AnyFlatSpec {
       t.prepare(1,far,model=false);t.submit();t.finish()
       val unsafe=base.copy(coords=Vector((-(BigInt(1)<<40),BigInt(0)),(BigInt(1)<<40,BigInt(256)),(BigInt(0),BigInt(0))))
       t.prepare(1,unsafe,model=false);t.submit();t.finish(7)
+      // Expanding full signed-64 endpoints by the line margin must not wrap
+      // them into a false outside-bounds success before narrowing is checked.
+      val widest=base.copy(coords=Vector((-(BigInt(1)<<63),BigInt(640)),((BigInt(1)<<63)-1,BigInt(640)),(BigInt(0),BigInt(0))))
+      t.prepare(1,widest,model=false);t.submit();t.finish(7)
       t.run(0)
-      info("PRIMITIVE_RASTER invalidSizes=true invalidMetadata=true signed64BoundsCull=true checkedNarrowing=true numericFault=true healthyReuse=true")
+      info("PRIMITIVE_RASTER invalidSizes=true invalidMetadata=true signed64BoundsCull=true marginCarries=true widestOverlapFault=true checkedNarrowing=true numericFault=true healthyReuse=true")
     }
   }
   it should "retain offered quads and drain point-coordinate arithmetic or line coverage on cancellation" in {

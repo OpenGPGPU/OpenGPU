@@ -116,10 +116,13 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
       val highX=Mux(settings.scissorEnable && settings.scissorMaxX<width,settings.scissorMaxX,width)
       val highY=Mux(settings.scissorEnable && settings.scissorMaxY<height,settings.scissorMaxY,height)
       val margin=Mux(triangle,0.U,Fp32RasterState.fixedSize(Mux(primitive.kind===0.U,selectedPointSize,settings.lineWidth),g.subPixelBits)).zext
-      val outside=lowX>=highX || lowY>=highY || maxX+margin<=(lowX<<g.subPixelBits).zext || minX-margin>=(highX<<g.subPixelBits).zext ||
-        maxY+margin<=(lowY<<g.subPixelBits).zext || minY-margin>=(highY<<g.subPixelBits).zext
+      val outside=lowX>=highX || lowY>=highY || (maxX+&margin)<=(lowX<<g.subPixelBits).zext || (minX-&margin)>=(highX<<g.subPixelBits).zext ||
+        (maxY+&margin)<=(lowY<<g.subPixelBits).zext || (minY-&margin)>=(highY<<g.subPixelBits).zext
       val narrowed=(xs++ys).map(v=>v===v(31,0).asSInt.pad(64)).reduce(_ && _)
-      val safeSpan=(maxX-&minX)<=((BigInt(1)<<31)-1).S && (maxY-&minY)<=((BigInt(1)<<31)-1).S
+      // Triangle setup retains its signed-32 span restriction. Point/line
+      // coverage has signed-33 deltas and checks squared length/weights before
+      // narrowing, so representable endpoints may legitimately cross this span.
+      val safeSpan= !triangle || ((maxX-&minX)<=((BigInt(1)<<31)-1).S && (maxY-&minY)<=((BigInt(1)<<31)-1).S)
       when(stop){phase:=State.finish}
         .elsewhen(!Fp32RasterState.legal(settings,g) || !metadata || !records){status:=1.U;phase:=State.finish}
         .elsewhen(outside){empty:=true.B;phase:=State.finish}
