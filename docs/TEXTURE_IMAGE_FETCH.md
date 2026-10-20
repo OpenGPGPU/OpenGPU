@@ -1,14 +1,10 @@
-# Texture image fetch development checkpoint
+# Texture image fetch and typed decoding
 
-Status: implementation checkpoint on `codex/mobile-texture-image-fetch`.
-Behavioral qualification, native integration and synthesis are pending. This
-checkpoint does not establish completion of H4/H6 or GLES texture support.
-
-Checkpoint validation: `sbt compile` passed, and `EmitTextureImageFetch` emitted
-both raw and typed SystemVerilog profiles successfully. These checks establish
-compilation and elaboration only; no behavioral or PPA result is claimed.
-The generated format ABI passes its `--check` comparison and its header compiles
-as C11 with warnings treated as errors.
+Status: [19 controls pass](performance/mobile-texture-image-fetch-2026-10-20.json)
+on unchanged 655-file source, together with six ABI checks, combined C11 headers,
+CI selection and both raw/typed RTL emissions. Native integration and synthesis
+results remain pending. This component does not establish completion of H4/H6
+or GLES texture support.
 
 `TextureImageDataFetchUnit` connects the GPU-memory GXL1 level loader and
 checked span owner to uncached texture-data reads. Descriptor transactions use
@@ -30,10 +26,24 @@ storage IDs and uses the shared decoder after fetching the matching packed
 byte layout. These IDs are internal storage encodings. The new format ABI
 emitter describes their IDs and byte sizes; it does not advertise native
 sampling support. Integer outputs retain their typed values.
+GXL1 describes the level's byte layout; it does not contain a format ID. This
+component checks byte size and block layout against the captured format. A
+parent image binding must supply and retain the authoritative format identity.
 
-The implementation still needs behavioral controls for every format and byte
-offset, reordered replies, cache reuse, malformed records, layout mismatches,
-memory faults, cancellation, held results, address-space boundaries and page
-translation. Native image/sampler bindings, mip completeness, LOD selection,
-coordinate processing, filtering and shader integration remain open. Any PPA
-evaluation at this stage will use synthesis results only.
+The six new controls cover 36 formats at all 64 line offsets (2,304 queries,
+150 crossing spans), 132 raw target/block queries, rejected formats/layouts,
+descriptor and data faults, 100 cancellation points, held offers/results and
+real Sv32 composition. Cross-page data resides in noncontiguous physical pages;
+read denial on either descriptor or second data page produces a virtual fault
+without issuing the denied physical read. Eleven descriptor/address controls and
+two decoder controls also pass, including all 65,536 binary16 patterns.
+
+A prompt first-line fault initially created a new second-line offer on the same
+clock edge. The negative test and source are retained in the linked result.
+Issue logic now checks the arriving fault before constructing an offer, while
+retaining and draining requests that were already offered. The unchanged prompt
+fault assertion passes in the completed qualification.
+
+Native image/sampler bindings, mip completeness, LOD selection, coordinate
+processing, filtering, compressed-block decoding and shader integration remain
+open. PPA evaluation at this stage uses synthesis results only.

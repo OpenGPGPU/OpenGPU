@@ -71,7 +71,9 @@ class TextureImageDataFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
     when(!io.memoryResponse.bits.fault && !stop){words(lineMap(tag)):=io.memoryResponse.bits.readData}
   }
   private val free= ~live.asUInt;private val freeTag=PriorityEncoder(free)
-  when(phase===State.readData && !stop && !offered && issued<lineCount && free.orR){
+  // The fault response and next-offer construction can share an edge. Include
+  // that observed fault here instead of waiting for the registered status.
+  when(phase===State.readData && !stop && !(dataReply && io.memoryResponse.bits.fault) && !offered && issued<lineCount && free.orR){
     val address=lineBase+&(issued<<6)
     assert(!address(32),"checked data span must not wrap a line fill past4GiB")
     dataRequest:=0.U.asTypeOf(dataRequest);dataRequest.address:=address(31,0)

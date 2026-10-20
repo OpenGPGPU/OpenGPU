@@ -5777,11 +5777,19 @@ This candidate remains outside main; it does not include the independently
 qualified GPU level-resource components. No complete206-check, native matrix/reset
 or composed PPA result is claimed. PPA evaluation remains synthesis only.
 
-## Texture-data fetch development checkpoint (2026-10-20)
+## Texture-data fetch component qualification (2026-10-20)
 
 The isolated [fetch implementation](TEXTURE_IMAGE_FETCH.md) connects checked
 GXL1 spans to tagged cache-line reads and the existing 36-format typed decoder.
-This development checkpoint preserves the implementation before behavioral
-qualification. It does not enable native image bindings or sampling capabilities.
-Format/offset, ownership, fault, cancellation and VM controls remain required,
-followed by synthesis-only screening. Full texture/resource closure remains open.
+[Nineteen controls](performance/mobile-texture-image-fetch-2026-10-20.json), six
+ABI checks, combined C11 headers, CI selection and raw/typed emissions pass on
+unchanged 655-file source. The format matrix covers 2,304 queries; fault/cancel
+controls include prompt-fault issue suppression and actual Sv32 cross-page
+permissions. All 649 qualified dependency files are unchanged. The preserved
+prompt-fault failure motivated the issue gate; the same assertion now passes.
+
+Raw/typed standalone synthesis is pending. GXL1 stores byte layout, so a parent
+binding must still own authoritative format identity. Native image/sampler
+bindings, complete mip rules, coordinate/LOD/filtering, compressed decoding and
+shader integration remain open. No native sampling capability or H4/H6 closure
+is claimed. PPA remains synthesis only.
