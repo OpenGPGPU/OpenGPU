@@ -6291,3 +6291,14 @@ from integer aliased-line width to point-mask control through a shared coordinat
 expression. Point and MSAA branches select zero translation;their coordinates
 will be specialized without adding states. No positive timing or full H0-H8
 result is claimed.
+
+
+## Specialized coordinate qualification before sample-product balancing (2026-10-20)
+
+The [specialized coordinate source](performance/mobile-point-line-specialized-before-2026-10-20.json)
+passes all22 fresh targeted controls and both15-fixture output/cycle comparisons.
+No cycles or first-offer latency change versus its clipped parent. Standard
+synthesis passes full mapping but misses setup by27.450ps,with I/O+645.609ps;
+the remaining path is dy to a multisample cross-product register. Signed sample
+products will use the existing balanced compressor without adding states. No
+positive clock or full H0-H8 result is claimed.
