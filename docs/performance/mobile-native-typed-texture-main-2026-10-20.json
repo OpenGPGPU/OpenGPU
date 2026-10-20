@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "qualified_native_indexed_typed_fetch_integrated_locally",
+  "branch": "main",
+  "merge_commit": "ccb2cfa0312d31567d7cbf5c20384fadf47b808d",
+  "previous_head": "b67ff34654531fbb83b15c0eef631b9e2b160b4e",
+  "qualified_branch_head": "7ee7ff6b799a360e3d96ab0b7d42d40269cf3466",
+  "source_files": 694,
+  "source_manifest_sha256": "37f477d3c6d964d5aeddf93fbe4523a01035a6ac4805a3adeb6ae0ea7d9bcc00",
+  "git_archive_and_working_source_match": true,
+  "qualification_record_reconstructs_source_catalog": true,
+  "qualification_record": "docs/performance/mobile-native-typed-texture-fetch-2026-10-20.json",
+  "distinct_targeted_tests": 114,
+  "abi_generators_checked": 9,
+  "combined_c11_and_ci_selection": "PASS",
+  "synthesis_profiles": {
+    "endpoint": {
+      "reported_setup_slacks_ps": [
+        28.238,
+        395.772
+      ],
+      "mapped_cells": 111700
+    },
+    "execute": {
+      "reported_setup_slacks_ps": [
+        19.027,
+        378.444
+      ],
+      "mapped_cells": 119803
+    },
+    "wrapper": {
+      "reported_setup_slacks_ps": [
+        51.162,
+        173.914
+      ],
+      "mapped_cells": 190372
+    },
+    "credits": {
+      "reported_setup_slacks_ps": [
+        634.832,
+        447.491
+      ],
+      "mapped_cells": 3198
+    }
+  },
+  "production_synthesis_manifest_and_artifact_hashes_verified": true,
+  "ppa_qualifier_sha256": "38fe4b1cad315d3e8c137536ebe35175c54aced270334305565cfa63238f325c",
+  "preserved_legacy_field_mappings": {
+    "docs/abi/native-typed-graphics-v1.json": 560,
+    "docs/abi/native-binned-graphics-v1.json": 570,
+    "docs/abi/typed-fragment-state-v1.json": 76
+  },
+  "user_edits_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": 420
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": 420
+    }
+  },
+  "index_empty": true,
+  "exactly_one_coauthor_per_new_commit": true,
+  "pushed": false,
+  "limits": [
+    "Targeted qualification only; no full repository or H0-H8 closure.",
+    "Standalone synthesis setup only; no native host clock,hold,route,power or frame rate result.",
+    "Compiler/driver adoption,general sampling/filtering,remaining formats and throughput remain open."
+  ]
+}

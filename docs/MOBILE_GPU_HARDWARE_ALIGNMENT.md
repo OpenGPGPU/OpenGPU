@@ -6469,3 +6469,14 @@ standalone synthesis screens use standard1000ps,25% I/O,TC/SLVT and no retiming.
 This connects native per-stage resource selection and typed integer texel-fetch
 transport. General normalized-coordinate sampling,filtering/LOD application,
 remaining formats,throughput,compiler/driver adoption and full H0-H8 remain open.
+
+
+## Local main native typed texture audit (2026-10-20)
+
+The [main audit](performance/mobile-native-typed-texture-main-2026-10-20.json)
+verifies all694 qualified files in both the final merge archive and working
+checkout. The source record reconstructs the same catalog,all four synthesis
+artifacts and production inputs match,and every560/570/76 older native field
+mapping remains unchanged. Both pre-existing local edits and an empty index
+are preserved. No push was performed. The114 targeted controls establish this
+native typed-fetch path; general sampling and the full hardware goal remain open.
