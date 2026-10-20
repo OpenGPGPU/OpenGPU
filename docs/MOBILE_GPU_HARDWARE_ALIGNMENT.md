@@ -6135,3 +6135,16 @@ pass, but unit-width basic line cycles grow489 to1257 and maximum-width basic
 line10896 to42864. This serial prototype stays isolated while paired interval
 tests reduce the work and the measured weight path is cut. No positive clock,
 throughput or full H0-H8 completion is claimed.
+
+
+## Paired diamond slab intersection (2026-10-20)
+
+The [paired candidate](performance/mobile-point-line-diamond-pair-2026-10-20.json)
+replaces serial interval updates with four constant-bound predicates and two
+cross-slab comparisons. Strict lower/upper ordering within each moving slab
+follows from positive diamond width and denominator;stationary slabs contribute
+validity without cross products. All12 component controls pass,including39015
+weak-order cases,4871 full-width arithmetic cases and2401 independent boundary
+lattice lines. The lane-weight body remains byte identical to the source whose
+standalone safety path missed709.573ps;that path will be cut before the next
+combined synthesis screen. No new setup or native clock result is claimed.

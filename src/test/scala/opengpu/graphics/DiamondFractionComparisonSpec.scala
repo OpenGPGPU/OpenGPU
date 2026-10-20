@@ -26,6 +26,26 @@ class DiamondFractionComparisonSpec extends AnyFlatSpec {
   private case class Expected(real: BigInt,e: BigInt,e2: BigInt) {
     val less=real<0 || (real==0 && (e<0 || (e==0 && e2<0)))
   }
+  it should "equate paired slab tests with interval intersection for every endpoint weak order" in {
+    var checked=0
+    // Six ranks represent every weak ordering (including ties) of the six
+    // endpoints0,1,lu,hu,lv,hv. Enabled slabs have strictly ordered endpoints;
+    // a stationary slab contributes no interval endpoints.
+    for(z<-0 until 6;one<-0 until 6 if z<one;
+      lu<-0 until 6;hu<-0 until 6;lv<-0 until 6;hv<-0 until 6;
+      u<-Seq(false,true);v<-Seq(false,true) if (!u || lu<hu) && (!v || lv<hv)){
+      val lower=Seq(z)++(if(u)Seq(lu)else Nil)++(if(v)Seq(lv)else Nil)
+      val upper=Seq(one)++(if(u)Seq(hu)else Nil)++(if(v)Seq(hv)else Nil)
+      val expected=lower.max<upper.min
+      val bounds=(!u || (lu<one && z<hu)) && (!v || (lv<one && z<hv))
+      val cross= !u || !v || (lu<hv && lv<hu)
+      assert(expected==(bounds && cross),s"interval order mismatch: $z $one $lu $hu $lv $hv $u $v")
+      checked+=1
+    }
+    assert(checked==39015)
+    info(s"DIAMOND_INTERVAL_ORDER rankCases=$checked ranks=6 everyWeakOrder=true ties=true activeAxisPatterns=4")
+  }
+
   it should "preserve full signed products symbolic ties and sample order through registered reduction" in {
     simulate(new DiamondFractionComparisonHarness){dut=>
       val pending=mutable.Queue.empty[Option[Expected]]
