@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "merge_commit": "b3d321c33dd9f6f2f471dcdb1ec9c4cce0e92e2d",
+  "source_files": 640,
+  "all_committed_and_working_source_hashes_match": true,
+  "preserved_preexisting_dirty_files": 20,
+  "contents_and_modes_preserved": true,
+  "index_empty": true,
+  "passed_tests_carried_by_source_identity": 54,
+  "abi_checks": 4,
+  "rtl_emissions": 2,
+  "audit": {
+    "path": ".artifacts/mobile-native-texture-policy-main-preservation-v2.json",
+    "sha256": "178ade83bee9e37ebcf5d3d56b5062db1c71c461d2ca527f6b8514dff7552949"
+  },
+  "functional_qualification": "docs/performance/mobile-native-texture-policy-2026-10-20.json",
+  "limits": [
+    "Main was compared to the exact qualified source; the full regression was not rerun after merging.",
+    "No new area/timing/power/throughput result. PPA remains synthesis only.",
+    "The separate depth candidate and its polygon reset failure are excluded; general resource/H4/H6 closure remains open."
+  ]
+}

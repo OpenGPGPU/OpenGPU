@@ -5592,3 +5592,16 @@ structural counts alone do not establish area, timing, power or throughput.
 No new PPA result is claimed, and evaluation remains synthesis only. General
 texture resources and H4/H6 remain open. The separate depth candidate has a
 polygon reset timeout in its host regression and remains outside this change.
+
+
+## Native texture policy main integration (2026-10-20)
+
+The [main integration audit](performance/mobile-native-texture-policy-main-2026-10-20.json)
+verifies all 640 committed and working source/ABI/selection files against the
+qualified snapshot. Local main now includes the versioned native sampler fields,
+GTX1 discovery and registered texture-fault ownership with the completed 54-check
+result carried by exact source identity. All twenty pre-existing dirty files
+retain identical contents and modes, and the index was empty after merging.
+This is not a separately rerun main regression. No new PPA result is claimed;
+evaluation remains synthesis only. The separate depth reset failure remains
+on its development branch, and general resource/H4/H6 closure remains open.

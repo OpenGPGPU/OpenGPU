@@ -1,6 +1,6 @@
 # Native fixed-point texture coordinate policy
 
-Status: functionally qualified for integration by [54 passing checks](performance/mobile-native-texture-policy-2026-10-20.json),
+Status: integrated into local main after [54 passing checks](performance/mobile-native-texture-policy-2026-10-20.json),
 four ABI checks and two complete RTL emissions on unchanged source. This extension carries the qualified integer coordinate policy
 through native sampler snapshots and generic vertex/fragment execution. It does
 not change shader instruction encodings or claim general GLES texture resources.
