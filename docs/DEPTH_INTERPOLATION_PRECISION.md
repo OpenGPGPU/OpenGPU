@@ -48,3 +48,13 @@ fallback share that depth path. Offset-before-clamp and cancellation ownership
 remain in the same owner. The analogous anchored slope calculation still needs
 checking. Focused precision, numeric/ownership and integrated qualification of
 this correction are pending; the negative result does not qualify it.
+
+## First anchored-depth regression
+
+The [first anchored run](performance/mobile-depth-interpolation-anchor-v1-2026-10-20.json)
+passes the twelve constant-depth pairs and all four ABI checks. The numeric/
+ownership group is 42/43: its full64-component test still expected1584 scalar
+operations, while the changed schedule uses1582. Two shared differences plus
+four lanes of six weight, five depth and384 varying operations give1582.
+The corrected expectation changes no production bytes; the full44-check rerun
+is pending. This does not establish full precision or integrated closure.
