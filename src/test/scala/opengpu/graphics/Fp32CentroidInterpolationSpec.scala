@@ -54,6 +54,7 @@ class Fp32CentroidInterpolationSpec extends AnyFlatSpec {
         val center=lane(t.values,s);val centroid=lane(t.values,atSample(t,kind,s,mode));val out=d.io.out.bits.lanes(i)
         out.x.expect(s.x.S);out.y.expect(s.y.S);out.coverageMask.expect(s.mask.U);out.covered.expect((s.mask!=0).B)
         out.windowDepth.expect(center.depth.U);out.fragCoordW.expect(pack(center.reciprocal).U)
+        out.sampleLocationValid.expect(false.B)
         Fp32ViewportReference.expect(out.reciprocalW,center.reciprocal);out.perspectiveValid.expect(center.valid.B)
         for(c<-t.values.values.head.indices){
           val selected=if(mask.testBit(c) && !t.values.flat.testBit(c))centroid else center
@@ -135,6 +136,33 @@ class Fp32CentroidInterpolationSpec extends AnyFlatSpec {
       driver.run(t,q,2,2,(BigInt(1)<<63)|(BigInt(1)<<62)|1)
       assert(driver.differences>0)
       info("CENTROID_CAPACITY components=64 highestQualifierBit=true highCentroidAndFlat=true exactRawFlatNaN=true noTruncatedValues=true")
+    }
+  }
+
+  it should "retain partial coverage when the center crosses a perspective pole but a covered sample is valid" in {
+    simulate(new Fp32FragmentInterpolator(p,g)){d=>val driver=new Driver(d)
+      for(inv<-Seq(Vector(2.0,0.25,0.25),Vector(12.0,7.0,7.0));mode<-1 to 2;reverse<-Seq(false,true);mask<-Seq(BigInt(0),qualifiers)){
+        val small=base.copy(coords=Vector((32,32),(112,32),(32,112)).map{case(x,y)=>(BigInt(x),BigInt(y))},
+          values=base.values.copy(inv=inv.map(v=>decode(fp(v)))))
+        val t=if(reverse)small.copy(coords=Vector(small.coords(0),small.coords(2),small.coords(1)))else small
+        val q=TriangleRasterReference.raster(t,TriangleRasterReference.Settings(mode=mode),g).head
+        assert(q.samples.head.mask==1 && !lane(t.values,q.samples.head).valid)
+        val selected=lane(t.values,atSample(t,2,q.samples.head,mode));assert(selected.valid)
+        driver.prepare(t,q,2,mode,mask);driver.submit();d.io.out.ready.poke(true.B)
+        var cycles=0;var outputs=0
+        while(!d.io.completion.valid.peek().litToBoolean && cycles<150000){
+          if(d.io.out.valid.peek().litToBoolean){
+            val value=d.io.out.bits.lanes(0);value.fragCoordW.expect(pack(selected.reciprocal).U)
+            value.sampleLocationValid.expect(true.B);value.sampleLocation.expect(0.U)
+            value.windowDepth.expect(selected.depth.U);value.perspectiveValid.expect(true.B)
+            for(c<-0 until 8)value.varyings(c/4)(c%4).expect(selected.values(c).U)
+            SampleDepthReference.check(d.io.out.bits,SampleDepthReference.depths(t,2,q.samples,mode,g));outputs+=1
+          }
+          d.clock.step();cycles+=1
+        }
+        assert(cycles<150000);driver.retire(0,true);assert(outputs==1);d.io.out.ready.poke(false.B)
+      }
+      info("CENTROID_PARTIAL_PERSPECTIVE draws=16 modes=2 windings=2 qualifierMasks=2 negativeAndZeroCenter=true coveredSamplePositive=true noDroppedFragment=true exactFallbackValues=true")
     }
   }
 }

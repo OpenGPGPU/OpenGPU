@@ -32,7 +32,28 @@ flat components. The initial reference-test syntax failure is retained separatel
 
 This is a component prerequisite. The enclosing primitive owner currently ties
 the new mask to zero. Versioned native fragment-state binding, actual-CU/native
-images, resource discovery and composed timing are still required. Existing
-positive-center-perspective admission remains in force; tiny partial-coverage
-primitives whose center extrapolates through a perspective pole need separate
-qualification. This checkpoint does not close centroid/API or H6 coverage.
+images, resource discovery and composed timing are still required. This
+checkpoint does not close centroid/API or H6 coverage.
+
+## Partial-coverage perspective fallback
+
+A tiny triangle can cover a sample while its pixel center extrapolates to a
+negative or zero perspective denominator. A directed case initially returns
+numeric fault 7 and drops that valid fragment. A candidate correction chooses
+the lowest covered sample for every smooth input and for fragCoord.xyzw when
+the center is invalid. It preserves the per-sample default depths and the
+helper-center policy. Ordinary positive centers retain the prior behavior.
+
+`Fp32InterpolatedLane.sampleLocationValid` and `sampleLocation` carry this internal
+choice to shader staging. The existing x/y raster coordinates still identify
+the pixel; shader x/y are sampled at the matching quarter-pixel offsets. The
+existing scalar service recomputes reciprocal W and depth at that same position.
+No shader SoA field or offset is added. GLSL ES 3.00 section 7.2 permits
+multisample fragCoord at a sample location; section 4.3.9 permits ordinary smooth
+inputs there as well. Staging rejects inactive, out-of-mode or uncovered sample
+location metadata before any shader access.
+
+The focused negative-center correction passes all eight mode/winding/qualifier
+cases. Expanded zero-denominator, legacy interpolation/depth and actual shared-CU
+local/global staging checks are running on a frozen combined source; their
+passing result and native composition remain to be established.

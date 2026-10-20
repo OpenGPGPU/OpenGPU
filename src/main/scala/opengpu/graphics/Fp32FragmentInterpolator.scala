@@ -37,6 +37,8 @@ class FragmentInterpolationRequest(p: VertexShaderStageConfig,g: GraphicsConfig)
 class Fp32InterpolatedLane(p: VertexShaderStageConfig,g: GraphicsConfig) extends Bundle {
   val x=SInt(32.W);val y=SInt(32.W);val covered=Bool();val coverageMask=UInt(g.maxSampleCount.W)
   val reciprocalW=new ClipFloat;val fragCoordW=UInt(32.W);val windowDepth=UInt(32.W)
+  /** A covered-sample fallback keeps fragCoord.xyzw at one coherent location. */
+  val sampleLocationValid=Bool();val sampleLocation=UInt(2.W)
   val sampleDepthValid=Bool();val sampleDepth=Vec(g.maxSampleCount,UInt(32.W))
   /** False for helper centers with a nonpositive perspective denominator.
     * Such lanes retain flat values/depth and use zero for smooth values.
@@ -85,6 +87,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val denominator=Reg(new ClipFloat);private val sum=Reg(new ClipFloat);private val term=Reg(new ClipFloat)
   private val centroidWeights=Reg(Vec(3,new ClipFloat));private val centroidDenominator=Reg(new ClipFloat)
   private val preparingCentroid=RegInit(false.B);private val centroidActive=RegInit(false.B)
+  private val fallbackPerspective=RegInit(false.B);private val resamplingDepth=RegInit(false.B)
   private val mathValue=Reg(new ClipFloat);private val mathPacked=Reg(UInt(32.W))
   private val status=RegInit(0.U(3.W));private val faultLane=RegInit(0.U(2.W));private val exported=RegInit(false.B)
   private val invalidHelpers=RegInit(0.U(4.W));private val operations=RegInit(0.U(16.W))
@@ -114,8 +117,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val slotIndex=if(p.varyings==1)0.U else component(2+log2Ceil(p.varyings)-1,2)
   private val componentIndex=component(log2Ceil(p.varyings*4)-1,0)
   private val rawVarying=primitive.vertices(vertex).varyings(slotIndex)(component(1,0))
-  private val centroidComponent=centroidActive && input.centroidMask(componentIndex)
-  private val needsCentroid=(input.centroidMask & ~primitive.flatMask).orR && pixel.covered && input.sampleMode=/=0.U
+  private val centroidComponent=centroidActive && (input.centroidMask(componentIndex) || fallbackPerspective)
+  private val needsCentroid=((input.centroidMask & ~primitive.flatMask).orR || fallbackPerspective) && pixel.covered && input.sampleMode=/=0.U
   arithmetic.io.in.valid:=offered;arithmetic.io.in.bits:=request
   arithmetic.io.out.ready:=pending;arithmetic.io.cancel:=stop && pending
   when(arithmetic.io.in.fire){offered:=false.B;pending:=true.B;operations:=operations+1.U}
@@ -162,7 +165,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
             phase:=State.startLane
           }
       }
-      is(State.startLane){sampling:=false.B;preparingCentroid:=false.B;centroidActive:=false.B
+      is(State.startLane){sampling:=false.B;preparingCentroid:=false.B;centroidActive:=false.B;fallbackPerspective:=false.B;resamplingDepth:=false.B
         when(primitive.kind===0.U){
           val o=output.lanes(lane);val v=input.primitive.vertices(0)
           o.reciprocalW:=v.reciprocalW;o.fragCoordW:=ClipFloat.toFp32(v.reciprocalW).bits;packingFlags:=packingFlags|ClipFloat.toFp32(v.reciprocalW).status;o.windowDepth:=v.windowDepth;o.perspectiveValid:=true.B
@@ -209,11 +212,25 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         when(preparingCentroid){
           preparingCentroid:=false.B
           when(!valid){status:=7.U;faultLane:=lane;phase:=State.abort}
-            .otherwise{centroidActive:=true.B;component:=0.U;phase:=State.component}
+            .otherwise{
+              centroidActive:=true.B;component:=0.U
+              when(fallbackPerspective){
+                val o=output.lanes(lane)
+                o.reciprocalW:=mathValue;o.fragCoordW:=mathPacked;o.perspectiveValid:=true.B
+                o.sampleLocationValid:=true.B;o.sampleLocation:=sample
+                resamplingDepth:=true.B;depth:=true.B;vertex:=0.U;phase:=State.product
+              }.otherwise{phase:=State.component}
+            }
         }.otherwise{
           output.lanes(lane).reciprocalW:=mathValue;output.lanes(lane).fragCoordW:=mathPacked;output.lanes(lane).perspectiveValid:=valid
-          when(!valid && pixel.covered){status:=7.U;faultLane:=lane;phase:=State.abort}
-          .otherwise{when(!valid){invalidHelpers:=invalidHelpers|(1.U(4.W)<<lane)};depth:=true.B;vertex:=0.U;phase:=State.startValues}
+          val coveredFallback=pixel.covered && input.sampleMode=/=0.U && input.sampleMode<=log2Ceil(g.maxSampleCount).U &&
+            (input.sampleDepthEnable || input.centroidMask.orR)
+          when(!valid && pixel.covered && !coveredFallback){status:=7.U;faultLane:=lane;phase:=State.abort}
+            .otherwise{
+              fallbackPerspective:= !valid && pixel.covered
+              when(!valid && !pixel.covered){invalidHelpers:=invalidHelpers|(1.U(4.W)<<lane)}
+              depth:=true.B;vertex:=0.U;phase:=State.startValues
+            }
         }
       }
       is(State.startValues){vertex:=0.U;phase:=State.product}
@@ -230,7 +247,10 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
           .elsewhen(depth){
             when(mathValue.special=/=0.U){status:=7.U;faultLane:=lane;phase:=State.abort}
               .otherwise{
-                when(sampling){output.lanes(lane).sampleDepth(sampleIndex):=Fp32ViewportState.clampDepth(mathPacked);sample:=sample+1.U;phase:=State.sampleDepth}
+                when(resamplingDepth){
+                  output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(mathPacked)
+                  resamplingDepth:=false.B;depth:=false.B;component:=0.U;phase:=State.component
+                }.elsewhen(sampling){output.lanes(lane).sampleDepth(sampleIndex):=Fp32ViewportState.clampDepth(mathPacked);sample:=sample+1.U;phase:=State.sampleDepth}
                   .otherwise{output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(mathPacked);output.lanes(lane).sampleDepthValid:=input.sampleDepthEnable
                     when(input.sampleDepthEnable && input.sampleMode=/=0.U){sample:=0.U;sampling:=true.B;phase:=State.sampleDepth}
                       .otherwise{when(input.sampleDepthEnable){output.lanes(lane).sampleDepth(0):=Mux(pixel.covered,Fp32ViewportState.clampDepth(mathPacked),0.U)}

@@ -258,13 +258,15 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val inputData=Wire(Vec(4,UInt(32.W)))
   for(i<-0 until 4) {
     val l=inputQuad.values.lanes(i)
-    def center(value: SInt): UInt={
-      val integer=FragmentEdgeFloat(((value.pad(34)<<1)+1.S).pad(64))
-      val half=WireDefault(integer);half.exponent:=integer.exponent-1.S
-      ClipFloat.toFp32(half).bits
+    def position(value: SInt,y: Boolean): UInt={
+      val high=if(!y)l.sampleLocation(0) else Mux(inputQuad.sampleMode===1.U,l.sampleLocation(0),l.sampleLocation(1))
+      val fraction=Mux(l.sampleLocationValid,Mux(high,3.U(3.W),1.U(3.W)),2.U(3.W))
+      val integer=FragmentEdgeFloat(((value.pad(35)<<2)+fraction.zext).pad(64))
+      val quarter=WireDefault(integer);quarter.exponent:=integer.exponent-2.S
+      ClipFloat.toFp32(quarter).bits
     }
     inputData(i):=0.U
-    when(field===0.U){inputData(i):=center(l.x)};when(field===1.U){inputData(i):=center(l.y)}
+    when(field===0.U){inputData(i):=position(l.x,false)};when(field===1.U){inputData(i):=position(l.y,true)}
     when(field===2.U){inputData(i):=l.windowDepth};when(field===3.U){inputData(i):=l.fragCoordW}
     when(field===4.U){inputData(i):=Cat(0.U(25.W),Mux(draw.version===2.U,inputQuad.values.primitiveKind,0.U(2.W)),inputQuad.sampleMode,l.perspectiveValid,!l.covered,inputQuad.frontFacing)}
     when(field===5.U){inputData(i):=l.coverageMask}
@@ -333,7 +335,9 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
           val depth=l.windowDepth(30,23)=/=255.U && !PrimitiveClipStage.less(l.windowDepth,0.U) && !PrimitiveClipStage.less("h3f800000".U,l.windowDepth)
           val sampleDepth=(0 until g.maxSampleCount).map(s=> !l.sampleDepthValid || !l.coverageMask(s) ||
             (l.sampleDepth(s)(30,23)=/=255.U && !PrimitiveClipStage.less(l.sampleDepth(s),0.U) && !PrimitiveClipStage.less("h3f800000".U,l.sampleDepth(s)))).reduce(_ && _)
-          !sampleDepth || shape || l.covered=/=l.coverageMask.orR || (l.coverageMask>>sampleCount).orR ||
+          val locationCovered=if(g.maxSampleCount==1)l.coverageMask(0) else l.coverageMask(l.sampleLocation(log2Ceil(g.maxSampleCount)-1,0))
+          val location= !l.sampleLocationValid || (l.covered && inputQuad.sampleMode=/=0.U && l.sampleLocation<sampleCount && locationCovered)
+          !sampleDepth || !location || shape || l.covered=/=l.coverageMask.orR || (l.coverageMask>>sampleCount).orR ||
             (l.covered && (!l.perspectiveValid || !reciprocal || !depth))
         })
         val header=q.identity.asUInt=/=draw.identity.asUInt || q.varyingSlots=/=draw.varyingSlots ||
