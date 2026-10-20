@@ -427,6 +427,10 @@ private object VectorDecodeTable {
       readsVs1 = true, readsVs2 = true, writesVd = true),
     VectorPattern("vtex_fetch",
       "000010???????????0???????0101011", 8,
+      readsVs1 = true, readsVs2 = true, writesVd = true),
+    VectorPattern("vtex_params", "000011??????????????000000101011", 8,
+      readsVs1 = true, readsVs2 = true, writesScalar = true),
+    VectorPattern("vtex_samplef", "000100???????????0???????0101011", 8,
       readsVs1 = true, readsVs2 = true, writesVd = true)
   )
 

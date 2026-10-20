@@ -410,8 +410,117 @@ static void test_input_read_usage(void)
     assert(validate_usage(p, 2, 8, false, &mask) && mask == 8);
 }
 
+static uint32_t resource_texture(bool vector, unsigned function,
+                                 unsigned field, unsigned rd,
+                                 unsigned rs1, unsigned rs2)
+{
+    return function << (vector ? 26 : 25) | (vector ? 1u << 25 : 0u) |
+           rs2 << 20 | rs1 << 15 | field << 12 | rd << 7 |
+           (vector ? 0x2bu : 0x0bu);
+}
+
+static bool validate_resource_texture(const uint32_t *p, unsigned count,
+                                      bool texture, bool fragment)
+{
+    return opengpu_shader_validate_words_profile(p, count, 1024, 4, 6, 9,
+        fragment, texture, false, false);
+}
+
+static void test_resource_texture_operands(void)
+{
+    uint32_t p[32], original;
+    unsigned n, sample, start;
+
+    /* Integer packet fetch is admitted only from a proven complete kernarg
+     * span. Vector packet-pointer provenance is not tracked by this profile. */
+    p[0] = addi(5, 1, 192);
+    p[1] = resource_texture(false, 2, 0, 6, 5, 0);
+    p[2] = OPENGPU_SHADER_CEASE;
+    assert(validate_resource_texture(p, 3, true, false));
+    for (unsigned offset = 0; offset < 1100; offset++) {
+        p[0] = addi(5, 1, offset);
+        assert(validate_resource_texture(p, 3, true, true) ==
+               (offset >= 9 * 4 * 4 && offset % 64 == 0 &&
+                offset + 64 <= 1024));
+    }
+    p[0] = lw(5, 0);
+    assert(!validate_resource_texture(p, 3, true, true));
+    p[0] = vsetivli(4);
+    p[1] = resource_texture(true, 2, 0, 2, 1, 1);
+    assert(!validate_resource_texture(p, 3, true, true));
+
+    for (unsigned vector = 0; vector < 2; vector++) {
+        n = 0;
+        if (vector)
+            p[n++] = vsetivli(4);
+        start = n;
+        for (unsigned pair = 0; pair < 8; pair++)
+            p[n++] = resource_texture(vector, 3, pair, 0,
+                                      vector ? 1 : 0, vector ? 1 : 0);
+        sample = n;
+        p[n++] = resource_texture(vector, 4, 0, 5,
+                                  vector ? 1 : 0, vector ? 1 : 0);
+        p[n++] = OPENGPU_SHADER_CEASE;
+        assert(validate_resource_texture(p, n, true, false)); /* vertex */
+        assert(validate_resource_texture(p, n, true, true));
+        assert(!validate_resource_texture(p, n, false, true));
+        for (unsigned c = 0; c < 8; c++) {
+            p[sample] = resource_texture(vector, 4, c, 5,
+                                        vector ? 1 : 0, vector ? 1 : 0);
+            assert(validate_resource_texture(p, n, true, true) == (c < 4));
+        }
+        p[sample] = resource_texture(vector, 4, 0, 5,
+                                    vector ? 1 : 0, vector ? 1 : 0);
+        for (unsigned pair = 0; pair < 8; pair++) {
+            original = p[start + pair];
+            p[start + pair] = addi(0, 0, 0);
+            assert(!validate_resource_texture(p, n, true, true));
+            p[start + pair] = original;
+            p[start + pair] |= 1u << 7; /* reserved destination */
+            assert(!validate_resource_texture(p, n, true, true));
+            p[start + pair] = original;
+        }
+        original = p[start + 7];
+        p[start + 7] = resource_texture(vector, 3, 0, 0,
+                                       vector ? 1 : 0, vector ? 1 : 0);
+        assert(!validate_resource_texture(p, n, true, true)); /* tuple restart */
+        p[start + 7] = original;
+        original = p[sample];
+        p[sample] = resource_texture(vector, 4, 0, 5, vector ? 30 : 12,
+                                    vector ? 1 : 0);
+        assert(!validate_resource_texture(p, n, true, true));
+        p[sample] = original;
+        if (vector) {
+            p[start + 3] &= ~(1u << 25); /* masked pairs are not in profile */
+            assert(!validate_resource_texture(p, n, true, true));
+            p[start + 3] |= 1u << 25;
+            p[sample] = resource_texture(true, 4, 0, 5, 0, 1);
+            assert(!validate_resource_texture(p, n, true, true)); /* params do not define v0 */
+            p[sample] = vsetivli(2);
+            p[sample + 1] = original;
+            p[sample + 2] = OPENGPU_SHADER_CEASE;
+            assert(!validate_resource_texture(p, n + 1, true, true)); /* VL reset */
+        }
+        /* A path that skips the final pair cannot claim a complete tuple. */
+        n = 0;
+        if (vector)
+            p[n++] = vsetivli(4);
+        for (unsigned pair = 0; pair < 7; pair++)
+            p[n++] = resource_texture(vector, 3, pair, 0,
+                                      vector ? 1 : 0, vector ? 1 : 0);
+        p[n++] = branch(0, 0, 0, 8);
+        p[n++] = resource_texture(vector, 3, 7, 0, vector ? 1 : 0,
+                                  vector ? 1 : 0);
+        p[n++] = resource_texture(vector, 4, 0, 5, vector ? 1 : 0,
+                                  vector ? 1 : 0);
+        p[n++] = OPENGPU_SHADER_CEASE;
+        assert(!validate_resource_texture(p, n, true, true));
+    }
+}
+
 int main(void)
 {
+    test_resource_texture_operands();
     test_wide_uniform_provenance();
     test_runtime_capacity();
     test_input_read_usage();

@@ -223,6 +223,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   textureInstructions:=textureInstructions+textureStarts-textureEnds
   assert(textureEnds<=textureInstructions+textureStarts,"vertex texture completion must retain its instruction")
   texture.io.resources:=draw.resources;texture.io.identity:=draw.input.identity
+  texture.io.clearParameters:=shader.io.launch.valid && shader.io.launch.ready
   texture.io.cancel:=externalCancel || status=/=0.U;texture.io.invalidate:=io.draw.fire
   texture.io.texFormat:=draw.sampler.format;texture.io.texBase:=draw.sampler.base
   texture.io.texWidth:=draw.sampler.texWidth;texture.io.texHeight:=draw.sampler.texHeight

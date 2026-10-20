@@ -45,6 +45,7 @@ struct opengpu_shader_state {
     opengpu_shader_u32 vector_local_indices;
     opengpu_shader_u32 vector_local_bytes;
     opengpu_shader_u32 vector_length;
+    opengpu_shader_u32 texture_parameter_pairs;
 };
 
 struct opengpu_shader_branch_state {
@@ -70,6 +71,7 @@ static inline void opengpu_shader_merge_state(
             state->values[reg].offset = 0;
         }
     }
+    state->texture_parameter_pairs &= incoming->texture_parameter_pairs;
     state->vector_local_indices &= incoming->vector_local_indices;
     state->vector_local_bytes &= incoming->vector_local_bytes;
     if (state->vector_length != incoming->vector_length)
@@ -938,9 +940,11 @@ static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
             if ((insn & 0xfffff07fu) == 0x01007057u) {
                 if (!rd || rd == 1)
                     return false;
+                state.texture_parameter_pairs = 0;
                 state.vector_length = batch_capacity;
                 opengpu_shader_define_integer(&state, rd);
             } else if ((insn & 0xfff07fffu) == 0xc1007057u) {
+                state.texture_parameter_pairs = 0;
                 state.vector_length = rs1;
                 if (!state.vector_length ||
                     state.vector_length > batch_capacity)
@@ -1175,17 +1179,55 @@ static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
                 return false;
             break;
         }
-        case 0x2b: /* OpenGPU texture and fragment-quad operations */
-            if (!fragment_ops_enabled) {
+        case 0x0b: /* resource-bound scalar texture operations */
+            if (!texture_enabled || !scalar_defined[rs1] ||
+                !scalar_defined[rs2])
                 return false;
-            } else if ((insn & 0xfe00707fu) == 0x0600002bu) {
+            if (funct7 == 3u && rd == 0u) {
+                /* Pair zero starts a new complete on-chip operand tuple. */
+                state.texture_parameter_pairs = funct3 == 0u ? 1u :
+                    state.texture_parameter_pairs | (1u << funct3);
+                break;
+            }
+            if (rd == 1u || funct3 >= 4u ||
+                (funct7 != 2u && funct7 != 4u) ||
+                (funct7 == 4u && state.texture_parameter_pairs != 0xffu))
+                return false;
+            /* A packet read must retain the existing bounded-memory sandbox.
+             * Loaded/unknown addresses cannot authorize an indirect GXQ1 read.
+             * The uniform tail is immutable; private local payloads are not
+             * exposed through the separate texture-memory client. */
+            if (funct7 == 2u &&
+                (!opengpu_shader_scalar_read_valid(&lhs, 0, 64, kernarg_size) ||
+                 (opengpu_shader_u64)(opengpu_shader_u32)lhs.offset < output_end))
+                return false;
+            opengpu_shader_define_integer(&state, rd);
+            break;
+        case 0x2b: { /* OpenGPU texture and fragment-quad operations */
+            opengpu_shader_u32 function = insn >> 26;
+            bool unmasked = (insn & (1u << 25)) != 0u;
+            bool texture_result =
+                (function == 1u && funct3 == 0u) ||
+                (function == 4u && funct3 < 4u);
+
+            if (function == 3u && rd == 0u && unmasked) {
                 if (!texture_enabled || !state.vector_length ||
                     !vector_defined[rs1] || !vector_defined[rs2])
                     return false;
+                state.texture_parameter_pairs = funct3 == 0u ? 1u :
+                    state.texture_parameter_pairs | (1u << funct3);
+                /* No vector destination: preserve v0 provenance/definition. */
+                break;
+            }
+            if (texture_result && unmasked) {
+                if (!texture_enabled || !state.vector_length ||
+                    !vector_defined[rs1] || !vector_defined[rs2] ||
+                    (function == 4u && state.texture_parameter_pairs != 0xffu))
+                    return false;
             } else if ((insn & 0xfe0ff07fu) == 0x3200002bu ||
                        (insn & 0xfe0ff07fu) == 0x3600002bu) {
-                /* vquad.dfdx/dfdy are unary-vs2, unmasked, rs1=0. */
-                if (!state.vector_length || !vector_defined[rs2])
+                if (!fragment_ops_enabled || !state.vector_length ||
+                    !vector_defined[rs2])
                     return false;
             } else {
                 return false;
@@ -1194,6 +1236,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
             state.vector_local_indices &= ~(1u << rd);
             state.vector_local_bytes &= ~(1u << rd);
             break;
+        }
         case 0x43: /* fmadd.s */
         case 0x47: /* fmsub.s */
         case 0x4b: /* fnmsub.s */
