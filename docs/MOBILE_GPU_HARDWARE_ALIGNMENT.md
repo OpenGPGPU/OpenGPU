@@ -5225,3 +5225,33 @@ pass on 627 unchanged source/ABI files. Full converted-input native image,
 fault/reset composition and default four-CU emission are being requalified on
 the combined source. These feature-branch checkpoints do not close H0-H8,
 GLES resource/format coverage, full Mobile throughput or physical qualification.
+
+## Native centroid binding and completed composition checkpoints (2026-10-20)
+
+The [full converted-input/image composition](NATIVE_INPUT_IMAGE_COMPOSITION.md)
+now passes all 56 checks on its frozen 626-file source, including all 22
+unfiltered GNC1/GNC2 fault cases and four half/packed-SNORM local/global native
+profiles. Default four-CU emission completes with one shared payload pool, two
+replay engines and unchanged SRAM/AXI capacities. Separately, all
+[39 point/line carry/preparation checks](performance/mobile-point-line-pipeline-validation-2026-10-20.json)
+pass through actual-CU rasterization, typed image publication and native typed
+AXI hosts. These snapshots precede later changes; their results are not a single
+qualification of the current combined source.
+
+[Centroid interpolation](CENTROID_INTERPOLATION.md) now reuses the existing scalar
+service and carries a checked 64-bit component mask from native fragment
+descriptors through live vertex and prepared replay raster owners. Descriptor
+versions 3/4 preserve the version 1/2 shader layouts, using reserved GTD1 words
+538–539 and GFS1 words 124–125 without moving existing fields. Read-only GFI1
+discovery advertises descriptor versions, qualifiers and configured sample modes.
+All 24 descriptor/state/raster/discovery controls pass on 631 unchanged source
+files, including high mask bits, held offers, prefix bounds, cancellation,
+1/2/4-sample profiles and the legacy map.
+
+A separate 18-check source qualifies coherent covered-sample fallback when a
+partially covered primitive's center extrapolates through a perspective pole,
+including exact local/global shader fragCoord.xyzw and protected sample depths.
+The new native centroid-gradient image suite and default four-CU emission are
+running. Prepared binned/replay centroid images, complete resource/format
+coverage, representative rates and H0–H8 remain open. Composed PPA continues
+under the synthesis-only policy on its explicitly frozen pre-centroid source.

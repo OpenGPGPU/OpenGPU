@@ -33,8 +33,8 @@ flat components. The initial reference-test syntax failure is retained separatel
 The initial component checkpoint tied the enclosing primitive owner's mask to
 zero. The native binding series now carries the fragment descriptor's mask
 through both prepared replay and live vertex/raster ownership, snapshotting it
-with each accepted draw. Actual-CU/native centroid images, resource discovery
-and composed timing remain to be qualified. This checkpoint does not close
+with each accepted draw. Actual-CU/native centroid images and composed timing
+remain to be qualified; discovery is covered by the controls below. This checkpoint does not close
 centroid/API or H6 coverage.
 
 ## Native descriptor extension
@@ -51,8 +51,8 @@ Generated C headers expose the new versions and mask offsets. An audit compares
 all 354 existing GTD1 draw fields, 71 GFS1 state fields and existing C defines
 against the preceding committed layouts; every prior entry matches, and C11
 size/offset probes pass. All [15 runtime reader/raster compatibility checks](performance/mobile-centroid-native-binding-2026-10-20.json)
-pass on 629 unchanged source/ABI files. Positive centroid-state/native execution and
-discovery still need their separate controls.
+pass on 629 unchanged source/ABI files. The later 24-check source below adds
+positive centroid-state and discovery controls; exact native images remain open.
 
 ## Native fragment input discovery
 
@@ -99,5 +99,5 @@ and real two-CU local/global staging. All six sample choices across 2x/4x produc
 exact matching shader fragCoord.xyzw, guarded uniforms, protected sample depths
 and held exports. Three malformed metadata scenarios reject before shader access;
 the mode-mismatch case also has an out-of-mode mask and does not isolate the
-sample-index bound. Native qualifier binding/discovery and native images remain
-separate pending work.
+sample-index bound. The later binding/discovery controls above cover descriptor
+transport. Native centroid images and prepared replay remain separate pending work.
