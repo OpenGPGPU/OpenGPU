@@ -449,6 +449,37 @@ static void test_resource_texture_operands(void)
     p[1] = resource_texture(true, 2, 0, 2, 1, 1);
     assert(!validate_resource_texture(p, 3, true, true));
 
+    /* Size queries use ordinary unit/LOD operands and need no parameter tuple. */
+    for (unsigned vector = 0; vector < 2; vector++) {
+        for (unsigned c = 0; c < 8; c++) {
+            n = 0;
+            if (vector)
+                p[n++] = vsetivli(4);
+            p[n++] = resource_texture(vector, 6, c, 5, vector ? 1 : 0,
+                                      vector ? 1 : 0);
+            p[n++] = OPENGPU_SHADER_CEASE;
+            assert(validate_resource_texture(p, n, true, false) == (c < 3));
+            assert(validate_resource_texture(p, n, true, true) == (c < 3));
+            assert(!validate_resource_texture(p, n, false, true));
+        }
+        n = 0;
+        if (vector)
+            p[n++] = vsetivli(4);
+        p[n++] = resource_texture(vector, 6, 0, 5, vector ? 30 : 12,
+                                  vector ? 1 : 0);
+        p[n++] = OPENGPU_SHADER_CEASE;
+        assert(!validate_resource_texture(p, n, true, true));
+        p[n-2] = resource_texture(vector, 6, 0, 5, vector ? 1 : 0,
+                                  vector ? 30 : 12);
+        assert(!validate_resource_texture(p, n, true, true));
+        if (vector) {
+            p[n-2] = resource_texture(true, 6, 0, 5, 1, 1) & ~(1u << 25);
+            assert(!validate_resource_texture(p, n, true, true));
+            p[0] = resource_texture(true, 6, 0, 5, 1, 1);
+            assert(!validate_resource_texture(p, n, true, true));
+        }
+    }
+
     for (unsigned vector = 0; vector < 2; vector++)
     for (unsigned function = 4; function <= 5; function++) {
         n = 0;
