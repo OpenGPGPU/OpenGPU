@@ -1,11 +1,12 @@
 # Resource-bound shader sampling development
 
-Status: implementation on `codex/mobile-native-sampling`; all 13 initial composed tests pass, including
-299 successful resource-bound queries per shader stage. Both expanded bounds
-and drain tests also pass with root address zero, exact 4 GiB end, fourteen
-malformed root/binding cases, three full-width unit rejects, three pre-read
-parameter rejects and eighteen cancellation cuts per stage. Fresh aggregate
-and synthesis qualification remain pending. This is an internal resource/operand endpoint. CU instruction decoding,
+Status: the [800-input checkpoint](performance/mobile-shader-resource-sampling-checkpoint-2026-10-21.json)
+passes 128 distinct tests across 21 suites and nine unchanged ABI checks.
+It includes 299 successful resource-bound queries per shader stage, root address
+zero and exact 4 GiB end, fourteen malformed root/binding cases and eighteen
+cancellation cuts per stage. Eight child/standalone RTL profiles are byte-exact
+to their positive parent screens. Both new stage-owner synthesis runs remain
+pending; no timing pass is claimed for this owner. This is an internal resource/operand endpoint. CU instruction decoding,
 scalar/vector operand transport and retirement, compiler/validator adoption and
 native frame integration remain open. No software record, native opcode or
 capability is changed or advertised here.
