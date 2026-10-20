@@ -186,10 +186,25 @@ honors directed overflow rounding and exception flags, and reports busy across
 all accepted pipeline stages. Its finite arithmetic regression uses exact
 rational division over7,126 queries and all five rounding modes. Cube tests use
 independent host division and fused affine arithmetic, including100 cancellation
-cuts. The [complete-owner functional record](performance/mobile-effective-lod-sampling-2026-10-20.json)
-contains107 distinct tests and nine ABI checks on788 frozen inputs; full-owner
-synthesis is being requalified after the registered LOD calculation. Those
-results are separate from the older selected-level screens above.
+cuts. The [complete-owner qualification](performance/mobile-effective-lod-sampling-2026-10-20.json)
+contains 107 distinct tests and nine ABI checks on 788 frozen inputs.
+Two fresh [synthesis screens](performance/mobile-effective-lod-synthesis-2026-10-20.json)
+pass full mapping and setup at 1000 ps, TC/SLVT, 25% I/O, default ABC and no retiming:
+
+| Profile | Core margin (ps) | I/O margin (ps) | Mapped cells |
+| --- | ---: | ---: | ---: |
+| Complete effective-LOD sampler | +179.638 | +408.384 | 304,435 |
+| Corrected FP32 divider | +324.168 | +390.675 | 3,843 |
+
+The first sampler screen fails by 804.665 ps through combined LOD resolution;
+registered clamp/split/selection steps move the limiting path to array-layer
+conversion at -136.698 ps. Layer guard extraction, rounding and saturation now
+use separate states. Supplemental STA also finds a -3.147 ps periodic wrap path;
+direct endpoint selection within the proven `[-1,2N]` range removes chained
+modulo/subtraction arithmetic. The final pass retains seven-cycle axis latency,
+one axis per cycle, numeric semantics and the original clock constraint.
+The updated axis is included in the full-owner screen; earlier byte-exact
+standalone-axis carry applies only to its historical selected-level snapshot.
 
 ## Standalone evidence and remaining integration
 
