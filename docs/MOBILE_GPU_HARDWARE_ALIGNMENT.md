@@ -5776,3 +5776,33 @@ and cancellation/reuse pass. The24 image and37 native host controls remain live.
 This candidate remains outside main; it does not include the independently
 qualified GPU level-resource components. No complete206-check, native matrix/reset
 or composed PPA result is claimed. PPA evaluation remains synthesis only.
+
+## Texture-data fetch component qualification (2026-10-20)
+
+The isolated [fetch implementation](TEXTURE_IMAGE_FETCH.md) connects checked
+GXL1 spans to tagged cache-line reads and the existing 36-format typed decoder.
+[Nineteen controls](performance/mobile-texture-image-fetch-2026-10-20.json), six
+ABI checks, combined C11 headers, CI selection and raw/typed emissions pass on
+unchanged 655-file source. The format matrix covers 2,304 queries; fault/cancel
+controls include prompt-fault issue suppression and actual Sv32 cross-page
+permissions. All 649 qualified dependency files are unchanged. The preserved
+prompt-fault failure motivated the issue gate; the same assertion now passes.
+
+Both standalone [synthesis screens](performance/mobile-texture-image-fetch-synthesis-2026-10-20.json)
+pass after the registered decode boundary below. GXL1 stores byte layout, so a parent
+binding must still own authoritative format identity. Native image/sampler
+bindings, complete mip rules, coordinate/LOD/filtering, compressed decoding and
+shader integration remain open. No native sampling capability or H4/H6 closure
+is claimed. PPA remains synthesis only.
+
+The initial typed [synthesis miss](performance/mobile-texture-image-fetch-synthesis-before-2026-10-20.json)
+is retained: mapping passes, raw setup is +53.933 ps and typed setup is -3.880 ps
+at the unchanged 1 GHz target. A fetch-specific registered component-selection
+boundary now separates extraction from shared numeric conversion. The
+[revised 19-check qualification](performance/mobile-texture-image-fetch-pipelined-2026-10-20.json)
+passes all six ABI checks and both emissions on unchanged 655-file source.
+The 649 existing dependencies and every raw active RTL byte are unchanged.
+Revised synthesis passes mapping and setup including I/O for raw +53.933 ps and
+typed +41.228 ps at TC/SLVT, 1000 ps, 25 percent I/O delay and no retiming. No
+relaxed constraint or native capability change is introduced. These component
+screens establish no whole-GPU clock or texture-cluster throughput.
