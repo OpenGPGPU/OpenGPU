@@ -6051,3 +6051,16 @@ retain every quad field, but serialized sample stages add substantial cycles
 (e.g. unit-width4x line683 to2219). This candidate stays isolated while sample
 stages are overlapped and point/basic-line overhead is removed. No positive
 native timing or throughput result is claimed; PPA remains synthesis only.
+
+
+## Overlapped line samples and original point/basic-line branches (2026-10-20)
+
+The [overlap candidate](performance/mobile-point-line-sample-overlap-2026-10-20.json)
+streams consecutive multisample line samples through six tagged register stages,
+retaining the lane/request until the last index retires. Dot acceptance follows
+the same sample as its squared distance. Points and basic lines bypass these
+arithmetic stages. All9 controls pass, including468 cancellation/reset cuts,
+exact reuse and four extreme-coordinate subpixel configurations; RTL emission
+passes on the frozen672-file source. Fresh native integration, matched cycle
+comparison and standalone synthesis remain pending. The retained aliased diamond
+setup miss, native general resources and full H0-H8 objective remain open.
