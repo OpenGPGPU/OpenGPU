@@ -301,4 +301,25 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
     }
   }
 
+
+  for(stage<-0 to 1)it should s"track the selected integer mip descriptor after it crosses the table origin page stage=$stage" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage);t.clear()
+      val unit=31;val view=install(t.put,t.byte,unit,3,0,stage)
+      val table=levels+unit*128;val selected=table+128
+      val words=(0 until 32).map(w=>(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(t.memory.bytes.getOrElse(table+w*4+b,0))<<(8*b))))
+      words.zipWithIndex.foreach{case(v,w)=>t.put(selected+w*4,v)};t.put(selected+6*4,1);t.put(selected+8*4,1)
+      val image=images+unit*128;t.put(image+9*4,1);t.put(image+10*4,1);t.put(image+11*4,4);t.put(image+12*4,4);t.put(image+20*4,table+256)
+      t.parameters(Seq[BigInt](1,1)++Seq.fill(14)(BigInt(0)))
+      t.issue(false,false,0,Seq.fill(4)(BigInt(unit)),Seq.fill(4)(BigInt(0)),integer=true)
+      t.retire(false,false,Seq(view.expected(0)))
+      val pages=t.memory.seen.drop(t.before).map(_.address& ~BigInt(4095)).toSet
+      val oldPage=table& ~BigInt(4095);val selectedPage=selected& ~BigInt(4095)
+      assert(oldPage==0x12000 && selectedPage==0x13000)
+      val required=if(java.lang.Boolean.getBoolean("opengpu.nativeIntegerOldMipPageAssertion"))oldPage else selectedPage
+      assert(pages.contains(required),s"selected mip requires page${required.toString(16)}; actual pages=${pages.toSeq.sorted.map(_.toString(16))}")
+      assert(!pages.contains(oldPage),"selected-level-only admission must not read unselected table-origin metadata")
+      info(s"NATIVE_INTEGER_MIP_PAGE stage=$stage unit31=true imageBase1=true shaderLOD0=true tableOriginPage12000=true selectedPage13000=true originNotRead=true healthyFetch=true")
+    }
+  }
+
 }
