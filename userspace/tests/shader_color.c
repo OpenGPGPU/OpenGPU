@@ -13,12 +13,36 @@ static uint32_t run_swizzle(uint32_t input)
         uint32_t w = opengpu_fragment_swizzle[i];
         unsigned op = w & 127, rd = (w >> 7) & 31, f3 = (w >> 12) & 7;
         unsigned r1 = (w >> 15) & 31, r2 = (w >> 20) & 31;
-        if (w == 0x0620812b) { v[2] = input; sampled = 1; continue; }
+        if ((w & 0xfe00707fu) == 0x0600002bu) {
+            v[rd] = input;
+            sampled = 1;
+            continue;
+        }
+        if (op == 0x13 && (f3 == 0 || f3 == 1 || f3 == 5)) {
+            if (f3 == 0)
+                x[rd] = x[r1] + (uint32_t)((int32_t)w >> 20);
+            else if (f3 == 1)
+                x[rd] = x[r1] << (r2 & 31u);
+            else
+                x[rd] = x[r1] >> (r2 & 31u);
+            x[0] = 0;
+            continue;
+        }
+        if (op == 0x37) {
+            x[rd] = w & 0xfffff000u;
+            x[0] = 0;
+            continue;
+        }
+        if (op == 0x33 && f3 == 0) {
+            x[rd] = (w >> 25) == 1 ? x[r1] * x[r2] :
+                    (w >> 25) == 0x20 ? x[r1] - x[r2] : x[r1] + x[r2];
+            x[0] = 0;
+            continue;
+        }
+        if (op == 0x57 && f3 == 7)
+            continue;
         if (!sampled) continue;
-        if (op == 0x13) {
-            assert(f3 == 0);
-            x[rd] = x[r1] + (uint32_t)((int32_t)w >> 20);
-        } else if (op == 0x57) {
+        if (op == 0x57) {
             uint32_t rhs = f3 == 4 ? x[r1] : f3 == 3 ? r1 : v[r1];
             assert(f3 == 0 || f3 == 3 || f3 == 4);
             switch (w >> 26) {

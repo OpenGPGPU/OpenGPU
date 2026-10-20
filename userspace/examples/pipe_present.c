@@ -4,6 +4,7 @@
  * OpenGPU CRTC so ARTI/QEMU scanout shows the result. Pass --hold (or
  * OPENGPU_PRESENT_HOLD=1) to keep the framebuffer live. */
 #include "../pipe_opengpu.h"
+#include "../gallium/opengpu_shaders.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
@@ -98,28 +99,8 @@ struct vertex {
     uint32_t u, v;
 };
 
-/* Pass-through VS: relays all eight attributes so the tint FS can
- * interpolate them. Required whenever the core exposes a vertex unit,
- * because the driver rejects fixed-function submits on such a device. */
-static size_t write_vertex_shader(uint32_t *program)
-{
-    uint32_t pc = 0, field;
-
-    program[pc++] = 0x00241293u;
-    program[pc++] = 0x005082b3u;
-    program[pc++] = 0xc1027057u;
-    for (field = 0; field < 8; field++) {
-        uint32_t input_offset = field * 32;
-        uint32_t output_offset = (8 + field) * 32;
-
-        program[pc++] = (input_offset << 20) | 0x00028313u;
-        program[pc++] = 0x02036087u;
-        program[pc++] = (output_offset << 20) | 0x00028313u;
-        program[pc++] = 0x020360a7u;
-    }
-    program[pc++] = 0x30500073u;
-    return (size_t)pc * 4u;
-}
+/* The vertex unit rejects a fixed-function submit. The clang pass-through
+ * copies all eight attributes so the tint shader can interpolate them. */
 
 static void fill_vertex_triangle(struct vertex *verts)
 {
@@ -166,8 +147,6 @@ int main(int argc, char **argv)
     struct drm_opengpu_draw draw;
     struct drm_opengpu_vertex_draw vdraw;
     struct vertex verts[3];
-    uint32_t vs[64] = { 0 };
-    size_t vs_bytes = 0;
     uint8_t shader[128];
     size_t shader_bytes = 0;
     uint32_t width = 0, height = 0;
@@ -201,7 +180,6 @@ int main(int argc, char **argv)
 
     if (vertex) {
         fill_vertex_triangle(verts);
-        vs_bytes = write_vertex_shader(vs);
         vb = pipe_opengpu_resource_create(screen, sizeof(verts));
         if (!vb)
             goto done;
@@ -218,7 +196,8 @@ int main(int argc, char **argv)
     }
 
     if (vertex &&
-        (pipe_opengpu_bind_vs(ctx, vs, vs_bytes) ||
+        (pipe_opengpu_bind_vs(ctx, opengpu_vertex_passthrough,
+                              sizeof(opengpu_vertex_passthrough)) ||
          pipe_opengpu_set_vertex_buffer(ctx, vb, sizeof(struct vertex),
                                         sizeof(verts))))
         goto done;

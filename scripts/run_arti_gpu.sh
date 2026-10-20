@@ -531,32 +531,32 @@ if [ "${GPU_USERSPACE_EXAMPLES:-0}" = "1" ]; then
         "$GPU_DIR/userspace/examples/compute_offload.c"
     if [ "$GPU_FRAG_CORE" = "1" ]; then
         # Programmable GPU path: tint + vtex.sample texture draw + pipe demos.
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fragment_tint "$WORK/opengpu_fragment_tint.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fragment_fp "$WORK/opengpu_fragment_fp.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fragment_fp_scalar "$WORK/opengpu_fragment_fp_scalar.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fragment_texture "$WORK/opengpu_fragment_texture.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_unary "$WORK/opengpu_fp_unary.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_binary "$WORK/opengpu_fp_binary.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_fma "$WORK/opengpu_fp_fma.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_div "$WORK/opengpu_fp_div.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_compare "$WORK/opengpu_fp_compare.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_scalar "$WORK/opengpu_fp_scalar.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_reduce "$WORK/opengpu_fp_reduce.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit widen_alu "$WORK/opengpu_widen_alu.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fixed_width "$WORK/opengpu_fixed_width.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fragment_tint "$WORK/opengpu_fragment_tint.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fragment_fp "$WORK/opengpu_fragment_fp.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fragment_fp_scalar "$WORK/opengpu_fragment_fp_scalar.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fragment_texture "$WORK/opengpu_fragment_texture.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_unary "$WORK/opengpu_fp_unary.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_binary "$WORK/opengpu_fp_binary.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_fma "$WORK/opengpu_fp_fma.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_div "$WORK/opengpu_fp_div.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_compare "$WORK/opengpu_fp_compare.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_scalar "$WORK/opengpu_fp_scalar.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_reduce "$WORK/opengpu_fp_reduce.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_widen_alu "$WORK/opengpu_widen_alu.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fixed_width "$WORK/opengpu_fixed_width.bin"
         "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_fragment_tint" \
@@ -692,40 +692,40 @@ if [ "${GPU_USERSPACE_EXAMPLES:-0}" = "1" ]; then
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" \
             -o "$WORK/opengpu_compute_example" \
             "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/examples/compute.c"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_unary "$WORK/opengpu_fp_unary.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_unary "$WORK/opengpu_fp_unary.bin"
         "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_fp_unary" \
             "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/examples/fp_unary.c"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_binary "$WORK/opengpu_fp_binary.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_binary "$WORK/opengpu_fp_binary.bin"
         "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_fp_binary" \
             "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/examples/fp_binary.c"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_fma "$WORK/opengpu_fp_fma.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_fma "$WORK/opengpu_fp_fma.bin"
         "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_fp_fma" \
             "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/examples/fp_fma.c"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_div "$WORK/opengpu_fp_div.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_div "$WORK/opengpu_fp_div.bin"
         "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_fp_div" \
             "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/examples/fp_div.c"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_compare "$WORK/opengpu_fp_compare.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_compare "$WORK/opengpu_fp_compare.bin"
         "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_fp_compare" \
             "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/examples/fp_compare.c"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_scalar "$WORK/opengpu_fp_scalar.bin"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fp_reduce "$WORK/opengpu_fp_reduce.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_scalar "$WORK/opengpu_fp_scalar.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fp_reduce "$WORK/opengpu_fp_reduce.bin"
         "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_fp_scalar" \
@@ -734,14 +734,14 @@ if [ "${GPU_USERSPACE_EXAMPLES:-0}" = "1" ]; then
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_fp_reduce" \
             "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/examples/fp_reduce.c"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit widen_alu "$WORK/opengpu_widen_alu.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_widen_alu "$WORK/opengpu_widen_alu.bin"
         "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_widen_alu" \
             "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/examples/widen_alu.c"
-        python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-            --emit fixed_width "$WORK/opengpu_fixed_width.bin"
+        python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+            opengpu_fixed_width "$WORK/opengpu_fixed_width.bin"
         "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_fixed_width" \

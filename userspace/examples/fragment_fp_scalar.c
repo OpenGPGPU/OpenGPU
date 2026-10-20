@@ -3,7 +3,7 @@
  * flw and broadcasts it with vfadd.vf, then XORs it into the interpolated
  * colour. This is the shape a `uniform float` lowers to.
  * Requires OPENGPU_CAP_FRAGMENT_CORE and OPENGPU_CAP_COMPUTE_SCALAR_FPU.
- * Shader binary from fragment_fp_scalar.S (corpus); default path
+ * The default image is clang fragment_fp_scalar.c at
  * /opengpu_fragment_fp_scalar.bin. */
 #include "../opengpu.h"
 #include <errno.h>
@@ -33,7 +33,7 @@ int main(int argc, char **argv)
     struct drm_opengpu_draw *draw;
     uint32_t context = 0, fence = 0;
     uint32_t width = 0, height = 0;
-    uint64_t caps;
+    uint64_t caps, features = 0;
     int fd = -1, shader_fd = -1, status = 1;
     ssize_t shader_bytes;
     unsigned painted = 0;
@@ -48,6 +48,11 @@ int main(int argc, char **argv)
                "OPENGPU_CAP_FRAGMENT_CORE\n");
         close(fd);
         return 0;
+    }
+    if (caps & OPENGPU_CAP_VERTEX_CORE) {
+        fprintf(stderr, "fragment_fp_scalar needs a fragment-only device\n");
+        close(fd);
+        return 2;
     }
     if (!(caps & OPENGPU_CAP_COMPUTE_SCALAR_FPU)) {
         /* Mirror fp_scalar: a skip is a pass, because the guest harness treats
@@ -123,6 +128,13 @@ int main(int argc, char **argv)
     submit.shader_slot = 2;
     submit.kernarg_slot = 3;
     submit.out_syncobj = fence;
+    /* Colour-only shader: keep coverage instead of reading an unwritten
+     * validity word, which a zero word would use to discard every fragment. */
+    if (!opengpu_driver_features(fd, &features) &&
+        (caps & OPENGPU_CAP_FRAGMENT_INPUT_USAGE) &&
+        (caps & OPENGPU_CAP_FRAGMENT_OUTPUT_USAGE) &&
+        (features & OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING))
+        submit.flags |= OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING;
     if (opengpu_render(fd, &submit) ||
         opengpu_sync_wait_success(fd, fence, 300000))
         goto done;

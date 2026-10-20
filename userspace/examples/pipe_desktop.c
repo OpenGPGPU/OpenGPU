@@ -10,6 +10,7 @@
  * The proof is the pixel check below, not how fast the model redraws.
  */
 #include "../pipe_opengpu.h"
+#include "../gallium/opengpu_shaders.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -244,27 +245,6 @@ struct desktop_vertex {
     uint32_t u, v;
 };
 
-/* Copy the eight vertex words into the fragment varyings. */
-static size_t write_passthrough_vs(uint32_t *program)
-{
-    uint32_t pc = 0, field;
-
-    program[pc++] = 0x00241293u;
-    program[pc++] = 0x005082b3u;
-    program[pc++] = 0xc1027057u;
-    for (field = 0; field < 8; field++) {
-        uint32_t input_offset = field * 32;
-        uint32_t output_offset = (8 + field) * 32;
-
-        program[pc++] = (input_offset << 20) | 0x00028313u;
-        program[pc++] = 0x02036087u;
-        program[pc++] = (output_offset << 20) | 0x00028313u;
-        program[pc++] = 0x020360a7u;
-    }
-    program[pc++] = 0x30500073u;
-    return (size_t)pc * 4u;
-}
-
 static void window_vertices(struct desktop_vertex verts[3],
                             const struct desktop *desk)
 {
@@ -452,9 +432,8 @@ int main(int argc, char **argv)
     struct drm_opengpu_vertex_draw vdraw;
     struct desktop desk;
     struct desktop_vertex verts[3];
-    uint32_t vs[64];
     uint8_t shader[256];
-    size_t shader_bytes = 0, vs_bytes = 0;
+    size_t shader_bytes = 0;
     uint32_t width = 0, height = 0, pitch, win_bytes;
     uint32_t panel, window, triangle, cursor;
     uint64_t caps;
@@ -500,12 +479,12 @@ int main(int argc, char **argv)
     }
     if (vertex) {
         window_vertices(verts, &desk);
-        vs_bytes = write_passthrough_vs(vs);
         vertices = pipe_opengpu_resource_create(screen, sizeof(verts));
         if (!vertices)
             goto done;
         memcpy(pipe_opengpu_resource_map(vertices), verts, sizeof(verts));
-        if (pipe_opengpu_bind_vs(ctx, vs, vs_bytes) ||
+        if (pipe_opengpu_bind_vs(ctx, opengpu_vertex_passthrough,
+                                 sizeof(opengpu_vertex_passthrough)) ||
             pipe_opengpu_set_vertex_buffer(ctx, vertices, sizeof(verts[0]),
                                            sizeof(verts)))
             goto done;

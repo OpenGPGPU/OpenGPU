@@ -17,16 +17,19 @@ triple `opengpu-unknown-none-elf`. MC, the triple, codegen/ABI and
 `clang --target=opengpu` are done. This repo now reads the resulting fatbin
 (`userspace/libopengpu`) and submits it through the existing compute ioctl
 (`examples/compute_offload`). The 2026-10-19 vertex+fragment Verilator guest
-ran that example and checked `kadd` (`1 + 2 + 3 = 6`). Status and the ISA/ABI
+ran that example and checked `kadd` (`1 + 2 + 3 = 6`), then a textured
+vertex draw (1009 pixels at `0xff0000ff`) and the 2x resolve. That draw
+binds clang `fragment_texture.c` (sample plus `vquad.dfdx`) and
+`vertex_passthrough.c`. Status and the ISA/ABI
 contract live in
 [LLVM_TOOLCHAIN_PLAN.md](LLVM_TOOLCHAIN_PLAN.md). Hardware that changes
 decoder encodings, `opengpu.cease` / `barrier` / texture opcodes, reserved
 registers `x1`, `x8`, `x9`, `x30`, `x31`, the kernarg `imm(x1)` convention, or
 the `e32,m1,tu,mu` vtype policy has to update that LLVM branch as well. The
-driver validator remains the admission gate. `fragment_color.c` and
-`vertex_passthrough.c` now compile with that clang and pass the fragment
-and vertex profiles. Gallium still binds the hand-written words, and
-`fragment_sample` still needs a `vtex.sample` builtin.
+driver validator remains the admission gate. Every Gallium menu shader
+now comes from `clang --target=opengpu`, including `vertex_mvp2.c`.
+Gallium binds those words. `vtex.sample` is inline asm, and the alpha-one
+patch matches any destination vector register.
 
 **functional** = behavioral coverage on the unified path. **physical** = PPA.
 A passing sim is not silicon; a completed tool run is not timing closure.
@@ -368,9 +371,11 @@ opengpu.system.GpuHostSystemAxiSpec -- -z "replay randomized commands"'`.
      `fixed_width`, `triangle_present`, `pipe_present`,
      `pipe_clear_draw`, `pipe_compute`,
      `pipe_blit`, `pipe_strided_blit`, `pipe_resolve`, `pipe_texture_draw`
-     (`vtex.sample` corpus binary staged as `/opengpu_fragment_texture.bin`),
+     (clang `fragment_texture.c` staged as `/opengpu_fragment_texture.bin`),
      `pipe_depth_pass`, `pipe_msaa_draw`, `pipe_vertex_draw` (skips without a
-     vertex core; corpus tint binary staged as `/opengpu_fragment_tint.bin`).
+     vertex core). `fragment_tint`, `fragment_fp`, `fragment_fp_scalar`, and
+     the compute programs in both lists are clang `-O2` images staged from
+     `userspace/gallium/opengpu_shaders.h`.
    - Vertex+fragment cores: `pipe_vertex_draw`, `pipe_resolve`.
    Both shader cores are the default. Preferred programmable bring-up:
    ```sh

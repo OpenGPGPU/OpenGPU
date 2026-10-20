@@ -33,6 +33,8 @@ On 2026-10-20, `clang --target=opengpu -O0 -mno-relax` of every shader in
 `scripts/validate_offload_kernel.py` passes `opengpu_shader_validate_words`.
 A fresh `-O2` compile of those guest images still matches
 `userspace/gallium/opengpu_shaders.h`.
+The `OpenGPGPU/llvm-project` branch `opengpu` is pinned at
+`4d61da24beb78f6f48997de0015be63beb8f7898`.
 Hardware work that changes the CU ISA or the shader ABI below has to update
 the LLVM branch in the same change.
 
@@ -156,9 +158,8 @@ The device ISA is defined by the Chisel decoders in
 
 - LLVM changes live in the `OpenGPGPU/llvm-project` fork on the `opengpu`
   branch, kept rebaseable onto `upstream/main` (upstream added as a remote).
-- Integration into this repository follows the existing sibling-checkout
-  pattern and pins `llvm-project` to a specific commit once the milestone
-  stabilizes.
+- This repository follows the sibling-checkout pattern and pins that branch
+  at `4d61da24beb78f6f48997de0015be63beb8f7898`.
 
 ## 6. Resolved decisions
 

@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: MIT */
-/* Gallium spike: vertex-core draw with pass-through VS + textured FS. */
+/* Gallium spike: vertex-core draw. Both shaders are clang --target=opengpu
+ * -O2 .text: vertex_passthrough copies eight slices, fragment_texture
+ * samples and stores dFdx(U). pipe_opengpu_bind_* copies these words
+ * without the runtime ABI lowerer; this device's slice stride is 32. */
 #include "../pipe_opengpu.h"
+#include "../gallium/opengpu_shaders.h"
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -15,51 +19,6 @@ struct vertex {
     uint32_t u, v;
 };
 
-static void write_fragment_shader(uint32_t *program)
-{
-    program[0] = 0x00241293u;
-    program[1] = 0x005082b3u;
-    program[2] = 0xc1027057u;
-    program[3] = 0x08028313u;
-    program[4] = 0x02036087u;
-    program[5] = 0x0a028313u;
-    program[6] = 0x02036107u;
-    program[7] = 0x0620812bu;
-    program[8] = 0x00041a63u;
-    program[9] = 0x2e1081d7u;
-    program[10] = 0x10028313u;
-    program[11] = 0x020361a7u;
-    program[12] = 0x30500073u;
-    program[13] = 0x04028313u;
-    program[14] = 0x02036207u;
-    program[15] = 0x3210022bu;
-    program[16] = 0x0e028313u;
-    program[17] = 0x02036227u;
-    program[18] = 0x0c028313u;
-    program[19] = 0x02036127u;
-    program[20] = 0x30500073u;
-}
-
-static size_t write_vertex_shader(uint32_t *program)
-{
-    uint32_t pc = 0, field;
-
-    program[pc++] = 0x00241293u;
-    program[pc++] = 0x005082b3u;
-    program[pc++] = 0xc1027057u;
-    for (field = 0; field < 8; field++) {
-        uint32_t input_offset = field * 32;
-        uint32_t output_offset = (8 + field) * 32;
-
-        program[pc++] = (input_offset << 20) | 0x00028313u;
-        program[pc++] = 0x02036087u;
-        program[pc++] = (output_offset << 20) | 0x00028313u;
-        program[pc++] = 0x020360a7u;
-    }
-    program[pc++] = 0x30500073u;
-    return (size_t)pc * 4u;
-}
-
 int main(int argc, char **argv)
 {
     struct pipe_opengpu_screen *screen = NULL;
@@ -72,8 +31,7 @@ int main(int argc, char **argv)
         { 0x10000, -0x10000, 0, 0x10000, 0x202020ffu, 0x10, 0x80000, 0 },
         { -0x10000, 0x10000, 0, 0x10000, 0x303030ffu, 0x10, 0, 0x80000 },
     };
-    uint32_t fs[32] = { 0 }, vs[64] = { 0 }, *texels;
-    size_t vs_bytes;
+    uint32_t *texels;
     uint64_t caps;
     unsigned painted = 0, i;
     uint32_t sample = 0;
@@ -110,11 +68,11 @@ int main(int argc, char **argv)
     texels[20] = 0x0000ffffu;
     memcpy(pipe_opengpu_resource_map(vb), verts, sizeof(verts));
 
-    write_fragment_shader(fs);
-    vs_bytes = write_vertex_shader(vs);
     pipe_opengpu_set_framebuffer(ctx, color, width, height);
-    if (pipe_opengpu_bind_fs(ctx, fs, 21u * 4u) ||
-        pipe_opengpu_bind_vs(ctx, vs, vs_bytes) ||
+    if (pipe_opengpu_bind_fs(ctx, opengpu_fragment_texture,
+                             sizeof(opengpu_fragment_texture)) ||
+        pipe_opengpu_bind_vs(ctx, opengpu_vertex_passthrough,
+                             sizeof(opengpu_vertex_passthrough)) ||
         pipe_opengpu_set_vertex_buffer(ctx, vb, sizeof(struct vertex),
                                        sizeof(verts)) ||
         pipe_opengpu_bind_texture(ctx, tex, 4, 4, TEX_WORDS * 4u,

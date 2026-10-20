@@ -14,12 +14,13 @@ int main(int argc, char **argv)
     struct drm_opengpu_compute command = { 0 };
     uint32_t context = 0, fence = 0;
     uint32_t *words;
-    /* The sum and the three elements the reduction must leave alone. */
+    /* Element 0 is the sum. vadd.vv is an integer add, so the other elements
+     * stay at twice the input bit patterns, not twice the float values. */
     static const uint32_t expected[4] = {
-        0x41200000u, /* 1 + 2 + 3 + 4 */
-        0x40000000u, /* 2.0f, the doubled element 0 */
-        0x40800000u, /* 4.0f */
-        0x40c00000u, /* 6.0f */
+        0x41200000u, /* 0 + 1 + 2 + 3 + 4 = 10.0f */
+        0x80000000u, /* 0x40000000 + 0x40000000 */
+        0x80800000u, /* 0x40400000 + 0x40400000 */
+        0x81000000u, /* 0x40800000 + 0x40800000 */
     };
     unsigned i;
     int fd = -1, shader_fd = -1, status = 1;
@@ -71,9 +72,8 @@ int main(int argc, char **argv)
     if (opengpu_compute(fd, &command) ||
         opengpu_sync_wait_success(fd, fence, 300000))
         goto done;
-    /* Exact RTL reference values from VectorFReduceAluSpec. Both sums are
-     * 1+2+3+4 = 10, and elements past 0 keep the doubled values the shader's
-     * vadd.vv wrote, because a reduction only rewrites element 0. */
+    /* A reduction rewrites element 0 and leaves the integer vadd.vv results
+     * in the other elements. Both the ordered and unordered sums are 10.0f. */
     for (i = 0; i < 4; i++) {
         if (words[8 + i] != expected[i]) {
             fprintf(stderr, "fp_reduce unordered word %u = %08x, want %08x\n",

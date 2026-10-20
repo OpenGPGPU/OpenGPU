@@ -56,24 +56,24 @@ rm -f "$DRIVER_OUTPUT/emit_kadd_fatbin"
     "$GPU_DIR/userspace/opengpu.c" \
     "$GPU_DIR/userspace/libopengpu/opengpu_offload.c" \
     "$GPU_DIR/userspace/examples/compute_offload.c"
-python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-    --emit fp_unary "$DRIVER_OUTPUT/opengpu_fp_unary.bin"
-python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-    --emit fp_binary "$DRIVER_OUTPUT/opengpu_fp_binary.bin"
-python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-    --emit fp_fma "$DRIVER_OUTPUT/opengpu_fp_fma.bin"
-python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-    --emit fp_div "$DRIVER_OUTPUT/opengpu_fp_div.bin"
-python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-    --emit fp_compare "$DRIVER_OUTPUT/opengpu_fp_compare.bin"
-python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-    --emit fp_scalar "$DRIVER_OUTPUT/opengpu_fp_scalar.bin"
-python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-    --emit fp_reduce "$DRIVER_OUTPUT/opengpu_fp_reduce.bin"
-python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-    --emit widen_alu "$DRIVER_OUTPUT/opengpu_widen_alu.bin"
-python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-    --emit fixed_width "$DRIVER_OUTPUT/opengpu_fixed_width.bin"
+python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+    opengpu_fp_unary "$DRIVER_OUTPUT/opengpu_fp_unary.bin"
+python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+    opengpu_fp_binary "$DRIVER_OUTPUT/opengpu_fp_binary.bin"
+python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+    opengpu_fp_fma "$DRIVER_OUTPUT/opengpu_fp_fma.bin"
+python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+    opengpu_fp_div "$DRIVER_OUTPUT/opengpu_fp_div.bin"
+python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+    opengpu_fp_compare "$DRIVER_OUTPUT/opengpu_fp_compare.bin"
+python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+    opengpu_fp_scalar "$DRIVER_OUTPUT/opengpu_fp_scalar.bin"
+python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+    opengpu_fp_reduce "$DRIVER_OUTPUT/opengpu_fp_reduce.bin"
+python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+    opengpu_widen_alu "$DRIVER_OUTPUT/opengpu_widen_alu.bin"
+python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+    opengpu_fixed_width "$DRIVER_OUTPUT/opengpu_fixed_width.bin"
 rm -f "$DRIVER_OUTPUT"/opengpu_fp_unary.o \
     "$DRIVER_OUTPUT"/opengpu_fp_binary.o \
     "$DRIVER_OUTPUT"/opengpu_fp_fma.o \
@@ -124,15 +124,14 @@ for ex in pipe_clear_draw pipe_compute pipe_blit pipe_strided_blit \
 done
 
 if [ "$GPU_FRAG_CORE" = "1" ]; then
-    python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-        --emit fragment_tint "$DRIVER_OUTPUT/opengpu_fragment_tint.bin"
-    python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-        --emit fragment_texture "$DRIVER_OUTPUT/opengpu_fragment_texture.bin"
-    python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-        --emit fragment_fp "$DRIVER_OUTPUT/opengpu_fragment_fp.bin"
-    python3 "$GPU_DIR/scripts/validate_shader_corpus.py" \
-        --emit fragment_fp_scalar \
-        "$DRIVER_OUTPUT/opengpu_fragment_fp_scalar.bin"
+    python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+        opengpu_fragment_tint "$DRIVER_OUTPUT/opengpu_fragment_tint.bin"
+    python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+        opengpu_fragment_texture "$DRIVER_OUTPUT/opengpu_fragment_texture.bin"
+    python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+        opengpu_fragment_fp "$DRIVER_OUTPUT/opengpu_fragment_fp.bin"
+    python3 "$GPU_DIR/scripts/emit_bound_shader.py" \
+        opengpu_fragment_fp_scalar "$DRIVER_OUTPUT/opengpu_fragment_fp_scalar.bin"
     "$CROSS_GCC" "${CFLAGS[@]}" \
         -o "$DRIVER_OUTPUT/opengpu_fragment_tint" \
         "$GPU_DIR/userspace/opengpu.c" \

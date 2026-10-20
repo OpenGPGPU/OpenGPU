@@ -30,13 +30,13 @@ int main(int argc, char **argv)
     /* Reuse clear against an explicit resource by temporarily setting FB. */
     pipe_opengpu_set_framebuffer(ctx, src, 16, 16);
     if (pipe_opengpu_clear(ctx, 0xaabbccddu, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 30000))
+        pipe_opengpu_fence_finish(ctx, fence, 300000))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
 
     memset(pipe_opengpu_resource_map(dst), 0, BYTES);
     if (pipe_opengpu_blit(ctx, dst, src, 0, 0, BYTES, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 30000))
+        pipe_opengpu_fence_finish(ctx, fence, 300000))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
 

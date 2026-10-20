@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* Programmable fragment vector FP: the shader computes 6.0f per lane with
  * vfmul/vfdiv/vfmacc and XORs it into the interpolated colour.
- * Requires OPENGPU_CAP_FRAGMENT_CORE. Shader binary from fragment_fp.S
- * (corpus); default path /opengpu_fragment_fp.bin. */
+ * Requires OPENGPU_CAP_FRAGMENT_CORE. The default image is clang
+ * fragment_fp.c at /opengpu_fragment_fp.bin. */
 #include "../opengpu.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -27,7 +27,7 @@ int main(int argc, char **argv)
     struct drm_opengpu_draw *draw;
     uint32_t context = 0, fence = 0;
     uint32_t width = 0, height = 0;
-    uint64_t caps;
+    uint64_t caps, features = 0;
     int fd = -1, shader_fd = -1, status = 1;
     ssize_t shader_bytes;
     unsigned painted = 0;
@@ -39,6 +39,11 @@ int main(int argc, char **argv)
         goto done;
     if (!(caps & OPENGPU_CAP_FRAGMENT_CORE)) {
         fprintf(stderr, "fragment_fp requires OPENGPU_CAP_FRAGMENT_CORE\n");
+        close(fd);
+        return 2;
+    }
+    if (caps & OPENGPU_CAP_VERTEX_CORE) {
+        fprintf(stderr, "fragment_fp needs a fragment-only device\n");
         close(fd);
         return 2;
     }
@@ -104,6 +109,13 @@ int main(int argc, char **argv)
     submit.shader_slot = 2;
     submit.kernarg_slot = 3;
     submit.out_syncobj = fence;
+    /* Colour-only shader: keep coverage instead of reading an unwritten
+     * validity word, which a zero word would use to discard every fragment. */
+    if (!opengpu_driver_features(fd, &features) &&
+        (caps & OPENGPU_CAP_FRAGMENT_INPUT_USAGE) &&
+        (caps & OPENGPU_CAP_FRAGMENT_OUTPUT_USAGE) &&
+        (features & OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING))
+        submit.flags |= OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING;
     if (opengpu_render(fd, &submit) ||
         opengpu_sync_wait_success(fd, fence, 300000))
         goto done;

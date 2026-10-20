@@ -34,30 +34,30 @@ image is `/opengpu_kadd.fatbin` (`void kadd(int *p, int n) { *p = *p + n + 3; }`
 kernarg word 0 in/out, word 1 = `n`). Pass the DRM node and fatbin path as
 the first and second arguments when running outside the guest.
 
-`examples/fp_unary` loads the corpus `fp_unary` shader and checks exact RTL
+`examples/fp_unary` loads clang `fp_unary.c` and checks exact RTL
 reference results for `vfsqrt` / `vfrsqrt7` / `vfrec7` / `vfclass` (default
 `/opengpu_fp_unary.bin`).
-`examples/fp_binary` loads `fp_binary` and checks unmasked OPFVV
+`examples/fp_binary` loads clang `fp_binary.c` and checks unmasked OPFVV
 `vfadd` / `vfsub` / `vfmul` / `vfmin` / `vfmax` / `vfsgnj` (default
 `/opengpu_fp_binary.bin`).
-`examples/fp_fma` loads `fp_fma` and checks all eight unmasked fused FMA
+`examples/fp_fma` loads clang `fp_fma.c` and checks all eight unmasked fused FMA
 forms (default `/opengpu_fp_fma.bin`).
-`examples/fp_div` loads `fp_div` and checks unmasked `vfdiv` (default
+`examples/fp_div` loads clang `fp_div.c` and checks unmasked `vfdiv` (default
 `/opengpu_fp_div.bin`).
-`examples/fp_compare` loads `fp_compare` and checks `vmfeq` / `vmflt` via a
+`examples/fp_compare` loads clang `fp_compare.c` and checks `vmfeq` / `vmflt` via a
 masked integer add (default `/opengpu_fp_compare.bin`).
-`examples/fp_scalar` loads `fp_scalar`, which reads `f1` with `flw` from
+`examples/fp_scalar` loads clang `fp_scalar.c`, which reads `f1` with `flw` from
 kernarg and checks `vfadd` / `vfrsub` / `vfrdiv` / `vfmul` / `vfmacc` /
 `vmfgt` in their `.vf` forms (default `/opengpu_fp_scalar.bin`). It skips
 unless the device advertises `OPENGPU_CAP_COMPUTE_SCALAR_FPU`.
 
-`examples/fp_reduce` loads `fp_reduce` and checks the OPFRED sums
+`examples/fp_reduce` loads clang `fp_reduce.c` and checks the OPFRED sums
 `vfredusum.vs` and `vfredosum.vs`: both write element 0 of the destination
-with 1+2+3+4 and leave the three following elements at the values a `vadd.vv`
-put there (default `/opengpu_fp_reduce.bin`).
-`examples/widen_alu` loads the corpus `widen_alu` shader and checks lane-local
+with 1+2+3+4 and leave the three following elements at the integer `vadd.vv`
+of each input with itself (default `/opengpu_fp_reduce.bin`).
+`examples/widen_alu` loads clang `widen_alu.c` and checks lane-local
 `vwadd` / `vwsub` / `vwmul` (default `/opengpu_widen_alu.bin`).
-`examples/fixed_width` loads `fixed_width` and checks `vsext` / `vzext` /
+`examples/fixed_width` loads clang `fixed_width.c` and checks `vsext` / `vzext` /
 `vnclip` / `vsmul` (default `/opengpu_fixed_width.bin`).
 
 `examples/triangle` draws a native-mode test image into its own colour GEM on
@@ -65,18 +65,18 @@ a fixed-function build (64x64 by default). It obtains the mode through
 `opengpu_display_size`. Pass a DRM node path as the first argument, or use the
 default `/dev/dri/card0`.
 
-`examples/fragment_tint` is the programmable counterpart: it binds the
-corpus `fragment_tint` shader and expects `OPENGPU_CAP_FRAGMENT_CORE`. The
+`examples/fragment_tint` is the programmable counterpart: it binds clang
+`fragment_tint.c` and expects `OPENGPU_CAP_FRAGMENT_CORE`. The
 shader XORs `0x00ff00ff` into every lane of the interpolated colour, so
 every covered pixel is painted. Pass the DRM
 node and optional shader binary path (default
 `/opengpu_fragment_tint.bin`).
-`examples/fragment_fp` runs the corpus `fragment_fp` shader, which computes
+`examples/fragment_fp` runs clang `fragment_fp.c`, which computes
 6.0f per lane with `vfmul` / `vfdiv` / `vfmacc` on the fragment shader CU and
 XORs it into the interpolated colour; every painted pixel must be
 `0xbec0ffff` (default `/opengpu_fragment_fp.bin`).
-`examples/fragment_fp_scalar` is the `uniform float` case: the corpus
-`fragment_fp_scalar` shader reads a per-draw uniform with `flw` and broadcasts
+`examples/fragment_fp_scalar` is the `uniform float` case: clang
+`fragment_fp_scalar.c` reads a per-draw uniform with `flw` and broadcasts
 it with `vfadd.vf`, so it needs the scalar FPU on the fragment shader CU. It
 skips unless `OPENGPU_CAP_COMPUTE_SCALAR_FPU` is advertised (default
 `/opengpu_fragment_fp_scalar.bin`); every painted pixel must be `0xbea0ffff`.
@@ -180,5 +180,6 @@ OpenGPU's direct `x1` kernarg convention, and replaces the C return with the
 OpenGPU cease instruction. The script checks every binary with the production
 compute, fragment, fragment+texture or vertex shader validator. It rejects
 compiler output with labels or indirect memory operands, rather than assuming
-arbitrary C is a valid shader. Set `RISCV_GCC` and `RISCV_OBJCOPY` for another
-RISC-V toolchain.
+arbitrary C is a valid shader. Guest images for the programs that also have
+a clang source under `userspace/shaders/` are those clang words. Set
+`RISCV_GCC` and `RISCV_OBJCOPY` for another RISC-V toolchain.

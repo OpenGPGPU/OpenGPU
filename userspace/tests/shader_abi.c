@@ -19,6 +19,9 @@ static const uint32_t opengpu_fragment_modulate_white_alpha_one[] = {
 #define COUNT(a) (sizeof(a) / sizeof((a)[0]))
 struct program { const char *name; const uint32_t *code; size_t words; bool vertex; };
 #define PROGRAM(n, v) { #n, n, COUNT(n), v }
+#ifdef OPENGPU_CLANG_SHADERS
+#include OPENGPU_CLANG_SHADERS
+#endif
 static const struct program programs[] = {
     PROGRAM(opengpu_fragment_color, false),
     PROGRAM(opengpu_fragment_uniform_color, false),
@@ -33,6 +36,9 @@ static const struct program programs[] = {
     PROGRAM(opengpu_vertex_passthrough, true),
     PROGRAM(opengpu_vertex_mvp, true),
     PROGRAM(opengpu_vertex_mvp2, true),
+#ifdef OPENGPU_CLANG_SHADERS
+    CLANG_MENU_PROGRAMS
+#endif
 };
 struct access { uint32_t address; unsigned kind; };
 struct execution { struct access accesses[512]; unsigned count, vl; };

@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* Gallium spike: bind a 4x4 mip chain and draw a textured triangle.
  * Fixed-function uses the HW sampler; fragment-core loads the corpus
- * vtex.sample shader (/opengpu_fragment_texture.bin, override argv[2]). */
+ * vtex.sample shader (/opengpu_fragment_texture.bin is clang
+ * fragment_texture.c, override argv[2]). */
 #include "../pipe_opengpu.h"
 #include <errno.h>
 #include <fcntl.h>

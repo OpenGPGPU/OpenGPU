@@ -22,24 +22,38 @@ static uint32_t run(const uint32_t *code, size_t words, uint32_t input)
         unsigned op = w & 127, rd = w >> 7 & 31, f3 = w >> 12 & 7;
         unsigned r1 = w >> 15 & 31, r2 = w >> 20 & 31, f6 = w >> 26;
 
-        if (w == 0x0620812bu) {
-            v[2] = input;
+        if ((w & 0xfe00707fu) == 0x0600002bu) {
+            v[rd] = input;
             sampled = true;
             continue;
         }
+        if (op == 0x13 && (f3 == 0 || f3 == 1 || f3 == 5)) {
+            if (f3 == 0)
+                x[rd] = x[r1] + (uint32_t)((int32_t)w >> 20);
+            else if (f3 == 1)
+                x[rd] = x[r1] << (r2 & 31u);
+            else
+                x[rd] = x[r1] >> (r2 & 31u);
+            x[0] = 0;
+            continue;
+        }
+        if (op == 0x37) {
+            x[rd] = w & 0xfffff000u;
+            x[0] = 0;
+            continue;
+        }
+        if (op == 0x33 && f3 == 0) {
+            x[rd] = (w >> 25) == 1 ? x[r1] * x[r2] :
+                    (w >> 25) == 0x20 ? x[r1] - x[r2] : x[r1] + x[r2];
+            x[0] = 0;
+            continue;
+        }
+        if (op == 0x57 && f3 == 7)
+            continue;
         if (!sampled)
             continue;
         if (op == 0x07) {
             v[rd] = UINT32_MAX;
-        } else if (op == 0x13) {
-            assert(f3 == 0);
-            x[rd] = x[r1] + (uint32_t)((int32_t)w >> 20);
-        } else if (op == 0x37) {
-            x[rd] = w & 0xfffff000u;
-        } else if (op == 0x33) {
-            assert(f3 == 0);
-            x[rd] = (w >> 25) == 1 ? x[r1] * x[r2] :
-                    (w >> 25) == 0x20 ? x[r1] - x[r2] : x[r1] + x[r2];
         } else if (op == 0x57) {
             uint32_t rhs = (f3 == 4 || f3 == 6) ? x[r1] :
                            f3 == 3 ? r1 : v[r1];
@@ -91,9 +105,11 @@ static size_t with_alpha(const uint32_t *source, size_t words,
     size_t count = 0;
     for (size_t i = 0; i < words; i++) {
         target[count++] = source[i];
-        if (force_alpha && source[i] == 0x0620812bu) {
+        if (force_alpha && (source[i] & 0xfe00707fu) == 0x0600002bu) {
+            unsigned vd = (source[i] >> 7) & 31u;
             target[count++] = 0x0ff00393u;
-            target[count++] = 0x2a23c157u;
+            target[count++] = (10u << 26) | (1u << 25) | (vd << 20) |
+                              (7u << 15) | (4u << 12) | (vd << 7) | 0x57u;
         }
     }
     return count;

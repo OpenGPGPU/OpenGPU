@@ -1362,11 +1362,16 @@ static int bind_sample_program(struct opengpu_context *ctx,
     if (words + 2 > ARRAY_SIZE(patched))
         return -1;
     for (i = 0; i < words; i++) {
-        if (code[i] != 0x0620812bu) /* vtex.sample v2, v1, v2 */
+        unsigned vd;
+
+        /* opengpu.vtex.sample vd, vs1, vs2. Clang does not pin vd to v2. */
+        if ((code[i] & 0xfe00707fu) != 0x0600002bu)
             continue;
+        vd = (code[i] >> 7) & 31u;
         memcpy(patched, code, (i + 1) * sizeof(uint32_t));
         patched[i + 1] = 0x0ff00393u; /* addi x7, zero, 255 */
-        patched[i + 2] = 0x2a23c157u; /* vor.vx v2, v2, x7 */
+        patched[i + 2] = (10u << 26) | (1u << 25) | (vd << 20) | (7u << 15) |
+                         (4u << 12) | (vd << 7) | 0x57u; /* vor.vx vd, vd, x7 */
         memcpy(patched + i + 3, code + i + 1,
                (words - i - 1) * sizeof(uint32_t));
         return bind_shader_program(ctx, false, patched, bytes + 8);

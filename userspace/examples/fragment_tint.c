@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* Programmable fragment tint: XOR interpolated colour with 0x00ff00ff
- * on every lane. Requires OPENGPU_CAP_FRAGMENT_CORE. Shader binary from
- * shaders/fragment_tint.S (corpus); default path /opengpu_fragment_tint.bin. */
+ * on every lane. Requires OPENGPU_CAP_FRAGMENT_CORE. The default image
+ * /opengpu_fragment_tint.bin is clang fragment_tint.c. */
 #include "../opengpu.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -24,7 +24,7 @@ int main(int argc, char **argv)
     struct drm_opengpu_draw *draw;
     uint32_t context = 0, fence = 0;
     uint32_t width = 0, height = 0;
-    uint64_t caps;
+    uint64_t caps, features = 0;
     int fd = -1, shader_fd = -1, status = 1;
     ssize_t shader_bytes;
     unsigned painted = 0;
@@ -37,6 +37,13 @@ int main(int argc, char **argv)
         goto done;
     if (!(caps & OPENGPU_CAP_FRAGMENT_CORE)) {
         fprintf(stderr, "fragment_tint requires OPENGPU_CAP_FRAGMENT_CORE\n");
+        close(fd);
+        return 2;
+    }
+    /* A vertex-core command decoder reads this record as a vertex draw.
+     * The scene triangle only reaches the rasterizer on a fragment-only device. */
+    if (caps & OPENGPU_CAP_VERTEX_CORE) {
+        fprintf(stderr, "fragment_tint needs a fragment-only device\n");
         close(fd);
         return 2;
     }
@@ -110,6 +117,13 @@ int main(int argc, char **argv)
     submit.shader_slot = 2;
     submit.kernarg_slot = 3;
     submit.out_syncobj = fence;
+    /* The shader writes colour only. Without this flag the core reads the
+     * unwritten validity word, and a zero word discards every fragment. */
+    if (!opengpu_driver_features(fd, &features) &&
+        (caps & OPENGPU_CAP_FRAGMENT_INPUT_USAGE) &&
+        (caps & OPENGPU_CAP_FRAGMENT_OUTPUT_USAGE) &&
+        (features & OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING))
+        submit.flags |= OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING;
     /* FlashSim FRAG draws need on the order of minutes; the DRM sandbox
      * waits 300s. 30s expires while poll_work is still ticking the model. */
     if (opengpu_render(fd, &submit) ||

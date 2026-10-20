@@ -37,19 +37,22 @@ static inline uint32_t opengpu_abi_add(unsigned rd, unsigned rs1, unsigned rs2)
 static inline int opengpu_abi_slice(struct opengpu_abi_builder *b,
                                     unsigned rd, unsigned base, unsigned slice)
 {
-    unsigned shift = 0;
+    /* The displacement is built in rd when that does not destroy base.
+     * A clang store can be addi rd, rd, slice*32; x9 is free because the
+     * prologue has already copied the launch capacity into x30. */
+    unsigned shift = 0, tmp = rd == base ? 9u : rd;
     if (!slice)
         return opengpu_abi_put(b, opengpu_abi_addi(rd, base, 0));
     if (!(slice & (slice - 1u))) {
         while ((1u << shift) != slice) shift++;
-        if (opengpu_abi_put(b, shift << 20 | 30u << 15 | 1u << 12 | rd << 7 | 0x13u))
+        if (opengpu_abi_put(b, shift << 20 | 30u << 15 | 1u << 12 | tmp << 7 | 0x13u))
             return -1;
     } else {
-        if (opengpu_abi_put(b, opengpu_abi_addi(rd, 0, (int)slice)) ||
-            opengpu_abi_put(b, 1u << 25 | 30u << 20 | rd << 15 | rd << 7 | 0x33u))
+        if (opengpu_abi_put(b, opengpu_abi_addi(tmp, 0, (int)slice)) ||
+            opengpu_abi_put(b, 1u << 25 | 30u << 20 | tmp << 15 | tmp << 7 | 0x33u))
             return -1;
     }
-    return opengpu_abi_put(b, opengpu_abi_add(rd, base, rd));
+    return opengpu_abi_put(b, opengpu_abi_add(rd, base, tmp));
 }
 
 /* Integer x30/x31 are reserved by this lowering pass. The FP/vector register
@@ -106,9 +109,11 @@ static inline uint32_t opengpu_abi_gpr_writes(uint32_t w)
  * This pass has no hardware-resource argument: identical input always emits
  * identical code. x9 supplies physical CU capacity at launch; vsetvli selects
  * VLMAX. Raw DRM/pipe programs retain their caller-supplied machine code.
- * Canonical x6/x7=x5+slice*32 denotes a semantic staging slice, while
- * x1-relative scalar accesses after the canonical uniform boundary denote
- * uniform fields. Relocate forward branches after instruction expansion.
+ * Canonical x6/x7=x5+slice*32 denotes a semantic staging slice. Clang's
+ * lane form is the same field: slli rd,x8,2 then add with x1, then addi of
+ * a multiple of 32 below the uniform boundary. x1-relative scalar accesses
+ * after that boundary denote uniform fields. Relocate forward branches
+ * after instruction expansion.
  */
 static inline int opengpu_shader_lower_runtime_abi(const uint32_t *source,
     size_t words, bool vertex, uint32_t *target, size_t capacity,
@@ -120,6 +125,9 @@ static inline int opengpu_shader_lower_runtime_abi(const uint32_t *source,
     bool uniforms = false;
     bool entry[OPENGPU_ABI_SOURCE_WORDS + 1] = {false};
     int cached_slice[2] = {-1, -1};
+    /* 1: rd holds x8<<2. 2: rd holds the lane base x1+(x8<<2). Facts die
+     * at a GPR write and at every control-flow join. */
+    unsigned char lane_kind[32] = {0};
 
     if (!source || !target || !target_words || !words ||
         words > OPENGPU_ABI_SOURCE_WORDS || capacity > OPENGPU_ABI_TARGET_WORDS)
@@ -163,7 +171,12 @@ static inline int opengpu_shader_lower_runtime_abi(const uint32_t *source,
         unsigned op = w & 127u, rd = w >> 7 & 31u;
         unsigned f3 = w >> 12 & 7u, rs1 = w >> 15 & 31u;
         int imm = (int32_t)w >> 20;
-        if (entry[i]) cached_slice[0] = cached_slice[1] = -1;
+        if (entry[i]) {
+            unsigned reg;
+            cached_slice[0] = cached_slice[1] = -1;
+            for (reg = 0; reg < 32; reg++)
+                lane_kind[reg] = 0;
+        }
         map[i] = b.words;
         if (op == 0x57 && f3 == 7) {
             if (w != 0xc1027057u)
@@ -190,6 +203,23 @@ static inline int opengpu_shader_lower_runtime_abi(const uint32_t *source,
                 } else if (opengpu_abi_slice(&b, rd, rs1, slice)) return -1;
             }
             cached_slice[slot] = (int)slice;
+            lane_kind[rd] = 0;
+            continue;
+        } else if (op == 0x13 && f3 == 0 && lane_kind[rs1] == 2 &&
+                   imm >= 0 && imm < (int)old_uniform && !(imm & 31)) {
+            /* Clang addresses a slice as lane_base + slice*32. Replace that
+             * compile-time stride with x30, leaving the lane register intact
+             * unless this addi itself overwrites it. */
+            if (opengpu_abi_slice(&b, rd, rs1, (unsigned)imm / 32u))
+                return -1;
+            lane_kind[9] = 0;
+            if (rd == 5)
+                cached_slice[0] = cached_slice[1] = -1;
+            if (rd == 6)
+                cached_slice[0] = -1;
+            if (rd == 7)
+                cached_slice[1] = -1;
+            lane_kind[rd] = 0;
             continue;
         } else if (uniforms && rs1 == 1 && imm >= (int)old_uniform &&
                    ((op == 0x03 && f3 == 2) || (op == 0x07 && f3 == 2) ||
@@ -201,11 +231,30 @@ static inline int opengpu_shader_lower_runtime_abi(const uint32_t *source,
         if (opengpu_abi_put(&b, w))
             return -1;
         {
+            uint32_t origin = source[i];
             uint32_t writes = opengpu_abi_gpr_writes(w);
+            unsigned established = 0;
+            if ((origin & 127u) == 0x13u && ((origin >> 12) & 7u) == 1u &&
+                ((origin >> 15) & 31u) == 8u && ((origin >> 20) & 31u) == 2u)
+                established = 1;
+            else if ((origin & 127u) == 0x33u && ((origin >> 12) & 7u) == 0 &&
+                     (origin >> 25) == 0) {
+                unsigned lhs = (origin >> 15) & 31u, rhs = (origin >> 20) & 31u;
+                if ((lhs == 1u && lane_kind[rhs] == 1) ||
+                    (rhs == 1u && lane_kind[lhs] == 1))
+                    established = 2;
+            }
+            if (rd && (writes & (1u << rd)))
+                lane_kind[rd] = (unsigned char)established;
             if (writes & (1u << 5)) cached_slice[0] = cached_slice[1] = -1;
             if (writes & (1u << 6)) cached_slice[0] = -1;
             if (writes & (1u << 7)) cached_slice[1] = -1;
-            if (op == 0x63) cached_slice[0] = cached_slice[1] = -1;
+            if (op == 0x63) {
+                unsigned reg;
+                cached_slice[0] = cached_slice[1] = -1;
+                for (reg = 0; reg < 32; reg++)
+                    lane_kind[reg] = 0;
+            }
         }
     }
     map[words] = b.words;

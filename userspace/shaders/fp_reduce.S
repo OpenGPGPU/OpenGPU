@@ -13,8 +13,8 @@ shader:
     vle32.v v2, (x1)
     addi t0, x1, 16
     vle32.v v4, (t0)
-    /* The destinations start as the doubled elements so the untouched
-     * elements are observable in the result. */
+    /* Integer vadd.vv of each element with itself. The reduction rewrites
+     * element 0 only, so the other lanes keep these bit patterns. */
     vadd.vv v3, v2, v2
     vadd.vv v6, v2, v2
     vfredusum.vs v3, v2, v4
