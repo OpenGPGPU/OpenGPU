@@ -5223,3 +5223,73 @@ ownership and centroid checkpoints remain on their validation branches; they
 are not covered by this integration result. Physical allocation provenance,
 translated aliases, broader resources/formats, representative rates and H0–H8
 remain open. PPA evaluation remains synthesis only.
+
+
+## Point/line coverage and AXI ownership checkpoint (2026-10-20)
+
+The [coverage preparation and carry corrections](POINT_LINE_COVERAGE_PIPELINE.md)
+retain signed coordinate differences through checked weight exports and remove
+the triangle-specific span restriction from safe lines. The original arithmetic
+fails three of four extreme-coordinate checks; the corrected source passes all
+19 coverage, primitive, interpolation and covered-sample-depth checks. Fifteen
+matched ordinary-input primitives retain every quad output field with exactly
+two added setup cycles for points/basic lines and three for multisample lines.
+
+The [standalone synthesis comparison](performance/mobile-point-line-synthesis-2026-10-20.json)
+changes the point/line core estimate from 273.089 to 278.539 MHz (+2.00%), with
+mapped area up 2.78%. Including measured setup cycles gives 1.26–1.94% lower
+estimated latency for those small fixtures. Both versions still fail 1 GHz
+setup. This component result does not replace the 255.537 MHz prepared replay
+engine estimate; composed synthesis and image/native regressions are pending.
+
+The [host AXI ownership correction](HOST_AXI_RESPONSE_OWNERSHIP.md) fixes two
+independently reproduced failures: simultaneous AR/AW acceptance into one address
+state and live status changes leaking into a stalled RDATA response. Exclusive
+transaction grants and a first-stall holding register preserve the existing
+unstalled beat rate. All nine control/discovery/burst/reset/fill/VM-owner checks
+pass on 627 unchanged source/ABI files. Full converted-input native image,
+fault/reset composition and default four-CU emission are being requalified on
+the combined source. These feature-branch checkpoints do not close H0-H8,
+GLES resource/format coverage, full Mobile throughput or physical qualification.
+
+## Native centroid binding and completed composition checkpoints (2026-10-20)
+
+The [full converted-input/image composition](NATIVE_INPUT_IMAGE_COMPOSITION.md)
+now passes all 56 checks on its frozen 626-file source, including all 22
+unfiltered GNC1/GNC2 fault cases and four half/packed-SNORM local/global native
+profiles. Default four-CU emission completes with one shared payload pool, two
+replay engines and unchanged SRAM/AXI capacities. Separately, all
+[39 point/line carry/preparation checks](performance/mobile-point-line-pipeline-validation-2026-10-20.json)
+pass through actual-CU rasterization, typed image publication and native typed
+AXI hosts. These snapshots precede later changes; their results are not a single
+qualification of the current combined source.
+
+[Centroid interpolation](CENTROID_INTERPOLATION.md) now reuses the existing scalar
+service and carries a checked 64-bit component mask from native fragment
+descriptors through live vertex and prepared replay raster owners. Descriptor
+versions 3/4 preserve the version 1/2 shader layouts, using reserved GTD1 words
+538–539 and GFS1 words 124–125 without moving existing fields. Read-only GFI1
+discovery advertises descriptor versions, qualifiers and configured sample modes.
+All 24 descriptor/state/raster/discovery controls pass on 631 unchanged source
+files, including high mask bits, held offers, prefix bounds, cancellation,
+1/2/4-sample profiles and the legacy map.
+
+A separate 18-check source qualifies coherent covered-sample fallback when a
+partially covered primitive's center extrapolates through a perspective pole,
+including exact local/global shader fragCoord.xyzw and protected sample depths.
+The [native centroid-gradient image suite](performance/mobile-centroid-native-host-2026-10-20.json)
+passes all seven checks on 631 unchanged source/ABI files, including actual
+two-CU local/global 2x/version-3 and 4x/version-4 triangle/line/point gradients,
+mixed qualifiers, exact four-MRT sources/resolves, guarded uniforms, fault/reset
+regressions and held completion ownership. Default four-CU emission completes
+with 371 active RTL files, one shared payload pool, two replay engines and
+unchanged SRAM/AXI capacities. These small W=1 images and structural emission do
+not establish production rates or every version/sample cross product.
+The [two focused prepared-replay centroid checks](performance/mobile-centroid-prepared-replay-2026-10-20.json)
+also pass on their frozen 631-file snapshot: both engines/CUs, local/global
+payloads, GFS1 masks/cache hits, triangle/line/point gradient MRTs, blend/depth
+override, exact sources/resolves and held cached-consumer invalidation. Full
+legacy/composed reruns and GPU-memory native binned centroid publication remain
+separate gates. Complete resource/format
+coverage, representative rates and H0–H8 remain open. Composed PPA continues
+under the synthesis-only policy on its explicitly frozen pre-centroid source.

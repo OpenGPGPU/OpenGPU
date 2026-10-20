@@ -167,7 +167,7 @@ class NativeTypedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth:
       val v=draw.shaders.vertex.vertex.geometry.vertex;val fragment=draw.shaders.fragment
       val stride=(config.lanes*config.warps*4).U
       val vertexEnd=v.scratch.base.pad(48)+(7.U+&(v.attributeSlots<<2)+&(v.varyingSlots<<2)+&Mux(v.version===2.U,1.U,0.U))*stride
-      val fragmentEnd=fragment.scratch.base.pad(48)+(8.U+&(fragment.varyingSlots<<2)+&(fragment.colorSlots<<2)+&Mux(fragment.version===2.U,2.U,0.U))*stride
+      val fragmentEnd=fragment.scratch.base.pad(48)+(8.U+&(fragment.varyingSlots<<2)+&(fragment.colorSlots<<2)+&Mux(FragmentInputAbi.hasPointCoord(fragment.version),2.U,0.U))*stride
       def aliases(base: UInt,end: UInt): Bool=
         (base<binding.base+&NativeTypedGraphicsLayout.jobBytes.U && end>binding.base) ||
         (base<job.passBase+&NativeTypedGraphicsLayout.passBytes.U && end>job.passBase) ||

@@ -1,0 +1,262 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "module": "PointLineRasterizer",
+  "scope": "Standalone default component, synthesis-only ASAP7 mapping and pre-layout setup STA; 15 small always-ready primitive cycle estimates",
+  "source_files": {
+    "baseline": 624,
+    "candidate": 626
+  },
+  "models": {
+    "baseline": {
+      "core_fmax_mhz": 273.089,
+      "setup_slack_ps": -2661.815,
+      "reported_io_slack_ps": 636.74,
+      "mapped_area_um2": 15226.05438,
+      "mapped_cells": 156434,
+      "mapping_passed": true,
+      "setup_passed": false,
+      "source_manifest": {
+        "path": ".artifacts/mobile-vertex-input-conversion-source-v3.json",
+        "sha256": "fc4f0203f2b5a985307223f7c7f1824fe18bdfdd04994c8bb76133ef67525915"
+      },
+      "source_archive": {
+        "path": ".artifacts/mobile-vertex-input-conversion-source-v3.tar.gz",
+        "sha256": "eb8cbe7264f0af394b5ccfe92ddfa021e1d24878fd620061b286f35758224bc0"
+      },
+      "terminal": {
+        "path": ".artifacts/mobile-point-line-baseline-synthesis-job-v1-result.json",
+        "sha256": "98d49ee5acaacb8f7b71873e875ffc6c15fff58cf096c34c79c44dabdde78f34"
+      },
+      "result": {
+        "path": "generated/qualification/ppa/mobile-point-line-coverage-baseline-2026-10-20-v1/result.json",
+        "sha256": "104b72e100fcd9714d9a134f002d739e013c78b316529dbc375d62976b965cc9"
+      },
+      "qualification": {
+        "path": "generated/qualification/ppa/mobile-point-line-coverage-baseline-2026-10-20-v1/qualification.json",
+        "sha256": "77d9cf21f4556e11928bcb4dde010d4c1fb5808b79a97a0664ecdbbe83059627"
+      },
+      "statistics": {
+        "path": "generated/qualification/ppa/mobile-point-line-coverage-baseline-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+        "sha256": "742615a39933d733726c773603c59d00141c59ede9146d3a16e2066ecf23dda5"
+      },
+      "sta": {
+        "path": "generated/qualification/ppa/mobile-point-line-coverage-baseline-2026-10-20-v1/flow/synthesis_sta.log",
+        "sha256": "77e511519221f567f46b2136204a423894d421bcddc38d3b3588b3c852e50f59"
+      },
+      "core_path": {
+        "start": "request_state_lineWidth[31]$_DFFE_PP_",
+        "end": "mask[2]$_SDFFE_PP0P_"
+      }
+    },
+    "candidate": {
+      "core_fmax_mhz": 278.539,
+      "setup_slack_ps": -2590.158,
+      "reported_io_slack_ps": 651.569,
+      "mapped_area_um2": 15649.99704,
+      "mapped_cells": 160472,
+      "mapping_passed": true,
+      "setup_passed": false,
+      "source_manifest": {
+        "path": ".artifacts/mobile-point-line-pipeline-source-v2.json",
+        "sha256": "bd67906fdf326e08fb03b0680c2ffaa6674674cd4cd6b1dc35ae0c4773d68215"
+      },
+      "source_archive": {
+        "path": ".artifacts/mobile-point-line-pipeline-source-v2.tar.gz",
+        "sha256": "1bb16870b5948d598ab5bf9b2b785794eb6f43739dac807e7655620606e2bc6c"
+      },
+      "terminal": {
+        "path": ".artifacts/mobile-point-line-pipeline-synthesis-job-v2-result.json",
+        "sha256": "ad46e36dde99d0eb56ea83f5b805a14a812405434a20b50641bca0cea42b9364"
+      },
+      "result": {
+        "path": "generated/qualification/ppa/mobile-point-line-coverage-pipeline-2026-10-20-v2/result.json",
+        "sha256": "02b1b450ab2acfcab45065fb9d060c92202125cd8315357a4a023c41f47bf507"
+      },
+      "qualification": {
+        "path": "generated/qualification/ppa/mobile-point-line-coverage-pipeline-2026-10-20-v2/qualification.json",
+        "sha256": "c1a3786840f6c34dcfbee906f33a994e3f66c722c2afdd00c50b1f483abfdf66"
+      },
+      "statistics": {
+        "path": "generated/qualification/ppa/mobile-point-line-coverage-pipeline-2026-10-20-v2/flow/orfs-work/reports/base/synth_stat.txt",
+        "sha256": "e3e5274608dc2a6d07e1f588b6df9ee2aa78324b03cd2e7077aa077ecfb71a1b"
+      },
+      "sta": {
+        "path": "generated/qualification/ppa/mobile-point-line-coverage-pipeline-2026-10-20-v2/flow/synthesis_sta.log",
+        "sha256": "f5825d30ce672275ea093d3dd6e04381ebb40774e1d23f8f96461b4f3a24ad7b"
+      },
+      "core_path": {
+        "start": "request_state_sampleMode[1]$_DFFE_PP_",
+        "end": "mask[0]$_SDFFE_PP0P_"
+      }
+    }
+  },
+  "common_parameters": {
+    "clock_port": "clock",
+    "clock_port_auto": false,
+    "clock_period": 1000.0,
+    "core_utilization": 25,
+    "place_density": 0.6,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "timing_effort": "explore",
+    "synthesis_engine": "yosys",
+    "sv_frontend": "native",
+    "enable_retiming": false,
+    "swap_arithmetic_operators": false,
+    "generate_gds": false,
+    "max_fanout": null,
+    "high_fanout_nets": null,
+    "high_fanout_max": 8,
+    "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+    "setup_slack_margin": 0.0,
+    "abc_clock_period_ps": null,
+    "io_delay_percent": 0.25,
+    "io_false_path_ports": null,
+    "post_floorplan_tcl": null,
+    "macros": []
+  },
+  "same_parameters": true,
+  "existing_sram_macros": 0,
+  "active_rtl_files": 1,
+  "ports_equal": true,
+  "cycle_evidence": {
+    "path": "docs/performance/mobile-point-line-cycle-comparison-2026-10-20.json",
+    "sha256": "8700aa3daaccf736eb043f9403ddeff9087af1392df7c76c3eb3bcc5aa596d05"
+  },
+  "comparison": {
+    "core_fmax_change_percent": 1.9956863879541098,
+    "mapped_area_change_percent": 2.7843238269059656,
+    "estimated_primitive_time_reduction_percent_min": 1.2629349963322767,
+    "estimated_primitive_time_reduction_percent_max": 1.93863851345355
+  },
+  "primitive_time_estimates": [
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 0,
+      "baseline_estimated_us": 1.783301414557159,
+      "candidate_estimated_us": 1.755588983948388,
+      "estimated_time_reduction_percent": 1.5539958855274483
+    },
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 1,
+      "baseline_estimated_us": 1.5526073917294363,
+      "candidate_estimated_us": 1.5329989696236435,
+      "estimated_time_reduction_percent": 1.2629349963322767
+    },
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 2,
+      "baseline_estimated_us": 2.4900307225849447,
+      "candidate_estimated_us": 2.452080319093556,
+      "estimated_time_reduction_percent": 1.5240937851558556
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 0,
+      "baseline_estimated_us": 2.6328413081449638,
+      "candidate_estimated_us": 2.5885064569054963,
+      "estimated_time_reduction_percent": 1.68391657720931
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 1,
+      "baseline_estimated_us": 1.5599310115017448,
+      "candidate_estimated_us": 1.540179292666377,
+      "estimated_time_reduction_percent": 1.2661918180825738
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 2,
+      "baseline_estimated_us": 2.5046779621295623,
+      "candidate_estimated_us": 2.4664409651790233,
+      "estimated_time_reduction_percent": 1.5266232836587346
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 0,
+      "baseline_estimated_us": 39.89175689976528,
+      "candidate_estimated_us": 39.11839993681316,
+      "estimated_time_reduction_percent": 1.93863851345355
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 1,
+      "baseline_estimated_us": 1.5855636807048252,
+      "candidate_estimated_us": 1.5653104233159452,
+      "estimated_time_reduction_percent": 1.2773537660674017
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 2,
+      "baseline_estimated_us": 2.5229870115603337,
+      "candidate_estimated_us": 2.4843917727858575,
+      "estimated_time_reduction_percent": 1.5297438551063691
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 0,
+      "baseline_estimated_us": 1.0765721065293732,
+      "candidate_estimated_us": 1.0626878103245865,
+      "estimated_time_reduction_percent": 1.2896763830846925
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 1,
+      "baseline_estimated_us": 1.5452837719571275,
+      "candidate_estimated_us": 1.522228485059543,
+      "estimated_time_reduction_percent": 1.4919775458707263
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 2,
+      "baseline_estimated_us": 2.482707102812636,
+      "candidate_estimated_us": 2.4413098345294557,
+      "estimated_time_reduction_percent": 1.6674245720037617
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 0,
+      "baseline_estimated_us": 1.1205138251632252,
+      "candidate_estimated_us": 1.1057697485809888,
+      "estimated_time_reduction_percent": 1.3158317417537146
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 1,
+      "baseline_estimated_us": 1.5892254905909795,
+      "candidate_estimated_us": 1.5653104233159452,
+      "estimated_time_reduction_percent": 1.504825301168633
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 2,
+      "baseline_estimated_us": 2.526648821446488,
+      "candidate_estimated_us": 2.4843917727858575,
+      "estimated_time_reduction_percent": 1.6724543712583917
+    }
+  ],
+  "limitations": [
+    "Both mappings are complete, but both fail the 1000 ps setup target. Return code 2 records timing-gate failure rather than mapping failure.",
+    "The original arithmetic has extreme-coordinate correctness failures. The comparison includes necessary carry widening as well as preparation registers; it does not isolate a pure retiming effect.",
+    "Time estimates divide the measured cycles by rounded synthesis core Fmax. They are not measured silicon latency and omit I/O, memory, shaders, interpolation, contention and complete-frame work.",
+    "This component estimate does not replace the prior 255.537 MHz prepared-replay-engine estimate or qualify a whole GPU. Full renderer synthesis and native composition remain open.",
+    "No power, routed timing, hold or P&R qualification."
+  ]
+}

@@ -513,6 +513,7 @@
     {"name":"fragment.colorType3","word":534,"bits":2,"signed":false},
     {"name":"fragment.allowDepthOverride","word":535,"bits":1,"signed":false},
     {"name":"fragment.sampleMode","word":536,"bits":2,"signed":false},
+    {"name":"fragment.centroidMask","word":538,"bits":64,"signed":false},
     {"name":"fragment.sampler.format","word":544,"bits":3,"signed":false},
     {"name":"fragment.sampler.base","word":545,"bits":32,"signed":false},
     {"name":"fragment.sampler.width","word":546,"bits":14,"signed":false},

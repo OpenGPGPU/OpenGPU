@@ -75,7 +75,8 @@ object NativeTypedGraphicsLayout {
       fields(512,"fragment.","version"->f.version)++identity(513,"fragment.identity.",f.identity)++fields(516,"fragment.","pc"->f.shaderPc)++
       view(520,"fragment.scratch.",f.scratch)++fields(528,"fragment.","varyingSlots"->f.varyingSlots,"colorSlots"->f.colorSlots,"colorMask"->f.colorMask,
         "colorType0"->f.colorTypes(0),"colorType1"->f.colorTypes(1),"colorType2"->f.colorTypes(2),"colorType3"->f.colorTypes(3),
-        "allowDepthOverride"->f.allowDepthOverride,"sampleMode"->f.sampleMode)++sampler(544,"fragment.sampler.",f.sampler)++
+        "allowDepthOverride"->f.allowDepthOverride,"sampleMode"->f.sampleMode)++
+      fields(538,"fragment.","centroidMask"->f.centroidMask)++sampler(544,"fragment.sampler.",f.sampler)++
       fields(560,"tests.","version"->t.version,"depthEnable"->t.depthEnable,"depthWrite"->t.depthWrite,"depthFunction"->t.depthFunction,"stencilEnable"->t.stencilEnable)++
       face(568,"tests.front.",t.front)++face(576,"tests.back.",t.back)++
       fields(592,"blend.","enable"->b.enable,"version"->b.version,"srcRGB"->b.srcRGB,"dstRGB"->b.dstRGB,"srcAlpha"->b.srcAlpha,"dstAlpha"->b.dstAlpha,
@@ -121,7 +122,10 @@ object NativeTypedGraphicsLayout {
     val g=d.shaders.vertex.vertex.geometry;val v=g.vertex;val i=v.input
     val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
     active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U && d.shaders.fragment.varyingSlots<=f.varyings.U &&
-      !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(g.flatMask>>(v.varyingSlots<<2)).orR
+      !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(g.flatMask>>(v.varyingSlots<<2)).orR &&
+      !(d.shaders.fragment.centroidMask>>(d.shaders.fragment.varyingSlots<<2)).orR &&
+      FragmentInputAbi.legal(d.shaders.fragment.version) &&
+      (FragmentInputAbi.hasCentroid(d.shaders.fragment.version) || !d.shaders.fragment.centroidMask.orR)
   }
 }
 

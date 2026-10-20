@@ -71,6 +71,7 @@
     {"name":"tests.front.writeMask","word":91,"bits":8,"signed":false},
     {"name":"tests.stencilEnable","word":92,"bits":1,"signed":false},
     {"name":"tests.version","word":93,"bits":8,"signed":false},
-    {"name":"version","word":94,"bits":8,"signed":false}
+    {"name":"version","word":94,"bits":8,"signed":false},
+    {"name":"fragment.centroidMask","word":124,"bits":64,"signed":false}
   ]
 }

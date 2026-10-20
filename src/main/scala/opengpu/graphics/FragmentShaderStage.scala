@@ -10,7 +10,7 @@ case class FragmentShaderConfig(varyings: Int=16,colors: Int=4) {
   require(varyings>=1 && varyings<=16 && colors>=1 && colors<=4)
   val vertices=VertexShaderStageConfig(varyings=varyings)
   val maxOutputWords=4*colors+2
-  def prefixBytes(capacity: Int,varyingSlots: Int,colorSlots: Int,version: Int=1): Int=4*capacity*(8+4*varyingSlots+4*colorSlots+(if(version==2)2 else 0))
+  def prefixBytes(capacity: Int,varyingSlots: Int,colorSlots: Int,version: Int=1): Int=4*capacity*(8+4*varyingSlots+4*colorSlots+(if(FragmentInputAbi.hasPointCoord(version))2 else 0))
 }
 /** Internal version1 SoA ABI, stride=4*physical-CU-thread-capacity:
   * inputs: fragCoord.xyzw, flags(front/helper/perspective/sampleMode), coverage,
@@ -25,20 +25,22 @@ class FragmentShaderDraw(p: FragmentShaderConfig) extends Bundle {
   val scratch=new VertexInputView;val varyingSlots=UInt(5.W);val colorSlots=UInt(3.W)
   val colorMask=UInt(4.W);val colorTypes=Vec(p.colors,UInt(2.W));val allowDepthOverride=Bool();val sampleMode=UInt(2.W)
   val sampler=new VertexShaderSampler
+  val centroidMask=UInt(64.W)
 }
 /** Pure descriptor checks shared by the standalone client and draw admission. */
 object FragmentShaderDescriptor {
   def errors(draw: FragmentShaderDraw,p: FragmentShaderConfig,g: GraphicsConfig,config: GpuConfig): (Bool,Bool)={
     val s=draw.scratch;val stride=config.lanes*config.warps*4
-    val prefix=(8.U+&(draw.varyingSlots<<2)+&(draw.colorSlots<<2)+&Mux(draw.version===2.U,2.U,0.U))*stride.U
+    val prefix=(8.U+&(draw.varyingSlots<<2)+&(draw.colorSlots<<2)+&Mux(FragmentInputAbi.hasPointCoord(draw.version),2.U,0.U))*stride.U
     val end=s.base+&prefix
     val view=s.allocationBase(5,0)===0.U && s.allocationLimit(5,0)===0.U && s.allocationLimit<=(BigInt(1)<<32).U &&
       s.allocationLimit>s.allocationBase && s.base>=s.allocationBase && s.base(5,0)===0.U && s.limit>=s.base && s.limit<=s.allocationLimit
     val types=draw.colorTypes.zipWithIndex.map{case(t,i)=>i.U>=draw.colorSlots || t=/=3.U}.reduce(_ && _)
     val fields=draw.varyingSlots<=p.varyings.U && draw.colorSlots<=p.colors.U && !(draw.colorMask>>draw.colorSlots).orR &&
-      types && draw.sampleMode<=log2Ceil(g.maxSampleCount).U
+      types && draw.sampleMode<=log2Ceil(g.maxSampleCount).U &&
+      !(draw.centroidMask>>(draw.varyingSlots<<2)).orR && (FragmentInputAbi.hasCentroid(draw.version) || !draw.centroidMask.orR)
     val sharedAlias=s.base<(config.sharedMemoryBase+config.sharedMemoryBytes).U && end>config.sharedMemoryBase.U
-    val invalid=(draw.version=/=1.U && draw.version=/=2.U) || !fields || !view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || sharedAlias
+    val invalid= !FragmentInputAbi.legal(draw.version) || !fields || !view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || sharedAlias
     val bounds=end>s.limit || end>(BigInt(1)<<32).U || ((end+63.U)&(~63.U(40.W)))>s.allocationLimit
     (invalid,bounds)
   }
@@ -258,18 +260,20 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val inputData=Wire(Vec(4,UInt(32.W)))
   for(i<-0 until 4) {
     val l=inputQuad.values.lanes(i)
-    def center(value: SInt): UInt={
-      val integer=FragmentEdgeFloat(((value.pad(34)<<1)+1.S).pad(64))
-      val half=WireDefault(integer);half.exponent:=integer.exponent-1.S
-      ClipFloat.toFp32(half).bits
+    def position(value: SInt,y: Boolean): UInt={
+      val high=if(!y)l.sampleLocation(0) else Mux(inputQuad.sampleMode===1.U,l.sampleLocation(0),l.sampleLocation(1))
+      val fraction=Mux(l.sampleLocationValid,Mux(high,3.U(3.W),1.U(3.W)),2.U(3.W))
+      val integer=FragmentEdgeFloat(((value.pad(35)<<2)+fraction.zext).pad(64))
+      val quarter=WireDefault(integer);quarter.exponent:=integer.exponent-2.S
+      ClipFloat.toFp32(quarter).bits
     }
     inputData(i):=0.U
-    when(field===0.U){inputData(i):=center(l.x)};when(field===1.U){inputData(i):=center(l.y)}
+    when(field===0.U){inputData(i):=position(l.x,false)};when(field===1.U){inputData(i):=position(l.y,true)}
     when(field===2.U){inputData(i):=l.windowDepth};when(field===3.U){inputData(i):=l.fragCoordW}
-    when(field===4.U){inputData(i):=Cat(0.U(25.W),Mux(draw.version===2.U,inputQuad.values.primitiveKind,0.U(2.W)),inputQuad.sampleMode,l.perspectiveValid,!l.covered,inputQuad.frontFacing)}
+    when(field===4.U){inputData(i):=Cat(0.U(25.W),Mux(FragmentInputAbi.hasPointCoord(draw.version),inputQuad.values.primitiveKind,0.U(2.W)),inputQuad.sampleMode,l.perspectiveValid,!l.covered,inputQuad.frontFacing)}
     when(field===5.U){inputData(i):=l.coverageMask}
     for(v<-0 until p.varyings;c<-0 until 4)when(field===(6+4*v+c).U){inputData(i):=l.varyings(v)(c)}
-    for(c<-0 until 2)when(draw.version===2.U && field===(6.U+(draw.varyingSlots<<2)+c.U)){inputData(i):=l.pointCoord(c)}
+    for(c<-0 until 2)when(FragmentInputAbi.hasPointCoord(draw.version) && field===(6.U+(draw.varyingSlots<<2)+c.U)){inputData(i):=l.pointCoord(c)}
   }
   private val inputMeta=Wire(new FragmentQuadMetadata(g));inputMeta:=0.U.asTypeOf(inputMeta)
   inputMeta.identity:=inputQuad.values.identity;inputMeta.sequence:=inputQuad.values.sequence
@@ -310,7 +314,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
         received:=0.U;exported:=0.U;batches:=0.U;localBatches:=0.U;globalBatches:=0.U;spilledBatches:=0.U
         shaded:=0.U;live:=0.U;discarded:=0.U;helpers:=0.U;samples:=0.U;writeBytes:=0.U;readBytes:=0.U;maxLocalX:=0.U
         faultSource:=0.U;faultAddress:=0.U;faultQuadValid:=false.B;faultSequence:=0.U;faultPrimitive:=0.U;faultInstance:=0.U;faultPart:=0.U;faultLane:=0.U
-        val in=6.U+(io.draw.bits.varyingSlots<<2)+Mux(io.draw.bits.version===2.U,2.U,0.U);val color=io.draw.bits.colorSlots<<2
+        val in=6.U+(io.draw.bits.varyingSlots<<2)+Mux(FragmentInputAbi.hasPointCoord(io.draw.bits.version),2.U,0.U);val color=io.draw.bits.colorSlots<<2
         inputWords:=in;colorWords:=color;outputWords:=color+2.U;inputBytes:=in*stride.U;prefixBytes:=(in+&color+2.U)*stride.U
         payloadContext:=io.payload.map(_.context).getOrElse(0.U);helperQuads.foreach(_:=0.U);phase:=State.validate
       }}
@@ -333,7 +337,9 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
           val depth=l.windowDepth(30,23)=/=255.U && !PrimitiveClipStage.less(l.windowDepth,0.U) && !PrimitiveClipStage.less("h3f800000".U,l.windowDepth)
           val sampleDepth=(0 until g.maxSampleCount).map(s=> !l.sampleDepthValid || !l.coverageMask(s) ||
             (l.sampleDepth(s)(30,23)=/=255.U && !PrimitiveClipStage.less(l.sampleDepth(s),0.U) && !PrimitiveClipStage.less("h3f800000".U,l.sampleDepth(s)))).reduce(_ && _)
-          !sampleDepth || shape || l.covered=/=l.coverageMask.orR || (l.coverageMask>>sampleCount).orR ||
+          val locationCovered=if(g.maxSampleCount==1)l.coverageMask(0) else l.coverageMask(l.sampleLocation(log2Ceil(g.maxSampleCount)-1,0))
+          val location= !l.sampleLocationValid || (l.covered && inputQuad.sampleMode=/=0.U && l.sampleLocation<sampleCount && locationCovered)
+          !sampleDepth || !location || shape || l.covered=/=l.coverageMask.orR || (l.coverageMask>>sampleCount).orR ||
             (l.covered && (!l.perspectiveValid || !reciprocal || !depth))
         })
         val header=q.identity.asUInt=/=draw.identity.asUInt || q.varyingSlots=/=draw.varyingSlots ||

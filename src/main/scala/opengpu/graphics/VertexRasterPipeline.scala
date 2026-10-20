@@ -26,11 +26,12 @@ class VertexRasterCompletion extends Bundle {
   */
 class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
-    useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0) extends Module {
+    useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,centroidInput: Boolean=false) extends Module {
   require(g.subPixelBits==viewport.subPixelBits,"viewport and raster subpixel scales must match")
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
     val draw=Flipped(Decoupled(new VertexRasterDraw(p)));val out=Decoupled(new Fp32RasterizedQuad(p,g))
+    val centroidMask=if(centroidInput)Some(Input(UInt((p.varyings*4).W)))else None
     val completion=Decoupled(new VertexRasterCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
     val payload=payloadConfig.map(q=>new FragmentPayloadPort(config,q))
@@ -41,6 +42,7 @@ class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageCon
   private val source=Module(new VertexViewportPipeline(config,p,shared,viewport,useSramBlackBoxes,payload,payloadOwner))
   private val raster=Module(new Fp32PrimitiveRasterStage(p,g))
   private val descriptor=Reg(new VertexRasterDraw(p));private val summary=Reg(new VertexViewportCompletion)
+  private val centroidMask=Reg(UInt((p.varyings*4).W))
   private val result=Reg(new VertexRasterCompletion)
   private val active=RegInit(false.B);private val offered=RegInit(false.B);private val started=RegInit(false.B)
   private val sourceDone=RegInit(false.B);private val done=RegInit(false.B);private val status=RegInit(0.U(3.W))
@@ -57,9 +59,11 @@ class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageCon
   private val stop=status=/=0.U || externalCancel || rasterFault || sourceFault
   io.draw.ready:= !active && !externalCancel;io.busy:=active
   when(io.draw.fire){
+    centroidMask:=io.centroidMask.getOrElse(0.U)
     descriptor:=io.draw.bits;active:=true.B;offered:=true.B;started:=false.B;sourceDone:=false.B;done:=false.B
     val topology=io.draw.bits.vertex.geometry.topology
-    status:=Mux(Fp32RasterState.legal(io.draw.bits.raster,g) && topology<=6.U,0.U,1.U)
+    val qualifiers= !(io.centroidMask.getOrElse(0.U)>>(io.draw.bits.vertex.geometry.vertex.varyingSlots<<2)).orR
+    status:=Mux(Fp32RasterState.legal(io.draw.bits.raster,g) && topology<=6.U && qualifiers,0.U,1.U)
     received:=0.U;rasterParts:=0.U;culled:=0.U;quads:=0.U;covered:=0.U;helpers:=0.U;samples:=0.U;raw:=0.U;discarded:=0.U;operations:=0.U
     arithmeticFlags:=0.U;packingFlags:=0.U;fault:=false.B;interpolationFault:=false.B
     faultSequence:=0.U;faultPrimitive:=0.U;faultInstance:=0.U;faultPart:=0.U;faultX:=0.S;faultY:=0.S;faultLane:=0.U
@@ -69,6 +73,7 @@ class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageCon
   source.io.cancel:=active && started && stop;raster.io.cancel:=active && stop
   raster.io.in.valid:=active && !stop && source.io.out.valid && raster.io.in.ready
   raster.io.in.bits.primitive:=source.io.out.bits;raster.io.in.bits.state:=descriptor.raster
+  raster.io.in.bits.centroidMask:=centroidMask
   source.io.out.ready:=active && (stop || raster.io.in.ready)
   when(source.io.out.fire){received:=received+1.U}
   io.out<>raster.io.out
