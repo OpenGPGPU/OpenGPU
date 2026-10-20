@@ -6,7 +6,9 @@ cases and two existing128-invocation payload cases. The projective cases submit
 160 draws across both shader stages and local/spilled payload modes. The scalar
 FPU is explicitly enabled for these programs;the legacy16-lane8-warp payload
 cases retain their default scalar-FPU-disabled profile and original positional
-constructor arguments. Main integration waits for the size-query qualification.
+constructor arguments. [Main integration](performance/mobile-native-size-projective-main-2026-10-21.json)
+now combines these checks with qualified size queries and the existing integer
+mip-page probes;23 fresh composed sampling checks pass on812 exact inputs.
 This adds two shader-stage tests and a
 shared program/oracle fixture; production RTL, driver, ABI and emission inputs
 match the size-query source exactly. No new instruction or sampler hardware is

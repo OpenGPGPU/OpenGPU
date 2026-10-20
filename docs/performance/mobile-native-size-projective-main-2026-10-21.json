@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "qualified_size_queries_and_projective_controls_integrated_on_main_with_exact812_inputs",
+  "merge_commit": "83a30c7acd65ca2e239f093130fd361e816a00b6",
+  "source_files": 812,
+  "source_manifest_sha256": "a5e08abb115f9fd11880f57350a3bb7bb7e3976c2bd340f57efc2d70e8cb701f",
+  "main_archive_sha256": "33068b060ee7fb60de9a124f15d71871dde8d0db8abeb416536586354ce46377",
+  "main_worktree_and_archive_exact_to_qualified_composition": true,
+  "fresh_merged_sampling_checks": 23,
+  "composition_record": "docs/performance/mobile-native-size-projective-qualified-2026-10-21.json",
+  "size_query_AXI_record": "docs/performance/mobile-native-texture-size-qualified-2026-10-21.json",
+  "projective_record": "docs/performance/mobile-native-projective-qualified-2026-10-21.json",
+  "ABI_compiler_and_synthesis": "Nine unchanged descriptor ABI checks,strict C validator,four paired LLVM tests and three mapped synthesis screens carry by exact dependencies.",
+  "user_files_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": "0o644"
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": "0o644"
+    }
+  },
+  "commits_audited_for_one_agent_trailer": [
+    "83a30c7acd65ca2e239f093130fd361e816a00b6",
+    "b2e643907838b43c11ae098d50fc3857b810d07c",
+    "7f15491e2a59feef53255750168ee01d262b7a9e",
+    "e324a790cce806df95a85982e9ebc3a9f77b226a",
+    "4dd0010f628ed872b79cd7ee65aaf33621c46268",
+    "2bba1597935af597338630c21bbcff9dbad4a3d5",
+    "84c9f901edd63eb612c95c3ff63d099948bba871",
+    "2cb132b281f46786d5032689f1f923964a282443",
+    "488cea172214c74399ab202899eac2b2c781d4ff",
+    "c7de568d70f9ebe47551f01f296f0c50a3519c9d",
+    "19ce3ad6edcd11b0bcd771724c4fde8b02af500d",
+    "6c9b420bde42ae874a9f266e5bef5db69c7ab711",
+    "98c43c602061a283a1905858d9193770a63397e4",
+    "2b866b6b62eb0d2884910841d49b88d495046e7b",
+    "628f107ca28b96468aecc9936ba8f24749eded3d",
+    "1209b94f0a2b5e576661a7a7ef1ec77d94199e19",
+    "64a68067f9f491dce3dea0fd42eea96ecb388dac",
+    "186e27008c760cbbb268ce075eef5b08615935e7",
+    "f872b6f2c3499bf4d502990705c7f3cb017c411c",
+    "d3aa47141561e4016862784f78475f0c33243fa1",
+    "610c40729acbdabd9ab050c910843f9ac0e3aca2",
+    "042b11cdf87703f038881c369df830318b9d92ff",
+    "7c0b4aeee4893117692ce1c17d26cadd14f2bfe7",
+    "3e9dc3372db484b0307bb7e3d67768cc9e62255d",
+    "a16bf00741eace293f6bae85e451a28cac4b6b96",
+    "326ec183e9b63ffe1d863fab516d1ca7f7db609e",
+    "fd149ccc96a9b3621c5d783bd8fe1876745cfd94",
+    "741f10d5ea7c80f6c5e52afdcab4687fd6d7a4cf",
+    "5c88a23ee15acf3d0d7e70cba710446fd81e7298"
+  ],
+  "remaining": [
+    "old typed/floating/integer disjoint-source AXI regression still running",
+    "native banked read-through timing/translation/resource/task integration",
+    "complete numeric precision and native throughput/coherence gates",
+    "full H0-H8 hardware requirements"
+  ],
+  "PPA": "synthesis only;no complete GPU clock,power,route or H0-H8 completion claim"
+}

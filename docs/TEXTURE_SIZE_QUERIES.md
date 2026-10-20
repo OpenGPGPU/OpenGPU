@@ -12,7 +12,9 @@ in the test fixture. A [same-source old/new allocation proof](performance/mobile
 reproduces the old failure and passes six directed recovery frames across both
 payload modes with disjoint sources. The [full148-frame corrected query matrix](performance/mobile-native-texture-size-qualified-2026-10-21.json)
 now passes in both payload modes (144 successful frames,four expected errors).
-This owner is ready for integration with the existing main mip checks.
+This owner is [integrated on main](performance/mobile-native-size-projective-main-2026-10-21.json)
+with the existing integer mip-page probes and projective checks. Twenty-three
+fresh merged sampling cases pass on812 exact inputs.
 
 `opengpu.tex.size.c` uses custom0/function6; `opengpu.vtex.size.c` uses
 custom1/function6 with normal RVV masks. Components0/1/2 return width, height,
@@ -50,7 +52,8 @@ It adds all three scalar/vector component forms, masked MC cases, extension
 checks and an ordinary scalar C inline-assembly helper. Existing encodings and
 descriptor layouts are preserved.
 
-Pending gates include main integration,broader compiler/API lowering and the
+Pending gates include broader compiler/API lowering,older-opcode disjoint-source
+AXI regression and the
 remaining H0-H8 requirements. PPA remains synthesis only.
 
 Both [complete native endpoints](performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json)
