@@ -5643,3 +5643,41 @@ Default-host public ports and SRAM/CU/replay/payload/FMA/divider counts remain
 stable; standalone replay intentionally adds three polygon-state input pins.
 These structural checks do not establish area, timing, power or rate. Native
 texture synthesis screening remains separate; no new PPA verdict is claimed.
+
+
+## General texture image addressing development (2026-10-20)
+
+The isolated [image-level address candidate](TEXTURE_IMAGE_ADDRESSING.md)
+adds a three-stage elastic address unit for pitched 2D, array, cube-face and
+volume storage, with packed texel and4x4-block spans. It snapshots the complete
+resolved view, validates full-width coordinates, disjoint rows/planes and the
+whole level allocation, then publishes a checked byte address. Exact4GiB
+exclusive ends are supported. Faulted requests return zero spans with retained
+identity metadata; the unit issues no memory work.
+
+Four runtime controls and standalone RTL emission are pending on frozen643-file
+source. No native capability is changed. GPU descriptor/mip table ownership,
+indexed bindings, format fetch/decode, normalized coordinates, dimensional
+filtering and native execution integration remain required; this component
+does not close texture/GLES or H4/H6. PPA remains synthesis only.
+
+
+## Checked image-level addressing component qualification (2026-10-20)
+
+The [four-check image-address result](performance/mobile-texture-image-address-2026-10-20.json)
+passes2,138 requests, including105 rejected requests, on unchanged643-file
+source. It covers all six cube faces, all256 array layers and volume slices,
+a complete256-cubed volume, a2048-square256-layer RGBA8 array ending exactly
+at4GiB,360 other exact-end views, pitched packed/compressed block spans and
+the full16383-square2D extent. A512-request stream retains three-cycle latency,
+one unstalled address per cycle and ordered immutable replies under backpressure.
+Two development fixture/compile failures remain preserved with their corrections.
+
+All640 existing files match the prior main base; only the new component, its
+emitter and test are added. The [standalone synthesis screen](performance/mobile-texture-image-address-synthesis-2026-10-20.json)
+passes1GHz at TC/SLVT with+70.945ps worst reported setup slack, including I/O,
+no retiming and complete operator mapping. The final tests change no production
+logic; all four synthesis-active SV files match the screened logic. This is a
+component result. Descriptor/mip fetch, indexed bindings, format decode/filtering
+and native owner integration remain open; no native mode or H4/H6/GLES closure
+is advertised. PPA remains synthesis only.
