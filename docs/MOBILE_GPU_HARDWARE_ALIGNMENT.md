@@ -5154,3 +5154,47 @@ compatibility checks use the same production RTL. The default 768-file four-CU
 host emission is structural evidence. Combined GNX1/color host qualification,
 physical provenance, translated aliases, full Mobile rates/budgets and H0-H8
 remain open. PPA remains synthesis only.
+
+
+## Combined native host, diagnostics and color qualification (2026-10-20)
+
+The [30-check combined checkpoint](performance/mobile-native-binned-combined-host-2026-10-20.json)
+passes on 621 frozen source/ABI files. GNC1 native submission, GNX1 completion
+diagnostics and the bounded clear/registered maintenance pipeline now pass
+actual local/global shader, cached publication, indexed/empty frame, 1x/4x MSAA,
+eight fault/reuse and both reset/drain cases together. Nested vertex faults and
+image fault tiles remain attributed; stale details cannot survive POP/reset or
+be inherited by compute results. Legacy typed rendering and AXI/MMIO controls
+pass in the same run.
+
+All three ABI checks, C11/schema evidence and the combined 768-file four-CU host
+emission pass. These tests use small runtime configurations and trusted physical
+GNC1 image views. GNC2 image-VM protection, physical provenance/alias admission,
+full Mobile workloads/rates/budgets and H0-H8 remain open. The separate color
+synthesis is still pending; no new Fmax, area or power is established here.
+
+
+## Bounded color maintenance synthesis result (2026-10-20)
+
+The [completed synthesis screen](performance/mobile-typed-color-clear-synthesis-2026-10-20.json)
+raises the single replay image engine's TC/SLVT core estimate from **224.000 to
+255.537 MHz** (+14.08%). At the unchanged 1000 ps period and 25% I/O budget,
+core setup improves by 550.951 ps but still fails at **-2913.328 ps**. The
+reported I/O path has +81.208 ps slack. Mapped area, including the same 21
+characterized SRAM macros, falls from 173213.286839 to **172654.027199 um²**
+(-0.323%); the mapping has 3796 fewer cells and no omitted operators.
+
+The original mapping completed after its host wrapper was interrupted. Recovery
+retained that exact netlist/ODB/SDC and ran only the missing synthesis STA in a
+new output directory, with mapping results mounted read-only. All 64 active RTL
+files match the frozen 619-file source/ABI snapshot. After removing comments,
+only the typed color store logic differs from the previous mapped candidate.
+The 66 functional regressions remain recorded separately.
+
+The worst reported core path now runs from the point/line raster request's
+`lineWidth[30]` to its coverage `mask[0]`, instead of color SRAM write data.
+The next timing iteration should cut that measured coverage path while
+preserving sample modes, bounds, cancellation and primitive ownership.
+This is one prepared replay engine, not the native host or a four-CU GPU.
+PPA remains **synthesis only**; power, hold, routed timing, full Mobile runtime/
+rates/budgets and the original H0-H8 requirements remain open.
