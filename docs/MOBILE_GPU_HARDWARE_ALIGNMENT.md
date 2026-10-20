@@ -5400,3 +5400,18 @@ alone. Further timing work must cut the measured per-sample coverage path.
 This maps one replay engine and predates centroid/polygon-offset integration;
 native host/four-CU timing, representative frame rates, full budgets and H0-H8
 remain open. PPA remains **synthesis only**.
+
+
+## Anchored slope controls completed (2026-10-20)
+
+The [45-check run](performance/mobile-polygon-slope-anchor-2026-10-20.json) passes
+on 640 unchanged source/ABI files. It includes 32 flat-depth cases, 87 exact
+scalar cases, twelve constant-depth raster pairs, setup/order/cancellation
+controls, four ABI checks and primitive emission. The primitive retains one
+FMA and one divider, with no CU or SRAM. Normal offset setup now uses thirteen
+scalar operations. The earlier queued v1 never ran; corrected v2 runs after
+its parent regression passed.
+
+This qualifies the flat-slope correction only in the scoped composition.
+Native/image reruns, the independently failing sloped depth-resolution witness,
+full precision and H0–H8 remain open. PPA remains synthesis only.
