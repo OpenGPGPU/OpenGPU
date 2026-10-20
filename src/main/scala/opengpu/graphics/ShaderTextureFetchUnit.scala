@@ -5,9 +5,11 @@ import chisel3.util._
 import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 
-class ShaderTextureFetchRequest extends Bundle {
+class ShaderTextureFetchRequest(capturedCoordinates: Boolean=false) extends Bundle {
   val resources=new ShaderTextureResources;val identity=new GraphicsWorkIdentity;val stage=UInt(1.W)
   val unit=UInt(32.W);val packet=UInt(32.W);val component=UInt(2.W);val tag=UInt(32.W)
+  val coordinates=if(capturedCoordinates)Some(new ShaderTextureCoordinateRecord)else None
+  val offsets=if(capturedCoordinates)Some(Vec(3,SInt(5.W)))else None
 }
 class ShaderTextureFetchResult extends Bundle {
   val identity=new GraphicsWorkIdentity;val unit=UInt(32.W);val tag=UInt(32.W)
@@ -18,15 +20,15 @@ class ShaderTextureFetchResult extends Bundle {
   * sampler admission IDs8..12. Reserved IDs never alias an owned transaction.
   * Parent pins root,descriptor publication and VM through held completion.
   */
-class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig()) extends Module {
+class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: Boolean=false) extends Module {
   val io=IO(new Bundle {
-    val in=Flipped(Decoupled(new ShaderTextureFetchRequest));val out=Decoupled(new ShaderTextureFetchResult)
+    val in=Flipped(Decoupled(new ShaderTextureFetchRequest(capturedCoordinates)));val out=Decoupled(new ShaderTextureFetchResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
     val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
   })
   private object State extends ChiselEnum {val idle,check,readRoot,verifyRoot,readBinding,verifyBinding,readPacket,verifyPacket,offerAdmission,waitAdmission,checkTarget,offerFetch,waitFetch,finish,complete=Value}
-  private val phase=RegInit(State.idle);private val request=Reg(new ShaderTextureFetchRequest)
+  private val phase=RegInit(State.idle);private val request=Reg(new ShaderTextureFetchRequest(capturedCoordinates))
   private val root=Reg(new ShaderTextureRootRecord);private val binding=Reg(new ShaderTextureBindingRecord);private val packet=Reg(new ShaderTextureCoordinateRecord)
   private val admitted=Reg(new TextureImageSamplerBindingResult);private val fetched=Reg(new TextureImageTypedFetchResult);private val result=Reg(new ShaderTextureFetchResult)
   private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(4.W));private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W))
@@ -95,13 +97,14 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig()) extends Module {
     is(State.idle){when(io.in.fire){
       assert(!offered && !pending && !admission.io.busy && !fetch.io.busy,"typed shader fetch abandoned ownership")
       request:=io.in.bits;root:=0.U.asTypeOf(root);binding:=0.U.asTypeOf(binding);packet:=0.U.asTypeOf(packet)
+      if(capturedCoordinates){packet:=io.in.bits.coordinates.get}
       admitted:=0.U.asTypeOf(admitted);fetched:=0.U.asTypeOf(fetched);status:=0.U;source:=0.U;faultValid:=false.B;faultAddress:=0.U
       admissionStarted:=false.B;fetchStarted:=false.B;noFill:=io.invalidate;phase:=State.check
     }}
     is(State.check){
       when(stop){phase:=State.finish}.elsewhen(request.resources.version=/=1.U || !ShaderTextureResources.legal(request.resources)){
         fail(1.U,1.U);phase:=State.finish
-      }.elsewhen(request.packet(5,0)=/=0.U || request.packet.pad(33)+64.U>(BigInt(1)<<32).U){fail(1.U,3.U);phase:=State.finish}
+      }.elsewhen((!capturedCoordinates).B && (request.packet(5,0)=/=0.U || request.packet.pad(33)+64.U>(BigInt(1)<<32).U)){fail(1.U,3.U);phase:=State.finish}
         .otherwise{beginRead(request.resources.address,2,State.readRoot)}
     }
     is(State.readRoot){when((stop || issued===lineCount) && !offered && !pending){phase:=Mux(stop,State.finish,State.verifyRoot)}}
@@ -118,7 +121,7 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig()) extends Module {
     is(State.verifyBinding){
       when(stop){phase:=State.finish}.elsewhen(malformed || binding.identity.asUInt=/=request.identity.asUInt || binding.stage=/=request.stage || binding.unit=/=request.unit){fail(7.U,2.U);phase:=State.finish}
         .elsewhen(binding.expectedType>2.U || binding.target>3.U){fail(1.U,2.U);phase:=State.finish}
-        .otherwise{beginRead(request.packet,1,State.readPacket)}
+        .otherwise{if(capturedCoordinates){phase:=State.verifyPacket}else{beginRead(request.packet,1,State.readPacket)}}
     }
     is(State.readPacket){when((stop || issued===lineCount) && !offered && !pending){phase:=Mux(stop,State.finish,State.verifyPacket)}}
     is(State.verifyPacket){
@@ -133,8 +136,23 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig()) extends Module {
           faultValid:=admission.io.out.bits.faultAddressValid;faultAddress:=admission.io.out.bits.faultAddress}}
       phase:=Mux(stop || code=/=0.U,State.finish,State.checkTarget)
     }}
-    is(State.checkTarget){when(!stop && admitted.image.view.target=/=binding.target){fail(6.U,7.U);phase:=State.finish}
-      .otherwise{phase:=Mux(stop,State.finish,State.offerFetch)}}
+    is(State.checkTarget){
+      if(capturedCoordinates){
+        val offsets=request.offsets.get
+        val sums=Seq(packet.x,packet.y,packet.z).zip(offsets).map{case(v,o)=>v.asSInt.pad(34)+&o.pad(34)}
+        val badOffset=offsets.map(o=>o<(-8).S || o>7.S).reduce(_ || _) ||
+          (binding.target===2.U && offsets.map(_=/=0.S).reduce(_ || _)) ||
+          (binding.target=/=3.U && offsets(2)=/=0.S)
+        val badCoordinate=sums.map(v=>v<0.S || v>=(BigInt(1)<<32).S(35.W)).reduce(_ || _)
+        when(stop){phase:=State.finish}
+          .elsewhen(admitted.image.view.target=/=binding.target){fail(6.U,7.U);phase:=State.finish}
+          .elsewhen(badOffset || badCoordinate){fail(5.U,3.U);phase:=State.finish}
+          .otherwise{packet.x:=sums(0).asUInt;packet.y:=sums(1).asUInt;packet.z:=sums(2).asUInt;phase:=State.offerFetch}
+      }else{
+        when(!stop && admitted.image.view.target=/=binding.target){fail(6.U,7.U);phase:=State.finish}
+          .otherwise{phase:=Mux(stop,State.finish,State.offerFetch)}
+      }
+    }
     is(State.offerFetch){when(fetch.io.in.fire){fetchStarted:=true.B;phase:=State.waitFetch}}
     is(State.waitFetch){when(fetch.io.out.fire){
       fetched:=fetch.io.out.bits;fetchStarted:=false.B;val code=fetch.io.out.bits.sample.status

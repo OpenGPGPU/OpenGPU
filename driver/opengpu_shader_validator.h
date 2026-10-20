@@ -1190,8 +1190,8 @@ static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
                 break;
             }
             if (rd == 1u || funct3 >= 4u ||
-                (funct7 != 2u && funct7 != 4u) ||
-                (funct7 == 4u && state.texture_parameter_pairs != 0xffu))
+                (funct7 != 2u && funct7 != 4u && funct7 != 5u) ||
+                ((funct7 == 4u || funct7 == 5u) && state.texture_parameter_pairs != 0xffu))
                 return false;
             /* A packet read must retain the existing bounded-memory sandbox.
              * Loaded/unknown addresses cannot authorize an indirect GXQ1 read.
@@ -1208,7 +1208,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
             bool unmasked = (insn & (1u << 25)) != 0u;
             bool texture_result =
                 (function == 1u && funct3 == 0u) ||
-                (function == 4u && funct3 < 4u);
+                ((function == 4u || function == 5u) && funct3 < 4u);
 
             if (function == 3u && rd == 0u && unmasked) {
                 if (!texture_enabled || !state.vector_length ||
@@ -1222,7 +1222,7 @@ static inline bool opengpu_shader_validate_words_profile_runtime_io_usage(
             if (texture_result && unmasked) {
                 if (!texture_enabled || !state.vector_length ||
                     !vector_defined[rs1] || !vector_defined[rs2] ||
-                    (function == 4u && state.texture_parameter_pairs != 0xffu))
+                    ((function == 4u || function == 5u) && state.texture_parameter_pairs != 0xffu))
                     return false;
             } else if ((insn & 0xfe0ff07fu) == 0x3200002bu ||
                        (insn & 0xfe0ff07fu) == 0x3600002bu) {

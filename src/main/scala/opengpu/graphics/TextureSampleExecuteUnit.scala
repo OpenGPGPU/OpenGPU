@@ -13,8 +13,10 @@ object ShaderTextureSampleOpcode {
   def vectorParameters(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===3.U && i(11,7)===0.U
   def scalarSample(i: UInt): Bool=i(6,0)==="h0b".U && i(31,25)===4.U && i(14,12)<4.U
   def vectorSample(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===4.U && i(14,12)<4.U
-  def scalar(i: UInt): Bool=scalarParameters(i)||scalarSample(i)
-  def vector(i: UInt): Bool=vectorParameters(i)||vectorSample(i)
+  def scalarFetch(i: UInt): Bool=i(6,0)==="h0b".U && i(31,25)===5.U && i(14,12)<4.U
+  def vectorFetch(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===5.U && i(14,12)<4.U
+  def scalar(i: UInt): Bool=scalarParameters(i)||scalarSample(i)||scalarFetch(i)
+  def vector(i: UInt): Bool=vectorParameters(i)||vectorSample(i)||vectorFetch(i)
 }
 /** On-chip shader operand tuples, followed by ordinary fault-atomic texture
   * retirement. Eight parameter operations write pairs of32-bit words. Pair0
@@ -33,7 +35,7 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
     val status=Output(UInt(3.W));val faultAddressValid=Output(Bool());val faultAddress=Output(UInt(32.W))
   })
   private object State extends ChiselEnum {val idle,writeParameters,nextLane,capture,offer,waitSample,commit=Value}
-  private val phase=RegInit(State.idle);private val vector=RegInit(false.B);private val parameter=RegInit(false.B);private val preferVector=RegInit(true.B)
+  private val phase=RegInit(State.idle);private val integer=RegInit(false.B);private val vector=RegInit(false.B);private val parameter=RegInit(false.B);private val preferVector=RegInit(true.B)
   private val values=Reg(Vec(config.warps,Vec(config.lanes,Vec(16,UInt(32.W)))))
   private val valid=RegInit(VecInit(Seq.fill(config.warps)(VecInit(Seq.fill(config.lanes)(0.U(16.W))))))
   private val resources=Reg(new ShaderTextureResources);private val identity=Reg(new GraphicsWorkIdentity)
@@ -42,15 +44,23 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
   private val left=Reg(Vec(config.lanes,UInt(32.W)));private val right=Reg(Vec(config.lanes,UInt(32.W)))
   private val data=Reg(Vec(config.lanes,UInt(32.W)));private val scalarData=Reg(UInt(32.W))
   private val status=RegInit(0.U(3.W));private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W))
-  private val planned=Reg(new ShaderTextureSampleRequest);private val started=RegInit(false.B);private val noFill=RegInit(false.B)
-  private val sample=Module(new ShaderTextureSampleUnit(config,stage));io.memoryRequest<>sample.io.memoryRequest;sample.io.memoryResponse<>io.memoryResponse
+  private val plannedFetch=Reg(new ShaderTextureFetchRequest(true));private val planned=Reg(new ShaderTextureSampleRequest);private val started=RegInit(false.B);private val noFill=RegInit(false.B)
+  private val sample=Module(new ShaderTextureSampleUnit(config,stage));private val fetch=Module(new ShaderTextureFetchUnit(config,capturedCoordinates=true))
+  io.memoryRequest.valid:=Mux(integer,fetch.io.memoryRequest.valid,sample.io.memoryRequest.valid)
+  io.memoryRequest.bits:=Mux(integer,fetch.io.memoryRequest.bits,sample.io.memoryRequest.bits)
+  sample.io.memoryRequest.ready:= !integer && io.memoryRequest.ready;fetch.io.memoryRequest.ready:=integer && io.memoryRequest.ready
+  sample.io.memoryResponse.valid:= !integer && io.memoryResponse.valid;sample.io.memoryResponse.bits:=io.memoryResponse.bits
+  fetch.io.memoryResponse.valid:=integer && io.memoryResponse.valid;fetch.io.memoryResponse.bits:=io.memoryResponse.bits
+  io.memoryResponse.ready:=Mux(integer,fetch.io.memoryResponse.ready,sample.io.memoryResponse.ready)
   private val chooseVector=io.vectorIn.valid && (!io.in.valid || preferVector)
   io.in.ready:=phase===State.idle && !io.clearParameters && !chooseVector
   io.vectorIn.ready:=phase===State.idle && !io.clearParameters && chooseVector
   io.busy:=phase=/=State.idle;io.status:=status;io.faultAddressValid:=faultValid;io.faultAddress:=faultAddress
   when(io.clearParameters){assert(phase===State.idle,"parameter reset must wait for texture retirement");valid.foreach(_.foreach(_:=0.U))}
-  sample.io.in.valid:=phase===State.offer;sample.io.in.bits:=planned;sample.io.out.ready:=phase===State.waitSample
-  sample.io.cancel:=started && (io.cancel || status===4.U);sample.io.invalidate:=io.invalidate || noFill || status=/=0.U
+  sample.io.in.valid:=phase===State.offer && !integer;sample.io.in.bits:=planned;sample.io.out.ready:=phase===State.waitSample
+  sample.io.cancel:=started && !integer && (io.cancel || status===4.U);sample.io.invalidate:=io.invalidate || noFill || status=/=0.U
+  fetch.io.in.valid:=phase===State.offer && integer;fetch.io.in.bits:=plannedFetch;fetch.io.out.ready:=phase===State.waitSample
+  fetch.io.cancel:=started && integer && (io.cancel || status===4.U);fetch.io.invalidate:=io.invalidate || noFill || status=/=0.U
   when(phase=/=State.idle && phase=/=State.commit && !parameter && io.cancel && status===0.U){status:=4.U}
   when(phase=/=State.idle && io.invalidate){noFill:=true.B}
   io.commit.valid:=phase===State.commit && !vector;io.commit.bits:=0.U.asTypeOf(io.commit.bits)
@@ -68,18 +78,18 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
   private def next(): Unit={when(!vector || lane===(config.lanes-1).U){phase:=State.commit}.otherwise{lane:=lane+1.U;phase:=State.nextLane}}
   switch(phase){
     is(State.idle){when(io.in.fire || io.vectorIn.fire){
-      assert(!sample.io.busy,"floating execution abandoned sampling ownership")
+      assert(!sample.io.busy && !fetch.io.busy,"texture execution abandoned sampling/fetch ownership")
       resources:=io.resources;identity:=io.identity;status:=0.U;faultValid:=false.B;faultAddress:=0.U
       scalarData:=0.U;started:=false.B;noFill:=io.invalidate
       when(io.vectorIn.fire){val q=io.vectorIn.bits;val d=q.issued.decode
         assert(ShaderTextureSampleOpcode.vector(d.instruction));assert(d.warpId<config.warps.U)
-        vector:=true.B;parameter:=ShaderTextureSampleOpcode.vectorParameters(d.instruction);pair:=d.instruction(14,12)
+        integer:=ShaderTextureSampleOpcode.vectorFetch(d.instruction);vector:=true.B;parameter:=ShaderTextureSampleOpcode.vectorParameters(d.instruction);pair:=d.instruction(14,12)
         warp:=d.warpId;rd:=d.instruction(11,7);pc:=d.pc;active:=d.activeMask;mask:=q.executionMask;lane:=0.U;component:=d.instruction(13,12)
         left:=q.issued.vs1Data;right:=q.issued.vs2Data;data:=q.issued.oldVdData;preferVector:=false.B
         phase:=Mux(ShaderTextureSampleOpcode.vectorParameters(d.instruction),State.writeParameters,State.nextLane)
       }.otherwise{val q=io.in.bits;val d=q.decode;val first=PriorityEncoder(d.activeMask)
         assert(ShaderTextureSampleOpcode.scalar(d.instruction));assert(d.warpId<config.warps.U)
-        vector:=false.B;parameter:=ShaderTextureSampleOpcode.scalarParameters(d.instruction);pair:=d.instruction(14,12)
+        integer:=ShaderTextureSampleOpcode.scalarFetch(d.instruction);vector:=false.B;parameter:=ShaderTextureSampleOpcode.scalarParameters(d.instruction);pair:=d.instruction(14,12)
         warp:=d.warpId;rd:=d.instruction(11,7);pc:=d.pc;active:=d.activeMask;lane:=first;component:=d.instruction(13,12)
         mask:=Mux(ShaderTextureSampleOpcode.scalarParameters(d.instruction),d.activeMask,UIntToOH(first,config.lanes))
         left:=VecInit(Seq.fill(config.lanes)(q.rs1Data));right:=VecInit(Seq.fill(config.lanes)(q.rs2Data));data:=0.U.asTypeOf(data);preferVector:=true.B
@@ -97,9 +107,14 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
     is(State.nextLane){when(status=/=0.U || io.cancel){phase:=State.commit}.elsewhen(mask(lane)){phase:=State.capture}.otherwise{next()}}
     is(State.capture){
       val words=values(warp)(lane);val control=right(lane);val implicitMode=control(1,0)===0.U
-      val illegal=valid(warp)(lane)=/="hffff".U || control(31,3).orR || control(1,0)===3.U ||
+      val illegal=valid(warp)(lane)=/="hffff".U || Mux(integer,control.orR || words.slice(6,13).map(_.orR).reduce(_ || _),control(31,3).orR || control(1,0)===3.U) ||
         words(13)(31,12).orR || words(14)=/=0.U || words(15)=/=0.U
       when(status=/=0.U || io.cancel){phase:=State.commit}.elsewhen(illegal){status:=1.U;phase:=State.commit}.otherwise{
+        plannedFetch:=0.U.asTypeOf(plannedFetch);plannedFetch.resources:=resources;plannedFetch.identity:=identity;plannedFetch.stage:=stage.U
+        plannedFetch.unit:=left(lane);plannedFetch.component:=component;plannedFetch.tag:=lane
+        val iq=plannedFetch.coordinates.get;iq.identity:=identity;iq.x:=words(0);iq.y:=words(1);iq.z:=words(2)
+        iq.layer:=words(3);iq.face:=words(4);iq.level:=words(5)
+        plannedFetch.offsets.get.zipWithIndex.foreach{case(o,a)=>o:=words(13)(a*4+3,a*4).asSInt.pad(5)}
         planned:=0.U.asTypeOf(planned);planned.resources:=resources;planned.identity:=identity;planned.unit:=left(lane);planned.component:=component;planned.tag:=lane
         val q=planned.parameters;q.mode:=control(1,0);q.shadow:=control(2);q.coordinates:=VecInit(words.take(3));q.layer:=words(3)
         q.reference:=words(4);q.lod:=words(5);q.bias:=words(6)
@@ -110,19 +125,19 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
           for(l<-0 until 4){q.quadCoordinates(l):=VecInit(values(warp)(group+l.U).take(3))}
           q.quadLane:=lane(1,0);q.quadValidMask:=VecInit((0 until 4).map(l=>valid(warp)(group+l.U)==="hffff".U)).asUInt
         }else{
-          when((stage==1).B && implicitMode){status:=1.U}
+          when(!integer && (stage==1).B && implicitMode){status:=1.U}
         }
-        phase:=Mux((stage==1 && (config.lanes<4 || config.lanes%4!=0)).B && implicitMode,State.commit,State.offer)
+        phase:=Mux((stage==1 && (config.lanes<4 || config.lanes%4!=0)).B && implicitMode && !integer,State.commit,State.offer)
       }
     }
-    is(State.offer){when(sample.io.in.fire){started:=true.B;phase:=State.waitSample}}
-    is(State.waitSample){when(sample.io.out.fire){
-      started:=false.B;val r=sample.io.out.bits;assert(r.tag===lane && r.unit===left(lane));val code=r.status
+    is(State.offer){when(sample.io.in.fire || fetch.io.in.fire){started:=true.B;phase:=State.waitSample}}
+    is(State.waitSample){when(sample.io.out.fire || fetch.io.out.fire){
+      started:=false.B;val r=Wire(new ShaderTextureFetchResult);r:=0.U.asTypeOf(r);r.tag:=Mux(integer,fetch.io.out.bits.tag,sample.io.out.bits.tag);r.unit:=Mux(integer,fetch.io.out.bits.unit,sample.io.out.bits.unit);r.status:=Mux(integer,fetch.io.out.bits.status,sample.io.out.bits.status);r.value:=Mux(integer,fetch.io.out.bits.value,sample.io.out.bits.value);r.faultAddressValid:=Mux(integer,fetch.io.out.bits.faultAddressValid,sample.io.out.bits.faultAddressValid);r.faultAddress:=Mux(integer,fetch.io.out.bits.faultAddress,sample.io.out.bits.faultAddress);assert(r.tag===lane && r.unit===left(lane));val code=r.status
       when((code=/=0.U && code=/=4.U) || (status===0.U && !io.cancel)){status:=code
         when(code=/=0.U){faultValid:=r.faultAddressValid;faultAddress:=r.faultAddress}}
       when(code===0.U && status===0.U && !io.cancel){when(vector){data(lane):=r.value}.otherwise{scalarData:=r.value}}
       when(code=/=0.U || status=/=0.U || io.cancel){phase:=State.commit}.otherwise{next()}
     }}
-    is(State.commit){when(io.commit.fire || io.vectorCommit.fire){assert(!sample.io.busy,"floating retirement escaped sample drain");phase:=State.idle}}
+    is(State.commit){when(io.commit.fire || io.vectorCommit.fire){assert(!sample.io.busy && !fetch.io.busy,"texture retirement escaped sample/fetch drain");phase:=State.idle}}
   }
 }
