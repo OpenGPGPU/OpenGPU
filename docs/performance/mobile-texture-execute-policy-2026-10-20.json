@@ -1,0 +1,189 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Optional TexSampleUnit scalar/vector signed per-axis policy, prepared fault transport and full-width implicit LOD",
+  "based_on_commit": "588d7b5",
+  "source_files": 638,
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-execute-policy-source-v2.json",
+    "sha256": "8706e1cc29ce677e849dcf24e5aa2be5dda6f0065492c023cfe3f42aaae40d5d"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-texture-execute-policy-source-v2.tar.gz",
+    "sha256": "a804b626e2959f9edd3217962700e23bfc61ab6757807cd75deee9d47ef1accb"
+  },
+  "result": {
+    "path": ".artifacts/mobile-texture-execute-policy-controls-v2-result.json",
+    "sha256": "5da30260f8f2a6316af25d93f10b1e8e89f3b27fc68a06a2ba1af7ab2ebdabd9"
+  },
+  "log": {
+    "path": ".artifacts/mobile-texture-execute-policy-controls-v2.log",
+    "sha256": "9b35b9e32d4bed869816960b5b99717225d5f43d93cf3ccfdb0b8090bfe6dfe4"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "test_counts": [
+        22
+      ],
+      "success_tasks": 10,
+      "policy_lane_profiles": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32
+      ],
+      "arbitration": 1,
+      "partial_quad_profiles": 2
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 80.71574350004084,
+    "finished_utc": "2026-10-20T04:24:37.626286+00:00"
+  },
+  "passed": 22,
+  "new_checks": 7,
+  "legacy_checks": 15,
+  "abi_checks": 4,
+  "rtl_emissions": 5,
+  "policy_instruction_cases": 373,
+  "faulted_instructions": 64,
+  "empty_vectors": 20,
+  "full_quad_implicit_lod_cases": 28,
+  "profiles": [
+    {
+      "lanes": 1,
+      "vectors": 32,
+      "scalars": 26,
+      "faults": 11,
+      "emptyVectors": 9,
+      "reads": 107,
+      "reordered": 36,
+      "implicitLodCases": 0,
+      "partialQuadFaults": 1
+    },
+    {
+      "lanes": 2,
+      "vectors": 32,
+      "scalars": 26,
+      "faults": 11,
+      "emptyVectors": 3,
+      "reads": 150,
+      "reordered": 57,
+      "implicitLodCases": 0,
+      "partialQuadFaults": 1
+    },
+    {
+      "lanes": 4,
+      "vectors": 37,
+      "scalars": 26,
+      "faults": 10,
+      "emptyVectors": 2,
+      "reads": 256,
+      "reordered": 121,
+      "implicitLodCases": 7,
+      "partialQuadFaults": 0
+    },
+    {
+      "lanes": 8,
+      "vectors": 37,
+      "scalars": 26,
+      "faults": 10,
+      "emptyVectors": 2,
+      "reads": 390,
+      "reordered": 203,
+      "implicitLodCases": 7,
+      "partialQuadFaults": 0
+    },
+    {
+      "lanes": 16,
+      "vectors": 37,
+      "scalars": 26,
+      "faults": 10,
+      "emptyVectors": 2,
+      "reads": 627,
+      "reordered": 358,
+      "implicitLodCases": 7,
+      "partialQuadFaults": 0
+    },
+    {
+      "lanes": 32,
+      "vectors": 37,
+      "scalars": 26,
+      "faults": 10,
+      "emptyVectors": 2,
+      "reads": 1125,
+      "reordered": 689,
+      "implicitLodCases": 7,
+      "partialQuadFaults": 0
+    }
+  ],
+  "default_config_contention": {
+    "lanes": 16,
+    "warps": 8,
+    "order": "VSVSV",
+    "instructions": 5,
+    "faults": 2,
+    "reads": 46,
+    "held_completion": true,
+    "owner_pc_warp_and_binding_preserved": true
+  },
+  "ci": {
+    "path": ".artifacts/mobile-texture-execute-policy-ci-v2.log",
+    "sha256": "33564c66837704a225331df4bb30af6f3d40f6608d0b3c18aec257a98a54e2b0"
+  },
+  "reconciliation": {
+    "path": ".artifacts/mobile-texture-execute-policy-reconciliation-v2.json",
+    "sha256": "fb01cbb7bd143469a19b2d2a542dd405df6281e73cc9c053f4cbbc6b339a78cc"
+  },
+  "baseline_result": {
+    "path": ".artifacts/mobile-texture-execute-legacy-controls-v1-result.json",
+    "sha256": "8dd45958ed7fe4b61cbcbdac65b2a0bc4cb0123ce5ce62743981b3ddfb170713"
+  },
+  "baseline_source": {
+    "path": ".artifacts/mobile-texture-execute-legacy-source-v1.json",
+    "sha256": "4e69ef38159a49be3a3b32d35e261921994d350f39837e8038c8db0f3d93d88c"
+  },
+  "baseline_archive": {
+    "path": ".artifacts/mobile-texture-execute-legacy-source-v1.tar.gz",
+    "sha256": "d0c25d229970f6c32d5ae535a1baf81bdffede1400bbb563d17559d6b71a2286"
+  },
+  "rtl_audit": {
+    "path": ".artifacts/mobile-texture-execute-policy-rtl-audit-v2.json",
+    "sha256": "e310afa68347ef9114f23f77361fb51b6562b75bafdd3fdc2f8cffa9a03a8084"
+  },
+  "legacy_active_sv_ports_hierarchy_equal": true,
+  "legacy_profiles": [
+    "default 16-lane eight-warp",
+    "1-lane two-warp",
+    "4-lane two-warp",
+    "32-lane two-warp"
+  ],
+  "extra_fpu_cu_sram": 0,
+  "previous_component_result": {
+    "path": ".artifacts/mobile-texture-execute-policy-controls-v1-result.json",
+    "sha256": "567bd034ee6a8be454ae46a6f5941032a2d99683aa3641e4a3e3cc2eeec27330"
+  },
+  "previous_component_source": {
+    "path": ".artifacts/mobile-texture-execute-policy-source-v1.json",
+    "sha256": "816ef458d8de1a4ffa81b0ef3a087d1a4e9abdd455433cbb1600fa819d6c4da2"
+  },
+  "previous_result_scope": "Passing pre-boundary component controls, superseded by v2 after adding explicit partial-quad implicit-LOD rejection and scalar nonzero mip controls.",
+  "contract": {
+    "snapshot": "Policy, base, dimensions, format, mip limits and bias are captured at scalar/vector instruction admission and survive all lane/mip work despite poisoned live controls.",
+    "faults": "Aggregate over executed samples and retain with held scalar/vector completion. Suppress writeRd/writesVd on fault; owners must report/cancel faults before normal completion. Reserved modes, zero dimensions, inverted mip ranges and unsupported partial-quad implicit LOD issue no reads.",
+    "empty": "No executing vector lanes preserves old destination with no sampling or coordinate fault.",
+    "lod": "Full signed/unsigned edge differences feed the existing maximum-edge gradient contract. A 46-bit rho may produce exponent 29; apply signed bias using seven bits before narrowing to selected mip limits. Fractional selection retains the existing Q0.8 log LUT.",
+    "nonquad": "One/two-lane vectors support fixed mip sampling; implicit-LOD requests fault without reads. Scalar bias/clamp selection remains supported.",
+    "cache": "Invalidate at every instruction admission; different memory contents and binding formats across consecutive operations cannot reuse stale cached words."
+  },
+  "limits": [
+    "Native/task sampler descriptors and coordinate-fault owner integration remain unconnected. Instruction encodings, decoder and ABI bytes are unchanged; no new public shader/native mode is exposed.",
+    "These are execute-side component requests and exact output/ownership checks, not a new actual-CU shader program or native policy run. Floating coordinate conversion, complete resource/format/gradient/fetch semantics, precision conformance and throughput remain open.",
+    "Legacy synthesis-active SV, ports and hierarchy match four independent pre-extension emissions; no new area, clock, power or rate result is claimed.",
+    "The independent six-check native facing run passes; the 130-of-176 native depth checkpoint remains live and is not part of this 22-check result.",
+    "No T03/T04/H4/H6/H0-H8 or GLES closure. PPA remains synthesis only."
+  ]
+}

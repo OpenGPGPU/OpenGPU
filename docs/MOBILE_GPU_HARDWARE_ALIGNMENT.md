@@ -5462,7 +5462,7 @@ with the completed regression, rather than a separately rerun main test group.
 The long native depth and facing regressions remain separate and in progress.
 
 
-## Texture instruction policy transport development (2026-10-20)
+## Qualified texture instruction policy transport (2026-10-20)
 
 An optional TexSampleUnit path now captures signed/per-axis coordinate policy
 and complete scalar/vector texture bindings at instruction admission. Direct
@@ -5472,9 +5472,14 @@ empty vector masks preserve the old destination without sampling or faults.
 Signed gradient differences preserve opposite-sign endpoints. The full
 46-bit gradient exponent is biased before mip-range narrowing, including
 large gradients with negative bias. Invalid mip intervals join the no-read
-fault path. Qualification is pending; task/native descriptor transport and
-fault-owner integration remain open. Legacy default RTL and ISA stability
-remain required gates. No H4/H6 or PPA closure is claimed.
+fault path. The [22-check execution qualification](performance/mobile-texture-execute-policy-2026-10-20.json)
+passes on 638 unchanged source files, plus four ABI checks, five RTL emissions
+and CI selection. Seven new checks cover 373 instruction cases, including
+64 faults and twenty empty vectors. One/two-lane vectors reject implicit LOD
+without reads while retaining fixed-mip and scalar selection. Four independent
+legacy profiles retain identical synthesis-active SV, ports and hierarchy;
+decoder/ISA/ABI bytes stay unchanged. Task/native descriptor transport and
+fault-owner integration remain open. No H4/H6 or PPA closure is claimed.
 
 
 ## Independent native qualification update (2026-10-20)
