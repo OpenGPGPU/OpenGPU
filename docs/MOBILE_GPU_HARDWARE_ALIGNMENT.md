@@ -6268,3 +6268,15 @@ confirms900ps mapping optimization,but the actual1000ps gate still misses by
 The new optional CLI target rejects6 invalid cases before output creation and
 preserves the unset default. A register cut between clipped bounds and scan
 admission will now be measured with the standard mapping target.
+
+
+## Registered clipped bounds before scan admission (2026-10-20)
+
+The [clipped-bounds candidate](performance/mobile-point-line-clipped-pipeline-2026-10-20.json)
+retains four signed64 clipped bounds before legal-state,length,empty-view and
+scan-admission decisions. Full-width guards remain before narrowing;one added
+preparation state preserves sample ordering. All12 controls pass on unchanged
+674-file source,including39015 order cases,4871 arithmetic cases,2401 lattice
+lines and600 cancellation/reset cuts. Default emission passes. Fresh integration,
+cycle measurement and standard-target synthesis remain pending;no positive
+clock,throughput or full H0-H8 result is claimed.

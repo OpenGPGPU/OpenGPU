@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "22_fresh_controls_and_two15_fixture_groups_pass_standard_mapping_setup_miss",
+  "status": "22_controls_pass_standard_and_abc900_profiles_both_setup_fail",
   "source_files": 674,
   "source_manifest_sha256": "7b6d208022c422c53c9566fd3fd789d7853d5de9a391ef1f7a315f55dbc52210",
   "source_base_record": {
@@ -34,7 +34,7 @@
   },
   "measured_path_record": "docs/performance/mobile-point-line-admission-synthesis-before-2026-10-20.json",
   "pending": [
-    "Measure900ps ABC optimization target with the declared1000ps setup clock and unchanged RTL."
+    "Qualify register cut between clipping and scan admission."
   ],
   "limits": [
     "No positive setup,native clock or throughput result yet.",
@@ -55,5 +55,6 @@
       "sha256": "9650be837390b3d7ef088ba6632a65ff0d459f6c4fc04d1eea2b5ae127c5c5b2"
     },
     "scope": "Targeted component,primitive,shared-CU and native AXI controls;not full H0-H8 regression."
-  }
+  },
+  "mapping_target_experiment": "docs/performance/mobile-point-line-abc-target-before-2026-10-20.json"
 }

@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "12_clipped_component_controls_pass_integration_cycles_synthesis_pending",
+  "source_files": 674,
+  "source_manifest_sha256": "a2c67d7405f8d4e6e39a23becb81465823ac6e3ef72a479a47848ea84d34d964",
+  "source_base_record": {
+    "path": "docs/performance/mobile-point-line-admission-balanced-2026-10-20.json",
+    "sha256": "735c487ae7068b02eb0aa6e435f1ea991d61c649b9bee64b0b0567a6855e7528"
+  },
+  "source_changes": {
+    "src/main/scala/opengpu/graphics/PointLineRasterizer.scala": {
+      "before": "53a57dbf71133f0be26b6df6e31c699aad7c9fd2df2c97f54a5a0f03fa3285b0",
+      "after": "01e995edea1dbe0ce9f7647f162f61fee1fc50e9e8f2ff58bc4db42c629a6498"
+    }
+  },
+  "behavior": "Capture four clipped bounds as signed64 before legal-state,length/weight,empty-view and scan-admission decisions. Keep all full-width guards before narrowing. Add one preparation state without changing per-sample ordering.",
+  "validation": {
+    "checks": 12,
+    "rank_order_cases": 39015,
+    "full_width_comparisons": 4871,
+    "lattice_lines": 2401,
+    "cancel_and_reset_cuts": 600,
+    "source_unchanged": true,
+    "rtl_emission": true,
+    "log": {
+      "path": ".artifacts/mobile-point-line-clipped-pipeline-v3.log",
+      "sha256": "49c45f64a01c7a7c722d3dfdf115f8f9af364ce9e1ff59fb98c3dc996fb3cd1b"
+    }
+  },
+  "measured_path_record": "docs/performance/mobile-point-line-balanced-synthesis-before-2026-10-20.json",
+  "pending": [
+    "Fresh primitive/shared-CU/production AXI integration.",
+    "Fresh15-case cycle measurement.",
+    "Fresh standalone synthesis with standard ABC target,1000ps clock,25 percent I/O,no retiming."
+  ],
+  "limits": [
+    "No positive setup,native clock or throughput result yet.",
+    "Full H0-H8/GLES hardware objective remains open."
+  ]
+}

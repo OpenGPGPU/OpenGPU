@@ -39,7 +39,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     val in=Flipped(Decoupled(new PointLineRasterRequest));val out=Decoupled(new RasterQuad(g))
     val cancel=Input(Bool());val busy=Output(Bool());val fault=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,decode,measure,lengthProducts,lengthSum,bounds,clipBounds,threshold,startQuad,startLane,laneProducts,laneParameter,laneRemaining,laneExport,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
+  private object State extends ChiselEnum {val idle,decode,measure,lengthProducts,lengthSum,bounds,clipBounds,admitBounds,threshold,startQuad,startLane,laneProducts,laneParameter,laneRemaining,laneExport,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new PointLineRasterRequest);private val output=Reg(new RasterQuad(g))
   private val x=Reg(UInt(16.W));private val y=Reg(UInt(16.W));private val minX=Reg(UInt(16.W));private val maxX=Reg(UInt(16.W));private val maxY=Reg(UInt(16.W))
   private val lane=RegInit(0.U(2.W));private val sample=RegInit(0.U(2.W));private val mask=RegInit(0.U(g.maxSampleCount.W));private val any=RegInit(false.B)
@@ -68,7 +68,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   lengthSum.io.a:=lengthSquareX.pad(67).asUInt;lengthSum.io.b:=lengthSquareY.pad(67).asUInt;lengthSum.io.carryIn:=false.B
   private val pointSize=Reg(UInt(24.W));private val lineSize=Reg(UInt(24.W));private val integerWidth=Reg(UInt(7.W))
   private val widthSquared=Reg(UInt(48.W));private val lineBound=Reg(UInt(115.W))
-  private val expandedBounds=Reg(Vec(4,SInt(64.W)))
+  private val expandedBounds=Reg(Vec(4,SInt(64.W)));private val clippedBounds=Reg(Vec(4,SInt(64.W)))
   private val px=x+&lane(0);private val py=y+&lane(1)
   private val cx=(px.zext<<g.subPixelBits)+half.S;private val cy=(py.zext<<g.subPixelBits)+half.S
   private val laneEx=cx-&request.x0;private val laneEy=cy-&request.y0
@@ -198,6 +198,11 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
       val b=Mux((xb>>g.subPixelBits)>=highX.zext,highX.zext-1.S,xb>>g.subPixelBits)
       val c=Mux((ya>>g.subPixelBits)<lowY.zext,lowY.zext,ya>>g.subPixelBits)
       val d=Mux((yb>>g.subPixelBits)>=highY.zext,highY.zext-1.S,yb>>g.subPixelBits)
+      clippedBounds(0):=a;clippedBounds(1):=b;clippedBounds(2):=c;clippedBounds(3):=d
+      phase:=State.admitBounds
+    }
+    is(State.admitBounds){
+      val a=clippedBounds(0);val b=clippedBounds(1);val c=clippedBounds(2);val d=clippedBounds(3)
       when(!Fp32RasterState.legal(request.state,g)){fault:=true.B;phase:=State.idle}
         .elsewhen(lowX>=highX || lowY>=highY || a>b || c>d || (!request.point && length===0.S)){phase:=State.idle}
         .elsewhen(!request.point && length>BigInt(Long.MaxValue).S){fault:=true.B;phase:=State.idle}
