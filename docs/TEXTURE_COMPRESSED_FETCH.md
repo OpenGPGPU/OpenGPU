@@ -1,8 +1,10 @@
 # Native ETC2/EAC component fetch
 
-Status: implementation and independent block/image checks in progress. Native
-execution, complete fault/mip qualification and fresh synthesis are required
-before promotion. Full H4/H6/H0–H8 hardware completion remains open.
+Status: qualified native component fetch with 130 distinct targeted tests,
+nine generated ABI checks, combined C11 headers and five standalone synthesis
+setup/mapping screens. Full H4/H6/H0–H8 hardware completion remains open.
+The [functional record](performance/mobile-etc2-eac-fetch-2026-10-20.json) retains
+source identity, the independent oracle and failed controls.
 
 The image catalog uses its remaining IDs54–63 for the ten core ETC2/EAC formats.
 Existing IDs0–53 and GXI1/GXL1/GXR1/GXB1/GXQ1 record layouts remain stable.
@@ -59,3 +61,28 @@ The format rules follow GLES 3.0.6 section 3.8.6 and Appendix C:
 General filtering/LOD, swizzle, depth comparison, decoded-block caching, Mobile
 throughput, compiler/driver admission and complete hardware qualification remain
 separate outstanding requirements.
+
+
+The composed address owner registers target/block coefficient preparation before
+full-width multiplication. Its address pipeline grows from 4 to 5 cycles while
+retaining one address/cycle; the original 3/4-cycle profiles remain available.
+Image decode is serialized: 12 cycles for uncompressed storage and 18 cycles for
+compressed storage after decoder admission, plus any held-result cycles.
+
+The final controls include 176,144 independent block comparisons, 10,240 complete
+compressed FP32 pixel comparisons and 8,190 exhaustive EAC reconstruction-value
+checks. Native tests cover 2,320 compressed components per stage, all local block
+coordinates, NPOT edges, cube faces/array layers, three mip levels, held results,
+post-data cancellation, vector fault atomicity and 1/4/16/32-lane widths.
+Actual-CU checks cover 284 stage draws; translated native checks cover 68 frames
+and 204 submitted primitive draws across both payload modes, with legacy paths
+retained. The 40-offset post-data scan observes 28 cancelled and 12 held results.
+
+The [synthesis record](performance/mobile-etc2-eac-synthesis-2026-10-20.json)
+retains the initial endpoint miss of -15.685 ps and its correction. At unchanged
+standard 1000 ps, 25% I/O, TC/SLVT and no retiming, final core/I/O setup margins are
+block +551.516/+647.030 ps, typed fetch +223.136/+416.631 ps, sampler admission
++205.927/+424.063 ps, shader endpoint +112.409/+384.441 ps and native wrapper
++116.537/+167.515 ps. The block result is carried by byte-identical emitted RTL;
+the four composed screens are fresh after the address cut. The wrapper maps
+199,144 cells. These screens do not qualify a whole-host clock or frame rate.

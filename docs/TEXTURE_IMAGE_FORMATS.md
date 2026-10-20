@@ -1,9 +1,10 @@
 # Typed image storage formats
 
 The image catalog is independent of attachment renderability. It contains all 54
-uncompressed sized texture formats required by GLES 3.0. This is format fetch/decode
+uncompressed sized texture formats required by GLES 3.0 and the ten
+[ETC2/EAC formats](TEXTURE_COMPRESSED_FETCH.md), for 64 image IDs. This is format fetch/decode
 coverage in the native indexed component-fetch path, not GLES conformance or a
-claim of complete sampling. ETC2/EAC decode, swizzle, general floating-coordinate
+claim of complete sampling. Swizzle, general floating-coordinate
 sampling, filtering/LOD, depth comparison and representative throughput remain
 open in `MOBILE_GPU_HARDWARE_ALIGNMENT.md`.
 
@@ -41,11 +42,12 @@ mini-float NaNs canonicalized to `0x7fc00000`. FP32 color/depth storage preserve
 raw bits. The interface consumes prepared storage and does not implement API
 upload clamping or format conversion.
 
-Image extraction, numeric preparation and rounding occupy three cycles per
-component, twelve cycles for four components following decoder admission, plus
+For uncompressed images, extraction, numeric preparation and rounding occupy
+three cycles per component, twelve cycles for four components after admission, plus
 any held output cycles. This adds four decoder cycles to the previous image
 path. Attachment decoder latency is unchanged. The native instruction remains
-serialized and no new rate claim is made.
+serialized and no new rate claim is made. Compressed storage adds six internal
+block-decode/handshake cycles, for eighteen decoder cycles before held output.
 
 GXI1 admission rejects depth/depth-stencil with 3D targets before level or texel
 reads. Noncomparison depth, integer and FP32 color require nearest-only sampler
@@ -66,15 +68,15 @@ SLVERR. Profiles without native vertex/fragment execution leave GTF1 unmapped.
 | 1 | 8 | Word count |
 | 2 | 1 | Image catalog version |
 | 3 | 6 | Format ID bits |
-| 4 | 54 | Supported format count |
+| 4 | 64 | Supported format count |
 | 5 | `0xffffffff` | Supported IDs0–31 |
-| 6 | `0x003fffff` | Supported IDs32–53 |
+| 6 | `0xffffffff` | Supported IDs32–63 |
 | 7 | 0 | Reserved, no filtering/comparison capability |
 
 Software first checks GTX1 typed-fetch support, then reads GTF1. Older typed-fetch
 hardware without GTF1 supports only IDs0–35. A header's compile-time count is
-insufficient to discover device support. Ten remaining IDs are reserved and
-rejected; no ETC2/EAC support is advertised.
+insufficient to discover device support. All 64 image IDs are assigned. Software
+checks the device mask before using IDs54–63; earlier GTF1 hardware supports only its advertised subset.
 
 The format inventory, noncomparison depth rules, depth expansion and packed float
 semantics follow GLES 3.0.6 sections 3.8.3.1,3.8.13,3.8.15,3.8.17 and3.9.2.1:
@@ -86,3 +88,7 @@ combined C11 headers and both failing/corrected AXI fixtures. Four standalone
 [synthesis screens](performance/mobile-texture-image-formats-synthesis-2026-10-20.json)
 pass full mapping/setup at standard 1000 ps, 25% I/O, TC/SLVT without retiming.
 The native wrapper maps 192,891 cells; decoder latency grows 8 to 12 cycles.
+
+The [compressed extension qualification](performance/mobile-etc2-eac-fetch-2026-10-20.json)
+now covers 130 distinct targeted tests and all 64 image formats. The 119-test
+record above retains the earlier 54-format snapshot.
