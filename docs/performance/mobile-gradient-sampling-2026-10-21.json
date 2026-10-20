@@ -1,0 +1,352 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "116_distinct_tests_nine_ABIs_pass_three_arithmetic_screens_pass_two_composed_setup_screens_fail",
+  "source_commit": "e97f270cf833d6ed3a477a72968ea016bc299bb2",
+  "source_files": 795,
+  "source_manifest_sha256": "c040921f8937770ec9a1c8a2096f73fe80e94ec1b78348f81c7070e89d1bbf9e",
+  "source_archive_proof": {
+    "commit": "e97f270cf833d6ed3a477a72968ea016bc299bb2",
+    "source_files": 795,
+    "manifest_sha256": "c040921f8937770ec9a1c8a2096f73fe80e94ec1b78348f81c7070e89d1bbf9e",
+    "archive_sha256": "be6e85d327a5c8d93d0b3e92bba64909b1e16dd3d50893825abc1f2ed7b0037a",
+    "git_archive_and_worktree_exact": true
+  },
+  "source_base_record": "docs/performance/mobile-effective-lod-sampling-2026-10-20.json",
+  "source_base_record_sha256": "fa824909599a601da034f6a748d68b91fbf130740094968fd5a9b998cf76e511",
+  "source_changes_sha256": {
+    "src/main/scala/opengpu/elaboration/EmitTextureImageSample.scala": "fc5423d1c04fe7ba582043efcf2774875318280f5be253da7a4e0eecbca8348c",
+    "src/main/scala/opengpu/graphics/TextureImageSampleUnit.scala": "3afd3f7b26770a80dc84656e05595b86202e1ac84632a6d0d084db7c6162c09b",
+    "src/test/scala/opengpu/graphics/TextureImageSampleUnitSpec.scala": "c0aa182a338edda24ad879ef80af00a75b7a2ce5cd7adde2699182e461a830e7"
+  },
+  "source_additions_sha256": {
+    "src/main/scala/opengpu/graphics/TextureCubeGradientUnit.scala": "6db387e9704e6588ae146df4cc4d348565d47346b3102d57439bf9555df65c26",
+    "src/main/scala/opengpu/graphics/TextureGradientLodUnit.scala": "f0e47e90714601ed290e8c94958ad28535c0cabc26d3e5d3072a7ab189bf06ff",
+    "src/main/scala/opengpu/graphics/TextureGradientProductDifferenceUnit.scala": "180ba12c7137b91ba75c06fc01378ebef7f6faecd03f1c8b6a207b7b344ef2cd",
+    "src/main/scala/opengpu/graphics/TextureImageGradientLodUnit.scala": "1777082f2ba15029a8439b43f6acbecd3697a60f55fce6c60fbfde0be27b4d03",
+    "src/test/scala/opengpu/graphics/TextureCubeGradientUnitSpec.scala": "aab112e0216cdba5f34ed944e98f7f6ce7b23e0308e1b10ccedc7cb9dd59336b",
+    "src/test/scala/opengpu/graphics/TextureGradientLodUnitSpec.scala": "1d6b59393719e71a8a780059c41f4935023c6ff6929d6d66aa916ef3ff3b3423",
+    "src/test/scala/opengpu/graphics/TextureGradientProductDifferenceUnitSpec.scala": "52a6906c911d0e67e19f7b0afd7d01c17ef18a7e2230c17dfa9d2dc9e505c0e2"
+  },
+  "functional": {
+    "log": ".artifacts/mobile-gradient-sampling-v1-qualified.log",
+    "sha256": "5c012e93f9f3f76ae02a9fefb256fb7725c74e44094a1462030e92e7afc44b65",
+    "distinct_targeted_tests": 116,
+    "by_suite": {
+      "VectorFdivAluSpec": 4,
+      "ClipperExactDivisionSpec": 1,
+      "FpuBackendSpec": 7,
+      "ClipFloatArithmeticSpec": 7,
+      "TextureImageResourceAddressUnitSpec": 6,
+      "Fp32DivLaneSpec": 12,
+      "TextureCubeGradientUnitSpec": 2,
+      "TextureCubeProjectionUnitSpec": 2,
+      "TextureGradientProductDifferenceUnitSpec": 2,
+      "TextureLinearFilterUnitSpec": 3,
+      "TextureFloatAxisPipelineSpec": 2,
+      "TextureSampleSelectionSpec": 2,
+      "TextureImageSampleUnitSpec": 6,
+      "TextureGradientLodUnitSpec": 3,
+      "TextureImageFetchUnitSpec": 9,
+      "TextureImageBindingUnitSpec": 14,
+      "TextureImageLevelSampleUnitSpec": 6,
+      "TextureImageSamplerBindingUnitSpec": 12,
+      "NativeShaderTextureUnitSpec": 16
+    },
+    "cases": [
+      "VectorFdivAluSpec::should execute vfdiv per lane",
+      "VectorFdivAluSpec::should execute vfrdiv as scalar divided by vector",
+      "VectorFdivAluSpec::should retain a fast special-case lane until a normal division finishes",
+      "VectorFdivAluSpec::should preserve masked-off lanes and report flags",
+      "ClipperExactDivisionSpec::should match every clipped field, retain results, cancel on reset and reuse the engine",
+      "FpuBackendSpec::should commit a compare result to the scalar register file",
+      "FpuBackendSpec::should move a scalar register into an FP register",
+      "FpuBackendSpec::should convert an FP register to a signed integer",
+      "FpuBackendSpec::should convert a scalar integer to an FP register",
+      "FpuBackendSpec::should load an FP word through the memory port",
+      "FpuBackendSpec::should expose an FVF read of an initialized FP register",
+      "FpuBackendSpec::should use the per-warp dynamic frm for fcvt rounding",
+      "ClipFloatArithmeticSpec::should round directed sums and gradual FP32 packing toward zero without changing legacy arithmetic",
+      "ClipFloatArithmeticSpec::should retain directed rounding through accepted cancellation held replies and healthy reuse",
+      "ClipFloatArithmeticSpec::should roundtrip every FP32 class and gradual boundary through the extended codec",
+      "ClipFloatArithmeticSpec::should match exact rational RNE arithmetic across the complete clip exponent envelope",
+      "ClipFloatArithmeticSpec::should retain tiny crossing contributions and separately report final FP32 packing loss",
+      "ClipFloatArithmeticSpec::should preserve special arithmetic and reject malformed or out-of-envelope operands",
+      "ClipFloatArithmeticSpec::should drain accepted arithmetic through cancellation and retain an already offered response",
+      "TextureImageResourceAddressUnitSpec::should load all target mip records with reordered tags and return exact checked cached spans",
+      "TextureImageResourceAddressUnitSpec::should retain exact cache identity and prevent invalidated fills from becoming reusable views",
+      "TextureImageResourceAddressUnitSpec::should accept records and images ending at 4 GiB and reject invalid lookup envelopes before reads",
+      "TextureImageResourceAddressUnitSpec::should reject corrupt headers canonical padding view bounds and coordinates without publishing partial state",
+      "TextureImageResourceAddressUnitSpec::should drain held reads memory faults and cancelled address work before allowing healthy reuse",
+      "TextureImageResourceAddressUnitSpec::should apply configured image and layer limits to GPU loaded views",
+      "Fp32DivLaneSpec::should round finite quotients and exception flags against exact rational arithmetic in every rounding mode",
+      "Fp32DivLaneSpec::should divide finite FP32 operands",
+      "Fp32DivLaneSpec::should divide by four",
+      "Fp32DivLaneSpec::should round one third to nearest even",
+      "Fp32DivLaneSpec::should raise DZ for finite divided by zero",
+      "Fp32DivLaneSpec::should raise NV for zero divided by zero",
+      "Fp32DivLaneSpec::should return signed zero for finite divided by infinity",
+      "Fp32DivLaneSpec::should preserve the sign of a negative quotient",
+      "Fp32DivLaneSpec::should produce an exact subnormal result",
+      "Fp32DivLaneSpec::should normalize a subnormal dividend",
+      "Fp32DivLaneSpec::should report overflow when the quotient exceeds max finite",
+      "Fp32DivLaneSpec::should honor directed rounding modes",
+      "TextureCubeGradientUnitSpec::should differentiate every cube face with exact cancellation and retain derivatives beyond FP32 and clip exponent ranges",
+      "TextureCubeGradientUnitSpec::should drain accepted numerator and divide work at cancellation cuts and preserve immutable completions",
+      "TextureCubeProjectionUnitSpec::should project all face ties and FP32 exponent extremes against division and fused affine references",
+      "TextureCubeProjectionUnitSpec::should drain accepted divides at every cancellation cut and retain healthy reuse",
+      "TextureGradientProductDifferenceUnitSpec::should retain exact product cancellation and normalize full-range finite differences against BigInt arithmetic",
+      "TextureGradientProductDifferenceUnitSpec::should cancel every arithmetic state and retain an already offered result before healthy reuse",
+      "TextureLinearFilterUnitSpec::should filter all axis counts against independent FP32 multiply and fused-add arithmetic",
+      "TextureLinearFilterUnitSpec::should retain endpoint and duplicate bits while rejecting invalid active weights before arithmetic",
+      "TextureLinearFilterUnitSpec::should drain accepted arithmetic at cancellation cuts and preserve already held completion",
+      "TextureFloatAxisPipelineSpec::should select exact taps across every FP32 exponent sign wrap filter and representative NPOT extent",
+      "TextureFloatAxisPipelineSpec::should cover every14-bit extent half-texel boundaries negative subnormals and independent random coordinates under backpressure",
+      "TextureSampleSelectionSpec::should select min mag and mip levels across FP32 boundaries with independent scalar arithmetic",
+      "TextureSampleSelectionSpec::should round array layers before saturation without narrowing large finite inputs",
+      "TextureImageSampleUnitSpec::should sample real images using base extent gradients cube Jacobians and sampler clamps",
+      "TextureImageSampleUnitSpec::should drain gradient and logarithm work before cancellation completion and retain healthy reuse",
+      "TextureImageSampleUnitSpec::should sample real GXI GXL GXS records across all formats targets min mag and mip modes",
+      "TextureImageSampleUnitSpec::should retain admitted mip snapshots and reject malformed resources and coordinates before data",
+      "TextureImageSampleUnitSpec::should retain a second mip data fault across cancellation even with constant swizzles",
+      "TextureImageSampleUnitSpec::should drain descriptor and texel offers on cancellation then recover without partial color",
+      "TextureGradientLodUnitSpec::should derive bounded-error lambda from exact scaled gradients across all extents and extended exponent extremes",
+      "TextureGradientLodUnitSpec::should retain monotonic logarithms around powers of two and reject malformed used inputs",
+      "TextureGradientLodUnitSpec::should cancel every selection logarithm and packing stage before healthy reuse",
+      "TextureImageFetchUnitSpec::should fetch every format from a captured view without rereading mutable descriptor memory",
+      "TextureImageFetchUnitSpec::should drain captured fetch offers and reject invalid snapshots without descriptor or unsafe data reads",
+      "TextureImageFetchUnitSpec::should translate captured cross-page data without requiring a mapped descriptor and enforce every page permission",
+      "TextureImageFetchUnitSpec::should fetch every typed storage format at every line offset with exact guarded bytes and fresh data on cache hits",
+      "TextureImageFetchUnitSpec::should gather raw compressed blocks and selected cube array volume spans including the 4 GiB boundary",
+      "TextureImageFetchUnitSpec::should reject mismatched format layouts descriptors and coordinates before texture data reads then recover",
+      "TextureImageFetchUnitSpec::should attribute descriptor and data faults drain reordered tags and retain the primary fault through cancellation",
+      "TextureImageFetchUnitSpec::should retain backpressured data offers and cancel across admission fetching decoding and held results",
+      "TextureImageFetchUnitSpec::should translate descriptor and cross-page texel reads enforce each page permission and recover after flush",
+      "TextureImageBindingUnitSpec::should derive mip ranges against original dimension reduction for every root size and base level",
+      "TextureImageBindingUnitSpec::should bind authoritative formats and validate complete target mip chains before fetching typed texels",
+      "TextureImageBindingUnitSpec::should swizzle decoded components for every uncompressed format without changing raw fetches",
+      "TextureImageBindingUnitSpec::should retain captured swizzles through cache hits and held results and preserve faults for constant maps",
+      "TextureImageBindingUnitSpec::should reject unsupported swizzle states and padding before any level or data request",
+      "TextureImageBindingUnitSpec::should resolve every captured base level before fetching or validating a mip chain",
+      "TextureImageBindingUnitSpec::should apply base max and dimensional mip rules and distinguish selected-only from full-chain cache identities",
+      "TextureImageBindingUnitSpec::should reject malformed image encoding and inconsistent later mips without any texture-data access",
+      "TextureImageBindingUnitSpec::should require explicit invalidation retain published formats and prevent invalidated fills from populating the cache",
+      "TextureImageBindingUnitSpec::should attribute header level and texel faults retain primary errors and stop prompt-fault descriptor issue",
+      "TextureImageBindingUnitSpec::should retain held offers and cancel across complete mip admission texel fetch decode and held completion",
+      "TextureImageBindingUnitSpec::should translate image level and cross-page texel records and enforce each read permission before physical access",
+      "TextureImageBindingUnitSpec::should own exact 4 GiB descriptor and texel ends reject invalid image tables and retain context cache identity",
+      "TextureImageBindingUnitSpec::should preserve primary faults across nested cancellation including address zero and reject full-width caller coordinates before data",
+      "TextureImageLevelSampleUnitSpec::should map every cube edge orientation and corner deterministically across every extent",
+      "TextureImageLevelSampleUnitSpec::should sample all storage kinds and filter every supported format before applying image swizzle",
+      "TextureImageLevelSampleUnitSpec::should filter seamless cube edges and permitted corner samples across all faces including compressed sRGB",
+      "TextureImageLevelSampleUnitSpec::should compare every depth format with every GXS1 function before filtering and swizzling",
+      "TextureImageLevelSampleUnitSpec::should prune zero-weight taps retain required faults and drain coordinate data and filtering work",
+      "TextureImageLevelSampleUnitSpec::should translate selected data pages and report a late denied page without descriptor memory access",
+      "TextureImageSamplerBindingUnitSpec::should admit general sampling comparison policy without weakening explicit fetch admission",
+      "TextureImageSamplerBindingUnitSpec::should admit a captured image base before LOD selection with sampler-derived completeness",
+      "TextureImageSamplerBindingUnitSpec::should load all sampler filter wrap combinations with exact LOD bits and tag independent immutable cache reuse",
+      "TextureImageSamplerBindingUnitSpec::should reject malformed sampler encodings semantic enums NaNs and overflowing tables before publishing state",
+      "TextureImageSamplerBindingUnitSpec::should derive sampler dependent mip completeness and enforce every packed format filter and shader numeric type",
+      "TextureImageSamplerBindingUnitSpec::should invalidate every sampler cache identity field and prevent invalidated active fills from repopulating",
+      "TextureImageSamplerBindingUnitSpec::should drain stalled offers and cancellation cuts then retain healthy reuse with composed=false",
+      "TextureImageSamplerBindingUnitSpec::should drain stalled offers and cancellation cuts then retain healthy reuse with composed=true",
+      "TextureImageSamplerBindingUnitSpec::should preserve primary sampler image and level faults including valid address zero across later cancellation",
+      "TextureImageSamplerBindingUnitSpec::should translate independent sampler image and level tables and reject denied pages without physical reads",
+      "TextureImageSamplerBindingUnitSpec::should retain the selected view while draining a stalled nonmip base validation and its primary fault",
+      "TextureImageSamplerBindingUnitSpec::should backpressure reserved response IDs without consuming the owned sampler transaction",
+      "NativeShaderTextureUnitSpec::should fetch every typed component and target through independent stage bindings with stage=0",
+      "NativeShaderTextureUnitSpec::should fetch every typed component and target through independent stage bindings with stage=1",
+      "NativeShaderTextureUnitSpec::should decode every compressed format through native binding selection and block coordinates stage=0",
+      "NativeShaderTextureUnitSpec::should decode every compressed format through native binding selection and block coordinates stage=1",
+      "NativeShaderTextureUnitSpec::should apply image-view swizzle after every native format decode with stage=0",
+      "NativeShaderTextureUnitSpec::should apply image-view swizzle after every native format decode with stage=1",
+      "NativeShaderTextureUnitSpec::should retain inactive swizzled lanes and suppress all writes on constant-map coordinate or data faults",
+      "NativeShaderTextureUnitSpec::should retain inactive vector lanes and suppress every destination lane on a later active lane fault",
+      "NativeShaderTextureUnitSpec::should reject root stage binding identity malformed packets and full width indices before unsafe reads",
+      "NativeShaderTextureUnitSpec::should retain mapped read offers through cancellation cuts and preserve primary faults before healthy reuse",
+      "NativeShaderTextureUnitSpec::should drain compressed decode across post-data cancellation and preserve vector fault atomicity",
+      "NativeShaderTextureUnitSpec::should validate compressed NPOT mip chains before selected block reads and reject later layout disagreement",
+      "NativeShaderTextureUnitSpec::should select explicit mip texels and validate the sampler required chain before reading any data",
+      "NativeShaderTextureUnitSpec::should preserve explicit fetch vector width and high masked lanes for lanes=1",
+      "NativeShaderTextureUnitSpec::should preserve explicit fetch vector width and high masked lanes for lanes=16",
+      "NativeShaderTextureUnitSpec::should preserve explicit fetch vector width and high masked lanes for lanes=32"
+    ],
+    "ABI_checks": 9
+  },
+  "constraints": {
+    "clock_period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "engine": "yosys",
+    "abc_target": "standard",
+    "retiming": false,
+    "synthesis_only": true
+  },
+  "profiles": {
+    "product": {
+      "module": "TextureGradientProductDifferenceUnit",
+      "passed": true,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        0.301,
+        496.145
+      ],
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 69.06171166687272,
+        "finished_utc": "2026-10-20T15:48:28.050822+00:00"
+      },
+      "mapped_cells": 13676,
+      "reported_cell_area": 1449.23742,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "source_and_emitted_RTL_exact": true,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-gradient-product-2026-10-20-v1/result.json": "875dfd15dfe56c93f42c0baf7a357835e8ced0deb2981664287f0d9873074633",
+        "generated/qualification/ppa/mobile-gradient-product-2026-10-20-v1/qualification.json": "8488cbe634bdbdb0674760672cb4fc510f20c8a76171a0e17d043bfef63ce1c8",
+        "generated/qualification/ppa/mobile-gradient-product-2026-10-20-v1/manifest.json": "425b228103739c30c095cd90b8d3d66b29773b8e7453f2eeb370385c211d07bf",
+        "generated/qualification/ppa/mobile-gradient-product-2026-10-20-v1/flow/synthesis_sta.log": "ade3bb51fc109e68df8e0ac7940dcff65625bc8ae3ce76b3bbf2b8d3d7790cfd"
+      }
+    },
+    "cube": {
+      "module": "TextureCubeGradientUnit",
+      "passed": true,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        2.028,
+        474.648
+      ],
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 82.29916341602802,
+        "finished_utc": "2026-10-20T15:48:41.288229+00:00"
+      },
+      "mapped_cells": 19769,
+      "reported_cell_area": 2265.2217,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "source_and_emitted_RTL_exact": true,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-gradient-cube-2026-10-20-v1/result.json": "af6c18c04f8525eaba3218dc1f5790f03a6970cb253ef1de81860df96981906c",
+        "generated/qualification/ppa/mobile-gradient-cube-2026-10-20-v1/qualification.json": "aeccead3a04e88709d6ca548f67e5b6b3981863cda8cf9cbc9aa3f4ee87ad26f",
+        "generated/qualification/ppa/mobile-gradient-cube-2026-10-20-v1/manifest.json": "82f933eade844a9746bffb32083abec74fa2e2673455a8d16f308a14a114c17d",
+        "generated/qualification/ppa/mobile-gradient-cube-2026-10-20-v1/flow/synthesis_sta.log": "5b755a55db88f9609d76b04af28588e7995fd5b060cdde09baecd1f229400916"
+      }
+    },
+    "lod": {
+      "module": "TextureGradientLodUnit",
+      "passed": true,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        69.63,
+        476.819
+      ],
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 26.66657454194501,
+        "finished_utc": "2026-10-20T15:47:45.656413+00:00"
+      },
+      "mapped_cells": 13620,
+      "reported_cell_area": 1466.50014,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "source_and_emitted_RTL_exact": true,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-gradient-lod-2026-10-20-v1/result.json": "fc3a9ee2629dca5165143a5282d163dbb6d9da01b7b23dc28152f86247963054",
+        "generated/qualification/ppa/mobile-gradient-lod-2026-10-20-v1/qualification.json": "e61ceda8085489fbcc7835eaaea9ef59c93e70d16cdcf37eaf1d5860ae719667",
+        "generated/qualification/ppa/mobile-gradient-lod-2026-10-20-v1/manifest.json": "ff528adc73026ff4d98ea5b7b0e0df670c54a4b312ead06c3ddd6ecf6a9783e5",
+        "generated/qualification/ppa/mobile-gradient-lod-2026-10-20-v1/flow/synthesis_sta.log": "756d4a51a9b7bff72695b673f8becf067320f565c25b5fa926ffa6dc7805e277"
+      }
+    },
+    "resolver": {
+      "module": "TextureImageGradientLodUnit",
+      "passed": false,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        -13.617,
+        474.632
+      ],
+      "terminal": {
+        "returncode": 2,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 123.97873341594823,
+        "finished_utc": "2026-10-20T15:51:45.091409+00:00"
+      },
+      "mapped_cells": 73712,
+      "reported_cell_area": 9794.15874,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "source_and_emitted_RTL_exact": true,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-gradient-resolver-2026-10-20-v1/result.json": "6774feb92639a79c131ed3d6b53d95b38903105a3b2af3e779573e690d3a7adf",
+        "generated/qualification/ppa/mobile-gradient-resolver-2026-10-20-v1/qualification.json": "5fc45350da66fde1f2d55bcef037a74adb218b376680ea3ab7a97fb9c14b789a",
+        "generated/qualification/ppa/mobile-gradient-resolver-2026-10-20-v1/manifest.json": "a5a3dc6e6dc1bd7b765f79a2ef3c39dbfdc203846edb20feb92487ae7bf38e2b",
+        "generated/qualification/ppa/mobile-gradient-resolver-2026-10-20-v1/flow/synthesis_sta.log": "b9e30f6aeaefc9c5aa9ba5eaf00d963cdf9d326a143f5da9798edfc044377ec4"
+      }
+    },
+    "sample": {
+      "module": "TextureImageSampleUnit",
+      "passed": false,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        -68.892,
+        415.966
+      ],
+      "terminal": {
+        "returncode": 2,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 590.9336673328653,
+        "finished_utc": "2026-10-20T15:59:32.046419+00:00"
+      },
+      "mapped_cells": 406635,
+      "reported_cell_area": 56859.7401,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "source_and_emitted_RTL_exact": true,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-gradient-sample-2026-10-20-v1/result.json": "6df512d3c72739d6de9b52b92df8636ea9b9b3c03a8bcd8b23f0ef9e0bf47eb5",
+        "generated/qualification/ppa/mobile-gradient-sample-2026-10-20-v1/qualification.json": "d15fda2a5c15996344ecd0952f249d6e13783b8db50ffb132589949d3c90bbef",
+        "generated/qualification/ppa/mobile-gradient-sample-2026-10-20-v1/manifest.json": "3c8502705ee48eec29d0bf15c1db838aadf2b2dc82fa3debc5d36afa1ef86043",
+        "generated/qualification/ppa/mobile-gradient-sample-2026-10-20-v1/flow/synthesis_sta.log": "234056d8b0560c822417d1b03409f28e871918c42cd92e981b3a3d7654e62e4b"
+      }
+    }
+  },
+  "software_ABIs_unchanged": true,
+  "evidence": {
+    "product_queries": 17390,
+    "cube_jacobian_queries": 1768,
+    "cube_exponent_min": -555,
+    "cube_exponent_max": 275,
+    "log_queries": 3207,
+    "log_monotonic_queries": 4617,
+    "gradient_descriptor_to_texel_samples": 238,
+    "gradient_sample_cancellation_cuts": 152
+  },
+  "limits": [
+    "This frozen revision implements internal explicit-gradient sampling, not native floating instructions or implicit quad/helper LOD.",
+    "All standalone arithmetic screens pass; composed resolver and full sampler map completely but fail the original1000ps setup gate. This revision is not timing qualified or merged to main.",
+    "The actual failing paths combine raw/subnormal FP32 decode with 24x24 multiplication. A registered decode stage is being implemented on codex/mobile-implicit-sampling together with extended quad differences and bias.",
+    "No routing, whole-GPU timing, physical power, sustained texture-cluster rate or H0-H8 completion is claimed."
+  ],
+  "retained_failures": {
+    "log_coverage_fixture": {
+      "log": ".artifacts/mobile-gradient-lod-v1.log",
+      "sha256": "c3a9bc8ef4d684b606405a867e918ec3591b4d1fd4861298736893486e8b1b49",
+      "cause_and_correction": "Arithmetic passed but the intended tiny peak was hidden by larger components. Add tiny-only vectors; no RTL change required. Final795-input suite passes."
+    },
+    "resolver_supplemental_STA": {
+      "log": ".artifacts/mobile-gradient-resolver-v1-multipath.log",
+      "sha256": "4884097f530d344967d39b3a536d7d490b733b5b069bbc3466909789ad51459d",
+      "scope": "Additional worst paths on the immutable V1 mapped netlist; canonical reports unchanged."
+    },
+    "sample_supplemental_STA": {
+      "log": ".artifacts/mobile-gradient-sample-v1-multipath.log",
+      "sha256": "dc58d85c9496e2af312b67c00580ed7b9ce44e206ff4c5159ccd87b3aa2d51a6",
+      "scope": "Additional worst paths on the immutable V1 mapped netlist; canonical reports unchanged."
+    }
+  }
+}

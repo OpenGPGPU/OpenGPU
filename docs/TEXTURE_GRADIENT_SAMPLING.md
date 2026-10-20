@@ -1,9 +1,10 @@
 # Gradient image sampling development
 
-Status: internal explicit-gradient sampling is implemented on
-`codex/mobile-gradient-lod`. Focused arithmetic and descriptor-to-texel checks
-pass; aggregate regression and synthesis qualification are running against
-795 frozen inputs. The qualified explicit-effective-LOD baseline is on main in
+Status: the [795-input frozen revision](performance/mobile-gradient-sampling-2026-10-21.json)
+passes116 distinct aggregate tests and nine ABI checks. All three arithmetic
+synthesis screens pass at1000ps, but the composed resolver/full sampler map
+completely and fail setup by13.617/68.892ps. This revision remains a development
+checkpoint. The qualified explicit-effective-LOD baseline is on main in
 [the main audit](performance/mobile-effective-lod-main-2026-10-20.json).
 No new native shader instruction or software capability is exposed.
 
@@ -107,6 +108,9 @@ larger gradients hid the intended tiny peak. Explicit tiny-only cases correct
 the fixture; the failed log is retained at
 `.artifacts/mobile-gradient-lod-v1.log`, followed by the passing focused V2 log.
 The fresh aggregate/RTL source archive is keyed by code commit `e97f270`.
-Standalone arithmetic timing and the complete new sampler timing remain pending.
+Standalone product/cube/logarithm core margins are+0.301/+2.028/+69.630ps.
+Composed failures trace raw/subnormal FP32 decoding into24x24 multiplication.
+The following `codex/mobile-implicit-sampling` revision registers decoded operands
+and adds extended helper differences and shader bias; it needs fresh qualification.
 Native floating transport, implicit derivatives, banking/coherence and all
 remaining H0-H8 requirements stay open.
