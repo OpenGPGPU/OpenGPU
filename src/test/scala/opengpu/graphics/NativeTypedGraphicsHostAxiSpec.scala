@@ -43,7 +43,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
     val names=Vector("RGBA8","RGB8","RGBA16F","SRGB8_ALPHA8")
     val clear=Vector(0.25,0.5,0.75,1.0).map(Fp32ViewportReference.fp)
     case class View(base: BigInt,pitch: Int,samples: Int,bytes: Int,kind: Int,color: Int)
-    var views=Vector.empty[View];var imageOffset=0;var sourceOffset=0
+    var views=Vector.empty[View];var imageOffset=0;var sourceOffset=0;var boundDepthFormat=TypedDepthFormat.d24s8
     def viewFields(start: Int,region: Int,mode: Int,kind: Int,color: Int=0,bytes: Int=4): Map[Int,BigInt]={
       val base=BigInt(region)+59;val samples=1<<mode;val pitch=7*samples*bytes+5
       val limit=base+4*pitch+7*samples*bytes;val allocationLimit=(limit+63)& ~BigInt(63)
@@ -52,11 +52,14 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       Map(start->base,(start+1)->limit,(start+2)->0,(start+3)->BigInt(region),(start+4)->allocationLimit,
         (start+5)->0,(start+6)->7,(start+7)->5,(start+8)->pitch,(start+9)->0,(start+10)->1,(start+11)->1)
     }
-    def setup(mode: Int,count: Int=0,mrt: Boolean=false): Unit={
-      memory.clear();initial.clear();reads.clear();writes.clear();views=Vector.empty;imageOffset=if(mode==0)0 else 0x400000
+    def setup(mode: Int,count: Int=0,mrt: Boolean=false,depthFormat: Int=TypedDepthFormat.d24s8,allocation: Int=0): Unit={
+      require(depthFormat>=TypedDepthFormat.d16 && depthFormat<=TypedDepthFormat.d32fs8)
+      boundDepthFormat=depthFormat;val depthBytes=if(depthFormat==TypedDepthFormat.d16)2 else if(depthFormat==TypedDepthFormat.d32fs8)8 else 4
+      memory.clear();initial.clear();reads.clear();writes.clear();views=Vector.empty
+      imageOffset=(if(mode==0)0 else 0x400000)+(if(allocation==0)0 else 0x2000000+allocation*0x800000)
       word(0x30004,((BigInt(0x800000)>>12)<<10)|0xcf)
       var pass=Map[Int,BigInt](16->1,17->1,18->1,19->7,20->8,21->9,24->3,25->4,26->4,27->mode,28->1024,
-        32->4,34->1,35->BigInt("3f800000",16),36->5,64->1,65->TypedColorFormat.id("RGBA8"),66->1024,67->15,68->1,
+        32->depthFormat,34->1,35->BigInt("3f800000",16),36->5,64->1,65->TypedColorFormat.id("RGBA8"),66->1024,67->15,68->1,
         69->BigInt("3e800000",16),70->BigInt("3f000000",16),71->BigInt("3f400000",16),72->BigInt("3f800000",16),224->1,288->1)
       val colors=if(mrt)4 else 1
       for(c<-0 until colors){val start=64+c*16;val bytes=TypedColorReference.format(names(c)).bytes
@@ -64,9 +67,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           (start+3)->15,(start+4)->1,(start+5)->clear(0),(start+6)->clear(1),(start+7)->clear(2),(start+8)->clear(3),(224+c*16)->1)
         pass++=viewFields(128+c*16,0x1000000+imageOffset+c*0x10000,mode,0,c,bytes)
       }
-      pass++=viewFields(192,0x1040000+imageOffset,mode,1)
+      pass++=viewFields(192,0x1040000+imageOffset,mode,1,bytes=depthBytes)
       for(c<-0 until colors)pass++=viewFields(225+c*16,0x1080000+imageOffset+c*0x10000,0,2,c,TypedColorReference.format(names(c)).bytes)
-      pass++=viewFields(289,0x10c0000+imageOffset,0,3)
+      pass++=viewFields(289,0x10c0000+imageOffset,0,3,bytes=depthBytes)
       record(0x411000,320,BigInt("47544901",16),pass)
       record(0x410000,128,BigInt("47544a01",16),Map[Int,BigInt](3->7,4->8,5->9,6->0x411000,7->(0x411000+1280),
         9->0x412000,10->(0x412000+(count-1).max(0)*4096+2560),12->count,13->4096))
@@ -75,9 +78,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       Vector(Vector(-0.5,0.0,0.0,1.0),Vector(0.5,0.0,0.0,1.0)),Vector(Vector(-0.5,-0.5,-0.5,1.0)))
     def colorWords(primitive: Int,vertex: Int,centroid: Boolean): Vector[BigInt]=Vector.tabulate(4){c=>
       Fp32ViewportReference.fp(if(centroid){if(c==3)1.0 else ((vertex+1)*(c+1)+primitive)/16.0}else if(c==primitive || c==3)1.0 else 0.0)}
-    def shaderDraws(mode: Int,centroid: Boolean=false,version: Int=1,polygon: Boolean=false,sign: Int=1): Unit={
-      setup(mode,3,mrt=true)
-      sourceOffset=(if(centroid)0x20000+version*0x1000+mode*0x10000 else 0)+(if(polygon)0x50000 else 0)
+    def shaderDraws(mode: Int,centroid: Boolean=false,version: Int=1,polygon: Boolean=false,sign: Int=1,
+        depthFormat: Int=TypedDepthFormat.d24s8,allocation: Int=0): Unit={
+      setup(mode,3,mrt=true,depthFormat=depthFormat,allocation=allocation)
+      sourceOffset=(if(centroid)0x20000+version*0x1000+mode*0x10000 else 0)+(if(polygon)0x50000 else 0)+allocation*0x10000
       val fragmentPc=if(polygon)0x406000+(if(version==4)0x2000 else 0)else if(version==4)0x404000 else 0x402000
       val prefix=(if(version==4)30 else 28)*32
       word(0x3000c,(((BigInt(0x1000000)+imageOffset)>>12)<<10)|0xcf)
@@ -107,7 +111,8 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       }
     }
     def verifyDraws(mode: Int,centroid: Boolean=false,polygon: Boolean=false,sign: Int=1): Unit={
-      val count=1<<mode;val colors=Array.fill(4,4,count)(Vector.empty[BigInt]);val depths=Array.fill(4,4,count)(BigInt("ffffff",16))
+      val count=1<<mode;val colors=Array.fill(4,4,count)(Vector.empty[BigInt])
+      val depths=Array.fill(4,4,count)(TypedDepthReference.encode(Fp32ViewportReference.fp(1),boundDepthFormat))
       val coords=Vector(Vector((0,0),(1024,0),(0,1024)),Vector((256,512),(768,512),(0,0)),Vector((256,256),(0,0),(0,0)))
       val settings=TriangleRasterReference.Settings(width=4,height=4,mode=mode,maxX=4,maxY=4)
       for(n<-0 until 3){val kind=Seq(2,1,0)(n)
@@ -123,12 +128,17 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
             calc(edge((if(axis==0)a._2-b._2 else b._1-a._1)*256),decode(t.values.depth(i)),2)}
             calc(calc(calc(terms(0),terms(1),0),terms(2),0),edge(area),3).copy(sign=false)}
           val(xn,xd)=rational(slopes(0));val(yn,yd)=rational(slopes(1));val m=if(xn*yd>yn*xd)slopes(0)else slopes(1)
-          calc(calc(m,decode(fp(sign*2)),2),calc(decode(BigInt("33c00000",16)),decode(fp(sign*3)),2),0)
+          val resolution=boundDepthFormat match {
+            case TypedDepthFormat.d16=>BigInt("37804001",16)
+            case TypedDepthFormat.d24|TypedDepthFormat.d24s8=>BigInt("33c00000",16)
+            case _=>fp(Math.ulp(0.75f).toDouble)
+          }
+          calc(calc(m,decode(fp(sign*2)),2),calc(decode(resolution),decode(fp(sign*3)),2),0)
         }
         def shifted(z: BigInt): BigInt=if(bias.sig==0)z else clamp(pack(calc(decode(z),bias,0)))
         for(raw<-quads){val q=CentroidRasterReference(t,kind,raw,mode,if(centroid)5 else 0,graphics)
           val values=SampleDepthReference.depths(t,kind,q.samples,mode,graphics)
-          for(l<-0 until 4;s<-0 until count if(q.samples(l).mask&(1<<s))!=0){val x=q.samples(l).x;val y=q.samples(l).y;val z=TypedDepthReference.encode(shifted(values(l)(s)),4)
+          for(l<-0 until 4;s<-0 until count if(q.samples(l).mask&(1<<s))!=0){val x=q.samples(l).x;val y=q.samples(l).y;val z=TypedDepthReference.encode(shifted(values(l)(s)),boundDepthFormat)
             val color=q.lanes(l).values.take(4)
             if(z<=depths(y)(x)(s)){colors(y)(x)(s)=if(polygon)color.updated(0,shifted(q.lanes(l).depth))else color;depths(y)(x)(s)=z}}}
       }
@@ -136,9 +146,14 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         val values=if(n.isEmpty)clear else n
         TypedColorReference.encode(names(c),values)._1}
       val expected=mutable.Map.empty[BigInt,Int]++initial
+      def depth(z: BigInt): BigInt=boundDepthFormat match {
+        case TypedDepthFormat.d24s8=>(BigInt(5)<<24)|z
+        case TypedDepthFormat.d32fs8=>(BigInt(5)<<32)|z
+        case _=>z
+      }
       for(v<-views;y<-0 until 4;x<-0 until 4;s<-0 until v.samples){
-        val raw=if(v.kind==0)color(v.color,x,y,s)else if(v.kind==1)(BigInt(5)<<24)|depths(y)(x)(s)
-          else if(v.kind==3)(BigInt(5)<<24)|depths(y)(x)(0)
+        val raw=if(v.kind==0)color(v.color,x,y,s)else if(v.kind==1)depth(depths(y)(x)(s))
+          else if(v.kind==3)depth(depths(y)(x)(0))
           else TypedResolveReference.resolve(names(v.color),Vector.tabulate(count)(s=>color(v.color,x,y,s)),mode)
         val address=v.base+y*v.pitch+(x*v.samples+s)*v.bytes
         for(b<-0 until v.bytes)expected(address+b)=((raw>>(8*b))&255).toInt}
@@ -253,6 +268,35 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       val perf=d.io.performance.get
       assert((perf.stagingWriteBytes.peek().litValue==0)==local)
       info(s"NATIVE_CENTROID local=$local CUs=2 GFI1=true versions3And4=true modes2x4x=true primitiveKinds=3 mixedCenterCentroidFlat=true gradientMRTs=4 pointCoordPrefix=true freshVertexAndProgramAllocations=true exactSourceAndResolve=true uniformTail=true heldCompletionPinsVM=true")
+    }
+  }
+  for(local<-Seq(true,false))
+  it should s"publish signed native polygon offsets across all depth formats and sample modes local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      initialize(d);val image=new Image(d)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      var allocation=0
+      for(format<-TypedDepthFormat.d16 to TypedDepthFormat.d32fs8;mode<-0 to 2;sign<-Seq(1,-1)){
+        allocation+=1;val version=if(mode==2)4 else 3
+        image.shaderDraws(mode,centroid=true,version=version,polygon=true,sign=sign,depthFormat=format,allocation=allocation)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        assert(image.consumer(140)==BigInt("a7a7a7a7",16))
+        image.submit(141);image.run(id=141);image.verifyDraws(mode,centroid=true,polygon=true,sign=sign)
+        assert(axiRead(d,GpuCommandMmioRegs.COMPLETION_BYTES_LO)==3*2560)
+        val prefix=(if(version==4)30 else 28)*32
+        for(n<-0 until 3){val a=image.pa(0x440000+n*0x1000+prefix)
+          val value=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory(a+b))<<(b*8)));assert(value==61)}
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
+        val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedImage(BigInt(0x1000000+image.imageOffset+60+b)))<<(b*8)))
+        assert(image.consumer(142)==expected)
+        info(s"NATIVE_POLYGON_DEPTH_FORMAT local=$local format=$format mode=$mode sign=$sign exactBackingResolveStencilPaddingGuards=true")
+      }
+      assert(allocation==30);val perf=d.io.performance.get
+      assert((perf.stagingWriteBytes.peek().litValue==0)==local);perf.payloadReservedBytes.expect(0.U)
+      info(s"NATIVE_POLYGON_DEPTH_MATRIX local=$local CUs=2 formats=5 sampleModes=3 signs=2 frames=30 draws=90 GTD1=true Sv32=true fragmentVersions3And4=true shaderFragCoordZInMRT=true linePointBypass=true cachedConsumer=true freshAllocations=true uniformTails=true heldCompletionPinsVM=true")
     }
   }
   for(local<-Seq(true,false))

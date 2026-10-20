@@ -46,3 +46,12 @@ and VM ownership during held completion. All 285 main and 341 test Scala
 sources compile. Four total frames and twelve triangle/line/point draws pass.
 GPU-memory binned publication, every depth format and the full compatibility,
 fault/reset and precision matrix remain separate gates.
+
+A separate pending native typed-host matrix now iterates D16, D24, D32F,
+D24S8 and D32FS8, all three sample modes and both coefficient signs for each
+local/global two-CU profile. Its 60 total frames check 180 live triangle/line/
+point draws, shader fragCoord.z, exact format-specific backing and sample-zero
+depth resolve, stencil/padding/guard bytes, uniform tails, cached consumers and
+VM ownership. Each frame uses fresh image/vertex allocations. The frozen
+638-file snapshot changes only the native-host fixture; no passing all-format
+result is claimed until the running matrix completes.
