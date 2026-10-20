@@ -36,11 +36,13 @@ biased centroid/perspective/clipping cases, native host image/fault/reset
 qualification, accurate raster capability discovery, setup cycles and integrated
 synthesis. The format policy remains a candidate. PPA remains synthesis only.
 
-The native AXI host fixture now includes two pending local/global two-CU
-controls. Each submits live GTD1 draws through Sv32 with a bound D24S8
+The [two focused native AXI host controls](performance/mobile-polygon-native-host-2026-10-20.json)
+pass on the frozen 638-file snapshot, unchanged through the run. Each submits
+live GTD1 draws through Sv32 with a bound D24S8
 attachment, positive/negative coefficients at 1x/4x sampling, fragment versions
 3/4, and fragCoord.z written into MRT color. The controls check source/resolve
 bytes and guards, line/point bypass, uniform tails, prewarmed image consumers
 and VM ownership during held completion. All 285 main and 341 test Scala
-sources compile. Runtime results are still pending on the frozen 638-file
-snapshot; this checkpoint does not claim those two controls pass.
+sources compile. Four total frames and twelve triangle/line/point draws pass.
+GPU-memory binned publication, every depth format and the full compatibility,
+fault/reset and precision matrix remain separate gates.

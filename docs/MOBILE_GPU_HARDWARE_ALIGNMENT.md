@@ -5355,3 +5355,21 @@ resolution, full raster precision, actual-CU default/override and native binned
 publication, cycle and synthesis qualification remain open. This source is
 separate from the earlier frozen 102-check merged-source regression still in
 flight. No G04/H6/H0–H8 or production rate closure is claimed.
+
+## Native live polygon-offset attachment publication (2026-10-20)
+
+The [focused native AXI host controls](performance/mobile-polygon-native-host-2026-10-20.json)
+pass **2/2** on 638 unchanged source/ABI files. Versioned raster state binds
+signed factor/units to the immutable D24S8 attachment on live GTD1 draws.
+Local/global two-CU profiles each publish 1x/version-3 positive and 4x/version-4
+negative frames through Sv32. All twelve triangle/line/point draws check exact
+four-MRT source/resolve and depth/stencil/guard bytes, shader fragCoord.z,
+centroid/flat gradients, line/point bypass, uniform tails, prewarmed cached
+consumers and held-completion VM ownership.
+
+The production source matches the separate polygon-binding compatibility
+snapshot; only this native-host fixture differs. Its 33-check prepared/reader
+run and the earlier pre-polygon 102-check composition are separate gates.
+GPU-memory binned offset publication, all five depth formats, numeric precision,
+clipping/perspective cases, complete faults/reset, cycles, synthesis and H0–H8
+remain open. PPA remains synthesis only.
