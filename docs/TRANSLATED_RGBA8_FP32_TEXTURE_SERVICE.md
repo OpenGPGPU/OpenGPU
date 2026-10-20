@@ -58,9 +58,10 @@ fresh synthesis run in progress at 1000 ps, TC/SLVT, 25% I/O, standard ABC, with
 retiming or place/route. Its timing and whole-native performance remain unproven.
 The legacy controls pass on the same frozen source. Both legacy native endpoints
 have fresh 77-file emissions; only the FMA core and wrapper logic differ from
-the old qualified endpoints. Vertex endpoint synthesis is running; fragment
-endpoint synthesis is not yet started. Prior native endpoint timing is not carried.
-# Fresh native vertex synthesis
+the old qualified endpoints. Fresh vertex endpoint synthesis now passes; fragment
+endpoint synthesis is running. Prior native endpoint timing is not carried.
+
+## Fresh native vertex synthesis
 
 The corrected FMA's [complete native vertex endpoint](performance/mobile-native-fp32-vertex-synthesis-2026-10-21.json)
 passes mapped synthesis at 1000 ps, TC/SLVT, 25% I/O delay and standard ABC,
@@ -72,4 +73,3 @@ sampler; it does not demonstrate new banked service routing. Fresh fragment
 synthesis is running separately. The translated native FP32 service, subsequent
 counted/late-join revision and coordinate composition need their own synthesis
 evidence. All remaining H0-H8 gates stay open.
-
