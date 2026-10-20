@@ -18,7 +18,7 @@ The initial OpenGPU product target is four shared CUs, with a 720p workload suit
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
 
-Latest texture checkpoint: native image bindings and typed component fetch cover all 64 storage formats. The internal [effective-LOD sampler](TEXTURE_FLOAT_SAMPLING.md) passes 107 targeted controls, nine ABI checks and full-owner synthesis at 1000 ps on 788 frozen inputs. It includes cube/array selection, min/mag/mip filtering, depth comparison and final swizzle. Native floating instruction transport, gradient/implicit LOD and scalable texture throughput remain open.
+Latest texture checkpoint: native image bindings and typed component fetch cover all 64 storage formats. The internal [effective-LOD sampler](TEXTURE_FLOAT_SAMPLING.md) passes 107 targeted controls, nine ABI checks and full-owner synthesis at 1000 ps on 788 frozen inputs. It includes cube/array selection, min/mag/mip filtering, depth comparison and final swizzle. The [799-input gradient/implicit sampler](TEXTURE_IMPLICIT_SAMPLING.md) adds internal helper differences and shader bias, passing 122 tests and six fresh synthesis screens at 1000ps. Native floating instruction transport, actual CU/raster helper delivery and scalable texture throughput remain open.
 
 ## Current hardware and gaps
 
@@ -6686,3 +6686,27 @@ Native floating packet/instruction transport, shader bias, gradient-derived
 lambda, implicit quad/helper derivatives, banked caches, coherence and sustained
 cluster rates remain required. No new native capability is advertised, and the
 full H0–H8 objective remains active.
+
+## Qualified internal gradient and implicit sampling (2026-10-21)
+
+The [799-input qualification](performance/mobile-implicit-sampling-2026-10-21.json)
+passes 122 distinct tests across 21 suites and nine unchanged ABI checks.
+The owner computes explicit gradients or complete TL/TR/BL/BR helper differences,
+retains extended exponents through cube Jacobians, derives bounded-error LOD,
+applies fragment shader bias before sampler clamps, and samples admitted mip
+views with comparison/filtering and one final swizzle. All accepted arithmetic
+and memory drains on cancellation; held results remain immutable.
+
+Six fresh mapped synthesis screens pass with TC/SLVT, 1000ps, 25% I/O, standard
+ABC and no retiming. Core/I/O slack: product +229.284/+481.341ps, cube gradient
++221.346/+472.233ps, quad differences +203.720/+477.041ps, bias
++453.102/+465.346ps, combined resolver +26.319/+474.840ps, and complete sampler
++48.806/+413.520ps. The sampler uses 440,000 mapped cells with library cell
+area 60,724.912680. Standalone logarithm RTL is byte-identical to its earlier
+positive screen. The prior 795-input composed misses remain recorded.
+
+This internal request interface does not prove native instruction transport or
+real helper execution. Native scalar/vector retirement, stage policy, compiler
+and validator integration, offsets/queries, on-chip parameter transport, banked
+texture throughput/coherence and all remaining H0-H8 gates stay open. PPA is
+synthesis only; no whole-GPU clock, routing, power or frame-rate pass is claimed.
