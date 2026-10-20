@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "merged_main_matches_qualified_source",
+  "integration_commit": "52e6131efb4142ac189f3a55309f6c510aeab46c",
+  "source_files": 768,
+  "source_manifest_sha256": "a8c21581d6647a8e99c17483efd3ffc30fcdf2a38087b05001f884713d83f80e",
+  "git_archive_and_both_worktrees_byte_exact": true,
+  "recursive_source_catalog_exact": true,
+  "all_synthesis_artifacts_exact": true,
+  "four_current_composed_production_manifests_exact": true,
+  "standalone_block_carry_rtl_exact": true,
+  "seven_original_record_ABIs_byte_exact": {
+    "docs/abi/native-typed-graphics-v1.json": "86769ae87b5513dca3582e22adabbc454f4002865970e53d02b8e7b33a862d05",
+    "docs/abi/native-binned-graphics-v1.json": "33748b61279f3234634b364a8af9df6d53fcc7e97e846a1178fb3629ab806767",
+    "docs/abi/typed-fragment-state-v1.json": "9b65f1333aadae0c9e9ecd86c5627227a9f70a218758f316de8ebd6212797bef",
+    "docs/abi/texture-image-level-v1.json": "55b134415d56648441513768989042c248d7c09c95c29180396a7dcc4fb2cda3",
+    "docs/abi/texture-image-binding-v1.json": "60a1bc35436e3c2dad9d6a9fa546de7e7d66b90d056aa348e82f8a97ae15e7b9",
+    "docs/abi/texture-sampler-v1.json": "b0d31b693602ec71e6b4a2f85fad6af3bdde96ac1aaa6e992ad4e0805f9778d7",
+    "docs/abi/native-texture-v1.json": "cf5dc89cc1ed165c45eef352bc30ab08e14c81fd77fbd439930520e5a03026fc"
+  },
+  "original54_image_ID_fields_preserved": true,
+  "user_edits_and_modes_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": 420
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": 420
+    }
+  },
+  "index_empty": true,
+  "qualification_record_sha256": "b8655a11a83eaa21341439b079cea30f53de080094b5b725cfd5e0a074f47e21",
+  "synthesis_record_sha256": "7cccf25db39172206f9d413595e6ef85c2953dce08b64a8e1e72cd8553ba8e76",
+  "scope": "ETC2/EAC native component decode only; full hardware H0-H8/GLES closure remains open."
+}
