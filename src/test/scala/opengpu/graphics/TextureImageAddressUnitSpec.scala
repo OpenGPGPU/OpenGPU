@@ -137,9 +137,9 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
       info(s"TEXTURE_IMAGE_ADDRESS_FAULT cases=${bad.size} statuses=${bad.map(q=>oracle(q).status).distinct.sorted.mkString(",")} zeroFaultAddresses=true noTruncatedCoordinateAliases=true wholeLevelBounds=true exactHealthyReuse=true")
     }
   }
-  for(pipelineBounds<-Seq(false,true))
-  it should s"sustain one address each cycle and preserve every captured request through backpressure pipelineBounds=$pipelineBounds" in {
-    simulate(new TextureImageAddressUnit(pipelineBounds=pipelineBounds)){d=>initialize(d)
+  for((pipelineBounds,pipelineProducts)<-Seq((false,false),(true,false),(false,true),(true,true)))
+  it should s"sustain one address each cycle and preserve every captured request through backpressure pipelineBounds=$pipelineBounds pipelineProducts=$pipelineProducts" in {
+    simulate(new TextureImageAddressUnit(pipelineBounds=pipelineBounds,pipelineProducts=pipelineProducts)){d=>initialize(d)
       val good=validRequests;val bad=invalidRequests
       val requests=Vector.tabulate(512){i=>(if(i>=128 && i%7==0)bad(i%bad.size)else good(i%good.size)).copy(tag=1000+i)}.map(q=>q.copy(view=q.view.copy(level=(q.tag-1000)%16)))
       val expected=requests.map(oracle(_));var sent=0;var received=0;var cycle=0
@@ -155,10 +155,10 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
         if(sent<requests.size && d.io.in.ready.peek().litToBoolean){inputCycles+=cycle;sent+=1}
         d.clock.step();cycle+=1
       }
-      assert(sent==512 && received==512);val latency=if(pipelineBounds)4 else 3;assert(outputCycles.head-inputCycles.head==latency)
+      assert(sent==512 && received==512);val latency=3+(if(pipelineBounds)1 else 0)+(if(pipelineProducts)1 else 0);assert(outputCycles.head-inputCycles.head==latency)
       assert(outputCycles.take(128)==(outputCycles.head until outputCycles.head+128))
       d.io.busy.expect(false.B)
-      info(s"TEXTURE_IMAGE_ADDRESS_STREAM cases=$received latency=$latency pipelineBounds=$pipelineBounds steadyAddressInterval=1 elasticBackpressure=true faultRepliesOrdered=true immutableBindings=true")
+      info(s"TEXTURE_IMAGE_ADDRESS_STREAM cases=$received latency=$latency pipelineBounds=$pipelineBounds pipelineProducts=$pipelineProducts steadyAddressInterval=1 elasticBackpressure=true faultRepliesOrdered=true immutableBindings=true")
     }
   }
   it should "enforce configured dimensions volume extent and array layers at their exact boundaries" in {

@@ -66,13 +66,13 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
       for((w,n)<-words.zipWithIndex)memory.putWord(base+handle*64+n*4,w)
     }
     def image(format: Int=3,base: BigInt=0x1000,handle: BigInt=0,brokenMip: Boolean=false,levels: BigInt=0x2000): Unit={
-      val bytes=ImageFormatReference.format(ImageFormatReference.names(format)).bytes
+      val bytes=if(format>=54)CompressedImageReference.format(format).bytes else ImageFormatReference.format(ImageFormatReference.names(format)).bytes
       val words=Seq[BigInt](BigInt("47584901",16),128,1,7,11,13,handle,0,format,0,15,4,4,1,1,
         0x100000,0x110000,0,1,levels,levels+384,0,0).padTo(32,BigInt(0))
       for((w,n)<-words.zipWithIndex)memory.putWord(base+handle*128+n*4,w)
       for(level<-0 to 2){val size=4>>level;val row=size*bytes
         val data=Seq[BigInt](BigInt("47584c01",16),128,1,7,11,13,level,0,level,0x100000,0x110000,0,
-          0x100000+level*0x1000,size,if(brokenMip && level==2)2 else size,1,1,row,0,0,0,0,0,0,bytes).padTo(32,BigInt(0))
+          0x100000+level*0x1000,size,if(brokenMip && level==2)2 else size,1,1,row,0,0,0,0,0,(if(format>=54)1 else 0),bytes).padTo(32,BigInt(0))
         for((w,n)<-data.zipWithIndex)memory.putWord(levels+level*128+n*4,w)}
     }
     def query(tag: BigInt=0x80000001L,level: BigInt=0,kind: Int=0,sbase: BigInt=0x3000,slimit: BigInt=0x4000,
@@ -137,11 +137,11 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
       t.query(tag=0x102,level=1);t.check(6,2);t.pop();t.image();t.invalidate();t.query(level=1);t.check()
       d.io.out.bits.image.level.expect(1.U);d.io.out.bits.image.view.texWidth.expect(2.U);t.pop()
       var cases=0
-      for(format<-0 until 54;min<-0 to 5;mag<-0 to 1){
+      for(format<-0 until 64;min<-0 to 5;mag<-0 to 1){
         t.image(format);t.sampler(min,mag);t.invalidate()
-        val info=ImageFormatReference.format(ImageFormatReference.names(format))
+        val info=if(format>=54)ImageFormatReference.Format(CompressedImageReference.format(format).bytes,0,false,true)else ImageFormatReference.format(ImageFormatReference.names(format))
         // This oracle uses storage names, independently of RTL encoding lookup.
-        val name=ImageFormatReference.names(format);val filterable=info.filterable
+        val filterable=info.filterable
         val allowed=filterable || (mag==0 && (min==0 || min==2))
         t.query(kind=info.kind);t.check(if(allowed)0 else 6,if(allowed)0 else 3)
         if(allowed)d.io.out.bits.image.mipChainChecked.expect((min>=2).B)

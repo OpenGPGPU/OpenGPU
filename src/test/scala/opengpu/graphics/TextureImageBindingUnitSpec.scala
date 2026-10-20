@@ -198,7 +198,7 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
         (16,BigInt(0),2),(18,BigInt(0),2),(19,BigInt(0x2001),2),(20,BigInt(0x2080),2)) if status!=0){
         t.install(i);t.memory.putWord(0x1000+4*word,bits);t.invalidate();val n=t.dataReads;val before=t.memory.seen.size
         t.query();t.check(status,stage=4);t.pop();assert(t.dataReads==n)
-        if(word==8)assert(!t.memory.seen.drop(before).exists(_.tag<2))}
+        if(word==8)assert(!t.memory.seen.drop(before).exists(r=>r.tag==6 || r.tag==7))}
       for(format<-49 to 53){val invalid=image(target=3,format=format);t.install(invalid);t.invalidate();val before=t.memory.seen.size
         t.query();t.check(1,stage=4);t.pop();assert(!t.memory.seen.drop(before).exists(_.tag<2),"depth3D must fail before level/data reads")}
       val later=i.levelAddress(2)

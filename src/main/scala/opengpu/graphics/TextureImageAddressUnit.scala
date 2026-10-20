@@ -34,7 +34,8 @@ class TextureImageAddressResult extends Bundle {
   val blockX=UInt(2.W);val blockY=UInt(2.W)
 }
 
-/** Three elastic register stages by default, four with pipelineBounds enabled.
+/** Three elastic register stages by default; pipelineBounds and pipelineProducts
+  * each add one stage. Composed resource owners enable both cuts.
   * Both profiles sustain one address per cycle with no stalls.
   * Validate full-width coordinates before using bounded arithmetic operands.
   * Check the entire level span and nonoverlapping rows/slices/layers, not just
@@ -42,8 +43,8 @@ class TextureImageAddressResult extends Bundle {
   * only a successful <=4GiB span may publish a narrowed byte address.
   * This unit has no memory/cache state: owners drain accepted replies on cancel.
   */
-class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressConfig(),pipelineBounds: Boolean=false) extends Module {
-  def this(p: TextureImageAddressConfig)=this(p,false)
+class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressConfig(),pipelineBounds: Boolean=false,pipelineProducts: Boolean=false) extends Module {
+  def this(p: TextureImageAddressConfig)=this(p,false,false)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new TextureImageAddressRequest))
     val out=Decoupled(new TextureImageAddressResult);val busy=Output(Bool())
@@ -64,37 +65,55 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
     val planeSpan=UInt(64.W);val levelEnd=UInt(64.W);val address=UInt(64.W);val selectedEnd=UInt(64.W)
     val bytes=UInt(5.W);val blockX=UInt(2.W);val blockY=UInt(2.W)
   }
+  private class Coefficients extends Bundle {
+    val request=new TextureImageAddressRequest
+    val columns=UInt(14.W);val rowsMinusOne=UInt(14.W);val slicesMinusOne=UInt(14.W);val planesMinusOne=UInt(16.W)
+    val column=UInt(14.W);val row=UInt(14.W);val slice=UInt(14.W);val layer=UInt(16.W)
+    val invalid=Bool();val badCoordinate=Bool()
+  }
   private val captured=Queue(io.in,1,pipe=true,flow=false)
+  private val prepare=Wire(Decoupled(new Coefficients))
+  prepare.valid:=captured.valid;captured.ready:=prepare.ready
+  private val input=captured.bits;private val incoming=input.view;private val operands=prepare.bits
+  private val array=incoming.target===TextureImageTarget.array2D.U
+  private val cube=incoming.target===TextureImageTarget.cube.U
+  private val volume=incoming.target===TextureImageTarget.image3D.U
+  private val columns=Mux(incoming.block4x4,(incoming.texWidth+&3.U)>>2,incoming.texWidth).pad(14)
+  private val rows=Mux(incoming.block4x4,(incoming.texHeight+&3.U)>>2,incoming.texHeight).pad(14)
+  private val planes=Mux(cube,6.U(16.W),Mux(array,incoming.layers,1.U(16.W)))
+  private val slices=Mux(volume,incoming.texDepth,1.U(14.W))
+  private val packedBytes=Seq(1,2,3,4,6,8,12,16).map(n=>incoming.blockBytes===n.U).reduce(_ || _)
+  private val encoding=Mux(incoming.block4x4,incoming.blockBytes===8.U || incoming.blockBytes===16.U,packedBytes)
+  private val dimensions=incoming.texWidth=/=0.U && incoming.texHeight=/=0.U && incoming.texDepth=/=0.U && incoming.layers=/=0.U &&
+    Mux(volume,incoming.texWidth<=p.max3D.U && incoming.texHeight<=p.max3D.U && incoming.texDepth<=p.max3D.U,
+      incoming.texWidth<=p.max2D.U && incoming.texHeight<=p.max2D.U && incoming.texDepth===1.U) &&
+    Mux(array,incoming.layers<=p.maxLayers.U,incoming.layers===1.U) && (!cube || incoming.texWidth===incoming.texHeight)
+  private val unusedPitches=(volume || incoming.slicePitch===0.U) && (array || cube || incoming.layerPitch===0.U)
+  operands.invalid:=incoming.target>TextureImageTarget.image3D.U || !dimensions || !encoding || !unusedPitches
+  operands.badCoordinate:=input.x>=incoming.texWidth || input.y>=incoming.texHeight ||
+    Mux(volume,input.z>=incoming.texDepth,input.z=/=0.U) || Mux(array,input.layer>=incoming.layers,input.layer=/=0.U) ||
+    Mux(cube,input.face>=6.U,input.face=/=0.U)
+  operands.request:=input;operands.columns:=columns;operands.rowsMinusOne:=rows-1.U
+  operands.slicesMinusOne:=slices-1.U;operands.planesMinusOne:=planes-1.U
+  operands.column:=Mux(incoming.block4x4,input.x(13,0)>>2,input.x(13,0))
+  operands.row:=Mux(incoming.block4x4,input.y(13,0)>>2,input.y(13,0))
+  operands.slice:=Mux(volume,input.z(13,0),0.U)
+  operands.layer:=Mux(cube,input.face.pad(16),Mux(array,input.layer(15,0),0.U))
+  // Composed owners register target selection, block rounding and coefficient
+  // decrements before wide multiplication. Full-width validity accompanies the
+  // captured request; no invalid coordinate can publish a truncated address.
+  private val prepared=if(pipelineProducts)Queue(prepare,1,pipe=true,flow=false)else prepare
   private val multiply=Wire(Decoupled(new Products))
-  multiply.valid:=captured.valid;captured.ready:=multiply.ready
-  private val q=captured.bits;private val v=q.view;private val a=multiply.bits
-  private val array=v.target===TextureImageTarget.array2D.U
-  private val cube=v.target===TextureImageTarget.cube.U
-  private val volume=v.target===TextureImageTarget.image3D.U
-  private val columns=Mux(v.block4x4,(v.texWidth+&3.U)>>2,v.texWidth).pad(14)
-  private val rows=Mux(v.block4x4,(v.texHeight+&3.U)>>2,v.texHeight).pad(14)
-  private val planes=Mux(cube,6.U(16.W),Mux(array,v.layers,1.U(16.W)))
-  private val slices=Mux(volume,v.texDepth,1.U(14.W))
-  private val packedBytes=Seq(1,2,3,4,6,8,12,16).map(n=>v.blockBytes===n.U).reduce(_ || _)
-  private val encoding=Mux(v.block4x4,v.blockBytes===8.U || v.blockBytes===16.U,packedBytes)
-  private val dimensions=v.texWidth=/=0.U && v.texHeight=/=0.U && v.texDepth=/=0.U && v.layers=/=0.U &&
-    Mux(volume,v.texWidth<=p.max3D.U && v.texHeight<=p.max3D.U && v.texDepth<=p.max3D.U,
-      v.texWidth<=p.max2D.U && v.texHeight<=p.max2D.U && v.texDepth===1.U) &&
-    Mux(array,v.layers<=p.maxLayers.U,v.layers===1.U) && (!cube || v.texWidth===v.texHeight)
-  private val unusedPitches=(volume || v.slicePitch===0.U) && (array || cube || v.layerPitch===0.U)
-  a.invalid:=v.target>TextureImageTarget.image3D.U || !dimensions || !encoding || !unusedPitches
-  a.badCoordinate:=q.x>=v.texWidth || q.y>=v.texHeight ||
-    Mux(volume,q.z>=v.texDepth,q.z=/=0.U) || Mux(array,q.layer>=v.layers,q.layer=/=0.U) ||
-    Mux(cube,q.face>=6.U,q.face=/=0.U)
+  multiply.valid:=prepared.valid;prepared.ready:=multiply.ready
+  private val q=prepared.bits.request;private val v=q.view;private val a=multiply.bits;private val coefficients=prepared.bits
+  a.invalid:=coefficients.invalid;a.badCoordinate:=coefficients.badCoordinate
   a.tag:=q.tag;a.level:=v.level;a.target:=v.target;a.allocationBase:=v.allocationBase
   a.allocationLimit:=v.allocationLimit;a.base:=v.base
   a.rowPitch:=v.rowPitch;a.slicePitch:=v.slicePitch;a.layerPitch:=v.layerPitch
-  a.rowBytes:=columns*v.blockBytes
-  a.lastRow:=(rows-1.U)*v.rowPitch;a.lastSlice:=(slices-1.U)*v.slicePitch;a.lastLayer:=(planes-1.U)*v.layerPitch
-  a.column:=Mux(v.block4x4,q.x(13,0)>>2,q.x(13,0))*v.blockBytes
-  a.row:=Mux(v.block4x4,q.y(13,0)>>2,q.y(13,0))*v.rowPitch
-  a.slice:=Mux(volume,q.z(13,0),0.U(14.W))*v.slicePitch
-  a.layer:=Mux(cube,q.face.pad(16),Mux(array,q.layer(15,0),0.U(16.W)))*v.layerPitch
+  a.rowBytes:=coefficients.columns*v.blockBytes
+  a.lastRow:=coefficients.rowsMinusOne*v.rowPitch;a.lastSlice:=coefficients.slicesMinusOne*v.slicePitch;a.lastLayer:=coefficients.planesMinusOne*v.layerPitch
+  a.column:=coefficients.column*v.blockBytes;a.row:=coefficients.row*v.rowPitch
+  a.slice:=coefficients.slice*v.slicePitch;a.layer:=coefficients.layer*v.layerPitch
   a.bytes:=v.blockBytes;a.blockX:=Mux(v.block4x4,q.x(1,0),0.U);a.blockY:=Mux(v.block4x4,q.y(1,0),0.U)
   private val products=Queue(multiply,1,pipe=true,flow=false)
   private val finish=Wire(Decoupled(new TextureImageAddressResult))
@@ -151,5 +170,5 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
   }
   private val result=Queue(finish,1,pipe=true,flow=false)
   io.out<>result
-  io.busy:=captured.valid || products.valid || result.valid || boundsBusy
+  io.busy:=captured.valid || prepared.valid || products.valid || result.valid || boundsBusy
 }

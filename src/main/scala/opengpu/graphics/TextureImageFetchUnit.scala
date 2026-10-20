@@ -140,18 +140,28 @@ class TextureImageTypedFetchRequest extends Bundle {val resource=new TextureImag
 class TextureImageTypedFetchResult extends Bundle {
   val sample=new TextureImageDataFetchResult;val rgba=Vec(4,UInt(32.W));val colorType=UInt(2.W)
 }
+class TextureImageDecodeRequest extends TypedColorDecodeRequest {val blockX=UInt(2.W);val blockY=UInt(2.W)}
 /** Register extraction, numeric preparation and final rounding separately.
   * The existing TypedColorDecoder and its users keep their original latency.
   */
 private[graphics] class TextureImageFetchDecoder extends Module {
   val io=IO(new Bundle {
-    val in=Flipped(Decoupled(new TypedColorDecodeRequest));val out=Decoupled(new TypedColorDecodeResult)
+    val in=Flipped(Decoupled(new TextureImageDecodeRequest));val out=Decoupled(new TypedColorDecodeResult)
     val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,select,prepare,decode,respond=Value}
-  private val phase=RegInit(State.idle);private val request=Reg(new TypedColorDecodeRequest)
+  private object State extends ChiselEnum {val idle,offerBlock,waitBlock,select,prepare,decode,respond=Value}
+  private val phase=RegInit(State.idle);private val request=Reg(new TextureImageDecodeRequest)
   private val result=Reg(new TypedColorDecodeResult);private val c=RegInit(0.U(2.W))
   private val raw=Reg(UInt(32.W));private val bits=Reg(UInt(6.W));private val encoding=Reg(UInt(4.W))
+  private val blockRgba=Reg(Vec(4,UInt(12.W)))
+  private val block=Module(new TextureCompressedBlockDecoder)
+  block.io.in.valid:=phase===State.offerBlock;block.io.in.bits.raw:=request.value
+  block.io.in.bits.codec:=TextureImageFormat.codec(request.format);block.io.in.bits.signed:=TextureImageFormat.encoding(request.format)===14.U
+  block.io.in.bits.x:=request.blockX;block.io.in.bits.y:=request.blockY;block.io.in.bits.tag:=request.tag
+  block.io.out.ready:=phase===State.waitBlock
+  when(phase===State.offerBlock && block.io.in.fire){phase:=State.waitBlock}
+  when(phase===State.waitBlock && block.io.out.fire){assert(block.io.out.bits.tag===request.tag);blockRgba:=block.io.out.bits.rgba
+    result.status:=block.io.out.bits.status;phase:=Mux(block.io.out.bits.status===0.U,State.select,State.respond)}
   private val sharedExponent=Reg(UInt(5.W))
   private val preparedValue=Reg(UInt(32.W));private val normalized=Reg(Bool())
   private val mantissa=Reg(UInt(24.W));private val guard=Reg(Bool());private val exponent=Reg(UInt(8.W))
@@ -160,11 +170,13 @@ private[graphics] class TextureImageFetchDecoder extends Module {
   io.in.ready:=phase===State.idle;io.out.valid:=phase===State.respond;io.out.bits:=result;io.busy:=phase=/=State.idle
   when(io.in.fire){request:=io.in.bits;result:=0.U.asTypeOf(result);result.tag:=io.in.bits.tag
     result.colorType:=TextureImageFormat.kind(io.in.bits.format);c:=0.U
-    when(TextureImageFormat.valid(io.in.bits.format)){phase:=State.select}.otherwise{result.status:=1.U;phase:=State.respond}}
+    when(TextureImageFormat.valid(io.in.bits.format)){phase:=Mux(TextureImageFormat.block4x4(io.in.bits.format),State.offerBlock,State.select)}.otherwise{result.status:=1.U;phase:=State.respond}}
   when(phase===State.select){
     val width=TextureImageFormat.componentWidth(request.format,c)
     val shift=TextureImageFormat.componentOffset(request.format,c)
-    raw:=(request.value>>shift)(31,0)&((1.U(33.W)<<width)-1.U)(31,0)
+    val uncompressed=(request.value>>shift)(31,0)&((1.U(33.W)<<width)-1.U)(31,0)
+    val compressed=Mux(TextureImageFormat.encoding(request.format)===14.U,blockRgba(c).asSInt.pad(32).asUInt,blockRgba(c).pad(32))
+    raw:=Mux(TextureImageFormat.block4x4(request.format),compressed,uncompressed)
     bits:=width;encoding:=TextureImageFormat.encoding(request.format);present:=width=/=0.U;alpha:=c===3.U
     sharedExponent:=request.value(31,27)
     defaultValue:=Mux(c===3.U,Mux(TextureImageFormat.kind(request.format)===0.U,"h3f800000".U,1.U),0.U)
@@ -172,14 +184,16 @@ private[graphics] class TextureImageFetchDecoder extends Module {
   }
   private val signed=((raw<<(32.U-bits))(31,0).asSInt>>(32.U-bits)).asUInt
   private val decoded=MuxLookup(encoding,raw)(Seq(0.U->TypedColorDecode.unorm(raw,bits),2.U->signed,
-    3.U->TypedColorDecode.half(raw(15,0)),5.U->Mux(alpha,TypedColorDecode.unorm(raw,8.U),Srgb8Decode.values(raw(7,0)))))
+    3.U->TypedColorDecode.half(raw(15,0)),5.U->Mux(alpha,TypedColorDecode.unorm(raw,8.U),Srgb8Decode.values(raw(7,0))),
+    11.U->TypedColorDecode.unorm(raw,8.U),12.U->Mux(alpha,TypedColorDecode.unorm(raw,8.U),Srgb8Decode.values(raw(7,0)))))
   // Signed normalized and16/24-bit depth need more than the legacy40
   // fractional bits. Eighty bits retain all rounding information even at D24's
   // smallest nonzero value. Odd denominators cannot produce binary midpoints.
   private val magnitude=Mux(raw(7),(0.U(8.W)-raw(7,0))(7,0),raw(7,0))
-  private val numerator=Mux(encoding===6.U,Mux(magnitude>127.U,127.U,magnitude).pad(32),raw)
-  private val fractionBits=Mux(encoding===6.U,7.U,bits)
-  private val repeated=MuxLookup(fractionBits,0.U(80.W))(Seq(7,16,24).map{b=>
+  private val eacMagnitude=Mux(raw(31),(0.U(32.W)-raw)(31,0),raw)
+  private val numerator=Mux(encoding===6.U,Mux(magnitude>127.U,127.U,magnitude).pad(32),Mux(encoding===14.U,eacMagnitude,raw))
+  private val fractionBits=Mux(encoding===6.U,7.U,Mux(encoding===14.U,10.U,bits))
+  private val repeated=MuxLookup(fractionBits,0.U(80.W))(Seq(7,10,11,16,24).map{b=>
     val count=(80+b-1)/b;val size=count*b;b.U->Fill(count,numerator(b-1,0))(size-1,size-80)})
   private val leading=PriorityEncoder(Reverse(repeated))
   private val shifted=(repeated<<leading)(79,0)
@@ -197,9 +211,9 @@ private[graphics] class TextureImageFetchDecoder extends Module {
   private val sharedValue=Mux(sharedMantissa.orR,
     Cat(0.U(1.W),(111.U(8.W)+sharedExponent-sharedLeading)(7,0),sharedFraction),0.U)
   when(phase===State.prepare){
-    normalized:=encoding===6.U || encoding===9.U
+    normalized:=encoding===6.U || encoding===9.U || encoding===13.U || encoding===14.U
     mantissa:=shifted(79,56);guard:=shifted(55);exponent:=126.U-leading
-    zero:=numerator===0.U;negative:=encoding===6.U && raw(7) && numerator=/=0.U
+    zero:=numerator===0.U;negative:=((encoding===6.U && raw(7)) || (encoding===14.U && raw(31))) && numerator=/=0.U
     preparedValue:=Mux(encoding===7.U,Mux(bits===10.U,miniFloat(raw,5),miniFloat(raw,6)),
       Mux(encoding===8.U,sharedValue,decoded))
     phase:=State.decode
@@ -210,7 +224,7 @@ private[graphics] class TextureImageFetchDecoder extends Module {
     when(c===3.U){phase:=State.respond}.otherwise{c:=c+1.U;phase:=State.select}}
   when(io.out.fire){phase:=State.idle}
 }
-/** Typed54-format fetch. Format is captured at admission; its byte size must
+/** Typed64-format fetch. Format is captured at admission; its byte size must
   * agree with the GPU level layout before texture data can be read. Integer
   * outputs remain raw typed values; normalized/half/sRGB and packed/depth values use image decode.
   */
@@ -232,10 +246,11 @@ class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
   io.memoryRequest<>fetch.io.memoryRequest;fetch.io.memoryResponse<>io.memoryResponse
   fetch.io.invalidate:=io.invalidate || stop;fetch.io.cancel:=fetchStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   fetch.io.in.valid:=phase===State.offerFetch;fetch.io.in.bits.resource:=request.resource
-  fetch.io.in.bits.block4x4:=false.B;fetch.io.in.bits.blockBytes:=TextureImageFormat.bytes(request.format)
+  fetch.io.in.bits.block4x4:=TextureImageFormat.block4x4(request.format);fetch.io.in.bits.blockBytes:=TextureImageFormat.bytes(request.format)
   fetch.io.out.ready:=phase===State.waitFetch
   decoder.io.in.valid:=phase===State.offerDecode;decoder.io.in.bits.value:=sample.raw
   decoder.io.in.bits.format:=request.format;decoder.io.in.bits.tag:=request.resource.tag(7,0)
+  decoder.io.in.bits.blockX:=sample.blockX;decoder.io.in.bits.blockY:=sample.blockY
   decoder.io.out.ready:=phase===State.waitDecode
   when(active && io.cancel && status===0.U){status:=TextureImageResourceStatus.cancelled.U}
   switch(phase){

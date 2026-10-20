@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/hglm/detex",
+  "commit": "cab11584d9be140602a66fd9a88ef0b99f08a97a",
+  "source_files_unmodified": true,
+  "sha256": {
+    "decompress-etc.c": "99c7f62ec5ca5b4dab54dbb984a5649f552827160332dbbf5a60ff7259fd7988",
+    "decompress-eac.c": "3ce53076e7eb85d7eecfa83a5971f19eefe60d64fd76032a1c8e123793aa13b8",
+    "detex.h": "4621b899b0efcdfa53b8776110016e6b21e43c15936f3446f46b6889d735a48b",
+    "clamp.c": "0bd2f31ad599bb05637d7481985986818fa71448005b730b34fb17767e8a62d4",
+    "LICENSE": "226c3e9c2b76a872d4e90733ac0293cf4bd66ffbddf654c69ace09e4ec89e341"
+  },
+  "usage": "Independent test oracle only. Signed EAC base -128 is canonicalized to -127 before calling upstream, as required by GLES3 Appendix C; upstream otherwise rejects it."
+}

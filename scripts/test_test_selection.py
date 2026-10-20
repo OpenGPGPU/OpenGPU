@@ -107,4 +107,9 @@ assert json.loads(shard_cmd("shards-json", " ".join(vector_selected))) == [
     "core-b"
 ]
 
+
+# Changes to the independent compressed-texture oracle must exercise consumers.
+for name in ("decompress-etc.c", "decompress-eac.c", "detex.h", "oracle.c", "UPSTREAM.json"):
+    assert select("src/test/resources/opengpu/texture/detex/" + name) == ["opengpu.graphics.*"]
+
 print("Integration test selection: PASS")

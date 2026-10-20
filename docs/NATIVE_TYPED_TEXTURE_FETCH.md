@@ -1,7 +1,9 @@
 # Native shader resource bindings and typed component fetch
 
-Current: the [54-format image extension](performance/mobile-texture-image-formats-2026-10-20.json)
-passes 119 distinct targeted controls and four standalone synthesis screens.
+Current: the [64-format image extension](performance/mobile-etc2-eac-fetch-2026-10-20.json)
+passes 130 distinct targeted controls and five standalone synthesis screens.
+The prior [54-format qualification](performance/mobile-texture-image-formats-2026-10-20.json)
+retains 119 tests and four earlier screens.
 
 Original 36-format qualification: native hardware path with 114 targeted controls,
 including typed and legacy native execution, metadata/decoder/image coverage,
@@ -12,7 +14,9 @@ All four [standalone synthesis setup screens](performance/mobile-native-typed-te
 pass at standard 1000 ps, 25% I/O, TC/SLVT and no retiming. GTX1 now advertises
 hardware typed component fetch with feature bit512. Existing driver shader
 admission and LLVM mnemonics/codegen still need separate integration. General
-sampling/filtering, LOD application, compressed formats and depth comparison remain open.
+sampling/filtering, LOD application and depth comparison remain open.
+The [ETC2/EAC extension](TEXTURE_COMPRESSED_FETCH.md) supplies compressed decode
+for native integer-coordinate component fetch.
 The later [54-format catalog](TEXTURE_IMAGE_FORMATS.md) extends uncompressed image
 decode and adds GTF1 runtime discovery; the114-control results below describe the
 original36-format snapshot.

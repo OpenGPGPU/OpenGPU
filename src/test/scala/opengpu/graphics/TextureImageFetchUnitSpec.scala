@@ -158,16 +158,15 @@ class TextureImageFetchUnitSpec extends AnyFlatSpec {
       info(s"TEXTURE_FETCH_RAW queries=$queries invalidLayouts5BeforeReads=true blockSizes8And16=true offsets64=true selectedTargets4=true exact4GiBEnd=true noWrappedLine=true")
     }
   }
-  it should "reject invalid formats layouts descriptors and coordinates before texture data reads then recover" in {
+  it should "reject mismatched format layouts descriptors and coordinates before texture data reads then recover" in {
     simulate(new ImageFetchHarness()){d=>val t=new Driver(d);t.install(View())
-      for(id<-54 until 64){val count=t.memory.seen.size;t.query(format=id);t.check(6,source=3);t.pop();assert(t.memory.seen.size==count)}
       for(v<-Seq(View(bytes=8,row=8),View(block=true,w=4,h=4),View(w=0),View())){
         t.install(v);t.invalidate();val n=t.dataReads;t.query(x=if(v==View())BigInt(0xffffffffL)else BigInt(0))
         val status=if(v.w==0)1 else if(v==View())5 else 6
         t.check(status,source=if(status==6)3 else 1);t.pop();assert(t.dataReads==n)}
       t.install(View());t.memory.putWord(0x2000,0);t.invalidate();val n=t.dataReads;t.query();t.check(7,source=1);t.pop();assert(t.dataReads==n)
       t.install(View());t.payload(0x10003c,16,17);t.query();t.check(raw=17);t.pop()
-      info("TEXTURE_FETCH_REJECT invalidFormats10=true noInvalidFormatReads=true packedByteMismatch=true blockMismatch=true invalidView=true fullWidthCoordinate=true corruptHeader=true noRejectedDataReads=true exactHealthyReuse=true")
+      info("TEXTURE_FETCH_REJECT allSixBitIdsAssigned=true packedByteMismatch=true blockMismatch=true invalidView=true fullWidthCoordinate=true corruptHeader=true noRejectedDataReads=true exactHealthyReuse=true")
     }
   }
   it should "attribute descriptor and data faults drain reordered tags and retain the primary fault through cancellation" in {

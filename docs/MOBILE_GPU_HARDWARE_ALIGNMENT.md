@@ -6522,3 +6522,47 @@ color require nearest-only sampler state. ETC2/EAC, general filtering/LOD,
 swizzle, depth comparison, compiler/driver adoption, representative workloads,
 whole-GPU synthesis and full H0–H8/GLES closure remain open. Functional hardware
 development continues; PPA remains synthesis only.
+
+
+## Native ETC2/EAC image decode and address pipeline (2026-10-20)
+
+The [compressed image path](TEXTURE_COMPRESSED_FETCH.md) fills IDs54–63 with all
+ten core ETC2/EAC formats. Native indexed component fetch now decodes 64 storage
+formats while preserving existing IDs0–53, descriptor sizes/offsets, instruction
+encodings and the 36-format attachment catalog. GTF1 enumerates 64 IDs with two
+full masks; GTX1's legacy sampler mask remains 0x1f. Compressed 2D/array/cube views
+retain byte order and 4x4 local coordinates; 3D compressed images fail admission.
+General filtering/LOD, swizzle, depth comparison and decoded-block caching remain
+open, so this completes a format-decode step rather than H4/H6 or GLES closure.
+
+The [functional record](performance/mobile-etc2-eac-fetch-2026-10-20.json) contains
+130 distinct targeted tests on 768 frozen source inputs, including 176,144
+independent block comparisons, 10,240 full FP32 compressed pixel queries, 8,190
+all-value EAC normalization checks, 768 sampler/filter pairs and 2,320 compressed
+component checks per stage. NPOT 7x5/7x7 views cover all local coordinates, array
+layers/cube faces, three selected mips, vector widths 1/4/16/32, fault atomicity
+and post-data cancellation. The 40-offset scan observes 28 cancelled and 12 held
+results. Actual-CU controls submit 284 stage draws. Translated native controls
+submit 68 typed frames/204 submitted primitive draws across both payload modes, retaining
+84 legacy shared-CU draws and 14 legacy AXI frames/42 submitted draws. Nine ABI
+checks, combined C11 headers and oracle-resource CI selection pass.
+
+Initial comparisons exposed a color-adder carry loss before saturation, followed
+by a byte-order error in an EAC reconstruction fixture. Both are corrected and
+retained as failed evidence. The first composed synthesis endpoint missed setup
+by 15.685 ps along target selection to the last-layer product. A coefficient
+register cut preserves full-width arithmetic and one address/cycle; composed
+address latency grows 4 to 5 cycles, retaining the original 3/4-cycle profiles.
+Image decode remains serialized: 12 cycles uncompressed and 18 compressed, plus
+held-output cycles. No sampling-throughput gain is claimed.
+
+All five [standalone synthesis screens](performance/mobile-etc2-eac-synthesis-2026-10-20.json)
+pass full mapping/setup at unchanged standard 1000 ps, 25% I/O, TC/SLVT and no
+retiming. Core/I/O setup margins are block +551.516/+647.030 ps, typed fetch
++223.136/+416.631 ps, sampler admission +205.927/+424.063 ps, shader endpoint
++112.409/+384.441 ps and native wrapper +116.537/+167.515 ps. The native wrapper
+maps 199,144 cells. Four composed screens are fresh after the cut; block RTL is
+byte identical to its earlier positive screen. CI-only final edits preserve all
+production and Scala/C test inputs byte for byte. These results do not qualify
+whole-host timing, physical power, Mobile frame budgets or full H0–H8 hardware
+completion. PPA remains synthesis only and hardware development continues.
