@@ -5530,3 +5530,19 @@ The candidate stays isolated and changes default native RTL; existing component
 legacy-equivalence evidence is not an integration result for this source.
 No new mode is advertised on main, and H4/H6/general resources remain open.
 PPA evaluation remains synthesis only.
+
+
+## Native texture actual-CU stage checkpoint (2026-10-20)
+
+The [four actual-CU stage controls](performance/mobile-native-texture-policy-stage-controls-2026-10-20.json)
+pass on the unchanged 640-file candidate. Vertex/fragment and local/global
+profiles execute 84 draws: 76 valid cases and eight scalar/vector coordinate
+faults. All nine axis-mode combinations, signed/unsigned inputs, exact packed
+filter results, no invalid texture reads, no faulted exports, held completion
+VM ownership, pool drain and healthy reuse pass. Generated headers also pass
+a combined C11 compile with fixed extension offsets and record-size checks.
+
+The isolated reader/backend regression and native host image/legacy texture
+checks are live on the same source bytes. Final host/replay emissions remain
+pending. The candidate stays isolated; no main native-mode advertisement,
+whole-native qualification or new PPA result is claimed.
