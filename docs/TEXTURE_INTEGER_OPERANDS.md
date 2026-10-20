@@ -87,3 +87,11 @@ and both positive full-endpoint synthesis screens. Both real shader stages
 pass local/spilled payloads,all64 formats and image bases0/1/2. The selected
 mip-page assertion is corrected after same-source negative/positive controls;
 the separate full AXI matrix remains running and is not counted as passed.
+
+The [directed translated AXI proof](performance/mobile-native-integer-mip-axi-directed-2026-10-21.json)
+passes four RGBA32F2D frames across local/spilled payload modes with image
+bases1/2 and shader LOD0. Both actual shader stages read the selected mip
+descriptor page and preserve exact image guards and VM ownership. The same
+frozen source reproduces the old origin-page assertion failure. This directed
+run does not cover the full format/fault matrix;the unflagged74-frame cases
+remain running.

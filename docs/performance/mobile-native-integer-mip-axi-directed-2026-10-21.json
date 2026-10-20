@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "actual_native_AXI_selected_mip_page_negative_reproduced_corrected_local_and_spill_frames_pass_full_matrix_running",
+  "source": {
+    "commit": "87a40d849a9904816b423b88061e02962c7be8ad",
+    "source_files": 803,
+    "manifest_sha256": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+    "archive_sha256": "7778d322fcb746ea1e1f921107909a5bae312d96f9404d5f3cd9fabd56757830",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs_only": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+      "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala"
+    ],
+    "all_production_driver_ABI_and_shared_CU_test_inputs_exact": true,
+    "runner_pid": 38243,
+    "started_utc": "2026-10-20T19:19:24.900129+00:00"
+  },
+  "main803_inputs_exact": true,
+  "negative": {
+    "phase": "negative",
+    "returncode": 1,
+    "expected_failure": true,
+    "source_unchanged": true,
+    "elapsed_seconds": 135.57749954098836,
+    "commit": "87a40d849a9904816b423b88061e02962c7be8ad",
+    "source_files": 803,
+    "manifest_sha256": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+    "archive_sha256": "7778d322fcb746ea1e1f921107909a5bae312d96f9404d5f3cd9fabd56757830",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs_only": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+      "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala"
+    ],
+    "all_production_driver_ABI_and_shared_CU_test_inputs_exact": true,
+    "runner_pid": 38243,
+    "started_utc": "2026-10-20T19:19:24.900129+00:00"
+  },
+  "positive": {
+    "phase": "positive",
+    "returncode": 0,
+    "expected_failure": false,
+    "source_unchanged": true,
+    "elapsed_seconds": 239.30488470802084,
+    "commit": "87a40d849a9904816b423b88061e02962c7be8ad",
+    "source_files": 803,
+    "manifest_sha256": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+    "archive_sha256": "7778d322fcb746ea1e1f921107909a5bae312d96f9404d5f3cd9fabd56757830",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs_only": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+      "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala"
+    ],
+    "all_production_driver_ABI_and_shared_CU_test_inputs_exact": true,
+    "runner_pid": 38243,
+    "started_utc": "2026-10-20T19:19:24.900129+00:00"
+  },
+  "positive_tests": 2,
+  "positive_payload_modes": [
+    "local",
+    "spill"
+  ],
+  "positive_frames_per_mode": 2,
+  "positive_total_successful_frames": 4,
+  "positive_formats": [
+    "RGBA32F"
+  ],
+  "positive_targets": [
+    "2D"
+  ],
+  "positive_image_base_levels": [
+    1,
+    2
+  ],
+  "positive_shader_LOD": 0,
+  "both_actual_shared_CU_shader_stages": true,
+  "AXI_data_bytes": 32,
+  "real_Sv32": true,
+  "selected_level_page_assertion_fixed": true,
+  "exact_MRT_depth_resolve_guards": true,
+  "held_completion_pins_VM": true,
+  "created_draw_descriptors": 12,
+  "completed_draw_count_claimed": false,
+  "diagnostic_limitation": "The common log summary unconditionally prints full-matrix format/target/fault flags. This directed invocation selects only2D RGBA32F with base1/2 and no fault/stale-tuple/offset matrix;those unconditional flags are not coverage evidence. The separate unflagged full run retains all74 frames per payload mode.",
+  "full_matrix": {
+    "session": 46372,
+    "state": "live_after_directed_phase",
+    "planned_tests": 2,
+    "planned_frames_per_mode": 74,
+    "log": ".artifacts/mobile-native-integer-mip-page-v2-full.log",
+    "no_full_matrix_pass_claimed": true
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-integer-mip-page-v2-negative.log": "05bacd2701f1b095b1ceeb376cd77396cf6ce14b77836380c1fa5062c25fcc2f",
+    ".artifacts/mobile-native-integer-mip-page-v2-positive.log": "ab621ac519013e5605b215a809c512076ac6ab4ecb7164065d519a9d1f5f8104",
+    ".artifacts/mobile-native-integer-mip-page-v2-negative-result.json": "954026653bb417b8c1dc105517a27de937e1f175626f64da202cfe41f7853f49",
+    ".artifacts/mobile-native-integer-mip-page-v2-positive-result.json": "36f6cfc279e46b8ec4100335e3b5cd9009b4a055e171ce63552a39ed177551ed",
+    ".artifacts/mobile-native-integer-mip-page-v2-source.json": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+    ".artifacts/mobile-native-integer-mip-page-v2-source.tar.gz": "7778d322fcb746ea1e1f921107909a5bae312d96f9404d5f3cd9fabd56757830"
+  },
+  "scope": "Directed real AXI proof supplements the154 component/native/CU tests and positive vertex/fragment synthesis;full AXI matrix and H0-H8 remain open."
+}
