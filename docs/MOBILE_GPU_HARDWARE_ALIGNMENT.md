@@ -5643,3 +5643,20 @@ Default-host public ports and SRAM/CU/replay/payload/FMA/divider counts remain
 stable; standalone replay intentionally adds three polygon-state input pins.
 These structural checks do not establish area, timing, power or rate. Native
 texture synthesis screening remains separate; no new PPA verdict is claimed.
+
+
+## General texture image addressing development (2026-10-20)
+
+The isolated [image-level address candidate](TEXTURE_IMAGE_ADDRESSING.md)
+adds a three-stage elastic address unit for pitched 2D, array, cube-face and
+volume storage, with packed texel and4x4-block spans. It snapshots the complete
+resolved view, validates full-width coordinates, disjoint rows/planes and the
+whole level allocation, then publishes a checked byte address. Exact4GiB
+exclusive ends are supported. Faulted requests return zero spans with retained
+identity metadata; the unit issues no memory work.
+
+Four runtime controls and standalone RTL emission are pending on frozen643-file
+source. No native capability is changed. GPU descriptor/mip table ownership,
+indexed bindings, format fetch/decode, normalized coordinates, dimensional
+filtering and native execution integration remain required; this component
+does not close texture/GLES or H4/H6. PPA remains synthesis only.
