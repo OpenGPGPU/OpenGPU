@@ -5251,7 +5251,14 @@ files, including high mask bits, held offers, prefix bounds, cancellation,
 A separate 18-check source qualifies coherent covered-sample fallback when a
 partially covered primitive's center extrapolates through a perspective pole,
 including exact local/global shader fragCoord.xyzw and protected sample depths.
-The new native centroid-gradient image suite and default four-CU emission are
-running. Prepared binned/replay centroid images, complete resource/format
+The [native centroid-gradient image suite](performance/mobile-centroid-native-host-2026-10-20.json)
+passes all seven checks on 631 unchanged source/ABI files, including actual
+two-CU local/global 2x/version-3 and 4x/version-4 triangle/line/point gradients,
+mixed qualifiers, exact four-MRT sources/resolves, guarded uniforms, fault/reset
+regressions and held completion ownership. Default four-CU emission completes
+with 371 active RTL files, one shared payload pool, two replay engines and
+unchanged SRAM/AXI capacities. These small W=1 images and structural emission do
+not establish production rates or every version/sample cross product.
+Prepared binned/replay centroid images, complete resource/format
 coverage, representative rates and H0–H8 remain open. Composed PPA continues
 under the synthesis-only policy on its explicitly frozen pre-centroid source.
