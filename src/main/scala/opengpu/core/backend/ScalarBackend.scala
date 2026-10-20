@@ -137,7 +137,11 @@ class ScalarBackend(
   private val textureFault = !io.texCommit.bits.writeRd
   commitArbiter.io.in(6).valid := io.texCommit.valid && !textureFault
   commitArbiter.io.in(6).bits := io.texCommit.bits
-  private val textureFailure = memoryFaultArbiter.io.in(2)
+  // Task routing can depend on the trap tag. Register texture faults before
+  // arbitration so that a completion cannot feed its own owner selection.
+  private val textureFaultQueue = Module(new Queue(new ScalarMemoryFault(config), 1, pipe=false, flow=false))
+  memoryFaultArbiter.io.in(2) <> textureFaultQueue.io.deq
+  private val textureFailure = textureFaultQueue.io.enq
   textureFailure.valid := io.texCommit.valid && textureFault
   textureFailure.bits := 0.U.asTypeOf(textureFailure.bits)
   textureFailure.bits.warpId := io.texCommit.bits.warpId

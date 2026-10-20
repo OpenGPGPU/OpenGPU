@@ -38,8 +38,9 @@ at each instruction. Invalid dimensions and mip intervals produce a held
 coordinate fault without texture reads. The dedicated texture completion port
 uses `writeRd=false` or `writesVd=false` only for a fault; healthy instructions,
 including empty vectors, retain their normal write flag. The scalar/vector
-backend routes a rejected texture completion into its existing memory-fault
-stream, cancels its reserved destination and emits an access-fault trap rather
+backend registers a rejected texture completion before its existing memory-fault
+arbiter. This breaks feedback through shared trap/task-tag routing and retains
+fault ownership under backpressure. The backend cancels its reserved destination and emits an access-fault trap rather
 than a normal redirect or fabricated texel write. The core trap reports address
 zero because no tap address was issued; the draw owner retains the sampler base
 as its primary texture-fault address. Vertex status is memory fault (3);

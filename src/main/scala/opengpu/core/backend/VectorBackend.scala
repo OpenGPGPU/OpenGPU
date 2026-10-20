@@ -900,7 +900,11 @@ class VectorBackend(
   private val textureFault = !io.texCommit.bits.writesVd
   writebackArbiter.io.in(10).valid := io.texCommit.valid && !textureFault
   writebackArbiter.io.in(10).bits := io.texCommit.bits
-  private val textureFailure = memoryFaultArbiter.io.in(1)
+  // The registered boundary also retains the failed instruction while shared
+  // task/warp trap routing stalls; normal texture writeback keeps its latency.
+  private val textureFaultQueue = Module(new Queue(new VectorMemoryFault(config), 1, pipe=false, flow=false))
+  memoryFaultArbiter.io.in(1) <> textureFaultQueue.io.deq
+  private val textureFailure = textureFaultQueue.io.enq
   textureFailure.valid := io.texCommit.valid && textureFault
   textureFailure.bits := 0.U.asTypeOf(textureFailure.bits)
   textureFailure.bits.warpId := io.texCommit.bits.writeback.warpId
