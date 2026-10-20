@@ -38,10 +38,16 @@ object NativeBinnedGraphicsLayout {
       .zipWithIndex.map{case((name,value),i)=>NativeTypedGraphicsLayout.Field("header."+name,3+i,value)}
   private def payloadFields(prefix: String,d: Data): Seq[NativeTypedGraphicsLayout.Field]={
     var word=16
-    WindowPrimitiveRecordLayout.leaves(d).map{case(name,value)=>
+    val policyWords=Map("policyVersion"->480,"wrapU"->481,"wrapV"->482,"signedCoordinates"->483)
+    val (policy,legacy)=WindowPrimitiveRecordLayout.leaves(d).partition{case(name,_)=>
+      name.contains(".sampler.") && policyWords.contains(name.split('.').last)}
+    require(policy.isEmpty || policy.size==4,"native binned sampler extensions need explicit non-overlapping slots")
+    val fields=legacy.map{case(name,value)=>
       val count=(value.getWidth+31)/32
       if(word%16+count>16)word=(word+15)/16*16
       val f=NativeTypedGraphicsLayout.Field(prefix+name,word,value);word+=count;f}
+    require(policy.isEmpty || word<=480,"legacy fields must not overlap sampler extension words")
+    fields++policy.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,policyWords(name.split('.').last),value)}
   }
   def jobFields(d: NativeBinnedGraphicsJobRecord): Seq[NativeTypedGraphicsLayout.Field]=headerFields(d.header)++payloadFields("job.",d.job)
   def frameFields(d: NativeBinnedGraphicsFrameRecord): Seq[NativeTypedGraphicsLayout.Field]=headerFields(d.header)++payloadFields("frame.",d.frame)
@@ -51,7 +57,7 @@ object NativeBinnedGraphicsLayout {
   def fit(d: VertexBinDraw,p: VertexShaderStageConfig): Bool={
     val v=d.vertex.geometry.vertex;val i=v.input
     val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
-    active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U &&
+    VertexShaderSampler.legal(v.sampler) && active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U &&
       !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(d.vertex.geometry.flatMask>>(v.varyingSlots<<2)).orR
   }
 }

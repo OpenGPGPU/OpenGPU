@@ -140,4 +140,25 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
       t.lookup();t.result(0,hit=true)
     }
   }
+
+  it should "retain versioned sampler policy in state cache and reject malformed sampler encodings" in {
+    simulate(new TypedFragmentStateReader(cfg,f,g)){d=>val t=new Driver(d)
+      val prefix="fragment.sampler."
+      val mapped=t.fields.map(x=>x.name->x.word).toMap
+      assert(mapped(prefix+"policyVersion")==120 && mapped(prefix+"wrapU")==121 && mapped(prefix+"wrapV")==122 && mapped(prefix+"signedCoordinates")==123)
+      val values=t.contents++Map(prefix+"policyVersion"->BigInt(1),prefix+"wrapU"->BigInt(2),prefix+"wrapV"->BigInt(1),prefix+"signedCoordinates"->BigInt(1))
+      t.install(values=values);t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check(values)
+      val held=d.io.result.bits.peek().litValue
+      for(_<-0 until 9){t.tick();assert(d.io.result.bits.peek().litValue==held)}
+      t.result(0);t.install();t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check(values);t.result(0,hit=true)
+      for(bad<-Seq(Map("policyVersion"->2),Map("wrapU"->1),Map("signedCoordinates"->1),
+        Map("policyVersion"->1,"wrapU"->3),Map("policyVersion"->1,"wrapV"->3),
+        Map("policyVersion"->1,"clamp"->1),Map("policyVersion"->1,"wrapU"->4))){
+        t.invalidate();t.install(values=t.contents++bad.map{case(k,v)=>(prefix+k)->BigInt(v)})
+        t.lookup();t.result(1)
+      }
+      t.invalidate();t.install();t.lookup();t.result(0)
+      info("NATIVE_TEXTURE_POLICY_STATE extensionWords120to123=true heldResult=true cachedSnapshot=true invalidPolicies=7 noInvalidState=true legacyReuse=true")
+    }
+  }
 }

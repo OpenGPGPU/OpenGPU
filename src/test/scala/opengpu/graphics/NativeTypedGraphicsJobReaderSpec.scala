@@ -199,4 +199,32 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
       info("NATIVE_TYPED_READER highestRecords=3 headerPassDraw=true exclusive4GiB=true noAddressWrap=true countersClassifyHighDraws=true")
     }
   }
+
+  it should "snapshot versioned native sampler policies without shifting legacy words and reject malformed policies" in {
+    simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
+      val fs=drawFields(d.io.draw.bits).map(x=>x.name->x.word).toMap
+      for((prefix,base)<-Seq("vertex.sampler."->56,"fragment.sampler."->552)){
+        assert(fs(prefix+"policyVersion")==base && fs(prefix+"wrapU")==base+1 && fs(prefix+"wrapV")==base+2 && fs(prefix+"signedCoordinates")==base+3)
+      }
+      t.prepare(1);t.drawValues++=Map("vertex.sampler.policyVersion"->BigInt(1),"vertex.sampler.wrapU"->BigInt(2),
+        "vertex.sampler.wrapV"->BigInt(1),"vertex.sampler.signedCoordinates"->BigInt(1),
+        "fragment.sampler.policyVersion"->BigInt(1),"fragment.sampler.wrapU"->BigInt(0),"fragment.sampler.wrapV"->BigInt(2))
+      t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues)
+      t.blockDraw=true;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+      val held=d.io.draw.bits.peek().litValue;t.check(drawFields(d.io.draw.bits),t.drawValues)
+      t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),Map.empty)
+      for(_<-0 until 9){t.tick();assert(d.io.draw.bits.peek().litValue==held)}
+      t.blockDraw=false;t.complete(0,1)
+      for(prefix<-Seq("vertex.sampler.","fragment.sampler.");bad<-Seq(
+        Map("policyVersion"->2),Map("wrapU"->1),Map("signedCoordinates"->1),
+        Map("policyVersion"->1,"wrapU"->3),Map("policyVersion"->1,"wrapV"->3),
+        Map("policyVersion"->1,"clamp"->1),Map("policyVersion"->1,"wrapU"->4))){
+        t.prepare(1);t.drawValues++=bad.map{case(k,v)=>(prefix+k)->BigInt(v)}
+        t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues);t.submit();t.complete(1)
+        assert(t.acceptedDraws==0)
+      }
+      t.prepare(1);t.submit();t.complete(0,1)
+      info("NATIVE_TEXTURE_POLICY_READER typed=true extensionWords56And552=true immutableOffer=true invalidPolicies=14 noInvalidChild=true legacyReuse=true")
+    }
+  }
 }

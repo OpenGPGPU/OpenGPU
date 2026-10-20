@@ -5510,3 +5510,23 @@ retain identical contents and modes. This is not a separately rerun main
 regression. Default legacy hardware remains unchanged across the four emitted
 profiles; task/native policy descriptors and coordinate-fault owner handling
 remain the next integration work. PPA remains synthesis only.
+
+
+## Native texture policy and fault ownership development (2026-10-20)
+
+The [native fixed-point policy candidate](NATIVE_TEXTURE_COORDINATE_POLICY.md)
+adds versioned per-axis sampler fields in reserved GTD1/GND1/GFS1 words and
+read-only GTX1 discovery. Every pre-existing ABI offset, width, record header,
+size and generated C define remains unchanged in the development comparison.
+The generic vertex/fragment stages capture these fields, pass the qualified
+policy into texture execution, and retain a primary coordinate-fault address.
+Rejected texture completions now enter existing scalar/vector fault streams,
+cancel reserved destinations and trap their owning warp without normal data
+writeback. This closes a required link between the optional unit fault and
+shared-CU draw drain.
+
+Reader, actual-CU policy/fault/reuse and native image qualification are pending.
+The candidate stays isolated and changes default native RTL; existing component
+legacy-equivalence evidence is not an integration result for this source.
+No new mode is advertised on main, and H4/H6/general resources remain open.
+PPA evaluation remains synthesis only.

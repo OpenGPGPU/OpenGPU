@@ -566,6 +566,10 @@
     {"name":"draw.vertex.viewport.nearDepth","word":350,"bits":32,"signed":false},
     {"name":"draw.vertex.viewport.version","word":351,"bits":8,"signed":false},
     {"name":"draw.vertex.viewport.x","word":352,"bits":32,"signed":true},
-    {"name":"draw.vertex.viewport.y","word":353,"bits":32,"signed":true}
+    {"name":"draw.vertex.viewport.y","word":353,"bits":32,"signed":true},
+    {"name":"draw.vertex.geometry.vertex.sampler.policyVersion","word":480,"bits":2,"signed":false},
+    {"name":"draw.vertex.geometry.vertex.sampler.wrapU","word":481,"bits":2,"signed":false},
+    {"name":"draw.vertex.geometry.vertex.sampler.wrapV","word":482,"bits":2,"signed":false},
+    {"name":"draw.vertex.geometry.vertex.sampler.signedCoordinates","word":483,"bits":1,"signed":false}
   ]}
 }

@@ -41,6 +41,7 @@ object EmitNativeTypedGraphicsAbi {
     header.append(s"#define ${prefix}INPUT_VERSION ${VertexInputFormat.version}u\n")
     header.append(NativeVertexInputCapabilities.header(prefix))
     header.append(FragmentInputAbi.header(prefix))
+    header.append(NativeTextureCapabilities.header(prefix))
     header.append(NativeFragmentInputCapabilities.header(prefix))
     for((name,id)<-VertexInputFormat.formats)header.append(s"#define ${prefix}INPUT_FORMAT_$name ${id}u\n")
     for((name,value)<-Seq("OPCODE"->"7u","DISCOVERY"->"0x68u","CAPABILITIES"->"0x160u","CAPABILITY_MAGIC"->"0x47544301u",

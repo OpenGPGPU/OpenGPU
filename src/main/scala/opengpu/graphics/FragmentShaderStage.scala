@@ -40,7 +40,7 @@ object FragmentShaderDescriptor {
       types && draw.sampleMode<=log2Ceil(g.maxSampleCount).U &&
       !(draw.centroidMask>>(draw.varyingSlots<<2)).orR && (FragmentInputAbi.hasCentroid(draw.version) || !draw.centroidMask.orR)
     val sharedAlias=s.base<(config.sharedMemoryBase+config.sharedMemoryBytes).U && end>config.sharedMemoryBase.U
-    val invalid= !FragmentInputAbi.legal(draw.version) || !fields || !view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || sharedAlias
+    val invalid= !FragmentInputAbi.legal(draw.version) || !VertexShaderSampler.legal(draw.sampler) || !fields || !view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || sharedAlias
     val bounds=end>s.limit || end>(BigInt(1)<<32).U || ((end+63.U)&(~63.U(40.W)))>s.allocationLimit
     (invalid,bounds)
   }
@@ -129,7 +129,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val invalidateOffered=RegInit(false.B);private val invalidatePending=RegInit(false.B);private val launchOffered=RegInit(false.B);private val kernelActive=RegInit(false.B);private val kernelDone=RegInit(false.B)
   private val memOffered=RegInit(false.B);private val memPending=RegInit(false.B);private val memRequest=Reg(new ComputeMemoryRequest(config,64,1))
   private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),helperInvocations=true))
-  private val texture=Module(new TexSampleUnit(config));private val textureBridge=Module(new OmWordToLinePort(config,maxOutstanding=2))
+  private val texture=Module(new TexSampleUnit(config,coordinatePolicyInput=true));private val textureBridge=Module(new OmWordToLinePort(config,maxOutstanding=2))
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))
   private val metadataBanks=Seq.fill((metaDepth+255)/256)(Module(new L2SramArray(math.min(256,metaDepth),64,useSramBlackBoxes)))
   private val metadataRead=WireDefault(false.B);private val metadataWrite=WireDefault(false.B)
@@ -198,13 +198,15 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   texture.io.texWidth:=draw.sampler.texWidth;texture.io.texHeight:=draw.sampler.texHeight
   texture.io.wrapClamp:=draw.sampler.clamp;texture.io.texMaxLevel:=draw.sampler.maxLevel
   texture.io.minLevel:=draw.sampler.minLevel;texture.io.lodBias:=draw.sampler.bias
+  texture.io.coordinatePolicy.get:=VertexShaderSampler.coordinatePolicy(draw.sampler)
+  private val coordinateFault=texture.io.coordinateFault.get && (texture.io.commit.valid || texture.io.vectorCommit.valid)
   private val textureDrained=texturePending===0.U && textureInstructions===0.U &&
     !textureBridge.io.memoryRequest.valid && !shader.io.texSample.valid && !shader.io.vectorTexSample.valid
   shader.io.trap.ready:=true.B;shader.io.completion.ready:=kernelActive && textureDrained
   private val shaderFault=shader.io.trap.valid || (shader.io.completion.valid && !shader.io.completion.bits.success)
   private val dataFault=stageResponse.valid && stageResponse.bits.fault
   private val textureFault=textureBridge.io.responseFault
-  private val stop=status=/=0.U || externalCancel || sourceFault || dataFault || shaderFault || textureFault || allocationFault || releaseFault
+  private val stop=status=/=0.U || externalCancel || sourceFault || dataFault || shaderFault || textureFault || coordinateFault || allocationFault || releaseFault
   transport.foreach(_.io.pool.cancel:=stop)
   shader.io.launch.valid:=launchOffered;shader.io.launch.kernelPc:=draw.shaderPc;shader.io.launch.kernargAddress:=draw.scratch.base
   shader.io.launch.gridX:=1.U;shader.io.launch.gridY:=1.U;shader.io.launch.gridZ:=1.U
@@ -456,6 +458,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   when(active && releaseFault){fail(3.U,3.U,draw.scratch.base)}
   when(active && shaderFault){fail(5.U,4.U,Mux(shader.io.trap.valid,shader.io.trap.bits.tval,draw.shaderPc))}
   when(active && textureFault){fail(3.U,5.U,textureBridge.io.out.bits.addr)}
+  when(active && coordinateFault){fail(3.U,5.U,draw.sampler.base)}
   when(active && dataFault){fail(3.U,3.U,memRequest.address)}
   when(active && externalCancel && status===0.U){status:=4.U;faultSource:=0.U;faultAddress:=0.U;faultQuadValid:=false.B}
 }

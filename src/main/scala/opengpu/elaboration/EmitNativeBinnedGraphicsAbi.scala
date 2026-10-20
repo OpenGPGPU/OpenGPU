@@ -36,6 +36,7 @@ object EmitNativeBinnedGraphicsAbi {
     header.append(s"#define ${prefix}INPUT_VERSION ${VertexInputFormat.version}u\n")
     header.append(NativeVertexInputCapabilities.header(prefix))
     header.append(FragmentInputAbi.header(prefix))
+    header.append(NativeTextureCapabilities.header(prefix))
     header.append(NativeFragmentInputCapabilities.header(prefix))
     for((name,id)<-VertexInputFormat.formats)header.append(s"#define ${prefix}INPUT_FORMAT_$name ${id}u\n")
     for((name,value)<-Seq("ATTRIBUTES"->16,"BINDINGS"->16,"VARYINGS"->16,"COLORS"->4,"ENGINE_VIEWS"->4))header.append(s"#define $prefix${name}_CAPACITY ${value}u\n")
