@@ -1,0 +1,141 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "20_focused_tests_and_axis_synthesis_pass_aggregate_and_composed_synthesis_pending",
+  "source": {
+    "commit": "ae517f789a073263034fd6328bb933dd13594b97",
+    "source_files": 799,
+    "manifest_sha256": "462563114b705e156d4e64b1808296838689d87a908d0e7608ae1c9c90aeb320",
+    "archive_sha256": "1ecff2f66fc3b1214d05ec6ebfbcb9c6fc6b05899e9447bbf5e041deb446d5f5",
+    "git_archive_and_worktree_exact": true
+  },
+  "source_base_record": "docs/performance/mobile-implicit-sampling-checkpoint-2026-10-21.json",
+  "source_base_record_sha256": "d016dd3e2f9f39fc2596294496ccd837d0f6dce7e552355fc4feac50b1233f2f",
+  "source_changes_sha256": {
+    "src/main/scala/opengpu/graphics/TextureFloatAxisPipeline.scala": "0e44d80edc62213eec5d26aeebd728c99f9a5625fd828516229789ef02887504",
+    "src/main/scala/opengpu/graphics/TextureImageLevelSampleUnit.scala": "3e37fd7dbad30a0ac8cb75b201f25de80b7036d29d5676a36816a98ea18871f3",
+    "src/main/scala/opengpu/graphics/TextureImageSampleUnit.scala": "26f5c040f3a0b1cb3575b76bf9058b51b32bb7d6727f51a0d1a94ee290962162",
+    "src/test/scala/opengpu/graphics/TextureFloatAxisPipelineSpec.scala": "45e02743cf816ba841bb1e21334c9b293dec9a759ed1e428b463800f02d756cd",
+    "src/test/scala/opengpu/graphics/TextureImageLevelSampleUnitSpec.scala": "cde38eb1c154e3fdeb17ef289f2dd3711abbc15c1a49ae415050883e1a3898eb",
+    "src/test/scala/opengpu/graphics/TextureImageSampleUnitSpec.scala": "cd8c2b81d3f3825c07ffa552ea551dd3b34058d498c016467f019e5a5084f7f0"
+  },
+  "source_removed": [],
+  "focused": {
+    "axis_tests": 3,
+    "axis_offset_queries": 44625,
+    "axis_zero_offset_queries": 91135,
+    "composed_selection_tests": 17,
+    "composed_offset_samples": 816,
+    "pre_descriptor_rejects": 7,
+    "cancellation_cuts": 24,
+    "logs": {
+      ".artifacts/mobile-texture-offset-axis-v1.log": "327fea2b42c9de75816dcf6e01018b5063c96c0a58de37825e82bd2e0771d0e7",
+      ".artifacts/mobile-texture-offset-composed-v1.log": "daac980a1358bb11d22b5d44ab07087543109a11db04b4840a4dad9d49857879"
+    }
+  },
+  "synthesis": {
+    "scope": "Synthesis only; TC/SLVT, 1000ps, 25% I/O, standard ABC, no retiming, no route.",
+    "axis": {
+      "profile": "generated/qualification/ppa/mobile-offsets-axis-2026-10-21-v1",
+      "reported_setup_slacks_ps": [
+        169.396,
+        632.673
+      ],
+      "mapping_passed": true,
+      "qualification_sha256": "e86ba3525bf5318614ca71e491ac19743a5110fbc209092550ab43dc30dcbe56",
+      "wrapper_result": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 73.80839741695672,
+        "finished_utc": "2026-10-20T16:33:12.408631+00:00"
+      }
+    },
+    "byte_exact_carry": {
+      "product": {
+        "RTL_byte_exact": true,
+        "files": {
+          "TextureGradientProductDifferenceUnit.sv": "e396948751b16cd7a3fb5c363622e6218b2943de918ceee7a049289e3c816e14"
+        },
+        "prior_profile": "generated/qualification/ppa/mobile-implicit-product-2026-10-21-v1",
+        "qualification_sha256": "a83303bddeb3e9a3fd7308eb5eb84164589d6d739c542f71360159f66578f7b6",
+        "reported_setup_slacks_ps": [
+          229.284,
+          481.341
+        ]
+      },
+      "cube": {
+        "RTL_byte_exact": true,
+        "files": {
+          "TextureGradientProductDifferenceUnit.sv": "e396948751b16cd7a3fb5c363622e6218b2943de918ceee7a049289e3c816e14",
+          "Fp32DivLane.sv": "f60d25591310cd6ff380c0defda366fd4cd80214b9e587a42e56d3c10b22d4ab",
+          "TextureCubeGradientUnit.sv": "2aa59578ba47135a9ccf44a19fe5ea2265b3a21844b0e7a38fd126a5ffe3edc6"
+        },
+        "prior_profile": "generated/qualification/ppa/mobile-implicit-cube-2026-10-21-v1",
+        "qualification_sha256": "f3a8b81994e2d5feb9a13679aa1c0dcaf578b9ecf6f1743e02636f0652bb04ae",
+        "reported_setup_slacks_ps": [
+          221.346,
+          472.233
+        ]
+      },
+      "lod": {
+        "RTL_byte_exact": true,
+        "files": {
+          "BlockPrefixAdder.sv": "29609fa5013c22c2aa832b166fdd56126c2b74e30c1feeb356729472778e774a",
+          "TextureGradientLodUnit.sv": "5f7a0bff3cd42ad569dfcfeae86d3cddc6eb0f5b504a65b758fa8a02ed0788ca"
+        },
+        "prior_profile": "generated/qualification/ppa/mobile-gradient-lod-2026-10-20-v1",
+        "qualification_sha256": "e61ceda8085489fbcc7835eaaea9ef59c93e70d16cdcf37eaf1d5860ae719667",
+        "reported_setup_slacks_ps": [
+          69.63,
+          476.819
+        ]
+      },
+      "quad": {
+        "RTL_byte_exact": true,
+        "files": {
+          "TextureGradientProductDifferenceUnit.sv": "e396948751b16cd7a3fb5c363622e6218b2943de918ceee7a049289e3c816e14",
+          "TextureQuadGradientUnit.sv": "ece9d540cb785f7011db069034483752c1b57b280829958483ed320cab37b35c"
+        },
+        "prior_profile": "generated/qualification/ppa/mobile-implicit-quad-2026-10-21-v1",
+        "qualification_sha256": "ce3d8e41ee233c3b103ae39b74b526c2920344edf96108e5ce032ca4a08dbf84",
+        "reported_setup_slacks_ps": [
+          203.72,
+          477.041
+        ]
+      },
+      "bias": {
+        "RTL_byte_exact": true,
+        "files": {
+          "BoothEncoderF64F32F16.sv": "16935207228e6b9e21d2b3e79d6d90e2ff07f68a4c426184748d14135ed96dfd",
+          "CSA3to2.sv": "e328aaa001d5b077857cd3c91af9b856881a4fc4b59d4c7956d20dadddadcb9f",
+          "CSA4to2.sv": "715d5b1fbc9c3d7fdaedfffdde3166edbdf60501e9ffe8c34c53e0d690cbe7dd",
+          "CSA_Nto2With3to2MainPipeline.sv": "6f33d39b6c1139d3c81649a6fda2e9654aa624b57f06128b9d055ead53c24ab2",
+          "FloatFMA.sv": "53f7ec11d39a02eb913e164ca94358c9ca6794f647b09fbd0602fc2dc428697c",
+          "ram_5x40.sv": "2e5918ee09e6e1f53bb43ef7b56631026bbc467adca552f26de694382debfec6",
+          "Queue5_Fp32Response.sv": "22fb0ef1d9d66ff430ba33b10dd9c8c9202cd6a10c844519bf7d1ae1f32a5099",
+          "Fp32FmaLane.sv": "1a7b4441e581dc5494da520956454058083d1ea531e26d4c1afe6fd27d74c978",
+          "TextureLodBiasUnit.sv": "026bedf4cd663fbf06f47edcd7fc5c4face57e29e043b1c141993bc65286ac0d"
+        },
+        "prior_profile": "generated/qualification/ppa/mobile-implicit-bias-2026-10-21-v1",
+        "qualification_sha256": "a18f747fc8c667bd4c95f293697a7ca64475f0b16b9be3384febbfdc270b1570",
+        "reported_setup_slacks_ps": [
+          453.102,
+          465.346
+        ]
+      }
+    },
+    "pending_profiles": [
+      "resolver",
+      "sample"
+    ],
+    "composed_timing_pass_claimed": false
+  },
+  "remaining": [
+    "Native scalar/vector floating transport and compiler/validator integration",
+    "Real CU/raster helper transport and vertex automatic LOD",
+    "Texture queries and projective lowering",
+    "Integer texel-fetch offset lowering",
+    "On-chip common path, banking, throughput, coherence and full H0-H8"
+  ]
+}

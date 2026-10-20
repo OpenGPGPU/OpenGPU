@@ -4,8 +4,9 @@ Status: implementation on `codex/mobile-texture-offsets`. The three axis tests
 pass, including 44,625 new offset queries and 91,135 existing zero-offset queries.
 Seventeen composed/selection controls also pass, including 816 offset samples,
 seven invalid-offset checks before descriptors, and 24 cancellation/held-result
-cuts with healthy reuse. Fresh aggregate and synthesis qualification remain
-pending.
+cuts with healthy reuse. The [axis synthesis checkpoint](performance/mobile-texture-offset-checkpoint-2026-10-21.json)
+passes at 1000ps with core/I/O slack +169.396/+632.673ps. Fresh aggregate and
+combined resolver/sampler synthesis remain pending.
 No native instruction, compiler builtin or device capability is added here.
 
 The internal descriptor-to-texel sampler accepts three signed offsets with an
