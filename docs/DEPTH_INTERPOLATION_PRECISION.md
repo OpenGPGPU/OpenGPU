@@ -39,10 +39,11 @@ Its scalar replay collapses the same source pair to `0x3f000002`. The expanded
 RTL test tries this smaller geometry first, then the retained large-edge case;
 its second frozen reproduction is pending.
 
-The arithmetic correction under consideration anchors depth at vertex zero:
+The implemented candidate correction anchors depth at vertex zero:
 `z = z0 + (e1*(z1-z0) + e2*(z2-z0))/area`. This avoids repeatedly multiplying
-and summing the common depth term. Shared scalar difference setup and the same
-depth path must serve center, covered samples and centroid fallback, retaining
-offset-before-clamp and cancellation ownership. The analogous anchored slope
-calculation also needs checking. This is a proposed correction, not implemented
-or qualified by the negative result.
+and summing the common depth term. Two differences are prepared once per quad
+through the existing scalar service; center, covered samples and centroid
+fallback share that depth path. Offset-before-clamp and cancellation ownership
+remain in the same owner. The analogous anchored slope calculation still needs
+checking. Focused precision, numeric/ownership and integrated qualification of
+this correction are pending; the negative result does not qualify it.

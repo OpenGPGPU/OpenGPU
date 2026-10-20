@@ -241,8 +241,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         val(xn,xd)=rational(slopes(0));val(yn,yd)=rational(slopes(1));val slope=if(xn*yd>yn*xd)slopes(0)else slopes(1)
         val resolution=decode(fp(Math.ulp(0.75f).toDouble))
         def depth(edges: Vector[BigInt],a: BigInt,bias: E): BigInt={
-          val terms=edges.zip(data.depth).map{case(e,z)=>calc(edge(e),decode(z),2)}
-          val linear=calc(calc(calc(terms(0),terms(1),0),terms(2),0),edge(a),3)
+          val linear=FragmentInterpolationReference.linearDepth(edges,a,data.depth)
           clamp(pack(calc(linear,bias,0)))
         }
         val offsets=if(mode==0)Vector((0,0))else if(mode==1)Vector((-1,-1),(1,1))else Vector((-1,-1),(1,-1),(-1,1),(1,1))

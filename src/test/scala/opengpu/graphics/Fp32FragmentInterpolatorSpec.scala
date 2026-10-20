@@ -24,11 +24,16 @@ private[graphics] object FragmentInterpolationReference {
     }
     if(sig.bitLength>24)E(n<0,exponent+1,sig>>1)else E(n<0,exponent,sig)
   }
+  def linearDepth(edges: Vector[BigInt],area: BigInt,depth: Vector[BigInt]): E={
+    val base=decode(depth.head)
+    val terms=(1 to 2).map(i=>calc(edge(edges(i)),calc(decode(depth(i)),base,1),2))
+    calc(base,calc(calc(terms(0),terms(1),0),edge(area),3),0)
+  }
   def lane(d: Data,s: Sample): Lane={
     def sum(v: Vector[E]): E=calc(calc(v(0),v(1),0),v(2),0)
     val weights=s.edges.zip(d.inv).map{case(e,w)=>calc(edge(e),w,2)};val denominator=sum(weights)
     val inv=calc(denominator,edge(s.area),3);val valid=inv.sig!=0 && !inv.sign
-    val z=clamp(pack(calc(sum(s.edges.zip(d.depth).map{case(e,z)=>calc(edge(e),decode(z),2)}),edge(s.area),3)))
+    val z=clamp(pack(linearDepth(s.edges,s.area,d.depth)))
     val values=Vector.tabulate(d.values.head.size) { c=>
       if(c>=4*d.slots)BigInt(0)
       else if(d.flat.testBit(c))d.values(0)(c)

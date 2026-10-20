@@ -13,8 +13,7 @@ class PolygonDepthOffsetRasterSpec extends AnyFlatSpec {
   private val source=TriangleRasterReference.base.copy(values=FragmentInterpolationReference.Data(
     Vector.fill(3)(decode(fp(1))),Vector(0.25,0.5,0.75).map(fp),Vector.fill(3)(Vector.fill(8)(BigInt(0))),0,1))
   private def linear(t: Triangle,s: Sample): E={
-    val terms=s.edges.zip(t.values.depth).map{case(e,z)=>calc(edge(e),decode(z),2)}
-    calc(calc(calc(terms(0),terms(1),0),terms(2),0),edge(s.area),3)
+    FragmentInterpolationReference.linearDepth(s.edges,s.area,t.values.depth)
   }
   private def offset(t: Triangle,factor: BigInt,units: BigInt,resolution: BigInt): E={
     val area=TriangleRasterReference.edgeAt(t,0,t.coords(0)._1,t.coords(0)._2)
