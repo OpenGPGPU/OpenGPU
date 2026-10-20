@@ -237,8 +237,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         val slope=PolygonDepthOffsetReference.maximum(tri.coords.map(_._1),tri.coords.map(_._2),data.depth)
         val resolution=decode(fp(Math.ulp(0.75f).toDouble))
         def depth(edges: Vector[BigInt],a: BigInt,bias: E): BigInt={
-          val linear=FragmentInterpolationReference.linearDepth(edges,a,data.depth)
-          clamp(pack(calc(linear,bias,0)))
+          FloatingDepthReference.at(edges,a,data.depth,3,bias)
         }
         val offsets=if(mode==0)Vector((0,0))else if(mode==1)Vector((-1,-1),(1,1))else Vector((-1,-1),(1,-1),(-1,1),(1,1))
         for(h<-0 until 2){val sign=polygonSign*(if(h==0)1 else -1)

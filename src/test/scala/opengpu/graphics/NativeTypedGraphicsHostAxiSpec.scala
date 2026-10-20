@@ -132,12 +132,13 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           }
           calc(calc(m,decode(fp(sign*2)),2),calc(decode(resolution),decode(fp(sign*3)),2),0)
         }
+        val floating=boundDepthFormat==TypedDepthFormat.d32f || boundDepthFormat==TypedDepthFormat.d32fs8
         def shifted(z: BigInt): BigInt=if(bias.sig==0)z else clamp(pack(calc(decode(z),bias,0)))
         for(raw<-quads){val q=CentroidRasterReference(t,kind,raw,mode,if(centroid)5 else 0,graphics)
           val values=SampleDepthReference.depths(t,kind,q.samples,mode,graphics)
-          for(l<-0 until 4;s<-0 until count if(q.samples(l).mask&(1<<s))!=0){val x=q.samples(l).x;val y=q.samples(l).y;val z=TypedDepthReference.encode(shifted(values(l)(s)),boundDepthFormat)
+          for(l<-0 until 4;s<-0 until count if(q.samples(l).mask&(1<<s))!=0){val x=q.samples(l).x;val y=q.samples(l).y;val z=TypedDepthReference.encode(if(floating)FloatingDepthReference.sample(t,kind,q.samples(l),s,mode,graphics,bias)else shifted(values(l)(s)),boundDepthFormat)
             val color=q.lanes(l).values.take(4)
-            if(z<=depths(y)(x)(s)){colors(y)(x)(s)=if(polygon)color.updated(0,shifted(q.lanes(l).depth))else color;depths(y)(x)(s)=z}}}
+            if(z<=depths(y)(x)(s)){colors(y)(x)(s)=if(polygon)color.updated(0,if(floating)FloatingDepthReference.center(t,kind,q.samples(l),mode,graphics,bias)else shifted(q.lanes(l).depth))else color;depths(y)(x)(s)=z}}}
       }
       def color(c: Int,x: Int,y: Int,s: Int): BigInt={val n=colors(y)(x)(s)
         val values=if(n.isEmpty)clear else n

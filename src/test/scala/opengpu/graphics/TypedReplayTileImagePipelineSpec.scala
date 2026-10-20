@@ -138,10 +138,6 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       val max=t.values.depth.max;val resolution=fp(java.lang.Math.ulp(java.lang.Float.intBitsToFloat(max.toInt)).toDouble)
       calc(calc(m,decode(fp(offsetSign(ordinal)*2)),2),calc(decode(resolution),decode(fp(offsetSign(ordinal)*3)),2),0)
     }
-    def offsetDepth(raw: BigInt,bias: Fp32ViewportReference.E): BigInt={
-      import Fp32ViewportReference.{decode,calc,pack,clamp}
-      if(bias.sig==0)raw else clamp(pack(calc(decode(raw),bias,0)))
-    }
     def shape(kind: Int,state: Int): TriangleRasterReference.Triangle={
       val t=triangle(kind)
       if(!centroid)t else t.copy(values=t.values.copy(flat=8,values=Vector.tabulate(3,8){(v,c)=>
@@ -252,14 +248,14 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       val t=shape(kind,state);val s=settings(e,ordinal);val bias=offsetValue(t,kind,ordinal)
       val quads=if(kind==2)TriangleRasterReference.raster(t,s,g)else PointLineReference.raster(t,kind,s,g,PointLineReference.Sizes(point=4,line=2))
       expected((e,ordinal))=quads.size
-      for(raw<-quads){val q=CentroidRasterReference(t,kind,raw,mode,qualifier(state),g);val depths=SampleDepthReference.depths(t,kind,q.samples,mode,g)
+      for(raw<-quads){val q=CentroidRasterReference(t,kind,raw,mode,qualifier(state),g)
         for((p,lane)<-q.samples.zipWithIndex;sample<-0 until(1<<mode) if(p.mask&(1<<sample))!=0){
-          val z=if(state==0)offsetDepth(depths(lane)(sample),bias)else fp(0.125)
+          val z=if(state==0)FloatingDepthReference.sample(t,kind,p,sample,mode,g,bias)else fp(0.125)
           if(TypedColorReference.value(z)<=TypedColorReference.value(depth((p.x,p.y,sample)))){
             depth((p.x,p.y,sample))=z
             for(i<-0 until 4){val old=model((i,p.x,p.y,sample))
               val rawColor=if(centroid)q.lanes(lane).values.take(4)else rgba(state,i)
-              val color=if(polygonOffset)rawColor.updated(0,offsetDepth(q.lanes(lane).depth,bias))else rawColor
+              val color=if(polygonOffset)rawColor.updated(0,FloatingDepthReference.center(t,kind,p,mode,g,bias))else rawColor
               val rgbaOut=TypedBlendReference.blend(names(i),color,old,TypedBlendReference.State(enable=state!=0))
               model((i,p.x,p.y,sample))=encode(names(i),rgbaOut)._1}
           }
