@@ -319,6 +319,15 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
     }
   }
 
+  it should "retain a subnormal multiplier contribution with an oppositely signed addend" in {
+    simulate(new Fp32FmaLane()) { dut =>
+      initialize(dut)
+      send(dut, Fp32Operation.fmadd, false, BigInt(1),
+        BigInt("ee1dbef6", 16), BigInt("1b9f5fea", 16), 7)
+      expectResult(dut, BigInt("a39dbe57", 16), 7)
+    }
+  }
+
   it should "report NV for zero times infinity under RUP" in {
     simulate(new Fp32FmaLane()) { dut =>
       initialize(dut)
