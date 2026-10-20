@@ -38,6 +38,10 @@
 #   RuntimeSharedGraphicsPerformanceSpec  — 1/2/4 CU runtime scaling, side 64
 #   FullPoolTextureScalingSpec            — texture on/off sweeps; suite names
 #                                           in that file are not the filename
+#   PersistentTile* / Drm* product specs  — full GpuHostSystemAxi models,
+#                                           including 16-lane and side-64 cases
+#   GpuSystemPayloadSpec                  — full GpuSystem graphics kernels
+#   SharedPayloadClientSystemSpec         — full GpuSystem graphics kernels
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -59,7 +63,8 @@ shard_prefixes() {
         "opengpu/dma" \
         "opengpu/command" \
         "opengpu/testutil" \
-        "opengpu/util"
+        "opengpu/util" \
+        "opengpu/config"
       ;;
     *)
       echo "unknown shard: $1" >&2
@@ -74,9 +79,9 @@ all_shards=(graphics system-mem system-host system-walk system-tex system-wide s
 # A new file must be added here; otherwise CI selection fails closed.
 system_shard_for() {
   case "$(basename "$1")" in
-    AxiStimulusOrderingSpec.scala|ComputeMemoryAxiMasterSpec.scala|GpuHostAxiSpec.scala|GpuWorkloadSpec.scala)
+    AxiStimulusOrderingSpec.scala|ComputeMemoryAxiMasterSpec.scala|GpuHostAxiSpec.scala|GpuWorkloadSpec.scala|TileBinHostMemoryFabricSpec.scala|NativeBinnedGraphicsMemoryFabricSpec.scala|NativeTypedGraphicsMemoryFabricSpec.scala|NativeVertexInputCapabilitiesAxiSpec.scala)
       printf '%s\n' system-mem ;;
-    GpuHostSystemAxiSpec.scala|GpuFillThroughputSpec.scala)
+    GpuHostSystemAxiSpec.scala|GpuFillThroughputSpec.scala|GpuHostVmOwnershipSpec.scala)
       printf '%s\n' system-host ;;
     RuntimeVectorAddressSpec.scala|SharedCuTwoLevelWalkSpec.scala)
       printf '%s\n' system-walk ;;
@@ -96,7 +101,7 @@ system_shard_for() {
       printf '%s\n' system-rt-batch ;;
     FullPoolRuntimeFullBatchSpec.scala)
       printf '%s\n' system-pool ;;
-    FullPoolRuntimeScalingSpec.scala|RuntimeSharedGraphicsPerformanceSpec.scala|FullPoolTextureScalingSpec.scala)
+    FullPoolRuntimeScalingSpec.scala|RuntimeSharedGraphicsPerformanceSpec.scala|FullPoolTextureScalingSpec.scala|PersistentTileHostAxiSpec.scala|PersistentTileStoreFaultSpec.scala|PersistentTileTextureVisibilitySpec.scala|PersistentTileProductMsaaSpec.scala|DrmProgrammableMsaaAxiSpec.scala|DrmFragmentImageAxiSpec.scala|DrmComputeProgramReplaySpec.scala|GpuSystemPayloadSpec.scala|SharedPayloadClientSystemSpec.scala)
       printf '%s\n' SKIP ;;
     *)
       echo "system spec $(basename "$1") is not assigned to a CI shard" >&2

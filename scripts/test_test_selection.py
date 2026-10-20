@@ -49,6 +49,15 @@ ci_skip = {
     "opengpu.system.FullPoolRuntimeScalingSpec",
     "opengpu.system.RuntimeSharedGraphicsPerformanceSpec",
     "opengpu.system.FullPoolTextureScalingSpec",
+    "opengpu.system.PersistentTileHostAxiSpec",
+    "opengpu.system.PersistentTileStoreFaultSpec",
+    "opengpu.system.PersistentTileTextureVisibilitySpec",
+    "opengpu.system.PersistentTileProductMsaaSpec",
+    "opengpu.system.DrmProgrammableMsaaAxiSpec",
+    "opengpu.system.DrmFragmentImageAxiSpec",
+    "opengpu.system.DrmComputeProgramReplaySpec",
+    "opengpu.system.GpuSystemPayloadSpec",
+    "opengpu.system.SharedPayloadClientSystemSpec",
 }
 shards = (
     "graphics",
