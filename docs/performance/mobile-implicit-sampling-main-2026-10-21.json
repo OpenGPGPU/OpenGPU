@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "qualified_internal_gradient_implicit_sampler_merged_and_audited_on_main",
+  "main_commit": "7c2e52cd9c9cfa9b194e443d0cfccf9e465d61e9",
+  "qualified_source_commit": "c48e61b7d389cdaecf0b23c290eb2f4adc30d806",
+  "source_files": 799,
+  "source_manifest_sha256": "338e10dbe6a37110a20201490f2615c870793685c3140ed3093c11664833a0ca",
+  "parent_catalog_plus_delta_exact": true,
+  "root_main_and_qualified_worktree_source_exact": true,
+  "main_git_archive_source_exact": true,
+  "main_archive_sha256": "4fbcf87fe2496d9743d486efd7a7f0d30dbb09e0a56a26b6b71ddc33175f2ef2",
+  "distinct_tests": 122,
+  "ABI_checks": 9,
+  "existing_software_ABIs_unchanged": true,
+  "test_and_synthesis_artifact_hashes_exact": true,
+  "synthesis_profiles": {
+    "product": [
+      229.284,
+      481.341
+    ],
+    "cube": [
+      221.346,
+      472.233
+    ],
+    "quad": [
+      203.72,
+      477.041
+    ],
+    "bias": [
+      453.102,
+      465.346
+    ],
+    "resolver": [
+      26.319,
+      474.84
+    ],
+    "sample": [
+      48.806,
+      413.52
+    ]
+  },
+  "standalone_lod_carried_byte_exact": true,
+  "new_commits_checked_for_exactly_one_agent_trailer": 14,
+  "user_files_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": 420
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": 420
+    }
+  },
+  "remaining": [
+    "Native floating scalar/vector instruction transport and compiler/validator integration",
+    "Actual CU/raster helper execution and vertex automatic LOD",
+    "Texture offsets, queries and remaining operation matrix",
+    "On-chip common-path payloads, banked throughput and coherence",
+    "Full MOBILE_GPU_HARDWARE_ALIGNMENT.md H0-H8 gates"
+  ]
+}
