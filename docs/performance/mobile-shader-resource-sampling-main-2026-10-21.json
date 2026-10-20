@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "qualified_resource_bound_shader_sampling_owner_merged_and_audited_on_main",
+  "main_commit": "0fd8cfc92a716f2405e532d7116857cd8e8608c9",
+  "qualified_source_commit": "a5a0d9457cb47ca14d6ec664445f388edc0a33a2",
+  "source_files": 800,
+  "source_manifest_sha256": "ea35e8b1e70bbd47827eda0dc208fe16a8350c68c1385e1ecc7ba8f9ebee0f3e",
+  "parent_catalog_plus_delta_exact": true,
+  "root_main_and_qualified_worktree_source_exact": true,
+  "main_git_archive_source_exact": true,
+  "main_archive_sha256": "7dd0bf644c2febe6b42900cb5e1c31ca0eeb029c0eef0ef71d243808e5c63072",
+  "distinct_tests": 128,
+  "ABI_checks": 9,
+  "existing_software_ABIs_unchanged": true,
+  "test_and_synthesis_artifact_hashes_exact": true,
+  "synthesis_profiles": {
+    "lod": [
+      249.495,
+      470.694
+    ],
+    "resolver": [
+      214.034,
+      477.487
+    ],
+    "sample": [
+      141.297,
+      409.865
+    ],
+    "fragment": [
+      106.918,
+      385.404
+    ],
+    "vertex": [
+      113.71,
+      394.863
+    ]
+  },
+  "five_standalone_profiles_carried_byte_exact": true,
+  "new_commits_checked_for_exactly_one_agent_trailer": 8,
+  "user_files_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": 420
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": 420
+    }
+  },
+  "remaining": [
+    "CU scalar/vector operand transport, task lifetime and fault-atomic retirement",
+    "Compiler/validator integration for new encodings with stable e32,m1,tu,mu",
+    "Real native vertex/fragment/CU/AXI tests and actual helper delivery",
+    "Texture queries/projective lowering and remaining operation matrix",
+    "On-chip common path, banking/throughput/coherence and full H0-H8"
+  ]
+}
