@@ -10,6 +10,11 @@ by identical RTL logic and unchanged constraints; source-location comments can
 differ. Native image/sampler integration remains open; no new native texture
 capability is advertised.
 
+The 206-control carry above describes its frozen native checkpoint. Later
+[point/line arithmetic](performance/mobile-point-line-bounded-2026-10-20.json)
+changes that raster source and passes 23 fresh targeted controls; those are
+separate scopes.
+
 The later [GXS1 sampler composition](TEXTURE_SAMPLER_BINDING.md) derives mip
 completeness from GPU sampler state and validates format/type compatibility.
 It is a qualified descriptor-admission component; the native shader path

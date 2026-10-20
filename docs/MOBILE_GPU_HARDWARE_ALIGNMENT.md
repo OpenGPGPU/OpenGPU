@@ -18,7 +18,7 @@ The initial OpenGPU product target is four shared CUs, with a 720p workload suit
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
 
-Latest resource checkpoint: [GXS1/GXI1 admission](TEXTURE_SAMPLER_BINDING.md) qualifies nine new sampler controls plus ten existing image controls. Both standalone synthesis setup screens pass at 1000 ps. Native binding tables and typed shader transport remain open.
+Latest resource checkpoint: [GXS1/GXI1 admission](TEXTURE_SAMPLER_BINDING.md) qualifies ten new sampler controls plus ten existing image controls. Both standalone synthesis setup screens pass at 1000 ps. Native binding tables and typed shader transport remain open.
 
 ## Current hardware and gaps
 
@@ -6397,3 +6397,17 @@ sampler core/I/O +413.729/+479.412 ps; composition +72.847/+411.677 ps.
 No existing ISA, native descriptor slots or advertised capabilities changed.
 Next required resource work is native per-stage binding selection, typed shader
 transport and actual general texture application. Full H0-H8 remains open.
+
+
+## Exact sampler response ownership and final qualification (2026-10-20)
+
+The final admission owner routes exact sampler response ID 4 and backpressures
+reserved IDs 5..7. Injected success/fault replies cannot consume a pending
+sampler lease. All ten new controls pass; ten existing image controls retain
+all 674 original source dependencies byte for byte. The final frozen snapshot
+contains 681 files. The [fresh final synthesis screens](performance/mobile-image-sampler-synthesis-2026-10-20.json)
+pass full mapping and setup at unchanged 1000 ps, 25% I/O, TC/SLVT and no retiming:
+sampler core/I/O +413.729/+479.412 ps (6,188 cells), composed admission
++104.437/+424.024 ps (69,907 cells). The earlier positive composition screen
+remains recorded separately. Native per-stage resources, typed texture
+transport, general application and the full H0-H8 objective remain open.

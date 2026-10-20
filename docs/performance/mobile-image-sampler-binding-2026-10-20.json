@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "19_component_controls_qualified_with_two_positive_standalone_synthesis_screens",
+  "status": "20_component_controls_qualified_with_two_positive_final_synthesis_screens",
   "source_files": 681,
   "source_base_record": "docs/performance/mobile-point-line-bounded-2026-10-20.json",
   "source_base_record_sha256": "7c16b5f78f79151d4b0d9e05b62c26288dc306869002c01b1c58a73d06e6e0c6",
@@ -12,20 +12,21 @@
     "driver/opengpu_texture_sampler_abi.h": "5120180cb5c215a0505b5de8ce215c4bb5809e2ccca847099add1387f358c286",
     "src/main/scala/opengpu/elaboration/EmitTextureSamplerAbi.scala": "d9159285d2921ad6efd32c55f7dada49e7570d8168d53bf2e3c86009edd6d65f",
     "src/main/scala/opengpu/elaboration/EmitTextureSamplerBinding.scala": "bd11497f18ab03682e53271e9556dba99da57721d7de6a34fbb84f2da403b48b",
-    "src/main/scala/opengpu/graphics/TextureImageSamplerBindingUnit.scala": "66d97daf88f654c574e3652f2301a4427ff229d007c8788f8f7a5bb0a43c536e",
+    "src/main/scala/opengpu/graphics/TextureImageSamplerBindingUnit.scala": "8bfe9d39ac69a89fee64d175e28725b59f54127e1329e0c76af2a23565a09dfd",
     "src/main/scala/opengpu/graphics/TextureSamplerBindingUnit.scala": "8efad9a2af128edfc16e66b40bc5de08e31e52476ee17b32e6ca421343ede4e1",
-    "src/test/scala/opengpu/graphics/TextureImageSamplerBindingUnitSpec.scala": "697d3c426dae13b5631e9e9112f519f2ef56d2e7d2dfb67cdcab93f8a7b55499"
+    "src/test/scala/opengpu/graphics/TextureImageSamplerBindingUnitSpec.scala": "aa620a52d284cddc829168675963fd8eef68114ac1ea07253a3d406c5e4460d8"
   },
-  "source_manifest_sha256": "331f9d1b3fd470061f2619b151dbdf4c659ed7b14f0275490a3385d56ff889d1",
+  "source_manifest_sha256": "3d4f065b5dbe99c35308dbd25d72e37a37486283cfe4ab693d7f715af1aeff6b",
   "behavior": [
     "GXS1 sampler reader with checked64-byte records and exact4GiB table ends.",
     "Composed GXS1/GXI1 admission derives mip-chain requirements exclusively from captured sampler filters.",
     "Nonmip selected-level consumers also validate the base level while retaining selected metadata.",
     "Core format-filter and shader numeric-type compatibility; no silent integer/float conversion.",
-    "Irrevocable reads,cancellation drain,immutable held completion,invalidation-suppressed cache fills and primary fault preservation."
+    "Irrevocable reads,cancellation drain,immutable held completion,invalidation-suppressed cache fills and primary fault preservation.",
+    "Exact sampler response ID4 decode; reserved IDs5..7 remain backpressured and cannot consume its owned lease."
   ],
   "validation": {
-    "new_controls": 9,
+    "new_controls": 10,
     "filter_wrap_combinations": 324,
     "format_filter_pairs": 432,
     "encoding_and_semantic_corruptions": 19,
@@ -46,12 +47,12 @@
       "path": ".artifacts/mobile-image-sampler-binding-tests-v4.log",
       "sha256": "bc9aa8aa50ed6b61eb89f6336981d63a099d3301210cecb7e19b08dec4fe8c3b"
     },
-    "total_qualified_controls": 19,
+    "total_qualified_controls": 20,
     "existing_image_controls": 10,
-    "source_carry_proof": "The v5 run passes8 new+10 existing checks and4 ABI checks. The v6 run passes all9 new checks,including base-validation cancellation/fault. The other680 frozen files are byte exact,including every existing image test and production dependency.",
+    "source_carry_proof": "The v7 run passes all10 new controls. The v5 combined run passes10 existing image controls and4 ABI checks. All674 original source dependencies,including every existing image test and production dependency,are byte exact in finalv7. Generated sampler ABI files and generator source also remain byte exact.",
     "final_new_control_log": {
-      "path": ".artifacts/mobile-image-sampler-base-control-v6.log",
-      "sha256": "9537416f89e192cdc9aecc70fdb2e87b55a5cbf4a43f21d349139d7648655eda"
+      "path": ".artifacts/mobile-image-sampler-qualified-v7.log",
+      "sha256": "8c4f76f8b6dcd815c06a961fa9661662954713461cc94696549b19f273181feb"
     },
     "combined_regression_log": {
       "path": ".artifacts/mobile-image-sampler-qualified-v5.log",
@@ -80,6 +81,17 @@
       "cancel_drain": true,
       "primary_fault_after_cancel": true,
       "selected_view_retained": true
+    },
+    "reserved_response_ids": {
+      "ids": [
+        5,
+        6,
+        7
+      ],
+      "success_and_fault": true,
+      "backpressured": true,
+      "owned_id4_retained": true,
+      "healthy_reuse": true
     }
   },
   "retained_development_runs": [

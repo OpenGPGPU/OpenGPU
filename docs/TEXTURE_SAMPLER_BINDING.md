@@ -1,7 +1,7 @@
 # GPU sampler state and image completeness
 
 Status: [qualified component](performance/mobile-image-sampler-binding-2026-10-20.json)
-with nine new controls and ten existing image controls on unchanged production
+with ten new controls and ten existing image controls on unchanged production
 dependencies. Native per-stage binding tables and shader typed texture transport
 remain open. Existing `tex.sample` and `vtex.sample` retain
 all encodings and packed RGBA8 behavior. No new native capability is advertised.
@@ -68,7 +68,9 @@ accepted and drains before completion. Late cancel/invalidate cannot change an
 already offered result. Reset follows the enclosing fabric's reset contract;
 normal cancellation retains transaction ownership until all replies drain.
 
-The composed port uses image/level tags 0..3 and sampler tag 4. Tags remain
+The composed port uses image/level tags 0..3 and sampler tag 4. Reserved replies
+5..7 are backpressured and cannot retire sampler ID 4, including fault replies.
+Tags remain
 separate through the existing translation client; test translation uses walker
 tag 8. A sampler error stops before image admission. An image or compatibility
 error publishes no sampler or image payload. The outer result always retains
@@ -85,9 +87,10 @@ claim native throughput, whole-GPU timing or complete GLES resource support.
 
 ## Component qualification
 
-The final nine sampler/composition controls cover 324 filter/wrap combinations,
+The final ten sampler/composition controls cover 324 filter/wrap combinations,
 432 format/filter pairs, 19 malformed/semantic records, seven invalid table
-ranges, 180 cancellation cuts and an additional stalled nonmip base read. They
+ranges, 180 cancellation cuts and an additional stalled nonmip base read. Reserved-ID injections also prove
+that unowned replies cannot consume a sampler lease. They
 also check immutable completion, exact 4 GiB ends, address-zero primary faults,
 Sv32 sampler/image/level permissions and healthy reuse. Ten existing image
 controls pass in the preceding combined run; all their source and production
@@ -97,8 +100,8 @@ cleanly, the eight graphics C headers compile together, and CI selection passes.
 Both [standalone synthesis screens](performance/mobile-image-sampler-synthesis-2026-10-20.json)
 pass full mapping and reported setup at 1000 ps, 25% I/O, TC/SLVT, standard ABC
 and no retiming. Sampler admission has core/I/O slack +413.729/+479.412 ps and
-6,188 mapped cells; composed image/sampler admission has +72.847/+411.677 ps
-and 70,199 cells. Only the final test file changed after synthesis; every
+6,188 mapped cells; composed image/sampler admission has +104.437/+424.024 ps
+and 69,907 cells. Both final screens are fresh after the reserved-ID fix; every
 production manifest entry and emitted RTL file remains byte exact. These are
 component results. Native sampling, sustained rates and whole-GPU timing are
 still unqualified. Development fixture failures remain in the linked record.
