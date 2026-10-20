@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Combined vertex input conversion, GNC1/GNC2 image ownership and primary fault attribution through component and native AXI paths; source before later coverage/AXI/centroid changes",
+  "source_files": 626,
+  "source_unchanged": true,
+  "passed": 56,
+  "failed": 0,
+  "suites": {
+    "TypedTileImagePipelineSpec": 9,
+    "TypedReplayTileImagePipelineSpec": 9,
+    "TypedVertexBinImagePipelineSpec": 3,
+    "TypedVertexBinImageSharedSystemSpec": 6,
+    "MemoryNativeBinnedGraphicsPipelineSpec": 5,
+    "NativeBinnedGraphicsVirtualImageHostAxiSpec": 6,
+    "NativeBinnedGraphicsHostAxiSpec": 6,
+    "NativeTypedGraphicsHostAxiSpec": 5,
+    "NativeVertexInputCapabilitiesAxiSpec": 2,
+    "GpuHostAxiSpec": 3,
+    "GpuHostVmOwnershipSpec": 2
+  },
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-input-capabilities-source-v2.json",
+    "sha256": "ecd2e13504c018497bba0aa4da12d53a494fbb707f17eece8de8030ed6068388"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-input-capabilities-source-v2.tar.gz",
+    "sha256": "be5c96a085427555aa3e5374a3b85251b29ad0e7b088399b297861a2abfc2d57"
+  },
+  "result": {
+    "path": ".artifacts/mobile-native-input-combined-job-v1-result.json",
+    "sha256": "92a28c202433f3955ee01f616041e55047902641bf2d9c6fabfdc1b43b2a695c"
+  },
+  "log": {
+    "path": ".artifacts/mobile-native-input-combined-qualified-v1.log",
+    "sha256": "f6dcb898ba66c7cd935298e12fb96a7c5f9dd8360f0122a2351f598baa6cd57e"
+  },
+  "coverage": {
+    "unfiltered_fault_cases": 22,
+    "converted_native_profiles": 4,
+    "unfiltered_address_profiles": 2
+  },
+  "emission": {
+    "group_counts": {
+      "GpuComputeUnit": 4,
+      "BankedShaderPayloadStore": 1,
+      "MemoryNativeBinnedGraphicsPipeline": 1,
+      "TypedReplayTileImagePipeline": 2,
+      "GpuCommandMmio": 1,
+      "TileBinHostCommandPort": 1
+    },
+    "existing_sram_macros": {
+      "srambank_64x4x32_6t122": 146,
+      "srambank_64x4x64_6t122": 1240
+    },
+    "physical_sram_bytes": 2689024,
+    "ports": {
+      "io_m_axi_wdata": 256,
+      "io_m_axi_arid": 10
+    },
+    "audit": {
+      "path": ".artifacts/mobile-native-input-combined-rtl-audit-v1.json",
+      "sha256": "d224501b62a687dd1916a7819d3eb0cfb419b94e476b17333f8c0b758c8a8958"
+    },
+    "emitted_files": 768,
+    "systemverilog_files": 767,
+    "active_rtl_files": 371
+  },
+  "limits": [
+    "Small runtime fixtures use two CUs; the four-CU default is structurally emitted, not a demonstrated whole-Mobile workload.",
+    "The original GNC2 source failed image-read-permission attribution; the corrected full unfiltered run now returns primary memory status 3 and exact healthy reuse.",
+    "Later coordinate/preparation, AXI response-owner and centroid changes require their separate composed evidence.",
+    "Physical allocation/provenance and PA aliases, full resources/formats, rates and H0-H8 remain open."
+  ]
+}
