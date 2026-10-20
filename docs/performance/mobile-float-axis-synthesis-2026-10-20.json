@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "standalone_float_axis_two_tests_and_synthesis_setup_pass",
+  "source_commit": "b9db584205c06baa0c6d9a5032cb900d7eb23bb2",
+  "source_files": 773,
+  "source_manifest_sha256": "be471c845f7c8174dabfdaa2fbbf60291a7a0d6396c2ca66aeaa9a26205a8264",
+  "source_archive_proof": {
+    "commit": "b9db584205c06baa0c6d9a5032cb900d7eb23bb2",
+    "source_files": 773,
+    "source_manifest_sha256": "be471c845f7c8174dabfdaa2fbbf60291a7a0d6396c2ca66aeaa9a26205a8264",
+    "git_archive_exact": true,
+    "current_worktree_exact": true
+  },
+  "module": "TextureFloatAxisPipeline",
+  "constraints": {
+    "clock_period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "engine": "yosys",
+    "abc_target": "standard",
+    "retiming": false,
+    "synthesis_only": true
+  },
+  "terminal": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 46.470571583136916,
+    "finished_utc": "2026-10-20T13:23:54.057706+00:00"
+  },
+  "reported_setup_slacks_ps": [
+    194.895,
+    632.673
+  ],
+  "mapped_cells": 19046,
+  "reported_cell_area": 2229.52986,
+  "cell_area_units": "Yosys library area units; not physical die area",
+  "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+  "production_manifest_and_all_emitted_RTL_exact": true,
+  "artifacts_sha256": {
+    "generated/qualification/ppa/mobile-float-axis-2026-10-20-v2/result.json": "40ca0d2544b945b3713ef7f776212c4cf568af7308ede142f7cada8a1308fa3a",
+    "generated/qualification/ppa/mobile-float-axis-2026-10-20-v2/qualification.json": "a60ae92a5da54dd2ce09d10587f3ad93860b3c0870a6971960aaf73a9d96aa54",
+    "generated/qualification/ppa/mobile-float-axis-2026-10-20-v2/manifest.json": "8e29243026b5ef43ddc1b9ad9f84682dc14fbbc6b56665fcd26a413c86ab9efb",
+    "generated/qualification/ppa/mobile-float-axis-2026-10-20-v2/flow/synthesis_sta.log": "aa284a05828a25b994fd2dec5a3cdf4a8e4b6e0a80bca97f751345da2cba3288"
+  },
+  "functional_tests": {
+    "log": ".artifacts/mobile-float-axis-controls-emit-v2.log",
+    "sha256": "a7c7dcc36b41b731226ef63cfe48a8ad6c718a61611ea92ffe4ce3c6a29d5dc9",
+    "test_count": 2,
+    "exact_rational_queries": 91135,
+    "exponent_queries": 65536,
+    "backpressure_and_extent_queries": 25599,
+    "FP32_exponents": 256,
+    "nonzero_extents": 16383,
+    "wrap_modes": [
+      "repeat",
+      "clamp-to-edge",
+      "mirrored-repeat",
+      "internal cube-border"
+    ],
+    "nearest_and_linear_taps": true,
+    "subnormal_and_large_finite_coordinate_boundaries": true,
+    "RNE_FP32_weights": true,
+    "bad_coordinate_status": 5,
+    "input_tags_and_held_output_stability": true,
+    "unstalled_latency_cycles": 7,
+    "unstalled_interval_cycles": 1,
+    "reference": "Original signed FP32 decoded into exact BigInt rational; multiply before floor and integer wrap; parse exact finite decimal fraction with Float.parseFloat for independent RNE."
+  },
+  "limits": [
+    "Standalone axis only; native general-sampling packet/ISA transport, image admission selection, cube projection/seams, array-layer rounding, filtering, explicit/gradient/implicit LOD and depth comparison remain open.",
+    "GXS1 mode3 remains reserved; the axis internal border mode is selected only by a future cube owner. No new device capability is advertised.",
+    "Clamp weights outside[0,1] and border weights outside[-1,2] use canonical endpoint coordinates; both resulting taps coincide, so their filtered value is unchanged.",
+    "No whole-GPU clock, throughput, power, route or H0-H8/GLES closure is claimed."
+  ]
+}
