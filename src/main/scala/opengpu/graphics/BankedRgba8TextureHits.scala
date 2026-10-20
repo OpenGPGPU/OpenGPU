@@ -75,6 +75,11 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
   private val productReady= !productValid || sumReady
   private val completed=alive(head) && received(head)===15.U
   private val pop=completed && productReady
+  // Cancellation owns every unoffered sample, including a filter stage held
+  // behind an immutable public result. Remember a pulse until that stage drains.
+  when(productValid && !sumReady && io.cancel){
+    productResult.cancelled:=true.B;productResult.hit:=false.B;productResult.missingTaps:=0.U
+  }
   when(sumReady){sumValid:=productValid
     when(productValid){
       val stopped=productResult.cancelled || io.cancel
