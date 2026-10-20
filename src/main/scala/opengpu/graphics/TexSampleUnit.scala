@@ -182,11 +182,10 @@ class TexSampleUnit(
       }
     }
   }
-  // automaticMip is 0..15 and lodBiasReg is -16..15, so the sum spans -16..30
-  // and needs six signed bits.  A five-bit sum wrapped at +16, selecting a
-  // lower mip than requested; keep one extra bit so the upper clamp sees the
-  // true positive value.  The scalar path adds no automatic level, so its
-  // five-bit bias already fits and is left unchanged.
+  // Legacy automaticMip is 0..15; optional full-gradient policy extends it
+  // to 0..29. With bias -16..15 the respective sums need six/seven signed
+  // bits, preserving a true positive exponent before the upper mip clamp.
+  // Scalar sampling adds no automatic level and retains its accepted bias.
   private val lodSumWidth = if (coordinatePolicyInput) 7 else 6
   private val biasedMip = automaticMip.pad(lodSumWidth).asSInt + lodBiasReg.pad(lodSumWidth)
   private val clampedMip = Mux(biasedMip < minLevelReg.pad(lodSumWidth).asSInt,

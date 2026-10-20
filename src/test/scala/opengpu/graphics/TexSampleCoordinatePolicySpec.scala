@@ -196,4 +196,87 @@ class TexSampleCoordinatePolicySpec extends AnyFlatSpec {
       info(s"TEXTURE_EXECUTE_POLICY lanes=$lanes vectors=$vectors scalars=$scalars faults=$faults emptyVectors=$empty reads=$reads reordered=$reordered implicitLodCases=$mipCases capturedAllBindings=true signedCrossing=true fullGradientBeforeBias=true mixedAxisModes=9 formats=5 heldCommitFault=true suppressFaultWrites=true noInvalidReads=true rebindingInvalidates=true healthyReuse=true")
     }
   }
+  it should "arbitrate scalar and vector owners while retaining each captured policy and held fault" in {
+    val config=GpuConfig();val lanes=config.lanes;val full=(BigInt(1)<<lanes)-1
+    simulate(new TexSampleUnit(config,coordinatePolicyInput=true)){d=>
+      PointLineReference.zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      val bindings=Vector(Binding(w=3,h=5),Binding(base=0xe0000000L,u=3),
+        Binding(w=3,h=5,u=1,v=2,signed=false,format=2),Binding(base=0xe0000000L,w=0),Binding(w=3,h=5,u=0,v=1,format=4))
+      val u=Vector.tabulate(lanes)(i=>Vector[Long](0xffffffffL,0x8000L,0x10001L,0L)(i%4))
+      val v=Vector.tabulate(lanes)(i=>Vector[Long](0x8000L,0xffffffffL,0x10000L,0x7fffffffL)(i%4))
+      case class Owner(vector: Boolean,index: Int,operation: Int)
+      val expected=mutable.Queue.empty[Owner]
+      val pending=mutable.ArrayBuffer.empty[(Long,Int)];var reply: Option[Long]=None
+      var accepted=0;var completed=0;var vectorAccepted=0;var scalarAccepted=0;var cycle=0;var hold=0;var reads=0
+      var held: Option[(BigInt,Boolean)]=None
+      val order=new StringBuilder
+      while(completed<5 && cycle<4000){
+        val b=bindings(accepted.min(4))
+        d.io.texBase.poke(b.base.U);d.io.texWidth.poke(b.w.U);d.io.texHeight.poke(b.h.U);d.io.texFormat.poke(b.format.U)
+        d.io.minLevel.poke(0.U);d.io.texMaxLevel.poke(0.U);d.io.lodBias.poke(0.S);d.io.wrapClamp.poke(false.B)
+        d.io.coordinatePolicy.get.wrapU.poke(b.u.U);d.io.coordinatePolicy.get.wrapV.poke(b.v.U);d.io.coordinatePolicy.get.signed.poke(b.signed.B)
+        d.io.vectorIn.bits.poke(0.U.asTypeOf(d.io.vectorIn.bits));d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
+        d.io.vectorIn.bits.issued.decode.instruction.poke("h062081ab".U)
+        d.io.vectorIn.bits.issued.decode.pc.poke((0x800+vectorAccepted*4).U)
+        d.io.vectorIn.bits.issued.decode.warpId.poke((config.warps-1).U);d.io.vectorIn.bits.issued.decode.activeMask.poke(full.U)
+        d.io.vectorIn.bits.executionMask.poke(full.U)
+        for(i<-0 until lanes){d.io.vectorIn.bits.issued.vs1Data(i).poke(u(i).U);d.io.vectorIn.bits.issued.vs2Data(i).poke(v(i).U)}
+        d.io.in.bits.decode.instruction.poke("h0020828b".U);d.io.in.bits.decode.pc.poke((0x900+scalarAccepted*4).U)
+        d.io.in.bits.decode.warpId.poke((config.warps-2).U);d.io.in.bits.decode.activeMask.poke(full.U)
+        d.io.in.bits.rs1Data.poke(u.head.U);d.io.in.bits.rs2Data.poke(v.head.U)
+        d.io.vectorIn.valid.poke((vectorAccepted<3).B);d.io.in.valid.poke((scalarAccepted<2).B)
+        d.io.commit.ready.poke(false.B);d.io.vectorCommit.ready.poke(false.B)
+        d.io.mem.req.ready.poke((cycle%5!=0).B)
+        if(reply.isEmpty && cycle%3==0){val eligible=pending.indices.filter(i=>pending(i)._2<=cycle)
+          if(eligible.nonEmpty)reply=Some(pending.remove(eligible.last)._1)}
+        d.io.mem.resp.valid.poke(reply.nonEmpty.B)
+        reply.foreach{a=>assert(expected.nonEmpty);d.io.mem.resp.bits.addr.poke(a.U)
+          d.io.mem.resp.bits.data.poke(rawWord(a,expected.front.operation).U);d.io.mem.resp.bits.write.poke(false.B)}
+        val response=reply.nonEmpty && d.io.mem.resp.ready.peek().litToBoolean
+        val vecFire=d.io.vectorIn.valid.peek().litToBoolean && d.io.vectorIn.ready.peek().litToBoolean
+        val scalarFire=d.io.in.valid.peek().litToBoolean && d.io.in.ready.peek().litToBoolean
+        assert(!(vecFire && scalarFire))
+        if(vecFire || scalarFire){
+          expected.enqueue(Owner(vecFire,if(vecFire)vectorAccepted else scalarAccepted,accepted))
+          order.append(if(vecFire)'V'else'S');accepted+=1
+          if(vecFire)vectorAccepted+=1 else scalarAccepted+=1
+        }
+        if(d.io.mem.req.valid.peek().litToBoolean && d.io.mem.req.ready.peek().litToBoolean){
+          val owner=expected.front;val n=bindings(owner.operation);val a=d.io.mem.req.bits.addr.peek().litValue.toLong
+          assert(!n.fault && a>=n.base && a<n.base+n.w.toLong*n.h*4 && (a-n.base)%4==0)
+          pending+=((a,cycle+3));reads+=1
+        }
+        var retired=false
+        if(d.io.commit.valid.peek().litToBoolean || d.io.vectorCommit.valid.peek().litToBoolean){
+          val owner=expected.front;val n=bindings(owner.operation)
+          assert(pending.isEmpty && reply.isEmpty)
+          d.io.coordinateFault.get.expect(n.fault.B)
+          val bits=if(owner.vector)d.io.vectorCommit.bits.peek().litValue else d.io.commit.bits.peek().litValue
+          held.foreach{case(value,fault)=>assert(bits==value && fault==n.fault)}
+          held=Some((bits,n.fault))
+          if(owner.vector){d.io.vectorCommit.valid.expect(true.B);d.io.vectorCommit.bits.writesVd.expect((!n.fault).B)
+            d.io.vectorCommit.bits.pc.expect((0x800+owner.index*4).U)
+            d.io.vectorCommit.bits.writeback.warpId.expect((config.warps-1).U)
+            for(i<-0 until lanes)d.io.vectorCommit.bits.writeback.data(i).expect((if(n.fault)BigInt(0)else sample(n,u(i),v(i),(0,0),owner.operation)).U)
+          }else{d.io.commit.valid.expect(true.B);d.io.commit.bits.writeRd.expect((!n.fault).B)
+            d.io.commit.bits.nextPc.expect((0x904+owner.index*4).U)
+            d.io.commit.bits.warpId.expect((config.warps-2).U)
+            d.io.commit.bits.data.expect((if(n.fault)BigInt(0)else sample(n,u.head,v.head,(0,0),owner.operation)).U)}
+          if(hold==5){
+            if(owner.vector)d.io.vectorCommit.ready.poke(true.B)else d.io.commit.ready.poke(true.B)
+            retired=true
+          }else hold+=1
+        }else assert(held.isEmpty)
+        d.clock.step();if(response)reply=None
+        if(retired){expected.dequeue();completed+=1;hold=0;held=None}
+        cycle+=1
+      }
+      assert(accepted==5 && completed==5 && expected.isEmpty && pending.isEmpty && reply.isEmpty)
+      assert(order.toString=="VSVSV")
+      d.io.in.valid.poke(false.B);d.io.vectorIn.valid.poke(false.B);d.io.commit.ready.poke(false.B);d.io.vectorCommit.ready.poke(false.B)
+      d.io.mem.resp.valid.poke(false.B);d.clock.step()
+      d.io.commit.valid.expect(false.B);d.io.vectorCommit.valid.expect(false.B)
+      info(s"TEXTURE_EXECUTE_POLICY_ARBITRATION lanes=$lanes warps=${config.warps} owners=$order instructions=5 faults=2 reads=$reads capturedPerAdmission=true heldCompletion=true noFaultWrites=true healthyReuse=true")
+    }
+  }
 }
