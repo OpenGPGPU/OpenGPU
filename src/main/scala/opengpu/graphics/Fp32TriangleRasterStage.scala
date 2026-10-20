@@ -22,6 +22,7 @@ object Fp32RasterState {
 }
 class Fp32TriangleRasterRequest(p: VertexShaderStageConfig) extends Bundle {
   val primitive=new WindowPrimitive(p);val state=new Fp32RasterState
+  val centroidMask=UInt((p.varyings*4).W)
 }
 class Fp32RasterizedQuad(p: VertexShaderStageConfig,g: GraphicsConfig) extends Bundle {
   val values=new Fp32InterpolatedQuad(p,g);val frontFacing=Bool();val sampleMode=UInt(2.W)

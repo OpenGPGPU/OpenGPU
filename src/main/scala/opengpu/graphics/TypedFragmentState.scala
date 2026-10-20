@@ -19,9 +19,11 @@ object TypedFragmentStateLayout {
   def scratch(d: TypedFragmentState,e: Int): VertexInputView={require(e>=0 && e<engines);if(e==0)d.fragment.scratch else d.scratch(e-1)}
   def fields(d: TypedFragmentState): Seq[NativeTypedGraphicsLayout.Field]={
     var word=16
-    WindowPrimitiveRecordLayout.leaves(d).map{case(n,x)=>val count=(x.getWidth+31)/32
+    val legacy=WindowPrimitiveRecordLayout.leaves(d).filterNot(_._1=="fragment.centroidMask").map{case(n,x)=>val count=(x.getWidth+31)/32
       if(word%16+count>16)word=(word+15)/16*16
       val field=NativeTypedGraphicsLayout.Field(n,word,x);word+=count;field}
+    require(word<=124,"legacy fragment-state fields must not overlap the centroid extension")
+    legacy:+NativeTypedGraphicsLayout.Field("fragment.centroidMask",124,d.fragment.centroidMask)
   }
   def errors(d: TypedFragmentState,arena: PrimitiveStateDescriptor,f: FragmentShaderConfig,g: GraphicsConfig,c: GpuConfig): (Bool,Bool)={
     val checks=(0 until engines).map{e=>val view=scratch(d,e);val shader=WireDefault(d.fragment);shader.scratch:=view

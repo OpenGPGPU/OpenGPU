@@ -30,10 +30,29 @@ and two existing covered-sample-depth controls. The new direct reference covers
 50 quads and observes changed centroid values while preserving mixed center and
 flat components. The initial reference-test syntax failure is retained separately.
 
-This is a component prerequisite. The enclosing primitive owner currently ties
-the new mask to zero. Versioned native fragment-state binding, actual-CU/native
-images, resource discovery and composed timing are still required. This
-checkpoint does not close centroid/API or H6 coverage.
+The initial component checkpoint tied the enclosing primitive owner's mask to
+zero. The native binding series now carries the fragment descriptor's mask
+through both prepared replay and live vertex/raster ownership, snapshotting it
+with each accepted draw. Actual-CU/native centroid images, resource discovery
+and composed timing remain to be qualified. This checkpoint does not close
+centroid/API or H6 coverage.
+
+## Native descriptor extension
+
+Fragment descriptor versions 3 and 4 enable the 64-bit component mask. Version
+3 retains version 1's shader SoA layout; version 4 retains version 2's pointCoord
+and primitive-kind layout. Versions 1/2 require a zero centroid mask. All
+versions reject mask bits outside the active varying slots before shader work.
+
+GTD1 places the mask in words 538–539 and GFS1 in words 124–125, previously
+reserved. Header magic, record sizes, every existing field offset and narrow
+padding rule remain unchanged. GND1 primitive/bin records do not change.
+Generated C headers expose the new versions and mask offsets. An audit compares
+all 354 existing GTD1 draw fields, 71 GFS1 state fields and existing C defines
+against the preceding committed layouts; every prior entry matches, and C11
+size/offset probes pass. Runtime reader/raster compatibility checks are running
+on 629 frozen source/ABI files. Positive centroid-state/native execution and
+discovery still need their separate controls.
 
 ## Partial-coverage perspective fallback
 

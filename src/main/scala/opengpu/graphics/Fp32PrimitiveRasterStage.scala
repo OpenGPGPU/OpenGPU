@@ -71,7 +71,7 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   interpolation.io.in.bits.primitive:=descriptor.primitive;interpolation.io.in.bits.quad:=candidate.bits
   interpolation.io.in.bits.pointSize:=selectedPointSize
   interpolation.io.in.bits.sampleDepthEnable:=true.B;interpolation.io.in.bits.sampleMode:=settings.sampleMode
-  interpolation.io.in.bits.centroidMask:=0.U
+  interpolation.io.in.bits.centroidMask:=descriptor.centroidMask
   candidate.ready:=phase===State.run && (stop || rasterFault || interpolation.io.in.ready)
   interpolation.io.cancel:=active && (stop || rasterFault);interpolation.io.completion.ready:=phase===State.run
   io.out.valid:=interpolation.io.out.valid;io.out.bits.values:=interpolation.io.out.bits;interpolation.io.out.ready:=io.out.ready
@@ -101,6 +101,7 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
       val topology=MuxLookup(primitive.kind,false.B)(Seq(0.U->(primitive.topology===0.U),1.U->(primitive.topology>=1.U && primitive.topology<=3.U),2.U->(primitive.topology>=4.U && primitive.topology<=6.U)))
       val metadata=primitive.kind<=2.U && (!trianglesOnly.B || primitive.kind===2.U) && primitive.vertexCount===primitive.kind+&1.U && topology && primitive.provokingVertex<primitive.vertexCount &&
         primitive.varyingSlots<=p.varyings.U && !(primitive.flatMask>>(primitive.varyingSlots<<2)).orR &&
+        !(descriptor.centroidMask>>(primitive.varyingSlots<<2)).orR &&
         descriptor.primitive.clipped.partCount>=1.U && descriptor.primitive.clipped.partCount<=7.U && descriptor.primitive.clipped.partIndex<descriptor.primitive.clipped.partCount
       val records=(0 until 3).map { i=>val v=descriptor.primitive.vertices(i);val r=primitive.vertices(i)
         i.U>=primitive.vertexCount || (v.fixedValid && !descriptor.primitive.guardBandRequired &&
