@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "qualified_native_sampling_merged_exact_source_and_artifact_hashes_preserved",
+  "main_merge": "959bff11487ea8accedafe841c96596db9e1e783",
+  "main_before": "2074cffd7d41d4e70a2bf57ad8afed60bf61c325",
+  "parents": [
+    "2074cffd7d41d4e70a2bf57ad8afed60bf61c325",
+    "97fb33bf7a7a691a33c19f5801af327fe019fa90"
+  ],
+  "qualified_source_commit": "3773a1c3d4ae5d35974fa4f1d9d0c05eb70eb5a2",
+  "qualified_source_files": 803,
+  "source_manifest_sha256": "59a8a69703b558b9d06c00d1b9d18a76c7bbb4596eb1d4308ad37b2f434faf57",
+  "root_worktree_and_qualified_catalog_exact": true,
+  "main_source_archive_sha256": "14ebe162ebdc5f458471d452607c1d1da27ba6aabf2bd80698e7af069475789e",
+  "archive_source_exact": true,
+  "qualification_record": "docs/performance/mobile-native-texture-execution-2026-10-21.json",
+  "qualification_record_sha256": "ab8f6cf49a02b5a4d31ae4636ff988bbff7beb971d4187dd10cf7670e3c836de",
+  "functional_tests": 144,
+  "functional_suites": 26,
+  "generated_descriptor_ABIs": 9,
+  "fresh_synthesis_endpoints": [
+    "vertex",
+    "fragment"
+  ],
+  "all_qualification_artifact_hashes_exact": true,
+  "new_commits": [
+    "959bff11487ea8accedafe841c96596db9e1e783",
+    "97fb33bf7a7a691a33c19f5801af327fe019fa90",
+    "d49cd30a087d299e42ecf471b63240cbb51d9772",
+    "a771cfe6b06c602e7d842e811aa4a2ff2de2c3c0",
+    "b66c8957c059b6fae50f09ab64876d1202ebbeaf",
+    "3773a1c3d4ae5d35974fa4f1d9d0c05eb70eb5a2",
+    "443b779d139ef8fd6ccf8d229e35d9932bdef6f8",
+    "cb6809a1a3b81ceb674677c2ee3079de90bed5d0"
+  ],
+  "each_commit_has_exactly_one_agent_trailer": true,
+  "protected_user_file_hashes": {
+    "AGENTS.md": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+    "timing/README.md": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47"
+  },
+  "protected_user_file_modes": "0644",
+  "remaining": [
+    "Native AXI/frame floating tests live on separate frozen source",
+    "Captured integer instruction and base-relative LOD correction remain on development branches",
+    "Whole-system/rate/coherence and full H0-H8 requirements remain open"
+  ],
+  "scope": "Exact-source integration audit; carries the frozen functional and synthesis evidence without claiming a new root build or full hardware completion."
+}
