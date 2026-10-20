@@ -6064,3 +6064,16 @@ exact reuse and four extreme-coordinate subpixel configurations; RTL emission
 passes on the frozen672-file source. Fresh native integration, matched cycle
 comparison and standalone synthesis remain pending. The retained aliased diamond
 setup miss, native general resources and full H0-H8 objective remain open.
+
+
+## Overlap cycle and standalone synthesis measurements (2026-10-20)
+
+All [15 matched fixtures](performance/mobile-point-line-sample-cycles-2026-10-20.json)
+retain every quad field. Point/basic-line cycle counts match the prior main
+component. Unit-width4x line cycles are811, versus683 before sample pipelining
+and2219 for the first serial candidate;2x remains683 versus427. The revised
+checked-in probe also preserves all15 historical setup-policy assertions.
+The [fresh standalone synthesis](performance/mobile-point-line-sample-synthesis-2026-10-20.json)
+passes full mapping with163555 cells but misses setup by1107.758ps; I/O setup
+is+641.366ps. The aliased diamond interval update remains critical. No native
+clock, frame throughput, power or route qualification is claimed.

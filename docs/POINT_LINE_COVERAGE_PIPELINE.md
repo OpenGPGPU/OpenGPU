@@ -1,5 +1,15 @@
 # Point/line coverage preparation and coordinate carries
 
+The later [overlapped sample pipeline](performance/mobile-point-line-sample-overlap-2026-10-20.json)
+registers sample arithmetic and streams consecutive MSAA line samples with aligned
+indices and dot predicates. Its [15 matched fixtures](performance/mobile-point-line-sample-cycles-2026-10-20.json)
+retain every output field and the point/basic-line cycle counts. MSAA adds128
+cycles at4x or256 at2x for these small fixtures; the unit-width4x line takes811
+cycles versus683 before sample pipelining. The [standalone screen](performance/mobile-point-line-sample-synthesis-2026-10-20.json)
+passes mapping but fails setup at -1107.758ps on the aliased diamond interval path.
+No positive clock or throughput result is claimed. The preparation-only records
+below describe earlier checkpoints.
+
 The prior replay-engine synthesis screen reports its worst core path from
 `request.state.lineWidth[30]` to point/line coverage `mask[0]`. This candidate
 registers work that is constant for a primitive before scanning samples:
@@ -100,3 +110,19 @@ provides no composed clock benefit; its added setup cycles still apply.
 The next timing cut must address the measured per-sample coverage path.
 This source predates centroid and polygon-offset work. No full-GPU, frame,
 power or routed result is established; PPA remains synthesis only.
+
+For an arbitrary revision with emitted helper modules, use a directory and
+report the actual cycle deltas while retaining exact output comparison:
+
+```sh
+python3 scripts/benchmark_point_line_cycles.py \
+  --baseline-rtl /path/to/baseline/PointLineRasterizer.sv \
+  --candidate-rtl /path/to/candidate-rtl-directory \
+  --cycle-policy report \
+  --output /path/to/new-comparison-directory
+```
+
+The default `setup` policy still asserts the historical two/three setup-cycle
+delta. Both policies pass15 fixtures with the updated probe. Optional input
+initialization follows each emission's actual ports, including older pre-offset
+and composed emissions with ignored facing inputs pruned.
