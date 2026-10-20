@@ -6302,3 +6302,15 @@ synthesis passes full mapping but misses setup by27.450ps,with I/O+645.609ps;
 the remaining path is dy to a multisample cross-product register. Signed sample
 products will use the existing balanced compressor without adding states. No
 positive clock or full H0-H8 result is claimed.
+
+
+## Retained balanced sample-product qualification (2026-10-20)
+
+The [balanced sample-product source](performance/mobile-point-line-products-before-2026-10-20.json)
+passes all22 fresh targeted controls and both15-fixture output/cycle comparisons.
+Standard synthesis passes mapping but misses setup by29.531ps,with I/O+626.067ps.
+The path is now a generic fraction high limb. The owner has33-bit endpoint axes
+and centers at most35 bits;its numerator arithmetic fits36 signed bits without
+reducing the32-bit endpoint interface or subpixel configurations. That bounded
+owner specialization will be checked alongside retained64-bit generic support.
+No positive timing or full H0-H8 result is claimed.

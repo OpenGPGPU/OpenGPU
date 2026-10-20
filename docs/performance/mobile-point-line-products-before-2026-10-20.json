@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "22_fresh_product_controls_pass_generic_high_limb_setup_miss",
+  "source_files": 674,
+  "source_manifest_sha256": "93628378ec02dc913f8f18780025e5a01e704aca8a27f65eaeca944ebd5d7dba",
+  "checks": {
+    "test_counts": [
+      12,
+      6,
+      2,
+      2
+    ],
+    "total": 22,
+    "source_unchanged": true,
+    "integration_log": {
+      "path": ".artifacts/mobile-point-line-products-integration-v5.log",
+      "sha256": "3d81c0c9bfb40bc64e242c7cf1ab0390b85a448d9ab7be74ab5ac87c7329bba2"
+    }
+  },
+  "cycle_proofs": {
+    "baseline": {
+      "path": ".artifacts/mobile-point-line-products-cycles-v5/comparison.json",
+      "sha256": "b5f7634dfe0147d846bcaadd008479fca1fe67c8f1c506866e68d756a68e3916",
+      "cases": 15
+    },
+    "parent": {
+      "path": ".artifacts/mobile-point-line-products-latency-v5/comparison.json",
+      "sha256": "c141f1b60882f520bceede8ff8a24ebe96909588f5314c3e327582eb2caee1fa",
+      "cases": 15,
+      "cycles_and_first_offer_identical": true
+    }
+  },
+  "synthesis": {
+    "terminal": {
+      "returncode": 2,
+      "source_unchanged": true,
+      "rtl_unchanged": true,
+      "elapsed_seconds": 249.70796975004487,
+      "finished_utc": "2026-10-20T09:50:16.838830+00:00"
+    },
+    "reported_setup_slacks_ps": [
+      -29.531,
+      626.067
+    ],
+    "mapped_cells": 147471,
+    "core_path": {
+      "start": "compareB_0_numerator[62]$_DFFE_PN_",
+      "end": "compareParts_0_right_9[31]$_DFFE_PN_"
+    },
+    "constraints": {
+      "period_ps": 1000,
+      "io_delay_percent": 0.25,
+      "abc_clock_period_ps": null,
+      "corner": "TC",
+      "cell_vt": "SLVT",
+      "retiming": false
+    },
+    "artifacts": {
+      "generated/qualification/ppa/mobile-point-line-products-2026-10-20-v5/result.json": "c2dda96318f83c37d72bda06f3f6858f8572e2112cf87f272b7d5cee1f921a8e",
+      "generated/qualification/ppa/mobile-point-line-products-2026-10-20-v5/qualification.json": "bcb0307e6b6da96da0102caa7f57eb4a875af813701d5228a91201d621ddb373",
+      "generated/qualification/ppa/mobile-point-line-products-2026-10-20-v5/manifest.json": "dccfcfc2fdd0147694c9ebc3f0057862e585fc1ed2d007d5b4a9c9538c5f949a",
+      "generated/qualification/ppa/mobile-point-line-products-2026-10-20-v5/flow/synthesis_sta.log": "92cf1216fcb9a440d182d63072e217aa317f3b5679c9292b1276b6225c8700eb"
+    }
+  },
+  "pending": [
+    "Specialize owner fraction arithmetic to proven36-bit numerator bounds,retaining generic64-bit comparison support."
+  ],
+  "limits": [
+    "No positive setup,native clock,route,power or full H0-H8 result."
+  ]
+}
