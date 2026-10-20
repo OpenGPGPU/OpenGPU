@@ -1,15 +1,16 @@
 # Internal implicit LOD and helper snapshots
 
-Status: functional implementation on `codex/mobile-implicit-sampling`.
-The [799-input checkpoint](performance/mobile-implicit-sampling-checkpoint-2026-10-21.json)
-passes 122 distinct tests across 21 suites, nine unchanged ABI checks, and four
-fresh standalone synthesis screens at the unchanged 1000ps target. Standalone
-LOD RTL is byte-identical to its previous positive screen. Combined gradient
-resolver and full sampler synthesis remain pending; no combined timing pass
-is claimed. The earlier explicit-gradient revision's
+Status: the [799-input qualification](performance/mobile-implicit-sampling-2026-10-21.json)
+passes 122 distinct tests across 21 suites and nine unchanged ABI checks.
+Six fresh synthesis screens pass at the unchanged 1000ps target. Combined
+resolver core/I/O slack is +26.319/+474.840ps; full sampler +48.806/+413.520ps
+with 440,000 mapped cells and library cell area 60,724.912680. Standalone LOD
+RTL remains byte-identical to its previous positive screen. These are internal
+component synthesis results; native transport and real CU/raster helper
+integration remain open. The earlier explicit-gradient revision's
 [116-test record and composed timing failures](performance/mobile-gradient-sampling-2026-10-21.json)
-remain immutable. Main retains its separately qualified explicit-effective-LOD
-sampler. No new native opcode, software record or capability is exposed here.
+remain immutable. The separately qualified explicit-effective-LOD sampler remains in the
+source history. No new native opcode, software record or capability is exposed here.
 
 ## Request lifetime
 

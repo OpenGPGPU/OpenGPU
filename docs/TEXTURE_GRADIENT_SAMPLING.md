@@ -1,12 +1,12 @@
-# Gradient image sampling development
+# Gradient image sampling
 
-Status: the [795-input frozen revision](performance/mobile-gradient-sampling-2026-10-21.json)
-passes116 distinct aggregate tests and nine ABI checks. All three arithmetic
-synthesis screens pass at1000ps, but the composed resolver/full sampler map
-completely and fail setup by13.617/68.892ps. This revision remains a development
-checkpoint. The qualified explicit-effective-LOD baseline is on main in
-[the main audit](performance/mobile-effective-lod-main-2026-10-20.json).
-No new native shader instruction or software capability is exposed.
+Status: the [799-input gradient/implicit qualification](performance/mobile-implicit-sampling-2026-10-21.json)
+passes 122 aggregate tests, nine ABI checks and all component synthesis screens
+at 1000ps. Combined resolver/full-sampler core slack is +26.319/+48.806ps.
+Registered normalized operands cut the measured decode-to-product path.
+The [795-input historical revision](performance/mobile-gradient-sampling-2026-10-21.json)
+retains its 116 passing tests and mapped composed setup misses of
+13.617/68.892ps. No new native shader instruction or capability is exposed.
 
 ## Admission and sampling
 
@@ -28,8 +28,9 @@ The resolved lambda passes through existing sampler clamps, min/mag and mip
 selection, spatial/mip filtering, depth comparison and final swizzle. Publication
 and VM leases remain pinned by the enclosing sample/native owner until final
 retirement. Accepted numerator, divide and logarithm work drains on cancellation;
-held results remain immutable. This path does not supply implicit quad/helper
-derivatives, shader bias or native instruction transport yet.
+held results remain immutable. The composed owner also supports [internal helper snapshots and shader
+bias](TEXTURE_IMPLICIT_SAMPLING.md). Native instruction transport and actual
+CU/raster helper delivery remain open.
 
 ## Cube projection derivatives
 
