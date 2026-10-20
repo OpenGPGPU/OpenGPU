@@ -5652,3 +5652,15 @@ Both full emissions, four ABI checks, C11 and CI selection already passed.
 The remaining thirteen vertex/raster, 24 image and 37 native host checks stay
 live. The candidate remains isolated; no full 206-check, main promotion or
 composed PPA result is claimed. PPA evaluation remains synthesis only.
+
+
+## Combined vertex/raster/fragment checkpoint (2026-10-20)
+
+The [145-check completed prefix](performance/mobile-depth-texture-vertex-controls-2026-10-20.json)
+adds all thirteen actual-CU vertex/raster/fragment checks to the previous132
+controls on unchanged650-file source. Indexed/instanced geometry, point/line
+coverage, shader inputs, textures, payload/VM lifetime, primary fault attribution
+and cancellation/reuse pass. The24 image and37 native host controls remain live.
+This candidate remains outside main; it does not include the independently
+qualified GPU level-resource components. No complete206-check, native matrix/reset
+or composed PPA result is claimed. PPA evaluation remains synthesis only.

@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "145_controls_passed_image_and_host_groups_live",
+  "observed_utc": "2026-10-20T05:55:51.995829+00:00",
+  "source_files": 650,
+  "source_unchanged_at_checkpoint": true,
+  "passed_groups": [
+    113,
+    16,
+    3,
+    13
+  ],
+  "passed_checks": 145,
+  "expected_total": 206,
+  "remaining_checks": 61,
+  "remaining_groups": [
+    24,
+    37
+  ],
+  "sbt_pid_confirmed_live": 80768,
+  "coverage": "The13-check vertex/raster/fragment group passes with actual shared CUs, indexed/instanced geometry, points/lines/triangles, textures, payload/VM ownership, fault/cancel drain and exact healthy reuse. Earlier132 checks and all five prerequisite validation types remain intact.",
+  "evidence": {
+    "mobile-depth-texture-composed-source-v1.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-source-v1.json",
+      "sha256": "4cd5de331d3bba534643968d63f085743d7ec250b25fe7f9d5dbb556bba11193"
+    },
+    "mobile-depth-texture-composed-source-v1.tar.gz": {
+      "path": ".artifacts/mobile-depth-texture-composed-source-v1.tar.gz",
+      "sha256": "4474397fe6aa2469d13c84d069d800630c2ef363f4824ea5d0e9bf0549b57797"
+    },
+    "mobile-depth-texture-vertex-controls-prefix-v1.log": {
+      "path": ".artifacts/mobile-depth-texture-vertex-controls-prefix-v1.log",
+      "sha256": "d7c2eb8556aafad794f95009123261db9654d5344b9389936122fec479fd9b6f"
+    },
+    "mobile-depth-texture-composed-qualified-v1-start.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-qualified-v1-start.json",
+      "sha256": "c9b430e8fb4c5448ddcb0f79abd8538233ddb1e5ff3220ff726332aee30b0560"
+    }
+  },
+  "limits": [
+    "This is a completed145-check prefix. The24 image and37 native host controls remain live; their complete matrices/reset results are not claimed for this source.",
+    "The source remains isolated and unpromoted. New GPU level resource components on main have separate649-file qualification and are not included in this frozen650-file run.",
+    "No completed composed synthesis result or H0-H8/GLES/resource closure is claimed. PPA remains synthesis only."
+  ]
+}
