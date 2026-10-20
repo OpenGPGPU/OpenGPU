@@ -5198,3 +5198,30 @@ preserving sample modes, bounds, cancellation and primitive ownership.
 This is one prepared replay engine, not the native host or a four-CU GPU.
 PPA remains **synthesis only**; power, hold, routed timing, full Mobile runtime/
 rates/budgets and the original H0-H8 requirements remain open.
+
+## Point/line coverage and AXI ownership checkpoint (2026-10-20)
+
+The [coverage preparation and carry corrections](POINT_LINE_COVERAGE_PIPELINE.md)
+retain signed coordinate differences through checked weight exports and remove
+the triangle-specific span restriction from safe lines. The original arithmetic
+fails three of four extreme-coordinate checks; the corrected source passes all
+19 coverage, primitive, interpolation and covered-sample-depth checks. Fifteen
+matched ordinary-input primitives retain every quad output field with exactly
+two added setup cycles for points/basic lines and three for multisample lines.
+
+The [standalone synthesis comparison](performance/mobile-point-line-synthesis-2026-10-20.json)
+changes the point/line core estimate from 273.089 to 278.539 MHz (+2.00%), with
+mapped area up 2.78%. Including measured setup cycles gives 1.26–1.94% lower
+estimated latency for those small fixtures. Both versions still fail 1 GHz
+setup. This component result does not replace the 255.537 MHz prepared replay
+engine estimate; composed synthesis and image/native regressions are pending.
+
+The [host AXI ownership correction](HOST_AXI_RESPONSE_OWNERSHIP.md) fixes two
+independently reproduced failures: simultaneous AR/AW acceptance into one address
+state and live status changes leaking into a stalled RDATA response. Exclusive
+transaction grants and a first-stall holding register preserve the existing
+unstalled beat rate. All nine control/discovery/burst/reset/fill/VM-owner checks
+pass on 627 unchanged source/ABI files. Full converted-input native image,
+fault/reset composition and default four-CU emission are being requalified on
+the combined source. These feature-branch checkpoints do not close H0-H8,
+GLES resource/format coverage, full Mobile throughput or physical qualification.
