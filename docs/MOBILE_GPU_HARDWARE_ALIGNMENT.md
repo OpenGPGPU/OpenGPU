@@ -6799,9 +6799,9 @@ now passes53 fresh checks on819 frozen inputs:the30 banked/FP32 controls plus
 23 native execute-owner query,projective-compatibility and integer mip controls.
 Three fresh profiles retain byte-identical active banked RTL to their component
 qualifications;the read-through profile matches after removing comments only. Existing native query/projective production,driver,ABI and test
-<<<<<<< HEAD
-inputs remain exact to current main. Complete-service synthesis is still pending;
-this candidate has not been merged into main.
+inputs remain exact to current main. Complete-service synthesis fails the1000ps gate (-28.888/-85.788ps);
+this candidate has not been merged into main. A shared fill-admission correction
+is qualified separately before main integration.
 
 ## H4 virtual tap admission and scoped cancellation
 
@@ -6816,11 +6816,6 @@ Native resource/coordinate and shared-CU wiring remain upstream. The first miss
 queue cut improves but still fails1000ps synthesis (-32.971/-144.873ps);shared
 fill-admission registration and a fresh complete-service synthesis screen are
 required. H4 and all remaining H0-H8 exit gates stay open.
-=======
-inputs remain exact to current main. Complete-service synthesis fails the1000ps gate (-28.888/-85.788ps);
-this candidate has not been merged into main. A shared fill-admission correction
-is qualified separately before main integration.
->>>>>>> 6f2284b (docs(texture): keep current-main candidate gated on setup correction)
 
 The [second miss pipeline correction](performance/mobile-banked-texture-shared-admission-2026-10-21.json)
 adds two shared metadata records after four-bank arbitration,before sixteen-fill
