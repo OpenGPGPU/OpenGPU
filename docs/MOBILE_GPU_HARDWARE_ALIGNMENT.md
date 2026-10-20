@@ -5693,3 +5693,15 @@ result therefore apply by exact source/RTL identity; no new main regression is
 claimed. Native image/sampler resources and their execution integration remain
 open. The separate 206-check depth/facing/texture source is still isolated and
 live; this component promotion does not claim its remaining controls passed.
+
+
+## Combined depth/texture controls checkpoint (2026-10-20)
+
+The [132-check prefix](performance/mobile-depth-texture-controls-2026-10-20.json)
+passes on unchanged 650-file candidate source: 113 reader/discovery/numeric/stage
+controls, sixteen backend/trap/AXI controls and three vertex texture checks.
+This includes 11,712 floating-resolution cases and 270 signed-unit raster draws.
+Both full emissions, four ABI checks, C11 and CI selection already passed.
+The remaining thirteen vertex/raster, 24 image and 37 native host checks stay
+live. The candidate remains isolated; no full 206-check, main promotion or
+composed PPA result is claimed. PPA evaluation remains synthesis only.

@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "132_checks_passed_remaining74_live",
+  "observed_utc": "2026-10-20T05:38:14.915874+00:00",
+  "source_files": 650,
+  "source_unchanged_at_checkpoint": true,
+  "passed_groups": [
+    113,
+    16,
+    3
+  ],
+  "passed_checks": 132,
+  "planned_total": 206,
+  "remaining_checks": 74,
+  "sbt_pid_confirmed_live": 80768,
+  "completed_abi_checks": 4,
+  "completed_emissions": 2,
+  "floating_resolution_cases": 11712,
+  "polygon_units_raster_draws": 270,
+  "actual_vertex_policy_profiles": 2,
+  "evidence": {
+    "mobile-depth-texture-composed-source-v1.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-source-v1.json",
+      "sha256": "4cd5de331d3bba534643968d63f085743d7ec250b25fe7f9d5dbb556bba11193"
+    },
+    "mobile-depth-texture-composed-source-v1.tar.gz": {
+      "path": ".artifacts/mobile-depth-texture-composed-source-v1.tar.gz",
+      "sha256": "4474397fe6aa2469d13c84d069d800630c2ef363f4824ea5d0e9bf0549b57797"
+    },
+    "mobile-depth-texture-controls-prefix-v1.log": {
+      "path": ".artifacts/mobile-depth-texture-controls-prefix-v1.log",
+      "sha256": "e6f60b09a7750f36ab53f3fe2c56186184fce3184d6de5739e5a22928ae88358"
+    },
+    "mobile-depth-texture-composed-qualified-v1-start.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-qualified-v1-start.json",
+      "sha256": "c9b430e8fb4c5448ddcb0f79abd8538233ddb1e5ff3220ff726332aee30b0560"
+    },
+    "mobile-depth-texture-composed-rtl-audit-v1.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-rtl-audit-v1.json",
+      "sha256": "759971f7bd140025d5dcaba88443af9e36d7db9630e6e71a39ec3502803972a8"
+    }
+  },
+  "limits": [
+    "Completed reader/discovery/math/stage controls113 plus backend/trap/AXI16 plus vertex texture3; all on identical650-file source.",
+    "Vertex/raster13, image24 and native host37 remain live. No complete206-check or native matrix/reset result is claimed for the composition.",
+    "The source stays isolated. Standalone image addressing promoted separately has its own qualification; it is not part of this650-file frozen run.",
+    "No new composed PPA result. Evaluation remains synthesis only; broader H0-H8/GLES/resource requirements remain open."
+  ]
+}
