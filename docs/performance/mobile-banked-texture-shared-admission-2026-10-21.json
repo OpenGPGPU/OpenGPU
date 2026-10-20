@@ -1,0 +1,231 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "forty_six_checks_and_six_emissions_pass_three_full_synthesis_screens_running",
+  "source": {
+    "commit": "18668e44343de5a3253b07b9c128e709111d0223",
+    "source_files": 822,
+    "manifest_sha256": "3dd88d3affde3d0c52b6f8275a31c88919ccf4d56d3216e4695f6080bf02c5dd",
+    "archive_sha256": "29ef5885b9d98dc66bd84de78224d83ecef190cb7fc6f0c4fe3aad1bd165aefb",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/main/scala/opengpu/elaboration/EmitBankedTextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedTextureFillOwner.scala",
+      "src/main/scala/opengpu/graphics/BankedTextureWordService.scala",
+      "src/test/scala/opengpu/graphics/BankedTextureReadThroughSpec.scala",
+      "src/test/scala/opengpu/graphics/BankedRgba8FloatTextureServiceSpec.scala",
+      "src/test/scala/opengpu/graphics/BankedRgba8CachePolicySpec.scala"
+    ],
+    "added_inputs": [
+      "src/main/scala/opengpu/graphics/TranslatedBankedRgba8TextureService.scala",
+      "src/test/scala/opengpu/graphics/TranslatedBankedRgba8TextureServiceSpec.scala"
+    ],
+    "runner_pid": 12625,
+    "started_utc": "2026-10-20T21:39:58.969966+00:00"
+  },
+  "functional_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 37.73903066595085,
+    "commit": "18668e44343de5a3253b07b9c128e709111d0223",
+    "source_files": 822,
+    "manifest_sha256": "3dd88d3affde3d0c52b6f8275a31c88919ccf4d56d3216e4695f6080bf02c5dd",
+    "archive_sha256": "29ef5885b9d98dc66bd84de78224d83ecef190cb7fc6f0c4fe3aad1bd165aefb",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/main/scala/opengpu/elaboration/EmitBankedTextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedTextureFillOwner.scala",
+      "src/main/scala/opengpu/graphics/BankedTextureWordService.scala",
+      "src/test/scala/opengpu/graphics/BankedTextureReadThroughSpec.scala",
+      "src/test/scala/opengpu/graphics/BankedRgba8FloatTextureServiceSpec.scala",
+      "src/test/scala/opengpu/graphics/BankedRgba8CachePolicySpec.scala"
+    ],
+    "added_inputs": [
+      "src/main/scala/opengpu/graphics/TranslatedBankedRgba8TextureService.scala",
+      "src/test/scala/opengpu/graphics/TranslatedBankedRgba8TextureServiceSpec.scala"
+    ],
+    "runner_pid": 12625,
+    "started_utc": "2026-10-20T21:39:58.969966+00:00"
+  },
+  "emission_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 10.941507166950032
+  },
+  "distinct_passed_tests": 46,
+  "suites": {
+    "Rgba8WeightedToFp32Spec": 3,
+    "BankedRgba8FloatTextureServiceSpec": 7,
+    "BankedRgba8TextureHitsSpec": 8,
+    "BankedTextureLineStoreSpec": 1,
+    "BankedTextureFillOwnerSpec": 4,
+    "BankedTextureReadThroughSpec": 7,
+    "BankedRgba8CachePolicySpec": 8,
+    "TranslatedBankedRgba8TextureServiceSpec": 8
+  },
+  "changes_from_previous_translation_qualification": [
+    "src/main/scala/opengpu/graphics/BankedTextureWordService.scala",
+    "src/test/scala/opengpu/graphics/BankedTextureReadThroughSpec.scala",
+    "src/test/scala/opengpu/graphics/BankedRgba8FloatTextureServiceSpec.scala",
+    "src/test/scala/opengpu/graphics/BankedRgba8CachePolicySpec.scala"
+  ],
+  "pipeline": {
+    "per_bank_miss_metadata_entries": 2,
+    "shared_fill_admission_metadata_entries": 2,
+    "banks": 4,
+    "readiness_cut": "Shared queue stores the complete original word metadata after four-way arbitration and before sixteen-fill matching.",
+    "drain": "A fourth per-bank completion arbiter input drains stopped shared admissions,retaining lookup owners through public word retirement.",
+    "performance_event": "joined reports each accepted fill join one cycle later through an explicit register;event count is unchanged.",
+    "saturation_fixture": "Offer until backpressured and require8..16 accepted groups,the architectural sixteen-slot bound. Drain exactly those accepted groups after cancel or invalidation.",
+    "rates": "96 complete warm groups at input/output II1,192 backpressured groups,including translated Sv32 and optional page-policy profiles."
+  },
+  "failed_baselines": {
+    "readthrough": {
+      "slacks_ps": [
+        -32.971,
+        -144.873
+      ],
+      "record": "mobile-banked-texture-readthrough-pipeline-2026-10-21.json",
+      "path_start": "pendingMisses_2.deq_ptr_value",
+      "core_endpoint": "miss.keys_8_address[16]",
+      "IO_endpoint": "io_joined"
+    },
+    "fp32": {
+      "slacks_ps": [
+        -28.888,
+        -85.788
+      ],
+      "record": "mobile-banked-texture-fp32-pipeline-2026-10-21.json",
+      "core_endpoint": "groups.service.miss.keys_12_address[25]",
+      "IO_endpoint": "io_joined"
+    }
+  },
+  "unchanged_active_RTL_raw_identity": {
+    "normalize": {
+      "Rgba8WeightedToFp32.sv": "19b85cf20d26198d1025baa89d9d7be3b547af44ff20af5aaa67d39d52650913"
+    },
+    "cluster": {
+      "RRArbiter4_BankedTextureLookup.sv": "4d1eed03a3b92470b494278bb5b3c32306d07a9a3d3be464afa4b05019b15201",
+      "ram_2x39.sv": "7fccf5d414831ac374f05a9a10c91b39b7ca40b956e5c24b94f80bdebc1ef5e8",
+      "Queue2_BankedTextureWord.sv": "31f17c66ba551488b397f1ed6d704380afc2d057842c9dc032fb18dfc13e222d",
+      "memory_256x32.sv": "c765dcd3e2ed7ffda1221fab77bcf0223da27de002849560a9eb01fdcb1832d3",
+      "L2SramArray.sv": "c1104c24dbda2c1e4b6688300e1168baef38ac07eeed8876af67c032584397b7",
+      "BankedTextureLineStore.sv": "340c6a7917a207c13315e6e42880e847316a35d36a6bb98d216f2e0aceca4d7a",
+      "BankedRgba8TextureHits.sv": "43c30c44cc1a1f43385f03a785a8c2a58e1884530201f58dd48380822174ffa6"
+    }
+  },
+  "normalizer_exhaustive_scalar_values_carried": 66846724,
+  "normalizer_synthesis_slacks_ps": [
+    524.629,
+    372.277
+  ],
+  "resident_cluster_synthesis_slacks_ps_carried": [
+    172.334,
+    85.011
+  ],
+  "synthesis_policy": "1000ps,TC/SLVT,25% I/O,standard ABC,no retiming;synthesis only",
+  "synthesis_jobs": {
+    "readthrough": {
+      "status": "running",
+      "session": 11038,
+      "start": {
+        "wrapper_pid": 23589,
+        "flow_pid": 23590,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-banked-texture-translation-v1-worktree/generated/mobile-h4/banked-readthrough-translation-v4-rtl",
+          "BankedRgba8TextureHits",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-readthrough-v1"
+        ],
+        "started_utc": "2026-10-20T21:41:09.405842+00:00"
+      }
+    },
+    "fp32": {
+      "status": "running",
+      "session": 7671,
+      "start": {
+        "wrapper_pid": 23624,
+        "flow_pid": 23625,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-banked-texture-translation-v1-worktree/generated/mobile-h4/banked-fp32-translation-v4-rtl",
+          "BankedRgba8FloatTextureService",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-fp32-v1"
+        ],
+        "started_utc": "2026-10-20T21:41:10.558540+00:00"
+      }
+    },
+    "translated": {
+      "status": "running",
+      "session": 83115,
+      "start": {
+        "wrapper_pid": 23661,
+        "flow_pid": 23662,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-banked-texture-translation-v1-worktree/generated/mobile-h4/banked-translated-v4-rtl",
+          "TranslatedBankedRgba8TextureService",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-translated-v1"
+        ],
+        "started_utc": "2026-10-20T21:41:11.715080+00:00"
+      }
+    }
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-banked-texture-translation-v4-source-proof.json": "60ad266c2f96742ffe2af5b477bc89236d098c2c4632a0e608e3fc80c8f9b78c",
+    ".artifacts/mobile-banked-texture-translation-v4-source.json": "3dd88d3affde3d0c52b6f8275a31c88919ccf4d56d3216e4695f6080bf02c5dd",
+    ".artifacts/mobile-banked-texture-translation-v4-source.tar.gz": "29ef5885b9d98dc66bd84de78224d83ecef190cb7fc6f0c4fe3aad1bd165aefb",
+    ".artifacts/mobile-banked-texture-translation-v4-result.json": "41100fe5b0d44fabcdbc15b08e77d200671ecbae6a9e3a920508f79e8ba482d9",
+    ".artifacts/mobile-banked-texture-translation-v4.log": "d7a0b581ca115d4271ebfd333cba19aa9d603cf047752281104aa06476796601",
+    ".artifacts/mobile-banked-texture-translation-v4-emission-result.json": "95edee97c1e2ec8beef2b902b051e5cb7176542ae5faebc5b7c385cd965e4a6a",
+    ".artifacts/mobile-banked-texture-translation-v4-emission.log": "d4a76150cbc861fbfa0b6fecdef03f587372ea96a81f0d5def5c47642a40c39a",
+    ".artifacts/mobile-banked-texture-shared-admission-readthrough-synthesis-v1-inputs.json": "3b13a6ce70e85546b5801b2bab50d9d15918576f0f72229085ff5a09fe9738db",
+    ".artifacts/mobile-banked-texture-shared-admission-readthrough-synthesis-v1-start.json": "03f8f4ecedd89a87b5186e4ac17a38268f41b67111dd055743890d6d203ec71d",
+    ".artifacts/mobile-banked-texture-shared-admission-fp32-synthesis-v1-inputs.json": "cbd03fdfe35216c6b6b3c74a3204aa1725f16990a57ffa03e140e638a4a7eb16",
+    ".artifacts/mobile-banked-texture-shared-admission-fp32-synthesis-v1-start.json": "e4a689b22cb7833c103c976ec431e88ec327ee6ade6618db8af08192fe714032",
+    ".artifacts/mobile-banked-texture-shared-admission-translated-synthesis-v1-inputs.json": "b81c1a1ed40c657b7dba868bad88592ea3db650b26f6411cbe516ee5bfe8cd1b",
+    ".artifacts/mobile-banked-texture-shared-admission-translated-synthesis-v1-start.json": "b6c1e6e1105aacf35b84c801cb7d7ba8508c2be57c8d898bbc075ff0909c93b4"
+  },
+  "remaining": [
+    "collect and inspect all three fresh synthesis results before main integration",
+    "native resource/coordinate planning and shared-CU texture-cluster wiring",
+    "whole-native numeric precision/rates with memory contention",
+    "render-to-texture visibility and full H0-H8 gates"
+  ]
+}

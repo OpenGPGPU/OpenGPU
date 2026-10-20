@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "fifty_three_fresh_tests_and_four_emissions_pass_complete_service_synthesis_pending",
+  "status": "fifty_three_fresh_tests_pass_component_synthesis_timing_failed",
   "source": {
     "commit": "f7c678c7a2591322c9916836d32a2fe09590f792",
     "source_files": 819,
@@ -204,10 +204,15 @@
     372.277
   ],
   "full_service_synthesis": {
-    "status": "running",
-    "scope": "Same complete-service active RTL bytes as the running FP32 pipeline synthesis. No current positive timing claim.",
+    "status": "timing_failed",
+    "scope": "Same active complete-service RTL as the failed FP32 pipeline synthesis. Full mapping passes but setup fails.",
     "runner": ".artifacts/run-mobile-banked-texture-fp32-pipeline-synthesis-v1.py",
-    "session": 29116
+    "session": 29116,
+    "slacks_ps": [
+      -28.888,
+      -85.788
+    ],
+    "record": "mobile-banked-texture-fp32-pipeline-2026-10-21.json"
   },
   "artifacts_sha256": {
     ".artifacts/mobile-banked-texture-fp32-main-v1-source-proof.json": "d5d95b620146e8099bf0339aaaedee3803dbdc141a550f542f3ad2ad368c1cf2",
@@ -219,7 +224,7 @@
     ".artifacts/mobile-banked-texture-fp32-main-v1-emission.log": "823359b5adc3068791b54edfbc28b848d4a3ee1e02566b8345dd3f48bd9e5293"
   },
   "remaining": [
-    "inspect complete-service synthesis before main merge",
+    "qualify the shared fill-admission correction at1000ps before main merge",
     "native shared-cluster resource/coordinate/translation and fault admission",
     "PTE cache policy and scoped cancellation integration",
     "whole-native precision/rates,render-to-texture visibility and H0-H8"

@@ -42,3 +42,12 @@ comments. Complete read-through timing remains negative after the first queue
 cut (-32.971/-144.873ps);shared fill-admission registration is next. The new
 translated service needs its own full synthesis screen. No native sampler rate,
 GLES completion,power,route or whole-GPU clock is claimed.
+
+The [shared fill-admission correction](performance/mobile-banked-texture-shared-admission-2026-10-21.json)
+now passes46 fresh checks on822 inputs with six emissions. Two complete word
+records after bank arbitration separate that selection from fill-key matching.
+Stopped shared admissions retire through a fourth word-completion source,with
+all original owners retained. The `joined` performance pulse is registered by
+one cycle;event counts and warm input/output II1 remain unchanged. Three fresh
+full synthesis screens cover packed read-through,FP32 and translated profiles
+at the same1000ps target. Timing closure remains unproven until those complete.
