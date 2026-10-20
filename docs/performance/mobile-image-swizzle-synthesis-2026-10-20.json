@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "four_standalone_full_mapping_and_setup_screens_pass",
+  "source_commit": "7de3485ab66b0869f9431435bb1445c391b0fcc7",
+  "source_files": 770,
+  "source_manifest_sha256": "217075e37b92103bf4d0a5ee270a35e6740d17082dc8ef2c362324dd1ce7ca05",
+  "constraints": {
+    "clock_period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "engine": "yosys",
+    "abc_target": "standard",
+    "retiming": false,
+    "synthesis_only": true
+  },
+  "profiles": {
+    "bound": {
+      "module": "TextureImageBoundFetchUnit",
+      "version": 2,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 189.17993433400989,
+        "finished_utc": "2026-10-20T13:08:34.354736+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        166.594,
+        400.121
+      ],
+      "mapped_cells": 123984,
+      "reported_cell_area": 15595.30746,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "global_production_manifest_differences": [],
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-image-swizzle-bound-2026-10-20-v2/result.json": "ad085ba718159f7aa7b328b36cd0915dd94cf67acfeffb489ef2866db97a82db",
+        "generated/qualification/ppa/mobile-image-swizzle-bound-2026-10-20-v2/qualification.json": "90f88152ba9a11dc2a5cce3c96dc91f5e550a8fc62916b1c33721cdcf2c5ab68",
+        "generated/qualification/ppa/mobile-image-swizzle-bound-2026-10-20-v2/manifest.json": "c4279c933f56c495bae524fb758ed0cb848622016b8f2cbce16364653dbc2f35",
+        "generated/qualification/ppa/mobile-image-swizzle-bound-2026-10-20-v2/flow/synthesis_sta.log": "9cc32f81e50669228c8b4fd2bbf17e6e5e00e350f5114a28053b863b2e4d5c6e"
+      }
+    },
+    "sampler": {
+      "module": "TextureImageSamplerBindingUnit",
+      "version": 2,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 105.3518268330954,
+        "finished_utc": "2026-10-20T13:07:10.526190+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        214.933,
+        425.783
+      ],
+      "mapped_cells": 70971,
+      "reported_cell_area": 9159.92874,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "global_production_manifest_differences": [],
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-image-swizzle-sampler-2026-10-20-v2/result.json": "38719621fc13392769754dd881cdd55368820b8287e4442dba78efe9dfd3e616",
+        "generated/qualification/ppa/mobile-image-swizzle-sampler-2026-10-20-v2/qualification.json": "0f2654e7f31eca5da4c5b30cadf85c6a3d719a9010543fc6312f00a3ca0bdf3c",
+        "generated/qualification/ppa/mobile-image-swizzle-sampler-2026-10-20-v2/manifest.json": "37c3740f60560ab7a5e038f07b92df4454587f2adf6cc7d82f82af29ea971f01",
+        "generated/qualification/ppa/mobile-image-swizzle-sampler-2026-10-20-v2/flow/synthesis_sta.log": "bdb26ccba31af356622c8b9173ec778d26a6e5246b9a7500aae3263dedf20a69"
+      }
+    },
+    "endpoint": {
+      "module": "ShaderTextureFetchUnit",
+      "version": 2,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 191.32207249989733,
+        "finished_utc": "2026-10-20T13:08:36.507172+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        180.831,
+        396.942
+      ],
+      "mapped_cells": 120152,
+      "reported_cell_area": 14783.8284,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "global_production_manifest_differences": [],
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-image-swizzle-endpoint-2026-10-20-v2/result.json": "806e3759e187b704978a55f4764c80322fd412be495b0f392d295ef4dd6dc844",
+        "generated/qualification/ppa/mobile-image-swizzle-endpoint-2026-10-20-v2/qualification.json": "109ab5751d0e34192143aa45a72d6cbb8d9955396ef0b1eaf70bb3696766c982",
+        "generated/qualification/ppa/mobile-image-swizzle-endpoint-2026-10-20-v2/manifest.json": "9f554eb335111d41bccebef27a43b3b55f95171b5dd05283c4475d2cb0830868",
+        "generated/qualification/ppa/mobile-image-swizzle-endpoint-2026-10-20-v2/flow/synthesis_sta.log": "220df0bae8f045fca5f799bf37518ce76c561be3c484cac5d7e10222bcfcb00c"
+      }
+    },
+    "native": {
+      "module": "NativeShaderTextureUnit",
+      "version": 2,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 317.45622362499125,
+        "finished_utc": "2026-10-20T13:10:42.642708+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        136.81,
+        165.746
+      ],
+      "mapped_cells": 200222,
+      "reported_cell_area": 23978.51586,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "global_production_manifest_differences": [],
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-image-swizzle-native-2026-10-20-v2/result.json": "3a57d1e33918d4ea0561ad96bdc989839b876a3b4d754dec6779c527d467582b",
+        "generated/qualification/ppa/mobile-image-swizzle-native-2026-10-20-v2/qualification.json": "d8ca55a32178008f6f17430d9d1791ad7a357f59728daa14446de1d3b181c76f",
+        "generated/qualification/ppa/mobile-image-swizzle-native-2026-10-20-v2/manifest.json": "5a1f7ad1fdcc5637295b692f4f28bd1ca5457fc24704578d7101d3d62dce8831",
+        "generated/qualification/ppa/mobile-image-swizzle-native-2026-10-20-v2/flow/synthesis_sta.log": "ea18d9cc766f595ff296f9477e5f99ceb6b4d6dca16b3d8701ab9d51f62d5783"
+      }
+    }
+  },
+  "limits": [
+    "Standalone synthesis setup and mapping only; no route, hold, power, whole-host timing or representative throughput qualification.",
+    "Image-view component mapping adds no protocol or state-machine cycles; this does not implement the general sampler."
+  ]
+}
