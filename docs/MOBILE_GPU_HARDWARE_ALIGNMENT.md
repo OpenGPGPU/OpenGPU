@@ -5289,7 +5289,15 @@ The [two focused prepared-replay centroid checks](performance/mobile-centroid-pr
 also pass on their frozen 631-file snapshot: both engines/CUs, local/global
 payloads, GFS1 masks/cache hits, triangle/line/point gradient MRTs, blend/depth
 override, exact sources/resolves and held cached-consumer invalidation. Full
-legacy/composed reruns and GPU-memory native binned centroid publication remain
-separate gates. Complete resource/format
+legacy/composed reruns remain a separate gate.
+
+
+The [four focused GPU-memory binned centroid checks](performance/mobile-centroid-native-binned-2026-10-20.json)
+also pass on their frozen 631-file source, covering GNC1/GNC2 physical/translated
+images with actual two-CU local/global payloads, GFS1 masks, gradient MRT blending,
+exact sources/resolves, cached consumers, uniform guards and held completion.
+These W=1 triangle frames do not qualify every native primitive/sample/version
+combination or perspective-pole images. Full legacy/composed reruns and complete
+resource/format
 coverage, representative rates and H0–H8 remain open. Composed PPA continues
 under the synthesis-only policy on its explicitly frozen pre-centroid source.
