@@ -15,15 +15,24 @@ The optional path captures policy, base, dimensions, format and mip selection
 when a request is accepted. These bindings survive both trilinear level walks.
 Reserved modes return a held zero result with `coordinateFault=true` and issue
 no reads. The fault is meaningful with `result.valid`; its consumer must check
-it. Nonzero dimensions and the existing buffer/word-cache ownership rules apply.
+it. Zero dimensions also return a fault on the optional path. The existing
+buffer/word-cache ownership rules apply.
 
 Legacy constructors and ports retain their previous contract. No shader ISA or
-native descriptor exposes this new policy yet. Prepared metadata is rejected
-with this constructor option: its pipeline still needs policy/fault transport
-before connection to `TexSampleUnit` and general image/sampler descriptors.
+native descriptor exposes this new policy yet. The development prepared path
+now transports per-axis policy through the six-stage coordinate pipeline and
+returns a separate coordinate-fault sideband. `TexturePreparedSample` retains
+its existing addresses/weights shape. When prepared metadata is valid, it owns
+addressing independently of the sampler's live policy/base/dimension pins; the
+owner must forward its fault with the metadata. Nonzero mip, fractional LOD or
+maximum mip inputs are unsupported for prepared entries and return faults.
+Faulted entries issue no reads and retire in order through the optional
+two-context window. A younger entry cannot change an older held result/fault.
+Prepared-policy qualification is pending; connection to `TexSampleUnit` and
+general image/sampler descriptors remains required.
 Those integrations, floating-coordinate conversion, full formats/dimensions,
 throughput and H4/H6 remain open. This adds integer control/arithmetic, with no
-new FPU, CU or SRAM. Numeric, memory-ownership and legacy checks are pending;
+new FPU, CU or SRAM. Prepared numeric, memory-ownership and legacy checks are pending;
 PPA remains synthesis only.
 
 The [19-check regression](performance/mobile-texture-coordinate-policy-2026-10-20.json)

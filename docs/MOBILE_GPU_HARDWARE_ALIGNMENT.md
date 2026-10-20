@@ -5426,3 +5426,22 @@ image/sampler resources, float conversion and rates remain required. The later
 polygon/depth and native-facing branches remain separate from this integration.
 No new FPU, CU or SRAM and no new PPA result; H0–H8 remain open under the
 synthesis-only evaluation policy.
+
+
+## Prepared texture coordinate policy development (2026-10-20)
+
+The H4 development branch now carries signed per-axis repeat/clamp/mirrored
+policy through the six elastic coordinate stages. It keeps prepared address/
+weight metadata unchanged and adds a separate fault sideband. Reserved modes
+and zero dimensions generate empty fault metadata; unsupported prepared mip
+inputs fault at sampler admission. Faults retire in order without reads,
+including through the overlapping two-context sampler window. Result-fault
+state changes at result creation rather than younger-context admission.
+
+Qualification is pending. Planned checks compare unfurled integer index-wrap
+coefficients, signed/unsigned and maximum two-axis dimensions, stalled streams,
+held results with younger faults, poisoned live bindings, reordered memory
+responses, deferred cache invalidation and healthy reuse. Legacy tests and
+synthesis-active RTL equivalence remain required before main integration.
+TexSampleUnit/ISA/native transport and general descriptors remain open; no
+new PPA or H4 completion is claimed. PPA evaluation remains synthesis only.
