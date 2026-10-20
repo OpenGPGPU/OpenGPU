@@ -23,8 +23,12 @@ completion, and an already offered quad remains immutable.
 The initial controls compare against an independent absolute-sample coordinate
 reference for mixed qualifiers, all coverage masks at 1x/2x/4x, both windings,
 point/line/triangle values, helpers, raw flat NaNs, center/default sample depths,
-64 components, malformed requests and cancellation/reuse. These controls are
-running; no passing result is claimed by this implementation checkpoint.
+64 components, malformed requests and cancellation/reuse. All
+[13 checks across three suites](performance/mobile-centroid-interpolation-2026-10-20.json)
+pass on 628 unchanged source/ABI files, including eight existing interpolation
+and two existing covered-sample-depth controls. The new direct reference covers
+50 quads and observes changed centroid values while preserving mixed center and
+flat components. The initial reference-test syntax failure is retained separately.
 
 This is a component prerequisite. The enclosing primitive owner currently ties
 the new mask to zero. Versioned native fragment-state binding, actual-CU/native
