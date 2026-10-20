@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "forty_six_checks_two_emissions_and_default_FMA_synthesis_pass_filter_synthesis_running",
+  "status": "forty_six_checks_two_emissions_and_both_FMA_filter_synthesis_pass",
   "source": {
     "commit": "edd9320dc7325c264a2199b03fd617dfdbc55bf6",
     "source_files": 825,
@@ -265,7 +265,7 @@
       }
     },
     "filter": {
-      "status": "running",
+      "status": "passed",
       "session": 18337,
       "start": {
         "wrapper_pid": 97512,
@@ -315,6 +315,83 @@
         "scope": "Synthesis only,1000ps,TC/SLVT,25% I/O,standard ABC,no retiming or route.",
         "profile": "filter",
         "module": "TextureBilinearFilterPipeline"
+      },
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 847.8476682500914,
+        "finished_utc": "2026-10-20T22:47:18.288073+00:00"
+      },
+      "passed": true,
+      "slacks_ps": [
+        155.23,
+        226.993
+      ],
+      "fully_mapped": true,
+      "mapped_cells": 506427,
+      "mapped_library_area": 62870.94288,
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "yosys",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          155.23,
+          226.993
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "0558c3d8959e5790a49e03014f1991ffce3f0edc1cd778ddbb2accb0825e55e1",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-filter-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "log_sha256": "45afe525b4484e4ce168e73fb7fcca208ab7a345293dfdcd4f8606acb6b401cf",
+          "logs": [
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-filter-v1/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "e7cf08378cd29964b3d77ceed0ce55ce2b9ea71dd601f6da0942bc590ca1f81b"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-filter-v1/flow/orfs-work/logs/base/1_2_yosys.log",
+              "sha256": "4759a0efcc8c5c1870600f3f9bd6c0929ba6dc6233137f91c2daf9f762bf570b"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-filter-v1/flow/orfs-work/reports/base/synth_stat.txt",
+              "sha256": "45afe525b4484e4ce168e73fb7fcca208ab7a345293dfdcd4f8606acb6b401cf"
+            }
+          ],
+          "combined_log_sha256": "997b4ee3088bb11c054fa18401026b747e6f6d92482b8d46d2eb71f5ab2c67e8"
+        }
       }
     }
   },
@@ -336,7 +413,6 @@
     "passed_tests": 18
   },
   "remaining": [
-    "Collect complete-filter synthesis. Default FMA synthesis now passes including I/O; this does not qualify composed native endpoints.",
     "Fresh composed native endpoint synthesis before integrating changed FMA logic on main.",
     "Forward raw banked taps and decode texels before this filter, retaining full FP32 weights and exact active-tap permission checks.",
     "Native resource/coordinate planning and shared-CU routing.",
@@ -384,6 +460,13 @@
     "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/result.json": "1eecb3cd328aeec2c4bfb82dba3292a272f14db6660e0fd73a6aac4996877e8e",
     "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/flow/flow_manifest.json": "dc45cf6710eb1fc6a6eec3ff1fd9ae0c3bc631b53b7759e81a72de87308c5dbd",
     "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/flow/synthesis_sta.log": "572f79569d633eb99806eb4cb42e41a7848070f0c7795880299173ddeec4917d",
-    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/flow/orfs-work/reports/base/synth_stat.txt": "2553bc327951f49db335533dbdb1cc3337373a4620c01a2fd8a01ab4aba24f0b"
+    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/flow/orfs-work/reports/base/synth_stat.txt": "2553bc327951f49db335533dbdb1cc3337373a4620c01a2fd8a01ab4aba24f0b",
+    ".artifacts/mobile-texture-bilinear-fp32-filter-synthesis-v1-inputs.json": "d0e7ac29f7633029f10e48d63dee7e4ff63da017091042c60e6195809e597f61",
+    ".artifacts/mobile-texture-bilinear-fp32-filter-synthesis-v1-result.json": "b22dceb51c2c30aa1a0edc061861a7ace4b01c69c3539bdde3063a2eb3b5509e",
+    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-filter-v1/qualification.json": "90bafbfc96500d420be063db3e59daade9e020d2dfff9e65d04f834a64ad3836",
+    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-filter-v1/result.json": "656a62eb9d4c21fc35c02f50b005f8373f777e9160bf5ba2da32118156680baa",
+    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-filter-v1/flow/flow_manifest.json": "10924eee9bc5d246e6ef49636e6b06c95ba18d3ee13d9e6cffe2447a112edc6d",
+    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-filter-v1/flow/synthesis_sta.log": "0558c3d8959e5790a49e03014f1991ffce3f0edc1cd778ddbb2accb0825e55e1",
+    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-filter-v1/flow/orfs-work/reports/base/synth_stat.txt": "45afe525b4484e4ce168e73fb7fcca208ab7a345293dfdcd4f8606acb6b401cf"
   }
 }

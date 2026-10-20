@@ -50,8 +50,9 @@ reproduced it. The corrected pipeline preserves the same five arithmetic stages.
 The default FMA logic has changed, so old native endpoint timing is not carried.
 The corrected default FMA passes synthesis at 1000 ps including I/O, with
 +210.909/+434.695 ps slack, 11,091 fully mapped cells and 1,366.306380 mapped
-library area. The complete filter screen is still running under the same
-TC/SLVT, 25% I/O, standard ABC constraints, without retiming or place/route.
+library area. The complete filter also passes (+155.230/+226.993 ps), with 506,427 fully
+mapped cells and 62,870.942880 mapped library area, under the same TC/SLVT,
+25% I/O, standard ABC constraints, without retiming or place/route.
 The eighteen vector FMA/reduction wrapper regressions also pass. Native raw-tap forwarding,
 texel decode, resource/coordinate admission, shared-CU routing and whole-native
 precision/rates/coherence remain open. This component rate is measured from

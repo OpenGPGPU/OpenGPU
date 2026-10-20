@@ -6861,7 +6861,8 @@ The work also corrects FMA public-result flush and accepted-row metadata bugs
 exposed by changing/invalid input operands. Earlier negative results remain in
 the record. The eighteen vector wrapper regressions also pass. Corrected default
 FMA synthesis passes 1000 ps including I/O (+210.909/+434.695 ps), with 11,091
-fully mapped cells. Complete-filter synthesis is still running. Changed default
+fully mapped cells. Complete-filter synthesis also passes (+155.230/+226.993 ps),
+with 506,427 fully mapped cells and no skipped instances. Changed default
 FMA logic requires fresh native endpoint timing before main
 integration. Raw banked tap forwarding, texel decode, native resource/coordinate
 admission, shared-CU routing and whole-native precision/rates/coherence remain
