@@ -317,8 +317,11 @@ class FloatFMA() extends Module{
   val is_fp64_reg0b = RegEnable(is_fp64_reg0, fire_reg0)
   val is_fp32_reg0b = RegEnable(is_fp32_reg0, fire_reg0)
   val is_sub_f64_reg0b = RegEnable(is_sub_f64_reg0, fire_reg0)
-  val is_sub_f32b = RegEnable(is_sub_f32, fire_reg0)
-  val is_sub_f16b = RegEnable(is_sub_f16, fire_reg0)
+  // Subtraction belongs to the accepted operands, not the live input bus
+  // one cycle later. This matters when cancellation borrows through the low
+  // guard/round bits, especially after normalizing a subnormal multiplier.
+  val is_sub_f32b = RegEnable(RegEnable(is_sub_f32, fire), fire_reg0)
+  val is_sub_f16b = RegEnable(RegEnable(is_sub_f16, fire), fire_reg0)
   val rshift_guard_b = RegEnable(rshift_guard_reg, fire_reg0)
   val rshift_round_b = RegEnable(rshift_round_reg, fire_reg0)
   val rshift_sticky_b = RegEnable(rshift_sticky_reg, fire_reg0)
@@ -525,6 +528,9 @@ class FloatFMA() extends Module{
   val adder_f16_reg1 = RegEnable(adder_f16_reg0b, fire_reg0c)
   val adder_is_negative_reg1 = RegEnable(adder_is_negative_reg0b, fire_reg0c)
   val adder_is_negative_reg2 = RegEnable(adder_is_negative_reg1, fire_reg1)
+  // The alignment sticky bit must follow the same two added carry-select
+  // stages as the adder and LZD metadata before final rounding consumes it.
+  val rshift_sticky_reg1 = RegEnable(rshift_sticky_c, fire_reg0c)
 
   val adder_is_negative_f64_reg2 = adder_is_negative_reg2
   val adder_is_negative_f32_reg2 = adder_is_negative_reg2
@@ -588,13 +594,13 @@ class FloatFMA() extends Module{
   val RMM_reg2 = RegEnable(RegEnable(RegEnable(RegEnable(RegEnable(RMM, fire), fire_reg0), fire_reg0b), fire_reg0c), fire_reg1)
 
   // todo save 8 bit reg
-  val sticky_f64_reg2  = RegEnable(RegEnable(rshift_sticky_f64, fire_reg0) | (lzd_adder_inv_mask_f64_reg1 + tzd_adder_f64_reg1 < (adder_inv_f64.getWidth-significandWidth-2).U), fire_reg1)
-  val sticky_f32_reg2  = RegEnable(RegEnable(rshift_sticky_f32, fire_reg0) | (lzd_adder_inv_mask_f32_reg1 + tzd_adder_f32_reg1 < (adder_inv_f32.getWidth-24-2).U), fire_reg1)
-  val sticky_f16_reg2  = RegEnable(RegEnable(rshift_sticky_f16, fire_reg0) | (lzd_adder_inv_mask_f16_reg1 + tzd_adder_f16_reg1 < (adder_inv_f16.getWidth-11-2).U), fire_reg1)
+  val sticky_f64_reg2  = RegEnable(rshift_sticky_reg1 | (lzd_adder_inv_mask_f64_reg1 + tzd_adder_f64_reg1 < (adder_inv_f64.getWidth-significandWidth-2).U), fire_reg1)
+  val sticky_f32_reg2  = RegEnable(rshift_sticky_reg1 | (lzd_adder_inv_mask_f32_reg1 + tzd_adder_f32_reg1 < (adder_inv_f32.getWidth-24-2).U), fire_reg1)
+  val sticky_f16_reg2  = RegEnable(rshift_sticky_reg1 | (lzd_adder_inv_mask_f16_reg1 + tzd_adder_f16_reg1 < (adder_inv_f16.getWidth-11-2).U), fire_reg1)
 
-  val sticky_uf_f64_reg2  = RegEnable(RegEnable(rshift_sticky_f64, fire_reg0) | (lzd_adder_inv_mask_f64_reg1 + tzd_adder_f64_reg1 < (adder_inv_f64.getWidth-significandWidth-3).U), fire_reg1)
-  val sticky_uf_f32_reg2  = RegEnable(RegEnable(rshift_sticky_f32, fire_reg0) | (lzd_adder_inv_mask_f32_reg1 + tzd_adder_f32_reg1 < (adder_inv_f32.getWidth-24-3).U), fire_reg1)
-  val sticky_uf_f16_reg2  = RegEnable(RegEnable(rshift_sticky_f16, fire_reg0) | (lzd_adder_inv_mask_f16_reg1 + tzd_adder_f16_reg1 < (adder_inv_f16.getWidth-11-3).U), fire_reg1)
+  val sticky_uf_f64_reg2  = RegEnable(rshift_sticky_reg1 | (lzd_adder_inv_mask_f64_reg1 + tzd_adder_f64_reg1 < (adder_inv_f64.getWidth-significandWidth-3).U), fire_reg1)
+  val sticky_uf_f32_reg2  = RegEnable(rshift_sticky_reg1 | (lzd_adder_inv_mask_f32_reg1 + tzd_adder_f32_reg1 < (adder_inv_f32.getWidth-24-3).U), fire_reg1)
+  val sticky_uf_f16_reg2  = RegEnable(rshift_sticky_reg1 | (lzd_adder_inv_mask_f16_reg1 + tzd_adder_f16_reg1 < (adder_inv_f16.getWidth-11-3).U), fire_reg1)
 
   // todo save 4 bit reg
   val round_lshift_f64_reg2 = RegEnable(lshift_adder_inv_fix_f64.tail(significandWidth+1).head(1), fire_reg1)
