@@ -5664,3 +5664,18 @@ and cancellation/reuse pass. The24 image and37 native host controls remain live.
 This candidate remains outside main; it does not include the independently
 qualified GPU level-resource components. No complete206-check, native matrix/reset
 or composed PPA result is claimed. PPA evaluation remains synthesis only.
+
+
+## Completed depth facing and texture composition (2026-10-20)
+
+All [206 controls](performance/mobile-depth-texture-composed-2026-10-20.json) pass
+on unchanged650-file source, with four ABI checks, C11 headers, CI selection and
+replay/default-four-CU host emissions. Audited coverage includes60 native depth
+frames,72 facing frames,3 reset phases and2 texture-policy profiles. The earlier
+functional failures and their fixture/RTL corrections remain preserved.
+
+This isolated composition requires reconciliation with the independently qualified
+image address/level/fetch/binding components now on main. Exact native source/RTL
+identity and component checks under reconciled ABI helpers are required before
+promotion. No completed composed PPA or full H0-H8/GLES/product result is claimed;
+PPA remains synthesis only.
