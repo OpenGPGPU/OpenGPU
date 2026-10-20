@@ -84,16 +84,23 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   io.out.bits := output
 
   private val matches = VecInit((0 until fills).map { s =>
-    // Keep the default elaboration's expression tree unchanged;the optional
-    // policy comparison belongs only to consumers with a page-policy port.
+    // A cache miss may wait behind arbitration until its refill has completed.
+    // Forwarding owners retain that successful cached line until all waiters
+    // retire, so a late miss can join without a second physical read. Owners
+    // which return only an installation acknowledgement cannot forward a line
+    // that another refill may already have evicted. Uncached reads and failed
+    // fills must always start a fresh transaction after completion.
+    val joinable = if(forwardData) states(s) =/= State.free &&
+      (states(s) =/= State.done || (installed(s) && !failed(s)))
+      else states(s) =/= State.free && states(s) =/= State.done
     if(cachePolicyInput) {
-    states(s) =/= State.free && states(s) =/= State.done && !stopped(s) && !noFill(s) &&
+    joinable && !stopped(s) && !noFill(s) &&
       keys(s).identity.asUInt === io.in.bits.identity.asUInt &&
       keys(s).textureKey === io.in.bits.textureKey &&
       keys(s).address === io.in.bits.address && keys(s).rowParity === io.in.bits.rowParity &&
       keys(s).noCache.get === io.in.bits.noCache.get
     } else {
-    states(s) =/= State.free && states(s) =/= State.done && !stopped(s) && !noFill(s) &&
+    joinable && !stopped(s) && !noFill(s) &&
       keys(s).identity.asUInt === io.in.bits.identity.asUInt &&
       keys(s).textureKey === io.in.bits.textureKey &&
       keys(s).address === io.in.bits.address && keys(s).rowParity === io.in.bits.rowParity
