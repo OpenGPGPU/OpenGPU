@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "merged_main_matches_qualified_source",
+  "integration_commit": "7510d3af1bc563fa0361d6a286b603e80d8c4c9b",
+  "source_files": 696,
+  "source_manifest_sha256": "d81bb985ef84c6c37ed5010c472680a990379552f98e9b41e588f85d34f12123",
+  "git_archive_and_both_worktrees_byte_exact": true,
+  "recursive_source_record_reconstructs_exactly": true,
+  "synthesis_production_and_emitted_artifacts_byte_exact": true,
+  "user_edits_and_modes_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": 420
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": 420
+    }
+  },
+  "index_empty": true,
+  "qualification_record_sha256": "1102c3d762c1bc4506b1a951eab1f2d61d4b6ec4e7f35563fcb217b4952f2da3",
+  "synthesis_record_sha256": "1343a4436825101d13ac5e5829380bf3b3fb3fbed0b6efe6704151ad358bb9ca",
+  "scope": "Uncompressed native image formats only; full H0-H8 and GLES closure remain open."
+}
