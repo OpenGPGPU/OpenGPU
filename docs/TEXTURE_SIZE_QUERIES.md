@@ -4,7 +4,10 @@ Status: [six initial decoder/native endpoint tests](performance/mobile-native-te
 pass on804 frozen inputs, along with four paired LLVM tests and the C driver
 validator. Full regression, shared-CU and synthesis qualification are in progress
 on `codex/mobile-native-texture-size`. The current main qualification does
-not cover this additional owner.
+not cover this additional owner. The [standalone owner synthesis](performance/mobile-native-texture-size-owner-synthesis-2026-10-21.json)
+fully maps53,431 cells (library area6,559.090020) and passes1000ps with
+core/I/O setup slacks+244.333/+402.731ps at TC/SLVT,25% I/O, standard ABC and
+no retiming. Full native endpoint synthesis remains pending.
 
 `opengpu.tex.size.c` uses custom0/function6; `opengpu.vtex.size.c` uses
 custom1/function6 with normal RVV masks. Components0/1/2 return width, height,
