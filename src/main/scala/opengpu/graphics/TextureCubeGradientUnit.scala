@@ -6,6 +6,7 @@ import opengpu.core.execute.fpu.{Fp32DivLane,Fp32Operation,Fp32Request}
 
 class TextureCubeGradientRequest extends Bundle {
   val vector=Vec(3,UInt(32.W));val gradients=Vec(2,Vec(3,UInt(32.W)));val tag=UInt(32.W)
+  val extended=Bool();val wideGradients=Vec(2,Vec(3,new TextureGradientScalar))
 }
 class TextureCubeGradientResult extends Bundle {
   /** Window X/Y derivatives of projected U/V, before multiplying by extent. */
@@ -46,17 +47,24 @@ class TextureCubeGradientUnit extends Module {
   private def negative(v: UInt): UInt=v^"h80000000".U
   private def sc(v: Vec[UInt]): UInt=MuxLookup(face,v(0))(Seq(0.U->negative(v(2)),1.U->v(2),5.U->negative(v(0))))
   private def tc(v: Vec[UInt]): UInt=MuxLookup(face,negative(v(1)))(Seq(2.U->v(2),3.U->negative(v(2))))
-  private val d=request.gradients(row);private val majorDerivative=Mux(face(0),negative(d(face>>1)),d(face>>1))
-  private def core(v: TextureGradientScalar): UInt=Cat(v.negative,127.U(8.W),v.significand(22,0))
+  private def core(v: TextureGradientScalar): UInt=Mux(v.significand===0.U,Cat(v.negative,0.U(31.W)),Cat(v.negative,127.U(8.W),v.significand(22,0)))
+  private val d=Wire(Vec(3,UInt(32.W)))
+  for(a<-0 until 3)d(a):=Mux(request.extended,core(request.wideGradients(row)(a)),request.gradients(row)(a))
+  private val majorDerivative=Mux(face(0),negative(d(face>>1)),d(face>>1))
+  private val scAxis=Mux(face<=1.U,2.U,0.U);private val tcAxis=Mux(face===2.U || face===3.U,2.U,1.U)
   switch(phase){
     is(State.idle){when(io.in.fire){
       assert(!cross.io.busy && !divider.io.busy,"cube gradient admission abandoned arithmetic")
       request:=io.in.bits;status:=0.U;gradients:=0.U.asTypeOf(gradients);step:=0.U;started:=false.B;phase:=State.check
     }}
     is(State.check){
-      val abs=VecInit(request.vector.map(_(30,0)));val bad=(request.vector++request.gradients.flatten).map(_(30,23)===255.U).reduce(_ || _) || !abs.map(_.orR).reduce(_ || _)
+      val abs=VecInit(request.vector.map(_(30,0)))
+      val bad=request.vector.map(_(30,23)===255.U).reduce(_ || _) || !abs.map(_.orR).reduce(_ || _) ||
+        (!request.extended && request.gradients.flatten.map(_(30,23)===255.U).reduce(_ || _))
+      val malformed=request.extended && request.wideGradients.flatten.map(v=>v.exponent<(-149).S || v.exponent>129.S ||
+        Mux(v.significand===0.U,v.exponent=/=0.S,!v.significand(23))).reduce(_ || _)
       val useX=abs(0)>=abs(1) && abs(0)>=abs(2);val useY= !useX && abs(1)>=abs(2)
-      when(stop){phase:=State.finish}.elsewhen(bad){status:=5.U;phase:=State.finish}.otherwise{
+      when(stop){phase:=State.finish}.elsewhen(bad){status:=5.U;phase:=State.finish}.elsewhen(malformed){status:=6.U;phase:=State.finish}.otherwise{
         face:=Mux(useX,Mux(request.vector(0)(31),1.U,0.U),Mux(useY,Mux(request.vector(1)(31),3.U,2.U),Mux(request.vector(2)(31),5.U,4.U)))
         major:=Cat(0.U(1.W),Mux(useX,abs(0),Mux(useY,abs(1),abs(2))));phase:=State.prepareProduct
       }
@@ -66,6 +74,10 @@ class TextureCubeGradientUnit extends Module {
       when(step===0.U){product.operands(0):=major;product.operands(1):=major}.otherwise{
         product.operands(0):=Mux(axis,tc(d),sc(d));product.operands(1):=major
         product.operands(2):=Mux(axis,tc(request.vector),sc(request.vector));product.operands(3):=majorDerivative
+        when(request.extended){
+          product.exponentOffsets(0):=request.wideGradients(row)(Mux(axis,tcAxis,scAxis)).exponent
+          product.exponentOffsets(3):=request.wideGradients(row)(face>>1).exponent
+        }
       };phase:=Mux(stop,State.finish,State.offerProduct)
     }
     is(State.offerProduct){when(cross.io.in.fire){started:=true.B;phase:=State.waitProduct}}

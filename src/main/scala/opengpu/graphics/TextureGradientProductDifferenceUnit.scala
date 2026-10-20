@@ -14,6 +14,11 @@ class TextureGradientScalar extends Bundle {
 class TextureGradientProductDifferenceRequest extends Bundle {
   /** Compute operands(0)*operands(1) - operands(2)*operands(3). */
   val operands=Vec(4,UInt(32.W));val tag=UInt(32.W)
+  /** Internal powers of two for already-normalized extended derivatives.
+    * Zero preserves the ordinary raw-FP32 interface. Nonzero operands must
+    * resolve to unbiased exponents in[-512,511] before multiplication.
+    */
+  val exponentOffsets=Vec(4,SInt(12.W))
 }
 class TextureGradientProductDifferenceResult extends Bundle {
   val value=new TextureGradientScalar;val status=UInt(3.W);val tag=UInt(32.W)
@@ -33,7 +38,7 @@ class TextureGradientProductDifferenceUnit extends Module {
     val out=Decoupled(new TextureGradientProductDifferenceResult)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,check,products,align,sum,normalize,pack,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,check,decode,products,align,sum,normalize,pack,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureGradientProductDifferenceRequest)
   private val result=Reg(new TextureGradientProductDifferenceResult);private val status=RegInit(0.U(3.W))
   private val products=Reg(Vec(2,UInt(48.W)));private val exponents=Reg(Vec(2,SInt(12.W)));private val signs=Reg(Vec(2,Bool()))
@@ -44,7 +49,9 @@ class TextureGradientProductDifferenceUnit extends Module {
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
   io.in.ready:=phase===State.idle && !io.cancel;io.out.valid:=phase===State.complete;io.out.bits:=result;io.busy:=phase=/=State.idle
   when(active && io.cancel && status===0.U){status:=TextureImageResourceStatus.cancelled.U}
-  private val decoded=VecInit(request.operands.map(ClipFloat.fromFp32))
+  private val decoded=Reg(Vec(4,new ClipFloat))
+  private val incoming=VecInit(request.operands.map(ClipFloat.fromFp32))
+  private val incomingExponent=VecInit((0 until 4).map(i=>incoming(i).exponent+&request.exponentOffsets(i)))
   private val productExponent=VecInit(Seq(decoded(0).exponent+decoded(1).exponent,decoded(2).exponent+decoded(3).exponent))
   private val maximum=Mux(products(0)===0.U,exponents(1),Mux(products(1)===0.U,exponents(0),Mux(exponents(0)>exponents(1),exponents(0),exponents(1))))
   private def align(p: UInt,e: SInt,sign: Bool): SInt={
@@ -57,7 +64,12 @@ class TextureGradientProductDifferenceUnit extends Module {
     is(State.idle){when(io.in.fire){request:=io.in.bits;status:=0.U;value:=0.U.asTypeOf(value);phase:=State.check}}
     is(State.check){when(stop){phase:=State.finish}
       .elsewhen(request.operands.map(_(30,23)===255.U).reduce(_ || _)){status:=TextureImageResourceStatus.coordinate.U;phase:=State.finish}
-      .otherwise{phase:=State.products}}
+      .elsewhen((0 until 4).map(i=>incoming(i).significand=/=0.U && (incomingExponent(i)<(-512).S || incomingExponent(i)>511.S)).reduce(_ || _)){
+        status:=6.U;phase:=State.finish}
+      .otherwise{phase:=State.decode}}
+    is(State.decode){decoded:=incoming
+      for(i<-0 until 4)decoded(i).exponent:=Mux(incoming(i).significand===0.U,0.S,incomingExponent(i))
+      phase:=Mux(stop,State.finish,State.products)}
     is(State.products){
       products(0):=decoded(0).significand*decoded(1).significand;products(1):=decoded(2).significand*decoded(3).significand
       exponents:=productExponent;signs(0):=decoded(0).negative^decoded(1).negative

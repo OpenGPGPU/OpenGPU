@@ -6,6 +6,7 @@ import chisel3.util._
 class TextureImageGradientLodRequest extends Bundle {
   val prepared=new TextureImageSamplePreparationResult
   val vector=Vec(3,UInt(32.W));val gradients=Vec(2,Vec(3,UInt(32.W)))
+  val extended=Bool();val wideGradients=Vec(2,Vec(3,new TextureGradientScalar))
 }
 class TextureImageGradientLodResult extends Bundle {
   val resolved=new TextureImageMipSampleRequest
@@ -31,6 +32,7 @@ class TextureImageGradientLodUnit extends Module {
   private val sample=request.prepared.prepared.sample;private val target=sample.image.view.target;private val volume=target===3.U;private val cubeTarget=target===2.U
   private val cube=Module(new TextureCubeGradientUnit);private val logarithm=Module(new TextureGradientLodUnit)
   cube.io.in.valid:=phase===State.offerCube;cube.io.in.bits.vector:=request.vector;cube.io.in.bits.gradients:=request.gradients;cube.io.in.bits.tag:=request.prepared.tag
+  cube.io.in.bits.extended:=request.extended;cube.io.in.bits.wideGradients:=request.wideGradients
   cube.io.out.ready:=phase===State.waitCube;cube.io.cancel:=cubeStarted && (io.cancel || status===4.U)
   logarithm.io.in.valid:=phase===State.offerLod;logarithm.io.in.bits.gradients:=gradients
   logarithm.io.in.bits.extents:=VecInit(Seq(sample.image.view.texWidth,sample.image.view.texHeight,sample.image.view.texDepth))
@@ -47,16 +49,21 @@ class TextureImageGradientLodUnit extends Module {
     is(State.check){
       val admitted=sample.image.validBinding && sample.image.status===0.U && sample.sampler.validSampler && sample.sampler.status===0.U &&
         sample.image.level===sample.image.baseLevel && sample.image.view.level===sample.image.baseLevel && sample.tag===request.prepared.tag && target<=3.U
-      val badGradient=request.gradients.flatMap(_.zipWithIndex.map{case(v,a)=>(if(a==2)volume || cubeTarget else true.B) && v(30,23)===255.U}).reduce(_ || _)
+      val badGradient= !request.extended && request.gradients.flatMap(_.zipWithIndex.map{case(v,a)=>(if(a==2)volume || cubeTarget else true.B) && v(30,23)===255.U}).reduce(_ || _)
+      val badWide=request.extended && request.wideGradients.flatMap(_.zipWithIndex.map{case(v,a)=>
+        (if(a==2)volume || cubeTarget else true.B) && (v.exponent<(-149).S || v.exponent>129.S ||
+          Mux(v.significand===0.U,v.exponent=/=0.S,!v.significand(23))) }).reduce(_ || _)
       when(stop){phase:=State.finish}.elsewhen(request.prepared.status=/=0.U){status:=request.prepared.status;source:=request.prepared.faultSource
         faultValid:=request.prepared.faultAddressValid;faultAddress:=request.prepared.faultAddress;phase:=State.finish}
         .elsewhen(!admitted){status:=1.U;source:=3.U;phase:=State.finish}
         .elsewhen(badGradient){status:=5.U;source:=4.U;phase:=State.finish}
+        .elsewhen(badWide){status:=6.U;source:=3.U;phase:=State.finish}
         .otherwise{phase:=Mux(cubeTarget,State.offerCube,State.convert)}
     }
     is(State.convert){
       for(r<-0 until 2;a<-0 until 3){val v=ClipFloat.fromFp32(request.gradients(r)(a))
         gradients(r)(a).negative:=v.negative;gradients(r)(a).exponent:=v.exponent;gradients(r)(a).significand:=v.significand
+        when(request.extended){gradients(r)(a):=request.wideGradients(r)(a)}
         if(a==2){when(!volume){gradients(r)(a):=0.U.asTypeOf(new TextureGradientScalar)}}
       };phase:=Mux(stop,State.finish,State.offerLod)
     }

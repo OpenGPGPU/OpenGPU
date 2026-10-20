@@ -38,9 +38,15 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
   private case class Sample(lod: Float=0.75f,min: Int=5,mag: Int=1,lo: Float= -1000f,hi: Float=1000f,
     coordinates: Seq[Float]=Seq(0.4f,0.6f,0.3f),layer: Float=1.5f,shadow: Boolean=false,function: Int=3,
     reference: Float=0.5f,compare: Boolean=false,swizzle: Seq[Int]=Seq(3,2,5,0),applySwizzle: Boolean=true,
-    gradients: Option[Seq[Seq[Float]]]=None)
+    gradients: Option[Seq[Seq[Float]]]=None,quad: Option[Seq[Seq[Float]]]=None,lane: Int=0,bias: Float=0f)
   private def gradientLod(i: Image,s: Sample): Float={
-    val v=i.levels(i.base);val g=s.gradients.get.map(_.map(_.toDouble))
+    val v=i.levels(i.base);val g=s.quad.map{q=>(0 to 1).map{row=>
+      val lo=if(row==0)(s.lane/2)*2 else s.lane%2;val hi=lo+(if(row==0)1 else 2)
+      (0 until 3).map{a=>if(a==2 && i.target!=2 && i.target!=3)0.0 else{
+        val (sign,e,sig)=TextureGradientReference.rounded(TextureGradientReference.integer(bits(q(hi)(a)))-TextureGradientReference.integer(bits(q(lo)(a))),-149)
+        java.lang.Math.scalb((if(sign)-sig.toDouble else sig.toDouble),e-23)
+      }}
+    }}.getOrElse(s.gradients.get.map(_.map(_.toDouble)))
     val projected=if(i.target!=2)g else {
       val p=s.coordinates.map(_.toDouble);val m=p.map(math.abs).max;val a=p.indexWhere(x=>math.abs(x)==m);val f=a*2+(if(p(a)<0)1 else 0)
       def sc(x: Seq[Double]): Double=f match{case 0=> -x(2);case 1=>x(2);case 5=> -x(0);case _=>x(0)}
@@ -86,13 +92,16 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
       r.samplers.version.poke(1.U);r.samplers.base.poke(0x3000.U);r.samplers.limit.poke(0x3400.U)
       r.expectedType.poke(i.kind.U);r.target.poke(i.target.U);r.coordinates.zip(s.coordinates).foreach{case(a,b)=>a.poke(bits(b).U)}
       r.layer.poke(bits(s.layer).U);r.reference.poke(bits(s.reference).U);r.shadow.poke(s.shadow.B)
-      r.applySwizzle.poke(s.applySwizzle.B);r.tag.poke(tag.U);q.lod.poke((if(s.gradients.nonEmpty)BigInt(0)else bits(s.lod)).U)
+      r.applySwizzle.poke(s.applySwizzle.B);r.tag.poke(tag.U);q.lod.poke((if(s.gradients.nonEmpty || s.quad.nonEmpty)BigInt(0)else bits(s.lod)).U)
       q.gradient.poke(s.gradients.nonEmpty.B);s.gradients.foreach(g=>q.gradients.zip(g).foreach{case(a,b)=>a.zip(b).foreach{case(x,y)=>x.poke(bits(y).U)}})
+      q.implicitLod.poke(s.quad.nonEmpty.B);q.bias.poke(bits(s.bias).U)
+      s.quad.foreach(v=>{q.quadCoordinates.zip(v).foreach{case(a,b)=>a.zip(b).foreach{case(x,y)=>x.poke(bits(y).U)}}
+        q.quadLane.poke(s.lane.U);q.quadValidMask.poke(15.U)})
       edit(q)
       d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q)
     }
     def reference(): (Seq[BigInt],Int,Int,BigInt,Boolean,Int)={
-      val i=image;val s=sample;val rawLod=if(s.gradients.nonEmpty)gradientLod(i,s)else s.lod
+      val i=image;val s=sample;val rawLod=if(s.quad.nonEmpty)gradientLod(i,s)+math.min(16f,math.max(-16f,s.bias))else if(s.gradients.nonEmpty)gradientLod(i,s)else s.lod
       val lambda=math.min(s.hi,math.max(s.lo,rawLod));val minifying=lambda>0
       val linear=if(minifying)Set(1,3,5)(s.min)else s.mag==1
       val delta=i.last-i.base;var first=i.base;var second=i.base;var weight=0f
@@ -140,6 +149,56 @@ class TextureImageSampleUnitSpec extends AnyFlatSpec {
       for(_<-0 until 3){tick();assert(o.peek().litValue==held)}
       d.io.out.ready.poke(true.B);tick();d.io.out.ready.poke(false.B);d.io.cancel.poke(false.B);d.io.invalidate.poke(false.B)
       d.io.busy.expect(false.B);checks+=1
+    }
+  }
+  it should "sample implicit helper quads with extended differences and bias before sampler clamps" in {
+    simulate(new TextureImageSampleUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d)
+      val flat=Seq(Seq(0.25f,0.25f,0.25f),Seq(0.5f,0.25f,0.75f),Seq(0.25f,0.75f,0.5f),Seq(0.5f,0.75f,1f))
+      val cube=Seq(Seq(0f,0f,1f),Seq(0.25f,0f,1f),Seq(0f,0.5f,1f),Seq(0.25f,0.5f,1f))
+      for(format<-Seq(3,8,49);target<-0 to 3 if !(format==49 && target==3);base<-0 to 1;lane<-0 until 4;bias<-Seq(-2f,0f,0.75f,64f,-64f)){
+        val q=if(target==2)cube else flat;val i=Image(format,target,base)
+        val s=Sample(coordinates=q(lane),shadow=format==49,quad=Some(q),lane=lane,bias=bias)
+        t.install(i,s);t.invalidate();t.query();t.check()
+      }
+      for(face<-0 until 6;lane<-0 until 4){
+        val q=Seq((0f,0f),(0.25f,0f),(0f,0.5f),(0.25f,0.5f)).map{case(s,t)=>face match{
+          case 0=>Seq(1f,-t,-s);case 1=>Seq(-1f,-t,s);case 2=>Seq(s,1f,t);case 3=>Seq(s,-1f,-t);case 4=>Seq(s,-t,1f);case 5=>Seq(-s,-t,-1f)}}
+        val i=Image(target=2);val s=Sample(coordinates=q(lane),quad=Some(q),lane=lane,bias=0.5f)
+        t.install(i,s);t.invalidate();t.query();t.check()
+      }
+      val extreme=Seq(Seq(-Float.MaxValue,0f,1f),Seq(Float.MaxValue,0f,1f),Seq(-Float.MaxValue,Float.MinPositiveValue,1f),Seq(Float.MaxValue,Float.MinPositiveValue,1f))
+      for(target<-0 to 3;lane<-0 until 4){val i=Image(target=target);val s=Sample(coordinates=extreme(lane),quad=Some(extreme),lane=lane)
+        t.install(i,s);t.invalidate();t.query();t.check()}
+      val constant=Seq.fill(4)(Seq(0.25f,0.25f,1f))
+      for(lo<-Seq(-1000f,0.75f);bias<-Seq(Float.NegativeInfinity,0f,Float.PositiveInfinity)){
+        val i=Image();val s=Sample(coordinates=constant(0),quad=Some(constant),lo=lo,bias=bias)
+        t.install(i,s);t.invalidate();t.query();t.check()
+      }
+      val i=Image();val s=Sample(coordinates=flat(0),quad=Some(flat),bias= -64f,lo=0.5f,hi=0.5f)
+      t.install(i,s);t.invalidate();t.query();t.check()
+      // Missing helpers, a mismatched selected coordinate and mixed modes
+      // fail before descriptor reads, including an inactive helper's NaN.
+      for(edit<-Seq[TextureImageSampleRequest=>Unit](q=>q.quadValidMask.poke(7.U),q=>q.preparation.coordinates(0).poke(bits(0.125f).U),q=>q.gradient.poke(true.B))){
+        t.query(edit=edit);t.check(1,3);assert(t.memory.seen.size==t.startRead)
+      }
+      t.query(edit=q=>q.quadCoordinates(3)(0).poke(bits(Float.NaN).U));t.check(5,4)
+      assert(!t.memory.seen.drop(t.startRead).exists(_.tag>=8))
+      t.query(edit=q=>q.bias.poke(bits(Float.NaN).U));t.check(5,4);assert(!t.memory.seen.drop(t.startRead).exists(_.tag>=8))
+      t.query();t.check()
+      info(s"IMAGE_SAMPLE_IMPLICIT queries=${t.checks} targets4=true allQuadLanes=true cubeFaces6=true baseExtents=true finiteDifferenceOverflowRetained=true completeHelpers=true biasBeforeSamplerClamps=true biasLimit16=true zeroGradientMinusInfinity=true shadowBeforeFilter=true malformedModeBeforeDescriptors=true badHelperAndBiasBeforeTexels=true healthyReuse=true")
+    }
+  }
+  it should "drain helper cube logarithm bias and texel work through implicit cancellation" in {
+    simulate(new TextureImageSampleUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);var cancelled=0;var held=0
+      val q=Seq(Seq(0f,0f,1f),Seq(0.25f,0f,1f),Seq(0f,0.5f,1f),Seq(0.25f,0.5f,1f))
+      for(target<-Seq(0,2);cut<-(0 until 48)++Seq(64,96,128,160,192,224,256,320,384,512,768,1024,1536)){
+        val i=Image(target=target);val s=Sample(coordinates=q(3),quad=Some(q),lane=3,bias=0.75f)
+        t.install(i,s);t.invalidate();t.query();for(_<-0 until cut)t.tick()
+        val complete=d.io.out.valid.peek().litToBoolean;d.io.cancel.poke(true.B);t.check(if(complete)0 else 4)
+        if(complete)held+=1 else cancelled+=1;t.install(i,s);t.query();t.check()
+      }
+      assert(cancelled>0 && held>0)
+      info(s"IMAGE_SAMPLE_IMPLICIT_DRAIN cuts122=true cancelled=$cancelled held=$held cubeAndNoncube=true acceptedArithmeticAndMemoryDrains=true noPartialColor=true heldCompletion=true healthyReuse=true")
     }
   }
   it should "sample real images using base extent gradients cube Jacobians and sampler clamps" in {
