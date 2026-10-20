@@ -6786,8 +6786,9 @@ warm-up. The standalone32-bit-tag normalizer passes1000ps synthesis including
 I/O (+524.629/+372.277ps);that result covers only this component.
 
 The preceding unpipelined read-through service failed the same1000ps gate
-(-408.901/-507.155ps). Fresh registered read-through and complete FP32 service
-synthesis runs remain active. Main integration waits for their actual timing
+(-408.901/-507.155ps). Registered read-through and complete FP32 service synthesis both fail
+the same1000ps gate (-32.971/-144.873ps and-28.888/-85.788ps,respectively).
+Main integration waits for shared fill-admission registration and fresh timing
 results. Shared native cluster/resource/translation admission,task-scoped fault
 attribution,coordinate and weight-generation precision,whole-native rates,
 render-to-texture visibility and all remaining H0-H8 gates stay open. PPA

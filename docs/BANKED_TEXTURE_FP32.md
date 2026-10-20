@@ -62,4 +62,7 @@ saturated cancellation/invalidation through final FP32 retirement. Its standalon
 normalizer RTL is byte-identical to the exhaustive numeric and positive synthesis
 inputs. The resident default also retains its positive synthesis logic after
 removing source-location comments only. Fresh synthesis of the complete FP32
-service is running at1000ps;the standalone result does not close that gate.
+service fails1000ps (-28.888/-85.788ps),with756,320 fully mapped cells. The
+remaining path crosses pending-miss selection and fill-key allocation,also
+reaching `io_joined`. Shared fill-admission registration remains required;the
+standalone normalizer result does not close this gate.
