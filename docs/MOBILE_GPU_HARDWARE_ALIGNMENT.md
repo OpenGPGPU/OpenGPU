@@ -5438,10 +5438,18 @@ inputs fault at sampler admission. Faults retire in order without reads,
 including through the overlapping two-context sampler window. Result-fault
 state changes at result creation rather than younger-context admission.
 
-Qualification is pending. Planned checks compare unfurled integer index-wrap
-coefficients, signed/unsigned and maximum two-axis dimensions, stalled streams,
-held results with younger faults, poisoned live bindings, reordered memory
-responses, deferred cache invalidation and healthy reuse. Legacy tests and
-synthesis-active RTL equivalence remain required before main integration.
-TexSampleUnit/ISA/native transport and general descriptors remain open; no
-new PPA or H4 completion is claimed. PPA evaluation remains synthesis only.
+The [23-check qualification](performance/mobile-texture-prepared-policy-2026-10-20.json)
+passes on 637 unchanged source/ABI/selection files, along with four ABI checks,
+five RTL emissions and CI selection. Independent unfurled index-wrap
+coefficients match all 2,674 pipeline cases; a 512-result stream retains six
+cycles of latency without bubbles. Prepared serial/overlap profiles pass 384
+ordered results, including 34 faults, and eighteen direct overlap-capable
+requests retain captured mip/trilinear bindings and fault recovery. Tests
+cover maximum two-axis dimensions, stalls/reset, held results with younger
+faults, poisoned live bindings, reordered replies and deferred invalidation.
+The existing nineteen sampler/pipeline checks pass again.
+
+Legacy coordinate and sampler synthesis-active SV, ports and hierarchy match
+independent pre-extension emissions. New optional components add no FPU, CU
+or SRAM. TexSampleUnit/ISA/native transport and general descriptors remain
+open; no new PPA or H4 completion is claimed. PPA remains synthesis only.
