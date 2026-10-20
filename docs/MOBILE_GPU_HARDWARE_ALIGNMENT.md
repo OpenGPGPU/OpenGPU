@@ -5776,3 +5776,12 @@ and cancellation/reuse pass. The24 image and37 native host controls remain live.
 This candidate remains outside main; it does not include the independently
 qualified GPU level-resource components. No complete206-check, native matrix/reset
 or composed PPA result is claimed. PPA evaluation remains synthesis only.
+
+## Texture-data fetch development checkpoint (2026-10-20)
+
+The isolated [fetch implementation](TEXTURE_IMAGE_FETCH.md) connects checked
+GXL1 spans to tagged cache-line reads and the existing 36-format typed decoder.
+This development checkpoint preserves the implementation before behavioral
+qualification. It does not enable native image bindings or sampling capabilities.
+Format/offset, ownership, fault, cancellation and VM controls remain required,
+followed by synthesis-only screening. Full texture/resource closure remains open.
