@@ -6844,7 +6844,8 @@ plus768 backpressured tap events and complete group II1. Scoped cancellation
 continues to isolate identity/tag rows in the translated parent. Packed
 read-through and normalized FP32 synthesis now pass the unchanged 1000 ps gate,
 including I/O (+95.013/+44.671 ps and +95.245/+59.166 ps), with no skipped
-instances. Translated epoch-control synthesis remains active. Existing
+instances. Translated epoch-control synthesis also passes (+8.538/+181.588 ps),
+with 942,150 fully mapped cells and no skipped instances. Existing
 native FP32 coordinate/filter semantics still need explicit preservation when
 connecting this Q16-weighted service to shared CU sampling;H0-H8 remain open.
 
@@ -6884,8 +6885,8 @@ Fresh complete vertex/fragment native texture endpoints each retain all 77
 active RTL files byte for byte, preserving their prior synthesis results.
 
 The merge of current main changes only documentation. Packed read-through and
-Q16-normalized FP32 synthesis pass 1000 ps including I/O; translated epoch-control
-synthesis is still pending, so this candidate has not yet been merged into main.
+Q16-normalized FP32 and translated epoch-control synthesis all pass 1000 ps
+including I/O. This qualified candidate is ready for main integration.
 Native FP32 numeric filtering and shared-CU/resource/coordinate wiring remain
 separate work. Component checks do not complete whole-native rates/coherence
 or the full H0-H8 hardware goal.

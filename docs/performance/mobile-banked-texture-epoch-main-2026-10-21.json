@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "sixty_nine_checks_eight_emissions_pass_packed_FP32_synthesis_pass_translated_pending",
+  "status": "sixty_nine_checks_eight_emissions_all_three_synthesis_pass_ready_for_main",
   "main_baseline": "ee3cdf86ee6936b9b1e17f2e5df238783f9091d7",
   "source": {
     "commit": "05b728deb98ed289dfd5293c9a1420af740acbd0",
@@ -126,14 +126,18 @@
       ]
     },
     "translated": {
-      "status": "running",
-      "session": 35515
+      "status": "passed",
+      "session": 35515,
+      "slacks_ps": [
+        8.538,
+        181.588
+      ]
     }
   },
   "numeric_scope": "The weighted physical service is exact Q16 rational normalization. Native FP32 filter semantics and integration remain separate.",
   "synthesis_policy": "1000 ps, TC/SLVT,25% I/O,standard ABC,no retiming; synthesis only.",
   "remaining": [
-    "Collect actual translated epoch-control timing before merging this candidate into main.",
+    "merge this qualified candidate into main and verify exact frozen inputs",
     "Native FP32 filtering, resource/coordinate planning and shared-CU texture-cluster integration.",
     "Whole-native precision/rates/coherence and full H0-H8 hardware gates."
   ],

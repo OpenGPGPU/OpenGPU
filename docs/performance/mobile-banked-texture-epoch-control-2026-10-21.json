@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "forty_six_tests_six_emissions_packed_and_FP32_synthesis_pass_translated_synthesis_running",
+  "status": "forty_six_tests_six_emissions_and_all_three_epoch_control_synthesis_screens_pass",
   "source": {
     "commit": "54444bbf95477b7d28cdbe24495cdfa0a4ed46a6",
     "source_files": 822,
@@ -318,7 +318,7 @@
       }
     },
     "translated": {
-      "status": "running",
+      "status": "passed",
       "session": 35515,
       "start": {
         "wrapper_pid": 63290,
@@ -342,6 +342,83 @@
           "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1"
         ],
         "started_utc": "2026-10-20T22:12:48.139959+00:00"
+      },
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 2571.731918749865,
+        "finished_utc": "2026-10-20T22:55:39.811477+00:00"
+      },
+      "passed": true,
+      "slacks_ps": [
+        8.538,
+        181.588
+      ],
+      "fully_mapped": true,
+      "mapped_cells": 942150,
+      "mapped_library_area": 122416.94592,
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "yosys",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          8.538,
+          181.588
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "de738e10f40bfd7aaf894b9e3e024723ad54aa039bba6da8f4ab9f01d2889183",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "log_sha256": "143ff574cd116e99e931a77f73a4ee9a029796c73655316f17353d0b8b829f26",
+          "logs": [
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "dd02622fe28cbc50af39b1151d3001fc3f285578a3ac45a18fbb546185b9dbab"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1/flow/orfs-work/logs/base/1_2_yosys.log",
+              "sha256": "e07ad1fb7b43b23382534701407a5632dd9c18a050ace1ba84f5e1f5365de93e"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1/flow/orfs-work/reports/base/synth_stat.txt",
+              "sha256": "143ff574cd116e99e931a77f73a4ee9a029796c73655316f17353d0b8b829f26"
+            }
+          ],
+          "combined_log_sha256": "d914ec5b44f1e17b9f9310f3f0d4d5e67a91bb60097ed12d13b15c1d45f7b7a1"
+        }
       }
     }
   },
@@ -370,10 +447,16 @@
     "generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-fp32-v1/result.json": "1ea62e166e32b3fb42975a5503281c35a1273ea5f54bb8676559ae38e6fbdb77",
     "generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-fp32-v1/flow/flow_manifest.json": "d7c5b64632f7854c2d2f384d063383c431e5598d931d883bc29752b5e560a1b0",
     "generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-fp32-v1/flow/synthesis_sta.log": "27e54d9f9e35475982867d12399e364f591dbc5bb517b8e17a51e7f05ab83855",
-    "generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-fp32-v1/flow/orfs-work/reports/base/synth_stat.txt": "a007db5ce0b5b8a59a95559b33815ec93ca7d686cad3c845a42ee3401c5f5a6f"
+    "generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-fp32-v1/flow/orfs-work/reports/base/synth_stat.txt": "a007db5ce0b5b8a59a95559b33815ec93ca7d686cad3c845a42ee3401c5f5a6f",
+    ".artifacts/mobile-banked-texture-epoch-control-translated-synthesis-v1-result.json": "bafdd30182b18d0b6510efbe0ff4db55954c18b775bcad95d17da436650b0ce2",
+    "generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1/qualification.json": "22f634dc157568bc26e1232b4b98e19ea74568467a2c2ce924f864e596f2f4e4",
+    "generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1/result.json": "4b3e9043511f2bc554c3ca9f8fc6c33ac5749e17c370350a6d73cae9c2ddeded",
+    "generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1/flow/flow_manifest.json": "249acb8873c28a5e85f18e16b2a712c22308865bd5cad45801ce20503453e1ff",
+    "generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1/flow/synthesis_sta.log": "de738e10f40bfd7aaf894b9e3e024723ad54aa039bba6da8f4ab9f01d2889183",
+    "generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1/flow/orfs-work/reports/base/synth_stat.txt": "143ff574cd116e99e931a77f73a4ee9a029796c73655316f17353d0b8b829f26"
   },
   "remaining": [
-    "collect translated epoch-control synthesis and qualify composition with current main before integration",
+    "main integration after the qualified69-check composition",
     "native shared-CU/resource/coordinate wiring and existing FP32 filtering-contract preservation",
     "whole-native precision/rates under memory contention and render-to-texture visibility",
     "all remaining H0-H8 hardware gates"
