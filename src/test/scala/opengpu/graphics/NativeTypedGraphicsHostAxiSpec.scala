@@ -729,7 +729,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         else Seq(broadcast|(BigInt(13)<<15)|(BigInt(5)<<7)|0x57,broadcast|(BigInt(14)<<15)|(BigInt(6)<<7)|0x57,
           (BigInt(5)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(c)<<12)|(BigInt(7)<<7)|0x2b))
       }
-      def run(c: Int,bad: Boolean=false,format: Int=35,target: Int=0,modeControl: Int=0,missing: Boolean=false,integerOffset: Int=0): Unit={
+      def run(c: Int,bad: Boolean=false,format: Int=35,target: Int=0,modeControl: Int=0,missing: Boolean=false,integerOffset: Int=0,baseLevel: Int=0): Unit={
         val mode=if(c%2==0)0 else 2;val vc=(c+1)%4
         val decoded=if(format>=54)CompressedImageReference.decode(format,raw)else ImageFormatReference.decode(ImageFormatReference.names(format),raw)
         val swizzle=if(format>=36)Seq(3,2,5,4)else Seq.empty[Int]
@@ -747,6 +747,14 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         if(format>=54)for(base<-Seq(vo,fo);unit<-Seq(if(base==vo)31 else 17)){
           put(base+texData.images+unit*128+11*4,2);put(base+texData.images+unit*128+12*4,2)
           put(base+texData.levels+unit*128+13*4,2);put(base+texData.levels+unit*128+14*4,2)
+        }
+        if(baseLevel>0)for(base<-Seq(vo,fo);unit<-Seq(if(base==vo)31 else 17)){
+          val from=base+texData.levels+unit*128;val to=from+baseLevel*128
+          val words=(0 until 32).map(w=>(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory.getOrElse(image.pa(from+w*4+b),0))<<(8*b))))
+          words.zipWithIndex.foreach{case(v,w)=>put(to+w*4,v)};put(to+6*4,baseLevel);put(to+8*4,baseLevel)
+          put(base+texData.images+unit*128+9*4,baseLevel);put(base+texData.images+unit*128+10*4,baseLevel)
+          put(base+texData.images+unit*128+11*4,2<<baseLevel);put(base+texData.images+unit*128+12*4,2<<baseLevel)
+          put(base+texData.images+unit*128+20*4,from+(baseLevel+1)*128)
         }
         val vp=0x700000+frames*0x2000;val fp=vp+0x1000
         val vcode=vertexProgram.dropRight(1)++sample(vc,31,scalar=c%2==1,target=target,mode=modeControl,missing=false,offset=integerOffset)++Seq(addi(6,7,16*32),vm(6,7,true),BigInt("30500073",16))
@@ -783,9 +791,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       for(format<-0 until 64)run(format%4,format=format)
       for(target<-1 to 3)run(target,target=target)
       for(offset<-Seq(0,15))run(offset%4,integerOffset=offset)
+      for(base<-Seq(1,2))run(base,baseLevel=base)
       run(0,bad=true);run(1,missing=true);run(3)
-      assert(frames==72)
-      info(s"NATIVE_INTEGER_FETCH_AXI local=$local CUs=2 frames=$frames draws=216 formats64=true imageSwizzle=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true targets4=true signedOffsetBeforeBounds=true noOperandPacketReads=true realSv32=true deniedSamplerNoPhysicalRead=true taskResetRejectsStaleTuple=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
+      assert(frames==74)
+      info(s"NATIVE_INTEGER_FETCH_AXI local=$local CUs=2 frames=$frames draws=222 imageBaseLevels0And1And2=true formats64=true imageSwizzle=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true targets4=true signedOffsetBeforeBounds=true noOperandPacketReads=true realSv32=true deniedSamplerNoPhysicalRead=true taskResetRejectsStaleTuple=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
     }
   }
 

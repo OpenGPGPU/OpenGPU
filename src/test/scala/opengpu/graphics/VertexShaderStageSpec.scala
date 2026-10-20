@@ -573,9 +573,20 @@ class VertexShaderStageSpec extends AnyFlatSpec {
             t.put(texData.levels+u*128+13*4,2);t.put(texData.levels+u*128+14*4,2)};v}
         for(scalar<-Seq(false,true);c<-0 until 4){run(c,scalar);integerDraws+=1}
       }
+      for(base<-Seq(1,2)){
+        for(u<-0 until 4){
+          val from=texData.levels+u*128;val table=BigInt(0x18000+u*1024);val to=table+base*128
+          val words=(0 until 32).map(w=>(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(t.memory.getOrElse(from+w*4+b,BigInt(0))<<(8*b))))
+          words.zipWithIndex.foreach{case(v,w)=>t.put(to+w*4,v)};t.put(to+6*4,base);t.put(to+8*4,base)
+          t.put(texData.images+u*128+9*4,base);t.put(texData.images+u*128+10*4,base)
+          t.put(texData.images+u*128+11*4,2<<base);t.put(texData.images+u*128+12*4,2<<base)
+          t.put(texData.images+u*128+19*4,table);t.put(texData.images+u*128+20*4,table+(base+1)*128)
+        }
+        run(0,false);run(3,true);integerDraws+=2
+      }
       skipParameters=true;run(0,false);run(0,true);skipParameters=false
       run(0,false,bad=true);run(1,false,cancelled=true);run(3,true)
-      info(s"NATIVE_INTEGER_FETCH_CU stage=vertex local=$local formats64=true scalarVector=true components4=true successfulDraws=$integerDraws v0Preserved=true noCoordinatePacketTransport=true taskResetRejectsStaleTuple=true faultAndCancelDrain=true healthyReuse=true")
+      info(s"NATIVE_INTEGER_FETCH_CU stage=vertex local=$local formats64=true scalarVector=true components4=true successfulDraws=$integerDraws imageBaseLevels0And1And2=true v0Preserved=true noCoordinatePacketTransport=true taskResetRejectsStaleTuple=true faultAndCancelDrain=true healthyReuse=true")
       info(s"NATIVE_FLOAT_SAMPLE_CU stage=vertex local=$local formats64=true scalarVectorParameterInstructions=true scalarVectorSampleInstructions=true successfulDraws=$floatingDraws automaticAndGradient=true v0Preserved=true taskResetRejectsStaleTuple=true faultAndCancelDrain=true healthyReuse=true onChipParameterBank=true")
       info(s"NATIVE_IMAGE_FORMAT_CU stage=vertex local=$local formats64=true imageSwizzle=true scalarVector=true addedDraws=$addedDraws")
       info(s"NATIVE_TYPED_FETCH_CU stage=vertex local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true mixedRawTypes=true perLaneBindings=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
