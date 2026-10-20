@@ -30,7 +30,8 @@ object NativeTypedGraphicsLayout {
     fields(base,prefix,"base"->d.base,"limit"->d.limit,"allocationBase"->d.allocationBase,"allocationLimit"->d.allocationLimit)
   private def sampler(base: Int,prefix: String,d: VertexShaderSampler): Seq[Field]=
     fields(base,prefix,"format"->d.format,"base"->d.base,"width"->d.texWidth,"height"->d.texHeight,
-      "clamp"->d.clamp,"maxLevel"->d.maxLevel,"minLevel"->d.minLevel,"bias"->d.bias)
+      "clamp"->d.clamp,"maxLevel"->d.maxLevel,"minLevel"->d.minLevel,"bias"->d.bias,
+      "policyVersion"->d.policyVersion,"wrapU"->d.wrapU,"wrapV"->d.wrapV,"signedCoordinates"->d.signedCoordinates)
   private def image(base: Int,prefix: String,d: TypedImageView): Seq[Field]=
     fields(base,prefix,"base"->d.base,"limit"->d.limit,"allocationBase"->d.allocationBase,"allocationLimit"->d.allocationLimit,
       "width"->d.imageWidth,"height"->d.imageHeight,"rowPitch"->d.rowPitch,"readable"->d.readable,"writable"->d.writable,"store"->d.store)
@@ -121,7 +122,8 @@ object NativeTypedGraphicsLayout {
   def fit(d: TypedTileRenderDraw,p: VertexShaderStageConfig,f: FragmentShaderConfig): Bool={
     val g=d.shaders.vertex.vertex.geometry;val v=g.vertex;val i=v.input
     val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
-    active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U && d.shaders.fragment.varyingSlots<=f.varyings.U &&
+    VertexShaderSampler.legal(v.sampler) && VertexShaderSampler.legal(d.shaders.fragment.sampler) &&
+      active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U && d.shaders.fragment.varyingSlots<=f.varyings.U &&
       !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(g.flatMask>>(v.varyingSlots<<2)).orR &&
       !(d.shaders.fragment.centroidMask>>(d.shaders.fragment.varyingSlots<<2)).orR &&
       FragmentInputAbi.legal(d.shaders.fragment.version) &&

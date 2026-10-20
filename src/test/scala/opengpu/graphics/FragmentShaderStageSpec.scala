@@ -466,4 +466,49 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
     }
   }
 
+
+  for(local<-Seq(true,false))
+  it should s"execute captured native texture policies and trap coordinate faults before reuse local=$local" in {
+    simulate(new FragmentShaderHarness(local)){d=>val t=new Driver(d)
+      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
+      val vectorSample=(BigInt(1)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(7)<<7)|0x2b
+      val scalarSample=(BigInt(1)<<25)|(BigInt(13)<<20)|(BigInt(12)<<15)|(BigInt(15)<<7)|0x0b
+      def code(scalar: Boolean): Seq[BigInt]={
+        val constants=Seq((BigInt(0xffffc)<<12)|(BigInt(12)<<7)|0x37,(BigInt(0x14)<<12)|(BigInt(13)<<7)|0x37)
+        val sample=if(scalar)Seq(scalarSample,broadcast|(BigInt(15)<<15)|(BigInt(7)<<7)|0x57)
+          else Seq(broadcast|(BigInt(12)<<15)|(BigInt(5)<<7)|0x57,broadcast|(BigInt(13)<<15)|(BigInt(6)<<7)|0x57,vectorSample)
+        program(4,2).dropRight(1)++constants++sample++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
+      }
+      for(scalar<-Seq(false,true)){val pc=if(scalar)0x7000 else 0x3000
+        code(scalar).zipWithIndex.foreach{case(w,i)=>t.put(pc+4*i,w)}}
+      d.io.out.ready.poke(true.B)
+      var draws=0;var faults=0
+      def run(u: Int,v: Int,signed: Boolean,scalar: Boolean=false,bad: Boolean=false): Unit={
+        val base=0x8000+draws*0x1000
+        for(y<-0 until 5;x<-0 until 3)t.put(base+(y*3+x)*4,NativeTexturePolicyReference.word(x,y))
+        t.descriptor();val q=d.io.draw.bits;q.shaderPc.poke((if(scalar)0x7000 else 0x3000).U)
+        q.sampler.base.poke(base.U);q.sampler.texWidth.poke((if(bad)0 else 3).U);q.sampler.texHeight.poke(5.U)
+        q.sampler.policyVersion.poke(1.U);q.sampler.wrapU.poke(u.U);q.sampler.wrapV.poke(v.U);q.sampler.signedCoordinates.poke(signed.B)
+        t.exports.clear();var textureReads=0
+        t.fault=(a,write)=>{if(!write && a>=base && a<base+128)textureReads+=1;false}
+        t.submit();t.send(0);t.send(1,true)
+        q.sampler.base.poke("he0000000".U);q.sampler.policyVersion.poke(3.U);q.sampler.wrapU.poke(3.U);q.sampler.wrapV.poke(3.U)
+        q.sampler.texWidth.poke(0.U);q.sampler.texHeight.poke(0.U)
+        t.until(d.io.completion.valid.peek().litToBoolean)
+        if(bad){d.io.completion.bits.faultAddress.expect(base.U);d.io.completion.bits.faultSource.expect(5.U);
+          assert(t.exports.isEmpty && textureReads==0);t.complete(3);faults+=1
+        }else{
+          val expected=NativeTexturePolicyReference.sample(3,5,0xffffc000L,0x14000L,u,v,signed)
+          assert(t.exports.size==2 && t.exports.forall(_.lanes.forall(_.colors(15)==expected)),s"actual shader texture mismatch u=$u v=$v signed=$signed scalar=$scalar")
+          assert(textureReads>0);t.complete(0)
+        }
+        draws+=1
+      }
+      for(signed<-Seq(false,true);u<-0 to 2;v<-0 to 2)run(u,v,signed)
+      run(2,1,true,bad=true);run(1,2,false,scalar=true,bad=true)
+      run(2,0,true,scalar=true)
+      assert(draws==21 && faults==2)
+      info(s"STAGE_TEXTURE_POLICY stage=fragment local=$local CUs=2 draws=$draws valid=19 coordinateFaults=$faults mixedAxes=9 signedAndUnsigned=true scalarAndVector=true noFaultedTexelWrites=true noInvalidTextureReads=true heldCompletionPinsVM=true poolDrained=true healthyReuse=true")
+    }
+  }
 }

@@ -72,6 +72,10 @@
     {"name":"tests.stencilEnable","word":92,"bits":1,"signed":false},
     {"name":"tests.version","word":93,"bits":8,"signed":false},
     {"name":"version","word":94,"bits":8,"signed":false},
+    {"name":"fragment.sampler.policyVersion","word":120,"bits":2,"signed":false},
+    {"name":"fragment.sampler.wrapU","word":121,"bits":2,"signed":false},
+    {"name":"fragment.sampler.wrapV","word":122,"bits":2,"signed":false},
+    {"name":"fragment.sampler.signedCoordinates","word":123,"bits":1,"signed":false},
     {"name":"fragment.centroidMask","word":124,"bits":64,"signed":false}
   ]
 }

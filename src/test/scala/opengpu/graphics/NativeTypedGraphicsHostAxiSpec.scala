@@ -72,11 +72,13 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
     }
     private val positionSets=Vector(Vector(Vector(-1.0,-1.0,-0.5,1.0),Vector(1.0,-1.0,0.5,1.0),Vector(-1.0,1.0,0.0,1.0)),
       Vector(Vector(-0.5,0.0,0.0,1.0),Vector(0.5,0.0,0.0,1.0)),Vector(Vector(-0.5,-0.5,-0.5,1.0)))
-    def colorWords(primitive: Int,vertex: Int,centroid: Boolean): Vector[BigInt]=Vector.tabulate(4){c=>
-      Fp32ViewportReference.fp(if(centroid){if(c==3)1.0 else ((vertex+1)*(c+1)+primitive)/16.0}else if(c==primitive || c==3)1.0 else 0.0)}
-    def shaderDraws(mode: Int,centroid: Boolean=false,version: Int=1): Unit={
+    var sampledRed: Option[BigInt]=None
+    def colorWords(primitive: Int,vertex: Int,centroid: Boolean,expected: Boolean=false): Vector[BigInt]=Vector.tabulate(4){c=>
+      if(expected && c==0 && sampledRed.nonEmpty)sampledRed.get
+      else Fp32ViewportReference.fp(if(centroid){if(c==3)1.0 else ((vertex+1)*(c+1)+primitive)/16.0}else if(c==primitive || c==3)1.0 else 0.0)}
+    def shaderDraws(mode: Int,centroid: Boolean=false,version: Int=1,generation: Int=0): Unit={
       setup(mode,3,mrt=true)
-      sourceOffset=if(centroid)0x20000+version*0x1000+mode*0x10000 else 0
+      sourceOffset=(if(centroid)0x20000+version*0x1000+mode*0x10000 else 0)+generation*0x1000
       val fragmentPc=if(version==4)0x404000 else 0x402000
       val prefix=(if(version==4)30 else 28)*32
       word(0x3000c,(((BigInt(0x1000000)+imageOffset)>>12)<<10)|0xcf)
@@ -111,7 +113,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       for(n<-0 until 3){val kind=Seq(2,1,0)(n)
         val zs=positionSets(n).map(v=>Fp32ViewportReference.fp(v(2)*0.5+0.5)).padTo(3,BigInt(0))
         val t=TriangleRasterReference.base.copy(coords=coords(n).map{case(x,y)=>(BigInt(x),BigInt(y))},values=TriangleRasterReference.base.values.copy(depth=zs,inv=Vector.fill(3)(Fp32ViewportReference.decode(Fp32ViewportReference.fp(1.0))),
-          flat=if(centroid)8 else 0,values=Vector.tabulate(3)(i=>if(i<positionSets(n).size)colorWords(n,i,centroid).padTo(8,BigInt(0))else Vector.fill(8)(BigInt(0)))))
+          flat=(if(centroid)8 else 0)|(if(sampledRed.nonEmpty)1 else 0),values=Vector.tabulate(3)(i=>if(i<positionSets(n).size)colorWords(n,i,centroid,expected=true).padTo(8,BigInt(0))else Vector.fill(8)(BigInt(0)))))
         val quads=if(kind==2)TriangleRasterReference.raster(t,settings,graphics)else PointLineReference.raster(t,kind,settings,graphics,PointLineReference.Sizes(point=2))
         for(raw<-quads){val q=CentroidRasterReference(t,kind,raw,mode,if(centroid)5 else 0,graphics)
           val values=SampleDepthReference.depths(t,kind,q.samples,mode,graphics)
@@ -310,6 +312,59 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         perf.payloadReservedBytes.expect(0.U)
         info(s"NATIVE_TYPED_RESET phase=$phase livePayloadBytes=$live queuedDMAAborted=true oldCompletionsDiscarded=true physicalAckDrain=true VMWriteRejected=true reservationsReleased=true exactHealthyReuse=true")
       }
+    }
+  }
+
+  for(local<-Seq(true,false))
+  it should s"publish native sampler policies through actual vertex and fragment texture instructions local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      initialize(d);val image=new Image(d)
+      val cap=Vector[BigInt](BigInt("47545801",16),8,3,0x1ff,7,16,16383,0x1f)
+      for((value,i)<-cap.zipWithIndex)assert(axiRead(d,0x200+i*4)==value)
+      axiWrite(d,0x200,0,expectedResponse=2)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
+      val sample=(BigInt(1)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(7)<<7)|0x2b
+      val texture=Seq((BigInt(0xffffc)<<12)|(BigInt(12)<<7)|0x37,(BigInt(0x14)<<12)|(BigInt(13)<<7)|0x37,
+        broadcast|(BigInt(12)<<15)|(BigInt(5)<<7)|0x57,broadcast|(BigInt(13)<<15)|(BigInt(6)<<7)|0x57,sample)
+      var frames=0;var faultFrames=0
+      def run(u: Int,v: Int,signed: Boolean,vertex: Boolean,mode: Int,bad: Int=0): Unit={
+        val expected=NativeTexturePolicyReference.sample(3,5,0xffffc000L,0x14000L,u,v,signed)
+        image.sampledRed=Some(expected);image.shaderDraws(mode,generation=frames+1)
+        val base=0x460000+frames*0x1000
+        for(y<-0 until 5;x<-0 until 3)image.word(image.pa(base+(y*3+x)*4),NativeTexturePolicyReference.word(x,y))
+        val vp=0x470000+frames*0x2000;val fp=vp+0x1000
+        val vertexCode=if(vertex)vertexProgram.dropRight(1)++texture++Seq(addi(6,7,15*32),vm(6,7,true),BigInt("30500073",16))else vertexProgram
+        val fragmentCode=if(!vertex)fragmentProgram().dropRight(1)++texture++
+          (0 until 4).flatMap(c=>Seq(addi(6,7,(10+c*4)*32),vm(6,7,true)))++Seq(BigInt("30500073",16))else fragmentProgram()
+        vertexCode.zipWithIndex.foreach{case(w,i)=>image.word(image.pa(vp+i*4),w)}
+        fragmentCode.zipWithIndex.foreach{case(w,i)=>image.word(image.pa(fp+i*4),w)}
+        for(n<-0 until 3){val record=image.pa(0x412000+n*4096)
+          image.word(record+33*4,vp);image.word(record+516*4,fp);image.word(record+19*4,1)
+          val first=if(vertex)48 else 544
+          image.word(record+(first+1)*4,base);image.word(record+(first+2)*4,if(bad==1)0 else 3)
+          image.word(record+(first+3)*4,5);image.word(record+(first+8)*4,1)
+          image.word(record+(first+9)*4,if(bad==2)3 else u);image.word(record+(first+10)*4,v)
+          image.word(record+(first+11)*4,if(signed)1 else 0)
+        }
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        val id=180+frames;image.submit(id);image.run(if(bad==1)3 else if(bad==2)1 else 0,id)
+        if(bad==0)image.verifyDraws(mode)
+        else{assert(!image.reads.exists(a=>a>=image.pa(base) && a<image.pa(base+64)));faultFrames+=1}
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop();frames+=1
+      }
+      run(0,2,true,vertex=true,mode=0)
+      run(1,0,true,vertex=false,mode=0)
+      run(2,1,true,vertex=true,mode=2)
+      run(1,2,false,vertex=false,mode=2)
+      run(2,0,true,vertex=false,mode=0,bad=1)
+      run(0,1,true,vertex=true,mode=0,bad=2)
+      run(2,0,true,vertex=true,mode=0)
+      assert(frames==7 && faultFrames==2)
+      info(s"NATIVE_TEXTURE_POLICY_IMAGE local=$local CUs=2 frames=$frames submittedDraws=21 faultFrames=$faultFrames vertexAndFragment=true signedAndUnsigned=true mixedAxes=true modes1x4x=true GTX1=true noInvalidTextureReads=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true freshCodeAndTextureAllocations=true healthyReuse=true")
     }
   }
 }

@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "54_checks_four_abi_checks_two_emissions_passed",
+  "source_commit": "a547e1b",
+  "source_files": 640,
+  "source_unchanged": true,
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-texture-policy-source-v2.json",
+    "sha256": "ff16e459d4a79490ebe31b3ab389afdcf251171b82e868a1a6443c9d92dbe9ef"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-texture-policy-source-v2.tar.gz",
+    "sha256": "e0cc6e68b675b5fb01cd640cad92ae0afb6ba2f6b59c450cb0ce2a74ff25cc18"
+  },
+  "controls": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "test_counts": [
+        25,
+        14
+      ],
+      "success_tasks": 6,
+      "passed_tasks": 2,
+      "policy_readers": 2,
+      "policy_state": 1,
+      "discovery": 4
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 127.67990912520327,
+    "finished_utc": "2026-10-20T04:58:19.815172+00:00"
+  },
+  "runtime": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "test_counts": [
+        4,
+        9,
+        1,
+        1
+      ],
+      "success_tasks": 6,
+      "passed_tasks": 4,
+      "stage_profiles": 4,
+      "native_policy_profiles": 2,
+      "legacy_vertex": 1,
+      "legacy_fragment": 1
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 756.0182205829769,
+    "finished_utc": "2026-10-20T05:06:35.523538+00:00"
+  },
+  "passed_tests": 54,
+  "abi_checks": 4,
+  "rtl_emissions": 2,
+  "stage_draws": 84,
+  "stage_faulted_draws": 8,
+  "new_host_policy_frames": 14,
+  "new_host_submitted_draws": 42,
+  "new_host_fault_frames": 4,
+  "evidence": {
+    "mobile-native-texture-policy-controls-v2.log": {
+      "path": ".artifacts/mobile-native-texture-policy-controls-v2.log",
+      "sha256": "d32cc77b7fc1c5e3b57db35639974c0a546af91c42e9019752c59e51549b92f4"
+    },
+    "mobile-native-texture-policy-controls-v2-result.json": {
+      "path": ".artifacts/mobile-native-texture-policy-controls-v2-result.json",
+      "sha256": "422885b85d153d0e58c16e455a600f02c482de60337afa8b949ace9683c1b89f"
+    },
+    "mobile-native-texture-policy-runtime-v2.log": {
+      "path": ".artifacts/mobile-native-texture-policy-runtime-v2.log",
+      "sha256": "b64e63a9dc40dc370519b4fdcf82021b9ae5c386fba969d795a25550e4795424"
+    },
+    "mobile-native-texture-policy-runtime-v2-result.json": {
+      "path": ".artifacts/mobile-native-texture-policy-runtime-v2-result.json",
+      "sha256": "d448cd5355e80396c364d54a2a6e56cfb67a98486fb29e13c135a3c3ab26445e"
+    },
+    "mobile-native-texture-policy-runtime-v2-start.json": {
+      "path": ".artifacts/mobile-native-texture-policy-runtime-v2-start.json",
+      "sha256": "8adea825d00824acfde3221241fe2b187a26dae179a6cbba068bb5579d58f4da"
+    },
+    "mobile-native-texture-policy-rtl-audit-v2.json": {
+      "path": ".artifacts/mobile-native-texture-policy-rtl-audit-v2.json",
+      "sha256": "302a13b1c6016c5e7f76e94ff8fa33fab4e88cf64d353c50598f1eba41e00b23"
+    },
+    "mobile-native-texture-policy-resource-comparison-v2.json": {
+      "path": ".artifacts/mobile-native-texture-policy-resource-comparison-v2.json",
+      "sha256": "51eaeb6d52f19867a0e88b730b43e65ef1d7f6d4870ada3f0dcc9309ffec1f8f"
+    },
+    "mobile-native-texture-policy-ci-v2.log": {
+      "path": ".artifacts/mobile-native-texture-policy-ci-v2.log",
+      "sha256": "33564c66837704a225331df4bb30af6f3d40f6608d0b3c18aec257a98a54e2b0"
+    },
+    "mobile-native-texture-policy-abi-c11-v2.json": {
+      "path": ".artifacts/mobile-native-texture-policy-abi-c11-v2.json",
+      "sha256": "f0324bb13977a7d309b06a3a5d2412fcf0db5e4a32876ba7521572a5a598968b"
+    },
+    "mobile-native-texture-policy-abi-reconciliation-development-v2.json": {
+      "path": ".artifacts/mobile-native-texture-policy-abi-reconciliation-development-v2.json",
+      "sha256": "d44ca2a1383a31a90d7ef19bcd3c3b63b42d9c52fe4542a4a72417c5e50fae2c"
+    },
+    "mobile-native-texture-policy-source-reconciliation-v2.json": {
+      "path": ".artifacts/mobile-native-texture-policy-source-reconciliation-v2.json",
+      "sha256": "136f6d3307c41805f96e1bfbc82192029da9b998a2ba24f33ec8190cb46d60e3"
+    },
+    "mobile-native-texture-policy-host-v1-result.json": {
+      "path": ".artifacts/mobile-native-texture-policy-host-v1-result.json",
+      "sha256": "ce704e160598a0ce9f3779c0fafc9c497c8135a2dc40496b6ad20e6241ff6ba0"
+    }
+  },
+  "coverage": [
+    "25 reader/discovery and 14 scalar/vector backend and trap controls",
+    "Four actual-CU vertex/fragment stage checks with local/global payload profiles, all nine wrap-axis combinations, signed/unsigned coordinates, real scalar/vector TEX, no-read faults, held VM ownership and healthy reuse",
+    "All nine unfiltered native host checks, including two new seven-frame sampler-policy profiles with fresh program/texture allocations, exact four-MRT/depth/resolve/guard publication and fault recovery",
+    "Two affected legacy vertex/fragment texture checks; both full replay and default host RTL elaborations"
+  ],
+  "limits": [
+    "This qualifies the stated native fixed-point sampler extension, not general GLES texture resources or H4/H6 closure.",
+    "Default native register/control logic changes. Public ports, existing SRAM macro counts and selected resource instance counts match the prior baseline; this is not RTL equivalence or an area, timing, power or throughput result.",
+    "No new PPA result is available for this source. PPA evaluation remains synthesis only.",
+    "The separate depth candidate has a polygon reset timeout and remains outside this promotion; its pending full regression is not counted here."
+  ]
+}

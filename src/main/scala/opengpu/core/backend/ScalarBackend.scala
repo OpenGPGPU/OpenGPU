@@ -120,7 +120,7 @@ class ScalarBackend(
   io.cacheRequest <> memoryUnit.io.cacheRequest
   memoryUnit.io.cacheResponse <> io.cacheResponse
   private val memoryFaultArbiter = Module(new RRArbiter(
-    new ScalarMemoryFault(config), 2))
+    new ScalarMemoryFault(config), 3))
   memoryFaultArbiter.io.in(0) <> memoryUnit.io.fault
   memoryFaultArbiter.io.in(1) <> atomic.io.fault
   io.memoryFault <> memoryFaultArbiter.io.out
@@ -134,7 +134,23 @@ class ScalarBackend(
   commitArbiter.io.in(3) <> branchAdapter.io.out
   commitArbiter.io.in(4) <> memoryUnit.io.commit
   commitArbiter.io.in(5) <> atomic.io.out
-  commitArbiter.io.in(6) <> io.texCommit
+  private val textureFault = !io.texCommit.bits.writeRd
+  commitArbiter.io.in(6).valid := io.texCommit.valid && !textureFault
+  commitArbiter.io.in(6).bits := io.texCommit.bits
+  // Task routing can depend on the trap tag. Register texture faults before
+  // arbitration so that a completion cannot feed its own owner selection.
+  private val textureFaultQueue = Module(new Queue(new ScalarMemoryFault(config), 1, pipe=false, flow=false))
+  memoryFaultArbiter.io.in(2) <> textureFaultQueue.io.deq
+  private val textureFailure = textureFaultQueue.io.enq
+  textureFailure.valid := io.texCommit.valid && textureFault
+  textureFailure.bits := 0.U.asTypeOf(textureFailure.bits)
+  textureFailure.bits.warpId := io.texCommit.bits.warpId
+  textureFailure.bits.pc := io.texCommit.bits.nextPc - 4.U
+  textureFailure.bits.activeMask := io.texCommit.bits.activeMask
+  textureFailure.bits.rd := io.texCommit.bits.rd
+  // Cancel the reserved destination without writing a fabricated texel.
+  textureFailure.bits.writeRd := true.B
+  io.texCommit.ready := Mux(textureFault,textureFailure.ready,commitArbiter.io.in(6).ready)
   commit.io.in <> commitArbiter.io.out
 
   io.redirect <> commit.io.redirect

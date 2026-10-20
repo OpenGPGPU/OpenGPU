@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "stage_controls_passed_native_host_and_control_runs_live",
+  "scope": "Actual shared-CU policy execution and coordinate-fault drain in generic vertex/fragment stages",
+  "based_on_commit": "7127cdd",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-texture-policy-source-v1.json",
+    "sha256": "5d70844f8f531e507971d1c9ffe72f69be9cbdfaec75364430d3be3a82055789"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-texture-policy-source-v1.tar.gz",
+    "sha256": "9d921083af6b0ca259ef67ddde6873fb7e7033db6a751e4b43179b03f0d9ac79"
+  },
+  "stage_result": {
+    "path": ".artifacts/mobile-native-texture-policy-stages-development-v1-result.json",
+    "sha256": "cd12ade2b7c4bd8f5d934a211e60885296302137255394a4ea73bb59a2b654be"
+  },
+  "stage_log": {
+    "path": ".artifacts/mobile-native-texture-policy-stages-development-v1.log",
+    "sha256": "0e0f558fac284a8c32d7159b813050b1a03def9c1a8a62a45c58ab3a55125145"
+  },
+  "passed_stage_checks": 4,
+  "draws": 84,
+  "valid_draws": 76,
+  "faulted_draws": 8,
+  "profiles": [
+    "vertex local payload",
+    "vertex global staging",
+    "fragment local payload",
+    "fragment global staging"
+  ],
+  "properties": [
+    "All nine axis-mode combinations and signed/unsigned fixed coordinates execute actual two-CU shaders.",
+    "Scalar and vector zero-dimension coordinate faults issue no texture reads, trap through the backend, cancel destinations, produce no faulted exports and recover on fresh bindings.",
+    "Held completion keeps VM ownership; task/payload pools drain exactly."
+  ],
+  "native_host_start": {
+    "path": ".artifacts/mobile-native-texture-policy-host-v1-start.json",
+    "sha256": "c6de1568d8b36eb29e6ba894f3f15494704ed2a421f2d04507701e3a4213aaa1"
+  },
+  "native_host_pid_confirmed_live": 95227,
+  "control_start": {
+    "path": ".artifacts/mobile-native-texture-policy-controls-v1-start.json",
+    "sha256": "aa9615f3b094fc2fb6d1e76f243118a5ffacdee6ed55fae2f01eef7cbdaf1fff"
+  },
+  "control_pid_confirmed_live": 91895,
+  "abi_development_reconciliation": {
+    "path": ".artifacts/mobile-native-texture-policy-abi-reconciliation-development-v2.json",
+    "sha256": "d44ca2a1383a31a90d7ef19bcd3c3b63b42d9c52fe4542a4a72417c5e50fae2c"
+  },
+  "c11_abi_source": {
+    "path": ".artifacts/mobile-native-texture-policy-abi-v1.c",
+    "sha256": "d03f62c5e0c36ddcfca48724ec4da4db24093ee2360297c3b21b72279e145616"
+  },
+  "c11_abi_passed": true,
+  "limits": [
+    "Only the four stage controls pass at this checkpoint. Native host images, legacy texture reuse, reader/backend regression and final host/replay emissions remain in progress.",
+    "The initial reader run passed24/25; its one new status oracle was corrected for existing encoding status7. The current isolated control run verifies that correction and explicit format rejection.",
+    "This candidate changes default native RTL and is not integrated into main or a passing PPA result. No H4/H6 or GLES closure."
+  ]
+}

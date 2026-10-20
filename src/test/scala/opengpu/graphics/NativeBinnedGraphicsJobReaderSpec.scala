@@ -230,4 +230,28 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
       info("NATIVE_BINNED_CANCEL phases=5 heldOffers=true liveDescriptorTags=true noEarlyChildCancel=true heldPublication=true noEarlyCompletion=true exactHealthyReuse=true")
     }
   }
+
+  it should "snapshot versioned binned sampler extension words and reject malformed policies before draw offers" in {
+    simulate(new Harness()){d=>val t=new Driver(d)
+      val prefix="draw.vertex.geometry.vertex.sampler."
+      val mapped=t.df.map(x=>x.name->x.word).toMap
+      assert(mapped(prefix+"policyVersion")==480 && mapped(prefix+"wrapU")==481 && mapped(prefix+"wrapV")==482 && mapped(prefix+"signedCoordinates")==483)
+      t.prepare(1);t.drawValues++=Map(prefix+"policyVersion"->BigInt(1),prefix+"wrapU"->BigInt(2),prefix+"wrapV"->BigInt(1),prefix+"signedCoordinates"->BigInt(1))
+      t.put(t.drawBase,drawWords,drawMagic,t.df,t.drawValues);t.blockDraw=true;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+      val held=d.io.draw.bits.peek().litValue
+      d.io.draw.bits.vertex.geometry.vertex.sampler.policyVersion.expect(1.U)
+      d.io.draw.bits.vertex.geometry.vertex.sampler.wrapU.expect(2.U)
+      for(_<-0 until 9){t.tick();assert(d.io.draw.bits.peek().litValue==held)}
+      t.blockDraw=false;t.complete(0,1)
+      for(bad<-Seq(Map("policyVersion"->2),Map("wrapU"->1),Map("signedCoordinates"->1),
+        Map("policyVersion"->1,"wrapU"->3),Map("policyVersion"->1,"wrapV"->3),
+        Map("policyVersion"->1,"clamp"->1),Map("policyVersion"->1,"wrapU"->4),Map("policyVersion"->1,"format"->5))){
+        t.prepare(1);t.drawValues++=bad.map{case(k,v)=>(prefix+k)->BigInt(v)}
+        t.put(t.drawBase,drawWords,drawMagic,t.df,t.drawValues);t.submit();t.complete(1)
+        assert(t.acceptedDraws==0)
+      }
+      t.prepare(1);t.submit();t.complete(0,1)
+      info("NATIVE_TEXTURE_POLICY_READER binned=true extensionWords480to483=true immutableOffer=true invalidPolicies=8 noInvalidChild=true legacyReuse=true")
+    }
+  }
 }

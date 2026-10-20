@@ -16,6 +16,21 @@ class VertexShaderSampler extends Bundle {
   val format=UInt(PixelFormat.width.W);val base=UInt(32.W)
   val texWidth=UInt(14.W);val texHeight=UInt(14.W);val clamp=Bool()
   val maxLevel=UInt(4.W);val minLevel=UInt(4.W);val bias=SInt(5.W)
+  /** 0 retains unsigned legacy clamp; 1 selects explicit per-axis policy. */
+  val policyVersion=UInt(2.W);val wrapU=UInt(2.W);val wrapV=UInt(2.W);val signedCoordinates=Bool()
+}
+object VertexShaderSampler {
+  def legal(s: VertexShaderSampler): Bool =
+    (s.policyVersion === 0.U && s.wrapU === 0.U && s.wrapV === 0.U && !s.signedCoordinates) ||
+      (s.policyVersion === 1.U && s.wrapU <= 2.U && s.wrapV <= 2.U && !s.clamp && s.format <= PixelFormat.bgrx.U)
+  def coordinatePolicy(s: VertexShaderSampler): TextureCoordinatePolicy = {
+    val p=Wire(new TextureCoordinatePolicy)
+    p.wrapU:=Mux(s.policyVersion===1.U,s.wrapU,Mux(s.clamp,1.U,0.U))
+    p.wrapV:=Mux(s.policyVersion===1.U,s.wrapV,Mux(s.clamp,1.U,0.U))
+    p.signed:=s.policyVersion===1.U && s.signedCoordinates
+    when(!legal(s)){p.wrapU:=3.U}
+    p
+  }
 }
 /** Internal shader ABI version 1. With S=4*physical-CU-thread-capacity:
   * inputs are 4*attributeSlots SoA arrays, then vertexId/instanceId/baseInstance;
@@ -91,7 +106,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   })
   private val input=Module(new VertexInputFetcher(config,p.input))
   private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None))))
-  private val texture=Module(new TexSampleUnit(config))
+  private val texture=Module(new TexSampleUnit(config,coordinatePolicyInput=true))
   private val textureBridge=Module(new OmWordToLinePort(config,maxOutstanding=2))
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))
   private val metadata=Module(new L2SramArray(metaDepth,128,useSramBlackBoxes))
@@ -212,6 +227,8 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   texture.io.texWidth:=draw.sampler.texWidth;texture.io.texHeight:=draw.sampler.texHeight
   texture.io.wrapClamp:=draw.sampler.clamp;texture.io.texMaxLevel:=draw.sampler.maxLevel
   texture.io.minLevel:=draw.sampler.minLevel;texture.io.lodBias:=draw.sampler.bias
+  texture.io.coordinatePolicy.get:=VertexShaderSampler.coordinatePolicy(draw.sampler)
+  private val coordinateFault=texture.io.coordinateFault.get && (texture.io.commit.valid || texture.io.vectorCommit.valid)
   private val textureDrained=texturePending===0.U && textureInstructions===0.U &&
     !textureBridge.io.memoryRequest.valid && !shader.io.texSample.valid && !shader.io.vectorTexSample.valid
   shader.io.trap.ready:=true.B
@@ -220,7 +237,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val inputFault=input.io.completion.valid && input.io.completion.bits.status=/=0.U
   private val dataFault=stageResponse.valid && stageResponse.bits.fault
   private val textureFault=textureBridge.io.responseFault
-  private val stop=status=/=0.U || externalCancel || inputFault || dataFault || textureFault || shaderFault || allocationFault || releaseFault
+  private val stop=status=/=0.U || externalCancel || inputFault || dataFault || textureFault || coordinateFault || shaderFault || allocationFault || releaseFault
   transport.foreach(_.io.pool.cancel:=stop)
   input.io.cancel:=stop && inputStarted
   input.io.draw.valid:=inputOffered;input.io.draw.bits:=draw.input
@@ -315,7 +332,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       val s=draw.scratch
       val view=s.allocationBase(5,0)===0.U && s.allocationLimit(5,0)===0.U && s.allocationLimit<=(BigInt(1)<<32).U &&
         s.allocationLimit>s.allocationBase && s.base>=s.allocationBase && s.base(5,0)===0.U && s.limit>=s.base && s.limit<=s.allocationLimit
-      val fields=draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
+      val fields=VertexShaderSampler.legal(draw.sampler) && draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
         !(draw.varyingMask>>(draw.varyingSlots<<2)).orR &&
         draw.input.attributes.zipWithIndex.map { case (a,i)=> !a.enabled || i.U<draw.attributeSlots }.reduce(_ && _)
       val aliases=(0 until p.input.bindings).map { i=>
@@ -411,6 +428,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   when(active && releaseFault){fail(VertexInputStatus.memoryFault.U,draw.scratch.base)}
   when(active && shaderFault){fail(VertexShaderStatus.shaderFault.U,Mux(shader.io.trap.valid,shader.io.trap.bits.tval,draw.shaderPc))}
   when(active && textureFault){fail(VertexInputStatus.memoryFault.U,textureBridge.io.out.bits.addr)}
+  when(active && coordinateFault){fail(VertexInputStatus.memoryFault.U,draw.sampler.base)}
   when(active && dataFault){fail(VertexInputStatus.memoryFault.U,memRequest.address)}
   when(active && inputFault){fail(input.io.completion.bits.status,input.io.completion.bits.faultAddress)}
   when(active && externalCancel && status===0.U){status:=VertexInputStatus.cancelled.U;faultAddress:=0.U}

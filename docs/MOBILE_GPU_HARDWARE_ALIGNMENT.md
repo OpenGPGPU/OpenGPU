@@ -5510,3 +5510,85 @@ retain identical contents and modes. This is not a separately rerun main
 regression. Default legacy hardware remains unchanged across the four emitted
 profiles; task/native policy descriptors and coordinate-fault owner handling
 remain the next integration work. PPA remains synthesis only.
+
+
+## Native texture policy and fault ownership development (2026-10-20)
+
+The [native fixed-point policy candidate](NATIVE_TEXTURE_COORDINATE_POLICY.md)
+adds versioned per-axis sampler fields in reserved GTD1/GND1/GFS1 words and
+read-only GTX1 discovery. Every pre-existing ABI offset, width, record header,
+size and generated C define remains unchanged in the development comparison.
+The generic vertex/fragment stages capture these fields, pass the qualified
+policy into texture execution, and retain a primary coordinate-fault address.
+Rejected texture completions now enter existing scalar/vector fault streams,
+cancel reserved destinations and trap their owning warp without normal data
+writeback. This closes a required link between the optional unit fault and
+shared-CU draw drain.
+
+Reader, actual-CU policy/fault/reuse and native image qualification are pending.
+The candidate stays isolated and changes default native RTL; existing component
+legacy-equivalence evidence is not an integration result for this source.
+No new mode is advertised on main, and H4/H6/general resources remain open.
+PPA evaluation remains synthesis only.
+
+
+## Native texture actual-CU stage checkpoint (2026-10-20)
+
+The [four actual-CU stage controls](performance/mobile-native-texture-policy-stage-controls-2026-10-20.json)
+pass on the unchanged 640-file candidate. Vertex/fragment and local/global
+profiles execute 84 draws: 76 valid cases and eight scalar/vector coordinate
+faults. All nine axis-mode combinations, signed/unsigned inputs, exact packed
+filter results, no invalid texture reads, no faulted exports, held completion
+VM ownership, pool drain and healthy reuse pass. Generated headers also pass
+a combined C11 compile with fixed extension offsets and record-size checks.
+
+The isolated reader/backend regression and native host image/legacy texture
+checks are live on the same source bytes. Final host/replay emissions remain
+pending. The candidate stays isolated; no main native-mode advertisement,
+whole-native qualification or new PPA result is claimed.
+
+
+## Registered native texture-fault boundary checkpoint (2026-10-20)
+
+The first complete host elaboration exposed a completion-valid/trap-task-tag
+combinational loop that the direct stage harness did not contain. The frozen
+failed source is retained. Scalar/vector backends now register rejected
+texture completions before fault arbitration, preserving failed instruction
+ownership under backpressure and separating trap routing from writeback.
+
+The [corrected source checkpoint](performance/mobile-native-texture-policy-registered-checkpoint-2026-10-20.json)
+passes 25 reader/discovery, fourteen backend/trap and four actual-CU stage
+checks on identical 640-file source bytes. All 84 stage draws, including eight
+coordinate faults, pass again. Both replay and default host RTL emit without
+the cycle. Public top ports and structural resource counts match the prior
+main baseline: four CUs, two replay engines, one payload store, 78 FMAs, 72
+dividers and 2,689,024 SRAM data bytes in the host. This is not an area, timing,
+power or rate result; register/control logic changes.
+
+Nine native host and two legacy texture checks are still live on this source.
+The candidate remains isolated, with no main mode advertisement or complete
+functional/PPA claim. PPA remains synthesis only.
+
+
+## Native texture policy completed functional qualification (2026-10-20)
+
+The earlier development and partial checkpoints above are superseded by the
+[completed 54-check qualification](performance/mobile-native-texture-policy-2026-10-20.json).
+The same frozen 640-file source passes 25 reader/discovery, fourteen backend/trap,
+four actual-CU stage, all nine unfiltered native host and two affected legacy
+texture checks. Four ABI regeneration checks, combined C11 headers, CI selection
+and both complete replay/default-host RTL emissions also pass. The registered
+fault boundary resolves the retained earlier host elaboration failure.
+
+The new host profiles execute fourteen frames and 42 submitted draw records
+across local/global payload storage. They verify actual vertex and fragment
+sampling, signed and independent-axis policies, 1x/4x publication, exact four-MRT,
+depth, resolve and guard bytes, no invalid texture reads, held VM ownership and
+healthy reuse after four rejected/faulted frames. Stage controls additionally
+cover all nine wrap-axis combinations, unsigned coordinates and real scalar TEX.
+
+This source is eligible for functional integration. Default native RTL changes;
+structural counts alone do not establish area, timing, power or throughput.
+No new PPA result is claimed, and evaluation remains synthesis only. General
+texture resources and H4/H6 remain open. The separate depth candidate has a
+polygon reset timeout in its host regression and remains outside this change.

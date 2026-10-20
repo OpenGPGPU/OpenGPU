@@ -743,6 +743,9 @@ class VectorBackend(
   writebackArbiter.io.in(3).bits.warpActiveMask :=
     fmaAlu.io.out.bits.warpActiveMask
 
+  private val memoryFaultArbiter = Module(new RRArbiter(new VectorMemoryFault(config), 2))
+  io.memoryFault <> memoryFaultArbiter.io.out
+  private val vectorMemoryFault = memoryFaultArbiter.io.in(0)
   private val memPipeValid = RegInit(false.B)
   private val memPipeBits = Reg(new VectorMemoryResult(config))
   memory.io.out.ready := !memPipeValid
@@ -755,24 +758,24 @@ class VectorBackend(
   private val memPipeOutReady = Mux(
     memPipeSucceeded,
     writebackArbiter.io.in(4).ready,
-    io.memoryFault.ready
+    vectorMemoryFault.ready
   )
   when(memPipeValid && memPipeOutReady) {
     memPipeValid := false.B
   }
   writebackArbiter.io.in(4).valid :=
     memPipeValid && memPipeSucceeded
-  io.memoryFault.valid := memPipeValid && !memPipeSucceeded
-  io.memoryFault.bits.warpId := memPipeBits.warpId
-  io.memoryFault.bits.pc := memPipeBits.pc
-  io.memoryFault.bits.warpActiveMask :=
+  vectorMemoryFault.valid := memPipeValid && !memPipeSucceeded
+  vectorMemoryFault.bits.warpId := memPipeBits.warpId
+  vectorMemoryFault.bits.pc := memPipeBits.pc
+  vectorMemoryFault.bits.warpActiveMask :=
     memPipeBits.warpActiveMask
-  io.memoryFault.bits.faultMask := memPipeBits.faultMask
-  io.memoryFault.bits.pageFault := memPipeBits.pageFault
-  io.memoryFault.bits.isStore := memPipeBits.isStore
-  io.memoryFault.bits.addresses := memPipeBits.addresses
-  io.memoryFault.bits.vd := memPipeBits.vd
-  io.memoryFault.bits.writeVd := memPipeBits.writesVd
+  vectorMemoryFault.bits.faultMask := memPipeBits.faultMask
+  vectorMemoryFault.bits.pageFault := memPipeBits.pageFault
+  vectorMemoryFault.bits.isStore := memPipeBits.isStore
+  vectorMemoryFault.bits.addresses := memPipeBits.addresses
+  vectorMemoryFault.bits.vd := memPipeBits.vd
+  vectorMemoryFault.bits.writeVd := memPipeBits.writesVd
   writebackArbiter.io.in(4).bits.writeback.warpId :=
     memPipeBits.warpId
   writebackArbiter.io.in(4).bits.writeback.vd := memPipeBits.vd
@@ -894,7 +897,23 @@ class VectorBackend(
   writebackArbiter.io.in(9).bits.warpActiveMask :=
     estimateAlu.io.out.bits.warpActiveMask
 
-  writebackArbiter.io.in(10) <> io.texCommit
+  private val textureFault = !io.texCommit.bits.writesVd
+  writebackArbiter.io.in(10).valid := io.texCommit.valid && !textureFault
+  writebackArbiter.io.in(10).bits := io.texCommit.bits
+  // The registered boundary also retains the failed instruction while shared
+  // task/warp trap routing stalls; normal texture writeback keeps its latency.
+  private val textureFaultQueue = Module(new Queue(new VectorMemoryFault(config), 1, pipe=false, flow=false))
+  memoryFaultArbiter.io.in(1) <> textureFaultQueue.io.deq
+  private val textureFailure = textureFaultQueue.io.enq
+  textureFailure.valid := io.texCommit.valid && textureFault
+  textureFailure.bits := 0.U.asTypeOf(textureFailure.bits)
+  textureFailure.bits.warpId := io.texCommit.bits.writeback.warpId
+  textureFailure.bits.pc := io.texCommit.bits.pc
+  textureFailure.bits.warpActiveMask := io.texCommit.bits.warpActiveMask
+  textureFailure.bits.faultMask := io.texCommit.bits.warpActiveMask
+  textureFailure.bits.vd := io.texCommit.bits.writeback.vd
+  textureFailure.bits.writeVd := true.B
+  io.texCommit.ready := Mux(textureFault,textureFailure.ready,writebackArbiter.io.in(10).ready)
 
   writebackArbiter.io.in(11).valid := reduceAlu.io.out.valid
   reduceAlu.io.out.ready := writebackArbiter.io.in(11).ready
