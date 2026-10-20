@@ -161,16 +161,16 @@ class BankedTextureFillOwnerSpec extends AnyFlatSpec {
   it should "separate generation and view keys and never join a completed fill while its result is held" in {
     simulate(new BankedFillHarness(fills=4,waiters=8)) { d =>
       val t = new Driver(d); d.io.memoryRequest.ready.poke(true.B)
-      t.submit(0, 0); t.submit(1, 0, key=2); t.submit(2, 0, generation=10)
+      t.submit(0, 0); t.submit(1, 0); t.submit(2, 0, key=2); t.submit(3, 0, generation=10)
       t.until(t.memory.size == 3); d.io.occupied.expect(3.U)
       for((id,_) <- t.memory.toVector) t.reply(id, 0)
       t.until(d.io.out.valid.peek().litToBoolean)
       // Wait until all refill acknowledgements have arrived, while holding
       // every consumer completion. A subsequent miss starts a new memory ID.
       for(_ <- 0 until 50) t.tick()
-      t.submit(3, 0); t.until(t.memory.size == 4)
+      t.submit(4, 0); t.until(t.memory.size == 4)
       t.reply(t.memory.last._1, 0)
-      d.io.out.ready.poke(true.B); t.until(t.results.size == 4); t.until(!d.io.busy.peek().litToBoolean)
+      d.io.out.ready.poke(true.B); t.until(t.results.size == 5); t.until(!d.io.busy.peek().litToBoolean)
       assert(t.results.forall(r => r._2 && !r._3 && !r._4))
       info("BANKED_TEXTURE_FILL_KEYS generationAndViewIsolated=true completedFillNotJoined=true waiterFanoutFair=true")
     }

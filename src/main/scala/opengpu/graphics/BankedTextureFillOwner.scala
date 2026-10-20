@@ -70,6 +70,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   private val draining = RegInit(false.B)
   private val outputValid = RegInit(false.B)
   private val output = Reg(new BankedTextureFillResult)
+  private val outputSlot = Reg(UInt(fillBits.W))
   io.out.valid := outputValid
   io.out.bits := output
 
@@ -192,7 +193,8 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
       }
     }
     val hasWaiter = VecInit((0 until waiters).map(w => alive(w) && waiterSlot(w) === s.U)).asUInt.orR
-    when(states(s) === State.done && !hasWaiter && !(io.in.fire && selected === s.U)) {
+    val heldCompletion = outputValid && outputSlot === s.U
+    when(states(s) === State.done && !hasWaiter && !heldCompletion && !(io.in.fire && selected === s.U)) {
       states(s) := State.free
     }
   }
@@ -207,6 +209,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
     val waiter = completionArbiter.io.out.bits
     val slot = waiterSlot(waiter)
     alive(waiter) := false.B
+    outputSlot := slot
     output := 0.U.asTypeOf(output)
     output.identity := keys(slot).identity
     output.textureKey := keys(slot).textureKey
