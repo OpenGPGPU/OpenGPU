@@ -1,9 +1,10 @@
 # Banked RGBA8 texture hit pipeline
 
-Status: [eight component checks](performance/mobile-banked-texture-hits-2026-10-21.json)
-pass on808 frozen inputs. Store and complete filter-cluster synthesis are
-running. Translation/native shader integration and the sixteen-fill scheduler
-remain required before H4 can close.
+Status: [nine component checks and a before/after cancellation proof](performance/mobile-banked-texture-cancellation-2026-10-21.json)
+pass on808 frozen inputs. Store synthesis passes1000ps including I/O and
+carries by identical emitted RTL. Fresh complete filter-cluster synthesis is
+running after the cancellation fix. Translation/native shader integration and
+the sixteen-fill scheduler remain required before H4 can close.
 
 `BankedRgba8TextureHits` accepts one admitted bilinear group:four physical word
 addresses,row-parity bits,normalized17-bit weights,work identity,opaque64-bit
@@ -62,7 +63,10 @@ A miss produces `hit=false` and a missing-tap mask. Its zero color is not a
 successful texture value or an architectural fault result. The future miss/
 fallback owner must resolve or fault it before shader retirement. Global cancel
 stops new admission and drains accepted bank work;accepted output already
-offered to a consumer retains its value. Shared multi-task integration needs
+offered to a consumer retains its value. A one-cycle cancel pulse is retained
+by an internal filter stage even while an older public result is held. The
+regression failed before the RTL fix and passes with the same test afterward.
+Shared multi-task integration needs
 owner-scoped cancellation around this global service drain.
 
 ## Evidence and next integration
