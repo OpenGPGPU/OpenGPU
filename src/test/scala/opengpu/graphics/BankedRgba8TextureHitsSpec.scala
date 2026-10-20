@@ -164,4 +164,22 @@ class BankedRgba8TextureHitsSpec extends AnyFlatSpec {
     }
   }
 
+
+  it should "remember a cancellation pulse behind an already offered sample" in {
+    simulate(new BankedRgba8TextureHits(dataBytes=512)){d=>val t=new Driver(d)
+      t.refill(0x1000,false,even);t.refill(0x2000,true,odd)
+      t.submit(60,addresses,parity);t.submit(61,addresses,parity)
+      t.until(d.io.out.valid.peek().litToBoolean);d.io.out.bits.tag.expect(60.U)
+      val held=d.io.out.bits.peek().litValue
+      for(_<-0 until 8){t.tick();assert(d.io.out.bits.peek().litValue==held)}
+      d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      assert(d.io.out.bits.peek().litValue==held)
+      val first=t.consume();assert(first._1==60 && first._2 && !first._3)
+      val waiting=t.consume();assert(waiting._1==61 && waiting._3 && !waiting._2 && waiting._4==0 && waiting._5==0,
+        s"unoffered filter result forgot one-cycle cancellation: $waiting")
+      t.drain();t.refill(0x1000,false,even);t.refill(0x2000,true,odd);t.submit(62,addresses,parity);assert(t.consume()._2);t.drain()
+      info("BANKED_TEXTURE_CANCEL_PULSE heldPublicResultImmutable=true waitingFilterRemembersPulse=true cancelledColorSuppressed=true healthyReuse=true")
+    }
+  }
+
 }
