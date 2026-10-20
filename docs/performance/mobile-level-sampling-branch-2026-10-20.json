@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "general_sampler_branch_selected_level_checkpoint_matches_qualified_source",
+  "branch_head": "e0a409128afb4741ea6295ffeb8389df1a3a58ec",
+  "source_files": 780,
+  "source_manifest_sha256": "ef274209bfb1e81d80dd6d073a79da91f92c6d39056fdff4d26670f914fad9c8",
+  "git_archive_and_current_worktree_exact": true,
+  "recursive_source_graph_exact": true,
+  "functional_log_and_three_fresh_synthesis_artifacts_exact": true,
+  "current_production_and_RTL_manifests_exact": true,
+  "axis_carry_RTL_exact": true,
+  "all_existing_JSON_ABIs_unchanged": {
+    "docs/abi/texture-image-level-v1.json": "55b134415d56648441513768989042c248d7c09c95c29180396a7dcc4fb2cda3",
+    "docs/abi/native-binned-host-v1.json": "4acc1b136453fe3923c7feeb380198cfb6038a4bc5c8d2a1e81f1c60c2968c39",
+    "docs/abi/native-typed-graphics-v1.json": "86769ae87b5513dca3582e22adabbc454f4002865970e53d02b8e7b33a862d05",
+    "docs/abi/native-texture-v1.json": "cf5dc89cc1ed165c45eef352bc30ab08e14c81fd77fbd439930520e5a03026fc",
+    "docs/abi/native-binned-graphics-v1.json": "33748b61279f3234634b364a8af9df6d53fcc7e97e846a1178fb3629ab806767",
+    "docs/abi/typed-fragment-state-v1.json": "9b65f1333aadae0c9e9ecd86c5627227a9f70a218758f316de8ebd6212797bef",
+    "docs/abi/texture-image-format-v1.json": "9881604a2b214585365bc094a6c31f9e6e33f6ac9a3743c753723b4b595ad75b",
+    "docs/abi/texture-image-binding-v1.json": "4b5aa35bd0d24d5b8a5e6c2b360df5c3229bbb1304d7cf47c7daf9883dde17e7",
+    "docs/abi/texture-sampler-v1.json": "b0d31b693602ec71e6b4a2f85fad6af3bdde96ac1aaa6e992ad4e0805f9778d7"
+  },
+  "one_agent_coauthor_per_new_commit": true,
+  "root_user_edits_and_modes_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": 420
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": 420
+    }
+  },
+  "qualification_record_sha256": "6d6ba70418ba427efc20bdb0fd38ecced3822e10bebd98ada8137c526d7dcc27",
+  "synthesis_record_sha256": "27d5a8dae20e7c4074bec0318922488c598b77511ed2af23e7755d19e5901d1d",
+  "scope": "Internal selected-level sampling only. Native floating packet/ISA, cube projection, array-layer conversion, explicit/gradient/implicit LOD, full filter selection, cluster throughput and H0-H8 remain open."
+}
