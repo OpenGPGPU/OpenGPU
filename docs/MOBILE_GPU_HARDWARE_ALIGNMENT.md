@@ -6173,3 +6173,16 @@ retain every output;point cycle counts remain exact,unit basic-line cycles are87
 passes full mapping but misses setup by124.115ps;I/O setup is+641.966ps. The
 remaining path is dy[32] to squared length[66]. No positive clock,throughput or
 full H0-H8 result is claimed;the measured length path is the next cut.
+
+
+## Registered squared line length (2026-10-20)
+
+The [length candidate](performance/mobile-point-line-length-pipeline-2026-10-20.json)
+cuts the measured dy-to-length path with signed33 partial squares,registered
+signed66 squares and a full67-bit prefix sum. Signed64 admission and weight
+guards stay intact. Lines add two preparation states;points bypass length
+arithmetic. All12 controls pass on unchanged674-file source,including39015 order
+cases,4871 arithmetic cases,2401 boundary lattice lines and576 cancellation/reset
+cuts;default RTL emission passes. Fresh integration,cycle and standalone
+synthesis checks remain pending. No clock,throughput or full H0-H8 closure is
+claimed from this component checkpoint.

@@ -39,7 +39,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     val in=Flipped(Decoupled(new PointLineRasterRequest));val out=Decoupled(new RasterQuad(g))
     val cancel=Input(Bool());val busy=Output(Bool());val fault=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,decode,measure,bounds,threshold,startQuad,startLane,laneProducts,laneParameter,laneRemaining,laneExport,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
+  private object State extends ChiselEnum {val idle,decode,measure,lengthProducts,lengthSum,bounds,threshold,startQuad,startLane,laneProducts,laneParameter,laneRemaining,laneExport,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new PointLineRasterRequest);private val output=Reg(new RasterQuad(g))
   private val x=Reg(UInt(16.W));private val y=Reg(UInt(16.W));private val minX=Reg(UInt(16.W));private val maxX=Reg(UInt(16.W));private val maxY=Reg(UInt(16.W))
   private val lane=RegInit(0.U(2.W));private val sample=RegInit(0.U(2.W));private val mask=RegInit(0.U(g.maxSampleCount.W));private val any=RegInit(false.B)
@@ -60,6 +60,11 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val unit=BigInt(1)<<g.subPixelBits;private val half=unit/2;private val quarter=unit/4
   private val dx=Reg(SInt(33.W));private val dy=Reg(SInt(33.W))
   private val length=Reg(SInt(67.W));private val majorX=Reg(Bool())
+  private val lengthPartsX=Reg(new SignedProductParts(33));private val lengthPartsY=Reg(new SignedProductParts(33))
+  private val lengthSquareX=Reg(SInt(66.W));private val lengthSquareY=Reg(SInt(66.W))
+  private val joinedLengthX=SplitSignedProduct.join(lengthPartsX);private val joinedLengthY=SplitSignedProduct.join(lengthPartsY)
+  private val lengthSum=Module(new BlockPrefixAdder(67))
+  lengthSum.io.a:=lengthSquareX.pad(67).asUInt;lengthSum.io.b:=lengthSquareY.pad(67).asUInt;lengthSum.io.carryIn:=false.B
   private val pointSize=Reg(UInt(24.W));private val lineSize=Reg(UInt(24.W));private val integerWidth=Reg(UInt(7.W))
   private val widthSquared=Reg(UInt(48.W));private val lineBound=Reg(UInt(115.W))
   private val px=x+&lane(0);private val py=y+&lane(1)
@@ -163,9 +168,15 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     }
     is(State.measure){
       for(i<-0 until 2){axisDelta(i):=axisB(i)-&axisA(i)}
-      length:=dx*dx+&dy*dy;majorX:=Mux(dx<0.S,-dx,dx)>=Mux(dy<0.S,-dy,dy)
-      widthSquared:=lineSize*lineSize;phase:=State.bounds
+      majorX:=Mux(dx<0.S,-dx,dx)>=Mux(dy<0.S,-dy,dy)
+      widthSquared:=lineSize*lineSize
+      when(request.point){length:=0.S;phase:=State.bounds}.otherwise{
+        lengthPartsX:=SplitSignedProduct.split(dx,dx);lengthPartsY:=SplitSignedProduct.split(dy,dy)
+        phase:=State.lengthProducts
+      }
     }
+    is(State.lengthProducts){lengthSquareX:=joinedLengthX;lengthSquareY:=joinedLengthY;phase:=State.lengthSum}
+    is(State.lengthSum){length:=lengthSum.io.sum(66,0).asSInt;phase:=State.bounds}
     is(State.bounds){
       for(i<-0 until 2){
         axisPositive(i):=axisDelta(i)>0.S;axisStationary(i):=axisDelta(i)===0.S
