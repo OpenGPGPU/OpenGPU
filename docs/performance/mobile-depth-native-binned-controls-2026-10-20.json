@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "130_checks_passed_full176_still_running",
+  "observed_utc": "2026-10-20T04:21:47.132559+00:00",
+  "scope": "Eleven completed native/shared binned image checks following119 prior controls in the same full depth run",
+  "source_files": 643,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-native-composed-source-v1.json",
+    "sha256": "42f94258ec699a2a35f1a841579d122c9e4b39006bed94e6155f00431bdc3a57"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-native-composed-source-v1.tar.gz",
+    "sha256": "68de99e6934a86bf578ceaca533ba880648fde47057973cb7b46c433ac2fa2bd"
+  },
+  "log_prefix": {
+    "path": ".artifacts/mobile-depth-native-binned-controls-v1.log",
+    "sha256": "e5399bf408933e7f08728e675fe4f7d13650f9a5d1eec0bca568c5e387d83b51"
+  },
+  "sbt_pid_confirmed_live": 20063,
+  "source_unchanged_at_checkpoint": true,
+  "completed_groups": [
+    106,
+    13
+  ],
+  "passed_checks_in_current_group": {
+    "MemoryNativeBinnedGraphicsPipelineSpec": 5,
+    "TypedVertexBinImageSharedSystemSpec": 6
+  },
+  "passed_at_checkpoint": 130,
+  "expected_total": 176,
+  "remaining_tests": 46,
+  "properties": [
+    "Actual shared-CU local/global native draw publication, indexed instancing, 4x MSAA backing/resolve and ownership through held final stores pass.",
+    "Record/fragment/store fault attribution, bounded cancellation, queued launches, leases, final physical acknowledgements, VM lifetime, pool drain and healthy reuse pass."
+  ],
+  "limits": [
+    "This is an immutable completed-check log prefix, not a terminal176-check result. The remaining13 prepared replay/image and33 host checks plus final host emission remain pending.",
+    "Production and ABI remain frozen; this record makes no source mutation or restart. No main production promotion, depth/face/G04/H6/H0-H8 closure or new PPA result is claimed."
+  ]
+}

@@ -5460,3 +5460,40 @@ match exactly after integration. All twenty pre-existing dirty/untracked
 driver/userspace files are preserved byte-for-byte. This is source identity
 with the completed regression, rather than a separately rerun main test group.
 The long native depth and facing regressions remain separate and in progress.
+
+
+## Qualified texture instruction policy transport (2026-10-20)
+
+An optional TexSampleUnit path now captures signed/per-axis coordinate policy
+and complete scalar/vector texture bindings at instruction admission. Direct
+and prepared requests share that snapshot. Coordinate faults accompany held
+completion, aggregate across executed lanes and suppress destination writes;
+empty vector masks preserve the old destination without sampling or faults.
+Signed gradient differences preserve opposite-sign endpoints. The full
+46-bit gradient exponent is biased before mip-range narrowing, including
+large gradients with negative bias. Invalid mip intervals join the no-read
+fault path. The [22-check execution qualification](performance/mobile-texture-execute-policy-2026-10-20.json)
+passes on 638 unchanged source files, plus four ABI checks, five RTL emissions
+and CI selection. Seven new checks cover 373 instruction cases, including
+64 faults and twenty empty vectors. One/two-lane vectors reject implicit LOD
+without reads while retaining fixed-mip and scalar selection. Four independent
+legacy profiles retain identical synthesis-active SV, ports and hierarchy;
+decoder/ISA/ABI bytes stay unchanged. Task/native descriptor transport and
+fault-owner integration remain open. No H4/H6 or PPA closure is claimed.
+
+
+## Independent native qualification update (2026-10-20)
+
+The [six-check native facing regression](performance/mobile-native-facing-2026-10-20.json)
+passes on its unchanged 645-file development source, including the 72-frame
+facing/culling/stencil matrix and four affected centroid/polygon controls.
+Across all six checks, 80 frames and 240 submitted draws pass exact shader,
+color/depth/stencil/resolve/guard and VM ownership checks. This source shares
+the separately pending depth candidate; it is not the main production source.
+
+The [full-depth run checkpoint](performance/mobile-depth-native-binned-controls-2026-10-20.json)
+now contains 130 completed checks on its unchanged 643-file source: the earlier
+119 controls plus eleven native/shared binned image checks. Thirteen prepared
+replay/image and thirty-three host checks, plus final host RTL emission, remain
+pending in the original live process. These evidence records do not promote
+that production source or close the remaining native depth/G04/H6 requirements.

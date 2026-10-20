@@ -62,3 +62,33 @@ the prepared-capable sampler. The existing nineteen checks pass again.
 Legacy coordinate and cached/prepared sampler synthesis-active SV, ports and
 hierarchy match independently emitted pre-extension baselines. New optional
 emissions contain no FPU, CU or SRAM; no new rate or PPA result is claimed.
+
+Optional `TexSampleUnit` policy/fault transport is now component-qualified.
+It snapshots scalar/vector instruction bindings, forwards prepared faults,
+aggregates faults through held completion and suppresses destination writes on
+a fault. Signed implicit LOD uses the full coordinate difference and applies
+bias before narrowing the full gradient exponent into the selected mip range.
+Instruction encodings and default legacy hardware remain unchanged; native descriptors and task-owner fault integration remain
+required before exposure.
+
+In the optional instruction unit, one- and two-lane vectors support fixed mip
+sampling. An implicit-LOD vector request without a complete four-lane quad
+returns a no-read fault; an empty execution mask remains a no-op. Scalar
+sampling still supports accepted bias/min/max selection in those profiles.
+
+The [22-check execution regression](performance/mobile-texture-execute-policy-2026-10-20.json)
+passes on 638 unchanged source/ABI/selection files, with four ABI checks, five
+RTL emissions and CI selection. Seven new controls cover 373 instruction cases,
+including 64 faults and twenty empty vectors, across 1/2/4/8/16/32 lanes plus
+the default 16-lane eight-warp scalar/vector contention profile. Checks retain
+owner/PC/warp metadata, masked destinations, held completions, all five legacy
+byte orders, reordered replies, instruction cache invalidation and healthy
+reuse. Full-quad cases distinguish signed zero crossings and full gradient
+exponents before negative bias; partial quads reject implicit LOD explicitly.
+
+Fifteen legacy execution checks pass again. Default 16-lane and bounded
+1/4/32-lane synthesis-active SV, ports and hierarchy match independently
+emitted pre-extension baselines. The enabled unit contains no FPU, CU or SRAM.
+Owners still must connect captured task/native policy and consume the held
+fault before normal completion. Actual-CU/native policy programs, floating
+coordinate conversion, general resources and performance remain unqualified.
