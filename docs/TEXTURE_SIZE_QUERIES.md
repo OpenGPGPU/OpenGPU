@@ -1,13 +1,12 @@
 # Native texture-size queries
 
-Status: [six initial decoder/native endpoint tests](performance/mobile-native-texture-size-initial-2026-10-21.json)
-pass on804 frozen inputs, along with four paired LLVM tests and the C driver
-validator. Full regression, shared-CU and synthesis qualification are in progress
-on `codex/mobile-native-texture-size`. The current main qualification does
-not cover this additional owner. The [standalone owner synthesis](performance/mobile-native-texture-size-owner-synthesis-2026-10-21.json)
-fully maps53,431 cells (library area6,559.090020) and passes1000ps with
-core/I/O setup slacks+244.333/+402.731ps at TC/SLVT,25% I/O, standard ABC and
-no retiming. Full native endpoint synthesis remains pending.
+Status: [40 native texture component tests and nine descriptor ABI checks](performance/mobile-native-texture-size-components-2026-10-21.json)
+pass on804 frozen inputs. The paired four LLVM tests and strict C validator
+also pass. The [standalone query owner](performance/mobile-native-texture-size-owner-synthesis-2026-10-21.json)
+and [both whole native endpoints](performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json)
+pass1000ps synthesis including I/O. Fresh full shared-CU and translated AXI
+qualification remain running on `codex/mobile-native-texture-size` and its
+separate AXI test snapshot;this owner is not merged into main yet.
 
 `opengpu.tex.size.c` uses custom0/function6; `opengpu.vtex.size.c` uses
 custom1/function6 with normal RVV masks. Components0/1/2 return width, height,
@@ -45,8 +44,8 @@ It adds all three scalar/vector component forms, masked MC cases, extension
 checks and an ordinary scalar C inline-assembly helper. Existing encodings and
 descriptor layouts are preserved.
 
-Pending gates include full native owner regression, actual shared-CU/AXI query
-programs, fresh whole-endpoint synthesis, compiler/API lowering and the remaining
+Pending gates include actual shared-CU/AXI query programs,compiler/API lowering
+and the remaining
 H0-H8 requirements. PPA remains synthesis only.
 
 Both [complete native endpoints](performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json)
