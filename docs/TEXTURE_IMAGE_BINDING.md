@@ -32,7 +32,10 @@ uncached 64-byte reads. Tables start on 64-byte boundaries, contain whole record
 and can end exactly at 4 GiB. Wide handle/extent arithmetic precedes reads.
 The [C header](../driver/opengpu_texture_image_binding_abi.h) and
 [JSON layout](abi/texture-image-binding-v1.json) are generated from the RTL fields.
-Narrow fields have canonical zero padding; words 23 through 31 are reserved zero.
+Narrow fields have canonical zero padding. Words23–27 now carry an optional
+[image-view swizzle extension](TEXTURE_IMAGE_SWIZZLE.md), negotiated by GTF1
+word7 bit0. All-zero extension words retain legacy identity behavior;
+words28–31 remain reserved zero.
 
 | Word | Contents |
 |---:|---|
@@ -43,6 +46,8 @@ Narrow fields have canonical zero padding; words 23 through 31 are reserved zero
 | 11 / 12 / 13 / 14 | Logical level-zero width, height, depth and layer count |
 | 15 / 16–17 | Allocation base and 33-bit exclusive limit |
 | 18 / 19 / 20–21 / 22 | Level-table version, base, exclusive limit and first handle |
+| 23 / 24–27 | Optional swizzle version and four component selectors |
+| 28–31 | Reserved zero |
 
 Logical level-zero dimensions determine the sequence; unused lower levels need
 no descriptor or texel storage. `firstLevelHandle + level` selects a GXL1 record.
