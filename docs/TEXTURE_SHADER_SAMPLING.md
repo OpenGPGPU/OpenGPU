@@ -5,8 +5,11 @@ passes 128 distinct tests across 21 suites and nine unchanged ABI checks.
 It includes 299 successful resource-bound queries per shader stage, root address
 zero and exact 4 GiB end, fourteen malformed root/binding cases and eighteen
 cancellation cuts per stage. Eight child/standalone RTL profiles are byte-exact
-to their positive parent screens. Both new stage-owner synthesis runs remain
-pending; no timing pass is claimed for this owner. This is an internal resource/operand endpoint. CU instruction decoding,
+to their positive parent screens. The [first stage-owner synthesis record](performance/mobile-shader-resource-sampling-v1-2026-10-21.json)
+passes fragment setup at +5.035/+390.042ps core/I/O, while vertex setup misses
+by 14.454ps (+394.554ps I/O). Both map completely at unchanged 1000ps. The
+critical index-to-magnitude-product path needs a register cut; no combined
+owner timing pass is claimed. This is an internal resource/operand endpoint. CU instruction decoding,
 scalar/vector operand transport and retirement, compiler/validator adoption and
 native frame integration remain open. No software record, native opcode or
 capability is changed or advertised here.
