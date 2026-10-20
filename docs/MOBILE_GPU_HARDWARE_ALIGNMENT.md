@@ -18,7 +18,7 @@ The initial OpenGPU product target is four shared CUs, with a 720p workload suit
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
 
-Latest resource checkpoint: [GXS1/GXI1 admission](TEXTURE_SAMPLER_BINDING.md) qualifies ten new sampler controls plus ten existing image controls. Both standalone synthesis setup screens pass at 1000 ps. Native binding tables and typed shader transport remain open.
+Latest texture checkpoint: native image bindings and typed component fetch cover all 64 storage formats. [Image-view swizzle](TEXTURE_IMAGE_SWIZZLE.md) now passes 138 targeted controls and four standalone synthesis screens at 1000 ps. General floating-coordinate sampling, filtering, LOD and scalable texture throughput remain open.
 
 ## Current hardware and gaps
 
@@ -6566,3 +6566,41 @@ byte identical to its earlier positive screen. CI-only final edits preserve all
 production and Scala/C test inputs byte for byte. These results do not qualify
 whole-host timing, physical power, Mobile frame budgets or full H0–H8 hardware
 completion. PPA remains synthesis only and hardware development continues.
+
+
+## Image-view component swizzle qualification (2026-10-20)
+
+The [swizzle checkpoint](performance/mobile-image-swizzle-2026-10-20.json)
+captures optional GXI1 component mappings and applies them after typed decode.
+Legacy all-zero descriptors retain identity behavior; the negotiated extension
+can select R/G/B/A/ZERO/ONE independently, including typed float/integer ONE.
+GTF1 word7 bit0 advertises the extension. Existing descriptor offsets, format
+IDs, instruction encodings and external memory credits remain unchanged.
+
+All 138 distinct targeted tests pass against 770 committed source inputs. The
+numeric checks cover every 1,296 selector tuple across three component kinds
+and three bit patterns, all 16,384 encoded states, 216 bound uncompressed cases
+and 768 native component checks per shader stage across all 64 formats.
+Constant mappings retain coordinate and data faults; later active vector-lane
+faults suppress every destination write. Cache snapshots, explicit publication
+invalidation and held completions preserve the captured mapping.
+
+Shared vertex/fragment CUs execute 572 typed stage draws across both payload
+modes, including all 64 formats with explicit mappings. Translated native AXI
+executes 68 typed frames and 204 submitted primitive draws, with 28 formats
+using the extension in both shader stages. The retained legacy paths add 84
+stage draws and 14 AXI frames. Nine ABI generators, combined C11 headers and
+CI selection pass. The initial FP32-ONE test expectation error is retained;
+correcting that fixture required no production RTL change.
+
+Four fresh [synthesis setup screens](performance/mobile-image-swizzle-synthesis-2026-10-20.json)
+pass with full mapping at 1000 ps, TC/SLVT, 25% I/O, default ABC and no retiming:
+bound fetch +166.594/+400.121 ps, sampler admission +214.933/+425.783 ps,
+endpoint +180.831/+396.942 ps and native wrapper +136.810/+165.746 ps
+(core/I/O). All source and emitted-RTL manifests remain exact.
+
+This closes image-view swizzle for typed component fetch. General normalized
+sampling/filtering/LOD/depth comparison, banked caches, throughput, publication
+and coherence, compiler/driver adoption and the remaining H0–H8 requirements
+remain open. These standalone screens do not establish whole-GPU timing, power
+or frame-rate closure. PPA remains synthesis only.
