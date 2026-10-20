@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "qualified_internal_texel_offset_sampler_merged_and_audited_on_main",
+  "main_commit": "b0c4bd5c5108e267a08fc52222cae602ce696465",
+  "qualified_source_commit": "ae517f789a073263034fd6328bb933dd13594b97",
+  "source_files": 799,
+  "source_manifest_sha256": "462563114b705e156d4e64b1808296838689d87a908d0e7608ae1c9c90aeb320",
+  "parent_catalog_plus_delta_exact": true,
+  "root_main_and_qualified_worktree_source_exact": true,
+  "main_git_archive_source_exact": true,
+  "main_archive_sha256": "8050b9bdf62136fb4a5a3f9b52046f5b07dd650fe9ff9aa40f9ee5d3637b08a8",
+  "distinct_tests": 124,
+  "ABI_checks": 9,
+  "existing_software_ABIs_unchanged": true,
+  "test_and_synthesis_artifact_hashes_exact": true,
+  "synthesis_profiles": {
+    "axis": [
+      169.396,
+      632.673
+    ],
+    "resolver": [
+      49.064,
+      477.467
+    ],
+    "sample": [
+      34.426,
+      411.929
+    ]
+  },
+  "five_standalone_profiles_carried_byte_exact": true,
+  "new_commits_checked_for_exactly_one_agent_trailer": 5,
+  "user_files_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": 420
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": 420
+    }
+  },
+  "remaining": [
+    "Native scalar/vector floating transport and compiler/validator integration",
+    "Real CU/raster helper transport and vertex automatic LOD",
+    "Texture queries and projective lowering",
+    "Integer texel-fetch offset lowering",
+    "On-chip common path, banking, throughput, coherence and full H0-H8"
+  ]
+}
