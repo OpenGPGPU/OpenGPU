@@ -52,9 +52,12 @@ one cycle;event counts and warm input/output II1 remain unchanged. Packed read-t
 synthesis now passes1000ps including I/O (+41.862/+11.396ps),with750,012
 fully mapped cells. FP32 improves but fails (-6.794/-48.922ps),with754,779
 mapped cells. Its remaining path crosses shared-owner cancellation selection,
-return credits and tap telemetry. Translated synthesis remains active;scalar
-epoch-control and registered telemetry are qualified separately before main
-integration.
+return credits and tap telemetry. Translated synthesis now passes 1000 ps
+including I/O (+46.194/+193.375 ps), with 943,830 fully mapped cells and
+122,463.368640 mapped library area. All 822 source inputs and 29 active RTL
+files remained unchanged. Scalar epoch-control and registered telemetry are
+qualified separately before main integration. These are synthesis-only component
+results;native wiring and whole-GPU timing remain open.
 
 The [epoch-control correction](performance/mobile-banked-texture-epoch-control-2026-10-21.json)
 passes46 checks again on822 frozen inputs. Since word-service cancellation is

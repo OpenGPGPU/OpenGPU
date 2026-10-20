@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "forty_six_checks_and_packed_synthesis_pass_FP32_timing_failed_translated_synthesis_running",
+  "status": "forty_six_checks_packed_and_translated_synthesis_pass_FP32_timing_failed",
   "source": {
     "commit": "18668e44343de5a3253b07b9c128e709111d0223",
     "source_files": 822,
@@ -288,7 +288,7 @@
       }
     },
     "translated": {
-      "status": "running",
+      "status": "passed",
       "session": 83115,
       "start": {
         "wrapper_pid": 23661,
@@ -312,6 +312,92 @@
           "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-translated-v1"
         ],
         "started_utc": "2026-10-20T21:41:11.715080+00:00"
+      },
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 2189.4469848340377,
+        "finished_utc": "2026-10-20T22:17:41.186571+00:00"
+      },
+      "passed": true,
+      "slacks_ps": [
+        46.194,
+        193.375
+      ],
+      "fully_mapped": true,
+      "mapped_cells": 943830,
+      "mapped_library_area": 122463.36864,
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "yosys",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          46.194,
+          193.375
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "1a07b7fce683e97c9d8c55c4c23b25db56dca12d0ae9973f0943b549f2403514",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-translated-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "log_sha256": "cd1c08a6b2e2b27df94aedd4465425b81ab1a0188d650967010f1c57a680c188",
+          "logs": [
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-translated-v1/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "94e1454c701737d17236c6bd8dfc9068166bc5d20907d05f63598cbc0ee5ca92"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-translated-v1/flow/orfs-work/logs/base/1_2_yosys.log",
+              "sha256": "b6fb8016dc8441c7f3865ce45ee612f0599d51a685a5c80df226d566ef2aad5f"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-translated-v1/flow/orfs-work/reports/base/synth_stat.txt",
+              "sha256": "cd1c08a6b2e2b27df94aedd4465425b81ab1a0188d650967010f1c57a680c188"
+            }
+          ],
+          "combined_log_sha256": "63c5f18965a85212ce0a9572b35b4365480d77f91698fc30666289ec87b5400e"
+        }
+      },
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-translated-v1/qualification.json": "046bc6bb78035333651a0790d0def6b0301fd5df8dd583faea65244f39050dc7",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-translated-v1/result.json": "1fcd5b831fc866a84b827463cd651c1a7b9316af1d2ab33c1d2ef680d4bc512c",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-translated-v1/flow/flow_manifest.json": "8d12a5fc81943bade2dda14e604c35618786d6d8de7480087735c3a1c5b9ad60",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-translated-v1/flow/synthesis_sta.log": "1a07b7fce683e97c9d8c55c4c23b25db56dca12d0ae9973f0943b549f2403514",
+        "generated/qualification/ppa/mobile-banked-texture-shared-admission-2026-10-21-translated-v1/flow/orfs-work/reports/base/synth_stat.txt": "cd1c08a6b2e2b27df94aedd4465425b81ab1a0188d650967010f1c57a680c188",
+        ".artifacts/mobile-banked-texture-shared-admission-translated-synthesis-v1-inputs.json": "b81c1a1ed40c657b7dba868bad88592ea3db650b26f6411cbe516ee5bfe8cd1b",
+        ".artifacts/mobile-banked-texture-shared-admission-translated-synthesis-v1-result.json": "3ff828ba092a610d992a295c1ccd6cff9f83edddc53655debc21e6a827a01286"
       }
     }
   },
@@ -331,7 +417,7 @@
     ".artifacts/mobile-banked-texture-shared-admission-translated-synthesis-v1-start.json": "b6c1e6e1105aacf35b84c801cb7d7ba8508c2be57c8d898bbc075ff0909c93b4"
   },
   "remaining": [
-    "collect translated synthesis and qualify the scalar epoch-control correction before main integration",
+    "qualify the scalar epoch-control correction before main integration; the shared-admission FP32 profile retains its negative timing result",
     "native resource/coordinate planning and shared-CU texture-cluster wiring",
     "whole-native numeric precision/rates with memory contention",
     "render-to-texture visibility and full H0-H8 gates"
