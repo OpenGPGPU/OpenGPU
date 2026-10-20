@@ -6845,3 +6845,24 @@ continues to isolate identity/tag rows in the translated parent. Three fresh
 synthesis screens remain active under unchanged1000ps constraints. Existing
 native FP32 coordinate/filter semantics still need explicit preservation when
 connecting this Q16-weighted service to shared CU sampling;H0-H8 remain open.
+
+## H4 unquantized FP32 bilinear pipeline
+
+The [streaming native FP32 filter](TEXTURE_BILINEAR_FP32_PIPELINE.md) now passes
+[46 checks and two emissions on 825 frozen inputs](performance/mobile-texture-bilinear-fp32-2026-10-21.json).
+It retains full FP32 axis weights and the native separately rounded inverse and
+product followed by fused sum. Endpoint/equal-bit bypasses, subnormal weights,
+NaNs/infinities, invalid inputs and globally drained cancellation are covered.
+A decoded-texel stream sustains 192 complete groups at input/output II1; another
+384 groups exercise backpressure. Thirteen cancellation cuts include two actual
+saturation witnesses and healthy reuse.
+
+The work also corrects FMA public-result flush and accepted-row metadata bugs
+exposed by changing/invalid input operands. Earlier negative results remain in
+the record. The eighteen vector wrapper regressions also pass. Corrected default
+FMA synthesis passes 1000 ps including I/O (+210.909/+434.695 ps), with 11,091
+fully mapped cells. Complete-filter synthesis is still running. Changed default
+FMA logic requires fresh native endpoint timing before main
+integration. Raw banked tap forwarding, texel decode, native resource/coordinate
+admission, shared-CU routing and whole-native precision/rates/coherence remain
+required. The Q16 weighted-sum service remains a separate contract; H0-H8 stay open.

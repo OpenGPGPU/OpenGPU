@@ -35,10 +35,24 @@ format fault keeps priority. One public result queue preserves an already offere
 completion under cancellation and backpressure. Work remains busy until every
 public completion retires. New work can enter after the drained epoch reopens.
 
-The first frozen 825-input candidate (`a4e5fc7`) passed 23 of 25 checks.
-The 192-group input/output II1 and 384-group backpressure checks passed, as did
-the thirteen cancellation cuts. A new held-result flush test exposed an FMA
-wrapper bug, and an arbitrary FP32 numeric case disagreed with the software
-reference. The wrapper now explicitly clears its public valid register on flush;
-the numeric mismatch is under investigation. Neither full numeric qualification
-nor synthesis is claimed. Native banked integration remains open.
+The [825-input qualification](performance/mobile-texture-bilinear-fp32-2026-10-21.json)
+now passes 46 fresh checks across six suites and two RTL emissions. These include 788 bilinear
+numeric rows, 2,176 changing-input FMA reference rows, 192 complete groups at
+input/output II1, 384 backpressured groups and thirteen cancellation cuts. Two
+cuts offer until actual backpressure; every cut drains and reuses the epoch.
+
+Earlier candidates exposed a held-result flush bug and missing subtraction,
+sticky-bit and infinity-sign delays in the existing FMA pipeline. Directed
+negative evidence is retained. Isolated requests with unchanged input bits hid
+the rounding failure; poisoning invalid inputs and streaming unrelated rows
+reproduced it. The corrected pipeline preserves the same five arithmetic stages.
+
+The default FMA logic has changed, so old native endpoint timing is not carried.
+The corrected default FMA passes synthesis at 1000 ps including I/O, with
++210.909/+434.695 ps slack, 11,091 fully mapped cells and 1,366.306380 mapped
+library area. The complete filter screen is still running under the same
+TC/SLVT, 25% I/O, standard ABC constraints, without retiming or place/route.
+The eighteen vector FMA/reduction wrapper regressions also pass. Native raw-tap forwarding,
+texel decode, resource/coordinate admission, shared-CU routing and whole-native
+precision/rates/coherence remain open. This component rate is measured from
+already decoded texels and weights, not from shader instructions.

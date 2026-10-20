@@ -1,0 +1,389 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "forty_six_checks_two_emissions_and_default_FMA_synthesis_pass_filter_synthesis_running",
+  "source": {
+    "commit": "edd9320dc7325c264a2199b03fd617dfdbc55bf6",
+    "source_files": 825,
+    "manifest_sha256": "28f42623062849ec28615449182bb09330ef0e335bf2931a7fa4e7329fce7249",
+    "archive_sha256": "6f30ee9bb858039cbbb7e4951e9bf4d701b0bd37b991863c4f9fe0c6bab8d175",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/main/scala/yunsuan/fpu/FloatFMA.scala",
+      "src/test/scala/opengpu/core/execute/fpu/Fp32FmaLaneSpec.scala"
+    ],
+    "added_inputs": [],
+    "runner_pid": 90196,
+    "started_utc": "2026-10-20T22:31:56.782977+00:00"
+  },
+  "changes_from_epoch_control": {
+    "changed_inputs": [
+      "src/main/scala/opengpu/core/execute/fpu/Fp32FmaLane.scala",
+      "src/main/scala/yunsuan/fpu/FloatFMA.scala",
+      "src/test/scala/opengpu/core/execute/fpu/Fp32FmaLaneSpec.scala",
+      "src/test/scala/opengpu/graphics/TextureLinearFilterUnitSpec.scala"
+    ],
+    "added_inputs": [
+      "src/main/scala/opengpu/elaboration/EmitTextureBilinearFilter.scala",
+      "src/main/scala/opengpu/graphics/TextureBilinearFilterPipeline.scala",
+      "src/test/scala/opengpu/graphics/TextureBilinearFilterPipelineSpec.scala"
+    ]
+  },
+  "functional_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 53.626963207963854,
+    "commit": "edd9320dc7325c264a2199b03fd617dfdbc55bf6",
+    "source_files": 825,
+    "manifest_sha256": "28f42623062849ec28615449182bb09330ef0e335bf2931a7fa4e7329fce7249",
+    "archive_sha256": "6f30ee9bb858039cbbb7e4951e9bf4d701b0bd37b991863c4f9fe0c6bab8d175",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/main/scala/yunsuan/fpu/FloatFMA.scala",
+      "src/test/scala/opengpu/core/execute/fpu/Fp32FmaLaneSpec.scala"
+    ],
+    "added_inputs": [],
+    "runner_pid": 90196,
+    "started_utc": "2026-10-20T22:31:56.782977+00:00"
+  },
+  "emission_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 8.658233584137633
+  },
+  "distinct_passed_tests": 46,
+  "suites": {
+    "Fp32FmaLaneSpec": 13,
+    "FpuBackendSpec": 8,
+    "TextureLinearFilterUnitSpec": 4,
+    "TextureBilinearFilterPipelineSpec": 3,
+    "VectorFmaAluSpec": 12,
+    "VectorFReduceAluSpec": 6
+  },
+  "numeric_contract": "Two axes, FP32 decoded RGBA texels and unquantized FP32 weights. Each pair uses RNE(1-w), RNE(a*inverse), then FMA(w,b,product), preserving endpoint and identical-bit bypasses. No Q16 substitution.",
+  "coverage": {
+    "bilinear_numeric_rows": 788,
+    "FMA_changing_input_numeric_rows": 2176,
+    "arbitrary_FMA_rows": 2048,
+    "continuous_complete_groups": 192,
+    "input_II": 1,
+    "output_II": 1,
+    "backpressured_complete_groups": 384,
+    "cancel_cuts": 13,
+    "cancel_saturated_until_actual_backpressure_cuts": 2,
+    "immutable_public_cancel_witnesses": 4,
+    "hidden_cancel_or_format_rows": 278,
+    "healthy_reuse_after_each_cut": true,
+    "default_and_sixteen_credit_held_FMA_flush": true
+  },
+  "architecture": {
+    "FMA_lanes": 26,
+    "FMA_request_credits_per_lane": 16,
+    "existing_default_FMA_credits": 5,
+    "axis_stages": 2,
+    "metadata_queues_per_axis": 3,
+    "entries_per_metadata_queue": 16,
+    "outstanding_group_limit": 128,
+    "public_result_entries": 1,
+    "cancel": "Stop admission through complete epoch drain, poison hidden rows and preserve held public completion. Accepted arithmetic is never flushed."
+  },
+  "negative_evidence": {
+    "v1": {
+      "tests": 25,
+      "passed": 23,
+      "failures": [
+        "held FMA result survives flush",
+        "streamed subnormal FP32 mismatch"
+      ]
+    },
+    "v2": {
+      "tests": 25,
+      "passed": 24,
+      "failures": [
+        "streamed subnormal FP32 mismatch"
+      ]
+    },
+    "v3": {
+      "tests": 2,
+      "passed": 2,
+      "scope": "Isolated FMA and serialized filter retain unchanged request bits; this does not reproduce the streaming failure."
+    },
+    "v4": {
+      "tests": 3,
+      "passed": 1,
+      "failures": [
+        "invalid input poisoning changes accepted FMA",
+        "following row changes FMA rounding metadata"
+      ],
+      "observed": "a39dbe56",
+      "expected": "a39dbe57",
+      "operands": [
+        "00000001",
+        "ee1dbef6",
+        "1b9f5fea"
+      ]
+    },
+    "v5": {
+      "tests": 28,
+      "passed": 27,
+      "failures": [
+        "streaming infinity sign metadata is two pipeline stages short"
+      ],
+      "observed": "7f800000",
+      "expected": "ff800000"
+    }
+  },
+  "corrections": [
+    "Clear FMA public valid on reset/flush even when output ready is low.",
+    "Capture subtraction at request acceptance.",
+    "Delay alignment sticky through both carry-select stages before rounding.",
+    "Delay FP32 infinity sign through both carry-select stages."
+  ],
+  "old_native_endpoint_synthesis_carried": false,
+  "synthesis_policy": "Synthesis only, 1000 ps, TC/SLVT, 25% I/O, standard ABC, no retiming or place/route.",
+  "synthesis_jobs": {
+    "fma": {
+      "status": "passed",
+      "session": 55955,
+      "start": {
+        "wrapper_pid": 97511,
+        "flow_pid": 97514,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-texture-bilinear-fp32-v1-worktree/generated/mobile-h4/default-fma-bilinear-v6-rtl",
+          "Fp32FmaLane",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1"
+        ],
+        "started_utc": "2026-10-20T22:33:10.481784+00:00"
+      },
+      "inputs": {
+        "source_manifest_sha256": "28f42623062849ec28615449182bb09330ef0e335bf2931a7fa4e7329fce7249",
+        "source_files": 825,
+        "active_RTL_sha256": {
+          "BoothEncoderF64F32F16.sv": "7d13c83ce7a6a6bc48b8755471b55f88ef383c9e4e1fc706cbb3f9a63d3520fa",
+          "CSA3to2.sv": "1f318c212993fbc579a21f970b8ab95a4f4e13886b792582b80eafd515e7c1c3",
+          "CSA4to2.sv": "b5e94dc39a2a62e53e5eb272f054721b2b4829bf48505cef7f0d356c29c9c9e6",
+          "CSA_Nto2With3to2MainPipeline.sv": "9bd306e68ae07da4b1a88d6978f9f3ab2f35012c2261552749122ac6bd963980",
+          "FloatFMA.sv": "a0b88743f01a866bc823b3fd3d9c55ab0735bacae32607c948941117d1c0abd8",
+          "ram_5x53.sv": "34c263c440aad4c08203565b4ba063d74159470758242636eb9bcd1e735af630",
+          "Queue5_Fp32Response.sv": "9495a6fd288e18cfc2d21865d29611baf65e41e75f172cd6ff5a5335b8af7101",
+          "Fp32FmaLane.sv": "cbd3c88e816f31b1314bc183308282473d1a6ac56d07d259da52b8c154e74328"
+        },
+        "functional_tests_passed": 28,
+        "scope": "Synthesis only,1000ps,TC/SLVT,25% I/O,standard ABC,no retiming or route.",
+        "profile": "fma",
+        "module": "Fp32FmaLane"
+      },
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 48.62051512487233,
+        "finished_utc": "2026-10-20T22:33:59.099800+00:00"
+      },
+      "passed": true,
+      "slacks_ps": [
+        210.909,
+        434.695
+      ],
+      "fully_mapped": true,
+      "mapped_cells": 11091,
+      "mapped_library_area": 1366.30638,
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "yosys",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          210.909,
+          434.695
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "572f79569d633eb99806eb4cb42e41a7848070f0c7795880299173ddeec4917d",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "log_sha256": "2553bc327951f49db335533dbdb1cc3337373a4620c01a2fd8a01ab4aba24f0b",
+          "logs": [
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "eebdef6da5e970843fd64ecb778590a3eb722d6d874757a58dbd0af3a592cc2d"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/flow/orfs-work/logs/base/1_2_yosys.log",
+              "sha256": "696c70a379b93c1fcde6f89f5121516a17a1ebc881a24108014c3579e5226c5e"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/flow/orfs-work/reports/base/synth_stat.txt",
+              "sha256": "2553bc327951f49db335533dbdb1cc3337373a4620c01a2fd8a01ab4aba24f0b"
+            }
+          ],
+          "combined_log_sha256": "f6721fe2c5ab90dd806ded2e38acc38b6f374d757744e153aa534649ce1daf54"
+        }
+      }
+    },
+    "filter": {
+      "status": "running",
+      "session": 18337,
+      "start": {
+        "wrapper_pid": 97512,
+        "flow_pid": 97515,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-texture-bilinear-fp32-v1-worktree/generated/mobile-h4/texture-bilinear-fp32-v6-rtl",
+          "TextureBilinearFilterPipeline",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-filter-v1"
+        ],
+        "started_utc": "2026-10-20T22:33:10.483333+00:00"
+      },
+      "inputs": {
+        "source_manifest_sha256": "28f42623062849ec28615449182bb09330ef0e335bf2931a7fa4e7329fce7249",
+        "source_files": 825,
+        "active_RTL_sha256": {
+          "BoothEncoderF64F32F16.sv": "7d13c83ce7a6a6bc48b8755471b55f88ef383c9e4e1fc706cbb3f9a63d3520fa",
+          "CSA3to2.sv": "1f318c212993fbc579a21f970b8ab95a4f4e13886b792582b80eafd515e7c1c3",
+          "CSA4to2.sv": "b5e94dc39a2a62e53e5eb272f054721b2b4829bf48505cef7f0d356c29c9c9e6",
+          "CSA_Nto2With3to2MainPipeline.sv": "9bd306e68ae07da4b1a88d6978f9f3ab2f35012c2261552749122ac6bd963980",
+          "FloatFMA.sv": "7c3c8da412e28aa86a7bc3887b6d9ed97413603861bda80520f3d3e88da52f7d",
+          "ram_16x32.sv": "5f5723e14c7c7b4a35904719e6adcd44cd8b3f51614a36bb4748b993ca4e9c6a",
+          "Queue16_Fp32Response.sv": "1b2cd625e24a32df9ded6d7f3a4e879168fa6fb94536e8015d42dbd1e3401428",
+          "Fp32FmaLane.sv": "58fe3bad662e3c9f5e897df4b432c4d82c26f616e1d9dd7f3a8a6db4fb23b376",
+          "ram_16x609.sv": "e341a46c2f425b142c3d1117993a5191170bbe802ef188f9cec92cc4acbfd803",
+          "Queue16_TexturePairInput.sv": "b592ce11b9c133b8c92a9d291d79c958d4adcf8e3f4d6962086d27657d48427d",
+          "TexturePairPipeline.sv": "e07d05b9cf339aabb6171e574b20d7d108054f0f410ff0acb87e2acc7f5281f9",
+          "ram_16x321.sv": "d8f628bc8f58aebc938ef39118ea6244f992ebd35ebaf8ce8defbd4a7830eabb",
+          "Queue16_TexturePairInput_3.sv": "0e058e8779f5ee346b73d419928b7150e512438b72879804dc7c33636d6b6250",
+          "TexturePairPipeline_1.sv": "0e36f702a36c0592170920ab9a07a20bf021e7d5f74d1a1d19e2c9b760c22b1f",
+          "Queue1_TextureLinearFilterResult.sv": "c1f2947c0ad1e86786ec557524391a174c5a1bf1095923eeda193d13dec45ca0",
+          "TextureBilinearFilterPipeline.sv": "773346332d99994787c175f9f346805e817608b482589d9bf1197d8e2d8d8cf9"
+        },
+        "functional_tests_passed": 28,
+        "scope": "Synthesis only,1000ps,TC/SLVT,25% I/O,standard ABC,no retiming or route.",
+        "profile": "filter",
+        "module": "TextureBilinearFilterPipeline"
+      }
+    }
+  },
+  "vector_regression": {
+    "status": "passed",
+    "session": 57608,
+    "expected_tests": 18,
+    "terminal": {
+      "returncode": 0,
+      "source_unchanged": true,
+      "source_manifest_sha256": "28f42623062849ec28615449182bb09330ef0e335bf2931a7fa4e7329fce7249",
+      "elapsed_seconds": 45.23806275008246,
+      "expected_tests": 18,
+      "suites": [
+        "VectorFmaAluSpec",
+        "VectorFReduceAluSpec"
+      ]
+    },
+    "passed_tests": 18
+  },
+  "remaining": [
+    "Collect complete-filter synthesis. Default FMA synthesis now passes including I/O; this does not qualify composed native endpoints.",
+    "Fresh composed native endpoint synthesis before integrating changed FMA logic on main.",
+    "Forward raw banked taps and decode texels before this filter, retaining full FP32 weights and exact active-tap permission checks.",
+    "Native resource/coordinate planning and shared-CU routing.",
+    "Whole-native precision, throughput, contention and coherence; all H0-H8 gates remain open."
+  ],
+  "artifacts_sha256": {
+    ".artifacts/mobile-texture-bilinear-fp32-v1-source.json": "973be8ae2331d2d105eb37d730c1263d6826d6198c7c82bb9ed2b0223e0aff35",
+    ".artifacts/mobile-texture-bilinear-fp32-v1-source.tar.gz": "93aafae5cd495f3cef114c8a6f5585a95c4543641b20c9ff6c989df9bafd58a9",
+    ".artifacts/mobile-texture-bilinear-fp32-v1-source-proof.json": "046547342d4ffb83c4dd1364ff82027762f8f64f6ff8c09161669ef66fd17eea",
+    ".artifacts/mobile-texture-bilinear-fp32-v1-result.json": "2fbf58155cc42fa766b42ca22d188b4a25a7b5b858cd9e67ea82c3b4ce5b8b23",
+    ".artifacts/mobile-texture-bilinear-fp32-v1.log": "9c00aaaf1ecc8870870fb6633a7c3718e7749260c140c5ec40cc4d72def22c8b",
+    ".artifacts/mobile-texture-bilinear-fp32-v2-source.json": "8c20195fdee1c53de2fca261a9bbedeb8a8e81d79dee75ee6f0c67b6e992ccb0",
+    ".artifacts/mobile-texture-bilinear-fp32-v2-source.tar.gz": "07172c6a39795b8f8434b5b064c70d99dedee7bf6572c944eed555eb81b5e7f9",
+    ".artifacts/mobile-texture-bilinear-fp32-v2-source-proof.json": "6d30ec8c5671b65252461e89e404131aa7b15b741fa3ef7e7917b3508c1907e5",
+    ".artifacts/mobile-texture-bilinear-fp32-v2-result.json": "d9f80bcfd286966f34c331b199d227081db16729126d22ab5c9a53e6222d8017",
+    ".artifacts/mobile-texture-bilinear-fp32-v2.log": "37436270a659bd42e07b6e7e9c23bbfda8b3c3d637d00e8e0e375a7ae89cab4f",
+    ".artifacts/mobile-texture-bilinear-fp32-v3-source.json": "0219b73e1e469300b0b0f0b04b6070f17808395cc58db070ef44d60aa3d8238e",
+    ".artifacts/mobile-texture-bilinear-fp32-v3-source.tar.gz": "ef95dd6ea000c8cf79e8674531da2cccaa4dca7bfa1abfabe90aa7080818314a",
+    ".artifacts/mobile-texture-bilinear-fp32-v3-source-proof.json": "24a66374daa5ef3a6828f233ba6a11754a59770efd288b2d6fac60ad97743dbb",
+    ".artifacts/mobile-texture-bilinear-fp32-v3-result.json": "ebe8519f324930af38b4924f855e8cc554b92d308eb2be82143e54d9c897ae24",
+    ".artifacts/mobile-texture-bilinear-fp32-v3.log": "98f91435b08030f37e9a2f6ab97291cbe2cff7f1ab889c8a03fa72151997e43d",
+    ".artifacts/mobile-texture-bilinear-fp32-v4-source.json": "a371f289780f503ed7e2156a8e32cfe677ac2976555584ce17e93ebf7411ed7f",
+    ".artifacts/mobile-texture-bilinear-fp32-v4-source.tar.gz": "be3749b4e342bebf1bc311a7d836423472e236b952ea7e0614c20bede0c6e36e",
+    ".artifacts/mobile-texture-bilinear-fp32-v4-source-proof.json": "1cd12b3c8f87250bd7ae8b86a889094d8b5b4fd7912de1607bf12190e92d8cc5",
+    ".artifacts/mobile-texture-bilinear-fp32-v4-result.json": "f948471878089fc909f431babf2fb57bf3649f0c2a2293fab514e3254b272794",
+    ".artifacts/mobile-texture-bilinear-fp32-v4.log": "178aefc87338e93b61d9bbc5ddf8ad7ac9d3f1de4c126e33b1ff114a5b580692",
+    ".artifacts/mobile-texture-bilinear-fp32-v5-source.json": "157985c9bccfbbe6e0112942b2b6652f245361d868dec570a09eb7abefe5ef63",
+    ".artifacts/mobile-texture-bilinear-fp32-v5-source.tar.gz": "3b64390aee25a631d4fe2fdfd1beb3b91eaea31cc06df9d718080093fc48b23c",
+    ".artifacts/mobile-texture-bilinear-fp32-v5-source-proof.json": "2a70b57ac774bdd7379acf2ec4208048082fecdb9646b0263c086ce931732235",
+    ".artifacts/mobile-texture-bilinear-fp32-v5-result.json": "8465b76d1940874bc59b10307b973fa75fcaea1fd78b7a14e54b873d91848c6a",
+    ".artifacts/mobile-texture-bilinear-fp32-v5.log": "bdd5534618d9eaebc8b4ece425e0995951b3e89a023c03cc3fcee1db816e3be3",
+    ".artifacts/mobile-texture-bilinear-fp32-v6-source.json": "28f42623062849ec28615449182bb09330ef0e335bf2931a7fa4e7329fce7249",
+    ".artifacts/mobile-texture-bilinear-fp32-v6-source.tar.gz": "6f30ee9bb858039cbbb7e4951e9bf4d701b0bd37b991863c4f9fe0c6bab8d175",
+    ".artifacts/mobile-texture-bilinear-fp32-v6-source-proof.json": "58ba4819c2b717452d77607d79bac3ad00dd0654cd2961468ad4e7e8eaaefc98",
+    ".artifacts/mobile-texture-bilinear-fp32-v6-result.json": "59cf54e890585b1536da7aa8b54cf3d25b6910f36b7d63a30ba3ad6fa209c680",
+    ".artifacts/mobile-texture-bilinear-fp32-v6.log": "c8e5d8cc1130b7dbe56a9b15cb1efe3a37e79d6010534e92f571ac6217be0762",
+    ".artifacts/mobile-texture-bilinear-fp32-v6-emission.log": "a4569cb183e3ca3ddd5427669be98b152174575ca3d92cf299d4b5e05ad22f59",
+    ".artifacts/mobile-texture-bilinear-fp32-v6-emission-result.json": "633152d88e3882368cb9386b2dc8a1985953b3c5f34781554877e807bea82d33",
+    ".artifacts/mobile-texture-bilinear-fp32-default-fma-diff-v1.json": "d7f817bb8cb077fbe289ac2fef0a212d4d40d4892951f92561a7b7e2406a44fb",
+    ".artifacts/mobile-texture-bilinear-fp32-vector-v1.log": "28eb700961259ed648be332acf9f920ba7094787f7a3bed873de20a888a6690b",
+    ".artifacts/mobile-texture-bilinear-fp32-vector-v1-result.json": "8585acc7ff1387b1a943d53c7211344d67dfcd32672bcf59666e501ccc9abb1e",
+    ".artifacts/mobile-texture-bilinear-fp32-fma-synthesis-v1-inputs.json": "f073f4e8e52e541f7406d99132e05527109eafc5f07b2064c62128c64cd75ccb",
+    ".artifacts/mobile-texture-bilinear-fp32-fma-synthesis-v1-result.json": "bc2bb51e59c19cfa757823da1354b237989db875159ad1c7670b9f5ba227b4f4",
+    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/qualification.json": "cba741345985c9626d21bff9625e7f6ad95b033b0ecc1633b13d1b23284b961b",
+    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/result.json": "1eecb3cd328aeec2c4bfb82dba3292a272f14db6660e0fd73a6aac4996877e8e",
+    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/flow/flow_manifest.json": "dc45cf6710eb1fc6a6eec3ff1fd9ae0c3bc631b53b7759e81a72de87308c5dbd",
+    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/flow/synthesis_sta.log": "572f79569d633eb99806eb4cb42e41a7848070f0c7795880299173ddeec4917d",
+    "generated/qualification/ppa/mobile-texture-bilinear-fp32-2026-10-21-fma-v1/flow/orfs-work/reports/base/synth_stat.txt": "2553bc327951f49db335533dbdb1cc3337373a4620c01a2fd8a01ab4aba24f0b"
+  }
+}
