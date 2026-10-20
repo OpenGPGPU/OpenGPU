@@ -338,7 +338,12 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
       val directed = Vector.fill(32)(Vector(
         Vector[BigInt](1, 0xee1dbef6L, 0x1b9f5feaL),
         Vector[BigInt](0x3f000000L, 0x3f000000L, 0))).flatten
-      val rows = directed ++ Vector.fill(2048)(Vector.fill(3)(BigInt(rng.nextLong() & 0xffffffffL)))
+      val infinities = Vector.fill(16)(Vector(
+        Vector[BigInt](0x3f000000L, 0xff800000L, 0),
+        Vector[BigInt](0x3f000000L, 0x7f800000L, 0),
+        Vector[BigInt](0xff800000L, 0x3f000000L, 0),
+        Vector[BigInt](0x7f800000L, 0x3f000000L, 0))).flatten
+      val rows = directed ++ infinities ++ Vector.fill(2048)(Vector.fill(3)(BigInt(rng.nextLong() & 0xffffffffL)))
       def value(v: BigInt): Float = java.lang.Float.intBitsToFloat(v.toInt)
       val expected = rows.map { r =>
         val f = Math.fma(value(r(0)), value(r(1)), value(r(2)))

@@ -891,7 +891,7 @@ class FloatFMA() extends Module{
     fire
   )
   val has_inf_f32_result_inf_sign_reg2 =
-    RegEnable(RegEnable(fp32_inf_sign, fire_reg0), fire_reg1)
+    RegEnable(RegEnable(RegEnable(RegEnable(fp32_inf_sign, fire_reg0), fire_reg0b), fire_reg0c), fire_reg1)
   val is_overflow_f32_down_reg2 = RTZ_reg2 | (RDN_reg2 & !sign_result_temp_f32_reg2.asBool) | (RUP_reg2 & sign_result_temp_f32_reg2.asBool)
   val fp_a_or_b_is_zero_f32_reg2 = RegEnable(RegEnable(RegEnable(RegEnable(RegEnable(fp_a_is_zero_f32 | fp_b_is_zero_f32, fire), fire_reg0), fire_reg0b), fire_reg0c), fire_reg1)
   val fp_result_f32_fp_a_or_b_is_zero_reg2 = fp_result_fp_a_or_b_is_zero_reg(31,0)
