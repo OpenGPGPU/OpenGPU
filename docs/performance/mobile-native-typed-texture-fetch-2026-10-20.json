@@ -1,0 +1,190 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "114_distinct_targeted_tests_and_four_standalone_synthesis_screens_pass",
+  "source_files": 694,
+  "source_base_record": "docs/performance/mobile-image-sampler-binding-2026-10-20.json",
+  "source_base_record_sha256": "1d6a8ff7ef955ff9092cc4ba5114fe4094d34d63430b8ed25df6a204d566acb9",
+  "source_changes_sha256": {
+    "docs/abi/native-binned-graphics-v1.json": "33748b61279f3234634b364a8af9df6d53fcc7e97e846a1178fb3629ab806767",
+    "docs/abi/native-typed-graphics-v1.json": "86769ae87b5513dca3582e22adabbc454f4002865970e53d02b8e7b33a862d05",
+    "docs/abi/typed-fragment-state-v1.json": "9b65f1333aadae0c9e9ecd86c5627227a9f70a218758f316de8ebd6212797bef",
+    "driver/opengpu_native_binned_abi.h": "f67509601c0c07d842f61523935edd32b9cf6b25ba5870dd4f75717578b741de",
+    "driver/opengpu_native_typed_abi.h": "7f19a8b97b10dd463c4a557a29af28f1eec1ee917b64f51f3f8b4d4dbaa4b03e",
+    "driver/opengpu_typed_fragment_state_abi.h": "c72b5c5e028b8cd1a03003432def87694bf997bc454c954f87ed644994aefad3",
+    "src/main/scala/opengpu/core/frontend/decode/ScalarDecoder.scala": "f9c2666aac6feba1d071f9926e2ac5401d70a1e0c18f1b7e845b347c0bcd792e",
+    "src/main/scala/opengpu/core/frontend/decode/VectorDecoder.scala": "43bf26d9472b182c10bf48bcb5d9c590bd89fcf8c273423c40af3ba8a48c4417",
+    "src/main/scala/opengpu/graphics/FragmentShaderStage.scala": "b40cc5a0e20da6b99a1b505397fc91566e4f6ad189e87fe1b5c60b9c041f3aef",
+    "src/main/scala/opengpu/graphics/NativeBinnedGraphicsDescriptors.scala": "32f4d85e5179b6982f874a6e8d0fcbe7c6a3c8d2e8e7bd453723839c89e4c91c",
+    "src/main/scala/opengpu/graphics/NativeTextureCapabilities.scala": "5361c3dd01b6f471ceb489e41e2dde5c4bb89bf01e199b0f374f8f9982ab2fe7",
+    "src/main/scala/opengpu/graphics/NativeTypedGraphicsDescriptors.scala": "5ed6265e398b643a30f791966d9ead7a6183ae73ebc9c238c835963a7f173f0c",
+    "src/main/scala/opengpu/graphics/TypedFragmentState.scala": "5c54e018b8cf7b7d470faaaab5283d404a642761a430678503bca8054128c2a6",
+    "src/main/scala/opengpu/graphics/VertexShaderStage.scala": "a0288f56f8b37d520dabe8b60be0bad3c80b496afaefefc5e701ec30e2f4daee",
+    "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala": "093655dfbc99f18870fd2b7b0aecf572d2dd11eb051a97dd280fc800ff6dbbc0",
+    "src/test/scala/opengpu/graphics/NativeBinnedGraphicsJobReaderSpec.scala": "d0e038f2929d1465f059993ade13227c3a486cbd30bd91100e51f2058517a552",
+    "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala": "3906e0366516cabbe2fca79db1b925ce0755f76e5d78fd39591bcf41bbbb9600",
+    "src/test/scala/opengpu/graphics/NativeTypedGraphicsJobReaderSpec.scala": "8d3272dde398b8b9971fb8d48838a124d07dd87a9236c651d56bea9a197264e1",
+    "src/test/scala/opengpu/graphics/TypedFragmentStateReaderSpec.scala": "34ffcc0f04c617c255e6eb4695998291ce4894b0b9b7752faad6c05e62765a7d",
+    "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala": "eeb8e193b92d3cf81be934445ef30d4f520649015925ec40edcce56236d5c866"
+  },
+  "source_additions_sha256": {
+    "docs/abi/native-texture-v1.json": "cf5dc89cc1ed165c45eef352bc30ab08e14c81fd77fbd439930520e5a03026fc",
+    "driver/opengpu_native_texture_abi.h": "10f9ac11e9841ecd2d2a508911726373f2d64641428a79bd03bcbad24bae9fee",
+    "src/main/scala/opengpu/elaboration/EmitNativeTextureAbi.scala": "f66fbe5c520bf486e3b4647c2e597d7085a5e7d02e1563fb307f494fdb089fd6",
+    "src/main/scala/opengpu/elaboration/EmitNativeTextureFetch.scala": "1f8532e530bc247501792c9bf0325ff40e55345d697cc6d015e1e4c5d2993691",
+    "src/main/scala/opengpu/graphics/NativeShaderTextureUnit.scala": "2889246d5ab985e419a58afb45b815f4f1af2595fc21cdfc59cfc17593990495",
+    "src/main/scala/opengpu/graphics/NativeTextureResources.scala": "7fc975773c46901d1ef2d5263e9d170c9c430f8737323471016ed97c5e1e29d1",
+    "src/main/scala/opengpu/graphics/ShaderTextureFetchUnit.scala": "4ed0ee33bd87943b0f540f85b7ca3c9ddb8fac413f9c11454e73ca1c82d986f7",
+    "src/main/scala/opengpu/graphics/TexelFetchExecuteUnit.scala": "ab58f2242f4e9bf48f34d1ae23f1fc46701e1c5ca72a88dd83e7e1738d728828",
+    "src/main/scala/opengpu/graphics/TextureLineCreditAdapter.scala": "2a2f776ae4c2f8b9bddd555782aa1647f45ecc39da5ce01baff3e3dbd48e15ce",
+    "src/test/scala/opengpu/core/frontend/decode/TypedTextureDecodeSpec.scala": "575b20a3267847f893f99b8d971b62eeccc378a47ab22a2b2290c8031d091858",
+    "src/test/scala/opengpu/graphics/NativeShaderTextureUnitSpec.scala": "8edcb7557550c3c95e49c60bec0c0b68370ef1c62ec817a44a0a48b64ed39b17",
+    "src/test/scala/opengpu/graphics/NativeTextureFetchTestData.scala": "d19d249321a9a962de3555623c5196d943a0058605f2eac5e71a8e0e79c9bd69",
+    "src/test/scala/opengpu/graphics/TextureLineCreditAdapterSpec.scala": "a8bdfc7f373f6d5d12899c896e3c19e9f89a5bfcfcbf715371b1cfb6e2ddcaa2"
+  },
+  "source_manifest_sha256": "37f477d3c6d964d5aeddf93fbe4523a01035a6ac4805a3adeb6ae0ea7d9bcc00",
+  "implementation": [
+    "Native vertex and fragment roots select32 independent GXB1 bindings per stage and authoritative GXI1/GXS1 views.",
+    "Full32-bit GXQ1 coordinate,layer,face,level and binding-unit transport precedes checked narrowing.",
+    "Typed scalar/vector component fetch uses ordinary register retirement and suppresses partial writes on error.",
+    "A two-credit adapter preserves the existing external native memory ports and retains logical leases through reordered/stalled replies.",
+    "Existing ISA encodings,record sizes and field offsets remain stable; native GTX1 adds typed-fetch bit512."
+  ],
+  "completed_checkpoints": {
+    "v3_components": {
+      "checks": 34,
+      "log": ".artifacts/mobile-native-typed-texture-controls-v3.log",
+      "sha256": "29a275913a02c7575a5dd423308bf4b0e4609461956adfe57b5927d8c511e2d2"
+    },
+    "v2_shared_cu": {
+      "checks": 4,
+      "draws": 40,
+      "log": ".artifacts/mobile-native-typed-texture-shared-cu-v2.log",
+      "sha256": "88afb7a91cd722cc63ebbccca4a408b26145a0a209c75ff9245ee18be723fdae"
+    },
+    "v1_native_axi": {
+      "checks": 2,
+      "frames": 12,
+      "draws": 36,
+      "log": ".artifacts/mobile-native-typed-texture-axi-v1.log",
+      "sha256": "0a9e939fd4dd96cf11020b9a465ebbf8a0f694785228e6cd42202d9b0dc85317"
+    }
+  },
+  "retained_development_failure": {
+    "checks": "0/4 first shared-CU fixture run",
+    "log": ".artifacts/mobile-native-typed-texture-shared-cu-v1.log",
+    "sha256": "b8b5bdb7dbe2987bb199c0b92dc1cfe802351e2cc8bde5f97fcf8c02fc24bd8f",
+    "reason": "The vertex fixture inherited a per-instance divisor for per-vertex packet pointers. The fragment fixture checker retained its default output type after an integer output was selected. Both fixtures were corrected; no production change was needed."
+  },
+  "synthesis_record": "docs/performance/mobile-native-typed-texture-synthesis-2026-10-20.json",
+  "pending": [],
+  "limits": [
+    "Current compiler mnemonics/codegen and driver allow-list do not yet admit the new typed fetch operations; hardware encodings and descriptor headers are published.",
+    "General coordinate sampling,filtering,LOD/depth/compressed formats,throughput and full H0-H8 closure remain open.",
+    "Native execution controls use two shared CUs with4 lanes/2 warps; direct execution also passes1/16/32 lanes. Default16-lane component synthesis is not a whole GPU clock result."
+  ],
+  "validation": {
+    "distinct_targeted_tests": 114,
+    "source_files": 694,
+    "source_unchanged": true,
+    "scope": "Targeted component,metadata,decoder,existing image/native legacy,and native typed execution controls; not a full repository or H0-H8 regression.",
+    "groups": {
+      "components_v3": {
+        "log_sha256": "29a275913a02c7575a5dd423308bf4b0e4609461956adfe57b5927d8c511e2d2",
+        "test_cases": 34,
+        "by_suite": {
+          "TypedTextureDecodeSpec": 1,
+          "TextureLineCreditAdapterSpec": 1,
+          "TypedFragmentStateReaderSpec": 9,
+          "NativeTypedGraphicsJobReaderSpec": 8,
+          "NativeShaderTextureUnitSpec": 6,
+          "NativeBinnedGraphicsJobReaderSpec": 9
+        }
+      },
+      "integration_v3": {
+        "log_sha256": "df1b3b2ea1495fdd766b0a7245ca3d42d0d0b205c0ef8576d5a9c2ed7e794d1a",
+        "test_cases": 12,
+        "by_suite": {
+          "FragmentShaderStageSpec": 4,
+          "VertexShaderStageSpec": 4,
+          "NativeTypedGraphicsHostAxiSpec": 4
+        }
+      },
+      "broad_v4": {
+        "log_sha256": "3a9109676b08bef55aa2ad7e83d45c359676d48a595474311da18a47695b4c80",
+        "test_cases": 76,
+        "by_suite": {
+          "TypedTextureDecodeSpec": 1,
+          "GpuAbiLayoutSpec": 14,
+          "DecoderSpec": 3,
+          "TextureImageResourceAddressUnitSpec": 6,
+          "TextureLineCreditAdapterSpec": 1,
+          "ExtensionDecoderSpec": 4,
+          "TextureImageAddressUnitSpec": 5,
+          "ExtendedDecoderSpec": 7,
+          "TextureImageSamplerBindingUnitSpec": 10,
+          "TextureImageBindingUnitSpec": 10,
+          "TextureImageFetchUnitSpec": 6,
+          "NativeShaderTextureUnitSpec": 9
+        }
+      }
+    },
+    "source_proof": {
+      "v3_source_manifest_sha256": "fa083884316cf6aee2d93d4e7617b6dad62b451a85b249fe3a49c0338eb581a5",
+      "v4_source_manifest_sha256": "37f477d3c6d964d5aeddf93fbe4523a01035a6ac4805a3adeb6ae0ea7d9bcc00",
+      "changed_files": [
+        "driver/opengpu_typed_fragment_state_abi.h",
+        "src/test/scala/opengpu/graphics/NativeShaderTextureUnitSpec.scala"
+      ],
+      "all_production_scala_and_emitted_rtl_dependencies_unchanged": true,
+      "reason": "Synchronize three capability constants in the generated GFS header and add vector-width controls. The running native integration uses identical production and native test inputs; generator checking reads the corrected header."
+    },
+    "native_integration": {
+      "returncode": 0,
+      "checks_by_group": [
+        4,
+        2,
+        4,
+        2
+      ],
+      "total_checks": 12,
+      "typed_shared_cu_draws": 44,
+      "typed_native_axi_frames": 12,
+      "typed_native_primitive_draws": 36,
+      "legacy_shared_cu_draws": 84,
+      "legacy_native_axi_frames": 14,
+      "legacy_native_primitive_draws": 42,
+      "abi_generators_checked": 5,
+      "log_sha256": "df1b3b2ea1495fdd766b0a7245ca3d42d0d0b205c0ef8576d5a9c2ed7e794d1a",
+      "all_production_and_native_integration_inputs_match_final_v4": true,
+      "source_files": 694
+    },
+    "abi_generators_checked": 9,
+    "combined_c11_and_ci": {
+      "combined_c11": {
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "ci_selection": {
+        "returncode": 0,
+        "stdout": "Integration test selection: PASS\n",
+        "stderr": ""
+      }
+    },
+    "widths": [
+      1,
+      4,
+      16,
+      32
+    ],
+    "component_fetches_per_stage": 576,
+    "cancellation_cuts": 240,
+    "decode_cases": 332,
+    "legacy_native_offsets_preserved": {
+      "typed_fields": 560,
+      "binned_fields": 570,
+      "fragment_state_fields": 76
+    }
+  }
+}

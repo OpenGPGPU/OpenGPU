@@ -39,7 +39,8 @@ object NativeBinnedGraphicsLayout {
   private def payloadFields(prefix: String,d: Data): Seq[NativeTypedGraphicsLayout.Field]={
     var word=16
     val policyWords=Map("policyVersion"->480,"wrapU"->481,"wrapV"->482,"signedCoordinates"->483)
-    val (policy,remaining)=WindowPrimitiveRecordLayout.leaves(d).partition{case(name,_)=>
+    val (resources,original)=WindowPrimitiveRecordLayout.leaves(d).partition{case(name,_)=>name.contains(".resources.")}
+    val (policy,remaining)=original.partition{case(name,_)=>
       name.contains(".sampler.") && policyWords.contains(name.split('.').last)}
     require(policy.isEmpty || policy.size==4,"native binned sampler extensions need explicit non-overlapping slots")
     val (polygon,legacy)=remaining.partition{case(name,_)=>name.startsWith("raster.polygonOffset")}
@@ -48,7 +49,8 @@ object NativeBinnedGraphicsLayout {
       if(word%16+count>16)word=(word+15)/16*16
       val f=NativeTypedGraphicsLayout.Field(prefix+name,word,value);word+=count;f}
     require(policy.isEmpty || word<=480,"legacy fields must not overlap sampler extension words")
-    fields++policy.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,policyWords(name.split('.').last),value)}
+    fields++policy.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,policyWords(name.split('.').last),value)}++
+      resources.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,if(name.endsWith(".version"))496 else 497,value)}
   }
   def jobFields(d: NativeBinnedGraphicsJobRecord): Seq[NativeTypedGraphicsLayout.Field]=headerFields(d.header)++payloadFields("job.",d.job)
   def frameFields(d: NativeBinnedGraphicsFrameRecord): Seq[NativeTypedGraphicsLayout.Field]=headerFields(d.header)++payloadFields("frame.",d.frame)
@@ -58,7 +60,7 @@ object NativeBinnedGraphicsLayout {
   def fit(d: VertexBinDraw,p: VertexShaderStageConfig): Bool={
     val v=d.vertex.geometry.vertex;val i=v.input
     val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
-    VertexShaderSampler.legal(v.sampler) && active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U &&
+    ShaderTextureResources.legal(v.resources) && VertexShaderSampler.legal(v.sampler) && active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U &&
       !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(d.vertex.geometry.flatMask>>(v.varyingSlots<<2)).orR
   }
 }

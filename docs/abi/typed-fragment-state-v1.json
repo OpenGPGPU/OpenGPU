@@ -76,6 +76,8 @@
     {"name":"fragment.sampler.wrapU","word":121,"bits":2,"signed":false},
     {"name":"fragment.sampler.wrapV","word":122,"bits":2,"signed":false},
     {"name":"fragment.sampler.signedCoordinates","word":123,"bits":1,"signed":false},
-    {"name":"fragment.centroidMask","word":124,"bits":64,"signed":false}
+    {"name":"fragment.centroidMask","word":124,"bits":64,"signed":false},
+    {"name":"fragment.resources.version","word":126,"bits":2,"signed":false},
+    {"name":"fragment.resources.address","word":127,"bits":32,"signed":false}
   ]
 }

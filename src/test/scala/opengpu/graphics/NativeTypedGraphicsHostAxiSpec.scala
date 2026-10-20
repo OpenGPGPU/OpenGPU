@@ -88,8 +88,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
     private val positionSets=Vector(Vector(Vector(-1.0,-1.0,-0.5,1.0),Vector(1.0,-1.0,0.5,1.0),Vector(-1.0,1.0,0.0,1.0)),
       Vector(Vector(-0.5,0.0,0.0,1.0),Vector(0.5,0.0,0.0,1.0)),Vector(Vector(-0.5,-0.5,-0.5,1.0)))
     var sampledRed: Option[BigInt]=None
+    var sampledGreen: Option[BigInt]=None
     def colorWords(primitive: Int,vertex: Int,centroid: Boolean,expected: Boolean=false): Vector[BigInt]=Vector.tabulate(4){c=>
       if(expected && c==0 && sampledRed.nonEmpty)sampledRed.get
+      else if(expected && c==1 && sampledGreen.nonEmpty)sampledGreen.get
       else Fp32ViewportReference.fp(if(centroid){if(c==3)1.0 else ((vertex+1)*(c+1)+primitive)/16.0}else if(c==primitive || c==3)1.0 else 0.0)}
     def shaderDraws(mode: Int,centroid: Boolean=false,version: Int=1,polygon: Boolean=false,sign: Int=1,
         depthFormat: Int=TypedDepthFormat.d24s8,allocation: Int=0,generation: Int=0,facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0): Unit={
@@ -140,7 +142,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         val zs=if(n==0 && reverse)originalDepth.reverse else originalDepth
         val coordinates=if(n==0 && reverse)coords(n).reverse else coords(n)
         val t=TriangleRasterReference.base.copy(coords=coordinates.map{case(x,y)=>(BigInt(x),BigInt(y))},values=TriangleRasterReference.base.values.copy(depth=zs,inv=Vector.fill(3)(Fp32ViewportReference.decode(Fp32ViewportReference.fp(1.0))),
-          flat=(if(centroid)8 else 0)|(if(sampledRed.nonEmpty)1 else 0),values=Vector.tabulate(3)(i=>if(i<positionSets(n).size)colorWords(n,if(n==0 && reverse)2-i else i,centroid,expected=true).padTo(8,BigInt(0))else Vector.fill(8)(BigInt(0)))))
+          flat=(if(centroid)8 else 0)|(if(sampledRed.nonEmpty)1 else 0)|(if(sampledGreen.nonEmpty)2 else 0),values=Vector.tabulate(3)(i=>if(i<positionSets(n).size)colorWords(n,if(n==0 && reverse)2-i else i,centroid,expected=true).padTo(8,BigInt(0))else Vector.fill(8)(BigInt(0)))))
         val quads=if(kind==2)TriangleRasterReference.raster(t,settings,graphics)else PointLineReference.raster(t,kind,settings,graphics,PointLineReference.Sizes(point=2))
         primitiveQuads(n)=quads.size
         import Fp32ViewportReference.{E,fp,decode,calc,pack,clamp,rational}
@@ -478,7 +480,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d)
-      val cap=Vector[BigInt](BigInt("47545801",16),8,3,0x1ff,7,16,16383,0x1f)
+      val cap=Vector[BigInt](BigInt("47545801",16),8,3,0x3ff,7,16,16383,0x1f)
       for((value,i)<-cap.zipWithIndex)assert(axiRead(d,0x200+i*4)==value)
       axiWrite(d,0x200,0,expectedResponse=2)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
@@ -524,4 +526,66 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       info(s"NATIVE_TEXTURE_POLICY_IMAGE local=$local CUs=2 frames=$frames submittedDraws=21 faultFrames=$faultFrames vertexAndFragment=true signedAndUnsigned=true mixedAxes=true modes1x4x=true GTX1=true noInvalidTextureReads=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true freshCodeAndTextureAllocations=true healthyReuse=true")
     }
   }
+  for(local<-Seq(true,false))
+  it should s"execute GPU bound typed fetches in both native shader stages with translated descriptor ownership local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      initialize(d);val image=new Image(d);val texData=NativeTextureFetchTestData
+      assert((axiRead(d,0x20c)&512)==512)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
+      val id=Seq[BigInt](7,8,9);val vo=BigInt(0x500000);val fo=BigInt(0x600000)
+      val rgba=Vector(0.125,0.25,0.5,1.0).map(Fp32ViewportReference.fp)
+      val raw=rgba.zipWithIndex.map{case(v,c)=>v<<(32*c)}.reduce(_|_)
+      var frames=0
+      def fetch(c: Int,unit: Int,packet: BigInt,scalar: Boolean): Seq[BigInt]={
+        val hi=(packet+2048)>>12;val lo=packet-(hi<<12)
+        val constants=Seq((hi<<12)|(BigInt(12)<<7)|0x37,addi(12,12,lo.toInt),addi(13,0,unit))
+        if(scalar)constants++Seq(texData.scalar(c,15,12,13),broadcast|(BigInt(15)<<15)|(BigInt(7)<<7)|0x57)
+        else constants++Seq(broadcast|(BigInt(12)<<15)|(BigInt(5)<<7)|0x57,
+          broadcast|(BigInt(13)<<15)|(BigInt(6)<<7)|0x57,texData.vector(c,7,5,6))
+      }
+      def run(c: Int,bad: Boolean=false): Unit={
+        val mode=if(c%2==0)0 else 2;val vc=(c+1)%4
+        image.sampledRed=Some(rgba(c));image.sampledGreen=Some(rgba(vc));image.shaderDraws(mode,generation=frames+1)
+        def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
+        def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
+        texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
+        texData.install(put,byte,31,35,3,0,id,raw,vo);texData.install(put,byte,17,35,2,1,id,raw,fo)
+        texData.coordinates(put,target=3,id=id,offset=vo);texData.coordinates(put,target=2,id=id,offset=fo)
+        val vp=0x470000+frames*0x2000;val fp=vp+0x1000
+        val vcode=vertexProgram.dropRight(1)++fetch(vc,31,vo+texData.packet,scalar=c%2==1)++Seq(addi(6,7,16*32),vm(6,7,true),BigInt("30500073",16))
+        val fcode=fragmentProgram().dropRight(1)++fetch(c,17,fo+texData.packet,scalar=c%2==0)++
+          (0 until 4).flatMap(a=>Seq(addi(6,7,(10+a*4)*32),vm(6,7,true)))++Seq(BigInt("30500073",16))
+        vcode.zipWithIndex.foreach{case(w,n)=>put(vp+n*4,w)};fcode.zipWithIndex.foreach{case(w,n)=>put(fp+n*4,w)}
+        for(n<-0 until 3){val record=image.pa(0x412000+n*4096)
+          image.word(record+33*4,vp);image.word(record+516*4,fp);image.word(record+19*4,3)
+          image.word(record+608*4,1);image.word(record+609*4,vo+texData.root)
+          image.word(record+624*4,1);image.word(record+625*4,fo+texData.root)
+        }
+        if(bad){
+          // Replace only this superpage with ordinary Sv32 pages, then deny
+          // the fragment sampler page while retaining instruction/other reads.
+          val pt=BigInt(0x31000);image.word(0x30004,(pt>>12)<<10|1)
+          for(page<-0 until 1024)image.word(pt+page*4,((BigInt(0x800000+page*4096)>>12)<<10)|0xcf)
+          val denied=(fo+texData.samplers+17*64)>>12
+          image.word(pt+(denied&1023)*4,((image.pa(denied<<12)>>12)<<10)|0x49)
+        }
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit();image.run(if(bad)3 else 0)
+        if(bad){val page=image.pa((fo+texData.samplers)& ~BigInt(4095));assert(!image.reads.exists(a=>a>=page && a<page+4096))}
+        else{
+          image.verifyDraws(mode)
+          for(base<-Seq(vo,fo);address<-Seq(texData.root,texData.bindings,texData.images,texData.levels,texData.samplers,texData.packet)){
+            val page=image.pa((base+address)& ~BigInt(4095));assert(image.reads.exists(a=>a>=page && a<page+4096),s"native typed descriptor page not read: ${page.toString(16)}")
+          }
+        }
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop();frames+=1
+      }
+      for(c<-0 until 4)run(c);run(0,bad=true);run(3)
+      info(s"NATIVE_TYPED_FETCH_AXI local=$local CUs=2 frames=$frames draws=18 GTD1RootReferences=true bothStages=true scalarVector=true components4=true bindings31And17=true volumeAndCube=true realSv32=true deniedSamplerNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
+    }
+  }
+
 }

@@ -6422,3 +6422,50 @@ parent dependencies and seven additions. Final synthesis artifact hashes match.
 Both pre-existing local edits and an empty index are preserved; no push was
 performed. Native per-stage resource selection and typed shader transport remain
 required before this component can serve general native texture instructions.
+
+
+## Native typed texture fetch development (2026-10-20)
+
+The [native typed fetch path](NATIVE_TYPED_TEXTURE_FETCH.md) connects independent
+vertex/fragment GXR1 resource roots, full binding indices and GXQ1 coordinate
+packets to GXB1/GXI1/GXS1/GXL1 admission and typed component decoding. Scalar
+and vector component fetches use ordinary destination-register retirement;
+masked lanes retain their old values and faults suppress partial writes.
+A two-slot logical-ID adapter preserves every enclosing native memory-port width.
+Root references occupy reserved native descriptor words with all old offsets
+and record sizes preserved. Four direct endpoint controls pass; real shared-CU
+and broader native, ABI, cancellation and synthesis checks remain in progress.
+Existing opcodes retain their encodings. Driver admission and native capability
+advertisement are unchanged while the hardware path is being qualified.
+
+
+## Native typed texture component and execution checkpoint (2026-10-20)
+
+The [typed resource path](performance/mobile-native-typed-texture-fetch-2026-10-20.json)
+passes34 component/metadata controls, including full explicit mip selection,
+240 cancellation cuts, exact two-credit reply ownership and332 decode cases.
+Current native shared-CU controls pass44 typed draws with fault/cancellation
+recovery. The first two full native AXI controls pass12 frames/36 primitive draws
+with both stage roots, bindings31/17, cube/volume texels, exact MRT/depth/resolve
+and a denied Sv32 sampler page with no physical read. Final native/legacy and
+width controls remain in progress. All four synthesis profiles map fully and
+pass setup at standard1000ps: endpoint+28.238ps, execution+19.027ps,
+native wrapper+51.162ps and credit adapter+634.832ps. No host clock or frame rate
+is inferred. GTX1 bit512 describes the hardware path; compiler/driver admission,
+general sampling/filtering and full H0-H8 closure remain open.
+
+
+## Qualified native indexed typed fetch (2026-10-20)
+
+The [final694-file checkpoint](performance/mobile-native-typed-texture-fetch-2026-10-20.json)
+passes114 distinct targeted controls,including44 typed shared-CU stage draws,
+12 typed native AXI frames/36 primitive draws,84 legacy stage draws and14 legacy
+native frames. Both local/spilled payload modes,all four returned components,
+work snapshots,explicit mips,cube/volume bindings,denied sampler pages,full-width
+bounds,cancellation and healthy reuse are checked. Direct execution also passes
+1/16/32 lanes. All nine ABI generators,combined C11 headers and CI selection pass.
+All older native field offsets and record sizes remain stable. The four positive
+standalone synthesis screens use standard1000ps,25% I/O,TC/SLVT and no retiming.
+This connects native per-stage resource selection and typed integer texel-fetch
+transport. General normalized-coordinate sampling,filtering/LOD application,
+remaining formats,throughput,compiler/driver adoption and full H0-H8 remain open.

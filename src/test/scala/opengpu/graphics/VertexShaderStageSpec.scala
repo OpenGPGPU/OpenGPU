@@ -482,4 +482,42 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       info(s"STAGE_TEXTURE_POLICY stage=vertex local=$local CUs=2 draws=$draws valid=19 coordinateFaults=$faults mixedAxes=9 signedAndUnsigned=true scalarAndVector=true noFaultedTexelWrites=true noInvalidTextureReads=true heldCompletionPinsVM=true poolDrained=true healthyReuse=true")
     }
   }
+  for(local<-Seq(true,false))
+  it should s"execute native typed component fetches through real shared CUs and preserve fault drain local=$local" in {
+    simulate(new VertexShaderHarness(local)){d=>val t=new Driver(d)
+      val id=Seq[BigInt](7,8,9);val texData=NativeTextureFetchTestData
+      texData.roots(t.put,stage=0,id=id)
+      val formats=Seq("RGBA32UI","RGBA32I","RGBA32F","RGBA8").map(TypedColorReference.names.indexOf)
+      val views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,formats(u),u,0,id))
+      for(u<-0 until 4){texData.coordinates(t.put,target=u,id=id,address=texData.packet+u*64);t.put(0x5000+u*4,texData.packet+u*64)}
+      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
+      def code(c: Int,scalar: Boolean): Seq[BigInt]={
+        val fetch=if(scalar)Seq((BigInt(0x80)<<12)|(BigInt(12)<<7)|0x37,addi(12,12,3*64),addi(13,0,3),
+          texData.scalar(c,15,12,13),broadcast|(BigInt(15)<<15)|(BigInt(7)<<7)|0x57)
+        else address(5,7,4*t.stride)++Seq(vectorMemory(5,5,false))++address(5,7,8*t.stride)++
+          Seq(vectorMemory(5,6,false),texData.vector(c,7,5,6))
+        program(4,2).dropRight(1)++fetch++address(6,7,(11+7)*t.stride)++Seq(vectorMemory(6,7,true),cease)
+      }
+      for(scalar<-Seq(false,true);c<-0 until 4){val pc=0x60000+(if(scalar)0x10000 else 0)+c*0x1000
+        code(c,scalar).zipWithIndex.foreach{case(w,n)=>t.put(pc+n*4,w)}}
+      d.io.out.ready.poke(true.B)
+      def run(c: Int,scalar: Boolean,bad: Boolean=false,cancelled: Boolean=false): Unit={
+        t.exports.clear();t.descriptor();d.io.draw.bits.input.bindings(1).divisor.poke(0.U);d.io.draw.bits.shaderPc.poke((0x60000+(if(scalar)0x10000 else 0)+c*0x1000).U)
+        d.io.draw.bits.resources.version.poke(1.U);d.io.draw.bits.resources.address.poke(texData.root.U)
+        var rootRead=false;val faultLine=views(3).address& ~BigInt(63)
+        t.fault=(a,w)=>{if(!w && a==texData.root)rootRead=true;bad && !w && a==faultLine}
+        t.submit();d.io.draw.bits.resources.version.poke(3.U);d.io.draw.bits.resources.address.poke("hffffffff".U)
+        if(cancelled){t.until(rootRead);d.io.cancel.poke(true.B)}
+        t.complete(if(cancelled)4 else if(bad)3 else 0);if(cancelled)d.io.cancel.poke(false.B)
+        if(bad || cancelled)assert(t.exports.isEmpty)else{
+          val vertices=t.exports.filterNot(_.restart);assert(vertices.nonEmpty)
+          for(v<-vertices){val unit=if(scalar)3 else v.id.toInt;assert(v.varyings(3)==views(unit).expected(c),s"typed vertex export differs c=$c scalar=$scalar unit=$unit")}
+        }
+      }
+      for(scalar<-Seq(false,true);c<-0 until 4)run(c,scalar)
+      run(0,false,bad=true);run(2,false,cancelled=true);run(3,true)
+      info(s"NATIVE_TYPED_FETCH_CU stage=vertex local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true mixedRawTypes=true perLaneBindings=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
+    }
+  }
+
 }

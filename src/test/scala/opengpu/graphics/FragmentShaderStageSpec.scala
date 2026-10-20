@@ -128,6 +128,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
     case class Reply(id: BigInt,data: BigInt,due: Int,fault: Boolean)
     val pending=mutable.ArrayBuffer.empty[Reply];var offered: Option[Reply]=None
     var sampleDepthEnabled=false
+    var expectedColorTypes=Vector.tabulate(4)(_ % 3)
     var cycle=0;var launches=0;var globalStaging=0;var requests=0
     var blockMemory=false;var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
     val exports=mutable.ArrayBuffer.empty[Export]
@@ -137,7 +138,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       if(d.io.globalStaging.peek().litToBoolean)globalStaging+=1
       if(d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
         val r=d.io.out.bits;r.identity.context.expect(7.U);r.identity.pass.expect(8.U);r.identity.generation.expect(9.U)
-        r.colorSlots.expect(4.U);for(c<-0 until 4)r.colorTypes(c).expect((c%3).U)
+        r.colorSlots.expect(4.U);for(c<-0 until 4)r.colorTypes(c).expect(expectedColorTypes(c).U)
         exports+=Export(r.sequence.peek().litValue,r.primitiveId.peek().litValue,r.instanceId.peek().litValue,r.partIndex.peek().litValue,
           r.frontFacing.peek().litToBoolean,r.lanes.map(l=>Lane(l.x.peek().litValue,l.y.peek().litValue,l.depth.peek().litValue,
             l.coverageMask.peek().litValue,l.helper.peek().litToBoolean,l.discarded.peek().litToBoolean,l.depthOverride.peek().litToBoolean,
@@ -511,4 +512,48 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       info(s"STAGE_TEXTURE_POLICY stage=fragment local=$local CUs=2 draws=$draws valid=19 coordinateFaults=$faults mixedAxes=9 signedAndUnsigned=true scalarAndVector=true noFaultedTexelWrites=true noInvalidTextureReads=true heldCompletionPinsVM=true poolDrained=true healthyReuse=true")
     }
   }
+  for(local<-Seq(true,false))
+  it should s"execute native typed component fetches through real shared CUs and preserve fault drain local=$local" in {
+    simulate(new FragmentShaderHarness(local)){d=>val t=new Driver(d)
+      val id=Seq[BigInt](7,8,9);val texData=NativeTextureFetchTestData
+      t.expectedColorTypes=Vector(0,1,2,1)
+      texData.roots(t.put,stage=1,id=id)
+      val format=TypedColorReference.names.indexOf("RGBA32UI")
+      val views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,format,u,1,id,
+        raw=BigInt("fedcba98765432100123456789abcdef",16)+u))
+      for(u<-0 until 4)texData.coordinates(t.put,target=u,id=id,address=texData.packet+u*64)
+      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
+      def code(c: Int,scalar: Boolean): Seq[BigInt]={
+        val fetch=if(scalar)Seq((BigInt(0x80)<<12)|(BigInt(12)<<7)|0x37,addi(12,12,3*64),addi(13,0,3),
+          texData.scalar(c,15,12,13),broadcast|(BigInt(15)<<15)|(BigInt(7)<<7)|0x57)
+        else address(5,7,6*t.stride)++Seq(vectorMemory(5,5,false))++address(5,7,7*t.stride)++
+          Seq(vectorMemory(5,6,false),texData.vector(c,7,5,6))
+        program(4,2).dropRight(1)++fetch++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
+      }
+      for(scalar<-Seq(false,true);c<-0 until 4){val pc=0x60000+(if(scalar)0x10000 else 0)+c*0x1000
+        code(c,scalar).zipWithIndex.foreach{case(w,n)=>t.put(pc+n*4,w)}}
+      d.io.out.ready.poke(true.B)
+      def run(c: Int,scalar: Boolean,bad: Boolean=false,cancelled: Boolean=false): Unit={
+        t.exports.clear();t.descriptor();d.io.draw.bits.shaderPc.poke((0x60000+(if(scalar)0x10000 else 0)+c*0x1000).U)
+        d.io.draw.bits.resources.version.poke(1.U);d.io.draw.bits.resources.address.poke(texData.root.U)
+        d.io.draw.bits.colorTypes(3).poke(1.U)
+        var rootRead=false;val faultLine=views(3).address& ~BigInt(63)
+        t.fault=(a,w)=>{if(!w && a==texData.root)rootRead=true;bad && !w && a==faultLine}
+        t.submit();d.io.draw.bits.resources.version.poke(3.U);d.io.draw.bits.resources.address.poke("hffffffff".U)
+        t.input(0)
+        for(l<-0 until 4){val a=d.io.in.bits.values.lanes(l);a.varyings(0)(0).poke((texData.packet+l*64).U);a.varyings(0)(1).poke(l.U)}
+        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
+        if(cancelled){t.until(rootRead);d.io.cancel.poke(true.B)}
+        t.complete(if(cancelled)4 else if(bad)3 else 0);if(cancelled)d.io.cancel.poke(false.B)
+        if(bad || cancelled)assert(t.exports.isEmpty)else{
+          assert(t.exports.size==1)
+          for((l,n)<-t.exports.head.lanes.zipWithIndex){val unit=if(scalar)3 else n;assert(l.colors(15)==views(unit).expected(c),s"typed fragment export differs c=$c scalar=$scalar lane=$n")}
+        }
+      }
+      for(scalar<-Seq(false,true);c<-0 until 4)run(c,scalar)
+      run(0,false,bad=true);run(2,false,cancelled=true);run(3,true)
+      info(s"NATIVE_TYPED_FETCH_CU stage=fragment local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true integerRawTypes=true helperInputs=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
+    }
+  }
+
 }

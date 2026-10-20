@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "four_standalone_full_mapping_and_setup_screens_pass",
+  "source_files": 694,
+  "qualified_source_manifest_sha256": "37f477d3c6d964d5aeddf93fbe4523a01035a6ac4805a3adeb6ae0ea7d9bcc00",
+  "synthesis_source_manifest_sha256": "fa083884316cf6aee2d93d4e7617b6dad62b451a85b249fe3a49c0338eb581a5",
+  "carry_proof": {
+    "v3_source_manifest_sha256": "fa083884316cf6aee2d93d4e7617b6dad62b451a85b249fe3a49c0338eb581a5",
+    "v4_source_manifest_sha256": "37f477d3c6d964d5aeddf93fbe4523a01035a6ac4805a3adeb6ae0ea7d9bcc00",
+    "changed_files": [
+      "driver/opengpu_typed_fragment_state_abi.h",
+      "src/test/scala/opengpu/graphics/NativeShaderTextureUnitSpec.scala"
+    ],
+    "all_production_scala_and_emitted_rtl_dependencies_unchanged": true,
+    "reason": "Synchronize three capability constants in the generated GFS header and add vector-width controls. The running native integration uses identical production and native test inputs; generator checking reads the corrected header."
+  },
+  "production_manifest_and_emitted_rtl_match_current_source": true,
+  "constraints": {
+    "clock_period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "engine": "yosys",
+    "abc_target": "standard",
+    "retiming": false,
+    "synthesis_only": true
+  },
+  "profiles": {
+    "endpoint": {
+      "module": "ShaderTextureFetchUnit",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 153.96179479104467,
+        "finished_utc": "2026-10-20T11:05:15.733465+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        28.238,
+        395.772
+      ],
+      "mapped_cells": 111700,
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-native-typed-texture-endpoint-2026-10-20-v3/result.json": "3e907f9e830b6f6784897c4f7ba96daba4d21eec7d500523a4b0949fd20672fd",
+        "generated/qualification/ppa/mobile-native-typed-texture-endpoint-2026-10-20-v3/qualification.json": "297f7289da1f942c6072510aafb5415c0a8635a24cb9a4bae9da568624015ac9",
+        "generated/qualification/ppa/mobile-native-typed-texture-endpoint-2026-10-20-v3/manifest.json": "7cc0edc737927769c7abb24474b4682757393f7c190e77e007c31a629382870a",
+        "generated/qualification/ppa/mobile-native-typed-texture-endpoint-2026-10-20-v3/flow/synthesis_sta.log": "ab6d6a60b8f3ecf42dabdd3f21916666593b079a670e7bf9086e65a783522604"
+      }
+    },
+    "execute": {
+      "module": "TexelFetchExecuteUnit",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 167.17722408403642,
+        "finished_utc": "2026-10-20T11:05:28.948198+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        19.027,
+        378.444
+      ],
+      "mapped_cells": 119803,
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-native-typed-texture-execute-2026-10-20-v3/result.json": "576bf3e5791ca0c5e8bbe5bd76317784ed835d44e33491de93e43f8b237e0c25",
+        "generated/qualification/ppa/mobile-native-typed-texture-execute-2026-10-20-v3/qualification.json": "829ef649fa5c1adf52e1d63c39303e44608f419d9a6c0df945a4b8a6122f6f60",
+        "generated/qualification/ppa/mobile-native-typed-texture-execute-2026-10-20-v3/manifest.json": "9b4d4f453d4551ff0c4aa98480e84f8ed675a5c57e55f3c7a1552a7d3a2d0208",
+        "generated/qualification/ppa/mobile-native-typed-texture-execute-2026-10-20-v3/flow/synthesis_sta.log": "af8139423716c11c8a3c17554140d82c3bcf7183b44e65d2e13df97259e1921c"
+      }
+    },
+    "wrapper": {
+      "module": "NativeShaderTextureUnit",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 272.8672978337854,
+        "finished_utc": "2026-10-20T11:07:14.640180+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        51.162,
+        173.914
+      ],
+      "mapped_cells": 190372,
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-native-typed-texture-wrapper-2026-10-20-v3/result.json": "0f627fc5596c2f9346ac3b5779b3726e9f9c15219927e4ba78068713490fe6d2",
+        "generated/qualification/ppa/mobile-native-typed-texture-wrapper-2026-10-20-v3/qualification.json": "37844c63a31f848133a2abe97e17932382c704b669148ded8f59b811a7e684df",
+        "generated/qualification/ppa/mobile-native-typed-texture-wrapper-2026-10-20-v3/manifest.json": "7ef346a696adb9e31c622533aa4a32be7adc376ca364549454d3fe711ec3d2a2",
+        "generated/qualification/ppa/mobile-native-typed-texture-wrapper-2026-10-20-v3/flow/synthesis_sta.log": "85dbb3556c8d84f1460efa996e53d7fb87b0c8074acc9706391898004748b1fe"
+      }
+    },
+    "credits": {
+      "module": "TextureLineCreditAdapter",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 8.57987824990414,
+        "finished_utc": "2026-10-20T11:02:50.350151+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        634.832,
+        447.491
+      ],
+      "mapped_cells": 3198,
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-native-typed-texture-credits-2026-10-20-v3/result.json": "02589bf2cf7248cf14c4a4e64653dd3898a6ab47599c93dfd6bdb52a51e10855",
+        "generated/qualification/ppa/mobile-native-typed-texture-credits-2026-10-20-v3/qualification.json": "84a59f7585dcf8df14808885b4c141fd08d755a7ce561e06a57492082ca98a7f",
+        "generated/qualification/ppa/mobile-native-typed-texture-credits-2026-10-20-v3/manifest.json": "74d4a1b5660db5934d659192c0168b2dd5054c02590347ae0c66ea77cfb260dd",
+        "generated/qualification/ppa/mobile-native-typed-texture-credits-2026-10-20-v3/flow/synthesis_sta.log": "f5d62891f8ac2f5aea90ddeddf43c8571407b6738789db4a50e8b3093499fdc9"
+      }
+    }
+  },
+  "limits": [
+    "Standalone pre-layout synthesis setup only; no native host clock,hold,route,power or frame throughput qualification."
+  ]
+}
