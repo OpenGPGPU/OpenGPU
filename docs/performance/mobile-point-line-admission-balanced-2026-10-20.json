@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "12_balanced_component_controls_pass_integration_cycles_synthesis_pending",
+  "status": "22_fresh_controls_and_two15_fixture_groups_pass_standard_mapping_setup_miss",
   "source_files": 674,
   "source_manifest_sha256": "7b6d208022c422c53c9566fd3fd789d7853d5de9a391ef1f7a315f55dbc52210",
   "source_base_record": {
@@ -34,12 +34,26 @@
   },
   "measured_path_record": "docs/performance/mobile-point-line-admission-synthesis-before-2026-10-20.json",
   "pending": [
-    "Fresh primitive/shared-CU/production AXI integration.",
-    "Fresh baseline and parent15-case cycle comparisons.",
-    "Fresh standalone synthesis at identical TC/SLVT,1000ps,25 percent I/O,no retiming."
+    "Measure900ps ABC optimization target with the declared1000ps setup clock and unchanged RTL."
   ],
   "limits": [
     "No positive setup,native clock or throughput result yet.",
     "Full H0-H8/GLES hardware objective remains open."
-  ]
+  ],
+  "integration": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "test_counts": [
+      12,
+      6,
+      2,
+      2
+    ],
+    "total_checks": 22,
+    "log": {
+      "path": ".artifacts/mobile-point-line-admission-balanced-integration-v2.log",
+      "sha256": "9650be837390b3d7ef088ba6632a65ff0d459f6c4fc04d1eea2b5ae127c5c5b2"
+    },
+    "scope": "Targeted component,primitive,shared-CU and native AXI controls;not full H0-H8 regression."
+  }
 }

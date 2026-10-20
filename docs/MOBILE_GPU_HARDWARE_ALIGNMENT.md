@@ -6244,3 +6244,16 @@ on frozen674-file source,including4871 full-width arithmetic cases and588
 cancellation/reset cuts;default emission passes. Fresh integration,baseline and
 parent cycle comparisons,and standalone synthesis remain pending. No positive
 clock,throughput or full H0-H8 result is claimed from this checkpoint.
+
+
+## Balanced arithmetic integration and standard mapping miss (2026-10-20)
+
+All22 fresh targeted controls pass on unchanged674-file source. The [15 baseline
+fixtures and15 parent controls](performance/mobile-point-line-diamond-cycles-2026-10-20.json)
+retain every output;balanced limb arithmetic adds no cycles or first-offer
+latency to its parent. The [standard mapping screen](performance/mobile-point-line-balanced-synthesis-before-2026-10-20.json)
+passes full mapping but still misses setup by24.602ps,with I/O+639.059ps. The
+remaining path is viewport width to scan admission. This result stays negative.
+A separately recorded900ps ABC mapping target is being tested against the same
+1000ps SDC clock,I/O budget and exact RTL;no clock relaxation or retiming is used.
+No native clock,product rate or full H0-H8 result is claimed.
