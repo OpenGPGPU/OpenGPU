@@ -1,5 +1,11 @@
 # Texture image fetch and typed decoding
 
+The later [image-binding integration](performance/mobile-texture-image-binding-main-2026-10-20.json)
+includes the prompt GXL1 descriptor-fault issue correction and 29 controls on
+exact 662-file source. Its [current raw/typed synthesis screens](performance/mobile-texture-image-binding-synthesis-2026-10-20.json)
+pass at +123.434/+10.117 ps under the same 1 GHz constraints. The 19-control,
+655-file records and earlier screens below describe the preceding checkpoint.
+
 Status: integrated into local main with [exact source verification](performance/mobile-texture-image-fetch-main-2026-10-20.json).
 [19 controls pass](performance/mobile-texture-image-fetch-pipelined-2026-10-20.json)
 on unchanged 655-file source, together with six ABI checks, combined C11 headers,

@@ -5940,3 +5940,23 @@ current-source proof. Initial prompt-fault and all earlier timing failures remai
 recorded. No route, power, native texture throughput or whole-GPU clock result
 is claimed. Native image/sampler binding and typed shader transport, remaining
 sampler/format semantics and full hardware completion remain open.
+
+
+## GPU image binding main integration (2026-10-20)
+
+The [main source audit](performance/mobile-texture-image-binding-main-2026-10-20.json)
+verifies all662 committed and working qualification files. Exact source identity
+carries29 controls, seven ABI checks, C11 headers, CI selection and four emissions;
+this is not a separately rerun main regression. Both documentation append
+histories are retained. All20 pre-existing dirty files keep their contents and
+modes, and the index remains empty after integration.
+
+All four standalone mapping/setup screens pass at unchanged TC/SLVT,1000ps,
+25 percent I/O and no retiming: binding +57.287ps, bound +49.401ps, raw +123.434ps
+and typed +10.117ps. All initial functional/timing misses remain recorded. The
+GXI1 components own image format, allocation and required mip sets, but native
+per-stage image/sampler bindings, typed shader transport, complete sampler/format
+semantics and throughput remain open. Historical native replay timing failure,
+corrected host synthesis and the isolated650-file final37 host controls remain
+separate work. Full H0-H8/GLES hardware completion is not established; PPA remains
+synthesis only.

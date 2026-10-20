@@ -1,7 +1,8 @@
 # GPU image format, mip binding and bound texel fetch
 
-Status: [29 controls pass](performance/mobile-texture-image-binding-mip-range-2026-10-20.json)
-on unchanged 662-file source in `codex/mobile-texture-image-binding-mip-range`, together
+Status: integrated into local main with [exact source verification](performance/mobile-texture-image-binding-main-2026-10-20.json).
+[29 controls pass](performance/mobile-texture-image-binding-mip-range-2026-10-20.json)
+on unchanged 662-file source, together
 with seven ABI checks, four RTL emissions, combined C11 headers and CI selection.
 All four standalone synthesis screens pass. Native integration remains open;
 no new native capability is advertised.

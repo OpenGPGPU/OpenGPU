@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "qualified_component_integrated_local_main",
+  "audit": {
+    "before_commit": "a3e9614ca5fa5ddc414d0fa93813fc2e8c328782",
+    "merged_commit": "b429eaf9b15642f7f5f173d02f99beebaaab492f",
+    "committed_and_working_source_files": 662,
+    "source_matches_qualification": true,
+    "preserved_dirty_files": 20,
+    "contents_and_modes_preserved": true,
+    "status_unchanged": true,
+    "index_empty": true,
+    "document_reconciliation": "Both main native-synthesis and candidate image-binding append histories retained after exact common-prefix proof."
+  },
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-image-binding-qualified-v3-source.json",
+    "sha256": "57e5dce8397300368cb88aa9785e053fa131f416f671d7f807da6c19dd829963"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-texture-image-binding-qualified-v3-source.tar.gz",
+    "sha256": "2be5f5f7f00f656f943b0a476758b3afd73084b2b66a2df33f8d3ee1c72fbf63"
+  },
+  "qualification": {
+    "path": "docs/performance/mobile-texture-image-binding-mip-range-2026-10-20.json",
+    "sha256": "9b9e022452d0ec6c3b9250803902e365dc802b2bdfe6d4a2d6bc70bf7fba083d"
+  },
+  "synthesis": {
+    "path": "docs/performance/mobile-texture-image-binding-synthesis-2026-10-20.json",
+    "sha256": "cc7463c118a5e2d6c5909b2caad683c90265dfd93695706cc97d5c7f4cd1f46e"
+  },
+  "carried_validation": "Exact committed/working source identity carries29 controls, seven ABI checks, four emissions, C11 headers and CI selection. Not a separately rerun main regression.",
+  "setup_ps": {
+    "binding": 57.287,
+    "bound": 49.401,
+    "raw": 123.434,
+    "typed": 10.117
+  },
+  "scope": "GXI1 authority and selected/full mip binding to typed texel fetch; optional components, no new native shader binding/instruction/capability.",
+  "remaining": [
+    "Native per-stage image/sampler bindings and typed shader transport.",
+    "Sampler/filter/LOD/comparison/swizzle and required depth/compressed/remaining texture format semantics.",
+    "Point/line coverage arithmetic timing on historical native replay, corrected host synthesis and final37 composed host checks.",
+    "Full H0-H8/GLES hardware closure and measured throughput/product qualification."
+  ]
+}
