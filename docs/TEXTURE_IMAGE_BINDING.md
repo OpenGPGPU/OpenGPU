@@ -10,6 +10,11 @@ by identical RTL logic and unchanged constraints; source-location comments can
 differ. Native image/sampler integration remains open; no new native texture
 capability is advertised.
 
+The later [GXS1 sampler composition](TEXTURE_SAMPLER_BINDING.md) derives mip
+completeness from GPU sampler state and validates format/type compatibility.
+It is a qualified descriptor-admission component; the native shader path
+still needs general bindings and typed transport.
+
 `TextureImageBindingUnit` loads a GXI1 image record that owns format identity,
 allocation bounds, target, dimensional sequence and a GXL1 level table. A texel
 caller supplies an image handle and integer level, without a caller-selected

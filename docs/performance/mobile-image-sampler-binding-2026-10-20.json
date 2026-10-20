@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "8_new_component_controls_pass_composed_regression_and_synthesis_running",
+  "status": "19_component_controls_qualified_with_two_positive_standalone_synthesis_screens",
   "source_files": 681,
   "source_base_record": "docs/performance/mobile-point-line-bounded-2026-10-20.json",
   "source_base_record_sha256": "7c16b5f78f79151d4b0d9e05b62c26288dc306869002c01b1c58a73d06e6e0c6",
@@ -14,9 +14,9 @@
     "src/main/scala/opengpu/elaboration/EmitTextureSamplerBinding.scala": "bd11497f18ab03682e53271e9556dba99da57721d7de6a34fbb84f2da403b48b",
     "src/main/scala/opengpu/graphics/TextureImageSamplerBindingUnit.scala": "66d97daf88f654c574e3652f2301a4427ff229d007c8788f8f7a5bb0a43c536e",
     "src/main/scala/opengpu/graphics/TextureSamplerBindingUnit.scala": "8efad9a2af128edfc16e66b40bc5de08e31e52476ee17b32e6ca421343ede4e1",
-    "src/test/scala/opengpu/graphics/TextureImageSamplerBindingUnitSpec.scala": "16c6695b4a5389751f82afff8c84475fdc7dff7fae89a795102a2cf15a4ecba1"
+    "src/test/scala/opengpu/graphics/TextureImageSamplerBindingUnitSpec.scala": "697d3c426dae13b5631e9e9112f519f2ef56d2e7d2dfb67cdcab93f8a7b55499"
   },
-  "source_manifest_sha256": "bf9e9b745cf5ebbd7e6d5988a1c1c8383b5c9903ccf5b6b6379cc3fb4494fff5",
+  "source_manifest_sha256": "331f9d1b3fd470061f2619b151dbdf4c659ed7b14f0275490a3385d56ff889d1",
   "behavior": [
     "GXS1 sampler reader with checked64-byte records and exact4GiB table ends.",
     "Composed GXS1/GXI1 admission derives mip-chain requirements exclusively from captured sampler filters.",
@@ -25,7 +25,7 @@
     "Irrevocable reads,cancellation drain,immutable held completion,invalidation-suppressed cache fills and primary fault preservation."
   ],
   "validation": {
-    "new_controls": 8,
+    "new_controls": 9,
     "filter_wrap_combinations": 324,
     "format_filter_pairs": 432,
     "encoding_and_semantic_corruptions": 19,
@@ -45,6 +45,41 @@
     "development_log": {
       "path": ".artifacts/mobile-image-sampler-binding-tests-v4.log",
       "sha256": "bc9aa8aa50ed6b61eb89f6336981d63a099d3301210cecb7e19b08dec4fe8c3b"
+    },
+    "total_qualified_controls": 19,
+    "existing_image_controls": 10,
+    "source_carry_proof": "The v5 run passes8 new+10 existing checks and4 ABI checks. The v6 run passes all9 new checks,including base-validation cancellation/fault. The other680 frozen files are byte exact,including every existing image test and production dependency.",
+    "final_new_control_log": {
+      "path": ".artifacts/mobile-image-sampler-base-control-v6.log",
+      "sha256": "9537416f89e192cdc9aecc70fdb2e87b55a5cbf4a43f21d349139d7648655eda"
+    },
+    "combined_regression_log": {
+      "path": ".artifacts/mobile-image-sampler-qualified-v5.log",
+      "sha256": "35730d043ddce57acd95aa2bb7dfa00ebb8c0340b46b76ea570eccba6ebea7c5"
+    },
+    "abi_generators_checked": [
+      "sampler",
+      "image_binding",
+      "image_level",
+      "image_format"
+    ],
+    "checks": {
+      "combined_c11": {
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "ci_selection": {
+        "returncode": 0,
+        "stdout": "Integration test selection: PASS\n",
+        "stderr": ""
+      }
+    },
+    "base_validation_control": {
+      "stalled_offer_cycles": 11,
+      "cancel_drain": true,
+      "primary_fault_after_cancel": true,
+      "selected_view_retained": true
     }
   },
   "retained_development_runs": [
@@ -67,13 +102,11 @@
       "reason": "Confirmed image dimension mismatch uses format status6; expected status corrected before v4."
     }
   ],
-  "pending": [
-    "Final17-control regression and generated ABI checks.",
-    "Standard1000ps standalone synthesis screens; no retiming or route."
-  ],
+  "pending": [],
   "limits": [
     "Native per-stage binding tables and typed shader transport are not connected; no new native capability or ISA encoding.",
     "General sampling/coordinate/LOD/filter/depth/compressed behavior and H0-H8 closure remain open.",
     "GXS1 carries sampler state; it does not execute filtering or LOD clamps."
-  ]
+  ],
+  "synthesis_record": "docs/performance/mobile-image-sampler-synthesis-2026-10-20.json"
 }

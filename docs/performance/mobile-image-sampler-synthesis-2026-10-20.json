@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "both_standalone_full_mapping_and_setup_pass",
+  "qualified_source_files": 681,
+  "source_manifest_sha256": "331f9d1b3fd470061f2619b151dbdf4c659ed7b14f0275490a3385d56ff889d1",
+  "synthesis_source_manifest_sha256": "bf9e9b745cf5ebbd7e6d5988a1c1c8383b5c9903ccf5b6b6379cc3fb4494fff5",
+  "final_source_change_after_synthesis": [
+    "src/test/scala/opengpu/graphics/TextureImageSamplerBindingUnitSpec.scala"
+  ],
+  "carry_proof": "Only the test file gains a nonmip-base cancellation/fault control. Every synthesis manifest production source and emitted RTL file remains byte exact.",
+  "constraints": {
+    "period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "engine": "yosys",
+    "abc_target": "standard",
+    "retiming": false,
+    "synthesis_only": true,
+    "sram_macros": false
+  },
+  "profiles": {
+    "sampler": {
+      "module": "TextureSamplerBindingUnit",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 12.321406249888241,
+        "finished_utc": "2026-10-20T10:20:58.547641+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        413.729,
+        479.412
+      ],
+      "mapped_cells": 6188,
+      "production_sources_and_rtl_unchanged_in_final_v6": true,
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-image-sampler-sampler-2026-10-20-v1/result.json": "becee093601158916e7211bf0dc3f90cee4a7dc5f9392f7b3833f2b07218d686",
+        "generated/qualification/ppa/mobile-image-sampler-sampler-2026-10-20-v1/qualification.json": "cf6365a1d658c9103c0591d9bbcf98b7d79bc3b242412083a681a7b6f0acb9ef",
+        "generated/qualification/ppa/mobile-image-sampler-sampler-2026-10-20-v1/manifest.json": "17a3d74e3ff4cdc42efc00ef77fcc063cc4622c546712efcded7a3ae36a33a2d",
+        "generated/qualification/ppa/mobile-image-sampler-sampler-2026-10-20-v1/flow/synthesis_sta.log": "7852da05a9053630546dbd5158bfb661bdbd57289df8aa641e6b60b4563d0aec"
+      }
+    },
+    "image": {
+      "module": "TextureImageSamplerBindingUnit",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 86.25952754216269,
+        "finished_utc": "2026-10-20T10:22:12.486372+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        72.847,
+        411.677
+      ],
+      "mapped_cells": 70199,
+      "production_sources_and_rtl_unchanged_in_final_v6": true,
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-image-sampler-image-2026-10-20-v1/result.json": "77feb404061ea549f5dcfe8db2e55bf41898e4056f05293e1cc44127db97eb2c",
+        "generated/qualification/ppa/mobile-image-sampler-image-2026-10-20-v1/qualification.json": "8164a3e102647531274d963ca11454ea56fdfcd1bab83fdf980eae4678ff5691",
+        "generated/qualification/ppa/mobile-image-sampler-image-2026-10-20-v1/manifest.json": "a71b636d5754410d77a6d24a3c5743a731359dc48d6af183fdc36040fe4c6e54",
+        "generated/qualification/ppa/mobile-image-sampler-image-2026-10-20-v1/flow/synthesis_sta.log": "d3ac3f7b1b0d79f0b414ffb2ad7ce0634555232d704b5925afe53846203035f9"
+      }
+    }
+  },
+  "limits": [
+    "Standalone pre-layout setup only; no native shader integration,whole GPU clock,hold,route,power or H0-H8 closure."
+  ]
+}

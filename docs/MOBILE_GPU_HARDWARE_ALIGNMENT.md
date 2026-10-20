@@ -18,6 +18,8 @@ The initial OpenGPU product target is four shared CUs, with a 720p workload suit
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
 
+Latest resource checkpoint: [GXS1/GXI1 admission](TEXTURE_SAMPLER_BINDING.md) qualifies nine new sampler controls plus ten existing image controls. Both standalone synthesis setup screens pass at 1000 ps. Native binding tables and typed shader transport remain open.
+
 ## Current hardware and gaps
 
 | Area | Current RTL or interface | Required evolution |
@@ -6379,3 +6381,19 @@ cache invalidation and cancellation drain. Component validation is in progress.
 Native per-stage binding tables, typed shader transport and actual general
 sampling/filtering remain required; existing ISA and native capability bits
 are unchanged. Current PPA evaluation remains synthesis only.
+
+
+## Qualified GPU sampler/image admission (2026-10-20)
+
+The [final component record](performance/mobile-image-sampler-binding-2026-10-20.json)
+qualifies nine new sampler/composition controls and ten existing image controls.
+All 681 source dependencies are frozen; 674 parent files remain byte exact.
+The final added control drains a stalled base-level validation, preserves its
+primary memory fault across cancellation and retains selected-level metadata
+on healthy reuse. Four ABI checks, combined C11 headers and CI selection pass.
+The [two synthesis screens](performance/mobile-image-sampler-synthesis-2026-10-20.json)
+pass full mapping and setup at standard 1000 ps, 25% I/O, TC/SLVT, no retiming:
+sampler core/I/O +413.729/+479.412 ps; composition +72.847/+411.677 ps.
+No existing ISA, native descriptor slots or advertised capabilities changed.
+Next required resource work is native per-stage binding selection, typed shader
+transport and actual general texture application. Full H0-H8 remains open.

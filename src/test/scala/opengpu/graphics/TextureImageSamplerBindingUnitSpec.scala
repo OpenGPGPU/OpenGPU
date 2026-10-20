@@ -227,4 +227,21 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
       info("IMAGE_SAMPLER_VM realSv32=true samplerImageLevelPermissions=true walkerID8=true virtualFaultAddresses=true noDeniedPhysicalReads=true flushRecovery=true")
     }
   }
+  it should "retain the selected view while draining a stalled nonmip base validation and its primary fault" in {
+    simulate(new ImageSamplerHarness()){d=>val t=new Driver(d);t.sampler();t.image()
+      t.query(level=1)
+      t.until(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.address.peek().litValue==0x2000)
+      t.memory.holdRequests=true;t.tick();val offered=d.io.memoryRequest.bits.peek().litValue
+      d.io.cancel.poke(true.B)
+      for(_<-0 until 11){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==offered)}
+      t.memory.holdRequests=false;t.until(d.io.out.valid.peek().litToBoolean);t.check(4,2);t.pop();d.io.cancel.poke(false.B)
+      t.query(level=1);t.check();d.io.out.bits.image.level.expect(1.U);d.io.out.bits.image.view.texWidth.expect(2.U);t.pop()
+      t.invalidate();t.memory.faultAt=Set(BigInt(0x2000));val before=t.memory.seen.size;t.query(level=1)
+      t.until(t.memory.seen.drop(before).exists(_.address==0x2000) && t.memory.pending.isEmpty && t.memory.reply.isEmpty)
+      d.io.cancel.poke(true.B);t.check(3,2,Some(BigInt(0x2000)));t.pop();d.io.cancel.poke(false.B);t.memory.faultAt=Set.empty
+      t.query(level=1);t.check();d.io.out.bits.image.level.expect(1.U);d.io.out.bits.image.view.texWidth.expect(2.U);t.pop()
+      info("IMAGE_SAMPLER_BASE selectedLevel1=true nonmipBaseValidation=true stalledBaseOffer11=true cancellationDrain=true primaryBaseFault=true selectedViewRetained=true healthyReuse=true")
+    }
+  }
+
 }

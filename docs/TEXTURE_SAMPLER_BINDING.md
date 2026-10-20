@@ -1,7 +1,9 @@
 # GPU sampler state and image completeness
 
-Status: development component. Native per-stage binding tables and shader typed
-texture transport remain open. Existing `tex.sample` and `vtex.sample` retain
+Status: [qualified component](performance/mobile-image-sampler-binding-2026-10-20.json)
+with nine new controls and ten existing image controls on unchanged production
+dependencies. Native per-stage binding tables and shader typed texture transport
+remain open. Existing `tex.sample` and `vtex.sample` retain
 all encodings and packed RGBA8 behavior. No new native capability is advertised.
 
 `TextureSamplerBindingUnit` loads an immutable GXS1 sampler from GPU memory.
@@ -79,3 +81,24 @@ cancelled=4, incompatible format/type=6 and malformed encoding/identity=7.
 Outer fault sources are none=0, sampler=1, image=2 and compatibility=3. Child
 payloads are zero on failure. This component has no private SRAM and does not
 claim native throughput, whole-GPU timing or complete GLES resource support.
+
+
+## Component qualification
+
+The final nine sampler/composition controls cover 324 filter/wrap combinations,
+432 format/filter pairs, 19 malformed/semantic records, seven invalid table
+ranges, 180 cancellation cuts and an additional stalled nonmip base read. They
+also check immutable completion, exact 4 GiB ends, address-zero primary faults,
+Sv32 sampler/image/level permissions and healthy reuse. Ten existing image
+controls pass in the preceding combined run; all their source and production
+dependencies are byte exact in the final snapshot. Four ABI generators check
+cleanly, the eight graphics C headers compile together, and CI selection passes.
+
+Both [standalone synthesis screens](performance/mobile-image-sampler-synthesis-2026-10-20.json)
+pass full mapping and reported setup at 1000 ps, 25% I/O, TC/SLVT, standard ABC
+and no retiming. Sampler admission has core/I/O slack +413.729/+479.412 ps and
+6,188 mapped cells; composed image/sampler admission has +72.847/+411.677 ps
+and 70,199 cells. Only the final test file changed after synthesis; every
+production manifest entry and emitted RTL file remains byte exact. These are
+component results. Native sampling, sustained rates and whole-GPU timing are
+still unqualified. Development fixture failures remain in the linked record.
