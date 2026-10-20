@@ -6937,6 +6937,23 @@ faults through complete math drain. Their declared logical row storage is
 with translated sampling, shared native-CU routing, mapped synthesis and
 whole-path rates/coherence remain required; H0-H8 closure is still open.
 
+## H4 coordinate-to-color RGBA8 composition
+
+The [native RGBA8 service](NATIVE_RGBA8_TEXTURE_SERVICE.md) now composes the
+selected coordinate/resource planner with Sv32, the banked read-through cache,
+actual read accounting, RGBA8 decoding and exact FP32 filtering. Its
+[834-input candidate](performance/mobile-native-rgba8-sampling-2026-10-21.json)
+passes fourteen fresh checks and a 78-file full emission; the 77 lower-level
+checks carry by exact input hashes. The component sustains 192 complete warm
+groups at input/output interval one and retains permissions, precise virtual
+faults, cancellation and output backpressure. SATP is pinned before coordinate
+planning, and invalidation/TLB flush wait for accepted numeric work and public
+retirement before maintenance. The 128 additional outer rows declare 4,880
+logical bytes before optimization, excluding child/planner/FIFO storage.
+Synthesis is running separately. Native shader clients, shared-CU cluster
+routing, general fallback/mip/swizzle ownership, whole-renderer rates/visibility
+and main integration remain required. The full H0-H8 goal remains open.
+
 ## H4 unquantized FP32 bilinear pipeline
 
 The [streaming native FP32 filter](TEXTURE_BILINEAR_FP32_PIPELINE.md) now passes
