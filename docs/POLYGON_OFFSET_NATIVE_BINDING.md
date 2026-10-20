@@ -2,7 +2,8 @@
 
 This branch connects the primitive offset client to live and prepared draws.
 Compatibility and actual-CU image regressions are running. Native feature
-advertisement, full precision and H0–H8 closure remain open.
+discovery is implemented in [GRI1](NATIVE_RASTER_CAPABILITIES.md), with control
+qualification pending. Full precision and H0–H8 closure remain open.
 
 Raster version 1 requires the new enable/factor/units fields to be zero. Version
 2 accepts finite FP32 factor/units and enables triangle offset; point/line
