@@ -6604,3 +6604,40 @@ sampling/filtering/LOD/depth comparison, banked caches, throughput, publication
 and coherence, compiler/driver adoption and the remaining H0–H8 requirements
 remain open. These standalone screens do not establish whole-GPU timing, power
 or frame-rate closure. PPA remains synthesis only.
+
+
+## Internal FP32 selected-level sampling checkpoint (2026-10-20)
+
+The [general sampler development branch](TEXTURE_FLOAT_SAMPLING.md) now has a
+composed selected-level owner, capturing admitted image/sampler state and
+combining normalized FP32 axes, immutable-view typed fetch, depth comparison,
+FP32 filtering and optional final swizzle. It handles 2D, array, cube and 3D
+images with format-aware filterability, zero-weight pruning and duplicate-texel
+reuse. Cube borders map to adjacent faces; the permitted corner construction
+selects the current face's available corner sample. Compressed and sRGB values
+are decoded before filtering. Required memory faults remain visible for
+constant swizzles and comparisons.
+
+The [functional checkpoint](performance/mobile-level-sampling-2026-10-20.json)
+passes 67 distinct targeted tests and nine ABI checks against 780 committed
+inputs. It covers 394 format/wrap samples, 384 cube samples, 17,247 cube-tap
+mappings, 896 depth-comparison samples, 91,135 exact axis queries and 256
+captured-view fetch cases. Cancellation cuts cover coordinate, data, decode
+and FMA ownership, including held offers, immutable results and healthy reuse.
+Real Sv32 checks deny a second data page before physical access, while admitted
+descriptor memory remains unmapped. The initial NaN-reference clamp defect and
+bounds-status fixture error remain recorded with their corrections.
+
+Three fresh [synthesis setup screens](performance/mobile-level-sampling-synthesis-2026-10-20.json)
+pass full mapping at 1000 ps with the existing TC/SLVT, 25% I/O, default ABC
+and no-retiming policy: filter +350.767/+471.902 ps, captured typed fetch
++211.925/+439.266 ps and selected-level sampler +82.172/+440.036 ps (core/I/O).
+Their cell counts are 22,308, 58,422 and 99,878. The earlier standalone axis
+screen is carried only through byte-exact fresh RTL emission.
+
+The parent still chooses levels and filters, rounds array layers and projects
+cube directions. Native floating packet/ISA transport, comparison-aware binding
+admission, explicit/gradient/implicit LOD, min/mag and mip selection, banking,
+miss joining, coherence and representative cluster throughput remain required.
+No new device sampling capability is advertised. This internal owner preserves
+the full H0–H8 objective; PPA remains synthesis only.

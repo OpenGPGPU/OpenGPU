@@ -101,10 +101,28 @@ be applied after the level filter or deferred until a parent blends mip levels.
 Accepted coordinate, fetch and FMA work drains before cancellation completion;
 held results retain their values. This is a functional selected-level owner,
 not a native shader instruction or a qualified texture-cluster throughput path.
-Initial numerical, cube, permission and cancellation checks pass. An initial
-shadow test caught fixed-depth NaN references being clamped to1.0; preserving
-NaN through this step fixes the focused640-case rerun. Broader qualification
-and synthesis screens follow on a frozen source revision.
+The [selected-level qualification](performance/mobile-level-sampling-2026-10-20.json)
+passes 67 distinct targeted tests and nine ABI checks against 780 committed
+inputs. It includes 394 format/wrap samples, 384 cube face/edge/corner samples,
+17,247 cube mappings and 896 depth comparison samples. The captured-fetch,
+axis, filter, base-admission and existing native integer-fetch controls also
+pass. An initial shadow test caught fixed-depth NaN references being clamped to
+1.0; the corrected clamp preserves unordered comparisons. Both the initial
+failure and the diagnostic are retained alongside the final passing evidence.
+
+Three fresh [synthesis screens](performance/mobile-level-sampling-synthesis-2026-10-20.json)
+pass full mapping and setup at 1000 ps, TC/SLVT, 25% I/O, default ABC and no
+retiming:
+
+| Profile | Core margin (ps) | I/O margin (ps) | Mapped cells |
+| --- | ---: | ---: | ---: |
+| FP32 filter | +350.767 | +471.902 | 22,308 |
+| Captured typed fetch | +211.925 | +439.266 | 58,422 |
+| Selected-level sampler | +82.172 | +440.036 | 99,878 |
+
+All source and emitted RTL inputs remain exact. Fresh emission also proves the
+standalone axis RTL byte identical to its earlier passing synthesis screen;
+that carry does not qualify other owners whose source changed.
 
 ## Standalone evidence and remaining integration
 
@@ -120,10 +138,11 @@ mapping and setup: core +194.895 ps, I/O +632.673 ps, 19,046 mapped cells. Libra
 area is 2229.52986 units; this is not physical die area. No route or power
 qualification is claimed.
 
-Required next work is the complete native floating sampling path: coordinate
-packet and instruction transport, authoritative image/sampler admission,
-selected-level metadata, array-layer rounding, cube projection and seamless
-edges/corners, explicit/gradient/implicit LOD, min/mag and mip filtering, depth
-comparison and post-filter image swizzle. Banked caches, miss joining,
-publication/coherence, representative texture throughput and remaining H0–H8
-requirements also remain open. This standalone axis does not close those gates.
+Required next work connects the selected-level owner to the complete native
+floating sampling path: coordinate packet and instruction transport, comparison-
+aware binding admission, selected-mip metadata, array-layer rounding, cube
+projection, explicit/gradient/implicit LOD, min/mag selection, mip interpolation
+and final swizzle. Banked caches, miss joining, publication/coherence,
+representative texture throughput and remaining H0–H8 requirements also remain
+open. The current filter is serialized; its functional capacity does not
+establish a cluster sampling rate.
