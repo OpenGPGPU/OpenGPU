@@ -4,9 +4,11 @@ Status: [40 native texture component tests and nine descriptor ABI checks](perfo
 pass on804 frozen inputs. The paired four LLVM tests and strict C validator
 also pass. The [standalone query owner](performance/mobile-native-texture-size-owner-synthesis-2026-10-21.json)
 and [both whole native endpoints](performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json)
-pass1000ps synthesis including I/O. Fresh full shared-CU and translated AXI
-qualification remain running on `codex/mobile-native-texture-size` and its
-separate AXI test snapshot;this owner is not merged into main yet.
+pass1000ps synthesis including I/O. All [four fresh shared-CU checks](performance/mobile-native-texture-size-shared-CU-2026-10-21.json)
+also pass,including the full existing typed/floating/integer matrices and109
+successful query draws per case. The translated AXI spill case passes74 frames;
+the local case fails an exact image comparison near fault recovery and is under
+investigation. This owner is not merged into main yet.
 
 `opengpu.tex.size.c` uses custom0/function6; `opengpu.vtex.size.c` uses
 custom1/function6 with normal RVV masks. Components0/1/2 return width, height,
@@ -44,13 +46,12 @@ It adds all three scalar/vector component forms, masked MC cases, extension
 checks and an ordinary scalar C inline-assembly helper. Existing encodings and
 descriptor layouts are preserved.
 
-Pending gates include actual shared-CU/AXI query programs,compiler/API lowering
-and the remaining
-H0-H8 requirements. PPA remains synthesis only.
+Pending gates include local-payload AXI recovery,compiler/API lowering and the
+remaining H0-H8 requirements. PPA remains synthesis only.
 
 Both [complete native endpoints](performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json)
 now fully map and pass1000ps synthesis,including I/O:vertex+67.048/+156.884ps
 and fragment+105.752/+122.410ps,at TC/SLVT,25% I/O,standard ABC and no
-retiming. Default endpoint sizing is16 shader lanes/eight warps. The full
-shared-CU and translated query AXI jobs remain separate;no whole-GPU clock
-or hardware completion is established by these synthesis results.
+retiming. Default endpoint sizing is16 shader lanes/eight warps. Shared-CU
+functional qualification and translated AXI recovery are separate gates;no
+whole-GPU clock or hardware completion is established by these synthesis results.
