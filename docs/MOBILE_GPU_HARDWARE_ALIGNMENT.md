@@ -6077,3 +6077,20 @@ The [fresh standalone synthesis](performance/mobile-point-line-sample-synthesis-
 passes full mapping with163555 cells but misses setup by1107.758ps; I/O setup
 is+641.366ps. The aliased diamond interval update remains critical. No native
 clock, frame throughput, power or route qualification is claimed.
+
+
+## Completed overlap integration controls (2026-10-20)
+
+The [overlap source](performance/mobile-point-line-sample-overlap-2026-10-20.json)
+passes all19 fresh targeted controls on unchanged672-file hardware/test source:
+9 coverage,6 primitive interpolation,2 actual shared-CU vertex and2 production
+AXI image controls. Both local payload modes preserve exact point/line inputs,
+source/resolve images, depth and cached consumers. All15 cycle fixtures and15
+legacy setup-policy controls pass with the checked-in measurement tool.
+
+Standalone mapping passes, but the aliased diamond path still misses setup by
+1107.758ps. The earlier206 native checks remain evidence for their prior source,
+not a fresh206 run or blanket carry to this raster revision. Main promotion
+requires exact committed/working source and probe hashes, preservation of the
+unrelated Gallium commit and the remaining worktree edit. Full H0-H8 functional
+closure and representative throughput remain open; PPA remains synthesis only.
