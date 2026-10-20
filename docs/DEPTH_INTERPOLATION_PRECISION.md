@@ -58,3 +58,20 @@ operations, while the changed schedule uses1582. Two shared differences plus
 four lanes of six weight, five depth and384 varying operations give1582.
 The corrected expectation changes no production bytes; the full44-check rerun
 is pending. This does not establish full precision or integrated closure.
+
+
+## Directed scalar quantization prerequisite (2026-10-20)
+
+The [seven-check scalar regression](performance/mobile-depth-quantization-scalar-2026-10-20.json)
+passes on 640 unchanged source/ABI files: 700 directed exact-rational cases,
+904 legacy RNE arithmetic cases, 2065 codec words, ownership/cancellation,
+four ABI checks and scalar emission. Internal operation4 reuses the existing
+FMA toward-zero mode and directed gradual FP32 packing, including far-operand
+sign/sticky handling and finite overflow saturation. Operations0–3 retain RNE.
+One FMA and one divider remain; no CU or SRAM is introduced.
+
+No raster caller selects this operation yet. A future bound-format policy must
+keep fixed-depth resolution assumptions distinct from floating depth, and
+repeat the actual sloped-depth witness plus numeric/image/ownership controls.
+This component result does not resolve that failing witness or close G04/H6,
+full precision, PPA or H0–H8.
