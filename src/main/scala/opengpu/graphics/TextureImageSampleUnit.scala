@@ -10,7 +10,7 @@ class TextureImageSampleRequest extends Bundle {
   /** Effective explicit lambda. Derivative and shader-bias owners resolve
     * their lambda before using this endpoint; sampler clamps apply here.
     */
-  val lod=UInt(32.W)
+  val lod=UInt(32.W);val offsets=Vec(3,SInt(5.W))
   /** Gradient mode resolves lambda from admitted extents and original cube
     * directions. Its unused explicit lambda must have canonical zero bits.
     */
@@ -81,14 +81,17 @@ class TextureImageSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddres
       val mismatched=q.preparation.coordinates.zipWithIndex.map{case(v,a)=>(if(a==2)third else true.B) && v=/=q.quadCoordinates(q.quadLane)(a)}.reduce(_ || _)
       val badMode=(q.gradient && q.implicitLod) || ((q.gradient || q.implicitLod) && q.lod=/=0.U) ||
         (!q.implicitLod && q.bias=/=0.U) || (q.implicitLod && (q.quadValidMask=/=15.U || mismatched))
-      when(badMode){status:=1.U;source:=3.U;phase:=State.finish}
+      val badOffset=q.offsets.map(o=>o<(-8).S || o>7.S).reduce(_ || _) ||
+        (q.preparation.target===TextureImageTarget.cube.U && q.offsets.map(_=/=0.S).reduce(_ || _)) ||
+        (q.preparation.target=/=TextureImageTarget.image3D.U && q.offsets(2)=/=0.S)
+      when(badMode || badOffset){status:=1.U;source:=3.U;phase:=State.finish}
     }}
     is(State.offerPreparation){when(preparation.io.in.fire){preparationStarted:=true.B;phase:=State.waitPreparation}}
     is(State.waitPreparation){when(preparation.io.out.fire){
       preparationStarted:=false.B;val code=preparation.io.out.bits.status
       when((code=/=0.U && code=/=4.U) || !stop){status:=code
         when(code=/=0.U){source:=preparation.io.out.bits.faultSource;faultValid:=preparation.io.out.bits.faultAddressValid;faultAddress:=preparation.io.out.bits.faultAddress}}
-      prepared:=preparation.io.out.bits.prepared;prepared.lod:=request.lod
+      prepared:=preparation.io.out.bits.prepared;prepared.lod:=request.lod;prepared.sample.offsets:=request.offsets
       gradientRequest.prepared:=preparation.io.out.bits;gradientRequest.vector:=request.preparation.coordinates;gradientRequest.gradients:=request.gradients
       gradientRequest.extended:=false.B;gradientRequest.wideGradients:=0.U.asTypeOf(gradientRequest.wideGradients)
       phase:=Mux(stop || code=/=0.U,State.finish,Mux(request.implicitLod,State.offerQuad,Mux(request.gradient,State.offerGradient,State.offerSample)))
@@ -105,7 +108,7 @@ class TextureImageSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddres
       gradientStarted:=false.B;val r=gradient.io.out.bits
       when((r.status=/=0.U && r.status=/=4.U) || !stop){status:=r.status
         when(r.status=/=0.U){source:=r.faultSource;faultValid:=r.faultAddressValid;faultAddress:=r.faultAddress}}
-      prepared:=r.resolved;phase:=Mux(stop || r.status=/=0.U,State.finish,Mux(request.implicitLod,State.offerBias,State.offerSample))
+      prepared:=r.resolved;prepared.sample.offsets:=request.offsets;phase:=Mux(stop || r.status=/=0.U,State.finish,Mux(request.implicitLod,State.offerBias,State.offerSample))
     }}
     is(State.offerBias){when(bias.io.in.fire){biasStarted:=true.B;phase:=State.waitBias}}
     is(State.waitBias){when(bias.io.out.fire){

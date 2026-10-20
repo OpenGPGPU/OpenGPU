@@ -44,9 +44,11 @@ in those regions, so this changes no filtered value. Other weights come from
 the original exact fractional position. NaN, infinity and zero extent return
 coordinate status 5, zero indices and zero weight, retaining the caller tag.
 
-Seven stages use two-entry queues to bound the ready path and retain accepted
-requests through backpressure. With no stalls the latency is seven cycles and
-the initiation interval is one axis per cycle. Up to 14 requests can be buffered.
+Eight stages use two-entry queues to bound the ready path and retain accepted
+requests through backpressure. With no stalls the latency is eight cycles and
+the initiation interval is one axis per cycle. Up to 16 requests can be buffered.
+The additional register stage bounds integer texel offsets before final wrap
+selection; see [texture offset support](TEXTURE_OFFSETS.md).
 This arithmetic pipeline owns no memory transactions and has no cancel input;
 the parent must drain all accepted tags before retiring cancelled work.
 

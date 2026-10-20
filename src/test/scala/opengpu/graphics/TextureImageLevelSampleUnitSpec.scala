@@ -11,13 +11,13 @@ import scala.collection.mutable
 private[graphics] object TextureSamplingReference {
   import TextureFilterReference.{bits,value}
   case class Axis(first: Int,second: Int,weight: BigInt)
-  def axis(raw: BigInt,n: Int,mode: Int,linear: Boolean): Axis={
+  def axis(raw: BigInt,n: Int,mode: Int,linear: Boolean,offset: Int=0): Axis={
     val e=((raw>>23)&255).toInt;require(e!=255 && n>0)
     val m=(raw&0x7fffff)+(if(e==0)BigInt(0)else BigInt(1)<<23);val shift=if(e==0)-149 else e-150
     val den=if(shift<0)BigInt(1)<<(-shift)else BigInt(1)
     val num=(if(raw.testBit(31))-m else m)*(if(shift>0)BigInt(1)<<shift else BigInt(1))
-    val bounded=if(mode==1)num.max(0).min(den)else if(mode==3)num.max(-den).min(den*2)else num
-    val numerator=bounded*n*2-(if(linear)den else BigInt(0));val denominator=den*2
+    val bounded=if(mode==1 && offset==0)num.max(0).min(den)else if(mode==1)num.max(-den*16).min(den*16)else if(mode==3)num.max(-den).min(den*2)else num
+    val numerator=bounded*n*2+BigInt(offset)*den*2-(if(linear)den else BigInt(0));val denominator=den*2
     val div=numerator/denominator;val floor=if(numerator%denominator<0)div-1 else div
     def mod(i: BigInt,d: BigInt): BigInt=((i%d)+d)%d
     def wrapped(i: BigInt): Int=mode match {

@@ -18,7 +18,7 @@ The initial OpenGPU product target is four shared CUs, with a 720p workload suit
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
 
-Latest texture checkpoint: native image bindings and typed component fetch cover all 64 storage formats. The internal [effective-LOD sampler](TEXTURE_FLOAT_SAMPLING.md) passes 107 targeted controls, nine ABI checks and full-owner synthesis at 1000 ps on 788 frozen inputs. It includes cube/array selection, min/mag/mip filtering, depth comparison and final swizzle. The [799-input gradient/implicit sampler](TEXTURE_IMPLICIT_SAMPLING.md) adds internal helper differences and shader bias, passing 122 tests and six fresh synthesis screens at 1000ps. Native floating instruction transport, actual CU/raster helper delivery and scalable texture throughput remain open.
+Latest texture checkpoint: native image bindings and typed component fetch cover all 64 storage formats. The internal [effective-LOD sampler](TEXTURE_FLOAT_SAMPLING.md) passes 107 targeted controls, nine ABI checks and full-owner synthesis at 1000 ps on 788 frozen inputs. It includes cube/array selection, min/mag/mip filtering, depth comparison and final swizzle. The [799-input gradient/implicit sampler](TEXTURE_IMPLICIT_SAMPLING.md) adds internal helper differences and shader bias, passing 122 tests and six fresh synthesis screens at 1000ps. The [799-input offset sampler](TEXTURE_OFFSETS.md) passes 124 tests and fresh full-owner synthesis at 1000ps. Native floating instruction transport, actual CU/raster helper delivery and scalable texture throughput remain open.
 
 ## Current hardware and gaps
 
@@ -6710,3 +6710,27 @@ real helper execution. Native scalar/vector retirement, stage policy, compiler
 and validator integration, offsets/queries, on-chip parameter transport, banked
 texture throughput/coherence and all remaining H0-H8 gates stay open. PPA is
 synthesis only; no whole-GPU clock, routing, power or frame-rate pass is claimed.
+
+## Qualified exact integer texture offsets (2026-10-21)
+
+The [799-input qualification](performance/mobile-texture-offsets-2026-10-21.json)
+passes 124 distinct tests across 21 suites and nine unchanged ABI checks.
+Offsets[-8,+7] apply to each mip's integer texel location before wrapping or
+clamping. Explicit, gradient and implicit modes preserve offsets without FP32
+normalized-coordinate addition; array layers remain independent. Invalid and
+cube offsets reject before descriptors. The axis remains one request/cycle
+with latency eight and sixteen buffered requests.
+
+The regression includes 44,625 new exact-rational offset queries, 91,135
+zero-offset queries, 816 real descriptor-to-texel offset samples, seven
+pre-descriptor rejects and 24 cancellation cuts with healthy reuse.
+Fresh mapped synthesis at TC/SLVT, 1000ps, 25% I/O, standard ABC and no retiming
+passes: axis core/I/O +169.396/+632.673ps, resolver +49.064/+477.467ps, and full
+sampler +34.426/+411.929ps. The sampler maps 438,950 cells with library area
+60,891.212160. Five standalone arithmetic emissions remain byte-identical to
+their positive screens.
+
+Native floating scalar/vector transport, compiler/validator integration, actual
+helper delivery, vertex stage policy, texture queries/projective lowering,
+on-chip parameter transport, banking/throughput/coherence and full H0-H8 remain
+open. PPA remains synthesis only; no whole-GPU or product qualification is claimed.

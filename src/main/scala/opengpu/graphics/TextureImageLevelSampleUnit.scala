@@ -7,7 +7,7 @@ import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 
 class TextureImageLevelSampleRequest extends Bundle {
   val image=new TextureImageBindingResult;val sampler=new TextureSamplerBindingResult
-  val coordinates=Vec(3,UInt(32.W));val layer=UInt(32.W);val face=UInt(32.W)
+  val coordinates=Vec(3,UInt(32.W));val offsets=Vec(3,SInt(5.W));val layer=UInt(32.W);val face=UInt(32.W)
   val linear=Bool();val shadow=Bool();val reference=UInt(32.W)
   /** False defers swizzle until a parent finishes mip interpolation. */
   val applySwizzle=Bool();val tag=UInt(32.W)
@@ -84,6 +84,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   coordinate.io.in.bits.extent:=MuxLookup(axisIssued,1.U)(Seq(0.U->view.texWidth,1.U->view.texHeight,2.U->Mux(volume,view.texDepth,1.U)))
   coordinate.io.in.bits.wrap:=Mux(cube,Mux(request.linear,TextureFloatAxisWrap.cubeBorder.U,TextureFloatAxisWrap.clamp.U),
     MuxLookup(axisIssued,request.sampler.state.wrapR)(Seq(0.U->request.sampler.state.wrapS,1.U->request.sampler.state.wrapT)))
+  coordinate.io.in.bits.offset:=Mux(axisIssued===2.U && !volume,0.S,request.offsets(axisIssued))
   coordinate.io.in.bits.linear:=request.linear && (axisIssued=/=2.U || volume);coordinate.io.in.bits.tag:=axisIssued
   coordinate.io.out.ready:=phase===State.axes
   when(coordinate.io.in.fire){axisIssued:=axisIssued+1.U}
@@ -118,9 +119,12 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
         TextureImageFormat.targetLegal(request.image.format,view.target) && view.block4x4===TextureImageFormat.block4x4(request.image.format) &&
         view.blockBytes===TextureImageFormat.bytes(request.image.format) && ((!request.linear && !request.blendPrevious) || request.shadow || TextureImageFormat.filterable(request.image.format)) &&
         (!request.blendPrevious || (!request.mipWeight(31) && request.mipWeight>0.U && request.mipWeight<"h3f800000".U))
+      val offsetsLegal=request.offsets.map(o=>o>=(-8).S && o<=7.S).reduce(_ && _) &&
+        (!cube || request.offsets.map(_===0.S).reduce(_ && _)) && (volume || request.offsets(2)===0.S)
       val selected= Mux(array,request.layer<view.layers,request.layer===0.U) && Mux(cube,request.face<6.U,request.face===0.U)
       when(stop){phase:=State.finish}.elsewhen(!admitted){fail(TextureImageResourceStatus.view.U,3)}
         .elsewhen(!compatible){fail(TextureImageFetchStatus.format.U,3)}
+        .elsewhen(!offsetsLegal){fail(TextureImageResourceStatus.view.U,3)}
         .elsewhen(!selected){fail(TextureImageResourceStatus.coordinate.U,4)}.otherwise{phase:=State.axes}
     }
     is(State.axes){when(coordinate.io.out.fire){
