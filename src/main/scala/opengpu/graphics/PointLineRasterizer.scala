@@ -19,12 +19,7 @@ private[graphics] object DiamondFraction {
   def make(n: SInt,d: UInt,e: SInt,e2: SInt): DiamondFraction={val x=Wire(new DiamondFraction)
     x.numerator:=n;x.denominator:=d;x.epsilon:=e;x.epsilon2:=e2;x}
   def constant(n: Int): DiamondFraction=make(n.S,1.U,0.S,0.S)
-  def less(a: DiamondFraction,b: DiamondFraction): Bool={
-    val real=a.numerator*b.denominator.zext-b.numerator*a.denominator.zext
-    val e=a.epsilon*b.denominator.zext-b.epsilon*a.denominator.zext
-    val e2=a.epsilon2*b.denominator.zext-b.epsilon2*a.denominator.zext
-    real<0.S || (real===0.S && (e<0.S || (e===0.S && e2<0.S)))
-  }
+
 }
 /** Serialized point/line coverage and center interpolation weights. Basic
   * lines use exact perturbed diamond exit; multisample lines use the butt
@@ -33,7 +28,9 @@ private[graphics] object DiamondFraction {
   * Per-request size/delta/product stages precede scanning. Sample coordinates,
   * products, cross/dot sums and squared distance have register boundaries.
   * Multisample line samples overlap with explicit tags; point/basic-line
-  * sequencing is unchanged and each quad retains all helpers. Keep coordinate carries until the checked 64-bit exports.
+  * coverage retains every helper. Basic diamonds share staged exact interval
+  * comparisons; stationary slabs bypass comparison. Coordinate carries remain
+  * intact until the checked 64-bit exports.
   * Integer arithmetic only; no private SRAM or floating arithmetic lane.
   */
 class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
@@ -42,12 +39,26 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     val in=Flipped(Decoupled(new PointLineRasterRequest));val out=Decoupled(new RasterQuad(g))
     val cancel=Input(Bool());val busy=Output(Bool());val fault=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,decode,measure,bounds,threshold,startQuad,startLane,sample,sampleStream,diamondU,diamondV,diamondDone,nextSample,nextLane,emit,advance=Value}
+  private object State extends ChiselEnum {val idle,decode,measure,bounds,threshold,startQuad,startLane,sample,sampleStream,diamondU,diamondV,diamondDone,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new PointLineRasterRequest);private val output=Reg(new RasterQuad(g))
   private val x=Reg(UInt(16.W));private val y=Reg(UInt(16.W));private val minX=Reg(UInt(16.W));private val maxX=Reg(UInt(16.W));private val maxY=Reg(UInt(16.W))
   private val lane=RegInit(0.U(2.W));private val sample=RegInit(0.U(2.W));private val mask=RegInit(0.U(g.maxSampleCount.W));private val any=RegInit(false.B)
   private val fault=RegInit(false.B);private val lower=Reg(new DiamondFraction);private val upper=Reg(new DiamondFraction)
   private val inside=RegInit(false.B);private val valid=RegInit(false.B)
+  private val axisA=Reg(Vec(2,SInt(33.W)));private val axisB=Reg(Vec(2,SInt(33.W)))
+  private val axisDelta=Reg(Vec(2,SInt(34.W)))
+  private val axisDenominator=Reg(Vec(2,UInt(34.W)))
+  private val axisPositive=Reg(Vec(2,Bool()));private val axisStationary=Reg(Vec(2,Bool()))
+  private val slabLower=Reg(new DiamondFraction);private val slabUpper=Reg(new DiamondFraction)
+  private val compareA=Reg(Vec(2,new DiamondFraction));private val compareB=Reg(Vec(2,new DiamondFraction))
+  private val compareParts=Reg(Vec(2,new DiamondFractionProductParts))
+  private val compareReduced=Reg(Vec(2,new DiamondFractionReduced))
+  private val compareReal=Reg(Vec(2,SInt(100.W)))
+  private val compareEpsilon=Reg(Vec(2,SInt(38.W)));private val compareEpsilon2=Reg(Vec(2,SInt(38.W)))
+  // 0=first slab,1=second slab,2=final interval. Both slab updates use the
+  // same original lower/upper snapshot and become visible together.
+  private val compareMode=Reg(UInt(2.W))
+  private val comparison=(0 until 2).map(i=>DiamondFractionComparison.less(compareReal(i),compareEpsilon(i),compareEpsilon2(i)))
   private val unit=BigInt(1)<<g.subPixelBits;private val half=unit/2;private val quarter=unit/4
   private val dx=Reg(SInt(33.W));private val dy=Reg(SInt(33.W))
   private val length=Reg(SInt(67.W));private val majorX=Reg(Bool())
@@ -83,15 +94,22 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val highY=Mux(request.state.scissorEnable && request.state.scissorMaxY<height,request.state.scissorMaxY,height)
   private val inClip=px>=lowX && px<highX && py>=lowY && py<highY
   private def nextSample(): Unit={phase:=State.nextSample}
-  private def slab(a: SInt,b: SInt,center: SInt,second: Boolean): Unit={
-    val delta=b-a;val positive=delta>0.S;val denominator=Mux(positive,delta,-delta).asUInt
+  private def slab(axis: Int,center: SInt): Unit={
+    val a=axisA(axis).pad(64);val b=axisB(axis).pad(64)
     val lo=center-half.S;val hi=center+half.S
-    val e=Mux(positive,1.S(2.W),(-1).S(2.W));val e2=if(second)-e else e
+    val positive=axisPositive(axis);val denominator=axisDenominator(axis)
+    val e=Mux(positive,1.S(2.W),(-1).S(2.W));val e2=if(axis==1)-e else e
     val l=DiamondFraction.make(Mux(positive,lo-a,a-hi),denominator,e,e2)
     val h=DiamondFraction.make(Mux(positive,hi-a,a-lo),denominator,e,e2)
-    when(delta===0.S){valid:=valid && a>lo && a<=hi}.otherwise{
-      when(DiamondFraction.less(lower,l)){lower:=l};when(DiamondFraction.less(h,upper)){upper:=h}}
     inside:=inside && b>lo && b<=hi
+    when(axisStationary(axis)){
+      valid:=valid && a>lo && a<=hi
+      phase:= (if(axis==0)State.diamondV else State.diamondDone)
+    }.otherwise{
+      slabLower:=l;slabUpper:=h
+      compareA(0):=lower;compareB(0):=l;compareA(1):=h;compareB(1):=upper
+      compareMode:=axis.U;phase:=State.diamondParts
+    }
   }
   io.in.ready:=phase===State.idle;io.out.valid:=phase===State.emit;io.out.bits:=output
   io.busy:=phase=/=State.idle;io.fault:=fault
@@ -120,16 +138,23 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     is(State.idle){when(io.in.fire){request:=io.in.bits;fault:=false.B;phase:=State.decode}}
     is(State.decode){
       dx:=request.x1-&request.x0;dy:=request.y1-&request.y0
+      axisA(0):=request.x0+&request.y0;axisB(0):=request.x1+&request.y1
+      axisA(1):=request.x0-&request.y0;axisB(1):=request.x1-&request.y1
       pointSize:=Fp32RasterState.fixedSize(request.state.pointSize,g.subPixelBits)
       lineSize:=Fp32RasterState.fixedSize(request.state.lineWidth,g.subPixelBits)
       integerWidth:=Fp32RasterState.fixedSize(request.state.lineWidth,0)(6,0)
       phase:=State.measure
     }
     is(State.measure){
+      for(i<-0 until 2){axisDelta(i):=axisB(i)-&axisA(i)}
       length:=dx*dx+&dy*dy;majorX:=Mux(dx<0.S,-dx,dx)>=Mux(dy<0.S,-dy,dy)
       widthSquared:=lineSize*lineSize;phase:=State.bounds
     }
     is(State.bounds){
+      for(i<-0 until 2){
+        axisPositive(i):=axisDelta(i)>0.S;axisStationary(i):=axisDelta(i)===0.S
+        axisDenominator(i):=Mux(axisDelta(i)>0.S,axisDelta(i),-axisDelta(i)).asUInt
+      }
       val size=Mux(request.point,pointSize,lineSize).zext
       val xa=Mux(request.point || request.x0<request.x1,request.x0,request.x1).pad(64)-size
       val xb=Mux(request.point || request.x0>request.x1,request.x0,request.x1).pad(64)+size
@@ -173,11 +198,36 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
         sample:=sample+1.U;sampleIssued:=sampleIssued+1.U
       }
     }
-    is(State.diamondU){slab(request.x0.pad(64)+request.y0,request.x1.pad(64)+request.y1,qx+&qy,second=false);phase:=State.diamondV}
-    is(State.diamondV){slab(request.x0.pad(64)-request.y0,request.x1.pad(64)-request.y1,qx-&qy,second=true);phase:=State.diamondDone}
+    is(State.diamondU){slab(0,qx+&qy)}
+    is(State.diamondV){slab(1,qx-&qy)}
     is(State.diamondDone){
-      val hit=valid && !inside && DiamondFraction.less(lower,upper)
-      when(hit){mask:=1.U;nextSample()}.elsewhen(repeat+&1.U<integerWidth){repeat:=repeat+1.U;phase:=State.sample}.otherwise{nextSample()}
+      compareA(0):=lower;compareB(0):=upper
+      compareA(1):=DiamondFraction.constant(0);compareB(1):=DiamondFraction.constant(0)
+      compareMode:=2.U;phase:=State.diamondParts
+    }
+    is(State.diamondParts){
+      for(i<-0 until 2){compareParts(i):=DiamondFractionComparison.split(compareA(i),compareB(i))}
+      phase:=State.diamondReduce
+    }
+    is(State.diamondReduce){
+      for(i<-0 until 2){compareReduced(i):=DiamondFractionComparison.reduce(compareParts(i))}
+      phase:=State.diamondResolve
+    }
+    is(State.diamondResolve){
+      for(i<-0 until 2){
+        compareReal(i):=DiamondFractionComparison.resolve(compareReduced(i))
+        compareEpsilon(i):=compareReduced(i).epsilon;compareEpsilon2(i):=compareReduced(i).epsilon2
+      }
+      phase:=State.diamondApply
+    }
+    is(State.diamondApply){
+      when(compareMode===2.U){
+        val hit=valid && !inside && comparison(0)
+        when(hit){mask:=1.U;nextSample()}.elsewhen(repeat+&1.U<integerWidth){repeat:=repeat+1.U;phase:=State.sample}.otherwise{nextSample()}
+      }.otherwise{
+        when(comparison(0)){lower:=slabLower};when(comparison(1)){upper:=slabUpper}
+        phase:=Mux(compareMode===0.U,State.diamondV,State.diamondDone)
+      }
     }
     is(State.nextSample){when(sample+&1.U===(1.U(3.W)<<request.state.sampleMode)){phase:=State.nextLane}.otherwise{sample:=sample+1.U;phase:=State.sample}}
     is(State.nextLane){output.lanes(lane).coverageMask:=mask;output.lanes(lane).covered:=mask.orR;any:=any || mask.orR

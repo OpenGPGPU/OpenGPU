@@ -1,0 +1,75 @@
+package opengpu.graphics
+
+import chisel3._
+import opengpu.testutil.GpuSim._
+import org.scalatest.flatspec.AnyFlatSpec
+import scala.collection.mutable
+import scala.util.Random
+
+private class DiamondFractionComparisonHarness extends Module {
+  val io=IO(new Bundle {
+    val a=Input(new DiamondFraction);val b=Input(new DiamondFraction)
+    val enable=Input(Bool());val valid=Output(Bool());val less=Output(Bool())
+    val real=Output(SInt(100.W));val epsilon=Output(SInt(38.W));val epsilon2=Output(SInt(38.W))
+  })
+  val parts=RegNext(DiamondFractionComparison.split(io.a,io.b))
+  val reduced=RegNext(DiamondFractionComparison.reduce(parts))
+  val real=RegNext(DiamondFractionComparison.resolve(reduced))
+  val e=RegNext(reduced.epsilon);val e2=RegNext(reduced.epsilon2)
+  io.valid:=RegNext(RegNext(RegNext(io.enable,false.B),false.B),false.B)
+  io.real:=real;io.epsilon:=e;io.epsilon2:=e2
+  io.less:=DiamondFractionComparison.less(real,e,e2)
+}
+
+class DiamondFractionComparisonSpec extends AnyFlatSpec {
+  private case class Fraction(n: BigInt,d: BigInt,e: Int=0,e2: Int=0)
+  private case class Expected(real: BigInt,e: BigInt,e2: BigInt) {
+    val less=real<0 || (real==0 && (e<0 || (e==0 && e2<0)))
+  }
+  it should "preserve full signed products symbolic ties and sample order through registered reduction" in {
+    simulate(new DiamondFractionComparisonHarness){dut=>
+      val pending=mutable.Queue.empty[Option[Expected]]
+      var checked=0;var bubbles=0
+      def poke(target: DiamondFraction,x: Fraction): Unit={
+        target.numerator.poke(x.n.S);target.denominator.poke(x.d.U)
+        target.epsilon.poke(x.e.S);target.epsilon2.poke(x.e2.S)
+      }
+      poke(dut.io.a,Fraction(0,1));poke(dut.io.b,Fraction(0,1));dut.io.enable.poke(false.B)
+      dut.reset.poke(true.B);dut.clock.step();dut.reset.poke(false.B)
+      def tick(pair: Option[(Fraction,Fraction)]): Unit={
+        dut.io.enable.poke(pair.nonEmpty.B)
+        val expected=pair.map{case(a,b)=>
+          poke(dut.io.a,a);poke(dut.io.b,b)
+          Expected(a.n*b.d-b.n*a.d,BigInt(a.e)*b.d-BigInt(b.e)*a.d,BigInt(a.e2)*b.d-BigInt(b.e2)*a.d)
+        }
+        pending.enqueue(expected);dut.clock.step()
+        if(pending.size>=3){
+          val result=pending.dequeue();dut.io.valid.expect(result.nonEmpty.B)
+          result.foreach{x=>dut.io.real.expect(x.real.S);dut.io.epsilon.expect(x.e.S)
+            dut.io.epsilon2.expect(x.e2.S);dut.io.less.expect(x.less.B);checked+=1}
+        }else dut.io.valid.expect(false.B)
+      }
+      val minimum= -(BigInt(1)<<63);val maximum=(BigInt(1)<<63)-1
+      val numerators=Seq(minimum,maximum,BigInt(-1),BigInt(0),BigInt(1),-(BigInt(1)<<31),BigInt(1)<<31,
+        -(BigInt(1)<<32),BigInt(1)<<32)
+      val denominators=Seq(BigInt(0),BigInt(1),(BigInt(1)<<32)-1,BigInt(1)<<32,(BigInt(1)<<34)-1)
+      val words=for(n<-numerators;d<-denominators)yield Fraction(n,d)
+      val edges=for(a<-words;b<-words)yield(a,b)
+      val ties=for((a,b)<-Seq((BigInt(1),BigInt(1)),((BigInt(1)<<34)-1,BigInt(1)),
+        ((BigInt(1)<<34)-1,(BigInt(1)<<34)-2));e<- -2 to 1;f<- -2 to 1;e2<- -2 to 1;f2<- -2 to 1)
+        yield(Fraction(0,a,e,e2),Fraction(0,b,f,f2))
+      val scaled=for(n<-Seq(BigInt(0),BigInt(-1),BigInt(1),minimum/4,maximum/4);
+        d<-Seq(BigInt(1),BigInt(17),BigInt(1)<<31);k<-Seq(2,3))yield(Fraction(n,d),Fraction(n*k,d*k))
+      val random=new Random(0xd1a604)
+      def fraction(): Fraction={val raw=BigInt(64,random)
+        Fraction(if(raw.testBit(63))raw-(BigInt(1)<<64)else raw,BigInt(34,random),random.nextInt(4)-2,random.nextInt(4)-2)}
+      val cases=edges++ties++scaled++Seq.fill(2048)((fraction(),fraction()))
+      for((pair,i)<-cases.zipWithIndex){
+        if(i%7==0){tick(None);bubbles+=1};tick(Some(pair))
+      }
+      for(_<-0 until 3)tick(None)
+      assert(checked==cases.size)
+      info(s"DIAMOND_FRACTION_PIPELINE exactComparisons=$checked bubbles=$bubbles realBits=100 numeratorBits=64 denominatorBits=34 epsilonBits=2 signedBoundaries=true symbolicTies=${ties.size} fullPrecision=true latency=3")
+    }
+  }
+}

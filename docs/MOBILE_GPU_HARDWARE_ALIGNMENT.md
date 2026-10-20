@@ -6107,3 +6107,17 @@ modes, with exact source identity on main; no additional main regression or
 blanket carry of the earlier206 controls is claimed. Standalone mapping passes
 but the diamond interval setup miss remains1107.758ps. General native texture
 resources, typed shader transport and full H0-H8 closure remain open.
+
+
+## Registered exact diamond interval comparison (2026-10-20)
+
+The [diamond candidate](performance/mobile-point-line-diamond-pipeline-2026-10-20.json)
+shares two comparison slots across U/V slabs and the final interval. Full signed64
+numerators,unsigned34 denominators and both symbolic perturbation orders remain
+exact through16-bit limb products,100-bit carry-save reduction and registered
+prefix propagation. Axes/deltas/denominators register in existing preparation
+stages;stationary slabs bypass comparison. All10 component controls pass on
+frozen674-file source,including4871 full-width oracle comparisons,768 symbolic
+ties,696 bubbles and580 cancellation/reset cuts. Default RTL emission and CI
+selection pass. Fresh integration,cycle costs and standalone synthesis remain
+pending;no positive timing,throughput or full H0-H8 result is claimed.
