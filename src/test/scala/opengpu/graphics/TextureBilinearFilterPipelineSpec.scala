@@ -31,7 +31,10 @@ class TextureBilinearFilterPipelineSpec extends AnyFlatSpec {
       val effective = if (row.bad) 6 else status
       d.io.out.bits.status.expect(effective.U)
       val expected = if (effective == 0) row.expected else Seq.fill(4)(BigInt(0))
-      d.io.out.bits.rgba.zip(expected).foreach { case (v, e) => v.expect(e.U) }
+      d.io.out.bits.rgba.zip(expected).zipWithIndex.foreach { case ((v, e), c) =>
+        assert(v.peek().litValue == e,
+          s"tag=${row.tag} channel=$c observed=${v.peek().litValue.toString(16)} expected=${e.toString(16)} colors=${row.colors.map(_.map(_.toString(16)))} weights=${row.weights.map(_.toString(16))}")
+      }
     }
     def stream(rows: Seq[Row], backpressure: Boolean): (Vector[Int], Vector[Int]) = {
       var sent = 0; var retired = 0
@@ -103,14 +106,16 @@ class TextureBilinearFilterPipelineSpec extends AnyFlatSpec {
     simulate(new TextureBilinearFilterPipeline()) { d =>
       val t = new Driver(d); var hidden = 0; var public = 0
       for (cut <- Vector(0, 1, 3, 7, 8, 9, 16, 24, 32, 48, 64, 96, 192)) {
-        val rows = Vector.tabulate(if (cut < 96) 8 else 96)(i => row(cut * 1000 + i).copy(
+        val rows = Vector.tabulate(if (cut < 96) 8 else 256)(i => row(cut * 1000 + i).copy(
           weights = if (i % 17 == 4) Vector(BigInt(0x7fc12345L), bits(0.5f)) else row(cut * 1000 + i).weights))
         d.io.out.ready.poke(false.B)
         var sent = 0
         while (sent < rows.size && d.io.in.ready.peek().litToBoolean) {
           t.offer(rows(sent)); t.tick(); sent += 1
         }
-        assert(sent > 0); t.idle()
+        assert(sent > 0)
+        if (cut >= 96) { assert(sent < rows.size && sent <= 128); d.io.in.ready.expect(false.B) }
+        t.idle()
         for (_ <- 0 until cut) t.tick()
         val offered = d.io.out.valid.peek().litToBoolean
         val held = if (offered) Some(d.io.out.bits.peek().litValue) else None
@@ -136,7 +141,7 @@ class TextureBilinearFilterPipelineSpec extends AnyFlatSpec {
         t.stream(Vector(row(cut + 500000)), backpressure = false)
       }
       assert(hidden > 0 && public > 0)
-      info(s"BILINEAR_FP32_CANCEL saturatedCuts13=true hiddenRows=$hidden immutablePublic=$public primaryFormatFaultPreserved=true arithmeticNeverFlushed=true healthyReuse=true")
+      info(s"BILINEAR_FP32_CANCEL cuts13=true saturatedUntilBackpressured2=true hiddenRows=$hidden immutablePublic=$public primaryFormatFaultPreserved=true arithmeticNeverFlushed=true healthyReuse=true")
     }
   }
 }

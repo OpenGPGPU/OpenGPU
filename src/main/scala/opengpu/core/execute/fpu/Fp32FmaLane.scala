@@ -110,7 +110,9 @@ class Fp32FmaLane(tagWidth: Int = 16, pipeRegs: Int = 5, resultEntries: Int = 5)
   responseQueue.io.deq.ready := outCaptureReady
   io.out.valid := outValid
   io.out.bits := outBits
-  when(outCaptureReady) {
+  when(resetOrFlush) {
+    outValid := false.B
+  }.elsewhen(outCaptureReady) {
     outValid := responseQueue.io.deq.valid
     when(responseQueue.io.deq.valid) {
       outBits := responseQueue.io.deq.bits

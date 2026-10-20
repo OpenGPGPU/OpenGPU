@@ -246,6 +246,15 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
       dut.clock.step(8)
       dut.io.out.valid.expect(false.B)
       dut.io.busy.expect(false.B)
+      // A held public reply must also be discarded, even with ready low.
+      send(dut, Fp32Operation.mul, false,
+        BigInt("3f000000", 16), BigInt("3f000000", 16), 0, 10)
+      dut.clock.step(12); dut.io.out.valid.expect(true.B)
+      dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
+      dut.clock.step(12); dut.io.out.valid.expect(false.B); dut.io.busy.expect(false.B)
+      send(dut, Fp32Operation.mul, false,
+        BigInt("3f000000", 16), BigInt("3f000000", 16), 0, 11)
+      expect(dut, BigInt("3e800000", 16), 11)
     }
   }
 
