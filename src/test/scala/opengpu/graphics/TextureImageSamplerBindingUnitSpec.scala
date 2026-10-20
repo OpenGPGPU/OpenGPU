@@ -244,4 +244,18 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
     }
   }
 
+  it should "backpressure reserved response IDs without consuming the owned sampler transaction" in {
+    simulate(new ImageSamplerHarness()){d=>val t=new Driver(d);t.sampler(min=2);t.image();t.memory.holdResponses=true
+      t.query();t.until(t.memory.pending.exists(_.tag==4))
+      for(tag<-5 to 7;fault<-Seq(false,true)){
+        t.memory.drive();d.io.memoryResponse.valid.poke(true.B);d.io.memoryResponse.bits.transactionId.poke(tag.U)
+        d.io.memoryResponse.bits.fault.poke(fault.B);d.io.memoryResponse.bits.readData.poke(0.U)
+        d.io.memoryResponse.ready.expect(false.B);t.memory.capture();d.clock.step();d.io.busy.expect(true.B)
+      }
+      d.io.memoryResponse.valid.poke(false.B);t.memory.holdResponses=false;t.check();t.pop()
+      t.query();t.check();t.pop()
+      info("IMAGE_SAMPLER_IDS reservedIDs5to7=true spuriousSuccessAndFault=true noSamplerLeaseConsumed=true realReplyCompletes=true healthyReuse=true")
+    }
+  }
+
 }
