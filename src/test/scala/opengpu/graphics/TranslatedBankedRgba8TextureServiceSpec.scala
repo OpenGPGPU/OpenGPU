@@ -235,7 +235,8 @@ class TranslatedBankedRgba8TextureServiceSpec extends AnyFlatSpec {
       assert(offered>0 && cancelled>0,"cancel cuts did not witness both internal and public ownership")
       info(s"BANKED_TRANSLATED_CUTS cuts8=true publicWitnesses=$offered cancelledWitnesses=$cancelled cancelAndInvalidate=true heldOffersStable=true completeDrain=true")
     }
-  }  it should "cancel one identity tag without stopping other groups or a later reuse of that tag" in {
+  }
+  it should "cancel one identity tag without stopping other groups or a later reuse of that tag" in {
     simulate(new TranslatedBankedRgba8TextureService()){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000)
       def cancel(tag: Int): Unit={
