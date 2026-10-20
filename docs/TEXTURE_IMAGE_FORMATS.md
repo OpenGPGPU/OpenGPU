@@ -71,12 +71,15 @@ SLVERR. Profiles without native vertex/fragment execution leave GTF1 unmapped.
 | 4 | 64 | Supported format count |
 | 5 | `0xffffffff` | Supported IDs0–31 |
 | 6 | `0xffffffff` | Supported IDs32–63 |
-| 7 | 0 | Reserved, no filtering/comparison capability |
+| 7 | 1 | Feature mask: bit0 image-view component swizzle |
 
 Software first checks GTX1 typed-fetch support, then reads GTF1. Older typed-fetch
 hardware without GTF1 supports only IDs0–35. A header's compile-time count is
 insufficient to discover device support. All 64 image IDs are assigned. Software
 checks the device mask before using IDs54–63; earlier GTF1 hardware supports only its advertised subset.
+Software checks word7 bit0 before using the optional
+[GXI1 component mapping](TEXTURE_IMAGE_SWIZZLE.md). This bit does not advertise
+filtering or depth comparison.
 
 The format inventory, noncomparison depth rules, depth expansion and packed float
 semantics follow GLES 3.0.6 sections 3.8.3.1,3.8.13,3.8.15,3.8.17 and3.9.2.1:

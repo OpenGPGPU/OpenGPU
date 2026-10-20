@@ -147,7 +147,7 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig()) extends Module {
       result:=0.U.asTypeOf(result);result.identity:=request.identity;result.unit:=request.unit;result.tag:=request.tag
       result.status:=Mux(io.cancel && status===0.U,4.U,status);result.faultSource:=source;result.faultAddressValid:=faultValid
       result.faultAddress:=Mux(faultValid,faultAddress,0.U)
-      when(!stop){result.value:=fetched.rgba(request.component);result.colorType:=fetched.colorType}
+      when(!stop){result.value:=TextureImageSwizzle(fetched.rgba,fetched.colorType,admitted.image.swizzle)(request.component);result.colorType:=fetched.colorType}
       phase:=State.complete
     }
     is(State.complete){when(io.out.fire){phase:=State.idle}}

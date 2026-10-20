@@ -14,6 +14,7 @@ class TextureImageBindingRecord extends Bundle {
   val rootWidth=UInt(14.W);val rootHeight=UInt(14.W);val rootDepth=UInt(14.W);val layers=UInt(16.W)
   val allocationBase=UInt(32.W);val allocationLimit=UInt(33.W)
   val levelsVersion=UInt(8.W);val levelsBase=UInt(32.W);val levelsLimit=UInt(33.W);val firstLevelHandle=UInt(32.W)
+  val swizzle=new TextureImageSwizzleState
 }
 object TextureImageBindingLayout {
   val magic=BigInt("47584901",16);val words=32;val bytes=128
@@ -23,7 +24,9 @@ object TextureImageBindingLayout {
       Field("handle",6,d.handle),Field("target",7,d.target),Field("format",8,d.format),Field("baseLevel",9,d.baseLevel),Field("maxLevel",10,d.maxLevel),
       Field("rootWidth",11,d.rootWidth),Field("rootHeight",12,d.rootHeight),Field("rootDepth",13,d.rootDepth),Field("layers",14,d.layers),
       Field("allocationBase",15,d.allocationBase),Field("allocationLimit",16,d.allocationLimit),Field("levelsVersion",18,d.levelsVersion),
-      Field("levelsBase",19,d.levelsBase),Field("levelsLimit",20,d.levelsLimit),Field("firstLevelHandle",22,d.firstLevelHandle))
+      Field("levelsBase",19,d.levelsBase),Field("levelsLimit",20,d.levelsLimit),Field("firstLevelHandle",22,d.firstLevelHandle),
+      Field("swizzle.version",23,d.swizzle.version),Field("swizzle.r",24,d.swizzle.r),Field("swizzle.g",25,d.swizzle.g),
+      Field("swizzle.b",26,d.swizzle.b),Field("swizzle.a",27,d.swizzle.a))
   }
 }
 class TextureImageBindingRequest extends Bundle {
@@ -40,6 +43,7 @@ class TextureImageBindingResult extends Bundle {
   val validBinding=Bool();val hit=Bool();val imageReadLines=UInt(2.W);val levelReadLines=UInt(6.W);val levelsChecked=UInt(5.W)
   val format=UInt(6.W);val baseLevel=UInt(4.W);val lastLevel=UInt(4.W);val mipChainChecked=Bool()
   val selected=new TextureImageLevelLookup;val view=new TextureImageLevelView
+  val swizzle=new TextureImageSwizzleState
 }
 private[graphics] object TextureImageMipRange {
   /** For positive roots, base+floor(log2(max(1,root>>base))) equals
@@ -160,7 +164,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       lastLevel:=TextureImageMipRange.last(snapshot.rootWidth,snapshot.rootHeight,snapshot.rootDepth,snapshot.target,snapshot.baseLevel,snapshot.maxLevel)
       when(stop){phase:=State.finish}
         .elsewhen(!TextureImageFormat.valid(snapshot.format)){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
-        .elsewhen(!TextureImageFormat.targetLegal(snapshot.format,snapshot.target) || !dimensions || snapshot.maxLevel<snapshot.baseLevel){status:=TextureImageResourceStatus.view.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
+        .elsewhen(!TextureImageFormat.targetLegal(snapshot.format,snapshot.target) || !dimensions || snapshot.maxLevel<snapshot.baseLevel || !TextureImageSwizzle.legal(snapshot.swizzle)){status:=TextureImageResourceStatus.view.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .elsewhen(snapshot.allocationLimit<=snapshot.allocationBase || snapshot.allocationLimit>(BigInt(1)<<32).U){
           status:=TextureImageResourceStatus.bounds.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .otherwise{phase:=State.checkSelectedLevel}
@@ -236,7 +240,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
       fresh.imageReadLines:=headerLines;fresh.levelReadLines:=levelLines;fresh.levelsChecked:=checked;fresh.hit:=hit
       when(!stop && !hit){assert(selectedValid,"successful image binding lacks selected level")
         fresh.validBinding:=true.B;fresh.format:=snapshot.format;fresh.baseLevel:=snapshot.baseLevel;fresh.lastLevel:=lastLevel
-        fresh.mipChainChecked:=request.requireMipChain;fresh.selected:=selectedLookup;fresh.view:=selectedView}
+        fresh.mipChainChecked:=request.requireMipChain;fresh.selected:=selectedLookup;fresh.view:=selectedView;fresh.swizzle:=snapshot.swizzle}
       when(hit && !stop){fresh:=cachedResult;fresh.tag:=request.tag;fresh.hit:=true.B;fresh.imageReadLines:=0.U;fresh.levelReadLines:=0.U;fresh.levelsChecked:=0.U}
       result:=fresh
       when(!stop && !hit && !noFill && !io.invalidate){cached:=true.B;cachedKey:=request;cachedKey.tag:=0.U;cachedResult:=fresh}

@@ -9,12 +9,16 @@ private[graphics] object NativeTextureFetchTestData {
   def roots(put: (BigInt,BigInt)=>Unit,stage: Int=0,id: Seq[BigInt]=defaultIdentity,address: BigInt=root,count: Int=32,offset: BigInt=0): Unit={
     words(put,address+offset,Seq[BigInt](BigInt("47585201",16),128,1)++id++Seq[BigInt](stage,count,bindings+offset,bindings+offset+2048,0,images+offset,images+offset+4096,0,samplers+offset,0,samplers+offset+2048,0),32)
   }
-  case class View(address: BigInt,format: Int,raw: BigInt,target: Int) {
+  case class View(address: BigInt,format: Int,raw: BigInt,target: Int,swizzle: Seq[Int]=Seq.empty) {
     val name=if(format<54)ImageFormatReference.names(format)else CompressedImageReference.names(format-54)
-    val expected=if(format<54)ImageFormatReference.decode(name,raw)else CompressedImageReference.decode(format,raw)
+    private val decoded=if(format<54)ImageFormatReference.decode(name,raw)else CompressedImageReference.decode(format,raw)
+    private val kind=if(format<54)ImageFormatReference.format(name).kind else 0
+    private val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
+    val expected=if(swizzle.isEmpty)decoded else swizzle.map(options)
   }
   def install(put: (BigInt,BigInt)=>Unit,byte: (BigInt,Int)=>Unit,unit: Int,format: Int=3,target: Int=0,stage: Int=0,
-    id: Seq[BigInt]=defaultIdentity,raw: BigInt=BigInt("fedcba98765432100123456789abcdef",16),offset: BigInt=0): View={
+    id: Seq[BigInt]=defaultIdentity,raw: BigInt=BigInt("fedcba98765432100123456789abcdef",16),offset: BigInt=0,swizzle: Seq[Int]=Seq.empty): View={
+    require(swizzle.isEmpty || (swizzle.length==4 && swizzle.forall(s=>s>=0 && s<=5)))
     val compressed=format>=54
     val bytes=if(compressed)CompressedImageReference.format(format).bytes else ImageFormatReference.format(ImageFormatReference.names(format)).bytes
     val width=if(compressed)7 else 2;val height=if(compressed){if(target==2)7 else 5}else 2
@@ -25,6 +29,8 @@ private[graphics] object NativeTextureFetchTestData {
       (if(compressed)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind),target),16)
     words(put,images+offset+unit*128,Seq[BigInt](BigInt("47584901",16),128,1)++id++Seq[BigInt](unit,target,format,0,0,width,height,depth,count,
       base,base+4096,0,1,levels+offset+unit*128,levels+offset+(unit+1)*128,0,0),32)
+    if(swizzle.nonEmpty){put(images+offset+unit*128+23*4,1)
+      swizzle.zipWithIndex.foreach{case(s,c)=>put(images+offset+unit*128+(24+c)*4,s)}}
     words(put,levels+offset+unit*128,Seq[BigInt](BigInt("47584c01",16),128,1)++id++Seq[BigInt](0,target,0,base,base+4096,0,
       data,width,height,depth,count,row,0,slice,0,layer,0,(if(compressed)1 else 0),bytes),32)
     words(put,samplers+offset+unit*64,Seq[BigInt](BigInt("47585301",16),64,1)++id++Seq[BigInt](unit,0,0,0,0,0,0,0x41700000,0,3),16)
@@ -36,7 +42,7 @@ private[graphics] object NativeTextureFetchTestData {
         byte(selected+by*row+bx*bytes+n,((raw>>(8*n))&255).toInt)
       }
     }else for(n<-0 until bytes)byte(a+n,((raw>>(8*n))&255).toInt)
-    View(a,format,raw&((BigInt(1)<<(bytes*8))-1),target)
+    View(a,format,raw&((BigInt(1)<<(bytes*8))-1),target,swizzle)
   }
   def coordinates(put: (BigInt,BigInt)=>Unit,target: Int=0,id: Seq[BigInt]=defaultIdentity,address: BigInt=packet,
       x: BigInt=1,y: BigInt=1,z: BigInt= -1,layer: BigInt= -1,face: BigInt= -1,level: BigInt=0,offset: BigInt=0): Unit={
