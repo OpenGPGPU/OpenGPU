@@ -5259,6 +5259,11 @@ regressions and held completion ownership. Default four-CU emission completes
 with 371 active RTL files, one shared payload pool, two replay engines and
 unchanged SRAM/AXI capacities. These small W=1 images and structural emission do
 not establish production rates or every version/sample cross product.
-Prepared binned/replay centroid images, complete resource/format
+The [four focused GPU-memory binned centroid checks](performance/mobile-centroid-native-binned-2026-10-20.json)
+also pass on their frozen 631-file source, covering GNC1/GNC2 physical/translated
+images with actual two-CU local/global payloads, GFS1 masks, gradient MRT blending,
+exact sources/resolves, cached consumers, uniform guards and held completion.
+These W=1 triangle frames do not qualify every native primitive/sample/version
+combination or perspective-pole images. Full legacy/composed reruns and complete resource/format
 coverage, representative rates and H0–H8 remain open. Composed PPA continues
 under the synthesis-only policy on its explicitly frozen pre-centroid source.

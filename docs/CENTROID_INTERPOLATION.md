@@ -126,3 +126,21 @@ This structural audit does not establish four-CU runtime performance. The image
 tests use W=1 and two sample/version pairs; perspective-pole controls above and
 prepared GFS1/binned replay remain distinct gates. No new timing or rate result
 is claimed; PPA remains synthesis only on its separately frozen source.
+
+## Native GPU-memory binned centroid images
+
+The [four focused native binned checks](performance/mobile-centroid-native-binned-2026-10-20.json)
+pass on 631 unchanged source/ABI files. Physical GNC1 and translated GNC2 image
+profiles each exercise actual two-CU local/global payloads. Eight total frames
+use 2x/version-3 and 4x/version-4 descriptors, two vertex draws per frame, GFS1
+masks 5/3 and a blended second draw. GPU-memory primitive-bin and state fetches
+are asserted. Exact four-MRT/depth sources, resolves, pitch guards and private
+uniform tails match the reference; cached compute consumers see publication,
+and held native completion retains VM ownership. Programs and vertex data use
+fresh per-frame allocations.
+
+These are W=1 triangle frames with two sample/version pairs. They do not close
+native point/line bin coverage, perspective-pole images, the twelve retained
+legacy cases on the modified fixtures or the complete merged source. The
+separate prepared-replay checkpoint covers triangle/line/point records and state
+cache hits. Full Mobile capacity, rates, resource coverage and H0–H8 remain open.
