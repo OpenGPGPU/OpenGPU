@@ -825,6 +825,8 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           (BigInt(6)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(c)<<12)|(BigInt(7)<<7)|0x2b))++Seq(BigInt("4a7193d7",16)) // vfcvt.f.x.v v7,v7: float export of the integer size
       }
       def run(c: Int,bad: Boolean=false,format: Int=35,target: Int=0,modeControl: Int=0,missing: Boolean=false,integerOffset: Int=0,baseLevel: Int=0,denySampler: Boolean=false): Unit={
+        val selected=sys.props.get("opengpu.textureSize.frames").map(_.split(",").map(_.toInt).toSet)
+        if(selected.exists(!_.contains(frames))){frames+=1;return}
         val mode=if(c%2==0)0 else 2;val vc=(c+1)%3
         val dims=Vector(if(format>=54)7 else 2,if(format>=54){if(target==2)7 else 5}else 2,
           if(target==1)3 else if(target==3)2 else 0)
@@ -868,14 +870,14 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           val denied=(fo+(if(bad)texData.images+17*128 else texData.samplers+17*64))>>12
           image.word(pt+(denied&1023)*4,((image.pa(denied<<12)>>12)<<10)|0x49)
         }
-        val reportFrame=frames%8==0 || bad || missing || baseLevel>0 || integerOffset!=0
+        val reportFrame=true
         val frameStart=System.nanoTime()
         if(reportFrame)println(s"NATIVE_TEXTURE_SIZE_AXI_PROGRESS begin local=$local frame=$frames format=$format target=$target imageBase=$baseLevel offset=$integerOffset bad=$bad missing=$missing")
         axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit();withClue(s"format=$format frame=$frames component=$c mode=$mode local=$local "){image.run(if(bad || missing)3 else 0)}
         if(reportFrame)println(s"NATIVE_TEXTURE_SIZE_AXI_PROGRESS complete local=$local frame=$frames wallMillis=${(System.nanoTime()-frameStart)/1000000} expectedStatus=${if(bad || missing)3 else 0}")
         if(bad){val page=image.pa((fo+texData.images)& ~BigInt(4095));assert(!image.reads.exists(a=>a>=page && a<page+4096))}
         else if(!missing){
-          image.verifyDraws(mode)
+          withClue(s"query image local=$local frame=$frames component=$c format=$format target=$target base=$baseLevel lod=$modeControl denySampler=$denySampler "){image.verifyDraws(mode)}
           for(base<-Seq(vo,fo);address<-Seq(texData.root,texData.bindings,texData.images,texData.levels+(if(base==vo)31 else 17)*128+(baseLevel+math.max(0,modeControl))*128)){
             val page=image.pa((base+address)& ~BigInt(4095));assert(image.reads.exists(a=>a>=page && a<page+4096),s"native typed descriptor page not read: ${page.toString(16)}")
           }
