@@ -1,0 +1,23 @@
+{
+  "magic":"0x47584c01","version":1,"words":32,"bytes":128,"tableAlignment":64,
+  "fields":[
+    {"name":"identity.context","word":3,"bits":32,"signed":false},
+    {"name":"identity.pass","word":4,"bits":32,"signed":false},
+    {"name":"identity.generation","word":5,"bits":32,"signed":false},
+    {"name":"handle","word":6,"bits":32,"signed":false},
+    {"name":"view.target","word":7,"bits":3,"signed":false},
+    {"name":"view.level","word":8,"bits":4,"signed":false},
+    {"name":"view.allocationBase","word":9,"bits":32,"signed":false},
+    {"name":"view.allocationLimit","word":10,"bits":33,"signed":false},
+    {"name":"view.base","word":12,"bits":32,"signed":false},
+    {"name":"view.texWidth","word":13,"bits":14,"signed":false},
+    {"name":"view.texHeight","word":14,"bits":14,"signed":false},
+    {"name":"view.texDepth","word":15,"bits":14,"signed":false},
+    {"name":"view.layers","word":16,"bits":16,"signed":false},
+    {"name":"view.rowPitch","word":17,"bits":33,"signed":false},
+    {"name":"view.slicePitch","word":19,"bits":33,"signed":false},
+    {"name":"view.layerPitch","word":21,"bits":33,"signed":false},
+    {"name":"view.block4x4","word":23,"bits":1,"signed":false},
+    {"name":"view.blockBytes","word":24,"bits":5,"signed":false}
+  ]
+}
