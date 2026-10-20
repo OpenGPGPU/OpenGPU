@@ -5,13 +5,14 @@ import chisel3.util._
 import opengpu.config.{CachePolicy, GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 
-class BankedTextureFillRequest extends Bundle {
+class BankedTextureFillRequest(cachePolicyInput: Boolean=false) extends Bundle {
   val identity = new GraphicsWorkIdentity
   val textureKey = UInt(64.W)
   /** Successfully translated, read-permission-admitted physical line. */
   val address = UInt(32.W)
   val rowParity = Bool()
   val tag = UInt(32.W)
+  val noCache = if(cachePolicyInput) Some(Bool()) else None
 }
 class BankedTextureFillResult(forwardData: Boolean = false) extends Bundle {
   val identity = new GraphicsWorkIdentity
@@ -36,13 +37,14 @@ class BankedTextureFillResult(forwardData: Boolean = false) extends Bundle {
   * every completion is consumed. Shared task integration must scope that drain.
   */
 class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, waiters: Int = 32,
-    forwardData: Boolean = false) extends Module {
+    forwardData: Boolean = false, cachePolicyInput: Boolean = false) extends Module {
+  require(!cachePolicyInput || forwardData, "uncached fills require returned data forwarding")
   require(config.xLen == 32 && isPow2(fills) && fills >= 2 && fills <= 32)
   require(isPow2(waiters) && waiters >= fills && waiters <= 128)
   private val fillBits = log2Ceil(fills)
   private val waiterBits = log2Ceil(waiters)
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new BankedTextureFillRequest))
+    val in = Flipped(Decoupled(new BankedTextureFillRequest(cachePolicyInput)))
     val out = Decoupled(new BankedTextureFillResult(forwardData))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, fills))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, fills)))
@@ -60,7 +62,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
     val free, queued, offered, pending, returned, refilling, done = Value
   }
   private val states = RegInit(VecInit(Seq.fill(fills)(State.free)))
-  private val keys = Reg(Vec(fills, new BankedTextureFillRequest))
+  private val keys = Reg(Vec(fills, new BankedTextureFillRequest(cachePolicyInput)))
   private val data = Reg(Vec(fills, UInt(512.W)))
   private val failed = Reg(Vec(fills, Bool()))
   private val stopped = Reg(Vec(fills, Bool()))
@@ -83,7 +85,8 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
     states(s) =/= State.free && states(s) =/= State.done && !stopped(s) && !noFill(s) &&
       keys(s).identity.asUInt === io.in.bits.identity.asUInt &&
       keys(s).textureKey === io.in.bits.textureKey &&
-      keys(s).address === io.in.bits.address && keys(s).rowParity === io.in.bits.rowParity
+      keys(s).address === io.in.bits.address && keys(s).rowParity === io.in.bits.rowParity &&
+      keys(s).noCache.getOrElse(false.B) === io.in.bits.noCache.getOrElse(false.B)
   })
   private val free = VecInit(states.map(_ === State.free))
   private val freeWaiter = ~alive.asUInt
@@ -141,7 +144,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   when(io.memoryResponse.fire) {
     failed(responseSlot) := io.memoryResponse.bits.fault
     data(responseSlot) := io.memoryResponse.bits.readData
-    states(responseSlot) := Mux(io.memoryResponse.bits.fault, State.done, State.returned)
+    states(responseSlot) := Mux(io.memoryResponse.bits.fault || keys(responseSlot).noCache.getOrElse(false.B), State.done, State.returned)
   }
 
   // Refill data and metadata stay immutable through an arbitrarily blocked

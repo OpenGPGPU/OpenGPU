@@ -4,10 +4,11 @@ import chisel3._
 import chisel3.util._
 import opengpu.core.memory.L2SramArray
 
-class BankedTextureLookup(tagWidth: Int) extends Bundle {
+class BankedTextureLookup(tagWidth: Int,cachePolicyInput: Boolean=false) extends Bundle {
   val identity=new GraphicsWorkIdentity;val textureKey=UInt(64.W)
   /** Physical word address after successful translation/permission admission. */
   val address=UInt(32.W);val rowParity=Bool();val tag=UInt(tagWidth.W)
+  val noCache=if(cachePolicyInput)Some(Bool())else None
 }
 class BankedTextureWord(tagWidth: Int) extends Bundle {
   val tag=UInt(tagWidth.W);val hit=Bool();val data=UInt(32.W)

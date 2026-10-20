@@ -5,9 +5,10 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 
-class BankedRgba8Sample extends Bundle {
+class BankedRgba8Sample(cachePolicyInput: Boolean=false) extends Bundle {
   val identity=new GraphicsWorkIdentity;val textureKey=UInt(64.W);val tag=UInt(32.W)
   val addresses=Vec(4,UInt(32.W));val rowParity=Vec(4,Bool());val weights=Vec(4,UInt(17.W))
+  val noCache=if(cachePolicyInput)Some(Bool())else None
 }
 class BankedRgba8Result(readThrough: Boolean=false,weightedOutput: Boolean=false) extends Bundle {
   val identity=new GraphicsWorkIdentity;val tag=UInt(32.W)
@@ -27,11 +28,12 @@ class BankedRgba8Result(readThrough: Boolean=false,weightedOutput: Boolean=false
   * outside this block. It is not yet wired into the general shader sampler.
   */
 class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: Boolean=false,
-    readThrough: Boolean=false,weightedOutput: Boolean=false) extends Module {
+    readThrough: Boolean=false,weightedOutput: Boolean=false,cachePolicyInput: Boolean=false) extends Module {
+  require(!cachePolicyInput || readThrough, "page policy requires read-through ownership")
   require(isPow2(entries) && entries>=4 && entries<=64)
   private val slotBits=log2Ceil(entries)
   val io=IO(new Bundle {
-    val in=Flipped(Decoupled(new BankedRgba8Sample));val out=Decoupled(new BankedRgba8Result(readThrough,weightedOutput))
+    val in=Flipped(Decoupled(new BankedRgba8Sample(cachePolicyInput)));val out=Decoupled(new BankedRgba8Result(readThrough,weightedOutput))
     val refill=Flipped(Decoupled(new BankedTextureRefill));val refillDone=Decoupled(new BankedTextureRefillCompletion)
     val invalidate=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
     val tapIssues=Output(UInt(3.W));val bankConflicts=Output(UInt(3.W))
@@ -40,12 +42,12 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
     val occupiedFills=if(readThrough)Some(Output(UInt(5.W)))else None
     val joined=if(readThrough)Some(Output(Bool()))else None
   })
-  private val lookups=Wire(Vec(4,Decoupled(new BankedTextureLookup(slotBits+2))))
+  private val lookups=Wire(Vec(4,Decoupled(new BankedTextureLookup(slotBits+2,cachePolicyInput))))
   private val replies=Wire(Vec(4,Decoupled(new BankedTextureReadResult(slotBits+2))))
   private val serviceBusy=Wire(Bool())
   private val stop=io.cancel || (if(readThrough)io.invalidate else false.B)
   if(readThrough){
-    val service=Module(new BankedTextureWordService(GpuConfig(),dataBytes,slotBits+2,useBlackBoxes=useBlackBoxes))
+    val service=Module(new BankedTextureWordService(GpuConfig(),dataBytes,slotBits+2,useBlackBoxes=useBlackBoxes,cachePolicyInput=cachePolicyInput))
     service.io.in<>lookups;replies<>service.io.out
     io.memoryRequest.get<>service.io.memoryRequest;service.io.memoryResponse<>io.memoryResponse.get
     service.io.cancel:=io.cancel;service.io.invalidate:=io.invalidate
@@ -66,7 +68,7 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
     }
   }
   private val alive=RegInit(VecInit(Seq.fill(entries)(false.B)))
-  private val samples=Reg(Vec(entries,new BankedRgba8Sample));private val aliases=Reg(Vec(entries,Vec(4,UInt(4.W))))
+  private val samples=Reg(Vec(entries,new BankedRgba8Sample(cachePolicyInput)));private val aliases=Reg(Vec(entries,Vec(4,UInt(4.W))))
   private val received=Reg(Vec(entries,UInt(4.W)));private val hitMask=Reg(Vec(entries,UInt(4.W)))
   private val data=Reg(Vec(entries,Vec(4,UInt(32.W))));private val cancelled=Reg(Vec(entries,Bool()))
   private val faults=if(readThrough)Some(Reg(Vec(entries,Bool())))else None
@@ -76,6 +78,7 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
   private val sent=Wire(Vec(4,Bool()))
   for(t<-0 until 4){val p=lookups(t);val s=samples(dispatchSlot)
     p.valid:=dispatch && pending(t) && !stop;p.bits.identity:=s.identity;p.bits.textureKey:=s.textureKey
+    p.bits.noCache.foreach(_:=s.noCache.get)
     p.bits.address:=s.addresses(t);p.bits.rowParity:=s.rowParity(t);p.bits.tag:=Cat(dispatchSlot,t.U(2.W));sent(t):=p.fire
   }
   private val remaining=pending & ~sent.asUInt

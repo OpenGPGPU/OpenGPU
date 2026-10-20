@@ -19,9 +19,9 @@ private class QueuedTextureReadResult(tagWidth: Int, indexWidth: Int) extends Bu
   val result = new BankedTextureReadResult(tagWidth)
 }
 
-private class QueuedTextureMiss(tagWidth: Int, indexWidth: Int) extends Bundle {
+private class QueuedTextureMiss(tagWidth: Int, indexWidth: Int, cachePolicyInput: Boolean) extends Bundle {
   val owner = UInt(indexWidth.W)
-  val request = new BankedTextureLookup(tagWidth)
+  val request = new BankedTextureLookup(tagWidth, cachePolicyInput)
 }
 
 /** Four-bank physical read-through service. Every input word requires successful
@@ -32,12 +32,12 @@ private class QueuedTextureMiss(tagWidth: Int, indexWidth: Int) extends Bundle {
   */
 class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int = 8192,
     tagWidth: Int = 16, wordsPerPort: Int = 16, fills: Int = 16,
-    useBlackBoxes: Boolean = false) extends Module {
+    useBlackBoxes: Boolean = false, cachePolicyInput: Boolean = false) extends Module {
   require(isPow2(wordsPerPort) && wordsPerPort >= 4 && wordsPerPort <= 32 && tagWidth > 0)
   private val slotBits = log2Ceil(wordsPerPort)
   private val indexWidth = slotBits + 2
   val io = IO(new Bundle {
-    val in = Vec(4, Flipped(Decoupled(new BankedTextureLookup(tagWidth))))
+    val in = Vec(4, Flipped(Decoupled(new BankedTextureLookup(tagWidth, cachePolicyInput))))
     val out = Vec(4, Decoupled(new BankedTextureReadResult(tagWidth)))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, fills))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, fills)))
@@ -46,8 +46,8 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
     val occupiedFills = Output(UInt(log2Ceil(fills + 1).W)); val joined = Output(Bool())
   })
   private val cache = Module(new BankedTextureLineStore(dataBytes, indexWidth, useBlackBoxes))
-  private val miss = Module(new BankedTextureFillOwner(config, fills, 32, forwardData = true))
-  private val requests = Reg(Vec(4, Vec(wordsPerPort, new BankedTextureLookup(tagWidth))))
+  private val miss = Module(new BankedTextureFillOwner(config, fills, 32, forwardData = true, cachePolicyInput = cachePolicyInput))
+  private val requests = Reg(Vec(4, Vec(wordsPerPort, new BankedTextureLookup(tagWidth, cachePolicyInput))))
   private val alive = RegInit(VecInit(Seq.fill(4)(VecInit(Seq.fill(wordsPerPort)(false.B)))))
   private val cancelled = Reg(Vec(4, Vec(wordsPerPort, Bool())))
   private val invalidated = Reg(Vec(4, Vec(wordsPerPort, Bool())))
@@ -58,7 +58,10 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
     val slot = PriorityEncoder(free)
     val allowed = free.orR && !stop
     cache.io.in(p).valid := io.in(p).valid && allowed
-    cache.io.in(p).bits := io.in(p).bits
+    cache.io.in(p).bits.identity := io.in(p).bits.identity
+    cache.io.in(p).bits.textureKey := io.in(p).bits.textureKey
+    cache.io.in(p).bits.address := io.in(p).bits.address
+    cache.io.in(p).bits.rowParity := io.in(p).bits.rowParity
     cache.io.in(p).bits.tag := Cat(p.U(2.W), slot)
     io.in(p).ready := cache.io.in(p).ready && allowed
     when(io.in(p).fire) {
@@ -84,10 +87,10 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
   io.tapIssues := cache.io.readIssues; io.bankConflicts := cache.io.conflicts
   io.occupiedFills := miss.io.occupiedFills; io.joined := miss.io.joined
 
-  private val fillArbiter = Module(new RRArbiter(new BankedTextureFillRequest, 4))
+  private val fillArbiter = Module(new RRArbiter(new BankedTextureFillRequest(cachePolicyInput), 4))
   // Register the complete lookup metadata before MSHR matching. Cache reply
   // credits must not depend on the owner lookup plus the miss-join ready path.
-  private val pendingMisses = Seq.fill(4)(Module(new Queue(new QueuedTextureMiss(tagWidth, indexWidth), 2)))
+  private val pendingMisses = Seq.fill(4)(Module(new Queue(new QueuedTextureMiss(tagWidth, indexWidth, cachePolicyInput), 2)))
   private val outputs = Seq.fill(4)(Module(new Queue(new QueuedTextureReadResult(tagWidth, indexWidth), 2)))
   private val resultArbiters = Seq.fill(4)(Module(new RRArbiter(new QueuedTextureReadResult(tagWidth, indexWidth), 3)))
   private val fillIndex = miss.io.out.bits.tag(indexWidth - 1, 0)
@@ -98,7 +101,7 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
   private val fillCancelled = cancelled(fillPort)(fillSlot) || miss.io.out.bits.cancelled || io.cancel
   private val fillInvalidated = invalidated(fillPort)(fillSlot) || miss.io.out.bits.invalidated || io.invalidate || draining
   private val fillFault = miss.io.out.bits.fault ||
-    (!miss.io.out.bits.installed && !fillCancelled && !fillInvalidated)
+    (!miss.io.out.bits.installed && !fillRequest.noCache.getOrElse(false.B) && !fillCancelled && !fillInvalidated)
   private val fillGood = !fillFault && !fillCancelled && !fillInvalidated
   private val fillReady = Wire(Vec(4, Bool()))
   for(b <- 0 until 4) {
@@ -109,14 +112,15 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
     val request = requests(port)(slot)
     val wasCancelled = cancelled(port)(slot) || io.cancel
     val wasInvalidated = invalidated(port)(slot) || io.invalidate || draining
-    val direct = word.bits.hit || wasCancelled || wasInvalidated
+    val effectiveHit = word.bits.hit && !request.noCache.getOrElse(false.B)
+    val direct = effectiveHit || wasCancelled || wasInvalidated
     val result = resultArbiters(b).io.in(0)
     result.valid := word.valid && direct
     result.bits := 0.U.asTypeOf(result.bits)
     result.bits.owner := index
     result.bits.result.tag := request.tag
     result.bits.result.address := request.address
-    result.bits.result.hit := word.bits.hit && !wasCancelled && !wasInvalidated
+    result.bits.result.hit := effectiveHit && !wasCancelled && !wasInvalidated
     result.bits.result.data := Mux(result.bits.result.hit, word.bits.data, 0.U)
     result.bits.result.cancelled := wasCancelled
     result.bits.result.invalidated := wasInvalidated
@@ -143,6 +147,7 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
     fill.bits.address := Cat(queuedRequest.address(31, 6), 0.U(6.W))
     fill.bits.rowParity := queuedRequest.rowParity
     fill.bits.tag := queuedIndex
+    fill.bits.noCache.foreach(_ := queuedRequest.noCache.get)
     // Stopped misses bypass new fill admission,which is closed during drain.
     // Their lookup owners remain pinned until the public word reply retires.
     val poison = resultArbiters(b).io.in(2)

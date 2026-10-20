@@ -25,9 +25,9 @@ class BankedRgba8FloatResult extends Bundle {
   * upstream;this block is not a general-format or full native sampler claim.
   */
 class BankedRgba8FloatTextureService(dataBytes: Int = 8192, entries: Int = 16,
-    useBlackBoxes: Boolean = false) extends Module {
+    useBlackBoxes: Boolean = false, cachePolicyInput: Boolean = false) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(new BankedRgba8Sample))
+    val in = Flipped(Decoupled(new BankedRgba8Sample(cachePolicyInput)))
     val out = Decoupled(new BankedRgba8FloatResult)
     val memoryRequest = Decoupled(new ComputeMemoryRequest(GpuConfig(), 64, 16))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, 16)))
@@ -36,7 +36,7 @@ class BankedRgba8FloatTextureService(dataBytes: Int = 8192, entries: Int = 16,
     val occupiedFills = Output(UInt(5.W)); val joined = Output(Bool())
   })
   private val groups = Module(new BankedRgba8TextureHits(dataBytes, entries, useBlackBoxes,
-    readThrough = true, weightedOutput = true))
+    readThrough = true, weightedOutput = true, cachePolicyInput = cachePolicyInput))
   private val metadata = Wire(new Rgba8FloatMetadata)
   private val normalize = Module(new Rgba8WeightedToFp32(metadata.getWidth))
   io.in <> groups.io.in
