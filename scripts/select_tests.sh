@@ -63,6 +63,11 @@ for f in "$@"; do
         pkgs+=("$p")
       fi
       ;;
+    # The compressed texture reference is compiled from these C fixtures.
+    src/test/resources/opengpu/texture/*)
+      none=0
+      pkgs+=("opengpu.graphics.*")
+      ;;
     src/main/scala/yunsuan/*|build.sbt|project/*)
       none=0
       full=1

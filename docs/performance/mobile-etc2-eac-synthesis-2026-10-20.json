@@ -1,0 +1,232 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "five_standalone_full_mapping_and_setup_screens_pass",
+  "synthesis_source_files": 767,
+  "synthesis_source_manifest_sha256": "02a08d28ca77aeaf684a9d3d6194bb6190fc8b290801fa09ced948ef51f8d8cc",
+  "source_commit": "18aa47c86c56c763f0c23aa465e75d64a8dcb645",
+  "constraints": {
+    "clock_period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "engine": "yosys",
+    "abc_target": "standard",
+    "retiming": false,
+    "synthesis_only": true
+  },
+  "profiles": {
+    "block": {
+      "module": "TextureCompressedBlockDecoder",
+      "version": 6,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 13.823310291860253,
+        "finished_utc": "2026-10-20T12:21:39.508759+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        551.516,
+        647.03
+      ],
+      "mapped_cells": 4555,
+      "reported_cell_area": 542.24478,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "global_production_manifest_differences": [
+        "src/main/scala/opengpu/graphics/TextureImageAddressUnit.scala",
+        "src/main/scala/opengpu/graphics/TextureImageResourceAddressUnit.scala"
+      ],
+      "current_block_rtl_exact": true,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-etc2-eac-block-2026-10-20-v6/result.json": "4f670dfecab0447ed9cd302f080cb3c3266fdc005dae2adcabe70b4068a0a9eb",
+        "generated/qualification/ppa/mobile-etc2-eac-block-2026-10-20-v6/qualification.json": "a81e1f9bcf4164f9124a692d506af5a513c492f8e580854abe93066357f59e29",
+        "generated/qualification/ppa/mobile-etc2-eac-block-2026-10-20-v6/manifest.json": "bca6491c73c178043790075ba739baf0d012e79197ffa9adab89deb89d56c752",
+        "generated/qualification/ppa/mobile-etc2-eac-block-2026-10-20-v6/flow/synthesis_sta.log": "4446ae8c527e2a3cad3df139a32ac662baf05718633b1a5afa64016a5a378d40"
+      }
+    },
+    "typed": {
+      "module": "TextureImageTypedFetchUnit",
+      "version": 7,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 95.07674466702156,
+        "finished_utc": "2026-10-20T12:33:11.768049+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        223.136,
+        416.631
+      ],
+      "mapped_cells": 62438,
+      "reported_cell_area": 7522.94466,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "global_production_manifest_differences": [],
+      "current_block_rtl_exact": false,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-etc2-eac-typed-2026-10-20-v7/result.json": "7d7e4984c3f0a1815a737a92359662e451cb98bb030d4f7189686436e64043d1",
+        "generated/qualification/ppa/mobile-etc2-eac-typed-2026-10-20-v7/qualification.json": "5d8746b0d0242b07f397059e37a613bba1e089a46b540516d30b668f22d40c70",
+        "generated/qualification/ppa/mobile-etc2-eac-typed-2026-10-20-v7/manifest.json": "f8a2f8d83f9a083c1da6ad7fdd2c4814737b46ed1814a19201ff55594a4ca9bf",
+        "generated/qualification/ppa/mobile-etc2-eac-typed-2026-10-20-v7/flow/synthesis_sta.log": "d1590e5f21ae117a51b4f90d8920ca1600d1bccd03e333035c0ff88ab51195eb"
+      }
+    },
+    "sampler": {
+      "module": "TextureImageSamplerBindingUnit",
+      "version": 7,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 94.45917966705747,
+        "finished_utc": "2026-10-20T12:33:11.150622+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        205.927,
+        424.063
+      ],
+      "mapped_cells": 70581,
+      "reported_cell_area": 9088.1514,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "global_production_manifest_differences": [],
+      "current_block_rtl_exact": false,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-etc2-eac-sampler-2026-10-20-v7/result.json": "0dd66addf0c7803e769320285a5dcf21bb9b863f21dd5dd7cf40ab0b2cc7be89",
+        "generated/qualification/ppa/mobile-etc2-eac-sampler-2026-10-20-v7/qualification.json": "0ad3e50ae61f01d4ca82bf1eb5473c19a7b4d246afc1266b1e766eab04be430b",
+        "generated/qualification/ppa/mobile-etc2-eac-sampler-2026-10-20-v7/manifest.json": "ab0a4ce8d681a34e86cf8818db22990fd21b13f8ddb7e85c6d537609870265c0",
+        "generated/qualification/ppa/mobile-etc2-eac-sampler-2026-10-20-v7/flow/synthesis_sta.log": "c758fe0658377a01fbd4b692d83f5fa780fe31934b329ef5f4ee5bc17dcadec4"
+      }
+    },
+    "endpoint": {
+      "module": "ShaderTextureFetchUnit",
+      "version": 7,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 180.89539804216474,
+        "finished_utc": "2026-10-20T12:34:37.589070+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        112.409,
+        384.441
+      ],
+      "mapped_cells": 118890,
+      "reported_cell_area": 14638.2471,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "global_production_manifest_differences": [],
+      "current_block_rtl_exact": false,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-etc2-eac-endpoint-2026-10-20-v7/result.json": "e5e26d9ffe81711d2408d284aa1eb4b1e84ce7baa7b067baa75f7192a0015113",
+        "generated/qualification/ppa/mobile-etc2-eac-endpoint-2026-10-20-v7/qualification.json": "5d6ceb52a1600a3048c882dcfd15239f5ad0a2dbd17685dbf8e56b35eeadf0f4",
+        "generated/qualification/ppa/mobile-etc2-eac-endpoint-2026-10-20-v7/manifest.json": "9d4f200a8a69bbf451f24363267b0df97420078dd0cd25318ded2608b4fef976",
+        "generated/qualification/ppa/mobile-etc2-eac-endpoint-2026-10-20-v7/flow/synthesis_sta.log": "428f30a9072d06c5d54bc3223f1efe8fb0fa4bd0b2ad3d122c7e7a7606d2c58b"
+      }
+    },
+    "native": {
+      "module": "NativeShaderTextureUnit",
+      "version": 7,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 309.52660716697574,
+        "finished_utc": "2026-10-20T12:36:46.218439+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        116.537,
+        167.515
+      ],
+      "mapped_cells": 199144,
+      "reported_cell_area": 23873.26284,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "global_production_manifest_differences": [],
+      "current_block_rtl_exact": false,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-etc2-eac-native-2026-10-20-v7/result.json": "7bbea6e71aadb4300211b360ccc790252b552f2e8e0480d96257d091f50d5fcb",
+        "generated/qualification/ppa/mobile-etc2-eac-native-2026-10-20-v7/qualification.json": "ba523bf6ca9f6ed16bd768f87e5b55eff6684cb5483b15bd34fb487cb72fb9d5",
+        "generated/qualification/ppa/mobile-etc2-eac-native-2026-10-20-v7/manifest.json": "d1148143d0a7ac816773d9bdf6f4388228c251f7fc1a0460ffa652a7e062ef05",
+        "generated/qualification/ppa/mobile-etc2-eac-native-2026-10-20-v7/flow/synthesis_sta.log": "f6de8a6e7b02f4448777165339496a97b5f59ba241685ed34823db1111c4e6f4"
+      }
+    }
+  },
+  "block_v6_to_v7_rtl_carry_proof": {
+    "v6_and_v7_active_block_rtl_byte_exact": true,
+    "rtl_sha256": {
+      "TextureCompressedBlockDecoder.sv": "dbe7cb65a26084cbd646be447a3d8ddc32e8bb2ad7260b63b6d2e41b7e76e6fd"
+    },
+    "reason": "Only the composed address pipeline and two tests changed; standalone block decode and its emitted RTL are identical."
+  },
+  "retained_initial_synthesis": {
+    "block": {
+      "returncode": 0,
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        551.516,
+        647.03
+      ],
+      "qualification_sha256": "a81e1f9bcf4164f9124a692d506af5a513c492f8e580854abe93066357f59e29",
+      "source_unchanged": true,
+      "rtl_unchanged": true
+    },
+    "typed": {
+      "returncode": 0,
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        21.775,
+        426.491
+      ],
+      "qualification_sha256": "d773bb47e0cd13435461d086ea88b13285a11f851435b37792f3a3cc2ced6c48",
+      "source_unchanged": true,
+      "rtl_unchanged": true
+    },
+    "sampler": {
+      "returncode": 0,
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        89.835,
+        431.013
+      ],
+      "qualification_sha256": "2bd88b0479e4228ecfcdcee47e57a3b6223bd294db14c79cc0dd119b988cee39",
+      "source_unchanged": true,
+      "rtl_unchanged": true
+    },
+    "endpoint": {
+      "returncode": 2,
+      "passed": false,
+      "reported_setup_slacks_ps": [
+        -15.685,
+        395.717
+      ],
+      "qualification_sha256": "2e7c9a44601264eab1cb9473c4d5f4847f748a47e21b9b6b6a5b2afc978ba9da",
+      "source_unchanged": true,
+      "rtl_unchanged": true
+    },
+    "native": {
+      "returncode": 0,
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        60.843,
+        162.432
+      ],
+      "qualification_sha256": "d4840c0b91c493f8cf03619e8c17031350510e136538868a676e82a57c9cfad3",
+      "source_unchanged": true,
+      "rtl_unchanged": true
+    }
+  },
+  "limits": [
+    "Standalone synthesis setup and mapping only. No whole-host clock, hold, route, power or frame-throughput qualification.",
+    "Composed address pipeline gains one cycle, preserving one address/cycle. Compressed image decode is serialized and no sampling rate improvement is claimed."
+  ],
+  "initial_endpoint_failure": {
+    "setup_ps": -15.685,
+    "from": "captured target[2]",
+    "to": "lastLayer[48] product",
+    "correction": "Register target selection, block rounding and coefficient decrements before full-width multiplication in composed resource address owners."
+  }
+}
