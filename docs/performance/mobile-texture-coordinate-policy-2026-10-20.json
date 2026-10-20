@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Optional captured signed per-axis direct texture sampler policy; legacy path unchanged",
+  "based_on_commit": "21c890f",
+  "source_files": 644,
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-source-v1.json",
+    "sha256": "6afc1cc269b66c3e0825538e92759319d4c8cd0dc639d2c5c79ee1d98b89e153"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-source-v1.tar.gz",
+    "sha256": "05450b8abba08f57fc315662aa44b6d7d2edd84e46bf1055f207d0d9625eb6b8"
+  },
+  "result": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-controls-v1-result.json",
+    "sha256": "af5c5020da71ecf06d7f9f9670057aa88a19dca45398cd3a918bd3186c9a9850"
+  },
+  "log": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-controls-v1.log",
+    "sha256": "96731be887d929f84a92e7ed397c6dcc02a124693f15cfbe1365954136eeed40"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "tests": [
+        2,
+        17
+      ],
+      "success_tasks": 4,
+      "policy_profiles": 2
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 252.8991738751065,
+    "finished_utc": "2026-10-20T03:51:09.558161+00:00"
+  },
+  "passed": 19,
+  "new_policy_checks": 2,
+  "legacy_checks": 17,
+  "valid_samples": 9038,
+  "reserved_mode_faults": 6,
+  "profiles": [
+    {
+      "cache": 0,
+      "samples": 4519,
+      "faults": 3,
+      "reads": 10301,
+      "reordered": 5599
+    },
+    {
+      "cache": 8,
+      "samples": 4519,
+      "faults": 3,
+      "reads": 10185,
+      "reordered": 5483
+    }
+  ],
+  "ci": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-ci-v1.log",
+    "sha256": "33564c66837704a225331df4bb30af6f3d40f6608d0b3c18aec257a98a54e2b0"
+  },
+  "baseline_emission": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-legacy-before-v1-result.json",
+    "sha256": "95c4367e2b2d8be0148f79038d065b99cb582f6d5cb0f323ecb2485e2114f9dd"
+  },
+  "rtl_audit": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-rtl-audit-v1.json",
+    "sha256": "7b0c7c889a8e5cc3ae5e91a6b7c98c8b9c55308b44ca26b6c2db0c84488d3768"
+  },
+  "legacy_active_logic_equal": true,
+  "legacy_ports_and_hierarchy_equal": true,
+  "extra_fpu_cu_sram": 0,
+  "contract": {
+    "modes_per_axis": [
+      "repeat",
+      "clamp-to-edge",
+      "mirrored-repeat"
+    ],
+    "coordinates": [
+      "unsigned Q16.16",
+      "signed S16.16"
+    ],
+    "reflection": "Upward rounding of a reflected normalized product preserves the unfurled texel-index floor/weight contract.",
+    "ownership": "Snapshot wrap/base/dimensions/format/mip selection across trilinear work; retain held results/faults. Reserved modes issue no reads and return a held zero/fault."
+  },
+  "limits": [
+    "The19 checks and emissions are component qualification. Native descriptors, shader ISA bindings, prepared metadata/prefetch policy transport, floating-coordinate conversion and general resources remain open.",
+    "Legacy normalized synthesis-active SV, top ports and hierarchy match the frozen baseline for the existing cached/prepared sampler configuration. No new clock/area/power or throughput claim.",
+    "Cache profiles use different random seeds; their read counts are diagnostics, not a matched cache-performance comparison.",
+    "No H4/H6/H0-H8 or API closure. PPA remains synthesis only."
+  ]
+}

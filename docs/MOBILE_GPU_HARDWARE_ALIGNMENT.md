@@ -5394,3 +5394,19 @@ The host retains four CUs, one shared payload pool and two replay engines.
 Polygon offset and general depth precision corrections remain on development
 branches. The recorded synthesis screen still misses 1 GHz setup; no new
 frame-rate or power claim, and H0–H8 remain open. PPA is synthesis only.
+
+## Captured per-axis texture coordinate prerequisite (2026-10-20)
+
+The [optional direct sampler policy](TEXTURE_COORDINATE_POLICY.md) now supports
+repeat/clamp/mirrored-repeat independently per axis and signed S16.16 inputs,
+while retaining the legacy unsigned contract. Captured bindings survive both
+trilinear walks; reserved modes return a held fault without memory requests.
+All nineteen component/legacy checks pass on 644 unchanged source/ABI files,
+covering 9,038 valid samples and six reserved-mode cases. The legacy cached/
+prepared sampler retains identical synthesis-active SV, ports and hierarchy.
+No FPU, CU or SRAM is added.
+
+Prepared metadata, TexSampleUnit/ISA transport, native sampler descriptors and
+float-coordinate conversion remain required before product exposure. This
+prerequisite does not close T03, H4/H6/H0–H8, full resources, throughput or
+new PPA; evaluation remains synthesis only.

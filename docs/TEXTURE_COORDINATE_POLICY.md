@@ -25,3 +25,13 @@ Those integrations, floating-coordinate conversion, full formats/dimensions,
 throughput and H4/H6 remain open. This adds integer control/arithmetic, with no
 new FPU, CU or SRAM. Numeric, memory-ownership and legacy checks are pending;
 PPA remains synthesis only.
+
+The [19-check regression](performance/mobile-texture-coordinate-policy-2026-10-20.json)
+passes on 644 unchanged source/ABI files: 9,038 valid samples and six reserved-
+mode faults across cached/uncached profiles, plus seventeen legacy sampler/
+pipeline checks. NPOT dimensions, signed/unsigned full-width inputs, mixed axis
+modes, mip/trilinear walks, captured bindings, reordered replies, held results
+and invalid-mode reuse pass. Synthesis-active legacy RTL, ports and hierarchy
+match the independently emitted baseline after comments/whitespace are removed.
+The enabled component introduces no FPU, CU or SRAM. These are component checks;
+the integrations and performance gates above remain open.
