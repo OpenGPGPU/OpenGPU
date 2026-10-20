@@ -2,7 +2,9 @@
 
 Status: functional implementation on `codex/mobile-native-texture-execute`.
 Twelve focused controls and four real shared-CU integration tests pass. Fresh
-aggregate and whole-endpoint synthesis qualification remain pending. No full
+aggregate and whole-endpoint synthesis qualification are running on803 frozen
+inputs; the [checkpoint](performance/mobile-native-texture-execute-checkpoint-2026-10-21.json)
+records source hashes and active jobs. No full
 GLES, throughput, whole-GPU clock or H0-H8 completion is claimed.
 
 The native texture endpoint now shares its existing two physical line credits
@@ -65,11 +67,18 @@ per-endpoint warp banks; the single-task shared-CU adapter owns at most one CU.
 Shader execution and resource/VM publication stay pinned through retirement.
 
 Storage is `16 * lanes * warps * 4` data bytes plus16 validity bits per warp/lane,
-for each instantiated native endpoint. Default8-lane/4-warp storage is2048 data
-bytes plus64 valid bytes. This implementation uses registers and muxes; it makes
+for each instantiated native endpoint. The default16-lane/8-warp profile uses8192 data
+bytes plus256 valid bytes. The4-lane/2-warp shared-CU fixtures use512 data
+bytes plus16 valid bytes. This implementation uses registers and muxes; it makes
 no SRAM macro area or bandwidth assumption. Include every endpoint instance and
 its mapped cell cost in later H0/H8 sizing; raster quads do not introduce a
-second shader VLEN.
+second shader VLEN. `MemoryNativeTypedGraphicsPipeline` contains one vertex and
+one fragment endpoint (16384 data bytes plus512 valid bytes at the default
+configuration). `TypedVertexBinImagePipeline` contains one geometry endpoint
+and one fragment endpoint per render engine, so two engines require24576 data
+bytes plus768 valid bytes. These register costs are additional to the proposed
+tile, payload, texture-cache and L2 SRAM budgets; they do not increase their
+advertised capacities.
 
 ## Retirement and validation
 
