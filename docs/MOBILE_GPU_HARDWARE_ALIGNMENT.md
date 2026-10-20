@@ -6841,7 +6841,9 @@ now passes46 checks with six emissions on822 inputs. It removes shared-owner
 cancel/invalidation lookups under the existing globally drained epoch contract
 and registers untagged tap/conflict telemetry. Event-count checks retain384 hot
 plus768 backpressured tap events and complete group II1. Scoped cancellation
-continues to isolate identity/tag rows in the translated parent. Three fresh
-synthesis screens remain active under unchanged1000ps constraints. Existing
+continues to isolate identity/tag rows in the translated parent. Packed
+read-through and normalized FP32 synthesis now pass the unchanged 1000 ps gate,
+including I/O (+95.013/+44.671 ps and +95.245/+59.166 ps), with no skipped
+instances. Translated epoch-control synthesis remains active. Existing
 native FP32 coordinate/filter semantics still need explicit preservation when
 connecting this Q16-weighted service to shared CU sampling;H0-H8 remain open.
