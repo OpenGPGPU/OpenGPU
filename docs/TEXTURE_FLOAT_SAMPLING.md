@@ -66,6 +66,22 @@ for a cache collision at the same raw level and fault reporting after selection.
 These are internal interfaces; software record layouts and capability words do
 not change. General filtering and comparison admission remain required.
 
+## Captured-view fetch
+
+The typed and raw fetch owners have an optional internal captured-view input.
+In this configuration they snapshot the admitted GXL1 view with the request and
+compute checked addresses directly. They never reread descriptor memory while
+fetching taps. The default configuration retains the existing descriptor reader.
+There is no software layout or capability change.
+
+The shared address pipeline still checks the complete allocation, pitches and
+coordinates. Data fills retain their existing two logical IDs, exact byte
+gathering, cross-page permission checks and cancellation drain. Captured-view
+checks cover all 64 formats at four offsets, poisoned descriptor memory, an
+unmapped descriptor page under Sv32, invalid layouts, held offers and 80
+cancellation cuts. A bounds-status expectation in the initial drain fixture was
+corrected; its focused rerun passes without a production change.
+
 ## Standalone evidence and remaining integration
 
 The [qualification record](performance/mobile-float-axis-synthesis-2026-10-20.json)
