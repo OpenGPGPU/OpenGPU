@@ -5,7 +5,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
+abstract class TranslatedRgba8Fp32ServiceChecks(readCountOutput: Boolean) extends AnyFlatSpec {
   import WindowRecordTest._
   private case class Group(tag: Int,addresses: Vector[BigInt],rows: Vector[Boolean],weights: Vector[BigInt])
   private case class Read(id: Int,address: BigInt,cycle: Int)
@@ -36,6 +36,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     val reads=mutable.ArrayBuffer.empty[Read];val walks=mutable.ArrayBuffer.empty[Read]
     val results=mutable.ArrayBuffer.empty[Result];val inputCycles=mutable.ArrayBuffer.empty[(Int,Int)]
     val expected=mutable.Map.empty[Int,Vector[BigInt]]
+    val reportedReads=mutable.ArrayBuffer.empty[Int]
     private val dataPending=mutable.ArrayBuffer.empty[Reply];private val walkPending=mutable.ArrayBuffer.empty[Reply]
     private val dataLive=mutable.Set.empty[Int];private val walkLive=mutable.Set.empty[Int]
     private var dataOffer: Option[Reply]=None;private var walkOffer: Option[Reply]=None
@@ -105,7 +106,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
         walks+=Read(id,a,cycle);walkPending+=Reply(id,ptes.getOrElse(a,BigInt(0)),walkFault(a),cycle+3+(3-id))
       }
       if(d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean){
-        val r=d.io.out.bits;r.identity.context.expect(7.U);r.identity.pass.expect(8.U);r.identity.generation.expect(9.U)
+        val r=d.io.out.bits;r.dataReadLines.foreach(v=>reportedReads+=v.peek().litValue.toInt);r.identity.context.expect(7.U);r.identity.pass.expect(8.U);r.identity.generation.expect(9.U)
         results+=Result(r.tag.peek().litValue.toInt,r.values.map(_.peek().litValue).toVector,r.hit.peek().litToBoolean,
           r.fault.peek().litToBoolean,r.cancelled.peek().litToBoolean,r.faultSource.peek().litValue.toInt,
           r.faultAddress.peek().litValue,cycle)
@@ -133,11 +134,13 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
       assert(r.hit && !r.fault && !r.cancelled && r.source==0 && r.address==0,r.toString)
       assert(r.values==expected(r.tag),s"tag=${r.tag} got=${r.values} want=${expected(r.tag)}")
     }
-    def drain(): Unit={until(!d.io.busy.peek().litToBoolean);assert(dataLive.isEmpty && walkLive.isEmpty);tick();tick()}
+    def drain(): Unit={until(!d.io.busy.peek().litToBoolean);assert(dataLive.isEmpty && walkLive.isEmpty);
+      if(readCountOutput)assert(reportedReads.sum==reads.size,s"physical-read accounting mismatch reported=${reportedReads.sum} actual=${reads.size}")
+      tick();tick()}
     def flush(): Unit={d.io.flush.valid.poke(true.B);tick();d.io.flush.valid.poke(false.B)}
   }
   it should "preserve every FP32 weight bit after raw RGBA8 decode" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000)
       t.backing=(a,_)=>if((a&4)==0)BigInt(0)else BigInt(0xffffffffL)
       val exact=Vector[BigInt](1,0x007fffffL,0x00800000L,0x33800000L,0x3eaaaaabL,0x3f7fffffL,0x3f800000L)
@@ -155,7 +158,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "check tiny active weights before physical lookup and skip exact endpoint taps" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000);t.mapping(0x402000,0x102000,readable=false)
       val q=group(0).copy(addresses=Vector[BigInt](0x401000,0x402004,0x801000,0x802004),weights=Vector[BigInt](1,0))
       t.submit(q);t.until(t.results.size==1);t.drain()
@@ -169,7 +172,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "reject invalid FP32 axis weights before any translation or memory work" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);var n=0
       for(axis<-0 until 2;bad<-Vector[BigInt](0xbf000000L,0x3f800001L,0x7f800000L,0x7fc12345L)){
         t.submit(group(n).copy(weights=weights.updated(axis,bad)));n+=1
@@ -182,7 +185,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "retain distinct owners for repeated caller tags through filtering and scoped cancellation" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000)
       val a=group(77).copy(weights=Vector[BigInt](0x3eaaaaabL,0x3f000001L))
       val b=group(77).copy(weights=Vector[BigInt](1,0x3f7fffffL))
@@ -204,7 +207,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "translate nonidentity pages then sustain complete resident groups at one per cycle" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000)
       for(n<-0 until 8)t.submit(group(n,n))
       t.until(t.results.size==8);t.results.foreach(t.good);t.drain()
@@ -225,7 +228,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "drain saturated native owners and a held physical offer across cancel and invalidation" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000);t.mapping(0x402000,0x102000)
       t.submit(group(0));t.until(t.results.size==1);t.good(t.results.last);t.drain()
       var acceptedHot=0;var acceptedCold=0
@@ -260,7 +263,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "fault before any physical read and recheck permission before reusing a resident physical alias" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000);t.mapping(0x402000,0x102000,readable=false)
       val bad=group(0).copy(addresses=Vector[BigInt](0x401000,0x401004,0x402000,0x402004))
       t.submit(bad);t.until(t.results.size==1);t.drain()
@@ -280,7 +283,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "honor uncached aliases and invalidate translations automatically across root changes" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000);t.mapping(0x402000,0x101000,policy=2)
       t.submit(group(0));t.until(t.results.size==1);t.good(t.results.last);t.drain();assert(t.reads.size==2)
       val uncached=group(1).copy(addresses=group(1).addresses.map(_+0x1000))
@@ -295,7 +298,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "retain exact virtual attribution for physical line faults and recover" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000);t.dataFault=_==0x101000
       t.submit(group(0));t.until(t.results.size==1);t.drain();val r=t.results.head
       assert(r.fault && !r.hit && r.source==2 && Set(BigInt(0x401000),BigInt(0x401004))(r.address) && r.values.forall(_==0))
@@ -305,7 +308,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "drain a held PTE request across cancellation and retain a concurrent page-walk fault" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000);t.walkReady=_=>false
       t.submit(group(0));t.until(d.io.pageWalk.valid.peek().litToBoolean)
       d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
@@ -320,7 +323,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "cancel every unoffered completed row while keeping the single public result immutable" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000)
       t.submit(group(0));t.until(t.results.size==1);t.good(t.results.last);t.drain()
       t.resultReady=_=>false
@@ -336,7 +339,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "retain cancellation and invalidation at translation cache fill and final retirement cuts" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000)
       t.walkReady=c=>c%7<4;t.dataReady=c=>c%11<5
       var offered=0;var cancelled=0
@@ -357,7 +360,7 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
     }
   }
   it should "cancel one identity tag without stopping other groups or a later reuse of that tag" in {
-    simulate(new TranslatedRgba8Fp32TextureService()){d=>
+    simulate(new TranslatedRgba8Fp32TextureService(readCountOutput=readCountOutput)){d=>
       val t=new Driver(d);t.mapping(0x401000,0x101000)
       def cancel(tag: Int): Unit={
         d.io.cancelGroup.bits.identity.context.poke(7.U);d.io.cancelGroup.bits.identity.pass.poke(8.U)
@@ -389,3 +392,6 @@ class TranslatedRgba8Fp32TextureServiceSpec extends AnyFlatSpec {
   }
 
 }
+
+class TranslatedRgba8Fp32TextureServiceSpec extends TranslatedRgba8Fp32ServiceChecks(false)
+class TranslatedRgba8Fp32ReadCountSpec extends TranslatedRgba8Fp32ServiceChecks(true)

@@ -9,7 +9,7 @@ class BankedTextureGroupCancel extends Bundle {
   val identity=new GraphicsWorkIdentity
   val tag=UInt(32.W)
 }
-class TranslatedBankedRgba8Result(rawTapOutput: Boolean=false) extends BankedRgba8FloatResult(rawTapOutput) {
+class TranslatedBankedRgba8Result(rawTapOutput: Boolean=false,readCountOutput: Boolean=false) extends BankedRgba8FloatResult(rawTapOutput,readCountOutput) {
   /** 0=none,1=translation,2=physical data. faultAddress is always virtual. */
   val faultSource=UInt(2.W)
 }
@@ -27,12 +27,13 @@ class TranslatedBankedRgba8Result(rawTapOutput: Boolean=false) extends BankedRgb
   */
 class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
     dataBytes: Int=8192,entries: Int=32,useBlackBoxes: Boolean=false,
-    rawTapOutput: Boolean=false) extends Module {
+    rawTapOutput: Boolean=false,readCountOutput: Boolean=false) extends Module {
+  require(!readCountOutput || rawTapOutput, "physical read accounting uses raw-tap mode")
   require(config.xLen==32 && isPow2(entries) && entries>=16 && entries<=64)
   private val indexBits=log2Ceil(entries)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new BankedRgba8Sample))
-    val out=Decoupled(new TranslatedBankedRgba8Result(rawTapOutput))
+    val out=Decoupled(new TranslatedBankedRgba8Result(rawTapOutput,readCountOutput))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
     val pageWalk=Decoupled(new ComputeMemoryRequest(config,64,4))
@@ -42,7 +43,7 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
     val invalidate=Input(Bool());val busy=Output(Bool())
     val occupiedFills=Output(UInt(5.W));val joined=Output(Bool())
   })
-  private val backend=Module(new BankedRgba8FloatTextureService(dataBytes,16,useBlackBoxes,cachePolicyInput=true,rawTapOutput=rawTapOutput))
+  private val backend=Module(new BankedRgba8FloatTextureService(dataBytes,16,useBlackBoxes,cachePolicyInput=true,rawTapOutput=rawTapOutput,readCountOutput=readCountOutput))
   private val translators=Seq.fill(4)(Module(new GraphicsAddressTranslator(config,entries=16,maxOutstanding=entries)))
   private val samples=Reg(Vec(entries,new BankedRgba8Sample))
   private val physical=Reg(Vec(entries,Vec(4,UInt(32.W))))
@@ -53,7 +54,7 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
   private val cancelled=Reg(Vec(entries,Bool()))
   private val launched=RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val completed=RegInit(VecInit(Seq.fill(entries)(false.B)))
-  private val results=Reg(Vec(entries,new TranslatedBankedRgba8Result(rawTapOutput)))
+  private val results=Reg(Vec(entries,new TranslatedBankedRgba8Result(rawTapOutput,readCountOutput)))
   private val head=RegInit(0.U(indexBits.W));private val tail=RegInit(0.U(indexBits.W))
   private val count=RegInit(0.U((indexBits+1).W))
   private val issueHead=RegInit(0.U(indexBits.W));private val issueCount=RegInit(0.U((indexBits+1).W))
@@ -61,7 +62,7 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
   private val draining=RegInit(false.B);private val pinnedSatp=RegInit(0.U(32.W))
   // One public completion only: a second hidden final row could otherwise
   // escape a cancel pulse while the visible row is held.
-  private val outputs=Module(new Queue(new TranslatedBankedRgba8Result(rawTapOutput),1,pipe=true))
+  private val outputs=Module(new Queue(new TranslatedBankedRgba8Result(rawTapOutput,readCountOutput),1,pipe=true))
   private val walks=Module(new Queue(new ComputeMemoryRequest(config,64,4),2))
   io.out<>outputs.io.deq
   io.memoryRequest<>backend.io.memoryRequest;backend.io.memoryResponse<>io.memoryResponse
@@ -173,6 +174,7 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
     results(e):=0.U.asTypeOf(results(e));results(e).identity:=samples(e).identity;results(e).tag:=samples(e).tag
     results(e).values:=b.values;results(e).hit:=b.hit;results(e).fault:=b.fault
     results(e).rawTaps.foreach(_:=b.rawTaps.get)
+    results(e).dataReadLines.foreach(_:=b.dataReadLines.get)
     results(e).cancelled:=b.cancelled;results(e).missingTaps:=b.missingTaps
     results(e).faultSource:=Mux(b.fault,2.U,0.U)
     val matches=VecInit((0 until 4).map(p=>samples(e).weights(p)=/=0.U && physical(e)(p)===b.faultAddress)).asUInt

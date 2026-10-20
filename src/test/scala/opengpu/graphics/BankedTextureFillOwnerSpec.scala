@@ -8,11 +8,11 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class BankedFillHarness(fills: Int = 16, waiters: Int = 32) extends Module {
+private class BankedFillHarness(fills: Int = 16, waiters: Int = 32, readCountOutput: Boolean = false) extends Module {
   private val config = GpuConfig(lanes = 4, warps = 2)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new BankedTextureFillRequest))
-    val out = Decoupled(new BankedTextureFillResult)
+    val out = Decoupled(new BankedTextureFillResult(readCountOutput = readCountOutput))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, fills))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, fills)))
     val lookup = Flipped(Decoupled(new BankedTextureLookup(16)))
@@ -22,7 +22,7 @@ private class BankedFillHarness(fills: Int = 16, waiters: Int = 32) extends Modu
     val busy = Output(Bool()); val occupied = Output(UInt(log2Ceil(fills + 1).W))
     val waiting = Output(UInt(log2Ceil(waiters + 1).W)); val joined = Output(Bool())
   })
-  private val owner = Module(new BankedTextureFillOwner(config, fills, waiters))
+  private val owner = Module(new BankedTextureFillOwner(config, fills, waiters, readCountOutput = readCountOutput))
   private val store = Module(new BankedTextureLineStore())
   owner.io.in <> io.in; io.out <> owner.io.out
   io.memoryRequest <> owner.io.memoryRequest; owner.io.memoryResponse <> io.memoryResponse
@@ -49,6 +49,7 @@ class BankedTextureFillOwnerSpec extends AnyFlatSpec {
     zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
     val memory = mutable.ArrayBuffer.empty[(Int, BigInt)]
     val results = mutable.ArrayBuffer.empty[(Int, Boolean, Boolean, Boolean, Boolean)]
+    val physicalReads = mutable.ArrayBuffer.empty[Boolean]
     var cycle = 0
     private var held: Option[BigInt] = None
     def identity(q: GraphicsWorkIdentity, generation: Int = 9): Unit = {
@@ -73,6 +74,7 @@ class BankedTextureFillOwnerSpec extends AnyFlatSpec {
         Some(d.io.out.bits.peek().litValue) else None
       if(d.io.out.valid.peek().litToBoolean && d.io.out.ready.peek().litToBoolean) {
         val q = d.io.out.bits
+        q.physicalRead.foreach(v => physicalReads += v.peek().litToBoolean)
         results += ((q.tag.peek().litValue.toInt, q.installed.peek().litToBoolean,
           q.fault.peek().litToBoolean, q.cancelled.peek().litToBoolean, q.invalidated.peek().litToBoolean))
       }
@@ -199,4 +201,41 @@ class BankedTextureFillOwnerSpec extends AnyFlatSpec {
       info("BANKED_TEXTURE_FILL_INVALIDATION heldOfferSurvives=true invalidationPulseRetained=true noLateCachePublication=true healthyReuse=true")
     }
   }
+  it should "charge one physical read once even when joined waiters repeat a caller tag" in {
+    simulate(new BankedFillHarness(readCountOutput = true)) { d =>
+      val t = new Driver(d); d.io.out.ready.poke(true.B)
+      for (_ <- 0 until 3) t.submit(7, 0)
+      t.until(d.io.memoryRequest.valid.peek().litToBoolean)
+      d.io.memoryRequest.ready.poke(true.B); t.until(t.memory.size == 1)
+      t.reply(t.memory.head._1, 0); t.until(t.results.size == 3)
+      t.until(!d.io.busy.peek().litToBoolean)
+      assert(t.memory.size == 1 && t.results.forall(_._1 == 7))
+      assert(t.physicalReads.size == 3 && t.physicalReads.count(v => v) == 1)
+    }
+  }
+  it should "report zero reads for a fill cancelled before its memory offer" in {
+    simulate(new BankedFillHarness(readCountOutput = true)) { d =>
+      val t = new Driver(d); d.io.out.ready.poke(true.B)
+      t.submit(7, 0); d.io.cancel.poke(true.B); t.tick(); d.io.cancel.poke(false.B)
+      t.until(t.results.size == 1); t.until(!d.io.busy.peek().litToBoolean)
+      assert(t.memory.isEmpty && t.physicalReads.toVector == Vector(false))
+      t.submit(8, 0); d.io.memoryRequest.ready.poke(true.B); t.until(t.memory.size == 1)
+      t.reply(t.memory.head._1, 0); t.until(t.results.size == 2); t.until(!d.io.busy.peek().litToBoolean)
+      assert(t.physicalReads.toVector == Vector(false, true))
+    }
+  }
+  it should "charge a held offered read after cancellation even when its response faults" in {
+    simulate(new BankedFillHarness(readCountOutput = true)) { d =>
+      val t = new Driver(d); d.io.out.ready.poke(true.B)
+      t.submit(7, 0); t.until(d.io.memoryRequest.valid.peek().litToBoolean)
+      val offered = d.io.memoryRequest.bits.peek().litValue
+      d.io.cancel.poke(true.B); t.tick(); d.io.cancel.poke(false.B)
+      for (_ <- 0 until 4) { d.io.memoryRequest.valid.expect(true.B); assert(d.io.memoryRequest.bits.peek().litValue == offered); t.tick() }
+      d.io.memoryRequest.ready.poke(true.B); t.until(t.memory.size == 1)
+      t.reply(t.memory.head._1, 0, fault = true); t.until(t.results.size == 1); t.until(!d.io.busy.peek().litToBoolean)
+      assert(t.physicalReads.toVector == Vector(true))
+      assert(t.results.head._3 && t.results.head._4)
+    }
+  }
+
 }
