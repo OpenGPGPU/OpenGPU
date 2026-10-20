@@ -1,9 +1,8 @@
 # GPU-memory texture level records and checked spans
 
-Status: isolated development candidate. The six resource controls and four
-existing address controls pass on the preceding frozen source. Expanded cache
-identity probes, all five ABI checks and another full emission are running on
-the final candidate. Native sampler integration remains open.
+Status: [11 controls pass](performance/mobile-texture-level-resource-2026-10-20.json)
+on unchanged 649-file source, together with five ABI checks, C11 headers, CI
+selection and two full emissions. Native sampler integration remains open.
 
 `TextureImageResourceAddressUnit` loads a resolved mip layout from GPU memory,
 validates its complete record, then uses the qualified `TextureImageAddressUnit`
@@ -77,3 +76,12 @@ sampler state, indexed per-stage bindings and native fault/VM integration.
 Existing native sampler records, GTX1, shader instructions and capabilities
 are unchanged. H4/H6 and general GLES texture support remain open. PPA screening
 is synthesis only.
+
+The loader enables the optional four-stage address profile. The extra elastic
+sum/bounds register preserves one address per cycle and changes only its latency.
+The default three-stage profile preserves its ports, registers and arithmetic
+after five internal net renamings. [Synthesis screening](performance/mobile-texture-level-resource-synthesis-2026-10-20.json)
+at TC/SLVT, 1000 ps, 25 percent I/O budget and no retiming reports +53.957 ps
+worst setup slack for the loader and +70.945 ps for the default address unit.
+Both mapping gates pass; the initial -88.594 ps composed result is retained.
+No place/route, power or native-host rate result is implied.

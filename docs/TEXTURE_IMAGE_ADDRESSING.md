@@ -8,6 +8,9 @@ texture resource support.
 `TextureImageAddressUnit` accepts a resolved mip-level view with each request.
 The view and already selected integer texel coordinates are captured together.
 Three elastic stages produce one address per cycle on an unstalled stream.
+An optional `pipelineBounds=true` fourth stage separates wide sums from bounds
+checks for composed owners; it preserves the same steady interval. Both profiles
+pass the [expanded address/resource qualification](performance/mobile-texture-level-resource-2026-10-20.json).
 Accepted requests retain ordered, immutable results under backpressure. The
 unit has no memory transactions or persistent cache state; a cancelling owner
 must drain its accepted results.

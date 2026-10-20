@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "11_checks_five_ABIs_two_emissions_C11_CI_passed",
+  "source_files": 649,
+  "source_unchanged": true,
+  "runtime": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "test_counts": [
+        11
+      ],
+      "passed_tasks": 1,
+      "success_tasks": 8,
+      "markers": {
+        "TEXTURE_LEVEL_RESOURCE": 1,
+        "TEXTURE_LEVEL_CACHE": 1,
+        "TEXTURE_LEVEL_BOUNDS": 1,
+        "TEXTURE_LEVEL_VALIDATION": 1,
+        "TEXTURE_LEVEL_DRAIN": 1,
+        "TEXTURE_LEVEL_LIMITS": 1
+      }
+    },
+    "expected_coverage": {
+      "test_counts": [
+        11
+      ],
+      "passed_tasks": 1,
+      "success_tasks": 8,
+      "markers": {
+        "TEXTURE_LEVEL_RESOURCE": 1,
+        "TEXTURE_LEVEL_CACHE": 1,
+        "TEXTURE_LEVEL_BOUNDS": 1,
+        "TEXTURE_LEVEL_VALIDATION": 1,
+        "TEXTURE_LEVEL_DRAIN": 1,
+        "TEXTURE_LEVEL_LIMITS": 1
+      }
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 33.22746195807122,
+    "finished_utc": "2026-10-20T05:51:33.912627+00:00"
+  },
+  "resource_checks": 6,
+  "address_checks": 5,
+  "resource_target_mip_matrix_queries": 128,
+  "resource_matrix_descriptor_lines": 128,
+  "record_fields": 18,
+  "record_bytes": 128,
+  "ABI_checks": 5,
+  "RTL_emissions": 2,
+  "source_proof": {
+    "source_files": 649,
+    "legacy_base_commit": "2b39310",
+    "unchanged_existing_files": 641,
+    "changed_existing_files": [
+      "src/main/scala/opengpu/graphics/TextureImageAddressUnit.scala",
+      "src/test/scala/opengpu/graphics/TextureImageAddressUnitSpec.scala"
+    ],
+    "added_files": [
+      "docs/abi/texture-image-level-v1.json",
+      "driver/opengpu_texture_image_level_abi.h",
+      "src/main/scala/opengpu/elaboration/EmitTextureImageLevelAbi.scala",
+      "src/main/scala/opengpu/elaboration/EmitTextureImageResourceAddress.scala",
+      "src/main/scala/opengpu/graphics/TextureImageResourceAddressUnit.scala",
+      "src/test/scala/opengpu/graphics/TextureImageResourceAddressUnitSpec.scala"
+    ],
+    "all_existing_native_ABIs_and_ISA_sources_unchanged": true,
+    "default_register_arithmetic_ports_preserved_after_internal_rename": true,
+    "C11_five_headers_identical_to_passed_compile": true
+  },
+  "RTL_summary": {
+    "resource": {
+      "active_rtl_files": 6,
+      "existing_sram_macros": {},
+      "checked_address_units": 1
+    },
+    "default": {
+      "active_rtl_files": 4,
+      "existing_sram_macros": {},
+      "checked_address_units": 1
+    }
+  },
+  "coverage": [
+    "GPU-memory records for4 targets and16 mip levels, two independently tagged reordered replies and exact address/block output; query tags and coordinates preserve cache identity",
+    "Independent context/pass/generation/mip/base/limit cache misses, bad versions rejected before cache use, invalidate-during-fill and held immutable results",
+    "Records ending at4GiB,64-byte table alignment, full2048-square256-layer array end, seven invalid envelopes rejected before any read",
+    "26 malformed/header/padding cases and12 semantic invalid views, coordinates, whole-level bounds, zero error views/spans and healthy reuse",
+    "Held reads, all pending replies, first faulting line including valid address0, cancellation after actual address admission and cache recovery",
+    "Configured128/32/4 capacities and plus-one; existing full address matrix and512-request streams through both3/4-stage profiles"
+  ],
+  "synthesis": "mobile-texture-level-resource-synthesis-2026-10-20.json",
+  "development_failure": "The initial drain control used a cumulative reply count and cancelled before its new reads;5/6 controls passed. Correct the fixture to wait for this lookup and address admission, then rerun the complete suite. The first composed synthesis result is separately preserved as a setup failure.",
+  "evidence": {
+    ".artifacts/mobile-texture-level-resource-qualified-v4-source.json": {
+      "sha256": "b14e58d0d843b86a60ebe70eddc9822b57ebc0a16944d79a14b075a3a4ca5941"
+    },
+    ".artifacts/mobile-texture-level-resource-qualified-v4-source.tar.gz": {
+      "sha256": "6f20c0da129de39fb6228dd8d50382a9b17bfcc78acc9daaa6d4fe57361f7c34"
+    },
+    ".artifacts/mobile-texture-level-resource-qualified-v4.log": {
+      "sha256": "e57d9ba5e5ec856a9945d11c8569bb09971da9d5ef07022c3255224b3ad943a9"
+    },
+    ".artifacts/mobile-texture-level-resource-qualified-v4-result.json": {
+      "sha256": "fda216c6d94570f131c032628b1f07fe4d7cf596cafc9e58c6b7948009a8d3fe"
+    },
+    ".artifacts/mobile-texture-level-resource-qualified-v4-start.json": {
+      "sha256": "9eb05871716f3c738dbbfaebad72ad1ebb281d5442655f79facb2ad03214e6df"
+    },
+    ".artifacts/mobile-texture-level-resource-ci-v4.log": {
+      "sha256": "33564c66837704a225331df4bb30af6f3d40f6608d0b3c18aec257a98a54e2b0"
+    },
+    ".artifacts/mobile-texture-level-resource-c11-v3.json": {
+      "sha256": "4dcca353e06b2041eeccb5999cb942e7b8379b02a5879303af07b7320e3732df"
+    },
+    ".artifacts/mobile-texture-level-resource-default-alpha-compat-v4.json": {
+      "sha256": "fd49fffcb769d19e9318fa67564a54f8896677b28c89d169129cd2e90d874a40"
+    },
+    ".artifacts/mobile-texture-level-resource-rtl-audit-v4.json": {
+      "sha256": "913ca4e34c9a8f774e684311f8d98e3d113d1ccbe6030fc874b982b1dbedd610"
+    },
+    ".artifacts/mobile-texture-level-resource-source-proof-v4.json": {
+      "sha256": "9ef0921b20180f9777223dec82430708ce366d9f1a2fcaa2a914a780e810c03a"
+    },
+    ".artifacts/mobile-texture-level-resource-development-v1-result.json": {
+      "sha256": "f8ea50bfeef2c41b3057eafaf2fc9e693934175d499f323472c1a40ba3d89391"
+    },
+    ".artifacts/mobile-texture-level-resource-development-v1.log": {
+      "sha256": "cc0df7aeca6ecf5dad145acff1b80e63a2e42f40cf3ad8646a852d7bb52aa1ac"
+    },
+    ".artifacts/mobile-texture-level-resource-development-source-v1.json": {
+      "sha256": "2b8c16c96df04fbd6414339512ecc8dcda0c6d946575c11de77dbc6d62a47242"
+    },
+    ".artifacts/mobile-texture-level-resource-development-source-v1.tar.gz": {
+      "sha256": "3eb715f2609ea4e55eff07875038ec1b219ad657825f7a5f76f1fcda3eece211"
+    },
+    ".artifacts/mobile-texture-level-resource-qualified-v3-result.json": {
+      "sha256": "db5cd8d3da9866719cab5da3a3841ff5116d0051aed3c4fb26dd407fe88dbb19"
+    }
+  },
+  "limits": [
+    "This implements GPU level-layout loading and checked addressing. It does not select native shader image bindings, assign/decode texture formats, validate complete mip chains, filter or read texture data.",
+    "Self-consistent identity/allocation fields are not allocation authentication or translation; the integrating parent must pin VM/provenance through held-result consumption.",
+    "No native mode or H4/H6/GLES closure is claimed. PPA remains synthesis only."
+  ]
+}

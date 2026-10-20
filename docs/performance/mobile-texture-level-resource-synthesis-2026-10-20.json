@@ -1,0 +1,183 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "resource_and_default_1GHz_mapping_setup_pass",
+  "source_files": 649,
+  "screens": {
+    "resource": {
+      "result": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 38.38002216583118,
+        "finished_utc": "2026-10-20T05:52:24.304748+00:00"
+      },
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          53.957,
+          479.126
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "9d9fca641c5ae22afe8cbbd32b246191d8826dd52855320e5b1e6f6684c68358",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v2/flow/orfs-work/reports/base/synth_stat.txt",
+          "log_sha256": "1fdbe4a874e1e337dc6fb7645e51294f63d038316b08e0f270cd5ee41be6673e",
+          "logs": [
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v2/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "c07783e7183fb7dce1a1c0c32a86bdcec35b810c42114193b8b25e1e964a16b1"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v2/flow/orfs-work/logs/base/1_2_yosys.log",
+              "sha256": "5703ed3b5c86ae8d8ef581e5a66710ff908bf79878352a9313e7e0bcf0ac0fb4"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v2/flow/orfs-work/reports/base/synth_stat.txt",
+              "sha256": "1fdbe4a874e1e337dc6fb7645e51294f63d038316b08e0f270cd5ee41be6673e"
+            }
+          ],
+          "combined_log_sha256": "1049e820ae8bd953b63f7773c3335cf0d4ca93409158863ef10ef774d9d9851a"
+        }
+      },
+      "qor": {
+        "setup_worst_slack_ps": 53.957,
+        "core_clock_fmax_mhz": 1057.034
+      },
+      "mapped_cells": 32412,
+      "mapped_library_area": 3692.95362,
+      "area_units": "Unconverted ASAP7 Liberty/Yosys report units",
+      "clock_period_ps": 1000,
+      "io_delay_fraction": 0.25,
+      "corner": "TC",
+      "cell_vt": "SLVT",
+      "retiming": false,
+      "evidence": {
+        ".artifacts/mobile-texture-level-resource-synthesis-v2-result.json": {
+          "sha256": "99b0aa4f7cd1f70d2029de859f00fd04bc29818afe5d8b1e176045e4a5a3b3c4"
+        },
+        ".artifacts/mobile-texture-level-resource-synthesis-v2-inputs.json": {
+          "sha256": "56ce962db375d36d994c5ffacc2d8211699181b15a3c3192ee6c5d573bbccce5"
+        },
+        ".artifacts/mobile-texture-level-resource-synthesis-v2-start.json": {
+          "sha256": "a36c0b969de979a4916e08e7921d64298e0fe86370ccb4757c7f604d4605176d"
+        },
+        "generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v2/manifest.json": {
+          "sha256": "1e25c232905b3195e20790df4c8a06429b60bd0781b7a360dffa3fdcbd5703eb"
+        },
+        "generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v2/result.json": {
+          "sha256": "029907e138b1f8cdf9459bf09964fb989675bb957566f2edf2e890a783a720fe"
+        },
+        "generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v2/qualification.json": {
+          "sha256": "7a03923642a4a43727e07c7ca82cbd21ce741b131c39eac2cf0055bf3d855760"
+        },
+        "generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v2/flow/synthesis_sta.log": {
+          "sha256": "9d9fca641c5ae22afe8cbbd32b246191d8826dd52855320e5b1e6f6684c68358"
+        },
+        "generated/qualification/ppa/mobile-texture-level-resource-2026-10-20-v2/flow/orfs-work/reports/base/synth_stat.txt": {
+          "sha256": "1fdbe4a874e1e337dc6fb7645e51294f63d038316b08e0f270cd5ee41be6673e"
+        }
+      }
+    },
+    "default": {
+      "result": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 25.207529291976243,
+        "finished_utc": "2026-10-20T05:52:50.431370+00:00"
+      },
+      "qualification": {
+        "passed": true,
+        "reported_setup_slacks_ps": [
+          70.945,
+          404.086
+        ],
+        "reported_path_groups": 2,
+        "scope": "All reported synthesis setup paths, including I/O",
+        "report_sha256": "d22b062a9dfc1a8373693d9a57a04a522406680426df4408ae65147bab1884df",
+        "setup_passed": true,
+        "mapping": {
+          "passed": true,
+          "mapping_report_present": true,
+          "skipped_instance_types": [],
+          "skipped_instance_count": 0,
+          "skipped_instances_by_type": {},
+          "unresolved_diagnostics": [],
+          "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+          "log": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-default-address-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "log_sha256": "686d697882047ed1aed2b5667c1bde3c661e0512fc383d65c0ac07bf8e749c29",
+          "logs": [
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-default-address-2026-10-20-v1/flow/orfs-work/logs/base/1_synth.log",
+              "sha256": "ad1d15165bfe9657909b08e0f806ed18a2f889128c6382354b1b1297ead8a3a0"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-default-address-2026-10-20-v1/flow/orfs-work/logs/base/1_2_yosys.log",
+              "sha256": "6ae97ec36d7081639422215c2110193e99492d48d9c0e2bed7d86be539d5b745"
+            },
+            {
+              "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-level-default-address-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+              "sha256": "686d697882047ed1aed2b5667c1bde3c661e0512fc383d65c0ac07bf8e749c29"
+            }
+          ],
+          "combined_log_sha256": "25c0fbbfdabc669f24341765acf34e469c9ce707c27eb862ac730dc6b5891a80"
+        }
+      },
+      "qor": {
+        "setup_worst_slack_ps": 70.945,
+        "core_clock_fmax_mhz": 1076.363
+      },
+      "mapped_cells": 21532,
+      "mapped_library_area": 2224.99548,
+      "area_units": "Unconverted ASAP7 Liberty/Yosys report units",
+      "clock_period_ps": 1000,
+      "io_delay_fraction": 0.25,
+      "corner": "TC",
+      "cell_vt": "SLVT",
+      "retiming": false,
+      "evidence": {
+        ".artifacts/mobile-texture-level-default-address-synthesis-v1-result.json": {
+          "sha256": "6737f0bb52e7e33e44e06c716e6afe3e35837c8ad8afbfe60358f6bb71368c6d"
+        },
+        ".artifacts/mobile-texture-level-default-address-synthesis-v1-inputs.json": {
+          "sha256": "8092d9b4fb0c8409d7f801c5097258337d3466d6f6910345e6bae153de096a8b"
+        },
+        ".artifacts/mobile-texture-level-default-address-synthesis-v1-start.json": {
+          "sha256": "755a94ee0a90ec83f1c2dceed794596948b00ae35139af4feb04fa9a52f0f14b"
+        },
+        "generated/qualification/ppa/mobile-texture-level-default-address-2026-10-20-v1/manifest.json": {
+          "sha256": "5543ee6de86ef3d0ed184c0ff9db4b08e41799d6c74605b549a4ee6460995328"
+        },
+        "generated/qualification/ppa/mobile-texture-level-default-address-2026-10-20-v1/result.json": {
+          "sha256": "c05e16a4dee768b6d817efe70c4addf218bfe94d48cc0adb4b8c63d50536e1b7"
+        },
+        "generated/qualification/ppa/mobile-texture-level-default-address-2026-10-20-v1/qualification.json": {
+          "sha256": "3a36073a16f698ebcfdb687025cc82c57f122289d91384cb08282744104bffb5"
+        },
+        "generated/qualification/ppa/mobile-texture-level-default-address-2026-10-20-v1/flow/synthesis_sta.log": {
+          "sha256": "d22b062a9dfc1a8373693d9a57a04a522406680426df4408ae65147bab1884df"
+        },
+        "generated/qualification/ppa/mobile-texture-level-default-address-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt": {
+          "sha256": "686d697882047ed1aed2b5667c1bde3c661e0512fc383d65c0ac07bf8e749c29"
+        }
+      }
+    }
+  },
+  "default_profile": "Three stages, same arithmetic/register placement after five internal net renamings; new screen again reports70.945ps worst setup slack.",
+  "resource_profile": "Four-stage checked address path; one additional elastic sum/bounds register cut improves the measured composed screen from-88.594ps to+53.957ps. Both address profiles retain one result per cycle.",
+  "before": "mobile-texture-level-resource-synthesis-before-2026-10-20.json",
+  "limits": [
+    "Synthesis only; no place/route, power or product/cluster throughput result.",
+    "These are standalone block estimates, not a composed native-host timing result."
+  ]
+}

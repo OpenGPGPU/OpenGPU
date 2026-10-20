@@ -5725,3 +5725,25 @@ ISA remain unchanged. Image/format objects, indexed bindings, complete mip-chain
 rules, texture fetch/decode/filtering and native integration remain required;
 no H4/H6/GLES closure or new native capability is claimed. PPA remains synthesis
 only.
+
+
+## GPU-memory texture level resource qualification (2026-10-20)
+
+The [11-check qualification](performance/mobile-texture-level-resource-2026-10-20.json)
+passes on unchanged 649-file source, including six GPU level-owner controls and
+five address controls. Five ABI checks, combined C11 headers, CI selection and
+both full emissions pass. The128-query target/mip matrix returns exact checked
+spans from reordered tagged reads; independent identity/mip/table cache checks,
+canonical padding, full4GiB endpoints, first memory-fault line including address
+zero, immutable held results and actual address-pipeline cancellation all pass.
+
+The initial composed [synthesis miss](performance/mobile-texture-level-resource-synthesis-before-2026-10-20.json)
+is retained. An optional elastic register between final sums and bounds checks
+changes that screen from -88.594 ps to +53.957 ps at1GHz, TC/SLVT, with I/O
+constraints and no retiming. The default three-stage profile remains equivalent
+after five internal net renamings and re-screens at +70.945 ps. Both three/four
+stages sustain one address per cycle in held-stream controls. These are
+[standalone synthesis results](performance/mobile-texture-level-resource-synthesis-2026-10-20.json),
+not a native-host/product timing result. Image/format objects, indexed bindings,
+complete mip rules, texel fetch/decode/filtering and native integration remain
+open; no native capability or H4/H6/GLES closure is claimed.
