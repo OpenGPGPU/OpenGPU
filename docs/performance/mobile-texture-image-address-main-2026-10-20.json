@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "merge_commit": "a57bbd6e0bd06372e06907cbc0da1225fbc2f0de",
+  "source_files": 643,
+  "all_committed_and_working_hashes_match": true,
+  "preserved_preexisting_dirty_files": 20,
+  "contents_and_modes_preserved": true,
+  "index_empty": true,
+  "passed_tests_carried_by_source_identity": 4,
+  "requests": 2138,
+  "rejected_requests": 105,
+  "main_qualification": "mobile-texture-image-address-2026-10-20.json",
+  "synthesis_qualification": "mobile-texture-image-address-synthesis-2026-10-20.json",
+  "audit": {
+    "path": ".artifacts/mobile-texture-image-address-main-preservation-v1.json",
+    "sha256": "9df681c25edaa66d2ae246e93612b960a037d56a9f6ee17d7c2a25b0525c6682"
+  },
+  "limits": [
+    "No separately rerun main regression; exact source identity carries the completed component result.",
+    "No native sampler/binding/format mode is enabled. The separate depth/facing/texture206-check run is still live on its own frozen source.",
+    "Standalone synthesis passes1GHz setup including I/O; no place/route, power or whole-product timing/rate result."
+  ]
+}

@@ -1,6 +1,6 @@
 # Bounded texture image-level addressing
 
-Status: [four checks pass](performance/mobile-texture-image-address-2026-10-20.json)
+Status: component integrated into local main; [four checks pass](performance/mobile-texture-image-address-2026-10-20.json)
 on unchanged source, with standalone RTL emission and CI selection. This implements address ownership needed
 by general image views. It is not enabled by native GTX1 and does not complete
 texture resource support.

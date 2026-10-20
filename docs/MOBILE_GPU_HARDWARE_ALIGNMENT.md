@@ -5681,3 +5681,15 @@ logic; all four synthesis-active SV files match the screened logic. This is a
 component result. Descriptor/mip fetch, indexed bindings, format decode/filtering
 and native owner integration remain open; no native mode or H4/H6/GLES closure
 is advertised. PPA remains synthesis only.
+
+
+## Checked image addressing main integration (2026-10-20)
+
+The [main source audit](performance/mobile-texture-image-address-main-2026-10-20.json)
+verifies all 643 committed and working qualification files against the completed
+component snapshot. All twenty pre-existing dirty files retain identical contents
+and modes. The four-check, 2,138-request result and standalone 1 GHz synthesis
+result therefore apply by exact source/RTL identity; no new main regression is
+claimed. Native image/sampler resources and their execution integration remain
+open. The separate 206-check depth/facing/texture source is still isolated and
+live; this component promotion does not claim its remaining controls passed.
