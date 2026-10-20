@@ -225,7 +225,9 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   io.waitingConsumers := PopCount(alive)
   io.busy := states.map(_ =/= State.free).reduce(_ || _) || outputValid ||
     memoryOffers.io.deq.valid || refillValid || refillPending
-  when(io.cancel && io.busy) { draining := true.B }
+  // Invalidation also owns an epoch drain. A refill already offered under
+  // backpressure must still observe invalidation when it is finally accepted.
+  when((io.cancel || io.invalidate) && io.busy) { draining := true.B }
   when(!io.busy) { draining := false.B }
   io.cacheInvalidate := io.invalidate || io.cancel || draining
 }
