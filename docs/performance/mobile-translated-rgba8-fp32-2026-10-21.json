@@ -236,7 +236,7 @@
       "active_RTL_files": 51
     },
     "vertex_endpoint": {
-      "status": "running",
+      "status": "passed",
       "session": 61111,
       "start": {
         "wrapper_pid": 95890,
@@ -262,13 +262,53 @@
         "started_utc": "2026-10-20T23:04:28.115049+00:00"
       },
       "inputs_manifest": ".artifacts/mobile-translated-rgba8-fp32-endpoint-vertex-synthesis-v1-inputs.json",
-      "active_RTL_files": 77
+      "active_RTL_files": 77,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 2463.1966607079376,
+        "finished_utc": "2026-10-20T23:45:31.317944+00:00"
+      },
+      "setup_slacks_ps": [
+        88.968,
+        163.44
+      ],
+      "mapping_passed": true,
+      "mapped_cells": 1166030,
+      "library_area": 154116.373679,
+      "record": "mobile-native-fp32-vertex-synthesis-2026-10-21.json"
     },
     "fragment_endpoint": {
-      "status": "not_started",
+      "status": "running",
       "runner": ".artifacts/run-mobile-translated-rgba8-fp32-endpoint-synthesis-v1.py fragment",
       "active_RTL_files": 77,
-      "scope": "Fresh RTL is emitted; schedule after available synthesis resources."
+      "scope": "Fresh whole fragment endpoint synthesis at the same frozen 828-input revision.",
+      "session": 87575,
+      "start": {
+        "wrapper_pid": 65073,
+        "flow_pid": 65074,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/rgba8-fp32-native-fragment-v1-rtl",
+          "NativeShaderTextureUnit",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-translated-rgba8-fp32-endpoint-2026-10-21-fragment-v1"
+        ],
+        "started_utc": "2026-10-20T23:50:19.381991+00:00"
+      },
+      "inputs_manifest": ".artifacts/mobile-translated-rgba8-fp32-endpoint-fragment-synthesis-v1-inputs.json"
     }
   },
   "synthesis_policy": "Synthesis only,1000 ps,TC/SLVT,25% I/O,standard ABC,no retiming or place/route.",
