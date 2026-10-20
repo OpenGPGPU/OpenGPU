@@ -6922,6 +6922,21 @@ That fill-matching change requires new synthesis evidence; older service
 timing does not qualify it. Native coordinate/resource composition, shared-CU
 routing, whole-path throughput/coherence and H0-H8 closure remain open.
 
+## H4 native coordinate/resource group planner
+
+The development branch adds the [native RGBA8 group planner](NATIVE_RGBA8_GROUP_PLANNING.md).
+Its [831-input qualification](performance/mobile-native-rgba8-group-plan-2026-10-21.json)
+passes six checks and a full standalone emission: 264 exact-rational coordinate
+groups sustain complete planner input/output interval one, and 2,020 cube/array
+groups retain ordering under backpressure. Four checked address pipelines
+validate every active span before any group can enter translation. Legal modes
+outside aligned unshadowed RGBA8 2D/array/cube return an explicit general-sampler
+fallback. Sixty-four owners retain selective/global cancellation and primary
+faults through complete math drain. Their declared logical row storage is
+5,984 bytes before optimization, excluding pipeline/output queues. Composition
+with translated sampling, shared native-CU routing, mapped synthesis and
+whole-path rates/coherence remain required; H0-H8 closure is still open.
+
 ## H4 unquantized FP32 bilinear pipeline
 
 The [streaming native FP32 filter](TEXTURE_BILINEAR_FP32_PIPELINE.md) now passes

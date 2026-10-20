@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-21",
+  "status": "Standalone coordinate/resource planner candidate on codex/mobile-native-texture-plan. Functional checks pass; composition with translated sampling, shared-CU routing and synthesis remain pending.",
+  "source": {
+    "commit": "f99bf9d63829273543af222ffee1bbab86fbe493",
+    "source_files": 831,
+    "manifest_sha256": "ba7b4ece040f05335b48c250a632b1393917aa6cb38b2e5c6d668ec5a587a24c",
+    "archive_sha256": "27d8fd5a6e347a041f3d85a148fc2ce4206fa33a75a3c319d3def1d35b957cb7",
+    "git_archive_and_worktree_exact": true
+  },
+  "functional": {
+    "tests": 6,
+    "passed": 6,
+    "failed": 0,
+    "numeric_groups": 264,
+    "cube_and_array_groups": 2020,
+    "input_and_complete_output_interval": 1,
+    "saturated_owners": 64,
+    "post_cancel_reuse_groups": 192,
+    "malformed_cases": 22,
+    "fallback_cases": 5
+  },
+  "emission": {
+    "module": "TextureRgba8GroupPlanner",
+    "directory": ".artifacts/mobile-native-texture-plan-v1-worktree/generated/mobile-h4/rgba8-group-plan-v1-rtl",
+    "active_files": 23,
+    "active_RTL_sha256": {
+      "ram_2x106.sv": "1b97e779b24f8f208c95f565d86050d17bdd3b056a9149c65d745563e191af6f",
+      "Queue2_Reduced.sv": "f661ca0a12f585f95a5c14c3b6ad21e6d59a921d2be0418166c366fa43a30bb9",
+      "ram_2x120.sv": "c517acb3f0770255e12628c0e61dd2a676213bdbe1e33a2b2158b64f8cd66782",
+      "Queue2_Product.sv": "705fb5b2d6bb3f483978352bcc900df532603ee54067930d01f6334a34398120",
+      "ram_2x240.sv": "61f8c2647071991d377131da72ea9de71a278e99eb2c531eae5699e0beea1da0",
+      "Queue2_Aligned.sv": "74c4cc6b007a8be3a95256b470702680a5b371e621b512f999d62bef7c2a684e",
+      "ram_2x263.sv": "ed8c0fb71206c17256d5bbb69784320a8d884ce9cd352e26b57fb95518cd196d",
+      "Queue2_Located.sv": "c2402040f18f23f0ede20a450955aa38a1f2fb52eec8a578983a6af7241640a0",
+      "ram_2x257.sv": "f3a6bb9a9e6f4d2c88981596a17aa02b2c54e69bcd40702c4cfe70204a44e705",
+      "Queue2_Leading.sv": "337b1a9fca3df78801d9aac974811ac7503b8a7cda26e68c06e4e9651e85325f",
+      "ram_2x126.sv": "62a20e8d43e0b59bbd95c31cfec330d06f683af5af03d438ac101a7f278147ab",
+      "Queue2_Normalized.sv": "9ad7f65e8a39c29c664623856b7a07c84934cec25aa65f3a49ba330b638aa651",
+      "ram_2x99.sv": "39db6d18f855c072e31d36d93c67e75ea07747729224b4d7d607bc2c98fb95ec",
+      "Queue2_TextureFloatAxisResult.sv": "6692807bdd05ac89605cd01963f014df1b0e35a6bbd10ffc40d5c7038e29fc0a",
+      "TextureFloatAxisPipeline.sv": "b83be924a4b2fbbb4d5b99e0f25f2bec8c9c1f66964d0665a24329eaa742cbdd",
+      "Queue1_TextureImageAddressRequest.sv": "e11dbd1b7f68c2c8a2cef91be9010a3def013d2d30c5da4daa4c2e94decdc835",
+      "Queue1_Coefficients.sv": "cce5b06256b6f26f705da635714a098cfd794b1c071950445ee3563ca5f77c09",
+      "Queue1_Products.sv": "7d995a92fe42501b1f173f6d4859149867c897fe88c5afb245b8395455d5ab2e",
+      "Queue1_Sums.sv": "eb3099bb40ec43c88b59be665b0722b347dc0236caf2186b07537505a011f9f0",
+      "Queue1_TextureImageAddressResult.sv": "961aeae1d6fe3c28ef01cfd55e2cfa0bff6795f7951f7b7a6e2a76259fa72453",
+      "TextureImageAddressUnit.sv": "df1f8b867f06aa2534e9dc5c04366e27daf53a533d1bda05ecfc18cfd4ddeb4f",
+      "Queue1_TextureRgba8GroupPlan.sv": "62a86bc96cd44f97ca74d2d48770dd7600ce9fc3d947fed9e3c8786fdeebbbc7",
+      "TextureRgba8GroupPlanner.sv": "f8b7d5eb3ab1063a9d054e08e335880e2d027d449658ace251caeda6b72c9d1a"
+    }
+  },
+  "evidence": {
+    "source_manifest": ".artifacts/mobile-native-texture-plan-v1-source.json",
+    "source_archive": ".artifacts/mobile-native-texture-plan-v1-source.tar.gz",
+    "result": ".artifacts/mobile-native-texture-plan-v1-result.json",
+    "log": ".artifacts/mobile-native-texture-plan-v1-qualified.log"
+  },
+  "contract": {
+    "input": "Selected immutable level after native binding/sampler admission; two normalized FP32 coordinates, offsets, wraps, full-width layer/face and original tag.",
+    "output": "Checked four-tap RGBA8 group, explicit primary fault, cancellation, or general native fallback. No descriptor/PTE/data ports.",
+    "eligibility": "RGBA8 unshadowed 2D/array/cube with aligned word addresses. Other legal modes and valid unaligned words request fallback.",
+    "owner_rows": 64,
+    "logical_owner_bits_before_optimization": 47872,
+    "logical_owner_bytes_before_optimization": 5984,
+    "storage_excludes": "Axis/address queues, output queue and control registers; this is a logical capacity count, not mapped area.",
+    "identity": "96-bit work identity plus full 64-bit table-base/handle key; no lossy descriptor hash.",
+    "cancellation": "Global epoch drain and identity/tag selective cancellation, preserving immutable public replies and primary faults."
+  },
+  "scope_limits": [
+    "Caller must perform existing native binding/sampler/swizzle/selected-level admission first.",
+    "Planner-only group II1 does not establish native shader or complete texture result throughput.",
+    "Native general format/shadow/volume fallback remains outside this component.",
+    "No new mapped timing, area or power result is claimed.",
+    "All remaining H0-H8 exit gates remain open."
+  ]
+}
