@@ -645,4 +645,52 @@ class VertexShaderStageSpec extends AnyFlatSpec {
     }
   }
 
+
+  for(local<-Seq(true,false))it should s"execute projective samples after CU division and retain uncovered helper gradients local=$local" in {
+    simulate(new VertexShaderHarness(local)){d=>val t=new Driver(d);val tex=NativeTextureFetchTestData;val id=Seq[BigInt](7,8,9)
+      tex.roots(t.put,stage=0,id=id);d.io.out.ready.poke(true.B)
+      var draws=0;var traffic=Vector.empty[BigInt]
+      val badData=scala.collection.mutable.Set.empty[BigInt]
+      t.fault=(a,w)=>{if(!w)traffic=traffic:+a; !w && badData.contains(a)}
+      val cases=for(scalar<-Seq(false,true);target<-Seq(0,3,4);mode<-0 to 2;step<-Seq(0.25f,0.75f))yield(scalar,target,mode,step)
+      def run(scalar: Boolean,target: Int,mode: Int,step: Float,offset: Int=0,bad: Boolean=false,cancelled: Boolean=false): Unit={
+        val volume=target==3;val shadow=target==4
+        val view=tex.install(t.put,(a,b)=>t.memory(a)=BigInt(b),0,if(shadow)49 else 3,if(volume)3 else 0,0,id,
+          raw=if(shadow)BigInt(0x7fff)else BigInt(0xff0000ffL))
+        t.put(tex.samplers+7*4,1);if(shadow)t.put(tex.samplers+14*4,1)
+        val pc=BigInt(0x380000)+draws*4096
+        require(pc+4096<=t.scratch || pc>=t.scratch+t.prefix+64)
+        def load(i: Int,v: Int): Seq[BigInt]=address(5,7,(0+i)*t.stride)++Seq(vectorMemory(5,v,false))
+        val code=program(4,2).dropRight(1)++NativeProjectiveShaderTestData.operandCode(scalar,volume,shadow,mode,offset,load)++
+          address(6,7,(11+6)*t.stride)++Seq(vectorMemory(6,10,true))++address(6,7,(11+7)*t.stride)++Seq(vectorMemory(6,7,true),cease)
+        require(code.length<=512);code.zipWithIndex.foreach{case(word,n)=>t.put(pc+n*4,word)}
+        val coords=NativeProjectiveShaderTestData.coordinates(scalar,step,shadow,volume)
+        t.exports.clear();traffic=Vector.empty;badData.clear();if(bad)badData+=view.address& ~BigInt(63)
+        t.descriptor(indexed=false,instances=1,count=4);d.io.draw.bits.shaderPc.poke(pc.U)
+        val base=BigInt(0x400000)+draws*256
+        for(l<-0 until 4;c<-0 until 4)t.put(base+l*16+c*4,fp(coords(l)(c)))
+        t.view(d.io.draw.bits.input.bindings(0),base,64)
+        d.io.draw.bits.resources.version.poke(1.U);d.io.draw.bits.resources.address.poke(tex.root.U);t.submit()
+        if(cancelled){t.until(traffic.contains(tex.root));d.io.cancel.poke(true.B)}
+        t.complete(if(cancelled)4 else if(bad)3 else 0)
+        if(cancelled)d.io.cancel.poke(false.B)
+        if(bad || cancelled)assert(t.exports.isEmpty)else{
+          assert(t.exports.size==4)
+          for(v<-t.exports){val l=v.id.toInt;val projected=if(scalar)0.75f else if(l%2==0)0.5f-step else 0.5f
+            assert(v.varyings(2)==fp(projected),s"projected vertex X differs scalar=$scalar lane=$l")
+            val expected=NativeProjectiveShaderTestData.expected(scalar,step,volume,shadow,mode,offset,l,false)
+            assert(v.varyings(3)==fp(expected),s"projective vertex sample differs scalar=$scalar target=$target mode=$mode step=$step lane=$l expected=$expected got=${v.varyings(3).toString(16)}")
+          }
+        }
+        assert(!traffic.exists(a=>a>=tex.packet && a<tex.packet+64),"projective operands read a GPU packet")
+        if(local)assert(t.globalStaging==0)
+        draws+=1
+      }
+      for((scalar,target,mode,step)<-cases)run(scalar,target,mode,step)
+      run(true,0,0,0.25f,offset=15);run(false,0,1,0.75f,bad=true);run(false,3,2,0.75f,cancelled=true);run(false,4,0,0.75f)
+      assert(draws==40)
+      info(s"NATIVE_PROJECTIVE_CU stage=vertex local=$local draws=$draws scalarVectorFP32Division=true targets2D3DShadow=true modesImplicitLodGradient=true projectedReference=true gradientsAlreadyProjected=true varyingQPerHelper=true uncoveredHelpers3=true privateCodeDisjoint=true signedOffsetAfterProjection=true faultCancelDrain=true healthyReuse=true noOperandPackets=true")
+    }
+  }
+
 }
