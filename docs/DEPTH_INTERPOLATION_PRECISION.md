@@ -37,7 +37,8 @@ A second software witness uses integer-pixel vertices `(-262,-131)`,
 `(524,-131)`, `(-262,262)`, fitting a viewport rectangle of 786x393 pixels.
 Its scalar replay collapses the same source pair to `0x3f000002`. The expanded
 RTL test tries this smaller geometry first, then the retained large-edge case;
-its second frozen reproduction is pending.
+the [second frozen RTL run](performance/mobile-depth-resolution-viewport-failure-2026-10-20.json)
+also fails at that first pair, with both center depths equal to `0x3f000002`.
 
 The implemented candidate correction anchors depth at vertex zero:
 `z = z0 + (e1*(z1-z0) + e2*(z2-z0))/area`. This avoids repeatedly multiplying
