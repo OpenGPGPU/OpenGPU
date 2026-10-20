@@ -92,8 +92,9 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   // Wide aliased lines translate the diamond center along the minor axis.
   private val repeat=RegInit(0.U(7.W))
   private val translation=((repeat.zext<<1)-(integerWidth.zext-1.S))*half.S
-  private val nextQx=cx+sampleX-Mux(!request.point && request.state.sampleMode===0.U && !majorX,translation,0.S)
-  private val nextQy=cy+sampleY-Mux(!request.point && request.state.sampleMode===0.U && majorX,translation,0.S)
+  private val sampleQx=cx+sampleX;private val sampleQy=cy+sampleY
+  private val nextQx=sampleQx-Mux(!request.point && request.state.sampleMode===0.U && !majorX,translation,0.S)
+  private val nextQy=sampleQy-Mux(!request.point && request.state.sampleMode===0.U && majorX,translation,0.S)
   private val qx=Reg(chiselTypeOf(nextQx));private val qy=Reg(chiselTypeOf(nextQy))
   private val nextRx=qx-&request.x0;private val nextRy=qy-&request.y0
   private val rx=Reg(chiselTypeOf(nextRx));private val ry=Reg(chiselTypeOf(nextRy))
@@ -145,6 +146,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     when(sampleValid(i-1)){sampleIndex(i):=sampleIndex(i-1)}
   }
   when(phase===State.sampleStream){
+    assert(!request.point && request.state.sampleMode=/=0.U,"streamed line samples have no aliased translation")
     when(sampleValid(0)){rx:=nextRx;ry:=nextRy}
     when(sampleValid(1)){crossA:=rx*dy;crossB:=ry*dx;dotA:=rx*dx;dotB:=ry*dy}
     when(sampleValid(2)){cross:=nextCross;withinLength:=dot>=0.S && dot<length}
@@ -232,18 +234,19 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     is(State.sample){
       when(!inClip){phase:=State.nextLane}
         .elsewhen(request.point){
-          val pointRx=nextQx-&request.x0;val pointRy=nextQy-&request.y0
+          val pointRx=sampleQx.pad(qx.getWidth)-&request.x0;val pointRy=sampleQy.pad(qy.getWidth)-&request.y0
           val hit=pointRx*2.S>= -pointSize.zext && pointRx*2.S<pointSize.zext &&
             pointRy*2.S>= -pointSize.zext && pointRy*2.S<pointSize.zext
           when(hit){mask:=mask|(1.U(g.maxSampleCount.W)<<sample)};nextSample()
         }.otherwise{
+          assert(request.state.sampleMode===0.U,"only basic lines use translated diamond coordinates")
           qx:=nextQx;qy:=nextQy
           phase:=State.diamondSetup
         }
     }
     is(State.sampleStream){
       when(sampleIssued<sampleCount){
-        qx:=nextQx;qy:=nextQy;sampleValid(0):=true.B;sampleIndex(0):=sample
+        qx:=sampleQx;qy:=sampleQy;sampleValid(0):=true.B;sampleIndex(0):=sample
         sample:=sample+1.U;sampleIssued:=sampleIssued+1.U
       }
     }
