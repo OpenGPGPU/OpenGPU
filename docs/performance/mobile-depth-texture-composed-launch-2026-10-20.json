@@ -1,0 +1,179 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "CI_C11_four_ABI_two_emissions_passed_206_tests_live",
+  "observed_utc": "2026-10-20T05:26:15.900994+00:00",
+  "source_files": 650,
+  "source_unchanged_at_checkpoint": true,
+  "start": {
+    "wrapper_pid": 66496,
+    "sbt_pid": 80768,
+    "args": [
+      "sbt",
+      "-J-Xmx8G",
+      "-J-XX:ActiveProcessorCount=4",
+      "-Dopengpu.simJobs=2",
+      "runMain opengpu.elaboration.EmitNativeTypedGraphicsAbi --check",
+      "runMain opengpu.elaboration.EmitNativeBinnedGraphicsAbi --check",
+      "runMain opengpu.elaboration.EmitNativeBinnedHostAbi --check",
+      "runMain opengpu.elaboration.EmitTypedFragmentStateAbi --check",
+      "runMain opengpu.elaboration.EmitPpaRtl mobile-typed-replay-image generated/mobile-h6/depth-texture-composed-replay-v1-rtl",
+      "runMain opengpu.elaboration.EmitPpaRtl mobile-native-binned-host generated/mobile-h6/depth-texture-composed-host-v1-rtl",
+      "testOnly opengpu.graphics.TypedFragmentStateReaderSpec opengpu.graphics.NativeTypedGraphicsJobReaderSpec opengpu.graphics.NativeBinnedGraphicsJobReaderSpec opengpu.graphics.WindowPrimitiveRecordsSpec opengpu.graphics.Fp32PrimitiveRasterStageSpec opengpu.system.NativeVertexInputCapabilitiesAxiSpec opengpu.system.GpuHostAxiOwnershipSpec opengpu.system.GpuHostAxiSpec opengpu.system.GpuHostVmOwnershipSpec opengpu.graphics.Fp32CentroidInterpolationSpec opengpu.graphics.Fp32FragmentInterpolatorSpec opengpu.graphics.Fp32SampleDepthSpec opengpu.graphics.FragmentShaderStageSpec opengpu.graphics.PolygonDepthOffsetSpec opengpu.graphics.PolygonDepthResolutionSpec opengpu.graphics.PolygonDepthOffsetRasterSpec opengpu.graphics.RasterFp32InterpolationSpec opengpu.graphics.PointLineRasterizerSpec opengpu.graphics.Fp32DepthResolutionRasterSpec opengpu.graphics.ClipFloatArithmeticSpec opengpu.graphics.FloatingDepthResolutionSpec opengpu.graphics.PolygonDepthUnitRasterSpec",
+      "testOnly opengpu.core.backend.ScalarBackendSpec opengpu.core.backend.VectorBackendSpec opengpu.core.trap.CoreTrapArbiterSpec opengpu.system.AxiStimulusOrderingSpec",
+      "testOnly opengpu.graphics.VertexShaderStageSpec -- -z texture",
+      "testOnly opengpu.graphics.VertexRasterPipelineSpec opengpu.graphics.VertexFragmentPipelineSpec",
+      "testOnly opengpu.graphics.TypedReplayTileImagePipelineSpec opengpu.graphics.TypedVertexBinImageSharedSystemSpec opengpu.graphics.MemoryNativeBinnedGraphicsPipelineSpec",
+      "testOnly opengpu.graphics.NativeBinnedGraphicsVirtualImageHostAxiSpec opengpu.graphics.NativeBinnedGraphicsHostAxiSpec opengpu.graphics.NativeTypedGraphicsHostAxiSpec"
+    ],
+    "source_files": 650,
+    "source_commit": "10ed77540aa06094d1984df94234b70b5750ef88",
+    "expected_tests": [
+      113,
+      16,
+      3,
+      13,
+      24,
+      37
+    ],
+    "expected_total": 206,
+    "suites": {
+      "opengpu.graphics.TypedFragmentStateReaderSpec": 8,
+      "opengpu.graphics.NativeTypedGraphicsJobReaderSpec": 7,
+      "opengpu.graphics.NativeBinnedGraphicsJobReaderSpec": 8,
+      "opengpu.graphics.WindowPrimitiveRecordsSpec": 4,
+      "opengpu.graphics.Fp32PrimitiveRasterStageSpec": 6,
+      "opengpu.system.NativeVertexInputCapabilitiesAxiSpec": 4,
+      "opengpu.system.GpuHostAxiOwnershipSpec": 2,
+      "opengpu.system.GpuHostAxiSpec": 3,
+      "opengpu.system.GpuHostVmOwnershipSpec": 2,
+      "opengpu.graphics.Fp32CentroidInterpolationSpec": 4,
+      "opengpu.graphics.Fp32FragmentInterpolatorSpec": 8,
+      "opengpu.graphics.Fp32SampleDepthSpec": 2,
+      "opengpu.graphics.FragmentShaderStageSpec": 18,
+      "opengpu.graphics.PolygonDepthOffsetSpec": 4,
+      "opengpu.graphics.PolygonDepthResolutionSpec": 4,
+      "opengpu.graphics.PolygonDepthOffsetRasterSpec": 5,
+      "opengpu.graphics.RasterFp32InterpolationSpec": 4,
+      "opengpu.graphics.PointLineRasterizerSpec": 8,
+      "opengpu.graphics.Fp32DepthResolutionRasterSpec": 3,
+      "opengpu.graphics.ClipFloatArithmeticSpec": 7,
+      "opengpu.graphics.FloatingDepthResolutionSpec": 1,
+      "opengpu.graphics.PolygonDepthUnitRasterSpec": 1,
+      "opengpu.core.backend.ScalarBackendSpec": 3,
+      "opengpu.core.backend.VectorBackendSpec": 9,
+      "opengpu.core.trap.CoreTrapArbiterSpec": 2,
+      "opengpu.system.AxiStimulusOrderingSpec": 2,
+      "opengpu.graphics.VertexRasterPipelineSpec": 6,
+      "opengpu.graphics.VertexFragmentPipelineSpec": 7,
+      "opengpu.graphics.TypedReplayTileImagePipelineSpec": 13,
+      "opengpu.graphics.TypedVertexBinImageSharedSystemSpec": 6,
+      "opengpu.graphics.MemoryNativeBinnedGraphicsPipelineSpec": 5,
+      "opengpu.graphics.NativeBinnedGraphicsVirtualImageHostAxiSpec": 10,
+      "opengpu.graphics.NativeBinnedGraphicsHostAxiSpec": 10,
+      "opengpu.graphics.NativeTypedGraphicsHostAxiSpec": 17
+    },
+    "started_utc": "2026-10-20T05:24:20.163345+00:00"
+  },
+  "ci": {
+    "returncode": 0,
+    "source_unchanged": true
+  },
+  "c11_returncode": 0,
+  "emissions": {
+    "replay": {
+      "selected_counts": {
+        "GpuComputeUnit": 0,
+        "TypedReplayTileImagePipeline": 1,
+        "BankedShaderPayloadStore": 0,
+        "FloatFMA": 2,
+        "Fp32DivLane": 1,
+        "PolygonDepthOffset": 1,
+        "PolygonDepthResolution": 0
+      },
+      "sram_data_bytes": 43008,
+      "comparison_to_native_texture_v2": {
+        "public_top_ports_equal": false,
+        "sram_macro_counts_equal": true
+      },
+      "active_rtl_files": 65,
+      "public_port_changes": {
+        "io_in_bits_record_raster_polygonOffsetEnable": {
+          "before": null,
+          "after": 1
+        },
+        "io_in_bits_record_raster_polygonOffsetFactor": {
+          "before": null,
+          "after": 32
+        },
+        "io_in_bits_record_raster_polygonOffsetUnits": {
+          "before": null,
+          "after": 32
+        }
+      }
+    },
+    "host": {
+      "selected_counts": {
+        "GpuComputeUnit": 4,
+        "TypedReplayTileImagePipeline": 2,
+        "BankedShaderPayloadStore": 1,
+        "FloatFMA": 78,
+        "Fp32DivLane": 72,
+        "PolygonDepthOffset": 2,
+        "PolygonDepthResolution": 0
+      },
+      "sram_data_bytes": 2689024,
+      "comparison_to_native_texture_v2": {
+        "public_top_ports_equal": true,
+        "sram_macro_counts_equal": true
+      },
+      "active_rtl_files": 375,
+      "public_port_changes": {}
+    }
+  },
+  "evidence": {
+    "mobile-depth-texture-composed-source-v1.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-source-v1.json",
+      "sha256": "4cd5de331d3bba534643968d63f085743d7ec250b25fe7f9d5dbb556bba11193"
+    },
+    "mobile-depth-texture-composed-source-v1.tar.gz": {
+      "path": ".artifacts/mobile-depth-texture-composed-source-v1.tar.gz",
+      "sha256": "4474397fe6aa2469d13c84d069d800630c2ef363f4824ea5d0e9bf0549b57797"
+    },
+    "mobile-depth-texture-abi-reconciliation-v1.json": {
+      "path": ".artifacts/mobile-depth-texture-abi-reconciliation-v1.json",
+      "sha256": "8d7c9605746465f51058d96e794b715d71e9b311453fd6db6d94bba22c14aee3"
+    },
+    "mobile-depth-texture-composed-rtl-audit-v1.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-rtl-audit-v1.json",
+      "sha256": "759971f7bd140025d5dcaba88443af9e36d7db9630e6e71a39ec3502803972a8"
+    },
+    "mobile-depth-texture-composed-launch-prefix-v1.log": {
+      "path": ".artifacts/mobile-depth-texture-composed-launch-prefix-v1.log",
+      "sha256": "b29d7b8fda386468a04ea5fafa6e5234e05265a2429f0c2c0298e2662d063910"
+    },
+    "mobile-depth-texture-composed-qualified-v1-start.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-qualified-v1-start.json",
+      "sha256": "c9b430e8fb4c5448ddcb0f79abd8538233ddb1e5ff3220ff726332aee30b0560"
+    },
+    "mobile-depth-texture-composed-qualified-v1-ci.log": {
+      "path": ".artifacts/mobile-depth-texture-composed-qualified-v1-ci.log",
+      "sha256": "33564c66837704a225331df4bb30af6f3d40f6608d0b3c18aec257a98a54e2b0"
+    },
+    "mobile-depth-texture-composed-qualified-v1-ci-result.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-qualified-v1-ci-result.json",
+      "sha256": "58e315c5dccbe13ee0a79525b4ed662ff353aedff455cd0349b8115356228875"
+    },
+    "mobile-depth-texture-composed-qualified-v1-c11.json": {
+      "path": ".artifacts/mobile-depth-texture-composed-qualified-v1-c11.json",
+      "sha256": "a21f38d7628b89e9f7133a16593dbbb0b76a7ca04881e2f9c1056a5814de8def"
+    }
+  },
+  "limits": [
+    "This checkpoint proves ABI/C11/CI and elaboration results only; the206 runtime checks are live and are not claimed passed.",
+    "The host keeps its public ports, four CUs, two replay engines, one payload store,78 FMAs,72 dividers and2,689,024 SRAM data bytes. Register/control logic changes.",
+    "Standalone replay adds enable/factor/units polygon-state input pins while retaining43,008 SRAM data bytes. This is an intentional internal component interface extension, not legacy top equivalence.",
+    "No new area, timing, power or throughput result. Native texture synthesis screening is separate and synthesis only.",
+    "The candidate is isolated and not promoted to main; broader resources and H0-H8 closure remain open."
+  ]
+}

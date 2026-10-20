@@ -5621,3 +5621,25 @@ now integrated into main, with replay then default native-host emissions,
 TC/SLVT, a 1000 ps period, 25 percent I/O budget and retiming disabled.
 The [launch record](performance/mobile-native-texture-policy-synthesis-launch-2026-10-20.json)
 records immutable RTL and SRAM-library inputs. No completed PPA result is claimed.
+
+
+## Corrected AXI session boundary and combined depth qualification (2026-10-20)
+
+The [fixture correction](performance/mobile-axi-service-session-boundary-2026-10-20.json)
+is committed on main. The memory-service helper previously returned with memory
+handshakes enabled, so later control-MMIO clocks could accept untracked requests.
+Both directed read/write session tests reproduce that failure and pass after
+the helper pauses channels on return. The unchanged native polygon reset then
+passes all three vertex/fragment/publication cuts with exact healthy reuse;
+production RTL and its timeout are unchanged. The earlier175/176 result stays
+frozen as failure evidence.
+
+The isolated depth/facing/native-texture candidate now has650 frozen files.
+Its [combined launch checkpoint](performance/mobile-depth-texture-composed-launch-2026-10-20.json)
+passes CI selection, C11 headers, four ABI checks and both full RTL emissions.
+All pre-existing fields and C defines from both branches retain their encodings.
+The206 runtime controls remain live, so depth promotion is still pending.
+Default-host public ports and SRAM/CU/replay/payload/FMA/divider counts remain
+stable; standalone replay intentionally adds three polygon-state input pins.
+These structural checks do not establish area, timing, power or rate. Native
+texture synthesis screening remains separate; no new PPA verdict is claimed.
