@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "implementation_compiles_and_emits_eight_behavioral_controls_running",
+  "source_files": 662,
+  "unchanged_existing_dependency_files": 655,
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-image-binding-development-v1-source.json",
+    "sha256": "1001ec1d3db8ad6a1a5da49506d9652df3f1d75e2ad9eb21468d95b6867c8240"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-texture-image-binding-development-v1-source.tar.gz",
+    "sha256": "83d2bc1782d7481c7ae98b846d0b5ecaf3bcb4cdcacf8423c47501c3ed91f073"
+  },
+  "compilation_and_two_emissions": {
+    "path": ".artifacts/mobile-texture-image-binding-elaboration-v2.log",
+    "sha256": "309c384cccbbb1353448c0333b75535bc0995c8a5579c08116d71bb04c4bfb12"
+  },
+  "c11": {
+    "path": ".artifacts/mobile-texture-image-binding-c11-v1.json",
+    "sha256": "c50e628e99c531c25b2f0722e78f818ed7252d809b147c872966aa05c8c7d657"
+  },
+  "initial_compile_failure": {
+    "path": ".artifacts/mobile-texture-image-binding-compile-before-v1-result.json",
+    "sha256": "08857a253a47236b9b0c633863f0b1b13690b6222a303ce1b2615f8e57379a17"
+  },
+  "initial_compile_log": {
+    "path": ".artifacts/mobile-texture-image-binding-elaboration-v1.log",
+    "sha256": "87b28c765a5cc2c2da986625f5b380d805b46dc3d3034c16135c25a34b22ee87"
+  },
+  "initial_compile_source": {
+    "path": ".artifacts/mobile-texture-image-binding-compile-before-v1-source.json",
+    "sha256": "713ff48cae16a578a29959012b3f407b4d90d15479be28f15dd6549f59034dd9"
+  },
+  "pending": [
+    "Eight behavioral controls on frozen662-file source, followed by dependency qualification and seven ABI checks.",
+    "Synthesis-only binding/fetch screens and main integration after qualification.",
+    "Native per-stage binding, typed transport, sampler completeness/filter/LOD rules, compressed/depth formats and remaining H0-H8/GLES hardware work."
+  ]
+}

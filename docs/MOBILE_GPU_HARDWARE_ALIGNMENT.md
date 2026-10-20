@@ -5837,3 +5837,20 @@ live in their original process; their composed matrices/reset results remain
 pending. This candidate remains isolated and excludes the independently qualified
 address/level/fetch components now on main. No complete 206-check or composed
 synthesis result is claimed. The full hardware goal remains open.
+
+
+## GPU image binding development (2026-10-20)
+
+The isolated [GXI1 image binding](TEXTURE_IMAGE_BINDING.md) owns authoritative
+format, allocation and indexed level-table identity. It validates selected or
+sampler-required mip sets before binding-to-typed-fetch publication. Array layers,
+volume depth, cube layout, full-width level rejection, disjoint mip spans and
+held fault/cancel ownership are part of the contract. Native bindings and typed
+shader transport remain open.
+
+The [development checkpoint](performance/mobile-texture-image-binding-development-2026-10-20.json)
+compiles and emits both binding and bound-fetch RTL; seven combined C11 headers
+compile. All 655 existing dependencies are unchanged. Eight behavioral controls
+are running on frozen 662-file source; no passing behavioral, synthesis or
+native capability result is claimed yet. The first compile field-name collision
+is retained. PPA remains synthesis only, and the full hardware goal remains open.
