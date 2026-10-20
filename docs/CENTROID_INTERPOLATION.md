@@ -52,7 +52,8 @@ all 354 existing GTD1 draw fields, 71 GFS1 state fields and existing C defines
 against the preceding committed layouts; every prior entry matches, and C11
 size/offset probes pass. All [15 runtime reader/raster compatibility checks](performance/mobile-centroid-native-binding-2026-10-20.json)
 pass on 629 unchanged source/ABI files. The later 24-check source below adds
-positive centroid-state and discovery controls; exact native images remain open.
+positive centroid-state and discovery controls; native images are qualified
+separately below.
 
 ## Native fragment input discovery
 
@@ -72,7 +73,7 @@ combined run passes 23/24 checks; its new triangle-owner case used the existing
 point/line-only reference. The corrected fixture now selects the triangle
 reference; the [complete 24-check rerun](performance/mobile-centroid-discovery-controls-2026-10-20.json)
 passes on 631 unchanged source/ABI files. No RTL correction was required for
-that fixture mismatch. Exact native centroid image checks remain pending.
+that fixture mismatch. Exact native centroid image checks follow below.
 
 ## Partial-coverage perspective fallback
 
@@ -100,4 +101,28 @@ exact matching shader fragCoord.xyzw, guarded uniforms, protected sample depths
 and held exports. Three malformed metadata scenarios reject before shader access;
 the mode-mismatch case also has an out-of-mode mask and does not isolate the
 sample-index bound. The later binding/discovery controls above cover descriptor
-transport. Native centroid images and prepared replay remain separate pending work.
+transport. Native centroid images are qualified below; prepared replay remains
+separate pending work.
+
+## Native centroid gradient images
+
+The [native image regression](performance/mobile-centroid-native-host-2026-10-20.json)
+passes all seven checks on 631 unchanged source/ABI files. Two actual-CU
+local/global profiles each execute 2x/version-3 and 4x/version-4 triangle,
+line and point draws. The shaders read varying gradients with mixed center,
+centroid and flat components and publish four typed MRTs. Physical multisample
+sources and resolves match the independent raster/encoding reference exactly;
+version-4 point-coordinate prefixes and uniform tails remain intact. Fresh
+vertex and instruction allocations avoid CPU rewrite assumptions behind warm L2.
+Held completion keeps VM ownership until retirement. The five retained checks
+also pass clear/legacy shader publication, eight fault scenarios and two reset
+drain phases.
+
+Default `GpuHostSystemAxi` emission completes with 769 emitted files (768 SV),
+including 371 active RTL files and 119 verification entries in the file list.
+The hierarchy retains four CUs, one shared shader payload pool and two replay
+engines, with unchanged 2,689,024-byte SRAM capacity and 256-bit AXI data ports.
+This structural audit does not establish four-CU runtime performance. The image
+tests use W=1 and two sample/version pairs; perspective-pole controls above and
+prepared GFS1/binned replay remain distinct gates. No new timing or rate result
+is claimed; PPA remains synthesis only on its separately frozen source.
