@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "replay_synthesis_live_host_queued",
+  "scope": "Synthesis only; no place and route",
+  "source_files": 640,
+  "start": {
+    "wrapper_pid": 39286,
+    "flow_pid": 39288,
+    "args": [
+      "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+      "scripts/qualify_ppa.py",
+      "/Users/duckdonald/workspace/gpu/.artifacts/mobile-native-texture-policy-v2-worktree/generated/mobile-h6/native-texture-policy-replay-v2-rtl",
+      "TypedReplayTileImagePipeline",
+      "--stage",
+      "synthesis",
+      "--synthesis-engine",
+      "yosys",
+      "--period-ps",
+      "1000",
+      "--io-delay",
+      "0.25",
+      "--timeout",
+      "7200",
+      "--output",
+      "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-native-texture-policy-replay-2026-10-20-v2"
+    ],
+    "started_utc": "2026-10-20T05:13:37.586481+00:00"
+  },
+  "inputs": {
+    "source": {
+      "path": ".artifacts/mobile-native-texture-policy-source-v2.json",
+      "sha256": "ff16e459d4a79490ebe31b3ab389afdcf251171b82e868a1a6443c9d92dbe9ef"
+    },
+    "replay": {
+      "path": ".artifacts/mobile-native-texture-policy-replay-synthesis-v2-inputs.json",
+      "sha256": "181d1c40f56edbdaf4a01987864a19d852a8a54488051673b0d49cbc3258e9d5"
+    },
+    "script": {
+      "path": ".artifacts/run-mobile-native-texture-policy-synthesis-v2.py",
+      "sha256": "4b1dcf5ad4a189f9b648a737a22a11939ad7d7d2e5848d07998f6c9cef480d70"
+    }
+  },
+  "limits": [
+    "This is a launch record, not an area/timing/power result.",
+    "Host screening runs after replay screening; outputs have distinct immutable directories."
+  ]
+}

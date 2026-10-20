@@ -5605,3 +5605,19 @@ retain identical contents and modes, and the index was empty after merging.
 This is not a separately rerun main regression. No new PPA result is claimed;
 evaluation remains synthesis only. The separate depth reset failure remains
 on its development branch, and general resource/H4/H6 closure remains open.
+
+
+## Depth regression and native synthesis screening status (2026-10-20)
+
+The [terminal depth result](performance/mobile-depth-native-reset-failure-2026-10-20.json)
+records 175 passing tests and one polygon-reset timeout on the frozen development
+source. Both 30-frame native depth matrices pass, but only the first polygon
+reset phase finishes; fragment/publication reset and final host emission remain
+unqualified. This production source is still outside main. The earlier live
+checkpoints are historical prefixes; diagnostics now run in a separate worktree.
+
+Synthesis-only screening has started for the exact 640-file native texture source
+now integrated into main, with replay then default native-host emissions,
+TC/SLVT, a 1000 ps period, 25 percent I/O budget and retiming disabled.
+The [launch record](performance/mobile-native-texture-policy-synthesis-launch-2026-10-20.json)
+records immutable RTL and SRAM-library inputs. No completed PPA result is claimed.
