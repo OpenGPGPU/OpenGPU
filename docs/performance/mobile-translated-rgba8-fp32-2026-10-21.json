@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "fifty_nine_checks_eight_emissions_pass_complete_translated_FP32_synthesis_and_legacy_regression_running",
+  "status": "eighty_two_checks_ten_emissions_pass_translated_FP32_and_vertex_endpoint_synthesis_running",
   "source": {
     "commit": "052e77bafdb23049c50f2f0ebc81c20ef796db50",
     "source_files": 828,
@@ -49,7 +49,7 @@
     "source_unchanged": true,
     "elapsed_seconds": 18.663025208981708
   },
-  "distinct_passed_tests": 59,
+  "distinct_passed_tests": 82,
   "suites": {
     "Rgba8WeightedToFp32Spec": 3,
     "BankedRgba8FloatTextureServiceSpec": 7,
@@ -59,7 +59,8 @@
     "BankedTextureReadThroughSpec": 7,
     "BankedRgba8CachePolicySpec": 8,
     "TranslatedBankedRgba8TextureServiceSpec": 8,
-    "TranslatedRgba8Fp32TextureServiceSpec": 13
+    "TranslatedRgba8Fp32TextureServiceSpec": 13,
+    "TextureSampleExecuteUnitSpec": 23
   },
   "input_contract": "Prechecked virtual, aligned RGBA8_UNORM word spans and row parity. Full FP32 X/Y weights in [0,1], including negative zero and positive subnormals. Coordinates, descriptor/bounds and task-resource admission remain upstream.",
   "numeric_contract": "Translate all exactly active taps, return raw little-endian RGBA8 words, round each byte/255 to FP32, then apply the native separately rounded inverse/product and fused-add filter. No FP32 weight quantization. Q16 values encode only the exact active mask for the existing translation owner.",
@@ -185,11 +186,24 @@
   },
   "default_banked_synthesis_reference": "mobile-banked-texture-epoch-control-2026-10-21.json",
   "legacy_native_regression": {
-    "status": "running",
+    "status": "passed",
     "session": 28936,
     "expected_tests": 23,
     "fresh_native_endpoint_emissions": 2,
-    "old_native_endpoint_timing_carried": false
+    "old_native_endpoint_timing_carried": false,
+    "terminal": {
+      "returncode": 0,
+      "source_unchanged": true,
+      "manifest_sha256": "6ef58be597a9d8fc3805be1f3290320e9bb7643cdabe72ab6cee64ea51569735",
+      "elapsed_seconds": 274.1513347500004,
+      "passed_tests": 23
+    },
+    "passed_tests": 23,
+    "active_endpoint_files_each": 77,
+    "logic_changed_files": [
+      "FloatFMA.sv",
+      "Fp32FmaLane.sv"
+    ]
   },
   "synthesis_jobs": {
     "native": {
@@ -220,12 +234,47 @@
       },
       "inputs_manifest": ".artifacts/mobile-translated-rgba8-fp32-native-synthesis-v1-inputs.json",
       "active_RTL_files": 51
+    },
+    "vertex_endpoint": {
+      "status": "running",
+      "session": 61111,
+      "start": {
+        "wrapper_pid": 95890,
+        "flow_pid": 95892,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/rgba8-fp32-native-vertex-v1-rtl",
+          "NativeShaderTextureUnit",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-translated-rgba8-fp32-endpoint-2026-10-21-vertex-v1"
+        ],
+        "started_utc": "2026-10-20T23:04:28.115049+00:00"
+      },
+      "inputs_manifest": ".artifacts/mobile-translated-rgba8-fp32-endpoint-vertex-synthesis-v1-inputs.json",
+      "active_RTL_files": 77
+    },
+    "fragment_endpoint": {
+      "status": "not_started",
+      "runner": ".artifacts/run-mobile-translated-rgba8-fp32-endpoint-synthesis-v1.py fragment",
+      "active_RTL_files": 77,
+      "scope": "Fresh RTL is emitted; schedule after available synthesis resources."
     }
   },
   "synthesis_policy": "Synthesis only,1000 ps,TC/SLVT,25% I/O,standard ABC,no retiming or place/route.",
   "remaining": [
     "Collect complete translated FP32 synthesis including I/O; no timing pass is claimed for this new top.",
-    "Finish legacy native controls and fresh changed-FMA native endpoint synthesis.",
+    "Collect changed-FMA vertex endpoint synthesis and run the emitted fragment endpoint through fresh synthesis.",
     "Connect coordinate/resource admission and shared-CU routing; handle formats/layouts beyond this eligible RGBA8_UNORM path.",
     "Qualify whole-native numeric precision/rates with contention and render-to-texture coherence.",
     "All remaining H0-H8 hardware requirements."
@@ -247,6 +296,12 @@
     ".artifacts/mobile-translated-rgba8-fp32-v2-emission.log": "08701ba375f21d57effbf48842c7bf06c29dfe32faccbe2c50b7bc71b0d6889c",
     ".artifacts/mobile-translated-rgba8-fp32-v2-RTL-carry.json": "8bddecef8cab5e88e8ef614f70dd2553b67b4f2a966c228b3b680e188045f26d",
     ".artifacts/mobile-translated-rgba8-fp32-native-synthesis-v1-start.json": "0e09dce0e6f6b75a0baa8da3aba9785be44521d0f302f98bd46763b088631146",
-    ".artifacts/mobile-translated-rgba8-fp32-native-synthesis-v1-inputs.json": "044f40fa6ddb8ec3b7d901b2458130b0b074b862dc884d2a8d19e3ad79eb49fb"
-  }
+    ".artifacts/mobile-translated-rgba8-fp32-native-synthesis-v1-inputs.json": "044f40fa6ddb8ec3b7d901b2458130b0b074b862dc884d2a8d19e3ad79eb49fb",
+    ".artifacts/mobile-translated-rgba8-fp32-legacy-native-v1.log": "58b44f05cb7e8cdad25eb7f1948eca834c486695e3e4136922a16d4122d209d5",
+    ".artifacts/mobile-translated-rgba8-fp32-legacy-native-v1-result.json": "7074f59bf7a6985a8fcd85d8ad32468f046205d27a5d2f9ee3aeb1eebf89c852",
+    ".artifacts/mobile-translated-rgba8-fp32-legacy-native-v1-RTL-proof.json": "3dd65965fd35ac3aca2c6fdf6a77b93a0685c2f7c3655dd2e89106ca50c9af54",
+    ".artifacts/mobile-translated-rgba8-fp32-endpoint-vertex-synthesis-v1-inputs.json": "4b08a835f664bb87833a6f5b32801819dcd706bc224b15e77cf750edcb5d998b",
+    ".artifacts/mobile-translated-rgba8-fp32-endpoint-vertex-synthesis-v1-start.json": "7d23ef59aa084f874cc704d9d7ecaaa3ce6a2023d5ce88620bbb2a319b106b33"
+  },
+  "fresh_emissions_total": 10
 }

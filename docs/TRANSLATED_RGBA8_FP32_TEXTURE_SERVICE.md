@@ -3,8 +3,9 @@
 `TranslatedRgba8Fp32TextureService` connects virtual tap admission, raw banked
 fetch, RGBA8 decode and native FP32 bilinear filtering. The [828-input
 qualification](performance/mobile-translated-rgba8-fp32-2026-10-21.json) passes
-59 fresh checks across nine suites and eight RTL emissions. Thirteen checks
-exercise the new service; the other 46 regress the existing banked services.
+82 fresh checks across ten suites and ten RTL emissions. Thirteen checks
+exercise the new service, 46 regress the existing banked services, and 23
+cover the existing native execution/query controls.
 
 The input contains prechecked, aligned RGBA8_UNORM virtual word spans, row
 parity, work identity, view key, caller tag and full FP32 X/Y weights. Coordinates,
@@ -55,4 +56,7 @@ comments only. The standalone FP32 filter retains 16 byte-identical active files
 and its passing component synthesis. The complete new translated service has a
 fresh synthesis run in progress at 1000 ps, TC/SLVT, 25% I/O, standard ABC, without
 retiming or place/route. Its timing and whole-native performance remain unproven.
-Legacy native controls and fresh changed-FMA endpoint timing remain separate gates.
+The legacy controls pass on the same frozen source. Both legacy native endpoints
+have fresh 77-file emissions; only the FMA core and wrapper logic differ from
+the old qualified endpoints. Vertex endpoint synthesis is running; fragment
+endpoint synthesis is not yet started. Prior native endpoint timing is not carried.

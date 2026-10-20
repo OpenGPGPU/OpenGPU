@@ -6933,7 +6933,7 @@ required. The Q16 weighted-sum service remains a separate contract; H0-H8 stay o
 ## H4 translated raw taps through native FP32 filtering
 
 The [translated RGBA8 FP32 service](TRANSLATED_RGBA8_FP32_TEXTURE_SERVICE.md)
-passes [59 fresh checks and eight emissions on 828 frozen inputs](performance/mobile-translated-rgba8-fp32-2026-10-21.json).
+passes [82 fresh checks and ten emissions on 828 frozen inputs](performance/mobile-translated-rgba8-fp32-2026-10-21.json).
 It translates every exactly active tap before physical lookup, forwards raw words,
 decodes byte/255 to FP32 and preserves native hierarchical filtering with full
 FP32 weights. Minimum-subnormal weights remain active and require permission;
@@ -6954,3 +6954,9 @@ synthesis is active and not yet qualified. Coordinate/resource admission,
 shared-CU routing, other eligible formats/layouts, changed-FMA native endpoint
 timing and whole-native rates/coherence remain required. This component's rate
 starts from prechecked virtual spans, not shader instructions; H0-H8 remain open.
+
+The same 828-input source also passes 23 existing native execution/query checks.
+Fresh complete vertex/fragment endpoints each contain 77 active RTL files;
+only the FMA core/wrapper logic changes from their older timing baseline.
+Fresh vertex endpoint synthesis is active, while fragment synthesis is queued.
+The complete new translated service has its own active synthesis screen.

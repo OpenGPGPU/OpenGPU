@@ -82,7 +82,7 @@ remain separate integration work.
 
 The [native FP32 follow-up](TRANSLATED_RGBA8_FP32_TEXTURE_SERVICE.md) now connects
 an optional raw-tap result to RGBA8 decode and the unquantized native filter.
-Its 59-check qualification preserves the default Q16 logic and adds exact active
+Its 82-check qualification preserves the default Q16 logic and adds exact active
 tap permission checks, post-child result ownership and scoped cancellation
 through final FP32 retirement. Complete translated FP32 synthesis and native
 resource/coordinate/shared-CU wiring remain open.
