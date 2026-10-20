@@ -696,13 +696,8 @@ class TextureUnit(
             biasedYReg := Mux(axisClampedHigh.get(1), (levelH << 8).pad(24),
               TextureCoordinates.bias(scaledY))
           } else {
-            if(coordinatePolicyInput){
-              biasedXReg:=TextureCoordinates.bias(TextureCoordinates.scale(uReg,levelW,policy.get.wrapU,policy.get.signed))
-              biasedYReg:=TextureCoordinates.bias(TextureCoordinates.scale(vReg,levelH,policy.get.wrapV,policy.get.signed))
-            }else{
-              biasedXReg := axisBias(uReg, levelW)
-              biasedYReg := axisBias(vReg, levelH)
-            }
+            biasedXReg := axisBias(uReg, levelW)
+            biasedYReg := axisBias(vReg, levelH)
           }
           state := sWrap
         }

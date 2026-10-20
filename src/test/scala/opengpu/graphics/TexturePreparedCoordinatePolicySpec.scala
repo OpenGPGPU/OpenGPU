@@ -207,7 +207,7 @@ class TexturePreparedCoordinatePolicySpec extends AnyFlatSpec {
           }
           if(d.io.req.valid.peek().litToBoolean && d.io.req.ready.peek().litToBoolean) {
             val a=d.io.req.bits.addr.peek().litValue.toLong
-            assert(!forcedFault && allowed.exists(r=> !r.fault && coefficients(r).contains(a)),s"unowned physical read $a")
+            assert(!forcedFault && allowed.exists(r=> !r.fault && a>=r.base && a<r.base+r.w.toLong*r.h*4 && (a-r.base)%4==0),s"unowned physical read $a")
             pending+=((a,cycle+4)); physicalReads+=1
           }
           if(d.io.out.valid.peek().litToBoolean) {
@@ -233,6 +233,75 @@ class TexturePreparedCoordinatePolicySpec extends AnyFlatSpec {
       run(Vector(good,bad,good.copy(u=0xffffffffL)))
       assert(reordered>0 && invalidationPulses>=1)
       info(s"PREPARED_POLICY_SAMPLER overlap=$overlap results=${stream.size+6} faults=$faultResults reads=$physicalReads reordered=$reordered invalidatePulses=$invalidationPulses earlyAdmissions=$earlyAdmissions earlyFaultAdmissions=$earlyFaultAdmissions poisonedLiveBinding=true noInvalidReads=true heldResultFault=true fixedMipFaults=3 healthyReuse=true")
+    }
+  }
+  it should "retain direct signed mip sampling and fault recovery in a prepared-capable overlap sampler" in {
+    simulate(new TextureUnit(wordCacheEntries=8,allowPrepared=true,overlapPrepared=true,coordinatePolicyInput=true)) { d =>
+      PointLineReference.zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
+      val good=Request(0,0xfffed234L,0x23567L,0x10000L,7,5,2,0,true)
+      var results=0; var faults=0; var reads=0
+      def run(r: Request,mip: Int=0,fraction: Int=0,maxLevel: Int=0): Unit = {
+        d.io.prepared.get.valid.poke(false.B); d.io.preparedCoordinateFault.get.poke(false.B)
+        d.io.texBase.poke(r.base.U); d.io.texWidth.poke(r.w.U); d.io.texHeight.poke(r.h.U)
+        d.io.texMaxLevel.poke(maxLevel.U); d.io.texFormat.poke(0.U); d.io.wrapMode.poke(false.B)
+        d.io.coordinatePolicy.get.wrapU.poke(r.wrapU.U); d.io.coordinatePolicy.get.wrapV.poke(r.wrapV.U)
+        d.io.coordinatePolicy.get.signed.poke(r.signed.B)
+        d.io.sample.bits.u.poke(r.u.U); d.io.sample.bits.v.poke(r.v.U)
+        d.io.sample.bits.mipLevel.poke(mip.U); d.io.sample.bits.lodFrac.poke(fraction.U)
+        d.io.sample.valid.poke(true.B); d.io.invalidateCache.get.poke(true.B)
+        def level(l: Int): Request = {
+          var b=r.base; var w=r.w; var h=r.h
+          for(_<-0 until l) {b+=w.toLong*h*4; w=(w/2).max(1); h=(h/2).max(1)}
+          r.copy(base=b,w=w,h=h)
+        }
+        val l=mip.min(maxLevel)
+        val first=if(r.fault)BigInt(0)else color(level(l))
+        val expected=if(r.fault || fraction==0 || l==maxLevel)first else {
+          val second=color(level(l+1))
+          (0 until 4).foldLeft(BigInt(0)) { (out,c) => val shift=24-c*8
+            (out<<8)|(((((first>>shift)&255)*(256-fraction)+((second>>shift)&255)*fraction)>>8)&255)
+          }
+        }
+        val pending=mutable.ArrayBuffer.empty[(Long,Int)]; var reply: Option[Long]=None
+        var accepted=false; var done=false; var cycle=0; var held=0; val before=reads
+        while(!done && cycle<500) {
+          if(accepted) {
+            d.io.sample.valid.poke(false.B); d.io.invalidateCache.get.poke(false.B)
+            d.io.texBase.poke("he0000000".U); d.io.texWidth.poke(0.U); d.io.texHeight.poke(0.U)
+            d.io.texMaxLevel.poke(0.U); d.io.texFormat.poke(1.U)
+            d.io.coordinatePolicy.get.wrapU.poke(3.U); d.io.coordinatePolicy.get.wrapV.poke(3.U)
+            d.io.coordinatePolicy.get.signed.poke((!r.signed).B)
+          }
+          d.io.result.ready.poke(false.B); d.io.mem.req.ready.poke((cycle%5!=0).B)
+          if(reply.isEmpty && cycle%3==0) {
+            val eligible=pending.indices.filter(i=>pending(i)._2<=cycle)
+            if(eligible.nonEmpty)reply=Some(pending.remove(eligible.last)._1)
+          }
+          d.io.mem.resp.valid.poke(reply.nonEmpty.B)
+          reply.foreach {a=>d.io.mem.resp.bits.addr.poke(a.U); d.io.mem.resp.bits.data.poke(word(a).U); d.io.mem.resp.bits.write.poke(false.B)}
+          val response=reply.nonEmpty && d.io.mem.resp.ready.peek().litToBoolean
+          val accept=d.io.sample.valid.peek().litToBoolean && d.io.sample.ready.peek().litToBoolean
+          if(d.io.mem.req.valid.peek().litToBoolean && d.io.mem.req.ready.peek().litToBoolean) {
+            val a=d.io.mem.req.bits.addr.peek().litValue.toLong
+            assert(!r.fault && (0 to maxLevel).exists { n => val b=level(n); a>=b.base && a<b.base+b.w.toLong*b.h*4 && (a-b.base)%4==0 })
+            pending+=((a,cycle+3)); reads+=1
+          }
+          if(d.io.result.valid.peek().litToBoolean) {
+            d.io.result.bits.expect(expected.U); d.io.coordinateFault.get.expect(r.fault.B)
+            if(held==5) {d.io.result.ready.poke(true.B); done=true} else held+=1
+          }
+          d.clock.step(); if(accept)accepted=true; if(response)reply=None; cycle+=1
+        }
+        assert(done && accepted && pending.isEmpty && reply.isEmpty)
+        if(r.fault) {assert(reads==before); faults+=1}
+        results+=1
+      }
+      for(u<-0 to 2;v<-0 to 2)run(good.copy(wrapU=u,wrapV=v))
+      run(good,1,127,3); run(good,2,255,3); run(good.copy(signed=false),0,1,3)
+      run(good.copy(wrapU=3)); run(good.copy(wrapV=3)); run(good.copy(w=0)); run(good.copy(h=0))
+      run(good.copy(w=1,h=1)); run(good)
+      assert(results==18 && faults==4)
+      info(s"PREPARED_POLICY_DIRECT results=$results faults=$faults reads=$reads mixedAxes=9 capturedMipBinding=true trilinear=true zeroDimensions=true noInvalidReads=true heldFault=true healthyReuse=true")
     }
   }
 }
