@@ -277,13 +277,27 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
             withClue(s"relative LOD stage=$stage base=$base lod=$lod vector=$vector reads=${t.memory.seen.takeRight(10)} "){t.retire(vector,false,Seq.fill(4)(expected))};checks+=1
           }
         }
+        if(base<=2)for(min<-0 to 1){
+          t.put(samplers+7*4,min);t.parameters(Seq.fill(16)(BigInt(0)).updated(5,BigInt(1)))
+          val expected=ImageFormatReference.decode("RGBA8",BigInt(0xff000000L+base+2))(0)
+          def query(bad: Boolean): Unit={
+            t.issue(false,false,0,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),integer=true)
+            t.retire(false,false,Seq(if(bad)BigInt(0)else expected),fault=bad);checks+=1
+          }
+          query(false)
+          t.put(levels+base*128+13*4,0);query(true)
+          val texel=BigInt(0x20000+(base+1)*256)
+          assert(!t.memory.seen.drop(t.before).exists(_.address==texel),"failed base validation issued a selected texel read")
+          t.put(levels+base*128+13*4,(8>>base).max(1));query(false)
+        }
+        t.put(samplers+7*4,2)
         for(lod<-Seq(BigInt(16-base),BigInt(0xffffffffL),BigInt(0x10000000L))){
           t.parameters(Seq.fill(16)(BigInt(0)).updated(5,lod))
           t.issue(false,false,0,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),integer=true)
           t.retire(false,false,Seq(BigInt(0)),fault=true);checks+=1
         }
       }
-      info(s"NATIVE_INTEGER_RELATIVE_LOD stage=$stage checks=$checks baseLevels15=true relativeLOD0to2=true exactDifferentMipTexels=true fullWidthInvalidAndNegativeRejected=true noLevelWrap=true scalarVector=true")
+      info(s"NATIVE_INTEGER_RELATIVE_LOD stage=$stage checks=$checks baseLevels15=true relativeLOD0to2=true exactDifferentMipTexels=true fullWidthInvalidAndNegativeRejected=true noLevelWrap=true scalarVector=true nonmipBaseValidationAndSelectedView=true")
     }
   }
 
