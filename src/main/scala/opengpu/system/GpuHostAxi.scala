@@ -36,8 +36,9 @@ import opengpu.graphics.{
   * ports unchanged.
   *
   * AXI4 bursts are handled word-at-a-time (32-bit data, size = 2): a write
-  * burst issues one register write per beat at awaddr + beat*4 (INCR; WRAP/FIXED
-  * fall back to the base address), and a read burst returns one word per beat.
+  * burst issues one register write per beat at awaddr + beat*4 (INCR) or at
+  * the base address (FIXED), and a read burst returns one word per beat.
+  * Unsupported burst types/sizes and 4 KiB crossings return SLVERR.
   * Unaligned or out-of-map accesses are acknowledged with SLVERR (RRESP/BRESP = 2'b10); successful accesses
   * return `OKAY`.  The register file is single-ported, so at most one AXI
   * transaction (read or write) is in flight at a time; the handshakes
@@ -322,7 +323,8 @@ class GpuHostAxi(
     // -------------------------------------------------------------------------
     // One in-flight transaction.  The single-ported register file cannot serve
     // a read and a write simultaneously, so the read and write channel
-    // addresses each require the other idle.
+    // addresses each require the other idle. Resolve simultaneous offers
+    // before acknowledging either channel, alternating priority under contention.
     // -------------------------------------------------------------------------
     val writeActive = RegInit(false.B)
     val readActive = RegInit(false.B)
@@ -333,6 +335,13 @@ class GpuHostAxi(
     val beat = RegInit(0.U(8.W))
     val bPending = RegInit(false.B)
     val writeError = RegInit(false.B)
+    val lastAddressWasWrite = RegInit(false.B)
+    val addressIdle = !writeActive && !readActive
+    val grantRead = addressIdle && (!io.s_axi_awvalid || lastAddressWasWrite)
+    val grantWrite = addressIdle && (!io.s_axi_arvalid || !lastAddressWasWrite)
+    val readHeld = RegInit(false.B)
+    val heldReadData = Reg(UInt(32.W))
+    assert(!(writeActive && readActive), "AXI register transactions require one owner")
 
     // AXI FIXED=0 retains the address; INCR=1 advances by one control word.
     // Reject unsupported sizes/WRAP/reserved bursts and 4 KiB crossings before
@@ -368,7 +377,7 @@ class GpuHostAxi(
     // Multiplex the single-ported register file between the read and write
     // channel (mutually exclusive by construction).
     val busRegValid = Mux(
-      readActive, true.B, Mux(writeBeat, io.s_axi_wvalid, false.B))
+      readActive, !readHeld, Mux(writeBeat, io.s_axi_wvalid, false.B))
     val targetUnified =
       (beatAddr >= GpuCommandMmioRegs.COMMAND_ID.U &&
         beatAddr < RenderHostRegs.MSAA_CONFIG.U) ||
@@ -391,8 +400,9 @@ class GpuHostAxi(
     // ---------------------------------------------------------------------
     // Read channel.
     // ---------------------------------------------------------------------
-    io.s_axi_arready := !writeActive && !readActive
-    when(io.s_axi_arvalid && io.s_axi_arready && !writeActive) {
+    io.s_axi_arready := grantRead
+    when(io.s_axi_arvalid && io.s_axi_arready) {
+      lastAddressWasWrite := false.B
       readActive := true.B
       addrReg := io.s_axi_araddr
       lenReg := io.s_axi_arlen
@@ -424,13 +434,23 @@ class GpuHostAxi(
         }
       }
     }
-    io.s_axi_rdata := Mux(beatOk,rdata,0.U)
+    val offeredReadData = Mux(beatOk, rdata, 0.U)
+    io.s_axi_rdata := Mux(readHeld, heldReadData, offeredReadData)
+    // The first offered beat can bypass the holding register. Once stalled,
+    // retain that exact value even if completion/status changes underneath it.
+    // Capturing only on a stall preserves the existing unstalled beat rate.
+    when(readActive && !readHeld && !io.s_axi_rready) {
+      readHeld := true.B
+      heldReadData := offeredReadData
+    }
+    when(rBeatFire) { readHeld := false.B }
 
     // ---------------------------------------------------------------------
     // Write channel.
     // ---------------------------------------------------------------------
-    io.s_axi_awready := !writeActive && !readActive
-    when(io.s_axi_awvalid && io.s_axi_awready && !readActive) {
+    io.s_axi_awready := grantWrite
+    when(io.s_axi_awvalid && io.s_axi_awready) {
+      lastAddressWasWrite := true.B
       writeActive := true.B
       addrReg := io.s_axi_awaddr
       lenReg := io.s_axi_awlen
