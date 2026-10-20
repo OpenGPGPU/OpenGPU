@@ -77,3 +77,10 @@ to its positive synthesis inputs. Fresh read-through synthesis improves but fail
 path begins at the pending bank2 miss queue selection and reaches fill-key
 allocation plus `io_joined`. Shared fill-admission registration remains
 required;timing closure is unproven.
+
+The current epoch-control service is now on main with 69 composed checks and
+positive complete read-through synthesis (+95.013/+44.671 ps).
+The [822-input main audit](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json)
+preserves the frozen qualification. Native resource/coordinate admission,
+unquantized FP32 filtering, shared-CU routing and whole-path rates/coherence
+remain separate integration work.

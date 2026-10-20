@@ -456,9 +456,13 @@
     "generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1/flow/orfs-work/reports/base/synth_stat.txt": "143ff574cd116e99e931a77f73a4ee9a029796c73655316f17353d0b8b829f26"
   },
   "remaining": [
-    "main integration after the qualified69-check composition",
     "native shared-CU/resource/coordinate wiring and existing FP32 filtering-contract preservation",
     "whole-native precision/rates under memory contention and render-to-texture visibility",
     "all remaining H0-H8 hardware gates"
-  ]
+  ],
+  "main_integration": {
+    "merge_commit": "73a12953803cdce78833aafc0ff93f3fa7b59d35",
+    "audit_record": "mobile-banked-texture-epoch-integrated-main-2026-10-21.json",
+    "all_frozen_inputs_exact": true
+  }
 }

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "sixty_nine_checks_eight_emissions_all_three_synthesis_pass_ready_for_main",
+  "status": "integrated_on_main_sixty_nine_checks_eight_emissions_all_three_synthesis_pass",
   "main_baseline": "ee3cdf86ee6936b9b1e17f2e5df238783f9091d7",
   "source": {
     "commit": "05b728deb98ed289dfd5293c9a1420af740acbd0",
@@ -137,7 +137,6 @@
   "numeric_scope": "The weighted physical service is exact Q16 rational normalization. Native FP32 filter semantics and integration remain separate.",
   "synthesis_policy": "1000 ps, TC/SLVT,25% I/O,standard ABC,no retiming; synthesis only.",
   "remaining": [
-    "merge this qualified candidate into main and verify exact frozen inputs",
     "Native FP32 filtering, resource/coordinate planning and shared-CU texture-cluster integration.",
     "Whole-native precision/rates/coherence and full H0-H8 hardware gates."
   ],
@@ -152,5 +151,10 @@
     ".artifacts/mobile-banked-texture-epoch-main-native-v1-result.json": "d7526ebf079780d18692b4d5f4aefa537841fa8f31efdf570a3793a9b3f4ab8f",
     ".artifacts/mobile-banked-texture-epoch-main-native-v1.log": "c085476b954178341e5f00c6febe86f77ab6916988170d66d6aa24d535b29017",
     ".artifacts/mobile-banked-texture-epoch-main-native-v1-carry.json": "02cfcb1bd92e19ae014cabd3671b302c45aec9c1820abb4a489f340d600f51c7"
+  },
+  "main_integration": {
+    "merge_commit": "73a12953803cdce78833aafc0ff93f3fa7b59d35",
+    "audit_record": "mobile-banked-texture-epoch-integrated-main-2026-10-21.json",
+    "all_frozen_inputs_exact": true
   }
 }

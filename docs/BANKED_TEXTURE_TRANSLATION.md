@@ -72,3 +72,10 @@ FP32 now pass synthesis at 1000 ps including I/O (+95.013/+44.671 ps and
 epoch-control synthesis also passes (+8.538/+181.588 ps), with 942,150 fully
 mapped cells and no skipped instances. Native FP32 filter integration is a
 separate numeric and timing qualification.
+
+The current epoch-control service is now on main with 69 composed checks and
+positive complete translated synthesis (+8.538/+181.588 ps).
+The [822-input main audit](performance/mobile-banked-texture-epoch-integrated-main-2026-10-21.json)
+preserves the frozen qualification. Native resource/coordinate admission,
+unquantized FP32 filtering, shared-CU routing and whole-path rates/coherence
+remain separate integration work.
