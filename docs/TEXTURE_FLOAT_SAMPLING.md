@@ -82,6 +82,30 @@ unmapped descriptor page under Sv32, invalid layouts, held offers and 80
 cancellation cuts. A bounds-status expectation in the initial drain fixture was
 corrected; its focused rerun passes without a production change.
 
+## Selected-level sampling owner
+
+`TextureImageLevelSampleUnit` now composes coordinates, captured-view fetch and
+FP32 filtering for one admitted level. It snapshots image/sampler state and
+supports nearest values of every storage kind, filtered color formats, 2D/array/
+3D addressing and seamless cube edge taps. A cube double-border corner uses the
+current face's available corner texel, a deterministic construction permitted by
+GLES section3.8.9.1. The parent still projects cube directions and selects LOD.
+
+Only nonzero-weight taps are fetched, and identical texel locations within a
+sample share the decoded value. Required reads remain checked even for constant
+swizzles or comparison functions. Depth comparison uses GXS1 function order and
+occurs before filtering. Fixed-depth references clamp to[0,1]; floating-depth
+references do not clamp. NaNs retain unordered comparison behavior. Swizzle can
+be applied after the level filter or deferred until a parent blends mip levels.
+
+Accepted coordinate, fetch and FMA work drains before cancellation completion;
+held results retain their values. This is a functional selected-level owner,
+not a native shader instruction or a qualified texture-cluster throughput path.
+Initial numerical, cube, permission and cancellation checks pass. An initial
+shadow test caught fixed-depth NaN references being clamped to1.0; preserving
+NaN through this step fixes the focused640-case rerun. Broader qualification
+and synthesis screens follow on a frozen source revision.
+
 ## Standalone evidence and remaining integration
 
 The [qualification record](performance/mobile-float-axis-synthesis-2026-10-20.json)

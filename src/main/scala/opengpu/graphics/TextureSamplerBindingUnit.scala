@@ -32,6 +32,14 @@ object TextureSamplerState {
     TextureImageFormat.valid(format) && expectedType===TextureImageFormat.kind(format) &&
       !s.compareEnable && (filterable || nearestOnly(s))
   }
+  /** General sampling admits filtering of comparison results for depth images.
+    * The existing explicit-fetch contract above remains comparison-free.
+    */
+  def compatibleSampling(s: TextureSamplerState,format: UInt,expectedType: UInt,shadow: Bool): Bool={
+    val kindMatches=TextureImageFormat.valid(format) && expectedType===TextureImageFormat.kind(format)
+    kindMatches && s.compareEnable===shadow && Mux(shadow,TextureImageFormat.depth(format) && expectedType===0.U,
+      TextureImageFormat.filterable(format) || nearestOnly(s))
+  }
 }
 class TextureSamplerRecord extends Bundle {
   val identity=new GraphicsWorkIdentity;val handle=UInt(32.W);val state=new TextureSamplerState
