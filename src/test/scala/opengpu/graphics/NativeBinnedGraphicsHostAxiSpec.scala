@@ -234,11 +234,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       if(polygonOffset){
         import Fp32ViewportReference.{E,decode,calc,pack,clamp,rational}
         import FragmentInterpolationReference.edge
-        val area=TriangleRasterReference.edgeAt(tri,0,tri.coords.head._1,tri.coords.head._2)
-        val slopes=Vector.tabulate(2){axis=>val terms=Vector.tabulate(3){i=>val a=tri.coords((i+1)%3);val b=tri.coords((i+2)%3)
-          calc(edge((if(axis==0)a._2-b._2 else b._1-a._1)*256),decode(data.depth(i)),2)}
-          calc(calc(calc(terms(0),terms(1),0),terms(2),0),edge(area),3).copy(sign=false)}
-        val(xn,xd)=rational(slopes(0));val(yn,yd)=rational(slopes(1));val slope=if(xn*yd>yn*xd)slopes(0)else slopes(1)
+        val slope=PolygonDepthOffsetReference.maximum(tri.coords.map(_._1),tri.coords.map(_._2),data.depth)
         val resolution=decode(fp(Math.ulp(0.75f).toDouble))
         def depth(edges: Vector[BigInt],a: BigInt,bias: E): BigInt={
           val linear=FragmentInterpolationReference.linearDepth(edges,a,data.depth)

@@ -17,7 +17,7 @@ class PolygonDepthOffsetRequest extends Bundle {
   val enabled=Bool();val primitiveKind=UInt(2.W)
   val x=Vec(3,SInt(32.W));val y=Vec(3,SInt(32.W));val depth=Vec(3,UInt(32.W))
   val factor=UInt(32.W);val units=UInt(32.W)
-  /** Positive finite FP32 minimum resolvable difference, supplied by the
+  /** Positive finite FP32 resolution candidate, supplied by the
     * attachment-format owner. This component does not choose a depth format.
     */
   val resolution=UInt(32.W)
@@ -51,7 +51,7 @@ class PolygonDepthOffset(subPixelBits: Int=8) extends Module {
     val mathCancel=Output(Bool());val cancel=Input(Bool());val busy=Output(Bool())
   })
   private object State extends ChiselEnum {
-    val idle,validate,product,saveProduct,addProduct,saveSum,divide,saveSlope,
+    val idle,validate,depthDifference,saveDepthDifference,product,saveProduct,addProduct,saveSum,divide,saveSlope,
       chooseSlope,factor,saveFactor,units,saveUnits,addOffset,saveOffset,waitMath,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val continuation=Reg(State())
@@ -62,6 +62,7 @@ class PolygonDepthOffset(subPixelBits: Int=8) extends Module {
   private val request=Reg(new ClipFloatRequest(8));private val mathValue=Reg(new ClipFloat)
   private val axis=RegInit(false.B);private val vertex=RegInit(0.U(2.W))
   private val sum=Reg(new ClipFloat);private val term=Reg(new ClipFloat)
+  private val depthDifferences=Reg(Vec(2,new ClipFloat))
   private val slopes=Reg(Vec(2,new ClipFloat));private val maximum=Reg(new ClipFloat)
   private val scaledSlope=Reg(new ClipFloat);private val scaledUnits=Reg(new ClipFloat)
   private val offset=Reg(new ClipFloat)
@@ -116,19 +117,21 @@ class PolygonDepthOffset(subPixelBits: Int=8) extends Module {
           .elsewhen(!validDepth || !validResolution || !finite(input.factor) || !finite(input.units)){status:=1.U;phase:=State.finish}
           .elsewhen(!safeArea){status:=7.U;phase:=State.finish}
           .elsewhen(area===0.S || !input.factor(30,0).orR && !input.units(30,0).orR){phase:=State.finish}
-          .otherwise{phase:=State.product}
+          .otherwise{vertex:=1.U;phase:=State.depthDifference}
       }
-      is(State.product){calculate(FragmentEdgeFloat(coefficients(vertex)),ClipFloat.fromFp32(input.depth(vertex)),ClipFloatOperation.multiply,State.saveProduct)}
+      is(State.depthDifference){calculate(ClipFloat.fromFp32(input.depth(vertex)),ClipFloat.fromFp32(input.depth(0)),ClipFloatOperation.subtract,State.saveDepthDifference)}
+      is(State.saveDepthDifference){depthDifferences(vertex(1)):=mathValue
+        when(vertex===2.U){vertex:=1.U;phase:=State.product}.otherwise{vertex:=2.U;phase:=State.depthDifference}}
+      is(State.product){calculate(FragmentEdgeFloat(coefficients(vertex)),depthDifferences(vertex(1)),ClipFloatOperation.multiply,State.saveProduct)}
       is(State.saveProduct){
-        when(vertex===0.U){sum:=mathValue;vertex:=1.U;phase:=State.product}
+        when(vertex===1.U){sum:=mathValue;vertex:=2.U;phase:=State.product}
           .otherwise{term:=mathValue;phase:=State.addProduct}
       }
       is(State.addProduct){calculate(sum,term,ClipFloatOperation.add,State.saveSum)}
-      is(State.saveSum){sum:=mathValue
-        when(vertex===2.U){phase:=State.divide}.otherwise{vertex:=vertex+1.U;phase:=State.product}}
+      is(State.saveSum){sum:=mathValue;phase:=State.divide}
       is(State.divide){calculate(sum,FragmentEdgeFloat(area),ClipFloatOperation.divide,State.saveSlope)}
       is(State.saveSlope){slopes(axis.asUInt):=absolute(mathValue)
-        when(axis){phase:=State.chooseSlope}.otherwise{axis:=true.B;vertex:=0.U;phase:=State.product}}
+        when(axis){phase:=State.chooseSlope}.otherwise{axis:=true.B;vertex:=1.U;phase:=State.product}}
       is(State.chooseSlope){maximum:=Mux(greater(slopes(0),slopes(1)),slopes(0),slopes(1));phase:=State.factor}
       is(State.factor){calculate(maximum,ClipFloat.fromFp32(input.factor),ClipFloatOperation.multiply,State.saveFactor)}
       is(State.saveFactor){scaledSlope:=mathValue;phase:=State.units}

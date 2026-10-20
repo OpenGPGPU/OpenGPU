@@ -25,20 +25,28 @@ private class PolygonDepthOffsetHarness extends Module {
   io.responseOffered:=math.io.out.valid
 }
 
+private[graphics] object PolygonDepthOffsetReference {
+  import Fp32ViewportReference.{E,decode,calc,rational}
+  def maximum(x: Vector[BigInt],y: Vector[BigInt],z: Vector[BigInt],subPixelBits: Int=8): E={
+    val area=(x(1)-x(0))*(y(2)-y(0))-(y(1)-y(0))*(x(2)-x(0))
+    val delta=(1 to 2).map(i=>calc(decode(z(i)),decode(z(0)),1))
+    val slopes=Vector.tabulate(2){axis=>
+      val terms=(1 to 2).map{i=>val a=(i+1)%3;val b=(i+2)%3
+        val coefficient=(if(axis==0)y(a)-y(b)else x(b)-x(a))*(BigInt(1)<<subPixelBits)
+        calc(FragmentInterpolationReference.edge(coefficient),delta(i-1),2)}
+      calc(calc(terms(0),terms(1),0),FragmentInterpolationReference.edge(area),3).copy(sign=false)
+    }
+    val(xn,xd)=rational(slopes(0));val(yn,yd)=rational(slopes(1))
+    if(xn*yd>yn*xd)slopes(0)else slopes(1)
+  }
+}
+
 class PolygonDepthOffsetSpec extends AnyFlatSpec {
   import Fp32ViewportReference.{E,fp,decode,calc,rational}
   private case class Case(x: Vector[BigInt],y: Vector[BigInt],z: Vector[BigInt],factor: BigInt=fp(2),units: BigInt=fp(3),resolution: BigInt=fp(math.pow(2,-24)))
   private val base=Case(Vector(0,2048,0).map(BigInt(_)),Vector(0,0,2048).map(BigInt(_)),Vector(0.25,0.5,0.75).map(fp))
   private def reference(c: Case): (E,E)={
-    val area=(c.x(1)-c.x(0))*(c.y(2)-c.y(0))-(c.y(1)-c.y(0))*(c.x(2)-c.x(0))
-    def slope(axis: Int): E={
-      val terms=Vector.tabulate(3){i=>val a=(i+1)%3;val b=(i+2)%3
-        val coefficient=(if(axis==0)c.y(a)-c.y(b)else c.x(b)-c.x(a))*256
-        calc(FragmentInterpolationReference.edge(coefficient),decode(c.z(i)),2)}
-      calc(calc(calc(terms(0),terms(1),0),terms(2),0),FragmentInterpolationReference.edge(area),3).copy(sign=false)
-    }
-    val x=slope(0);val y=slope(1);val(xn,xd)=rational(x);val(yn,yd)=rational(y)
-    val m=if(xn*yd>yn*xd)x else y
+    val m=PolygonDepthOffsetReference.maximum(c.x,c.y,c.z)
     (calc(calc(m,decode(c.factor),2),calc(decode(c.resolution),decode(c.units),2),0),m)
   }
   private def read(v: ClipFloat): E={v.special.expect(0.U);E(v.negative.peek().litToBoolean,v.exponent.peek().litValue.toInt,v.significand.peek().litValue)}
@@ -56,7 +64,7 @@ class PolygonDepthOffsetSpec extends AnyFlatSpec {
       d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B)
       q.sequence.poke(0.U);q.factor.poke("h7fc00000".U);q.resolution.poke(0.U)
     }
-    def finish(expected: E=E(),slope: E=E(),status: Int=0,operations: Int=15): Unit={
+    def finish(expected: E=E(),slope: E=E(),status: Int=0,operations: Int=13): Unit={
       until(d.io.out.valid.peek().litToBoolean);val r=d.io.out.bits
       r.identity.context.expect(7.U);r.identity.pass.expect(8.U);r.identity.generation.expect(9.U)
       r.sequence.expect(sequence.U);r.primitiveId.expect((100+sequence).U);r.status.expect(status.U)

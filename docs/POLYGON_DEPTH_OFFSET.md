@@ -87,3 +87,14 @@ Versioned raster descriptors, bound-format resolution/precision, actual-CU
 fragCoord and shader depth override, clipped/centroid biased images, native
 binned publication, full resource ownership and integrated rate/synthesis gates
 remain required. The original H0–H8 scope is unchanged.
+
+## Anchored slope candidate
+
+The new candidate prepares `z1-z0` and `z2-z0` once per polygon and uses two
+products, one sum and one division for each axis. This removes the repeated
+common depth term and reduces normal setup from fifteen to thirteen scalar
+operations, with no extra FPU, divider, CU or SRAM. Constant vertex depths must
+give zero slope even when a large factor would amplify rounding residue.
+The new 32-case semantic control and the broader numeric/ownership regression
+are pending. Earlier fifteen-operation evidence remains scoped to its frozen
+source; neither candidate closes full raster precision or H0–H8.

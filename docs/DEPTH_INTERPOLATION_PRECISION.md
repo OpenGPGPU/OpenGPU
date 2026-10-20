@@ -45,6 +45,10 @@ The implemented candidate correction anchors depth at vertex zero:
 and summing the common depth term. Two differences are prepared once per quad
 through the existing scalar service; center, covered samples and centroid
 fallback share that depth path. Offset-before-clamp and cancellation ownership
-remain in the same owner. The analogous anchored slope calculation still needs
-checking. Focused precision, numeric/ownership and integrated qualification of
-this correction are pending; the negative result does not qualify it.
+remain in the same owner. A second candidate anchors polygon derivatives using
+the same two depth differences. It requires thirteen setup operations instead
+of fifteen and retains the external scalar service. A 32-case control checks
+zero slope at four constant depth levels, both windings, opposite large factors
+and preserved resolution terms. Its before/after RTL checks and the full
+numeric/ownership and integrated qualification remain pending; negative
+reproductions do not qualify either correction.
