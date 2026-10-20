@@ -6221,3 +6221,14 @@ cases,4871 arithmetic cases,2401 boundary-lattice lines and588 cancellation/rese
 cuts;default emission passes. Fresh integration,cycle and standalone synthesis
 checks remain pending. No positive clock,throughput or full H0-H8 result is
 claimed from this component checkpoint.
+
+
+## Retained admission qualification before limb balancing (2026-10-20)
+
+All22 targeted controls and [15 exact-output cycle fixtures](performance/mobile-point-line-admission-cycles-before-2026-10-20.json)
+pass on unchanged674-file source. The [standalone screen](performance/mobile-point-line-admission-synthesis-before-2026-10-20.json)
+passes full mapping with153338 cells but misses setup by40.956ps;I/O is+630.698ps.
+The remaining path reaches a comparator limb product from a fraction numerator.
+This result remains negative;balanced carry-save limb multiplication will be
+measured at the same constraints. No positive clock,throughput or full H0-H8
+closure is claimed.
