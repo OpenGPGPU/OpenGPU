@@ -1,13 +1,12 @@
 # Internal integer texture offsets
 
-Status: implementation on `codex/mobile-texture-offsets`. The three axis tests
-pass, including 44,625 new offset queries and 91,135 existing zero-offset queries.
-Seventeen composed/selection controls also pass, including 816 offset samples,
-seven invalid-offset checks before descriptors, and 24 cancellation/held-result
-cuts with healthy reuse. The [axis synthesis checkpoint](performance/mobile-texture-offset-checkpoint-2026-10-21.json)
-passes at 1000ps with core/I/O slack +169.396/+632.673ps. Fresh aggregate and
-combined resolver/sampler synthesis remain pending.
-No native instruction, compiler builtin or device capability is added here.
+Status: the [799-input qualification](performance/mobile-texture-offsets-2026-10-21.json)
+passes 124 distinct tests across 21 suites and nine unchanged ABI checks. Fresh
+axis, resolver and full-sampler synthesis pass at 1000ps. Core/I/O slack is
++169.396/+632.673ps, +49.064/+477.467ps and +34.426/+411.929ps respectively.
+The full sampler maps 438,950 cells with library area 60,891.212160. Five
+standalone arithmetic profiles retain byte-identical positive synthesis.
+No native instruction, compiler builtin or capability is added here.
 
 The internal descriptor-to-texel sampler accepts three signed offsets with an
 implemented range of -8 through +7, inclusive. It adds each offset to the integer
@@ -55,6 +54,6 @@ drain ownership.
 
 Native transport, compiler/validator support, integer texel-fetch offsets,
 texture-size queries and projective lowering remain open, alongside the other
-H0-H8 requirements. Full-sampler and standalone-axis synthesis must qualify this
-changed RTL at the original clock; earlier positive screens apply only to their
-frozen source.
+H0-H8 requirements. The fresh component synthesis screens qualify this changed RTL at the
+original clock; earlier positive screens retain their own frozen source.
+No whole-GPU clock, hold, power, routing or frame-rate result is claimed.
