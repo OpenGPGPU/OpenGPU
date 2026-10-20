@@ -6094,3 +6094,16 @@ not a fresh206 run or blanket carry to this raster revision. Main promotion
 requires exact committed/working source and probe hashes, preservation of the
 unrelated Gallium commit and the remaining worktree edit. Full H0-H8 functional
 closure and representative throughput remain open; PPA remains synthesis only.
+
+
+## Tagged sample pipeline main integration (2026-10-20)
+
+Local main merge `5c24608` integrates the [qualified sample overlap](performance/mobile-point-line-sample-main-2026-10-20.json).
+All672 committed/working hardware/test source hashes and both checked-in probe
+hashes match the measured revision. The unrelated Gallium commit's19 files and
+the pending timing edit retain their contents/modes; the index is empty after
+integration. Validation is19 fresh targeted controls plus two15-fixture probe
+modes, with exact source identity on main; no additional main regression or
+blanket carry of the earlier206 controls is claimed. Standalone mapping passes
+but the diamond interval setup miss remains1107.758ps. General native texture
+resources, typed shader transport and full H0-H8 closure remain open.

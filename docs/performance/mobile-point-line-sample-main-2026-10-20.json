@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "qualified_overlap_integrated_local_main",
+  "before_commit": "58f1d38f07b758edc715cd5571c7ead3069a10d9",
+  "merged_commit": "5c24608ab5d854a1369c9da75bf949b70fd9800f",
+  "committed_and_working_hardware_test_source_files": 672,
+  "source_matches_qualification": true,
+  "benchmark_source_hashes": {
+    "scripts/benchmark_point_line_cycles.py": "c1f524a807f0b48d06c1a1e1776b84017bc5b3a94d3d34c04e820774b7be0848",
+    "scripts/point_line_cycles.cpp": "558aef327d6e7329f1b8641491e6dfdc78b13a2e24a2a4a70fac5cf857f7dcc1"
+  },
+  "benchmark_source_matches_measurements": true,
+  "preserved_prior_commit_files": 19,
+  "preserved_dirty_files": 1,
+  "dirty_contents_and_modes_preserved": true,
+  "status_unchanged": true,
+  "index_empty": true,
+  "validation": "19 fresh targeted controls;15 exact-output overlap fixtures and15 legacy setup-policy controls. Main verified by exact committed/working source and probe hashes;no additional main rerun or blanket carry of earlier206 native controls.",
+  "functional_record": "docs/performance/mobile-point-line-sample-overlap-2026-10-20.json",
+  "synthesis_record": "docs/performance/mobile-point-line-sample-synthesis-2026-10-20.json",
+  "remaining": [
+    "Standalone full mapping passes but aliased diamond setup misses1000ps by1107.758ps;no positive native/composed clock.",
+    "Native general image/sampler binding,typed shader transport,remaining functional/throughput requirements and full H0-H8 completion."
+  ]
+}
