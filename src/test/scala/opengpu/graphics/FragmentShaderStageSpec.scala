@@ -532,8 +532,15 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
           Seq(vectorMemory(5,6,false),texData.vector(c,7,5,6))
         program(4,2).dropRight(1)++fetch++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
       }
-      def floatPc(c: Int,scalar: Boolean,missing: Boolean,mode: Int): Int=
-        0xa0000+(if(integerMode)0x40000 else 0)+(if(scalar)0x10000 else 0)+(if(missing)0x20000 else 0)+mode*0x4000+c*0x1000
+      val lifetimeOnly=java.lang.Boolean.getBoolean("opengpu.nativeIntegerLifetimeOnly")
+      val reproduceScratchAlias=java.lang.Boolean.getBoolean("opengpu.nativeIntegerScratchAlias")
+      require(!reproduceScratchAlias || lifetimeOnly,"scratch alias is only an explicit negative fixture control")
+      def floatPc(c: Int,scalar: Boolean,missing: Boolean,mode: Int): Int={
+        val offset=if(reproduceScratchAlias)0x40000 else 0x100000
+        val pc=0xa0000+(if(integerMode)offset else 0)+(if(scalar)0x10000 else 0)+(if(missing)0x20000 else 0)+mode*0x4000+c*0x1000
+        if(!reproduceScratchAlias)require(BigInt(pc)+4096<=t.scratch || BigInt(pc)>=t.scratch+t.prefix+64,"shader fixture code overlaps native spill scratch")
+        pc
+      }
       def floatingCode(c: Int,scalar: Boolean,missing: Boolean,mode: Int): Seq[BigInt]={
         def param(pair: Int,x: Int,y: Int): BigInt=(BigInt(3)<<(if(scalar)25 else 26))|
           (if(scalar)BigInt(0)else BigInt(1)<<25)|(BigInt(y)<<20)|(BigInt(x)<<15)|(BigInt(pair)<<12)|(if(scalar)0x0b else 0x2b)
@@ -571,7 +578,10 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         for(l<-0 until 4){val a=d.io.in.bits.values.lanes(l);a.varyings(0)(0).poke((texData.packet+l*64).U);a.varyings(0)(1).poke(l.U)}
         d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
         if(cancelled){t.until(rootRead);d.io.cancel.poke(true.B)}
-        t.complete(if(cancelled)4 else if(bad || nativeMode && skipParameters)3 else 0);if(cancelled)d.io.cancel.poke(false.B)
+        t.until(d.io.completion.valid.peek().litToBoolean)
+        withClue(s"native=$nativeMode integer=$integerMode missing=$skipParameters scalar=$scalar component=$c bad=$bad cancelled=$cancelled pc=${d.io.draw.bits.shaderPc.peek().litValue.toString(16)} faultAddress=${d.io.completion.bits.faultAddress.peek().litValue.toString(16)} "){
+          t.complete(if(cancelled)4 else if(bad || nativeMode && skipParameters)3 else 0)}
+        if(cancelled)d.io.cancel.poke(false.B)
         if(bad || cancelled || nativeMode && skipParameters)assert(t.exports.isEmpty)else{
           assert(t.exports.size==1)
           for((l,n)<-t.exports.head.lanes.zipWithIndex){val unit=if(scalar)3 else n;assert(l.colors(15)==views(unit).expected(c),s"typed fragment export differs c=$c scalar=$scalar lane=$n")}
@@ -579,6 +589,15 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         }
         if(nativeMode && skipParameters)assert(!rootRead,"new task reused stale operand validity")
       }
+      if(lifetimeOnly){
+        nativeMode=true;integerMode=true;nativeControl=0
+        outputKind=0
+        views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,3,0,1,id))
+        run(0,false)
+        skipParameters=true;run(0,false);run(0,true);skipParameters=false
+        run(0,false,bad=true);run(1,false,cancelled=true);run(3,true)
+        info(s"NATIVE_INTEGER_LIFETIME_CU stage=fragment local=$local directedOnly=true calls6=true shaderCodeOutsideScratch=${!reproduceScratchAlias} v0Preserved=true taskResetAndFaultDrain=true healthyReuse=true")
+      }else{
       for(scalar<-Seq(false,true);c<-0 until 4)run(c,scalar)
       run(0,false,bad=true);run(2,false,cancelled=true);run(3,true)
       var addedDraws=0
@@ -627,6 +646,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       info(s"NATIVE_FLOAT_SAMPLE_CU stage=fragment local=$local formats64=true scalarVectorParameterInstructions=true scalarVectorSampleInstructions=true successfulDraws=$floatingDraws automaticAndGradient=true v0Preserved=true taskResetRejectsStaleTuple=true faultAndCancelDrain=true healthyReuse=true onChipParameterBank=true")
       info(s"NATIVE_IMAGE_FORMAT_CU stage=fragment local=$local formats64=true imageSwizzle=true scalarVector=true addedDraws=$addedDraws")
       info(s"NATIVE_TYPED_FETCH_CU stage=fragment local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true integerRawTypes=true helperInputs=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
+      }
     }
   }
 
