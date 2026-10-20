@@ -10,7 +10,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,scalarFpu: Boolean=false,oversize: Boolean=false) extends Module {
+private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=if(fullInterface)FragmentShaderConfig()else FragmentShaderConfig(2,4)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,

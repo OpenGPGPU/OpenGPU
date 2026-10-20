@@ -11,7 +11,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,scalarFpu: Boolean=false,coherentUpdates: Boolean=false) extends Module {
+private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,coherentUpdates: Boolean=false,scalarFpu: Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=if(fullInterface)VertexShaderStageConfig()else VertexShaderStageConfig(VertexInputFetchConfig(4,3),2)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
@@ -692,7 +692,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       for((scalar,target,mode,step)<-cases)run(scalar,target,mode,step)
       run(true,0,0,0.25f,offset=15);run(false,0,1,0.75f,bad=true);run(false,3,2,0.75f,cancelled=true);run(false,4,0,0.75f)
       assert(draws==40)
-      info(s"NATIVE_PROJECTIVE_CU stage=vertex local=$local draws=$draws scalarVectorFP32Division=true scalarFpuExplicitlyEnabled=true targets2D3DShadow=true modesImplicitLodGradient=true projectedReference=true gradientsAlreadyProjected=true varyingQPerHelper=true uncoveredHelpers3=true privateCodeDisjoint=true signedOffsetAfterProjection=true faultCancelDrain=true healthyReuse=true noOperandPackets=true")
+      info(s"NATIVE_PROJECTIVE_CU stage=vertex local=$local draws=$draws scalarVectorFP32Division=true scalarFpuExplicitlyEnabled=true targets2D3DShadow=true modesImplicitLodGradient=true projectedReference=true gradientsAlreadyProjected=true varyingQPerHelper=true uncoveredHelpers3=false privateCodeDisjoint=true signedOffsetAfterProjection=true faultCancelDrain=true healthyReuse=true noOperandPackets=true")
     }
   }
 

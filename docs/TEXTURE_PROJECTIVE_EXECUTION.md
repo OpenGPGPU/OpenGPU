@@ -34,3 +34,13 @@ Pending work includes collecting these cases, fixing any verified failure,
 combining the current integer/query/AXI qualification and completing texture
 banking, throughput, coherence and the remaining H0-H8 requirements. This does
 not claim compiler/API projective lowering or complete GLES conformance.
+
+The scalar program profile explicitly enables the optional scalar FPU backend.
+The default harness profile leaves it disabled and routes scalar FP instructions
+to an external port; an unserviced port stalls such a shader. The isolated
+backend probe passes three in-place divisions and dependent integer bit moves.
+The optional test-harness flag is appended after existing positional parameters
+so the prior oversized-payload argument keeps its meaning. Production RTL and
+ISA remain unchanged. The first run also retained a previous2D texel in volume
+slice0;clearing each reused allocation fixes the fixture without relaxing the
+independent oracle. Both retained failures precede this explicit profile.
