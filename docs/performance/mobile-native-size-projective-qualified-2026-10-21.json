@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "size_query_projective_and_existing_integer_mip_controls_composed_with_fresh23_case_pass",
+  "source": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 326.50094954203814,
+    "commit": "7f15491e2a59feef53255750168ee01d262b7a9e",
+    "source_files": 812,
+    "manifest_sha256": "a5e08abb115f9fd11880f57350a3bb7bb7e3976c2bd340f57efc2d70e8cb701f",
+    "archive_sha256": "af05d74a1e1055b3fb5175bdbaefe342b179bd8517ff1826a88efdfd1f079254",
+    "git_archive_and_worktree_exact": true,
+    "query_differences_only_tests": [
+      "src/test/scala/opengpu/core/backend/FpuBackendSpec.scala",
+      "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala",
+      "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala",
+      "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"
+    ],
+    "projective_differences_only_tests": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+      "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala"
+    ],
+    "all_production_driver_ABI_emission_inputs_exact_to_qualified_query": true,
+    "all_main_banked_component_inputs_preserved": true,
+    "runner_pid": 88629,
+    "started_utc": "2026-10-20T20:43:13.925611+00:00"
+  },
+  "fresh_merged_tests": 23,
+  "scope": "Complete TextureSampleExecuteUnitSpec after resolving append-only conflict;retains both integer selected-mip page probes and the query/legacy matrices.",
+  "query_parent_carry": {
+    "other_component_tests": 19,
+    "overlapping_component_cases_replaced_by_fresh23": 21,
+    "real_shared_CU_tests": 4,
+    "default_harness_identity": {
+      "VertexShaderStageSpec.scala": {
+        "prior_test_bodies_and_helpers_preserved": true,
+        "only_prior_harness_change": "Append scalarFpu=false and pass that value explicitly to the previously default-false GpuSystem backend option. Existing positional argument meanings are preserved."
+      },
+      "FragmentShaderStageSpec.scala": {
+        "prior_test_bodies_and_helpers_preserved": true,
+        "only_prior_harness_change": "Append scalarFpu=false and pass that value explicitly to the previously default-false GpuSystem backend option. Existing positional argument meanings are preserved."
+      }
+    },
+    "translated_AXI_tests": 2,
+    "translated_AXI_frames": 148,
+    "successful_AXI_frames": 144,
+    "expected_AXI_errors": 4,
+    "ABI_checks": 9,
+    "strict_C_validator": true,
+    "LLVM_tests": 4,
+    "mapped_synthesis_screens": 3,
+    "production_driver_ABI_emission_inputs_exact": true
+  },
+  "projective_carry": {
+    "tests": 14,
+    "test_and_helper_inputs_exact_to_qualified_snapshot": true,
+    "production_inputs_exact": true,
+    "scalar_FPU": "Explicitly enabled only in the projective cases;default query/legacy harness modes stay false.",
+    "cases": "Four projective stage/payload cases,8 scalar backend checks and2 legacy128-invocation payload cases."
+  },
+  "banked_main_carry": "All existing banked store/filter/fill production and test inputs remain unchanged. Their current standalone synthesis and13-check qualification are separate from the native owner.",
+  "parent_records": [
+    "mobile-native-texture-size-qualified-2026-10-21.json",
+    "mobile-native-texture-size-shared-CU-2026-10-21.json",
+    "mobile-native-texture-size-whole-synthesis-2026-10-21.json",
+    "mobile-native-texture-size-owner-synthesis-2026-10-21.json",
+    "mobile-native-projective-qualified-2026-10-21.json"
+  ],
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-size-projective-main-v1.log": "d387e55d9991ac41d000ce43dbd9c28c0412f3c3c0b3a604010f58d84da15c3e",
+    ".artifacts/mobile-native-size-projective-main-v1-result.json": "2dedee13d8449e9fccec83876bb94579bb4636711180033c1c36b066ab9d536e",
+    ".artifacts/mobile-native-size-projective-main-v1-source.json": "a5e08abb115f9fd11880f57350a3bb7bb7e3976c2bd340f57efc2d70e8cb701f",
+    ".artifacts/mobile-native-size-projective-main-v1-source.tar.gz": "af05d74a1e1055b3fb5175bdbaefe342b179bd8517ff1826a88efdfd1f079254"
+  },
+  "remaining": [
+    "collect disjoint-source old typed/floating/integer AXI regression",
+    "complete banked read-through synthesis and native translation/task integration",
+    "normalized FP32/native texture precision and whole-path throughput/coherence",
+    "full H0-H8 hardware requirements"
+  ],
+  "PPA": "synthesis only;no whole-CU/GPU clock or H0-H8 completion claim"
+}

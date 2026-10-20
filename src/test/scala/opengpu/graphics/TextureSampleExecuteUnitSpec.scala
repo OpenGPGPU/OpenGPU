@@ -10,9 +10,9 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
   import NativeTextureFetchTestData._
   private val all=BigInt(15);private val previous=(0 until 4).map(n=>BigInt(0xabc00000L+n))
   private def fp(f: Float): BigInt=BigInt(java.lang.Float.floatToRawIntBits(f).toLong&0xffffffffL)
-  private def instruction(vector: Boolean,param: Boolean,field: Int,integer: Boolean=false): BigInt={
+  private def instruction(vector: Boolean,param: Boolean,field: Int,integer: Boolean=false,query: Boolean=false): BigInt={
     val shift=if(vector)26 else 25;val vm=if(vector)BigInt(1)<<25 else BigInt(0)
-    (BigInt(if(param)3 else if(integer)5 else 4)<<shift)|vm|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(field)<<12)|
+    (BigInt(if(param)3 else if(query)6 else if(integer)5 else 4)<<shift)|vm|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(field)<<12)|
       (if(param)BigInt(0)else BigInt(10)<<7)|(if(vector)0x2b else 0x0b)
   }
   private class Driver(val d: NativeShaderTextureUnit) {
@@ -28,27 +28,28 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
     def put(a: BigInt,v: BigInt): Unit=memory.putWord(a,v)
     def byte(a: BigInt,v: Int): Unit={memory.bytes(a)=v}
     def clear(): Unit={d.io.busy.expect(false.B);d.io.clearParameters.poke(true.B);tick();d.io.clearParameters.poke(false.B)}
-    def issue(vector: Boolean,param: Boolean,field: Int,left: Seq[BigInt],right: Seq[BigInt],mask: BigInt=all,integer: Boolean=false): Unit={
+    def issue(vector: Boolean,param: Boolean,field: Int,left: Seq[BigInt],right: Seq[BigInt],mask: BigInt=all,integer: Boolean=false,query: Boolean=false): Unit={
       context();before=memory.seen.size
       if(vector){zero(d.io.vectorIn.bits);val q=d.io.vectorIn.bits
-        q.issued.decode.instruction.poke(instruction(true,param,field,integer).U);q.issued.decode.warpId.poke(warp.U)
+        q.issued.decode.instruction.poke(instruction(true,param,field,integer,query).U);q.issued.decode.warpId.poke(warp.U)
         q.issued.decode.pc.poke(0x200.U);q.issued.decode.activeMask.poke(all.U);q.executionMask.poke(mask.U)
         q.issued.vs1Data.zip(left).foreach{case(a,b)=>a.poke(b.U)};q.issued.vs2Data.zip(right).foreach{case(a,b)=>a.poke(b.U)}
         q.issued.oldVdData.zip(previous).foreach{case(a,b)=>a.poke(b.U)}
         d.io.vectorIn.valid.poke(true.B);until(d.io.vectorIn.ready.peek().litToBoolean);tick();d.io.vectorIn.valid.poke(false.B);zero(q)
       }else{zero(d.io.in.bits);val q=d.io.in.bits
-        q.decode.instruction.poke(instruction(false,param,field,integer).U);q.decode.warpId.poke(warp.U);q.decode.pc.poke(0x200.U);q.decode.activeMask.poke(all.U)
+        q.decode.instruction.poke(instruction(false,param,field,integer,query).U);q.decode.warpId.poke(warp.U);q.decode.pc.poke(0x200.U);q.decode.activeMask.poke(all.U)
         q.rs1Data.poke(left.head.U);q.rs2Data.poke(right.head.U)
         d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q)
       }
       zero(d.io.resources);zero(d.io.identity)
     }
-    def retire(vector: Boolean,param: Boolean,expected: Seq[BigInt],fault: Boolean=false): Unit={
+    def retire(vector: Boolean,param: Boolean,expected: Seq[BigInt],fault: Boolean=false,faultAddress: Option[BigInt]=None): Unit={
       until(if(vector)d.io.vectorCommit.valid.peek().litToBoolean else d.io.commit.valid.peek().litToBoolean)
       if(vector){val q=d.io.vectorCommit.bits;q.writeback.warpId.expect(warp.U);q.writeback.vd.expect((if(param)0 else 10).U)
         q.writesVd.expect((!param && !fault).B);q.writesScalar.expect(param.B);q.scalarData.expect(0.U)
         q.writeback.data.zip(expected).foreach{case(a,b)=>a.expect(b.U)}
       }else{val q=d.io.commit.bits;q.warpId.expect(warp.U);q.rd.expect((if(param)0 else 10).U);q.writeRd.expect((param || !fault).B);q.data.expect(expected.head.U)}
+      faultAddress.foreach(a=>d.io.faultAddress.expect(a.U))
       d.io.responseFault.expect(fault.B);assert(memory.pending.isEmpty && memory.reply.isEmpty)
       val held=if(vector)d.io.vectorCommit.bits.peek().litValue else d.io.commit.bits.peek().litValue
       d.io.cancel.poke(true.B);d.io.invalidate.poke(true.B)
@@ -319,6 +320,82 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
       assert(pages.contains(required),s"selected mip requires page${required.toString(16)}; actual pages=${pages.toSeq.sorted.map(_.toString(16))}")
       assert(!pages.contains(oldPage),"selected-level-only admission must not read unselected table-origin metadata")
       info(s"NATIVE_INTEGER_MIP_PAGE stage=$stage unit31=true imageBase1=true shaderLOD0=true tableOriginPage12000=true selectedPage13000=true originNotRead=true healthyFetch=true")
+    }
+  }
+
+  for(stage<-0 to 1)it should s"query every texture format and target without operand tuples sampler reads or texel reads stage=$stage" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage);t.clear()
+      var queries=0
+      for(format<-0 until 64){
+        val target=if(format>=54 || ImageFormatReference.format(ImageFormatReference.names(format)).depth)0 else format%4
+        install(t.put,t.byte,0,format,target,stage)
+        // An unusable sampler handle and unreadable sampler/data pages must not
+        // affect a metadata-only size query, including integer/depth formats.
+        t.put(bindings+9*4,BigInt("ffffffff",16))
+        t.memory.beforeRequest=r=>assert(!r.write && r.tag<2 && r.address<0x20000 && !(r.address>=samplers && r.address<samplers+2048))
+        val dims=Seq[BigInt](if(format>=54)7 else 2,if(format>=54)5 else 2,if(target==1)3 else if(target==3)2 else 0)
+        for(c<-0 until 3;vector<-Seq(false,true)){
+          t.issue(vector,false,c,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),mask=5,query=true)
+          t.retire(vector,false,if(vector)(0 until 4).map(l=>if(l==0 || l==2)dims(c)else previous(l))else Seq(dims(c)));queries+=1
+        }
+      }
+      assert(queries==384)
+      info(s"NATIVE_TEXTURE_SIZE_FORMATS stage=$stage queries=$queries formats64=true targets4=true scalarVector=true noOperandTuple=true noSamplerOrTexelReads=true inactiveOldVd=true immutableRetirement=true")
+    }
+  }
+  private def sizeImage(t: Driver,unit: Int,target: Int,base: Int,maximum: Int=15,stage: Int=0): Unit={
+    val allocation=BigInt(0x20000)+unit*0x20000;val table=BigInt(0x18000)+unit*0x1000
+    val rw=13;val rh=if(target==2)13 else 9;val rd=if(target==3)5 else 1;val layers=if(target==1)7 else 1
+    words(t.put,bindings+unit*64,Seq[BigInt](BigInt("47584201",16),64,1)++defaultIdentity++Seq[BigInt](stage,unit,unit,BigInt("ffffffff",16),0,target),16)
+    words(t.put,images+unit*128,Seq[BigInt](BigInt("47584901",16),128,1)++defaultIdentity++Seq[BigInt](unit,target,3,base,maximum,rw,rh,rd,layers,
+      allocation,allocation+0x10000,0,1,table,table+2048,0,0),32)
+    for(level<-0 to 15){val width=math.max(1,rw>>level);val height=math.max(1,rh>>level);val depth=math.max(1,rd>>level)
+      val row=width*4;val plane=row*height
+      words(t.put,table+level*128,Seq[BigInt](BigInt("47584c01",16),128,1)++defaultIdentity++Seq[BigInt](level,target,level,allocation,allocation+0x10000,0,
+        allocation+level*4096,width,height,depth,layers,row,0,if(target==3)plane else 0,0,if(target==1 || target==2)plane else 0,0,0,4),32)
+    }
+  }
+  for(stage<-0 to 1)it should s"query base relative NPOT mip sizes and drain malformed metadata cancellation and late lane faults stage=$stage" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage);t.clear()
+      var queries=0
+      def query(c: Int,unit: BigInt=0,lod: BigInt=0,fault: Boolean=false,value: BigInt=0): Unit={
+        t.issue(false,false,c,Seq.fill(4)(unit),Seq.fill(4)(lod),query=true);t.retire(false,false,Seq(value),fault);queries+=1
+      }
+      for(base<-0 to 15;target<-0 to 3){sizeImage(t,0,target,base,stage=stage)
+        val last=math.max(base,3)
+        for(lod<-0 to last-base;c<-0 until 3){val level=base+lod
+          val expected=if(c==0)math.max(1,13>>level)else if(c==1)math.max(1,(if(target==2)13 else 9)>>level)
+            else if(target==1)7 else if(target==3)math.max(1,5>>level)else 0
+          query(c,lod=lod,value=expected)
+        }
+        for(lod<-Seq(BigInt(last-base+1),BigInt("ffffffff",16),BigInt("80000000",16)))query(0,lod=lod,fault=true)
+      }
+      for(unit<-0 until 4)sizeImage(t,unit,unit,1,stage=stage)
+      t.memory.beforeRequest=r=>assert(!r.write && r.tag<2 && r.address<0x20000 && !(r.address>=samplers && r.address<samplers+2048))
+      t.issue(true,false,2,(0 until 4).map(BigInt(_)),Seq.fill(4)(BigInt(0)),query=true)
+      t.retire(true,false,Seq[BigInt](0,7,0,2))
+      // A later lane's bad full-width unit suppresses all destination lanes.
+      t.issue(true,false,0,Seq[BigInt](0,1,2,BigInt("ffffffff",16)),Seq.fill(4)(BigInt(0)),query=true)
+      t.retire(true,false,Seq.fill(4)(BigInt(0)),fault=true)
+      t.issue(true,false,0,Seq.fill(4)(BigInt("ffffffff",16)),Seq.fill(4)(BigInt(0)),mask=0,query=true)
+      t.retire(true,false,previous);assert(t.memory.seen.size==t.before)
+      // Invalidate the selected header before testing a physical metadata fault.
+      d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
+      t.memory.faultAt=Set(images& ~BigInt(63));t.issue(false,false,0,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),query=true)
+      t.retire(false,false,Seq(BigInt(0)),fault=true,faultAddress=Some(images));t.memory.faultAt=Set.empty
+      sizeImage(t,0,0,1,stage=stage);t.put(images+3*4,99);query(0,fault=true);sizeImage(t,0,0,1,stage=stage)
+      t.put(bindings+11*4,3);query(0,fault=true);t.put(bindings+11*4,0)
+      t.put(bindings+10*4,2);query(0,fault=true);t.put(bindings+10*4,0)
+      var cancelled=0;var held=0
+      for(cut<-Seq(0,1,5,10,20,40,80,160,320,640,1280,2560)){
+        t.issue(true,false,0,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),query=true)
+        for(_<-0 until cut)t.tick();val complete=d.io.vectorCommit.valid.peek().litToBoolean
+        d.io.cancel.poke(true.B);t.retire(true,false,Seq.fill(4)(if(complete)BigInt(6)else BigInt(0)),fault= !complete)
+        if(complete)held+=1 else cancelled+=1
+        query(0,value=6)
+      }
+      assert(cancelled>0 && held>0)
+      info(s"NATIVE_TEXTURE_SIZE_LEVELS stage=$stage queries=$queries baseLevels16=true NPOT=true targets4=true fullWidthLOD=true layerCountNotMipped=true cubeSize2=true perLaneBindings=true lateLaneFaultAtomic=true zeroMaskNoReads=true metadataFaultAndIdentity=true cancellationCuts12=true cancelled=$cancelled held=$held healthyReuse=true")
     }
   }
 

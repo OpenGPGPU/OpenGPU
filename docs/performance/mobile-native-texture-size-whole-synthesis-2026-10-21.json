@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "both_size_query_whole_native_endpoints_fully_mapped_synthesis_setup_pass",
+  "source": {
+    "commit": "741f10d5ea7c80f6c5e52afdcab4687fd6d7a4cf",
+    "source_files": 804,
+    "manifest_sha256": "06621afec0f1da583e2d91c630a878cade1440c567bf759c32ee31f7b5bf4bf5",
+    "archive_sha256": "c02982c05a8fa7c44b2b417c8806254b545d644a1c5abd11752c1c4b56238dd2",
+    "git_archive_and_worktree_exact": true,
+    "runner_pid": 66506,
+    "started_utc": "2026-10-20T19:02:31.682624+00:00"
+  },
+  "module": "NativeShaderTextureUnit",
+  "shader_lanes": 16,
+  "warps": 8,
+  "profiles": {
+    "vertex": {
+      "session": 92998,
+      "handle_state": "terminal_collected_pass",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 2615.057174957823,
+        "finished_utc": "2026-10-20T19:47:01.148559+00:00"
+      },
+      "slacks_ps": [
+        67.048,
+        156.884
+      ],
+      "fully_mapped": true,
+      "mapped_cells": 1161692,
+      "mapped_library_area": 153721.284839,
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "yosys",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-native-size-vertex-2026-10-21-v3/qualification.json": "9e24e4e8fe0ec3d862c2a188da7466c0b5d3e2e116fe4379d26dac12a20e89c8",
+        "generated/qualification/ppa/mobile-native-size-vertex-2026-10-21-v3/result.json": "875cb001e4b1047ced2089e7a5386ef29508be48641735810f65b0a8d239cad8",
+        "generated/qualification/ppa/mobile-native-size-vertex-2026-10-21-v3/manifest.json": "fa6b095d7182c622db70a3e9c72e5f6c677894a6bde066d47dbe6a0f2f38460d",
+        "generated/qualification/ppa/mobile-native-size-vertex-2026-10-21-v3/flow/flow_manifest.json": "2141e6aa4b838bea531b425b080b31de0c6af92aa5763b10a64f2494378a289e",
+        "generated/qualification/ppa/mobile-native-size-vertex-2026-10-21-v3/flow/orfs-work/reports/base/synth_stat.txt": "83782c8b5e9db7d4d7e432d7c2477c3446e2beb76f390e52731fc41e40f83bbd",
+        ".artifacts/mobile-native-size-vertex-synthesis-v3-inputs.json": "85936b91e0f4e799aca937df547c0dbb3ef640a969bb55630ee2cf5a89b4cb3c",
+        ".artifacts/mobile-native-size-vertex-synthesis-v3-result.json": "7412a20db5e7f54566d5a81efa9ce5b967b0684edfdbedd6c145f4384f2044dd",
+        "generated/qualification/ppa/mobile-native-size-vertex-2026-10-21-v3/flow/orfs-work/logs/base/1_synth.log": "ba855886649019ed12d68ba371a95af3c59ec8fd2a77c1f50fd80a483be852b8",
+        "generated/qualification/ppa/mobile-native-size-vertex-2026-10-21-v3/flow/orfs-work/logs/base/1_2_yosys.log": "c5406c8cd394081680f8b709fc4c749935f3becb36f97788c19131aed3e70893"
+      }
+    },
+    "fragment": {
+      "session": 44010,
+      "handle_state": "terminal_collected_pass",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 2579.8499543329235,
+        "finished_utc": "2026-10-20T19:46:25.940875+00:00"
+      },
+      "slacks_ps": [
+        105.752,
+        122.41
+      ],
+      "fully_mapped": true,
+      "mapped_cells": 1148121,
+      "mapped_library_area": 153812.001599,
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "yosys",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-native-size-fragment-2026-10-21-v3/qualification.json": "5fa079a4264450a90d31aa2e7cb3cb02df5647e4d456d50add9c5225c50c74b4",
+        "generated/qualification/ppa/mobile-native-size-fragment-2026-10-21-v3/result.json": "145e1fe4fac80c01b4f7301532bf745cfe7d006fa2de47b1c695ad425b861ca3",
+        "generated/qualification/ppa/mobile-native-size-fragment-2026-10-21-v3/manifest.json": "1ced286e82ca9a37cfc118fd3cf12fba6ade02cef2cefe3eaa30765d995f7da8",
+        "generated/qualification/ppa/mobile-native-size-fragment-2026-10-21-v3/flow/flow_manifest.json": "c10bcb60290da129564b4619d5d0965cbb38ee163740b7084262adb631cf1979",
+        "generated/qualification/ppa/mobile-native-size-fragment-2026-10-21-v3/flow/orfs-work/reports/base/synth_stat.txt": "e397bba29193bbd33139e2eefafeb21e51558e53cfade1494d772a4249426624",
+        ".artifacts/mobile-native-size-fragment-synthesis-v3-inputs.json": "1dbeb25a1a2944c4fc6b8ad42ab1dd509246ea45de41a15254adc24c200c28d4",
+        ".artifacts/mobile-native-size-fragment-synthesis-v3-result.json": "d41ddd451647ce0e9d6933ca28edd94201955b2de0c319eff19410af150a6b5d",
+        "generated/qualification/ppa/mobile-native-size-fragment-2026-10-21-v3/flow/orfs-work/logs/base/1_synth.log": "b19248cd93d5a537fb37040074e0d94d82a02820d59cf661381a0cd5a0f098ed",
+        "generated/qualification/ppa/mobile-native-size-fragment-2026-10-21-v3/flow/orfs-work/logs/base/1_2_yosys.log": "580789fd924b1add82b07621e2751ec6cafc43c0fa9db128f12ef05f6427d905"
+      }
+    }
+  },
+  "standalone_size_owner_record": "docs/performance/mobile-native-texture-size-owner-synthesis-2026-10-21.json",
+  "scope": "Each complete endpoint includes legacy sampling,typed packets,captured floating/integer operations and metadata size queries. Synthesis only,including all reported I/O setup groups;no whole-CU/GPU clock,hold,power,place/route or H0-H8 completion claim.",
+  "functional": "40 component tests and9 ABI checks passed;fresh full shared-CU continuation and query AXI jobs remain separate.",
+  "pending_sessions": {
+    "functional_and_shared_CU": 16201,
+    "query_AXI": 58089
+  }
+}

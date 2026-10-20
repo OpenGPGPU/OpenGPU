@@ -340,4 +340,35 @@ class FpuBackendSpec extends AnyFlatSpec {
       dut.io.scalarWriteback.bits.data.expect(2.U)
     }
   }
+
+  it should "retire in-place scalar projective divides before dependent integer bit moves" in {
+    simulate(new FpuBackend(GpuConfig(warps=2))){d=>
+      d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      d.io.in.valid.poke(false.B);d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
+      d.io.redirect.ready.poke(true.B);d.io.unimplemented.ready.poke(false.B)
+      d.io.scalarReserve.ready.poke(true.B);d.io.scalarWriteback.ready.poke(true.B)
+      d.io.initialize.valid.poke(false.B);d.io.initialize.bits.poke(0.U.asTypeOf(d.io.initialize.bits))
+      d.io.memoryResponse.valid.poke(false.B);d.io.memoryResponse.bits.poke(0.U.asTypeOf(d.io.memoryResponse.bits));d.io.memoryFault.ready.poke(true.B)
+      d.io.frm.foreach(_.poke(0.U))
+      def write(r: Int,value: BigInt): Unit={d.io.initialize.bits.warpId.poke(0.U);d.io.initialize.bits.rd.poke(r.U);d.io.initialize.bits.data.poke(value.U)
+        d.io.initialize.valid.poke(true.B);d.clock.step();d.io.initialize.valid.poke(false.B)}
+      for(r<-Seq(10,11,13))write(r,BigInt("3fc00000",16));write(12,BigInt("40000000",16))
+      def issue(word: BigInt,integer: Boolean): Unit={val q=d.io.in.bits;q.poke(0.U.asTypeOf(q));q.instruction.poke(word.U);q.warpId.poke(0.U)
+        q.pc.poke(0x100.U);q.activeMask.poke(15.U);q.decoded.readsRs1.poke(true.B);q.decoded.readsRs2.poke((!integer).B)
+        q.decoded.writesFp.poke((!integer).B);q.decoded.writesInteger.poke(integer.B);q.decoded.setsFlags.poke((!integer).B);q.decoded.rm.poke(0.U)
+        d.io.in.valid.poke(true.B);var n=0;while(!d.io.in.ready.peek().litToBoolean && n<100){d.clock.step();n+=1};assert(n<100);d.clock.step();d.io.in.valid.poke(false.B)
+      }
+      for(r<-Seq(10,11,13)){
+        issue((BigInt(0x0c)<<25)|(BigInt(12)<<20)|(BigInt(r)<<15)|(BigInt(r)<<7)|0x53,false)
+        var n=0;while(!d.io.committedWriteback.valid.peek().litToBoolean && n<200){d.clock.step();n+=1}
+        assert(n<200,s"in-place scalar divide never committed f$r")
+        d.io.committedWriteback.bits.rd.expect(r.U);d.io.committedWriteback.bits.data.expect("h3f400000".U);d.clock.step()
+        issue((BigInt(0x70)<<25)|(BigInt(r)<<15)|(BigInt(20)<<7)|0x53,true)
+        n=0;while(!d.io.scalarWriteback.valid.peek().litToBoolean && n<100){d.clock.step();n+=1};assert(n<100)
+        d.io.scalarWriteback.bits.rd.expect(20.U);d.io.scalarWriteback.bits.data.expect("h3f400000".U);d.clock.step()
+      }
+      info("PROJECTIVE_SCALAR_FPU inPlaceDivides3=true dependentIntegerMoves3=true exactDyadicQuotients=true")
+    }
+  }
+
 }

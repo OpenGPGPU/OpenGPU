@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "forty_full_native_texture_component_tests_and_nine_ABI_checks_pass_shared_CU_pending",
+  "source": {
+    "commit": "741f10d5ea7c80f6c5e52afdcab4687fd6d7a4cf",
+    "source_files": 804,
+    "manifest_sha256": "06621afec0f1da583e2d91c630a878cade1440c567bf759c32ee31f7b5bf4bf5",
+    "archive_sha256": "c02982c05a8fa7c44b2b417c8806254b545d644a1c5abd11752c1c4b56238dd2",
+    "git_archive_and_worktree_exact": true,
+    "runner_pid": 66506,
+    "started_utc": "2026-10-20T19:02:31.682624+00:00"
+  },
+  "functional": {
+    "passed_tests": 40,
+    "suites": {
+      "TypedTextureDecodeSpec": 2,
+      "TextureParameterRetirementSpec": 1,
+      "TextureSampleExecuteUnitSpec": 21,
+      "NativeShaderTextureUnitSpec": 16
+    },
+    "descriptor_ABI_checks": 9,
+    "immutable_prefix": ".artifacts/mobile-native-texture-size-v3-component-prefix.log",
+    "prefix_sha256": "4ff9f9e6ca179808cbf8c8924cc418e028ae04531c8922abf430a3eefeb8cf0e",
+    "parent_aggregate_session": 16201,
+    "parent_aggregate_status": "still_running_when_prefix_recorded",
+    "not_a_full_aggregate_pass": true,
+    "scope": [
+      "Legacy sampling and typed packet compatibility through the native owner",
+      "Floating captured operands,integer captured coordinates/offsets and base-relative LOD",
+      "All64 formats,scalar/vector masks,one/eight/sixteen lane configurations",
+      "Operand task lifetime,held retirement,fault/cancel drain and pending v0 reservation",
+      "Size queries:formats,targets,all16 bases,NPOT,full-width LOD,no sampler/texel reads"
+    ]
+  },
+  "source_unchanged_at_checkpoint": true,
+  "synthesis": "Standalone size owner passed;whole vertex/fragment endpoints remain separate live jobs.",
+  "remaining": [
+    "Four actual shared-CU integration cases on this source",
+    "Two new translated AXI query cases on the separate test-only snapshot",
+    "Full native endpoint synthesis and broader H0-H8 requirements"
+  ]
+}

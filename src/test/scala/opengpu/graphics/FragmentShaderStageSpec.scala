@@ -10,7 +10,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false) extends Module {
+private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=if(fullInterface)FragmentShaderConfig()else FragmentShaderConfig(2,4)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
@@ -32,7 +32,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
     val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
   })
   private val stage=Module(new FragmentShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None))
-  private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,
+  private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,enableFpuBackend=scalarFpu,
     graphicsHostTransactions=4,instructionCacheSets=4,instructionCacheWays=1,
     vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None))
   private def tie(data: Data): Unit=data match {
@@ -523,7 +523,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       var views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,format,u,1,id,
         raw=BigInt("fedcba98765432100123456789abcdef",16)+u))
       for(u<-0 until 4)texData.coordinates(t.put,target=u,id=id,address=texData.packet+u*64)
-      var integerMode=false;var nativeMode=false;var skipParameters=false;var nativeControl=1
+      var queryMode=false;var sizeDims=Vector.fill(4)(Vector.fill(3)(BigInt(0)));var integerMode=false;var nativeMode=false;var skipParameters=false;var nativeControl=1
       val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
       def code(c: Int,scalar: Boolean): Seq[BigInt]={
         val fetch=if(scalar)Seq((BigInt(0x80)<<12)|(BigInt(12)<<7)|0x37,addi(12,12,3*64),addi(13,0,3),
@@ -532,12 +532,13 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
           Seq(vectorMemory(5,6,false),texData.vector(c,7,5,6))
         program(4,2).dropRight(1)++fetch++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
       }
+      val sizeOnly=java.lang.Boolean.getBoolean("opengpu.nativeTextureSizeOnly")
       val lifetimeOnly=java.lang.Boolean.getBoolean("opengpu.nativeIntegerLifetimeOnly")
       val reproduceScratchAlias=java.lang.Boolean.getBoolean("opengpu.nativeIntegerScratchAlias")
       require(!reproduceScratchAlias || lifetimeOnly,"scratch alias is only an explicit negative fixture control")
       def floatPc(c: Int,scalar: Boolean,missing: Boolean,mode: Int): Int={
         val offset=if(reproduceScratchAlias)0x40000 else 0x100000
-        val pc=0xa0000+(if(integerMode)offset else 0)+(if(scalar)0x10000 else 0)+(if(missing)0x20000 else 0)+mode*0x4000+c*0x1000
+        val pc=0xa0000+(if(queryMode)0x200000 else if(integerMode)offset else 0)+(if(scalar)0x10000 else 0)+(if(missing)0x20000 else 0)+mode*0x4000+c*0x1000
         if(!reproduceScratchAlias)require(BigInt(pc)+4096<=t.scratch || BigInt(pc)>=t.scratch+t.prefix+64,"shader fixture code overlaps native spill scratch")
         pc
       }
@@ -547,14 +548,14 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         val initialize=Seq((BigInt(0x3f400)<<12)|(BigInt(12)<<7)|0x37,
           broadcast|(BigInt(12)<<15)|(BigInt(10)<<7)|0x57,broadcast|(BigInt(11)<<7)|0x57,
           broadcast|(BigInt(12)<<15)|0x57)++(if(integerMode)Seq(addi(12,0,1),broadcast|(BigInt(12)<<15)|(BigInt(10)<<7)|0x57)else Seq.empty)
-        val first=if(missing)Seq.empty else Seq(param(0,if(scalar)12 else 10,if(scalar)12 else 10))
-        val rest=if(missing)Seq.empty else (1 until 8).map(p=>param(p,if(scalar)0 else 11,if(scalar)0 else 11))
+        val first=if(missing || queryMode)Seq.empty else Seq(param(0,if(scalar)12 else 10,if(scalar)12 else 10))
+        val rest=if(missing || queryMode)Seq.empty else (1 until 8).map(p=>param(p,if(scalar)0 else 11,if(scalar)0 else 11))
         val sample=if(scalar)Seq(addi(13,0,3),addi(14,0,mode),
-          (BigInt(if(integerMode)5 else 4)<<25)|(BigInt(14)<<20)|(BigInt(13)<<15)|(BigInt(c)<<12)|(BigInt(15)<<7)|0x0b,
+          (BigInt(if(queryMode)6 else if(integerMode)5 else 4)<<25)|(BigInt(14)<<20)|(BigInt(13)<<15)|(BigInt(c)<<12)|(BigInt(15)<<7)|0x0b,
           broadcast|(BigInt(15)<<15)|(BigInt(7)<<7)|0x57)
         else address(5,7,7*t.stride)++Seq(vectorMemory(5,6,false),addi(13,0,mode),
           broadcast|(BigInt(13)<<15)|(BigInt(5)<<7)|0x57,
-          (BigInt(if(integerMode)5 else 4)<<26)|(BigInt(1)<<25)|(BigInt(5)<<20)|(BigInt(6)<<15)|(BigInt(c)<<12)|(BigInt(7)<<7)|0x2b)
+          (BigInt(if(queryMode)6 else if(integerMode)5 else 4)<<26)|(BigInt(1)<<25)|(BigInt(5)<<20)|(BigInt(6)<<15)|(BigInt(c)<<12)|(BigInt(7)<<7)|0x2b)
         program(4,2).dropRight(1)++initialize++first++address(6,7,(6+4*t.varyingSlots+14)*t.stride)++
           Seq(vectorMemory(6,0,true))++rest++sample++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
       }
@@ -563,7 +564,10 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       integerMode=true
       for(scalar<-Seq(false,true);c<-0 until 4;missing<-Seq(false,true)){
         floatingCode(c,scalar,missing,0).zipWithIndex.foreach{case(w,n)=>t.put(floatPc(c,scalar,missing,0)+n*4,w)}}
-      integerMode=false
+      integerMode=false;queryMode=true
+      for(scalar<-Seq(false,true);c<-0 until 3;mode<-0 to 1){
+        floatingCode(c,scalar,false,mode).zipWithIndex.foreach{case(w,n)=>t.put(floatPc(c,scalar,false,mode)+n*4,w)}}
+      queryMode=false
       for(scalar<-Seq(false,true);c<-0 until 4){val pc=0x60000+(if(scalar)0x10000 else 0)+c*0x1000
         code(c,scalar).zipWithIndex.foreach{case(w,n)=>t.put(pc+n*4,w)}}
       d.io.out.ready.poke(true.B)
@@ -571,7 +575,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         t.exports.clear();t.descriptor();d.io.draw.bits.shaderPc.poke((if(nativeMode)floatPc(c,scalar,skipParameters,nativeControl)else 0x60000+(if(scalar)0x10000 else 0)+c*0x1000).U)
         d.io.draw.bits.resources.version.poke(1.U);d.io.draw.bits.resources.address.poke(texData.root.U)
         t.expectedColorTypes=Vector(0,1,2,outputKind);d.io.draw.bits.colorTypes(3).poke(outputKind.U)
-        var rootRead=false;val faultLine=views(3).address& ~BigInt(63)
+        var rootRead=false;val faultLine=if(queryMode)texData.root+64 else views(3).address& ~BigInt(63)
         t.fault=(a,w)=>{if(!w && a==texData.root)rootRead=true;bad && !w && a==faultLine}
         t.submit();d.io.draw.bits.resources.version.poke(3.U);d.io.draw.bits.resources.address.poke("hffffffff".U)
         t.input(0)
@@ -580,16 +584,16 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         if(cancelled){t.until(rootRead);d.io.cancel.poke(true.B)}
         t.until(d.io.completion.valid.peek().litToBoolean)
         withClue(s"native=$nativeMode integer=$integerMode missing=$skipParameters scalar=$scalar component=$c bad=$bad cancelled=$cancelled pc=${d.io.draw.bits.shaderPc.peek().litValue.toString(16)} faultAddress=${d.io.completion.bits.faultAddress.peek().litValue.toString(16)} "){
-          t.complete(if(cancelled)4 else if(bad || nativeMode && skipParameters)3 else 0)}
+          t.complete(if(cancelled)4 else if(bad || nativeMode && skipParameters || queryMode && nativeControl!=0)3 else 0)}
         if(cancelled)d.io.cancel.poke(false.B)
-        if(bad || cancelled || nativeMode && skipParameters)assert(t.exports.isEmpty)else{
+        if(bad || cancelled || nativeMode && skipParameters || queryMode && nativeControl!=0)assert(t.exports.isEmpty)else{
           assert(t.exports.size==1)
-          for((l,n)<-t.exports.head.lanes.zipWithIndex){val unit=if(scalar)3 else n;assert(l.colors(15)==views(unit).expected(c),s"typed fragment export differs c=$c scalar=$scalar lane=$n")}
+          for((l,n)<-t.exports.head.lanes.zipWithIndex){val unit=if(scalar)3 else n;assert(l.colors(15)==(if(queryMode)sizeDims(unit)(c)else views(unit).expected(c)),s"typed fragment export differs c=$c scalar=$scalar lane=$n")}
           if(nativeMode)assert(t.exports.forall(_.lanes.forall(_.colors(14)==fp(0.75f))),"parameter ack corrupted v0")
         }
         if(nativeMode && skipParameters)assert(!rootRead,"new task reused stale operand validity")
       }
-      if(lifetimeOnly){
+      if(sizeOnly){}else if(lifetimeOnly){
         nativeMode=true;integerMode=true;nativeControl=0
         outputKind=0
         views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,3,0,1,id))
@@ -647,6 +651,88 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       info(s"NATIVE_IMAGE_FORMAT_CU stage=fragment local=$local formats64=true imageSwizzle=true scalarVector=true addedDraws=$addedDraws")
       info(s"NATIVE_TYPED_FETCH_CU stage=fragment local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true integerRawTypes=true helperInputs=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
       }
+      if(!lifetimeOnly){
+        queryMode=true;integerMode=false;nativeMode=true;nativeControl=0
+        outputKind=1
+        var sizeDraws=0
+        for(group<-(0 until 64).grouped(4)){
+          val ids=group.padTo(4,group.head)
+          val targets=(0 until 4).map(u=>if(u==3 && (ids(u)>=54 || ImageFormatReference.format(ImageFormatReference.names(ids(u))).depth))0 else u)
+          views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),targets(u),1,id))
+          sizeDims=(0 until 4).map{u=>Vector[BigInt](if(ids(u)>=54)7 else 2,if(ids(u)>=54){if(targets(u)==2)7 else 5}else 2,
+            if(targets(u)==1)3 else if(targets(u)==3)2 else 0)}.toVector
+          for(scalar<-Seq(false,true);c<-0 until 3){run(c,scalar);sizeDraws+=1}
+        }
+        // Query LOD0 with image bases1/2 from independent fresh level records.
+        for(base<-Seq(1,2)){
+          views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,3,0,1,id))
+          sizeDims=Vector.fill(4)(Vector[BigInt](2,2,0))
+          for(u<-0 until 4){val from=texData.levels+u*128;val table=BigInt(0x18000+u*1024);val to=table+base*128
+            val saved=(0 until 32).map(w=>(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(t.memory.getOrElse(from+w*4+b,BigInt(0))<<(8*b))))
+            saved.zipWithIndex.foreach{case(v,w)=>t.put(to+w*4,v)};t.put(to+6*4,base);t.put(to+8*4,base)
+            t.put(texData.images+u*128+9*4,base);t.put(texData.images+u*128+10*4,base)
+            t.put(texData.images+u*128+11*4,2<<base);t.put(texData.images+u*128+12*4,2<<base)
+            t.put(texData.images+u*128+19*4,table);t.put(texData.images+u*128+20*4,table+(base+1)*128)
+          }
+          for(scalar<-Seq(false,true);c<-0 until 3){run(c,scalar);sizeDraws+=1}
+        }
+        nativeControl=1;run(0,false);run(0,true);nativeControl=0
+        run(0,false,bad=true);run(1,true,bad=true);run(0,false,cancelled=true);run(2,true);sizeDraws+=1
+        info(s"NATIVE_TEXTURE_SIZE_CU stage=fragment local=$local successfulDraws=$sizeDraws formats64=true targets4=true scalarVector=true components3=true noParameterInstructions=true imageBaseLevels0And1And2=true v0Preserved=true metadataFaultDrain=true cancelAndHealthyReuse=true")
+      }
+    }
+  }
+
+
+  for(local<-Seq(true,false))it should s"execute projective samples after CU division and retain uncovered helper gradients local=$local" in {
+    simulate(new FragmentShaderHarness(local,scalarFpu=true)){d=>val t=new Driver(d);val tex=NativeTextureFetchTestData;val id=Seq[BigInt](7,8,9)
+      tex.roots(t.put,stage=1,id=id);d.io.out.ready.poke(true.B)
+      var draws=0;var traffic=Vector.empty[BigInt]
+      val badData=scala.collection.mutable.Set.empty[BigInt]
+      t.fault=(a,w)=>{if(!w)traffic=traffic:+a; !w && badData.contains(a)}
+      val cases=for(scalar<-Seq(false,true);target<-Seq(0,3,4);mode<-0 to 2;step<-Seq(0.25f,0.75f))yield(scalar,target,mode,step)
+      def run(scalar: Boolean,target: Int,mode: Int,step: Float,offset: Int=0,bad: Boolean=false,cancelled: Boolean=false): Unit={
+        val volume=target==3;val shadow=target==4
+        // Every case starts with one populated texel. Reusing the same4KiB
+        // allocation must not retain the previous2D texel in volume slice0.
+        t.memory.keysIterator.filter(a=>a>=0x20000 && a<0x21000).toVector.foreach(t.memory.remove)
+        val view=tex.install(t.put,(a,b)=>t.memory(a)=BigInt(b),0,if(shadow)49 else 3,if(volume)3 else 0,1,id,
+          raw=if(shadow)BigInt(0x7fff)else BigInt(0xff0000ffL))
+        t.put(tex.samplers+7*4,1);if(shadow)t.put(tex.samplers+14*4,1)
+        val pc=BigInt(0x380000)+draws*4096
+        require(pc+4096<=t.scratch || pc>=t.scratch+t.prefix+64)
+        def load(i: Int,v: Int): Seq[BigInt]=address(5,7,(6+i)*t.stride)++Seq(vectorMemory(5,v,false))
+        val code=program(4,2).dropRight(1)++NativeProjectiveShaderTestData.operandCode(scalar,volume,shadow,mode,offset,load)++
+          address(6,7,(6+4*t.varyingSlots+14)*t.stride)++Seq(vectorMemory(6,10,true))++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
+        require(code.length<=512);code.zipWithIndex.foreach{case(word,n)=>t.put(pc+n*4,word)}
+        val coords=NativeProjectiveShaderTestData.coordinates(scalar,step,shadow,volume)
+        t.exports.clear();traffic=Vector.empty;badData.clear();if(bad)badData+=view.address& ~BigInt(63)
+        t.descriptor();d.io.draw.bits.shaderPc.poke(pc.U)
+        d.io.draw.bits.resources.version.poke(1.U);d.io.draw.bits.resources.address.poke(tex.root.U);t.submit();t.input(0)
+        for(l<-0 until 4){val a=d.io.in.bits.values.lanes(l)
+          a.covered.poke((l==3).B);a.coverageMask.poke((if(l==3)8 else 0).U)
+          for(c<-0 until 4)a.varyings(0)(c).poke(fp(coords(l)(c)).U)
+        }
+        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
+        if(cancelled){t.until(traffic.contains(tex.root));d.io.cancel.poke(true.B)}
+        t.complete(if(cancelled)4 else if(bad)3 else 0)
+        if(cancelled)d.io.cancel.poke(false.B)
+        if(bad || cancelled)assert(t.exports.isEmpty)else{
+          assert(t.exports.size==1);val lanes=t.exports.head.lanes
+          for(l<-0 until 4){assert(lanes(l).helper==(l!=3));assert(lanes(l).coverage==(if(l==3)8 else 0))}
+          val projected=if(scalar)0.75f else 0.5f
+          assert(lanes(3).colors(14)==fp(projected),s"projected fragment X differs scalar=$scalar")
+          val expected=NativeProjectiveShaderTestData.expected(scalar,step,volume,shadow,mode,offset,3,true)
+          assert(lanes(3).colors(15)==fp(expected),s"projective fragment sample differs scalar=$scalar target=$target mode=$mode step=$step expected=$expected got=${lanes(3).colors(15).toString(16)}")
+        }
+        assert(!traffic.exists(a=>a>=tex.packet && a<tex.packet+64),"projective operands read a GPU packet")
+        if(local)assert(t.globalStaging==0)
+        draws+=1
+      }
+      for((scalar,target,mode,step)<-cases)run(scalar,target,mode,step)
+      run(true,0,0,0.25f,offset=15);run(false,0,1,0.75f,bad=true);run(false,3,2,0.75f,cancelled=true);run(false,4,0,0.75f)
+      assert(draws==40)
+      info(s"NATIVE_PROJECTIVE_CU stage=fragment local=$local draws=$draws scalarVectorFP32Division=true scalarFpuExplicitlyEnabled=true targets2D3DShadow=true modesImplicitLodGradient=true projectedReference=true gradientsAlreadyProjected=true varyingQPerHelper=true uncoveredHelpers3=true privateCodeDisjoint=true signedOffsetAfterProjection=true faultCancelDrain=true healthyReuse=true noOperandPackets=true")
     }
   }
 

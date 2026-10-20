@@ -1,0 +1,61 @@
+# Native texture-size queries
+
+Status: [40 native texture component tests and nine descriptor ABI checks](performance/mobile-native-texture-size-components-2026-10-21.json)
+pass on804 frozen inputs. The paired four LLVM tests and strict C validator
+also pass. The [standalone query owner](performance/mobile-native-texture-size-owner-synthesis-2026-10-21.json)
+and [both whole native endpoints](performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json)
+pass1000ps synthesis including I/O. All [four fresh shared-CU checks](performance/mobile-native-texture-size-shared-CU-2026-10-21.json)
+also pass,including the full existing typed/floating/integer matrices and109
+successful query draws per case. The translated AXI spill case passes74 frames;
+the original local failure is now traced to adjacent frame source-page aliasing
+in the test fixture. A [same-source old/new allocation proof](performance/mobile-native-texture-size-source-leases-2026-10-21.json)
+reproduces the old failure and passes six directed recovery frames across both
+payload modes with disjoint sources. The [full148-frame corrected query matrix](performance/mobile-native-texture-size-qualified-2026-10-21.json)
+now passes in both payload modes (144 successful frames,four expected errors).
+This owner is ready for integration with the existing main mip checks.
+
+`opengpu.tex.size.c` uses custom0/function6; `opengpu.vtex.size.c` uses
+custom1/function6 with normal RVV masks. Components0/1/2 return width, height,
+and array-layer count or volume depth. Component2 returns zero for2D/cube;
+components3..7 are illegal. Scalar sources are unit and signed shader LOD;
+vector sources supply each active lane's unit and LOD. Results are32-bit
+integers. No captured parameter pair is required or changed.
+
+Shader LOD is relative to the image base level. The selected level is computed
+with a33-bit sum before validation or narrowing. Negative and out-of-range LODs
+fault without a wrapped level-table access. NPOT dimensions shrink to at least
+one; array layers do not shrink. Cube dimensions describe a face. This follows
+[GLES3.0 section2.12.9.3](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf)
+and [GLSL ES3.00 section8.7](https://registry.khronos.org/OpenGL/specs/es/3.0/GLSL_ES_Specification_3.00.pdf).
+
+The owner validates GXR1/GXB1 stage, identity and unit, then admits the selected
+GXI1/GXL1 image level. It reads neither sampler descriptors nor texel data;
+filter/wrap/comparison state and operand tuples cannot affect the dimensions.
+The root must describe a valid image/binding table. Image format/type and target
+must agree with the selected binding. A parent pins descriptor publication and
+VM until the held scalar/vector completion is accepted.
+
+Root/binding metadata uses logical ID0 and image admission uses IDs4..7. The
+existing native two-credit adapter retains the external memory-port width.
+Cancellation drains accepted reads before retirement; any active-lane failure
+suppresses the entire vector destination, while zero masks issue no reads.
+Inactive lanes retain oldVd. A trusted task reset may clear operand tuples
+without invalidating the ordinary register-source semantics of a size query.
+
+The driver admits defined ordinary sources and a valid vector length, without
+a complete-pair proof. Its current profile continues to require unmasked vector
+instructions. The paired LLVM change is `faeaa170d` on
+`codex/opengpu-texture-size`, cherry-picked as `50f2c22e6` on sibling `opengpu`.
+It adds all three scalar/vector component forms, masked MC cases, extension
+checks and an ordinary scalar C inline-assembly helper. Existing encodings and
+descriptor layouts are preserved.
+
+Pending gates include main integration,broader compiler/API lowering and the
+remaining H0-H8 requirements. PPA remains synthesis only.
+
+Both [complete native endpoints](performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json)
+now fully map and pass1000ps synthesis,including I/O:vertex+67.048/+156.884ps
+and fragment+105.752/+122.410ps,at TC/SLVT,25% I/O,standard ABC and no
+retiming. Default endpoint sizing is16 shader lanes/eight warps. Shared-CU
+functional qualification and translated AXI recovery are separate gates;no
+whole-GPU clock or hardware completion is established by these synthesis results.
