@@ -11,8 +11,12 @@ class TextureImageSampleRequest extends Bundle {
     * their lambda before using this endpoint; sampler clamps apply here.
     */
   val lod=UInt(32.W)
+  /** Gradient mode resolves lambda from admitted extents and original cube
+    * directions. Its unused explicit lambda must have canonical zero bits.
+    */
+  val gradient=Bool();val gradients=Vec(2,Vec(3,UInt(32.W)))
 }
-/** Complete descriptor-to-texel owner for explicit effective LOD. Admission,
+/** Descriptor-to-texel owner for explicit effective LOD or explicit gradients. Admission,
   * cube projection, array selection, spatial filtering, depth comparison,
   * mip interpolation and final swizzle share one immutable request lifetime.
   * This internal endpoint does not add or advertise a native shader opcode.
@@ -23,14 +27,18 @@ class TextureImageSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddres
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
     val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,offerPreparation,waitPreparation,offerSample,waitSample,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,offerPreparation,waitPreparation,offerGradient,waitGradient,offerSample,waitSample,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageSampleRequest)
   private val prepared=Reg(new TextureImageMipSampleRequest);private val sampled=Reg(new TextureImageMipSampleResult)
+  private val gradientRequest=Reg(new TextureImageGradientLodRequest);private val gradientStarted=RegInit(false.B)
   private val result=Reg(new TextureImageMipSampleResult);private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(3.W))
   private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W));private val noFill=RegInit(false.B)
   private val preparationStarted=RegInit(false.B);private val sampleStarted=RegInit(false.B)
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
   private val preparation=Module(new TextureImageSamplePreparationUnit(config,p));private val sample=Module(new TextureImageMipSampleUnit(config,p))
+  private val gradient=Module(new TextureImageGradientLodUnit)
+  gradient.io.in.valid:=phase===State.offerGradient;gradient.io.in.bits:=gradientRequest;gradient.io.out.ready:=phase===State.waitGradient
+  gradient.io.cancel:=gradientStarted && (io.cancel || status===4.U)
   preparation.io.in.valid:=phase===State.offerPreparation;preparation.io.in.bits:=request.preparation
   preparation.io.out.ready:=phase===State.waitPreparation;preparation.io.cancel:=preparationStarted && (io.cancel || status===4.U)
   preparation.io.invalidate:=io.invalidate || noFill || stop
@@ -52,9 +60,10 @@ class TextureImageSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddres
   when(active && io.invalidate){noFill:=true.B}
   switch(phase){
     is(State.idle){when(io.in.fire){
-      assert(!preparation.io.busy && !sample.io.busy,"image sampling abandoned child ownership")
+      assert(!preparation.io.busy && !sample.io.busy && !gradient.io.busy,"image sampling abandoned child ownership")
       request:=io.in.bits;status:=0.U;source:=0.U;faultValid:=false.B;faultAddress:=0.U;noFill:=io.invalidate
-      preparationStarted:=false.B;sampleStarted:=false.B;sampled:=0.U.asTypeOf(sampled);phase:=State.offerPreparation
+      preparationStarted:=false.B;sampleStarted:=false.B;gradientStarted:=false.B;sampled:=0.U.asTypeOf(sampled);phase:=State.offerPreparation
+      when(io.in.bits.gradient && io.in.bits.lod=/=0.U){status:=1.U;source:=3.U;phase:=State.finish}
     }}
     is(State.offerPreparation){when(preparation.io.in.fire){preparationStarted:=true.B;phase:=State.waitPreparation}}
     is(State.waitPreparation){when(preparation.io.out.fire){
@@ -62,7 +71,15 @@ class TextureImageSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddres
       when((code=/=0.U && code=/=4.U) || !stop){status:=code
         when(code=/=0.U){source:=preparation.io.out.bits.faultSource;faultValid:=preparation.io.out.bits.faultAddressValid;faultAddress:=preparation.io.out.bits.faultAddress}}
       prepared:=preparation.io.out.bits.prepared;prepared.lod:=request.lod
-      phase:=Mux(stop || code=/=0.U,State.finish,State.offerSample)
+      gradientRequest.prepared:=preparation.io.out.bits;gradientRequest.vector:=request.preparation.coordinates;gradientRequest.gradients:=request.gradients
+      phase:=Mux(stop || code=/=0.U,State.finish,Mux(request.gradient,State.offerGradient,State.offerSample))
+    }}
+    is(State.offerGradient){when(gradient.io.in.fire){gradientStarted:=true.B;phase:=State.waitGradient}}
+    is(State.waitGradient){when(gradient.io.out.fire){
+      gradientStarted:=false.B;val r=gradient.io.out.bits
+      when((r.status=/=0.U && r.status=/=4.U) || !stop){status:=r.status
+        when(r.status=/=0.U){source:=r.faultSource;faultValid:=r.faultAddressValid;faultAddress:=r.faultAddress}}
+      prepared:=r.resolved;phase:=Mux(stop || r.status=/=0.U,State.finish,State.offerSample)
     }}
     is(State.offerSample){when(sample.io.in.fire){sampleStarted:=true.B;phase:=State.waitSample}}
     is(State.waitSample){when(sample.io.out.fire){
@@ -72,12 +89,12 @@ class TextureImageSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddres
       phase:=State.finish
     }}
     is(State.finish){
-      assert(!preparation.io.busy && !sample.io.busy && !io.memoryRequest.valid,"image sampling completion escaped child drain")
+      assert(!preparation.io.busy && !sample.io.busy && !gradient.io.busy && !io.memoryRequest.valid,"image sampling completion escaped child drain")
       result:=sampled;result.sample.tag:=request.preparation.tag;result.sample.status:=Mux(io.cancel && status===0.U,4.U,status)
       result.sample.faultSource:=source;result.sample.faultAddressValid:=faultValid;result.sample.faultAddress:=Mux(faultValid,faultAddress,0.U)
       when(stop){result.sample.rgba.foreach(_:=0.U);result.sample.colorType:=0.U};phase:=State.complete
     }
     is(State.complete){when(io.out.fire){phase:=State.idle}}
   }
-  when(io.out.valid){assert(!preparation.io.busy && !sample.io.busy && !io.memoryRequest.valid,"held image sample owns drained children")}
+  when(io.out.valid){assert(!preparation.io.busy && !sample.io.busy && !gradient.io.busy && !io.memoryRequest.valid,"held image sample owns drained children")}
 }
