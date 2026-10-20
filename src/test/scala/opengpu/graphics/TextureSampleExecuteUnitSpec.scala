@@ -264,7 +264,7 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
       t.put(samplers+7*4,2) // Mipmapped nearest keeps every selected defined level complete.
       for(level<-0 until 16){val size=(8>>level).max(1);val address=BigInt(0x20000+level*256)
         NativeTextureFetchTestData.words(t.put,levels+level*128,Seq[BigInt](BigInt("47584c01",16),128,1,7,11,13,
-          level,0,level,address,address+size*size*4,0,address,size,size,1,1,size*4,0,0,0,0,0,0,4),32)
+          level,0,level,0x20000,0x21000,0,address,size,size,1,1,size*4,0,0,0,0,0,0,4),32)
         for(y<-0 until size;x<-0 until size)t.put(address+(y*size+x)*4,BigInt(0xff000000L+level+1))
       }
       var checks=0
@@ -274,7 +274,7 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
           for(vector<-Seq(false,true)){
             t.issue(vector,false,0,Seq.fill(4)(BigInt(0)),Seq.fill(4)(BigInt(0)),integer=true)
             val expected=ImageFormatReference.decode("RGBA8",BigInt(0xff000000L+base+lod+1))(0)
-            t.retire(vector,false,Seq.fill(4)(expected));checks+=1
+            withClue(s"relative LOD stage=$stage base=$base lod=$lod vector=$vector reads=${t.memory.seen.takeRight(10)} "){t.retire(vector,false,Seq.fill(4)(expected))};checks+=1
           }
         }
         for(lod<-Seq(BigInt(16-base),BigInt(0xffffffffL),BigInt(0x10000000L))){
