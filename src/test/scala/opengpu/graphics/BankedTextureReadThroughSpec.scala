@@ -207,4 +207,22 @@ class BankedTextureReadThroughSpec extends AnyFlatSpec {
       info("BANKED_READTHROUGH_VISIBILITY explicitPublicationBoundary=true lateOldFillInvalidated=true viewGenerationKeys=true freshBackingObserved=true noOperandMutation=true")
     }
   }
+  it should "retain a primary line fault when cancellation arrives with the physical reply" in {
+    simulate(new BankedRgba8TextureHits(readThrough=true)) { d =>
+      val t=new Driver(d); t.sample(group(0)); t.until(t.reads.size==2 && t.joins==2)
+      d.io.cancel.poke(true.B)
+      t.reply(t.reads.find(_.address==0x1000).get,fault=true)
+      d.io.cancel.poke(false.B)
+      t.reply(t.reads.find(_.address!=0x1000).get)
+      t.until(t.results.size==1); t.drain()
+      val r=t.results.head
+      assert(r.fault && r.cancelled && !r.hit && r.color==0 && r.missing==0)
+      assert(Set(BigInt(0x1000),BigInt(0x1004))(r.faultAddress))
+      t.sample(group(1)); t.until(t.reads.size==4)
+      for(read <- t.reads.drop(2).toVector.reverse)t.reply(read)
+      t.until(t.results.size==2); t.good(t.results.last); t.drain()
+      info("BANKED_READTHROUGH_PRIMARY_FAULT concurrentCancelAndFault=true physicalAttributionRetained=true noDestinationSuccess=true completeDrainAndHealthyReuse=true")
+    }
+  }
+
 }
