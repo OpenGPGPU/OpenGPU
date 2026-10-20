@@ -6767,3 +6767,18 @@ CU/helper/AXI integration, queries/projective lowering, banked throughput and
 coherence plus the remaining H0-H8 requirements stay open in this source. PPA
 is synthesis only; no whole-GPU clock, routing, hold, power or product pass is
 claimed.
+
+## H0 native resource texture operation discovery
+
+The [GTO1 native operation record](NATIVE_TEXTURE_OPERATION_CAPABILITIES.md)
+adds read-only discovery for existing scalar/vector resource functions2..6,
+parameter pairs,component/LOD/stage/resource limits and semantic flags. GTX1
+bit10 safely advertises the new window;legacy and fixed binned profiles keep
+it unmapped. No descriptor layout,instruction encoding or sampling rate changes.
+
+The [817-input qualification](performance/mobile-native-texture-operations-2026-10-21.json)
+passes14 tests including4,096 decoder cases,nine ABI checks,two strict C checks
+and three emissions. Both shader texture endpoint profiles retain77 byte-identical
+active RTL files each and their prior positive synthesis. The changed host
+interface is receiving a fresh1000ps synthesis-only screen. Main integration,
+broader API/compiler/precision qualification and the full H0-H8 goal stay open.
