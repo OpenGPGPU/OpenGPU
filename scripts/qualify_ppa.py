@@ -23,6 +23,13 @@ def nonnegative_picoseconds(value):
         raise argparse.ArgumentTypeError('Expected finite nonnegative picoseconds')
     return margin
 
+
+def positive_picoseconds(value):
+    period = float(value)
+    if not math.isfinite(period) or period <= 0:
+        raise argparse.ArgumentTypeError('Expected finite positive picoseconds')
+    return period
+
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -111,9 +118,13 @@ def main():
     parser.add_argument('--timing-effort', choices=['explore', 'closure', 'closure_no_cts'])
     parser.add_argument('--setup-slack-margin-ps', type=nonnegative_picoseconds, default=0.0,
                         help='Extra setup repair headroom; the final timing gate is unchanged')
+    parser.add_argument('--abc-clock-period-ps', type=positive_picoseconds,
+                        help='Yosys/ABC mapping target; the declared --period-ps timing gate is unchanged')
     parser.add_argument('--synthesis-engine', choices=['syn', 'yosys'], default='syn')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
+    if args.abc_clock_period_ps is not None and args.synthesis_engine != 'yosys':
+        parser.error('--abc-clock-period-ps requires --synthesis-engine yosys')
     args.output.mkdir(parents=True, exist_ok=False)
     rtl = args.rtl.resolve()
     filelist = rtl / 'filelist.f'
@@ -145,6 +156,7 @@ def main():
         enable_retiming=False, sv_frontend='native',
         core_utilization=args.utilization, place_density=args.density,
         setup_slack_margin=args.setup_slack_margin_ps,
+        abc_clock_period_ps=args.abc_clock_period_ps,
         output_dir=str(args.output.resolve() / 'flow'), timeout=args.timeout,
         synthesis_only=args.stage == 'synthesis', cache=False, clean=False,
         generate_gds=False,
