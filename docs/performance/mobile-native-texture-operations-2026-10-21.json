@@ -317,7 +317,7 @@
     "scope": "Carry only the full shader texture endpoint timing. The changed host-control MMIO needs a fresh synthesis screen."
   },
   "host_synthesis": {
-    "status": "running",
+    "status": "timeout",
     "session": 77076,
     "start": {
       "wrapper_pid": 42710,
@@ -345,7 +345,24 @@
       "started_utc": "2026-10-20T21:56:00.474848+00:00"
     },
     "scope": "Native host interface and its command/DMA logic;external native rendering and CUs excluded. No whole-GPU clock claim.",
-    "policy": "1000ps,TC/SLVT,25% I/O,standard ABC,no retiming;synthesis only"
+    "policy": "1000ps,TC/SLVT,25% I/O,standard ABC,no retiming;synthesis only",
+    "terminal": {
+      "returncode": 1,
+      "source_unchanged": true,
+      "rtl_unchanged": true,
+      "elapsed_seconds": 7201.426178291906,
+      "finished_utc": "2026-10-20T23:56:01.830367+00:00"
+    },
+    "reason": "Flow timed out after 7200 seconds during mapping; no completed mapped timing or area result.",
+    "flow_log": "generated/qualification/ppa/mobile-native-texture-operations-host-2026-10-21-v1/flow/orfs_run.log",
+    "flow_log_sha256": "7b1d592349060c8ee0540eb20f2188c866e9a9eec925f48771c89e1b5192a1fa",
+    "mapped_timing_qualified": false,
+    "orphan_container_cleanup": {
+      "name": "pensive_bouman",
+      "owned_mounts_verified": true,
+      "stopped_after_terminal_flow": true
+    },
+    "result_sha256": "06768380b699620d86567e0bb0a21acc7cdd9a6680a61e758747def58371d00b"
   },
   "artifacts_sha256": {
     ".artifacts/mobile-native-texture-operation-capabilities-v1-source-proof.json": "e46b62c17b46f74cac56632b3d3c6a1bfcc3f71473e08a2fca4402c86d8cc62c",
@@ -360,7 +377,7 @@
     ".artifacts/mobile-native-texture-operation-host-synthesis-v1-start.json": "693e835b3a73b9efd5375790f6e69d4136928cecae4588dee131e90f7d3f3fa7"
   },
   "remaining": [
-    "inspect fresh native host synthesis before main integration",
+    "Complete native host synthesis qualification before main integration; first screen timed out at 7200 seconds.",
     "compose current-main documentation/evidence without changing qualified source bytes",
     "broader API/compiler/capacity/precision and full H0-H8 hardware requirements",
     "banked cluster native resource/coordinate wiring and whole-native throughput/coherence"

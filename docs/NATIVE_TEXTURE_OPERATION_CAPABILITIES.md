@@ -65,5 +65,7 @@ emissions. Four native/fixed/legacy MMIO profiles verify the table independently
 of the hardware encoder;4,096 decoder cases verify function and selector limits.
 Fresh vertex/fragment texture endpoint RTL is byte-identical across all77 active
 files per profile to the existing positive synthesis inputs. The changed native
-host interface has its own1000ps synthesis run in progress. Main integration
-waits for that result;the full hardware goal remains open.
+host interface reached its 7200-second synthesis timeout during mapping, with
+unchanged source and RTL. No mapped timing or area result is established. The
+leftover owned container was stopped after the flow terminated. Main integration
+continues to require completed host synthesis;the full hardware goal remains open.
