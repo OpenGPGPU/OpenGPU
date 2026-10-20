@@ -324,7 +324,51 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
       initialize(dut)
       send(dut, Fp32Operation.fmadd, false, BigInt(1),
         BigInt("ee1dbef6", 16), BigInt("1b9f5fea", 16), 7)
+      dut.io.in.bits.operandA.poke(0.U)
+      dut.io.in.bits.operandB.poke("h3f000000".U)
+      dut.io.in.bits.operandC.poke(0.U)
       expectResult(dut, BigInt("a39dbe57", 16), 7)
+    }
+  }
+
+  it should "keep rounding metadata with its accepted row under changing and invalid inputs" in {
+    simulate(new Fp32FmaLane(16, resultEntries = 16)) { dut =>
+      initialize(dut)
+      val rng = new scala.util.Random(0x524f554e)
+      val directed = Vector.fill(32)(Vector(
+        Vector[BigInt](1, 0xee1dbef6L, 0x1b9f5feaL),
+        Vector[BigInt](0x3f000000L, 0x3f000000L, 0))).flatten
+      val rows = directed ++ Vector.fill(2048)(Vector.fill(3)(BigInt(rng.nextLong() & 0xffffffffL)))
+      def value(v: BigInt): Float = java.lang.Float.intBitsToFloat(v.toInt)
+      val expected = rows.map { r =>
+        val f = Math.fma(value(r(0)), value(r(1)), value(r(2)))
+        if (f.isNaN) BigInt(0x7fc00000L) else BigInt(java.lang.Float.floatToRawIntBits(f).toLong & 0xffffffffL)
+      }
+      var sent = 0; var retired = 0; var cycle = 0
+      while (retired < rows.size && cycle < 20000) {
+        val valid = sent < rows.size && cycle % 17 != 11
+        val operands = if (valid) rows(sent) else Vector.fill(3)(BigInt(0))
+        dut.io.in.valid.poke(valid.B)
+        dut.io.in.bits.operation.poke(Fp32Operation.fmadd)
+        dut.io.in.bits.operationModifier.poke(false.B); dut.io.in.bits.roundingMode.poke(0.U)
+        dut.io.in.bits.operandA.poke(operands(0).U)
+        dut.io.in.bits.operandB.poke(operands(1).U)
+        dut.io.in.bits.operandC.poke(operands(2).U)
+        dut.io.in.bits.tag.poke(sent.U)
+        val ready = cycle % 31 >= 9
+        dut.io.out.ready.poke(ready.B)
+        if (dut.io.out.valid.peek().litToBoolean) {
+          dut.io.out.bits.tag.expect(retired.U)
+          val observed = dut.io.out.bits.result.peek().litValue
+          assert(observed == expected(retired),
+            s"row=$retired operands=${rows(retired).map(_.toString(16))} observed=${observed.toString(16)} expected=${expected(retired).toString(16)}")
+          if (ready) retired += 1
+        }
+        if (valid && dut.io.in.ready.peek().litToBoolean) sent += 1
+        dut.clock.step(); cycle += 1
+      }
+      assert(retired == rows.size); dut.io.in.valid.poke(false.B); dut.io.busy.expect(false.B)
+      info(s"FMA_ROUNDING_ROWS total=${rows.size} alternatingSubtractMetadata=true invalidInputsPoisoned=true arbitraryFP32=true backpressure=true")
     }
   }
 
