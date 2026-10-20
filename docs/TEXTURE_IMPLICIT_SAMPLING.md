@@ -1,8 +1,12 @@
 # Internal implicit LOD and helper snapshots
 
 Status: functional implementation on `codex/mobile-implicit-sampling`.
-Focused arithmetic and descriptor-to-texel tests pass; fresh aggregate and
-synthesis qualification follow. The earlier explicit-gradient revision's
+The [799-input checkpoint](performance/mobile-implicit-sampling-checkpoint-2026-10-21.json)
+passes 122 distinct tests across 21 suites, nine unchanged ABI checks, and four
+fresh standalone synthesis screens at the unchanged 1000ps target. Standalone
+LOD RTL is byte-identical to its previous positive screen. Combined gradient
+resolver and full sampler synthesis remain pending; no combined timing pass
+is claimed. The earlier explicit-gradient revision's
 [116-test record and composed timing failures](performance/mobile-gradient-sampling-2026-10-21.json)
 remain immutable. Main retains its separately qualified explicit-effective-LOD
 sampler. No new native opcode, software record or capability is exposed here.
@@ -78,8 +82,8 @@ controls. All eight composed sampling tests pass:493 implicit cases span four
 targets, all quad lanes, six cube faces, shadow filtering, base levels, bias
 ordering, complete snapshots and finite-difference overflow. Another122 implicit
 cancellation cuts pass, retaining the previous238 explicit-gradient cases,
-152 gradient cuts and352 explicit-lambda samples. These are focused results;
-aggregate source identity and setup timing need fresh qualification.
+152 gradient cuts and352 explicit-lambda samples. The fresh aggregate confirms these controls on the exact archived 799-input
+source. Combined resolver/sampler setup timing still needs fresh qualification.
 
 Native scalar/vector transport, compiler/validator updates, actual CU/raster
 helper integration, vertex automatic LOD, offsets/queries and the remaining
