@@ -50,8 +50,8 @@ padding rule remain unchanged. GND1 primitive/bin records do not change.
 Generated C headers expose the new versions and mask offsets. An audit compares
 all 354 existing GTD1 draw fields, 71 GFS1 state fields and existing C defines
 against the preceding committed layouts; every prior entry matches, and C11
-size/offset probes pass. Runtime reader/raster compatibility checks are running
-on 629 frozen source/ABI files. Positive centroid-state/native execution and
+size/offset probes pass. All [15 runtime reader/raster compatibility checks](performance/mobile-centroid-native-binding-2026-10-20.json)
+pass on 629 unchanged source/ABI files. Positive centroid-state/native execution and
 discovery still need their separate controls.
 
 ## Partial-coverage perspective fallback
