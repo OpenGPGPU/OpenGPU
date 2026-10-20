@@ -72,7 +72,13 @@ bytes plus256 valid bytes. The4-lane/2-warp shared-CU fixtures use512 data
 bytes plus16 valid bytes. This implementation uses registers and muxes; it makes
 no SRAM macro area or bandwidth assumption. Include every endpoint instance and
 its mapped cell cost in later H0/H8 sizing; raster quads do not introduce a
-second shader VLEN.
+second shader VLEN. `MemoryNativeTypedGraphicsPipeline` contains one vertex and
+one fragment endpoint (16384 data bytes plus512 valid bytes at the default
+configuration). `TypedVertexBinImagePipeline` contains one geometry endpoint
+and one fragment endpoint per render engine, so two engines require24576 data
+bytes plus768 valid bytes. These register costs are additional to the proposed
+tile, payload, texture-cache and L2 SRAM budgets; they do not increase their
+advertised capacities.
 
 ## Retirement and validation
 
