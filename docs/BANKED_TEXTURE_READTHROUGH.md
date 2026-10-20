@@ -72,5 +72,8 @@ return poisoned words without waiting for fill admission during drain;their
 lookup owners remain pinned through public completion. Saturation checks retain
 a held physical offer across cancellation and invalidation,retire every accepted
 group,and verify healthy reuse. Resident-only active RTL remains byte-identical
-to its positive synthesis inputs. Fresh read-through synthesis is running under
-the same1000ps constraints;timing closure remains unproven.
+to its positive synthesis inputs. Fresh read-through synthesis improves but fails the same1000ps gate
+(-32.971ps internal,-144.873ps I/O),with752,165 mapped cells. The remaining
+path begins at the pending bank2 miss queue selection and reaches fill-key
+allocation plus `io_joined`. Shared fill-admission registration remains
+required;timing closure is unproven.

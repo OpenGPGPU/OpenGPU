@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-21",
-  "status": "twenty_component_tests_and_emission_pass_synthesis_running",
+  "status": "twenty_component_tests_pass_synthesis_timing_improved_but_failed",
   "source": {
     "commit": "621ce52a7fea24c7a98e6c5e2e5c5cccb5dd9305",
     "source_files": 812,
@@ -100,8 +100,66 @@
   },
   "readthrough_synthesis": {
     "session": 43360,
-    "status": "running",
-    "policy": "1000ps,TC/SLVT,25% I/O,standard ABC,no retiming;synthesis only"
+    "status": "timing_failed",
+    "policy": "1000ps,TC/SLVT,25% I/O,standard ABC,no retiming;synthesis only",
+    "terminal": {
+      "returncode": 2,
+      "source_unchanged": true,
+      "rtl_unchanged": true,
+      "elapsed_seconds": 1107.5943091248628,
+      "finished_utc": "2026-10-20T21:33:26.769623+00:00"
+    },
+    "passed": false,
+    "fully_mapped": true,
+    "slacks_ps": [
+      -32.971,
+      -144.873
+    ],
+    "mapped_cells": 752165,
+    "mapped_library_area": 95767.22826,
+    "parameters": {
+      "clock_port": "clock",
+      "clock_port_auto": false,
+      "clock_period": 1000.0,
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "corner": "TC",
+      "cell_vt": "SLVT",
+      "timing_effort": "explore",
+      "synthesis_engine": "yosys",
+      "sv_frontend": "native",
+      "enable_retiming": false,
+      "swap_arithmetic_operators": false,
+      "generate_gds": false,
+      "max_fanout": null,
+      "high_fanout_nets": null,
+      "high_fanout_max": 8,
+      "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+      "setup_slack_margin": 0.0,
+      "abc_clock_period_ps": null,
+      "io_delay_percent": 0.25,
+      "io_false_path_ports": null,
+      "post_floorplan_tcl": null,
+      "macros": []
+    },
+    "mapped_path": {
+      "startpoint": "_1376694_",
+      "startpoint_D": "_0192736_",
+      "same_D_and_clock_as": "service.pendingMisses_2.deq_ptr_value$_SDFFE_PP0P_",
+      "core_endpoint": "service.miss.keys_8_address[16]$_DFFE_PP_",
+      "IO_endpoint": "io_joined"
+    },
+    "artifacts_sha256": {
+      "generated/qualification/ppa/mobile-banked-texture-readthrough-pipeline-2026-10-21-v1/qualification.json": "75855d5f241f6717b0a3ea190257222734daa3febc5623da993d7c8e3ae0410a",
+      "generated/qualification/ppa/mobile-banked-texture-readthrough-pipeline-2026-10-21-v1/result.json": "10ca80412774aa58bbb877d478ece0e996d5f096bfbfa2155ea26c827bd11b9d",
+      "generated/qualification/ppa/mobile-banked-texture-readthrough-pipeline-2026-10-21-v1/manifest.json": "f7f5efa5ce060dd5c138d33b8c408437d03b24c3b33cd273647d541886402040",
+      "generated/qualification/ppa/mobile-banked-texture-readthrough-pipeline-2026-10-21-v1/flow/flow_manifest.json": "9732648a54f0923396ac48cab098f562a1e622ba59558e4c88f0679bea1649a8",
+      "generated/qualification/ppa/mobile-banked-texture-readthrough-pipeline-2026-10-21-v1/flow/synthesis_sta.log": "5248adf5f68d6f2b890086c839f06f652425727462b98832a9dfcf28c77a1ac9",
+      "generated/qualification/ppa/mobile-banked-texture-readthrough-pipeline-2026-10-21-v1/flow/orfs-work/reports/base/synth_stat.txt": "7f41d9c6effca4cee2fffd1ee9be432f6ffb4927d7652ba04cce0b428738cfcc",
+      "generated/qualification/ppa/mobile-banked-texture-readthrough-pipeline-2026-10-21-v1/flow/orfs-work/results/base/1_2_yosys.v": "9bc0d70ed417a20e682a03dc9be73ac95329a7a0b4fb904edf9bfebfba9bb9cc",
+      ".artifacts/mobile-banked-texture-readthrough-pipeline-synthesis-v1-inputs.json": "96035779d6a32c3bb1fd58b2131ed79534dc1afa90188c684accc99c0059f9bc",
+      ".artifacts/mobile-banked-texture-readthrough-pipeline-synthesis-v1-result.json": "7969ff040b2e801a1ce8c3cfbd2187d02d7388a5e83819b2e1f5bb7ae2f87c7d"
+    }
   },
   "artifacts_sha256": {
     ".artifacts/mobile-banked-texture-readthrough-pipeline-v1-result.json": "d8a517ae59f096f28209ba343b026d3ea73b7bd2b54c4415d00aee3cbbcfaff3",
@@ -121,7 +179,7 @@
     "generated/qualification/ppa/mobile-banked-texture-readthrough-2026-10-21-readthrough-v2/flow/orfs-work/results/base/1_2_yosys.v": "4c4cbf6c37bf295222a617a1134c58f721e469c6b481ed7a08b15f48c7b424f6"
   },
   "remaining": [
-    "collect fresh read-through synthesis;timing closure remains unproven",
+    "register shared fill admission after per-bank miss arbitration and repeat the unchanged1000ps gate",
     "compose and qualify exact normalized FP32 output",
     "native coordinate/resource/translation and precise task-fault integration",
     "scoped cancellation,whole-path precision and shader-to-texture throughput",
