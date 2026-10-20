@@ -29,8 +29,10 @@ The two focused checks now pass: asynchronous-to-the-transaction reset completio
 cannot change a held response, the next read sees the updated status, and eight
 rounds of simultaneous address offers serialize both channels exactly once
 under held R/B responses with exact write readback. Both first-grant directions
-are exercised. Discovery/burst, fill/reset and VM-owner controls are running on
-the same 627 frozen source/ABI files. Full native-host composition remains open.
+are exercised. All [nine controls across four suites](performance/mobile-host-axi-ownership-2026-10-20.json)
+pass on the same 627 unchanged source/ABI files, including discovery/burst,
+fill/reset/IRQ and buffered/unbuffered VM ownership. Full native-host composition
+remains open.
 
 Run the relevant controls with:
 
