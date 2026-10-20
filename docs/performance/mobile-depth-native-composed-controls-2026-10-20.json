@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Completed first106 control group of a still-running176-check native depth composition",
+  "source_files": 643,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-native-composed-source-v1.json",
+    "sha256": "42f94258ec699a2a35f1a841579d122c9e4b39006bed94e6155f00431bdc3a57"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-native-composed-source-v1.tar.gz",
+    "sha256": "68de99e6934a86bf578ceaca533ba880648fde47057973cb7b46c433ac2fa2bd"
+  },
+  "completed_log_prefix": {
+    "path": ".artifacts/mobile-depth-native-composed-controls-v1.log",
+    "sha256": "800d3b29a8564b9e991fbc9ee6e344ada09e58c96c92ca44706040e7fca48966"
+  },
+  "passed": 106,
+  "suites": 20,
+  "abi_checks": 4,
+  "source_unchanged_at_checkpoint": true,
+  "replay_emission": {
+    "audit": {
+      "path": ".artifacts/mobile-depth-native-composed-replay-rtl-audit-v1.json",
+      "sha256": "79da7224f0c7cd389efcf348d98fd8a5064dcc1f327e13d970ae2567dadcb336"
+    },
+    "sv_files": 136,
+    "physical_sram_bytes": 43008,
+    "group_counts": {
+      "GpuComputeUnit": 0,
+      "ClipFloatArithmetic": 1,
+      "PolygonDepthOffset": 1,
+      "Fp32FmaLane": 2,
+      "Fp32DivLane": 1
+    }
+  },
+  "full_run_start": {
+    "path": ".artifacts/mobile-depth-native-composed-qualified-v1-start.json",
+    "sha256": "ae25afee641b988906544e94e0765ce61ba1c200bced9a21367a99a1cdb3de2b"
+  },
+  "full_expected_groups": [
+    106,
+    13,
+    24,
+    33
+  ],
+  "remaining_groups": [
+    13,
+    24,
+    33
+  ],
+  "sbt_pid_confirmed_live": 20063,
+  "observed_utc": "2026-10-20T03:33:56.725332+00:00",
+  "limits": [
+    "This is a completed control group with a frozen log prefix, not a completed176-check result.",
+    "The remaining70 live vertex/prepared/native image/fault/reset checks and final host emission are still in progress.",
+    "Supplemental signed-unit and270-draw tests are qualified separately on identical production bytes; their extra test files are absent from this frozen643-file run.",
+    "No new synthesis/PPA, general numeric/invariance, API or H0-H8 closure."
+  ]
+}

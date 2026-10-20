@@ -30,14 +30,15 @@ class ClipFloatArithmeticSpec extends AnyFlatSpec {
     val exponent=v.exponent-23;val sign=if(v.sign)-1 else 1
     if(exponent>=0)((v.sig<<exponent)*sign,BigInt(1))else(v.sig*sign,BigInt(1)<<(-exponent))
   }
-  private def normalize(numerator: BigInt,denominator: BigInt,negativeZero: Boolean=false): (E,Int)={
+  private def normalize(numerator: BigInt,denominator: BigInt,negativeZero: Boolean=false,towardZero: Boolean=false): (E,Int)={
     if(numerator==0)return(E(negativeZero),0)
     val negative=numerator.signum!=denominator.signum;val n=numerator.abs;val d=denominator.abs
     var exponent=n.bitLength-d.bitLength
     def atLeastPower(e: Int): Boolean=if(e>=0)n>=(d<<e)else(n<<(-e))>=d
     if(!atLeastPower(exponent))exponent-=1
     val scale=23-exponent
-    val (initial,inexact)=if(scale>=0)rounded(n<<scale,d)else rounded(n,d<<(-scale))
+    val scaledN=if(scale>=0)n<<scale else n;val scaledD=if(scale>=0)d else d<<(-scale)
+    val (initial,inexact)=if(towardZero)(scaledN/scaledD,scaledN%scaledD!=0)else rounded(scaledN,scaledD)
     val carry=initial.bitLength>24
     (E(negative,exponent+(if(carry)1 else 0),if(carry)initial>>1 else initial),if(inexact)1 else 0)
   }
@@ -49,15 +50,17 @@ class ClipFloatArithmeticSpec extends AnyFlatSpec {
       case 1=>normalize(an*bd-bn*ad,ad*bd,a.sig==0 && b.sig==0 && a.sign && !b.sign)
       case 2=>normalize(an*bn,ad*bd,a.sign^b.sign)
       case 3=>normalize(an*bd,ad*bn,a.sign^b.sign)
+      case 4=>normalize(an*bd+bn*ad,ad*bd,a.sig==0 && b.sig==0 && a.sign && b.sign,towardZero=true)
     }
   }
-  private def packed(v: E): (BigInt,Int)={
+  private def packed(v: E,towardZero: Boolean=false): (BigInt,Int)={
     val sign=if(v.sign)BigInt(1)<<31 else BigInt(0)
     if(v.special!=0)return(sign|(BigInt(255)<<23)|(v.sig&0x7fffff),0)
     if(v.sig==0)return(sign,0)
-    if(v.exponent>127)return(sign|BigInt("7f800000",16),5)
+    if(v.exponent>127)return(sign|BigInt(if(towardZero)"7f7fffff"else"7f800000",16),5)
     if(v.exponent>= -126)return(sign|(BigInt(v.exponent+127)<<23)|(v.sig&0x7fffff),0)
-    val (q,inexact)=rounded(v.sig,BigInt(1)<<(-126-v.exponent))
+    val denominator=BigInt(1)<<(-126-v.exponent)
+    val (q,inexact)=if(towardZero)(v.sig/denominator,v.sig%denominator!=0)else rounded(v.sig,denominator)
     (sign|q,(if(inexact)1 else 0)|(if(inexact && q<0x800000)2 else 0))
   }
   private def poke(v: ClipFloat,e: E): Unit={
@@ -77,12 +80,12 @@ class ClipFloatArithmeticSpec extends AnyFlatSpec {
       // A mutated inactive input cannot alter the accepted operation.
       poke(d.io.in.bits.a,E());d.io.in.bits.operation.poke(7.U);d.io.in.bits.tag.poke(0.U)
     }
-    def response(expected: E,flags: Option[Int],error: Int=0,cancelled: Boolean=false): E={
+    def response(expected: E,flags: Option[Int],error: Int=0,cancelled: Boolean=false,towardZero: Boolean=false): E={
       until(d.io.out.valid.peek().litToBoolean);val r=d.io.out.bits
       r.tag.expect(tag.U);r.error.expect(error.U);r.cancelled.expect(cancelled.B)
       val actual=read(r.value);assert(actual==expected,s"extended value $actual != $expected")
       flags.foreach(f=>r.arithmeticStatus.expect(f.U))
-      val (word,packing)=packed(expected);r.fp32.expect(word.U);r.packingStatus.expect(packing.U)
+      val (word,packing)=packed(expected,towardZero);r.fp32.expect(word.U);r.packingStatus.expect(packing.U)
       val held=r.peek().litValue
       for(_<-0 until (tag%4)){d.io.in.ready.expect(false.B);tick();assert(r.peek().litValue==held)}
       d.io.out.ready.poke(true.B);tick();d.io.out.ready.poke(false.B);d.io.busy.expect(false.B);actual
@@ -90,8 +93,37 @@ class ClipFloatArithmeticSpec extends AnyFlatSpec {
     def run(a: E,b: E,operation: Int): E={
       val (expected,flags)=reference(a,b,operation)
       offer(a,b,operation)
-      if(expected.sig!=0 && (expected.exponent< -512 || expected.exponent>511))response(E(),Some(flags),2)
-      else response(expected,Some(flags))
+      if(expected.sig!=0 && (expected.exponent< -512 || expected.exponent>511))response(E(),Some(flags),2,towardZero=operation==4)
+      else response(expected,Some(flags),towardZero=operation==4)
+    }
+  }
+
+  it should "round directed sums and gradual FP32 packing toward zero without changing legacy arithmetic" in {
+    simulate(new ClipFloatArithmetic()){d=>val t=new Driver(d);val random=new Random(0x52545a34);var checks=0
+      val words=Vector[BigInt](0,BigInt("80000000",16),1,0x7fffff,0x800000,0x3e800000,0x3f000001,0x3f800000,0x3f800001,0x7f7fffff,
+        BigInt("bf000001",16),BigInt("bf800000",16),BigInt("bf800001",16),BigInt("ff7fffff",16))
+      for(a<-words;b<-words){t.run(decode(a),decode(b),ClipFloatOperation.addTowardZero);checks+=1}
+      for(e<-Seq(-512,-150,-149,-127,-126,0,127,128,511);gap<-Seq(1,23,24,25,26,27,100,500);aSign<-Seq(false,true);bSign<-Seq(false,true) if e-gap>= -512){
+        t.run(E(aSign,e,0x800001),E(bSign,e-gap,0xffffff),ClipFloatOperation.addTowardZero);checks+=1}
+      for(_<-0 until 256){
+        val a=E(random.nextBoolean(),random.nextInt(941)-470,0x800000|random.nextInt(1<<23))
+        val b=E(random.nextBoolean(),random.nextInt(941)-470,0x800000|random.nextInt(1<<23))
+        t.run(a,b,ClipFloatOperation.addTowardZero);checks+=1}
+      for(e<-Seq(-150,-149,-127,128);sign<-Seq(false,true)){
+        t.run(E(sign,e,0x800001),E(),ClipFloatOperation.addTowardZero);checks+=1}
+      t.run(decode(BigInt("3f800001",16)),decode(BigInt("33800000",16)),ClipFloatOperation.add)
+      info(s"CLIP_FLOAT_RTZ directedChecks=$checks towardZero=true exactRational=true farOperandSticky=true gradualPacking=true finiteOverflow=true signZero=true legacyRNEReusable=true snapshots=true heldResponse=true")
+    }
+  }
+  it should "retain directed rounding through accepted cancellation held replies and healthy reuse" in {
+    simulate(new ClipFloatArithmetic()){d=>val t=new Driver(d)
+      val a=decode(BigInt("3f800001",16));val b=decode(BigInt("33800000",16));val(expected,flags)=reference(a,b,4)
+      t.offer(a,b,4);t.tick();t.tick();d.io.cancel.poke(true.B);t.until(d.io.out.valid.peek().litToBoolean)
+      d.io.cancel.poke(false.B);t.response(expected,Some(flags),cancelled=true,towardZero=true)
+      t.offer(a,b,4);t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
+      d.io.cancel.poke(true.B);for(_<-0 until 7){t.tick();assert(d.io.out.bits.peek().litValue==held)}
+      d.io.cancel.poke(false.B);t.response(expected,Some(flags),towardZero=true);t.run(a,b,4);t.run(a,b,0)
+      info("CLIP_FLOAT_RTZ_DRAIN acceptedFmaNoFlush=true roundingSnapshot=true heldReplyImmutable=true legacyAndDirectedReuse=true")
     }
   }
 

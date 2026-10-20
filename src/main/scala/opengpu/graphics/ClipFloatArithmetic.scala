@@ -35,18 +35,19 @@ object ClipFloat {
     out
   }
   /** RNE packing with gradual underflow and tininess detected after rounding.
+    * The optional directed mode truncates underflow and saturates overflow.
     * The bounded 25-bit shift path never creates an exponent-sized shifter.
     * Callers retain the extended value when this convenience result overflows
     * or underflows; packing is not an intermediate clip computation.
     */
-  def toFp32(value: ClipFloat): ClipFloatPacked={
+  def toFp32(value: ClipFloat,roundTowardZero: Bool=false.B): ClipFloatPacked={
     val out=Wire(new ClipFloatPacked);out.status:=0.U
     val sub=value.exponent<(-126).S
     val shift=Mux(sub,Mux(value.exponent<(-150).S,25.U,((-126).S-value.exponent).asUInt),1.U)(4,0)
     val truncated=value.significand>>shift
     val remainder=value.significand&((1.U(25.W)<<shift)-1.U)(23,0)
     val half=1.U(25.W)<<(shift-1.U)
-    val rounded=truncated+&((remainder>half) || (remainder===half && truncated(0)))
+    val rounded=truncated+&(!roundTowardZero && ((remainder>half) || (remainder===half && truncated(0))))
     val inexact=remainder.orR
     val exponent=(value.exponent+127.S).asUInt
     out.bits:=Cat(value.negative,exponent(7,0),value.significand(22,0))
@@ -54,7 +55,7 @@ object ClipFloat {
       out.bits:=Cat(value.negative,rounded.pad(31)(30,0))
       out.status:=Cat(0.U(3.W),inexact && !rounded(23),inexact)
     }
-    when(value.exponent>127.S){out.bits:=Cat(value.negative,255.U(8.W),0.U(23.W));out.status:=5.U}
+    when(value.exponent>127.S){out.bits:=Mux(roundTowardZero,Cat(value.negative,"h7f7fffff".U(31.W)),Cat(value.negative,255.U(8.W),0.U(23.W)));out.status:=5.U}
     when(value.significand===0.U){out.bits:=Cat(value.negative,0.U(31.W));out.status:=0.U}
     when(value.special=/=0.U) {
       out.bits:=Cat(value.negative,255.U(8.W),value.significand(22,0));out.status:=0.U
@@ -66,7 +67,7 @@ object ClipFloat {
     Cat(value.negative,255.U(8.W),value.significand(22,0)),
     Mux(value.significand===0.U,Cat(value.negative,0.U(31.W)),Cat(value.negative,127.U(8.W),value.significand(22,0))))
 }
-object ClipFloatOperation {val add=0;val subtract=1;val multiply=2;val divide=3}
+object ClipFloatOperation {val add=0;val subtract=1;val multiply=2;val divide=3;val addTowardZero=4}
 class ClipFloatRequest(tagWidth: Int) extends Bundle {
   val a=new ClipFloat;val b=new ClipFloat;val operation=UInt(3.W);val tag=UInt(tagWidth.W)
 }
@@ -79,8 +80,9 @@ class ClipFloatResponse(tagWidth: Int) extends Bundle {
 
 /** One owned scalar clip arithmetic operation. Reuse the existing FP32 FMA
   * and divider on normalized significands, retaining exponents separately.
-  * Every arithmetic operation rounds its significand to nearest/even, then
-  * optional FP32 packing rounds subnormals. It is not a fused multi-operation
+  * Operations 0..3 round to nearest/even. Internal addTowardZero also truncates
+  * final FP32 packing; this supplies a directed depth-quantization primitive.
+  * It is not a fused multi-operation
   * interpolation or a new shader-visible numeric contract.
   *
   * Cancellation never flushes accepted arithmetic. Drain its response before
@@ -102,6 +104,7 @@ class ClipFloatArithmetic(tagWidth: Int=8) extends Module {
   private val fma=Module(new Fp32FmaLane(tagWidth));private val divider=Module(new Fp32DivLane(tagWidth))
   fma.io.flush:=false.B;divider.io.flush:=false.B
   private val isDivide=request.operation===ClipFloatOperation.divide.U
+  private val isTowardZero=request.operation===ClipFloatOperation.addTowardZero.U
   fma.io.in.valid:=phase===offer && !isDivide;fma.io.in.bits:=coreRequest
   divider.io.in.valid:=phase===offer && isDivide;divider.io.in.bits:=coreRequest
   fma.io.out.ready:=phase===waitResult && !isDivide;divider.io.out.ready:=phase===waitResult && isDivide
@@ -119,17 +122,21 @@ class ClipFloatArithmetic(tagWidth: Int=8) extends Module {
   private def aligned(v: ClipFloat): UInt={
     val gap=(common-v.exponent).asUInt
     val e=127.U(13.W)-gap
-    Mux(v.special=/=0.U,ClipFloat.coreBits(v),
-      Mux(v.significand===0.U || gap>26.U,Cat(v.negative,0.U(31.W)),Cat(v.negative,e(7,0),v.significand(22,0))))
+    // Preserve a far operand's sign/sticky effect for directed rounding; its
+    // exact magnitude cannot affect a 24-bit result beyond this gap.
+    val tiny=Mux(isTowardZero,Cat(v.negative,100.U(8.W),0.U(23.W)),Cat(v.negative,0.U(31.W)))
+    Mux(v.special=/=0.U,ClipFloat.coreBits(v),Mux(v.significand===0.U,Cat(v.negative,0.U(31.W)),
+      Mux(gap>26.U,tiny,Cat(v.negative,e(7,0),v.significand(22,0)))))
   }
   private val alignmentLost=a.special===0.U && b.special===0.U && !aZero && !bZero &&
     ((common-a.exponent)>26.S || (common-b.exponent)>26.S)
   when(phase===prepare) {
-    when(!ClipFloat.legal(a) || !ClipFloat.legal(b) || request.operation>ClipFloatOperation.divide.U) {
+    when(!ClipFloat.legal(a) || !ClipFloat.legal(b) || request.operation>ClipFloatOperation.addTowardZero.U) {
       value:=ClipFloat.zero;error:=1.U;phase:=pack
     }.elsewhen(cancelled || io.cancel){value:=ClipFloat.zero;phase:=pack}
       .otherwise {
         coreRequest:=0.U.asTypeOf(coreRequest);coreRequest.tag:=request.tag
+        coreRequest.roundingMode:=Mux(isTowardZero,1.U,0.U)
         coreRequest.operation:=Fp32Operation.add
         coreRequest.operandB:=aligned(a)
         coreRequest.operandC:=aligned(b)^Mux(request.operation===ClipFloatOperation.subtract.U,"h80000000".U,0.U)
@@ -154,7 +161,7 @@ class ClipFloatArithmetic(tagWidth: Int=8) extends Module {
     when(finiteNonzero && (combined<(-512).S || combined>511.S)){value:=ClipFloat.zero;error:=2.U}
     arithmeticStatus:=response.status|alignmentInexact.asUInt;phase:=pack
   }
-  private val packed=ClipFloat.toFp32(value)
+  private val packed=ClipFloat.toFp32(value,isTowardZero)
   when(phase===pack) {
     result.value:=value;result.fp32:=packed.bits;result.packingStatus:=packed.status
     result.arithmeticStatus:=arithmeticStatus;result.error:=error;result.tag:=request.tag

@@ -65,13 +65,21 @@ class NativeVertexInputCapabilitiesAxiSpec extends AnyFlatSpec {
       val fragment=Vector(BigInt("47464901",16),BigInt(4),BigInt(0x1e),BigInt(sampleModes|15))
       val fexpected=if(enabled)fragment.map(_->BigInt(0))else Vector.fill(4)(BigInt(0)->BigInt(2))
       assert(read(0x1c0,4)==fexpected)
-      assert(read(0x1c0,5)==fexpected:+(BigInt(0)->BigInt(2)))
+      assert(read(0x1c0,5)==fexpected:+(if(enabled)BigInt("47524901",16)->BigInt(0)else BigInt(0)->BigInt(2)))
       assert(read(0x1c0,4,burst=0)==Vector.fill(4)(fexpected.head))
       for(i<-0 until 4;strb<-Seq(0,1,15)){write(0x1c0+4*i,strb);assert(read(0x1c0+4*i)==Vector(fexpected(i)))}
-      for(a<-Seq(0x1c1,0x1d0,0x5c0)){assert(read(a)==Vector(BigInt(0)->BigInt(2)));write(a,15)}
+      for(a<-Seq(0x1c1,0x1f0,0x5c0)){assert(read(a)==Vector(BigInt(0)->BigInt(2)));write(a,15)}
+      val raster=Vector(BigInt("47524901",16),BigInt(8),BigInt(6),BigInt((sampleModes<<8)|0x3eff),
+        BigInt("37804001",16),BigInt("33c00000",16),BigInt(3),BigInt(0))
+      val rexpected=if(enabled)raster.map(_->BigInt(0))else Vector.fill(8)(BigInt(0)->BigInt(2))
+      assert(read(0x1d0,8)==rexpected)
+      assert(read(0x1d0,9)==rexpected:+(BigInt(0)->BigInt(2)))
+      assert(read(0x1d0,8,burst=0)==Vector.fill(8)(rexpected.head))
+      for(i<-0 until 8;strb<-Seq(0,1,15)){write(0x1d0+4*i,strb);assert(read(0x1d0+4*i)==Vector(rexpected(i)))}
+      for(a<-Seq(0x1d1,0x1f0,0x5d0)){assert(read(a)==Vector(BigInt(0)->BigInt(2)));write(a,15)}
       for(i<-0 until 4;strb<-Seq(0,1,15)){write(0x1b0+4*i,strb);assert(read(0x1b0+4*i)==Vector(expected(i)))}
       assert(read(0x1b0,5)==expected:+(if(enabled)BigInt("47464901",16)->BigInt(0)else BigInt(0)->BigInt(2)))
-      for(address<-Seq(0x1b1,0x1d0,0x5b0)){assert(read(address)==Vector(BigInt(0)->BigInt(2)));write(address,15)}
+      for(address<-Seq(0x1b1,0x1f0,0x5b0)){assert(read(address)==Vector(BigInt(0)->BigInt(2)));write(address,15)}
       assert(read(0x1b0,4,burst=0)==Vector.fill(4)(expected.head))
       write(0xf4,15,Vector(11,22,33).map(BigInt(_)),response=0)
       assert(read(0xf4,3)==Vector(11,22,33).map(n=>BigInt(n)->BigInt(0)))
@@ -91,8 +99,9 @@ class NativeVertexInputCapabilitiesAxiSpec extends AnyFlatSpec {
       assert(read(0xf4,3)==Vector(66,22,33).map(n=>BigInt(n)->BigInt(0)))
       d.io.s_axi_aresetn.poke(false.B);d.clock.step(3);d.io.s_axi_aresetn.poke(true.B)
       assert(read(0x1b0,4)==expected)
+      assert(read(0x1c0,4)==fexpected);assert(read(0x1d0,8)==rexpected)
       d.io.cbMem.req.valid.expect(false.B);d.io.fbMem.req.valid.expect(false.B)
-      info(s"NATIVE_VERTEX_CAPS enabled=$enabled GVI1=true GFI1=true fragmentVersions1To4=true centroid=true sampleCapacity=$samples version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=${!enabled}")
+      info(s"NATIVE_VERTEX_CAPS enabled=$enabled GVI1=true GFI1=true GRI1=true rasterVersions1And2=true depthFormats5=true explicitResolutionPolicy=true fragmentVersions1To4=true centroid=true sampleCapacity=$samples version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=${!enabled}")
     }
   }
 }

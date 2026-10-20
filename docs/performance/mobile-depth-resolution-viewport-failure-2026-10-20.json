@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Negative actual-raster precision control using an integer-pixel 786x393 viewport-sized geometry",
+  "based_on_commit": "1ff8482",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-resolution-raster-before-source-v2.json",
+    "sha256": "b469966840dab4664ab7af40509b39557de8315e88dcec9017cdf676e8780ffa"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-resolution-raster-before-source-v2.tar.gz",
+    "sha256": "6ebd40e32ad9cd838dc1471069e185245523691b29ac8ec3a3992d043b6abd9a"
+  },
+  "result": {
+    "path": ".artifacts/mobile-depth-resolution-raster-before-v2-result.json",
+    "sha256": "2b0d0eb27085f942f82179f1c3ac2b9be320508234bed1420ee1c06186b961f9"
+  },
+  "log": {
+    "path": ".artifacts/mobile-depth-resolution-raster-before-v2.log",
+    "sha256": "865ed4e08afd5b72243d948d97151b9d22ffba2b43f69bae5143423b03d8de1c"
+  },
+  "tests_run": 1,
+  "passed": 0,
+  "failed": 1,
+  "source_unchanged": true,
+  "rtl_failure_observed": true,
+  "software_witness": {
+    "path": ".artifacts/find-polygon-raster-resolution-witness-v2-result.json",
+    "sha256": "9c42f7e4c1078a3291b40cf7751ea98d9775f26d7d3a230bd3af8f9574602c04"
+  },
+  "software_source": {
+    "path": ".artifacts/find-polygon-raster-resolution-witness-v2.cpp",
+    "sha256": "e20bde2248be6dad9a4fd383e50cc10eff78a4a8071a364f942c1c77690a256b"
+  },
+  "witness": {
+    "subpixel_bits": 8,
+    "pixel_vertices": [
+      [
+        -262,
+        -131
+      ],
+      [
+        524,
+        -131
+      ],
+      [
+        -262,
+        262
+      ]
+    ],
+    "viewport_rectangle": [
+      786,
+      393
+    ],
+    "area": 20243939328,
+    "pixel": [
+      0,
+      0
+    ],
+    "sample_mode": 0,
+    "vertex_depth_low": "0x3f000001",
+    "vertex_depth_high": "0x3f000002",
+    "resolution": "0x33800000",
+    "same_vertex_exponent": true,
+    "center_depth_low": "0x3f000002",
+    "center_depth_high": "0x3f000002",
+    "offset_enabled": false
+  },
+  "limitations": [
+    "The negative run stops at the first pair; the later large-edge geometry, windings and sample modes are not reached.",
+    "The test drives internal window primitives; it does not exercise native shader/clip/viewport execution. The integer geometry fits the stated viewport rectangle.",
+    "A separate anchored-arithmetic candidate is undergoing qualification. No full precision/API/H0-H8 closure is claimed."
+  ]
+}

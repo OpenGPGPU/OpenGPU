@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Negative actual primitive/raster interpolation control for one D32F resolution step; no offset or clamping",
+  "based_on_commit": "4b301e4",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-resolution-raster-before-source-v1.json",
+    "sha256": "9ea7a2fa18d9dd60f6fdde093c555a1ea9ff939610a04af0a91ea49be1cedd84"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-resolution-raster-before-source-v1.tar.gz",
+    "sha256": "e403eb704b02df0f4011266cec16df4ace1de701fa3ff097a6ddc48f84ec0537"
+  },
+  "result": {
+    "path": ".artifacts/mobile-depth-resolution-raster-before-v1-result.json",
+    "sha256": "7f0500931a2782a9c5dd191f06b193c66c5c39c503ceecdc04c557e30cfb3388"
+  },
+  "log": {
+    "path": ".artifacts/mobile-depth-resolution-raster-before-v1.log",
+    "sha256": "55778b397d12429d9f2e1fe306b4d9682463fd867fcc1f64fed4c3ec949d6002"
+  },
+  "tests_run": 1,
+  "passed": 0,
+  "failed": 1,
+  "source_unchanged": true,
+  "rtl_failure_observed": true,
+  "software_witness": {
+    "path": ".artifacts/find-polygon-raster-resolution-witness-v1-result.json",
+    "sha256": "443915073eff24677e40a9fd9336ed9e27f1bb18a20eab15abd766fd5045ed5a"
+  },
+  "software_source": {
+    "path": ".artifacts/find-polygon-raster-resolution-witness-v1.cpp",
+    "sha256": "79f43e4831a0a2cd1e5bad33ed182f2a76daf32a33c83ea62df93218d76012f5"
+  },
+  "witness": {
+    "coordinates": [
+      [
+        -1239639,
+        -17329276
+      ],
+      [
+        2479278,
+        -17329276
+      ],
+      [
+        -1239639,
+        34658552
+      ]
+    ],
+    "area": 193338417342276,
+    "pixel": [
+      0,
+      0
+    ],
+    "sample_mode": 0,
+    "vertex_depth_low": "0x3f000001",
+    "vertex_depth_high": "0x3f000002",
+    "resolution": "0x33800000",
+    "same_vertex_exponent": true,
+    "center_depth_low": "0x3f000001",
+    "center_depth_high": "0x3f000001",
+    "offset_enabled": false
+  },
+  "implication": "The candidate add/encode envelope does not prove the full raster minimum-resolvable-difference contract. The current weighted depth arithmetic collapses this legal internal primitive pair.",
+  "next_work": "Retain this failing source and check a viewport-sized witness; correct constant-depth preservation and rerun precision, numeric, ownership and integrated qualification.",
+  "limitations": [
+    "The test fails at its first pair; both windings and all three sample modes are encoded but not reached or qualified by this negative run.",
+    "This is actual internal primitive coverage/interpolation, not a complete native viewport or typed-image regression.",
+    "No correction or full G04/H6/H0-H8 precision closure is claimed."
+  ]
+}

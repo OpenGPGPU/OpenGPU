@@ -5960,3 +5960,35 @@ semantics and throughput remain open. Historical native replay timing failure,
 corrected host synthesis and the isolated650-file final37 host controls remain
 separate work. Full H0-H8/GLES hardware completion is not established; PPA remains
 synthesis only.
+
+## Isolated depth, facing and native texture reconciliation (2026-10-20)
+
+The [AXI service-session correction](performance/mobile-axi-service-session-boundary-2026-10-20.json)
+resolves the reproduced polygon-reset timeout without a production RTL change.
+Two directed read/write tests fail on the original helper and pass after return
+pauses memory handshakes. The unchanged native reset case then passes all three
+vertex/fragment/publication phases and exact healthy reuse. The terminal175/176
+result remains preserved; it is not rewritten as a full corrected pass.
+
+This isolated [combined candidate](performance/mobile-depth-texture-reconciliation-pending-2026-10-20.json)
+reconciles depth and facing with the main native sampler extension. The ABI audit
+preserves every prior field and C define from both inputs: polygon words354..356
+and sampler words480..483 coexist in GND1; GTD1 and GFS1 fixed slots stay stable.
+GRI1 and GTX1 remain separate read-only records. The planned206-check composition,
+CI, four ABI checks and both full RTL emissions must qualify this source before
+main promotion. PPA remains synthesis only; broader resource and H0-H8 closure
+remain open.
+
+## Completed depth facing and texture composition (2026-10-20)
+
+All [206 controls](performance/mobile-depth-texture-composed-2026-10-20.json) pass
+on unchanged650-file source, with four ABI checks, C11 headers, CI selection and
+replay/default-four-CU host emissions. Audited coverage includes60 native depth
+frames,72 facing frames,3 reset phases and2 texture-policy profiles. The earlier
+functional failures and their fixture/RTL corrections remain preserved.
+
+This isolated composition requires reconciliation with the independently qualified
+image address/level/fetch/binding components now on main. Exact native source/RTL
+identity and component checks under reconciled ABI helpers are required before
+promotion. No completed composed PPA or full H0-H8/GLES/product result is claimed;
+PPA remains synthesis only.
