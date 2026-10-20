@@ -32,3 +32,17 @@ RTL reproduction confirms the first pair; later windings/sample modes are not
 reached by that failing run. No passing precision or full G04/H6 result is
 claimed. Any arithmetic correction must rerun the relevant numeric, ownership,
 image and combined-source checks before integration.
+
+A second software witness uses integer-pixel vertices `(-262,-131)`,
+`(524,-131)`, `(-262,262)`, fitting a viewport rectangle of 786x393 pixels.
+Its scalar replay collapses the same source pair to `0x3f000002`. The expanded
+RTL test tries this smaller geometry first, then the retained large-edge case;
+its second frozen reproduction is pending.
+
+The arithmetic correction under consideration anchors depth at vertex zero:
+`z = z0 + (e1*(z1-z0) + e2*(z2-z0))/area`. This avoids repeatedly multiplying
+and summing the common depth term. Shared scalar difference setup and the same
+depth path must serve center, covered samples and centroid fallback, retaining
+offset-before-clamp and cancellation ownership. The analogous anchored slope
+calculation also needs checking. This is a proposed correction, not implemented
+or qualified by the negative result.
