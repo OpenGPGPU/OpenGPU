@@ -6768,6 +6768,87 @@ coherence plus the remaining H0-H8 requirements stay open in this source. PPA
 is synthesis only; no whole-GPU clock, routing, hold, power or product pass is
 claimed.
 
+## H4 registered miss admission and normalized FP32 service
+
+The development branch now composes [registered read-through miss admission](BANKED_TEXTURE_READTHROUGH.md)
+and [full weighted RGBA8-to-FP32 output](BANKED_TEXTURE_FP32.md). The
+[817-input qualification](performance/mobile-banked-texture-fp32-pipeline-2026-10-21.json)
+passes thirty fresh checks across six suites. Two queued complete miss records
+per bank break the cache reply/owner-selection/fill-ready path. Cancellation
+and invalidation drain saturated accepted work while retaining an already
+offered physical request and the final public result.
+
+The FP32 pipeline retains all24 weighted-byte bits and rounds the exact
+Q16-weighted rational once. An assertion-enabled exhaustive RTL stream checks
+all16,711,681 legal numerators in each of four channels against independent
+rational rounding. Complete physical-input sample streams sustain II1 after
+warm-up. The standalone32-bit-tag normalizer passes1000ps synthesis including
+I/O (+524.629/+372.277ps);that result covers only this component.
+
+The preceding unpipelined read-through service failed the same1000ps gate
+(-408.901/-507.155ps). Registered read-through and complete FP32 service synthesis both fail
+the same1000ps gate (-32.971/-144.873ps and-28.888/-85.788ps,respectively).
+Main integration waits for shared fill-admission registration and fresh timing
+results. Shared native cluster/resource/translation admission,task-scoped fault
+attribution,coordinate and weight-generation precision,whole-native rates,
+render-to-texture visibility and all remaining H0-H8 gates stay open. PPA
+remains synthesis only.
+
+The [current-main composition candidate](performance/mobile-banked-texture-fp32-main-candidate-2026-10-21.json)
+now passes53 fresh checks on819 frozen inputs:the30 banked/FP32 controls plus
+23 native execute-owner query,projective-compatibility and integer mip controls.
+Three fresh profiles retain byte-identical active banked RTL to their component
+qualifications;the read-through profile matches after removing comments only. Existing native query/projective production,driver,ABI and test
+inputs remain exact to current main. Complete-service synthesis fails the1000ps gate (-28.888/-85.788ps);
+this candidate has not been merged into main. A shared fill-admission correction
+is qualified separately before main integration.
+
+## H4 virtual tap admission and scoped cancellation
+
+The [translated banked service](BANKED_TEXTURE_TRANSLATION.md) now passes
+[46 checks on822 frozen inputs](performance/mobile-banked-texture-translation-2026-10-21.json).
+Four TLB ports admit all nonzero-weight virtual taps before physical cache
+lookup,including hits. The block preserves virtual fault attribution,uncached
+PTE behavior,VM epoch lifetime and identity/tag-scoped cancellation. It sustains
+complete resident-group II1 after Sv32 warmup and drains held PTE/data offers.
+
+Native resource/coordinate and shared-CU wiring remain upstream. The first miss
+queue cut improves but still fails1000ps synthesis (-32.971/-144.873ps);shared
+fill-admission registration and a fresh complete-service synthesis screen are
+required. H4 and all remaining H0-H8 exit gates stay open.
+
+The [second miss pipeline correction](performance/mobile-banked-texture-shared-admission-2026-10-21.json)
+adds two shared metadata records after four-bank arbitration,before sixteen-fill
+matching. All46 checks pass again on822 frozen inputs,including translated warm
+II1,uncached policy,scoped cancellation and saturated drain. Three full synthesis
+screens are active for packed read-through,FP32 and translated services under
+the unchanged1000ps target. Existing standalone-normalizer and resident-default
+RTL remain byte-identical to their previous emissions. Main integration and
+native shared-CU/resource/coordinate wiring remain open.
+
+Packed read-through now passes the [second-pipeline synthesis screen](performance/mobile-banked-texture-shared-admission-2026-10-21.json)
+at1000ps including I/O (+41.862/+11.396ps). Complete FP32 improves but remains
+negative (-6.794/-48.922ps),with its remaining path crossing shared-owner
+cancellation and return credits. Translated synthesis now passes 1000 ps including
+I/O (+46.194/+193.375 ps), with 943,830 fully mapped cells and no skipped
+instances on unchanged 822-input source. A scalar epoch-control correction
+removes per-owner cancellation lookups and registers
+untagged telemetry on a separate branch;fresh functional/timing evidence is
+required before main integration.
+
+The [epoch-control correction](performance/mobile-banked-texture-epoch-control-2026-10-21.json)
+now passes46 checks with six emissions on822 inputs. It removes shared-owner
+cancel/invalidation lookups under the existing globally drained epoch contract
+and registers untagged tap/conflict telemetry. Event-count checks retain384 hot
+plus768 backpressured tap events and complete group II1. Scoped cancellation
+continues to isolate identity/tag rows in the translated parent. Packed
+read-through and normalized FP32 synthesis now pass the unchanged 1000 ps gate,
+including I/O (+95.013/+44.671 ps and +95.245/+59.166 ps), with no skipped
+instances. Translated epoch-control synthesis also passes (+8.538/+181.588 ps),
+with 942,150 fully mapped cells and no skipped instances. Existing
+native FP32 coordinate/filter semantics still need explicit preservation when
+connecting this Q16-weighted service to shared CU sampling;H0-H8 remain open.
+
 ## H4 disjoint-source captured AXI regression
 
 The [corrected source-lease qualification](performance/mobile-native-texture-disjoint-captured-axi-2026-10-21.json)
@@ -6777,7 +6858,7 @@ in total. Two-page source allocations are disjoint between generations and
 skip the operand packet range. The earlier adjacent-frame alias limitation
 therefore no longer applies to these four matrices.
 
-All production,driver,ABI and selected AXI test inputs match current main;
+All production,driver,ABI and selected AXI test inputs match baseline `f6d8b1c`;
 only four other test suites differ by later controls. Tests retain real Sv32,
 both CU shader stages,scalar/vector operands,64 storage formats,four targets,
 LOD/base/offset cases,fault drain,exact outputs and held-completion VM ownership.
@@ -6793,3 +6874,19 @@ All six use identical804-input hardware and disjoint two-page source leases.
 This closes the source-alias fixture limitation for these matrices;banked native
 integration,whole-path precision/rates/coherence and all remaining H0-H8 gates
 remain open.
+
+## H4 epoch-control composition with current main
+
+The [822-input main composition candidate](performance/mobile-banked-texture-epoch-main-2026-10-21.json)
+passes 69 fresh checks across nine suites: the 46 banked service checks and
+23 native query, projective compatibility and integer mip controls. Six fresh
+banked emissions are raw-byte identical to the epoch-control qualification.
+Fresh complete vertex/fragment native texture endpoints each retain all 77
+active RTL files byte for byte, preserving their prior synthesis results.
+
+The merge of current main changes only documentation. Packed read-through and
+Q16-normalized FP32 and translated epoch-control synthesis all pass 1000 ps
+including I/O. This qualified candidate is ready for main integration.
+Native FP32 numeric filtering and shared-CU/resource/coordinate wiring remain
+separate work. Component checks do not complete whole-native rates/coherence
+or the full H0-H8 hardware goal.

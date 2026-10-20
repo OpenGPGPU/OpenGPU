@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "nine_component_tests_exhaustive_RTL_and_standalone_normalizer_synthesis_pass",
+  "source": {
+    "commit": "06e16df959e085c80f80e723e7a437022d8af922",
+    "source_files": 817,
+    "manifest_sha256": "faa1ab16c3d5b69226dbe0c21f3dd5df9044b8892eee294682bce5cb72be0bff",
+    "archive_sha256": "84568c7dfefbec76b7b6fc553e0142463f8b13062bd6034390f3d5c464f786c3",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [],
+    "added_inputs": [
+      "src/test/scala/opengpu/graphics/BankedRgba8FloatTextureServiceSpec.scala"
+    ],
+    "runner_pid": 35358,
+    "started_utc": "2026-10-20T21:16:10.000631+00:00"
+  },
+  "functional_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 19.90923612518236,
+    "commit": "06e16df959e085c80f80e723e7a437022d8af922",
+    "source_files": 817,
+    "manifest_sha256": "faa1ab16c3d5b69226dbe0c21f3dd5df9044b8892eee294682bce5cb72be0bff",
+    "archive_sha256": "84568c7dfefbec76b7b6fc553e0142463f8b13062bd6034390f3d5c464f786c3",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [],
+    "added_inputs": [
+      "src/test/scala/opengpu/graphics/BankedRgba8FloatTextureServiceSpec.scala"
+    ],
+    "runner_pid": 35358,
+    "started_utc": "2026-10-20T21:16:10.000631+00:00"
+  },
+  "distinct_passed_tests": 9,
+  "suites": {
+    "Rgba8WeightedToFp32Spec": 3,
+    "BankedRgba8FloatTextureServiceSpec": 6
+  },
+  "numeric_contract": {
+    "input": "Four exact weighted-byte numerators,sum(byte*Q16weight),with weights summing65536. Each numerator is0..16711680.",
+    "output": "Round-to-nearest-even binary32(numerator/(255*65536)),including positive zero and1.0 endpoints.",
+    "method": "Five elastic stages:integer normalization,byte folding to divide by255,quotient/remainder correction,and one final rounding. No approximate reciprocal and no byte truncation before conversion.",
+    "fractional_witness": "First cold sample red channel51.5/255;explicitly differs from51/255 after packed-byte truncation.",
+    "precision_limit": "Exact for the admitted Q16 weights;does not establish coordinate,LOD,weight-generation or API-wide precision."
+  },
+  "exhaustive_RTL": {
+    "result": {
+      "build_returncode": 0,
+      "run_returncode": 0,
+      "source_unchanged": true,
+      "rtl_unchanged": true,
+      "elapsed_seconds": 7.515707042068243,
+      "planned_groups": 16711681,
+      "planned_scalar_values": 66846724,
+      "assertions_enabled": true
+    },
+    "log": "RGBA8_FP32_EXHAUSTIVE PASS groups=16711681 scalar_values=66846724 cycles=21321806 held_cycles=4610120 all_legal_numerators_per_lane=true rational_oracle=true assertions_enabled=true",
+    "actual_groups": 16711681,
+    "actual_scalar_values": 66846724,
+    "all_legal_numerators_in_every_channel": true,
+    "oracle": "Independent integer rational exponent selection,significand division and nearest-even rounding. No RTL byte-folding formula in the oracle.",
+    "same_hardware_CPP_and_emission_inputs_as_current_source": true,
+    "source_difference": "Only an added full-service test file;all816 original inputs byte-identical."
+  },
+  "pipeline_checks": {
+    "boundary_random_groups": 4218,
+    "boundary_random_values": 16872,
+    "backpressured_rows": 512,
+    "cancel_internal_cut_witnesses": 4,
+    "cancel_public_cut_witnesses": 3,
+    "blocked_pipeline_rows": 5,
+    "held_public_row_immutable": true,
+    "other_four_rows_cancelled": true,
+    "warm_input_and_complete_result_II1_groups": 96,
+    "additional_backpressured_groups": 192,
+    "cold_fills": 16,
+    "cold_word_consumers": 32,
+    "cancellation_faults_publication": "Six full-service cases cover conflict forwarding,failed line fanout,eight cancellation cuts,view/generation invalidation,concurrent primary fault and cancel,drain and healthy reuse."
+  },
+  "compile_recovery": {
+    "source_commit": "c0a95f5abb55cb0f25e29882e2670dc0edea1d74",
+    "issue": "Private metadata class escaped through a public inferred wrapper result value.",
+    "fix": "Declare the wrapper result private;no datapath behavior changed.",
+    "recorded_failure": ".artifacts/mobile-banked-texture-fp32-v1-result.json"
+  },
+  "standalone_normalizer_synthesis": {
+    "session": 19832,
+    "status": "passed",
+    "tag_width": 32,
+    "policy": "1000ps,TC/SLVT,25% I/O,standard ABC,no retiming;synthesis only",
+    "scope": "Standalone four-channel normalizer;not the full FP32 service or native sampler.",
+    "terminal": {
+      "returncode": 0,
+      "source_unchanged": true,
+      "rtl_unchanged": true,
+      "elapsed_seconds": 10.65915458300151,
+      "finished_utc": "2026-10-20T21:16:53.614377+00:00"
+    },
+    "slacks_ps": [
+      524.629,
+      372.277
+    ],
+    "fully_mapped": true,
+    "skipped_instance_count": 0,
+    "mapped_cells": 5568,
+    "mapped_library_area": 700.32114,
+    "parameters": {
+      "clock_port": "clock",
+      "clock_port_auto": false,
+      "clock_period": 1000.0,
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "corner": "TC",
+      "cell_vt": "SLVT",
+      "timing_effort": "explore",
+      "synthesis_engine": "yosys",
+      "sv_frontend": "native",
+      "enable_retiming": false,
+      "swap_arithmetic_operators": false,
+      "generate_gds": false,
+      "max_fanout": null,
+      "high_fanout_nets": null,
+      "high_fanout_max": 8,
+      "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+      "setup_slack_margin": 0.0,
+      "abc_clock_period_ps": null,
+      "io_delay_percent": 0.25,
+      "io_false_path_ports": null,
+      "post_floorplan_tcl": null,
+      "macros": []
+    },
+    "artifacts_sha256": {
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/qualification.json": "bdd25b2855ee905cbaac41b63d56dd6330df824b7440d54b01129e3dbcc6369b",
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/result.json": "13517c861bbf1dc080d7641e273199c0240688775ed55e158e57603ead7f9707",
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/manifest.json": "8e502ef56711b4a9e7b63d3424622d0ca98d51adbc4ae7bfca1791cee01548c6",
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/flow/flow_manifest.json": "a572133b91c475eb9c7530d057cfc72dfb0afdf9b824e6e864518d2c4957f9e7",
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/flow/synthesis_sta.log": "bab56688f673b4c93a114268af9d1c93f4497d64f6ca3529f3febbbf8f3388c8",
+      "generated/qualification/ppa/mobile-banked-texture-fp32-normalize-2026-10-21-v1/flow/orfs-work/reports/base/synth_stat.txt": "4b76006adaeece28bc169251aeeb03c0b85a8f15eeaa4f57122dcd7f55e648f1",
+      ".artifacts/mobile-banked-texture-fp32-normalize-synthesis-v1-inputs.json": "12ec191f162e2f2d1972e3f2ee7ab483c9244e52e95f09d6c7b88bb2bc1773a3",
+      ".artifacts/mobile-banked-texture-fp32-normalize-synthesis-v1-result.json": "c4233d454f28cb2961840c409e59863f235c31591b2b5f7582debd7747894324"
+    }
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-banked-texture-fp32-v1-result.json": "6c1a824a2e1ce8a8d8fa4d0297f1870dc2eece00b1d09e308081ef2f0fbda75b",
+    ".artifacts/mobile-banked-texture-fp32-v1-source-proof.json": "a6fafad11a12f3e4828ae102f20e5decb08f7fa851553e140ef42a1fdb13df15",
+    ".artifacts/mobile-banked-texture-fp32-v1.log": "862d97477c6455c0cb890c147f0edb09c74dd5bfeab4b61b226a06de7872fa33",
+    ".artifacts/mobile-banked-texture-fp32-v2-result.json": "85709fe290fcdf05701dadfd7c007dacb946191b92d0218bc315cc550324b117",
+    ".artifacts/mobile-banked-texture-fp32-v2-source-proof.json": "d4d0072dd03dff0bf75cacd2584c002c4aacb301a3e77f8cc728e0ce7facc05b",
+    ".artifacts/mobile-banked-texture-fp32-v2-source.json": "8735534640b0f2c5682ac82fd13ef1efdfa8cfa52976338dfd44ab315c19bf0a",
+    ".artifacts/mobile-banked-texture-fp32-v2-emission-result.json": "c072b571556c270080292ba8d30f696bdb97b4d688f10c82a8b7943d00eb5ea1",
+    ".artifacts/mobile-banked-texture-fp32-v2-emission.log": "9e47e94e5a8393457f1e213e659ba797536fab50aa83c8184ef421dce88094c0",
+    ".artifacts/mobile-banked-texture-fp32-v3-result.json": "664238454a1266772d59b3c18d01e9bfc3d81f1342e7a192b53819c11b3968d8",
+    ".artifacts/mobile-banked-texture-fp32-v3-source-proof.json": "f947bd62d31c02a0db2346d669d0ef0a2bc570dd3291da20519217dec03908ea",
+    ".artifacts/mobile-banked-texture-fp32-v3-source.json": "faa1ab16c3d5b69226dbe0c21f3dd5df9044b8892eee294682bce5cb72be0bff",
+    ".artifacts/mobile-banked-texture-fp32-v3-source.tar.gz": "84568c7dfefbec76b7b6fc553e0142463f8b13062bd6034390f3d5c464f786c3",
+    ".artifacts/mobile-banked-texture-fp32-v3.log": "bdd22540d6e6af76eb206e9b7922daf7be1f624fe6340bff74852c0909f85a6f",
+    ".artifacts/mobile-banked-texture-fp32-exhaustive-v1-inputs.json": "2452508459db65847ddd0c0dc854cc1ada083efd5f510581dca50c2dc2869891",
+    ".artifacts/mobile-banked-texture-fp32-exhaustive-v1-result.json": "0ac0d9f2264cded38ff9688ea25895e66f6454cefb5946bcdaf0280a32526116",
+    ".artifacts/mobile-banked-texture-fp32-exhaustive-v1-build.log": "acbb2fc30edcd6da3d90d9713f5fa4a2978701f73b6c6e3e5c0956b7e9d9de70",
+    ".artifacts/mobile-banked-texture-fp32-exhaustive-v1.log": "9bc9d124670afb14f8d6a43dcf5dd19b57d709d67a7785dcf90c6f5997af0a78",
+    ".artifacts/mobile-banked-texture-fp32-normalize-synthesis-v1-inputs.json": "12ec191f162e2f2d1972e3f2ee7ab483c9244e52e95f09d6c7b88bb2bc1773a3",
+    ".artifacts/mobile-banked-texture-fp32-normalize-synthesis-v1-start.json": "16bce0db9e296e2dcf6670eac7435414423b9baf82adbd14a90b10d0aba7df7d"
+  },
+  "remaining": [
+    "compose the registered read-through miss path and recheck full FP32 service",
+    "full composed service synthesis timing closure",
+    "native coordinate/resource/translation and task-fault integration",
+    "Q16 weight generation precision and whole-native sampling throughput",
+    "render-to-texture visibility and full H0-H8 requirements"
+  ]
+}
