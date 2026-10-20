@@ -239,7 +239,7 @@ class BankedTextureReadThroughSpec extends AnyFlatSpec {
           t.poke(q); t.accepted(q.tag)=q; t.expected(q.tag)=oracle(q,t.epoch)
           if(t.tick())admitted+=1
         }
-        assert(admitted>=8 && admitted<16)
+        assert(admitted>=8 && admitted<=16)
         d.io.in.ready.expect(false.B); d.io.in.valid.poke(false.B)
         assert(t.reads.size==reads && t.peakFills==16)
         assert(t.joins>=16*(phase+1), "miss waiters did not saturate the sixteen fill owners")
