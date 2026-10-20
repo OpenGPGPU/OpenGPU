@@ -1,0 +1,130 @@
+{
+  "date": "2026-10-21",
+  "status": "Functional component candidate on codex/mobile-native-texture-group; synthesis of changed fill matching and counted service remains pending.",
+  "source": {
+    "commit": "13d6e5adca96e208f1f955f4fde490592474a4ed",
+    "source_files": 828,
+    "manifest_sha256": "5c8479caf449d0127e51bd28dca536f082e476310b963d348b361b02b25233b7",
+    "archive_sha256": "ebe4a83f79fc3819a129476e8421608908ce285570c65a4cafa6dab7fcf2916b",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/main/scala/opengpu/graphics/BankedRgba8TextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedTextureFillOwner.scala",
+      "src/test/scala/opengpu/graphics/BankedTextureFillOwnerSpec.scala",
+      "src/main/scala/opengpu/graphics/BankedTextureWordService.scala",
+      "src/main/scala/opengpu/graphics/BankedRgba8FloatTextureService.scala",
+      "src/main/scala/opengpu/graphics/TranslatedBankedRgba8TextureService.scala",
+      "src/main/scala/opengpu/graphics/TranslatedRgba8Fp32TextureService.scala",
+      "src/main/scala/opengpu/elaboration/EmitTranslatedRgba8Fp32.scala",
+      "src/test/scala/opengpu/graphics/TranslatedRgba8Fp32TextureServiceSpec.scala"
+    ],
+    "added_inputs": [],
+    "runner_pid": 33001,
+    "started_utc": "2026-10-20T23:39:41.203189+00:00"
+  },
+  "functional": {
+    "tests": 77,
+    "suites": 10,
+    "passed": 77,
+    "failed": 0,
+    "result": ".artifacts/mobile-native-texture-read-accounting-v2-result.json",
+    "log": ".artifacts/mobile-native-texture-read-accounting-v2.log",
+    "measured_full_service_cases": 13,
+    "unmeasured_full_service_cases": 13,
+    "read_count_invariant": "At complete drain, sum of all reported group reads equals every accepted physical line request, including faults and cancellation, excluding PTE reads.",
+    "directed_fill_cases": [
+      "Duplicate caller tags charge only the initiating waiter",
+      "Cancellation before a memory offer reports zero",
+      "Held offered read accepted after cancellation and then faulted reports one",
+      "Late completed cached forwarding fill joins with zero extra physical reads",
+      "Completed failed forwarding fill starts a fresh physical transaction"
+    ]
+  },
+  "emissions": {
+    "count": 9,
+    "result": {
+      "returncode": 0,
+      "source_unchanged": true,
+      "elapsed_seconds": 31.73229454085231
+    },
+    "rtl_proof": ".artifacts/mobile-native-texture-read-accounting-v2-RTL-proof.json",
+    "profiles": {
+      "readthrough": {
+        "active_files": 18,
+        "logic_changed": [
+          "BankedTextureFillOwner.sv"
+        ],
+        "raw_exact": false
+      },
+      "fp32": {
+        "active_files": 20,
+        "logic_changed": [
+          "BankedTextureFillOwner.sv"
+        ],
+        "raw_exact": false
+      },
+      "translated": {
+        "active_files": 29,
+        "logic_changed": [
+          "BankedTextureFillOwner.sv"
+        ],
+        "raw_exact": false
+      },
+      "fp32-policy": {
+        "active_files": 20,
+        "logic_changed": [
+          "BankedTextureFillOwner.sv"
+        ],
+        "raw_exact": false
+      },
+      "cluster": {
+        "active_files": 7,
+        "logic_changed": [],
+        "raw_exact": false
+      },
+      "filter": {
+        "active_files": 16,
+        "logic_changed": [],
+        "raw_exact": true
+      },
+      "translated-raw-taps": {
+        "active_files": 28,
+        "logic_changed": [
+          "BankedTextureFillOwner.sv"
+        ],
+        "raw_exact": false
+      },
+      "translated-rgba8-fp32": {
+        "active_files": 51,
+        "logic_changed": [
+          "BankedTextureFillOwner.sv"
+        ],
+        "raw_exact": false
+      },
+      "counted_native": {}
+    }
+  },
+  "negative_evidence": {
+    "commit": "cfe822a6c5600bbcbd8873cb2243956f680637e3",
+    "tests": 75,
+    "passed": 74,
+    "failed": 1,
+    "result": ".artifacts/mobile-native-texture-read-accounting-v1-result.json",
+    "failure": "Measured precision stream issued a third physical read after a miss arrived behind completed refill admission."
+  },
+  "timing_scope": {
+    "stage": "synthesis only",
+    "changed_default_readthrough_logic": [
+      "BankedTextureFillOwner.sv"
+    ],
+    "standalone_filter": "16 active SV files raw-byte-exact to the qualified native FP32 filter",
+    "resident_cluster": "7 active SV files equivalent after removing comments and empty lines",
+    "changed_service_timing": "Pending; existing positive Q16 and old native service synthesis cannot qualify the modified fill matcher or counted ports."
+  },
+  "remaining": [
+    "Composed coordinate/resource planning and translated sampling",
+    "Native shader endpoint and shared-CU routing",
+    "Whole-path throughput and fault/visibility checks",
+    "Remaining H0-H8 requirements"
+  ]
+}

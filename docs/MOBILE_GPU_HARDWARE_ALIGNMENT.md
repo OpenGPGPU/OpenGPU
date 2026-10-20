@@ -6908,6 +6908,20 @@ interpolation semantics. Connecting native FP32 filtering and shared-CU/resource
 coordinate admission, measuring whole-native rates under contention and closing
 render-to-texture visibility remain required. All H0-H8 exit gates remain open.
 
+## H4 shared-fill physical read accounting
+
+The development branch adds optional [per-group physical-read accounting](TEXTURE_GROUP_READ_ACCOUNTING.md).
+The [828-input candidate](performance/mobile-native-texture-read-accounting-2026-10-21.json)
+passes 77 checks and nine emissions. Each accepted physical data read is charged
+once to its initiating waiter, independently of caller-tag equality, and the
+charge survives fault/cancel drain. Cache hits and joined waiters report zero.
+A delayed miss can join a completed successful cached forwarding fill while
+the slot remains leased, avoiding the redundant read found by the initial
+74/75 run. Completed failed/uncached fills still start fresh transactions.
+That fill-matching change requires new synthesis evidence; older service
+timing does not qualify it. Native coordinate/resource composition, shared-CU
+routing, whole-path throughput/coherence and H0-H8 closure remain open.
+
 ## H4 unquantized FP32 bilinear pipeline
 
 The [streaming native FP32 filter](TEXTURE_BILINEAR_FP32_PIPELINE.md) now passes
