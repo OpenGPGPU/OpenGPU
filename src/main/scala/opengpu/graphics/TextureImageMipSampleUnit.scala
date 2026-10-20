@@ -25,7 +25,7 @@ class TextureImageMipSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,check,prepare,offer,waitSample,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,check,clampLower,clampUpper,splitLod,fractionLod,selectLod,checkLevels,prepare,offer,waitSample,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageMipSampleRequest)
   private val selection=Reg(new TextureLodSelection);private val selected=Reg(new TextureImageLevelSampleRequest)
   private val second=RegInit(false.B);private val firstColor=Reg(Vec(4,UInt(32.W)))
@@ -34,7 +34,8 @@ class TextureImageMipSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
   private val taps=Reg(UInt(5.W));private val lines=Reg(UInt(6.W));private val started=RegInit(false.B);private val noFill=RegInit(false.B)
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
   private val image=request.sample.image;private val state=request.sample.sampler.state
-  private val candidate=TextureSampleSelection.lod(request.lod,state,image.baseLevel,image.lastLevel)
+  private val lower=Reg(UInt(32.W));private val clamped=Reg(UInt(32.W));private val parts=Reg(new TextureLodParts);private val fraction=Reg(UInt(32.W))
+  private val candidate=TextureSampleSelection.select(clamped,state,image.baseLevel,image.lastLevel,parts.floor,fraction,true.B)
   private val useSecond=selection.first=/=selection.second && selection.weight(30,0).orR
   private val child=Module(new TextureImageLevelSampleUnit(config,p))
   child.io.in.valid:=phase===State.offer;child.io.in.bits:=selected;child.io.out.ready:=phase===State.waitSample
@@ -57,10 +58,19 @@ class TextureImageMipSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
         (!TextureSamplerState.requiresMips(state) || image.mipChainChecked)
       when(stop){phase:=State.finish}.elsewhen(!admitted){status:=TextureImageResourceStatus.view.U;source:=3.U;phase:=State.finish}
         .elsewhen(Fp32ViewportState.nan(request.lod)){status:=TextureImageResourceStatus.coordinate.U;source:=4.U;phase:=State.finish}
-        .elsewhen(!candidate.valid || !image.levelMask(candidate.first) ||
-          (candidate.first=/=candidate.second && candidate.weight(30,0).orR && !image.levelMask(candidate.second))){
+        .otherwise{phase:=State.clampLower}
+    }
+    is(State.clampLower){lower:=TextureSampleSelection.lower(request.lod,state);phase:=Mux(stop,State.finish,State.clampUpper)}
+    is(State.clampUpper){clamped:=TextureSampleSelection.upper(lower,state);phase:=Mux(stop,State.finish,State.splitLod)}
+    is(State.splitLod){parts:=TextureSampleSelection.parts(clamped);phase:=Mux(stop,State.finish,State.fractionLod)}
+    is(State.fractionLod){fraction:=TextureSampleSelection.fraction(parts);phase:=Mux(stop,State.finish,State.selectLod)}
+    is(State.selectLod){selection:=candidate;phase:=Mux(stop,State.finish,State.checkLevels)}
+    is(State.checkLevels){
+      when(stop){phase:=State.finish}
+        .elsewhen(!selection.valid || !image.levelMask(selection.first) ||
+          (selection.first=/=selection.second && selection.weight(30,0).orR && !image.levelMask(selection.second))){
           status:=TextureImageFetchStatus.format.U;source:=3.U;phase:=State.finish
-        }.otherwise{selection:=candidate;phase:=State.prepare}
+        }.otherwise{phase:=State.prepare}
     }
     is(State.prepare){
       val level=Mux(second,selection.second,selection.first)

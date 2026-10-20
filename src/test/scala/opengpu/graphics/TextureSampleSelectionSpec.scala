@@ -47,6 +47,10 @@ class TextureSampleSelectionSpec extends AnyFlatSpec {
       for(base<-0 to 15;last<-base to 15;min<-0 to 5;mag<-0 to 1;raw<-boundaries)check(raw,base,last,min,mag)
       for((lo,hi)<-Seq((-2f,-1f),(0f,0f),(0.25f,1.75f),(2f,1f),(Float.NegativeInfinity,Float.PositiveInfinity));
         raw<-boundaries;min<-0 to 5)check(raw,3,9,min,1,lo,hi)
+      val random=new scala.util.Random(0x4c4f4453)
+      for(n<-0 until 8192){val base=random.nextInt(16);val last=base+random.nextInt(16-base)
+        val raw=if(n%2==0)bits(random.nextFloat()*32f-8f)else BigInt(random.nextLong()&0xffffffffL)
+        check(raw,base,last,random.nextInt(6),random.nextInt(2))}
       for(raw<-Seq(BigInt(0x7fc12345L),BigInt(0xff800001L)))check(raw,0,15,5,1)
       check(bits(1f),7,6,5,1);check(bits(1f),0,15,6,1)
       info(s"SAMPLE_LOD queries=$cases bases16=true allLastLevels=true filters6=true exactMipTiesLower=true minMagBoundaryZero=true finiteAndInfinityClamps=true reversedClampUpperWins=true")
