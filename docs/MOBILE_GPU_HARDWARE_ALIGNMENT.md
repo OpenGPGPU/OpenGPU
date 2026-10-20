@@ -5856,3 +5856,87 @@ implementation. A new synthesis-only screen uses that explicit port on exact
 unchanged RTL/macros/source with all other constraints preserved. Its result is
 pending. Both original failures are retained; these results remain separate from
 the live650-file functional composition and new image binding screens.
+
+## GPU image binding development (2026-10-20)
+
+The isolated [GXI1 image binding](TEXTURE_IMAGE_BINDING.md) owns authoritative
+format, allocation and indexed level-table identity. It validates selected or
+sampler-required mip sets before binding-to-typed-fetch publication. Array layers,
+volume depth, cube layout, full-width level rejection, disjoint mip spans and
+held fault/cancel ownership are part of the contract. Native bindings and typed
+shader transport remain open.
+
+The [development checkpoint](performance/mobile-texture-image-binding-development-2026-10-20.json)
+compiles and emits both binding and bound-fetch RTL; seven combined C11 headers
+compile. All 655 existing dependencies are unchanged. Eight behavioral controls
+are running on frozen 662-file source; no passing behavioral, synthesis or
+native capability result is claimed yet. The first compile field-name collision
+is retained. PPA remains synthesis only, and the full hardware goal remains open.
+
+
+## GPU image binding component controls (2026-10-20)
+
+The [27-control qualification](performance/mobile-texture-image-binding-2026-10-20.json)
+passes on unchanged 662-file source with seven ABI checks, four full emissions,
+seven combined C11 headers and CI selection. New controls cover authoritative
+format/target fetches, selected/full NPOT mip sets, cache identity/invalidation,
+later-level mismatches/overlap before any data access, 240 cancellation points,
+real Sv32 image/level/data permissions and exact 4 GiB descriptor/texel ends.
+
+The initial seven-of-eight run is retained. Its prompt GXL1 fault constructed an
+extra descriptor offer; the reader now checks the accepted fault on that edge.
+The same assertion passes. This is the sole changed existing dependency; 654
+others remain exact. Binding/bound-fetch and both affected fetch synthesis screens
+are pending under unchanged synthesis-only constraints. Additional nested
+primary-fault/cancel and caller-coordinate checks, native integration, sampler
+semantics, formats and the full hardware objective remain open.
+
+
+## Registered image binding and boundary qualification (2026-10-20)
+
+The [initial four synthesis screens](performance/mobile-texture-image-binding-synthesis-initial-2026-10-20.json)
+all map completely. Raw/typed setup passes at +123.434/+10.117 ps; binding and
+bound fetch miss at -565.280/-675.490 ps. These are identical-constraint standalone
+screens on the frozen27-check source. The original source, reports and failures
+are retained.
+
+The [revised28-check source](performance/mobile-texture-image-binding-pipelined-2026-10-20.json)
+registers natural mip selection, 33-bit level handles and 41-bit table extents
+before comparisons. Wide level validation precedes narrowing and exact4GiB ends
+remain legal. All28 controls, seven ABI checks and four emissions pass on
+unchanged662-file source. Added direct checks preserve earlier image/level/data
+faults through nested cancellation, including address zero at all three owners;
+seven invalid caller-coordinate cases issue no texel reads. The ABI is unchanged.
+
+Revised binding/bound synthesis remains pending at the same TC/SLVT, 1000 ps,
+25 percent I/O and no retiming. Existing raw/typed results can carry only by exact
+active-RTL/source proof. Native bindings, typed shader transport, complete sampler
+semantics/formats, throughput and the full hardware objective remain open.
+
+
+## Equivalent mip bound and requested-level qualification (2026-10-20)
+
+The [registered28-check screens](performance/mobile-texture-image-binding-synthesis-registered-initial-2026-10-20.json)
+retain binding/bound setup misses of -83.596/-170.597 ps. Remaining base-level
+control feeds fault classification. The [29-check source](performance/mobile-texture-image-binding-mip-range-2026-10-20.json)
+uses an equivalent root-based mip bound and separates requested-level rejection
+from natural-limit capture, preserving wide checks before handle narrowing.
+The independent original dimension-reduction oracle checks303104 hardware cases:
+every14-bit root/base pair and all target/max clamps at power boundaries.
+All29 controls, seven ABI checks and four emissions pass on unchanged662-file
+source. The ABI and prior raw/typed active RTL remain unchanged; revised binding
+and bound-fetch synthesis is pending at identical constraints. Native integration
+and the full H0-H8/GLES hardware objective remain open.
+
+
+## Image binding synthesis qualification (2026-10-20)
+
+The [four completed standalone screens](performance/mobile-texture-image-binding-synthesis-2026-10-20.json)
+pass full mapping and all reported setup groups including I/O: binding +57.287 ps,
+bound fetch +49.401 ps, raw +123.434 ps and typed +10.117 ps, at unchanged
+TC/SLVT, 1000 ps, 25 percent I/O delay and no retiming. Binding/bound are fresh
+measurements on the29-check source; raw/typed carry only by exact active-RTL and
+current-source proof. Initial prompt-fault and all earlier timing failures remain
+recorded. No route, power, native texture throughput or whole-GPU clock result
+is claimed. Native image/sampler binding and typed shader transport, remaining
+sampler/format semantics and full hardware completion remain open.

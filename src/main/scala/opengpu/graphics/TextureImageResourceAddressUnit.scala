@@ -97,7 +97,9 @@ class TextureImageResourceAddressUnit(config: GpuConfig=GpuConfig(),p: TextureIm
         faultAddress:=(start+(lineMap(tag)<<6))(31,0)}}
     when(receive && malformed){badEncoding:=true.B}}
   private val free= ~live.asUInt;private val freeTag=PriorityEncoder(free)
-  when(phase===State.fetch && !stop && !offered && issued<2.U && free.orR){
+  // Suppress next-offer construction on the edge accepting a fault, before
+  // its registered status takes effect. Already offered reads still drain.
+  when(phase===State.fetch && !stop && !(io.memoryResponse.fire && io.memoryResponse.bits.fault) && !offered && issued<2.U && free.orR){
     memory:=0.U.asTypeOf(memory);memory.address:=(start+(issued<<6))(31,0)
     memory.sizeLog2:=6.U;memory.byteMask:=Fill(64,1.U(1.W));memory.cachePolicy:=CachePolicy.uncached;memory.transactionId:=freeTag
     live(freeTag):=true.B;lineMap(freeTag):=issued(0);issued:=issued+1.U;offered:=true.B

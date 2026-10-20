@@ -1,0 +1,23 @@
+{
+  "magic":"0x47584901","version":1,"words":32,"bytes":128,"tableAlignment":64,
+  "fields":[
+    {"name":"identity.context","word":3,"bits":32,"signed":false},
+    {"name":"identity.pass","word":4,"bits":32,"signed":false},
+    {"name":"identity.generation","word":5,"bits":32,"signed":false},
+    {"name":"handle","word":6,"bits":32,"signed":false},
+    {"name":"target","word":7,"bits":3,"signed":false},
+    {"name":"format","word":8,"bits":6,"signed":false},
+    {"name":"baseLevel","word":9,"bits":4,"signed":false},
+    {"name":"maxLevel","word":10,"bits":4,"signed":false},
+    {"name":"rootWidth","word":11,"bits":14,"signed":false},
+    {"name":"rootHeight","word":12,"bits":14,"signed":false},
+    {"name":"rootDepth","word":13,"bits":14,"signed":false},
+    {"name":"layers","word":14,"bits":16,"signed":false},
+    {"name":"allocationBase","word":15,"bits":32,"signed":false},
+    {"name":"allocationLimit","word":16,"bits":33,"signed":false},
+    {"name":"levelsVersion","word":18,"bits":8,"signed":false},
+    {"name":"levelsBase","word":19,"bits":32,"signed":false},
+    {"name":"levelsLimit","word":20,"bits":33,"signed":false},
+    {"name":"firstLevelHandle","word":22,"bits":32,"signed":false}
+  ]
+}

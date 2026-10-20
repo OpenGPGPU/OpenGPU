@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "registered_binding_mapping_pass_setup_miss_preserved_bound_pending",
+  "source_files": 662,
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-image-binding-qualified-v2-source.json",
+    "sha256": "9dd92ba2c47229867f2697483a0970c057039e0b92895743a18bb41579aac676"
+  },
+  "runtime": {
+    "returncode": 2,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 84.68403541692533,
+    "finished_utc": "2026-10-20T06:42:26.783544+00:00"
+  },
+  "reported_setup_slacks_ps": [
+    -83.596,
+    423.567
+  ],
+  "critical_startpoint": "snapshot_baseLevel[1]$_SDFFE_PP0P_",
+  "critical_endpoint": "faultStage[2]$_SDFF_PP0_",
+  "parameters": {
+    "clock_port": "clock",
+    "clock_port_auto": false,
+    "clock_period": 1000.0,
+    "core_utilization": 25,
+    "place_density": 0.6,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "timing_effort": "explore",
+    "synthesis_engine": "yosys",
+    "sv_frontend": "native",
+    "enable_retiming": false,
+    "swap_arithmetic_operators": false,
+    "generate_gds": false,
+    "max_fanout": null,
+    "high_fanout_nets": null,
+    "high_fanout_max": 8,
+    "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+    "setup_slack_margin": 0.0,
+    "abc_clock_period_ps": null,
+    "io_delay_percent": 0.25,
+    "io_false_path_ports": null,
+    "post_floorplan_tcl": null,
+    "macros": []
+  },
+  "evidence": {
+    "qualification.json": {
+      "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v2/qualification.json",
+      "sha256": "899ef7f1d60de0bc4ad8558b699f64143a5b40bfd4564b09d36bbe2c3d64c034"
+    },
+    "result.json": {
+      "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v2/result.json",
+      "sha256": "ce8904d5681048e16fcc9c20eb0ae614651c54ca85fc02062a7663628b28fbed"
+    },
+    "manifest.json": {
+      "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v2/manifest.json",
+      "sha256": "4d559af1b0e1755fc49d6e08c1a929825133c10aa5add40e5c0144e29565305b"
+    },
+    "flow/synthesis_sta.log": {
+      "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v2/flow/synthesis_sta.log",
+      "sha256": "f379cd4a8d83ff09921a0f815263387006df16089ad24c527bf545794f3df883"
+    }
+  },
+  "next_step": "Use an equivalent root-size mip bound and a registered requested-level check, prove the rewrite against original reduction rules, then requalify at identical constraints.",
+  "scope": "Synthesis only; TC/SLVT,1000ps,25 percent I/O,no retiming/route."
+}
