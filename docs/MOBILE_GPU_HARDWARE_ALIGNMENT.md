@@ -5660,3 +5660,24 @@ source. No native capability is changed. GPU descriptor/mip table ownership,
 indexed bindings, format fetch/decode, normalized coordinates, dimensional
 filtering and native execution integration remain required; this component
 does not close texture/GLES or H4/H6. PPA remains synthesis only.
+
+
+## Checked image-level addressing component qualification (2026-10-20)
+
+The [four-check image-address result](performance/mobile-texture-image-address-2026-10-20.json)
+passes2,138 requests, including105 rejected requests, on unchanged643-file
+source. It covers all six cube faces, all256 array layers and volume slices,
+a complete256-cubed volume, a2048-square256-layer RGBA8 array ending exactly
+at4GiB,360 other exact-end views, pitched packed/compressed block spans and
+the full16383-square2D extent. A512-request stream retains three-cycle latency,
+one unstalled address per cycle and ordered immutable replies under backpressure.
+Two development fixture/compile failures remain preserved with their corrections.
+
+All640 existing files match the prior main base; only the new component, its
+emitter and test are added. The [standalone synthesis screen](performance/mobile-texture-image-address-synthesis-2026-10-20.json)
+passes1GHz at TC/SLVT with+70.945ps worst reported setup slack, including I/O,
+no retiming and complete operator mapping. The final tests change no production
+logic; all four synthesis-active SV files match the screened logic. This is a
+component result. Descriptor/mip fetch, indexed bindings, format decode/filtering
+and native owner integration remain open; no native mode or H4/H6/GLES closure
+is advertised. PPA remains synthesis only.

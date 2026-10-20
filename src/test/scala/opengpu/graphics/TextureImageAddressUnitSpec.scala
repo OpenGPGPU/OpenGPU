@@ -93,13 +93,14 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
     val malformed=Vector(v.copy(target=4),v.copy(target=7),v.copy(width=0),v.copy(height=0),v.copy(depth=0),v.copy(layers=0),
       v.copy(bytes=0),v.copy(bytes=5),v.copy(bytes=7),v.copy(bytes=31),v.copy(block=true,bytes=4),v.copy(slicePitch=1),
       v.copy(layerPitch=1),legalView(1,7,4,false).copy(layers=257),legalView(2,7,4,false).copy(height=6),
-      legalView(3,256,4,false).copy(width=257),legalView(3,256,4,false).copy(depth=257))
+      legalView(3,256,4,false).copy(width=257),legalView(3,256,4,false).copy(depth=257),legalView(3,256,4,false).copy(height=257))
     val bounds=Vector(v.copy(rowPitch=27),v.copy(allocationLimit=v.base+3),v.copy(base=0xff0),v.copy(allocationBase=0x10000),
       v.copy(allocationLimit=addressSpace+1),v.copy(base=addressSpace-16,allocationLimit=addressSpace),
       v.copy(rowPitch=addressSpace,allocationLimit=addressSpace),
       legalView(3,7,4,false).copy(slicePitch=1),legalView(3,7,4,false).copy(slicePitch=addressSpace,allocationLimit=addressSpace),
       legalView(1,7,4,false).copy(layerPitch=1),legalView(1,7,4,false).copy(layerPitch=addressSpace,allocationLimit=addressSpace),
-      legalView(2,7,4,false).copy(layerPitch=1))
+      legalView(2,7,4,false).copy(layerPitch=1),
+      View(target=1,width=2048,height=2048,layers=256,rowPitch=8192,layerPitch=16777216,base=1,allocationBase=0,allocationLimit=addressSpace))
     malformed.map(Request(_))++bounds.map(Request(_))++Vector(q.copy(x=7),q.copy(y=5),q.copy(x=0xffffffffL),
       q.copy(y=0xffffffffL),q.copy(z=1),q.copy(layer=1),q.copy(face=1),
       Request(legalView(3,7,4,false),z=7),Request(legalView(3,7,4,false),z=0xffffffffL),
@@ -116,9 +117,17 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
       val large=legalView(0,16383,16,false).copy(height=16383)
       val largeSpan=BigInt(16382)*large.rowPitch+BigInt(16383)*16
       val largest=Request(large.copy(allocationLimit=large.base+largeSpan,level=15),x=16382,y=16382)
-      val requests=validRequests++boundary++facePixels++allLayers++allSlices:+largest
-      assert(requests.forall(q=>oracle(q).status==0));sequential(d,requests)
-      info(s"TEXTURE_IMAGE_ADDRESS cases=${requests.size} targets=4 packedByteSizes=8 compressedBlocks=4x4 exact4GiBEnds=${boundary.size} dimension2048=true volume256=true arrayLayers256=true maxDimension16383=true pitchedGuards=true allSixFaces=true all256Layers=true all256Slices=true immutableReplies=true")
+      val volumeBase=legalView(3,256,16,false).copy(height=256)
+      val volumePlane=BigInt(255)*volumeBase.rowPitch+4096
+      val volume=volumeBase.copy(slicePitch=volumePlane+17,
+        allocationLimit=volumeBase.base+255*(volumePlane+17)+volumePlane)
+      // One2048x2048 RGBA8 layer is16MiB;256 layers occupy exactly4GiB.
+      val fullArray=View(target=1,width=2048,height=2048,layers=256,rowPitch=8192,layerPitch=16777216,
+        base=0,allocationBase=0,allocationLimit=addressSpace)
+      val requests=(validRequests++boundary++facePixels++allLayers++allSlices:+largest)++Vector(
+        Request(volume,x=255,y=255,z=255),Request(fullArray,x=2047,y=2047,layer=255))
+      requests.foreach(q=>assert(oracle(q).status==0,s"malformed intended-legal request: $q"));sequential(d,requests)
+      info(s"TEXTURE_IMAGE_ADDRESS cases=${requests.size} targets=4 packedByteSizes=8 compressedBlocks=4x4 exact4GiBEnds=${boundary.size} dimension2048=true volume256=true arrayLayers256=true maxDimension16383=true pitchedGuards=true allSixFaces=true all256Layers=true all256Slices=true full256CubedVolume=true full2048SquaredArray256Layers=true immutableReplies=true")
     }
   }
   it should "reject malformed views out of range coordinates overlapping pitches and full level allocation escapes" in {
@@ -157,9 +166,9 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
       val small=legalView(1,512,4,false).copy(layers=8)
       val volume=legalView(3,64,4,false)
       val requests=Vector(Request(small,layer=7),Request(small.copy(width=513)),Request(small.copy(layers=9)),
-        Request(volume,z=63),Request(volume.copy(depth=65)),Request(volume.copy(width=65)),
+        Request(volume,z=63),Request(volume.copy(depth=65)),Request(volume.copy(width=65)),Request(volume.copy(height=65)),
         Request(legalView(2,512,8,true)),Request(legalView(2,513,8,true)))
-      assert(requests.map(q=>oracle(q,p).status)==Vector(0,1,1,0,1,1,0,1))
+      assert(requests.map(q=>oracle(q,p).status)==Vector(0,1,1,0,1,1,1,0,1))
       sequential(d,requests,p)
       info("TEXTURE_IMAGE_ADDRESS_LIMITS dimension512=true volume64=true layers8=true exactBoundaryAndPlusOne=true")
     }

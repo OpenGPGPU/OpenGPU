@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "four_checks_standalone_emission_CI_passed",
+  "source_files": 643,
+  "source_unchanged": true,
+  "result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "test_counts": [
+        4
+      ],
+      "passed_tasks": 1,
+      "success_tasks": 2,
+      "matrix": 1,
+      "fault": 1,
+      "stream": 1,
+      "limits": 1
+    },
+    "expected_coverage": {
+      "test_counts": [
+        4
+      ],
+      "passed_tasks": 1,
+      "success_tasks": 2,
+      "matrix": 1,
+      "fault": 1,
+      "stream": 1,
+      "limits": 1
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 12.81474050018005,
+    "finished_utc": "2026-10-20T05:35:45.291798+00:00"
+  },
+  "requests": 2138,
+  "rejected_requests": 105,
+  "valid_image_matrix_requests": 1529,
+  "invalid_matrix_cases": 44,
+  "fault_then_healthy_reuse_requests": 88,
+  "stream_requests": 512,
+  "configured_limit_requests": 9,
+  "latency_cycles": 3,
+  "steady_unstalled_address_interval_cycles": 1,
+  "coverage": [
+    "Pitched2D,array,cube and3D levels; all six faces, all256 layers and slices,2048-square images,256-cubed volume and full14-bit 16383-square2D extent",
+    "Eight packed byte sizes and8/16-byte4x4 blocks, all in-block positions and partial edge blocks",
+    "360 exact4GiB-ending views plus a complete2048-square RGBA8 array with256 layers at zero base ending exactly4GiB",
+    "Malformed target/shape/encoding, all3 volume dimension limits, unused pitches, row/slice/layer overlap, whole-level allocation escapes and full32-bit coordinate aliases",
+    "512 ordered streamed replies with live binding mutations and output backpressure; first128 replies arrive every cycle after3-cycle latency",
+    "Constructor limits512/64/8: boundaries and plus-one on all three volume axes"
+  ],
+  "source_proof": {
+    "source_files": 643,
+    "unchanged_existing_files": 640,
+    "legacy_base_commit": "17358b8",
+    "all_existing_hashes_identical": true,
+    "new_source_files": [
+      "src/main/scala/opengpu/elaboration/EmitTextureImageAddress.scala",
+      "src/main/scala/opengpu/graphics/TextureImageAddressUnit.scala",
+      "src/test/scala/opengpu/graphics/TextureImageAddressUnitSpec.scala"
+    ],
+    "difference_from_synthesized_source": [
+      "src/test/scala/opengpu/graphics/TextureImageAddressUnitSpec.scala"
+    ],
+    "production_and_emitter_identical_to_synthesized_source": true,
+    "all4_synthesis_active_sv_equal_ignoring_comments_and_whitespace": true
+  },
+  "synthesis": "mobile-texture-image-address-synthesis-2026-10-20.json",
+  "development_failures": [
+    "Initial compile rejected a field named width that conflicts with Chisel Data; no simulation reached. Rename bundle extents to texWidth/texHeight/texDepth.",
+    "Expanded full-array fixture incorrectly used4MiB instead of16MiB layer pitch. The independent legality oracle rejected it before the positive matrix ran; three other checks passed. Correct the two fixture pitches, retain the oracle and rerun all four. Production source and mapped RTL never changed."
+  ],
+  "evidence": {
+    ".artifacts/mobile-texture-image-address-qualified-v4-source.json": {
+      "sha256": "81d2033778e5bb1256e80461fcf4aa6f0c990dd207ee263b76f56d23d82d7990"
+    },
+    ".artifacts/mobile-texture-image-address-qualified-v4-source.tar.gz": {
+      "sha256": "b60d3c951dcf2b2b7f2a223c0dd2e9a8654977b56c27171fa43dad327586e800"
+    },
+    ".artifacts/mobile-texture-image-address-qualified-v4-result.json": {
+      "sha256": "f34f1dd4b68d8f88973298284bb683c5dd352f56f7a02b4b56e551a4fc6aa636"
+    },
+    ".artifacts/mobile-texture-image-address-qualified-v4-start.json": {
+      "sha256": "2dbd4e4d80dba83558c718978c702a6842e26534630cd28ab054e306be280817"
+    },
+    ".artifacts/mobile-texture-image-address-qualified-v4.log": {
+      "sha256": "4a677e057c1b1cb8de0a5b17ee6ffc8d50f47157c707ff32e039431ecc278b07"
+    },
+    ".artifacts/mobile-texture-image-address-qualified-ci-v1.log": {
+      "sha256": "33564c66837704a225331df4bb30af6f3d40f6608d0b3c18aec257a98a54e2b0"
+    },
+    ".artifacts/mobile-texture-image-address-qualified-rtl-audit-v4.json": {
+      "sha256": "c330ff0d2c6841eda40e424b9fd90a727474c7e026042836286e3496d320ecfa"
+    },
+    ".artifacts/mobile-texture-image-address-qualified-source-proof-v4.json": {
+      "sha256": "8bfc9b73b5225853a02241a06bc648cb58989003d32af747ca3647d619ff7ead"
+    },
+    ".artifacts/mobile-texture-image-address-development-v1-result.json": {
+      "sha256": "f19555a0383de8a369d89ffde22acc314d4f975d54621a4182f4f1a50e8b0331"
+    },
+    ".artifacts/mobile-texture-image-address-development-source-v1.json": {
+      "sha256": "a17dd226362c355337070762c670f89c5f91243a9197b062903d1308ddb9c576"
+    },
+    ".artifacts/mobile-texture-image-address-qualified-v3-result.json": {
+      "sha256": "7087245cae3d8af6ae43b3c07393020f78add7a772407994ba52bf97c29fc340"
+    },
+    ".artifacts/mobile-texture-image-address-qualified-v3.log": {
+      "sha256": "59f3af1720818bfcd006631a4c827717ba6b634a9e03f1577711707eec657a06"
+    },
+    ".artifacts/mobile-texture-image-address-qualified-v3-source.json": {
+      "sha256": "fd0a7b1f97ab447dbb3a57e9c640edf8f560f03d9bf3ef779dcdb52a4a424ece"
+    },
+    ".artifacts/mobile-texture-image-address-qualified-v3-source.tar.gz": {
+      "sha256": "e5e6f3cc9ecd7a8dbbfc1088b30acad7f99d3fd6a81c9b6088b91f6f018f237a"
+    }
+  },
+  "limits": [
+    "Component byte-span addressing only: native GPU bindings, descriptor/mip fetch, provenance, coordinate normalization/cube selection, format decode/filtering and owner integration remain open.",
+    "No native feature is enabled and no shader/GLES/H4/H6 capability closure is claimed.",
+    "Standalone synthesis meets1GHz including reported I/O setup constraints; no place/route, power or cluster/product rate result."
+  ]
+}

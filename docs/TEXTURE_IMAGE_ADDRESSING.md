@@ -1,7 +1,7 @@
 # Bounded texture image-level addressing
 
-Status: isolated component candidate; four-check runtime qualification and
-standalone RTL emission are pending. This implements address ownership needed
+Status: [four checks pass](performance/mobile-texture-image-address-2026-10-20.json)
+on unchanged source, with standalone RTL emission and CI selection. This implements address ownership needed
 by general image views. It is not enabled by native GTX1 and does not complete
 texture resource support.
 
@@ -48,7 +48,7 @@ byte count and block coordinates. Status priority is malformed view (1), invalid
 coordinate (2), then bounds/layout failure (3); success is zero.
 
 The GLES 3.0 image dimensions, array layers and six cube-face arrays motivate
-these distinct targets; see sections 3.8.3 and 3.8.17 and the implementation
+these distinct targets; see sections 3.8.3 and 3.8.14 and the implementation
 limits in the [GLES 3.0.6 specification](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
 The pitch, allocation and fault conventions here are an OpenGPU hardware
 contract, not GL command encodings or a conformance claim.
@@ -58,4 +58,8 @@ indexed per-stage bindings and context/generation ownership, format-aware
 bounded fetch, coordinate conversion/wrap, cube selection and seamless edges,
 3D filtering, sampler state, comparison, LOD operations, and native fault/VM
 integration. These remain requirements of H4/H6. PPA evaluation is synthesis
-only; no area, timing, power or cluster-rate result is available for this unit.
+only. The [standalone mapped screen](performance/mobile-texture-image-address-synthesis-2026-10-20.json)
+passes1GHz setup including I/O at TC/SLVT with+70.945ps worst slack and no
+retiming. The corrected capacity tests change only test source; all four
+synthesis-active SV files retain identical logic. No place/route, power or
+cluster-rate result is available.

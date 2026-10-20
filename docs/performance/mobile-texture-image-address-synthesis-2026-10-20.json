@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "standalone_synthesis_1GHz_setup_and_mapping_pass",
+  "source_files": 643,
+  "source_commit": "04f7c5889dc5cde6182cc44af4172a01e1dea9ae",
+  "result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 24.714011166943237,
+    "finished_utc": "2026-10-20T05:33:18.963538+00:00"
+  },
+  "qualification": {
+    "passed": true,
+    "reported_setup_slacks_ps": [
+      70.945,
+      404.086
+    ],
+    "reported_path_groups": 2,
+    "scope": "All reported synthesis setup paths, including I/O",
+    "report_sha256": "d22b062a9dfc1a8373693d9a57a04a522406680426df4408ae65147bab1884df",
+    "setup_passed": true,
+    "mapping": {
+      "passed": true,
+      "mapping_report_present": true,
+      "skipped_instance_types": [],
+      "skipped_instance_count": 0,
+      "skipped_instances_by_type": {},
+      "unresolved_diagnostics": [],
+      "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+      "log": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-image-address-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+      "log_sha256": "686d697882047ed1aed2b5667c1bde3c661e0512fc383d65c0ac07bf8e749c29",
+      "logs": [
+        {
+          "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-image-address-2026-10-20-v1/flow/orfs-work/logs/base/1_synth.log",
+          "sha256": "1cb20c7f9a973ff5d567d25c426d00fbbf213bb9969ccea4d3c462ad4abe49a9"
+        },
+        {
+          "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-image-address-2026-10-20-v1/flow/orfs-work/logs/base/1_2_yosys.log",
+          "sha256": "2deb19c5e460010c8ac7763e6f567b8c639c601b9df0d89ad5f1a69586ca3aa5"
+        },
+        {
+          "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-texture-image-address-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "686d697882047ed1aed2b5667c1bde3c661e0512fc383d65c0ac07bf8e749c29"
+        }
+      ],
+      "combined_log_sha256": "8112f641acb239520bd6edca84c281ffbf3d272a47f65faedd3f9d1de5331d62"
+    }
+  },
+  "qor": {
+    "setup_worst_slack_ps": 70.945,
+    "core_clock_fmax_mhz": 1076.363
+  },
+  "mapped_cells": 21532,
+  "mapped_library_cell_area": 2224.99548,
+  "area_units": "Unconverted ASAP7 Liberty area reported by Yosys; no die-area inference",
+  "corner": "TC",
+  "cell_vt": "SLVT",
+  "clock_period_ps": 1000,
+  "io_delay_fraction": 0.25,
+  "retiming": false,
+  "existing_sram_macros": {},
+  "scope": "One standalone three-stage checked image-address component; no native sampler integration or filtering throughput claim",
+  "evidence": {
+    ".artifacts/mobile-texture-image-address-synthesis-v1-result.json": {
+      "sha256": "5d85f61573dbf34ecd9c10582da518588c1e38dd4e19a87b5ffbafb975f12743"
+    },
+    ".artifacts/mobile-texture-image-address-synthesis-v1-inputs.json": {
+      "sha256": "6def9e8f6c20314982aee09554f483242fc8d49f947ebf2da2563a164a3c0504"
+    },
+    ".artifacts/mobile-texture-image-address-synthesis-v1-start.json": {
+      "sha256": "33a544ea7d98820175db6d2b7507bd8fdfb8d9edf632db48286f948fbd9317a9"
+    },
+    ".artifacts/mobile-texture-image-address-synthesis-v1.log": {
+      "sha256": "88ba809754e604424fd1de401f387f2280bc66ee123a210eb975d0321221917d"
+    },
+    "generated/qualification/ppa/mobile-texture-image-address-2026-10-20-v1/manifest.json": {
+      "sha256": "0d26fcea355bc6296e93488e8f8b648730162211a53ee65c7db05c0cff1517ab"
+    },
+    "generated/qualification/ppa/mobile-texture-image-address-2026-10-20-v1/qualification.json": {
+      "sha256": "6317bb3e9fb04aa562ed6de594314a2997e03ffa5c8ccbfb2624ef41f49a77bc"
+    },
+    "generated/qualification/ppa/mobile-texture-image-address-2026-10-20-v1/result.json": {
+      "sha256": "8a0da9490938d10da63f85b909ccc7a7f8c55f53d66c41f79f0e65dbfe6dfe88"
+    },
+    "generated/qualification/ppa/mobile-texture-image-address-2026-10-20-v1/flow/flow_manifest.json": {
+      "sha256": "74df5f80a118accd35bab7b43e66f7e04962095b694b01dc30797d0c5600b44a"
+    },
+    "generated/qualification/ppa/mobile-texture-image-address-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt": {
+      "sha256": "686d697882047ed1aed2b5667c1bde3c661e0512fc383d65c0ac07bf8e749c29"
+    },
+    ".artifacts/mobile-texture-image-address-rtl-audit-v2.json": {
+      "sha256": "9f7e1a29fae2496065811036d521c4eb70e62d74dcd5dc0e5b8d50518ea0eaa6"
+    }
+  },
+  "limits": [
+    "No place/route, extracted interconnect, power or product/cluster timing result.",
+    "Only mapped synthesis estimates at the recorded corner and constraints are qualified.",
+    "The component implements checked byte-span generation; descriptor loading, table binding, fetch/decode and native integration remain open."
+  ]
+}
