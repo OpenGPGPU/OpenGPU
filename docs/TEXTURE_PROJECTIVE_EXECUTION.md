@@ -1,9 +1,13 @@
 # Projective texture execution on shared CUs
 
-Status: [four initial actual-CU cases pass](performance/mobile-native-projective-initial-2026-10-21.json)
-on805 frozen inputs (`f872b6f`),with160 submitted draws across both shader stages
-and local/spilled payloads. Constructor-compatible requalification and the
-existing128-lane payload cases remain running on `codex/mobile-native-projective-shaders`. This adds two shader-stage tests and a
+Status: [fourteen checks pass](performance/mobile-native-projective-qualified-2026-10-21.json)
+on805 frozen inputs (`186e270`):eight scalar-backend tests,four real-CU projective
+cases and two existing128-invocation payload cases. The projective cases submit
+160 draws across both shader stages and local/spilled payload modes. The scalar
+FPU is explicitly enabled for these programs;the legacy16-lane8-warp payload
+cases retain their default scalar-FPU-disabled profile and original positional
+constructor arguments. Main integration waits for the size-query qualification.
+This adds two shader-stage tests and a
 shared program/oracle fixture; production RTL, driver, ABI and emission inputs
 match the size-query source exactly. No new instruction or sampler hardware is
 required to project coordinates before captured sampling.
@@ -32,8 +36,7 @@ The parent whole-endpoint synthesis results may carry only after production,
 emission and artifact hashes are verified; no duplicate synthesis is started
 for these test-only changes.
 
-Pending work includes collecting these cases, fixing any verified failure,
-combining the current integer/query/AXI qualification and completing texture
+Pending work includes combining the current integer/query/AXI qualification and completing texture
 banking, throughput, coherence and the remaining H0-H8 requirements. This does
 not claim compiler/API projective lowering or complete GLES conformance.
 
