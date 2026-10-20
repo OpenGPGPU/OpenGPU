@@ -46,8 +46,10 @@ All five primitive-owner checks pass after this correction, including the new
 extreme lines through interpolation/depth and full signed-64 overlap rejection.
 The corrected source now passes all 19 coverage, primitive, interpolation and
 sample-depth checks across four suites, including exact extreme-line helper
-inputs and covered-sample depths. Actual-CU image/native-host checks and the
-full-renderer synthesis comparison remain pending; H0-H8 stay open.
+inputs and covered-sample depths. The later 37-check image/native-host
+composition passes on the same frozen source; see
+[AXI response ownership](HOST_AXI_RESPONSE_OWNERSHIP.md). The composed synthesis
+result below still fails timing; H0-H8 stay open.
 
 Run a matched standalone cycle comparison with:
 
@@ -84,5 +86,15 @@ These are component estimates at a pre-layout clock; they exclude shaders,
 interpolation, memory, contention and frame work. Carry corrections and staging
 both contribute to the RTL difference, so this does not isolate retiming alone.
 The worst reported path now starts at the captured sample-mode field and ends
-at a coverage-mask bit. The prior full replay-engine estimate remains
-255.537 MHz until a new composed synthesis screen completes.
+at a coverage-mask bit.
+
+The [completed composed synthesis screen](performance/mobile-point-line-replay-synthesis-2026-10-20.json)
+maps one replay image engine completely but changes its core estimate from
+255.537 to 255.397 MHz (-0.055%). Core setup slack is -2915.477 ps, with
++117.184 ps I/O slack. Area including the same 21 SRAM macros rises from
+172654.027199 to 173950.116299 square micrometers (+0.751%). The worst core
+path starts at captured sampleMode[0] and ends at mask[0]. This iteration
+provides no composed clock benefit; its added setup cycles still apply.
+The next timing cut must address the measured per-sample coverage path.
+This source predates centroid and polygon-offset work. No full-GPU, frame,
+power or routed result is established; PPA remains synthesis only.
