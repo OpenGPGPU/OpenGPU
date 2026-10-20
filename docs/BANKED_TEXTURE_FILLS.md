@@ -2,7 +2,7 @@
 
 Status: [thirteen component checks](performance/mobile-banked-texture-fills-2026-10-21.json)
 pass,including four fill-owner checks connected to the actual8KiB banked SRAM.
-Default16-fill RTL emission passes;its synthesis screen is running. Fresh
+Default16-fill RTL emission and [mapped synthesis](performance/mobile-banked-texture-fills-synthesis-2026-10-21.json) pass. Fresh
 store/filter emissions match their previously qualified active RTL exactly. The service
 is on `codex/mobile-texture-fill-owner`;native shader sampling is not connected.
 
@@ -43,3 +43,7 @@ establish a whole-native-sampler throughput result. Next work connects group
 misses,replay and result association,then translation/resource ownership and
 native shader fault/coherence tests. Synthesis-only PPA remains the development
 policy;H4 and the full H0-H8 goal remain open.
+
+The default physical fill owner passes1000ps synthesis at TC/SLVT with core/I/O
+slacks +269.786/+181.849ps,25% I/O,standard ABC and no retiming.
+This screen does not include a CU or the future native texture path.

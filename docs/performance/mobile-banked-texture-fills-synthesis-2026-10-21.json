@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "default_sixteen_fill_owner_fully_mapped_synthesis_setup_pass",
+  "source": {
+    "commit": "925c3374d900ebf73bf0e54f07c795fa71a90a4f",
+    "source_files": 810,
+    "manifest_sha256": "18189793b0d8a9ab4ab0fc4f5278ed1b57a2fdc7041ad9d5c34b96298260e0d1",
+    "archive_sha256": "528544967d03d5b15bf9e479eb6871c125a74032786f0a93cf21823a99b11919",
+    "git_archive_and_worktree_exact": true,
+    "changed_from13_test_source": [
+      "src/main/scala/opengpu/elaboration/EmitBankedTextureHits.scala"
+    ],
+    "all_functional_dependencies_exact": true
+  },
+  "terminal": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 250.3018535419833,
+    "finished_utc": "2026-10-20T20:26:13.345575+00:00"
+  },
+  "module": "BankedTextureFillOwner",
+  "fill_slots": 16,
+  "waiting_table_entries": 32,
+  "additional_public_completion_registers": 1,
+  "slacks_ps": [
+    269.786,
+    181.849
+  ],
+  "fully_mapped": true,
+  "mapped_cells": 69783,
+  "mapped_library_area": 9440.17092,
+  "parameters": {
+    "clock_port": "clock",
+    "clock_port_auto": false,
+    "clock_period": 1000.0,
+    "core_utilization": 25,
+    "place_density": 0.6,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "timing_effort": "explore",
+    "synthesis_engine": "yosys",
+    "sv_frontend": "native",
+    "enable_retiming": false,
+    "swap_arithmetic_operators": false,
+    "generate_gds": false,
+    "max_fanout": null,
+    "high_fanout_nets": null,
+    "high_fanout_max": 8,
+    "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+    "setup_slack_margin": 0.0,
+    "abc_clock_period_ps": null,
+    "io_delay_percent": 0.25,
+    "io_false_path_ports": null,
+    "post_floorplan_tcl": null,
+    "macros": []
+  },
+  "functional_record": "docs/performance/mobile-banked-texture-fills-2026-10-21.json",
+  "functional_tests": 13,
+  "existing_hit_and_store_RTL_exact": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 5.009560916107148,
+    "profiles": {
+      "store": {
+        "active_RTL_exact": true,
+        "active_RTL_sha256": {
+          "RRArbiter4_BankedTextureLookup.sv": "44f5c4d55e71da506ce442baaa53d0cee63783ff3042be6b6b932314c7b8555a",
+          "ram_2x49.sv": "ed05bb02a8624ddc37ebbe6559251780d3f76af9eb21d192ee3ec9526c21bf72",
+          "Queue2_BankedTextureWord.sv": "4147738d593b53700a1ba5d327c93bf8f38d395e9c4af75df57a4b1474bf2dc4",
+          "memory_256x32.sv": "c765dcd3e2ed7ffda1221fab77bcf0223da27de002849560a9eb01fdcb1832d3",
+          "L2SramArray.sv": "c1104c24dbda2c1e4b6688300e1168baef38ac07eeed8876af67c032584397b7",
+          "BankedTextureLineStore.sv": "662adc1b69667b62a34500346efad2990482fbcf697c02e3e31a14567cba6f0d"
+        }
+      },
+      "cluster": {
+        "active_RTL_exact": true,
+        "active_RTL_sha256": {
+          "RRArbiter4_BankedTextureLookup.sv": "4d1eed03a3b92470b494278bb5b3c32306d07a9a3d3be464afa4b05019b15201",
+          "ram_2x39.sv": "7fccf5d414831ac374f05a9a10c91b39b7ca40b956e5c24b94f80bdebc1ef5e8",
+          "Queue2_BankedTextureWord.sv": "31f17c66ba551488b397f1ed6d704380afc2d057842c9dc032fb18dfc13e222d",
+          "memory_256x32.sv": "c765dcd3e2ed7ffda1221fab77bcf0223da27de002849560a9eb01fdcb1832d3",
+          "L2SramArray.sv": "c1104c24dbda2c1e4b6688300e1168baef38ac07eeed8876af67c032584397b7",
+          "BankedTextureLineStore.sv": "36969ef6d501102e38c33567a04a97ae8e46fce2cdf78a694fb2f28f79eb1863",
+          "BankedRgba8TextureHits.sv": "783234e8f4e0547ac64b44bb9807780453c2632a280b32e2129b88271f755243"
+        }
+      }
+    }
+  },
+  "artifacts_sha256": {
+    "generated/qualification/ppa/mobile-texture-fill-owner-2026-10-21-v2/qualification.json": "32e229d3d98243fc1605435a7006820e56df858c6ee0b80fb3af7374e720979d",
+    "generated/qualification/ppa/mobile-texture-fill-owner-2026-10-21-v2/result.json": "6cb70aa1fc52eea12cb759530437df8fc3b66f22b13200df4fd0b6c94a7ca5f8",
+    "generated/qualification/ppa/mobile-texture-fill-owner-2026-10-21-v2/manifest.json": "acc2babb724972435e41d1391d1c52bcc41e03260b91da0c337c1b47a2fce013",
+    "generated/qualification/ppa/mobile-texture-fill-owner-2026-10-21-v2/flow/flow_manifest.json": "63b0b59bedb1a2ee02e5989036a87cdf0e9643943d8224564b547331a78460a3",
+    "generated/qualification/ppa/mobile-texture-fill-owner-2026-10-21-v2/flow/orfs-work/reports/base/synth_stat.txt": "3d26be6d7969fc4cc2346ba14da9cb25e876c42add0a5a5ab3776fe09d0fe33e",
+    "generated/qualification/ppa/mobile-texture-fill-owner-2026-10-21-v2/flow/orfs-work/logs/base/1_synth.log": "f8fe7c6d9e054ebba5a96598f862fce0d8cd5d3870caa1d430bfb204a4d2b758",
+    "generated/qualification/ppa/mobile-texture-fill-owner-2026-10-21-v2/flow/orfs-work/logs/base/1_2_yosys.log": "9132ff0d2d1742d7beb976f96acf7f126e1e9db5f7c9528ea4d54f00cbe344ab",
+    ".artifacts/mobile-texture-fill-owner-synthesis-v2-inputs.json": "8acf6fcd590bbe653d8d785d9747da2b901155919959930ff3b448dbbfd73b1c",
+    ".artifacts/mobile-texture-fill-owner-synthesis-v2-result.json": "fcdd58eb8aa5bf6b04bf369f64f7151df93946f6a9be29982ce5f55f4c19f721"
+  },
+  "scope": "Standalone physical line-fill ownership controller. Four component checks connect it to the actual banked SRAM;translation admission,word/sample miss forwarding and native shader integration are separate. No whole-GPU clock,power,route or H4/H0-H8 completion claim.",
+  "remaining": [
+    "translated/native miss group integration and precise task fault ownership",
+    "owner-scoped cancellation and publication boundaries",
+    "whole-path precision,throughput and render-to-texture visibility",
+    "full H0-H8 hardware requirements"
+  ]
+}
