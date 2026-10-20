@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "actual_CU_projective_shader_cases_running",
+  "source": {
+    "commit": "7c0b4aeee4893117692ce1c17d26cadd14f2bfe7",
+    "source_files": 805,
+    "manifest_sha256": "58e9b454ec799d8e5d00270792cf21739bef0d2b08b79f283e256db9047134a9",
+    "archive_sha256": "6a13dd72d5bb5c760a9ec3c41747ce6b6dba0f0f8b9893ef6499db0ea2b6d49d",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala",
+      "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"
+    ],
+    "added_inputs": [
+      "src/test/scala/opengpu/graphics/NativeProjectiveShaderTestData.scala"
+    ],
+    "all_production_driver_ABI_and_parent_component_test_inputs_exact": true,
+    "runner_pid": 12474,
+    "started_utc": "2026-10-20T19:11:53.483702+00:00"
+  },
+  "session": 97282,
+  "planned_tests": 4,
+  "planned_draws_per_case": 40,
+  "planned_total_draws": 160,
+  "planned_successful_draws": 152,
+  "planned_fault_cancel_draws": 8,
+  "parent_components": "40 tests plus9 ABI checks passed on unchanged test/production inputs; fresh projective cases are separate.",
+  "PPA": "Production/emission inputs match the frozen size-query v3 source; do not duplicate synthesis for test-only changes. Verify terminal records and artifacts before carrying them.",
+  "scope": [
+    "Both actual shared-CU stages,local/spilled payloads",
+    "Scalar/vector FP32 projection before parameter capture",
+    "2D,3D and2D-shadow,including projected comparison reference",
+    "Automatic,explicit lambda and already-projected gradient modes",
+    "Nonuniform per-helper Q and only BR fragment covered",
+    "Independent divided-coordinate and dyadic sample-weight checks",
+    "Signed offset,fault,cancel and healthy reuse,no GPU operand packet reads"
+  ],
+  "remaining": [
+    "Collect existing session; planned draw counts are not passed results",
+    "Full integer/query/AXI and endpoint synthesis qualification",
+    "Banked texture throughput/coherence and full H0-H8 requirements"
+  ]
+}
