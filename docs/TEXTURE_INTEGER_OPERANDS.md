@@ -78,3 +78,10 @@ passes at1000ps with core/I/O setup+101.893/+183.062ps for vertex and
 retiming. This frozen source includes the base-relative LOD correction. Its
 production inputs match the separate corrected scratch-isolation integration
 source exactly; fresh CU/AXI qualification remains pending. PPA is synthesis only.
+
+The [combined execution qualification](performance/mobile-native-integer-execution-qualified-2026-10-21.json)
+records154 distinct component/native/CU tests across26 suites,nine ABI checks
+and both positive full-endpoint synthesis screens. Both real shader stages
+pass local/spilled payloads,all64 formats and image bases0/1/2. The selected
+mip-page assertion is corrected after same-source negative/positive controls;
+the separate full AXI matrix remains running and is not counted as passed.

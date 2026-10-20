@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "integer_captured_execution_relative_LOD_qualified_components_real_CU_and_whole_endpoint_synthesis_AXI_followup_running",
+  "source": {
+    "commit": "87a40d849a9904816b423b88061e02962c7be8ad",
+    "source_files": 803,
+    "manifest_sha256": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+    "archive_sha256": "7778d322fcb746ea1e1f921107909a5bae312d96f9404d5f3cd9fabd56757830",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs_only": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+      "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala"
+    ],
+    "all_production_driver_ABI_and_shared_CU_test_inputs_exact": true,
+    "runner_pid": 38243,
+    "started_utc": "2026-10-20T19:19:24.900129+00:00"
+  },
+  "functional": {
+    "distinct_tests": 154,
+    "suites": 26,
+    "component_tests_carried": 148,
+    "component_source_commit": "346fec8",
+    "component_log": ".artifacts/mobile-native-integer-relative-lod-v6-component-prefix.log",
+    "component_log_sha256": "d37de650946ace889c692800430782c08a20fccb0e46f23d24f2a93e47c13b02",
+    "native_mip_page_tests_fresh": 2,
+    "native_probe_source_commit": "1d8d67c235008d8aadb16af4ee5e3e3c82675ad8",
+    "probe_positive": {
+      "returncode": 0,
+      "expected_failure": false,
+      "source_unchanged": true,
+      "elapsed_seconds": 23.774956041947007,
+      "commit": "1d8d67c235008d8aadb16af4ee5e3e3c82675ad8",
+      "source_files": 803,
+      "manifest_sha256": "c15f517f250a1fe667be80d8611ca09263561485640509089a04c1ed5babf1c3",
+      "archive_sha256": "0b275316f9415b7b615e66bc09cd4d846301991b0c96d83c251c4dee458eae12",
+      "git_archive_and_worktree_exact": true
+    },
+    "probe_negative": {
+      "returncode": 1,
+      "expected_failure": true,
+      "source_unchanged": true,
+      "elapsed_seconds": 105.34078083280474,
+      "commit": "1d8d67c235008d8aadb16af4ee5e3e3c82675ad8",
+      "source_files": 803,
+      "manifest_sha256": "c15f517f250a1fe667be80d8611ca09263561485640509089a04c1ed5babf1c3",
+      "archive_sha256": "0b275316f9415b7b615e66bc09cd4d846301991b0c96d83c251c4dee458eae12",
+      "git_archive_and_worktree_exact": true
+    },
+    "shared_CU_tests_fresh": 4,
+    "shared_CU_source_commit": "ed87d8a9d64262aa969e337b759b8aca4d32af81",
+    "shared_CU_log": ".artifacts/mobile-native-integer-scratch-qualification-v3-CU-ABI-prefix.log",
+    "shared_CU_log_sha256": "4048ebe9cdfb6a1b38729be652abfc7e2716ceaa2c970ad71f02df3df6ba80c9",
+    "descriptor_ABI_checks_fresh": 9,
+    "strict_C_driver_validation": "passed on exact driver inputs in parent v6",
+    "shared_CU_scope": [
+      "Both shader stages,local and spilled payloads",
+      "All64 formats,scalar/vector captured integer/floating transport",
+      "Image bases0/1/2;required missing-tuple fault remains status3",
+      "v0 preservation,fault/cancel drain and healthy reuse"
+    ],
+    "count_note": "The148 prior component bodies remain unchanged;two appended mip-page tests andfour fresh real-CU cases add six distinct tests. No pending AXI test is counted."
+  },
+  "carry_proof": {
+    "all_production_driver_ABI_and_emission_inputs_exact_to_positive_PPA_source": true,
+    "changed_test_inputs_only": [
+      "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala",
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+      "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala",
+      "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"
+    ],
+    "existing_component_spec_body_byte_exact_before_appended_probes": true,
+    "fresh_shared_CU_test_sources_exact": true,
+    "both_PPA_artifact_catalogs_exact": true
+  },
+  "synthesis_record": "docs/performance/mobile-native-integer-relative-synthesis-2026-10-21.json",
+  "synthesis_record_sha256": "0a4d4d4c47efd88ea645d469acfa3431ace68818a1cbcfec5d16057640fb4259",
+  "planned_early_stop": {
+    "aggregate_returncode": 143,
+    "aggregate_not_claimed_PASS": true,
+    "session": 99973,
+    "watcher_session": 93256,
+    "stop_record": ".artifacts/mobile-native-integer-scratch-qualification-v3-stop-request.json",
+    "reason": "Proven fixture-only page assertion defect:unit31 base1 selects GXL1 page0x13000; old AXI test requires table-origin page0x12000. Same-source native probe reproduces old assertion failure and passes corrected page checks in both stages. Preserve completed4 CU+9 ABI checks and avoid starting known-invalid host frame matrix."
+  },
+  "AXI": {
+    "historical_base_zero_source": "c8c9b06",
+    "historical_base_zero_passed_tests": 2,
+    "historical_base_zero_submitted_frames": 144,
+    "historical_not_current_relative_LOD_source": true,
+    "corrected_followup_session": 46372,
+    "corrected_followup_source": {
+      "commit": "87a40d849a9904816b423b88061e02962c7be8ad",
+      "source_files": 803,
+      "manifest_sha256": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+      "archive_sha256": "7778d322fcb746ea1e1f921107909a5bae312d96f9404d5f3cd9fabd56757830",
+      "git_archive_and_worktree_exact": true,
+      "changed_inputs_only": [
+        "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+        "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala"
+      ],
+      "all_production_driver_ABI_and_shared_CU_test_inputs_exact": true,
+      "runner_pid": 38243,
+      "started_utc": "2026-10-20T19:19:24.900129+00:00"
+    },
+    "phases": [
+      "Old-page assertion expected failure on one actual frame",
+      "Corrected base1/2 frames in both payload modes",
+      "Full74-frame matrix in each payload mode"
+    ],
+    "state": "running_when_recorded",
+    "no_corrected_AXI_pass_claimed": true
+  },
+  "remaining": [
+    "Collect corrected AXI before/after and full matrix",
+    "Complete size-query and projective integration on separate branches",
+    "Banked texture throughput/coherence and all remaining H0-H8 requirements"
+  ],
+  "PPA_scope": "Synthesis only;no whole-GPU clock,hold,power,place/route or full hardware completion claim."
+}
