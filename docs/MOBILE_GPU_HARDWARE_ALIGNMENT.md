@@ -6422,3 +6422,18 @@ parent dependencies and seven additions. Final synthesis artifact hashes match.
 Both pre-existing local edits and an empty index are preserved; no push was
 performed. Native per-stage resource selection and typed shader transport remain
 required before this component can serve general native texture instructions.
+
+
+## Native typed texture fetch development (2026-10-20)
+
+The [native typed fetch path](NATIVE_TYPED_TEXTURE_FETCH.md) connects independent
+vertex/fragment GXR1 resource roots, full binding indices and GXQ1 coordinate
+packets to GXB1/GXI1/GXS1/GXL1 admission and typed component decoding. Scalar
+and vector component fetches use ordinary destination-register retirement;
+masked lanes retain their old values and faults suppress partial writes.
+A two-slot logical-ID adapter preserves every enclosing native memory-port width.
+Root references occupy reserved native descriptor words with all old offsets
+and record sizes preserved. Four direct endpoint controls pass; real shared-CU
+and broader native, ABI, cancellation and synthesis checks remain in progress.
+Existing opcodes retain their encodings. Driver admission and native capability
+advertisement are unchanged while the hardware path is being qualified.

@@ -83,7 +83,8 @@ object NativeTypedGraphicsLayout {
       fields(560,"tests.","version"->t.version,"depthEnable"->t.depthEnable,"depthWrite"->t.depthWrite,"depthFunction"->t.depthFunction,"stencilEnable"->t.stencilEnable)++
       face(568,"tests.front.",t.front)++face(576,"tests.back.",t.back)++
       fields(592,"blend.","enable"->b.enable,"version"->b.version,"srcRGB"->b.srcRGB,"dstRGB"->b.dstRGB,"srcAlpha"->b.srcAlpha,"dstAlpha"->b.dstAlpha,
-        "equationRGB"->b.equationRGB,"equationAlpha"->b.equationAlpha,"constantR"->b.constant(0),"constantG"->b.constant(1),"constantB"->b.constant(2),"constantA"->b.constant(3))
+        "equationRGB"->b.equationRGB,"equationAlpha"->b.equationAlpha,"constantR"->b.constant(0),"constantG"->b.constant(1),"constantB"->b.constant(2),"constantA"->b.constant(3))++
+      ShaderTextureResources.fields(608,"vertex.resources.",v.resources)++ShaderTextureResources.fields(624,"fragment.resources.",f.resources)
   }
   def leaves(d: Data): Seq[Data]=d match{case r: Record=>r.elements.values.toSeq.flatMap(leaves);case v: Vec[_]=>v.toSeq.flatMap(leaves);case a=>Seq(a)}
   def check(d: Data,fs: Seq[Field],words: Int): Unit={
@@ -124,7 +125,8 @@ object NativeTypedGraphicsLayout {
   def fit(d: TypedTileRenderDraw,p: VertexShaderStageConfig,f: FragmentShaderConfig): Bool={
     val g=d.shaders.vertex.vertex.geometry;val v=g.vertex;val i=v.input
     val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
-    VertexShaderSampler.legal(v.sampler) && VertexShaderSampler.legal(d.shaders.fragment.sampler) &&
+    ShaderTextureResources.legal(v.resources) && ShaderTextureResources.legal(d.shaders.fragment.resources) &&
+      VertexShaderSampler.legal(v.sampler) && VertexShaderSampler.legal(d.shaders.fragment.sampler) &&
       active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U && d.shaders.fragment.varyingSlots<=f.varyings.U &&
       !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(g.flatMask>>(v.varyingSlots<<2)).orR &&
       !(d.shaders.fragment.centroidMask>>(d.shaders.fragment.varyingSlots<<2)).orR &&

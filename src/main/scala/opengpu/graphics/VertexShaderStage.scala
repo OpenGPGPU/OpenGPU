@@ -49,6 +49,7 @@ class VertexShaderDraw(p: VertexShaderStageConfig) extends Bundle {
   val attributeSlots=UInt(5.W);val varyingSlots=UInt(5.W)
   val varyingMask=UInt((4*p.varyings).W)
   val sampler=new VertexShaderSampler
+  val resources=new ShaderTextureResources
 }
 class ShadedVertexRecord(p: VertexShaderStageConfig) extends Bundle {
   val identity=new GraphicsWorkIdentity
@@ -106,8 +107,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   })
   private val input=Module(new VertexInputFetcher(config,p.input))
   private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None))))
-  private val texture=Module(new TexSampleUnit(config,coordinatePolicyInput=true))
-  private val textureBridge=Module(new OmWordToLinePort(config,maxOutstanding=2))
+  private val texture=Module(new NativeShaderTextureUnit(config,stage=0))
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))
   private val metadata=Module(new L2SramArray(metaDepth,128,useSramBlackBoxes))
   private val cache=Module(new L2SramArray(cacheDepth,512,useSramBlackBoxes))
@@ -192,7 +192,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
 
   private val memoryArbiter=Module(new RRArbiter(new ComputeMemoryRequest(config,64,4),3))
   private val memoryQueue=Module(new Queue(new ComputeMemoryRequest(config,64,4),1))
-  private val sources=Seq(input.io.memoryRequest,fallbackRequest,textureBridge.io.memoryRequest)
+  private val sources=Seq(input.io.memoryRequest,fallbackRequest,texture.io.memoryRequest)
   for(i<-0 until 3) {
     memoryArbiter.io.in(i).valid:=sources(i).valid;memoryArbiter.io.in(i).bits:=sources(i).bits
     memoryArbiter.io.in(i).bits.transactionId:=(if(i==2)2.U+sources(i).bits.transactionId else i.U)
@@ -204,13 +204,13 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   input.io.memoryResponse.bits:=io.memoryResponse.bits;input.io.memoryResponse.bits.transactionId:=0.U
   fallbackResponse.valid:=io.memoryResponse.valid && tag===1.U
   fallbackResponse.bits:=io.memoryResponse.bits;fallbackResponse.bits.transactionId:=0.U
-  textureBridge.io.memoryResponse.valid:=io.memoryResponse.valid && tag>=2.U
-  textureBridge.io.memoryResponse.bits:=io.memoryResponse.bits;textureBridge.io.memoryResponse.bits.transactionId:=tag-2.U
-  io.memoryResponse.ready:=Mux(tag===0.U,input.io.memoryResponse.ready,Mux(tag===1.U,fallbackResponse.ready,textureBridge.io.memoryResponse.ready))
+  texture.io.memoryResponse.valid:=io.memoryResponse.valid && tag>=2.U
+  texture.io.memoryResponse.bits:=io.memoryResponse.bits;texture.io.memoryResponse.bits.transactionId:=tag-2.U
+  io.memoryResponse.ready:=Mux(tag===0.U,input.io.memoryResponse.ready,Mux(tag===1.U,fallbackResponse.ready,texture.io.memoryResponse.ready))
 
   private val texturePending=RegInit(0.U(3.W));private val textureInstructions=RegInit(0.U(3.W))
-  private val textureRequestFire=textureBridge.io.memoryRequest.fire
-  private val textureResponseFire=textureBridge.io.memoryResponse.fire
+  private val textureRequestFire=texture.io.memoryRequest.fire
+  private val textureResponseFire=texture.io.memoryResponse.fire
   texturePending:=texturePending+textureRequestFire.asUInt-textureResponseFire.asUInt
   texture.io.in<>shader.io.texSample;texture.io.vectorIn<>shader.io.vectorTexSample
   private val dropTexture=shader.io.completion.valid && (status=/=0.U || externalCancel || !shader.io.completion.bits.success)
@@ -222,21 +222,22 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val textureEnds=PopCount(Seq(texture.io.commit.fire,texture.io.vectorCommit.fire))
   textureInstructions:=textureInstructions+textureStarts-textureEnds
   assert(textureEnds<=textureInstructions+textureStarts,"vertex texture completion must retain its instruction")
-  textureBridge.io.in<>texture.io.mem.req;texture.io.mem.resp<>textureBridge.io.out
+  texture.io.resources:=draw.resources;texture.io.identity:=draw.input.identity
+  texture.io.cancel:=externalCancel || status=/=0.U;texture.io.invalidate:=io.draw.fire
   texture.io.texFormat:=draw.sampler.format;texture.io.texBase:=draw.sampler.base
   texture.io.texWidth:=draw.sampler.texWidth;texture.io.texHeight:=draw.sampler.texHeight
   texture.io.wrapClamp:=draw.sampler.clamp;texture.io.texMaxLevel:=draw.sampler.maxLevel
   texture.io.minLevel:=draw.sampler.minLevel;texture.io.lodBias:=draw.sampler.bias
-  texture.io.coordinatePolicy.get:=VertexShaderSampler.coordinatePolicy(draw.sampler)
-  private val coordinateFault=texture.io.coordinateFault.get && (texture.io.commit.valid || texture.io.vectorCommit.valid)
+  texture.io.coordinatePolicy:=VertexShaderSampler.coordinatePolicy(draw.sampler)
+  private val coordinateFault=texture.io.coordinateFault && (texture.io.commit.valid || texture.io.vectorCommit.valid)
   private val textureDrained=texturePending===0.U && textureInstructions===0.U &&
-    !textureBridge.io.memoryRequest.valid && !shader.io.texSample.valid && !shader.io.vectorTexSample.valid
+    !texture.io.memoryRequest.valid && !shader.io.texSample.valid && !shader.io.vectorTexSample.valid
   shader.io.trap.ready:=true.B
   shader.io.completion.ready:=kernelActive && textureDrained
   private val shaderFault=shader.io.trap.valid || (shader.io.completion.valid && !shader.io.completion.bits.success)
   private val inputFault=input.io.completion.valid && input.io.completion.bits.status=/=0.U
   private val dataFault=stageResponse.valid && stageResponse.bits.fault
-  private val textureFault=textureBridge.io.responseFault
+  private val textureFault=texture.io.responseFault
   private val stop=status=/=0.U || externalCancel || inputFault || dataFault || textureFault || coordinateFault || shaderFault || allocationFault || releaseFault
   transport.foreach(_.io.pool.cancel:=stop)
   input.io.cancel:=stop && inputStarted
@@ -332,7 +333,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       val s=draw.scratch
       val view=s.allocationBase(5,0)===0.U && s.allocationLimit(5,0)===0.U && s.allocationLimit<=(BigInt(1)<<32).U &&
         s.allocationLimit>s.allocationBase && s.base>=s.allocationBase && s.base(5,0)===0.U && s.limit>=s.base && s.limit<=s.allocationLimit
-      val fields=VertexShaderSampler.legal(draw.sampler) && draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
+      val fields=ShaderTextureResources.legal(draw.resources) && VertexShaderSampler.legal(draw.sampler) && draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
         !(draw.varyingMask>>(draw.varyingSlots<<2)).orR &&
         draw.input.attributes.zipWithIndex.map { case (a,i)=> !a.enabled || i.U<draw.attributeSlots }.reduce(_ && _)
       val aliases=(0 until p.input.bindings).map { i=>
@@ -427,7 +428,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   when(active && allocationFault){fail(VertexInputStatus.bounds.U,draw.scratch.base)}
   when(active && releaseFault){fail(VertexInputStatus.memoryFault.U,draw.scratch.base)}
   when(active && shaderFault){fail(VertexShaderStatus.shaderFault.U,Mux(shader.io.trap.valid,shader.io.trap.bits.tval,draw.shaderPc))}
-  when(active && textureFault){fail(VertexInputStatus.memoryFault.U,textureBridge.io.out.bits.addr)}
+  when(active && textureFault){fail(VertexInputStatus.memoryFault.U,texture.io.faultAddress)}
   when(active && coordinateFault){fail(VertexInputStatus.memoryFault.U,draw.sampler.base)}
   when(active && dataFault){fail(VertexInputStatus.memoryFault.U,memRequest.address)}
   when(active && inputFault){fail(input.io.completion.bits.status,input.io.completion.bits.faultAddress)}

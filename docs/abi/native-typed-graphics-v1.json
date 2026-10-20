@@ -563,6 +563,10 @@
     {"name":"blend.constantR","word":600,"bits":32,"signed":false},
     {"name":"blend.constantG","word":601,"bits":32,"signed":false},
     {"name":"blend.constantB","word":602,"bits":32,"signed":false},
-    {"name":"blend.constantA","word":603,"bits":32,"signed":false}
+    {"name":"blend.constantA","word":603,"bits":32,"signed":false},
+    {"name":"vertex.resources.version","word":608,"bits":2,"signed":false},
+    {"name":"vertex.resources.address","word":609,"bits":32,"signed":false},
+    {"name":"fragment.resources.version","word":624,"bits":2,"signed":false},
+    {"name":"fragment.resources.address","word":625,"bits":32,"signed":false}
   ]}
 }

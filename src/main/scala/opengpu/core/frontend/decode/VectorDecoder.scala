@@ -424,6 +424,9 @@ private object VectorDecodeTable {
   private val texturePatterns = Seq(
     VectorPattern("vtex_sample",
       "000001???????????000?????0101011", 8,
+      readsVs1 = true, readsVs2 = true, writesVd = true),
+    VectorPattern("vtex_fetch",
+      "000010???????????0???????0101011", 8,
       readsVs1 = true, readsVs2 = true, writesVd = true)
   )
 
