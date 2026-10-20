@@ -235,5 +235,36 @@ class TranslatedBankedRgba8TextureServiceSpec extends AnyFlatSpec {
       assert(offered>0 && cancelled>0,"cancel cuts did not witness both internal and public ownership")
       info(s"BANKED_TRANSLATED_CUTS cuts8=true publicWitnesses=$offered cancelledWitnesses=$cancelled cancelAndInvalidate=true heldOffersStable=true completeDrain=true")
     }
+  }  it should "cancel one identity tag without stopping other groups or a later reuse of that tag" in {
+    simulate(new TranslatedBankedRgba8TextureService()){d=>
+      val t=new Driver(d);t.mapping(0x401000,0x101000)
+      def cancel(tag: Int): Unit={
+        d.io.cancelGroup.bits.identity.context.poke(7.U);d.io.cancelGroup.bits.identity.pass.poke(8.U)
+        d.io.cancelGroup.bits.identity.generation.poke(9.U);d.io.cancelGroup.bits.tag.poke(tag.U)
+        d.io.cancelGroup.valid.poke(true.B)
+      }
+      t.submit(group(0));t.until(t.results.size==1);t.good(t.results.last);t.drain()
+      t.resultReady=_=>false
+      for(n<-1 to 3)t.submit(group(n))
+      t.until(d.io.out.valid.peek().litToBoolean);for(_<-0 until 100)t.tick()
+      cancel(2);t.tick();d.io.cancelGroup.valid.poke(false.B);for(_<-0 until 8)t.tick()
+      t.resultReady=_=>true;t.until(t.results.size==4);t.drain()
+      t.good(t.results(1));t.good(t.results(3))
+      assert(t.results(2).cancelled && !t.results(2).hit && !t.results(2).fault)
+      t.submit(group(2));t.until(t.results.size==5);t.good(t.results.last);t.drain()
+      t.mapping(0x402000,0x102000);t.mapping(0x403000,0x103000)
+      t.walkReady=_=>false;val mark=t.reads.size
+      t.submit(group(4,32));t.until(d.io.pageWalk.valid.peek().litToBoolean);t.submit(group(5,64))
+      cancel(4);t.tick();d.io.cancelGroup.valid.poke(false.B)
+      t.walkReady=_=>true;t.until(t.results.size==7);t.drain()
+      assert(t.results(5).cancelled && !t.results(5).hit && !t.results(5).fault)
+      t.good(t.results(6));assert(t.reads.size==mark+2 && t.reads.drop(mark).forall(r=>r.address>=0x103000 && r.address<0x104000))
+      val walks=t.walks.size;val reads=t.reads.size
+      cancel(6);t.submit(group(6));d.io.cancelGroup.valid.poke(false.B)
+      t.until(t.results.size==8);t.drain()
+      assert(t.results.last.cancelled && !t.results.last.hit && t.reads.size==reads && t.walks.size==walks)
+      info("BANKED_TRANSLATED_SCOPED_CANCEL matchingHiddenRowOnly=true unrelatedRowsSucceed=true laterTagReuse=true heldPTEOwnerDrains=true noCancelledDataIssue=true concurrentAdmissionCancel=true")
+    }
   }
+
 }

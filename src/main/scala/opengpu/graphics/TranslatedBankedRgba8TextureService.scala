@@ -5,6 +5,10 @@ import chisel3.util._
 import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,GraphicsAddressTranslator,VectorTlbFlush}
 
+class BankedTextureGroupCancel extends Bundle {
+  val identity=new GraphicsWorkIdentity
+  val tag=UInt(32.W)
+}
 class TranslatedBankedRgba8Result extends BankedRgba8FloatResult {
   /** 0=none,1=translation,2=physical data. faultAddress is always virtual. */
   val faultSource=UInt(2.W)
@@ -18,6 +22,8 @@ class TranslatedBankedRgba8Result extends BankedRgba8FloatResult {
   * One VM epoch is pinned until busy clears. A SATP change while idle performs
   * a full translation/cache invalidation before admission;explicit scoped
   * flushes also require idle. Global cancel/invalidate drains all accepted work.
+  * cancelGroup poisons only matching identity/tag rows,without stopping other
+  * groups. Accepted translations/data for that row drain before its completion.
   */
 class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
     dataBytes: Int=8192,entries: Int=32,useBlackBoxes: Boolean=false) extends Module {
@@ -31,7 +37,8 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
     val pageWalk=Decoupled(new ComputeMemoryRequest(config,64,4))
     val pageWalkResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val satp=Input(UInt(32.W));val flush=Flipped(Valid(new VectorTlbFlush(config)))
-    val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
+    val cancel=Input(Bool());val cancelGroup=Flipped(Valid(new BankedTextureGroupCancel))
+    val invalidate=Input(Bool());val busy=Output(Bool())
     val occupiedFills=Output(UInt(5.W));val joined=Output(Bool())
   })
   private val backend=Module(new BankedRgba8FloatTextureService(dataBytes,16,useBlackBoxes,cachePolicyInput=true))
@@ -77,7 +84,9 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
   io.pageWalk<>walks.io.deq
   private val responseReady=Wire(Vec(4,Bool()))
   private val sent=Wire(Vec(4,Bool()))
-  private val dispatchStopped=stop || failed(dispatchSlot).orR
+  private def scopedCancel(e: UInt): Bool=io.cancelGroup.valid &&
+    io.cancelGroup.bits.identity.asUInt===samples(e).identity.asUInt && io.cancelGroup.bits.tag===samples(e).tag
+  private val dispatchStopped=stop || cancelled(dispatchSlot) || scopedCancel(dispatchSlot) || failed(dispatchSlot).orR
   for(p<-0 until 4){
     val t=translators(p)
     t.io.satp:=pinnedSatp
@@ -118,14 +127,14 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
     val abandoned=Mux(dispatch && dispatchSlot===e.U && dispatchStopped,pending,0.U)
     when(alive(e)){
       received(e):=received(e)|returned|abandoned
-      when(stop){cancelled(e):=true.B}
+      when(stop || scopedCancel(e.U)){cancelled(e):=true.B}
       when(faults.orR){failed(e):=failed(e)|faults
         when(!failed(e).orR){faultAddress(e):=samples(e).addresses(PriorityEncoder(faults))}}
     }
   }
 
   private val readyGroup=issueCount=/=0.U && received(issueHead)===15.U
-  private val rejected=failed(issueHead).orR || cancelled(issueHead) || stop
+  private val rejected=failed(issueHead).orR || cancelled(issueHead) || scopedCancel(issueHead) || stop
   backend.io.in.valid:=readyGroup && !rejected
   backend.io.in.bits:=0.U.asTypeOf(backend.io.in.bits)
   backend.io.in.bits.identity:=samples(issueHead).identity
@@ -152,7 +161,7 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
       results(issueHead).faultSource:=Mux(failed(issueHead).orR,1.U,0.U)
       results(issueHead).faultAddress:=Mux(failed(issueHead).orR,faultAddress(issueHead),0.U)
       results(issueHead).missingTaps:=failed(issueHead)
-      results(issueHead).cancelled:=cancelled(issueHead) || stop
+      results(issueHead).cancelled:=cancelled(issueHead) || scopedCancel(issueHead) || stop
     }.otherwise{launched(issueHead):=true.B}
   }
   backend.io.out.ready:=true.B
@@ -169,7 +178,7 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
     results(e).faultAddress:=Mux(b.fault,samples(e).addresses(PriorityEncoder(matches)),0.U)
   }
 
-  private val rowStopped=cancelled(head) || stop || results(head).cancelled
+  private val rowStopped=cancelled(head) || scopedCancel(head) || stop || results(head).cancelled
   outputs.io.enq.valid:=alive(head) && completed(head)
   outputs.io.enq.bits:=results(head)
   outputs.io.enq.bits.hit:=results(head).hit && !rowStopped
@@ -185,7 +194,8 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
     for(p<-0 until 4){when(active(p)){assert(io.in.bits.addresses(p)(1,0)===0.U,"admitted RGBA8 span must be word aligned")}}
     samples(tail):=io.in.bits;physical(tail):=0.U.asTypeOf(physical(tail));policy(tail):=0.U.asTypeOf(policy(tail))
     alive(tail):=true.B;received(tail):= ~active;failed(tail):=0.U;faultAddress(tail):=0.U
-    cancelled(tail):=false.B;launched(tail):=false.B;completed(tail):=false.B
+    cancelled(tail):=io.cancelGroup.valid && io.cancelGroup.bits.identity.asUInt===io.in.bits.identity.asUInt &&
+      io.cancelGroup.bits.tag===io.in.bits.tag;launched(tail):=false.B;completed(tail):=false.B
     tail:=tail+1.U;dispatch:=true.B;dispatchSlot:=tail;pending:=active
   }
   when(io.in.fire =/= retire){count:=Mux(io.in.fire,count+1.U,count-1.U)}

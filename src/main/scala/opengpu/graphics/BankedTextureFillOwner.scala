@@ -80,13 +80,20 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   io.out.bits := output
 
   private val matches = VecInit((0 until fills).map { s =>
-    // A new miss after acknowledgement must start a new fill: another line
-    // may already have replaced the installed cache set while replies wait.
+    // Keep the default elaboration's expression tree unchanged;the optional
+    // policy comparison belongs only to consumers with a page-policy port.
+    if(cachePolicyInput) {
     states(s) =/= State.free && states(s) =/= State.done && !stopped(s) && !noFill(s) &&
       keys(s).identity.asUInt === io.in.bits.identity.asUInt &&
       keys(s).textureKey === io.in.bits.textureKey &&
       keys(s).address === io.in.bits.address && keys(s).rowParity === io.in.bits.rowParity &&
-      keys(s).noCache.getOrElse(false.B) === io.in.bits.noCache.getOrElse(false.B)
+      keys(s).noCache.get === io.in.bits.noCache.get
+    } else {
+    states(s) =/= State.free && states(s) =/= State.done && !stopped(s) && !noFill(s) &&
+      keys(s).identity.asUInt === io.in.bits.identity.asUInt &&
+      keys(s).textureKey === io.in.bits.textureKey &&
+      keys(s).address === io.in.bits.address && keys(s).rowParity === io.in.bits.rowParity
+    }
   })
   private val free = VecInit(states.map(_ === State.free))
   private val freeWaiter = ~alive.asUInt
@@ -144,7 +151,11 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   when(io.memoryResponse.fire) {
     failed(responseSlot) := io.memoryResponse.bits.fault
     data(responseSlot) := io.memoryResponse.bits.readData
-    states(responseSlot) := Mux(io.memoryResponse.bits.fault || keys(responseSlot).noCache.getOrElse(false.B), State.done, State.returned)
+    if(cachePolicyInput) {
+      states(responseSlot) := Mux(io.memoryResponse.bits.fault || keys(responseSlot).noCache.get, State.done, State.returned)
+    } else {
+      states(responseSlot) := Mux(io.memoryResponse.bits.fault, State.done, State.returned)
+    }
   }
 
   // Refill data and metadata stay immutable through an arbitrarily blocked
