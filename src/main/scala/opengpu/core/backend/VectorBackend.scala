@@ -897,7 +897,12 @@ class VectorBackend(
   writebackArbiter.io.in(9).bits.warpActiveMask :=
     estimateAlu.io.out.bits.warpActiveMask
 
-  private val textureFault = !io.texCommit.bits.writesVd
+  // Parameter writes acknowledge through the ordinary scalar x0 completion.
+  // They must not write/release v0 or be mistaken for a failed sample.
+  private val textureParameterAck = io.texCommit.bits.writesScalar &&
+    io.texCommit.bits.writeback.vd===0.U && io.texCommit.bits.scalarData===0.U &&
+    !io.texCommit.bits.writesFloat && !io.texCommit.bits.writesFlags && !io.texCommit.bits.saturated
+  private val textureFault = !io.texCommit.bits.writesVd && !textureParameterAck
   writebackArbiter.io.in(10).valid := io.texCommit.valid && !textureFault
   writebackArbiter.io.in(10).bits := io.texCommit.bits
   // The registered boundary also retains the failed instruction while shared

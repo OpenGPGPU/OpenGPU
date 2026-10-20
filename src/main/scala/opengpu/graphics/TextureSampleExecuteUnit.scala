@@ -1,0 +1,128 @@
+package opengpu.graphics
+
+import chisel3._
+import chisel3.util._
+import opengpu.config.GpuConfig
+import opengpu.core.backend.{VectorCommitRequest,VectorTextureRequest}
+import opengpu.core.backend.issue.ScalarIssuedInstruction
+import opengpu.core.backend.writeback.ScalarCommitRequest
+import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
+
+object ShaderTextureSampleOpcode {
+  def scalarParameters(i: UInt): Bool=i(6,0)==="h0b".U && i(31,25)===3.U && i(11,7)===0.U
+  def vectorParameters(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===3.U && i(11,7)===0.U
+  def scalarSample(i: UInt): Bool=i(6,0)==="h0b".U && i(31,25)===4.U && i(14,12)<4.U
+  def vectorSample(i: UInt): Bool=i(6,0)==="h2b".U && i(31,26)===4.U && i(14,12)<4.U
+  def scalar(i: UInt): Bool=scalarParameters(i)||scalarSample(i)
+  def vector(i: UInt): Bool=vectorParameters(i)||vectorSample(i)
+}
+/** On-chip shader operand tuples, followed by ordinary fault-atomic texture
+  * retirement. Eight parameter operations write pairs of32-bit words. Pair0
+  * begins a tuple for its active lanes. Trusted task launch clears every valid
+  * bit, including when a new batch reuses the same graphics identity.
+  */
+class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends Module {
+  require(stage==0 || stage==1)
+  private val laneWidth=math.max(1,log2Ceil(config.lanes))
+  val io=IO(new Bundle {
+    val in=Flipped(Decoupled(new ScalarIssuedInstruction(config)));val vectorIn=Flipped(Decoupled(new VectorTextureRequest(config)))
+    val commit=Decoupled(new ScalarCommitRequest(config));val vectorCommit=Decoupled(new VectorCommitRequest(config))
+    val resources=Input(new ShaderTextureResources);val identity=Input(new GraphicsWorkIdentity);val clearParameters=Input(Bool())
+    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
+    val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
+    val status=Output(UInt(3.W));val faultAddressValid=Output(Bool());val faultAddress=Output(UInt(32.W))
+  })
+  private object State extends ChiselEnum {val idle,writeParameters,nextLane,capture,offer,waitSample,commit=Value}
+  private val phase=RegInit(State.idle);private val vector=RegInit(false.B);private val parameter=RegInit(false.B);private val preferVector=RegInit(true.B)
+  private val values=Reg(Vec(config.warps,Vec(config.lanes,Vec(16,UInt(32.W)))))
+  private val valid=RegInit(VecInit(Seq.fill(config.warps)(VecInit(Seq.fill(config.lanes)(0.U(16.W))))))
+  private val resources=Reg(new ShaderTextureResources);private val identity=Reg(new GraphicsWorkIdentity)
+  private val warp=Reg(UInt(config.warpIdWidth.W));private val rd=Reg(UInt(5.W));private val pc=Reg(UInt(32.W));private val active=Reg(UInt(config.lanes.W))
+  private val mask=Reg(UInt(config.lanes.W));private val lane=Reg(UInt(laneWidth.W));private val pair=Reg(UInt(3.W));private val component=Reg(UInt(2.W))
+  private val left=Reg(Vec(config.lanes,UInt(32.W)));private val right=Reg(Vec(config.lanes,UInt(32.W)))
+  private val data=Reg(Vec(config.lanes,UInt(32.W)));private val scalarData=Reg(UInt(32.W))
+  private val status=RegInit(0.U(3.W));private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W))
+  private val planned=Reg(new ShaderTextureSampleRequest);private val started=RegInit(false.B);private val noFill=RegInit(false.B)
+  private val sample=Module(new ShaderTextureSampleUnit(config,stage));io.memoryRequest<>sample.io.memoryRequest;sample.io.memoryResponse<>io.memoryResponse
+  private val chooseVector=io.vectorIn.valid && (!io.in.valid || preferVector)
+  io.in.ready:=phase===State.idle && !io.clearParameters && !chooseVector
+  io.vectorIn.ready:=phase===State.idle && !io.clearParameters && chooseVector
+  io.busy:=phase=/=State.idle;io.status:=status;io.faultAddressValid:=faultValid;io.faultAddress:=faultAddress
+  when(io.clearParameters){assert(phase===State.idle,"parameter reset must wait for texture retirement");valid.foreach(_.foreach(_:=0.U))}
+  sample.io.in.valid:=phase===State.offer;sample.io.in.bits:=planned;sample.io.out.ready:=phase===State.waitSample
+  sample.io.cancel:=started && (io.cancel || status===4.U);sample.io.invalidate:=io.invalidate || noFill || status=/=0.U
+  when(phase=/=State.idle && phase=/=State.commit && !parameter && io.cancel && status===0.U){status:=4.U}
+  when(phase=/=State.idle && io.invalidate){noFill:=true.B}
+  io.commit.valid:=phase===State.commit && !vector;io.commit.bits:=0.U.asTypeOf(io.commit.bits)
+  io.commit.bits.warpId:=warp;io.commit.bits.nextPc:=pc+4.U;io.commit.bits.activeMask:=active
+  io.commit.bits.rd:=Mux(parameter,0.U,rd);io.commit.bits.writeRd:=parameter || status===0.U
+  io.commit.bits.data:=Mux(!parameter && status===0.U,scalarData,0.U)
+  io.vectorCommit.valid:=phase===State.commit && vector;io.vectorCommit.bits:=0.U.asTypeOf(io.vectorCommit.bits)
+  io.vectorCommit.bits.writeback.warpId:=warp;io.vectorCommit.bits.writeback.vd:=Mux(parameter,0.U,rd)
+  io.vectorCommit.bits.writeback.data:=Mux(!parameter && status===0.U,data,0.U.asTypeOf(data))
+  io.vectorCommit.bits.writesVd:= !parameter && status===0.U
+  // A parameter operation acknowledges through the existing scalar x0 path.
+  // It must never write/release v0 or reserve a vector destination.
+  io.vectorCommit.bits.writesScalar:=parameter;io.vectorCommit.bits.scalarData:=0.U
+  io.vectorCommit.bits.pc:=pc;io.vectorCommit.bits.warpActiveMask:=active
+  private def next(): Unit={when(!vector || lane===(config.lanes-1).U){phase:=State.commit}.otherwise{lane:=lane+1.U;phase:=State.nextLane}}
+  switch(phase){
+    is(State.idle){when(io.in.fire || io.vectorIn.fire){
+      assert(!sample.io.busy,"floating execution abandoned sampling ownership")
+      resources:=io.resources;identity:=io.identity;status:=0.U;faultValid:=false.B;faultAddress:=0.U
+      scalarData:=0.U;started:=false.B;noFill:=io.invalidate
+      when(io.vectorIn.fire){val q=io.vectorIn.bits;val d=q.issued.decode
+        assert(ShaderTextureSampleOpcode.vector(d.instruction));assert(d.warpId<config.warps.U)
+        vector:=true.B;parameter:=ShaderTextureSampleOpcode.vectorParameters(d.instruction);pair:=d.instruction(14,12)
+        warp:=d.warpId;rd:=d.instruction(11,7);pc:=d.pc;active:=d.activeMask;mask:=q.executionMask;lane:=0.U;component:=d.instruction(13,12)
+        left:=q.issued.vs1Data;right:=q.issued.vs2Data;data:=q.issued.oldVdData;preferVector:=false.B
+        phase:=Mux(ShaderTextureSampleOpcode.vectorParameters(d.instruction),State.writeParameters,State.nextLane)
+      }.otherwise{val q=io.in.bits;val d=q.decode;val first=PriorityEncoder(d.activeMask)
+        assert(ShaderTextureSampleOpcode.scalar(d.instruction));assert(d.warpId<config.warps.U)
+        vector:=false.B;parameter:=ShaderTextureSampleOpcode.scalarParameters(d.instruction);pair:=d.instruction(14,12)
+        warp:=d.warpId;rd:=d.instruction(11,7);pc:=d.pc;active:=d.activeMask;lane:=first;component:=d.instruction(13,12)
+        mask:=Mux(ShaderTextureSampleOpcode.scalarParameters(d.instruction),d.activeMask,UIntToOH(first,config.lanes))
+        left:=VecInit(Seq.fill(config.lanes)(q.rs1Data));right:=VecInit(Seq.fill(config.lanes)(q.rs2Data));data:=0.U.asTypeOf(data);preferVector:=true.B
+        phase:=Mux(ShaderTextureSampleOpcode.scalarParameters(d.instruction),State.writeParameters,State.nextLane)
+      }
+    }}
+    is(State.writeParameters){
+      val bits=(3.U(16.W)<<(pair<<1))(15,0)
+      for(l<-0 until config.lanes){when(mask(l)){
+        values(warp)(l)(Cat(pair,0.U(1.W))):=left(l);values(warp)(l)(Cat(pair,1.U(1.W))):=right(l)
+        valid(warp)(l):=Mux(pair===0.U,bits,valid(warp)(l)|bits)
+      }}
+      phase:=State.commit
+    }
+    is(State.nextLane){when(status=/=0.U || io.cancel){phase:=State.commit}.elsewhen(mask(lane)){phase:=State.capture}.otherwise{next()}}
+    is(State.capture){
+      val words=values(warp)(lane);val control=right(lane);val implicitMode=control(1,0)===0.U
+      val illegal=valid(warp)(lane)=/="hffff".U || control(31,3).orR || control(1,0)===3.U ||
+        words(13)(31,12).orR || words(14)=/=0.U || words(15)=/=0.U
+      when(status=/=0.U || io.cancel){phase:=State.commit}.elsewhen(illegal){status:=1.U;phase:=State.commit}.otherwise{
+        planned:=0.U.asTypeOf(planned);planned.resources:=resources;planned.identity:=identity;planned.unit:=left(lane);planned.component:=component;planned.tag:=lane
+        val q=planned.parameters;q.mode:=control(1,0);q.shadow:=control(2);q.coordinates:=VecInit(words.take(3));q.layer:=words(3)
+        q.reference:=words(4);q.lod:=words(5);q.bias:=words(6)
+        q.gradients(0):=VecInit(words.slice(7,10));q.gradients(1):=VecInit(words.slice(10,13))
+        q.offsets.zipWithIndex.foreach{case(o,a)=>o:=words(13)(a*4+3,a*4).asSInt.pad(5)}
+        if(config.lanes>=4 && config.lanes%4==0){
+          val group=(lane>>2)<<2
+          for(l<-0 until 4){q.quadCoordinates(l):=VecInit(values(warp)(group+l.U).take(3))}
+          q.quadLane:=lane(1,0);q.quadValidMask:=VecInit((0 until 4).map(l=>valid(warp)(group+l.U)==="hffff".U)).asUInt
+        }else{
+          when((stage==1).B && implicitMode){status:=1.U}
+        }
+        phase:=Mux((stage==1 && (config.lanes<4 || config.lanes%4!=0)).B && implicitMode,State.commit,State.offer)
+      }
+    }
+    is(State.offer){when(sample.io.in.fire){started:=true.B;phase:=State.waitSample}}
+    is(State.waitSample){when(sample.io.out.fire){
+      started:=false.B;val r=sample.io.out.bits;assert(r.tag===lane && r.unit===left(lane));val code=r.status
+      when((code=/=0.U && code=/=4.U) || (status===0.U && !io.cancel)){status:=code
+        when(code=/=0.U){faultValid:=r.faultAddressValid;faultAddress:=r.faultAddress}}
+      when(code===0.U && status===0.U && !io.cancel){when(vector){data(lane):=r.value}.otherwise{scalarData:=r.value}}
+      when(code=/=0.U || status=/=0.U || io.cancel){phase:=State.commit}.otherwise{next()}
+    }}
+    is(State.commit){when(io.commit.fire || io.vectorCommit.fire){assert(!sample.io.busy,"floating retirement escaped sample drain");phase:=State.idle}}
+  }
+}

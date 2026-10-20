@@ -523,6 +523,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       var views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,format,u,1,id,
         raw=BigInt("fedcba98765432100123456789abcdef",16)+u))
       for(u<-0 until 4)texData.coordinates(t.put,target=u,id=id,address=texData.packet+u*64)
+      var nativeMode=false;var skipParameters=false;var nativeControl=1
       val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
       def code(c: Int,scalar: Boolean): Seq[BigInt]={
         val fetch=if(scalar)Seq((BigInt(0x80)<<12)|(BigInt(12)<<7)|0x37,addi(12,12,3*64),addi(13,0,3),
@@ -531,11 +532,32 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
           Seq(vectorMemory(5,6,false),texData.vector(c,7,5,6))
         program(4,2).dropRight(1)++fetch++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
       }
+      def floatPc(c: Int,scalar: Boolean,missing: Boolean,mode: Int): Int=
+        0xa0000+(if(scalar)0x10000 else 0)+(if(missing)0x20000 else 0)+mode*0x4000+c*0x1000
+      def floatingCode(c: Int,scalar: Boolean,missing: Boolean,mode: Int): Seq[BigInt]={
+        def param(pair: Int,x: Int,y: Int): BigInt=(BigInt(3)<<(if(scalar)25 else 26))|
+          (if(scalar)BigInt(0)else BigInt(1)<<25)|(BigInt(y)<<20)|(BigInt(x)<<15)|(BigInt(pair)<<12)|(if(scalar)0x0b else 0x2b)
+        val initialize=Seq((BigInt(0x3f400)<<12)|(BigInt(12)<<7)|0x37,
+          broadcast|(BigInt(12)<<15)|(BigInt(10)<<7)|0x57,broadcast|(BigInt(11)<<7)|0x57,
+          broadcast|(BigInt(12)<<15)|0x57)
+        val first=if(missing)Seq.empty else Seq(param(0,if(scalar)12 else 10,if(scalar)12 else 10))
+        val rest=if(missing)Seq.empty else (1 until 8).map(p=>param(p,if(scalar)0 else 11,if(scalar)0 else 11))
+        val sample=if(scalar)Seq(addi(13,0,3),addi(14,0,mode),
+          (BigInt(4)<<25)|(BigInt(14)<<20)|(BigInt(13)<<15)|(BigInt(c)<<12)|(BigInt(15)<<7)|0x0b,
+          broadcast|(BigInt(15)<<15)|(BigInt(7)<<7)|0x57)
+        else address(5,7,7*t.stride)++Seq(vectorMemory(5,6,false),addi(13,0,mode),
+          broadcast|(BigInt(13)<<15)|(BigInt(5)<<7)|0x57,
+          (BigInt(4)<<26)|(BigInt(1)<<25)|(BigInt(5)<<20)|(BigInt(6)<<15)|(BigInt(c)<<12)|(BigInt(7)<<7)|0x2b)
+        program(4,2).dropRight(1)++initialize++first++address(6,7,(6+4*t.varyingSlots+14)*t.stride)++
+          Seq(vectorMemory(6,0,true))++rest++sample++address(6,7,(6+4*t.varyingSlots+15)*t.stride)++Seq(vectorMemory(6,7,true),cease)
+      }
+      for(scalar<-Seq(false,true);c<-0 until 4;missing<-Seq(false,true);mode<-0 to 2){
+        floatingCode(c,scalar,missing,mode).zipWithIndex.foreach{case(w,n)=>t.put(floatPc(c,scalar,missing,mode)+n*4,w)}}
       for(scalar<-Seq(false,true);c<-0 until 4){val pc=0x60000+(if(scalar)0x10000 else 0)+c*0x1000
         code(c,scalar).zipWithIndex.foreach{case(w,n)=>t.put(pc+n*4,w)}}
       d.io.out.ready.poke(true.B)
       def run(c: Int,scalar: Boolean,bad: Boolean=false,cancelled: Boolean=false): Unit={
-        t.exports.clear();t.descriptor();d.io.draw.bits.shaderPc.poke((0x60000+(if(scalar)0x10000 else 0)+c*0x1000).U)
+        t.exports.clear();t.descriptor();d.io.draw.bits.shaderPc.poke((if(nativeMode)floatPc(c,scalar,skipParameters,nativeControl)else 0x60000+(if(scalar)0x10000 else 0)+c*0x1000).U)
         d.io.draw.bits.resources.version.poke(1.U);d.io.draw.bits.resources.address.poke(texData.root.U)
         t.expectedColorTypes=Vector(0,1,2,outputKind);d.io.draw.bits.colorTypes(3).poke(outputKind.U)
         var rootRead=false;val faultLine=views(3).address& ~BigInt(63)
@@ -545,11 +567,13 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
         for(l<-0 until 4){val a=d.io.in.bits.values.lanes(l);a.varyings(0)(0).poke((texData.packet+l*64).U);a.varyings(0)(1).poke(l.U)}
         d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
         if(cancelled){t.until(rootRead);d.io.cancel.poke(true.B)}
-        t.complete(if(cancelled)4 else if(bad)3 else 0);if(cancelled)d.io.cancel.poke(false.B)
-        if(bad || cancelled)assert(t.exports.isEmpty)else{
+        t.complete(if(cancelled)4 else if(bad || nativeMode && skipParameters)3 else 0);if(cancelled)d.io.cancel.poke(false.B)
+        if(bad || cancelled || nativeMode && skipParameters)assert(t.exports.isEmpty)else{
           assert(t.exports.size==1)
           for((l,n)<-t.exports.head.lanes.zipWithIndex){val unit=if(scalar)3 else n;assert(l.colors(15)==views(unit).expected(c),s"typed fragment export differs c=$c scalar=$scalar lane=$n")}
+          if(nativeMode)assert(t.exports.forall(_.lanes.forall(_.colors(14)==fp(0.75f))),"parameter ack corrupted v0")
         }
+        if(nativeMode && skipParameters)assert(!rootRead,"new task reused stale operand validity")
       }
       for(scalar<-Seq(false,true);c<-0 until 4)run(c,scalar)
       run(0,false,bad=true);run(2,false,cancelled=true);run(3,true)
@@ -561,6 +585,19 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
           texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),target,1,id,swizzle=Seq(Seq(3,2,1,0),Seq(5,4,0,5),Seq(0,0,0,0),Seq(0,1,2,3))(u))}
         for(scalar<-Seq(false,true);c<-0 until 4){run(c,scalar);addedDraws+=1}
       }
+      nativeMode=true;var floatingDraws=0
+      for(kind<-0 to 2;group<-(0 until 64).filter(n=>(if(n>=54)0 else ImageFormatReference.format(ImageFormatReference.names(n)).kind)==kind).grouped(4)){
+        outputKind=kind;val ids=group.padTo(4,group.head)
+        views=(0 until 4).map{u=>val v=texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),0,1,id,
+          swizzle=Seq(Seq(3,2,1,0),Seq(5,4,0,5),Seq(0,0,0,0),Seq(0,1,2,3))(u))
+          if(ids(u)>=54){t.put(texData.images+u*128+11*4,2);t.put(texData.images+u*128+12*4,2)
+            t.put(texData.levels+u*128+13*4,2);t.put(texData.levels+u*128+14*4,2)};v}
+        for(scalar<-Seq(false,true);c<-0 until 4){run(c,scalar);floatingDraws+=1}
+      }
+      for(mode<-Seq(0,2)){nativeControl=mode;run(0,false);run(3,true);floatingDraws+=2}
+      nativeControl=1;skipParameters=true;run(0,false);run(0,true);skipParameters=false
+      run(0,false,bad=true);run(1,false,cancelled=true);run(3,true)
+      info(s"NATIVE_FLOAT_SAMPLE_CU stage=fragment local=$local formats64=true scalarVectorParameterInstructions=true scalarVectorSampleInstructions=true successfulDraws=$floatingDraws automaticAndGradient=true v0Preserved=true taskResetRejectsStaleTuple=true faultAndCancelDrain=true healthyReuse=true onChipParameterBank=true")
       info(s"NATIVE_IMAGE_FORMAT_CU stage=fragment local=$local formats64=true imageSwizzle=true scalarVector=true addedDraws=$addedDraws")
       info(s"NATIVE_TYPED_FETCH_CU stage=fragment local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true integerRawTypes=true helperInputs=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
     }
