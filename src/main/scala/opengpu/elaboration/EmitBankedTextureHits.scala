@@ -5,12 +5,13 @@ import opengpu.graphics._
 
 object EmitBankedTextureHits {
   def main(args: Array[String]): Unit={
-    require(args.length<=2,"EmitBankedTextureHits [store|cluster] [target-dir]")
+    require(args.length<=2,"EmitBankedTextureHits [store|cluster|fills] [target-dir]")
     val output=Array("--target-dir",args.lift(1).getOrElse("generated/mobile-h4/banked-texture-hits-rtl"))
     val lowering=Array("--lowering-options=disallowLocalVariables,disallowPackedArrays")
     args.headOption.getOrElse("cluster") match {
       case "store"=>ChiselStage.emitSystemVerilogFile(new BankedTextureLineStore(),output,lowering)
       case "cluster"=>ChiselStage.emitSystemVerilogFile(new BankedRgba8TextureHits(),output,lowering)
+      case "fills"=>ChiselStage.emitSystemVerilogFile(new BankedTextureFillOwner(),output,lowering)
       case _=>throw new IllegalArgumentException("unknown banked texture hit profile")
     }
   }
