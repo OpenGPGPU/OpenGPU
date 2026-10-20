@@ -464,4 +464,11 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   when(active && coordinateFault){fail(3.U,5.U,draw.sampler.base)}
   when(active && dataFault){fail(3.U,3.U,memRequest.address)}
   when(active && externalCancel && status===0.U){status:=4.U;faultSource:=0.U;faultAddress:=0.U;faultQuadValid:=false.B}
+
+  if(java.lang.Boolean.getBoolean("opengpu.debug.vertexRecovery")){
+    when(io.draw.fire){printf(p"RECOVERY_FS_BEGIN pc=${Hexadecimal(io.draw.bits.shaderPc)}\n")}
+    when(io.in.fire){printf(p"RECOVERY_FS_IN x=${io.in.bits.values.lanes(0).x} y=${io.in.bits.values.lanes(0).y} count=${count} stop=${stop}\n")}
+    when(io.out.fire){printf(p"RECOVERY_FS_OUT x=${io.out.bits.lanes(0).x} y=${io.out.bits.lanes(0).y} masks=${Hexadecimal(Cat(io.out.bits.lanes.reverse.map(_.coverageMask)))} controls=${Hexadecimal(controls.asUInt)}\n")}
+    when(io.completion.fire){printf(p"RECOVERY_FS_END status=${io.completion.bits.status} input=${io.completion.bits.inputQuads} output=${io.completion.bits.outputQuads} batches=${io.completion.bits.batches}\n")}
+  }
 }
