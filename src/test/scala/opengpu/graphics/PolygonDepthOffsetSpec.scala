@@ -69,6 +69,19 @@ class PolygonDepthOffsetSpec extends AnyFlatSpec {
     }
     def run(c: Case): Unit={val(offset,slope)=reference(c);offer(c);finish(offset,slope)}
   }
+  it should "preserve zero slope for constant polygon depth with large factors and shared-service reuse" in {
+    simulate(new PolygonDepthOffsetHarness){d=>val t=new Driver(d);var cases=0
+      val x=Vector(0,128000,25600).map(BigInt(_));val y=Vector(0,25600,102400).map(BigInt(_))
+      val depths=Vector(BigInt("3f000001",16),BigInt("3f000002",16),BigInt("3f400001",16),BigInt(1))
+      for(z<-depths;reverse<-Seq(false,true);sign<-Seq(1,-1);units<-Seq(0,3)){
+        val c=Case(if(reverse)x.reverse else x,if(reverse)y.reverse else y,Vector.fill(3)(z),
+          factor=fp(sign*math.scalb(1.0,20)),units=fp(units))
+        val expected=if(units==0)E()else calc(decode(c.resolution),decode(c.units),2)
+        t.offer(c);t.finish(expected,E());cases+=1
+      }
+      info(s"POLYGON_CONSTANT_DEPTH cases=$cases levels=4 windings=2 signs=2 unitsModes=2 flatSlopeZero=true factorMagnitude1048576=true resolutionTermPreserved=true heldCompletion=true sharedScalarService=true healthyReuse=true")
+    }
+  }
   it should "compute signed winding-independent plane slopes and extended offsets with exact rounded arithmetic" in {
     simulate(new PolygonDepthOffsetHarness){d=>val t=new Driver(d);val random=new Random(0x504f4c59)
       val variants=Vector(base,base.copy(factor=fp(-2),units=fp(-3)),base.copy(z=Vector.fill(3)(fp(0.5))),
