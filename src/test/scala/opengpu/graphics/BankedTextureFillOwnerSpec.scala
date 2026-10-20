@@ -17,7 +17,8 @@ private class BankedFillHarness(fills: Int = 16, waiters: Int = 32) extends Modu
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, fills)))
     val lookup = Flipped(Decoupled(new BankedTextureLookup(16)))
     val word = Decoupled(new BankedTextureWord(16))
-    val cancel = Input(Bool()); val invalidate = Input(Bool())
+    val cancel = Input(Bool()); val invalidate = Input(Bool()); val holdRefill = Input(Bool())
+    val refillOffered = Output(Bool())
     val busy = Output(Bool()); val occupied = Output(UInt(log2Ceil(fills + 1).W))
     val waiting = Output(UInt(log2Ceil(waiters + 1).W)); val joined = Output(Bool())
   })
@@ -25,7 +26,11 @@ private class BankedFillHarness(fills: Int = 16, waiters: Int = 32) extends Modu
   private val store = Module(new BankedTextureLineStore())
   owner.io.in <> io.in; io.out <> owner.io.out
   io.memoryRequest <> owner.io.memoryRequest; owner.io.memoryResponse <> io.memoryResponse
-  store.io.refill <> owner.io.refill; owner.io.refillDone <> store.io.refillDone
+  store.io.refill.valid := owner.io.refill.valid && !io.holdRefill
+  store.io.refill.bits := owner.io.refill.bits
+  owner.io.refill.ready := store.io.refill.ready && !io.holdRefill
+  io.refillOffered := owner.io.refill.valid
+  owner.io.refillDone <> store.io.refillDone
   owner.io.cancel := io.cancel; owner.io.invalidate := io.invalidate
   store.io.invalidate := owner.io.cacheInvalidate
   store.io.in(0) <> io.lookup
@@ -173,6 +178,25 @@ class BankedTextureFillOwnerSpec extends AnyFlatSpec {
       d.io.out.ready.poke(true.B); t.until(t.results.size == 5); t.until(!d.io.busy.peek().litToBoolean)
       assert(t.results.forall(r => r._2 && !r._3 && !r._4))
       info("BANKED_TEXTURE_FILL_KEYS generationAndViewIsolated=true completedFillNotJoined=true waiterFanoutFair=true")
+    }
+  }
+  it should "invalidate an unaccepted refill until its physical cache publication drains" in {
+    simulate(new BankedFillHarness(fills=4,waiters=8)) { d =>
+      val t = new Driver(d); d.io.memoryRequest.ready.poke(true.B); d.io.holdRefill.poke(true.B)
+      t.submit(0, 0); t.until(t.memory.size == 1); t.reply(t.memory.head._1, 0)
+      t.until(d.io.refillOffered.peek().litToBoolean)
+      d.io.invalidate.poke(true.B); t.tick(); d.io.invalidate.poke(false.B)
+      for(_ <- 0 until 5) t.tick()
+      d.io.holdRefill.poke(false.B); d.io.out.ready.poke(true.B)
+      t.until(t.results.size == 1); t.until(!d.io.busy.peek().litToBoolean); t.tick(); t.tick()
+      assert(t.results.head == ((0,false,false,false,true)))
+      // A poisoned completion alone is insufficient: the delayed offered
+      // refill must also leave the actual cache invalid after pulse/drain.
+      t.lookup(0, false)
+      t.submit(1, 0); t.until(t.memory.size == 2); t.reply(t.memory.last._1, 0)
+      t.until(t.results.size == 2); t.until(!d.io.busy.peek().litToBoolean)
+      assert(t.results.last == ((1,true,false,false,false))); t.lookup(0, true)
+      info("BANKED_TEXTURE_FILL_INVALIDATION heldOfferSurvives=true invalidationPulseRetained=true noLateCachePublication=true healthyReuse=true")
     }
   }
 }
