@@ -6208,3 +6208,16 @@ all mounted artifacts remain retained. This is tool-flow timeout evidence for
 the older emission,not a clock failure or qualification of the newer674-file
 raster/resource source. Synthesis-flow scalability and full native PPA remain
 open;no route or power result is claimed.
+
+
+## Registered expanded bounds before admission (2026-10-20)
+
+The [admission candidate](performance/mobile-point-line-admission-pipeline-2026-10-20.json)
+captures all four expanded bounds in signed64 before viewport/scissor clipping
+and scan admission. Existing legal-state,length/weight and narrowing checks
+remain exact. The extra preparation state applies to both points and lines.
+All12 component controls pass on unchanged674-file source,including39015 order
+cases,4871 arithmetic cases,2401 boundary-lattice lines and588 cancellation/reset
+cuts;default emission passes. Fresh integration,cycle and standalone synthesis
+checks remain pending. No positive clock,throughput or full H0-H8 result is
+claimed from this component checkpoint.

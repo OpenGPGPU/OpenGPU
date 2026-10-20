@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "12_admission_component_controls_pass_integration_cycles_synthesis_pending",
+  "source_files": 674,
+  "source_manifest_sha256": "815558c52ffc796c973027fcd77af642dc6581b00e75b26bde5cefd854c9a7bc",
+  "source_base_record": {
+    "path": "docs/performance/mobile-point-line-length-pipeline-2026-10-20.json",
+    "sha256": "47d4f7e4b6cca86cc52d4f561f8ffbd24b0d5638358e23c68313d68d88b4958e"
+  },
+  "source_changes": {
+    "src/main/scala/opengpu/graphics/PointLineRasterizer.scala": {
+      "before": "75ac03c4f9bfeb265632df0f16d712ae85243d9aa580376bbecdc733002773b4",
+      "after": "3592c1d7abe55cf404197a221f6da63b39c083be64146e6b96ff9993042cce4b"
+    }
+  },
+  "behavior": "Capture all four expanded bounds as signed64 before viewport/scissor clipping and admission decisions. Preserve exact coordinate carries,legal-state checks,signed64 length/weight guards and checked narrowing. One added preparation state applies to points and lines.",
+  "validation": {
+    "checks": 12,
+    "rank_order_cases": 39015,
+    "full_width_comparisons": 4871,
+    "lattice_lines": 2401,
+    "cancel_and_reset_cuts": 588,
+    "source_unchanged": true,
+    "rtl_emission": true,
+    "log": {
+      "path": ".artifacts/mobile-point-line-admission-pipeline-v1.log",
+      "sha256": "1158af595caea7aa48ac038cefb78f90cc2711ebeaf73852d0ac33d2a3384d76"
+    }
+  },
+  "measured_path_record": "docs/performance/mobile-point-line-length-synthesis-before-2026-10-20.json",
+  "pending": [
+    "Fresh primitive/shared-CU/production AXI integration.",
+    "Fresh15-case cycle measurement.",
+    "Fresh standalone synthesis at identical TC/SLVT,1000ps,25 percent I/O,no retiming."
+  ],
+  "limits": [
+    "No positive setup,native clock or throughput result yet.",
+    "Full H0-H8/GLES hardware objective remains open."
+  ]
+}
