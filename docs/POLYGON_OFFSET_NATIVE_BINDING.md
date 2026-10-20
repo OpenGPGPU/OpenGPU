@@ -65,3 +65,12 @@ depth resolve, stencil/padding/guard bytes, uniform tails, cached consumers and
 VM ownership. Each frame uses fresh image/vertex allocations. The frozen
 638-file snapshot changes only the native-host fixture; no passing all-format
 result is claimed until the running matrix completes.
+
+The combined branch also implements pending polygon-enabled native fault/reset
+variants. Five malformed raster records must fail without CU activity; thirteen
+envelope/descriptor/raster/permission/shader/store fault scenarios must drain
+before exact biased reuse. Reset cuts cover initial vertex fetch, first
+fragment fetch after biased raster work, and physical image publication, with
+queued DMA discarded and VM/payload ownership retained through drain. These
+external boundaries supplement the separately qualified scalar-client
+cancellation cuts; they do not identify a reset inside the offset arithmetic.
