@@ -6280,3 +6280,14 @@ preparation state preserves sample ordering. All12 controls pass on unchanged
 lines and600 cancellation/reset cuts. Default emission passes. Fresh integration,
 cycle measurement and standard-target synthesis remain pending;no positive
 clock,throughput or full H0-H8 result is claimed.
+
+
+## Retained clipped-bounds qualification and coordinate path (2026-10-20)
+
+All22 fresh targeted controls and [15 exact-output cycle fixtures](performance/mobile-point-line-clipped-cycles-before-2026-10-20.json)
+pass on unchanged674-file source. The [standard screen](performance/mobile-point-line-clipped-synthesis-before-2026-10-20.json)
+passes mapping but misses setup by110.513ps,with I/O+639.993ps. The path runs
+from integer aliased-line width to point-mask control through a shared coordinate
+expression. Point and MSAA branches select zero translation;their coordinates
+will be specialized without adding states. No positive timing or full H0-H8
+result is claimed.

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "12_clipped_component_controls_pass_integration_cycles_synthesis_pending",
+  "status": "22_fresh_controls_pass_shared_coordinate_setup_miss_retained",
   "source_files": 674,
   "source_manifest_sha256": "a2c67d7405f8d4e6e39a23becb81465823ac6e3ef72a479a47848ea84d34d964",
   "source_base_record": {
@@ -30,12 +30,25 @@
   },
   "measured_path_record": "docs/performance/mobile-point-line-balanced-synthesis-before-2026-10-20.json",
   "pending": [
-    "Fresh primitive/shared-CU/production AXI integration.",
-    "Fresh15-case cycle measurement.",
-    "Fresh standalone synthesis with standard ABC target,1000ps clock,25 percent I/O,no retiming."
+    "Specialize point/MSAA coordinates to remove irrelevant aliased-line translation."
   ],
   "limits": [
     "No positive setup,native clock or throughput result yet.",
     "Full H0-H8/GLES hardware objective remains open."
-  ]
+  ],
+  "integration": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "test_counts": [
+      12,
+      6,
+      2,
+      2
+    ],
+    "total_checks": 22,
+    "log": {
+      "path": ".artifacts/mobile-point-line-clipped-integration-v3.log",
+      "sha256": "581cafd2a80b729b6457392f51c44a8c3161b945de8db7b5c7796dfefe4e73e5"
+    }
+  }
 }
