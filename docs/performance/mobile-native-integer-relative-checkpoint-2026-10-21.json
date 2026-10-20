@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "corrected_integer_aggregate_CU_AXI_and_two_synthesis_screens_running",
+  "source": {
+    "commit": "346fec806e7446629034d556e62c0fe90f812c13",
+    "source_files": 803,
+    "manifest_sha256": "f1fa636f68d0d720fa5758402ab45fae3cb834e39dd765b8043b067dfabd5cb7",
+    "archive_sha256": "7b9d4ca91d227bc3fb268b2adb2d19d016619f43ac3eac8e509365f567a32a01",
+    "git_archive_and_worktree_exact": true
+  },
+  "targeted_LOD_record": "mobile-native-integer-relative-lod-2026-10-21.json",
+  "targeted_LOD_record_sha256": "05427107cb4e3b21b4a6ee3bad93bc7b643c61ff9efbb1c35cfefb614c6ebdfb",
+  "emission": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 13.100560042075813,
+    "commit": "346fec806e7446629034d556e62c0fe90f812c13",
+    "source_files": 803,
+    "manifest_sha256": "f1fa636f68d0d720fa5758402ab45fae3cb834e39dd765b8043b067dfabd5cb7",
+    "archive_sha256": "7b9d4ca91d227bc3fb268b2adb2d19d016619f43ac3eac8e509365f567a32a01",
+    "git_archive_and_worktree_exact": true
+  },
+  "qualification": {
+    "session_id": 76591,
+    "runner": ".artifacts/run-mobile-native-integer-relative-lod-v6.py",
+    "runner_sha256": "0c80bfacf2cbc3b31ac765079f7ad8c0fda6291222cc6ad0a5002aa83f3b3a56",
+    "log": ".artifacts/mobile-native-integer-relative-lod-v6-qualified.log",
+    "state": "running_when_recorded",
+    "planned_aggregate_tests": 148,
+    "generated_descriptor_ABI_checks": 9,
+    "planned_shared_CU_tests": 4,
+    "planned_AXI_tests": 2,
+    "planned_AXI_frames_per_payload_mode": 74,
+    "AXI_scope": "Creates222 draw descriptors per74-frame case, including error frames; not222 completed GPU draws or a throughput result."
+  },
+  "synthesis": {
+    "vertex": {
+      "session_id": 49269,
+      "state": "running_when_recorded",
+      "start": {
+        "wrapper_pid": 63058,
+        "flow_pid": 63082,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-native-integer-relative-lod-v1-worktree/generated/mobile-h4/native-relative-vertex-v6-rtl",
+          "NativeShaderTextureUnit",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-native-relative-vertex-2026-10-21-v6"
+        ],
+        "started_utc": "2026-10-20T18:31:43.261423+00:00"
+      },
+      "inputs_sha256": "7a5b9f1d2437f5170e9e7d547589df6d765e9c9b34aa684a74e5f8a528e6f740"
+    },
+    "fragment": {
+      "session_id": 45829,
+      "state": "running_when_recorded",
+      "start": {
+        "wrapper_pid": 63563,
+        "flow_pid": 63565,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-native-integer-relative-lod-v1-worktree/generated/mobile-h4/native-relative-fragment-v6-rtl",
+          "NativeShaderTextureUnit",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-native-relative-fragment-2026-10-21-v6"
+        ],
+        "started_utc": "2026-10-20T18:31:44.356619+00:00"
+      },
+      "inputs_sha256": "ffbea5bf79fbd017e848895d3bd23dc41b033696478f34425b42d4b9236014a2"
+    }
+  },
+  "constraints": "1000ps TC/SLVT,25 percent I/O,standard ABC,no retiming,synthesis only; no route.",
+  "remaining": [
+    "Terminal corrected aggregate/ABI/CU/AXI results",
+    "Both corrected full native endpoint synthesis screens",
+    "Texture query/projective qualification,banked throughput/coherence and all remaining H0-H8 requirements"
+  ]
+}
