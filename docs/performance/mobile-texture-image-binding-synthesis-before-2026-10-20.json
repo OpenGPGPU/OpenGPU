@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "binding_mapping_passed_setup_failed_other_profiles_separate",
+  "source_files": 662,
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-image-binding-qualified-v1-source.json",
+    "sha256": "6de4be8256df2095235238ad633f708692fa7ac5b8692398e6a5f8101d625bfb"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-texture-image-binding-qualified-v1-source.tar.gz",
+    "sha256": "fa638f74879d168c0a23f1d91766e69ae29dd0d9269a8c142336428d92d0bed0"
+  },
+  "runtime": {
+    "returncode": 2,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 78.36698829196393,
+    "finished_utc": "2026-10-20T06:32:38.676529+00:00"
+  },
+  "mapping_passed": true,
+  "setup_passed": false,
+  "reported_setup_slacks_ps": [
+    -565.28,
+    428.211
+  ],
+  "estimated_core_clock_fmax_mhz": 638.863,
+  "parameters": {
+    "clock_port": "clock",
+    "clock_port_auto": false,
+    "clock_period": 1000.0,
+    "core_utilization": 25,
+    "place_density": 0.6,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "timing_effort": "explore",
+    "synthesis_engine": "yosys",
+    "sv_frontend": "native",
+    "enable_retiming": false,
+    "swap_arithmetic_operators": false,
+    "generate_gds": false,
+    "max_fanout": null,
+    "high_fanout_nets": null,
+    "high_fanout_max": 8,
+    "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+    "setup_slack_margin": 0.0,
+    "abc_clock_period_ps": null,
+    "io_delay_percent": 0.25,
+    "io_false_path_ports": null,
+    "post_floorplan_tcl": null,
+    "macros": []
+  },
+  "critical_startpoint": "snapshot_baseLevel[1]$_SDFFE_PP0P_",
+  "critical_endpoint": "currentLevel[3]$_DFFE_PP_",
+  "evidence": {
+    "qualification.json": {
+      "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v1/qualification.json",
+      "sha256": "fbf446f9ef30ab91143e1ab7db657bc0c4b74720a5e3d58f9c7dd73c0fa68447"
+    },
+    "result.json": {
+      "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v1/result.json",
+      "sha256": "8c9a7d794fb404ca40ae12d7bf15e8f81d2f81aab37cb62e20e1702a31d6e5ff"
+    },
+    "manifest.json": {
+      "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v1/manifest.json",
+      "sha256": "672b238049433ee5419f40a79efb07745e5f340b9fb881bf13957f95acf6ef35"
+    },
+    "flow/synthesis_sta.log": {
+      "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v1/flow/synthesis_sta.log",
+      "sha256": "fc368d26196c56e010ee00dd026120f7b6757bda9e4550d27878a0bc6f65e92c"
+    },
+    "flow/orfs-work/reports/base/synth_stat.txt": {
+      "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+      "sha256": "b56a8511a49cc324eaee81a0d9f9097b5c8c744a0019104b302ae2378f8d3272"
+    }
+  },
+  "remaining": [
+    "Register natural-level, handle and table-extent validation before integration, then repeat functional and identical-constraint synthesis qualification.",
+    "Original frozen four-profile screen continues independently; this record claims only the completed binding result.",
+    "Add explicit nested primary-fault/cancel and caller-coordinate boundary controls.",
+    "Native integration and full H0-H8/GLES hardware work remain open."
+  ],
+  "scope": "Synthesis only; TC/SLVT,1000ps,25 percent I/O,no retiming or place and route."
+}
