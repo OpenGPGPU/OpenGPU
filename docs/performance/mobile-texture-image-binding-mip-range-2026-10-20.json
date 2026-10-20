@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "29_checks_seven_ABIs_four_emissions_C11_CI_passed_synthesis_pending",
+  "status": "29_checks_seven_ABIs_four_emissions_C11_CI_four_synthesis_screens_passed",
   "based_on_commit": "74dcd29977438b9e904dce96e00bdc6debac1a5f",
   "source_files": 662,
   "source_sha256": {
@@ -828,7 +828,6 @@
     "scope": "Mip dimension/level and sampler-dependent chain requirements inform this internal hardware contract; no API conformance claim."
   },
   "remaining": [
-    "Synthesis-only screens for binding/bound fetch and the two fetch profiles affected by the shared-reader correction.",
     "Native per-stage image/sampler binding, typed shader transport, filter legality, coordinates/LOD/filtering, depth/compressed formats and full H0-H8/GLES hardware work.",
     "Independent206-check depth/facing/texture composition and old640-source native synthesis retain their original frozen sources and processes."
   ],
@@ -845,5 +844,10 @@
       "path": ".artifacts/mobile-texture-image-binding-mip-range-v1-worktree/docs/performance/mobile-texture-image-binding-synthesis-before-2026-10-20.json",
       "sha256": "d2804aedf90be3364b3bf21e3b45aaf615bf070b6f4285dbe67bf822041163c9"
     }
+  },
+  "subsequent_synthesis": {
+    "path": "docs/performance/mobile-texture-image-binding-synthesis-2026-10-20.json",
+    "sha256": "cc7463c118a5e2d6c5909b2caad683c90265dfd93695706cc97d5c7f4cd1f46e",
+    "scope": "Two fresh binding/bound screens; two raw/typed screens carried by exact active-RTL proof. Synthesis only."
   }
 }

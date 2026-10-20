@@ -5909,3 +5909,16 @@ All29 controls, seven ABI checks and four emissions pass on unchanged662-file
 source. The ABI and prior raw/typed active RTL remain unchanged; revised binding
 and bound-fetch synthesis is pending at identical constraints. Native integration
 and the full H0-H8/GLES hardware objective remain open.
+
+
+## Image binding synthesis qualification (2026-10-20)
+
+The [four completed standalone screens](performance/mobile-texture-image-binding-synthesis-2026-10-20.json)
+pass full mapping and all reported setup groups including I/O: binding +57.287 ps,
+bound fetch +49.401 ps, raw +123.434 ps and typed +10.117 ps, at unchanged
+TC/SLVT, 1000 ps, 25 percent I/O delay and no retiming. Binding/bound are fresh
+measurements on the29-check source; raw/typed carry only by exact active-RTL and
+current-source proof. Initial prompt-fault and all earlier timing failures remain
+recorded. No route, power, native texture throughput or whole-GPU clock result
+is claimed. Native image/sampler binding and typed shader transport, remaining
+sampler/format semantics and full hardware completion remain open.

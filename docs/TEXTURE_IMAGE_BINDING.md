@@ -3,8 +3,8 @@
 Status: [29 controls pass](performance/mobile-texture-image-binding-mip-range-2026-10-20.json)
 on unchanged 662-file source in `codex/mobile-texture-image-binding-mip-range`, together
 with seven ABI checks, four RTL emissions, combined C11 headers and CI selection.
-Revised binding synthesis and native integration remain pending. No new native
-capability is advertised.
+All four standalone synthesis screens pass. Native integration remains open;
+no new native capability is advertised.
 
 `TextureImageBindingUnit` loads a GXI1 image record that owns format identity,
 allocation bounds, target, dimensional sequence and a GXL1 level table. A texel
@@ -112,4 +112,9 @@ uses the equivalent root-based natural mip bound and a separate requested-level
 check before handle narrowing. An independent original dimension-reduction
 oracle checks 303,104 hardware cases, including every 14-bit root/base pair and
 all target/max clamps at power boundaries. All 29 controls and seven ABI checks
-pass; revised synthesis remains pending at identical constraints.
+pass. The [completed synthesis screens](performance/mobile-texture-image-binding-synthesis-2026-10-20.json)
+pass full mapping and reported setup including I/O: binding +57.287 ps, bound
+fetch +49.401 ps, raw +123.434 ps and typed +10.117 ps, at the unchanged 1 GHz
+target. Raw/typed carry from the earlier completed screens by exact active-RTL
+and current-source proof. All initial misses remain recorded. No place/route,
+power, native execution rate or whole-GPU clock result is implied.
