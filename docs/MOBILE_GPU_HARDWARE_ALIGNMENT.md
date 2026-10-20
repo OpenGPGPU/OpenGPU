@@ -5242,3 +5242,11 @@ center/sample-depth application before clamping are not integrated. Shader
 depth override must bypass the offset. Actual-CU/native image, numeric-boundary,
 fault/reuse, cycle and synthesis gates remain required. This prerequisite does
 not close G04, H6 or any H0–H8 gate; PPA remains synthesis only.
+
+The [candidate depth-resolution selector](POLYGON_DEPTH_RESOLUTION.md) separately
+passes four hardware checks on 632 unchanged source/ABI files. Its fixed-depth
+constants survive actual scalar-add/encode ties, with exhaustive first/last
+FP32 source checks across every D16/D24 quantization cell. Floating selection
+covers every usable exponent, subnormal spacing and all vertex locations.
+This qualifies a post-interpolation conversion envelope; full raster precision,
+immutable attachment binding and complete polygon-offset publication remain open.
