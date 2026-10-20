@@ -774,7 +774,11 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           val denied=(fo+texData.samplers+17*64)>>12
           image.word(pt+(denied&1023)*4,((image.pa(denied<<12)>>12)<<10)|0x49)
         }
+        val reportFrame=frames%8==0 || bad || missing || baseLevel>0 || integerOffset!=0
+        val frameStart=System.nanoTime()
+        if(reportFrame)println(s"NATIVE_INTEGER_AXI_PROGRESS begin local=$local frame=$frames format=$format target=$target imageBase=$baseLevel offset=$integerOffset bad=$bad missing=$missing")
         axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit();withClue(s"format=$format frame=$frames component=$c mode=$mode local=$local "){image.run(if(bad || missing)3 else 0)}
+        if(reportFrame)println(s"NATIVE_INTEGER_AXI_PROGRESS complete local=$local frame=$frames wallMillis=${(System.nanoTime()-frameStart)/1000000} expectedStatus=${if(bad || missing)3 else 0}")
         if(bad){val page=image.pa((fo+texData.samplers)& ~BigInt(4095));assert(!image.reads.exists(a=>a>=page && a<page+4096))}
         else if(!missing){
           image.verifyDraws(mode)
