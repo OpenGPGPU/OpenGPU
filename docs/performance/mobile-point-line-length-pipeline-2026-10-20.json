@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "22_fresh_controls_pass_admission_setup_miss_retained",
+  "source_files": 674,
+  "source_manifest_sha256": "0fd027f180804165706ba2d38a50f08344b5b8e0a52c989231b02260e5cabc56",
+  "source_base_record": {
+    "path": "docs/performance/mobile-point-line-diamond-weights-2026-10-20.json",
+    "sha256": "98ece4ba14300752a2f2e2ffacbb2286a861f9fd1a2c0254beb8f35790745a26"
+  },
+  "source_changes": {
+    "src/main/scala/opengpu/graphics/PointLineRasterizer.scala": {
+      "before": "ac29ecae228a258ec261046b39c935121660f884dbc473bb5bf13c5c29f729f4",
+      "after": "75ac03c4f9bfeb265632df0f16d712ae85243d9aa580376bbecdc733002773b4"
+    }
+  },
+  "behavior": "Register signed33 square partials,joined signed66 squares and a full67-bit prefix sum. Existing signed64 admission/weight guards remain unchanged. Lines add two preparation states;points bypass length arithmetic and retain their direct path.",
+  "validation": {
+    "checks": 12,
+    "rank_order_cases": 39015,
+    "full_width_comparisons": 4871,
+    "lattice_lines": 2401,
+    "cancel_and_reset_cuts": 576,
+    "source_unchanged": true,
+    "rtl_emission": true,
+    "log": {
+      "path": ".artifacts/mobile-point-line-length-pipeline-v1.log",
+      "sha256": "90f2390412732cf643c234b0a26c153f85c80ff70f2a0860f985a1f131e170fe"
+    }
+  },
+  "measured_path_record": "docs/performance/mobile-point-line-diamond-weight-synthesis-before-2026-10-20.json",
+  "pending": [
+    "Stage the measured expanded-bounds admission path and qualify the resulting source."
+  ],
+  "limits": [
+    "No positive setup,native clock or throughput result yet.",
+    "Full H0-H8/GLES hardware objective remains open."
+  ],
+  "integration": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "test_counts": [
+      12,
+      6,
+      2,
+      2
+    ],
+    "total_checks": 22,
+    "log": {
+      "path": ".artifacts/mobile-point-line-length-integration-v1.log",
+      "sha256": "febfa3c1a40ec154db64c4925f65d356b9e3edf6ba1d186fdf5fb4b1c33c066c"
+    },
+    "scope": "Targeted component,primitive,shared-CU and native AXI controls;not full H0-H8 regression."
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "12_paired_component_controls_and15_cycle_fixtures_pass_before_weight_cut",
+  "source_files": 674,
+  "source_manifest_sha256": "779b0e540992b81dd62e3206df3d26195241eb9d52eb7e5fc171f4d294609fd5",
+  "source_base_record": {
+    "path": "docs/performance/mobile-point-line-diamond-pipeline-2026-10-20.json",
+    "sha256": "c3d8f9781156034bb5f917833cc008dfed59597fe73e01018e379af4dd084a32"
+  },
+  "source_changes": {
+    "src/main/scala/opengpu/graphics/PointLineRasterizer.scala": {
+      "before": "0832a697352cf8551245e39856af0f0de5170681428b761a6110e7e457731e1c",
+      "after": "53b6fb5fbb267fb492e841f250710ab38b36c36fa8f70b470dd779e2f6095a4b"
+    },
+    "src/test/scala/opengpu/graphics/DiamondFractionComparisonSpec.scala": {
+      "before": "41e1def0b9bbcee0408fa7bff0997c44a13c67f211e0e2e59f98e35c16a69067",
+      "after": "0a5be7bf64a3eb15b33d47209532201179a9a17900779428bb887db2478ee55d"
+    },
+    "src/test/scala/opengpu/graphics/PointLineRasterizerSpec.scala": {
+      "before": "285a3f1a226886b6f1bd35f882964a413fd235f87a0bc898cfd52b27cb2d6d9b",
+      "after": "25179c3c6366ea113fac246fd0b7a51d2bfbb1d9b62ae7c68dc5434c9943c5b1"
+    }
+  },
+  "behavior": "Intersect both moving diamond slabs with [0,1] using four constant-bound comparisons and two cross-slab comparisons. Slab l<h follows from positive width and denominator with identical perturbations. Stationary slabs contribute validity and bypass cross products.",
+  "validation": {
+    "checks": 12,
+    "rank_order_cases": 39015,
+    "full_width_comparisons": 4871,
+    "lattice_lines": 2401,
+    "cancel_and_reset_cuts": 468,
+    "source_unchanged": true,
+    "rtl_emission": true,
+    "log": {
+      "path": ".artifacts/mobile-point-line-diamond-pair-v1.log",
+      "sha256": "64aec6f09a92825cb651f143da7b4794ff28dc9c99e6ce3f47716993c4a46a6c"
+    }
+  },
+  "unchanged_weight_body_sha256": "c4a45d82997fce8be3af68d434ca3a4c97fbae3e087550a9ce2157ba8c84746b",
+  "measured_weight_path_record": "docs/performance/mobile-point-line-diamond-serial-synthesis-before-2026-10-20.json",
+  "pending": [
+    "Qualify measured weight-path cut in the combined next revision."
+  ],
+  "cycle_record": "docs/performance/mobile-point-line-diamond-pair-cycles-before-2026-10-20.json"
+}

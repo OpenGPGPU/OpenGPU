@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "clipped_full_mapping_pass_shared_coordinate_setup_fail",
+  "source_files": 674,
+  "checks": 22,
+  "source_manifest_sha256": "a2c67d7405f8d4e6e39a23becb81465823ac6e3ef72a479a47848ea84d34d964",
+  "terminal": {
+    "returncode": 2,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 247.23482979205437,
+    "finished_utc": "2026-10-20T09:23:22.255332+00:00"
+  },
+  "reported_setup_slacks_ps": [
+    -110.513,
+    639.993
+  ],
+  "mapped_cells": 149133,
+  "core_path": {
+    "start": "integerWidth[0]$_SDFFCE_PN0P_",
+    "end": "mask[3]$_SDFF_PP0_"
+  },
+  "matched_inputs_record": {
+    "path": ".artifacts/mobile-point-line-clipped-matched-inputs-v3.json",
+    "sha256": "bfc714bde0fcf8c25a0641292eaf7f64aacd0d0beca792852c9ca24f736ea670"
+  },
+  "constraints": {
+    "period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "abc_clock_period_ps": null,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "retiming": false
+  },
+  "artifacts": {
+    "generated/qualification/ppa/mobile-point-line-clipped-2026-10-20-v3/result.json": "180bb254fbf80e649131ac7bd8c48e59572e328f8409ce1fa329592dbcb7fc64",
+    "generated/qualification/ppa/mobile-point-line-clipped-2026-10-20-v3/qualification.json": "e3d8f78d8a3041c2b80980f30897c592c1e599e82e4d444b1ed1c17504df166c",
+    "generated/qualification/ppa/mobile-point-line-clipped-2026-10-20-v3/manifest.json": "72b00f2300cc53303a59d0721779976ba5f0319a85d3c7f378c8c722418b4b2f",
+    "generated/qualification/ppa/mobile-point-line-clipped-2026-10-20-v3/flow/synthesis_sta.log": "4d31ebdc8adad0fb6416262486474088f23df6f338607a8acdc5635b1ad03772"
+  },
+  "limits": [
+    "Shared coordinates expose an irrelevant integerWidth-to-point-mask path;specialization remains pending.",
+    "No positive setup,native clock,route or power qualification."
+  ]
+}

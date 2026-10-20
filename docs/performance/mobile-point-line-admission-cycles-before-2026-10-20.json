@@ -1,0 +1,253 @@
+{
+  "started_utc": "2026-10-20T08:37:05.772382+00:00",
+  "harness_sha256": "558aef327d6e7329f1b8641491e6dfdc78b13a2e24a2a4a70fac5cf857f7dcc1",
+  "runner_sha256": "c1f524a807f0b48d06c1a1e1776b84017bc5b3a94d3d34c04e820774b7be0848",
+  "verilator_version": "Verilator 5.050 2026-07-01 rev vUNKNOWN-built20260701",
+  "build_jobs": 2,
+  "cxx_standard": "c++17",
+  "cycle_policy": "report",
+  "scope": "Standalone default component, 8x8 view, always-ready output; 15 common-domain primitives",
+  "cycle_definition": "Acceptance edge counts as cycle 1; count through the edge that clears busy. First offer is observed before its accepting edge.",
+  "quad_layout": "Four lanes each containing raw unsigned x,y,e0,e1,e2,area,covered,coverageMask",
+  "inputs": {
+    "subpixel_bits": 8,
+    "screen": [
+      8,
+      8
+    ],
+    "state_version": 1,
+    "line_endpoints": [
+      [
+        128,
+        128
+      ],
+      [
+        1792,
+        1280
+      ]
+    ],
+    "point_center": [
+      896,
+      1024
+    ],
+    "scissor": false
+  },
+  "models": {
+    "baseline": {
+      "rtl_path": "/Users/duckdonald/workspace/gpu/.artifacts/mobile-point-line-sample-pipeline-v1-worktree/generated/mobile-h6/point-line-sample-pipeline-v2-rtl",
+      "rtl_sha256": "69cff6235f078d7f9e300d95d36ea991d6d1162b5c1306979e6d073ab8ce7d82",
+      "rtl_files_sha256": {
+        "BlockPrefixAdder.sv": "060f871d4b38ee579dcecef8bc33a2ac4c839a5edfd80100dd90272fdb99c172",
+        "PointLineRasterizer.sv": "69cff6235f078d7f9e300d95d36ea991d6d1162b5c1306979e6d073ab8ce7d82"
+      },
+      "optional_input_defines": [
+        "-DOPENGPU_POINT_LINE_HAS_FRONT_FACE",
+        "-DOPENGPU_POINT_LINE_HAS_POLYGON_OFFSET"
+      ],
+      "executable_sha256": "aa0f1903276650c2ef4f00501c729fd3a17e0a8bfe71def98a2585ef8943842b",
+      "results_sha256": "974d5f1b5190444a8b6c8caf1ee3fefb0256f8b9ee206d661f3055d9a755d067"
+    },
+    "candidate": {
+      "rtl_path": "/Users/duckdonald/workspace/gpu/.artifacts/mobile-point-line-admission-pipeline-v1-worktree/generated/mobile-h6/point-line-admission-pipeline-v1-rtl",
+      "rtl_sha256": "c9cb815329581ab50c174186acf4b1d62bf05e22e3ee8a092905e6f157294740",
+      "rtl_files_sha256": {
+        "BlockPrefixAdder.sv": "2b930fc74bba0c9a099ee0e56a069bd3bc3be41ae68d12167417f1fb2a030d6f",
+        "BlockPrefixAdder_2.sv": "bcf3fce5362d13ba880fb2a37ae69222fa7b6075a083b09bd7be2f8b9e9f3cb6",
+        "BlockPrefixAdder_6.sv": "7e87185fbc6f7003a00460761e07c1e44f864fb34ce34790344ca393ae7910e4",
+        "BlockPrefixAdder_7.sv": "6a77ed3993f11b10aa4b2e3303d5adbbe9ae05968c46e30da247d87a9455dec7",
+        "BlockPrefixAdder_8.sv": "c88149592ab246d123ae99f13076a451247fd209ca4c2fc284cb4bb8cb022f9d",
+        "PointLineRasterizer.sv": "c9cb815329581ab50c174186acf4b1d62bf05e22e3ee8a092905e6f157294740"
+      },
+      "optional_input_defines": [
+        "-DOPENGPU_POINT_LINE_HAS_FRONT_FACE",
+        "-DOPENGPU_POINT_LINE_HAS_POLYGON_OFFSET"
+      ],
+      "executable_sha256": "333352a6046a0c5b07a64eb23cf63eb223d259213e3609a9bd591a22f73bca77",
+      "results_sha256": "34ce2a5640efef3469391a52a6498558e2c50888a82ad74ecbf4a9dcdb50b500"
+    }
+  },
+  "comparisons": [
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 0,
+      "baseline_cycles": 489,
+      "candidate_cycles": 876,
+      "added_cycles": 387,
+      "first_offer_delta": 27,
+      "quads": 5,
+      "all_quad_fields_equal": true,
+      "output_sha256": "1e51710e690090f7b63b19b2adb197ffdfc845c7467f943ccddc4225e4f90186"
+    },
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 1,
+      "baseline_cycles": 683,
+      "candidate_cycles": 942,
+      "added_cycles": 259,
+      "first_offer_delta": 19,
+      "quads": 6,
+      "all_quad_fields_equal": true,
+      "output_sha256": "9d864a3bf040dc8637175346dcd08a587aad06db8b35701b93b637914339a338"
+    },
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 2,
+      "baseline_cycles": 811,
+      "candidate_cycles": 1070,
+      "added_cycles": 259,
+      "first_offer_delta": 19,
+      "quads": 6,
+      "all_quad_fields_equal": true,
+      "output_sha256": "294e339bd83411bff7d8cd5afec057b4c6d9bacacae9bc52b10632ff84ccb09c"
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 0,
+      "baseline_cycles": 721,
+      "candidate_cycles": 1224,
+      "added_cycles": 503,
+      "first_offer_delta": 31,
+      "quads": 5,
+      "all_quad_fields_equal": true,
+      "output_sha256": "98b53de8a24353f4ae243a6c68caa5fcf78825c85912a1a4a9ac9342356ac4b7"
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 1,
+      "baseline_cycles": 685,
+      "candidate_cycles": 944,
+      "added_cycles": 259,
+      "first_offer_delta": 19,
+      "quads": 8,
+      "all_quad_fields_equal": true,
+      "output_sha256": "fbf1adebaa6c0cabc31f142654216452488b06710b29c9c7bac8bc6021e6c057"
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 2,
+      "baseline_cycles": 815,
+      "candidate_cycles": 1074,
+      "added_cycles": 259,
+      "first_offer_delta": 19,
+      "quads": 10,
+      "all_quad_fields_equal": true,
+      "output_sha256": "a6248350d563dd4975d542440a13c94150b90ecea18a071361a0d44892893fc0"
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 0,
+      "baseline_cycles": 10896,
+      "candidate_cycles": 16483,
+      "added_cycles": 5587,
+      "first_offer_delta": 279,
+      "quads": 12,
+      "all_quad_fields_equal": true,
+      "output_sha256": "1808228ae12c5088b2376ecf3c7c287dfa84d2b11b282d50325a439d33abfa22"
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 1,
+      "baseline_cycles": 692,
+      "candidate_cycles": 951,
+      "added_cycles": 259,
+      "first_offer_delta": 19,
+      "quads": 15,
+      "all_quad_fields_equal": true,
+      "output_sha256": "c5505f7cc3ea41bf881d7615abb8d0bea8b969ff1a16219714d4e1f908d1dfa1"
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 2,
+      "baseline_cycles": 820,
+      "candidate_cycles": 1079,
+      "added_cycles": 259,
+      "first_offer_delta": 19,
+      "quads": 15,
+      "all_quad_fields_equal": true,
+      "output_sha256": "efc0a68b0157dfd30bad5f37d3418c5c0839f4128cbd68743155d9a08436752a"
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 0,
+      "baseline_cycles": 296,
+      "candidate_cycles": 297,
+      "added_cycles": 1,
+      "first_offer_delta": 1,
+      "quads": 4,
+      "all_quad_fields_equal": true,
+      "output_sha256": "f1167222a2cda63b948a2e6bebc6dcb03dbeb6f4468757f18a822fe12c414ea6"
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 1,
+      "baseline_cycles": 424,
+      "candidate_cycles": 425,
+      "added_cycles": 1,
+      "first_offer_delta": 1,
+      "quads": 4,
+      "all_quad_fields_equal": true,
+      "output_sha256": "30c9ef6478113d2f2a6b4d04168e1ee13dabef8ac2790644450bc33c85c35082"
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 2,
+      "baseline_cycles": 680,
+      "candidate_cycles": 681,
+      "added_cycles": 1,
+      "first_offer_delta": 1,
+      "quads": 4,
+      "all_quad_fields_equal": true,
+      "output_sha256": "1a2afd14a7f687f74aee559d0bf3f862b4e0a96fdf76903cb04037d240103114"
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 0,
+      "baseline_cycles": 308,
+      "candidate_cycles": 309,
+      "added_cycles": 1,
+      "first_offer_delta": 1,
+      "quads": 16,
+      "all_quad_fields_equal": true,
+      "output_sha256": "cef5e345f7d731941e550527bf95128f504881f7fd2ca8a2d8d5a58dd9b30463"
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 1,
+      "baseline_cycles": 436,
+      "candidate_cycles": 437,
+      "added_cycles": 1,
+      "first_offer_delta": 1,
+      "quads": 16,
+      "all_quad_fields_equal": true,
+      "output_sha256": "f26d2fde51b92c564a3dfbe90118260965dd343eea8fc93cb503c079716f6830"
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 2,
+      "baseline_cycles": 692,
+      "candidate_cycles": 693,
+      "added_cycles": 1,
+      "first_offer_delta": 1,
+      "quads": 16,
+      "all_quad_fields_equal": true,
+      "output_sha256": "ed3c81ced1198eb540dcd9203d0dffd8cb5703d043b281753b2965b4ba4e8bb0"
+    }
+  ],
+  "passed": true,
+  "finished_utc": "2026-10-20T08:37:13.796152+00:00"
+}

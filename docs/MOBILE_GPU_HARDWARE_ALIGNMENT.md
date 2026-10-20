@@ -2,6 +2,8 @@
 
 Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6 implementation in progress, 2026-10-20. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
+Latest point/line checkpoint: [23 fresh targeted checks](performance/mobile-point-line-bounded-2026-10-20.json) pass on 674 frozen source files. The [standalone synthesis setup screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json) passes at 1000 ps with core +25.772 ps and I/O +619.101 ps. This does not qualify the whole GPU clock or complete H0-H8.
+
 Evolve OpenGPU into a mobile rendering architecture by extending the shared CU pool with persistent tile storage, GPU geometry fetching, scalable texture and pixel backends, and general graphics resource descriptors. Keep shader arithmetic on the existing CUs. The first functional target is hardware sufficient for a complete GLES 3.0 implementation; a Mali-G31-class commercial comparison requires further feature, performance, and physical qualification.
 
 The configuration and rates below are design targets, not measured capabilities. Implementation should proceed in bounded milestones, with correctness, throughput and timing gates before integration. Compiler and driver implementation are outside this plan; hardware interfaces needed by them are included.
@@ -6107,3 +6109,250 @@ modes, with exact source identity on main; no additional main regression or
 blanket carry of the earlier206 controls is claimed. Standalone mapping passes
 but the diamond interval setup miss remains1107.758ps. General native texture
 resources, typed shader transport and full H0-H8 closure remain open.
+
+
+## Registered exact diamond interval comparison (2026-10-20)
+
+The [diamond candidate](performance/mobile-point-line-diamond-pipeline-2026-10-20.json)
+shares two comparison slots across U/V slabs and the final interval. Full signed64
+numerators,unsigned34 denominators and both symbolic perturbation orders remain
+exact through16-bit limb products,100-bit carry-save reduction and registered
+prefix propagation. Axes/deltas/denominators register in existing preparation
+stages;stationary slabs bypass comparison. All10 component controls pass on
+frozen674-file source,including4871 full-width oracle comparisons,768 symbolic
+ties,696 bubbles and580 cancellation/reset cuts. Default RTL emission and CI
+selection pass. Fresh integration,cycle costs and standalone synthesis remain
+pending;no positive timing,throughput or full H0-H8 result is claimed.
+
+
+## Retained serial diamond qualification and cost (2026-10-20)
+
+All20 targeted controls pass on the unchanged674-file serial-diamond source,
+including actual shared-CU and production AXI point/line image checks in both
+payload modes. The [standalone screen](performance/mobile-point-line-diamond-serial-synthesis-before-2026-10-20.json)
+passes full mapping with152263 cells but misses setup by709.573ps;I/O is+634.567ps.
+The remaining endpoint path reaches repeat control through the inferred lane
+weight safety logic. All [15 exact cycle fixtures](performance/mobile-point-line-diamond-serial-cycles-before-2026-10-20.json)
+pass, but unit-width basic line cycles grow489 to1257 and maximum-width basic
+line10896 to42864. This serial prototype stays isolated while paired interval
+tests reduce the work and the measured weight path is cut. No positive clock,
+throughput or full H0-H8 completion is claimed.
+
+
+## Paired diamond slab intersection (2026-10-20)
+
+The [paired candidate](performance/mobile-point-line-diamond-pair-2026-10-20.json)
+replaces serial interval updates with four constant-bound predicates and two
+cross-slab comparisons. Strict lower/upper ordering within each moving slab
+follows from positive diamond width and denominator;stationary slabs contribute
+validity without cross products. All12 component controls pass,including39015
+weak-order cases,4871 full-width arithmetic cases and2401 independent boundary
+lattice lines. The lane-weight body remains byte identical to the source whose
+standalone safety path missed709.573ps;that path will be cut before the next
+combined synthesis screen. No new setup or native clock result is claimed.
+
+
+## Registered line center weights after paired diamonds (2026-10-20)
+
+The [weighted paired candidate](performance/mobile-point-line-diamond-weights-2026-10-20.json)
+cuts the measured request-to-repeat safety path with signed partial products,
+joined products,prefix parameter addition and prefix remaining subtraction.
+Full-width safety checks still precede signed64 export;points bypass these
+stages. All12 controls pass on unchanged674-file source,including39015 order
+cases,4871 arithmetic cases,2401 boundary lattice lines and564 cancellation/reset
+cuts. Default emission passes. The preceding paired-only [15 cycle fixtures](performance/mobile-point-line-diamond-pair-cycles-before-2026-10-20.json)
+retain every output and reduce unit basic-line cycles1257 to617 (prior main489).
+Fresh weighted integration,cycle costs and synthesis remain pending;no positive
+clock or throughput result is claimed.
+
+
+## Retained weighted qualification before length cut (2026-10-20)
+
+All22 targeted controls pass on unchanged674-file paired/weighted source. All
+[15 cycle fixtures](performance/mobile-point-line-diamond-weight-cycles-before-2026-10-20.json)
+retain every output;point cycle counts remain exact,unit basic-line cycles are873
+(prior main489),and unit4x line1067 (prior main811). The [standalone screen](performance/mobile-point-line-diamond-weight-synthesis-before-2026-10-20.json)
+passes full mapping but misses setup by124.115ps;I/O setup is+641.966ps. The
+remaining path is dy[32] to squared length[66]. No positive clock,throughput or
+full H0-H8 result is claimed;the measured length path is the next cut.
+
+
+## Registered squared line length (2026-10-20)
+
+The [length candidate](performance/mobile-point-line-length-pipeline-2026-10-20.json)
+cuts the measured dy-to-length path with signed33 partial squares,registered
+signed66 squares and a full67-bit prefix sum. Signed64 admission and weight
+guards stay intact. Lines add two preparation states;points bypass length
+arithmetic. All12 controls pass on unchanged674-file source,including39015 order
+cases,4871 arithmetic cases,2401 boundary lattice lines and576 cancellation/reset
+cuts;default RTL emission passes. Fresh integration,cycle and standalone
+synthesis checks remain pending. No clock,throughput or full H0-H8 closure is
+claimed from this component checkpoint.
+
+
+## Retained length qualification before admission cut (2026-10-20)
+
+All22 targeted controls and [15 cycle fixtures](performance/mobile-point-line-length-cycles-before-2026-10-20.json)
+pass on unchanged674-file source. The [standalone screen](performance/mobile-point-line-length-synthesis-before-2026-10-20.json)
+passes full mapping but misses setup by244.527ps,with I/O+632.185ps. The endpoint
+coordinate to initial scan-row admission path is now critical. The declared
+standalone interface,tool commit and synthesis constraints match the earlier
+point/line screen. Expanded signed64 bounds will register before clipping and
+admission. No positive clock or full H0-H8 closure is claimed.
+
+## Historical host synthesis timeout (2026-10-20)
+
+The [corrected-clock historical host run](performance/mobile-native-texture-policy-host-synthesis-timeout-2026-10-20.json)
+is terminal:it timed out after7200s in Yosys SAT-based resource sharing,before
+mapping or timing results. Its640-file source,RTL and SRAM inputs remain exact.
+The task-owned orphan container was stopped after both run processes exited;
+all mounted artifacts remain retained. This is tool-flow timeout evidence for
+the older emission,not a clock failure or qualification of the newer674-file
+raster/resource source. Synthesis-flow scalability and full native PPA remain
+open;no route or power result is claimed.
+
+
+## Registered expanded bounds before admission (2026-10-20)
+
+The [admission candidate](performance/mobile-point-line-admission-pipeline-2026-10-20.json)
+captures all four expanded bounds in signed64 before viewport/scissor clipping
+and scan admission. Existing legal-state,length/weight and narrowing checks
+remain exact. The extra preparation state applies to both points and lines.
+All12 component controls pass on unchanged674-file source,including39015 order
+cases,4871 arithmetic cases,2401 boundary-lattice lines and588 cancellation/reset
+cuts;default emission passes. Fresh integration,cycle and standalone synthesis
+checks remain pending. No positive clock,throughput or full H0-H8 result is
+claimed from this component checkpoint.
+
+
+## Retained admission qualification before limb balancing (2026-10-20)
+
+All22 targeted controls and [15 exact-output cycle fixtures](performance/mobile-point-line-admission-cycles-before-2026-10-20.json)
+pass on unchanged674-file source. The [standalone screen](performance/mobile-point-line-admission-synthesis-before-2026-10-20.json)
+passes full mapping with153338 cells but misses setup by40.956ps;I/O is+630.698ps.
+The remaining path reaches a comparator limb product from a fraction numerator.
+This result remains negative;balanced carry-save limb multiplication will be
+measured at the same constraints. No positive clock,throughput or full H0-H8
+closure is claimed.
+
+
+## Balanced comparator limbs with unchanged pipeline states (2026-10-20)
+
+The [balanced candidate](performance/mobile-point-line-admission-balanced-2026-10-20.json)
+uses the existing balanced carry-save multiplier for <=16-bit limbs,retaining
+signed high numerator chunks. Product inputs evaluate outside the state branch;
+registered capture and pipeline states remain unchanged. All12 controls pass
+on frozen674-file source,including4871 full-width arithmetic cases and588
+cancellation/reset cuts;default emission passes. Fresh integration,baseline and
+parent cycle comparisons,and standalone synthesis remain pending. No positive
+clock,throughput or full H0-H8 result is claimed from this checkpoint.
+
+
+## Balanced arithmetic integration and standard mapping miss (2026-10-20)
+
+All22 fresh targeted controls pass on unchanged674-file source. The [15 baseline
+fixtures and15 parent controls](performance/mobile-point-line-diamond-cycles-2026-10-20.json)
+retain every output;balanced limb arithmetic adds no cycles or first-offer
+latency to its parent. The [standard mapping screen](performance/mobile-point-line-balanced-synthesis-before-2026-10-20.json)
+passes full mapping but still misses setup by24.602ps,with I/O+639.059ps. The
+remaining path is viewport width to scan admission. This result stays negative.
+A separately recorded900ps ABC mapping target is being tested against the same
+1000ps SDC clock,I/O budget and exact RTL;no clock relaxation or retiming is used.
+No native clock,product rate or full H0-H8 result is claimed.
+
+
+## Retained mapping-target experiment (2026-10-20)
+
+The [ABC900ps experiment](performance/mobile-point-line-abc-target-before-2026-10-20.json)
+uses byte-identical RTL and SDC to the standard balanced screen. The tool log
+confirms900ps mapping optimization,but the actual1000ps gate still misses by
+24.602ps,with identical I/O+639.059ps. This experiment does not qualify timing.
+The new optional CLI target rejects6 invalid cases before output creation and
+preserves the unset default. A register cut between clipped bounds and scan
+admission will now be measured with the standard mapping target.
+
+
+## Registered clipped bounds before scan admission (2026-10-20)
+
+The [clipped-bounds candidate](performance/mobile-point-line-clipped-pipeline-2026-10-20.json)
+retains four signed64 clipped bounds before legal-state,length,empty-view and
+scan-admission decisions. Full-width guards remain before narrowing;one added
+preparation state preserves sample ordering. All12 controls pass on unchanged
+674-file source,including39015 order cases,4871 arithmetic cases,2401 lattice
+lines and600 cancellation/reset cuts. Default emission passes. Fresh integration,
+cycle measurement and standard-target synthesis remain pending;no positive
+clock,throughput or full H0-H8 result is claimed.
+
+
+## Retained clipped-bounds qualification and coordinate path (2026-10-20)
+
+All22 fresh targeted controls and [15 exact-output cycle fixtures](performance/mobile-point-line-clipped-cycles-before-2026-10-20.json)
+pass on unchanged674-file source. The [standard screen](performance/mobile-point-line-clipped-synthesis-before-2026-10-20.json)
+passes mapping but misses setup by110.513ps,with I/O+639.993ps. The path runs
+from integer aliased-line width to point-mask control through a shared coordinate
+expression. Point and MSAA branches select zero translation;their coordinates
+will be specialized without adding states. No positive timing or full H0-H8
+result is claimed.
+
+
+## Specialized coordinate qualification before sample-product balancing (2026-10-20)
+
+The [specialized coordinate source](performance/mobile-point-line-specialized-before-2026-10-20.json)
+passes all22 fresh targeted controls and both15-fixture output/cycle comparisons.
+No cycles or first-offer latency change versus its clipped parent. Standard
+synthesis passes full mapping but misses setup by27.450ps,with I/O+645.609ps;
+the remaining path is dy to a multisample cross-product register. Signed sample
+products will use the existing balanced compressor without adding states. No
+positive clock or full H0-H8 result is claimed.
+
+
+## Retained balanced sample-product qualification (2026-10-20)
+
+The [balanced sample-product source](performance/mobile-point-line-products-before-2026-10-20.json)
+passes all22 fresh targeted controls and both15-fixture output/cycle comparisons.
+Standard synthesis passes mapping but misses setup by29.531ps,with I/O+626.067ps.
+The path is now a generic fraction high limb. The owner has33-bit endpoint axes
+and centers at most35 bits;its numerator arithmetic fits36 signed bits without
+reducing the32-bit endpoint interface or subpixel configurations. That bounded
+owner specialization will be checked alongside retained64-bit generic support.
+No positive timing or full H0-H8 result is claimed.
+
+
+## Exact owner numerator bound with retained generic comparison (2026-10-20)
+
+The [bounded owner](performance/mobile-point-line-bounded-2026-10-20.json)
+uses36-bit signed numerators and72-bit real differences while the comparator
+retains64-bit generic support. Centers are at most signed35,endpoint axes are
+signed33,and half<=2^15:abs(n)<=2^34+2^32+2^15<2^35. Slab differences keep37-bit
+carries with canonical-fit assertions. External32-bit endpoints and all2..16
+subpixel configurations remain supported. All13 controls pass on unchanged674
+source files:4871 arithmetic cases at each width,39015 order cases,2401 lattice
+lines and600 cancellation/reset cuts. Fresh integration,cycles and standard
+synthesis remain pending;no positive clock or full H0-H8 result is claimed.
+
+
+## Positive standard point/line synthesis screen (2026-10-20)
+
+The [bounded raster owner screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json)
+passes full mapping and all reported setup groups at unchanged1000ps,25 percent
+I/O,TC/SLVT and no retiming:core+25.772ps and I/O+619.101ps,with136328 mapped
+cells. The standalone port signature,SDC and tool commit match the earlier
+source;ABC uses its standard target,not the failed900ps experiment.
+All [15 cycle fixtures](performance/mobile-point-line-diamond-final-cycles-2026-10-20.json)
+retain every output and exact parent latency. The typed numerator proof covers
+all15 subpixel precisions2..16. Native integration checks remain pending for
+this source;no whole-GPU clock,hold,frame rate,route,power or full H0-H8 closure
+is claimed from this standalone setup screen.
+
+
+## Qualified diamond pipeline integration (2026-10-20)
+
+All 23 fresh targeted controls pass on the final unchanged 674-file source:
+13 comparator/coverage controls, six primitive-owner controls, two real shared-CU
+payload modes and two production native AXI modes. CI test selection passes.
+Both groups of 15 cycle fixtures preserve every quad field; the parent control
+also preserves total cycles and first-offer latency. The final source passes
+the standard standalone synthesis setup screen recorded above. Earlier pending
+entries describe historical checkpoints. The prior host synthesis run timed
+out before mapping and remains a separate retained result. General native
+image/sampler binding, typed shader transport and remaining H0-H8 work are open.

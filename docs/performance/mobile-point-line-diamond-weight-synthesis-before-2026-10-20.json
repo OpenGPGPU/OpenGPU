@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "paired_weighted_full_mapping_pass_setup_fail",
+  "source_files": 674,
+  "source_manifest_sha256": "b608973001474366df4ff3853f5bc1ef8b25cc31508dcc1d7b3d4647bead7ed9",
+  "checks": 22,
+  "terminal": {
+    "returncode": 2,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 221.59132433286868,
+    "finished_utc": "2026-10-20T08:18:39.926439+00:00"
+  },
+  "reported_setup_slacks_ps": [
+    -124.115,
+    641.966
+  ],
+  "mapped_cells": 152136,
+  "core_path": {
+    "start": "dy[32]$_DFFE_PP_",
+    "end": "length[66]$_DFFE_PN_"
+  },
+  "constraints": {
+    "scope": "Standalone synthesis only",
+    "period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "retiming": false
+  },
+  "artifacts": {
+    "generated/qualification/ppa/mobile-point-line-diamond-pair-2026-10-20-v2/result.json": "67680444650e9bb6bdfab31682152b2930ca76b5f787455839969d7dda0cbf59",
+    "generated/qualification/ppa/mobile-point-line-diamond-pair-2026-10-20-v2/qualification.json": "1c7d3e0137dd24313818d355aeb395de4d68534f48bb7ba50c181c479c00d408",
+    "generated/qualification/ppa/mobile-point-line-diamond-pair-2026-10-20-v2/manifest.json": "4dd314b4468ce68a0f1f512a06618c8ebb1a09ecc041544ecb2ea223437e28e2",
+    "generated/qualification/ppa/mobile-point-line-diamond-pair-2026-10-20-v2/flow/synthesis_sta.log": "901c19d883a8c3e234c75bc449bbb204e593d8c8a24b65d4331f0bcf9b1761af",
+    ".artifacts/mobile-point-line-diamond-pair-synthesis-v2-inputs.json": "fe92379748a24350921c7dfd5127f5b540aa1b94dd86939f06103df52823bb8e"
+  },
+  "limits": [
+    "No positive core setup,native clock,frame rate,route or power qualification.",
+    "The staged length follow-up must pass fresh tests/cycles/synthesis."
+  ]
+}

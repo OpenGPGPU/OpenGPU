@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "staged_length_full_mapping_pass_admission_setup_fail",
+  "source_files": 674,
+  "source_manifest_sha256": "0fd027f180804165706ba2d38a50f08344b5b8e0a52c989231b02260e5cabc56",
+  "checks": 22,
+  "terminal": {
+    "returncode": 2,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 225.85077445884235,
+    "finished_utc": "2026-10-20T08:28:43.218803+00:00"
+  },
+  "reported_setup_slacks_ps": [
+    -244.527,
+    632.185
+  ],
+  "mapped_cells": 152557,
+  "core_path": {
+    "start": "request_x1[26]$_DFFE_PP_",
+    "end": "y[10]$_DFFE_PP_"
+  },
+  "matched_inputs_record": {
+    "path": ".artifacts/mobile-point-line-length-matched-inputs-v1.json",
+    "sha256": "43111e9ae0fe06ebf566c3588343f44c2dc5027bb35f190c963d6ca0eae6df82"
+  },
+  "constraints": {
+    "scope": "Standalone synthesis only",
+    "period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "retiming": false
+  },
+  "artifacts": {
+    "generated/qualification/ppa/mobile-point-line-length-2026-10-20-v1/result.json": "7591edd89a297dad9be67e0e9c9e75e256634d2f8153d13310606d77e236d731",
+    "generated/qualification/ppa/mobile-point-line-length-2026-10-20-v1/qualification.json": "28038e6596230d2471d99f4fb5886a06ca0beb60e43616f548fffe3ff96298b0",
+    "generated/qualification/ppa/mobile-point-line-length-2026-10-20-v1/manifest.json": "b8b14e733e892d41a9880fdd719b25a48c286ddf0d3d50d4ce300aa7a487a34b",
+    "generated/qualification/ppa/mobile-point-line-length-2026-10-20-v1/flow/synthesis_sta.log": "ac1976db529ba6de038d71306be0f065ef2d82110d3812d8192fbec63b5d5e74",
+    ".artifacts/mobile-point-line-length-synthesis-v1-inputs.json": "e12947dcf86bfe13633d703e5043043bbdf2f894897d948ede27f3013d7a9b60"
+  },
+  "limits": [
+    "No positive core setup,native clock,frame rate,route or power qualification.",
+    "Expanded-bounds admission remains critical."
+  ]
+}

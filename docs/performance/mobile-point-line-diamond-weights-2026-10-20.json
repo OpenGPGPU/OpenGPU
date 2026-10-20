@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "22_fresh_controls_pass_setup_miss124_115_retained_before_length_cut",
+  "source_files": 674,
+  "source_manifest_sha256": "b608973001474366df4ff3853f5bc1ef8b25cc31508dcc1d7b3d4647bead7ed9",
+  "source_base_record": {
+    "path": "docs/performance/mobile-point-line-diamond-pair-2026-10-20.json",
+    "sha256": "8e3b1fcf03f33fa356c1cda9c226f47e04dc52293be9cafbf632c25b2f467f03"
+  },
+  "source_changes": {
+    "src/main/scala/opengpu/graphics/PointLineRasterizer.scala": {
+      "before": "53b6fb5fbb267fb492e841f250710ab38b36c36fa8f70b470dd779e2f6095a4b",
+      "after": "ac29ecae228a258ec261046b39c935121660f884dbc473bb5bf13c5c29f729f4"
+    }
+  },
+  "behavior": "Register signed split products,joined products,prefix parameter sum and prefix remaining-weight subtraction before checking full precision and exporting signed64 weights. Lane/request stay pinned;points use their original direct branch. Paired exact diamond predicates remain unchanged.",
+  "validation": {
+    "checks": 12,
+    "rank_order_cases": 39015,
+    "full_width_comparisons": 4871,
+    "lattice_lines": 2401,
+    "cancel_and_reset_cuts": 564,
+    "source_unchanged": true,
+    "rtl_emission": true,
+    "log": {
+      "path": ".artifacts/mobile-point-line-diamond-pair-v2.log",
+      "sha256": "b29319f9cba3cbd0bbfa0a066d608a550115ccf44e757be38c534e748aa73b5e"
+    }
+  },
+  "measured_path_record": "docs/performance/mobile-point-line-diamond-serial-synthesis-before-2026-10-20.json",
+  "pending": [
+    "Stage the measured squared-length path and qualify the resulting source."
+  ],
+  "limits": [
+    "No positive setup,native clock or throughput qualification claimed.",
+    "Full H0-H8/GLES hardware objective remains open."
+  ],
+  "integration": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "test_counts": [
+      12,
+      6,
+      2,
+      2
+    ],
+    "total_checks": 22,
+    "log": {
+      "path": ".artifacts/mobile-point-line-diamond-pair-integration-v2.log",
+      "sha256": "fb9102bcb5eec66e97b150cc3e6d3d357359b6faf44f156f9ed3dce074225ff2"
+    },
+    "scope": "Targeted arithmetic/order/lattice/coverage,primitive interpolation,shared-CU and native AXI controls;not full H0-H8 regression."
+  }
+}

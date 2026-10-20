@@ -190,6 +190,17 @@ class PointLineRasterizerSpec extends AnyFlatSpec {
     }
   }
 
+  it should "match every directed line on a half pixel endpoint lattice at diamond boundaries" in {
+    val geometry=g.copy(screenWidth=2,screenHeight=2,subPixelBits=2)
+    simulate(new PointLineRasterizer(geometry)){d=>val t=new Driver(d,geometry)
+      val endpoints=for(x<- -2 to 10 by 2;y<- -2 to 10 by 2)yield(BigInt(x),BigInt(y))
+      var draws=0
+      for(a<-endpoints;b<-endpoints){t.run(Vector(a,b),1);draws+=1}
+      assert(draws==2401)
+      info(s"DIAMOND_LATTICE exactLines=$draws endpoints=${endpoints.size} degenerate=49 everyDirection=true diamondBoundaryTies=true independentPerturbation=true healthyReuse=true")
+    }
+  }
+
   it should "reject malformed sample modes and sizes without scanning or exposing a partial quad" in {
     simulate(new PointLineRasterizer(g)){d=>val t=new Driver(d)
       for(change<-Seq[()=>Unit](()=>d.io.in.bits.state.sampleMode.poke(3.U),()=>d.io.in.bits.state.lineWidth.poke(fp(-1).U),

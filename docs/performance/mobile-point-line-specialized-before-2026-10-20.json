@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "22_fresh_specialized_controls_pass_sample_product_setup_miss",
+  "source_files": 674,
+  "source_manifest_sha256": "e187e3b1024061378386213f91966912495243630279fef8bbd09c5c46cabd06",
+  "source_base_record": {
+    "path": "docs/performance/mobile-point-line-clipped-pipeline-2026-10-20.json",
+    "sha256": "6a51dacd0ccae47694193285ccab4bf0bb3a6ecfef5baf4fb2f66c92a7c38e8f"
+  },
+  "source_changes": {
+    "src/main/scala/opengpu/graphics/PointLineRasterizer.scala": {
+      "before": "01e995edea1dbe0ce9f7647f162f61fee1fc50e9e8f2ff58bc4db42c629a6498",
+      "after": "8606cd9e3373001ad2858525ea2f21e1ec76141e9e2aede984f4711898939c75"
+    }
+  },
+  "checks": {
+    "test_counts": [
+      12,
+      6,
+      2,
+      2
+    ],
+    "total": 22,
+    "source_unchanged": true,
+    "integration_log": {
+      "path": ".artifacts/mobile-point-line-specialized-integration-v4.log",
+      "sha256": "acfbd3a647162900188a2f7ccafcba40378576ea956afbb8480836323ba55a06"
+    }
+  },
+  "cycle_proofs": {
+    "baseline": {
+      "path": ".artifacts/mobile-point-line-specialized-cycles-v4/comparison.json",
+      "sha256": "3a5e790ce4d5c5ba69cc01faba9b578c16ef105cf446d3d369c1ab886f345e1b",
+      "cases": 15
+    },
+    "parent": {
+      "path": ".artifacts/mobile-point-line-specialized-latency-v4/comparison.json",
+      "sha256": "53d0fe41d1627ca28d2d1a3754055ab96fbc0f93b17ad0fa5298a2d8062ba77e",
+      "cases": 15,
+      "cycles_and_first_offer_identical": true
+    }
+  },
+  "synthesis": {
+    "terminal": {
+      "returncode": 2,
+      "source_unchanged": true,
+      "rtl_unchanged": true,
+      "elapsed_seconds": 259.0721727500204,
+      "finished_utc": "2026-10-20T09:37:20.011386+00:00"
+    },
+    "reported_setup_slacks_ps": [
+      -27.45,
+      645.609
+    ],
+    "mapped_cells": 149708,
+    "core_path": {
+      "start": "dy[0]$_DFFE_PP_",
+      "end": "crossA[63]$_DFFE_PP_"
+    },
+    "constraints": {
+      "period_ps": 1000,
+      "io_delay_percent": 0.25,
+      "abc_clock_period_ps": null,
+      "corner": "TC",
+      "cell_vt": "SLVT",
+      "retiming": false
+    },
+    "artifacts": {
+      "generated/qualification/ppa/mobile-point-line-specialized-2026-10-20-v4/result.json": "60d922a1ef446ba2000bcb7ca0d88e6630b9e71e86435b7c4294ad03030361cd",
+      "generated/qualification/ppa/mobile-point-line-specialized-2026-10-20-v4/qualification.json": "eecec7884f31402b861c3c254140a3ef8ee8b8cbd1f7794c473b598f57af65f2",
+      "generated/qualification/ppa/mobile-point-line-specialized-2026-10-20-v4/manifest.json": "8e43bf7d871023a093a1a87d1149258be775036663eb50d9f361d109e2f9d198",
+      "generated/qualification/ppa/mobile-point-line-specialized-2026-10-20-v4/flow/synthesis_sta.log": "45c9c04ad809245d3aa275c7863f26ef7662b9bebbfae35f4043208ec4bf5175"
+    }
+  },
+  "pending": [
+    "Balance signed multisample products without adding pipeline stages."
+  ],
+  "limits": [
+    "No positive setup,native clock,route,power or full H0-H8 result."
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "balanced_full_mapping_pass_standard_target_setup_fail",
+  "source_files": 674,
+  "source_manifest_sha256": "7b6d208022c422c53c9566fd3fd789d7853d5de9a391ef1f7a315f55dbc52210",
+  "checks": 22,
+  "terminal": {
+    "returncode": 2,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 242.51044875010848,
+    "finished_utc": "2026-10-20T09:02:09.983940+00:00"
+  },
+  "reported_setup_slacks_ps": [
+    -24.602,
+    639.059
+  ],
+  "mapped_cells": 149101,
+  "core_path": {
+    "start": "request_state_screenW[3]$_DFFE_PP_",
+    "end": "y[11]$_DFFE_PP_"
+  },
+  "constraints": {
+    "scope": "Standalone synthesis only",
+    "period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "abc_clock_period_ps": null,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "retiming": false
+  },
+  "artifacts": {
+    "generated/qualification/ppa/mobile-point-line-admission-balanced-2026-10-20-v2/result.json": "cac977ff31eb046d6984997b45091b7d9429e5760af7968ed64198d6767c7963",
+    "generated/qualification/ppa/mobile-point-line-admission-balanced-2026-10-20-v2/qualification.json": "40b689585f4a3b82387a93fe0a64dab8d38132c8aaba2a00be0f745ad029b135",
+    "generated/qualification/ppa/mobile-point-line-admission-balanced-2026-10-20-v2/manifest.json": "3f8f58c0f8a1af8cdf5c5a0ba414579408233e27569023d213013be3eb32b9b7",
+    "generated/qualification/ppa/mobile-point-line-admission-balanced-2026-10-20-v2/flow/synthesis_sta.log": "033c3a39a114a4736798652f62f0a976f8da49bc211ef8669547a9f3e610b872",
+    ".artifacts/mobile-point-line-admission-balanced-synthesis-v2-inputs.json": "c512eda868a05ba6e7410c115014c1bbaa8406d72d7555940141976679f5857a"
+  },
+  "limits": [
+    "No positive standard-target setup,native clock,frame rate,route or power qualification.",
+    "A separately recorded tighter ABC optimization target keeps the declared setup clock unchanged."
+  ]
+}

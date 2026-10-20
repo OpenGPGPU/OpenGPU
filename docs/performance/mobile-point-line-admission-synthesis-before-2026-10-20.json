@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "admission_full_mapping_pass_limb_setup_fail",
+  "source_files": 674,
+  "source_manifest_sha256": "815558c52ffc796c973027fcd77af642dc6581b00e75b26bde5cefd854c9a7bc",
+  "checks": 22,
+  "terminal": {
+    "returncode": 2,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 228.21663691708818,
+    "finished_utc": "2026-10-20T08:40:54.013610+00:00"
+  },
+  "reported_setup_slacks_ps": [
+    -40.956,
+    630.698
+  ],
+  "mapped_cells": 153338,
+  "core_path": {
+    "start": "compareA_1_numerator[62]$_DFFE_PN_",
+    "end": "compareParts_1_left_7[30]$_DFFE_PN_"
+  },
+  "constraints": {
+    "scope": "Standalone synthesis only",
+    "period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "retiming": false
+  },
+  "artifacts": {
+    "generated/qualification/ppa/mobile-point-line-admission-2026-10-20-v1/result.json": "c7350466e5e2b1fa174aae166ae5fe305fe43f2a0d06bb45f5d46fd2d7b4fc72",
+    "generated/qualification/ppa/mobile-point-line-admission-2026-10-20-v1/qualification.json": "a3a05f876b4cecd01eb1c3e5b3b532b908efb10eda7c374306ad7e947e5685ff",
+    "generated/qualification/ppa/mobile-point-line-admission-2026-10-20-v1/manifest.json": "e09aa059662480999a8699cb61bf40bea8ee25daeb662b1bffb8e995b326e06f",
+    "generated/qualification/ppa/mobile-point-line-admission-2026-10-20-v1/flow/synthesis_sta.log": "0aea7360ec6db9f51ae1a4334a50de9c10a8ca58885320dd81551ba944db448a",
+    ".artifacts/mobile-point-line-admission-synthesis-v1-inputs.json": "9fd08d92071bf2cde60ab328be27a7a46e90374010963fcf23d905b7306f0818"
+  },
+  "limits": [
+    "No positive core setup,native clock,frame rate,route or power qualification.",
+    "Comparator limb multiplication remains critical."
+  ]
+}
