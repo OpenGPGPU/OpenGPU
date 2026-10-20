@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "12_length_component_controls_pass_integration_cycles_synthesis_pending",
+  "status": "22_fresh_controls_pass_admission_setup_miss_retained",
   "source_files": 674,
   "source_manifest_sha256": "0fd027f180804165706ba2d38a50f08344b5b8e0a52c989231b02260e5cabc56",
   "source_base_record": {
@@ -30,12 +30,26 @@
   },
   "measured_path_record": "docs/performance/mobile-point-line-diamond-weight-synthesis-before-2026-10-20.json",
   "pending": [
-    "Fresh primitive/shared-CU/production AXI integration.",
-    "Fresh15-case cycle measurements.",
-    "Fresh standalone synthesis at identical TC/SLVT,1000ps,25 percent I/O,no retiming."
+    "Stage the measured expanded-bounds admission path and qualify the resulting source."
   ],
   "limits": [
     "No positive setup,native clock or throughput result yet.",
     "Full H0-H8/GLES hardware objective remains open."
-  ]
+  ],
+  "integration": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "test_counts": [
+      12,
+      6,
+      2,
+      2
+    ],
+    "total_checks": 22,
+    "log": {
+      "path": ".artifacts/mobile-point-line-length-integration-v1.log",
+      "sha256": "febfa3c1a40ec154db64c4925f65d356b9e3edf6ba1d186fdf5fb4b1c33c066c"
+    },
+    "scope": "Targeted component,primitive,shared-CU and native AXI controls;not full H0-H8 regression."
+  }
 }

@@ -6186,3 +6186,25 @@ cases,4871 arithmetic cases,2401 boundary lattice lines and576 cancellation/rese
 cuts;default RTL emission passes. Fresh integration,cycle and standalone
 synthesis checks remain pending. No clock,throughput or full H0-H8 closure is
 claimed from this component checkpoint.
+
+
+## Retained length qualification before admission cut (2026-10-20)
+
+All22 targeted controls and [15 cycle fixtures](performance/mobile-point-line-length-cycles-before-2026-10-20.json)
+pass on unchanged674-file source. The [standalone screen](performance/mobile-point-line-length-synthesis-before-2026-10-20.json)
+passes full mapping but misses setup by244.527ps,with I/O+632.185ps. The endpoint
+coordinate to initial scan-row admission path is now critical. The declared
+standalone interface,tool commit and synthesis constraints match the earlier
+point/line screen. Expanded signed64 bounds will register before clipping and
+admission. No positive clock or full H0-H8 closure is claimed.
+
+## Historical host synthesis timeout (2026-10-20)
+
+The [corrected-clock historical host run](performance/mobile-native-texture-policy-host-synthesis-timeout-2026-10-20.json)
+is terminal:it timed out after7200s in Yosys SAT-based resource sharing,before
+mapping or timing results. Its640-file source,RTL and SRAM inputs remain exact.
+The task-owned orphan container was stopped after both run processes exited;
+all mounted artifacts remain retained. This is tool-flow timeout evidence for
+the older emission,not a clock failure or qualification of the newer674-file
+raster/resource source. Synthesis-flow scalability and full native PPA remain
+open;no route or power result is claimed.
