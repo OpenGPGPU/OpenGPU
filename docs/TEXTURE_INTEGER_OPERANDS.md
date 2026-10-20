@@ -1,7 +1,8 @@
 # Captured integer texel fetch
 
 Status: implemented on `codex/mobile-native-integer-execute`, under functional
-qualification. Fresh composed regression and synthesis remain pending. This
+qualification. [Thirty-four focused and compatibility checks](performance/mobile-native-integer-operands-2026-10-21.json)
+pass; fresh composed regression and synthesis remain pending. This
 extends the task-scoped operand bank described in
 [Native texture execution](TEXTURE_NATIVE_EXECUTION.md); it adds no second bank
 or GPU-memory coordinate packet.
@@ -59,5 +60,5 @@ Tests cover64 formats, four components, scalar/masked vector results, four
 resource targets, signed offset boundaries, negative coordinates corrected by
 an offset, full-width rejected levels/faces, task/warp isolation, late-lane
 faults, zero masks, held completion, cancellation and healthy reuse. These checks
-are under execution; full shared-CU/AXI qualification, new whole-endpoint PPA,
+pass at the component level; full shared-CU/AXI qualification, new whole-endpoint PPA,
 queries, texture banking/coherence and the remaining H0-H8 work are still open.

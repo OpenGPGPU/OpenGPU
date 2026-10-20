@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "34_focused_and_compatibility_tests_pass_full_native_qualification_pending",
+  "source": {
+    "commit": "c6f6c61d0a4bcf79bd862a9b38e22a4a06903699",
+    "source_files": 803,
+    "manifest_sha256": "c952fbfe78b6138ff8c6ba09c3efd80d3f68348c3d794cd3e094ba4b284a776d",
+    "archive_sha256": "4a394d181a2fbd3cb3632a8aa0c222524a14151a60c8b9d0c717071af3b87189",
+    "git_archive_exact": true,
+    "focused_hardware_session": 35642,
+    "focused_log": ".artifacts/mobile-native-integer-controls-v3.log",
+    "llvm_commit": "1535f19fd",
+    "llvm_build_session": 54230,
+    "llvm_tests_session": 40340,
+    "llvm_status": "build_and_four_targeted_tests_pass_terminal_collected",
+    "driver_validator": ".artifacts/opengpu-native-integer-validator-v2",
+    "driver_status": "C11_Wall_Wextra_Werror_pass",
+    "remaining": [
+      "Focused controls and legacy compatibility",
+      "Real shared CU and AXI integer instruction transport",
+      "Fresh whole endpoint synthesis",
+      "Remaining H0-H8 requirements"
+    ]
+  },
+  "functional": {
+    "log": ".artifacts/mobile-native-integer-controls-v3.log",
+    "sha256": "b84447f0916aa24dd2193ec86966d72fb24f10f0d2ce3dad96ad9f31846341c6",
+    "returncode": 0,
+    "source_unchanged": true,
+    "tests": 34,
+    "suites": {
+      "TypedTextureDecodeSpec": 2,
+      "TextureParameterRetirementSpec": 1,
+      "TextureSampleExecuteUnitSpec": 15,
+      "NativeShaderTextureUnitSpec": 16
+    },
+    "cases": [
+      "TypedTextureDecodeSpec::should route all typed scalar and vector component encodings with ordinary register dependencies",
+      "TypedTextureDecodeSpec::should decode on-chip operand pairs without a vector destination and preserve floating sample component masks",
+      "TextureParameterRetirementSpec::should retire parameter writes through x0 while preserving an outstanding v0 divide reservation",
+      "TextureSampleExecuteUnitSpec::should capture scalar and vector operands on chip and sample every format through native credits stage=0",
+      "TextureSampleExecuteUnitSpec::should capture scalar and vector operands on chip and sample every format through native credits stage=1",
+      "TextureSampleExecuteUnitSpec::should derive helper groups and high active lanes from the shader lane count lanes=8",
+      "TextureSampleExecuteUnitSpec::should derive helper groups and high active lanes from the shader lane count lanes=16",
+      "TextureSampleExecuteUnitSpec::should retain explicit sampling for one shader lane and reject unavailable implicit helper groups before reads",
+      "TextureSampleExecuteUnitSpec::should retain nonzero lambda gradient layer comparison offset and helper operand semantics stage=0",
+      "TextureSampleExecuteUnitSpec::should retain nonzero lambda gradient layer comparison offset and helper operand semantics stage=1",
+      "TextureSampleExecuteUnitSpec::should reject stale incomplete and late-lane operands while draining native sample cancellation stage=0",
+      "TextureSampleExecuteUnitSpec::should reject stale incomplete and late-lane operands while draining native sample cancellation stage=1",
+      "TextureSampleExecuteUnitSpec::should fetch integer texels from captured operands across every native format stage=0",
+      "TextureSampleExecuteUnitSpec::should fetch integer texels from captured operands across every native format stage=1",
+      "TextureSampleExecuteUnitSpec::should apply checked signed integer offsets and retain captured fetch bounds and task lifetime stage=0",
+      "TextureSampleExecuteUnitSpec::should apply checked signed integer offsets and retain captured fetch bounds and task lifetime stage=1",
+      "TextureSampleExecuteUnitSpec::should drain captured integer fetch cancellation and memory faults before reuse stage=0",
+      "TextureSampleExecuteUnitSpec::should drain captured integer fetch cancellation and memory faults before reuse stage=1",
+      "NativeShaderTextureUnitSpec::should fetch every typed component and target through independent stage bindings with stage=0",
+      "NativeShaderTextureUnitSpec::should fetch every typed component and target through independent stage bindings with stage=1",
+      "NativeShaderTextureUnitSpec::should decode every compressed format through native binding selection and block coordinates stage=0",
+      "NativeShaderTextureUnitSpec::should decode every compressed format through native binding selection and block coordinates stage=1",
+      "NativeShaderTextureUnitSpec::should apply image-view swizzle after every native format decode with stage=0",
+      "NativeShaderTextureUnitSpec::should apply image-view swizzle after every native format decode with stage=1",
+      "NativeShaderTextureUnitSpec::should retain inactive swizzled lanes and suppress all writes on constant-map coordinate or data faults",
+      "NativeShaderTextureUnitSpec::should retain inactive vector lanes and suppress every destination lane on a later active lane fault",
+      "NativeShaderTextureUnitSpec::should reject root stage binding identity malformed packets and full width indices before unsafe reads",
+      "NativeShaderTextureUnitSpec::should retain mapped read offers through cancellation cuts and preserve primary faults before healthy reuse",
+      "NativeShaderTextureUnitSpec::should drain compressed decode across post-data cancellation and preserve vector fault atomicity",
+      "NativeShaderTextureUnitSpec::should validate compressed NPOT mip chains before selected block reads and reject later layout disagreement",
+      "NativeShaderTextureUnitSpec::should select explicit mip texels and validate the sampler required chain before reading any data",
+      "NativeShaderTextureUnitSpec::should preserve explicit fetch vector width and high masked lanes for lanes=1",
+      "NativeShaderTextureUnitSpec::should preserve explicit fetch vector width and high masked lanes for lanes=16",
+      "NativeShaderTextureUnitSpec::should preserve explicit fetch vector width and high masked lanes for lanes=32"
+    ]
+  },
+  "llvm": {
+    "commit": "1535f19fd",
+    "log": ".artifacts/mobile-native-integer-llvm-tests-v1.log",
+    "sha256": "e1ad0f0360e40a2473f05fd3d379bf8abc86ffb763e8baee18a0f2cd13ae0798",
+    "tests": 4,
+    "MC_cases": 60,
+    "new_MC_cases": 12,
+    "C_helpers": 2
+  },
+  "driver": {
+    "compile": "cc -std=c11 -Wall -Wextra -Werror driver/tests/opengpu_shader_validator_test.c",
+    "binary": ".artifacts/opengpu-native-integer-validator-v2",
+    "binary_sha256": "ea84d9ea1de4054082cbad7a4a7ef16a58ec5d5073441d9172e7a18afbe000a7",
+    "returncode": 0,
+    "header_sha256": "d744853d844a5b803bf7b5a744823039b46c0d98b24d2a90edf81bab0d2d8c6e",
+    "test_sha256": "c412eeee81cf94aabab05a1d234f4e244041d730f23ec47af10ee38539b72b5a"
+  },
+  "development_compile_diagnostics_retained": [
+    ".artifacts/mobile-native-integer-compile-v1.log",
+    ".artifacts/mobile-native-integer-controls-v1.log",
+    ".artifacts/mobile-native-integer-controls-v2.log"
+  ],
+  "scope": "Component/decode/backend/legacy compatibility only. Actual shared-CU integer instructions, integer AXI frames, fresh aggregate/descriptor ABI checks and full endpoint synthesis remain open. No H0-H8 closure."
+}
