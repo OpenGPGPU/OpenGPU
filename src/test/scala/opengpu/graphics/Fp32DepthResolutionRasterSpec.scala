@@ -11,6 +11,46 @@ class Fp32DepthResolutionRasterSpec extends AnyFlatSpec {
     ("largeGuardBand",BigInt(1239639),BigInt(17329276)))
   private case class Depths(center: Vector[BigInt],samples: Vector[Vector[BigInt]])
 
+  it should "retain distinct interpolated depths for sloped triangles with an exact common D32F step" in {
+    val large=GraphicsConfig(screenWidth=416,screenHeight=320)
+    val coordinates=Vector((0,0),(104394,46434),(31737,80300)).map{case(x,y)=>(BigInt(x),BigInt(y))}
+    val low=Vector("3ee9df5d","3e79575c","3e7f3778").map(BigInt(_,16))
+    val high=Vector("3ee9df5e","3e79575e","3e7f377a").map(BigInt(_,16))
+    val(rn,rd)=Fp32ViewportReference.rational(Fp32ViewportReference.decode(BigInt("33000000",16)))
+    for((a,b)<-low.zip(high)){
+      val(an,ad)=Fp32ViewportReference.rational(Fp32ViewportReference.decode(a))
+      val(bn,bd)=Fp32ViewportReference.rational(Fp32ViewportReference.decode(b))
+      assert((bn*ad-an*bd)*rd==rn*ad*bd,"source vertices must differ by exactly one common step")
+    }
+    simulate(new Fp32PrimitiveRasterStage(p,large)){d=>
+      PointLineReference.zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      def until(condition: =>Boolean): Unit={var n=0;while(!condition && n<100000){d.clock.step();n+=1};assert(condition,s"sloped depth timeout after $n cycles")}
+      def run(depths: Vector[BigInt]): BigInt={
+        val triangle=TriangleRasterReference.base.copy(coords=coordinates,values=FragmentInterpolationReference.Data(
+          Vector.fill(3)(Fp32ViewportReference.decode(Fp32ViewportReference.fp(1))),depths,Vector.fill(3)(Vector.fill(8)(BigInt(0))),0,1))
+        val settings=TriangleRasterReference.Settings(width=416,height=320,mode=0,scissor=true,minX=225,minY=186,maxX=226,maxY=187)
+        PointLineReference.zero(d.io.in.bits);TriangleRasterReference.primitive(d.io.in.bits.primitive,triangle)
+        TriangleRasterReference.state(d.io.in.bits.state,settings)
+        d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);d.clock.step();d.io.in.valid.poke(false.B)
+        until(d.io.out.valid.peek().litToBoolean)
+        val values=d.io.out.bits.values
+        val covered=values.lanes.filter(_.covered.peek().litToBoolean);assert(covered.size==1)
+        val lane=covered.head;lane.x.expect(225.S);lane.y.expect(186.S);lane.coverageMask.expect(1.U)
+        val observed=lane.windowDepth.peek().litValue;lane.sampleDepthValid.expect(true.B);lane.sampleDepth(0).expect(observed.U)
+        val held=d.io.out.bits.peek().litValue
+        for(_<-0 until 3){d.clock.step();d.io.out.valid.expect(true.B);assert(d.io.out.bits.peek().litValue==held)}
+        d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B)
+        until(d.io.completion.valid.peek().litToBoolean)
+        d.io.completion.bits.status.expect(0.U);d.io.completion.bits.outputQuads.expect(1.U);d.io.completion.bits.coveredSamples.expect(1.U)
+        d.io.completion.ready.poke(true.B);d.clock.step();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
+        observed
+      }
+      val before=run(low);val after=run(high)
+      info(s"DEPTH_TRANSLATION_PAIR actualCoverage=true pixel225x186=true exactVertexShift=true resolution33000000=true before=${before.toString(16)} after=${after.toString(16)}")
+      assert(before!=after,s"one common D32F step collapsed for sloped triangles: ${before.toString(16)} == ${after.toString(16)}")
+    }
+  }
+
   it should "retain distinct default depths for constant triangles separated by one D32F resolution step" in {
     simulate(new Fp32PrimitiveRasterStage(p,g)){d=>
       PointLineReference.zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
