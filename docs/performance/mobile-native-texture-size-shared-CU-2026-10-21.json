@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "forty_component_and_four_shared_CU_tests_nine_ABI_and_strict_C_validator_pass_AXI_local_recovery_open",
+  "source": {
+    "returncode": 0,
+    "driver_compile_returncode": 0,
+    "driver_returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 3319.455123957945,
+    "commit": "741f10d5ea7c80f6c5e52afdcab4687fd6d7a4cf",
+    "source_files": 804,
+    "manifest_sha256": "06621afec0f1da583e2d91c630a878cade1440c567bf759c32ee31f7b5bf4bf5",
+    "archive_sha256": "c02982c05a8fa7c44b2b417c8806254b545d644a1c5abd11752c1c4b56238dd2",
+    "git_archive_and_worktree_exact": true,
+    "runner_pid": 66506,
+    "started_utc": "2026-10-20T19:02:31.682624+00:00"
+  },
+  "fresh_tests": 44,
+  "component_tests": 40,
+  "real_shared_CU_tests": 4,
+  "shared_CU_profile": {
+    "CUs": 2,
+    "lanes": 4,
+    "warps": 2,
+    "stages": [
+      "vertex",
+      "fragment"
+    ],
+    "payload_modes": [
+      "local",
+      "spill"
+    ],
+    "successful_query_draws_per_case": 109,
+    "coverage": [
+      "all64 formats",
+      "four targets",
+      "three scalar/vector query components",
+      "base levels0/1/2 and signed relative LOD",
+      "v0 preservation",
+      "metadata fault/cancellation drain and healthy reuse",
+      "no coordinate parameter instructions",
+      "legacy typed/floating/integer matrices retained"
+    ]
+  },
+  "ABI_checks": 9,
+  "strict_C_validator_compile_and_run_pass": true,
+  "LLVM_record": "docs/performance/mobile-native-texture-size-initial-2026-10-21.json",
+  "synthesis_record": "docs/performance/mobile-native-texture-size-whole-synthesis-2026-10-21.json",
+  "separate_AXI_result": {
+    "returncode": 1,
+    "source_unchanged": true,
+    "elapsed_seconds": 3130.49023920903,
+    "commit": "326ec183e9b63ffe1d863fab516d1ca7f7db609e",
+    "source_files": 804,
+    "manifest_sha256": "b76407cad0514c4b5d8f4bcf8dfea0a1b37bdbc48401ea0f9c01882a7c4fca32",
+    "runner_pid": 81444,
+    "started_utc": "2026-10-20T19:05:58.577840+00:00",
+    "planned_tests": 2,
+    "planned_frames_per_test": 74,
+    "archive_sha256": "47f4a1d6bfb5f7ad6ee0e7289a7b9c42fb4911fb32b958b90fb948950248b0d5",
+    "git_archive_exact": true
+  },
+  "separate_AXI_scope": {
+    "spill": "one complete74-frame test passed",
+    "local": "failed exact output image comparison near recovery after denied image/negative LOD;no local pass claim",
+    "diagnostic_branch": "codex/mobile-native-texture-size-axi-recovery"
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-texture-size-v3-qualified.log": "d3a1b7b8dd892835a3cf7b594f1fb92d17f86e07303cbd011e0cd92b800ef07d",
+    ".artifacts/mobile-native-texture-size-v3-qualified-result.json": "c03a789763c4f5e16826ea87edba06282c8038a15c6dd9d30d2dacf5afad1b7a",
+    ".artifacts/mobile-native-texture-size-v3-source.json": "06621afec0f1da583e2d91c630a878cade1440c567bf759c32ee31f7b5bf4bf5",
+    ".artifacts/mobile-native-texture-size-v3-source.tar.gz": "c02982c05a8fa7c44b2b417c8806254b545d644a1c5abd11752c1c4b56238dd2",
+    ".artifacts/mobile-native-texture-size-axi-v1.log": "74bf34ed56f5c0b874f9174b2483ec3adcb135a4d66103d932e8fb6bf10b7e2d",
+    ".artifacts/mobile-native-texture-size-axi-v1-result.json": "db3408e74e7297beacf665f11425b1ea956586b492f3792d44809a4360847fcb"
+  },
+  "remaining": [
+    "Resolve local-payload translated AXI recovery mismatch",
+    "Preserve main integer selected-mip page checks when integrating",
+    "Banked hit/miss scheduling,native integration and coherence",
+    "Other H0-H8 hardware requirements"
+  ],
+  "PPA": "synthesis only"
+}
