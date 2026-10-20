@@ -80,6 +80,20 @@ XORs it into the interpolated colour; every painted pixel must be
 it with `vfadd.vf`, so it needs the scalar FPU on the fragment shader CU. It
 skips unless `OPENGPU_CAP_COMPUTE_SCALAR_FPU` is advertised (default
 `/opengpu_fragment_fp_scalar.bin`); every painted pixel must be `0xbea0ffff`.
+`examples/fragment_alu` is the fragment program the Gallium menu does not
+classify: `gl_FragColor = CONST[0][0] * CONST[0][1]`, lowered by
+`opengpu_fs_emit` and submitted through the runtime ABI lowerer. It needs
+the scalar FPU and a fragment-only device. The two constants are `(1,0,0,1)`
+and `(1,1,1,1)`, so every painted pixel must be `0xff0000ff`.
+`examples/fragment_min` is the next opcode on that emitter: `gl_FragColor =
+min(CONST[0][0], CONST[0][1])`, the `MIN` half of `clamp()`. The constants are
+`(1,0,1,1)` and `(1,1,0,1)`, so every painted pixel must be `0xff0000ff`.
+`examples/vertex_alu` is the vertex program the menu does not classify. It
+adds the integer at kernarg byte 512 to Q16.16 position x and copies the
+other slices. The addend is zero and `fragment_color` copies the vertex
+colour, so every covered pixel must be `0xff0000ff`. It runs when both cores
+are present. `vertex_passthrough`, `vertex_mvp`, and `vertex_mvp2` stay the
+clang images.
 
 `examples/triangle_present` draws into the native KMS mode buffer (64x64 on
 the Debian display profile) and programs the CRTC so ARTI/QEMU scanout shows

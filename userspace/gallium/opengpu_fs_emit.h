@@ -18,4 +18,11 @@ struct opengpu_fs_alu {
  * 256-instruction sandbox. */
 int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out);
 
+/* The decision create_fs_state makes. Returns 0 when the fragment menu
+ * misses and the ALU emitter produced code. Returns 1 when the menu
+ * matched. Returns -1 when neither path accepts the program. On 0, code
+ * receives the emitter words before the runtime ABI lowerer. */
+int opengpu_fragment_lower_kind(const void *tokens, uint32_t *code,
+                                unsigned capacity, unsigned *words);
+
 #endif

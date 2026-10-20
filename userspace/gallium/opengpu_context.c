@@ -15,9 +15,13 @@
  * shader. The vertex program has no bytes left for that scale, and the
  * factor is constant, so the same fragment multiply runs it. The CPU
  * only packs the float or the vec4 into the fragment kernarg uniform.
- * The Gallium draw module is not used. */
+ * The Gallium draw module is not used. A straight-line fragment program
+ * the matchers miss is emitted by opengpu_fs_emit. A vertex program that
+ * adds CONST[0][0].x to position x is emitted by opengpu_vs_emit; the
+ * clang images stay vertex_passthrough, vertex_mvp, and vertex_mvp2. */
 #include "opengpu_internal.h"
 #include "opengpu_fs_emit.h"
+#include "opengpu_vs_emit.h"
 #include "opengpu_shader_abi.h"
 #include "opengpu_shader_resources.h"
 #include "opengpu_texture_layout.h"
@@ -135,6 +139,9 @@ struct opengpu_context {
     /* CONST[0][4].x from the vertex constant buffer. */
     float vs_opacity;
     int vs_opacity_set;
+    /* Raw bits of CONST[0][0].x for the vertex position add. */
+    uint32_t vs_alu_word;
+    int vs_alu_set;
     float fs_const[4];
     int fs_const_set;
     float fs_block[32];
@@ -755,6 +762,34 @@ static struct opengpu_shader *lower_fragment_alu(
     return shader;
 }
 
+static struct opengpu_shader *lower_vertex_alu(
+    const struct pipe_shader_state *state)
+{
+    struct opengpu_vs_alu alu;
+    struct opengpu_shader *shader;
+
+    if (!state || state->type != PIPE_SHADER_IR_TGSI || !state->tokens)
+        return NULL;
+    if (opengpu_vs_emit(state->tokens, &alu))
+        return NULL;
+    shader = CALLOC_STRUCT(opengpu_shader);
+    if (!shader)
+        return NULL;
+    shader->alu = 1;
+    shader->color_src = -1;
+    shader->color_sem = -1;
+    shader->sample_sem = -1;
+    shader->pos_src = alu.pos_src;
+    shader->nlink = 1;
+    shader->link[0].semantic = alu.color_sem;
+    shader->link[0].index = alu.color_sem_index;
+    shader->link[0].src = alu.color_src;
+    shader->alu_words = alu.words;
+    shader->alu_nconst = 1;
+    memcpy(shader->alu_code, alu.code, alu.words * sizeof(uint32_t));
+    return shader;
+}
+
 /* Record which input feeds gl_Position and which feeds the colour. Anything
  * other than MOV/END, a mat4 multiply, or a write the fixed vertex format
  * cannot carry, fails. */
@@ -1278,13 +1313,69 @@ static struct opengpu_shader *lower_shader(const struct pipe_shader_state *state
         ((sprite_xy || sprite_w) &&
          (!shader->mvp || sprite_xy != 0x3 || !sprite_w))) {
         FREE(shader);
-        return want_fs ? lower_fragment_alu(state) : NULL;
+        return want_fs ? lower_fragment_alu(state) : lower_vertex_alu(state);
     }
     return shader;
 fail:
     tgsi_parse_free(&parse);
     FREE(shader);
-    return want_fs ? lower_fragment_alu(state) : NULL;
+    return want_fs ? lower_fragment_alu(state) : lower_vertex_alu(state);
+}
+
+int opengpu_fragment_lower_kind(const void *tokens, uint32_t *code,
+                                unsigned capacity, unsigned *words)
+{
+    struct pipe_shader_state state;
+    struct opengpu_shader *shader;
+
+    if (!tokens || !words)
+        return -1;
+    memset(&state, 0, sizeof(state));
+    state.type = PIPE_SHADER_IR_TGSI;
+    state.tokens = tokens;
+    shader = lower_shader(&state, 1);
+    if (!shader)
+        return -1;
+    if (!shader->alu) {
+        FREE(shader);
+        return 1;
+    }
+    if (!code || shader->alu_words > capacity) {
+        FREE(shader);
+        return -1;
+    }
+    memcpy(code, shader->alu_code, shader->alu_words * sizeof(uint32_t));
+    *words = shader->alu_words;
+    FREE(shader);
+    return 0;
+}
+
+int opengpu_vertex_lower_kind(const void *tokens, uint32_t *code,
+                              unsigned capacity, unsigned *words)
+{
+    struct pipe_shader_state state;
+    struct opengpu_shader *shader;
+
+    if (!tokens || !words)
+        return -1;
+    memset(&state, 0, sizeof(state));
+    state.type = PIPE_SHADER_IR_TGSI;
+    state.tokens = tokens;
+    shader = lower_shader(&state, 0);
+    if (!shader)
+        return -1;
+    if (!shader->alu) {
+        FREE(shader);
+        return 1;
+    }
+    if (!code || shader->alu_words > capacity) {
+        FREE(shader);
+        return -1;
+    }
+    memcpy(code, shader->alu_code, shader->alu_words * sizeof(uint32_t));
+    *words = shader->alu_words;
+    FREE(shader);
+    return 0;
 }
 
 static void *create_shader(struct pipe_context *pipe,
@@ -1440,6 +1531,12 @@ static void bind_vs_state(struct pipe_context *pipe, void *hw)
     ctx->vs = hw;
     if (!hw)
         return;
+    if (ctx->vs->alu) {
+        if (bind_shader_program(ctx, true, ctx->vs->alu_code,
+                                 ctx->vs->alu_words * sizeof(uint32_t)))
+            reject("vertex shader bind failed");
+        return;
+    }
     if (ctx->vs->mvp2) {
         if (bind_shader_program(ctx, true, opengpu_vertex_mvp2,
                                  OPENGPU_VERTEX_MVP2_BYTES))
@@ -2191,6 +2288,19 @@ static void draw_vbo(struct pipe_context *pipe,
             }
             fprintf(stderr, "opengpu: mvp m00=%g m03=%g m33=%g\n",
                     ctx->mvp[0], ctx->mvp[12], ctx->mvp[15]);
+        } else if (ctx->vs->alu) {
+            float matrix[16];
+
+            if (!ctx->vs_alu_set) {
+                reject("vertex constant did not reach the vertex core");
+                return;
+            }
+            memset(matrix, 0, sizeof(matrix));
+            memcpy(matrix, &ctx->vs_alu_word, sizeof(ctx->vs_alu_word));
+            if (pipe_opengpu_write_vs_matrix(ctx->gpu, matrix)) {
+                reject("vertex constant did not reach the vertex core");
+                return;
+            }
         }
         if (ctx->vs->vs_opacity) {
             float s;
@@ -2681,6 +2791,7 @@ static void set_constant_buffer(struct pipe_context *pipe,
         ctx->mvp_set = 0;
         ctx->mvp_b_set = 0;
         ctx->vs_opacity_set = 0;
+        ctx->vs_alu_set = 0;
     }
     if (shader == PIPE_SHADER_VERTEX && index == 0 && buf &&
         buf->buffer_size >= sizeof(ctx->mvp)) {
@@ -2705,6 +2816,24 @@ static void set_constant_buffer(struct pipe_context *pipe,
                        sizeof(ctx->vs_opacity));
                 ctx->vs_opacity_set = 1;
             }
+        }
+    }
+    if (shader == PIPE_SHADER_VERTEX && index == 0 && buf &&
+        buf->buffer_size >= sizeof(uint32_t)) {
+        const uint8_t *word_src = NULL;
+
+        if (buf->user_buffer) {
+            word_src = buf->user_buffer;
+        } else if (buf->buffer) {
+            uint8_t *map = pipe_opengpu_resource_map(
+                opengpu_resource(buf->buffer)->gpu);
+
+            if (map)
+                word_src = map + buf->buffer_offset;
+        }
+        if (word_src) {
+            memcpy(&ctx->vs_alu_word, word_src, sizeof(ctx->vs_alu_word));
+            ctx->vs_alu_set = 1;
         }
     }
     if (shader == PIPE_SHADER_FRAGMENT && index == 0) {

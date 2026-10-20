@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compile and execute all kernel-free driver tests using the host C compiler."""
 import os
+import sys
 from pathlib import Path
 import shlex
 import subprocess
@@ -27,7 +28,17 @@ def main():
         subprocess.run([str(binary)], check=True)
         print("runtime shader ABI: PASS", flush=True)
 
-        binary = Path(directory) / "shader_color"
+        binary = Path(directory) / "fs_alu"
+        subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+            "-I" + str(ROOT / "userspace/gallium"), "-I" + str(ROOT / "driver"),
+            str(ROOT / "userspace/tests/fs_alu.c"), "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+
+        binary = Path(directory) / "vs_alu"
+        subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+            "-I" + str(ROOT / "userspace/gallium"), "-I" + str(ROOT / "driver"),
+            str(ROOT / "userspace/tests/vs_alu.c"), "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
         subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
             "-I" + str(ROOT / "userspace/gallium"),
             str(ROOT / "userspace/tests/shader_color.c"), "-o", str(binary)], check=True)
@@ -63,6 +74,41 @@ def main():
             "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
         print("offload container reader: PASS", flush=True)
+
+        mesa = ROOT / "depends/mesa"
+        parse = mesa / "src/gallium/auxiliary/tgsi/tgsi_parse.c"
+        drm = ROOT / "depends/aarch64-root/include"
+        if parse.is_file() and (drm / "drm/drm.h").is_file():
+            incs = [
+                "-I" + str(ROOT / "userspace/gallium"),
+                "-I" + str(ROOT / "userspace"),
+                "-I" + str(ROOT / "driver"),
+                "-I" + str(drm),
+                "-I" + str(mesa / "src/gallium/include"),
+                "-I" + str(mesa / "src/gallium/auxiliary"),
+                "-I" + str(mesa / "src"),
+                "-I" + str(mesa / "include"),
+            ]
+            sections = ["-ffunction-sections", "-fdata-sections"]
+            objects = []
+            units = [
+                (ROOT / "userspace/tests/fs_alu_lower.c", ["-Werror"]),
+                (ROOT / "userspace/gallium/opengpu_context.c", ["-Wno-sign-compare"]),
+                (ROOT / "userspace/gallium/opengpu_fs_emit.c", ["-Werror"]),
+                (ROOT / "userspace/gallium/opengpu_vs_emit.c", ["-Werror"]),
+                (parse, ["-Wno-sign-compare"]),
+                (mesa / "src/gallium/auxiliary/tgsi/tgsi_build.c", ["-Wno-sign-compare"]),
+            ]
+            for source, extra in units:
+                obj = Path(directory) / (source.stem + ".o")
+                subprocess.run(compiler + ["-std=c11", "-O2", "-Wall", "-Wextra",
+                    "-Wno-unused-parameter"] + extra + sections + incs +
+                    ["-c", str(source), "-o", str(obj)], check=True)
+                objects.append(str(obj))
+            binary = Path(directory) / "fs_alu_lower"
+            gc = ["-Wl,-dead_strip"] if sys.platform == "darwin" else ["-Wl,--gc-sections"]
+            subprocess.run(compiler + gc + objects + ["-o", str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
 
 if __name__ == "__main__":
     main()

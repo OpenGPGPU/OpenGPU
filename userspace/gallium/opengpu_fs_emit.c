@@ -23,6 +23,7 @@
 #define OP_DP2 12
 #define OP_DP4 13
 #define OP_MAD 14
+#define OP_MIN 15
 
 #define FILE_TEMP 1
 #define FILE_CONST 2
@@ -644,6 +645,9 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
     } else if (in->op == OP_MAX) {
         if (bin(b, 0x06, vd, &a, in->src[0].neg, &c, in->src[1].neg, 0))
             return -1;
+    } else if (in->op == OP_MIN) {
+        if (bin(b, 0x04, vd, &a, in->src[0].neg, &c, in->src[1].neg, 0))
+            return -1;
     } else if (in->op == OP_DIV) {
         int va, vc, rec, prod;
 
@@ -909,6 +913,7 @@ static const char *fs_op_name(int op)
     case OP_ADD: return "ADD";
     case OP_MUL: return "MUL";
     case OP_MAX: return "MAX";
+    case OP_MIN: return "MIN";
     case OP_SLT: return "SLT";
     case OP_SGE: return "SGE";
     case OP_SEQ: return "SEQ";
@@ -1037,6 +1042,9 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                 break;
             case TGSI_OPCODE_MAX:
                 kind = OP_MAX;
+                break;
+            case TGSI_OPCODE_MIN:
+                kind = OP_MIN;
                 break;
             case TGSI_OPCODE_SLT:
                 kind = OP_SLT;
@@ -1295,6 +1303,8 @@ int main(int argc, char **argv)
             kind = OP_SGE;
         else if (!strncmp(rest, "SEQ", 3))
             kind = OP_SEQ;
+        else if (!strncmp(rest, "MIN", 3))
+            kind = OP_MIN;
         else if (!strncmp(rest, "MAX", 3))
             kind = OP_MAX;
         else if (!strncmp(rest, "MUL", 3))

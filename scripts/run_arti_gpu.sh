@@ -574,6 +574,16 @@ if [ "${GPU_USERSPACE_EXAMPLES:-0}" = "1" ]; then
             "$GPU_DIR/userspace/examples/fragment_fp_scalar.c"
         "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
+            -o "$WORK/opengpu_fragment_alu" \
+            "$GPU_DIR/userspace/opengpu.c" \
+            "$GPU_DIR/userspace/examples/fragment_alu.c"
+        "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
+            -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
+            -o "$WORK/opengpu_fragment_min" \
+            "$GPU_DIR/userspace/opengpu.c" \
+            "$GPU_DIR/userspace/examples/fragment_min.c"
+        "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
+            -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_fp_unary" \
             "$GPU_DIR/userspace/opengpu.c" \
             "$GPU_DIR/userspace/examples/fp_unary.c"
@@ -678,6 +688,11 @@ if [ "${GPU_USERSPACE_EXAMPLES:-0}" = "1" ]; then
             -o "$WORK/opengpu_pipe_vertex_draw" \
             "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.c" \
             "$GPU_DIR/userspace/examples/pipe_vertex_draw.c"
+        "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
+            -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
+            -o "$WORK/opengpu_vertex_alu" \
+            "$GPU_DIR/userspace/opengpu.c" "$GPU_DIR/userspace/pipe_opengpu.c" \
+            "$GPU_DIR/userspace/examples/vertex_alu.c"
         rm -f "$WORK"/opengpu_*.o
     else
         [ "$GPU_VERT_CORE" = "0" ] || \
