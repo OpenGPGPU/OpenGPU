@@ -1,0 +1,219 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "revised_binding_setup_failure_preserved",
+  "source_files": 662,
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-image-binding-qualified-v2-source.json",
+    "sha256": "9dd92ba2c47229867f2697483a0970c057039e0b92895743a18bb41579aac676"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-texture-image-binding-qualified-v2-source.tar.gz",
+    "sha256": "5d752e82d2ab7f80d7766d1f54bb5ecfc69643269c7a20427c9ce21cee441696"
+  },
+  "source_unchanged": true,
+  "profiles": {
+    "binding": {
+      "runtime": {
+        "returncode": 2,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 84.68403541692533,
+        "finished_utc": "2026-10-20T06:42:26.783544+00:00"
+      },
+      "setup_passed": false,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        -83.596,
+        423.567
+      ],
+      "worst_setup_slack_ps": -83.596,
+      "estimated_core_clock_fmax_mhz": 922.853,
+      "mapped_cells": 55184,
+      "critical_startpoint": "snapshot_baseLevel[1]$_SDFFE_PP0P_",
+      "critical_endpoint": "faultStage[2]$_SDFF_PP0_",
+      "evidence": {
+        "qualification.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v2/qualification.json",
+          "sha256": "899ef7f1d60de0bc4ad8558b699f64143a5b40bfd4564b09d36bbe2c3d64c034"
+        },
+        "result.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v2/result.json",
+          "sha256": "ce8904d5681048e16fcc9c20eb0ae614651c54ca85fc02062a7663628b28fbed"
+        },
+        "manifest.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v2/manifest.json",
+          "sha256": "4d559af1b0e1755fc49d6e08c1a929825133c10aa5add40e5c0144e29565305b"
+        },
+        "flow/synthesis_sta.log": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v2/flow/synthesis_sta.log",
+          "sha256": "f379cd4a8d83ff09921a0f815263387006df16089ad24c527bf545794f3df883"
+        },
+        "flow/orfs-work/reports/base/synth_stat.txt": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-binding-2026-10-20-v2/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "c13a0846701a730bd0485d1b4a36dea4859cd588b4dc4c9b5b23b5fe48488ab6"
+        }
+      },
+      "inputs": {
+        "path": ".artifacts/mobile-texture-image-binding-binding-synthesis-v2-inputs.json",
+        "sha256": "f2f7bdb466f99e7d77e8dd64d32349545e9f698548bc345dc115d2eb0c9c1808"
+      }
+    },
+    "bound": {
+      "runtime": {
+        "returncode": 2,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 169.63155187503435,
+        "finished_utc": "2026-10-20T06:45:16.438446+00:00"
+      },
+      "setup_passed": false,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        -170.597,
+        396.201
+      ],
+      "worst_setup_slack_ps": -170.597,
+      "estimated_core_clock_fmax_mhz": 854.265,
+      "mapped_cells": 113681,
+      "critical_startpoint": "image.snapshot_baseLevel[1]$_SDFFE_PP0P_",
+      "critical_endpoint": "image.faultStage[2]$_SDFF_PP0_",
+      "evidence": {
+        "qualification.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-bound-2026-10-20-v2/qualification.json",
+          "sha256": "c7b1e27650e7cd23d879816c1cd1eee6e8a313abf26714a1c2d43cd2042fa0b6"
+        },
+        "result.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-bound-2026-10-20-v2/result.json",
+          "sha256": "b29bb05cebfd935b2fa812f1a2de9f7416e608c868c25fb0980b9070ba81ae13"
+        },
+        "manifest.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-bound-2026-10-20-v2/manifest.json",
+          "sha256": "02496a2b135539bec1bfb792a89327d8b151f16af395be8e842414a7ba1e5ef8"
+        },
+        "flow/synthesis_sta.log": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-bound-2026-10-20-v2/flow/synthesis_sta.log",
+          "sha256": "8289af9e8a1004f7b8e92626eb7f11f26dbf81ee1f15bcf8f5bd70e14b916c46"
+        },
+        "flow/orfs-work/reports/base/synth_stat.txt": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-bound-2026-10-20-v2/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "441d004f29d3a8c1f03837858ed58b97ff90a880c118bd14849198c05580181a"
+        }
+      },
+      "inputs": {
+        "path": ".artifacts/mobile-texture-image-binding-bound-synthesis-v2-inputs.json",
+        "sha256": "856336ec38e221bbdb163b32319ea91591b49f010b757aee996a202140a7fb8a"
+      }
+    },
+    "raw": {
+      "runtime": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "carried_from": ".artifacts/mobile-texture-image-binding-raw-synthesis-v1-result.json",
+        "carry_proof": ".artifacts/mobile-texture-image-binding-raw-carry-v2.json"
+      },
+      "setup_passed": true,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        123.434,
+        423.032
+      ],
+      "worst_setup_slack_ps": 123.434,
+      "estimated_core_clock_fmax_mhz": 1140.815,
+      "mapped_cells": 44287,
+      "critical_startpoint": "location.address.captured_q.ram[397]$_DFFE_PP_",
+      "critical_endpoint": "location.address.products_q.ram[219]$_DFFE_PP_",
+      "evidence": {
+        "qualification.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-raw-2026-10-20-v1/qualification.json",
+          "sha256": "228b5a79237e69fb52b1c0cfceca2c43613883df5757d99a67830ae8a35350f7"
+        },
+        "result.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-raw-2026-10-20-v1/result.json",
+          "sha256": "0e657df6fff583d38130918d78af6bb5d18ae4cf3a0822f1a211902ff180d88e"
+        },
+        "manifest.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-raw-2026-10-20-v1/manifest.json",
+          "sha256": "ffae4c2fb97d7164ab1bd49c7af09ed0ce63145f2b46fd988b1b663a115f2c2a"
+        },
+        "flow/synthesis_sta.log": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-raw-2026-10-20-v1/flow/synthesis_sta.log",
+          "sha256": "b49fb7071004e397fdcb9619fda9244adcf30f9be5c0e487031609286cc4078b"
+        },
+        "flow/orfs-work/reports/base/synth_stat.txt": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-raw-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "d2b008158c02c92628f2b9dfa1cf725ede6bda5978b3340803c4281c10939ed5"
+        }
+      },
+      "inputs": {
+        "path": ".artifacts/mobile-texture-image-binding-raw-synthesis-v1-inputs.json",
+        "sha256": "d358bcb0a6d476a3e2c6045da9a391b84f48a5785703d86fc4de798a0970396a"
+      },
+      "carry_proof": {
+        "path": ".artifacts/mobile-texture-image-binding-raw-carry-v2.json",
+        "sha256": "0fdaa0755fa8b11a2d9db01b00dfc889bc04e5cf75119d08687c408b1640062e"
+      }
+    },
+    "typed": {
+      "runtime": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "carried_from": ".artifacts/mobile-texture-image-binding-typed-synthesis-v1-result.json",
+        "carry_proof": ".artifacts/mobile-texture-image-binding-typed-carry-v2.json"
+      },
+      "setup_passed": true,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        10.117,
+        418.06
+      ],
+      "worst_setup_slack_ps": 10.117,
+      "estimated_core_clock_fmax_mhz": 1010.22,
+      "mapped_cells": 54830,
+      "critical_startpoint": "fetch.location.address.captured_q.ram[268]$_DFFE_PP_",
+      "critical_endpoint": "fetch.location.address.products_q.ram[315]$_DFFE_PP_",
+      "evidence": {
+        "qualification.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-typed-2026-10-20-v1/qualification.json",
+          "sha256": "7e7975ba178ee873cd261007fa127e4c162e6bd54574754a3f2e609c71bf9b3e"
+        },
+        "result.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-typed-2026-10-20-v1/result.json",
+          "sha256": "da473bfd53ed0bf21c561400231dfb1409856ae9edc3584021f29d5906d84656"
+        },
+        "manifest.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-typed-2026-10-20-v1/manifest.json",
+          "sha256": "f7456c6f5f0b3b29ca9891e234bb3bbc830b0c402bdca9b7dd4f0353af26f7dd"
+        },
+        "flow/synthesis_sta.log": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-typed-2026-10-20-v1/flow/synthesis_sta.log",
+          "sha256": "5f345b2c71e599ed440b7fe6362d0f59c41bb248717a048c40512679e968e08a"
+        },
+        "flow/orfs-work/reports/base/synth_stat.txt": {
+          "path": "generated/qualification/ppa/mobile-texture-image-binding-typed-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "319b9db389d9eeb5f8a79a34295222374f48911f81ff76c110ff1d80df34029b"
+        }
+      },
+      "inputs": {
+        "path": ".artifacts/mobile-texture-image-binding-typed-synthesis-v1-inputs.json",
+        "sha256": "9fc4be16ee679d57b67bf56e489ad69e7751cbe1f6405be945fe8f65ae54d17a"
+      },
+      "carry_proof": {
+        "path": ".artifacts/mobile-texture-image-binding-typed-carry-v2.json",
+        "sha256": "e42477a077fd3a1223669285a675c6120430a12294e151a55dd3c67fd258086b"
+      }
+    }
+  },
+  "scope": "Synthesis only; TC/SLVT,1000ps,25 percent I/O,no retiming/place-route/power. Include both reported core and I/O path groups. Binding/bound rescreened; raw/typed carried from completed source-v1 screens by exact active-RTL and current-source proof.",
+  "previous_screen": {
+    "path": ".artifacts/mobile-texture-image-binding-pipeline-v1-worktree/docs/performance/mobile-texture-image-binding-synthesis-initial-2026-10-20.json",
+    "sha256": "e036fb2ecb5d4a516aec4c257b22a60a382aa1ce9b4c71a12918345d6c9cd81c"
+  },
+  "limits": [
+    "Standalone components do not establish native shader binding, texture-cluster throughput or a whole-GPU/product clock.",
+    "Historical native replay640-source setup miss and host clock correction are separate work.",
+    "Full H0-H8/GLES/resource completion remains open."
+  ]
+}

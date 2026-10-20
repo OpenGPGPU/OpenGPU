@@ -1,7 +1,7 @@
 # GPU image format, mip binding and bound texel fetch
 
-Status: [28 controls pass](performance/mobile-texture-image-binding-pipelined-2026-10-20.json)
-on unchanged 662-file source in `codex/mobile-texture-image-binding-pipeline`, together
+Status: [29 controls pass](performance/mobile-texture-image-binding-mip-range-2026-10-20.json)
+on unchanged 662-file source in `codex/mobile-texture-image-binding-mip-range`, together
 with seven ABI checks, four RTL emissions, combined C11 headers and CI selection.
 Revised binding synthesis and native integration remain pending. No new native
 capability is advertised.
@@ -104,3 +104,12 @@ admission stages separating natural mip selection, 33-bit handle formation,
 narrowing; handle carries and exclusive 4 GiB ends stay checked. All 28 controls
 and seven ABI checks pass after this change. Revised binding/bound synthesis
 uses the same TC/SLVT, 1000 ps, 25 percent I/O and no-retiming constraints.
+
+The [registered screens](performance/mobile-texture-image-binding-synthesis-registered-initial-2026-10-20.json)
+still miss binding/bound setup at -83.596/-170.597 ps, with the remaining binding
+path from base-level state to fault classification. The latest implementation
+uses the equivalent root-based natural mip bound and a separate requested-level
+check before handle narrowing. An independent original dimension-reduction
+oracle checks 303,104 hardware cases, including every 14-bit root/base pair and
+all target/max clamps at power boundaries. All 29 controls and seven ABI checks
+pass; revised synthesis remains pending at identical constraints.

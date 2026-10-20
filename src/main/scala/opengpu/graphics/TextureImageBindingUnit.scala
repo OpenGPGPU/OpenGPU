@@ -41,6 +41,20 @@ class TextureImageBindingResult extends Bundle {
   val format=UInt(6.W);val baseLevel=UInt(4.W);val lastLevel=UInt(4.W);val mipChainChecked=Bool()
   val selected=new TextureImageLevelLookup;val view=new TextureImageLevelView
 }
+private[graphics] object TextureImageMipRange {
+  /** For positive roots, base+floor(log2(max(1,root>>base))) equals
+    * max(base,floor(log2(root))). Zero roots use floor0; admission rejects
+    * zero dimensions separately. Array layer counts never enter this bound.
+    */
+  def last(rootWidth: UInt,rootHeight: UInt,rootDepth: UInt,target: UInt,base: UInt,maximum: UInt): UInt={
+    require(Seq(rootWidth,rootHeight,rootDepth).forall(_.getWidth==14))
+    val xy=Mux(rootWidth>rootHeight,rootWidth,rootHeight)
+    val largest=Mux(target===3.U && rootDepth>xy,rootDepth,xy)
+    val logarithm=Mux(largest===0.U,0.U,13.U-PriorityEncoder(Reverse(largest)))(3,0)
+    val natural=Mux(base>logarithm,base,logarithm)
+    Mux(maximum<natural,maximum,natural)
+  }
+}
 
 /** Serialized immutable image admission. Header tags2/3 and level tags0/1
   * stay disjoint. Every checked level belongs to one authoritative format,
@@ -55,7 +69,7 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val invalidate=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,check,readHeader,verifyHeader,checkImage,levelHandles,levelExtent,checkLevelTable,prepareLevel,offerLevel,waitLevel,verifyLevel,advance,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,check,readHeader,verifyHeader,checkImage,checkSelectedLevel,levelHandles,levelExtent,checkLevelTable,prepareLevel,offerLevel,waitLevel,verifyLevel,advance,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageBindingRequest)
   private val snapshot=Reg(new TextureImageBindingRecord);private val result=Reg(new TextureImageBindingResult)
   private val status=RegInit(0.U(3.W));private val faultStage=RegInit(0.U(3.W));private val faultValid=RegInit(false.B)
@@ -143,18 +157,17 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
         snapshot.rootWidth<=Mux(volume,p.max3D.U,p.max2D.U) && snapshot.rootHeight<=Mux(volume,p.max3D.U,p.max2D.U) &&
         snapshot.rootDepth<=p.max3D.U && (volume || snapshot.rootDepth===1.U) &&
         Mux(array,snapshot.layers<=p.maxLayers.U,snapshot.layers===1.U) && (!cube || snapshot.rootWidth===snapshot.rootHeight)
-      val baseWidth=dimension(snapshot.rootWidth,snapshot.baseLevel);val baseHeight=dimension(snapshot.rootHeight,snapshot.baseLevel)
-      val baseDepth=Mux(volume,dimension(snapshot.rootDepth,snapshot.baseLevel),1.U)
-      val maximum=Mux(baseWidth>baseHeight,baseWidth,baseHeight);val largest=Mux(baseDepth>maximum,baseDepth,maximum)
-      val natural=snapshot.baseLevel+&(13.U-PriorityEncoder(Reverse(largest.pad(14))))
-      val last=Mux(snapshot.maxLevel<natural,snapshot.maxLevel,natural)(3,0)
-      lastLevel:=last
+      lastLevel:=TextureImageMipRange.last(snapshot.rootWidth,snapshot.rootHeight,snapshot.rootDepth,snapshot.target,snapshot.baseLevel,snapshot.maxLevel)
       when(stop){phase:=State.finish}
         .elsewhen(!TypedColorFormat.valid(snapshot.format)){status:=TextureImageFetchStatus.format.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .elsewhen(snapshot.target>3.U || !dimensions || snapshot.maxLevel<snapshot.baseLevel){status:=TextureImageResourceStatus.view.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
-        .elsewhen(request.level<snapshot.baseLevel || request.level>last){status:=TextureImageResourceStatus.coordinate.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .elsewhen(snapshot.allocationLimit<=snapshot.allocationBase || snapshot.allocationLimit>(BigInt(1)<<32).U){
           status:=TextureImageResourceStatus.bounds.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
+        .otherwise{phase:=State.checkSelectedLevel}
+    }
+    is(State.checkSelectedLevel){
+      when(stop){phase:=State.finish}
+        .elsewhen(request.level<snapshot.baseLevel || request.level>lastLevel){status:=TextureImageResourceStatus.coordinate.U;faultStage:=TextureImageBindingFaultStage.layout.U;phase:=State.finish}
         .otherwise{phase:=State.levelHandles}
     }
     is(State.levelHandles){

@@ -5894,3 +5894,18 @@ Revised binding/bound synthesis remains pending at the same TC/SLVT, 1000 ps,
 25 percent I/O and no retiming. Existing raw/typed results can carry only by exact
 active-RTL/source proof. Native bindings, typed shader transport, complete sampler
 semantics/formats, throughput and the full hardware objective remain open.
+
+
+## Equivalent mip bound and requested-level qualification (2026-10-20)
+
+The [registered28-check screens](performance/mobile-texture-image-binding-synthesis-registered-initial-2026-10-20.json)
+retain binding/bound setup misses of -83.596/-170.597 ps. Remaining base-level
+control feeds fault classification. The [29-check source](performance/mobile-texture-image-binding-mip-range-2026-10-20.json)
+uses an equivalent root-based mip bound and separates requested-level rejection
+from natural-limit capture, preserving wide checks before handle narrowing.
+The independent original dimension-reduction oracle checks303104 hardware cases:
+every14-bit root/base pair and all target/max clamps at power boundaries.
+All29 controls, seven ABI checks and four emissions pass on unchanged662-file
+source. The ABI and prior raw/typed active RTL remain unchanged; revised binding
+and bound-fetch synthesis is pending at identical constraints. Native integration
+and the full H0-H8/GLES hardware objective remain open.

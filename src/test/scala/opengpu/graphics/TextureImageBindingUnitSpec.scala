@@ -8,6 +8,13 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
+private class ImageMipRangeHarness extends Module {
+  val io=IO(new Bundle {
+    val rootWidth=Input(UInt(14.W));val rootHeight=Input(UInt(14.W));val rootDepth=Input(UInt(14.W))
+    val target=Input(UInt(3.W));val baseLevel=Input(UInt(4.W));val maxLevel=Input(UInt(4.W));val valueOut=Output(UInt(4.W))
+  })
+  io.valueOut:=TextureImageMipRange.last(io.rootWidth,io.rootHeight,io.rootDepth,io.target,io.baseLevel,io.maxLevel)
+}
 private class ImageBindingHarness(fetch: Boolean=true,translated: Boolean=false) extends Module {
   private val config=GpuConfig(lanes=4,warps=2)
   val io=IO(new Bundle {
@@ -47,6 +54,28 @@ private class ImageBindingHarness(fetch: Boolean=true,translated: Boolean=false)
 class TextureImageBindingUnitSpec extends AnyFlatSpec {
   import WindowRecordTest._
   private val end4G=BigInt(1)<<32
+  it should "derive mip ranges against original dimension reduction for every root size and base level" in {
+    simulate(new ImageMipRangeHarness){d=>var cases=0
+      def roots(n: Int,target: Int): Unit={
+        val w=if(n==0)0 else if(target==1)1 else if(target==3)1.max(n/3)else n
+        val h=if(n==0)0 else if(target==0)1 else if(target==3)1.max(n/2)else n
+        val z=if(n==0)0 else if(target==3)n else 1
+        d.io.rootWidth.poke(w.U);d.io.rootHeight.poke(h.U);d.io.rootDepth.poke(z.U);d.io.target.poke(target.U)
+      }
+      def check(n: Int,base: Int,maximum: Int): Unit={
+        // Independent original rule: reduce dimensions first, then count
+        // the remaining positive powers of two and apply the maximum clamp.
+        val reduced=1.max(n/(1<<base));var size=reduced;var levels=0
+        while(size>1){size/=2;levels+=1}
+        val expected=maximum.min(base+levels)
+        d.io.baseLevel.poke(base.U);d.io.maxLevel.poke(maximum.U);d.clock.step();d.io.valueOut.expect(expected.U);cases+=1
+      }
+      for(n<-0 until 16384){roots(n,n%4);for(base<-0 until 16)check(n,base,(n+base*7)%16)}
+      val edges=(Seq(0,1,16383)++(0 until 14).flatMap(k=>Seq((1<<k)-1,1<<k,(1<<k)+1))).filter(n=>n>=0 && n<16384).distinct
+      for(n<-edges;target<-0 to 3){roots(n,target);for(base<-0 until 16;maximum<-0 until 16)check(n,base,maximum)}
+      info(s"IMAGE_BINDING_MIP_RANGE cases=$cases every14BitRoot=true bases16=true allFourTargets=true allMaxClampsAtPowerBoundaries=true originalDimensionReductionOracle=true zeroRootDefined=true")
+    }
+  }
   private case class View(base: BigInt,w: Int,h: Int,d: Int,layers: Int,row: BigInt,slice: BigInt,layer: BigInt,bytes: Int,target: Int) {
     def address(x: Int=0,y: Int=0,z: Int=0,l: Int=0,face: Int=0): BigInt=base+x*bytes+y*row+z*slice+(if(target==2)face else l)*layer
     def end: BigInt=address(w-1,h-1,d-1,layers-1,if(target==2)5 else 0)+bytes
