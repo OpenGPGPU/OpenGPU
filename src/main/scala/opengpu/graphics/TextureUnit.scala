@@ -104,8 +104,6 @@ class TextureUnit(
   def this(gfxConfig: GraphicsConfig, wordCacheEntries: Int, allowPrepared: Boolean) =
     this(gfxConfig, wordCacheEntries, allowPrepared, false)
   require(!overlapPrepared || allowPrepared)
-  require(!coordinatePolicyInput || !allowPrepared,
-    "extended coordinate policy currently uses the owned direct/mip path")
   // Preserve the uncached single-argument interface for existing callers.
   def this(gfxConfig: GraphicsConfig) = this(gfxConfig, 0, false)
   def this(gfxConfig: GraphicsConfig, wordCacheEntries: Int) = this(gfxConfig, wordCacheEntries, false)
@@ -119,6 +117,8 @@ class TextureUnit(
       */
     val coordinatePolicy=if(coordinatePolicyInput)Some(Input(new TextureCoordinatePolicy))else None
     val coordinateFault=if(coordinatePolicyInput)Some(Output(Bool()))else None
+    // Prepared metadata owns addressing and validity independently of live bindings.
+    val preparedCoordinateFault = if (coordinatePolicyInput && allowPrepared) Some(Input(Bool())) else None
     val texFormat = Input(UInt(PixelFormat.width.W))
     val texBase = Input(UInt(32.W))
     val texWidth = Input(UInt(14.W))
@@ -135,6 +135,15 @@ class TextureUnit(
       val resp = Flipped(Decoupled(new OmMemoryResponse))
     }
   })
+
+  private val offeredCoordinateFault = if (coordinatePolicyInput) {
+    val directFault = !TextureCoordinatePolicy.valid(io.coordinatePolicy.get) ||
+      io.texWidth === 0.U || io.texHeight === 0.U
+    if (allowPrepared) Mux(io.prepared.get.valid,
+      io.preparedCoordinateFault.get || io.sample.bits.mipLevel =/= 0.U ||
+        io.sample.bits.lodFrac =/= 0.U || io.texMaxLevel =/= 0.U, directFault)
+    else directFault
+  } else false.B
 
   // sBlend exists so the final response's tapWords write commits before the
   // blend reads it (same-cycle write + blend-read would otherwise use stale
@@ -194,6 +203,8 @@ class TextureUnit(
     val issued = RegInit(VecInit(Seq.fill(2)(0.U(4.W)))).suggestName("preparedIssued")
     val received = RegInit(VecInit(Seq.fill(2)(0.U(4.W)))).suggestName("preparedReceived")
     val lookup = RegInit(VecInit(Seq.fill(2)(false.B))).suggestName("preparedLookup")
+    val fault = if (coordinatePolicyInput)
+      Some(Reg(Vec(2, Bool())).suggestName("preparedFault")) else None
   }
   private val preparedWindow = if (overlapPrepared) Some(new PreparedWindow) else None
   private val preparedActive = preparedWindow.map(p => state === sIdle && p.valid.asUInt.orR).getOrElse(false.B)
@@ -243,8 +254,9 @@ class TextureUnit(
       p.received(p.head).andR && resultSpace).getOrElse(false.B)
 
   if (overlapPrepared) { when(io.result.fire) { resultValid.get := false.B } }
-  private def completeResult(value: UInt): Unit = {
+  private def completeResult(value: UInt, fault: Bool = false.B): Unit = {
     resultReg := value
+    policyFault.foreach(_ := fault)
     if (overlapPrepared) {
       assert(resultSpace, "a pending texture result must not be overwritten")
       resultValid.get := true.B
@@ -448,8 +460,20 @@ class TextureUnit(
       p.received(p.tail) := 0.U
       p.lookup(p.tail) := cacheValid.map(_.orR).getOrElse(false.B) && !cacheInvalidateNow
       p.tail := ~p.tail
-      assert(io.sample.bits.mipLevel === 0.U && io.sample.bits.lodFrac === 0.U &&
-        io.texMaxLevel === 0.U, "prepared samples require fixed base-level filtering")
+      if (coordinatePolicyInput) {
+        p.fault.get(p.tail) := offeredCoordinateFault
+        when(offeredCoordinateFault) {
+          p.addresses(p.tail) := VecInit(Seq.fill(4)(0.U(32.W)))
+          p.weights(p.tail) := VecInit(Seq.fill(4)(0.U(17.W)))
+          p.words(p.tail) := VecInit(Seq.fill(4)(0.U(32.W)))
+          p.issued(p.tail) := 15.U
+          p.received(p.tail) := 15.U
+          p.lookup(p.tail) := false.B
+        }
+      } else {
+        assert(io.sample.bits.mipLevel === 0.U && io.sample.bits.lodFrac === 0.U &&
+          io.texMaxLevel === 0.U, "prepared samples require fixed base-level filtering")
+      }
     }
   }
 
@@ -601,8 +625,10 @@ class TextureUnit(
 
   private def acceptSample(): Unit = {
     formatReg := io.texFormat
-    assert(io.texWidth =/= 0.U && io.texHeight =/= 0.U,
-      "texture dimensions must be non-zero")
+    if (!coordinatePolicyInput) {
+      assert(io.texWidth =/= 0.U && io.texHeight =/= 0.U,
+        "texture dimensions must be non-zero")
+    }
     uReg := io.sample.bits.u
     vReg := io.sample.bits.v
     if (overlapPrepared) {
@@ -624,18 +650,22 @@ class TextureUnit(
     secondLevel := false.B
     state := sLevel
     if(coordinatePolicyInput){
-      policy.get:=io.coordinatePolicy.get;policyFault.get:= !TextureCoordinatePolicy.valid(io.coordinatePolicy.get)
+      policy.get:=io.coordinatePolicy.get
       bindingBase.get:=io.texBase;bindingWidth.get:=io.texWidth;bindingHeight.get:=io.texHeight
-      when(!TextureCoordinatePolicy.valid(io.coordinatePolicy.get)){resultReg:=0.U;state:=sDone}
     }
     if (allowPrepared && !overlapPrepared) {
       when(io.prepared.get.valid) {
-        assert(io.sample.bits.mipLevel === 0.U && io.sample.bits.lodFrac === 0.U &&
-          io.texMaxLevel === 0.U, "prepared samples require fixed base-level filtering")
+        if (!coordinatePolicyInput) {
+          assert(io.sample.bits.mipLevel === 0.U && io.sample.bits.lodFrac === 0.U &&
+            io.texMaxLevel === 0.U, "prepared samples require fixed base-level filtering")
+        }
         singleTexel := false.B
         wReg := io.prepared.get.bits.weights
         beginTapFetch(io.prepared.get.bits.addresses.toSeq)
       }
+    }
+    if (coordinatePolicyInput) {
+      when(offeredCoordinateFault) { completeResult(0.U, true.B) }
     }
   }
 
@@ -651,7 +681,10 @@ class TextureUnit(
           // All four taps are the same for every coordinate and wrap mode.
           beginTapFetch(Seq.fill(4)(levelBase))
         }.otherwise {
-          if (overlapPrepared) {
+          if (coordinatePolicyInput) {
+            biasedXReg := TextureCoordinates.bias(TextureCoordinates.scale(uReg, levelW, policy.get.wrapU, policy.get.signed))
+            biasedYReg := TextureCoordinates.bias(TextureCoordinates.scale(vReg, levelH, policy.get.wrapV, policy.get.signed))
+          } else if (overlapPrepared) {
             val products = axisProducts.get
             val scaledX = Wire(UInt(23.W))
             val scaledY = Wire(UInt(23.W))
@@ -663,13 +696,8 @@ class TextureUnit(
             biasedYReg := Mux(axisClampedHigh.get(1), (levelH << 8).pad(24),
               TextureCoordinates.bias(scaledY))
           } else {
-            if(coordinatePolicyInput){
-              biasedXReg:=TextureCoordinates.bias(TextureCoordinates.scale(uReg,levelW,policy.get.wrapU,policy.get.signed))
-              biasedYReg:=TextureCoordinates.bias(TextureCoordinates.scale(vReg,levelH,policy.get.wrapV,policy.get.signed))
-            }else{
-              biasedXReg := axisBias(uReg, levelW)
-              biasedYReg := axisBias(vReg, levelH)
-            }
+            biasedXReg := axisBias(uReg, levelW)
+            biasedYReg := axisBias(vReg, levelH)
           }
           state := sWrap
         }
@@ -730,7 +758,12 @@ class TextureUnit(
     }
   }
   if (overlapPrepared) {
-    when(preparedRetire) { completeResult(blended) }
+    when(preparedRetire) {
+      if (coordinatePolicyInput) {
+        val fault = preparedWindow.get.fault.get(preparedWindow.get.head)
+        completeResult(Mux(fault, 0.U, blended), fault)
+      } else { completeResult(blended) }
+    }
   }
 }
 

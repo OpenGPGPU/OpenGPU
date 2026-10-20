@@ -323,6 +323,13 @@ object EmitPpaRtl {
       case "texture-coordinates" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.TextureCoordinatePipeline(laneWidth = 4), stageArgs, firtoolArgs)
+      case "texture-coordinates-policy" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TextureCoordinatePipeline(4, true), stageArgs, firtoolArgs)
+      case "texture-sampler-prepared-coordinate-policy" =>
+        ChiselStage.emitSystemVerilogFile(
+          new opengpu.graphics.TextureUnit(wordCacheEntries = 8, allowPrepared = true,
+            overlapPrepared = true, coordinatePolicyInput = true), stageArgs, firtoolArgs)
       case "texture-sampler-coordinate-policy" =>
         ChiselStage.emitSystemVerilogFile(
           new opengpu.graphics.TextureUnit(wordCacheEntries=8,coordinatePolicyInput=true),stageArgs,firtoolArgs)

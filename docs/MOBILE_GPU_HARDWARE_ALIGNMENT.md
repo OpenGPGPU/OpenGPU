@@ -5426,3 +5426,30 @@ image/sampler resources, float conversion and rates remain required. The later
 polygon/depth and native-facing branches remain separate from this integration.
 No new FPU, CU or SRAM and no new PPA result; H0–H8 remain open under the
 synthesis-only evaluation policy.
+
+
+## Prepared texture coordinate policy development (2026-10-20)
+
+The H4 development branch now carries signed per-axis repeat/clamp/mirrored
+policy through the six elastic coordinate stages. It keeps prepared address/
+weight metadata unchanged and adds a separate fault sideband. Reserved modes
+and zero dimensions generate empty fault metadata; unsupported prepared mip
+inputs fault at sampler admission. Faults retire in order without reads,
+including through the overlapping two-context sampler window. Result-fault
+state changes at result creation rather than younger-context admission.
+
+The [23-check qualification](performance/mobile-texture-prepared-policy-2026-10-20.json)
+passes on 637 unchanged source/ABI/selection files, along with four ABI checks,
+five RTL emissions and CI selection. Independent unfurled index-wrap
+coefficients match all 2,674 pipeline cases; a 512-result stream retains six
+cycles of latency without bubbles. Prepared serial/overlap profiles pass 384
+ordered results, including 34 faults, and eighteen direct overlap-capable
+requests retain captured mip/trilinear bindings and fault recovery. Tests
+cover maximum two-axis dimensions, stalls/reset, held results with younger
+faults, poisoned live bindings, reordered replies and deferred invalidation.
+The existing nineteen sampler/pipeline checks pass again.
+
+Legacy coordinate and sampler synthesis-active SV, ports and hierarchy match
+independent pre-extension emissions. New optional components add no FPU, CU
+or SRAM. TexSampleUnit/ISA/native transport and general descriptors remain
+open; no new PPA or H4 completion is claimed. PPA remains synthesis only.

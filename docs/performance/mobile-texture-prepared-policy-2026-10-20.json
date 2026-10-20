@@ -1,0 +1,133 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Optional prepared signed per-axis coordinate policy and ordered sampler fault transport; legacy hardware preserved",
+  "based_on_commit": "4682f2c",
+  "source_files": 637,
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-prepared-policy-source-v1.json",
+    "sha256": "fd34982c0cccb266f78802c46753ef62fcd166b59848f3ba4040ef59fc2baa80"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-texture-prepared-policy-source-v1.tar.gz",
+    "sha256": "3751397dbcc77bdf43d7681053435c8da006613a018b7b06ec7d5c6e49ac774c"
+  },
+  "result": {
+    "path": ".artifacts/mobile-texture-prepared-policy-controls-v1-result.json",
+    "sha256": "974ff8a45dacf50044770ef8691374e2d72a7727daa9066dd7338bd1abd852d4"
+  },
+  "log": {
+    "path": ".artifacts/mobile-texture-prepared-policy-controls-v1.log",
+    "sha256": "63721b50cba20fce580a667f8bc588514c1726fc15013be211f0d163d46fb870"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "tests": [
+        23
+      ],
+      "success_tasks": 10,
+      "policy_profiles": 2,
+      "prepared_coordinates": 1,
+      "prepared_samplers": 2,
+      "direct_controls": 1
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 130.3436784998048,
+    "finished_utc": "2026-10-20T04:11:21.553165+00:00"
+  },
+  "passed": 23,
+  "new_checks": 4,
+  "existing_checks": 19,
+  "abi_checks": 4,
+  "rtl_emissions": 5,
+  "coordinate_cases": 2674,
+  "coordinate_fault_cases": 6,
+  "unstalled_stream_results": 512,
+  "pipeline_latency_cycles": 6,
+  "pipeline_stream_bubbles": 0,
+  "prepared_results": 384,
+  "prepared_faults": 34,
+  "prepared_profiles": [
+    {
+      "overlap": "false",
+      "results": 192,
+      "faults": 17,
+      "reads": 367,
+      "reordered": 166,
+      "invalidatePulses": 2,
+      "earlyAdmissions": 1,
+      "earlyFaultAdmissions": 0
+    },
+    {
+      "overlap": "true",
+      "results": 192,
+      "faults": 17,
+      "reads": 367,
+      "reordered": 265,
+      "invalidatePulses": 2,
+      "earlyAdmissions": 3,
+      "earlyFaultAdmissions": 1
+    }
+  ],
+  "prepared_capable_direct_results": 18,
+  "prepared_capable_direct_faults": 4,
+  "existing_direct_valid_samples": 9038,
+  "existing_direct_reserved_faults": 6,
+  "ci": {
+    "path": ".artifacts/mobile-texture-prepared-policy-ci-selection-v2.log",
+    "sha256": "33564c66837704a225331df4bb30af6f3d40f6608d0b3c18aec257a98a54e2b0"
+  },
+  "reconciliation": {
+    "path": ".artifacts/mobile-texture-prepared-policy-reconciliation-v1.json",
+    "sha256": "63ab64f789d2921a41d070757c007f70d4699ce3329b1f5c9b831e0e8483e560"
+  },
+  "baseline_emission": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "source_files": 636,
+    "log": {
+      "path": ".artifacts/mobile-texture-prepared-legacy-before-v1.log",
+      "sha256": "1061ee32537ae15b34c4d16a8c9896b665cb5bb92b9d4b5134d7654be8010ce7"
+    },
+    "source_manifest": {
+      "path": ".artifacts/mobile-texture-coordinate-policy-main-source-v1.json",
+      "sha256": "836c191e7c3fddbc4d147ab00547cfd72b3c64d8dc3ba25df54d8fd50a1b38b1"
+    },
+    "scope": "Independent legacy coordinate emission from unchanged qualified pre-extension main-context source. Legacy sampler baseline is the prior main-context qualified emission."
+  },
+  "rtl_audit": {
+    "path": ".artifacts/mobile-texture-prepared-policy-rtl-audit-v1.json",
+    "sha256": "a3ce6449ee535730ddb1bcc5749f97ed61f4db40b498c3ef1e68c4125b3aeeee"
+  },
+  "legacy_active_sv_ports_hierarchy_equal": true,
+  "extra_fpu_cu_sram": 0,
+  "development_oracle": {
+    "source": {
+      "path": ".artifacts/mobile-texture-prepared-policy-development-source-v1.json",
+      "sha256": "1d8082c6e842dc594c2d575d7285b82b47718dc4a70d1ce2d59034d0ee856ac1"
+    },
+    "log": {
+      "path": ".artifacts/mobile-texture-prepared-policy-development-v1.log",
+      "sha256": "3e2a3397c73c004257cacb1e2327de88d792311ea1b4e09eb66450dc01319869"
+    },
+    "result": {
+      "path": ".artifacts/mobile-texture-prepared-policy-development-v1-result.json",
+      "sha256": "c0ba8e70f48ff59a30ffa5541e4af1ff4e9c121628e49d41d942bf9b492ab495"
+    },
+    "explanation": "The first allocation oracle incorrectly rejected valid zero-weight taps. Value correctness uses unfurled nonzero index-wrap coefficients; physical reads are separately checked against captured nonfault allocation bounds. No production arithmetic change was needed for that failure."
+  },
+  "contract": {
+    "policy": "Independent repeat/clamp/mirrored-repeat, unsigned Q16.16 or signed S16.16",
+    "prepared_metadata": "Original addresses/weights shape retained; optional separate fault. Pipeline captures axis policy and binding. Prepared metadata overrides live sampler policy/base/dimensions.",
+    "faults": "Reserved modes and zero dimensions produce empty fault metadata; unsupported prepared mip/LOD/max-level inputs fault without reads. Faults retire in order; younger admissions cannot alter older held output/fault.",
+    "ownership": "Two prepared contexts share four physical read credits and ordered results. A one-cycle invalidation pulse is retained until old tap reads finish. Direct requests retain captured trilinear bindings in the prepared-capable sampler."
+  },
+  "limits": [
+    "No TexSampleUnit, shader ISA, native descriptor or general image/sampler resource exposure yet. Floating coordinate conversion and complete dimensional/format/filter semantics remain open.",
+    "These checks qualify optional component behavior and unchanged legacy synthesis-active logic, ports and hierarchy. They do not establish texture cluster throughput, power, area or clock.",
+    "The pre-existing native depth and facing matrices remain separate live regressions, not passes in this23-check result.",
+    "No H4/H6/H0-H8 or GLES closure. PPA evaluation remains synthesis only."
+  ]
+}
