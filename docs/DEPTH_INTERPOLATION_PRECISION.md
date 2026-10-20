@@ -48,3 +48,13 @@ fallback share that depth path. Offset-before-clamp and cancellation ownership
 remain in the same owner. The analogous anchored slope calculation still needs
 checking. Focused precision, numeric/ownership and integrated qualification of
 this correction are pending; the negative result does not qualify it.
+
+## Flat-polygon slope witness
+
+The [standalone RTL control](performance/mobile-polygon-flat-slope-failure-2026-10-20.json)
+also fails for constant depth `0x3f000001`, with pixel vertices `(0,0)`,
+`(500,100)`, `(100,400)`, factor `2^20` and zero units. The weighted derivative
+leaves rounding residue; RTL returns extended offset `E(false,-15,11573807)`,
+about `4.21e-5`, instead of zero. The failing 640-file source is retained.
+The planned 32-case test stops at its first case in this run. An anchored
+slope correction is separate pending work and needs full native integration.
