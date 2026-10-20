@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "fixture_scratch_alias_reproduced_and_isolation_fix_passes_directed_tests_full_integration_running",
+  "cause": {
+    "old_missing_tuple_shader_PC": "0x100000",
+    "private_spilled_payload_scratch_base": "0x100000",
+    "effect": "Spilled payload initialization overwrites shader code and produces illegal-instruction status5 before the required missing-tuple texture status3. Local payload storage does not overwrite code.",
+    "fix": "Move integer shader code to0x1a0000..0x1d3000; assert the full4KiB code reservation is disjoint from each private scratch interval.",
+    "production_RTL_changed": false,
+    "expected_fault_status_relaxed": false
+  },
+  "directed_before_after": {
+    "source_commit": "8883392b21c9c437e2c9f41ae97198a0b6e495b5",
+    "identical_source_manifest_sha256": "dba3ea3c7dc35fa377c9e569a17fa45b156a9a6898cdadf7d4cedfcbf16948b7",
+    "identical_source_archive_sha256": "b3c3f664d4c52c7e19de3f2cc4303f8f80ca7ab3e55ec50f6c1c54c4ecc91496",
+    "negative": {
+      "returncode": 1,
+      "source_unchanged": true,
+      "elapsed_seconds": 147.5148984589614,
+      "commit": "8883392b21c9c437e2c9f41ae97198a0b6e495b5",
+      "source_files": 803,
+      "manifest_sha256": "dba3ea3c7dc35fa377c9e569a17fa45b156a9a6898cdadf7d4cedfcbf16948b7",
+      "runner_pid": 2913,
+      "started_utc": "2026-10-20T18:37:38.189299+00:00",
+      "planned_tests": 1,
+      "profile": "directed_old_code_alias_expected_failure",
+      "archive_sha256": "b3c3f664d4c52c7e19de3f2cc4303f8f80ca7ab3e55ec50f6c1c54c4ecc91496",
+      "git_archive_exact": true
+    },
+    "negative_flags": {
+      "opengpu.nativeIntegerLifetimeOnly": true,
+      "opengpu.nativeIntegerScratchAlias": true
+    },
+    "positive": {
+      "returncode": 0,
+      "source_unchanged": true,
+      "elapsed_seconds": 126.02245591697283,
+      "commit": "8883392b21c9c437e2c9f41ae97198a0b6e495b5",
+      "source_files": 803,
+      "manifest_sha256": "dba3ea3c7dc35fa377c9e569a17fa45b156a9a6898cdadf7d4cedfcbf16948b7",
+      "runner_pid": 23475,
+      "started_utc": "2026-10-20T18:40:31.794494+00:00",
+      "planned_tests": 4,
+      "profile": "directed_integer_lifetime_with_code_outside_scratch",
+      "archive_sha256": "b3c3f664d4c52c7e19de3f2cc4303f8f80ca7ab3e55ec50f6c1c54c4ecc91496",
+      "git_archive_exact": true
+    },
+    "positive_flags": {
+      "opengpu.nativeIntegerLifetimeOnly": true,
+      "opengpu.nativeIntegerScratchAlias": false
+    },
+    "positive_tests": 4,
+    "positive_suites": 2,
+    "positive_shader_calls": 24,
+    "coverage": "Both real shared-CU shader stages, local/spilled payloads, healthy vector/scalar use, missing tuples, data fault, cancel and reuse; v0 preserved. Diagnostic flags are disabled by default."
+  },
+  "fresh_full_matrix": {
+    "source": {
+      "commit": "ed87d8a9d64262aa969e337b759b8aca4d32af81",
+      "source_files": 803,
+      "manifest_sha256": "9347bb8cfd397044ad1b04dac81a8184cfb7b3a6f67cbe2a8c9c41db3c88f077",
+      "archive_sha256": "057660bd1846103670abc9379f28ed04831ad6e446dcbef681ae78425c9e950f",
+      "git_archive_and_worktree_exact": true,
+      "changed_integration_test_files_only": [
+        "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala",
+        "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+        "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"
+      ],
+      "all_production_driver_ABI_and_148_component_test_inputs_unchanged": true,
+      "runner_pid": 47970,
+      "started_utc": "2026-10-20T18:46:06.964433+00:00"
+    },
+    "session": 99973,
+    "state": "running_when_recorded",
+    "diagnostic_flags_enabled": false,
+    "planned_shared_CU_tests": 4,
+    "planned_AXI_tests": 2,
+    "planned_AXI_frames_per_payload_mode": 74,
+    "planned_descriptor_ABI_checks": 9,
+    "scope": "All64 formats,scalar/vector,base-zero and base1/2,task reset/fault/cancel/reuse; source is frozen."
+  },
+  "carry": {
+    "component_prefix": ".artifacts/mobile-native-integer-relative-lod-v6-component-prefix.log",
+    "component_prefix_sha256": "d37de650946ace889c692800430782c08a20fccb0e46f23d24f2a93e47c13b02",
+    "passed_component_tests": 148,
+    "generated_descriptor_ABIs_passed": 9,
+    "changed_inputs_only": [
+      "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala",
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+      "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"
+    ],
+    "unchanged_source_inputs": 800,
+    "all_production_driver_ABI_and_148_component_test_inputs_exact": true,
+    "parent_aggregate_returncode": 143,
+    "parent_aggregate_status": "Intentionally stopped after component/ABI success once unrelated integration fixture alias was confirmed; not a full aggregate PASS.",
+    "synthesis_sessions": {
+      "vertex": 49269,
+      "fragment": 45829
+    },
+    "synthesis_state": "Both live on frozen parent v6 source; result carry requires final source/artifact verification."
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-integer-scratch-isolation-v1.log": "25c2ebd5397dff8f7c67f2a60b5274d54b96632bf556d5d20af46bc4a6e263ab",
+    ".artifacts/mobile-native-integer-scratch-isolation-v2.log": "3dcf1ed6266beb2a90d04d0534a7bcf1142e723b4e8e8a8463b5c32c64998e45",
+    ".artifacts/mobile-native-integer-scratch-isolation-v1-result.json": "c2c80a2a24cb484ea93567acfe1b856fc67d50e95ef7af5744606692bbe3591e",
+    ".artifacts/mobile-native-integer-scratch-isolation-v2-result.json": "f2ead4b14abd725c0e50a7c4ef8e33f8d8a6d8da9a4c578bd63a5a6cef0bcd93",
+    ".artifacts/mobile-native-integer-scratch-qualification-v3-source.json": "9347bb8cfd397044ad1b04dac81a8184cfb7b3a6f67cbe2a8c9c41db3c88f077",
+    ".artifacts/mobile-native-integer-scratch-qualification-v3-source.tar.gz": "057660bd1846103670abc9379f28ed04831ad6e446dcbef681ae78425c9e950f"
+  },
+  "remaining": [
+    "Collect fresh full4 CU and2 AXI tests and9 ABI checks",
+    "Collect both unchanged-policy synthesis results",
+    "Merge only after qualification; no full H0-H8 or whole-GPU PPA claim"
+  ]
+}

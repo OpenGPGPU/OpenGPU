@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "base_relative_LOD_targeted_before_after_and_nonmip_controls_pass_full_qualification_pending",
+  "normative_source": "https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf",
+  "section": "2.12.9.2",
+  "required_behavior": "Captured shader LOD is relative to the captured image base; legacy function2 packet levels stay absolute. Preserve33-bit carry through bounds checks.",
+  "corrected_fixture_before_after": {
+    "same_800_other_inputs_and_test_fixture": true,
+    "only_RTL_differences": [
+      "src/main/scala/opengpu/graphics/ShaderTextureFetchUnit.scala",
+      "src/main/scala/opengpu/graphics/TextureImageBindingUnit.scala",
+      "src/main/scala/opengpu/graphics/TextureImageSamplerBindingUnit.scala"
+    ],
+    "positive_snapshot": "v3",
+    "negative_snapshot": "v4",
+    "positive_checks_per_stage": 81,
+    "negative_tests": 2,
+    "negative_source_commit": "4a8e9de6f182474b87963778033ce43040bd231d",
+    "positive_source_commit": "c8ca021642f8a456708417cfd2d6c1a6cd4636a2"
+  },
+  "extended_validation": {
+    "snapshot": "v5",
+    "checks_per_stage": 93,
+    "total_checks": 186,
+    "nonzero_base_levels": 15,
+    "scalar_vector": true,
+    "relative_LODs": [
+      0,
+      1,
+      2
+    ],
+    "nonmip_filters": [
+      0,
+      1
+    ],
+    "corrupt_base_rejects_before_selected_texel_read": true,
+    "healthy_reuse": true
+  },
+  "evidence": {
+    "3": {
+      "result": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "elapsed_seconds": 33.02236287505366,
+        "commit": "c8ca021642f8a456708417cfd2d6c1a6cd4636a2",
+        "source_files": 803,
+        "manifest_sha256": "ca1ed4f2fc6577c13234e72332ad9020d23f328ec62837e3f7e36f3d4b8119dc",
+        "runner_pid": 45108,
+        "started_utc": "2026-10-20T18:20:13.276997+00:00",
+        "planned_tests": 2,
+        "expected_result": "passes_after_relative_base_fix",
+        "archive_sha256": "a8594829f521812304e54b00359928dd3841110cf1a799a62be15a1489ecca30",
+        "git_archive_exact": true
+      },
+      "log": ".artifacts/mobile-native-integer-relative-lod-v3.log",
+      "log_sha256": "cf8d2e3709aee9d85cd377c9dc729dedd77b2236df1865fa3ed67f619de8e902"
+    },
+    "4": {
+      "result": {
+        "returncode": 1,
+        "source_unchanged": true,
+        "elapsed_seconds": 22.319313458167017,
+        "commit": "4a8e9de6f182474b87963778033ce43040bd231d",
+        "source_files": 803,
+        "manifest_sha256": "250ccaa6c1778fea4d324949c25c6d4c8382ae9301a6bd890235ca4742eac3db",
+        "runner_pid": 46984,
+        "started_utc": "2026-10-20T18:22:24.968805+00:00",
+        "planned_tests": 2,
+        "expected_result": "fails_before_relative_base_fix",
+        "archive_sha256": "48cc5c022b88dfe9853c027da47666f2ce1a62e36bbaeaf657b4794f9e677864",
+        "git_archive_exact": true
+      },
+      "log": ".artifacts/mobile-native-integer-relative-lod-v4.log",
+      "log_sha256": "b988de9e56cad734cc3200a46b888101f5914357a561c44d74fae25f5011e6ae"
+    },
+    "5": {
+      "result": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "elapsed_seconds": 34.27959433407523,
+        "commit": "1ae8e68414947acae9241284358460d3ba73c841",
+        "source_files": 803,
+        "manifest_sha256": "78ba4937d14755ae858dad4975c031fa4a85e3f020bb5490bcc19214c3b15ced",
+        "runner_pid": 48624,
+        "started_utc": "2026-10-20T18:23:56.114101+00:00",
+        "planned_tests": 2,
+        "expected_result": "passes_after_relative_base_fix",
+        "archive_sha256": "6eb416c5c945fbe961db9c9ffe172ba2ae625ea0e8912cec5e765c76327c51a0",
+        "git_archive_exact": true
+      },
+      "log": ".artifacts/mobile-native-integer-relative-lod-v5.log",
+      "log_sha256": "84927685db05aa5615d7f5c9036e912559eb1cddc8d9c1862cab0e408be57d83"
+    }
+  },
+  "initial_invalid_fixture_failures_retained": {
+    ".artifacts/mobile-native-integer-relative-lod-v1.log": "312a4ff35b0ba72e98414b1f5b75f398908940222dc37cb61b2cbf7f2cff6fb6",
+    ".artifacts/mobile-native-integer-relative-lod-v2.log": "3ebef3d1d8bb7300dca74123fdac93f532899cc4a9cb8421d0f3ffd79606efcc"
+  },
+  "fixture_note": "The initial new GXL fixture incorrectly used per-level allocation bounds. Corrected views retain GXI allocation bounds. The corrected fixture was run against both old and fixed RTL; initial failures are not the before/after proof.",
+  "remaining": [
+    "Fresh composed aggregate/ABIs,shared-CU and integer AXI frames",
+    "Fresh full native endpoint synthesis",
+    "Queries/projective qualification,banked throughput/coherence and full H0-H8 requirements"
+  ]
+}
