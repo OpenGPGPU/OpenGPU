@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "native_floating_AXI_local_and_spill_pass_merged_exact_source",
+  "source": {
+    "commit": "d3ea952b7b6c063515d306b83f0113a28a5a5ade",
+    "source_files": 803,
+    "manifest_sha256": "937782b405da39486d506705766add29bcaad4485a5fe66eea1c98439e4ea604",
+    "runner_pid": 73312,
+    "started_utc": "2026-10-20T17:50:02.115795+00:00",
+    "planned_tests": 2,
+    "planned_frames_per_test": 72,
+    "archive_sha256": "ef2048f09b2b37515e87e47c19d4ffe411b270a04845dbbfdcd33b687146e536",
+    "git_archive_exact": true
+  },
+  "terminal": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 3466.633201958146,
+    "commit": "d3ea952b7b6c063515d306b83f0113a28a5a5ade",
+    "source_files": 803,
+    "manifest_sha256": "937782b405da39486d506705766add29bcaad4485a5fe66eea1c98439e4ea604",
+    "runner_pid": 73312,
+    "started_utc": "2026-10-20T17:50:02.115795+00:00",
+    "planned_tests": 2,
+    "planned_frames_per_test": 72
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-texture-axi-v1.log": "225d95ba55d40ba913ac31ed982f93678cbe65b4c893ba91eb3e12f893b7508c",
+    ".artifacts/mobile-native-texture-axi-v1-result.json": "77bd66e8ae06b0aa7384233fc362ccbe1721888f4a826cc52fc3b888de12aac7",
+    ".artifacts/mobile-native-texture-axi-v1-source.json": "937782b405da39486d506705766add29bcaad4485a5fe66eea1c98439e4ea604",
+    ".artifacts/mobile-native-texture-axi-v1-source.tar.gz": "ef2048f09b2b37515e87e47c19d4ffe411b270a04845dbbfdcd33b687146e536"
+  },
+  "fresh_AXI": {
+    "tests": 2,
+    "suites": 1,
+    "payload_modes": [
+      "local",
+      "spill"
+    ],
+    "frames_per_mode": 72,
+    "total_frames": 144,
+    "successful_frames": 140,
+    "expected_error_frames": 4,
+    "submitted_descriptors": 432,
+    "completed_draw_count_claimed": false,
+    "scope": [
+      "Both real shared-CU shader stages",
+      "All64 storage formats; components distributed across matrix, not64 times4",
+      "2D,2D-array,cube,3D targets",
+      "Automatic,explicit,gradient modes with uniform coordinates and zero gradients",
+      "Image swizzle and exact MRT/depth/resolve guards",
+      "Real Sv32; denied sampler PTE causes no physical sampler read",
+      "New task rejects stale operand tuple; healthy reuse",
+      "No GPU-memory operand packet reads; held completion pins VM"
+    ]
+  },
+  "carried_evidence": {
+    "record": "docs/performance/mobile-native-texture-execution-2026-10-21.json",
+    "record_sha256": "ab8f6cf49a02b5a4d31ae4636ff988bbff7beb971d4187dd10cf7670e3c836de",
+    "unchanged_inputs": 802,
+    "only_changed_input": "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+    "all_production_driver_ABI_and_selected_144_test_inputs_exact": true,
+    "tests": 144,
+    "suites": 26,
+    "generated_descriptor_ABIs": 9,
+    "synthesis_profiles": [
+      "vertex",
+      "fragment"
+    ],
+    "all_recorded_artifact_hashes_exact": true,
+    "synthesis_policy": "1000ps TC/SLVT,25 percent I/O,standard ABC,no retiming; synthesis only"
+  },
+  "combined": {
+    "distinct_tests": 146,
+    "suites": 27,
+    "generated_descriptor_ABIs": 9,
+    "synthesis_profiles": 2
+  },
+  "main_audit": {
+    "source_commit": "2e9e3b7f3f1893cdd117de6f004cb24e838af5e8",
+    "root803_inputs_exact": true,
+    "archive_source_exact": true,
+    "archive_sha256": "6ee4c6cbacc545dbf6a840dbb5a393dab5a13e83b17026015f662bfff06b53ab",
+    "commit_agent_trailer_exact": true,
+    "protected_user_file_hashes": {
+      "AGENTS.md": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "timing/README.md": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47"
+    },
+    "protected_user_modes": "0644"
+  },
+  "remaining": [
+    "Captured integer fetch and base-relative LOD integration are on development branches",
+    "Nonuniform helper/projective/query instruction qualification",
+    "Compiler/API/runtime coverage, banked throughput and coherence",
+    "Full H0-H8 hardware requirements; no whole-GPU clock/power/route result"
+  ]
+}

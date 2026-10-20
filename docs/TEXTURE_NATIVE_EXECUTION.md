@@ -3,8 +3,10 @@
 Status: qualified functional instruction transport. The [803-input qualification](performance/mobile-native-texture-execution-2026-10-21.json)
 passes144 distinct tests, nine generated descriptor ABI checks and two fresh
 whole-endpoint synthesis screens at1000ps, including I/O. Vertex setup slack
-is+99.031/+146.888ps and fragment+95.600/+131.647ps. Native AXI/frame tests
-remain pending on a separate frozen snapshot. Full GLES, throughput, whole-GPU
+is+99.031/+146.888ps and fragment+95.600/+131.647ps. The [translated AXI frame qualification](performance/mobile-native-floating-axi-2026-10-21.json)
+adds two passing tests and144 frames across local/spilled payload modes.
+Only the AXI test source changes; the earlier144 tests, nine ABI checks and
+two synthesis results carry by exact dependency and artifact hashes. Full GLES, throughput, whole-GPU
 clock and H0-H8 completion remain open.
 
 The native texture endpoint now shares its existing two physical line credits
@@ -124,8 +126,16 @@ plus four final healthy draws and16 rejected/faulted/cancelled draws. The initia
 extra volume filter fixture retained a prior slice; clearing fixture allocations
 fixed the expectation without a production RTL change. The failed log is retained.
 
-Full native AXI/frame qualification, DRM resource-root publication and capability
-adoption, complete compiler/API texture lowering, integer fetch/offsets,
+The AXI cases exercise both real shared-CU stages, all64 formats, four targets,
+image swizzle and automatic/explicit/gradient modes with uniform coordinates and
+zero gradients. Of144 submitted frames,140 succeed and four take expected
+denied-sampler or stale-tuple errors. The432 created draw descriptors are not a
+completed-draw count. Guard bytes, task reset, VM ownership, zero operand-packet
+reads and healthy reuse are checked. Nonuniform helper delivery and projective
+programs need separate qualification.
+
+DRM resource-root publication and capability adoption, complete compiler/API
+texture lowering, integer fetch/offsets,
 queries/projective forms, banked texture throughput/coherence and remaining
 H0-H8 gates remain open. Generated descriptor layouts remain unchanged; the
 new instruction extension is paired with the sibling LLVM and driver updates.
