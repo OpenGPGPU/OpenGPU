@@ -512,7 +512,7 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
             if (tmp < 0)
                 return -1;
             if (in->op == OP_RSQ) {
-                if (put(b, opv(0x13, 1, (unsigned)k, 5, 1, (unsigned)tmp)))
+                if (put(b, opv(0x13, 1, (unsigned)k, 4, 1, (unsigned)tmp)))
                     return -1;
             } else if (put(b, opv(0x21, 1, (unsigned)k, (unsigned)b->f_one, 5,
                                   (unsigned)tmp))) {

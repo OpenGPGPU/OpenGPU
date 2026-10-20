@@ -9,11 +9,11 @@ shader:
     .word 0xc1027057
     vle32.v v2, (x1)
     .word 0x4e2011d7 /* vfsqrt.v v3, v2 */
-    .word 0x4e229257 /* vfrsqrt7.v v4, v2 */
+    .word 0x4e221257 /* vfrsqrt7.v v4, v2 */
     .word 0x4e2812d7 /* vfclass.v v5, v2 */
     addi t0, x1, 16
     vle32.v v6, (t0)
-    .word 0x4e621357 /* vfrec7.v v6, v6 */
+    .word 0x4e629357 /* vfrec7.v v6, v6 */
     /* vsetivli x0,1,e32,m1,ta,ma — store lane 0 only */
     .word 0xc100f057
     addi t0, x1, 32

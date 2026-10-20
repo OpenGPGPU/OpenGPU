@@ -30,11 +30,12 @@ class VectorFEstimateAlu(config: GpuConfig = GpuConfig()) extends Module {
   private val inputValid = RegInit(false.B)
   private val inputBits = Reg(new VectorFpuRequest(config))
 
-  private val isRecip = io.in.bits.vs1Field === "b00100".U
-  private val isRsqrt = io.in.bits.vs1Field === "b00101".U
+  // RVV VFUNARY1: vs1=00100 is vfrsqrt7, vs1=00101 is vfrec7.
+  private val isRecip = io.in.bits.vs1Field === "b00101".U
+  private val isRsqrt = io.in.bits.vs1Field === "b00100".U
   private val isSupported = isRecip || isRsqrt
-  private val inputIsRecip = inputBits.vs1Field === "b00100".U
-  private val inputIsRsqrt = inputBits.vs1Field === "b00101".U
+  private val inputIsRecip = inputBits.vs1Field === "b00101".U
+  private val inputIsRsqrt = inputBits.vs1Field === "b00100".U
 
   private val allInputsReady = lanes.map(_.io.in.ready).reduce(_ && _)
   private val allOutputsValid = lanes.map(_.io.out.valid).reduce(_ && _)

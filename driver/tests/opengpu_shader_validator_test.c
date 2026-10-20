@@ -1442,8 +1442,8 @@ int main(void)
             addi(5, 1, 0),
             vle32(2, 5),
             0x4e201157u, /* vfsqrt.v v2, v2 */
-            0x4e221157u, /* vfrec7.v v2, v2 */
-            0x4e229157u, /* vfrsqrt7.v v2, v2 */
+            0x4e221157u, /* vfrsqrt7.v v2, v2 */
+            0x4e229157u, /* vfrec7.v v2, v2 */
             0x4e281157u, /* vfclass.v v2, v2 */
             vse32(2, 5),
             OPENGPU_SHADER_CEASE,

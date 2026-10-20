@@ -1142,7 +1142,7 @@ class VectorBackendSpec extends AnyFlatSpec {
       initialize(2, Seq(BigInt("3f800000", 16), BigInt("40400000", 16)))
       val recInstruction =
         (BigInt(0x13) << 26) | (BigInt(1) << 25) |
-          (BigInt(2) << 20) | (BigInt(4) << 15) |
+          (BigInt(2) << 20) | (BigInt(5) << 15) |
           (BigInt(1) << 12) | (BigInt(3) << 7) | 0x57
       dut.io.in.valid.poke(true.B)
       dut.io.in.bits.instruction.poke(recInstruction.U)

@@ -304,8 +304,9 @@ class VectorBackend(
   private val fpuVs1 =
     dispatch.io.fpu.bits.decode.instruction(19, 15)
   private val fpuIsSqrt = fpuIsUnary1 && fpuVs1 === "b00000".U
-  private val fpuIsRecip = fpuIsUnary1 && fpuVs1 === "b00100".U
-  private val fpuIsRsqrt = fpuIsUnary1 && fpuVs1 === "b00101".U
+  // RVV VFUNARY1: vs1=00100 is vfrsqrt7, vs1=00101 is vfrec7.
+  private val fpuIsRecip = fpuIsUnary1 && fpuVs1 === "b00101".U
+  private val fpuIsRsqrt = fpuIsUnary1 && fpuVs1 === "b00100".U
   private val fpuIsClassify = fpuIsUnary1 && fpuVs1 === "b10000".U
   // OPFRED is funct6 000001 for vfredusum and 000011 for vfredosum, both in
   // OPFVV only. The guard keeps a stray encoding off the fold datapath.

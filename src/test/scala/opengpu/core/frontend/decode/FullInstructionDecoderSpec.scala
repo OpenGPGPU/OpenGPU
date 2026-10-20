@@ -164,16 +164,16 @@ class ExtendedDecoderSpec extends AnyFlatSpec {
       dut.io.decoded.vector.unit.expect(VectorUnit.floatingPoint)
       dut.io.decoded.vector.readsVs2.expect(true.B)
 
-      // vfrsqrt7.v v3, v2
-      dut.io.instruction.poke("h4e2291d7".U)
+      // vfrsqrt7.v v3, v2 (VFUNARY1 vs1=00100)
+      dut.io.instruction.poke("h4e2211d7".U)
       dut.io.decoded.legal.expect(true.B)
       dut.io.decoded.executionType.expect(ExecutionType.vector)
       dut.io.decoded.vector.valid.expect(true.B)
       dut.io.decoded.vector.unit.expect(VectorUnit.floatingPoint)
       dut.io.decoded.vector.readsVs2.expect(true.B)
 
-      // vfrec7.v v3, v2
-      dut.io.instruction.poke("h4e2211d7".U)
+      // vfrec7.v v3, v2 (VFUNARY1 vs1=00101)
+      dut.io.instruction.poke("h4e2291d7".U)
       dut.io.decoded.legal.expect(true.B)
       dut.io.decoded.executionType.expect(ExecutionType.vector)
       dut.io.decoded.vector.valid.expect(true.B)

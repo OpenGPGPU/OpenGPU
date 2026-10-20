@@ -303,9 +303,9 @@ private object VectorDecodeTable {
   private val unary1Patterns = Seq(
     VectorPattern("vfsqrt_v", "010011??????00000001?????1010111", 4,
       readsVs2 = true, writesVd = true),
-    VectorPattern("vfrsqrt7_v", "010011??????00101001?????1010111", 4,
+    VectorPattern("vfrsqrt7_v", "010011??????00100001?????1010111", 4,
       readsVs2 = true, writesVd = true),
-    VectorPattern("vfrec7_v", "010011??????00100001?????1010111", 4,
+    VectorPattern("vfrec7_v", "010011??????00101001?????1010111", 4,
       readsVs2 = true, writesVd = true),
     VectorPattern("vfclass_v", "010011??????10000001?????1010111", 4,
       readsVs2 = true, writesVd = true)
