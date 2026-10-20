@@ -14,7 +14,7 @@ policy, not complete GLES conformance or production throughput.
 | 3 | Features, depth formats and sample modes | See below |
 | 4 | FP32 D16 resolution candidate | `0x37804001` |
 | 5 | FP32 D24/D24S8 resolution candidate | `0x33c00000` |
-| 6 | Floating depth-resolution policy | 1 |
+| 6 | Floating depth-resolution policy | 2 |
 | 7 | Reserved | 0 |
 
 Word 3 bits 0–7 describe polygon offset, shader fragCoord depth, covered-sample
@@ -31,7 +31,10 @@ slope. Bias is added to default center/sample depth before clamping. A shader
 depth override replaces the biased default. Points, lines, no-depth and
 stencil-only attachments bypass the bias. Reserved formats reject.
 
-Floating policy 1 chooses one binary32 ULP at the maximum post-viewport vertex
+Floating policy 1 recorded the original RNE interpolation candidate. Policy 2
+retains the same resolution and selects toward-zero final default-depth sums
+and FP32 packing only for bound D32F/D32FS8 attachments. Fixed depth retains
+RNE, preserving its qualified add/encode constants. Floating resolution chooses one binary32 ULP at the maximum post-viewport vertex
 depth, with a minimum subnormal step of `2^-149`. Fixed policy uses words 4/5.
 The [resolution record](POLYGON_DEPTH_RESOLUTION.md) qualifies the
 post-interpolation add/encode envelope. Complete clipping/interpolation

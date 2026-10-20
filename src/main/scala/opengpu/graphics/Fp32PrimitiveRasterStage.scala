@@ -92,6 +92,7 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   interpolation.io.in.bits.pointSize:=selectedPointSize
   interpolation.io.in.bits.sampleDepthEnable:=true.B;interpolation.io.in.bits.sampleMode:=settings.sampleMode
   interpolation.io.in.bits.centroidMask:=descriptor.centroidMask
+  interpolation.io.in.bits.depthRoundTowardZero:=descriptor.depthRoundTowardZero
   interpolation.io.in.bits.depthOffset:=depthOffset
   candidate.ready:=phase===State.run && (stop || rasterFault || interpolation.io.in.ready)
   interpolation.io.cancel:=active && (stop || rasterFault);interpolation.io.completion.ready:=phase===State.run

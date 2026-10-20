@@ -80,6 +80,7 @@ class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageCon
   raster.io.in.bits.primitive:=source.io.out.bits;raster.io.in.bits.state:=descriptor.raster
   raster.io.in.bits.centroidMask:=centroidMask
   private val resolution=PolygonDepthResolution.evaluate(depthFormat,source.io.out.bits.vertices.map(_.windowDepth))
+  raster.io.in.bits.depthRoundTowardZero:=TypedDepthFormat.floating(depthFormat)
   raster.io.in.bits.depthOffset.enabled:=descriptor.raster.polygonOffsetEnable && resolution.available
   raster.io.in.bits.depthOffset.factor:=descriptor.raster.polygonOffsetFactor
   raster.io.in.bits.depthOffset.units:=descriptor.raster.polygonOffsetUnits

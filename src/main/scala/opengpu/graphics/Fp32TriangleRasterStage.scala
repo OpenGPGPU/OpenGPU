@@ -28,6 +28,8 @@ object Fp32RasterState {
 class Fp32TriangleRasterRequest(p: VertexShaderStageConfig) extends Bundle {
   val primitive=new WindowPrimitive(p);val state=new Fp32RasterState
   val centroidMask=UInt((p.varyings*4).W)
+  /** Immutable attachment policy; floating formats quantize final depth toward zero. */
+  val depthRoundTowardZero=Bool()
   val depthOffset=new PolygonDepthOffsetBinding
 }
 class Fp32RasterizedQuad(p: VertexShaderStageConfig,g: GraphicsConfig) extends Bundle {
