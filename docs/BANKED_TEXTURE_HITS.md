@@ -2,9 +2,9 @@
 
 Status: [nine component checks and a before/after cancellation proof](performance/mobile-banked-texture-cancellation-2026-10-21.json)
 pass on808 frozen inputs. Store synthesis passes1000ps including I/O and
-carries by identical emitted RTL. Fresh complete filter-cluster synthesis is
-running after the cancellation fix. Translation/native shader integration and
-the sixteen-fill scheduler remain required before H4 can close.
+carries by identical emitted RTL. Fresh [complete filter-cluster synthesis](performance/mobile-banked-texture-synthesis-2026-10-21.json)
+also passes after the cancellation fix. Translation/native shader integration
+and the sixteen-fill scheduler remain required before H4 can close.
 
 `BankedRgba8TextureHits` accepts one admitted bilinear group:four physical word
 addresses,row-parity bits,normalized17-bit weights,work identity,opaque64-bit
@@ -84,3 +84,8 @@ Next work is a translated tagged miss owner with16 outstanding fills,miss joinin
 fault fanout and refill arbitration,followed by native shader/resource integration
 and whole-path rate/coherence checks. PPA remains synthesis only;no whole-GPU
 clock,power,route or H0-H8 completion is established by this component result.
+
+The fixed complete hit cluster fully maps with core/I/O synthesis slacks
++172.334/+85.011ps at1000ps,TC/SLVT and25% I/O. The store
+passes +211.412/+40.422ps. Both screens use standard ABC without retiming;
+behavioral SRAM mapping is explicit.
