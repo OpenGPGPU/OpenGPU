@@ -6911,3 +6911,28 @@ FMA logic requires fresh native endpoint timing before main
 integration. Raw banked tap forwarding, texel decode, native resource/coordinate
 admission, shared-CU routing and whole-native precision/rates/coherence remain
 required. The Q16 weighted-sum service remains a separate contract; H0-H8 stay open.
+
+## H4 translated raw taps through native FP32 filtering
+
+The [translated RGBA8 FP32 service](TRANSLATED_RGBA8_FP32_TEXTURE_SERVICE.md)
+passes [59 fresh checks and eight emissions on 828 frozen inputs](performance/mobile-translated-rgba8-fp32-2026-10-21.json).
+It translates every exactly active tap before physical lookup, forwards raw words,
+decodes byte/255 to FP32 and preserves native hierarchical filtering with full
+FP32 weights. Minimum-subnormal weights remain active and require permission;
+invalid weights fault before PTE/data work. Q16 admission masks do not quantize
+the numeric weights.
+
+The parent retains 128 owners through final retirement, pinning VM state and
+preserving scoped cancellation for duplicate caller tags after child retirement.
+A warmed virtual-to-filtered stream sustains 192 complete groups at input/output
+II1 across owner-ring reuse; another 384 groups exercise backpressure without
+new PTE/data reads. Saturation tests cancel 128 warm owners and invalidate 18
+cold accepted groups with a held physical offer. Ten further cancellation cuts,
+precise virtual faults, uncached aliases, root remap and healthy reuse pass.
+
+Default banked profiles retain their qualified logic after comments are removed;
+the standalone native filter remains byte-identical. Complete translated FP32
+synthesis is active and not yet qualified. Coordinate/resource admission,
+shared-CU routing, other eligible formats/layouts, changed-FMA native endpoint
+timing and whole-native rates/coherence remain required. This component's rate
+starts from prechecked virtual spans, not shader instructions; H0-H8 remain open.

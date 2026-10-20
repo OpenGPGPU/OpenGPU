@@ -71,3 +71,10 @@ FP32 now pass synthesis at 1000 ps including I/O (+95.013/+44.671 ps and
 +95.245/+59.166 ps), with 748,345 and 755,029 fully mapped cells. Translated
 epoch-control synthesis remains active. Native FP32 filter integration is a
 separate numeric and timing qualification.
+
+The [native FP32 follow-up](TRANSLATED_RGBA8_FP32_TEXTURE_SERVICE.md) now connects
+an optional raw-tap result to RGBA8 decode and the unquantized native filter.
+Its 59-check qualification preserves the default Q16 logic and adds exact active
+tap permission checks, post-child result ownership and scoped cancellation
+through final FP32 retirement. Complete translated FP32 synthesis and native
+resource/coordinate/shared-CU wiring remain open.

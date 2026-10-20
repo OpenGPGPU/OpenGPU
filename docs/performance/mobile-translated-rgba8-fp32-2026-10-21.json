@@ -1,0 +1,252 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "fifty_nine_checks_eight_emissions_pass_complete_translated_FP32_synthesis_and_legacy_regression_running",
+  "source": {
+    "commit": "052e77bafdb23049c50f2f0ebc81c20ef796db50",
+    "source_files": 828,
+    "manifest_sha256": "6ef58be597a9d8fc3805be1f3290320e9bb7643cdabe72ab6cee64ea51569735",
+    "archive_sha256": "2980b8daaab2874d25ad09ee47e28e4740740d0374287032d2c21dcb2c8f3985",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/test/scala/opengpu/graphics/TranslatedRgba8Fp32TextureServiceSpec.scala"
+    ],
+    "added_inputs": [],
+    "runner_pid": 56068,
+    "started_utc": "2026-10-20T22:50:41.349893+00:00"
+  },
+  "production_commit": "48b21c0593f5a562df0ee31b5daff8433051441e",
+  "changes_from_FP32_filter": {
+    "changed_inputs": [
+      "src/main/scala/opengpu/graphics/BankedRgba8TextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedRgba8FloatTextureService.scala",
+      "src/main/scala/opengpu/graphics/TranslatedBankedRgba8TextureService.scala"
+    ],
+    "added_inputs": [
+      "src/main/scala/opengpu/elaboration/EmitTranslatedRgba8Fp32.scala",
+      "src/main/scala/opengpu/graphics/TranslatedRgba8Fp32TextureService.scala",
+      "src/test/scala/opengpu/graphics/TranslatedRgba8Fp32TextureServiceSpec.scala"
+    ]
+  },
+  "functional_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 78.31485791690648,
+    "commit": "052e77bafdb23049c50f2f0ebc81c20ef796db50",
+    "source_files": 828,
+    "manifest_sha256": "6ef58be597a9d8fc3805be1f3290320e9bb7643cdabe72ab6cee64ea51569735",
+    "archive_sha256": "2980b8daaab2874d25ad09ee47e28e4740740d0374287032d2c21dcb2c8f3985",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/test/scala/opengpu/graphics/TranslatedRgba8Fp32TextureServiceSpec.scala"
+    ],
+    "added_inputs": [],
+    "runner_pid": 56068,
+    "started_utc": "2026-10-20T22:50:41.349893+00:00"
+  },
+  "emission_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 18.663025208981708
+  },
+  "distinct_passed_tests": 59,
+  "suites": {
+    "Rgba8WeightedToFp32Spec": 3,
+    "BankedRgba8FloatTextureServiceSpec": 7,
+    "BankedRgba8TextureHitsSpec": 8,
+    "BankedTextureLineStoreSpec": 1,
+    "BankedTextureFillOwnerSpec": 4,
+    "BankedTextureReadThroughSpec": 7,
+    "BankedRgba8CachePolicySpec": 8,
+    "TranslatedBankedRgba8TextureServiceSpec": 8,
+    "TranslatedRgba8Fp32TextureServiceSpec": 13
+  },
+  "input_contract": "Prechecked virtual, aligned RGBA8_UNORM word spans and row parity. Full FP32 X/Y weights in [0,1], including negative zero and positive subnormals. Coordinates, descriptor/bounds and task-resource admission remain upstream.",
+  "numeric_contract": "Translate all exactly active taps, return raw little-endian RGBA8 words, round each byte/255 to FP32, then apply the native separately rounded inverse/product and fused-add filter. No FP32 weight quantization. Q16 values encode only the exact active mask for the existing translation owner.",
+  "fault_sources": {
+    "0": "none",
+    "1": "translation, original virtual tap address",
+    "2": "physical data, remapped to original virtual tap address",
+    "3": "invalid axis weight, address zero and no translation/data work"
+  },
+  "ownership": {
+    "native_result_rows": 128,
+    "pending_row_ID_queue_entries": 16,
+    "child_result_owner_ID_queue_entries": 32,
+    "public_result_entries": 1,
+    "outer_declared_owner_table_bits": 88192,
+    "outer_declared_owner_table_bytes": 11024,
+    "owner_table_accounting": "128*(388 request bits + 297 result bits + 4 controller flags); logical declarations before constant/register merging. Queues, decode/filter, child translation/association/fill owners and cache/tag storage are additional.",
+    "child_translation_rows": 32,
+    "child_physical_sample_slots": 16,
+    "physical_fill_slots": 16,
+    "texture_data_bytes": 8192,
+    "texture_banks": 4,
+    "page_walk_IDs": 4,
+    "physical_memory_IDs": 16,
+    "VM_epoch": "Pinned until every outer result retires and child/decode/filter work drains. Explicit flush requires idle.",
+    "scoped_cancel": "All live matching identity/tag rows, including duplicate caller tags and rows beyond child retirement; held public completion stays immutable.",
+    "global_cancel_or_invalidate": "Close admission through complete epoch drain; accepted PTE/data offers and arithmetic remain owned."
+  },
+  "coverage": {
+    "exact_weight_patterns": 7,
+    "minimum_subnormal_contribution": true,
+    "byte_127_128_gradual_underflow_boundary": true,
+    "subnormal_tap_permission_before_data": true,
+    "invalid_axis_weights_rejected_without_PTE_or_data_reads": 8,
+    "cold_groups": 8,
+    "cold_physical_line_reads": 16,
+    "initial_PTE_reads": 8,
+    "continuous_warm_groups": 192,
+    "input_II": 1,
+    "complete_output_II": 1,
+    "owner_ring_wrap": true,
+    "backpressured_groups": 384,
+    "new_hot_PTE_or_data_reads": 0,
+    "saturated_warm_owners_cancelled": 128,
+    "cold_accepted_at_first_backpressure_with_held_memory_offer": 18,
+    "cancel_invalidate_cuts": 10,
+    "public_cut_witnesses": 3,
+    "internal_cut_witnesses": 7,
+    "uncached_aliases_and_VM_remap": true,
+    "precise_faults_and_primary_fault_retention": true,
+    "duplicate_caller_tags_and_late_scoped_cancel": true,
+    "healthy_reuse_after_drain": true
+  },
+  "default_logic_carry": {
+    "readthrough": {
+      "baseline": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-readthrough-epoch-control-v1-rtl",
+      "candidate": ".artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/native-fp32-default-readthrough-v2-rtl",
+      "active_files": 18,
+      "raw_exact": false,
+      "exact_after_removing_comments_only": true
+    },
+    "fp32": {
+      "baseline": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-fp32-epoch-control-v1-rtl",
+      "candidate": ".artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/native-fp32-default-fp32-v2-rtl",
+      "active_files": 20,
+      "raw_exact": false,
+      "exact_after_removing_comments_only": true
+    },
+    "translated": {
+      "baseline": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-translated-epoch-control-v1-rtl",
+      "candidate": ".artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/native-fp32-default-translated-v2-rtl",
+      "active_files": 29,
+      "raw_exact": false,
+      "exact_after_removing_comments_only": true
+    },
+    "fp32-policy": {
+      "baseline": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-page-policy-epoch-control-v1-rtl",
+      "candidate": ".artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/native-fp32-default-fp32-policy-v2-rtl",
+      "active_files": 20,
+      "raw_exact": false,
+      "exact_after_removing_comments_only": true
+    },
+    "cluster": {
+      "baseline": ".artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-cluster-epoch-control-v1-rtl",
+      "candidate": ".artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/native-fp32-default-cluster-v2-rtl",
+      "active_files": 7,
+      "raw_exact": false,
+      "exact_after_removing_comments_only": true
+    },
+    "filter": {
+      "baseline": ".artifacts/mobile-texture-bilinear-fp32-v1-worktree/generated/mobile-h4/texture-bilinear-fp32-v6-rtl",
+      "candidate": ".artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/native-fp32-filter-carry-v2-rtl",
+      "active_files": 16,
+      "raw_exact": true,
+      "exact_after_removing_comments_only": true
+    },
+    "translated-raw-taps": {
+      "baseline": ".artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/translated-raw-taps-v1-rtl",
+      "candidate": ".artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/translated-raw-taps-v2-rtl",
+      "active_files": 28,
+      "raw_exact": true
+    },
+    "translated-rgba8-fp32": {
+      "baseline": ".artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/translated-rgba8-fp32-v1-rtl",
+      "candidate": ".artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/translated-rgba8-fp32-v2-rtl",
+      "active_files": 51,
+      "raw_exact": true
+    }
+  },
+  "FP32_filter_qualification_carried": {
+    "record": "mobile-texture-bilinear-fp32-2026-10-21.json",
+    "tests": 46,
+    "raw_exact_active_filter_files": 16,
+    "standalone_filter_slacks_ps": [
+      155.23,
+      226.993
+    ],
+    "default_FMA_slacks_ps": [
+      210.909,
+      434.695
+    ],
+    "scope": "Component logic only. These slacks do not qualify the new translated service or changed legacy native endpoints."
+  },
+  "default_banked_synthesis_reference": "mobile-banked-texture-epoch-control-2026-10-21.json",
+  "legacy_native_regression": {
+    "status": "running",
+    "session": 28936,
+    "expected_tests": 23,
+    "fresh_native_endpoint_emissions": 2,
+    "old_native_endpoint_timing_carried": false
+  },
+  "synthesis_jobs": {
+    "native": {
+      "status": "running",
+      "session": 32603,
+      "start": {
+        "wrapper_pid": 71696,
+        "flow_pid": 71698,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-translated-rgba8-fp32-v1-worktree/generated/mobile-h4/translated-rgba8-fp32-v2-rtl",
+          "TranslatedRgba8Fp32TextureService",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-translated-rgba8-fp32-2026-10-21-native-v1"
+        ],
+        "started_utc": "2026-10-20T22:52:39.497401+00:00"
+      },
+      "inputs_manifest": ".artifacts/mobile-translated-rgba8-fp32-native-synthesis-v1-inputs.json",
+      "active_RTL_files": 51
+    }
+  },
+  "synthesis_policy": "Synthesis only,1000 ps,TC/SLVT,25% I/O,standard ABC,no retiming or place/route.",
+  "remaining": [
+    "Collect complete translated FP32 synthesis including I/O; no timing pass is claimed for this new top.",
+    "Finish legacy native controls and fresh changed-FMA native endpoint synthesis.",
+    "Connect coordinate/resource admission and shared-CU routing; handle formats/layouts beyond this eligible RGBA8_UNORM path.",
+    "Qualify whole-native numeric precision/rates with contention and render-to-texture coherence.",
+    "All remaining H0-H8 hardware requirements."
+  ],
+  "artifacts_sha256": {
+    ".artifacts/mobile-translated-rgba8-fp32-v1-source.json": "bf5c5cf3fd0b79fe9667b44bfc458af2e6333b3132d510b5d0f6603c7dd62d4f",
+    ".artifacts/mobile-translated-rgba8-fp32-v1-source.tar.gz": "267797ea835d261943e474ae84b9381f80be2208bf90ecbd9b3352fb8c28d6f6",
+    ".artifacts/mobile-translated-rgba8-fp32-v1-source-proof.json": "f653aae4483b8b801f151c45d1ba9ed84d9db84bf8b5b74270b3b5880b104960",
+    ".artifacts/mobile-translated-rgba8-fp32-v1-result.json": "0641452c304385e54e6f6e824289586a17164a5733baa83551f5fc207b5e1e8d",
+    ".artifacts/mobile-translated-rgba8-fp32-v1.log": "0c5d346270f43bcffaa8518401a5ec0e063b41a68c682a6ca32fcee6cefb8274",
+    ".artifacts/mobile-translated-rgba8-fp32-v1-emission-result.json": "2d56fb4d29cb0581ad33d7ab5d1ce871650cc6b3406ebab6d2ea762abaec20e8",
+    ".artifacts/mobile-translated-rgba8-fp32-v1-emission.log": "bd5b3aa1506be82d54e12b47692370c16aea7666206936e1bdbe6ada03a7a9e8",
+    ".artifacts/mobile-translated-rgba8-fp32-v2-source.json": "6ef58be597a9d8fc3805be1f3290320e9bb7643cdabe72ab6cee64ea51569735",
+    ".artifacts/mobile-translated-rgba8-fp32-v2-source.tar.gz": "2980b8daaab2874d25ad09ee47e28e4740740d0374287032d2c21dcb2c8f3985",
+    ".artifacts/mobile-translated-rgba8-fp32-v2-source-proof.json": "8c71d6d4d2293c862ac3409471aef03aee355842ea9696b52e68d40a1babef85",
+    ".artifacts/mobile-translated-rgba8-fp32-v2-result.json": "d0dcc1e902de51cded82bd885fba6c14f16ddadfece41fe260b221adae9f4dbc",
+    ".artifacts/mobile-translated-rgba8-fp32-v2.log": "1d26d4cbde40e3196a3711748a78d0b4501f2ff484fd56357f297f31581e8657",
+    ".artifacts/mobile-translated-rgba8-fp32-v2-emission-result.json": "42a615e74f60d9d59838ca435312b8c5eb74635ee3c365d56b38b5785e9107eb",
+    ".artifacts/mobile-translated-rgba8-fp32-v2-emission.log": "08701ba375f21d57effbf48842c7bf06c29dfe32faccbe2c50b7bc71b0d6889c",
+    ".artifacts/mobile-translated-rgba8-fp32-v2-RTL-carry.json": "8bddecef8cab5e88e8ef614f70dd2553b67b4f2a966c228b3b680e188045f26d",
+    ".artifacts/mobile-translated-rgba8-fp32-native-synthesis-v1-start.json": "0e09dce0e6f6b75a0baa8da3aba9785be44521d0f302f98bd46763b088631146",
+    ".artifacts/mobile-translated-rgba8-fp32-native-synthesis-v1-inputs.json": "044f40fa6ddb8ec3b7d901b2458130b0b074b862dc884d2a8d19e3ad79eb49fb"
+  }
+}
