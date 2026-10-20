@@ -13,7 +13,7 @@ class BankedTextureFillRequest extends Bundle {
   val rowParity = Bool()
   val tag = UInt(32.W)
 }
-class BankedTextureFillResult extends Bundle {
+class BankedTextureFillResult(forwardData: Boolean = false) extends Bundle {
   val identity = new GraphicsWorkIdentity
   val textureKey = UInt(64.W)
   val address = UInt(32.W)
@@ -23,6 +23,8 @@ class BankedTextureFillResult extends Bundle {
   val fault = Bool()
   val cancelled = Bool()
   val invalidated = Bool()
+  /** Optional refill forwarding avoids cache-set conflict/retry livelock. */
+  val data = if(forwardData) Some(UInt(512.W)) else None
 }
 
 /** Bounded physical line-fill ownership for the banked texture store.
@@ -33,14 +35,15 @@ class BankedTextureFillResult extends Bundle {
   * Global cancellation drains irrevocable offers and blocks a new epoch until
   * every completion is consumed. Shared task integration must scope that drain.
   */
-class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, waiters: Int = 32) extends Module {
+class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, waiters: Int = 32,
+    forwardData: Boolean = false) extends Module {
   require(config.xLen == 32 && isPow2(fills) && fills >= 2 && fills <= 32)
   require(isPow2(waiters) && waiters >= fills && waiters <= 128)
   private val fillBits = log2Ceil(fills)
   private val waiterBits = log2Ceil(waiters)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new BankedTextureFillRequest))
-    val out = Decoupled(new BankedTextureFillResult)
+    val out = Decoupled(new BankedTextureFillResult(forwardData))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, fills))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, fills)))
     val refill = Decoupled(new BankedTextureRefill)
@@ -69,7 +72,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   private val waiterTag = Reg(Vec(waiters, UInt(32.W)))
   private val draining = RegInit(false.B)
   private val outputValid = RegInit(false.B)
-  private val output = Reg(new BankedTextureFillResult)
+  private val output = Reg(new BankedTextureFillResult(forwardData))
   private val outputSlot = Reg(UInt(fillBits.W))
   io.out.valid := outputValid
   io.out.bits := output
@@ -220,6 +223,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
     output.cancelled := stopped(slot) || io.cancel
     output.invalidated := invalidated(slot) || noFill(slot) || io.invalidate
     output.installed := installed(slot) && !stopped(slot) && !noFill(slot) && !io.cancel && !io.invalidate
+    output.data.foreach(_ := Mux(failed(slot) || stopped(slot) || noFill(slot) || io.cancel || io.invalidate, 0.U, data(slot)))
   }
   io.occupiedFills := PopCount(states.map(_ =/= State.free))
   io.waitingConsumers := PopCount(alive)
