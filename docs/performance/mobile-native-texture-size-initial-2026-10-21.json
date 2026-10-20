@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "six_initial_native_query_and_decoder_tests_pass_full_regression_shared_CU_and_synthesis_pending",
+  "source": {
+    "commit": "5c88a23ee15acf3d0d7e70cba710446fd81e7298",
+    "files": 804,
+    "manifest_sha256": "9ed04ab97080b028e9ec3543459071dfe56478a1046d5a6336f287ba4c9b550a",
+    "archive_sha256": "d3578fcc23a2e910724827c5ed6045e03f16ca12f5416019f93a1324538b751d",
+    "archive_exact": true
+  },
+  "functional": {
+    "terminal_session": 96935,
+    "returncode": 0,
+    "tests": 6,
+    "suites": 2,
+    "decoder_checks": 2860,
+    "formats64_query_instructions_per_stage": 384,
+    "level_test_reported_query_counter_per_stage": 471,
+    "extra_level_test_calls": "Per-stage3 vector admission/mask cases,one metadata-memory-fault scalar case and12 cancellation cuts are additional to the reported471 helper-query counter.",
+    "scope": [
+      "Both native endpoint stages,scalar/vector,masked inactive oldVd",
+      "Four targets,all64 formats,all three dimension selectors",
+      "All16 base levels,NPOT dimensions,non-mipped array layers,cube face dimensions",
+      "Full32-bit LOD rejects before level narrowing",
+      "No parameter tuples,sampler reads or texel reads",
+      "Per-lane units,late-lane fault atomicity,zero-mask no reads",
+      "Metadata faults,identity/target/type rejection,held completions and healthy reuse",
+      "24 cancellation cuts total:16 cancelled and8 already held completions"
+    ]
+  },
+  "LLVM": {
+    "source_commit": "faeaa170d",
+    "paired_opengpu_commit": "50f2c22e6",
+    "build_returncode": 0,
+    "build_steps": 110,
+    "lit_tests_passed": 4,
+    "MC_cases": 69,
+    "new_query_MC_cases": 9,
+    "note": "First lit invocation discovered3 tests; a pluralized RVV filename was absent. The corrected singular RVV path ran and passed separately. No missing test is counted as passed."
+  },
+  "driver_validator": {
+    "compile_flags": [
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "compile_returncode": 0,
+    "run_returncode": 0
+  },
+  "followup": {
+    "source": {
+      "commit": "741f10d5ea7c80f6c5e52afdcab4687fd6d7a4cf",
+      "source_files": 804,
+      "manifest_sha256": "06621afec0f1da583e2d91c630a878cade1440c567bf759c32ee31f7b5bf4bf5",
+      "archive_sha256": "c02982c05a8fa7c44b2b417c8806254b545d644a1c5abd11752c1c4b56238dd2",
+      "git_archive_and_worktree_exact": true,
+      "runner_pid": 66506,
+      "started_utc": "2026-10-20T19:02:31.682624+00:00"
+    },
+    "session": 16201,
+    "state": "running_when_recorded",
+    "delta_from_initial_qualification": [
+      "src/main/scala/opengpu/elaboration/EmitNativeTextureFetch.scala",
+      "src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala",
+      "src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala"
+    ],
+    "all_query_RTL_driver_ABI_and_initial_test_sources_exact": true,
+    "planned": [
+      "Full native floating/integer/query component regression",
+      "Nine generated descriptor ABI checks",
+      "Both real shared-CU stages,local and spilled payloads,old full matrix plus size-query programs",
+      "Full default endpoint and standalone query-owner synthesis"
+    ]
+  },
+  "retained_diagnostics": [
+    {
+      "log": ".artifacts/mobile-native-texture-size-compile-v1.log",
+      "result": "Compile error used width/height/depth instead of existing texWidth/texHeight/texDepth bundle fields; fixed before the passing tests."
+    }
+  ],
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-texture-size-controls-v2.log": "e17b8754890318ea46941c7448b007181f2e26e70af00f93debc298c704778ba",
+    ".artifacts/mobile-native-texture-size-llvm-build-v1.log": "65e00841b67189f74663532a5e1223336c206e85fee1d44a2e3a89efc60ed1c1",
+    ".artifacts/mobile-native-texture-size-llvm-tests-v1.log": "33c80affeba48be6295e0597f131d4c325fe93450d54a3fab11b06532675c310",
+    ".artifacts/mobile-native-texture-size-llvm-rvv-v2.log": "3b8fa3084d62a364d5de76f3b679e88476d1d77e4215ca1b42f9de27f915e851",
+    ".artifacts/opengpu-native-size-validator-v1": "e93243dd3ecbbf1aff17870b4b06071b054fa04056f35a7373e0a8aa4d3a1d83"
+  },
+  "remaining": [
+    "Fresh shared-CU/AXI query program qualification",
+    "Fresh size-owner and whole-endpoint synthesis",
+    "Projective shader programs,banked throughput/coherence and all remaining H0-H8 requirements"
+  ],
+  "PPA_scope": "Synthesis only; no size-query timing,whole-GPU clock,power or routing pass yet."
+}

@@ -1,7 +1,9 @@
 # Native texture-size queries
 
-Status: implementation on `codex/mobile-native-texture-size`; functional and
-synthesis qualification are in progress. The current main qualification does
+Status: [six initial decoder/native endpoint tests](performance/mobile-native-texture-size-initial-2026-10-21.json)
+pass on804 frozen inputs, along with four paired LLVM tests and the C driver
+validator. Full regression, shared-CU and synthesis qualification are in progress
+on `codex/mobile-native-texture-size`. The current main qualification does
 not cover this additional owner.
 
 `opengpu.tex.size.c` uses custom0/function6; `opengpu.vtex.size.c` uses
