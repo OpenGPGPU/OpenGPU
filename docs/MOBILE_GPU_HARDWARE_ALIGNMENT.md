@@ -6833,3 +6833,13 @@ cancellation and return credits. Translated synthesis is still active. A scalar
 epoch-control correction removes per-owner cancellation lookups and registers
 untagged telemetry on a separate branch;fresh functional/timing evidence is
 required before main integration.
+
+The [epoch-control correction](performance/mobile-banked-texture-epoch-control-2026-10-21.json)
+now passes46 checks with six emissions on822 inputs. It removes shared-owner
+cancel/invalidation lookups under the existing globally drained epoch contract
+and registers untagged tap/conflict telemetry. Event-count checks retain384 hot
+plus768 backpressured tap events and complete group II1. Scoped cancellation
+continues to isolate identity/tag rows in the translated parent. Three fresh
+synthesis screens remain active under unchanged1000ps constraints. Existing
+native FP32 coordinate/filter semantics still need explicit preservation when
+connecting this Q16-weighted service to shared CU sampling;H0-H8 remain open.

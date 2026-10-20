@@ -1,0 +1,215 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "forty_six_tests_and_six_emissions_pass_three_epoch_control_synthesis_screens_running",
+  "source": {
+    "commit": "54444bbf95477b7d28cdbe24495cdfa0a4ed46a6",
+    "source_files": 822,
+    "manifest_sha256": "3b7d2ed75f972a113575897567b8329a23de9cf517a68883b66a38d8f9743448",
+    "archive_sha256": "012422353cb97cb09ae7455ea6399ae7492f7e41ef612b67ba3c381db9e33a83",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/main/scala/opengpu/graphics/BankedTextureWordService.scala",
+      "src/test/scala/opengpu/graphics/BankedTextureReadThroughSpec.scala"
+    ],
+    "added_inputs": [],
+    "runner_pid": 49650,
+    "started_utc": "2026-10-20T22:09:06.002147+00:00"
+  },
+  "functional_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 141.5376912499778,
+    "commit": "54444bbf95477b7d28cdbe24495cdfa0a4ed46a6",
+    "source_files": 822,
+    "manifest_sha256": "3b7d2ed75f972a113575897567b8329a23de9cf517a68883b66a38d8f9743448",
+    "archive_sha256": "012422353cb97cb09ae7455ea6399ae7492f7e41ef612b67ba3c381db9e33a83",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/main/scala/opengpu/graphics/BankedTextureWordService.scala",
+      "src/test/scala/opengpu/graphics/BankedTextureReadThroughSpec.scala"
+    ],
+    "added_inputs": [],
+    "runner_pid": 49650,
+    "started_utc": "2026-10-20T22:09:06.002147+00:00"
+  },
+  "emission_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 11.358136165887117
+  },
+  "distinct_passed_tests": 46,
+  "suites": {
+    "Rgba8WeightedToFp32Spec": 3,
+    "BankedRgba8FloatTextureServiceSpec": 7,
+    "BankedRgba8TextureHitsSpec": 8,
+    "BankedTextureLineStoreSpec": 1,
+    "BankedTextureFillOwnerSpec": 4,
+    "BankedTextureReadThroughSpec": 7,
+    "BankedRgba8CachePolicySpec": 8,
+    "TranslatedBankedRgba8TextureServiceSpec": 8
+  },
+  "changed_inputs_from_shared_admission": [
+    "src/main/scala/opengpu/graphics/BankedTextureWordService.scala",
+    "src/test/scala/opengpu/graphics/BankedTextureReadThroughSpec.scala"
+  ],
+  "control_contract": {
+    "global_epoch": "The word service has only global cancel/invalidate. Admission is blocked until all lookup/fill/public-reply ownership drains,so one sticky cancellation epoch plus the existing invalidation/draining state replaces per-owner flags.",
+    "scoped_cancel": "The translated parent retains selective identity/tag cancellation. It drains accepted child work and poisons only matching result rows;it does not assert the global child cancel for unrelated groups.",
+    "telemetry": "Untagged tapIssues/bankConflicts are registered by one cycle,like joined. No ready path depends on telemetry.",
+    "verified_counts": {
+      "hot_groups": 96,
+      "hot_tap_events": 384,
+      "backpressured_groups": 192,
+      "additional_tap_events": 768,
+      "total_tap_events": 1152,
+      "conflict_free_counts_preserved": true
+    },
+    "rates": "Complete resident input/output II1 remains verified on packed,FP32,page-policy and translated profiles.",
+    "owner_lifetime": "All existing cancellation,invalidation,physical/PTE fault,publication,scoped cancellation,held-offer and healthy-reuse checks pass."
+  },
+  "baseline_synthesis": {
+    "record": "mobile-banked-texture-shared-admission-2026-10-21.json",
+    "packed_pass_slacks_ps": [
+      41.862,
+      11.396
+    ],
+    "FP32_failed_slacks_ps": [
+      -6.794,
+      -48.922
+    ],
+    "FP32_path_start": "groups.service.fillInputs.deq_ptr_value",
+    "FP32_path_endpoints": [
+      "groups.count[4]",
+      "io_tapIssues[1]"
+    ]
+  },
+  "unchanged_active_RTL_raw_identity": {
+    "normalize": {
+      "Rgba8WeightedToFp32.sv": "19b85cf20d26198d1025baa89d9d7be3b547af44ff20af5aaa67d39d52650913"
+    },
+    "cluster": {
+      "RRArbiter4_BankedTextureLookup.sv": "4d1eed03a3b92470b494278bb5b3c32306d07a9a3d3be464afa4b05019b15201",
+      "ram_2x39.sv": "7fccf5d414831ac374f05a9a10c91b39b7ca40b956e5c24b94f80bdebc1ef5e8",
+      "Queue2_BankedTextureWord.sv": "31f17c66ba551488b397f1ed6d704380afc2d057842c9dc032fb18dfc13e222d",
+      "memory_256x32.sv": "c765dcd3e2ed7ffda1221fab77bcf0223da27de002849560a9eb01fdcb1832d3",
+      "L2SramArray.sv": "c1104c24dbda2c1e4b6688300e1168baef38ac07eeed8876af67c032584397b7",
+      "BankedTextureLineStore.sv": "340c6a7917a207c13315e6e42880e847316a35d36a6bb98d216f2e0aceca4d7a",
+      "BankedRgba8TextureHits.sv": "43c30c44cc1a1f43385f03a785a8c2a58e1884530201f58dd48380822174ffa6"
+    }
+  },
+  "normalizer_exhaustive_scalar_values_carried": 66846724,
+  "normalizer_synthesis_slacks_ps": [
+    524.629,
+    372.277
+  ],
+  "resident_cluster_synthesis_slacks_ps_carried": [
+    172.334,
+    85.011
+  ],
+  "synthesis_policy": "1000ps,TC/SLVT,25% I/O,standard ABC,no retiming;synthesis only",
+  "synthesis_jobs": {
+    "readthrough": {
+      "status": "running",
+      "session": 88666,
+      "start": {
+        "wrapper_pid": 63240,
+        "flow_pid": 63241,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-readthrough-epoch-control-v1-rtl",
+          "BankedRgba8TextureHits",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-readthrough-v1"
+        ],
+        "started_utc": "2026-10-20T22:12:46.964546+00:00"
+      }
+    },
+    "fp32": {
+      "status": "running",
+      "session": 76022,
+      "start": {
+        "wrapper_pid": 63221,
+        "flow_pid": 63223,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-fp32-epoch-control-v1-rtl",
+          "BankedRgba8FloatTextureService",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-fp32-v1"
+        ],
+        "started_utc": "2026-10-20T22:12:45.930947+00:00"
+      }
+    },
+    "translated": {
+      "status": "running",
+      "session": 35515,
+      "start": {
+        "wrapper_pid": 63290,
+        "flow_pid": 63291,
+        "args": [
+          "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+          "scripts/qualify_ppa.py",
+          "/Users/duckdonald/workspace/gpu/.artifacts/mobile-banked-texture-epoch-control-v1-worktree/generated/mobile-h4/banked-translated-epoch-control-v1-rtl",
+          "TranslatedBankedRgba8TextureService",
+          "--stage",
+          "synthesis",
+          "--synthesis-engine",
+          "yosys",
+          "--period-ps",
+          "1000",
+          "--io-delay",
+          "0.25",
+          "--timeout",
+          "7200",
+          "--output",
+          "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-banked-texture-epoch-control-2026-10-21-translated-v1"
+        ],
+        "started_utc": "2026-10-20T22:12:48.139959+00:00"
+      }
+    }
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-banked-texture-epoch-control-v1-source-proof.json": "f22d4768f5d27c22b9d16dd14a26420ea130378fd2a4401e555cf523a5f22e73",
+    ".artifacts/mobile-banked-texture-epoch-control-v1-source.json": "3b7d2ed75f972a113575897567b8329a23de9cf517a68883b66a38d8f9743448",
+    ".artifacts/mobile-banked-texture-epoch-control-v1-source.tar.gz": "012422353cb97cb09ae7455ea6399ae7492f7e41ef612b67ba3c381db9e33a83",
+    ".artifacts/mobile-banked-texture-epoch-control-v1-result.json": "f36700ef3e50b68aee5fa3857f60b1ab10f3b5ee01d8040f9c2f9376b8b560aa",
+    ".artifacts/mobile-banked-texture-epoch-control-v1.log": "3d0f27d4cd42832f7352cc5382822e613c5de9b46863a3743d0659fcadc099b4",
+    ".artifacts/mobile-banked-texture-epoch-control-v1-emission-result.json": "9ac8f02b47a9139fd6ae4b6599389c9a821c411c710270b90fc9be197a863432",
+    ".artifacts/mobile-banked-texture-epoch-control-v1-emission.log": "d75f42b558f73eca260b61c75ed171401dce6c07b88ab340b7364a0a1bb86725",
+    ".artifacts/mobile-banked-texture-epoch-control-readthrough-synthesis-v1-inputs.json": "5b7b84d22f5d7eae3fa1f91712c692c5d43286444e5e3c3c3571aec4b646220e",
+    ".artifacts/mobile-banked-texture-epoch-control-readthrough-synthesis-v1-start.json": "cdd8af4a42ff179c13e61dec44179e9341f210ef7e8d8e03b4f2259208b1587b",
+    ".artifacts/mobile-banked-texture-epoch-control-fp32-synthesis-v1-inputs.json": "bd5d6281ea3692531bc0ca2b6d1c1adda9eb94c1be9a18cbfb73c6b7983a245b",
+    ".artifacts/mobile-banked-texture-epoch-control-fp32-synthesis-v1-start.json": "598ca16f23d4bd8574be3f3836d0abadf7f770175a0f9315c46dfd11b9e6117b",
+    ".artifacts/mobile-banked-texture-epoch-control-translated-synthesis-v1-inputs.json": "6792e7b765361f1a0905a5ee087dc7fce4b2fa8dca6da3883c7fce6c984d17f3",
+    ".artifacts/mobile-banked-texture-epoch-control-translated-synthesis-v1-start.json": "bcd8c285749db2c1391384448f26d08529cad38cbaf7d66eddd4bbcb79ce992a"
+  },
+  "remaining": [
+    "inspect all three fresh epoch-control synthesis screens before main integration",
+    "native shared-CU/resource/coordinate wiring and existing FP32 filtering-contract preservation",
+    "whole-native precision/rates under memory contention and render-to-texture visibility",
+    "all remaining H0-H8 hardware gates"
+  ]
+}

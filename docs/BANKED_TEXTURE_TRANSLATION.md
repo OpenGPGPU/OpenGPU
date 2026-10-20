@@ -55,3 +55,13 @@ mapped cells. Its remaining path crosses shared-owner cancellation selection,
 return credits and tap telemetry. Translated synthesis remains active;scalar
 epoch-control and registered telemetry are qualified separately before main
 integration.
+
+The [epoch-control correction](performance/mobile-banked-texture-epoch-control-2026-10-21.json)
+passes46 checks again on822 frozen inputs. Since word-service cancellation is
+global and new admission waits for complete drain,one sticky epoch bit replaces
+per-owner cancel/invalidation lookup arrays. Selective identity/tag cancellation
+remains in the translated parent and preserves unrelated groups. Tap/conflict
+telemetry is registered by one cycle;tests verify384 hot and768 backpressured
+tap events with unchanged input/output II1. Standalone normalizer and resident
+cluster active RTL remain raw-byte identical. Fresh packed,FP32 and translated
+synthesis screens are running at1000ps;their timing closure is still unproven.
