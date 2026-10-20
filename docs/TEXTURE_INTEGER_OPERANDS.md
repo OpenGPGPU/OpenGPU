@@ -39,9 +39,10 @@ The captured path adds shader LOD to the immutable image base with33-bit
 arithmetic before level-range checks, following
 [GLES3.0.6 section2.12.9.2](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
 The legacy function2 packet level remains absolute. Negative, out-of-range and
-overflowing relative LOD values reject without wrapping. The nonzero-base
-regressions failed in both stages before this correction; requalification is
-pending.
+overflowing relative LOD values reject without wrapping. The corrected nonzero-base fixture fails against old RTL and passes against
+this correction in both stages. [Extended controls](performance/mobile-native-integer-relative-lod-2026-10-21.json)
+pass186 checks, including nonmip base validation and failure/reuse. Fresh
+composed qualification remains pending.
 
 The checked resource owner receives captured coordinates directly, validates
 GXR1/GXB1/GXI1/GXL1/GXS1 identities and bounds, and fetches decoded integer or
