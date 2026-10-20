@@ -6366,3 +6366,16 @@ working checkout, plus the exact PPA qualifier and cycle probe scripts. The
 23 fresh targeted controls and positive standalone setup result therefore
 apply to this integrated source. Both pre-existing local edits are preserved;
 no remote push was performed. General hardware development remains in progress.
+
+## GPU sampler-dependent image admission development (2026-10-20)
+
+The [GXS1 sampler binding owner](TEXTURE_SAMPLER_BINDING.md) loads independent
+GPU-memory sampler state and composes it with GXI1 image admission. The captured
+minification filter determines mip completeness; callers cannot weaken it.
+Nonmip bindings validate both the base image and selected level. Compatibility
+checks preserve integer/float result types and core format filterability before
+publishing a binding. Descriptor ownership includes immutable held completion,
+cache invalidation and cancellation drain. Component validation is in progress.
+Native per-stage binding tables, typed shader transport and actual general
+sampling/filtering remain required; existing ISA and native capability bits
+are unchanged. Current PPA evaluation remains synthesis only.
