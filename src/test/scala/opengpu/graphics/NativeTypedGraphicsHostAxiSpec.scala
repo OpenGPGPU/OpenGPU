@@ -94,10 +94,19 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       else if(expected && c==1 && sampledGreen.nonEmpty)sampledGreen.get
       else Fp32ViewportReference.fp(if(centroid){if(c==3)1.0 else ((vertex+1)*(c+1)+primitive)/16.0}else if(c==primitive || c==3)1.0 else 0.0)}
     def shaderDraws(mode: Int,centroid: Boolean=false,version: Int=1,polygon: Boolean=false,sign: Int=1,
-        depthFormat: Int=TypedDepthFormat.d24s8,allocation: Int=0,generation: Int=0,facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0,sourceBias: Int=0): Unit={
+        depthFormat: Int=TypedDepthFormat.d24s8,allocation: Int=0,generation: Int=0,facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0,sourceBias: Int=0,freshTextureSources: Boolean=false): Unit={
       require(!facing || !polygon)
       setup(mode,3,mrt=true,depthFormat=depthFormat,allocation=allocation)
       sourceOffset=(if(centroid)0x20000+version*0x1000+mode*0x10000 else 0)+(if(polygon)0x50000 else 0)+allocation*0x10000+generation*0x1000+sourceBias
+      if(freshTextureSources){
+        // Each frame owns two complete source pages. Skip the fragment operand
+        // packet page, which query/captured-operand tests must never read.
+        val first=0x640000+generation*0x2000
+        val base=first+(if(first>=0x680000)0x2000 else 0)
+        require(base>=0x640000 && base+0x2000<=0x700000)
+        require(base+0x2000<=0x680000 || base>=0x682000)
+        sourceOffset=base-0x420000
+      }
       val fragmentPc=if(polygon)0x406000+(if(version==4)0x2000 else 0)else if(version==4)0x404000 else 0x402000
       val prefix=(if(version==4)30 else 28)*32
       word(0x3000c,(((BigInt(0x1000000)+imageOffset)>>12)<<10)|0xcf)
@@ -568,10 +577,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         val kind=if(format>=54)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind
         val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
         val mapped=if(swizzle.isEmpty)decoded else swizzle.map(options)
-        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,sourceBias=0x90000)
+        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,freshTextureSources=true)
         // Thirty-four frames must not advance source attributes into native
         // scratch at0x430000..0x443000 or the growing shader code; all selected frame input ranges stay disjoint.
-        assert(0x420000+image.sourceOffset>=0x4b0000 && 0x422000+image.sourceOffset<=0x500000)
+        assert(0x420000+image.sourceOffset>=0x640000 && 0x422000+image.sourceOffset<=0x700000)
         def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
         texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
@@ -653,10 +662,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         val kind=if(format>=54)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind
         val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
         val mapped=if(swizzle.isEmpty)decoded else swizzle.map(options)
-        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,sourceBias=0x190000)
-        // Keep up to80 generations outside descriptor/data, private scratch
-        // and shader code allocations. Each frame uses fresh code addresses.
-        assert(0x420000+image.sourceOffset>=0x5b0000 && 0x422000+image.sourceOffset<=0x600000)
+        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,freshTextureSources=true)
+        // Keep disjoint source page pairs outside texture/packet data,private
+        // scratch and shader code. Each frame also has fresh code addresses.
+        assert(0x420000+image.sourceOffset>=0x640000 && 0x422000+image.sourceOffset<=0x700000)
         def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
         texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
@@ -747,10 +756,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         val kind=if(format>=54)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind
         val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
         val mapped=if(swizzle.isEmpty)decoded else swizzle.map(options)
-        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,sourceBias=0x190000)
-        // Keep up to80 generations outside descriptor/data, private scratch
-        // and shader code allocations. Each frame uses fresh code addresses.
-        assert(0x420000+image.sourceOffset>=0x5b0000 && 0x422000+image.sourceOffset<=0x600000)
+        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,freshTextureSources=true)
+        // Keep disjoint source page pairs outside texture/packet data,private
+        // scratch and shader code. Each frame also has fresh code addresses.
+        assert(0x420000+image.sourceOffset>=0x640000 && 0x422000+image.sourceOffset<=0x700000)
         def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
         texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
@@ -828,6 +837,8 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       val rgba=Vector(0.125,0.25,0.5,1.0).map(Fp32ViewportReference.fp)
       val raw=rgba.zipWithIndex.map{case(v,c)=>v<<(32*c)}.reduce(_|_)
       var frames=0;var executed=0
+      val reproduceSourceAlias=java.lang.Boolean.getBoolean("opengpu.textureSize.sourceAlias")
+      val sourceLeases=mutable.ArrayBuffer.empty[(Int,Int)]
       def sample(c: Int,unit: Int,scalar: Boolean,target: Int,mode: Int,missing: Boolean,offset: Int): Seq[BigInt]={
         val constants=Seq(addi(13,0,unit),addi(14,0,mode))
         constants++(if(scalar)Seq((BigInt(6)<<25)|(BigInt(14)<<20)|(BigInt(13)<<15)|(BigInt(c)<<12)|(BigInt(15)<<7)|0x0b,
@@ -844,10 +855,15 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           if(target==1)3 else if(target==3)2 else 0)
         val values=if(modeControl==1)dims.zipWithIndex.map{case(v,n)=>if(n<2)math.max(1,v>>1)else v}else dims
         val swizzle=if(format>=36)Seq(3,2,5,4)else Seq.empty[Int]
-        image.sampledRed=Some(Fp32ViewportReference.fp(values(c)));image.sampledGreen=Some(Fp32ViewportReference.fp(values(vc)));image.shaderDraws(mode,generation=frames+1,sourceBias=0x190000)
-        // Keep up to80 generations outside descriptor/data, private scratch
-        // and shader code allocations. Each frame uses fresh code addresses.
-        assert(0x420000+image.sourceOffset>=0x5b0000 && 0x422000+image.sourceOffset<=0x600000)
+        image.sampledRed=Some(Fp32ViewportReference.fp(values(c)));image.sampledGreen=Some(Fp32ViewportReference.fp(values(vc)));image.shaderDraws(mode,generation=frames+1,sourceBias=0x190000,freshTextureSources= !reproduceSourceAlias)
+        // Keep disjoint source page pairs outside texture/packet data,private
+        // scratch and shader code. Each frame also has fresh code addresses.
+        val sourceBegin=0x420000+image.sourceOffset;val sourceEnd=0x422000+image.sourceOffset
+        if(!reproduceSourceAlias){
+          assert(sourceBegin>=0x640000 && sourceEnd<=0x700000)
+          assert(sourceLeases.forall{case(begin,end)=>sourceEnd<=begin || sourceBegin>=end},"texture frame source allocations overlap")
+          sourceLeases+=((sourceBegin,sourceEnd))
+        }
         def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
         texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)

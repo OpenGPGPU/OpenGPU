@@ -434,10 +434,4 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   when(active && dataFault){fail(VertexInputStatus.memoryFault.U,memRequest.address)}
   when(active && inputFault){fail(input.io.completion.bits.status,input.io.completion.bits.faultAddress)}
   when(active && externalCancel && status===0.U){status:=VertexInputStatus.cancelled.U;faultAddress:=0.U}
-
-  if(java.lang.Boolean.getBoolean("opengpu.debug.vertexRecovery")){
-    when(io.draw.fire){printf(p"RECOVERY_VS_BEGIN pc=${Hexadecimal(io.draw.bits.shaderPc)}\n")}
-    when(io.out.fire){printf(p"RECOVERY_VS_VERTEX id=${io.out.bits.vertexId} xyzw=${Hexadecimal(io.out.bits.position.asUInt)}\n")}
-    when(io.completion.fire){printf(p"RECOVERY_VS_END status=${io.completion.bits.status} vertices=${io.completion.bits.vertices} batches=${io.completion.bits.batches}\n")}
-  }
 }
