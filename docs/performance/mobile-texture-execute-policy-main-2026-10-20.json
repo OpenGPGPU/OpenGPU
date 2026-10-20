@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Exact committed-source reconciliation for optional texture execution policy main integration",
+  "main_merge_commit": "9e5943e28e1c9562bd7964a75e9cbcdeb87fdeac",
+  "qualification_commit": "f202685",
+  "base_commit": "950db23",
+  "source_files": 638,
+  "all_committed_and_working_source_matches_qualified_snapshot": true,
+  "all_scala_source_files_included": true,
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-execute-policy-source-v2.json",
+    "sha256": "8706e1cc29ce677e849dcf24e5aa2be5dda6f0065492c023cfe3f42aaae40d5d"
+  },
+  "qualification_result": {
+    "path": ".artifacts/mobile-texture-execute-policy-controls-v2-result.json",
+    "sha256": "5da30260f8f2a6316af25d93f10b1e8e89f3b27fc68a06a2ba1af7ab2ebdabd9"
+  },
+  "rtl_audit": {
+    "path": ".artifacts/mobile-texture-execute-policy-rtl-audit-v2.json",
+    "sha256": "e310afa68347ef9114f23f77361fb51b6562b75bafdd3fdc2f8cffa9a03a8084"
+  },
+  "preservation": {
+    "path": ".artifacts/mobile-texture-execute-policy-main-preservation-v2.json",
+    "sha256": "0d8817e0cbbeac62e787bdbdde3d36208b98090bc8c62b808c03a079f746f8e5"
+  },
+  "preserved_dirty_files": 20,
+  "validation": "Committed main blobs and working files match every qualified source/ABI/selection hash. This reuses the completed22-check, four-ABI, five-emission result by exact source identity; no separately rerun main-context group is claimed.",
+  "limits": [
+    "Optional execution-unit component only. Native/task policy descriptors and fault-owner wiring still need implementation; no new public shader mode is exposed.",
+    "The independent facing run passes six checks; the separate full-depth run remains live with130 completed checks. Its production is not part of this integration.",
+    "No whole-GPU clock/rate/area/power or H0-H8/GLES closure. PPA remains synthesis only."
+  ]
+}

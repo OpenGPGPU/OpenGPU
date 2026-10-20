@@ -5497,3 +5497,16 @@ now contains 130 completed checks on its unchanged 643-file source: the earlier
 replay/image and thirty-three host checks, plus final host RTL emission, remain
 pending in the original live process. These evidence records do not promote
 that production source or close the remaining native depth/G04/H6 requirements.
+
+
+## Texture instruction policy main integration (2026-10-20)
+
+The [main promotion audit](performance/mobile-texture-execute-policy-main-2026-10-20.json)
+verifies every committed and working source/ABI/selection file against the
+qualified 638-file snapshot, including every Scala source. The optional
+execution policy therefore retains the completed 22-check, four-ABI and
+five-emission result by source identity. All twenty pre-existing dirty files
+retain identical contents and modes. This is not a separately rerun main
+regression. Default legacy hardware remains unchanged across the four emitted
+profiles; task/native policy descriptors and coordinate-fault owner handling
+remain the next integration work. PPA remains synthesis only.
