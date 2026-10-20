@@ -1,6 +1,6 @@
 # Banked RGBA8 read-through service
 
-Status: [nineteen distinct component checks](performance/mobile-banked-texture-readthrough-2026-10-21.json)
+Baseline: [nineteen distinct component checks](performance/mobile-banked-texture-readthrough-2026-10-21.json)
 pass on812 frozen inputs. Eighteen checks pass together;an appended fault/cancel
 race passes on otherwise identical inputs with all prior test bodies retained.
 Resident-default synthesis passes1000ps including I/O (+172.334/+85.011ps);
@@ -64,3 +64,13 @@ active SystemVerilog byte matches after removing comments while preserving
 strings and whitespace. The changed resident-default filter and complete
 read-through profile receive fresh synthesis screens. SRAM is behavioral in
 these screens;no characterized macro area,power,route or GPU clock is claimed.
+
+The [registered miss-admission update](performance/mobile-banked-texture-readthrough-pipeline-2026-10-21.json)
+passes twenty component tests on812 frozen inputs. Two complete miss records
+per bank separate cache reply credits from fill matching. Stopped queued misses
+return poisoned words without waiting for fill admission during drain;their
+lookup owners remain pinned through public completion. Saturation checks retain
+a held physical offer across cancellation and invalidation,retire every accepted
+group,and verify healthy reuse. Resident-only active RTL remains byte-identical
+to its positive synthesis inputs. Fresh read-through synthesis is running under
+the same1000ps constraints;timing closure remains unproven.
