@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: proposed hardware architecture with H0/H1/H2/H3/H5/H6 implementation in progress, 2026-10-20. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
+Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6 implementation in progress, 2026-10-20. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
 Evolve OpenGPU into a mobile rendering architecture by extending the shared CU pool with persistent tile storage, GPU geometry fetching, scalable texture and pixel backends, and general graphics resource descriptors. Keep shader arithmetic on the existing CUs. The first functional target is hardware sufficient for a complete GLES 3.0 implementation; a Mali-G31-class commercial comparison requires further feature, performance, and physical qualification.
 
@@ -5410,3 +5410,19 @@ Prepared metadata, TexSampleUnit/ISA transport, native sampler descriptors and
 float-coordinate conversion remain required before product exposure. This
 prerequisite does not close T03, H4/H6/H0–H8, full resources, throughput or
 new PPA; evaluation remains synthesis only.
+
+
+## Isolated sampler policy main integration (2026-10-20)
+
+The [main-context regression](performance/mobile-texture-coordinate-policy-main-2026-10-20.json)
+passes all nineteen checks, four ABI checks and CI selection on 636 unchanged
+source/ABI/selection files. Both enabled and legacy emissions match the
+qualified component's synthesis-active SV, ports and hierarchy. The legacy
+cached/prepared sampler also matches its independent baseline.
+
+This integrates the optional signed/per-axis coordinate unit only. It does not
+expose new shader/native descriptor modes. Prepared-policy transport, general
+image/sampler resources, float conversion and rates remain required. The later
+polygon/depth and native-facing branches remain separate from this integration.
+No new FPU, CU or SRAM and no new PPA result; H0–H8 remain open under the
+synthesis-only evaluation policy.

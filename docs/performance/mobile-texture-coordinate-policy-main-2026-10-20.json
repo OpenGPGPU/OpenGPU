@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Main-context validation of isolated optional texture coordinate policy",
+  "source_files": 636,
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-main-source-v1.json",
+    "sha256": "836c191e7c3fddbc4d147ab00547cfd72b3c64d8dc3ba25df54d8fd50a1b38b1"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-main-source-v1.tar.gz",
+    "sha256": "65410c5bdbecee89a954b90bbf31bb119da9922308d329f160759ba30bdb5248"
+  },
+  "result": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-main-controls-v1-result.json",
+    "sha256": "14bde1b51aaa6601dc246bcf68e2e62a1c8146979330936d10634ed4d6bcd844"
+  },
+  "log": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-main-controls-v1.log",
+    "sha256": "5403d6b130c92ee597071deb99b295f1e42846cec10f7b8b2c8c0f0c165dfa94"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "tests": [
+        19
+      ],
+      "success_tasks": 7,
+      "policy_profiles": 2
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 236.0962972920388,
+    "finished_utc": "2026-10-20T03:56:26.158064+00:00"
+  },
+  "passed": 19,
+  "abi_checks": 4,
+  "valid_samples": 9038,
+  "reserved_mode_faults": 6,
+  "ci": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-main-ci-v1.log",
+    "sha256": "33564c66837704a225331df4bb30af6f3d40f6608d0b3c18aec257a98a54e2b0"
+  },
+  "main_rtl_audit": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-main-rtl-audit-v1.json",
+    "sha256": "7298d320595ae7ed6062277926423a9b13bc299927163d1e84ded2610b616974"
+  },
+  "qualified_component_rtl_audit": {
+    "path": ".artifacts/mobile-texture-coordinate-policy-rtl-audit-v1.json",
+    "sha256": "7b0c7c889a8e5cc3ae5e91a6b7c98c8b9c55308b44ca26b6c2db0c84488d3768"
+  },
+  "source_reconciliation": "TextureCoordinates.scala, TextureUnit.scala and the policy test match the qualified component exactly. The isolated main emitter adds only its optional policy case; later polygon/rounding/native development is absent.",
+  "emissions": {
+    "enabled": {
+      "directory": "generated/mobile-h6/texture-policy-main-enabled-v1-rtl",
+      "active_logic_equal_to_qualified_component": true,
+      "active_files": [
+        "TextureUnit.sv"
+      ]
+    },
+    "legacy": {
+      "directory": "generated/mobile-h6/texture-policy-main-legacy-v1-rtl",
+      "active_logic_equal_to_qualified_component": true,
+      "active_files": [
+        "TextureUnit.sv"
+      ]
+    }
+  },
+  "legacy_active_logic_unchanged": true,
+  "extra_fpu_cu_sram": 0,
+  "limits": [
+    "The optional direct unit path is qualified; prepared/ISA/native policy binding, float coordinate conversion, formats/resources and throughput remain open.",
+    "Only this isolated component is promoted. The separate depth composition and facing/stencil runtime branches retain their own open gates.",
+    "No new PPA, API, T03/H4/H6/H0-H8 closure. PPA remains synthesis only."
+  ]
+}
