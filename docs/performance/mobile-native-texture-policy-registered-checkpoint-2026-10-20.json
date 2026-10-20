@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "43_checks_and_two_emissions_passed_host_runtime_still_live",
+  "observed_utc": "2026-10-20T05:01:27.786458+00:00",
+  "scope": "Registered native texture-fault boundary with completed reader/backend/stage subsets",
+  "based_on_commit": "a547e1b",
+  "source_files": 640,
+  "source_unchanged_at_checkpoint": true,
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-texture-policy-source-v2.json",
+    "sha256": "ff16e459d4a79490ebe31b3ab389afdcf251171b82e868a1a6443c9d92dbe9ef"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-texture-policy-source-v2.tar.gz",
+    "sha256": "e0cc6e68b675b5fb01cd640cad92ae0afb6ba2f6b59c450cb0ce2a74ff25cc18"
+  },
+  "source_reconciliation": {
+    "path": ".artifacts/mobile-native-texture-policy-source-reconciliation-v2.json",
+    "sha256": "136f6d3307c41805f96e1bfbc82192029da9b998a2ba24f33ec8190cb46d60e3"
+  },
+  "control_result": {
+    "path": ".artifacts/mobile-native-texture-policy-controls-v2-result.json",
+    "sha256": "422885b85d153d0e58c16e455a600f02c482de60337afa8b949ace9683c1b89f"
+  },
+  "control_log": {
+    "path": ".artifacts/mobile-native-texture-policy-controls-v2.log",
+    "sha256": "d32cc77b7fc1c5e3b57db35639974c0a546af91c42e9019752c59e51549b92f4"
+  },
+  "control_validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "test_counts": [
+        25,
+        14
+      ],
+      "success_tasks": 6,
+      "passed_tasks": 2,
+      "policy_readers": 2,
+      "policy_state": 1,
+      "discovery": 4
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 127.67990912520327,
+    "finished_utc": "2026-10-20T04:58:19.815172+00:00"
+  },
+  "runtime_prefix": {
+    "path": ".artifacts/mobile-native-texture-policy-registered-runtime-prefix-v2.log",
+    "sha256": "ead9eedca082f7821dffa5bf22bf522cee3ee68f4984f2630f21f470e508cee9"
+  },
+  "runtime_start": {
+    "path": ".artifacts/mobile-native-texture-policy-runtime-v2-start.json",
+    "sha256": "8adea825d00824acfde3221241fe2b187a26dae179a6cbba068bb5579d58f4da"
+  },
+  "runtime_pid_confirmed_live": 35847,
+  "passed_checks_at_checkpoint": 43,
+  "reader_discovery_checks": 25,
+  "backend_and_trap_checks": 14,
+  "actual_cu_stage_checks": 4,
+  "stage_draws": 84,
+  "stage_faulted_draws": 8,
+  "passed_emissions": 2,
+  "rtl_audit": {
+    "path": ".artifacts/mobile-native-texture-policy-rtl-audit-v2.json",
+    "sha256": "302a13b1c6016c5e7f76e94ff8fa33fab4e88cf64d353c50598f1eba41e00b23"
+  },
+  "resource_comparison": {
+    "path": ".artifacts/mobile-native-texture-policy-resource-comparison-v2.json",
+    "sha256": "51eaeb6d52f19867a0e88b730b43e65ef1d7f6d4870ada3f0dcc9309ffec1f8f"
+  },
+  "ci": {
+    "path": ".artifacts/mobile-native-texture-policy-ci-v2.log",
+    "sha256": "33564c66837704a225331df4bb30af6f3d40f6608d0b3c18aec257a98a54e2b0"
+  },
+  "c11": {
+    "path": ".artifacts/mobile-native-texture-policy-abi-c11-v2.json",
+    "sha256": "f0324bb13977a7d309b06a3a5d2412fcf0db5e4a32876ba7521572a5a598968b"
+  },
+  "negative_host_v1_result": {
+    "path": ".artifacts/mobile-native-texture-policy-host-v1-result.json",
+    "sha256": "ce704e160598a0ce9f3779c0fafc9c497c8135a2dc40496b6ad20e6241ff6ba0"
+  },
+  "negative_host_v1_log": {
+    "path": ".artifacts/mobile-native-texture-policy-host-v1.log",
+    "sha256": "a8270ebed3492e837529904742aa8d938ad199608464a7ccc8823181d6ca8136"
+  },
+  "negative_host_v1_source": {
+    "path": ".artifacts/mobile-native-texture-policy-source-v1.json",
+    "sha256": "5d70844f8f531e507971d1c9ffe72f69be9cbdfaec75364430d3be3a82055789"
+  },
+  "correction": "The original native host could not elaborate because texture completion-valid fed back through trap task-tag routing. Register rejected texture completions in non-flowing/non-pipelined queues before memory-fault arbitration; both full replay and default host now emit without that loop.",
+  "limits": [
+    "The 43 completed checks and two emissions are partial qualification on the new source. Nine native host and two legacy texture controls are still live; no complete runtime pass or main promotion is claimed.",
+    "Structural comparison retains public top ports, four CUs, two replay engines, one banked payload store,78 FMA and72 divider instances, and2,689,024 existing SRAM data bytes for the host. Register/control logic changes; no area/clock/power/rate result is claimed.",
+    "The prior failed source remains frozen. No existing long-depth run is changed or restarted. PPA remains synthesis only; H4/H6 and general resource closure stay open."
+  ]
+}

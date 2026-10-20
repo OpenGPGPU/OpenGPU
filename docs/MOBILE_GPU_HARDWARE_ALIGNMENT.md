@@ -5546,3 +5546,25 @@ The isolated reader/backend regression and native host image/legacy texture
 checks are live on the same source bytes. Final host/replay emissions remain
 pending. The candidate stays isolated; no main native-mode advertisement,
 whole-native qualification or new PPA result is claimed.
+
+
+## Registered native texture-fault boundary checkpoint (2026-10-20)
+
+The first complete host elaboration exposed a completion-valid/trap-task-tag
+combinational loop that the direct stage harness did not contain. The frozen
+failed source is retained. Scalar/vector backends now register rejected
+texture completions before fault arbitration, preserving failed instruction
+ownership under backpressure and separating trap routing from writeback.
+
+The [corrected source checkpoint](performance/mobile-native-texture-policy-registered-checkpoint-2026-10-20.json)
+passes 25 reader/discovery, fourteen backend/trap and four actual-CU stage
+checks on identical 640-file source bytes. All 84 stage draws, including eight
+coordinate faults, pass again. Both replay and default host RTL emit without
+the cycle. Public top ports and structural resource counts match the prior
+main baseline: four CUs, two replay engines, one payload store, 78 FMAs, 72
+dividers and 2,689,024 SRAM data bytes in the host. This is not an area, timing,
+power or rate result; register/control logic changes.
+
+Nine native host and two legacy texture checks are still live on this source.
+The candidate remains isolated, with no main mode advertisement or complete
+functional/PPA claim. PPA remains synthesis only.
