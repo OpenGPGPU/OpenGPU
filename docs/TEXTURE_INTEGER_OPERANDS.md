@@ -23,7 +23,7 @@ Integer fetch interprets the existing sixteen bank words as follows:
 | 0..2 | Signed32-bit X/Y/Z texel coordinates |
 | 3 | Full32-bit array layer |
 | 4 | Full32-bit cube face for the existing generic cube-face fetch extension |
-| 5 | Full32-bit mip level |
+| 5 | Full32-bit shader LOD relative to the captured image base level |
 | 6..12 | Reserved zero |
 | 13 | Three signed four-bit offsets in bits11:0; higher bits zero |
 | 14..15 | Reserved zero |
@@ -34,6 +34,14 @@ Scalar parameter writes broadcast; vector writes obey active/VL/predicate
 masks. Inactive sample lanes retain oldVd. An error in any active lane suppresses
 the complete vector destination. Parameters and results stay owned through
 backpressure, cancellation and accepted memory-response drain.
+
+The captured path adds shader LOD to the immutable image base with33-bit
+arithmetic before level-range checks, following
+[GLES3.0.6 section2.12.9.2](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
+The legacy function2 packet level remains absolute. Negative, out-of-range and
+overflowing relative LOD values reject without wrapping. The nonzero-base
+regressions failed in both stages before this correction; requalification is
+pending.
 
 The checked resource owner receives captured coordinates directly, validates
 GXR1/GXB1/GXI1/GXL1/GXS1 identities and bounds, and fetches decoded integer or

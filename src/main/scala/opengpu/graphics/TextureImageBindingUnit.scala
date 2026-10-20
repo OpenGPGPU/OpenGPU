@@ -71,7 +71,7 @@ private[graphics] object TextureImageMipRange {
   * allocation and dimensional sequence. Prior level spans must not overlap.
   * A parent pins tables, publication and VM through held completion.
   */
-class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig()) extends Module {
+class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig(),relativeLevel: Boolean=false) extends Module {
   require(config.xLen==32)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new TextureImageBindingRequest));val out=Decoupled(new TextureImageBindingResult)
@@ -138,7 +138,10 @@ class TextureImageBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddre
   private def dimension(n: UInt,level: UInt): UInt=Mux((n>>level)===0.U,1.U,n>>level)
   private val width=dimension(snapshot.rootWidth,currentLevel);private val height=dimension(snapshot.rootHeight,currentLevel)
   private val depth=Mux(snapshot.target===3.U,dimension(snapshot.rootDepth,currentLevel),1.U)
-  private val selectedLevel=Mux(request.selectBaseLevel,snapshot.baseLevel,request.level)
+  // Captured shader LOD is relative to the immutable image base. Retain the
+  // carry bit until the existing selected-level bounds check rejects overflow.
+  private val selectedLevel=if(relativeLevel)Mux(request.selectBaseLevel,snapshot.baseLevel.pad(33),
+    snapshot.baseLevel.pad(33)+request.level.pad(33))else Mux(request.selectBaseLevel,snapshot.baseLevel,request.level)
   switch(phase){
     is(State.idle){when(io.in.fire){
       assert(drained && !child.io.busy,"image admission abandoned old ownership")

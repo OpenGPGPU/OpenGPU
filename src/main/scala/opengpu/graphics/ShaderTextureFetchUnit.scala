@@ -38,7 +38,7 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: 
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
   private val reading=phase===State.readRoot || phase===State.readBinding || phase===State.readPacket
   private val readSource=Mux(phase===State.readRoot,1.U,Mux(phase===State.readBinding,2.U,3.U))
-  private val admission=Module(new TextureImageSamplerBindingUnit(config));private val fetch=Module(new TextureImageTypedFetchUnit(config))
+  private val admission=Module(new TextureImageSamplerBindingUnit(config,relativeLevel=capturedCoordinates));private val fetch=Module(new TextureImageTypedFetchUnit(config))
   io.in.ready:=phase===State.idle && !io.cancel;io.out.valid:=phase===State.complete;io.out.bits:=result;io.busy:=phase=/=State.idle
   admission.io.in.valid:=phase===State.offerAdmission;admission.io.in.bits:=0.U.asTypeOf(admission.io.in.bits)
   admission.io.in.bits.images.version:=1.U;admission.io.in.bits.images.identity:=request.identity

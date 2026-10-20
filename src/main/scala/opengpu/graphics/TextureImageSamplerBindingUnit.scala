@@ -23,7 +23,7 @@ class TextureImageSamplerBindingResult extends Bundle {
   * before publication. This owner issues descriptor reads only, never texels.
   * Image tags0..3 and sampler tag4 are disjoint through the shared VM port.
   */
-class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig()) extends Module {
+class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig(),relativeLevel: Boolean=false) extends Module {
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new TextureImageSamplerBindingRequest));val out=Decoupled(new TextureImageSamplerBindingResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,8))
@@ -32,7 +32,7 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
   })
   private object State extends ChiselEnum {val idle,check,offerSampler,waitSampler,offerImage,waitImage,offerBase,waitBase,compatibility,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageSamplerBindingRequest)
-  private val sampler=Module(new TextureSamplerBindingUnit(config));private val image=Module(new TextureImageBindingUnit(config,p))
+  private val sampler=Module(new TextureSamplerBindingUnit(config));private val image=Module(new TextureImageBindingUnit(config,p,relativeLevel=relativeLevel))
   private val samplerResult=Reg(new TextureSamplerBindingResult);private val imageResult=Reg(new TextureImageBindingResult)
   private val result=Reg(new TextureImageSamplerBindingResult);private val status=RegInit(0.U(3.W));private val source=RegInit(0.U(2.W))
   private val samplerStarted=RegInit(false.B);private val imageStarted=RegInit(false.B);private val noFill=RegInit(false.B)
@@ -41,7 +41,7 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
   sampler.io.in.valid:=phase===State.offerSampler;sampler.io.in.bits.table:=request.samplers
   sampler.io.in.bits.handle:=request.samplerHandle;sampler.io.in.bits.tag:=request.tag;sampler.io.out.ready:=phase===State.waitSampler
   image.io.in.valid:=phase===State.offerImage || phase===State.offerBase;image.io.in.bits.table:=request.images
-  image.io.in.bits.handle:=request.imageHandle;image.io.in.bits.level:=Mux(phase===State.offerBase,imageResult.baseLevel,request.level);image.io.in.bits.tag:=request.tag
+  image.io.in.bits.handle:=request.imageHandle;image.io.in.bits.level:=Mux(phase===State.offerBase,if(relativeLevel)0.U else imageResult.baseLevel,request.level);image.io.in.bits.tag:=request.tag
   image.io.in.bits.requireMipChain:=TextureSamplerState.requiresMips(samplerResult.state);image.io.out.ready:=phase===State.waitImage || phase===State.waitBase
   image.io.in.bits.selectBaseLevel:=request.selectBaseLevel && phase===State.offerImage
   sampler.io.cancel:=samplerStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
