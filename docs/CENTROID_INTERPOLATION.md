@@ -54,6 +54,25 @@ size/offset probes pass. All [15 runtime reader/raster compatibility checks](per
 pass on 629 unchanged source/ABI files. Positive centroid-state/native execution and
 discovery still need their separate controls.
 
+## Native fragment input discovery
+
+Native profiles exposing GVI1 now also expose the read-only GFI1 block at
+`0x1c0..0x1cc`. Its four words contain magic `0x47464901`, word count 4,
+descriptor-version bit mask `0x1e`, and feature/sample-mode flags. Feature bits
+0/1/2/3 describe center, flat, centroid and coherent sample-location behavior.
+Bits 8/9/10 describe 1x/2x/4x sampling supported by the configured profile.
+Resource capacities remain in the existing profile record. Legacy profiles
+leave GFI1 unmapped. Writes, including zero strobes, return SLVERR.
+
+Positive GFS1/GTD1 controls exercise both new versions, the highest mask bits,
+held descriptor offers, out-of-slot/old-version rejection and version-4 prefix
+bounds. Discovery checks cover held FIXED/INCR reads, every denied word/strobe,
+address aliases and 1/2/4-sample configurations plus the legacy map. The first
+combined run passes 23/24 checks; its new triangle-owner case used the existing
+point/line-only reference. The corrected fixture now selects the triangle
+reference and the complete rerun is pending. No RTL correction was required
+for that fixture mismatch. Exact native centroid image checks remain pending.
+
 ## Partial-coverage perspective fallback
 
 A tiny triangle can cover a sample while its pixel center extrapolates to a

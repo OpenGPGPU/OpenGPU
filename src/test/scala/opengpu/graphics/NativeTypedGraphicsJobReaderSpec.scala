@@ -131,6 +131,25 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
       info("NATIVE_TYPED_READER layouts=3 fixedSlotABI=true scalarWords=true signedPadding=true limit33=true tags=4 reorderedReplies=true orderedDraws=2 heldBegin=true heldPublication=true immutableCompletion=true clearOnlyPass=true")
     }
   }
+  it should "snapshot centroid native words and reject unsupported masks before a child draw offer" in {
+    simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
+      for(version<-Seq(3,4)){
+        t.prepare(1);t.drawValues++=Map("fragment.version"->BigInt(version),"fragment.centroidMask"->BigInt(5))
+        t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues)
+        t.blockDraw=true;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+        d.io.draw.bits.shaders.fragment.version.expect(version.U);d.io.draw.bits.shaders.fragment.centroidMask.expect(5.U)
+        val held=d.io.draw.bits.peek().litValue;for(_<-0 until 9){t.tick();assert(held==d.io.draw.bits.peek().litValue)}
+        t.blockDraw=false;t.complete(0,1)
+      }
+      for((version,mask)<-Seq((1,BigInt(1)),(2,BigInt(1)),(3,BigInt(16)),(4,BigInt(1)<<63),(5,BigInt(0)))){
+        t.prepare(1);t.drawValues++=Map("fragment.version"->BigInt(version),"fragment.centroidMask"->mask)
+        t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues);t.submit();t.complete(1)
+        assert(t.acceptedDraws==0)
+      }
+      t.prepare(1);t.submit();t.complete(0,1)
+      info("CENTROID_NATIVE_READER fixedWords538And539=true versions3And4=true immutableOffer=true highMaskRejectedBeforeAdapt=true oldVersionsRequireZero=true healthyReuse=true")
+    }
+  }
   it should "reject malformed bounds encodings and capacity adaptation before issuing invalid child work" in {
     simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
       for(change<-Seq[()=>Unit](()=>d.io.submit.bits.envelopeValid.poke(false.B),()=>d.io.submit.bits.base.poke(0x1004.U),()=>d.io.submit.bits.limit.poke(0x11ff.U))){

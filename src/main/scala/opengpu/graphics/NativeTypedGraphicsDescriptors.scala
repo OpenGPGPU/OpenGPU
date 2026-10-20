@@ -122,7 +122,10 @@ object NativeTypedGraphicsLayout {
     val g=d.shaders.vertex.vertex.geometry;val v=g.vertex;val i=v.input
     val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
     active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U && d.shaders.fragment.varyingSlots<=f.varyings.U &&
-      !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(g.flatMask>>(v.varyingSlots<<2)).orR
+      !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(g.flatMask>>(v.varyingSlots<<2)).orR &&
+      !(d.shaders.fragment.centroidMask>>(d.shaders.fragment.varyingSlots<<2)).orR &&
+      FragmentInputAbi.legal(d.shaders.fragment.version) &&
+      (FragmentInputAbi.hasCentroid(d.shaders.fragment.version) || !d.shaders.fragment.centroidMask.orR)
   }
 }
 

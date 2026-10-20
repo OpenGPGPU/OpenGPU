@@ -28,7 +28,8 @@ class Fp32PrimitiveRasterStageSpec extends AnyFlatSpec {
       d.clock.step();cycle+=1}
     def until(q: => Boolean): Unit={var n=0;while(!q && n<200000){tick();n+=1};assert(q,s"primitive owner stalled cycle=$cycle accepted=$accepted")}
     def prepare(k: Int,t: Triangle=base,s: Settings=Settings(),z: Sizes=Sizes(),model: Boolean=true): Unit={
-      exactLocal=None;origin=(0,0);kind=k;settings=s;sizes=z;source=t;accepted=0;expected=if(model)raster(t,k,s,g,z)else Vector.empty
+      exactLocal=None;origin=(0,0);kind=k;settings=s;sizes=z;source=t;accepted=0
+      expected=if(!model)Vector.empty else if(k==2)TriangleRasterReference.raster(t,s,g)else raster(t,k,s,g,z)
       zero(d.io.in.bits);primitive(d.io.in.bits.primitive,t);state(d.io.in.bits.state,s)
       d.io.in.bits.state.pointSize.poke(fp(z.point).U);d.io.in.bits.state.lineWidth.poke(fp(z.line).U)
       val a=d.io.in.bits.primitive.clipped.primitive;a.kind.poke(k.U);a.topology.poke((if(k==0)0 else if(k==1)1 else 4).U)
@@ -46,6 +47,23 @@ class Fp32PrimitiveRasterStageSpec extends AnyFlatSpec {
       val held=r.peek().litValue;for(_<-0 until 6){tick();d.io.busy.expect(true.B);assert(r.peek().litValue==held)}
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)}
     def run(k: Int,t: Triangle=base,s: Settings=Settings(),z: Sizes=Sizes()): Unit={prepare(k,t,s,z);submit();finish()}
+  }
+  it should "snapshot centroid component masks through real primitive coverage and immutable cancellation" in {
+    simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d)
+      val triangle=base.copy(coords=Vector((128,128),(1792,512),(256,1792)).map{case(x,y)=>(BigInt(x),BigInt(y))})
+      for(kind<-0 to 2;mode<-0 to 2){
+        t.prepare(kind,triangle,Settings(mode=mode),Sizes(point=2,line=2))
+        t.expected=t.expected.map(q=>CentroidRasterReference(triangle,kind,q,mode,13,g))
+        d.io.in.bits.centroidMask.poke(13.U);t.submit();d.io.in.bits.centroidMask.poke(0.U);t.finish()
+      }
+      t.prepare(2,model=false);d.io.in.bits.primitive.clipped.primitive.varyingSlots.poke(1.U)
+      d.io.in.bits.centroidMask.poke(16.U);t.submit();t.finish(1)
+      t.prepare(2,triangle,Settings(mode=2));t.expected=t.expected.map(q=>CentroidRasterReference(triangle,2,q,2,5,g))
+      d.io.in.bits.centroidMask.poke(5.U);t.hold=true;t.submit();t.until(d.io.out.valid.peek().litToBoolean)
+      d.io.cancel.poke(true.B);for(_<-0 until 8)t.tick();t.hold=false;t.finish(4);d.io.cancel.poke(false.B)
+      t.run(2,triangle,Settings(mode=2))
+      info("CENTROID_PRIMITIVE draws=9 modes=3 primitiveKinds=3 mixedCenterCentroidFlat=true actualCoverage=true descriptorSnapshot=true rejectedMaskBeforeLaunch=true heldQuadCancellation=true exactHealthyReuse=true")
+    }
   }
   it should "interpolate point data and coordinates exactly and perspective line data at all sample modes with helpers and raw flat values" in {
     simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d);val rng=new Random(0x1ee8);var draws=0
