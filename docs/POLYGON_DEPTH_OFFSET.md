@@ -1,14 +1,18 @@
-# Polygon depth-offset arithmetic client
+# Deferred polygon depth-offset arithmetic candidate
 
-This component is a prerequisite for the open G04 raster requirement. It is not
-connected to production rasterization or native state yet. The enclosing owner
+This document records a development-branch prerequisite for the open G04 raster
+requirement. The candidate is excluded from main: a later flat-depth witness
+produced a nonzero slope. Its three original arithmetic-contract checks did not
+cover that semantic defect. The candidate and its correction remain on
+`codex/mobile-polygon-slope-precision` and `codex/mobile-polygon-slope-anchor`.
+It was never connected to either production hierarchy in the centroid snapshot. The enclosing owner
 must supply the depth attachment's resolution policy and apply its result to
 default depths. GLES 3.0.6 section 3.6.2 permits the maximum absolute x/y plane
 derivative as the slope approximation and combines slope and resolution terms.
 Fixed and floating depth representations require different resolution policies.
 [Official specification](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf)
 
-`PolygonDepthOffset` snapshots identity, sequence, primitive, three signed
+The deferred `PolygonDepthOffset` candidate snapshots identity, sequence, primitive, three signed
 fixed-point screen positions, three FP32 window depths, enable/kind, signed FP32
 factor/units and positive FP32 resolution. It computes pixel-scale x/y slopes
 from the signed triangle area, selects the larger magnitude and returns an

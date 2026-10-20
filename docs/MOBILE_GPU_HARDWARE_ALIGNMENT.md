@@ -5307,9 +5307,9 @@ coverage, representative rates and H0–H8 remain open. Composed PPA continues
 under the synthesis-only policy on its explicitly frozen pre-centroid source.
 
 
-## Polygon depth-offset arithmetic prerequisite (2026-10-20)
+## Deferred polygon depth-offset arithmetic prerequisite (2026-10-20)
 
-The [polygon depth-offset client](POLYGON_DEPTH_OFFSET.md) computes per-polygon
+The development-branch [polygon depth-offset candidate](POLYGON_DEPTH_OFFSET.md) computes per-polygon
 maximum absolute screen-space depth slope and the signed factor/resolution
 terms through an external existing scalar arithmetic service. Its
 [three component checks](performance/mobile-polygon-depth-offset-2026-10-20.json)
@@ -5318,7 +5318,10 @@ exact arithmetic cases, malformed/range checks, offered/accepted cancellation
 drain and immutable completion/reuse. Standalone emission has one active RTL
 file and no private FPU, divider, CU or SRAM.
 
-This is separate from the centroid validation branches. Polygon offset remains
+The candidate is excluded from main after a later flat-depth witness produced a
+nonzero slope. The original three contract checks missed this semantic defect.
+Both production hierarchies contain zero instances of this unused candidate.
+Its correction remains on an isolated development branch. Polygon offset remains
 an open hardware requirement: the bound-depth-format resolution policy,
 live/native/binned state binding, shared-service primitive lifetime and default
 center/sample-depth application before clamping are not integrated. Shader
