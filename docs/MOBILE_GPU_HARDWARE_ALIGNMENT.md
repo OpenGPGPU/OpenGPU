@@ -6232,3 +6232,15 @@ The remaining path reaches a comparator limb product from a fraction numerator.
 This result remains negative;balanced carry-save limb multiplication will be
 measured at the same constraints. No positive clock,throughput or full H0-H8
 closure is claimed.
+
+
+## Balanced comparator limbs with unchanged pipeline states (2026-10-20)
+
+The [balanced candidate](performance/mobile-point-line-admission-balanced-2026-10-20.json)
+uses the existing balanced carry-save multiplier for <=16-bit limbs,retaining
+signed high numerator chunks. Product inputs evaluate outside the state branch;
+registered capture and pipeline states remain unchanged. All12 controls pass
+on frozen674-file source,including4871 full-width arithmetic cases and588
+cancellation/reset cuts;default emission passes. Fresh integration,baseline and
+parent cycle comparisons,and standalone synthesis remain pending. No positive
+clock,throughput or full H0-H8 result is claimed from this checkpoint.

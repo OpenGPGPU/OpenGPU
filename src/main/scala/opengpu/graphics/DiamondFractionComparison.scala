@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.BlockPrefixAdder
+import opengpu.util.{BlockPrefixAdder,CarrySaveMultiplier}
 
 /** Registered limb products for a64*b34-c64*d34. Only the high limb of
   * each numerator is signed. Each unsigned denominator has three limbs.
@@ -32,9 +32,7 @@ private[graphics] object DiamondFractionComparison {
     def products(n: SInt,d: UInt,out: MixedVec[UInt]): Unit={
       for(((i,j,bits),k)<-chunks.zipWithIndex){
         val x=n(16*i+15,16*i);val y=d(16*j+bits-1,16*j)
-        // The signed-high product fits16+bits: the zero extension of y
-        // contributes a redundant sign bit which this assignment removes.
-        out(k):= (if(i==3)(x.asSInt*y.zext).asUInt else x*y)
+        out(k):=CarrySaveMultiplier(x,y,signedA=i==3,signedB=false)
       }
     }
     products(a.numerator,b.denominator,p.left)

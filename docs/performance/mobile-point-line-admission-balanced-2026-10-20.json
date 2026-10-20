@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "12_balanced_component_controls_pass_integration_cycles_synthesis_pending",
+  "source_files": 674,
+  "source_manifest_sha256": "7b6d208022c422c53c9566fd3fd789d7853d5de9a391ef1f7a315f55dbc52210",
+  "source_base_record": {
+    "path": "docs/performance/mobile-point-line-admission-pipeline-2026-10-20.json",
+    "sha256": "5aa0d02e9f3c6f0dcf9068ca1030d638d62eeca6570c6d4760d2020eb61d6649"
+  },
+  "source_changes": {
+    "src/main/scala/opengpu/graphics/DiamondFractionComparison.scala": {
+      "before": "5a5e4515c01f68d0f240cfc4762140fe2b3b8715514ec33c1238126d661db04f",
+      "after": "26c3900f24c707572ce76a6daeb320e66bc9e4870bdafde291e8d201cc60f858"
+    },
+    "src/main/scala/opengpu/graphics/PointLineRasterizer.scala": {
+      "before": "3592c1d7abe55cf404197a221f6da63b39c083be64146e6b96ff9993042cce4b",
+      "after": "53a57dbf71133f0be26b6df6e31c699aad7c9fd2df2c97f54a5a0f03fa3285b0"
+    }
+  },
+  "behavior": "Use existing balanced carry-save multiplication for every <=16-bit numerator/denominator limb,with signed high numerator limbs. Evaluate combinational product inputs outside the state branch;registered capture and all pipeline states remain unchanged.",
+  "validation": {
+    "checks": 12,
+    "rank_order_cases": 39015,
+    "full_width_comparisons": 4871,
+    "lattice_lines": 2401,
+    "cancel_and_reset_cuts": 588,
+    "source_unchanged": true,
+    "rtl_emission": true,
+    "log": {
+      "path": ".artifacts/mobile-point-line-admission-balanced-v2.log",
+      "sha256": "200c39038d966bc2bcb6a29eaa3deedd9af2a0a3781b9a5aedf814c65e4be9d9"
+    }
+  },
+  "measured_path_record": "docs/performance/mobile-point-line-admission-synthesis-before-2026-10-20.json",
+  "pending": [
+    "Fresh primitive/shared-CU/production AXI integration.",
+    "Fresh baseline and parent15-case cycle comparisons.",
+    "Fresh standalone synthesis at identical TC/SLVT,1000ps,25 percent I/O,no retiming."
+  ],
+  "limits": [
+    "No positive setup,native clock or throughput result yet.",
+    "Full H0-H8/GLES hardware objective remains open."
+  ]
+}

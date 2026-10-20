@@ -53,6 +53,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val intervalBoundary=Reg(Bool())
   private val compareA=Reg(Vec(2,new DiamondFraction));private val compareB=Reg(Vec(2,new DiamondFraction))
   private val compareParts=Reg(Vec(2,new DiamondFractionProductParts))
+  private val nextCompareParts=(0 until 2).map(i=>DiamondFractionComparison.split(compareA(i),compareB(i)))
   private val compareReduced=Reg(Vec(2,new DiamondFractionReduced))
   private val compareReal=Reg(Vec(2,SInt(100.W)))
   private val compareEpsilon=Reg(Vec(2,SInt(38.W)));private val compareEpsilon2=Reg(Vec(2,SInt(38.W)))
@@ -257,7 +258,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
       intervalBoundary:=(axisStationary(0) || boundary(slabLower(0),slabUpper(0))) &&
         (axisStationary(1) || boundary(slabLower(1),slabUpper(1)))
       when(axisStationary(0) || axisStationary(1)){phase:=State.diamondApply}.otherwise{
-        for(i<-0 until 2){compareParts(i):=DiamondFractionComparison.split(compareA(i),compareB(i))}
+        for(i<-0 until 2){compareParts(i):=nextCompareParts(i)}
         phase:=State.diamondReduce
       }
     }
