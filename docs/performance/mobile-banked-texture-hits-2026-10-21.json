@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "eight_banked_resident_hit_filter_component_checks_pass_synthesis_running",
+  "source_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 18.62351941689849,
+    "commit": "cdb209fb5eeb5a0f5cde75ecf71cf950f90657bf",
+    "source_files": 808,
+    "manifest_sha256": "34dd28002ae9c156dd38f9ec69cdcbc33dc44980a34fa00a9554f04d7c2d61ea",
+    "archive_sha256": "ea3074fc57d80215f9f47b01188daa135f5bce90add3347c17bb4aacbb1035db",
+    "git_archive_and_worktree_exact": true,
+    "prior803_inputs_exact": true,
+    "new_input_paths": [
+      "src/main/scala/opengpu/elaboration/EmitBankedTextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedRgba8TextureHits.scala",
+      "src/main/scala/opengpu/graphics/BankedTextureLineStore.scala",
+      "src/test/scala/opengpu/graphics/BankedRgba8TextureHitsSpec.scala",
+      "src/test/scala/opengpu/graphics/BankedTextureLineStoreSpec.scala"
+    ],
+    "runner_pid": 7645,
+    "started_utc": "2026-10-20T19:45:08.799423+00:00"
+  },
+  "tests": 8,
+  "suites": {
+    "BankedRgba8TextureHitsSpec": 7,
+    "BankedTextureLineStoreSpec": 1
+  },
+  "resident_rate": {
+    "samples": 96,
+    "tap_words": 384,
+    "input_interval_cycles": 1,
+    "complete_result_interval_cycles": 1,
+    "all_hit": true,
+    "independent_integer_color_oracle": true,
+    "scope": "Admitted physical addresses and bilinear weights through banked cache AND complete packed RGBA8 filter;resource/coordinate/TLB/native instruction stages are outside this measured interval."
+  },
+  "storage": {
+    "logical_data_bytes": 8192,
+    "logical_word_banks": 4,
+    "physical_arrays_at_default": 8,
+    "array_words": 256,
+    "array_word_bits": 32,
+    "unique_line_capacity": 128,
+    "line_bytes": 64,
+    "tag_bytes": 2880,
+    "valid_bytes": 16,
+    "sample_slots": 16,
+    "sample_table_logical_bytes": 1092,
+    "refill_and_reply_filter_state_additional": true,
+    "synthesis_memory_mode": "Behavioral single-port arrays;no SRAM macro area/power claim."
+  },
+  "checks": [
+    "Distinct same-bank taps serialize to sample interval4",
+    "Duplicate taps coalesce to one read and sample interval1",
+    "All128 unique data lines through both halves of all four banks",
+    "Physical line/context/generation/view identity and explicit missing-tap masks",
+    "Failed fill never installs;invalidation during accepted fill drains without publishing",
+    "Held sample and refill completions immutable",
+    "13 cancellation cuts spanning unissued requests,bank replies,filter pipeline and offered results",
+    "Opposite parity pair streams at interval1 during eight-beat refill",
+    "192 samples under long backpressure preserve bounded slot/tag association",
+    "Four continuously offered producers fairly serve96 contended-bank words with reserved SRAM reply entries"
+  ],
+  "CI": {
+    "selected": "opengpu.command.* opengpu.graphics.* opengpu.system.*",
+    "both_new_suites_in_graphics_shard": true
+  },
+  "emission": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 6.098645291058347
+  },
+  "synthesis": {
+    "store_session": 37612,
+    "cluster_session": 35242,
+    "state": "both_live_when_last_polled",
+    "policy": "1000ps TC/SLVT,25 percent I/O,standard ABC,no retiming; synthesis only"
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-banked-texture-hits-v3.log": "7630a7b022f56759db835e0e9da41bf952ee3627a98fd00f893dcc43e25194b1",
+    ".artifacts/mobile-banked-texture-hits-v3-result.json": "c9040ba84a29675411fca160218542fca0cbad5cee7f2951b163832521663a45",
+    ".artifacts/mobile-banked-texture-hits-v3-source.json": "34dd28002ae9c156dd38f9ec69cdcbc33dc44980a34fa00a9554f04d7c2d61ea",
+    ".artifacts/mobile-banked-texture-hits-v3-source.tar.gz": "ea3074fc57d80215f9f47b01188daa135f5bce90add3347c17bb4aacbb1035db",
+    ".artifacts/mobile-banked-texture-hits-v3-emission.log": "3aaebbafbb98d5701442205264e62d9856734681028935291759fe2e30a65cd7"
+  },
+  "retained_diagnostics": {
+    "log": ".artifacts/mobile-banked-texture-hits-controls-v1.log",
+    "scope": "Initial compile invocation discovered0 tests before the new suite file was created;not counted as a passing test. The later frozen five-test and eight-test invocations actually executed their cases."
+  },
+  "remaining": [
+    "Translated permission-admitted native integration",
+    "Sixteen-fill scheduler,miss joining,fault/cancel fanout and fallback",
+    "Whole sampler address/LOD/format/native retirement throughput and coherence",
+    "Full H0-H8 requirements;no whole-GPU clock/power/route result"
+  ]
+}
