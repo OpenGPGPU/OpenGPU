@@ -94,10 +94,19 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       else if(expected && c==1 && sampledGreen.nonEmpty)sampledGreen.get
       else Fp32ViewportReference.fp(if(centroid){if(c==3)1.0 else ((vertex+1)*(c+1)+primitive)/16.0}else if(c==primitive || c==3)1.0 else 0.0)}
     def shaderDraws(mode: Int,centroid: Boolean=false,version: Int=1,polygon: Boolean=false,sign: Int=1,
-        depthFormat: Int=TypedDepthFormat.d24s8,allocation: Int=0,generation: Int=0,facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0,sourceBias: Int=0): Unit={
+        depthFormat: Int=TypedDepthFormat.d24s8,allocation: Int=0,generation: Int=0,facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0,sourceBias: Int=0,freshTextureSources: Boolean=false): Unit={
       require(!facing || !polygon)
       setup(mode,3,mrt=true,depthFormat=depthFormat,allocation=allocation)
       sourceOffset=(if(centroid)0x20000+version*0x1000+mode*0x10000 else 0)+(if(polygon)0x50000 else 0)+allocation*0x10000+generation*0x1000+sourceBias
+      if(freshTextureSources){
+        // Each frame owns two complete source pages. Skip the fragment operand
+        // packet page, which query/captured-operand tests must never read.
+        val first=0x640000+generation*0x2000
+        val base=first+(if(first>=0x680000)0x2000 else 0)
+        require(base>=0x640000 && base+0x2000<=0x700000)
+        require(base+0x2000<=0x680000 || base>=0x682000)
+        sourceOffset=base-0x420000
+      }
       val fragmentPc=if(polygon)0x406000+(if(version==4)0x2000 else 0)else if(version==4)0x404000 else 0x402000
       val prefix=(if(version==4)30 else 28)*32
       word(0x3000c,(((BigInt(0x1000000)+imageOffset)>>12)<<10)|0xcf)
@@ -182,6 +191,17 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         for(b<-0 until v.bytes)expected(address+b)=((raw>>(8*b))&255).toInt}
       lastPrimitiveQuads=primitiveQuads.toVector
       expectedImage=expected.toMap
+      if(sys.props.contains("opengpu.textureSize.frames") && expected.exists{case(a,v)=>memory(a)!=v}){
+        for((view,index)<-views.zipWithIndex){
+          val bad=for(y<-0 until 4;x<-0 until 4;sample<-0 until view.samples)yield{
+            val address=view.base+y*view.pitch+(x*view.samples+sample)*view.bytes
+            def packed(values: collection.Map[BigInt,Int]): BigInt=(0 until view.bytes).foldLeft(BigInt(0))((v,b)=>v|(BigInt(values(address+b))<<(8*b)))
+            val actual=packed(memory);val wanted=packed(expected)
+            if(actual!=wanted)Some(s"($x,$y,$sample):${actual.toString(16)}/${wanted.toString(16)}")else None
+          }
+          println(s"NATIVE_SIZE_RECOVERY_IMAGE view=$index kind=${view.kind} color=${view.color} mismatches=${bad.flatten.mkString(",")}")
+        }
+      }
       for((a,v)<-expected)assert(memory(a)==v,s"native shader image byte${a.toString(16)} observed=${memory(a)} expected=$v mode=$mode")
       assert(reads.exists(a=>a>=pa(0x420000+sourceOffset) && a<pa(0x422000+sourceOffset)))
       assert(!reads.exists(a=>a>=0x400000 && a<0x800000),"shader and descriptor VAs must be translated before physical issue")
@@ -557,10 +577,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         val kind=if(format>=54)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind
         val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
         val mapped=if(swizzle.isEmpty)decoded else swizzle.map(options)
-        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,sourceBias=0x90000)
+        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,freshTextureSources=true)
         // Thirty-four frames must not advance source attributes into native
         // scratch at0x430000..0x443000 or the growing shader code; all selected frame input ranges stay disjoint.
-        assert(0x420000+image.sourceOffset>=0x4b0000 && 0x422000+image.sourceOffset<=0x500000)
+        assert(0x420000+image.sourceOffset>=0x640000 && 0x422000+image.sourceOffset<=0x700000)
         def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
         texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
@@ -642,10 +662,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         val kind=if(format>=54)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind
         val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
         val mapped=if(swizzle.isEmpty)decoded else swizzle.map(options)
-        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,sourceBias=0x190000)
-        // Keep up to80 generations outside descriptor/data, private scratch
-        // and shader code allocations. Each frame uses fresh code addresses.
-        assert(0x420000+image.sourceOffset>=0x5b0000 && 0x422000+image.sourceOffset<=0x600000)
+        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,freshTextureSources=true)
+        // Keep disjoint source page pairs outside texture/packet data,private
+        // scratch and shader code. Each frame also has fresh code addresses.
+        assert(0x420000+image.sourceOffset>=0x640000 && 0x422000+image.sourceOffset<=0x700000)
         def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
         texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
@@ -736,10 +756,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         val kind=if(format>=54)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind
         val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
         val mapped=if(swizzle.isEmpty)decoded else swizzle.map(options)
-        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,sourceBias=0x190000)
-        // Keep up to80 generations outside descriptor/data, private scratch
-        // and shader code allocations. Each frame uses fresh code addresses.
-        assert(0x420000+image.sourceOffset>=0x5b0000 && 0x422000+image.sourceOffset<=0x600000)
+        image.sampledRed=Some(mapped(c));image.sampledGreen=Some(mapped(vc));image.shaderDraws(mode,generation=frames+1,freshTextureSources=true)
+        // Complete source page pairs are disjoint and avoid texture/packet,
+        // private scratch and shader code allocations.
+        assert(0x420000+image.sourceOffset>=0x640000 && 0x422000+image.sourceOffset<=0x700000)
         def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
         texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
@@ -804,5 +824,112 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       info(s"NATIVE_INTEGER_FETCH_AXI local=$local CUs=2 frames=$frames submittedDescriptors=${frames*3} directedBaseOnly=$baseLevelsOnly imageBaseLevels0And1And2=true formats64=true imageSwizzle=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true targets4=true signedOffsetBeforeBounds=true noOperandPacketReads=true realSv32=true deniedSamplerNoPhysicalRead=true taskResetRejectsStaleTuple=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
     }
   }
+
+  for(local<-Seq(true,false))
+  it should s"execute native texture size queries through native AXI frames and translated descriptor ownership local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      initialize(d);val image=new Image(d);val texData=NativeTextureFetchTestData
+      assert((axiRead(d,0x20c)&512)==512)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
+      val id=Seq[BigInt](7,8,9);val vo=BigInt(0x500000);val fo=BigInt(0x600000)
+      val rgba=Vector(0.125,0.25,0.5,1.0).map(Fp32ViewportReference.fp)
+      val raw=rgba.zipWithIndex.map{case(v,c)=>v<<(32*c)}.reduce(_|_)
+      var frames=0;var executed=0
+      val reproduceSourceAlias=java.lang.Boolean.getBoolean("opengpu.textureSize.sourceAlias")
+      val sourceLeases=mutable.ArrayBuffer.empty[(Int,Int)]
+      def sample(c: Int,unit: Int,scalar: Boolean,target: Int,mode: Int,missing: Boolean,offset: Int): Seq[BigInt]={
+        val constants=Seq(addi(13,0,unit),addi(14,0,mode))
+        constants++(if(scalar)Seq((BigInt(6)<<25)|(BigInt(14)<<20)|(BigInt(13)<<15)|(BigInt(c)<<12)|(BigInt(15)<<7)|0x0b,
+          broadcast|(BigInt(15)<<15)|(BigInt(7)<<7)|0x57)
+        else Seq(broadcast|(BigInt(13)<<15)|(BigInt(5)<<7)|0x57,broadcast|(BigInt(14)<<15)|(BigInt(6)<<7)|0x57,
+          (BigInt(6)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(c)<<12)|(BigInt(7)<<7)|0x2b))++Seq(BigInt("4a7193d7",16)) // vfcvt.f.x.v v7,v7: float export of the integer size
+      }
+      def run(c: Int,bad: Boolean=false,format: Int=35,target: Int=0,modeControl: Int=0,missing: Boolean=false,integerOffset: Int=0,baseLevel: Int=0,denySampler: Boolean=false): Unit={
+        val selected=sys.props.get("opengpu.textureSize.frames").map(_.split(",").map(_.toInt).toSet)
+        if(selected.exists(!_.contains(frames))){frames+=1;return}
+        executed+=1
+        val mode=if(c%2==0)0 else 2;val vc=(c+1)%3
+        val dims=Vector(if(format>=54)7 else 2,if(format>=54){if(target==2)7 else 5}else 2,
+          if(target==1)3 else if(target==3)2 else 0)
+        val values=if(modeControl==1)dims.zipWithIndex.map{case(v,n)=>if(n<2)math.max(1,v>>1)else v}else dims
+        val swizzle=if(format>=36)Seq(3,2,5,4)else Seq.empty[Int]
+        image.sampledRed=Some(Fp32ViewportReference.fp(values(c)));image.sampledGreen=Some(Fp32ViewportReference.fp(values(vc)));image.shaderDraws(mode,generation=frames+1,sourceBias=0x190000,freshTextureSources= !reproduceSourceAlias)
+        // Keep disjoint source page pairs outside texture/packet data,private
+        // scratch and shader code. Each frame also has fresh code addresses.
+        val sourceBegin=0x420000+image.sourceOffset;val sourceEnd=0x422000+image.sourceOffset
+        if(!reproduceSourceAlias){
+          assert(sourceBegin>=0x640000 && sourceEnd<=0x700000)
+          assert(sourceLeases.forall{case(begin,end)=>sourceEnd<=begin || sourceBegin>=end},"texture frame source allocations overlap")
+          sourceLeases+=((sourceBegin,sourceEnd))
+        }
+        def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
+        def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
+        texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
+        texData.install(put,byte,31,format,target,0,id,raw,vo,swizzle);texData.install(put,byte,17,format,target,1,id,raw,fo,swizzle)
+        if(baseLevel>0)for(base<-Seq(vo,fo);unit<-Seq(if(base==vo)31 else 17)){
+          val from=base+texData.levels+unit*128;val to=from+baseLevel*128
+          val words=(0 until 32).map(w=>(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory.getOrElse(image.pa(from+w*4+b),0))<<(8*b))))
+          words.zipWithIndex.foreach{case(v,w)=>put(to+w*4,v)};put(to+6*4,baseLevel);put(to+8*4,baseLevel)
+          put(base+texData.images+unit*128+9*4,baseLevel);put(base+texData.images+unit*128+10*4,baseLevel+(if(modeControl==1)1 else 0))
+          put(base+texData.images+unit*128+11*4,2<<baseLevel);put(base+texData.images+unit*128+12*4,2<<baseLevel)
+          put(base+texData.images+unit*128+20*4,from+(baseLevel+1+(if(modeControl==1)1 else 0))*128)
+          if(modeControl==1){val next=to+128
+            words.zipWithIndex.foreach{case(v,w)=>put(next+w*4,v)};put(next+6*4,baseLevel+1);put(next+8*4,baseLevel+1)
+            put(next+12*4,words(12)+256);put(next+13*4,1);put(next+14*4,1)
+          }
+        }
+        val vp=0x700000+frames*0x2000;val fp=vp+0x1000
+        val vcode=vertexProgram.dropRight(1)++sample(vc,31,scalar=c%2==1,target=target,mode=modeControl,missing=false,offset=integerOffset)++Seq(addi(6,7,16*32),vm(6,7,true),BigInt("30500073",16))
+        val fcode=fragmentProgram().dropRight(1)++sample(c,17,scalar=c%2==0,target=target,mode=modeControl,missing=missing,offset=integerOffset)++
+          (0 until 4).flatMap(a=>Seq(addi(6,7,(10+a*4)*32),vm(6,7,true)))++Seq(BigInt("30500073",16))
+        vcode.zipWithIndex.foreach{case(w,n)=>put(vp+n*4,w)};fcode.zipWithIndex.foreach{case(w,n)=>put(fp+n*4,w)}
+        for(n<-0 until 3){val record=image.pa(0x412000+n*4096)
+          image.word(record+33*4,vp);image.word(record+516*4,fp);image.word(record+19*4,3)
+          image.word(record+608*4,1);image.word(record+609*4,vo+texData.root)
+          image.word(record+624*4,1);image.word(record+625*4,fo+texData.root)
+        }
+        if(bad || denySampler){
+          // A denied image page faults before a physical read. A denied sampler
+          // page must have no effect on this metadata-only operation.
+          val pt=BigInt(0x31000);image.word(0x30004,(pt>>12)<<10|1)
+          for(page<-0 until 1024)image.word(pt+page*4,((BigInt(0x800000+page*4096)>>12)<<10)|0xcf)
+          val denied=(fo+(if(bad)texData.images+17*128 else texData.samplers+17*64))>>12
+          image.word(pt+(denied&1023)*4,((image.pa(denied<<12)>>12)<<10)|0x49)
+        }
+        val reportFrame=true
+        val frameStart=System.nanoTime()
+        if(reportFrame)println(s"NATIVE_TEXTURE_SIZE_AXI_PROGRESS begin local=$local frame=$frames format=$format target=$target imageBase=$baseLevel offset=$integerOffset bad=$bad missing=$missing")
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit();withClue(s"format=$format frame=$frames component=$c mode=$mode local=$local "){image.run(if(bad || missing)3 else 0)}
+        if(reportFrame)println(s"NATIVE_TEXTURE_SIZE_AXI_PROGRESS complete local=$local frame=$frames wallMillis=${(System.nanoTime()-frameStart)/1000000} expectedStatus=${if(bad || missing)3 else 0}")
+        if(bad){val page=image.pa((fo+texData.images)& ~BigInt(4095));assert(!image.reads.exists(a=>a>=page && a<page+4096))}
+        else if(!missing){
+          withClue(s"query image local=$local frame=$frames component=$c format=$format target=$target base=$baseLevel lod=$modeControl denySampler=$denySampler "){image.verifyDraws(mode)}
+          for(base<-Seq(vo,fo);address<-Seq(texData.root,texData.bindings,texData.images,texData.levels+(if(base==vo)31 else 17)*128+(baseLevel+math.max(0,modeControl))*128)){
+            val page=image.pa((base+address)& ~BigInt(4095));assert(image.reads.exists(a=>a>=page && a<page+4096),s"native typed descriptor page not read: ${page.toString(16)}")
+          }
+        }
+        for(base<-Seq(vo,fo)){val page=image.pa(base+texData.packet)& ~BigInt(4095)
+          assert(!image.reads.exists(a=>a>=page && a<page+4096),"size query performed a GPU-memory packet read")
+          val samplerPage=image.pa(base+texData.samplers)& ~BigInt(4095)
+          assert(!image.reads.exists(a=>a>=samplerPage && a<samplerPage+4096),"size query read sampler state")
+          val dataPage=image.pa(base+0x20000+(if(base==vo)31 else 17)*4096)& ~BigInt(4095)
+          assert(!image.reads.exists(a=>a>=dataPage && a<dataPage+4096),"size query read texel data")}
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop();frames+=1
+      }
+      for(format<-0 until 64)run(format%3,format=format)
+      for(target<-1 to 3)run(target%3,target=target)
+      for(base<-Seq(1,2))run(base%3,baseLevel=base)
+      run(0,baseLevel=1,modeControl=1)
+      run(0,bad=true);run(1,modeControl= -1,missing=true);run(2,denySampler=true);run(0)
+      assert(frames==74)
+      if(sys.props.contains("opengpu.textureSize.frames"))info(s"NATIVE_TEXTURE_SIZE_AXI_DIRECTED local=$local originalFrames=${sys.props("opengpu.textureSize.frames")} executed=$executed exactImages=true")
+      else info(s"NATIVE_TEXTURE_SIZE_AXI local=$local CUs=2 frames=$frames submittedDescriptors=${frames*3} formats64=true imageSwizzleIgnored=true bothStages=true scalarVector=true components3=true targets4=true imageBases0And1And2=true positiveRelativeLOD=true noParameterOrTexelOrSamplerReads=true realSv32=true deniedImageNoPhysicalRead=true deniedSamplerHealthy=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
+    }
+  }
+
 
 }

@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "two_size_query_AXI_cases_running_on_frozen804_inputs",
+  "source": {
+    "commit": "326ec183e9b63ffe1d863fab516d1ca7f7db609e",
+    "source_files": 804,
+    "manifest_sha256": "b76407cad0514c4b5d8f4bcf8dfea0a1b37bdbc48401ea0f9c01882a7c4fca32",
+    "runner_pid": 81444,
+    "started_utc": "2026-10-20T19:05:58.577840+00:00",
+    "planned_tests": 2,
+    "planned_frames_per_test": 74,
+    "archive_sha256": "47f4a1d6bfb5f7ad6ee0e7289a7b9c42fb4911fb32b958b90fb948950248b0d5",
+    "git_archive_exact": true
+  },
+  "session": 58089,
+  "planned_tests": 2,
+  "planned_frames_per_mode": 74,
+  "created_descriptors_per_mode": 222,
+  "completed_draw_count_claimed": false,
+  "only_input_changed_from_full_query_qualification": "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+  "all_production_driver_ABI_component_and_shared_CU_test_inputs_exact": true,
+  "pending_functional_session": 16201,
+  "synthesis": {
+    "standalone_owner": "terminal_collected_pass_48079",
+    "vertex_session": 92998,
+    "fragment_session": 44010
+  },
+  "scope": [
+    "Both real shader stages with scalar/vector function6 instructions",
+    "Integer dimensions converted by existing vfcvt.f.x.v for ordinary FP32 attachment exports",
+    "All64 formats,three dimension selectors,four targets,nonzero bases and positive base-relative LOD",
+    "No parameter instructions or GPU operand-packet reads",
+    "No sampler or texel reads; denied sampler page must remain healthy",
+    "Denied image translation faults before a physical descriptor read",
+    "Exact MRT/depth/resolve guards,held completion pins VM,healthy reuse"
+  ],
+  "remaining": [
+    "Collect both actual tests; planned frames are not passed frames",
+    "Verify source and artifact identity before result carry or merge",
+    "Full hardware H0-H8 goal remains open"
+  ],
+  "PPA": "Synthesis only"
+}
