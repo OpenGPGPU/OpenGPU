@@ -71,3 +71,10 @@ an offset, full-width rejected levels/faces, task/warp isolation, late-lane
 faults, zero masks, held completion, cancellation and healthy reuse. These checks
 pass at the component level; full shared-CU/AXI qualification, new whole-endpoint PPA,
 queries, texture banking/coherence and the remaining H0-H8 work are still open.
+
+The [corrected whole-endpoint synthesis](performance/mobile-native-integer-relative-synthesis-2026-10-21.json)
+passes at1000ps with core/I/O setup+101.893/+183.062ps for vertex and
++97.808/+171.998ps for fragment, at TC/SLVT,25% I/O, standard ABC and no
+retiming. This frozen source includes the base-relative LOD correction. Its
+production inputs match the separate corrected scratch-isolation integration
+source exactly; fresh CU/AXI qualification remains pending. PPA is synthesis only.
