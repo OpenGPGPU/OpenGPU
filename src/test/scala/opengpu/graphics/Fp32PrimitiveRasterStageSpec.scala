@@ -60,6 +60,19 @@ class Fp32PrimitiveRasterStageSpec extends AnyFlatSpec {
       info(s"PRIMITIVE_RASTER pointLineDraws=$draws modes=3 exactPointValues=true pointCoord=true shaderPointSize=true perspectiveLine=true lineTopologies=3 rawFlatNaN=true helpers=true facingAlwaysFront=true cullIgnored=true")
     }
   }
+  it should "interpolate visible line portions reached from extreme representable endpoints with full width weights" in {
+    simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d)
+      val minimum= -(BigInt(1)<<31);val middle=BigInt(640)
+      val pairs=Vector(Vector((minimum,middle),(BigInt(1024),middle)),
+        Vector((middle,minimum),(middle,BigInt(1024))))
+      for(coords<-pairs;reverse<-Seq(false,true);mode<-0 to 2){
+        val ordered=if(reverse)coords.reverse else coords
+        t.run(1,base.copy(coords=ordered :+ ((BigInt(0),BigInt(0)))),Settings(mode=mode))
+      }
+      info("PRIMITIVE_RASTER extremeLineEndpoints=true horizontalVertical=true bothDirections=true modes=3 exactCoveredAndHelperInputs=true fullWidthWeights=true sampleDepth=true")
+    }
+  }
+
   it should "derive point coordinates from unrounded window positions without losing exact large viewport origins" in {
     simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d)
       val cases=Vector((Vector.fill(3)((BigInt(341),BigInt(683))),Vector(1.3333333,2.6666667),(0,0)),
