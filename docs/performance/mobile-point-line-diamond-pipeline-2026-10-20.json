@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "10_component_controls_pass_integration_cycles_synthesis_pending",
+  "status": "20_fresh_controls_pass_serial_diamond_cost_and_setup_miss_retained",
   "base_commit": "dce349d",
   "source_files": 674,
   "source_manifest_sha256": "c9003a86c8531ccfb738bde76fb959212ff653f6558b86b194645ccfcfc41948",
@@ -709,12 +709,27 @@
     "scope": "Initial Scala conditional-assignment syntax error;no hardware test ran. Corrected before this qualification."
   },
   "pending": [
-    "Fresh primitive/shared-CU/production AXI integration.",
-    "15 matched cycle fixtures.",
-    "Fresh standalone synthesis at TC/SLVT,1000ps,25 percent I/O,no retiming."
+    "Reduce aliased diamond cycle cost with paired slab formulation.",
+    "Cut remaining center-weight safety path and rerun synthesis;full H0-H8 closure remains open."
   ],
   "limits": [
     "Additional basic-line cycles require measurement;no throughput or clock improvement is claimed.",
     "Full H0-H8 hardware objective remains open."
-  ]
+  ],
+  "integration": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "test_counts": [
+      10,
+      6,
+      2,
+      2
+    ],
+    "total_checks": 20,
+    "log": {
+      "path": ".artifacts/mobile-point-line-diamond-integration-v2.log",
+      "sha256": "13d43af61db1a9ec851ed9b9fc53fca5c31fc8448f4f651ddf992d038195ef7f"
+    },
+    "scope": "Targeted comparator/coverage,primitive interpolation,actual shared-CU and native AXI controls;not a full hardware regression."
+  }
 }

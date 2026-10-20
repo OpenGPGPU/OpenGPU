@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "serial_diamond_full_mapping_pass_setup_fail",
+  "source_files": 674,
+  "source_manifest_sha256": "c9003a86c8531ccfb738bde76fb959212ff653f6558b86b194645ccfcfc41948",
+  "checks": 20,
+  "terminal": {
+    "returncode": 2,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 219.62947366689332,
+    "finished_utc": "2026-10-20T08:04:48.255136+00:00"
+  },
+  "reported_setup_slacks_ps": [
+    -709.573,
+    634.567
+  ],
+  "mapped_cells": 152263,
+  "core_path": {
+    "start": "request_y0[5]$_DFFE_PP_",
+    "end": "repeat_0[3]$_SDFFE_PP0P_"
+  },
+  "path_inference": "The request-to-repeat path is inferred from the RTL to pass through startLane center-weight arithmetic and its safe predicate;later paired source preserves this body before a dedicated weight cut.",
+  "constraints": {
+    "scope": "Standalone synthesis only",
+    "period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "retiming": false
+  },
+  "artifacts": {
+    "generated/qualification/ppa/mobile-point-line-diamond-2026-10-20-v2/result.json": "2ea6f282f9f7ad9e627ee11513ce0d98a87d1be3366bd7cb831e1be97b45b577",
+    "generated/qualification/ppa/mobile-point-line-diamond-2026-10-20-v2/qualification.json": "3638409fdbb0d8d89cf0b68812b4cabcfd634373f7c242f569902b4a06ace288",
+    "generated/qualification/ppa/mobile-point-line-diamond-2026-10-20-v2/manifest.json": "af28c0fa1f95628f1d7079d5245f0200c9c20596c7a0388a5389a7b4bd5c52d2",
+    "generated/qualification/ppa/mobile-point-line-diamond-2026-10-20-v2/flow/synthesis_sta.log": "d958cda8ea92f3cdcfc29431ee37f95946575d2d3ed755a8a5b90409e7c4bee2",
+    ".artifacts/mobile-point-line-diamond-synthesis-v2-inputs.json": "1ff4d2a3faf0c2fec01734555c175052221a13876c85e1e9814e5c9eaa898faa"
+  },
+  "limits": [
+    "No positive core setup,route,power,native clock or throughput qualification.",
+    "The serial interval sequence increases aliased-line cycles substantially and remains isolated."
+  ]
+}

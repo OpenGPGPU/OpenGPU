@@ -6121,3 +6121,17 @@ frozen674-file source,including4871 full-width oracle comparisons,768 symbolic
 ties,696 bubbles and580 cancellation/reset cuts. Default RTL emission and CI
 selection pass. Fresh integration,cycle costs and standalone synthesis remain
 pending;no positive timing,throughput or full H0-H8 result is claimed.
+
+
+## Retained serial diamond qualification and cost (2026-10-20)
+
+All20 targeted controls pass on the unchanged674-file serial-diamond source,
+including actual shared-CU and production AXI point/line image checks in both
+payload modes. The [standalone screen](performance/mobile-point-line-diamond-serial-synthesis-before-2026-10-20.json)
+passes full mapping with152263 cells but misses setup by709.573ps;I/O is+634.567ps.
+The remaining endpoint path reaches repeat control through the inferred lane
+weight safety logic. All [15 exact cycle fixtures](performance/mobile-point-line-diamond-serial-cycles-before-2026-10-20.json)
+pass, but unit-width basic line cycles grow489 to1257 and maximum-width basic
+line10896 to42864. This serial prototype stays isolated while paired interval
+tests reduce the work and the measured weight path is cut. No positive clock,
+throughput or full H0-H8 completion is claimed.
