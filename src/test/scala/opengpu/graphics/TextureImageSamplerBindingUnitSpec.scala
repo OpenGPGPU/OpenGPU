@@ -76,12 +76,14 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
         for((w,n)<-data.zipWithIndex)memory.putWord(levels+level*128+n*4,w)}
     }
     def query(tag: BigInt=0x80000001L,level: BigInt=0,kind: Int=0,sbase: BigInt=0x3000,slimit: BigInt=0x4000,
-      shandle: BigInt=0,ibase: BigInt=0x1000,ilimit: BigInt=0x1800,ihandle: BigInt=0,context: Int=7,sversion: Int=1,selectBase: Boolean=false): Unit={
+      shandle: BigInt=0,ibase: BigInt=0x1000,ilimit: BigInt=0x1800,ihandle: BigInt=0,context: Int=7,sversion: Int=1,selectBase: Boolean=false,
+      sampling: Boolean=false,shadow: Boolean=false): Unit={
       val q=d.io.in.bits;zero(q);identity(q.images.identity);identity(q.samplers.identity);q.samplers.identity.context.poke(context.U)
       q.images.version.poke(1.U);q.images.base.poke(ibase.U);q.images.limit.poke(ilimit.U)
       q.samplers.version.poke(sversion.U);q.samplers.base.poke(sbase.U);q.samplers.limit.poke(slimit.U)
       q.imageHandle.poke(ihandle.U);q.samplerHandle.poke(shandle.U);q.level.poke(level.U);q.tag.poke(tag.U);q.expectedType.poke(kind.U)
       q.selectBaseLevel.poke(selectBase.B)
+      q.sampling.poke(sampling.B);q.shadow.poke(shadow.B)
       d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q);currentTag=tag
     }
     def check(status: Int=0,source: Int=0,fault: Option[BigInt]=None): Unit={
@@ -94,6 +96,21 @@ class TextureImageSamplerBindingUnitSpec extends AnyFlatSpec {
     }
     def identityCheck(x: GraphicsWorkIdentity): Unit={x.context.expect(7.U);x.pass.expect(11.U);x.generation.expect(13.U)}
     def pop(): Unit={d.io.out.ready.poke(true.B);tick();d.io.out.ready.poke(false.B);d.io.busy.expect(false.B)}
+  }
+  it should "admit general sampling comparison policy without weakening explicit fetch admission" in {
+    simulate(new ImageSamplerHarness()){d=>val t=new Driver(d);var cases=0
+      for(format<-0 until 64;min<-0 to 5;mag<-0 to 1;compare<-0 to 1;shadow<-Seq(false,true)){
+        val info=if(format>=54)ImageFormatReference.Format(CompressedImageReference.format(format).bytes,0,false,true)
+          else ImageFormatReference.format(ImageFormatReference.names(format))
+        val nearest=mag==0 && (min==0 || min==2)
+        val allowed=if(shadow)info.depth && compare==1 else (!info.depth || compare==0) && (info.filterable || nearest)
+        t.image(format);t.sampler(min=min,mag=mag,compare=compare);t.invalidate()
+        t.query(kind=info.kind,selectBase=true,sampling=true,shadow=shadow);t.check(if(allowed)0 else 6,if(allowed)0 else 3);t.pop();cases+=1
+      }
+      val before=t.memory.seen.size;t.query(shadow=true);t.check(1,3);t.pop();assert(t.memory.seen.size==before)
+      t.image();t.sampler(compare=1);t.invalidate();t.query();t.check(6,3);t.pop()
+      info(s"SAMPLING_COMPARISON_POLICY queries=$cases formats64=true filters6=true magFilters2=true compareAndShadowModes=true colorCompareIgnored=true depthShadowFilters=true nonshadowDepthNearestOnly=true legacyFetchComparisonRejected=true")
+    }
   }
   it should "admit a captured image base before LOD selection with sampler-derived completeness" in {
     simulate(new ImageSamplerHarness()){d=>val t=new Driver(d);var cases=0

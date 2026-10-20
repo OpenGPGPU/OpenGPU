@@ -104,7 +104,7 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
     val memory=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,d.io.memoryRequest.valid,d.io.memoryRequest.ready,
       d.io.memoryResponse.valid,d.io.memoryResponse.ready)
-    val replies=mutable.ArrayBuffer.empty[(BigInt,BigInt)];var lastTag=BigInt(0);var lastLevel=BigInt(0);var lastHandle=BigInt(0);var lastContext=7
+    val replies=mutable.ArrayBuffer.empty[(BigInt,BigInt)];var lastTag=BigInt(0);var lastLevel=BigInt(0);var lastHandle=BigInt(0);var lastContext=7;var lastChain=true
     memory.beforeRequest=r=>{assert(!r.write && r.tag<=8)
       if(r.tag!=8){assert(r.address%64==0 && r.mask==(BigInt(1)<<64)-1)
         d.io.memoryRequest.bits.sizeLog2.expect(6.U);d.io.memoryRequest.bits.cachePolicy.expect(CachePolicy.uncached)}}
@@ -134,7 +134,7 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
       q.image.selectBaseLevel.poke(selectBase.B)
       q.x.poke(x.U);q.y.poke(y.U);q.z.poke(z.U);q.layer.poke(layer.U);q.face.poke(face.U)
       d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q)
-      lastTag=tag;lastLevel=level;lastHandle=handle;lastContext=context
+      lastTag=tag;lastLevel=level;lastHandle=handle;lastContext=context;lastChain=chain
     }
     def check(status: Int=0,i: Image=image(),raw: BigInt=0,address: BigInt=0,stage: Int=0,fault: Option[BigInt]=None,swizzle: Seq[Int]=Seq.empty,resolvedLevel: Option[Int]=None): Unit={
       until(d.io.out.valid.peek().litToBoolean);val o=d.io.out.bits;val b=o.image
@@ -148,13 +148,23 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
         b.selected.table.base.expect(i.levelsBase.U);b.selected.table.limit.expect(i.levelsLimit.U);b.selected.table.version.expect(1.U)
         b.selected.handle.expect((i.first+returnedLevel).U);b.selected.level.expect(returnedLevel.U);b.view.base.expect(v.base.U)
         b.view.texWidth.expect(v.w.U);b.view.texHeight.expect(v.h.U);b.view.texDepth.expect(v.d.U);b.view.layers.expect(v.layers.U)
+        val admitted=if(lastChain)(i.baseLevel to i.last).toSet else Set(returnedLevel.toInt)
+        b.levelMask.expect(admitted.foldLeft(BigInt(0))((mask,n)=>mask.setBit(n)).U)
+        for(n<-0 until 16){val level=b.levels(n)
+          if(!admitted(n))assert(values(level).values.forall(_==0),s"unchecked mip$n leaked an old view")
+          else{val expected=i.views(n);level.level.expect(n.U);level.target.expect(i.target.U)
+            level.allocationBase.expect(i.lo.U);level.allocationLimit.expect(i.hi.U);level.base.expect(expected.base.U)
+            level.texWidth.expect(expected.w.U);level.texHeight.expect(expected.h.U);level.texDepth.expect(expected.d.U);level.layers.expect(expected.layers.U)
+            level.rowPitch.expect(expected.row.U);level.slicePitch.expect(expected.slice.U);level.layerPitch.expect(expected.layer.U)
+            level.blockBytes.expect(expected.bytes.U);level.block4x4.expect(false.B)}
+        }
         if(fetch){val s=o.sample.sample;s.status.expect(0.U);s.viewValid.expect(true.B);s.address.expect(address.U);s.bytes.expect(v.bytes.U);s.raw.expect(raw.U)
           s.level.expect((returnedLevel&15).U)
           val name=ImageFormatReference.names(i.format);val decoded=ImageFormatReference.decode(name,raw)
           val options=decoded++Seq(BigInt(0),if(ImageFormatReference.format(name).kind==0)BigInt(0x3f800000L)else BigInt(1))
           o.sample.rgba.zip(if(swizzle.isEmpty)decoded else swizzle.map(options)).foreach{case(a,b)=>a.expect(b.U)}
           o.sample.colorType.expect(ImageFormatReference.format(name).kind.U)}
-      }else{b.format.expect(0.U);assert(values(b.view).values.forall(_==0));assert(values(b.selected).values.forall(_==0));assert(values(b.swizzle).values.forall(_==0))
+      }else{b.format.expect(0.U);b.levelMask.expect(0.U);assert(values(b.levels).values.forall(_==0));assert(values(b.view).values.forall(_==0));assert(values(b.selected).values.forall(_==0));assert(values(b.swizzle).values.forall(_==0))
         if(fetch){o.sample.sample.status.expect(status.U);o.sample.sample.viewValid.expect(false.B);o.sample.sample.address.expect(0.U);o.sample.sample.raw.expect(0.U)
           o.sample.rgba.foreach(_.expect(0.U));o.sample.colorType.expect(0.U)}}
       assert(memory.pending.isEmpty && memory.reply.isEmpty);d.io.busy.expect(true.B);d.io.in.ready.expect(false.B)
