@@ -5325,3 +5325,20 @@ center/sample-depth application before clamping are not integrated. Shader
 depth override must bypass the offset. Actual-CU/native image, numeric-boundary,
 fault/reuse, cycle and synthesis gates remain required. This prerequisite does
 not close G04, H6 or any H0–H8 gate; PPA remains synthesis only.
+
+## Completed pre-polygon centroid composition (2026-10-20)
+
+The [full merged-source regression](performance/mobile-centroid-composed-2026-10-20.json)
+passes 102/102 checks on 635 unchanged source/ABI files, with four ABI checks,
+replay emission and default four-CU host emission. It covers all 22 unfiltered
+GNC1/GNC2 faults, converted inputs, native/prepared/binned centroid gradients,
+point/line coverage, payload/VM lifetime, cached publication and reset/reuse.
+The host retains 371 active RTL files, four CUs, one payload pool, two replay
+engines and 2,689,024 SRAM bytes. These are structural and functional checks.
+
+Three of the 102 checks exercise an unconnected polygon arithmetic candidate.
+It is absent from both production hierarchies and later fails a flat-slope
+semantic control, so it must remain outside the main promotion until corrected.
+The other 99 production-path checks qualify this pre-polygon snapshot only.
+Later polygon/discovery/precision corrections, full resources/capacities,
+representative rates, synthesis and H0–H8 remain open.
