@@ -38,7 +38,7 @@ class PolygonDepthOffsetRasterSpec extends AnyFlatSpec {
         a.x.expect(s.x.S);a.y.expect(s.y.S);a.coverageMask.expect(s.mask.U);a.covered.expect((s.mask!=0).B)
         val raw=linear(current,s);a.windowDepth.expect(biased(raw).U);a.sampleDepthValid.expect(true.B)
         if(bias.sig!=0 && biased(raw)!=clamp(pack(calc(decode(clamp(pack(raw))),bias,0))))unclampedWitness+=1
-        for(c<-0 until 8)a.varyings(c/4)(c%4).expect(0.U)
+        for(c<-0 until 8)a.varyings(c/4)(c%4).expect(q.lanes(i).values(c).U)
         for(sample<-0 until 4){val want=if((s.mask&(1<<sample))==0)BigInt(0)
           else if(mode==0)biased(raw)
           else if(kind==2)biased(linear(current,CentroidRasterReference.sample(current,kind,s.copy(mask=1<<sample),mode,g)))
