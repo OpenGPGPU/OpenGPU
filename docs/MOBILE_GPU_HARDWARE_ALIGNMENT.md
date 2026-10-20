@@ -6356,3 +6356,13 @@ the standard standalone synthesis setup screen recorded above. Earlier pending
 entries describe historical checkpoints. The prior host synthesis run timed
 out before mapping and remains a separate retained result. General native
 image/sampler binding, typed shader transport and remaining H0-H8 work are open.
+
+
+## Local main diamond integration (2026-10-20)
+
+The [main integration audit](performance/mobile-point-line-diamond-main-2026-10-20.json)
+verifies all 674 qualified source files in both the merge commit archive and
+working checkout, plus the exact PPA qualifier and cycle probe scripts. The
+23 fresh targeted controls and positive standalone setup result therefore
+apply to this integrated source. Both pre-existing local edits are preserved;
+no remote push was performed. General hardware development remains in progress.

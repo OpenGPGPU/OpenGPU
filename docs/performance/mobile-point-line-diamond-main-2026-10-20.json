@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "qualified_source_integrated_locally",
+  "branch": "main",
+  "merge_commit": "006aeef87ecd428a57b356e3d086b5d8d307ecd1",
+  "previous_head": "dce349ddc8b8c34463d11f8d66fa6e9a7d374b45",
+  "qualified_branch_head": "ebc89a4384830ee0e4e8984209e46b0ca2e906cb",
+  "source_files": 674,
+  "source_manifest_sha256": "987d2682521218b808c39e2aec7340c205fb206ba548190bff6107b4c6743e81",
+  "source_record": "docs/performance/mobile-point-line-bounded-2026-10-20.json",
+  "git_archive_and_working_source_match": true,
+  "extra_script_sha256": {
+    "scripts/qualify_ppa.py": "38fe4b1cad315d3e8c137536ebe35175c54aced270334305565cfa63238f325c",
+    "scripts/benchmark_point_line_cycles.py": "c1f524a807f0b48d06c1a1e1776b84017bc5b3a94d3d34c04e820774b7be0848",
+    "scripts/point_line_cycles.cpp": "558aef327d6e7329f1b8641491e6dfdc78b13a2e24a2a4a70fac5cf857f7dcc1"
+  },
+  "fresh_targeted_checks": 23,
+  "cycle_fixture_groups": [
+    15,
+    15
+  ],
+  "synthesis_setup_slacks_ps": [
+    25.772,
+    619.101
+  ],
+  "mapped_cells": 136328,
+  "user_edits_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": 420
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": 420
+    }
+  },
+  "index_empty": true,
+  "exactly_one_coauthor_per_new_commit": true,
+  "pushed": false,
+  "limits": [
+    "Standalone synthesis setup only; whole GPU timing,power,route and H0-H8 remain open.",
+    "Previous206-control source identity does not carry through the changed raster; current23 are fresh targeted checks."
+  ]
+}
