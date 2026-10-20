@@ -18,7 +18,7 @@ Version 0 preserves unsigned Q16.16 and the legacy Boolean clamp input on both
 axes. U/V/signed extension words must be zero. Version 1 selects independent
 repeat (0), clamp-to-edge (1) or mirrored-repeat (2) for each axis, and unsigned
 Q16.16 or signed S16.16 coordinates. The legacy clamp word must be zero for
-version 1. Unknown versions, reserved modes and noncanonical padding are rejected
+version 1. Unknown versions, reserved modes, unsupported explicit formats and noncanonical padding are rejected
 before a native child draw/state offer. Existing offsets, field widths, headers,
 record sizes and legacy zero-filled records retain their encodings. Older
 hardware rejects nonzero extension words as reserved; software must discover

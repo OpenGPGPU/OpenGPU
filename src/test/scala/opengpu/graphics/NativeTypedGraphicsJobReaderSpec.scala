@@ -218,13 +218,13 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
       for(prefix<-Seq("vertex.sampler.","fragment.sampler.");bad<-Seq(
         Map("policyVersion"->2),Map("wrapU"->1),Map("signedCoordinates"->1),
         Map("policyVersion"->1,"wrapU"->3),Map("policyVersion"->1,"wrapV"->3),
-        Map("policyVersion"->1,"clamp"->1),Map("policyVersion"->1,"wrapU"->4))){
+        Map("policyVersion"->1,"clamp"->1),Map("policyVersion"->1,"wrapU"->4),Map("policyVersion"->1,"format"->5))){
         t.prepare(1);t.drawValues++=bad.map{case(k,v)=>(prefix+k)->BigInt(v)}
         t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues);t.submit();t.complete(1)
         assert(t.acceptedDraws==0)
       }
       t.prepare(1);t.submit();t.complete(0,1)
-      info("NATIVE_TEXTURE_POLICY_READER typed=true extensionWords56And552=true immutableOffer=true invalidPolicies=14 noInvalidChild=true legacyReuse=true")
+      info("NATIVE_TEXTURE_POLICY_READER typed=true extensionWords56And552=true immutableOffer=true invalidPolicies=16 noInvalidChild=true legacyReuse=true")
     }
   }
 }

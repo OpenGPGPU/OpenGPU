@@ -153,12 +153,12 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
       t.result(0);t.install();t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check(values);t.result(0,hit=true)
       for(bad<-Seq(Map("policyVersion"->2),Map("wrapU"->1),Map("signedCoordinates"->1),
         Map("policyVersion"->1,"wrapU"->3),Map("policyVersion"->1,"wrapV"->3),
-        Map("policyVersion"->1,"clamp"->1),Map("policyVersion"->1,"wrapU"->4))){
+        Map("policyVersion"->1,"clamp"->1),Map("policyVersion"->1,"wrapU"->4),Map("policyVersion"->1,"format"->5))){
         t.invalidate();t.install(values=t.contents++bad.map{case(k,v)=>(prefix+k)->BigInt(v)})
-        t.lookup();t.result(1)
+        t.lookup();t.result(if(bad.get("wrapU").contains(4))7 else 1)
       }
       t.invalidate();t.install();t.lookup();t.result(0)
-      info("NATIVE_TEXTURE_POLICY_STATE extensionWords120to123=true heldResult=true cachedSnapshot=true invalidPolicies=7 noInvalidState=true legacyReuse=true")
+      info("NATIVE_TEXTURE_POLICY_STATE extensionWords120to123=true heldResult=true cachedSnapshot=true invalidPolicies=8 noInvalidState=true legacyReuse=true")
     }
   }
 }

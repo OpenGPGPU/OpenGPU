@@ -22,7 +22,7 @@ class VertexShaderSampler extends Bundle {
 object VertexShaderSampler {
   def legal(s: VertexShaderSampler): Bool =
     (s.policyVersion === 0.U && s.wrapU === 0.U && s.wrapV === 0.U && !s.signedCoordinates) ||
-      (s.policyVersion === 1.U && s.wrapU <= 2.U && s.wrapV <= 2.U && !s.clamp)
+      (s.policyVersion === 1.U && s.wrapU <= 2.U && s.wrapV <= 2.U && !s.clamp && s.format <= PixelFormat.bgrx.U)
   def coordinatePolicy(s: VertexShaderSampler): TextureCoordinatePolicy = {
     val p=Wire(new TextureCoordinatePolicy)
     p.wrapU:=Mux(s.policyVersion===1.U,s.wrapU,Mux(s.clamp,1.U,0.U))
