@@ -5992,3 +5992,23 @@ image address/level/fetch/binding components now on main. Exact native source/RT
 identity and component checks under reconciled ABI helpers are required before
 promotion. No completed composed PPA or full H0-H8/GLES/product result is claimed;
 PPA remains synthesis only.
+
+
+## Reconciled native controls and image components (2026-10-20)
+
+The [672-file reconciliation](performance/mobile-depth-texture-main-reconciled-2026-10-20.json)
+preserves all650 native files and22 newer image component files exactly. The
+completed206 native controls carry by exact source and byte-identical65-file
+replay/375-file default-four-CU host RTL. All29 image component/decoder controls
+run fresh and pass under the reconciled helpers, with seven ABI checks, combined
+C11 headers, CI selection and six full emissions. Generic codec helpers remain
+byte exact; image component RTL changes only source-location comments/spacing.
+This is206 carried checks plus29 fresh checks, not a fresh235-test run.
+
+The four positive standalone image synthesis screens carry by exact RTL logic
+with unchanged constraints; no native/composed clock or rate is established.
+All original failures remain retained. Main promotion requires exact committed
+and working672-file source verification and preservation of the pre-existing
+worktree changes. Native general image/sampler binding, typed shader transport,
+remaining sampler/formats, native point/line timing and the full H0-H8/GLES
+hardware objective remain open.
