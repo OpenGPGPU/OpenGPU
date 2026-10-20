@@ -47,7 +47,7 @@ extreme lines through interpolation/depth and full signed-64 overlap rejection.
 The corrected source now passes all 19 coverage, primitive, interpolation and
 sample-depth checks across four suites, including exact extreme-line helper
 inputs and covered-sample depths. Actual-CU image/native-host checks and the
-synthesis comparison remain pending; H0-H8 stay open.
+full-renderer synthesis comparison remain pending; H0-H8 stay open.
 
 Run a matched standalone cycle comparison with:
 
@@ -70,3 +70,19 @@ This comparison supplements the independent numeric controls; its baseline has
 the known extreme-coordinate bug, so equality on these ordinary inputs does
 not establish correctness outside this common domain. Combine measured cycles
 with matched synthesis timing before claiming elapsed-time improvement.
+
+The [matched standalone synthesis screen](performance/mobile-point-line-synthesis-2026-10-20.json)
+maps both components completely at ASAP7 with identical parameters and no
+SRAM. Core Fmax estimates change from 273.089 to 278.539 MHz (+2.00%); mapped
+area changes from 15,226.054380 to 15,649.997040 square micrometers (+2.78%).
+Both fail the 1 GHz setup target: baseline slack is -2,661.815 ps and candidate
+slack is -2,590.158 ps. Reported I/O setup slack remains positive.
+
+Dividing the 15 fixture cycle counts by those core Fmax estimates gives
+1.26–1.94% lower estimated primitive latency, including the added setup cycles.
+These are component estimates at a pre-layout clock; they exclude shaders,
+interpolation, memory, contention and frame work. Carry corrections and staging
+both contribute to the RTL difference, so this does not isolate retiming alone.
+The worst reported path now starts at the captured sample-mode field and ends
+at a coverage-mask bit. The prior full replay-engine estimate remains
+255.537 MHz until a new composed synthesis screen completes.
