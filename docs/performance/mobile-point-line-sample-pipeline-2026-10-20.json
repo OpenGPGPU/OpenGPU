@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "nine_component_checks_passed_integration_and_synthesis_pending",
+  "status": "19_component_and_integration_checks_passed_standalone_setup_failed",
   "baseline_commit": "f35ead5",
   "source_files": 672,
   "source_manifest_sha256": "8c6573565d6eab385f8793cefffb3b98f3bc252eab63e30b2a83a5d1c3871f49",
@@ -705,11 +705,24 @@
   "behavior": "Register sample coordinates, relative coordinates, four cross/dot products, full-width cross and dot result, split square partials, exact joined square, then distance comparison. Basic diamond and point branches preserve ordering and semantics. Additional cycles are explicit; serialized ownership remains.",
   "prior_full_replay_failure": "docs/performance/mobile-native-texture-policy-synthesis-before-2026-10-20.json",
   "pending": [
-    "Primitive interpolation, shared-CU vertex and production AXI point/line integration checks.",
-    "Standalone synthesis only at TC/SLVT,1000ps,25 percent I/O,no retiming; no positive result yet."
+    "Aliased diamond interval critical path and cycle cost require further implementation; no positive native/composed clock result."
   ],
   "limits": [
     "No whole-replay or host clock result and no raster throughput claim.",
     "Native general texture binding, typed shader transport and the full H0-H8 objective remain open."
-  ]
+  ],
+  "integration": {
+    "groups": [
+      6,
+      2,
+      2
+    ],
+    "all_passed": true,
+    "source_unchanged": true,
+    "log": {
+      "path": ".artifacts/mobile-point-line-sample-integration-v1.log",
+      "sha256": "3ceedb3afd5a92b70fae8d3736db9196a9b6c7c32f371bdac36aff8833023263"
+    },
+    "scope": "Six primitive interpolation controls;two shared-CU vertex point/line controls;two production AXI triangle/line/point controls, local payload true/false."
+  }
 }

@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "full_mapping_pass_setup_fail",
+  "source_manifest_sha256": "8c6573565d6eab385f8793cefffb3b98f3bc252eab63e30b2a83a5d1c3871f49",
+  "source_files": 672,
+  "checks": 19,
+  "terminal": {
+    "returncode": 2,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 264.3602372079622,
+    "finished_utc": "2026-10-20T07:30:52.031051+00:00"
+  },
+  "reported_setup_slacks_ps": [
+    -1152.545,
+    627.933
+  ],
+  "mapped_cells": 163293,
+  "core_path": {
+    "start": "request_x0[3]$_DFFE_PP_",
+    "end": "lower_denominator[15]$_DFFE_PP_"
+  },
+  "constraints": {
+    "scope": "Standalone synthesis only",
+    "period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "retiming": false
+  },
+  "artifacts": {
+    "generated/qualification/ppa/mobile-point-line-sample-2026-10-20-v1/result.json": "ff91add83162753dcf4f003a951e1913bddeec474692ab60a445fc6d0a1f07bc",
+    "generated/qualification/ppa/mobile-point-line-sample-2026-10-20-v1/qualification.json": "20fafd11df7581c64e0e5c9078434f8867455ab1c75508fc195b7283c4f1bbe3",
+    "generated/qualification/ppa/mobile-point-line-sample-2026-10-20-v1/manifest.json": "7ce07b48147cf23228c4ac0eb07929f3a5d50f17b3d757ba7e62a211b556b75f",
+    "generated/qualification/ppa/mobile-point-line-sample-2026-10-20-v1/flow/synthesis_sta.log": "e893c2430da5b3b4684eeb43c5c7423e30f45b03e17ee1769ccd7d23baee3d49",
+    ".artifacts/mobile-point-line-sample-synthesis-v1-inputs.json": "e090de479b41f3090db1dee72eb9269f062563c7ab9806fbf5e1c131d03ec98f"
+  },
+  "limits": [
+    "Not a matched comparison against the historical full replay screen.",
+    "All15 matched cycle fixtures preserve every quad field; additional cycles expose a serial sample pipeline cost and must be reduced.",
+    "No route,power,whole replay/host clock or throughput result."
+  ]
+}

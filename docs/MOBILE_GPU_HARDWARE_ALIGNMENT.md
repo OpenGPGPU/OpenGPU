@@ -6037,3 +6037,17 @@ cancellation/reset cuts with exact reuse. Default RTL emission passes and the
 remain exact; additional cycles do not establish a throughput improvement.
 Primitive/shared-CU/AXI integration and standalone synthesis remain pending.
 No native replay/host timing or broader H0-H8 completion is claimed.
+
+
+## Sample pipeline integration and retained timing miss (2026-10-20)
+
+All 19 targeted checks pass on the frozen 672-file sample-pipeline source:9
+coverage controls,6 primitive interpolation controls,2 shared-CU point/line
+controls and2 production AXI triangle/line/point controls. The [standalone screen](performance/mobile-point-line-sample-synthesis-before-2026-10-20.json)
+passes full mapping but fails setup at -1152.545 ps, with I/O +627.933 ps. The
+remaining path reaches the aliased diamond interval denominator from an endpoint.
+All [15 matched cycle fixtures](performance/mobile-point-line-sample-cycles-before-2026-10-20.json)
+retain every quad field, but serialized sample stages add substantial cycles
+(e.g. unit-width4x line683 to2219). This candidate stays isolated while sample
+stages are overlapped and point/basic-line overhead is removed. No positive
+native timing or throughput result is claimed; PPA remains synthesis only.
