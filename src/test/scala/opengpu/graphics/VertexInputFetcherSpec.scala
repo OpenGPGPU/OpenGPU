@@ -21,7 +21,7 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
   private case class Summary(status: Int,vertices: BigInt,restarts: BigInt,indexLines: BigInt,
     attributeLines: BigInt,hits: BigInt,address: BigInt,attributeValid: Boolean,attribute: Int)
   private def view(base: BigInt,bytes: Int=256): View=View(base,base+bytes,base,base+bytes)
-  private def size(format: Int): Int=if(format<=2)4 else if(format<=4)2 else 1
+  private def size(format: Int): Int=VertexInputReference.bytes(format)
 
   private class Driver(val d: VertexInputFetcher,val p: VertexInputFetchConfig) {
     case class Reply(address: BigInt,due: Int,fault: Boolean)
@@ -56,11 +56,10 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
           val binding=a.buffers(field.binding);val bytes=size(field.format)
           val element=if(binding.divisor==0)vertex else a.baseInstance+BigInt(instance)/binding.divisor
           Vector.tabulate(4) { c=>
-            if(c>=field.components)if(c==3){if(field.format==0)BigInt("3f800000",16)else BigInt(1)}else BigInt(0)
+            if(c>=field.components)if(c==3){if(field.format==0 || field.format>=7)BigInt("3f800000",16)else BigInt(1)}else BigInt(0)
             else {
-              val raw=get(binding.view.base+element*binding.stride+field.offset+c*bytes,bytes)
-              val signed=field.format==4 || field.format==6
-              (if(signed && raw.testBit(bytes*8-1))raw-(BigInt(1)<<(bytes*8))else raw)&u32
+              val raw=get(binding.view.base+element*binding.stride+field.offset+(if(VertexInputReference.packed(field.format))0 else c*bytes),bytes)
+              VertexInputReference.decode(raw,field.format,c)
             }
           }
         }
@@ -211,6 +210,51 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
     }
   }
 
+  it should "fetch version two converted layouts across lines with indexed instances packed words and typed defaults" in {
+    val p=VertexInputFetchConfig()
+    simulate(new VertexInputFetcher(p=p)) { d=>
+      val t=new Driver(d,p)
+      var records=0
+      for((formats,group)<-(7 to 24).grouped(16).zipWithIndex) {
+        val buffers=formats.indices.map { i=>
+          val base=BigInt(0x10000+group*0x20000+i*0x1000)
+          Buffer(View(base,base+512,base+60,base+512),16,if(i%2==0)0 else 2)
+        }.toVector
+        val fields=formats.zipWithIndex.map { case(f,i)=>Attribute(i,if(VertexInputReference.packed(f))4 else 1+i%4,f) }.toVector
+        for((f,i)<-formats.zipWithIndex;element<-0 until 6) {
+          if(VertexInputReference.packed(f))t.put(buffers(i).view.base+16*element,
+            (BigInt(0x80000000L)|(BigInt(1023-element)<<20)|(BigInt(511+element)<<10)|BigInt(element+1)))
+          else for(c<-0 until fields(i).components) {
+            val raw=if(f==7)BigInt(Vector(0x0001,0x3c00,0xbc00,0x7bff,0x7c00,0x7e00)((element+c)%6))
+              else ((BigInt(1)<<(8*size(f)-1))+element*37+c*73)&((BigInt(1)<<(8*size(f)))-1)
+            t.put(buffers(i).view.base+16*element+c*size(f),raw,size(f))
+          }
+        }
+        val indices=View(0x90000,0x90100,0x9003e,0x90100)
+        Vector(2,0,3).zipWithIndex.foreach{case(n,i)=>t.put(indices.base+2*i,n,2)}
+        val command=Draw(count=3,instances=3,baseVertex=1,baseInstance=1,indexFormat=2,indices=indices,
+          buffers=buffers,attributes=fields,generation=45+group,version=2)
+        t.start(command);val result=t.summary(VertexInputStatus.success)
+        assert(t.outputs.toVector==t.expected(command));assert(result.vertices==9 && result.attributeLines>0 && result.hits>0)
+        records+=t.outputs.size;t.consume()
+      }
+      val packed=Draw(count=1,version=2,buffers=Vector(Buffer(View(0xa0000,0xa0040,0xa003c,0xa0040),0)),
+        attributes=Vector(Attribute(0,4,20)))
+      t.put(0xa003c,BigInt("bff80401",16));t.start(packed);t.summary(VertexInputStatus.success)
+      assert(t.outputs.toVector==t.expected(packed) && t.requests.toVector==Vector(BigInt(0xa0000)));t.consume()
+      val short=packed.copy(buffers=Vector(Buffer(View(0xa0000,0xa0040,0xa003c,0xa003f),0)))
+      t.start(short);t.summary(VertexInputStatus.bounds);assert(t.requests.isEmpty && t.outputs.isEmpty);t.consume()
+      t.start(packed);t.summary(VertexInputStatus.success);assert(t.outputs.toVector==t.expected(packed));t.consume()
+      t.start(packed)
+      t.until(t.requests.nonEmpty && t.pending.isEmpty)
+      d.io.cancel.poke(true.B);t.summary(VertexInputStatus.cancelled)
+      assert(t.outputs.isEmpty && t.requests.toVector==Vector(BigInt(0xa0000)))
+      d.io.cancel.poke(false.B);t.consume()
+      t.start(packed);t.summary(VertexInputStatus.success);assert(t.outputs.toVector==t.expected(packed));t.consume()
+      info(s"VERTEX_INPUT convertedFormats=18 version2=true records=$records indexedInstances=true crossLine=true packedSingleWord=true exactLogicalBounds=true cancelConversion=true defaults=true healthyReuse=true")
+    }
+  }
+
   it should "reject invalid layouts overflow and logical bounds before issuing invalid memory accesses and recover faults" in {
     val p=VertexInputFetchConfig(4,3)
     simulate(new VertexInputFetcher(p=p)) { d=>
@@ -223,7 +267,9 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
         good.copy(buffers=Vector(Buffer(view(0x1000),3))),
         good.copy(buffers=Vector(Buffer(View(0x1001,0x1100,0x1004,0x1100),16))),
         good.copy(indexFormat=2,indices=View(0x4000,0x4100,0x4001,0x4100)),
-        good.copy(version=0),good.copy(version=2))
+        good.copy(version=0),good.copy(version=3))++
+        (25 to 31).map(f=>good.copy(version=2,attributes=Vector(Attribute(0,1,f))))++
+        Vector(20,21,22,23).flatMap(f=>Vector(1,2,3).map(c=>good.copy(version=2,attributes=Vector(Attribute(0,c,f)))))
       for(command<-invalid) {t.start(command);t.summary(VertexInputStatus.invalidDescriptor);assert(t.requests.isEmpty && t.outputs.isEmpty);t.consume()}
       val bounds=Vector(good.copy(firstVertex=u32,count=2),
         good.copy(firstVertex=2,buffers=Vector(Buffer(view(0x1000),BigInt(1)<<31))),

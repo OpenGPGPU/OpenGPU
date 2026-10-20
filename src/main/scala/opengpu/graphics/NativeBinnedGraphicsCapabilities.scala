@@ -2,14 +2,16 @@ package opengpu.graphics
 
 import chisel3.util.log2Ceil
 
-/** GNC1 discovers the native binned host profile. Wire-record capacities remain
+/** GNC2 discovers virtual-image native jobs; GNC1 retains the physical profile.
+  * Wire-record capacities remain
   * fixed; these words report the implemented runtime capacities separately.
   */
 object NativeBinnedGraphicsCapabilities {
-  val magic=BigInt("474e4301",16)
+  val magic=BigInt("474e4302",16)
+  val physicalMagic=BigInt("474e4301",16)
   val wordCount=8
   case class Field(name: String,word: Int,shift: Int,bits: Int,unit: String){val mask=((BigInt(1)<<bits)-1)<<shift}
-  val fields=Seq(Field("MAGIC",0,0,32,"GNC1"),Field("WORD_COUNT",1,0,32,"words"),Field("JOB_MAGIC",2,0,32,"GNJ1"),
+  val fields=Seq(Field("MAGIC",0,0,32,"GNC2: virtual images; GNC1: trusted physical images"),Field("WORD_COUNT",1,0,32,"words"),Field("JOB_MAGIC",2,0,32,"GNJ1"),
     Field("JOB_BYTES",3,0,16,"bytes"),Field("FRAME_BYTES",3,16,16,"bytes"),Field("DRAW_BYTES",4,0,16,"bytes"),
     Field("ATTRIBUTES",4,16,5,"slots"),Field("BINDINGS",4,21,5,"slots"),Field("VARYINGS",4,26,5,"vec4 slots"),
     Field("COMPLETION_INFO",4,31,1,"GNX1 completion detail registers present"),
@@ -23,7 +25,7 @@ object NativeBinnedGraphicsCapabilities {
     require(cus>0 && cus<256 && g.subPixelBits>=0 && g.subPixelBits<16 && g.maxSampleCount<8)
     require(g.screenWidth>0 && g.screenWidth<65536 && g.screenHeight>0 && g.screenHeight<65536)
     n.payload.foreach(q=>require(q.owners<8 && q.slotLines<2048,"GNC1 payload fields must represent the configured pool"))
-    Seq(magic,BigInt(wordCount),NativeBinnedGraphicsLayout.jobMagic,
+    Seq(if(n.translateImageViews)magic else physicalMagic,BigInt(wordCount),NativeBinnedGraphicsLayout.jobMagic,
       BigInt(NativeBinnedGraphicsLayout.jobBytes)|(BigInt(NativeBinnedGraphicsLayout.frameBytes)<<16),
       BigInt(NativeBinnedGraphicsLayout.drawBytes)|(BigInt(n.vertex.input.attributes)<<16)|(BigInt(n.vertex.input.bindings)<<21)|(BigInt(n.vertex.varyings)<<26)|(BigInt(1)<<31),
       BigInt(g.screenWidth)|(BigInt(g.screenHeight)<<16),

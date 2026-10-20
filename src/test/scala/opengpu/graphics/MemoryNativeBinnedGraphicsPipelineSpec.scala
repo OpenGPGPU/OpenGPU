@@ -15,7 +15,7 @@ private class NativeBinnedGraphicsSharedHarness(local: Boolean) extends Module {
   val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);val f=FragmentShaderConfig(2,4)
   val payload=ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=6)
   val native=NativeBinnedGraphicsConfig(p,f,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,
-    payload=if(local)Some(payload)else None)
+    payload=if(local)Some(payload)else None,translateImageViews=false)
   val hostSlots=MemoryNativeBinnedGraphicsPipeline.transactions(native)
   private val slots=GpuSystem.totalMemoryTransactions(2,4,hostSlots)
   val io=IO(new Bundle {

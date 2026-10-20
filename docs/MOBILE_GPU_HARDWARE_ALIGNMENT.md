@@ -5198,3 +5198,28 @@ preserving sample modes, bounds, cancellation and primitive ownership.
 This is one prepared replay engine, not the native host or a four-CU GPU.
 PPA remains **synthesis only**; power, hold, routed timing, full Mobile runtime/
 rates/budgets and the original H0-H8 requirements remain open.
+
+
+## Converted-input and image-VM integration (2026-10-20)
+
+The [56-check native composition](NATIVE_INPUT_IMAGE_COMPOSITION.md) is integrated
+with the current mainline color-maintenance checkpoint. All 626 frozen
+source/ABI files, including all 614 Scala sources, match the completed regression
+byte for byte after the merge. The integration therefore retains the exact
+qualified hardware and tests while preserving the newer mainline documentation
+and synthesis evidence.
+
+Version-2 vertex fetch now converts 25 raw/floating/half/normalized/packed/fixed
+formats and exposes read-only GVI1 discovery. Native GNC2 image views translate
+through the submitted VM, and replay retains a primary image-transfer fault
+before internal cancellation. Four half/packed-SNORM local/global native profiles,
+all 22 unfiltered fault cases, exact sources/resolves, cached consumers and reset
+reuse pass together. Default four-CU emission retains the same SRAM/AXI budgets.
+
+The [capability matrix](MOBILE_GPU_CAPABILITY_MATRIX.md) now distinguishes the
+legacy fixed record from sixteen generic attributes and four typed MRT bindings.
+All relevant rows remain partial. Later point/line preparation, AXI response
+ownership and centroid checkpoints remain on their validation branches; they
+are not covered by this integration result. Physical allocation provenance,
+translated aliases, broader resources/formats, representative rates and H0–H8
+remain open. PPA evaluation remains synthesis only.

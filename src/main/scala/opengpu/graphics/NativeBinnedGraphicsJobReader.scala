@@ -18,11 +18,12 @@ class NativeBinnedGraphicsCompletion(commandIdWidth: Int,p: VertexShaderStageCon
   * owner. Records and all descriptor replies remain owned until drain. Offered
   * begin/draw/end controls survive cancellation, then the child is cancelled.
   * Writable virtual bin/fragment/vertex staging cannot alias descriptor storage.
-  * Trusted physical image views require allocator provenance in the enclosing
-  * native memory/host integration; this reader alone is not a native GPU host.
+  * GNC2 additionally separates image allocations from writable bin/scratch roles
+  * and prevents image writes to descriptor/state storage. These are VA checks;
+  * translated physical aliases still require allocation/lifetime provenance.
   */
 class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth: Int=8,
-    p: VertexShaderStageConfig=VertexShaderStageConfig(),engines: Int=2) extends Module {
+    p: VertexShaderStageConfig=VertexShaderStageConfig(),engines: Int=2,virtualImageViews: Boolean=false) extends Module {
   require(config.xLen==32 && commandIdWidth>0 && commandIdWidth<=12 && engines>=1 && engines<=4)
   import NativeBinnedGraphicsLayout._
   import NativeTypedGraphicsLayout.{check,receive,adapt}
@@ -52,6 +53,13 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
     (base<binding.base+&jobBytes.U && end>binding.base) ||
     (base<job.frameBase+&frameBytes.U && end>job.frameBase) ||
     (job.drawCount=/=0.U && base<arrayEnd && end>job.drawBase))
+  private def overlap(a: UInt,b: UInt,c: UInt,d: UInt): Bool=a<b && c<d && a<d && c<b
+  private def imageRoles: Seq[(Bool,UInt,UInt,Bool)]={
+    val d=pass.image;val enabled=TypedTileImageRules.enabled(d.pixels);val loads=TypedTileImageRules.loads(d.pixels)
+    d.views.zipWithIndex.map{case(v,i)=>(enabled(i) && (v.store || loads(i)===AttachmentLoadOp.load.U),v.allocationBase,v.allocationLimit,v.store)}++
+      d.resolves.zipWithIndex.map{case(r,i)=>(r.enable && enabled(i),r.destination.allocationBase,r.destination.allocationLimit,true.B)}
+  }
+  private def aliasesImages(base: UInt,end: UInt): Bool=imageRoles.map{case(active,a,b,_)=>active && overlap(base,end,a,b)}.reduce(_ || _)
   private val descriptorBytes=RegInit(0.U(64.W));private val drawBytesRead=RegInit(0.U(64.W))
   private val beginOffered=RegInit(false.B);private val drawOffered=RegInit(false.B);private val endOffered=RegInit(false.B)
   private val begun=RegInit(false.B);private val drawPending=RegInit(false.B);private val passDone=RegInit(false.B);private val endAccepted=RegInit(false.B)
@@ -160,9 +168,12 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
         (bins.bins.pool.base,bins.bins.pool.limit),(bins.bins.directoryBase,bins.bins.directoryLimit)) ++
         pass.scratch.take(engines).map(s=>(s.base,s.limit))
       val immutable= !writable.map{case(base,end)=>aliasesDescriptors(base,end)}.reduce(_ || _)
+      val imageAliases=if(virtualImageViews)imageRoles.map{case(active,base,end,write)=>active && (
+        writable.map{case(a,b)=>overlap(base,end,a,b)}.reduce(_ || _) ||
+        (write && (aliasesDescriptors(base,end) || overlap(base,end,pass.states.base,pass.states.limit))))}.reduce(_ || _)else false.B
       val compatible=headerLegal(frameRecord.header) && pass.version===1.U &&
         pass.image.pixels.colors.identity.asUInt===job.identity.asUInt && pass.states.identity.asUInt===job.identity.asUInt &&
-        bins.producer.arena.identity.asUInt===job.identity.asUInt && bins.bins.pool.identity.asUInt===job.identity.asUInt && immutable
+        bins.producer.arena.identity.asUInt===job.identity.asUInt && bins.bins.pool.identity.asUInt===job.identity.asUInt && immutable && !imageAliases
       when(stop){phase:=Phase.drain}
         .elsewhen(!compatible){fail(1.U,1.U,job.frameBase);phase:=Phase.drain}
         .otherwise{beginOffered:=true.B;phase:=Phase.offerBegin}
@@ -176,6 +187,7 @@ class NativeBinnedGraphicsJobReader(config: GpuConfig=GpuConfig(),commandIdWidth
       val stride=(config.lanes*config.warps*4).U
       val vertexEnd=v.scratch.base.pad(48)+(7.U+&(v.attributeSlots<<2)+&(v.varyingSlots<<2)+&Mux(v.version===2.U,1.U,0.U))*stride
       val compatible=headerLegal(drawRecord.header) && fit(draw,p) && !aliasesDescriptors(v.scratch.base,vertexEnd) &&
+        (if(virtualImageViews) !aliasesImages(v.scratch.base,vertexEnd)else true.B) &&
         v.input.identity.asUInt===job.identity.asUInt
       when(stop || passFinished){phase:=Phase.drain}
         .elsewhen(!compatible){fail(1.U,1.U,fetchBase);phase:=Phase.drain}

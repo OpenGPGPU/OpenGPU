@@ -11,7 +11,8 @@ object NativeBinnedGraphicsMemoryFabric {
 }
 
 /** Native binned descriptor/geometry/bin/state/staging requests use Sv32.
-  * Per-engine trusted physical image transfers bypass translation. Legacy DMA
+  * GNC2 image transfers use the same permission-checked translation. Only the
+  * explicit GNC1 legacy profile bypasses translation for trusted image views. DMA
   * and both page walkers have separate IDs above the full native namespace.
   * Buffered replies retain immutable offers and VM ownership through stalls.
   */

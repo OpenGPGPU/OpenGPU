@@ -121,7 +121,7 @@ class GpuHostAxiSpec extends AnyFlatSpec {
     dut.io.s_axi_awaddr.poke(addr.U)
     dut.io.s_axi_awlen.poke(len.U)
     dut.io.s_axi_awsize.poke(2.U)
-    dut.io.s_axi_awburst.poke(0.U)
+    dut.io.s_axi_awburst.poke(1.U)
     dut.io.s_axi_bready.poke(true.B)
     var awDone = false
     var idx = 0

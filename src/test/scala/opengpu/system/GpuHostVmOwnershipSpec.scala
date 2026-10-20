@@ -65,7 +65,7 @@ class GpuHostVmOwnershipSpec extends AnyFlatSpec with GpuHostTestSupport {
           // the rejected earlier VM writes while the response is stalled.
           dut.io.s_axi_awaddr.poke(GpuCommandMmioRegs.VECTOR_SATP.U)
           dut.io.s_axi_awlen.poke(3.U); dut.io.s_axi_awsize.poke(2.U)
-          dut.io.s_axi_awburst.poke(0.U); dut.io.s_axi_awvalid.poke(true.B)
+          dut.io.s_axi_awburst.poke(1.U); dut.io.s_axi_awvalid.poke(true.B)
           dut.io.s_axi_awready.expect(true.B); dut.io.s_axi_aclk.step()
           dut.io.s_axi_awvalid.poke(false.B)
           for ((value, index) <- Seq(0x80000500L, 0x80000600L, 1L, 0L).zipWithIndex) {

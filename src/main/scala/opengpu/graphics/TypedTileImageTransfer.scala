@@ -5,9 +5,11 @@ import chisel3.util._
 import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 
-/** Physical, single-layer selected image view. Allocation bounds include every
+/** Single-layer selected image view in the enclosing profile's address space.
+  * GNC2 translates these addresses through Sv32; legacy/internal profiles may
+  * bind trusted physical addresses. Allocation bounds include every
   *64-byte bus line; limit/extent constrain the selected image's useful bytes.
-  * Permission bits are trusted allocation metadata, not an MMU replacement.
+  * Permission bits constrain descriptor access and do not replace MMU checks.
   */
 class TypedImageView extends Bundle {
   val base=UInt(32.W);val limit=UInt(33.W);val allocationBase=UInt(32.W);val allocationLimit=UInt(33.W)
@@ -65,7 +67,7 @@ object TypedTileImageRules {
   }
 }
 
-/** Serialized physical line gather/scatter. Binding survives draw/refill work;
+/** Serialized line gather/scatter in the profile's address space. Binding survives draw/refill work;
   * flush true exports stored views then resolves enabled destinations; flush
   * false closes after failure. Resolve source store/discard is independent. All line
   * acknowledgements, irrevocable private offers and refill replies drain before

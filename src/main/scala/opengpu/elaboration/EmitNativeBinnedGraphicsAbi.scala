@@ -33,6 +33,9 @@ object EmitNativeBinnedGraphicsAbi {
       " * This format does not change GTJ1/GTI1/GTD1 or GFS1. */\n"+
       "#ifndef OPENGPU_NATIVE_BINNED_ABI_H\n#define OPENGPU_NATIVE_BINNED_ABI_H\n#include <stdint.h>\n\n")
     header.append(s"#define ${prefix}VERSION 1u\n")
+    header.append(s"#define ${prefix}INPUT_VERSION ${VertexInputFormat.version}u\n")
+    header.append(NativeVertexInputCapabilities.header(prefix))
+    for((name,id)<-VertexInputFormat.formats)header.append(s"#define ${prefix}INPUT_FORMAT_$name ${id}u\n")
     for((name,value)<-Seq("ATTRIBUTES"->16,"BINDINGS"->16,"VARYINGS"->16,"COLORS"->4,"ENGINE_VIEWS"->4))header.append(s"#define $prefix${name}_CAPACITY ${value}u\n")
     for((name,word)<-Seq("MAGIC"->0,"BYTES"->1,"VERSION"->2))header.append(s"#define $prefix${name}_WORD ${word}u\n")
     for(s<-schemas){val key=s.name.toUpperCase(Locale.ROOT)
