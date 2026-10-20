@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "qualified_sampler_image_components_integrated_locally",
+  "branch": "main",
+  "merge_commit": "5174a5c0e177cf7e8dc3cf7244862d048f58e459",
+  "initial_feature_merge": "fad31aa",
+  "previous_head": "fad31aae17a0cf4011fe5ed0701e96cbbbf7ad47",
+  "qualified_branch_head": "176ec30aab75c1e17481f617068e20f032914e39",
+  "source_files": 681,
+  "source_manifest_sha256": "3d4f065b5dbe99c35308dbd25d72e37a37486283cfe4ab693d7f715af1aeff6b",
+  "source_record": "docs/performance/mobile-image-sampler-binding-2026-10-20.json",
+  "git_archive_and_working_source_match": true,
+  "record_reconstructs_full_source_catalog": true,
+  "unchanged_parent_source_files": 674,
+  "new_sampler_controls": 10,
+  "existing_image_controls_with_exact_dependencies": 10,
+  "abi_checks": 4,
+  "combined_c11_and_ci_selection": "PASS_on_unchanged_inputs",
+  "synthesis_setup_slacks_ps": {
+    "sampler": [
+      413.729,
+      479.412
+    ],
+    "image": [
+      104.437,
+      424.024
+    ]
+  },
+  "synthesis_artifacts_hashes_verified": true,
+  "ppa_qualifier_sha256": "38fe4b1cad315d3e8c137536ebe35175c54aced270334305565cfa63238f325c",
+  "user_edits_preserved": {
+    "AGENTS.md": {
+      "sha256": "03e4fc33d9ab6022aec4d0331ba90795a5f59c7cb4a0eae546453ffae4a386fc",
+      "mode": 420
+    },
+    "timing/README.md": {
+      "sha256": "5f0a388c6854e85eebbca05d69e8120b3d73129e5e1e563fe6bcb3a9108b6a47",
+      "mode": 420
+    }
+  },
+  "index_empty": true,
+  "exactly_one_coauthor_per_new_commit": true,
+  "pushed": false,
+  "limits": [
+    "Native per-stage binding tables and typed shader transport are not connected; no new native capability or ISA encoding.",
+    "General sampling/coordinate/LOD/filter/depth/compressed behavior and H0-H8 closure remain open.",
+    "GXS1 carries sampler state; it does not execute filtering or LOD clamps."
+  ]
+}

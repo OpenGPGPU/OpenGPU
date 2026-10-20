@@ -6411,3 +6411,14 @@ sampler core/I/O +413.729/+479.412 ps (6,188 cells), composed admission
 +104.437/+424.024 ps (69,907 cells). The earlier positive composition screen
 remains recorded separately. Native per-stage resources, typed texture
 transport, general application and the full H0-H8 objective remain open.
+
+
+## Local main sampler/image source audit (2026-10-20)
+
+The [main audit](performance/mobile-image-sampler-main-2026-10-20.json) verifies
+all 681 qualified files in both the final merge archive and working checkout.
+The qualification record reconstructs the same catalog from 674 unchanged
+parent dependencies and seven additions. Final synthesis artifact hashes match.
+Both pre-existing local edits and an empty index are preserved; no push was
+performed. Native per-stage resource selection and typed shader transport remain
+required before this component can serve general native texture instructions.
