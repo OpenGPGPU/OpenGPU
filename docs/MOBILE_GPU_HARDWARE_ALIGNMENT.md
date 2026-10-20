@@ -6800,3 +6800,17 @@ Three fresh profiles retain byte-identical active banked RTL to their component
 qualifications;the read-through profile matches after removing comments only. Existing native query/projective production,driver,ABI and test
 inputs remain exact to current main. Complete-service synthesis is still pending;
 this candidate has not been merged into main.
+
+## H4 virtual tap admission and scoped cancellation
+
+The [translated banked service](BANKED_TEXTURE_TRANSLATION.md) now passes
+[46 checks on822 frozen inputs](performance/mobile-banked-texture-translation-2026-10-21.json).
+Four TLB ports admit all nonzero-weight virtual taps before physical cache
+lookup,including hits. The block preserves virtual fault attribution,uncached
+PTE behavior,VM epoch lifetime and identity/tag-scoped cancellation. It sustains
+complete resident-group II1 after Sv32 warmup and drains held PTE/data offers.
+
+Native resource/coordinate and shared-CU wiring remain upstream. The first miss
+queue cut improves but still fails1000ps synthesis (-32.971/-144.873ps);shared
+fill-admission registration and a fresh complete-service synthesis screen are
+required. H4 and all remaining H0-H8 exit gates stay open.
