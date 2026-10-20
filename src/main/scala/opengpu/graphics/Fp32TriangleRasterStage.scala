@@ -11,10 +11,15 @@ class Fp32RasterState extends Bundle {
   val pointSize=UInt(32.W);val lineWidth=UInt(32.W)
   val scissorEnable=Bool();val scissorMinX=UInt(16.W);val scissorMinY=UInt(16.W)
   val scissorMaxX=UInt(16.W);val scissorMaxY=UInt(16.W)
+  /** Raster version2 enables polygon offset; version1 requires these zero. */
+  val polygonOffsetEnable=Bool();val polygonOffsetFactor=UInt(32.W);val polygonOffsetUnits=UInt(32.W)
 }
 object Fp32RasterState {
+  def versionLegal(s: Fp32RasterState): Bool=
+    (s.version===1.U && !s.polygonOffsetEnable && !s.polygonOffsetFactor.orR && !s.polygonOffsetUnits.orR) ||
+    (s.version===2.U && s.polygonOffsetFactor(30,23)=/=255.U && s.polygonOffsetUnits(30,23)=/=255.U)
   def legal(s: Fp32RasterState,g: GraphicsConfig): Bool=
-    s.version===1.U && s.cullMode<=2.U && s.sampleMode<=log2Ceil(g.maxSampleCount).U &&
+    versionLegal(s) && s.cullMode<=2.U && s.sampleMode<=log2Ceil(g.maxSampleCount).U &&
       sizeLegal(s.pointSize) && sizeLegal(s.lineWidth)
   def sizeLegal(raw: UInt): Bool=raw===0.U || (!raw(31) && !Fp32ViewportState.nan(raw))
   def size(raw: UInt): UInt=Mux(raw===0.U || raw<"h3f800000".U,"h3f800000".U,Mux(raw>"h42800000".U,"h42800000".U,raw))
@@ -23,6 +28,9 @@ object Fp32RasterState {
 class Fp32TriangleRasterRequest(p: VertexShaderStageConfig) extends Bundle {
   val primitive=new WindowPrimitive(p);val state=new Fp32RasterState
   val centroidMask=UInt((p.varyings*4).W)
+  /** Immutable attachment policy; floating formats quantize final depth toward zero. */
+  val depthRoundTowardZero=Bool()
+  val depthOffset=new PolygonDepthOffsetBinding
 }
 class Fp32RasterizedQuad(p: VertexShaderStageConfig,g: GraphicsConfig) extends Bundle {
   val values=new Fp32InterpolatedQuad(p,g);val frontFacing=Bool();val sampleMode=UInt(2.W)

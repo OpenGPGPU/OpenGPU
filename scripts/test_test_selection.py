@@ -87,7 +87,8 @@ assert set(assigned) == all_specs - ci_skip, (
 )
 assert ci_skip.isdisjoint(assigned)
 assert assigned["opengpu.system.GpuHostAxiOwnershipSpec"] == "system-mem"
-assert assigned["opengpu.graphics.Fp32CentroidInterpolationSpec"] == "graphics"
+for suite in ("Fp32CentroidInterpolationSpec", "Fp32DepthResolutionRasterSpec", "PolygonDepthOffsetSpec", "PolygonDepthOffsetRasterSpec", "PolygonDepthResolutionSpec"):
+    assert assigned["opengpu.graphics." + suite] == "graphics"
 assert json.loads(shard_cmd("shards-json", "ALL")) == list(shards)
 assert json.loads(shard_cmd("shards-json", "NONE")) == []
 assert json.loads(shard_cmd("shards-json", "opengpu.graphics.*")) == ["graphics"]

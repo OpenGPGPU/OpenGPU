@@ -46,7 +46,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     val refill=Decoupled(new TypedTileColorRefill(storage));val refillReply=Flipped(Decoupled(new TypedTileColorRefillReply))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry))
+  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,depthFormatInput=true))
   private val primitive=if(preparedGeometry)Some(Reg(new WindowPrimitive(p)))else None
   primitive.foreach(p=>source.io.primitive.get:=p)
   private val pixels=Module(new TypedTilePixelBackend(storage,useSramBlackBoxes))
@@ -76,6 +76,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
   pixels.io.begin.valid:=pixelOffered;pixels.io.begin.bits:=descriptor
   when(pixels.io.begin.fire){pixelOffered:=false.B;pixelStarted:=true.B}
   source.io.draw.valid:=sourceOffered;source.io.draw.bits:=draw.shaders
+  source.io.depthFormat.get:=descriptor.depth.format
   when(source.io.draw.fire){sourceOffered:=false.B;sourceStarted:=true.B}
   source.io.cancel:=sourceStarted && stop
   // A quad is captured only while the idle pixel owner can accept it next cycle.

@@ -6,6 +6,7 @@ import chisel3.util._
 object TypedDepthFormat {
   val none=0;val d16=1;val d24=2;val d32f=3;val d24s8=4;val d32fs8=5;val s8=6
   def valid(f: UInt): Bool=f<=s8.U
+  def floating(f: UInt): Bool=f===d32f.U || f===d32fs8.U
   def depth(f: UInt): Bool=f>=d16.U && f<=d32fs8.U
   def stencil(f: UInt): Bool=f===d24s8.U || f===d32fs8.U || f===s8.U
   def bytes(f: UInt): UInt=MuxLookup(f,0.U(4.W))(Seq(d16.U->2.U,d24.U->4.U,d32f.U->4.U,d24s8.U->4.U,d32fs8.U->8.U,s8.U->1.U))

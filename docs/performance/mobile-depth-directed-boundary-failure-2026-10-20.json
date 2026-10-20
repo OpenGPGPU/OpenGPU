@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Actual interior raster binade-boundary failure with directed final depth addition",
+  "based_on_commit": "95080cb",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-directed-boundary-before-source-v1.json",
+    "sha256": "3e9ef3d827473c561db494109d0dc966b4fbf0402c049d7767fa5d363bb98e7a"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-directed-boundary-before-source-v1.tar.gz",
+    "sha256": "e45ff424e60d1628298753818b5fc9df0be48c403b24506c19340f814d3ef8f5"
+  },
+  "result": {
+    "path": ".artifacts/mobile-depth-directed-boundary-before-v1-result.json",
+    "sha256": "a40b3b3bb16a819240c6a790778d12a17fddc33844d17b838119abc5dab47627"
+  },
+  "log": {
+    "path": ".artifacts/mobile-depth-directed-boundary-before-v1.log",
+    "sha256": "5fb3056a2054fd0dd9389186337d22f52e3618b90c9e32895d11cb369fec81fd"
+  },
+  "validation": {
+    "returncode": 1,
+    "source_unchanged": true,
+    "tests": [
+      1
+    ],
+    "witness_reported": 1,
+    "elapsed_seconds": 127.57143695908599,
+    "finished_utc": "2026-10-20T03:16:43.535604+00:00"
+  },
+  "software_probe": {
+    "path": ".artifacts/find-directed-depth-boundary-witness-v1.cpp",
+    "sha256": "2be4e6c5c13d040fc9b19817705384bceb620bbe9089355b1a2d8bb94eb0ebb1"
+  },
+  "software_result": {
+    "path": ".artifacts/find-directed-depth-boundary-witness-v1-result.json",
+    "sha256": "3f10b59e8188cb3b5e1680a0a68e8df95abd1999d49b5f37c7a66a9fe8b78170"
+  },
+  "raw_coordinates": [
+    [
+      -90752,
+      -58469
+    ],
+    [
+      91008,
+      -58469
+    ],
+    [
+      -60819,
+      39425
+    ]
+  ],
+  "pixel": [
+    0,
+    0
+  ],
+  "area": 17793213440,
+  "edges": [
+    1,
+    7142622719,
+    10650590720
+  ],
+  "depths": [
+    "3e000001",
+    "3efffffe",
+    "3efffffe"
+  ],
+  "shifted": [
+    "3e000003",
+    "3effffff",
+    "3effffff"
+  ],
+  "exact_common_shift": "33000000",
+  "observed": [
+    "3f000000",
+    "3f000000"
+  ],
+  "diagnosis": "Rounded interpolation overshoots the largest source depth. Its next binade has coarser spacing than the selected one-ULP source resolution, so final directed addition alone cannot preserve this step.",
+  "limits": [
+    "One actual covered center and its default sample reproduce the failure; broader numeric/image/ownership qualification remains separate.",
+    "No successful general depth precision, API, PPA or H0-H8 claim."
+  ]
+}

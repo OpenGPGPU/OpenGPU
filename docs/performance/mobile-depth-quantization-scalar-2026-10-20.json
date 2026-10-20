@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Internal directed scalar addition/packing primitive; no raster integration",
+  "based_on_commit": "50e1e5a",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-quantization-source-v1.json",
+    "sha256": "8adf37a85a7c848e9b35febc226c010084de5192276c57e1d301704f7622f897"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-quantization-source-v1.tar.gz",
+    "sha256": "b2c046fa507ad7395a1065a4c2c5052d394ec6eedb526360da4f25e573b6a84d"
+  },
+  "result": {
+    "path": ".artifacts/mobile-depth-quantization-controls-v1-result.json",
+    "sha256": "a5d8bb1e7f56039a30caceb017013c2d33f0c269b5eb3e9d644cde7a960ee3d0"
+  },
+  "log": {
+    "path": ".artifacts/mobile-depth-quantization-controls-v1.log",
+    "sha256": "b3af226fe758d7730844731f0c5dd5289b655739372e51b5caadb8a815679387"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "tests": [
+        7
+      ],
+      "success_tasks": 6,
+      "rtz": 1,
+      "drain": 1
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 131.58054745802656,
+    "finished_utc": "2026-10-20T03:10:16.142640+00:00"
+  },
+  "passed": 7,
+  "directed_rational_cases": 700,
+  "legacy_rational_cases": 904,
+  "legacy_codec_words": 2065,
+  "abi_checks": 4,
+  "emission_audit": {
+    "path": ".artifacts/mobile-depth-quantization-scalar-rtl-audit-v1.json",
+    "sha256": "cbf580b166624e262a60f351d893f4d8e848a7db1aa2d1478a82ea793683d44e"
+  },
+  "contract": "Internal operation4 uses existing FMA toward-zero rounding, retains tiny operand sign/sticky effects and truncates final gradual FP32 packing; overflow packing saturates finite. Operations0..3 retain RNE. No production raster caller selects operation4.",
+  "limitations": [
+    "Component-only qualification; no fixed/floating format policy is connected.",
+    "The reproduced sloped raster collapse remains unresolved until an integrated candidate passes; this does not qualify general minimum-resolvable-depth precision.",
+    "No added FMA/divider/CU/SRAM, native image, PPA, API or H0-H8 closure."
+  ]
+}

@@ -38,11 +38,11 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   private val centroidVertexProgram=startup++
     ((0 until 4).map(i=>(i,11+i))++(0 until 4).map(i=>(4+i,15+i))).flatMap{case(in,out)=>
       Seq(addi(5,7,in*32),vm(5,1,false),addi(6,7,out*32),vm(6,1,true))}++Seq(BigInt("30500073",16))
-  private def centroidFragmentProgram(version: Int): Vector[BigInt]={
+  private def centroidFragmentProgram(version: Int,depthColor: Boolean=false): Vector[BigInt]={
     val inputs=if(version==4)12 else 10;val prefix=(inputs+18)*32
     val code=mutable.ArrayBuffer.empty[BigInt];code++=startup
     for(location<-0 until 4;c<-0 until 4)
-      code++=Seq(addi(5,7,(6+c)*32),vm(5,1,false),addi(6,7,(inputs+4*location+c)*32),vm(6,1,true))
+      code++=Seq(addi(5,7,(if(depthColor && c==0)2 else 6+c)*32),vm(5,1,false),addi(6,7,(inputs+4*location+c)*32),vm(6,1,true))
     for((offset,array)<-Seq((prefix+64,inputs+17),(prefix+68,inputs+16)))
       code++=Seq(addi(13,1,offset),(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3,
         (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,
@@ -54,6 +54,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     val reads=mutable.ArrayBuffer.empty[BigInt];val writes=mutable.ArrayBuffer.empty[BigInt]
     var serial=0;var region=BigInt(0x400000);var imageBase=BigInt(0x4000000);var imageVaBase=BigInt(0x40000000)
     var generation=9;var mode=0;var instances=1;var drawCount=2;var centroidVersion=0
+    var polygonOffset=false;var polygonSign=1;var overrideSecond=false
     def centroid: Boolean=centroidVersion!=0
     def fragmentPrefix: Int=if(centroidVersion==4)960 else 896
     def centroidMask(h: Int): BigInt=if(h==0)5 else 3
@@ -91,9 +92,12 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     def patchDraw(name: String,value: BigInt): Unit=patchRecord(region+0x12000,
       NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord),name,value)
     def setup(sampleMode: Int=0,indexedInstances: Int=1,empty: Boolean=false,badShader: Boolean=false,loadImages: Boolean=false,
-        vertexFormat: Int=VertexInputFormat.float32,fragmentVersion: Int=0): Unit={
+        vertexFormat: Int=VertexInputFormat.float32,fragmentVersion: Int=0,
+        polygon: Boolean=false,sign: Int=1,shaderOverride: Boolean=false): Unit={
       require(fragmentVersion==0 || fragmentVersion==3 || fragmentVersion==4)
       centroidVersion=fragmentVersion
+      require(!polygon || (centroid && Set(-1,1)(sign)))
+      polygonOffset=polygon;polygonSign=sign;overrideSecond=shaderOverride
       region=BigInt(0x400000)+BigInt(serial)*0x400000;imageBase=BigInt(0x4000000)+BigInt(serial)*0x1000000
       imageVaBase=BigInt(0x40000000)+BigInt(serial)*0x400000
       generation=9+serial;serial+=1;mode=sampleMode;instances=indexedInstances;drawCount=if(empty)0 else 2
@@ -105,8 +109,9 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       if(centroid){
         require(!converted && !badShader && !empty && instances==1)
         centroidVertexProgram.zipWithIndex.foreach{case(w,i)=>word(pa(region+0x24000+4*i),w)}
-        centroidFragmentProgram(centroidVersion).zipWithIndex.foreach{case(w,i)=>word(pa(region+0x25000+4*i),w)}
-        for((v,i)<-Vector(Vector(-1.0,-1.0,0.0,1.0),Vector(1.0,-1.0,0.0,1.0),Vector(-1.0,1.0,0.0,1.0)).zipWithIndex;c<-0 until 4)
+        centroidFragmentProgram(centroidVersion,depthColor=polygonOffset).zipWithIndex.foreach{case(w,i)=>word(pa(region+0x25000+4*i),w)}
+        val zs=if(polygonOffset)Vector(-0.5,0.5,0.0)else Vector.fill(3)(0.0)
+        for((v,i)<-Vector(Vector(-1.0,-1.0,zs(0),1.0),Vector(1.0,-1.0,zs(1),1.0),Vector(-1.0,1.0,zs(2),1.0)).zipWithIndex;c<-0 until 4)
           word(pa(vertexBase+i*16+c*4),fp(v(c)))
         for(h<-0 until 2;i<-0 until 3;c<-0 until 4)word(pa(region+0x26000+h*64+i*16+c*4),gradient(h,i)(c))
       }
@@ -132,6 +137,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
           "fragment.centroidMask"->(if(centroid)centroidMask(h)else BigInt(0)),
           "fragment.shaderPc"->(if(centroid)region+0x25000 else if(badShader && h==1)BigInt(0x404000)else BigInt(0x402000)),
           "fragment.varyingSlots"->1,"fragment.colorSlots"->4,"fragment.colorMask"->15,"fragment.sampleMode"->mode,
+          "fragment.allowDepthOverride"->(if(polygonOffset && overrideSecond && h==1)1 else 0),
           "fragment.sampler.texWidth"->1,"fragment.sampler.texHeight"->1,"fragment.scratch.base"->a,"fragment.scratch.limit"->(a+used),
           "fragment.scratch.allocationBase"->a,"fragment.scratch.allocationLimit"->(a+allocation),"scratch[0].base"->b,"scratch[0].limit"->(b+used),
           "scratch[0].allocationBase"->b,"scratch[0].allocationLimit"->(b+allocation),"tests.version"->1,"tests.depthEnable"->1,"tests.depthWrite"->1,
@@ -141,7 +147,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         for(field<-sf){val raw=v.getOrElse(field.name,BigInt(0))&((BigInt(1)<<(field.words*32))-1)
           for(i<-0 until field.words)word(pa(base+(field.word+i)*4),(raw>>(i*32))&0xffffffffL)}
         for(s<-Seq(a,b)){for(i<-0 until 4;c<-0 until 4)word(pa(s+fragmentPrefix+i*16+c*4),rgba(h)(c))
-          word(pa(s+fragmentPrefix+64),61);word(pa(s+fragmentPrefix+68),fp(0.5))}
+          word(pa(s+fragmentPrefix+64),if(polygonOffset && overrideSecond && h==1)63 else 61)
+          word(pa(s+fragmentPrefix+68),fp(if(polygonOffset)0.125 else 0.5))}
       }
       word(pa(0x404000),0)
       var frame=Map[String,BigInt]("frame.version"->1,"frame.bins.producer.version"->1,"frame.bins.producer.arena.version"->1,
@@ -188,6 +195,9 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         "draw.vertex.geometry.vertex.input.bindings[0].allocationBase"->vertexBase,"draw.vertex.geometry.vertex.input.bindings[0].allocationLimit"->(vertexBase+64),
         "draw.vertex.geometry.vertex.input.bindings[0].stride"->vertexStride,"draw.raster.version"->1,"draw.raster.screenW"->17,"draw.raster.screenH"->9,
         "draw.raster.sampleMode"->mode,"draw.raster.frontFaceCCW"->1,"draw.vertex.geometry.flatMask"->(if(centroid)8 else 0))++identity("draw.vertex.geometry.vertex.input.identity.")
+        if(polygonOffset){val sign=polygonSign*(if(h==0)1 else -1)
+          draw++=Map[String,BigInt]("draw.raster.version"->2,"draw.raster.polygonOffsetEnable"->1,
+            "draw.raster.polygonOffsetFactor"->fp(sign*2),"draw.raster.polygonOffsetUnits"->fp(sign*3))}
         if(centroid){val k="draw.vertex.geometry.vertex.input.";val colorBase=region+0x26000+h*64
           draw++=Map[String,BigInt](k+"attributes[1].enabled"->1,k+"attributes[1].components"->4,k+"attributes[1].bindingIndex"->1,
             k+"bindings[1].base"->colorBase,k+"bindings[1].limit"->(colorBase+48),k+"bindings[1].allocationBase"->colorBase,
@@ -204,7 +214,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
           "job.drawLimit"->(region+0x12000+(drawCount-1).max(0)*4096+2048),"job.drawCount"->drawCount,"job.drawStride"->4096))
     }
     def expectedBytes: Map[BigInt,Int]={
-      val data=FragmentInterpolationReference.Data(Vector.fill(3)(Fp32ViewportReference.decode(fp(1))),Vector.fill(3)(fp(0.5)),Vector.fill(3)(Vector.fill(8)(BigInt(0))),0,1)
+      val data=FragmentInterpolationReference.Data(Vector.fill(3)(Fp32ViewportReference.decode(fp(1))),
+        if(polygonOffset)Vector(0.25,0.75,0.5).map(fp)else Vector.fill(3)(fp(0.5)),Vector.fill(3)(Vector.fill(8)(BigInt(0))),0,1)
       val tri=TriangleRasterReference.Triangle(Vector((BigInt(0),BigInt(0)),(BigInt(17*256),BigInt(0)),(BigInt(0),BigInt(9*256))),data)
       val coverage=TriangleRasterReference.raster(tri,TriangleRasterReference.Settings(width=17,height=9,mode=mode),graphics)
         .flatMap(_.samples.flatMap(p=>(0 until(1<<mode)).filter(s=>(p.mask&(1<<s))!=0).map(s=>(p.x,p.y,s)))).toSet
@@ -219,8 +230,40 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         pixels.toMap
       }
       val expected=mutable.Map.empty[BigInt,Int]++initial
+      val polygonSamples=mutable.Map.empty[(Int,Int,Int,Int),BigInt]
+      if(polygonOffset){
+        import Fp32ViewportReference.{E,decode,calc,pack,clamp,rational}
+        import FragmentInterpolationReference.edge
+        val slope=PolygonDepthOffsetReference.maximum(tri.coords.map(_._1),tri.coords.map(_._2),data.depth)
+        val resolution=decode(fp(Math.ulp(0.75f).toDouble))
+        def depth(edges: Vector[BigInt],a: BigInt,bias: E): BigInt={
+          FloatingDepthReference.at(edges,a,data.depth,3,bias)
+        }
+        val offsets=if(mode==0)Vector((0,0))else if(mode==1)Vector((-1,-1),(1,1))else Vector((-1,-1),(1,-1),(-1,1),(1,1))
+        for(h<-0 until 2){val sign=polygonSign*(if(h==0)1 else -1)
+          val bias=calc(calc(slope,decode(fp(sign*2)),2),calc(resolution,decode(fp(sign*3)),2),0)
+          assert(bias.sig!=0)
+          val triangle=tri.copy(values=data.copy(flat=8,values=Vector.tabulate(3)(i=>gradient(h,i).padTo(8,BigInt(0)))))
+          for(raw<-TriangleRasterReference.raster(triangle,TriangleRasterReference.Settings(width=17,height=9,mode=mode),graphics)){
+            val q=CentroidRasterReference(triangle,2,raw,mode,centroidMask(h),graphics)
+            for((p,lane)<-q.samples.zipWithIndex;s<-0 until(1<<mode) if(p.mask&(1<<s))!=0){
+              val(ox,oy)=offsets(s);val x=BigInt(p.x)*256+128+ox*64;val y=BigInt(p.y)*256+128+oy*64
+              val edges=Vector.tabulate(3)(TriangleRasterReference.edgeAt(triangle,_,x,y))
+              val z=if(overrideSecond && h==1)fp(0.125)else depth(edges,edges.sum,bias)
+              val key=(4,p.x,p.y,s);val previous=polygonSamples.getOrElse(key,fp(1))
+              if(TypedColorReference.value(z)<=TypedColorReference.value(previous)){
+                polygonSamples(key)=z
+                val color=q.lanes(lane).values.take(4).updated(0,depth(p.edges,p.area,bias))
+                for(i<-0 until 4){val k=(i,p.x,p.y,s);val old=polygonSamples.getOrElse(k,encode(names(i),clear)._1)
+                  polygonSamples(k)=encode(names(i),TypedBlendReference.blend(names(i),color,old,TypedBlendReference.State(enable=h==1)))._1}
+              }
+            }
+          }
+        }
+      }
       def sample(i: Int,x: Int,y: Int,s: Int): BigInt={val covered=drawCount>0 && coverage((x,y,s))
-        if(i==4)fp(if(covered)0.5 else 1)else{var old=encode(names(i),clear)._1
+        if(polygonOffset)polygonSamples.getOrElse((i,x,y,s),if(i==4)fp(1)else encode(names(i),clear)._1)
+        else if(i==4)fp(if(covered)0.5 else 1)else{var old=encode(names(i),clear)._1
           if(covered){old=encode(names(i),if(centroid)shades(0)((x,y))else rgba(0))._1
             for(_<-0 until instances)old=encode(names(i),TypedBlendReference.blend(names(i),if(centroid)shades(1)((x,y))else rgba(1),old,TypedBlendReference.State(enable=true)))._1};old}}
       for(b<-backings;y<-0 until 9;x<-0 until 17){
@@ -289,6 +332,29 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedBytes(image.imageBase+60+b))<<(b*8)))
         assert(image.consumer(30+mode)==expected);d.io.performance.get.payloadReservedBytes.expect(0.U)}
       info(s"NATIVE_BINNED_AXI local=$local CUs=2 GNJ1=true GVI1=true convertedVertexInputs=half,snorm2101010 Sv32=true virtualImages=$virtualImages draws=4 tiles=12 modes1x4x=true exactFourMRTDepthResolveGuards=true cachedConsumer=true heldCompletionPinsVM=true")}
+  }
+  for(local<-Seq(true,false))
+  it should s"publish native binned polygon offset depth and shader fragCoord from GPU-memory records local=$local" in {
+    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
+      for((mode,version,sign,overrideDepth)<-Seq((1,3,1,false),(2,4,-1,true))){
+        image.setup(mode,fragmentVersion=version,polygon=true,sign=sign,shaderOverride=overrideDepth)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        assert(image.consumer(100+version)==BigInt("a7a7a7a7",16))
+        image.submit(110+version);image.run(id=110+version);image.verify()
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==BigInt("80000030",16));image.pop()
+        val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedBytes(image.imageBase+60+b))<<(b*8)))
+        assert(image.consumer(120+version)==expected)
+        def word(a: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory(image.pa(a)+b))<<(b*8)))
+        for(h<-0 until 2;e<-0 until 2){val base=image.region+(if(e==0)0x40000 else 0x50000)+h*4096+image.fragmentPrefix
+          for(i<-0 until 4;c<-0 until 4)assert(word(base+i*16+c*4)==image.rgba(h)(c),"native polygon replay changed a uniform tail")
+          assert(word(base+64)==(if(overrideDepth && h==1)63 else 61) && word(base+68)==fp(0.125))}
+        assert(image.reads.exists(a=>a>=image.pa(image.region+0x100000) && a<image.pa(image.region+0x110000)),"prepared polygon records must be fetched from GPU-memory bins")
+        assert(image.reads.exists(a=>a>=image.pa(image.region+0x20000) && a<image.pa(image.region+0x20400)),"polygon shaders must fetch GFS1 state")
+        d.io.performance.get.payloadReservedBytes.expect(0.U)
+      }
+      info(s"NATIVE_BINNED_POLYGON_OFFSET local=$local CUs=2 GND1=true GFS1=true GPUResidentBins=true virtualImages=$virtualImages boundD32F=true rasterVersion2=true signedFactorUnits=true versions3And4=true modes2x4x=true shaderFragCoordZInMRT=true exactDefaultSampleDepth=true shaderDepthOverrideBypassesBias=true gradientMRTBlend=true exactSourceResolveGuards=true cachedConsumer=true uniformTails=true heldCompletionPinsVM=true")
+    }
   }
   for(local<-Seq(true,false))
   it should s"replay native centroid gradients from GPU-memory bins and fragment states local=$local" in {

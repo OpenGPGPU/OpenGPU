@@ -5960,3 +5960,55 @@ semantics and throughput remain open. Historical native replay timing failure,
 corrected host synthesis and the isolated650-file final37 host controls remain
 separate work. Full H0-H8/GLES hardware completion is not established; PPA remains
 synthesis only.
+
+## Isolated depth, facing and native texture reconciliation (2026-10-20)
+
+The [AXI service-session correction](performance/mobile-axi-service-session-boundary-2026-10-20.json)
+resolves the reproduced polygon-reset timeout without a production RTL change.
+Two directed read/write tests fail on the original helper and pass after return
+pauses memory handshakes. The unchanged native reset case then passes all three
+vertex/fragment/publication phases and exact healthy reuse. The terminal175/176
+result remains preserved; it is not rewritten as a full corrected pass.
+
+This isolated [combined candidate](performance/mobile-depth-texture-reconciliation-pending-2026-10-20.json)
+reconciles depth and facing with the main native sampler extension. The ABI audit
+preserves every prior field and C define from both inputs: polygon words354..356
+and sampler words480..483 coexist in GND1; GTD1 and GFS1 fixed slots stay stable.
+GRI1 and GTX1 remain separate read-only records. The planned206-check composition,
+CI, four ABI checks and both full RTL emissions must qualify this source before
+main promotion. PPA remains synthesis only; broader resource and H0-H8 closure
+remain open.
+
+## Completed depth facing and texture composition (2026-10-20)
+
+All [206 controls](performance/mobile-depth-texture-composed-2026-10-20.json) pass
+on unchanged650-file source, with four ABI checks, C11 headers, CI selection and
+replay/default-four-CU host emissions. Audited coverage includes60 native depth
+frames,72 facing frames,3 reset phases and2 texture-policy profiles. The earlier
+functional failures and their fixture/RTL corrections remain preserved.
+
+This isolated composition requires reconciliation with the independently qualified
+image address/level/fetch/binding components now on main. Exact native source/RTL
+identity and component checks under reconciled ABI helpers are required before
+promotion. No completed composed PPA or full H0-H8/GLES/product result is claimed;
+PPA remains synthesis only.
+
+
+## Reconciled native controls and image components (2026-10-20)
+
+The [672-file reconciliation](performance/mobile-depth-texture-main-reconciled-2026-10-20.json)
+preserves all650 native files and22 newer image component files exactly. The
+completed206 native controls carry by exact source and byte-identical65-file
+replay/375-file default-four-CU host RTL. All29 image component/decoder controls
+run fresh and pass under the reconciled helpers, with seven ABI checks, combined
+C11 headers, CI selection and six full emissions. Generic codec helpers remain
+byte exact; image component RTL changes only source-location comments/spacing.
+This is206 carried checks plus29 fresh checks, not a fresh235-test run.
+
+The four positive standalone image synthesis screens carry by exact RTL logic
+with unchanged constraints; no native/composed clock or rate is established.
+All original failures remain retained. Main promotion requires exact committed
+and working672-file source verification and preservation of the pre-existing
+worktree changes. Native general image/sampler binding, typed shader transport,
+remaining sampler/formats, native point/line timing and the full H0-H8/GLES
+hardware objective remain open.

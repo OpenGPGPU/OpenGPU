@@ -29,13 +29,14 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,
-    preparedGeometry: Boolean=false) extends Module {
+    preparedGeometry: Boolean=false,depthFormatInput: Boolean=false) extends Module {
   require(p.varyings==f.varyings,"vertex and fragment interface capacities must match")
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+1<q.owners))
   private val shaderConfig=shared.copy(shaderPayload=None);private val payloadConfig=payload
   val io=IO(new Bundle {
     val draw=Flipped(Decoupled(new VertexFragmentDraw(p,f)));val out=Decoupled(new FragmentShaderQuad(f,g))
     val primitive=if(preparedGeometry)Some(Input(new WindowPrimitive(p)))else None
+    val depthFormat=if(depthFormatInput)Some(Input(UInt(3.W)))else None
     val completion=Decoupled(new VertexFragmentCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,shaderConfig.taskIdWidth,shaderConfig.numComputeUnits))
     val payload=payloadConfig.map(q=>Vec(2,new FragmentPayloadPort(config,q)))
@@ -45,7 +46,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,8)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner,centroidInput=true)))else None
+  private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner,centroidInput=true,depthFormatInput=true)))else None
   private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1))
   private val router=Module(new SharedShaderTaskRouter(config,shared.numComputeUnits,2,shared.taskIdWidth,shaderPayload=payload))
   router.io.clients(1)<>fragment.io.shared;io.shared<>router.io.pool
@@ -56,6 +57,8 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   private val vertexRequest=Wire(Decoupled(new ComputeMemoryRequest(config,64,4)))
   private val vertexResponse=Wire(Decoupled(new ComputeMemoryResponse(64,4)))
   private val primitive=if(preparedGeometry)Some(Reg(new WindowPrimitive(p)))else None
+  private val depthFormat=Reg(UInt(3.W))
+  when(io.draw.fire){depthFormat:=io.depthFormat.getOrElse(TypedDepthFormat.d24.U)}
   private val centroidMask=Wire(UInt((p.varyings*4).W))
   private def tie(d: Data,direction: ActualDirection): Unit=d match {
     case r: Record=>r.elements.values.foreach(tie(_,direction))
@@ -69,6 +72,12 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val raster=Module(new Fp32PrimitiveRasterStage(p,g))
     raster.io.in.valid:=vertexDraw.valid;raster.io.in.bits.primitive:=primitive.get;raster.io.in.bits.state:=vertexDraw.bits.raster
     raster.io.in.bits.centroidMask:=centroidMask
+    val resolution=PolygonDepthResolution.evaluate(depthFormat,primitive.get.vertices.map(_.windowDepth))
+    raster.io.in.bits.depthRoundTowardZero:=TypedDepthFormat.floating(depthFormat)
+    raster.io.in.bits.depthOffset.enabled:=vertexDraw.bits.raster.polygonOffsetEnable && resolution.available
+    raster.io.in.bits.depthOffset.factor:=vertexDraw.bits.raster.polygonOffsetFactor
+    raster.io.in.bits.depthOffset.units:=vertexDraw.bits.raster.polygonOffsetUnits
+    raster.io.in.bits.depthOffset.resolution:=resolution.value
     vertexDraw.ready:=raster.io.in.ready;vertexOut<>raster.io.out;vertexBusy:=raster.io.busy;raster.io.cancel:=vertexCancel
     vertexCompletion.valid:=raster.io.completion.valid;raster.io.completion.ready:=vertexCompletion.ready
     val r=raster.io.completion.bits;val c=vertexCompletion.bits
@@ -84,6 +93,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   }else{
     val v=vertex.get;v.io.draw<>vertexDraw;vertexOut<>v.io.out;vertexCompletion<>v.io.completion
     v.io.centroidMask.get:=centroidMask
+    v.io.depthFormat.get:=depthFormat
     v.io.cancel:=vertexCancel;vertexBusy:=v.io.busy;vertexRequest<>v.io.memoryRequest;v.io.memoryResponse<>vertexResponse
     router.io.clients(0)<>v.io.shared
   }
@@ -175,7 +185,9 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
       }.reduce(_ || _) || (v.input.indexFormat=/=0.U && overlap(f.scratch,v.input.indices))
       val aliases=if(preparedGeometry)false.B else overlap(v.scratch,f.scratch) || inputAlias
       when(externalCancel){phase:=State.finish}
-        .elsewhen(descriptor.version=/=1.U || invalid || !matching || aliases || (!preparedGeometry.B && contexts(0)=/=contexts(1))){
+        .elsewhen(descriptor.version=/=1.U || invalid || !matching || aliases ||
+          !Fp32RasterState.legal(descriptor.vertex.raster,g) || !TypedDepthFormat.valid(depthFormat) ||
+          (!preparedGeometry.B && contexts(0)=/=contexts(1))){
           preflightStatus:=1.U;phase:=State.finish
         }.elsewhen(bounds){preflightStatus:=2.U;phase:=State.finish}
         .otherwise{vertexOffered:=true.B;fragmentOffered:=true.B;phase:=State.run}

@@ -21,7 +21,7 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
     val out=Decoupled(new Fp32RasterizedQuad(p,g));val completion=Decoupled(new Fp32TriangleRasterCompletion)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,validate,launch,run,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,validate,offsetOffer,offsetWait,launch,run,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new Fp32TriangleRasterRequest(p))
   private val result=Reg(new Fp32TriangleRasterCompletion);private val status=RegInit(0.U(3.W))
   private val launched=RegInit(false.B);private val empty=RegInit(false.B)
@@ -31,7 +31,19 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val fault=RegInit(false.B);private val faultX=RegInit(0.S(32.W));private val faultY=RegInit(0.S(32.W));private val faultLane=RegInit(0.U(2.W))
   private val currentX=Reg(SInt(32.W));private val currentY=Reg(SInt(32.W))
   private val raster=Module(new TriangleRasterizer(g,quadMode=true,pixelCenter=true))
-  private val interpolation=Module(new Fp32FragmentInterpolator(p,g))
+  private val interpolation=Module(new Fp32FragmentInterpolator(p,g,externalArithmetic=true))
+  private val offset=Module(new PolygonDepthOffset(g.subPixelBits))
+  private val arithmetic=Module(new ClipFloatArithmetic())
+  private val depthOffset=Reg(new ClipFloat)
+  private val offsetService=phase===State.offsetOffer || phase===State.offsetWait
+  arithmetic.io.in.valid:=Mux(offsetService,offset.io.mathRequest.valid,interpolation.io.mathRequest.get.valid)
+  arithmetic.io.in.bits:=Mux(offsetService,offset.io.mathRequest.bits,interpolation.io.mathRequest.get.bits)
+  offset.io.mathRequest.ready:=offsetService && arithmetic.io.in.ready
+  interpolation.io.mathRequest.get.ready:= !offsetService && arithmetic.io.in.ready
+  offset.io.mathResponse.valid:=offsetService && arithmetic.io.out.valid;offset.io.mathResponse.bits:=arithmetic.io.out.bits
+  interpolation.io.mathResponse.get.valid:= !offsetService && arithmetic.io.out.valid;interpolation.io.mathResponse.get.bits:=arithmetic.io.out.bits
+  arithmetic.io.out.ready:=Mux(offsetService,offset.io.mathResponse.ready,interpolation.io.mathResponse.get.ready)
+  arithmetic.io.cancel:=Mux(offsetService,offset.io.mathCancel,interpolation.io.mathCancel.get)
   private val small=if(trianglesOnly)None else Some(Module(new PointLineRasterizer(g)))
   private val candidate=Wire(Decoupled(new RasterQuad(g)))
   private val rasterReady=Wire(Bool());private val rasterFault=WireDefault(false.B)
@@ -42,6 +54,14 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val active=phase=/=State.idle && phase=/=State.complete
   private val interpolationFault=interpolation.io.completion.valid && interpolation.io.completion.bits.status=/=0.U
   private val stop=status=/=0.U || io.cancel || interpolationFault
+  offset.io.in.valid:=phase===State.offsetOffer;offset.io.in.bits:=0.U.asTypeOf(offset.io.in.bits)
+  offset.io.in.bits.identity:=primitive.identity;offset.io.in.bits.sequence:=primitive.sequence;offset.io.in.bits.primitiveId:=primitive.primitiveId
+  offset.io.in.bits.enabled:=descriptor.depthOffset.enabled;offset.io.in.bits.primitiveKind:=primitive.kind
+  offset.io.in.bits.factor:=descriptor.depthOffset.factor;offset.io.in.bits.units:=descriptor.depthOffset.units
+  offset.io.in.bits.resolution:=descriptor.depthOffset.resolution
+  for(i<-0 until 3){offset.io.in.bits.x(i):=descriptor.primitive.vertices(i).screenX(31,0).asSInt
+    offset.io.in.bits.y(i):=descriptor.primitive.vertices(i).screenY(31,0).asSInt;offset.io.in.bits.depth(i):=descriptor.primitive.vertices(i).windowDepth}
+  offset.io.cancel:=phase===State.offsetWait && stop;offset.io.out.ready:=phase===State.offsetWait
   io.in.ready:=phase===State.idle && !io.cancel;io.busy:=phase=/=State.idle
   raster.io.draw.valid:=phase===State.launch
   for(i<-0 until 3) {
@@ -72,6 +92,8 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   interpolation.io.in.bits.pointSize:=selectedPointSize
   interpolation.io.in.bits.sampleDepthEnable:=true.B;interpolation.io.in.bits.sampleMode:=settings.sampleMode
   interpolation.io.in.bits.centroidMask:=descriptor.centroidMask
+  interpolation.io.in.bits.depthRoundTowardZero:=descriptor.depthRoundTowardZero
+  interpolation.io.in.bits.depthOffset:=depthOffset
   candidate.ready:=phase===State.run && (stop || rasterFault || interpolation.io.in.ready)
   interpolation.io.cancel:=active && (stop || rasterFault);interpolation.io.completion.ready:=phase===State.run
   io.out.valid:=interpolation.io.out.valid;io.out.bits.values:=interpolation.io.out.bits;interpolation.io.out.ready:=io.out.ready
@@ -96,6 +118,7 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
       descriptor:=io.in.bits;status:=0.U;launched:=false.B;empty:=false.B;raw:=0.U;discarded:=0.U;exported:=0.U
       covered:=0.U;helpers:=0.U;samples:=0.U;operations:=0.U;arithmeticFlags:=0.U;packingFlags:=0.U
       fault:=false.B;faultX:=0.S;faultY:=0.S;faultLane:=0.U;phase:=State.validate
+      depthOffset:=ClipFloat.zero
     }}
     is(State.validate){
       val topology=MuxLookup(primitive.kind,false.B)(Seq(0.U->(primitive.topology===0.U),1.U->(primitive.topology>=1.U && primitive.topology<=3.U),2.U->(primitive.topology>=4.U && primitive.topology<=6.U)))
@@ -126,11 +149,19 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
       // narrowing, so representable endpoints may legitimately cross this span.
       val safeSpan= !triangle || ((maxX-&minX)<=((BigInt(1)<<31)-1).S && (maxY-&minY)<=((BigInt(1)<<31)-1).S)
       when(stop){phase:=State.finish}
-        .elsewhen(!Fp32RasterState.legal(settings,g) || !metadata || !records){status:=1.U;phase:=State.finish}
+        .elsewhen(!Fp32RasterState.legal(settings,g) || !metadata || !records ||
+          (triangle && !PolygonDepthOffsetBinding.legal(descriptor.depthOffset))){status:=1.U;phase:=State.finish}
         .elsewhen(outside){empty:=true.B;phase:=State.finish}
         .elsewhen(!narrowed || !safeSpan){status:=7.U;phase:=State.finish}
-        .otherwise{phase:=State.launch}
+        .otherwise{phase:=Mux(triangle && descriptor.depthOffset.enabled,State.offsetOffer,State.launch)}
     }
+    is(State.offsetOffer){when(offset.io.in.fire){phase:=State.offsetWait}}
+    is(State.offsetWait){when(offset.io.out.fire){
+      val r=offset.io.out.bits
+      operations:=operations+r.arithmeticOperations;arithmeticFlags:=arithmeticFlags|r.arithmeticStatus;packingFlags:=packingFlags|r.packingStatus
+      when(r.status=/=0.U && status===0.U && !io.cancel){status:=r.status;fault:=true.B}
+      depthOffset:=r.offset;phase:=Mux(stop || r.status=/=0.U,State.finish,State.launch)
+    }}
     is(State.launch){when(raster.io.draw.fire || small.map(_.io.in.fire).getOrElse(false.B)){launched:=true.B;phase:=State.run}}
     is(State.run){when(rasterReady && !interpolation.io.busy){phase:=State.finish}}
     is(State.finish){
@@ -145,7 +176,8 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   }
   when(active && io.cancel && status===0.U){status:=4.U}
   when(phase===State.finish || phase===State.complete){
-    assert(rasterReady && !interpolation.io.busy,"primitive completion escaped raster/interpolation drain")
+    assert(rasterReady && !interpolation.io.busy && !offset.io.busy && !arithmetic.io.busy,"primitive completion escaped raster/interpolation/offset drain")
   }
+  when(offsetService){assert(!interpolation.io.busy,"polygon setup borrowed live interpolation arithmetic")}
   io.completion.valid:=phase===State.complete;io.completion.bits:=result
 }
