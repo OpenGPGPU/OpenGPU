@@ -5473,3 +5473,17 @@ and polygon changes remain on `codex/mobile-depth-native-composed` until full
 source qualification. Main retains the earlier qualified centroid integration.
 General precision, G04/H6/H0–H8, full resources and rates remain open; PPA
 continues to use synthesis only.
+
+
+## Depth composition controls completed; runtime groups continue (2026-10-20)
+
+The [first 106 checks](performance/mobile-depth-native-composed-controls-2026-10-20.json)
+of the frozen 176-check source pass across twenty suites, together with four
+ABI checks and replay emission. The replay retains one scalar interpolation/
+offset service, two total FMA lanes, one divider, no CU and 43,008 SRAM bytes.
+The log prefix and source hashes are frozen separately from the continuing run.
+
+The remaining 13 vertex, 24 prepared/bin image and 33 native-host image/fault/
+reset checks are still running. Final default-host emission follows those
+groups. This is a partial qualification, with G04/H6/H0–H8, full precision,
+rates and PPA open. PPA remains synthesis only.
