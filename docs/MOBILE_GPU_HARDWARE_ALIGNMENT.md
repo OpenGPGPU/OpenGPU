@@ -5793,3 +5793,13 @@ binding must still own authoritative format identity. Native image/sampler
 bindings, complete mip rules, coordinate/LOD/filtering, compressed decoding and
 shader integration remain open. No native sampling capability or H4/H6 closure
 is claimed. PPA remains synthesis only.
+
+The initial typed [synthesis miss](performance/mobile-texture-image-fetch-synthesis-before-2026-10-20.json)
+is retained: mapping passes, raw setup is +53.933 ps and typed setup is -3.880 ps
+at the unchanged 1 GHz target. A fetch-specific registered component-selection
+boundary now separates extraction from shared numeric conversion. The
+[revised 19-check qualification](performance/mobile-texture-image-fetch-pipelined-2026-10-20.json)
+passes all six ABI checks and both emissions on unchanged 655-file source.
+The 649 existing dependencies and every raw active RTL byte are unchanged.
+Revised synthesis remains pending; no relaxed constraint or native capability
+change is introduced.

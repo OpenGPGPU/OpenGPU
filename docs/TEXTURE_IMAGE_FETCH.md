@@ -1,9 +1,9 @@
 # Texture image fetch and typed decoding
 
-Status: [19 controls pass](performance/mobile-texture-image-fetch-2026-10-20.json)
+Status: [19 controls pass](performance/mobile-texture-image-fetch-pipelined-2026-10-20.json)
 on unchanged 655-file source, together with six ABI checks, combined C11 headers,
-CI selection and both raw/typed RTL emissions. Native integration and synthesis
-results remain pending. This component does not establish completion of H4/H6
+CI selection and both raw/typed RTL emissions. Native integration and the revised
+typed synthesis result remain pending. This component does not establish completion of H4/H6
 or GLES texture support.
 
 `TextureImageDataFetchUnit` connects the GPU-memory GXL1 level loader and
@@ -22,7 +22,7 @@ must drain offered and accepted requests before releasing that ownership.
 Descriptor invalidation does not provide atomicity for concurrent CPU writes.
 
 `TextureImageTypedFetchUnit` captures one of the existing 36 `TypedColorFormat`
-storage IDs and uses the shared decoder after fetching the matching packed
+storage IDs and uses shared decoding arithmetic after fetching the matching packed
 byte layout. These IDs are internal storage encodings. The new format ABI
 emitter describes their IDs and byte sizes; it does not advertise native
 sampling support. Integer outputs retain their typed values.
@@ -54,3 +54,10 @@ without retiming. Raw fetch passes setup at +53.933 ps. Typed fetch misses setup
 at -3.880 ps; its critical path runs from the decoder component selector to the
 decoded component result. A fetch-specific registered selection boundary is
 required before claiming a positive typed result. No place/route is required.
+
+The revised fetch-specific decoder registers extracted component bits, width,
+encoding and default-channel metadata before numeric conversion. It reuses
+`TypedColorDecode.unorm`, `TypedColorDecode.half` and the same sRGB table. Each
+component takes two cycles. The existing `TypedColorDecoder` and all 649
+qualified dependencies remain unchanged; raw-profile active RTL is byte-for-byte
+identical. All 19 controls pass again on the revised 655-file frozen source.

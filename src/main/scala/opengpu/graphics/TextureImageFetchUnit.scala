@@ -140,6 +140,38 @@ class TextureImageTypedFetchRequest extends Bundle {val resource=new TextureImag
 class TextureImageTypedFetchResult extends Bundle {
   val sample=new TextureImageDataFetchResult;val rgba=Vec(4,UInt(32.W));val colorType=UInt(2.W)
 }
+/** Register component extraction before the shared numeric decode operations.
+  * The existing TypedColorDecoder and its users keep their original latency.
+  */
+private[graphics] class TextureImageFetchDecoder extends Module {
+  val io=IO(new Bundle {
+    val in=Flipped(Decoupled(new TypedColorDecodeRequest));val out=Decoupled(new TypedColorDecodeResult)
+    val busy=Output(Bool())
+  })
+  private object State extends ChiselEnum {val idle,select,decode,respond=Value}
+  private val phase=RegInit(State.idle);private val request=Reg(new TypedColorDecodeRequest)
+  private val result=Reg(new TypedColorDecodeResult);private val c=RegInit(0.U(2.W))
+  private val raw=Reg(UInt(32.W));private val bits=Reg(UInt(6.W));private val encoding=Reg(UInt(3.W))
+  private val present=Reg(Bool());private val alpha=Reg(Bool());private val defaultValue=Reg(UInt(32.W))
+  io.in.ready:=phase===State.idle;io.out.valid:=phase===State.respond;io.out.bits:=result;io.busy:=phase=/=State.idle
+  when(io.in.fire){request:=io.in.bits;result:=0.U.asTypeOf(result);result.tag:=io.in.bits.tag
+    result.colorType:=TypedColorFormat.kind(io.in.bits.format);c:=0.U
+    when(TypedColorFormat.valid(io.in.bits.format)){phase:=State.select}.otherwise{result.status:=1.U;phase:=State.respond}}
+  when(phase===State.select){
+    val width=TypedColorFormat.componentWidth(request.format,c)
+    val shift=TypedColorFormat.componentOffset(request.format,c)
+    raw:=(request.value>>shift)(31,0)&((1.U(33.W)<<width)-1.U)(31,0)
+    bits:=width;encoding:=TypedColorFormat.encoding(request.format);present:=width=/=0.U;alpha:=c===3.U
+    defaultValue:=Mux(c===3.U,Mux(TypedColorFormat.kind(request.format)===0.U,"h3f800000".U,1.U),0.U)
+    phase:=State.decode
+  }
+  private val signed=((raw<<(32.U-bits))(31,0).asSInt>>(32.U-bits)).asUInt
+  private val decoded=MuxLookup(encoding,raw)(Seq(0.U->TypedColorDecode.unorm(raw,bits),2.U->signed,
+    3.U->TypedColorDecode.half(raw(15,0)),5.U->Mux(alpha,TypedColorDecode.unorm(raw,8.U),Srgb8Decode.values(raw(7,0)))))
+  when(phase===State.decode){result.rgba(c):=Mux(present,decoded,defaultValue)
+    when(c===3.U){phase:=State.respond}.otherwise{c:=c+1.U;phase:=State.select}}
+  when(io.out.fire){phase:=State.idle}
+}
 /** Typed36-format fetch. Format is captured at admission; its byte size must
   * agree with the GPU level layout before texture data can be read. Integer
   * outputs remain raw typed values; normalized/half/sRGB use the shared decoder.
@@ -157,7 +189,7 @@ class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
   private val rgba=Reg(Vec(4,UInt(32.W)));private val colorType=Reg(UInt(2.W));private val status=RegInit(0.U(3.W))
   private val fetchStarted=RegInit(false.B);private val active=phase=/=State.idle && phase=/=State.complete
   private val stop=status=/=0.U || io.cancel
-  private val fetch=Module(new TextureImageDataFetchUnit(config,p));private val decoder=Module(new TypedColorDecoder)
+  private val fetch=Module(new TextureImageDataFetchUnit(config,p));private val decoder=Module(new TextureImageFetchDecoder)
   io.in.ready:=phase===State.idle && !io.cancel;io.out.valid:=phase===State.complete;io.out.bits:=result;io.busy:=phase=/=State.idle
   io.memoryRequest<>fetch.io.memoryRequest;fetch.io.memoryResponse<>io.memoryResponse
   fetch.io.invalidate:=io.invalidate || stop;fetch.io.cancel:=fetchStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
