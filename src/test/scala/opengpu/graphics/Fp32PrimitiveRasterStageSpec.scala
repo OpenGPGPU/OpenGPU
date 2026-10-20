@@ -28,7 +28,8 @@ class Fp32PrimitiveRasterStageSpec extends AnyFlatSpec {
       d.clock.step();cycle+=1}
     def until(q: => Boolean): Unit={var n=0;while(!q && n<200000){tick();n+=1};assert(q,s"primitive owner stalled cycle=$cycle accepted=$accepted")}
     def prepare(k: Int,t: Triangle=base,s: Settings=Settings(),z: Sizes=Sizes(),model: Boolean=true): Unit={
-      exactLocal=None;origin=(0,0);kind=k;settings=s;sizes=z;source=t;accepted=0;expected=if(model)raster(t,k,s,g,z)else Vector.empty
+      exactLocal=None;origin=(0,0);kind=k;settings=s;sizes=z;source=t;accepted=0
+      expected=if(!model)Vector.empty else if(k==2)TriangleRasterReference.raster(t,s,g)else raster(t,k,s,g,z)
       zero(d.io.in.bits);primitive(d.io.in.bits.primitive,t);state(d.io.in.bits.state,s)
       d.io.in.bits.state.pointSize.poke(fp(z.point).U);d.io.in.bits.state.lineWidth.poke(fp(z.line).U)
       val a=d.io.in.bits.primitive.clipped.primitive;a.kind.poke(k.U);a.topology.poke((if(k==0)0 else if(k==1)1 else 4).U)
@@ -41,10 +42,28 @@ class Fp32PrimitiveRasterStageSpec extends AnyFlatSpec {
     }
     def submit(): Unit={d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B)}
     def finish(status: Int=0): Unit={until(d.io.completion.valid.peek().litToBoolean);val r=d.io.completion.bits;r.status.expect(status.U);r.outputQuads.expect(accepted.U)
-      if(status==0){assert(accepted==expected.size);val pixels=expected.flatMap(_.samples);r.coveredLanes.expect(pixels.count(_.mask!=0).U);r.coveredSamples.expect(pixels.map(x=>Integer.bitCount(x.mask)).sum.U)}
+      if(status==0){assert(accepted==expected.size,s"primitive outputs=$accepted expected=${expected.size} kind=$kind mode=${settings.mode} coords=${source.coords} launched=${r.launched.peek().litValue} empty=${r.emptyBounds.peek().litValue}")
+        val pixels=expected.flatMap(_.samples);r.coveredLanes.expect(pixels.count(_.mask!=0).U);r.coveredSamples.expect(pixels.map(x=>Integer.bitCount(x.mask)).sum.U)}
       val held=r.peek().litValue;for(_<-0 until 6){tick();d.io.busy.expect(true.B);assert(r.peek().litValue==held)}
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)}
     def run(k: Int,t: Triangle=base,s: Settings=Settings(),z: Sizes=Sizes()): Unit={prepare(k,t,s,z);submit();finish()}
+  }
+  it should "snapshot centroid component masks through real primitive coverage and immutable cancellation" in {
+    simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d)
+      val triangle=base.copy(coords=Vector((128,128),(1792,512),(256,1792)).map{case(x,y)=>(BigInt(x),BigInt(y))})
+      for(kind<-0 to 2;mode<-0 to 2){
+        t.prepare(kind,triangle,Settings(mode=mode),Sizes(point=2,line=2))
+        t.expected=t.expected.map(q=>CentroidRasterReference(triangle,kind,q,mode,13,g))
+        d.io.in.bits.centroidMask.poke(13.U);t.submit();d.io.in.bits.centroidMask.poke(0.U);t.finish()
+      }
+      t.prepare(2,model=false);d.io.in.bits.primitive.clipped.primitive.varyingSlots.poke(1.U)
+      d.io.in.bits.centroidMask.poke(16.U);t.submit();t.finish(1)
+      t.prepare(2,triangle,Settings(mode=2));t.expected=t.expected.map(q=>CentroidRasterReference(triangle,2,q,2,5,g))
+      d.io.in.bits.centroidMask.poke(5.U);t.hold=true;t.submit();t.until(d.io.out.valid.peek().litToBoolean)
+      d.io.cancel.poke(true.B);for(_<-0 until 8)t.tick();t.hold=false;t.finish(4);d.io.cancel.poke(false.B)
+      t.run(2,triangle,Settings(mode=2))
+      info("CENTROID_PRIMITIVE draws=9 modes=3 primitiveKinds=3 mixedCenterCentroidFlat=true actualCoverage=true descriptorSnapshot=true rejectedMaskBeforeLaunch=true heldQuadCancellation=true exactHealthyReuse=true")
+    }
   }
   it should "interpolate point data and coordinates exactly and perspective line data at all sample modes with helpers and raw flat values" in {
     simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d);val rng=new Random(0x1ee8);var draws=0
@@ -60,6 +79,19 @@ class Fp32PrimitiveRasterStageSpec extends AnyFlatSpec {
       info(s"PRIMITIVE_RASTER pointLineDraws=$draws modes=3 exactPointValues=true pointCoord=true shaderPointSize=true perspectiveLine=true lineTopologies=3 rawFlatNaN=true helpers=true facingAlwaysFront=true cullIgnored=true")
     }
   }
+  it should "interpolate visible line portions reached from extreme representable endpoints with full width weights" in {
+    simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d)
+      val minimum= -(BigInt(1)<<31);val middle=BigInt(640)
+      val pairs=Vector(Vector((minimum,middle),(BigInt(1024),middle)),
+        Vector((middle,minimum),(middle,BigInt(1024))))
+      for(coords<-pairs;reverse<-Seq(false,true);mode<-0 to 2){
+        val ordered=if(reverse)coords.reverse else coords
+        t.run(1,base.copy(coords=ordered :+ ((BigInt(0),BigInt(0)))),Settings(mode=mode))
+      }
+      info("PRIMITIVE_RASTER extremeLineEndpoints=true horizontalVertical=true bothDirections=true modes=3 exactCoveredAndHelperInputs=true fullWidthWeights=true sampleDepth=true")
+    }
+  }
+
   it should "derive point coordinates from unrounded window positions without losing exact large viewport origins" in {
     simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d)
       val cases=Vector((Vector.fill(3)((BigInt(341),BigInt(683))),Vector(1.3333333,2.6666667),(0,0)),
@@ -81,8 +113,12 @@ class Fp32PrimitiveRasterStageSpec extends AnyFlatSpec {
       t.prepare(1,far,model=false);t.submit();t.finish()
       val unsafe=base.copy(coords=Vector((-(BigInt(1)<<40),BigInt(0)),(BigInt(1)<<40,BigInt(256)),(BigInt(0),BigInt(0))))
       t.prepare(1,unsafe,model=false);t.submit();t.finish(7)
+      // Expanding full signed-64 endpoints by the line margin must not wrap
+      // them into a false outside-bounds success before narrowing is checked.
+      val widest=base.copy(coords=Vector((-(BigInt(1)<<63),BigInt(640)),((BigInt(1)<<63)-1,BigInt(640)),(BigInt(0),BigInt(0))))
+      t.prepare(1,widest,model=false);t.submit();t.finish(7)
       t.run(0)
-      info("PRIMITIVE_RASTER invalidSizes=true invalidMetadata=true signed64BoundsCull=true checkedNarrowing=true numericFault=true healthyReuse=true")
+      info("PRIMITIVE_RASTER invalidSizes=true invalidMetadata=true signed64BoundsCull=true marginCarries=true widestOverlapFault=true checkedNarrowing=true numericFault=true healthyReuse=true")
     }
   }
   it should "retain offered quads and drain point-coordinate arithmetic or line coverage on cancellation" in {

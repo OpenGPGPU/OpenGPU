@@ -35,11 +35,30 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,addi(6,7,array*32),vm(6,1,true))
     for(i<-0 until 4;c<-0 until 4)scalar(896+i*16+c*4,10+i*4+c)
     scalar(960,27);scalar(964,26);code+=BigInt("30500073",16);code.toVector}
+  private val centroidVertexProgram=startup++
+    ((0 until 4).map(i=>(i,11+i))++(0 until 4).map(i=>(4+i,15+i))).flatMap{case(in,out)=>
+      Seq(addi(5,7,in*32),vm(5,1,false),addi(6,7,out*32),vm(6,1,true))}++Seq(BigInt("30500073",16))
+  private def centroidFragmentProgram(version: Int): Vector[BigInt]={
+    val inputs=if(version==4)12 else 10;val prefix=(inputs+18)*32
+    val code=mutable.ArrayBuffer.empty[BigInt];code++=startup
+    for(location<-0 until 4;c<-0 until 4)
+      code++=Seq(addi(5,7,(6+c)*32),vm(5,1,false),addi(6,7,(inputs+4*location+c)*32),vm(6,1,true))
+    for((offset,array)<-Seq((prefix+64,inputs+17),(prefix+68,inputs+16)))
+      code++=Seq(addi(13,1,offset),(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3,
+        (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,
+        addi(6,7,array*32),vm(6,1,true))
+    (code.toVector:+BigInt("30500073",16))
+  }
   private class Image(val d: GpuHostSystemAxi){
     val memory=mutable.Map.empty[BigInt,Int];val initial=mutable.Map.empty[BigInt,Int]
     val reads=mutable.ArrayBuffer.empty[BigInt];val writes=mutable.ArrayBuffer.empty[BigInt]
     var serial=0;var region=BigInt(0x400000);var imageBase=BigInt(0x4000000);var imageVaBase=BigInt(0x40000000)
-    var generation=9;var mode=0;var instances=1;var drawCount=2
+    var generation=9;var mode=0;var instances=1;var drawCount=2;var centroidVersion=0
+    def centroid: Boolean=centroidVersion!=0
+    def fragmentPrefix: Int=if(centroidVersion==4)960 else 896
+    def centroidMask(h: Int): BigInt=if(h==0)5 else 3
+    def gradient(h: Int,vertex: Int): Vector[BigInt]=Vector.tabulate(4){c=>
+      fp(if(c==3){if(h==0)1.0 else 0.5}else ((vertex+1)*(c+1)+h)/16.0)}
     val names=Vector("RGBA8","RGB8","RGBA16F","SRGB8_ALPHA8");val clear=Vector(0.1,0.2,0.3,0.4).map(fp)
     case class Backing(location: Int,base: BigInt,pitch: Int,bytes: Int,resolve: Boolean)
     val backings=mutable.ArrayBuffer.empty[Backing]
@@ -48,6 +67,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     private val header=Map[String,BigInt]("header.attributes"->16,"header.bindings"->16,"header.varyings"->16,"header.colors"->4,"header.engineViews"->4)
     def identity(prefix: String): Map[String,BigInt]=Map(prefix+"context"->BigInt(7),prefix+"pass"->BigInt(8),prefix+"generation"->BigInt(generation))
     def record(base: BigInt,words: Int,magic: BigInt,fields: Seq[NativeTypedGraphicsLayout.Field],values: Map[String,BigInt]): Unit={
+      if(centroid)require(values.keySet.subsetOf(fields.map(_.name).toSet),s"unknown centroid record fields: ${values.keySet--fields.map(_.name)}")
       for(i<-0 until words)word(pa(base+i*4),0)
       word(pa(base),magic);word(pa(base+4),words*4);word(pa(base+8),1)
       val all=header++values
@@ -71,15 +91,25 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     def patchDraw(name: String,value: BigInt): Unit=patchRecord(region+0x12000,
       NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord),name,value)
     def setup(sampleMode: Int=0,indexedInstances: Int=1,empty: Boolean=false,badShader: Boolean=false,loadImages: Boolean=false,
-        vertexFormat: Int=VertexInputFormat.float32): Unit={
+        vertexFormat: Int=VertexInputFormat.float32,fragmentVersion: Int=0): Unit={
+      require(fragmentVersion==0 || fragmentVersion==3 || fragmentVersion==4)
+      centroidVersion=fragmentVersion
       region=BigInt(0x400000)+BigInt(serial)*0x400000;imageBase=BigInt(0x4000000)+BigInt(serial)*0x1000000
       imageVaBase=BigInt(0x40000000)+BigInt(serial)*0x400000
       generation=9+serial;serial+=1;mode=sampleMode;instances=indexedInstances;drawCount=if(empty)0 else 2
       initial.clear();reads.clear();writes.clear();backings.clear()
       word(0x30000+(region>>22)*4,((pa(region)>>12)<<10)|0xcf)
       val converted=vertexFormat!=VertexInputFormat.float32
-      val vertexBase=if(converted)region+0x23000 else BigInt(0x421000)
+      val vertexBase=if(converted || centroid)region+0x23000 else BigInt(0x421000)
       val vertexStride=if(!converted)16 else if(vertexFormat==VertexInputFormat.float16)8 else 4
+      if(centroid){
+        require(!converted && !badShader && !empty && instances==1)
+        centroidVertexProgram.zipWithIndex.foreach{case(w,i)=>word(pa(region+0x24000+4*i),w)}
+        centroidFragmentProgram(centroidVersion).zipWithIndex.foreach{case(w,i)=>word(pa(region+0x25000+4*i),w)}
+        for((v,i)<-Vector(Vector(-1.0,-1.0,0.0,1.0),Vector(1.0,-1.0,0.0,1.0),Vector(-1.0,1.0,0.0,1.0)).zipWithIndex;c<-0 until 4)
+          word(pa(vertexBase+i*16+c*4),fp(v(c)))
+        for(h<-0 until 2;i<-0 until 3;c<-0 until 4)word(pa(region+0x26000+h*64+i*16+c*4),gradient(h,i)(c))
+      }
       if(converted){
         require(Set(VertexInputFormat.float16,VertexInputFormat.snorm2101010)(vertexFormat))
         for((v,i)<-Vector(Vector(-1,-1,0,1),Vector(1,-1,0,1),Vector(-1,1,0,1)).zipWithIndex){
@@ -97,16 +127,21 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       for(h<-0 until 2){val base=region+0x20000+h*512;for(i<-0 until 128)word(pa(base+i*4),0)
         for((x,i)<-Vector[BigInt](TypedFragmentStateLayout.magic,512,1,4,7,8,generation,h).zipWithIndex)word(pa(base+i*4),x)
         val a=region+0x40000+h*4096;val b=region+0x50000+h*4096
-        val v=Map[String,BigInt]("version"->1,"engineCount"->2,"fragment.version"->1,"fragment.shaderPc"->(if(badShader && h==1)0x404000 else 0x402000),
+        val used=fragmentPrefix+72;val allocation=(used+63)& ~63
+        val v=Map[String,BigInt]("version"->1,"engineCount"->2,"fragment.version"->(if(centroid)centroidVersion else 1),
+          "fragment.centroidMask"->(if(centroid)centroidMask(h)else BigInt(0)),
+          "fragment.shaderPc"->(if(centroid)region+0x25000 else if(badShader && h==1)BigInt(0x404000)else BigInt(0x402000)),
           "fragment.varyingSlots"->1,"fragment.colorSlots"->4,"fragment.colorMask"->15,"fragment.sampleMode"->mode,
-          "fragment.sampler.texWidth"->1,"fragment.sampler.texHeight"->1,"fragment.scratch.base"->a,"fragment.scratch.limit"->(a+968),
-          "fragment.scratch.allocationBase"->a,"fragment.scratch.allocationLimit"->(a+1024),"scratch[0].base"->b,"scratch[0].limit"->(b+968),
-          "scratch[0].allocationBase"->b,"scratch[0].allocationLimit"->(b+1024),"tests.version"->1,"tests.depthEnable"->1,"tests.depthWrite"->1,
+          "fragment.sampler.texWidth"->1,"fragment.sampler.texHeight"->1,"fragment.scratch.base"->a,"fragment.scratch.limit"->(a+used),
+          "fragment.scratch.allocationBase"->a,"fragment.scratch.allocationLimit"->(a+allocation),"scratch[0].base"->b,"scratch[0].limit"->(b+used),
+          "scratch[0].allocationBase"->b,"scratch[0].allocationLimit"->(b+allocation),"tests.version"->1,"tests.depthEnable"->1,"tests.depthWrite"->1,
           "tests.depthFunction"->1,"tests.front.function"->6,"tests.back.function"->6,"blend.version"->1,"blend.enable"->h,
           "blend.srcRGB"->4,"blend.dstRGB"->5,"blend.srcAlpha"->1)++identity("fragment.identity.")
+        if(centroid)require(v.keySet.subsetOf(sf.map(_.name).toSet),s"unknown centroid state fields: ${v.keySet--sf.map(_.name)}")
         for(field<-sf){val raw=v.getOrElse(field.name,BigInt(0))&((BigInt(1)<<(field.words*32))-1)
           for(i<-0 until field.words)word(pa(base+(field.word+i)*4),(raw>>(i*32))&0xffffffffL)}
-        for(s<-Seq(a,b)){for(i<-0 until 4;c<-0 until 4)word(pa(s+896+i*16+c*4),rgba(h)(c));word(pa(s+960),61);word(pa(s+964),fp(0.5))}
+        for(s<-Seq(a,b)){for(i<-0 until 4;c<-0 until 4)word(pa(s+fragmentPrefix+i*16+c*4),rgba(h)(c))
+          word(pa(s+fragmentPrefix+64),61);word(pa(s+fragmentPrefix+68),fp(0.5))}
       }
       word(pa(0x404000),0)
       var frame=Map[String,BigInt]("frame.version"->1,"frame.bins.producer.version"->1,"frame.bins.producer.arena.version"->1,
@@ -139,18 +174,24 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         NativeBinnedGraphicsLayout.frameFields(new NativeBinnedGraphicsFrameRecord),frame)
       for(h<-0 until drawCount){var draw=Map[String,BigInt]("draw.version"->1,"draw.state"->h,"draw.token"->(0xa0000000L+h),
         "draw.vertex.viewport.version"->1,"draw.vertex.viewport.extentX"->17,"draw.vertex.viewport.extentY"->9,"draw.vertex.viewport.farDepth"->fp(1),
-        "draw.vertex.geometry.topology"->4,"draw.vertex.geometry.vertex.version"->1,"draw.vertex.geometry.vertex.shaderPc"->0x401000,
-        "draw.vertex.geometry.vertex.attributeSlots"->1,"draw.vertex.geometry.vertex.varyingSlots"->1,
+        "draw.vertex.geometry.topology"->4,"draw.vertex.geometry.vertex.version"->1,
+        "draw.vertex.geometry.vertex.shaderPc"->(if(centroid)region+0x24000 else BigInt(0x401000)),
+        "draw.vertex.geometry.vertex.attributeSlots"->(if(centroid)2 else 1),"draw.vertex.geometry.vertex.varyingSlots"->1,
+        "draw.vertex.geometry.vertex.varyingMask"->(if(centroid)15 else 0),
         "draw.vertex.geometry.vertex.sampler.texWidth"->1,"draw.vertex.geometry.vertex.sampler.texHeight"->1,
-        "draw.vertex.geometry.vertex.scratch.base"->(region+0x30000),"draw.vertex.geometry.vertex.scratch.limit"->(region+0x301e0),
-        "draw.vertex.geometry.vertex.scratch.allocationBase"->(region+0x30000),"draw.vertex.geometry.vertex.scratch.allocationLimit"->(region+0x30200),
+        "draw.vertex.geometry.vertex.scratch.base"->(region+0x30000),"draw.vertex.geometry.vertex.scratch.limit"->(region+(if(centroid)0x30260 else 0x301e0)),
+        "draw.vertex.geometry.vertex.scratch.allocationBase"->(region+0x30000),"draw.vertex.geometry.vertex.scratch.allocationLimit"->(region+(if(centroid)0x30280 else 0x30200)),
         "draw.vertex.geometry.vertex.input.version"->(if(converted)2 else 1),"draw.vertex.geometry.vertex.input.count"->3,"draw.vertex.geometry.vertex.input.instances"->instances,
         "draw.vertex.geometry.vertex.input.attributes[0].enabled"->1,"draw.vertex.geometry.vertex.input.attributes[0].components"->4,
         "draw.vertex.geometry.vertex.input.attributes[0].format"->vertexFormat,
         "draw.vertex.geometry.vertex.input.bindings[0].base"->vertexBase,"draw.vertex.geometry.vertex.input.bindings[0].limit"->(vertexBase+3*vertexStride),
         "draw.vertex.geometry.vertex.input.bindings[0].allocationBase"->vertexBase,"draw.vertex.geometry.vertex.input.bindings[0].allocationLimit"->(vertexBase+64),
         "draw.vertex.geometry.vertex.input.bindings[0].stride"->vertexStride,"draw.raster.version"->1,"draw.raster.screenW"->17,"draw.raster.screenH"->9,
-        "draw.raster.sampleMode"->mode,"draw.raster.frontFaceCCW"->1)++identity("draw.vertex.geometry.vertex.input.identity.")
+        "draw.raster.sampleMode"->mode,"draw.raster.frontFaceCCW"->1,"draw.vertex.geometry.flatMask"->(if(centroid)8 else 0))++identity("draw.vertex.geometry.vertex.input.identity.")
+        if(centroid){val k="draw.vertex.geometry.vertex.input.";val colorBase=region+0x26000+h*64
+          draw++=Map[String,BigInt](k+"attributes[1].enabled"->1,k+"attributes[1].components"->4,k+"attributes[1].bindingIndex"->1,
+            k+"bindings[1].base"->colorBase,k+"bindings[1].limit"->(colorBase+48),k+"bindings[1].allocationBase"->colorBase,
+            k+"bindings[1].allocationLimit"->(colorBase+64),k+"bindings[1].stride"->16)}
         if(instances>1){for(i<-0 until 3)memory(pa(region+0x22000+i))=i
           val k="draw.vertex.geometry.vertex.input."
           draw++=Map[String,BigInt](k+"indexFormat"->1,k+"indices.base"->(region+0x22000),k+"indices.limit"->(region+0x22003),
@@ -167,10 +208,21 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       val tri=TriangleRasterReference.Triangle(Vector((BigInt(0),BigInt(0)),(BigInt(17*256),BigInt(0)),(BigInt(0),BigInt(9*256))),data)
       val coverage=TriangleRasterReference.raster(tri,TriangleRasterReference.Settings(width=17,height=9,mode=mode),graphics)
         .flatMap(_.samples.flatMap(p=>(0 until(1<<mode)).filter(s=>(p.mask&(1<<s))!=0).map(s=>(p.x,p.y,s)))).toSet
+      val shades=Vector.tabulate(2){h=>
+        val values=data.copy(flat=8,values=Vector.tabulate(3)(i=>gradient(h,i).padTo(8,BigInt(0))))
+        val triangle=tri.copy(values=values)
+        val pixels=mutable.Map.empty[(Int,Int),Vector[BigInt]]
+        if(centroid)for(raw<-TriangleRasterReference.raster(triangle,TriangleRasterReference.Settings(width=17,height=9,mode=mode),graphics)){
+          val q=CentroidRasterReference(triangle,2,raw,mode,centroidMask(h),graphics)
+          for((p,l)<-q.samples.zip(q.lanes) if p.mask!=0)pixels((p.x,p.y))=l.values.take(4)
+        }
+        pixels.toMap
+      }
       val expected=mutable.Map.empty[BigInt,Int]++initial
       def sample(i: Int,x: Int,y: Int,s: Int): BigInt={val covered=drawCount>0 && coverage((x,y,s))
         if(i==4)fp(if(covered)0.5 else 1)else{var old=encode(names(i),clear)._1
-          if(covered){old=encode(names(i),rgba(0))._1;for(_<-0 until instances)old=encode(names(i),TypedBlendReference.blend(names(i),rgba(1),old,TypedBlendReference.State(enable=true)))._1};old}}
+          if(covered){old=encode(names(i),if(centroid)shades(0)((x,y))else rgba(0))._1
+            for(_<-0 until instances)old=encode(names(i),TypedBlendReference.blend(names(i),if(centroid)shades(1)((x,y))else rgba(1),old,TypedBlendReference.State(enable=true)))._1};old}}
       for(b<-backings;y<-0 until 9;x<-0 until 17){
         if(b.resolve){val raw=TypedResolveReference.resolve(if(b.location==4)"R32F"else names(b.location),Vector.tabulate(1<<mode)(s=>sample(b.location,x,y,s)),mode,depth=b.location==4)
           for(j<-0 until b.bytes)expected(b.base+y*b.pitch+x*b.bytes+j)=((raw>>(j*8))&255).toInt}
@@ -237,6 +289,33 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedBytes(image.imageBase+60+b))<<(b*8)))
         assert(image.consumer(30+mode)==expected);d.io.performance.get.payloadReservedBytes.expect(0.U)}
       info(s"NATIVE_BINNED_AXI local=$local CUs=2 GNJ1=true GVI1=true convertedVertexInputs=half,snorm2101010 Sv32=true virtualImages=$virtualImages draws=4 tiles=12 modes1x4x=true exactFourMRTDepthResolveGuards=true cachedConsumer=true heldCompletionPinsVM=true")}
+  }
+  for(local<-Seq(true,false))
+  it should s"replay native centroid gradients from GPU-memory bins and fragment states local=$local" in {
+    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
+      for((word,i)<-Vector[BigInt](BigInt("47464901",16),4,0x1e,0x70f).zipWithIndex)
+        assert(axiRead(d,0x1c0+i*4)==word)
+      for((mode,version)<-Seq((1,3),(2,4))){
+        image.setup(mode,fragmentVersion=version);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        assert(image.consumer(40+version)==BigInt("a7a7a7a7",16))
+        image.submit(50+version);image.run(id=50+version);image.verify()
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==BigInt("80000030",16))
+        image.pop()
+        val expected=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.expectedBytes(image.imageBase+60+b))<<(b*8)))
+        assert(image.consumer(60+version)==expected)
+        def word(a: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory(image.pa(a)+b))<<(b*8)))
+        for(h<-0 until 2;e<-0 until 2){
+          val base=image.region+(if(e==0)0x40000 else 0x50000)+h*4096+image.fragmentPrefix
+          for(i<-0 until 4;c<-0 until 4)assert(word(base+i*16+c*4)==image.rgba(h)(c),"native replay changed a uniform tail")
+          assert(word(base+64)==61 && word(base+68)==fp(0.5))
+        }
+        assert(image.reads.exists(a=>a>=image.pa(image.region+0x100000) && a<image.pa(image.region+0x110000)),"prepared records must be fetched from the GPU-memory bin pool")
+        assert(image.reads.exists(a=>a>=image.pa(image.region+0x20000) && a<image.pa(image.region+0x20400)),"fragment states must be fetched from GFS1")
+        d.io.performance.get.payloadReservedBytes.expect(0.U)
+      }
+      info(s"NATIVE_BINNED_CENTROID local=$local CUs=2 GNJ1=true GFS1=true GPUResidentBins=true virtualImages=$virtualImages versions3And4=true modes2x4x=true stateMasks5And3=true mixedCenterCentroidFlat=true gradientMRTs=4 blendedSecondDraw=true exactSourceResolveGuards=true cachedConsumer=true freshProgramAndVertexAllocations=true uniformTails=true heldCompletionPinsVM=true")
+    }
   }
   it should "publish every empty tile and execute indexed instanced native draws through Sv32" in {
     simulate(host(false)){d=>initialize(d);val image=new Image(d);vm(d)

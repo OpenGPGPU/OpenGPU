@@ -71,6 +71,7 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
   interpolation.io.in.bits.primitive:=descriptor.primitive;interpolation.io.in.bits.quad:=candidate.bits
   interpolation.io.in.bits.pointSize:=selectedPointSize
   interpolation.io.in.bits.sampleDepthEnable:=true.B;interpolation.io.in.bits.sampleMode:=settings.sampleMode
+  interpolation.io.in.bits.centroidMask:=descriptor.centroidMask
   candidate.ready:=phase===State.run && (stop || rasterFault || interpolation.io.in.ready)
   interpolation.io.cancel:=active && (stop || rasterFault);interpolation.io.completion.ready:=phase===State.run
   io.out.valid:=interpolation.io.out.valid;io.out.bits.values:=interpolation.io.out.bits;interpolation.io.out.ready:=io.out.ready
@@ -100,6 +101,7 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
       val topology=MuxLookup(primitive.kind,false.B)(Seq(0.U->(primitive.topology===0.U),1.U->(primitive.topology>=1.U && primitive.topology<=3.U),2.U->(primitive.topology>=4.U && primitive.topology<=6.U)))
       val metadata=primitive.kind<=2.U && (!trianglesOnly.B || primitive.kind===2.U) && primitive.vertexCount===primitive.kind+&1.U && topology && primitive.provokingVertex<primitive.vertexCount &&
         primitive.varyingSlots<=p.varyings.U && !(primitive.flatMask>>(primitive.varyingSlots<<2)).orR &&
+        !(descriptor.centroidMask>>(primitive.varyingSlots<<2)).orR &&
         descriptor.primitive.clipped.partCount>=1.U && descriptor.primitive.clipped.partCount<=7.U && descriptor.primitive.clipped.partIndex<descriptor.primitive.clipped.partCount
       val records=(0 until 3).map { i=>val v=descriptor.primitive.vertices(i);val r=primitive.vertices(i)
         i.U>=primitive.vertexCount || (v.fixedValid && !descriptor.primitive.guardBandRequired &&
@@ -116,10 +118,13 @@ class Fp32PrimitiveRasterStage(p: VertexShaderStageConfig=VertexShaderStageConfi
       val highX=Mux(settings.scissorEnable && settings.scissorMaxX<width,settings.scissorMaxX,width)
       val highY=Mux(settings.scissorEnable && settings.scissorMaxY<height,settings.scissorMaxY,height)
       val margin=Mux(triangle,0.U,Fp32RasterState.fixedSize(Mux(primitive.kind===0.U,selectedPointSize,settings.lineWidth),g.subPixelBits)).zext
-      val outside=lowX>=highX || lowY>=highY || maxX+margin<=(lowX<<g.subPixelBits).zext || minX-margin>=(highX<<g.subPixelBits).zext ||
-        maxY+margin<=(lowY<<g.subPixelBits).zext || minY-margin>=(highY<<g.subPixelBits).zext
+      val outside=lowX>=highX || lowY>=highY || (maxX+&margin)<=(lowX<<g.subPixelBits).zext || (minX-&margin)>=(highX<<g.subPixelBits).zext ||
+        (maxY+&margin)<=(lowY<<g.subPixelBits).zext || (minY-&margin)>=(highY<<g.subPixelBits).zext
       val narrowed=(xs++ys).map(v=>v===v(31,0).asSInt.pad(64)).reduce(_ && _)
-      val safeSpan=(maxX-&minX)<=((BigInt(1)<<31)-1).S && (maxY-&minY)<=((BigInt(1)<<31)-1).S
+      // Triangle setup retains its signed-32 span restriction. Point/line
+      // coverage has signed-33 deltas and checks squared length/weights before
+      // narrowing, so representable endpoints may legitimately cross this span.
+      val safeSpan= !triangle || ((maxX-&minX)<=((BigInt(1)<<31)-1).S && (maxY-&minY)<=((BigInt(1)<<31)-1).S)
       when(stop){phase:=State.finish}
         .elsewhen(!Fp32RasterState.legal(settings,g) || !metadata || !records){status:=1.U;phase:=State.finish}
         .elsewhen(outside){empty:=true.B;phase:=State.finish}

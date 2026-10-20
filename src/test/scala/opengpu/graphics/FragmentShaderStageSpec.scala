@@ -428,4 +428,42 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
     }
   }
 
+  for(local<-Seq(true,false))
+  it should s"carry coherent covered sample locations through real shared CUs local=$local" in {
+    simulate(new FragmentShaderHarness(local)){d=>val t=new Driver(d);t.sampleDepthEnabled=true
+      // Bad sample-location metadata is rejected before any shader/staging access.
+      for(bad<-0 until 3){
+        t.descriptor();t.submit();t.input(0)
+        val a=d.io.in.bits.values.lanes(if(bad==2)3 else 0)
+        a.sampleLocationValid.poke(true.B);a.sampleLocation.poke((if(bad==0)2 else if(bad==1)3 else 0).U)
+        if(bad==0){d.io.draw.bits.sampleMode.poke(1.U);d.io.in.bits.sampleMode.poke(1.U)}
+        if(bad==1)a.coverageMask.poke(1.U)
+        val before=t.requests;val launches=t.launches
+        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B)
+        t.end(1);t.complete(6);assert(t.requests==before && t.launches==launches && t.exports.isEmpty)
+      }
+      for(mode<-1 to 2;sample<-0 until (1<<mode)){
+        t.descriptor();d.io.draw.bits.sampleMode.poke(mode.U);t.submit();t.input(0)
+        d.io.in.bits.sampleMode.poke(mode.U)
+        val a=d.io.in.bits.values.lanes(0);val depth=t.sampleDepth(0,0,sample)
+        a.coverageMask.poke(((1<<(1<<mode))-1).U);a.sampleLocationValid.poke(true.B);a.sampleLocation.poke(sample.U)
+        a.windowDepth.poke(depth.U);a.fragCoordW.poke(fp(0.5f).U);a.reciprocalW.exponent.poke((-1).S)
+        for(i<-1 until 4){val l=d.io.in.bits.values.lanes(i);l.covered.poke(false.B);l.coverageMask.poke(0.U)}
+        d.io.in.valid.poke(true.B);t.until(d.io.in.ready.peek().litToBoolean);t.tick();d.io.in.valid.poke(false.B);t.end(1)
+        t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
+        for(_<-0 until 7){t.tick();assert(d.io.out.bits.peek().litValue==held)}
+        d.io.out.ready.poke(true.B);t.complete(0);d.io.out.ready.poke(false.B)
+        assert(t.exports.size==1);val exported=t.exports.head.lanes.head
+        val x=if((sample&1)==0)0.25f else 0.75f
+        val row=if(mode==1)sample else sample>>1
+        val y= -4f+(if((row&1)==0)0.25f else 0.75f)
+        assert(exported.colors.take(4)==Vector(fp(x),fp(y),depth,fp(0.5f)))
+        assert(exported.depth==depth && exported.sampleDepthValid)
+        assert(exported.sampleDepths==Vector.tabulate(4)(s=>if(s<(1<<mode))t.sampleDepth(0,0,s)else BigInt(0)))
+        assert(t.word(t.scratch+t.prefix)==BigInt("bead1234",16));t.exports.clear()
+      }
+      info(s"FRAGMENT_SAMPLE_LOCATION local=$local CUs=2 modes=2 sampleChoices=6 coherentXYZW=true protectedSampleDepths=true invalidLocations=3 noInvalidShaderAccess=true heldExports=true exactHealthyReuse=true uniformGuard=true")
+    }
+  }
+
 }

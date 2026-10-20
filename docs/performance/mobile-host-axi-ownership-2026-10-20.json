@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Host AXI control, discovery/bursts and VM-owner checks, not full native rendering",
+  "source_manifest": {
+    "path": ".artifacts/mobile-host-axi-ownership-source-v1.json",
+    "sha256": "01ee7a16164c30a39f3c8d2f50ea85dbcef284dfce3d54c40e391b4388b62ab0"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-host-axi-ownership-source-v1.tar.gz",
+    "sha256": "0fae4a1be76c1211840d1b81df6478f1d244ba9e95653e1e5723a86fe9989176"
+  },
+  "source_files": 627,
+  "source_unchanged": true,
+  "before": {
+    "result": {
+      "path": ".artifacts/mobile-host-axi-ownership-before-v1-result.json",
+      "sha256": "ba3ef21442f12ff0a152662c85804dc274af629e0f810e61e4100e14839dc9c1"
+    },
+    "manifest": {
+      "path": ".artifacts/mobile-host-axi-ownership-source-before-v1.json",
+      "sha256": "4a494e6938c678e45156c61dd19d66ab65b32f9cdd2303764b70b961897399ee"
+    },
+    "log": {
+      "path": ".artifacts/mobile-host-axi-ownership-before-v1.log",
+      "sha256": "77f85a58347525a3534a42ec754b3cdd5c98430a4b72d7883a0a469571ffff3d"
+    },
+    "passed": 0,
+    "failed": 2
+  },
+  "after": {
+    "result": {
+      "path": ".artifacts/mobile-host-axi-ownership-controls-v1-result.json",
+      "sha256": "6cb5e43fdc077ff26a860cece834dda83c87fef5b9f84eddaef53ed9daa47fa3"
+    },
+    "log": {
+      "path": ".artifacts/mobile-host-axi-ownership-controls-v1.log",
+      "sha256": "8943a5fabb66e15b6f9ce29b0bc2be0d08b31cdb194fc8ff225583afeb59658f"
+    },
+    "passed": 9,
+    "failed": 0,
+    "suites": {
+      "GpuHostAxiOwnershipSpec": 2,
+      "NativeVertexInputCapabilitiesAxiSpec": 2,
+      "GpuHostAxiSpec": 3,
+      "GpuHostVmOwnershipSpec": 2
+    }
+  },
+  "behavior": [
+    "Exactly one AR/AW grant under simultaneous offers, both first-grant directions, eight backpressured rounds, each peer completes once with exact write readback.",
+    "Held STATUS data stays at 9 after reset completion changes the live register to 1; next read observes 1.",
+    "GVI1 all words/denied strobes, legacy map, FIXED/INCR, unsupported bursts/sizes, address carry, reset/fill/IRQ and buffered/unbuffered VM retirement remain correct."
+  ],
+  "limits": [
+    "Full physical/virtual native host image/fault/reset composition with the corrected AXI bridge remains pending.",
+    "No new host timing, power or product frame-rate claim."
+  ]
+}

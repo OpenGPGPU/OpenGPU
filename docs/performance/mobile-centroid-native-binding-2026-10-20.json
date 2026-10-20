@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Native centroid descriptor extension compatibility; positive centroid discovery/execution not yet qualified",
+  "source_files": 629,
+  "source_unchanged": true,
+  "source_manifest": {
+    "path": ".artifacts/mobile-centroid-native-binding-source-v2.json",
+    "sha256": "e6758bac6f8c8534d720e331b42cb3589fc111785d156f0f8067df730e2df22c"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-centroid-native-binding-source-v2.tar.gz",
+    "sha256": "b50e613f1c35a7456838d2a8f9d23ecf3e2625147a5aeec0ce28f1abffa8b965"
+  },
+  "result": {
+    "path": ".artifacts/mobile-centroid-native-binding-controls-v2-result.json",
+    "sha256": "bf7bda2ab0541513c13e93c47a5b548474ca0ef016a73572602f5b7dddb781cc"
+  },
+  "log": {
+    "path": ".artifacts/mobile-centroid-native-binding-controls-v2.log",
+    "sha256": "13701b58860cc65976c110ddaaae5c70cf2a356028ec659e2766887e4c8511ca"
+  },
+  "layout_audit": {
+    "path": ".artifacts/mobile-centroid-native-binding-layout-audit-v2.json",
+    "sha256": "593ec20e8a83a9d434bc7179e0fc8e24a62c1289c38a2d8c522043e5d79ae711"
+  },
+  "suites": {
+    "TypedFragmentStateReaderSpec": 6,
+    "NativeTypedGraphicsJobReaderSpec": 4,
+    "Fp32PrimitiveRasterStageSpec": 5
+  },
+  "generated_abis": {
+    "native_typed_fields": 549,
+    "native_binned_fields": 563,
+    "fragment_state_fields": 72
+  },
+  "C11_offset_size_probes": true,
+  "legacy_control_abi_unchanged": true,
+  "limits": [
+    "These compatibility controls use zero qualifier masks; positive versions 3/4 and exact centroid images remain separate gates.",
+    "Discovery, full native composition and timing of the extended renderer are pending."
+  ]
+}

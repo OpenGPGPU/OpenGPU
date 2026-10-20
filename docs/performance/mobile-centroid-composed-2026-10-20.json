@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Complete pre-polygon centroid/point-line/AXI/native composition on main core selector changes; isolated polygon arithmetic is not a production path",
+  "based_on_commit": "60c0657",
+  "source_files": 635,
+  "source_manifest": {
+    "path": ".artifacts/mobile-centroid-composed-source-v1.json",
+    "sha256": "a16a0cf6619210c53efe921bde319f74b3d8e29e5d8bba6fd676ce6d9a052c0f"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-centroid-composed-source-v1.tar.gz",
+    "sha256": "e94fe310859c42432a1dca1d1548a861f5f4736ae57bdeb0f41dcf8f1fde4890"
+  },
+  "result": {
+    "path": ".artifacts/mobile-centroid-composed-qualified-v1-result.json",
+    "sha256": "72b80e6d60b57ddd54f951bc57e4709aaa64c18570862bd4625fab9ff7d7e2a4"
+  },
+  "log": {
+    "path": ".artifacts/mobile-centroid-composed-qualified-v1.log",
+    "sha256": "f3489b8cb7386f18716d7a596c0a2ed4348cd891d1f8febac6b93e134af2a735"
+  },
+  "checks": 102,
+  "test_groups": [
+    57,
+    22,
+    23
+  ],
+  "suites": {
+    "TypedFragmentStateReaderSpec": 7,
+    "NativeTypedGraphicsJobReaderSpec": 5,
+    "Fp32PrimitiveRasterStageSpec": 6,
+    "NativeVertexInputCapabilitiesAxiSpec": 4,
+    "GpuHostAxiOwnershipSpec": 2,
+    "Fp32CentroidInterpolationSpec": 4,
+    "Fp32FragmentInterpolatorSpec": 8,
+    "Fp32SampleDepthSpec": 2,
+    "FragmentShaderStageSpec": 16,
+    "PolygonDepthOffsetSpec": 3,
+    "TypedReplayTileImagePipelineSpec": 11,
+    "TypedVertexBinImageSharedSystemSpec": 6,
+    "MemoryNativeBinnedGraphicsPipelineSpec": 5,
+    "NativeTypedGraphicsHostAxiSpec": 7,
+    "NativeBinnedGraphicsHostAxiSpec": 8,
+    "NativeBinnedGraphicsVirtualImageHostAxiSpec": 8
+  },
+  "abi_checks": 4,
+  "source_unchanged": true,
+  "coverage": {
+    "test_counts": [
+      57,
+      22,
+      23
+    ],
+    "passed_task_count": 3,
+    "fault_markers": 22,
+    "converted_profiles": 4,
+    "unfiltered_profiles": 2,
+    "native_centroid": 2,
+    "prepared_centroid": 2,
+    "native_binned_centroid": 4,
+    "success_tasks": 9
+  },
+  "emissions": {
+    "mobile-centroid-composed-host": {
+      "audit": {
+        "path": ".artifacts/mobile-centroid-composed-host-rtl-audit-v1.json",
+        "sha256": "01f337bd2f576ff14bb4549712bf9523c813246468e7d5ddeb277cc55afd8135"
+      },
+      "directory": "generated/mobile-h6/centroid-composed-native-host-v1-rtl",
+      "group_counts": {
+        "GpuComputeUnit": 4,
+        "BankedShaderPayloadStore": 1,
+        "TypedReplayTileImagePipeline": 2,
+        "Fp32PrimitiveRasterStage": 2,
+        "Fp32FragmentInterpolator": 2,
+        "PolygonDepthOffset": 0,
+        "ClipFloatArithmetic": 4,
+        "Fp32FmaLane": 78,
+        "Fp32DivLane": 72
+      },
+      "emitted_files": 769,
+      "sv_files": 768,
+      "filelist_entries": 490,
+      "active_rtl_files": 371,
+      "verification_filelist_entries": 119,
+      "physical_sram_bytes": 2689024
+    },
+    "mobile-centroid-composed-replay": {
+      "audit": {
+        "path": ".artifacts/mobile-centroid-composed-replay-rtl-audit-v1.json",
+        "sha256": "34d418148862857e0f2d729f01c15de9ffe31f4e3dce791eb8ea1f01e3517017"
+      },
+      "directory": "generated/mobile-h6/centroid-composed-replay-v1-rtl",
+      "group_counts": {
+        "GpuComputeUnit": 0,
+        "BankedShaderPayloadStore": 0,
+        "TypedReplayTileImagePipeline": 1,
+        "Fp32PrimitiveRasterStage": 1,
+        "Fp32FragmentInterpolator": 1,
+        "PolygonDepthOffset": 0,
+        "ClipFloatArithmetic": 1,
+        "Fp32FmaLane": 2,
+        "Fp32DivLane": 1
+      },
+      "emitted_files": 133,
+      "sv_files": 132,
+      "filelist_entries": 86,
+      "active_rtl_files": 64,
+      "verification_filelist_entries": 22,
+      "physical_sram_bytes": 43008
+    }
+  },
+  "coverage_notes": [
+    "All22 unfiltered GNC1/GNC2 faults, four converted-input profiles, native/prepared/binned centroid gradients, source/resolve guards, payload/VM lifetime, held completion and reset/reuse pass.",
+    "Replay and default four-CU host emission complete. The host retains one shared payload pool, two replay engines, 371 active RTL files, 2689024 SRAM bytes and the established AXI interface.",
+    "No PolygonDepthOffset instance is reachable in either production top. Its three standalone checks are included in102 but the later flat-slope semantic failure leaves that candidate unqualified."
+  ],
+  "promotion_scope": {
+    "production_checks": 99,
+    "excluded_standalone_checks": 3,
+    "exclude_candidate": "Unconnected PolygonDepthOffset module/test/emitter entry; its correction remains on development branches",
+    "legacy_direct_raster_fixture": "Four separately passing controls on identical production bytes; optional-input defaults are a test-harness correction"
+  },
+  "limitations": [
+    "This source predates the polygon binding/format/raster discovery and anchored precision corrections. It does not qualify those later branches.",
+    "Runtime native profiles use two CUs and small W=1 images. Four-CU emission is structural evidence, not representative Mobile rates or full capacity combinations.",
+    "Weighted interpolation has separately confirmed resolution defects; this checkpoint does not close full precision, G04/H6 or H0-H8.",
+    "No new synthesis clock, power, place-and-route, frame-rate or complete Mobile budget result. PPA remains synthesis only."
+  ]
+}

@@ -84,7 +84,7 @@ class PointLineRasterizerSpec extends AnyFlatSpec {
   import TriangleRasterReference.{Settings,base}
   import Fp32ViewportReference.fp
   private val g=GraphicsConfig(screenWidth=8,screenHeight=8)
-  private class Driver(val d: PointLineRasterizer){
+  private class Driver(val d: PointLineRasterizer,geometry: GraphicsConfig=g){
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B);var cycle=0;var accepted=0;var held: Option[BigInt]=None
     var expected=Vector.empty[Vector[FragmentInterpolationReference.Sample]];var hold=false
     def tick(): Unit={d.io.out.ready.poke((!hold && cycle%5!=0).B)
@@ -97,7 +97,7 @@ class PointLineRasterizerSpec extends AnyFlatSpec {
       d.clock.step();cycle+=1}
     def until(p: => Boolean): Unit={var n=0;while(!p && n<30000){tick();n+=1};assert(p,s"point/line coverage stalled cycle=$cycle outputs=$accepted")}
     def send(coords: Vector[(BigInt,BigInt)],kind: Int,s: Settings=Settings(),z: Sizes=Sizes()): Unit={
-      accepted=0;expected=samples(coords,kind,s,g,z);val q=d.io.in.bits;zero(q)
+      accepted=0;expected=samples(coords,kind,s,geometry,z);val q=d.io.in.bits;zero(q)
       q.point.poke((kind==0).B);q.x0.poke(coords(0)._1.S);q.y0.poke(coords(0)._2.S);q.x1.poke(coords.last._1.S);q.y1.poke(coords.last._2.S)
       TriangleRasterReference.state(q.state,s);q.state.pointSize.poke(fp(z.point).U);q.state.lineWidth.poke(fp(z.line).U)
       d.io.in.valid.poke(true.B);d.io.in.ready.expect(true.B);tick();d.io.in.valid.poke(false.B)
@@ -129,6 +129,43 @@ class PointLineRasterizerSpec extends AnyFlatSpec {
       info(s"POINT_LINE_COVERAGE pointDraws=$draws fractionalSize=true sizeClamp1To64=true modes=3 cullIgnored=true partialSamples=true helpers=true heldQuadCancel=true healthyReuse=true")
     }
   }
+  for(bits<-Seq(2,4,8,16))
+  it should s"retain extreme coordinate differences and exact weights before narrowing subpixelBits=$bits" in {
+    val geometry=g.copy(subPixelBits=bits)
+    simulate(new PointLineRasterizer(geometry)){d=>val t=new Driver(d,geometry)
+      val unit=BigInt(1)<<bits;val middle=2*unit+unit/2
+      val minimum= -(BigInt(1)<<31);val maximum=(BigInt(1)<<31)-1
+      val pairs=Vector(
+        Vector((minimum,middle),(4*unit,middle)),Vector((4*unit,middle),(minimum,middle)),
+        Vector((middle,minimum),(middle,4*unit)),Vector((middle,4*unit),(middle,minimum)),
+        Vector((-(BigInt(1)<<30),-(BigInt(1)<<30)),(4*unit,4*unit)),
+        Vector((maximum,middle),(unit,middle)))
+      for(mode<-0 to 2;coords<-pairs)t.run(coords,1,Settings(mode=mode))
+      t.run(pairs.head,1,Settings(mode=2,scissor=true,minX=1,minY=1,maxX=6,maxY=7),Sizes(line=2.5))
+      t.send(Vector((minimum,BigInt(0)),(maximum,BigInt(0))),1,Settings(mode=2))
+      t.until(!d.io.busy.peek().litToBoolean);d.io.fault.expect(true.B);assert(t.accepted==0 && t.held.isEmpty)
+      t.run(Vector((unit/2,unit/2),(4*unit,4*unit)),1,Settings(mode=2))
+      info(s"POINT_LINE_EXTREME subpixelBits=$bits exactCoordinateDifferences=true fullWidthWeights=true modes=3 directions=6 scissor=true lengthOverflowRejected=true healthyReuse=true")
+    }
+  }
+
+  it should "snapshot sizes and retire cancellation at every preparation and early sample cut before exact reuse" in {
+    simulate(new PointLineRasterizer(g)){d=>val t=new Driver(d)
+      val coords=Vector((BigInt(128),BigInt(128)),(BigInt(1792),BigInt(1280)))
+      t.send(coords,1,Settings(mode=2),Sizes(line=2.5))
+      d.io.in.bits.state.lineWidth.poke(fp(64).U);d.io.in.bits.state.pointSize.poke(fp(64).U)
+      d.io.in.bits.x0.poke((-(BigInt(1)<<31)).S);d.io.in.bits.y1.poke(((BigInt(1)<<31)-1).S)
+      t.finish()
+      for(cut<-0 to 10){
+        t.send(coords,1,Settings(mode=2),Sizes(line=2.5));for(_<-0 until cut)t.tick()
+        d.io.out.valid.expect(false.B);d.io.cancel.poke(true.B);t.tick();d.io.busy.expect(false.B)
+        d.io.out.valid.expect(false.B);d.io.fault.expect(false.B);d.io.cancel.poke(false.B)
+        t.run(coords,1,Settings(mode=2),Sizes(line=2.5))
+      }
+      info("POINT_LINE_PIPELINE snapshotSizesAndEndpoints=true cancelCuts=11 noPartialOffers=true exactHealthyReuse=true")
+    }
+  }
+
   it should "reject malformed sample modes and sizes without scanning or exposing a partial quad" in {
     simulate(new PointLineRasterizer(g)){d=>val t=new Driver(d)
       for(change<-Seq[()=>Unit](()=>d.io.in.bits.state.sampleMode.poke(3.U),()=>d.io.in.bits.state.lineWidth.poke(fp(-1).U),

@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Positive centroid descriptor/state/raster and GFI1 AXI discovery controls, before exact native centroid images",
+  "source_files": 631,
+  "source_unchanged": true,
+  "source_manifest": {
+    "path": ".artifacts/mobile-centroid-native-binding-source-v4.json",
+    "sha256": "aec6fb6b40bd0d1eba859b42b225093c28caed56f539b387f5b0e0ab3d19d4ad"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-centroid-native-binding-source-v4.tar.gz",
+    "sha256": "31932c53411c88efe9c401229701f81879f084c8fd1e43af07697b07fa9e824b"
+  },
+  "result": {
+    "path": ".artifacts/mobile-centroid-native-binding-controls-v4-result.json",
+    "sha256": "c239ebb6fd1499bf08ee79e3e5b8b344eb112fab1005610c4c0f3bc8cf4d6537"
+  },
+  "log": {
+    "path": ".artifacts/mobile-centroid-native-binding-controls-v4.log",
+    "sha256": "949d173197878b111220cee5646559b95bdcf25da7df002c5b11c46b91085749"
+  },
+  "suites": {
+    "TypedFragmentStateReaderSpec": 7,
+    "NativeTypedGraphicsJobReaderSpec": 5,
+    "Fp32PrimitiveRasterStageSpec": 6,
+    "NativeVertexInputCapabilitiesAxiSpec": 4,
+    "GpuHostAxiOwnershipSpec": 2
+  },
+  "before": {
+    "path": ".artifacts/mobile-centroid-native-binding-controls-v3-result.json",
+    "sha256": "90b68529b540b00fdcd637fd85cbf172aa38691cf590fb825e0be5afd65fd731"
+  },
+  "checks": [
+    "[info]   + AXI_READ_OWNER liveResetCompletion=true heldPayloadImmutable=true freshReadUpdated=true",
+    "[info]   + AXI_ADDRESS_OWNER simultaneousRounds=8 exactlyOnce=true heldResponses=true noLostPeer=true exactWriteReadback=true",
+    "[info]   + CENTROID_STATE versions3And4=true maskBits64=true highWord=true oldVersionsRequireZero=true activeSlotBounds=true pointCoordPrefixBounds=true exactLegacyReuse=true",
+    "[info]   + NATIVE_VERTEX_CAPS enabled=true GVI1=true GFI1=true fragmentVersions1To4=true centroid=true sampleCapacity=1 version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=false",
+    "[info]   + NATIVE_VERTEX_CAPS enabled=true GVI1=true GFI1=true fragmentVersions1To4=true centroid=true sampleCapacity=2 version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=false",
+    "[info]   + NATIVE_VERTEX_CAPS enabled=true GVI1=true GFI1=true fragmentVersions1To4=true centroid=true sampleCapacity=4 version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=false",
+    "[info]   + NATIVE_VERTEX_CAPS enabled=false GVI1=true GFI1=true fragmentVersions1To4=true centroid=true sampleCapacity=4 version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=true",
+    "[info]   + CENTROID_NATIVE_READER fixedWords538And539=true versions3And4=true immutableOffer=true highMaskRejectedBeforeAdapt=true oldVersionsRequireZero=true healthyReuse=true",
+    "[info]   + CENTROID_PRIMITIVE draws=9 modes=3 primitiveKinds=3 mixedCenterCentroidFlat=true actualCoverage=true descriptorSnapshot=true rejectedMaskBeforeLaunch=true heldQuadCancellation=true exactHealthyReuse=true"
+  ],
+  "limitations": [
+    "The preceding 23/24 failure used the point/line-only oracle for a triangle case. Only the fixture changed for this complete rerun.",
+    "Native centroid image publication, prepared binned/replay integration and new timing are separate pending gates.",
+    "No API, H0-H8 or 720p rate closure."
+  ]
+}

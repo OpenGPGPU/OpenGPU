@@ -45,7 +45,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,8)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner)))else None
+  private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner,centroidInput=true)))else None
   private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1))
   private val router=Module(new SharedShaderTaskRouter(config,shared.numComputeUnits,2,shared.taskIdWidth,shaderPayload=payload))
   router.io.clients(1)<>fragment.io.shared;io.shared<>router.io.pool
@@ -56,6 +56,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   private val vertexRequest=Wire(Decoupled(new ComputeMemoryRequest(config,64,4)))
   private val vertexResponse=Wire(Decoupled(new ComputeMemoryResponse(64,4)))
   private val primitive=if(preparedGeometry)Some(Reg(new WindowPrimitive(p)))else None
+  private val centroidMask=Wire(UInt((p.varyings*4).W))
   private def tie(d: Data,direction: ActualDirection): Unit=d match {
     case r: Record=>r.elements.values.foreach(tie(_,direction))
     case v: Vec[_]=>v.foreach(tie(_,direction))
@@ -67,6 +68,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   if(preparedGeometry){
     val raster=Module(new Fp32PrimitiveRasterStage(p,g))
     raster.io.in.valid:=vertexDraw.valid;raster.io.in.bits.primitive:=primitive.get;raster.io.in.bits.state:=vertexDraw.bits.raster
+    raster.io.in.bits.centroidMask:=centroidMask
     vertexDraw.ready:=raster.io.in.ready;vertexOut<>raster.io.out;vertexBusy:=raster.io.busy;raster.io.cancel:=vertexCancel
     vertexCompletion.valid:=raster.io.completion.valid;raster.io.completion.ready:=vertexCompletion.ready
     val r=raster.io.completion.bits;val c=vertexCompletion.bits
@@ -81,11 +83,13 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     payload.foreach{_=>tie(io.payload.get(0),ActualDirection.Output);router.io.clientPayload.get(0):=0.U.asTypeOf(router.io.clientPayload.get(0))}
   }else{
     val v=vertex.get;v.io.draw<>vertexDraw;vertexOut<>v.io.out;vertexCompletion<>v.io.completion
+    v.io.centroidMask.get:=centroidMask
     v.io.cancel:=vertexCancel;vertexBusy:=v.io.busy;vertexRequest<>v.io.memoryRequest;v.io.memoryResponse<>vertexResponse
     router.io.clients(0)<>v.io.shared
   }
   private object State extends ChiselEnum {val idle,validate,run,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new VertexFragmentDraw(p,f));private val result=Reg(new VertexFragmentCompletion)
+  centroidMask:=descriptor.fragment.centroidMask
   private val vertexOffered=RegInit(false.B);private val vertexStarted=RegInit(false.B);private val vertexDone=RegInit(false.B)
   private val fragmentOffered=RegInit(false.B);private val fragmentStarted=RegInit(false.B);private val fragmentDone=RegInit(false.B)
   private val vertexResult=Reg(new VertexRasterCompletion);private val fragmentResult=Reg(new FragmentShaderCompletion)

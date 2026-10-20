@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Centroid interpolation component with enclosing primitive owner binding disabled; no native/API closure",
+  "source_files": 628,
+  "source_unchanged": true,
+  "source_manifest": {
+    "path": ".artifacts/mobile-centroid-interpolation-source-v2.json",
+    "sha256": "551ea6ab2c16c4b9f07475dd23c1eb67de3b588f63b5949f3b0defd14397a431"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-centroid-interpolation-source-v2.tar.gz",
+    "sha256": "624aa98c55d2bd2fa5ee704605d0c55418edec3696bad732fe5e9d3505c4ebda"
+  },
+  "result": {
+    "path": ".artifacts/mobile-centroid-interpolation-controls-v2-result.json",
+    "sha256": "fdf11f6bcd504cdef06f8e71b400be2782d8ba365db28a47a23e41e451ecdbbd"
+  },
+  "log": {
+    "path": ".artifacts/mobile-centroid-interpolation-controls-v2.log",
+    "sha256": "f16504d227e0c338c018b016706852483baa9e73cd33034d2b9c1575018fc65b"
+  },
+  "suites": {
+    "Fp32CentroidInterpolationSpec": 3,
+    "Fp32FragmentInterpolatorSpec": 8,
+    "Fp32SampleDepthSpec": 2
+  },
+  "checks": [
+    "[info]   + CENTROID_INTERPOLATION quads=50 modes=3 allCoverageMasks=true bothWindings=true primitiveKinds=3 directAbsoluteSampleReference=true mixedQualifiers=true flatNaNBits=true centerReciprocalAndDepth=true coveredSampleDepth=true helpersAtCenter=true snapshot=true heldOutput=true changedValues=440",
+    "[info]   + CENTROID_OWNERSHIP invalidRequests=3 cancelCuts=4 heldQuadCancel=true immutableCompletion=true noPartialOutput=true exactHealthyReuse=true",
+    "[info]   + CENTROID_CAPACITY components=64 highestQualifierBit=true highCentroidAndFlat=true exactRawFlatNaN=true noTruncatedValues=true"
+  ],
+  "prior_compile_failure": {
+    "path": ".artifacts/mobile-centroid-interpolation-controls-v1-result.json",
+    "sha256": "7d10986b7ead2fa7350e7a1ab4da76422b9ceddb022f44652627214ec98e476a"
+  },
+  "limitations": [
+    "The primitive owner ties the new component mask to zero; production descriptor binding and discovery remain open.",
+    "Positive-center perspective admission still rejects some tiny partial-coverage primitives; a covered-sample fallback needs independent qualification.",
+    "No new timing, area, shader-interface or API-completeness claim."
+  ]
+}

@@ -3,6 +3,7 @@ package opengpu.system
 import chisel3._
 import chisel3.reflect.DataMirror
 import opengpu.config.GpuConfig
+import opengpu.graphics.GraphicsConfig
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -15,9 +16,9 @@ class NativeVertexInputCapabilitiesAxiSpec extends AnyFlatSpec {
     case s: SInt if DataMirror.directionOf(s)==ActualDirection.Input=>s.poke(0.S)
     case _=>()
   }
-  for(enabled<-Seq(true,false))
-  it should s"discover immutable native input formats through held AXI bursts and retain the legacy map enabled=$enabled" in {
-    simulate(new GpuHostAxi(gpuConfig=GpuConfig(lanes=4,warps=2),unifiedCommandMmio=true,protectVmState=true,
+  for(enabled<-Seq(true,false);samples<-Seq(1,2,4) if enabled || samples==4)
+  it should s"discover immutable native input formats through held AXI bursts and retain the legacy map enabled=$enabled samples=$samples" in {
+    simulate(new GpuHostAxi(config=GraphicsConfig(maxSampleCount=samples),gpuConfig=GpuConfig(lanes=4,warps=2),unifiedCommandMmio=true,protectVmState=true,
       externalBinnedRender=enabled,nativeVertexInput=enabled)) { d=>
       zero(d.io);d.io.s_axi_aresetn.poke(false.B);d.clock.step(3);d.io.s_axi_aresetn.poke(true.B)
       d.io.vmContextIdle.get.poke(false.B)
@@ -52,9 +53,17 @@ class NativeVertexInputCapabilitiesAxiSpec extends AnyFlatSpec {
       val values=Vector(BigInt("47564901",16),BigInt(4),BigInt(0x502),BigInt(0x1ffffff))
       val expected=if(enabled)values.map(_->BigInt(0))else Vector.fill(4)(BigInt(0)->BigInt(2))
       assert(read(0x1b0,4)==expected)
+      val sampleModes=Map(1->0x100,2->0x300,4->0x700)(samples)
+      val fragment=Vector(BigInt("47464901",16),BigInt(4),BigInt(0x1e),BigInt(sampleModes|15))
+      val fexpected=if(enabled)fragment.map(_->BigInt(0))else Vector.fill(4)(BigInt(0)->BigInt(2))
+      assert(read(0x1c0,4)==fexpected)
+      assert(read(0x1c0,5)==fexpected:+(BigInt(0)->BigInt(2)))
+      assert(read(0x1c0,4,burst=0)==Vector.fill(4)(fexpected.head))
+      for(i<-0 until 4;strb<-Seq(0,1,15)){write(0x1c0+4*i,strb);assert(read(0x1c0+4*i)==Vector(fexpected(i)))}
+      for(a<-Seq(0x1c1,0x1d0,0x5c0)){assert(read(a)==Vector(BigInt(0)->BigInt(2)));write(a,15)}
       for(i<-0 until 4;strb<-Seq(0,1,15)){write(0x1b0+4*i,strb);assert(read(0x1b0+4*i)==Vector(expected(i)))}
-      assert(read(0x1b0,5)==expected:+(BigInt(0)->BigInt(2)))
-      for(address<-Seq(0x1b1,0x1c0,0x5b0)){assert(read(address)==Vector(BigInt(0)->BigInt(2)));write(address,15)}
+      assert(read(0x1b0,5)==expected:+(if(enabled)BigInt("47464901",16)->BigInt(0)else BigInt(0)->BigInt(2)))
+      for(address<-Seq(0x1b1,0x1d0,0x5b0)){assert(read(address)==Vector(BigInt(0)->BigInt(2)));write(address,15)}
       assert(read(0x1b0,4,burst=0)==Vector.fill(4)(expected.head))
       write(0xf4,15,Vector(11,22,33).map(BigInt(_)),response=0)
       assert(read(0xf4,3)==Vector(11,22,33).map(n=>BigInt(n)->BigInt(0)))
@@ -75,7 +84,7 @@ class NativeVertexInputCapabilitiesAxiSpec extends AnyFlatSpec {
       d.io.s_axi_aresetn.poke(false.B);d.clock.step(3);d.io.s_axi_aresetn.poke(true.B)
       assert(read(0x1b0,4)==expected)
       d.io.cbMem.req.valid.expect(false.B);d.io.fbMem.req.valid.expect(false.B)
-      info(s"NATIVE_VERTEX_CAPS enabled=$enabled GVI1=true version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=${!enabled}")
+      info(s"NATIVE_VERTEX_CAPS enabled=$enabled GVI1=true GFI1=true fragmentVersions1To4=true centroid=true sampleCapacity=$samples version2=true formats25=true heldAXIBursts=true readOnlyAllStrobes=true noAddressAliases=true AXIFixed0Incr1=true invalidBurstsNoMutation=true no4GiBWrap=true VMOwnerIndependent=true resetStable=true legacyUnmapped=${!enabled}")
     }
   }
 }

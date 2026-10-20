@@ -109,6 +109,15 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
     for(location<-0 until 4;c<-0 until 4)scalar(896+location*16+c*4,10+location*4+c)
     scalar(960,27);scalar(964,26);code+=BigInt("30500073",16);code.toVector
   }
+  private def centroidProgram(version: Int): Vector[BigInt]={
+    val inputs=if(version==4)12 else 10;val prefix=(inputs+18)*32
+    val code=mutable.ArrayBuffer[BigInt](BigInt("00241393",16),BigInt("007083b3",16),BigInt("c1027057",16))
+    for(location<-0 until 4;c<-0 until 4)code++=Seq(addi(5,7,(6+c)*32),vm(5,1,false),addi(6,7,(inputs+location*4+c)*32),vm(6,1,true))
+    def scalar(offset: Int,array: Int): Unit={code++=Seq(addi(13,1,offset),(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3,
+      (BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,
+      addi(6,7,array*32),vm(6,1,true))}
+    scalar(prefix+64,inputs+17);scalar(prefix+68,inputs+16);code+=BigInt("30500073",16);code.toVector
+  }
   private case class Backing(location: Int,base: BigInt,pitch: Int,bytes: Int,resolve: Boolean)
   private class Driver(val d: TypedReplayImageHarness) {
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
@@ -116,6 +125,15 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       d.io.memoryResponse.valid,d.io.memoryResponse.ready)
     program.zipWithIndex.foreach{case(w,i)=>memory.putWord(0x1000+i*4,w)}
     val fields=TypedFragmentStateLayout.fields(new TypedFragmentState(FragmentShaderConfig(2,4)))
+    var centroid=false;var fragmentVersion=3
+    def privatePrefix: Int=if(centroid && fragmentVersion==4)960 else 896
+    def shaderPc: Int=if(centroid)0x6000+fragmentVersion*0x1000 else 0x1000
+    def qualifier(state: Int): BigInt=if(!centroid)0 else if(state==0)5 else 3
+    def shape(kind: Int,state: Int): TriangleRasterReference.Triangle={
+      val t=triangle(kind)
+      if(!centroid)t else t.copy(values=t.values.copy(flat=8,values=Vector.tabulate(3,8){(v,c)=>
+        if(c>=4)BigInt(0)else fp(if(c==3){if(state==0)1.0 else 0.5}else ((v+1)*(c+1)+state)/16.0)}))
+    }
     var serial=0;var region=BigInt(0);var mode=0;var active=Set(0,1);var names=Vector("RGBA8","RGB8","RGBA16F","SRGB8_ALPHA8")
     val initial=mutable.Map.empty[BigInt,Int];val backings=mutable.ArrayBuffer.empty[Backing]
     val model=mutable.Map.empty[(Int,Int,Int,Int),BigInt];val depth=mutable.Map.empty[(Int,Int,Int),BigInt]
@@ -133,11 +151,11 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
     def clear(location: Int): Vector[BigInt]=if(format(names(location)).kind==0)Vector(0.1,0.2,0.3,0.4).map(fp)else Vector(0,1,2,3).map(BigInt(_))
     def stateValues(handle: Int): Map[String,BigInt]={
       val view0=region+0x10000+handle*4096;val view1=region+0x20000+handle*4096
-      Map[String,BigInt]("version"->1,"engineCount"->2,"fragment.version"->1,"fragment.identity.context"->7,"fragment.identity.pass"->8,"fragment.identity.generation"->9,
-        "fragment.shaderPc"->0x1000,"fragment.varyingSlots"->1,"fragment.colorSlots"->4,"fragment.colorMask"->15,"fragment.sampleMode"->mode,
+      Map[String,BigInt]("version"->1,"engineCount"->2,"fragment.version"->(if(centroid)fragmentVersion else 1),"fragment.centroidMask"->qualifier(handle),"fragment.identity.context"->7,"fragment.identity.pass"->8,"fragment.identity.generation"->9,
+        "fragment.shaderPc"->shaderPc,"fragment.varyingSlots"->1,"fragment.colorSlots"->4,"fragment.colorMask"->15,"fragment.sampleMode"->mode,
         "fragment.allowDepthOverride"->1,"fragment.sampler.texWidth"->1,"fragment.sampler.texHeight"->1,
-        "fragment.scratch.base"->view0,"fragment.scratch.limit"->(view0+968),"fragment.scratch.allocationBase"->view0,"fragment.scratch.allocationLimit"->(view0+1024),
-        "scratch[0].base"->view1,"scratch[0].limit"->(view1+968),"scratch[0].allocationBase"->view1,"scratch[0].allocationLimit"->(view1+1024),
+        "fragment.scratch.base"->view0,"fragment.scratch.limit"->(view0+privatePrefix+72),"fragment.scratch.allocationBase"->view0,"fragment.scratch.allocationLimit"->(view0+((privatePrefix+72+63)& ~63)),
+        "scratch[0].base"->view1,"scratch[0].limit"->(view1+privatePrefix+72),"scratch[0].allocationBase"->view1,"scratch[0].allocationLimit"->(view1+((privatePrefix+72+63)& ~63)),
         "tests.version"->1,"tests.depthEnable"->1,"tests.depthWrite"->1,"tests.depthFunction"->1,"tests.front.function"->6,"tests.back.function"->6,
         "blend.enable"->(if(handle==0)0 else 1),"blend.version"->1,"blend.srcRGB"->4,"blend.dstRGB"->5,"blend.srcAlpha"->1)++
         (0 until 4).map(i=>s"fragment.colorTypes[$i]"->BigInt(format(names(i)).kind))
@@ -177,14 +195,16 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
     }
     def until(condition: =>Boolean,limit: Int=300000): Unit={var n=0;while(!condition && n<limit){tick();n+=1};assert(condition,s"replay timeout n=$n done=${done.toSeq} pixels=${pixels.toSeq} pending=${memory.pending.size}")}
     def prepare(sampleMode: Int=0,integer: Boolean=false,engines: Set[Int]=Set(0,1)): Unit={
-      active=engines;mode=sampleMode;names=if(integer)Vector("RGBA8UI","RGBA16I","RGB10_A2UI","RGBA32UI")else Vector("RGBA8","RGB8","RGBA16F","SRGB8_ALPHA8")
+      active=engines;mode=sampleMode
+      if(centroid)centroidProgram(fragmentVersion).zipWithIndex.foreach{case(w,i)=>memory.putWord(shaderPc+i*4,w)}
+      names=if(integer)Vector("RGBA8UI","RGBA16I","RGB10_A2UI","RGBA32UI")else Vector("RGBA8","RGB8","RGBA16F","SRGB8_ALPHA8")
       region=BigInt(0x1000000)+serial*0x100000;serial+=1;initial.clear();backings.clear();model.clear();depth.clear();expected.clear();expectedStatus=0
       for(e<-0 until 2){done(e)=0;pixels(e)=0;history(e).clear();d.io.context(e).poke(101.U)}
       for(h<-0 until 2){putState(h)
         for(e<-0 until 2){val base=region+(e+1)*0x10000+h*4096
-          for(b<-0 until 896)memory.bytes(base+b)=0x6d
-          for(i<-0 until 4;c<-0 until 4)memory.putWord(base+896+i*16+c*4,rgba(h,i)(c))
-          memory.putWord(base+960,if(h==0)61 else 63);memory.putWord(base+964,fp(0.125))}}
+          for(b<-0 until privatePrefix)memory.bytes(base+b)=0x6d
+          for(i<-0 until 4;c<-0 until 4)memory.putWord(base+privatePrefix+i*16+c*4,rgba(h,i)(c))
+          memory.putWord(base+privatePrefix+64,if(h==0)61 else 63);memory.putWord(base+privatePrefix+68,fp(0.125))}}
       for(y<-0 until 8;x<-0 until 16;s<-0 until(1<<mode)){depth((x,y,s))=fp(1)
         for(i<-0 until 4)model((i,x,y,s))=encode(names(i),clear(i))._1}
       for(resolve<-Seq(false,true);i<-0 until 5){val bytes=if(i==4)4 else format(names(i)).bytes
@@ -216,15 +236,15 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
     def settings(e: Int,ordinal: Int): TriangleRasterReference.Settings=TriangleRasterReference.Settings(width=16,height=8,mode=mode,scissor=true,
       minX=(if(ordinal==2)4 else 0).max(e*8),minY=if(ordinal==2)3 else 0,maxX=(if(ordinal==2)12 else 16).min(e*8+8),maxY=if(ordinal==2)5 else 8)
     def update(e: Int,ordinal: Int,kind: Int,state: Int): Unit={
-      val t=triangle(kind);val s=settings(e,ordinal)
+      val t=shape(kind,state);val s=settings(e,ordinal)
       val quads=if(kind==2)TriangleRasterReference.raster(t,s,g)else PointLineReference.raster(t,kind,s,g,PointLineReference.Sizes(point=4,line=2))
       expected((e,ordinal))=quads.size
-      for(q<-quads){val depths=SampleDepthReference.depths(t,kind,q.samples,mode,g)
+      for(raw<-quads){val q=CentroidRasterReference(t,kind,raw,mode,qualifier(state),g);val depths=SampleDepthReference.depths(t,kind,q.samples,mode,g)
         for((p,lane)<-q.samples.zipWithIndex;sample<-0 until(1<<mode) if(p.mask&(1<<sample))!=0){
           val z=if(state==0)depths(lane)(sample)else fp(0.125)
           if(TypedColorReference.value(z)<=TypedColorReference.value(depth((p.x,p.y,sample)))){
             depth((p.x,p.y,sample))=z
-            for(i<-0 until 4){val old=model((i,p.x,p.y,sample));val rgbaOut=TypedBlendReference.blend(names(i),rgba(state,i),old,TypedBlendReference.State(enable=state!=0))
+            for(i<-0 until 4){val old=model((i,p.x,p.y,sample));val rgbaOut=TypedBlendReference.blend(names(i),if(centroid)q.lanes(lane).values.take(4)else rgba(state,i),old,TypedBlendReference.State(enable=state!=0))
               model((i,p.x,p.y,sample))=encode(names(i),rgbaOut)._1}
           }
         }
@@ -235,7 +255,7 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       history(e)+=state
       q.source.reference.primitive.poke((ordinal*2+e).U);q.source.reference.state.poke(state.U);q.source.reference.sequence.poke((ordinal*2+e).U);q.source.reference.token.poke((0xa0000000L+ordinal).U)
       q.record.state.poke(state.U);q.record.sequence.poke((ordinal*2+e).U);q.record.token.poke((0xa0000000L+ordinal).U)
-      val t=triangle(kind);TriangleRasterReference.primitive(q.record.primitive,t,100+ordinal)
+      val t=shape(kind,state);TriangleRasterReference.primitive(q.record.primitive,t,100+ordinal)
       val m=q.record.primitive.clipped.primitive;identity(m.identity);m.primitiveId.poke((17+ordinal).U);m.kind.poke(kind.U);m.vertexCount.poke((kind+1).U)
       m.topology.poke((if(kind==0)0 else if(kind==1)1 else 4).U);m.provokingVertex.poke(kind.U)
       for(i<-0 until 3){if(i<=kind){identity(m.vertices(i).identity)
@@ -290,6 +310,37 @@ class TypedReplayTileImagePipelineSpec extends AnyFlatSpec {
       assert(memory.bytes(address)==0x6d,"another engine's prefix was overwritten")}
   }
   behavior of "TypedReplayTileImagePipeline"
+  for(local<-Seq(true,false))
+  it should s"publish centroid gradients from cached native state across both prepared replay engines local=$local" in {
+    simulate(new TypedReplayImageHarness(local)){d=>val t=new Driver(d);t.centroid=true
+      for((mode,version)<-Seq((1,3),(2,4))){
+        t.fragmentVersion=version;t.prepare(mode);t.start()
+        for(e<-0 until 2)d.io.blockLaunch(e).poke(true.B)
+        t.send(0);t.until((0 until 2).forall(e=>d.io.launchOffered(e).peek().litToBoolean))
+        for(_<-0 until 6)t.tick()
+        for(e<-0 until 2)d.io.blockLaunch(e).poke(false.B)
+        t.waitRecord(0);t.send(1);t.waitRecord(1);t.send(2,1,1);t.waitRecord(2);t.send(3,0,1);t.waitRecord(3)
+        val backing=t.backings.find(b=>b.location==0 && !b.resolve).get
+        val boundary=backing.base+8*(1<<mode)*backing.bytes;val address=(boundary-1)& ~BigInt(63)
+        assert(t.consumer(address)==t.line(t.initial.toMap,address))
+        assert(!t.memory.seen.exists(r=>r.write && t.initial.contains(r.address)))
+        d.io.blockConsumerInvalidate.poke(true.B);t.end();t.until(d.io.consumerInvalidateOffered.peek().litToBoolean)
+        for(_<-0 until 8){t.tick();d.io.idle.expect(false.B)
+          assert(!(0 until 2).forall(e=>d.io.completion(e).valid.peek().litToBoolean))}
+        d.io.blockConsumerInvalidate.poke(false.B)
+        t.until((0 until 2).forall(e=>d.io.completion(e).valid.peek().litToBoolean))
+        assert(t.consumer(address)==t.line(t.expectedBytes,address))
+        t.finish()
+        def word(address: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(t.memory.bytes(address+b))<<(8*b)))
+        for(e<-0 until 2;h<-0 until 2){val base=t.region+(e+1)*0x10000+h*4096+t.privatePrefix
+          for(i<-0 until 4;c<-0 until 4)assert(word(base+i*16+c*4)==t.rgba(h,i)(c))
+          assert(word(base+64)==(if(h==0)61 else 63));assert(word(base+68)==fp(0.125))}
+      }
+      assert(t.ownedMask==3 && t.concurrentCUs && t.launches.forall(_>0))
+      assert((t.staging.sum==0)==local)
+      info(s"CENTROID_PREPARED_REPLAY local=$local engines=2 CUs=2 GFS1=true versions3And4=true differentStateMasks=true stateCacheHits=true triangleLinePoint=true gradientMRTs=4 blend=true sourceAndResolve=true heldConsumerInvalidation=true coherentSharedLine=true noIntermediateStores=true uniformTailGuards=true exactReuse=true")
+    }
+  }
   for(local<-Seq(true,false))
   it should s"fetch immutable state and publish exact guarded typed images from prepared primitives with local=$local" in {
     simulate(new TypedReplayImageHarness(local)){d=>val t=new Driver(d)

@@ -52,6 +52,26 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
     def invalidate(): Unit={d.io.invalidate.poke(true.B);tick();d.io.invalidate.poke(false.B)}
   }
   behavior of "TypedFragmentStateReader"
+  it should "decode centroid versions and all sixty four qualifier bits without shifting legacy state" in {
+    simulate(new TypedFragmentStateReader(cfg,FragmentShaderConfig(),g)){d=>val t=new Driver(d)
+      val mask=(BigInt(1)<<63)|(BigInt(1)<<32)|1
+      assert(t.fields.find(_.name=="fragment.centroidMask").get.word==124)
+      for(version<-Seq(3,4)){
+        val values=t.contents++Map("fragment.version"->BigInt(version),"fragment.varyingSlots"->BigInt(16),"fragment.centroidMask"->mask)
+        t.install(values=values);t.invalidate();t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check(values);t.result(0)
+      }
+      for(change<-Seq(Map("fragment.version"->BigInt(1),"fragment.centroidMask"->BigInt(1)),
+        Map("fragment.version"->BigInt(2),"fragment.centroidMask"->BigInt(1)),
+        Map("fragment.version"->BigInt(3),"fragment.centroidMask"->BigInt(256)),Map("fragment.version"->BigInt(5)))){
+        t.install(values=t.contents++change);t.invalidate();t.lookup();t.result(1)
+      }
+      val bounded=t.contents++Map("fragment.version"->BigInt(4),"fragment.varyingSlots"->BigInt(16),
+        "fragment.centroidMask"->mask,"fragment.scratch.limit"->BigInt(0x100000+2816))
+      t.install(values=bounded);t.invalidate();t.lookup();t.result(2)
+      t.install();t.invalidate();t.lookup();t.until(d.io.result.valid.peek().litToBoolean);t.check();t.result(0)
+      info("CENTROID_STATE versions3And4=true maskBits64=true highWord=true oldVersionsRequireZero=true activeSlotBounds=true pointCoordPrefixBounds=true exactLegacyReuse=true")
+    }
+  }
   it should "fetch four reordered tags publish complete state and reuse only an exact immutable cache key" in {
     simulate(new TypedFragmentStateReader(cfg,f,g)){d=>val t=new Driver(d);t.install();t.memory.holdResponses=true;t.lookup()
       t.until(t.memory.seen.size==4);for(_<-0 until 8)t.tick();d.io.result.valid.expect(false.B)
