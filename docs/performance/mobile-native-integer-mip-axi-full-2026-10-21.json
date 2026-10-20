@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "two_complete_integer_native_AXI_matrices_pass_on_exact_main_inputs",
+  "source": {
+    "phase": "full",
+    "returncode": 0,
+    "expected_failure": false,
+    "source_unchanged": true,
+    "elapsed_seconds": 2770.3999195841607,
+    "commit": "87a40d849a9904816b423b88061e02962c7be8ad",
+    "source_files": 803,
+    "manifest_sha256": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+    "archive_sha256": "7778d322fcb746ea1e1f921107909a5bae312d96f9404d5f3cd9fabd56757830",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs_only": [
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+      "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala"
+    ],
+    "all_production_driver_ABI_and_shared_CU_test_inputs_exact": true,
+    "runner_pid": 38243,
+    "started_utc": "2026-10-20T19:19:24.900129+00:00"
+  },
+  "main_source_inputs_exact": true,
+  "passed_tests": 2,
+  "suites": 1,
+  "profile": {
+    "compute_units": 2,
+    "lanes": 4,
+    "warps": 2,
+    "AXI_bytes": 32,
+    "translation": "real Sv32",
+    "payload_modes": [
+      "local",
+      "spill"
+    ]
+  },
+  "frames_per_payload_mode": 74,
+  "frames": 148,
+  "successful_frames": 144,
+  "expected_error_frames": 4,
+  "created_draw_descriptors": 444,
+  "descriptor_count_is_not_completed_GPU_draw_count": true,
+  "coverage": [
+    "all64 storage formats",
+    "four targets with image swizzle",
+    "both actual shared-CU stages",
+    "scalar/vector captured integer fetches and four components",
+    "signed offsets0/-1 before bounds",
+    "image bases0/1/2 with selected GXL physical-page read assertions",
+    "denied sampler translation without physical sampler read",
+    "task reset rejects stale operand validity",
+    "exact MRT,depth,resolve and guard bytes",
+    "held completion pins VM and healthy reuse"
+  ],
+  "functional_and_synthesis_record": "docs/performance/mobile-native-integer-execution-qualified-2026-10-21.json",
+  "fixture_limitation": "This frozen test uses a4KiB generation stride for two source pages. The size-query recovery diagnostic later proved adjacent frame position/color source-page aliasing can retain cached old values after a vertex fault. All exact image checks in this integer matrix passed,but this is not proof of nonoverlapping source allocation or CPU/GPU cache publication. The corrected allocator and requalification are separate.",
+  "corrected_allocator_branch": "codex/mobile-native-texture-size-axi-recovery",
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-integer-mip-page-v2-full.log": "6edb263cbcf7fda3cde483c39b2671f36de6d6cc2b508de1dd06a094a2d5f1db",
+    ".artifacts/mobile-native-integer-mip-page-v2-full-result.json": "2eddfc87cb36c422b82257f9a3ebaa91a27d42eef5e427acc5e104aba2db60d9",
+    ".artifacts/mobile-native-integer-mip-page-v2-source.json": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+    ".artifacts/mobile-native-integer-mip-page-v2-source.tar.gz": "7778d322fcb746ea1e1f921107909a5bae312d96f9404d5f3cd9fabd56757830",
+    ".artifacts/mobile-native-integer-mip-page-v2-source-proof.json": "6e6af6beb6c15eee86325d438276b75cd29338079955638bb38be8d4008c967d"
+  },
+  "PPA": "Both previously qualified integer endpoints carry by exact production inputs;synthesis only.",
+  "remaining": [
+    "qualify corrected disjoint source leases in AXI matrices",
+    "query/projective integration",
+    "banked texture hit/miss/native integration and coherence",
+    "full H0-H8 requirements"
+  ]
+}
