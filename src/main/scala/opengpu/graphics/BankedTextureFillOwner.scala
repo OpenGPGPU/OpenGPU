@@ -74,7 +74,9 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   io.out.bits := output
 
   private val matches = VecInit((0 until fills).map { s =>
-    states(s) =/= State.free && !stopped(s) && !noFill(s) &&
+    // A new miss after acknowledgement must start a new fill: another line
+    // may already have replaced the installed cache set while replies wait.
+    states(s) =/= State.free && states(s) =/= State.done && !stopped(s) && !noFill(s) &&
       keys(s).identity.asUInt === io.in.bits.identity.asUInt &&
       keys(s).textureKey === io.in.bits.textureKey &&
       keys(s).address === io.in.bits.address && keys(s).rowParity === io.in.bits.rowParity
