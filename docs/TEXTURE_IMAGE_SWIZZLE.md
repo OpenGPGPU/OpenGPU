@@ -62,11 +62,21 @@ new software should use `FEATURES_WORD` and `IMAGE_SWIZZLE`.
 
 ## Qualification scope
 
-The focused regression covers exhaustive selector mappings and encoded states,
-descriptor admission, all64 native fetch formats, constant-map faults and
-vector write atomicity. Shared-CU and translated native AXI regressions exercise
-the same extension in both shader stages and payload modes. Qualification logs
-and synthesis results are recorded separately after successful runs.
+The [functional qualification](performance/mobile-image-swizzle-2026-10-20.json)
+passes 138 distinct targeted tests against 770 committed inputs, including
+11,664 explicit map queries, 16,384 encoded states, 216 bound uncompressed
+queries and 768 native component checks per stage across all 64 formats.
+Shared CUs execute 572 typed stage draws. Translated native AXI executes 68
+frames and 204 submitted primitive draws; both shader stages and payload modes
+are covered. Nine ABI generators, combined C11 headers and CI selection pass.
+
+All four [synthesis screens](performance/mobile-image-swizzle-synthesis-2026-10-20.json)
+pass full mapping and setup at 1000 ps with unchanged TC/SLVT, 25% I/O,
+default ABC and no retiming. Core setup margins are +166.594 ps (bound fetch),
++214.933 ps (sampler admission), +180.831 ps (endpoint) and +136.810 ps (native
+wrapper); every I/O group also passes. The initial vector fixture's incorrect
+integer-ONE expectation for FP32 is retained with its correction and passing
+reruns. No production change was needed for that diagnostic.
 
 PPA evaluation remains synthesis only. This feature does not close H4/H6,
 banked cache throughput, complete resource publication/coherence, general sampler
