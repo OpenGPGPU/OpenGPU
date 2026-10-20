@@ -47,3 +47,10 @@ fault assertion passes in the completed qualification.
 Native image/sampler bindings, mip completeness, LOD selection, coordinate
 processing, filtering, compressed-block decoding and shader integration remain
 open. PPA evaluation at this stage uses synthesis results only.
+
+The initial [standalone synthesis screen](performance/mobile-texture-image-fetch-synthesis-before-2026-10-20.json)
+passes mapping for both profiles at TC/SLVT, 1000 ps and 25 percent I/O budget
+without retiming. Raw fetch passes setup at +53.933 ps. Typed fetch misses setup
+at -3.880 ps; its critical path runs from the decoder component selector to the
+decoded component result. A fetch-specific registered selection boundary is
+required before claiming a positive typed result. No place/route is required.

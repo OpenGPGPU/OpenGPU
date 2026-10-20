@@ -1,0 +1,164 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "standalone_synthesis_screen_failure_preserved",
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-image-fetch-qualified-v1-source.json",
+    "sha256": "cd5667afdecb50c4c851078c231a020c13050735abe8201acb27f4422cdf62a8"
+  },
+  "source_files": 655,
+  "source_unchanged": true,
+  "profiles": {
+    "raw": {
+      "runtime": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 46.63778066704981,
+        "finished_utc": "2026-10-20T06:10:15.135626+00:00"
+      },
+      "setup_passed": true,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        53.933,
+        435.428
+      ],
+      "worst_setup_slack_ps": 53.933,
+      "estimated_core_clock_fmax_mhz": 1057.008,
+      "mapped_cells": 43489,
+      "unconverted_library_cell_area": 5131.69344,
+      "area_units": "Unconverted ASAP7 Liberty units; not a physical chip area.",
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "yosys",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "evidence": {
+        "qualification.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-raw-2026-10-20-v1/qualification.json",
+          "sha256": "6d3b87d1d1f3fdea012da9f2aa3951a876ce2e4965a9c1b12d4cd9ba0f8d356f"
+        },
+        "result.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-raw-2026-10-20-v1/result.json",
+          "sha256": "05fa7888c72529e3c7ee484a572f7e47c2c6fe2d4c969c175201738ea110253c"
+        },
+        "manifest.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-raw-2026-10-20-v1/manifest.json",
+          "sha256": "59966a16d8892c781830e848d9c5f7119c23e62d3e1aaef6ec00a6d74d26e78e"
+        },
+        "flow/synthesis_sta.log": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-raw-2026-10-20-v1/flow/synthesis_sta.log",
+          "sha256": "631df5d00d49440218a893710d6228236833b9cee9dce48069479680c436c033"
+        },
+        "flow/synthesis_sta.tcl": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-raw-2026-10-20-v1/flow/synthesis_sta.tcl",
+          "sha256": "902ac96cd31c486031be1d1696b6b10a537037430e0c2e2c51e3a4009b51a24a"
+        },
+        "flow/orfs-work/reports/base/synth_stat.txt": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-raw-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "1e5505d5fb65fddb5a71ed774737bed545527cd463250c03c3daac7a0c1a4e7a"
+        }
+      },
+      "inputs": {
+        "path": ".artifacts/mobile-texture-image-fetch-raw-synthesis-v1-inputs.json",
+        "sha256": "ff6b006669beffa1d461e8e620c5ffe19895384d17a74f6c03369cbf972fb3e3"
+      }
+    },
+    "typed": {
+      "runtime": {
+        "returncode": 2,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 77.39838508307002,
+        "finished_utc": "2026-10-20T06:11:32.550693+00:00"
+      },
+      "setup_passed": false,
+      "mapping_passed": true,
+      "reported_setup_slacks_ps": [
+        -3.88,
+        423.585
+      ],
+      "worst_setup_slack_ps": -3.88,
+      "estimated_core_clock_fmax_mhz": 996.135,
+      "mapped_cells": 54523,
+      "unconverted_library_cell_area": 6587.55018,
+      "area_units": "Unconverted ASAP7 Liberty units; not a physical chip area.",
+      "parameters": {
+        "clock_port": "clock",
+        "clock_port_auto": false,
+        "clock_period": 1000.0,
+        "core_utilization": 25,
+        "place_density": 0.6,
+        "corner": "TC",
+        "cell_vt": "SLVT",
+        "timing_effort": "explore",
+        "synthesis_engine": "yosys",
+        "sv_frontend": "native",
+        "enable_retiming": false,
+        "swap_arithmetic_operators": false,
+        "generate_gds": false,
+        "max_fanout": null,
+        "high_fanout_nets": null,
+        "high_fanout_max": 8,
+        "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+        "setup_slack_margin": 0.0,
+        "abc_clock_period_ps": null,
+        "io_delay_percent": 0.25,
+        "io_false_path_ports": null,
+        "post_floorplan_tcl": null,
+        "macros": []
+      },
+      "evidence": {
+        "qualification.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-typed-2026-10-20-v1/qualification.json",
+          "sha256": "094934d557a2c9c462c35308a7fd800dc7b05f6fc526667de19fcdaab3f3a337"
+        },
+        "result.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-typed-2026-10-20-v1/result.json",
+          "sha256": "eb7c5a5f9d1ce1c5cb25615d75109d77185097a04ef13a1078bebfa5a8ba97e2"
+        },
+        "manifest.json": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-typed-2026-10-20-v1/manifest.json",
+          "sha256": "437da76f2e4515609c48db1e551ce773f6c550a54ddb5bdea4c405b0b46802ef"
+        },
+        "flow/synthesis_sta.log": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-typed-2026-10-20-v1/flow/synthesis_sta.log",
+          "sha256": "e8dc5d72738e010c440b6c2386c6018e2f977f4379673f266b05fd1f87ff6553"
+        },
+        "flow/synthesis_sta.tcl": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-typed-2026-10-20-v1/flow/synthesis_sta.tcl",
+          "sha256": "fc81b102a597f935b5d2355891d7924a7fc68464bcd701a06dab0ee180ccfc67"
+        },
+        "flow/orfs-work/reports/base/synth_stat.txt": {
+          "path": "generated/qualification/ppa/mobile-texture-image-fetch-typed-2026-10-20-v1/flow/orfs-work/reports/base/synth_stat.txt",
+          "sha256": "654d0b417525a9cb379b5056fe758de73ad0799c941290b57b54439a5070289c"
+        }
+      },
+      "inputs": {
+        "path": ".artifacts/mobile-texture-image-fetch-typed-synthesis-v1-inputs.json",
+        "sha256": "d7425178dbd0887729d135d25a89509a30073e0b8857d237f7c6f5a4399b4da8"
+      }
+    }
+  },
+  "scope": "Synthesis only, default raw/typed components. TC/SLVT, 1000 ps target, 25 percent I/O delay, no retiming, no SRAM macro, no place/route or power. All reported setup paths include I/O. No native, texture-cluster throughput or whole-GPU clock claim."
+}
