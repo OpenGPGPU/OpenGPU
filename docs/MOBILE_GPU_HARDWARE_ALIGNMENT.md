@@ -5519,3 +5519,18 @@ host RTL emission, remain pending. The same SBT process is live; no source
 changes or restart are made. This partial checkpoint does not qualify the
 complete 176-check candidate or promote production into main. H0-H8 and the
 remaining depth/face requirements stay open. PPA remains synthesis only.
+
+
+## Completed native depth image-group checkpoint (2026-10-20)
+
+The [24-check image group](performance/mobile-depth-native-image-controls-2026-10-20.json)
+passes in the unchanged 643-file full-depth run. Completed groups are 106,
+thirteen and twenty-four checks, totaling 143. Prepared replay/image,
+native/shared binning, centroid/polygon offset and bounded fault/cancel/VM
+lifetime controls all pass in this group.
+
+Thirty-three host checks, including the sixty-frame native depth-format
+matrix, and final default host RTL emission remain live in the original
+process. No source change, restart, full 176-check claim or main production
+promotion is made. Remaining depth/G04/H6 work and PPA qualification stay
+open; evaluation remains synthesis only.

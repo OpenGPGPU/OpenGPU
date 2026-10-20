@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "143_checks_passed_33_host_checks_and_final_emission_pending",
+  "observed_utc": "2026-10-20T04:40:26.205517+00:00",
+  "scope": "Completed24-check image group in the frozen full-depth composition",
+  "source_files": 643,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-native-composed-source-v1.json",
+    "sha256": "42f94258ec699a2a35f1a841579d122c9e4b39006bed94e6155f00431bdc3a57"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-native-composed-source-v1.tar.gz",
+    "sha256": "68de99e6934a86bf578ceaca533ba880648fde47057973cb7b46c433ac2fa2bd"
+  },
+  "log_prefix": {
+    "path": ".artifacts/mobile-depth-native-image-controls-v1.log",
+    "sha256": "c6d052e3d1856fddcac0b6d624609106edb4ed867654cf6a5f61c9914eb7650b"
+  },
+  "source_unchanged_at_checkpoint": true,
+  "sbt_pid_confirmed_live": 20063,
+  "completed_groups": [
+    106,
+    13,
+    24
+  ],
+  "passed_at_checkpoint": 143,
+  "expected_total": 176,
+  "remaining_checks": 33,
+  "success_tasks": 8,
+  "prepared_polygon_profiles": 2,
+  "prepared_centroid_profiles": 2,
+  "limits": [
+    "The complete24-check image group passes, including prepared replay/image, native/shared binning, centroid/polygon and fault/cancel/VM drain controls.",
+    "This is a passing143-check prefix, not a complete176-check result. The33 host checks, including the60-frame depth matrix, and final host RTL emission remain live; no source edits or restart are made.",
+    "No main production promotion, depth/G04/H6/H0-H8 or new PPA closure is claimed."
+  ]
+}
