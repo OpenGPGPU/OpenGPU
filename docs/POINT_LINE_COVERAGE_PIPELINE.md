@@ -37,11 +37,6 @@ both directions, length overflow and healthy reuse. Eleven early cancellation
 cuts and mutations of unoffered descriptor inputs verify snapshot ownership.
 The frozen original has three failures in those four new boundary checks.
 
-Primitive/interpolation, sample-depth, actual-CU image and native typed host
-checks are pending. Their new extreme-endpoint case follows the corrected
-weights through interpolation and covered-sample depth. Matched standalone
-synthesis and wider integration remain necessary; H0-H8 stay open.
-
 The first wider run passes 18 of 19 checks and exposes the enclosing primitive
 owner's shared signed-31 span guard. That guard remains required for triangles;
 lines now use the coverage engine's signed-33 differences and checked signed-64
@@ -49,4 +44,29 @@ length/weight limits. Expanded signed-64 bounds retain their carry as well, so
 an overlapping unrepresentable line cannot wrap into an outside-bounds success.
 All five primitive-owner checks pass after this correction, including the new
 extreme lines through interpolation/depth and full signed-64 overlap rejection.
-The complete corrected-source rerun and candidate synthesis remain pending.
+The corrected source now passes all 19 coverage, primitive, interpolation and
+sample-depth checks across four suites, including exact extreme-line helper
+inputs and covered-sample depths. Actual-CU image/native-host checks and the
+synthesis comparison remain pending; H0-H8 stay open.
+
+Run a matched standalone cycle comparison with:
+
+```sh
+python3 scripts/benchmark_point_line_cycles.py \
+  --baseline-rtl /path/to/baseline/PointLineRasterizer.sv \
+  --candidate-rtl /path/to/candidate/PointLineRasterizer.sv \
+  --output /path/to/new-comparison-directory
+```
+
+The [frozen 15-case comparison](performance/mobile-point-line-cycle-comparison-2026-10-20.json)
+checks every output quad field for ordinary points and lines at all three
+sample modes, fractional sizes and maximum width. With an always-ready consumer,
+both total retirement cycles and first-offer latency increase by exactly two
+cycles for points/basic lines and three for multisample lines. No extra cycles
+accumulate per sample or quad. Both emissions expose identical port widths,
+one active RTL module and no SRAM or private arithmetic module.
+
+This comparison supplements the independent numeric controls; its baseline has
+the known extreme-coordinate bug, so equality on these ordinary inputs does
+not establish correctness outside this common domain. Combine measured cycles
+with matched synthesis timing before claiming elapsed-time improvement.

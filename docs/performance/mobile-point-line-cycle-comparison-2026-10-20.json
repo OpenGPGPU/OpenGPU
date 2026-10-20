@@ -1,0 +1,238 @@
+{
+  "started_utc": "2026-10-20T00:23:09.658642+00:00",
+  "harness_sha256": "3238388475ddfe5986abde3d2c45313f027ade6b2f9f6751ba5092312ead8ca3",
+  "runner_sha256": "0914b357e43cd38151122863be3a67664f20409a05ff43602538d69834ee8c16",
+  "verilator_version": "Verilator 5.050 2026-07-01 rev vUNKNOWN-built20260701",
+  "build_jobs": 2,
+  "cxx_standard": "c++17",
+  "scope": "Standalone default component, 8x8 view, always-ready output; 15 common-domain primitives",
+  "cycle_definition": "Acceptance edge counts as cycle 1; count through the edge that clears busy. First offer is observed before its accepting edge.",
+  "quad_layout": "Four lanes each containing raw unsigned x,y,e0,e1,e2,area,covered,coverageMask",
+  "inputs": {
+    "subpixel_bits": 8,
+    "screen": [
+      8,
+      8
+    ],
+    "state_version": 1,
+    "line_endpoints": [
+      [
+        128,
+        128
+      ],
+      [
+        1792,
+        1280
+      ]
+    ],
+    "point_center": [
+      896,
+      1024
+    ],
+    "scissor": false
+  },
+  "models": {
+    "baseline": {
+      "rtl_path": ".artifacts/mobile-vertex-input-conversion-v1-worktree/generated/mobile-h6/point-line-baseline-v1-rtl/PointLineRasterizer.sv",
+      "rtl_sha256": "b15c01c5136e175a47b08158bee63fa87cde1d2575133e9dbc89594c177d7904",
+      "executable_sha256": "4fcea1576f7be0141e1377eb081fec275a10ec116e079f23fa8f7bb1ea1f81af",
+      "results_sha256": "c838f4070bf3840ddc66fba7a9cfd69851c823fb54a3b22e40e5aa5043e13a3e"
+    },
+    "candidate": {
+      "rtl_path": ".artifacts/mobile-point-line-coverage-pipeline-v1-worktree/generated/mobile-h6/point-line-pipeline-qualified-v2-rtl/PointLineRasterizer.sv",
+      "rtl_sha256": "c2c393d1eccde0c9ecc4bba85c8e433262a3a447db484616ea21bad5b62b0637",
+      "executable_sha256": "fcbee6c9eb46757fbd41a44b221fef3cc031aca418c9a382b7f2d7c86bf1cd96",
+      "results_sha256": "c93da85519e92057468c48ca7f48ecf3abb6d0e4b48d93b689ff893097fba419"
+    }
+  },
+  "comparisons": [
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 0,
+      "baseline_cycles": 487,
+      "candidate_cycles": 489,
+      "added_setup_cycles": 2,
+      "quads": 5,
+      "all_quad_fields_equal": true,
+      "output_sha256": "1e51710e690090f7b63b19b2adb197ffdfc845c7467f943ccddc4225e4f90186"
+    },
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 1,
+      "baseline_cycles": 424,
+      "candidate_cycles": 427,
+      "added_setup_cycles": 3,
+      "quads": 6,
+      "all_quad_fields_equal": true,
+      "output_sha256": "9d864a3bf040dc8637175346dcd08a587aad06db8b35701b93b637914339a338"
+    },
+    {
+      "point": false,
+      "size_fp32": 1065353216,
+      "sample_mode": 2,
+      "baseline_cycles": 680,
+      "candidate_cycles": 683,
+      "added_setup_cycles": 3,
+      "quads": 6,
+      "all_quad_fields_equal": true,
+      "output_sha256": "294e339bd83411bff7d8cd5afec057b4c6d9bacacae9bc52b10632ff84ccb09c"
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 0,
+      "baseline_cycles": 719,
+      "candidate_cycles": 721,
+      "added_setup_cycles": 2,
+      "quads": 5,
+      "all_quad_fields_equal": true,
+      "output_sha256": "98b53de8a24353f4ae243a6c68caa5fcf78825c85912a1a4a9ac9342356ac4b7"
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 1,
+      "baseline_cycles": 426,
+      "candidate_cycles": 429,
+      "added_setup_cycles": 3,
+      "quads": 8,
+      "all_quad_fields_equal": true,
+      "output_sha256": "fbf1adebaa6c0cabc31f142654216452488b06710b29c9c7bac8bc6021e6c057"
+    },
+    {
+      "point": false,
+      "size_fp32": 1075838976,
+      "sample_mode": 2,
+      "baseline_cycles": 684,
+      "candidate_cycles": 687,
+      "added_setup_cycles": 3,
+      "quads": 10,
+      "all_quad_fields_equal": true,
+      "output_sha256": "a6248350d563dd4975d542440a13c94150b90ecea18a071361a0d44892893fc0"
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 0,
+      "baseline_cycles": 10894,
+      "candidate_cycles": 10896,
+      "added_setup_cycles": 2,
+      "quads": 12,
+      "all_quad_fields_equal": true,
+      "output_sha256": "1808228ae12c5088b2376ecf3c7c287dfa84d2b11b282d50325a439d33abfa22"
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 1,
+      "baseline_cycles": 433,
+      "candidate_cycles": 436,
+      "added_setup_cycles": 3,
+      "quads": 15,
+      "all_quad_fields_equal": true,
+      "output_sha256": "c5505f7cc3ea41bf881d7615abb8d0bea8b969ff1a16219714d4e1f908d1dfa1"
+    },
+    {
+      "point": false,
+      "size_fp32": 1115684864,
+      "sample_mode": 2,
+      "baseline_cycles": 689,
+      "candidate_cycles": 692,
+      "added_setup_cycles": 3,
+      "quads": 15,
+      "all_quad_fields_equal": true,
+      "output_sha256": "efc0a68b0157dfd30bad5f37d3418c5c0839f4128cbd68743155d9a08436752a"
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 0,
+      "baseline_cycles": 294,
+      "candidate_cycles": 296,
+      "added_setup_cycles": 2,
+      "quads": 4,
+      "all_quad_fields_equal": true,
+      "output_sha256": "f1167222a2cda63b948a2e6bebc6dcb03dbeb6f4468757f18a822fe12c414ea6"
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 1,
+      "baseline_cycles": 422,
+      "candidate_cycles": 424,
+      "added_setup_cycles": 2,
+      "quads": 4,
+      "all_quad_fields_equal": true,
+      "output_sha256": "30c9ef6478113d2f2a6b4d04168e1ee13dabef8ac2790644450bc33c85c35082"
+    },
+    {
+      "point": true,
+      "size_fp32": 1078984704,
+      "sample_mode": 2,
+      "baseline_cycles": 678,
+      "candidate_cycles": 680,
+      "added_setup_cycles": 2,
+      "quads": 4,
+      "all_quad_fields_equal": true,
+      "output_sha256": "1a2afd14a7f687f74aee559d0bf3f862b4e0a96fdf76903cb04037d240103114"
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 0,
+      "baseline_cycles": 306,
+      "candidate_cycles": 308,
+      "added_setup_cycles": 2,
+      "quads": 16,
+      "all_quad_fields_equal": true,
+      "output_sha256": "cef5e345f7d731941e550527bf95128f504881f7fd2ca8a2d8d5a58dd9b30463"
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 1,
+      "baseline_cycles": 434,
+      "candidate_cycles": 436,
+      "added_setup_cycles": 2,
+      "quads": 16,
+      "all_quad_fields_equal": true,
+      "output_sha256": "f26d2fde51b92c564a3dfbe90118260965dd343eea8fc93cb503c079716f6830"
+    },
+    {
+      "point": true,
+      "size_fp32": 1115684864,
+      "sample_mode": 2,
+      "baseline_cycles": 690,
+      "candidate_cycles": 692,
+      "added_setup_cycles": 2,
+      "quads": 16,
+      "all_quad_fields_equal": true,
+      "output_sha256": "ed3c81ced1198eb540dcd9203d0dffd8cb5703d043b281753b2965b4ba4e8bb0"
+    }
+  ],
+  "passed": true,
+  "finished_utc": "2026-10-20T00:23:17.991502+00:00",
+  "source_manifest": ".artifacts/mobile-point-line-pipeline-source-v2.json",
+  "source_manifest_sha256": "bd67906fdf326e08fb03b0680c2ffaa6674674cd4cd6b1dc35ae0c4773d68215",
+  "source_files": 626,
+  "source_unchanged": true,
+  "numeric_regression": {
+    "passed": 19,
+    "failed": 0,
+    "suites": 4,
+    "log": ".artifacts/mobile-point-line-numeric-qualified-v2.log",
+    "log_sha256": "8a1bbc0d5ecedab98a8da09200d954268a4a928e508f1d918229675d1effe6b2"
+  },
+  "limitations": [
+    "Common-domain equivalence is not an independent numeric oracle; separate 19-check coverage/interpolation/depth controls provide that evidence.",
+    "The original baseline fails three of four extreme-coordinate tests. This comparison uses representable ordinary inputs and includes both correctness widening and preparation changes.",
+    "Full actual-CU image/native host integration and synthesis comparison are pending. No full renderer, product frame or physical timing claim."
+  ],
+  "negative_attempt": {
+    "path": ".artifacts/mobile-point-line-cycle-comparison-v1/baseline/build.log",
+    "reason": "Initial native compile omitted required C++17 flag; no executable or cycle result produced.",
+    "sha256": "832c7e9b41f5a54eb6b7f59deeef5dfacb0527e38d93f7ea3821511250d955bb"
+  }
+}
