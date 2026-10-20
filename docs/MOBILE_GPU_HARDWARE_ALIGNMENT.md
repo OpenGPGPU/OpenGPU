@@ -6314,3 +6314,16 @@ and centers at most35 bits;its numerator arithmetic fits36 signed bits without
 reducing the32-bit endpoint interface or subpixel configurations. That bounded
 owner specialization will be checked alongside retained64-bit generic support.
 No positive timing or full H0-H8 result is claimed.
+
+
+## Exact owner numerator bound with retained generic comparison (2026-10-20)
+
+The [bounded owner](performance/mobile-point-line-bounded-2026-10-20.json)
+uses36-bit signed numerators and72-bit real differences while the comparator
+retains64-bit generic support. Centers are at most signed35,endpoint axes are
+signed33,and half<=2^15:abs(n)<=2^34+2^32+2^15<2^35. Slab differences keep37-bit
+carries with canonical-fit assertions. External32-bit endpoints and all2..16
+subpixel configurations remain supported. All13 controls pass on unchanged674
+source files:4871 arithmetic cases at each width,39015 order cases,2401 lattice
+lines and600 cancellation/reset cuts. Fresh integration,cycles and standard
+synthesis remain pending;no positive clock or full H0-H8 result is claimed.

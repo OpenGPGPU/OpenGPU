@@ -6,13 +6,13 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 import scala.util.Random
 
-private class DiamondFractionComparisonHarness extends Module {
+private class DiamondFractionComparisonHarness(width: Int) extends Module {
   val io=IO(new Bundle {
     val a=Input(new DiamondFraction);val b=Input(new DiamondFraction)
     val enable=Input(Bool());val valid=Output(Bool());val less=Output(Bool())
-    val real=Output(SInt(100.W));val epsilon=Output(SInt(38.W));val epsilon2=Output(SInt(38.W))
+    val real=Output(SInt((width+36).W));val epsilon=Output(SInt(38.W));val epsilon2=Output(SInt(38.W))
   })
-  val parts=RegNext(DiamondFractionComparison.split(io.a,io.b))
+  val parts=RegNext(DiamondFractionComparison.split(io.a,io.b,width))
   val reduced=RegNext(DiamondFractionComparison.reduce(parts))
   val real=RegNext(DiamondFractionComparison.resolve(reduced))
   val e=RegNext(reduced.epsilon);val e2=RegNext(reduced.epsilon2)
@@ -46,8 +46,9 @@ class DiamondFractionComparisonSpec extends AnyFlatSpec {
     info(s"DIAMOND_INTERVAL_ORDER rankCases=$checked ranks=6 everyWeakOrder=true ties=true activeAxisPatterns=4")
   }
 
-  it should "preserve full signed products symbolic ties and sample order through registered reduction" in {
-    simulate(new DiamondFractionComparisonHarness){dut=>
+  for(width<-Seq(36,64))
+  it should s"preserve full signed products symbolic ties and sample order through registered reduction width$width" in {
+    simulate(new DiamondFractionComparisonHarness(width)){dut=>
       val pending=mutable.Queue.empty[Option[Expected]]
       var checked=0;var bubbles=0
       def poke(target: DiamondFraction,x: Fraction): Unit={
@@ -69,7 +70,7 @@ class DiamondFractionComparisonSpec extends AnyFlatSpec {
             dut.io.epsilon2.expect(x.e2.S);dut.io.less.expect(x.less.B);checked+=1}
         }else dut.io.valid.expect(false.B)
       }
-      val minimum= -(BigInt(1)<<63);val maximum=(BigInt(1)<<63)-1
+      val minimum= -(BigInt(1)<<(width-1));val maximum=(BigInt(1)<<(width-1))-1
       val numerators=Seq(minimum,maximum,BigInt(-1),BigInt(0),BigInt(1),-(BigInt(1)<<31),BigInt(1)<<31,
         -(BigInt(1)<<32),BigInt(1)<<32)
       val denominators=Seq(BigInt(0),BigInt(1),(BigInt(1)<<32)-1,BigInt(1)<<32,(BigInt(1)<<34)-1)
@@ -81,15 +82,15 @@ class DiamondFractionComparisonSpec extends AnyFlatSpec {
       val scaled=for(n<-Seq(BigInt(0),BigInt(-1),BigInt(1),minimum/4,maximum/4);
         d<-Seq(BigInt(1),BigInt(17),BigInt(1)<<31);k<-Seq(2,3))yield(Fraction(n,d),Fraction(n*k,d*k))
       val random=new Random(0xd1a604)
-      def fraction(): Fraction={val raw=BigInt(64,random)
-        Fraction(if(raw.testBit(63))raw-(BigInt(1)<<64)else raw,BigInt(34,random),random.nextInt(4)-2,random.nextInt(4)-2)}
+      def fraction(): Fraction={val raw=BigInt(width,random)
+        Fraction(if(raw.testBit(width-1))raw-(BigInt(1)<<width)else raw,BigInt(34,random),random.nextInt(4)-2,random.nextInt(4)-2)}
       val cases=edges++ties++scaled++Seq.fill(2048)((fraction(),fraction()))
       for((pair,i)<-cases.zipWithIndex){
         if(i%7==0){tick(None);bubbles+=1};tick(Some(pair))
       }
       for(_<-0 until 3)tick(None)
       assert(checked==cases.size)
-      info(s"DIAMOND_FRACTION_PIPELINE exactComparisons=$checked bubbles=$bubbles realBits=100 numeratorBits=64 denominatorBits=34 epsilonBits=2 signedBoundaries=true symbolicTies=${ties.size} fullPrecision=true latency=3")
+      info(s"DIAMOND_FRACTION_PIPELINE exactComparisons=$checked bubbles=$bubbles realBits=${width+36} numeratorBits=$width denominatorBits=34 epsilonBits=2 signedBoundaries=true symbolicTies=${ties.size} fullPrecision=true latency=3")
     }
   }
 }

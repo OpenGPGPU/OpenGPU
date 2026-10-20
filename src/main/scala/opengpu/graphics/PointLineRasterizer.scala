@@ -52,10 +52,14 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val slabLower=Reg(Vec(2,new DiamondFraction));private val slabUpper=Reg(Vec(2,new DiamondFraction))
   private val intervalBoundary=Reg(Bool())
   private val compareA=Reg(Vec(2,new DiamondFraction));private val compareB=Reg(Vec(2,new DiamondFraction))
-  private val compareParts=Reg(Vec(2,new DiamondFractionProductParts))
-  private val nextCompareParts=(0 until 2).map(i=>DiamondFractionComparison.split(compareA(i),compareB(i)))
-  private val compareReduced=Reg(Vec(2,new DiamondFractionReduced))
-  private val compareReal=Reg(Vec(2,SInt(100.W)))
+  // qx/qy are at most signed34,so slab centers are signed35. With signed33
+  // endpoint axes and half<=2^15,the exact numerator magnitude is below
+  // 2^34+2^32+2^15<2^35. No legal endpoint/configuration is narrowed.
+  private val fractionBits=36
+  private val compareParts=Reg(Vec(2,new DiamondFractionProductParts(fractionBits)))
+  private val nextCompareParts=(0 until 2).map(i=>DiamondFractionComparison.split(compareA(i),compareB(i),fractionBits))
+  private val compareReduced=Reg(Vec(2,new DiamondFractionReduced(fractionBits)))
+  private val compareReal=Reg(Vec(2,SInt((fractionBits+36).W)))
   private val compareEpsilon=Reg(Vec(2,SInt(38.W)));private val compareEpsilon2=Reg(Vec(2,SInt(38.W)))
   private val comparison=(0 until 2).map(i=>DiamondFractionComparison.less(compareReal(i),compareEpsilon(i),compareEpsilon2(i)))
   private val unit=BigInt(1)<<g.subPixelBits;private val half=unit/2;private val quarter=unit/4
@@ -124,12 +128,16 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     phase:=Mux(!inClip,State.nextLane,Mux(!request.point && request.state.sampleMode=/=0.U,State.sampleStream,State.sample))
   }
   private def slab(axis: Int,center: SInt): (DiamondFraction,DiamondFraction,Bool,Bool)={
-    val a=axisA(axis).pad(64);val b=axisB(axis).pad(64)
-    val lo=center-half.S;val hi=center+half.S
+    require(center.getWidth<=35)
+    val a=axisA(axis);val b=axisB(axis)
+    val lo=center.pad(fractionBits)-half.S;val hi=center.pad(fractionBits)+half.S
     val positive=axisPositive(axis);val denominator=axisDenominator(axis)
     val e=Mux(positive,1.S(2.W),(-1).S(2.W));val e2=if(axis==1)-e else e
-    val l=DiamondFraction.make(Mux(positive,lo-a,a-hi),denominator,e,e2)
-    val h=DiamondFraction.make(Mux(positive,hi-a,a-lo),denominator,e,e2)
+    val lowerNumerator=Mux(positive,lo-&a,a-&hi);val upperNumerator=Mux(positive,hi-&a,a-&lo)
+    assert(lowerNumerator===lowerNumerator(fractionBits-1,0).asSInt,"proven lower fraction bound")
+    assert(upperNumerator===upperNumerator(fractionBits-1,0).asSInt,"proven upper fraction bound")
+    val l=DiamondFraction.make(lowerNumerator,denominator,e,e2)
+    val h=DiamondFraction.make(upperNumerator,denominator,e,e2)
     (l,h,b>lo && b<=hi,!axisStationary(axis) || (a>lo && a<=hi))
   }
   private def boundary(l: DiamondFraction,h: DiamondFraction): Bool={
