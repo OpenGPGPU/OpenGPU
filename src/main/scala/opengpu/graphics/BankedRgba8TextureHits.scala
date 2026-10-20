@@ -10,7 +10,7 @@ class BankedRgba8Sample(cachePolicyInput: Boolean=false) extends Bundle {
   val addresses=Vec(4,UInt(32.W));val rowParity=Vec(4,Bool());val weights=Vec(4,UInt(17.W))
   val noCache=if(cachePolicyInput)Some(Bool())else None
 }
-class BankedRgba8Result(readThrough: Boolean=false,weightedOutput: Boolean=false) extends Bundle {
+class BankedRgba8Result(readThrough: Boolean=false,weightedOutput: Boolean=false,rawTapOutput: Boolean=false) extends Bundle {
   val identity=new GraphicsWorkIdentity;val tag=UInt(32.W)
   val hit=Bool();val cancelled=Bool();val missingTaps=UInt(4.W)
   /** Logical packed RGBA:R at bits31:24,unlike little-endian input texels. */
@@ -18,6 +18,8 @@ class BankedRgba8Result(readThrough: Boolean=false,weightedOutput: Boolean=false
   val fault=if(readThrough)Some(Bool())else None
   val faultAddress=if(readThrough)Some(UInt(32.W))else None
   val weightedSums=if(weightedOutput)Some(Vec(4,UInt(24.W)))else None
+  /** Original little-endian tap words, before any weighted filtering. */
+  val rawTaps=if(rawTapOutput)Some(Vec(4,UInt(32.W)))else None
 }
 /** Resident RGBA8 bilinear service:four banked taps and a two-stage weighted
   * filter,with bounded sample association and duplicate-tap coalescing.
@@ -28,12 +30,13 @@ class BankedRgba8Result(readThrough: Boolean=false,weightedOutput: Boolean=false
   * outside this block. It is not yet wired into the general shader sampler.
   */
 class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: Boolean=false,
-    readThrough: Boolean=false,weightedOutput: Boolean=false,cachePolicyInput: Boolean=false) extends Module {
+    readThrough: Boolean=false,weightedOutput: Boolean=false,cachePolicyInput: Boolean=false,
+    rawTapOutput: Boolean=false) extends Module {
   require(!cachePolicyInput || readThrough, "page policy requires read-through ownership")
   require(isPow2(entries) && entries>=4 && entries<=64)
   private val slotBits=log2Ceil(entries)
   val io=IO(new Bundle {
-    val in=Flipped(Decoupled(new BankedRgba8Sample(cachePolicyInput)));val out=Decoupled(new BankedRgba8Result(readThrough,weightedOutput))
+    val in=Flipped(Decoupled(new BankedRgba8Sample(cachePolicyInput)));val out=Decoupled(new BankedRgba8Result(readThrough,weightedOutput,rawTapOutput))
     val refill=Flipped(Decoupled(new BankedTextureRefill));val refillDone=Decoupled(new BankedTextureRefillCompletion)
     val invalidate=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
     val tapIssues=Output(UInt(3.W));val bankConflicts=Output(UInt(3.W))
@@ -113,8 +116,8 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
     }
   }
   private val productValid=RegInit(false.B);private val sumValid=RegInit(false.B)
-  private val products=Reg(Vec(4,Vec(4,UInt(25.W))));private val productResult=Reg(new BankedRgba8Result(readThrough,weightedOutput))
-  private val result=Reg(new BankedRgba8Result(readThrough,weightedOutput))
+  private val products=Reg(Vec(4,Vec(4,UInt(25.W))));private val productResult=Reg(new BankedRgba8Result(readThrough,weightedOutput,rawTapOutput))
+  private val result=Reg(new BankedRgba8Result(readThrough,weightedOutput,rawTapOutput))
   io.out.valid:=sumValid;io.out.bits:=result
   private val sumReady= !sumValid || io.out.ready
   private val productReady= !productValid || sumReady
@@ -135,6 +138,9 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
       result.weightedSums.foreach{values=>
         for(c<-0 until 4)values(c):=Mux(productResult.hit && !stopped,products(c).reduce(_+& _)(23,0),0.U)
       }
+      result.rawTaps.foreach{values=>
+        for(t<-0 until 4)values(t):=Mux(productResult.hit && !stopped,productResult.rawTaps.get(t),0.U)
+      }
     }
   }
   when(productReady){productValid:=completed
@@ -145,6 +151,7 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
       productResult.fault.foreach(_:=faults.get(head))
       productResult.faultAddress.foreach(_:=Mux(faults.get(head),faultAddresses.get(head),0.U))
       productResult.missingTaps:=Mux(stopped,0.U,(~hitMask(head))(3,0))
+      productResult.rawTaps.foreach(_:=data(head))
       for(c<-0 until 4;t<-0 until 4)products(c)(t):=data(head)(t)(c*8+7,c*8)*samples(head).weights(t)
     }
   }
