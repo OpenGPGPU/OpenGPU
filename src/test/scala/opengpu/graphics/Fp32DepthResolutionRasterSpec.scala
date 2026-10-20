@@ -137,6 +137,7 @@ class Fp32DepthResolutionRasterSpec extends AnyFlatSpec {
       val before=run(low);val after=run(high)
       info(s"DEPTH_DIRECTED_BOUNDARY e0=1 actualCoverage=true resolution33000000=true before=${before.toString(16)} after=${after.toString(16)}")
       assert(before!=after,s"directed final addition still collapses an interior binade-boundary step: ${before.toString(16)} == ${after.toString(16)}")
+      assert(before==low.max && after==high.max,"inside-depth bounds must restore the exact upper vertex depths before bias")
     }
   }
 

@@ -10,7 +10,7 @@ object NativeRasterCapabilities {
     require(Set(1,2,4).contains(maxSamples))
     val modes=Seq(1,2,4).zipWithIndex.filter(_._1<=maxSamples).foldLeft(BigInt(0)){case(m,(_,i))=>m.setBit(i)}
     Seq(magic,BigInt(wordCount),BigInt(6),BigInt(0xff)|(BigInt(0x3e)<<8)|(modes<<16),
-      BigInt("37804001",16),BigInt("33c00000",16),BigInt(2),BigInt(0))
+      BigInt("37804001",16),BigInt("33c00000",16),BigInt(3),BigInt(0))
   }
   def header(prefix: String): String=Seq(
     "RASTER_CAPABILITIES"->"0x1d0u","RASTER_CAPABILITY_MAGIC"->"0x47524901u","RASTER_CAPABILITY_WORDS"->"8u",
@@ -23,6 +23,7 @@ object NativeRasterCapabilities {
     "RASTER_CAP_SAMPLE_MODES_SHIFT"->"16u","RASTER_CAP_SAMPLE_MODES_MASK"->"0x70000u",
     "RASTER_CAPABILITY_D16_RESOLUTION_WORD"->"4u","RASTER_CAPABILITY_D24_RESOLUTION_WORD"->"5u",
     "RASTER_CAPABILITY_FLOAT_RESOLUTION_WORD"->"6u","RASTER_FLOAT_RESOLUTION_MAX_VERTEX_ULP"->"1u",
-    "RASTER_FLOAT_RESOLUTION_MAX_VERTEX_ULP_RTZ"->"2u"
+    "RASTER_FLOAT_RESOLUTION_MAX_VERTEX_ULP_RTZ"->"2u",
+    "RASTER_FLOAT_RESOLUTION_MAX_VERTEX_ULP_RTZ_BOUNDED"->"3u"
   ).map{case(n,v)=>s"#define $prefix$n $v\n"}.mkString
 }

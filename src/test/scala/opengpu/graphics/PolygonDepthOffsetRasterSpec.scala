@@ -98,6 +98,19 @@ class PolygonDepthOffsetRasterSpec extends AnyFlatSpec {
       info("POLYGON_OFFSET_ORDER extrapolatedHelpers=true biasBeforeClamp=true culledNoQuads=true linesIgnoreOffset=true sharedArithmetic=true exactReuse=true")
     }
   }
+  it should "preserve extrapolated floating helper depths until bias is applied" in {
+    simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d)
+      // Every depth and offset in this witness is dyadic and exactly
+      // representable. Its reference therefore applies to either rounding mode.
+      val tiny=source.copy(coords=Vector((0,0),(256,0),(0,256)).map{case(x,y)=>(BigInt(x),BigInt(y))},values=source.values.copy(depth=Vector(0.0,1.0,1.0).map(fp)))
+      for(mode<-0 to 2){
+        t.prepare(tiny,mode,factor=fp(-0.5),units=0)
+        d.io.in.bits.depthRoundTowardZero.poke(true.B);t.submit();t.finish()
+      }
+      assert(t.unclampedWitness>0,"floating helper fixture must distinguish bias before depth clamping")
+      info("POLYGON_OFFSET_FLOAT_HELPERS modes=3 outsideExtrapolationRetained=true biasBeforeClamp=true exactDyadicReference=true immutableCompletion=true")
+    }
+  }
   it should "enforce versioned raster offset state before launching primitive work" in {
     simulate(new Fp32PrimitiveRasterStage(p,g)){d=>val t=new Driver(d)
       for((version,enabled,factor,units)<-Seq(

@@ -62,7 +62,7 @@ class NativeVertexInputCapabilitiesAxiSpec extends AnyFlatSpec {
       for(i<-0 until 4;strb<-Seq(0,1,15)){write(0x1c0+4*i,strb);assert(read(0x1c0+4*i)==Vector(fexpected(i)))}
       for(a<-Seq(0x1c1,0x1f0,0x5c0)){assert(read(a)==Vector(BigInt(0)->BigInt(2)));write(a,15)}
       val raster=Vector(BigInt("47524901",16),BigInt(8),BigInt(6),BigInt((sampleModes<<8)|0x3eff),
-        BigInt("37804001",16),BigInt("33c00000",16),BigInt(2),BigInt(0))
+        BigInt("37804001",16),BigInt("33c00000",16),BigInt(3),BigInt(0))
       val rexpected=if(enabled)raster.map(_->BigInt(0))else Vector.fill(8)(BigInt(0)->BigInt(2))
       assert(read(0x1d0,8)==rexpected)
       assert(read(0x1d0,9)==rexpected:+(BigInt(0)->BigInt(2)))

@@ -153,18 +153,35 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     request.a:=a;request.b:=b;request.operation:=Mux(towardZero,ClipFloatOperation.addTowardZero.U,operation.U);request.tag:=operations(7,0)
     offered:=true.B;continuation:=next;phase:=State.waitMath
   }
-  private def saveDepth(): Unit={
+  // Exact signed edge signs identify a convex interpolation location. Edge
+  // conversion preserves sign/nonzero even when its magnitude rounds. Helpers
+  // outside the primitive must retain extrapolation until offset application.
+  private val insideDepth=edges.map(e=> !e.significand.orR || e.negative===(pixel.area<0.S)).reduce(_ && _)
+  private val sourceDepths=(0 until 3).map(i=>Mux(i.U<primitive.vertexCount,input.primitive.vertices(i).windowDepth(30,0),input.primitive.vertices(0).windowDepth(30,0)))
+  private val minimumDepth=ClipFloat.fromFp32(sourceDepths.reduce((a,b)=>Mux(a<b,a,b)).pad(32))
+  private val maximumDepth=ClipFloat.fromFp32(sourceDepths.reduce((a,b)=>Mux(a>b,a,b)).pad(32))
+  private def magnitudeLess(a: ClipFloat,b: ClipFloat): Bool=
+    (!a.significand.orR && b.significand.orR) || (a.significand.orR && b.significand.orR &&
+      (a.exponent<b.exponent || (a.exponent===b.exponent && a.significand<b.significand)))
+  private def finiteLess(a: ClipFloat,b: ClipFloat): Bool={
+    val an=a.negative && a.significand.orR;val bn=b.negative && b.significand.orR
+    Mux(an=/=bn,an,Mux(an,magnitudeLess(b,a),magnitudeLess(a,b)))
+  }
+  private val boundedDepth=Mux(input.depthRoundTowardZero && insideDepth,
+    Mux(finiteLess(mathValue,minimumDepth),minimumDepth,Mux(finiteLess(maximumDepth,mathValue),maximumDepth,mathValue)),mathValue)
+  private val boundedPacked=ClipFloat.toFp32(boundedDepth,input.depthRoundTowardZero).bits
+  private def saveDepth(packed: UInt=mathPacked): Unit={
     when(resamplingDepth){
-      output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(mathPacked)
+      output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(packed)
       resamplingDepth:=false.B;depth:=false.B;component:=0.U;phase:=State.component
     }.elsewhen(sampling){
-      output.lanes(lane).sampleDepth(sampleIndex):=Fp32ViewportState.clampDepth(mathPacked)
+      output.lanes(lane).sampleDepth(sampleIndex):=Fp32ViewportState.clampDepth(packed)
       sample:=sample+1.U;phase:=State.sampleDepth
     }.otherwise{
-      output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(mathPacked);output.lanes(lane).sampleDepthValid:=input.sampleDepthEnable
+      output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(packed);output.lanes(lane).sampleDepthValid:=input.sampleDepthEnable
       when(input.sampleDepthEnable && input.sampleMode=/=0.U){sample:=0.U;sampling:=true.B;phase:=State.sampleDepth}
         .otherwise{
-          when(input.sampleDepthEnable){output.lanes(lane).sampleDepth(0):=Mux(pixel.covered,Fp32ViewportState.clampDepth(mathPacked),0.U)}
+          when(input.sampleDepthEnable){output.lanes(lane).sampleDepth(0):=Mux(pixel.covered,Fp32ViewportState.clampDepth(packed),0.U)}
           depth:=false.B;component:=0.U;phase:=Mux(needsCentroid,State.startCentroid,State.component)
         }
     }
@@ -293,8 +310,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
           .elsewhen(depth){
             when(mathValue.special=/=0.U){status:=7.U;faultLane:=lane;phase:=State.abort}
               .otherwise{
-                when(input.depthOffset.significand.orR){calculate(mathValue,input.depthOffset,ClipFloatOperation.add,State.saveOffsetDepth,input.depthRoundTowardZero)}
-                  .otherwise{saveDepth()}
+                when(input.depthOffset.significand.orR){calculate(boundedDepth,input.depthOffset,ClipFloatOperation.add,State.saveOffsetDepth,input.depthRoundTowardZero)}
+                  .otherwise{saveDepth(boundedPacked)}
               }
           }.otherwise{
             output.lanes(lane).varyings(slotIndex)(component(1,0)):=mathPacked

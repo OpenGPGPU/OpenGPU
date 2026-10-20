@@ -89,3 +89,24 @@ keep fixed-depth resolution assumptions distinct from floating depth, and
 repeat the actual sloped-depth witness plus numeric/image/ownership controls.
 This component result does not resolve that failing witness or close G04/H6,
 full precision, PPA or H0–H8.
+
+
+## Interior binade-boundary witness and range candidate
+
+Final toward-zero addition alone still collapses a pair to `0x3f000000` in
+actual RTL. Relative raw coordinates are `(-90880,-58597)`, `(90880,-58597)`,
+`(-60947,39297)` around pixel-center `(0,0)`, translated by `(128,128)`
+for raster pixel `(0,0)`. The area is 17793213440 and exact edges are
+`[1,7142622719,10650590720]`: the center is strictly inside. Source depths
+`[3e000001,3efffffe,3efffffe]` and `[3e000003,3effffff,3effffff]` differ
+by exactly `2^-25` and retain the same maximum exponent. The negative frozen
+run remains on `codex/mobile-depth-directed-boundary`.
+
+The new candidate bounds the unbiased final depth to the active vertex-depth
+range only when all three signed edge weights have the area's sign or zero.
+Comparison uses the extended exponent/significand so negative subnormals cannot
+escape through negative-zero FP32 packing. Bounds precede polygon bias.
+Outside helper centers retain extrapolation, and fixed formats retain RNE.
+This adds comparisons and policy state, with no new FPU/divider or math calls.
+GRI1 policy3 distinguishes the bounded candidate from the failed policy2;
+header constants1 and2 remain available. Qualification is pending.
