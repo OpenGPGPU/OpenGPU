@@ -224,5 +224,32 @@ class BankedTextureReadThroughSpec extends AnyFlatSpec {
       info("BANKED_READTHROUGH_PRIMARY_FAULT concurrentCancelAndFault=true physicalAttributionRetained=true noDestinationSuccess=true completeDrainAndHealthyReuse=true")
     }
   }
+  it should "drain saturated miss admission on cancellation and invalidation with a held physical offer" in {
+    simulate(new BankedRgba8TextureHits(readThrough=true)) { d =>
+      val t=new Driver(d)
+      for((invalidate,phase) <- Vector(false,true).zipWithIndex) {
+        t.auto=false; d.io.memoryRequest.get.ready.poke(false.B); d.io.out.ready.poke(false.B)
+        val start=t.results.size; val reads=t.reads.size
+        for(n <- 0 until 16)t.sample(group(10000+phase*100+n,32+phase*32+n))
+        for(_ <- 0 until 100)t.tick()
+        assert(t.reads.size==reads && t.peakFills==16)
+        assert(t.joins>=16*(phase+1), "miss waiters did not saturate the sixteen fill owners")
+        d.io.memoryRequest.get.valid.expect(true.B); d.io.out.valid.expect(false.B)
+        if(invalidate)d.io.invalidate.poke(true.B)else d.io.cancel.poke(true.B)
+        t.tick(); d.io.cancel.poke(false.B); d.io.invalidate.poke(false.B)
+        for(_ <- 0 until 8)t.tick()
+        t.auto=true; t.latency=3
+        d.io.memoryRequest.get.ready.poke(true.B); d.io.out.ready.poke(true.B)
+        t.until(t.results.size==start+16); t.drain()
+        val results=t.results.drop(start)
+        assert(results.size==16 && results.forall(r => r.cancelled && !r.hit && !r.fault && r.color==0))
+        assert(results.map(_.tag).toVector==(0 until 16).map(10000+phase*100+_).toVector)
+        assert(t.reads.size>reads, "the irrevocable held physical offer was withdrawn")
+        val good=group(10050+phase*100,32+phase*32)
+        t.sample(good); t.until(t.results.size==start+17); t.good(t.results.last); t.drain()
+      }
+      info("BANKED_READTHROUGH_MISS_QUEUE heldPhysicalOffer=true fullFillWindow=true queuedMissCancelDrain=true queuedMissInvalidateDrain=true allAcceptedGroupsRetired=true healthyReuse=true")
+    }
+  }
 
 }
