@@ -9,6 +9,8 @@ class TextureImageSamplerBindingRequest extends Bundle {
   val images=new TextureImageLevelTable;val samplers=new TextureImageLevelTable
   val imageHandle=UInt(32.W);val samplerHandle=UInt(32.W);val level=UInt(32.W);val tag=UInt(32.W)
   val expectedType=UInt(2.W)
+  val selectBaseLevel=Bool()
+  val sampling=Bool();val shadow=Bool()
 }
 object TextureImageSamplerFaultSource {val none=0;val sampler=1;val image=2;val compatibility=3}
 class TextureImageSamplerBindingResult extends Bundle {
@@ -41,6 +43,7 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
   image.io.in.valid:=phase===State.offerImage || phase===State.offerBase;image.io.in.bits.table:=request.images
   image.io.in.bits.handle:=request.imageHandle;image.io.in.bits.level:=Mux(phase===State.offerBase,imageResult.baseLevel,request.level);image.io.in.bits.tag:=request.tag
   image.io.in.bits.requireMipChain:=TextureSamplerState.requiresMips(samplerResult.state);image.io.out.ready:=phase===State.waitImage || phase===State.waitBase
+  image.io.in.bits.selectBaseLevel:=request.selectBaseLevel && phase===State.offerImage
   sampler.io.cancel:=samplerStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   image.io.cancel:=imageStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   sampler.io.invalidate:=io.invalidate || stop || noFill;image.io.invalidate:=io.invalidate || stop || noFill
@@ -65,7 +68,7 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
     }}
     is(State.check){
       when(stop){phase:=State.finish}
-        .elsewhen(request.images.identity.asUInt=/=request.samplers.identity.asUInt || request.expectedType>2.U){
+        .elsewhen(request.images.identity.asUInt=/=request.samplers.identity.asUInt || request.expectedType>2.U || (request.selectBaseLevel && request.level=/=0.U) || (!request.sampling && request.shadow)){
           status:=TextureImageResourceStatus.view.U;source:=TextureImageSamplerFaultSource.compatibility.U;phase:=State.finish
         }.otherwise{phase:=State.offerSampler}
     }
@@ -82,7 +85,7 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
       when((code=/=0.U && code=/=TextureImageResourceStatus.cancelled.U) || !stop){status:=code}
       when(code=/=0.U){source:=TextureImageSamplerFaultSource.image.U}
       phase:=Mux(stop || code=/=0.U,State.finish,
-        Mux(!TextureSamplerState.requiresMips(samplerResult.state) && request.level=/=image.io.out.bits.baseLevel,
+        Mux(!TextureSamplerState.requiresMips(samplerResult.state) && image.io.out.bits.level=/=image.io.out.bits.baseLevel,
           State.offerBase,State.compatibility))
     }}
     // Nonmip completeness still requires the base image, even when an explicit
@@ -95,7 +98,9 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
       phase:=Mux(stop || code=/=0.U,State.finish,State.compatibility)
     }}
     is(State.compatibility){
-      when(!stop && !TextureSamplerState.compatible(samplerResult.state,imageResult.format,request.expectedType)){
+      val compatible=Mux(request.sampling,TextureSamplerState.compatibleSampling(samplerResult.state,imageResult.format,request.expectedType,request.shadow),
+        TextureSamplerState.compatible(samplerResult.state,imageResult.format,request.expectedType))
+      when(!stop && !compatible){
         status:=TextureImageFetchStatus.format.U;source:=TextureImageSamplerFaultSource.compatibility.U
       };phase:=State.finish
     }
@@ -108,7 +113,7 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
         source===TextureImageSamplerFaultSource.image.U && imageResult.faultAddressValid)
       result.faultAddress:=Mux(source===TextureImageSamplerFaultSource.sampler.U,samplerResult.faultAddress,
         Mux(source===TextureImageSamplerFaultSource.image.U,imageResult.faultAddress,0.U))
-      when(!stop){result.validBinding:=true.B;result.sampler:=samplerResult;result.image:=imageResult}
+      when(!stop){result.validBinding:=true.B;result.level:=imageResult.level;result.sampler:=samplerResult;result.image:=imageResult}
       phase:=State.complete
     }
     is(State.complete){when(io.out.fire){phase:=State.idle}}

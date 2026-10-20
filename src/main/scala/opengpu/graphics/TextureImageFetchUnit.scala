@@ -21,13 +21,14 @@ class TextureImageDataFetchResult extends TextureImageResourceAddressResult {
   * bits are zero. These cache-line fills are not byte-sized bus transactions.
   * Parent translation/permissions must cover both participating pages.
   */
-class TextureImageDataFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig()) extends Module {
+class TextureImageDataFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig(),capturedViewInput: Boolean=false) extends Module {
   require(config.xLen==32)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new TextureImageDataFetchRequest));val out=Decoupled(new TextureImageDataFetchResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val invalidate=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
+    val capturedView=if(capturedViewInput)Some(Input(new TextureImageLevelView))else None
   })
   private object State extends ChiselEnum {val idle,check,offerLocation,waitLocation,checkLayout,readData,assemble,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageDataFetchRequest)
@@ -43,24 +44,27 @@ class TextureImageDataFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
   private val active=phase=/=State.idle && phase=/=State.complete
   private val stop=status=/=0.U || io.cancel
   private val drained= !offered && !live.asUInt.orR && !pending.asUInt.orR
-  private val location=Module(new TextureImageResourceAddressUnit(config,p))
-  location.io.in.valid:=phase===State.offerLocation;location.io.in.bits:=request.resource
+  private val capturedView=if(capturedViewInput)Some(Reg(new TextureImageLevelView))else None
+  private val location: TextureImageResourceAddressIO=if(capturedViewInput)Module(new TextureImageCapturedAddressUnit(config,p)).io
+    else Module(new TextureImageResourceAddressUnit(config,p)).io
+  if(capturedViewInput)location.capturedView.get:=capturedView.get
+  location.in.valid:=phase===State.offerLocation;location.in.bits:=request.resource
   // An irrevocable offer must be admitted before its child can be cancelled.
-  location.io.cancel:=locationStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
-  location.io.invalidate:=io.invalidate || stop
-  location.io.out.ready:=phase===State.waitLocation
+  location.cancel:=locationStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
+  location.invalidate:=io.invalidate || stop
+  location.out.ready:=phase===State.waitLocation
   io.in.ready:=phase===State.idle && !io.cancel;io.out.valid:=phase===State.complete;io.out.bits:=result
   io.busy:=phase=/=State.idle
   when(active && io.cancel && status===0.U){status:=TextureImageResourceStatus.cancelled.U;source:=0.U;faultValid:=false.B}
   private val arbiter=Module(new RRArbiter(new ComputeMemoryRequest(config,64,4),2))
-  arbiter.io.in(0).valid:=location.io.memoryRequest.valid;arbiter.io.in(0).bits:=location.io.memoryRequest.bits
-  arbiter.io.in(0).bits.transactionId:=location.io.memoryRequest.bits.transactionId.pad(2)
-  location.io.memoryRequest.ready:=arbiter.io.in(0).ready
+  arbiter.io.in(0).valid:=location.memoryRequest.valid;arbiter.io.in(0).bits:=location.memoryRequest.bits
+  arbiter.io.in(0).bits.transactionId:=location.memoryRequest.bits.transactionId.pad(2)
+  location.memoryRequest.ready:=arbiter.io.in(0).ready
   arbiter.io.in(1).valid:=offered;arbiter.io.in(1).bits:=dataRequest;io.memoryRequest<>arbiter.io.out
   private val replyTag=io.memoryResponse.bits.transactionId
-  location.io.memoryResponse.valid:=io.memoryResponse.valid && !replyTag(1)
-  location.io.memoryResponse.bits:=io.memoryResponse.bits;location.io.memoryResponse.bits.transactionId:=replyTag(0)
-  io.memoryResponse.ready:=Mux(replyTag(1),pending(replyTag(0)),location.io.memoryResponse.ready)
+  location.memoryResponse.valid:=io.memoryResponse.valid && !replyTag(1)
+  location.memoryResponse.bits:=io.memoryResponse.bits;location.memoryResponse.bits.transactionId:=replyTag(0)
+  io.memoryResponse.ready:=Mux(replyTag(1),pending(replyTag(0)),location.memoryResponse.ready)
   when(arbiter.io.in(1).fire){offered:=false.B;pending(dataRequest.transactionId(0)):=true.B}
   private val dataReply=io.memoryResponse.fire && replyTag(1)
   when(dataReply){val tag=replyTag(0);live(tag):=false.B;pending(tag):=false.B;lines:=lines+1.U
@@ -83,8 +87,9 @@ class TextureImageDataFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
   }
   switch(phase){
     is(State.idle){when(io.in.fire){
-      assert(drained && !location.io.busy,"fetch admission must retain old descriptor/data ownership")
-      request:=io.in.bits;metadata:=0.U.asTypeOf(metadata);status:=0.U;source:=0.U;faultValid:=false.B;faultAddress:=0.U
+      assert(drained && !location.busy,"fetch admission must retain old descriptor/data ownership")
+      request:=io.in.bits;if(capturedViewInput)capturedView.get:=io.capturedView.get
+      metadata:=0.U.asTypeOf(metadata);status:=0.U;source:=0.U;faultValid:=false.B;faultAddress:=0.U
       raw:=0.U;words.foreach(_:=0.U);issued:=0.U;lines:=0.U;locationStarted:=false.B;phase:=State.check
     }}
     is(State.check){
@@ -93,14 +98,14 @@ class TextureImageDataFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
       when(stop){phase:=State.finish}.elsewhen(!legal){status:=TextureImageFetchStatus.format.U;source:=TextureImageFetchFaultSource.layout.U;phase:=State.finish}
         .otherwise{phase:=State.offerLocation}
     }
-    is(State.offerLocation){when(location.io.in.fire){locationStarted:=true.B;phase:=State.waitLocation}}
-    is(State.waitLocation){when(location.io.out.fire){
-      metadata:=location.io.out.bits;locationStarted:=false.B
-      val child=location.io.out.bits.status
+    is(State.offerLocation){when(location.in.fire){locationStarted:=true.B;phase:=State.waitLocation}}
+    is(State.waitLocation){when(location.out.fire){
+      metadata:=location.out.bits;locationStarted:=false.B
+      val child=location.out.bits.status
       // A child preserves an earlier primary fault through later cancellation.
       when((child=/=0.U && child=/=TextureImageResourceStatus.cancelled.U) || !stop){
         status:=child;source:=Mux(child===0.U || child===TextureImageResourceStatus.cancelled.U,0.U,TextureImageFetchFaultSource.descriptor.U)
-        faultAddress:=location.io.out.bits.faultAddress;faultValid:=location.io.out.bits.faultAddressValid
+        faultAddress:=location.out.bits.faultAddress;faultValid:=location.out.bits.faultAddressValid
       }
       phase:=Mux(stop || child=/=0.U,State.finish,State.checkLayout)
     }}
@@ -121,7 +126,7 @@ class TextureImageDataFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
       phase:=State.finish
     }
     is(State.finish){
-      assert(drained && !location.io.busy,"fetch completion escaped descriptor/data drain")
+      assert(drained && !location.busy,"fetch completion escaped descriptor/data drain")
       result:=0.U.asTypeOf(result);val q=request.resource
       result.identity:=q.lookup.table.identity;result.handle:=q.lookup.handle;result.tag:=q.tag;result.level:=q.lookup.level
       result.status:=Mux(io.cancel && status===0.U,TextureImageResourceStatus.cancelled.U,status)
@@ -133,7 +138,7 @@ class TextureImageDataFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
     }
     is(State.complete){when(io.out.fire){phase:=State.idle}}
   }
-  when(io.out.valid){assert(drained && !location.io.busy && !io.memoryRequest.valid,"held fetch result must own a drained memory path")}
+  when(io.out.valid){assert(drained && !location.busy && !io.memoryRequest.valid,"held fetch result must own a drained memory path")}
 }
 
 class TextureImageTypedFetchRequest extends Bundle {val resource=new TextureImageResourceAddressRequest;val format=UInt(6.W)}
@@ -228,12 +233,13 @@ private[graphics] class TextureImageFetchDecoder extends Module {
   * agree with the GPU level layout before texture data can be read. Integer
   * outputs remain raw typed values; normalized/half/sRGB and packed/depth values use image decode.
   */
-class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig()) extends Module {
+class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig(),capturedViewInput: Boolean=false) extends Module {
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new TextureImageTypedFetchRequest));val out=Decoupled(new TextureImageTypedFetchResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val invalidate=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
+    val capturedView=if(capturedViewInput)Some(Input(new TextureImageLevelView))else None
   })
   private object State extends ChiselEnum {val idle,check,offerFetch,waitFetch,offerDecode,waitDecode,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageTypedFetchRequest)
@@ -241,7 +247,9 @@ class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
   private val rgba=Reg(Vec(4,UInt(32.W)));private val colorType=Reg(UInt(2.W));private val status=RegInit(0.U(3.W))
   private val fetchStarted=RegInit(false.B);private val active=phase=/=State.idle && phase=/=State.complete
   private val stop=status=/=0.U || io.cancel
-  private val fetch=Module(new TextureImageDataFetchUnit(config,p));private val decoder=Module(new TextureImageFetchDecoder)
+  private val capturedView=if(capturedViewInput)Some(Reg(new TextureImageLevelView))else None
+  private val fetch=Module(new TextureImageDataFetchUnit(config,p,capturedViewInput));private val decoder=Module(new TextureImageFetchDecoder)
+  if(capturedViewInput)fetch.io.capturedView.get:=capturedView.get
   io.in.ready:=phase===State.idle && !io.cancel;io.out.valid:=phase===State.complete;io.out.bits:=result;io.busy:=phase=/=State.idle
   io.memoryRequest<>fetch.io.memoryRequest;fetch.io.memoryResponse<>io.memoryResponse
   fetch.io.invalidate:=io.invalidate || stop;fetch.io.cancel:=fetchStarted && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
@@ -256,10 +264,13 @@ class TextureImageTypedFetchUnit(config: GpuConfig=GpuConfig(),p: TextureImageAd
   switch(phase){
     is(State.idle){when(io.in.fire){
       assert(!fetch.io.busy && !decoder.io.busy,"typed fetch cannot abandon child work")
-      request:=io.in.bits;sample:=0.U.asTypeOf(sample);rgba.foreach(_:=0.U);colorType:=0.U
+      request:=io.in.bits;if(capturedViewInput)capturedView.get:=io.capturedView.get
+      sample:=0.U.asTypeOf(sample);rgba.foreach(_:=0.U);colorType:=0.U
       status:=0.U;fetchStarted:=false.B;phase:=State.check
     }}
-    is(State.check){when(stop){phase:=State.finish}.elsewhen(!TextureImageFormat.valid(request.format)){
+    is(State.check){
+      val capturedTargetLegal=if(capturedViewInput)TextureImageFormat.targetLegal(request.format,capturedView.get.target)else true.B
+      when(stop){phase:=State.finish}.elsewhen(!TextureImageFormat.valid(request.format) || !capturedTargetLegal){
       status:=TextureImageFetchStatus.format.U;phase:=State.finish
     }.otherwise{phase:=State.offerFetch}}
     is(State.offerFetch){when(fetch.io.in.fire){fetchStarted:=true.B;phase:=State.waitFetch}}

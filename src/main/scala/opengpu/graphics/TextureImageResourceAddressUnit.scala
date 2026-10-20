@@ -46,6 +46,14 @@ class TextureImageResourceAddressResult extends Bundle {
   val address=UInt(32.W);val bytes=UInt(5.W);val blockX=UInt(2.W);val blockY=UInt(2.W)
   val faultAddressValid=Bool();val faultAddress=UInt(32.W)
 }
+class TextureImageResourceAddressIO(config: GpuConfig,capturedViewInput: Boolean=false) extends Bundle {
+  val in=Flipped(Decoupled(new TextureImageResourceAddressRequest))
+  val out=Decoupled(new TextureImageResourceAddressResult)
+  val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,2))
+  val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,2)))
+  val invalidate=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
+  val capturedView=if(capturedViewInput)Some(Input(new TextureImageLevelView))else None
+}
 
 /** Load a complete immutable GPU-memory level, then compute a checked span.
   * Two tagged uncached reads may return in either order. Partial, malformed,
@@ -58,13 +66,7 @@ class TextureImageResourceAddressResult extends Bundle {
   */
 class TextureImageResourceAddressUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig()) extends Module {
   require(config.xLen==32)
-  val io=IO(new Bundle {
-    val in=Flipped(Decoupled(new TextureImageResourceAddressRequest))
-    val out=Decoupled(new TextureImageResourceAddressResult)
-    val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,2))
-    val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,2)))
-    val invalidate=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
-  })
+  val io=IO(new TextureImageResourceAddressIO(config))
   private object State extends ChiselEnum {val idle,check,fetch,verify,offerAddress,waitAddress,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageResourceAddressRequest)
   private val snapshot=Reg(new TextureImageLevelRecord);private val span=Reg(new TextureImageAddressResult)

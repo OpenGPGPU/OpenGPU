@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "three_standalone_mapping_and_setup_screens_pass",
+  "source_commit": "d622f83f7515dcf3ea0ec7aaaeaaaaa3d9e4bde7",
+  "source_files": 780,
+  "source_manifest_sha256": "ef274209bfb1e81d80dd6d073a79da91f92c6d39056fdff4d26670f914fad9c8",
+  "constraints": {
+    "clock_period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "engine": "yosys",
+    "abc_target": "standard",
+    "retiming": false,
+    "synthesis_only": true
+  },
+  "profiles": {
+    "filter": {
+      "module": "TextureLinearFilterUnit",
+      "version": 4,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 41.10288420901634,
+        "finished_utc": "2026-10-20T14:13:47.878685+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        350.767,
+        471.902
+      ],
+      "mapped_cells": 22308,
+      "reported_cell_area": 3041.6067,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "production_manifest_and_emitted_RTL_exact": true,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-level-sample-filter-2026-10-20-v4/result.json": "0546f52a9ca7aa47ad9c6fdddf415ee36c1abb43824269381686f8c8ef25ebcf",
+        "generated/qualification/ppa/mobile-level-sample-filter-2026-10-20-v4/qualification.json": "2085fe4e98f6e8155c4b27f79de183f04d8be497fc12260467fa4688b22d88d0",
+        "generated/qualification/ppa/mobile-level-sample-filter-2026-10-20-v4/manifest.json": "be066e6a7cc8002dedba3bae19c78da2144e41baa4e35ed76d74c724e75a1098",
+        "generated/qualification/ppa/mobile-level-sample-filter-2026-10-20-v4/flow/synthesis_sta.log": "2a19d1ed82d37dfc62583f68edbd1543a2e71514245d12b44cdc4ed11e1edbc7"
+      }
+    },
+    "captured": {
+      "module": "TextureImageTypedFetchUnit",
+      "version": 4,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 75.64619991602376,
+        "finished_utc": "2026-10-20T14:14:22.422516+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        211.925,
+        439.266
+      ],
+      "mapped_cells": 58422,
+      "reported_cell_area": 7051.26708,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "production_manifest_and_emitted_RTL_exact": true,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-level-sample-captured-2026-10-20-v4/result.json": "e413a8c4e71fcbc9a5992eac92a25501958b3c96773e64f15504960cfbe1eb8e",
+        "generated/qualification/ppa/mobile-level-sample-captured-2026-10-20-v4/qualification.json": "d68d0aecf453ecb062cd1225446df118428302420b9a4b4569c48d4541a84b5f",
+        "generated/qualification/ppa/mobile-level-sample-captured-2026-10-20-v4/manifest.json": "b58fec5c75c14603eada109bd5b9d664db939522eb64a2536eeaaaad9f2a82c8",
+        "generated/qualification/ppa/mobile-level-sample-captured-2026-10-20-v4/flow/synthesis_sta.log": "d30a4a322fb4abfdd79f84e40007253825681527991779adbd0f14d6a3ecc2a1"
+      }
+    },
+    "level": {
+      "module": "TextureImageLevelSampleUnit",
+      "version": 4,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 175.51887941616587,
+        "finished_utc": "2026-10-20T14:16:02.297203+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        82.172,
+        440.036
+      ],
+      "mapped_cells": 99878,
+      "reported_cell_area": 12137.52924,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "production_manifest_and_emitted_RTL_exact": true,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-level-sample-level-2026-10-20-v4/result.json": "079adc9ad793caa60c018dc8abc47582ed3e8011c7eccc1970086382dac867b5",
+        "generated/qualification/ppa/mobile-level-sample-level-2026-10-20-v4/qualification.json": "1bd3297cc46c2c8aa3b13e82951adba2372db5a1ce28e4a5a66b68d3c5fcb46c",
+        "generated/qualification/ppa/mobile-level-sample-level-2026-10-20-v4/manifest.json": "42f2f0c0d823a10efa2b6beab9891044b39666ad4db11ef530518eccd335c210",
+        "generated/qualification/ppa/mobile-level-sample-level-2026-10-20-v4/flow/synthesis_sta.log": "fb9f0bb69fa239fbc92537637bd711d26397bc2f74735fff5a89ba4357418f87"
+      }
+    }
+  },
+  "limits": [
+    "Standalone selected-level sampling, captured fetch and filter only. No native floating sampling instruction or full sampler/cluster throughput qualification.",
+    "No whole-GPU timing, power, hold, route or frame-rate closure."
+  ]
+}

@@ -104,7 +104,7 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
     val memory=new Memory(d.io.memoryRequest.bits,d.io.memoryResponse.bits,d.io.memoryRequest.valid,d.io.memoryRequest.ready,
       d.io.memoryResponse.valid,d.io.memoryResponse.ready)
-    val replies=mutable.ArrayBuffer.empty[(BigInt,BigInt)];var lastTag=BigInt(0);var lastLevel=BigInt(0);var lastHandle=BigInt(0);var lastContext=7
+    val replies=mutable.ArrayBuffer.empty[(BigInt,BigInt)];var lastTag=BigInt(0);var lastLevel=BigInt(0);var lastHandle=BigInt(0);var lastContext=7;var lastChain=true
     memory.beforeRequest=r=>{assert(!r.write && r.tag<=8)
       if(r.tag!=8){assert(r.address%64==0 && r.mask==(BigInt(1)<<64)-1)
         d.io.memoryRequest.bits.sizeLog2.expect(6.U);d.io.memoryRequest.bits.cachePolicy.expect(CachePolicy.uncached)}}
@@ -126,32 +126,45 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
       for(n<-0 until(hi-lo+64).toInt)memory.bytes(lo+n)=0xa7
       for(n<-0 until bytes)memory.bytes(a+n)=((raw>>(8*n))&255).toInt}
     def query(level: BigInt=0,chain: Boolean=true,tag: BigInt=0xabc00005L,x: BigInt=0,y: BigInt=0,z: Int=0,layer: Int=0,face: Int=0,
-      table: BigInt=0x1000,limit: BigInt=0x1800,version: Int=1,handle: BigInt=0,context: Int=7): Unit={
+      table: BigInt=0x1000,limit: BigInt=0x1800,version: Int=1,handle: BigInt=0,context: Int=7,selectBase: Boolean=false): Unit={
       val q=d.io.in.bits;zero(q);q.image.table.version.poke(version.U);identity(q.image.table.identity)
       q.image.table.base.poke(table.U);q.image.table.limit.poke(limit.U);q.image.handle.poke(handle.U)
       q.image.table.identity.context.poke(context.U)
       q.image.level.poke(level.U);q.image.tag.poke(tag.U);q.image.requireMipChain.poke(chain.B)
+      q.image.selectBaseLevel.poke(selectBase.B)
       q.x.poke(x.U);q.y.poke(y.U);q.z.poke(z.U);q.layer.poke(layer.U);q.face.poke(face.U)
       d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);tick();d.io.in.valid.poke(false.B);zero(q)
-      lastTag=tag;lastLevel=level;lastHandle=handle;lastContext=context
+      lastTag=tag;lastLevel=level;lastHandle=handle;lastContext=context;lastChain=chain
     }
-    def check(status: Int=0,i: Image=image(),raw: BigInt=0,address: BigInt=0,stage: Int=0,fault: Option[BigInt]=None,swizzle: Seq[Int]=Seq.empty): Unit={
+    def check(status: Int=0,i: Image=image(),raw: BigInt=0,address: BigInt=0,stage: Int=0,fault: Option[BigInt]=None,swizzle: Seq[Int]=Seq.empty,resolvedLevel: Option[Int]=None): Unit={
       until(d.io.out.valid.peek().litToBoolean);val o=d.io.out.bits;val b=o.image
-      b.status.expect(status.U);b.tag.expect(lastTag.U);b.level.expect(lastLevel.U);b.handle.expect(lastHandle.U);b.identity.context.expect(lastContext.U)
+      val returnedLevel=resolvedLevel.map(BigInt(_)).getOrElse(lastLevel)
+      b.status.expect(status.U);b.tag.expect(lastTag.U);b.level.expect(returnedLevel.U);b.handle.expect(lastHandle.U);b.identity.context.expect(lastContext.U)
       b.identity.pass.expect(11.U);b.identity.generation.expect(13.U);b.validBinding.expect((status==0).B);b.faultStage.expect(stage.U)
       b.faultAddressValid.expect(fault.nonEmpty.B);b.faultAddress.expect(fault.getOrElse(BigInt(0)).U)
-      if(status==0){val v=i.views(lastLevel.toInt);b.format.expect(i.format.U);b.baseLevel.expect(i.baseLevel.U);b.lastLevel.expect(i.last.U)
+      if(status==0){val v=i.views(returnedLevel.toInt);b.format.expect(i.format.U);b.baseLevel.expect(i.baseLevel.U);b.lastLevel.expect(i.last.U)
         b.swizzle.version.expect((if(swizzle.isEmpty)0 else 1).U)
         Seq(b.swizzle.r,b.swizzle.g,b.swizzle.b,b.swizzle.a).zip(if(swizzle.isEmpty)Seq.fill(4)(0)else swizzle).foreach{case(v,e)=>v.expect(e.U)}
         b.selected.table.base.expect(i.levelsBase.U);b.selected.table.limit.expect(i.levelsLimit.U);b.selected.table.version.expect(1.U)
-        b.selected.handle.expect((i.first+lastLevel).U);b.selected.level.expect(lastLevel.U);b.view.base.expect(v.base.U)
+        b.selected.handle.expect((i.first+returnedLevel).U);b.selected.level.expect(returnedLevel.U);b.view.base.expect(v.base.U)
         b.view.texWidth.expect(v.w.U);b.view.texHeight.expect(v.h.U);b.view.texDepth.expect(v.d.U);b.view.layers.expect(v.layers.U)
+        val admitted=if(lastChain)(i.baseLevel to i.last).toSet else Set(returnedLevel.toInt)
+        b.levelMask.expect(admitted.foldLeft(BigInt(0))((mask,n)=>mask.setBit(n)).U)
+        for(n<-0 until 16){val level=b.levels(n)
+          if(!admitted(n))assert(values(level).values.forall(_==0),s"unchecked mip$n leaked an old view")
+          else{val expected=i.views(n);level.level.expect(n.U);level.target.expect(i.target.U)
+            level.allocationBase.expect(i.lo.U);level.allocationLimit.expect(i.hi.U);level.base.expect(expected.base.U)
+            level.texWidth.expect(expected.w.U);level.texHeight.expect(expected.h.U);level.texDepth.expect(expected.d.U);level.layers.expect(expected.layers.U)
+            level.rowPitch.expect(expected.row.U);level.slicePitch.expect(expected.slice.U);level.layerPitch.expect(expected.layer.U)
+            level.blockBytes.expect(expected.bytes.U);level.block4x4.expect(false.B)}
+        }
         if(fetch){val s=o.sample.sample;s.status.expect(0.U);s.viewValid.expect(true.B);s.address.expect(address.U);s.bytes.expect(v.bytes.U);s.raw.expect(raw.U)
+          s.level.expect((returnedLevel&15).U)
           val name=ImageFormatReference.names(i.format);val decoded=ImageFormatReference.decode(name,raw)
           val options=decoded++Seq(BigInt(0),if(ImageFormatReference.format(name).kind==0)BigInt(0x3f800000L)else BigInt(1))
           o.sample.rgba.zip(if(swizzle.isEmpty)decoded else swizzle.map(options)).foreach{case(a,b)=>a.expect(b.U)}
           o.sample.colorType.expect(ImageFormatReference.format(name).kind.U)}
-      }else{b.format.expect(0.U);assert(values(b.view).values.forall(_==0));assert(values(b.selected).values.forall(_==0));assert(values(b.swizzle).values.forall(_==0))
+      }else{b.format.expect(0.U);b.levelMask.expect(0.U);assert(values(b.levels).values.forall(_==0));assert(values(b.view).values.forall(_==0));assert(values(b.selected).values.forall(_==0));assert(values(b.swizzle).values.forall(_==0))
         if(fetch){o.sample.sample.status.expect(status.U);o.sample.sample.viewValid.expect(false.B);o.sample.sample.address.expect(0.U);o.sample.sample.raw.expect(0.U)
           o.sample.rgba.foreach(_.expect(0.U));o.sample.colorType.expect(0.U)}}
       assert(memory.pending.isEmpty && memory.reply.isEmpty);d.io.busy.expect(true.B);d.io.in.ready.expect(false.B)
@@ -215,6 +228,33 @@ class TextureImageBindingUnitSpec extends AnyFlatSpec {
         assert(t.memory.seen.drop(before).forall(r=>r.address==0x1000 || r.address==0x1040));cases+=1
       }
       info(s"IMAGE_BINDING_SWIZZLE_REJECT cases=$cases unsupportedVersions=true everySelectorPosition=true narrowPadding=true canonicalLegacy=true headerOnlyReads=true")
+    }
+  }
+  it should "resolve every captured base level before fetching or validating a mip chain" in {
+    simulate(new ImageBindingHarness()){d=>val t=new Driver(d);var cases=0
+      val selectors=Seq(3,5,0,4);val raw=BigInt("7fc12345ff800000800000003f800000",16)
+      for(base<-0 until 16;chain<-Seq(false,true)){
+        val i=image(target=base%4,format=35,baseLevel=base,w=17,h=9,d=5);val a=i.views(base).base
+        t.install(i);t.memory.putWord(0x1000+23*4,1);selectors.zipWithIndex.foreach{case(v,c)=>t.memory.putWord(0x1000+(24+c)*4,v)}
+        t.payload(a,16,raw);t.invalidate();t.query(chain=chain,selectBase=true)
+        t.check(i=i,raw=raw,address=a,swizzle=selectors,resolvedLevel=Some(base))
+        d.io.out.bits.image.levelsChecked.expect((if(chain)i.last-base+1 else 1).U);t.pop()
+        t.query(chain=chain,selectBase=true,tag=6);t.check(i=i,raw=raw,address=a,swizzle=selectors,resolvedLevel=Some(base))
+        d.io.out.bits.image.hit.expect(true.B);t.pop();cases+=2
+      }
+      val before=t.memory.seen.size
+      for(level<-Seq(BigInt(1),BigInt(0xffffffffL))){t.query(level=level,selectBase=true);t.check(1,stage=4);t.pop()}
+      assert(t.memory.seen.size==before)
+      val i=image(baseLevel=1,maxLevel=2);t.install(i);t.payload(i.views(2).base,16,42);t.invalidate()
+      t.query(level=2,chain=false);t.check(i=i,raw=42,address=i.views(2).base);t.pop()
+      t.payload(i.views(1).base,16,43);t.query(chain=false,selectBase=true)
+      t.check(i=i,raw=43,address=i.views(1).base,resolvedLevel=Some(1));d.io.out.bits.image.hit.expect(false.B);t.pop()
+      val reads=t.dataReads;t.query(chain=false);t.check(5,stage=4);t.pop();assert(t.dataReads==reads)
+      t.query(chain=false,selectBase=true);t.check(i=i,raw=43,address=i.views(1).base,resolvedLevel=Some(1));t.pop()
+      val badLine=i.views(1).base& ~BigInt(63);t.memory.faultAt=Set(badLine);t.query(chain=false,selectBase=true)
+      t.check(3,stage=3,fault=Some(badLine),resolvedLevel=Some(1));t.pop();t.memory.faultAt=Set.empty
+      t.query(chain=false,selectBase=true);t.check(i=i,raw=43,address=i.views(1).base,resolvedLevel=Some(1));t.pop()
+      info(s"IMAGE_BINDING_SELECT_BASE queries=$cases baseLevels16=true allTargets=true selectedAndFullMipModes=true actualBoundFetchLevel=true capturedSwizzle=true sameRawLevelCacheModeSeparated=true baseDataFaultRetainsResolvedLevel=true unusedExplicitLevelCanonicalBeforeReads=true")
     }
   }
   it should "apply base max and dimensional mip rules and distinguish selected-only from full-chain cache identities" in {

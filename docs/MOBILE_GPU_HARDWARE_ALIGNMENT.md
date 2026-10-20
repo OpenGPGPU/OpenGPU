@@ -18,7 +18,7 @@ The initial OpenGPU product target is four shared CUs, with a 720p workload suit
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
 
-Latest texture checkpoint: native image bindings and typed component fetch cover all 64 storage formats. [Image-view swizzle](TEXTURE_IMAGE_SWIZZLE.md) now passes 138 targeted controls and four standalone synthesis screens at 1000 ps. General floating-coordinate sampling, filtering, LOD and scalable texture throughput remain open.
+Latest texture checkpoint: native image bindings and typed component fetch cover all 64 storage formats. The internal [effective-LOD sampler](TEXTURE_FLOAT_SAMPLING.md) passes 107 targeted controls, nine ABI checks and full-owner synthesis at 1000 ps on 788 frozen inputs. It includes cube/array selection, min/mag/mip filtering, depth comparison and final swizzle. Native floating instruction transport, gradient/implicit LOD and scalable texture throughput remain open.
 
 ## Current hardware and gaps
 
@@ -6604,3 +6604,85 @@ sampling/filtering/LOD/depth comparison, banked caches, throughput, publication
 and coherence, compiler/driver adoption and the remaining H0–H8 requirements
 remain open. These standalone screens do not establish whole-GPU timing, power
 or frame-rate closure. PPA remains synthesis only.
+
+
+## Internal FP32 selected-level sampling checkpoint (2026-10-20)
+
+The [general sampler development branch](TEXTURE_FLOAT_SAMPLING.md) now has a
+composed selected-level owner, capturing admitted image/sampler state and
+combining normalized FP32 axes, immutable-view typed fetch, depth comparison,
+FP32 filtering and optional final swizzle. It handles 2D, array, cube and 3D
+images with format-aware filterability, zero-weight pruning and duplicate-texel
+reuse. Cube borders map to adjacent faces; the permitted corner construction
+selects the current face's available corner sample. Compressed and sRGB values
+are decoded before filtering. Required memory faults remain visible for
+constant swizzles and comparisons.
+
+The [functional checkpoint](performance/mobile-level-sampling-2026-10-20.json)
+passes 67 distinct targeted tests and nine ABI checks against 780 committed
+inputs. It covers 394 format/wrap samples, 384 cube samples, 17,247 cube-tap
+mappings, 896 depth-comparison samples, 91,135 exact axis queries and 256
+captured-view fetch cases. Cancellation cuts cover coordinate, data, decode
+and FMA ownership, including held offers, immutable results and healthy reuse.
+Real Sv32 checks deny a second data page before physical access, while admitted
+descriptor memory remains unmapped. The initial NaN-reference clamp defect and
+bounds-status fixture error remain recorded with their corrections.
+
+Three fresh [synthesis setup screens](performance/mobile-level-sampling-synthesis-2026-10-20.json)
+pass full mapping at 1000 ps with the existing TC/SLVT, 25% I/O, default ABC
+and no-retiming policy: filter +350.767/+471.902 ps, captured typed fetch
++211.925/+439.266 ps and selected-level sampler +82.172/+440.036 ps (core/I/O).
+Their cell counts are 22,308, 58,422 and 99,878. The earlier standalone axis
+screen is carried only through byte-exact fresh RTL emission.
+
+At this selected-level checkpoint, the parent still chose levels and filters,
+rounded array layers and projected cube directions. The following effective-LOD
+owner now supplies those operations. Native floating packet/ISA transport,
+gradient/implicit LOD, banking, miss joining, coherence and representative cluster
+throughput remain required.
+No new device sampling capability is advertised. This internal owner preserves
+the full H0–H8 objective; PPA remains synthesis only.
+
+## Internal effective-LOD image sampling (2026-10-20)
+
+`TextureImageSampleUnit` now connects real GXI1/GXL1/GXS1 admission to floating
+sampling at an explicit effective lambda. Admission retains all validated mip
+views, with zero unchecked slots and no descriptor rereads during mip execution.
+The owner rounds/clamps floating array layers, projects cube directions with
+deterministic major-axis ties, selects min/mag and nearest/linear mip filters,
+compares depth before filtering, reuses the selected-level FMA across mips and
+applies swizzle after the final filter. Native integer fetch retains its ABI and
+comparison-free contract; internal general color sampling ignores comparison
+enable as required.
+
+The [functional qualification](performance/mobile-effective-lod-sampling-2026-10-20.json)
+passes 107 distinct tests across 16 suites plus nine ABI checks on 788 committed
+inputs. It includes 352 descriptor-to-texel samples across 64 formats and four
+targets, 176,058 LOD selections, 204,801 array-layer conversions, 3,617 cube
+projections, 3,072 sampling comparison combinations, 100 cube cancellation cuts
+and 14 composed sampling cuts. Poisoned descriptor/cache snapshots remain
+immutable; a second-mip fault survives later cancellation and constant swizzle
+without partial color output. Existing selected-level, native integer fetch,
+scalar/vector FP and clipping controls also pass.
+
+Cube numeric tests exposed shared-divider subnormal normalization and underflow
+guard/sticky defects. The corrected divider passes 7,126 exact-rational finite
+checks across all five rounding modes, including directed overflow and flags.
+Two fresh [synthesis screens](performance/mobile-effective-lod-synthesis-2026-10-20.json)
+pass full mapping and setup at 1000 ps, TC/SLVT, 25% I/O, default ABC and no
+retiming: complete sampler core/I/O +179.638/+408.384 ps with 304,435 cells;
+divider +324.168/+390.675 ps with 3,843 cells. Source and emitted RTL manifests
+remain exact. No route is run.
+
+The initial sampler misses setup by 804.665 ps through LOD resolution. Registering
+the clamp, extraction, normalization and mip-selection steps moves the failing
+path to array layers at -136.698 ps. Separate layer rounding/saturation stages
+and bounded periodic-wrap arithmetic produce the final pass without relaxing
+constraints. Axis latency remains seven cycles with one axis per cycle. Both
+failed synthesis revisions and the supplemental wrap-path report are retained.
+
+This internal serialized endpoint consumes effective lambda from its parent.
+Native floating packet/instruction transport, shader bias, gradient-derived
+lambda, implicit quad/helper derivatives, banked caches, coherence and sustained
+cluster rates remain required. No new native capability is advertised, and the
+full H0–H8 objective remains active.
