@@ -62,6 +62,29 @@ class NativeShaderTextureUnitSpec extends AnyFlatSpec {
       info(s"NATIVE_TYPED_TEXTURE stage=$stage targets4=true formats54=true componentChecks=$checks bindingSlots32=true twoPhysicalCredits=true fullRawTypes=true heldResults=true snapshotPoisoned=true")
     }
   }
+  for(stage<-0 to 1)
+  it should s"decode every compressed format through native binding selection and block coordinates stage=$stage" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage)
+      var checks=0
+      for(format<-54 until 64;target<-0 to 2){val unit=(format+target)%32;val v=install(t.put,t.byte,unit,format,target,stage)
+        d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B)
+        for(y<-0 until 4;x<-0 until 4){coordinates(t.put,target,x=x,y=y)
+          val expected=CompressedImageReference.decode(format,v.raw,x,y)
+          for(c<-0 until 4){t.scalarRequest(c,unit);t.scalarResult(expected(c));checks+=1}}
+        val planes=if(target==1)3 else if(target==2)6 else 1
+        for(plane<-0 until planes){val y=if(target==2)6 else 4
+          coordinates(t.put,target,x=6,y=y,layer=if(target==1)plane else 0,face=if(target==2)plane else 0)
+          val expected=CompressedImageReference.decode(format,v.raw,2,y&3)
+          for(c<-0 until 4){t.scalarRequest(c,unit);t.scalarResult(expected(c));checks+=1}}
+        coordinates(t.put,target,x=7);t.scalarRequest(0,unit);t.scalarResult(fault=true)
+      }
+      for(format<-54 until 64){install(t.put,t.byte,0,format,3,stage);coordinates(t.put,3)
+        d.io.invalidate.poke(true.B);t.tick();d.io.invalidate.poke(false.B);val before=t.memory.seen.size
+        t.scalarRequest(0);t.scalarResult(fault=true)
+        assert(!t.memory.seen.drop(before).exists(r=>r.address>=0x20000 && r.address<0x21000),"compressed3D must fail before data")}
+      info(s"NATIVE_COMPRESSED_TEXTURE stage=$stage formats10=true targets2DArrayCube=true blockCoordinates16=true NPOT7x5And7x7=true allLayersAndFaces=true outOfExtentRejected=true volumeRejected=true componentChecks=$checks")
+    }
+  }
   it should "retain inactive vector lanes and suppress every destination lane on a later active lane fault" in {
     simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2))){d=>val t=new Driver(d);roots(t.put)
       val values=(0 until 4).map(i=>install(t.put,t.byte,i,if(i%2==0)35 else 10,raw=BigInt(i+1)<<96|BigInt(0xfedcba98L+i)))

@@ -43,7 +43,7 @@ private[graphics] object ImageFormatReference {
 class TextureImageFormatSpec extends AnyFlatSpec {
   import ImageFormatReference._
   private class Driver(d: TextureImageFetchDecoder){
-    d.io.in.valid.poke(false.B);d.io.out.ready.poke(false.B);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+    d.io.in.valid.poke(false.B);d.io.out.ready.poke(false.B);d.io.in.bits.blockX.poke(0.U);d.io.in.bits.blockY.poke(0.U);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
     var queries=0
     def check(id: Int,raw: BigInt,hold: Boolean=false): Unit={
       d.io.in.ready.expect(true.B);d.io.in.bits.format.poke(id.U);d.io.in.bits.value.poke(raw.U);d.io.in.bits.tag.poke((queries&255).U)
@@ -58,11 +58,11 @@ class TextureImageFormatSpec extends AnyFlatSpec {
     }
   }
   it should "retain all legacy layouts and independently enumerate54 uncompressed image formats without expanding attachments" in {
-    assert(TextureImageFormat.formats.map(_.name)==names);assert(TypedColorFormat.formats.size==36)
+    assert(TextureImageFormat.formats.take(54).map(_.name)==names);assert(TypedColorFormat.formats.size==36)
     for((name,id)<-names.zipWithIndex){val actual=TextureImageFormat.formats(id);val expected=format(name)
       assert(actual.bytes==expected.bytes && actual.kind==expected.kind && actual.depth==expected.depth && actual.filterable==expected.filterable)
       if(id<36){val old=TypedColorFormat.formats(id);assert(actual.widths==old.widths && actual.offsets==old.offsets && actual.encoding==old.encoding)}}
-    assert(NativeTextureFormatCapabilities.words==Seq[BigInt](BigInt("47544601",16),8,1,6,54,0xffffffffL,0x003fffff,0))
+    assert(NativeTextureFormatCapabilities.words==Seq[BigInt](BigInt("47544601",16),8,1,6,64,0xffffffffL,0xffffffffL,0))
   }
   it should "reject texture-only IDs at the unchanged attachment decoder" in {
     simulate(new TypedColorDecoder){d=>d.io.in.valid.poke(false.B);d.io.out.ready.poke(false.B)
@@ -94,8 +94,7 @@ class TextureImageFormatSpec extends AnyFlatSpec {
       for(id<-Seq(51,53);v<-Seq(0L,1L,0x80000000L,0x3f800000L,0x7f800000L,0xff800000L,0x7fc12345L,0xffffffffL))
         t.check(id,(BigInt("deadbeef",16)<<32)|BigInt(v),hold=true)
       for((name,id)<-names.zipWithIndex;n<-0 until 32)t.check(id,BigInt(format(name).bytes*8,random),n==0)
-      for(id<-54 until 64)t.check(id,0,hold=true)
-      info(s"IMAGE_FORMAT_NUMERIC depth24BoundaryAndRandom=true stencilPaddingIgnored=true rawDepthPreserved=true allFormats54=true invalid10=true queries=${t.queries}")
+      info(s"IMAGE_FORMAT_NUMERIC depth24BoundaryAndRandom=true stencilPaddingIgnored=true rawDepthPreserved=true allFormats54=true allSixBitIdsAssigned=true queries=${t.queries}")
     }
   }
 }

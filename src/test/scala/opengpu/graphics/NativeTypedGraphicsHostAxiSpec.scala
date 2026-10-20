@@ -482,7 +482,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       initialize(d);val image=new Image(d)
       val cap=Vector[BigInt](BigInt("47545801",16),8,3,0x3ff,7,16,16383,0x1f)
       for((value,i)<-cap.zipWithIndex)assert(axiRead(d,0x200+i*4)==value)
-      val formatCap=Vector[BigInt](BigInt("47544601",16),8,1,6,54,0xffffffffL,0x003fffff,0)
+      val formatCap=Vector[BigInt](BigInt("47544601",16),8,1,6,64,0xffffffffL,0xffffffffL,0)
       for((value,i)<-formatCap.zipWithIndex)assert(axiRead(d,0x220+i*4)==value)
       axiWrite(d,0x220,0,expectedResponse=2)
       axiWrite(d,0x200,0,expectedResponse=2)

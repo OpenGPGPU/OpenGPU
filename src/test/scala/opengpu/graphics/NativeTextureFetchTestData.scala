@@ -10,23 +10,32 @@ private[graphics] object NativeTextureFetchTestData {
     words(put,address+offset,Seq[BigInt](BigInt("47585201",16),128,1)++id++Seq[BigInt](stage,count,bindings+offset,bindings+offset+2048,0,images+offset,images+offset+4096,0,samplers+offset,0,samplers+offset+2048,0),32)
   }
   case class View(address: BigInt,format: Int,raw: BigInt,target: Int) {
-    val name=ImageFormatReference.names(format);val expected=ImageFormatReference.decode(name,raw)
+    val name=if(format<54)ImageFormatReference.names(format)else CompressedImageReference.names(format-54)
+    val expected=if(format<54)ImageFormatReference.decode(name,raw)else CompressedImageReference.decode(format,raw)
   }
   def install(put: (BigInt,BigInt)=>Unit,byte: (BigInt,Int)=>Unit,unit: Int,format: Int=3,target: Int=0,stage: Int=0,
     id: Seq[BigInt]=defaultIdentity,raw: BigInt=BigInt("fedcba98765432100123456789abcdef",16),offset: BigInt=0): View={
-    val bytes=ImageFormatReference.format(ImageFormatReference.names(format)).bytes
+    val compressed=format>=54
+    val bytes=if(compressed)CompressedImageReference.format(format).bytes else ImageFormatReference.format(ImageFormatReference.names(format)).bytes
+    val width=if(compressed)7 else 2;val height=if(compressed){if(target==2)7 else 5}else 2
     val base=offset+BigInt(0x20000)+unit*4096;val data=base+60;val row=2*bytes+5;val plane=row+2*bytes
     val slice=if(target==3)plane+7 else 0;val layer=if(target==1 || target==2)plane+11 else 0
     val count=if(target==1)3 else 1;val depth=if(target==3)2 else 1
     words(put,bindings+offset+unit*64,Seq[BigInt](BigInt("47584201",16),64,1)++id++Seq[BigInt](stage,unit,unit,unit,
-      ImageFormatReference.format(ImageFormatReference.names(format)).kind,target),16)
-    words(put,images+offset+unit*128,Seq[BigInt](BigInt("47584901",16),128,1)++id++Seq[BigInt](unit,target,format,0,0,2,2,depth,count,
+      (if(compressed)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind),target),16)
+    words(put,images+offset+unit*128,Seq[BigInt](BigInt("47584901",16),128,1)++id++Seq[BigInt](unit,target,format,0,0,width,height,depth,count,
       base,base+4096,0,1,levels+offset+unit*128,levels+offset+(unit+1)*128,0,0),32)
     words(put,levels+offset+unit*128,Seq[BigInt](BigInt("47584c01",16),128,1)++id++Seq[BigInt](0,target,0,base,base+4096,0,
-      data,2,2,depth,count,row,0,slice,0,layer,0,0,bytes),32)
+      data,width,height,depth,count,row,0,slice,0,layer,0,(if(compressed)1 else 0),bytes),32)
     words(put,samplers+offset+unit*64,Seq[BigInt](BigInt("47585301",16),64,1)++id++Seq[BigInt](unit,0,0,0,0,0,0,0x41700000,0,3),16)
-    val a=data+bytes+row+(if(target==3)slice else 0)+(if(target==1)2*layer else if(target==2)5*layer else 0)
-    for(n<-0 until bytes)byte(a+n,((raw>>(8*n))&255).toInt)
+    val a=data+(if(compressed)0 else bytes+row)+(if(target==3)slice else 0)+(if(target==1)2*layer else if(target==2)5*layer else 0)
+    if(compressed){
+      val planes=if(target==1)3 else if(target==2)6 else if(target==3)2 else 1
+      for(plane<-0 until planes;by<-0 until 2;bx<-0 until 2;n<-0 until bytes){
+        val selected=data+plane*(if(target==3)slice else layer)
+        byte(selected+by*row+bx*bytes+n,((raw>>(8*n))&255).toInt)
+      }
+    }else for(n<-0 until bytes)byte(a+n,((raw>>(8*n))&255).toInt)
     View(a,format,raw&((BigInt(1)<<(bytes*8))-1),target)
   }
   def coordinates(put: (BigInt,BigInt)=>Unit,target: Int=0,id: Seq[BigInt]=defaultIdentity,address: BigInt=packet,
