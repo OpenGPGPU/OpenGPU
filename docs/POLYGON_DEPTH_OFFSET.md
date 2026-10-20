@@ -46,3 +46,7 @@ before default center/sample-depth clamping, and actual-CU/native image tests
 including depth override, clipping, helpers, faults and reuse. Setup-cycle and
 integrated synthesis measurements follow that wiring. No new PPA or rate result,
 API support or H0–H8 closure is established by this component checkpoint.
+
+The [candidate resolution selector](POLYGON_DEPTH_RESOLUTION.md) now has separate
+format/rounding evidence, including exhaustive fixed-depth add/encode envelopes.
+Its full raster precision and attachment binding remain pending.
