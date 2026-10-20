@@ -12,6 +12,7 @@ private class ResponseChainedMemoryMaster(readChain: Boolean) extends RawModule 
   val io = IO(new Bundle {
     val s_axi_aclk = Input(Clock())
     val reset = Input(Bool())
+    val restart = Input(Bool())
     val m_axi_arvalid = Output(Bool())
     val m_axi_arready = Input(Bool())
     val m_axi_araddr = Output(UInt(32.W))
@@ -74,6 +75,9 @@ private class ResponseChainedMemoryMaster(readChain: Boolean) extends RawModule 
       io.m_axi_wstrb := 255.U
       io.m_axi_bready := true.B
       io.done := state === done
+      when(state === done && io.restart) {
+        state := first; nextSent := false.B; firstAck := false.B
+      }
     } else {
       val first :: response :: secondResponse :: done :: Nil = Enum(4)
       val state = RegInit(first)
@@ -108,6 +112,9 @@ private class ResponseChainedMemoryMaster(readChain: Boolean) extends RawModule 
         state := done
       }
       io.done := state === done
+      when(state === done && io.restart) {
+        state := first; awSent := false.B; wSent := false.B; firstAck := false.B
+      }
       io.m_axi_arvalid := false.B
       io.m_axi_araddr := 0.U
       io.m_axi_arid := 0.U
@@ -133,6 +140,7 @@ class AxiStimulusOrderingSpec extends AnyFlatSpec with GpuHostTestSupport {
         dut.io.m_axi_bvalid.poke(false.B)
         dut.io.m_axi_bid.poke(0.U)
         dut.io.m_axi_bresp.poke(0.U)
+        dut.io.restart.poke(false.B)
         dut.io.reset.poke(true.B)
         dut.io.s_axi_aclk.step()
         dut.io.reset.poke(false.B)
@@ -146,14 +154,38 @@ class AxiStimulusOrderingSpec extends AnyFlatSpec with GpuHostTestSupport {
           writeAckDelay = 1, maxCycles = 40, noProgressLimit = 20) { (addr, data, mask) =>
           writes += ((addr, data, mask))
         } { dut.io.done.peek().litToBoolean }
+        // A caller can clock control MMIO after service returns. No memory
+        // transfer may occur until a new service loop owns its bookkeeping.
+        def expectPaused(): Unit = {
+          dut.io.m_axi_arready.expect(false.B)
+          dut.io.m_axi_rvalid.expect(false.B)
+          dut.io.m_axi_awready.expect(false.B)
+          dut.io.m_axi_wready.expect(false.B)
+          dut.io.m_axi_bvalid.expect(false.B)
+        }
+        expectPaused()
+        dut.io.restart.poke(true.B); dut.io.s_axi_aclk.step()
+        dut.io.restart.poke(false.B); dut.io.s_axi_aclk.step(7)
+        dut.io.done.expect(false.B)
+        if (readChain) dut.io.m_axi_arvalid.expect(true.B)
+        else { dut.io.m_axi_awvalid.expect(true.B); dut.io.m_axi_wvalid.expect(true.B) }
+        expectPaused()
+        serviceMemoryMasterPort(new AxiMemoryMasterPort(dut.io), addr => {
+          reads += addr
+          if (addr == 0x1000) BigInt("1122334455667788", 16)
+          else BigInt("99aabbccddeeff00", 16)
+        }, writeAckDelay = 1, maxCycles = 40, noProgressLimit = 20) {
+          (addr, data, mask) => writes += ((addr, data, mask))
+        } { dut.io.done.peek().litToBoolean }
+        expectPaused()
         if (readChain) {
-          assert(reads.toSeq == Seq(BigInt(0x1000), BigInt(0x1040)))
+          assert(reads.toSeq == Seq.fill(2)(Seq(BigInt(0x1000), BigInt(0x1040))).flatten)
           assert(writes.isEmpty)
         } else {
           assert(reads.isEmpty)
-          assert(writes.toSeq == Seq(
+          assert(writes.toSeq == Seq.fill(2)(Seq(
             (BigInt(0x1000), BigInt("1122334455667788", 16), BigInt(255)),
-            (BigInt(0x1040), BigInt("99aabbccddeeff00", 16), BigInt(255))))
+            (BigInt(0x1040), BigInt("99aabbccddeeff00", 16), BigInt(255)))).flatten)
         }
       }
     }

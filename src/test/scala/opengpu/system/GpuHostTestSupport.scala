@@ -379,6 +379,15 @@ trait GpuHostTestSupport {
       }
       guard += 1
     }
+    // No service loop owns channel bookkeeping after return. Callers may
+    // clock MMIO before servicing the next command, so leave requests stalled
+    // and responses withdrawn instead of silently accepting orphan transfers.
+    port.m_axi_arready.poke(false.B)
+    port.m_axi_rvalid.poke(false.B)
+    port.m_axi_rlast.poke(false.B)
+    port.m_axi_awready.poke(false.B)
+    port.m_axi_wready.poke(false.B)
+    port.m_axi_bvalid.poke(false.B)
     assert(guard < maxCycles, "AXI memory master service timed out")
   }
 }
