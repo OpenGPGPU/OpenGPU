@@ -554,14 +554,14 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
       for(scalar<-Seq(false,true);c<-0 until 4)run(c,scalar)
       run(0,false,bad=true);run(2,false,cancelled=true);run(3,true)
       var addedDraws=0
-      for(kind<-0 to 2;group<-(36 until 54).filter(n=>ImageFormatReference.format(ImageFormatReference.names(n)).kind==kind).grouped(4)){
+      for(kind<-0 to 2;group<-(36 until 64).filter(n=>(if(n>=54)0 else ImageFormatReference.format(ImageFormatReference.names(n)).kind)==kind).grouped(4)){
         outputKind=kind;val ids=group.padTo(4,group.head)
-        views=(0 until 4).map{u=>val target=if(u==3 && ImageFormatReference.format(ImageFormatReference.names(ids(u))).depth)0 else u
+        views=(0 until 4).map{u=>val target=if(u==3 && (ids(u)>=54 || ImageFormatReference.format(ImageFormatReference.names(ids(u))).depth))0 else u
           texData.coordinates(t.put,target=target,id=id,address=texData.packet+u*64)
           texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,ids(u),target,1,id)}
         for(scalar<-Seq(false,true);c<-0 until 4){run(c,scalar);addedDraws+=1}
       }
-      info(s"NATIVE_IMAGE_FORMAT_CU stage=fragment local=$local newFormats18=true scalarVector=true addedDraws=$addedDraws")
+      info(s"NATIVE_IMAGE_FORMAT_CU stage=fragment local=$local newUncompressed18AndCompressed10=true scalarVector=true addedDraws=$addedDraws")
       info(s"NATIVE_TYPED_FETCH_CU stage=fragment local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true integerRawTypes=true helperInputs=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
     }
   }

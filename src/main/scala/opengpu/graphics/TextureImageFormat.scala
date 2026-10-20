@@ -18,6 +18,7 @@ object TextureImageFormat {
     Info(name,kind,Seq.tabulate(4)(i=>if(i<channels)width else 0),Seq.tabulate(4)(i=>if(i<channels)i*width else 0),encoding)
   // Encodings0..5 retain TypedColorFormat meanings;6 SNORM8,7 unsigned
   // mini-float,8 shared exponent,9 fixed depth UNORM,10 raw FP32 depth.
+  // Compressed outputs:11 UNORM8,12 sRGB8,13 UNORM11,14 SNORM11.
   private def compressed(name: String,channels: Int,codec: Int,encoding: Int): Info=
     Info(name,0,Seq.tabulate(4)(i=>if(i<channels){if(codec>=4)11 else 8}else 0),Seq.fill(4)(0),encoding,if(codec==3 || codec==5)16 else 8,false,codec)
   val formats: Vector[Info]=TypedColorFormat.formats.map(f=>Info(f.name,f.kind,f.widths,f.offsets,f.encoding)) ++

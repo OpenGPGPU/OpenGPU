@@ -552,10 +552,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       }
       def run(c: Int,bad: Boolean=false,format: Int=35): Unit={
         val mode=if(c%2==0)0 else 2;val vc=(c+1)%4;val target=if(format>=49)0 else 3
-        val decoded=ImageFormatReference.decode(ImageFormatReference.names(format),raw)
+        val decoded=if(format>=54)CompressedImageReference.decode(format,raw)else ImageFormatReference.decode(ImageFormatReference.names(format),raw)
         image.sampledRed=Some(decoded(c));image.sampledGreen=Some(decoded(vc));image.shaderDraws(mode,generation=frames+1,sourceBias=0x90000)
-        // Twenty-four frames must not advance source attributes into native
-        // scratch at0x430000..0x443000 or the growing shader code below0x4a0000.
+        // Thirty-four frames must not advance source attributes into native
+        // scratch at0x430000..0x443000 or the growing shader code; all selected frame input ranges stay disjoint.
         assert(0x420000+image.sourceOffset>=0x4b0000 && 0x422000+image.sourceOffset<=0x500000)
         def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
@@ -591,9 +591,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop();frames+=1
       }
       for(c<-0 until 4)run(c);run(0,bad=true);run(3)
-      for(format<-36 until 54)run(format%4,format=format)
-      assert(frames==24)
-      info(s"NATIVE_TYPED_FETCH_AXI local=$local CUs=2 frames=$frames draws=72 newFormats18=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true bindings31And17=true volumeAndCube=true realSv32=true deniedSamplerNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
+      for(format<-36 until 64)run(format%4,format=format)
+      assert(frames==34)
+      info(s"NATIVE_TYPED_FETCH_AXI local=$local CUs=2 frames=$frames draws=102 newUncompressed18AndCompressed10=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true bindings31And17=true volumeAndCube=true realSv32=true deniedSamplerNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
     }
   }
 
