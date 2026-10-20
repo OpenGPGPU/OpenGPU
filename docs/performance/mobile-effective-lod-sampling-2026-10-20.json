@@ -1,15 +1,15 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "107_distinct_targeted_tests_nine_ABIs_pass_full_sampler_synthesis_pending",
-  "source_commit": "3e5a1aca1a4e2fc917bb8e66d6cf4a5b516523e8",
+  "status": "107_distinct_targeted_tests_nine_ABIs_and_two_standalone_synthesis_screens_pass",
+  "source_commit": "261cd8168cf76afffe605e6f5f8505e2b5217e03",
   "source_files": 788,
-  "source_manifest_sha256": "905a083632649bcd069f0988b5b57f12eb9ae256d6210e0ee9b008aceaeaadca",
+  "source_manifest_sha256": "339c297f3d7cde125c5b9e9c76b398e8d697f13b03749b486e7dd99a6e3ad78c",
   "source_archive_proof": {
-    "commit": "3e5a1aca1a4e2fc917bb8e66d6cf4a5b516523e8",
+    "commit": "261cd8168cf76afffe605e6f5f8505e2b5217e03",
     "source_files": 788,
-    "manifest_sha256": "905a083632649bcd069f0988b5b57f12eb9ae256d6210e0ee9b008aceaeaadca",
-    "archive_sha256": "037544c140a0c25362a7af7b44719e2c36d6548ff832ceda6d893cdee2f5a987",
+    "manifest_sha256": "339c297f3d7cde125c5b9e9c76b398e8d697f13b03749b486e7dd99a6e3ad78c",
+    "archive_sha256": "d7401d7c2fed1748207dc867838ecb072def53401ed78603d09c67ce913494c4",
     "git_archive_and_worktree_exact": true
   },
   "source_base_record": "docs/performance/mobile-level-sampling-2026-10-20.json",
@@ -17,6 +17,7 @@
   "source_changes_sha256": {
     "src/main/scala/opengpu/core/execute/fpu/Fp32DivLane.scala": "0a1468f814caa93035125b1dd86d7b1a23d608b630740eeac8fc0265f5f183ae",
     "src/main/scala/opengpu/elaboration/EmitTextureImageSample.scala": "2e646dab91c18af0369f2344f09e88f992d67861a1c8c8d8bfad9622e4eb009e",
+    "src/main/scala/opengpu/graphics/TextureFloatAxisPipeline.scala": "ef85824a15fd5f80e6b177275dabb8873c231c73d2b02ebc7dd90f54e887c63d",
     "src/main/scala/opengpu/graphics/TextureImageBindingUnit.scala": "63654f7dc9d3eb79fbb6c032892301712d4b07ba3bb8baceee7d7a948a46a314",
     "src/main/scala/opengpu/graphics/TextureImageBoundFetchUnit.scala": "9d7e88bf0962c586ef66930eb74c5100958af10a4eb890de5d452211a012a22d",
     "src/main/scala/opengpu/graphics/TextureImageLevelSampleUnit.scala": "273dd1801804c807669033a35940662739f00a6bae423f2833a652d5ff841041",
@@ -29,22 +30,22 @@
   "source_additions_sha256": {
     "src/main/scala/opengpu/graphics/TextureCubeProjectionUnit.scala": "ad804a434fc4e6e7c50b08b686a62bedea7ad97f6af043f10e42e4a006930810",
     "src/main/scala/opengpu/graphics/TextureImageMipSampleUnit.scala": "e2f7dcd17d13ea561478662eda9a1400e56cb4f3b54e7c89bd75f64ae0269a98",
-    "src/main/scala/opengpu/graphics/TextureImageSamplePreparationUnit.scala": "a11b72b2fc9efc126ea36a34f1c5a98a60ccb439199b864b071b60e01e0c61cc",
+    "src/main/scala/opengpu/graphics/TextureImageSamplePreparationUnit.scala": "d46d481be98d7764148681dabaf029e2e119efb7bb93621e3e688ec7bd921e05",
     "src/main/scala/opengpu/graphics/TextureImageSampleUnit.scala": "5f83d1bcf23114b5cf51521d92a48b7d0e1754f7b2b2bbe8d4c5a7ebad58a21e",
-    "src/main/scala/opengpu/graphics/TextureSampleSelection.scala": "2b93bf5409a9baab17c249e054be3599d65fe99921d05d95ceffc80df1e426aa",
+    "src/main/scala/opengpu/graphics/TextureSampleSelection.scala": "e6c757c31e64381180bd38f3f889b024c2663b64c87aed309f40164e44587774",
     "src/test/scala/opengpu/graphics/TextureCubeProjectionUnitSpec.scala": "d71a51c640d8ce9697eff0c26842499b854c4dd922b3099706295809c4226e5f",
     "src/test/scala/opengpu/graphics/TextureImageSampleUnitSpec.scala": "40ccb6a9325fa013edf3d383116a1f3933b5d5761f6fafd72f63a4a6ad8dd65e",
     "src/test/scala/opengpu/graphics/TextureSampleSelectionSpec.scala": "64f4c18706dd85a95e0623c54c388409830169585c22560509dcbdbc06ec84f3"
   },
   "functional": {
-    "log": ".artifacts/mobile-effective-sampling-v2-qualified.log",
-    "sha256": "fed2eda8f9869ccb9fa1b43ff3e9b30ad28a14d571e694f5c7a9d49364850b13",
+    "log": ".artifacts/mobile-effective-sampling-v3-qualified.log",
+    "sha256": "6272cf1f55ae26f7af261f5688b5669f49b70409b11ad10a030435471839df48",
     "distinct_targeted_tests": 107,
     "by_suite": {
       "VectorFdivAluSpec": 4,
-      "FpuBackendSpec": 7,
       "ClipperExactDivisionSpec": 1,
       "TextureImageResourceAddressUnitSpec": 6,
+      "FpuBackendSpec": 7,
       "ClipFloatArithmeticSpec": 7,
       "TextureLinearFilterUnitSpec": 3,
       "TextureCubeProjectionUnitSpec": 2,
@@ -63,13 +64,6 @@
       "VectorFdivAluSpec::should execute vfrdiv as scalar divided by vector",
       "VectorFdivAluSpec::should retain a fast special-case lane until a normal division finishes",
       "VectorFdivAluSpec::should preserve masked-off lanes and report flags",
-      "FpuBackendSpec::should commit a compare result to the scalar register file",
-      "FpuBackendSpec::should move a scalar register into an FP register",
-      "FpuBackendSpec::should convert an FP register to a signed integer",
-      "FpuBackendSpec::should convert a scalar integer to an FP register",
-      "FpuBackendSpec::should load an FP word through the memory port",
-      "FpuBackendSpec::should expose an FVF read of an initialized FP register",
-      "FpuBackendSpec::should use the per-warp dynamic frm for fcvt rounding",
       "ClipperExactDivisionSpec::should match every clipped field, retain results, cancel on reset and reuse the engine",
       "TextureImageResourceAddressUnitSpec::should load all target mip records with reordered tags and return exact checked cached spans",
       "TextureImageResourceAddressUnitSpec::should retain exact cache identity and prevent invalidated fills from becoming reusable views",
@@ -77,6 +71,13 @@
       "TextureImageResourceAddressUnitSpec::should reject corrupt headers canonical padding view bounds and coordinates without publishing partial state",
       "TextureImageResourceAddressUnitSpec::should drain held reads memory faults and cancelled address work before allowing healthy reuse",
       "TextureImageResourceAddressUnitSpec::should apply configured image and layer limits to GPU loaded views",
+      "FpuBackendSpec::should commit a compare result to the scalar register file",
+      "FpuBackendSpec::should move a scalar register into an FP register",
+      "FpuBackendSpec::should convert an FP register to a signed integer",
+      "FpuBackendSpec::should convert a scalar integer to an FP register",
+      "FpuBackendSpec::should load an FP word through the memory port",
+      "FpuBackendSpec::should expose an FVF read of an initialized FP register",
+      "FpuBackendSpec::should use the per-warp dynamic frm for fcvt rounding",
       "ClipFloatArithmeticSpec::should round directed sums and gradual FP32 packing toward zero without changing legacy arithmetic",
       "ClipFloatArithmeticSpec::should retain directed rounding through accepted cancellation held replies and healthy reuse",
       "ClipFloatArithmeticSpec::should roundtrip every FP32 class and gradual boundary through the extended codec",
@@ -197,8 +198,7 @@
     "legacy_native_integer_fetch_regressions": true,
     "shared_divider_scalar_vector_clipping_regressions": true
   },
-  "synthesis_record": null,
-  "synthesis_status": "revised full-owner synthesis running; initial mapped owner misses setup by804.665ps at1000ps; corrected divider passes",
+  "synthesis_record": "docs/performance/mobile-effective-lod-synthesis-2026-10-20.json",
   "software_ABIs_unchanged": true,
   "retained_failures": {
     "mobile-sampling-numeric-v1": {
@@ -215,6 +215,11 @@
       "log": ".artifacts/mobile-sampling-admission-v3.log",
       "sha256": "21ab95b20617c1930990a63cee24be256915ced371c29582abba788af4a36e51",
       "cause_and_correction": "Late-fault fixture waited for a reply after consumption. Record accepted response addresses instead; focused rerun and fresh final suite pass."
+    },
+    "lod_static_slice_width": {
+      "log": ".artifacts/mobile-sampling-lod-cuts-v3.log",
+      "sha256": "6f4457c81edaf56f880fe005d880d8ecfc0d63ba55fedb43a014b819f492b00a",
+      "cause_and_correction": "Static right shifts reduce Chisel widths; the first fixed-slice refactor selected unavailable high bits. Explicit zero extension fixes elaboration. Fresh final 107-test aggregate passes."
     }
   },
   "limits": [
@@ -237,5 +242,30 @@
       "generated/qualification/ppa/mobile-effective-sample-2026-10-20-v1/flow/synthesis_sta.log": "3e385cabbddd7befdee9dc8a08e58c2bd6d75b6f5c125018b2dbe98c9e0cd551"
     },
     "cause_and_correction": "Combinational request lambda through both FP32 clamps, significand splitting, fraction normalization and mip choice missed setup. Register these operations separately and use fixed slices for the four uncapped integer exponents. Preserve clamp, rounding and filter semantics at the original 1000ps constraint."
+  },
+  "second_synthesis_failure": {
+    "reported_setup_slacks_ps": [
+      -136.698,
+      388.008
+    ],
+    "source_manifest_sha256": "905a083632649bcd069f0988b5b57f12eb9ae256d6210e0ee9b008aceaeaadca",
+    "artifacts_sha256": {
+      "generated/qualification/ppa/mobile-effective-sample-2026-10-20-v2/qualification.json": "d12b7fdda8c8542ec6167037343fdc38ace9d3566ddd2ffbe556689e37420c40",
+      "generated/qualification/ppa/mobile-effective-sample-2026-10-20-v2/manifest.json": "36eede0f17c8fcba40985d3bcf54f05262b201095865e499e2bd5fca46f7a6ed",
+      "generated/qualification/ppa/mobile-effective-sample-2026-10-20-v2/flow/synthesis_sta.log": "64a267fb671219c30f70a0845f01cafcedb20d4161a79cc06b50684f8a1df7c4"
+    },
+    "cause_and_correction": "LOD register cuts move the failing path to array-layer conversion. Split guard extraction, integer rounding and layer-count saturation across registers. Supplemental STA also finds a -3.147ps periodic-wrap path; exploit the proven [-1,2N] bounds to select wrap endpoints and compute one parallel subtraction, preserving seven-cycle axis latency.",
+    "supplemental_STA": {
+      "log": ".artifacts/mobile-effective-v2-multipath.log",
+      "sha256": "0f547aca0fe4a9a5ce0c502672a966693448ea6603f5155d32d5d81af9ae7ccb",
+      "scope": "Additional paths on the immutable V2 mapped design; canonical synthesis reports unchanged. Finds the -3.147ps wrap path after the primary -136.698ps layer path."
+    }
+  },
+  "CI_selection": {
+    "log": ".artifacts/mobile-effective-sampling-ci-v2.log",
+    "sha256": "33564c66837704a225331df4bb30af6f3d40f6608d0b3c18aec257a98a54e2b0",
+    "passed": true,
+    "new_graphics_suites_discovered": true,
+    "scripts_unchanged_in_final_source": true
   }
 }

@@ -18,7 +18,7 @@ The initial OpenGPU product target is four shared CUs, with a 720p workload suit
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
 
-Latest texture checkpoint: native image bindings and typed component fetch cover all64 storage formats. The internal [effective-LOD sampler](TEXTURE_FLOAT_SAMPLING.md) now passes107 targeted controls and nine ABI checks on788 frozen inputs, including cube/array selection, min/mag/mip filtering, depth comparison and final swizzle. Full-owner synthesis is being requalified after LOD register cuts. Native floating instruction transport, gradient/implicit LOD and scalable texture throughput remain open.
+Latest texture checkpoint: native image bindings and typed component fetch cover all 64 storage formats. The internal [effective-LOD sampler](TEXTURE_FLOAT_SAMPLING.md) passes 107 targeted controls, nine ABI checks and full-owner synthesis at 1000 ps on 788 frozen inputs. It includes cube/array selection, min/mag/mip filtering, depth comparison and final swizzle. Native floating instruction transport, gradient/implicit LOD and scalable texture throughput remain open.
 
 ## Current hardware and gaps
 
@@ -6656,24 +6656,30 @@ comparison-free contract; internal general color sampling ignores comparison
 enable as required.
 
 The [functional qualification](performance/mobile-effective-lod-sampling-2026-10-20.json)
-passes107 distinct tests across16 suites plus nine ABI checks on788 committed
-inputs. It includes352 descriptor-to-texel samples across64 formats and four
-targets,176,058 LOD selections,204,801 array-layer conversions,3,617 cube
-projections,3,072 sampling comparison combinations,100 cube cancellation cuts
-and14 composed sampling cuts. Poisoned descriptor/cache snapshots remain
+passes 107 distinct tests across 16 suites plus nine ABI checks on 788 committed
+inputs. It includes 352 descriptor-to-texel samples across 64 formats and four
+targets, 176,058 LOD selections, 204,801 array-layer conversions, 3,617 cube
+projections, 3,072 sampling comparison combinations, 100 cube cancellation cuts
+and 14 composed sampling cuts. Poisoned descriptor/cache snapshots remain
 immutable; a second-mip fault survives later cancellation and constant swizzle
 without partial color output. Existing selected-level, native integer fetch,
 scalar/vector FP and clipping controls also pass.
 
 Cube numeric tests exposed shared-divider subnormal normalization and underflow
-guard/sticky defects. The corrected divider passes7,126 exact-rational finite
+guard/sticky defects. The corrected divider passes 7,126 exact-rational finite
 checks across all five rounding modes, including directed overflow and flags.
-Its fresh standalone1000ps synthesis screen passes core/I/O setup at
-+324.168/+390.675ps. The initial complete sampler maps fully but misses core
-setup by804.665ps. Registering both clamps, integer extraction, fractional
-normalization and mip selection preserves numeric results; fresh full-owner
-synthesis is running at the same TC/SLVT,25% I/O,default ABC,no-retiming1000ps
-constraint. No route is run.
+Two fresh [synthesis screens](performance/mobile-effective-lod-synthesis-2026-10-20.json)
+pass full mapping and setup at 1000 ps, TC/SLVT, 25% I/O, default ABC and no
+retiming: complete sampler core/I/O +179.638/+408.384 ps with 304,435 cells;
+divider +324.168/+390.675 ps with 3,843 cells. Source and emitted RTL manifests
+remain exact. No route is run.
+
+The initial sampler misses setup by 804.665 ps through LOD resolution. Registering
+the clamp, extraction, normalization and mip-selection steps moves the failing
+path to array layers at -136.698 ps. Separate layer rounding/saturation stages
+and bounded periodic-wrap arithmetic produce the final pass without relaxing
+constraints. Axis latency remains seven cycles with one axis per cycle. Both
+failed synthesis revisions and the supplemental wrap-path report are retained.
 
 This internal serialized endpoint consumes effective lambda from its parent.
 Native floating packet/instruction transport, shader bias, gradient-derived

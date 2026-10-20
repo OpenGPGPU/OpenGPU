@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "source_commit": "261cd8168cf76afffe605e6f5f8505e2b5217e03",
+  "source_files": 788,
+  "source_manifest_sha256": "339c297f3d7cde125c5b9e9c76b398e8d697f13b03749b486e7dd99a6e3ad78c",
+  "constraints": {
+    "clock_period_ps": 1000,
+    "io_delay_percent": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "engine": "yosys",
+    "abc_target": "standard",
+    "retiming": false,
+    "synthesis_only": true
+  },
+  "profiles": {
+    "sample": {
+      "module": "TextureImageSampleUnit",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 437.13791408389807,
+        "finished_utc": "2026-10-20T15:29:41.895284+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        179.638,
+        408.384
+      ],
+      "mapped_cells": 304435,
+      "reported_cell_area": 43814.1393,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "production_manifest_and_emitted_RTL_exact": true,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-effective-sample-2026-10-20-v3/result.json": "f5bdb7eb0f810f2b5c1afb9d92fe1fef2ac4172d31158b60bd1bbc4a956e38b7",
+        "generated/qualification/ppa/mobile-effective-sample-2026-10-20-v3/qualification.json": "b22fbac4f9bc937cbc1b7678b1cf9beb9ebb553e0d93a0d145c54c7c458f6587",
+        "generated/qualification/ppa/mobile-effective-sample-2026-10-20-v3/manifest.json": "e803b96646b36cd718c9e8a660c70d812d24c7dafeb27edaa4b48506b989da0a",
+        "generated/qualification/ppa/mobile-effective-sample-2026-10-20-v3/flow/synthesis_sta.log": "e8c6929fa01434f834804ae86318d2ffa077412edd96e62556b89c8c7a083c0b"
+      }
+    },
+    "div": {
+      "module": "Fp32DivLane",
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 18.559769874904305,
+        "finished_utc": "2026-10-20T15:22:43.316015+00:00"
+      },
+      "reported_setup_slacks_ps": [
+        324.168,
+        390.675
+      ],
+      "mapped_cells": 3843,
+      "reported_cell_area": 456.8643,
+      "cell_area_units": "Yosys library area units; not physical die area",
+      "chipagent_commit": "484029862d0d2093e09c7925ac8a811f17c8463b",
+      "production_manifest_and_emitted_RTL_exact": true,
+      "artifacts_sha256": {
+        "generated/qualification/ppa/mobile-effective-div-2026-10-20-v3/result.json": "34f57fd6cc93da924986e2c31a763d9f923fcbaa69381b4a18a6c0d1e04157c2",
+        "generated/qualification/ppa/mobile-effective-div-2026-10-20-v3/qualification.json": "992a63e7d2b2b4fe6323b22042d792c9bf16ed54e2dda3476e8769898e004eb9",
+        "generated/qualification/ppa/mobile-effective-div-2026-10-20-v3/manifest.json": "15667d9ae01973c588f52dad7354c10e45e589617af5e92629e468494c271737",
+        "generated/qualification/ppa/mobile-effective-div-2026-10-20-v3/flow/synthesis_sta.log": "d6723dc6fa632e7c822b47c3b6334c07053aada6c9d97148f81ac3655ff571fa"
+      }
+    }
+  },
+  "limits": [
+    "Standalone internal explicit-effective-LOD sampler and corrected FP32 divider only; native floating sampling and texture-cluster throughput remain unqualified.",
+    "No whole-GPU clock, power, hold, route or frame-rate qualification."
+  ],
+  "status": "two_standalone_mapping_and_setup_screens_pass"
+}
