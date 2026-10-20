@@ -5568,3 +5568,27 @@ power or rate result; register/control logic changes.
 Nine native host and two legacy texture checks are still live on this source.
 The candidate remains isolated, with no main mode advertisement or complete
 functional/PPA claim. PPA remains synthesis only.
+
+
+## Native texture policy completed functional qualification (2026-10-20)
+
+The earlier development and partial checkpoints above are superseded by the
+[completed 54-check qualification](performance/mobile-native-texture-policy-2026-10-20.json).
+The same frozen 640-file source passes 25 reader/discovery, fourteen backend/trap,
+four actual-CU stage, all nine unfiltered native host and two affected legacy
+texture checks. Four ABI regeneration checks, combined C11 headers, CI selection
+and both complete replay/default-host RTL emissions also pass. The registered
+fault boundary resolves the retained earlier host elaboration failure.
+
+The new host profiles execute fourteen frames and 42 submitted draw records
+across local/global payload storage. They verify actual vertex and fragment
+sampling, signed and independent-axis policies, 1x/4x publication, exact four-MRT,
+depth, resolve and guard bytes, no invalid texture reads, held VM ownership and
+healthy reuse after four rejected/faulted frames. Stage controls additionally
+cover all nine wrap-axis combinations, unsigned coordinates and real scalar TEX.
+
+This source is eligible for functional integration. Default native RTL changes;
+structural counts alone do not establish area, timing, power or throughput.
+No new PPA result is claimed, and evaluation remains synthesis only. General
+texture resources and H4/H6 remain open. The separate depth candidate has a
+polygon reset timeout in its host regression and remains outside this change.

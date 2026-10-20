@@ -1,7 +1,7 @@
 # Native fixed-point texture coordinate policy
 
-Status: development candidate; reader, actual-CU and native image qualification
-remain pending. This extension carries the qualified integer coordinate policy
+Status: functionally qualified for integration by [54 passing checks](performance/mobile-native-texture-policy-2026-10-20.json),
+four ABI checks and two complete RTL emissions on unchanged source. This extension carries the qualified integer coordinate policy
 through native sampler snapshots and generic vertex/fragment execution. It does
 not change shader instruction encodings or claim general GLES texture resources.
 
@@ -49,7 +49,7 @@ fragment status is memory fault (3), source texture (5).
 Graphics CUs already finish faulting warps on trap. The failed draw retains all
 pending memory, task, payload and VM ownership until ordinary drain and held
 completion consumption. No faulted export may become visible. Actual-CU scalar
-and vector fault/reuse tests are required before integration.
+and vector fault/reuse tests pass in the qualified stage and native host controls.
 
 General allocation bounds, image/sampler tables, floating coordinates, further
 dimensions/formats, filtering modes, precision conformance and cluster throughput
