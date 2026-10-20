@@ -70,8 +70,9 @@ bounds. Discovery checks cover held FIXED/INCR reads, every denied word/strobe,
 address aliases and 1/2/4-sample configurations plus the legacy map. The first
 combined run passes 23/24 checks; its new triangle-owner case used the existing
 point/line-only reference. The corrected fixture now selects the triangle
-reference and the complete rerun is pending. No RTL correction was required
-for that fixture mismatch. Exact native centroid image checks remain pending.
+reference; the [complete 24-check rerun](performance/mobile-centroid-discovery-controls-2026-10-20.json)
+passes on 631 unchanged source/ABI files. No RTL correction was required for
+that fixture mismatch. Exact native centroid image checks remain pending.
 
 ## Partial-coverage perspective fallback
 
