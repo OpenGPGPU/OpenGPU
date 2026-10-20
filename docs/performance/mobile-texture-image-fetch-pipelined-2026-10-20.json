@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-20",
-  "status": "19_checks_six_ABIs_two_emissions_C11_CI_passed_synthesis_pending",
+  "status": "19_checks_six_ABIs_two_emissions_C11_CI_and_two_synthesis_screens_passed",
   "based_on_commit": "bc24f5e9b218f8e25b84ce49ee70fb2cc0846a0e",
   "source_files": 655,
   "source_sha256": {
@@ -790,7 +790,6 @@
     "Native per-stage image/sampler bindings, instruction/register transport and fault/VM integration.",
     "Mip completeness/selection, normalized coordinates, LOD/gradients, comparison/filtering and compressed-block decode.",
     "Texture bank/cache throughput and complete H0-H8/GLES/resource closure.",
-    "Standalone raw/typed synthesis screening; no place-and-route or power result claimed.",
     "Separate206-check depth/facing/native-texture composition and old640-source native PPA remain independent live work."
   ],
   "decode_pipeline": {
@@ -802,5 +801,10 @@
       "path": ".artifacts/mobile-texture-image-fetch-v1-worktree/docs/performance/mobile-texture-image-fetch-synthesis-before-2026-10-20.json",
       "sha256": "947d9bbd3965da919491ac2abc14893c5f59df4a5169878ef2b61418395efd94"
     }
+  },
+  "subsequent_synthesis": {
+    "path": "docs/performance/mobile-texture-image-fetch-synthesis-2026-10-20.json",
+    "sha256": "91900683ee65e98c705b52555f11598e69986bf58876d5b5e4d344017ee61323",
+    "scope": "Synthesis only; identical constraints to the preserved initial miss."
   }
 }

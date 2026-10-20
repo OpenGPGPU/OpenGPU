@@ -2,8 +2,8 @@
 
 Status: [19 controls pass](performance/mobile-texture-image-fetch-pipelined-2026-10-20.json)
 on unchanged 655-file source, together with six ABI checks, combined C11 headers,
-CI selection and both raw/typed RTL emissions. Native integration and the revised
-typed synthesis result remain pending. This component does not establish completion of H4/H6
+CI selection and both raw/typed RTL emissions. Both standalone synthesis screens
+pass. Native integration remains open. This component does not establish completion of H4/H6
 or GLES texture support.
 
 `TextureImageDataFetchUnit` connects the GPU-memory GXL1 level loader and
@@ -52,8 +52,8 @@ The initial [standalone synthesis screen](performance/mobile-texture-image-fetch
 passes mapping for both profiles at TC/SLVT, 1000 ps and 25 percent I/O budget
 without retiming. Raw fetch passes setup at +53.933 ps. Typed fetch misses setup
 at -3.880 ps; its critical path runs from the decoder component selector to the
-decoded component result. A fetch-specific registered selection boundary is
-required before claiming a positive typed result. No place/route is required.
+decoded component result. This miss motivated the fetch-specific registered
+selection boundary below. No place/route is required.
 
 The revised fetch-specific decoder registers extracted component bits, width,
 encoding and default-channel metadata before numeric conversion. It reuses
@@ -61,3 +61,9 @@ encoding and default-channel metadata before numeric conversion. It reuses
 component takes two cycles. The existing `TypedColorDecoder` and all 649
 qualified dependencies remain unchanged; raw-profile active RTL is byte-for-byte
 identical. All 19 controls pass again on the revised 655-file frozen source.
+
+The [revised synthesis screens](performance/mobile-texture-image-fetch-synthesis-2026-10-20.json)
+both pass complete mapping and reported setup including I/O: raw +53.933 ps,
+typed +41.228 ps, at the same TC/SLVT, 1000 ps, 25 percent I/O budget and no
+retiming. These are standalone component results; no physical chip area, power,
+native execution rate or texture-cluster throughput is established.
