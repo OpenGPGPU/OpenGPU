@@ -31,6 +31,8 @@ class FragmentInterpolationRequest(p: VertexShaderStageConfig,g: GraphicsConfig)
   val primitive=new WindowPrimitive(p);val quad=new RasterQuad(g);val pointSize=UInt(32.W)
   /** Disabled preserves the legacy center-only component contract. */
   val sampleDepthEnable=Bool();val sampleMode=UInt(2.W)
+  /** Per-component centroid qualifiers. Flat components ignore this mask. */
+  val centroidMask=UInt((p.varyings*4).W)
 }
 class Fp32InterpolatedLane(p: VertexShaderStageConfig,g: GraphicsConfig) extends Bundle {
   val x=SInt(32.W);val y=SInt(32.W);val covered=Bool();val coverageMask=UInt(g.maxSampleCount.W)
@@ -60,7 +62,8 @@ class FragmentInterpolationCompletion extends Bundle {
   * Flat values bypass arithmetic, using the clipper's canonical vertex values.
   * Lines use center-projected two-endpoint weights and ignore the unused third
   * record. Points copy raw vertex values and evaluate pointCoord with the same
-  * scalar service. This center client does not implement centroid qualifiers.
+  * scalar service. Centroid smooth components use the lowest covered sample
+  * for multisampling; single-sample and helper lanes retain center values.
   */
 class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfig(),g: GraphicsConfig=GraphicsConfig()) extends Module {
   val io=IO(new Bundle {
@@ -70,7 +73,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   })
   private object State extends ChiselEnum {
     val idle,validate,startLane,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
-      pointX,pointY,pointValue,pointResidual,pointDivide,pointOffset,pointSave,sampleDepth,startValues,product,saveProduct,addProduct,divide,saveValue,component,nextLane,waitMath,emit,abort,finish,complete=Value
+      pointX,pointY,pointValue,pointResidual,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,startValues,product,saveProduct,addProduct,divide,saveValue,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val input=Reg(new FragmentInterpolationRequest(p,g))
   private val output=Reg(new Fp32InterpolatedQuad(p,g));private val result=Reg(new FragmentInterpolationCompletion)
@@ -80,6 +83,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val sampleIndex=if(g.maxSampleCount==1)0.U else sample(log2Ceil(g.maxSampleCount)-1,0)
   private val edges=Reg(Vec(3,new ClipFloat));private val weights=Reg(Vec(3,new ClipFloat))
   private val denominator=Reg(new ClipFloat);private val sum=Reg(new ClipFloat);private val term=Reg(new ClipFloat)
+  private val centroidWeights=Reg(Vec(3,new ClipFloat));private val centroidDenominator=Reg(new ClipFloat)
+  private val preparingCentroid=RegInit(false.B);private val centroidActive=RegInit(false.B)
   private val mathValue=Reg(new ClipFloat);private val mathPacked=Reg(UInt(32.W))
   private val status=RegInit(0.U(3.W));private val faultLane=RegInit(0.U(2.W));private val exported=RegInit(false.B)
   private val invalidHelpers=RegInit(0.U(4.W));private val operations=RegInit(0.U(16.W))
@@ -109,6 +114,8 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val slotIndex=if(p.varyings==1)0.U else component(2+log2Ceil(p.varyings)-1,2)
   private val componentIndex=component(log2Ceil(p.varyings*4)-1,0)
   private val rawVarying=primitive.vertices(vertex).varyings(slotIndex)(component(1,0))
+  private val centroidComponent=centroidActive && input.centroidMask(componentIndex)
+  private val needsCentroid=(input.centroidMask & ~primitive.flatMask).orR && pixel.covered && input.sampleMode=/=0.U
   arithmetic.io.in.valid:=offered;arithmetic.io.in.bits:=request
   arithmetic.io.out.ready:=pending;arithmetic.io.cancel:=stop && pending
   when(arithmetic.io.in.fire){offered:=false.B;pending:=true.B;operations:=operations+1.U}
@@ -136,6 +143,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         val topology=MuxLookup(primitive.kind,false.B)(Seq(0.U->(primitive.topology===0.U),1.U->(primitive.topology>=1.U && primitive.topology<=3.U),2.U->(primitive.topology>=4.U && primitive.topology<=6.U)))
         val metadata=primitive.kind<=2.U && primitive.vertexCount===primitive.kind+&1.U && topology &&
           primitive.provokingVertex<primitive.vertexCount && primitive.varyingSlots<=p.varyings.U && !(primitive.flatMask>>(primitive.varyingSlots<<2)).orR &&
+          !(input.centroidMask>>(primitive.varyingSlots<<2)).orR &&
           input.primitive.clipped.partCount>=1.U && input.primitive.clipped.partCount<=7.U && input.primitive.clipped.partIndex<input.primitive.clipped.partCount
         val records=(0 until 3).map { i=>val v=input.primitive.vertices(i);val r=primitive.vertices(i)
           i.U>=primitive.vertexCount || ((primitive.kind=/=0.U || (ClipFloat.legal(v.localX) && ClipFloat.legal(v.localY) && v.localX.special===0.U && v.localY.special===0.U)) && r.identity.asUInt===primitive.identity.asUInt && r.instanceId===primitive.instanceId && r.baseInstance===primitive.baseInstance && !r.restart &&
@@ -144,9 +152,9 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         }.reduce(_ && _)
         val sampleModeLegal=input.sampleMode<=log2Ceil(g.maxSampleCount).U && (input.sampleMode===0.U || (g.subPixelBits>=2).B)
         val samples=(0 until 4).map { i=>val s=input.quad.lanes(i)
-          s.area=/=0.S && s.area===input.quad.lanes(0).area && (s.e0+&s.e1+&s.e2)===s.area && s.covered===s.coverageMask.orR && (!input.sampleDepthEnable || !(s.coverageMask>>(1.U(3.W)<<input.sampleMode)).orR)
+          s.area=/=0.S && s.area===input.quad.lanes(0).area && (s.e0+&s.e1+&s.e2)===s.area && s.covered===s.coverageMask.orR && (!(input.sampleDepthEnable || input.centroidMask.orR) || !(s.coverageMask>>(1.U(3.W)<<input.sampleMode)).orR)
         }.reduce(_ && _)
-        when(!metadata || !records || !samples || (input.sampleDepthEnable && !sampleModeLegal) || (primitive.kind===0.U && !Fp32RasterState.sizeLegal(input.pointSize))){status:=1.U;phase:=State.abort}
+        when(!metadata || !records || !samples || ((input.sampleDepthEnable || input.centroidMask.orR) && !sampleModeLegal) || (primitive.kind===0.U && !Fp32RasterState.sizeLegal(input.pointSize))){status:=1.U;phase:=State.abort}
           .otherwise {
             output.identity:=primitive.identity;output.sequence:=primitive.sequence;output.primitiveId:=primitive.primitiveId;output.instanceId:=primitive.instanceId
             output.partIndex:=input.primitive.clipped.partIndex;output.primitiveKind:=primitive.kind;output.varyingSlots:=primitive.varyingSlots;output.flatMask:=primitive.flatMask
@@ -154,7 +162,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
             phase:=State.startLane
           }
       }
-      is(State.startLane){sampling:=false.B
+      is(State.startLane){sampling:=false.B;preparingCentroid:=false.B;centroidActive:=false.B
         when(primitive.kind===0.U){
           val o=output.lanes(lane);val v=input.primitive.vertices(0)
           o.reciprocalW:=v.reciprocalW;o.fragCoordW:=ClipFloat.toFp32(v.reciprocalW).bits;packingFlags:=packingFlags|ClipFloat.toFp32(v.reciprocalW).status;o.windowDepth:=v.windowDepth;o.perspectiveValid:=true.B
@@ -189,25 +197,34 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       is(State.pointOffset){calculate(mathValue,ClipFloat.fromFp32("h3f000000".U),ClipFloatOperation.add,State.pointSave)}
       is(State.pointSave){output.lanes(lane).pointCoord(depth):=mathPacked;phase:=Mux(depth,State.nextLane,State.pointY)}
       is(State.weight){calculate(edges(vertex),Mux(vertex<primitive.vertexCount,input.primitive.vertices(vertex).reciprocalW,ClipFloat.zero),ClipFloatOperation.multiply,State.saveWeight)}
-      is(State.saveWeight){weights(vertex):=mathValue;when(vertex===2.U){phase:=State.sumWeight}.otherwise{vertex:=vertex+1.U;phase:=State.weight}}
-      is(State.sumWeight){calculate(weights(0),weights(1),ClipFloatOperation.add,State.addWeight)}
-      is(State.addWeight){calculate(mathValue,weights(2),ClipFloatOperation.add,State.reciprocal)}
-      is(State.reciprocal){denominator:=mathValue;calculate(mathValue,area,ClipFloatOperation.divide,State.saveReciprocal)}
+      is(State.saveWeight){
+        when(preparingCentroid){centroidWeights(vertex):=mathValue}.otherwise{weights(vertex):=mathValue}
+        when(vertex===2.U){phase:=State.sumWeight}.otherwise{vertex:=vertex+1.U;phase:=State.weight}}
+      is(State.sumWeight){calculate(Mux(preparingCentroid,centroidWeights(0),weights(0)),Mux(preparingCentroid,centroidWeights(1),weights(1)),ClipFloatOperation.add,State.addWeight)}
+      is(State.addWeight){calculate(mathValue,Mux(preparingCentroid,centroidWeights(2),weights(2)),ClipFloatOperation.add,State.reciprocal)}
+      is(State.reciprocal){when(preparingCentroid){centroidDenominator:=mathValue}.otherwise{denominator:=mathValue}
+        calculate(mathValue,area,ClipFloatOperation.divide,State.saveReciprocal)}
       is(State.saveReciprocal){
         val valid=mathValue.special===0.U && !mathValue.negative && mathValue.significand=/=0.U
-        output.lanes(lane).reciprocalW:=mathValue;output.lanes(lane).fragCoordW:=mathPacked;output.lanes(lane).perspectiveValid:=valid
-        when(!valid && pixel.covered){status:=7.U;faultLane:=lane;phase:=State.abort}
+        when(preparingCentroid){
+          preparingCentroid:=false.B
+          when(!valid){status:=7.U;faultLane:=lane;phase:=State.abort}
+            .otherwise{centroidActive:=true.B;component:=0.U;phase:=State.component}
+        }.otherwise{
+          output.lanes(lane).reciprocalW:=mathValue;output.lanes(lane).fragCoordW:=mathPacked;output.lanes(lane).perspectiveValid:=valid
+          when(!valid && pixel.covered){status:=7.U;faultLane:=lane;phase:=State.abort}
           .otherwise{when(!valid){invalidHelpers:=invalidHelpers|(1.U(4.W)<<lane)};depth:=true.B;vertex:=0.U;phase:=State.startValues}
+        }
       }
       is(State.startValues){vertex:=0.U;phase:=State.product}
-      is(State.product){calculate(Mux(depth,edges(vertex),weights(vertex)),
+      is(State.product){calculate(Mux(depth,edges(vertex),Mux(centroidComponent,centroidWeights(vertex),weights(vertex))),
         Mux(vertex<primitive.vertexCount,ClipFloat.fromFp32(Mux(depth,input.primitive.vertices(vertex).windowDepth,rawVarying)),ClipFloat.zero),ClipFloatOperation.multiply,State.saveProduct)}
       is(State.saveProduct){
         when(vertex===0.U){sum:=mathValue;vertex:=1.U;phase:=State.product}
           .otherwise{term:=mathValue;phase:=State.addProduct}
       }
       is(State.addProduct){calculate(sum,term,ClipFloatOperation.add,Mux(vertex===2.U,State.divide,State.saveValue))}
-      is(State.divide){calculate(mathValue,Mux(depth,area,denominator),ClipFloatOperation.divide,State.saveValue)}
+      is(State.divide){calculate(mathValue,Mux(depth,area,Mux(centroidComponent,centroidDenominator,denominator)),ClipFloatOperation.divide,State.saveValue)}
       is(State.saveValue){
         when(vertex===1.U){sum:=mathValue;vertex:=2.U;phase:=State.product}
           .elsewhen(depth){
@@ -217,7 +234,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
                   .otherwise{output.lanes(lane).windowDepth:=Fp32ViewportState.clampDepth(mathPacked);output.lanes(lane).sampleDepthValid:=input.sampleDepthEnable
                     when(input.sampleDepthEnable && input.sampleMode=/=0.U){sample:=0.U;sampling:=true.B;phase:=State.sampleDepth}
                       .otherwise{when(input.sampleDepthEnable){output.lanes(lane).sampleDepth(0):=Mux(pixel.covered,Fp32ViewportState.clampDepth(mathPacked),0.U)}
-                        depth:=false.B;component:=0.U;phase:=State.component}}
+                        depth:=false.B;component:=0.U;phase:=Mux(needsCentroid,State.startCentroid,State.component)}}
               }
           }.otherwise{
             output.lanes(lane).varyings(slotIndex)(component(1,0)):=mathPacked
@@ -225,10 +242,20 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
           }
       }
       is(State.sampleDepth){
-        when(sample>=(1.U(3.W)<<input.sampleMode)){sampling:=false.B;depth:=false.B;component:=0.U;phase:=State.component}
+        when(sample>=(1.U(3.W)<<input.sampleMode)){sampling:=false.B;depth:=false.B;component:=0.U;phase:=Mux(needsCentroid,State.startCentroid,State.component)}
           .elsewhen(!pixel.coverageMask(sampleIndex)){sample:=sample+1.U}
           .elsewhen(!safeSampleEdges){status:=7.U;faultLane:=lane;phase:=State.abort}
           .otherwise{for(v<-0 until 3)edges(v):=FragmentEdgeFloat(sampleEdges(v)(63,0).asSInt);vertex:=0.U;phase:=State.product}
+      }
+      is(State.startCentroid){
+        when(needsCentroid){
+          sample:=PriorityEncoder(pixel.coverageMask);phase:=State.centroidEdges
+        }.otherwise{phase:=State.component}
+      }
+      is(State.centroidEdges){
+        when(!safeSampleEdges){status:=7.U;faultLane:=lane;phase:=State.abort}
+          .otherwise{for(v<-0 until 3)edges(v):=FragmentEdgeFloat(sampleEdges(v)(63,0).asSInt)
+            preparingCentroid:=true.B;vertex:=0.U;phase:=State.weight}
       }
       is(State.component){
         when(component>=(primitive.varyingSlots<<2)){phase:=State.nextLane}
