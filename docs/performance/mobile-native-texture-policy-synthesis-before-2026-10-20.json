@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "replay_mapping_pass_setup_fail_host_clock_preflight_error",
+  "scope": "Synthesis only; this is historical640-file native policy source, separate from650-file composition and662-file image binding.",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-texture-policy-source-v2.json",
+    "sha256": "ff16e459d4a79490ebe31b3ab389afdcf251171b82e868a1a6443c9d92dbe9ef"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-texture-policy-source-v2.tar.gz",
+    "sha256": "e0cc6e68b675b5fb01cd640cad92ae0afb6ba2f6b59c450cb0ce2a74ff25cc18"
+  },
+  "runtime": {
+    "replay": {
+      "returncode": 2,
+      "source_unchanged": true,
+      "rtl_unchanged": true,
+      "macro_unchanged": true,
+      "elapsed_seconds": 4703.026782042114,
+      "finished_utc": "2026-10-20T06:32:00.664905+00:00"
+    },
+    "host": {
+      "returncode": 1,
+      "source_unchanged": true,
+      "rtl_unchanged": true,
+      "macro_unchanged": true,
+      "elapsed_seconds": 0.7238403749652207,
+      "finished_utc": "2026-10-20T06:32:01.528237+00:00"
+    }
+  },
+  "replay": {
+    "mapping_passed": true,
+    "setup_passed": false,
+    "reported_setup_slacks_ps": [
+      -2853.212,
+      135.984
+    ],
+    "worst_setup_slack_ps": -2853.212,
+    "estimated_core_clock_fmax_mhz": 259.524,
+    "mapped_cells": 1302834,
+    "parameters": {
+      "clock_port": "clock",
+      "clock_port_auto": false,
+      "clock_period": 1000.0,
+      "core_utilization": 25,
+      "place_density": 0.6,
+      "corner": "TC",
+      "cell_vt": "SLVT",
+      "timing_effort": "explore",
+      "synthesis_engine": "yosys",
+      "sv_frontend": "native",
+      "enable_retiming": false,
+      "swap_arithmetic_operators": false,
+      "generate_gds": false,
+      "max_fanout": null,
+      "high_fanout_nets": null,
+      "high_fanout_max": 8,
+      "high_fanout_buffer_cell": "BUFx16f_ASAP7_75t_SL",
+      "setup_slack_margin": 0.0,
+      "abc_clock_period_ps": null,
+      "io_delay_percent": 0.25,
+      "io_false_path_ports": null,
+      "post_floorplan_tcl": null,
+      "macros": [
+        "compute_unit_sram_macro_placement.tcl",
+        "srambank_64x4x64_6t122.lef",
+        "srambank_64x4x64_6t122.lib"
+      ]
+    },
+    "critical_startpoint": "image.renderer.source.raster.small_0.request_state_sampleMode[0]$_DFFE_PP_",
+    "critical_endpoint": "image.renderer.source.raster.small_0.mask[0]$_SDFFE_PP0P_",
+    "code_inference": "Reported registers belong to point/line sample coverage. The source computes coordinate offsets, cross/dot products and squared distance before updating the sample mask; this arithmetic is a candidate for registered decomposition.",
+    "point_line_source_sha256": {
+      "native640": "898481a05cb0bd8bc9183e798b4c7592843e17f4ed211d4f145f247c37a745cc",
+      "main": "898481a05cb0bd8bc9183e798b4c7592843e17f4ed211d4f145f247c37a745cc",
+      "composed650": "898481a05cb0bd8bc9183e798b4c7592843e17f4ed211d4f145f247c37a745cc",
+      "imageBinding662": "898481a05cb0bd8bc9183e798b4c7592843e17f4ed211d4f145f247c37a745cc"
+    },
+    "evidence": {
+      "qualification.json": {
+        "path": "generated/qualification/ppa/mobile-native-texture-policy-replay-2026-10-20-v2/qualification.json",
+        "sha256": "559fd8ecdb7aa661d7b30e17eb5d5fbd5cdaede2df7bc158ccc4f48b2d338034"
+      },
+      "result.json": {
+        "path": "generated/qualification/ppa/mobile-native-texture-policy-replay-2026-10-20-v2/result.json",
+        "sha256": "71f2235f99e7d97567511f8120ce431c940d8b6191c284603e2dc1798d81af3f"
+      },
+      "manifest.json": {
+        "path": "generated/qualification/ppa/mobile-native-texture-policy-replay-2026-10-20-v2/manifest.json",
+        "sha256": "1f094c112c72df83668935102e3051ee632916b9e104a56a8534859cde77b6bb"
+      },
+      "flow/synthesis_sta.log": {
+        "path": "generated/qualification/ppa/mobile-native-texture-policy-replay-2026-10-20-v2/flow/synthesis_sta.log",
+        "sha256": "b81f18a3484a12cdf669058847c985ff78b30334224f09f3c4a01c03caf567d1"
+      },
+      "flow/orfs-work/reports/base/synth_stat.txt": {
+        "path": "generated/qualification/ppa/mobile-native-texture-policy-replay-2026-10-20-v2/flow/orfs-work/reports/base/synth_stat.txt",
+        "sha256": "414cea3a8dc9012970e9ac8323922e26ce16a6b06ceae054126127fea613c354"
+      }
+    }
+  },
+  "host": {
+    "returncode": 1,
+    "synthesis_started": false,
+    "reason": "Invocation used nonexistent default clock instead of top input io_s_axi_aclk.",
+    "log": {
+      "path": ".artifacts/mobile-native-texture-policy-host-synthesis-v2.log",
+      "sha256": "3c064bcc573f6241fe9da81e5aff3d951b691eea53bb59c637c810f83f7b8d5f"
+    },
+    "corrected_clock": "io_s_axi_aclk",
+    "corrected_start": {
+      "path": ".artifacts/mobile-native-texture-policy-host-synthesis-v3-start.json",
+      "sha256": "8881dab1f28a07c05e10a94b443aa9b370ae23d5fbb30db3f40f4354ac984e4d"
+    },
+    "corrected_inputs": {
+      "path": ".artifacts/mobile-native-texture-policy-host-synthesis-v3-inputs.json",
+      "sha256": "7f630aa3cd1702d5b13c51b3ebd5e88f1c4656b04105cb0386544b5da931e9b7"
+    },
+    "corrected_result_pending": true
+  },
+  "limits": [
+    "No positive replay/host setup result, physical chip area, route, power or native product clock/rate is established.",
+    "The corrected host screen retains exact old RTL/macros/source and identical TC/SLVT,1000ps,25 percent I/O,no retiming constraints; only actual clock selection is corrected.",
+    "The650-file functional run remains live and unmodified; this negative measurement is not its composed PPA result."
+  ]
+}

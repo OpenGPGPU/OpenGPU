@@ -5837,3 +5837,22 @@ live in their original process; their composed matrices/reset results remain
 pending. This candidate remains isolated and excludes the independently qualified
 address/level/fetch components now on main. No complete 206-check or composed
 synthesis result is claimed. The full hardware goal remains open.
+
+
+## Native replay synthesis failure and host clock correction (2026-10-20)
+
+The [completed historical640-file screen](performance/mobile-native-texture-policy-synthesis-before-2026-10-20.json)
+passes replay mapping but fails setup at -2853.212 ps under TC/SLVT, 1000 ps,
+25 percent I/O delay and no retiming. The worst path runs from point/line
+`request_state_sampleMode` to the sample mask; this source combines coordinate,
+cross/dot and squared-distance arithmetic before that register. The exact source
+file remains identical on main, the live650-file composition and the new662-file
+image binding candidate. A registered arithmetic decomposition requires separate
+functional and synthesis qualification. No positive native replay clock is claimed.
+
+The host invocation failed before synthesis because it requested a nonexistent
+`clock` port. The actual top input is `io_s_axi_aclk`, which clocks the host
+implementation. A new synthesis-only screen uses that explicit port on exact
+unchanged RTL/macros/source with all other constraints preserved. Its result is
+pending. Both original failures are retained; these results remain separate from
+the live650-file functional composition and new image binding screens.
