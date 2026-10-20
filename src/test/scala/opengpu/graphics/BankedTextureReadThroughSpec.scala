@@ -44,7 +44,7 @@ class BankedTextureReadThroughSpec extends AnyFlatSpec {
     private var offered: Option[Reply] = None
     private var heldResult: Option[BigInt] = None
     private var heldMemory: Option[BigInt] = None
-    var cycle = 0; var epoch = 0; var joins = 0; var peakFills = 0
+    var cycle = 0; var epoch = 0; var joins = 0; var peakFills = 0; var taps = 0; var conflicts = 0
     var auto = false; var latency = 9; var faultLine: BigInt=>Boolean = _=>false
     var resultReady: Option[Int=>Boolean] = None
     var memoryReady: Option[Int=>Boolean] = None
@@ -92,6 +92,7 @@ class BankedTextureReadThroughSpec extends AnyFlatSpec {
         results+=Result(tag,q.color.peek().litValue,q.hit.peek().litToBoolean,q.fault.get.peek().litToBoolean,
           q.cancelled.peek().litToBoolean,q.missingTaps.peek().litValue.toInt,q.faultAddress.get.peek().litValue,cycle)
       }
+      taps+=d.io.tapIssues.peek().litValue.toInt; conflicts+=d.io.bankConflicts.peek().litValue.toInt
       if(d.io.joined.get.peek().litToBoolean)joins+=1
       peakFills=peakFills.max(d.io.occupiedFills.get.peek().litValue.toInt)
       val input=d.io.in.valid.peek().litToBoolean && d.io.in.ready.peek().litToBoolean
@@ -133,18 +134,20 @@ class BankedTextureReadThroughSpec extends AnyFlatSpec {
       for(_ <- 0 until 30)t.tick()
       d.io.out.ready.poke(true.B); t.until(t.results.size==8); t.results.foreach(t.good); t.drain()
       assert(t.reads.size==16)
-      val mark=t.results.size
+      val mark=t.results.size; val tapMark=t.taps; val conflictMark=t.conflicts
       for(n <- 0 until 96)t.sample(group(1000+n,n%8))
       t.until(t.results.size==mark+96); t.results.drop(mark).foreach(t.good)
       val issue=(0 until 96).map(n => t.inputCycles(1000+n))
       val result=t.results.drop(mark).map(_.cycle)
       assert(issue.sliding(2).forall(p => p(1)-p(0)==1),"hot input interval exceeded one cycle")
       assert(result.sliding(2).forall(p => p(1)-p(0)==1),"hot complete-result interval exceeded one cycle")
+      assert(t.taps-tapMark==384 && t.conflicts==conflictMark,"registered hot tap/conflict events changed counts")
       t.resultReady=Some(c => c%19<7)
       for(n <- 0 until 192)t.sample(group(2000+n,n%8))
       t.until(t.results.size==mark+96+192); t.results.drop(mark+96).foreach(t.good)
       assert(t.results.map(_.tag).toVector==(0 until 8).toVector++(1000 until 1096)++(2000 until 2192))
       assert(t.reads.size==16,"resident stream unexpectedly read physical memory")
+      assert(t.taps-tapMark==1152 && t.conflicts==conflictMark,"registered backpressure events changed counts")
       t.resultReady=None; d.io.out.ready.poke(true.B); t.drain()
       info("BANKED_READTHROUGH_RATE coldGroups8=true lines16=true joinedConsumers32=true reorderedReads=true completeHotII1=true hotGroups96=true backpressuredGroups192=true noHotMemoryReads=true")
     }

@@ -49,8 +49,9 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
   private val miss = Module(new BankedTextureFillOwner(config, fills, 32, forwardData = true, cachePolicyInput = cachePolicyInput))
   private val requests = Reg(Vec(4, Vec(wordsPerPort, new BankedTextureLookup(tagWidth, cachePolicyInput))))
   private val alive = RegInit(VecInit(Seq.fill(4)(VecInit(Seq.fill(wordsPerPort)(false.B)))))
-  private val cancelled = Reg(Vec(4, Vec(wordsPerPort, Bool())))
-  private val invalidated = Reg(Vec(4, Vec(wordsPerPort, Bool())))
+  // Cancellation is global here. No new lookup enters until the entire
+  // epoch (including public replies) drains,so every live owner shares it.
+  private val epochCancelled = RegInit(false.B)
   private val draining = RegInit(false.B)
   private val stop = io.cancel || io.invalidate || draining
   for(p <- 0 until 4) {
@@ -67,15 +68,8 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
     when(io.in(p).fire) {
       requests(p)(slot) := io.in(p).bits
       alive(p)(slot) := true.B
-      cancelled(p)(slot) := false.B
-      invalidated(p)(slot) := false.B
     }
-    for(s <- 0 until wordsPerPort) {
-      when(alive(p)(s)) {
-        when(io.cancel) { cancelled(p)(s) := true.B }
-        when(io.invalidate || draining) { invalidated(p)(s) := true.B }
-      }
-    }
+
   }
   cache.io.refill <> miss.io.refill
   miss.io.refillDone <> cache.io.refillDone
@@ -84,7 +78,9 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
   cache.io.invalidate := miss.io.cacheInvalidate || draining
   io.memoryRequest <> miss.io.memoryRequest
   miss.io.memoryResponse <> io.memoryResponse
-  io.tapIssues := cache.io.readIssues; io.bankConflicts := cache.io.conflicts
+  // Untagged performance events are registered;their counts are preserved.
+  io.tapIssues := RegNext(cache.io.readIssues, 0.U)
+  io.bankConflicts := RegNext(cache.io.conflicts, 0.U)
   io.occupiedFills := miss.io.occupiedFills; io.joined := RegNext(miss.io.joined, false.B)
 
   private val fillArbiter = Module(new RRArbiter(new QueuedTextureMiss(tagWidth, indexWidth, cachePolicyInput), 4))
@@ -102,8 +98,8 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
   private val fillSlot = fillIndex(slotBits - 1, 0)
   private val fillRequest = requests(fillPort)(fillSlot)
   private val fillBank = Cat(fillRequest.rowParity, fillRequest.address(2))
-  private val fillCancelled = cancelled(fillPort)(fillSlot) || miss.io.out.bits.cancelled || io.cancel
-  private val fillInvalidated = invalidated(fillPort)(fillSlot) || miss.io.out.bits.invalidated || io.invalidate || draining
+  private val fillCancelled = epochCancelled || miss.io.out.bits.cancelled || io.cancel
+  private val fillInvalidated = miss.io.out.bits.invalidated || io.invalidate || draining
   private val fillFault = miss.io.out.bits.fault ||
     (!miss.io.out.bits.installed && !fillRequest.noCache.getOrElse(false.B) && !fillCancelled && !fillInvalidated)
   private val fillGood = !fillFault && !fillCancelled && !fillInvalidated
@@ -114,8 +110,8 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
   private val sharedSlot = sharedIndex(slotBits - 1, 0)
   private val sharedRequest = shared.bits.request
   private val sharedBank = Cat(sharedRequest.rowParity, sharedRequest.address(2))
-  private val sharedCancelled = cancelled(sharedPort)(sharedSlot) || io.cancel
-  private val sharedInvalidated = invalidated(sharedPort)(sharedSlot) || io.invalidate || draining
+  private val sharedCancelled = epochCancelled || io.cancel
+  private val sharedInvalidated = io.invalidate || draining
   private val sharedStopped = sharedCancelled || sharedInvalidated
   private val sharedReady = Wire(Vec(4, Bool()))
   miss.io.in.valid := shared.valid && !sharedStopped
@@ -134,8 +130,8 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
     val port = index(indexWidth - 1, slotBits)
     val slot = index(slotBits - 1, 0)
     val request = requests(port)(slot)
-    val wasCancelled = cancelled(port)(slot) || io.cancel
-    val wasInvalidated = invalidated(port)(slot) || io.invalidate || draining
+    val wasCancelled = epochCancelled || io.cancel
+    val wasInvalidated = io.invalidate || draining
     val effectiveHit = word.bits.hit && !request.noCache.getOrElse(false.B)
     val direct = effectiveHit || wasCancelled || wasInvalidated
     val result = resultArbiters(b).io.in(0)
@@ -160,8 +156,8 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
     val queuedPort = queuedIndex(indexWidth - 1, slotBits)
     val queuedSlot = queuedIndex(slotBits - 1, 0)
     val queuedRequest = queued.bits.request
-    val queuedCancelled = cancelled(queuedPort)(queuedSlot) || io.cancel
-    val queuedInvalidated = invalidated(queuedPort)(queuedSlot) || io.invalidate || draining
+    val queuedCancelled = epochCancelled || io.cancel
+    val queuedInvalidated = io.invalidate || draining
     val queuedStopped = queuedCancelled || queuedInvalidated
     val fill = fillArbiter.io.in(b)
     fill.valid := queued.valid && !queuedStopped
@@ -217,5 +213,6 @@ class BankedTextureWordService(config: GpuConfig = GpuConfig(), dataBytes: Int =
   io.busy := alive.asUInt.orR || cache.io.busy || miss.io.busy || outputs.map(_.io.deq.valid).reduce(_ || _) ||
     pendingMisses.map(_.io.deq.valid).reduce(_ || _) || fillInputs.io.deq.valid
   when((io.cancel || io.invalidate) && io.busy) { draining := true.B }
-  when(!io.busy) { draining := false.B }
+  when(io.cancel && io.busy) { epochCancelled := true.B }
+  when(!io.busy) { draining := false.B; epochCancelled := false.B }
 }
