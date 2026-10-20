@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Prepared coordinate policy main promotion by exact committed-source reconciliation",
+  "main_merge_commit": "283dd3dce0fc1bb97b8449916e3b271c86851805",
+  "qualification_commit": "aa805ef",
+  "base_commit": "71e1006",
+  "source_files": 637,
+  "all_committed_source_matches_qualified_snapshot": true,
+  "all_scala_source_files_included": true,
+  "source_manifest": {
+    "path": ".artifacts/mobile-texture-prepared-policy-source-v1.json",
+    "sha256": "fd34982c0cccb266f78802c46753ef62fcd166b59848f3ba4040ef59fc2baa80"
+  },
+  "qualification_result": {
+    "path": ".artifacts/mobile-texture-prepared-policy-controls-v1-result.json",
+    "sha256": "974ff8a45dacf50044770ef8691374e2d72a7727daa9066dd7338bd1abd852d4"
+  },
+  "rtl_audit": {
+    "path": ".artifacts/mobile-texture-prepared-policy-rtl-audit-v1.json",
+    "sha256": "a3ce6449ee535730ddb1bcc5749f97ed61f4db40b498c3ef1e68c4125b3aeeee"
+  },
+  "preservation": {
+    "path": ".artifacts/mobile-texture-prepared-policy-main-preservation-v1.json",
+    "sha256": "b6047a4e710d58fcb56fc5678b156aec96b97a19aa4f73f46f01ccd57804723b"
+  },
+  "preserved_dirty_files": 20,
+  "validation": "The exact committed source/ABI/selection bytes on main match the qualified 23-check, four-ABI, five-emission snapshot. No separate main-context23-check execution is claimed.",
+  "limits": [
+    "Optional direct/prepared component integration only; no shader ISA/native sampler descriptor exposure.",
+    "The176-check native depth and6-check facing regressions remain separately running; no complete pass is claimed.",
+    "No H4/H6 or H0-H8 closure, new timing/rate/area/power claim or place-and-route work. PPA remains synthesis only."
+  ]
+}

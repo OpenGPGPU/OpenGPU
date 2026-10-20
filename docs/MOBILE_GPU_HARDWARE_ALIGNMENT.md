@@ -5453,3 +5453,10 @@ Legacy coordinate and sampler synthesis-active SV, ports and hierarchy match
 independent pre-extension emissions. New optional components add no FPU, CU
 or SRAM. TexSampleUnit/ISA/native transport and general descriptors remain
 open; no new PPA or H4 completion is claimed. PPA remains synthesis only.
+
+The [main promotion audit](performance/mobile-texture-prepared-policy-main-2026-10-20.json)
+confirms every committed Scala source and the full 637-file qualified snapshot
+match exactly after integration. All twenty pre-existing dirty/untracked
+driver/userspace files are preserved byte-for-byte. This is source identity
+with the completed regression, rather than a separately rerun main test group.
+The long native depth and facing regressions remain separate and in progress.
