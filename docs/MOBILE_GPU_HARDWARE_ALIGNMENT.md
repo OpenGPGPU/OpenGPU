@@ -5854,3 +5854,21 @@ compile. All 655 existing dependencies are unchanged. Eight behavioral controls
 are running on frozen 662-file source; no passing behavioral, synthesis or
 native capability result is claimed yet. The first compile field-name collision
 is retained. PPA remains synthesis only, and the full hardware goal remains open.
+
+
+## GPU image binding component controls (2026-10-20)
+
+The [27-control qualification](performance/mobile-texture-image-binding-2026-10-20.json)
+passes on unchanged 662-file source with seven ABI checks, four full emissions,
+seven combined C11 headers and CI selection. New controls cover authoritative
+format/target fetches, selected/full NPOT mip sets, cache identity/invalidation,
+later-level mismatches/overlap before any data access, 240 cancellation points,
+real Sv32 image/level/data permissions and exact 4 GiB descriptor/texel ends.
+
+The initial seven-of-eight run is retained. Its prompt GXL1 fault constructed an
+extra descriptor offer; the reader now checks the accepted fault on that edge.
+The same assertion passes. This is the sole changed existing dependency; 654
+others remain exact. Binding/bound-fetch and both affected fetch synthesis screens
+are pending under unchanged synthesis-only constraints. Additional nested
+primary-fault/cancel and caller-coordinate checks, native integration, sampler
+semantics, formats and the full hardware objective remain open.

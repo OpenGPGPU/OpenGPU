@@ -1,9 +1,10 @@
 # GPU image format, mip binding and bound texel fetch
 
-Status: development checkpoint on `codex/mobile-texture-image-binding`.
-Scala compilation, binding/fetch RTL emissions and combined C11 headers pass.
-Eight behavioral controls are running on frozen 662-file source; synthesis and
-native integration remain pending. No new native capability is advertised.
+Status: [27 controls pass](performance/mobile-texture-image-binding-2026-10-20.json)
+on unchanged 662-file source in `codex/mobile-texture-image-binding`, together
+with seven ABI checks, four RTL emissions, combined C11 headers and CI selection.
+Further fault/coordinate boundary controls, synthesis and native integration
+remain pending. No new native capability is advertised.
 
 `TextureImageBindingUnit` loads a GXI1 image record that owns format identity,
 allocation bounds, target, dimensional sequence and a GXL1 level table. A texel
@@ -75,3 +76,20 @@ older native texture synthesis keep their frozen source and original processes.
 The full hardware objective, native per-stage image/sampler binding, typed shader
 transport, filtering/LOD, compressed decoding and throughput remain open. PPA
 screening for this work will use synthesis only.
+
+The first eight-control run passed seven checks and exposed an existing GXL1
+reader issue: a prompt first-line fault could construct another descriptor offer
+on the same edge. The original assertion, source and log are preserved in the
+linked result. The reader now gates issue on the accepted fault response while
+retaining already offered requests. The unchanged assertion passes in the full
+27-control run. This is the sole changed file among the 655 existing dependencies;
+the other 654 remain exact. The shared-reader change requires fresh synthesis
+screens of both existing fetch profiles as well as the new binding profiles.
+
+New coverage includes 144 authoritative format/target fetches, NPOT and reversed
+mip layouts, base/max and array/volume rules, selected/full-chain cache identity,
+22 encoding corruptions, later mip mismatches/overlap with zero data reads,
+240 cancellation points, Sv32 permissions on image/level/data pages, and image
+records, level tables and a full array texel ending exactly at 4 GiB. Additional
+direct checks of nested primary faults across cancellation and caller-coordinate
+boundaries remain required before integration.
