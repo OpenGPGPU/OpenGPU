@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.{BlockPrefixAdder, SignedProductParts, SplitSignedProduct}
+import opengpu.util.{BlockPrefixAdder, CarrySaveMultiplier, SignedProductParts, SplitSignedProduct}
 
 class PointLineRasterRequest extends Bundle {
   val point=Bool();val x0=SInt(32.W);val y0=SInt(32.W);val x1=SInt(32.W);val y1=SInt(32.W)
@@ -100,6 +100,10 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val rx=Reg(chiselTypeOf(nextRx));private val ry=Reg(chiselTypeOf(nextRy))
   private val crossA=Reg(chiselTypeOf(rx*dy));private val crossB=Reg(chiselTypeOf(ry*dx))
   private val dotA=Reg(chiselTypeOf(rx*dx));private val dotB=Reg(chiselTypeOf(ry*dy))
+  private val sampleCrossA=CarrySaveMultiplier(rx.asUInt,dy.asUInt,signedA=true,signedB=true).asSInt
+  private val sampleCrossB=CarrySaveMultiplier(ry.asUInt,dx.asUInt,signedA=true,signedB=true).asSInt
+  private val sampleDotA=CarrySaveMultiplier(rx.asUInt,dx.asUInt,signedA=true,signedB=true).asSInt
+  private val sampleDotB=CarrySaveMultiplier(ry.asUInt,dy.asUInt,signedA=true,signedB=true).asSInt
   private val nextCross=crossA-&crossB;private val dot=dotA+&dotB
   private val cross=Reg(chiselTypeOf(nextCross));private val withinLength=Reg(Bool())
   private val squareParts=Reg(new SignedProductParts(cross.getWidth))
@@ -148,7 +152,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   when(phase===State.sampleStream){
     assert(!request.point && request.state.sampleMode=/=0.U,"streamed line samples have no aliased translation")
     when(sampleValid(0)){rx:=nextRx;ry:=nextRy}
-    when(sampleValid(1)){crossA:=rx*dy;crossB:=ry*dx;dotA:=rx*dx;dotB:=ry*dy}
+    when(sampleValid(1)){crossA:=sampleCrossA;crossB:=sampleCrossB;dotA:=sampleDotA;dotB:=sampleDotB}
     when(sampleValid(2)){cross:=nextCross;withinLength:=dot>=0.S && dot<length}
     when(sampleValid(3)){squareParts:=SplitSignedProduct.split(cross,cross);withinSquare:=withinLength}
     when(sampleValid(4)){square:=SplitSignedProduct.join(squareParts);withinCompare:=withinSquare}
