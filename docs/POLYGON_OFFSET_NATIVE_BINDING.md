@@ -46,3 +46,12 @@ and VM ownership during held completion. All 285 main and 341 test Scala
 sources compile. Four total frames and twelve triangle/line/point draws pass.
 GPU-memory binned publication, every depth format and the full compatibility,
 fault/reset and precision matrix remain separate gates.
+
+Four GPU-memory binned host controls are implemented and running on a separate
+frozen 638-file snapshot. Physical GNC1 and translated-image GNC2 each exercise
+local/global two-CU profiles, 2x/version-3 default depth and 4x/version-4 shader
+override, signed D32F coefficients, shader fragCoord.z, MRT blending and exact
+source/resolve/guard bytes. Fresh programs/vertices, GND1 records, GFS1 state,
+cached consumers, uniform tails and held-completion VM ownership are checked.
+The direct absolute-sample oracle applies the extended offset before packing.
+This is pending test coverage, not a passing publication claim.
