@@ -18,7 +18,7 @@ The initial OpenGPU product target is four shared CUs, with a 720p workload suit
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
 
-Latest texture checkpoint: native image bindings and typed component fetch cover all 64 storage formats. [Image-view swizzle](TEXTURE_IMAGE_SWIZZLE.md) now passes 138 targeted controls and four standalone synthesis screens at 1000 ps. General floating-coordinate sampling, filtering, LOD and scalable texture throughput remain open.
+Latest texture checkpoint: native image bindings and typed component fetch cover all64 storage formats. The internal [effective-LOD sampler](TEXTURE_FLOAT_SAMPLING.md) now passes107 targeted controls and nine ABI checks on788 frozen inputs, including cube/array selection, min/mag/mip filtering, depth comparison and final swizzle. Full-owner synthesis is being requalified after LOD register cuts. Native floating instruction transport, gradient/implicit LOD and scalable texture throughput remain open.
 
 ## Current hardware and gaps
 
@@ -6635,9 +6635,48 @@ and no-retiming policy: filter +350.767/+471.902 ps, captured typed fetch
 Their cell counts are 22,308, 58,422 and 99,878. The earlier standalone axis
 screen is carried only through byte-exact fresh RTL emission.
 
-The parent still chooses levels and filters, rounds array layers and projects
-cube directions. Native floating packet/ISA transport, comparison-aware binding
-admission, explicit/gradient/implicit LOD, min/mag and mip selection, banking,
-miss joining, coherence and representative cluster throughput remain required.
+At this selected-level checkpoint, the parent still chose levels and filters,
+rounded array layers and projected cube directions. The following effective-LOD
+owner now supplies those operations. Native floating packet/ISA transport,
+gradient/implicit LOD, banking, miss joining, coherence and representative cluster
+throughput remain required.
 No new device sampling capability is advertised. This internal owner preserves
 the full H0–H8 objective; PPA remains synthesis only.
+
+## Internal effective-LOD image sampling (2026-10-20)
+
+`TextureImageSampleUnit` now connects real GXI1/GXL1/GXS1 admission to floating
+sampling at an explicit effective lambda. Admission retains all validated mip
+views, with zero unchecked slots and no descriptor rereads during mip execution.
+The owner rounds/clamps floating array layers, projects cube directions with
+deterministic major-axis ties, selects min/mag and nearest/linear mip filters,
+compares depth before filtering, reuses the selected-level FMA across mips and
+applies swizzle after the final filter. Native integer fetch retains its ABI and
+comparison-free contract; internal general color sampling ignores comparison
+enable as required.
+
+The [functional qualification](performance/mobile-effective-lod-sampling-2026-10-20.json)
+passes107 distinct tests across16 suites plus nine ABI checks on788 committed
+inputs. It includes352 descriptor-to-texel samples across64 formats and four
+targets,176,058 LOD selections,204,801 array-layer conversions,3,617 cube
+projections,3,072 sampling comparison combinations,100 cube cancellation cuts
+and14 composed sampling cuts. Poisoned descriptor/cache snapshots remain
+immutable; a second-mip fault survives later cancellation and constant swizzle
+without partial color output. Existing selected-level, native integer fetch,
+scalar/vector FP and clipping controls also pass.
+
+Cube numeric tests exposed shared-divider subnormal normalization and underflow
+guard/sticky defects. The corrected divider passes7,126 exact-rational finite
+checks across all five rounding modes, including directed overflow and flags.
+Its fresh standalone1000ps synthesis screen passes core/I/O setup at
++324.168/+390.675ps. The initial complete sampler maps fully but misses core
+setup by804.665ps. Registering both clamps, integer extraction, fractional
+normalization and mip selection preserves numeric results; fresh full-owner
+synthesis is running at the same TC/SLVT,25% I/O,default ABC,no-retiming1000ps
+constraint. No route is run.
+
+This internal serialized endpoint consumes effective lambda from its parent.
+Native floating packet/instruction transport, shader bias, gradient-derived
+lambda, implicit quad/helper derivatives, banked caches, coherence and sustained
+cluster rates remain required. No new native capability is advertised, and the
+full H0–H8 objective remains active.

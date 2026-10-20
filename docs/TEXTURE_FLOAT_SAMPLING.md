@@ -1,10 +1,11 @@
 # Floating-coordinate sampler development
 
-The general sampler remains under development. Its first coordinate component,
-`TextureFloatAxisPipeline`, converts one normalized FP32 axis and a selected
-mip-level extent into nearest or linear texel coordinates and an FP32 weight.
-This is standalone hardware; native shaders still use the existing legacy
-sampler or integer-coordinate typed fetch. No new sampling capability is exposed.
+The general sampler remains under development. `TextureImageSampleUnit` now
+connects GPU-memory image/sampler admission to floating-coordinate sampling at an
+explicit effective LOD. It includes mip selection, array layers, cube projection,
+depth comparison, spatial/mip filtering and final swizzle. Native shaders still
+use the existing legacy sampler or integer-coordinate typed fetch. No new native
+sampling capability is exposed.
 
 The tap and wrap rules follow
 [GLES 3.0.6, sections 3.8.9.1 and 3.8.10](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
@@ -25,10 +26,11 @@ the raw FP32 weight, status and the original tag.
 | 2 | Mirrored repeat | `0..N-1` |
 | 3 | Internal cube border clamping | `-1..N` |
 
-Mode 3 is an internal coordinate operation. GXS1 still rejects wrap mode3. A
-future cube owner must choose the face, project the direction, select clamp to
-edge for nearest and border clamping for linear, and map border taps to adjoining
-faces. This unit does not implement those steps.
+Mode 3 is an internal coordinate operation. GXS1 still rejects wrap mode3.
+`TextureCubeProjectionUnit` chooses the face and projects the direction; the
+selected-level owner chooses clamp to edge for nearest or border clamping for
+linear and maps border taps to adjoining faces. The axis itself remains
+independent of cube face selection.
 
 The implementation reduces exact binary periods before multiplying the 24-bit
 significand by the 14-bit extent. It retains 149 fractional bits through integer
@@ -64,7 +66,10 @@ swizzle, cache separation, data faults and all six sampler minification filters.
 The image/sampler/native regression passes 41 tests; focused reruns add checks
 for a cache collision at the same raw level and fault reporting after selection.
 These are internal interfaces; software record layouts and capability words do
-not change. General filtering and comparison admission remain required.
+not change. General sampling admission now uses internal `sampling` and `shadow`
+flags. Color images ignore comparison enable, depth shadow reads require it, and
+nonshadow depth/integer/raw-FP32 reads retain their nearest-only policy. Existing
+explicit integer fetch admission remains comparison-free.
 
 ## Captured-view fetch
 
@@ -120,9 +125,71 @@ retiming:
 | Captured typed fetch | +211.925 | +439.266 | 58,422 |
 | Selected-level sampler | +82.172 | +440.036 | 99,878 |
 
-All source and emitted RTL inputs remain exact. Fresh emission also proves the
+At that frozen selected-level revision, source and emitted RTL inputs remain
+exact. Its fresh emission also proves the
 standalone axis RTL byte identical to its earlier passing synthesis screen;
 that carry does not qualify other owners whose source changed.
+
+## Explicit effective-LOD sampling
+
+`TextureImageSampleUnit` snapshots a preparation request plus raw FP32 effective
+lambda. Preparation supplies independent image/sampler tables and handles,
+expected numeric kind, declared target, three FP32 coordinates, FP32 array layer,
+comparison reference, shadow/swizzle flags and tag. The parent pins publication
+and address translation until the final result retires. Software GXI1/GXL1/GXS1
+records and native instruction encodings are unchanged.
+
+Admission captures the actual base level and every mip required by the sampler.
+`levelMask` identifies validated views; all other slots are zero, including on
+errors. Cache hits retain the complete immutable mip snapshot. Sampling each
+selected level uses the captured view, so neither the second mip nor individual
+taps reread descriptor memory. Rebinding or publication still requires explicit
+invalidation even when handles and identity are reused.
+
+Sampler LOD clamps apply before min/mag selection. Lambda greater than zero
+selects minification; zero and negative lambda select magnification. Nonmip
+filters use the admitted base. Nearest-mip half ties choose the lower mip;
+mip-linear uses the floor and successor with the original fractional weight.
+Selection saturates at the admitted last level. Reversed sampler clamps are
+undefined in GLES; this internal contract deterministically lets the upper clamp
+win. NaN lambda is rejected with coordinate status5; infinities may be clamped.
+Lower/upper clamps, integer extraction, fractional normalization, selection and
+level-mask validation use separate registered states. Only the four FP32
+exponents for integer lambda below16 need fixed-slice extraction; larger values
+saturate before those parts are used. This preserves tiny fractional weights
+and avoids a combined clamp/normalize/select timing path.
+
+Array layers use `floor(layer + 0.5)` before clamping to the layer count; huge
+finite values saturate without narrowing overflow. Nonfinite array layers are
+rejected. Other targets ignore the layer operand. Cube directions must be finite
+and nonzero. Absolute-major ties select X, then Y, then Z. Two owned RNE divisions
+produce the face ratios, followed by a fused-affine-equivalent RNE conversion to
+normalized coordinates. Nearest/linear cube tap behavior remains as described
+above. Unused nonvolume/noncube Z coordinates do not participate in validation.
+
+One selected-level owner and its FMA are reused across both mips. Depth comparison
+precedes spatial and mip filtering. Swizzle runs once after the last filter.
+Zero-weight second mips are skipped, but constant swizzles and comparison
+functions do not suppress required faulting texel reads. First faults survive
+later cancellation; failed samples publish zero RGBA. Accepted descriptor, axis,
+divide, fetch and filter work drains before completion. Held results are immutable.
+
+The outer memory port has16 logical IDs: preparation uses0..4, selected-level
+sampling maps its IDs to8..11, and reserved responses are backpressured. Actual
+texel fills currently use10/11. These are internal routing IDs, not a promise of
+16 concurrent fills. The owner serializes sample requests and establishes no
+texture-cluster throughput rate.
+
+Full-exponent cube tests exposed shared FP32 divider defects in subnormal input
+normalization and underflow guard/sticky formation. The corrected divider also
+honors directed overflow rounding and exception flags, and reports busy across
+all accepted pipeline stages. Its finite arithmetic regression uses exact
+rational division over7,126 queries and all five rounding modes. Cube tests use
+independent host division and fused affine arithmetic, including100 cancellation
+cuts. The [complete-owner functional record](performance/mobile-effective-lod-sampling-2026-10-20.json)
+contains107 distinct tests and nine ABI checks on788 frozen inputs; full-owner
+synthesis is being requalified after the registered LOD calculation. Those
+results are separate from the older selected-level screens above.
 
 ## Standalone evidence and remaining integration
 
@@ -138,11 +205,11 @@ mapping and setup: core +194.895 ps, I/O +632.673 ps, 19,046 mapped cells. Libra
 area is 2229.52986 units; this is not physical die area. No route or power
 qualification is claimed.
 
-Required next work connects the selected-level owner to the complete native
-floating sampling path: coordinate packet and instruction transport, comparison-
-aware binding admission, selected-mip metadata, array-layer rounding, cube
-projection, explicit/gradient/implicit LOD, min/mag selection, mip interpolation
-and final swizzle. Banked caches, miss joining, publication/coherence,
+Required next work connects the admitted effective-LOD owner to native floating
+packet and instruction transport, shader bias, gradient-derived lambda and
+implicit quad/helper derivatives. The current explicit lambda is supplied by
+its parent; it is not a substitute for those shader operations. Banked caches,
+miss joining, publication/coherence,
 representative texture throughput and remaining H0–H8 requirements also remain
 open. The current filter is serialized; its functional capacity does not
 establish a cluster sampling rate.

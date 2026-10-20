@@ -1,9 +1,11 @@
 # GPU sampler state and image completeness
 
-Status: [qualified component](performance/mobile-image-sampler-binding-2026-10-20.json)
-with ten new controls and ten existing image controls on unchanged production
-dependencies. Native per-stage binding tables and shader typed texture transport
-remain open. Existing `tex.sample` and `vtex.sample` retain
+Status: native per-stage binding tables and typed component fetch are implemented.
+The [initial component qualification](performance/mobile-image-sampler-binding-2026-10-20.json)
+records ten sampler and ten image controls at its frozen revision. The internal
+[floating sampler](TEXTURE_FLOAT_SAMPLING.md) now consumes general sampling
+admission; native floating instruction transport remains open.
+Existing `tex.sample` and `vtex.sample` retain
 all encodings and packed RGBA8 behavior. No new native capability is advertised.
 
 `TextureSamplerBindingUnit` loads an immutable GXS1 sampler from GPU memory.
@@ -15,7 +17,11 @@ Invalidate both owners when rebinding, including reuse of identical addresses
 and identity. Identity alone does not provide memory protection.
 
 The composed request contains image/sampler tables and handles, a full 32-bit
-selected level, expected shader numeric type and caller tag. It has no caller
+selected level, expected shader numeric type and caller tag. Internal
+`selectBaseLevel` resolves the captured GXI1 base before floating LOD selection;
+its unused explicit level must be zero. Internal `sampling` and `shadow` select
+general sampling compatibility, with both clear for existing integer fetches.
+The request has no caller
 `requireMipChain` bit. The captured minification filter determines whether the
 image owner validates the complete required mip set. For a nonmip filter, the
 selected level and base level must both be valid; a second base-level admission
@@ -24,14 +30,19 @@ No texel read or shader write is performed by this admission component.
 
 This implements sampler-dependent completeness and filter restrictions from
 [GLES 3.0.6 sections 3.8.13 and 3.8.13.1](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf).
-The 36 existing packed color formats use their authoritative GXI1 numeric type.
+The [64-format image catalog](TEXTURE_IMAGE_FORMATS.md) uses authoritative GXI1
+numeric types, including all ten ETC2/EAC formats.
 Integer and raw FP32 storage allow only nearest magnification and either nearest
 or nearest-mipmap-nearest minification under this core policy. Normalized,
 sRGB and binary16 storage allow all six minification filters. A mismatched shader
 numeric type fails admission instead of converting signed/unsigned/float values.
-Depth formats are not yet implemented by GXI1; comparison samplers paired with
-these color formats fail compatibility. Adding descriptor fields does not imply
-that coordinate selection, filtering, depth comparison or LOD math is implemented.
+Existing integer component fetch rejects comparison enable. General nonshadow
+sampling ignores comparison enable for color images; nonshadow depth requires
+comparison disabled and nearest-only filters. Shadow sampling requires a depth
+format, floating shader kind and comparison enabled, and permits filtering
+comparison results. All five depth/depth-stencil storage formats are supported;
+3D depth images remain rejected. The admission owner itself performs no filtering
+or LOD math; the floating sampler owns those operations.
 
 ## GXS1 memory layout
 
@@ -87,7 +98,7 @@ claim native throughput, whole-GPU timing or complete GLES resource support.
 
 ## Component qualification
 
-The final ten sampler/composition controls cover 324 filter/wrap combinations,
+The initial ten sampler/composition controls cover 324 filter/wrap combinations,
 432 format/filter pairs, 19 malformed/semantic records, seven invalid table
 ranges, 180 cancellation cuts and an additional stalled nonmip base read. Reserved-ID injections also prove
 that unowned replies cannot consume a sampler lease. They
