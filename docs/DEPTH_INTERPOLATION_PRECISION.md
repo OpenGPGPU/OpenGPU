@@ -52,3 +52,13 @@ zero slope at four constant depth levels, both windings, opposite large factors
 and preserved resolution terms. Its before/after RTL checks and the full
 numeric/ownership and integrated qualification remain pending; negative
 reproductions do not qualify either correction.
+
+## Flat-polygon slope witness
+
+The [standalone RTL control](performance/mobile-polygon-flat-slope-failure-2026-10-20.json)
+also fails for constant depth `0x3f000001`, with pixel vertices `(0,0)`,
+`(500,100)`, `(100,400)`, factor `2^20` and zero units. The weighted derivative
+leaves rounding residue; RTL returns extended offset `E(false,-15,11573807)`,
+about `4.21e-5`, instead of zero. The failing 640-file source is retained.
+The planned 32-case test stops at its first case in this run. An anchored
+slope correction is separate pending work and needs full native integration.
