@@ -95,12 +95,17 @@ class TextureUnit(
   gfxConfig: GraphicsConfig = GraphicsConfig(),
   wordCacheEntries: Int = 0,
   allowPrepared: Boolean = false,
-  overlapPrepared: Boolean = false
+  overlapPrepared: Boolean = false,
+  coordinatePolicyInput: Boolean = false
 ) extends Module {
-  // Preserve the original constructor ABI for precompiled callers.
+  // Preserve the original constructor ABIs for precompiled callers.
+  def this(gfxConfig: GraphicsConfig,wordCacheEntries: Int,allowPrepared: Boolean,overlapPrepared: Boolean) =
+    this(gfxConfig,wordCacheEntries,allowPrepared,overlapPrepared,false)
   def this(gfxConfig: GraphicsConfig, wordCacheEntries: Int, allowPrepared: Boolean) =
     this(gfxConfig, wordCacheEntries, allowPrepared, false)
   require(!overlapPrepared || allowPrepared)
+  require(!coordinatePolicyInput || !allowPrepared,
+    "extended coordinate policy currently uses the owned direct/mip path")
   // Preserve the uncached single-argument interface for existing callers.
   def this(gfxConfig: GraphicsConfig) = this(gfxConfig, 0, false)
   def this(gfxConfig: GraphicsConfig, wordCacheEntries: Int) = this(gfxConfig, wordCacheEntries, false)
@@ -109,6 +114,11 @@ class TextureUnit(
     // The owner must invalidate between instructions/bindings. Uncached
     // legacy samplers have no extra input or persistent cached words.
     val invalidateCache = if (wordCacheEntries > 0) Some(Input(Bool())) else None
+    /** Optional policy is captured with every accepted direct sample. Fault
+      * accompanies the held result for reserved modes; no reads are issued.
+      */
+    val coordinatePolicy=if(coordinatePolicyInput)Some(Input(new TextureCoordinatePolicy))else None
+    val coordinateFault=if(coordinatePolicyInput)Some(Output(Bool()))else None
     val texFormat = Input(UInt(PixelFormat.width.W))
     val texBase = Input(UInt(32.W))
     val texWidth = Input(UInt(14.W))
@@ -144,6 +154,14 @@ class TextureUnit(
   // registers.  levelBase accumulates the byte offsets of the skipped
   // levels; levelW/H shrink per level, floored at 1.
   private val formatReg = RegInit(0.U(PixelFormat.width.W))
+  private val policy=if(coordinatePolicyInput)Some(Reg(new TextureCoordinatePolicy))else None
+  private val policyFault=if(coordinatePolicyInput)Some(RegInit(false.B))else None
+  private val bindingBase=if(coordinatePolicyInput)Some(Reg(UInt(32.W)))else None
+  private val bindingWidth=if(coordinatePolicyInput)Some(Reg(UInt(14.W)))else None
+  private val bindingHeight=if(coordinatePolicyInput)Some(Reg(UInt(14.W)))else None
+  private val clampU=policy.map(_.wrapU=/=TextureCoordinatePolicy.repeat.U).getOrElse(io.wrapMode)
+  private val clampV=policy.map(_.wrapV=/=TextureCoordinatePolicy.repeat.U).getOrElse(io.wrapMode)
+  io.coordinateFault.foreach(_:=policyFault.get)
   private val uReg = RegInit(0.U(32.W))
   private val vReg = RegInit(0.U(32.W))
   private val levelBase = RegInit(0.U(32.W))
@@ -490,7 +508,7 @@ class TextureUnit(
     trilinearChannel(24), trilinearChannel(16), trilinearChannel(8), trilinearChannel(0))
 
   io.result.valid := resultValid.getOrElse(state === sDone)
-  io.result.bits := resultReg
+  io.result.bits := Mux(policyFault.getOrElse(false.B),0.U,resultReg)
 
   // Keep the trilinear multiply behind a register for both the filtered path
   // and the single-texel path. Each packed mip still has its own address,
@@ -499,9 +517,9 @@ class TextureUnit(
     blendedReg := value
     when(!secondLevel && lodFracReg =/= 0.U) {
       firstLevelResult := value
-      levelBase := io.texBase
-      levelW := io.texWidth
-      levelH := io.texHeight
+      levelBase := bindingBase.getOrElse(io.texBase)
+      levelW := bindingWidth.getOrElse(io.texWidth)
+      levelH := bindingHeight.getOrElse(io.texHeight)
       levelSteps := baseMipLevel + 1.U
       secondLevel := true.B
       state := sLevel
@@ -605,6 +623,11 @@ class TextureUnit(
       io.sample.bits.lodFrac, 0.U)
     secondLevel := false.B
     state := sLevel
+    if(coordinatePolicyInput){
+      policy.get:=io.coordinatePolicy.get;policyFault.get:= !TextureCoordinatePolicy.valid(io.coordinatePolicy.get)
+      bindingBase.get:=io.texBase;bindingWidth.get:=io.texWidth;bindingHeight.get:=io.texHeight
+      when(!TextureCoordinatePolicy.valid(io.coordinatePolicy.get)){resultReg:=0.U;state:=sDone}
+    }
     if (allowPrepared && !overlapPrepared) {
       when(io.prepared.get.valid) {
         assert(io.sample.bits.mipLevel === 0.U && io.sample.bits.lodFrac === 0.U &&
@@ -640,8 +663,13 @@ class TextureUnit(
             biasedYReg := Mux(axisClampedHigh.get(1), (levelH << 8).pad(24),
               TextureCoordinates.bias(scaledY))
           } else {
-            biasedXReg := axisBias(uReg, levelW)
-            biasedYReg := axisBias(vReg, levelH)
+            if(coordinatePolicyInput){
+              biasedXReg:=TextureCoordinates.bias(TextureCoordinates.scale(uReg,levelW,policy.get.wrapU,policy.get.signed))
+              biasedYReg:=TextureCoordinates.bias(TextureCoordinates.scale(vReg,levelH,policy.get.wrapV,policy.get.signed))
+            }else{
+              biasedXReg := axisBias(uReg, levelW)
+              biasedYReg := axisBias(vReg, levelH)
+            }
           }
           state := sWrap
         }
@@ -654,15 +682,15 @@ class TextureUnit(
       }
     }
     is(sWrap) {
-      inRangeXReg := TextureCoordinates.range(biasedXReg, levelW, io.wrapMode)
-      inRangeYReg := TextureCoordinates.range(biasedYReg, levelH, io.wrapMode)
+      inRangeXReg := TextureCoordinates.range(biasedXReg, levelW, clampU)
+      inRangeYReg := TextureCoordinates.range(biasedYReg, levelH, clampV)
       state := sIdx
     }
     is(sIdx) {
       // Clamp/wrap decode: corner indices and fractions off the wrapped
       // coordinate.
-      val Seq(idx0X, idx1X) = TextureCoordinates.indices(inRangeXReg, levelW, io.wrapMode)
-      val Seq(idx0Y, idx1Y) = TextureCoordinates.indices(inRangeYReg, levelH, io.wrapMode)
+      val Seq(idx0X, idx1X) = TextureCoordinates.indices(inRangeXReg, levelW, clampU)
+      val Seq(idx0Y, idx1Y) = TextureCoordinates.indices(inRangeYReg, levelH, clampV)
       wReg(0) := (256.U - inRangeXReg(7, 0)) * (256.U - inRangeYReg(7, 0))
       wReg(1) := inRangeXReg(7, 0) * (256.U - inRangeYReg(7, 0))
       wReg(2) := (256.U - inRangeXReg(7, 0)) * inRangeYReg(7, 0)
