@@ -2,7 +2,8 @@
 
 Status: [thirteen component checks](performance/mobile-banked-texture-fills-2026-10-21.json)
 pass,including four fill-owner checks connected to the actual8KiB banked SRAM.
-Default16-fill RTL emission passes;its synthesis screen is running. The service
+Default16-fill RTL emission passes;its synthesis screen is running. Fresh
+store/filter emissions match their previously qualified active RTL exactly. The service
 is on `codex/mobile-texture-fill-owner`;native shader sampling is not connected.
 
 `BankedTextureFillOwner` accepts an aligned physical64-byte line,work identity,
@@ -22,7 +23,7 @@ a later miss may mean that another line already replaced its cache set.
 
 The test admits32 consumers before the first memory reply,issues exactly16
 independent reads,reverses their responses,and checks all installed words in
-the real cache. Other checks cover context generation/view isolation,fault
+the real cache. Other checks cover generation/view isolation,fault
 fanout,immutable public replies,an offered memory read held across cancellation,
 unoffered read cancellation,backpressure and healthy reuse.
 

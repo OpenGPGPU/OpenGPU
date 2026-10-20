@@ -103,5 +103,40 @@
     ".artifacts/mobile-texture-fill-owner-v2-source.json": "18189793b0d8a9ab4ab0fc4f5278ed1b57a2fdc7041ad9d5c34b96298260e0d1",
     ".artifacts/mobile-texture-fill-owner-v2-source.tar.gz": "528544967d03d5b15bf9e479eb6871c125a74032786f0a93cf21823a99b11919",
     ".artifacts/mobile-texture-fill-owner-v2-emission-result.json": "6fbb5ac3c6d24b74fdd2642914ff12ee0cc57854e93a8da413c6059641d9596f"
+  },
+  "existing_hit_and_store_synthesis_carry": {
+    "fresh_emission_profiles_match_previous_active_RTL": true,
+    "emission_result": {
+      "returncode": 0,
+      "source_unchanged": true,
+      "elapsed_seconds": 5.009560916107148,
+      "profiles": {
+        "store": {
+          "active_RTL_exact": true,
+          "active_RTL_sha256": {
+            "RRArbiter4_BankedTextureLookup.sv": "44f5c4d55e71da506ce442baaa53d0cee63783ff3042be6b6b932314c7b8555a",
+            "ram_2x49.sv": "ed05bb02a8624ddc37ebbe6559251780d3f76af9eb21d192ee3ec9526c21bf72",
+            "Queue2_BankedTextureWord.sv": "4147738d593b53700a1ba5d327c93bf8f38d395e9c4af75df57a4b1474bf2dc4",
+            "memory_256x32.sv": "c765dcd3e2ed7ffda1221fab77bcf0223da27de002849560a9eb01fdcb1832d3",
+            "L2SramArray.sv": "c1104c24dbda2c1e4b6688300e1168baef38ac07eeed8876af67c032584397b7",
+            "BankedTextureLineStore.sv": "662adc1b69667b62a34500346efad2990482fbcf697c02e3e31a14567cba6f0d"
+          }
+        },
+        "cluster": {
+          "active_RTL_exact": true,
+          "active_RTL_sha256": {
+            "RRArbiter4_BankedTextureLookup.sv": "4d1eed03a3b92470b494278bb5b3c32306d07a9a3d3be464afa4b05019b15201",
+            "ram_2x39.sv": "7fccf5d414831ac374f05a9a10c91b39b7ca40b956e5c24b94f80bdebc1ef5e8",
+            "Queue2_BankedTextureWord.sv": "31f17c66ba551488b397f1ed6d704380afc2d057842c9dc032fb18dfc13e222d",
+            "memory_256x32.sv": "c765dcd3e2ed7ffda1221fab77bcf0223da27de002849560a9eb01fdcb1832d3",
+            "L2SramArray.sv": "c1104c24dbda2c1e4b6688300e1168baef38ac07eeed8876af67c032584397b7",
+            "BankedTextureLineStore.sv": "36969ef6d501102e38c33567a04a97ae8e46fce2cdf78a694fb2f28f79eb1863",
+            "BankedRgba8TextureHits.sv": "783234e8f4e0547ac64b44bb9807780453c2632a280b32e2129b88271f755243"
+          }
+        }
+      }
+    },
+    "previous_synthesis_record": "docs/performance/mobile-banked-texture-synthesis-2026-10-21.json",
+    "emission_result_sha256": "08a7c27177f4498b4dce213178a826e1875e4b1e23b582f116d32902fc5ac09a"
   }
 }
