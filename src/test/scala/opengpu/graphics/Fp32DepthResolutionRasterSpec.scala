@@ -109,4 +109,35 @@ class Fp32DepthResolutionRasterSpec extends AnyFlatSpec {
       info("DEPTH_RESOLUTION_RASTER constantDepth=true sameExponent=true oneBinary32ULP=true geometries=2 viewportSizedWitness=true fullWidthIntegerEdges=true actualCoverage=true windings=2 sampleModes=3 exactCenterHelpersSamples=true heldQuads=true healthyReuse=true")
     }
   }
+  it should "preserve one floating depth step for an interior pixel next to a binade boundary" in {
+    val coordinates=Vector((-90880,-58597),(90880,-58597),(-60947,39297)).map{case(x,y)=>(BigInt(x+128),BigInt(y+128))}
+    val low=Vector("3e000001","3efffffe","3efffffe").map(BigInt(_,16))
+    val high=Vector("3e000003","3effffff","3effffff").map(BigInt(_,16))
+    simulate(new Fp32PrimitiveRasterStage(p,g)){d=>
+      PointLineReference.zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
+      def until(condition: =>Boolean): Unit={var n=0;while(!condition && n<100000){d.clock.step();n+=1};assert(condition)}
+      def run(depths: Vector[BigInt]): BigInt={
+        val triangle=TriangleRasterReference.base.copy(coords=coordinates,values=FragmentInterpolationReference.Data(
+          Vector.fill(3)(Fp32ViewportReference.decode(Fp32ViewportReference.fp(1))),depths,Vector.fill(3)(Vector.fill(8)(BigInt(0))),0,1))
+        val settings=TriangleRasterReference.Settings(width=8,height=8,mode=0,scissor=true,minX=0,minY=0,maxX=1,maxY=1)
+        val quads=TriangleRasterReference.raster(triangle,settings,g)
+        assert(quads.size==1 && quads.head.samples.head.mask==1)
+        assert(quads.head.samples.head.edges==Vector(1L,7142622719L,10650590720L).map(BigInt(_)))
+        PointLineReference.zero(d.io.in.bits);TriangleRasterReference.primitive(d.io.in.bits.primitive,triangle)
+        TriangleRasterReference.state(d.io.in.bits.state,settings);d.io.in.bits.depthRoundTowardZero.poke(true.B)
+        d.io.in.valid.poke(true.B);until(d.io.in.ready.peek().litToBoolean);d.clock.step();d.io.in.valid.poke(false.B)
+        until(d.io.out.valid.peek().litToBoolean)
+        val lane=d.io.out.bits.values.lanes.head;lane.covered.expect(true.B);lane.coverageMask.expect(1.U)
+        val result=lane.windowDepth.peek().litValue;lane.sampleDepth(0).expect(result.U)
+        d.io.out.ready.poke(true.B);d.clock.step();d.io.out.ready.poke(false.B)
+        until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.status.expect(0.U)
+        d.io.completion.ready.poke(true.B);d.clock.step();d.io.completion.ready.poke(false.B);d.io.busy.expect(false.B)
+        result
+      }
+      val before=run(low);val after=run(high)
+      info(s"DEPTH_DIRECTED_BOUNDARY e0=1 actualCoverage=true resolution33000000=true before=${before.toString(16)} after=${after.toString(16)}")
+      assert(before!=after,s"directed final addition still collapses an interior binade-boundary step: ${before.toString(16)} == ${after.toString(16)}")
+    }
+  }
+
 }
