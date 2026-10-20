@@ -179,6 +179,7 @@ class BankedTextureReadThroughSpec extends AnyFlatSpec {
     simulate(new BankedRgba8TextureHits(readThrough=true)) { d =>
       val t=new Driver(d); t.auto=true; t.latency=11; t.memoryReady=Some(c => c%7<4)
       for((cut,n) <- Vector(0,1,3,7,12,20,35,60).zipWithIndex) {
+        d.io.out.ready.poke(false.B)
         val q=group(n*2,n); t.sample(q); for(_ <- 0 until cut)t.tick()
         val offered=d.io.out.valid.peek().litToBoolean
         d.io.out.ready.poke(false.B); d.io.cancel.poke(true.B); t.tick(); d.io.cancel.poke(false.B)
