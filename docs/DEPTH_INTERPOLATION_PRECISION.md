@@ -62,3 +62,13 @@ leaves rounding residue; RTL returns extended offset `E(false,-15,11573807)`,
 about `4.21e-5`, instead of zero. The failing 640-file source is retained.
 The planned 32-case test stops at its first case in this run. An anchored
 slope correction is separate pending work and needs full native integration.
+
+## First anchored-depth regression
+
+The [first anchored run](performance/mobile-depth-interpolation-anchor-v1-2026-10-20.json)
+passes the twelve constant-depth pairs and all four ABI checks. The numeric/
+ownership group is 42/43: its full64-component test still expected1584 scalar
+operations, while the changed schedule uses1582. Two shared differences plus
+four lanes of six weight, five depth and384 varying operations give1582.
+The corrected expectation changes no production bytes; the full44-check rerun
+is pending. This does not establish full precision or integrated closure.

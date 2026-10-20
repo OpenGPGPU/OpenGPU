@@ -215,8 +215,10 @@ class Fp32FragmentInterpolatorSpec extends AnyFlatSpec {
     simulate(new Fp32FragmentInterpolator(shader,g)) { d=>val t=new Driver(d,shader)
       val values=data(shader).copy(flat=0,values=Vector.tabulate(3,64)((v,c)=>fp((v+1)*(c+0.125))))
       t.prepare(values);t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
-      d.io.completion.bits.arithmeticOperations.expect(1584.U);t.finish()
-      info("FP32_INTERPOLATION varyingComponents=64 lanes=4 arithmeticOperations=1584 fullInterface=true")
+      // Two shared differences plus four lanes of weight, depth and varying work.
+      // 2 + 4*(6 + 5 + 64*6) = 1582; the counter must retain all sixteen bits.
+      d.io.completion.bits.arithmeticOperations.expect(1582.U);t.finish()
+      info("FP32_INTERPOLATION varyingComponents=64 lanes=4 arithmeticOperations=1582 fullInterface=true")
     }
   }
 }

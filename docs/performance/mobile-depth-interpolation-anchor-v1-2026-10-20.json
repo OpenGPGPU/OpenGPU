@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Anchored-depth first qualification: precision control passes; grouped regression has one stale operation-count expectation",
+  "based_on_commit": "9042315",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-interpolation-anchor-source-v1.json",
+    "sha256": "75f7dd11d64878173652cc5634e58a9c610047cb13a154fea3baddba55f7f3c6"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-interpolation-anchor-source-v1.tar.gz",
+    "sha256": "494e8e7355be831c7fd104594f89e984a767a8575d7cf9ea03a1a4bfb7f334bd"
+  },
+  "result": {
+    "path": ".artifacts/mobile-depth-interpolation-anchor-controls-v1-result.json",
+    "sha256": "445d62e3d0f158ecd1b9bf3145886fcc17e0f9728f1df4a0df5f3afc4cd383a8"
+  },
+  "log": {
+    "path": ".artifacts/mobile-depth-interpolation-anchor-controls-v1.log",
+    "sha256": "e2ea5a59a5faa4d4c354a126e44891cb168cf80642c7f5be755594529730bb35"
+  },
+  "test_groups": [
+    1,
+    43
+  ],
+  "passed": 43,
+  "failed": 1,
+  "abi_checks": 4,
+  "source_unchanged": true,
+  "depth_pairs": 12,
+  "failed_control": {
+    "suite": "Fp32FragmentInterpolatorSpec",
+    "test": "full sixty-four-component interface",
+    "observed_operations": 1582,
+    "old_expected_operations": 1584,
+    "correct_count": "2 + 4*(6 + 5 + 64*6) = 1582"
+  },
+  "classification": "Counter expectation predates the two shared differences and the reduction from six to five scalar depth operations per lane. Update only that fixture and repeat on a new frozen snapshot.",
+  "limitations": [
+    "The overall run fails its regression gate and does not reach final emission. It is not a full44-check success.",
+    "Passing constant-depth witnesses do not prove the entire raster minimum-resolvable-difference contract; a separate sloped software witness is under investigation.",
+    "No new native-image, PPA, API or H0-H8 closure is claimed."
+  ]
+}
