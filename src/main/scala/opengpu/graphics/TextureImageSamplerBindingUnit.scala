@@ -51,11 +51,12 @@ class TextureImageSamplerBindingUnit(config: GpuConfig=GpuConfig(),p: TextureIma
   arb.io.in(0).bits.transactionId:=image.io.memoryRequest.bits.transactionId.pad(3);image.io.memoryRequest.ready:=arb.io.in(0).ready
   arb.io.in(1).valid:=sampler.io.memoryRequest.valid;arb.io.in(1).bits:=sampler.io.memoryRequest.bits
   arb.io.in(1).bits.transactionId:=4.U;sampler.io.memoryRequest.ready:=arb.io.in(1).ready;io.memoryRequest<>arb.io.out
-  private val samplerReply=io.memoryResponse.bits.transactionId(2)
+  private val samplerReply=io.memoryResponse.bits.transactionId===4.U
+  private val imageReply= !io.memoryResponse.bits.transactionId(2)
   sampler.io.memoryResponse.valid:=io.memoryResponse.valid && samplerReply;sampler.io.memoryResponse.bits:=io.memoryResponse.bits
   sampler.io.memoryResponse.bits.transactionId:=0.U
-  image.io.memoryResponse.valid:=io.memoryResponse.valid && !samplerReply;image.io.memoryResponse.bits:=io.memoryResponse.bits
-  io.memoryResponse.ready:=Mux(samplerReply,sampler.io.memoryResponse.ready,image.io.memoryResponse.ready)
+  image.io.memoryResponse.valid:=io.memoryResponse.valid && imageReply;image.io.memoryResponse.bits:=io.memoryResponse.bits
+  io.memoryResponse.ready:=Mux(samplerReply,sampler.io.memoryResponse.ready,imageReply && image.io.memoryResponse.ready)
   switch(phase){
     is(State.idle){when(io.in.fire){
       assert(!image.io.busy && !sampler.io.busy,"image/sampler binding abandoned child ownership")
