@@ -7700,3 +7700,16 @@ Held completions protect VM/quota mutation and all payload ownership drains.
 The default discovery host emission is byte-identical to the earlier candidate;
 full-host timing, execution-time watchdog/resource/reconvergence contracts and
 the remaining H0-H8 requirements are still open.
+
+### Native interruption of running loops — 2026-10-22
+
+Four [new native reset checks](performance/mobile-native-shader-execution-2026-10-22.json)
+pass on 1,008 exact inputs. Vertex and fragment loops execute two completed
+load/add/back-edge iterations before reset during their third owned data read.
+Typed/binned local/spill paths drain delayed real replies and all payload
+ownership, preserve the programmed maximum quota, and render exact healthy
+successors: sixteen submissions, eight reset cuts and eight healthy images.
+Production is byte-identical to the twelve-check native composition. The
+binned/local fixture's original scratch-alias trigger failure and diagnostic
+are retained; only its probe page changes. External-owner deadlines, broader
+fault priority, resources/reconvergence and full-host timing remain open.

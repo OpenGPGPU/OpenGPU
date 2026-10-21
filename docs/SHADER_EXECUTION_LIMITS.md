@@ -107,7 +107,7 @@ The default combined discovery host is emitted but its synthesis is not
 qualified. A separate GTO1 full-host screen mapped all cells and failed timing
 on legacy raster-edge-to-texture interpolation and MMIO burst-read paths. It
 does not qualify this GSL candidate. Full-host timing,
-interruption after loop execution has begun, owned data/texture fault priority,
+owned data/texture fault priority,
 resource permissions and reconvergence capacity remain open.
 
 Current-main composition now passes twelve checks on 1,007 exact inputs. The
@@ -121,3 +121,19 @@ VM/quota mutation fence and payload release remain checked in both payload
 modes. This composes main's FP reservation cancellation and availability
 repairs; default discovery RTL remains byte-identical to the prior emission.
 It supplies no positive full-host synthesis result.
+
+Four further native checks now cover reset after a vertex or fragment loop has
+executed at least two load/add/back-edge iterations. Each typed/binned and
+local/spilled case interrupts the third owned scalar data-line read, delivers
+its delayed real response, drains every payload pin/reservation and renders an
+exact healthy successor. The matrix submits sixteen frames with eight reset
+cuts and eight healthy image reuses. The maximum quota remains programmed
+across command reset. Production matches the twelve-check composition exactly.
+
+The original binned/local probe overlapped native vertex scratch, whose local
+SRAM accesses correctly bypass AXI, so its external-read reset trigger never
+fired. Phase observations retained `cut=false` throughout. Moving only that
+probe to a disjoint mapped page makes the complete four-case selection pass;
+the original failure, diagnostic and exact fixture delta are retained. This
+does not establish a deadline for an external owner that never returns, nor
+complete load/store/texture fault-priority or watchdog/reconvergence closure.

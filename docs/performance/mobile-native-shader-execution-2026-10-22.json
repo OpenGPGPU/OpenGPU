@@ -74,7 +74,7 @@
   },
   "remaining": [
     "Repair full default legacy interpolation and MMIO I/O timing without deleting paths or reducing numeric/rate/clock contracts",
-    "Native reset while a loop is already running and owned load/store/texture fault priority",
+    "Owned load/store/texture fault priority and unserviced-owner watchdog policy",
     "General resource permissions, reconvergence and native full product capacity",
     "Original H0-H8 gates"
   ],
@@ -113,5 +113,37 @@
     "default_discovery_host_RTL_byte_identical_to_prior": true,
     "source_unchanged": true,
     "scope": "1007-input composition of current main and native quota controls; full discovery host timing remains unqualified."
+  },
+  "running_loop_reset": {
+    "passed": true,
+    "fresh_checks": 4,
+    "source_files": 1008,
+    "source_manifest": ".artifacts/mobile-native-running-reset-v3-source.json",
+    "result": ".artifacts/mobile-native-running-reset-v3-result.json",
+    "actual_submissions": 16,
+    "reset_cuts": 8,
+    "exact_healthy_images": 8,
+    "backends": [
+      "typed",
+      "binned"
+    ],
+    "payload_modes": [
+      "local",
+      "spilled"
+    ],
+    "stages": [
+      "vertex",
+      "fragment"
+    ],
+    "reset_trigger": "Third disjoint scalar cache-line read after two completed lw/addi/back-edge iterations.",
+    "response_delay_cycles": 37,
+    "held_write_ack_delay_cycles": 29,
+    "quota": "0xffffffff while looping; unchanged by command reset",
+    "payload_pins_reservations_released": true,
+    "production_byte_identical_to_current_main_composition": true,
+    "baseline": ".artifacts/mobile-native-running-reset-v1-result.json",
+    "diagnostic": ".artifacts/mobile-native-running-reset-v2-diagnostic-result.json",
+    "fixture_repair": ".artifacts/mobile-native-running-reset-v3-repair-proof.json",
+    "scope": "Four new actual native reset checks, distinct from12 prior composition checks. No new synthesis or complete watchdog qualification."
   }
 }
