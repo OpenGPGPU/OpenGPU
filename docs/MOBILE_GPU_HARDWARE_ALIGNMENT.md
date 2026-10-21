@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6 implementation in progress, 2026-10-21. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
+Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6/H7 implementation in progress, 2026-10-22. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
 Latest point/line checkpoint: [23 fresh targeted checks](performance/mobile-point-line-bounded-2026-10-20.json) pass on 674 frozen source files. The [standalone synthesis setup screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json) passes at 1000 ps with core +25.772 ps and I/O +619.101 ps. This does not qualify the whole GPU clock or complete H0-H8.
 
@@ -7848,3 +7848,23 @@ The initial invalid12-byte fill fixture and its64-byte repair are preserved;
 no hardware or expected result changed. Full command/memory AXI runtime and
 enabled-host synthesis remain separate gates. H7 indirect drawing, resource/
 image/storage/atomic/barrier requirements, H8 and the full H0-H8 goal stay open.
+
+
+### Indirect-compute AXI transport and reader synthesis, 2026-10-22
+
+The [26-check GCI1 checkpoint](performance/mobile-indirect-compute-axi-qualified-2026-10-22.json)
+adds two complete256-bit AXI host runtime cases on1,033 exact inputs. Both
+command-read buffering profiles execute a real GPU producer and event-dependent
+indirect consumer with exact stores, preserve opcode14 in completion bit16,
+report no-work/bounds/read faults, drain a real delayed R response before reset
+acknowledgement and execute healthy work after ID reuse. Each profile accepts
+seven commands and refuses one reset-racing submission; its distinct buffer
+never executes. The two fixture failures (missing IRQ enable and an incorrect
+SLVERR expectation instead of the documented RESET_REJECTED status) remain
+preserved. All production inputs are unchanged from the24-check checkpoint.
+
+Standalone IndirectDispatchReader synthesis passes1000ps TC/SLVT with25%IO,
+standardABC, no retiming and zero skips: core/IO +481.266/+457.828ps,4,102 cells,
+445.477320 library area,231 flip-flops and no SRAM macro. This is component
+qualification. Enabled-host composition/timing, the remaining H7/H8 work and
+all other H0-H8 gates remain open.

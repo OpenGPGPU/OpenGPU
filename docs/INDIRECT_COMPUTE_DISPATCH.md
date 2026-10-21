@@ -84,6 +84,21 @@ all strobes while busy/idle, VM alias isolation, quota policy and reset.
 An initial runtime fixture incorrectly requested a12-byte FillEngine write;
 that engine requires64-byte multiples. The original failure is preserved. Only
 the producer length changed to64; the argument view remains12 bytes, and no
-hardware or expected result was relaxed. Full host command/memory AXI runtime
-and enabled-host synthesis remain unqualified in this checkpoint. H7's storage/images/atomics/barrier and indirect drawing requirements,
+hardware or expected result was relaxed. The [subsequent AXI checkpoint](performance/mobile-indirect-compute-axi-qualified-2026-10-22.json)
+adds two passing full host tests, raising the distinct total to26 on1,033 exact
+inputs. Each two-CU bring-up profile submits seven accepted commands and one
+refused reset-racing submission through the256-bit AXI host, with command-read
+buffering off/on. The actual GPU producer, cross-line arguments, event token,
+exact group-indexed stores, opcode14 completion high bit16, no-work, bounds,
+second-line physical fault, delayed real-R reset drain and healthy ID reuse all
+pass. A distinct rejected ID/buffer never executes. Reset refusal uses the
+existing OKAY write response plus STATUS.RESET_REJECTED; IRQs must be enabled
+before waiting for the completion interrupt. Both original fixture failures
+and their source-only repairs are preserved.
+
+The complete standalone reader also passes1000ps TC/SLVT standard-ABC synthesis
+with25% I/O delay, no retiming and zero skipped instances: core/I/O slack
++481.266/+457.828ps,4,102 mapped cells and445.477320 library area. It has231
+flip-flops and no SRAM macro. This qualifies the reader only; enabled-host
+synthesis remains open. H7's storage/images/atomics/barrier and indirect drawing requirements,
 H8 geometry/tessellation and the full H0-H8 objective remain open.
