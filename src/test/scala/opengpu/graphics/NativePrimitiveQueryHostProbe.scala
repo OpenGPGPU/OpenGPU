@@ -12,7 +12,7 @@ private[graphics] class NativePrimitiveQueryHostProbe(d: GpuHostSystemAxi,
   private val address=BigInt(0x30c00000);private val physical=BigInt(0x18c00000)
   private val root=BigInt(0x80000030L);private val context=BigInt(0x71000007L)
   private var cookie=1000;private var prepared=false;private var running=false
-  private var frames=0;private var resetCuts=0;private var commands=0
+  private var frames=0;private var resetCuts=0;private var commands=0;private var aborted=0
   private def put(a: BigInt,v: BigInt): Unit=for(b<-0 until 4)memory(a+b)=((v>>(8*b))&255).toInt
   private def word(a: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(a+b,0))<<(8*b)))
   private def install(): Unit={
@@ -44,9 +44,9 @@ private[graphics] class NativePrimitiveQueryHostProbe(d: GpuHostSystemAxi,
     axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
     assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==root);pop()
   }
-  private def record(count: BigInt,available: Boolean,peer: Boolean=false): Unit={
+  private def record(count: BigInt,available: Boolean,peer: Boolean=false,status: Int=0): Unit={
     val words=Seq[BigInt](BigInt("47504f01",16),64,context+(if(peer)1 else 0),cookie+(if(peer)100 else 0),
-      if(available)1 else 0,count&BigInt("ffffffff",16),count>>32,root,0x8c88)++Seq.fill(7)(BigInt(0))
+      (status<<2)|(if(available)1 else 0),count&BigInt("ffffffff",16),count>>32,root,0x8c88)++Seq.fill(7)(BigInt(0))
     val offset=if(peer)64 else 0
     assert((0 until 16).map(i=>word(physical+offset+i*4))==words,s"GPO1 record mismatch count=$count peer=$peer")
   }
@@ -78,13 +78,23 @@ private[graphics] class NativePrimitiveQueryHostProbe(d: GpuHostSystemAxi,
     query(0);record(0,false);query(0,peer=true);record(0,false,peer=true)
     running=true
   }
-  def afterFrame(count: Int): Unit={
-    assert(running);query(1,count=count,available=true);record(count,true)
-    query(2,available=true);query(3,count=count,available=true)
-    query(1,available=true,peer=true);record(0,true,peer=true)
-    query(3,available=true,peer=true)
+  def afterFrame(count: Int,status: Int=0,peerCount: Int=0): Unit={
+    assert(running);query(1,count=count,available=true,status=status);record(count,true,status=status)
+    query(2,available=true);query(3,count=count,available=true,status=status)
+    query(1,count=peerCount,available=true,peer=true);record(peerCount,true,peer=true)
+    query(3,count=peerCount,available=true,peer=true)
     for(a<-physical+128 until physical+192)assert(memory(a)==0xa7,s"query guard byte ${a.toString(16)} changed")
     running=false;frames+=1
+  }
+  def abortedFrame(): Unit={
+    assert(running)
+    // Reset invalidates both live scopes; neither old cookie may end a query.
+    query(1,status=5);query(1,status=5,peer=true)
+    running=false;aborted+=1
+  }
+  def reportRecovery(local: Boolean): Unit={
+    assert(prepared && !running && frames==10 && aborted==1 && resetCuts==1)
+    println(s"NATIVE_PRIMITIVE_QUERY_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames capturePermissionFaults=1 incompleteLastStoreFaults=1 missingLeaseFaults=1 peerCaptures=4 pausedZero=1 inactiveZero=1 resumedCaptures=1 acceptedStoreResetCuts=$aborted staleScopesRejected=2 realSv32=true exactGpuRecords=true noPartialPrimitiveCounts=true")
   }
   def report(kind: String,local: Boolean,expectedCount: Int): Unit={
     assert(prepared && !running && frames==2 && resetCuts==1)

@@ -59,9 +59,9 @@ private[graphics] class NativeTransformFeedbackRecoveryProbe(d: GpuHostSystemAxi
       assert(word(recordPa+41*4)==root && word(recordPa+42*4)==status && word(recordPa+43*4)==expectedFlags)
     }
   }
-  def stageRender(): Unit={
+  def stageRender(capture: Boolean=true): Unit={
     axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,program)
-    axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,cookie);axiWrite(d,GpuCommandMmioRegs.FLAGS,16)
+    axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,cookie);axiWrite(d,GpuCommandMmioRegs.FLAGS,if(capture)16 else 0)
   }
   def end(expected: Seq[BigInt],status: Int=0,allowedPartialBytes: Int=0): Unit={
     command(1,status)

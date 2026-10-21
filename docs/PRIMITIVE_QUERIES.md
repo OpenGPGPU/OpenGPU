@@ -34,7 +34,7 @@ completed unread records; bounds and malformed records; scoped fault attribution
 and held-request reset drain with fresh-cookie reuse. Tests use two producers;
 the default one-producer RTL also emits successfully.
 
-The exact 907-input qualified source catalog matches this branch. Component
+The standalone controller was qualified on 907 exact source inputs. Component
 synthesis passes at 1000 ps, ASAP7 TC/SLVT, 25% I/O delay, standard ABC and no
 retiming: core slack +143.195 ps, I/O slack +384.931 ps, 18,215 mapped cells,
 library area 2309.734440, sequential area 643.269600, zero SRAM macros and zero
@@ -104,3 +104,31 @@ Together with the31 transport/component checks this gives35 distinct checks,
 plus three previously qualified host emissions. Paused/inactive/incomplete
 capture counting, native query/capture permission and bus-fault matrices, full
 product runtime and composed timing/resources remain open.
+
+## Native capture/query recovery
+
+[Two four-CU typed-host checks](performance/mobile-primitive-query-native-recovery-2026-10-21.json)
+pass with local and spilled payloads. Twenty completed native frames include
+six expected failures and fourteen successful images. Ten source primitives
+are actually captured: eight in healthy peer contexts and two after resume.
+Paused and absent feedback objects each produce two zero-count non-capture draws.
+
+For each payload mode, a denied capture page reaches no physical store, and a
+bus error on the final capture line follows two acknowledged prefix lines.
+Neither advances the primitive count or cursor. A checkpoint permission failure
+invalidates only the affected capture lease; its failed draw faults the owning
+query while the peer still captures. GPO1 records, fault/availability values,
+raw capture bytes, guards, image oracles and local payload release are exact.
+Two accepted capture-store resets drain ownership and reject all four stale
+query ends. Two additional query-record reset probes check fresh-cookie reuse. Four fresh
+typed/binned healthy/discard control tests also pass on the same 979 inputs;
+with 31 unchanged component/transport checks, the distinct total is 37.
+
+These tests change no production Scala/build/ABI bytes and establish no new
+PPA result. Binned fault/pause runtime, native query-record permission/bus errors,
+a continuous multi-draw query, full product capacity and composed budgets remain
+required; Q02/H6 stays partial.
+
+```sh
+sbt 'testOnly opengpu.graphics.NativePrimitiveQueryRecoveryHostAxiSpec'
+```

@@ -7560,3 +7560,17 @@ ran out of disk before simulation; the successful retry retains identical917
 source inputs. Together with31 component/transport checks,this gives35 distinct
 checks and three carried host emissions. Paused/inactive/incomplete/error capture
 coverage,full product runtime and composed budgets remain open; Q02/H6 is partial.
+
+
+### 2026-10-21: native primitive-query capture recovery
+
+[Two fresh four-CU typed-host checks](performance/mobile-primitive-query-native-recovery-2026-10-21.json)
+pass with local/spilled payloads: twenty completed frames, six expected failures,
+ten acknowledged source primitives, paused/inactive zero counts and exact resume
+counts. Final capture-line bus faults follow two acknowledged prefix lines and
+still contribute zero. Capture permission and missing-lease failures retain
+scoped query faults and healthy peers. Two accepted-store resets reject four
+stale query ends; exact GPO1/capture/image guards and payload releases pass.
+Production/build/ABI bytes are unchanged. Binned error/pause coverage, query-record
+memory faults, continuous multi-draw scopes, full-capacity runtime and composed
+budgets remain required; Q02/H6 and the full H0-H8 goal remain open.

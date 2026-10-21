@@ -289,6 +289,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
       val a=new NativeTransformFeedbackRecoveryProbe(d,image.memory,image.read,image.write,0)
       val b=new NativeTransformFeedbackRecoveryProbe(d,image.memory,image.read,image.write,1)
+      val primitive=if(primitiveQueries)Some(new NativePrimitiveQueryHostProbe(d,image.memory,image.read,image.write))else None
       var frames=0;var resetCuts=0
       def frame(preserve: Boolean=false): Unit={
         val saved=if(preserve)image.memory.filter{case(address,_)=>
@@ -311,13 +312,14 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         image.queryProbe.foreach(_.completed(status,status==0 && active.context==a.context))
       }
       def healthyPeer(id: Int): Unit={
-        frame(true);image.submit(id,feedbackScope=()=>b.stageRender());image.run(id=id)
+        frame(true);primitive.foreach(_.beforeFrame());image.submit(id,feedbackScope=()=>b.stageRender());image.run(id=id)
         finishQuery(0,b);image.verifyDraws(0,centroid=true,primitiveCount=1);image.pop()
-        b.end(expected);payloadIdle();frames+=1
+        b.end(expected);primitive.foreach(_.afterFrame(0,peerCount=1));payloadIdle();frames+=1
       }
       frame();image.queryProbe.foreach{q=>q.beforeFrame();q.completed(0,false);q.afterFrame()}
+      primitive.foreach(_.prepare())
       for(kind<-Seq("checkpoint-permission","capture-permission","capture-bus","capture-reset")){
-        frame();a.begin();b.begin()
+        frame();a.begin();b.begin();primitive.foreach(_.beforeFrame())
         if(kind=="checkpoint-permission"){
           a.permission(false,false);flush();val start=image.writes.size
           a.command(2,status=3,flags=0)
@@ -325,6 +327,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           a.permission(false,true);flush();a.command(1,status=5,flags=2)
           image.submit(150,feedbackScope=()=>a.stageRender());image.run(status=5,id=150)
           finishQuery(5,a);image.pop();payloadIdle();frames+=1
+          primitive.foreach(_.afterFrame(0,status=3))
           assert(!image.writes.contains(a.firstDataLine),"missing capture lease wrote feedback data")
           healthyPeer(151)
         }else if(kind=="capture-permission" || kind=="capture-bus"){
@@ -332,13 +335,18 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           var injected=false;val start=image.writes.size
           image.submit(152,feedbackScope=()=>a.stageRender())
           image.run(status=3,id=152,writeFault=(address,_,_)=>{
-            val fault=kind=="capture-bus" && !injected && address==a.firstDataLine
+            // In the query matrix, acknowledge the first two lines before
+            // failing the final line. Partial stores must never count a primitive.
+            val fault=kind=="capture-bus" && !injected && address==a.firstDataLine+(if(primitiveQueries)128 else 0)
+            if(fault && primitiveQueries)assert(Seq(a.firstDataLine,a.firstDataLine+64).forall(image.writes.drop(start).contains),
+              "final capture-line fault preceded the acknowledged prefix stores")
             if(fault)injected=true;fault
           })
           finishQuery(3,a);image.pop();payloadIdle();frames+=1
           if(kind=="capture-permission")assert(!image.writes.drop(start).contains(a.firstDataLine),"denied capture store reached physical AXI")
           else assert(injected,"capture bus error was not injected on the owned store")
           a.end(Seq.empty,status=3,allowedPartialBytes=if(kind=="capture-bus")96 else 0)
+          primitive.foreach(_.afterFrame(0,status=3))
           a.permission(true,true);flush();healthyPeer(153)
         }else{
           image.submit(154,feedbackScope=()=>a.stageRender());var cut=false
@@ -349,12 +357,28 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
             })(image.write){cut && d.io.m_irq.peek().litToBoolean}
           assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0,"accepted capture-store reset did not drain")
           image.queryProbe.foreach(_.aborted());axiWrite(d,RenderHostRegs.IRQ,3);payloadIdle();resetCuts+=1
+          primitive.foreach(_.abortedFrame())
           a.command(1,status=5,flags=2);b.command(1,status=5,flags=2)
           frame();b.begin();flush();healthyPeer(155)
         }
         info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_CASE local=$local kind=$kind peerHealthy=true payloadReleased=true")
       }
       assert(frames==7 && resetCuts==1)
+      primitive.foreach { q=>
+        // Native non-capture draws remain legal with a paused or absent object.
+        // Resume must recover the same object's exact first acknowledged count.
+        frame();a.begin();a.command(2);q.beforeFrame()
+        image.submit(156,feedbackScope=()=>a.stageRender(capture=false));image.run(id=156)
+        finishQuery(0,a);image.verifyDraws(0,centroid=true,primitiveCount=1);image.pop();q.afterFrame(0)
+        a.command(3);frame(true);q.beforeFrame()
+        image.submit(157,feedbackScope=()=>a.stageRender());image.run(id=157)
+        finishQuery(0,a);image.verifyDraws(0,centroid=true,primitiveCount=1);image.pop()
+        a.end(expected);q.afterFrame(1);payloadIdle()
+        frame();q.beforeFrame()
+        image.submit(158,feedbackScope=()=>a.stageRender(capture=false));image.run(id=158)
+        finishQuery(0,a);image.verifyDraws(0,centroid=true,primitiveCount=1);image.pop();q.afterFrame(0);payloadIdle()
+        q.reportRecovery(local)
+      }
       info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames resetCuts=$resetCuts checkpointPermissionFaults=1 capturePermissionFaults=1 captureBusFaults=1 missingLeaseDraws=1 peerHealthyDraws=4 scopedRecovery=true countersAfterFinalAck=true noDeniedPhysicalStores=true partialFaultStoresBounded=true staleResetObjectsRejected=true exactRawCaptureAndImages=true queryContextIsolation=true")
     }
   }
