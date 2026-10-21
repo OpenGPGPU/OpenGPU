@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-21",
+  "status": "native_typed_record_memory_and_continuous_lifetime_pass",
+  "main_baseline": "3009f1f0f229bedc18c12df06a2e992cefc71722",
+  "source_manifest": ".artifacts/mobile-primitive-query-lifetime-v1-source.json",
+  "source_files": 980,
+  "source_unchanged": true,
+  "fresh_tests": 4,
+  "payload_modes": [
+    "local",
+    "spill"
+  ],
+  "CUs": 4,
+  "lanes_per_CU": 4,
+  "warps_per_CU": 2,
+  "memory_faults": 16,
+  "permission_faults": 8,
+  "bus_faults": 8,
+  "memory_actions": [
+    "begin",
+    "end",
+    "poll",
+    "result"
+  ],
+  "permission_cases": [
+    "Read-only Sv32 leaf denies begin/end record stores.",
+    "Execute-only Sv32 leaf denies poll/result data reads."
+  ],
+  "completed_native_frames": 10,
+  "acknowledged_source_primitives": 6,
+  "primitives_inside_continuous_scopes": 4,
+  "post_end_captured_primitives_ignored": 2,
+  "paused_zero_contribution_draws": 2,
+  "inactive_zero_contribution_draws": 2,
+  "continuous_scopes": 2,
+  "query_record_reset_cuts": 4,
+  "prior_distinct_checks": 37,
+  "total_distinct_checks_across_frozen_checkpoints": 41,
+  "evidence": ".artifacts/mobile-primitive-query-lifetime-v1-result.json",
+  "production_proof": ".artifacts/mobile-primitive-query-lifetime-v1-production-proof.json",
+  "invariants": [
+    "Failed begin never installs an active query.",
+    "Failed end releases its closing slot and rejects stale end; fresh-cookie reuse succeeds.",
+    "All eight memory faults per payload mode preserve a peer active scope and guard bytes.",
+    "Read/poll faults preserve the completed record and permit exact healthy retry.",
+    "Five frames exercise one query across four draws: two captures separated by pause/resume, a paused draw and an inactive draw. A fifth draw captures after end; the exact completed result remains2.",
+    "Active main/peer result polls reject access without publishing a partial record.",
+    "Actual captured bytes, query records, image/resolve guards, held VM ownership and local payload releases are exact."
+  ],
+  "PPA": {
+    "policy": "synthesis only",
+    "new_result": false,
+    "production_build_ABI_unchanged": true,
+    "scope": "No new RTL or composed timing/resources claim."
+  },
+  "remaining": [
+    "Equivalent binned capture/memory-fault and continuous-scope runtime.",
+    "Full-capacity product runtime and composed resource/timing budgets.",
+    "Q02/H6 and the other H0-H8 requirements remain partial."
+  ]
+}

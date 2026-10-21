@@ -12,6 +12,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   protected def visibilityQueries: Boolean=false
   protected def transformFeedback: Boolean=false
   protected def primitiveQueries: Boolean=false
+  protected def primitiveQueryLifetimes: Boolean=false
   protected def transformFeedbackRecovery: Boolean=false
   protected def groupedTexture: Boolean=false
   protected def nativeComputeUnits: Int=2
@@ -252,7 +253,50 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       assert(writes.exists(_>=0x1000000) && !reads.exists(a=>a>=0x400000 && a<0x800000),"virtual descriptors must not escape onto physical AXI")
     }
   }
-  if(transformFeedback && !transformFeedbackRecovery)for(local<-Seq(true,false))
+  if(primitiveQueryLifetimes)for(local<-Seq(true,false);lifetime<-Seq(false,true))
+  it should s"preserve native primitive-query ${if(lifetime)"continuous capture lifetime"else"record-memory fault ownership"} local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries,primitiveQueries=primitiveQueries)){d=>
+      initialize(d);val image=new Image(d)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      def frame(preserve: Boolean=false): Unit={
+        val saved=if(preserve)image.memory.filter{case(address,_)=>
+          (address>=0x18400000 && address<0x18401000) || (address>=0x18800000 && address<0x18810000) ||
+          (address>=0x18c00000 && address<0x18c000c0) || (address>=0x30304 && address<0x30310)}.toMap
+          else Map.empty[BigInt,Int]
+        image.shaderDraws(0,centroid=true,version=3);image.word(image.pa(0x410000+12*4),1);image.memory++=saved
+      }
+      frame();image.queryProbe.foreach{q=>q.beforeFrame();q.completed(0,false);q.afterFrame()}
+      val query=new NativePrimitiveQueryHostProbe(d,image.memory,image.read,image.write);query.prepare()
+      if(!lifetime)query.memoryFaults(local)
+      else{
+        val feedback=new NativeTransformFeedbackRecoveryProbe(d,image.memory,image.read,image.write,0)
+        def expected: Seq[BigInt]={
+          val positions=Vector(Vector(-1.0,-1.0,-0.5,1.0),Vector(1.0,-1.0,0.5,1.0),Vector(-1.0,1.0,0.0,1.0))
+          positions.indices.flatMap(i=>positions(i).map(Fp32ViewportReference.fp)++image.colorWords(0,i,true))
+        }
+        def draw(id: Int,capture: Boolean): Unit={
+          image.submit(id,feedbackScope=()=>feedback.stageRender(capture));image.run(id=id)
+          image.verifyDraws(0,centroid=true,primitiveCount=1);image.pop()
+          if(local){val perf=d.io.performance.get
+            perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+            assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+          }
+        }
+        feedback.begin();query.beforeFrame();draw(160,true);query.assertOpen()
+        feedback.command(2);frame(true);draw(161,false);query.assertOpen()
+        feedback.command(3);frame(true);draw(162,true);query.assertOpen()
+        feedback.end(expected++expected,primitives=2)
+        frame(true);draw(163,false);query.afterFrame(2)
+        // A real capture after EndQuery cannot change the already completed record.
+        feedback.begin();frame(true);draw(164,true);feedback.end(expected);query.completed(2)
+        query.reportLifetime(local)
+      }
+    }
+  }
+  if(transformFeedback && !transformFeedbackRecovery && !primitiveQueryLifetimes)for(local<-Seq(true,false))
   it should s"capture raw native triangle output through translated feedback stores with exact raster and discard images local=$local" in {
     simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,

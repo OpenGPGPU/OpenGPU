@@ -7574,3 +7574,17 @@ stale query ends; exact GPO1/capture/image guards and payload releases pass.
 Production/build/ABI bytes are unchanged. Binned error/pause coverage, query-record
 memory faults, continuous multi-draw scopes, full-capacity runtime and composed
 budgets remain required; Q02/H6 and the full H0-H8 goal remain open.
+
+
+### 2026-10-21: query-record faults and continuous native scopes
+
+[Four fresh typed-host checks](performance/mobile-primitive-query-native-lifetime-2026-10-21.json)
+pass on980 frozen inputs. Local/spilled payloads each cover begin/end/poll/result
+permission and bus errors,for16 memory faults. Denied accesses reach no physical
+record memory;failed begin/end slots,healthy retry,peer ownership and guards
+remain correct. Ten actual frames capture six primitives: continuous queries
+count four across pause/resume/inactive draws,and ignore two post-end captures.
+Exact records,raw captures,images and payload release pass. The distinct total
+across frozen checkpoints is41. Production/build/ABI bytes remain unchanged;
+binned fault/lifetime runtime,full product capacity,composed budgets and the
+remaining H0-H8 requirements stay open.

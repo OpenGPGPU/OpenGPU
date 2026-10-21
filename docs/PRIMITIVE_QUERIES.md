@@ -132,3 +132,30 @@ required; Q02/H6 stays partial.
 ```sh
 sbt 'testOnly opengpu.graphics.NativePrimitiveQueryRecoveryHostAxiSpec'
 ```
+
+## Native query-record memory and continuous lifetimes
+
+[Four typed-host checks](performance/mobile-primitive-query-native-lifetime-2026-10-21.json)
+pass on 980 frozen inputs with local and spilled payloads. Begin, end, poll and
+result each encounter one denied Sv32 access and one physical bus fault per
+payload mode: sixteen memory faults overall. Denied accesses never reach record
+memory. Failed begin installs no slot; failed end frees its closing slot and
+rejects the stale end. Fresh-cookie reuse, healthy read retry, a coexisting live
+peer scope and record guard bytes all remain correct.
+
+Each continuous-lifetime test keeps one query open across active capture,
+pause, a non-capture draw, resume, another capture and an inactive draw. EndQuery
+returns exactly two. A third real capture after end leaves that completed query
+unchanged. Across both payload modes, ten frames capture six source primitives,
+four inside the query scopes. Active main/peer polls reject partial results;
+raw feedback bytes, complete GPO1 records, image oracles and payload release
+checks pass. Four query-record reset probes also retain fresh-cookie ownership.
+
+The distinct total across qualified frozen checkpoints is 41. These additions
+change no production/build/ABI bytes. Equivalent binned fault/lifetime runtime,
+full-capacity product execution and composed budgets remain open; Q02/H6 stays
+partial.
+
+```sh
+sbt 'testOnly opengpu.graphics.NativePrimitiveQueryLifetimeHostAxiSpec'
+```

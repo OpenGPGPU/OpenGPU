@@ -63,11 +63,11 @@ private[graphics] class NativeTransformFeedbackRecoveryProbe(d: GpuHostSystemAxi
     axiWrite(d,GpuCommandMmioRegs.WIDTH,context.toInt);axiWrite(d,GpuCommandMmioRegs.HEIGHT,program)
     axiWrite(d,GpuCommandMmioRegs.SOURCE_STRIDE,cookie);axiWrite(d,GpuCommandMmioRegs.FLAGS,if(capture)16 else 0)
   }
-  def end(expected: Seq[BigInt],status: Int=0,allowedPartialBytes: Int=0): Unit={
+  def end(expected: Seq[BigInt],status: Int=0,allowedPartialBytes: Int=0,primitives: Int=1): Unit={
     command(1,status)
     assert(word(recordPa+28*4)==expected.size*4 && word(recordPa+29*4)==0,"faulted primitive advanced its cursor")
-    assert(word(recordPa+36*4)==(if(expected.isEmpty)0 else 1) && word(recordPa+37*4)==0)
-    assert(word(recordPa+38*4)==(if(expected.isEmpty)0 else 3) && word(recordPa+39*4)==0)
+    assert(word(recordPa+36*4)==(if(expected.isEmpty)0 else primitives) && word(recordPa+37*4)==0)
+    assert(word(recordPa+38*4)==(if(expected.isEmpty)0 else 3*primitives) && word(recordPa+39*4)==0)
     for((v,i)<-expected.zipWithIndex)assert(word(bufferPa+i*4)==v,s"recovery raw word$i slot=$slot")
     val allowed=expected.size*4 max allowedPartialBytes
     for(a<-firstDataLine until bufferPa+4160 if a<bufferPa || a>=bufferPa+allowed)
