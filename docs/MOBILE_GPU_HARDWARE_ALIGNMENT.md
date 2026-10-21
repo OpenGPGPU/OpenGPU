@@ -7546,3 +7546,17 @@ The serial queue stopped at this failure,so native vertex/fragment endpoint
 synthesis did not start. Critical-path correction and fresh qualification remain
 required. H4/H0-H8 stay open; the failed result is preserved without clock
 relaxation,retiming or place/route.
+
+### 2026-10-21: native primitive-query capture AXI proof
+
+[Four fresh typed/binned tests](performance/mobile-primitive-query-native-axi-2026-10-21.json)
+pass across local/spilled payloads: eight successful native frames,twelve
+acknowledged source primitives,exact capture/image/GPO1 records,raster discard
+and zero-count peers. Eight explicitly synthetic64-bit record reads check32-bit
+clamping separately from real counts. Four query-record reset cuts preserve VM
+ownership and fresh-cookie reuse; coexisting feedback/visibility add four cuts
+each. The88 query commands include four empty scopes. The first compile attempt
+ran out of disk before simulation; the successful retry retains identical917
+source inputs. Together with31 component/transport checks,this gives35 distinct
+checks and three carried host emissions. Paused/inactive/incomplete/error capture
+coverage,full product runtime and composed budgets remain open; Q02/H6 is partial.

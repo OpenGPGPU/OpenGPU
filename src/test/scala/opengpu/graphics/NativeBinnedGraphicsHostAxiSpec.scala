@@ -11,6 +11,7 @@ import scala.collection.mutable
 abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHostTestSupport {
   protected def visibilityQueries: Boolean=false
   protected def transformFeedback: Boolean=false
+  protected def primitiveQueries: Boolean=false
   protected def virtualImages: Boolean=false
   protected def groupedTexture: Boolean=false
   protected def sharedTextureReset: Boolean=false
@@ -23,7 +24,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     translateImageViews=virtualImages,groupedTexture=groupedTexture,transformFeedback=transformFeedback)
   private def host(local: Boolean)=new GpuHostSystemAxi(graphics,gpu,numComputeUnits=if(groupedTexture)4 else 2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
     memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-    exposePerformance=true,nativeBinnedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)
+    exposePerformance=true,nativeBinnedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries,primitiveQueries=primitiveQueries)
   private def parkMemory(d: GpuHostSystemAxi): Unit={
     // MMIO can advance the DUT between driver calls. Accept no memory request
     // until serviceMemoryMaster owns and records every AXI handshake.
@@ -313,18 +314,21 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   it should s"capture each native binned primitive once before tile fanout and preserve exact images with raster discard local=$local" in {
     simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
       val feedback=new NativeTransformFeedbackHostProbe(d,image.memory,image.read,image.write)
+      val primitive=if(primitiveQueries)Some(new NativePrimitiveQueryHostProbe(d,image.memory,image.read,image.write))else None
       for(discard<-Seq(false,true)){
         image.setup(fragmentVersion=3)
         if(!discard)image.queryProbe.foreach{q=>q.beforeFrame();q.completed(0,false);q.afterFrame()}
-        feedback.begin();image.submit(if(discard)132 else 131,feedback=Some(feedback->discard))
+        primitive.foreach(_.prepare());feedback.begin();primitive.foreach(_.beforeFrame());image.submit(if(discard)132 else 131,feedback=Some(feedback->discard))
         image.run(id=if(discard)132 else 131);image.queryProbe.foreach(_.completed(0,!discard))
         if(discard){val count=image.drawCount;image.drawCount=0;image.verify();image.drawCount=count}else image.verify()
         image.pop()
         val positions=Vector(Vector(-1.0,-1.0,0.0,1.0),Vector(1.0,-1.0,0.0,1.0),Vector(-1.0,1.0,0.0,1.0))
         val expected=(0 until 2).flatMap(h=>positions.indices.flatMap(i=>positions(i).map(fp)++image.gradient(h,i)))
         feedback.end(expected,2,6)
+        primitive.foreach(_.afterFrame(2))
       }
       feedback.report("BINNED",local)
+      primitive.foreach(_.report("BINNED",local,2))
     }
   }
   if(!transformFeedback){
