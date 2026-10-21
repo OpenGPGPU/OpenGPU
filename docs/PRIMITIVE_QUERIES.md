@@ -3,8 +3,8 @@
 `NativePrimitiveQueryEngine` counts acknowledged transform-feedback primitives.
 The optional native path now connects command transport, capability registers,
 translated record memory and capture events in both typed and binned hosts.
-Actual composed AXI runtime and remaining query coverage are still open; this
-does not complete H6/Q02.
+Typed/binned healthy capture AXI runtime now passes in both payload modes.
+Additional query coverage and composed budgets remain open; this does not complete H6/Q02.
 
 The default controller has eight live context/full-root counters and one event
 producer. Counts saturate at 64 bits; the 32-bit result view clamps to UINT32_MAX.
@@ -82,3 +82,25 @@ MMIO and auxiliary permission/root regressions. Typed, binned and full product
 RTL emit successfully. The generated header passes C11/C++17 size and ten offset
 assertions. These checks do not qualify composed capture-event AXI runtime or
 whole-host timing.
+
+## Native capture AXI validation
+
+[Four composed AXI tests](performance/mobile-primitive-query-native-axi-2026-10-21.json)
+pass in typed/binned hosts with local payloads and spill. Eight successful native
+frames produce exactly one recorded primitive per typed frame and two per binned
+frame, including raster discard and once-before-fanout accounting. All twelve
+source primitives are checked against acknowledged feedback bytes and exact
+MRT/depth/resolve image oracles. Peer-context query results stay zero.
+
+The tests exercise88 native query commands, four empty scopes, four reset cuts
+on accepted query-record stores, held-completion VM protection and fresh-cookie
+reuse. Feedback and visibility coexist; each adds four checkpoint/store reset
+cuts. GPO1 backing records and guard bytes are exact. Eight explicitly synthetic
+64-bit completed-record reads exercise32-bit clamping; they are not capture
+counts. The first attempt failed before simulation because the disk filled
+during compilation. The successful retry preserves the identical917 inputs.
+
+Together with the31 transport/component checks this gives35 distinct checks,
+plus three previously qualified host emissions. Paused/inactive/incomplete
+capture counting, native query/capture permission and bus-fault matrices, full
+product runtime and composed timing/resources remain open.
