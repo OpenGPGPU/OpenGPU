@@ -79,3 +79,10 @@ The [822-input main audit](performance/mobile-banked-texture-epoch-integrated-ma
 preserves the frozen qualification. Native resource/coordinate admission,
 unquantized FP32 filtering, shared-CU routing and whole-path rates/coherence
 remain separate integration work.
+
+The [native FP32 follow-up](TRANSLATED_RGBA8_FP32_TEXTURE_SERVICE.md) now connects
+an optional raw-tap result to RGBA8 decode and the unquantized native filter.
+Its 82-check qualification preserves the default Q16 logic and adds exact active
+tap permission checks, post-child result ownership and scoped cancellation
+through final FP32 retirement. Complete translated FP32 synthesis and native
+resource/coordinate/shared-CU wiring remain open.

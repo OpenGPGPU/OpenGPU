@@ -72,6 +72,13 @@ class TextureLinearFilterUnitSpec extends AnyFlatSpec {
       info(s"TEXTURE_FILTER_SPECIAL queries=$cases endpointNaNPayloadAndSignedZero=true identicalInfinityBypass=true computedNaNCanonical=true invalidActiveWeights16=true unusedWeightsIgnored=true invalidAxisCount=true")
     }
   }
+  it should "retain subnormal axis weights with widely separated signed texels" in {
+    simulate(new TextureLinearFilterUnit()){d=>val t=new Driver(d)
+      val channel=Seq("1b9f5fea","ee1dbef6","8fbfaf7f","9774da32").map(v=>Seq.fill(4)(BigInt(v,16)))
+      t.send(pad(channel),Seq(BigInt(1),BigInt("3e527e44",16),BigInt(0),BigInt(0)),2)
+      t.result()
+    }
+  }
   it should "drain accepted arithmetic at cancellation cuts and preserve already held completion" in {
     simulate(new TextureLinearFilterUnit()){d=>val t=new Driver(d)
       val colors=Vector.tabulate(16)(i=>Vector.tabulate(4)(c=>bits((i*11-c*7-63).toFloat/64.0f)))

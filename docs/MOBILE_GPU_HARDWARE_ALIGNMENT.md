@@ -6907,3 +6907,70 @@ existing word path; Q16 rational normalization does not replace native FP32
 interpolation semantics. Connecting native FP32 filtering and shared-CU/resource/
 coordinate admission, measuring whole-native rates under contention and closing
 render-to-texture visibility remain required. All H0-H8 exit gates remain open.
+
+## H4 qualified unquantized FP32 service and corrected native arithmetic
+
+The [translated FP32 service](TRANSLATED_RGBA8_FP32_TEXTURE_SERVICE.md) now
+passes 82 functional checks and all three synthesis screens on 828 unchanged
+inputs. The complete unquantized service meets 1000 ps including I/O at
++40.947/+343.996 ps core/I/O slack. Fresh corrected-FMA native vertex and
+fragment endpoints also pass at +88.968/+163.440 ps and +93.253/+162.507 ps.
+All three are fully mapped with zero skipped instances, TC/SLVT, 25% I/O,
+standard ABC and no retiming or place/route. Default Q16 banked profiles retain
+their qualified logic after removing comments only. The subsequent counted
+late-join, coordinate-to-color and native-client revisions have separate
+qualification. Shared-CU cluster placement, whole-native rates/coherence,
+main composition audit and the remaining H0-H8 gates stay open.
+
+## H4 unquantized FP32 bilinear pipeline
+
+The [streaming native FP32 filter](TEXTURE_BILINEAR_FP32_PIPELINE.md) now passes
+[46 checks and two emissions on 825 frozen inputs](performance/mobile-texture-bilinear-fp32-2026-10-21.json).
+It retains full FP32 axis weights and the native separately rounded inverse and
+product followed by fused sum. Endpoint/equal-bit bypasses, subnormal weights,
+NaNs/infinities, invalid inputs and globally drained cancellation are covered.
+A decoded-texel stream sustains 192 complete groups at input/output II1; another
+384 groups exercise backpressure. Thirteen cancellation cuts include two actual
+saturation witnesses and healthy reuse.
+
+The work also corrects FMA public-result flush and accepted-row metadata bugs
+exposed by changing/invalid input operands. Earlier negative results remain in
+the record. The eighteen vector wrapper regressions also pass. Corrected default
+FMA synthesis passes 1000 ps including I/O (+210.909/+434.695 ps), with 11,091
+fully mapped cells. Complete-filter synthesis also passes (+155.230/+226.993 ps),
+with 506,427 fully mapped cells and no skipped instances. Changed default
+FMA logic requires fresh native endpoint timing before main
+integration. Raw banked tap forwarding, texel decode, native resource/coordinate
+admission, shared-CU routing and whole-native precision/rates/coherence remain
+required. The Q16 weighted-sum service remains a separate contract; H0-H8 stay open.
+
+## H4 translated raw taps through native FP32 filtering
+
+The [translated RGBA8 FP32 service](TRANSLATED_RGBA8_FP32_TEXTURE_SERVICE.md)
+passes [82 fresh checks and ten emissions on 828 frozen inputs](performance/mobile-translated-rgba8-fp32-2026-10-21.json).
+It translates every exactly active tap before physical lookup, forwards raw words,
+decodes byte/255 to FP32 and preserves native hierarchical filtering with full
+FP32 weights. Minimum-subnormal weights remain active and require permission;
+invalid weights fault before PTE/data work. Q16 admission masks do not quantize
+the numeric weights.
+
+The parent retains 128 owners through final retirement, pinning VM state and
+preserving scoped cancellation for duplicate caller tags after child retirement.
+A warmed virtual-to-filtered stream sustains 192 complete groups at input/output
+II1 across owner-ring reuse; another 384 groups exercise backpressure without
+new PTE/data reads. Saturation tests cancel 128 warm owners and invalidate 18
+cold accepted groups with a held physical offer. Ten further cancellation cuts,
+precise virtual faults, uncached aliases, root remap and healthy reuse pass.
+
+Default banked profiles retain their qualified logic after comments are removed;
+the standalone native filter remains byte-identical. Complete translated FP32
+synthesis is active and not yet qualified. Coordinate/resource admission,
+shared-CU routing, other eligible formats/layouts, changed-FMA native endpoint
+timing and whole-native rates/coherence remain required. This component's rate
+starts from prechecked virtual spans, not shader instructions; H0-H8 remain open.
+
+The same 828-input source also passes 23 existing native execution/query checks.
+Fresh complete vertex/fragment endpoints each contain 77 active RTL files;
+only the FMA core/wrapper logic changes from their older timing baseline.
+Fresh vertex endpoint synthesis is active, while fragment synthesis is queued.
+The complete new translated service has its own active synthesis screen.

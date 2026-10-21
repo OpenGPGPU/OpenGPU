@@ -9,7 +9,7 @@ class BankedTextureGroupCancel extends Bundle {
   val identity=new GraphicsWorkIdentity
   val tag=UInt(32.W)
 }
-class TranslatedBankedRgba8Result extends BankedRgba8FloatResult {
+class TranslatedBankedRgba8Result(rawTapOutput: Boolean=false) extends BankedRgba8FloatResult(rawTapOutput) {
   /** 0=none,1=translation,2=physical data. faultAddress is always virtual. */
   val faultSource=UInt(2.W)
 }
@@ -26,12 +26,13 @@ class TranslatedBankedRgba8Result extends BankedRgba8FloatResult {
   * groups. Accepted translations/data for that row drain before its completion.
   */
 class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
-    dataBytes: Int=8192,entries: Int=32,useBlackBoxes: Boolean=false) extends Module {
+    dataBytes: Int=8192,entries: Int=32,useBlackBoxes: Boolean=false,
+    rawTapOutput: Boolean=false) extends Module {
   require(config.xLen==32 && isPow2(entries) && entries>=16 && entries<=64)
   private val indexBits=log2Ceil(entries)
   val io=IO(new Bundle {
     val in=Flipped(Decoupled(new BankedRgba8Sample))
-    val out=Decoupled(new TranslatedBankedRgba8Result)
+    val out=Decoupled(new TranslatedBankedRgba8Result(rawTapOutput))
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
     val pageWalk=Decoupled(new ComputeMemoryRequest(config,64,4))
@@ -41,7 +42,7 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
     val invalidate=Input(Bool());val busy=Output(Bool())
     val occupiedFills=Output(UInt(5.W));val joined=Output(Bool())
   })
-  private val backend=Module(new BankedRgba8FloatTextureService(dataBytes,16,useBlackBoxes,cachePolicyInput=true))
+  private val backend=Module(new BankedRgba8FloatTextureService(dataBytes,16,useBlackBoxes,cachePolicyInput=true,rawTapOutput=rawTapOutput))
   private val translators=Seq.fill(4)(Module(new GraphicsAddressTranslator(config,entries=16,maxOutstanding=entries)))
   private val samples=Reg(Vec(entries,new BankedRgba8Sample))
   private val physical=Reg(Vec(entries,Vec(4,UInt(32.W))))
@@ -52,7 +53,7 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
   private val cancelled=Reg(Vec(entries,Bool()))
   private val launched=RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val completed=RegInit(VecInit(Seq.fill(entries)(false.B)))
-  private val results=Reg(Vec(entries,new TranslatedBankedRgba8Result))
+  private val results=Reg(Vec(entries,new TranslatedBankedRgba8Result(rawTapOutput)))
   private val head=RegInit(0.U(indexBits.W));private val tail=RegInit(0.U(indexBits.W))
   private val count=RegInit(0.U((indexBits+1).W))
   private val issueHead=RegInit(0.U(indexBits.W));private val issueCount=RegInit(0.U((indexBits+1).W))
@@ -60,7 +61,7 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
   private val draining=RegInit(false.B);private val pinnedSatp=RegInit(0.U(32.W))
   // One public completion only: a second hidden final row could otherwise
   // escape a cancel pulse while the visible row is held.
-  private val outputs=Module(new Queue(new TranslatedBankedRgba8Result,1,pipe=true))
+  private val outputs=Module(new Queue(new TranslatedBankedRgba8Result(rawTapOutput),1,pipe=true))
   private val walks=Module(new Queue(new ComputeMemoryRequest(config,64,4),2))
   io.out<>outputs.io.deq
   io.memoryRequest<>backend.io.memoryRequest;backend.io.memoryResponse<>io.memoryResponse
@@ -171,6 +172,7 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
     completed(e):=true.B
     results(e):=0.U.asTypeOf(results(e));results(e).identity:=samples(e).identity;results(e).tag:=samples(e).tag
     results(e).values:=b.values;results(e).hit:=b.hit;results(e).fault:=b.fault
+    results(e).rawTaps.foreach(_:=b.rawTaps.get)
     results(e).cancelled:=b.cancelled;results(e).missingTaps:=b.missingTaps
     results(e).faultSource:=Mux(b.fault,2.U,0.U)
     val matches=VecInit((0 until 4).map(p=>samples(e).weights(p)=/=0.U && physical(e)(p)===b.faultAddress)).asUInt
@@ -185,6 +187,7 @@ class TranslatedBankedRgba8TextureService(config: GpuConfig=GpuConfig(),
   outputs.io.enq.bits.cancelled:=rowStopped
   outputs.io.enq.bits.missingTaps:=Mux(rowStopped,0.U,results(head).missingTaps)
   for(c<-0 until 4)outputs.io.enq.bits.values(c):=Mux(rowStopped,0.U,results(head).values(c))
+  outputs.io.enq.bits.rawTaps.foreach{v=>for(t<-0 until 4)v(t):=Mux(rowStopped,0.U,results(head).rawTaps.get(t))}
   private val retire=outputs.io.enq.fire
   when(retire){alive(head):=false.B;head:=head+1.U}
   io.in.ready:= !stop && !flush && !vmChanged && count<entries.U && (!dispatch || remaining===0.U)
