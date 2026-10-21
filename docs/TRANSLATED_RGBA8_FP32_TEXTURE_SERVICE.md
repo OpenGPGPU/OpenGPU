@@ -54,8 +54,11 @@ or physical area result.
 The five default banked profiles still match their qualified RTL after removing
 comments only. The standalone FP32 filter retains 16 byte-identical active files
 and its passing component synthesis. The complete new translated service has a
-fresh synthesis run in progress at 1000 ps, TC/SLVT, 25% I/O, standard ABC, without
-retiming or place/route. Its timing and whole-native performance remain unproven.
+passing synthesis screen at 1000 ps, TC/SLVT, 25% I/O, standard ABC, without
+retiming or place/route. Core/I/O setup slack is +40.947/+343.996 ps, with
+complete mapping and zero skipped instances. Whole-native performance remains
+unproven; subsequent read-accounting/late-join and client-router revisions
+require separate synthesis.
 The legacy controls pass on the same frozen source. Both legacy native endpoints
 have fresh 77-file emissions; only the FMA core and wrapper logic differ from
 the old qualified endpoints. Fresh vertex endpoint synthesis now passes; fragment

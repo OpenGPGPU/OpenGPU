@@ -207,7 +207,7 @@
   },
   "synthesis_jobs": {
     "native": {
-      "status": "running",
+      "status": "passed",
       "session": 32603,
       "start": {
         "wrapper_pid": 71696,
@@ -233,7 +233,24 @@
         "started_utc": "2026-10-20T22:52:39.497401+00:00"
       },
       "inputs_manifest": ".artifacts/mobile-translated-rgba8-fp32-native-synthesis-v1-inputs.json",
-      "active_RTL_files": 51
+      "active_RTL_files": 51,
+      "terminal": {
+        "returncode": 0,
+        "source_unchanged": true,
+        "rtl_unchanged": true,
+        "elapsed_seconds": 4788.92773420806,
+        "finished_utc": "2026-10-21T00:12:28.494562+00:00"
+      },
+      "setup_slacks_ps": [
+        40.947,
+        343.996
+      ],
+      "mapping_passed": true,
+      "mapped_cells": 1734402,
+      "library_area": 226989.050759,
+      "qualification_sha256": "192204692e6e69e7f1b0bf20dc52e79e7294d356b23db44f2df7d82443ea0533",
+      "result_sha256": "f13218cd0cfbdf0d3c82f23d813b842af3b83fc072fe6f5c3e263c9620dd16dd",
+      "synth_stat_sha256": "301fc2dfd19649cc4456052c17901068625d18d98359b297d4fe92694520a225"
     },
     "vertex_endpoint": {
       "status": "passed",
