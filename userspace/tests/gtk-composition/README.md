@@ -1,7 +1,8 @@
 # GTK composition shader captures
 
-These are verbatim TGSI programs rejected during the GtkGLArea smoke run.
-They are inputs for a future lowering regression, not passing tests.
+These are verbatim TGSI programs captured from the GtkGLArea smoke run.
+The swizzle fragment and the constant-position vertex program now lower.
+The notes below record the original rejection.
 
 The 2026-10-14 run `/tmp/opengpu-gtk-smoke12/gtk-smoke.log` recorded:
 
@@ -52,5 +53,15 @@ baseline. After the sampler matcher and fixed swizzle shader were added,
 `run-final.log` reaches both GPU draws and produces `0xff0000ff` for the
 unchanged red texel and `0xffff0000` for the BGRA-swizzled result; the clear
 pixel remains `0x00ff00ff`. The small fragment blocker is therefore cleared.
-The remaining GTK gate blocker is the separate constant-position vertex
-program captured in `constant-position.vert.tgsi`.
+
+`constant-position.vert.tgsi` is `CONST[0][0..3] * CONST[0][4]` with no
+vertex attribute. The vertex menu selects `vertex_mvp` and the draw stages
+that fifth vec4 as the object-space position, so the vertex core performs
+the multiply. `opengpu_vertex_lower_kind` returns 2 for this program. An
+identity matrix and `(0.5, -2, 0, 1)` stage those floats and the shader's
+per-term Q16.16 sum is `(32768, -131072, 0, 65536)`. A position attribute
+still returns 1 and is not replaced by the constant. The fragment bound with
+that vertex shader is `MOV OUT[0], CONST[0][0]` and stays on the uniform-colour
+menu. The texture frame from the same log, `TEX` then `SEQ` then a red/blue
+`CMP`, stays on the sampler menu, as does the vertex program that writes
+position `zw` from `(0, 1)` and a vec2 varying.

@@ -390,6 +390,157 @@ static void position_xadd(struct tgsi_token *tokens)
     add_end(tokens, header);
 }
 
+/* gl_Position = CONST[0][0..3] * CONST[0][4]. No vertex attribute. */
+static void constant_position(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src mul[2], mad[3];
+    unsigned ch;
+
+    begin_shader(tokens, &header, PIPE_SHADER_VERTEX);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 4, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_POSITION);
+    mul[0] = op_src(TGSI_FILE_CONSTANT, 4, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                    TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    mul[1] = op_src_id(TGSI_FILE_CONSTANT, 0);
+    add_op(tokens, header, TGSI_OPCODE_MUL, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XYZW, 2, mul);
+    for (ch = 1; ch < 4; ch++) {
+        mad[0] = op_src(TGSI_FILE_CONSTANT, 4, ch, ch, ch, ch, 0);
+        mad[1] = op_src_id(TGSI_FILE_CONSTANT, ch);
+        mad[2] = op_src_id(TGSI_FILE_TEMPORARY, 0);
+        add_op(tokens, header, TGSI_OPCODE_MAD,
+               ch == 3 ? TGSI_FILE_OUTPUT : TGSI_FILE_TEMPORARY, 0,
+               TGSI_WRITEMASK_XYZW, 3, mad);
+    }
+    add_end(tokens, header);
+}
+
+/* The same product with an attribute stays on the ordinary MVP menu. */
+static void attribute_position(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src mul[2], mad[3];
+    unsigned ch;
+
+    begin_shader(tokens, &header, PIPE_SHADER_VERTEX);
+    add_decl(tokens, header, TGSI_FILE_INPUT, 0, 0, TGSI_SEMANTIC_POSITION);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 3, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_POSITION);
+    mul[0] = op_src(TGSI_FILE_INPUT, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                    TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    mul[1] = op_src_id(TGSI_FILE_CONSTANT, 0);
+    add_op(tokens, header, TGSI_OPCODE_MUL, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XYZW, 2, mul);
+    for (ch = 1; ch < 4; ch++) {
+        mad[0] = op_src(TGSI_FILE_INPUT, 0, ch, ch, ch, ch, 0);
+        mad[1] = op_src_id(TGSI_FILE_CONSTANT, ch);
+        mad[2] = op_src_id(TGSI_FILE_TEMPORARY, 0);
+        add_op(tokens, header, TGSI_OPCODE_MAD,
+               ch == 3 ? TGSI_FILE_OUTPUT : TGSI_FILE_TEMPORARY, 0,
+               TGSI_WRITEMASK_XYZW, 3, mad);
+    }
+    add_end(tokens, header);
+}
+
+static void add_imm(struct tgsi_token *tokens, struct tgsi_header *header,
+                    float x, float y, float z, float w);
+
+/* GtkGLArea: texture2D, then SEQ against 1, then CMP that swaps R and B. */
+static void gtk_swizzle(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src uv = op_src(TGSI_FILE_INPUT, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y,
+                              TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, 0);
+    struct op_src seq[2];
+    struct op_src cmp[3];
+    struct tgsi_full_instruction inst;
+    unsigned wrote;
+
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_INPUT, 0, 0, TGSI_SEMANTIC_GENERIC);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 1, -1);
+    add_imm(tokens, header, 1.f, 0.f, 0.f, 0.f);
+    inst = tgsi_default_full_instruction();
+    inst.Instruction.Opcode = TGSI_OPCODE_TEX;
+    inst.Instruction.NumDstRegs = 1;
+    inst.Instruction.NumSrcRegs = 2;
+    inst.Instruction.Texture = 1;
+    inst.Texture.Texture = TGSI_TEXTURE_2D;
+    inst.Dst[0].Register.File = TGSI_FILE_TEMPORARY;
+    inst.Dst[0].Register.Index = 0;
+    inst.Dst[0].Register.WriteMask = TGSI_WRITEMASK_XYZW;
+    inst.Src[0].Register.File = uv.file;
+    inst.Src[0].Register.Index = uv.index;
+    inst.Src[0].Register.SwizzleX = uv.swiz[0];
+    inst.Src[0].Register.SwizzleY = uv.swiz[1];
+    inst.Src[0].Register.SwizzleZ = uv.swiz[2];
+    inst.Src[0].Register.SwizzleW = uv.swiz[3];
+    inst.Src[1].Register.File = TGSI_FILE_SAMPLER;
+    inst.Src[1].Register.Index = 0;
+    wrote = tgsi_build_full_instruction(&inst, cursor(tokens, header), header,
+                                        room(header));
+    assert(wrote);
+    seq[0] = op_src(TGSI_FILE_CONSTANT, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                    TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    seq[1] = op_src(TGSI_FILE_IMMEDIATE, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                    TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    add_op(tokens, header, TGSI_OPCODE_SEQ, TGSI_FILE_TEMPORARY, 1,
+           TGSI_WRITEMASK_X, 2, seq);
+    cmp[0] = op_src(TGSI_FILE_TEMPORARY, 1, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                    TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 1);
+    cmp[1] = op_src(TGSI_FILE_TEMPORARY, 0, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_Y,
+                    TGSI_SWIZZLE_X, TGSI_SWIZZLE_W, 0);
+    cmp[2] = op_src_id(TGSI_FILE_TEMPORARY, 0);
+    add_op(tokens, header, TGSI_OPCODE_CMP, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 3, cmp);
+    add_end(tokens, header);
+}
+
+/* The colour fragment bound with the constant-position vertex shader. */
+static void uniform_color(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src color = op_src_id(TGSI_FILE_CONSTANT, 0);
+
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 0, -1);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 1, &color);
+    add_end(tokens, header);
+}
+
+/* Position xy from the attribute, zw from (0, 1), plus a vec2 varying. */
+static void position_zw_imm(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src xy = op_src(TGSI_FILE_INPUT, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y,
+                              TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, 0);
+    struct op_src zw = op_src(TGSI_FILE_IMMEDIATE, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y,
+                              TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y, 0);
+    struct op_src uv = op_src(TGSI_FILE_INPUT, 1, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y,
+                              TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+
+    begin_shader(tokens, &header, PIPE_SHADER_VERTEX);
+    add_decl(tokens, header, TGSI_FILE_INPUT, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_INPUT, 1, 1, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_POSITION);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 1, 1, TGSI_SEMANTIC_GENERIC);
+    add_imm(tokens, header, 0.f, 1.f, 0.f, 0.f);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XY, 1, &xy);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_ZW, 1, &zw);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 1,
+           TGSI_WRITEMASK_XY, 1, &uv);
+    add_end(tokens, header);
+}
+
 static void position_copy(struct tgsi_token *tokens)
 {
     struct tgsi_header *header;
@@ -826,6 +977,52 @@ int main(void)
 
     position_copy(copy_vs);
     assert(opengpu_vertex_lower_kind(copy_vs, code, 256, &words) == 1);
+    {
+        struct tgsi_token const_vs[MAX_TOKENS];
+        struct tgsi_token attr_vs[MAX_TOKENS];
+        /* Column-major identity, then CONST[0][4] = (0.5, -2, 0, 1). */
+        float uniform[20] = {
+            1.f, 0.f, 0.f, 0.f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 1.f, 0.f,
+            0.f, 0.f, 0.f, 1.f,
+            0.5f, -2.f, 0.f, 1.f
+        };
+        float staged[4];
+        int row, col;
+        int32_t clip[4];
+
+        constant_position(const_vs);
+        assert(opengpu_vertex_lower_kind(const_vs, code, 256, &words) == 2);
+        assert(opengpu_stage_const_position(uniform, 19, staged));
+        assert(!opengpu_stage_const_position(uniform, 20, staged));
+        assert(staged[0] == 0.5f && staged[1] == -2.f && staged[2] == 0.f &&
+               staged[3] == 1.f);
+        /* vertex_mvp converts each component*coefficient*65536, then adds
+         * the four integer terms. These products are exact. */
+        for (row = 0; row < 4; row++) {
+            int32_t sum = 0;
+
+            for (col = 0; col < 4; col++) {
+                double term = (double)staged[col] * (double)uniform[col * 4 + row] *
+                              65536.0;
+
+                sum += (int32_t)term;
+            }
+            clip[row] = sum;
+        }
+        assert(clip[0] == 32768 && clip[1] == -131072 && clip[2] == 0 &&
+               clip[3] == 65536);
+        attribute_position(attr_vs);
+        assert(opengpu_vertex_lower_kind(attr_vs, code, 256, &words) == 1);
+
+        uniform_color(const_vs);
+        assert(opengpu_fragment_lower_kind(const_vs, code, 256, &words) == 1);
+        gtk_swizzle(const_vs);
+        assert(opengpu_fragment_lower_kind(const_vs, code, 256, &words) == 1);
+        position_zw_imm(attr_vs);
+        assert(opengpu_vertex_lower_kind(attr_vs, code, 256, &words) == 1);
+    }
     position_xadd(add_vs);
     words = 0;
     assert(!opengpu_vertex_lower_kind(add_vs, code, 256, &words));
