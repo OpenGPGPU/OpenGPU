@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import opengpu.util.RegisteredQueue2
 
 /** Exact round-to-nearest UNORM8 multiplication. The correction implements
   * (a*b+127)/255 over the entire 8-bit product domain without a divider.
@@ -63,15 +64,26 @@ class TexUVInterpolator(gfxConfig: GraphicsConfig) extends Module {
   io.uvPx.v := interp(io.uv0.v, io.uv1.v, io.uv2.v)
 }
 
+private[graphics] class LegacyTexturePayload(config: GraphicsConfig) extends Bundle {
+  val fragment = new RasterFragment(config)
+  val depths = Vec(config.maxSampleCount, UInt(30.W))
+  val format = UInt(PixelFormat.width.W)
+  val base = UInt(32.W)
+  val textureWidth = UInt(14.W)
+  val textureHeight = UInt(14.W)
+  val clamp = Bool()
+  val maxLevel = UInt(4.W)
+}
+
 /** Wires the fixed-function sampler ([[TextureUnit]]) into the fragment
   * stream: per-fragment perspective-correct UVs, one bilinear sample, colour
   * MODULATE (fragment x texel, truncated shift back to 8 bits) and straight
   * pass-through of position and depth.
   *
-  * One fragment is in flight at a time -- the consumer sees standard ready/
-  * valid flow control; the fetch chain inside the sampler is invisible except
-  * as latency.  X/Y/depth and the sampled/modulated colour registers are
-  * single-source updated (learned twice the hard way in M4b/M5b).
+  * Exact UV arithmetic is pipelined at II1. Captured fragment, per-sample
+  * depths and texture descriptor remain owned until ordered output retirement.
+  * The sampler retains its existing service rate; queued arithmetic overlaps
+  * that service and output backpressure never substitutes live descriptor pins.
   */
 
 class TexturedFragStage(
@@ -129,13 +141,6 @@ class TexturedFragStage(
   private val uvInterp = Module(new TexUVInterpolator(gfxConfig))
   private val sampler = Module(new TextureUnit(gfxConfig))
 
-  sampler.io.texFormat := io.texFormat
-  sampler.io.texBase := io.texBase
-  sampler.io.texWidth := io.texWidth
-  sampler.io.texHeight := io.texHeight
-  sampler.io.wrapMode := io.wrapClamp
-  sampler.io.texMaxLevel := io.texMaxLevel
-
   // Mem passthrough: the sampler owns fetches exclusively (single-sample FSM).
   io.mem.req <> sampler.io.mem.req
   sampler.io.mem.resp <> io.mem.resp
@@ -171,89 +176,72 @@ class TexturedFragStage(
     io.interpolatedUvQuad := 0.U.asTypeOf(Vec(4, new TexUV))
   }
 
-  private val sWait :: sOut :: Nil = Enum(2)
-  private val state = RegInit(sWait)
-  private val pending = RegInit(false.B)
-  when(io.fragIn.fire) { pending := true.B }
-  when(io.out.fire) { pending := false.B }
-  io.drained := !pending
+  private val captured = Wire(new LegacyTexturePayload(gfxConfig))
+  captured.fragment := io.fragIn.bits
+  captured.depths := io.fragDepths
+  captured.format := io.texFormat
+  captured.base := io.texBase
+  captured.textureWidth := io.texWidth
+  captured.textureHeight := io.texHeight
+  captured.clamp := io.wrapClamp
+  captured.maxLevel := io.texMaxLevel
+  private val arithmetic = Module(new PipelinedTexUVInterpolator(gfxConfig, captured.getWidth))
+  arithmetic.io.in.valid := io.fragIn.valid
+  io.fragIn.ready := arithmetic.io.in.ready
+  arithmetic.io.in.bits.edges := VecInit(Seq(io.e0, io.e1, io.e2))
+  arithmetic.io.in.bits.inverseW := VecInit(Seq(io.invW0, io.invW1, io.invW2))
+  arithmetic.io.in.bits.coordinates := VecInit(Seq(io.uv0, io.uv1, io.uv2))
+  arithmetic.io.in.bits.payload := captured.asUInt
+  private val readyPayload = arithmetic.io.out.bits.payload.asTypeOf(new LegacyTexturePayload(gfxConfig))
+  private val samples = Module(new RegisteredQueue2(new LegacyTexturePayload(gfxConfig)))
+  sampler.io.texFormat := readyPayload.format
+  sampler.io.texBase := readyPayload.base
+  sampler.io.texWidth := readyPayload.textureWidth
+  sampler.io.texHeight := readyPayload.textureHeight
+  // Legacy TextureUnit consults wrapMode after sample admission as well.
+  // Keep this policy owned through the fetch, even when the UV queue advances
+  // to another descriptor or becomes empty on the admission edge.
+  private val samplingClamp = RegInit(false.B)
+  when(sampler.io.sample.fire) { samplingClamp := readyPayload.clamp }
+  sampler.io.wrapMode := samplingClamp
+  sampler.io.texMaxLevel := readyPayload.maxLevel
+  sampler.io.sample.valid := arithmetic.io.out.valid && samples.io.enq.ready
+  sampler.io.sample.bits.u := arithmetic.io.out.bits.coordinates.u
+  sampler.io.sample.bits.v := arithmetic.io.out.bits.coordinates.v
+  sampler.io.sample.bits.mipLevel := 0.U
+  sampler.io.sample.bits.lodFrac := 0.U
+  arithmetic.io.out.ready := sampler.io.sample.ready && samples.io.enq.ready
+  samples.io.enq.valid := arithmetic.io.out.valid && sampler.io.sample.ready
+  samples.io.enq.bits := readyPayload
 
-  // Sampler results are always consumed while waiting for a fragment.
-  sampler.io.result.ready := state === sWait
-
-  // Held fragment payload + fetched texel.
-  private val heldX = RegInit(0.S(gfxConfig.coordWidth.W))
-  private val heldY = RegInit(0.S(gfxConfig.coordWidth.W))
-  private val heldDepth = RegInit(0.S(32.W))
-  private val heldCovered = RegInit(false.B)
-  private val heldCoverageMask = RegInit(0.U(gfxConfig.maxSampleCount.W))
-  private val heldDepths =
-    RegInit(0.U.asTypeOf(Vec(gfxConfig.maxSampleCount, UInt(30.W))))
-  private val heldAlpha = RegInit(0xff.U(8.W))
-  private val heldColor = Reg(Vec(3, UInt(8.W))) // fragment colour
-  private val texelWord = RegInit(0.U(32.W))
-  private val heldE = Seq(RegInit(0.S(gfxConfig.edgeWidth.W)),
-    RegInit(0.S(gfxConfig.edgeWidth.W)), RegInit(0.S(gfxConfig.edgeWidth.W)))
-
+  private val results = Module(new RegisteredQueue2(new Bundle {
+    val payload = new LegacyTexturePayload(gfxConfig)
+    val texel = UInt(32.W)
+  }))
+  results.io.enq.valid := sampler.io.result.valid && samples.io.deq.valid
+  results.io.enq.bits.payload := samples.io.deq.bits
+  results.io.enq.bits.texel := sampler.io.result.bits
+  samples.io.deq.ready := sampler.io.result.valid && results.io.enq.ready
+  sampler.io.result.ready := samples.io.deq.valid && results.io.enq.ready
+  when(sampler.io.result.valid) {
+    assert(samples.io.deq.valid, "a texture result must retain its captured fragment owner")
+  }
   private def modulate(fc: UInt, tc: UInt): UInt =
     if (normalizedModulation) Unorm8Product(fc,tc) else (fc * tc)(15,8)
-
-  // A sampler may accept its successor while delivering the previous result.
-  // This stage has one fragment payload slot, held until that output retires.
-  io.fragIn.ready := state === sWait && !pending && sampler.io.sample.ready
-  sampler.io.sample.valid :=
-    state === sWait && io.fragIn.valid && io.fragIn.ready
-  sampler.io.sample.bits.u := uvInterp.io.uvPx.u
-  sampler.io.sample.bits.v := uvInterp.io.uvPx.v
-  sampler.io.sample.bits.mipLevel := 0.U
-  // This compatibility path has no quad-gradient LOD calculation.
-  sampler.io.sample.bits.lodFrac := 0.U
-
-  io.out.valid := state === sOut
-  io.out.bits.x := heldX
-  io.out.bits.y := heldY
-  io.out.bits.depth := heldDepth
-  io.out.bits.e0 := heldE(0)
-  io.out.bits.e1 := heldE(1)
-  io.out.bits.e2 := heldE(2)
-  io.out.bits.covered := heldCovered
-  io.out.bits.coverageMask := heldCoverageMask
-  io.outDepths := heldDepths
-  io.out.bits.color.r := modulate(heldColor(0), texelWord(31, 24))
-  io.out.bits.color.g := modulate(heldColor(1), texelWord(23, 16))
-  io.out.bits.color.b := modulate(heldColor(2), texelWord(15, 8))
-  io.out.bits.alpha := (if (normalizedModulation)
-    Unorm8Product(heldAlpha,texelWord(7,0)) else heldAlpha)
-
-  // Payload latch happens on the accept edge; the sampler completes several
-  // cycles later, so its result is observed on its own when -- independent of
-  // whether the upstream fragment stream is presenting another fragment.
-  switch(state) {
-    is(sWait) {
-      when(io.fragIn.valid && io.fragIn.ready) {
-        heldX := io.fragIn.bits.x
-        heldY := io.fragIn.bits.y
-        heldDepth := io.fragIn.bits.depth
-        heldCovered := io.fragIn.bits.covered
-        heldCoverageMask := io.fragIn.bits.coverageMask
-        heldDepths := io.fragDepths
-        heldAlpha := io.fragIn.bits.alpha
-        heldE(0) := io.fragIn.bits.e0
-        heldE(1) := io.fragIn.bits.e1
-        heldE(2) := io.fragIn.bits.e2
-        Seq(io.fragIn.bits.color.r, io.fragIn.bits.color.g,
-          io.fragIn.bits.color.b).zipWithIndex.foreach { case (c, i) =>
-          heldColor(i) := c
-        }
-      }
-    }
-    is(sOut) {
-      when(io.out.fire) { state := sWait }
-    }
+  private val fragment = results.io.deq.bits.payload.fragment
+  private val texel = results.io.deq.bits.texel
+  io.out.valid := results.io.deq.valid
+  results.io.deq.ready := io.out.ready
+  io.out.bits := fragment
+  io.out.bits.color.r := modulate(fragment.color.r, texel(31, 24))
+  io.out.bits.color.g := modulate(fragment.color.g, texel(23, 16))
+  io.out.bits.color.b := modulate(fragment.color.b, texel(15, 8))
+  io.out.bits.alpha := (if (normalizedModulation) Unorm8Product(fragment.alpha, texel(7, 0)) else fragment.alpha)
+  io.outDepths := results.io.deq.bits.payload.depths
+  private val owned = RegInit(0.U(10.W))
+  when(io.fragIn.fire =/= io.out.fire) {
+    when(io.fragIn.fire) { assert(!owned.andR); owned := owned + 1.U }
+      .otherwise { assert(owned =/= 0.U); owned := owned - 1.U }
   }
-
-  when(state === sWait && sampler.io.result.valid) {
-    texelWord := sampler.io.result.bits
-    state := sOut
-  }
+  io.drained := owned === 0.U
 }

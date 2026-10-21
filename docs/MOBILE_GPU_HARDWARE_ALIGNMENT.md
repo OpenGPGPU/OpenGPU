@@ -7728,3 +7728,53 @@ main production before this repair. Its temporary main test edit is restored
 exactly. This is a structural repair of the known beat-to-read-data path, with
 no new full-host timing claim. Current-main/GTO1/native composition, remaining
 legacy arithmetic and the full default core/I/O screen remain required.
+
+### Exact legacy interpolation divider — 2026-10-22
+
+The [legacy interpolation repair](LEGACY_INTERPOLATION_PIPELINE.md) now has an
+exact streaming signed129/96 divider retaining the low32 quotient bits with
+truncation and overflow wrap. Four checks on 1,002 frozen inputs cover small
+exhaustive/full-width signed boundaries, input/output II1, stalls and reset.
+Default synthesis passes 1000 ps TC/SLVT and 25% I/O with core +329.801 ps,
+I/O +163.606 ps and zero skipped instances. Its latency is 131 cycles and its
+steady-state rate is one operation per cycle. Weighted products, actual
+scalar/quad interpolation consumers and full-host core/I/O timing remain open;
+this component does not repair the host by itself.
+
+### Pipelined weighted UV and owned scalar sampling — 2026-10-22
+
+The [UV consumer checkpoint](performance/mobile-legacy-uv-pipeline-2026-10-22.json)
+now registers exact edge/inverse-W/unsigned-UV products, modular sums and signed
+division, with 146-cycle fill and one request/result per cycle. The production
+scalar sampler captures each fragment, sample depths and texture descriptor
+through queued arithmetic, memory service and output stalls. A reproduced
+late-wrap-policy error is fixed by retaining that policy through sample
+ownership; both original failures remain in the archived evidence.
+
+Twenty-one checks pass on 1,008 frozen inputs, including 387 full-width numeric
+cases, 48 queued descriptor cases and exact 1x texture/4x texture-blend-stencil
+images through shared L2. Default weighted-UV numeric synthesis passes 1000 ps
+TC/SLVT and 25% I/O: core +108.792 ps, I/O +448.657 ps, 588,499 mapped cells,
+library area 72,792.443340, 85,512 flops and zero skipped instances/SRAM macros.
+This 32-bit metadata screen cannot qualify the full scalar sampler/metadata path.
+Quad UV/color/depth/gradient consumer pipelines, full-host core/I/O and H0-H8
+completion remain open.
+
+
+### Native execution/MMIO composed with scalar UV, 2026-10-22
+
+The [current-main composition](performance/mobile-native-shader-host-composition-2026-10-22.json)
+passes31 distinct checks and76 actual native submissions on1,017 frozen inputs,
+with a passing GSL ABI check and fresh default discovery-host emission. Main's
+exact pipelined scalar UV and captured sampler policy compose with nonzero32-bit
+native quotas, immutable GSL discovery, graphics-owned reset interruption,
+unavailable-instruction traps and registered AXI transfer/beat address ownership.
+The native cases cover typed/binned local and spill modes, running vertex and
+fragment loops, delayed owned replies, held completions, destination/payload
+reuse, policy retention and exact healthy images. All qualified source bytes
+remain unchanged; only appended evidence required merge resolution.
+
+This is functional composition evidence. GTO1 and the newer raster attribute
+and programmable quad UV candidates remain separate. Full-host synthesis at
+1000ps including I/O, complete watchdog/resource/reconvergence contracts, frame
+budgets and the full H0-H8 objective remain open.

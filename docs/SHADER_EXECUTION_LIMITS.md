@@ -137,3 +137,13 @@ probe to a disjoint mapped page makes the complete four-case selection pass;
 the original failure, diagnostic and exact fixture delta are retained. This
 does not establish a deadline for an external owner that never returns, nor
 complete load/store/texture fault-priority or watchdog/reconvergence closure.
+
+
+## Current-main native composition
+
+The [1,017-input composition](performance/mobile-native-shader-host-composition-2026-10-22.json)
+passes31 checks and76 native submissions after merging the qualified main scalar
+UV path with native GSL quota/reset/availability and registered MMIO addressing.
+All typed/binned local/spill loop, owned-reset and healthy-reuse cases pass, as
+do the system-trap cases, host ABI/discovery checks and default host emission.
+No complete-host timing or full watchdog closure is inferred from these results.
