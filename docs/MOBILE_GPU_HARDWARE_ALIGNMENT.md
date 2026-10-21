@@ -7649,3 +7649,21 @@ zero skipped instances. Existing native profiles do not yet enable this optional
 CU mechanism. Native programmable controls/reset integration, unserviced execution
 port liveness, resource permissions, reconvergence capacity, full product budgets
 and whole-CU/renderer timing remain required. S02/H5/H6 and H0-H8 stay partial.
+
+## Scalar FP fault destination ownership (2026-10-22)
+
+The [FP fault repair](FP_FAULT_RESERVATION_RELEASE.md) releases a failed load's
+FP reservation on fault acknowledgment without fabricating an RF write. A
+separate cancellation port composes with peer writeback and same-cycle fresh
+reservation; `f0` is an ordinary tracked FP destination. The archived baseline
+fails all six actual CU misaligned/access/page-fault reuse probes at `f0`/`f10`.
+
+[23 checks](performance/mobile-fpu-fault-reuse-2026-10-22.json) now pass on 996
+frozen inputs, including twelve fault/reuse kernels, two peer-commit/fault
+collisions, three boundary/default mask cases, ten FPU controls and 22 additional
+execution-limit kernels. Default scoreboard synthesis passes 1000 ps with
+core/I/O +464.366/+253.874 ps, 2,770 cells and zero skipped instances. Default
+issue-stage synthesis passes +407.628/+194.342 ps, 60,091 cells and zero skipped
+instances. Native product capacity, execution availability/interruption, resource
+permissions, reconvergence, composed budgets and whole-CU/renderer timing remain
+required. This checkpoint does not close S02/H5/H6 or H0-H8.

@@ -1,0 +1,94 @@
+{
+  "date": "2026-10-22",
+  "scope": "Precise scalar FP load-fault reservation cancellation without RF writes, including f0. Full native/product capacity and whole-CU/renderer timing remain unqualified.",
+  "source_files": 996,
+  "source_manifest": ".artifacts/mobile-fpu-fault-reuse-v2-source.json",
+  "source_manifest_sha256": "979e342ddff1ff203009dd162e19e0d815dfa990b21155632d8925a55e019d83",
+  "functional": {
+    "passed": true,
+    "checks": 23,
+    "actual_CU_fault_reuse_checks": 6,
+    "actual_CU_fault_reuse_kernels": 12,
+    "actual_backend_collision_checks": 2,
+    "default_and_boundary_mask_checks": 3,
+    "legacy_FPU_regressions": 10,
+    "execution_limit_checks": 2,
+    "execution_limit_kernels": 22,
+    "result": ".artifacts/mobile-fpu-fault-reuse-v2-result.json"
+  },
+  "baseline": {
+    "returncode": 1,
+    "tests": 6,
+    "source_unchanged": true,
+    "elapsed_seconds": 121.42815470811911,
+    "failures": 6,
+    "scope": "Actual FP misaligned/access/page-fault completion followed by f0/f10 destination reuse. Baseline is expected to expose leaked FP reservation."
+  },
+  "baseline_result": ".artifacts/mobile-fpu-fault-reuse-v1-baseline-result.json",
+  "repair": "Add independent FP scoreboard cancellation. FPU memoryFault.fire with writeRd cancels only its destination; normal RF writeback remains independent. Reserve-after-release ordering supports same-cycle reuse. No fabricated write or warp-wide mask reset.",
+  "synthesis_policy": {
+    "stage": "synthesis",
+    "period_ps": 1000,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "io_delay_fraction": 0.25,
+    "ABC": "standard",
+    "retiming": false,
+    "physical_implementation": false
+  },
+  "synthesis": {
+    "scoreboard": {
+      "module": "FpuScoreboard",
+      "passed": true,
+      "lanes": 16,
+      "warps": 8,
+      "core_slack_ps": 464.366,
+      "IO_slack_ps": 253.874,
+      "mapped_cells": 2770,
+      "library_area": 309.18348,
+      "sequential_area": 74.6496,
+      "flip_flops": 256,
+      "SRAM_macros": 0,
+      "skipped_instances": 0,
+      "result": ".artifacts/mobile-fpu-fault-reuse-synthesis-v2-scoreboard-result.json",
+      "STA_log_sha256": "45c937882ab8df6c3360cab75d319e7543c7724bda71d4c2452fb5a44ef9d5d0"
+    },
+    "issue": {
+      "module": "FpuIssueStage",
+      "passed": true,
+      "lanes": 16,
+      "warps": 8,
+      "core_slack_ps": 407.628,
+      "IO_slack_ps": 194.342,
+      "mapped_cells": 60091,
+      "library_area": 8238.54564,
+      "sequential_area": 2602.53,
+      "flip_flops": 8925,
+      "SRAM_macros": 0,
+      "skipped_instances": 0,
+      "result": ".artifacts/mobile-fpu-fault-reuse-synthesis-v2-issue-result.json",
+      "STA_log_sha256": "174b8f938f281a98ece93b4a059a2027e0f4fb257c683e9c46a46c0ca000296f"
+    }
+  },
+  "emitted_RTL_sha256": {
+    "scoreboard": {
+      "generated/mobile-h5/fpu-fault-reuse-v2-scoreboard-rtl/FpuScoreboard.sv": "d0a2ccfe9b97086136764b369c691af829583146406659e4183d4e3511b960e1"
+    },
+    "issue": {
+      "generated/mobile-h5/fpu-fault-reuse-v2-issue-rtl/FpuIssueStage.sv": "7a88a7ec191662ccda178fc17e7c83a585b475bbcedfa31fffe0bb93dd17ed14",
+      "generated/mobile-h5/fpu-fault-reuse-v2-issue-rtl/FpuRegisterFile.sv": "134578e7d67ea68364b74b05af1acced963e3a86abff581ad0fbec7a4805add1",
+      "generated/mobile-h5/fpu-fault-reuse-v2-issue-rtl/FpuScoreboard.sv": "d0a2ccfe9b97086136764b369c691af829583146406659e4183d4e3511b960e1",
+      "generated/mobile-h5/fpu-fault-reuse-v2-issue-rtl/Queue2_FpuIssuedInstruction.sv": "7e104116627c78840afafb175d4eef39c35dda74fb2f8f0e7a98720cbf84359d",
+      "generated/mobile-h5/fpu-fault-reuse-v2-issue-rtl/Queue4_FpuDecodeResponse.sv": "0ca07cc133703025f77b4d45565d15969e7830bdfb6de349dd38085207ebbd1c",
+      "generated/mobile-h5/fpu-fault-reuse-v2-issue-rtl/ram_2x234.sv": "14fd94b84bbbdd8722bd6be9648609655c26ab244a532a5757e12b93be8f71f0",
+      "generated/mobile-h5/fpu-fault-reuse-v2-issue-rtl/ram_4x35.sv": "e25ccb7625ef768b9f816720116c82610b0a17f9c36ac3d0403f1bbbe4c33eef"
+    }
+  },
+  "remaining": [
+    "Unavailable execution-port liveness and complete native interruption contract",
+    "Native FP full-capacity fault qualification",
+    "Resource/fetch permissions and reconvergence overflow",
+    "Full product/frame/resource budgets and whole-CU/renderer synthesis",
+    "Original H0-H8 requirements"
+  ]
+}
