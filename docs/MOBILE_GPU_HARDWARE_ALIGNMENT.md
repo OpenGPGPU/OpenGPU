@@ -7713,3 +7713,18 @@ Production is byte-identical to the twelve-check native composition. The
 binned/local fixture's original scratch-alias trigger failure and diagnostic
 are retained; only its probe page changes. External-owner deadlines, broader
 fault priority, resources/reconvergence and full-host timing remain open.
+
+### Registered AXI MMIO beat addresses — 2026-10-22
+
+The [MMIO checkpoint](AXI_MMIO_ADDRESS_PIPELINE.md) captures burst validity and
+the complete 33-bit current address before register decoding. It preserves
+first-response latency, one unstalled read beat/cycle, held R ownership, exact
+W/B updates, dynamic VM/quota guards and rejected page/size/burst/carry cases.
+Seventeen checks pass on 1,008 inputs, including 341 directed read beats and
+FIXED/INCR write readback. Two stale discovery expectations are retained in the
+failure history; the preexisting GTX1 mask mismatch reproduces on unchanged
+main, and the complete corrected four-profile fixture passes on unchanged
+main production before this repair. Its temporary main test edit is restored
+exactly. This is a structural repair of the known beat-to-read-data path, with
+no new full-host timing claim. Current-main/GTO1/native composition, remaining
+legacy arithmetic and the full default core/I/O screen remain required.

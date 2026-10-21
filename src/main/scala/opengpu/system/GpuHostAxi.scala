@@ -365,7 +365,8 @@ class GpuHostAxi(
     val readActive = RegInit(false.B)
     val addrReg = RegInit(0.U(32.W))
     val lenReg = RegInit(0.U(8.W))
-    val sizeReg = RegInit(0.U(3.W))
+    val transferValid = RegInit(false.B)
+    val beatAddress = RegInit(0.U(33.W))
     val burstReg = RegInit(0.U(2.W))
     val beat = RegInit(0.U(8.W))
     val bPending = RegInit(false.B)
@@ -382,11 +383,24 @@ class GpuHostAxi(
     // Reject unsupported sizes/WRAP/reserved bursts and 4 KiB crossings before
     // offering any register mutation. Retain the carry to prevent high-address
     // bursts from wrapping into the low register map.
-    val beatAddrWide=Mux(burstReg===1.U,addrReg+&(beat<<2),Cat(0.U(1.W),addrReg))
-    val beatAddr=beatAddrWide(31,0)
-    val burstEnd=addrReg(11,0)+&Mux(burstReg===1.U,(lenReg+&1.U)<<2,4.U)
-    val transferOk=sizeReg===2.U && burstReg<=1.U && burstEnd<=4096.U &&
-      (burstReg=/=0.U || lenReg<16.U)
+    // Register each beat's complete address and validate the burst at its
+    // address handshake. Neither beat*4+base nor burst-end arithmetic belongs
+    // ahead of the public register-read mux. Preserve the 33rd carry bit so
+    // high-address increments cannot alias the low MMIO map.
+    def validTransfer(address: UInt, length: UInt, size: UInt, burst: UInt): Bool = {
+      val end = address(11,0) +& Mux(burst===1.U, (length+&1.U)<<2, 4.U)
+      size===2.U && burst<=1.U && end<=4096.U && (burst=/=0.U || length<16.U)
+    }
+    val beatAddrWide=beatAddress
+    val beatAddr=beatAddress(31,0)
+    val transferOk=transferValid
+    def advanceBeatAddress(): Unit = {
+      when(burstReg===1.U) {
+        // Retain the previous eight-bit beat counter's wrap behavior even
+        // for a malformed write stream extending beyond its declared length.
+        beatAddress := Mux(beat.andR, Cat(0.U(1.W),addrReg), beatAddress+4.U)
+      }
+    }
     val lastBeat = beat === lenReg
     // RenderHost owns 0x000..0xC4, MSAA_CONFIG at 0x134, and the
     // stencil/blend registers at 0x13C..0x144; the unified block owns
@@ -455,7 +469,8 @@ class GpuHostAxi(
       readActive := true.B
       addrReg := io.s_axi_araddr
       lenReg := io.s_axi_arlen
-      sizeReg := io.s_axi_arsize
+      transferValid := validTransfer(io.s_axi_araddr,io.s_axi_arlen,io.s_axi_arsize,io.s_axi_arburst)
+      beatAddress := Cat(0.U(1.W),io.s_axi_araddr)
       burstReg := io.s_axi_arburst
       beat := 0.U
     }
@@ -511,6 +526,7 @@ class GpuHostAxi(
           readActive := false.B
         }.otherwise {
           beat := beat + 1.U
+          advanceBeatAddress()
         }
       }
     }
@@ -534,7 +550,8 @@ class GpuHostAxi(
       writeActive := true.B
       addrReg := io.s_axi_awaddr
       lenReg := io.s_axi_awlen
-      sizeReg := io.s_axi_awsize
+      transferValid := validTransfer(io.s_axi_awaddr,io.s_axi_awlen,io.s_axi_awsize,io.s_axi_awburst)
+      beatAddress := Cat(0.U(1.W),io.s_axi_awaddr)
       burstReg := io.s_axi_awburst
       beat := 0.U
       bPending := false.B
@@ -559,6 +576,7 @@ class GpuHostAxi(
         bPending := true.B
       }.otherwise {
         beat := beat + 1.U
+        advanceBeatAddress()
       }
     }
 
