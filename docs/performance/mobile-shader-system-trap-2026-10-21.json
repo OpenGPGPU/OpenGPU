@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-21",
+  "status": "functional_pass_retirement_synthesis_pass_scalar_synthesis_running",
+  "branch_base": "7420112f9643f8ea809693e5fe83850b0ed7912a",
+  "current_main": "673edb6a06cadfa4742a77bda7d78ee05216ba19",
+  "branch": "codex/mobile-shader-system-trap",
+  "source_files": 986,
+  "source_manifest": ".artifacts/mobile-shader-system-trap-v2-source.json",
+  "source_unchanged": true,
+  "functional_tests": 33,
+  "suites": {
+    "GpuComputeUnitTrapTerminationSpec": 8,
+    "GpuComputeUnitCsrDestinationTrapSpec": 6,
+    "GpuComputeUnitConcurrentTrapSpec": 2,
+    "ShaderTrapRetirementSpec": 4,
+    "GpuComputeUnitSpec": 7,
+    "ScalarBackendSpec": 3,
+    "KernelShaderStageSpec_selected": 3
+  },
+  "emissions": 2,
+  "baseline_failures": {
+    "original_forwarding": {
+      "result": ".artifacts/mobile-shader-system-trap-v1-baseline-result.json",
+      "failed": 4,
+      "passed_illegal_control": 1,
+      "cause": "finishOnTrap used core.trap.valid instead of the complete system/core trap arbiter; unsupported system instructions never surfaced or retired."
+    },
+    "CSR_destination": {
+      "result": ".artifacts/mobile-shader-system-trap-csr-baseline-v1-result.json",
+      "failed": 1,
+      "cause": "An unsupported CSR with nonzero rd retained its dependency reservation; a later kernel writing x10 stalled after a correctly reported first fault."
+    }
+  },
+  "implementation": [
+    "Capture the complete arbitrated trap in a one-entry queue before the public offer.",
+    "A normal finish wins a simultaneous finish-port collision; retain the accepted trap warp in one private pending slot.",
+    "Retire the faulting warp only after its public trap is accepted; retain stable PC,cause,tval,mask and warp identity through holds.",
+    "Cancel a rejected nonzero CSR destination without a fabricated register write; CSR/memory fault acknowledgements serialize through the CU trap arbiter.",
+    "Reset the per-kernel failure flag only for a fresh kernel after all owned trap state drains."
+  ],
+  "runtime_coverage": [
+    "EBREAK,ECALL,unsupported CSR and illegal decode with scalar FPU disabled/enabled.",
+    "CSR register,immediate and set forms targeting x10, outside ABI-initialized x1..x9; exact healthy destination reuse.",
+    "Concurrent CSR rd10 and failing load rd11 on two actual warps, held traps, exact attributed faults and healthy reuse of both registers in both warps.",
+    "Default16-lane/eight-warp retirement ownership and eight distinct trap/cease owners under backpressure.",
+    "Actual KernelShaderStage unsupported-system failure and healthy reuse, plus healthy scalar-FP and shader controls."
+  ],
+  "synthesis": {
+    "policy": "synthesis only",
+    "period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "standard_ABC": true,
+    "retiming": false,
+    "retirement": {
+      "passed": true,
+      "core_slack_ps": 668.231,
+      "io_slack_ps": 425.689,
+      "mapped_cells": 491,
+      "library_area": 62.50446,
+      "sequential_area": 32.076,
+      "flip_flops": 110,
+      "SRAM_macros": 0,
+      "skipped_instances": 0,
+      "result": ".artifacts/mobile-shader-system-trap-synthesis-v2-retirement-result.json"
+    },
+    "scalar_backend": {
+      "state": "running",
+      "result": ".artifacts/mobile-shader-system-trap-synthesis-v2-scalar-result.json",
+      "scope": "Default16-lane/eight-warp production ScalarBackend with current native useBlackBoxes=false register implementation; no omitted operators or relaxed clock."
+    }
+  },
+  "main_promotion": "Pending scalar-backend synthesis and integration with newer main.",
+  "remaining": [
+    "Programmable loop watchdog/interruption and general resource/reconvergence contracts.",
+    "Native typed/binned host fault integration at product capacity.",
+    "Composed whole-CU/renderer synthesis/resource/frame budgets.",
+    "S02/H5/H6 and H0-H8 remain partial."
+  ]
+}

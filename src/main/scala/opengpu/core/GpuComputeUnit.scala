@@ -208,24 +208,15 @@ class GpuComputeUnit(
   trapArbiter.io.in(1).bits.laneFaultMask :=
     system.io.unsupported.bits.decode.activeMask
   system.io.unsupported.ready := trapArbiter.io.in(1).ready
-  io.trap <> trapArbiter.io.out
   if (finishOnTrap) {
-    // Graphics has no trap-resume service. Finish each faulting warp once,
-    // allow the other resident warps to drain, and fail the kernel result.
-    // A normal cease has priority because the finish interface is one-wide.
-    val failed = RegInit(false.B)
-    when(io.kernel.fire) { failed := false.B }
-    io.trap.valid := core.io.trap.valid && !system.io.finish.valid
-    core.io.trap.ready := io.trap.ready && !system.io.finish.valid
-    when(io.trap.fire) {
-      failed := true.B
-      core.io.finish.valid := true.B
-      core.io.finish.bits := io.trap.bits.warpId
-      controller.io.finish.valid := true.B
-      controller.io.finish.bits := io.trap.bits.warpId
-    }
-    io.completion.bits.success := controller.io.completion.bits.success && !failed
-  }
+    // Retire the complete arbiter, including unsupported system instructions.
+    // Public trap stalls and simultaneous peer cease retain distinct owners.
+    val retirement=Module(new opengpu.core.trap.ShaderTrapRetirement(config))
+    retirement.io.in<>trapArbiter.io.out;io.trap<>retirement.io.out
+    retirement.io.normalFinish:=system.io.finish;retirement.io.kernelStart:=io.kernel.fire
+    core.io.finish:=retirement.io.finish;controller.io.finish:=retirement.io.finish
+    io.completion.bits.success:=controller.io.completion.bits.success && !retirement.io.failed
+  }else{io.trap<>trapArbiter.io.out}
   core.io.simtBranch <> io.simtBranch
 
   io.committedWriteback := core.io.committedWriteback

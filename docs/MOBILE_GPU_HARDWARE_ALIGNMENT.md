@@ -7588,3 +7588,18 @@ Exact records,raw captures,images and payload release pass. The distinct total
 across frozen checkpoints is41. Production/build/ABI bytes remain unchanged;
 binned fault/lifetime runtime,full product capacity,composed budgets and the
 remaining H0-H8 requirements stay open.
+
+
+### 2026-10-21: attributed shader system traps and destination reuse
+
+The [shader termination repair](SHADER_TRAP_TERMINATION.md) fixes dropped
+unsupported-system traps in finishOnTrap CUs and leaked nonzero CSR destination
+reservations. A one-entry public trap offer and one private finish slot retain
+stable attribution and serialize simultaneous normal/trap finishes. Thirty-three
+checks pass on986 frozen inputs,including both FPU settings,CSR x10 reuse,
+concurrent two-warp CSR/load faults,default16-lane/eight-warp control ownership
+and actual shader fault/healthy reuse. Both preceding failures remain preserved.
+Default retirement synthesis passes1000ps TC/SLVT with25percent I/O:
+core+668.231ps,I/O+425.689ps,491 cells,area62.504460,zero skipped. Separate scalar
+backend synthesis and current-main integration remain pending. This does not
+implement a loop watchdog or close S02/H5/H6,whole-CU timing or H0-H8.
