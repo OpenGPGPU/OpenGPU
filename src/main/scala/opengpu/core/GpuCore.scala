@@ -48,7 +48,8 @@ class GpuCore(
   enableFpuBackend: Boolean = false,
   vectorCacheSets: Int = 64,
   vectorCacheWays: Int = 2,
-  shaderPayload: Option[opengpu.graphics.ShaderPayloadConfig] = None
+  shaderPayload: Option[opengpu.graphics.ShaderPayloadConfig] = None,
+  nativeExecutionProfile: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
@@ -102,7 +103,8 @@ class GpuCore(
     val globalAtomicResponse = Flipped(Decoupled(new SharedAtomicResponse(config)))
   })
 
-  private val frontend = Module(new GpuFrontend(config))
+  private val frontend = Module(new GpuFrontend(config,
+    scalarFpuAvailable = !nativeExecutionProfile || (enableFpuBackend && config.enableFpu)))
   private val scalar = Module(new ScalarBackend(config, useBlackBoxes,helperInvocations=true))
   private val vector = Module(new VectorBackend(config, useBlackBoxes,helperInvocations=true))
   private val scalarVectorRead =

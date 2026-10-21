@@ -14,7 +14,7 @@ import opengpu.core.frontend.warp.WarpLaunch
   * one-cycle-latency instruction memory can sustain one instruction per cycle.
   * Request metadata is retained until the response enters `DecodePipe`.
   */
-class GpuFrontend(config: GpuConfig = GpuConfig()) extends Module {
+class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true) extends Module {
   val io = IO(new Bundle {
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
     val fetchRequest = Decoupled(new InstructionFetchRequest(config))
@@ -33,7 +33,7 @@ class GpuFrontend(config: GpuConfig = GpuConfig()) extends Module {
   })
 
   private val control = Module(new SimtFrontendControl(config))
-  private val decode = Module(new DecodePipe(config))
+  private val decode = Module(new DecodePipe(config, scalarFpuAvailable))
 
   control.io.launch <> io.launch
   control.io.branch <> io.branch
