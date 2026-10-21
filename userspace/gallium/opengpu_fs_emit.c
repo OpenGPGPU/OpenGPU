@@ -1,8 +1,16 @@
 /* SPDX-License-Identifier: MIT */
-/* Lower a straight-line TGSI fragment program onto the fragment core.
- * The rasterizer has already written integer pixel x,y. Square root is
- * vfrsqrt7.v, which the vector core already executes. A program that does
- * not fit in 256 instructions fails the draw. */
+/* Lower a TGSI fragment program onto the fragment core. The rasterizer
+ * has already written integer pixel x,y. RSQ is vfrsqrt7.v. SQRT is
+ * fsqrt.s: a uniform source is one sqrt plus a splat, and a varying
+ * source is one sqrt per lane. The vector unit joins every physical
+ * lane, and a vfsqrt whose tail lanes were never written did not retire.
+ * One uniform if/else becomes two forward branches. The condition may be
+ * a constant or a temporary computed only from constants. KILL_IF clears
+ * the fragment validity word for lanes whose source is negative. A 2D
+ * TEX the clang menu did not claim loads the interpolated U and V and
+ * issues vtex.sample. Immediates are materialized with fmv.w.x so the
+ * eight-float uniform tail stays available for constants. A program that
+ * does not fit in 256 instructions fails the draw. */
 #include "opengpu_fs_emit.h"
 
 #include <stdio.h>
@@ -24,6 +32,13 @@
 #define OP_DP4 13
 #define OP_MAD 14
 #define OP_MIN 15
+#define OP_SQRT 16
+#define OP_IF 17
+#define OP_ELSE 18
+#define OP_ENDIF 19
+#define OP_KILL 20
+#define OP_KILL_IF 21
+#define OP_TEX 22
 
 #define FILE_TEMP 1
 #define FILE_CONST 2
@@ -49,6 +64,9 @@ struct fs_insn {
     int nsrc;
     int sat;
     int comps;
+    /* Set on IF when the predicate is uniform at that instruction, before
+     * a later write of the same temporary. */
+    int uniform_src;
     struct fs_src src[3];
     int comp[3][4];
 };
@@ -58,6 +76,7 @@ struct bld {
     int n;
     int used[32];
     int home[MAX_TEMP][4];
+    int pin[MAX_TEMP][4];
     int in_home[4];
     int out_home[4];
     int y_int;
@@ -71,6 +90,19 @@ struct bld {
     int f_byte;
     int spilled;
     int fail;
+    int uniform[MAX_TEMP][4];
+    int origin_in[MAX_TEMP][4];
+    int origin_ch[MAX_TEMP][4];
+    int packed[MAX_TEMP];
+    int packed_out;
+    int in_uv[8];
+    int sem_in[8];
+    int sem_in_index[8];
+    int samples;
+    int sample_in;
+    int patch_n;
+    int patch_at[4];
+    int patch_src[4];
     int snapping;
     int snap_temp[MAX_TEMP][4];
     int snap_in[4];
@@ -78,6 +110,8 @@ struct bld {
     int nir;
     int ip;
 };
+
+static int ir_reads_in(const struct bld *b, int chan);
 
 static uint32_t opv(unsigned f6, unsigned vm, unsigned vs2, unsigned vs1,
                     unsigned f3, unsigned vd)
@@ -91,6 +125,13 @@ static uint32_t fpu(unsigned f5, unsigned rs2, unsigned rs1, unsigned rm,
 {
     return (f5 << 27) | (rs2 << 20) | (rs1 << 15) | (rm << 12) | (rd << 7) |
            0x53u;
+}
+
+/* opengpu.vtex.sample vd, vs1, vs2. vs1 is U and vs2 is V. */
+static uint32_t vtex(unsigned vs1, unsigned vs2, unsigned vd)
+{
+    return (1u << 26) | (1u << 25) | (vs2 << 20) | (vs1 << 15) | (vd << 7) |
+           0x2bu;
 }
 
 static int put(struct bld *b, uint32_t w)
@@ -192,6 +233,101 @@ static void release(struct bld *b, int v)
         b->used[v] = 0;
 }
 
+static void materialize_words(float val, uint32_t out[3], unsigned rd)
+{
+    int32_t bits, hi, lo;
+
+    memcpy(&bits, &val, sizeof(bits));
+    hi = (bits + 0x800) >> 12;
+    lo = bits - (hi << 12);
+    out[0] = ((uint32_t)hi & 0xfffffu) << 12 | (7u << 7) | 0x37u;
+    out[1] = ((unsigned)lo & 0xfffu) << 20 | (7u << 15) | (7u << 7) | 0x13u;
+    out[2] = fpu(0x1e, 0, 7, 0, rd);
+}
+
+void opengpu_fs_patch_immediate(uint32_t *code, unsigned at, float val)
+{
+    uint32_t word[3];
+    unsigned rd = (code[at + 2] >> 7) & 31u;
+
+    materialize_words(val, word, rd);
+    code[at] = word[0];
+    code[at + 1] = word[1];
+    code[at + 2] = word[2];
+}
+
+static int materialize_f(struct bld *b, float val, int rd)
+{
+    int32_t bits, hi, lo;
+
+    memcpy(&bits, &val, sizeof(bits));
+    hi = (bits + 0x800) >> 12;
+    lo = bits - (hi << 12);
+    if (put(b, ((uint32_t)hi & 0xfffffu) << 12 | (7u << 7) | 0x37u))
+        return -1;
+    if (lo && addi(b, 7, 7, lo))
+        return -1;
+    return put(b, fpu(0x1e, 0, 7, 0, (unsigned)rd));
+}
+
+/* A draw-time constant past the eight-float tail. Three words so the
+ * later patch can replace both halves of the immediate. */
+static int materialize_slot(struct bld *b, int rd, int src)
+{
+    uint32_t word[3];
+    int i;
+
+    if (b->patch_n >= 4)
+        return -1;
+    b->patch_at[b->patch_n] = b->n;
+    b->patch_src[b->patch_n] = src;
+    b->patch_n++;
+    materialize_words(0.f, word, (unsigned)rd);
+    for (i = 0; i < 3; i++) {
+        if (put(b, word[i]))
+            return -1;
+    }
+    return 0;
+}
+
+/* One fsqrt.s per lane. vslidedown brings that lane to element 0,
+ * fmv.x.w carries the root, and vslide1up assembles the vector. */
+static int sqrt_lanes(struct bld *b, int src, int vd)
+{
+    int acc = take(b);
+    int slide = take(b);
+    int lane;
+
+    if (acc < 0 || slide < 0)
+        return -1;
+    if (put(b, opv(0x17, 1, 0, (unsigned)b->f_zero, 5, (unsigned)acc)))
+        return -1;
+    for (lane = 3; lane >= 0; lane--) {
+        int got = src;
+
+        if (lane &&
+            put(b, opv(0x0f, 1, (unsigned)src, (unsigned)lane, 3,
+                       (unsigned)slide)))
+            return -1;
+        if (lane)
+            got = slide;
+        if (put(b, opv(0x10, 1, (unsigned)got, 0, 1, 30)) ||
+            put(b, fpu(0x0b, 0, 30, 7, 31)) ||
+            put(b, fpu(0x1c, 0, 31, 0, 7)) ||
+            put(b, opv(0x0e, 1, (unsigned)acc, 7, 6, (unsigned)slide)) ||
+            put(b, opv(0x17, 1, 0, (unsigned)slide, 0, (unsigned)acc)))
+            return -1;
+    }
+    if (acc != vd &&
+        put(b, opv(0x17, 1, 0, (unsigned)acc, 0, (unsigned)vd)))
+        return -1;
+    if (slide != vd)
+        release(b, slide);
+    if (acc != vd)
+        release(b, acc);
+    return 0;
+}
+
 static int materialize(struct bld *b, int t, int c)
 {
     int h = b->home[t][c];
@@ -239,13 +375,23 @@ static void kill_src(struct bld *b, const struct fs_insn *in, const struct fs_sr
     if (live_later(b, s->file, s->index, chan))
         return;
     if (s->file == FILE_TEMP) {
+        int t, c, still = 0;
+
         h = b->home[s->index][chan];
-        release(b, h);
         if (h >= 0)
             b->home[s->index][chan] = -1;
-    } else if (s->file == FILE_IN && chan == 0) {
-        release(b, b->in_home[0]);
-        b->in_home[0] = -1;
+        for (t = 0; t < MAX_TEMP && !still; t++) {
+            for (c = 0; c < 4; c++) {
+                if (b->home[t][c] == h)
+                    still = 1;
+            }
+        }
+        if (!still)
+            release(b, h);
+    } else if (s->file == FILE_IN && chan >= 0 && chan < 4 &&
+               b->in_home[chan] >= 0) {
+        release(b, b->in_home[chan]);
+        b->in_home[chan] = -1;
     }
 }
 
@@ -327,6 +473,11 @@ static int dest_reg(struct bld *b, int file, int index, int chan)
         }
         return b->out_home[chan];
     }
+    /* A destination reserved for both sides of an if keeps one register
+     * through every write, so the join reads the value each side stored. */
+    if (index >= 0 && index < MAX_TEMP && chan >= 0 && chan < 4 &&
+        b->pin[index][chan] && b->home[index][chan] >= 0)
+        return b->home[index][chan];
     if (b->home[index][chan] >= 0 && !live_later(b, FILE_TEMP, index, chan))
         return b->home[index][chan];
     v = take(b);
@@ -364,9 +515,19 @@ static void gc(struct bld *b)
 
 static int sat(struct bld *b, int vd)
 {
-    if (put(b, opv(0x06, 1, vd, b->f_zero, 5, vd)))
+    int z = take(b);
+    int tmp = take(b);
+
+    /* vfmax.vf does not retire. Clamp with vfmax.vv, then vfmin.vf. */
+    if (z < 0 || tmp < 0 ||
+        put(b, opv(0x17, 1, 0, (unsigned)b->f_zero, 5, (unsigned)z)) ||
+        put(b, opv(0x06, 1, (unsigned)vd, (unsigned)z, 1, (unsigned)tmp)) ||
+        put(b, opv(0x04, 1, (unsigned)tmp, (unsigned)b->f_one, 5, (unsigned)tmp)) ||
+        put(b, opv(0x17, 1, 0, (unsigned)tmp, 0, (unsigned)vd)))
         return -1;
-    return put(b, opv(0x04, 1, vd, b->f_one, 5, vd));
+    release(b, z);
+    release(b, tmp);
+    return 0;
 }
 
 static int cmp_mask(struct bld *b, unsigned f6, int va, int vb, int fb, int b_is_f)
@@ -416,6 +577,13 @@ static int bin(struct bld *b, unsigned f6, int vd, struct loc *a, int neg_a,
     va = neg_loc(b, a, neg_a, scratch_a);
     if (va < 0)
         return -1;
+    if (va == vd) {
+        int tmp = take(b);
+
+        if (tmp < 0 || put(b, opv(0x17, 1, 0, (unsigned)va, 0, (unsigned)tmp)))
+            return -1;
+        va = tmp;
+    }
     if (c->is_f && !neg_c && !vv)
         return put(b, opv(f6, 1, va, c->f, 5, vd));
     if (va == scratch_c)
@@ -423,6 +591,13 @@ static int bin(struct bld *b, unsigned f6, int vd, struct loc *a, int neg_a,
     vc = neg_loc(b, c, neg_c, scratch_c);
     if (vc < 0)
         return -1;
+    if (vc == vd) {
+        int tmp = take(b);
+
+        if (tmp < 0 || put(b, opv(0x17, 1, 0, (unsigned)vc, 0, (unsigned)tmp)))
+            return -1;
+        vc = tmp;
+    }
     if (va == scratch_a && vc == scratch_a)
         return -1;
     return put(b, opv(f6, 1, va, vc, 1, vd));
@@ -484,11 +659,73 @@ static int not_inplace(struct bld *b, int vd, int src_a, int src_b)
     return take(b);
 }
 
+static int emit_tex(struct bld *b, const struct fs_insn *in)
+{
+    int idx = in->src[0].index;
+    int u_ch = in->comp[0][0];
+    int v_ch = in->comp[0][1];
+    int u_in, v_in, vu, vv, vd, c;
+
+    if (in->src[0].file != FILE_TEMP || idx < 0 || idx >= MAX_TEMP)
+        return -1;
+    u_in = b->origin_in[idx][u_ch];
+    v_in = b->origin_in[idx][v_ch];
+    if (u_in < 0 || u_in != v_in || u_in >= 8 || !b->in_uv[u_in] ||
+        b->origin_ch[idx][u_ch] != 0 || b->origin_ch[idx][v_ch] != 1)
+        return -1;
+    vu = take(b);
+    vv = take(b);
+    vd = take(b);
+    if (vu < 0 || vv < 0 || vd < 0)
+        return -1;
+    /* U at byte 128 and V at byte 160, the same slots the clang sample uses. */
+    if (addi(b, 6, 5, 128) || put(b, vload(vu)) || addi(b, 6, 5, 160) ||
+        put(b, vload(vv)) || put(b, vtex((unsigned)vu, (unsigned)vv, (unsigned)vd)))
+        return -1;
+    release(b, vu);
+    release(b, vv);
+    b->samples = 1;
+    b->sample_in = u_in;
+    if (in->dst_file == FILE_OUT) {
+        b->packed_out = vd;
+        return 0;
+    }
+    b->packed[in->dst_index] = vd;
+    for (c = 0; c < 4; c++) {
+        b->home[in->dst_index][c] = vd;
+        b->origin_in[in->dst_index][c] = -1;
+    }
+    return 0;
+}
+
 static int emit_one(struct bld *b, const struct fs_insn *in)
 {
     struct loc a, c;
     int vd, k;
 
+    if (in->op == OP_TEX)
+        return emit_tex(b, in);
+    if (in->op == OP_MOV && in->nsrc == 1 && in->src[0].file == FILE_TEMP &&
+        in->src[0].index >= 0 && in->src[0].index < MAX_TEMP &&
+        b->packed[in->src[0].index] >= 0) {
+        if (in->dst_file != FILE_OUT)
+            return -1;
+        b->packed_out = b->packed[in->src[0].index];
+        return 0;
+    }
+    if (in->op == OP_MOV && in->nsrc == 1 && !in->src[0].neg &&
+        in->src[0].file == FILE_IN && in->dst_file == FILE_TEMP &&
+        in->src[0].index >= 0 && in->src[0].index < 8 &&
+        b->in_uv[in->src[0].index]) {
+        int ch = in->dst_chan;
+
+        if (ch < 0 || ch >= 4)
+            return -1;
+        b->origin_in[in->dst_index][ch] = in->src[0].index;
+        b->origin_ch[in->dst_index][ch] = in->comp[0][0];
+        b->uniform[in->dst_index][ch] = 0;
+        return 0;
+    }
     if (in->op == OP_MOV && in->nsrc == 1 && !in->src[0].neg &&
         in->src[0].file == in->dst_file && in->src[0].index == in->dst_index &&
         in->comp[0][0] == in->dst_chan)
@@ -499,11 +736,31 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
         vd = dest_reg(b, in->dst_file, in->dst_index, in->dst_chan);
     if (vd < 0)
         return -1;
+    if (in->dst_file == FILE_TEMP) {
+        if (b->packed[in->dst_index] >= 0)
+            return -1;
+        b->origin_in[in->dst_index][in->dst_chan] = -1;
+    }
     if (in->op == OP_MAD)
         return emit_mad(b, in, vd) || (in->sat && sat(b, vd));
-    if (in->op == OP_RSQ || in->op == OP_RCP) {
+    if (in->op == OP_RSQ || in->op == OP_RCP || in->op == OP_SQRT) {
         if (locate(b, &in->src[0], in->comp[0][0], &a))
             return -1;
+        /* f31 is not a constant register. fsqrt.s into it, then one
+         * vfmv.v.f, keeps a uniform root off the 16-lane vector sqrt. */
+        if (in->op == OP_SQRT && a.is_f) {
+            unsigned fs = (unsigned)a.f;
+
+            if (in->src[0].neg) {
+                if (put(b, fpu(0x04, fs, fs, 1, 30)))
+                    return -1;
+                fs = 30;
+            }
+            if (fs == 31 || put(b, fpu(0x0b, 0, fs, 7, 31)) ||
+                put(b, opv(0x17, 1, 0, 31, 5, (unsigned)vd)))
+                return -1;
+            return in->sat ? sat(b, vd) : 0;
+        }
         k = neg_loc(b, &a, in->src[0].neg, 2);
         if (k < 0)
             return -1;
@@ -513,7 +770,11 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
             if (tmp < 0)
                 return -1;
             if (in->op == OP_RSQ) {
+                /* vfrsqrt7.v, the approximate reciprocal square root. */
                 if (put(b, opv(0x13, 1, (unsigned)k, 4, 1, (unsigned)tmp)))
+                    return -1;
+            } else if (in->op == OP_SQRT) {
+                if (sqrt_lanes(b, k, tmp))
                     return -1;
             } else if (put(b, opv(0x21, 1, (unsigned)k, (unsigned)b->f_one, 5,
                                   (unsigned)tmp))) {
@@ -643,7 +904,9 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
         if (bin(b, 0x00, vd, &a, in->src[0].neg, &c, in->src[1].neg, 1))
             return -1;
     } else if (in->op == OP_MAX) {
-        if (bin(b, 0x06, vd, &a, in->src[0].neg, &c, in->src[1].neg, 0))
+        /* vfmax.vf does not retire on this fragment core. vfmax.vv is the
+         * form fp_binary already runs. */
+        if (bin(b, 0x06, vd, &a, in->src[0].neg, &c, in->src[1].neg, 1))
             return -1;
     } else if (in->op == OP_MIN) {
         if (bin(b, 0x04, vd, &a, in->src[0].neg, &c, in->src[1].neg, 0))
@@ -687,28 +950,46 @@ static int prologue(struct bld *b, const float *imm, int nimm)
     memset(b->out_home, 0xff, sizeof(b->out_home));
     memset(b->fconst, 0xff, sizeof(b->fconst));
     memset(b->fimm, 0xff, sizeof(b->fimm));
+    memset(b->origin_in, 0xff, sizeof(b->origin_in));
+    memset(b->packed, 0xff, sizeof(b->packed));
+    b->packed_out = -1;
     b->f_zero = -1;
     b->f_one = -1;
     nfloat = 1;
     for (i = 0; i < b->nconst; i++) {
         for (c = 0; c < 4; c++) {
-            b->fconst[i][c] = nfloat;
-            if (flw(b, nfloat, 288 + (i * 4 + c) * 4))
+            int src = i * 4 + c;
+
+            if (nfloat > 28)
                 return -1;
+            b->fconst[i][c] = nfloat;
+            /* The kernarg tail holds eight floats. Later constants, such
+             * as gl_FbWposYTransform, are patched into the instruction
+             * stream at draw time. */
+            if (src < 8) {
+                if (flw(b, nfloat, 288 + src * 4))
+                    return -1;
+            } else if (materialize_slot(b, nfloat, src)) {
+                return -1;
+            }
             nfloat++;
         }
     }
+    /* Immediates stay in scalar registers. The eight-float tail is the
+     * declared constants, which is all pipe_opengpu_write_fs_block accepts. */
+    if (nimm > 8)
+        return -1;
     for (i = 0; i < nimm / 4; i++) {
         for (c = 0; c < 4; c++) {
             float val = imm[i * 4 + c];
 
-            b->fimm[i][c] = nfloat;
-            if (flw(b, nfloat, 288 + (b->nconst * 4 + i * 4 + c) * 4))
+            if (val == 0.0f || val == 1.0f)
+                continue;
+            if (nfloat > 28)
                 return -1;
-            if (val == 0.0f)
-                b->f_zero = nfloat;
-            if (val == 1.0f)
-                b->f_one = nfloat;
+            b->fimm[i][c] = nfloat;
+            if (materialize_f(b, val, nfloat))
+                return -1;
             nfloat++;
         }
     }
@@ -727,6 +1008,16 @@ static int prologue(struct bld *b, const float *imm, int nimm)
         b->f_one = nfloat++;
         if (addi(b, 7, 0, 1) || put(b, fpu(0x1a, 0, 7, 7, b->f_one)))
             return -1;
+    }
+    for (i = 0; i < nimm / 4; i++) {
+        for (c = 0; c < 4; c++) {
+            float val = imm[i * 4 + c];
+
+            if (val == 0.0f)
+                b->fimm[i][c] = b->f_zero;
+            else if (val == 1.0f)
+                b->fimm[i][c] = b->f_one;
+        }
     }
     if (nfloat > 29)
         return -1;
@@ -750,6 +1041,17 @@ static int prologue(struct bld *b, const float *imm, int nimm)
         return -1;
     if (addi(b, 6, 5, 32) || put(b, vload(4)))
         return -1;
+    /* Float gl_FragCoord.y. Programs that never read it keep the integer
+     * in v4 only, so the checked-in straight-line images stay put. */
+    if (ir_reads_in(b, 1)) {
+        int yv = take(b);
+
+        if (yv < 0)
+            return -1;
+        b->in_home[1] = yv;
+        if (put(b, opv(0x12, 1, 4, 3, 1, (unsigned)yv)))
+            return -1;
+    }
     if (put(b, opv(0x17, 1, 0, b->f_zero, 5, 30)))
         return -1;
     if (put(b, opv(0x17, 1, 0, b->f_one, 5, 31)))
@@ -761,6 +1063,11 @@ static int epilogue(struct bld *b)
 {
     int ch, v[4];
 
+    if (b->packed_out >= 0) {
+        if (addi(b, 6, 5, 192) || put(b, vstore(b->packed_out)))
+            return -1;
+        return put(b, 0x30500073u);
+    }
     for (ch = 0; ch < 4; ch++) {
         v[ch] = b->out_home[ch];
         if (v[ch] < 0)
@@ -789,6 +1096,39 @@ static int epilogue(struct bld *b)
     return put(b, 0x30500073u);
 }
 
+static int ir_reads_in(const struct bld *b, int chan)
+{
+    int i, s, k;
+
+    for (i = 0; i < b->nir; i++) {
+        for (s = 0; s < b->ir[i].nsrc; s++) {
+            if (b->ir[i].src[s].file != FILE_IN || b->ir[i].src[s].index != 0)
+                continue;
+            for (k = 0; k < b->ir[i].comps; k++) {
+                if (b->ir[i].comp[s][k] == chan)
+                    return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static int is_flow(int op)
+{
+    return op == OP_IF || op == OP_ELSE || op == OP_ENDIF || op == OP_KILL ||
+           op == OP_KILL_IF;
+}
+
+static uint32_t branch_word(unsigned funct3, unsigned rs1, unsigned rs2,
+                            int byte_off)
+{
+    unsigned imm = (unsigned)byte_off;
+
+    return ((imm >> 12) & 1u) << 31 | ((imm >> 5) & 0x3fu) << 25 |
+           (rs2 << 20) | (rs1 << 15) | (funct3 << 12) |
+           ((imm >> 1) & 0xfu) << 8 | ((imm >> 11) & 1u) << 7 | 0x63u;
+}
+
 static int insn_reads(const struct fs_insn *in, int file, int index, int chan)
 {
     int s, k;
@@ -801,6 +1141,236 @@ static int insn_reads(const struct fs_insn *in, int file, int index, int chan)
                 return 1;
         }
     }
+    return 0;
+}
+
+struct alloc_snap {
+    int used[32];
+    int home[MAX_TEMP][4];
+    int pin[MAX_TEMP][4];
+    int in_home[4];
+    int out_home[4];
+    int have_y_int;
+    int spilled;
+};
+
+static void save_alloc(const struct bld *b, struct alloc_snap *s)
+{
+    memcpy(s->used, b->used, sizeof(s->used));
+    memcpy(s->home, b->home, sizeof(s->home));
+    memcpy(s->pin, b->pin, sizeof(s->pin));
+    memcpy(s->in_home, b->in_home, sizeof(s->in_home));
+    memcpy(s->out_home, b->out_home, sizeof(s->out_home));
+    s->have_y_int = b->have_y_int;
+    s->spilled = b->spilled;
+}
+
+static void restore_alloc(struct bld *b, const struct alloc_snap *s)
+{
+    memcpy(b->used, s->used, sizeof(b->used));
+    memcpy(b->home, s->home, sizeof(b->home));
+    memcpy(b->pin, s->pin, sizeof(b->pin));
+    memcpy(b->in_home, s->in_home, sizeof(b->in_home));
+    memcpy(b->out_home, s->out_home, sizeof(b->out_home));
+    b->have_y_int = s->have_y_int;
+    b->spilled = s->spilled;
+}
+
+static int emit_span(struct bld *b, struct fs_insn *ir, int begin, int end)
+{
+    int i;
+
+    for (i = begin; i < end; i++) {
+        int s;
+
+        if (is_flow(ir[i].op))
+            return -1;
+        b->ip = i;
+        memcpy(b->snap_temp, b->home, sizeof(b->home));
+        memcpy(b->snap_in, b->in_home, sizeof(b->in_home));
+        b->snapping = 1;
+        if (emit_one(b, &ir[i])) {
+            fprintf(stderr, "opengpu: fragment op %d failed after %d words\n",
+                    ir[i].op, b->n);
+            return -1;
+        }
+        b->snapping = 0;
+        gc(b);
+        for (s = 0; s < ir[i].nsrc; s++) {
+            int k;
+
+            for (k = 0; k < ir[i].comps; k++)
+                kill_src(b, &ir[i], &ir[i].src[s], ir[i].comp[s][k]);
+        }
+        if (b->fail)
+            return -1;
+    }
+    return 0;
+}
+
+/* A zero validity word drops that lane. A nonzero word keeps it. */
+static int emit_kill(struct bld *b, const struct fs_insn *in)
+{
+    int vd, i;
+
+    if (in->op == OP_KILL) {
+        if (addi(b, 6, 5, 256) || put(b, vstore(30)))
+            return -1;
+        return 0;
+    }
+    vd = take(b);
+    if (vd < 0)
+        return -1;
+    if (put(b, opv(0x17, 1, 0, 31, 0, (unsigned)vd)))
+        return -1;
+    for (i = 0; i < 4; i++) {
+        struct loc a;
+        int src;
+
+        if (locate(b, &in->src[0], in->comp[0][i], &a))
+            return -1;
+        src = neg_loc(b, &a, in->src[0].neg, 2);
+        if (src < 0 || cmp_mask(b, 0x1b, src, 0, b->f_zero, 1))
+            return -1;
+        /* vd = mask ? 0 : vd. Negative sources become a zero word. */
+        if (put(b, opv(0x17, 0, (unsigned)vd, 30, 0, (unsigned)vd)))
+            return -1;
+    }
+    if (addi(b, 6, 5, 256) || put(b, vstore(vd)))
+        return -1;
+    release(b, vd);
+    return 0;
+}
+
+struct dest_id {
+    int file;
+    int index;
+    int chan;
+};
+
+static int same_dest(struct dest_id a, struct dest_id b)
+{
+    return a.file == b.file && a.index == b.index && a.chan == b.chan;
+}
+
+static void push_dest(struct dest_id *seq, int *n, const struct fs_insn *in)
+{
+    struct dest_id d;
+    int i;
+
+    if (in->dst_file != FILE_TEMP && in->dst_file != FILE_OUT)
+        return;
+    d.file = in->dst_file;
+    d.index = in->dst_index;
+    d.chan = in->dst_chan;
+    for (i = 0; i < *n; i++) {
+        if (same_dest(seq[i], d))
+            return;
+    }
+    if (*n < 64)
+        seq[(*n)++] = d;
+}
+
+/* Uniform if/else. The condition is a constant, an immediate, or a
+ * temporary computed only from those, so every lane takes the same side.
+ * Both sides write the same destinations and the allocator is restarted
+ * for the else side, which keeps those registers defined on the join.
+ * When the two sides allocate in a different order, destinations written
+ * on both sides are reserved first. */
+static int emit_if(struct bld *b, struct fs_insn *ir, int n, int *io)
+{
+    int if_i = *io;
+    int else_i = -1, endif_i = -1, j;
+    int bne_at, beq_at, else_at, endif_at;
+    struct loc cond;
+    struct alloc_snap snap;
+
+    for (j = if_i + 1; j < n; j++) {
+        if (ir[j].op == OP_IF)
+            return -1;
+        if (ir[j].op == OP_ELSE) {
+            if (else_i >= 0)
+                return -1;
+            else_i = j;
+        } else if (ir[j].op == OP_ENDIF) {
+            endif_i = j;
+            break;
+        }
+    }
+    if (else_i < 0 || endif_i < 0)
+        return -1;
+    if (ir[if_i].src[0].neg)
+        return -1;
+    b->ip = if_i;
+    if (ir[if_i].src[0].file == FILE_TEMP) {
+        int t = ir[if_i].src[0].index;
+        int ch = ir[if_i].comp[0][0];
+        struct dest_id then_s[64], else_s[64];
+        int nt = 0, ne = 0, same, k;
+
+        if (t < 0 || t >= MAX_TEMP || ch < 0 || ch >= 4 || !ir[if_i].uniform_src)
+            return -1;
+        if (locate(b, &ir[if_i].src[0], ch, &cond) || cond.is_f || cond.v < 0)
+            return -1;
+        /* Lane 0 holds the uniform predicate. feq against zero matches the
+         * constant form below. */
+        if (put(b, opv(0x10, 1, (unsigned)cond.v, 0, 1, 30)) ||
+            put(b, fpu(0x14, (unsigned)b->f_zero, 30, 2, 7)))
+            return -1;
+        for (k = if_i + 1; k < else_i; k++)
+            push_dest(then_s, &nt, &ir[k]);
+        for (k = else_i + 1; k < endif_i; k++)
+            push_dest(else_s, &ne, &ir[k]);
+        same = nt == ne;
+        for (k = 0; same && k < nt; k++)
+            same = same_dest(then_s[k], else_s[k]);
+        if (!same) {
+            for (k = 0; k < nt; k++) {
+                int e;
+
+                for (e = 0; e < ne; e++) {
+                    if (!same_dest(then_s[k], else_s[e]))
+                        continue;
+                    if (dest_reg(b, then_s[k].file, then_s[k].index,
+                                 then_s[k].chan) < 0)
+                        return -1;
+                    if (then_s[k].file == FILE_TEMP &&
+                        then_s[k].index >= 0 && then_s[k].index < MAX_TEMP &&
+                        then_s[k].chan >= 0 && then_s[k].chan < 4)
+                        b->pin[then_s[k].index][then_s[k].chan] = 1;
+                }
+            }
+        }
+    } else if (ir[if_i].src[0].file == FILE_CONST ||
+               ir[if_i].src[0].file == FILE_IMM) {
+        if (locate(b, &ir[if_i].src[0], ir[if_i].comp[0][0], &cond) || !cond.is_f)
+            return -1;
+        /* feq.s x7, fcond, fzero; bne x7, x0, else. Fall-through is the
+         * true side. x7 is free after the prologue. */
+        if (put(b, fpu(0x14, (unsigned)b->f_zero, (unsigned)cond.f, 2, 7)))
+            return -1;
+    } else {
+        return -1;
+    }
+    bne_at = b->n;
+    if (put(b, 0))
+        return -1;
+    save_alloc(b, &snap);
+    if (emit_span(b, ir, if_i + 1, else_i))
+        return -1;
+    beq_at = b->n;
+    if (put(b, 0))
+        return -1;
+    else_at = b->n;
+    restore_alloc(b, &snap);
+    if (emit_span(b, ir, else_i + 1, endif_i))
+        return -1;
+    endif_at = b->n;
+    if ((else_at - bne_at) * 4 <= 0 || (endif_at - beq_at) * 4 <= 0)
+        return -1;
+    b->code[bne_at] = branch_word(1, 7, 0, (else_at - bne_at) * 4);
+    b->code[beq_at] = branch_word(0, 0, 0, (endif_at - beq_at) * 4);
+    *io = endif_i;
     return 0;
 }
 
@@ -817,7 +1387,7 @@ static int compile_ir(struct bld *b, struct fs_insn *ir, int n,
         for (i = 0; i < n; i++) {
             int j, used = 0;
 
-            if (!live[i] || ir[i].dst_file == FILE_OUT)
+            if (!live[i] || ir[i].dst_file == FILE_OUT || is_flow(ir[i].op))
                 continue;
             for (j = i + 1; j < n; j++) {
                 if (live[j] &&
@@ -844,26 +1414,58 @@ static int compile_ir(struct bld *b, struct fs_insn *ir, int n,
     }
     b->ir = ir;
     b->nir = n;
+    memset(b->uniform, 0, sizeof(b->uniform));
+    for (i = 0; i < n; i++) {
+        int u = 1, s, k;
+
+        if (is_flow(ir[i].op) || ir[i].op == OP_TEX) {
+            /* Later instructions may overwrite the predicate temporary.
+             * The if sees the value that is live here. */
+            if (ir[i].op == OP_IF && ir[i].src[0].file == FILE_TEMP) {
+                int t = ir[i].src[0].index;
+                int ch = ir[i].comp[0][0];
+
+                ir[i].uniform_src = t >= 0 && t < MAX_TEMP && ch >= 0 &&
+                                    ch < 4 && b->uniform[t][ch];
+            }
+            continue;
+        }
+        for (s = 0; s < ir[i].nsrc; s++) {
+            for (k = 0; k < ir[i].comps; k++) {
+                int file = ir[i].src[s].file;
+                int index = ir[i].src[s].index;
+                int chan = ir[i].comp[s][k];
+
+                if (file == FILE_IN)
+                    u = 0;
+                else if (file == FILE_TEMP &&
+                         (index < 0 || index >= MAX_TEMP || chan < 0 ||
+                          chan >= 4 || !b->uniform[index][chan]))
+                    u = 0;
+            }
+        }
+        if (ir[i].dst_file == FILE_TEMP && ir[i].dst_index >= 0 &&
+            ir[i].dst_index < MAX_TEMP && ir[i].dst_chan >= 0 &&
+            ir[i].dst_chan < 4)
+            b->uniform[ir[i].dst_index][ir[i].dst_chan] = u;
+    }
     if (prologue(b, imm, nimm))
         return -1;
     for (i = 0; i < n; i++) {
-        int s;
-
-        b->ip = i;
-        memcpy(b->snap_temp, b->home, sizeof(b->home));
-        memcpy(b->snap_in, b->in_home, sizeof(b->in_home));
-        b->snapping = 1;
-        if (emit_one(b, &ir[i]))
-            return -1;
-        b->snapping = 0;
-        gc(b);
-        for (s = 0; s < ir[i].nsrc; s++) {
-            int k;
-
-            for (k = 0; k < ir[i].comps; k++)
-                kill_src(b, &ir[i], &ir[i].src[s], ir[i].comp[s][k]);
+        if (ir[i].op == OP_IF) {
+            if (emit_if(b, ir, n, &i))
+                return -1;
+            continue;
         }
-        if (b->fail)
+        if (ir[i].op == OP_ELSE || ir[i].op == OP_ENDIF)
+            return -1;
+        if (ir[i].op == OP_KILL || ir[i].op == OP_KILL_IF) {
+            b->ip = i;
+            if (emit_kill(b, &ir[i]))
+                return -1;
+            continue;
+        }
+        if (emit_span(b, ir, i, i + 1))
             return -1;
     }
     return epilogue(b);
@@ -924,6 +1526,13 @@ static const char *fs_op_name(int op)
     case OP_DP2: return "DP2";
     case OP_DP4: return "DP4";
     case OP_MAD: return "MAD";
+    case OP_SQRT: return "SQRT";
+    case OP_IF: return "IF";
+    case OP_ELSE: return "ELSE";
+    case OP_ENDIF: return "ENDIF";
+    case OP_KILL: return "KILL";
+    case OP_KILL_IF: return "KILL_IF";
+    case OP_TEX: return "TEX";
     default: return "?";
     }
 }
@@ -993,6 +1602,11 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
     float imm[8];
     int n = 0, nimm = 0, nconst = 0, i;
     int saw_end = 0;
+    int in_uv[8], sem_in[8], sem_in_index[8];
+
+    memset(in_uv, 0, sizeof(in_uv));
+    memset(sem_in, 0xff, sizeof(sem_in));
+    memset(sem_in_index, 0, sizeof(sem_in_index));
 
     if (!tokens || !out)
         return -1;
@@ -1012,6 +1626,21 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                     TGSI_FILE_CONSTANT &&
                 parse.FullToken.FullDeclaration.Range.Last + 1 > nconst)
                 nconst = parse.FullToken.FullDeclaration.Range.Last + 1;
+            if (parse.FullToken.FullDeclaration.Declaration.File ==
+                    TGSI_FILE_INPUT &&
+                parse.FullToken.FullDeclaration.Declaration.Semantic) {
+                int index = (int)parse.FullToken.FullDeclaration.Range.First;
+                unsigned sem = parse.FullToken.FullDeclaration.Semantic.Name;
+
+                if (index >= 0 && index < 8) {
+                    sem_in[index] = (int)sem;
+                    sem_in_index[index] =
+                        (int)parse.FullToken.FullDeclaration.Semantic.Index;
+                    if (sem == TGSI_SEMANTIC_TEXCOORD ||
+                        sem == TGSI_SEMANTIC_GENERIC)
+                        in_uv[index] = 1;
+                }
+            }
             break;
         case TGSI_TOKEN_TYPE_IMMEDIATE:
             if (nimm + 4 > 8) {
@@ -1026,6 +1655,96 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
             op = insn->Instruction.Opcode;
             if (op == TGSI_OPCODE_END) {
                 saw_end = 1;
+                break;
+            }
+            if (op == TGSI_OPCODE_IF || op == TGSI_OPCODE_ELSE ||
+                op == TGSI_OPCODE_ENDIF || op == TGSI_OPCODE_KILL ||
+                op == TGSI_OPCODE_KILL_IF || op == TGSI_OPCODE_TEX) {
+                struct fs_insn *in;
+
+                if (n >= MAX_INSN) {
+                    tgsi_parse_free(&parse);
+                    return -1;
+                }
+                in = &ir[n++];
+                memset(in, 0, sizeof(*in));
+                if (op == TGSI_OPCODE_IF)
+                    in->op = OP_IF;
+                else if (op == TGSI_OPCODE_ELSE)
+                    in->op = OP_ELSE;
+                else if (op == TGSI_OPCODE_ENDIF)
+                    in->op = OP_ENDIF;
+                else if (op == TGSI_OPCODE_KILL)
+                    in->op = OP_KILL;
+                else
+                    in->op = OP_KILL_IF;
+                if (op == TGSI_OPCODE_TEX) {
+                    int file, index;
+                    const struct tgsi_full_src_register *src;
+
+                    if (insn->Instruction.Saturate ||
+                        insn->Instruction.NumDstRegs != 1 ||
+                        insn->Instruction.NumSrcRegs < 1 ||
+                        insn->Texture.Texture != TGSI_TEXTURE_2D ||
+                        insn->Dst[0].Register.Indirect ||
+                        insn->Src[0].Register.Indirect ||
+                        insn->Src[0].Register.Absolute) {
+                        tgsi_parse_free(&parse);
+                        return -1;
+                    }
+                    in->op = OP_TEX;
+                    in->comps = 2;
+                    in->nsrc = 1;
+                    src = &insn->Src[0];
+                    if (src_file(src->Register.File, src->Register.Index,
+                                 &file, &index)) {
+                        tgsi_parse_free(&parse);
+                        return -1;
+                    }
+                    in->src[0].file = file;
+                    in->src[0].index = index;
+                    in->src[0].neg = src->Register.Negate;
+                    for (i = 0; i < 4; i++)
+                        in->comp[0][i] = (int)swizzle(&src->Register, i);
+                    if (insn->Dst[0].Register.File == TGSI_FILE_OUTPUT) {
+                        in->dst_file = FILE_OUT;
+                        in->dst_index = 0;
+                    } else if (insn->Dst[0].Register.File == TGSI_FILE_TEMPORARY) {
+                        in->dst_file = FILE_TEMP;
+                        in->dst_index = insn->Dst[0].Register.Index;
+                        if (in->dst_index < 0 || in->dst_index >= MAX_TEMP) {
+                            tgsi_parse_free(&parse);
+                            return -1;
+                        }
+                    } else {
+                        tgsi_parse_free(&parse);
+                        return -1;
+                    }
+                    break;
+                }
+                if (op == TGSI_OPCODE_IF || op == TGSI_OPCODE_KILL_IF) {
+                    int file, index;
+                    const struct tgsi_full_src_register *src;
+
+                    if (insn->Instruction.NumSrcRegs != 1) {
+                        tgsi_parse_free(&parse);
+                        return -1;
+                    }
+                    src = &insn->Src[0];
+                    if (src->Register.Indirect || src->Register.Absolute ||
+                        src_file(src->Register.File, src->Register.Index,
+                                 &file, &index)) {
+                        tgsi_parse_free(&parse);
+                        return -1;
+                    }
+                    in->nsrc = 1;
+                    in->comps = 4;
+                    in->src[0].file = file;
+                    in->src[0].index = index;
+                    in->src[0].neg = src->Register.Negate;
+                    for (i = 0; i < 4; i++)
+                        in->comp[0][i] = (int)swizzle(&src->Register, i);
+                }
                 break;
             }
             kind = 0;
@@ -1057,6 +1776,9 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                 break;
             case TGSI_OPCODE_DIV:
                 kind = OP_DIV;
+                break;
+            case TGSI_OPCODE_SQRT:
+                kind = OP_SQRT;
                 break;
             case TGSI_OPCODE_RSQ:
                 kind = OP_RSQ;
@@ -1156,12 +1878,16 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
         }
     }
     tgsi_parse_free(&parse);
-    if (!saw_end || nconst <= 0 || nconst > 8) {
+    if (!saw_end || nconst < 0 || nconst > 8) {
         fprintf(stderr, "opengpu: fragment program is not a straight-line ALU\n");
         return -1;
     }
     memset(&bld, 0, sizeof(bld));
     bld.nconst = nconst;
+    memcpy(bld.in_uv, in_uv, sizeof(in_uv));
+    memcpy(bld.sem_in, sem_in, sizeof(sem_in));
+    memcpy(bld.sem_in_index, sem_in_index, sizeof(sem_in_index));
+    bld.sample_in = -1;
     if (compile_ir(&bld, ir, n, imm, nimm) || bld.fail) {
         fprintf(stderr, "opengpu: fragment ALU did not fit (%d instructions)\n",
                 bld.n);
@@ -1177,7 +1903,17 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
     memcpy(out->code, bld.code, (unsigned)bld.n * 4u);
     out->words = (unsigned)bld.n;
     out->nconst = (unsigned)nconst;
-    out->nimm = (unsigned)nimm;
+    /* Immediates were materialized. The uniform block is constants only. */
+    out->nimm = 0;
+    out->samples = bld.samples ? 1u : 0u;
+    out->patch_n = (unsigned)bld.patch_n;
+    for (i = 0; i < bld.patch_n; i++) {
+        out->patch_at[i] = (unsigned)bld.patch_at[i];
+        out->patch_src[i] = (unsigned)bld.patch_src[i];
+    }
+    out->sample_sem = bld.samples && bld.sample_in >= 0 ? bld.sem_in[bld.sample_in] : -1;
+    out->sample_sem_index =
+        bld.samples && bld.sample_in >= 0 ? bld.sem_in_index[bld.sample_in] : 0;
     memcpy(out->imm, imm, sizeof(float) * (unsigned)nimm);
     return 0;
 }
@@ -1321,7 +2057,9 @@ int main(int argc, char **argv)
         } else if (!strncmp(rest, "DP4", 3)) {
             kind = OP_DP4;
             comps = 4;
-        } else if (!strncmp(rest, "RSQ", 3))
+        }         else if (!strncmp(rest, "SQRT", 4))
+            kind = OP_SQRT;
+        else if (!strncmp(rest, "RSQ", 3))
             kind = OP_RSQ;
         else if (!strncmp(rest, "RCP", 3))
             kind = OP_RCP;

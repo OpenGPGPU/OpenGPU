@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "GRI1 read-only native raster discovery and AXI/control regressions; numeric policy is disclosed, not full GLES precision qualification",
+  "based_on_commit": "858a56b",
+  "source_files": 639,
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-raster-capabilities-source-v1.json",
+    "sha256": "3f590f7bab6b20815c1f51fff56614e36f4b54be59350312f9e6ae07246fce54"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-raster-capabilities-source-v1.tar.gz",
+    "sha256": "08fc47e50f1609719f47e62f7deb9566b76a5b855a062a185c0db3078884987c"
+  },
+  "result": {
+    "path": ".artifacts/mobile-native-raster-capabilities-controls-v1-result.json",
+    "sha256": "75881c0e89a702bd7dd26eddecf5e8e00b342e0138030b496d853962b6e2649b"
+  },
+  "log": {
+    "path": ".artifacts/mobile-native-raster-capabilities-controls-v1.log",
+    "sha256": "20f612d734da3dbf3f7493b885f6df8ac3d3879d0431a4c6662c73094745178a"
+  },
+  "checks": 11,
+  "suites": {
+    "NativeVertexInputCapabilitiesAxiSpec": 4,
+    "GpuHostAxiOwnershipSpec": 2,
+    "GpuHostAxiSpec": 3,
+    "GpuHostVmOwnershipSpec": 2
+  },
+  "abi_checks": 4,
+  "source_unchanged": true,
+  "header_audit": {
+    "path": ".artifacts/mobile-native-raster-capabilities-header-audit-v1.json",
+    "sha256": "f06d648b5b7446ad7c8e2348d4aa04adb69c392e1135b5bc30a40eb73a6ae9da"
+  },
+  "coverage": [
+    "Native sample capacities1/2/4 and a legacy-disabled profile check all eight literal GRI1 words, fixed/incrementing held read bursts, reserved words and unmapped boundaries.",
+    "Every GRI1 word rejects writes with strobes0/1/15; misaligned/aliased addresses, invalid sizes/bursts and high-address carry fail without mutation. GVI1/GFI1 and reset values remain intact.",
+    "Simultaneous AR/AW ownership and held RDATA controls, unified register/reset/fill behavior and buffered/unbuffered VM ownership pass.",
+    "Both generated native headers and all four ABI checks pass. C11 combined-header/static-layout probes pass; all2374 prior definitions are preserved and46 discovery constants are added."
+  ],
+  "limitations": [
+    "This qualifies discovery/control transport only. Word4/5 constants and floating policy1 disclose the candidate algorithm; the full raster minimum-resolvable-difference contract has a separately confirmed counterexample and remains open.",
+    "No new native image composition, emission/PPA, rate, API exposure or H0-H8 closure is claimed."
+  ],
+  "historical_checkpoint": true,
+  "archived_from_commit": "34e3c1b6baac3e16f9c88fc0232137b6b2701680",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

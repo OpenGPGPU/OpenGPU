@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "historical_base_zero_integer_AXI_local_and_spill_pass",
+  "source_result": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "elapsed_seconds": 3147.6812782920897,
+    "commit": "c8c9b06db299cbe14e52ce40afc757a337431f01",
+    "source_files": 803,
+    "manifest_sha256": "52a96d4246a434d582ef90f752b262d609398a2b47c0fb453c43e207b62b3377",
+    "runner_pid": 91842,
+    "started_utc": "2026-10-20T18:11:35.223549+00:00",
+    "planned_tests": 2,
+    "planned_frames_per_test": 72,
+    "archive_sha256": "448d72ef6b62baf973f88fa5e6fe5ae85f7d4b60369eea9c3f5b75e1e48f649d",
+    "git_archive_exact": true
+  },
+  "tests": 2,
+  "suites": 1,
+  "submitted_frames": 144,
+  "successful_frames": 140,
+  "expected_error_frames": 4,
+  "created_draw_descriptors": 432,
+  "completed_draw_count_claimed": false,
+  "scope": [
+    "Both real shared-CU shader stages,local/spilled payloads",
+    "All64 formats,four targets,distributed scalar/vector component matrix",
+    "Signed integer X offset applied before bounds",
+    "Actual Sv32 with denied sampler page and no physical sampler read",
+    "No operand-packet reads,task reset rejects stale tuple,exact MRT/depth/resolve guards,held completion pins VM,healthy reuse"
+  ],
+  "limitation": "This source uses only baseLevel0 and predates the base-relative shader LOD correction. These two passes do not qualify nonzero image bases or the corrected production source. The fresh corrected integration and synthesis jobs remain separate.",
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-integer-axi-v1.log": "e137be7acd4dc410a23373bc346760887bbc0475cb3eeb4f94fe4b19bb268549",
+    ".artifacts/mobile-native-integer-axi-v1-result.json": "936ac0ec5063a2b53377de16749bba108a8822ef671b9d20cd2d45b4dc88ad5d",
+    ".artifacts/mobile-native-integer-axi-v1-source.json": "52a96d4246a434d582ef90f752b262d609398a2b47c0fb453c43e207b62b3377",
+    ".artifacts/mobile-native-integer-axi-v1-source.tar.gz": "448d72ef6b62baf973f88fa5e6fe5ae85f7d4b60369eea9c3f5b75e1e48f649d"
+  },
+  "session": 29227,
+  "handle_state": "terminal_collected_pass",
+  "corrected_followup": ".artifacts/mobile-native-integer-scratch-progress.json",
+  "historical_checkpoint": true,
+  "archived_from_commit": "eb2ae6074526940b1d3df294b23ceb3b4bd43f2b",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

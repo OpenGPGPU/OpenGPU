@@ -6,6 +6,7 @@
 #include <stdio.h>
 
 #include "opengpu_fragment_alu.h"
+#include "opengpu_fragment_cover.h"
 #include "opengpu_fragment_min.h"
 #include "opengpu_shader_abi.h"
 #include "opengpu_shader_resources.h"
@@ -50,16 +51,54 @@ int main(void)
 
     assert(OPENGPU_FRAGMENT_ALU_WORDS == 56);
     assert(OPENGPU_FRAGMENT_MIN_WORDS == 52);
+    assert(OPENGPU_FRAGMENT_SQRT_WORDS == 48);
+    assert(OPENGPU_FRAGMENT_CLAMP_WORDS == 60);
+    assert(OPENGPU_FRAGMENT_COORD_WORDS == 50);
+    assert(OPENGPU_FRAGMENT_IF_WORDS == 59);
+    assert(OPENGPU_FRAGMENT_KILL_WORDS == 59);
+    assert(contains(opengpu_fragment_sqrt, OPENGPU_FRAGMENT_SQRT_WORDS,
+                    OPENGPU_FRAGMENT_SQRT_SCALAR));
+    assert(contains(opengpu_fragment_coord, OPENGPU_FRAGMENT_COORD_WORDS,
+                    OPENGPU_FRAGMENT_COORD_YCVT));
+    assert(contains(opengpu_fragment_if, OPENGPU_FRAGMENT_IF_WORDS,
+                    OPENGPU_FRAGMENT_IF_BNE));
+    assert(contains(opengpu_fragment_kill, OPENGPU_FRAGMENT_KILL_WORDS,
+                    OPENGPU_FRAGMENT_KILL_VALIDITY));
     assert(opengpu_shader_validate_words(opengpu_fragment_alu,
                                           OPENGPU_FRAGMENT_ALU_WORDS, 512, 8,
                                           true));
     assert(opengpu_shader_validate_words(opengpu_fragment_min,
                                           OPENGPU_FRAGMENT_MIN_WORDS, 512, 8,
                                           true));
+    assert(opengpu_shader_validate_words(opengpu_fragment_sqrt,
+                                          OPENGPU_FRAGMENT_SQRT_WORDS, 512, 8,
+                                          true));
+    assert(opengpu_shader_validate_words(opengpu_fragment_clamp,
+                                          OPENGPU_FRAGMENT_CLAMP_WORDS, 512, 8,
+                                          true));
+    assert(opengpu_shader_validate_words(opengpu_fragment_coord,
+                                          OPENGPU_FRAGMENT_COORD_WORDS, 512, 8,
+                                          true));
+    assert(opengpu_shader_validate_words(opengpu_fragment_if,
+                                          OPENGPU_FRAGMENT_IF_WORDS, 512, 8,
+                                          true));
+    assert(opengpu_shader_validate_words(opengpu_fragment_kill,
+                                          OPENGPU_FRAGMENT_KILL_WORDS, 512, 8,
+                                          true));
     for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++) {
         check_runtime(opengpu_fragment_alu, OPENGPU_FRAGMENT_ALU_WORDS,
                       resources[i]);
         check_runtime(opengpu_fragment_min, OPENGPU_FRAGMENT_MIN_WORDS,
+                      resources[i]);
+        check_runtime(opengpu_fragment_sqrt, OPENGPU_FRAGMENT_SQRT_WORDS,
+                      resources[i]);
+        check_runtime(opengpu_fragment_clamp, OPENGPU_FRAGMENT_CLAMP_WORDS,
+                      resources[i]);
+        check_runtime(opengpu_fragment_coord, OPENGPU_FRAGMENT_COORD_WORDS,
+                      resources[i]);
+        check_runtime(opengpu_fragment_if, OPENGPU_FRAGMENT_IF_WORDS,
+                      resources[i]);
+        check_runtime(opengpu_fragment_kill, OPENGPU_FRAGMENT_KILL_WORDS,
                       resources[i]);
     }
     printf("fragment ALU image: PASS\n");

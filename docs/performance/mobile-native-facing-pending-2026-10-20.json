@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "running_at_checkpoint",
+  "observed_utc": "2026-10-20T04:00:02.030642+00:00",
+  "scope": "Actual two-CU native front-facing/cull/two-sided-stencil matrix plus affected legacy shader profiles",
+  "based_on_commit": "b780d79",
+  "source_files": 645,
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-facing-source-v1.json",
+    "sha256": "4d6d2b8dcd02a6fad48391e3ed3420bf843eb90d8bcd1fe9becda425b012689e"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-facing-source-v1.tar.gz",
+    "sha256": "4c7ff04d4f27d64bd287a95a2edc67dd77fb65172c89190db19715f37fb64f95"
+  },
+  "start": {
+    "path": ".artifacts/mobile-native-facing-controls-v1-start.json",
+    "sha256": "47207b13113ec4c11d3208eb8a56d4f4f140a7e024ac261e95212875f6ece231"
+  },
+  "sbt_pid_confirmed_live": 26353,
+  "scala_compilation_complete": true,
+  "production_and_abi_identical_to_176_check_source": true,
+  "changed_existing_source": [
+    "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala"
+  ],
+  "added_test_files": [
+    "src/test/scala/opengpu/graphics/FloatingDepthResolutionSpec.scala",
+    "src/test/scala/opengpu/graphics/PolygonDepthUnitRasterSpec.scala"
+  ],
+  "expected_tests": [
+    2,
+    2,
+    2
+  ],
+  "expected_total": 6,
+  "facing_profiles": [
+    "local payload",
+    "global staging"
+  ],
+  "facing_frames": 72,
+  "facing_draws": 216,
+  "per_profile": {
+    "frames": 36,
+    "visible_triangle_frames": 24,
+    "culled_triangle_frames": 12,
+    "front_conventions": 2,
+    "windings": 2,
+    "cull_modes": 3,
+    "sample_modes": 3
+  },
+  "legacy_profiles": "Two native centroid and two native polygon-offset checks repeat shared fixture defaults.",
+  "numeric_observation": "Fragment shader maps trusted frontFacing bit0 to float1.0/0.5 in four MRT red channels; front/back depth-pass stencil replacement uses references7/11. Exact physical source/resolve/depth/stencil/guard bytes, cached consumers, uniform tails and held VM completion are checked.",
+  "limits": [
+    "This record proves frozen source, compilation and a live run, not a passing72-frame or six-test result.",
+    "Version3 is used at1x/2x and version4 at4x; this is not every descriptor-version/sample permutation.",
+    "The two supplemental numeric test files are unchanged; the long176 source is not mutated or restarted.",
+    "No new production feature, native API, G04/H6/H0-H8 or PPA closure."
+  ],
+  "historical_checkpoint": true,
+  "archived_from_commit": "5c20fd62ef57a74f96ff7dfd321f307c5000de7d",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

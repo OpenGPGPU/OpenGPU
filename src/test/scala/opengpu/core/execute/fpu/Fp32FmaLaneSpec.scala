@@ -246,6 +246,15 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
       dut.clock.step(8)
       dut.io.out.valid.expect(false.B)
       dut.io.busy.expect(false.B)
+      // A held public reply must also be discarded, even with ready low.
+      send(dut, Fp32Operation.mul, false,
+        BigInt("3f000000", 16), BigInt("3f000000", 16), 0, 10)
+      dut.clock.step(12); dut.io.out.valid.expect(true.B)
+      dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
+      dut.clock.step(12); dut.io.out.valid.expect(false.B); dut.io.busy.expect(false.B)
+      send(dut, Fp32Operation.mul, false,
+        BigInt("3f000000", 16), BigInt("3f000000", 16), 0, 11)
+      expect(dut, BigInt("3e800000", 16), 11)
     }
   }
 
@@ -261,6 +270,110 @@ class Fp32FmaLaneSpec extends AnyFlatSpec {
       }
       assert(dut.io.out.valid.peek().litToBoolean)
       dut.io.out.bits.status.expect("h10".U)
+    }
+  }
+
+  it should "sustain II1 with sixteen credits and retain results through stalls and flush" in {
+    simulate(new Fp32FmaLane(16, resultEntries = 16)) { dut =>
+      initialize(dut)
+      def bits(v: Float): BigInt = BigInt(java.lang.Float.floatToRawIntBits(v).toLong & 0xffffffffL)
+      var sent = 0; var retired = 0; var cycle = 0
+      val accepted = scala.collection.mutable.ArrayBuffer.empty[Int]
+      val completed = scala.collection.mutable.ArrayBuffer.empty[Int]
+      var held = Option.empty[BigInt]
+      while (retired < 512 && cycle < 10000) {
+        dut.io.in.valid.poke((sent < 512).B)
+        dut.io.in.bits.operation.poke(Fp32Operation.fmadd)
+        dut.io.in.bits.operationModifier.poke(false.B)
+        dut.io.in.bits.roundingMode.poke(0.U)
+        dut.io.in.bits.operandA.poke(bits(sent.toFloat / 17.0f).U)
+        dut.io.in.bits.operandB.poke(bits(0.37f).U)
+        dut.io.in.bits.operandC.poke(bits(-0.61f).U)
+        dut.io.in.bits.tag.poke(sent.U)
+        val ready = retired < 256 || cycle % 23 >= 11
+        dut.io.out.ready.poke(ready.B)
+        held.foreach(v => {
+          dut.io.out.valid.expect(true.B)
+          assert(dut.io.out.bits.peek().litValue == v)
+        })
+        val valid = dut.io.out.valid.peek().litToBoolean
+        if (valid) {
+          dut.io.out.bits.tag.expect(retired.U)
+          dut.io.out.bits.result.expect(bits(Math.fma(retired.toFloat / 17.0f, 0.37f, -0.61f)).U)
+        }
+        held = if (valid && !ready) Some(dut.io.out.bits.peek().litValue) else None
+        if (sent < 512 && dut.io.in.ready.peek().litToBoolean) { accepted += cycle; sent += 1 }
+        if (valid && ready) { completed += cycle; retired += 1 }
+        dut.clock.step(); cycle += 1
+      }
+      assert(retired == 512)
+      assert(accepted.take(256).sliding(2).forall(p => p(1) - p(0) == 1))
+      assert(completed.take(256).sliding(2).forall(p => p(1) - p(0) == 1))
+      dut.io.in.valid.poke(false.B); dut.io.busy.expect(false.B)
+      dut.io.out.ready.poke(false.B)
+      for (tag <- 0 until 10) send(dut, Fp32Operation.mul, false, bits(0.5f), bits(0.5f), 0, tag)
+      dut.io.flush.poke(true.B); dut.clock.step(); dut.io.flush.poke(false.B)
+      dut.clock.step(12); dut.io.out.valid.expect(false.B); dut.io.busy.expect(false.B)
+      send(dut, Fp32Operation.mul, false, bits(0.5f), bits(0.5f), 0, 99)
+      expect(dut, bits(0.25f), 99)
+    }
+  }
+
+  it should "retain a subnormal multiplier contribution with an oppositely signed addend" in {
+    simulate(new Fp32FmaLane()) { dut =>
+      initialize(dut)
+      send(dut, Fp32Operation.fmadd, false, BigInt(1),
+        BigInt("ee1dbef6", 16), BigInt("1b9f5fea", 16), 7)
+      dut.io.in.bits.operandA.poke(0.U)
+      dut.io.in.bits.operandB.poke("h3f000000".U)
+      dut.io.in.bits.operandC.poke(0.U)
+      expectResult(dut, BigInt("a39dbe57", 16), 7)
+    }
+  }
+
+  it should "keep rounding metadata with its accepted row under changing and invalid inputs" in {
+    simulate(new Fp32FmaLane(16, resultEntries = 16)) { dut =>
+      initialize(dut)
+      val rng = new scala.util.Random(0x524f554e)
+      val directed = Vector.fill(32)(Vector(
+        Vector[BigInt](1, 0xee1dbef6L, 0x1b9f5feaL),
+        Vector[BigInt](0x3f000000L, 0x3f000000L, 0))).flatten
+      val infinities = Vector.fill(16)(Vector(
+        Vector[BigInt](0x3f000000L, 0xff800000L, 0),
+        Vector[BigInt](0x3f000000L, 0x7f800000L, 0),
+        Vector[BigInt](0xff800000L, 0x3f000000L, 0),
+        Vector[BigInt](0x7f800000L, 0x3f000000L, 0))).flatten
+      val rows = directed ++ infinities ++ Vector.fill(2048)(Vector.fill(3)(BigInt(rng.nextLong() & 0xffffffffL)))
+      def value(v: BigInt): Float = java.lang.Float.intBitsToFloat(v.toInt)
+      val expected = rows.map { r =>
+        val f = Math.fma(value(r(0)), value(r(1)), value(r(2)))
+        if (f.isNaN) BigInt(0x7fc00000L) else BigInt(java.lang.Float.floatToRawIntBits(f).toLong & 0xffffffffL)
+      }
+      var sent = 0; var retired = 0; var cycle = 0
+      while (retired < rows.size && cycle < 20000) {
+        val valid = sent < rows.size && cycle % 17 != 11
+        val operands = if (valid) rows(sent) else Vector.fill(3)(BigInt(0))
+        dut.io.in.valid.poke(valid.B)
+        dut.io.in.bits.operation.poke(Fp32Operation.fmadd)
+        dut.io.in.bits.operationModifier.poke(false.B); dut.io.in.bits.roundingMode.poke(0.U)
+        dut.io.in.bits.operandA.poke(operands(0).U)
+        dut.io.in.bits.operandB.poke(operands(1).U)
+        dut.io.in.bits.operandC.poke(operands(2).U)
+        dut.io.in.bits.tag.poke(sent.U)
+        val ready = cycle % 31 >= 9
+        dut.io.out.ready.poke(ready.B)
+        if (dut.io.out.valid.peek().litToBoolean) {
+          dut.io.out.bits.tag.expect(retired.U)
+          val observed = dut.io.out.bits.result.peek().litValue
+          assert(observed == expected(retired),
+            s"row=$retired operands=${rows(retired).map(_.toString(16))} observed=${observed.toString(16)} expected=${expected(retired).toString(16)}")
+          if (ready) retired += 1
+        }
+        if (valid && dut.io.in.ready.peek().litToBoolean) sent += 1
+        dut.clock.step(); cycle += 1
+      }
+      assert(retired == rows.size); dut.io.in.valid.poke(false.B); dut.io.busy.expect(false.B)
+      info(s"FMA_ROUNDING_ROWS total=${rows.size} alternatingSubtractMetadata=true invalidInputsPoisoned=true arbitraryFP32=true backpressure=true")
     }
   }
 

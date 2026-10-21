@@ -1,0 +1,161 @@
+{
+  "updated_utc": "2026-10-21T10:13:43.499973+00:00",
+  "status": "Native query transport/discovery,typed/binned sample/fault scopes and translated publication qualify on frozen sources.35 fresh checks,26 frames,10 reset cuts,three host emissions,generated ABI and C decoding pass. Eight prior component/pixel checks carry only by exact dependency scope. API integration and composed timing stay open.",
+  "base_commit": "a78770da6e4eb15a6fea653e37ee135bc62098c7",
+  "source_files": 886,
+  "source_manifest": ".artifacts/mobile-visibility-query-compat-v3-source.json",
+  "manifest_sha256": "fc28602f17a520998b4d18bf418d73e69065e2ea55f033f7cd70dfd5ed13cac5",
+  "source_archive": ".artifacts/mobile-visibility-query-compat-v3-source.tar.gz",
+  "archive_sha256": "8c19b1abd07cdcad066b2c9e8c2f30c4f7b816f36db341d8433fe2f27e1f04b7",
+  "checks": [
+    {
+      "phase": "focused",
+      "tests": 7,
+      "result": ".artifacts/mobile-visibility-query-host-v2-focused-result.json",
+      "result_sha256": "cbdf38ff9b1dd57f5d56c7c337cc4c28ca46e3277a794418899e4c7f2783bc29",
+      "log_sha256": "73061888d6938c3e4c3dc634f8c0b56754fffd6f57101ea18400af45db224629"
+    },
+    {
+      "phase": "compatibility",
+      "tests": 21,
+      "result": ".artifacts/mobile-visibility-query-host-v2-compatibility-result.json",
+      "result_sha256": "e4c4a5e9818ad5de00c942f52c56bc95d7366010edd5765d2592f223457dd551",
+      "log_sha256": "459fd6fd471b165a4bd22a4eddd97f82b0dc0fddd0fffd92860fc6872278a63a"
+    },
+    {
+      "phase": "abi",
+      "tests": 0,
+      "result": ".artifacts/mobile-visibility-query-host-v2-abi-result.json",
+      "result_sha256": "e7ac119ad581379cb8a4fafb9d74a1a1dee7218a09fafe70bf7cb53ea98d417c",
+      "log_sha256": "bc6727fc5324f36969275979f73e30dbb7707d52ea80a0ad8a6c68a4af2bd0ed"
+    },
+    {
+      "phase": "emission",
+      "tests": 0,
+      "result": ".artifacts/mobile-visibility-query-host-v2-emission-result.json",
+      "result_sha256": "2853ed371afea2758c9e278b9b73dbb28d1092ecfc74daf50bf7ad25861e1339",
+      "log_sha256": "feb40e50b74ef15c5748321dadd84219fc042d33a8e295b0b032f7c0f4740e7b"
+    },
+    {
+      "phase": "typed",
+      "tests": 2,
+      "result": ".artifacts/mobile-visibility-query-host-v2-typed-result.json",
+      "result_sha256": "89187dc12560620cad8d7a6238fc5d6dd76d0cc588f1fde841db357807e20d82",
+      "log_sha256": "1d004c22b99857bcd2a3eacbc127d9c90395869d85d0b2ed82dea817054a303e"
+    },
+    {
+      "phase": "binned",
+      "tests": 2,
+      "result": ".artifacts/mobile-visibility-query-host-v2-binned-result.json",
+      "result_sha256": "cb7686816d4b3c61b239cbe74219882fdc985c5a6e557d5c56db0fe53d6de91f",
+      "log_sha256": "5a8abfa8e131d94abcfca0c65d8fbcee8e95c28a67fc81a6b65c98b1fdb6def5"
+    },
+    {
+      "phase": "reset",
+      "tests": 2,
+      "result": ".artifacts/mobile-visibility-query-host-v2-reset-result.json",
+      "result_sha256": "c62161586729bf0c38bb8a4b60e2cb6e19eb3edb0b03be780e8eaabc8f91b066",
+      "log_sha256": "881e8d70d1aede2e452971a7fd92d790c1e8c6319e24074377f0ea4ad0207ec8"
+    },
+    {
+      "phase": "extended_opcode_compatibility",
+      "tests": 1,
+      "result": ".artifacts/mobile-visibility-query-compat-v3-result.json",
+      "result_sha256": "52dad315a93b3570ad48ffcf370571703b3ca71f52b144437570dffdbd3fbe94",
+      "log_sha256": "b2b9249005e88d72a1d53d738d2ec819b08d950f6333638aeff1ec8f81c1bcf7"
+    }
+  ],
+  "C_ABI": {
+    "result": ".artifacts/mobile-visibility-query-host-abi-v1-result.json",
+    "result_sha256": "46616ce9e1789010efb5d16c1f80073f3bf16c7c679be5faf1b7dd3c78e3efde",
+    "cases": 131072,
+    "record_bytes": 64
+  },
+  "query_opcodes": [
+    8,
+    9,
+    10,
+    11
+  ],
+  "completion_opcode_high_bit": 16,
+  "legacy_field_positions_unchanged": true,
+  "capability_base": "0x240",
+  "capability_magic": "0x47515601",
+  "record_magic": "0x47514f01",
+  "active_contexts": 8,
+  "query_memory_transactions": 1,
+  "memory_IDs": {
+    "typed": [
+      38,
+      39
+    ],
+    "binned": "native IDs+6 / native IDs+7",
+    "namespace": "Existing power2 namespace and AXI widths unchanged"
+  },
+  "sample_identity": "Opaque command WIDTH context and captured VM root; independent of native descriptor identity, including pre-quad faults.",
+  "memory_policy": "Honor allocation PTE cache policy. Host fixture uses a dedicated uncached superpage; no CPU coherence inference from raw backing inspection.",
+  "commit_policy": "One complete native query implementation/test/documentation milestone; no interim status commits.",
+  "standalone_component": "mobile-visibility-query-component-2026-10-21.json",
+  "remaining": [
+    "Composed host synthesis and full-capacity runtime",
+    "API object-management/validation and software integration",
+    "All other H0-H8 requirements"
+  ],
+  "host_emission": {
+    "count": 3,
+    "profiles": [
+      "typed4CU/spill",
+      "binned4CU/2engines/spill",
+      "fullMobile4CU/16lanes/8warps/2engines/local/SRAMmacros"
+    ],
+    "result": ".artifacts/mobile-visibility-query-host-v2-emission-result.json",
+    "result_sha256": "2853ed371afea2758c9e278b9b73dbb28d1092ecfc74daf50bf7ad25861e1339",
+    "log_sha256": "feb40e50b74ef15c5748321dadd84219fc042d33a8e295b0b032f7c0f4740e7b",
+    "scope": "Structural RTL emission only. Reduced test configurations and full-capacity product do not imply full-capacity runtime or timing."
+  },
+  "typed_host": {
+    "tests": 2,
+    "frames": 18,
+    "healthy_frames": 14,
+    "expected_fault_frames": 4,
+    "query_commands": 82,
+    "record_write_reset_cuts": 2,
+    "empty_query_scopes": 2,
+    "payload_modes": [
+      "local",
+      "spill"
+    ],
+    "result": ".artifacts/mobile-visibility-query-host-v2-typed-result.json",
+    "result_sha256": "89187dc12560620cad8d7a6238fc5d6dd76d0cc588f1fde841db357807e20d82",
+    "log_sha256": "1d004c22b99857bcd2a3eacbc127d9c90395869d85d0b2ed82dea817054a303e"
+  },
+  "source_proof": ".artifacts/mobile-visibility-query-compat-v3-proof.json",
+  "fresh_tests": 35,
+  "carried_component_tests": 8,
+  "distinct_tests_across_scopes": 43,
+  "native_host": {
+    "tests": 6,
+    "frames": 26,
+    "healthy_frames": 22,
+    "expected_fault_frames": 4,
+    "typed_frames": 18,
+    "binned_frames": 4,
+    "reset_recovery_frames": 4,
+    "query_commands": 138,
+    "completed_empty_scopes": 6,
+    "aborted_native_scopes": 4,
+    "reset_cuts": 10,
+    "query_record_write_cuts": 6,
+    "native_shader_data_cuts": 4,
+    "scope": "4CUs/4lanes/2warps reduced-runtime profiles,local/spill payloads,actual vertex+fragment sampling and two binned image engines. Not full-capacity product runtime.",
+    "checks": [
+      "same opaque context independently captured from graphics descriptor identity",
+      "query cookie/root and exact uncached GPU records",
+      "empty/positive/faulted End/Poll/Result",
+      "held MMIO completion and VM write rejection",
+      "record store accepted before delayed B reset",
+      "native vertex/fragment shader-read reset with queued DMA discarded",
+      "healthy changed-pattern rendering and query reuse"
+    ]
+  }
+}

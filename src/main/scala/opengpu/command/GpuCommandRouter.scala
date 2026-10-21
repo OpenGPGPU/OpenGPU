@@ -7,7 +7,7 @@ import opengpu.dispatch.{DmaEventSource, KernelCommand, KernelCommandResult, Ker
 import opengpu.dma._
 
 object GpuCommandOpcode {
-  val width = 3
+  val width = 4
   val kernel = 0.U(width.W)
   val copy = 1.U(width.W)
   val fill = 2.U(width.W)
@@ -16,6 +16,14 @@ object GpuCommandOpcode {
   val invalidate = 5.U(width.W)
   val render = 6.U(width.W)
   val tileRender = 7.U(width.W)
+  val queryBegin = 8.U(width.W)
+  val queryEnd = 9.U(width.W)
+  val queryPoll = 10.U(width.W)
+  val queryResult = 11.U(width.W)
+  val transformFeedback = 12.U(width.W)
+  val primitiveQuery = 13.U(width.W)
+
+  def visibilityQuery(opcode: UInt): Bool = opcode >= queryBegin && opcode <= queryResult
 }
 
 /** One software queue format. Unused payload fields are ignored by opcode. */
@@ -23,6 +31,8 @@ class GpuCommand(config: GpuConfig, val commandIdWidth: Int) extends Bundle {
   val commandId = UInt(commandIdWidth.W)
   val opcode = UInt(GpuCommandOpcode.width.W)
   val launch = new KernelLaunch(config)
+  val rasterDiscard = Bool()
+  val feedbackCapture = Bool()
   val waitForDma = Bool()
   val dmaSource = UInt(DmaEventSource.width.W)
   val dmaDescriptorId = UInt(commandIdWidth.W)

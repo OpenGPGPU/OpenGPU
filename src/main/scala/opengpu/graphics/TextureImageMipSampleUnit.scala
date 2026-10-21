@@ -19,8 +19,10 @@ class TextureImageMipSampleResult extends Bundle {
   * table. Reuse one selected-level owner and its FMA for mip interpolation.
   * Cube projection, layer rounding and lambda derivation belong to the parent.
   */
-class TextureImageMipSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig()) extends Module {
+class TextureImageMipSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig(),groupedTexture: Boolean=false) extends Module {
   val io=IO(new Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
+    val laneTemplate=if(groupedTexture)Some(Valid(new NativeRgba8TextureLaneTemplate))else None
     val in=Flipped(Decoupled(new TextureImageMipSampleRequest));val out=Decoupled(new TextureImageMipSampleResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
@@ -37,7 +39,8 @@ class TextureImageMipSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAdd
   private val lower=Reg(UInt(32.W));private val clamped=Reg(UInt(32.W));private val parts=Reg(new TextureLodParts);private val fraction=Reg(UInt(32.W))
   private val candidate=TextureSampleSelection.select(clamped,state,image.baseLevel,image.lastLevel,parts.floor,fraction,true.B)
   private val useSecond=selection.first=/=selection.second && selection.weight(30,0).orR
-  private val child=Module(new TextureImageLevelSampleUnit(config,p))
+  private val child=Module(new TextureImageLevelSampleUnit(config,p,groupedTexture))
+  if(groupedTexture){io.grouped.get <> child.io.grouped.get; io.laneTemplate.get := child.io.laneTemplate.get}
   child.io.in.valid:=phase===State.offer;child.io.in.bits:=selected;child.io.out.ready:=phase===State.waitSample
   child.io.cancel:=started && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
   child.io.invalidate:=io.invalidate || stop || noFill

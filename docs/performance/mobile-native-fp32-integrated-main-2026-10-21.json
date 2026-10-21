@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-21",
+  "status": "Integrated on local main in cdcbb44 and audited in a9c8751; all 828 qualified code/test inputs match and all ten fresh emissions match qualified RTL byte for byte.",
+  "source": {
+    "commit": "cdcbb4452aca5139864e87ea9a0d88cc39bd083a",
+    "source_files": 828,
+    "manifest_sha256": "6ef58be597a9d8fc3805be1f3290320e9bb7643cdabe72ab6cee64ea51569735",
+    "archive_sha256": "64e6921760a31d5e273826935664b60a99846988b15daba9c2a881c566b92475",
+    "git_archive_and_worktree_exact": true,
+    "all_inputs_exact_to_qualified_828": true,
+    "functional_checks_carried": 82
+  },
+  "functional": {
+    "carried_checks": 82,
+    "basis": "Every one of the 828 qualified source/test inputs is identical in the isolated merge; no new execution of those 82 cases is claimed.",
+    "qualified_native_component_result": ".artifacts/mobile-translated-rgba8-fp32-v2-result.json",
+    "qualified_legacy_native_result": ".artifacts/mobile-translated-rgba8-fp32-legacy-native-v1-result.json"
+  },
+  "emission": {
+    "fresh_profiles": 10,
+    "evidence": ".artifacts/mobile-native-fp32-main-v1-RTL-proof.json",
+    "profiles": {
+      "readthrough": {
+        "active_files": 18,
+        "raw_byte_exact": true
+      },
+      "fp32": {
+        "active_files": 20,
+        "raw_byte_exact": true
+      },
+      "translated": {
+        "active_files": 29,
+        "raw_byte_exact": true
+      },
+      "fp32-policy": {
+        "active_files": 20,
+        "raw_byte_exact": true
+      },
+      "cluster": {
+        "active_files": 7,
+        "raw_byte_exact": true
+      },
+      "filter": {
+        "active_files": 16,
+        "raw_byte_exact": true
+      },
+      "raw": {
+        "active_files": 28,
+        "raw_byte_exact": true
+      },
+      "native": {
+        "active_files": 51,
+        "raw_byte_exact": true
+      },
+      "vertex": {
+        "active_files": 77,
+        "raw_byte_exact": true
+      },
+      "fragment": {
+        "active_files": 77,
+        "raw_byte_exact": true
+      }
+    }
+  },
+  "synthesis": {
+    "policy": "Synthesis only,1000ps,TC/SLVT,25% I/O,standard ABC,no retiming or place/route.",
+    "unquantized_native_service_slacks_ps": [
+      40.947,
+      343.996
+    ],
+    "native_vertex_slacks_ps": [
+      88.968,
+      163.44
+    ],
+    "native_fragment_slacks_ps": [
+      93.253,
+      162.507
+    ],
+    "all_three_fully_mapped_zero_skipped": true,
+    "basis": "Byte-identical fresh active RTL; previous Q16 banked and standalone filter/FMA evidence retains its original scoped proofs.",
+    "records": [
+      "mobile-translated-rgba8-fp32-2026-10-21.json",
+      "mobile-native-fp32-vertex-synthesis-2026-10-21.json",
+      "mobile-native-fp32-fragment-synthesis-2026-10-21.json"
+    ]
+  },
+  "real_CU_AXI_refresh": {
+    "status": "running",
+    "session": 85875,
+    "source_files": 828,
+    "planned_tests": 6,
+    "planned_frames": 360,
+    "source_commit": "cdcbb4452aca5139864e87ea9a0d88cc39bd083a",
+    "start": ".artifacts/mobile-native-fp32-main-axi-v1-start.json",
+    "scope": "Default native path with corrected FMA; new shared texture clients are not enabled. Previous 360 frames remain historical for their earlier source."
+  },
+  "workspace_scope": "Qualification uses an isolated clean Git merge. In-progress root userspace/driver edits are not included, staged or overwritten.",
+  "remaining": [
+    "Read accounting/late-join coordinate-to-color revision timing",
+    "Optional native client/router/pool timing and full renderer placement",
+    "Pipelined native instruction/lane issue and complete-cluster rate proof",
+    "Whole-native data visibility and all remaining H0-H8 gates",
+    "Fresh timing for broader changed-FMA consumers where applicable; no blanket carry of old whole-CU/system or point-line reports"
+  ],
+  "promotion": {
+    "feature_merge": "cdcbb4452aca5139864e87ea9a0d88cc39bd083a",
+    "audit_commit": "a9c8751df225bf193ecc48eabbf8d16bb79bd6e3",
+    "record": ".artifacts/mobile-native-fp32-main-v1-promotion.json",
+    "root_user_paths_preserved": 13,
+    "pushed": false
+  }
+}

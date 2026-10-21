@@ -1,0 +1,39 @@
+{
+  "returncode": 0,
+  "passed_tests": 4,
+  "test_counts": [
+    4
+  ],
+  "source_unchanged": true,
+  "warm_rate": {
+    "instructions": 32,
+    "samples": 512,
+    "total_cycles": 11787,
+    "stable_groups": 448,
+    "stable_span_cycles": 10216,
+    "maximum_admission_gap_cycles": 89,
+    "steady_samples_per_cycle": 0.04385277995301488,
+    "target_II1": false,
+    "scope": "Native texture endpoint and one shared cluster/pool client only; no actual CU issue or whole-frame rate claim."
+  },
+  "elapsed_seconds": 361.3848664590623,
+  "finished_utc": "2026-10-21T05:00:14.365305+00:00",
+  "base_commit": "63faa7fa4c13c3e1154fdfa87a36b80e584fc78a",
+  "source_files": 863,
+  "manifest_sha256": "164b102e81b07de6316f75c9fe4b3ef5f586477b506cb15d71418271d0500d9e",
+  "archive_sha256": "9c2879be21b0d8ad73e8034157915fe8c72c09626b062c2002043266d178a5d2",
+  "archive_and_worktree_exact": true,
+  "git_archive_and_worktree_exact": false,
+  "parent_manifest_sha256": "201edde3b71b8248e87e18e129cb398026ebccfc8f6389f98f3521a9c72ba0d8",
+  "modified_inputs": [
+    "src/test/scala/opengpu/graphics/NativeTextureLaneStreamSpec.scala"
+  ],
+  "added_inputs": [],
+  "all_production_and_ABI_inputs_exact_to_snapshot_cache_v1": true,
+  "existing_test_and_helper_bytes_preserved_by_exact_append": true,
+  "scope": "Test-only extension of snapshot-cache production. Cached first-lane physical fault/NaN, held reset/recovery, and512 warm complete native samples with16lanes8warps4contexts through one actual4-credit pool client. Measures achieved rate, does not assume II1 or qualify full GPU/CU throughput.",
+  "ppa_policy": "synthesis only",
+  "rate_gate": "fails sustained nativeII1; correctness checks pass",
+  "remaining": "Increase usable native latency coverage with bounded shared credits and sufficient instruction contexts; preserve fairness, cancellation, ordering, VM/publication and fixed physical budgets. Measure the changed endpoint again.",
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production."
+}

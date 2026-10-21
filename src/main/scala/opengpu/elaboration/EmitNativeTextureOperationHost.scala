@@ -11,7 +11,8 @@ object EmitNativeTextureOperationHost {
     require(args.length<=1,"EmitNativeTextureOperationHost [target-dir]")
     ChiselStage.emitSystemVerilogFile(new GpuHostAxi(config=GraphicsConfig(),gpuConfig=GpuConfig(),
       unifiedCommandMmio=true,protectVmState=true,externalBinnedRender=true,
-      nativeCompletionInfo=true,nativeVertexInput=true),
+      nativeCompletionInfo=true,nativeVertexInput=true,
+      visibilityQueries=true,transformFeedback=true,primitiveQueries=true),
       Array("--target-dir",args.headOption.getOrElse("generated/native-texture-operation-host")),
       Array("--lowering-options=disallowLocalVariables,disallowPackedArrays"))
   }

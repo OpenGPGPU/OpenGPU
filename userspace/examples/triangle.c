@@ -43,7 +43,7 @@ int main(int argc, char **argv)
     submit.stride = width * 4u;
     submit.command_count = 1;
     submit.out_syncobj = fence;
-    if (opengpu_render(fd, &submit) || opengpu_sync_wait_success(fd, fence, 300000))
+    if (opengpu_render(fd, &submit) || opengpu_sync_wait_success(fd, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     for (uint32_t i = 0; i < width * height; i++)
         if (((uint32_t *)color.map)[i] != 0) painted++;

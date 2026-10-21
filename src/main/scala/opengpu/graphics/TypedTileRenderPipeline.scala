@@ -29,10 +29,12 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     storage: TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false) extends Module {
   require(f.colors==4 && g.maxSampleCount==4,"typed pixel interface requires four color locations and four sample-mask bits")
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureRendererPorts(sharedConfig.numComputeUnits,if(preparedGeometry)1 else 2))else None
     val begin=Flipped(Decoupled(new TypedTilePixelDescriptor));val end=Flipped(Decoupled(Bool()))
     val draw=Flipped(Decoupled(new TypedTileRenderDraw(p,f)));val drawCompletion=Decoupled(new TypedTileRenderDrawCompletion)
     val primitive=if(preparedGeometry)Some(Input(new WindowPrimitive(p)))else None
@@ -46,7 +48,13 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
     val refill=Decoupled(new TypedTileColorRefill(storage));val refillReply=Flipped(Decoupled(new TypedTileColorRefillReply))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,depthFormatInput=true))
+  private val source=Module(new VertexFragmentPipeline(config,p,f,shared,g,viewport,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback))
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.draw.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,source.io.feedback.get,Mux(io.draw.fire,io.feedback.get.scope,scope), !io.busy)
+  }
+  if(groupedTexture)io.grouped.get <> source.io.grouped.get
   private val primitive=if(preparedGeometry)Some(Reg(new WindowPrimitive(p)))else None
   primitive.foreach(p=>source.io.primitive.get:=p)
   private val pixels=Module(new TypedTilePixelBackend(storage,useSramBlackBoxes))
@@ -114,7 +122,7 @@ class TypedTileRenderPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStage
   io.end.ready:=phase===State.active && !producer && pixels.io.end.ready && !stop
   io.begin.ready:=phase===State.idle && !externalCancel;io.draw.ready:=phase===State.active && !io.maintenance && !stop
   io.drawCompletion.valid:=phase===State.emitDraw;io.drawCompletion.bits:=drawResult
-  io.completion.valid:=phase===State.complete;io.completion.bits:=result;io.busy:=phase=/=State.idle
+  io.completion.valid:=phase===State.complete;io.completion.bits:=result;io.busy:=phase=/=State.idle || io.feedback.map(_.busy).getOrElse(false.B)
   when(active && externalCancel && status===0.U){status:=4.U;faultStage:=0.U}
   private val drawDrained= !sourceOffered && (!sourceStarted || (sourceDone && !source.io.busy)) && !queued && admitted===retired
   private def formDrawResult(): Unit={

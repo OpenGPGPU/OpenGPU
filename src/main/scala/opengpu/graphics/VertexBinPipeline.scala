@@ -48,12 +48,14 @@ class VertexBinPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),g: GraphicsConfig=GraphicsConfig(),
     viewport: Fp32ViewportConfig=Fp32ViewportConfig(),engines: Int=2,pageBytes: Int=4096,writeCredits: Int=8,
     tileSlots: Int=8,pagedCapacity: Int=0,useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,rendererCredits: Boolean=false) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,rendererCredits: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false) extends Module {
   require(g.subPixelBits==viewport.subPixelBits,"viewport and bins need the same fixed coordinate scale")
   private val sharedConfig=shared;private val payloadConfig=payload
   private val sourceBase=VertexBinPipeline.binTransactions(engines,writeCredits,pagedCapacity)
   val memoryTransactions=VertexBinPipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
   val io=IO(new Bundle {
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val begin=Flipped(Decoupled(new WindowPrimitiveBinReplayDescriptor))
     val draw=Flipped(Decoupled(new VertexBinDraw(p)));val drawCompletion=Decoupled(new VertexBinDrawCompletion)
     val end=Flipped(Decoupled(Bool()));val out=Vec(engines,Decoupled(new WindowPrimitiveReplay(p)))
@@ -65,7 +67,13 @@ class VertexBinPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,memoryTransactions)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new VertexViewportPipeline(config,p,shared,viewport,useSramBlackBoxes,payload,payloadOwner))
+  private val source=Module(new VertexViewportPipeline(config,p,shared,viewport,useSramBlackBoxes,payload,payloadOwner,groupedTexture=groupedTexture,transformFeedback=transformFeedback))
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.draw.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,source.io.feedback.get,Mux(io.draw.fire,io.feedback.get.scope,scope), !io.busy)
+  }
+  if(groupedTexture)io.grouped.get <> source.io.grouped.get
   private val bins=Module(new WindowPrimitiveBinReplayPass(config,p,g,engines,pageBytes,writeCredits,tileSlots,pagedCapacity,useSramBlackBoxes,rendererCredits))
   if(rendererCredits)bins.io.rendererPermit.get:=io.rendererPermit.get
   val recordBytes=bins.recordBytes
@@ -90,7 +98,7 @@ class VertexBinPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private def fail(code: UInt,stage: Int,drawValid: Bool=drawOwned): Unit={
     when(status===0.U && !externalCancel){status:=code;faultStage:=stage.U;faultDrawValid:=drawValid;faultDraw:=draws-1.U}
   }
-  io.begin.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle
+  io.begin.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle || io.feedback.map(_.busy).getOrElse(false.B)
   io.draw.ready:=phase===State.ready && !stop
   io.drawCompletion.valid:=phase===State.emitDraw;io.drawCompletion.bits:=drawResult
   io.completion.valid:=phase===State.complete;io.completion.bits:=result

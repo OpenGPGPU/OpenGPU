@@ -2,10 +2,20 @@
 #include "../opengpu_native_typed_abi.h"
 #include "../opengpu_native_binned_abi.h"
 #include "../opengpu_typed_fragment_state_abi.h"
+#include "../opengpu_visibility_query_abi.h"
+#include "../opengpu_transform_feedback_abi.h"
+#include "../opengpu_primitive_query_abi.h"
+
+_Static_assert(OPENGPU_NATIVE_TYPED_TEXTURE_OPERATION_CAPABILITIES >=
+    OPENGPU_QUERY_CAPABILITIES + 4u * OPENGPU_QUERY_CAPABILITY_WORDS, "GQV1 disjoint");
+_Static_assert(OPENGPU_NATIVE_TYPED_TEXTURE_OPERATION_CAPABILITIES >=
+    OPENGPU_TF_CAPABILITIES + 4u * OPENGPU_TF_CAPABILITY_WORDS, "GFC1 disjoint");
+_Static_assert(OPENGPU_NATIVE_TYPED_TEXTURE_OPERATION_CAPABILITIES >=
+    OPENGPU_PQ_CAPABILITIES + 4u * OPENGPU_PQ_CAPABILITY_WORDS, "GQP1 disjoint");
 
 #define CHECK(prefix) \
     _Static_assert(prefix##TEXTURE_CAP_OPERATION_DISCOVERY == 1024u, "safe discovery bit"); \
-    _Static_assert(prefix##TEXTURE_OPERATION_CAPABILITIES == 0x240u, "MMIO base"); \
+    _Static_assert(prefix##TEXTURE_OPERATION_CAPABILITIES == 0x2c0u, "MMIO base"); \
     _Static_assert(prefix##TEXTURE_OPERATION_CAPABILITY_MAGIC == 0x47544f01u, "GTO1 magic"); \
     _Static_assert(prefix##TEXTURE_OPERATION_CAPABILITY_VERSION == 1u, "record version"); \
     _Static_assert(prefix##TEXTURE_OPERATION_CAPABILITY_WORDS == 16u, "record size"); \

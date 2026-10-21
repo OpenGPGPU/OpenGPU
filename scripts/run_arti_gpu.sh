@@ -584,6 +584,11 @@ if [ "${GPU_USERSPACE_EXAMPLES:-0}" = "1" ]; then
             "$GPU_DIR/userspace/examples/fragment_min.c"
         "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
             -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
+            -o "$WORK/opengpu_fragment_cover" \
+            "$GPU_DIR/userspace/opengpu.c" \
+            "$GPU_DIR/userspace/examples/fragment_cover.c"
+        "$CROSS_GCC" -static -std=c11 -O2 -Wall -Wextra -Werror \
+            -I"$LINUX_HEADERS/include" -I"$GPU_DIR/driver" -I"$GPU_DIR/userspace" \
             -o "$WORK/opengpu_fp_unary" \
             "$GPU_DIR/userspace/opengpu.c" \
             "$GPU_DIR/userspace/examples/fp_unary.c"

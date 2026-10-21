@@ -222,7 +222,7 @@ int main(int argc, char **argv)
         submit.kernarg_slot = 3;
     }
     if (opengpu_render(fd, &submit) ||
-        opengpu_sync_wait_success(fd, fence, 300000))
+        opengpu_sync_wait_success(fd, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
 
     for (uint32_t y = 0; y < dumb.height; y++) {

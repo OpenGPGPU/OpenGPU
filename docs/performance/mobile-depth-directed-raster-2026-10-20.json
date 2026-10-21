@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Directed default-depth integration controls before separately failing interior binade boundary",
+  "based_on_commit": "1d12e44",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-directed-raster-source-v1.json",
+    "sha256": "218e8aaa63a0b2af1ed7147f701b4abff20f246d4b7cb78ff991de9027e65860"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-directed-raster-source-v1.tar.gz",
+    "sha256": "cb7ca4dcbd6b47f4c841d004ea0f633cbc04e829b867d0a22c8737a17564c410"
+  },
+  "result": {
+    "path": ".artifacts/mobile-depth-directed-raster-controls-v1-result.json",
+    "sha256": "1c021b3fd80db59fac34f403a71fa6d059f080a3027bfb22225b035bde10ba00"
+  },
+  "log": {
+    "path": ".artifacts/mobile-depth-directed-raster-controls-v1.log",
+    "sha256": "fd3e763de5559942ed1b90696f6d344ba374a8253f332aecda1a837b3ee98960"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "tests": [
+        2,
+        55
+      ],
+      "success_tasks": 8,
+      "translated_pairs": 18,
+      "constant_pairs": 12,
+      "directed_complete": 1,
+      "caps": 4
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 361.192696625134,
+    "finished_utc": "2026-10-20T03:19:32.019548+00:00"
+  },
+  "passed": 57,
+  "abi_checks": 4,
+  "floating_policy": 2,
+  "emissions": {
+    "primitive": {
+      "directory": "generated/mobile-h6/depth-directed-raster-primitive-v1-rtl",
+      "audit": {
+        "path": ".artifacts/mobile-depth-directed-raster-primitive-rtl-audit-v1.json",
+        "sha256": "a8dbd5bfc0f3dca833f550ecf1318a3c14f4cd83e4859ed3eeee9948ee74f462"
+      },
+      "sv_files": 46,
+      "group_counts": {
+        "Fp32FmaLane": 1,
+        "Fp32DivLane": 1,
+        "GpuComputeUnit": 0,
+        "BankedShaderPayloadStore": 0,
+        "TypedReplayTileImagePipeline": 0,
+        "PolygonDepthOffset": 1
+      }
+    },
+    "host": {
+      "directory": "generated/mobile-h6/depth-directed-raster-host-v1-rtl",
+      "audit": {
+        "path": ".artifacts/mobile-depth-directed-raster-host-rtl-audit-v1.json",
+        "sha256": "6f8c81cccb641b33a87615a3a6b2d10666ce2b1717d6271e2d8ee1a4b2d92735"
+      },
+      "sv_files": 772,
+      "group_counts": {
+        "Fp32FmaLane": 78,
+        "Fp32DivLane": 72,
+        "GpuComputeUnit": 4,
+        "BankedShaderPayloadStore": 1,
+        "TypedReplayTileImagePipeline": 2,
+        "PolygonDepthOffset": 2
+      }
+    }
+  },
+  "limitations": [
+    "All eighteen sloped pairs and twelve constant-depth pairs pass, with 55 numeric/ownership/discovery controls. This does not prove full precision.",
+    "A separate actual interior edge1 binade-boundary witness on codex/mobile-depth-directed-boundary still collapses to0.5. Policy2 remains a failed general precision candidate.",
+    "No native/prepared/binned image rerun or new synthesis/PPA result; H0-H8 remain open."
+  ],
+  "historical_checkpoint": true,
+  "archived_from_commit": "3ccdb551b4bf052e295e9b87d85b33c364d5aab3",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

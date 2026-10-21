@@ -15,10 +15,13 @@
  * shader. The vertex program has no bytes left for that scale, and the
  * factor is constant, so the same fragment multiply runs it. The CPU
  * only packs the float or the vec4 into the fragment kernarg uniform.
- * The Gallium draw module is not used. A straight-line fragment program
- * the matchers miss is emitted by opengpu_fs_emit. A vertex program that
+ * The Gallium draw module is not used. A fragment program the matchers
+ * miss is emitted by opengpu_fs_emit, including sqrt, a uniform if/else,
+ * and discard. A vertex program that
  * adds CONST[0][0].x to position x is emitted by opengpu_vs_emit; the
- * clang images stay vertex_passthrough, vertex_mvp, and vertex_mvp2. */
+ * clang images stay vertex_passthrough, vertex_mvp, and vertex_mvp2.
+ * A GTK position that is only CONST[0][4] times the matrix is still
+ * vertex_mvp: the draw stages that vec4 in place of an attribute. */
 #include "opengpu_internal.h"
 #include "opengpu_fs_emit.h"
 #include "opengpu_vs_emit.h"
@@ -85,6 +88,9 @@ struct opengpu_shader {
     int sample_sem;
     int sample_sem_index;
     int mvp;
+    /* gl_Position = CONST[0][0..3] * CONST[0][4]. There is no position
+     * attribute. vertex_mvp multiplies the staged vec4. */
+    int const_position;
     /* A second mat4 in CONST[0][4..7]. The vertex core multiplies that
      * block first, then the matrix in CONST[0][0..3]. */
     int mvp2;
@@ -101,6 +107,9 @@ struct opengpu_shader {
     unsigned alu_nconst;
     float alu_imm[8];
     unsigned alu_nimm;
+    unsigned alu_patch_n;
+    unsigned alu_patch_at[4];
+    unsigned alu_patch_src[4];
 };
 
 /* temp_file value: the temporary holds the vtex.sample result. */
@@ -133,6 +142,9 @@ struct opengpu_context {
     int scissor_set;
     float mvp[16];
     int mvp_set;
+    /* CONST[0][0..] as uploaded. const_position reads floats 16..19. */
+    float vs_block[20];
+    unsigned vs_block_n;
     /* CONST[0][4..7], the matrix applied before mvp. */
     float mvp_b[16];
     int mvp_b_set;
@@ -166,12 +178,11 @@ static struct opengpu_context *octx(struct pipe_context *pipe)
     return (struct opengpu_context *)pipe;
 }
 
-/* A 640x480 FlashSim compositor frame is several minutes at the current
- * active model rate. The kernel driver owns the actual watchdog; userspace
- * selects its wait budget per environment so fast hardware tests need not
- * inherit the emulator's long wall-clock allowance. */
+/* The kernel driver owns the hardware watchdog. This is the userspace
+ * wait, shared with the guest examples through opengpu.h. An environment
+ * value replaces it so a fast host run can use a shorter budget. */
 #ifndef OPENGPU_FENCE_TIMEOUT_MS
-#define OPENGPU_FENCE_TIMEOUT_MS 300000
+#define OPENGPU_FENCE_TIMEOUT_MS 900000
 #endif
 
 static int64_t opengpu_fence_timeout_ms(void)
@@ -478,10 +489,40 @@ static int match_mvp(const struct tgsi_full_instruction *insn, int *used,
     return 0;
 }
 
+/* CONST[0][4].cccc is the object-space vector. The other source is a
+ * matrix column. Either source may come first. */
+static int const_position_sources(const struct tgsi_full_src_register *a,
+                                  const struct tgsi_full_src_register *b,
+                                  const struct tgsi_full_src_register **vec,
+                                  const struct tgsi_full_src_register **col)
+{
+    unsigned ch;
+    int a_vec = 0;
+
+    if (a->Register.File != TGSI_FILE_CONSTANT ||
+        b->Register.File != TGSI_FILE_CONSTANT)
+        return -1;
+    for (ch = 0; ch < 4; ch++) {
+        if (const_scalar(a, 4, ch))
+            a_vec = 1;
+    }
+    *vec = a_vec ? a : b;
+    *col = a_vec ? b : a;
+    return 0;
+}
+
+int opengpu_stage_const_position(const float *uniform, unsigned nfloat,
+                                 float staged[4])
+{
+    if (!uniform || !staged || nfloat < 20)
+        return -1;
+    memcpy(staged, uniform + 16, 4 * sizeof(float));
+    return 0;
+}
+
 /* Some GTK composition shaders fold the position vector into CONST[0][4]
- * instead of reading a vertex input. The packed vertex stream still carries
- * the position used by the draw; accept this equivalent matrix form and use
- * the existing vertex MVP program for it. */
+ * instead of reading a vertex input. vertex_mvp multiplies whatever floats
+ * the draw stages, so those four uniforms replace the attribute. */
 static int match_const_position(const struct tgsi_full_instruction *insn,
                                 int *used, int *temp,
                                 struct opengpu_shader *shader,
@@ -498,11 +539,8 @@ static int match_const_position(const struct tgsi_full_instruction *insn,
     if (*used == 0) {
         if (insn->Instruction.Opcode != TGSI_OPCODE_MUL)
             return -1;
-        if (insn->Src[0].Register.File == TGSI_FILE_CONSTANT) {
-            vec = &insn->Src[0]; col = &insn->Src[1];
-        } else {
-            vec = &insn->Src[1]; col = &insn->Src[0];
-        }
+        if (const_position_sources(&insn->Src[0], &insn->Src[1], &vec, &col))
+            return -1;
         if (!const_scalar(vec, 4, 0) && !const_scalar(vec, 4, 1) &&
             !const_scalar(vec, 4, 2) && !const_scalar(vec, 4, 3))
             return -1;
@@ -515,11 +553,8 @@ static int match_const_position(const struct tgsi_full_instruction *insn,
             insn->Src[2].Register.Index != *temp ||
             !plain_swizzle(&insn->Src[2].Register))
             return -1;
-        if (insn->Src[0].Register.File == TGSI_FILE_CONSTANT) {
-            vec = &insn->Src[0]; col = &insn->Src[1];
-        } else {
-            vec = &insn->Src[1]; col = &insn->Src[0];
-        }
+        if (const_position_sources(&insn->Src[0], &insn->Src[1], &vec, &col))
+            return -1;
         if (!const_scalar(vec, 4, 0) && !const_scalar(vec, 4, 1) &&
             !const_scalar(vec, 4, 2) && !const_scalar(vec, 4, 3))
             return -1;
@@ -538,7 +573,7 @@ static int match_const_position(const struct tgsi_full_instruction *insn,
         sem_out[dst->Index] != TGSI_SEMANTIC_POSITION || shader->mvp)
         return -1;
     shader->mvp = 1;
-    shader->pos_src = 0;
+    shader->const_position = 1;
     return 0;
 }
 
@@ -757,6 +792,14 @@ static struct opengpu_shader *lower_fragment_alu(
     shader->alu_words = alu.words;
     shader->alu_nconst = alu.nconst;
     shader->alu_nimm = alu.nimm;
+    shader->alu_patch_n = alu.patch_n;
+    memcpy(shader->alu_patch_at, alu.patch_at, sizeof(shader->alu_patch_at));
+    memcpy(shader->alu_patch_src, alu.patch_src, sizeof(shader->alu_patch_src));
+    if (alu.samples) {
+        shader->samples = 1;
+        shader->sample_sem = alu.sample_sem;
+        shader->sample_sem_index = alu.sample_sem_index;
+    }
     memcpy(shader->alu_code, alu.code, alu.words * sizeof(uint32_t));
     memcpy(shader->alu_imm, alu.imm, alu.nimm * sizeof(float));
     return shader;
@@ -1307,7 +1350,7 @@ static struct opengpu_shader *lower_shader(const struct pipe_shader_state *state
         (want_fs && !shader->samples && shader->color_src < 0 &&
          !shader->color_imm && !shader->color_const) ||
         (want_fs && shader->samples && shader->sample_sem < 0) ||
-        (!want_fs && shader->pos_src < 0) ||
+        (!want_fs && shader->pos_src < 0 && !shader->const_position) ||
         (mvp_used != 0 && !shader->mvp) ||
         (saw_modulate && !shader->modulate) ||
         ((sprite_xy || sprite_w) &&
@@ -1365,8 +1408,10 @@ int opengpu_vertex_lower_kind(const void *tokens, uint32_t *code,
     if (!shader)
         return -1;
     if (!shader->alu) {
+        int kind = shader->const_position ? 2 : 1;
+
         FREE(shader);
-        return 1;
+        return kind;
     }
     if (!code || shader->alu_words > capacity) {
         FREE(shader);
@@ -2024,13 +2069,18 @@ static int pack_one(struct opengpu_context *ctx, unsigned vertex,
     float c[4] = { 1, 1, 1, 1 };
     float uv[2] = { 0, 0 };
 
-    ptr = attrib_ptr(ctx, (unsigned)vs->pos_src, vertex, &comps);
-    if (!ptr)
-        return -1;
-    ve = &ctx->ve[vs->pos_src];
-    if (ve->src_format == PIPE_FORMAT_R8G8B8A8_UNORM)
-        return -1;
-    memcpy(p, ptr, sizeof(float) * (comps < 4 ? comps : 4));
+    if (vs->const_position) {
+        if (opengpu_stage_const_position(ctx->vs_block, ctx->vs_block_n, p))
+            return -1;
+    } else {
+        ptr = attrib_ptr(ctx, (unsigned)vs->pos_src, vertex, &comps);
+        if (!ptr)
+            return -1;
+        ve = &ctx->ve[vs->pos_src];
+        if (ve->src_format == PIPE_FORMAT_R8G8B8A8_UNORM)
+            return -1;
+        memcpy(p, ptr, sizeof(float) * (comps < 4 ? comps : 4));
+    }
     if (fs->samples)
         link = find_link(vs, fs->sample_sem, fs->sample_sem_index);
     else if (!fs->color_imm && fs->color_sem >= 0)
@@ -2281,9 +2331,17 @@ static void draw_vbo(struct pipe_context *pipe,
                     ctx->mvp[0], ctx->mvp[12], ctx->mvp[15],
                     ctx->mvp_b[0], ctx->mvp_b[12]);
         } else if (ctx->vs->mvp) {
+            float staged[4];
+
             if (!ctx->mvp_set ||
                 pipe_opengpu_write_vs_matrix(ctx->gpu, ctx->mvp)) {
                 reject("vertex matrix did not reach the vertex core");
+                return;
+            }
+            if (ctx->vs->const_position &&
+                opengpu_stage_const_position(ctx->vs_block, ctx->vs_block_n,
+                                             staged)) {
+                reject("vertex position constant did not reach the vertex core");
                 return;
             }
             fprintf(stderr, "opengpu: mvp m00=%g m03=%g m33=%g\n",
@@ -2403,16 +2461,31 @@ static void draw_vbo(struct pipe_context *pipe,
             float block[40];
             unsigned nconst = ctx->fs->alu_nconst * 4u;
             unsigned n = nconst + ctx->fs->alu_nimm;
+            unsigned upload = n > 8u ? 8u : n;
+            unsigned p;
 
-            if (!n || nconst > ctx->fs_block_n || n > 40) {
+            if (nconst > ctx->fs_block_n || (n > 8u && !ctx->fs->alu_patch_n)) {
                 reject("fragment constants did not reach the fragment core");
                 return;
             }
-            memcpy(block, ctx->fs_block, nconst * sizeof(float));
-            if (ctx->fs->alu_nimm)
+            for (p = 0; p < ctx->fs->alu_patch_n; p++) {
+                unsigned src = ctx->fs->alu_patch_src[p];
+                float val = src < ctx->fs_block_n ? ctx->fs_block[src] : 0.f;
+
+                opengpu_fs_patch_immediate(ctx->fs->alu_code,
+                                           ctx->fs->alu_patch_at[p], val);
+            }
+            if (ctx->fs->alu_patch_n &&
+                bind_shader_program(ctx, false, ctx->fs->alu_code,
+                                    ctx->fs->alu_words * sizeof(uint32_t))) {
+                reject("fragment shader bind failed");
+                return;
+            }
+            memcpy(block, ctx->fs_block, upload * sizeof(float));
+            if (ctx->fs->alu_nimm && upload > nconst)
                 memcpy(block + nconst, ctx->fs->alu_imm,
-                       ctx->fs->alu_nimm * sizeof(float));
-            if (pipe_opengpu_write_fs_block(ctx->gpu, block, n)) {
+                       (upload - nconst) * sizeof(float));
+            if (upload && pipe_opengpu_write_fs_block(ctx->gpu, block, upload)) {
                 reject("fragment constants did not reach the fragment core");
                 return;
             }
@@ -2792,6 +2865,7 @@ static void set_constant_buffer(struct pipe_context *pipe,
         ctx->mvp_b_set = 0;
         ctx->vs_opacity_set = 0;
         ctx->vs_alu_set = 0;
+        ctx->vs_block_n = 0;
     }
     if (shader == PIPE_SHADER_VERTEX && index == 0 && buf &&
         buf->buffer_size >= sizeof(ctx->mvp)) {
@@ -2805,6 +2879,12 @@ static void set_constant_buffer(struct pipe_context *pipe,
                 src = map + buf->buffer_offset;
         }
         if (src) {
+            unsigned nfloat = buf->buffer_size / sizeof(float);
+
+            if (nfloat > 20)
+                nfloat = 20;
+            memcpy(ctx->vs_block, src, nfloat * sizeof(float));
+            ctx->vs_block_n = nfloat;
             memcpy(ctx->mvp, src, sizeof(ctx->mvp));
             ctx->mvp_set = 1;
             if (buf->buffer_size >= 32u * sizeof(float)) {

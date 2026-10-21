@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Negative sloped-depth common-step control on the anchored-RNE interpolator",
+  "based_on_commit": "7911940",
+  "source_files": 640,
+  "source_manifest": {
+    "path": ".artifacts/mobile-depth-rounding-before-source-v1.json",
+    "sha256": "00b19b8d8a3eb5a07e0098204f9974a1858f6c9a080d766b7621b183423357a1"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-depth-rounding-before-source-v1.tar.gz",
+    "sha256": "e817e71945f74be1674a7210b1b942e3c3b14b6d804d5b1b623b0374d0ca922f"
+  },
+  "result": {
+    "path": ".artifacts/mobile-depth-rounding-before-v1-result.json",
+    "sha256": "a737ef8b86e01a39d9cb4f3feeb975fcac8578d72fa04417ae75fe5200b86ccd"
+  },
+  "log": {
+    "path": ".artifacts/mobile-depth-rounding-before-v1.log",
+    "sha256": "94140a21bf4900d8c9a34c234c228ac2a74ac6c17dfc636dd70f897b25d300dd"
+  },
+  "software_source": {
+    "path": ".artifacts/find-anchored-depth-shift-witness-v1.cpp",
+    "sha256": "cde1869103857ffba25519687416e1ff6604da4308bf5e91e10180d7d610c451"
+  },
+  "software_witness": {
+    "path": ".artifacts/find-anchored-depth-shift-witness-v1-result.json",
+    "sha256": "dd646715f8a1774b292cdf73b64596b5a9a55e11cee6b519bf5c688799026180"
+  },
+  "passed": 0,
+  "failed": 1,
+  "source_unchanged": true,
+  "rtl_failure_observed": true,
+  "witness": {
+    "coordinates": [
+      [
+        0,
+        0
+      ],
+      [
+        104394,
+        46434
+      ],
+      [
+        31737,
+        80300
+      ]
+    ],
+    "screen": [
+      416,
+      320
+    ],
+    "pixel": [
+      225,
+      186
+    ],
+    "area": 6909162342,
+    "edges": [
+      1485210086,
+      3120307072,
+      2303645184
+    ],
+    "source_depths": [
+      "0x3ee9df5d",
+      "0x3e79575c",
+      "0x3e7f3778"
+    ],
+    "shifted_depths": [
+      "0x3ee9df5e",
+      "0x3e79575e",
+      "0x3e7f377a"
+    ],
+    "common_step": "0x33000000",
+    "exact_source_shift": true,
+    "same_maximum_exponent": true,
+    "observed_before": "0x3e951fda",
+    "observed_after": "0x3e951fda",
+    "offset_enabled": false
+  },
+  "implication": "Removing the common weighted depth term fixes the retained constant-depth examples but does not establish a general one-step separation guarantee under nearest/even rounding.",
+  "next_work": "Qualify directed scalar rounding and packing, assess format-dependent depth policy, then reproduce this pair on the connected pipeline.",
+  "limitations": [
+    "One actual covered pixel with held output and reuse; native clip/viewport/image publication is outside this run.",
+    "Directed rounding is a candidate prerequisite, not a qualified fix or complete precision proof.",
+    "No G04/H6/H0-H8 or API closure is claimed."
+  ],
+  "historical_checkpoint": true,
+  "archived_from_commit": "257fc905295d152fd9f40e6547e9aca46bd7e745",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

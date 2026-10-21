@@ -1,0 +1,77 @@
+{
+  "phase": "stream",
+  "returncode": 0,
+  "source_unchanged": true,
+  "test_counts": [
+    9
+  ],
+  "passed_tests": 9,
+  "emissions": 0,
+  "elapsed_seconds": 349.56759416591376,
+  "finished_utc": "2026-10-21T03:11:56.214527+00:00",
+  "base_commit": "63faa7fa4c13c3e1154fdfa87a36b80e584fc78a",
+  "source_files": 855,
+  "manifest_sha256": "3545b4a7cb3e184a2820d058c2a2253e1cece7348ade0f0957c6cde43c69a4ef",
+  "archive_sha256": "1e14b4671888ed18da813cdc3391e7a37403bc42ab68bc3b3a727ca8690badaf",
+  "archive_and_worktree_exact": true,
+  "git_archive_and_worktree_exact": false,
+  "modified_inputs": [
+    "src/main/scala/opengpu/graphics/NativeRgba8TextureClient.scala",
+    "src/main/scala/opengpu/graphics/NativeRgba8TextureCluster.scala",
+    "src/main/scala/opengpu/graphics/NativeRgba8TextureCreditPool.scala",
+    "src/main/scala/opengpu/graphics/NativeRgba8TexturePool.scala",
+    "src/main/scala/opengpu/graphics/ShaderTextureSampleUnit.scala",
+    "src/main/scala/opengpu/graphics/TextureImageLevelSampleUnit.scala",
+    "src/main/scala/opengpu/graphics/TextureImageMipSampleUnit.scala",
+    "src/main/scala/opengpu/graphics/TextureImageSampleUnit.scala",
+    "src/main/scala/opengpu/graphics/TextureSampleExecuteUnit.scala"
+  ],
+  "added_inputs": [
+    "src/test/scala/opengpu/graphics/NativeTextureLaneStreamSpec.scala",
+    "src/test/scala/opengpu/graphics/StreamingNativeTextureHarness.scala"
+  ],
+  "scope": "Native vector lane overlap plus sustained host-cancel drain for queued and held pool/cluster requests. General fallback retained. No whole-native sustained-rate or multiple-instruction-overlap claim. Initial fixture failures and reproduced held-reset deadlocks remain preserved in v1/v2.",
+  "status": "All59 native/component/general checks and four endpoint emissions pass on the855-input source.",
+  "production_scope": "One explicit nonmip aligned RGBA8 2D same-binding vector instruction can overlap its later lanes after the first checked snapshot. Other modes use the general sampler.",
+  "sustained_native_II1_qualified": false,
+  "fresh_component_checks_planned": 27,
+  "general_compatibility_checks_planned": 23,
+  "endpoint_emissions_planned": 4,
+  "earlier_results": [
+    ".artifacts/mobile-native-rgba8-native-stream-v1-stream-result.json",
+    ".artifacts/mobile-native-rgba8-native-stream-v2-reset-repro-reset-result.json"
+  ],
+  "held_reset_reproductions": {
+    "before": "both failed: accepted2 returned1 sharedBusy true; accepted5 returned5 sharedBusy false",
+    "after": "both pass with cancellation held through instruction retirement"
+  },
+  "broader_renderer_AXI_evidence": "Not carried from the 850/853-input profiles to this changed candidate.",
+  "ppa_policy": "synthesis only",
+  "coordinate_service_prior_mapping": {
+    "core_slack_ps": -128.878,
+    "io_slack_ps": 339.892,
+    "mapped_cells": 2256171,
+    "library_cell_area": 299097.939956,
+    "skipped_instances": 0,
+    "status": "fails 1000 ps core gate",
+    "output": "generated/qualification/ppa/mobile-native-rgba8-sampling-2026-10-21-v2-completed-mapping",
+    "mapping_restarted": false
+  },
+  "remaining": [
+    "later-source whole-renderer runtime/reset/visibility refresh",
+    "sustained shader-to-filter issue",
+    "broader metadata and multi-instruction/warp overlap",
+    "new complete service and renderer synthesis",
+    "remaining H0-H8 requirements"
+  ],
+  "fresh_component_checks_passed": 27,
+  "general_compatibility_checks_passed": 23,
+  "endpoint_emissions_passed": 4,
+  "results": [
+    ".artifacts/mobile-native-rgba8-native-stream-v3-stream-result.json",
+    ".artifacts/mobile-native-rgba8-native-stream-v3-components-result.json",
+    ".artifacts/mobile-native-rgba8-native-stream-v3-compatibility-result.json",
+    ".artifacts/mobile-native-rgba8-native-stream-v3-emission-result.json"
+  ],
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production."
+}

@@ -1,0 +1,102 @@
+{
+  "updated_utc": "2026-10-21T12:52:06.012512+00:00",
+  "worktree": ".artifacts/mobile-transform-feedback-recovery-v1-worktree",
+  "branch": "codex/mobile-transform-feedback-recovery",
+  "base_commit": "55cd199038e0f6294724fc0288900d6c71a5ac23",
+  "source_files": 904,
+  "source_manifest": ".artifacts/mobile-transform-feedback-recovery-v3-source.json",
+  "source_sha256": "417985ad62b0c0f03fcfe4bd44b705426dc4a0f6a149efb8b8a0bfb9d9b1338d",
+  "status": "Current904-input native TF milestone passes71 distinct checks across exact scopes,22 completed native frames(16 healthy/6 expected faults),two reset-aborted capture draws,five emissions and export synthesis. Control RTL is byte-identical to its qualified synthesis.",
+  "focused_checks": {
+    "tests": 15,
+    "export": 9,
+    "native_control": 6,
+    "result": ".artifacts/mobile-transform-feedback-recovery-v3-focused-result.json"
+  },
+  "emissions": {
+    "count": 5,
+    "result": ".artifacts/mobile-transform-feedback-recovery-v3-emission-result.json",
+    "control_byte_identical_to_qualified": true
+  },
+  "synthesis": {
+    "state": "passed",
+    "stage": "synthesis",
+    "component_only": true,
+    "period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "retiming": false,
+    "core_slack_ps": 252.981,
+    "io_slack_ps": 461.151,
+    "skipped_instances": 0,
+    "mapped_cells": 164503,
+    "library_area": 21108.10752,
+    "sequential_area": 8408.8692,
+    "SRAM_macros": 0,
+    "source_files": 904,
+    "source_manifest": ".artifacts/mobile-transform-feedback-recovery-v3-source.json",
+    "frozen_worktree": ".artifacts/mobile-transform-feedback-recovery-binned-v1-worktree",
+    "qualification": "generated/qualification/ppa/mobile-transform-feedback-scoped-abort-export-2026-10-21-v1/qualification.json",
+    "qualification_sha256": "443e876f3e6366d8d25865fe6768219ca5dc3a7bb2d0c6b42edf356e0bd39aec",
+    "result": ".artifacts/mobile-transform-feedback-scoped-abort-synthesis-v1-result.json",
+    "scope": "Default8-object/64-component/four-binding export with separate scoped abort/global reset. Full native/geometry/composed timing is not qualified."
+  },
+  "native_runtime": {
+    "state": "passed",
+    "typed_recovery_and_default_geometry": {
+      "tests": 8,
+      "result": ".artifacts/mobile-transform-feedback-recovery-v3-typed-result.json"
+    },
+    "binned": {
+      "tests": 2,
+      "result": ".artifacts/mobile-transform-feedback-recovery-v3-binned-result.json"
+    },
+    "healthy_native_frames": 8,
+    "fault_matrix_completed_frames": 14,
+    "completed_native_frames": 22,
+    "healthy_completed_frames": 16,
+    "expected_fault_completed_frames": 6,
+    "reset_aborted_capture_draws": 2,
+    "native_checkpoint_store_reset_cuts": 4,
+    "native_capture_store_reset_cuts": 2,
+    "native_payload_modes": [
+      "local",
+      "spill"
+    ],
+    "native_configuration": "4CUs,4lanes,2warps,two native varying slots;typed and two-engine/six-tile binned paths. Full product is structurally emitted,not full-capacity runtime qualified.",
+    "native_captured_primitives": 20,
+    "native_captured_vertices": 60,
+    "default_geometry_draws": 14,
+    "default_geometry_captured_primitives": 96,
+    "default_geometry_reset_cuts": 2,
+    "recovery_cases": [
+      "Checkpoint write permission failure invalidates only the mutated object.",
+      "Required capture on missing state reports5;peer context still captures.",
+      "Capture write permission failure never reaches physical AXI.",
+      "Capture bus fault retains primary3,does not advance cursor/count and bounds partial stores.",
+      "Accepted capture-store reset drains B and clears both stale objects before healthy reuse.",
+      "Healthy peer query context is isolated;exact raw bytes/images and payload release are checked."
+    ]
+  },
+  "original_healthy_native": {
+    "passed": true,
+    "source_manifest": ".artifacts/mobile-transform-feedback-native-v4-source.json",
+    "tests": 4,
+    "frames": 8,
+    "checkpoint_reset_cuts": 4,
+    "scope": "Before scoped-abort correction. Does not qualify current changed export/native cancellation."
+  },
+  "regression": ".artifacts/mobile-transform-feedback-peer-cancellation-regression-v1.json",
+  "remaining": [
+    "Full-capacity runtime and composed control/export/geometry/host timing/resource budgets",
+    "Q02 primitive-query hardware objects and native interface",
+    "Other H0-H8 hardware requirements"
+  ],
+  "scope_boundary": "Driver/compiler implementation is outside the alignment plan;their required hardware interfaces remain in scope.",
+  "commit_policy": "Hold for one larger validated implementation/test/documentation milestone;no push or root user-file changes.",
+  "qualified_distinct_tests": 71,
+  "fresh_distinct_tests": 25,
+  "carried_distinct_tests": 46,
+  "source_proof": ".artifacts/mobile-transform-feedback-milestone-v1-source-proof.json"
+}

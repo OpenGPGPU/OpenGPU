@@ -145,6 +145,6 @@ new instruction extension is paired with the sibling LLVM and driver updates.
 The [disjoint-source native regression](performance/mobile-native-texture-disjoint-captured-axi-2026-10-21.json)
 now passes both floating AXI modes:144 frames total,140 successful and four
 expected errors. The paired integer modes also pass148 frames. All use corrected
-disjoint two-page source leases with production and selected AXI
-suite inputs identical to main baseline `f6d8b1c`. No adjacent-generation source-page alias remains
-in these matrices;typed packet-fetch qualification continues separately.
+disjoint two-page source leases with identical production and selected AXI
+suite inputs on current main. No adjacent-generation source-page alias remains
+in these matrices;the [paired packet-fetch qualification](performance/mobile-native-texture-disjoint-axi-2026-10-21.json) also passes68 frames,for360 corrected-source frames across all six tests.

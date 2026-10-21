@@ -8,7 +8,7 @@ import opengpu.core.memory.{
   TranslatedWordClient
 }
 import opengpu.graphics.{GraphicsConfig, TextureUnit,MemoryTileBinRenderPipeline,NativeTypedGraphicsConfig,MemoryNativeTypedGraphicsPipeline,
-  NativeBinnedGraphicsConfig,MemoryNativeBinnedGraphicsPipeline,NativeBinnedGraphicsCapabilities,TypedVertexBinImagePipeline,NativeBinnedCompletionInfo}
+  NativeBinnedGraphicsConfig,MemoryNativeBinnedGraphicsPipeline,NativeBinnedGraphicsCapabilities,TypedVertexBinImagePipeline,NativeBinnedCompletionInfo,NativeRgba8TextureRendererPorts,NativeRgba8TexturePool}
 
 /** Optional simulation counters; the default product port list is unchanged. */
 class GpuHostPerformanceCounters extends Bundle {
@@ -40,6 +40,9 @@ class GpuHostPerformanceCounters extends Bundle {
   val lowerWriteBytes = UInt(64.W)
   val textureWordReads = UInt(64.W)
   val textureLineReads = UInt(64.W)
+  val nativeTextureGroups = UInt(64.W)
+  val nativeTextureDataReads = Vec(8, UInt(64.W))
+  val nativeTexturePageWalks = Vec(8, UInt(64.W))
   val translationStallCycles = Vec(4, UInt(64.W))
   val translationMisses = Vec(4, UInt(64.W))
   val walkCycles = Vec(4, UInt(64.W))
@@ -90,10 +93,16 @@ class GpuHostSystemAxi(
   tileStoreCredits: Int = opengpu.config.MobileGpuConfig().attachmentStoreCredits,
   binnedRendering: Option[MobileGpuConfig] = None,
   typedGraphics: Option[NativeTypedGraphicsConfig] = None,
-  nativeBinnedGraphics: Option[NativeBinnedGraphicsConfig] = None
+  nativeBinnedGraphics: Option[NativeBinnedGraphicsConfig] = None,
+  visibilityQueries: Boolean = false,
+  primitiveQueries: Boolean = false
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
+  private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
+  require(!primitiveQueries || nativeFeedback,"primitive queries require native transform feedback")
   private val externalRender=binnedRendering.nonEmpty || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
+  require(!visibilityQueries || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,
+    "visibility queries require native typed or native binned rendering")
   require(Seq(binnedRendering.nonEmpty,typedGraphics.nonEmpty,nativeBinnedGraphics.nonEmpty).count(identity)<=1,
     "select one native render submission ABI")
   if(typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty){
@@ -157,9 +166,13 @@ class GpuHostSystemAxi(
       stagingTransactions + dmaTransactions
   private val binnedMemoryIds=binnedRendering.map(m=>9+m.binWriteCredits+2*m.tileEngines+
     (if (m.binDirectoryTiles>0) 1 else 0)+m.tileEngines*(2*(m.attachmentStoreCredits+1)+1)).getOrElse(0)
-  private val graphicsHostTransactions = if(nativeBinnedGraphics.nonEmpty)NativeBinnedGraphicsMemoryFabric.transactions(nativeBinnedGraphics.get)
+  private val baseGraphicsHostTransactions = if(nativeBinnedGraphics.nonEmpty)NativeBinnedGraphicsMemoryFabric.transactions(nativeBinnedGraphics.get)
     else if(typedGraphics.nonEmpty)NativeTypedGraphicsMemoryFabric.transactions else binnedRendering.map(m=>TileBinHostMemoryFabric.transactions(
     binnedMemoryIds,m.tileEngines,kernelWordTransactions,fragCore)).getOrElse(1 << log2Ceil(usedExact))
+  private val groupedNativeTexture = typedGraphics.exists(_.groupedTexture) || nativeBinnedGraphics.exists(_.groupedTexture)
+  private val graphicsHostTransactions = if(groupedNativeTexture)
+    NativeRgba8TextureMemoryFabric.transactions(baseGraphicsHostTransactions,(numComputeUnits+1)/2)
+    else baseGraphicsHostTransactions
   private val clientBases: Seq[Int] = translatedWordClients.indices
     .scanLeft(kernelWordTransactions)((base, _) => base + wordPortTransactions)
   private val cbBase = clientBases(0)
@@ -267,7 +280,8 @@ class GpuHostSystemAxi(
       sharedShader = sharedShader.map(_.copy(shaderPayload=None)), protectVmState = true,
       persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
       useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = externalRender,nativeCompletionInfo=nativeBinnedGraphics.nonEmpty,
-      nativeVertexInput=typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty))
+      nativeVertexInput=typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,visibilityQueries=visibilityQueries,
+      primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16)))
     val system = Module(new GpuSystem(
       gpuConfig,
       numComputeUnits = numComputeUnits,
@@ -294,6 +308,99 @@ class GpuHostSystemAxi(
       gpuConfig,n,sharedShader.get,graphicsConfig,commandIdWidth,useSramBlackBoxes=useBlackBoxes)))
     val nativeBinned=nativeBinnedGraphics.map(n=>Module(new MemoryNativeBinnedGraphicsPipeline(
       gpuConfig,n,sharedShader.get,graphicsConfig,commandIdWidth,useSramBlackBoxes=useBlackBoxes)))
+    val queries=if(visibilityQueries)Some(Module(new opengpu.graphics.NativeVisibilityQueryEngine(gpuConfig,
+      contexts=opengpu.graphics.NativeVisibilityQueryCapabilities.activeContexts,
+      producers=nativeBinnedGraphics.map(_.engines).getOrElse(1))))else None
+    queries.foreach { q=>
+      q.io.command <> host.io.queryCommand.get;host.io.queryReply.get <> q.io.reply
+      q.io.satp:=host.io.vectorSatp;q.io.cancel:=host.io.binCancel.get
+    }
+    val primitiveCounters=if(primitiveQueries)Some(Module(new opengpu.graphics.NativePrimitiveQueryEngine(gpuConfig,
+      contexts=opengpu.graphics.NativePrimitiveQueryCapabilities.activeContexts)))else None
+    primitiveCounters.foreach { q=>
+      q.io.command<>host.io.primitiveQueryCommand.get;host.io.primitiveQueryReply.get<>q.io.reply
+      q.io.satp:=host.io.vectorSatp;q.io.cancel:=host.io.binCancel.get
+    }
+    val feedbackControl=if(nativeFeedback)Some(Module(new opengpu.graphics.NativeTransformFeedbackControl(gpuConfig)))else None
+    feedbackControl.foreach { f=>
+      f.io.command<>host.io.feedbackCommand.get;host.io.feedbackReply.get<>f.io.reply
+      f.io.satp:=host.io.vectorSatp;f.io.cancel:=host.io.binCancel.get
+    }
+    val feedbackDataRequest=if(nativeFeedback)Some(Wire(Decoupled(new ComputeMemoryRequest(gpuConfig,64,2))))else None
+    val feedbackDataResponse=if(nativeFeedback)Some(Wire(Decoupled(new ComputeMemoryResponse(64,2))))else None
+    val feedbackDataRoot=WireDefault(0.U(32.W))
+    val queryTranslationStall=WireDefault(0.U(3.W));val queryTranslationMiss=WireDefault(0.U(3.W))
+    val queryWalkActive=WireDefault(0.U(3.W))
+    val nativeTextureGroupEvent=WireDefault(0.U(5.W))
+    val nativeTextureDataEvents=WireDefault(VecInit(Seq.fill(8)(false.B)))
+    val nativeTextureWalkEvents=WireDefault(VecInit(Seq.fill(8)(false.B)))
+    // Texture data and page-table reads are already physical. Preserve the
+    // enclosing renderer fabric's translated/physical classification first.
+    def attachNativeTexture(ports: Option[NativeRgba8TextureRendererPorts],
+        request: DecoupledIO[ComputeMemoryRequest], response: DecoupledIO[ComputeMemoryResponse],
+        baseTransactions: Int): Bool = ports match {
+      case None =>
+        system.io.graphicsHostRequest <> request; response <> system.io.graphicsHostResponse
+        true.B
+      case Some(clients) =>
+        val pool=Module(new NativeRgba8TexturePool(gpuConfig,numComputeUnits,clients.client.length,useBlackBoxes=useBlackBoxes,sharedOutstandingRows=128))
+        val memory=Module(new NativeRgba8TextureMemoryFabric(gpuConfig,baseTransactions,(numComputeUnits+1)/2))
+        pool.io.client <> clients.client;pool.io.cuMask:=clients.cuMask
+        nativeTextureGroupEvent:=PopCount(pool.io.client.map(_.request.fire))
+        for(n<-0 until pool.clusters){
+          nativeTextureDataEvents(n):=pool.io.memoryRequest(n).fire
+          nativeTextureWalkEvents(n):=pool.io.pageWalk(n).fire
+        }
+        pool.io.satp:=host.io.vectorSatp;pool.io.flush:=host.io.tlbFlush
+        pool.io.cancel:=host.io.binCancel.get;pool.io.invalidate:=host.io.binSubmit.get.fire
+        memory.io.rendererRequest <> request;response <> memory.io.rendererResponse
+        memory.io.dataRequest <> pool.io.memoryRequest;pool.io.memoryResponse <> memory.io.dataResponse
+        memory.io.pageWalk <> pool.io.pageWalk;pool.io.pageWalkResponse <> memory.io.pageWalkResponse
+        system.io.graphicsHostRequest <> memory.io.memoryRequest
+        memory.io.memoryResponse <> system.io.graphicsHostResponse
+        !pool.io.busy && memory.io.drained
+    }
+    def attachNativeMemory(ports: Option[NativeRgba8TextureRendererPorts],
+        request: DecoupledIO[ComputeMemoryRequest],response: DecoupledIO[ComputeMemoryResponse],
+        baseTransactions: Int,queryBase: Int): Bool = {
+      var currentRequest=request;var currentResponse=response
+      var drained: Bool=true.B
+      val stalls=scala.collection.mutable.ArrayBuffer.empty[Bool]
+      val misses=scala.collection.mutable.ArrayBuffer.empty[Bool]
+      val walks=scala.collection.mutable.ArrayBuffer.empty[Bool]
+      def attachAuxiliary(data: DecoupledIO[ComputeMemoryRequest],reply: DecoupledIO[ComputeMemoryResponse],
+          root: UInt,base: Int): Unit={
+        val memory=Module(new NativeVisibilityQueryMemoryFabric(gpuConfig,baseTransactions,base))
+        memory.io.renderRequest<>currentRequest;currentResponse<>memory.io.renderResponse
+        memory.io.queryRequest<>data;reply<>memory.io.queryResponse
+        memory.io.querySatp:=root;memory.io.flush:=host.io.tlbFlush
+        stalls+=memory.io.translationStall;misses+=memory.io.translationMiss;walks+=memory.io.walkActive
+        drained=drained && memory.io.drained
+        currentRequest=memory.io.memoryRequest;currentResponse=memory.io.memoryResponse
+      }
+      queries.foreach(q=>attachAuxiliary(q.io.memoryRequest,q.io.memoryResponse,q.io.memorySatp,queryBase))
+      feedbackControl.foreach { f=>
+        attachAuxiliary(feedbackDataRequest.get,feedbackDataResponse.get,feedbackDataRoot,queryBase+2)
+        attachAuxiliary(f.io.memoryRequest,f.io.memoryResponse,f.io.memorySatp,queryBase+4)
+      }
+      primitiveCounters.foreach(q=>attachAuxiliary(q.io.memoryRequest,q.io.memoryResponse,q.io.memorySatp,queryBase+6))
+      if(stalls.nonEmpty){queryTranslationStall:=PopCount(VecInit(stalls.toSeq))
+        queryTranslationMiss:=PopCount(VecInit(misses.toSeq));queryWalkActive:=PopCount(VecInit(walks.toSeq))}
+      val textureDrained=attachNativeTexture(ports,currentRequest,currentResponse,baseTransactions)
+      drained && textureDrained
+    }
+    def attachFeedback(port: opengpu.graphics.TransformFeedbackPipelineIO): Unit={
+      val f=feedbackControl.get
+      port.command<>f.io.control;f.io.controlReply<>port.commandReply
+      port.scope:=host.io.renderFeedbackScope.get;port.cancel:=f.io.cancelCore
+      feedbackDataRequest.get<>port.memoryRequest;port.memoryResponse<>feedbackDataResponse.get
+      feedbackDataRoot:=port.memorySatp
+      primitiveCounters.foreach { q=>
+        q.io.written(0).valid:=port.recorded.valid
+        q.io.written(0).bits.context:=port.recorded.bits.context
+        q.io.written(0).bits.root:=port.recorded.bits.root;q.io.written(0).bits.count:=1.U
+      }
+    }
     if (!externalRender) sharedShader.foreach(_ => system.io.graphicsKernels.get <> host.io.shared.get)
 
     host.io.s_axi_aclk := io.s_axi_aclk
@@ -544,10 +651,13 @@ class GpuHostSystemAxi(
     } else if(nativeBinnedGraphics.nonEmpty) {
       val n=nativeBinnedGraphics.get;val renderer=nativeBinned.get
       val fabric=Module(new NativeBinnedGraphicsMemoryFabric(gpuConfig,n,kernelWordTransactions,stagingTransactions))
+      val textureDrained=attachNativeMemory(renderer.io.grouped,fabric.io.memoryRequest,fabric.io.memoryResponse,
+        NativeBinnedGraphicsMemoryFabric.transactions(n),MemoryNativeBinnedGraphicsPipeline.transactions(n)+6)
       renderer.io.submit<>host.io.binSubmit.get;renderer.io.cancel:=host.io.binCancel.get
+      if(nativeFeedback)attachFeedback(renderer.io.feedback.get)
       for(e<-0 until n.engines){renderer.io.out(e).ready:=true.B;renderer.io.primitiveDone(e).ready:=true.B;renderer.io.tileDone(e).ready:=true.B}
       val completion=host.io.binCompletion.get
-      completion.valid:=renderer.io.completion.valid;completion.bits:=0.U.asTypeOf(completion.bits)
+      completion.valid:=renderer.io.completion.valid && textureDrained;completion.bits:=0.U.asTypeOf(completion.bits)
       completion.bits.commandId:=renderer.io.completion.bits.commandId;completion.bits.status:=renderer.io.completion.bits.status
       completion.bits.frontendStatus:=Mux(renderer.io.completion.bits.faultStage===1.U || renderer.io.completion.bits.faultStage===2.U,
         renderer.io.completion.bits.status,0.U)
@@ -555,9 +665,31 @@ class GpuHostSystemAxi(
       completion.bits.appendReadBytes:=renderer.io.completion.bits.drawReadBytes
       completion.bits.acceptedAppends:=renderer.io.completion.bits.completedDraws
       host.io.binCompletionDetails.get:=VecInit(NativeBinnedCompletionInfo.words(renderer.io.completion.bits))
-      renderer.io.completion.ready:=completion.ready
+      renderer.io.completion.ready:=completion.ready && textureDrained
       host.io.binCapabilityWords.get:=VecInit(NativeBinnedGraphicsCapabilities.words(n,numComputeUnits,graphicsConfig).map(_.U(32.W)))
-      host.io.binDrained.get:= !renderer.io.busy && fabric.io.drained
+      val renderIdle= !renderer.io.busy && fabric.io.drained && textureDrained
+      queries.foreach { q=>
+        val context=Reg(UInt(32.W));val root=Reg(UInt(32.W))
+        when(renderer.io.submit.fire){context:=host.io.renderQueryContext.get;root:=host.io.vectorSatp}
+        for(e<-0 until n.engines){
+          q.io.samples(e).valid:=renderer.io.out(e).fire
+          q.io.samples(e).bits.context:=context;q.io.samples(e).bits.root:=root
+          q.io.samples(e).bits.status:=renderer.io.out(e).bits.status
+          q.io.samples(e).bits.passingSamples:=renderer.io.out(e).bits.passingSamples
+        }
+        q.io.jobFault.valid:=renderer.io.completion.fire && renderer.io.completion.bits.status=/=0.U
+        q.io.jobFault.bits.context:=context;q.io.jobFault.bits.root:=root
+        q.io.jobFault.bits.status:=renderer.io.completion.bits.status
+        q.io.renderIdle:=renderIdle
+      }
+      primitiveCounters.foreach { q=>
+        q.io.renderIdle:=renderIdle
+        q.io.jobFault.valid:=renderer.io.completion.fire && renderer.io.completion.bits.status=/=0.U
+        q.io.jobFault.bits.context:=host.io.renderFeedbackScope.get.context
+        q.io.jobFault.bits.root:=host.io.renderFeedbackScope.get.root
+        q.io.jobFault.bits.status:=renderer.io.completion.bits.status
+      }
+      host.io.binDrained.get:=renderIdle && !queries.map(_.io.busy).getOrElse(false.B) && !feedbackControl.map(_.io.busy).getOrElse(false.B) && !primitiveCounters.map(_.io.busy).getOrElse(false.B)
       renderer.io.shared<>system.io.graphicsKernels.get
       localPayload.foreach { _=>
         val management=system.io.payloadManagement.get
@@ -571,7 +703,6 @@ class GpuHostSystemAxi(
       fabric.io.renderRequest<>renderer.io.memoryRequest;renderer.io.memoryResponse<>fabric.io.renderResponse
       fabric.io.dmaRequest<>host.io.kernelWordMemReq;host.io.kernelWordMemResp<>fabric.io.dmaResponse
       fabric.io.satp:=host.io.vectorSatp;fabric.io.flush:=host.io.tlbFlush
-      system.io.graphicsHostRequest<>fabric.io.memoryRequest;fabric.io.memoryResponse<>system.io.graphicsHostResponse
       val request=renderer.io.memoryRequest
       val virtualRenderer=request.bits.transactionId>=MemoryNativeBinnedGraphicsPipeline.renderBase.U &&
         !MemoryNativeBinnedGraphicsPipeline.imageTransfer(request.bits.transactionId,n)
@@ -583,20 +714,44 @@ class GpuHostSystemAxi(
       }
       host.io.textureFault.get:=false.B
       translationStalls:=fabric.io.translationStall;translationMisses:=fabric.io.translationMiss;translationWalks:=fabric.io.walkActive
+      if(visibilityQueries || nativeFeedback){translationStalls(2):=queryTranslationStall;translationMisses(2):=queryTranslationMiss;translationWalks(2):=queryWalkActive}
     } else if(typedGraphics.nonEmpty) {
       val renderer=typed.get
       val fabric=Module(new NativeTypedGraphicsMemoryFabric(gpuConfig,kernelWordTransactions,stagingTransactions))
+      val textureDrained=attachNativeMemory(renderer.io.grouped,fabric.io.memoryRequest,fabric.io.memoryResponse,
+        NativeTypedGraphicsMemoryFabric.transactions,38)
       renderer.io.submit<>host.io.binSubmit.get;renderer.io.cancel:=host.io.binCancel.get
+      if(nativeFeedback)attachFeedback(renderer.io.feedback.get)
       renderer.io.out.ready:=true.B
       val completion=host.io.binCompletion.get
-      completion.valid:=renderer.io.completion.valid;completion.bits:=0.U.asTypeOf(completion.bits)
+      completion.valid:=renderer.io.completion.valid && textureDrained;completion.bits:=0.U.asTypeOf(completion.bits)
       completion.bits.commandId:=renderer.io.completion.bits.commandId;completion.bits.status:=renderer.io.completion.bits.status
       completion.bits.descriptorReadBytes:=renderer.io.completion.bits.descriptorReadBytes(15,0)
       completion.bits.appendReadBytes:=renderer.io.completion.bits.drawReadBytes
       completion.bits.acceptedAppends:=renderer.io.completion.bits.completedDraws
-      renderer.io.completion.ready:=completion.ready
+      renderer.io.completion.ready:=completion.ready && textureDrained
       host.io.binCapabilityWords.get:=renderer.io.capabilityWords
-      host.io.binDrained.get:= !renderer.io.busy && fabric.io.drained
+      val renderIdle= !renderer.io.busy && fabric.io.drained && textureDrained
+      queries.foreach { q=>
+        val context=Reg(UInt(32.W));val root=Reg(UInt(32.W))
+        when(renderer.io.submit.fire){context:=host.io.renderQueryContext.get;root:=host.io.vectorSatp}
+        q.io.samples(0).valid:=renderer.io.out.fire
+        q.io.samples(0).bits.context:=context;q.io.samples(0).bits.root:=root
+        q.io.samples(0).bits.status:=renderer.io.out.bits.status
+        q.io.samples(0).bits.passingSamples:=renderer.io.out.bits.passingSamples
+        q.io.jobFault.valid:=renderer.io.completion.fire && renderer.io.completion.bits.status=/=0.U
+        q.io.jobFault.bits.context:=context;q.io.jobFault.bits.root:=root
+        q.io.jobFault.bits.status:=renderer.io.completion.bits.status
+        q.io.renderIdle:=renderIdle
+      }
+      primitiveCounters.foreach { q=>
+        q.io.renderIdle:=renderIdle
+        q.io.jobFault.valid:=renderer.io.completion.fire && renderer.io.completion.bits.status=/=0.U
+        q.io.jobFault.bits.context:=host.io.renderFeedbackScope.get.context
+        q.io.jobFault.bits.root:=host.io.renderFeedbackScope.get.root
+        q.io.jobFault.bits.status:=renderer.io.completion.bits.status
+      }
+      host.io.binDrained.get:=renderIdle && !queries.map(_.io.busy).getOrElse(false.B) && !feedbackControl.map(_.io.busy).getOrElse(false.B) && !primitiveCounters.map(_.io.busy).getOrElse(false.B)
       renderer.io.shared<>system.io.graphicsKernels.get
       localPayload.foreach { _=>
         val management=system.io.payloadManagement.get
@@ -611,7 +766,6 @@ class GpuHostSystemAxi(
       fabric.io.renderRequest<>renderer.io.memoryRequest;renderer.io.memoryResponse<>fabric.io.renderResponse
       fabric.io.dmaRequest<>host.io.kernelWordMemReq;host.io.kernelWordMemResp<>fabric.io.dmaResponse
       fabric.io.satp:=host.io.vectorSatp;fabric.io.flush:=host.io.tlbFlush
-      system.io.graphicsHostRequest<>fabric.io.memoryRequest;fabric.io.memoryResponse<>system.io.graphicsHostResponse
       val request=renderer.io.memoryRequest
       val staging=request.bits.transactionId>=16.U && request.bits.transactionId<24.U
       stagingReadEvent:=Mux(request.fire && staging && !request.bits.isWrite,1.U(16.W)<<request.bits.sizeLog2,0.U)
@@ -622,6 +776,7 @@ class GpuHostSystemAxi(
       }
       host.io.textureFault.get:=false.B
       translationStalls:=fabric.io.translationStall;translationMisses:=fabric.io.translationMiss;translationWalks:=fabric.io.walkActive
+      if(visibilityQueries || nativeFeedback){translationStalls(2):=queryTranslationStall;translationMisses(2):=queryTranslationMiss;translationWalks(2):=queryWalkActive}
     } else {
       val renderer=binned.get
       val mobile=binnedRendering.get
@@ -761,6 +916,11 @@ class GpuHostSystemAxi(
         perf.binAcceptedSamples(e):=count(accepted)
         perf.binCommittedSamples(e):=count(committed)
         perf.binFourSampleCycles(e):=count((committed===4.U).asUInt)
+      }
+      perf.nativeTextureGroups:=count(nativeTextureGroupEvent)
+      for(n<-0 until 8){
+        perf.nativeTextureDataReads(n):=count(nativeTextureDataEvents(n).asUInt)
+        perf.nativeTexturePageWalks(n):=count(nativeTextureWalkEvents(n).asUInt)
       }
       perf.textureWordReads := count(textureWordAccepted.asUInt)
       perf.textureLineReads := count(textureLineAccepted.asUInt)

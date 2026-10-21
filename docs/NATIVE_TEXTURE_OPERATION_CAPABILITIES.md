@@ -1,18 +1,18 @@
 # Native resource texture operation discovery
 
-GTO1 is a read-only record of16 words capability record at MMIO `0x240..0x27f`. It describes
+GTO1 is a read-only 16-word capability record at MMIO `0x2c0..0x2ff`. It describes
 existing native resource-backed instructions and their operand limits. GTX1
 continues to describe fixed-coordinate policy and typed packet fetch;GTF1
 continues to describe storage formats. The new record does not advertise the
 banked sampling rate or complete GLES/API/compiler support.
 
 A native host exposes GTX1 feature bit10 (`TEXTURE_CAP_OPERATION_DISCOVERY`)
-when GTO1 is present. Software checks that bit before reading `0x240`,then checks
+when GTO1 is present. Software checks that bit before reading `0x2c0`,then checks
 GTO1 magic,length and version. Older native hosts leave the bit clear. Legacy
 and fixed binned profiles leave the optional native windows unmapped and return
 AXI SLVERR. Every GTO1 write,including zero-strobe writes,returns SLVERR and
 leaves all records unchanged. Unaligned accesses,address aliases and reads past
-`0x27f` are invalid. AXI FIXED/INCR bursts and held responses follow the host's
+`0x2ff` are invalid. AXI FIXED/INCR bursts and held responses follow the host's
 existing transfer rules.
 
 | Word | Value | Meaning |
@@ -69,3 +69,17 @@ host interface reached its 7200-second synthesis timeout during mapping, with
 unchanged source and RTL. No mapped timing or area result is established. The
 leftover owned container was stopped after the flow terminated. Main integration
 continues to require completed host synthesis;the full hardware goal remains open.
+
+The original unmerged candidate used `0x240..0x27f`. That allocation overlaps
+the later GQV1/GFC1 records and is invalid on current main. The revised candidate
+uses the 64-byte-aligned `0x2c0..0x2ff` window after GQP1; `0x2a0..0x2bf` stays
+unmapped. Earlier tests and the timeout above describe the historical candidate
+only. Fresh combined-capability AXI and synthesis checks are required.
+
+The [relocated candidate](performance/mobile-native-texture-operations-relocated-2026-10-21.json)
+now passes 19 fresh checks, 12 generated ABI checks and two strict C tests on
+983 frozen inputs. Five discovery profiles include three native configurations
+and two disabled profiles. The 16-lane/eight-warp profile enables GQV1, GFC1,
+GQP1 and GTO1 together; independent literal tables remain disjoint and immutable.
+One fresh default host-control RTL emission includes all four blocks. Host
+synthesis and integration with newer main remain required before promotion.

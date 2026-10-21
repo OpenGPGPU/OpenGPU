@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-21",
+  "main_before": "9f14cb17af2afd637e789ca8eea5e1a5e7c82c1d",
+  "incoming": "d03eff493e9ff812d7a4dfed24d6bdcecb7b52fd",
+  "incoming_commits": 19,
+  "qualified_series": [
+    "shared native RGBA8 sampling/rate/ownership",
+    "native visibility queries",
+    "native transform-feedback capture and recovery",
+    "standalone and native primitive-query transport"
+  ],
+  "integration": "Two alignment-document conflicts retain both histories and the completed synthesis results from main. No production RTL conflict. The imported opt/fixed-lod staging regression tests hardware already present on main.",
+  "source_catalog": ".artifacts/mobile-main-merge-2026-10-21-source.json",
+  "source_files": 914,
+  "native_qualification": {
+    "distinct_checks": 31,
+    "emissions": 3,
+    "result": ".artifacts/mobile-primitive-query-native-v1-result.json",
+    "scope": "Exact RTL, ABI, build and selected test inputs. Changed guest-init C and unrelated staging test source are outside these selected elaborations."
+  },
+  "fresh_validation": {
+    "tests": 8,
+    "suite": "opengpu.graphics.FragmentWorkerMemorySpec",
+    "native_primitive_query_ABI_check": true,
+    "native_transform_feedback_ABI_check": true,
+    "log": ".artifacts/mobile-main-merge-2026-10-21-validation.log"
+  },
+  "historical_evidence_records_restored": 13,
+  "historical_scope": "Restored files are explicitly historical checkpoints and do not qualify current main.",
+  "not_promoted": [
+    "GTO1 operation-discovery candidate: 0x240..0x27f aliases newer query/feedback capabilities, host synthesis timed out.",
+    "Uncommitted 917-source primitive-query AXI runtime tests: first run stopped after disk exhaustion before simulation; no runtime PASS claim."
+  ],
+  "cleanup_backup": ".artifacts/branch-cleanup-2026-10-21.bundle",
+  "remaining_scope": "H0-H8 full hardware objective remains active; PPA is synthesis only."
+}

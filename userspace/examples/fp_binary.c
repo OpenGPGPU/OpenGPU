@@ -62,7 +62,7 @@ int main(int argc, char **argv)
     command.local[1] = command.local[2] = 1;
     command.out_syncobj = fence;
     if (opengpu_compute(fd, &command) ||
-        opengpu_sync_wait_success(fd, fence, 300000))
+        opengpu_sync_wait_success(fd, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     /* Exact RTL reference values from VectorFmaAluSpec / VectorFpuAluSpec. */
     if (words[8] != 0x40400000u ||  /* vfadd 1+2 = 3 */

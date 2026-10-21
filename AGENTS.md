@@ -1,10 +1,12 @@
 # Agent contribution rules
 
-When creating a Git commit, include a `Co-authored-by` trailer for the agent. The trailer must identify the agent and include the model name, for example:
+When creating a Git commit, include one `Co-authored-by` trailer for the agent. The trailer must identify the agent and include the model name, for example:
 
 ```text
 Co-authored-by: Codex (GPT-6 sol) <codex@openai.com>
 ```
+
+Cursor appends `Co-authored-by: Cursor <cursoragent@cursor.com>` on its own. Do not write a second trailer in the commit message. If that automatic line will be present, leave the message without a `Co-authored-by` line so the commit has exactly one trailer.
 
 # Language & Translation Rules
 

@@ -82,7 +82,7 @@ int main(int argc, char **argv)
         goto done;
 
     if (pipe_opengpu_clear(ctx, 0x000000ffu, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 300000))
+        pipe_opengpu_fence_finish(ctx, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
 
@@ -100,7 +100,7 @@ int main(int argc, char **argv)
         (1u << OPENGPU_DRAW_BLEND_SRC_SHIFT);
 
     if (pipe_opengpu_draw_vertex(ctx, &draw, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 300000))
+        pipe_opengpu_fence_finish(ctx, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
 

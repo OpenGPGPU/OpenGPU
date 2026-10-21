@@ -7,6 +7,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
+  protected def flatShading: Boolean=true
   private val p=VertexShaderStageConfig()
   private val identity=(BigInt(7)<<64)|(BigInt(8)<<32)|9
   private def zero(data: Data): Unit=data match {
@@ -57,7 +58,7 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
     pack(identity->96,BigInt(sequence)->64,BigInt(id)->32,BigInt(values.last.instance)->32,BigInt(2)->32,
       BigInt(mode)->4,BigInt(kind)->2,BigInt(values.size)->2,BigInt(values.size-1)->2,BigInt(if(primitive.closing)1 else 0)->1,
       BigInt(16)->5,flat->64,
-      vector(values.map(_.bits(flat,values.last))++Vector.fill(3-values.size)(BigInt(0)),vertexWidth)->(3*vertexWidth))
+      vector(values.map(_.bits(if(flatShading)flat else BigInt(0),values.last))++Vector.fill(3-values.size)(BigInt(0)),vertexWidth)->(3*vertexWidth))
   }
   private class Driver(val d: PrimitiveAssemblyStage) {
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
@@ -109,7 +110,7 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
   }
 
   it should "assemble every GLES topology with restart instance boundaries flat values and stalled consumers" in {
-    simulate(new PrimitiveAssemblyStage(p)) { d=>
+    simulate(new PrimitiveAssemblyStage(p,flatShading=flatShading)) { d=>
       val t=new Driver(d);var draws=0;var total=0
       for(mode<-0 to 6;n<-0 to 9;pattern<-0 to 2) {
         val restart: Set[Int]=pattern match {case 0=>Set.empty;case 1=>Set(0,n/2,n-1).filter(_>=0);case _=>(0 until n).filter(_%3==1).toSet}
@@ -127,7 +128,7 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
   }
 
   it should "advance strip parity through degenerates and preserve loops across long producer gaps" in {
-    simulate(new PrimitiveAssemblyStage(p)) { d=>
+    simulate(new PrimitiveAssemblyStage(p,flatShading=flatShading)) { d=>
       val t=new Driver(d);var total=0
       for(mode<-Seq(2,5,6)) {
         val input=Vector(Vector.tabulate(23)(i=>V(i,0,Seq(1,1,2,2,2,1,3)(i%7),Set(8,9,17)(i),true)))
@@ -142,7 +143,7 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
   }
 
   it should "retain offered primitives through cancellation and wait for the source to drain" in {
-    simulate(new PrimitiveAssemblyStage(p)) { d=>
+    simulate(new PrimitiveAssemblyStage(p,flatShading=flatShading)) { d=>
       val t=new Driver(d);t.ready=Some(false);t.begin(2,5,1,BigInt("55",16))
       t.send(V(0,0,0));t.send(V(1,0,1));t.until(d.io.out.valid.peek().litToBoolean)
       val held=d.io.out.bits.peek().litValue;d.io.cancel.poke(true.B)
@@ -156,7 +157,7 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
   }
 
   it should "attribute malformed record and completion streams and propagate source faults" in {
-    simulate(new PrimitiveAssemblyStage(p)) { d=>
+    simulate(new PrimitiveAssemblyStage(p,flatShading=flatShading)) { d=>
       val t=new Driver(d);t.ready=Some(true)
       for(mode<-Seq("identity","ordinal","instance","base","extra","endIdentity","endCount","earlyEnd")) {
         t.begin(0,if(mode=="earlyEnd")2 else 1,1);t.offer(V(0,0,7))
@@ -182,7 +183,7 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
   }
 
   it should "reject version slot and flat-mask layouts while retaining producer drain ownership" in {
-    simulate(new PrimitiveAssemblyStage(p)) { d=>
+    simulate(new PrimitiveAssemblyStage(p,flatShading=flatShading)) { d=>
       val t=new Driver(d)
       val layouts=Seq[PrimitiveAssemblyDraw=>Unit](
         q=>q.version.poke(0.U),q=>q.varyingSlots.poke(17.U),q=>q.varyingSlots.poke(31.U),
@@ -199,7 +200,7 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
   }
 
   it should "close a two-vertex loop with selective flat values at the minimum varying interface" in {
-    simulate(new PrimitiveAssemblyStage(VertexShaderStageConfig(VertexInputFetchConfig(1,1),1))) { d=>
+    simulate(new PrimitiveAssemblyStage(VertexShaderStageConfig(VertexInputFetchConfig(1,1),1),flatShading=flatShading)) { d=>
       zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B);d.io.out.ready.poke(true.B)
       var outputs=0
       def tick(): Unit={
@@ -210,7 +211,7 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
           for(v<-0 until 2;c<-0 until 4) {
             val input=if(close)1-v else v;val provoking=if(close)0 else 1
             d.io.out.bits.vertices(v).position(c).expect((input*10+c).U)
-            d.io.out.bits.vertices(v).varyings(0)(c).expect(((if(c%2==1)provoking else input)*100+c).U)
+            d.io.out.bits.vertices(v).varyings(0)(c).expect(((if(flatShading && c%2==1)provoking else input)*100+c).U)
           }
           assert(d.io.out.bits.vertices(2).peek().litValue==0);outputs+=1
         }
@@ -230,4 +231,8 @@ class PrimitiveAssemblyStageSpec extends AnyFlatSpec {
       info("PRIMITIVE_ASSEMBLY varyingSlots=1 twoVertexLoop=true selectiveFlat=true unusedVertexZero=true")
     }
   }
+}
+
+class TransformFeedbackRawAssemblySpec extends PrimitiveAssemblyStageSpec {
+  override protected def flatShading: Boolean=false
 }

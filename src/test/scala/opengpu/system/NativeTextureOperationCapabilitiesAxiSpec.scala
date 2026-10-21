@@ -16,11 +16,12 @@ class NativeTextureOperationCapabilitiesAxiSpec extends AnyFlatSpec {
     case s: SInt if DataMirror.directionOf(s)==ActualDirection.Input=>s.poke(0.S)
     case _=>()
   }
-  for((enabled,external,lanes,warps)<-Seq((true,true,4,2),(true,true,16,8),(false,true,4,2),(false,false,4,2)))
-  it should s"discover resource texture operations with immutable bounded AXI access native=$enabled external=$external lanes=$lanes warps=$warps" in {
+  for((enabled,external,lanes,warps,queries)<-Seq((true,true,4,2,false),(true,true,4,2,true),(true,true,16,8,true),(false,true,4,2,false),(false,false,4,2,false)))
+  it should s"discover resource texture operations with immutable bounded AXI access native=$enabled external=$external lanes=$lanes warps=$warps queries=$queries" in {
     simulate(new GpuHostAxi(config=GraphicsConfig(),gpuConfig=GpuConfig(lanes=lanes,warps=warps),
       unifiedCommandMmio=true,protectVmState=true,externalBinnedRender=external,
-      nativeCompletionInfo=enabled,nativeVertexInput=enabled)){d=>
+      nativeCompletionInfo=enabled,nativeVertexInput=enabled,
+      visibilityQueries=queries,transformFeedback=queries,primitiveQueries=queries)){d=>
       zero(d.io);d.io.s_axi_aresetn.poke(false.B);d.clock.step(3);d.io.s_axi_aresetn.poke(true.B)
       d.io.vmContextIdle.get.poke(false.B)
       d.io.binDrained.foreach(_.poke(true.B));d.io.graphicsDependencyIdle.foreach(_.poke(true.B))
@@ -56,30 +57,40 @@ class NativeTextureOperationCapabilitiesAxiSpec extends AnyFlatSpec {
       val discovery=read(0x20c).head
       if(enabled)assert(discovery==(BigInt(0x7ff)->BigInt(0)) && (discovery._1&1024)!=0)
       else assert(discovery==(BigInt(0)->BigInt(2)))
-      assert(read(0x240,16)==expected)
-      assert(read(0x240,17)==expected:+(BigInt(0)->BigInt(2)))
-      assert(read(0x240,16,burst=0)==Vector.fill(16)(expected.head))
-      val boundary=if(enabled)Vector(BigInt(1)->BigInt(0),words.head->BigInt(0))else Vector.fill(2)(BigInt(0)->BigInt(2))
-      assert(read(0x23c,2)==boundary)
+      assert(read(0x2c0,16)==expected)
+      assert(read(0x2c0,17)==expected:+(BigInt(0)->BigInt(2)))
+      assert(read(0x2c0,16,burst=0)==Vector.fill(16)(expected.head))
+      val boundary=if(enabled)Vector(BigInt(0)->BigInt(2),words.head->BigInt(0))else Vector.fill(2)(BigInt(0)->BigInt(2))
+      assert(read(0x2bc,2)==boundary)
       for(i<-0 until 16;strb<-Seq(0,1,15)){
-        write(0x240+4*i,strb);assert(read(0x240+4*i)==Vector(expected(i)))
+        write(0x2c0+4*i,strb);assert(read(0x2c0+4*i)==Vector(expected(i)))
       }
-      write(0x240,15,Vector.fill(16)(BigInt("12345678",16)))
-      assert(read(0x240,16)==expected)
-      for(address<-Seq(0x241,0x280,0x640,0x1240)){
+      write(0x2c0,15,Vector.fill(16)(BigInt("12345678",16)))
+      assert(read(0x2c0,16)==expected)
+      for(address<-Seq(0x2c1,0x300,0x6c0,0x12c0)){
         assert(read(address)==Vector(BigInt(0)->BigInt(2)));write(address,15)
       }
-      for(burst<-Seq(2,3)){assert(read(0x240,4,burst=burst)==Vector.fill(4)(BigInt(0)->BigInt(2)));write(0x240,15,Vector.fill(4)(BigInt(0)),burst=burst)}
-      for(size<-Seq(0,1,3)){assert(read(0x240,size=size)==Vector(BigInt(0)->BigInt(2)));write(0x240,15,size=size)}
-      assert(read(0x240,17,burst=0)==Vector.fill(17)(BigInt(0)->BigInt(2)))
+      for(burst<-Seq(2,3)){assert(read(0x2c0,4,burst=burst)==Vector.fill(4)(BigInt(0)->BigInt(2)));write(0x2c0,15,Vector.fill(4)(BigInt(0)),burst=burst)}
+      for(size<-Seq(0,1,3)){assert(read(0x2c0,size=size)==Vector(BigInt(0)->BigInt(2)));write(0x2c0,15,size=size)}
+      assert(read(0x2c0,17,burst=0)==Vector.fill(17)(BigInt(0)->BigInt(2)))
       assert(read(0xfffffff0L,65)==Vector.fill(65)(BigInt(0)->BigInt(2)))
-      assert(read(0x240,16)==expected)
+      assert(read(0x2c0,16)==expected)
+      // Independent literals prove GTO1 cannot shadow any co-enabled query block.
+      val queryWords=Vector[BigInt](BigInt("47515601",16),8,BigInt("0b0a0908",16),BigInt("47514f01",16),64,8,BigInt("01001001",16),31,
+        BigInt("47464301",16),8,BigInt("1003010c",16),BigInt("47544601",16),512,BigInt("04400408",16),69,255,
+        BigInt("47515001",16),8,BigInt("0010040d",16),BigInt("47504f01",16),64,BigInt("00204008",16),0x8c88,63)
+      val queryExpected=if(queries)queryWords.map(_->BigInt(0))else Vector.fill(24)(BigInt(0)->BigInt(2))
+      assert(read(0x240,24)==queryExpected)
+      for(i<-queryWords.indices;strb<-Seq(0,1,15))write(0x240+i*4,strb)
+      assert(read(0x240,24)==queryExpected)
+      assert(read(0x2a0,8)==Vector.fill(8)(BigInt(0)->BigInt(2)))
+      assert(read(0x2c0,16)==expected)
       // Read-only discovery remains available while the VM owner is busy.
       assert(read(0x14c)==Vector(BigInt(0)->BigInt(0)))
       d.io.s_axi_aresetn.poke(false.B);d.clock.step(3);d.io.s_axi_aresetn.poke(true.B)
-      assert(read(0x240,16)==expected)
+      assert(read(0x2c0,16)==expected)
       d.io.cbMem.req.valid.expect(false.B);d.io.fbMem.req.valid.expect(false.B)
-      info(s"NATIVE_TEXTURE_OPERATION_AXI native=$enabled external=$external lanes=$lanes warps=$warps GTO1=true words16=true heldBursts=true readOnlyAllStrobes=true noAliases=true boundedMap=true legacyUnmapped=${!enabled} busyVMReadable=true resetStable=true noGPUReads=true")
+      info(s"NATIVE_TEXTURE_OPERATION_AXI native=$enabled external=$external lanes=$lanes warps=$warps GTO1=true base2c0=true queryBlocksDisjoint=$queries words16=true heldBursts=true readOnlyAllStrobes=true noAliases=true boundedMap=true legacyUnmapped=${!enabled} busyVMReadable=true resetStable=true noGPUReads=true")
     }
   }
 }

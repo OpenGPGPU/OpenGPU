@@ -43,8 +43,10 @@ object TextureDepthComparison {
   * before filtering, and optionally applies the final captured image swizzle.
   * Every accepted coordinate, data and arithmetic operation drains on cancel.
   */
-class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig()) extends Module {
+class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig(),groupedTexture: Boolean=false) extends Module {
   val io=IO(new Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
+    val laneTemplate=if(groupedTexture)Some(Valid(new NativeRgba8TextureLaneTemplate))else None
     val in=Flipped(Decoupled(new TextureImageLevelSampleRequest));val out=Decoupled(new TextureImageLevelSampleResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
@@ -60,6 +62,8 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   private val planned=Reg(new TextureImageTypedFetchRequest);private val plannedLocation=Reg(new TextureSampleTapLocation)
   private val filtered=Reg(Vec(4,UInt(32.W)));private val uniqueTaps=Reg(UInt(4.W));private val readLines=Reg(UInt(5.W))
   private val blending=RegInit(false.B)
+  private val groupEnabled=if(groupedTexture)Some(RegInit(false.B))else None
+  private val groupStarted=if(groupedTexture)Some(RegInit(false.B))else None
   private val fetchStarted=RegInit(false.B);private val filterStarted=RegInit(false.B)
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
   private val view=request.image.view;private val volume=view.target===TextureImageTarget.image3D.U
@@ -87,6 +91,25 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
   coordinate.io.in.bits.offset:=Mux(axisIssued===2.U && !volume,0.S,request.offsets(axisIssued))
   coordinate.io.in.bits.linear:=request.linear && (axisIssued=/=2.U || volume);coordinate.io.in.bits.tag:=axisIssued
   coordinate.io.out.ready:=phase===State.axes
+  if(groupedTexture){
+    val client=io.grouped.get
+    val previousInvalidate=RegNext(io.invalidate,false.B)
+    coordinate.io.in.valid:=phase===State.axes && axisIssued<3.U && !groupEnabled.get
+    client.request.valid:=phase===State.axes && groupEnabled.get
+    client.request.bits:=TextureRgba8GroupRequest.capture(request)
+    client.response.ready:=phase===State.plan && groupEnabled.get
+    client.cancelGroup.valid:=groupStarted.get && (io.cancel || status===TextureImageResourceStatus.cancelled.U)
+    client.cancelGroup.bits.identity:=request.image.identity;client.cancelGroup.bits.tag:=request.tag
+    client.invalidate:=(io.invalidate && !previousInvalidate) ||
+      (client.response.fire && (noFill || io.invalidate))
+    val template=io.laneTemplate.get
+    template.valid:=client.request.fire && view.target===TextureImageTarget.image2D.U &&
+      !request.shadow && !request.blendPrevious && request.applySwizzle &&
+      request.sampler.state.minFilter<=1.U && request.sampler.state.minFilter===request.sampler.state.magFilter &&
+      view.base(1,0)===0.U && view.rowPitch(1,0)===0.U
+    template.bits.group:=client.request.bits;template.bits.swizzle:=request.image.swizzle
+    when(client.request.fire){groupStarted.get:=true.B;phase:=State.plan}
+  }
   when(coordinate.io.in.fire){axisIssued:=axisIssued+1.U}
   when(active && io.invalidate){noFill:=true.B}
   when(active && io.cancel && status===0.U){status:=TextureImageResourceStatus.cancelled.U;source:=0.U;faultValid:=false.B}
@@ -109,6 +132,7 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       axisIssued:=0.U;axisReceived:=0.U;tap:=0.U;validTap.foreach(_:=false.B);colors.foreach(_.foreach(_:=0.U));filtered.foreach(_:=0.U)
       uniqueTaps:=0.U;readLines:=0.U;fetchStarted:=false.B;filterStarted:=false.B;phase:=State.check
       blending:=false.B
+      groupEnabled.foreach(_:=false.B);groupStarted.foreach(_:=false.B)
     }}
     is(State.check){
       val admitted=request.image.validBinding && request.image.status===0.U && request.sampler.validSampler && request.sampler.status===0.U &&
@@ -125,7 +149,11 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       when(stop){phase:=State.finish}.elsewhen(!admitted){fail(TextureImageResourceStatus.view.U,3)}
         .elsewhen(!compatible){fail(TextureImageFetchStatus.format.U,3)}
         .elsewhen(!offsetsLegal){fail(TextureImageResourceStatus.view.U,3)}
-        .elsewhen(!selected){fail(TextureImageResourceStatus.coordinate.U,4)}.otherwise{phase:=State.axes}
+        .elsewhen(!selected){fail(TextureImageResourceStatus.coordinate.U,4)}.otherwise{
+          phase:=State.axes
+          groupEnabled.foreach(_:=request.image.format===TextureImageFormat.id("RGBA8").U &&
+            !request.shadow && view.target<=TextureImageTarget.cube.U && !noFill && !io.invalidate)
+        }
     }
     is(State.axes){when(coordinate.io.out.fire){
       assert(coordinate.io.out.bits.tag<3.U,"sample received an unowned axis tag")
@@ -183,6 +211,31 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
       phase:=State.complete
     }
     is(State.complete){when(io.out.fire){phase:=State.idle}}
+  }
+  if(groupedTexture){
+    // Reuse the old axes/plan states. The default profile retains exactly its
+    // original state encoding and logic. A held shared offer must be accepted
+    // and drained even after local cancellation.
+    when(phase===State.plan && groupEnabled.get){
+      phase:=State.plan
+      when(io.grouped.get.response.fire){
+        val sampled=io.grouped.get.response.bits;val code=sampled.status
+        assert(groupStarted.get && sampled.tag===request.tag && sampled.identity.asUInt===request.image.identity.asUInt)
+        groupStarted.get:=false.B
+        readLines:=readLines+sampled.dataReadLines;uniqueTaps:=sampled.uniqueTaps
+        when((code=/=0.U && code=/=TextureImageResourceStatus.cancelled.U) || !stop){
+          status:=code
+          when(code=/=0.U){source:=sampled.faultSource;faultValid:=sampled.faultAddressValid;faultAddress:=sampled.faultAddress}
+        }
+        when(!stop && code===0.U && sampled.fallback){
+          groupEnabled.get:=false.B;axisIssued:=0.U;axisReceived:=0.U;phase:=State.axes
+        }.elsewhen(!stop && code===0.U){
+          filtered:=sampled.rgba
+          when(request.blendPrevious){blending:=true.B;phase:=State.offerFilter}.otherwise{phase:=State.finish}
+        }.otherwise{phase:=State.finish}
+      }
+    }
+    when(phase===State.finish || io.out.valid){assert(!groupStarted.get,"native sample retired before shared group drain")}
   }
   when(io.out.valid){assert(!fetch.io.busy && !filter.io.busy && !coordinate.io.out.valid && !io.memoryRequest.valid,"held sample must retain drained children")}
 }

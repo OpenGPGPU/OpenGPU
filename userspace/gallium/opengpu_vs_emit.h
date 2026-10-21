@@ -25,10 +25,18 @@ int opengpu_vs_emit(const void *tokens, struct opengpu_vs_alu *out);
 
 /* The decision create_vs_state makes. Returns 0 when the vertex menu
  * misses and this emitter produced code. Returns 1 when the menu matched
- * vertex_passthrough, vertex_mvp, or vertex_mvp2. Returns -1 when neither
- * path accepts the program. On 0, code receives the emitter words before
- * the runtime ABI lowerer. */
+ * vertex_passthrough, vertex_mvp, or vertex_mvp2. Returns 2 when the
+ * menu matched a position that is CONST[0][4] rather than an attribute;
+ * vertex_mvp still multiplies it. Returns -1 when neither path accepts
+ * the program. On 0, code receives the emitter words before the runtime
+ * ABI lowerer. */
 int opengpu_vertex_lower_kind(const void *tokens, uint32_t *code,
                               unsigned capacity, unsigned *words);
+
+/* Copy CONST[0][4] into the four floats vertex_mvp multiplies. The
+ * constant buffer is counted in floats from CONST[0][0]. Returns -1
+ * when that fifth vec4 is absent. */
+int opengpu_stage_const_position(const float *uniform, unsigned nfloat,
+                                 float staged[4]);
 
 #endif

@@ -1,0 +1,25 @@
+{
+  "created_utc": "2026-10-21T05:02:01.454598+00:00",
+  "image_id": "sha256:f6fe3d06f65481e2a00afca34c9d9201c514b00d4fe32028a9c6dde948ede8b4",
+  "passed": true,
+  "profiles": {
+    "vertex": {
+      "returncode": 0,
+      "proven_equivalence_cells": 6617,
+      "unproven_equivalence_cells": 0,
+      "log_sha256": "cf13a27d9c20bc1d67311c107f32e7e6d229be22cc5574a307f9227954bba079"
+    },
+    "fragment": {
+      "returncode": 0,
+      "proven_equivalence_cells": 6617,
+      "unproven_equivalence_cells": 0,
+      "log_sha256": "cf13a27d9c20bc1d67311c107f32e7e6d229be22cc5574a307f9227954bba079"
+    }
+  },
+  "unchanged_leaf_files_per_profile": 75,
+  "execution_leaf_bijective_wire_rename_only": true,
+  "scope": "Default groupedTexture=false native wrapper control with common child interfaces abstracted as identical blackboxes. All75 remaining leaf SV files match after comments; the execution leaf differs by one compiler-generated wire rename. This proves functional composition of the two complete legacy endpoint hierarchies, not new grouped behavior or timing.",
+  "current_snapshot_legacy_rtl_exact_after_comments_to_proved_contexts_861": true,
+  "current_snapshot_rtl_files_per_legacy_profile": 77,
+  "current_production_test_only_extension_exact": true
+}

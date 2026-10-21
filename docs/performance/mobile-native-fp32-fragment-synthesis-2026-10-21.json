@@ -1,0 +1,48 @@
+{
+  "date": "2026-10-21",
+  "status": "Passed mapped synthesis timing including I/O; no place/route.",
+  "module": "NativeShaderTextureUnit",
+  "profile": "Native fragment endpoint with corrected streaming FMA; existing sampler interface, no new banked service routing.",
+  "source_manifest": ".artifacts/mobile-translated-rgba8-fp32-v2-source.json",
+  "source_manifest_sha256": "6ef58be597a9d8fc3805be1f3290320e9bb7643cdabe72ab6cee64ea51569735",
+  "source_files": 828,
+  "active_RTL_files": 77,
+  "terminal": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 2299.024651541142,
+    "finished_utc": "2026-10-21T00:28:38.512241+00:00"
+  },
+  "target": {
+    "period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "engine": "yosys",
+    "abc": "standard",
+    "retiming": false,
+    "stage": "synthesis"
+  },
+  "setup_slacks_ps": [
+    93.253,
+    162.507
+  ],
+  "mapping": {
+    "passed": true,
+    "skipped_instance_count": 0
+  },
+  "mapped_cells": 1161685,
+  "library_area": 154082.504339,
+  "artifacts_sha256": {
+    "generated/qualification/ppa/mobile-translated-rgba8-fp32-endpoint-2026-10-21-fragment-v1/qualification.json": "439d5fb85beae8e3859c02da98e160e68c22d386a917f10ffebfe7925c2c2da1",
+    "generated/qualification/ppa/mobile-translated-rgba8-fp32-endpoint-2026-10-21-fragment-v1/result.json": "22de863d12b7dfc4e200a3a09c95b2d1b29e77d10f61afed4cf863447671ce17",
+    "generated/qualification/ppa/mobile-translated-rgba8-fp32-endpoint-2026-10-21-fragment-v1/manifest.json": "a9552ad8063cf8da22f52ec43adb32c0c5236f5f226cd80b293e99a48a78dc8f",
+    "generated/qualification/ppa/mobile-translated-rgba8-fp32-endpoint-2026-10-21-fragment-v1/flow/orfs-work/reports/base/synth_stat.txt": "38e6d9f0c9f27c4eb9718d82faeec9eb49579754b7e5fcef1dd19918dbb75760"
+  },
+  "remaining": [
+    "New counted/late-join coordinate-to-color component synthesis",
+    "Optional native client and shared-cluster synthesis",
+    "Full renderer pool placement, native sustained issue and H0-H8 exit gates"
+  ]
+}

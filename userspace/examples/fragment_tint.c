@@ -127,7 +127,7 @@ int main(int argc, char **argv)
     /* FlashSim FRAG draws need on the order of minutes; the DRM sandbox
      * waits 300s. 30s expires while poll_work is still ticking the model. */
     if (opengpu_render(fd, &submit) ||
-        opengpu_sync_wait_success(fd, fence, 300000))
+        opengpu_sync_wait_success(fd, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
 
     for (uint32_t i = 0; i < width * height; i++) {

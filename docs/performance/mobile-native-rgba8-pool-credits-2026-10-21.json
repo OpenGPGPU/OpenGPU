@@ -1,0 +1,117 @@
+{
+  "returncode": 0,
+  "source_unchanged": true,
+  "passed_tests": 27,
+  "emissions": 6,
+  "elapsed_seconds": 552.9647530829534,
+  "finished_utc": "2026-10-21T02:41:46.700410+00:00",
+  "base_commit": "63faa7fa4c13c3e1154fdfa87a36b80e584fc78a",
+  "source_files": 853,
+  "manifest_sha256": "9309fdc1639cd925eb7b184000ee6530be3a90df92938e1cb054e3ee5ddabd44",
+  "archive_sha256": "2eb1109aa5118096b19e5dbc5617ffccd9d6666ccd600754fa4bbb536c509343",
+  "archive_and_worktree_exact": true,
+  "git_archive_and_worktree_exact": false,
+  "modified_inputs": [
+    "src/main/scala/opengpu/elaboration/EmitNativeRgba8Clients.scala",
+    "src/main/scala/opengpu/elaboration/EmitNativeRgba8Pool.scala",
+    "src/main/scala/opengpu/graphics/NativeRgba8TextureCluster.scala",
+    "src/main/scala/opengpu/graphics/NativeRgba8TexturePool.scala",
+    "src/main/scala/opengpu/system/GpuHostSystemAxi.scala"
+  ],
+  "added_inputs": [
+    "src/test/scala/opengpu/graphics/NativeRgba8TextureClientCreditsSpec.scala",
+    "src/test/scala/opengpu/graphics/NativeRgba8TexturePoolCreditsSpec.scala",
+    "src/main/scala/opengpu/graphics/NativeRgba8TextureCreditPool.scala"
+  ],
+  "scope": "Four pool leases per native stage across CU pairs, ordered public retirement, fixed physical budgets. Native host uses four credits. Native instruction/lane pipelining remains open.",
+  "status": "27 component checks, six emissions and refreshed typed22/binned4 real-AXI frames pass on853 inputs.",
+  "passed_checks_by_suite": {
+    "NativeRgba8TextureClusterSpec": 7,
+    "NativeRgba8TextureClientCreditsSpec": 5,
+    "NativeRgba8TexturePoolSpec": 8,
+    "NativeRgba8TexturePoolCreditsSpec": 7
+  },
+  "rtl_profiles": {
+    "default": {
+      "emitted_sv_files": 84,
+      "clusters": 2,
+      "global_pools": 1,
+      "credits_per_client": 1,
+      "cache_bytes_per_cluster": 8192,
+      "data_ids_per_cluster": 16,
+      "ptw_ids_per_cluster": 4
+    },
+    "cu1": {
+      "emitted_sv_files": 89,
+      "clusters": 1,
+      "global_pools": 1,
+      "credits_per_client": 4,
+      "cache_bytes_per_cluster": 8192,
+      "data_ids_per_cluster": 16,
+      "ptw_ids_per_cluster": 4
+    },
+    "cu2": {
+      "emitted_sv_files": 89,
+      "clusters": 1,
+      "global_pools": 1,
+      "credits_per_client": 4,
+      "cache_bytes_per_cluster": 8192,
+      "data_ids_per_cluster": 16,
+      "ptw_ids_per_cluster": 4
+    },
+    "cu4": {
+      "emitted_sv_files": 89,
+      "clusters": 2,
+      "global_pools": 1,
+      "credits_per_client": 4,
+      "cache_bytes_per_cluster": 8192,
+      "data_ids_per_cluster": 16,
+      "ptw_ids_per_cluster": 4
+    },
+    "typed": {
+      "emitted_sv_files": 443,
+      "clusters": 2,
+      "global_pools": 1,
+      "credits_per_client": 4,
+      "cache_bytes_per_cluster": 8192,
+      "data_ids_per_cluster": 16,
+      "ptw_ids_per_cluster": 4
+    },
+    "binned": {
+      "emitted_sv_files": 486,
+      "clusters": 2,
+      "global_pools": 1,
+      "credits_per_client": 4,
+      "cache_bytes_per_cluster": 8192,
+      "data_ids_per_cluster": 16,
+      "ptw_ids_per_cluster": 4
+    }
+  },
+  "public_port_headers_unchanged": true,
+  "input_burst_16_II1": true,
+  "sustained_native_shader_rate_qualified": false,
+  "new_timing_result": false,
+  "ppa_policy": "synthesis only",
+  "planned_axi_refresh": {
+    "typed_frames": 22,
+    "binned_frames": 4,
+    "status": "completed",
+    "passed_typed_frames": 22,
+    "passed_binned_frames": 4
+  },
+  "evidence": {
+    "result": ".artifacts/mobile-native-rgba8-pool-credits-v1-result.json",
+    "source_proof": ".artifacts/mobile-native-rgba8-pool-credits-v1-source-proof.json",
+    "rtl_proof": ".artifacts/mobile-native-rgba8-pool-credits-v1-RTL-proof.json",
+    "log": ".artifacts/mobile-native-rgba8-pool-credits-v1-qualified.log"
+  },
+  "remaining": [
+    "native lane/instruction metadata pipeline",
+    "sustained shader-to-filter throughput",
+    "later-source whole-renderer runtime refresh",
+    "whole-renderer synthesis timing",
+    "later-source reset/visibility stress",
+    "remaining H0-H8 requirements"
+  ],
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production."
+}

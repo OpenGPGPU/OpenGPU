@@ -56,7 +56,7 @@ int main(int argc, char **argv)
     command.local[0] = command.local[1] = command.local[2] = 1;
     command.out_syncobj = fence;
     if (opengpu_compute(fd, &command) ||
-        opengpu_sync_wait_success(fd, fence, 300000))
+        opengpu_sync_wait_success(fd, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     /* Exact RTL reference: sext16 halves, then add/sub/mul (VectorIntegerAlu). */
     if (words[2] != 8u ||           /* vwadd 3+5 */

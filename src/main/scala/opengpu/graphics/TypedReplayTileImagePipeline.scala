@@ -37,10 +37,11 @@ class TypedReplayTileCompletion extends Bundle {
 class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),engine: Int=0,
-    useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0) extends Module {
+    useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
   require(engine>=0 && engine<4 && p.varyings==f.varyings && f.colors==4)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureRendererPorts(sharedConfig.numComputeUnits,1))else None
     val begin=Flipped(Decoupled(new TypedReplayTileDescriptor));val in=Flipped(Decoupled(new WindowPrimitiveReplay(p)))
     val primitiveDone=Decoupled(new TypedReplayPrimitiveCompletion);val end=Flipped(Decoupled(Bool()))
     val out=Decoupled(new TypedTilePixelQuadCompletion);val completion=Decoupled(new TypedReplayTileCompletion)
@@ -52,7 +53,8 @@ class TypedReplayTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShader
     val cancel=Input(Bool());val cancelSource=Output(Bool());val busy=Output(Bool())
   })
   private val image=Module(new TypedTileImagePipeline(config,p,f,shared,g,storage=storage,useSramBlackBoxes=useSramBlackBoxes,
-    payload=payload,payloadOwner=payloadOwner,preparedGeometry=true))
+    payload=payload,payloadOwner=payloadOwner,preparedGeometry=true,groupedTexture=groupedTexture))
+  if(groupedTexture)io.grouped.get <> image.io.grouped.get
   private val reader=Module(new TypedFragmentStateReader(config,f,g))
   private object State extends ChiselEnum {val idle,validate,bind,ready,checkRecord,fetch,checkState,draw,waitDraw,emit,closing,finish,complete=Value}
   private val phase=RegInit(State.idle);private val descriptor=Reg(new TypedReplayTileDescriptor)

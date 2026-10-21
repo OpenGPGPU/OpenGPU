@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-21",
+  "status": "Passed mapped synthesis timing including I/O; no place/route.",
+  "module": "NativeShaderTextureUnit",
+  "profile": "Native vertex endpoint with corrected streaming FMA; existing sampler interface, no new banked service routing.",
+  "source_manifest": ".artifacts/mobile-translated-rgba8-fp32-v2-source.json",
+  "source_manifest_sha256": "6ef58be597a9d8fc3805be1f3290320e9bb7643cdabe72ab6cee64ea51569735",
+  "source_files": 828,
+  "active_RTL_files": 77,
+  "terminal": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "rtl_unchanged": true,
+    "elapsed_seconds": 2463.1966607079376,
+    "finished_utc": "2026-10-20T23:45:31.317944+00:00"
+  },
+  "target": {
+    "period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "engine": "yosys",
+    "abc": "standard",
+    "retiming": false,
+    "stage": "synthesis"
+  },
+  "setup_slacks_ps": [
+    88.968,
+    163.44
+  ],
+  "mapping": {
+    "passed": true,
+    "skipped_instance_count": 0
+  },
+  "mapped_cells": 1166030,
+  "library_area": 154116.373679,
+  "artifacts_sha256": {
+    "generated/qualification/ppa/mobile-translated-rgba8-fp32-endpoint-2026-10-21-vertex-v1/qualification.json": "a7e843a3e3031fd9ceef44b5aca8a44710b1e91a173a950a08ffe690e385642e",
+    "generated/qualification/ppa/mobile-translated-rgba8-fp32-endpoint-2026-10-21-vertex-v1/result.json": "79a7b8a1c269693d8b7011ecb55899090f128910507a2fee150d7ff186f3bdad",
+    "generated/qualification/ppa/mobile-translated-rgba8-fp32-endpoint-2026-10-21-vertex-v1/manifest.json": "ed66fe51b4a747b825b4a028390a2d025d69e86c5c1c76388ff73a9e9ce6259b",
+    "generated/qualification/ppa/mobile-translated-rgba8-fp32-endpoint-2026-10-21-vertex-v1/flow/orfs-work/reports/base/synth_stat.txt": "aaf28c7994bd10169958b16d0a1324d012f876b173666d62d4200ff0242365b5"
+  },
+  "remaining": [
+    "Fresh fragment endpoint synthesis",
+    "Unquantized translated FP32 service synthesis",
+    "Counted/late-join revision synthesis",
+    "Native coordinate/service composition and shared-CU integration",
+    "Full H0-H8 closure"
+  ]
+}

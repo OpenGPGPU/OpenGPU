@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Signed floating resolution-unit property through actual selector, scalar addition and final packing",
+  "based_on_commit": "2db3d10",
+  "source_files": 644,
+  "source_manifest": {
+    "path": ".artifacts/mobile-floating-depth-resolution-source-v1.json",
+    "sha256": "1e49ab9b83aa36cf2eee15d3b924392c4a86c6f1be34da691aaa5420f9c7b9c6"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-floating-depth-resolution-source-v1.tar.gz",
+    "sha256": "1b51e3ca53f0c530a78f3eae921ea40c560a7b2f7337d864e615cfa1bcfd6320"
+  },
+  "result": {
+    "path": ".artifacts/mobile-floating-depth-resolution-controls-v1-result.json",
+    "sha256": "52594465392cc11aaf9c2cb19d6d8ea3e46532e22cebc2151d99963d8af7b0e2"
+  },
+  "log": {
+    "path": ".artifacts/mobile-floating-depth-resolution-controls-v1.log",
+    "sha256": "aa93abaac5ebff09742b1836324560e898e8a15166f7705bd660515d744318e1"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "tests": [
+        1
+      ],
+      "success_tasks": 1,
+      "property_markers": 1
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 98.1819929999765,
+    "finished_utc": "2026-10-20T03:28:34.374362+00:00"
+  },
+  "tests_passed": 1,
+  "cases": 11712,
+  "positive": 8106,
+  "negative": 3606,
+  "extended_subnormal_inputs": 3300,
+  "depth_exponents": 128,
+  "formats": [
+    "D32F",
+    "D32FS8"
+  ],
+  "production_unchanged_from_176_check_source": true,
+  "limits": [
+    "The test uses actual bound-format resolution, scalar toward-zero addition and depth packing. It does not execute geometry/rasterization or native images.",
+    "Input depths are within the vertex maximum and shifts exclude endpoint saturation. Finite sampled values across every exponent are not exhaustive over every mantissa.",
+    "The separately running176-check composition remains necessary. No full precision, G04/H6/H0-H8 or PPA closure."
+  ],
+  "historical_checkpoint": true,
+  "archived_from_commit": "821cc36c358293892b2a8710c8dfac5b7dad69e2",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

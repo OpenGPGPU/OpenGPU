@@ -120,6 +120,7 @@ int main(void)
                run_program("/opengpu_fragment_fp_scalar") < 0 ||
                run_program("/opengpu_fragment_alu") < 0 ||
                run_program("/opengpu_fragment_min") < 0 ||
+               run_program("/opengpu_fragment_cover") < 0 ||
                run_program("/opengpu_compute_offload") < 0 ||
                run_program("/opengpu_fp_unary") < 0 ||
                run_program("/opengpu_fp_binary") < 0 ||

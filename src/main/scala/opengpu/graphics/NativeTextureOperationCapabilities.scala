@@ -6,7 +6,7 @@ package opengpu.graphics
   * Native host profiles alone expose this immutable read-only block.
   */
 object NativeTextureOperationCapabilities {
-  val base=0x240;val wordCount=16;val end=base+4*wordCount
+  val base=0x2c0;val wordCount=16;val end=base+4*wordCount
   val magic=BigInt("47544f01",16);val version=1
   val functionMask=BigInt(0x7c) // 2=packet fetch,3=parameters,4=sample,5=captured fetch,6=size.
   val features=BigInt(0x3f)
@@ -14,9 +14,9 @@ object NativeTextureOperationCapabilities {
   val words: Seq[BigInt]=Seq(magic,BigInt(wordCount),BigInt(version),functionMask,functionMask,
     BigInt(0xff),BigInt(15),BigInt(7),BigInt(7),BigInt(3),BigInt(32),BigInt(16),BigInt(15),
     BigInt(TextureImageFormat.formats.size),features,offsetRange)
-  require(base>=NativeTextureFormatCapabilities.end && end<=0x400 && words.size==wordCount)
+  require(base>=NativePrimitiveQueryCapabilities.end && (base&63)==0 && end<=0x400 && words.size==wordCount)
   def header(prefix: String): String=Seq(
-    "TEXTURE_OPERATION_CAPABILITIES"->"0x240u",
+    "TEXTURE_OPERATION_CAPABILITIES"->"0x2c0u",
     "TEXTURE_OPERATION_CAPABILITY_MAGIC"->"0x47544f01u",
     "TEXTURE_OPERATION_CAPABILITY_VERSION"->"1u",
     "TEXTURE_OPERATION_CAPABILITY_WORDS"->"16u",
