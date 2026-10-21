@@ -20,6 +20,7 @@ class GpuCoreSpec extends AnyFlatSpec {
     dut.io.fetchResponse.bits.warpId.poke(0.U)
     dut.io.fetchResponse.bits.instruction.poke(0.U)
     dut.io.fetchResponse.bits.accessFault.poke(false.B)
+    dut.io.fetchResponse.bits.executionFault.poke(0.U)
     dut.io.fpu.ready.poke(false.B)
     dut.io.fpuInitialize.valid.poke(false.B)
     dut.io.vector.ready.poke(false.B)
@@ -87,6 +88,7 @@ class GpuCoreSpec extends AnyFlatSpec {
       dut.io.fetchResponse.valid.poke(true.B)
       dut.io.fetchResponse.bits.instruction.poke("h008000ef".U)
       dut.io.fetchResponse.bits.accessFault.poke(false.B)
+      dut.io.fetchResponse.bits.executionFault.poke(0.U)
       while (!dut.io.fetchResponse.ready.peek().litToBoolean) {
         dut.clock.step()
       }

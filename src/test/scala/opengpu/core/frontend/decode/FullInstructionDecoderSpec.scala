@@ -268,6 +268,7 @@ class ExtendedDecoderSpec extends AnyFlatSpec {
       dut.io.in.bits.warpId.poke(1.U)
       dut.io.in.bits.activeMask.poke("h5a".U)
       dut.io.in.bits.instructionAccessFault.poke(false.B)
+      dut.io.in.bits.executionFault.poke(0.U)
       dut.clock.step()
 
       dut.io.in.valid.poke(false.B)
@@ -295,6 +296,7 @@ class ExtendedDecoderSpec extends AnyFlatSpec {
       dut.io.in.bits.warpId.poke(2.U)
       dut.io.in.bits.activeMask.poke("ha5".U)
       dut.io.in.bits.instructionAccessFault.poke(false.B)
+      dut.io.in.bits.executionFault.poke(0.U)
       dut.clock.step()
 
       dut.io.in.valid.poke(false.B)

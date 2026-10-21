@@ -35,6 +35,7 @@ class DecodePipe(config: GpuConfig = GpuConfig()) extends Module {
       outputBits.warpId := io.in.bits.warpId
       outputBits.activeMask := io.in.bits.activeMask
       outputBits.instructionAccessFault := io.in.bits.instructionAccessFault
+      outputBits.executionFault := io.in.bits.executionFault
       outputBits.decoded := decoder.io.decoded
     }
   }
@@ -46,6 +47,7 @@ class DecodePipe(config: GpuConfig = GpuConfig()) extends Module {
   io.scalarOut.bits.activeMask := outputBits.activeMask
   io.scalarOut.bits.instructionAccessFault :=
     outputBits.instructionAccessFault
+  io.scalarOut.bits.executionFault := outputBits.executionFault
   io.scalarOut.bits.executionType := outputBits.decoded.executionType
   io.scalarOut.bits.illegalInstruction :=
     outputBits.decoded.illegalInstruction && !outputBits.instructionAccessFault

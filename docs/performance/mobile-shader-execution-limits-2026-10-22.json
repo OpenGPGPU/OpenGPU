@@ -1,0 +1,86 @@
+{
+  "date": "2026-10-22",
+  "scope": "Optional CU instruction-fetch quota and cooperative interruption mechanism. Native programming/reset integration, general execution liveness and S02/H5/H6/H0-H8 closure remain required.",
+  "source": {
+    "manifest": ".artifacts/mobile-shader-execution-limits-v2-source.json",
+    "manifest_sha256": "41dd3fb36b8d3eece7cf613311178ef09b7955912e10a0c5a16bbf5cc2fdd64e",
+    "files": 992,
+    "source_archive": ".artifacts/mobile-shader-execution-limits-v2-source.tar.gz"
+  },
+  "functional": {
+    "passed": true,
+    "distinct_checks": 67,
+    "guard_checks": 13,
+    "CU_checks": 2,
+    "CU_kernels": 22,
+    "regressions": 52,
+    "results": [
+      ".artifacts/mobile-shader-execution-limits-v2-result.json",
+      ".artifacts/mobile-shader-execution-limits-v2-controls-result.json"
+    ],
+    "new_cases": [
+      "independent exact per-warp quotas",
+      "zero unlimited and unsigned maximum",
+      "same-cycle allocation/fetch and physical request/reply",
+      "eight out-of-order physical owners and synthetic stops",
+      "held requests/responses/traps/completions",
+      "kernel limit snapshot across later warp dispatch",
+      "delayed load/store/fetch drain before interruption",
+      "real load/fetch faults preserve priority",
+      "barrier waiter releases after looping peer retirement",
+      "healthy register/warp/barrier reuse"
+    ]
+  },
+  "synthesis": {
+    "passed": true,
+    "module": "WarpInstructionGuard",
+    "lanes": 16,
+    "warps": 8,
+    "stage": "synthesis",
+    "period_ps": 1000,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "io_delay_fraction": 0.25,
+    "ABC": "standard",
+    "retiming": false,
+    "setup_slacks_ps": {
+      "core": 402.588,
+      "IO": 626.374
+    },
+    "mapped_cells": 2753,
+    "library_area": 333.5175,
+    "sequential_area": 114.3072,
+    "flip_flops": 392,
+    "SRAM_macros": 0,
+    "skipped_instances": 0,
+    "result": ".artifacts/mobile-shader-execution-limits-synthesis-v3-result.json",
+    "output": "generated/qualification/ppa/mobile-shader-execution-limits-guard-2026-10-22-v3",
+    "RTL_sha256": {
+      "generated/mobile-h5/shader-execution-limits-v1-rtl/Queue1_Decision.sv": "828e59a4226ba807813ced77669d46cc31221342c1ebd9d9dbacabf0ab49c4b0",
+      "generated/mobile-h5/shader-execution-limits-v1-rtl/Queue2_InstructionFetchResponse.sv": "6eefff40e12282c3d82d5e2ebe66d3616fc5234612408e6e75be8f7301d9bbf1",
+      "generated/mobile-h5/shader-execution-limits-v1-rtl/RRArbiter2_InstructionFetchResponse.sv": "656b1a1d9b948886755a5083c2f6701bf1bb588ec363f586ce28a31569bc3f3c",
+      "generated/mobile-h5/shader-execution-limits-v1-rtl/WarpInstructionGuard.sv": "6cc70868f7da58916ad27f720b16653a744450cb6213b29eda0c2d060872e97c",
+      "generated/mobile-h5/shader-execution-limits-v1-rtl/ram_2x38.sv": "0aae43c8f7f9a418871f041e5f26db2bb5798f07e1f503423f4136d0f7247cce"
+    },
+    "whole_CU_or_renderer_qualified": false
+  },
+  "history": {
+    "initial_result": ".artifacts/mobile-shader-execution-limits-v1-result.json",
+    "initial_pass": 13,
+    "initial_fail": 2,
+    "failure_reason": "Test counter x10 was not initialized. ABI initialization covers x1..x9; actual RF contents are unspecified. Explicit counter initialization repairs the test program.",
+    "initial_to_qualified_source_changes": [
+      "src/test/scala/opengpu/core/GpuComputeUnitExecutionLimitSpec.scala"
+    ],
+    "production_unchanged_across_test_repair": true,
+    "synthesis_preflight_failure": ".artifacts/mobile-shader-execution-limits-synthesis-v2-result.json",
+    "synthesis_preflight_reason": "Directory-name mismatch before any synthesis flow launched; qualified functional RTL hashes verified before v3 flow."
+  },
+  "remaining": [
+    "Native MMIO/discovery and nonzero limit policy",
+    "Typed/binned host limits, reset drain and actual local/spill integration",
+    "Unserviced execution-port rejection or safe pipeline abort; this mechanism has no wall-clock deadline",
+    "Fetch/resource permissions and SIMT reconvergence capacity",
+    "Default full-product capacity, composed budgets and whole-CU/renderer synthesis"
+  ]
+}

@@ -7630,3 +7630,22 @@ checks and retains both default synthesis emissions byte for byte:retirement
 core+668.231ps/I/O+425.689ps,scalar core+428.223ps/I/O+74.102ps,zero skipped.
 These are component timing results;full product capacity,programmable watchdogs,
 resource/reconvergence contracts,whole-renderer budgets and H0-H8 remain open.
+
+## CU instruction quota and cooperative interruption (2026-10-22)
+
+The [execution-limit mechanism](SHADER_EXECUTION_LIMITS.md) now snapshots a
+32-bit limit per accepted kernel and applies it independently to each warp.
+A nonzero quota bounds admitted instruction fetches; zero retains unlimited
+compatibility. Latched interruption stops the next unowned fetch while older
+physical fetches and memory operations drain. Stops retain PC/mask attribution,
+use causes 24/25, hold trap ownership, retire once and fail the completion.
+
+[67 checks](performance/mobile-shader-execution-limits-2026-10-22.json) pass on
+992 frozen inputs. Two actual CU cases execute 22 kernels, including real loops,
+exact/one-short quotas, delayed load/store/fetch interruption, real-fault priority,
+a barrier waiter and healthy reuse. Default 16-lane/eight-warp guard synthesis
+passes 1000 ps with core +402.588 ps and I/O +626.374 ps, 2,753 mapped cells and
+zero skipped instances. Existing native profiles do not yet enable this optional
+CU mechanism. Native programmable controls/reset integration, unserviced execution
+port liveness, resource permissions, reconvergence capacity, full product budgets
+and whole-CU/renderer timing remain required. S02/H5/H6 and H0-H8 stay partial.

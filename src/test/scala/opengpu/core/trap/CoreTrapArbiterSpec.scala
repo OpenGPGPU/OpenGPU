@@ -25,6 +25,7 @@ class CoreTrapArbiterSpec extends AnyFlatSpec {
       dut.io.scalar.bits.decode.activeMask.poke("b1111".U)
       dut.io.scalar.bits.decode.instruction.poke("hffffffff".U)
       dut.io.scalar.bits.decode.instructionAccessFault.poke(false.B)
+      dut.io.scalar.bits.decode.executionFault.poke(0.U)
       dut.io.out.valid.expect(true.B)
       dut.io.out.bits.cause.expect(TrapCause.illegalInstruction.U)
       dut.io.out.bits.tval.expect("hffffffff".U)

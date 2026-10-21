@@ -110,6 +110,7 @@ class InstructionCache(
   responseArbiter.io.in(0).bits.instruction :=
     Mux(misaligned, 0.U, instruction(fetchLine, io.fetch.bits.pc))
   responseArbiter.io.in(0).bits.accessFault := misaligned
+  responseArbiter.io.in(0).bits.executionFault := 0.U
   io.fetch.ready := Mux(immediate, responseArbiter.io.in(0).ready, hasFreeMiss)
 
   private val allocate = io.fetch.fire && !immediate
@@ -144,6 +145,7 @@ class InstructionCache(
   responseArbiter.io.in(1).bits.instruction :=
     instruction(io.lowerResponse.bits.readData, completedRequest.pc)
   responseArbiter.io.in(1).bits.accessFault := io.lowerResponse.bits.fault
+  responseArbiter.io.in(1).bits.executionFault := 0.U
   io.lowerResponse.ready := responseIdValid && responseArbiter.io.in(1).ready
 
   when(io.lowerResponse.fire) {

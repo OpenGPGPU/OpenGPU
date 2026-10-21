@@ -121,6 +121,7 @@ class WidenAluBackendSpec extends AnyFlatSpec {
         dut.io.fetch.bits.warpId.poke(0.U)
         dut.io.fetch.bits.activeMask.poke(1.U)
         dut.io.fetch.bits.instructionAccessFault.poke(false.B)
+        dut.io.fetch.bits.executionFault.poke(0.U)
         var spins = 0
         while (!dut.io.fetch.ready.peek().litToBoolean && spins < 200) {
           if (dut.io.writebackValid.peek().litToBoolean)

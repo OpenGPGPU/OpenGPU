@@ -1678,6 +1678,7 @@ class VectorBackendSpec extends AnyFlatSpec {
       dut.io.fetch.bits.warpId.poke(0.U)
       dut.io.fetch.bits.activeMask.poke("b1111".U)
       dut.io.fetch.bits.instructionAccessFault.poke(false.B)
+      dut.io.fetch.bits.executionFault.poke(0.U)
       var waited = 0
       while (!dut.io.fetch.ready.peek().litToBoolean && waited < 20) {
         stepFp(); waited += 1
@@ -1739,6 +1740,7 @@ class VectorBackendSpec extends AnyFlatSpec {
         dut.io.fetch.bits.warpId.poke(0.U)
         dut.io.fetch.bits.activeMask.poke("b1111".U)
         dut.io.fetch.bits.instructionAccessFault.poke(false.B)
+        dut.io.fetch.bits.executionFault.poke(0.U)
         var spins = 0
         while (!dut.io.fetch.ready.peek().litToBoolean && spins < 500) {
           stepFp(); spins += 1

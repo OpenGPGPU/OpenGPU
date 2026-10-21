@@ -13,4 +13,5 @@ class InstructionFetchResponse(config: GpuConfig) extends Bundle {
   val warpId = UInt(config.warpIdWidth.W)
   val instruction = UInt(32.W)
   val accessFault = Bool()
+  val executionFault = UInt(2.W) // trusted limit/interruption cause; zero for memory faults
 }

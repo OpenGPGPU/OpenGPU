@@ -48,7 +48,8 @@ class TextureParameterRetirementSpec extends AnyFlatSpec {
       def initialize(reg: Int,value: BigInt): Unit={d.io.initialize.bits.warpId.poke(0.U);d.io.initialize.bits.vd.poke(reg.U)
         d.io.initialize.bits.data.foreach(_.poke(value.U));d.io.initialize.valid.poke(true.B);until(d.io.initialize.ready.peek().litToBoolean);tick();d.io.initialize.valid.poke(false.B)}
       def issue(word: BigInt,pc: Int): Unit={d.io.fetch.bits.instruction.poke(word.U);d.io.fetch.bits.pc.poke(pc.U);d.io.fetch.bits.warpId.poke(0.U)
-        d.io.fetch.bits.activeMask.poke(15.U);d.io.fetch.bits.instructionAccessFault.poke(false.B);d.io.fetch.valid.poke(true.B)
+        d.io.fetch.bits.activeMask.poke(15.U)
+        d.io.fetch.bits.instructionAccessFault.poke(false.B);d.io.fetch.bits.executionFault.poke(0.U);d.io.fetch.valid.poke(true.B)
         until(d.io.fetch.ready.peek().litToBoolean);tick();d.io.fetch.valid.poke(false.B)}
       initialize(0,0x9badf00dL);initialize(1,0x13579bdfL);initialize(2,1);initialize(3,3);initialize(4,4)
       issue(BigInt("c1027057",16),0);for(_<-0 until 8)tick();zeroAcks=0

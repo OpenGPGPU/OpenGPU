@@ -68,7 +68,8 @@ class GpuFrontend(config: GpuConfig = GpuConfig()) extends Module {
   decode.io.in.bits.warpId := io.fetchResponse.bits.warpId
   decode.io.in.bits.activeMask := selectedMetadata.activeMask
   decode.io.in.bits.instructionAccessFault :=
-    io.fetchResponse.bits.accessFault
+    io.fetchResponse.bits.accessFault || io.fetchResponse.bits.executionFault=/=0.U
+  decode.io.in.bits.executionFault:=io.fetchResponse.bits.executionFault
   io.fetchResponse.ready :=
     selectedResponsePending && responseWarpValid && decode.io.in.ready
 

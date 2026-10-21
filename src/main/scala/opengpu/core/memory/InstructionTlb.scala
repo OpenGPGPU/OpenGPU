@@ -99,6 +99,7 @@ class InstructionTlb(config: GpuConfig = GpuConfig(), entries: Int = 16)
     fault.warpId := io.in.bits.warpId
     fault.instruction := 0.U
     fault.accessFault := true.B
+    fault.executionFault := 0.U
   }.elsewhen(faultValid && io.out.ready) {
     faultValid := false.B
   }
@@ -116,6 +117,7 @@ class InstructionTlb(config: GpuConfig = GpuConfig(), entries: Int = 16)
       fault.warpId := missRequest.warpId
       fault.instruction := 0.U
       fault.accessFault := true.B
+      fault.executionFault := 0.U
     }.otherwise {
       valid(replacement) := true.B
       vpn(replacement) := missVpn

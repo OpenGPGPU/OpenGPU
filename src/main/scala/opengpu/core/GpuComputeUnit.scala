@@ -28,9 +28,12 @@ class GpuComputeUnit(
   vectorCacheSets: Int = 64,
   vectorCacheWays: Int = 2,
   finishOnTrap: Boolean = false,
-  shaderPayload: Option[opengpu.graphics.ShaderPayloadConfig] = None
+  shaderPayload: Option[opengpu.graphics.ShaderPayloadConfig] = None,
+  executionLimits: Boolean = false
 ) extends Module {
+  require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   val io = IO(new Bundle {
+    val execution=if(executionLimits)Some(Input(new opengpu.core.frontend.ShaderExecutionControl))else None
     val kernel = Flipped(Decoupled(new KernelLaunch(config)))
     val completion = Decoupled(new KernelCompletion)
 
@@ -114,14 +117,27 @@ class GpuComputeUnit(
   resumeArbiter.io.in(0) <> system.io.resume
   resumeArbiter.io.in(1) <> barrier.io.release
   core.io.faultResume <> resumeArbiter.io.out
-  core.io.finish := system.io.finish
-  controller.io.finish := system.io.finish
+  private val warpFinish=Wire(Valid(UInt(config.warpIdWidth.W)))
+  warpFinish:=system.io.finish
+  core.io.finish:=warpFinish;controller.io.finish:=warpFinish
+
+  private val fetchRequest=Wire(Decoupled(new InstructionFetchRequest(config)))
+  private val fetchResponse=Wire(Decoupled(new InstructionFetchResponse(config)))
+  if(executionLimits){
+    val guard=Module(new opengpu.core.frontend.WarpInstructionGuard(config))
+    val kernelLimit=RegEnable(io.execution.get.instructionLimit,0.U,io.kernel.fire)
+    guard.io.request<>core.io.fetchRequest;core.io.fetchResponse<>guard.io.response
+    fetchRequest<>guard.io.physicalRequest;guard.io.physicalResponse<>fetchResponse
+    guard.io.launch.valid:=core.io.launch.fire;guard.io.launch.bits.warpId:=core.io.launch.bits.warpId
+    guard.io.launch.bits.instructions:=kernelLimit;guard.io.finish:=warpFinish
+    guard.io.kernelStart:=io.kernel.fire;guard.io.interrupt:=io.execution.get.interrupt
+  }else{fetchRequest<>core.io.fetchRequest;core.io.fetchResponse<>fetchResponse}
 
   private val instructionTranslationEnabled = io.instructionSatp(31)
   instructionTlb.io.in.valid :=
-    core.io.fetchRequest.valid && instructionTranslationEnabled
-  instructionTlb.io.in.bits := core.io.fetchRequest.bits
-  core.io.fetchRequest.ready := Mux(
+    fetchRequest.valid && instructionTranslationEnabled
+  instructionTlb.io.in.bits := fetchRequest.bits
+  fetchRequest.ready := Mux(
     instructionTranslationEnabled,
     instructionTlb.io.in.ready,
     instructionCache.io.fetch.ready
@@ -129,12 +145,12 @@ class GpuComputeUnit(
   instructionCache.io.fetch.valid := Mux(
     instructionTranslationEnabled,
     instructionTlb.io.physicalRequest.valid,
-    core.io.fetchRequest.valid
+    fetchRequest.valid
   )
   instructionCache.io.fetch.bits := Mux(
     instructionTranslationEnabled,
     instructionTlb.io.physicalRequest.bits,
-    core.io.fetchRequest.bits
+    fetchRequest.bits
   )
   instructionTlb.io.physicalRequest.ready :=
     instructionTranslationEnabled && instructionCache.io.fetch.ready
@@ -144,20 +160,20 @@ class GpuComputeUnit(
   instructionCache.io.response.ready := Mux(
     instructionTranslationEnabled,
     instructionTlb.io.physicalResponse.ready,
-    core.io.fetchResponse.ready
+    fetchResponse.ready
   )
-  core.io.fetchResponse.valid := Mux(
+  fetchResponse.valid := Mux(
     instructionTranslationEnabled,
     instructionTlb.io.out.valid,
     instructionCache.io.response.valid
   )
-  core.io.fetchResponse.bits := Mux(
+  fetchResponse.bits := Mux(
     instructionTranslationEnabled,
     instructionTlb.io.out.bits,
     instructionCache.io.response.bits
   )
   instructionTlb.io.out.ready :=
-    instructionTranslationEnabled && core.io.fetchResponse.ready
+    instructionTranslationEnabled && fetchResponse.ready
   memoryInterconnect.io.instructionRequest <> instructionCache.io.lowerRequest
   instructionCache.io.lowerResponse <> memoryInterconnect.io.instructionResponse
   instructionCache.io.invalidate := io.invalidateInstructionCache
@@ -214,7 +230,7 @@ class GpuComputeUnit(
     val retirement=Module(new opengpu.core.trap.ShaderTrapRetirement(config))
     retirement.io.in<>trapArbiter.io.out;io.trap<>retirement.io.out
     retirement.io.normalFinish:=system.io.finish;retirement.io.kernelStart:=io.kernel.fire
-    core.io.finish:=retirement.io.finish;controller.io.finish:=retirement.io.finish
+    warpFinish:=retirement.io.finish
     io.completion.bits.success:=controller.io.completion.bits.success && !retirement.io.failed
   }else{io.trap<>trapArbiter.io.out}
   core.io.simtBranch <> io.simtBranch
