@@ -7778,3 +7778,34 @@ This is functional composition evidence. GTO1 and the newer raster attribute
 and programmable quad UV candidates remain separate. Full-host synthesis at
 1000ps including I/O, complete watchdog/resource/reconvergence contracts, frame
 budgets and the full H0-H8 objective remain open.
+
+### 2026-10-21: disjoint native texture-operation discovery
+
+The [revised GTO1 candidate](performance/mobile-native-texture-operations-relocated-2026-10-21.json)
+relocates operation discovery to0x2c0..0x2ff, after the visibility/feedback/primitive
+query records;0x2a0..0x2bf remains unmapped. GTX1 bit10 advertises the immutable
+record. Nineteen fresh decoder/capability/ownership checks, twelve generated ABI
+checks, two strict C tests and one combined-capability host emission pass on983
+frozen inputs. The native16-lane/eight-warp profile reads all four disjoint
+records and rejects every strobe combination on writes. The old unmerged address
+map and7200-second host timeout remain historical evidence. Fresh host synthesis
+and integration with newer main are pending; no H0-H8 closure is claimed.
+
+
+### Current-main GTO1/GSL composition, 2026-10-22
+
+The [1,022-input composition](performance/mobile-native-capability-composition-2026-10-22.json)
+passes24 decoder/AXI/ownership checks, thirteen generated ABI checks, two strict
+C tests and a fresh default host emission. GTO1 remains at0x2c0..0x2ff; the next
+word belongs to GSL1 when enabled. A new16-lane/eight-warp profile enables all
+three query/feedback records, GTO1 and GSL together. Independent literal tables
+check held boundary reads, every read-only write strobe, busy-VM rejection and
+partial quota writes that must remain nonzero. All five prior GTO1 profiles and
+new main's registered beat-address/ownership tests remain in the fresh run.
+
+Merge resolution keeps GTO1, GSL and primitive-query exclusions from mutable
+register forwarding and write acceptance. Both disabled-query holes remain
+covered. The older GTO1 whole-host synthesis failed core/I/O setup; no timing
+result is carried to this combination. The scalar UV/MMIO repairs, newer raster
+and quad UV consumers still need complete-host composition and synthesis. This
+functional merge does not close the remaining H0-H8 requirements.

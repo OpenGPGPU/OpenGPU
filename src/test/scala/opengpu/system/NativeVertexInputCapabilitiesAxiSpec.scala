@@ -49,14 +49,14 @@ class NativeVertexInputCapabilitiesAxiSpec extends AnyFlatSpec {
         for(_<-0 until 5){d.io.s_axi_bvalid.expect(true.B);d.io.s_axi_bresp.expect(response.U);d.clock.step()}
         d.io.s_axi_bready.poke(true.B);d.clock.step();d.io.s_axi_bready.poke(false.B)
       }
-      // Base policy bits0..8 plus typed component fetch bit9; independent ABI literal.
-      val texture=Vector[BigInt](BigInt("47545801",16),8,3,0x3ff,7,16,16383,0x1f)
+      // Base policy bits0..8, typed component fetch bit9 and GTO1 discovery bit10; independent ABI literal.
+      val texture=Vector[BigInt](BigInt("47545801",16),8,3,0x7ff,7,16,16383,0x1f)
       val textureExpected=if(enabled)texture.map(_->BigInt(0))else Vector.fill(8)(BigInt(0)->BigInt(2))
       assert(read(0x200,8)==textureExpected)
       assert(read(0x200,9)==textureExpected:+(if(enabled)BigInt("47544601",16)->BigInt(0)else BigInt(0)->BigInt(2)))
       assert(read(0x200,4,burst=0)==Vector.fill(4)(textureExpected.head))
       for(i<-0 until 8;strb<-Seq(0,1,15)){write(0x200+4*i,strb);assert(read(0x200+4*i)==Vector(textureExpected(i)))}
-      for(a<-Seq(0x201,0x240,0x600)){assert(read(a)==Vector(BigInt(0)->BigInt(2)));write(a,15)}
+      for(a<-Seq(0x201,0x240,0x280,0x600)){assert(read(a)==Vector(BigInt(0)->BigInt(2)));write(a,15)}
       info(s"NATIVE_TEXTURE_POLICY_AXI enabled=$enabled samples=$samples words=8 immutable=true exactPolicyAndModeMasks=true burstAndAliases=true")
       // Expected words are independent literals, not the RTL capability encoder.
       val values=Vector(BigInt("47564901",16),BigInt(4),BigInt(0x502),BigInt(0x1ffffff))

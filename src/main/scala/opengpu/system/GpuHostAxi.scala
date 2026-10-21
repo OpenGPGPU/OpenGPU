@@ -420,6 +420,7 @@ class GpuHostAxi(
     val targetRaster=if(nativeVertexInput)beatAddr>=NativeRasterCapabilities.base.U && beatAddr<NativeRasterCapabilities.end.U else false.B
     val targetTexturePolicy=if(nativeVertexInput)beatAddr>=opengpu.graphics.NativeTextureCapabilities.base.U && beatAddr<opengpu.graphics.NativeTextureCapabilities.end.U else false.B
     val targetTextureFormats=if(nativeVertexInput)beatAddr>=opengpu.graphics.NativeTextureFormatCapabilities.base.U && beatAddr<opengpu.graphics.NativeTextureFormatCapabilities.end.U else false.B
+    val targetTextureOperations=if(nativeVertexInput)beatAddr>=opengpu.graphics.NativeTextureOperationCapabilities.base.U && beatAddr<opengpu.graphics.NativeTextureOperationCapabilities.end.U else false.B
     val targetVisibilityQueries=if(visibilityQueries)beatAddr>=opengpu.graphics.NativeVisibilityQueryCapabilities.base.U &&
       beatAddr<opengpu.graphics.NativeVisibilityQueryCapabilities.end.U else false.B
     val targetFeedback=if(transformFeedback)beatAddr>=opengpu.graphics.NativeTransformFeedbackCapabilities.base.U &&
@@ -431,7 +432,7 @@ class GpuHostAxi(
     val targetShaderQuota = if (shaderExecutionLimits) beatAddr === NativeShaderExecutionCapabilities.quotaRegister.U else false.B
     val targetShaderExecution = targetShaderCaps || targetShaderQuota
     val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
-      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution)
+      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -447,13 +448,13 @@ class GpuHostAxi(
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
           beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails
-    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution
+    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)
     reg.req.bits.data := io.s_axi_wdata
     reg.req.bits.strb := io.s_axi_wstrb
     unified.foreach { bridge =>
-      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution
+      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations
       bridge.io.reg.req.bits.isWrite := writeActive
       bridge.io.reg.req.bits.addr := beatAddr(9, 0)
       bridge.io.reg.req.bits.data := io.s_axi_wdata
@@ -495,6 +496,9 @@ class GpuHostAxi(
       }
       if(nativeVertexInput)when(targetTextureFormats){
         rdata:=VecInit(opengpu.graphics.NativeTextureFormatCapabilities.words.map(_.U(32.W)))(((beatAddr-opengpu.graphics.NativeTextureFormatCapabilities.base.U)>>2)(2,0))
+      }
+      if(nativeVertexInput)when(targetTextureOperations){
+        rdata:=VecInit(opengpu.graphics.NativeTextureOperationCapabilities.words.map(_.U(32.W)))(((beatAddr-opengpu.graphics.NativeTextureOperationCapabilities.base.U)>>2)(3,0))
       }
       if(nativeVertexInput)when(targetFragmentInput){
         rdata:=VecInit(NativeFragmentInputCapabilities.words(config.maxSampleCount).map(_.U(32.W)))(((beatAddr-NativeFragmentInputCapabilities.base.U)>>2)(1,0))
@@ -569,7 +573,7 @@ class GpuHostAxi(
       val normalRegisterOk = unified.map(bridge =>
         Mux(targetUnified, bridge.io.reg.resp.bits.ok, reg.resp.bits.ok))
         .getOrElse(reg.resp.bits.ok)
-      val legacyRegisterOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && normalRegisterOk
+      val legacyRegisterOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetPrimitiveQuery && !targetTextureOperations && normalRegisterOk
       val registerOk = Mux(targetShaderExecution, targetShaderQuota && shaderQuotaWriteOk, legacyRegisterOk)
       when(!beatOk || !registerOk) { writeError := true.B }
       when(io.s_axi_wlast) {
