@@ -104,11 +104,11 @@ private[graphics] class NativePrimitiveQueryHostProbe(d: GpuHostSystemAxi,
   def completed(count: Int): Unit={
     assert(prepared && !running);query(3,count=count,available=true);record(count,true)
   }
-  def reportLifetime(local: Boolean): Unit={
+  def reportLifetime(local: Boolean,primitivesPerFrame: Int=1,kind: String="TYPED"): Unit={
     assert(prepared && !running && frames==1 && aborted==0 && resetCuts==1)
-    println(s"NATIVE_PRIMITIVE_QUERY_LIFETIME_AXI local=$local CUs=4 frames=5 sourceCaptures=3 scopeCount=2 activeCaptures=2 pausedDraws=1 inactiveDraws=1 postEndCaptures=1 continuousQuery=true activePollsRejected=true peerZero=true exactRecordsAndImages=true")
+    println(s"NATIVE_PRIMITIVE_QUERY_LIFETIME_AXI kind=$kind local=$local CUs=4 frames=5 sourceCaptures=${3*primitivesPerFrame} scopeCount=${2*primitivesPerFrame} activeCaptures=${2*primitivesPerFrame} pausedDraws=1 inactiveDraws=1 postEndCaptures=$primitivesPerFrame continuousQuery=true activePollsRejected=true peerZero=true exactRecordsAndImages=true")
   }
-  def memoryFaults(local: Boolean): Unit={
+  def memoryFaults(local: Boolean,kind: String="TYPED"): Unit={
     assert(prepared && !running);install();cookie+=1
     for(a<-physical until physical+192)memory(a)=0xa7
     val peerCookie=cookie;query(0,peer=true);record(0,false,peer=true)
@@ -150,11 +150,15 @@ private[graphics] class NativePrimitiveQueryHostProbe(d: GpuHostSystemAxi,
     query(3,available=true,peer=true)
     for(a<-physical+128 until physical+192)assert(memory(a)==0xa7,"query memory fault changed guard bytes")
     assert(faults==8 && busFaults==4)
-    println(s"NATIVE_PRIMITIVE_QUERY_MEMORY_AXI local=$local CUs=4 memoryFaults=$faults permissionFaults=4 busFaults=$busFaults beginEndPollResult=true noDeniedPhysicalAccess=true failedBeginNeverActive=true failedEndFreesSlot=true peerScopeSurvives=true freshCookieReuse=true heldCompletionPinsVM=true exactRecords=true")
+    println(s"NATIVE_PRIMITIVE_QUERY_MEMORY_AXI kind=$kind local=$local CUs=4 memoryFaults=$faults permissionFaults=4 busFaults=$busFaults beginEndPollResult=true noDeniedPhysicalAccess=true failedBeginNeverActive=true failedEndFreesSlot=true peerScopeSurvives=true freshCookieReuse=true heldCompletionPinsVM=true exactRecords=true")
   }
   def reportRecovery(local: Boolean): Unit={
     assert(prepared && !running && frames==10 && aborted==1 && resetCuts==1)
     println(s"NATIVE_PRIMITIVE_QUERY_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames capturePermissionFaults=1 incompleteLastStoreFaults=1 missingLeaseFaults=1 peerCaptures=4 pausedZero=1 inactiveZero=1 resumedCaptures=1 acceptedStoreResetCuts=$aborted staleScopesRejected=2 realSv32=true exactGpuRecords=true noPartialPrimitiveCounts=true")
+  }
+  def reportBinnedRecovery(local: Boolean): Unit={
+    assert(prepared && !running && frames==7 && aborted==1 && resetCuts==1)
+    println(s"NATIVE_PRIMITIVE_QUERY_BINNED_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames capturePermissionFaults=1 incompleteLastStoreFaults=1 missingLeaseFaults=1 peerCaptures=8 acceptedStoreResetCuts=$aborted staleScopesRejected=2 twoTileEngines=true realSv32=true exactGpuRecords=true noPartialPrimitiveCounts=true onceBeforeFanout=true")
   }
   def report(kind: String,local: Boolean,expectedCount: Int): Unit={
     assert(prepared && !running && frames==2 && resetCuts==1)

@@ -159,3 +159,29 @@ partial.
 ```sh
 sbt 'testOnly opengpu.graphics.NativePrimitiveQueryLifetimeHostAxiSpec'
 ```
+
+## Binned query faults and continuous lifetimes
+
+[Six two-engine binned checks](performance/mobile-primitive-query-native-binned-recovery-2026-10-21.json)
+pass on 981 frozen inputs with local and spilled payloads. Twenty-four completed
+frames include eighteen successful images and six expected failures. They
+capture 28 source primitives; 24 belong to live queries and four occur after end.
+Each continuous scope returns exactly four across two captured frames, a paused
+draw and an inactive draw, despite fanout to both tile engines. Two later source
+captures per payload mode leave the completed result unchanged.
+
+Sixteen query-record memory faults cover begin/end/poll/result permissions and
+bus errors. Capture-page denial, missing leases and a final capture-line bus
+fault after two acknowledged prefix lines each retain zero incomplete counts.
+Healthy peers capture sixteen primitives after those failures and reset/reuse.
+Two accepted capture-store resets reject four stale query ends. Six additional
+query-record reset probes preserve VM ownership and fresh-cookie reuse. Exact
+raw captures, GPO1 records, source/resolve image guards and released payloads pass.
+
+The distinct total across frozen checkpoints is 47. Production/build/ABI bytes
+remain unchanged. Full 16-lane/eight-warp product capacity, composed timing/
+resources and representative frame budgets remain required; Q02/H6 stays partial.
+
+```sh
+sbt 'testOnly opengpu.graphics.NativePrimitiveQueryBinnedExtendedHostAxiSpec'
+```

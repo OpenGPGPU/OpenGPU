@@ -7588,3 +7588,16 @@ Exact records,raw captures,images and payload release pass. The distinct total
 across frozen checkpoints is41. Production/build/ABI bytes remain unchanged;
 binned fault/lifetime runtime,full product capacity,composed budgets and the
 remaining H0-H8 requirements stay open.
+
+
+### 2026-10-21: native binned query recovery and continuous scopes
+
+[Six fresh binned checks](performance/mobile-primitive-query-native-binned-recovery-2026-10-21.json)
+pass on981 frozen inputs with local/spilled payloads and two tile engines.
+Twenty-four completed frames capture28 source primitives,with exact four-count
+continuous scopes before tile fanout and four correctly ignored post-end
+captures. Sixteen record-memory faults,partial-store/permission/missing-lease
+failures,healthy peer captures and accepted-store reset retain exact GPO1/raw
+capture/image guards and released payloads. The distinct total across frozen
+checkpoints is47. Production/build/ABI bytes are unchanged. Full product capacity,
+composed timing/resources,frame budgets and the remaining H0-H8 gates stay open.
