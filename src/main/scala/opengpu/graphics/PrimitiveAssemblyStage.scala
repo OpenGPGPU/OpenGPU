@@ -24,7 +24,8 @@ class AssembledPrimitive(p: VertexShaderStageConfig) extends Bundle {
   val topology=UInt(4.W);val kind=UInt(2.W);val vertexCount=UInt(2.W)
   val provokingVertex=UInt(2.W);val loopClosing=Bool()
   val varyingSlots=UInt(5.W);val flatMask=UInt((4*p.varyings).W)
-  /** Unused slots are zero. Flat components already equal the provoking value. */
+  /** Unused slots are zero. Default assembly applies flat shading; the explicit
+    * pre-flat profile retains raw values for transform feedback export. */
   val vertices=Vec(3,new ShadedVertexRecord(p))
 }
 class PrimitiveAssemblyCompletion extends Bundle {
@@ -49,7 +50,8 @@ class PrimitiveAssemblyCompletion extends Bundle {
   * waits for its completion. cancelSource asks the enclosing producer to stop
   * younger work; it is not an acknowledgement that the producer has drained.
   */
-class PrimitiveAssemblyStage(p: VertexShaderStageConfig=VertexShaderStageConfig()) extends Module {
+class PrimitiveAssemblyStage(p: VertexShaderStageConfig=VertexShaderStageConfig(),
+    flatShading: Boolean=true) extends Module {
   val io=IO(new Bundle {
     val draw=Flipped(Decoupled(new PrimitiveAssemblyDraw(p)))
     val in=Flipped(Decoupled(new ShadedVertexRecord(p)))
@@ -101,7 +103,7 @@ class PrimitiveAssemblyStage(p: VertexShaderStageConfig=VertexShaderStageConfig(
     output.varyingSlots:=draw.varyingSlots;output.flatMask:=draw.flatMask
     for((value,i)<-values.zipWithIndex) {
       output.vertices(i):=value
-      for(v<-0 until p.varyings;c<-0 until 4) {
+      if(flatShading)for(v<-0 until p.varyings;c<-0 until 4) {
         output.vertices(i).varyings(v)(c):=Mux(draw.flatMask(v*4+c),values.last.varyings(v)(c),value.varyings(v)(c))
       }
     }

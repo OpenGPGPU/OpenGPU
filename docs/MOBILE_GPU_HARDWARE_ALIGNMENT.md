@@ -7252,8 +7252,10 @@ typed host has two native endpoints; binned/product hosts have three. The
 full-product16-lane/eight-warp emission passes, providing structural evidence.
 Fresh source-scoped whole-host validation passes six tests,30 frames and
 four reset cuts. Three additional typed/binned/full-product emissions pass.
-New controller synthesis is running; composed cluster and eight-context
-vertex/fragment endpoint synthesis are queued serially. The older four-context
+Fresh shared-window controller synthesis passes1000ps TC/SLVT,25percent I/O,
+standard ABC without retiming: core+114.366ps,I/O+202.946ps and zero skipped
+instances. The composed shared cluster is running; eight-context vertex/fragment
+endpoint synthesis remains queued serially. The older four-context
 endpoint queue was superseded before mapping began.
 
 Separately, the [855-input default numeric service](performance/mobile-native-rgba8-planner-pipeline-2026-10-21.json)
@@ -7341,3 +7343,96 @@ comparison,131072 C decoding/layout cases and three typed,binned/full-product
 emissions also pass. Runtime is reduced capacity; full-capacity runtime,API
 support,composed timing and Q01/H6 completion remain open. Implementation,
 tests and documentation form one milestone commit.
+
+## H5 acknowledged pre-flat transform-feedback export
+
+[Transform-feedback export](TRANSFORM_FEEDBACK.md) now composes actual shared-CU
+vertex execution,raw primitive assembly,masked GPU capture and provoking-value
+flat output. Eight bounded object rows support context/root/cookie isolation,
+64 interleaved components,four separate bindings,pause/resume and explicit
+checkpoint eviction/restore. Every enabled binding is preflighted for a complete
+primitive before stores; cursors and counts commit after the last successful
+acknowledgement. Held memory/public outputs retain reset ownership.
+
+The [874-input qualification](performance/mobile-transform-feedback-2026-10-21.json)
+retains seven export checks,12 default/raw assembly checks,four real shared-CU
+local/spill cases and two full-capacity emissions. Fourteen draws capture96
+primitives and verify exact cached GPU readback after coherent uniform/destination
+reuse. Both held-store reset cuts drain,discard stale object state and complete
+healthy reuse; the local path avoids global shader staging. Admission reset
+preserves accepted context/root/cookie before preflight can be bypassed.
+
+Two standalone synthesis misses remain recorded:core-325.052/I/O+460.446ps,
+then core-183.976/I/O+447.714ps,each with zero skipped instances. Registered
+primitive validation removes the first critical path; registered command
+normalization/validation/commit removes the second. The third export-component
+screen passes core+259.866ps,I/O+464.703ps with zero skipped instances,
+161654 cells,library area20947.815000 and zero SRAM macros. It uses an
+immutable copy at1000ps TC/SLVT,25percent I/O,standard ABC and no retiming;
+this does not qualify shared-CU geometry/native host timing. Native descriptor/control/checkpoint transport,translated publication,
+primitive-query objects,composed timing and all remaining H0-H8 gates stay open.
+
+
+## H5 historical902-input native transport checkpoint
+
+The opt-in typed and binned hosts now route opcode12 through a512-byte GTF1
+GPU control/checkpoint record. Native capture precedes flat shading,clipping
+and bin replay. Captured context/full-root/cookie/program/kind leases prevent
+stale state from silently bypassing capture. Independent translated data and
+control clients preserve legacy geometry/fragment IDs and image routing.
+
+Thirteen fresh control/export tests pass,including final-line acknowledgement,
+scoped invalidation after mutated-checkpoint failure,nonmutating rejection,
+stale lease rejection,4GiB bounds,held replies,reset offers and healthy reuse.
+Fifteen transport/MMIO tests pass,including command fencing and legacy behavior.
+Seventeen additional legacy router/query checks and two enabled/disabled
+capability cases pass,for47 distinct checks across exact scopes. Generated ABI
+comparison,C11/C++17 layout and typed,binned/full-product emissions with both
+feedback and query enabled pass. Fresh902-input default export synthesis
+passes core+226.040ps,I/O+451.601ps at1000ps,with zero skipped instances,
+164002 cells,library area21091.471740 and zero SRAM macros. It includes the
+current native lease/recovery changes. The direct native control/parser
+screen passes core+407.438ps,I/O+235.022ps with zero skipped instances,30641
+cells,library area3963.412620 and zero SRAM macros. Both are component screens;
+composed control/export,geometry and whole-host timing remain separate. Sixteen fresh assembly/actual-CU geometry checks pass,including14 draws,96
+captured primitives and two held-store reset cuts. Both corrected typed AXI
+cases pass,four native frames with exact raw capture/MRT/depth/resolve guards,
+raster discard,query coexistence,checkpoint reset and VM protection,for65
+distinct checks across exact scopes. The initial centroid-ABI1 fixture
+rejection is retained; selecting ABI3 fixes the test without changing hardware.
+At that checkpoint,binned AXI runtime was still under validation. The current
+qualified recovery checkpoint below supplies the fresh native results. Primitive
+query hardware,composed timing/resources and other H0-H8 gates remain open.
+See [native transport details](TRANSFORM_FEEDBACK.md).
+
+
+## H5 qualified native transform-feedback recovery milestone
+
+The current904-input correction separates draw abort from global feedback
+reset. A missing/faulted capture stops its draw while retaining peer leases;
+only explicit native controller reset clears the table. Both original904-input
+peer-loss failures remain recorded,followed by passing local/spill native
+recovery. Wrong or missing leases do not silently bypass capture.
+
+[Current qualification](performance/mobile-transform-feedback-scoped-abort-2026-10-21.json)
+passes71 distinct tests across exact source scopes (25 fresh,46 unchanged),
+five emissions,and22 completed native frames:16 healthy,six expected errors,
+plus two reset-aborted capture draws. Native typed and two-engine binned paths
+check exact raw capture/MRT/depth/resolve guards,raster discard,queries and
+once-before-fanout accounting. Four checkpoint-store and two capture-store
+reset cuts drain. Permission-denied stores never reach physical AXI; bus-fault
+partial stores stay bounded and do not advance cursors/counts. Healthy peer
+objects,VM ownership,fresh-cookie reuse and payload release are checked.
+Four fresh standalone geometry cases add14 draws,96 captured primitives and
+two held-store reset cuts with exact cached GPU readback.
+
+Default scoped-abort export synthesis passes core+252.981ps,I/O+461.151ps,
+164503 cells,library area21108.107520,zero SRAM macros and zero skipped
+instances at1000ps TC/SLVT,25percent I/O,standard ABC without retiming. The
+permanent native control emitter produces byte-identical qualified RTL
+(core+407.438ps,I/O+235.022ps,30641 cells,area3963.412620,zero skipped).
+Both are component screens. Full-capacity runtime,composed timing/resource
+budgets,Q02 primitive-query hardware and other H0-H8 requirements remain open.
+Compiler/driver implementation remains outside this hardware alignment plan;
+required hardware interfaces remain in scope. Implementation,tests,ABI and
+this documentation form one combined milestone commit.

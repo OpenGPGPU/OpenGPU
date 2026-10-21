@@ -1,5 +1,5 @@
 {
-  "updated_utc": "2026-10-21T07:53:12.041739+00:00",
+  "updated_utc": "2026-10-21T11:29:36.316275+00:00",
   "status": "Functional shared-window milestone:60 focused checks and12 emissions, two production-identical supplemental tests, six fresh whole-host tests/30frames/four reset cuts and three secondary host/product emissions pass. New composed timing remains open.",
   "base_commit": "4bd722fac2f8f48127306fe4160c76f2e9d61d08",
   "source_files": 867,
@@ -275,8 +275,23 @@
   },
   "synthesis": {
     "policy": "1000ps TC/SLVT,25%IO,standard ABC,no retiming; synthesis only",
-    "controller": "running",
-    "composed_cluster_and_eight_context_native_endpoints": "queued serially after active mappings",
+    "controller": {
+      "status": "passed",
+      "core_slack_ps": 114.366,
+      "io_slack_ps": 202.946,
+      "skipped_instances": 0,
+      "library_area": 110449.667339,
+      "sequential_area": 25123.3812,
+      "SRAM_macros": 0,
+      "source_files": 867,
+      "source_manifest": ".artifacts/mobile-native-rgba8-shared-window-v1-source.json",
+      "qualification": "generated/qualification/ppa/mobile-native-rgba8-shared-controller-2026-10-21-v2/qualification.json",
+      "qualification_sha256": "ee8b6ea1c0968ebbdea8e4eb1080f2bd3ab3023c3f376afa113bda9f7948c60b",
+      "result": ".artifacts/mobile-native-rgba8-shared-controller-synthesis-v2-result.json",
+      "scope": "128-row shared controller only; does not qualify composed numeric service,endpoint,CU,host or frame rates.",
+      "mapped_cells": 838529
+    },
+    "composed_cluster_and_eight_context_native_endpoints": "shared cluster active; native vertex and fragment endpoints queued serially",
     "superseded_four_context_endpoint_queue": true,
     "no_prior_timing_carry": true,
     "older_static_credit_registered_cancel_cluster": {

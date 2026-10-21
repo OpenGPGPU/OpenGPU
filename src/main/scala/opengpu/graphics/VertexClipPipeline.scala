@@ -23,9 +23,10 @@ class VertexClipCompletion extends Bundle {
   */
 class VertexClipPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,transformFeedback: Boolean=false) extends Module {
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val draw=Flipped(Decoupled(new VertexGeometryDraw(p)))
     val out=Decoupled(new ClippedPrimitive(p));val completion=Decoupled(new VertexClipCompletion)
@@ -35,7 +36,12 @@ class VertexClipPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfi
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new VertexGeometryStage(config,p,shared,useSramBlackBoxes,payload,payloadOwner,groupedTexture=groupedTexture))
+  private val source=Module(new VertexGeometryStage(config,p,shared,useSramBlackBoxes,payload,payloadOwner,groupedTexture=groupedTexture,transformFeedback=transformFeedback))
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.draw.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,source.io.feedback.get,Mux(io.draw.fire,io.feedback.get.scope,scope), !io.busy)
+  }
   if(groupedTexture)io.grouped.get <> source.io.grouped.get
   private val clipper=Module(new PrimitiveClipStage(p,useSramBlackBoxes))
   private val active=RegInit(false.B);private val sourceOffered=RegInit(false.B);private val sourceStarted=RegInit(false.B)
@@ -51,7 +57,7 @@ class VertexClipPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfi
   private val clipFault=clipper.io.completion.valid && clipper.io.completion.bits.status=/=0.U
   private val sourceFault=source.io.completion.valid && source.io.completion.bits.status=/=0.U
   private val stop=status=/=0.U || externalCancel || clipFault || sourceFault
-  io.draw.ready:= !active && !externalCancel;io.busy:=active
+  io.draw.ready:= !active && !externalCancel;io.busy:=active || io.feedback.map(_.busy).getOrElse(false.B)
   when(io.draw.fire) {
     descriptor:=io.draw.bits;active:=true.B;done:=false.B;sourceOffered:=true.B;sourceStarted:=false.B;sourceDone:=false.B
     status:=0.U;received:=0.U;exported:=0.U;intersections:=0.U;culled:=0.U;operations:=0.U

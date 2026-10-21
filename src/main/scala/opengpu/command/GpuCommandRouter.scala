@@ -20,6 +20,7 @@ object GpuCommandOpcode {
   val queryEnd = 9.U(width.W)
   val queryPoll = 10.U(width.W)
   val queryResult = 11.U(width.W)
+  val transformFeedback = 12.U(width.W)
 
   def visibilityQuery(opcode: UInt): Bool = opcode >= queryBegin && opcode <= queryResult
 }
@@ -29,6 +30,8 @@ class GpuCommand(config: GpuConfig, val commandIdWidth: Int) extends Bundle {
   val commandId = UInt(commandIdWidth.W)
   val opcode = UInt(GpuCommandOpcode.width.W)
   val launch = new KernelLaunch(config)
+  val rasterDiscard = Bool()
+  val feedbackCapture = Bool()
   val waitForDma = Bool()
   val dmaSource = UInt(DmaEventSource.width.W)
   val dmaDescriptorId = UInt(commandIdWidth.W)

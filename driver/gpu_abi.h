@@ -325,6 +325,7 @@ typedef int32_t s32;
 #define GPU_UCMD_OP_QUERY_END    9u
 #define GPU_UCMD_OP_QUERY_POLL   10u
 #define GPU_UCMD_OP_QUERY_RESULT 11u
+#define GPU_UCMD_OP_TRANSFORM_FEEDBACK 12u
 #define GPU_BIN_JOB_MAGIC        0x47424a01u
 #define GPU_BIN_JOB_WORDS        128u
 #define GPU_BIN_JOB_BYTES        512u
@@ -404,6 +405,8 @@ struct gpu_tile_clear_payload {
 #define GPU_UCMD_FLAG_WAIT_DMA   (1u << 0)
 #define GPU_UCMD_FLAG_WAIT_EVENT (1u << 1)
 #define GPU_UCMD_FLAG_SIGNAL_EVENT (1u << 2)
+#define GPU_UCMD_FLAG_RASTER_DISCARD (1u << 3)
+#define GPU_UCMD_FLAG_FEEDBACK_CAPTURE (1u << 4)
 #define GPU_UCMD_STATUS_READY      (1u << 0)
 #define GPU_UCMD_STATUS_COMPLETION (1u << 1)
 #define GPU_UCMD_STATUS_OVERFLOW   (1u << 2)

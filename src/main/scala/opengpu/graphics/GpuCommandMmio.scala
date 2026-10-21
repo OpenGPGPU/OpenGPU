@@ -183,6 +183,8 @@ class GpuCommandMmio(
     queue.io.enq.bits.launch.gridSize(axis) := grid(axis)
     queue.io.enq.bits.launch.localSize(axis) := local(axis)(15, 0)
   }
+  queue.io.enq.bits.rasterDiscard := flags(3)
+  queue.io.enq.bits.feedbackCapture := flags(4)
   queue.io.enq.bits.waitForDma := flags(0)
   queue.io.enq.bits.dmaSource := dmaDependency(1, 0)
   queue.io.enq.bits.dmaDescriptorId :=

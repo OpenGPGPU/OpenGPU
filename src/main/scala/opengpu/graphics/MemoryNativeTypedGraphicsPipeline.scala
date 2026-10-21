@@ -12,7 +12,7 @@ import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
   */
 case class NativeTypedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShaderStageConfig(),
     fragment: FragmentShaderConfig=FragmentShaderConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),
-    payload: Option[ShaderPayloadConfig]=Some(ShaderPayloadConfig(maxPayloadBytes=16*1024,owners=2,ports=6)),groupedTexture: Boolean=false) {
+    payload: Option[ShaderPayloadConfig]=Some(ShaderPayloadConfig(maxPayloadBytes=16*1024,owners=2,ports=6)),groupedTexture: Boolean=false,transformFeedback: Boolean=false) {
   require(vertex.varyings==fragment.varyings && fragment.colors==4)
   payload.foreach(p=>require(p.owners==2,"native vertex and fragment clients own two payload identities"))
 }
@@ -32,6 +32,7 @@ class MemoryNativeTypedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: Na
   private val sharedConfig=shared
   private val transactions=MemoryNativeTypedGraphicsPipeline.transactions
   val io=IO(new Bundle {
+    val feedback=if(native.transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val grouped=if(native.groupedTexture)Some(new NativeRgba8TextureRendererPorts(sharedConfig.numComputeUnits,2))else None
     val submit=Flipped(Decoupled(new TileJobDescriptorRequest(commandIdWidth)))
     val completion=Decoupled(new NativeTypedGraphicsCompletion(commandIdWidth))
@@ -46,7 +47,12 @@ class MemoryNativeTypedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: Na
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val reader=Module(new NativeTypedGraphicsJobReader(config,commandIdWidth,p,f,native.storage))
-  private val image=Module(new TypedTileImagePipeline(config,p,f,shared,g,viewport,native.storage,useSramBlackBoxes,payload,groupedTexture=native.groupedTexture))
+  private val image=Module(new TypedTileImagePipeline(config,p,f,shared,g,viewport,native.storage,useSramBlackBoxes,payload,groupedTexture=native.groupedTexture,transformFeedback=native.transformFeedback))
+  if(native.transformFeedback){
+    val scope=RegInit(0.U.asTypeOf(new TransformFeedbackScope))
+    when(io.submit.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,image.io.feedback.get,Mux(io.submit.fire,io.feedback.get.scope,scope), !io.busy)
+  }
   if(native.groupedTexture)io.grouped.get <> image.io.grouped.get
   reader.io.submit<>io.submit;io.completion<>reader.io.completion
   image.io.begin<>reader.io.begin;image.io.draw<>reader.io.draw;image.io.end<>reader.io.end

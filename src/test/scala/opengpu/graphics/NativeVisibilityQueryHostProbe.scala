@@ -16,6 +16,7 @@ private[graphics] class NativeVisibilityQueryHostProbe(d: GpuHostSystemAxi,
   private val context = BigInt(0x71000007) // Intentionally differs from descriptor identity7.
   private var cookie = 0; private var conservative = false; private var root = BigInt(0)
   private var prepared = false; private var running = false; private var frameStatus = 0
+  private var frameValue = true
   private var checkedFrames = 0; private var commands = 0; private var abortedScopes = 0
   private var recordResetCuts = 0; private var emptyScopes = 0
   def active: Boolean = running
@@ -108,10 +109,10 @@ private[graphics] class NativeVisibilityQueryHostProbe(d: GpuHostSystemAxi,
     }
     begin(); frameStatus = 0
   }
-  def completed(status: Int): Unit = { assert(running); frameStatus = status }
+  def completed(status: Int,expectedValue: Boolean=true): Unit = { assert(running); frameStatus = status; frameValue=expectedValue }
   def afterFrame(): Unit = if (running) {
     val status = if (frameStatus == 0) 0 else if (frameStatus == 4) 4 else 3
-    finish(status, value = status == 0); checkedFrames += 1
+    finish(status, value = status == 0 && frameValue); checkedFrames += 1
   }
   def aborted(): Unit = { assert(running); running = false; abortedScopes += 1 }
   def report(kind: String, local: Boolean, expectedFrames: Int, expectedAborts: Int = 0): Unit = {

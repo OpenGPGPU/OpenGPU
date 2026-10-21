@@ -22,9 +22,10 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     storage: TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false,groupedTexture: Boolean=false) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,preparedGeometry: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false) extends Module {
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val grouped=if(groupedTexture)Some(new NativeRgba8TextureRendererPorts(sharedConfig.numComputeUnits,if(preparedGeometry)1 else 2))else None
     val begin=Flipped(Decoupled(new TypedTileImageDescriptor));val end=Flipped(Decoupled(Bool()))
     val draw=Flipped(Decoupled(new TypedTileRenderDraw(p,f)));val drawCompletion=Decoupled(new TypedTileRenderDrawCompletion)
@@ -41,7 +42,12 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val renderer=Module(new TypedTileRenderPipeline(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,groupedTexture=groupedTexture))
+  private val renderer=Module(new TypedTileRenderPipeline(config,p,f,shared,g,viewport,storage,useSramBlackBoxes,payload,payloadOwner,preparedGeometry,groupedTexture=groupedTexture,transformFeedback=transformFeedback))
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.draw.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,renderer.io.feedback.get,Mux(io.draw.fire,io.feedback.get.scope,scope), !io.busy)
+  }
   if(groupedTexture)io.grouped.get <> renderer.io.grouped.get
   if(preparedGeometry)renderer.io.primitive.get:=io.primitive.get
   private val transfers=Module(new TypedTileImageTransfer(config,storage))
@@ -111,7 +117,7 @@ class TypedTileImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   private val inFlight=RegInit(0.U(5.W));inFlight:=inFlight+io.memoryRequest.fire.asUInt-io.memoryResponse.fire.asUInt
   when(io.memoryResponse.fire){assert(inFlight.orR || io.memoryRequest.fire,"unowned image pipeline memory response")}
   private val memoryDrained=inFlight===0.U && !queue.io.deq.valid
-  io.begin.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle
+  io.begin.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle || io.feedback.map(_.busy).getOrElse(false.B)
   io.completion.valid:=phase===State.complete;io.completion.bits:=result
   switch(phase){
     is(State.idle){when(io.begin.fire){descriptor:=io.begin.bits;transferOffered:=true.B;transferStarted:=false.B;transferDone:=false.B

@@ -10,6 +10,8 @@ import scala.collection.mutable
 
 class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
   protected def visibilityQueries: Boolean=false
+  protected def transformFeedback: Boolean=false
+  protected def transformFeedbackRecovery: Boolean=false
   protected def groupedTexture: Boolean=false
   protected def nativeComputeUnits: Int=2
   protected def capturedFloatingFormats: Seq[Int]=0 until 64
@@ -18,7 +20,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   private val graphics=GraphicsConfig(screenWidth=8,screenHeight=8)
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);private val f=FragmentShaderConfig(2,4)
   private def profile(local: Boolean): NativeTypedGraphicsConfig=NativeTypedGraphicsConfig(p,f,
-    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=2,ports=2+nativeComputeUnits))else None,groupedTexture=groupedTexture)
+    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=2,ports=2+nativeComputeUnits))else None,groupedTexture=groupedTexture,transformFeedback=transformFeedback)
   private def addi(rd: Int,rs: Int,n: Int): BigInt=(BigInt(n&4095)<<20)|(BigInt(rs)<<15)|(BigInt(rd)<<7)|0x13
   private def vm(base: Int,v: Int,write: Boolean): BigInt=(BigInt(1)<<25)|(BigInt(base)<<15)|(BigInt(6)<<12)|(BigInt(v)<<7)|(if(write)0x27 else 7)
   private val vertexProgram={
@@ -144,14 +146,14 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       }
     }
     def verifyDraws(mode: Int,centroid: Boolean=false,polygon: Boolean=false,sign: Int=1,
-        facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0): Unit={
+        facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0,primitiveCount: Int=3): Unit={
       val count=1<<mode;val colors=Array.fill(4,4,count)(Vector.empty[BigInt])
       val depths=Array.fill(4,4,count)(TypedDepthReference.encode(Fp32ViewportReference.fp(1),boundDepthFormat))
       val stencils=Array.fill(4,4,count)(5)
       val coords=Vector(Vector((0,0),(1024,0),(0,1024)),Vector((256,512),(768,512),(0,0)),Vector((256,256),(0,0),(0,0)))
       val settings=TriangleRasterReference.Settings(width=4,height=4,mode=mode,maxX=4,maxY=4,ccw=ccw,cull=cull)
       val primitiveQuads=Array.fill(3)(0)
-      for(n<-0 until 3){val kind=Seq(2,1,0)(n)
+      for(n<-0 until primitiveCount){val kind=Seq(2,1,0)(n)
         val originalDepth=positionSets(n).map(v=>Fp32ViewportReference.fp(v(2)*0.5+0.5)).padTo(3,BigInt(0))
         val zs=if(n==0 && reverse)originalDepth.reverse else originalDepth
         val coordinates=if(n==0 && reverse)coords(n).reverse else coords(n)
@@ -226,11 +228,11 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
     def write(a: BigInt,data: BigInt,mask: BigInt): Unit={writes+=a
       for(b<-0 until 64 if mask.testBit(b))memory(a+b)=((data>>(8*b))&255).toInt}
     val queryProbe=if(visibilityQueries)Some(new NativeVisibilityQueryHostProbe(d,memory,read,write))else None
-    def submit(id: Int=23): Unit={
+    def submit(id: Int=23,feedback: Option[(NativeTransformFeedbackHostProbe,Boolean)]=None,feedbackScope: ()=>Unit=()=>()): Unit={
       queryProbe.foreach(_.beforeFrame())
       axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
       axiWrite(d,GpuCommandMmioRegs.SOURCE,0x410000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x410000+512)
-      axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+      axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);feedback.foreach{case(p,discard)=>p.stageRender(discard)};feedbackScope();axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
     }
     def run(status: Int=0,id: Int=23,readFault: BigInt=>Boolean=_=>false,
       writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false): Unit={
@@ -249,6 +251,110 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       assert(writes.exists(_>=0x1000000) && !reads.exists(a=>a>=0x400000 && a<0x800000),"virtual descriptors must not escape onto physical AXI")
     }
   }
+  if(transformFeedback && !transformFeedbackRecovery)for(local<-Seq(true,false))
+  it should s"capture raw native triangle output through translated feedback stores with exact raster and discard images local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
+      initialize(d);val image=new Image(d)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      val feedback=new NativeTransformFeedbackHostProbe(d,image.memory,image.read,image.write)
+      for(discard<-Seq(false,true)){
+        image.shaderDraws(0,centroid=true,version=3);image.word(image.pa(0x410000+12*4),1)
+        if(!discard)image.queryProbe.foreach{q=>q.beforeFrame();q.completed(0,false);q.afterFrame()}
+        feedback.begin();image.submit(if(discard)122 else 121,Some(feedback->discard))
+        image.run(id=if(discard)122 else 121)
+        image.queryProbe.foreach(_.completed(0,!discard))
+        if(discard)image.verifyClear()else image.verifyDraws(0,centroid=true,primitiveCount=1)
+        image.pop()
+        val positions=Vector(Vector(-1.0,-1.0,-0.5,1.0),Vector(1.0,-1.0,0.5,1.0),Vector(-1.0,1.0,0.0,1.0))
+        val expected=positions.indices.flatMap(i=>positions(i).map(Fp32ViewportReference.fp)++image.colorWords(0,i,true))
+        feedback.end(expected,1,3)
+      }
+      feedback.report("TYPED",local)
+    }
+  }
+  if(transformFeedbackRecovery)for(local<-Seq(true,false))
+  it should s"drain native feedback permission and store faults without losing peer objects and recover from accepted-store reset local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
+      initialize(d);val image=new Image(d)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      val a=new NativeTransformFeedbackRecoveryProbe(d,image.memory,image.read,image.write,0)
+      val b=new NativeTransformFeedbackRecoveryProbe(d,image.memory,image.read,image.write,1)
+      var frames=0;var resetCuts=0
+      def frame(preserve: Boolean=false): Unit={
+        val saved=if(preserve)image.memory.filter{case(address,_)=>
+          (address>=0x18400000 && address<0x18401000) || (address>=0x18800000 && address<0x18810000) ||
+          (address>=0x30304 && address<0x3030c)}.toMap else Map.empty[BigInt,Int]
+        image.shaderDraws(0,centroid=true,version=3);image.word(image.pa(0x410000+12*4),1)
+        image.memory++=saved
+      }
+      def flush(): Unit=axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+      def payloadIdle(): Unit=if(local){val perf=d.io.performance.get
+        perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+      }
+      def expected: Seq[BigInt]={
+        val positions=Vector(Vector(-1.0,-1.0,-0.5,1.0),Vector(1.0,-1.0,0.5,1.0),Vector(-1.0,1.0,0.0,1.0))
+        positions.indices.flatMap(i=>positions(i).map(Fp32ViewportReference.fp)++image.colorWords(0,i,true))
+      }
+      def finishQuery(status: Int,active: NativeTransformFeedbackRecoveryProbe): Unit={
+        // Queries own contextA. A healthy peer-context draw contributes no samples.
+        image.queryProbe.foreach(_.completed(status,status==0 && active.context==a.context))
+      }
+      def healthyPeer(id: Int): Unit={
+        frame(true);image.submit(id,feedbackScope=()=>b.stageRender());image.run(id=id)
+        finishQuery(0,b);image.verifyDraws(0,centroid=true,primitiveCount=1);image.pop()
+        b.end(expected);payloadIdle();frames+=1
+      }
+      frame();image.queryProbe.foreach{q=>q.beforeFrame();q.completed(0,false);q.afterFrame()}
+      for(kind<-Seq("checkpoint-permission","capture-permission","capture-bus","capture-reset")){
+        frame();a.begin();b.begin()
+        if(kind=="checkpoint-permission"){
+          a.permission(false,false);flush();val start=image.writes.size
+          a.command(2,status=3,flags=0)
+          assert(!image.writes.drop(start).exists(x=>x>=0x18400000 && x<0x18401000),"denied checkpoint store reached physical AXI")
+          a.permission(false,true);flush();a.command(1,status=5,flags=2)
+          image.submit(150,feedbackScope=()=>a.stageRender());image.run(status=5,id=150)
+          finishQuery(5,a);image.pop();payloadIdle();frames+=1
+          assert(!image.writes.contains(a.firstDataLine),"missing capture lease wrote feedback data")
+          healthyPeer(151)
+        }else if(kind=="capture-permission" || kind=="capture-bus"){
+          if(kind=="capture-permission"){a.permission(true,false);flush()}
+          var injected=false;val start=image.writes.size
+          image.submit(152,feedbackScope=()=>a.stageRender())
+          image.run(status=3,id=152,writeFault=(address,_,_)=>{
+            val fault=kind=="capture-bus" && !injected && address==a.firstDataLine
+            if(fault)injected=true;fault
+          })
+          finishQuery(3,a);image.pop();payloadIdle();frames+=1
+          if(kind=="capture-permission")assert(!image.writes.drop(start).contains(a.firstDataLine),"denied capture store reached physical AXI")
+          else assert(injected,"capture bus error was not injected on the owned store")
+          a.end(Seq.empty,status=3,allowedPartialBytes=if(kind=="capture-bus")96 else 0)
+          a.permission(true,true);flush();healthyPeer(153)
+        }else{
+          image.submit(154,feedbackScope=()=>a.stageRender());var cut=false
+          serviceMemoryMaster(d,image.read,writeAckDelay=53,readResponseDelay=3,maxCycles=300000,
+            onWriteAccepted=address=>if(!cut && (address & ~BigInt(63))==a.firstDataLine){
+              cut=true;axiWrite(d,GpuCommandMmioRegs.RESET,1)
+              axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+            })(image.write){cut && d.io.m_irq.peek().litToBoolean}
+          assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0,"accepted capture-store reset did not drain")
+          image.queryProbe.foreach(_.aborted());axiWrite(d,RenderHostRegs.IRQ,3);payloadIdle();resetCuts+=1
+          a.command(1,status=5,flags=2);b.command(1,status=5,flags=2)
+          frame();b.begin();flush();healthyPeer(155)
+        }
+        info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_CASE local=$local kind=$kind peerHealthy=true payloadReleased=true")
+      }
+      assert(frames==7 && resetCuts==1)
+      info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames resetCuts=$resetCuts checkpointPermissionFaults=1 capturePermissionFaults=1 captureBusFaults=1 missingLeaseDraws=1 peerHealthyDraws=4 scopedRecovery=true countersAfterFinalAck=true noDeniedPhysicalStores=true partialFaultStoresBounded=true staleResetObjectsRejected=true exactRawCaptureAndImages=true queryContextIsolation=true")
+    }
+  }
+  if(!transformFeedback){
   // Shared-path subclasses register the focused capture matrix below.
   if(!groupedTexture){
   it should "submit a translated native clear pass and publish trusted physical source and resolve views over the production AXI host" in {
@@ -961,5 +1067,6 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
 
 
+  }
   }
 }

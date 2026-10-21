@@ -10,7 +10,7 @@ case class NativeBinnedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShad
     fragment: FragmentShaderConfig=FragmentShaderConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),
     engines: Int=2,pageBytes: Int=4096,writeCredits: Int=8,tileSlots: Int=8,pagedCapacity: Int=16384,
     payload: Option[ShaderPayloadConfig]=Some(ShaderPayloadConfig(maxPayloadBytes=16*1024,owners=3,ports=8)),
-    translateImageViews: Boolean=true,groupedTexture: Boolean=false) {
+    translateImageViews: Boolean=true,groupedTexture: Boolean=false,transformFeedback: Boolean=false) {
   require(engines>=1 && engines<=4 && vertex.varyings==fragment.varyings && fragment.colors==4)
   payload.foreach(q=>require(q.owners>=engines+1,"vertex and fragment engines need distinct payload owners"))
 }
@@ -45,6 +45,7 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
   private val renderBase=MemoryNativeBinnedGraphicsPipeline.renderBase
   private val renderSlots=MemoryNativeBinnedGraphicsPipeline.renderSlots(native)
   val io=IO(new Bundle {
+    val feedback=if(native.transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
     val grouped=if(native.groupedTexture)Some(new NativeRgba8TextureRendererPorts(sharedConfig.numComputeUnits,engines+1))else None
     val submit=Flipped(Decoupled(new TileJobDescriptorRequest(commandIdWidth)))
     val completion=Decoupled(new NativeBinnedGraphicsCompletion(commandIdWidth,p))
@@ -61,7 +62,12 @@ class MemoryNativeBinnedGraphicsPipeline(config: GpuConfig=GpuConfig(),native: N
   })
   private val reader=Module(new NativeBinnedGraphicsJobReader(config,commandIdWidth,p,engines,native.translateImageViews))
   private val image=Module(new TypedVertexBinImagePipeline(config,p,f,shared,g,viewport,engines,
-    native.pageBytes,native.writeCredits,native.tileSlots,native.pagedCapacity,native.storage,useSramBlackBoxes,payload,groupedTexture=native.groupedTexture))
+    native.pageBytes,native.writeCredits,native.tileSlots,native.pagedCapacity,native.storage,useSramBlackBoxes,payload,groupedTexture=native.groupedTexture,transformFeedback=native.transformFeedback))
+  if(native.transformFeedback){
+    val scope=RegInit(0.U.asTypeOf(new TransformFeedbackScope))
+    when(io.submit.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,image.io.feedback.get,Mux(io.submit.fire,io.feedback.get.scope,scope), !io.busy)
+  }
   if(native.groupedTexture)io.grouped.get <> image.io.grouped.get
   val recordBytes=image.recordBytes
   reader.io.submit<>io.submit;io.completion<>reader.io.completion
