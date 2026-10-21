@@ -29,11 +29,14 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,
-    preparedGeometry: Boolean=false,depthFormatInput: Boolean=false) extends Module {
+    preparedGeometry: Boolean=false,depthFormatInput: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false) extends Module {
+  require(!transformFeedback || !preparedGeometry,"feedback belongs to original vertex work,not prepared replay")
   require(p.varyings==f.varyings,"vertex and fragment interface capacities must match")
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+1<q.owners))
   private val shaderConfig=shared.copy(shaderPayload=None);private val payloadConfig=payload
   val io=IO(new Bundle {
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureRendererPorts(shaderConfig.numComputeUnits,if(preparedGeometry)1 else 2))else None
     val draw=Flipped(Decoupled(new VertexFragmentDraw(p,f)));val out=Decoupled(new FragmentShaderQuad(f,g))
     val primitive=if(preparedGeometry)Some(Input(new WindowPrimitive(p)))else None
     val depthFormat=if(depthFormatInput)Some(Input(UInt(3.W)))else None
@@ -46,10 +49,17 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,8)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner,centroidInput=true,depthFormatInput=true)))else None
-  private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1))
+  private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner,centroidInput=true,depthFormatInput=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback)))else None
+  private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1,groupedTexture=groupedTexture))
   private val router=Module(new SharedShaderTaskRouter(config,shared.numComputeUnits,2,shared.taskIdWidth,shaderPayload=payload))
   router.io.clients(1)<>fragment.io.shared;io.shared<>router.io.pool
+  if(groupedTexture){
+    val ports=io.grouped.get
+    vertex.foreach{v=>ports.client(0) <> v.io.grouped.get;ports.cuMask(0):=v.io.shared.owned}
+    val fragmentIndex=if(preparedGeometry)0 else 1
+    ports.client(fragmentIndex) <> fragment.io.grouped.get
+    ports.cuMask(fragmentIndex):=fragment.io.shared.owned
+  }
   private val vertexDraw=Wire(Decoupled(new VertexRasterDraw(p)))
   private val vertexOut=Wire(Decoupled(new Fp32RasterizedQuad(p,g)))
   private val vertexCompletion=Wire(Decoupled(new VertexRasterCompletion))
@@ -91,7 +101,13 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     vertexRequest.valid:=false.B;vertexRequest.bits:=0.U.asTypeOf(vertexRequest.bits);vertexResponse.ready:=false.B
     payload.foreach{_=>tie(io.payload.get(0),ActualDirection.Output);router.io.clientPayload.get(0):=0.U.asTypeOf(router.io.clientPayload.get(0))}
   }else{
-    val v=vertex.get;v.io.draw<>vertexDraw;vertexOut<>v.io.out;vertexCompletion<>v.io.completion
+    val v=vertex.get
+    if(transformFeedback){
+      val scope=Reg(new TransformFeedbackScope)
+      when(io.draw.fire){scope:=io.feedback.get.scope}
+      TransformFeedbackPipelineIO.forward(io.feedback.get,v.io.feedback.get,Mux(io.draw.fire,io.feedback.get.scope,scope), !io.busy)
+    }
+    v.io.draw<>vertexDraw;vertexOut<>v.io.out;vertexCompletion<>v.io.completion
     v.io.centroidMask.get:=centroidMask
     v.io.depthFormat.get:=depthFormat
     v.io.cancel:=vertexCancel;vertexBusy:=v.io.busy;vertexRequest<>v.io.memoryRequest;v.io.memoryResponse<>vertexResponse
@@ -159,7 +175,7 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   inFlight:=inFlight+io.memoryRequest.fire.asUInt-io.memoryResponse.fire.asUInt
   when(io.memoryResponse.fire){assert(inFlight.orR || io.memoryRequest.fire,"unowned composed graphics memory reply")}
   private val memoryDrained=inFlight===0.U && !memoryQueue.io.deq.valid
-  io.draw.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle
+  io.draw.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle || io.feedback.map(_.busy).getOrElse(false.B)
   io.completion.valid:=phase===State.complete;io.completion.bits:=result
   when(active && externalCancel){cancelled:=true.B}
   private def overlap(a: VertexInputView,b: VertexInputView): Bool=a.base<b.limit && a.limit>b.base

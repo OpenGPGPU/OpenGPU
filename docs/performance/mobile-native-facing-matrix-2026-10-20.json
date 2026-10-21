@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "status": "two_facing_checks_passed_legacy_controls_still_running",
+  "observed_utc": "2026-10-20T04:13:36.398682+00:00",
+  "scope": "Actual native facing/cull/two-sided stencil matrix only, first two of six checks",
+  "based_on_commit": "b780d79",
+  "source_files": 645,
+  "source_unchanged_at_checkpoint": true,
+  "production_and_abi_identical_to_176_source": true,
+  "source_manifest": {
+    "path": ".artifacts/mobile-native-facing-source-v1.json",
+    "sha256": "4d6d2b8dcd02a6fad48391e3ed3420bf843eb90d8bcd1fe9becda425b012689e"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-native-facing-source-v1.tar.gz",
+    "sha256": "4c7ff04d4f27d64bd287a95a2edc67dd77fb65172c89190db19715f37fb64f95"
+  },
+  "log_prefix": {
+    "path": ".artifacts/mobile-native-facing-matrix-v1.log",
+    "sha256": "af067d434cf6bee6e686f673d43ba7f49451b7829ee1fe76c51f98e131d94a42"
+  },
+  "start": {
+    "path": ".artifacts/mobile-native-facing-controls-v1-start.json",
+    "sha256": "47207b13113ec4c11d3208eb8a56d4f4f140a7e024ac261e95212875f6ece231"
+  },
+  "sbt_pid_confirmed_live": 26353,
+  "passed_checks": 2,
+  "expected_total_checks": 6,
+  "remaining_checks": 4,
+  "completed_test_groups": [
+    2
+  ],
+  "completed_success_tasks": 1,
+  "passed_frames": 72,
+  "submitted_draws": 216,
+  "visible_triangle_frames": 48,
+  "culled_triangle_frames": 24,
+  "profiles": [
+    "local payload",
+    "global staging"
+  ],
+  "matrix": {
+    "front_conventions": 2,
+    "windings": 2,
+    "cull_modes": 3,
+    "sample_modes": 3,
+    "frames_per_profile": 36
+  },
+  "observations": [
+    "Actual fragment shaders encode frontFacing bit0 as red1.0/0.5 in all four MRTs.",
+    "Front/back stencil depth-pass replacement uses references7/11. Lines and points remain front-facing and bypass triangle cull.",
+    "Exact physical color/depth/stencil/resolve/guard bytes, cached consumers, fresh allocations, uniform tails and held VM completion pass."
+  ],
+  "limits": [
+    "Only the new facing matrix has passed. The two native centroid and two native polygon controls remain live; the complete six-check result is not yet available.",
+    "Version3 is exercised at1x/2x, version4 at4x; no exhaustive descriptor-version/sample crossproduct claim.",
+    "Production is the separately pending native depth candidate. This checkpoint does not integrate it into main or close native depth, G04, H6, H0-H8 or GLES3.",
+    "PPA remains synthesis only."
+  ],
+  "historical_checkpoint": true,
+  "archived_from_commit": "5c20fd62ef57a74f96ff7dfd321f307c5000de7d",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

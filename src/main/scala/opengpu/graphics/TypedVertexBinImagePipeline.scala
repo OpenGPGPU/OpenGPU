@@ -49,13 +49,15 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),engines: Int=2,
     pageBytes: Int=4096,writeCredits: Int=8,tileSlots: Int=8,pagedCapacity: Int=0,
     storage: TypedTileColorConfig=TypedTileColorConfig(),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,transformFeedback: Boolean=false) extends Module {
   require(engines>=1 && engines<=4 && p.varyings==f.varyings && f.colors==4)
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+engines<q.owners))
   private val sharedConfig=shared;private val payloadConfig=payload
   private val binSlots=VertexBinPipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
   val memoryTransactions=TypedVertexBinImagePipeline.memoryTransactions(engines,writeCredits,pagedCapacity)
   val io=IO(new Bundle {
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureRendererPorts(sharedConfig.numComputeUnits,engines+1))else None
     val begin=Flipped(Decoupled(new TypedVertexBinImageDescriptor))
     val draw=Flipped(Decoupled(new VertexBinDraw(p)));val drawCompletion=Decoupled(new VertexBinDrawCompletion)
     val end=Flipped(Decoupled(Bool()))
@@ -72,10 +74,23 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val source=Module(new VertexBinPipeline(config,p,shared,g,viewport,engines,pageBytes,writeCredits,
-    tileSlots,pagedCapacity,useSramBlackBoxes,payload,payloadOwner,rendererCredits=true))
+    tileSlots,pagedCapacity,useSramBlackBoxes,payload,payloadOwner,rendererCredits=true,groupedTexture=groupedTexture,transformFeedback=transformFeedback))
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.draw.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,source.io.feedback.get,Mux(io.draw.fire,io.feedback.get.scope,scope), !io.busy)
+  }
   val recordBytes=source.recordBytes
   private val images=Seq.tabulate(engines)(e=>Module(new TypedReplayTileImagePipeline(config,p,f,shared,g,storage,
-    engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e)))
+    engine=e,useSramBlackBoxes=useSramBlackBoxes,payload=payload,payloadOwner=payloadOwner+e,groupedTexture=groupedTexture)))
+  if(groupedTexture){
+    val ports=io.grouped.get
+    ports.client(0) <> source.io.grouped.get;ports.cuMask(0):=source.io.shared.owned
+    for((image,e)<-images.zipWithIndex){
+      ports.client(e+1) <> image.io.grouped.get.client(0)
+      ports.cuMask(e+1):=image.io.grouped.get.cuMask(0)
+    }
+  }
   private val router=Module(new SharedShaderTaskRouter(config,shared.numComputeUnits,engines+1,shared.taskIdWidth,shaderPayload=payload))
   private val tileQueues=Seq.fill(engines)(Module(new Queue(new TypedVertexBinImageTileCompletion,1)))
   private object State extends ChiselEnum {val idle,validate,scan,sourceOffer,run,closing,finish,complete=Value}
@@ -132,7 +147,7 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
     d.protectedMemory(2).limit:=(if(pagedCapacity>0)descriptor.bins.bins.directoryLimit else 0.U)
     d
   }
-  io.begin.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle
+  io.begin.ready:=phase===State.idle && !externalCancel;io.busy:=phase=/=State.idle || io.feedback.map(_.busy).getOrElse(false.B)
   io.completion.valid:=phase===State.complete;io.completion.bits:=result
   source.io.begin.valid:=sourceOffered;source.io.begin.bits:=descriptor.bins
   when(source.io.begin.fire){sourceOffered:=false.B;sourceStarted:=true.B}

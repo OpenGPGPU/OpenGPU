@@ -183,6 +183,8 @@ class GpuCommandMmio(
     queue.io.enq.bits.launch.gridSize(axis) := grid(axis)
     queue.io.enq.bits.launch.localSize(axis) := local(axis)(15, 0)
   }
+  queue.io.enq.bits.rasterDiscard := flags(3)
+  queue.io.enq.bits.feedbackCapture := flags(4)
   queue.io.enq.bits.waitForDma := flags(0)
   queue.io.enq.bits.dmaSource := dmaDependency(1, 0)
   queue.io.enq.bits.dmaDescriptorId :=
@@ -316,9 +318,11 @@ class GpuCommandMmio(
     }
   }
 
-  private val completionMeta = Cat(
-    0.U(16.W), completion.success, completion.status, completion.opcode,
-    completion.commandId)
+  // Preserve every legacy field position. The fourth opcode bit uses reserved
+  // bit16, rather than shifting status/success into a different ABI layout.
+  private val legacyCompletionMeta = Cat(completion.success, completion.status,
+    completion.opcode(2, 0), completion.commandId)
+  private val completionMeta = Cat(0.U(15.W), completion.opcode(3), legacyCompletionMeta.pad(16))
   private val status = Cat(
     0.U(27.W), resetRejected, resetActive, submitOverflow, completionValid,
     queue.io.enq.ready)

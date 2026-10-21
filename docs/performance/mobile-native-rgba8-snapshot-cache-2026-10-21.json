@@ -1,0 +1,91 @@
+{
+  "base_commit": "63faa7fa4c13c3e1154fdfa87a36b80e584fc78a",
+  "source_files": 863,
+  "manifest_sha256": "201edde3b71b8248e87e18e129cb398026ebccfc8f6389f98f3521a9c72ba0d8",
+  "archive_sha256": "980458a88d20fb4816f14921ec25a698912506272152cc3137547a693e2fdbda",
+  "archive_and_worktree_exact": true,
+  "git_archive_and_worktree_exact": false,
+  "modified_inputs": [
+    "src/main/scala/opengpu/elaboration/EmitNativeRgba8Clients.scala",
+    "src/main/scala/opengpu/graphics/NativeShaderTextureUnit.scala",
+    "src/main/scala/opengpu/graphics/NativeTextureInstructionStream.scala",
+    "src/main/scala/opengpu/graphics/TextureSampleExecuteUnit.scala",
+    "src/test/scala/opengpu/graphics/NativeTextureInstructionStreamSpec.scala",
+    "src/test/scala/opengpu/graphics/NativeTextureLaneStreamSpec.scala",
+    "src/test/scala/opengpu/graphics/StreamingNativeTextureHarness.scala"
+  ],
+  "added_inputs": [
+    "src/main/scala/opengpu/graphics/NativeTextureSnapshotCache.scala",
+    "src/test/scala/opengpu/graphics/NativeTextureSnapshotCacheSpec.scala"
+  ],
+  "scope": "Four task-scoped checked snapshot entries keyed by full resources/work identity/unit/LOD allow eligible explicit aligned nonmip RGBA8 vector instructions to reuse metadata across components/warps while retaining per-instruction coordinates and offsets. Clear on launch/invalidate/cancel; general fallback and bounded instruction contexts retained. Full private-tag assertion and available-slot same-warp check strengthened. No sustained nativeII1, latest whole-host runtime or endpoint timing claim.",
+  "status": "All44 current-source checks and seven emissions pass; four appended cached-edge/rate tests also pass with exact production inputs.48 checks total across these explicitly matched inputs.",
+  "cache_entries": 4,
+  "cache_lifetime": "Trusted task; cleared by clearParameters, invalidate or cancel.",
+  "key_fields": [
+    "resources.version",
+    "resources.address",
+    "identity.context",
+    "identity.pass",
+    "identity.generation",
+    "unit",
+    "full_fp32_lod_word"
+  ],
+  "eligible_requests": "Vector floating explicit LOD; complete uniform binding/LOD operand tuples, zero bias/Z offset, aligned nonmip RGBA8 2D with matching nearest/bilinear min/mag filters and no shadow. Other requests retain the general resolver.",
+  "per_instruction_values_not_cached": [
+    "coordinates",
+    "offsets",
+    "component",
+    "mask",
+    "destination",
+    "warp",
+    "data"
+  ],
+  "one_metadata_engine": true,
+  "maximum_streaming_contexts": 4,
+  "public_pool_credits_per_client": 4,
+  "cache_bytes_per_cluster": 8192,
+  "data_ids_per_cluster": 16,
+  "ptw_ids_per_cluster": 4,
+  "isolated_tests_passed": 6,
+  "native_tests_planned": 15,
+  "general_tests_planned": 23,
+  "emissions_planned": 7,
+  "sustained_native_II1_qualified": false,
+  "whole_host_source": "861-input instruction-context source; active refresh. No carry across the production snapshot-cache change.",
+  "endpoint_timing_qualified": false,
+  "ppa_policy": "synthesis only",
+  "evidence": [
+    ".artifacts/mobile-native-rgba8-snapshot-cache-v1-source-proof.json",
+    ".artifacts/mobile-native-rgba8-snapshot-cache-v1-units-result.json",
+    ".artifacts/mobile-native-rgba8-native-rate-v1-result.json"
+  ],
+  "remaining": [
+    "finish real native/fallback/emission qualification",
+    "cached first-lane faults, held-reset and invalid-coordinate edge cases",
+    "measure actual warm native admission/retirement intervals before changing logical credits",
+    "fresh source-scoped whole-host frames and reset",
+    "fresh endpoint/full renderer synthesis",
+    "remaining functional H0-H8 features, limits, resource ordering and720p workload gates"
+  ],
+  "native_tests_passed": 15,
+  "cached_edge_rate_tests_passed": 4,
+  "warm_native_rate": {
+    "instructions": 32,
+    "samples": 512,
+    "total_cycles": 11787,
+    "stable_groups": 448,
+    "stable_span_cycles": 10216,
+    "maximum_admission_gap_cycles": 89,
+    "steady_samples_per_cycle": 0.04385277995301488,
+    "target_II1": false,
+    "scope": "Native texture endpoint and one shared cluster/pool client only; no actual CU issue or whole-frame rate claim."
+  },
+  "cached_edge_source_manifest_sha256": "164b102e81b07de6316f75c9fe4b3ef5f586477b506cb15d71418271d0500d9e",
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production.",
+  "general_tests_passed": 23,
+  "emissions_passed": 7,
+  "total_matching_production_checks": 48,
+  "rtl_proof": ".artifacts/mobile-native-rgba8-snapshot-cache-v1-RTL-proof.json",
+  "source_scoped_host_refresh": "Queued in snapshot-host-v1: typed22/binned4/reset4 recovery frames plus four live cuts, followed by complete typed/binned/product emissions; no older frames are carried."
+}

@@ -25,9 +25,11 @@ class VertexViewportCompletion extends Bundle {
   */
 class VertexViewportPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
-    useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0) extends Module {
+    useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,transformFeedback: Boolean=false) extends Module {
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val draw=Flipped(Decoupled(new VertexViewportDraw(p)));val out=Decoupled(new WindowPrimitive(p))
     val completion=Decoupled(new VertexViewportCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
@@ -36,7 +38,13 @@ class VertexViewportPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new VertexClipPipeline(config,p,shared,useSramBlackBoxes,payload,payloadOwner))
+  private val source=Module(new VertexClipPipeline(config,p,shared,useSramBlackBoxes,payload,payloadOwner,groupedTexture=groupedTexture,transformFeedback=transformFeedback))
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.draw.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,source.io.feedback.get,Mux(io.draw.fire,io.feedback.get.scope,scope), !io.busy)
+  }
+  if(groupedTexture)io.grouped.get <> source.io.grouped.get
   private val preparation=Module(new Fp32ViewportStage(p,viewport))
   private val descriptor=Reg(new VertexViewportDraw(p));private val summary=Reg(new VertexClipCompletion)
   private val result=Reg(new VertexViewportCompletion)
@@ -51,7 +59,7 @@ class VertexViewportPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
   private val preparationFault=preparation.io.completion.valid && preparation.io.completion.bits.status=/=0.U
   private val sourceFault=source.io.completion.valid && source.io.completion.bits.status=/=0.U
   private val stop=status=/=0.U || externalCancel || preparationFault || sourceFault
-  io.draw.ready:= !active && !externalCancel;io.busy:=active
+  io.draw.ready:= !active && !externalCancel;io.busy:=active || io.feedback.map(_.busy).getOrElse(false.B)
   when(io.draw.fire) {
     descriptor:=io.draw.bits;active:=true.B;offered:=true.B;started:=false.B;sourceDone:=false.B;done:=false.B
     status:=Mux(Fp32ViewportState.legal(io.draw.bits.viewport),0.U,1.U)

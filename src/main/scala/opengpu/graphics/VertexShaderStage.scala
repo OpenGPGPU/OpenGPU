@@ -83,7 +83,7 @@ class VertexShaderCompletion extends Bundle {
   */
 class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
   require(config.xLen==32 && config.lanes>=4 && config.lanes%4==0)
   private val capacity=config.lanes*config.warps
   require(capacity<=255)
@@ -96,6 +96,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val sharedConfig=shared
   private val payloadConfig=payload
   val io=IO(new Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val draw=Flipped(Decoupled(new VertexShaderDraw(p)))
     val out=Decoupled(new ShadedVertexRecord(p))
     val completion=Decoupled(new VertexShaderCompletion)
@@ -107,7 +108,8 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   })
   private val input=Module(new VertexInputFetcher(config,p.input))
   private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None))))
-  private val texture=Module(new NativeShaderTextureUnit(config,stage=0))
+  private val texture=Module(new NativeShaderTextureUnit(config,stage=0,groupedTexture=groupedTexture))
+  if(groupedTexture){io.grouped.get <> texture.io.grouped.get}
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))
   private val metadata=Module(new L2SramArray(metaDepth,128,useSramBlackBoxes))
   private val cache=Module(new L2SramArray(cacheDepth,512,useSramBlackBoxes))
@@ -208,7 +210,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   texture.io.memoryResponse.bits:=io.memoryResponse.bits;texture.io.memoryResponse.bits.transactionId:=tag-2.U
   io.memoryResponse.ready:=Mux(tag===0.U,input.io.memoryResponse.ready,Mux(tag===1.U,fallbackResponse.ready,texture.io.memoryResponse.ready))
 
-  private val texturePending=RegInit(0.U(3.W));private val textureInstructions=RegInit(0.U(3.W))
+  private val texturePending=RegInit(0.U(3.W));private val textureInstructions=RegInit(0.U((if(groupedTexture)math.max(1,log2Ceil(config.warps+1))else 3).W))
   private val textureRequestFire=texture.io.memoryRequest.fire
   private val textureResponseFire=texture.io.memoryResponse.fire
   texturePending:=texturePending+textureRequestFire.asUInt-textureResponseFire.asUInt

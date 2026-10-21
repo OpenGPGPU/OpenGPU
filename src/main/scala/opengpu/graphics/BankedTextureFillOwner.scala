@@ -14,7 +14,7 @@ class BankedTextureFillRequest(cachePolicyInput: Boolean=false) extends Bundle {
   val tag = UInt(32.W)
   val noCache = if(cachePolicyInput) Some(Bool()) else None
 }
-class BankedTextureFillResult(forwardData: Boolean = false) extends Bundle {
+class BankedTextureFillResult(forwardData: Boolean = false, readCountOutput: Boolean = false) extends Bundle {
   val identity = new GraphicsWorkIdentity
   val textureKey = UInt(64.W)
   val address = UInt(32.W)
@@ -26,6 +26,8 @@ class BankedTextureFillResult(forwardData: Boolean = false) extends Bundle {
   val invalidated = Bool()
   /** Optional refill forwarding avoids cache-set conflict/retry livelock. */
   val data = if(forwardData) Some(UInt(512.W)) else None
+  /** True only for the waiter which caused an accepted physical line read. */
+  val physicalRead = if(readCountOutput) Some(Bool()) else None
 }
 
 /** Bounded physical line-fill ownership for the banked texture store.
@@ -37,7 +39,7 @@ class BankedTextureFillResult(forwardData: Boolean = false) extends Bundle {
   * every completion is consumed. Shared task integration must scope that drain.
   */
 class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, waiters: Int = 32,
-    forwardData: Boolean = false, cachePolicyInput: Boolean = false) extends Module {
+    forwardData: Boolean = false, cachePolicyInput: Boolean = false, readCountOutput: Boolean = false) extends Module {
   require(!cachePolicyInput || forwardData, "uncached fills require returned data forwarding")
   require(config.xLen == 32 && isPow2(fills) && fills >= 2 && fills <= 32)
   require(isPow2(waiters) && waiters >= fills && waiters <= 128)
@@ -45,7 +47,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   private val waiterBits = log2Ceil(waiters)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new BankedTextureFillRequest(cachePolicyInput)))
-    val out = Decoupled(new BankedTextureFillResult(forwardData))
+    val out = Decoupled(new BankedTextureFillResult(forwardData, readCountOutput))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, fills))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, fills)))
     val refill = Decoupled(new BankedTextureRefill)
@@ -72,24 +74,33 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
   private val alive = RegInit(VecInit(Seq.fill(waiters)(false.B)))
   private val waiterSlot = Reg(Vec(waiters, UInt(fillBits.W)))
   private val waiterTag = Reg(Vec(waiters, UInt(32.W)))
+  private val firstWaiter = if(readCountOutput) Some(Reg(Vec(waiters, Bool()))) else None
+  private val readIssued = if(readCountOutput) Some(Reg(Vec(fills, Bool()))) else None
   private val draining = RegInit(false.B)
   private val outputValid = RegInit(false.B)
-  private val output = Reg(new BankedTextureFillResult(forwardData))
+  private val output = Reg(new BankedTextureFillResult(forwardData, readCountOutput))
   private val outputSlot = Reg(UInt(fillBits.W))
   io.out.valid := outputValid
   io.out.bits := output
 
   private val matches = VecInit((0 until fills).map { s =>
-    // Keep the default elaboration's expression tree unchanged;the optional
-    // policy comparison belongs only to consumers with a page-policy port.
+    // A cache miss may wait behind arbitration until its refill has completed.
+    // Forwarding owners retain that successful cached line until all waiters
+    // retire, so a late miss can join without a second physical read. Owners
+    // which return only an installation acknowledgement cannot forward a line
+    // that another refill may already have evicted. Uncached reads and failed
+    // fills must always start a fresh transaction after completion.
+    val joinable = if(forwardData) states(s) =/= State.free &&
+      (states(s) =/= State.done || (installed(s) && !failed(s)))
+      else states(s) =/= State.free && states(s) =/= State.done
     if(cachePolicyInput) {
-    states(s) =/= State.free && states(s) =/= State.done && !stopped(s) && !noFill(s) &&
+    joinable && !stopped(s) && !noFill(s) &&
       keys(s).identity.asUInt === io.in.bits.identity.asUInt &&
       keys(s).textureKey === io.in.bits.textureKey &&
       keys(s).address === io.in.bits.address && keys(s).rowParity === io.in.bits.rowParity &&
       keys(s).noCache.get === io.in.bits.noCache.get
     } else {
-    states(s) =/= State.free && states(s) =/= State.done && !stopped(s) && !noFill(s) &&
+    joinable && !stopped(s) && !noFill(s) &&
       keys(s).identity.asUInt === io.in.bits.identity.asUInt &&
       keys(s).textureKey === io.in.bits.textureKey &&
       keys(s).address === io.in.bits.address && keys(s).rowParity === io.in.bits.rowParity
@@ -107,8 +118,10 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
     alive(nextWaiter) := true.B
     waiterSlot(nextWaiter) := selected
     waiterTag(nextWaiter) := io.in.bits.tag
+    firstWaiter.foreach(_(nextWaiter) := !matches.asUInt.orR)
     when(!matches.asUInt.orR) {
       states(selected) := State.queued
+      readIssued.foreach(_(selected) := false.B)
       keys(selected) := io.in.bits
       failed(selected) := false.B
       stopped(selected) := false.B
@@ -142,6 +155,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
     val slot = io.memoryRequest.bits.transactionId
     assert(states(slot) === State.offered, "texture memory offer lost its fill owner")
     states(slot) := State.pending
+    readIssued.foreach(_(slot) := true.B)
   }
   private val responseSlot = io.memoryResponse.bits.transactionId
   io.memoryResponse.ready := states(responseSlot) === State.pending
@@ -233,6 +247,7 @@ class BankedTextureFillOwner(config: GpuConfig = GpuConfig(), fills: Int = 16, w
     output.address := keys(slot).address
     output.rowParity := keys(slot).rowParity
     output.tag := waiterTag(waiter)
+    output.physicalRead.foreach(_ := firstWaiter.get(waiter) && readIssued.get(slot))
     output.fault := failed(slot)
     output.cancelled := stopped(slot) || io.cancel
     output.invalidated := invalidated(slot) || noFill(slot) || io.invalidate

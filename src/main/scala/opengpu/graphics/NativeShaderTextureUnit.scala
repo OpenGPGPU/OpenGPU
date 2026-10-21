@@ -8,12 +8,8 @@ import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 
-/** One native task's legacy sampling and typed component-fetch execution.
-  * One instruction owns this endpoint through retirement, so the existing
-  * two external line slots can be reused without widening enclosing fabrics.
-  */
-class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends Module {
-  val io=IO(new Bundle {
+class NativeShaderTextureIO(config: GpuConfig,groupedTexture: Boolean=false) extends Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val in=Flipped(Decoupled(new ScalarIssuedInstruction(config)));val vectorIn=Flipped(Decoupled(new VectorTextureRequest(config)))
     val commit=Decoupled(new ScalarCommitRequest(config));val vectorCommit=Decoupled(new VectorCommitRequest(config))
     val resources=Input(new ShaderTextureResources);val identity=Input(new GraphicsWorkIdentity)
@@ -23,12 +19,22 @@ class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extend
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,2));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,2)))
     val clearParameters=Input(Bool());val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
     val coordinateFault=Output(Bool());val responseFault=Output(Bool());val faultAddress=Output(UInt(32.W))
-  })
+}
+
+/** One native task's legacy sampling and typed component-fetch execution.
+  * Grouped floating instructions share one metadata engine and bounded lane
+  * contexts. Legacy execution remains exclusive. The two external line slots
+  * remain shared and no enclosing memory fabric is widened.
+  */
+class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupedTexture: Boolean=false,instructionSnapshots: Boolean=true,streamBurst: Boolean=true) extends Module {
+  val io=IO(new NativeShaderTextureIO(config,groupedTexture))
   private object Owner extends ChiselEnum {val idle,legacy,typed,floating=Value}
   private val owner=RegInit(Owner.idle);private val preferVector=RegInit(true.B)
   private val legacy=Module(new TexSampleUnit(config,coordinatePolicyInput=true));private val bridge=Module(new OmWordToLinePort(config,maxOutstanding=2))
-  private val floating=Module(new TextureSampleExecuteUnit(config,stage))
+  private val floating=Module(new TextureSampleExecuteUnit(config,stage,groupedTexture,instructionSnapshots,streamBurst))
+  if(groupedTexture){io.grouped.get <> floating.io.grouped.get}
   private val typed=Module(new TexelFetchExecuteUnit(config,stage));private val credits=Module(new TextureLineCreditAdapter(config))
+  private val ownerIdle=owner===Owner.idle || (groupedTexture.B && owner===Owner.floating && !floating.io.busy)
   legacy.io.mem.req<>bridge.io.in;legacy.io.mem.resp<>bridge.io.out
   credits.io.in.valid:=Mux(owner===Owner.floating,floating.io.memoryRequest.valid,owner===Owner.typed && typed.io.memoryRequest.valid)
   credits.io.in.bits:=Mux(owner===Owner.floating,floating.io.memoryRequest.bits,typed.io.memoryRequest.bits)
@@ -38,7 +44,7 @@ class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extend
   credits.io.out.ready:=Mux(owner===Owner.floating,floating.io.memoryResponse.ready,owner===Owner.typed && typed.io.memoryResponse.ready)
   floating.io.resources:=io.resources;floating.io.identity:=io.identity;floating.io.invalidate:=io.invalidate
   floating.io.cancel:=owner===Owner.floating && io.cancel;floating.io.clearParameters:=io.clearParameters
-  when(io.clearParameters){assert(owner===Owner.idle && !credits.io.busy,"native task reset must wait for all texture ownership")}
+  when(io.clearParameters){assert(ownerIdle && !credits.io.busy,"native task reset must wait for all texture ownership")}
   legacy.io.texFormat:=io.texFormat;legacy.io.texBase:=io.texBase;legacy.io.texWidth:=io.texWidth;legacy.io.texHeight:=io.texHeight
   legacy.io.wrapClamp:=io.wrapClamp;legacy.io.coordinatePolicy.get:=io.coordinatePolicy
   legacy.io.texMaxLevel:=io.texMaxLevel;legacy.io.lodBias:=io.lodBias;legacy.io.minLevel:=io.minLevel
@@ -47,18 +53,19 @@ class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extend
   typed.io.cancel:=owner===Owner.typed && io.cancel
   private val chooseVector=io.vectorIn.valid && (!io.in.valid || preferVector)
   private val resourceOwner=owner===Owner.typed || owner===Owner.floating
+  private val floatingAvailable=ownerIdle || (groupedTexture.B && owner===Owner.floating)
   private val scalarTyped=ShaderTextureFetchOpcode.scalar(io.in.bits.decode.instruction)
   private val vectorTyped=ShaderTextureFetchOpcode.vector(io.vectorIn.bits.issued.decode.instruction)
   private val scalarFloating=ShaderTextureSampleOpcode.scalar(io.in.bits.decode.instruction)
   private val vectorFloating=ShaderTextureSampleOpcode.vector(io.vectorIn.bits.issued.decode.instruction)
-  legacy.io.in.valid:=owner===Owner.idle && !io.clearParameters && !chooseVector && io.in.valid && !scalarTyped && !scalarFloating;legacy.io.in.bits:=io.in.bits
-  legacy.io.vectorIn.valid:=owner===Owner.idle && !io.clearParameters && chooseVector && io.vectorIn.valid && !vectorTyped && !vectorFloating;legacy.io.vectorIn.bits:=io.vectorIn.bits
-  typed.io.in.valid:=owner===Owner.idle && !io.clearParameters && !chooseVector && io.in.valid && scalarTyped;typed.io.in.bits:=io.in.bits
-  typed.io.vectorIn.valid:=owner===Owner.idle && !io.clearParameters && chooseVector && io.vectorIn.valid && vectorTyped;typed.io.vectorIn.bits:=io.vectorIn.bits
-  floating.io.in.valid:=owner===Owner.idle && !io.clearParameters && !chooseVector && io.in.valid && scalarFloating;floating.io.in.bits:=io.in.bits
-  floating.io.vectorIn.valid:=owner===Owner.idle && !io.clearParameters && chooseVector && io.vectorIn.valid && vectorFloating;floating.io.vectorIn.bits:=io.vectorIn.bits
-  io.in.ready:=owner===Owner.idle && !io.clearParameters && !chooseVector && Mux(scalarFloating,floating.io.in.ready,Mux(scalarTyped,typed.io.in.ready,legacy.io.in.ready))
-  io.vectorIn.ready:=owner===Owner.idle && !io.clearParameters && chooseVector && Mux(vectorFloating,floating.io.vectorIn.ready,Mux(vectorTyped,typed.io.vectorIn.ready,legacy.io.vectorIn.ready))
+  legacy.io.in.valid:=ownerIdle && !io.clearParameters && !chooseVector && io.in.valid && !scalarTyped && !scalarFloating;legacy.io.in.bits:=io.in.bits
+  legacy.io.vectorIn.valid:=ownerIdle && !io.clearParameters && chooseVector && io.vectorIn.valid && !vectorTyped && !vectorFloating;legacy.io.vectorIn.bits:=io.vectorIn.bits
+  typed.io.in.valid:=ownerIdle && !io.clearParameters && !chooseVector && io.in.valid && scalarTyped;typed.io.in.bits:=io.in.bits
+  typed.io.vectorIn.valid:=ownerIdle && !io.clearParameters && chooseVector && io.vectorIn.valid && vectorTyped;typed.io.vectorIn.bits:=io.vectorIn.bits
+  floating.io.in.valid:=floatingAvailable && !io.clearParameters && !chooseVector && io.in.valid && scalarFloating;floating.io.in.bits:=io.in.bits
+  floating.io.vectorIn.valid:=floatingAvailable && !io.clearParameters && chooseVector && io.vectorIn.valid && vectorFloating;floating.io.vectorIn.bits:=io.vectorIn.bits
+  io.in.ready:= !io.clearParameters && !chooseVector && Mux(scalarFloating,floatingAvailable && floating.io.in.ready,ownerIdle && Mux(scalarTyped,typed.io.in.ready,legacy.io.in.ready))
+  io.vectorIn.ready:= !io.clearParameters && chooseVector && Mux(vectorFloating,floatingAvailable && floating.io.vectorIn.ready,ownerIdle && Mux(vectorTyped,typed.io.vectorIn.ready,legacy.io.vectorIn.ready))
   when(io.in.fire){owner:=Mux(scalarFloating,Owner.floating,Mux(scalarTyped,Owner.typed,Owner.legacy));preferVector:=true.B}
   when(io.vectorIn.fire){owner:=Mux(vectorFloating,Owner.floating,Mux(vectorTyped,Owner.typed,Owner.legacy));preferVector:=false.B}
   io.commit.valid:=Mux(owner===Owner.floating,floating.io.commit.valid,Mux(owner===Owner.typed,typed.io.commit.valid,owner===Owner.legacy && legacy.io.commit.valid))
@@ -79,9 +86,18 @@ class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extend
     (owner===Owner.typed && (typed.io.commit.valid || typed.io.vectorCommit.valid) && typed.io.status=/=0.U) ||
     (owner===Owner.floating && (floating.io.commit.valid || floating.io.vectorCommit.valid) && floating.io.status=/=0.U)
   io.faultAddress:=Mux(owner===Owner.floating,floating.io.faultAddress,Mux(owner===Owner.typed,typed.io.faultAddress,bridge.io.out.bits.addr))
-  io.busy:=owner=/=Owner.idle
+  io.busy:= !ownerIdle
   when(io.commit.fire || io.vectorCommit.fire){
-    assert(!credits.io.busy && !io.memoryRequest.valid,"native texture retirement abandoned external line ownership")
-    owner:=Owner.idle
+    if(groupedTexture){when(owner=/=Owner.floating){
+      assert(!credits.io.busy && !io.memoryRequest.valid,"native texture retirement abandoned external line ownership")
+      owner:=Owner.idle
+    }}else{
+      assert(!credits.io.busy && !io.memoryRequest.valid,"native texture retirement abandoned external line ownership")
+      owner:=Owner.idle
+    }
   }
+  if(groupedTexture){when(owner===Owner.floating && !floating.io.busy && !io.in.fire && !io.vectorIn.fire){
+    assert(!credits.io.busy && !io.memoryRequest.valid,"native floating drain abandoned external line ownership")
+    owner:=Owner.idle
+  }}
 }

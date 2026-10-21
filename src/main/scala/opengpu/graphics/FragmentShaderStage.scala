@@ -86,7 +86,7 @@ class FragmentShaderCompletion extends Bundle {
   */
 class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=FragmentShaderConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),g: GraphicsConfig=GraphicsConfig(),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
   private val capacity=config.lanes*config.warps;private val quadCapacity=capacity/4
   require(config.xLen==32 && config.lanes>=4 && config.lanes%4==0 && capacity<=255)
   private val stride=capacity*4;private val countWidth=log2Ceil(capacity+1)
@@ -94,6 +94,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val metaDepth=1<<log2Ceil(quadCapacity*metaRows);private val cacheDepth=1<<log2Ceil(p.maxOutputWords*8)
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val draw=Flipped(Decoupled(new FragmentShaderDraw(p)))
     val in=Flipped(Decoupled(new Fp32RasterizedQuad(p.vertices,g)));val inputEnd=Flipped(Decoupled(new FragmentInputCompletion))
     val out=Decoupled(new FragmentShaderQuad(p,g));val completion=Decoupled(new FragmentShaderCompletion)
@@ -130,7 +131,8 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val invalidateOffered=RegInit(false.B);private val invalidatePending=RegInit(false.B);private val launchOffered=RegInit(false.B);private val kernelActive=RegInit(false.B);private val kernelDone=RegInit(false.B)
   private val memOffered=RegInit(false.B);private val memPending=RegInit(false.B);private val memRequest=Reg(new ComputeMemoryRequest(config,64,1))
   private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),helperInvocations=true))
-  private val texture=Module(new NativeShaderTextureUnit(config,stage=1))
+  private val texture=Module(new NativeShaderTextureUnit(config,stage=1,groupedTexture=groupedTexture))
+  if(groupedTexture){io.grouped.get <> texture.io.grouped.get}
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))
   private val metadataBanks=Seq.fill((metaDepth+255)/256)(Module(new L2SramArray(math.min(256,metaDepth),64,useSramBlackBoxes)))
   private val metadataRead=WireDefault(false.B);private val metadataWrite=WireDefault(false.B)
@@ -183,7 +185,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   shader.io.globalAtomicRequest.ready:=true.B;shader.io.globalAtomicResponse.valid:=false.B;shader.io.globalAtomicResponse.bits:=0.U.asTypeOf(shader.io.globalAtomicResponse.bits)
   shader.io.simtBranch.valid:=false.B;shader.io.simtBranch.bits:=0.U.asTypeOf(shader.io.simtBranch.bits)
 
-  private val texturePending=RegInit(0.U(3.W));private val textureInstructions=RegInit(0.U(3.W))
+  private val texturePending=RegInit(0.U(3.W));private val textureInstructions=RegInit(0.U((if(groupedTexture)math.max(1,log2Ceil(config.warps+1))else 3).W))
   texturePending:=texturePending+texture.io.memoryRequest.fire.asUInt-texture.io.memoryResponse.fire.asUInt
   texture.io.in<>shader.io.texSample;texture.io.vectorIn<>shader.io.vectorTexSample
   private val dropTexture=shader.io.completion.valid && (status=/=0.U || externalCancel || !shader.io.completion.bits.success)

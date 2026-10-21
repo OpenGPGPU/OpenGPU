@@ -1,0 +1,48 @@
+{
+  "date": "2026-10-21",
+  "status": "passed",
+  "scope": "Native command transport/capability MMIO, unchanged auxiliary permission/root fabric and full typed/binned/product elaboration. Actual composed capture-event AXI runtime is not qualified by this run.",
+  "base_commit": "ee95a5bb5f8c8c9f6bc28d686a478d9dbfc24620",
+  "source_files": 914,
+  "source_manifest": ".artifacts/mobile-primitive-query-native-v1-source.json",
+  "source_sha256": "97523a46ee8352359caeaa1344746ffa13f50ae722fbee083a8c867e385bce7e",
+  "tests": {
+    "distinct": 31,
+    "controller": 5,
+    "primitive_query_transport": 4,
+    "primitive_query_capability_AXI": 2,
+    "feedback_transport": 3,
+    "visibility_transport": 3,
+    "generic_router": 10,
+    "extended_opcode_MMIO": 2,
+    "auxiliary_translation": 2,
+    "result": ".artifacts/mobile-primitive-query-native-v1-result.json"
+  },
+  "emissions": {
+    "typed": true,
+    "binned": true,
+    "product": true,
+    "scope": "Structural elaboration only, full product lanes/warps; no composed runtime/timing claim."
+  },
+  "abi": {
+    "generated_check": true,
+    "C11": true,
+    "C++17": true,
+    "struct_bytes": 64,
+    "offset_assertions": 10,
+    "result": ".artifacts/mobile-primitive-query-native-v1-c-abi-result.json"
+  },
+  "standalone_synthesis": {
+    "carried_from": "docs/performance/mobile-primitive-query-component-2026-10-21.json",
+    "engine_source_unchanged": true,
+    "core_slack_ps": 143.195,
+    "io_slack_ps": 384.931,
+    "scope": "Standalone controller only; no whole-host synthesis claim."
+  },
+  "open_work": [
+    "actual typed/binned capture-event AXI runtime",
+    "query-record reset/VM native runtime",
+    "paused/inactive/error capture coverage",
+    "composed budgets and remaining H0-H8 requirements"
+  ]
+}

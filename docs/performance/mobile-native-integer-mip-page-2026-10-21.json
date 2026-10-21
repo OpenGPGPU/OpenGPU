@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "date": "2026-10-21",
+  "status": "same_source_native_mip_page_probe_before_after_passes_and_actual_AXI_old_assertion_failure_reproduced",
+  "native_probe": {
+    "source": {
+      "commit": "1d8d67c235008d8aadb16af4ee5e3e3c82675ad8",
+      "source_files": 803,
+      "manifest_sha256": "c15f517f250a1fe667be80d8611ca09263561485640509089a04c1ed5babf1c3",
+      "archive_sha256": "0b275316f9415b7b615e66bc09cd4d846301991b0c96d83c251c4dee458eae12",
+      "git_archive_and_worktree_exact": true
+    },
+    "negative": {
+      "returncode": 1,
+      "expected_failure": true,
+      "source_unchanged": true,
+      "elapsed_seconds": 105.34078083280474,
+      "commit": "1d8d67c235008d8aadb16af4ee5e3e3c82675ad8",
+      "source_files": 803,
+      "manifest_sha256": "c15f517f250a1fe667be80d8611ca09263561485640509089a04c1ed5babf1c3",
+      "archive_sha256": "0b275316f9415b7b615e66bc09cd4d846301991b0c96d83c251c4dee458eae12",
+      "git_archive_and_worktree_exact": true
+    },
+    "positive": {
+      "returncode": 0,
+      "expected_failure": false,
+      "source_unchanged": true,
+      "elapsed_seconds": 23.774956041947007,
+      "commit": "1d8d67c235008d8aadb16af4ee5e3e3c82675ad8",
+      "source_files": 803,
+      "manifest_sha256": "c15f517f250a1fe667be80d8611ca09263561485640509089a04c1ed5babf1c3",
+      "archive_sha256": "0b275316f9415b7b615e66bc09cd4d846301991b0c96d83c251c4dee458eae12",
+      "git_archive_and_worktree_exact": true
+    },
+    "negative_expected_failed_tests": 1,
+    "positive_passed_tests": 2,
+    "unit": 31,
+    "image_base_level": 1,
+    "shader_LOD": 0,
+    "table_origin_VA_page": "0x12000",
+    "selected_descriptor_VA_page": "0x13000",
+    "origin_page_not_read": true,
+    "sample_value_healthy": true,
+    "handle_state": "35270_terminal_collected"
+  },
+  "actual_AXI_negative": {
+    "result": {
+      "phase": "negative",
+      "returncode": 1,
+      "expected_failure": true,
+      "source_unchanged": true,
+      "elapsed_seconds": 135.57749954098836,
+      "commit": "87a40d849a9904816b423b88061e02962c7be8ad",
+      "source_files": 803,
+      "manifest_sha256": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+      "archive_sha256": "7778d322fcb746ea1e1f921107909a5bae312d96f9404d5f3cd9fabd56757830",
+      "git_archive_and_worktree_exact": true,
+      "changed_inputs_only": [
+        "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+        "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala"
+      ],
+      "all_production_driver_ABI_and_shared_CU_test_inputs_exact": true,
+      "runner_pid": 38243,
+      "started_utc": "2026-10-20T19:19:24.900129+00:00"
+    },
+    "source": {
+      "commit": "87a40d849a9904816b423b88061e02962c7be8ad",
+      "source_files": 803,
+      "manifest_sha256": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+      "archive_sha256": "7778d322fcb746ea1e1f921107909a5bae312d96f9404d5f3cd9fabd56757830",
+      "git_archive_and_worktree_exact": true,
+      "changed_inputs_only": [
+        "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+        "src/test/scala/opengpu/graphics/TextureSampleExecuteUnitSpec.scala"
+      ],
+      "all_production_driver_ABI_and_shared_CU_test_inputs_exact": true,
+      "runner_pid": 38243,
+      "started_utc": "2026-10-20T19:19:24.900129+00:00"
+    },
+    "payload_mode": "local",
+    "expected_failed_tests": 1,
+    "frame_render_and_guard_check_completed_before_old_page_assertion": true,
+    "old_vertex_level_table_physical_page": "0x912000",
+    "expected_assertion": "native typed descriptor page not read:912000",
+    "production_RTL_unchanged": true,
+    "reason": "unit31 relative base1 selects the next GXL1 page;requiring the origin page rejects a healthy image."
+  },
+  "AXI_positive_and_full": {
+    "session": 46372,
+    "state": "still_running_when_recorded",
+    "directed_frames_per_mode": 2,
+    "full_frames_per_mode": 74,
+    "no_pending_result_claimed": true
+  },
+  "artifacts_sha256": {
+    ".artifacts/mobile-native-integer-mip-page-v1-negative.log": "0b5d7d30194930be91fde75710df62f3fc3d16c12f8438bfe503a085dbab4575",
+    ".artifacts/mobile-native-integer-mip-page-v1-positive.log": "37c62dbdde49c547f47746f3f092de4ba651dfa2a229b3ef65da31f78eacb3ce",
+    ".artifacts/mobile-native-integer-mip-page-v1-source.json": "c15f517f250a1fe667be80d8611ca09263561485640509089a04c1ed5babf1c3",
+    ".artifacts/mobile-native-integer-mip-page-v1-source.tar.gz": "0b275316f9415b7b615e66bc09cd4d846301991b0c96d83c251c4dee458eae12",
+    ".artifacts/mobile-native-integer-mip-page-v2-negative.log": "05bacd2701f1b095b1ceeb376cd77396cf6ce14b77836380c1fa5062c25fcc2f",
+    ".artifacts/mobile-native-integer-mip-page-v2-source.json": "325a2e7bf335bc0cf3a0a74c09bffa0f8bdb16f4f6a51c04398de9f050a1c687",
+    ".artifacts/mobile-native-integer-mip-page-v2-source.tar.gz": "7778d322fcb746ea1e1f921107909a5bae312d96f9404d5f3cd9fabd56757830"
+  },
+  "remaining": [
+    "Collect corrected actual AXI directed/full cases",
+    "Size/projective and banked texture throughput/coherence",
+    "Full H0-H8 hardware requirements remain open"
+  ],
+  "historical_checkpoint": true,
+  "archived_from_commit": "0c8ca2d509f2b87662300af98e49b360bfdc598c",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

@@ -1,0 +1,438 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Complete focused native typed AXI polygon-offset matrix over five depth formats, three sample modes and both signs on local/global two-CU profiles",
+  "based_on_commit": "c25c77f",
+  "source_files": 638,
+  "source_manifest": {
+    "path": ".artifacts/mobile-polygon-depth-formats-source-v2.json",
+    "sha256": "402da131b69b5784b03e25ae8266859db3a64321f4ad08f56f6c6783ea764f95"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-polygon-depth-formats-source-v2.tar.gz",
+    "sha256": "59efab2b56153bfa66f759439a6309e1c112764566df252878fbb3a12ed2ec89"
+  },
+  "result": {
+    "path": ".artifacts/mobile-polygon-depth-formats-controls-v2-result.json",
+    "sha256": "fcbdd5ea109daa955a8e347a4d44fa9feb3a96107489de3a94a744f6fe9f9629"
+  },
+  "log": {
+    "path": ".artifacts/mobile-polygon-depth-formats-controls-v2.log",
+    "sha256": "2abd50cdff3fa718dc892af4f9e252e961b37daf349191bdf874ce23f39ab6a7"
+  },
+  "checks": 2,
+  "suites": 1,
+  "frames": 60,
+  "live_draws": 180,
+  "source_unchanged": true,
+  "production_identical_to_before_matrix": true,
+  "format_ids": {
+    "D16": 1,
+    "D24": 2,
+    "D32F": 3,
+    "D24S8": 4,
+    "D32FS8": 5
+  },
+  "sample_modes": [
+    0,
+    1,
+    2
+  ],
+  "signs": [
+    1,
+    -1
+  ],
+  "profiles": [
+    "local",
+    "global"
+  ],
+  "covered_combinations": [
+    {
+      "local": true,
+      "format": 1,
+      "mode": 0,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 1,
+      "mode": 0,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 1,
+      "mode": 1,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 1,
+      "mode": 1,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 1,
+      "mode": 2,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 1,
+      "mode": 2,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 2,
+      "mode": 0,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 2,
+      "mode": 0,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 2,
+      "mode": 1,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 2,
+      "mode": 1,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 2,
+      "mode": 2,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 2,
+      "mode": 2,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 3,
+      "mode": 0,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 3,
+      "mode": 0,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 3,
+      "mode": 1,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 3,
+      "mode": 1,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 3,
+      "mode": 2,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 3,
+      "mode": 2,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 4,
+      "mode": 0,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 4,
+      "mode": 0,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 4,
+      "mode": 1,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 4,
+      "mode": 1,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 4,
+      "mode": 2,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 4,
+      "mode": 2,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 5,
+      "mode": 0,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 5,
+      "mode": 0,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 5,
+      "mode": 1,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 5,
+      "mode": 1,
+      "sign": -1
+    },
+    {
+      "local": true,
+      "format": 5,
+      "mode": 2,
+      "sign": 1
+    },
+    {
+      "local": true,
+      "format": 5,
+      "mode": 2,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 1,
+      "mode": 0,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 1,
+      "mode": 0,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 1,
+      "mode": 1,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 1,
+      "mode": 1,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 1,
+      "mode": 2,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 1,
+      "mode": 2,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 2,
+      "mode": 0,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 2,
+      "mode": 0,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 2,
+      "mode": 1,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 2,
+      "mode": 1,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 2,
+      "mode": 2,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 2,
+      "mode": 2,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 3,
+      "mode": 0,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 3,
+      "mode": 0,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 3,
+      "mode": 1,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 3,
+      "mode": 1,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 3,
+      "mode": 2,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 3,
+      "mode": 2,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 4,
+      "mode": 0,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 4,
+      "mode": 0,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 4,
+      "mode": 1,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 4,
+      "mode": 1,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 4,
+      "mode": 2,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 4,
+      "mode": 2,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 5,
+      "mode": 0,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 5,
+      "mode": 0,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 5,
+      "mode": 1,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 5,
+      "mode": 1,
+      "sign": -1
+    },
+    {
+      "local": false,
+      "format": 5,
+      "mode": 2,
+      "sign": 1
+    },
+    {
+      "local": false,
+      "format": 5,
+      "mode": 2,
+      "sign": -1
+    }
+  ],
+  "before": {
+    "result": {
+      "path": ".artifacts/mobile-polygon-depth-formats-controls-v1-result.json",
+      "sha256": "c3e5187c71344f2226d151bc5ddbcbd12101f1e8461809d6541e5fc87efc0df7"
+    },
+    "log": {
+      "path": ".artifacts/mobile-polygon-depth-formats-controls-v1.log",
+      "sha256": "4d48bcfacb4355c2b27f40c5050380f83926579bd2868dde5990c3dcf5a5abb5"
+    },
+    "passed_tests": 0,
+    "failed_tests": 2,
+    "completed_frames": 56,
+    "fixture_correction": "Reserve 2048 bytes for the full 8x8x4 D32FS8 depth tile and shift color offsets. All other format/sample layouts retain their old addresses; production hardware is unchanged."
+  },
+  "coverage": [
+    "Each local/global profile uses two actual CUs, 30 frames and 90 triangle/line/point draws. Signed factor/units bind to the selected immutable depth format through native GTD1/Sv32.",
+    "All four MRT source/resolve formats and exact format-specific depth backing, sample-zero depth resolves, stencil/padding and image guards pass. Shader fragCoord.z and mixed centroid/center/flat gradients remain observable.",
+    "Fragment versions 3/4, all three sample modes, fresh image/vertex allocations, uniform tails, prewarmed cached consumers, held-completion VM protection and drained reservations pass."
+  ],
+  "limitations": [
+    "This source predates the anchored-depth/slope corrections and raster-discovery changes. It does not qualify the later combined hardware.",
+    "The controls exercise one small W=1 geometry and nonzero factor/units. They do not prove the raster minimum-resolvable-difference or every clipping/perspective/format interaction.",
+    "Full combined fault/reset, numeric precision, representative rates/budgets, new synthesis and H0-H8 remain open. PPA stays synthesis only."
+  ],
+  "historical_checkpoint": true,
+  "archived_from_commit": "fafa250d46911776c0b7b235a109f437b9eae045",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

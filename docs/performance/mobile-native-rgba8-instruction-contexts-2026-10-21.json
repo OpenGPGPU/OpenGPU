@@ -1,0 +1,54 @@
+{
+  "base_commit": "63faa7fa4c13c3e1154fdfa87a36b80e584fc78a",
+  "source_files": 861,
+  "manifest_sha256": "55068092b5f8fabe097f5cf6183d110d60bba84aad7e56221615a641cf16061b",
+  "archive_sha256": "aa11e34344c1b8f1bc77da614842b7858d392b4aa27a67c07b964c60005db18d",
+  "archive_and_worktree_exact": true,
+  "git_archive_and_worktree_exact": false,
+  "modified_inputs": [
+    "src/main/scala/opengpu/graphics/NativeShaderTextureUnit.scala",
+    "src/main/scala/opengpu/graphics/TextureSampleExecuteUnit.scala",
+    "src/test/scala/opengpu/graphics/NativeTextureLaneStreamSpec.scala"
+  ],
+  "added_inputs": [
+    "src/main/scala/opengpu/graphics/NativeTextureInstructionStream.scala",
+    "src/test/scala/opengpu/graphics/NativeTextureInstructionStreamSpec.scala"
+  ],
+  "scope": "Up to four lightweight native vector instruction contexts share one metadata engine and the existing four public credits, with warp isolation, disjoint private tags, fault-atomic retirement, immutable public writeback and general remaining-lane resume on invalidation. Physical cache/fill/data/PTW budgets unchanged. Sustained II1 and latest whole-host runtime/timing remain unqualified.",
+  "status": "All37 checks and six complete endpoint/stage emissions pass on861 inputs.",
+  "contexts": 4,
+  "contexts_bounded_by_warps": true,
+  "metadata_engines": 1,
+  "public_pool_credits_per_client": 4,
+  "cache_bytes_per_cluster": 8192,
+  "data_ids_per_cluster": 16,
+  "ptw_ids_per_cluster": 4,
+  "isolated_tests_passed": 3,
+  "native_tests_planned": 11,
+  "general_compatibility_tests_planned": 23,
+  "emissions_planned": 6,
+  "ppa_policy": "synthesis only",
+  "sustained_native_II1_qualified": false,
+  "evidence": [
+    ".artifacts/mobile-native-rgba8-instruction-contexts-v1-contexts-result.json",
+    ".artifacts/mobile-native-rgba8-instruction-contexts-v1-source-proof.json"
+  ],
+  "whole_host_reset_parent_evidence": ".artifacts/mobile-native-rgba8-host-reset-v1-axi-result.json",
+  "whole_host_reset_parent_source_files": 858,
+  "parent_reset_does_not_qualify_current_source": true,
+  "remaining": [
+    "complete native overlap/fallback and emission validation",
+    "fresh final-source typed/binned runtime and MMIO reset",
+    "sustained native issue and wider modes",
+    "full composed renderer synthesis",
+    "720p workload/rate and SRAM-budget closure",
+    "remaining H0-H8 requirements"
+  ],
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production.",
+  "native_tests_passed": 11,
+  "general_compatibility_tests_passed": 23,
+  "emissions_passed": 6,
+  "rtl_proof": ".artifacts/mobile-native-rgba8-instruction-contexts-v1-RTL-proof.json",
+  "source_scoped_typed_axi_frames_passed": 22,
+  "remaining_host_cases": "Binned4 and four MMIO-reset recovery frames active on the861-input source."
+}

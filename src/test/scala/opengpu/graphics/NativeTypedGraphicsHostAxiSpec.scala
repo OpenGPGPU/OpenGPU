@@ -9,11 +9,18 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
+  protected def visibilityQueries: Boolean=false
+  protected def transformFeedback: Boolean=false
+  protected def transformFeedbackRecovery: Boolean=false
+  protected def groupedTexture: Boolean=false
+  protected def nativeComputeUnits: Int=2
+  protected def capturedFloatingFormats: Seq[Int]=0 until 64
+  protected def capturedDefaultFormat: Int=35
   private val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
   private val graphics=GraphicsConfig(screenWidth=8,screenHeight=8)
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);private val f=FragmentShaderConfig(2,4)
   private def profile(local: Boolean): NativeTypedGraphicsConfig=NativeTypedGraphicsConfig(p,f,
-    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=2,ports=4))else None)
+    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=2,ports=2+nativeComputeUnits))else None,groupedTexture=groupedTexture,transformFeedback=transformFeedback)
   private def addi(rd: Int,rs: Int,n: Int): BigInt=(BigInt(n&4095)<<20)|(BigInt(rs)<<15)|(BigInt(rd)<<7)|0x13
   private def vm(base: Int,v: Int,write: Boolean): BigInt=(BigInt(1)<<25)|(BigInt(base)<<15)|(BigInt(6)<<12)|(BigInt(v)<<7)|(if(write)0x27 else 7)
   private val vertexProgram={
@@ -139,14 +146,14 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       }
     }
     def verifyDraws(mode: Int,centroid: Boolean=false,polygon: Boolean=false,sign: Int=1,
-        facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0): Unit={
+        facing: Boolean=false,ccw: Boolean=true,reverse: Boolean=false,cull: Int=0,primitiveCount: Int=3): Unit={
       val count=1<<mode;val colors=Array.fill(4,4,count)(Vector.empty[BigInt])
       val depths=Array.fill(4,4,count)(TypedDepthReference.encode(Fp32ViewportReference.fp(1),boundDepthFormat))
       val stencils=Array.fill(4,4,count)(5)
       val coords=Vector(Vector((0,0),(1024,0),(0,1024)),Vector((256,512),(768,512),(0,0)),Vector((256,256),(0,0),(0,0)))
       val settings=TriangleRasterReference.Settings(width=4,height=4,mode=mode,maxX=4,maxY=4,ccw=ccw,cull=cull)
       val primitiveQuads=Array.fill(3)(0)
-      for(n<-0 until 3){val kind=Seq(2,1,0)(n)
+      for(n<-0 until primitiveCount){val kind=Seq(2,1,0)(n)
         val originalDepth=positionSets(n).map(v=>Fp32ViewportReference.fp(v(2)*0.5+0.5)).padTo(3,BigInt(0))
         val zs=if(n==0 && reverse)originalDepth.reverse else originalDepth
         val coordinates=if(n==0 && reverse)coords(n).reverse else coords(n)
@@ -220,18 +227,21 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       (0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(base+b,0))<<(8*b)))}
     def write(a: BigInt,data: BigInt,mask: BigInt): Unit={writes+=a
       for(b<-0 until 64 if mask.testBit(b))memory(a+b)=((data>>(8*b))&255).toInt}
-    def submit(id: Int=23): Unit={
+    val queryProbe=if(visibilityQueries)Some(new NativeVisibilityQueryHostProbe(d,memory,read,write))else None
+    def submit(id: Int=23,feedback: Option[(NativeTransformFeedbackHostProbe,Boolean)]=None,feedbackScope: ()=>Unit=()=>()): Unit={
+      queryProbe.foreach(_.beforeFrame())
       axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
       axiWrite(d,GpuCommandMmioRegs.SOURCE,0x410000);axiWrite(d,GpuCommandMmioRegs.DESTINATION,0x410000+512)
-      axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+      axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);feedback.foreach{case(p,discard)=>p.stageRender(discard)};feedbackScope();axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
     }
     def run(status: Int=0,id: Int=23,readFault: BigInt=>Boolean=_=>false,
       writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false): Unit={
       serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=300000,writeFault=writeFault)(write){d.io.m_irq.peek().litToBoolean}
       val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
-      assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),s"native AXI result=${result.toString(16)}")
+      assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),s"native AXI result=${result.toString(16)} sharedGroups=${d.io.performance.get.nativeTextureGroups.peek().litValue} sharedReads=${d.io.performance.get.nativeTextureDataReads.map(_.peek().litValue)} sharedWalks=${d.io.performance.get.nativeTexturePageWalks.map(_.peek().litValue)} recentReads=${reads.takeRight(24).map(_.toString(16)).mkString(",")}")
+      queryProbe.foreach(_.completed(status))
     }
-    def pop(): Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)}
+    def pop(): Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3);queryProbe.foreach(_.afterFrame())}
     def verifyClear(): Unit={
       val expected=mutable.Map.empty[BigInt,Int]++initial
       for(v<-views;y<-0 until 4;x<-0 until 4;s<-0 until v.samples){val raw=if(v.kind%2==0)TypedColorReference.encode(names(v.color),clear)._1 else BigInt("05ffffff",16)
@@ -241,10 +251,116 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       assert(writes.exists(_>=0x1000000) && !reads.exists(a=>a>=0x400000 && a<0x800000),"virtual descriptors must not escape onto physical AXI")
     }
   }
-  it should "submit a translated native clear pass and publish trusted physical source and resolve views over the production AXI host" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+  if(transformFeedback && !transformFeedbackRecovery)for(local<-Seq(true,false))
+  it should s"capture raw native triangle output through translated feedback stores with exact raster and discard images local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(false)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
+      initialize(d);val image=new Image(d)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      val feedback=new NativeTransformFeedbackHostProbe(d,image.memory,image.read,image.write)
+      for(discard<-Seq(false,true)){
+        image.shaderDraws(0,centroid=true,version=3);image.word(image.pa(0x410000+12*4),1)
+        if(!discard)image.queryProbe.foreach{q=>q.beforeFrame();q.completed(0,false);q.afterFrame()}
+        feedback.begin();image.submit(if(discard)122 else 121,Some(feedback->discard))
+        image.run(id=if(discard)122 else 121)
+        image.queryProbe.foreach(_.completed(0,!discard))
+        if(discard)image.verifyClear()else image.verifyDraws(0,centroid=true,primitiveCount=1)
+        image.pop()
+        val positions=Vector(Vector(-1.0,-1.0,-0.5,1.0),Vector(1.0,-1.0,0.5,1.0),Vector(-1.0,1.0,0.0,1.0))
+        val expected=positions.indices.flatMap(i=>positions(i).map(Fp32ViewportReference.fp)++image.colorWords(0,i,true))
+        feedback.end(expected,1,3)
+      }
+      feedback.report("TYPED",local)
+    }
+  }
+  if(transformFeedbackRecovery)for(local<-Seq(true,false))
+  it should s"drain native feedback permission and store faults without losing peer objects and recover from accepted-store reset local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
+      initialize(d);val image=new Image(d)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
+      val a=new NativeTransformFeedbackRecoveryProbe(d,image.memory,image.read,image.write,0)
+      val b=new NativeTransformFeedbackRecoveryProbe(d,image.memory,image.read,image.write,1)
+      var frames=0;var resetCuts=0
+      def frame(preserve: Boolean=false): Unit={
+        val saved=if(preserve)image.memory.filter{case(address,_)=>
+          (address>=0x18400000 && address<0x18401000) || (address>=0x18800000 && address<0x18810000) ||
+          (address>=0x30304 && address<0x3030c)}.toMap else Map.empty[BigInt,Int]
+        image.shaderDraws(0,centroid=true,version=3);image.word(image.pa(0x410000+12*4),1)
+        image.memory++=saved
+      }
+      def flush(): Unit=axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+      def payloadIdle(): Unit=if(local){val perf=d.io.performance.get
+        perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+      }
+      def expected: Seq[BigInt]={
+        val positions=Vector(Vector(-1.0,-1.0,-0.5,1.0),Vector(1.0,-1.0,0.5,1.0),Vector(-1.0,1.0,0.0,1.0))
+        positions.indices.flatMap(i=>positions(i).map(Fp32ViewportReference.fp)++image.colorWords(0,i,true))
+      }
+      def finishQuery(status: Int,active: NativeTransformFeedbackRecoveryProbe): Unit={
+        // Queries own contextA. A healthy peer-context draw contributes no samples.
+        image.queryProbe.foreach(_.completed(status,status==0 && active.context==a.context))
+      }
+      def healthyPeer(id: Int): Unit={
+        frame(true);image.submit(id,feedbackScope=()=>b.stageRender());image.run(id=id)
+        finishQuery(0,b);image.verifyDraws(0,centroid=true,primitiveCount=1);image.pop()
+        b.end(expected);payloadIdle();frames+=1
+      }
+      frame();image.queryProbe.foreach{q=>q.beforeFrame();q.completed(0,false);q.afterFrame()}
+      for(kind<-Seq("checkpoint-permission","capture-permission","capture-bus","capture-reset")){
+        frame();a.begin();b.begin()
+        if(kind=="checkpoint-permission"){
+          a.permission(false,false);flush();val start=image.writes.size
+          a.command(2,status=3,flags=0)
+          assert(!image.writes.drop(start).exists(x=>x>=0x18400000 && x<0x18401000),"denied checkpoint store reached physical AXI")
+          a.permission(false,true);flush();a.command(1,status=5,flags=2)
+          image.submit(150,feedbackScope=()=>a.stageRender());image.run(status=5,id=150)
+          finishQuery(5,a);image.pop();payloadIdle();frames+=1
+          assert(!image.writes.contains(a.firstDataLine),"missing capture lease wrote feedback data")
+          healthyPeer(151)
+        }else if(kind=="capture-permission" || kind=="capture-bus"){
+          if(kind=="capture-permission"){a.permission(true,false);flush()}
+          var injected=false;val start=image.writes.size
+          image.submit(152,feedbackScope=()=>a.stageRender())
+          image.run(status=3,id=152,writeFault=(address,_,_)=>{
+            val fault=kind=="capture-bus" && !injected && address==a.firstDataLine
+            if(fault)injected=true;fault
+          })
+          finishQuery(3,a);image.pop();payloadIdle();frames+=1
+          if(kind=="capture-permission")assert(!image.writes.drop(start).contains(a.firstDataLine),"denied capture store reached physical AXI")
+          else assert(injected,"capture bus error was not injected on the owned store")
+          a.end(Seq.empty,status=3,allowedPartialBytes=if(kind=="capture-bus")96 else 0)
+          a.permission(true,true);flush();healthyPeer(153)
+        }else{
+          image.submit(154,feedbackScope=()=>a.stageRender());var cut=false
+          serviceMemoryMaster(d,image.read,writeAckDelay=53,readResponseDelay=3,maxCycles=300000,
+            onWriteAccepted=address=>if(!cut && (address & ~BigInt(63))==a.firstDataLine){
+              cut=true;axiWrite(d,GpuCommandMmioRegs.RESET,1)
+              axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+            })(image.write){cut && d.io.m_irq.peek().litToBoolean}
+          assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0,"accepted capture-store reset did not drain")
+          image.queryProbe.foreach(_.aborted());axiWrite(d,RenderHostRegs.IRQ,3);payloadIdle();resetCuts+=1
+          a.command(1,status=5,flags=2);b.command(1,status=5,flags=2)
+          frame();b.begin();flush();healthyPeer(155)
+        }
+        info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_CASE local=$local kind=$kind peerHealthy=true payloadReleased=true")
+      }
+      assert(frames==7 && resetCuts==1)
+      info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames resetCuts=$resetCuts checkpointPermissionFaults=1 capturePermissionFaults=1 captureBusFaults=1 missingLeaseDraws=1 peerHealthyDraws=4 scopedRecovery=true countersAfterFinalAck=true noDeniedPhysicalStores=true partialFaultStoresBounded=true staleResetObjectsRejected=true exactRawCaptureAndImages=true queryContextIsolation=true")
+    }
+  }
+  if(!transformFeedback){
+  // Shared-path subclasses register the focused capture matrix below.
+  if(!groupedTexture){
+  it should "submit a translated native clear pass and publish trusted physical source and resolve views over the production AXI host" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(false)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d)
       assert(axiRead(d,TileBinHostRegs.DISCOVERY)==0x160)
       assert(axiRead(d,0x160)==BigInt("47544301",16));assert(axiRead(d,0x168)==BigInt("47544a01",16))
@@ -263,9 +379,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"execute GPU-memory triangle line and point shader draws with translated resources and cached image consumers local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
       axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
@@ -290,9 +406,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"publish native centroid gradients through version three and four fragment descriptors local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d)
       for((value,i)<-Vector[BigInt](BigInt("47464901",16),4,0x1e,0x70f).zipWithIndex)
         assert(axiRead(d,0x1c0+i*4)==value)
@@ -316,9 +432,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"publish native facing flags and enforce culling across every sample mode local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
       axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
@@ -349,9 +465,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"publish signed native polygon offsets across all depth formats and sample modes local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
       axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
@@ -378,9 +494,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"publish native polygon offset depth and shader fragCoord through immutable attachment binding local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
       axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)
@@ -403,9 +519,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(polygon<-Seq(false,true))
   it should s"reject native envelope descriptor permission shader and physical store faults without publishing a successful image polygon=$polygon" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(false)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(false)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d);axiWrite(d,RenderHostRegs.IRQ,1)
       val rasterFaults=Set("legacy-offset-fields","reserved-raster-version","nonfinite-offset-factor","nonfinite-offset-units","noncanonical-offset-enable")
       val cases=Seq(("envelope",1),("header",1),("descriptor-read",3),("draw-read",3),("scratch-alias",1),("write-permission",3),("execute-permission",5),("physical-store",3))++
@@ -451,7 +567,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(polygon<-Seq(false,true))
   it should s"drain live native shader payloads queued DMA and physical publication before reset releases the VM polygon=$polygon" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(true)))){d=>
       initialize(d);val image=new Image(d);val perf=d.io.performance.get
@@ -496,9 +612,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
 
   for(local<-Seq(true,false))
   it should s"publish native sampler policies through actual vertex and fragment texture instructions local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d)
       val cap=Vector[BigInt](BigInt("47545801",16),8,3,0x3ff,7,16,16383,0x1f)
       for((value,i)<-cap.zipWithIndex)assert(axiRead(d,0x200+i*4)==value)
@@ -551,9 +667,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"execute GPU bound typed fetches in both native shader stages with translated descriptor ownership local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d);val texData=NativeTextureFetchTestData
       assert((axiRead(d,0x20c)&512)==512)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
@@ -621,11 +737,13 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
     }
   }
 
+  }
+
   for(local<-Seq(true,false))
   it should s"execute captured floating samples through native AXI frames and translated descriptor ownership local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d);val texData=NativeTextureFetchTestData
       assert((axiRead(d,0x20c)&512)==512)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
@@ -655,10 +773,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         else Seq(broadcast|(BigInt(13)<<15)|(BigInt(5)<<7)|0x57,broadcast|(BigInt(14)<<15)|(BigInt(6)<<7)|0x57,
           (BigInt(4)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(c)<<12)|(BigInt(7)<<7)|0x2b))
       }
-      def run(c: Int,bad: Boolean=false,format: Int=35,target: Int=0,modeControl: Int=1,missing: Boolean=false): Unit={
+      def run(c: Int,bad: Boolean=false,format: Int=capturedDefaultFormat,target: Int=0,modeControl: Int=1,missing: Boolean=false): Unit={
         val mode=if(c%2==0)0 else 2;val vc=(c+1)%4
         val decoded=if(format>=54)CompressedImageReference.decode(format,raw)else ImageFormatReference.decode(ImageFormatReference.names(format),raw)
-        val swizzle=if(format>=36)Seq(3,2,5,4)else Seq.empty[Int]
+        val swizzle=if(format>=36 || (groupedTexture && format==3))Seq(3,2,5,4)else Seq.empty[Int]
         val kind=if(format>=54)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind
         val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
         val mapped=if(swizzle.isEmpty)decoded else swizzle.map(options)
@@ -670,6 +788,15 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
         texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
         texData.install(put,byte,31,format,target,0,id,raw,vo,swizzle);texData.install(put,byte,17,format,target,1,id,raw,fo,swizzle)
+        if(groupedTexture && format==3 && target!=3)for((base,unit)<-Seq((vo,31),(fo,17))){
+          // Exercise the aligned shared path, retaining the unaligned/default
+          // fixtures for every legacy qualification and non-RGBA8 format.
+          val data=base+0x20000+unit*4096
+          val level=base+texData.levels+unit*128
+          put(level+12*4,data);put(level+17*4,64);put(level+21*4,if(target==1 || target==2)128 else 0)
+          val selected=data+64+4+(if(target==1)256 else if(target==2)640 else 0)
+          for(n<-0 until 4)byte(selected+n,((raw>>(8*n))&255).toInt)
+        }
         if(format>=54)for(base<-Seq(vo,fo);unit<-Seq(if(base==vo)31 else 17)){
           put(base+texData.images+unit*128+11*4,2);put(base+texData.images+unit*128+12*4,2)
           put(base+texData.levels+unit*128+13*4,2);put(base+texData.levels+unit*128+14*4,2)
@@ -706,20 +833,28 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           assert(!image.reads.exists(a=>a>=page && a<page+4096),"captured operands performed a GPU-memory packet read")}
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop();frames+=1
       }
-      for(format<-0 until 64)run(format%4,format=format)
+      for(format<-capturedFloatingFormats)run(format%4,format=format)
       for(target<-1 to 3)run(target,target=target)
       for(mode<-Seq(0,2))run(mode,modeControl=mode)
       run(0,bad=true);run(1,missing=true);run(3)
-      assert(frames==72)
-      info(s"NATIVE_FLOAT_SAMPLE_AXI local=$local CUs=2 frames=$frames draws=216 formats64=true imageSwizzle=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true targets4=true automaticExplicitGradient=true noOperandPacketReads=true realSv32=true deniedSamplerNoPhysicalRead=true taskResetRejectsStaleTuple=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
+      assert(frames==capturedFloatingFormats.size+8)
+      if(groupedTexture){
+        val perf=d.io.performance.get
+        assert(perf.nativeTextureGroups.peek().litValue>0,"AXI frames never entered the shared texture pool")
+        assert(perf.nativeTextureDataReads.map(_.peek().litValue).sum>0,"shared pool performed no data reads")
+        assert(perf.nativeTexturePageWalks.map(_.peek().litValue).sum>0,"shared pool bypassed real Sv32")
+      }
+      image.queryProbe.foreach(_.report("TYPED",local,frames))
+      info(s"NATIVE_FLOAT_SAMPLE_AXI local=$local CUs=$nativeComputeUnits frames=$frames submittedDraws=${frames*3} formats=${capturedFloatingFormats.size} grouped=$groupedTexture imageSwizzle=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true targets4=true automaticExplicitGradient=true noOperandPacketReads=true realSv32=true deniedSamplerNoPhysicalRead=true taskResetRejectsStaleTuple=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
     }
   }
 
+  if(!groupedTexture){
   for(local<-Seq(true,false))
   it should s"execute captured integer fetches through native AXI frames and translated descriptor ownership local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d);val texData=NativeTextureFetchTestData
       assert((axiRead(d,0x20c)&512)==512)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
@@ -827,9 +962,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
 
   for(local<-Seq(true,false))
   it should s"execute native texture size queries through native AXI frames and translated descriptor ownership local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      exposePerformance=true,typedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)){d=>
       initialize(d);val image=new Image(d);val texData=NativeTextureFetchTestData
       assert((axiRead(d,0x20c)&512)==512)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
@@ -932,4 +1067,6 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
 
 
+  }
+  }
 }

@@ -1,0 +1,230 @@
+{
+  "date": "2026-10-21",
+  "status": "73 client checks and eight emissions pass. Shared native vertex and fragment synthesis pass; standalone cluster synthesis remains running.",
+  "source": {
+    "commit": "a09076f95512b2fe676f013ec28afcfc8ab07ede",
+    "source_files": 841,
+    "manifest_sha256": "83a823644af4380546e5367135f20ecaaa49975a4ac7a6e1e44c4f8aa77a0f31",
+    "archive_sha256": "8bce8da0e239d33ffe69c39d773b4d033ea1a91f393db3a30536aa6e949d9b0f",
+    "git_archive_and_worktree_exact": true,
+    "changed_inputs": [
+      "src/main/scala/opengpu/graphics/FragmentShaderStage.scala",
+      "src/main/scala/opengpu/graphics/NativeShaderTextureUnit.scala",
+      "src/main/scala/opengpu/graphics/ShaderTextureSampleUnit.scala",
+      "src/main/scala/opengpu/graphics/TextureImageLevelSampleUnit.scala",
+      "src/main/scala/opengpu/graphics/TextureImageMipSampleUnit.scala",
+      "src/main/scala/opengpu/graphics/TextureImageSampleUnit.scala",
+      "src/main/scala/opengpu/graphics/TextureSampleExecuteUnit.scala",
+      "src/main/scala/opengpu/graphics/VertexShaderStage.scala"
+    ],
+    "added_inputs": [
+      "src/main/scala/opengpu/graphics/NativeRgba8TextureClient.scala",
+      "src/main/scala/opengpu/graphics/NativeRgba8TextureCluster.scala",
+      "src/main/scala/opengpu/elaboration/EmitNativeRgba8Clients.scala",
+      "src/test/scala/opengpu/graphics/SharedNativeTextureHarness.scala",
+      "src/test/scala/opengpu/graphics/SharedTextureSampleExecuteUnitSpec.scala",
+      "src/test/scala/opengpu/graphics/SharedNativeRgba8SamplingSpec.scala",
+      "src/test/scala/opengpu/graphics/NativeRgba8TextureClusterSpec.scala"
+    ],
+    "runner_pid": 7433,
+    "started_utc": "2026-10-21T00:17:09.767017+00:00"
+  },
+  "functional": {
+    "fresh_passed_tests": 73,
+    "suites": 6,
+    "default_native_checks": 23,
+    "shared_native_checks": 23,
+    "aligned_native_spatial_mip_drain_checks": 6,
+    "cluster_owner_checks": 7,
+    "coordinate_to_color_checks": 8,
+    "planner_checks": 6,
+    "evidence": ".artifacts/mobile-native-rgba8-clients-v3-functional-result.json",
+    "log": ".artifacts/mobile-native-rgba8-clients-v3-functional.log",
+    "coverage": [
+      "Actual native scalar/vector sampling opcodes across all64 formats and both stages",
+      "Masked old-Vd, helper quads and 1/4/8/16-lane parameterization",
+      "Captured integer fetch, size queries, relative LOD/base and table-page crossings",
+      "Real banked RGBA8 nearest/bilinear reads and final swizzle once",
+      "Two shared mip results with original native FMA interpolation before final swizzle",
+      "Invalidation of a held data offer preserves numeric results and purges late publication",
+      "Repeated identical original tags on four clients, independent held response leases and two shared physical fills",
+      "Queued and scoped/global cancellation, primary data faults and exact physical read charges",
+      "Real Sv32 root changes, deferred scoped flush aggregation and public-lease epoch pinning"
+    ]
+  },
+  "emissions": {
+    "count": 8,
+    "evidence": ".artifacts/mobile-native-rgba8-clients-v3-RTL-proof.json",
+    "profiles": {
+      "legacy-vertex": {
+        "active_files": 77,
+        "raw_exact": false,
+        "logic_changed": [],
+        "exact_after_removing_comments_and_empty_lines": true
+      },
+      "legacy-fragment": {
+        "active_files": 77,
+        "raw_exact": false,
+        "logic_changed": [],
+        "exact_after_removing_comments_and_empty_lines": true
+      },
+      "native-vertex": {
+        "active_files": 77
+      },
+      "native-fragment": {
+        "active_files": 77
+      },
+      "vertex-stage": {
+        "active_files": 91
+      },
+      "fragment-stage": {
+        "active_files": 85
+      },
+      "cluster": {
+        "active_files": 83
+      },
+      "service-carry": {
+        "active_files": 78,
+        "raw_exact": true,
+        "logic_changed": [],
+        "exact_after_removing_comments_and_empty_lines": true
+      }
+    }
+  },
+  "contract": {
+    "groupedTexture_default": false,
+    "native_stage_ports": "Both VertexShaderStage and FragmentShaderStage expose the optional client; native shader execution, binding/preparation, mip and level owners forward it.",
+    "eligible": "Unshadowed RGBA8 2D/array/cube after existing native admission; valid unsupported/unaligned groups fall back to the general owner.",
+    "native_owner": "Retains mip blending, swizzle, fault-atomic vector retirement and original physical-read accounting.",
+    "invalidation": "Rising event plus a second event after an invalidated shared request retires, including an offer accepted after the first event.",
+    "client_namespace": "One active response lease/client, full original32-bit tags restored; shared service uses client indices.",
+    "cluster_clients": 4,
+    "data_cache_bytes_per_cluster": 8192
+  },
+  "synthesis": {
+    "policy": "Synthesis only,1000ps,TC/SLVT,25% I/O,standard ABC,no retiming or place/route.",
+    "jobs": {
+      "vertex": {
+        "status": "passed",
+        "session": 37944,
+        "start": {
+          "wrapper_pid": 85164,
+          "flow_pid": 85167,
+          "args": [
+            "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+            "scripts/qualify_ppa.py",
+            "/Users/duckdonald/workspace/gpu/.artifacts/mobile-native-rgba8-clients-v1-worktree/generated/mobile-h4/rgba8-clients-v3-native-vertex-rtl",
+            "NativeShaderTextureUnit",
+            "--stage",
+            "synthesis",
+            "--synthesis-engine",
+            "yosys",
+            "--period-ps",
+            "1000",
+            "--io-delay",
+            "0.25",
+            "--timeout",
+            "7200",
+            "--output",
+            "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-native-rgba8-clients-2026-10-21-vertex-v1"
+          ],
+          "started_utc": "2026-10-21T00:31:46.750522+00:00"
+        },
+        "inputs": ".artifacts/mobile-native-rgba8-clients-vertex-synthesis-v1-inputs.json",
+        "core_IO_slacks_ps": [
+          106.973,
+          165.445
+        ],
+        "mapped_cells": 1158891,
+        "library_area": 154278.153359,
+        "skipped_instance_count": 0,
+        "terminal": {
+          "returncode": 0,
+          "source_unchanged": true,
+          "rtl_unchanged": true,
+          "elapsed_seconds": 3093.2499331249855,
+          "finished_utc": "2026-10-21T01:23:20.032850+00:00"
+        }
+      },
+      "fragment": {
+        "status": "passed",
+        "session": 26484,
+        "start": {
+          "wrapper_pid": 85163,
+          "flow_pid": 85166,
+          "args": [
+            "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+            "scripts/qualify_ppa.py",
+            "/Users/duckdonald/workspace/gpu/.artifacts/mobile-native-rgba8-clients-v1-worktree/generated/mobile-h4/rgba8-clients-v3-native-fragment-rtl",
+            "NativeShaderTextureUnit",
+            "--stage",
+            "synthesis",
+            "--synthesis-engine",
+            "yosys",
+            "--period-ps",
+            "1000",
+            "--io-delay",
+            "0.25",
+            "--timeout",
+            "7200",
+            "--output",
+            "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-native-rgba8-clients-2026-10-21-fragment-v1"
+          ],
+          "started_utc": "2026-10-21T00:31:46.750539+00:00"
+        },
+        "inputs": ".artifacts/mobile-native-rgba8-clients-fragment-synthesis-v1-inputs.json",
+        "core_IO_slacks_ps": [
+          105.545,
+          169.443
+        ],
+        "mapped_cells": 1166532,
+        "library_area": 154970.513819,
+        "skipped_instance_count": 0,
+        "terminal": {
+          "returncode": 0,
+          "source_unchanged": true,
+          "rtl_unchanged": true,
+          "elapsed_seconds": 3010.8706479999237,
+          "finished_utc": "2026-10-21T01:21:57.652700+00:00"
+        }
+      },
+      "cluster": {
+        "status": "running",
+        "session": 2492,
+        "start": {
+          "wrapper_pid": 85162,
+          "flow_pid": 85168,
+          "args": [
+            "/Users/duckdonald/workspace/chipagent/.venv/bin/python",
+            "scripts/qualify_ppa.py",
+            "/Users/duckdonald/workspace/gpu/.artifacts/mobile-native-rgba8-clients-v1-worktree/generated/mobile-h4/rgba8-clients-v3-cluster-rtl",
+            "NativeRgba8TextureCluster",
+            "--stage",
+            "synthesis",
+            "--synthesis-engine",
+            "yosys",
+            "--period-ps",
+            "1000",
+            "--io-delay",
+            "0.25",
+            "--timeout",
+            "7200",
+            "--output",
+            "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-native-rgba8-clients-2026-10-21-cluster-v1"
+          ],
+          "started_utc": "2026-10-21T00:31:46.753109+00:00"
+        },
+        "inputs": ".artifacts/mobile-native-rgba8-clients-cluster-synthesis-v1-inputs.json"
+      }
+    },
+    "default_endpoint_carry": "Fresh 77-file default vertex/fragment profiles are equivalent to their qualified corrected-FMA profiles after removing comments/empty lines. The shared profiles require fresh timing.",
+    "coordinate_to_color_carry": "All78 active SV files remain raw-byte-exact to the previous component; its synthesis job remains independently tracked."
+  },
+  "remaining": [
+    "Connect CU ownership/pair affinity and shared texture ports through the complete renderer hierarchy",
+    "Attach each cluster physical data and PTW port to bounded global memory/VM ownership",
+    "Pipelined native lane/instruction issue and enough per-client outstanding work for sustained native cluster rates",
+    "Whole-renderer shared-path frames, render-to-texture visibility and all remaining H0-H8 gates"
+  ],
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production."
+}

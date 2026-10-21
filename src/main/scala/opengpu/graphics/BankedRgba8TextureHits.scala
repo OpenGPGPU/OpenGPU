@@ -10,7 +10,7 @@ class BankedRgba8Sample(cachePolicyInput: Boolean=false) extends Bundle {
   val addresses=Vec(4,UInt(32.W));val rowParity=Vec(4,Bool());val weights=Vec(4,UInt(17.W))
   val noCache=if(cachePolicyInput)Some(Bool())else None
 }
-class BankedRgba8Result(readThrough: Boolean=false,weightedOutput: Boolean=false,rawTapOutput: Boolean=false) extends Bundle {
+class BankedRgba8Result(readThrough: Boolean=false,weightedOutput: Boolean=false,rawTapOutput: Boolean=false,readCountOutput: Boolean=false) extends Bundle {
   val identity=new GraphicsWorkIdentity;val tag=UInt(32.W)
   val hit=Bool();val cancelled=Bool();val missingTaps=UInt(4.W)
   /** Logical packed RGBA:R at bits31:24,unlike little-endian input texels. */
@@ -20,6 +20,7 @@ class BankedRgba8Result(readThrough: Boolean=false,weightedOutput: Boolean=false
   val weightedSums=if(weightedOutput)Some(Vec(4,UInt(24.W)))else None
   /** Original little-endian tap words, before any weighted filtering. */
   val rawTaps=if(rawTapOutput)Some(Vec(4,UInt(32.W)))else None
+  val dataReadLines=if(readCountOutput)Some(UInt(3.W))else None
 }
 /** Resident RGBA8 bilinear service:four banked taps and a two-stage weighted
   * filter,with bounded sample association and duplicate-tap coalescing.
@@ -31,12 +32,13 @@ class BankedRgba8Result(readThrough: Boolean=false,weightedOutput: Boolean=false
   */
 class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: Boolean=false,
     readThrough: Boolean=false,weightedOutput: Boolean=false,cachePolicyInput: Boolean=false,
-    rawTapOutput: Boolean=false) extends Module {
+    rawTapOutput: Boolean=false,readCountOutput: Boolean=false) extends Module {
+  require(!readCountOutput || readThrough, "read accounting requires read-through ownership")
   require(!cachePolicyInput || readThrough, "page policy requires read-through ownership")
   require(isPow2(entries) && entries>=4 && entries<=64)
   private val slotBits=log2Ceil(entries)
   val io=IO(new Bundle {
-    val in=Flipped(Decoupled(new BankedRgba8Sample(cachePolicyInput)));val out=Decoupled(new BankedRgba8Result(readThrough,weightedOutput,rawTapOutput))
+    val in=Flipped(Decoupled(new BankedRgba8Sample(cachePolicyInput)));val out=Decoupled(new BankedRgba8Result(readThrough,weightedOutput,rawTapOutput,readCountOutput))
     val refill=Flipped(Decoupled(new BankedTextureRefill));val refillDone=Decoupled(new BankedTextureRefillCompletion)
     val invalidate=Input(Bool());val cancel=Input(Bool());val busy=Output(Bool())
     val tapIssues=Output(UInt(3.W));val bankConflicts=Output(UInt(3.W))
@@ -46,11 +48,11 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
     val joined=if(readThrough)Some(Output(Bool()))else None
   })
   private val lookups=Wire(Vec(4,Decoupled(new BankedTextureLookup(slotBits+2,cachePolicyInput))))
-  private val replies=Wire(Vec(4,Decoupled(new BankedTextureReadResult(slotBits+2))))
+  private val replies=Wire(Vec(4,Decoupled(new BankedTextureReadResult(slotBits+2,readCountOutput))))
   private val serviceBusy=Wire(Bool())
   private val stop=io.cancel || (if(readThrough)io.invalidate else false.B)
   if(readThrough){
-    val service=Module(new BankedTextureWordService(GpuConfig(),dataBytes,slotBits+2,useBlackBoxes=useBlackBoxes,cachePolicyInput=cachePolicyInput))
+    val service=Module(new BankedTextureWordService(GpuConfig(),dataBytes,slotBits+2,useBlackBoxes=useBlackBoxes,cachePolicyInput=cachePolicyInput,readCountOutput=readCountOutput))
     service.io.in<>lookups;replies<>service.io.out
     io.memoryRequest.get<>service.io.memoryRequest;service.io.memoryResponse<>io.memoryResponse.get
     service.io.cancel:=io.cancel;service.io.invalidate:=io.invalidate
@@ -75,6 +77,7 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
   private val received=Reg(Vec(entries,UInt(4.W)));private val hitMask=Reg(Vec(entries,UInt(4.W)))
   private val data=Reg(Vec(entries,Vec(4,UInt(32.W))));private val cancelled=Reg(Vec(entries,Bool()))
   private val faults=if(readThrough)Some(Reg(Vec(entries,Bool())))else None
+  private val reads=if(readCountOutput)Some(Reg(Vec(entries,UInt(3.W))))else None
   private val faultAddresses=if(readThrough)Some(Reg(Vec(entries,UInt(32.W))))else None
   private val head=RegInit(0.U(slotBits.W));private val tail=RegInit(0.U(slotBits.W));private val count=RegInit(0.U((slotBits+1).W))
   private val dispatch=RegInit(false.B);private val dispatchSlot=Reg(UInt(slotBits.W));private val pending=RegInit(0.U(4.W))
@@ -99,6 +102,15 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
       hitMask(e):=hitMask(e)|hitMasks.reduce(_|_)
       when(stop){cancelled(e):=true.B}
     }
+    if(readCountOutput){
+      val caused=PopCount(VecInit((0 until 4).map(b=>replies(b).fire &&
+        replies(b).bits.tag(slotBits+1,2)===e.U && replies(b).bits.physicalRead.get)))
+      when(alive(e)){
+        val total=reads.get(e)+&caused
+        assert(total<=4.U,"RGBA8 group caused more than four physical line reads")
+        reads.get(e):=total
+      }
+    }
     if(readThrough){
       val failures=VecInit((0 until 4).map(b=>replies(b).fire && replies(b).bits.tag(slotBits+1,2)===e.U && replies(b).bits.fault))
       val poisoned=VecInit((0 until 4).map(b=>replies(b).fire && replies(b).bits.tag(slotBits+1,2)===e.U &&
@@ -116,8 +128,8 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
     }
   }
   private val productValid=RegInit(false.B);private val sumValid=RegInit(false.B)
-  private val products=Reg(Vec(4,Vec(4,UInt(25.W))));private val productResult=Reg(new BankedRgba8Result(readThrough,weightedOutput,rawTapOutput))
-  private val result=Reg(new BankedRgba8Result(readThrough,weightedOutput,rawTapOutput))
+  private val products=Reg(Vec(4,Vec(4,UInt(25.W))));private val productResult=Reg(new BankedRgba8Result(readThrough,weightedOutput,rawTapOutput,readCountOutput))
+  private val result=Reg(new BankedRgba8Result(readThrough,weightedOutput,rawTapOutput,readCountOutput))
   io.out.valid:=sumValid;io.out.bits:=result
   private val sumReady= !sumValid || io.out.ready
   private val productReady= !productValid || sumReady
@@ -152,6 +164,7 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
       productResult.faultAddress.foreach(_:=Mux(faults.get(head),faultAddresses.get(head),0.U))
       productResult.missingTaps:=Mux(stopped,0.U,(~hitMask(head))(3,0))
       productResult.rawTaps.foreach(_:=data(head))
+      productResult.dataReadLines.foreach(_:=reads.get(head))
       for(c<-0 until 4;t<-0 until 4)products(c)(t):=data(head)(t)(c*8+7,c*8)*samples(head).weights(t)
     }
   }
@@ -166,6 +179,7 @@ class BankedRgba8TextureHits(dataBytes: Int=8192,entries: Int=16,useBlackBoxes: 
       aliases(tail)(t):=VecInit((0 until 4).map(same)).asUInt
     }
     samples(tail):=io.in.bits;received(tail):=0.U;hitMask(tail):=0.U;cancelled(tail):=false.B
+    reads.foreach(_(tail):=0.U)
     faults.foreach(_(tail):=false.B);faultAddresses.foreach(_(tail):=0.U)
     alive(tail):=true.B;dispatch:=true.B;dispatchSlot:=tail;pending:=unique.asUInt;tail:=tail+1.U
   }

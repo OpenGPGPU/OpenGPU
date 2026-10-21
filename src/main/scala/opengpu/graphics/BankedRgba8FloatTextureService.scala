@@ -11,13 +11,14 @@ private class Rgba8FloatMetadata extends Bundle {
   val hit = Bool(); val fault = Bool(); val missingTaps = UInt(4.W)
   val faultAddress = UInt(32.W)
 }
-class BankedRgba8FloatResult(rawTapOutput: Boolean = false) extends Bundle {
+class BankedRgba8FloatResult(rawTapOutput: Boolean = false, readCountOutput: Boolean = false) extends Bundle {
   val identity = new GraphicsWorkIdentity
   val tag = UInt(32.W)
   val values = Vec(4, UInt(32.W))
   val hit = Bool(); val fault = Bool(); val cancelled = Bool(); val missingTaps = UInt(4.W)
   val faultAddress = UInt(32.W)
   val rawTaps = if(rawTapOutput) Some(Vec(4, UInt(32.W))) else None
+  val dataReadLines = if(readCountOutput) Some(UInt(3.W)) else None
 }
 
 /** Complete physical RGBA8 group service with exact normalized FP32 output.
@@ -27,10 +28,11 @@ class BankedRgba8FloatResult(rawTapOutput: Boolean = false) extends Bundle {
   */
 class BankedRgba8FloatTextureService(dataBytes: Int = 8192, entries: Int = 16,
     useBlackBoxes: Boolean = false, cachePolicyInput: Boolean = false,
-    rawTapOutput: Boolean = false) extends Module {
+    rawTapOutput: Boolean = false, readCountOutput: Boolean = false) extends Module {
+  require(!readCountOutput || rawTapOutput, "physical read accounting uses raw-tap mode")
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new BankedRgba8Sample(cachePolicyInput)))
-    val out = Decoupled(new BankedRgba8FloatResult(rawTapOutput))
+    val out = Decoupled(new BankedRgba8FloatResult(rawTapOutput, readCountOutput))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(GpuConfig(), 64, 16))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, 16)))
     val cancel = Input(Bool()); val invalidate = Input(Bool()); val busy = Output(Bool())
@@ -39,7 +41,7 @@ class BankedRgba8FloatTextureService(dataBytes: Int = 8192, entries: Int = 16,
   })
   private val groups = Module(new BankedRgba8TextureHits(dataBytes, entries, useBlackBoxes,
     readThrough = true, weightedOutput = !rawTapOutput, cachePolicyInput = cachePolicyInput,
-    rawTapOutput = rawTapOutput))
+    rawTapOutput = rawTapOutput, readCountOutput = readCountOutput))
   if(!rawTapOutput) {
     val metadata = Wire(new Rgba8FloatMetadata)
     val normalize = Module(new Rgba8WeightedToFp32(metadata.getWidth))
@@ -93,6 +95,7 @@ class BankedRgba8FloatTextureService(dataBytes: Int = 8192, entries: Int = 16,
     io.out.bits.faultAddress := groups.io.out.bits.faultAddress.get
     io.out.bits.missingTaps := groups.io.out.bits.missingTaps
     io.out.bits.rawTaps.get := groups.io.out.bits.rawTaps.get
+    io.out.bits.dataReadLines.foreach(_ := groups.io.out.bits.dataReadLines.get)
     io.busy := groups.io.busy
   }
 }

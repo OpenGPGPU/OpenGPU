@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Signed one-unit polygon bias through actual setup, center/sample interpolation and all depth encoders",
+  "based_on_commit": "4adc587",
+  "source_files": 645,
+  "source_manifest": {
+    "path": ".artifacts/mobile-floating-depth-resolution-source-v3.json",
+    "sha256": "cb9eaa95ea251b77de2b97b79bfae3902505e9a2d234d6968479d1008b833138"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-floating-depth-resolution-source-v3.tar.gz",
+    "sha256": "cb33e3f97fefbe03722c7f4e282cce35de24deb3701d304215ce9a13affeaabf"
+  },
+  "result": {
+    "path": ".artifacts/mobile-floating-depth-resolution-controls-v3-result.json",
+    "sha256": "8a73859f32d9e21b329048d3c8ef40f0a306860c96e95eca954a0a4074f48edd"
+  },
+  "log": {
+    "path": ".artifacts/mobile-floating-depth-resolution-controls-v3.log",
+    "sha256": "8b89ca5cc2934b6d50ed7dc970e790c9d7098924ae23e9cf7bbdbfca83a29555"
+  },
+  "validation": {
+    "returncode": 0,
+    "source_unchanged": true,
+    "coverage": {
+      "tests": [
+        1
+      ],
+      "success_tasks": 1,
+      "property_markers": 1
+    },
+    "coverage_ok": true,
+    "elapsed_seconds": 39.63398754200898,
+    "finished_utc": "2026-10-20T03:31:42.004767+00:00"
+  },
+  "tests_passed": 1,
+  "draws": 270,
+  "formats": [
+    "D16",
+    "D24",
+    "D32F",
+    "D24S8",
+    "D32FS8"
+  ],
+  "sample_modes": 3,
+  "windings": 2,
+  "geometries": [
+    "sloped",
+    "extended subnormal",
+    "interior binade boundary"
+  ],
+  "distinct_centers": 162,
+  "distinct_samples": 318,
+  "verified_endpoint_clamps": 60,
+  "prior_run": {
+    "source_manifest": {
+      "path": ".artifacts/mobile-floating-depth-resolution-source-v2.json",
+      "sha256": "3bd8d2e7c1548740948b0ee6a43d2cdac9dbb695931f6e7983f7774f46c21bf5"
+    },
+    "result": {
+      "path": ".artifacts/mobile-floating-depth-resolution-controls-v2-result.json",
+      "sha256": "ed333aac6b519f6a0d3b25dc60d4e75bf8eabdb38c9fe5509a7f51503197121a"
+    },
+    "log": {
+      "path": ".artifacts/mobile-floating-depth-resolution-controls-v2.log",
+      "sha256": "b3fbebf833905d1ba945e73f9f52f0dd968e4d3abf1b194cf9e72b8df52e0e35"
+    },
+    "scope": "Same270 draws passed strict non-saturating differences before explicit endpoint assertions were added; production source is identical."
+  },
+  "production_unchanged_from_176_check_source": true,
+  "limits": [
+    "Actual format resolution, per-primitive offset setup, shared scalar interpolation, final depth clamp and depth encoders are exercised. These checks do not use real CUs, image storage, stencil/padding or native descriptors.",
+    "Setup increments are exactly13 operations plus one addition per evaluated center/covered sample; tested format/state mutations do not change in-flight work.",
+    "The separately running176-check source composition remains required; G04/H6, broader precision/invariance, rates and H0-H8 are open. PPA remains synthesis only."
+  ],
+  "historical_checkpoint": true,
+  "archived_from_commit": "821cc36c358293892b2a8710c8dfac5b7dad69e2",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

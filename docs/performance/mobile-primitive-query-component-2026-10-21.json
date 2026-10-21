@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-21",
+  "status": "passed",
+  "scope": "Standalone controller only; native transport, actual capture hookup and H6/Q02 completion remain open.",
+  "base_commit": "478bd3adf7a4472cdaf324b86908b22075b83009",
+  "source_files": 907,
+  "source_manifest": ".artifacts/mobile-primitive-query-v1-source.json",
+  "source_sha256": "632370d0dfc1c2c15bc128601444d6fb68cfce6a292316bb182c6eea06a728ce",
+  "source_proof": ".artifacts/mobile-primitive-query-component-v1-source-proof.json",
+  "tests": {
+    "passed": 5,
+    "spec": "opengpu.graphics.NativePrimitiveQueryEngineSpec",
+    "result": ".artifacts/mobile-primitive-query-v1-result.json",
+    "log": ".artifacts/mobile-primitive-query-v1.log"
+  },
+  "default_emissions": 1,
+  "synthesis": {
+    "stage": "synthesis",
+    "component_only": true,
+    "period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "retiming": false,
+    "abc": "standard",
+    "core_slack_ps": 143.195,
+    "io_slack_ps": 384.931,
+    "mapped_cells": 18215,
+    "library_area": 2309.73444,
+    "sequential_area": 643.2696,
+    "SRAM_macros": 0,
+    "skipped_instances": 0,
+    "qualification": "generated/qualification/ppa/mobile-primitive-query-2026-10-21-v1/qualification.json",
+    "qualification_sha256": "45f1d2978049e39934c8942a63eda1500487236ab8a241d73819b334983def68",
+    "result": ".artifacts/mobile-primitive-query-synthesis-v1-result.json"
+  },
+  "open_work": [
+    "native command transport and capability registers",
+    "translated memory and actual acknowledged capture-event hookup",
+    "native AXI/reset/VM tests",
+    "composed timing and resource budgets"
+  ]
+}

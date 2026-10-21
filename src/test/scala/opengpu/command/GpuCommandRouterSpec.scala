@@ -373,4 +373,30 @@ class GpuCommandRouterSpec extends AnyFlatSpec {
       dut.io.completion.bits.bytesProcessed.expect(256L)
     }
   }
+  it should "reject extended opcodes without aliasing legacy engine dispatch" in {
+    simulate(new GpuCommandRouter(GpuConfig(lanes=4),commandIdWidth=8)){dut=>
+      initialize(dut)
+      dut.io.kernel.ready.poke(true.B);dut.io.copy.ready.poke(true.B);dut.io.fill.ready.poke(true.B)
+      dut.io.stridedCopy.ready.poke(true.B);dut.io.resolve.ready.poke(true.B);dut.io.invalidate.ready.poke(true.B)
+      for(opcode<-8 until 16){
+        submit(dut,50+opcode,opcode.U)
+        var cycles=0
+        while(!dut.io.completion.valid.peek().litToBoolean && cycles<100){
+          Seq(dut.io.kernel.valid,dut.io.copy.valid,dut.io.fill.valid,dut.io.stridedCopy.valid,
+            dut.io.resolve.valid,dut.io.invalidate.valid).foreach(_.expect(false.B))
+          dut.clock.step();cycles+=1
+        }
+        dut.io.completion.valid.expect(true.B)
+        dut.io.completion.bits.commandId.expect((50+opcode).U)
+        dut.io.completion.bits.opcode.expect(opcode.U)
+        dut.io.completion.bits.status.expect(GpuCommandResultStatus.invalidOpcode)
+        dut.io.completion.bits.success.expect(false.B);dut.io.completion.bits.bytesProcessed.expect(0.U)
+        val held=dut.io.completion.bits.peek().litValue
+        for(_<-0 until 5){dut.clock.step();assert(dut.io.completion.bits.peek().litValue==held)}
+        dut.io.completion.ready.poke(true.B);dut.clock.step();dut.io.completion.ready.poke(false.B)
+        dut.clock.step(3);dut.io.busy.expect(false.B);dut.io.memoryEngineBusy.expect(false.B)
+      }
+    }
+  }
+
 }

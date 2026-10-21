@@ -9,6 +9,75 @@ import scala.collection.mutable
 class FragmentWorkerMemorySpec extends AnyFlatSpec {
   behavior of "Fragment worker memory routing"
 
+  it should "sustain one credited staging request per cycle without changing owners" in {
+    simulate(new FragmentStagingArbiter(GpuConfig(lanes = 4, warps = 2), 4,
+      slots = 4, localOutstanding = 2)) { dut =>
+      dut.io.memoryRequest.ready.poke(true.B)
+      dut.io.memoryResponse.valid.poke(false.B)
+      dut.io.memoryResponse.bits.poke(0.U.asTypeOf(dut.io.memoryResponse.bits))
+      dut.io.clients.foreach { c =>
+        c.request.valid.poke(false.B)
+        c.request.bits.poke(0.U.asTypeOf(c.request.bits))
+        c.response.ready.poke(true.B)
+      }
+      dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+      val submitted = Array.fill(4)(false)
+      val owners = mutable.Map.empty[Int, Int]
+      val issueCycles = mutable.ArrayBuffer.empty[Int]
+      var cycle = 0
+      while (owners.size < 4 && cycle < 20) {
+        for (worker <- 0 until 4) {
+          val c = dut.io.clients(worker)
+          c.request.valid.poke((!submitted(worker)).B)
+          c.request.bits.address.poke((0x4000 + worker * 64).U)
+          c.request.bits.transactionId.poke(1.U)
+          c.request.bits.sizeLog2.poke(6.U)
+          c.request.bits.cachePolicy.poke(opengpu.config.CachePolicy.uncached)
+        }
+        // Present every contender before sampling the RR arbiter's winner.
+        for (worker <- 0 until 4) {
+          val c = dut.io.clients(worker)
+          if (c.request.valid.peek().litToBoolean && c.request.ready.peek().litToBoolean)
+            submitted(worker) = true
+        }
+        if (dut.io.memoryRequest.valid.peek().litToBoolean) {
+          val id = dut.io.memoryRequest.bits.transactionId.peek().litValue.toInt
+          val worker = (dut.io.memoryRequest.bits.address.peek().litValue.toInt - 0x4000) / 64
+          assert(submitted(worker) && !owners.contains(id))
+          owners(id) = worker
+          issueCycles += cycle
+        }
+        dut.clock.step(); cycle += 1
+      }
+      println(s"STAGING_PIPE issue_cycles=${issueCycles.mkString(",")}")
+      assert(owners.size == 4)
+      assert(issueCycles.sliding(2).forall(p => p(1) - p(0) == 1),
+        s"staging request queue inserted bubbles with available credits: $issueCycles")
+      dut.io.clients.foreach(_.request.valid.poke(false.B))
+      dut.io.outstanding.expect(4.U)
+      for (id <- Seq(2, 0, 3, 1)) {
+        val owner = owners(id)
+        dut.io.memoryResponse.valid.poke(true.B)
+        dut.io.memoryResponse.bits.transactionId.poke(id.U)
+        dut.io.memoryResponse.bits.readData.poke((0x800 + owner).U)
+        dut.io.memoryResponse.bits.fault.poke((owner == 2).B)
+        dut.io.memoryResponse.ready.expect(true.B)
+        for (worker <- 0 until 4) {
+          dut.io.clients(worker).response.valid.expect((worker == owner).B)
+          if (worker == owner) {
+            dut.io.clients(worker).response.bits.transactionId.expect(1.U)
+            dut.io.clients(worker).response.bits.readData.expect((0x800 + owner).U)
+            dut.io.clients(worker).response.bits.fault.expect((owner == 2).B)
+          }
+        }
+        dut.clock.step()
+      }
+      dut.io.memoryResponse.valid.poke(false.B)
+      dut.io.drained.expect(true.B)
+    }
+  }
+
+
   it should "sustain one distinct texture request per cycle and preserve every owner" in {
     simulate(new FragmentTextureArbiter(4, maxOutstanding = 16)) { d =>
       d.io.memoryRequest.ready.poke(true.B)

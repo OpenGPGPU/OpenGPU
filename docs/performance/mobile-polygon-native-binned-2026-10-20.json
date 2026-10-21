@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Four focused GNC1 physical/GNC2 translated-image binned host controls for signed D32F polygon offset",
+  "based_on_commit": "3131552",
+  "source_files": 638,
+  "source_manifest": {
+    "path": ".artifacts/mobile-polygon-native-binned-source-v1.json",
+    "sha256": "c627158dd6db7db0d66824940b88db2d68323f514aa370f2a4aa093aeccd5c24"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-polygon-native-binned-source-v1.tar.gz",
+    "sha256": "399e708d737de1619b635e51e60cf0f312bce7ea21f9f0009069cea52d2276ef"
+  },
+  "result": {
+    "path": ".artifacts/mobile-polygon-native-binned-controls-v1-result.json",
+    "sha256": "70e038e47fa45ba8b756c0201959932dc517d5270b665ab542e3c28bbdd07f44"
+  },
+  "log": {
+    "path": ".artifacts/mobile-polygon-native-binned-controls-v1.log",
+    "sha256": "46ccc06a77f1fd4d70768c17f57132d5d43a758fd17be44e4b9762bc09cbb251"
+  },
+  "checks": 4,
+  "suites": 2,
+  "source_unchanged": true,
+  "production_identical_to_live_native_snapshot": true,
+  "only_changed_source_from_live_native": "src/test/scala/opengpu/graphics/NativeBinnedGraphicsHostAxiSpec.scala",
+  "coverage": [
+    "GNC1 physical images and GNC2 translated images each exercise local/global two-CU payload profiles, two frames per profile, eight frames and sixteen native triangle draws in total.",
+    "GPU-memory GND1 window records retain signed factor/units through bin storage and replay. GFS1 state supplies versions3/4, centroid masks5/3 and blending.",
+    "2x/version3 frames check biased default D32F sample depth; 4x/version4 frames check a shader depth override bypassing the bias while shader fragCoord.z still affects MRT red. The two draws use opposite coefficient signs.",
+    "The scalar oracle evaluates depth at absolute sample positions and applies extended bias before FP32 packing. All four MRT source/resolve formats, D32F backing/sample-zero resolve, row padding and image guards match.",
+    "Fresh vertex/program allocations, GPU-memory bin/state fetches, prewarmed cached consumers, uniform tails, held-completion VM protection and drained reservations pass."
+  ],
+  "limitations": [
+    "Four focused checks do not replace the full legacy/fault/reset and combined-source regression on new polygon hardware.",
+    "W=1 triangle frames with D32F do not qualify every depth format, primitive combination, clipping/perspective precision or raster minimum-resolvable difference.",
+    "No new emission/PPA, power, route, frame rate, complete Mobile budget or H0-H8 closure; PPA remains synthesis only."
+  ],
+  "historical_checkpoint": true,
+  "archived_from_commit": "28d71eb9e98b560dd7818e3a0e404a3a078392e3",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

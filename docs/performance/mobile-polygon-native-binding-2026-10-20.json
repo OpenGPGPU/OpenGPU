@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "date": "2026-10-20",
+  "scope": "Polygon raster version/reader compatibility and two focused actual-CU prepared-image controls; default four-CU RTL emission",
+  "based_on_commit": "64dbb4c",
+  "source_files": 638,
+  "source_manifest": {
+    "path": ".artifacts/mobile-polygon-native-binding-source-v1.json",
+    "sha256": "91a3c6b8244a7c1773da8a19c1de8867e9317595b1b54e5837f7c612ba44d439"
+  },
+  "source_archive": {
+    "path": ".artifacts/mobile-polygon-native-binding-source-v1.tar.gz",
+    "sha256": "d56a2e106ad868f2d07eade16157dedc354768801e92d960903184b2024de228"
+  },
+  "result": {
+    "path": ".artifacts/mobile-polygon-native-binding-controls-v1-result.json",
+    "sha256": "5c13a072fc15ef1737890c38c91b728015ad9fe1b84b9100716dc0952f4a1ae4"
+  },
+  "log": {
+    "path": ".artifacts/mobile-polygon-native-binding-controls-v1.log",
+    "sha256": "d46b09e9e64ce8850e7a926db956cec0dcf400080d9b80391154300a88967c88"
+  },
+  "checks": 33,
+  "test_groups": [
+    1,
+    30,
+    2
+  ],
+  "abi_checks": 4,
+  "source_unchanged": true,
+  "layout_audit": {
+    "path": ".artifacts/mobile-polygon-native-binding-layout-audit-v1.json",
+    "sha256": "da09766f0d04fd5b98ec59e38a6c1e5cc99411a7e3e48661f8c18428d3ec2468"
+  },
+  "emission": {
+    "audit": {
+      "path": ".artifacts/mobile-polygon-native-binding-host-rtl-audit-v1.json",
+      "sha256": "ac1ff515b774d41f6f77d5d082070c75f2069025c3073139030785a84eba1033"
+    },
+    "directory": "generated/mobile-h6/polygon-native-binding-host-v1-rtl",
+    "group_counts": {
+      "GpuComputeUnit": 4,
+      "BankedShaderPayloadStore": 1,
+      "TypedReplayTileImagePipeline": 2,
+      "ClipFloatArithmetic": 4,
+      "FloatFMA": 78,
+      "Fp32FmaLane": 78,
+      "Fp32DivLane": 72,
+      "PolygonDepthOffset": 2,
+      "Fp32FragmentInterpolator": 2,
+      "MemoryNativeBinnedGraphicsPipeline": 1
+    },
+    "baseline_group_counts": {
+      "GpuComputeUnit": 4,
+      "BankedShaderPayloadStore": 1,
+      "TypedReplayTileImagePipeline": 2,
+      "ClipFloatArithmetic": 4,
+      "FloatFMA": 78,
+      "Fp32FmaLane": 78,
+      "Fp32DivLane": 72,
+      "PolygonDepthOffset": 0,
+      "Fp32FragmentInterpolator": 2,
+      "MemoryNativeBinnedGraphicsPipeline": 1
+    },
+    "emitted_files": 773,
+    "sv_files": 772,
+    "filelist_entries": 492,
+    "active_rtl_files": 372,
+    "verification_filelist_entries": 120,
+    "physical_sram_bytes": 2689024,
+    "baseline_sram_and_ports_equal": true
+  },
+  "coverage": [
+    "One raster-version control rejects malformed states before raster work and checks legacy reuse. Thirty compatibility controls cover typed/binned readers, record round trips, actual-CU live vertex/raster/fragment execution, faults and cancellation.",
+    "Two local/global prepared replay controls use both engines and actual CUs at 1x/2x/4x with signed D32F offsets, repeated GFS1 state with different raster coefficients, centroid gradients, line/point bypass and shader depth override.",
+    "Shader fragCoord.z in four MRTs, default covered-sample depth, exact source/resolve/guard bytes, held cached-consumer invalidation, immutable completion and uniform tails are checked.",
+    "Default emission retains four CUs, one shared payload pool, two replay engines, the same arithmetic lane counts, 2689024 SRAM bytes and identical AXI ports. Two offset clients share the existing scalar services."
+  ],
+  "limitations": [
+    "This is not the full legacy/composed qualification of the current polygon/discovery source. Later native host matrices and raster discovery have separate frozen results.",
+    "The format resolution remains a candidate; add/encode checks do not prove the full raster minimum-resolvable-difference contract. A separate precision witness is under RTL investigation.",
+    "No new synthesis, power, place-and-route, 720p rates, full Mobile budgets, G04/H6 or H0-H8 closure. PPA remains synthesis only."
+  ],
+  "historical_checkpoint": true,
+  "archived_from_commit": "28d71eb9e98b560dd7818e3a0e404a3a078392e3",
+  "archive_scope_note": "Historical branch evidence retained during main integration; this does not qualify current main inputs."
+}

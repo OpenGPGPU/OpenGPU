@@ -27,10 +27,12 @@ class VertexRasterCompletion extends Bundle {
 class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,centroidInput: Boolean=false,
-    depthFormatInput: Boolean=false) extends Module {
+    depthFormatInput: Boolean=false,groupedTexture: Boolean=false,transformFeedback: Boolean=false) extends Module {
   require(g.subPixelBits==viewport.subPixelBits,"viewport and raster subpixel scales must match")
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
+    val feedback=if(transformFeedback)Some(new TransformFeedbackPipelineIO(config))else None
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val draw=Flipped(Decoupled(new VertexRasterDraw(p)));val out=Decoupled(new Fp32RasterizedQuad(p,g))
     val centroidMask=if(centroidInput)Some(Input(UInt((p.varyings*4).W)))else None
     val depthFormat=if(depthFormatInput)Some(Input(UInt(3.W)))else None
@@ -41,7 +43,13 @@ class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageCon
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new VertexViewportPipeline(config,p,shared,viewport,useSramBlackBoxes,payload,payloadOwner))
+  private val source=Module(new VertexViewportPipeline(config,p,shared,viewport,useSramBlackBoxes,payload,payloadOwner,groupedTexture=groupedTexture,transformFeedback=transformFeedback))
+  if(transformFeedback){
+    val scope=Reg(new TransformFeedbackScope)
+    when(io.draw.fire){scope:=io.feedback.get.scope}
+    TransformFeedbackPipelineIO.forward(io.feedback.get,source.io.feedback.get,Mux(io.draw.fire,io.feedback.get.scope,scope), !io.busy)
+  }
+  if(groupedTexture)io.grouped.get <> source.io.grouped.get
   private val raster=Module(new Fp32PrimitiveRasterStage(p,g))
   private val descriptor=Reg(new VertexRasterDraw(p));private val summary=Reg(new VertexViewportCompletion)
   private val centroidMask=Reg(UInt((p.varyings*4).W))
@@ -60,7 +68,7 @@ class VertexRasterPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageCon
   private val rasterFault=raster.io.completion.valid && raster.io.completion.bits.status=/=0.U
   private val sourceFault=source.io.completion.valid && source.io.completion.bits.status=/=0.U
   private val stop=status=/=0.U || externalCancel || rasterFault || sourceFault
-  io.draw.ready:= !active && !externalCancel;io.busy:=active
+  io.draw.ready:= !active && !externalCancel;io.busy:=active || io.feedback.map(_.busy).getOrElse(false.B)
   when(io.draw.fire){
     centroidMask:=io.centroidMask.getOrElse(0.U)
     depthFormat:=io.depthFormat.getOrElse(TypedDepthFormat.d24.U)

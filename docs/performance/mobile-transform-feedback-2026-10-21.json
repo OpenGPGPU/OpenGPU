@@ -1,0 +1,180 @@
+{
+  "updated_utc": "2026-10-21T10:24:58.565524+00:00",
+  "status": "23 distinct checks,14 actual-CU draws/96 captured primitives/two held-store reset cuts,two emissions and standalone1000ps export synthesis pass. Earlier timing misses preserved. Native host/API/composed closure remains open.",
+  "worktree": ".artifacts/mobile-transform-feedback-v1-worktree",
+  "base_commit": "a78770da6e4eb15a6fea653e37ee135bc62098c7",
+  "source_files": 874,
+  "source_manifest": ".artifacts/mobile-transform-feedback-v6-source.json",
+  "manifest_sha256": "ddfab2206e558d323a25a8e37bcf386297328b3d0c5319f4f0834b6fb44c18cf",
+  "source_proof": ".artifacts/mobile-transform-feedback-v6-source-proof.json",
+  "checks": [
+    {
+      "phase": "export",
+      "tests": 7,
+      "result": ".artifacts/mobile-transform-feedback-v6-export-result.json",
+      "result_sha256": "f0087b49670b3d8123de845302a8a1cb20d48e6234f561e730dbc6e3a57b3bf7",
+      "log_sha256": "d5ad25808bdca2763f86a886e795ccd92aeabb4e9719c25ecb71870beddab5ea"
+    },
+    {
+      "phase": "assembly",
+      "tests": 12,
+      "result": ".artifacts/mobile-transform-feedback-v1-assembly-result.json",
+      "result_sha256": "2aa9069052865e8c1ea8a5c6a4b05cebe72dd60a0f3ba25cfa76922b69784db6",
+      "log_sha256": "34e3f4cecedf44a94a51837ea5c275c757c15c0e8845084fb89fd03312ac0f30"
+    },
+    {
+      "phase": "geometry",
+      "tests": 4,
+      "result": ".artifacts/mobile-transform-feedback-v6-geometry-result.json",
+      "result_sha256": "d6c2d17fd1dbc3ea56d66adbb405d74ec4df0bd889cd9dbb97b45a706bd1e594",
+      "log_sha256": "e86e14ad290ba570bdfd5fc6e5329cec208be4b304882327241129cca61d6f00"
+    },
+    {
+      "phase": "emission",
+      "tests": 0,
+      "result": ".artifacts/mobile-transform-feedback-v6-emission-result.json",
+      "result_sha256": "08eb885aaad20e556b495cf2bfdc4884bafce4ad2a0d60617f3c5b29c546331a",
+      "log_sha256": "6cf8e9c11825000788b3e316eabd28ef1a3bdd74bc3778710231f6203d7f0c78"
+    }
+  ],
+  "qualified_distinct_tests": 23,
+  "default_active_objects": 8,
+  "interleaved_components": 64,
+  "separate_bindings": 4,
+  "separate_components_per_binding": 4,
+  "source_words": "position4,raw varyings up to64,point size",
+  "object_identity": [
+    "opaque context",
+    "VM root",
+    "cookie",
+    "program"
+  ],
+  "checkpoint": "Explicit paused-object eviction/restore preserves bounded cursors,primitive and vertex counts,leases and immutable descriptor state.",
+  "export_ownership": "Preflight all bindings,coalesce masked lines,commit primitive/cursors only after final successful ack. Owned offers and public outputs remain irrevocable across cancel.",
+  "synthesis": {
+    "state": "passed",
+    "stage": "synthesis",
+    "component_only": true,
+    "period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "retiming": false,
+    "core_slack_ps": 259.866,
+    "io_slack_ps": 464.703,
+    "skipped_instances": 0,
+    "mapped_cells": 161654,
+    "library_area": 20947.815,
+    "SRAM_macros": 0,
+    "source_files": 874,
+    "source_manifest": ".artifacts/mobile-transform-feedback-v6-source.json",
+    "frozen_worktree": ".artifacts/mobile-transform-feedback-synthesis-v3-worktree",
+    "qualification": "generated/qualification/ppa/mobile-transform-feedback-export-2026-10-21-v3/qualification.json",
+    "qualification_sha256": "ee3e1cbbb9f6bb24f55cfb59eff10571a9911a4d64e601fb53133450c4aa031b",
+    "result": ".artifacts/mobile-transform-feedback-synthesis-v3-result.json",
+    "result_sha256": "f506fac0b88666ce00ff5f981a85682bb8ef8c469495a451710e8b9eb0eaa25d",
+    "scope": "Default8-object/64-component/four-binding export only. No shared-CU geometry,translated/native host,full-GPU clock or frame-rate claim."
+  },
+  "remaining": [
+    "Composed/native timing and resource budgets",
+    "Native descriptor/control/checkpoint ABI and host integration",
+    "Sv32 permissions/root/publication integration",
+    "Primitive-query objects and API synchronization",
+    "All other H0-H8 gates"
+  ],
+  "commit_policy": "Bundle implementation/tests/docs into validated milestones; no intermediate status-only commits.",
+  "prior_geometry_runtime": {
+    "tests": 2,
+    "draws": 10,
+    "capture_draws": 6,
+    "captured_primitives": 72,
+    "cases": [
+      "indexed instanced source with restarts/incomplete tails",
+      "pre-flat raw capture and provoking-value raster output",
+      "pause/resume append",
+      "raster discard",
+      "program mismatch/fault cancellation",
+      "healthy reuse with changed coherent GPU uniform",
+      "exact cached GPU readback",
+      "local payload without global staging",
+      "held public completions"
+    ],
+    "source_manifest": ".artifacts/mobile-transform-feedback-v2-source.json",
+    "scope": "Earlier source passed both actual-CU modes; changed production controller requires current rerun."
+  },
+  "previous_synthesis": [
+    {
+      "state": "failed_core_gate",
+      "period_ps": 1000,
+      "io_delay_fraction": 0.25,
+      "corner": "TC",
+      "vt": "SLVT",
+      "retiming": false,
+      "core_slack_ps": -325.052,
+      "io_slack_ps": 460.446,
+      "skipped_instances": 0,
+      "mapped_cells": 156427,
+      "library_area": 19889.72982,
+      "SRAM_macros": 0,
+      "qualification": "generated/qualification/ppa/mobile-transform-feedback-export-2026-10-21-v1/qualification.json",
+      "qualification_sha256": "3a628ee8df8f7dd0aa7f208d48abd237793ae319f3121f8fc07153fa5bff2662",
+      "source_manifest": ".artifacts/mobile-transform-feedback-v2-source.json",
+      "critical_path": "packet_primitive_varyingSlots[0] -> states_0_status[1]; varying-limit arithmetic and64 selector checks on the same register path."
+    },
+    {
+      "state": "failed_core_gate",
+      "period_ps": 1000,
+      "io_delay_fraction": 0.25,
+      "corner": "TC",
+      "vt": "SLVT",
+      "retiming": false,
+      "core_slack_ps": -183.976,
+      "io_slack_ps": 447.714,
+      "skipped_instances": 0,
+      "mapped_cells": 164056,
+      "library_area": 20694.7791,
+      "SRAM_macros": 0,
+      "qualification": "generated/qualification/ppa/mobile-transform-feedback-export-2026-10-21-v2/qualification.json",
+      "qualification_sha256": "faded039053e36e6252e6a13cdea07a508079c08616fb0bae28bf035051507e2",
+      "source_manifest": ".artifacts/mobile-transform-feedback-v4-source.json",
+      "critical_path": "io_command_bits_action[0] -> states_7_descriptor_program[28],including begin-state normalization,wide bounds and table update."
+    }
+  ],
+  "actual_reset_test_correction": "v3 local case incorrectly required the source payload to remain allocated after source cancellation,even though a private primitive copy owns the export. v4 checks exact held store/root,complete memory drain,stale-object rejection and final healthy reuse. Failure log/source preserved.",
+  "geometry_runtime": {
+    "tests": 4,
+    "draws": 14,
+    "capture_draws": 8,
+    "captured_primitives": 96,
+    "reset_cuts": 2,
+    "payload_modes": [
+      "local",
+      "spill"
+    ],
+    "cases": [
+      "indexed instances with restarts/incomplete tails",
+      "raw capture before provoking-value flat output",
+      "pause/resume append",
+      "raster discard",
+      "program mismatch/fault drain",
+      "changed coherent GPU uniform and cached destination reuse",
+      "exact cached GPU readback",
+      "held completions",
+      "held export-store offer across cancellation",
+      "pinned draw VM root and immutable store payload",
+      "stale cancelled object rejected",
+      "exact healthy reuse and all payloads released"
+    ],
+    "runtime_configuration": "2CUs,4lanes,2warps,2 varying slots; full-interface/default export covered separately. No full-capacity native host runtime claim."
+  },
+  "primitive_preflight": "Snapshot one object,register varying limit/end addresses,register eight groups of selector validity and four bounds,then update fault state.",
+  "command_preflight": "Capture full command,normalize begin state,register legal layout/bounds,then commit table/reply. Cancelled private commands preserve root/cookie and primary faults without activating new rows.",
+  "admission_cookie_fix": {
+    "reproduction": ".artifacts/mobile-transform-feedback-admission-cookie-v1-result.json",
+    "observed_before": 0,
+    "expected": 37,
+    "after": "Selected cookie is bound before primitive preflight can be bypassed by reset; packet and command admission reset checks pass."
+  },
+  "historical_checkpoint": true,
+  "superseded_by": "docs/performance/mobile-transform-feedback-scoped-abort-2026-10-21.json"
+}

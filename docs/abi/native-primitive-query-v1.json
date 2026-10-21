@@ -1,0 +1,19 @@
+{
+  "schema":"native-primitive-query-v1",
+  "capability_base":640,
+  "capability_words":[1196511233,8,1049613,1196445441,64,2113544,35976,63],
+  "record_bytes":64,
+  "record_alignment":64,
+  "record_words":{"magic":0,"bytes":1,"context":2,"cookie":3,"flags":4,"count_lo":5,"count_hi":6,"root":7,"target":8,"reserved":9},
+  "actions":{"begin":0,"end":1,"poll":2,"result":3},
+  "feature_bits":{"saturating64":0,"clamping32":1,"full_root_namespaces":2,"gpu_completed_records":3,"acknowledged_primitives":4,"reset_drain":5},
+  "command":{"opcode":13,"address":"SOURCE","limit_low":"DESTINATION","limit_high":"PATTERN[0]","action":"PATTERN[2:1]","bytes":64,"context":"WIDTH","cookie":"HEIGHT","source_stride":"ignored","flags":0,"pattern_reserved_zero":"31:3"},
+  "completion":{"opcode_high_bit":16,"value":"DATA_LO clamped uint32","available":"DATA_HI[0]","data_hi_reserved_zero":"31:1"},
+  "record_flags":{"available":0,"fault":"4:2","reserved_zero":"31:5,1"},
+  "statuses":{"success":0,"bounds_or_encoding":1,"record_identity":2,"memory_or_render_fault":3,"cancelled":4,"active_or_missing_lease":5,"capacity":6},
+  "input_reserved_zero_words":[9,10,11,12,13,14,15],
+  "render_context":"opcode7 WIDTH and captured full root",
+  "events":"one successful source primitive after all feedback stores acknowledge, before clipping and tile fanout",
+  "reset":"drain owned offers/replies and renderer, clear active rows, require fresh cookies",
+  "scope":"hardware ABI; API object names and CPU coherence are caller contracts"
+}

@@ -1,0 +1,19 @@
+{
+  "version":1,
+  "capability_base":576,
+  "capability_magic":"0x47515601",
+  "capability_words":["0x47515601","0x8","0xb0a0908","0x47514f01","0x40","0x8","0x1001001","0x1f"],
+  "record_magic":"0x47514f01",
+  "record_bytes":64,
+  "record_alignment":64,
+  "allocation_limit_bits":33,
+  "active_contexts":8,
+  "opcode_high_bit":16,
+  "opcodes":{"begin":8,"end":9,"poll":10,"result":11},
+  "record_words":{"magic":0,"bytes":1,"context":2,"cookie":3,"flags":4,"value":5,"root":6,"reserved":7},
+  "command_fields":{"address":"SOURCE","limit_low":"DESTINATION","limit_high":"PATTERN[0]","conservative":"PATTERN[1]","context":"WIDTH","cookie":"HEIGHT","bytes":64},
+  "data_bits":{"value":0,"available":1},
+  "record_flag_bits":{"available":0,"conservative":1,"status":2},
+  "record_status_bits":3,
+  "reserved_flag_mask":"0xffffffe0"
+}

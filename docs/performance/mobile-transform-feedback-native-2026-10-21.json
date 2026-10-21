@@ -1,0 +1,150 @@
+{
+  "updated_utc": "2026-10-21T11:46:00.425190+00:00",
+  "status": "65 distinct focused/transport/legacy/capability/assembly/geometry/typed-AXI checks pass across exact source scopes;three combined host emissions and default export/control synthesis pass. Binned AXI runtime remains active.",
+  "worktree": ".artifacts/mobile-transform-feedback-native-v1-worktree",
+  "base_commit": "55cd199038e0f6294724fc0288900d6c71a5ac23",
+  "source_files": 902,
+  "source_manifest": ".artifacts/mobile-transform-feedback-native-v4-source.json",
+  "source_sha256": "673edb66df3096292424fe22d019d6e7d49ef7731129dd112fef08dafe94f9d5",
+  "checks": {
+    "control_export": {
+      "tests": 13,
+      "result": ".artifacts/mobile-transform-feedback-native-v1-control-result.json",
+      "scope": "Native parser/core plus full64-component default export. All current dependencies unchanged."
+    },
+    "transport_mmio": {
+      "tests": 15,
+      "result": ".artifacts/mobile-transform-feedback-native-v2-result.json",
+      "scope": "Three feedback transport,twelve legacy port/MMIO plus three combined host emissions. Current main sources unchanged;later fixture additions do not affect emitted RTL."
+    },
+    "capabilities": {
+      "tests": 2,
+      "result": ".artifacts/mobile-transform-feedback-native-v3-capabilities-result.json"
+    },
+    "legacy_query_router": {
+      "tests": 17,
+      "result": ".artifacts/mobile-transform-feedback-native-v3-compatibility-result.json"
+    },
+    "ABI": {
+      "result": ".artifacts/mobile-transform-feedback-native-v3-abi-layout-result.json",
+      "standards": [
+        "C11",
+        "C++17"
+      ],
+      "record_bytes": 512,
+      "named_offset_assertions": 20
+    },
+    "geometry_assembly": {
+      "tests": 16,
+      "result": ".artifacts/mobile-transform-feedback-native-v3-geometry-assembly-result.json",
+      "geometry_draws": 14,
+      "captured_primitives": 96,
+      "held_store_reset_cuts": 2,
+      "scope": "Two-CU actual geometry local/spill plus default/raw assembly. Current production inputs unchanged."
+    },
+    "typed_AXI": {
+      "tests": 2,
+      "frames": 4,
+      "captured_primitives": 4,
+      "captured_vertices": 12,
+      "checkpoint_write_reset_cuts": 2,
+      "result": ".artifacts/mobile-transform-feedback-native-v4-typed-result.json",
+      "payload_modes": [
+        "local",
+        "spill"
+      ],
+      "scope": "Four-CU/two-varying reduced-capacity typed host with actual MMIO/Sv32/raw bytes,exact images,raster discard,queries,held completion/root and healthy reuse."
+    }
+  },
+  "native_AXI_runtime": {
+    "state": "passed_before_scoped_abort_correction",
+    "typed_tests": 2,
+    "binned_tests": 2,
+    "healthy_frames": 8,
+    "checkpoint_store_reset_cuts": 4,
+    "typed_result": ".artifacts/mobile-transform-feedback-native-v4-typed-result.json",
+    "binned_result": ".artifacts/mobile-transform-feedback-native-v4-binned-result.json",
+    "scope": "Historical902-input healthy source;current904-input scoped-abort/recovery is separately qualified."
+  },
+  "synthesis": {
+    "state": "passed",
+    "stage": "synthesis",
+    "component_only": true,
+    "period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "retiming": false,
+    "core_slack_ps": 226.04,
+    "io_slack_ps": 451.601,
+    "skipped_instances": 0,
+    "mapped_cells": 164002,
+    "library_area": 21091.47174,
+    "SRAM_macros": 0,
+    "source_files": 902,
+    "source_manifest": ".artifacts/mobile-transform-feedback-native-v3-source.json",
+    "frozen_worktree": ".artifacts/mobile-transform-feedback-native-synthesis-v1-worktree",
+    "qualification": "generated/qualification/ppa/mobile-transform-feedback-native-export-2026-10-21-v1/qualification.json",
+    "qualification_sha256": "142d00f90cc227a0758f953339a60c6124327ce2f9151dabe3ae9678d2900ae4",
+    "result": ".artifacts/mobile-transform-feedback-native-synthesis-v1-result.json",
+    "scope": "Default8-object/64-component/four-binding export including current native-mode/cookie/kind guards,applied marker and scoped invalidation; no control-parser,geometry,host or whole-GPU timing claim."
+  },
+  "remaining": [
+    "Binned native AXI runtime and recovery review",
+    "Composed control/export,geometry/host timing and resource budgets",
+    "Native permission/fault/reset coverage beyond the current control/component cases",
+    "Primitive-query objects and API integration",
+    "Full-capacity runtime and all other H0-H8 gates"
+  ],
+  "commit_policy": "Bundle implementation,tests and docs into a larger validated milestone;no new commit yet;no push.",
+  "structural_proof": {
+    "result": ".artifacts/mobile-transform-feedback-native-v3-structure.json",
+    "sha256": "6e7bfa212432eed133bc8e5f6f4404e3cfcc7ffe25c216a8c2fd59bde0371d40",
+    "profiles": [
+      "typed",
+      "binned",
+      "product"
+    ],
+    "instances_per_profile": {
+      "export": 1,
+      "control": 1,
+      "visibility_query": 1,
+      "shared_texture_pool": 1
+    }
+  },
+  "native_control_synthesis": {
+    "state": "passed",
+    "stage": "synthesis",
+    "component_only": true,
+    "period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "retiming": false,
+    "core_slack_ps": 407.438,
+    "io_slack_ps": 235.022,
+    "skipped_instances": 0,
+    "mapped_cells": 30641,
+    "library_area": 3963.41262,
+    "sequential_area": 1625.67,
+    "SRAM_macros": 0,
+    "production_source_files": 902,
+    "source_manifest": ".artifacts/mobile-transform-feedback-native-v3-source.json",
+    "frozen_worktree": ".artifacts/mobile-transform-feedback-native-synthesis-v1-worktree",
+    "elaboration_support": ".artifacts/mobile-transform-feedback-native-control-synthesis-v1-elaboration.json",
+    "qualification": "generated/qualification/ppa/mobile-transform-feedback-native-control-2026-10-21-v1/qualification.json",
+    "qualification_sha256": "eb7ada845fd909c0b45899dbec2c2cc90acc628fcdd91899149c5f0b5c4487ec",
+    "result": ".artifacts/mobile-transform-feedback-native-control-synthesis-v1-result.json",
+    "scope": "Default512-byte native control/parser/publication and recovery only; direct module with no wrapper logic,timing exceptions or retiming. Composed control+export,geometry/host and whole-GPU timing are not qualified."
+  },
+  "source_carry_proof": ".artifacts/mobile-transform-feedback-native-v4-source-proof.json",
+  "qualified_distinct_tests": 65,
+  "initial_native_fixture_failure": {
+    "result": ".artifacts/mobile-transform-feedback-native-v3-typed-result.json",
+    "source_manifest": ".artifacts/mobile-transform-feedback-native-v3-source.json",
+    "cause": "New centroid test requested fragment ABI1 with a nonzero centroid mask. Existing descriptor admission correctly rejected both local/spill draws before execution.",
+    "correction": "Use centroid-capable fragment ABI3. One test-fixture line changed; no production or validator changes. Both corrected typed cases pass."
+  },
+  "historical_checkpoint": true,
+  "superseded_by": "docs/performance/mobile-transform-feedback-scoped-abort-2026-10-21.json"
+}

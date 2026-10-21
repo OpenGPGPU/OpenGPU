@@ -26,12 +26,12 @@ class Rgba8Fp32TextureRequest extends Bundle {
   * the native hierarchical FP32 filter. The whole pipeline drains on cancel.
   */
 class TranslatedRgba8Fp32TextureService(config: GpuConfig = GpuConfig(),
-    dataBytes: Int = 8192, entries: Int = 128, useBlackBoxes: Boolean = false) extends Module {
+    dataBytes: Int = 8192, entries: Int = 128, useBlackBoxes: Boolean = false, readCountOutput: Boolean = false) extends Module {
   require(config.xLen == 32 && isPow2(entries) && entries >= 16 && entries <= 256)
   private val indexBits = log2Ceil(entries)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new Rgba8Fp32TextureRequest))
-    val out = Decoupled(new TranslatedBankedRgba8Result)
+    val out = Decoupled(new TranslatedBankedRgba8Result(readCountOutput = readCountOutput))
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config, 64, 16))
     val memoryResponse = Flipped(Decoupled(new ComputeMemoryResponse(64, 16)))
     val pageWalk = Decoupled(new ComputeMemoryRequest(config, 64, 4))
@@ -46,11 +46,11 @@ class TranslatedRgba8Fp32TextureService(config: GpuConfig = GpuConfig(),
     val joined = Output(Bool())
   })
   private val backend = Module(new TranslatedBankedRgba8TextureService(config, dataBytes,
-    useBlackBoxes = useBlackBoxes, rawTapOutput = true))
+    useBlackBoxes = useBlackBoxes, rawTapOutput = true, readCountOutput = readCountOutput))
   private val decode = Seq.fill(4)(Module(new Rgba8WeightedToFp32(indexBits)))
   private val filter = Module(new TextureBilinearFilterPipeline())
   private val requests = Reg(Vec(entries, new Rgba8Fp32TextureRequest))
-  private val results = Reg(Vec(entries, new TranslatedBankedRgba8Result))
+  private val results = Reg(Vec(entries, new TranslatedBankedRgba8Result(readCountOutput = readCountOutput)))
   private val alive = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val completed = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val cancelled = Reg(Vec(entries, Bool()))
@@ -60,7 +60,7 @@ class TranslatedRgba8Fp32TextureService(config: GpuConfig = GpuConfig(),
   private val count = RegInit(0.U(log2Ceil(entries + 1).W))
   private val pending = Module(new Queue(UInt(indexBits.W), 16))
   private val owners = Module(new Queue(UInt(indexBits.W), 32))
-  private val outputs = Module(new Queue(new TranslatedBankedRgba8Result, 1, pipe = true))
+  private val outputs = Module(new Queue(new TranslatedBankedRgba8Result(readCountOutput = readCountOutput), 1, pipe = true))
   private val draining = RegInit(false.B)
   private val pinnedSatp = RegInit(0.U(32.W))
   private val vmChanged = io.satp =/= pinnedSatp
@@ -149,6 +149,7 @@ class TranslatedRgba8Fp32TextureService(config: GpuConfig = GpuConfig(),
     results(e).hit := b.hit; results(e).fault := b.fault
     results(e).faultSource := b.faultSource; results(e).faultAddress := b.faultAddress
     results(e).missingTaps := b.missingTaps
+    results(e).dataReadLines.foreach(_ := b.dataReadLines.get)
     when(b.cancelled) { cancelled(e) := true.B }
   }
 
