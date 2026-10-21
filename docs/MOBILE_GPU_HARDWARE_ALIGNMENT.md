@@ -7532,3 +7532,17 @@ first run exhausted disk during Verilator compilation before simulation. This
 merge does not claim those runtime checks passed or close H0-H8 requirements.
 PPA remains synthesis only. Historical branch tips are backed up before obsolete
 branch names are removed; qualification worktrees and active jobs are preserved.
+
+
+### 2026-10-21: completed shared-cluster synthesis timing miss
+
+The long-running867-input shared-cluster mapping has now completed with unchanged
+source/RTL. Its [synthesis report](performance/mobile-native-rgba8-shared-cluster-synthesis-2026-10-21.json)
+misses the1000ps gate: core slack−52.676ps,I/O+282.338ps,zero skipped instances,
+2539232 mapped cells and library area340309.315973. The60 functional checks
+remain scoped functional evidence; passing standalone numeric-service and
+shared-window-controller synthesis do not qualify this composed cluster.
+The serial queue stopped at this failure,so native vertex/fragment endpoint
+synthesis did not start. Critical-path correction and fresh qualification remain
+required. H4/H0-H8 stay open; the failed result is preserved without clock
+relaxation,retiming or place/route.
