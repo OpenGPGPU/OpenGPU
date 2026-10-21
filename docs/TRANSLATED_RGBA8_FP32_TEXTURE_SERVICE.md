@@ -73,6 +73,7 @@ all 1,166,030 cells are mapped with zero skipped instance types. Library area
 is 154116.373679. The 828-input source and all 77 active endpoint SV files
 remain unchanged through the run. This endpoint still uses the existing native
 sampler; it does not demonstrate new banked service routing. Fresh fragment
-synthesis is running separately. The translated native FP32 service, subsequent
-counted/late-join revision and coordinate composition need their own synthesis
-evidence. All remaining H0-H8 gates stay open.
+synthesis is running separately. The translated native FP32 service also
+passes its own synthesis screen at +40.947/+343.996 ps core/I/O slack. The
+subsequent counted/late-join revision and coordinate/client composition need
+their own synthesis evidence. All remaining H0-H8 gates stay open.
