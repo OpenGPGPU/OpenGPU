@@ -1,14 +1,16 @@
 {
   "passed": true,
-  "source_files": 1037,
-  "source_manifest": ".artifacts/mobile-reconvergence-v1-source.json",
-  "source_sha256": "928cd516acf29d9259f6b1dc83381e92c1b8a26884248c1a034719ea3c122348",
-  "tests": 42,
+  "source_files": 1038,
+  "source_manifest": ".artifacts/mobile-reconvergence-native-v1-source.json",
+  "source_sha256": "661810f17cb3230c2a947140115866569d50e3bec1cf04f7e471a2c47b4401be",
+  "tests": 54,
   "test_counts": [
     9,
-    33
+    33,
+    8,
+    4
   ],
-  "fresh_checks": 9,
+  "fresh_checks": 21,
   "compatibility_checks": 33,
   "baseline_failures": {
     "result": ".artifacts/mobile-reconvergence-baseline-v1-result.json",
@@ -35,7 +37,7 @@
     "defaultWarpSystemControl",
     "default4CU16lane8warp256bitAXIindirecthost"
   ],
-  "ABI_checks": 1,
+  "ABI_checks": 2,
   "synthesis": {
     "flow": {
       "passed": true,
@@ -84,15 +86,24 @@
   "synthesis_validation_note": "Original system wrapper count-rule failure was a classification error: zero DFFs and one IO group. Actual strict qualification passes. Original result preserved; no resynthesis or constraint change.",
   "functional_result": ".artifacts/mobile-reconvergence-v1-result.json",
   "native_and_indirect_integration": {
-    "state": "running separately; excluded from42",
+    "state": "terminal_pass",
+    "checks": 12,
+    "test_counts": [
+      8,
+      4
+    ],
+    "result": ".artifacts/mobile-reconvergence-native-v1-result.json",
     "source_files": 1038,
-    "source_manifest": ".artifacts/mobile-reconvergence-native-v1-source.json",
-    "result": ".artifacts/mobile-reconvergence-native-v1-result.json"
+    "native_frames": 16,
+    "native_faults": 8,
+    "native_exact_healthy_images": 8,
+    "scope": "Core reconvergence-fault changes composed with actualdefault4CUindirectproducers/consumers,256bitAXIhostbothbufferingprofiles,Sv32/reset; thennative typed/binned local/spill vertex+fragment emptyjoin followedbyCease,8shaderfaultsand8exacthealthyimages/payloadVMdrain. No instruction-driven vectorbranch/nativeoverflow/fullwatchdog/product/PPA qualification."
   },
   "remaining": [
     "Instruction-driven lane-wise vector-branch execution/reconvergence semantics; overflow tests use the existing external result port.",
-    "Native join and fresh default4CU indirect integration, native overflow and discoverable capacity limits.",
+    "Instruction-driven native overflow, discoverable capacity limits and one-grid distribution across the CU pool.",
     "WholeCore/CU/host timing, scratch/resources/watchdog contracts and remainingH0-H8 requirements."
   ],
-  "main_promoted": false
+  "component_checks_carried": 42,
+  "carry_proof": ".artifacts/mobile-reconvergence-native-v1-carry-proof.json"
 }

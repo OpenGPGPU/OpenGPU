@@ -40,8 +40,10 @@ for an unresponsive external owner.
 
 ## Evidence and remaining integration
 
-The [1,037-input qualification](performance/mobile-reconvergence-faults-2026-10-22.json)
-passes42 checks: nine new cases and33 compatibility regressions. Capacity cases
+The [1,038-input integration](performance/mobile-reconvergence-faults-2026-10-22.json)
+passes54 distinct checks: 42 component checks carried from identical production,
+build and component-test dependencies, plus12 fresh integration checks. The
+component set includes nine new cases and33 compatibility regressions. Capacity cases
 cover depth1, odd depth3 and the complete default16-lane/eight-warp/depth8
 configuration, atomic admission, uniform branches at capacity, held original
 metadata, peer LIFO preservation and reuse. Three clear cuts cover the pending
@@ -73,9 +75,14 @@ virtual-clock group. The classification was corrected after checking zero
 sequential area, the actual path endpoints and unchanged constraints; the
 original wrapper result remains preserved. No synthesis was rerun.
 
-Typed/binned local/spilled native vertex/fragment join-fault recovery and fresh
-default four-CU indirect-compute regressions are running on a separate snapshot
-with identical production inputs. They are excluded from these42 checks.
+The12 fresh checks pass actual default four-CU indirect-compute execution,
+both256-bit AXI host buffering profiles, Sv32 translation and real reset drain,
+and typed/binned local/spilled native vertex/fragment join-fault recovery. The
+four native cases execute16 frames: eight attributed shader faults and eight
+exact healthy successor images, with held-completion VM protection and payload
+release. The configured four-CU indirect checks do not prove that one grid
+distributes workgroups across every CU. Production inputs and the emitted
+component RTL are byte-identical to the42-check synthesis checkpoint.
 Instruction-driven vector-branch production, native overflow, discoverable
 resource limits and full core/CU/host timing still require evidence. No whole
 watchdog, API or H0-H8 completion follows from this checkpoint.

@@ -16,6 +16,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   protected def shaderRunningReset: Boolean=false
   protected def shaderExecutionLimits: Boolean=false
   protected def shaderSystemFaults: Boolean=false
+  protected def shaderReconvergenceFaults: Boolean=false
   protected def shaderAvailabilityFaults: Boolean=false
   protected def transformFeedbackRecovery: Boolean=false
   protected def groupedTexture: Boolean=false
@@ -339,6 +340,35 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       info(s"NATIVE_SHADER_EXECUTION_TYPED local=$local CUs=$nativeComputeUnits frames=4 vertexLoop=true fragmentLoop=true quota128=true resetDuringOwnedFetch=true delayedReplyDrained=true maxQuota=true zeroRejectedByPolicy=true queuedAndCompletionPolicyPinned=true exactHealthyImages=true payloadReleased=true")
     }
   }
+  if(shaderReconvergenceFaults)for(local<-Seq(true,false))
+  it should s"fault empty joins in both native shader stages and recover exact images local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      initialize(d);val image=new Image(d);val perf=d.io.performance.get
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,RenderHostRegs.IRQ,1)
+      var frames=0
+      def released(): Unit={perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)}
+      for((stage,index)<-Seq("vertex","fragment").zipWithIndex){
+        image.shaderDraws(0,freshTextureSources=true,generation=index*2+1)
+        val pc=0x4c0000+index*0x2000
+        image.word(image.pa(pc),BigInt("0000205b",16));image.word(image.pa(pc+4),BigInt("30500073",16))
+        for(draw<-0 until 3)image.word(image.pa(0x412000+draw*4096+(if(stage=="vertex")33 else 516)*4),pc)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(220+frames);image.run(status=5,id=220+frames)
+        assert(image.reads.contains(image.pa(pc)),s"$stage empty join never reached instruction memory")
+        assert(!image.writes.exists(_>=0x1000000),s"$stage join fault published an image")
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        image.pop();released();frames+=1
+        image.shaderDraws(0,freshTextureSources=true,generation=index*2+2)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(220+frames);image.run(id=220+frames)
+        image.verifyDraws(0);image.pop();released();frames+=1
+      }
+      assert(frames==4)
+      info(s"NATIVE_SIMT_UNDERFLOW_TYPED local=$local CUs=$nativeComputeUnits frames4=true vertexAndFragment=true actualJoinThenCease=true twoShaderFaults=true twoExactHealthyImages=true heldCompletionPinsVM=true payloadReleased=true noImageOnFault=true")
+    }
+  }
   if(shaderSystemFaults || shaderAvailabilityFaults)for(local<-Seq(true,false))
   it should (if(shaderAvailabilityFaults)s"trap unavailable native FP instructions and reuse vector destinations through AXI local=$local"
     else s"reject unsupported native shader system operations and reuse their destinations through AXI local=$local") in {
@@ -548,7 +578,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames resetCuts=$resetCuts checkpointPermissionFaults=1 capturePermissionFaults=1 captureBusFaults=1 missingLeaseDraws=1 peerHealthyDraws=4 scopedRecovery=true countersAfterFinalAck=true noDeniedPhysicalStores=true partialFaultStoresBounded=true staleResetObjectsRejected=true exactRawCaptureAndImages=true queryContextIsolation=true")
     }
   }
-  if(!transformFeedback && !shaderSystemFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
+  if(!transformFeedback && !shaderReconvergenceFaults && !shaderSystemFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
   // Shared-path subclasses register the focused capture matrix below.
   if(!groupedTexture){
   it should "submit a translated native clear pass and publish trusted physical source and resolve views over the production AXI host" in {

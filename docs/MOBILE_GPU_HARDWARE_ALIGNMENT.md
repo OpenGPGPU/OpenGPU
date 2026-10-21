@@ -7872,8 +7872,8 @@ all other H0-H8 gates remain open.
 
 ### Attributed reconvergence capacity and empty-join faults, 2026-10-22
 
-The [42-check reconvergence checkpoint](performance/mobile-reconvergence-faults-2026-10-22.json)
-qualifies1,037 exact inputs. The sequencer reports cause26 with original PC/mask
+The [54-check reconvergence checkpoint](performance/mobile-reconvergence-faults-2026-10-22.json)
+qualifies1,038 exact inputs. The sequencer reports cause26 with original PC/mask
 before a divergent branch can partially push an over-capacity pair. Uniform
 branches require no slots. Per-warp finish clears pending resolver/sequencer
 state as well as the stack, preventing ghost pushes or redirects after reuse.
@@ -7889,7 +7889,12 @@ instances. The combinational warp-system block passes its I/O-only group at
 +376.990ps with703 cells and no sequential path. Both use25%IO, standardABC and
 no retiming. The original wrapper's mistaken two-group requirement for that
 combinational block is preserved; classification was corrected from existing
-reports without rerunning synthesis. Native join recovery and fresh default
-four-CU indirect integration are running separately on identical production
-inputs. Whole-CU/host timing, resource/watchdog/capacity-discovery contracts and
+reports without rerunning synthesis. Twelve fresh integration checks pass
+configured default four-CU indirect execution,256-bit AXI host and Sv32/reset,
+plus typed/binned local/spilled native join recovery: eight attributed faults
+and eight exact healthy successor images with payload/VM drain. The42 component
+checks and both synthesis results carry through identical production, build,
+component-test dependencies and emitted component RTL. One-grid distribution
+across the CU pool remains unqualified. Whole-CU/host timing,
+resource/watchdog/capacity-discovery contracts and
 the remaining H0-H8 goal remain open.
