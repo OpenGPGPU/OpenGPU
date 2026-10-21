@@ -138,7 +138,7 @@ int main(int argc, char **argv)
     /* Verilator's vertex+fragment model does not finish a launch inside the
      * 30s budget used by the small fixed-function compute example. */
     step = "compute completion";
-    if (opengpu_sync_wait_success(fd, fence, 300000))
+    if (opengpu_sync_wait_success(fd, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     result = ((uint32_t *)kernarg.map)[0];
     if (result != 6) {

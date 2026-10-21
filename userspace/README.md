@@ -88,6 +88,14 @@ and `(1,1,1,1)`, so every painted pixel must be `0xff0000ff`.
 `examples/fragment_min` is the next opcode on that emitter: `gl_FragColor =
 min(CONST[0][0], CONST[0][1])`, the `MIN` half of `clamp()`. The constants are
 `(1,0,1,1)` and `(1,1,0,1)`, so every painted pixel must be `0xff0000ff`.
+`examples/fragment_cover` is the next set on that emitter, still on a
+fragment-only device. `sqrt((0.25, 1, 0.25, 1))` is a scalar
+`fsqrt.s` splatted to the fragment, and paints `0x80ff80ff`.
+`min(max((2, 0.25, 0.5, 1.5), 0.5), 1)` paints `0xff8080ff`. On the 64×64
+triangle, `gl_FragCoord.y < 32` paints both `0xff00ffff` and `0x0000ffff`.
+A uniform `if` paints `0xff0000ff` on one submit and `0x00ff00ff` on the
+next. `KILL_IF` drops lanes below `y = 32`, so the red survivors are a
+partial triangle rather than the full 2016 pixels.
 `examples/vertex_alu` is the vertex program the menu does not classify. It
 adds the integer at kernarg byte 512 to Q16.16 position x and copies the
 other slices. The addend is zero and `fragment_color` copies the vertex

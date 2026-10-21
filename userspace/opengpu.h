@@ -11,6 +11,15 @@ struct opengpu_buffer {
     void *map;
 };
 
+/* One emulated fragment draw at 64x64 has finished in about 100-220s and
+ * has also still been running at 300s, which is the "Timer expired" perror
+ * from opengpu_sync_wait. The driver watchdog is longer than that. 900s
+ * lets the slow draw retire and still fails a wedged one inside the guest
+ * cap. Override at compile time for a shorter host run. */
+#ifndef OPENGPU_FENCE_TIMEOUT_MS
+#define OPENGPU_FENCE_TIMEOUT_MS 900000
+#endif
+
 /* opengpu_open returns a file descriptor. Other functions return 0 on
  * success and -1 with errno set on failure. The caller owns the DRM fd;
  * buffers, contexts and syncobjs have explicit lives. */

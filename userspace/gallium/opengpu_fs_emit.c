@@ -1,8 +1,12 @@
 /* SPDX-License-Identifier: MIT */
-/* Lower a straight-line TGSI fragment program onto the fragment core.
- * The rasterizer has already written integer pixel x,y. Square root is
- * vfrsqrt7.v, which the vector core already executes. A program that does
- * not fit in 256 instructions fails the draw. */
+/* Lower a TGSI fragment program onto the fragment core. The rasterizer
+ * has already written integer pixel x,y. RSQ is vfrsqrt7.v. SQRT of a
+ * uniform is fsqrt.s plus a splat: the vector unit joins every physical
+ * lane, and a vfsqrt whose tail lanes were never written did not retire.
+ * A varying SQRT stays vfsqrt.v. One uniform if/else becomes two forward
+ * branches. KILL_IF clears the fragment validity word for lanes whose
+ * source is negative. A program that does not fit in 256 instructions
+ * fails the draw. */
 #include "opengpu_fs_emit.h"
 
 #include <stdio.h>
@@ -24,6 +28,12 @@
 #define OP_DP4 13
 #define OP_MAD 14
 #define OP_MIN 15
+#define OP_SQRT 16
+#define OP_IF 17
+#define OP_ELSE 18
+#define OP_ENDIF 19
+#define OP_KILL 20
+#define OP_KILL_IF 21
 
 #define FILE_TEMP 1
 #define FILE_CONST 2
@@ -78,6 +88,8 @@ struct bld {
     int nir;
     int ip;
 };
+
+static int ir_reads_in(const struct bld *b, int chan);
 
 static uint32_t opv(unsigned f6, unsigned vm, unsigned vs2, unsigned vs1,
                     unsigned f3, unsigned vd)
@@ -243,9 +255,10 @@ static void kill_src(struct bld *b, const struct fs_insn *in, const struct fs_sr
         release(b, h);
         if (h >= 0)
             b->home[s->index][chan] = -1;
-    } else if (s->file == FILE_IN && chan == 0) {
-        release(b, b->in_home[0]);
-        b->in_home[0] = -1;
+    } else if (s->file == FILE_IN && chan >= 0 && chan < 4 &&
+               b->in_home[chan] >= 0) {
+        release(b, b->in_home[chan]);
+        b->in_home[chan] = -1;
     }
 }
 
@@ -501,9 +514,24 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
         return -1;
     if (in->op == OP_MAD)
         return emit_mad(b, in, vd) || (in->sat && sat(b, vd));
-    if (in->op == OP_RSQ || in->op == OP_RCP) {
+    if (in->op == OP_RSQ || in->op == OP_RCP || in->op == OP_SQRT) {
         if (locate(b, &in->src[0], in->comp[0][0], &a))
             return -1;
+        /* f31 is not a constant register. fsqrt.s into it, then one
+         * vfmv.v.f, keeps a uniform root off the 16-lane vector sqrt. */
+        if (in->op == OP_SQRT && a.is_f) {
+            unsigned fs = (unsigned)a.f;
+
+            if (in->src[0].neg) {
+                if (put(b, fpu(0x04, fs, fs, 1, 30)))
+                    return -1;
+                fs = 30;
+            }
+            if (fs == 31 || put(b, fpu(0x0b, 0, fs, 7, 31)) ||
+                put(b, opv(0x17, 1, 0, 31, 5, (unsigned)vd)))
+                return -1;
+            return in->sat ? sat(b, vd) : 0;
+        }
         k = neg_loc(b, &a, in->src[0].neg, 2);
         if (k < 0)
             return -1;
@@ -513,7 +541,12 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
             if (tmp < 0)
                 return -1;
             if (in->op == OP_RSQ) {
+                /* vfrsqrt7.v, the approximate reciprocal square root. */
                 if (put(b, opv(0x13, 1, (unsigned)k, 4, 1, (unsigned)tmp)))
+                    return -1;
+            } else if (in->op == OP_SQRT) {
+                /* vfsqrt.v. vs1 selects the unary op and is not a register. */
+                if (put(b, opv(0x13, 1, (unsigned)k, 0, 1, (unsigned)tmp)))
                     return -1;
             } else if (put(b, opv(0x21, 1, (unsigned)k, (unsigned)b->f_one, 5,
                                   (unsigned)tmp))) {
@@ -643,7 +676,9 @@ static int emit_one(struct bld *b, const struct fs_insn *in)
         if (bin(b, 0x00, vd, &a, in->src[0].neg, &c, in->src[1].neg, 1))
             return -1;
     } else if (in->op == OP_MAX) {
-        if (bin(b, 0x06, vd, &a, in->src[0].neg, &c, in->src[1].neg, 0))
+        /* vfmax.vf does not retire on this fragment core. vfmax.vv is the
+         * form fp_binary already runs. */
+        if (bin(b, 0x06, vd, &a, in->src[0].neg, &c, in->src[1].neg, 1))
             return -1;
     } else if (in->op == OP_MIN) {
         if (bin(b, 0x04, vd, &a, in->src[0].neg, &c, in->src[1].neg, 0))
@@ -750,6 +785,17 @@ static int prologue(struct bld *b, const float *imm, int nimm)
         return -1;
     if (addi(b, 6, 5, 32) || put(b, vload(4)))
         return -1;
+    /* Float gl_FragCoord.y. Programs that never read it keep the integer
+     * in v4 only, so the checked-in straight-line images stay put. */
+    if (ir_reads_in(b, 1)) {
+        int yv = take(b);
+
+        if (yv < 0)
+            return -1;
+        b->in_home[1] = yv;
+        if (put(b, opv(0x12, 1, 4, 3, 1, (unsigned)yv)))
+            return -1;
+    }
     if (put(b, opv(0x17, 1, 0, b->f_zero, 5, 30)))
         return -1;
     if (put(b, opv(0x17, 1, 0, b->f_one, 5, 31)))
@@ -789,6 +835,39 @@ static int epilogue(struct bld *b)
     return put(b, 0x30500073u);
 }
 
+static int ir_reads_in(const struct bld *b, int chan)
+{
+    int i, s, k;
+
+    for (i = 0; i < b->nir; i++) {
+        for (s = 0; s < b->ir[i].nsrc; s++) {
+            if (b->ir[i].src[s].file != FILE_IN)
+                continue;
+            for (k = 0; k < b->ir[i].comps; k++) {
+                if (b->ir[i].comp[s][k] == chan)
+                    return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static int is_flow(int op)
+{
+    return op == OP_IF || op == OP_ELSE || op == OP_ENDIF || op == OP_KILL ||
+           op == OP_KILL_IF;
+}
+
+static uint32_t branch_word(unsigned funct3, unsigned rs1, unsigned rs2,
+                            int byte_off)
+{
+    unsigned imm = (unsigned)byte_off;
+
+    return ((imm >> 12) & 1u) << 31 | ((imm >> 5) & 0x3fu) << 25 |
+           (rs2 << 20) | (rs1 << 15) | (funct3 << 12) |
+           ((imm >> 1) & 0xfu) << 8 | ((imm >> 11) & 1u) << 7 | 0x63u;
+}
+
 static int insn_reads(const struct fs_insn *in, int file, int index, int chan)
 {
     int s, k;
@@ -801,6 +880,157 @@ static int insn_reads(const struct fs_insn *in, int file, int index, int chan)
                 return 1;
         }
     }
+    return 0;
+}
+
+struct alloc_snap {
+    int used[32];
+    int home[MAX_TEMP][4];
+    int in_home[4];
+    int out_home[4];
+    int have_y_int;
+    int spilled;
+};
+
+static void save_alloc(const struct bld *b, struct alloc_snap *s)
+{
+    memcpy(s->used, b->used, sizeof(s->used));
+    memcpy(s->home, b->home, sizeof(s->home));
+    memcpy(s->in_home, b->in_home, sizeof(s->in_home));
+    memcpy(s->out_home, b->out_home, sizeof(s->out_home));
+    s->have_y_int = b->have_y_int;
+    s->spilled = b->spilled;
+}
+
+static void restore_alloc(struct bld *b, const struct alloc_snap *s)
+{
+    memcpy(b->used, s->used, sizeof(b->used));
+    memcpy(b->home, s->home, sizeof(b->home));
+    memcpy(b->in_home, s->in_home, sizeof(b->in_home));
+    memcpy(b->out_home, s->out_home, sizeof(b->out_home));
+    b->have_y_int = s->have_y_int;
+    b->spilled = s->spilled;
+}
+
+static int emit_span(struct bld *b, struct fs_insn *ir, int begin, int end)
+{
+    int i;
+
+    for (i = begin; i < end; i++) {
+        int s;
+
+        if (is_flow(ir[i].op))
+            return -1;
+        b->ip = i;
+        memcpy(b->snap_temp, b->home, sizeof(b->home));
+        memcpy(b->snap_in, b->in_home, sizeof(b->in_home));
+        b->snapping = 1;
+        if (emit_one(b, &ir[i]))
+            return -1;
+        b->snapping = 0;
+        gc(b);
+        for (s = 0; s < ir[i].nsrc; s++) {
+            int k;
+
+            for (k = 0; k < ir[i].comps; k++)
+                kill_src(b, &ir[i], &ir[i].src[s], ir[i].comp[s][k]);
+        }
+        if (b->fail)
+            return -1;
+    }
+    return 0;
+}
+
+/* A zero validity word drops that lane. A nonzero word keeps it. */
+static int emit_kill(struct bld *b, const struct fs_insn *in)
+{
+    int vd, i;
+
+    if (in->op == OP_KILL) {
+        if (addi(b, 6, 5, 256) || put(b, vstore(30)))
+            return -1;
+        return 0;
+    }
+    vd = take(b);
+    if (vd < 0)
+        return -1;
+    if (put(b, opv(0x17, 1, 0, 31, 0, (unsigned)vd)))
+        return -1;
+    for (i = 0; i < 4; i++) {
+        struct loc a;
+        int src;
+
+        if (locate(b, &in->src[0], in->comp[0][i], &a))
+            return -1;
+        src = neg_loc(b, &a, in->src[0].neg, 2);
+        if (src < 0 || cmp_mask(b, 0x1b, src, 0, b->f_zero, 1))
+            return -1;
+        /* vd = mask ? 0 : vd. Negative sources become a zero word. */
+        if (put(b, opv(0x17, 0, (unsigned)vd, 30, 0, (unsigned)vd)))
+            return -1;
+    }
+    if (addi(b, 6, 5, 256) || put(b, vstore(vd)))
+        return -1;
+    release(b, vd);
+    return 0;
+}
+
+/* Uniform if/else. The condition is a constant or an immediate, so every
+ * lane takes the same side. Both sides write the same destinations and
+ * the allocator is restarted for the else side, which keeps those
+ * registers defined on the join. */
+static int emit_if(struct bld *b, struct fs_insn *ir, int n, int *io)
+{
+    int if_i = *io;
+    int else_i = -1, endif_i = -1, j;
+    int bne_at, beq_at, else_at, endif_at;
+    struct loc cond;
+    struct alloc_snap snap;
+
+    for (j = if_i + 1; j < n; j++) {
+        if (ir[j].op == OP_IF)
+            return -1;
+        if (ir[j].op == OP_ELSE) {
+            if (else_i >= 0)
+                return -1;
+            else_i = j;
+        } else if (ir[j].op == OP_ENDIF) {
+            endif_i = j;
+            break;
+        }
+    }
+    if (else_i < 0 || endif_i < 0)
+        return -1;
+    if (ir[if_i].src[0].file != FILE_CONST && ir[if_i].src[0].file != FILE_IMM)
+        return -1;
+    if (ir[if_i].src[0].neg)
+        return -1;
+    b->ip = if_i;
+    if (locate(b, &ir[if_i].src[0], ir[if_i].comp[0][0], &cond) || !cond.is_f)
+        return -1;
+    /* feq.s x7, fcond, fzero; bne x7, x0, else. Fall-through is the
+     * true side. x7 is free after the prologue. */
+    if (put(b, fpu(0x14, (unsigned)b->f_zero, (unsigned)cond.f, 2, 7)))
+        return -1;
+    bne_at = b->n;
+    if (put(b, 0))
+        return -1;
+    save_alloc(b, &snap);
+    if (emit_span(b, ir, if_i + 1, else_i))
+        return -1;
+    beq_at = b->n;
+    if (put(b, 0))
+        return -1;
+    else_at = b->n;
+    restore_alloc(b, &snap);
+    if (emit_span(b, ir, else_i + 1, endif_i))
+        return -1;
+    endif_at = b->n;
+    if ((else_at - bne_at) * 4 <= 0 || (endif_at - beq_at) * 4 <= 0)
+        return -1;
+    b->code[bne_at] = branch_word(1, 7, 0, (else_at - bne_at) * 4);
+    b->code[beq_at] = branch_word(0, 0, 0, (endif_at - beq_at) * 4);
+    *io = endif_i;
     return 0;
 }
 
@@ -817,7 +1047,7 @@ static int compile_ir(struct bld *b, struct fs_insn *ir, int n,
         for (i = 0; i < n; i++) {
             int j, used = 0;
 
-            if (!live[i] || ir[i].dst_file == FILE_OUT)
+            if (!live[i] || ir[i].dst_file == FILE_OUT || is_flow(ir[i].op))
                 continue;
             for (j = i + 1; j < n; j++) {
                 if (live[j] &&
@@ -847,23 +1077,20 @@ static int compile_ir(struct bld *b, struct fs_insn *ir, int n,
     if (prologue(b, imm, nimm))
         return -1;
     for (i = 0; i < n; i++) {
-        int s;
-
-        b->ip = i;
-        memcpy(b->snap_temp, b->home, sizeof(b->home));
-        memcpy(b->snap_in, b->in_home, sizeof(b->in_home));
-        b->snapping = 1;
-        if (emit_one(b, &ir[i]))
-            return -1;
-        b->snapping = 0;
-        gc(b);
-        for (s = 0; s < ir[i].nsrc; s++) {
-            int k;
-
-            for (k = 0; k < ir[i].comps; k++)
-                kill_src(b, &ir[i], &ir[i].src[s], ir[i].comp[s][k]);
+        if (ir[i].op == OP_IF) {
+            if (emit_if(b, ir, n, &i))
+                return -1;
+            continue;
         }
-        if (b->fail)
+        if (ir[i].op == OP_ELSE || ir[i].op == OP_ENDIF)
+            return -1;
+        if (ir[i].op == OP_KILL || ir[i].op == OP_KILL_IF) {
+            b->ip = i;
+            if (emit_kill(b, &ir[i]))
+                return -1;
+            continue;
+        }
+        if (emit_span(b, ir, i, i + 1))
             return -1;
     }
     return epilogue(b);
@@ -924,6 +1151,12 @@ static const char *fs_op_name(int op)
     case OP_DP2: return "DP2";
     case OP_DP4: return "DP4";
     case OP_MAD: return "MAD";
+    case OP_SQRT: return "SQRT";
+    case OP_IF: return "IF";
+    case OP_ELSE: return "ELSE";
+    case OP_ENDIF: return "ENDIF";
+    case OP_KILL: return "KILL";
+    case OP_KILL_IF: return "KILL_IF";
     default: return "?";
     }
 }
@@ -1028,6 +1261,52 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                 saw_end = 1;
                 break;
             }
+            if (op == TGSI_OPCODE_IF || op == TGSI_OPCODE_ELSE ||
+                op == TGSI_OPCODE_ENDIF || op == TGSI_OPCODE_KILL ||
+                op == TGSI_OPCODE_KILL_IF) {
+                struct fs_insn *in;
+
+                if (n >= MAX_INSN) {
+                    tgsi_parse_free(&parse);
+                    return -1;
+                }
+                in = &ir[n++];
+                memset(in, 0, sizeof(*in));
+                if (op == TGSI_OPCODE_IF)
+                    in->op = OP_IF;
+                else if (op == TGSI_OPCODE_ELSE)
+                    in->op = OP_ELSE;
+                else if (op == TGSI_OPCODE_ENDIF)
+                    in->op = OP_ENDIF;
+                else if (op == TGSI_OPCODE_KILL)
+                    in->op = OP_KILL;
+                else
+                    in->op = OP_KILL_IF;
+                if (op == TGSI_OPCODE_IF || op == TGSI_OPCODE_KILL_IF) {
+                    int file, index;
+                    const struct tgsi_full_src_register *src;
+
+                    if (insn->Instruction.NumSrcRegs != 1) {
+                        tgsi_parse_free(&parse);
+                        return -1;
+                    }
+                    src = &insn->Src[0];
+                    if (src->Register.Indirect || src->Register.Absolute ||
+                        src_file(src->Register.File, src->Register.Index,
+                                 &file, &index)) {
+                        tgsi_parse_free(&parse);
+                        return -1;
+                    }
+                    in->nsrc = 1;
+                    in->comps = 4;
+                    in->src[0].file = file;
+                    in->src[0].index = index;
+                    in->src[0].neg = src->Register.Negate;
+                    for (i = 0; i < 4; i++)
+                        in->comp[0][i] = (int)swizzle(&src->Register, i);
+                }
+                break;
+            }
             kind = 0;
             comps = 1;
             switch (op) {
@@ -1057,6 +1336,9 @@ int opengpu_fs_emit(const void *tokens, struct opengpu_fs_alu *out)
                 break;
             case TGSI_OPCODE_DIV:
                 kind = OP_DIV;
+                break;
+            case TGSI_OPCODE_SQRT:
+                kind = OP_SQRT;
                 break;
             case TGSI_OPCODE_RSQ:
                 kind = OP_RSQ;
@@ -1321,7 +1603,9 @@ int main(int argc, char **argv)
         } else if (!strncmp(rest, "DP4", 3)) {
             kind = OP_DP4;
             comps = 4;
-        } else if (!strncmp(rest, "RSQ", 3))
+        }         else if (!strncmp(rest, "SQRT", 4))
+            kind = OP_SQRT;
+        else if (!strncmp(rest, "RSQ", 3))
             kind = OP_RSQ;
         else if (!strncmp(rest, "RCP", 3))
             kind = OP_RCP;

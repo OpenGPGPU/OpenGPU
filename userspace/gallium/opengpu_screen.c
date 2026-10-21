@@ -150,8 +150,11 @@ static int screen_get_shader_param(struct pipe_screen *screen,
         return 256;
     case PIPE_SHADER_CAP_MAX_TEX_INSTRUCTIONS:
     case PIPE_SHADER_CAP_MAX_TEX_INDIRECTIONS:
-    case PIPE_SHADER_CAP_MAX_CONTROL_FLOW_DEPTH:
         return 0;
+    case PIPE_SHADER_CAP_MAX_CONTROL_FLOW_DEPTH:
+        /* One uniform forward if/else. The validator allows four
+         * unreconverged forward branches and rejects a backward edge. */
+        return shader == PIPE_SHADER_FRAGMENT ? 1 : 0;
     case PIPE_SHADER_CAP_MAX_INPUTS:
         return shader == PIPE_SHADER_VERTEX ? 8 : 4;
     case PIPE_SHADER_CAP_MAX_OUTPUTS:

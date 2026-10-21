@@ -110,7 +110,7 @@ int main(int argc, char **argv)
     pipe_opengpu_set_depth(ctx, depth, 0);
     fill_triangle(&draw, 0x10, 0 /* LESS */, 0, fragment);
     if (pipe_opengpu_draw_vbo(ctx, &draw, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 300000))
+        pipe_opengpu_fence_finish(ctx, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
 
@@ -133,7 +133,7 @@ int main(int argc, char **argv)
                       (2u << OPENGPU_DRAW_BLEND_EQ_SHIFT),
                   fragment);
     if (pipe_opengpu_draw_vbo(ctx, &draw, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 300000))
+        pipe_opengpu_fence_finish(ctx, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
 

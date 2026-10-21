@@ -115,19 +115,19 @@ int main(int argc, char **argv)
     }
 
     if (pipe_opengpu_clear(ctx, 0u, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 300000))
+        pipe_opengpu_fence_finish(ctx, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
 
     fill_triangle(&draw, fragment);
     if (pipe_opengpu_draw_vbo(ctx, &draw, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 300000))
+        pipe_opengpu_fence_finish(ctx, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
 
     if (pipe_opengpu_resolve(ctx, resolved, msaa, width, height, src_stride,
                              dst_stride, MODE, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 300000))
+        pipe_opengpu_fence_finish(ctx, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
 

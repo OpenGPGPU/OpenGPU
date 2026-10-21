@@ -11,6 +11,7 @@
 #include "pipe/p_shader_tokens.h"
 #include "tgsi/tgsi_build.h"
 #include "opengpu_fragment_alu.h"
+#include "opengpu_fragment_cover.h"
 #include "opengpu_fragment_min.h"
 #include "opengpu_fs_emit.h"
 #include "opengpu_vertex_alu.h"
@@ -19,7 +20,7 @@
 #include "opengpu_shader_resources.h"
 #include "opengpu_shader_validator.h"
 
-#define MAX_TOKENS 128u
+#define MAX_TOKENS 256u
 #define VL4_VSETIVLI 0xc1027057u
 #define VLMAX_VSETVLI 0x01007357u
 
@@ -101,6 +102,63 @@ static void add_insn(struct tgsi_token *tokens, struct tgsi_header *header,
                   TGSI_WRITEMASK_XYZW, nsrc, src_file, src_index);
 }
 
+struct op_src {
+    unsigned file;
+    int index;
+    unsigned swiz[4];
+    int neg;
+};
+
+static struct op_src op_src(unsigned file, int index, unsigned x, unsigned y,
+                            unsigned z, unsigned w, int neg)
+{
+    struct op_src s;
+
+    s.file = file;
+    s.index = index;
+    s.swiz[0] = x;
+    s.swiz[1] = y;
+    s.swiz[2] = z;
+    s.swiz[3] = w;
+    s.neg = neg;
+    return s;
+}
+
+static struct op_src op_src_id(unsigned file, int index)
+{
+    return op_src(file, index, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Z,
+                  TGSI_SWIZZLE_W, 0);
+}
+
+static void add_op(struct tgsi_token *tokens, struct tgsi_header *header,
+                   unsigned opcode, int dst_file, unsigned dst_index,
+                   unsigned writemask, unsigned nsrc, const struct op_src *src)
+{
+    struct tgsi_full_instruction inst = tgsi_default_full_instruction();
+    unsigned i, wrote;
+
+    inst.Instruction.Opcode = opcode;
+    inst.Instruction.NumDstRegs = dst_file < 0 ? 0u : 1u;
+    inst.Instruction.NumSrcRegs = nsrc;
+    if (dst_file >= 0) {
+        inst.Dst[0].Register.File = (unsigned)dst_file;
+        inst.Dst[0].Register.Index = (int)dst_index;
+        inst.Dst[0].Register.WriteMask = writemask;
+    }
+    for (i = 0; i < nsrc; i++) {
+        inst.Src[i].Register.File = src[i].file;
+        inst.Src[i].Register.Index = src[i].index;
+        inst.Src[i].Register.SwizzleX = src[i].swiz[0];
+        inst.Src[i].Register.SwizzleY = src[i].swiz[1];
+        inst.Src[i].Register.SwizzleZ = src[i].swiz[2];
+        inst.Src[i].Register.SwizzleW = src[i].swiz[3];
+        inst.Src[i].Register.Negate = src[i].neg ? 1u : 0u;
+    }
+    wrote = tgsi_build_full_instruction(&inst, cursor(tokens, header), header,
+                                        room(header));
+    assert(wrote);
+}
+
 static void add_end(struct tgsi_token *tokens, struct tgsi_header *header)
 {
     struct tgsi_full_instruction inst = tgsi_default_full_instruction();
@@ -165,6 +223,137 @@ static void constant_min(struct tgsi_token *tokens)
              min_file, min_index);
     add_insn(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0, 1,
              &mov_file, &mov_index);
+    add_end(tokens, header);
+}
+
+/* gl_FragColor = sqrt(CONST[0][0]). sqrt(0.25) and sqrt(1) are exact. */
+static void constant_sqrt(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src src = op_src_id(TGSI_FILE_CONSTANT, 0);
+    struct op_src tmp = op_src_id(TGSI_FILE_TEMPORARY, 0);
+
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_op(tokens, header, TGSI_OPCODE_SQRT, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XYZW, 1, &src);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 1, &tmp);
+    add_end(tokens, header);
+}
+
+/* gl_FragColor = min(max(CONST[0], 0), 1). Low is CONST[1].xxxx and high
+ * is CONST[1].yyyy, so both bounds are real MIN and MAX sources. */
+static void constant_clamp(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src value = op_src_id(TGSI_FILE_CONSTANT, 0);
+    struct op_src low = op_src(TGSI_FILE_CONSTANT, 1, TGSI_SWIZZLE_X,
+                               TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src high = op_src(TGSI_FILE_CONSTANT, 1, TGSI_SWIZZLE_Y,
+                                TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, 0);
+    struct op_src pair[2];
+    struct op_src tmp = op_src_id(TGSI_FILE_TEMPORARY, 0);
+
+    pair[0] = value;
+    pair[1] = low;
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 1, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_op(tokens, header, TGSI_OPCODE_MAX, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XYZW, 2, pair);
+    pair[0] = tmp;
+    pair[1] = high;
+    add_op(tokens, header, TGSI_OPCODE_MIN, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XYZW, 2, pair);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 1, &tmp);
+    add_end(tokens, header);
+}
+
+/* gl_FragColor.x is (gl_FragCoord.y < 32). .yzw is CONST (0, 1, 1), so
+ * y<32 packs 0xff00ffff and y>=32 packs 0x0000ffff. Channel y is the
+ * only input the previous images never read. */
+static void fragcoord_y(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src cmp[2];
+    struct op_src rest = op_src_id(TGSI_FILE_CONSTANT, 0);
+    struct op_src tmp = op_src_id(TGSI_FILE_TEMPORARY, 0);
+
+    cmp[0] = op_src(TGSI_FILE_INPUT, 0, TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y,
+                    TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, 0);
+    cmp[1] = op_src_id(TGSI_FILE_CONSTANT, 0);
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_INPUT, 0, 0, TGSI_SEMANTIC_POSITION);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_op(tokens, header, TGSI_OPCODE_SLT, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_X, 2, cmp);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_YZW, 1, &rest);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 1, &tmp);
+    add_end(tokens, header);
+}
+
+/* if (CONST[0].x) colour (1,0,0,1) else colour (0,1,0,1). The two colours
+ * are swizzles of the same vec4, so one uniform selects the side. */
+static void uniform_if(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src cond = op_src_id(TGSI_FILE_CONSTANT, 0);
+    struct op_src then_c = op_src(TGSI_FILE_CONSTANT, 0, TGSI_SWIZZLE_Y,
+                                  TGSI_SWIZZLE_Z, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_W, 0);
+    struct op_src else_c = op_src(TGSI_FILE_CONSTANT, 0, TGSI_SWIZZLE_Z,
+                                  TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_W, 0);
+    struct op_src tmp = op_src_id(TGSI_FILE_TEMPORARY, 0);
+
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_op(tokens, header, TGSI_OPCODE_IF, -1, 0, 0, 1, &cond);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XYZW, 1, &then_c);
+    add_op(tokens, header, TGSI_OPCODE_ELSE, -1, 0, 0, 0, NULL);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XYZW, 1, &else_c);
+    add_op(tokens, header, TGSI_OPCODE_ENDIF, -1, 0, 0, 0, NULL);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 1, &tmp);
+    add_end(tokens, header);
+}
+
+/* Discard lanes whose gl_FragCoord.y is below 32. Survivors are
+ * (1, 0, 0, 1), taken from CONST[0].yzzw. */
+static void fragcoord_kill(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src add[2];
+    struct op_src pred = op_src(TGSI_FILE_TEMPORARY, 0, TGSI_SWIZZLE_X,
+                                TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src colour = op_src(TGSI_FILE_CONSTANT, 0, TGSI_SWIZZLE_Y,
+                                  TGSI_SWIZZLE_Z, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_W, 0);
+
+    add[0] = op_src(TGSI_FILE_INPUT, 0, TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y,
+                    TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, 0);
+    add[1] = op_src(TGSI_FILE_CONSTANT, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                    TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 1);
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_INPUT, 0, 0, TGSI_SEMANTIC_POSITION);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 0, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_op(tokens, header, TGSI_OPCODE_ADD, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_X, 2, add);
+    add_op(tokens, header, TGSI_OPCODE_KILL_IF, -1, 0, 0, 1, &pred);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 1, &colour);
     add_end(tokens, header);
 }
 
@@ -250,6 +439,11 @@ int main(void)
     struct tgsi_token copy_tokens[MAX_TOKENS];
     struct tgsi_token product_tokens[MAX_TOKENS];
     struct tgsi_token min_tokens[MAX_TOKENS];
+    struct tgsi_token sqrt_tokens[MAX_TOKENS];
+    struct tgsi_token clamp_tokens[MAX_TOKENS];
+    struct tgsi_token coord_tokens[MAX_TOKENS];
+    struct tgsi_token if_tokens[MAX_TOKENS];
+    struct tgsi_token kill_tokens[MAX_TOKENS];
     struct tgsi_token copy_vs[MAX_TOKENS];
     struct tgsi_token add_vs[MAX_TOKENS];
     uint32_t code[256];
@@ -277,6 +471,55 @@ int main(void)
     assert(words == OPENGPU_FRAGMENT_MIN_WORDS);
     assert(!memcmp(code, opengpu_fragment_min, words * sizeof(uint32_t)));
     assert(contains(code, words, VL4_VSETIVLI));
+    assert(opengpu_shader_validate_words(code, words, 512, 8, true));
+    for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
+        check_runtime(code, words, 0, resources[i]);
+
+    constant_sqrt(sqrt_tokens);
+    words = 0;
+    assert(!opengpu_fragment_lower_kind(sqrt_tokens, code, 256, &words));
+    assert(words == OPENGPU_FRAGMENT_SQRT_WORDS);
+    assert(!memcmp(code, opengpu_fragment_sqrt, words * sizeof(uint32_t)));
+    assert(contains(code, words, OPENGPU_FRAGMENT_SQRT_SCALAR));
+    assert(opengpu_shader_validate_words(code, words, 512, 8, true));
+    for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
+        check_runtime(code, words, 0, resources[i]);
+
+    constant_clamp(clamp_tokens);
+    words = 0;
+    assert(!opengpu_fragment_lower_kind(clamp_tokens, code, 256, &words));
+    assert(words == OPENGPU_FRAGMENT_CLAMP_WORDS);
+    assert(!memcmp(code, opengpu_fragment_clamp, words * sizeof(uint32_t)));
+    assert(opengpu_shader_validate_words(code, words, 512, 8, true));
+    for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
+        check_runtime(code, words, 0, resources[i]);
+
+    fragcoord_y(coord_tokens);
+    words = 0;
+    assert(!opengpu_fragment_lower_kind(coord_tokens, code, 256, &words));
+    assert(words == OPENGPU_FRAGMENT_COORD_WORDS);
+    assert(!memcmp(code, opengpu_fragment_coord, words * sizeof(uint32_t)));
+    assert(contains(code, words, OPENGPU_FRAGMENT_COORD_YCVT));
+    assert(opengpu_shader_validate_words(code, words, 512, 8, true));
+    for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
+        check_runtime(code, words, 0, resources[i]);
+
+    uniform_if(if_tokens);
+    words = 0;
+    assert(!opengpu_fragment_lower_kind(if_tokens, code, 256, &words));
+    assert(words == OPENGPU_FRAGMENT_IF_WORDS);
+    assert(!memcmp(code, opengpu_fragment_if, words * sizeof(uint32_t)));
+    assert(contains(code, words, OPENGPU_FRAGMENT_IF_BNE));
+    assert(opengpu_shader_validate_words(code, words, 512, 8, true));
+    for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
+        check_runtime(code, words, 0, resources[i]);
+
+    fragcoord_kill(kill_tokens);
+    words = 0;
+    assert(!opengpu_fragment_lower_kind(kill_tokens, code, 256, &words));
+    assert(words == OPENGPU_FRAGMENT_KILL_WORDS);
+    assert(!memcmp(code, opengpu_fragment_kill, words * sizeof(uint32_t)));
+    assert(contains(code, words, OPENGPU_FRAGMENT_KILL_VALIDITY));
     assert(opengpu_shader_validate_words(code, words, 512, 8, true));
     for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
         check_runtime(code, words, 0, resources[i]);

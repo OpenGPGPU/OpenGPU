@@ -15,8 +15,9 @@
  * shader. The vertex program has no bytes left for that scale, and the
  * factor is constant, so the same fragment multiply runs it. The CPU
  * only packs the float or the vec4 into the fragment kernarg uniform.
- * The Gallium draw module is not used. A straight-line fragment program
- * the matchers miss is emitted by opengpu_fs_emit. A vertex program that
+ * The Gallium draw module is not used. A fragment program the matchers
+ * miss is emitted by opengpu_fs_emit, including sqrt, a uniform if/else,
+ * and discard. A vertex program that
  * adds CONST[0][0].x to position x is emitted by opengpu_vs_emit; the
  * clang images stay vertex_passthrough, vertex_mvp, and vertex_mvp2. */
 #include "opengpu_internal.h"
@@ -166,12 +167,11 @@ static struct opengpu_context *octx(struct pipe_context *pipe)
     return (struct opengpu_context *)pipe;
 }
 
-/* A 640x480 FlashSim compositor frame is several minutes at the current
- * active model rate. The kernel driver owns the actual watchdog; userspace
- * selects its wait budget per environment so fast hardware tests need not
- * inherit the emulator's long wall-clock allowance. */
+/* The kernel driver owns the hardware watchdog. This is the userspace
+ * wait, shared with the guest examples through opengpu.h. An environment
+ * value replaces it so a fast host run can use a shorter budget. */
 #ifndef OPENGPU_FENCE_TIMEOUT_MS
-#define OPENGPU_FENCE_TIMEOUT_MS 300000
+#define OPENGPU_FENCE_TIMEOUT_MS 900000
 #endif
 
 static int64_t opengpu_fence_timeout_ms(void)

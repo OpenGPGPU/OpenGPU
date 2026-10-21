@@ -49,13 +49,13 @@ int main(int argc, char **argv)
     }
 
     if (pipe_opengpu_invalidate(ctx, src, 0, SRC_STRIDE * HEIGHT, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 300000))
+        pipe_opengpu_fence_finish(ctx, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
 
     if (pipe_opengpu_strided_blit(ctx, dst, src, 0, 0, WIDTH, HEIGHT,
                                   DST_STRIDE, SRC_STRIDE, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 300000))
+        pipe_opengpu_fence_finish(ctx, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
 

@@ -117,7 +117,7 @@ int main(int argc, char **argv)
         (features & OPENGPU_DRIVER_FEATURE_TRANSIENT_FRAGMENT_STAGING))
         submit.flags |= OPENGPU_SUBMIT_TRANSIENT_FRAGMENT_STAGING;
     if (opengpu_render(fd, &submit) ||
-        opengpu_sync_wait_success(fd, fence, 300000))
+        opengpu_sync_wait_success(fd, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
 
     for (uint32_t i = 0; i < width * height; i++) {

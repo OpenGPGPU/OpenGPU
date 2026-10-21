@@ -64,7 +64,7 @@ int main(int argc, char **argv)
     command.local[1] = command.local[2] = 1;
     command.out_syncobj = fence;
     if (opengpu_compute(fd, &command) ||
-        opengpu_sync_wait_success(fd, fence, 300000))
+        opengpu_sync_wait_success(fd, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     /* Mask true → vadd.vi ..., 1 writes 8; covers vmfeq and vmflt. */
     if (words[16] != 8u || words[17] != 8u) {

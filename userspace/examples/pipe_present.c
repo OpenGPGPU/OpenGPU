@@ -34,10 +34,10 @@ static unsigned fence_timeout_ms(void)
     unsigned long value;
 
     if (!env || !env[0])
-        return 300000;
+        return OPENGPU_FENCE_TIMEOUT_MS;
     value = strtoul(env, NULL, 10);
     if (!value || value > 3600000ul)
-        return 300000;
+        return OPENGPU_FENCE_TIMEOUT_MS;
     return (unsigned)value;
 }
 

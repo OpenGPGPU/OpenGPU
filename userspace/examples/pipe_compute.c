@@ -43,7 +43,7 @@ int main(int argc, char **argv)
     }
     kernarg[0] = 1;
     if (pipe_opengpu_launch_grid(ctx, grid, local, &fence) ||
-        pipe_opengpu_fence_finish(ctx, fence, 300000))
+        pipe_opengpu_fence_finish(ctx, fence, OPENGPU_FENCE_TIMEOUT_MS))
         goto done;
     pipe_opengpu_fence_reference(&fence, NULL);
     if (kernarg[1] != 1 || kernarg[2] != 0) {

@@ -152,6 +152,10 @@ if [ "$GPU_FRAG_CORE" = "1" ]; then
         -o "$DRIVER_OUTPUT/opengpu_fragment_min" \
         "$GPU_DIR/userspace/opengpu.c" \
         "$GPU_DIR/userspace/examples/fragment_min.c"
+    "$CROSS_GCC" "${CFLAGS[@]}" \
+        -o "$DRIVER_OUTPUT/opengpu_fragment_cover" \
+        "$GPU_DIR/userspace/opengpu.c" \
+        "$GPU_DIR/userspace/examples/fragment_cover.c"
 fi
 
 echo "Guest binaries:"
