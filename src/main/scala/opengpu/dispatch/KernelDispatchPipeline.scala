@@ -11,15 +11,17 @@ import opengpu.config.GpuConfig
   * completion can never be attributed to the wrong workgroup. Concurrency is
   * added later with explicit tags rather than completion-order assumptions.
   */
-class KernelDispatchPipeline(config: GpuConfig = GpuConfig()) extends Module {
+class KernelDispatchPipeline(config: GpuConfig = GpuConfig(), gridSlices: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val launch = Flipped(Decoupled(new KernelLaunch(config)))
+    val gridSlice = if (gridSlices) Some(Input(new KernelGridSlice)) else None
     val warp = Decoupled(new WarpTask(config))
     val warpCompletion = Flipped(Decoupled(new WarpCompletion))
     val completion = Decoupled(new KernelCompletion)
   })
 
-  private val jobs = Module(new JobDispatcher(config))
+  private val jobs = Module(new JobDispatcher(config, gridSlices))
+  if (gridSlices) { jobs.io.gridSlice.get := io.gridSlice.get }
   private val workgroups = Module(new WorkgroupDispatcher(config))
 
   jobs.io.launch <> io.launch

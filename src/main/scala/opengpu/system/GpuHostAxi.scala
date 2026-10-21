@@ -69,7 +69,8 @@ class GpuHostAxi(
   transformFeedback: Boolean = false,transformFeedbackSourceWords: Int = 69,
   primitiveQueries: Boolean = false,
   shaderExecutionLimits: Boolean = false,
-  enableIndirectCompute: Boolean = false
+  enableIndirectCompute: Boolean = false,
+  computeResources: Option[opengpu.config.ComputeResourceProfile] = None
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
@@ -81,6 +82,8 @@ class GpuHostAxi(
   require(!primitiveQueries || transformFeedback)
   require(!shaderExecutionLimits || (nativeVertexInput && protectVmState))
   require(!enableIndirectCompute || (unifiedCommandMmio && protectVmState))
+  require(computeResources.isEmpty || (unifiedCommandMmio && protectVmState))
+  private val computeConfig = computeResources.map(_.gpu).getOrElse(gpuConfig)
   override def desiredName: String = "GpuHostAxi"
 
   val io = IO(new Bundle {
@@ -436,8 +439,10 @@ class GpuHostAxi(
     val targetIndirectCompute = if(enableIndirectCompute)
       beatAddr >= opengpu.command.ComputeIndirectCapabilities.base.U &&
         beatAddr < opengpu.command.ComputeIndirectCapabilities.end.U else false.B
+    val targetComputeResources = if(computeResources.nonEmpty)
+      beatAddr >= ComputeResourceCapabilities.base.U && beatAddr < ComputeResourceCapabilities.end.U else false.B
     val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
-      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations || targetIndirectCompute)
+      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations || targetIndirectCompute || targetComputeResources)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -453,13 +458,13 @@ class GpuHostAxi(
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
           beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails
-    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute
+    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && !targetComputeResources
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)
     reg.req.bits.data := io.s_axi_wdata
     reg.req.bits.strb := io.s_axi_wstrb
     unified.foreach { bridge =>
-      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute
+      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && !targetComputeResources
       bridge.io.reg.req.bits.isWrite := writeActive
       bridge.io.reg.req.bits.addr := beatAddr(9, 0)
       bridge.io.reg.req.bits.data := io.s_axi_wdata
@@ -531,8 +536,12 @@ class GpuHostAxi(
         when(targetShaderQuota) { rdata := shaderQuota.get }
       }
       if(enableIndirectCompute)when(targetIndirectCompute) {
-        rdata := VecInit(opengpu.command.ComputeIndirectCapabilities.words(gpuConfig).map(_.U(32.W)))(
+        rdata := VecInit(opengpu.command.ComputeIndirectCapabilities.words(computeConfig).map(_.U(32.W)))(
           ((beatAddr-opengpu.command.ComputeIndirectCapabilities.base.U)>>2)(2,0))
+      }
+      if(computeResources.nonEmpty)when(targetComputeResources) {
+        rdata := VecInit(ComputeResourceCapabilities.words(computeResources.get).map(_.U(32.W)))(
+          ((beatAddr-ComputeResourceCapabilities.base.U)>>2)(3,0))
       }
       when(rBeatFire) {
         when(lastBeat) {
@@ -582,7 +591,7 @@ class GpuHostAxi(
       val normalRegisterOk = unified.map(bridge =>
         Mux(targetUnified, bridge.io.reg.resp.bits.ok, reg.resp.bits.ok))
         .getOrElse(reg.resp.bits.ok)
-      val legacyRegisterOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && normalRegisterOk
+      val legacyRegisterOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetPrimitiveQuery && !targetTextureOperations && !targetIndirectCompute && !targetComputeResources && normalRegisterOk
       val registerOk = Mux(targetShaderExecution, targetShaderQuota && shaderQuotaWriteOk, legacyRegisterOk)
       when(!beatOk || !registerOk) { writeError := true.B }
       when(io.s_axi_wlast) {

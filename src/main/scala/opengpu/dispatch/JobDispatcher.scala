@@ -15,9 +15,10 @@ import opengpu.config.GpuConfig
   * `groupId === gridSize - 1` compare (resolveaddr binding cone was
   * `command_gridSize_1` → `workgroup_bits_groupId_2`).
   */
-class JobDispatcher(config: GpuConfig = GpuConfig()) extends Module {
+class JobDispatcher(config: GpuConfig = GpuConfig(), gridSlices: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val launch = Flipped(Decoupled(new KernelLaunch(config)))
+    val gridSlice = if (gridSlices) Some(Input(new KernelGridSlice)) else None
     val workgroup = Decoupled(new WorkgroupTask(config))
     val workgroupCompletion = Flipped(Decoupled(new WorkgroupCompletion))
     val completion = Decoupled(new KernelCompletion)
@@ -32,6 +33,7 @@ class JobDispatcher(config: GpuConfig = GpuConfig()) extends Module {
   private val atLastY = RegInit(false.B)
   private val atLastZ = RegInit(false.B)
   private val accumulatedSuccess = RegInit(true.B)
+  private val singleGroup = RegInit(false.B)
 
   private val nonEmptyGrid = io.launch.bits.gridSize.map(_ =/= 0.U).reduce(_ && _)
   io.launch.ready := state === idle
@@ -46,11 +48,17 @@ class JobDispatcher(config: GpuConfig = GpuConfig()) extends Module {
   io.completion.valid := state === finish
   io.completion.bits.success := accumulatedSuccess
 
-  private val lastGroup = atLastX && atLastY && atLastZ
+  private val lastGroup = singleGroup || (atLastX && atLastY && atLastZ)
+  private val incomingSingle = io.gridSlice.map(_.singleGroup).getOrElse(false.B)
+  private val sliceInRange = io.gridSlice.map(s => (0 until 3).map(i => s.groupId(i) < io.launch.bits.gridSize(i)).reduce(_ && _)).getOrElse(true.B)
+  private val validLaunch = nonEmptyGrid && (!incomingSingle || sliceInRange)
 
   when(io.launch.fire) {
     command := io.launch.bits
-    groupId.foreach(_ := 0.U)
+    singleGroup := incomingSingle
+    for (axis <- 0 until 3) {
+      groupId(axis) := io.gridSlice.map(s => Mux(s.singleGroup, s.groupId(axis), 0.U)).getOrElse(0.U)
+    }
     for (axis <- 0 until 3) {
       limit(axis) := io.launch.bits.gridSize(axis) - 1.U
     }
@@ -58,8 +66,8 @@ class JobDispatcher(config: GpuConfig = GpuConfig()) extends Module {
     atLastX := io.launch.bits.gridSize(0) === 1.U
     atLastY := io.launch.bits.gridSize(1) === 1.U
     atLastZ := io.launch.bits.gridSize(2) === 1.U
-    accumulatedSuccess := nonEmptyGrid
-    state := Mux(nonEmptyGrid, dispatch, finish)
+    accumulatedSuccess := validLaunch
+    state := Mux(validLaunch, dispatch, finish)
   }
 
   when(io.workgroup.fire) {

@@ -1,0 +1,13 @@
+{
+  "schema":"compute-resource-v1",
+  "base":864,
+  "word_count":16,
+  "magic":1195594241,
+  "fields":[{"name":"magic","word":0,"address":864},{"name":"words","word":1,"address":868},{"name":"flags","word":2,"address":872},{"name":"compute_units","word":3,"address":876},{"name":"lanes","word":4,"address":880},{"name":"warps","word":5,"address":884},{"name":"local_items","word":6,"address":888},{"name":"local_axis","word":7,"address":892},{"name":"grid_axis","word":8,"address":896},{"name":"shared_bytes","word":9,"address":900},{"name":"shared_banks","word":10,"address":904},{"name":"simt_stack_entries","word":11,"address":908},{"name":"shared_base","word":12,"address":912},{"name":"axi_data_bytes","word":13,"address":916},{"name":"l2_data_bytes","word":14,"address":920},{"name":"l2_banks","word":15,"address":924}],
+  "constructor_default_words":[1195594241,16,7,1,16,8,128,128,4294967295,16384,16,8,268435456,8,65536,4],
+  "mobile_candidate_words":[1195594241,16,7,4,16,8,128,128,4294967295,16384,16,8,268435456,32,65536,4],
+  "ownership":"actual compute GpuConfig, CU count and memory AXI width; independent of legacy graphics configuration",
+  "local_axis":"minimum of physical per-CU lane*warp capacity and the uint16 launch-axis encoding limit",
+  "simt":"physical entry capacity of the existing controller; does not imply instruction-driven vector-branch execution",
+  "scope":"read-only hardware quantities; not an API capability or full resource/visibility contract"
+}

@@ -285,6 +285,7 @@ class GpuHostSystemAxi(
       nativeVertexInput=typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,visibilityQueries=visibilityQueries,
       shaderExecutionLimits=nativeExecutionLimits,
       enableIndirectCompute=enableIndirectCompute,
+      computeResources=Some(opengpu.config.ComputeResourceProfile(gpuConfig,numComputeUnits,memoryAxiDataBytes)),
       primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16)))
     val system = Module(new GpuSystem(
       gpuConfig,
