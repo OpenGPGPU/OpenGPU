@@ -287,6 +287,13 @@ if [ -d "$DRIVER_OUTPUT" ]; then
     copy_lib libglapi.so.0
     copy_lib libdrm.so.2
     copy_lib libexpat.so.1
+    copy_lib libwayland-client.so.0
+    copy_lib libwayland-server.so.0
+    if [ -e "$PREFIX/lib/libffi.so.8" ]; then
+        copy_lib libffi.so.8
+    else
+        cp -L "$PREFIX/lib/libffi.so.8.1.2" "$DRIVER_OUTPUT/libffi.so.8"
+    fi
     cp -L "$PREFIX/lib/dri/opengpu_dri.so" "$DRIVER_OUTPUT/opengpu_dri.so"
     cp -L "$PREFIX/bin/opengpu_gl_triangle" "$DRIVER_OUTPUT/opengpu_gl_triangle.bin"
     cp -L "$PREFIX/bin/opengpu_gl_texture" "$DRIVER_OUTPUT/opengpu_gl_texture.bin"

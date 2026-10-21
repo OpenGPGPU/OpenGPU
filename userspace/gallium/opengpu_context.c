@@ -102,6 +102,9 @@ struct opengpu_shader {
     unsigned alu_nconst;
     float alu_imm[8];
     unsigned alu_nimm;
+    unsigned alu_patch_n;
+    unsigned alu_patch_at[4];
+    unsigned alu_patch_src[4];
 };
 
 /* temp_file value: the temporary holds the vtex.sample result. */
@@ -757,6 +760,14 @@ static struct opengpu_shader *lower_fragment_alu(
     shader->alu_words = alu.words;
     shader->alu_nconst = alu.nconst;
     shader->alu_nimm = alu.nimm;
+    shader->alu_patch_n = alu.patch_n;
+    memcpy(shader->alu_patch_at, alu.patch_at, sizeof(shader->alu_patch_at));
+    memcpy(shader->alu_patch_src, alu.patch_src, sizeof(shader->alu_patch_src));
+    if (alu.samples) {
+        shader->samples = 1;
+        shader->sample_sem = alu.sample_sem;
+        shader->sample_sem_index = alu.sample_sem_index;
+    }
     memcpy(shader->alu_code, alu.code, alu.words * sizeof(uint32_t));
     memcpy(shader->alu_imm, alu.imm, alu.nimm * sizeof(float));
     return shader;
@@ -2403,16 +2414,31 @@ static void draw_vbo(struct pipe_context *pipe,
             float block[40];
             unsigned nconst = ctx->fs->alu_nconst * 4u;
             unsigned n = nconst + ctx->fs->alu_nimm;
+            unsigned upload = n > 8u ? 8u : n;
+            unsigned p;
 
-            if (!n || nconst > ctx->fs_block_n || n > 40) {
+            if (nconst > ctx->fs_block_n || (n > 8u && !ctx->fs->alu_patch_n)) {
                 reject("fragment constants did not reach the fragment core");
                 return;
             }
-            memcpy(block, ctx->fs_block, nconst * sizeof(float));
-            if (ctx->fs->alu_nimm)
+            for (p = 0; p < ctx->fs->alu_patch_n; p++) {
+                unsigned src = ctx->fs->alu_patch_src[p];
+                float val = src < ctx->fs_block_n ? ctx->fs_block[src] : 0.f;
+
+                opengpu_fs_patch_immediate(ctx->fs->alu_code,
+                                           ctx->fs->alu_patch_at[p], val);
+            }
+            if (ctx->fs->alu_patch_n &&
+                bind_shader_program(ctx, false, ctx->fs->alu_code,
+                                    ctx->fs->alu_words * sizeof(uint32_t))) {
+                reject("fragment shader bind failed");
+                return;
+            }
+            memcpy(block, ctx->fs_block, upload * sizeof(float));
+            if (ctx->fs->alu_nimm && upload > nconst)
                 memcpy(block + nconst, ctx->fs->alu_imm,
-                       ctx->fs->alu_nimm * sizeof(float));
-            if (pipe_opengpu_write_fs_block(ctx->gpu, block, n)) {
+                       (upload - nconst) * sizeof(float));
+            if (upload && pipe_opengpu_write_fs_block(ctx->gpu, block, upload)) {
                 reject("fragment constants did not reach the fragment core");
                 return;
             }

@@ -20,7 +20,7 @@
 #include "opengpu_shader_resources.h"
 #include "opengpu_shader_validator.h"
 
-#define MAX_TOKENS 256u
+#define MAX_TOKENS 1024u
 #define VL4_VSETIVLI 0xc1027057u
 #define VLMAX_VSETVLI 0x01007357u
 
@@ -130,6 +130,8 @@ static struct op_src op_src_id(unsigned file, int index)
                   TGSI_SWIZZLE_W, 0);
 }
 
+static int op_saturate;
+
 static void add_op(struct tgsi_token *tokens, struct tgsi_header *header,
                    unsigned opcode, int dst_file, unsigned dst_index,
                    unsigned writemask, unsigned nsrc, const struct op_src *src)
@@ -138,6 +140,8 @@ static void add_op(struct tgsi_token *tokens, struct tgsi_header *header,
     unsigned i, wrote;
 
     inst.Instruction.Opcode = opcode;
+    inst.Instruction.Saturate = op_saturate ? 1u : 0u;
+    op_saturate = 0;
     inst.Instruction.NumDstRegs = dst_file < 0 ? 0u : 1u;
     inst.Instruction.NumSrcRegs = nsrc;
     if (dst_file >= 0) {
@@ -410,6 +414,53 @@ static int contains(const uint32_t *code, unsigned words, uint32_t word)
     return 0;
 }
 
+static int has_vfsqrt(const uint32_t *code, unsigned words)
+{
+    unsigned i;
+
+    for (i = 0; i < words; i++) {
+        uint32_t w = code[i];
+
+        if ((w & 0x7fu) == 0x57u && (w >> 26) == 0x13u &&
+            ((w >> 15) & 31u) == 0u)
+            return 1;
+    }
+    return 0;
+}
+
+static int has_vfrsqrt7(const uint32_t *code, unsigned words)
+{
+    unsigned i;
+
+    for (i = 0; i < words; i++) {
+        if ((code[i] & 0xfe0ff07fu) == 0x4e021057u)
+            return 1;
+    }
+    return 0;
+}
+
+static int has_branch(const uint32_t *code, unsigned words)
+{
+    unsigned i;
+
+    for (i = 0; i < words; i++) {
+        if ((code[i] & 0x7fu) == 0x63u)
+            return 1;
+    }
+    return 0;
+}
+
+static int has_vtex(const uint32_t *code, unsigned words)
+{
+    unsigned i;
+
+    for (i = 0; i < words; i++) {
+        if ((code[i] & 0xfe00707fu) == 0x0600002bu)
+            return 1;
+    }
+    return 0;
+}
+
 static void check_runtime(const uint32_t *code, unsigned words, int vertex,
                           uint32_t resources)
 {
@@ -432,6 +483,213 @@ static void check_runtime(const uint32_t *code, unsigned words, int vertex,
             converted, (opengpu_shader_u32)lowered,
             opengpu_shader_fragment_bank_stride(resources), batch, 6, 9, true,
             false, false, true, batch));
+}
+
+static void check_runtime_texture(const uint32_t *code, unsigned words,
+                                  uint32_t resources)
+{
+    uint32_t converted[OPENGPU_ABI_TARGET_WORDS];
+    unsigned batch = opengpu_shader_resource_batch(resources);
+    size_t lowered = 0;
+
+    assert(!opengpu_shader_lower_runtime_abi(code, words, 0, converted,
+                                              OPENGPU_ABI_TARGET_WORDS, &lowered));
+    assert(lowered && lowered <= OPENGPU_ABI_TARGET_WORDS);
+    assert(opengpu_shader_validate_words_profile_runtime(
+        converted, (opengpu_shader_u32)lowered,
+        opengpu_shader_fragment_bank_stride(resources), batch, 6, 9, true,
+        true, false, true, batch));
+}
+
+static void add_imm(struct tgsi_token *tokens, struct tgsi_header *header,
+                    float x, float y, float z, float w)
+{
+    struct tgsi_full_immediate imm = tgsi_default_full_immediate();
+    unsigned wrote;
+
+    imm.Immediate.DataType = TGSI_IMM_FLOAT32;
+    imm.Immediate.NrTokens = 5;
+    imm.u[0].Float = x;
+    imm.u[1].Float = y;
+    imm.u[2].Float = z;
+    imm.u[3].Float = w;
+    wrote = tgsi_build_full_immediate(&imm, cursor(tokens, header), header,
+                                      room(header));
+    assert(wrote);
+}
+
+/* Mesa's ellipsis_coverage TGSI: Y-flip MAD, uniform radius test, DP2,
+ * DIV, RSQ+RCP, and a saturating add. CONST[0][2] is gl_FbWposYTransform
+ * and does not fit in the eight-float uniform tail. */
+static void gtk_coverage(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src in_yyxx = op_src(TGSI_FILE_INPUT, 0, TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y,
+                                   TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src in_xyyy = op_src(TGSI_FILE_INPUT, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y,
+                                   TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, 0);
+    struct op_src c2xxxx = op_src(TGSI_FILE_CONSTANT, 2, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                                  TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src c2yyxx = op_src(TGSI_FILE_CONSTANT, 2, TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y,
+                                  TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src neg_c1 = op_src(TGSI_FILE_CONSTANT, 1, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y,
+                                  TGSI_SWIZZLE_Z, TGSI_SWIZZLE_W, 1);
+    struct op_src c1zwzw = op_src(TGSI_FILE_CONSTANT, 1, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_W,
+                                  TGSI_SWIZZLE_Z, TGSI_SWIZZLE_W, 0);
+    struct op_src c1zwyy = op_src(TGSI_FILE_CONSTANT, 1, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_W,
+                                  TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, 0);
+    struct op_src imm0x = op_src(TGSI_FILE_IMMEDIATE, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                                 TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src imm0y = op_src(TGSI_FILE_IMMEDIATE, 0, TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y,
+                                 TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, 0);
+    struct op_src imm0z = op_src(TGSI_FILE_IMMEDIATE, 0, TGSI_SWIZZLE_Z, TGSI_SWIZZLE_Z,
+                                 TGSI_SWIZZLE_Z, TGSI_SWIZZLE_Z, 0);
+    struct op_src imm0w = op_src(TGSI_FILE_IMMEDIATE, 0, TGSI_SWIZZLE_W, TGSI_SWIZZLE_W,
+                                 TGSI_SWIZZLE_W, TGSI_SWIZZLE_W, 0);
+    struct op_src half = op_src(TGSI_FILE_IMMEDIATE, 1, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                                TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src t0xyxx = op_src(TGSI_FILE_TEMPORARY, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y,
+                                  TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src t0xyyy = op_src(TGSI_FILE_TEMPORARY, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y,
+                                  TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, 0);
+    struct op_src t0x = op_src(TGSI_FILE_TEMPORARY, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                               TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src t0neg = op_src(TGSI_FILE_TEMPORARY, 0, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                                 TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 1);
+    struct op_src t1x = op_src(TGSI_FILE_TEMPORARY, 1, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                               TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src t1yxxx = op_src(TGSI_FILE_TEMPORARY, 1, TGSI_SWIZZLE_Y, TGSI_SWIZZLE_X,
+                                  TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src t2xyxx = op_src(TGSI_FILE_TEMPORARY, 2, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y,
+                                  TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src t2xyyy = op_src(TGSI_FILE_TEMPORARY, 2, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y,
+                                  TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, 0);
+    struct op_src t2x = op_src(TGSI_FILE_TEMPORARY, 2, TGSI_SWIZZLE_X, TGSI_SWIZZLE_X,
+                               TGSI_SWIZZLE_X, TGSI_SWIZZLE_X, 0);
+    struct op_src color = op_src_id(TGSI_FILE_CONSTANT, 0);
+    struct op_src mad[3];
+    struct op_src pair[2];
+
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_INPUT, 0, 0, TGSI_SEMANTIC_POSITION);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_decl(tokens, header, TGSI_FILE_CONSTANT, 0, 2, -1);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 2, -1);
+    add_imm(tokens, header, 0.f, 2.f, -1.f, 0.00000001f);
+    add_imm(tokens, header, 0.5f, 0.f, 0.f, 0.f);
+    mad[0] = in_yyxx;
+    mad[1] = c2xxxx;
+    mad[2] = c2yyxx;
+    add_op(tokens, header, TGSI_OPCODE_MAD, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_Y, 3, mad);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_X, 1, &in_xyyy);
+    pair[0] = t0xyxx;
+    pair[1] = neg_c1;
+    add_op(tokens, header, TGSI_OPCODE_ADD, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XY, 2, pair);
+    pair[0] = c1zwzw;
+    pair[1] = imm0x;
+    add_op(tokens, header, TGSI_OPCODE_SEQ, TGSI_FILE_TEMPORARY, 1,
+           TGSI_WRITEMASK_XY, 2, pair);
+    pair[0] = t1x;
+    pair[1] = t1yxxx;
+    add_op(tokens, header, TGSI_OPCODE_MUL, TGSI_FILE_TEMPORARY, 1,
+           TGSI_WRITEMASK_X, 2, pair);
+    add_op(tokens, header, TGSI_OPCODE_IF, -1, 0, 0, 1, &t1x);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_TEMPORARY, 1,
+           TGSI_WRITEMASK_X, 1, &imm0x);
+    add_op(tokens, header, TGSI_OPCODE_ELSE, -1, 0, 0, 0, NULL);
+    pair[0] = t0xyyy;
+    pair[1] = c1zwyy;
+    add_op(tokens, header, TGSI_OPCODE_DIV, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XY, 2, pair);
+    pair[0] = imm0y;
+    pair[1] = t0xyyy;
+    add_op(tokens, header, TGSI_OPCODE_MUL, TGSI_FILE_TEMPORARY, 2,
+           TGSI_WRITEMASK_XY, 2, pair);
+    pair[0] = t2xyyy;
+    pair[1] = c1zwyy;
+    add_op(tokens, header, TGSI_OPCODE_DIV, TGSI_FILE_TEMPORARY, 2,
+           TGSI_WRITEMASK_XY, 2, pair);
+    pair[0] = t0xyxx;
+    pair[1] = t0xyxx;
+    add_op(tokens, header, TGSI_OPCODE_DP2, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_X, 2, pair);
+    pair[0] = t0x;
+    pair[1] = imm0z;
+    add_op(tokens, header, TGSI_OPCODE_ADD, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_X, 2, pair);
+    pair[0] = t2xyxx;
+    pair[1] = t2xyxx;
+    add_op(tokens, header, TGSI_OPCODE_DP2, TGSI_FILE_TEMPORARY, 2,
+           TGSI_WRITEMASK_X, 2, pair);
+    pair[0] = t2x;
+    pair[1] = imm0w;
+    add_op(tokens, header, TGSI_OPCODE_ADD, TGSI_FILE_TEMPORARY, 2,
+           TGSI_WRITEMASK_X, 2, pair);
+    add_op(tokens, header, TGSI_OPCODE_RSQ, TGSI_FILE_TEMPORARY, 2,
+           TGSI_WRITEMASK_X, 1, &t2x);
+    add_op(tokens, header, TGSI_OPCODE_RCP, TGSI_FILE_TEMPORARY, 2,
+           TGSI_WRITEMASK_X, 1, &t2x);
+    pair[0] = t0x;
+    pair[1] = t2x;
+    add_op(tokens, header, TGSI_OPCODE_DIV, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_X, 2, pair);
+    pair[0] = half;
+    pair[1] = t0neg;
+    op_saturate = 1;
+    add_op(tokens, header, TGSI_OPCODE_ADD, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_X, 2, pair);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_TEMPORARY, 1,
+           TGSI_WRITEMASK_X, 1, &t0x);
+    add_op(tokens, header, TGSI_OPCODE_ENDIF, -1, 0, 0, 0, NULL);
+    pair[0] = color;
+    pair[1] = t1x;
+    add_op(tokens, header, TGSI_OPCODE_MUL, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 2, pair);
+    add_end(tokens, header);
+}
+
+/* texture2D of a temporary coordinate misses the clang sample menu. */
+static void sample_miss(struct tgsi_token *tokens)
+{
+    struct tgsi_header *header;
+    struct op_src uv = op_src(TGSI_FILE_INPUT, 1, TGSI_SWIZZLE_X, TGSI_SWIZZLE_Y,
+                              TGSI_SWIZZLE_Y, TGSI_SWIZZLE_Y, 0);
+    struct op_src coord = op_src_id(TGSI_FILE_TEMPORARY, 0);
+    struct tgsi_full_instruction inst;
+    unsigned wrote;
+
+    begin_fragment(tokens, &header);
+    add_decl(tokens, header, TGSI_FILE_INPUT, 0, 0, TGSI_SEMANTIC_POSITION);
+    add_decl(tokens, header, TGSI_FILE_INPUT, 1, 1, TGSI_SEMANTIC_TEXCOORD);
+    add_decl(tokens, header, TGSI_FILE_TEMPORARY, 0, 1, -1);
+    add_decl(tokens, header, TGSI_FILE_OUTPUT, 0, 0, TGSI_SEMANTIC_COLOR);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_TEMPORARY, 0,
+           TGSI_WRITEMASK_XY, 1, &uv);
+    inst = tgsi_default_full_instruction();
+    inst.Instruction.Opcode = TGSI_OPCODE_TEX;
+    inst.Instruction.NumDstRegs = 1;
+    inst.Instruction.NumSrcRegs = 1;
+    inst.Instruction.Texture = 1;
+    inst.Texture.Texture = TGSI_TEXTURE_2D;
+    inst.Dst[0].Register.File = TGSI_FILE_TEMPORARY;
+    inst.Dst[0].Register.Index = 1;
+    inst.Dst[0].Register.WriteMask = TGSI_WRITEMASK_XYZW;
+    inst.Src[0].Register.File = coord.file;
+    inst.Src[0].Register.Index = coord.index;
+    inst.Src[0].Register.SwizzleX = TGSI_SWIZZLE_X;
+    inst.Src[0].Register.SwizzleY = TGSI_SWIZZLE_Y;
+    inst.Src[0].Register.SwizzleZ = TGSI_SWIZZLE_Z;
+    inst.Src[0].Register.SwizzleW = TGSI_SWIZZLE_W;
+    wrote = tgsi_build_full_instruction(&inst, cursor(tokens, header), header,
+                                        room(header));
+    assert(wrote);
+    coord = op_src_id(TGSI_FILE_TEMPORARY, 1);
+    add_op(tokens, header, TGSI_OPCODE_MOV, TGSI_FILE_OUTPUT, 0,
+           TGSI_WRITEMASK_XYZW, 1, &coord);
+    add_end(tokens, header);
 }
 
 int main(void)
@@ -523,6 +781,48 @@ int main(void)
     assert(opengpu_shader_validate_words(code, words, 512, 8, true));
     for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
         check_runtime(code, words, 0, resources[i]);
+
+    {
+        struct tgsi_token gtk_tokens[MAX_TOKENS];
+        struct tgsi_token tex_tokens[MAX_TOKENS];
+        struct opengpu_fs_alu gtk, tex;
+        uint32_t wide[256];
+
+        gtk_coverage(gtk_tokens);
+        assert(!opengpu_fs_emit(gtk_tokens, &gtk));
+        assert(gtk.words && gtk.words <= 256);
+        assert(gtk.nconst == 3);
+        assert(gtk.nimm == 0);
+        assert(gtk.patch_n == 4);
+        assert(gtk.patch_src[0] == 8);
+        assert(contains(gtk.code, gtk.words, OPENGPU_FRAGMENT_COORD_YCVT));
+        assert(has_vfrsqrt7(gtk.code, gtk.words));
+        assert(has_branch(gtk.code, gtk.words));
+        assert(!has_vfsqrt(gtk.code, gtk.words));
+        opengpu_fs_patch_immediate(gtk.code, gtk.patch_at[0], -1.f);
+        opengpu_fs_patch_immediate(gtk.code, gtk.patch_at[1], 480.f);
+        assert(opengpu_shader_validate_words(gtk.code, gtk.words, 512, 8, true));
+        for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
+            check_runtime(gtk.code, gtk.words, 0, resources[i]);
+        words = 0;
+        assert(!opengpu_fragment_lower_kind(gtk_tokens, wide, 256, &words));
+        assert(words == gtk.words);
+
+        sample_miss(tex_tokens);
+        assert(!opengpu_fs_emit(tex_tokens, &tex));
+        assert(tex.samples == 1);
+        assert(tex.sample_sem == TGSI_SEMANTIC_TEXCOORD);
+        assert(tex.nimm == 0);
+        assert(contains(tex.code, tex.words, 0x08028313u));
+        assert(contains(tex.code, tex.words, 0x0a028313u));
+        assert(has_vtex(tex.code, tex.words));
+        for (i = 0; i < sizeof(resources) / sizeof(resources[0]); i++)
+            check_runtime_texture(tex.code, tex.words, resources[i]);
+        words = 0;
+        assert(!opengpu_fragment_lower_kind(tex_tokens, wide, 256, &words));
+        assert(words == tex.words);
+        assert(has_vtex(wide, words));
+    }
 
     position_copy(copy_vs);
     assert(opengpu_vertex_lower_kind(copy_vs, code, 256, &words) == 1);

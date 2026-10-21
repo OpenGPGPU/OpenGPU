@@ -95,7 +95,17 @@ fragment-only device. `sqrt((0.25, 1, 0.25, 1))` is a scalar
 triangle, `gl_FragCoord.y < 32` paints both `0xff00ffff` and `0x0000ffff`.
 A uniform `if` paints `0xff0000ff` on one submit and `0x00ff00ff` on the
 next. `KILL_IF` drops lanes below `y = 32`, so the red survivors are a
-partial triangle rather than the full 2016 pixels.
+partial triangle rather than the full 2016 pixels. The GTK
+`ellipsis_coverage` program lowers on the same emitter: the Mesa
+`MAD` that applies `gl_FbWposYTransform`, `DP2`, `DIV`, `MUL`, a
+uniform `if` on a const-only temporary, `RSQ` then `RCP` for the
+gradient, and a saturating add. Immediates are materialized with
+`fmv.w.x`. The eight-float uniform tail holds colour and
+`center_radius`; the Y transform is patched into the instruction
+stream at draw time. A `TEX` whose coordinate is a temporary copied from
+`TEXCOORD` emits `vtex.sample` from bytes 128 and 160; clang
+`fragment_texture` remains the menu path when the coordinate is the
+input itself. The 640×480 pixel proof is `scripts/run_gtk_coverage_guest.sh`.
 `examples/vertex_alu` is the vertex program the menu does not classify. It
 adds the integer at kernarg byte 512 to Q16.16 position x and copies the
 other slices. The addend is zero and `fragment_color` copies the vertex

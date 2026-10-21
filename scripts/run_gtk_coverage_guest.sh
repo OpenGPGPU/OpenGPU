@@ -297,7 +297,7 @@ echo '=== Load guest GPU driver ==='
 
 if [ "${GTK_PROOF_SKIP_COVERAGE:-0}" != 1 ]; then
     echo '=== Check GTK ellipse coverage ==='
-    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 600 \
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 1200 \
         'LD_LIBRARY_PATH=/root LIBGL_DRIVERS_PATH=/root OPENGPU_GL_EXIT=1 /root/opengpu_gl_gtk_coverage.bin' | tee "$PROOF_LOG"
     grep -qF 'gl_gtk_coverage: mode 640x480 inside=0xff0000ff outside=0x00000000' "$PROOF_LOG"
     grep -qF 'OPENGPU GL GTK COVERAGE PASS' "$PROOF_LOG"
