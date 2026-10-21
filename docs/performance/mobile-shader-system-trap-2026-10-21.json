@@ -1,6 +1,6 @@
 {
   "date": "2026-10-21",
-  "status": "functional_pass_retirement_synthesis_pass_scalar_synthesis_running",
+  "status": "component_and_native_AXI_pass_both_component_synthesis_pass",
   "branch_base": "7420112f9643f8ea809693e5fe83850b0ed7912a",
   "current_main": "673edb6a06cadfa4742a77bda7d78ee05216ba19",
   "branch": "codex/mobile-shader-system-trap",
@@ -66,16 +66,24 @@
       "result": ".artifacts/mobile-shader-system-trap-synthesis-v2-retirement-result.json"
     },
     "scalar_backend": {
-      "state": "running",
+      "state": "passed",
       "result": ".artifacts/mobile-shader-system-trap-synthesis-v2-scalar-result.json",
-      "scope": "Default16-lane/eight-warp production ScalarBackend with current native useBlackBoxes=false register implementation; no omitted operators or relaxed clock."
+      "scope": "Default16-lane/eight-warp production ScalarBackend with current native useBlackBoxes=false register implementation; no omitted operators or relaxed clock.",
+      "core_slack_ps": 428.223,
+      "io_slack_ps": 74.102,
+      "mapped_cells": 123643,
+      "library_area": 15071.91462,
+      "sequential_area": 6077.5272,
+      "SRAM_macros": 0,
+      "skipped_instances": 0
     }
   },
-  "main_promotion": "Pending scalar-backend synthesis and integration with newer main.",
+  "main_promotion": "Qualified current-main integration with two fresh native AXI cases and byte-identical component synthesis emissions.",
   "remaining": [
     "Programmable loop watchdog/interruption and general resource/reconvergence contracts.",
     "Native typed/binned host fault integration at product capacity.",
     "Composed whole-CU/renderer synthesis/resource/frame budgets.",
     "S02/H5/H6 and H0-H8 remain partial."
-  ]
+  ],
+  "native_AXI_integration": "docs/performance/mobile-shader-system-trap-native-axi-2026-10-22.json"
 }

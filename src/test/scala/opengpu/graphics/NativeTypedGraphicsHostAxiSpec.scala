@@ -13,6 +13,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   protected def transformFeedback: Boolean=false
   protected def primitiveQueries: Boolean=false
   protected def primitiveQueryLifetimes: Boolean=false
+  protected def shaderSystemFaults: Boolean=false
   protected def transformFeedbackRecovery: Boolean=false
   protected def groupedTexture: Boolean=false
   protected def nativeComputeUnits: Int=2
@@ -253,6 +254,37 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       assert(writes.exists(_>=0x1000000) && !reads.exists(a=>a>=0x400000 && a<0x800000),"virtual descriptors must not escape onto physical AXI")
     }
   }
+  if(shaderSystemFaults)for(local<-Seq(true,false))
+  it should s"reject unsupported native shader system operations and reuse their destinations through AXI local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      initialize(d);val image=new Image(d);val perf=d.io.performance.get
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,RenderHostRegs.IRQ,1)
+      var frames=0;var failures=0
+      for((instruction,index)<-Seq(BigInt("00100073",16),BigInt("00000073",16),BigInt("00101573",16)).zipWithIndex;
+          healthy<-Seq(false,true)){
+        image.shaderDraws(0)
+        // A fresh instruction allocation per frame avoids assuming CPU code
+        // writes invalidate already cached instruction lines.
+        val pc=0x480000+index*0x2000+(if(healthy)0x1000 else 0)
+        val code=if(healthy)addi(10,0,7)+:vertexProgram else Vector(instruction)
+        code.zipWithIndex.foreach{case(word,i)=>image.word(image.pa(pc+4*i),word)}
+        for(draw<-0 until 3)image.word(image.pa(0x412000+draw*4096+33*4),pc)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        val id=160+frames;image.submit(id);image.run(status=if(healthy)0 else 5,id=id)
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        if(healthy)image.verifyDraws(0)
+        else{assert(!image.writes.exists(_>=0x1000000),"faulted system shader published an image");failures+=1}
+        image.pop();perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+        frames+=1
+      }
+      assert(frames==6 && failures==3)
+      info(s"NATIVE_SHADER_SYSTEM_TRAP_AXI local=$local CUs=$nativeComputeUnits frames=$frames shaderFaults=$failures ebreak=true ecall=true CSRrd10=true exactHealthyImages=true destinationReuse=true freshCodeAllocations=true noFalsePublication=true heldCompletionPinsVM=true payloadReleased=true")
+    }
+  }
   if(primitiveQueryLifetimes)for(local<-Seq(true,false);lifetime<-Seq(false,true))
   it should s"preserve native primitive-query ${if(lifetime)"continuous capture lifetime"else"record-memory fault ownership"} local=$local" in {
     simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
@@ -426,7 +458,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames resetCuts=$resetCuts checkpointPermissionFaults=1 capturePermissionFaults=1 captureBusFaults=1 missingLeaseDraws=1 peerHealthyDraws=4 scopedRecovery=true countersAfterFinalAck=true noDeniedPhysicalStores=true partialFaultStoresBounded=true staleResetObjectsRejected=true exactRawCaptureAndImages=true queryContextIsolation=true")
     }
   }
-  if(!transformFeedback){
+  if(!transformFeedback && !shaderSystemFaults){
   // Shared-path subclasses register the focused capture matrix below.
   if(!groupedTexture){
   it should "submit a translated native clear pass and publish trusted physical source and resolve views over the production AXI host" in {

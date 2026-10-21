@@ -7590,6 +7590,19 @@ binned fault/lifetime runtime,full product capacity,composed budgets and the
 remaining H0-H8 requirements stay open.
 
 
+### 2026-10-21: native binned query recovery and continuous scopes
+
+[Six fresh binned checks](performance/mobile-primitive-query-native-binned-recovery-2026-10-21.json)
+pass on981 frozen inputs with local/spilled payloads and two tile engines.
+Twenty-four completed frames capture28 source primitives,with exact four-count
+continuous scopes before tile fanout and four correctly ignored post-end
+captures. Sixteen record-memory faults,partial-store/permission/missing-lease
+failures,healthy peer captures and accepted-store reset retain exact GPO1/raw
+capture/image guards and released payloads. The distinct total across frozen
+checkpoints is47. Production/build/ABI bytes are unchanged. Full product capacity,
+composed timing/resources,frame budgets and the remaining H0-H8 gates stay open.
+
+
 ### 2026-10-21: attributed shader system traps and destination reuse
 
 The [shader termination repair](SHADER_TRAP_TERMINATION.md) fixes dropped
@@ -7600,6 +7613,20 @@ checks pass on986 frozen inputs,including both FPU settings,CSR x10 reuse,
 concurrent two-warp CSR/load faults,default16-lane/eight-warp control ownership
 and actual shader fault/healthy reuse. Both preceding failures remain preserved.
 Default retirement synthesis passes1000ps TC/SLVT with25percent I/O:
-core+668.231ps,I/O+425.689ps,491 cells,area62.504460,zero skipped. Separate scalar
-backend synthesis and current-main integration remain pending. This does not
+core+668.231ps,I/O+425.689ps,491 cells,area62.504460,zero skipped. Default scalar-backend synthesis also passes:core+428.223ps,I/O+74.102ps,
+123643 cells,area15071.914620,zero skipped. Fresh native AXI integration remains
+pending after current-main merge. This does not
 implement a loop watchdog or close S02/H5/H6,whole-CU timing or H0-H8.
+
+
+### 2026-10-22: native shader system-trap integration
+
+[Two fresh native AXI checks](performance/mobile-shader-system-trap-native-axi-2026-10-22.json)
+pass after merging current main. Twelve local/spill two-CU frames include six
+expected system-shader faults without image publication and six exact healthy
+reuses that write the previously trapped CSR destination. VM ownership and
+payload release remain correct. The988-input integration carries33 scoped
+checks and retains both default synthesis emissions byte for byte:retirement
+core+668.231ps/I/O+425.689ps,scalar core+428.223ps/I/O+74.102ps,zero skipped.
+These are component timing results;full product capacity,programmable watchdogs,
+resource/reconvergence contracts,whole-renderer budgets and H0-H8 remain open.

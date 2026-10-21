@@ -37,8 +37,11 @@ ABI context initialization only writes `x1..x9`, exposing the leaked reservation
 Default retirement-controller synthesis passes 1000 ps TC/SLVT with 25% I/O,
 standard ABC and no retiming: core +668.231 ps, I/O +425.689 ps, 491 mapped cells,
 library area 62.504460, sequential area 32.076000, 110 flops, zero SRAM macros
-and zero skipped instances. The changed default scalar backend is receiving a
-separate synthesis screen. This does not qualify whole-CU or native-host timing.
+and zero skipped instances. Default scalar-backend synthesis also passes: core +428.223 ps, I/O +74.102 ps,
+123643 cells, library area 15071.914620, sequential area 6077.527200, zero SRAM
+macros and zero skipped instances. The register-based RF follows the current
+native `useBlackBoxes=false` implementation. These component screens do not
+qualify whole-CU or native-host timing.
 
 Programmable watchdogs for infinite loops, interruption, general resource and
 reconvergence contracts, product-capacity native host faults and composed budgets
@@ -49,3 +52,17 @@ sbt 'testOnly opengpu.core.GpuComputeUnitTrapTerminationSpec opengpu.core.GpuCom
 sbt 'runMain opengpu.elaboration.EmitShaderTrapRetirement generated/shader-trap-retirement'
 sbt 'runMain opengpu.elaboration.EmitShaderTrapRetirement generated/shader-trap-scalar scalar-backend'
 ```
+
+## Native AXI integration
+
+[Two fresh native checks](performance/mobile-shader-system-trap-native-axi-2026-10-22.json)
+pass after merging main `673edb6a`. Twelve two-CU frames cover local/spilled
+payloads: six expected `EBREAK`/`ECALL`/CSR-`x10` shader faults publish no image,
+and six healthy native reuses write `x10` before producing exact MRT/depth/
+resolve images. Each frame owns fresh instruction addresses. Held completions
+pin VM state and all payload reservations release. The 988-input integration
+retains every production/build/ABI byte from the 33-check component source;
+changes are main's query tests plus the new native probe. Both default component
+emissions are byte-identical to their qualified synthesis inputs. The distinct
+scoped total is 35. Full product capacity, programmable watchdog/interruption,
+whole-CU/renderer timing and the full H0-H8 objective remain open.
