@@ -45,6 +45,17 @@ static const char *fs_src =
     "    gl_FragColor = color;\n"
     "}\n";
 
+/* GTK composition folds the position into a uniform. Every vertex shares
+ * that one clip position, so the triangle covers nothing and the clear
+ * remains. The driver log records the staged vec4. */
+static const char *const_vs_src =
+    "uniform highp mat4 u_mvp;\n"
+    "uniform highp vec4 u_pos;\n"
+    "void main()\n"
+    "{\n"
+    "    gl_Position = u_mvp * u_pos;\n"
+    "}\n";
+
 /* Column-major. Modelview scales x by 1/2. Projection then adds 1/2
  * and scales y by -1, the sign a window projection uses to flip Y.
  * The products do not commute, so a reversed multiply misses x=420
@@ -150,6 +161,7 @@ int main(void)
     EGLint major = 0, minor = 0, nconfig = 0;
     GLuint program, vbo, vs, fs;
     GLint linked = 0, matrix_loc, color_loc;
+    const int const_pos = getenv("OPENGPU_GL_CONST_POS") != NULL;
     uint32_t crtc_id, fb = 0;
     uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 };
     uint32_t inside, top, reversed, outside, clear;
@@ -238,12 +250,13 @@ int main(void)
         die_gl("eglMakeCurrent");
 
     step("context current");
-    vs = compile_shader(GL_VERTEX_SHADER, vs_src);
+    vs = compile_shader(GL_VERTEX_SHADER, const_pos ? const_vs_src : vs_src);
     fs = compile_shader(GL_FRAGMENT_SHADER, fs_src);
     program = glCreateProgram();
     glAttachShader(program, vs);
     glAttachShader(program, fs);
-    glBindAttribLocation(program, 0, "aPosition");
+    if (!const_pos)
+        glBindAttribLocation(program, 0, "aPosition");
     glLinkProgram(program);
     glGetProgramiv(program, GL_LINK_STATUS, &linked);
     if (!linked) {
@@ -252,27 +265,45 @@ int main(void)
         return 1;
     }
     glUseProgram(program);
-    matrix_loc = glGetUniformLocation(program, "u_projection");
-    if (matrix_loc < 0)
-        die("projection uniform missing");
-    glUniformMatrix4fv(matrix_loc, 1, GL_FALSE, projection);
-    {
-        GLint model_loc = glGetUniformLocation(program, "u_modelview");
-        if (model_loc < 0)
-            die("modelview uniform missing");
-        glUniformMatrix4fv(model_loc, 1, GL_FALSE, modelview);
+    if (const_pos) {
+        static const float identity[16] = {
+            1.f, 0.f, 0.f, 0.f,
+            0.f, 1.f, 0.f, 0.f,
+            0.f, 0.f, 1.f, 0.f,
+            0.f, 0.f, 0.f, 1.f
+        };
+        GLint pos_loc = glGetUniformLocation(program, "u_pos");
+
+        matrix_loc = glGetUniformLocation(program, "u_mvp");
+        if (matrix_loc < 0 || pos_loc < 0)
+            die("constant position uniforms missing");
+        glUniformMatrix4fv(matrix_loc, 1, GL_FALSE, identity);
+        glUniform4f(pos_loc, 0.f, 0.f, 0.f, 1.f);
+    } else {
+        matrix_loc = glGetUniformLocation(program, "u_projection");
+        if (matrix_loc < 0)
+            die("projection uniform missing");
+        glUniformMatrix4fv(matrix_loc, 1, GL_FALSE, projection);
+        {
+            GLint model_loc = glGetUniformLocation(program, "u_modelview");
+            if (model_loc < 0)
+                die("modelview uniform missing");
+            glUniformMatrix4fv(model_loc, 1, GL_FALSE, modelview);
+        }
     }
     color_loc = glGetUniformLocation(program, "color");
     if (color_loc < 0)
         die("color uniform missing");
     glUniform4f(color_loc, 1.f, 0.f, 0.f, 1.f);
 
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
-                          (void *)0);
+    if (!const_pos) {
+        glGenBuffers(1, &vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                              (void *)0);
+    }
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glDisable(GL_BLEND);
@@ -283,6 +314,23 @@ int main(void)
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glFinish();
     step("draw finished");
+    if (const_pos) {
+        uint32_t sample = pixel_word(8, 8);
+
+        printf("gl_gtk_color: const position sample=0x%08x\n", sample);
+        fflush(stdout);
+        if (sample != COLOR_CLEAR) {
+            fprintf(stderr, "gl_gtk_color: constant position covered a pixel\n");
+            return 1;
+        }
+        printf("OPENGPU GL CONST POSITION PASS\n");
+        fflush(stdout);
+        if (getenv("OPENGPU_GL_EXIT"))
+            return 0;
+        fprintf(stderr, "gl_gtk_color: holding the frame; Ctrl-C to exit\n");
+        for (;;)
+            pause();
+    }
 
     /* NDC y=-1 is scanout row 0. After the Y flip the triangle sits on
      * the bottom. (360, row 450) is inside it. (420, row 8) is where the
