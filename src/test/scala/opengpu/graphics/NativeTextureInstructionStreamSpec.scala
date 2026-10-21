@@ -98,6 +98,42 @@ class NativeTextureInstructionStreamSpec extends AnyFlatSpec {
     }
   }
 
+  it should "retain a one-cycle cancellation behind held offers and drain primary faults before tag reuse" in {
+    simulate(new NativeTextureInstructionStream(cfg, 3)) { d =>
+      val t = new Driver(d)
+      for (w <- 0 until 3) t.submit(w)
+      // The two-entry offer queue is blocked externally. Cancel must not
+      // withdraw those packets or require the original pulse to stay high.
+      d.io.grouped.request.valid.expect(true.B)
+      val held = d.io.grouped.request.bits.peek().litValue
+      d.io.cancel.poke(true.B); t.tick(); d.io.cancel.poke(false.B)
+      for (_ <- 0 until 12) {
+        d.io.grouped.request.valid.expect(true.B)
+        assert(d.io.grouped.request.bits.peek().litValue == held)
+        d.io.busy.expect(true.B); t.tick()
+      }
+      d.io.grouped.request.ready.poke(true.B); t.until(t.requests.size == 2)
+      for (_ <- 0 until 16) t.tick()
+      val old = t.requests.toVector
+      assert(old.size == 2 && old.forall(t.cancels))
+      old.reverse.foreach(tag => t.reply(tag, if (tag == old.head) 3 else 4))
+      val retired = mutable.Set.empty[Int]; d.io.out.ready.poke(true.B)
+      while (retired.size < 3) {
+        t.until(d.io.out.valid.peek().litToBoolean)
+        val w = d.io.out.bits.instruction.warp.peek().litValue.toInt
+        d.io.out.bits.status.expect((if (w == ((old.head >> 2) & 3).toInt) 3 else 4).U)
+        assert(!retired(w)); retired += w; t.tick()
+      }
+      d.io.busy.expect(false.B); d.io.out.ready.poke(false.B)
+      t.requests.clear(); t.submit(0); t.until(t.requests.size == 3)
+      assert(t.requests.contains(old.head))
+      t.requests.reverse.toVector.foreach(t.reply(_))
+      t.until(d.io.out.valid.peek().litToBoolean); d.io.out.bits.status.expect(0.U)
+      d.io.out.ready.poke(true.B); t.tick(); d.io.busy.expect(false.B)
+      info("NATIVE_REGISTERED_CANCEL pulseCaptured=true heldOffersStable=true allContextsDrained=true primaryFaultPreserved=true tagsReused=true")
+    }
+  }
+
   it should "cancel every live context while retaining a later primary fault and allowing exact tag reuse" in {
     simulate(new NativeTextureInstructionStream(cfg, 3)) { d =>
       val t = new Driver(d)

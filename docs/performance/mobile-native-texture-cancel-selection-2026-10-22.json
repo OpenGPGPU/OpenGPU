@@ -1,0 +1,85 @@
+{
+  "date": "2026-10-22",
+  "scope": "Remove live native cancellation from context/lane identity priority mux. Retain immediate issue stop, owned pulse capture, precise replies, primary fault and tag lifetime. Full native endpoint timing still pending.",
+  "source_files": 914,
+  "source_manifest": ".artifacts/mobile-shared-cluster-timing-v2-source.json",
+  "source_manifest_sha256": "a4db4256c42bc35f55fade5616eecafdab5cddbee61f01e848dc67e9c604dcda",
+  "baseline_synthesis": {
+    "source_manifest": ".artifacts/mobile-shared-cluster-timing-v1-source.json",
+    "native_vertex": {
+      "result": ".artifacts/mobile-shared-cluster-timing-synthesis-v1-native-vertex-result.json",
+      "core_ps": 88.034,
+      "IO_ps": -25.302,
+      "skipped": 0,
+      "IO_start": "io_cancel",
+      "IO_end": "io_grouped_cancelGroup_bits_identity_context[11]"
+    },
+    "shared_cluster": {
+      "result": ".artifacts/mobile-shared-cluster-timing-synthesis-v1-cluster-result.json",
+      "core_ps": 42.104,
+      "IO_ps": 301.056,
+      "skipped": 0
+    }
+  },
+  "functional": {
+    "passed": true,
+    "checks": 47,
+    "test_counts": [
+      24,
+      23
+    ],
+    "emissions": 5,
+    "result": ".artifacts/mobile-shared-cluster-timing-v2-result.json",
+    "instruction_stream_cases": 4,
+    "native_lane_stream_cases": 23,
+    "prior_planner_service_pool_cold_cases": 20,
+    "one_cycle_cancel_pulse": true,
+    "held_offers_stable": true,
+    "primary_faults_retained": true,
+    "all_three_contexts_drained": true,
+    "exact_private_tag_reuse": true,
+    "default_native_warm": {
+      "lanes": 16,
+      "warps": 8,
+      "contexts": 8,
+      "taps": 4,
+      "groups": 512,
+      "steady_groups": 448,
+      "steady_cycles": 448,
+      "max_admission_gap": 1,
+      "warm_descriptor_reads": 0,
+      "warm_data_reads": 0,
+      "scope": "Shared-window burst profile only; four-credit and nonburst controls retain their separately measured slower rates."
+    },
+    "markers": [
+      "NATIVE_REGISTERED_CANCEL pulseCaptured=true heldOffersStable=true allContextsDrained=true primaryFaultPreserved=true tagsReused=true ",
+      "NATIVE_SHARED_WARM_RATE shared=false burst=true lanes=16 warps=8 contexts=8 clients=3 activeClients=1 taps=4 instructions=32 groups=512 totalCycles=11787 stableGroups=448 stableSpanCycles=10216 maxAdmissionGap=89 minReplyLatency=91 maxReplyLatency=91 warmDescriptorReads=0 warmDataReads=0 targetII1=false ",
+      "NATIVE_SHARED_WARM_RATE shared=true burst=false lanes=16 warps=8 contexts=8 clients=3 activeClients=1 taps=4 instructions=32 groups=512 totalCycles=729 stableGroups=448 stableSpanCycles=567 maxAdmissionGap=46 minReplyLatency=90 maxReplyLatency=90 warmDescriptorReads=0 warmDataReads=0 targetII1=false ",
+      "NATIVE_SHARED_WARM_RATE shared=true burst=true lanes=16 warps=8 contexts=8 clients=3 activeClients=1 taps=4 instructions=32 groups=512 totalCycles=610 stableGroups=448 stableSpanCycles=448 maxAdmissionGap=1 minReplyLatency=90 maxReplyLatency=90 warmDescriptorReads=0 warmDataReads=0 targetII1=true ",
+      "NATIVE_SHARED_NATIVE_RESET warps8=true publicBorrowedLeases120=true otherClientsReserve4Each=true heldLaneOffersDrained=true resetHeldThroughAllRetirements=true atomicVectorFaults8=true healthyReuse=true "
+    ]
+  },
+  "synthesis": {
+    "status_at_checkpoint": "live_native_vertex_then_fragment",
+    "state_file": ".artifacts/mobile-shared-cluster-timing-synthesis-v2-state.json",
+    "period_ps": 1000,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "IO_fraction": 0.25,
+    "retiming": false,
+    "ABC": "standard",
+    "zero_skipped_required": true,
+    "cluster_carry": ".artifacts/mobile-shared-cluster-timing-synthesis-v2-cluster-carry.json",
+    "cluster_active_RTL_byte_identical": true,
+    "queue": [
+      "native-vertex",
+      "native-fragment"
+    ]
+  },
+  "remaining": [
+    "Fresh full native vertex/fragment setup including I/O and zero-skipped mapping",
+    "Current-main integration with identical dependency audit",
+    "Actual CU/frame/cold throughput, broader formats and coherence",
+    "Original H0-H8 gates"
+  ]
+}

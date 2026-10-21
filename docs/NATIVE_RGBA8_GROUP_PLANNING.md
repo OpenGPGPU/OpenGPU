@@ -63,3 +63,30 @@ contexts:448 stable groups in448 cycles, maximum admission gap1 and reply
 latency90 cycles. Fresh composed-cluster and complete endpoint synthesis are
 queued at1000ps TC/SLVT,25% I/O, standard ABC and no retiming. Timing closure
 and main promotion remain pending; the previous failed mapping is preserved.
+
+## Native cancellation selection timing
+
+The owned table-admission cluster maps completely and passes 1000 ps with
+core +42.104 ps and I/O +301.056 ps. The first full native vertex endpoint
+maps completely and passes core timing (+88.034 ps), but its live cancel to
+external group identity path fails I/O by 25.302 ps. The serial run therefore
+does not launch native fragment. The terminal evidence is retained.
+
+`NativeTextureInstructionStream` now selects cancellation identities from the
+owned status register, which already captures a one-cycle cancel pulse. New
+lane issue still stops immediately. Pending queued offers and real replies
+retain ownership; a later primary fault still wins, and private tags are not
+reused until public instruction retirement. This cuts the live cancel input
+out of the context/lane priority tree without adding a detached delayed cancel
+that could outlive its owner.
+
+The [914-input checkpoint](performance/mobile-native-texture-cancel-selection-2026-10-22.json)
+passes forty-seven checks and five emissions. A new pulse test holds accepted
+offers, drains three contexts, preserves a primary fault and reuses exact tags.
+All twenty-three native lane-stream cases pass, including 448 warm four-tap
+groups in 448 cycles on the default sixteen-lane/eight-warp shared-window burst
+profile and full reset drain. Other measured controls remain slower. Every
+active composed-cluster RTL byte matches the earlier positive synthesis, so
+that result carries exactly. Fresh complete native vertex/fragment synthesis
+is running at unchanged constraints; current-main integration and broader
+H4/H0-H8 gates remain open.

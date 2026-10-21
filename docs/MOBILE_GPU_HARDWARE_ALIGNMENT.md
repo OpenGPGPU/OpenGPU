@@ -7561,3 +7561,18 @@ New shared-cluster/native-endpoint synthesis is running separately at unchanged
 1000ps TC/SLVT/25% I/O with standard ABC and no retiming. This functional unit
 is committed for review before the long mapping completes; main promotion and
 H4 timing closure await qualified synthesis. No H0-H8 gate is closed here.
+
+### Registered native cancellation selection — 2026-10-22
+
+The [H4 cancellation checkpoint](performance/mobile-native-texture-cancel-selection-2026-10-22.json)
+retains the table-admission cluster's exact positive RTL while repairing a
+separate native endpoint I/O failure. The full vertex screen passes core
++88.034 ps but fails live cancel to group-identity I/O by 25.302 ps, with zero
+skipped instances. Selecting cancellation from the status register that owns
+the stop request removes that live input from the lane/context priority tree.
+Immediate issue stop, one-cycle pulses, held offers, fault drain and tag lifetime
+remain checked. Forty-seven checks and five emissions pass on 914 frozen
+inputs, including default native 448-group/448-cycle four-tap service and reset.
+The byte-identical composed cluster retains +42.104/+301.056 ps core/I/O timing;
+fresh full vertex/fragment synthesis, current-main composition and broader
+H4/H0-H8 gates remain open.

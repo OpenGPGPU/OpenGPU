@@ -148,7 +148,12 @@ class NativeTextureInstructionStream(config: GpuConfig, contexts: Int, instructi
   private val cancels = Module(new RRArbiter(new BankedTextureGroupCancel, contexts * config.lanes))
   for (c <- 0 until contexts; l <- 0 until config.lanes) {
     val i = c * config.lanes + l
-    cancels.io.in(i).valid := live(c) && !done(c) && pending(c)(l) && (status(c) =/= 0.U || io.cancel)
+    // Stop new lanes immediately above; the owned status register captures
+    // even a one-cycle cancel pulse. Select cancellation identities from that
+    // registered state, rather than sending live cancel through the full
+    // context/lane priority tree into the external identity mux. Pending
+    // offers remain owned until their real replies drain.
+    cancels.io.in(i).valid := live(c) && !done(c) && pending(c)(l) && (status(c) =/= 0.U)
     cancels.io.in(i).bits.identity := instruction(c).template.group.lookup.table.identity
     cancels.io.in(i).bits.tag := privateTag(c.U, l.U)
   }

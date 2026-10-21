@@ -1,6 +1,6 @@
 {
   "date": "2026-10-21",
-  "status": "functional_pass_synthesis_running",
+  "status": "cluster_pass_native_vertex_IO_fail",
   "base_commit": "51081086302a42a2e5a258b891363921ef7b5704",
   "change": "Pipeline owned table admission: register 33-bit limit-base span, full handle and header/level checks; compare handle against record capacity on the following edge. Keep the 4GiB endpoint and primary faults. Coordinate/address pipelines cover this check latency.",
   "source_files": 914,
@@ -44,7 +44,7 @@
     "scope": "Historical failed composed-cluster mapping; retained unchanged."
   },
   "new_synthesis": {
-    "status": "running",
+    "status": "terminal_failed_at_native_vertex",
     "state": ".artifacts/mobile-shared-cluster-timing-synthesis-v1-state.json",
     "period_ps": 1000,
     "corner": "TC",
@@ -57,7 +57,16 @@
       "native-vertex",
       "native-fragment"
     ],
-    "scope": "No timing/area PASS claim until each mapped setup/mapping report qualifies."
+    "scope": "No timing/area PASS claim until each mapped setup/mapping report qualifies.",
+    "cluster_result": ".artifacts/mobile-shared-cluster-timing-synthesis-v1-cluster-result.json",
+    "cluster_core_ps": 42.104,
+    "cluster_IO_ps": 301.056,
+    "native_vertex_result": ".artifacts/mobile-shared-cluster-timing-synthesis-v1-native-vertex-result.json",
+    "native_vertex_core_ps": 88.034,
+    "native_vertex_IO_ps": -25.302,
+    "skipped_instances": 0,
+    "native_fragment": "Not launched because vertex I/O gate failed."
   },
-  "promotion": "Candidate functional commit only; main promotion waits for synthesis qualification. H4/H0-H8 remain open."
+  "promotion": "Candidate functional commit only; main promotion waits for synthesis qualification. H4/H0-H8 remain open.",
+  "followup": "mobile-native-texture-cancel-selection-2026-10-22.json"
 }
