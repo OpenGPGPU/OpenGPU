@@ -94,10 +94,12 @@ class GpuHostSystemAxi(
   binnedRendering: Option[MobileGpuConfig] = None,
   typedGraphics: Option[NativeTypedGraphicsConfig] = None,
   nativeBinnedGraphics: Option[NativeBinnedGraphicsConfig] = None,
-  visibilityQueries: Boolean = false
+  visibilityQueries: Boolean = false,
+  primitiveQueries: Boolean = false
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
+  require(!primitiveQueries || nativeFeedback,"primitive queries require native transform feedback")
   private val externalRender=binnedRendering.nonEmpty || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
   require(!visibilityQueries || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,
     "visibility queries require native typed or native binned rendering")
@@ -279,7 +281,7 @@ class GpuHostSystemAxi(
       persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
       useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = externalRender,nativeCompletionInfo=nativeBinnedGraphics.nonEmpty,
       nativeVertexInput=typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,visibilityQueries=visibilityQueries,
-      transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16)))
+      primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16)))
     val system = Module(new GpuSystem(
       gpuConfig,
       numComputeUnits = numComputeUnits,
@@ -311,6 +313,12 @@ class GpuHostSystemAxi(
       producers=nativeBinnedGraphics.map(_.engines).getOrElse(1))))else None
     queries.foreach { q=>
       q.io.command <> host.io.queryCommand.get;host.io.queryReply.get <> q.io.reply
+      q.io.satp:=host.io.vectorSatp;q.io.cancel:=host.io.binCancel.get
+    }
+    val primitiveCounters=if(primitiveQueries)Some(Module(new opengpu.graphics.NativePrimitiveQueryEngine(gpuConfig,
+      contexts=opengpu.graphics.NativePrimitiveQueryCapabilities.activeContexts)))else None
+    primitiveCounters.foreach { q=>
+      q.io.command<>host.io.primitiveQueryCommand.get;host.io.primitiveQueryReply.get<>q.io.reply
       q.io.satp:=host.io.vectorSatp;q.io.cancel:=host.io.binCancel.get
     }
     val feedbackControl=if(nativeFeedback)Some(Module(new opengpu.graphics.NativeTransformFeedbackControl(gpuConfig)))else None
@@ -375,6 +383,7 @@ class GpuHostSystemAxi(
         attachAuxiliary(feedbackDataRequest.get,feedbackDataResponse.get,feedbackDataRoot,queryBase+2)
         attachAuxiliary(f.io.memoryRequest,f.io.memoryResponse,f.io.memorySatp,queryBase+4)
       }
+      primitiveCounters.foreach(q=>attachAuxiliary(q.io.memoryRequest,q.io.memoryResponse,q.io.memorySatp,queryBase+6))
       if(stalls.nonEmpty){queryTranslationStall:=PopCount(VecInit(stalls.toSeq))
         queryTranslationMiss:=PopCount(VecInit(misses.toSeq));queryWalkActive:=PopCount(VecInit(walks.toSeq))}
       val textureDrained=attachNativeTexture(ports,currentRequest,currentResponse,baseTransactions)
@@ -386,6 +395,11 @@ class GpuHostSystemAxi(
       port.scope:=host.io.renderFeedbackScope.get;port.cancel:=f.io.cancelCore
       feedbackDataRequest.get<>port.memoryRequest;port.memoryResponse<>feedbackDataResponse.get
       feedbackDataRoot:=port.memorySatp
+      primitiveCounters.foreach { q=>
+        q.io.written(0).valid:=port.recorded.valid
+        q.io.written(0).bits.context:=port.recorded.bits.context
+        q.io.written(0).bits.root:=port.recorded.bits.root;q.io.written(0).bits.count:=1.U
+      }
     }
     if (!externalRender) sharedShader.foreach(_ => system.io.graphicsKernels.get <> host.io.shared.get)
 
@@ -668,7 +682,14 @@ class GpuHostSystemAxi(
         q.io.jobFault.bits.status:=renderer.io.completion.bits.status
         q.io.renderIdle:=renderIdle
       }
-      host.io.binDrained.get:=renderIdle && !queries.map(_.io.busy).getOrElse(false.B) && !feedbackControl.map(_.io.busy).getOrElse(false.B)
+      primitiveCounters.foreach { q=>
+        q.io.renderIdle:=renderIdle
+        q.io.jobFault.valid:=renderer.io.completion.fire && renderer.io.completion.bits.status=/=0.U
+        q.io.jobFault.bits.context:=host.io.renderFeedbackScope.get.context
+        q.io.jobFault.bits.root:=host.io.renderFeedbackScope.get.root
+        q.io.jobFault.bits.status:=renderer.io.completion.bits.status
+      }
+      host.io.binDrained.get:=renderIdle && !queries.map(_.io.busy).getOrElse(false.B) && !feedbackControl.map(_.io.busy).getOrElse(false.B) && !primitiveCounters.map(_.io.busy).getOrElse(false.B)
       renderer.io.shared<>system.io.graphicsKernels.get
       localPayload.foreach { _=>
         val management=system.io.payloadManagement.get
@@ -723,7 +744,14 @@ class GpuHostSystemAxi(
         q.io.jobFault.bits.status:=renderer.io.completion.bits.status
         q.io.renderIdle:=renderIdle
       }
-      host.io.binDrained.get:=renderIdle && !queries.map(_.io.busy).getOrElse(false.B) && !feedbackControl.map(_.io.busy).getOrElse(false.B)
+      primitiveCounters.foreach { q=>
+        q.io.renderIdle:=renderIdle
+        q.io.jobFault.valid:=renderer.io.completion.fire && renderer.io.completion.bits.status=/=0.U
+        q.io.jobFault.bits.context:=host.io.renderFeedbackScope.get.context
+        q.io.jobFault.bits.root:=host.io.renderFeedbackScope.get.root
+        q.io.jobFault.bits.status:=renderer.io.completion.bits.status
+      }
+      host.io.binDrained.get:=renderIdle && !queries.map(_.io.busy).getOrElse(false.B) && !feedbackControl.map(_.io.busy).getOrElse(false.B) && !primitiveCounters.map(_.io.busy).getOrElse(false.B)
       renderer.io.shared<>system.io.graphicsKernels.get
       localPayload.foreach { _=>
         val management=system.io.payloadManagement.get

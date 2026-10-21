@@ -21,6 +21,7 @@ object GpuCommandOpcode {
   val queryPoll = 10.U(width.W)
   val queryResult = 11.U(width.W)
   val transformFeedback = 12.U(width.W)
+  val primitiveQuery = 13.U(width.W)
 
   def visibilityQuery(opcode: UInt): Bool = opcode >= queryBegin && opcode <= queryResult
 }

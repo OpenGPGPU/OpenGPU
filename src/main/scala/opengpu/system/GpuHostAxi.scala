@@ -66,7 +66,8 @@ class GpuHostAxi(
   nativeCompletionInfo: Boolean = false,
   nativeVertexInput: Boolean = false,
   visibilityQueries: Boolean = false,
-  transformFeedback: Boolean = false,transformFeedbackSourceWords: Int = 69
+  transformFeedback: Boolean = false,transformFeedbackSourceWords: Int = 69,
+  primitiveQueries: Boolean = false
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
@@ -75,6 +76,7 @@ class GpuHostAxi(
   require(!nativeVertexInput || externalBinnedRender)
   require(!visibilityQueries || nativeVertexInput)
   require(!transformFeedback || nativeVertexInput)
+  require(!primitiveQueries || transformFeedback)
   override def desiredName: String = "GpuHostAxi"
 
   val io = IO(new Bundle {
@@ -160,6 +162,9 @@ class GpuHostAxi(
     val feedbackReply=if(transformFeedback)Some(Flipped(Decoupled(new opengpu.graphics.NativeTransformFeedbackReply)))else None
     val renderFeedbackScope=if(transformFeedback)Some(Output(new opengpu.graphics.TransformFeedbackScope))else None
 
+    val primitiveQueryCommand=if(primitiveQueries)Some(Decoupled(new opengpu.graphics.PrimitiveQueryCommand))else None
+    val primitiveQueryReply=if(primitiveQueries)Some(Flipped(Decoupled(new opengpu.graphics.PrimitiveQueryReply)))else None
+
     // Renderer shared-memory ports (command buffer + framebuffer words, and the
     // core-backed shader kernel's line/coherence side ports) pass straight
     // through so the SoC attaches them to the shared off-chip hierarchy.
@@ -228,7 +233,7 @@ class GpuHostAxi(
     host.io.renderCompletion.ready := false.B
     unified.foreach { bridge =>
       if (externalBinnedRender) {
-        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo,visibilityQueries,transformFeedback))
+        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo,visibilityQueries,transformFeedback,primitiveQueries))
         port.io.command <> bridge.io.command
         io.binSubmit.get <> port.io.submit
         port.io.renderCompletion <> io.binCompletion.get
@@ -247,6 +252,10 @@ class GpuHostAxi(
         if(transformFeedback){
           io.feedbackCommand.get<>port.io.feedbackCommand.get;port.io.feedbackReply.get<>io.feedbackReply.get
           port.io.feedbackSatp.get:=bridge.io.vectorSatp;io.renderFeedbackScope.get:=port.io.renderFeedbackScope.get
+        }
+        if(primitiveQueries){
+          io.primitiveQueryCommand.get<>port.io.primitiveQueryCommand.get
+          port.io.primitiveQueryReply.get<>io.primitiveQueryReply.get
         }
         port.io.resetActive:=bridge.io.resetActive
         io.binCancel.get:=port.io.cancel
@@ -394,8 +403,10 @@ class GpuHostAxi(
       beatAddr<opengpu.graphics.NativeVisibilityQueryCapabilities.end.U else false.B
     val targetFeedback=if(transformFeedback)beatAddr>=opengpu.graphics.NativeTransformFeedbackCapabilities.base.U &&
       beatAddr<opengpu.graphics.NativeTransformFeedbackCapabilities.end.U else false.B
+    val targetPrimitiveQuery=if(primitiveQueries)beatAddr>=opengpu.graphics.NativePrimitiveQueryCapabilities.base.U &&
+      beatAddr<opengpu.graphics.NativePrimitiveQueryCapabilities.end.U else false.B
     val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
-      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback)
+      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -472,6 +483,10 @@ class GpuHostAxi(
       if(transformFeedback)when(targetFeedback){
         rdata:=VecInit(opengpu.graphics.NativeTransformFeedbackCapabilities.words(transformFeedbackSourceWords).map(_.U(32.W)))(
           ((beatAddr-opengpu.graphics.NativeTransformFeedbackCapabilities.base.U)>>2)(2,0))
+      }
+      if(primitiveQueries)when(targetPrimitiveQuery){
+        rdata:=VecInit(opengpu.graphics.NativePrimitiveQueryCapabilities.words.map(_.U(32.W)))(
+          ((beatAddr-opengpu.graphics.NativePrimitiveQueryCapabilities.base.U)>>2)(2,0))
       }
       when(rBeatFire) {
         when(lastBeat) {

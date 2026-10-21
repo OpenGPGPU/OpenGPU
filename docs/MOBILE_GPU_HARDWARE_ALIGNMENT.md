@@ -7450,3 +7450,17 @@ I/O: core+143.195ps,I/O+384.931ps,18215 cells,area2309.734440,zero skipped.
 the exact907-input source scope. Native transport, actual feedback-event hookup,
 native AXI qualification and composed budgets remain open; H6/Q02 is not closed.
 This validated component is committed independently of the remaining integration.
+
+
+### 2026-10-21: native primitive-query transport
+
+Optional typed/binned primitive-query commands now use opcode13 and GQP1
+capabilities at0x280..0x29f. Translated GPU records use separate auxiliary IDs;
+acknowledged feedback events supply one count before clipping/bin fanout. Draw
+faults retain opaque context/full-root attribution.
+[Transport qualification](performance/mobile-primitive-query-native-transport-2026-10-21.json)
+passes31 distinct focused/compatibility checks, generated ABI checks,C11/C++17
+layout assertions and typed/binned/product emissions. The unchanged standalone
+controller retains its qualified synthesis result. Composed AXI runtime,paused/
+inactive/error capture coverage and whole-host budgets remain open; H6/Q02 is
+not closed. This validated transport unit is committed before runtime qualification.

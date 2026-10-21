@@ -1,9 +1,10 @@
 # Primitive query controller
 
-`NativePrimitiveQueryEngine` is the standalone hardware controller for counting
-acknowledged transform-feedback primitives. Native command transport, capability
-registers, translated memory wiring and the actual capture-event connection remain
-open; this component does not complete H6/Q02.
+`NativePrimitiveQueryEngine` counts acknowledged transform-feedback primitives.
+The optional native path now connects command transport, capability registers,
+translated record memory and capture events in both typed and binned hosts.
+Actual composed AXI runtime and remaining query coverage are still open; this
+does not complete H6/Q02.
 
 The default controller has eight live context/full-root counters and one event
 producer. Counts saturate at 64 bits; the 32-bit result view clamps to UINT32_MAX.
@@ -18,8 +19,7 @@ The internal GPO1 record has sixteen 32-bit words: magic 0x47504f01, size 64,
 context, cookie, flags, count low/high, full root, target 0x8c88, then seven zero
 words. Flags contain availability at bit 0 and fault at bits 4:2; all other bits
 are reserved. Poll/result validate the entire record and identity. Faulted public
-results return zero; stored counts can retain diagnostic information. These are
-component record semantics, not a published native command ABI.
+results return zero; stored counts can retain diagnostic information. The native record ABI is generated alongside the hardware constants.
 
 Reset retains owned requests, replies and roots until they drain. Unfinished
 memory faults take precedence over cancellation. Active rows clear after render
@@ -47,3 +47,38 @@ Reproduce with:
 sbt 'testOnly opengpu.graphics.NativePrimitiveQueryEngineSpec'
 sbt 'runMain opengpu.elaboration.EmitPrimitiveQuery generated/primitive-query-rtl'
 ```
+
+## Native transport
+
+Enable `primitiveQueries=true` on `GpuHostSystemAxi` with native transform
+feedback enabled. Visibility queries can be enabled independently. The generated
+[header](../driver/opengpu_primitive_query_abi.h) and
+[ABI manifest](abi/native-primitive-query-v1.json) define GQP1 discovery and GPO1
+records. `EmitNativePrimitiveQueryAbi --check` checks both generated artifacts.
+
+Opcode13 uses SOURCE=record VA, DESTINATION=exclusive limit low, PATTERN bit0=
+limit high and bits2:1=begin/end/poll/result, BYTES=64, WIDTH=opaque context,
+HEIGHT=query cookie and FLAGS=0. PATTERN bits31:3 must be zero. SOURCE_STRIDE is
+ignored. Completion DATA_LO is the clamped32-bit result and DATA_HI bit0 is
+availability; its remaining bits are zero. The existing opcode-extension bit16
+in completion metadata carries opcode13 without changing the older fields.
+
+Eight read-only capability words at0x280..0x29f describe opcode/action count,
+record shape, eight active contexts,64-bit counters,32-bit API results, target
+0x8c88 and feature flags. Disabled profiles keep this range unmapped.
+
+The native event source is exactly `feedback.recorded`: one increment after a
+complete source primitive's successful capture stores, before clipping/binning
+and tile fanout. Draw faults use the captured opaque render context/full root.
+The separate auxiliary data/walker IDs are44/45 for typed hosts and native
+renderer namespace+12/+13 for binned hosts; texture IDs and the existing physical
+image-transfer classification retain their layouts. Reset and VM-idle ownership
+include pending query records and replies. Active counters alone do not pin a VM.
+
+[Transport qualification](performance/mobile-primitive-query-native-transport-2026-10-21.json)
+passes31 distinct checks, including four primitive transport cases, two enabled/
+disabled capability AXI cases and the existing feedback, visibility, router,
+MMIO and auxiliary permission/root regressions. Typed, binned and full product
+RTL emit successfully. The generated header passes C11/C++17 size and ten offset
+assertions. These checks do not qualify composed capture-event AXI runtime or
+whole-host timing.
