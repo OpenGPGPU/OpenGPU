@@ -25,10 +25,11 @@ object ShaderTextureSampleOpcode {
   * begins a tuple for its active lanes. Trusted task launch clears every valid
   * bit, including when a new batch reuses the same graphics identity.
   */
-class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends Module {
+class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupedTexture: Boolean=false) extends Module {
   require(stage==0 || stage==1)
   private val laneWidth=math.max(1,log2Ceil(config.lanes))
   val io=IO(new Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val in=Flipped(Decoupled(new ScalarIssuedInstruction(config)));val vectorIn=Flipped(Decoupled(new VectorTextureRequest(config)))
     val commit=Decoupled(new ScalarCommitRequest(config));val vectorCommit=Decoupled(new VectorCommitRequest(config))
     val resources=Input(new ShaderTextureResources);val identity=Input(new GraphicsWorkIdentity);val clearParameters=Input(Bool())
@@ -47,7 +48,8 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0) exten
   private val data=Reg(Vec(config.lanes,UInt(32.W)));private val scalarData=Reg(UInt(32.W))
   private val status=RegInit(0.U(3.W));private val faultValid=RegInit(false.B);private val faultAddress=Reg(UInt(32.W))
   private val plannedFetch=Reg(new ShaderTextureFetchRequest(true));private val planned=Reg(new ShaderTextureSampleRequest);private val started=RegInit(false.B);private val noFill=RegInit(false.B)
-  private val sample=Module(new ShaderTextureSampleUnit(config,stage));private val fetch=Module(new ShaderTextureFetchUnit(config,capturedCoordinates=true))
+  private val sample=Module(new ShaderTextureSampleUnit(config,stage,groupedTexture=groupedTexture));private val fetch=Module(new ShaderTextureFetchUnit(config,capturedCoordinates=true))
+  if(groupedTexture){io.grouped.get <> sample.io.grouped.get}
   private val size=Module(new ShaderTextureSizeUnit(config,stage));private val plannedSize=Reg(new ShaderTextureSizeRequest)
   io.memoryRequest.valid:=Mux(query,size.io.memoryRequest.valid,Mux(integer,fetch.io.memoryRequest.valid,sample.io.memoryRequest.valid))
   io.memoryRequest.bits:=Mux(query,size.io.memoryRequest.bits,Mux(integer,fetch.io.memoryRequest.bits,sample.io.memoryRequest.bits))

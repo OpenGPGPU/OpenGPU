@@ -34,9 +34,10 @@ class ShaderTextureSampleResult extends Bundle {
   * descriptor publication and translation through held completion.
   */
 class ShaderTextureSampleUnit(config: GpuConfig=GpuConfig(),stage: Int=1,
-    p: TextureImageAddressConfig=TextureImageAddressConfig()) extends Module {
+    p: TextureImageAddressConfig=TextureImageAddressConfig(),groupedTexture: Boolean=false) extends Module {
   require(stage==0 || stage==1)
   val io=IO(new Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val in=Flipped(Decoupled(new ShaderTextureSampleRequest));val out=Decoupled(new ShaderTextureSampleResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
     val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
@@ -51,7 +52,8 @@ class ShaderTextureSampleUnit(config: GpuConfig=GpuConfig(),stage: Int=1,
   private val malformed=RegInit(false.B);private val started=RegInit(false.B);private val noFill=RegInit(false.B)
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
   private val reading=phase===State.readRoot || phase===State.readBinding
-  private val sample=Module(new TextureImageSampleUnit(config,p));private val q=request.parameters
+  private val sample=Module(new TextureImageSampleUnit(config,p,groupedTexture));private val q=request.parameters
+  if(groupedTexture){io.grouped.get <> sample.io.grouped.get}
   sample.io.in.valid:=phase===State.offerSample;sample.io.in.bits:=0.U.asTypeOf(sample.io.in.bits)
   private val s=sample.io.in.bits;private val prep=s.preparation
   prep.images.version:=1.U;prep.images.identity:=request.identity;prep.images.base:=root.imagesBase;prep.images.limit:=root.imagesLimit

@@ -8,12 +8,8 @@ import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 
-/** One native task's legacy sampling and typed component-fetch execution.
-  * One instruction owns this endpoint through retirement, so the existing
-  * two external line slots can be reused without widening enclosing fabrics.
-  */
-class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extends Module {
-  val io=IO(new Bundle {
+class NativeShaderTextureIO(config: GpuConfig,groupedTexture: Boolean=false) extends Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val in=Flipped(Decoupled(new ScalarIssuedInstruction(config)));val vectorIn=Flipped(Decoupled(new VectorTextureRequest(config)))
     val commit=Decoupled(new ScalarCommitRequest(config));val vectorCommit=Decoupled(new VectorCommitRequest(config))
     val resources=Input(new ShaderTextureResources);val identity=Input(new GraphicsWorkIdentity)
@@ -23,11 +19,19 @@ class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0) extend
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,2));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,2)))
     val clearParameters=Input(Bool());val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
     val coordinateFault=Output(Bool());val responseFault=Output(Bool());val faultAddress=Output(UInt(32.W))
-  })
+}
+
+/** One native task's legacy sampling and typed component-fetch execution.
+  * One instruction owns this endpoint through retirement, so the existing
+  * two external line slots can be reused without widening enclosing fabrics.
+  */
+class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupedTexture: Boolean=false) extends Module {
+  val io=IO(new NativeShaderTextureIO(config,groupedTexture))
   private object Owner extends ChiselEnum {val idle,legacy,typed,floating=Value}
   private val owner=RegInit(Owner.idle);private val preferVector=RegInit(true.B)
   private val legacy=Module(new TexSampleUnit(config,coordinatePolicyInput=true));private val bridge=Module(new OmWordToLinePort(config,maxOutstanding=2))
-  private val floating=Module(new TextureSampleExecuteUnit(config,stage))
+  private val floating=Module(new TextureSampleExecuteUnit(config,stage,groupedTexture))
+  if(groupedTexture){io.grouped.get <> floating.io.grouped.get}
   private val typed=Module(new TexelFetchExecuteUnit(config,stage));private val credits=Module(new TextureLineCreditAdapter(config))
   legacy.io.mem.req<>bridge.io.in;legacy.io.mem.resp<>bridge.io.out
   credits.io.in.valid:=Mux(owner===Owner.floating,floating.io.memoryRequest.valid,owner===Owner.typed && typed.io.memoryRequest.valid)
