@@ -7868,3 +7868,28 @@ standardABC, no retiming and zero skips: core/IO +481.266/+457.828ps,4,102 cells
 445.477320 library area,231 flip-flops and no SRAM macro. This is component
 qualification. Enabled-host composition/timing, the remaining H7/H8 work and
 all other H0-H8 gates remain open.
+
+
+### Attributed reconvergence capacity and empty-join faults, 2026-10-22
+
+The [42-check reconvergence checkpoint](performance/mobile-reconvergence-faults-2026-10-22.json)
+qualifies1,037 exact inputs. The sequencer reports cause26 with original PC/mask
+before a divergent branch can partially push an over-capacity pair. Uniform
+branches require no slots. Per-warp finish clears pending resolver/sequencer
+state as well as the stack, preventing ghost pushes or redirects after reuse.
+The core owns selected trap offers so a later peer fault cannot replace a held
+event. Actual empty joins now report cause27 and retire through the existing
+failed-kernel owner; both scalar-FPU settings pass held-trap/completion and
+healthy-write reuse. The identical tests previously stalled501 cycles with no
+trap. General instruction-driven vector-branch execution is still open.
+
+The complete default16-lane/eight-warp/depth8 controller passes1000ps TC/SLVT
+synthesis with core/IO +493.532/+348.407ps,16,331 cells and zero skipped
+instances. The combinational warp-system block passes its I/O-only group at
++376.990ps with703 cells and no sequential path. Both use25%IO, standardABC and
+no retiming. The original wrapper's mistaken two-group requirement for that
+combinational block is preserved; classification was corrected from existing
+reports without rerunning synthesis. Native join recovery and fresh default
+four-CU indirect integration are running separately on identical production
+inputs. Whole-CU/host timing, resource/watchdog/capacity-discovery contracts and
+the remaining H0-H8 goal remain open.

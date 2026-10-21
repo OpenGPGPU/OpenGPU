@@ -15,6 +15,7 @@ class SimtBranchResolver(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new SimtBranchRequest(config)))
     val out = Decoupled(new SimtBranchResult(config))
+    val clear = Flipped(Valid(UInt(config.warpIdWidth.W)))
   })
 
   private val outValid = RegInit(false.B)
@@ -31,13 +32,17 @@ class SimtBranchResolver(config: GpuConfig = GpuConfig()) extends Module {
   private val currentMask =
     Mux(hasTaken, takenActive, fallthroughActive)
 
-  io.in.ready := canLoad
-  io.out.valid := outValid
+  private val clearInput = io.clear.valid && io.clear.bits === io.in.bits.warpId
+  private val clearSaved = io.clear.valid && io.clear.bits === outBits.warpId
+  io.in.ready := canLoad && !clearInput
+  io.out.valid := outValid && !clearSaved
   io.out.bits := outBits
 
   when(canLoad) {
-    outValid := io.in.valid
-    when(io.in.valid) {
+    outValid := io.in.valid && !clearInput
+    when(io.in.fire) {
+      outBits.pc := io.in.bits.pc
+      outBits.activeMask := io.in.bits.activeMask
       outBits.warpId := io.in.bits.warpId
       outBits.currentPc := currentPc
       outBits.currentMask := currentMask
@@ -54,4 +59,5 @@ class SimtBranchResolver(config: GpuConfig = GpuConfig()) extends Module {
       outBits.reconvergence.divergent := false.B
     }
   }
+  when(clearSaved && !io.in.fire) { outValid := false.B }
 }

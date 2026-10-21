@@ -1,0 +1,98 @@
+{
+  "passed": true,
+  "source_files": 1037,
+  "source_manifest": ".artifacts/mobile-reconvergence-v1-source.json",
+  "source_sha256": "928cd516acf29d9259f6b1dc83381e92c1b8a26884248c1a034719ea3c122348",
+  "tests": 42,
+  "test_counts": [
+    9,
+    33
+  ],
+  "fresh_checks": 9,
+  "compatibility_checks": 33,
+  "baseline_failures": {
+    "result": ".artifacts/mobile-reconvergence-baseline-v1-result.json",
+    "checks": 2,
+    "observation": "Actual empty join stalls501cycles,traps0,active1 for both scalarFPU settings. Exact regression retained."
+  },
+  "implementation": [
+    "Overflow cause26 captures original branch PC and active mask before partial pushes; uniform branches use zero slots.",
+    "Per-warp clear flushes resolver/sequencer ownership, preventing ghost pushes/resumes after partial sequences.",
+    "Core fault queue preserves a held event through a newly arriving peer fault.",
+    "Empty join routes through WarpSystemControl with underflow cause27,tvalPC. CU finishOnTrap retires once after public acceptance, fails the kernel and permits healthy reuse.",
+    "Generated native header/JSON add causes26/27; no instruction encodings, MMIO words or feature masks change."
+  ],
+  "coverage": [
+    "Depth1,odd3 and default16lane8warp/depth8 capacity, two-slot atomicity, uniform at capacity, original PC/mask holds, intact peer LIFO.",
+    "Clear at pending resolver,before first push and after first push; no residual writes/resumes.",
+    "GpuCore external SIMT port, two held peer overflow events, owner-isolated finish/clear and capacity reuse.",
+    "Actual CU join at1000, held cause27 PC/tval/mask, failed completion and healthy scalar write/Cease with scalarFPUoff/on.",
+    "Stack/resolver/frontend/system/GpuCore compatibility, eight system-trap cases, concurrent fault destination reuse and22 quota/interruption kernels."
+  ],
+  "emissions": 3,
+  "emission_profiles": [
+    "defaultSimtControlFlow",
+    "defaultWarpSystemControl",
+    "default4CU16lane8warp256bitAXIindirecthost"
+  ],
+  "ABI_checks": 1,
+  "synthesis": {
+    "flow": {
+      "passed": true,
+      "slacks_ps": [
+        493.532,
+        348.407
+      ],
+      "core_slack_ps": 493.532,
+      "IO_slack_ps": 348.407,
+      "mapped_cells": 16331,
+      "library_area": 2232.31464,
+      "sequential_library_area": 1011.2688,
+      "flip_flops": 3468,
+      "SRAM_macros": 0,
+      "skipped_instances": 0,
+      "result": ".artifacts/mobile-reconvergence-synthesis-v1-flow-result.json",
+      "scope": "Default16lane8warp8entry flow component."
+    },
+    "system": {
+      "passed": true,
+      "slacks_ps": [
+        376.99
+      ],
+      "core_slack_ps": null,
+      "IO_slack_ps": 376.99,
+      "mapped_cells": 703,
+      "library_area": 55.30194,
+      "sequential_library_area": 0.0,
+      "flip_flops": 0,
+      "SRAM_macros": 0,
+      "skipped_instances": 0,
+      "result": ".artifacts/mobile-reconvergence-synthesis-v1-system-result.json",
+      "scope": "Combinational warp-system component: IO only, no core path."
+    }
+  },
+  "PPA_policy": {
+    "stage": "synthesis",
+    "clock_ps": 1000,
+    "IO_fraction": 0.25,
+    "corner": "TC",
+    "VT": "SLVT",
+    "ABC": "standard",
+    "retiming": false,
+    "required_skipped_instances": 0
+  },
+  "synthesis_validation_note": "Original system wrapper count-rule failure was a classification error: zero DFFs and one IO group. Actual strict qualification passes. Original result preserved; no resynthesis or constraint change.",
+  "functional_result": ".artifacts/mobile-reconvergence-v1-result.json",
+  "native_and_indirect_integration": {
+    "state": "running separately; excluded from42",
+    "source_files": 1038,
+    "source_manifest": ".artifacts/mobile-reconvergence-native-v1-source.json",
+    "result": ".artifacts/mobile-reconvergence-native-v1-result.json"
+  },
+  "remaining": [
+    "Instruction-driven lane-wise vector-branch execution/reconvergence semantics; overflow tests use the existing external result port.",
+    "Native join and fresh default4CU indirect integration, native overflow and discoverable capacity limits.",
+    "WholeCore/CU/host timing, scratch/resources/watchdog contracts and remainingH0-H8 requirements."
+  ],
+  "main_promoted": false
+}

@@ -87,6 +87,7 @@ class GpuCore(
 
     val simtBranch = Flipped(Decoupled(new SimtBranchRequest(config)))
     val restore = Flipped(Decoupled(UInt(config.warpIdWidth.W)))
+    val restoreEmpty = Output(Bool())
     val finish = Flipped(Valid(UInt(config.warpIdWidth.W)))
     val committedWriteback = Valid(new ScalarRegisterWrite(config))
     /** tex.sample commit sideband (see WarpSystemControl / TexSampleUnit). */
@@ -287,10 +288,25 @@ class GpuCore(
   io.system <> scalar.io.system
   trapArbiter.io.scalar <> scalar.io.trap
   trapArbiter.io.scalarMemory <> scalar.io.memoryFault
-  io.trap <> trapArbiter.io.out
+  // Own the selected fault before public presentation, so a newly arriving
+  // peer fault cannot replace an already stalled SIMT event (or vice versa).
+  private val allTraps = Module(new RRArbiter(new CoreTrapEvent(config), 2))
+  private val trapOffers = Module(new Queue(new CoreTrapEvent(config), 1))
+  allTraps.io.in(0) <> trapArbiter.io.out
+  allTraps.io.in(1).valid := frontend.io.overflow.valid
+  allTraps.io.in(1).bits.warpId := frontend.io.overflow.bits.warpId
+  allTraps.io.in(1).bits.pc := frontend.io.overflow.bits.pc
+  allTraps.io.in(1).bits.activeMask := frontend.io.overflow.bits.activeMask
+  allTraps.io.in(1).bits.cause := opengpu.core.trap.TrapCause.simtStackOverflow.U
+  allTraps.io.in(1).bits.tval := frontend.io.overflow.bits.pc
+  allTraps.io.in(1).bits.laneFaultMask := frontend.io.overflow.bits.activeMask
+  frontend.io.overflow.ready := allTraps.io.in(1).ready
+  trapOffers.io.enq <> allTraps.io.out
+  io.trap <> trapOffers.io.deq
 
   frontend.io.branch <> io.simtBranch
   frontend.io.restore <> io.restore
+  io.restoreEmpty := frontend.io.restoreEmpty
   frontend.io.finish <> io.finish
   io.committedWriteback := scalar.io.committedWriteback
   io.active := frontend.io.active

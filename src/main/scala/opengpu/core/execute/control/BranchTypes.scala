@@ -45,6 +45,8 @@ class SimtBranchRequest(config: GpuConfig) extends Bundle {
 }
 
 class SimtBranchResult(config: GpuConfig) extends Bundle {
+  val pc = UInt(config.xLen.W)
+  val activeMask = UInt(config.lanes.W)
   val warpId = UInt(config.warpIdWidth.W)
   val currentPc = UInt(config.xLen.W)
   val currentMask = UInt(config.lanes.W)

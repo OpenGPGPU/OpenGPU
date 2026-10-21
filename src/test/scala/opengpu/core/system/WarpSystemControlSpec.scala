@@ -11,6 +11,7 @@ class WarpSystemControlSpec extends AnyFlatSpec {
   it should "finish cease and backpressure join atomically" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new WarpSystemControl(config)) { dut =>
+      dut.io.restoreEmpty.poke(false.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.in.valid.poke(true.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
@@ -39,6 +40,7 @@ class WarpSystemControlSpec extends AnyFlatSpec {
   it should "resume after a fence and expose unsupported CSR operations" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new WarpSystemControl(config)) { dut =>
+      dut.io.restoreEmpty.poke(false.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.in.valid.poke(true.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
@@ -65,6 +67,7 @@ class WarpSystemControlSpec extends AnyFlatSpec {
   it should "write only the shader vxrm immediate CSR after resume is accepted" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new WarpSystemControl(config)) { dut =>
+      dut.io.restoreEmpty.poke(false.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.in.valid.poke(true.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
@@ -92,6 +95,7 @@ class WarpSystemControlSpec extends AnyFlatSpec {
   it should "send a barrier arrival without prematurely resuming its warp" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new WarpSystemControl(config)) { dut =>
+      dut.io.restoreEmpty.poke(false.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.in.valid.poke(true.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))
@@ -116,6 +120,7 @@ class WarpSystemControlSpec extends AnyFlatSpec {
   it should "handoff tex.sample with its operands under backpressure" in {
     val config = GpuConfig(lanes = 4, warps = 2)
     simulate(new WarpSystemControl(config)) { dut =>
+      dut.io.restoreEmpty.poke(false.B)
       dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
       dut.io.in.valid.poke(true.B)
       dut.io.in.bits.poke(0.U.asTypeOf(dut.io.in.bits))

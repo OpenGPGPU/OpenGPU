@@ -109,6 +109,7 @@ class GpuComputeUnit(
   io.vectorTexSample <> core.io.vectorTexSample
   core.io.vectorTexCommit <> io.vectorTexWriteback
   core.io.restore <> system.io.restore
+  system.io.restoreEmpty := core.io.restoreEmpty
   barrier.io.arrive <> system.io.barrier
   barrier.io.residentWarps := controller.io.residentWarps
   barrier.io.dispatchComplete := controller.io.workgroupDispatchComplete
@@ -218,9 +219,12 @@ class GpuComputeUnit(
   trapArbiter.io.in(1).bits.activeMask :=
     system.io.unsupported.bits.decode.activeMask
   trapArbiter.io.in(1).bits.cause :=
-    opengpu.core.trap.TrapCause.illegalInstruction.U
+    Mux(system.io.unsupported.bits.decode.decoded.join,
+      opengpu.core.trap.TrapCause.simtStackUnderflow.U,
+      opengpu.core.trap.TrapCause.illegalInstruction.U)
   trapArbiter.io.in(1).bits.tval :=
-    system.io.unsupported.bits.decode.instruction
+    Mux(system.io.unsupported.bits.decode.decoded.join,
+      system.io.unsupported.bits.decode.pc, system.io.unsupported.bits.decode.instruction)
   trapArbiter.io.in(1).bits.laneFaultMask :=
     system.io.unsupported.bits.decode.activeMask
   system.io.unsupported.ready := trapArbiter.io.in(1).ready
