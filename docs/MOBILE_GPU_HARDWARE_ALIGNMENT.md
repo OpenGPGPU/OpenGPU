@@ -7045,16 +7045,29 @@ The complete new translated service has its own active synthesis screen.
 
 ## H4 native renderer shared texture wiring
 
-The [renderer integration](NATIVE_RGBA8_RENDERER.md) now carries native clients
-and individual CU masks through both typed and binned hierarchies. Each emitted
-four-CU host contains one global pool and two 8 KiB clusters. A new bounded
-physical arbiter preserves the existing renderer/DMA/walker namespace, with
-sixteen data and four PTW IDs per cluster. Its three saturation/reorder/fault
-tests pass at 84/104/124 simultaneous IDs, with held offers and two reuse rounds.
-Host completion additionally waits for shared pool and physical memory drain.
+The [shared renderer milestone](NATIVE_RGBA8_RENDERER.md) carries native clients
+and individual CU masks through both typed and binned hierarchies. Its
+[850-input composition](performance/mobile-native-rgba8-renderer-2026-10-21.json)
+preserves the production code of 11 passing component checks, seven complete
+1/2/4-CU emissions and 26 passing four-CU real-AXI frames. The typed matrix has
+22 frames; the binned matrix adds two spilled and two corrected-local frames,
+with two image engines, both shader stages, exact MRT/depth/resolve output,
+actual shared data/PTW witnesses and coherent same-address GPU DMA publication.
+Initial fixture failures remain recorded. These are functional frame checks,
+not a 720p workload/rate result.
 
-A focused four-CU real-AXI matrix is prepared for eleven frames per local/spill
-payload mode, including actual shared-path counter witnesses; frame completion
-is still unproven. Full 1/2/4-CU elaboration, binned shared frames, cross-pair
-visibility/reset stress and integrated synthesis remain required. Native
-streaming issue/credits and all remaining H0-H8 gates stay open.
+A separate full-capacity structural emission passes at 16 lanes, eight warps,
+four CUs, full attribute/varying limits, 128 KiB L2, 64 KiB payload and 64 KiB
+attachment storage per engine. It emits 478 files with SRAM black boxes and
+one global texture pool containing two 8 KiB clusters. The reduced simulation
+profiles use four lanes, two warps, two attributes and two varyings.
+
+Shared native vertex/fragment endpoint synthesis passes 1000 ps including I/O
+at +106.973/+165.445 ps and +105.545/+169.443 ps core/I/O slack. The physical
+memory arbiter passes at +521.053/+395.659 ps; all three are fully mapped with
+zero skipped instances, TC/SLVT, 25% I/O, standard ABC and no retiming or
+place/route. The counted coordinate service's original wrapper timed out while
+its exact owned mapping process continues; no completed timing is claimed.
+Cluster mapping remains independently active. Full renderer synthesis,
+cross-pair visibility/reset stress, native streaming issue/credits and all
+remaining H0-H8 gates stay open.

@@ -2,8 +2,13 @@
 
 The development profile `groupedTexture=true` now carries the shared texture
 client interfaces through the complete native typed and binned renderers.
-The default profile remains separately qualified. Both four-CU hosts emit
-complete RTL: 437 files for typed, 480 for binned. Each contains one global
+The default profile remains separately qualified. Eleven frozen component
+checks and seven complete 1/2/4-CU emissions pass. The reduced simulation
+profiles use four lanes, two warps, two attributes and two varyings; they emit
+437 files for typed, 480 for binned. A separate full-capacity structural
+check passes with 16 lanes, eight warps, four CUs, full attribute/varying
+limits, 128 KiB L2, 64 KiB payload and 64 KiB attachment storage per engine;
+it emits 478 files with SRAM black boxes. Each contains one global
 pool and two cluster instances, each with one 8 KiB cache. The binned renderer
 has one vertex client and one fragment client per image engine; the typed
 renderer has separate vertex and fragment clients.
@@ -45,11 +50,25 @@ general and compressed fallback, denied sampler pages, stale-operand rejection
 and healthy reuse. Exact MRT/depth/resolve checks and completion VM pinning are
 inherited from the existing native frame oracle. Simulation counters must
 witness accepted shared groups, physical data reads and real page walks.
-Those frame results are not yet claimed; frozen regression and complete
-1/2/4-CU elaboration are the next gates.
+The corrected typed matrix passes two cases and 22 frames, with actual shared
+group, data and page-walk witnesses. The binned matrix adds two passing spilled
+frames and two corrected-local frames on four CUs and two image engines. It
+rewrites the same texture addresses through coherent GPU DMA between 1x/4x
+frames and checks exact MRT/depth/resolve output. Individual source snapshots
+and the initial insufficient-port/unused-layer-pitch fixture failures remain
+recorded. The combined 850-input composition preserves every production input
+of these frame and full-capacity structural checks.
 
-Whole-binned shared texture frames, cross-pair publication/reset stress and
+
+Cross-pair publication/reset stress and
 fresh integrated synthesis remain required. The sampler still serializes
 native lane/metadata issue and allows one lease per client, so this wiring does
 not establish sustained native sample rate. All remaining H0-H8 gates stay
 open. PPA qualification remains synthesis only.
+
+The shared native vertex/fragment endpoints now pass synthesis at
++106.973/+165.445 ps and +105.545/+169.443 ps core/I/O slack. The physical
+memory arbiter also passes at +521.053/+395.659 ps. All three use 1000 ps,
+TC/SLVT, 25% I/O, standard ABC and zero skipped instances, with no retiming or
+place/route. These are scoped component gates; complete renderer timing
+remains open. See the [current qualification record](performance/mobile-native-rgba8-renderer-2026-10-21.json).

@@ -1,0 +1,186 @@
+{
+  "date": "2026-10-21",
+  "status": "Shared renderer functional milestone: 11 component checks, 26 four-CU shared-path frames, seven reduced-profile emissions and one full-capacity structural emission pass. Shared native endpoints and memory arbiter pass synthesis; complete renderer timing and remaining H0-H8 gates stay open.",
+  "source": {
+    "base_commit": "b830567187e1a9fe8fc96fa114ff326aa21e9f08",
+    "source_files": 850,
+    "manifest_sha256": "d7379534881f61b0edb3dcb2b6754dc1fd1248554cd6278cd225dd3cc4f32e22",
+    "git_archive_proof": ".artifacts/mobile-native-rgba8-renderer-qualified-v1-source-proof.json",
+    "scope": "All production inputs match the passed runtime/product profiles; corrected fixture snapshots retain their individual test evidence."
+  },
+  "functional": {
+    "fresh_component_checks": 11,
+    "result": ".artifacts/mobile-native-rgba8-renderer-v1-component-result.json",
+    "typed_AXI_v1": {
+      "status": "failed",
+      "result": ".artifacts/mobile-native-rgba8-renderer-v1-axi-result.json",
+      "causes": [
+        "Four-CU local payload fixture had only four response ports; six are required",
+        "Plain 2D fixture incorrectly set a nonzero unused layer pitch; trace showed zero accepted shared groups and zero shared data/PTW reads"
+      ]
+    },
+    "typed_AXI_v2": {
+      "status": "passed",
+      "planned_tests": 2,
+      "planned_frames": 22,
+      "production_inputs_unchanged": true,
+      "source_proof": ".artifacts/mobile-native-rgba8-renderer-v2-source-proof.json",
+      "passed_tests": 2,
+      "frames": 22,
+      "result": ".artifacts/mobile-native-rgba8-renderer-v2-axi-result.json"
+    },
+    "binned_AXI_v1": {
+      "status": "partial: spilled mode passed, local fixture failed",
+      "planned_tests": 2,
+      "planned_frames": 4,
+      "known_fixture_issue": "Local-payload profile needs at least seven response ports for three owners and four CUs; its inherited six-port fixture will be corrected after the frozen run terminates.",
+      "source_proof": ".artifacts/mobile-native-rgba8-binned-frames-v1-source-proof.json",
+      "passed_spill_tests": 1,
+      "passed_spill_frames": 2,
+      "spill_audit": ".artifacts/mobile-native-rgba8-binned-frames-v1-spill-audit.json"
+    },
+    "binned_AXI_local_v2": {
+      "status": "passed",
+      "passed_tests": 1,
+      "frames": 2,
+      "payload_ports": 8,
+      "result": ".artifacts/mobile-native-rgba8-binned-frames-v2-result.json"
+    },
+    "combined_shared_frames": 26,
+    "combined_scope": "22 typed frames plus two spilled and two corrected-local binned frames. Individual frozen source scopes and initial fixture failures are retained."
+  },
+  "emission": {
+    "reduced_profiles": {
+      "typed-cu1": {
+        "emitted_sv_files": 437,
+        "pools": 1,
+        "pool_instance": "textureDrained_pool",
+        "cluster_instances": 1
+      },
+      "typed-cu2": {
+        "emitted_sv_files": 437,
+        "pools": 1,
+        "pool_instance": "textureDrained_pool",
+        "cluster_instances": 1
+      },
+      "typed-cu4": {
+        "emitted_sv_files": 437,
+        "pools": 1,
+        "pool_instance": "textureDrained_pool",
+        "cluster_instances": 2
+      },
+      "binned-cu1": {
+        "emitted_sv_files": 480,
+        "pools": 1,
+        "pool_instance": "textureDrained_pool",
+        "cluster_instances": 1
+      },
+      "binned-cu2": {
+        "emitted_sv_files": 480,
+        "pools": 1,
+        "pool_instance": "textureDrained_pool",
+        "cluster_instances": 1
+      },
+      "binned-cu4": {
+        "emitted_sv_files": 480,
+        "pools": 1,
+        "pool_instance": "textureDrained_pool",
+        "cluster_instances": 2
+      },
+      "memory": {
+        "emitted_sv_files": 4
+      }
+    },
+    "reduced_config": {
+      "lanes": 4,
+      "warps": 2,
+      "vertex_attributes": 2,
+      "varyings": 2
+    },
+    "full_capacity": {
+      "returncode": 0,
+      "source_unchanged": true,
+      "emissions": 1,
+      "emitted_sv_files": 478,
+      "elapsed_seconds": 131.60789262503386,
+      "finished_utc": "2026-10-21T01:29:32.869419+00:00",
+      "base_commit": "b830567187e1a9fe8fc96fa114ff326aa21e9f08",
+      "source_files": 849,
+      "manifest_sha256": "6684ef8075510ef8ac6b56540baa981c2ab9e5d86305139d63d5a60cb1d8191f",
+      "archive_sha256": "2d4a08e4f0d3cfcbbd2884ada2684dd88a3fafa23e7ecfdd1484a8b555b1d663",
+      "archive_and_worktree_exact": true,
+      "git_archive_and_worktree_exact": false,
+      "uncommitted_emitter_input": "src/main/scala/opengpu/elaboration/EmitNativeRgba8Product.scala",
+      "all_848_renderer_inputs_exact": true,
+      "scope": "Full-capacity 16-lane/8-warp/four-CU GNC2 host, two image engines, two 8-KiB shared texture caches, 128-KiB L2, 64-KiB payload, 64-KiB attachment storage per engine, full attribute/varying limits, SRAM black boxes. Structural emission only."
+    },
+    "full_capacity_RTL_proof": ".artifacts/mobile-native-rgba8-product-v1-RTL-proof.json",
+    "audit_correction": ".artifacts/mobile-native-rgba8-renderer-v1-audit-correction.json"
+  },
+  "synthesis": {
+    "policy": "Synthesis only, 1000 ps, TC/SLVT, 25% I/O, standard ABC, no retiming or place/route.",
+    "shared_endpoints": {
+      "vertex": {
+        "status": "passed",
+        "core_IO_slacks_ps": [
+          106.973,
+          165.445
+        ],
+        "skipped_instance_count": 0,
+        "mapped_cells": 1158891,
+        "library_area": 154278.153359
+      },
+      "fragment": {
+        "status": "passed",
+        "core_IO_slacks_ps": [
+          105.545,
+          169.443
+        ],
+        "skipped_instance_count": 0,
+        "mapped_cells": 1166532,
+        "library_area": 154970.513819
+      }
+    },
+    "memory_arbiter": {
+      "status": "passed",
+      "renderer_IDs": 64,
+      "clusters": 2,
+      "core_IO_slacks_ps": [
+        521.053,
+        395.659
+      ],
+      "mapped_cells": 11641,
+      "library_area": 1333.02024,
+      "skipped_instance_count": 0,
+      "qualification": "generated/qualification/ppa/mobile-native-rgba8-memory-2026-10-21-v1/qualification.json"
+    },
+    "whole_renderer": "not qualified",
+    "coordinate_service": "Original wrapper timed out after7200s; same mapping container remains active under a watcher. Timeout evidence retained; no mapping restart or completed timing claim.",
+    "cluster": "running"
+  },
+  "remaining": [
+    "Cross-pair visibility/reset/fault drain stress",
+    "Complete renderer synthesis",
+    "Native lane/metadata pipelining and outstanding credits for sustained cluster rates",
+    "All remaining H0-H8 gates"
+  ],
+  "composition": {
+    "base_commit": "b830567187e1a9fe8fc96fa114ff326aa21e9f08",
+    "source_files": 850,
+    "manifest_sha256": "d7379534881f61b0edb3dcb2b6754dc1fd1248554cd6278cd225dd3cc4f32e22",
+    "all_production_inputs_exact_to_passed_full_capacity_emission": true,
+    "typed_test_inputs_exact_to_22_frame_pass": true,
+    "binned_local_test_inputs_exact_to_two_frame_pass": true,
+    "binned_spill_basis": "All production inputs and the entire test source remain exact after canonicalizing the local-only ports expression. payload=None branch is unchanged; two spilled frames passed in v1.",
+    "git_archive_proof": ".artifacts/mobile-native-rgba8-renderer-qualified-v1-source-proof.json",
+    "fresh_test_compile": ".artifacts/mobile-native-rgba8-renderer-qualified-v1-compile-v2.log",
+    "test_compile_passed": true
+  },
+  "component_source": {
+    "commit": "b830567187e1a9fe8fc96fa114ff326aa21e9f08",
+    "source_files": 848,
+    "manifest_sha256": "b01b775806e7ff075492d0c5715704903c373b1d5e83ce19756bac8f21177ead",
+    "archive_sha256": "941769d439c96acc8ada6f5eed2dc61f4024e6e406efdac2798c3f76971b0070",
+    "git_archive_and_worktree_exact": true
+  }
+}

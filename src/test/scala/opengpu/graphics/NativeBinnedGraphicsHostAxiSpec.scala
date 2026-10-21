@@ -10,14 +10,15 @@ import scala.collection.mutable
 
 abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHostTestSupport {
   protected def virtualImages: Boolean=false
+  protected def groupedTexture: Boolean=false
   import TypedColorReference.{fp,format,encode}
   private val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
   private val graphics=GraphicsConfig(screenWidth=17,screenHeight=9)
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);private val f=FragmentShaderConfig(2,4)
   private def profile(local: Boolean)=NativeBinnedGraphicsConfig(p,f,engines=2,pageBytes=128,writeCredits=2,tileSlots=1,pagedCapacity=8,
-    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=6))else None,
-    translateImageViews=virtualImages)
-  private def host(local: Boolean)=new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=3,ports=if(groupedTexture)8 else 6))else None,
+    translateImageViews=virtualImages,groupedTexture=groupedTexture)
+  private def host(local: Boolean)=new GpuHostSystemAxi(graphics,gpu,numComputeUnits=if(groupedTexture)4 else 2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
     memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
     exposePerformance=true,nativeBinnedGraphics=Some(profile(local)))
   private def parkMemory(d: GpuHostSystemAxi): Unit={
@@ -55,6 +56,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     var serial=0;var region=BigInt(0x400000);var imageBase=BigInt(0x4000000);var imageVaBase=BigInt(0x40000000)
     var generation=9;var mode=0;var instances=1;var drawCount=2;var centroidVersion=0
     var polygonOffset=false;var polygonSign=1;var overrideSecond=false
+    var expectedSampledRed: Option[BigInt]=None
+    def expectedRgba(h: Int): Vector[BigInt]=expectedSampledRed.map(red=>rgba(h).updated(0,red)).getOrElse(rgba(h))
     def centroid: Boolean=centroidVersion!=0
     def fragmentPrefix: Int=if(centroidVersion==4)960 else 896
     def centroidMask(h: Int): BigInt=if(h==0)5 else 3
@@ -264,8 +267,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       def sample(i: Int,x: Int,y: Int,s: Int): BigInt={val covered=drawCount>0 && coverage((x,y,s))
         if(polygonOffset)polygonSamples.getOrElse((i,x,y,s),if(i==4)fp(1)else encode(names(i),clear)._1)
         else if(i==4)fp(if(covered)0.5 else 1)else{var old=encode(names(i),clear)._1
-          if(covered){old=encode(names(i),if(centroid)shades(0)((x,y))else rgba(0))._1
-            for(_<-0 until instances)old=encode(names(i),TypedBlendReference.blend(names(i),if(centroid)shades(1)((x,y))else rgba(1),old,TypedBlendReference.State(enable=true)))._1};old}}
+          if(covered){old=encode(names(i),if(centroid)shades(0)((x,y))else expectedRgba(0))._1
+            for(_<-0 until instances)old=encode(names(i),TypedBlendReference.blend(names(i),if(centroid)shades(1)((x,y))else expectedRgba(1),old,TypedBlendReference.State(enable=true)))._1};old}}
       for(b<-backings;y<-0 until 9;x<-0 until 17){
         if(b.resolve){val raw=TypedResolveReference.resolve(if(b.location==4)"R32F"else names(b.location),Vector.tabulate(1<<mode)(s=>sample(b.location,x,y,s)),mode,depth=b.location==4)
           for(j<-0 until b.bytes)expected(b.base+y*b.pitch+x*b.bytes+j)=((raw>>(j*8))&255).toInt}
@@ -301,6 +304,91 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   }
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
+  if(groupedTexture)for(local<-Seq(true,false))
+  it should s"sample shared RGBA8 in both native binned stages and observe coherent DMA publication across two image engines local=$local" in {
+    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
+      val vo=BigInt(0x580000);val fo=BigInt(0x680000)
+      val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
+      def constant(rd: Int,value: BigInt): Vector[BigInt]={
+        val hi=(value+2048)>>12;val lo=(value-(hi<<12)).toInt
+        Vector((hi<<12)|(BigInt(rd)<<7)|0x37,addi(rd,rd,lo))
+      }
+      def sampler(unit: Int): Vector[BigInt]={
+        val values=Vector(fp(0.75),fp(0.75))++Vector.fill(14)(BigInt(0))
+        val params=(0 until 8).flatMap{pair=>
+          constant(12,values(pair*2))++constant(13,values(pair*2+1))++Vector(
+            broadcast|(BigInt(12)<<15)|(BigInt(10)<<7)|0x57,
+            broadcast|(BigInt(13)<<15)|(BigInt(11)<<7)|0x57,
+            (BigInt(3)<<26)|(BigInt(1)<<25)|(BigInt(11)<<20)|(BigInt(10)<<15)|(BigInt(pair)<<12)|0x2b)
+        }
+        (params++Vector(addi(13,0,unit),addi(14,0,1),
+          broadcast|(BigInt(13)<<15)|(BigInt(5)<<7)|0x57,
+          broadcast|(BigInt(14)<<15)|(BigInt(6)<<7)|0x57,
+          (BigInt(4)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(7)<<7)|0x2b)).toVector
+      }
+      def fill(id: Int,address: BigInt,raw: BigInt): Unit={
+        parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id)
+        axiWrite(d,GpuCommandMmioRegs.OPCODE,GpuCommandOpcode.fill.litValue.toInt)
+        axiWrite(d,GpuCommandMmioRegs.DESTINATION,address.toInt);axiWrite(d,GpuCommandMmioRegs.BYTES,128)
+        axiWrite(d,GpuCommandMmioRegs.PATTERN,raw.toLong.toInt);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+        serviceMemoryMaster(d,image.read,writeAckDelay=11,readResponseDelay=5,maxCycles=100000)(image.write){d.io.m_irq.peek().litToBoolean}
+        val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
+        assert((result&255)==id && ((result>>8)&7)==GpuCommandOpcode.fill.litValue && ((result>>11)&15)==0 && result.testBit(15))
+        image.pop()
+      }
+      var frames=0
+      for(mode<-Seq(0,2)){
+        image.setup(mode)
+        val id=Seq[BigInt](7,8,image.generation)
+        val raw=if(mode==0)BigInt(0xff804020L)else BigInt(0xff20b4c0L)
+        image.expectedSampledRed=Some(ImageFormatReference.decode("RGBA8",raw)(0))
+        def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
+        def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
+        val data=for((base,stage,unit)<-Seq((vo,0,31),(fo,1,17)))yield {
+          NativeTextureFetchTestData.roots(put,stage=stage,id=id,offset=base)
+          NativeTextureFetchTestData.install(put,byte,unit,id=id,stage=stage,offset=base,raw=0)
+          val address=base+0x20000+unit*4096
+          put(base+NativeTextureFetchTestData.levels+unit*128+12*4,address)
+          put(base+NativeTextureFetchTestData.levels+unit*128+17*4,64)
+          address
+        }
+        val vp=image.region+0x24000;val fp=image.region+0x25000
+        val vertexCode=vertexProgram.dropRight(1)++sampler(31)++Vector(BigInt("30500073",16))
+        val fragmentCode=fragmentProgram.dropRight(1)++sampler(17)++
+          (0 until 4).flatMap(location=>Vector(addi(6,7,(10+location*4)*32),vm(6,7,true)))++Vector(BigInt("30500073",16))
+        vertexCode.zipWithIndex.foreach{case(w,i)=>put(vp+i*4,w)}
+        fragmentCode.zipWithIndex.foreach{case(w,i)=>put(fp+i*4,w)}
+        for(h<-0 until 2){
+          val draw=image.region+0x12000+h*4096
+          val fields=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+          image.patchRecord(draw,fields,"draw.vertex.geometry.vertex.shaderPc",vp)
+          image.patchRecord(draw,fields,"draw.vertex.geometry.vertex.resources.version",1)
+          image.patchRecord(draw,fields,"draw.vertex.geometry.vertex.resources.address",vo+NativeTextureFetchTestData.root)
+          val state=image.region+0x20000+h*512
+          val sf=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+          image.patchRecord(state,sf,"fragment.shaderPc",fp)
+          image.patchRecord(state,sf,"fragment.resources.version",1)
+          image.patchRecord(state,sf,"fragment.resources.address",fo+NativeTextureFetchTestData.root)
+        }
+        // Repeat the same physical texture lines with a different GPU-written
+        // pattern; a new frame may not reuse old shared-cache texels.
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        data.zipWithIndex.foreach{case(address,n)=>fill(40+frames*2+n,address,raw)}
+        val perf=d.io.performance.get;val groups=perf.nativeTextureGroups.peek().litValue
+        val reads=perf.nativeTextureDataReads.map(_.peek().litValue).sum
+        image.submit(60+frames);image.run(id=60+frames);image.verify()
+        assert(perf.nativeTextureGroups.peek().litValue>groups,"binned frame never entered shared sampling")
+        assert(perf.nativeTextureDataReads.map(_.peek().litValue).sum>reads,"new binned frame retained stale shared lines")
+        for(base<-Seq(vo,fo))assert(image.reads.contains(image.pa(base+NativeTextureFetchTestData.root)),"both shader stages must read their typed texture root")
+        assert(perf.nativeTexturePageWalks.map(_.peek().litValue).sum>0)
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        image.pop();frames+=1
+      }
+      assert(frames==2)
+      info(s"NATIVE_SHARED_BINNED_AXI local=$local CUs=4 frames=$frames engines=2 exactMRTDepthResolve=true bothStages=true realSv32=true actualSharedDataWalks=true sameAddressDMAPublication=true modes1x4x=true heldCompletionPinsVM=true")
+    }
+  }
+  if(!groupedTexture){
   it should "expose exact GNX1 diagnostics for rejected envelopes through the production AXI registers" in {
     simulate(host(false)){d=>initialize(d);val image=new Image(d);vm(d);image.setup(empty=true)
       image.submit(201,bytes=256);image.run(status=1,id=201)
@@ -499,6 +587,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       }
     }
   }
+  }
+
 }
 
 class NativeBinnedGraphicsHostAxiSpec extends NativeBinnedGraphicsHostBaseSpec

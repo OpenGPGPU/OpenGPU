@@ -3,8 +3,10 @@
 The optional `groupedTexture` profile connects both native shader endpoints and
 both shader-stage interfaces to a shared RGBA8 service. Its
 [841-input qualification](performance/mobile-native-rgba8-clients-2026-10-21.json)
-passes 73 fresh checks and eight emissions. The shared vertex, fragment and
-four-client cluster have fresh synthesis screens running at 1000 ps with I/O.
+passes 73 fresh checks and eight emissions. Shared native vertex/fragment synthesis now passes 1000 ps with I/O at
++106.973/+165.445 ps and +105.545/+169.443 ps core/I/O slack. Both are fully
+mapped with zero skipped instances; the four-client cluster screen remains
+running.
 The constructor default remains disabled while renderer placement and timing
 are completed.
 
