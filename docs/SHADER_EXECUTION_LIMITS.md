@@ -106,6 +106,18 @@ alias failure is preserved alongside the earlier mutation-fence failure.
 The default combined discovery host is emitted but its synthesis is not
 qualified. A separate GTO1 full-host screen mapped all cells and failed timing
 on legacy raster-edge-to-texture interpolation and MMIO burst-read paths. It
-does not qualify this GSL candidate. Latest-main integration, full-host timing,
+does not qualify this GSL candidate. Full-host timing,
 interruption after loop execution has begun, owned data/texture fault priority,
 resource permissions and reconvergence capacity remain open.
+
+Current-main composition now passes twelve checks on 1,007 exact inputs. The
+typed/binned local/spill matrix submits sixty frames: eight quota faults, four
+owned-fetch reset drains, sixteen unavailable-FP faults, six prior system-fault
+regressions and twenty-six exact healthy images. Each unavailable scalar FP
+add/load or vector scalar-FP register read/write is followed by a cease, so a
+later illegal zero instruction cannot impersonate the expected rejection.
+Healthy reuse explicitly writes the affected vector destination. The complete
+VM/quota mutation fence and payload release remain checked in both payload
+modes. This composes main's FP reservation cancellation and availability
+repairs; default discovery RTL remains byte-identical to the prior emission.
+It supplies no positive full-host synthesis result.

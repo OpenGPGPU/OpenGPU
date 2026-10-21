@@ -7649,3 +7649,54 @@ zero skipped instances. Existing native profiles do not yet enable this optional
 CU mechanism. Native programmable controls/reset integration, unserviced execution
 port liveness, resource permissions, reconvergence capacity, full product budgets
 and whole-CU/renderer timing remain required. S02/H5/H6 and H0-H8 stay partial.
+
+## Scalar FP fault destination ownership (2026-10-22)
+
+The [FP fault repair](FP_FAULT_RESERVATION_RELEASE.md) releases a failed load's
+FP reservation on fault acknowledgment without fabricating an RF write. A
+separate cancellation port composes with peer writeback and same-cycle fresh
+reservation; `f0` is an ordinary tracked FP destination. The archived baseline
+fails all six actual CU misaligned/access/page-fault reuse probes at `f0`/`f10`.
+
+[23 checks](performance/mobile-fpu-fault-reuse-2026-10-22.json) now pass on 996
+frozen inputs, including twelve fault/reuse kernels, two peer-commit/fault
+collisions, three boundary/default mask cases, ten FPU controls and 22 additional
+execution-limit kernels. Default scoreboard synthesis passes 1000 ps with
+core/I/O +464.366/+253.874 ps, 2,770 cells and zero skipped instances. Default
+issue-stage synthesis passes +407.628/+194.342 ps, 60,091 cells and zero skipped
+instances. Native product capacity, execution availability/interruption, resource
+permissions, reconvergence, composed budgets and whole-CU/renderer timing remain
+required. This checkpoint does not close S02/H5/H6 or H0-H8.
+
+## Native execution availability before issue (2026-10-22)
+
+The [availability contract](SHADER_EXECUTION_AVAILABILITY.md) now matches
+execution-limited CU decode to the actual scalar FP RF/backend. Unavailable
+scalar FP and vector scalar-FP references trap before issue/reservation. This
+repairs two reproduced behaviors: a scalar instruction stalled before a quota
+could reach its next fetch, and a VF read/vector-to-FP write that completed
+without an FP register owner. Vector-only FP remains functional.
+
+[25 checks](performance/mobile-shader-execution-availability-2026-10-22.json)
+pass on 999 frozen inputs, including thirteen availability kernels, twelve
+FP-fault reuse kernels and 22 quota/interruption kernels. The archived baseline
+fails six unavailable cases and passes its enabled bridge control. Default
+16-lane/eight-warp decode synthesis passes 1000 ps with absent-FPU core/I/O
++525.450/+416.626 ps and enabled-FPU +517.250/+407.170 ps, both with zero skipped
+instances. Native host composition, full-capacity qualification, general
+execution/interruption, resource permissions, reconvergence and full host timing
+remain required. S02/H5/H6 and the H0-H8 objective remain partial.
+
+### Native shader execution composition — 2026-10-22
+
+The [native quota checkpoint](performance/mobile-native-shader-execution-2026-10-22.json)
+now includes current-main FP reservation cancellation and execution-availability
+repairs. Twelve checks pass on 1,007 exact inputs with sixty actual typed/binned
+local/spill submissions: eight loop quota faults, four owned-fetch reset drains,
+sixteen absent-FP faults, six prior system-fault regressions and twenty-six exact
+healthy image reuses. Fault cases include scalar add/load and vector scalar-FP
+register reads/writes; healthy successors reuse the affected vector destination.
+Held completions protect VM/quota mutation and all payload ownership drains.
+The default discovery host emission is byte-identical to the earlier candidate;
+full-host timing, execution-time watchdog/resource/reconvergence contracts and
+the remaining H0-H8 requirements are still open.

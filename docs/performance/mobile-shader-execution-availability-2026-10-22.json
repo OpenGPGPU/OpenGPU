@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-22",
+  "scope": "Match instruction decode to actual scalar FP register/backend availability in execution-limited CUs. Native-host latest-main composition and general watchdog/resource/reconvergence gates remain open.",
+  "source_files": 999,
+  "source_manifest": ".artifacts/mobile-shader-execution-availability-v2-source.json",
+  "source_manifest_sha256": "9149ebe256a191f2296a61ea510a4f870f07c83037ff9926d9cb32cf0d3cdd77",
+  "functional": {
+    "passed": true,
+    "checks": 25,
+    "actual_availability_CU_cases": 7,
+    "actual_availability_kernels": 13,
+    "held_default_decode_cases": 2,
+    "legacy_decoder_frontend_controls": 8,
+    "fault_and_limit_regression_cases": 8,
+    "fault_and_limit_regression_kernels": 34,
+    "actual_CU_kernels_total": 47,
+    "result": ".artifacts/mobile-shader-execution-availability-v2-result.json"
+  },
+  "baseline": {
+    "result": ".artifacts/mobile-shader-execution-availability-v1-baseline-result.json",
+    "tests": 7,
+    "failed": 6,
+    "positive_control_passed": 1,
+    "scalar_FP_failure": "FADD/FLW stalled at an unserviced FPU port despite a finite quota. No next fetch could reach the quota guard.",
+    "vector_scalar_FP_failure": "VF scalar reads and vector-to-FP writes completed without a trap with the scalar FP RF/backend absent, including config F disabled.",
+    "enabled_bridge_control": "Scalar FP, vector-vector FP, VF scalar reads and vector-to-FP writes produced exact2.0 output."
+  },
+  "behavior": "Execution-limited CUs request a native execution profile. FullInstructionDecoder rejects scalar FP and vector readsFloat/writesFloat if no actual scalar FP backend/RF exists. Reject before issue/reservation; preserve PC/mask/raw instruction with cause2. Vector-only FP remains available. Legacy external extension interface keeps its previous decode routing.",
+  "synthesis_policy": {
+    "stage": "synthesis",
+    "period_ps": 1000,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "io_delay_fraction": 0.25,
+    "ABC": "standard",
+    "retiming": false
+  },
+  "synthesis": {
+    "absent": {
+      "module": "DecodePipe",
+      "passed": true,
+      "lanes": 16,
+      "warps": 8,
+      "scalar_fpu_available": false,
+      "core_slack_ps": 525.45,
+      "IO_slack_ps": 416.626,
+      "mapped_cells": 1546,
+      "library_area": 170.11944,
+      "sequential_area": 52.7796,
+      "flip_flops": 181,
+      "SRAM_macros": 0,
+      "skipped_instances": 0,
+      "result": ".artifacts/mobile-shader-execution-availability-synthesis-v2-absent-result.json"
+    },
+    "enabled": {
+      "module": "DecodePipe",
+      "passed": true,
+      "lanes": 16,
+      "warps": 8,
+      "scalar_fpu_available": true,
+      "core_slack_ps": 517.25,
+      "IO_slack_ps": 407.17,
+      "mapped_cells": 1821,
+      "library_area": 203.58054,
+      "sequential_area": 59.4864,
+      "flip_flops": 204,
+      "SRAM_macros": 0,
+      "skipped_instances": 0,
+      "result": ".artifacts/mobile-shader-execution-availability-synthesis-v2-enabled-result.json"
+    }
+  },
+  "RTL_sha256": {
+    "absent": {
+      "generated/mobile-h5/execution-availability-v2-absent-rtl/DecodePipe.sv": "6147a9fa04a4a038a228aacd94b0b374085b790c70cd7b8630bed0afbc4bef1a",
+      "generated/mobile-h5/execution-availability-v2-absent-rtl/FullInstructionDecoder.sv": "833700d60b8eecabab1e0a16475011e7f3f9ea20e7bed3725a234d0955467695",
+      "generated/mobile-h5/execution-availability-v2-absent-rtl/RiscVDecoder.sv": "a4169f04634b389934d562b755bd8f8f1dddba0e411cb1f2206769c950340b07",
+      "generated/mobile-h5/execution-availability-v2-absent-rtl/VectorDecoder.sv": "acc7eb54e45e722e6050f7500a1f4c5bacf158813212a432cf6179843888ab0b"
+    },
+    "enabled": {
+      "generated/mobile-h5/execution-availability-v2-enabled-rtl/DecodePipe.sv": "57c2945d7b378b1ecac07db66343588f7907178b6571ed064ff81d816277a5d1",
+      "generated/mobile-h5/execution-availability-v2-enabled-rtl/FpuDecoder.sv": "190cfc539332f1e066384778db8e9776ccac3bf776fc9babb53869ede2b670ce",
+      "generated/mobile-h5/execution-availability-v2-enabled-rtl/FullInstructionDecoder.sv": "b0ed8045c2cb43628f6a872d5e36c91bada7d7456428fe173f9268773cd90fab",
+      "generated/mobile-h5/execution-availability-v2-enabled-rtl/RiscVDecoder.sv": "a4169f04634b389934d562b755bd8f8f1dddba0e411cb1f2206769c950340b07",
+      "generated/mobile-h5/execution-availability-v2-enabled-rtl/VectorDecoder.sv": "acc7eb54e45e722e6050f7500a1f4c5bacf158813212a432cf6179843888ab0b"
+    }
+  },
+  "remaining": [
+    "Native GSL latest-main composition and actual native availability faults",
+    "Complete unserviced execution, SIMT overflow and interruption ownership contract",
+    "Resource/fetch permissions and full native product capacity",
+    "Full host interpolation/MMIO timing and original H0-H8 gates"
+  ]
+}

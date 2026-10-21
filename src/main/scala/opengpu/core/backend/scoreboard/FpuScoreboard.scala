@@ -26,6 +26,7 @@ class FpuScoreboard(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
     val reserve = Flipped(Decoupled(new FpuReservation(config)))
     val release = Flipped(Valid(new FpuRelease(config)))
+    val cancel = Flipped(Valid(new FpuRelease(config)))
     val rawHazard = Output(Bool())
     val wawHazard = Output(Bool())
     val busyByWarp = Output(Vec(config.warps, UInt(32.W)))
@@ -38,11 +39,14 @@ class FpuScoreboard(config: GpuConfig = GpuConfig()) extends Module {
   private val selected = if (config.warps == 1) busy(0) else
     Mux(warpValid, busy(io.reserve.bits.warpId), 0.U)
   private val releaseOH = UIntToOH(io.release.bits.rd, 32)
+  private val cancelEnabled = io.cancel.valid && io.cancel.bits.warpId < config.warps.U
+  private val cancelOH = UIntToOH(io.cancel.bits.rd, 32)
   private val effective = Mux(
     releaseEnabled && io.release.bits.warpId === io.reserve.bits.warpId,
     selected & ~releaseOH,
     selected
-  )
+  ) & Mux(cancelEnabled && io.cancel.bits.warpId === io.reserve.bits.warpId,
+    ~cancelOH, Fill(32, 1.U))
 
   io.rawHazard :=
     (io.reserve.bits.useRs1 && effective(io.reserve.bits.rs1)) ||
@@ -59,10 +63,12 @@ class FpuScoreboard(config: GpuConfig = GpuConfig()) extends Module {
       busy(warp) & ~releaseOH,
       busy(warp)
     )
+    val afterCancel = Mux(cancelEnabled && io.cancel.bits.warpId === warp.U,
+      afterRelease & ~cancelOH, afterRelease)
     busy(warp) := Mux(
       reserveEnabled && io.reserve.bits.warpId === warp.U,
-      afterRelease | reserveOH,
-      afterRelease
+      afterCancel | reserveOH,
+      afterCancel
     )
     io.busyByWarp(warp) := busy(warp)
   }

@@ -10,6 +10,7 @@ import scala.collection.mutable
 
 abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHostTestSupport {
   protected def shaderExecutionLimits: Boolean=false
+  protected def shaderAvailabilityFaults: Boolean=false
   protected def visibilityQueries: Boolean=false
   protected def transformFeedback: Boolean=false
   protected def primitiveQueries: Boolean=false
@@ -312,6 +313,31 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   }
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
+  if(shaderAvailabilityFaults)for(local<-Seq(true,false))
+  it should s"trap unavailable scalar FP and VF register references before binned issue local=$local" in {
+    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
+      val shaderWord=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+        .find(_.name=="draw.vertex.geometry.vertex.shaderPc").get.word
+      val unavailable=Seq[BigInt](BigInt("00000553",16),BigInt("0000a507",16),BigInt("02a0d557",16),BigInt("42a01557",16))
+      val prefix=Vector(addi(10,0,7),BigInt("c1027057",16),BigInt("5e00b557",16)) // vmv.v.i v10,1
+      var frames=0
+      for(word<-unavailable;healthy<-Seq(false,true)){
+        image.setup(0);val pc=image.region+0x28000
+        val code=if(healthy)prefix++vertexProgram else Vector(word,BigInt("30500073",16))
+        code.zipWithIndex.foreach{case(w,i)=>image.word(image.pa(pc+4*i),w)}
+        for(draw<-0 until 2)image.word(image.pa(image.region+0x12000+draw*4096+shaderWord*4),pc)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);val id=200+frames
+        image.submit(id);image.run(status=if(healthy)0 else 5,id=id)
+        if(healthy)image.verify()else assert(!image.writes.exists(_>=image.imageBase),"unavailable FP instruction published a binned image")
+        axiWrite(d,0x320,17,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        image.pop();perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+        frames+=1
+      }
+      assert(frames==8)
+      info(s"NATIVE_SHADER_AVAILABILITY_BINNED local=$local CUs=2 engines=2 frames=$frames shaderFaults=4 scalarAdd=true scalarLoad=true vectorScalarRead=true vectorScalarWrite=true rejectedBeforeIssue=true V10Reused=true exactHealthyImages=true payloadReleased=true heldCompletionPinsVM=true")
+    }
+  }
   if(shaderExecutionLimits)for(local<-Seq(true,false))
   it should s"bound binned vertex and fragment loops and preserve fetch ownership through reset local=$local" in {
     simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
@@ -462,7 +488,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       primitive.foreach(_.report("BINNED",local,2))
     }
   }
-  if(!transformFeedback && !shaderExecutionLimits){
+  if(!transformFeedback && !shaderExecutionLimits && !shaderAvailabilityFaults){
   if(groupedTexture)for(local<-Seq(true,false))
   it should (if(sharedTextureReset)s"drain shared native texture reads across AXI command reset and republish both binned image engines local=$local"
     else s"sample shared RGBA8 in both native binned stages and observe coherent DMA publication across two image engines local=$local") in {

@@ -1,6 +1,6 @@
 {
   "date": "2026-10-22",
-  "scope": "Native typed/binned shared-CU instruction quota and reset-owned fetch drain. Candidate source precedes latest main FP/availability fixes and requires integration. Full host/renderer timing and general watchdog/resource/reconvergence closure remain open.",
+  "scope": "Native typed/binned shared-CU instruction quota and reset-owned fetch drain, now integrated with main FP fault reservation and execution-availability fixes. Full host/renderer timing and general watchdog/resource/reconvergence closure remain open.",
   "source_files": 999,
   "source_manifest": ".artifacts/mobile-native-shader-execution-v3-source.json",
   "source_manifest_sha256": "ff28e9be792427c612310ea1de35ec06fb8129a324ed7bc7e128c2c995f0d4b8",
@@ -73,10 +73,45 @@
     "guard_source_byte_identical": true
   },
   "remaining": [
-    "Integrate latest main FP reservation and execution-availability repairs",
     "Repair full default legacy interpolation and MMIO I/O timing without deleting paths or reducing numeric/rate/clock contracts",
     "Native reset while a loop is already running and owned load/store/texture fault priority",
     "General resource permissions, reconvergence and native full product capacity",
     "Original H0-H8 gates"
-  ]
+  ],
+  "current_main_integration": {
+    "main_parent": "ca4fd21df2fd143b3058b9dad50d1dec439ffd09",
+    "source_files": 1007,
+    "source_manifest": ".artifacts/mobile-native-shader-execution-v4-source.json",
+    "source_manifest_sha256": "594ab258e1c76e8b875d06c8623c40943e1c611b1e8a0d73c33bdec944063109",
+    "result": ".artifacts/mobile-native-shader-execution-v4-result.json",
+    "passed": true,
+    "checks": 12,
+    "test_counts": [
+      2,
+      8,
+      2
+    ],
+    "native_submissions": 60,
+    "loop_fault_submissions": 8,
+    "reset_owned_fetch_drains": 4,
+    "unavailable_FP_fault_submissions": 16,
+    "system_fault_regression_submissions": 6,
+    "exact_healthy_images": 26,
+    "FP_families": [
+      "scalar FADD",
+      "scalar FLW",
+      "vector scalar-FP read",
+      "vector scalar-FP write"
+    ],
+    "payload_modes": [
+      "local",
+      "spilled"
+    ],
+    "typed_and_binned": true,
+    "held_completion_pins_VM_and_quota": true,
+    "V10_reused_after_fault": true,
+    "default_discovery_host_RTL_byte_identical_to_prior": true,
+    "source_unchanged": true,
+    "scope": "1007-input composition of current main and native quota controls; full discovery host timing remains unqualified."
+  }
 }

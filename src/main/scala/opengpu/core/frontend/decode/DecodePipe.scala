@@ -5,10 +5,10 @@ import chisel3.util._
 import opengpu.config.GpuConfig
 
 /** One-stage decoupled decode pipe with backpressure. */
-class DecodePipe(config: GpuConfig = GpuConfig()) extends Module {
+class DecodePipe(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true) extends Module {
   val io = IO(new DecodePipeIO(config))
 
-  val decoder = Module(new FullInstructionDecoder(config))
+  val decoder = Module(new FullInstructionDecoder(config, scalarFpuAvailable))
   decoder.io.instruction := io.in.bits.instruction
 
   val outputValid = RegInit(false.B)

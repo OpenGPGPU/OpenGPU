@@ -15,6 +15,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   protected def primitiveQueryLifetimes: Boolean=false
   protected def shaderExecutionLimits: Boolean=false
   protected def shaderSystemFaults: Boolean=false
+  protected def shaderAvailabilityFaults: Boolean=false
   protected def transformFeedbackRecovery: Boolean=false
   protected def groupedTexture: Boolean=false
   protected def nativeComputeUnits: Int=2
@@ -299,8 +300,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       info(s"NATIVE_SHADER_EXECUTION_TYPED local=$local CUs=$nativeComputeUnits frames=4 vertexLoop=true fragmentLoop=true quota128=true resetDuringOwnedFetch=true delayedReplyDrained=true maxQuota=true zeroRejectedByPolicy=true queuedAndCompletionPolicyPinned=true exactHealthyImages=true payloadReleased=true")
     }
   }
-  if(shaderSystemFaults)for(local<-Seq(true,false))
-  it should s"reject unsupported native shader system operations and reuse their destinations through AXI local=$local" in {
+  if(shaderSystemFaults || shaderAvailabilityFaults)for(local<-Seq(true,false))
+  it should (if(shaderAvailabilityFaults)s"trap unavailable native FP instructions and reuse vector destinations through AXI local=$local"
+    else s"reject unsupported native shader system operations and reuse their destinations through AXI local=$local") in {
     simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
@@ -308,13 +310,16 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
       axiWrite(d,RenderHostRegs.IRQ,1)
       var frames=0;var failures=0
-      for((instruction,index)<-Seq(BigInt("00100073",16),BigInt("00000073",16),BigInt("00101573",16)).zipWithIndex;
+      val rejectedInstructions=if(shaderAvailabilityFaults)Seq(BigInt("00000553",16),BigInt("0000a507",16),BigInt("02a0d557",16),BigInt("42a01557",16))
+        else Seq(BigInt("00100073",16),BigInt("00000073",16),BigInt("00101573",16))
+      for((instruction,index)<-rejectedInstructions.zipWithIndex;
           healthy<-Seq(false,true)){
         image.shaderDraws(0)
         // A fresh instruction allocation per frame avoids assuming CPU code
         // writes invalidate already cached instruction lines.
         val pc=0x480000+index*0x2000+(if(healthy)0x1000 else 0)
-        val code=if(healthy)addi(10,0,7)+:vertexProgram else Vector(instruction)
+        val reusePrefix=if(shaderAvailabilityFaults)Vector(addi(10,0,7),BigInt("c1027057",16),BigInt("5e00b557",16))else Vector(addi(10,0,7))
+        val code=if(healthy)reusePrefix++vertexProgram else if(shaderAvailabilityFaults)Vector(instruction,BigInt("30500073",16))else Vector(instruction)
         code.zipWithIndex.foreach{case(word,i)=>image.word(image.pa(pc+4*i),word)}
         for(draw<-0 until 3)image.word(image.pa(0x412000+draw*4096+33*4),pc)
         axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
@@ -326,8 +331,9 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
         frames+=1
       }
-      assert(frames==6 && failures==3)
-      info(s"NATIVE_SHADER_SYSTEM_TRAP_AXI local=$local CUs=$nativeComputeUnits frames=$frames shaderFaults=$failures ebreak=true ecall=true CSRrd10=true exactHealthyImages=true destinationReuse=true freshCodeAllocations=true noFalsePublication=true heldCompletionPinsVM=true payloadReleased=true")
+      assert(frames==2*rejectedInstructions.size && failures==rejectedInstructions.size)
+      if(shaderAvailabilityFaults)info(s"NATIVE_SHADER_AVAILABILITY_TYPED local=$local CUs=$nativeComputeUnits frames=$frames shaderFaults=$failures scalarAdd=true scalarLoad=true vectorScalarRead=true vectorScalarWrite=true rejectedBeforeIssue=true V10Reused=true exactHealthyImages=true payloadReleased=true heldCompletionPinsVM=true")
+      else info(s"NATIVE_SHADER_SYSTEM_TRAP_AXI local=$local CUs=$nativeComputeUnits frames=$frames shaderFaults=$failures ebreak=true ecall=true CSRrd10=true exactHealthyImages=true destinationReuse=true freshCodeAllocations=true noFalsePublication=true heldCompletionPinsVM=true payloadReleased=true")
     }
   }
   if(primitiveQueryLifetimes)for(local<-Seq(true,false);lifetime<-Seq(false,true))
@@ -503,7 +509,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames resetCuts=$resetCuts checkpointPermissionFaults=1 capturePermissionFaults=1 captureBusFaults=1 missingLeaseDraws=1 peerHealthyDraws=4 scopedRecovery=true countersAfterFinalAck=true noDeniedPhysicalStores=true partialFaultStoresBounded=true staleResetObjectsRejected=true exactRawCaptureAndImages=true queryContextIsolation=true")
     }
   }
-  if(!transformFeedback && !shaderSystemFaults && !shaderExecutionLimits){
+  if(!transformFeedback && !shaderSystemFaults && !shaderExecutionLimits && !shaderAvailabilityFaults){
   // Shared-path subclasses register the focused capture matrix below.
   if(!groupedTexture){
   it should "submit a translated native clear pass and publish trusted physical source and resolve views over the production AXI host" in {

@@ -80,7 +80,7 @@ class GpuComputeUnit(
       useBlackBoxes,
       enableFpuBackend,
       vectorCacheSets,
-      vectorCacheWays,shaderPayload))
+      vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits))
   shaderPayload.foreach(_=>core.io.payload.get <> io.payload.get)
   private val system = Module(new WarpSystemControl(config))
   private val barrier = Module(new WorkgroupBarrierController(config))
