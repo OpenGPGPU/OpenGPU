@@ -9,11 +9,15 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
+  protected def groupedTexture: Boolean=false
+  protected def nativeComputeUnits: Int=2
+  protected def capturedFloatingFormats: Seq[Int]=0 until 64
+  protected def capturedDefaultFormat: Int=35
   private val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
   private val graphics=GraphicsConfig(screenWidth=8,screenHeight=8)
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2);private val f=FragmentShaderConfig(2,4)
   private def profile(local: Boolean): NativeTypedGraphicsConfig=NativeTypedGraphicsConfig(p,f,
-    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=2,ports=4))else None)
+    payload=if(local)Some(ShaderPayloadConfig(capacityBytes=4096,maxPayloadBytes=1024,owners=2,ports=4))else None,groupedTexture=groupedTexture)
   private def addi(rd: Int,rs: Int,n: Int): BigInt=(BigInt(n&4095)<<20)|(BigInt(rs)<<15)|(BigInt(rd)<<7)|0x13
   private def vm(base: Int,v: Int,write: Boolean): BigInt=(BigInt(1)<<25)|(BigInt(base)<<15)|(BigInt(6)<<12)|(BigInt(v)<<7)|(if(write)0x27 else 7)
   private val vertexProgram={
@@ -241,8 +245,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       assert(writes.exists(_>=0x1000000) && !reads.exists(a=>a>=0x400000 && a<0x800000),"virtual descriptors must not escape onto physical AXI")
     }
   }
+  // Shared-path subclasses register the focused capture matrix below.
+  if(!groupedTexture){
   it should "submit a translated native clear pass and publish trusted physical source and resolve views over the production AXI host" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(false)))){d=>
       initialize(d);val image=new Image(d)
@@ -263,7 +269,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"execute GPU-memory triangle line and point shader draws with translated resources and cached image consumers local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d)
@@ -290,7 +296,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"publish native centroid gradients through version three and four fragment descriptors local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d)
@@ -316,7 +322,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"publish native facing flags and enforce culling across every sample mode local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d)
@@ -349,7 +355,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"publish signed native polygon offsets across all depth formats and sample modes local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d)
@@ -378,7 +384,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"publish native polygon offset depth and shader fragCoord through immutable attachment binding local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d)
@@ -403,7 +409,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(polygon<-Seq(false,true))
   it should s"reject native envelope descriptor permission shader and physical store faults without publishing a successful image polygon=$polygon" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(false)))){d=>
       initialize(d);val image=new Image(d);axiWrite(d,RenderHostRegs.IRQ,1)
@@ -451,7 +457,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(polygon<-Seq(false,true))
   it should s"drain live native shader payloads queued DMA and physical publication before reset releases the VM polygon=$polygon" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(true)))){d=>
       initialize(d);val image=new Image(d);val perf=d.io.performance.get
@@ -496,7 +502,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
 
   for(local<-Seq(true,false))
   it should s"publish native sampler policies through actual vertex and fragment texture instructions local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d)
@@ -551,7 +557,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
   for(local<-Seq(true,false))
   it should s"execute GPU bound typed fetches in both native shader stages with translated descriptor ownership local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d);val texData=NativeTextureFetchTestData
@@ -621,9 +627,11 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
     }
   }
 
+  }
+
   for(local<-Seq(true,false))
   it should s"execute captured floating samples through native AXI frames and translated descriptor ownership local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d);val texData=NativeTextureFetchTestData
@@ -655,10 +663,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         else Seq(broadcast|(BigInt(13)<<15)|(BigInt(5)<<7)|0x57,broadcast|(BigInt(14)<<15)|(BigInt(6)<<7)|0x57,
           (BigInt(4)<<26)|(BigInt(1)<<25)|(BigInt(6)<<20)|(BigInt(5)<<15)|(BigInt(c)<<12)|(BigInt(7)<<7)|0x2b))
       }
-      def run(c: Int,bad: Boolean=false,format: Int=35,target: Int=0,modeControl: Int=1,missing: Boolean=false): Unit={
+      def run(c: Int,bad: Boolean=false,format: Int=capturedDefaultFormat,target: Int=0,modeControl: Int=1,missing: Boolean=false): Unit={
         val mode=if(c%2==0)0 else 2;val vc=(c+1)%4
         val decoded=if(format>=54)CompressedImageReference.decode(format,raw)else ImageFormatReference.decode(ImageFormatReference.names(format),raw)
-        val swizzle=if(format>=36)Seq(3,2,5,4)else Seq.empty[Int]
+        val swizzle=if(format>=36 || (groupedTexture && format==3))Seq(3,2,5,4)else Seq.empty[Int]
         val kind=if(format>=54)0 else ImageFormatReference.format(ImageFormatReference.names(format)).kind
         val options=decoded++Seq(BigInt(0),if(kind==0)BigInt(0x3f800000L)else BigInt(1))
         val mapped=if(swizzle.isEmpty)decoded else swizzle.map(options)
@@ -670,6 +678,15 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         def byte(a: BigInt,v: Int): Unit={image.memory(image.pa(a))=v}
         texData.roots(put,stage=0,id=id,offset=vo);texData.roots(put,stage=1,id=id,offset=fo)
         texData.install(put,byte,31,format,target,0,id,raw,vo,swizzle);texData.install(put,byte,17,format,target,1,id,raw,fo,swizzle)
+        if(groupedTexture && format==3 && target!=3)for((base,unit)<-Seq((vo,31),(fo,17))){
+          // Exercise the aligned shared path, retaining the unaligned/default
+          // fixtures for every legacy qualification and non-RGBA8 format.
+          val data=base+0x20000+unit*4096
+          val level=base+texData.levels+unit*128
+          put(level+12*4,data);put(level+17*4,64);put(level+21*4,128)
+          val selected=data+64+4+(if(target==1)256 else if(target==2)640 else 0)
+          for(n<-0 until 4)byte(selected+n,((raw>>(8*n))&255).toInt)
+        }
         if(format>=54)for(base<-Seq(vo,fo);unit<-Seq(if(base==vo)31 else 17)){
           put(base+texData.images+unit*128+11*4,2);put(base+texData.images+unit*128+12*4,2)
           put(base+texData.levels+unit*128+13*4,2);put(base+texData.levels+unit*128+14*4,2)
@@ -706,18 +723,25 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           assert(!image.reads.exists(a=>a>=page && a<page+4096),"captured operands performed a GPU-memory packet read")}
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop();frames+=1
       }
-      for(format<-0 until 64)run(format%4,format=format)
+      for(format<-capturedFloatingFormats)run(format%4,format=format)
       for(target<-1 to 3)run(target,target=target)
       for(mode<-Seq(0,2))run(mode,modeControl=mode)
       run(0,bad=true);run(1,missing=true);run(3)
-      assert(frames==72)
-      info(s"NATIVE_FLOAT_SAMPLE_AXI local=$local CUs=2 frames=$frames draws=216 formats64=true imageSwizzle=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true targets4=true automaticExplicitGradient=true noOperandPacketReads=true realSv32=true deniedSamplerNoPhysicalRead=true taskResetRejectsStaleTuple=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
+      assert(frames==capturedFloatingFormats.size+8)
+      if(groupedTexture){
+        val perf=d.io.performance.get
+        assert(perf.nativeTextureGroups.peek().litValue>0,"AXI frames never entered the shared texture pool")
+        assert(perf.nativeTextureDataReads.map(_.peek().litValue).sum>0,"shared pool performed no data reads")
+        assert(perf.nativeTexturePageWalks.map(_.peek().litValue).sum>0,"shared pool bypassed real Sv32")
+      }
+      info(s"NATIVE_FLOAT_SAMPLE_AXI local=$local CUs=$nativeComputeUnits frames=$frames submittedDraws=${frames*3} formats=${capturedFloatingFormats.size} grouped=$groupedTexture imageSwizzle=true GTD1RootReferences=true bothStages=true scalarVector=true components4=true targets4=true automaticExplicitGradient=true noOperandPacketReads=true realSv32=true deniedSamplerNoPhysicalRead=true taskResetRejectsStaleTuple=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
     }
   }
 
+  if(!groupedTexture){
   for(local<-Seq(true,false))
   it should s"execute captured integer fetches through native AXI frames and translated descriptor ownership local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d);val texData=NativeTextureFetchTestData
@@ -827,7 +851,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
 
   for(local<-Seq(true,false))
   it should s"execute native texture size queries through native AXI frames and translated descriptor ownership local=$local" in {
-    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d);val texData=NativeTextureFetchTestData
@@ -932,4 +956,5 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   }
 
 
+  }
 }

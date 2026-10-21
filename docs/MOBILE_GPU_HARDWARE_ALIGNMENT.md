@@ -7042,3 +7042,19 @@ Fresh complete vertex/fragment endpoints each contain 77 active RTL files;
 only the FMA core/wrapper logic changes from their older timing baseline.
 Fresh vertex endpoint synthesis is active, while fragment synthesis is queued.
 The complete new translated service has its own active synthesis screen.
+
+## H4 native renderer shared texture wiring
+
+The [renderer integration](NATIVE_RGBA8_RENDERER.md) now carries native clients
+and individual CU masks through both typed and binned hierarchies. Each emitted
+four-CU host contains one global pool and two 8 KiB clusters. A new bounded
+physical arbiter preserves the existing renderer/DMA/walker namespace, with
+sixteen data and four PTW IDs per cluster. Its three saturation/reorder/fault
+tests pass at 84/104/124 simultaneous IDs, with held offers and two reuse rounds.
+Host completion additionally waits for shared pool and physical memory drain.
+
+A focused four-CU real-AXI matrix is prepared for eleven frames per local/spill
+payload mode, including actual shared-path counter witnesses; frame completion
+is still unproven. Full 1/2/4-CU elaboration, binned shared frames, cross-pair
+visibility/reset stress and integrated synthesis remain required. Native
+streaming issue/credits and all remaining H0-H8 gates stay open.

@@ -18,9 +18,10 @@ class VertexGeometryDraw(p: VertexShaderStageConfig) extends Bundle {
   */
 class VertexGeometryStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val draw=Flipped(Decoupled(new VertexGeometryDraw(p)))
     val out=Decoupled(new AssembledPrimitive(p))
     val completion=Decoupled(new PrimitiveAssemblyCompletion)
@@ -30,7 +31,8 @@ class VertexGeometryStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConf
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val vertex=Module(new VertexShaderStage(config,p,shared,useSramBlackBoxes,payload,payloadOwner))
+  private val vertex=Module(new VertexShaderStage(config,p,shared,useSramBlackBoxes,payload,payloadOwner,groupedTexture=groupedTexture))
+  if(groupedTexture)io.grouped.get <> vertex.io.grouped.get
   private val assembly=Module(new PrimitiveAssemblyStage(p))
   private val descriptor=Reg(new VertexGeometryDraw(p));private val active=RegInit(false.B)
   private val vertexOffered=RegInit(false.B);private val assemblyOffered=RegInit(false.B)

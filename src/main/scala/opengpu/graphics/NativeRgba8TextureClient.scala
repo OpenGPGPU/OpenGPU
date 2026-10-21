@@ -14,3 +14,9 @@ class NativeRgba8TextureClientIO extends Bundle {
   val cancelGroup = Valid(new BankedTextureGroupCancel)
   val invalidate = Output(Bool())
 }
+
+/** Renderer clients retain individual CU placement across nested task routers. */
+class NativeRgba8TextureRendererPorts(numComputeUnits: Int, clients: Int) extends Bundle {
+  val client = Vec(clients, new NativeRgba8TextureClientIO)
+  val cuMask = Output(Vec(clients, UInt(numComputeUnits.W)))
+}

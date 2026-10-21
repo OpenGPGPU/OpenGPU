@@ -29,11 +29,12 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     f: FragmentShaderConfig=FragmentShaderConfig(),shared: SharedCuShaderConfig=SharedCuShaderConfig(4),
     g: GraphicsConfig=GraphicsConfig(),viewport: Fp32ViewportConfig=Fp32ViewportConfig(),
     useSramBlackBoxes: Boolean=false,payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,
-    preparedGeometry: Boolean=false,depthFormatInput: Boolean=false) extends Module {
+    preparedGeometry: Boolean=false,depthFormatInput: Boolean=false,groupedTexture: Boolean=false) extends Module {
   require(p.varyings==f.varyings,"vertex and fragment interface capacities must match")
   payload.foreach(q=>require(payloadOwner>=0 && payloadOwner+1<q.owners))
   private val shaderConfig=shared.copy(shaderPayload=None);private val payloadConfig=payload
   val io=IO(new Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureRendererPorts(shaderConfig.numComputeUnits,if(preparedGeometry)1 else 2))else None
     val draw=Flipped(Decoupled(new VertexFragmentDraw(p,f)));val out=Decoupled(new FragmentShaderQuad(f,g))
     val primitive=if(preparedGeometry)Some(Input(new WindowPrimitive(p)))else None
     val depthFormat=if(depthFormatInput)Some(Input(UInt(3.W)))else None
@@ -46,10 +47,17 @@ class VertexFragmentPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageC
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,8)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner,centroidInput=true,depthFormatInput=true)))else None
-  private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1))
+  private val vertex=if(!preparedGeometry)Some(Module(new VertexRasterPipeline(config,p,shaderConfig,g,viewport,useSramBlackBoxes,payload,payloadOwner,centroidInput=true,depthFormatInput=true,groupedTexture=groupedTexture)))else None
+  private val fragment=Module(new FragmentShaderStage(config,f,shaderConfig,g,useSramBlackBoxes,payload,payloadOwner+1,groupedTexture=groupedTexture))
   private val router=Module(new SharedShaderTaskRouter(config,shared.numComputeUnits,2,shared.taskIdWidth,shaderPayload=payload))
   router.io.clients(1)<>fragment.io.shared;io.shared<>router.io.pool
+  if(groupedTexture){
+    val ports=io.grouped.get
+    vertex.foreach{v=>ports.client(0) <> v.io.grouped.get;ports.cuMask(0):=v.io.shared.owned}
+    val fragmentIndex=if(preparedGeometry)0 else 1
+    ports.client(fragmentIndex) <> fragment.io.grouped.get
+    ports.cuMask(fragmentIndex):=fragment.io.shared.owned
+  }
   private val vertexDraw=Wire(Decoupled(new VertexRasterDraw(p)))
   private val vertexOut=Wire(Decoupled(new Fp32RasterizedQuad(p,g)))
   private val vertexCompletion=Wire(Decoupled(new VertexRasterCompletion))

@@ -23,9 +23,10 @@ class VertexClipCompletion extends Bundle {
   */
 class VertexClipPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),useSramBlackBoxes: Boolean=false,
-    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0) extends Module {
+    payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false) extends Module {
   private val sharedConfig=shared;private val payloadConfig=payload
   val io=IO(new Bundle {
+    val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
     val draw=Flipped(Decoupled(new VertexGeometryDraw(p)))
     val out=Decoupled(new ClippedPrimitive(p));val completion=Decoupled(new VertexClipCompletion)
     val shared=Flipped(new SharedCuGraphicsPort(config,sharedConfig.taskIdWidth,sharedConfig.numComputeUnits))
@@ -34,7 +35,8 @@ class VertexClipPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfi
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private val source=Module(new VertexGeometryStage(config,p,shared,useSramBlackBoxes,payload,payloadOwner))
+  private val source=Module(new VertexGeometryStage(config,p,shared,useSramBlackBoxes,payload,payloadOwner,groupedTexture=groupedTexture))
+  if(groupedTexture)io.grouped.get <> source.io.grouped.get
   private val clipper=Module(new PrimitiveClipStage(p,useSramBlackBoxes))
   private val active=RegInit(false.B);private val sourceOffered=RegInit(false.B);private val sourceStarted=RegInit(false.B)
   private val descriptor=Reg(new VertexGeometryDraw(p));private val sourceDone=RegInit(false.B)
