@@ -1,0 +1,106 @@
+{
+  "updated_utc": "2026-10-21T08:06:05.458340+00:00",
+  "status": "Eight component/actual-pixel/default-capacity checks, one default emission and standalone1000ps synthesis pass. Native host command/discovery integration remains absent; Q01/H6 remain open.",
+  "source_files": 873,
+  "manifest_sha256": "99d0c124b30794ed819056eea7d1d10df41d283a0e73b6cdb77b99f93d6601f8",
+  "archive_sha256": "3a850071d0cd240d817bd8198e19de496723cb5d44928f3aa8c2205233aec66a",
+  "scope": "Direct internal query engine; no published native host query opcodes or API capability. Existing869 texture milestone inputs are unchanged.",
+  "checks": [
+    {
+      "tests": 6,
+      "result": ".artifacts/mobile-visibility-query-v1-units-result.json",
+      "result_sha256": "7a21312cae8d679d27f5d0579e83676fc5754441a3a6630c1f7327f0599e4d4e",
+      "log_sha256": "7f6e3b7b7ea87e44451b23b92cb42fe41a1796ea35f2a0390b4f09a8cb633ba3"
+    },
+    {
+      "tests": 1,
+      "result": ".artifacts/mobile-visibility-query-pixel-v1-result.json",
+      "result_sha256": "1b6417efb1e0e43863db731be541f3235028bd2e795803364ea84bdacbd52064",
+      "log_sha256": "6527d40fb8a5e9259d32743fe35ee04c85174a1b2916c58b1ad807447132c724"
+    },
+    {
+      "tests": 1,
+      "result": ".artifacts/mobile-visibility-query-default-v1-result.json",
+      "result_sha256": "6983799de738b60a28c1d8661b37f8fddbee0ab39a6c3f7a298c71772078e589",
+      "log_sha256": "979998cf3c1c52016ed5e5e0b2f41aba352566c3e66effe2f34c59b6c0c29a2a"
+    }
+  ],
+  "functional_tests": 8,
+  "emissions": 1,
+  "active_contexts_default": 8,
+  "producers_default": 2,
+  "physical_memory_transactions": 1,
+  "memory_transaction_id": 0,
+  "record_bytes": 64,
+  "result_storage": "GPU records; completed unread records hold no active slots",
+  "publications": "Begin resets availability/value; end stores full boolean/status record and retains the active row until acknowledgement.",
+  "identity": [
+    "context",
+    "full VM root",
+    "record address",
+    "cookie",
+    "target kind at end"
+  ],
+  "memory_root": "Captured at command acceptance, stable on memorySatp through delayed memory acceptance/acknowledgement.",
+  "actual_pixel_integration": {
+    "scopes": 4,
+    "results": [
+      false,
+      false,
+      true,
+      true
+    ],
+    "sample_mode": 4,
+    "tested_samples": 7,
+    "passing_samples": 3,
+    "color_writes": 0,
+    "checks": [
+      "empty",
+      "late depth rejection",
+      "discard",
+      "helper exclusion",
+      "selected sample mask",
+      "no depth attachment/test",
+      "held quad replies",
+      "acknowledged GPU result records"
+    ]
+  },
+  "default_capacity_test": {
+    "active_contexts": 8,
+    "capacity_failure_on_ninth": true,
+    "simultaneous_producers": 2,
+    "isolated_results": 8,
+    "unread_results_release_slots": true
+  },
+  "faults_and_reset": "Owned memory offers remain irrevocable; memory/renderer primary fault precedes cancellation. Reset clears active context state after renderer and memory drain; unfinished resource cookies must be reinitialized.",
+  "synthesis": {
+    "state": "passed",
+    "period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "retiming": false,
+    "stage": "synthesis",
+    "start": ".artifacts/mobile-visibility-query-synthesis-v1-start.json",
+    "core_slack_ps": 277.509,
+    "io_slack_ps": 423.249,
+    "skipped_instances": 0,
+    "mapped_cells": 11241,
+    "library_area": 1489.79898,
+    "SRAM_macros": 0,
+    "qualification": "generated/qualification/ppa/mobile-visibility-query-2026-10-21-v1/qualification.json",
+    "qualification_sha256": "004b3dbb8b15411d616f50fa92eb51d2671b6559c80bece5022d35e3216f5f22",
+    "scope": "Default eight-context/two-producer component only; no whole-host timing claim."
+  },
+  "remaining": [
+    "ordered command transport and capability/record ABI discovery",
+    "typed/binned native host sample/job-fault context and root hooks",
+    "query memory translation/coherent publication and protection integration",
+    "whole-host command/reset/VM tests",
+    "composed synthesis and all other H0-H8 requirements"
+  ],
+  "emission_result": ".artifacts/mobile-visibility-query-v1-emission-result.json",
+  "emission_result_sha256": "1b0cc0536e24037d7b431c634cbb97e1fd7f10899635e170a4291f79beffe9df",
+  "native_host_followup": "mobile-visibility-query-host-2026-10-21.json",
+  "historical_scope_note": "This873-input component checkpoint precedes the separate886-input native host milestone. Its original absent-host list describes that earlier source,not the current follow-up."
+}

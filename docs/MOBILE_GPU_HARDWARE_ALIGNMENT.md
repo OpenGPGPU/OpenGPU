@@ -7305,3 +7305,39 @@ The new critical path ends at planner admission metadata. Its frozen
 source and mapping are preserved separately from the128-row shared-window
 composition, whose timing remains pending. No clock relaxation or retiming
 was applied.
+
+
+## H6 GPU-memory visibility query component
+
+The [visibility-query component](VISIBILITY_QUERIES.md) adds bounded active
+context/root ownership and64-byte GPU result records. Completed unread results
+release their scarce active slots. Eight checks cover control lifetime,default
+eight-context capacity,two simultaneous producers,and a real late-pixel path
+with depth rejection,discard/helpers,sample masks and zero color writes. One
+default emission passes; standalone1000ps synthesis passes core+277.509ps
+and I/O+423.249ps with zero skipped instances. Native host wiring and tests are qualified separately below. This remains a
+component timing screen; API support,composed timing and Q01/H6 completion are
+open.
+
+## H6 native visibility-query transport validation
+
+The optional typed/binned native host now connects the GPU-memory boolean query
+engine through ordered commands8..11, GQV1 discovery at0x240, captured opaque
+context/root sample and job-fault hooks, and a dedicated translated record
+client. Opcode bit3 is published in completion bit16, preserving all old ID,
+status and success fields. Record accesses honor the allocation PTE cache
+policy; reset/VM drain includes query ownership without feeding query busy
+back into its own renderer-idle barrier.
+
+The [886-input host checkpoint](performance/mobile-visibility-query-host-2026-10-21.json)
+passes35 fresh checks:seven transport/MMIO/fabric checks,21 existing command
+checks,one extended-opcode rejection check and six actual AXI tests. Both
+payload modes complete26 frames,138 query commands,six empty scopes and10
+reset cuts (six record-write cuts plus four native shader-read cuts). Exact
+query/image reuse,opaque context/root/cookie attribution,VM protection and
+queued-DMA cancellation pass. Eight prior component/pixel checks carry within
+their exact scope,for43 distinct checks across the milestone. Generated ABI
+comparison,131072 C decoding/layout cases and three typed,binned/full-product
+emissions also pass. Runtime is reduced capacity; full-capacity runtime,API
+support,composed timing and Q01/H6 completion remain open. Implementation,
+tests and documentation form one milestone commit.

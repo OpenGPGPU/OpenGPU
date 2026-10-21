@@ -64,13 +64,15 @@ class GpuHostAxi(
   useTileSramBlackBoxes: Boolean = false,
   externalBinnedRender: Boolean = false,
   nativeCompletionInfo: Boolean = false,
-  nativeVertexInput: Boolean = false
+  nativeVertexInput: Boolean = false,
+  visibilityQueries: Boolean = false
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
   require(!externalBinnedRender || (unifiedCommandMmio && protectVmState && !persistentAttachments))
   require(!nativeCompletionInfo || externalBinnedRender)
   require(!nativeVertexInput || externalBinnedRender)
+  require(!visibilityQueries || nativeVertexInput)
   override def desiredName: String = "GpuHostAxi"
 
   val io = IO(new Bundle {
@@ -149,6 +151,9 @@ class GpuHostAxi(
     val binCapabilityWords = if (externalBinnedRender) Some(Input(Vec(8,UInt(32.W)))) else None
     val binDrained = if (externalBinnedRender) Some(Input(Bool())) else None
     val binCancel = if (externalBinnedRender) Some(Output(Bool())) else None
+    val queryCommand=if(visibilityQueries)Some(Decoupled(new opengpu.graphics.VisibilityQueryCommand))else None
+    val queryReply=if(visibilityQueries)Some(Flipped(Decoupled(new opengpu.graphics.VisibilityQueryReply)))else None
+    val renderQueryContext=if(visibilityQueries)Some(Output(UInt(32.W)))else None
 
     // Renderer shared-memory ports (command buffer + framebuffer words, and the
     // core-backed shader kernel's line/coherence side ports) pass straight
@@ -218,7 +223,7 @@ class GpuHostAxi(
     host.io.renderCompletion.ready := false.B
     unified.foreach { bridge =>
       if (externalBinnedRender) {
-        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo))
+        val port=Module(new TileBinHostCommandPort(gpuConfig,commandIdWidth,nativeCompletionInfo,visibilityQueries))
         port.io.command <> bridge.io.command
         io.binSubmit.get <> port.io.submit
         port.io.renderCompletion <> io.binCompletion.get
@@ -229,6 +234,11 @@ class GpuHostAxi(
           bridge.io.completionDetails.get:=port.io.completionDetails.get}
         port.io.dependencyIdle:=io.graphicsDependencyIdle.get && host.io.drained
         port.io.renderIdle:=io.binDrained.get
+        if(visibilityQueries){
+          io.queryCommand.get <> port.io.queryCommand.get
+          port.io.queryReply.get <> io.queryReply.get
+          io.renderQueryContext.get:=port.io.renderQueryContext.get
+        }
         port.io.resetActive:=bridge.io.resetActive
         io.binCancel.get:=port.io.cancel
         host.io.externalRenderBusy.get:=port.io.renderPending
@@ -371,8 +381,10 @@ class GpuHostAxi(
     val targetRaster=if(nativeVertexInput)beatAddr>=NativeRasterCapabilities.base.U && beatAddr<NativeRasterCapabilities.end.U else false.B
     val targetTexturePolicy=if(nativeVertexInput)beatAddr>=opengpu.graphics.NativeTextureCapabilities.base.U && beatAddr<opengpu.graphics.NativeTextureCapabilities.end.U else false.B
     val targetTextureFormats=if(nativeVertexInput)beatAddr>=opengpu.graphics.NativeTextureFormatCapabilities.base.U && beatAddr<opengpu.graphics.NativeTextureFormatCapabilities.end.U else false.B
+    val targetVisibilityQueries=if(visibilityQueries)beatAddr>=opengpu.graphics.NativeVisibilityQueryCapabilities.base.U &&
+      beatAddr<opengpu.graphics.NativeVisibilityQueryCapabilities.end.U else false.B
     val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
-      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster)
+      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -388,13 +400,13 @@ class GpuHostAxi(
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
           beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails
-    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster
+    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)
     reg.req.bits.data := io.s_axi_wdata
     reg.req.bits.strb := io.s_axi_wstrb
     unified.foreach { bridge =>
-      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster
+      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries
       bridge.io.reg.req.bits.isWrite := writeActive
       bridge.io.reg.req.bits.addr := beatAddr(9, 0)
       bridge.io.reg.req.bits.data := io.s_axi_wdata
@@ -442,6 +454,10 @@ class GpuHostAxi(
       if(nativeVertexInput)when(targetRaster){
         rdata:=VecInit(NativeRasterCapabilities.words(config.maxSampleCount).map(_.U(32.W)))(((beatAddr-NativeRasterCapabilities.base.U)>>2)(2,0))
       }
+      if(visibilityQueries)when(targetVisibilityQueries){
+        rdata:=VecInit(opengpu.graphics.NativeVisibilityQueryCapabilities.words.map(_.U(32.W)))(
+          ((beatAddr-opengpu.graphics.NativeVisibilityQueryCapabilities.base.U)>>2)(2,0))
+      }
       when(rBeatFire) {
         when(lastBeat) {
           readActive := false.B
@@ -481,7 +497,7 @@ class GpuHostAxi(
       val normalRegisterOk = unified.map(bridge =>
         Mux(targetUnified, bridge.io.reg.resp.bits.ok, reg.resp.bits.ok))
         .getOrElse(reg.resp.bits.ok)
-      val registerOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && normalRegisterOk
+      val registerOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && normalRegisterOk
       when(!beatOk || !registerOk) { writeError := true.B }
       when(io.s_axi_wlast) {
         bPending := true.B

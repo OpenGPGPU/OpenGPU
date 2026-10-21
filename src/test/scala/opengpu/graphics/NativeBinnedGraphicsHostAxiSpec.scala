@@ -9,6 +9,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHostTestSupport {
+  protected def visibilityQueries: Boolean=false
   protected def virtualImages: Boolean=false
   protected def groupedTexture: Boolean=false
   protected def sharedTextureReset: Boolean=false
@@ -21,7 +22,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     translateImageViews=virtualImages,groupedTexture=groupedTexture)
   private def host(local: Boolean)=new GpuHostSystemAxi(graphics,gpu,numComputeUnits=if(groupedTexture)4 else 2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
     memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-    exposePerformance=true,nativeBinnedGraphics=Some(profile(local)))
+    exposePerformance=true,nativeBinnedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)
   private def parkMemory(d: GpuHostSystemAxi): Unit={
     // MMIO can advance the DUT between driver calls. Accept no memory request
     // until serviceMemoryMaster owns and records every AXI handshake.
@@ -281,7 +282,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       if(virtualImages)assert(!(reads++writes).exists(a=>a>=imageVaBase && a<imageVaBase+0x100000),"image VAs must be translated before physical AXI")}
     def read(a: BigInt): BigInt={reads+=a;val base=a& ~BigInt(63);(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(base+b,0))<<(b*8)))}
     def write(a: BigInt,data: BigInt,mask: BigInt): Unit={writes+=a;for(b<-0 until 64 if mask.testBit(b))memory(a+b)=((data>>(b*8))&255).toInt}
-    def submit(id: Int=23,bytes: Int=512): Unit={parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
+    val queryProbe=if(visibilityQueries)Some(new NativeVisibilityQueryHostProbe(d,memory,read,write))else None
+    def submit(id: Int=23,bytes: Int=512): Unit={queryProbe.foreach(_.beforeFrame());parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
       axiWrite(d,GpuCommandMmioRegs.SOURCE,(region+0x10000).toInt);axiWrite(d,GpuCommandMmioRegs.DESTINATION,(region+0x10200).toInt)
       axiWrite(d,GpuCommandMmioRegs.BYTES,bytes);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)}
     def run(status: Int=0,id: Int=23,readFault: BigInt=>Boolean=_=>false,writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false): Unit={
@@ -291,10 +293,11 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),
         s"native binned completion=${result.toString(16)} expectedStatus=$status GNX1=${details.map(_.toString(16)).mkString(",")}")
       assert(details.head==BigInt("474e5801",16) && (details(1)&7)==status && details(11)==0)
+      queryProbe.foreach(_.completed(status))
       if(status==0)assert(details(1)==0 && details(5)==0 && details.slice(6,9)==Seq[BigInt](7,8,generation))
     }
     def pop(): Unit={axiWrite(d,GpuCommandMmioRegs.COMPLETION_POP,1);axiWrite(d,RenderHostRegs.IRQ,3)
-      for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"popped native details must not remain visible")}
+      for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"popped native details must not remain visible");queryProbe.foreach(_.afterFrame())}
     def consumer(id: Int): BigInt={parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,0)
       axiWrite(d,GpuCommandMmioRegs.KERNEL_PC,0x403000);axiWrite(d,GpuCommandMmioRegs.KERNARG,(region+0x130000).toInt)
       for(a<-Seq(GpuCommandMmioRegs.GRID_X,GpuCommandMmioRegs.GRID_Y,GpuCommandMmioRegs.GRID_Z,GpuCommandMmioRegs.LOCAL_X,GpuCommandMmioRegs.LOCAL_Y,GpuCommandMmioRegs.LOCAL_Z))axiWrite(d,a,1)
@@ -414,6 +417,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
           assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
           for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"reset retained aborted native details")
           axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+          image.queryProbe.foreach(_.aborted())
           info(s"NATIVE_SHARED_BINNED_RESET_CUT local=$local CUs=4 mode=$mode stage=${if(mode==0)"vertex"else"fragment"} payloadBytes=$live actualSharedDataWalks=true outstandingPhysicalRead=true queuedDMAAborted=true VMWriteRejectedUntilDrain=true abortedCompletionDiscarded=true")
         }
         val published=if(sharedTextureReset)raw ^ BigInt(0x00ffffffL)else raw
@@ -430,6 +434,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         image.pop();frames+=1
       }
       assert(frames==2)
+      image.queryProbe.foreach(_.report(if(sharedTextureReset)"RESET"else"BINNED",local,frames,if(sharedTextureReset)frames else 0))
       if(sharedTextureReset)info(s"NATIVE_SHARED_BINNED_RESET_AXI local=$local CUs=4 frames=$frames resets=$frames engines=2 exactMRTDepthResolve=true vertexAndFragmentResetCuts=true actualSharedDataWalks=true sameAddressNewPatternAfterReset=true modes1x4x=true queuedDMAAborted=true payloadAndPhysicalDrain=true")
       else info(s"NATIVE_SHARED_BINNED_AXI local=$local CUs=4 frames=$frames engines=2 exactMRTDepthResolve=true bothStages=true realSv32=true actualSharedDataWalks=true sameAddressDMAPublication=true modes1x4x=true heldCompletionPinsVM=true")
     }

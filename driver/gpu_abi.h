@@ -320,6 +320,11 @@ typedef int32_t s32;
  * Flags must be zero. Completion bytes count requested append-line bytes,
  * including padding/faults, excluding descriptor reads. */
 #define GPU_UCMD_OP_BIN_RENDER   7u
+/* GQV1 discovery at0x240 is required before using these query commands. */
+#define GPU_UCMD_OP_QUERY_BEGIN  8u
+#define GPU_UCMD_OP_QUERY_END    9u
+#define GPU_UCMD_OP_QUERY_POLL   10u
+#define GPU_UCMD_OP_QUERY_RESULT 11u
 #define GPU_BIN_JOB_MAGIC        0x47424a01u
 #define GPU_BIN_JOB_WORDS        128u
 #define GPU_BIN_JOB_BYTES        512u
@@ -408,7 +413,7 @@ struct gpu_tile_clear_payload {
 #define GPU_UCMD_STATUS_RESET_REJECTED (1u << 4)
 #define GPU_UCMD_RESET_REQUEST     (1u << 0)
 #define GPU_UCMD_COMPLETION_ID(v)      ((v) & 0xffu)
-#define GPU_UCMD_COMPLETION_OPCODE(v)  (((v) >> 8) & 0x7u)
+#define GPU_UCMD_COMPLETION_OPCODE(v)  ((((v) >> 8) & 0x7u) | ((((v) >> 16) & 1u) << 3))
 #define GPU_UCMD_COMPLETION_STATUS(v)  (((v) >> 11) & 0xfu)
 #define GPU_UCMD_COMPLETION_SUCCESS(v) (((v) >> 15) & 0x1u)
 #define GPU_UCMD_RESULT_SUCCESS             0u

@@ -316,9 +316,11 @@ class GpuCommandMmio(
     }
   }
 
-  private val completionMeta = Cat(
-    0.U(16.W), completion.success, completion.status, completion.opcode,
-    completion.commandId)
+  // Preserve every legacy field position. The fourth opcode bit uses reserved
+  // bit16, rather than shifting status/success into a different ABI layout.
+  private val legacyCompletionMeta = Cat(completion.success, completion.status,
+    completion.opcode(2, 0), completion.commandId)
+  private val completionMeta = Cat(0.U(15.W), completion.opcode(3), legacyCompletionMeta.pad(16))
   private val status = Cat(
     0.U(27.W), resetRejected, resetActive, submitOverflow, completionValid,
     queue.io.enq.ready)
