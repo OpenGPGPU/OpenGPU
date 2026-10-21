@@ -6954,6 +6954,25 @@ Synthesis is running separately. Native shader clients, shared-CU cluster
 routing, general fallback/mip/swizzle ownership, whole-renderer rates/visibility
 and main integration remain required. The full H0-H8 goal remains open.
 
+## H4 optional native clients and shared-cluster ownership
+
+The [native client candidate](NATIVE_RGBA8_SHARED_CLIENTS.md) passes
+[73 fresh checks on 841 inputs](performance/mobile-native-rgba8-clients-2026-10-21.json)
+and eight emissions. Both native shader endpoints and both shader-stage
+interfaces can expose the grouped service. Native mip blending and final
+swizzle retain their original ownership, while general formats and unaligned
+words preserve fallback. Four client leases share one 8 KiB cache, retain full
+original tags without cross-client collision, and defer VM/publication fences
+through queued work and public retirement. A second invalidation event after
+an invalidated shared request drains prevents late cache publication.
+
+Default native endpoints retain their qualified logic; the 78-file standalone
+service remains byte exact. The new shared vertex, fragment and 83-file cluster
+have separate synthesis screens running. Renderer/pair placement and global
+physical/PTW ownership remain open. Existing serial native lane/metadata issue
+and one lease/client do not establish the target sustained native rate; those
+pipeline/credit changes, visibility and the remaining H0-H8 gates are required.
+
 ## H4 unquantized FP32 bilinear pipeline
 
 The [streaming native FP32 filter](TEXTURE_BILINEAR_FP32_PIPELINE.md) now passes
