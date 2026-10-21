@@ -36,6 +36,7 @@ class GpuFrontendSpec extends AnyFlatSpec {
       dut.io.fetchResponse.bits.warpId.poke(0.U)
       dut.io.fetchResponse.bits.instruction.poke(0.U)
       dut.io.fetchResponse.bits.accessFault.poke(false.B)
+      dut.io.fetchResponse.bits.executionFault.poke(0.U)
       dut.io.scalarOut.ready.poke(false.B)
       dut.io.fpuOut.ready.poke(true.B)
       dut.io.vectorOut.ready.poke(true.B)
@@ -61,6 +62,7 @@ class GpuFrontendSpec extends AnyFlatSpec {
       dut.io.fetchResponse.valid.poke(true.B)
       dut.io.fetchResponse.bits.instruction.poke("h00100093".U)
       dut.io.fetchResponse.bits.accessFault.poke(false.B)
+      dut.io.fetchResponse.bits.executionFault.poke(0.U)
       dut.io.fetchResponse.ready.expect(true.B)
       dut.io.fetchRequest.valid.expect(true.B)
       dut.io.fetchRequest.bits.warpId.expect(1.U)
@@ -81,6 +83,7 @@ class GpuFrontendSpec extends AnyFlatSpec {
         "b0000000_00000_00001_000_00010_1010011".U
       )
       dut.io.fetchResponse.bits.accessFault.poke(true.B)
+      dut.io.fetchResponse.bits.executionFault.poke(0.U)
       dut.io.fetchResponse.ready.expect(false.B)
 
       dut.io.scalarOut.ready.poke(true.B)

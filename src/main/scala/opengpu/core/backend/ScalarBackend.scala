@@ -168,9 +168,18 @@ class ScalarBackend(
     commit.io.writeback.bits,
     Mux(io.externalWriteback.fire, io.externalWriteback.bits, io.initialize.bits)
   )
-  issue.io.cancel.valid := io.memoryFault.fire && io.memoryFault.bits.writeRd
-  issue.io.cancel.bits.warpId := io.memoryFault.bits.warpId
-  issue.io.cancel.bits.rd := io.memoryFault.bits.rd
+  // The only implemented CSR operation is csrrwi x0,vxrm,zimm. A CSR with
+  // a nonzero destination is rejected by WarpSystemControl and cannot produce
+  // a register result. Release its reservation without a fabricated write.
+  // Rejected-system and memory-fault acknowledgements share the CU trap
+  // arbiter, so their destination cancellations are mutually exclusive.
+  private val rejectedCsr=io.system.fire && io.system.bits.decode.decoded.csr &&
+    io.system.bits.decode.decoded.rd=/=0.U
+  private val failedMemory=io.memoryFault.fire && io.memoryFault.bits.writeRd
+  assert(!(rejectedCsr && failedMemory),"CSR and memory fault cancellations require serialized trap ownership")
+  issue.io.cancel.valid := rejectedCsr || failedMemory
+  issue.io.cancel.bits.warpId := Mux(rejectedCsr,io.system.bits.decode.warpId,io.memoryFault.bits.warpId)
+  issue.io.cancel.bits.rd := Mux(rejectedCsr,io.system.bits.decode.decoded.rd,io.memoryFault.bits.rd)
   io.committedWriteback.valid := commit.io.writeback.fire
   io.committedWriteback.bits := commit.io.writeback.bits
   io.appliedWriteback.valid :=

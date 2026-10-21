@@ -67,7 +67,8 @@ class GpuHostAxi(
   nativeVertexInput: Boolean = false,
   visibilityQueries: Boolean = false,
   transformFeedback: Boolean = false,transformFeedbackSourceWords: Int = 69,
-  primitiveQueries: Boolean = false
+  primitiveQueries: Boolean = false,
+  shaderExecutionLimits: Boolean = false
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
@@ -77,9 +78,11 @@ class GpuHostAxi(
   require(!visibilityQueries || nativeVertexInput)
   require(!transformFeedback || nativeVertexInput)
   require(!primitiveQueries || transformFeedback)
+  require(!shaderExecutionLimits || (nativeVertexInput && protectVmState))
   override def desiredName: String = "GpuHostAxi"
 
   val io = IO(new Bundle {
+    val shaderInstructionLimit = if (shaderExecutionLimits) Some(Output(UInt(32.W))) else None
     val shared = sharedShader.filter(_ => !externalBinnedRender).map(pool => Flipped(new SharedCuGraphicsPort(
       gpuConfig, pool.taskIdWidth, pool.numComputeUnits)))
     val s_axi_aclk = Input(Clock())
@@ -213,6 +216,9 @@ class GpuHostAxi(
       host.io.tileCancel.get := io.commandResetActive.get
     }
     val binCompletionDrained=WireDefault(true.B)
+    val shaderQuota = if (shaderExecutionLimits) Some(RegInit(NativeShaderExecutionCapabilities.defaultQuota.U(32.W))) else None
+    io.shaderInstructionLimit.foreach(_ := shaderQuota.get)
+    val shaderQuotaIdle = WireDefault(false.B)
     io.commandReadsIdle := host.io.commandReadsIdle
     io.graphicsDrained := host.io.drained && io.binDrained.getOrElse(true.B) && binCompletionDrained
     io.performance := host.io.performance
@@ -309,6 +315,7 @@ class GpuHostAxi(
       io.commandResetActive.get := bridge.io.resetActive
       bridge.io.resetDone := io.commandResetDone.get
       bridge.io.vmContextIdle.foreach(_ := io.vmContextIdle.get && host.io.drained && io.binDrained.getOrElse(true.B) && binCompletionDrained)
+      if (shaderExecutionLimits) shaderQuotaIdle := bridge.io.vmStateWriteAllowed.get
     }
     io.vectorSatp := unified.map(_.io.vectorSatp).getOrElse(0.U)
     io.instructionSatp := unified.map(_.io.instructionSatp).getOrElse(0.U)
@@ -358,7 +365,8 @@ class GpuHostAxi(
     val readActive = RegInit(false.B)
     val addrReg = RegInit(0.U(32.W))
     val lenReg = RegInit(0.U(8.W))
-    val sizeReg = RegInit(0.U(3.W))
+    val transferValid = RegInit(false.B)
+    val beatAddress = RegInit(0.U(33.W))
     val burstReg = RegInit(0.U(2.W))
     val beat = RegInit(0.U(8.W))
     val bPending = RegInit(false.B)
@@ -375,11 +383,24 @@ class GpuHostAxi(
     // Reject unsupported sizes/WRAP/reserved bursts and 4 KiB crossings before
     // offering any register mutation. Retain the carry to prevent high-address
     // bursts from wrapping into the low register map.
-    val beatAddrWide=Mux(burstReg===1.U,addrReg+&(beat<<2),Cat(0.U(1.W),addrReg))
-    val beatAddr=beatAddrWide(31,0)
-    val burstEnd=addrReg(11,0)+&Mux(burstReg===1.U,(lenReg+&1.U)<<2,4.U)
-    val transferOk=sizeReg===2.U && burstReg<=1.U && burstEnd<=4096.U &&
-      (burstReg=/=0.U || lenReg<16.U)
+    // Register each beat's complete address and validate the burst at its
+    // address handshake. Neither beat*4+base nor burst-end arithmetic belongs
+    // ahead of the public register-read mux. Preserve the 33rd carry bit so
+    // high-address increments cannot alias the low MMIO map.
+    def validTransfer(address: UInt, length: UInt, size: UInt, burst: UInt): Bool = {
+      val end = address(11,0) +& Mux(burst===1.U, (length+&1.U)<<2, 4.U)
+      size===2.U && burst<=1.U && end<=4096.U && (burst=/=0.U || length<16.U)
+    }
+    val beatAddrWide=beatAddress
+    val beatAddr=beatAddress(31,0)
+    val transferOk=transferValid
+    def advanceBeatAddress(): Unit = {
+      when(burstReg===1.U) {
+        // Retain the previous eight-bit beat counter's wrap behavior even
+        // for a malformed write stream extending beyond its declared length.
+        beatAddress := Mux(beat.andR, Cat(0.U(1.W),addrReg), beatAddress+4.U)
+      }
+    }
     val lastBeat = beat === lenReg
     // RenderHost owns 0x000..0xC4, MSAA_CONFIG at 0x134, and the
     // stencil/blend registers at 0x13C..0x144; the unified block owns
@@ -399,14 +420,19 @@ class GpuHostAxi(
     val targetRaster=if(nativeVertexInput)beatAddr>=NativeRasterCapabilities.base.U && beatAddr<NativeRasterCapabilities.end.U else false.B
     val targetTexturePolicy=if(nativeVertexInput)beatAddr>=opengpu.graphics.NativeTextureCapabilities.base.U && beatAddr<opengpu.graphics.NativeTextureCapabilities.end.U else false.B
     val targetTextureFormats=if(nativeVertexInput)beatAddr>=opengpu.graphics.NativeTextureFormatCapabilities.base.U && beatAddr<opengpu.graphics.NativeTextureFormatCapabilities.end.U else false.B
+    val targetTextureOperations=if(nativeVertexInput)beatAddr>=opengpu.graphics.NativeTextureOperationCapabilities.base.U && beatAddr<opengpu.graphics.NativeTextureOperationCapabilities.end.U else false.B
     val targetVisibilityQueries=if(visibilityQueries)beatAddr>=opengpu.graphics.NativeVisibilityQueryCapabilities.base.U &&
       beatAddr<opengpu.graphics.NativeVisibilityQueryCapabilities.end.U else false.B
     val targetFeedback=if(transformFeedback)beatAddr>=opengpu.graphics.NativeTransformFeedbackCapabilities.base.U &&
       beatAddr<opengpu.graphics.NativeTransformFeedbackCapabilities.end.U else false.B
     val targetPrimitiveQuery=if(primitiveQueries)beatAddr>=opengpu.graphics.NativePrimitiveQueryCapabilities.base.U &&
       beatAddr<opengpu.graphics.NativePrimitiveQueryCapabilities.end.U else false.B
+    val targetShaderCaps = if (shaderExecutionLimits) beatAddr >= NativeShaderExecutionCapabilities.base.U &&
+      beatAddr < NativeShaderExecutionCapabilities.quotaRegister.U else false.B
+    val targetShaderQuota = if (shaderExecutionLimits) beatAddr === NativeShaderExecutionCapabilities.quotaRegister.U else false.B
+    val targetShaderExecution = targetShaderCaps || targetShaderQuota
     val beatOk = transferOk && !beatAddrWide(32) && (beatAddr & 0x3.U) === 0.U &&
-      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery)
+      (beatAddr < mappedEnd || targetBinCapabilities || targetNativeDetails || targetNativeInput || targetFragmentInput || targetTexturePolicy || targetTextureFormats || targetRaster || targetVisibilityQueries || targetFeedback || targetPrimitiveQuery || targetShaderExecution || targetTextureOperations)
 
     val writeBeat = writeActive && !bPending
     val wBeatFire = writeBeat && io.s_axi_wvalid && io.s_axi_wready
@@ -422,13 +448,13 @@ class GpuHostAxi(
         beatAddr === GpuCommandMmioRegs.RESET.U ||
         (beatAddr >= GpuCommandMmioRegs.SAMPLE_MODE.U &&
           beatAddr < GpuCommandMmioRegs.END.U) || targetNativeDetails
-    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback
+    reg.req.valid := busRegValid && beatOk && !targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations
     reg.req.bits.isWrite := writeActive
     reg.req.bits.addr := beatAddr(9, 0)
     reg.req.bits.data := io.s_axi_wdata
     reg.req.bits.strb := io.s_axi_wstrb
     unified.foreach { bridge =>
-      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback
+      bridge.io.reg.req.valid := busRegValid && beatOk && targetUnified && !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetShaderExecution && !targetPrimitiveQuery && !targetTextureOperations
       bridge.io.reg.req.bits.isWrite := writeActive
       bridge.io.reg.req.bits.addr := beatAddr(9, 0)
       bridge.io.reg.req.bits.data := io.s_axi_wdata
@@ -444,7 +470,8 @@ class GpuHostAxi(
       readActive := true.B
       addrReg := io.s_axi_araddr
       lenReg := io.s_axi_arlen
-      sizeReg := io.s_axi_arsize
+      transferValid := validTransfer(io.s_axi_araddr,io.s_axi_arlen,io.s_axi_arsize,io.s_axi_arburst)
+      beatAddress := Cat(0.U(1.W),io.s_axi_araddr)
       burstReg := io.s_axi_arburst
       beat := 0.U
     }
@@ -470,6 +497,9 @@ class GpuHostAxi(
       if(nativeVertexInput)when(targetTextureFormats){
         rdata:=VecInit(opengpu.graphics.NativeTextureFormatCapabilities.words.map(_.U(32.W)))(((beatAddr-opengpu.graphics.NativeTextureFormatCapabilities.base.U)>>2)(2,0))
       }
+      if(nativeVertexInput)when(targetTextureOperations){
+        rdata:=VecInit(opengpu.graphics.NativeTextureOperationCapabilities.words.map(_.U(32.W)))(((beatAddr-opengpu.graphics.NativeTextureOperationCapabilities.base.U)>>2)(3,0))
+      }
       if(nativeVertexInput)when(targetFragmentInput){
         rdata:=VecInit(NativeFragmentInputCapabilities.words(config.maxSampleCount).map(_.U(32.W)))(((beatAddr-NativeFragmentInputCapabilities.base.U)>>2)(1,0))
       }
@@ -488,11 +518,19 @@ class GpuHostAxi(
         rdata:=VecInit(opengpu.graphics.NativePrimitiveQueryCapabilities.words.map(_.U(32.W)))(
           ((beatAddr-opengpu.graphics.NativePrimitiveQueryCapabilities.base.U)>>2)(2,0))
       }
+      if (shaderExecutionLimits) {
+        when(targetShaderCaps) {
+          rdata := VecInit(NativeShaderExecutionCapabilities.words.map(_.U(32.W)))(
+            ((beatAddr - NativeShaderExecutionCapabilities.base.U) >> 2)(2, 0))
+        }
+        when(targetShaderQuota) { rdata := shaderQuota.get }
+      }
       when(rBeatFire) {
         when(lastBeat) {
           readActive := false.B
         }.otherwise {
           beat := beat + 1.U
+          advanceBeatAddress()
         }
       }
     }
@@ -516,23 +554,33 @@ class GpuHostAxi(
       writeActive := true.B
       addrReg := io.s_axi_awaddr
       lenReg := io.s_axi_awlen
-      sizeReg := io.s_axi_awsize
+      transferValid := validTransfer(io.s_axi_awaddr,io.s_axi_awlen,io.s_axi_awsize,io.s_axi_awburst)
+      beatAddress := Cat(0.U(1.W),io.s_axi_awaddr)
       burstReg := io.s_axi_awburst
       beat := 0.U
       bPending := false.B
       writeError := false.B
     }
     io.s_axi_wready := writeBeat
+    val shaderQuotaWriteOk = WireDefault(false.B)
+    if (shaderExecutionLimits) {
+      val mask = Cat((0 until 4).reverse.map(i => Fill(8, io.s_axi_wstrb(i))))
+      val merged = (shaderQuota.get & ~mask) | (io.s_axi_wdata & mask)
+      shaderQuotaWriteOk := shaderQuotaIdle && merged =/= 0.U
+      when(wBeatFire && beatOk && targetShaderQuota && shaderQuotaWriteOk) { shaderQuota.get := merged }
+    }
     when(wBeatFire) {
       val normalRegisterOk = unified.map(bridge =>
         Mux(targetUnified, bridge.io.reg.resp.bits.ok, reg.resp.bits.ok))
         .getOrElse(reg.resp.bits.ok)
-      val registerOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && normalRegisterOk
+      val legacyRegisterOk = !targetBinCapabilities && !targetBinDiscovery && !targetNativeInput && !targetFragmentInput && !targetTexturePolicy && !targetTextureFormats && !targetRaster && !targetVisibilityQueries && !targetFeedback && !targetPrimitiveQuery && !targetTextureOperations && normalRegisterOk
+      val registerOk = Mux(targetShaderExecution, targetShaderQuota && shaderQuotaWriteOk, legacyRegisterOk)
       when(!beatOk || !registerOk) { writeError := true.B }
       when(io.s_axi_wlast) {
         bPending := true.B
       }.otherwise {
         beat := beat + 1.U
+        advanceBeatAddress()
       }
     }
 

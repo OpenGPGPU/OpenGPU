@@ -4,7 +4,7 @@ import chisel3._
 import opengpu.config.GpuConfig
 
 /** Unified RV32I + F/D/Zfh + RVV instruction classifier. */
-class FullInstructionDecoder(config: GpuConfig = GpuConfig()) extends Module {
+class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true) extends Module {
   val io = IO(new Bundle {
     val instruction = Input(UInt(32.W))
     val decoded = Output(new FullDecodeSignals)
@@ -40,7 +40,12 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig()) extends Module {
     )
   }
 
-  when(vectorDecoder.io.decoded.valid && config.enableVector.B) {
+  // Vector-vector FP uses its own RF and execution units. VF operands and
+  // vfmv.f.s additionally require the scalar FP register file/backend.
+  private val vectorNeedsScalarFpu =
+    vectorDecoder.io.decoded.readsFloat || vectorDecoder.io.decoded.writesFloat
+  when(vectorDecoder.io.decoded.valid && config.enableVector.B &&
+      (scalarFpuAvailable.B || !vectorNeedsScalarFpu)) {
     io.decoded.legal := true.B
     io.decoded.executionType := ExecutionType.vector
     io.decoded.vector := vectorDecoder.io.decoded
@@ -48,7 +53,7 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig()) extends Module {
 
   // FPU retains the original final priority, although architectural encodings
   // make the enabled FPU and vector instruction families mutually exclusive.
-  when(fpuDecoder.io.decoded.valid && config.enableFpu.B) {
+  when(fpuDecoder.io.decoded.valid && config.enableFpu.B && scalarFpuAvailable.B) {
     io.decoded.legal := true.B
     io.decoded.executionType := ExecutionType.fpu
     io.decoded.fpu := fpuDecoder.io.decoded

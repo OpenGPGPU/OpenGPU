@@ -1,0 +1,70 @@
+{
+  "passed": true,
+  "returncode": 0,
+  "tests": 47,
+  "expected_tests": 47,
+  "test_counts": [
+    24,
+    23
+  ],
+  "emissions": 5,
+  "source_files": 1022,
+  "source_unchanged": true,
+  "source_manifest": ".artifacts/mobile-shared-cluster-main-composition-v1-source.json",
+  "elapsed_seconds": 1083.7962451248895,
+  "active_RTL_identity": {
+    "cluster": {
+      "active_RTL_byte_identical": true,
+      "old_files": 87,
+      "new_files": 87,
+      "differing_files": []
+    },
+    "native-vertex": {
+      "active_RTL_byte_identical": false,
+      "old_files": 85,
+      "new_files": 85,
+      "differing_files": [
+        "NativeShaderTextureUnit.sv"
+      ]
+    },
+    "native-fragment": {
+      "active_RTL_byte_identical": false,
+      "old_files": 85,
+      "new_files": 85,
+      "differing_files": [
+        "NativeShaderTextureUnit.sv"
+      ]
+    }
+  },
+  "all3_prior_timing_carry_allowed": false,
+  "scope": "Registered native instruction cancellation selection removes live cancel from context/lane identity mux while capturing pulses in owned status.47 checks include prior table-admission/cluster/cold cases,4 instruction-stream and23 actual-native lane-stream checks, including four warm shared-window/reset cases. Current-main GSL/GTO1/query/MMIO composition; all qualified parent source bytes retained.47 checks and five fresh default emissions. Prior cluster/native timing carries only when complete active RTL files are byte-identical; any changed profile needs a fresh strict screen. No whole-host/product timing claim.",
+  "main_parent": "411f9683665d0e21716c2064bc355a9692ef5121",
+  "candidate_parent": "8cb9823b13e28d0abcfa06e0925f1024ab33f4d3",
+  "source_manifest_sha256": "e6af62d4146344ff4bafc85747114778db85896a8de4aaec18f7c381d43e5bf0",
+  "cluster_synthesis": {
+    "passed": true,
+    "complete87_active_RTL_files_byte_identical": true,
+    "core_ps": 42.104,
+    "IO_ps": 301.056,
+    "skipped_instances": 0,
+    "prior_result": ".artifacts/mobile-shared-cluster-timing-synthesis-v2-cluster-carry.json"
+  },
+  "native_endpoint_composition_synthesis": "pending fresh strict1000ps25percentIO standardABC no retiming zero skipped",
+  "native_RTL_change": "Only new two-bit executionFault input declaration in NativeShaderTextureUnit; complete activeRTL no longer byte-identical, so prior endpoint timing is not carried. All other84 activefiles per endpoint identical.",
+  "prior_endpoint_slacks_historical_only": {
+    "native_vertex": [
+      84.51,
+      151.59
+    ],
+    "native_fragment": [
+      73.547,
+      157.244
+    ]
+  },
+  "remaining": [
+    "Fresh strict native vertex and fragment synthesis after one existing large synthesis slot is free",
+    "Main promotion after endpoint timing qualification",
+    "Whole-host PPA, broader texture precision/format/coherence/rates and H0-H8 gates"
+  ],
+  "main_promoted": false
+}

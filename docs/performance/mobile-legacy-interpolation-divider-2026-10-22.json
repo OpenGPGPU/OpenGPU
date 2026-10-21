@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-22",
+  "scope": "Exact signed129/96 division with low32 wrap, prerequisite for legacy interpolation timing repair. No weighted-product/interpolation/full-host closure claim.",
+  "source_manifest": ".artifacts/mobile-legacy-interpolation-divider-v1-source.json",
+  "source_files": 1002,
+  "functional": {
+    "passed": true,
+    "returncode": 0,
+    "test_counts": [
+      4
+    ],
+    "tests": 4,
+    "source_unchanged": true,
+    "source_files": 1002,
+    "elapsed_seconds": 65.81749300006777,
+    "RTL_sha256": {
+      "generated/mobile-h6/legacy-interpolation-divider-v1-rtl/BlockPrefixAdder.sv": "7d5ad3d611e75f5a98b3c8265117c30c9bc7a7f7b75519faa391a97d45b1781e",
+      "generated/mobile-h6/legacy-interpolation-divider-v1-rtl/BlockPrefixAdder_1.sv": "2e48eb9805364ae9490ec07619a7b4130ea46a8fc5d6c5fa668c83aa22a47c4f",
+      "generated/mobile-h6/legacy-interpolation-divider-v1-rtl/BlockPrefixAdder_131.sv": "55e69952549c7e50a47267924f27b4b31527d247a55d741762341668b6782832",
+      "generated/mobile-h6/legacy-interpolation-divider-v1-rtl/BlockPrefixAdder_2.sv": "8c31239456ffc88f9109bd130e87209b72de6fbe6bfb8a9fd9fbf59499e334dc",
+      "generated/mobile-h6/legacy-interpolation-divider-v1-rtl/PipelinedSignedDivider.sv": "be721918362e402044bf82f75bbb2621bbbd08ead157296990e189a0fa0000f9"
+    },
+    "markers": [
+      "PIPELINED_SIGNED_DIVIDE n=1 d=1 q=1 group=1 checked=388 inputII1=true outputII1=true lowBitsWrap=true stallsStable=true latency=3 ",
+      "PIPELINED_SIGNED_DIVIDE n=5 d=3 q=3 group=1 checked=642 inputII1=true outputII1=true lowBitsWrap=true stallsStable=true latency=7 ",
+      "PIPELINED_SIGNED_DIVIDE n=32 d=32 q=32 group=8 checked=409 inputII1=true outputII1=true lowBitsWrap=true stallsStable=true latency=34 ",
+      "PIPELINED_SIGNED_DIVIDE n=129 d=96 q=32 group=8 checked=411 inputII1=true outputII1=true lowBitsWrap=true stallsStable=true latency=131 "
+    ],
+    "scope": "Exact signed129/96 quotient low32 wrap with II1; small/full-width boundaries, ordered streaming/stalls/reset and default emission. Arithmetic building block for legacy timing repair; weighted products, fragment/UV integration and full host timing remain required."
+  },
+  "synthesis": {
+    "result": ".artifacts/mobile-legacy-interpolation-divider-synthesis-v1-default-result.json",
+    "passed": true,
+    "period_ps": 1000,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "IO_fraction": 0.25,
+    "retiming": false,
+    "core_slack_ps": 329.801,
+    "IO_slack_ps": 163.606,
+    "skipped_instances": 0,
+    "SRAM_macros": 0,
+    "scope": "Default129/96 low32 direct component only.",
+    "mapped_cells": 172802,
+    "library_area": 22813.45722,
+    "sequential_area": 8625.2364
+  },
+  "remaining": [
+    "Pipelined weighted products and modular sums",
+    "Real scalar/quad UV, color/alpha/depth and sample-gradient consumer integration",
+    "Full default host core/I/O timing",
+    "Original H0-H8 gates"
+  ]
+}

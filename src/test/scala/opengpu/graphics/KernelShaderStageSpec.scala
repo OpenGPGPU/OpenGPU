@@ -63,8 +63,8 @@ class KernelShaderStageSpec extends AnyFlatSpec {
 
   /** Launch the shader at 0x1000 with kernarg at 0x8000 and run to completion. */
   private def runShader(dut: KernelShaderStage, mem: Mem,
-                        limit: Int = 400, latency: Int = 1): Result = {
-    dut.io.launch.kernelPc.poke(0x1000.U)
+                        limit: Int = 400, latency: Int = 1,pc: Int = 0x1000): Result = {
+    dut.io.launch.kernelPc.poke(pc.U)
     dut.io.launch.kernargAddress.poke(0x8000.U)
     dut.io.launch.localX.poke(3.U)
     dut.io.launch.gridX.poke(1.U)
@@ -161,6 +161,19 @@ class KernelShaderStageSpec extends AnyFlatSpec {
       val result = runShader(dut, mem)
       assert(result.traps.isEmpty, show(result.traps))
       dut.io.completion.bits.success.expect(true.B)
+    }
+  }
+
+  it should "finish an unsupported system shader with an attributed fault and reuse the CU" in {
+    simulate(new KernelShaderStage(GpuConfig(lanes=4,warps=2))) { dut=>
+      idle(dut);val failed=new Mem;failed.putWord(0x1000,BigInt("00100073",16))
+      val fault=runShader(dut,failed)
+      assert(fault.traps==Seq(BigInt(0x1000)->BigInt(2)),show(fault.traps))
+      dut.io.completion.bits.success.expect(false.B);dut.clock.step()
+      val healthy=new Mem;healthy.putWord(0x2000,BigInt("00700293",16));healthy.putWord(0x2004,BigInt("30500073",16))
+      val next=runShader(dut,healthy,pc=0x2000)
+      assert(next.traps.isEmpty,show(next.traps));dut.io.completion.bits.success.expect(true.B)
+      info("SHADER_SYSTEM_TRAP ebreak=true attributedPC=true failedCompletion=true healthyReuse=true sharedArithmeticUnchanged=true")
     }
   }
 

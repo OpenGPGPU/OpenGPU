@@ -121,4 +121,74 @@ class GpuHostAxiOwnershipSpec extends AnyFlatSpec {
       info("AXI_ADDRESS_OWNER simultaneousRounds=8 exactlyOnce=true heldResponses=true noLostPeer=true exactWriteReadback=true")
     }
   }
+
+  it should "stream captured burst addresses without bubbles and retain invalid header rejection through stalls" in {
+    simulate(new GpuHostAxi(gpuConfig = GpuConfig(lanes = 4, warps = 2), unifiedCommandMmio = true,
+      protectVmState = true, externalBinnedRender = true, nativeVertexInput = true,
+      transformFeedback = true, primitiveQueries = true, shaderExecutionLimits = true)) { d =>
+      init(d)
+      val words = Vector[BigInt](0x5000,0x8000,7,8,9,2,3,4)
+      for ((v,i) <- words.zipWithIndex) write(d,GpuCommandMmioRegs.KERNEL_PC+i*4,v.toInt)
+      var transfers = 0; var returned = 0
+      def read(address: BigInt, count: Int, kind: Int, size: Int, values: Vector[BigInt], response: Int = 0): Unit = {
+        d.io.s_axi_araddr.poke(address.U); d.io.s_axi_arlen.poke((count-1).U)
+        d.io.s_axi_arsize.poke(size.U); d.io.s_axi_arburst.poke(kind.U); d.io.s_axi_arvalid.poke(true.B)
+        until(d)(d.io.s_axi_arready.peek().litToBoolean); d.clock.step(); d.io.s_axi_arvalid.poke(false.B)
+        // The accepted header owns validity and address; live pins may change.
+        d.io.s_axi_araddr.poke(BigInt("ffffffff",16).U); d.io.s_axi_arlen.poke(255.U)
+        d.io.s_axi_arsize.poke(7.U); d.io.s_axi_arburst.poke(3.U)
+        for (beat <- 0 until count) {
+          d.io.s_axi_rvalid.expect(true.B)
+          val expected = if (response == 0) values(beat) else BigInt(0)
+          def check(): Unit = {
+            d.io.s_axi_rvalid.expect(true.B); d.io.s_axi_rdata.expect(expected.U)
+            d.io.s_axi_rresp.expect(response.U); d.io.s_axi_rlast.expect((beat==count-1).B)
+          }
+          if (beat % 5 == 2) {
+            d.io.s_axi_rready.poke(false.B)
+            for (_ <- 0 until 3) { check(); d.clock.step() }
+          }
+          d.io.s_axi_rready.poke(true.B); check(); d.clock.step(); returned += 1
+        }
+        d.io.s_axi_rready.poke(false.B); d.io.s_axi_rvalid.expect(false.B); transfers += 1
+      }
+      read(GpuCommandMmioRegs.KERNEL_PC,words.size,1,2,words)
+      read(NativeShaderExecutionCapabilities.base,8,1,2,NativeShaderExecutionCapabilities.words.toVector)
+      read(NativeShaderExecutionCapabilities.base,16,0,2,Vector.fill(16)(NativeShaderExecutionCapabilities.words.head))
+      for ((address,count,kind,size) <- Seq(
+        (BigInt("fffffffc",16),2,1,2), (BigInt(0xffc),2,1,2), (BigInt(0x301),8,1,2),
+        (BigInt(0x300),17,0,2), (BigInt(0x300),4,2,2), (BigInt(0x300),4,3,2),
+        (BigInt(0),256,1,1), (BigInt(0x300),4,1,0), (BigInt(0x300),4,1,3)))
+        read(address,count,kind,size,Vector.empty,2)
+      read(GpuCommandMmioRegs.KERNEL_PC,words.size,1,2,words)
+      info(s"AXI_REGISTERED_BEATS transfers=$transfers beats=$returned noResponseBubbles=true headerCaptured=true stallsStable=true max256=true fourKiBAndCarryRejected=true fixedAndIncrementing=true healthyReuse=true")
+    }
+  }
+
+  it should "advance captured write addresses exactly once under W and B stalls" in {
+    simulate(new GpuHostAxi(gpuConfig = GpuConfig(lanes = 4, warps = 2), unifiedCommandMmio = true)) { d =>
+      init(d)
+      for (kind <- Seq(1,0)) {
+        val values = Vector(31,47,63)
+        d.io.s_axi_awaddr.poke(GpuCommandMmioRegs.SOURCE.U); d.io.s_axi_awlen.poke(2.U)
+        d.io.s_axi_awsize.poke(2.U); d.io.s_axi_awburst.poke(kind.U); d.io.s_axi_awvalid.poke(true.B)
+        until(d)(d.io.s_axi_awready.peek().litToBoolean); d.clock.step(); d.io.s_axi_awvalid.poke(false.B)
+        d.io.s_axi_awaddr.poke(BigInt("fffffffc",16).U); d.io.s_axi_awlen.poke(255.U)
+        d.io.s_axi_awsize.poke(0.U); d.io.s_axi_awburst.poke(3.U)
+        for ((value,i) <- values.zipWithIndex) {
+          d.io.s_axi_wvalid.poke(false.B); d.clock.step(i+1)
+          d.io.s_axi_wdata.poke(value.U); d.io.s_axi_wstrb.poke(15.U); d.io.s_axi_wlast.poke((i==2).B)
+          d.io.s_axi_wvalid.poke(true.B); until(d)(d.io.s_axi_wready.peek().litToBoolean)
+          d.clock.step(); d.io.s_axi_wvalid.poke(false.B)
+        }
+        for (_ <- 0 until 5) { d.io.s_axi_bvalid.expect(true.B); d.io.s_axi_bresp.expect(0.U); d.clock.step() }
+        d.io.s_axi_bready.poke(true.B); d.clock.step(); d.io.s_axi_bready.poke(false.B)
+        for ((value,i) <- values.zipWithIndex) {
+          offerRead(d,GpuCommandMmioRegs.SOURCE+i*4)
+          assert(consumeRead(d)==(if(kind==0){if(i==0)values.last else value}else value))
+        }
+      }
+      info("AXI_REGISTERED_WRITE fixedAndIncrementing=true addressHeaderCaptured=true WStalls=true BStalls=true exactReadback=true")
+    }
+  }
 }

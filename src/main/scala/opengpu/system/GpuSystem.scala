@@ -69,9 +69,11 @@ class GpuSystem(
   enableGraphicsKernels: Boolean = false,
   shaderPayload: Option[ShaderPayloadConfig] = None,
   producerPayloadPins: Int = 0,
-  drainGraphicsPayloadWork: Boolean = false
+  drainGraphicsPayloadWork: Boolean = false,
+  shaderExecutionLimits: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
+  require(!shaderExecutionLimits || enableGraphicsKernels)
   require(!drainGraphicsPayloadWork || (shaderPayload.nonEmpty && enableGraphicsKernels))
   require(shaderPayload.isEmpty || enableGraphicsKernels,"local shader payloads require the shared graphics task interface")
   require(producerPayloadPins>=0 && (producerPayloadPins==0 || shaderPayload.nonEmpty))
@@ -104,6 +106,7 @@ class GpuSystem(
     math.max(1, log2Ceil(totalSystemTransactions))
 
   val io = IO(new Bundle {
+    val graphicsInstructionLimit = if (shaderExecutionLimits) Some(Input(UInt(32.W))) else None
     val graphicsKernels = if (enableGraphicsKernels)
       Some(new SharedCuGraphicsPort(config, commandIdWidth, numComputeUnits)) else None
     val graphicsPayload=shaderPayload.map(p=>Input(Valid(new ShaderPayloadBinding(config,p))))
@@ -244,7 +247,7 @@ class GpuSystem(
         instructionCacheMissEntries,
         vectorCacheSets,
         vectorCacheWays,
-        finishOnTrap = true,shaderPayload=shaderPayload))
+        finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(p,useBlackBoxes,numComputeUnits+1+producerPayloadPins)))
   // The generic compute system has no graphics sampler. Keep the optional
@@ -906,6 +909,15 @@ class GpuSystem(
       unit.io.payload.get.response<>payloadStore.get.io.response(p.owners+cu)
     }
     unit.io.kernel <> dispatcher.io.cuLaunch(cu)
+    if (shaderExecutionLimits) {
+      // graphicsOwner changes after kernel.fire. Snapshot the actual selected
+      // producer on admission, including a graphics task drained during reset.
+      val graphicsAdmission = dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire
+      unit.io.execution.get.instructionLimit := Mux(graphicsAdmission, io.graphicsInstructionLimit.get, 0.U)
+      unit.io.execution.get.interrupt := io.commandResetActive &&
+        (dispatcher.io.graphicsOwner(cu) || graphicsAdmission)
+      when(graphicsAdmission) { assert(io.graphicsInstructionLimit.get =/= 0.U, "native shaders require a nonzero instruction quota") }
+    }
     dispatcher.io.cuCompletion(cu) <> unit.io.completion
     memory.io.cuRequest(cu) <> unit.io.memoryRequest
     unit.io.memoryResponse <> memory.io.cuResponse(cu)

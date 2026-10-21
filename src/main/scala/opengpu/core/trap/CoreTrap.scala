@@ -3,10 +3,13 @@ package opengpu.core.trap
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
+import opengpu.core.frontend.ShaderExecutionFault
 import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.memory.{ScalarMemoryFault, VectorMemoryFault}
 
 object TrapCause {
+  val shaderInstructionLimit = 24
+  val shaderInterrupted = 25
   val instructionAccessFault = 1
   val illegalInstruction = 2
   val loadAddressMisaligned = 4
@@ -40,11 +43,9 @@ class CoreTrapArbiter(config: GpuConfig = GpuConfig()) extends Module {
   scalarEvent.warpId := io.scalar.bits.decode.warpId
   scalarEvent.pc := io.scalar.bits.decode.pc
   scalarEvent.activeMask := io.scalar.bits.decode.activeMask
-  scalarEvent.cause := Mux(
-    io.scalar.bits.decode.instructionAccessFault,
-    TrapCause.instructionAccessFault.U,
-    TrapCause.illegalInstruction.U
-  )
+  scalarEvent.cause := Mux(io.scalar.bits.decode.executionFault===ShaderExecutionFault.instructionLimit.U,TrapCause.shaderInstructionLimit.U,
+    Mux(io.scalar.bits.decode.executionFault===ShaderExecutionFault.interrupted.U,TrapCause.shaderInterrupted.U,
+      Mux(io.scalar.bits.decode.instructionAccessFault,TrapCause.instructionAccessFault.U,TrapCause.illegalInstruction.U)))
   scalarEvent.tval := Mux(
     io.scalar.bits.decode.instructionAccessFault,
     io.scalar.bits.decode.pc,

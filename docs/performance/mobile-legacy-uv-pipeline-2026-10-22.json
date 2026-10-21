@@ -1,0 +1,106 @@
+{
+  "date": "2026-10-22",
+  "scope": "Exact weighted UV arithmetic and production scalar fixed-function sampler integration. Quad helper/color/depth/gradient/full host timing still require repair.",
+  "source_files": 1008,
+  "source_manifest": ".artifacts/mobile-legacy-uv-pipeline-v3-source.json",
+  "source_manifest_sha256": "b106afb32eb9b24d6009023eea9e664d6ec428ba55ba75c65df6c65e4e3f9be9",
+  "functional": {
+    "passed": true,
+    "distinct_checks": 21,
+    "arithmetic_and_consumer_checks": 14,
+    "renderer_checks": 7,
+    "results": [
+      ".artifacts/mobile-legacy-uv-pipeline-v3-result.json",
+      ".artifacts/mobile-legacy-uv-pipeline-v3-render-result.json"
+    ],
+    "arithmetic_UV_cases": 387,
+    "legacy_combinational_UV_controls": 260,
+    "numeric_input_output_II1": true,
+    "numeric_latency_cycles": 146,
+    "numeric_stalls_and_reset": true,
+    "scalar_queued_fragment_checks": 48,
+    "queued_fragments_per_mode": 24,
+    "modulation_modes": [
+      "legacy shift8",
+      "normalized UNORM8"
+    ],
+    "queued_capture": [
+      "fragment color alpha depth edges coverage",
+      "per-sample depths",
+      "texture base width height format maximum level",
+      "wrap policy retained through complete sampler ownership"
+    ],
+    "RenderPipeline_checks": 6,
+    "shared_L2_image_case": {
+      "checks": 1,
+      "actual_images": 2,
+      "sample_modes": [
+        "1x texture",
+        "4x texture blend stencil"
+      ],
+      "exact_reference": true,
+      "fourX_partial_samples": 106
+    },
+    "default_UV_emission": true
+  },
+  "arithmetic": {
+    "edge_bits": 64,
+    "inverseW_bits": 32,
+    "UV_bits": 32,
+    "weight_bits": 96,
+    "denominator_modular_bits": 96,
+    "numerator_modular_bits": 129,
+    "quotient_low_bits": 32,
+    "signed_truncation": "toward zero; exact low bits wrap",
+    "divide_by_zero": "explicit zero and flag; no equivalence claim for legacy undefined division by zero",
+    "product_digit_bits": 16,
+    "product_latencies": {
+      "signed64x32": 6,
+      "signed96x33": 8
+    }
+  },
+  "synthesis": {
+    "status_at_checkpoint": "terminal_pass",
+    "state_file": ".artifacts/mobile-legacy-uv-pipeline-synthesis-v3-state.json",
+    "result_file": ".artifacts/mobile-legacy-uv-pipeline-synthesis-v3-default-result.json",
+    "module": "PipelinedTexUVInterpolator",
+    "payload_bits": 32,
+    "period_ps": 1000,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "IO_fraction": 0.25,
+    "retiming": false,
+    "scope": "Full default weighted UV arithmetic only. Actual scalar consumer metadata/sampler, quad helpers and host timing are not qualified by this screen.",
+    "passed": true,
+    "source_unchanged": true,
+    "RTL_unchanged": true,
+    "core_slack_ps": 108.792,
+    "IO_slack_ps": 448.657,
+    "mapped_cells": 588499,
+    "library_area": 72792.44334,
+    "sequential_area": 24935.2992,
+    "flip_flops": 85512,
+    "SRAM_macros": 0,
+    "skipped_instances": 0
+  },
+  "failure_history": [
+    {
+      "result": ".artifacts/mobile-legacy-uv-pipeline-v1-result.json",
+      "reason": "Compilation rejected payload width member colliding with Chisel Bundle width; renamed width/height fields before simulation."
+    },
+    {
+      "result": ".artifacts/mobile-legacy-uv-pipeline-v2-result.json",
+      "passed": 12,
+      "failed": 2,
+      "reason": "Sampler read live wrap policy after UV output queue advanced/emptied. Original unsigned UV regression selected clamp instead of repeat.",
+      "repair": ".artifacts/mobile-legacy-uv-pipeline-v3-repair-proof.json",
+      "original_failing_tests_unchanged": true
+    }
+  ],
+  "remaining": [
+    "Full scalar sampler/metadata and default host timing",
+    "Quad UV and payload alignment preserving one quad/cycle",
+    "Affine color/alpha/depth and per-sample gradient pipelines",
+    "Full H0-H8 gates"
+  ]
+}

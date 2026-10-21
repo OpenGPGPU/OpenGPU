@@ -1,0 +1,71 @@
+{
+  "date": "2026-10-21",
+  "status": "native_binned_record_memory_capture_recovery_and_continuous_lifetime_pass",
+  "main_baseline": "7420112f9643f8ea809693e5fe83850b0ed7912a",
+  "source_manifest": ".artifacts/mobile-primitive-query-binned-extended-v1-source.json",
+  "source_files": 981,
+  "source_unchanged": true,
+  "fresh_tests": 6,
+  "payload_modes": [
+    "local",
+    "spill"
+  ],
+  "CUs": 4,
+  "lanes_per_CU": 4,
+  "warps_per_CU": 2,
+  "tile_engines": 2,
+  "completed_native_frames": 24,
+  "successful_frames": 18,
+  "expected_failed_frames": 6,
+  "acknowledged_source_primitives": 28,
+  "captured_primitives_inside_query_scopes": 24,
+  "post_end_capture_primitives_ignored": 4,
+  "memory_faults": 16,
+  "memory_permission_faults": 8,
+  "memory_bus_faults": 8,
+  "memory_actions": [
+    "begin",
+    "end",
+    "poll",
+    "result"
+  ],
+  "capture_permission_faults": 2,
+  "capture_final_line_bus_faults": 2,
+  "acknowledged_prefix_lines_per_capture_bus_fault": 2,
+  "missing_capture_lease_draws": 2,
+  "peer_captured_primitives_after_recovery": 16,
+  "continuous_lifetime_frames": 10,
+  "continuous_scope_counts": [
+    4,
+    4
+  ],
+  "paused_draws": 2,
+  "inactive_draws": 2,
+  "accepted_capture_store_reset_cuts": 2,
+  "stale_query_end_rejections_after_reset": 4,
+  "query_record_reset_cuts": 6,
+  "prior_distinct_checks": 41,
+  "total_distinct_checks_across_frozen_checkpoints": 47,
+  "evidence": ".artifacts/mobile-primitive-query-binned-extended-v1-result.json",
+  "production_proof": ".artifacts/mobile-primitive-query-binned-extended-v1-production-proof.json",
+  "invariants": [
+    "Each source primitive counts once before clipping/bin fanout to the two tile engines.",
+    "A failed final capture-line acknowledgement after two successful prefix lines never counts an incomplete primitive.",
+    "Capture permission and missing-lease faults preserve the affected query fault and healthy peer captures.",
+    "One continuous query returns four across two captured frames and paused/inactive draws; two later post-end source captures leave it unchanged.",
+    "Begin/end/poll/result record-memory failures preserve peer scope,complete-record guards and fresh-cookie retry.",
+    "Accepted-store reset drains all owners and rejects stale feedback/query objects; payload reservations release.",
+    "Raw captures,query records and successful source/resolve image guards are exact."
+  ],
+  "PPA": {
+    "policy": "synthesis only",
+    "new_result": false,
+    "production_build_ABI_unchanged": true,
+    "scope": "No new RTL or composed timing/resource claim."
+  },
+  "remaining": [
+    "Full16-lane/eight-warp product runtime and capacity combinations.",
+    "Composed timing/resource/frame budgets and API integration.",
+    "Q02/H6 and the full H0-H8 objective remain partial."
+  ]
+}

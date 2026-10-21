@@ -9,8 +9,13 @@ import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
 abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHostTestSupport {
+  protected def shaderRunningReset: Boolean=false
+  protected def shaderExecutionLimits: Boolean=false
+  protected def shaderAvailabilityFaults: Boolean=false
   protected def visibilityQueries: Boolean=false
   protected def transformFeedback: Boolean=false
+  protected def primitiveQueries: Boolean=false
+  protected def primitiveQueryExtended: Boolean=false
   protected def virtualImages: Boolean=false
   protected def groupedTexture: Boolean=false
   protected def sharedTextureReset: Boolean=false
@@ -23,7 +28,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     translateImageViews=virtualImages,groupedTexture=groupedTexture,transformFeedback=transformFeedback)
   private def host(local: Boolean)=new GpuHostSystemAxi(graphics,gpu,numComputeUnits=if(groupedTexture)4 else 2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
     memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
-    exposePerformance=true,nativeBinnedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries)
+    exposePerformance=true,nativeBinnedGraphics=Some(profile(local)),visibilityQueries=visibilityQueries,primitiveQueries=primitiveQueries)
   private def parkMemory(d: GpuHostSystemAxi): Unit={
     // MMIO can advance the DUT between driver calls. Accept no memory request
     // until serviceMemoryMaster owns and records every AXI handshake.
@@ -284,9 +289,9 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
     def read(a: BigInt): BigInt={reads+=a;val base=a& ~BigInt(63);(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(base+b,0))<<(b*8)))}
     def write(a: BigInt,data: BigInt,mask: BigInt): Unit={writes+=a;for(b<-0 until 64 if mask.testBit(b))memory(a+b)=((data>>(b*8))&255).toInt}
     val queryProbe=if(visibilityQueries)Some(new NativeVisibilityQueryHostProbe(d,memory,read,write))else None
-    def submit(id: Int=23,bytes: Int=512,feedback: Option[(NativeTransformFeedbackHostProbe,Boolean)]=None): Unit={queryProbe.foreach(_.beforeFrame());parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
+    def submit(id: Int=23,bytes: Int=512,feedback: Option[(NativeTransformFeedbackHostProbe,Boolean)]=None,feedbackScope: ()=>Unit=()=>()): Unit={queryProbe.foreach(_.beforeFrame());parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,id);axiWrite(d,GpuCommandMmioRegs.OPCODE,7)
       axiWrite(d,GpuCommandMmioRegs.SOURCE,(region+0x10000).toInt);axiWrite(d,GpuCommandMmioRegs.DESTINATION,(region+0x10200).toInt)
-      axiWrite(d,GpuCommandMmioRegs.BYTES,bytes);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);feedback.foreach{case(p,discard)=>p.stageRender(discard)};axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)}
+      axiWrite(d,GpuCommandMmioRegs.BYTES,bytes);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);feedback.foreach{case(p,discard)=>p.stageRender(discard)};feedbackScope();axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)}
     def run(status: Int=0,id: Int=23,readFault: BigInt=>Boolean=_=>false,writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false): Unit={
       serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=1000000,writeFault=writeFault)(write){d.io.m_irq.peek().litToBoolean}
       val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
@@ -309,25 +314,220 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   }
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
-  if(transformFeedback)for(local<-Seq(true,false))
+  if(shaderAvailabilityFaults)for(local<-Seq(true,false))
+  it should s"trap unavailable scalar FP and VF register references before binned issue local=$local" in {
+    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
+      val shaderWord=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+        .find(_.name=="draw.vertex.geometry.vertex.shaderPc").get.word
+      val unavailable=Seq[BigInt](BigInt("00000553",16),BigInt("0000a507",16),BigInt("02a0d557",16),BigInt("42a01557",16))
+      val prefix=Vector(addi(10,0,7),BigInt("c1027057",16),BigInt("5e00b557",16)) // vmv.v.i v10,1
+      var frames=0
+      for(word<-unavailable;healthy<-Seq(false,true)){
+        image.setup(0);val pc=image.region+0x28000
+        val code=if(healthy)prefix++vertexProgram else Vector(word,BigInt("30500073",16))
+        code.zipWithIndex.foreach{case(w,i)=>image.word(image.pa(pc+4*i),w)}
+        for(draw<-0 until 2)image.word(image.pa(image.region+0x12000+draw*4096+shaderWord*4),pc)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);val id=200+frames
+        image.submit(id);image.run(status=if(healthy)0 else 5,id=id)
+        if(healthy)image.verify()else assert(!image.writes.exists(_>=image.imageBase),"unavailable FP instruction published a binned image")
+        axiWrite(d,0x320,17,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        image.pop();perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+        frames+=1
+      }
+      assert(frames==8)
+      info(s"NATIVE_SHADER_AVAILABILITY_BINNED local=$local CUs=2 engines=2 frames=$frames shaderFaults=4 scalarAdd=true scalarLoad=true vectorScalarRead=true vectorScalarWrite=true rejectedBeforeIssue=true V10Reused=true exactHealthyImages=true payloadReleased=true heldCompletionPinsVM=true")
+    }
+  }
+  if(shaderRunningReset)for(local<-Seq(true,false))
+  it should s"interrupt running binned vertex and fragment loops with owned data replies local=$local" in {
+    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
+      val vertexWord=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+        .find(_.name=="draw.vertex.geometry.vertex.shaderPc").get.word
+      val fragmentWord=TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name=="fragment.shaderPc").get.word
+      def released(): Unit={perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)}
+      for((stage,index)<-Seq("vertex","fragment").zipWithIndex){
+        image.setup(0);val pc=image.region+0x29000;val scratch=image.region+0x1e0000
+        // Native vertex scratch owns region+0x30000, and local payload reads
+        // there legitimately bypass AXI. The loop probe needs a disjoint page.
+        require(scratch >= image.region+0x180000 && scratch+512 <= image.region+0x400000)
+        val code=Vector(scratch|0x2b7,BigInt("0002a303",16),addi(5,5,64),BigInt("ff9ff06f",16))
+        code.zipWithIndex.foreach{case(word,i)=>image.word(image.pa(pc+4*i),word)}
+        for(i<-0 until 8)image.word(image.pa(scratch+i*64),BigInt(i+1))
+        if(stage=="vertex")for(draw<-0 until 2)image.word(image.pa(image.region+0x12000+draw*4096+vertexWord*4),pc)
+        else for(state<-0 until 2)image.word(image.pa(image.region+0x20000+state*512+fragmentWord*4),pc)
+        axiWrite(d,0x320,-1);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(210+index*2)
+        var cut=false
+        serviceMemoryMaster(d,image.read,readResponseDelay=37,writeAckDelay=29,maxCycles=1000000,
+          onReadAccepted=a=>if(!cut && a==image.pa(scratch+128)){
+            assert(image.reads.contains(image.pa(scratch)) && image.reads.contains(image.pa(scratch+64)),
+              s"$stage reset preceded two completed loop iterations")
+            cut=true;if(local)assert(perf.payloadReservedBytes.peek().litValue>0)
+            axiWrite(d,GpuCommandMmioRegs.RESET,1)
+            axiWrite(d,0x320,17,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+          })(image.write){cut && d.io.m_irq.peek().litToBoolean}
+        assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
+        assert(!image.writes.exists(_>=image.imageBase));released()
+        assert(axiRead(d,0x320)==BigInt("ffffffff",16))
+        axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,0x320,4096)
+        image.setup(0);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        image.submit(211+index*2);image.run(id=211+index*2);image.verify();image.pop();released()
+      }
+      info(s"NATIVE_RUNNING_RESET_BINNED local=$local CUs=2 engines=2 frames=4 vertexAndFragment=true twoCompletedLoopIterations=true resetDuringOwnedDataRead=true delayedReplyDrained=true exactHealthyImages=true payloadReleased=true policyPreserved=true")
+    }
+  }
+  if(shaderExecutionLimits)for(local<-Seq(true,false))
+  it should s"bound binned vertex and fragment loops and preserve fetch ownership through reset local=$local" in {
+    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
+      val vertexWord=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+        .find(_.name=="draw.vertex.geometry.vertex.shaderPc").get.word
+      val fragmentWord=TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name=="fragment.shaderPc").get.word
+      def loop(stage: String,offset: Int): BigInt={
+        val pc=image.region+offset;image.word(image.pa(pc),BigInt("0000006f",16))
+        if(stage=="vertex")for(draw<-0 until 2)image.word(image.pa(image.region+0x12000+draw*4096+vertexWord*4),pc)
+        else for(state<-0 until 2)image.word(image.pa(image.region+0x20000+state*512+fragmentWord*4),pc)
+        pc
+      }
+      def released(): Unit={perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)}
+      for((value,i)<-opengpu.system.NativeShaderExecutionCapabilities.words.zipWithIndex)assert(axiRead(d,0x300+4*i)==value)
+      for((stage,frame)<-Seq("vertex","fragment").zipWithIndex){
+        image.setup(0);val pc=loop(stage,0x26000)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,0x320,128)
+        image.submit(180+frame);axiWrite(d,0x320,17,expectedResponse=2);image.run(status=5,id=180+frame)
+        assert(image.reads.contains(image.pa(pc)),s"$stage loop never reached instruction memory")
+        assert(!image.writes.exists(_>=image.imageBase),s"$stage loop published an image")
+        axiWrite(d,0x320,17,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        image.pop();released()
+      }
+      image.setup(0);val pc=loop("vertex",0x27000)
+      axiWrite(d,0x320,-1);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(182)
+      var requested=false
+      serviceMemoryMaster(d,image.read,readResponseDelay=31,writeAckDelay=29,maxCycles=1000000,
+        onReadAccepted=a=>if(!requested && a==image.pa(pc)){
+          requested=true;if(local)assert(perf.payloadReservedBytes.peek().litValue>0)
+          axiWrite(d,GpuCommandMmioRegs.RESET,1)
+          axiWrite(d,0x320,17,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        })(image.write){requested && d.io.m_irq.peek().litToBoolean}
+      assert(requested && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
+      assert(!image.writes.exists(_>=image.imageBase));released()
+      assert(axiRead(d,0x320)==BigInt("ffffffff",16))
+      axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,0x320,4096)
+      image.setup(0);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+      image.submit(183);image.run(id=183);image.verify();image.pop();released()
+      info(s"NATIVE_SHADER_EXECUTION_BINNED local=$local CUs=2 engines=2 frames=4 vertexLoop=true fragmentLoop=true quota128=true resetDuringOwnedFetch=true delayedReplyDrained=true maxQuota=true queuedAndCompletionPolicyPinned=true exactHealthyImages=true payloadReleased=true")
+    }
+  }
+  if(primitiveQueryExtended)for(local<-Seq(true,false);kind<-Seq("memory","lifetime","recovery"))
+  it should s"preserve native binned query $kind ownership across two tile engines local=$local" in {
+    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
+      def frame(preserve: Boolean=false): Unit={
+        val saved=if(preserve)image.memory.filter{case(address,_)=>
+          (address>=0x18400000 && address<0x18401000) || (address>=0x18800000 && address<0x18810000) ||
+          (address>=0x18c00000 && address<0x18c000c0) || (address>=0x30304 && address<0x30310)}.toMap
+          else Map.empty[BigInt,Int]
+        image.setup(fragmentVersion=3);image.memory++=saved
+      }
+      def idle(): Unit=if(local){val perf=d.io.performance.get
+        perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+      }
+      def expected: Seq[BigInt]={
+        val positions=Vector(Vector(-1.0,-1.0,0.0,1.0),Vector(1.0,-1.0,0.0,1.0),Vector(-1.0,1.0,0.0,1.0))
+        (0 until 2).flatMap(h=>positions.indices.flatMap(i=>positions(i).map(fp)++image.gradient(h,i)))
+      }
+      frame();image.queryProbe.foreach{q=>q.beforeFrame();q.completed(0,false);q.afterFrame()}
+      val query=new NativePrimitiveQueryHostProbe(d,image.memory,image.read,image.write);query.prepare()
+      if(kind=="memory")query.memoryFaults(local,kind="BINNED")
+      else{
+        val a=new NativeTransformFeedbackRecoveryProbe(d,image.memory,image.read,image.write,0)
+        def draw(id: Int,capture: Boolean): Unit={
+          image.submit(id,feedbackScope=()=>a.stageRender(capture));image.run(id=id)
+          image.verify();image.pop();idle()
+        }
+        if(kind=="lifetime"){
+          a.begin();query.beforeFrame();draw(160,true);query.assertOpen()
+          a.command(2);frame(true);draw(161,false);query.assertOpen()
+          a.command(3);frame(true);draw(162,true);query.assertOpen()
+          a.end(expected++expected,primitives=4)
+          frame(true);draw(163,false);query.afterFrame(4)
+          a.begin();frame(true);draw(164,true);a.end(expected,primitives=2);query.completed(4)
+          query.reportLifetime(local,primitivesPerFrame=2,kind="BINNED")
+        }else{
+          val b=new NativeTransformFeedbackRecoveryProbe(d,image.memory,image.read,image.write,1)
+          def flush(): Unit=axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+          def finish(status: Int,active: NativeTransformFeedbackRecoveryProbe): Unit=
+            image.queryProbe.foreach(_.completed(status,status==0 && active.context==a.context))
+          def peer(id: Int): Unit={
+            frame(true);query.beforeFrame();image.submit(id,feedbackScope=()=>b.stageRender());image.run(id=id)
+            finish(0,b);image.verify();image.pop();b.end(expected,primitives=2);query.afterFrame(0,peerCount=2);idle()
+          }
+          for(fault<-Seq("checkpoint-permission","capture-permission","capture-bus","capture-reset")){
+            frame();a.begin();b.begin();query.beforeFrame()
+            if(fault=="checkpoint-permission"){
+              a.permission(false,false);flush();val start=image.writes.size
+              a.command(2,status=3,flags=0)
+              assert(!image.writes.drop(start).exists(x=>x>=0x18400000 && x<0x18401000))
+              a.permission(false,true);flush();a.command(1,status=5,flags=2)
+              image.submit(150,feedbackScope=()=>a.stageRender());image.run(status=5,id=150)
+              finish(5,a);image.pop();idle();query.afterFrame(0,status=3)
+              assert(!image.writes.contains(a.firstDataLine),"missing lease wrote binned feedback data")
+              peer(151)
+            }else if(fault=="capture-permission" || fault=="capture-bus"){
+              if(fault=="capture-permission"){a.permission(true,false);flush()}
+              var injected=false;val start=image.writes.size
+              image.submit(152,feedbackScope=()=>a.stageRender())
+              image.run(status=3,id=152,writeFault=(address,_,_)=>{
+                val hit=fault=="capture-bus" && !injected && address==a.firstDataLine+128
+                if(hit){assert(Seq(a.firstDataLine,a.firstDataLine+64).forall(image.writes.drop(start).contains));injected=true};hit
+              })
+              finish(3,a);image.pop();idle()
+              if(fault=="capture-permission")assert(!image.writes.drop(start).contains(a.firstDataLine))
+              else assert(injected,"binned final capture-line fault was not reached")
+              a.end(Seq.empty,status=3,allowedPartialBytes=if(injected)96 else 0);query.afterFrame(0,status=3)
+              a.permission(true,true);flush();peer(153)
+            }else{
+              image.submit(154,feedbackScope=()=>a.stageRender());var cut=false
+              serviceMemoryMaster(d,image.read,writeAckDelay=53,readResponseDelay=3,maxCycles=1000000,
+                onWriteAccepted=address=>if(!cut && (address & ~BigInt(63))==a.firstDataLine){
+                  cut=true;axiWrite(d,GpuCommandMmioRegs.RESET,1)
+                  axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+                })(image.write){cut && d.io.m_irq.peek().litToBoolean}
+              assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0,"binned capture reset did not drain")
+              image.queryProbe.foreach(_.aborted());axiWrite(d,RenderHostRegs.IRQ,3);idle();query.abortedFrame()
+              a.command(1,status=5,flags=2);b.command(1,status=5,flags=2)
+              frame();b.begin();flush();peer(155)
+            }
+            info(s"NATIVE_PRIMITIVE_QUERY_BINNED_RECOVERY_CASE local=$local kind=$fault peerHealthy=true payloadReleased=true")
+          }
+          query.reportBinnedRecovery(local)
+        }
+      }
+    }
+  }
+  if(transformFeedback && !primitiveQueryExtended)for(local<-Seq(true,false))
   it should s"capture each native binned primitive once before tile fanout and preserve exact images with raster discard local=$local" in {
     simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
       val feedback=new NativeTransformFeedbackHostProbe(d,image.memory,image.read,image.write)
+      val primitive=if(primitiveQueries)Some(new NativePrimitiveQueryHostProbe(d,image.memory,image.read,image.write))else None
       for(discard<-Seq(false,true)){
         image.setup(fragmentVersion=3)
         if(!discard)image.queryProbe.foreach{q=>q.beforeFrame();q.completed(0,false);q.afterFrame()}
-        feedback.begin();image.submit(if(discard)132 else 131,feedback=Some(feedback->discard))
+        primitive.foreach(_.prepare());feedback.begin();primitive.foreach(_.beforeFrame());image.submit(if(discard)132 else 131,feedback=Some(feedback->discard))
         image.run(id=if(discard)132 else 131);image.queryProbe.foreach(_.completed(0,!discard))
         if(discard){val count=image.drawCount;image.drawCount=0;image.verify();image.drawCount=count}else image.verify()
         image.pop()
         val positions=Vector(Vector(-1.0,-1.0,0.0,1.0),Vector(1.0,-1.0,0.0,1.0),Vector(-1.0,1.0,0.0,1.0))
         val expected=(0 until 2).flatMap(h=>positions.indices.flatMap(i=>positions(i).map(fp)++image.gradient(h,i)))
         feedback.end(expected,2,6)
+        primitive.foreach(_.afterFrame(2))
       }
       feedback.report("BINNED",local)
+      primitive.foreach(_.report("BINNED",local,2))
     }
   }
-  if(!transformFeedback){
+  if(!transformFeedback && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
   if(groupedTexture)for(local<-Seq(true,false))
   it should (if(sharedTextureReset)s"drain shared native texture reads across AXI command reset and republish both binned image engines local=$local"
     else s"sample shared RGBA8 in both native binned stages and observe coherent DMA publication across two image engines local=$local") in {

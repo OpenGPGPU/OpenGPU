@@ -98,6 +98,7 @@ class GpuHostSystemAxi(
   primitiveQueries: Boolean = false
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
+  private val nativeExecutionLimits = typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
   private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
   require(!primitiveQueries || nativeFeedback,"primitive queries require native transform feedback")
   private val externalRender=binnedRendering.nonEmpty || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
@@ -281,6 +282,7 @@ class GpuHostSystemAxi(
       persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
       useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = externalRender,nativeCompletionInfo=nativeBinnedGraphics.nonEmpty,
       nativeVertexInput=typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,visibilityQueries=visibilityQueries,
+      shaderExecutionLimits=nativeExecutionLimits,
       primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16)))
     val system = Module(new GpuSystem(
       gpuConfig,
@@ -299,7 +301,8 @@ class GpuHostSystemAxi(
       enableGraphicsKernels = sharedGraphics,shaderPayload=localPayload,
       producerPayloadPins=if(localPayload.nonEmpty){if(nativeBinnedGraphics.nonEmpty)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)
         else if(typedGraphics.nonEmpty)4 else sharedShader.get.binPayloadPins(binnedRendering.get.tileEngines)}else 0,
-      drainGraphicsPayloadWork=localPayload.nonEmpty))
+      drainGraphicsPayloadWork=localPayload.nonEmpty,shaderExecutionLimits=nativeExecutionLimits))
+    if (nativeExecutionLimits) system.io.graphicsInstructionLimit.get := host.io.shaderInstructionLimit.get
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
       graphicsConfig,gpuConfig,commandIdWidth,m.tileEngines,m.binPageBytes,m.binWriteCredits,
       m.binTileSlots,m.binRecordCacheEntries,m.attachmentStoreCredits,fragCore,sharedShader,

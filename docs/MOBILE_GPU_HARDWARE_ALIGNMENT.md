@@ -7596,3 +7596,284 @@ tags and healthy reuse. The prior negative native I/O result remains historical.
 Current-main integration, active RTL requalification when bytes change, actual
 CU/frame/cold throughput, broader format/coherence coverage and the complete
 H0-H8 objective remain required. No whole-host timing is inferred.
+
+### 2026-10-21: native primitive-query capture AXI proof
+
+[Four fresh typed/binned tests](performance/mobile-primitive-query-native-axi-2026-10-21.json)
+pass across local/spilled payloads: eight successful native frames,twelve
+acknowledged source primitives,exact capture/image/GPO1 records,raster discard
+and zero-count peers. Eight explicitly synthetic64-bit record reads check32-bit
+clamping separately from real counts. Four query-record reset cuts preserve VM
+ownership and fresh-cookie reuse; coexisting feedback/visibility add four cuts
+each. The88 query commands include four empty scopes. The first compile attempt
+ran out of disk before simulation; the successful retry retains identical917
+source inputs. Together with31 component/transport checks,this gives35 distinct
+checks and three carried host emissions. Paused/inactive/incomplete/error capture
+coverage,full product runtime and composed budgets remain open; Q02/H6 is partial.
+
+
+### 2026-10-21: native primitive-query capture recovery
+
+[Two fresh four-CU typed-host checks](performance/mobile-primitive-query-native-recovery-2026-10-21.json)
+pass with local/spilled payloads: twenty completed frames, six expected failures,
+ten acknowledged source primitives, paused/inactive zero counts and exact resume
+counts. Final capture-line bus faults follow two acknowledged prefix lines and
+still contribute zero. Capture permission and missing-lease failures retain
+scoped query faults and healthy peers. Two accepted-store resets reject four
+stale query ends; exact GPO1/capture/image guards and payload releases pass.
+Production/build/ABI bytes are unchanged. Binned error/pause coverage, query-record
+memory faults, continuous multi-draw scopes, full-capacity runtime and composed
+budgets remain required; Q02/H6 and the full H0-H8 goal remain open.
+
+
+### 2026-10-21: query-record faults and continuous native scopes
+
+[Four fresh typed-host checks](performance/mobile-primitive-query-native-lifetime-2026-10-21.json)
+pass on980 frozen inputs. Local/spilled payloads each cover begin/end/poll/result
+permission and bus errors,for16 memory faults. Denied accesses reach no physical
+record memory;failed begin/end slots,healthy retry,peer ownership and guards
+remain correct. Ten actual frames capture six primitives: continuous queries
+count four across pause/resume/inactive draws,and ignore two post-end captures.
+Exact records,raw captures,images and payload release pass. The distinct total
+across frozen checkpoints is41. Production/build/ABI bytes remain unchanged;
+binned fault/lifetime runtime,full product capacity,composed budgets and the
+remaining H0-H8 requirements stay open.
+
+
+### 2026-10-21: native binned query recovery and continuous scopes
+
+[Six fresh binned checks](performance/mobile-primitive-query-native-binned-recovery-2026-10-21.json)
+pass on981 frozen inputs with local/spilled payloads and two tile engines.
+Twenty-four completed frames capture28 source primitives,with exact four-count
+continuous scopes before tile fanout and four correctly ignored post-end
+captures. Sixteen record-memory faults,partial-store/permission/missing-lease
+failures,healthy peer captures and accepted-store reset retain exact GPO1/raw
+capture/image guards and released payloads. The distinct total across frozen
+checkpoints is47. Production/build/ABI bytes are unchanged. Full product capacity,
+composed timing/resources,frame budgets and the remaining H0-H8 gates stay open.
+
+
+### 2026-10-21: attributed shader system traps and destination reuse
+
+The [shader termination repair](SHADER_TRAP_TERMINATION.md) fixes dropped
+unsupported-system traps in finishOnTrap CUs and leaked nonzero CSR destination
+reservations. A one-entry public trap offer and one private finish slot retain
+stable attribution and serialize simultaneous normal/trap finishes. Thirty-three
+checks pass on986 frozen inputs,including both FPU settings,CSR x10 reuse,
+concurrent two-warp CSR/load faults,default16-lane/eight-warp control ownership
+and actual shader fault/healthy reuse. Both preceding failures remain preserved.
+Default retirement synthesis passes1000ps TC/SLVT with25percent I/O:
+core+668.231ps,I/O+425.689ps,491 cells,area62.504460,zero skipped. Default scalar-backend synthesis also passes:core+428.223ps,I/O+74.102ps,
+123643 cells,area15071.914620,zero skipped. Fresh native AXI integration remains
+pending after current-main merge. This does not
+implement a loop watchdog or close S02/H5/H6,whole-CU timing or H0-H8.
+
+
+### 2026-10-22: native shader system-trap integration
+
+[Two fresh native AXI checks](performance/mobile-shader-system-trap-native-axi-2026-10-22.json)
+pass after merging current main. Twelve local/spill two-CU frames include six
+expected system-shader faults without image publication and six exact healthy
+reuses that write the previously trapped CSR destination. VM ownership and
+payload release remain correct. The988-input integration carries33 scoped
+checks and retains both default synthesis emissions byte for byte:retirement
+core+668.231ps/I/O+425.689ps,scalar core+428.223ps/I/O+74.102ps,zero skipped.
+These are component timing results;full product capacity,programmable watchdogs,
+resource/reconvergence contracts,whole-renderer budgets and H0-H8 remain open.
+
+## CU instruction quota and cooperative interruption (2026-10-22)
+
+The [execution-limit mechanism](SHADER_EXECUTION_LIMITS.md) now snapshots a
+32-bit limit per accepted kernel and applies it independently to each warp.
+A nonzero quota bounds admitted instruction fetches; zero retains unlimited
+compatibility. Latched interruption stops the next unowned fetch while older
+physical fetches and memory operations drain. Stops retain PC/mask attribution,
+use causes 24/25, hold trap ownership, retire once and fail the completion.
+
+[67 checks](performance/mobile-shader-execution-limits-2026-10-22.json) pass on
+992 frozen inputs. Two actual CU cases execute 22 kernels, including real loops,
+exact/one-short quotas, delayed load/store/fetch interruption, real-fault priority,
+a barrier waiter and healthy reuse. Default 16-lane/eight-warp guard synthesis
+passes 1000 ps with core +402.588 ps and I/O +626.374 ps, 2,753 mapped cells and
+zero skipped instances. Existing native profiles do not yet enable this optional
+CU mechanism. Native programmable controls/reset integration, unserviced execution
+port liveness, resource permissions, reconvergence capacity, full product budgets
+and whole-CU/renderer timing remain required. S02/H5/H6 and H0-H8 stay partial.
+
+## Scalar FP fault destination ownership (2026-10-22)
+
+The [FP fault repair](FP_FAULT_RESERVATION_RELEASE.md) releases a failed load's
+FP reservation on fault acknowledgment without fabricating an RF write. A
+separate cancellation port composes with peer writeback and same-cycle fresh
+reservation; `f0` is an ordinary tracked FP destination. The archived baseline
+fails all six actual CU misaligned/access/page-fault reuse probes at `f0`/`f10`.
+
+[23 checks](performance/mobile-fpu-fault-reuse-2026-10-22.json) now pass on 996
+frozen inputs, including twelve fault/reuse kernels, two peer-commit/fault
+collisions, three boundary/default mask cases, ten FPU controls and 22 additional
+execution-limit kernels. Default scoreboard synthesis passes 1000 ps with
+core/I/O +464.366/+253.874 ps, 2,770 cells and zero skipped instances. Default
+issue-stage synthesis passes +407.628/+194.342 ps, 60,091 cells and zero skipped
+instances. Native product capacity, execution availability/interruption, resource
+permissions, reconvergence, composed budgets and whole-CU/renderer timing remain
+required. This checkpoint does not close S02/H5/H6 or H0-H8.
+
+## Native execution availability before issue (2026-10-22)
+
+The [availability contract](SHADER_EXECUTION_AVAILABILITY.md) now matches
+execution-limited CU decode to the actual scalar FP RF/backend. Unavailable
+scalar FP and vector scalar-FP references trap before issue/reservation. This
+repairs two reproduced behaviors: a scalar instruction stalled before a quota
+could reach its next fetch, and a VF read/vector-to-FP write that completed
+without an FP register owner. Vector-only FP remains functional.
+
+[25 checks](performance/mobile-shader-execution-availability-2026-10-22.json)
+pass on 999 frozen inputs, including thirteen availability kernels, twelve
+FP-fault reuse kernels and 22 quota/interruption kernels. The archived baseline
+fails six unavailable cases and passes its enabled bridge control. Default
+16-lane/eight-warp decode synthesis passes 1000 ps with absent-FPU core/I/O
++525.450/+416.626 ps and enabled-FPU +517.250/+407.170 ps, both with zero skipped
+instances. Native host composition, full-capacity qualification, general
+execution/interruption, resource permissions, reconvergence and full host timing
+remain required. S02/H5/H6 and the H0-H8 objective remain partial.
+
+### Native shader execution composition — 2026-10-22
+
+The [native quota checkpoint](performance/mobile-native-shader-execution-2026-10-22.json)
+now includes current-main FP reservation cancellation and execution-availability
+repairs. Twelve checks pass on 1,007 exact inputs with sixty actual typed/binned
+local/spill submissions: eight loop quota faults, four owned-fetch reset drains,
+sixteen absent-FP faults, six prior system-fault regressions and twenty-six exact
+healthy image reuses. Fault cases include scalar add/load and vector scalar-FP
+register reads/writes; healthy successors reuse the affected vector destination.
+Held completions protect VM/quota mutation and all payload ownership drains.
+The default discovery host emission is byte-identical to the earlier candidate;
+full-host timing, execution-time watchdog/resource/reconvergence contracts and
+the remaining H0-H8 requirements are still open.
+
+### Native interruption of running loops — 2026-10-22
+
+Four [new native reset checks](performance/mobile-native-shader-execution-2026-10-22.json)
+pass on 1,008 exact inputs. Vertex and fragment loops execute two completed
+load/add/back-edge iterations before reset during their third owned data read.
+Typed/binned local/spill paths drain delayed real replies and all payload
+ownership, preserve the programmed maximum quota, and render exact healthy
+successors: sixteen submissions, eight reset cuts and eight healthy images.
+Production is byte-identical to the twelve-check native composition. The
+binned/local fixture's original scratch-alias trigger failure and diagnostic
+are retained; only its probe page changes. External-owner deadlines, broader
+fault priority, resources/reconvergence and full-host timing remain open.
+
+### Registered AXI MMIO beat addresses — 2026-10-22
+
+The [MMIO checkpoint](AXI_MMIO_ADDRESS_PIPELINE.md) captures burst validity and
+the complete 33-bit current address before register decoding. It preserves
+first-response latency, one unstalled read beat/cycle, held R ownership, exact
+W/B updates, dynamic VM/quota guards and rejected page/size/burst/carry cases.
+Seventeen checks pass on 1,008 inputs, including 341 directed read beats and
+FIXED/INCR write readback. Two stale discovery expectations are retained in the
+failure history; the preexisting GTX1 mask mismatch reproduces on unchanged
+main, and the complete corrected four-profile fixture passes on unchanged
+main production before this repair. Its temporary main test edit is restored
+exactly. This is a structural repair of the known beat-to-read-data path, with
+no new full-host timing claim. Current-main/GTO1/native composition, remaining
+legacy arithmetic and the full default core/I/O screen remain required.
+
+### Exact legacy interpolation divider — 2026-10-22
+
+The [legacy interpolation repair](LEGACY_INTERPOLATION_PIPELINE.md) now has an
+exact streaming signed129/96 divider retaining the low32 quotient bits with
+truncation and overflow wrap. Four checks on 1,002 frozen inputs cover small
+exhaustive/full-width signed boundaries, input/output II1, stalls and reset.
+Default synthesis passes 1000 ps TC/SLVT and 25% I/O with core +329.801 ps,
+I/O +163.606 ps and zero skipped instances. Its latency is 131 cycles and its
+steady-state rate is one operation per cycle. Weighted products, actual
+scalar/quad interpolation consumers and full-host core/I/O timing remain open;
+this component does not repair the host by itself.
+
+### Pipelined weighted UV and owned scalar sampling — 2026-10-22
+
+The [UV consumer checkpoint](performance/mobile-legacy-uv-pipeline-2026-10-22.json)
+now registers exact edge/inverse-W/unsigned-UV products, modular sums and signed
+division, with 146-cycle fill and one request/result per cycle. The production
+scalar sampler captures each fragment, sample depths and texture descriptor
+through queued arithmetic, memory service and output stalls. A reproduced
+late-wrap-policy error is fixed by retaining that policy through sample
+ownership; both original failures remain in the archived evidence.
+
+Twenty-one checks pass on 1,008 frozen inputs, including 387 full-width numeric
+cases, 48 queued descriptor cases and exact 1x texture/4x texture-blend-stencil
+images through shared L2. Default weighted-UV numeric synthesis passes 1000 ps
+TC/SLVT and 25% I/O: core +108.792 ps, I/O +448.657 ps, 588,499 mapped cells,
+library area 72,792.443340, 85,512 flops and zero skipped instances/SRAM macros.
+This 32-bit metadata screen cannot qualify the full scalar sampler/metadata path.
+Quad UV/color/depth/gradient consumer pipelines, full-host core/I/O and H0-H8
+completion remain open.
+
+
+### Native execution/MMIO composed with scalar UV, 2026-10-22
+
+The [current-main composition](performance/mobile-native-shader-host-composition-2026-10-22.json)
+passes31 distinct checks and76 actual native submissions on1,017 frozen inputs,
+with a passing GSL ABI check and fresh default discovery-host emission. Main's
+exact pipelined scalar UV and captured sampler policy compose with nonzero32-bit
+native quotas, immutable GSL discovery, graphics-owned reset interruption,
+unavailable-instruction traps and registered AXI transfer/beat address ownership.
+The native cases cover typed/binned local and spill modes, running vertex and
+fragment loops, delayed owned replies, held completions, destination/payload
+reuse, policy retention and exact healthy images. All qualified source bytes
+remain unchanged; only appended evidence required merge resolution.
+
+This is functional composition evidence. GTO1 and the newer raster attribute
+and programmable quad UV candidates remain separate. Full-host synthesis at
+1000ps including I/O, complete watchdog/resource/reconvergence contracts, frame
+budgets and the full H0-H8 objective remain open.
+
+### 2026-10-21: disjoint native texture-operation discovery
+
+The [revised GTO1 candidate](performance/mobile-native-texture-operations-relocated-2026-10-21.json)
+relocates operation discovery to0x2c0..0x2ff, after the visibility/feedback/primitive
+query records;0x2a0..0x2bf remains unmapped. GTX1 bit10 advertises the immutable
+record. Nineteen fresh decoder/capability/ownership checks, twelve generated ABI
+checks, two strict C tests and one combined-capability host emission pass on983
+frozen inputs. The native16-lane/eight-warp profile reads all four disjoint
+records and rejects every strobe combination on writes. The old unmerged address
+map and7200-second host timeout remain historical evidence. Fresh host synthesis
+and integration with newer main are pending; no H0-H8 closure is claimed.
+
+
+### Current-main GTO1/GSL composition, 2026-10-22
+
+The [1,022-input composition](performance/mobile-native-capability-composition-2026-10-22.json)
+passes24 decoder/AXI/ownership checks, thirteen generated ABI checks, two strict
+C tests and a fresh default host emission. GTO1 remains at0x2c0..0x2ff; the next
+word belongs to GSL1 when enabled. A new16-lane/eight-warp profile enables all
+three query/feedback records, GTO1 and GSL together. Independent literal tables
+check held boundary reads, every read-only write strobe, busy-VM rejection and
+partial quota writes that must remain nonzero. All five prior GTO1 profiles and
+new main's registered beat-address/ownership tests remain in the fresh run.
+
+Merge resolution keeps GTO1, GSL and primitive-query exclusions from mutable
+register forwarding and write acceptance. Both disabled-query holes remain
+covered. The older GTO1 whole-host synthesis failed core/I/O setup; no timing
+result is carried to this combination. The scalar UV/MMIO repairs, newer raster
+and quad UV consumers still need complete-host composition and synthesis. This
+functional merge does not close the remaining H0-H8 requirements.
+
+
+### Current-main native texture timing composition, 2026-10-22
+
+The shared-window cancellation/planner repair is now [functionally composed](performance/mobile-shared-cluster-main-composition-2026-10-22.json)
+with main411f:47 fresh checks and five default emissions pass on1,022 exact
+inputs. The burst shared-window case retains448 warm groups over448 cycles;
+the four-credit and non-burst controls retain their slower measured rates.
+All87 active shared-cluster RTL files are byte-identical to the prior positive
+1000ps synthesis screen, preserving core/IO +42.104/+301.056ps and zero skips.
+
+Each native endpoint gained the two-bit decoded executionFault input from the
+main shader contract. All other84 active RTL files per endpoint are identical,
+but the complete emissions are not byte-identical. Prior native endpoint
+slacks remain historical; both changed interfaces require fresh strict1000ps,
+25%IO synthesis before timing qualification and main promotion. No clock,
+retiming or port relaxation is used. Whole-host timing, product/resource/rate/
+coherence gates and the full H0-H8 objective remain open.

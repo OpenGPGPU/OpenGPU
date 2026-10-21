@@ -233,6 +233,12 @@ class FpuBackend(config: GpuConfig = GpuConfig(), tagWidth: Int = 16, helperInvo
   io.memoryRequest <> memory.io.cacheRequest
   memory.io.cacheResponse <> io.memoryResponse
   io.memoryFault <> memory.io.fault
+  // Fault acknowledgement discharges the load's FP destination reservation.
+  // Keep cancellation separate from the RF write port: a peer may commit in
+  // this cycle and a failed load must never write a fabricated FP value.
+  issue.io.cancel.valid := io.memoryFault.fire && io.memoryFault.bits.writeRd
+  issue.io.cancel.bits.warpId := io.memoryFault.bits.warpId
+  issue.io.cancel.bits.rd := io.memoryFault.bits.rd
 
   private val exactResultValid =
     exact.io.out.valid && exactMetadata.io.deq.valid

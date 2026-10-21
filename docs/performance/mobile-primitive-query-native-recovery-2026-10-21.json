@@ -1,0 +1,70 @@
+{
+  "date": "2026-10-21",
+  "status": "native_typed_recovery_and_typed_binned_controls_pass",
+  "main_baseline": "0fca9bc156689ba4444b8799ab5f8ca530bb16ee",
+  "source_manifest": ".artifacts/mobile-primitive-query-recovery-v1-source.json",
+  "source_files": 979,
+  "source_unchanged": true,
+  "fresh_recovery_tests": 2,
+  "payload_modes": [
+    "local",
+    "spill"
+  ],
+  "CUs": 4,
+  "lanes_per_CU": 4,
+  "warps_per_CU": 2,
+  "completed_native_frames": 20,
+  "successful_native_frames": 14,
+  "expected_failed_native_frames": 6,
+  "acknowledged_source_primitives": 10,
+  "peer_captured_primitives": 8,
+  "resumed_captured_primitives": 2,
+  "capture_permission_faults": 2,
+  "final_capture_line_bus_faults": 2,
+  "acknowledged_prefix_lines_per_bus_fault": 2,
+  "missing_capture_lease_draw_faults": 2,
+  "paused_zero_count_draws": 2,
+  "inactive_zero_count_draws": 2,
+  "accepted_capture_store_reset_cuts": 2,
+  "stale_query_end_rejections_after_reset": 4,
+  "query_record_reset_cuts": 2,
+  "evidence": {
+    "recovery": ".artifacts/mobile-primitive-query-recovery-v1-result.json",
+    "controls": ".artifacts/mobile-primitive-query-recovery-v1-controls-result.json",
+    "production": ".artifacts/mobile-primitive-query-recovery-v1-production-proof.json"
+  },
+  "invariants": [
+    "No primitive is counted when the final capture-store acknowledgement fails, even after two prefix lines acknowledge.",
+    "Permission/missing-lease failures return a faulted available query result with public count zero; peer query scopes remain healthy.",
+    "Paused and absent feedback objects permit non-capture draws with zero query counts; resume captures exactly one.",
+    "Accepted-store reset drains ownership and rejects both stale live query ends.",
+    "Exact GPO1 records and guards, raw feedback output, image oracles and local payload releases are checked."
+  ],
+  "PPA": {
+    "policy": "synthesis only",
+    "new_result": false,
+    "production_unchanged": true,
+    "scope": "Prior component PPA remains scoped; no new whole-host timing or resource claim."
+  },
+  "remaining": [
+    "Binned capture-fault/pause/resume runtime.",
+    "Native query-record permission/read/write bus-fault matrix.",
+    "A continuous query across several draws and pause/resume transitions.",
+    "Full-capacity product runtime and composed timing/resource budgets.",
+    "Q02/H6 and all other H0-H8 requirements remain partial."
+  ],
+  "fresh_controls": 4,
+  "fresh_distinct_tests": 6,
+  "carried_unchanged_component_transport_tests": 31,
+  "total_distinct_checks": 37,
+  "control_frames": 8,
+  "control_captured_source_primitives": 12,
+  "control_payload_modes": [
+    "local",
+    "spill"
+  ],
+  "control_hosts": [
+    "typed",
+    "binned"
+  ]
+}

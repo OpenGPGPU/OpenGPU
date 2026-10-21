@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-21",
+  "status": "passed",
+  "production_commit": "d03eff493e9ff812d7a4dfed24d6bdcecb7b52fd",
+  "source_files": 917,
+  "source_manifest": ".artifacts/mobile-primitive-query-native-runtime-v1-source.json",
+  "source_sha256": "41d6551ee6dde29949ecd4cc013d1bee20b393d9deb78c918763d60973a3f9d8",
+  "fresh_tests": 4,
+  "profiles": [
+    "typed local payload",
+    "typed spill",
+    "binned local payload",
+    "binned spill"
+  ],
+  "completed_native_frames": 8,
+  "successful_captured_primitives": 12,
+  "query_record_reset_cuts": 4,
+  "feedback_checkpoint_reset_cuts": 4,
+  "visibility_record_reset_cuts": 4,
+  "native_query_commands": 88,
+  "empty_scopes": 4,
+  "peer_context_results_zero": 8,
+  "synthetic_64bit_record_conversion_reads": 8,
+  "conversion_scope": "Explicit synthetic completed-record readback verifies 32-bit clamp. Real capture counts remain1 typed/2 binned per frame.",
+  "results": {
+    "typed": ".artifacts/mobile-primitive-query-native-runtime-v2-typed-result.json",
+    "binned": ".artifacts/mobile-primitive-query-native-runtime-v2-binned-result.json"
+  },
+  "markers": {
+    "typed": [
+      "NATIVE_PRIMITIVE_QUERY_TYPED_AXI local=true CUs=4 frames=2 countPerFrame=1 recordResetCuts=1 queryCommands=22 realSv32=true ackCaptureOnly=true onceBeforeFanout=true rasterDiscard=true peerContextZero=true clampReadConversion=true exactRecords=true guardedStores=true heldCompletionPinsVM=true",
+      "NATIVE_PRIMITIVE_QUERY_TYPED_AXI local=false CUs=4 frames=2 countPerFrame=1 recordResetCuts=1 queryCommands=22 realSv32=true ackCaptureOnly=true onceBeforeFanout=true rasterDiscard=true peerContextZero=true clampReadConversion=true exactRecords=true guardedStores=true heldCompletionPinsVM=true"
+    ],
+    "binned": [
+      "NATIVE_PRIMITIVE_QUERY_BINNED_AXI local=true CUs=4 frames=2 countPerFrame=2 recordResetCuts=1 queryCommands=22 realSv32=true ackCaptureOnly=true onceBeforeFanout=true rasterDiscard=true peerContextZero=true clampReadConversion=true exactRecords=true guardedStores=true heldCompletionPinsVM=true",
+      "NATIVE_PRIMITIVE_QUERY_BINNED_AXI local=false CUs=4 frames=2 countPerFrame=2 recordResetCuts=1 queryCommands=22 realSv32=true ackCaptureOnly=true onceBeforeFanout=true rasterDiscard=true peerContextZero=true clampReadConversion=true exactRecords=true guardedStores=true heldCompletionPinsVM=true"
+    ]
+  },
+  "transport_checks_carried": {
+    "tests": 31,
+    "emissions": 3,
+    "evidence": "mobile-primitive-query-native-transport-2026-10-21.json",
+    "scope": "Production RTL and selected transport/engine test inputs unchanged; new runtime-only test inputs add the actual capture proof."
+  },
+  "distinct_qualified_checks": 35,
+  "synthesis": {
+    "scope": "Unchanged standalone primitive-query engine only; composed hosts not timed.",
+    "core_slack_ps": 143.195,
+    "io_slack_ps": 384.931,
+    "period_ps": 1000,
+    "corner": "TC",
+    "vt": "SLVT",
+    "retiming": false,
+    "skipped_instances": 0
+  },
+  "first_attempt": {
+    "result": ".artifacts/mobile-primitive-query-native-runtime-v1-typed-result.json",
+    "binned_result": ".artifacts/mobile-primitive-query-native-runtime-v1-binned-result.json",
+    "reason": "Disk exhaustion while creating Verilator compilation files, before simulation. Both owned failed runs were terminated; source unchanged.",
+    "retry": "v2 after reclaiming stale compiler archives, same917 inputs."
+  },
+  "open_work": [
+    "paused/inactive/incomplete capture counting",
+    "native query/capture permission and bus-fault matrix",
+    "full-capacity product runtime",
+    "composed timing/resource budgets and remaining H0-H8 requirements"
+  ]
+}

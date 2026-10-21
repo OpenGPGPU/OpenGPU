@@ -22,6 +22,7 @@ class DivideExecuteStageSpec extends AnyFlatSpec {
     dut.io.in.bits.decode.warpId.poke(1.U)
     dut.io.in.bits.decode.activeMask.poke(0x5.U)
     dut.io.in.bits.decode.instructionAccessFault.poke(false.B)
+    dut.io.in.bits.decode.executionFault.poke(0.U)
     dut.io.in.bits.decode.executionType.poke(ExecutionType.integer)
     dut.io.in.bits.decode.illegalInstruction.poke(false.B)
     dut.io.in.bits.decode.decoded.multiply.poke(false.B)

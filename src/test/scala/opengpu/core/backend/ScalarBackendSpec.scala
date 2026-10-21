@@ -67,6 +67,7 @@ class ScalarBackendSpec extends AnyFlatSpec {
     dut.io.in.bits.warpId.poke(0.U)
     dut.io.in.bits.activeMask.poke(0xf.U)
     dut.io.in.bits.instructionAccessFault.poke(false.B)
+    dut.io.in.bits.executionFault.poke(0.U)
     while (!dut.io.in.ready.peek().litToBoolean) {
       dut.clock.step()
     }

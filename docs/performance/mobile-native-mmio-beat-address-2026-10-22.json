@@ -1,0 +1,78 @@
+{
+  "date": "2026-10-22",
+  "scope": "Register AXI burst validity and full33-bit current address ahead of MMIO decode. Functional checkpoint only; default host timing remains unqualified.",
+  "source_files": 1008,
+  "source_manifest": ".artifacts/mobile-native-mmio-beat-timing-v3-source.json",
+  "source_manifest_sha256": "cd5b2a76520973ab6747e30db3c073f1b0162605781caa07d81b0f3e6c03c4ad",
+  "implementation": {
+    "protocol_validity": "Captured at AR/AW handshake: word size, FIXED/INCR, 4KiB boundary and16-beat FIXED limit.",
+    "address": "33-bit register initialized from AR/AW, advances by4 only on nonfinal accepted INCR beat. Preserve high carry and original8-bit counter wrap for malformed writes.",
+    "read_protocol": "Original first-beat bypass, II1 without stalls, immutable held R payload and exact RLAST.",
+    "write_protocol": "Unchanged single-owner arbitration, exact W updates, B ownership and dynamic register mutation guards.",
+    "ABI_changed": false
+  },
+  "functional": {
+    "passed": true,
+    "checks": 17,
+    "test_counts": [
+      17
+    ],
+    "result": ".artifacts/mobile-native-mmio-beat-timing-v3-result.json",
+    "AXI_base": 3,
+    "ownership_and_new_burst": 4,
+    "native_input_discovery": 4,
+    "primitive_query_discovery": 2,
+    "feedback_discovery": 2,
+    "shader_execution_controls": 2,
+    "new_read_transactions": 13,
+    "new_read_beats": 341,
+    "max_beats": 256,
+    "no_unstalled_response_bubbles": true,
+    "live_header_mutation_ignored": true,
+    "held_payload_and_RLAST_stable": true,
+    "fixed_incrementing_reads_writes": true,
+    "invalid_size_burst_alignment_page_carry_rejected": true,
+    "dynamic_quota_VM_guards_retained": true
+  },
+  "failure_history": [
+    {
+      "result": ".artifacts/mobile-native-mmio-beat-timing-v1-result.json",
+      "passed": 14,
+      "failed": 3,
+      "reason": "Existing independent GTX1 expected mask omitted already implemented typed component-fetch bit512.",
+      "unchanged_main_reproduction": ".artifacts/mobile-native-mmio-capability-baseline-v1-result.json"
+    },
+    {
+      "result": ".artifacts/mobile-native-mmio-beat-timing-v2-result.json",
+      "passed": 14,
+      "failed": 3,
+      "reason": "After correcting mask, existing fixture expected0x220 unmapped although GTF1 already occupies that block.",
+      "repair": ".artifacts/mobile-native-mmio-beat-timing-v3-repair-proof.json"
+    }
+  ],
+  "corrected_fixture_baseline": {
+    "state": "terminal_pass",
+    "result": ".artifacts/mobile-native-mmio-capability-baseline-v2-result.json",
+    "scope": "Only independent test literals corrected; original main production MMIO retained. Test file restored exactly by runner. Four original profile cases selected.",
+    "passed": true,
+    "checks": 4,
+    "production_HEAD": "03bb976b84d39cec213af5d5d0c9e6905dc97082",
+    "production_unchanged": true,
+    "source_unchanged_before_fixture_restore": true,
+    "fixture_restored_exactly": true,
+    "original_fixture_sha256": "429f8049ae8f5246b7257878ebd9a0acb8c16f42ead7dffca4cc978ed079abbd",
+    "corrected_fixture_sha256": "0a4b43ee6dc5674766384fea4d5087bf6c2bbabd193b88bfae136e291b1ec2d0"
+  },
+  "synthesis": {
+    "qualified": false,
+    "related_prior_failure": ".artifacts/mobile-native-host-timing-diagnosis-2026-10-22.json",
+    "prior_IO_path": "beat register to io_s_axi_rdata[3]",
+    "change_scope": "Remove wide base+beat and burst-end additions ahead of read mux; no measured slack improvement claimed.",
+    "remaining": "Compose current-main UV and separate GTO1 candidate; repair remaining legacy paths, emit exact default host and requalify1000ps core/I/O with zero skipped."
+  },
+  "remaining": [
+    "Current-main/native/GTO1 composition",
+    "Default full host core/I/O synthesis",
+    "Original H0-H8 gates"
+  ]
+}

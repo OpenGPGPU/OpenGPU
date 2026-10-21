@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-22",
+  "status": "native_AXI_and_current_main_integration_pass",
+  "source_manifest": ".artifacts/mobile-shader-system-trap-v3-source.json",
+  "source_files": 988,
+  "source_unchanged": true,
+  "branch_component_commit": "e04d4269c641fb640e9ad8953e185bd6908d8700",
+  "merged_main": "673edb6a06cadfa4742a77bda7d78ee05216ba19",
+  "fresh_native_AXI_tests": 2,
+  "carried_component_regression_tests": 33,
+  "distinct_scoped_checks": 35,
+  "payload_modes": [
+    "local",
+    "spill"
+  ],
+  "CUs": 2,
+  "lanes_per_CU": 4,
+  "warps_per_CU": 2,
+  "native_frames": 12,
+  "expected_shader_fault_frames": 6,
+  "healthy_exact_image_frames": 6,
+  "faults": [
+    "EBREAK",
+    "ECALL",
+    "Unsupported CSR with rd10"
+  ],
+  "invariants": [
+    "Each faulted frame returns attributed native shader status5 with no backing-image publication.",
+    "Healthy native vertex programs begin by writing x10,then reproduce exact MRT/depth/resolve images.",
+    "Fresh instruction allocations per frame avoid assuming CPU code writes invalidate instruction cache lines.",
+    "Held completions retain VM ownership; failed and healthy payload reservations release exactly.",
+    "Both default component emissions are byte-identical to their positive synthesis inputs."
+  ],
+  "evidence": ".artifacts/mobile-shader-system-trap-v3-result.json",
+  "source_integration_proof": ".artifacts/mobile-shader-system-trap-v3-integration-source-proof.json",
+  "component_PPA_retained": {
+    "retirement": true,
+    "scalar": true
+  },
+  "remaining": [
+    "Full16-lane/eight-warp native product capacity.",
+    "Programmable infinite-loop watchdog/interruption and resource/reconvergence contracts.",
+    "Whole-CU/renderer timing,resources and frame budgets.",
+    "S02/H5/H6 and the full H0-H8 objective remain partial."
+  ]
+}

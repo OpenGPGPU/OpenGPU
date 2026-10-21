@@ -16,6 +16,9 @@ class FpuIssueStageSpec extends AnyFlatSpec {
       dut.io.out.ready.poke(true.B)
       dut.io.in.valid.poke(false.B)
       dut.io.writeback.valid.poke(false.B)
+      dut.io.cancel.valid.poke(false.B)
+      dut.io.cancel.bits.warpId.poke(0.U)
+      dut.io.cancel.bits.rd.poke(0.U)
 
       def write(reg: Int, data: BigInt): Unit = {
         dut.io.writeback.valid.poke(true.B)
