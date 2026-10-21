@@ -60,8 +60,30 @@ offered and accepted physical requests, no early owner reuse and healthy reuse.
 The GCI1 ABI check and fresh reader plus four-CU/16-lane/eight-warp/256-bit-AXI
 host emissions pass.
 
-Enabled router/dependency execution, actual GPU producer-consumer dispatch,
-Sv32 fault/reset reuse, co-enabled discovery and synthesis remain unqualified.
-The default-off compatibility suite and an emitted host cannot prove those
-behaviors. H7's storage/images/atomics/barrier and indirect drawing requirements,
+The [current-main composition](performance/mobile-indirect-compute-qualified-2026-10-22.json)
+qualifies24 distinct checks on1,032 exact inputs: two reader, ten disabled-router,
+three enabled-router, two actual GPU runtime, three co-enabled discovery and
+four translated/reset system cases. The GPU runtime includes the full default
+four-CU/16-lane/eight-warp configuration, default64-set/two-way instruction and
+vector caches and256-set/four-way L2, plus the smaller two-CU bring-up control.
+Each executes eight commands with a real producer kernel storing2x1x1 counts
+across two lines, event-dependent group-indexed consumer stores, an actual fill
+and DMA-dependent consumer, zero-work, both physical read faults and ID reuse.
+Lower stores commit only on accepted delayed replies in that fixture.
+
+The translated system cases walk two Sv32 levels across distinct physical
+pages, reject an unreadable second argument page, report a physical page-walk
+fault without launching a CU, and recover. Controlled-reset cuts at an offered
+data request, accepted data request and accepted page-walk request retain the
+actual owner until its real reply drains, discard queued work and execute a
+healthy store after ID reuse. These cases use the two-CU bring-up profile.
+Discovery checks cover enabled local-item capacities8/128 and a disabled block,
+GTO1/GSL/all three query blocks together, held responses, read-only writes with
+all strobes while busy/idle, VM alias isolation, quota policy and reset.
+
+An initial runtime fixture incorrectly requested a12-byte FillEngine write;
+that engine requires64-byte multiples. The original failure is preserved. Only
+the producer length changed to64; the argument view remains12 bytes, and no
+hardware or expected result was relaxed. Full host command/memory AXI runtime
+and enabled-host synthesis remain unqualified in this checkpoint. H7's storage/images/atomics/barrier and indirect drawing requirements,
 H8 geometry/tessellation and the full H0-H8 objective remain open.

@@ -7794,3 +7794,57 @@ Enabled dependency/ID behavior, real CU producer-consumer execution, translated
 fault/reset reuse, co-enabled discovery and synthesis are still required. This
 foundation does not close E31-05/H7, remaining storage/image/barrier work, H8 or
 the full H0-H8 objective.
+
+### 2026-10-21: disjoint native texture-operation discovery
+
+The [revised GTO1 candidate](performance/mobile-native-texture-operations-relocated-2026-10-21.json)
+relocates operation discovery to0x2c0..0x2ff, after the visibility/feedback/primitive
+query records;0x2a0..0x2bf remains unmapped. GTX1 bit10 advertises the immutable
+record. Nineteen fresh decoder/capability/ownership checks, twelve generated ABI
+checks, two strict C tests and one combined-capability host emission pass on983
+frozen inputs. The native16-lane/eight-warp profile reads all four disjoint
+records and rejects every strobe combination on writes. The old unmerged address
+map and7200-second host timeout remain historical evidence. Fresh host synthesis
+and integration with newer main are pending; no H0-H8 closure is claimed.
+
+
+### Current-main GTO1/GSL composition, 2026-10-22
+
+The [1,022-input composition](performance/mobile-native-capability-composition-2026-10-22.json)
+passes24 decoder/AXI/ownership checks, thirteen generated ABI checks, two strict
+C tests and a fresh default host emission. GTO1 remains at0x2c0..0x2ff; the next
+word belongs to GSL1 when enabled. A new16-lane/eight-warp profile enables all
+three query/feedback records, GTO1 and GSL together. Independent literal tables
+check held boundary reads, every read-only write strobe, busy-VM rejection and
+partial quota writes that must remain nonzero. All five prior GTO1 profiles and
+new main's registered beat-address/ownership tests remain in the fresh run.
+
+Merge resolution keeps GTO1, GSL and primitive-query exclusions from mutable
+register forwarding and write acceptance. Both disabled-query holes remain
+covered. The older GTO1 whole-host synthesis failed core/I/O setup; no timing
+result is carried to this combination. The scalar UV/MMIO repairs, newer raster
+and quad UV consumers still need complete-host composition and synthesis. This
+functional merge does not close the remaining H0-H8 requirements.
+
+
+### Qualified indirect-compute system execution, 2026-10-22
+
+The optional GCI1 path now has [24 qualified checks](performance/mobile-indirect-compute-qualified-2026-10-22.json)
+on1,032 exact source inputs, composed with main411f GTO1/GSL/query discovery.
+Actual two-CU bring-up and full default four-CU/16-lane/eight-warp systems each
+execute eight commands, including a GPU kernel that publishes2x1x1 counts
+across cache lines and an event-dependent consumer with exact group-indexed
+stores. Real fill/DMA dependency, zero-work, both argument-line physical faults,
+held completion/VM ownership and healthy ID reuse pass. The four-CU run keeps
+the default L2 and instruction/vector cache capacities.
+
+Two-CU system probes additionally pass Sv32 two-level/cross-page reads,
+second-page read permission failure, a physical page-walk fault, and controlled
+reset with offered data, accepted data and accepted page-walk owners. Reset
+waits for actual replies, prevents a second argument read or queued launch,
+and allows a healthy kernel store after recovery. Co-enabled GCI1/GTO1/GSL and
+all three query blocks retain their disjoint read-only and VM-write contracts.
+The initial invalid12-byte fill fixture and its64-byte repair are preserved;
+no hardware or expected result changed. Full command/memory AXI runtime and
+enabled-host synthesis remain separate gates. H7 indirect drawing, resource/
+image/storage/atomic/barrier requirements, H8 and the full H0-H8 goal stay open.

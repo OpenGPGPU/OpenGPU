@@ -1,0 +1,103 @@
+{
+  "date": "2026-10-21",
+  "status": "functional_pass_host_synthesis_pending",
+  "branch": "codex/mobile-native-texture-operation-capabilities",
+  "merged_main_baseline": "0fca9bc156689ba4444b8799ab5f8ca530bb16ee",
+  "source_manifest": ".artifacts/mobile-native-texture-operations-v2-source.json",
+  "source_files": 983,
+  "source_unchanged": true,
+  "functional_tests": 19,
+  "suites": {
+    "NativeTextureOperationDecodeSpec": 1,
+    "NativeTextureOperationCapabilitiesAxiSpec": 5,
+    "NativeVertexInputCapabilitiesAxiSpec": 4,
+    "GpuHostAxiOwnershipSpec": 2,
+    "GpuHostAxiSpec": 3,
+    "NativePrimitiveQueryCapabilitiesAxiSpec": 2,
+    "NativeTransformFeedbackCapabilitiesAxiSpec": 2
+  },
+  "decoder_cases": 4096,
+  "native_discovery_profiles": 3,
+  "disabled_discovery_profiles": 2,
+  "native_discovery_capacities": [
+    {
+      "lanes": 4,
+      "warps": 2,
+      "queries": false
+    },
+    {
+      "lanes": 4,
+      "warps": 2,
+      "queries": true
+    },
+    {
+      "lanes": 16,
+      "warps": 8,
+      "queries": true
+    }
+  ],
+  "ABI_checks": 12,
+  "strict_C_checks": [
+    {
+      "name": "opengpu_texture_operation_capabilities_test",
+      "compile_returncode": 0,
+      "compile_output": "",
+      "run_returncode": 0,
+      "run_output": ""
+    },
+    {
+      "name": "opengpu_shader_validator_test",
+      "compile_returncode": 0,
+      "compile_output": "",
+      "run_returncode": 0,
+      "run_output": ""
+    }
+  ],
+  "new_host_emissions": 1,
+  "GTO1": {
+    "base": 704,
+    "end_exclusive": 768,
+    "words": 16,
+    "magic": "0x47544f01",
+    "GTX1_discovery_bit": 10
+  },
+  "coexistence": {
+    "GQV1": "0x240..0x25f",
+    "GFC1": "0x260..0x27f",
+    "GQP1": "0x280..0x29f",
+    "unmapped_gap": "0x2a0..0x2bf",
+    "GTO1": "0x2c0..0x2ff"
+  },
+  "invariants": [
+    "Every GTO1 and co-enabled query capability word rejects writes with zero,partial and full strobes.",
+    "Full independent literal tables survive held FIXED/INCR reads,reset and VM-owner backpressure.",
+    "Legacy/fixed profiles retain unmapped native windows; alignment,upper-address aliases,invalid bursts and4GiB wrap are rejected.",
+    "GTO1 and GQP1 accesses are excluded from mutable register forwarding."
+  ],
+  "evidence": ".artifacts/mobile-native-texture-operations-v2-qualified-result.json",
+  "orchestration_count_correction": {
+    "original_expected_tests": 20,
+    "actual_required_tests": 19,
+    "note": "The orchestration count was one too high. The unmodified raw result/log are retained; all 19 tests, 12 ABI checks, 2 C checks and host emission passed without a test retry.",
+    "raw_result": ".artifacts/mobile-native-texture-operations-v2-result.json"
+  },
+  "synthesis": {
+    "status": "pending",
+    "stage": "synthesis",
+    "period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "standard_ABC": true,
+    "retiming": false,
+    "required_skipped_instances": 0,
+    "scope": "Complete default GpuHostAxi native control interface with all three query/feedback capability blocks enabled; external CUs/render engines.",
+    "prior_candidate": "Old conflicting address-map candidate timed out at7200s; no timing result is carried."
+  },
+  "main_promotion": "Pending completed host synthesis and integration with newer main.",
+  "remaining": [
+    "Default native host synthesis setup and mapping/resource results.",
+    "Current-main integration,including later primitive-query recovery coverage.",
+    "API/compiler adoption,whole-host product runtime and remaining H0-H8 requirements."
+  ]
+}

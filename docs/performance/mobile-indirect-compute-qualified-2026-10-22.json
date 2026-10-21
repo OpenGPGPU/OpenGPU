@@ -1,0 +1,86 @@
+{
+  "passed": true,
+  "source_files": 1032,
+  "source_manifest": ".artifacts/mobile-indirect-translation-reset-v1-source.json",
+  "source_manifest_sha256": "ea8c7944ed813b161de52f9200d42679f587228bc9c22c6c8385fac6f5a67a29",
+  "full_1032_inputs_match_composed_worktree": true,
+  "distinct_checks": 24,
+  "counts": {
+    "reader": 2,
+    "disabled_router": 10,
+    "enabled_router": 3,
+    "actual_GPU_system": 2,
+    "coenabled_AXI_discovery": 3,
+    "translated_system_and_reset": 4
+  },
+  "new_checks_this_checkpoint": 12,
+  "actual_runtime_profiles": [
+    {
+      "CUs": 2,
+      "lanes": 4,
+      "warps": 2,
+      "L2sets": 8,
+      "L2ways": 2,
+      "I_V_caches": "4sets1way"
+    },
+    {
+      "CUs": 4,
+      "lanes": 16,
+      "warps": 8,
+      "L2sets": 256,
+      "L2ways": 4,
+      "I_V_caches": "default64sets2ways"
+    }
+  ],
+  "actual_GPU_commands_per_profile": 8,
+  "actual_GPU_commands_total": 16,
+  "GPU_coverage": [
+    "Real kernel stores2x1x1 across cache lines and event-dependent consumer writes60/61 by groupX",
+    "Actual64byte fill producer and DMA-dependent consumer",
+    "Zero dimension launches no CU; physical faults on either argument line cannot partially launch",
+    "Held public completions pin VM; duplicate ID not reused before acceptance",
+    "Sv32twolevel arguments crossing separately mapped pages; second-page read permission denial; physical PTW fault; healthy reuse",
+    "Controlled reset at offered data, accepted data and accepted page-walk request; actual replies drain; queued work discarded; healthy kernel store after reset"
+  ],
+  "discovery_coverage": [
+    "GCI1 enabled4x2 and16x8, disabled4x2 independent literal words",
+    "CoenabledGTO1/GSL/all3query blocks retained; RO writes allstrobes busyandidle do not mutate legacyVM state",
+    "FIXED/INCR heldresponses, unmapped/unaligned aliases, reserved bursts/sizes,4GiB wrap, quota writes/reset"
+  ],
+  "dependency_carry": {
+    "foundation_12_checks": "Reader/router/test inputs and their configuration/dispatch/memory dependencies unchanged. Only seven GTO1/host/discovery inputs changed; enabled host discovery separately verified here. No foundation host RTL identity claim.",
+    "changed_foundation_inputs": [
+      "driver/opengpu_native_binned_abi.h",
+      "driver/opengpu_native_typed_abi.h",
+      "driver/opengpu_typed_fragment_state_abi.h",
+      "src/main/scala/opengpu/graphics/NativeTextureCapabilities.scala",
+      "src/main/scala/opengpu/system/GpuHostAxi.scala",
+      "src/test/scala/opengpu/graphics/NativeTypedGraphicsHostAxiSpec.scala",
+      "src/test/scala/opengpu/system/NativeVertexInputCapabilitiesAxiSpec.scala"
+    ],
+    "router_inputs_all_1029_identical": true,
+    "fresh_default4CU_256bit_host_emission_carries_from": ".artifacts/mobile-indirect-compute-router-v1-result.json",
+    "default_host_RTL_all_production_dependencies_unchanged": true
+  },
+  "evidence": [
+    ".artifacts/mobile-indirect-compute-foundation-v1-result.json",
+    ".artifacts/mobile-indirect-compute-router-v1-result.json",
+    ".artifacts/mobile-indirect-compute-runtime-v3-result.json",
+    ".artifacts/mobile-indirect-translation-reset-v1-result.json"
+  ],
+  "ABI_check": true,
+  "failure_history": {
+    "v1_runtime": ".artifacts/mobile-indirect-compute-runtime-v1-result.json",
+    "cause": "Test fill length12 was invalid; corrected fixture to legal64byte fill, keeping argument view12bytes and all result expectations. No hardware change.",
+    "repair_proof": ".artifacts/mobile-indirect-compute-runtime-v2-repair-proof.json"
+  },
+  "whole_AXI_command_runtime": "new two-profile host test running separately; excluded from24",
+  "synthesis": "not yet qualified for enabled indirect host",
+  "remaining": [
+    "Full host command/memory AXI producer-consumer/reset validation",
+    "Strict synthesis of enabled host composition",
+    "H7 storage/images/atomics/barriers/resource limits and indirect drawing",
+    "H8 geometry/tessellation/primitive generation and all remainingH0-H8 gates"
+  ],
+  "main_promoted": false
+}
