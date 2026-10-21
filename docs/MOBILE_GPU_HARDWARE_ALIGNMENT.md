@@ -6919,13 +6919,14 @@ All three are fully mapped with zero skipped instances, TC/SLVT, 25% I/O,
 standard ABC and no retiming or place/route. Default Q16 banked profiles retain
 their qualified logic after removing comments only. The subsequent counted
 late-join, coordinate-to-color and native-client revisions have separate
-qualification. Shared-CU cluster placement, whole-native rates/coherence,
-main composition audit and the remaining H0-H8 gates stay open.
+qualification. The main composition audit below is complete. Shared-CU cluster
+placement, whole-native rates/coherence and the remaining H0-H8 gates stay open.
 
 ## H4 unquantized service main composition audit
 
-The [clean main merge](performance/mobile-native-fp32-integrated-main-2026-10-21.json)
-preserves all 828 qualified source/test inputs and carries the 82 passing checks
+Local main merge `cdcbb44`, audited in `a9c8751`,
+[preserves](performance/mobile-native-fp32-integrated-main-2026-10-21.json) all
+828 qualified source/test inputs and carries the 82 passing checks
 by exact hashes. Ten fresh emissions are byte exact, including the 51-file
 native FP32 service, sixteen-file filter and both 77-file native endpoints.
 The service/vertex/fragment synthesis screens pass at 1000 ps including I/O,
@@ -6957,10 +6958,11 @@ the record. The eighteen vector wrapper regressions also pass. Corrected default
 FMA synthesis passes 1000 ps including I/O (+210.909/+434.695 ps), with 11,091
 fully mapped cells. Complete-filter synthesis also passes (+155.230/+226.993 ps),
 with 506,427 fully mapped cells and no skipped instances. Changed default
-FMA logic requires fresh native endpoint timing before main
-integration. Raw banked tap forwarding, texel decode, native resource/coordinate
-admission, shared-CU routing and whole-native precision/rates/coherence remain
-required. The Q16 weighted-sum service remains a separate contract; H0-H8 stay open.
+FMA logic has now passed fresh native vertex/fragment timing and is integrated
+on main as recorded above. The translated service below adds raw tap forwarding
+and texel decode; native resource/coordinate admission, shared-CU routing and
+whole-native precision/rates/coherence remain required. The Q16 weighted-sum
+service remains a separate contract; H0-H8 stay open.
 
 ## H4 translated raw taps through native FP32 filtering
 
@@ -6982,13 +6984,26 @@ precise virtual faults, uncached aliases, root remap and healthy reuse pass.
 
 Default banked profiles retain their qualified logic after comments are removed;
 the standalone native filter remains byte-identical. Complete translated FP32
-synthesis is active and not yet qualified. Coordinate/resource admission,
-shared-CU routing, other eligible formats/layouts, changed-FMA native endpoint
-timing and whole-native rates/coherence remain required. This component's rate
+synthesis passes at +40.947/+343.996 ps core/I/O slack with zero skipped
+instances. Coordinate/resource admission, shared-CU routing, other eligible
+formats/layouts and whole-native rates/coherence remain required. This
+component's rate
 starts from prechecked virtual spans, not shader instructions; H0-H8 remain open.
 
 The same 828-input source also passes 23 existing native execution/query checks.
 Fresh complete vertex/fragment endpoints each contain 77 active RTL files;
 only the FMA core/wrapper logic changes from their older timing baseline.
-Fresh vertex endpoint synthesis is active, while fragment synthesis is queued.
-The complete new translated service has its own active synthesis screen.
+Fresh vertex/fragment endpoint synthesis passes at +88.968/+163.440 ps and
++93.253/+162.507 ps core/I/O slack. All three completed screens use synthesis
+only at 1000 ps, TC/SLVT and 25% I/O, with no retiming or place/route.
+
+## H4 local development commit checkpoint
+
+The qualified unquantized FP32 service and arithmetic fixes are integrated on
+local main (`cdcbb44`, audit `a9c8751`). New shared-client code is committed in
+`a09076f` on `codex/mobile-native-rgba8-clients`; qualification `b7dd549` records
+73 passing checks and eight emissions. CU-pair placement is committed in
+`10252e7` on `codex/mobile-native-rgba8-pool`, with eight further passing checks
+and complete 1/2/4-CU emissions. These development branches remain separate
+while the shared service/client/cluster synthesis screens run; full-pool
+synthesis and renderer integration remain open. No remote push was performed.
