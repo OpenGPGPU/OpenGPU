@@ -7778,3 +7778,19 @@ This is functional composition evidence. GTO1 and the newer raster attribute
 and programmable quad UV candidates remain separate. Full-host synthesis at
 1000ps including I/O, complete watchdog/resource/reconvergence contracts, frame
 budgets and the full H0-H8 objective remain open.
+
+
+### H7 indirect compute foundation, 2026-10-22
+
+The [GCI1 hardware path](INDIRECT_COMPUTE_DISPATCH.md) now connects an optional
+indirect command through the unified router, checked GPU argument views, Sv32
+and shared L2 to the normal tagged compute dispatcher. Twelve foundation checks
+pass on1,023 frozen inputs, with an ABI check and fresh reader/default four-CU
+host emissions. The actual reader checks line crossings, full uint32 counts,
+legal4GiB end, malformed bounds, faults, stable held owners and reset-cancel
+reply drain. Existing disabled-profile router behavior passes all ten cases.
+
+Enabled dependency/ID behavior, real CU producer-consumer execution, translated
+fault/reset reuse, co-enabled discovery and synthesis are still required. This
+foundation does not close E31-05/H7, remaining storage/image/barrier work, H8 or
+the full H0-H8 objective.

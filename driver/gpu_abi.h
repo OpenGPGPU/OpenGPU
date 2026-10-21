@@ -285,6 +285,13 @@ typedef int32_t s32;
 
 /* Unified command opcodes and register fields. */
 #define GPU_UCMD_OP_KERNEL       0u
+/* Optional GCI1 profile: SOURCE is allocation VA base, BYTES its length,
+ * WIDTH the four-byte-aligned byte offset of three uint32 group counts.
+ * Kernel PC/kernarg/local dimensions and DMA/event dependencies are captured
+ * normally. A zero group dimension succeeds without dispatching any CU. */
+#define GPU_UCMD_OP_KERNEL_INDIRECT 14u
+#define GPU_INDIRECT_RESULT_BOUNDS 12u
+#define GPU_INDIRECT_RESULT_READ_FAILED 13u
 #define GPU_UCMD_OP_COPY         1u
 #define GPU_UCMD_OP_FILL         2u
 #define GPU_UCMD_OP_STRIDED_COPY 3u

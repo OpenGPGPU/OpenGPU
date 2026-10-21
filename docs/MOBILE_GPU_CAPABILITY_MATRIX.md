@@ -156,7 +156,7 @@ specification.
 | E31-02 | Storage buffers/images | CU memory execution exists. Add typed image/storage descriptors, bounds and format-dependent operations. | Partial |
 | E31-03 | Atomics | EXEC implements shared atomic requests. General required storage classes, ordering and contention/fault coverage remain open. | Partial |
 | E31-04 | Memory and workgroup barriers | EXEC has a workgroup barrier; HOST has publication. Complete execution/memory-domain ordering across images, textures, attachments and DMA remains open. | Partial |
-| E31-05 | Indirect work | HOST fetches bounded command records. API indirect argument layouts, validation and producer/consumer dependencies remain unqualified. | Partial |
+| E31-05 | Indirect work | [GCI1 compute foundation](INDIRECT_COMPUTE_DISPATCH.md) connects checked GPU argument reads through Sv32/L2 to tagged dispatch;12 reader/disabled-router checks and4-CU host emission pass. Enabled producer/consumer, translation/reset, drawing and full ordering/runtime gates remain open. | Partial |
 
 GLES 3.2 includes geometry and tessellation stages. H8 must provide bounded
 amplification, patch storage, inter-stage ownership and stage ordering; reusing

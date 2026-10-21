@@ -38,10 +38,11 @@ object GpuSystem {
   def totalMemoryTransactions(
     numComputeUnits: Int,
     transactionsPerCu: Int,
-    graphicsHostTransactions: Int
+    graphicsHostTransactions: Int,
+    enableIndirectCompute: Boolean = false
   ): Int = (numComputeUnits + 1) * transactionsPerCu + copyTransactions +
     fillTransactions + stridedCopyTransactions + resolveTransactions +
-    dmaWalkTransactions + graphicsHostTransactions
+    dmaWalkTransactions + graphicsHostTransactions + (if(enableIndirectCompute) 2 else 0)
 }
 
 /** Scalable compute-first GPU integration point.
@@ -70,9 +71,11 @@ class GpuSystem(
   shaderPayload: Option[ShaderPayloadConfig] = None,
   producerPayloadPins: Int = 0,
   drainGraphicsPayloadWork: Boolean = false,
-  shaderExecutionLimits: Boolean = false
+  shaderExecutionLimits: Boolean = false,
+  enableIndirectCompute: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
+  require(!enableIndirectCompute || enableUnifiedCommands)
   require(!shaderExecutionLimits || enableGraphicsKernels)
   require(!drainGraphicsPayloadWork || (shaderPayload.nonEmpty && enableGraphicsKernels))
   require(shaderPayload.isEmpty || enableGraphicsKernels,"local shader payloads require the shared graphics task interface")
@@ -99,9 +102,11 @@ class GpuSystem(
   private val fillWalkBase = copyWalkBase + 1
   private val stridedWalkBase = fillWalkBase + 1
   private val resolveWalkBase = stridedWalkBase + 1
+  private val indirectBase = dmaWalkBase + dmaWalkTransactions
+  private val indirectWalkBase = indirectBase + 1
   private val totalSystemTransactions =
     GpuSystem.totalMemoryTransactions(
-      numComputeUnits, transactionsPerCu, graphicsHostTransactions)
+      numComputeUnits, transactionsPerCu, graphicsHostTransactions, enableIndirectCompute)
   private val systemTransactionWidth =
     math.max(1, log2Ceil(totalSystemTransactions))
 
@@ -223,7 +228,7 @@ class GpuSystem(
     completionQueueDepth = config.completionQueueDepth))
   private val commandRouter = Module(new GpuCommandRouter(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
-    completionQueueDepth = config.completionQueueDepth))
+    completionQueueDepth = config.completionQueueDepth, enableIndirectCompute = enableIndirectCompute))
   private val dispatcher = Module(new SharedCuKernelDispatcher(
     config, numComputeUnits, commandIdWidth,shaderPayload))
   private val memory = Module(new SharedComputeMemoryInterconnect(
@@ -300,7 +305,13 @@ class GpuSystem(
   resolveEngine.io.mem.resp <> resolvePort.io.out
   resolveClient.io.in <> resolvePort.io.memoryRequest
   resolvePort.io.memoryResponse <> resolveClient.io.out
-  for (client <- Seq(copyClient, fillClient, stridedClient, resolveClient)) {
+  private val indirectClient = if(enableIndirectCompute)
+    Some(Module(new TranslatedLineClient(config,outstanding=1,preserveCachePolicy=true))) else None
+  indirectClient.foreach { client =>
+    client.io.in <> commandRouter.io.indirectMemoryRequest.get
+    commandRouter.io.indirectMemoryResponse.get <> client.io.out
+  }
+  for (client <- Seq(copyClient, fillClient, stridedClient, resolveClient) ++ indirectClient.toSeq) {
     client.io.satp := io.vectorSatp
     client.io.flush := io.vectorTlbFlush
   }
@@ -489,14 +500,15 @@ class GpuSystem(
   // fabric reset recovers from that.
   commandRouter.io.blockDispatch := false.B
   commandRouter.io.pathReset := false.B
+  if(enableIndirectCompute) commandRouter.io.cancelIndirect.get := io.commandResetActive
   commandProcessor.io.pathReset := false.B
   io.graphicsDependencyIdle := !commandRouter.io.memoryEngineBusy &&
     !copyEngine.io.busy && !fillEngine.io.busy && !stridedCopyEngine.io.busy &&
-    !resolveEngine.io.busy && !resolveActive && !resolveDonePending &&
+    !resolveEngine.io.busy && !resolveActive && !resolveDonePending && !commandRouter.io.indirectBusy &&
     !io.copyDescriptor.valid && !io.fillDescriptor.valid && !io.stridedCopyDescriptor.valid &&
     !io.copyCompletion.valid && !io.fillCompletion.valid && !io.stridedCopyCompletion.valid
   private val contextDrained = io.graphicsDrained && !copyEngine.io.busy && !fillEngine.io.busy &&
-    !stridedCopyEngine.io.busy && !resolveEngine.io.busy &&
+    !stridedCopyEngine.io.busy && !resolveEngine.io.busy && !commandRouter.io.indirectBusy &&
     !resolveActive && !resolveDonePending &&
     !commandProcessor.io.busy && !dispatcher.io.busy.orR && graphicsCacheDrained && payloadContextDrained &&
     !dispatcher.io.graphicsCompletion.valid &&
@@ -520,6 +532,8 @@ class GpuSystem(
     // Held across the resetting cycle too: otherwise a queue flush and a
     // dispatch fire on the same edge and launch the flushed command.
     commandRouter.io.blockDispatch := resetState =/= ResetState.idle
+    if(enableIndirectCompute) commandRouter.io.cancelIndirect.get :=
+      io.commandResetActive || resetState =/= ResetState.idle
     // These are shader batches belonging to an already admitted render, not
     // new host commands. The command router blocks new renders; the active
     // renderer must still launch its remaining batches/invalidations while
@@ -704,9 +718,10 @@ class GpuSystem(
   commandProcessor.io.dmaCompletion(
     DmaEventSource.stridedCopy.litValue.toInt).bits.success :=
     stridedCopyEngine.io.completion.bits.success
+  if(enableIndirectCompute) commandRouter.io.dmaCompletion.get := commandProcessor.io.dmaCompletion
 
   private val l2RequestArbiter = Module(new RRArbiter(
-    new ComputeMemoryRequest(config, 64, totalSystemTransactions), 11))
+    new ComputeMemoryRequest(config, 64, totalSystemTransactions), if(enableIndirectCompute) 13 else 11))
   l2RequestArbiter.io.in(0).valid := memory.io.memoryRequest.valid
   l2RequestArbiter.io.in(0).bits := memory.io.memoryRequest.bits
   memory.io.memoryRequest.ready := l2RequestArbiter.io.in(0).ready
@@ -766,6 +781,16 @@ class GpuSystem(
   l2RequestArbiter.io.in(10).bits.transactionId :=
     resolveWalkBase.U(systemTransactionWidth.W)
   resolveClient.io.pageWalk.ready := l2RequestArbiter.io.in(10).ready
+  indirectClient.foreach { client =>
+    l2RequestArbiter.io.in(11).valid := client.io.memReq.valid
+    l2RequestArbiter.io.in(11).bits := client.io.memReq.bits
+    l2RequestArbiter.io.in(11).bits.transactionId := indirectBase.U(systemTransactionWidth.W)
+    client.io.memReq.ready := l2RequestArbiter.io.in(11).ready
+    l2RequestArbiter.io.in(12).valid := client.io.pageWalk.valid
+    l2RequestArbiter.io.in(12).bits := client.io.pageWalk.bits
+    l2RequestArbiter.io.in(12).bits.transactionId := indirectWalkBase.U(systemTransactionWidth.W)
+    client.io.pageWalk.ready := l2RequestArbiter.io.in(12).ready
+  }
   l2.io.request <> l2RequestArbiter.io.out
 
   private val l2ResponseForCu =
@@ -796,6 +821,10 @@ class GpuSystem(
     l2.io.response.bits.transactionId === stridedWalkBase.U
   private val l2ResponseForResolveWalk =
     l2.io.response.bits.transactionId === resolveWalkBase.U
+  private val l2ResponseForIndirect = if(enableIndirectCompute)
+    l2.io.response.bits.transactionId === indirectBase.U else false.B
+  private val l2ResponseForIndirectWalk = if(enableIndirectCompute)
+    l2.io.response.bits.transactionId === indirectWalkBase.U else false.B
   memory.io.memoryResponse.valid := l2.io.response.valid && l2ResponseForCu
   memory.io.memoryResponse.bits.readData := l2.io.response.bits.readData
   memory.io.memoryResponse.bits.fault := l2.io.response.bits.fault
@@ -859,6 +888,14 @@ class GpuSystem(
   resolveClient.io.pageWalkResp.bits.readData := l2.io.response.bits.readData
   resolveClient.io.pageWalkResp.bits.fault := l2.io.response.bits.fault
   resolveClient.io.pageWalkResp.bits.transactionId := 0.U
+  indirectClient.foreach { client =>
+    client.io.memResp.valid := l2.io.response.valid && l2ResponseForIndirect
+    client.io.memResp.bits := l2.io.response.bits
+    client.io.memResp.bits.transactionId := 0.U
+    client.io.pageWalkResp.valid := l2.io.response.valid && l2ResponseForIndirectWalk
+    client.io.pageWalkResp.bits := l2.io.response.bits
+    client.io.pageWalkResp.bits.transactionId := 0.U
+  }
   l2.io.response.ready := MuxCase(false.B, Seq(
     l2ResponseForCu -> memory.io.memoryResponse.ready,
     l2ResponseForGraphicsShader -> io.graphicsShaderResponse.ready,
@@ -870,13 +907,16 @@ class GpuSystem(
     l2ResponseForCopyWalk -> copyClient.io.pageWalkResp.ready,
     l2ResponseForFillWalk -> fillClient.io.pageWalkResp.ready,
     l2ResponseForStridedWalk -> stridedClient.io.pageWalkResp.ready,
-    l2ResponseForResolveWalk -> resolveClient.io.pageWalkResp.ready))
+    l2ResponseForResolveWalk -> resolveClient.io.pageWalkResp.ready) ++
+    indirectClient.toSeq.flatMap(client => Seq(
+      l2ResponseForIndirect -> client.io.memResp.ready,
+      l2ResponseForIndirectWalk -> client.io.pageWalkResp.ready)))
   when(l2.io.response.valid) {
     assert(l2ResponseForCu || l2ResponseForGraphicsShader ||
       l2ResponseForCopy || l2ResponseForFill || l2ResponseForStridedCopy ||
       l2ResponseForResolve || l2ResponseForGraphicsHost ||
       l2ResponseForCopyWalk || l2ResponseForFillWalk ||
-      l2ResponseForStridedWalk || l2ResponseForResolveWalk,
+      l2ResponseForStridedWalk || l2ResponseForResolveWalk || l2ResponseForIndirect || l2ResponseForIndirectWalk,
       "L2 response must target a CU, graphics shader, DMA, resolve, host or DMA walk")
   }
   io.memoryRequest <> l2.io.memoryRequest
