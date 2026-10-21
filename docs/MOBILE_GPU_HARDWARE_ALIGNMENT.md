@@ -7686,3 +7686,15 @@ fails six unavailable cases and passes its enabled bridge control. Default
 instances. Native host composition, full-capacity qualification, general
 execution/interruption, resource permissions, reconvergence and full host timing
 remain required. S02/H5/H6 and the H0-H8 objective remain partial.
+
+### Exact legacy interpolation divider — 2026-10-22
+
+The [legacy interpolation repair](LEGACY_INTERPOLATION_PIPELINE.md) now has an
+exact streaming signed129/96 divider retaining the low32 quotient bits with
+truncation and overflow wrap. Four checks on 1,002 frozen inputs cover small
+exhaustive/full-width signed boundaries, input/output II1, stalls and reset.
+Default synthesis passes 1000 ps TC/SLVT and 25% I/O with core +329.801 ps,
+I/O +163.606 ps and zero skipped instances. Its latency is 131 cycles and its
+steady-state rate is one operation per cycle. Weighted products, actual
+scalar/quad interpolation consumers and full-host core/I/O timing remain open;
+this component does not repair the host by itself.
