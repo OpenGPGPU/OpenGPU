@@ -6973,6 +6973,23 @@ physical/PTW ownership remain open. Existing serial native lane/metadata issue
 and one lease/client do not establish the target sustained native rate; those
 pipeline/credit changes, visibility and the remaining H0-H8 gates are required.
 
+## H4 CU-pair pool ownership
+
+The [CU-affinity pool](NATIVE_RGBA8_TEXTURE_POOL.md) passes
+[eight fresh checks on 844 inputs](performance/mobile-native-rgba8-pool-2026-10-21.json)
+and complete 1/2/4-CU emissions. It places 1/1/2 shared 8 KiB caches, retains
+placement through held offers and accepted reply/cancel leases, and holds one
+VM/publication epoch across both pairs. Every old public lease drains before
+global maintenance; deferred scoped flushes reach every pair. All 841 inputs
+from the 73-check client candidate remain exact. Each pool profile contains
+84 RTL files: 82 of the 83 standalone cluster files match after removing
+comments/empty lines, while the cluster wrapper specializes maintenance
+inputs tied off by the pool. Standalone wrapper equivalence is not claimed.
+Full renderer client/ownership wiring, bounded global
+data/PTW allocation, full-pool synthesis, native streaming issue and visibility
+remain required. This is a pool component, not completed renderer integration
+or H0-H8 closure.
+
 ## H4 unquantized FP32 bilinear pipeline
 
 The [streaming native FP32 filter](TEXTURE_BILINEAR_FP32_PIPELINE.md) now passes

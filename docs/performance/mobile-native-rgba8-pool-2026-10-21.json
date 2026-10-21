@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-21",
+  "status": "Pool component functional qualification passed; renderer integration and full-pool synthesis remain open.",
+  "source": {
+    "commit": "10252e70c2050544b9795e10f42c084c9e11be68",
+    "source_files": 844,
+    "manifest_sha256": "9b8cb8a2289f2c449cce37643935b18ab8b5496dda2f01658b1b9261d996a7fd",
+    "archive_sha256": "e5a282a6a6754aaa89fbe2220377ae430bdfe423804a4440ebd301deb8116611",
+    "git_archive_and_worktree_exact": true,
+    "all_841_client_inputs_exact": true
+  },
+  "functional": {
+    "fresh_checks": 8,
+    "carried_client_checks": 73,
+    "carry_basis": "All 841 inherited client source/test inputs are exact; the 73 client checks were not rerun in the pool qualification.",
+    "result": ".artifacts/mobile-native-rgba8-pool-v2-result.json"
+  },
+  "emission": {
+    "fresh_profiles": 3,
+    "compute_units": [
+      1,
+      2,
+      4
+    ],
+    "clusters": [
+      1,
+      1,
+      2
+    ],
+    "cache_bytes_per_cluster": 8192,
+    "active_files_per_profile": 84,
+    "matching_cluster_files_per_profile": 82,
+    "specialized_cluster_file": "NativeRgba8TextureCluster.sv",
+    "specialization": "The pool ties off per-client invalidation and scoped-flush fields, then applies global maintenance after every pair drains. No standalone wrapper equivalence is claimed.",
+    "proof": ".artifacts/mobile-native-rgba8-pool-v2-RTL-proof.json"
+  },
+  "synthesis": {
+    "policy": "Synthesis only",
+    "full_pool_status": "not started",
+    "standalone_cluster_status": "running separately on the client candidate; not a full-pool qualification"
+  },
+  "remaining": [
+    "Full renderer client and CU-ownership wiring",
+    "Bounded global physical data/PTW port allocation",
+    "Full-pool synthesis",
+    "Native lane/instruction pipelining and outstanding credits",
+    "Whole-renderer shared-path frames, visibility and all remaining H0-H8 exit gates"
+  ]
+}
