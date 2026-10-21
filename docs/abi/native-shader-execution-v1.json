@@ -1,0 +1,18 @@
+{
+  "schema":"native-shader-execution-v1",
+  "capability_base":768,
+  "capability_words":[1196641281,8,31,32,1048576,67442968,800,312],
+  "quota_register":800,
+  "quota_bits":32,
+  "default_quota":1048576,
+  "minimum_quota":1,
+  "maximum_quota":4294967295,
+  "feature_bits":{"per_warp_admitted_fetches":0,"kernel_snapshot":1,"reset_interrupt":2,"attributed_traps":3,"nonzero_native_quota":4},
+  "trap_causes":{"instruction_limit":24,"interrupted":25},
+  "quota_unit":"admitted instruction fetches per allocated warp, including branches and cease",
+  "scope":"native typed and binned shared-CU graphics; compute compatibility uses quota zero",
+  "snapshot":"kernel acceptance; later warp allocations retain the same limit",
+  "writes":"32-bit little-endian byte strobes, drained context only, resulting zero rejected",
+  "reset":"interrupt graphics-owned and irrevocably admitted graphics kernels; drain real replies; retain policy",
+  "limitations":"no cycle deadline for memory, texture or unserviced execution ports; not full watchdog closure"
+}

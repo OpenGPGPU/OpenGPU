@@ -110,6 +110,9 @@ class GpuCommandMmio(
     /** Every external owner/translation/memory client has retired. Local
       * staged commands and the software completion slot are checked here. */
     val vmContextIdle = if (protectVmState) Some(Input(Bool())) else None
+    /** Includes local staged commands, held/incoming completions and reset,
+      * in addition to all external context owners. */
+    val vmStateWriteAllowed = if (protectVmState) Some(Output(Bool())) else None
     /** Current Sv32 page-table base/ASID for the vector and instruction MMUs. */
     val vectorSatp = Output(UInt(32.W))
     val instructionSatp = Output(UInt(32.W))
@@ -216,6 +219,7 @@ class GpuCommandMmio(
   private val vmWriteAllowed = io.vmContextIdle.getOrElse(true.B) &&
     (if (protectVmState) queue.io.count === 0.U && !completionValid &&
       !io.completion.valid && !resetActive else true.B)
+  io.vmStateWriteAllowed.foreach(_ := vmWriteAllowed)
   private val vmMutation = io.reg.req.bits.isWrite && (
     io.reg.req.bits.addr === GpuCommandMmioRegs.VECTOR_SATP.U ||
     io.reg.req.bits.addr === GpuCommandMmioRegs.INSTRUCTION_SATP.U ||

@@ -13,6 +13,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   protected def transformFeedback: Boolean=false
   protected def primitiveQueries: Boolean=false
   protected def primitiveQueryLifetimes: Boolean=false
+  protected def shaderExecutionLimits: Boolean=false
   protected def shaderSystemFaults: Boolean=false
   protected def transformFeedbackRecovery: Boolean=false
   protected def groupedTexture: Boolean=false
@@ -254,6 +255,50 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       assert(writes.exists(_>=0x1000000) && !reads.exists(a=>a>=0x400000 && a<0x800000),"virtual descriptors must not escape onto physical AXI")
     }
   }
+  if(shaderExecutionLimits)for(local<-Seq(true,false))
+  it should s"bound both native shader stages and drain reset-owned instruction fetches local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      initialize(d);val image=new Image(d);val perf=d.io.performance.get
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,RenderHostRegs.IRQ,1)
+      for((value,i)<-opengpu.system.NativeShaderExecutionCapabilities.words.zipWithIndex)
+        assert(axiRead(d,0x300+4*i)==value)
+      def released(): Unit={perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)}
+      for((stage,frame)<-Seq("vertex","fragment").zipWithIndex){
+        image.shaderDraws(0,freshTextureSources=true,generation=frame+1)
+        val pc=0x4c0000+frame*0x1000;image.word(image.pa(pc),BigInt("0000006f",16))
+        for(draw<-0 until 3)image.word(image.pa(0x412000+draw*4096+(if(stage=="vertex")33 else 516)*4),pc)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,0x320,128)
+        image.submit(180+frame);axiWrite(d,0x320,17,expectedResponse=2)
+        image.run(status=5,id=180+frame)
+        assert(image.reads.contains(image.pa(pc)),s"$stage loop never reached instruction memory")
+        assert(!image.writes.exists(_>=0x1000000),s"$stage loop published an image")
+        axiWrite(d,0x320,17,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        image.pop();released()
+      }
+      image.shaderDraws(0,freshTextureSources=true,generation=3)
+      val pc=0x4c2000;image.word(image.pa(pc),BigInt("0000006f",16))
+      for(draw<-0 until 3)image.word(image.pa(0x412000+draw*4096+33*4),pc)
+      axiWrite(d,0x320,-1);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(182)
+      var requested=false
+      serviceMemoryMaster(d,image.read,readResponseDelay=31,writeAckDelay=29,maxCycles=300000,
+        onReadAccepted=a=>if(!requested && a==image.pa(pc)){
+          requested=true;if(local)assert(perf.payloadReservedBytes.peek().litValue>0)
+          axiWrite(d,GpuCommandMmioRegs.RESET,1)
+          axiWrite(d,0x320,17,expectedResponse=2);axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        })(image.write){requested && d.io.m_irq.peek().litToBoolean}
+      assert(requested && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
+      assert(!image.writes.exists(_>=0x1000000));released()
+      assert(axiRead(d,0x320)==BigInt("ffffffff",16),"command reset must not silently replace quota policy")
+      axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,0x320,4096)
+      image.shaderDraws(0,freshTextureSources=true,generation=4);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+      image.submit(183);image.run(id=183);image.verifyDraws(0);image.pop();released()
+      info(s"NATIVE_SHADER_EXECUTION_TYPED local=$local CUs=$nativeComputeUnits frames=4 vertexLoop=true fragmentLoop=true quota128=true resetDuringOwnedFetch=true delayedReplyDrained=true maxQuota=true zeroRejectedByPolicy=true queuedAndCompletionPolicyPinned=true exactHealthyImages=true payloadReleased=true")
+    }
+  }
   if(shaderSystemFaults)for(local<-Seq(true,false))
   it should s"reject unsupported native shader system operations and reuse their destinations through AXI local=$local" in {
     simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
@@ -458,7 +503,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames resetCuts=$resetCuts checkpointPermissionFaults=1 capturePermissionFaults=1 captureBusFaults=1 missingLeaseDraws=1 peerHealthyDraws=4 scopedRecovery=true countersAfterFinalAck=true noDeniedPhysicalStores=true partialFaultStoresBounded=true staleResetObjectsRejected=true exactRawCaptureAndImages=true queryContextIsolation=true")
     }
   }
-  if(!transformFeedback && !shaderSystemFaults){
+  if(!transformFeedback && !shaderSystemFaults && !shaderExecutionLimits){
   // Shared-path subclasses register the focused capture matrix below.
   if(!groupedTexture){
   it should "submit a translated native clear pass and publish trusted physical source and resolve views over the production AXI host" in {

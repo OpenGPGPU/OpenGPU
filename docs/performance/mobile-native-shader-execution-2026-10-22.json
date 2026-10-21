@@ -1,0 +1,82 @@
+{
+  "date": "2026-10-22",
+  "scope": "Native typed/binned shared-CU instruction quota and reset-owned fetch drain. Candidate source precedes latest main FP/availability fixes and requires integration. Full host/renderer timing and general watchdog/resource/reconvergence closure remain open.",
+  "source_files": 999,
+  "source_manifest": ".artifacts/mobile-native-shader-execution-v3-source.json",
+  "source_manifest_sha256": "ff28e9be792427c612310ea1de35ec06fb8129a324ed7bc7e128c2c995f0d4b8",
+  "functional": {
+    "passed": true,
+    "checks": 8,
+    "test_counts": [
+      2,
+      4,
+      2
+    ],
+    "MMIO_cases": 2,
+    "native_typed_binned_cases": 4,
+    "local_and_spilled_payloads": true,
+    "new_native_submissions": 16,
+    "new_loop_fault_completions": 8,
+    "new_reset_drains": 4,
+    "new_exact_healthy_images": 4,
+    "prior_system_fault_regression_cases": 2,
+    "prior_system_fault_submissions": 12,
+    "total_submissions": 28,
+    "total_exact_healthy_images": 10,
+    "result": ".artifacts/mobile-native-shader-execution-v3-result.json",
+    "markers": [
+      "NATIVE_SHADER_EXECUTION_TYPED local=true CUs=2 frames=4 vertexLoop=true fragmentLoop=true quota128=true resetDuringOwnedFetch=true delayedReplyDrained=true maxQuota=true zeroRejectedByPolicy=true queuedAndCompletionPolicyPinned=true exactHealthyImages=true payloadReleased=true ",
+      "NATIVE_SHADER_EXECUTION_TYPED local=false CUs=2 frames=4 vertexLoop=true fragmentLoop=true quota128=true resetDuringOwnedFetch=true delayedReplyDrained=true maxQuota=true zeroRejectedByPolicy=true queuedAndCompletionPolicyPinned=true exactHealthyImages=true payloadReleased=true ",
+      "NATIVE_SHADER_EXECUTION_BINNED local=true CUs=2 engines=2 frames=4 vertexLoop=true fragmentLoop=true quota128=true resetDuringOwnedFetch=true delayedReplyDrained=true maxQuota=true queuedAndCompletionPolicyPinned=true exactHealthyImages=true payloadReleased=true ",
+      "NATIVE_SHADER_EXECUTION_BINNED local=false CUs=2 engines=2 frames=4 vertexLoop=true fragmentLoop=true quota128=true resetDuringOwnedFetch=true delayedReplyDrained=true maxQuota=true queuedAndCompletionPolicyPinned=true exactHealthyImages=true payloadReleased=true "
+    ]
+  },
+  "ABI": {
+    "base": 768,
+    "read_only_words": 8,
+    "quota_register": 800,
+    "default_quota": 1048576,
+    "counter_bits": 32,
+    "nonzero_policy": true,
+    "minimum_quota": 1,
+    "maximum_quota": 4294967295,
+    "byte_strobes": true,
+    "context_guard": "reuse complete GpuCommandMmio vmStateWriteAllowed including local queue, held/incoming completion, reset and every external owner",
+    "generator_check": "passed",
+    "strict_C_header_compile": "passed"
+  },
+  "native_wiring": "GpuHostSystemAxi enables the guard for typed and binned graphics by default. Snapshot quota from same-cycle selected graphics producer at cuLaunch.fire, since graphicsOwner updates after that edge. Reset interrupts graphics-owned and newly admitted graphics tasks; compute compatibility remains quota zero. Keep IDs, roots, pins and actual replies until drained.",
+  "failure_history": [
+    {
+      "result": ".artifacts/mobile-native-shader-execution-v1-result.json",
+      "MMIO_pass": 2,
+      "native_fail": 4,
+      "repair": ".artifacts/mobile-native-shader-execution-v2-repair-proof.json",
+      "reason": "Quota write guard omitted MMIO bridge local ownership; expose existing complete VM mutation fence."
+    },
+    {
+      "result": ".artifacts/mobile-native-shader-execution-v2-result.json",
+      "MMIO_pass": 2,
+      "binned_pass": 2,
+      "typed_fail": 2,
+      "repair": ".artifacts/mobile-native-shader-execution-v3-repair-proof.json",
+      "reason": "Consecutive typed fixture generations aliased previous cached color pages as new positions. Allocate disjoint two-page input regions. Production unchanged; exact comparisons and full selection retained."
+    }
+  ],
+  "synthesis": {
+    "new_default_all_query_host_emitted": true,
+    "emission_directory": "generated/mobile-h5/native-shader-execution-v3-host-rtl",
+    "host_synthesis_qualified": false,
+    "related_terminal_failure": ".artifacts/mobile-native-host-timing-diagnosis-2026-10-22.json",
+    "related_profile": "Separate GTO1 full default discovery host, source983, mapped completely but failed core/I/O1000ps. Legacy edge-to-sampler interpolation and beat-to-read-data critical paths remain required repairs. This is not a synthesized GSL result.",
+    "guard_component_qualification": "docs/performance/mobile-shader-execution-limits-2026-10-22.json",
+    "guard_source_byte_identical": true
+  },
+  "remaining": [
+    "Integrate latest main FP reservation and execution-availability repairs",
+    "Repair full default legacy interpolation and MMIO I/O timing without deleting paths or reducing numeric/rate/clock contracts",
+    "Native reset while a loop is already running and owned load/store/texture fault priority",
+    "General resource permissions, reconvergence and native full product capacity",
+    "Original H0-H8 gates"
+  ]
+}

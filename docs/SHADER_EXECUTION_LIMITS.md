@@ -75,3 +75,37 @@ passes 1000 ps TC/SLVT with 25% I/O, standard ABC and no retiming: core +402.588
 I/O +626.374 ps, 2,753 mapped cells, library area 333.517500, sequential area
 114.307200, 392 flops, zero SRAM macros and zero skipped instances. This is a
 component result; it does not qualify the CU, native host or renderer timing.
+
+## Native controls and reset ownership
+
+The [native checkpoint](performance/mobile-native-shader-execution-2026-10-22.json)
+enables limits by default in typed and binned `GpuHostSystemAxi` profiles. GSL1
+read-only words occupy `0x300..0x31f`; the 32-bit quota register is `0x320`. Its
+reset value is 1,048,576 admitted fetches per allocated warp. Byte-strobe writes
+that produce zero are rejected. Command reset retains the policy. These
+addresses follow the separate GTO1 candidate at `0x2c0..0x2ff`.
+
+Quota updates use the complete existing VM-state mutation fence: external
+owners, locally queued commands, held/incoming completions and reset must all
+be idle. Checking only external idle inputs allowed a write while the bridge
+still owned command state. The public fence output now protects both VM and
+quota mutations. Same-cycle graphics producer selection determines the quota
+snapshot; using only registered CU ownership would sample the previous owner.
+Reset interruption also covers an irrevocably admitted graphics launch while
+the renderer drains. Compute compatibility kernels keep quota zero.
+
+Eight checks pass on 999 frozen inputs. Four actual typed/binned local/spill
+cases submit sixteen frames: eight vertex/fragment loop faults, four reset cuts
+with an owned delayed instruction fetch, and four exact healthy image reuses.
+Two MMIO cases check discovery, strobes, nonzero policy, held responses and
+context ownership. Two existing native system-fault cases add twelve frames.
+All payload pins/reservations drain. The typed fixture now allocates disjoint
+position/color source pages across generations; its original cached-source
+alias failure is preserved alongside the earlier mutation-fence failure.
+
+The default combined discovery host is emitted but its synthesis is not
+qualified. A separate GTO1 full-host screen mapped all cells and failed timing
+on legacy raster-edge-to-texture interpolation and MMIO burst-read paths. It
+does not qualify this GSL candidate. Latest-main integration, full-host timing,
+interruption after loop execution has begun, owned data/texture fault priority,
+resource permissions and reconvergence capacity remain open.
