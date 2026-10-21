@@ -58,6 +58,17 @@ class TextureRgba8GroupPlanner(p: TextureImageAddressConfig = TextureImageAddres
     val supported = Bool(); val admissionStatus = UInt(3.W); val tableStatus = UInt(3.W)
   }
   private val metadata = Reg(Vec(entries, new Metadata))
+  // Check table capacity in parallel with the eight-stage coordinate pipeline.
+  // Splitting span subtraction from handle comparison removes the composed
+  // request -> wide record-end arithmetic -> per-row status timing path.
+  // For a nonempty aligned span, base + handle*128 + 128 <= limit is exactly
+  // handle < (limit-base)/128. Keep all33 span bits, including the4GiB endpoint.
+  private class TableAdmission extends Bundle {
+    val owner = UInt(indexBits.W); val span = UInt(33.W); val handle = UInt(32.W)
+    val header = Bool(); val sameLevel = Bool()
+  }
+  private val tableAdmission = Reg(new TableAdmission)
+  private val tableAdmissionValid = RegNext(io.in.fire, false.B)
   private val results = Reg(Vec(entries, new TextureRgba8GroupPlan))
   private val alive = RegInit(VecInit(Seq.fill(entries)(false.B)))
   private val completed = RegInit(VecInit(Seq.fill(entries)(false.B)))
@@ -97,15 +108,16 @@ class TextureRgba8GroupPlanner(p: TextureImageAddressConfig = TextureImageAddres
     val layout = TextureImageFormat.targetLegal(q.format, v.target) && v.block4x4 === TextureImageFormat.block4x4(q.format) &&
       v.blockBytes === TextureImageFormat.bytes(q.format) && (!q.linear || q.shadow || TextureImageFormat.filterable(q.format))
     val wraps = q.wraps.map(_ <= TextureFloatAxisWrap.mirroredRepeat.U).reduce(_ && _)
-    val begin = table.base.pad(64) + (q.lookup.handle.pad(64) << 7)
-    val legalTable = table.version === 1.U && table.base(5, 0) === 0.U && table.limit(5, 0) === 0.U &&
-      table.limit > table.base && table.limit <= (BigInt(1) << 32).U && (table.limit - table.base)(6, 0) === 0.U && begin + 128.U <= table.limit
+    tableAdmission.owner := tail
+    tableAdmission.span := table.limit - table.base.pad(33)
+    tableAdmission.handle := q.lookup.handle
+    tableAdmission.header := table.version === 1.U && table.base(5, 0) === 0.U && table.limit(5, 0) === 0.U &&
+      table.limit > table.base && table.limit <= (BigInt(1) << 32).U
+    tableAdmission.sameLevel := v.level === q.lookup.level
     metadata(tail).view := v; metadata(tail).layer := q.layer; metadata(tail).face := q.face(2, 0); metadata(tail).linear := q.linear
     metadata(tail).supported := q.format === TextureImageFormat.id("RGBA8").U && !q.shadow && v.target <= TextureImageTarget.cube.U
     metadata(tail).admissionStatus := Mux(!layout || !wraps, TextureImageFetchStatus.format.U,
       Mux(!offsets, TextureImageResourceStatus.view.U, Mux(!selected, TextureImageResourceStatus.coordinate.U, 0.U)))
-    metadata(tail).tableStatus := Mux(!legalTable, TextureImageResourceStatus.view.U,
-      Mux(v.level =/= q.lookup.level, TextureImageResourceStatus.encoding.U, 0.U))
     results(tail) := 0.U.asTypeOf(results(tail)); results(tail).tag := q.tag
     results(tail).group.identity := q.lookup.table.identity
     // Full table address/record handle, with no lossy descriptor hash.
@@ -114,6 +126,17 @@ class TextureRgba8GroupPlanner(p: TextureImageAddressConfig = TextureImageAddres
     alive(tail) := true.B; completed(tail) := false.B
     cancelled(tail) := io.cancelGroup.valid && io.cancelGroup.bits.identity.asUInt === q.lookup.table.identity.asUInt && io.cancelGroup.bits.tag === q.tag
     tail := tail + 1.U
+  }
+
+  // This owned update drains even after cancellation, preserving primary
+  // table faults. Coordinate/address results cannot arrive before this edge.
+  when(tableAdmissionValid) {
+    val row = tableAdmission.owner
+    assert(alive(row) && !completed(row), "table admission lost its planner owner")
+    val legalTable = tableAdmission.header && tableAdmission.span(6, 0) === 0.U &&
+      tableAdmission.handle < tableAdmission.span(32, 7)
+    metadata(row).tableStatus := Mux(!legalTable, TextureImageResourceStatus.view.U,
+      Mux(!tableAdmission.sameLevel, TextureImageResourceStatus.encoding.U, 0.U))
   }
 
   private val axesValid = axes.map(_.io.out.valid).reduce(_ && _)

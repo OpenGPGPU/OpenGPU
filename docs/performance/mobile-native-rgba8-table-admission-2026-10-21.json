@@ -1,0 +1,63 @@
+{
+  "date": "2026-10-21",
+  "status": "functional_pass_synthesis_running",
+  "base_commit": "51081086302a42a2e5a258b891363921ef7b5704",
+  "change": "Pipeline owned table admission: register 33-bit limit-base span, full handle and header/level checks; compare handle against record capacity on the following edge. Keep the 4GiB endpoint and primary faults. Coordinate/address pipelines cover this check latency.",
+  "source_files": 914,
+  "source_manifest": ".artifacts/mobile-shared-cluster-timing-v1-source.json",
+  "source_sha256": "c343fb284896c12e1509bf7c126598c8fd833c18418af6631de4d3fc3d0d9292",
+  "functional": {
+    "tests": 24,
+    "planner": 7,
+    "native_service": 8,
+    "shared_pool": 3,
+    "registered_cancel": 1,
+    "default_cold_window": 1,
+    "native_throughput_and_reset": 4,
+    "exact_record_end_oracle_cases": 224,
+    "result": ".artifacts/mobile-shared-cluster-timing-v1-result.json",
+    "log": ".artifacts/mobile-shared-cluster-timing-v1.log",
+    "markers": [
+      "[info]   + RGBA8_GROUP_TABLE_PIPELINE exactRecordEnds=224 fourGiB=true highHandles=true heldResults=true ringWrap=true earlyCancelKeepsPrimaryFault=true healthyReuse=true",
+      "[info]   + NATIVE_SHARED_COLD_WINDOW pairs=2 rowsPerPair=128 hotPublicRowsPerPair=120 peerReservedRowsPerPair=4 maxDataIDsPerPair=16 maxPTWPerPair=4 taps=4 coldOwners=128 primaryMemoryFaults=2 cancelledOwners=126 healthyHotReplies=240 healthyPeerReplies=9 roots=2 heldPublicRootPin=true preciseReadCharges=290 sameVirtualChangedPhysical=true",
+      "[info]   + NATIVE_SHARED_WARM_RATE shared=false burst=true lanes=16 warps=8 contexts=8 clients=3 activeClients=1 taps=4 instructions=32 groups=512 totalCycles=11787 stableGroups=448 stableSpanCycles=10216 maxAdmissionGap=89 minReplyLatency=91 maxReplyLatency=91 warmDescriptorReads=0 warmDataReads=0 targetII1=false",
+      "[info]   + NATIVE_SHARED_WARM_RATE shared=true burst=false lanes=16 warps=8 contexts=8 clients=3 activeClients=1 taps=4 instructions=32 groups=512 totalCycles=729 stableGroups=448 stableSpanCycles=567 maxAdmissionGap=46 minReplyLatency=90 maxReplyLatency=90 warmDescriptorReads=0 warmDataReads=0 targetII1=false",
+      "[info]   + NATIVE_SHARED_WARM_RATE shared=true burst=true lanes=16 warps=8 contexts=8 clients=3 activeClients=1 taps=4 instructions=32 groups=512 totalCycles=610 stableGroups=448 stableSpanCycles=448 maxAdmissionGap=1 minReplyLatency=90 maxReplyLatency=90 warmDescriptorReads=0 warmDataReads=0 targetII1=true"
+    ]
+  },
+  "emissions": {
+    "count": 5,
+    "profiles": [
+      "planner",
+      "service",
+      "shared-cluster",
+      "native-vertex",
+      "native-fragment"
+    ],
+    "endpoint_log": ".artifacts/mobile-shared-cluster-timing-synthesis-v1-endpoint-emission.log"
+  },
+  "previous_failure": {
+    "evidence": "mobile-native-rgba8-shared-cluster-synthesis-2026-10-21.json",
+    "source_files": 867,
+    "core_slack_ps": -52.676,
+    "io_slack_ps": 282.338,
+    "scope": "Historical failed composed-cluster mapping; retained unchanged."
+  },
+  "new_synthesis": {
+    "status": "running",
+    "state": ".artifacts/mobile-shared-cluster-timing-synthesis-v1-state.json",
+    "period_ps": 1000,
+    "corner": "TC",
+    "vt": "SLVT",
+    "io_delay_fraction": 0.25,
+    "retiming": false,
+    "abc": "standard",
+    "queue": [
+      "shared-cluster",
+      "native-vertex",
+      "native-fragment"
+    ],
+    "scope": "No timing/area PASS claim until each mapped setup/mapping report qualifies."
+  },
+  "promotion": "Candidate functional commit only; main promotion waits for synthesis qualification. H4/H0-H8 remain open."
+}

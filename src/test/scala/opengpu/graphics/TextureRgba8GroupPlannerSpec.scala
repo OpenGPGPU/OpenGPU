@@ -165,6 +165,46 @@ class TextureRgba8GroupPlannerSpec extends AnyFlatSpec {
       t.drain()
     }
   }
+  it should "validate pipelined table capacity against exact record ends at fourGiB boundaries and retain early-cancel faults" in {
+    simulate(new TextureRgba8GroupPlanner()) { d =>
+      val t = new Driver(d); val fourGiB = BigInt(1) << 32
+      val bases = Vector[BigInt](0, 64, 128, 0x7fffffc0L, 0xfffffe80L, 0xffffff80L)
+      val requests = (for {
+        base <- bases
+        span <- Vector[BigInt](0, 64, 128, 256, 384, fourGiB - base)
+        handle <- Vector[BigInt](0, 1, 2, ((span >> 7) - 1).max(0), span >> 7, 0xffffffffL)
+      } yield Query(0, tableBase = base, tableLimit = base + span, handle = handle)) ++ Vector(
+        Query(0, tableBase = 0xffffffc0L, tableLimit = fourGiB, handle = 0),
+        Query(0, tableBase = 0x2000, tableLimit = 0x1f80, handle = 0),
+        Query(0, tableBase = 0, tableLimit = fourGiB + 128, handle = 0),
+        Query(0, tableBase = 1, tableLimit = 257, handle = 0),
+        Query(0, tableLimit = 0x3001, handle = 0), Query(0, version = 2),
+        Query(0, view = View(level = 3), selectedLevel = 2),
+        Query(0, tableLimit = 0x2000, view = View(level = 3), selectedLevel = 2))
+      // Independent unbounded record-end oracle, not the hardware capacity test.
+      def expected(q: Query): Plan = {
+        val valid = q.version == 1 && q.tableBase % 64 == 0 && q.tableLimit % 64 == 0 &&
+          q.tableLimit > q.tableBase && q.tableLimit <= fourGiB &&
+          (q.tableLimit - q.tableBase) % 128 == 0 && q.tableBase + q.handle * 128 + 128 <= q.tableLimit
+        if (!valid) Plan(q, 1, 1, false)
+        else if (q.view.level != q.selectedLevel) Plan(q, 7, 1, false)
+        else reference(q)
+      }
+      val qs = requests.zipWithIndex.map { case (q, i) => q.copy(tag = 1000 + i) }
+      var index = 0; var ticks = 0
+      while (index < qs.size || t.pending.nonEmpty) {
+        val q = qs.lift(index)
+        if (t.tick(q, ready = ticks % 47 >= 13, expected = q.map(expected))) index += 1
+        ticks += 1; assert(ticks < 3000, "pipelined table checks did not drain")
+      }
+      t.drain()
+      val bad = Query(9000, tableBase = 0xfffffff0L, tableLimit = fourGiB, handle = 0xffffffffL)
+      assert(t.tick(Some(bad), ready = false, expected = Some(expected(bad))))
+      t.tick(ready = false, cancel = true); t.drain()
+      t.stream(Vector(Query(9000), Query(9001)))
+      info(s"RGBA8_GROUP_TABLE_PIPELINE exactRecordEnds=${qs.size} fourGiB=true highHandles=true heldResults=true ringWrap=true earlyCancelKeepsPrimaryFault=true healthyReuse=true")
+    }
+  }
   it should "request the general fallback for legal formats volume shadow and unaligned packed words" in {
     simulate(new TextureRgba8GroupPlanner()) { d =>
       val t = new Driver(d)

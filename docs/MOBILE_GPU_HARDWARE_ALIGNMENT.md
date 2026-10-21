@@ -7546,3 +7546,18 @@ The serial queue stopped at this failure,so native vertex/fragment endpoint
 synthesis did not start. Critical-path correction and fresh qualification remain
 required. H4/H0-H8 stay open; the failed result is preserved without clock
 relaxation,retiming or place/route.
+
+
+### 2026-10-21: shared-cluster table-admission timing candidate
+
+The candidate splits table-span subtraction from full-handle capacity comparison
+while retaining owned fault metadata and the4GiB endpoint.
+[Fresh checks](performance/mobile-native-rgba8-table-admission-2026-10-21.json)
+pass24 tests,224 independent record-end cases and five emissions. Default
+cold-window faults/reset/peer/root ownership pass; native16-lane/eight-warp
+streaming retains448 warm groups in448 cycles, admission gap1 and90-cycle
+reply latency. The previous−52.676ps composed-cluster failure remains recorded.
+New shared-cluster/native-endpoint synthesis is running separately at unchanged
+1000ps TC/SLVT/25% I/O with standard ABC and no retiming. This functional unit
+is committed for review before the long mapping completes; main promotion and
+H4 timing closure await qualified synthesis. No H0-H8 gate is closed here.

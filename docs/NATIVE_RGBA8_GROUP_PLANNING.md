@@ -42,3 +42,24 @@ fallback modes, actual 64-row saturation, fault/cancel drain, tag reuse and 192
 healthy requests after cancellation. These are planner measurements; complete
 translated sampling, shared-CU throughput and render-to-texture visibility
 still require integration and verification. PPA remains synthesis only.
+
+## Pipelined table admission
+
+The composed shared-cluster screen found a−52.676ps path into table-status
+metadata. The candidate now registers the33-bit table span, full handle and
+header/level checks on admission, then validates record capacity on the next
+edge. For a nonempty aligned span, the exact record-end condition is equivalent
+to `handle < (limit-base)/128`. All33 span bits retain the4GiB exclusive endpoint.
+The owned check drains through cancellation and keeps primary table faults.
+The existing eight-stage coordinate pipeline covers this check latency, so
+admission/output rates and the public latency remain unchanged.
+
+[Fresh validation](performance/mobile-native-rgba8-table-admission-2026-10-21.json)
+passes24 tests and five complete emissions. An independent unbounded record-end
+oracle checks224 table-bound/large-handle cases. Numeric, Sv32, scoped reset,
+peer/root isolation and default two-pair cold-window checks pass. Actual native
+16-lane/eight-warp streaming still sustains one warm group per cycle with eight
+contexts:448 stable groups in448 cycles, maximum admission gap1 and reply
+latency90 cycles. Fresh composed-cluster and complete endpoint synthesis are
+queued at1000ps TC/SLVT,25% I/O, standard ABC and no retiming. Timing closure
+and main promotion remain pending; the previous failed mapping is preserved.
