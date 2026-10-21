@@ -6908,6 +6908,20 @@ interpolation semantics. Connecting native FP32 filtering and shared-CU/resource
 coordinate admission, measuring whole-native rates under contention and closing
 render-to-texture visibility remain required. All H0-H8 exit gates remain open.
 
+## H4 qualified unquantized FP32 service and corrected native arithmetic
+
+The [translated FP32 service](TRANSLATED_RGBA8_FP32_TEXTURE_SERVICE.md) now
+passes 82 functional checks and all three synthesis screens on 828 unchanged
+inputs. The complete unquantized service meets 1000 ps including I/O at
++40.947/+343.996 ps core/I/O slack. Fresh corrected-FMA native vertex and
+fragment endpoints also pass at +88.968/+163.440 ps and +93.253/+162.507 ps.
+All three are fully mapped with zero skipped instances, TC/SLVT, 25% I/O,
+standard ABC and no retiming or place/route. Default Q16 banked profiles retain
+their qualified logic after removing comments only. The subsequent counted
+late-join, coordinate-to-color and native-client revisions have separate
+qualification. Shared-CU cluster placement, whole-native rates/coherence,
+main composition audit and the remaining H0-H8 gates stay open.
+
 ## H4 unquantized FP32 bilinear pipeline
 
 The [streaming native FP32 filter](TEXTURE_BILINEAR_FP32_PIPELINE.md) now passes
