@@ -1,6 +1,6 @@
 {
   "date": "2026-10-22",
-  "scope": "Remove live native cancellation from context/lane identity priority mux. Retain immediate issue stop, owned pulse capture, precise replies, primary fault and tag lifetime. Full native endpoint timing still pending.",
+  "scope": "Remove live native cancellation from context/lane identity priority mux. Retain immediate issue stop, owned pulse capture, precise replies, primary fault and tag lifetime. Full default native vertex/fragment synthesis now passes at1000ps including I/O. Latest-main integration remains open.",
   "source_files": 914,
   "source_manifest": ".artifacts/mobile-shared-cluster-timing-v2-source.json",
   "source_manifest_sha256": "a4db4256c42bc35f55fade5616eecafdab5cddbee61f01e848dc67e9c604dcda",
@@ -60,7 +60,7 @@
     ]
   },
   "synthesis": {
-    "status_at_checkpoint": "live_native_vertex_then_fragment",
+    "status_at_checkpoint": "terminal_pass",
     "state_file": ".artifacts/mobile-shared-cluster-timing-synthesis-v2-state.json",
     "period_ps": 1000,
     "corner": "TC",
@@ -74,12 +74,36 @@
     "queue": [
       "native-vertex",
       "native-fragment"
-    ]
+    ],
+    "native_endpoints": {
+      "native-vertex": {
+        "passed": true,
+        "core_ps": 84.51,
+        "IO_ps": 151.59,
+        "skipped_instances": 0,
+        "mapped_cells": 1291509,
+        "library_area": 172401.005879,
+        "stat_sha256": "29b9152cdff0b73d5fd7e6673d55be65bbb45fec14321f3562c0d024f154dc55",
+        "result": ".artifacts/mobile-shared-cluster-timing-synthesis-v2-native-vertex-result.json",
+        "elapsed_seconds": 3351.245380542008
+      },
+      "native-fragment": {
+        "passed": true,
+        "core_ps": 73.547,
+        "IO_ps": 157.244,
+        "skipped_instances": 0,
+        "mapped_cells": 1297518,
+        "library_area": 172251.969119,
+        "stat_sha256": "1ca61f77a38d7985ee98e2c41d857e901be7ef8fc38952b58a28f4a290ea18a1",
+        "result": ".artifacts/mobile-shared-cluster-timing-synthesis-v2-native-fragment-result.json",
+        "elapsed_seconds": 3565.8173582919408
+      }
+    }
   },
   "remaining": [
-    "Fresh full native vertex/fragment setup including I/O and zero-skipped mapping",
     "Current-main integration with identical dependency audit",
     "Actual CU/frame/cold throughput, broader formats and coherence",
     "Original H0-H8 gates"
-  ]
+  ],
+  "completed_synthesis_report": "mobile-native-texture-endpoints-qualified-2026-10-22.json"
 }

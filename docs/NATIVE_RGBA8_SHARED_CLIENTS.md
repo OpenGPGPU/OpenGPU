@@ -56,3 +56,23 @@ render-to-texture visibility remain open. One response lease per client and
 the existing serial native lane/metadata owners do not yet sustain one native
 sample per cycle; native issue and outstanding-work changes are still required.
 All remaining H0-H8 gates stay open. PPA remains synthesis only.
+
+
+### Default shared-window texture timing qualification, 2026-10-22
+
+The [914-input endpoint qualification](performance/mobile-native-texture-endpoints-qualified-2026-10-22.json)
+completes all three synthesis screens at1000ps TC/SLVT,25%I/O,standard ABC and
+no retiming. The shared cluster carries+42.104/+301.056ps core/I/O by exact
+active-RTL identity. Fresh complete default native vertex and fragment texture
+endpoints pass at+84.510/+151.590ps and+73.547/+157.244ps, respectively, with
+zero skipped instances. They map1,291,509 and1,297,518 cells with library areas
+172401.005879 and172251.969119. These are component synthesis results.
+
+All47 functional checks and five emissions retain their qualified inputs. The
+default16-lane/eight-warp shared-window burst sustains448 warm groups in448
+cycles; the slower controls keep their separately measured results. Captured
+cancellation retains offered/accepted request owners, primary faults, private
+tags and healthy reuse. The prior negative native I/O result remains historical.
+Current-main integration, active RTL requalification when bytes change, actual
+CU/frame/cold throughput, broader format/coherence coverage and the complete
+H0-H8 objective remain required. No whole-host timing is inferred.

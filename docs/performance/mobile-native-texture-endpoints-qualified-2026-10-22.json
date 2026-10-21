@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-22",
+  "status": "all three component synthesis screens pass; latest-main integration open",
+  "qualified_code_commit": "e630af6f0d3c2b5e479299c2b38ce7a9f31b3466",
+  "source_files": 914,
+  "source_manifest": ".artifacts/mobile-shared-cluster-timing-v2-source.json",
+  "source_sha256": "a4db4256c42bc35f55fade5616eecafdab5cddbee61f01e848dc67e9c604dcda",
+  "source_unchanged": true,
+  "functional": {
+    "checks": 47,
+    "test_counts": [
+      24,
+      23
+    ],
+    "emissions": 5,
+    "result": ".artifacts/mobile-shared-cluster-timing-v2-result.json",
+    "default_warm_groups": 448,
+    "default_warm_cycles": 448,
+    "warm_max_admission_gap": 1,
+    "scope": "Shared-window burst only; slower four-credit/nonburst controls remain separately measured."
+  },
+  "cluster": {
+    "passed": true,
+    "core_ps": 42.104,
+    "IO_ps": 301.056,
+    "skipped_instances": 0,
+    "active_RTL_byte_identical": true,
+    "carry_proof": ".artifacts/mobile-shared-cluster-timing-synthesis-v2-cluster-carry.json"
+  },
+  "native_endpoints": {
+    "native-vertex": {
+      "passed": true,
+      "core_ps": 84.51,
+      "IO_ps": 151.59,
+      "skipped_instances": 0,
+      "mapped_cells": 1291509,
+      "library_area": 172401.005879,
+      "stat_sha256": "29b9152cdff0b73d5fd7e6673d55be65bbb45fec14321f3562c0d024f154dc55",
+      "result": ".artifacts/mobile-shared-cluster-timing-synthesis-v2-native-vertex-result.json",
+      "elapsed_seconds": 3351.245380542008
+    },
+    "native-fragment": {
+      "passed": true,
+      "core_ps": 73.547,
+      "IO_ps": 157.244,
+      "skipped_instances": 0,
+      "mapped_cells": 1297518,
+      "library_area": 172251.969119,
+      "stat_sha256": "1ca61f77a38d7985ee98e2c41d857e901be7ef8fc38952b58a28f4a290ea18a1",
+      "result": ".artifacts/mobile-shared-cluster-timing-synthesis-v2-native-fragment-result.json",
+      "elapsed_seconds": 3565.8173582919408
+    }
+  },
+  "synthesis_policy": {
+    "period_ps": 1000,
+    "corner": "TC",
+    "cell_vt": "SLVT",
+    "IO_fraction": 0.25,
+    "ABC": "standard",
+    "retiming": false,
+    "stage": "synthesis only",
+    "macro_filters": false
+  },
+  "prior_negative": {
+    "native_vertex_IO_ps": -25.302,
+    "scope": "Actual io_cancel to grouped-cancel identity mux; fixed by selecting identities from captured owned status while retaining immediate issue stop and actual drain."
+  },
+  "remaining": [
+    "latest-main411f integration with fresh functional checks and activeRTL identity audit",
+    "requalify changed native/cluster RTL rather than blindly carry timing",
+    "actual CU/frame/cold throughput, broader formats, coherence and fullH0-H8 gates"
+  ]
+}
