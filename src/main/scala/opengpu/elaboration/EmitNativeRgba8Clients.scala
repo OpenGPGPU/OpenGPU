@@ -19,6 +19,9 @@ object EmitNativeRgba8Clients {
       case "cluster" => ChiselStage.emitSystemVerilogFile(new NativeRgba8TextureCluster(), stage, lowering)
       case "cluster-credits" => ChiselStage.emitSystemVerilogFile(new NativeRgba8TextureCluster(maxOutstandingPerClient = 4), stage, lowering)
       case "cluster-renderer" => ChiselStage.emitSystemVerilogFile(new NativeRgba8TextureCluster(clients = 3, maxOutstandingPerClient = 4), stage, lowering)
+      case "shared-window" => ChiselStage.emitSystemVerilogFile(new NativeRgba8TextureSharedWindow(), stage, lowering)
+      case "shared-cluster" => ChiselStage.emitSystemVerilogFile(new NativeRgba8TextureSharedPool(numComputeUnits = 2), stage, lowering)
+      case "shared-pool" => ChiselStage.emitSystemVerilogFile(new NativeRgba8TextureSharedPool(), stage, lowering)
       case "service-carry" => ChiselStage.emitSystemVerilogFile(new NativeRgba8TextureService(), stage, lowering)
       case other => throw new IllegalArgumentException(s"Unknown native RGBA8 profile: $other")
     }

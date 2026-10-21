@@ -13,9 +13,12 @@ import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse, VectorT
   */
 class NativeRgba8TexturePool(config: GpuConfig = GpuConfig(), numComputeUnits: Int = 4,
     clients: Int = 4, p: TextureImageAddressConfig = TextureImageAddressConfig(),
-    useBlackBoxes: Boolean = false, maxOutstandingPerClient: Int = 1) extends Module {
+    useBlackBoxes: Boolean = false, maxOutstandingPerClient: Int = 1,
+    sharedOutstandingRows: Int = 0) extends Module {
   require(numComputeUnits >= 1 && numComputeUnits <= 16 && clients >= 1 && clients <= 16)
   require(isPow2(maxOutstandingPerClient) && maxOutstandingPerClient <= 32 && clients * maxOutstandingPerClient <= 128)
+  require(sharedOutstandingRows == 0 || (isPow2(sharedOutstandingRows) && sharedOutstandingRows <= 128 &&
+    sharedOutstandingRows >= clients * 4 && maxOutstandingPerClient == 1))
   val clusters: Int = (numComputeUnits + 1) / 2
   private val clusterBits = math.max(1, log2Ceil(clusters))
   val io = IO(new Bundle {
@@ -28,7 +31,15 @@ class NativeRgba8TexturePool(config: GpuConfig = GpuConfig(), numComputeUnits: I
     val satp = Input(UInt(32.W)); val flush = Flipped(Valid(new VectorTlbFlush(config)))
     val invalidate = Input(Bool()); val cancel = Input(Bool()); val busy = Output(Bool())
   })
-  if (maxOutstandingPerClient == 1) {
+  if (sharedOutstandingRows > 0) {
+    val shared = Module(new NativeRgba8TextureSharedPool(config, numComputeUnits, clients, p,
+      useBlackBoxes, sharedOutstandingRows))
+    io.client <> shared.io.client; shared.io.cuMask := io.cuMask
+    io.memoryRequest <> shared.io.memoryRequest; shared.io.memoryResponse <> io.memoryResponse
+    io.pageWalk <> shared.io.pageWalk; shared.io.pageWalkResponse <> io.pageWalkResponse
+    shared.io.satp := io.satp; shared.io.flush := io.flush
+    shared.io.invalidate := io.invalidate; shared.io.cancel := io.cancel; io.busy := shared.io.busy
+  } else if (maxOutstandingPerClient == 1) {
     val service = Seq.fill(clusters)(Module(new NativeRgba8TextureCluster(config, clients, p, useBlackBoxes)))
     val leased = RegInit(VecInit(Seq.fill(clients)(false.B)))
     val localCancel = RegInit(VecInit(Seq.fill(clients)(false.B)))

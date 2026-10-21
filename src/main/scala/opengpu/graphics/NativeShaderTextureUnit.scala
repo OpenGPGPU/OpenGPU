@@ -26,12 +26,12 @@ class NativeShaderTextureIO(config: GpuConfig,groupedTexture: Boolean=false) ext
   * contexts. Legacy execution remains exclusive. The two external line slots
   * remain shared and no enclosing memory fabric is widened.
   */
-class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupedTexture: Boolean=false,instructionSnapshots: Boolean=true) extends Module {
+class NativeShaderTextureUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupedTexture: Boolean=false,instructionSnapshots: Boolean=true,streamBurst: Boolean=true) extends Module {
   val io=IO(new NativeShaderTextureIO(config,groupedTexture))
   private object Owner extends ChiselEnum {val idle,legacy,typed,floating=Value}
   private val owner=RegInit(Owner.idle);private val preferVector=RegInit(true.B)
   private val legacy=Module(new TexSampleUnit(config,coordinatePolicyInput=true));private val bridge=Module(new OmWordToLinePort(config,maxOutstanding=2))
-  private val floating=Module(new TextureSampleExecuteUnit(config,stage,groupedTexture,instructionSnapshots))
+  private val floating=Module(new TextureSampleExecuteUnit(config,stage,groupedTexture,instructionSnapshots,streamBurst))
   if(groupedTexture){io.grouped.get <> floating.io.grouped.get}
   private val typed=Module(new TexelFetchExecuteUnit(config,stage));private val credits=Module(new TextureLineCreditAdapter(config))
   private val ownerIdle=owner===Owner.idle || (groupedTexture.B && owner===Owner.floating && !floating.io.busy)

@@ -210,7 +210,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   texture.io.memoryResponse.bits:=io.memoryResponse.bits;texture.io.memoryResponse.bits.transactionId:=tag-2.U
   io.memoryResponse.ready:=Mux(tag===0.U,input.io.memoryResponse.ready,Mux(tag===1.U,fallbackResponse.ready,texture.io.memoryResponse.ready))
 
-  private val texturePending=RegInit(0.U(3.W));private val textureInstructions=RegInit(0.U(3.W))
+  private val texturePending=RegInit(0.U(3.W));private val textureInstructions=RegInit(0.U((if(groupedTexture)math.max(1,log2Ceil(config.warps+1))else 3).W))
   private val textureRequestFire=texture.io.memoryRequest.fire
   private val textureResponseFire=texture.io.memoryResponse.fire
   texturePending:=texturePending+textureRequestFire.asUInt-textureResponseFire.asUInt

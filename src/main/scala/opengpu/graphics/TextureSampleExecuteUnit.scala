@@ -25,7 +25,7 @@ object ShaderTextureSampleOpcode {
   * begins a tuple for its active lanes. Trusted task launch clears every valid
   * bit, including when a new batch reuses the same graphics identity.
   */
-class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupedTexture: Boolean=false,instructionSnapshots: Boolean=true) extends Module {
+class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupedTexture: Boolean=false,instructionSnapshots: Boolean=true,streamBurst: Boolean=true) extends Module {
   require(stage==0 || stage==1)
   private val laneWidth=math.max(1,log2Ceil(config.lanes))
   val io=IO(new Bundle {
@@ -164,7 +164,7 @@ class TextureSampleExecuteUnit(config: GpuConfig=GpuConfig(),stage: Int=0,groupe
     is(State.commit){when(mainCommitSelected && (io.commit.fire || io.vectorCommit.fire)){assert(!sample.io.busy && !fetch.io.busy && !size.io.busy,"texture retirement escaped sample/fetch/group drain");phase:=State.idle}}
   }
   if(groupedTexture){
-    val streams=Module(new NativeTextureInstructionStream(config,math.min(4,config.warps)))
+    val streams=Module(new NativeTextureInstructionStream(config,math.min(8,config.warps),streamBurst))
     streams.io.cancel:=io.cancel;streams.io.invalidate:=io.invalidate
     io.busy:=phase=/=State.idle || streams.io.busy
     incomingScalarFree:= !streams.io.warpBusy(io.in.bits.decode.warpId)

@@ -1,0 +1,375 @@
+{
+  "updated_utc": "2026-10-21T07:53:12.041739+00:00",
+  "status": "Functional shared-window milestone:60 focused checks and12 emissions, two production-identical supplemental tests, six fresh whole-host tests/30frames/four reset cuts and three secondary host/product emissions pass. New composed timing remains open.",
+  "base_commit": "4bd722fac2f8f48127306fe4160c76f2e9d61d08",
+  "source_files": 867,
+  "manifest_sha256": "879f1ce46877745270fdfc24755464e5b18226deafa0d7b21891081d62dd1614",
+  "archive_sha256": "f5e6d8738c6153b3fb46fad92c16a3a2447f4a40a1476b561c3848aad2212dda",
+  "source_unchanged": true,
+  "functional_tests": 60,
+  "emissions": 12,
+  "phases": {
+    "units": {
+      "passed_tests": 11,
+      "emissions": 0,
+      "result": ".artifacts/mobile-native-rgba8-shared-window-v1-units-result.json",
+      "result_sha256": "484d5016ef62bbc43bd6c73637713c1617fe8c77cd41f78204f4c340b3db62fd",
+      "log_sha256": "bf5becceb4bc5f8685a50a82abca37bfc69fa7f97d66348d84a423796770147c",
+      "finished_utc": "2026-10-21T06:10:45.041022+00:00"
+    },
+    "physical": {
+      "passed_tests": 3,
+      "emissions": 0,
+      "result": ".artifacts/mobile-native-rgba8-shared-window-v1-physical-result.json",
+      "result_sha256": "0329bf43920d14bd50e596c4b46c5073f0eac5018299dc8aa71b3ecdb06c7c3e",
+      "log_sha256": "de403d7c28d84b82e9d1359f2aa0289754b4a951037178cd0d130df73af30652",
+      "finished_utc": "2026-10-21T06:13:42.111331+00:00"
+    },
+    "performance": {
+      "passed_tests": 4,
+      "emissions": 0,
+      "result": ".artifacts/mobile-native-rgba8-shared-window-v1-performance-result.json",
+      "result_sha256": "e036be02c005ad28942cdb1f6d74e8d8b9a92047588f15a79052dc519fd48a60",
+      "log_sha256": "e80d064e13d904a51c73cc9584fa5a4fd54334f4301191908d3ac2de9d8e9f5c",
+      "finished_utc": "2026-10-21T06:20:43.272489+00:00"
+    },
+    "native": {
+      "passed_tests": 19,
+      "emissions": 0,
+      "result": ".artifacts/mobile-native-rgba8-shared-window-v1-native-result.json",
+      "result_sha256": "10a58a25c1eeb81306a519b602a61a38cf1e2f1a5f59c0b645cbe307da992c7c",
+      "log_sha256": "e32c12c3967e75cd339e6ea3d4774f46aee7298efceb8a26f9128ab633a17201",
+      "finished_utc": "2026-10-21T06:28:47.417622+00:00"
+    },
+    "compatibility": {
+      "passed_tests": 23,
+      "emissions": 0,
+      "result": ".artifacts/mobile-native-rgba8-shared-window-v1-compatibility-result.json",
+      "result_sha256": "505ab2848745781197a38c597c6df28bd86384fb157fd911fb203fda6d7b6e89",
+      "log_sha256": "29bd9f09eefc51885cef5a98baeb9b5fed907d1fab2da27664447ea7d28b9782",
+      "finished_utc": "2026-10-21T06:43:17.772265+00:00"
+    },
+    "emission": {
+      "passed_tests": 0,
+      "emissions": 12,
+      "result": ".artifacts/mobile-native-rgba8-shared-window-v1-emission-result.json",
+      "result_sha256": "226424e628989c0091fe266eb50057f645e49bfacbc4cd369aab6db451dfe4ef",
+      "log_sha256": "157b03e1ebeba2452c6394507d3f73b1a36fe6481565336fccedfe772bca3eb5",
+      "finished_utc": "2026-10-21T06:47:26.947175+00:00"
+    }
+  },
+  "architecture": {
+    "window_rows_per_pair": 128,
+    "clients": 3,
+    "reserved_rows_per_client_per_pair": 4,
+    "maximum_hot_client_rows_with_two_idle_peers": 120,
+    "physical_cache_bytes_per_cluster": 8192,
+    "data_ids_per_cluster": 16,
+    "page_walkers_per_cluster": 4,
+    "fills_per_cluster": 16,
+    "numeric_owner_rows_per_cluster": 128,
+    "stream_contexts": 8,
+    "maximum_vector_burst_lanes": 16,
+    "metadata_engines_per_endpoint": 1,
+    "checked_metadata_entries_per_endpoint": 4,
+    "large_result_bank_layers": 1
+  },
+  "warm_native_four_tap_benchmark": {
+    "lanes": 16,
+    "warps": 8,
+    "instructions": 32,
+    "samples": 512,
+    "unique_taps_per_sample": 4,
+    "active_native_clients": 1,
+    "active_numeric_clusters": 1,
+    "warm_descriptor_reads": 0,
+    "warm_data_reads": 0,
+    "independent_oracle": "TextureFilterReference with ImageFormatReference RGBA8 decode; fractional FP32 four-tap bilinear output, identity swizzle",
+    "profiles": [
+      {
+        "shared_window": false,
+        "bounded_vector_burst": true,
+        "total_cycles": 11787,
+        "steady_groups": 448,
+        "steady_span_cycles": 10216,
+        "steady_samples_per_cycle": 0.04385277995301488,
+        "maximum_admission_gap": 89,
+        "minimum_reply_latency": 91,
+        "maximum_reply_latency": 91,
+        "target_II1": false
+      },
+      {
+        "shared_window": true,
+        "bounded_vector_burst": false,
+        "total_cycles": 729,
+        "steady_groups": 448,
+        "steady_span_cycles": 567,
+        "steady_samples_per_cycle": 0.7901234567901234,
+        "maximum_admission_gap": 46,
+        "minimum_reply_latency": 90,
+        "maximum_reply_latency": 90,
+        "target_II1": false
+      },
+      {
+        "shared_window": true,
+        "bounded_vector_burst": true,
+        "total_cycles": 610,
+        "steady_groups": 448,
+        "steady_span_cycles": 448,
+        "steady_samples_per_cycle": 1.0,
+        "maximum_admission_gap": 1,
+        "minimum_reply_latency": 90,
+        "maximum_reply_latency": 90,
+        "target_II1": true
+      }
+    ],
+    "scope": "Measured native endpoint plus one actual numeric cluster. Both admissions and all512 ordered replies are checked; constant90-cycle latency accompanies the448-cycle steady admission interval. No CU issue, aggregate two-cluster or whole-frame rate claim."
+  },
+  "reset_stress": {
+    "held_borrowed_public_rows": 120,
+    "resident_warps": 8,
+    "global_reset_held_through_all_retirements": true,
+    "atomic_vector_faults": 8,
+    "healthy_reuse": true
+  },
+  "structural_profiles": {
+    "native-vertex": {
+      "top": "NativeShaderTextureUnit",
+      "active_files": 85,
+      "counts": {
+        "NativeRgba8TexturePool": 0,
+        "NativeRgba8TextureSharedPool": 0,
+        "NativeRgba8TextureSharedWindow": 0,
+        "NativeRgba8TextureService": 0,
+        "NativeShaderTextureUnit": 1,
+        "NativeTextureInstructionStream": 1,
+        "NativeTextureSnapshotCache": 1,
+        "GpuComputeUnit": 0
+      }
+    },
+    "native-fragment": {
+      "top": "NativeShaderTextureUnit",
+      "active_files": 85,
+      "counts": {
+        "NativeRgba8TexturePool": 0,
+        "NativeRgba8TextureSharedPool": 0,
+        "NativeRgba8TextureSharedWindow": 0,
+        "NativeRgba8TextureService": 0,
+        "NativeShaderTextureUnit": 1,
+        "NativeTextureInstructionStream": 1,
+        "NativeTextureSnapshotCache": 1,
+        "GpuComputeUnit": 0
+      }
+    },
+    "shared-window": {
+      "top": "NativeRgba8TextureSharedWindow",
+      "active_files": 8,
+      "counts": {
+        "NativeRgba8TexturePool": 0,
+        "NativeRgba8TextureSharedPool": 0,
+        "NativeRgba8TextureSharedWindow": 1,
+        "NativeRgba8TextureService": 0,
+        "NativeShaderTextureUnit": 0,
+        "NativeTextureInstructionStream": 0,
+        "NativeTextureSnapshotCache": 0,
+        "GpuComputeUnit": 0
+      }
+    },
+    "shared-cluster": {
+      "top": "NativeRgba8TextureSharedPool",
+      "active_files": 87,
+      "counts": {
+        "NativeRgba8TexturePool": 0,
+        "NativeRgba8TextureSharedPool": 1,
+        "NativeRgba8TextureSharedWindow": 1,
+        "NativeRgba8TextureService": 1,
+        "NativeShaderTextureUnit": 0,
+        "NativeTextureInstructionStream": 0,
+        "NativeTextureSnapshotCache": 0,
+        "GpuComputeUnit": 0
+      }
+    },
+    "shared-pool": {
+      "top": "NativeRgba8TextureSharedPool",
+      "active_files": 89,
+      "counts": {
+        "NativeRgba8TexturePool": 0,
+        "NativeRgba8TextureSharedPool": 1,
+        "NativeRgba8TextureSharedWindow": 1,
+        "NativeRgba8TextureService": 2,
+        "NativeShaderTextureUnit": 0,
+        "NativeTextureInstructionStream": 0,
+        "NativeTextureSnapshotCache": 0,
+        "GpuComputeUnit": 0
+      }
+    },
+    "typed": {
+      "top": "GpuHostSystemAxi",
+      "active_files": 450,
+      "counts": {
+        "NativeRgba8TexturePool": 1,
+        "NativeRgba8TextureSharedPool": 1,
+        "NativeRgba8TextureSharedWindow": 1,
+        "NativeRgba8TextureService": 2,
+        "NativeShaderTextureUnit": 2,
+        "NativeTextureInstructionStream": 2,
+        "NativeTextureSnapshotCache": 2,
+        "GpuComputeUnit": 4
+      }
+    },
+    "binned": {
+      "top": "GpuHostSystemAxi",
+      "active_files": 493,
+      "counts": {
+        "NativeRgba8TexturePool": 1,
+        "NativeRgba8TextureSharedPool": 1,
+        "NativeRgba8TextureSharedWindow": 1,
+        "NativeRgba8TextureService": 2,
+        "NativeShaderTextureUnit": 3,
+        "NativeTextureInstructionStream": 3,
+        "NativeTextureSnapshotCache": 3,
+        "GpuComputeUnit": 4
+      }
+    },
+    "product": {
+      "top": "GpuHostSystemAxi",
+      "active_files": 492,
+      "counts": {
+        "NativeRgba8TexturePool": 1,
+        "NativeRgba8TextureSharedPool": 1,
+        "NativeRgba8TextureSharedWindow": 1,
+        "NativeRgba8TextureService": 2,
+        "NativeShaderTextureUnit": 3,
+        "NativeTextureInstructionStream": 3,
+        "NativeTextureSnapshotCache": 3,
+        "GpuComputeUnit": 4
+      }
+    }
+  },
+  "rtl_proof": ".artifacts/mobile-native-rgba8-shared-window-v1-RTL-proof.json",
+  "rtl_proof_sha256": "f47a40f0dd03f4267da0ca0216440ee1509ec9bc18fa564e2023ea4fc855915f",
+  "whole_host_validation": {
+    "state": "passed",
+    "tests": 6,
+    "frames": 30,
+    "reset_cuts": 4,
+    "source_copy_proof": ".artifacts/mobile-native-rgba8-shared-host-v1-source-copy-proof.json",
+    "typed": {
+      "state": "passed",
+      "tests": 2,
+      "frames": 22,
+      "payload_modes": [
+        "local",
+        "spill"
+      ],
+      "result": ".artifacts/mobile-native-rgba8-shared-host-v1-typed-result.json",
+      "result_sha256": "715b2aa05adeb293881054eb8ec5553087c7463ac1c49d4cca665dce80787c83",
+      "source_unchanged": true
+    },
+    "source_unchanged": true,
+    "result": ".artifacts/mobile-native-rgba8-shared-host-v1-result.json",
+    "result_sha256": "cfc8e444f348984538f0a9d534ed415019062fab3493821918468ba5259b2977",
+    "secondary_host_product_emissions": 3,
+    "emission_result": ".artifacts/mobile-native-rgba8-shared-host-v1-emission-result.json",
+    "emission_result_sha256": "cecb26ca91e092391d44ca4f0c74dcf27b04a39820436581e4880aa742f3ef79"
+  },
+  "synthesis": {
+    "policy": "1000ps TC/SLVT,25%IO,standard ABC,no retiming; synthesis only",
+    "controller": "running",
+    "composed_cluster_and_eight_context_native_endpoints": "queued serially after active mappings",
+    "superseded_four_context_endpoint_queue": true,
+    "no_prior_timing_carry": true,
+    "older_static_credit_registered_cancel_cluster": {
+      "source_files": 859,
+      "status": "core timing miss",
+      "core_slack_ps": -16.409,
+      "io_slack_ps": 308.098,
+      "skipped": 0,
+      "scope": "Earlier three-client/four-static-credit cluster, not the new shared-window composition.",
+      "qualification": "generated/qualification/ppa/mobile-native-rgba8-cancel-pipeline-2026-10-21-v1/qualification.json"
+    }
+  },
+  "eligibility": "Explicit aligned RGBA8 2D, nonmip, matching min/mag and no shadow; other operations retain the general sampler.",
+  "remaining": [
+    "new composed cluster and eight-context endpoint synthesis",
+    "actual CU/workload rates and aggregate cold/miss stress",
+    "general format/resource performance and coherence coverage",
+    "full720p workload suite and total SRAM accounting",
+    "all other incomplete H0-H8 capability,limit and product gates"
+  ],
+  "legacy_preservation": {
+    "active_RTL_files_per_stage": 77,
+    "all_files_exact_after_comments_to_snapshot863": true,
+    "proof": ".artifacts/mobile-native-rgba8-shared-window-v1-legacy-RTL-proof.json",
+    "proof_sha256": "682686032fa7bd06c4c719dd028c12840fb7c475421d61dc2bc4ed4839fa2e03",
+    "scope": "Carries prior scoped legacy functional proof by emitted RTL identity; does not carry timing."
+  },
+  "supplemental_dual_cluster_rate": {
+    "status": "passed",
+    "test_only_source_files": 868,
+    "all867_existing_inputs_exact": true,
+    "changed_production_inputs": 0,
+    "tests": 1,
+    "clients": 3,
+    "active_native_endpoints": 2,
+    "native_stages": [
+      "vertex",
+      "fragment"
+    ],
+    "compute_unit_routing_capacity": 4,
+    "actual_compute_units_executed": 0,
+    "physical_numeric_clusters": 2,
+    "instructions": 64,
+    "samples": 1024,
+    "unique_taps_per_sample": 4,
+    "steady_cycles": 448,
+    "steady_samples": 896,
+    "aggregate_samples_per_cycle": 2,
+    "acceptance_and_reply_rate_asserted": true,
+    "reply_latency_cycles": 90,
+    "exact_lane_results": 16384,
+    "total_cycles": 610,
+    "warm_descriptor_reads": 0,
+    "warm_data_reads": 0,
+    "distinct_images_in_shared_physical_memory": true,
+    "per_client_public_order": true,
+    "result": ".artifacts/mobile-native-rgba8-dual-native-v1-result.json",
+    "result_sha256": "528c7cd50ab94beb0079a8eabba2c27266094dc6657ac4028bde64f644e8f91c",
+    "source_manifest_sha256": "955461cb0f554cbf0fe2eb768adb4f93b34131bad332bd37557ad996781be505",
+    "source_archive_sha256": "b48543a6eb5571dbf44fe927bd48a90bd3db88d0f6d54fab0f908e0d2a95b024",
+    "scope": "Native vertex and fragment endpoint frontends plus one actual shared pool and both numeric services. CU masks route to opposite pairs; this harness does not execute CU cores or whole frames."
+  },
+  "supplemental_default_capacity_cold_stress": {
+    "status": "passed",
+    "tests": 1,
+    "test_only_source_files": 869,
+    "all868_previous_inputs_exact": true,
+    "changed_production_inputs": 0,
+    "rows_per_pair": 128,
+    "physical_clusters": 2,
+    "unique_active_taps_per_group": 4,
+    "maximum_live_data_ids_per_pair": 16,
+    "maximum_live_page_walk_ids_per_pair": 4,
+    "cold_cancelled_epoch_owners": 128,
+    "primary_memory_faults": 2,
+    "cancelled_owners": 126,
+    "held_hot_public_rows_per_pair": 120,
+    "reserved_peer_rows_per_pair": 4,
+    "healthy_hot_replies": 240,
+    "healthy_peer_replies": 9,
+    "VM_roots": 2,
+    "held_public_replies_pin_both_pairs": true,
+    "same_virtual_images_changed_physical_content": true,
+    "physical_read_charges": 290,
+    "read_charges_exact": true,
+    "result": ".artifacts/mobile-native-rgba8-cold-window-v2-result.json",
+    "result_sha256": "b90c6efc98b0d0f6e425626d5d37220c712a38636b99601bdf6cfc94b51ca483",
+    "manifest_sha256": "036f25fafacdb002a6cd13f59489252234420ca2e734412cda09f538428611c1",
+    "archive_sha256": "3130849b575f2149d94753b67c7eb571a2e8beda5783b7e37ef178b2ac89db75",
+    "initial_fixture_failure_preserved": ".artifacts/mobile-native-rgba8-cold-window-v1-result.json",
+    "initial_fixture_correction": "One active tap can use only one of four fixed tap walkers; corrected to four active bilinear taps with exact128 healthy reads per cluster.",
+    "scope": "Default-capacity pool plus actual numeric services; prechecked group requests, no native endpoint or CU execution in this stress test."
+  },
+  "review_source_files": 869,
+  "review_manifest_sha256": "036f25fafacdb002a6cd13f59489252234420ca2e734412cda09f538428611c1"
+}

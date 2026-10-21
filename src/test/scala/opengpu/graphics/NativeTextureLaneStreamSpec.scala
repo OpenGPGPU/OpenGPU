@@ -374,7 +374,87 @@ class NativeTextureLaneStreamSpec extends AnyFlatSpec {
       val gaps=stable.sliding(2).map(x=>x(1)._1-x(0)._1).toVector
       val total=t.cycle-startCycle
       d.io.maximumGroups.expect(4.U);d.io.sharedBusy.expect(false.B)
-      info(s"NATIVE_CACHED_WARM_RATE lanes=16 warps=8 contexts=4 clients=1 credits=4 instructions=32 groups=512 totalCycles=$total stableGroups=${stable.size} stableSpanCycles=$span maxAdmissionGap=${gaps.max} warmDescriptorReads=0 warmDataReads=0 targetII1=${span==stable.size}")
+      info(s"NATIVE_CACHED_WARM_RATE lanes=16 warps=8 contexts=8 clients=1 credits=4 instructions=32 groups=512 totalCycles=$total stableGroups=${stable.size} stableSpanCycles=$span maxAdmissionGap=${gaps.max} warmDescriptorReads=0 warmDataReads=0 targetII1=${span==stable.size}")
+    }
+  }
+
+  private val sharedWindowPerformance = new org.scalatest.Tag("opengpu.native.sharedwindow")
+  for((shared,burst)<-Seq((false,true),(true,false),(true,true)))it should s"measure four-tap shared window native throughput shared=$shared burst=$burst" taggedAs(sharedWindowPerformance) in {
+    simulate(new StreamingNativeTextureHarness(GpuConfig(),1,sharedWindow=shared,streamBurst=burst,poolClients=3)){d=>
+      var measuring=false
+      val raw=Seq[BigInt](0x11233444L,0x55667788L,0x9aaabbcdL,0xddeeff01L)
+      val expected=TextureFilterReference.filter(raw.map(x=>ImageFormatReference.decode("RGBA8",x)),Seq(fp(0.5f),fp(0.5f)),2)
+      val retired=scala.collection.mutable.ArrayBuffer.empty[Int]
+      val replies=scala.collection.mutable.ArrayBuffer.empty[(Int,BigInt)]
+      val t=new Driver(d){
+        override def tick(): Unit={
+          if(measuring && this.d.io.groupReplyFire.peek().litToBoolean){
+            this.d.io.groupReplyUniqueTaps.expect(4.U);this.d.io.groupReplyDataReads.expect(0.U)
+            replies+=((cycle,this.d.io.groupReplyTag.peek().litValue))
+          }
+          if(measuring && this.d.io.native.vectorCommit.valid.peek().litToBoolean && this.d.io.native.vectorCommit.ready.peek().litToBoolean){
+            val q=this.d.io.native.vectorCommit.bits;val w=q.writeback.warpId.peek().litValue.toInt
+            assert(w>=0 && w<8);q.writesVd.expect(true.B);q.writeback.vd.expect(10.U)
+            q.writeback.data.foreach(_.expect(expected(w%4).U));this.d.io.native.responseFault.expect(false.B)
+            retired+=w
+          }
+          super.tick()
+        }
+      }
+      aligned(t,1,swizzle=Seq(0,1,2,3));t.put(levels+17*4,8)
+      for(n<-0 until 4)t.put(0x20000+n*4,raw(n))
+      t.clear()
+      for(w<-0 until 8){t.warp=w;t.parameters(Seq(fp(0.5f),fp(0.5f))++Seq.fill(14)(BigInt(0)),probeCancel=false)}
+      t.warp=0;t.sample(vector=true);t.retire(true,false,Seq.fill(16)(expected.head),probeCancel=false)
+      val descriptors=t.memory.seen.size;val data=t.groupMemory.seen.size;val first=t.admitted.size;val start=t.cycle
+      measuring=true;d.io.native.vectorCommit.ready.poke(true.B)
+      for(round<-0 until 4;w<-0 until 8){t.warp=w;t.sample(c=w%4,vector=true)}
+      t.until(retired.size==32 && !d.io.native.busy.peek().litToBoolean)
+      measuring=false;d.io.native.vectorCommit.ready.poke(false.B)
+      val accepted=t.admitted.drop(first).toVector
+      assert(accepted.size==512 && replies.size==512 && replies.map(_._2).toVector==accepted.map(_._2))
+      assert((0 until 8).forall(w=>retired.count(_==w)==4))
+      assert(t.memory.seen.size==descriptors && t.groupMemory.seen.size==data)
+      val stable=accepted.slice(32,480);val span=stable.last._1-stable.head._1+1
+      val gaps=stable.sliding(2).map(x=>x(1)._1-x(0)._1).toVector
+      val latencies=accepted.zip(replies).map{case(a,b)=>b._1-a._1}
+      val meets=span==stable.size
+      info(s"NATIVE_SHARED_WARM_RATE shared=$shared burst=$burst lanes=16 warps=8 contexts=8 clients=3 activeClients=1 taps=4 instructions=32 groups=512 totalCycles=${t.cycle-start} stableGroups=${stable.size} stableSpanCycles=$span maxAdmissionGap=${gaps.max} minReplyLatency=${latencies.min} maxReplyLatency=${latencies.max} warmDescriptorReads=0 warmDataReads=0 targetII1=$meets")
+      if(shared && burst)assert(meets && gaps.max==1,"shared warm four-tap native path did not sustain one sample/cycle")
+    }
+  }
+  it should "drain four-tap shared window borrowed leases and held lane offers while reset stays asserted" taggedAs(sharedWindowPerformance) in {
+    simulate(new StreamingNativeTextureHarness(GpuConfig(),1,sharedWindow=true,poolClients=3)){d=>
+      var draining=false;val retired=scala.collection.mutable.Set.empty[Int]
+      val t=new Driver(d){
+        override def tick(): Unit={
+          if(draining && this.d.io.native.vectorCommit.valid.peek().litToBoolean && this.d.io.native.vectorCommit.ready.peek().litToBoolean){
+            val q=this.d.io.native.vectorCommit.bits;val w=q.writeback.warpId.peek().litValue.toInt
+            assert(!retired(w));retired+=w;q.writesVd.expect(false.B);q.writeback.data.foreach(_.expect(0.U))
+            this.d.io.native.responseFault.expect(true.B)
+          }
+          super.tick()
+        }
+      }
+      val raw=Seq[BigInt](0x11233444L,0x55667788L,0x9aaabbcdL,0xddeeff01L)
+      val expected=TextureFilterReference.filter(raw.map(x=>ImageFormatReference.decode("RGBA8",x)),Seq(fp(0.5f),fp(0.5f)),2)
+      aligned(t,1,swizzle=Seq(0,1,2,3));t.put(levels+17*4,8)
+      for(n<-0 until 4)t.put(0x20000+n*4,raw(n))
+      t.clear()
+      for(w<-0 until 8){t.warp=w;t.parameters(Seq(fp(0.5f),fp(0.5f))++Seq.fill(14)(BigInt(0)),probeCancel=false)}
+      t.warp=0;t.sample(vector=true);t.retire(true,false,Seq.fill(16)(expected.head),probeCancel=false)
+      val initial=d.io.groupRequests.peek().litValue
+      d.io.holdGroupReplies.poke(true.B)
+      for(w<-0 until 8){t.warp=w;t.sample(vector=true)}
+      t.until(d.io.groupRequests.peek().litValue==initial+120)
+      for(_<-0 until 16)t.tick()
+      d.io.maximumGroups.expect(120.U)
+      d.io.globalCancel.poke(true.B);for(_<-0 until 8)t.tick()
+      d.io.holdGroupReplies.poke(false.B);d.io.native.vectorCommit.ready.poke(true.B);draining=true
+      t.until(retired.size==8 && !d.io.native.busy.peek().litToBoolean && !d.io.sharedBusy.peek().litToBoolean)
+      draining=false;d.io.native.vectorCommit.ready.poke(false.B);d.io.globalCancel.poke(false.B);t.tick()
+      t.warp=0;t.sample(vector=true);t.retire(true,false,Seq.fill(16)(expected.head),probeCancel=false)
+      info("NATIVE_SHARED_NATIVE_RESET warps8=true publicBorrowedLeases120=true otherClientsReserve4Each=true heldLaneOffersDrained=true resetHeldThroughAllRetirements=true atomicVectorFaults8=true healthyReuse=true")
     }
   }
 

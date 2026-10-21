@@ -37,7 +37,7 @@ class NativeTextureStreamCompletion(config: GpuConfig) extends Bundle {
   * cluster. A context never aliases a live warp or reuses its response tags
   * before public retirement. General descriptor/LOD execution stays singular.
   */
-class NativeTextureInstructionStream(config: GpuConfig, contexts: Int) extends Module {
+class NativeTextureInstructionStream(config: GpuConfig, contexts: Int, instructionBurst: Boolean = true) extends Module {
   require(contexts > 0 && contexts <= config.warps)
   private val laneWidth = math.max(1, log2Ceil(config.lanes))
   private val contextWidth = math.max(1, log2Ceil(contexts))
@@ -80,6 +80,11 @@ class NativeTextureInstructionStream(config: GpuConfig, contexts: Int) extends M
   }
 
   private val issue = Module(new RRArbiter(new TextureRgba8GroupRequest, contexts))
+  // Bound arbitration to one vector's remaining lanes. Interleaving the last
+  // lanes of every context delays all instruction retirements by another full
+  // numeric latency, leaving an empty issue window even when credits remain.
+  private val burstLocked = if(instructionBurst)Some(RegInit(false.B))else None
+  private val burstOwner = if(instructionBurst)Some(Reg(UInt(contextWidth.W)))else None
   // Once accepted internally, this queue owns the offer through external
   // stalls, invalidation and cancellation. Its tag remains live in pending.
   private val requests = Module(new Queue(new TextureRgba8GroupRequest, 2))
@@ -99,13 +104,20 @@ class NativeTextureInstructionStream(config: GpuConfig, contexts: Int) extends M
     val q = instruction(c)
     val stop = status(c) =/= 0.U || io.cancel || noFill(c) || io.invalidate
     val offer = live(c) && !done(c) && !issuedAll(c) && q.mask(q.lane) && !stop
-    issue.io.in(c).valid := offer
+    issue.io.in(c).valid := offer && (if(instructionBurst)!burstLocked.get || burstOwner.get === c.U else true.B)
     issue.io.in(c).bits := q.template.group
     issue.io.in(c).bits.tag := privateTag(c.U, q.lane)
     issue.io.in(c).bits.coordinates := q.coordinates(q.lane)
     issue.io.in(c).bits.offsets := q.offsets(q.lane)
     val accepting = issue.io.in(c).fire
     val replying = io.grouped.response.fire && replyContext === c.U
+    if(instructionBurst){
+      when(accepting){burstLocked.get := q.lane =/= (config.lanes-1).U; burstOwner.get := c.U}
+      when(burstLocked.get && burstOwner.get === c.U &&
+        (stop || !live(c) || done(c) || issuedAll(c) || (!q.mask(q.lane) && q.lane === (config.lanes-1).U))){
+        burstLocked.get := false.B
+      }
+    }
     val nextPending = (pending(c) | Mux(accepting, UIntToOH(q.lane, config.lanes), 0.U)) &
       ~Mux(replying, UIntToOH(replyLane, config.lanes), 0.U)
     when(live(c) && !done(c)) {

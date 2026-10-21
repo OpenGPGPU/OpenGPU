@@ -185,7 +185,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   shader.io.globalAtomicRequest.ready:=true.B;shader.io.globalAtomicResponse.valid:=false.B;shader.io.globalAtomicResponse.bits:=0.U.asTypeOf(shader.io.globalAtomicResponse.bits)
   shader.io.simtBranch.valid:=false.B;shader.io.simtBranch.bits:=0.U.asTypeOf(shader.io.simtBranch.bits)
 
-  private val texturePending=RegInit(0.U(3.W));private val textureInstructions=RegInit(0.U(3.W))
+  private val texturePending=RegInit(0.U(3.W));private val textureInstructions=RegInit(0.U((if(groupedTexture)math.max(1,log2Ceil(config.warps+1))else 3).W))
   texturePending:=texturePending+texture.io.memoryRequest.fire.asUInt-texture.io.memoryResponse.fire.asUInt
   texture.io.in<>shader.io.texSample;texture.io.vectorIn<>shader.io.vectorTexSample
   private val dropTexture=shader.io.completion.valid && (status=/=0.U || externalCancel || !shader.io.completion.bits.success)

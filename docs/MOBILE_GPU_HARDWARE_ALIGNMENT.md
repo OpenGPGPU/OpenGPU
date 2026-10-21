@@ -7216,3 +7216,92 @@ pass; binned/reset refresh continues. The changed snapshot source queues its
 own30-frame/four-reset-cut refresh and full-capacity product emission. Fresh
 complete native endpoint synthesis is queued after the current service/cluster
 mappings to bound resource use. No whole-GPU timing or H0-H8 closure is claimed.
+
+
+## H4 shared logical window and measured warm native II1
+
+The [867-input shared-window checkpoint](performance/mobile-native-rgba8-shared-window-2026-10-21.json)
+passes60 focused checks and12 RTL emissions. Each CU pair now has128 logical
+reply rows shared by three clients, with four rows reserved for each client.
+A hot client can borrow120 rows while its two idle peers retain their reserves.
+One direct window fronts the numeric services; private row tags, per-client
+ordered retirement and registered lease-checked cancellation preserve ownership
+across both pairs. Collected public successes remain immutable. Held reset
+drains120 borrowed replies, queued lane offers and eight fault-atomic vector
+instructions before healthy reuse. Physical8KiB cache,16 data IDs,4 walkers,
+16 fills and128 numeric owners per cluster stay fixed.
+
+Eight bounded instruction contexts and vector bursts of at most16 lanes let
+an early vector retire while later vectors fill the numeric pipeline. The
+matched benchmark checks512 real native samples with four active unique taps
+and an independent fractional FP32 bilinear oracle. With eight resident warps,
+static four-credit admission measures0.043853 samples/cycle; a shared window
+with lane round-robin measures0.790123; the shared window with bounded bursts
+measures1.000 over448 middle samples in448 cycles, with maximum gap1.
+All512 ordered replies have constant90-cycle latency in the passing profile.
+There are zero warm descriptor or data reads. This qualifies the measured
+endpoint-plus-one-cluster warm RGBA8 control. The supplemental test below
+measures the two-cluster warm rate. Actual CU, whole-frame and other-operation
+rates remain unqualified. Eligibility remains
+explicit aligned nonmip RGBA8 2D with matching min/mag and no shadow; general
+sampling retains its existing fallback.
+
+Recursive RTL inspection finds four CUs, one global pool, one direct shared
+window and two numeric services in typed, binned and full-product hosts. The
+typed host has two native endpoints; binned/product hosts have three. The
+full-product16-lane/eight-warp emission passes, providing structural evidence.
+Fresh source-scoped whole-host validation passes six tests,30 frames and
+four reset cuts. Three additional typed/binned/full-product emissions pass.
+New controller synthesis is running; composed cluster and eight-context
+vertex/fragment endpoint synthesis are queued serially. The older four-context
+endpoint queue was superseded before mapping began.
+
+Separately, the [855-input default numeric service](performance/mobile-native-rgba8-planner-pipeline-2026-10-21.json)
+passes complete synthesis at1000ps: core+78.851ps, I/O+322.967ps, zero skipped
+instances,2256221 mapped cells and library area298706.160776. Storage maps
+without SRAM macros in this screen. This result fixes the prior-128.878ps
+planner path, but does not qualify the new admission-cancel/shared composition.
+PPA remains synthesis only. Full720p rates, total storage accounting, broader
+resource/coherence coverage and the remaining H0-H8 requirements remain open.
+
+
+The supplemental dual-cluster benchmark adds one test-only file while all867
+existing inputs remain exact. Native vertex and fragment endpoints feed
+opposite CU-pair destinations in one four-CU-capacity/three-client pool and
+two actual numeric services. Distinct images share one physical byte store.
+All1024 four-tap samples and16384 lane outputs match the independent FP32
+oracle. Both acceptance and reply paths sustain two samples every cycle
+over448 steady cycles (896 samples), with constant90-cycle reply latency,
+zero warm descriptor/data reads and per-client public order. Thus the warm
+aggregate native endpoint/service rate is measured. Actual CU instruction
+issue, cold/miss pressure and whole-frame rates remain separate gates.
+
+
+A second test-only extension exercises default128-row windows with both real
+numeric services under cold translated traffic. Four active taps occupy all
+four tap walkers per pair, then delayed fills occupy all16 data IDs per pair.
+Sustained reset preserves two primary memory faults and drains126 cancelled
+owners. Healthy reuse changes physical contents behind the same virtual
+images under a second VM root. Each pair then retains120 hot-client public
+rows while the third client uses four reserved rows on each pair and completes
+independently. Both held windows pin the VM epoch through invalidation and
+scoped flushes. All240 healthy hot replies,nine peer replies and290 physical
+read charges check exactly. All867 production/checkpoint inputs and the
+previous dual-native test remain unchanged; the cold fixture is one additional
+test file. Its initial one-tap/four-walker fixture failure is preserved, followed
+by the passing four-tap correction.
+
+The fresh867-source whole host passes22 typed frames,four binned frames and
+four recovery frames after four reset cuts, across local/spilled payloads.
+Three additional complete typed,binned and full-product emissions pass. These
+results leave actual CU/workload rates,full-capacity runtime,new composed
+synthesis and the broader H0-H8 gates open.
+
+
+The earlier859-input registered-cancellation static-credit cluster completed
+standard synthesis with zero skipped instances: core-16.409ps,I/O+308.098ps
+at1000ps. It improves the retained-250.869ps miss but still fails the core gate.
+The new critical path ends at planner admission metadata. Its frozen
+source and mapping are preserved separately from the128-row shared-window
+composition, whose timing remains pending. No clock relaxation or retiming
+was applied.

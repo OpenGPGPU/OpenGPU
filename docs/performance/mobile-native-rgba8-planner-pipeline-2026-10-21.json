@@ -19,10 +19,10 @@
     "src/main/scala/opengpu/graphics/TextureRgba8GroupPlanner.scala"
   ],
   "added_inputs": [],
-  "scope": "Add a two-entry elastic stage between metadata/cube location selection and duplicate-tap count/address issue, targeting the measured -128.878ps composed-service core path. Logical owners, cache/fill/data/PTW budgets remain fixed; timing qualification is pending.",
+  "scope": "Two-entry elastic located-group stage;14 planner/service+nine native checks and one full-service emission passed on this855-input checkpoint. Fresh complete-service synthesis passed.",
   "status": "All14 planner/service plus nine native checks and one complete service emission pass.",
   "complete_warm_192_II1": true,
-  "synthesis_status": "Active: a fresh complete-service synthesis-only1000ps screen; no result claimed.",
+  "synthesis_status": "Passed synthesis-only1000ps including I/O; applies to the default standalone service with admissionCancelInput=false. New shared-pool admission-cancel composition needs its own mapping.",
   "synthesis_helper": ".artifacts/run-mobile-native-rgba8-planner-pipeline-synthesis-v1.py",
   "prior_timing_failure_ps": {
     "core": -128.878,
@@ -32,5 +32,21 @@
   "ppa_policy": "synthesis only",
   "native_checks_passed": 9,
   "complete_service_emissions_passed": 1,
-  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production."
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production.",
+  "synthesis": {
+    "qualification": "generated/qualification/ppa/mobile-native-rgba8-planner-pipeline-2026-10-21-v1/qualification.json",
+    "qualification_sha256": "192358b69fe98044e462672b0928085d9c13d0c95f581e369c356a3759ef1ff2",
+    "core_setup_slack_ps": 78.851,
+    "io_setup_slack_ps": 322.967,
+    "skipped_instance_count": 0,
+    "mapped_cells": 2256221,
+    "library_area": 298706.160776,
+    "sram_assumption": "zero macros in mapped statistics; synthesized storage is included, not a characterized SRAM/chip-area estimate",
+    "retiming": false,
+    "period_ps": 1000,
+    "io_delay_fraction": 0.25,
+    "corner": "TC",
+    "vt": "SLVT",
+    "stage": "synthesis"
+  }
 }
