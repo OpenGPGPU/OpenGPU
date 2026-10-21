@@ -67,6 +67,18 @@ int main(void)
     const int formats[] = {-1, 0, 1, 2, 3, 4, 5, 255};
     unsigned cases = 0;
 
+    assert(opengpu_apply_sample_rb_swap(OPENGPU_FORMAT_RGBA8,
+                                        OPENGPU_FORMAT_RGBA8, true));
+    assert(opengpu_apply_sample_rb_swap(OPENGPU_FORMAT_BGRA8,
+                                        OPENGPU_FORMAT_BGRX8, true));
+    assert(!opengpu_apply_sample_rb_swap(OPENGPU_FORMAT_RGBA8,
+                                         OPENGPU_FORMAT_BGRA8, true));
+    assert(!opengpu_apply_sample_rb_swap(OPENGPU_FORMAT_BGRA8,
+                                         OPENGPU_FORMAT_RGBA8, true));
+    assert(!opengpu_apply_sample_rb_swap(OPENGPU_FORMAT_RGBA8,
+                                         OPENGPU_FORMAT_BGRA8, false));
+    assert(opengpu_apply_sample_rb_swap(-1, OPENGPU_FORMAT_BGRA8, true));
+
     for (unsigned k = 0; k < sizeof(formats) / sizeof(formats[0]); k++) {
         for (unsigned want = 0; want < 2; want++) {
             for (unsigned allow = 0; allow < 2; allow++) {

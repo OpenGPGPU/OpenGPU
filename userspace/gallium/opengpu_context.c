@@ -2307,9 +2307,15 @@ static void draw_vbo(struct pipe_context *pipe,
         unsigned start = draws[draw_i].start;
         unsigned count = draws[draw_i].count;
         unsigned tri;
+        int sample_src_format = ctx->fs_view ?
+            opengpu_format(ctx->fs_view->format) : -1;
+        int sample_dst_format = opengpu_format(ctx->cbuf->format);
+        bool sample_swap = opengpu_apply_sample_rb_swap(
+            sample_src_format, sample_dst_format,
+            ctx->fs->sample_swizzle && ctx->fs_const_set &&
+                ctx->fs_const[0] >= 0.5f);
         struct opengpu_sample_plan sample_plan = opengpu_lower_sample_swap(
-            ctx->fs_view ? opengpu_format(ctx->fs_view->format) : -1,
-            ctx->fs->sample_swizzle && ctx->fs_const_set && ctx->fs_const[0] >= 0.5f,
+            sample_src_format, sample_swap,
             !ctx->fs->alu && !ctx->fs->modulate && !ctx->fs->scale_const &&
                 !ctx->fs->sample_alpha_one);
 
@@ -2346,6 +2352,9 @@ static void draw_vbo(struct pipe_context *pipe,
             }
             fprintf(stderr, "opengpu: mvp m00=%g m03=%g m33=%g\n",
                     ctx->mvp[0], ctx->mvp[12], ctx->mvp[15]);
+            if (ctx->vs->const_position)
+                fprintf(stderr, "opengpu: const position %g %g %g %g\n",
+                        staged[0], staged[1], staged[2], staged[3]);
         } else if (ctx->vs->alu) {
             float matrix[16];
 
@@ -2664,8 +2673,7 @@ static void draw_vbo(struct pipe_context *pipe,
                             ctx->fs_view->swizzle_b, ctx->fs_view->swizzle_a,
                             ctx->fs_const[0], ctx->fs->sample_swizzle,
                             ctx->cbuf->format, sample_plan.texture_format,
-                            ctx->fs->sample_swizzle && ctx->fs_const_set &&
-                                ctx->fs_const[0] >= 0.5f && !sample_plan.shader_swizzle);
+                            sample_swap && !sample_plan.shader_swizzle);
                 sample = gpu ? prepare_sample_texture(ctx, gpu->gpu, tw, th) : NULL;
                 if (!sample || !tw || !th ||
                     pipe_opengpu_bind_texture(
