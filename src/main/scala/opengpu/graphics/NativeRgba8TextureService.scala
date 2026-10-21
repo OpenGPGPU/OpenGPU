@@ -25,7 +25,7 @@ class NativeRgba8TextureResult extends Bundle {
   */
 class NativeRgba8TextureService(config: GpuConfig = GpuConfig(),
     p: TextureImageAddressConfig = TextureImageAddressConfig(), dataBytes: Int = 8192,
-    entries: Int = 128, useBlackBoxes: Boolean = false) extends Module {
+    entries: Int = 128, useBlackBoxes: Boolean = false, admissionCancelInput: Boolean = false) extends Module {
   require(isPow2(entries) && entries >= 64 && entries <= 256)
   private val indexBits = log2Ceil(entries)
   val io = IO(new Bundle {
@@ -38,6 +38,9 @@ class NativeRgba8TextureService(config: GpuConfig = GpuConfig(),
     val satp = Input(UInt(32.W)); val flush = Flipped(Valid(new VectorTlbFlush(config)))
     val invalidate = Input(Bool()); val cancel = Input(Bool())
     val cancelGroup = Flipped(Valid(new BankedTextureGroupCancel))
+    // Internal cluster handoff; cancelled queued requests are poisoned on the
+    // admission edge even when the ordinary scoped-cancel path is registered.
+    val cancelOnAdmission = if(admissionCancelInput) Some(Input(Bool())) else None
     val busy = Output(Bool()); val occupiedFills = Output(UInt(5.W)); val joined = Output(Bool())
   })
   private val planner = Module(new TextureRgba8GroupPlanner(p))
@@ -90,8 +93,8 @@ class NativeRgba8TextureService(config: GpuConfig = GpuConfig(),
     when(count === 0.U) { pinnedSatp := io.satp }
     results(tail) := 0.U.asTypeOf(results(tail))
     results(tail).identity := io.in.bits.lookup.table.identity; results(tail).tag := io.in.bits.tag
-    cancelled(tail) := io.cancelGroup.valid &&
-      io.cancelGroup.bits.identity.asUInt === io.in.bits.lookup.table.identity.asUInt && io.cancelGroup.bits.tag === io.in.bits.tag
+    cancelled(tail) := io.cancelOnAdmission.getOrElse(false.B) || (io.cancelGroup.valid &&
+      io.cancelGroup.bits.identity.asUInt === io.in.bits.lookup.table.identity.asUInt && io.cancelGroup.bits.tag === io.in.bits.tag)
     alive(tail) := true.B; completed(tail) := false.B; tail := tail + 1.U
   }
   for (e <- 0 until entries) { when(alive(e) && (stop || scoped(e.U))) { cancelled(e) := true.B } }

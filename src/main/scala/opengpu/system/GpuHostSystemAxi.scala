@@ -313,7 +313,7 @@ class GpuHostSystemAxi(
         system.io.graphicsHostRequest <> request; response <> system.io.graphicsHostResponse
         true.B
       case Some(clients) =>
-        val pool=Module(new NativeRgba8TexturePool(gpuConfig,numComputeUnits,clients.client.length,useBlackBoxes=useBlackBoxes))
+        val pool=Module(new NativeRgba8TexturePool(gpuConfig,numComputeUnits,clients.client.length,useBlackBoxes=useBlackBoxes,maxOutstandingPerClient=4))
         val memory=Module(new NativeRgba8TextureMemoryFabric(gpuConfig,baseTransactions,(numComputeUnits+1)/2))
         pool.io.client <> clients.client;pool.io.cuMask:=clients.cuMask
         nativeTextureGroupEvent:=PopCount(pool.io.client.map(_.request.fire))

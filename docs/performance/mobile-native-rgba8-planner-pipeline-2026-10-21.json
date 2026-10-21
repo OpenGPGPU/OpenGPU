@@ -1,0 +1,36 @@
+{
+  "phase": "service",
+  "returncode": 0,
+  "source_unchanged": true,
+  "test_counts": [
+    14
+  ],
+  "passed_tests": 14,
+  "emissions": 0,
+  "elapsed_seconds": 194.09593595797196,
+  "finished_utc": "2026-10-21T03:16:40.641695+00:00",
+  "base_commit": "63faa7fa4c13c3e1154fdfa87a36b80e584fc78a",
+  "source_files": 855,
+  "manifest_sha256": "936bd93fdc2869b90cb1a8f8aa859e0c497edec676ea7e98619fb2fb871cb19c",
+  "archive_sha256": "65821a07fee56256d4c3ef9206dfeb9bb3b7457c1f393507e840a8b2093f7bf0",
+  "archive_and_worktree_exact": true,
+  "git_archive_and_worktree_exact": false,
+  "modified_inputs": [
+    "src/main/scala/opengpu/graphics/TextureRgba8GroupPlanner.scala"
+  ],
+  "added_inputs": [],
+  "scope": "Add a two-entry elastic stage between metadata/cube location selection and duplicate-tap count/address issue, targeting the measured -128.878ps composed-service core path. Logical owners, cache/fill/data/PTW budgets remain fixed; timing qualification is pending.",
+  "status": "All14 planner/service plus nine native checks and one complete service emission pass.",
+  "complete_warm_192_II1": true,
+  "synthesis_status": "Active: a fresh complete-service synthesis-only1000ps screen; no result claimed.",
+  "synthesis_helper": ".artifacts/run-mobile-native-rgba8-planner-pipeline-synthesis-v1.py",
+  "prior_timing_failure_ps": {
+    "core": -128.878,
+    "io": 339.892
+  },
+  "prior_mapping_preserved": true,
+  "ppa_policy": "synthesis only",
+  "native_checks_passed": 9,
+  "complete_service_emissions_passed": 1,
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production."
+}

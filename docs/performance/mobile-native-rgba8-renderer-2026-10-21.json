@@ -182,5 +182,6 @@
     "manifest_sha256": "b01b775806e7ff075492d0c5715704903c373b1d5e83ce19756bac8f21177ead",
     "archive_sha256": "941769d439c96acc8ada6f5eed2dc61f4024e6e406efdac2798c3f76971b0070",
     "git_archive_and_worktree_exact": true
-  }
+  },
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production."
 }

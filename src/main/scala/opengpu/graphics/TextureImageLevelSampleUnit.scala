@@ -46,6 +46,7 @@ object TextureDepthComparison {
 class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig(),groupedTexture: Boolean=false) extends Module {
   val io=IO(new Bundle {
     val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
+    val laneTemplate=if(groupedTexture)Some(Valid(new NativeRgba8TextureLaneTemplate))else None
     val in=Flipped(Decoupled(new TextureImageLevelSampleRequest));val out=Decoupled(new TextureImageLevelSampleResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,4))
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,4)))
@@ -101,6 +102,12 @@ class TextureImageLevelSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageA
     client.cancelGroup.bits.identity:=request.image.identity;client.cancelGroup.bits.tag:=request.tag
     client.invalidate:=(io.invalidate && !previousInvalidate) ||
       (client.response.fire && (noFill || io.invalidate))
+    val template=io.laneTemplate.get
+    template.valid:=client.request.fire && view.target===TextureImageTarget.image2D.U &&
+      !request.shadow && !request.blendPrevious && request.applySwizzle &&
+      request.sampler.state.minFilter<=1.U && request.sampler.state.minFilter===request.sampler.state.magFilter &&
+      view.base(1,0)===0.U && view.rowPitch(1,0)===0.U
+    template.bits.group:=client.request.bits;template.bits.swizzle:=request.image.swizzle
     when(client.request.fire){groupStarted.get:=true.B;phase:=State.plan}
   }
   when(coordinate.io.in.fire){axisIssued:=axisIssued+1.U}

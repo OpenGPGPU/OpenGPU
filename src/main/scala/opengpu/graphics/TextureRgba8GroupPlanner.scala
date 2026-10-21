@@ -133,25 +133,47 @@ class TextureRgba8GroupPlanner(p: TextureImageAddressConfig = TextureImageAddres
     locations(t).y := Mux(m.view.target === TextureImageTarget.cube.U, cube.y, y.asUInt)
     locations(t).face := Mux(m.view.target === TextureImageTarget.cube.U, cube.face, 0.U)
   }
-  private val first = PriorityEncoder(active)
-  private val addressReady = addresses.map(_.io.in.ready).reduce(_ && _)
-  axes.foreach(_.io.out.ready := axesValid && addressReady)
-  for ((address, t) <- addresses.zipWithIndex) {
-    val loc = locations(Mux(active(t), t.U, first))
-    address.io.in.valid := axesValid && addressReady
-    address.io.in.bits.view := m.view; address.io.in.bits.tag := owner
-    address.io.in.bits.x := loc.x; address.io.in.bits.y := loc.y; address.io.in.bits.z := 0.U
-    address.io.in.bits.layer := m.layer; address.io.in.bits.face := loc.face
+  // Register the selected metadata and projected locations before duplicate
+  // detection/popcount and address issue. The old composed timing path crossed
+  // the owner-indexed metadata mux, cube-edge mapping and unique-tap count.
+  // Two elastic entries retain one complete group per cycle under backpressure.
+  private class LocatedGroup extends Bundle {
+    val owner = UInt(indexBits.W); val view = new TextureImageLevelView
+    val layer = UInt(32.W); val locations = Vec(4, new Location)
+    val active = Vec(4, Bool()); val weights = Vec(2, UInt(32.W)); val axisStatus = UInt(3.W)
   }
-  when(axesValid && addressReady) {
+  private val located = Module(new Queue(new LocatedGroup, 2))
+  located.io.enq.valid := axesValid
+  located.io.enq.bits.owner := owner; located.io.enq.bits.view := m.view
+  located.io.enq.bits.layer := m.layer; located.io.enq.bits.locations := locations
+  located.io.enq.bits.active := active; located.io.enq.bits.weights := weights
+  private val badAxes = VecInit(axes.map(_.io.out.bits.status =/= 0.U))
+  located.io.enq.bits.axisStatus := Mux(badAxes.asUInt.orR,
+    VecInit(axes.map(_.io.out.bits.status))(PriorityEncoder(badAxes)), 0.U)
+  axes.foreach(_.io.out.ready := axesValid && located.io.enq.ready)
+  when(located.io.enq.fire) {
     axes.foreach(a => assert(a.io.out.bits.tag < entries.U && a.io.out.bits.tag === owner))
     assert(alive(owner) && !completed(owner))
-    val bad = VecInit(axes.map(_.io.out.bits.status =/= 0.U))
-    axisStatus(owner) := Mux(bad.asUInt.orR, VecInit(axes.map(_.io.out.bits.status))(PriorityEncoder(bad)), 0.U)
-    results(owner).group.axisWeights := weights
-    for (t <- 0 until 4) results(owner).group.rowParity(t) := locations(Mux(active(t), t.U, first)).y(0)
-    results(owner).uniqueTaps := PopCount(VecInit((0 until 4).map(t => active(t) &&
-      !(0 until t).map(j => active(j) && locations(j).asUInt === locations(t).asUInt).foldLeft(false.B)(_ || _))))
+  }
+  private val point = located.io.deq.bits
+  private val first = PriorityEncoder(point.active)
+  private val addressReady = addresses.map(_.io.in.ready).reduce(_ && _)
+  located.io.deq.ready := addressReady
+  for ((address, t) <- addresses.zipWithIndex) {
+    val loc = point.locations(Mux(point.active(t), t.U, first))
+    address.io.in.valid := located.io.deq.valid && addressReady
+    address.io.in.bits.view := point.view; address.io.in.bits.tag := point.owner
+    address.io.in.bits.x := loc.x; address.io.in.bits.y := loc.y; address.io.in.bits.z := 0.U
+    address.io.in.bits.layer := point.layer; address.io.in.bits.face := loc.face
+  }
+  when(located.io.deq.fire) {
+    val row = point.owner
+    assert(alive(row) && !completed(row))
+    axisStatus(row) := point.axisStatus
+    results(row).group.axisWeights := point.weights
+    for (t <- 0 until 4) results(row).group.rowParity(t) := point.locations(Mux(point.active(t), t.U, first)).y(0)
+    results(row).uniqueTaps := PopCount(VecInit((0 until 4).map(t => point.active(t) &&
+      !(0 until t).map(j => point.active(j) && point.locations(j).asUInt === point.locations(t).asUInt).foldLeft(false.B)(_ || _))))
   }
 
   private val addressValid = addresses.map(_.io.out.valid).reduce(_ && _)

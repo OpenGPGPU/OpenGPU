@@ -179,5 +179,6 @@
     "Complete native throughput, fault atomicity and render-to-texture visibility",
     "Main integration after required synthesis and composed native checks",
     "All remaining H0-H8 exit gates"
-  ]
+  ],
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production."
 }

@@ -11,6 +11,7 @@ import scala.collection.mutable
 abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHostTestSupport {
   protected def virtualImages: Boolean=false
   protected def groupedTexture: Boolean=false
+  protected def sharedTextureReset: Boolean=false
   import TypedColorReference.{fp,format,encode}
   private val gpu=GpuConfig(lanes=4,warps=2,l2Sets=8,l2Ways=2)
   private val graphics=GraphicsConfig(screenWidth=17,screenHeight=9)
@@ -305,7 +306,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
   if(groupedTexture)for(local<-Seq(true,false))
-  it should s"sample shared RGBA8 in both native binned stages and observe coherent DMA publication across two image engines local=$local" in {
+  it should (if(sharedTextureReset)s"drain shared native texture reads across AXI command reset and republish both binned image engines local=$local"
+    else s"sample shared RGBA8 in both native binned stages and observe coherent DMA publication across two image engines local=$local") in {
     simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d)
       val vo=BigInt(0x580000);val fo=BigInt(0x680000)
       val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
@@ -347,7 +349,15 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         val data=for((base,stage,unit)<-Seq((vo,0,31),(fo,1,17)))yield {
           NativeTextureFetchTestData.roots(put,stage=stage,id=id,offset=base)
           NativeTextureFetchTestData.install(put,byte,unit,id=id,stage=stage,offset=base,raw=0)
-          val address=base+0x20000+unit*4096
+          val address=base+0x20000+unit*4096+(if(sharedTextureReset)(frames+1)*0x2000 else 0)
+          if(sharedTextureReset){
+            // Cold distinct backing guarantees an external AR for the reset
+            // cut; the healthy rerun then republishes these same addresses.
+            put(base+NativeTextureFetchTestData.images+unit*128+15*4,address)
+            put(base+NativeTextureFetchTestData.images+unit*128+16*4,address+4096)
+            put(base+NativeTextureFetchTestData.levels+unit*128+9*4,address)
+            put(base+NativeTextureFetchTestData.levels+unit*128+10*4,address+4096)
+          }
           put(base+NativeTextureFetchTestData.levels+unit*128+12*4,address)
           put(base+NativeTextureFetchTestData.levels+unit*128+17*4,64)
           address
@@ -373,8 +383,43 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         // Repeat the same physical texture lines with a different GPU-written
         // pattern; a new frame may not reuse old shared-cache texels.
         axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
-        data.zipWithIndex.foreach{case(address,n)=>fill(40+frames*2+n,address,raw)}
-        val perf=d.io.performance.get;val groups=perf.nativeTextureGroups.peek().litValue
+        val perf=d.io.performance.get
+        if(sharedTextureReset){
+          for(address<-data;offset<-0 until 128 by 4)put(address+offset,raw)
+          val oldGroups=perf.nativeTextureGroups.peek().litValue
+          val oldReads=perf.nativeTextureDataReads.map(_.peek().litValue).sum
+          val oldWalks=perf.nativeTexturePageWalks.map(_.peek().litValue).sum
+          image.submit(100+frames)
+          val dma=image.region+0x140000
+          parkMemory(d);axiWrite(d,GpuCommandMmioRegs.COMMAND_ID,120+frames)
+          axiWrite(d,GpuCommandMmioRegs.OPCODE,GpuCommandOpcode.fill.litValue.toInt)
+          axiWrite(d,GpuCommandMmioRegs.DESTINATION,dma.toInt);axiWrite(d,GpuCommandMmioRegs.BYTES,64)
+          axiWrite(d,GpuCommandMmioRegs.PATTERN,0xdeadbeef);axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
+          var requested=false;var live=BigInt(0)
+          val target=image.pa(data(if(mode==0)0 else 1))
+          serviceMemoryMaster(d,image.read,writeAckDelay=31,readResponseDelay=53,maxCycles=1000000,
+            onReadAccepted=a=>if(!requested && a>=target && a<target+128){
+              requested=true;live=perf.payloadReservedBytes.peek().litValue
+              if(local)assert(live>0,"a live shared texture instruction lost its local payload reservation")
+              assert(perf.nativeTextureGroups.peek().litValue>oldGroups && perf.nativeTextureDataReads.map(_.peek().litValue).sum>oldReads)
+              assert(perf.nativeTexturePageWalks.map(_.peek().litValue).sum>oldWalks,"shared data cut bypassed Sv32")
+              axiWrite(d,GpuCommandMmioRegs.RESET,1)
+              axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+            })(image.write){requested && d.io.m_irq.peek().litToBoolean}
+          assert(requested,s"shared texture reset never reached ${target.toString(16)} mode=$mode local=$local")
+          assert((axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
+          assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==0x80000030L)
+          assert(!image.writes.exists(a=>a>=image.pa(dma) && a<image.pa(dma+64)),"reset executed the queued DMA")
+          perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+          assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)
+          for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"reset retained aborted native details")
+          axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+          info(s"NATIVE_SHARED_BINNED_RESET_CUT local=$local CUs=4 mode=$mode stage=${if(mode==0)"vertex"else"fragment"} payloadBytes=$live actualSharedDataWalks=true outstandingPhysicalRead=true queuedDMAAborted=true VMWriteRejectedUntilDrain=true abortedCompletionDiscarded=true")
+        }
+        val published=if(sharedTextureReset)raw ^ BigInt(0x00ffffffL)else raw
+        image.expectedSampledRed=Some(ImageFormatReference.decode("RGBA8",published)(0))
+        data.zipWithIndex.foreach{case(address,n)=>fill(40+frames*2+n,address,published)}
+        val groups=perf.nativeTextureGroups.peek().litValue
         val reads=perf.nativeTextureDataReads.map(_.peek().litValue).sum
         image.submit(60+frames);image.run(id=60+frames);image.verify()
         assert(perf.nativeTextureGroups.peek().litValue>groups,"binned frame never entered shared sampling")
@@ -385,7 +430,8 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
         image.pop();frames+=1
       }
       assert(frames==2)
-      info(s"NATIVE_SHARED_BINNED_AXI local=$local CUs=4 frames=$frames engines=2 exactMRTDepthResolve=true bothStages=true realSv32=true actualSharedDataWalks=true sameAddressDMAPublication=true modes1x4x=true heldCompletionPinsVM=true")
+      if(sharedTextureReset)info(s"NATIVE_SHARED_BINNED_RESET_AXI local=$local CUs=4 frames=$frames resets=$frames engines=2 exactMRTDepthResolve=true vertexAndFragmentResetCuts=true actualSharedDataWalks=true sameAddressNewPatternAfterReset=true modes1x4x=true queuedDMAAborted=true payloadAndPhysicalDrain=true")
+      else info(s"NATIVE_SHARED_BINNED_AXI local=$local CUs=4 frames=$frames engines=2 exactMRTDepthResolve=true bothStages=true realSv32=true actualSharedDataWalks=true sameAddressDMAPublication=true modes1x4x=true heldCompletionPinsVM=true")
     }
   }
   if(!groupedTexture){

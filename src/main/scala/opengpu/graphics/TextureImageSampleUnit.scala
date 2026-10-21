@@ -29,6 +29,7 @@ class TextureImageSampleRequest extends Bundle {
 class TextureImageSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddressConfig=TextureImageAddressConfig(),groupedTexture: Boolean=false) extends Module {
   val io=IO(new Bundle {
     val grouped=if(groupedTexture)Some(new NativeRgba8TextureClientIO)else None
+    val laneTemplate=if(groupedTexture)Some(Valid(new NativeRgba8TextureLaneTemplate))else None
     val in=Flipped(Decoupled(new TextureImageSampleRequest));val out=Decoupled(new TextureImageMipSampleResult)
     val memoryRequest=Decoupled(new ComputeMemoryRequest(config,64,16));val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,16)))
     val cancel=Input(Bool());val invalidate=Input(Bool());val busy=Output(Bool())
@@ -43,7 +44,7 @@ class TextureImageSampleUnit(config: GpuConfig=GpuConfig(),p: TextureImageAddres
   private val preparationStarted=RegInit(false.B);private val sampleStarted=RegInit(false.B)
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
   private val preparation=Module(new TextureImageSamplePreparationUnit(config,p));private val sample=Module(new TextureImageMipSampleUnit(config,p,groupedTexture))
-  if(groupedTexture){io.grouped.get <> sample.io.grouped.get}
+  if(groupedTexture){io.grouped.get <> sample.io.grouped.get; io.laneTemplate.get := sample.io.laneTemplate.get}
   private val gradient=Module(new TextureImageGradientLodUnit)
   private val quad=Module(new TextureQuadGradientUnit);private val bias=Module(new TextureLodBiasUnit)
   quad.io.in.valid:=phase===State.offerQuad;quad.io.in.bits.coordinates:=request.quadCoordinates

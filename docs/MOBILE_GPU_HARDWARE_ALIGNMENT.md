@@ -7066,8 +7066,153 @@ Shared native vertex/fragment endpoint synthesis passes 1000 ps including I/O
 at +106.973/+165.445 ps and +105.545/+169.443 ps core/I/O slack. The physical
 memory arbiter passes at +521.053/+395.659 ps; all three are fully mapped with
 zero skipped instances, TC/SLVT, 25% I/O, standard ABC and no retiming or
-place/route. The counted coordinate service's original wrapper timed out while
-its exact owned mapping process continues; no completed timing is claimed.
-Cluster mapping remains independently active. Full renderer synthesis,
+place/route. These endpoint screens precede native lane/context changes.
+The original coordinate and cluster mappings have since completed with
+negative core slack, as recorded below. Full renderer synthesis,
 cross-pair visibility/reset stress, native streaming issue/credits and all
 remaining H0-H8 gates stay open.
+
+## H4 bounded shared texture pool credits
+
+The [four-credit pool candidate](performance/mobile-native-rgba8-pool-credits-2026-10-21.json)
+passes 27 component checks and six emissions on 853 frozen inputs. The opt-in
+shared native host now reserves up to four requests per shader-stage client.
+Each row retains its pair placement, caller identity/tag and ordered public
+retirement ownership. Cross-pair completion can run ahead without blocking
+other clients; scoped/global cancellation, queued admission, held offers,
+real Sv32 root changes, publication and primary faults are checked. A sixteen-
+request input burst admits one request per cycle. Each cluster still owns
+one 8 KiB cache, sixteen data IDs and four page-walk IDs.
+
+The component default remains one credit, and the changed control path has
+no new timing result. All refreshed typed22/binned4 shared-path AXI frames pass
+on the853-input checkpoint.
+These changes are included in the native warp/snapshot milestone; this
+853-input qualification remains an earlier source checkpoint.
+The later native lane/context candidates below address issue overlap; sustained shader-to-filter
+throughput, full renderer synthesis, broader reset/visibility stress and the
+remaining H0-H8 gates remain open. PPA remains synthesis only.
+
+## H4 native vector lane overlap and held-reset drain
+
+The [native lane candidate](performance/mobile-native-rgba8-native-stream-2026-10-21.json)
+passes nine fresh checks on 855 frozen inputs. A native vector instruction can
+reuse its first lane's checked aligned RGBA8 2D explicit nonmip snapshot and
+overlap remaining lanes through the four-credit pool. Individual lane tags,
+final swizzle, full-vector fault atomicity and general fallback are retained.
+Sixteen-lane both-stage tests cover exact distinct texels/weights/offsets, held
+credits, invalidation, late memory faults and healthy reuse.
+
+Actual host reset keeps cancellation high until idle. Two new tests reproduced
+queued/held-offer deadlocks, then pass after local cancellation retirement
+was added to the cluster and pool. Physical owners continue draining and
+held public replies stay immutable. All27 component checks,23 general-sampler
+checks and four endpoint emissions pass:59 checks total on the855-input source.
+Source changes are included in the native warp/snapshot milestone. Broader metadata/warp
+issue, sustained native rates, latest whole-renderer qualification and the
+remaining H0-H8 gates remain open.
+
+The separate corrected-FMA main-source refresh now passes all six tests and
+360 real AXI frames (350 successful, ten expected errors) on its original
+828-input source. It uses the default native path. The 853-input four-credit
+pool passes22 typed and four binned frames. Those frame
+evidences are separate from the 855-input native lane candidate.
+
+The original complete coordinate-to-color mapping completed with zero skipped
+instances and synthesis core/I/O slacks -128.878/+339.892 ps at 1000 ps. Its
+planner metadata/location/count path needs another register boundary. An
+independent elastic-stage candidate passes its functional qualification; no
+new timing pass is claimed. PPA remains synthesis only.
+
+## H4 coordinate planner timing boundary candidate
+
+A two-entry elastic `LocatedGroup` queue now retains each admitted owner,
+selected view, projected taps, active mask, weights and axis status before
+duplicate detection, unique-tap counting and address issue. It targets the
+measured composed-service critical path above. All 64 planner rows, 128 outer
+sample rows and physical cache/fill/data/PTW budgets stay fixed. The queue
+continues draining already accepted work through cancellation and keeps one
+complete-group-per-cycle capacity. All14 planner/service checks, nine real
+native lane checks and one complete-service emission pass. Fresh synthesis is
+active; no timing pass is claimed.
+
+
+## H4 reset qualification and bounded instruction contexts
+
+The858-input whole binned host passes two local/spill AXI tests with four
+live MMIO reset cuts and four subsequent healthy frames. Cuts occur during
+actual vertex and fragment physical texture reads. They check rejected VM
+writes until drain, queued DMA abort, payload ownership release and changed
+same-address texture publication after reset, with exact MRT/depth/resolve
+results for1x/4x MSAA. The857-input structural proof emits complete typed,
+binned and full-capacity product hosts with four CUs, one global four-credit
+pool and two physical texture clusters. Neither result supplies later-source
+runtime or whole-GPU timing evidence.
+
+The original cluster mapping misses1000ps core timing by250.869ps; I/O slack
+is+267.782ps. A separate859-input candidate registers scoped cancellation,
+checks lease versions before delayed delivery and poisons cancelled queued
+admissions immediately. All32 pool/cluster/reset checks, nine real native
+checks and three emissions pass. Fresh synthesis targets the renderer's
+three-client/four-credit cluster. The original negative mapping is preserved.
+
+The [861-input instruction-context candidate](performance/mobile-native-rgba8-instruction-contexts-2026-10-21.json)
+retains up to four lightweight vector lane contexts around one shared metadata
+engine. Another warp may enter descriptor resolution before an older vector
+instruction retires. Tuple banks stay reserved per warp; private context/lane
+tags, immutable held writeback, primary faults and atomic vector retirement
+retain ownership. Invalidation drains accepted offers before untouched lanes
+resume through the general sampler. Three isolated ownership tests and all11 real native endpoint checks pass on
+861 inputs, including overlap in both stages. Fallback, emissions, source-scoped
+whole-host runtime and
+timing remain unqualified. The four public pool credits and physical8KiB/16data/
+4PTW resources per cluster are unchanged. Sustained native one-sample-per-cycle,
+full720p workloads, total SRAM-budget closure and all remaining H0-H8 gates
+still require evidence. Changes are batched with the checked snapshot implementation and validation. PPA uses
+synthesis only.
+
+
+## H4 task-scoped checked instruction snapshots
+
+The [863-input snapshot-cache candidate](performance/mobile-native-rgba8-snapshot-cache-2026-10-21.json)
+adds four checked metadata entries around the existing single descriptor/LOD
+engine. Resource version/address, all work-identity fields, full binding unit
+and FP32 LOD bits form the key. Eligible explicit aligned nonmip RGBA8 2D
+instructions can reuse metadata across components and warps while coordinates,
+offsets, masks and results stay local to each instruction. Task launch,
+invalidation and cancellation clear the entries. A hit invalidated before
+context admission falls back to the general resolver. Six isolated cache and
+ownership checks, all15 real native tests,23 fallback checks and seven
+emissions pass; the four appended cached-edge/rate checks also pass with
+identical production inputs. The earlier861-input source separately refreshes typed22,
+binned4 and four MMIO-reset recovery frames. That runtime evidence does not
+qualify changed snapshot-cache production logic. No sustained nativeII1,
+latest whole-renderer timing or H0-H8 completion is claimed. Further native
+rate/credit work and the capability matrix's unimplemented query, execution,
+resource-ordering and later-stage contracts remain required. PPA stays
+synthesis only; implementation, tests and documentation are included in one
+native warp/snapshot milestone.
+
+
+## H4 measured warm native rate remains below target
+
+Four [cached-instruction edge/rate checks](performance/mobile-native-rgba8-native-rate-2026-10-21.json)
+pass on a test-only extension of the snapshot source; every production and ABI
+input is identical. They add first-lane data-fault/NaN atomicity, held-reset
+recovery and a default16-lane/eight-warp native endpoint benchmark. All512
+samples are resident and descriptor-free;448 middle samples take10216 cycles,
+or0.043853 samples/cycle, with maximum admission gap89 and four public credits.
+The one-sample-per-cycle native gate fails. A larger usable latency window and
+sufficient instruction contexts need measurement with fixed physical cache,
+fill/data/PTW budgets, plus ordering, cancellation and fairness evidence.
+Whole-CU and frame rates remain unqualified.
+
+The predecessor861-input source passes37 checks and six endpoint/stage emissions;
+its structural audit retains one metadata engine/four stream contexts per full
+endpoint and unchanged public ports. Legacy control proves functional
+composition against the earlier qualified leaves (6617 equivalence cells per
+stage, zero unproven), without carrying timing. Its fresh typed22 AXI frames
+pass; binned/reset refresh continues. The changed snapshot source queues its
+own30-frame/four-reset-cut refresh and full-capacity product emission. Fresh
+complete native endpoint synthesis is queued after the current service/cluster
+mappings to bound resource use. No whole-GPU timing or H0-H8 closure is claimed.

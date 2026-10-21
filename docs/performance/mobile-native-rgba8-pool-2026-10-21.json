@@ -45,5 +45,6 @@
     "Full-pool synthesis",
     "Native lane/instruction pipelining and outstanding credits",
     "Whole-renderer shared-path frames, visibility and all remaining H0-H8 exit gates"
-  ]
+  ],
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production."
 }

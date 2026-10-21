@@ -20,3 +20,11 @@ class NativeRgba8TextureRendererPorts(numComputeUnits: Int, clients: Int) extend
   val client = Vec(clients, new NativeRgba8TextureClientIO)
   val cuMask = Output(Vec(clients, UInt(numComputeUnits.W)))
 }
+
+/** A checked level/sampler snapshot for same-binding lanes in one explicit,
+  * nonmip RGBA8 instruction. It is never cached beyond instruction retirement.
+  */
+class NativeRgba8TextureLaneTemplate extends Bundle {
+  val group = new TextureRgba8GroupRequest
+  val swizzle = new TextureImageSwizzleState
+}

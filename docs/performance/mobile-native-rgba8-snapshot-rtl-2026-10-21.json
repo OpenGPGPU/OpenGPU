@@ -1,0 +1,69 @@
+{
+  "created_utc": "2026-10-21T05:16:31.288549+00:00",
+  "source_files": 863,
+  "source_manifest_sha256": "201edde3b71b8248e87e18e129cb398026ebccfc8f6389f98f3521a9c72ba0d8",
+  "source_unchanged": true,
+  "functional_checks": 44,
+  "test_only_cached_extension_checks": 4,
+  "emissions": 7,
+  "scope": "Full16-lane/eight-warp endpoint and shader-stage structural qualification. One metadata engine, four streaming contexts and four checked snapshot entries; cache-disabled reference emitted. Unchanged native public ports. Appended four cached-edge/rate tests have exact production and ABI inputs. Warm nativeII1 fails; whole-host/runtime and synthesis timing remain separately scoped.",
+  "profiles": {
+    "legacy-vertex": {
+      "sv_files": 77,
+      "metadata_engines": 1,
+      "streaming_engines": 0,
+      "snapshot_caches": 0,
+      "public_ports_exact_to_reset_stress_v2": true
+    },
+    "legacy-fragment": {
+      "sv_files": 77,
+      "metadata_engines": 1,
+      "streaming_engines": 0,
+      "snapshot_caches": 0,
+      "public_ports_exact_to_reset_stress_v2": true
+    },
+    "native-vertex": {
+      "sv_files": 85,
+      "metadata_engines": 1,
+      "streaming_engines": 1,
+      "snapshot_caches": 1,
+      "snapshot_entries": 4,
+      "stream_contexts": 4,
+      "public_ports_exact_to_reset_stress_v2": true
+    },
+    "native-fragment": {
+      "sv_files": 85,
+      "metadata_engines": 1,
+      "streaming_engines": 1,
+      "snapshot_caches": 1,
+      "snapshot_entries": 4,
+      "stream_contexts": 4,
+      "public_ports_exact_to_reset_stress_v2": true
+    },
+    "vertex-stage": {
+      "sv_files": 99,
+      "metadata_engines": 1,
+      "streaming_engines": 1,
+      "snapshot_caches": 1,
+      "snapshot_entries": 4,
+      "stream_contexts": 4
+    },
+    "fragment-stage": {
+      "sv_files": 93,
+      "metadata_engines": 1,
+      "streaming_engines": 1,
+      "snapshot_caches": 1,
+      "snapshot_entries": 4,
+      "stream_contexts": 4
+    },
+    "native-fragment-no-snapshots": {
+      "sv_files": 84,
+      "metadata_engines": 1,
+      "streaming_engines": 1,
+      "snapshot_caches": 0,
+      "stream_contexts": 4
+    }
+  },
+  "artifact_sha256": "502f723b8d7d1c0cd74ecae84a7f317f0e9c1dd8135f781c367d74bcfe8d0bf8",
+  "artifact": ".artifacts/mobile-native-rgba8-snapshot-cache-v1-RTL-proof.json"
+}

@@ -1,0 +1,18 @@
+{
+  "created_utc": "2026-10-21T05:19:30.402809+00:00",
+  "source_files": 863,
+  "manifest_sha256": "958d2964d3349aff0d288b5a84e0f1cd398b2325aaa220ab2a959bb535e5155a",
+  "archive_sha256": "c9cd6032d4eeb7317e05970c51ab9cfd439495f81baa4ce9070983d0968f4d94",
+  "archive_and_worktree_exact": true,
+  "parent_manifest_sha256": "164b102e81b07de6316f75c9fe4b3ef5f586477b506cb15d71418271d0500d9e",
+  "modified_inputs": [
+    "src/test/scala/opengpu/graphics/NativeRgba8TexturePoolCreditsSpec.scala"
+  ],
+  "change": "Only remove redundant EOF blank line; all Scala test statements and all production/ABI inputs are exact. Staged whitespace check now passes.",
+  "production_and_ABI_exact_to_qualified_snapshot_source": true,
+  "functional_checks": 48,
+  "endpoint_stage_emissions": 7,
+  "warm_native_target_II1": false,
+  "warm_native_samples_per_cycle": 0.04385277995301488,
+  "latest_whole_host_and_timing_qualification": "pending independently, not asserted by this functional milestone"
+}

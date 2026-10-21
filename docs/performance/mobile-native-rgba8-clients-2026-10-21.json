@@ -225,5 +225,6 @@
     "Attach each cluster physical data and PTW port to bounded global memory/VM ownership",
     "Pipelined native lane/instruction issue and enough per-client outstanding work for sustained native cluster rates",
     "Whole-renderer shared-path frames, render-to-texture visibility and all remaining H0-H8 gates"
-  ]
+  ],
+  "code_lineage": "Implementation is included in the enclosing batched native warp/snapshot milestone. This record retains its exact frozen checkpoint digest; earlier checkpoint results do not qualify changed production."
 }
