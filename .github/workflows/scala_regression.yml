@@ -137,7 +137,7 @@ jobs:
           echo "Simulation flags: $FLAGS"
         fi
         # shellcheck disable=SC2086
-        sbt $FLAGS 'set Test / parallelExecution := false' "testOnly $SUITES"
+        sbt -Dopengpu.productQualification=0 $FLAGS 'set Test / parallelExecution := false' "testOnly $SUITES"
 
   dependency-graph:
     runs-on: ubuntu-latest

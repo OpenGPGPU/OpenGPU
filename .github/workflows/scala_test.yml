@@ -70,7 +70,7 @@ jobs:
         if [ -n "$SUITES" ]; then
           COMMANDS+=("testOnly $SUITES")
         fi
-        sbt -Dopengpu.simJobs=2 "${COMMANDS[@]}"
+        sbt -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 "${COMMANDS[@]}"
 
   # Never report a stale or partially successful run as a successful required check.
   ci-ok:

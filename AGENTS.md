@@ -29,3 +29,13 @@ Commit concise final results, relevant limits and reproducible test commands.
 Keep raw performance logs, source manifests, emission hashes, pending/resume
 records and intermediate qualification reports local under `.artifacts/`.
 Do not append running progress diaries or commit generated process data.
+
+# Development test resolution
+
+Routine rendering tests must use frame sizes no larger than 640x480; prefer
+smaller images when they cover the behavior. Use `GraphicsTestResolution` for
+frame-scale fixtures. Run 1280x720 only as an explicit product qualification
+with `-Dopengpu.productQualification=1`, outside the regular PR/nightly lanes.
+Keep product RTL capacities and the documented 720p qualification target.
+Large numeric/address inputs for bounded arithmetic or metadata boundary tests
+are allowed when they do not render or exhaustively traverse a large frame.
