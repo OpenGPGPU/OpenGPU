@@ -5,6 +5,7 @@ import chisel3.util._
 import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,L2SramArray}
 import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
+import opengpu.util.CarrySaveAccumulator
 
 case class VertexShaderStageConfig(input: VertexInputFetchConfig=VertexInputFetchConfig(),varyings: Int=16,postTransformEntries: Int=0) {
   require(varyings>=1 && varyings<=16)
@@ -163,7 +164,9 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val memRequest=Reg(new ComputeMemoryRequest(config,64,1))
   private val vertices=RegInit(0.U(64.W));private val restarts=RegInit(0.U(64.W));private val batches=RegInit(0.U(64.W))
   private val localBatches=RegInit(0.U(64.W));private val spilledBatches=RegInit(0.U(64.W))
-  private val writeBytes=RegInit(0.U(64.W));private val readBytes=RegInit(0.U(64.W))
+  private val writtenBytes=Module(new CarrySaveAccumulator(64,prefixValue=true))
+  private val fetchedBytes=Module(new CarrySaveAccumulator(64,prefixValue=true))
+  private val writeBytes=writtenBytes.io.value;private val readBytes=fetchedBytes.io.value
   private val maxLocalX=RegInit(0.U(16.W))
   private val active=phase=/=idle && phase=/=complete
   private val stageRequest=Wire(Decoupled(new ComputeMemoryRequest(config,64,1)))
@@ -172,9 +175,13 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val fallbackResponse=Wire(Decoupled(new ComputeMemoryResponse(64,1)))
   stageRequest.valid:=memOffered;stageRequest.bits:=memRequest
   stageResponse.ready:=memPending
+  // Count actual handshakes with bitwise feedback; only observation propagates
+  // carries. Clear retains priority over a coincident transfer on draw admission.
+  writtenBytes.io.clear:=phase===idle && io.draw.fire;fetchedBytes.io.clear:=writtenBytes.io.clear
+  private val transferredBytes=PopCount(memRequest.byteMask)
+  writtenBytes.io.addend:=Mux(stageRequest.fire && memRequest.isWrite,transferredBytes,0.U)
+  fetchedBytes.io.addend:=Mux(stageRequest.fire && !memRequest.isWrite,transferredBytes,0.U)
   when(stageRequest.fire){memOffered:=false.B;memPending:=true.B
-    when(memRequest.isWrite){writeBytes:=writeBytes+PopCount(memRequest.byteMask)}
-      .otherwise{readBytes:=readBytes+PopCount(memRequest.byteMask)}
   }
   when(stageResponse.fire){memPending:=false.B}
   private val allocationFault=WireDefault(false.B);private val releaseFault=WireDefault(false.B)
@@ -351,7 +358,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       draw:=io.draw.bits;status:=0.U;faultAddress:=0.U;count:=0.U;outputValid:=false.B
       reuseChecked:=false.B;reuseHit:=false.B
       inputStarted:=false.B;inputDone:=false.B;inputResult:=0.U.asTypeOf(inputResult);inputResult.identity:=io.draw.bits.input.identity
-      vertices:=0.U;restarts:=0.U;batches:=0.U;localBatches:=0.U;spilledBatches:=0.U;writeBytes:=0.U;readBytes:=0.U;maxLocalX:=0.U
+      vertices:=0.U;restarts:=0.U;batches:=0.U;localBatches:=0.U;spilledBatches:=0.U;maxLocalX:=0.U
       val in=(io.draw.bits.attributeSlots<<2)+3.U;val out=(io.draw.bits.varyingSlots<<2)+4.U+(io.draw.bits.version===2.U).asUInt
       inputWords:=in;outputWords:=out;inputBytes:=in*stride.U;prefixBytes:=(in+&out)*stride.U
       payloadContext:=io.payload.map(_.context).getOrElse(0.U);phase:=validate
