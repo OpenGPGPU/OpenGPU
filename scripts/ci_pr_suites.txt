@@ -13,3 +13,4 @@ opengpu.core.frontend.decode.TextureExecutionAvailabilityDecodeSpec
 opengpu.dispatch.WorkgroupBarrierEpochSpec
 opengpu.graphics.PreparedThresholdCoverageSpec
 opengpu.graphics.RasterThresholdSetupSpec
+opengpu.graphics.VertexShaderClearLinesSpec

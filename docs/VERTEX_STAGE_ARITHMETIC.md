@@ -17,10 +17,13 @@ information while separating long carry and normalization paths.
   preparation phase independently of cancellation. A stopped task drains before
   consuming those values, keeping cancellation out of their arithmetic enables.
   No phase, memory transfer, launch/export queue or state bit is added.
-- Global staging-clear start/end, inclusive-last-line and advance arithmetic
-  use prefix adders. The exclusive prefix end retains its 33rd bit, byte masks
-  preserve adjacent input/uniform values, and clearing never wraps into address
-  zero at the allocation boundary. No phase or transfer is added.
+- Global staging-clear endpoints use 26-bit line indices and prefix adders.
+  Admission requires a 64-byte-aligned scratch base. Carry-save reduction
+  combines the base, relative exclusive end and last-line correction before
+  one prefix finish, avoiding serial add/decrement paths. The independent full exclusive prefix end retains
+  its 33rd bit for admission and bounds checks. Byte masks preserve adjacent
+  input/uniform values, and clearing never wraps into address zero at the
+  allocation boundary. No phase, state bit or transfer is added.
 - Input conversion negates extracted values modulo their original width using
   a prefix adder and constant masks. Only a signed minimum can exceed the
   normalized positive maximum. This removes variable sign-extension shifts and
@@ -58,6 +61,11 @@ uncached coordinate references, cancellation/fault recovery and cache-enabled
 actual two-CU reuse. Host script checks also pass.
 The global staging checks cover an allocation ending at 4 GiB, partial first
 and last clear lines, preserved uniform tail, offered writes and late faults.
+The clear-line helper additionally passes 7,360 independent full-integer byte
+range comparisons. Actual global execution checks four scratch bases crossing
+address carry boundaries, including the exclusive 4 GiB allocation end; all
+twenty invalid-layout cases still reject before input access. The fast helper
+suite is included in the required PR catalog.
 Indexed cancellation also covers 72 phase offsets across 8-/16-/32-bit indices,
 preserved accepted record prefixes, owned request drain and healthy reuse.
 
@@ -70,6 +78,7 @@ sbt -Dopengpu.simJobs=4 'set Test / parallelExecution := false' \
   'testOnly opengpu.graphics.TextureImageSampleUnitSpec' \
   'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "execute ordered indexed instanced"' \
   'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "clear partial global output"' \
+  'testOnly opengpu.graphics.VertexShaderClearLinesSpec' \
   'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "drain offered global writes"' \
   'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "drain held launches"' \
   'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "sample vertex textures"' \

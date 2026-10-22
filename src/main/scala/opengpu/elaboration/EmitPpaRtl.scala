@@ -107,6 +107,8 @@ object EmitPpaRtl {
           stage=if(args(0)=="mobile-uniform-execute-vertex")0 else 1),stageArgs,firtoolArgs)
       case "mobile-vertex-memory-responses" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexMemoryResponseRouter,stageArgs,firtoolArgs)
+      case "mobile-vertex-clear-lines" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexShaderClearLines,stageArgs,firtoolArgs)
       case "mobile-vertex-reuse" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PostTransformVertexCache(
           opengpu.graphics.VertexShaderStageConfig(),useSramBlackBoxes=true),stageArgs,firtoolArgs)

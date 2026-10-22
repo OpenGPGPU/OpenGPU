@@ -335,12 +335,12 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val prefixEndSum=Module(new BlockPrefixAdder(32))
   prefixEndSum.io.a:=draw.scratch.base;prefixEndSum.io.b:=prefixBytes;prefixEndSum.io.carryIn:=false.B
   private val prefixEnd=prefixEndSum.io.sum
-  private val clearLastSum=Module(new BlockPrefixAdder(33))
-  clearLastSum.io.a:=prefixEnd;clearLastSum.io.b:=((BigInt(1)<<33)-1).U;clearLastSum.io.carryIn:=false.B
+  private val clearLines=Module(new VertexShaderClearLines)
+  clearLines.io.base:=draw.scratch.base;clearLines.io.startBytes:=inputBytes;clearLines.io.endBytes:=prefixBytes
   private val clearNextSum=Module(new BlockPrefixAdder(32))
   clearNextSum.io.a:=clearLine;clearNextSum.io.b:=64.U;clearNextSum.io.carryIn:=false.B
-  private val clearFirst=Cat(outputStart(31,6),0.U(6.W))
-  private val clearLast=Cat(clearLastSum.io.sum(31,6),0.U(6.W))
+  private val clearFirst=clearLines.io.first
+  private val clearLast=clearLines.io.last
   private val clearLow=(~0.U(64.W))<<outputStart(5,0)
   private val clearHigh=Mux(prefixEnd(5,0)===0.U,~0.U(64.W),(~0.U(64.W))>>(64.U-prefixEnd(5,0)))
   private val clearMask=Mux(clearLine===clearFirst,clearLow,~0.U(64.W)) & Mux(clearLine===clearLast,clearHigh,~0.U(64.W))

@@ -16,15 +16,15 @@ Keep automatic deletion of merged PR branches enabled. Clean up leftover
 temporary remote heads only after verifying they still match their merged PR
 and have no open PR. Preserve unmerged work and active local worktrees.
 
-Open, non-draft PRs run host checks, compile all main/test Scala sources, and run
-an affected subset of fourteen bounded unit suites in `scripts/ci_pr_suites.txt`.
+Open PRs, including drafts, run host checks, compile all main/test Scala sources,
+and run an affected subset of fifteen bounded unit suites in `scripts/ci_pr_suites.txt`.
 The PR lane uses one runner with a 15-minute timeout. Documentation-only changes
 run host checks. Code changes with no affected suite in that catalog run the
 bounded catalog as smoke coverage. A code PR must finish a nonzero ScalaTest run;
 the Actions summary records its suites and test count. This does not establish
 integration coverage for the changed component.
 
-Draft PRs skip expensive validation, but `ci-ok` runs and fails. New commits
+Draft PRs receive test feedback, but `ci-ok` rejects them until ready. New commits
 cancel superseded runs; `ci-ok` rejects stale heads, drafts, changed base
 branches and failed/canceled/skipped checks. Closing or merging a PR does not
 start another CI run, so a redundant skipped run cannot obscure the real result.

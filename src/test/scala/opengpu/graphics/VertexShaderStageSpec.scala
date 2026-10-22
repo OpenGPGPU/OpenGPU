@@ -320,13 +320,16 @@ class VertexShaderStageSpec extends AnyFlatSpec {
     }
   }
 
-  it should "clear partial global output lines at the exclusive 4 GiB allocation end without clobbering the uniform tail" in {
+  it should "clear partial global output lines across base carries and the exclusive 4 GiB allocation end without clobbering the uniform tail" in {
     simulate(new VertexShaderHarness(local=false)){d=>
       val prefix=d.vp.prefixBytes(d.cfg.lanes*d.cfg.warps,2,1)
-      val t=new Driver(d,(BigInt(1)<<32)-((prefix+4+63)/64)*64)
-      t.descriptor();d.io.out.ready.poke(true.B);t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
-      d.io.completion.bits.batches.expect(3.U);t.check();t.complete(0)
-      assert(t.globalStaging>0 && t.memory.keys.forall(_<(BigInt(1)<<32)) && !t.memory.contains(BigInt(0)))
+      val bases=Seq(BigInt(0x7fc0),BigInt(0x1fffc0),BigInt(0x7fffffc0),(BigInt(1)<<32)-((prefix+4+63)/64)*64)
+      for(base<-bases) {
+        val t=new Driver(d,base)
+        t.descriptor();d.io.out.ready.poke(true.B);t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+        d.io.completion.bits.batches.expect(3.U);t.check();t.complete(0)
+        assert(t.globalStaging>0 && t.memory.keys.forall(_<(BigInt(1)<<32)) && !t.memory.contains(BigInt(0)))
+      }
     }
   }
 
