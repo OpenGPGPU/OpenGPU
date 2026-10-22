@@ -1,7 +1,7 @@
 package opengpu.graphics
 
 import chisel3._
-import chisel3.util.Cat
+import opengpu.util.{BlockPrefixAdder,CarrySaveMultiplier}
 
 /** Per-axis normalized-coordinate policy for a descriptor-owning sampler.
   * Mode3 is reserved. Legacy users retain their Boolean wrap input.
@@ -16,37 +16,37 @@ object TextureCoordinatePolicy {
 
 /** Exact unsigned Q16.16 bilinear coordinates for any nonzero 14-bit extent. */
 private[graphics] object TextureCoordinates {
-  def normalize(coord: UInt, clamp: Bool): UInt = {
-    // Whole normalized periods disappear under REPEAT, for every extent.
-    // Under CLAMP, u >= 1.5 is beyond the last texel even at extent one.
-    // Bounding before multiplication avoids interpreting a large unsigned
-    // product as a negative biased coordinate.
-    Mux(clamp, Mux(coord > 98304.U, 98304.U(17.W), coord(16, 0)),
-      Cat(0.U(1.W), coord(15, 0)))
-  }
-
   def scale(coord: UInt, extent: UInt, clamp: Bool): UInt =
-    (normalize(coord, clamp) * extent) >> 8
+    scale(coord,extent,Mux(clamp,TextureCoordinatePolicy.clamp.U,TextureCoordinatePolicy.repeat.U),false.B)
 
   /** Reduce Q16.16 periods before multiplication without a divider. Mirrored
     * coordinates round the reflected product upward: reflection reverses the
     * original floor direction, preserving the unfurled integer-filter weights.
     */
   def scale(coord: UInt,extent: UInt,mode: UInt,signed: Bool): UInt={
-    val phase=coord(16,0)
-    val reflected=mode===TextureCoordinatePolicy.mirroredRepeat.U && phase(16)
-    val mirror=Mux(phase(16),(131072.U(18.W)-phase)(16,0),phase)
-    val clamped=Mux(signed && coord(31),0.U(17.W),normalize(coord,true.B))
-    val reduced=Mux(mode===TextureCoordinatePolicy.repeat.U,Cat(0.U(1.W),coord(15,0)),
-      Mux(mode===TextureCoordinatePolicy.mirroredRepeat.U,mirror,clamped))
-    val product=reduced*extent
-    (product>>8)+&(reflected && product(7,0).orR)
+    val reflected=mode===TextureCoordinatePolicy.mirroredRepeat.U && coord(16)
+    val clamping=mode=/=TextureCoordinatePolicy.repeat.U && mode=/=TextureCoordinatePolicy.mirroredRepeat.U
+    val low=CarrySaveMultiplier(coord(15,0),extent,false,false)>>8
+    val period=extent<<8
+    // ceil(((65536-r)*n)/256) = 256*n-floor(r*n/256).
+    // Reflect after multiplication, avoiding a subtract/compare/mux before it.
+    val adjusted=Module(new BlockPrefixAdder(23))
+    adjusted.io.a:=Mux(reflected,~low.pad(23),low)
+    adjusted.io.b:=Mux(reflected || (clamping && coord(16)),period,0.U)
+    adjusted.io.carryIn:=reflected
+    val saturated=Module(new BlockPrefixAdder(23))
+    saturated.io.a:=period;saturated.io.b:=extent<<7;saturated.io.carryIn:=false.B
+    // Every legal result fits 23 bits: the largest clamp value is 1.5*16383*256.
+    // The reflected subtraction's carry-out is deliberately outside that value.
+    val value=adjusted.io.sum(22,0)
+    val clampValue=Mux(signed && coord(31),0.U,Mux(coord>=98304.U,saturated.io.sum(22,0),value))
+    Mux(clamping,clampValue,value)
   }
 
   def bias(scaled: UInt): UInt = {
-    val result = Wire(UInt(24.W))
-    result := (Cat(0.U(1.W), scaled).asSInt - 128.S).asUInt
-    result
+    val result = Module(new BlockPrefixAdder(24))
+    result.io.a:=scaled;result.io.b:=((BigInt(1)<<24)-128).U;result.io.carryIn:=false.B
+    result.io.sum(23,0)
   }
 
   def range(biased: UInt, extent: UInt, clamp: Bool): UInt = {
