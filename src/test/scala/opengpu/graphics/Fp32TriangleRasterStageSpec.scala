@@ -183,8 +183,12 @@ class Fp32TriangleRasterStageSpec extends AnyFlatSpec {
       val triangle=base.copy(coords=Vector((BigInt(0),BigInt(0)),(BigInt(512),BigInt(0)),(BigInt(0),BigInt(512))),
         values=base.values.copy(slots=16,flat=0,values=Vector.tabulate(3,64)((v,c)=>fp((v+1)*(c+0.125)))))
       t.prepare(triangle);t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
-      d.io.completion.bits.arithmeticOperations.expect((1584*t.expected.size).U);t.finish()
-      info("TRIANGLE_RASTER varyingComponents=64 allSmooth=true completeHelperQuads=true operationCount48=true")
+      // Two depth differences are shared by the quad. Each lane then uses
+      // six weight/reciprocal operations, five origin-relative depth operations
+      // and six operations for each of the64 smooth varying components.
+      val operationsPerQuad=2+4*(6+5+64*6)
+      d.io.completion.bits.arithmeticOperations.expect((operationsPerQuad*t.expected.size).U);t.finish()
+      info("TRIANGLE_RASTER varyingComponents=64 allSmooth=true completeHelperQuads=true operationCount48=true operationsPerQuad1582=true")
     }
   }
 

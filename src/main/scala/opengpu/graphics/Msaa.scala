@@ -35,6 +35,15 @@ private[graphics] object RasterSampleOffsetMath {
     val m = minus.pad(64)
     Seq(-p, m, -m, p)
   }
+
+  /** Signed comparison thresholds for E + offset. Negation happens once in
+    * triangle setup, at a width that cannot overflow the original offsets.
+    */
+  def thresholds(plus: SInt, minus: SInt): Seq[SInt] = {
+    val p = plus.pad(66)
+    val m = minus.pad(66)
+    Seq(p, -m, m, -p)
+  }
 }
 
 /** Coverage from pixel-centre edges and exact quarter-pixel edge deltas.
@@ -104,6 +113,40 @@ class PreparedSampleCoverage(maxSampleCount: Int = 4, edgeWidth: Int = 64) exten
         }
         Mux(io.front, value > 0.S, value < 0.S) ||
           (value === 0.S && io.topLeft(e))
+      }.reduce(_ && _)
+    }
+    mode.U -> (0.U(maxSampleCount.W) | Cat(bits.reverse))
+  }
+  io.mask := MuxLookup(io.sampleMode, 0.U(maxSampleCount.W))(masks)
+}
+
+/** Exact sample coverage from captured negative offsets. Comparing E to
+  * -offset removes the per-sample wide addition before sign/zero decisions.
+  * Thresholds are two bits wider than an edge, preserving all offset limits.
+  */
+class PreparedThresholdCoverage(maxSampleCount: Int = 4, edgeWidth: Int = 64) extends Module {
+  require(Set(1, 2, 4)(maxSampleCount))
+  val io = IO(new Bundle {
+    val sampleMode = Input(UInt(2.W))
+    val edges = Input(Vec(3, SInt(edgeWidth.W)))
+    val thresholds = Input(Vec(4, Vec(3, SInt((edgeWidth + 2).W))))
+    val front = Input(Bool())
+    val topLeft = Input(Vec(3, Bool()))
+    val mask = Output(UInt(maxSampleCount.W))
+  })
+  private val masks = (0 to log2Ceil(maxSampleCount)).map { mode =>
+    val bits = Msaa.positions(mode).map { case (x, y) =>
+      (0 until 3).map { edge =>
+        val threshold = if (mode == 0) 0.S((edgeWidth + 2).W) else {
+          val slot = (if (x > 0) 1 else 0) | (if (y > 0) 2 else 0)
+          io.thresholds(slot)(edge)
+        }
+        val value = io.edges(edge).pad(edgeWidth + 2)
+        // Share one signed comparison between windings to reduce the
+        // threshold sign-bit load of separate greater/less networks.
+        val less = value < threshold
+        val equal = value === threshold
+        Mux(equal, io.topLeft(edge), io.front ^ less)
       }.reduce(_ && _)
     }
     mode.U -> (0.U(maxSampleCount.W) | Cat(bits.reverse))

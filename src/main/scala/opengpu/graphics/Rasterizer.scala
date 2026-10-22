@@ -547,7 +547,7 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
   private val areaReg = RegInit(0.S(config.edgeWidth.W))
   private val frontReg = RegInit(true.B)
   private val tlReg = Seq(RegInit(false.B), RegInit(false.B), RegInit(false.B))
-  private val sampleOffsetsReg = Reg(Vec(4, Vec(3, SInt(65.W))))
+  private val sampleThresholdsReg = Reg(Vec(4, Vec(3, SInt(66.W))))
 
   // Per-triangle plane coefficients exported for attribute gradients.
   io.planeA := coeffReg.a
@@ -562,10 +562,10 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
   quadCov.io.topLeft.zipWithIndex.foreach { case (flag, i) => flag := tlReg(i) }
 
   private def sampleCoverage(edges: Vec[SInt]): UInt = {
-    val cov = Module(new PreparedSampleCoverage(config.maxSampleCount, config.edgeWidth))
+    val cov = Module(new PreparedThresholdCoverage(config.maxSampleCount, config.edgeWidth))
     cov.io.sampleMode := sampleModeReg
     cov.io.edges.zipWithIndex.foreach { case (e, i) => e := edges(i) }
-    cov.io.offsets := sampleOffsetsReg
+    cov.io.thresholds := sampleThresholdsReg
     cov.io.front := frontReg
     cov.io.topLeft.zipWithIndex.foreach { case (flag, i) => flag := tlReg(i) }
     cov.io.mask
@@ -869,8 +869,8 @@ class TriangleRasterizer(config: GraphicsConfig, quadMode: Boolean = false,
     val signedAreaN =
       FixedPointMath.add64(FixedPointMath.trim64(prodReg.saA), FixedPointMath.trim64(prodReg.saB))
     for (i <- 0 until 3) {
-      RasterSampleOffsetMath.offsets(prodReg.samplePlus(i), prodReg.sampleMinus(i))
-        .zipWithIndex.foreach { case (value, slot) => sampleOffsetsReg(slot)(i) := value }
+      RasterSampleOffsetMath.thresholds(prodReg.samplePlus(i), prodReg.sampleMinus(i))
+        .zipWithIndex.foreach { case (value, slot) => sampleThresholdsReg(slot)(i) := value }
     }
 
     // Queues drain before admission. Load data independently of rejection,
