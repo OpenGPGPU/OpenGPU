@@ -75,6 +75,10 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexInputConversionPipeline,stageArgs,firtoolArgs)
       case "mobile-texture-float-axis" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TextureFloatAxisPipeline,stageArgs,firtoolArgs)
+      case "mobile-texture-gradient-product-difference" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TextureGradientProductDifferenceUnit,stageArgs,firtoolArgs)
+      case "mobile-texture-cube-gradient" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TextureCubeGradientUnit,stageArgs,firtoolArgs)
       case "mobile-vertex-reuse" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PostTransformVertexCache(
           opengpu.graphics.VertexShaderStageConfig(),useSramBlackBoxes=true),stageArgs,firtoolArgs)
