@@ -1,7 +1,7 @@
 package opengpu.config
 
 import chisel3.util.log2Ceil
-import opengpu.graphics.{GraphicsConfig,ShaderPayloadConfig}
+import opengpu.graphics.{GraphicsConfig,ShaderPayloadConfig,PostTransformVertexCache}
 import opengpu.system.SharedCuShaderConfig
 
 /** Elaboration capacities for the mobile architecture, in bytes unless named
@@ -29,7 +29,8 @@ case class MobileGpuConfig(
   binRecordCacheEntries: Int = 8,
   binDirectoryTiles: Int = 16384,
   bankedAttachments: Boolean = true,
-  localShaderPayloads: Boolean = true
+  localShaderPayloads: Boolean = true,
+  vertexReuseEntries: Int = PostTransformVertexCache.defaultEntries
 ) {
   private def powerOfTwo(n: Int): Boolean = n > 0 && (n & (n - 1)) == 0
   require(computeUnits > 0 && computeUnits <= 255)
@@ -50,11 +51,12 @@ case class MobileGpuConfig(
   require(binTileSlots >= 1 && binTileSlots <= 64)
   require(binDirectoryTiles==0 || (binDirectoryTiles>=binTileSlots && binDirectoryTiles<=65535 && powerOfTwo(binTileSlots)))
   require(powerOfTwo(binRecordCacheEntries) && binRecordCacheEntries <= 32)
-  require(binRecordCacheBytes + binDirectoryReportBytes <= primitiveBytes,
-    "record caches and report SRAM must fit the primitive/state storage budget")
+  require(binRecordCacheBytes + binDirectoryReportBytes + vertexReuseBytes <= primitiveBytes,
+    "record caches, report SRAM and vertex reuse must fit the primitive/state storage budget")
   require(colorAttachments >= 1 && colorAttachments <= 4)
   require(Set(4, 8, 16, 32, 64)(axiBytes))
 
+  def vertexReuseBytes: Long = PostTransformVertexCache.storageBytes(vertexReuseEntries).toLong
   def tileSlotBytes: Int = tileBytesPerEngine / tileSlotsPerEngine
   def binRecordCacheBytes: Long = tileEngines.toLong * binRecordCacheEntries * 64
   def binDirectoryReportBytes: Long = if (binDirectoryTiles==0) 0L else ((binDirectoryTiles+8191L)/8192)*1024
