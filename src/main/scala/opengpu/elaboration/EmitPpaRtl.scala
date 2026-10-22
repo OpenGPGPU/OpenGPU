@@ -88,6 +88,15 @@ object EmitPpaRtl {
           pipelineBounds=true,pipelineProducts=true),stageArgs,firtoolArgs)
       case "mobile-vertex-byte-counter" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.util.CarrySaveAccumulator(64,prefixValue=true),stageArgs,firtoolArgs)
+      case "mobile-resource-decode" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.core.frontend.decode.DecodePipe(
+          taskTextureAvailability=true),stageArgs,firtoolArgs)
+      case "mobile-resource-legacy-decode" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.core.frontend.decode.DecodePipe(
+          nativeResourcesAvailable=false),stageArgs,firtoolArgs)
+      case "mobile-native-resource-router" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.SharedShaderTaskRouter(
+          GpuConfig(),4,3,8,tasksPerClient=5),stageArgs,firtoolArgs)
       case "mobile-uniform-vertex" | "mobile-uniform-fragment" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ShaderUniformLoadUnit(
           stage=if(args(0)=="mobile-uniform-vertex")0 else 1),stageArgs,firtoolArgs)
