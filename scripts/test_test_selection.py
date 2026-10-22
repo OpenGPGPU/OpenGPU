@@ -176,10 +176,11 @@ print("Integration test selection: PASS")
 
 # The PR lane is bounded independently of broad integration fan-out.
 pr_suites = shard_cmd("pr-suites", "ALL").split()
-assert len(pr_suites) == len(set(pr_suites)) == 18
+assert len(pr_suites) == len(set(pr_suites)) == 19
 assert "opengpu.core.frontend.decode.UniformExecutionAvailabilityDecodeSpec" in pr_suites
 assert {"opengpu.graphics.ShaderUniformLoadUnitSpec",
         "opengpu.graphics.ShaderUniformExecuteUnitSpec"} <= set(pr_suites)
+assert "opengpu.graphics.TextureLaneStartSpec" in pr_suites
 assert set(pr_suites) <= all_specs
 assert not any("GpuComputeUnit" in suite or "HostAxi" in suite for suite in pr_suites)
 assert shard_cmd("pr-suites", "NONE") == ""
