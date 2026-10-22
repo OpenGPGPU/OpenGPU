@@ -68,6 +68,10 @@ operators, so it cannot establish a full-stage maximum frequency. Repairing
 complete arithmetic mapping and the failing path remains required separately
 from the passing cache screen.
 
+The [input arithmetic pipelines](VERTEX_INPUT_PIPELINING.md) now qualify complete
+standalone conversion, fetcher and floating-axis mapping/setup. Their component
+results do not replace the enclosing stage's qualification gate.
+
 Reproduce the directed stage case with:
 
 ```sh
