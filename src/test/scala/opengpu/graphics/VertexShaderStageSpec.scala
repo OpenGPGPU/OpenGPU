@@ -11,7 +11,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,coherentUpdates: Boolean=false,scalarFpu: Boolean=false,reuseEntries: Int=0) extends Module {
+private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,coherentUpdates: Boolean=false,scalarFpu: Boolean=false,reuseEntries: Int=0,nativeProfile: Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=(if(fullInterface)VertexShaderStageConfig()else VertexShaderStageConfig(VertexInputFetchConfig(4,3),2)).copy(postTransformEntries=reuseEntries)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
@@ -36,7 +36,7 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
   private val stage=Module(new VertexShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None))
   private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,enableFpuBackend=scalarFpu,
     graphicsHostTransactions=4,instructionCacheSets=4,instructionCacheWays=1,
-    vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None,enableUnifiedCommands=coherentUpdates))
+    vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None,enableUnifiedCommands=coherentUpdates,nativeExecutionProfile=nativeProfile))
   private def tie(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(tie)
     case v: Vec[_]=>v.foreach(tie)
@@ -836,7 +836,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
 
 
   it should "execute native uniform blocks on all 128 threads with local payload and full-interface spill" in {
-    simulate(new VertexShaderHarness(local=true,lanes=16,warps=8,fullInterface=true)){d=>
+    simulate(new VertexShaderHarness(local=true,lanes=16,warps=8,fullInterface=true,nativeProfile=true)){d=>
       val t=new Driver(d);t.cycleLimit=250000;d.io.out.ready.poke(true.B)
       for(spill<-Seq(false,true)){
         val attributes=if(spill)16 else 2;val varyings=if(spill)16 else 4
@@ -865,11 +865,11 @@ class VertexShaderStageSpec extends AnyFlatSpec {
   }
 
   it should "drain native uniform failures and cancellation without partial exports before healthy reuse stage=0" in {
-    simulate(new VertexShaderHarness(local=true)){d=>val t=new Driver(d);d.io.out.ready.poke(true.B)
+    simulate(new VertexShaderHarness(local=true,nativeProfile=true)){d=>val t=new Driver(d);d.io.out.ready.poke(true.B)
       for((mode,frame)<-Seq("healthy","invalid-block","private-view","memory-fault","missing-root","root-identity","cancel","healthy").zipWithIndex){
         t.fault=(_,_)=>false;d.io.cancel.poke(false.B)
         NativeUniformTestData.fixture(0,t.scratch+t.prefix,t.put)
-        val queries=if(mode=="invalid-block")Seq(0->0,12->0)else Seq(0->0)
+        val queries=if(mode=="invalid-block")Seq(0->0,12->0)else if(mode=="healthy")Seq(0->0,31->0)else Seq(0->0)
         val code=program(d.cfg.lanes,d.cfg.warps).dropRight(1)++NativeUniformTestData.instructions(0,t.stride,15,Some(queries))++Seq(cease);val pc=0x10000+frame*0x1000
         code.zipWithIndex.foreach{case(word,i)=>t.put(pc+4*i,word)}
         t.descriptor(indexed=false,instances=1,count=1);val q=d.io.draw.bits
@@ -889,7 +889,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
           t.blockMemory=false
         }
         withClue(s"uniform recovery mode=$mode: "){t.complete(if(mode=="healthy")0 else if(mode=="cancel")4 else 3)}
-        if(mode=="healthy"){assert(t.exports.size==1 && t.exports.head.varyings.head==NativeUniformTestData.value(0,0))}else assert(t.exports.isEmpty)
+        if(mode=="healthy"){assert(t.exports.size==1 && t.exports.head.varyings.take(2)==Vector(NativeUniformTestData.value(0,0),NativeUniformTestData.value(31,0)))}else assert(t.exports.isEmpty)
       }
       info("NATIVE_UNIFORM_RECOVERY stage=0 scalarThenInvalidVector=true privateAliasRejected=true dataFault=true missingRoot=true identityFault=true heldRequestCancel=true noPartialExports=true healthyReuse=true")
     }

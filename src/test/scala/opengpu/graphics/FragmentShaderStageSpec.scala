@@ -10,7 +10,7 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false) extends Module {
+private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,oversize: Boolean=false,scalarFpu: Boolean=false,nativeProfile: Boolean=false) extends Module {
   val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
   val vp=if(fullInterface)FragmentShaderConfig()else FragmentShaderConfig(2,4)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
@@ -34,7 +34,7 @@ private class FragmentShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=
   private val stage=Module(new FragmentShaderStage(cfg,vp,SharedCuShaderConfig(2),payload=if(local)Some(pp)else None))
   private val system=Module(new GpuSystem(cfg,numComputeUnits=2,enableGraphicsKernels=true,enableFpuBackend=scalarFpu,
     graphicsHostTransactions=4,instructionCacheSets=4,instructionCacheWays=1,
-    vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None))
+    vectorCacheSets=4,vectorCacheWays=1,shaderPayload=if(local)Some(pp)else None,nativeExecutionProfile=nativeProfile))
   private def tie(data: Data): Unit=data match {
     case r: Record=>r.elements.values.foreach(tie)
     case v: Vec[_]=>v.foreach(tie)
@@ -755,7 +755,7 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
 
 
   it should "execute native uniform blocks on all 128 fragment invocations with local payload and controlled spill" in {
-    simulate(new FragmentShaderHarness(local=true,lanes=16,warps=8,fullInterface=true)){d=>
+    simulate(new FragmentShaderHarness(local=true,lanes=16,warps=8,fullInterface=true,nativeProfile=true)){d=>
       val t=new Driver(d);t.cycleLimit=250000;d.io.out.ready.poke(true.B)
       for(spill<-Seq(false,true)){
         val leases=if(spill)Vector.fill(d.pp.slots)(t.pressure(ShaderPayloadControl.allocate))else Vector.empty
@@ -784,11 +784,11 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
   }
 
   it should "drain native uniform failures and cancellation without partial exports before healthy reuse stage=1" in {
-    simulate(new FragmentShaderHarness(local=true)){d=>val t=new Driver(d);d.io.out.ready.poke(true.B)
+    simulate(new FragmentShaderHarness(local=true,nativeProfile=true)){d=>val t=new Driver(d);d.io.out.ready.poke(true.B)
       for((mode,frame)<-Seq("healthy","invalid-block","private-view","memory-fault","missing-root","root-identity","cancel","healthy").zipWithIndex){
         t.fault=(_,_)=>false;d.io.cancel.poke(false.B)
         NativeUniformTestData.fixture(1,t.scratch+t.prefix,t.put)
-        val queries=if(mode=="invalid-block")Seq(0->0,12->0)else Seq(0->0)
+        val queries=if(mode=="invalid-block")Seq(0->0,12->0)else if(mode=="healthy")Seq(0->0,31->0)else Seq(0->0)
         val code=program(d.cfg.lanes,d.cfg.warps).dropRight(1)++NativeUniformTestData.instructions(1,t.stride,14,Some(queries))++Seq(cease);val pc=0x10000+frame*0x1000
         code.zipWithIndex.foreach{case(word,i)=>t.put(pc+4*i,word)}
         t.descriptor();val q=d.io.draw.bits
@@ -808,9 +808,29 @@ class FragmentShaderStageSpec extends AnyFlatSpec {
           t.blockMemory=false
         }
         withClue(s"uniform recovery mode=$mode: "){t.complete(if(mode=="healthy")0 else if(mode=="cancel")4 else 3)}
-        if(mode=="healthy"){assert(t.exports.size==1 && t.exports.head.lanes.forall(_.colors.head==NativeUniformTestData.value(12,0)))}else assert(t.exports.isEmpty)
+        if(mode=="healthy"){assert(t.exports.size==1 && t.exports.head.lanes.forall(_.colors.take(2)==Vector(NativeUniformTestData.value(12,0),NativeUniformTestData.value(31,0))))}else assert(t.exports.isEmpty)
       }
       info("NATIVE_UNIFORM_RECOVERY stage=1 scalarThenInvalidVector=true privateAliasRejected=true dataFault=true missingRoot=true identityFault=true heldRequestCancel=true noPartialExports=true healthyReuse=true")
+    }
+  }
+
+  it should "read native uniform defaults sharing the final private-prefix line after a controlled spill" in {
+    simulate(new FragmentShaderHarness(local=true,lanes=4,warps=1,nativeProfile=true)){d=>val t=new Driver(d)
+      val inputs=6+4*2+2;val prefix=d.vp.prefixBytes(t.cap,2,4,version=2);val defaultBase=t.scratch+prefix
+      assert(prefix==544 && defaultBase%64==32)
+      NativeUniformTestData.fixture(1,defaultBase,t.put)
+      val control=Seq(addi(14,0,61),(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(14)<<15)|(BigInt(4)<<12)|(BigInt(5)<<7)|0x57)++
+        address(6,7,(inputs+17)*t.stride)++Seq(vectorMemory(6,5,true))
+      val code=program(4,1).take(3)++control++NativeUniformTestData.instructions(1,t.stride,inputs,Some(Seq(31->0,31->3580)))++Seq(cease)
+      code.zipWithIndex.foreach{case(word,i)=>t.put(0x1000+4*i,word)}
+      t.descriptor();val q=d.io.draw.bits;q.version.poke(2.U);q.uniforms.version.poke(1.U);q.uniforms.address.poke(NativeUniformTestData.root.U)
+      q.scratch.limit.poke((defaultBase+3584).U);q.scratch.allocationLimit.poke(((defaultBase+3584+63)& ~BigInt(63)).U)
+      d.io.out.ready.poke(true.B);t.submit();t.send(0);t.end(1)
+      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.spilledBatches.expect(1.U);t.complete(0)
+      assert(t.exports.size==1)
+      for(lane<-t.exports.head.lanes)assert(lane.colors.take(2)==Vector(NativeUniformTestData.value(31,0),NativeUniformTestData.value(31,3580)))
+      assert(t.word(defaultBase)==NativeUniformTestData.value(31,0));assert(t.word(defaultBase+3580)==NativeUniformTestData.value(31,3580))
+      info("NATIVE_UNIFORM_DEFAULT_TAIL stage=1 privatePrefix544=true sharedPadding32=true activeInvocations4=true controlledSpill=true defaultFirstLast=true privateControlStores=true")
     }
   }
 }
