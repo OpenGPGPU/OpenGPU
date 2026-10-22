@@ -98,6 +98,20 @@ macros occur in these component tops. Areas are synthesis library areas.
 | TextureUnit, prepared/overlap/policy enabled | +61.910 / +106.876 | 36,622 | 4,966.2 |
 | TextureImageFetchDecoder | +299.372 / +660.229 | 11,154 | 1,449.35 |
 
+The combinational `VertexShaderClearLines` helper also passes the same setup
+gate with +113.683 ps I/O slack, 391 cells and library area 49.2367. It has no
+internal register path or SRAM. Its profile is `mobile-vertex-clear-lines`.
+Eleven current-stage controls cover carry-boundary global clearing, all twenty
+invalid layouts, accepted-response cancellation, indexed reuse, held launches
+and exports, staging faults, and both local/global native operation-family
+ownership profiles. The bounded native profiles use sixteen draws per mode:
+
+```sh
+sbt -Dopengpu.nativeResourceAvailabilityOnly=true -Dopengpu.simJobs=4 \
+  'set Test / parallelExecution := false' \
+  'testOnly opengpu.graphics.VertexShaderStageSpec -- -z "drain"'
+```
+
 Emit the component profiles with `mobile-texture-composed-address`,
 `mobile-vertex-input-conversion`, `mobile-vertex-input-fetch`,
 `texture-coordinates-policy`, `texture-sampler-prepared-coordinate-policy`
@@ -105,8 +119,15 @@ and `mobile-texture-typed-fetch`. For the last directory, qualify the internal
 `TextureImageFetchDecoder` top.
 
 Emit `mobile-vertex-shader-reuse` for the complete default vertex-stage screen.
-It includes eighteen SRAM instances: ten 256x64 and eight 256x32 macros. Use
+The complete stage passes the same 1000 ps TC/SLVT synthesis setup gate:
+core-clock-group slack +20.435 ps and I/O-group slack +122.766 ps, with zero
+skipped operators or unresolved mapping diagnostics. It contains 1,341,719
+instances and synthesis library area 208,267, including eighteen SRAM instances:
+ten 256x64 and eight 256x32 macros. The required PR catalog passes 68 tests
+across fifteen suites with zero ignored, pending, canceled or failed tests;
+host script checks pass as well. Use
 the pinned SRAM models and `scripts/qualify_ppa.py --stage synthesis
 --period-ps 1000 --io-delay 0.25`, with standard ABC, no retiming/false paths
-and no skipped operators. Component timing alone cannot establish the vertex,
-whole-host or renderer clock, frame rates, energy, or H0–H8 completion.
+and no skipped operators. This is a mapped synthesis setup estimate for this
+vertex-stage profile. Whole-CU/host/renderer timing, physical/product budgets,
+frame rates, energy and the remaining H0–H8 requirements stay open.
