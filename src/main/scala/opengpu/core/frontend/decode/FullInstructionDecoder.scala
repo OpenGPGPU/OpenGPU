@@ -62,4 +62,10 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
   // The implemented ISA allow-lists are authoritative. An unknown encoding,
   // a reserved encoding, or an instruction from a disabled extension traps.
   io.decoded.illegalInstruction := !io.decoded.legal
+  // A disabled vector profile must not fall back to comparing scalar RFs.
+  when((scalarDecoder.io.decoded.vectorBranch || scalarDecoder.io.decoded.simtSync) && !config.enableVector.B) {
+    io.decoded.legal := false.B
+    io.decoded.executionType := ExecutionType.illegal
+    io.decoded.illegalInstruction := true.B
+  }
 }

@@ -105,9 +105,11 @@ class GpuCore(
   })
 
   private val frontend = Module(new GpuFrontend(config,
-    scalarFpuAvailable = !nativeExecutionProfile || (enableFpuBackend && config.enableFpu)))
+    scalarFpuAvailable = !nativeExecutionProfile || (enableFpuBackend && config.enableFpu),
+    instructionSimt = config.enableVector))
   private val scalar = Module(new ScalarBackend(config, useBlackBoxes,helperInvocations=true))
-  private val vector = Module(new VectorBackend(config, useBlackBoxes,helperInvocations=true))
+  private val vector = Module(new VectorBackend(config, useBlackBoxes,helperInvocations=true,
+    instructionSimt=config.enableVector))
   private val scalarVectorRead =
     Module(new opengpu.core.backend.register.ScalarRegisterFile(config))
   private val scalarFpuRead =
@@ -285,12 +287,28 @@ class GpuCore(
   scalarVectorRead.io.write.valid := scalar.io.appliedWriteback.valid
   scalarVectorRead.io.write.bits := scalar.io.appliedWriteback.bits
   io.memory <> scalar.io.memory
-  io.system <> scalar.io.system
+  if(config.enableVector) {
+    val sync = frontend.io.sync.get
+    val isSync = scalar.io.system.bits.decode.decoded.simtSync
+    sync.valid := scalar.io.system.valid && isSync
+    sync.bits.warpId := scalar.io.system.bits.decode.warpId
+    sync.bits.pc := scalar.io.system.bits.decode.pc
+    sync.bits.activeMask := scalar.io.system.bits.decode.activeMask
+    sync.bits.joinPc := scalar.io.system.bits.decode.pc + scalar.io.system.bits.decode.decoded.immediate
+    io.system.valid := scalar.io.system.valid && !isSync
+    io.system.bits := scalar.io.system.bits
+    scalar.io.system.ready := Mux(isSync,sync.ready,io.system.ready)
+    frontend.io.instructionBranch.get <> vector.io.simtBranch.get
+    vector.io.simtClear.get.valid := io.finish.valid || io.launch.fire
+    vector.io.simtClear.get.bits := Mux(io.finish.valid,io.finish.bits,io.launch.bits.warpId)
+  } else {
+    io.system <> scalar.io.system
+  }
   trapArbiter.io.scalar <> scalar.io.trap
   trapArbiter.io.scalarMemory <> scalar.io.memoryFault
   // Own the selected fault before public presentation, so a newly arriving
   // peer fault cannot replace an already stalled SIMT event (or vice versa).
-  private val allTraps = Module(new RRArbiter(new CoreTrapEvent(config), 2))
+  private val allTraps = Module(new RRArbiter(new CoreTrapEvent(config), if(config.enableVector)3 else 2))
   private val trapOffers = Module(new Queue(new CoreTrapEvent(config), 1))
   allTraps.io.in(0) <> trapArbiter.io.out
   allTraps.io.in(1).valid := frontend.io.overflow.valid
@@ -301,6 +319,9 @@ class GpuCore(
   allTraps.io.in(1).bits.tval := frontend.io.overflow.bits.pc
   allTraps.io.in(1).bits.laneFaultMask := frontend.io.overflow.bits.activeMask
   frontend.io.overflow.ready := allTraps.io.in(1).ready
+  if(config.enableVector) {
+    allTraps.io.in(2) <> frontend.io.fault.get
+  }
   trapOffers.io.enq <> allTraps.io.out
   io.trap <> trapOffers.io.deq
 

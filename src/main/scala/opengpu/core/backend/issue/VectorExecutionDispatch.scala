@@ -6,7 +6,7 @@ import opengpu.config.GpuConfig
 import opengpu.core.frontend.decode.VectorUnit
 
 /** Exclusive vector execution-family router with selected-output backpressure. */
-class VectorExecutionDispatch(config: GpuConfig = GpuConfig()) extends Module {
+class VectorExecutionDispatch(config: GpuConfig = GpuConfig(), instructionSimt: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new VectorIssuedInstruction(config)))
     val alu = Decoupled(new VectorIssuedInstruction(config))
@@ -16,6 +16,7 @@ class VectorExecutionDispatch(config: GpuConfig = GpuConfig()) extends Module {
     val configuration = Decoupled(new VectorIssuedInstruction(config))
     val memory = Decoupled(new VectorIssuedInstruction(config))
     val texture = Decoupled(new VectorIssuedInstruction(config))
+    val branch = if(instructionSimt) Some(Decoupled(new VectorIssuedInstruction(config))) else None
     val unimplemented = Decoupled(new VectorIssuedInstruction(config))
   })
 
@@ -27,9 +28,10 @@ class VectorExecutionDispatch(config: GpuConfig = GpuConfig()) extends Module {
   private val toConfiguration = unit === VectorUnit.configuration
   private val toMemory = unit === VectorUnit.loadStore
   private val toTexture = unit === VectorUnit.texture
+  private val toBranch = instructionSimt.B && unit === VectorUnit.branch
   private val toUnimplemented =
     !toAlu && !toMultiply && !toDivide && !toFpu &&
-      !toConfiguration && !toMemory && !toTexture
+      !toConfiguration && !toMemory && !toTexture && !toBranch
 
   io.alu.valid := io.in.valid && toAlu
   io.multiply.valid := io.in.valid && toMultiply
@@ -47,6 +49,11 @@ class VectorExecutionDispatch(config: GpuConfig = GpuConfig()) extends Module {
   io.memory.bits := io.in.bits
   io.texture.bits := io.in.bits
   io.unimplemented.bits := io.in.bits
+  if(instructionSimt) {
+    io.branch.get.valid := io.in.valid && toBranch
+    io.branch.get.bits := io.in.bits
+  }
+  private val branchReady = if(instructionSimt) io.branch.get.ready else false.B
 
   io.in.ready := Mux(
     toAlu,
@@ -66,7 +73,7 @@ class VectorExecutionDispatch(config: GpuConfig = GpuConfig()) extends Module {
             Mux(
               toMemory,
               io.memory.ready,
-              Mux(toTexture, io.texture.ready, io.unimplemented.ready)
+              Mux(toTexture, io.texture.ready, Mux(toBranch,branchReady,io.unimplemented.ready))
             )
           )
         )

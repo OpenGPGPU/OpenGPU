@@ -66,7 +66,8 @@ class VectorTextureRequest(config: GpuConfig) extends Bundle {
 /** Connected RVV backend with per-warp configuration and writeback. */
 class VectorBackend(
   config: GpuConfig = GpuConfig(),
-  useBlackBox: Boolean = false, helperInvocations: Boolean = false
+  useBlackBox: Boolean = false, helperInvocations: Boolean = false,
+  instructionSimt: Boolean = false
 ) extends Module {
   private val vectorWidth = config.lanes * config.xLen
   val io = IO(new Bundle {
@@ -94,6 +95,8 @@ class VectorBackend(
     val committedVectorWriteback = Valid(new VectorRegisterWrite(config))
     val committedVectorFlags = Valid(new FpuFlags(config))
     val unimplemented = Decoupled(new VectorIssuedInstruction(config))
+    val simtBranch = if(instructionSimt) Some(Decoupled(new opengpu.core.execute.control.SimtBranchRequest(config))) else None
+    val simtClear = if(instructionSimt) Some(Flipped(Valid(UInt(config.warpIdWidth.W)))) else None
     val texSample = Decoupled(new VectorTextureRequest(config))
     val texCommit = Flipped(Decoupled(new VectorCommitRequest(config)))
     val rawHazard = Output(Bool())
@@ -101,7 +104,7 @@ class VectorBackend(
   })
 
   private val issue = Module(new VectorIssueStage(config, useBlackBox))
-  private val dispatch = Module(new VectorExecutionDispatch(config))
+  private val dispatch = Module(new VectorExecutionDispatch(config,instructionSimt))
   private val integerAlu = Module(new VectorIntegerAlu(config))
   private val multiplyAlu = Module(new VectorMultiplyAlu(config))
   private val divideAlu = Module(new VectorDivideAlu(config))
@@ -139,6 +142,12 @@ class VectorBackend(
 
   issue.io.in <> io.in
   dispatch.io.in <> issue.io.out
+  if(instructionSimt) {
+    val branch = Module(new opengpu.core.execute.control.VectorSimtBranchExecuteStage(config))
+    branch.io.in <> dispatch.io.branch.get
+    branch.io.clear := io.simtClear.get
+    io.simtBranch.get <> branch.io.out
+  }
   io.scalarRead := issue.io.scalarRead
   issue.io.scalarRs1Data := io.scalarRs1Data
   issue.io.scalarRs2Data := io.scalarRs2Data

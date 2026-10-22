@@ -3,7 +3,7 @@ package opengpu.core.frontend
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.execute.control.{SimtBranchRequest, SimtPath}
+import opengpu.core.execute.control.{SimtBranchRequest, SimtPath, SimtSyncRequest}
 import opengpu.core.frontend.simt.SimtControlFlow
 import opengpu.core.frontend.warp._
 
@@ -14,13 +14,16 @@ import opengpu.core.frontend.warp._
   * explicit restore request; the restore remains backpressured for that cycle.
   * Finishing a warp also clears its private divergence stack before reuse.
   */
-class SimtFrontendControl(config: GpuConfig = GpuConfig()) extends Module {
+class SimtFrontendControl(config: GpuConfig = GpuConfig(), instructionSimt: Boolean = false) extends Module {
   private val countWidth = math.max(1, log2Ceil(config.simtStackDepth + 1))
 
   val io = IO(new Bundle {
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
     val issue = Decoupled(new WarpIssue(config))
     val branch = Flipped(Decoupled(new SimtBranchRequest(config)))
+    val instructionBranch = if(instructionSimt) Some(Flipped(Decoupled(new SimtBranchRequest(config)))) else None
+    val sync = if(instructionSimt) Some(Flipped(Decoupled(new SimtSyncRequest(config)))) else None
+    val fault = if(instructionSimt) Some(Decoupled(new opengpu.core.trap.CoreTrapEvent(config))) else None
     val overflow = Decoupled(new SimtPath(config))
     val scalarRedirect = Flipped(Decoupled(new SimtPath(config)))
     val restore = Flipped(Decoupled(UInt(config.warpIdWidth.W)))
@@ -31,11 +34,16 @@ class SimtFrontendControl(config: GpuConfig = GpuConfig()) extends Module {
   })
 
   private val scheduler = Module(new WarpScheduler(config))
-  private val controlFlow = Module(new SimtControlFlow(config))
+  private val controlFlow = Module(new SimtControlFlow(config,instructionSimt))
 
   scheduler.io.launch <> io.launch
   io.issue <> scheduler.io.issue
   controlFlow.io.branch <> io.branch
+  if(instructionSimt) {
+    controlFlow.io.instructionBranch.get <> io.instructionBranch.get
+    controlFlow.io.sync.get <> io.sync.get
+    io.fault.get <> controlFlow.io.fault.get
+  }
   io.overflow <> controlFlow.io.overflow
 
   controlFlow.io.restoreWarpId := io.restore.bits
