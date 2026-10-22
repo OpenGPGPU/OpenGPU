@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import opengpu.testutil.GpuSim._
+import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 
 class TileBinRenderPassAdmissionSpec extends AnyFlatSpec {
@@ -72,25 +73,28 @@ class TileBinRenderPassAdmissionSpec extends AnyFlatSpec {
       }
     }
   }
-  it should "prevalidate full 720p grids without retaining a per-tile descriptor table" in {
-    val full=cfg.copy(screenWidth=1280,screenHeight=720)
+  it should s"prevalidate full ${GraphicsTestResolution.label} grids without retaining a per-tile descriptor table" in {
+    val width=GraphicsTestResolution.width;val height=GraphicsTestResolution.height
+    val full=cfg.copy(screenWidth=width,screenHeight=height)
     simulate(new TileBinRenderPassAdmission(full,4,pagedCapacity=16384,pageBytes=128)) { d=>
       assert(d.io.out.bits.tiles.length==0)
       d.io.in.valid.poke(false.B); d.io.out.ready.poke(false.B); d.io.cancel.poke(false.B)
       d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
       for (edge <- Seq(8,16); mode <- Seq(0,2)) {
-        pokeBinding(d.io.in.bits,1280,720,1280,720,mode=mode)
-        val b=d.io.in.bits; val count=((1280+edge-1)/edge)*((720+edge-1)/edge)
+        pokeBinding(d.io.in.bits,width,height,width,height,mode=mode)
+        val b=d.io.in.bits; val count=GraphicsTestResolution.tileCount(edge)
         b.replay.bins.version.poke(2.U); b.replay.bins.tileCount.poke(count.U)
         b.replay.bins.directoryBase.poke(0x8000000L.U)
         b.replay.bins.directoryLimit.poke((0x8000000L+64L*count).U)
         b.attachments.tileLog2.poke((if (edge==8) 3 else 4).U)
         b.attachments.color.base.poke(0x1000000L.U)
-        b.attachments.color.limit.poke((0x1000000L+1280L*720*4*(1<<mode)).U)
+        b.attachments.color.limit.poke((0x1000000L+width.toLong*height*4*(1<<mode)).U)
         b.attachments.depth.base.poke(0x2000000L.U)
-        b.attachments.depth.limit.poke((0x2000000L+1280L*720*4*(1<<mode)).U)
+        b.attachments.depth.limit.poke((0x2000000L+width.toLong*height*4*(1<<mode)).U)
         d.io.in.valid.poke(true.B); d.clock.step(); d.io.in.valid.poke(false.B)
-        d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits)); d.clock.step(200000)
+        d.io.in.bits.poke(0.U.asTypeOf(d.io.in.bits))
+        var cycles=0
+        while(!d.io.out.valid.peek().litToBoolean && cycles<count*32+256){d.clock.step(32);cycles+=32}
         d.io.out.valid.expect(true.B); d.io.out.bits.status.expect(0.U)
         d.io.out.ready.poke(true.B); d.clock.step(); d.io.out.ready.poke(false.B)
       }

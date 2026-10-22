@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import opengpu.testutil.GpuSim._
+import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 
 class TileGridDescriptorLookupSpec extends AnyFlatSpec {
@@ -34,9 +35,9 @@ class TileGridDescriptorLookupSpec extends AnyFlatSpec {
   }
 
   for (edge <- Seq(8,16)) {
-    it should s"regenerate every tile in a complete 720p grid with edge=$edge" in {
+    it should s"regenerate every tile in a complete ${GraphicsTestResolution.label} grid with edge=$edge" in {
       simulate(new TileGridDescriptorLookup) { d=>
-        initialize(d); val (cols,rows)=bind(d,1280,720,edge)
+        initialize(d); val (cols,rows)=bind(d,GraphicsTestResolution.width,GraphicsTestResolution.height,edge)
         for (tile <- 0 until cols*rows) {
           offer(d,tile); d.clock.step(21)
           d.io.out.valid.expect(true.B); d.io.out.bits.status.expect(0.U)
@@ -87,11 +88,11 @@ class TileGridDescriptorLookupSpec extends AnyFlatSpec {
     simulate(new TileGridDescriptorLookup) { d=>
       initialize(d)
       val cases=Seq[(Long,TileBinRenderPassDescriptor=>Unit)](
-        (3600,_=>()),(0xffffffffL,_=>()),(0,_.extentW.poke(0.U)),
+        (GraphicsTestResolution.tileCount(16).toLong,_=>()),(0xffffffffL,_=>()),(0,_.extentW.poke(0.U)),
         (0,_.replay.bins.tileCount.poke(1.U)),(0,_.attachments.tileLog2.poke(5.U)),
         (0,b=>{ b.attachments.originX.poke(65520.U); b.extentW.poke(128.U) }))
       for ((tile,mutate) <- cases) {
-        bind(d,1280,720); mutate(d.io.grid); offer(d,tile); d.clock.step(21)
+        bind(d,GraphicsTestResolution.width,GraphicsTestResolution.height); mutate(d.io.grid); offer(d,tile); d.clock.step(21)
         d.io.out.valid.expect(true.B); d.io.out.bits.status.expect(PrimitiveBinStatus.invalidDescriptor.U)
         consume(d)
       }
@@ -102,7 +103,7 @@ class TileGridDescriptorLookupSpec extends AnyFlatSpec {
     simulate(new TileGridDescriptorLookup) { d=>
       initialize(d)
       for (cancel <- Seq(true,false)) {
-        bind(d,1280,720); offer(d,3599); d.clock.step(8)
+        bind(d,GraphicsTestResolution.width,GraphicsTestResolution.height); offer(d,GraphicsTestResolution.tileCount(16)-1); d.clock.step(8)
         d.io.cancel.poke(cancel.B); d.clock.step(); d.io.cancel.poke(false.B); d.clock.step(21)
         d.io.out.valid.expect(true.B)
         d.io.out.bits.status.expect((if (cancel) PrimitiveBinStatus.cancelled else 0).U)

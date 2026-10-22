@@ -6,6 +6,7 @@ import chisel3.reflect.DataMirror
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 import opengpu.config.GpuConfig
 import opengpu.testutil.GpuSim._
+import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
@@ -42,7 +43,7 @@ class TileBinRenderPipelineSpec extends AnyFlatSpec {
     private val resources=Module(new TileSramSimulationResources)
     macroModelPresent:=resources.io.present
   }
-  private class FullFrameTransferRenderer(width: Int=1280,height: Int=720) extends TileBinRenderPipeline(
+  private class FullFrameTransferRenderer(width: Int=GraphicsTestResolution.width,height: Int=GraphicsTestResolution.height) extends TileBinRenderPipeline(
     cfg.copy(screenWidth=width,screenHeight=height),GpuConfig(l2Sets=512,l2StoreEntries=4),
     engines=2,pageBytes=4096,writeCredits=8,tileSlots=8,cacheEntries=8,storeCredits=8,
     useTileSramBlackBoxes=true,pagedCapacity=16384,bankedAttachments=banked) {
@@ -568,8 +569,8 @@ class TileBinRenderPipelineSpec extends AnyFlatSpec {
     assert(results(0)==results(1),"native idle stepping changed cycles, requests/responses, tile ownership or final image")
   }
 
-  it should "clear and store a complete 720p frame through real SRAM owners at a bounded memory service rate" in {
-    val width=1280;val height=720;val count=3600
+  it should s"clear and store a complete ${GraphicsTestResolution.label} frame through real SRAM owners at a bounded memory service rate" in {
+    val width=GraphicsTestResolution.width;val height=GraphicsTestResolution.height;val count=GraphicsTestResolution.tileCount(16)
     val cb=0x1000000L;val db=0x2000000L;val rb=0x3000000L;val directory=0x8000000L
     simulate(new FullFrameTransferRenderer) { dut=>
       val d=new Driver(dut.io,dut.clock,dut.reset,width=width,height=height,extentW=width,extentH=height,
@@ -589,14 +590,15 @@ class TileBinRenderPipelineSpec extends AnyFlatSpec {
       assert(d.tiles.forall(t=>t.status==0 && t.loads==0 && t.stores==2048))
       for(z <- Seq(false,true);y <- 0 until height;x <- 0 until width)
         assert(d.memory(d.address(x,y,0,z))==(if(z)depthClear else colorClear),s"full-frame clear mismatch ($x,$y,$z)")
-      info(s"BIN_CLEAR_STORE_720P tiles=$count exactWords=${width*height*2} usefulBytes=${summary.stores} writeLines=${d.attachmentRequests.count(_._3)} cycles=${d.cycle} latency=80 writeWindow=4")
+      info(s"BIN_CLEAR_STORE resolution=${GraphicsTestResolution.label} tiles=$count exactWords=${width*height*2} usefulBytes=${summary.stores} writeLines=${d.attachmentRequests.count(_._3)} cycles=${d.cycle} latency=80 writeWindow=4")
     }
   }
 
-  it should "render a complete sparse 720p image through SRAM-backed paged tile ownership" in {
-    val width=1280; val height=720; val columns=80; val count=3600
+  it should s"render a complete sparse ${GraphicsTestResolution.label} image through SRAM-backed paged tile ownership" in {
+    val width=GraphicsTestResolution.width;val height=GraphicsTestResolution.height
+    val columns=GraphicsTestResolution.tileColumns(16);val count=GraphicsTestResolution.tileCount(16)
     val cb=0x1000000L; val db=0x2000000L; val rb=0x3000000L; val directory=0x8000000L
-    val chosen=Vector(0,22*columns+39,count-1)
+    val chosen=Vector(0,(height/32)*columns+columns/2-1,count-1)
     val scene=chosen.flatMap { tile=>
       val x=(tile%columns)*16; val y=(tile/columns)*16
       draws.map(_.copy(clip=Vector((-65536L,-65536L,0L,65536L),
@@ -606,7 +608,7 @@ class TileBinRenderPipelineSpec extends AnyFlatSpec {
     for (tile <- chosen) {
       val x=(tile%columns)*16; val y=(tile/columns)*16
       assert((for (dy <- 0 until 16; dx <- 0 until 16) yield expected((y+dy)*width+x+dx)).exists(_!=colorClear),
-        s"720p reference did not shade tile $tile")
+        s"${GraphicsTestResolution.label} reference did not shade tile $tile")
     }
     simulate(module(height=height,width=width,pagedCapacity=16384,blackBoxes=true)) { dut=>
       val d=new Driver(dut.io,dut.clock,dut.reset,width=width,height=height,extentW=width,extentH=height,
@@ -627,15 +629,16 @@ class TileBinRenderPipelineSpec extends AnyFlatSpec {
       assert(d.tiles.map(_.tile).distinct.size==count && d.tiles.map(_.engine).toSet==Set(0,1))
       assert(d.tiles.filter(t=> !chosen.contains(t.tile)).forall(t=>t.draws==0 && t.loads==0 && t.stores==0))
       assert(s.loads==d.tiles.map(_.loads).sum && s.stores==d.tiles.map(_.stores).sum)
-      info(s"PAGED_RENDER_720P tiles=$count activeTiles=${chosen.size} draws=${s.draws} loads=${s.loads} stores=${s.stores} cycles=${d.cycle} exactWords=${expected.size}")
+      info(s"PAGED_RENDER resolution=${GraphicsTestResolution.label} tiles=$count activeTiles=${chosen.size} draws=${s.draws} loads=${s.loads} stores=${s.stores} cycles=${d.cycle} exactWords=${expected.size}")
     }
   }
 
 
-  it should "automatically continue a complete sparse 720p image through real SRAM banks" in {
-    val width=1280; val height=720; val columns=80; val count=3600
+  it should s"automatically continue a complete sparse ${GraphicsTestResolution.label} image through real SRAM banks" in {
+    val width=GraphicsTestResolution.width;val height=GraphicsTestResolution.height
+    val columns=GraphicsTestResolution.tileColumns(16);val count=GraphicsTestResolution.tileCount(16)
     val cb=0x1000000L; val db=0x2000000L; val rb=0x3000000L; val directory=0x8000000L
-    val chosen=Vector(0,22*columns+39,count-1)
+    val chosen=Vector(0,(height/32)*columns+columns/2-1,count-1)
     val records=chosen.flatMap { tile=>
       val x=(tile%columns)*16; val y=(tile/columns)*16
       draws.map(_.copy(clip=Vector((-65536L,-65536L,0L,65536L),
@@ -664,10 +667,10 @@ class TileBinRenderPipelineSpec extends AnyFlatSpec {
       h.batches.expect(2.U); h.restarts.expect(1.U)
       val s=d.finish()
       assert(s.status==0 && s.tiles==2*count && s.draws==27 && s.committed==27 && s.references==27 && s.resolved==27)
-      assert(d.appendReplies==27 && d.image==expected,"720p automatic continuation differs from uninterrupted samples")
+      assert(d.appendReplies==27 && d.image==expected,s"${GraphicsTestResolution.label} automatic continuation differs from uninterrupted samples")
       assert(d.tiles.filter(t=> !chosen.contains(t.tile)).forall(t=>t.draws==0 && t.loads==0 && t.stores==0))
       assert(d.tiles.map(_.tile).distinct.size==count && d.tiles.groupBy(_.tile).values.forall(_.size==2))
-      info(s"BIN_RENDER_CONTINUE_720P tiles=$count visits=${s.tiles} refs=${s.committed} batches=2 restarts=1 loads=${s.loads} stores=${s.stores} readLines=${d.attachmentReads} writeLines=${d.attachmentRequests.count(_._3)} cycles=${d.cycle}")
+      info(s"BIN_RENDER_CONTINUE resolution=${GraphicsTestResolution.label} tiles=$count visits=${s.tiles} refs=${s.committed} batches=2 restarts=1 loads=${s.loads} stores=${s.stores} readLines=${d.attachmentReads} writeLines=${d.attachmentRequests.count(_._3)} cycles=${d.cycle}")
     }
   }
 

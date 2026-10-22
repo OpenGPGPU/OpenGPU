@@ -3,12 +3,13 @@ package opengpu.graphics
 import chisel3._
 import chisel3.reflect.DataMirror
 import opengpu.testutil.GpuSim._
+import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.util.Random
 
 private[graphics] object Fp32ViewportReference {
   case class E(sign: Boolean=false,exponent: Int=0,sig: BigInt=0)
-  case class View(x: Int=0,y: Int=0,width: Long=1280,height: Long=720,near: BigInt=0,far: BigInt=0x3f800000)
+  case class View(x: Int=0,y: Int=0,width: Long=GraphicsTestResolution.width,height: Long=GraphicsTestResolution.height,near: BigInt=0,far: BigInt=0x3f800000)
   case class Prepared(localX: E,localY: E,x: BigInt,y: BigInt,valid: Boolean,inexact: Boolean,reciprocal: E,depth: BigInt)
   def fp(value: Double): BigInt=BigInt(java.lang.Float.floatToRawIntBits(value.toFloat).toLong&0xffffffffL)
   def number(bits: BigInt): Double=java.lang.Float.intBitsToFloat(bits.toInt).toDouble
