@@ -11,9 +11,9 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
-private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,coherentUpdates: Boolean=false,scalarFpu: Boolean=false) extends Module {
+private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,fullInterface: Boolean=false,coherentUpdates: Boolean=false,scalarFpu: Boolean=false,reuseEntries: Int=0) extends Module {
   val cfg=GpuConfig(lanes=lanes,warps=warps,l2Sets=8,l2Ways=2)
-  val vp=if(fullInterface)VertexShaderStageConfig()else VertexShaderStageConfig(VertexInputFetchConfig(4,3),2)
+  val vp=(if(fullInterface)VertexShaderStageConfig()else VertexShaderStageConfig(VertexInputFetchConfig(4,3),2)).copy(postTransformEntries=reuseEntries)
   val pp=ShaderPayloadConfig(capacityBytes=if(fullInterface)65536 else 4096,
     maxPayloadBytes=if(fullInterface)65536 else vp.prefixBytes(lanes*warps,2,1),owners=2,ports=4)
   private val slots=GpuSystem.totalMemoryTransactions(2,4,4)
@@ -211,6 +211,56 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       }
       assert(exports.toVector==expected.toVector,s"exports differ:\n${exports.mkString("\n")}\nexpected:\n${expected.mkString("\n")}")
       assert(word(scratch+prefix)==17,"output clear or shader clobbered uniform tail")
+    }
+  }
+
+  for(local<-Seq(true,false))
+  it should s"reuse pure indexed vertex outputs across batches without losing ordered restarts instances or fault drain local=$local" in {
+    simulate(new VertexShaderHarness(local,reuseEntries=16)){d=>val t=new Driver(d)
+      val ids=Vector(0,1,2,3,0,1,2,3,255,0,1,2,3,0,1,2,3)
+      def start(reuse: Boolean,instances: Int=2,indices: Vector[Int]=ids,pc: Int=0x1000): Unit={
+        indices.zipWithIndex.foreach{case(id,i)=>t.memory(BigInt(0x6000+i))=id}
+        t.exports.clear();t.descriptor(true,instances,indices.size)
+        t.view(d.io.draw.bits.input.indices,0x6000,indices.size)
+        d.io.draw.bits.shaderPc.poke(pc.U);d.io.draw.bits.reuseOutputs.poke(reuse.B);t.submit()
+      }
+      d.io.out.ready.poke(true.B);start(false)
+      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.batches.expect(4.U)
+      val baseline=t.exports.toVector;assert(baseline.size==34 && baseline.count(_.restart)==2);t.complete(0)
+      start(true);d.io.out.ready.poke(false.B);t.until(d.io.out.valid.peek().litToBoolean)
+      val held=d.io.out.bits.peek().litValue
+      for(_<-0 until 9){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.idle.expect(false.B)}
+      d.io.out.ready.poke(true.B);t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.batches.expect(2.U);d.io.completion.bits.vertices.expect(32.U);d.io.completion.bits.restarts.expect(2.U)
+      assert(t.exports.toVector==baseline,"reuse changed ordered vertex/instance/restart exports");t.complete(0)
+      // The same keys in a new draw must execute the new shader, never old tags.
+      val uniformLoad=(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3
+      program(d.cfg.lanes,d.cfg.warps).map(w=>if(w==uniformLoad)addi(13,0,23)else w).zipWithIndex.foreach{case(w,i)=>t.put(0x2000+4*i,w)}
+      start(true,pc=0x2000);t.until(d.io.completion.valid.peek().litToBoolean)
+      val changed=baseline.map(r=>if(r.restart)r else r.copy(varyings=r.varyings.updated(3,r.varyings(3)+6)))
+      assert(t.exports.toVector==changed,"draw admission reused outputs from an older shader");t.complete(0)
+      start(true,instances=1)
+      t.until(t.exports.size==9);d.io.out.ready.poke(false.B);t.until(d.io.out.valid.peek().litToBoolean)
+      val cached=d.io.out.bits.peek().litValue;d.io.cancel.poke(true.B)
+      for(_<-0 until 7){t.tick();assert(d.io.out.bits.peek().litValue==cached);d.io.idle.expect(false.B)}
+      d.io.out.ready.poke(true.B);t.complete(4);d.io.cancel.poke(false.B)
+      // The next index line has never entered the system cache. All indices
+      // name outputs already cached by the first batch; reuse must not bypass
+      // acquiring the index stream, even after many successful hits.
+      val faultIds=Vector.tabulate(72)(_ % 8)
+      t.fault=(address,write)=> !write && address==0x6040
+      start(true,instances=1,indices=faultIds)
+      t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.input.status.expect(VertexInputStatus.memoryFault.U)
+      d.io.completion.bits.input.ordinal.expect(64.U)
+      d.io.completion.bits.faultAddress.expect(0x6040.U)
+      assert(t.exports.nonEmpty && t.exports.forall(_.ordinal<64),
+        s"a faulting or younger input escaped acquisition: exports=${t.exports.map(_.ordinal)}")
+      assert(t.exports.exists(_.ordinal>=8),"fault fixture did not retire any reused outputs")
+      t.complete(3);t.fault=(_,_)=>false
+      start(true);t.until(d.io.completion.valid.peek().litToBoolean)
+      assert(t.exports.toVector==baseline);d.io.completion.bits.batches.expect(2.U);t.complete(0)
+      info(s"POST_TRANSFORM_REUSE local=$local baselineBatches=4 reusedBatches=2 vertices=32 restarts=2 instances=2 exactOrder=true heldCachedCancel=true inputFaultBeforeReuse=true drawClear=true healthyReuse=true")
     }
   }
 
