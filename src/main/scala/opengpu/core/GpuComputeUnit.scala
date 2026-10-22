@@ -30,10 +30,14 @@ class GpuComputeUnit(
   finishOnTrap: Boolean = false,
   shaderPayload: Option[opengpu.graphics.ShaderPayloadConfig] = None,
   executionLimits: Boolean = false,
-  gridSlices: Boolean = false
+  gridSlices: Boolean = false,
+  textureAvailable: Boolean = true,
+  taskTextureAvailability: Boolean = false
 ) extends Module {
   require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   val io = IO(new Bundle {
+    /** Sampler ownership for the kernel accepted on this edge. */
+    val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val execution=if(executionLimits)Some(Input(new opengpu.core.frontend.ShaderExecutionControl))else None
     val kernel = Flipped(Decoupled(new KernelLaunch(config)))
     val gridSlice = if (gridSlices) Some(Input(new opengpu.dispatch.KernelGridSlice)) else None
@@ -82,7 +86,13 @@ class GpuComputeUnit(
       useBlackBoxes,
       enableFpuBackend,
       vectorCacheSets,
-      vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits))
+      vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits,textureAvailable=textureAvailable,
+      taskTextureAvailability=taskTextureAvailability))
+  if(taskTextureAvailability) {
+    val enabled = RegInit(false.B)
+    when(io.kernel.fire) { enabled := io.textureEnabled.get }
+    core.io.textureEnabled.get := enabled
+  }
   shaderPayload.foreach(_=>core.io.payload.get <> io.payload.get)
   private val system = Module(new WarpSystemControl(config))
   private val barrier = Module(new WorkgroupBarrierController(config))

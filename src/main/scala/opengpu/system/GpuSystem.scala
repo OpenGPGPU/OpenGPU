@@ -252,12 +252,13 @@ class GpuSystem(
         instructionCacheMissEntries,
         vectorCacheSets,
         vectorCacheWays,
-        finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true))
+        finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true,
+        textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(p,useBlackBoxes,numComputeUnits+1+producerPayloadPins)))
   // The generic compute system has no graphics sampler. Keep the optional
-  // texture-instruction sideband quiescent; graphics top levels connect it to
-  // TexSampleUnit instead.
+  // texture-instruction sideband quiescent and reject those instructions
+  // before issue; graphics top levels connect it to TexSampleUnit instead.
   if (!enableGraphicsKernels) computeUnits.foreach { cu =>
     cu.io.texSample.ready := false.B
     cu.io.texWriteback.valid := false.B
@@ -950,6 +951,11 @@ class GpuSystem(
     }
     unit.io.kernel <> dispatcher.io.cuLaunch(cu)
     unit.io.gridSlice.get := dispatcher.io.cuGridSlice(cu)
+    if(enableGraphicsKernels) {
+      // One physical launch is selected per cycle. Registered graphicsOwner
+      // still describes the preceding task on this kernel-acceptance edge.
+      unit.io.textureEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire
+    }
     if (shaderExecutionLimits) {
       // graphicsOwner changes after kernel.fire. Snapshot the actual selected
       // producer on admission, including a graphics task drained during reset.
