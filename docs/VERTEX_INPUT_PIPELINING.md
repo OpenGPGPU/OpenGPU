@@ -90,3 +90,6 @@ passes the same gate at +127.689/+581.296 ps. The full sixteen-attribute/binding
 fetcher passes at +2.351/+477.318 ps; its core margin is narrow. All three use
 standard ABC, no retiming or false paths, and have zero skipped operators.
 These component results do not qualify the enclosing vertex stage or host clock.
+The separate [sampling/counter arithmetic qualification](TEXTURE_ADDRESS_LOD_TIMING.md)
+covers LOD, composed image-address sums and staging byte counters; enclosing
+response routing and clock qualification remain required.

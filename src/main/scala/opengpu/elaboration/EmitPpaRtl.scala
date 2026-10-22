@@ -81,6 +81,13 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TextureCubeGradientUnit,stageArgs,firtoolArgs)
       case "mobile-texture-quad-gradient" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TextureQuadGradientUnit,stageArgs,firtoolArgs)
+      case "mobile-texture-gradient-lod" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TextureGradientLodUnit,stageArgs,firtoolArgs)
+      case "mobile-texture-composed-address" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TextureImageAddressUnit(
+          pipelineBounds=true,pipelineProducts=true),stageArgs,firtoolArgs)
+      case "mobile-vertex-byte-counter" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.util.CarrySaveAccumulator(64,prefixValue=true),stageArgs,firtoolArgs)
       case "mobile-vertex-reuse" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PostTransformVertexCache(
           opengpu.graphics.VertexShaderStageConfig(),useSramBlackBoxes=true),stageArgs,firtoolArgs)
