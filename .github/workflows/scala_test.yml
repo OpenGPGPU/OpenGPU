@@ -3,7 +3,7 @@ name: Scala CI
 on:
   pull_request:
     branches: [ "main" ]
-    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, closed]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
 
 concurrency:
   group: scala-pr-${{ github.event.pull_request.number }}
@@ -37,8 +37,15 @@ jobs:
         BASE=$(git merge-base origin/main HEAD)
         mapfile -t CHANGED < <(git diff --name-only "$BASE" HEAD)
         SELECTED=$(bash scripts/select_tests.sh "${CHANGED[@]}")
+        SUITES=$(bash scripts/ci_shard_tests.sh pr-suites "$SELECTED")
         echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"
-        echo "suites=$(bash scripts/ci_shard_tests.sh pr-suites "$SELECTED")" >> "$GITHUB_OUTPUT"
+        echo "suites=$SUITES" >> "$GITHUB_OUTPUT"
+        if [ "$SELECTED" = NONE ]; then
+          echo 'Host checks only: no Scala/build/CI inputs changed.' >> "$GITHUB_STEP_SUMMARY"
+        else
+          [ -n "$SUITES" ] || { echo 'Code validation selected no test suites' >&2; exit 1; }
+          printf 'Bounded PR suites (broad integration runs separately):\n\n`%s`\n' "$SUITES" >> "$GITHUB_STEP_SUMMARY"
+        fi
     - name: Set up simulation toolchain
       if: steps.select.outputs.selected != 'NONE'
       id: toolchain
@@ -66,15 +73,15 @@ jobs:
       env:
         SUITES: ${{ steps.select.outputs.suites }}
       run: |
-        COMMANDS=('set Test / parallelExecution := false' 'Test / compile')
-        if [ -n "$SUITES" ]; then
-          COMMANDS+=("testOnly $SUITES")
-        fi
-        sbt -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 "${COMMANDS[@]}"
+        set -o pipefail
+        [ -n "$SUITES" ] || exit 1
+        COMMANDS=('set Test / parallelExecution := false' 'Test / compile' "testOnly $SUITES")
+        sbt -Dopengpu.productQualification=0 -Dopengpu.simJobs=2 "${COMMANDS[@]}" 2>&1 | tee "$RUNNER_TEMP/pr-tests.log"
+        python3 scripts/check_pr_test_results.py "$RUNNER_TEMP/pr-tests.log" >> "$GITHUB_STEP_SUMMARY"
 
   # Never report a stale or partially successful run as a successful required check.
   ci-ok:
-    if: always() && github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open' && !github.event.pull_request.draft
+    if: always()
     needs: [checks]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -90,7 +97,7 @@ jobs:
           const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
           if (pr.state !== 'open' || pr.draft || pr.base.ref !== 'main' ||
               pr.head.sha !== context.payload.pull_request.head.sha) {
-            core.setFailed('New PR commits were pushed after this run started; a newer Scala CI run supersedes it.');
+            core.setFailed('This run no longer belongs to the current open, ready PR head targeting main.');
             return;
           }
           core.setOutput('current', 'true');
