@@ -16,7 +16,8 @@ permissions:
 
 jobs:
   checks:
-    if: github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open' && !github.event.pull_request.draft
+    # Drafts need the same bounded feedback; readiness is enforced by ci-ok.
+    if: github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

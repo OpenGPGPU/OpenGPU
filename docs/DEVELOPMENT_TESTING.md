@@ -1,5 +1,20 @@
 # Development test size and product qualification
 
+## PR validation
+
+Open PRs targeting `main`, including drafts, run the same bounded checks with a
+15-minute job limit. Scala/build/CI changes compile all sources and execute the
+selected suites from the fast PR catalog; documentation-only changes run host
+script checks. The job summary reports the executed test and suite counts.
+Zero-test, incomplete, failed, canceled or pending ScalaTest runs fail validation.
+
+The required `ci-ok` gate also checks that the PR is ready for review and that
+the tested head is still current. Drafts therefore receive test feedback while
+remaining ineligible to merge. Marking a PR ready triggers fresh validation.
+Broad integration regressions run in the separate regression workflow.
+
+## Frame sizes
+
 Routine rendering tests use **640×480 or smaller**. Prefer small tiles and images
 for shader, format, fault, ownership and reset checks. Full-frame regressions
 use `GraphicsTestResolution`: the default is 640×480, or 1200 tiles at 16×16,
