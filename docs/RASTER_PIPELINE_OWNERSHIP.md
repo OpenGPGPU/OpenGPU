@@ -28,8 +28,10 @@ Validation on the composed source:
   slack is +49.400/+577.464 ps, versus the baseline's -15.739 ps core slack.
   Mapped library area is 315487.566, 0.86% below baseline, with 397252 flip-flops
   and no SRAM macro. This is a synthesis component result.
+- Complete scalar `RasterShader` also passes the same 1000 ps setup constraints
+  with +115.901/+583.025 ps core/I/O slack, complete mapping and zero skipped
+  instances. Its qualified inputs match the fresh composed-source RTL map.
 
-Complete scalar `RasterShader` timing remains required before promotion.
 Whole-renderer/CU/host clocks, area/energy budgets, representative frame rates
 and H0–H8 completion remain open. Detailed logs and manifests stay local.
 
