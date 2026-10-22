@@ -5,6 +5,7 @@ an approving review and the `ci-ok` check, applies to administrators, and allows
 no review bypass actors, force pushes or branch deletion. New commits dismiss
 stale approvals; the latest push must be approved by someone else. The branch
 must be up to date before merging.
+The required `ci-ok` check must come from the GitHub Actions app.
 
 The Scala CI workflow runs its metadata gate when a PR opens or changes, and
 when a review is submitted or dismissed. Host tests, Scala selection/shards,
