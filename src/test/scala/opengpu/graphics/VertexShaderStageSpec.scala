@@ -29,6 +29,7 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
     val launchOffered=Output(Bool());val launched=Output(Bool());val globalStaging=Output(Bool())
     val reservedBytes=Output(UInt(32.W));val poolDrained=Output(Bool());val idle=Output(Bool())
     val busy=Output(Bool());val task=Output(Valid(new ShaderPayloadBinding(cfg,pp)))
+    val responseAccepted=Output(Bool())
     val publish=if(coherentUpdates)Some(Flipped(Decoupled(new GpuCommand(cfg,8))))else None
     val published=if(coherentUpdates)Some(Decoupled(new GpuCommandResult(8)))else None
   })
@@ -52,6 +53,7 @@ private class VertexShaderHarness(local: Boolean=true,lanes: Int=4,warps: Int=2,
   stage.io.shared.launch.ready:=system.io.graphicsKernels.get.launch.ready && !io.blockLaunch
   io.launchOffered:=stage.io.shared.launch.valid;io.launched:=stage.io.shared.launch.fire
   system.io.graphicsHostRequest<>stage.io.memoryRequest;stage.io.memoryResponse<>system.io.graphicsHostResponse
+  io.responseAccepted:=stage.io.memoryResponse.fire
   io.globalStaging:=stage.io.memoryRequest.fire && stage.io.memoryRequest.bits.transactionId===1.U
   system.io.graphicsDrained:= !stage.io.busy
   system.io.graphicsShaderL1Invalidate.ready:=true.B
@@ -125,6 +127,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
     val pending=mutable.ArrayBuffer.empty[Reply];var offered: Option[Reply]=None
     var cycle=0;var launches=0;var globalStaging=0;var requests=0
     var blockMemory=false;var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
+    var cancelAfterResponse=false;var acceptedResponses=0
     val exports=mutable.ArrayBuffer.empty[Export]
     def tick(): Unit={
       d.io.memoryRequest.ready.poke((!blockMemory && cycle%7<5).B)
@@ -152,7 +155,11 @@ class VertexShaderStageSpec extends AnyFlatSpec {
         val data=if(write)BigInt(0)else(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(addr+b,BigInt(0))<<(8*b)))
         pending+=Reply(r.transactionId.peek().litValue,data,cycle+5+(requests%4),failed)
       }
+      val accepted=d.io.responseAccepted.peek().litToBoolean
       d.clock.step();cycle+=1
+      if(accepted){acceptedResponses+=1
+        if(cancelAfterResponse){cancelAfterResponse=false;d.io.cancel.poke(true.B)}
+      }
     }
     def until(condition: => Boolean): Unit={var n=0;while(!condition && n<40000){tick();n+=1};assert(condition,s"vertex stage stalled cycle=$cycle launches=$launches exports=${exports.size} pending=${pending.size}")}
     def view(v: VertexInputView,base: BigInt,bytes: Int): Unit={
@@ -214,6 +221,17 @@ class VertexShaderStageSpec extends AnyFlatSpec {
     }
   }
 
+  for(local<-Seq(true,false))it should s"drain a newly accepted registered response before cancellation completion and healthy reuse local=$local" in {
+    simulate(new VertexShaderHarness(local)){d=>val t=new Driver(d)
+      d.io.out.ready.poke(true.B);t.descriptor(instances=1,count=3)
+      t.cancelAfterResponse=true;t.submit();t.until(!t.cancelAfterResponse)
+      assert(t.acceptedResponses>0);d.io.cancel.expect(true.B)
+      t.complete(4);assert(t.exports.isEmpty && t.launches==0)
+      d.io.cancel.poke(false.B);t.exports.clear()
+      t.descriptor(instances=1,count=3);t.submit();t.complete(0);t.check(instances=1,count=3)
+      info(s"VERTEX_RESPONSE_DRAIN local=$local cancelAfterResponseAcceptance=true noEarlyCompletion=true noUnacceptedExports=true healthyReuse=true")
+    }
+  }
   it should "cancel unoffered vertex output while a full-width cache fill owns its SRAM port" in {
     simulate(new VertexShaderHarness(fullInterface=true,reuseEntries=16)){d=>val t=new Driver(d)
       var serial=0
