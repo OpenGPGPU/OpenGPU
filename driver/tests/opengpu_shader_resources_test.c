@@ -37,6 +37,16 @@ int main(void)
     assert(opengpu_shader_fragment_bank_stride(wide) == 4672);
     assert(opengpu_shader_vertex_uniform_offset(wide) == 8192);
     assert(opengpu_shader_vertex_kernarg_bytes(wide) == 8448);
+    /* Worker banks and physical executors are independently advertised. */
+    for (u32 cus = 1; cus <= 4; cus *= 2) {
+        u32 fixed_workers = (wide & ~(0xffu << 24)) | (cus << 24);
+        assert(opengpu_shader_resources_valid(fixed_workers, 128));
+        assert(opengpu_shader_resource_cus(fixed_workers) == cus);
+        assert(opengpu_shader_resource_banks(fixed_workers) == 8);
+        assert(opengpu_shader_resource_banks(fixed_workers) *
+               opengpu_shader_fragment_bank_stride(fixed_workers) == 37376);
+    }
+    assert(opengpu_shader_resources_valid((wide & ~(0xffu << 16)) | (2u << 16), 128));
     for (u32 warps = 1; warps <= 8; warps *= 2) {
         u32 cfg = 16u | (warps << 8) | (8u << 16) | (4u << 24);
         u32 uniform = opengpu_shader_fragment_uniform_offset(cfg);

@@ -96,13 +96,16 @@ class GpuHostSystemAxi(
   nativeBinnedGraphics: Option[NativeBinnedGraphicsConfig] = None,
   visibilityQueries: Boolean = false,
   primitiveQueries: Boolean = false,
-  enableIndirectCompute: Boolean = false
+  enableIndirectCompute: Boolean = false,
+  fragmentWorkerCount: Int = 0
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   private val nativeExecutionLimits = typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
   private val nativeFeedback=typedGraphics.exists(_.transformFeedback) || nativeBinnedGraphics.exists(_.transformFeedback)
   require(!primitiveQueries || nativeFeedback,"primitive queries require native transform feedback")
   private val externalRender=binnedRendering.nonEmpty || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
+  require(fragmentWorkerCount>=0 && (fragmentWorkerCount==0 || (parallelGraphics && !externalRender)),
+    "explicit fragment workers select the legacy parallel renderer; native profiles retain their own clients")
   require(!visibilityQueries || typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,
     "visibility queries require native typed or native binned rendering")
   require(Seq(binnedRendering.nonEmpty,typedGraphics.nonEmpty,nativeBinnedGraphics.nonEmpty).count(identity)<=1,
@@ -146,9 +149,9 @@ class GpuHostSystemAxi(
   require(localPayload.isEmpty || (fragCore && sharedGraphics && parallelGraphics && (typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty || binnedRendering.exists(_.bankedAttachments))),
     "local payloads require a native shared-CU renderer")
   private val sharedShader = if (sharedGraphics)
-    Some(SharedCuShaderConfig(numComputeUnits, commandIdWidth, parallelGraphics,localPayload)) else None
+    Some(SharedCuShaderConfig(numComputeUnits, commandIdWidth, parallelGraphics,localPayload,fragmentWorkerCount)) else None
 
-  // Kernel-word IDs reserve a CU-scaled staging range followed by four
+  // Kernel-word IDs reserve a worker-scaled staging range followed by four
   // host-DMA IDs. Command, framebuffer and
   // texture word clients each own a translated range plus a PTE-walk range.
   // Staging and DMA walks sit with the other TLB clients.

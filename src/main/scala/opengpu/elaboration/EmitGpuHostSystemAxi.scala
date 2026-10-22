@@ -36,6 +36,9 @@ object EmitGpuHostSystemAxi {
     }
 
     val fragmentBatchLimit = intOption("--fragment-batch-limit").getOrElse(0)
+    val fragmentWorkers = intOption("--fragment-workers").getOrElse(0)
+    require(fragmentWorkers>=0 && fragmentWorkers<=16 && (fragmentWorkers==0 || (parallelGraphics && !binnedJobs)),
+      "--fragment-workers requires the legacy --parallel-graphics renderer")
     require(fragmentBatchLimit == 0 || parallelGraphics,
       "--fragment-batch-limit requires --parallel-graphics")
 
@@ -86,6 +89,7 @@ object EmitGpuHostSystemAxi {
         graphicsGpuConfig = if (sharedGraphics || binnedJobs) None else Some(GpuConfig(lanes = 4, warps = 2)),
         sharedGraphics = sharedGraphics,
         parallelGraphics = parallelGraphics,
+        fragmentWorkerCount = fragmentWorkers,
         coalesceFramebufferWrites = rest.contains("--coalesce-framebuffer"),
         bufferCommandReads = rest.contains("--buffer-command-reads"),
         bufferTextureReads = rest.contains("--buffer-texture-reads"),

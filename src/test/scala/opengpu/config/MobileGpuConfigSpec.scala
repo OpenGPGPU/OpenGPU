@@ -97,4 +97,24 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
     }
     assert(error.getMessage.contains("derivative quads"))
   }
+
+  it should "keep fragment storage and credits fixed while changing physical CU count" in {
+    import opengpu.system.SharedCuShaderConfig
+    for(cus<-Seq(1,2,4)){
+      val c=SharedCuShaderConfig(cus,parallelFragments=true,fragmentWorkerCount=4)
+      assert(c.numComputeUnits==cus && c.fragmentWorkers==4 && c.fragmentBanks==8)
+      assert(c.fragmentStagingTransactions==32 && SharedCuShaderConfig.kernelWordTransactions(Some(c))==64)
+      assert(c.tasksPerEngine==5 && c.rendererPayloadPins==10)
+    }
+    assert(SharedCuShaderConfig(2,parallelFragments=true,fragmentWorkerCount=3).fragmentBanks==6)
+    assert(SharedCuShaderConfig(4,parallelFragments=true,fragmentWorkerCount=1).fragmentWorkers==1)
+    assert(SharedCuShaderConfig(4,parallelFragments=true).fragmentWorkers==4)
+    assert(SharedCuShaderConfig(1,parallelFragments=true,fragmentWorkerCount=16).fragmentStagingTransactions==128)
+    for(n<-Seq(-1,17,128))intercept[IllegalArgumentException]{SharedCuShaderConfig(1,parallelFragments=true,fragmentWorkerCount=n)}
+    intercept[IllegalArgumentException]{SharedCuShaderConfig(1,fragmentWorkerCount=1)}
+    intercept[IllegalArgumentException]{SharedCuShaderConfig(1,taskIdWidth=2,parallelFragments=true,fragmentWorkerCount=4)}
+    SharedCuShaderConfig(1,taskIdWidth=2,parallelFragments=true,fragmentWorkerCount=3)
+    intercept[IllegalArgumentException]{opengpu.elaboration.EmitGpuHostSystemAxi.main(
+      Array("unused","--fragment-workers","4","--frag-core","--shared-graphics","--parallel-graphics","--binned-tile-jobs"))}
+  }
 }
