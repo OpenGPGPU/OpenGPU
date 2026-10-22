@@ -65,6 +65,7 @@ object NativeTypedGraphicsLayout {
       fields(64,"input.","version"->input.version)++identity(65,"input.identity.",input.identity)++
       fields(68,"input.","count"->input.count,"instances"->input.instances,"firstVertex"->input.firstVertex,"firstIndex"->input.firstIndex,
         "baseVertex"->input.baseVertex,"baseInstance"->input.baseInstance,"indexFormat"->input.indexFormat,"restart"->input.restart)++
+      IndirectDrawControl.fields(76,88,"indirect.",geometry.indirect)++
       view(80,"input.indices.",input.indices)++
       input.attributes.zipWithIndex.flatMap{case(a,i)=>fields(96+i*16,s"attribute$i.","enabled"->a.enabled,"binding"->a.bindingIndex,
         "offset"->a.offset,"components"->a.components,"format"->a.format,"constantX"->a.constant(0),"constantY"->a.constant(1),"constantZ"->a.constant(2),"constantW"->a.constant(3))}++
@@ -126,7 +127,7 @@ object NativeTypedGraphicsLayout {
   def fit(d: TypedTileRenderDraw,p: VertexShaderStageConfig,f: FragmentShaderConfig): Bool={
     val g=d.shaders.vertex.vertex.geometry;val v=g.vertex;val i=v.input
     val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
-    ShaderTextureResources.legal(v.resources) && ShaderTextureResources.legal(d.shaders.fragment.resources) &&
+    IndirectDrawControl.legal(g.indirect,i.indexFormat) && ShaderTextureResources.legal(v.resources) && ShaderTextureResources.legal(d.shaders.fragment.resources) &&
       VertexShaderSampler.legal(v.sampler) && VertexShaderSampler.legal(d.shaders.fragment.sampler) &&
       (!v.reuseOutputs || (p.postTransformEntries>0).B) && active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U && d.shaders.fragment.varyingSlots<=f.varyings.U &&
       !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(g.flatMask>>(v.varyingSlots<<2)).orR &&

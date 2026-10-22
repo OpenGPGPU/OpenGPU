@@ -576,6 +576,11 @@
     {"name":"draw.vertex.geometry.vertex.sampler.signedCoordinates","word":483,"bits":1,"signed":false},
     {"name":"draw.vertex.geometry.vertex.resources.version","word":496,"bits":2,"signed":false},
     {"name":"draw.vertex.geometry.vertex.resources.address","word":497,"bits":32,"signed":false},
-    {"name":"draw.vertex.geometry.vertex.reuseOutputs","word":498,"bits":1,"signed":false}
+    {"name":"draw.vertex.geometry.vertex.reuseOutputs","word":498,"bits":1,"signed":false},
+    {"name":"draw.vertex.geometry.indirect.mode","word":499,"bits":2,"signed":false},
+    {"name":"draw.vertex.geometry.indirect.view.base","word":500,"bits":32,"signed":false},
+    {"name":"draw.vertex.geometry.indirect.view.limit","word":501,"bits":33,"signed":false},
+    {"name":"draw.vertex.geometry.indirect.view.allocationBase","word":503,"bits":32,"signed":false},
+    {"name":"draw.vertex.geometry.indirect.view.allocationLimit","word":504,"bits":33,"signed":false}
   ]}
 }

@@ -43,14 +43,17 @@ object NativeBinnedGraphicsLayout {
     val (policy,remaining)=original.partition{case(name,_)=>
       name.contains(".sampler.") && policyWords.contains(name.split('.').last)}
     require(policy.isEmpty || policy.size==4,"native binned sampler extensions need explicit non-overlapping slots")
-    val (reuse,withoutReuse)=remaining.partition{case(name,_)=>name.endsWith(".reuseOutputs")}
+    val (indirect,withoutIndirect)=remaining.partition{case(name,_)=>name.contains(".indirect.")}
+    val indirectWords=Map("mode"->499,"view.base"->500,"view.limit"->501,"view.allocationBase"->503,"view.allocationLimit"->504)
+    val (reuse,withoutReuse)=withoutIndirect.partition{case(name,_)=>name.endsWith(".reuseOutputs")}
     val (polygon,legacy)=withoutReuse.partition{case(name,_)=>name.startsWith("raster.polygonOffset")}
     val fields=(legacy++polygon).map{case(name,value)=>
       val count=(value.getWidth+31)/32
       if(word%16+count>16)word=(word+15)/16*16
       val f=NativeTypedGraphicsLayout.Field(prefix+name,word,value);word+=count;f}
     require(policy.isEmpty || word<=480,"legacy fields must not overlap sampler extension words")
-    fields++reuse.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,498,value)}++policy.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,policyWords(name.split('.').last),value)}++
+    fields++indirect.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,indirectWords(name.split("\\.indirect\\.").last),value)}++
+      reuse.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,498,value)}++policy.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,policyWords(name.split('.').last),value)}++
       resources.map{case(name,value)=>NativeTypedGraphicsLayout.Field(prefix+name,if(name.endsWith(".version"))496 else 497,value)}
   }
   def jobFields(d: NativeBinnedGraphicsJobRecord): Seq[NativeTypedGraphicsLayout.Field]=headerFields(d.header)++payloadFields("job.",d.job)
@@ -61,7 +64,7 @@ object NativeBinnedGraphicsLayout {
   def fit(d: VertexBinDraw,p: VertexShaderStageConfig): Bool={
     val v=d.vertex.geometry.vertex;val i=v.input
     val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
-    ShaderTextureResources.legal(v.resources) && VertexShaderSampler.legal(v.sampler) && (!v.reuseOutputs || (p.postTransformEntries>0).B) && active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U &&
+    IndirectDrawControl.legal(d.vertex.geometry.indirect,i.indexFormat) && ShaderTextureResources.legal(v.resources) && VertexShaderSampler.legal(v.sampler) && (!v.reuseOutputs || (p.postTransformEntries>0).B) && active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U &&
       !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(d.vertex.geometry.flatMask>>(v.varyingSlots<<2)).orR
   }
 }

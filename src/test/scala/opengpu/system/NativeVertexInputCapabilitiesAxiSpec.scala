@@ -16,10 +16,10 @@ class NativeVertexInputCapabilitiesAxiSpec extends AnyFlatSpec {
     case s: SInt if DataMirror.directionOf(s)==ActualDirection.Input=>s.poke(0.S)
     case _=>()
   }
-  for((enabled,samples,reuseEntries)<-Seq((true,1,0),(true,2,0),(true,4,0),(false,4,0),(true,4,16)))
-  it should s"discover immutable native input formats through held AXI bursts and retain the legacy map enabled=$enabled samples=$samples reuseEntries=$reuseEntries" in {
+  for((enabled,samples,reuseEntries,indirect)<-Seq((true,1,0,false),(true,2,0,false),(true,4,0,false),(false,4,0,false),(true,4,16,false),(true,4,16,true)))
+  it should s"discover immutable native input formats through held AXI bursts and retain the legacy map enabled=$enabled samples=$samples reuseEntries=$reuseEntries indirect=$indirect" in {
     simulate(new GpuHostAxi(config=GraphicsConfig(maxSampleCount=samples),gpuConfig=GpuConfig(lanes=4,warps=2),unifiedCommandMmio=true,protectVmState=true,
-      externalBinnedRender=enabled,nativeVertexInput=enabled,nativeVertexReuseEntries=reuseEntries)) { d=>
+      externalBinnedRender=enabled,nativeVertexInput=enabled,nativeVertexReuseEntries=reuseEntries,nativeIndirectDraw=indirect)) { d=>
       zero(d.io);d.io.s_axi_aresetn.poke(false.B);d.clock.step(3);d.io.s_axi_aresetn.poke(true.B)
       d.io.vmContextIdle.get.poke(false.B)
       d.io.binDrained.foreach(_.poke(true.B));d.io.graphicsDependencyIdle.foreach(_.poke(true.B))
@@ -59,7 +59,7 @@ class NativeVertexInputCapabilitiesAxiSpec extends AnyFlatSpec {
       for(a<-Seq(0x201,0x240,0x280,0x600)){assert(read(a)==Vector(BigInt(0)->BigInt(2)));write(a,15)}
       info(s"NATIVE_TEXTURE_POLICY_AXI enabled=$enabled samples=$samples words=8 immutable=true exactPolicyAndModeMasks=true burstAndAliases=true")
       // Expected words are independent literals, not the RTL capability encoder.
-      val values=Vector(BigInt("47564901",16),BigInt(4),BigInt(0x502)|(BigInt(reuseEntries)<<16),BigInt(0x1ffffff))
+      val values=Vector(BigInt("47564901",16),BigInt(4),BigInt(0x502)|(BigInt(reuseEntries)<<16)|(if(indirect)BigInt(3)<<24 else BigInt(0)),BigInt(0x1ffffff))
       val expected=if(enabled)values.map(_->BigInt(0))else Vector.fill(4)(BigInt(0)->BigInt(2))
       assert(read(0x1b0,4)==expected)
       val sampleModes=Map(1->0x100,2->0x300,4->0x700)(samples)
