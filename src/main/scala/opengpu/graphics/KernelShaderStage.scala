@@ -40,7 +40,7 @@ class KernelShaderStage(
   enableScalarFpu: Boolean = true,
   sharedShader: Option[SharedCuShaderConfig] = None,
   helperInvocations: Boolean = false,
-  nativeResources: Boolean = false
+  nativeResources: Boolean = false, nativeUniforms: Boolean = false
 ) extends Module {
   val io = IO(new Bundle {
     val shared = sharedShader.map { pool =>
@@ -88,7 +88,7 @@ class KernelShaderStage(
     // GPU_CAP_COMPUTE_SCALAR_FPU advertises the scalar backend when enabled.
     val cu = Module(new GpuComputeUnit(
       config, enableFpuBackend = enableScalarFpu, finishOnTrap = true,
-      nativeExecutionProfile = true,nativeResourcesAvailable=nativeResources))
+      nativeExecutionProfile = true,nativeResourcesAvailable=nativeResources,nativeUniformsAvailable=nativeUniforms))
 
     io.launch.ready := cu.io.kernel.ready
     cu.io.kernel.valid := io.launch.valid
@@ -143,6 +143,7 @@ class KernelShaderStage(
     val count = sharedShader.get.numComputeUnits
     val busy = RegInit(false.B)
     shared.nativeResources := nativeResources.B
+    shared.uniformResources := nativeUniforms.B
     shared.launch.valid := io.launch.valid && !busy
     shared.launch.bits.commandId := 0.U
     shared.launch.bits.launch := emit.io.kernel

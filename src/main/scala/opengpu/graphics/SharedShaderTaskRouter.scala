@@ -46,6 +46,7 @@ class SharedShaderTaskRouter(
     if (slots == 1) active(0) else active(tag(slotWidth - 1, 0))
   private val tags = Reg(Vec(slots, UInt(taskIdWidth.W)))
   private val nativeProviders = Reg(Vec(slots,Bool()))
+  private val uniformProviders = Reg(Vec(slots,Bool()))
   private val payloads=shaderPayload.map(p=>Reg(Vec(slots,Valid(new ShaderPayloadBinding(config,p)))))
   private def localTag(tag: UInt): UInt =
     if (slots == 1) tags(0) else tags(tag(slotWidth-1,0))
@@ -71,6 +72,7 @@ class SharedShaderTaskRouter(
       issued(chosen) := false.B
       tags(chosen) := port.launch.bits.commandId
       nativeProviders(chosen) := port.nativeResources
+      uniformProviders(chosen) := port.uniformResources
       shaderPayload.foreach { _=>payloads.get(chosen):=io.clientPayload.get(client) }
     }
     port.completion.valid := io.pool.completion.valid && belongs(io.pool.completion.bits.commandId,client)
@@ -109,6 +111,7 @@ class SharedShaderTaskRouter(
   io.pool.launch <> launchQueue.io.deq
   private val providerHead=if(slots==1)0.U else io.pool.launch.bits.commandId(slotWidth-1,0)
   io.pool.nativeResources:=nativeProviders(providerHead)
+  io.pool.uniformResources:=uniformProviders(providerHead)
   shaderPayload.foreach { _=>
     val head=if(slots==1)0.U else io.pool.launch.bits.commandId(slotWidth-1,0)
     io.poolPayload.get.bits:=payloads.get(head).bits
