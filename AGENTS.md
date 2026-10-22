@@ -22,3 +22,10 @@ Cursor appends `Co-authored-by: Cursor <cursoragent@cursor.com>` on its own. Do 
   1. First point out any grammatical errors or non-idiomatic expressions, and provide suggestions for correction.
   2. Then continue executing the task.
 - The above "translation/proofreading" step is a mandatory prerequisite for every conversation, unless the user explicitly says "skip".
+
+# Validation documentation
+
+Commit concise final results, relevant limits and reproducible test commands.
+Keep raw performance logs, source manifests, emission hashes, pending/resume
+records and intermediate qualification reports local under `.artifacts/`.
+Do not append running progress diaries or commit generated process data.
