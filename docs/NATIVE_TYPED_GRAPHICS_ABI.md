@@ -205,6 +205,14 @@ fault stage/address/draw, issued/completed draw counts and complete image result
 the current MMIO completion does not expose those additional detail fields.
 
 Native general binning, full resource tables/allocation ownership, broader
-texture/attribute semantics, guard-band/qualifier closure, post-transform reuse,
+texture/attribute semantics, guard-band/qualifier closure, general reuse qualification,
 query/feedback and workload/rate qualification remain open. This ABI introduces
 no PPA result; PPA evaluation remains synthesis only.
+
+## Optional vertex output reuse
+
+GTD1 word 610 is a one-bit `vertex.reuseOutputs` promise; upper padding bits
+must be zero. Existing offsets and record sizes are unchanged. Zero preserves
+ordinary shader execution. A set bit requires a nonzero GVI1 cache entry count
+and a side-effect-free, batch-independent shader with immutable draw inputs and
+resources. See the [reuse contract](VERTEX_POST_TRANSFORM_REUSE.md).

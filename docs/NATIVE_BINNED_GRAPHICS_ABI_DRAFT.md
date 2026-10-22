@@ -31,3 +31,10 @@ rendering and production reset are still required.
 The unpublished prototype previously used the legacy bin job magic. The
 current GNJ1/GNF1/GND1 namespace avoids that collision; earlier frozen evidence
 retains the prototype values as historical data. No published legacy ABI changed.
+
+## Optional vertex output reuse
+
+GND1 word 498 is a one-bit `draw.vertex.geometry.vertex.reuseOutputs` promise;
+upper padding bits must be zero. It uses the [same contract as GTD1](VERTEX_POST_TRANSFORM_REUSE.md)
+and requires a nonzero GVI1 cache entry count. Existing fields and record sizes
+retain their offsets. Zero preserves ordinary shader execution.
