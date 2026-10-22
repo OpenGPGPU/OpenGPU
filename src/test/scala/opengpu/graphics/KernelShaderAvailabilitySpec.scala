@@ -26,6 +26,8 @@ class KernelShaderAvailabilitySpec extends AnyFlatSpec {
     ("no-backend-vector-FP-write", scalarWrite, false, true),
     ("F-disabled-vector-FP-read", scalarRead, true, false),
     ("F-disabled-vector-FP-write", scalarWrite, true, false),
+    ("legacy-no-native-scalar-fetch",BigInt("0400050b",16),false,true),
+    ("legacy-no-native-vector-fetch",BigInt("0a00052b",16),false,true),
     ("enabled-scalar-vector-bridge", BigInt(0), true, true))
   private def run(kind: String, word: BigInt, backend: Boolean, enabled: Boolean, gpu: GpuConfig): Unit = {
     val capacity = gpu.lanes * gpu.warps
@@ -63,6 +65,7 @@ class KernelShaderAvailabilitySpec extends AnyFlatSpec {
       var firstPhase = true
       var scalarDataReads = 0
       def tick(): Unit = {
+        if(firstPhase && !supported){d.io.texSample.valid.expect(false.B);d.io.vectorTexSample.valid.expect(false.B)}
         val reply = pending.headOption.filter(_.due <= cycle)
         d.io.memoryResponse.valid.poke(reply.nonEmpty.B)
         reply.foreach { r => d.io.memoryResponse.bits.transactionId.poke(r.id.U); d.io.memoryResponse.bits.readData.poke(r.data.U) }

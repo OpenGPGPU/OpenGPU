@@ -29,6 +29,7 @@ class SharedShaderTaskRouterSpec extends AnyFlatSpec {
       tex.vectorWriteback.ready.poke(true.B)
     }
     dut.io.clients.foreach { port =>
+      port.nativeResources.poke(false.B)
       port.launch.valid.poke(false.B)
       port.launch.bits.poke(0.U.asTypeOf(port.launch.bits))
       port.completion.ready.poke(true.B)
@@ -46,6 +47,27 @@ class SharedShaderTaskRouterSpec extends AnyFlatSpec {
       }
     }
     dut.reset.poke(true.B); dut.clock.step(); dut.reset.poke(false.B)
+  }
+
+  it should "retain provider permission through queued launches and task-slot reuse" in {
+    simulate(new SharedShaderTaskRouter(GpuConfig(lanes=4,warps=2),2,2,tasksPerClient=2)){d=>
+      initialize(d);val pool=d.io.pool;pool.launch.ready.poke(false.B)
+      def offer(client: Int,native: Boolean): Unit={val p=d.io.clients(client)
+        p.nativeResources.poke(native.B);p.launch.bits.commandId.poke(0x55.U);p.launch.valid.poke(true.B)
+        p.launch.ready.expect(true.B);d.clock.step();p.launch.valid.poke(false.B);p.nativeResources.poke((!native).B)
+      }
+      offer(0,true);offer(1,false)
+      for(_<-0 until 9){pool.launch.valid.expect(true.B);pool.launch.bits.commandId.expect(0.U);pool.nativeResources.expect(true.B);d.clock.step()}
+      pool.launch.ready.poke(true.B);d.clock.step()
+      pool.launch.bits.commandId.expect(2.U);pool.nativeResources.expect(false.B);d.clock.step()
+      for(tag<-Seq(2,0)){pool.completion.valid.poke(true.B);pool.completion.bits.commandId.poke(tag.U)
+        d.io.clients(if(tag==2)1 else 0).completion.bits.commandId.expect(0x55.U);d.clock.step()}
+      pool.completion.valid.poke(false.B);d.io.drained.expect(true.B)
+      pool.launch.ready.poke(false.B);offer(0,false);pool.launch.valid.expect(true.B);pool.nativeResources.expect(false.B)
+      for(_<-0 until 5){d.io.clients(0).nativeResources.poke(true.B);d.clock.step();pool.nativeResources.expect(false.B)}
+      pool.launch.ready.poke(true.B);d.clock.step();pool.completion.valid.poke(true.B);pool.completion.bits.commandId.poke(0.U)
+      d.clock.step();pool.completion.valid.poke(false.B);d.io.drained.expect(true.B)
+    }
   }
 
   for (count <- Seq(2, 4)) {

@@ -112,7 +112,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val input=Module(new VertexInputFetcher(config,p.input))
-  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None))))
+  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),nativeResources=true))
   private val texture=Module(new NativeShaderTextureUnit(config,stage=0,groupedTexture=groupedTexture))
   if(groupedTexture){io.grouped.get <> texture.io.grouped.get}
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))

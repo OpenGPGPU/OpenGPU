@@ -78,6 +78,10 @@ class SharedCuTexturePort(config: GpuConfig) extends Bundle {
   */
 class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUnits: Int)
     extends Bundle {
+  /** Native descriptor/captured-operand service for this prospective launch.
+    * Routers snapshot it with acceptance, just like other task ownership.
+    */
+  val nativeResources = Input(Bool())
   val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth)))
   val completion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
   val trap = Decoupled(new TaggedGraphicsTrap(config, commandIdWidth, numComputeUnits))
