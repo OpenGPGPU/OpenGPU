@@ -5,6 +5,14 @@ on topic branches; never commit, merge, or push directly to `main` or `master`.
 Keep existing unpublished work intact and submit it from a topic branch.
 Required CI must pass before a PR is merged. Do not bypass branch protection.
 
+After implementation and relevant local validation pass, automatically mark a
+Codex PR ready for review (or create it without draft mode) and enable GitHub
+auto-merge with the rebase method. The user has authorized this workflow; do not
+ask for another merge confirmation. Preserve logical commits; do not squash.
+GitHub must still require the current protected `ci-ok` check and an up-to-date
+branch. Update the topic branch when needed; never bypass protection or push to
+`main`/`master`. Keep genuinely unfinished implementation in draft mode.
+
 When creating a Git commit, include one `Co-authored-by` trailer for the agent. The trailer must identify the agent and include the model name, for example:
 
 ```text
