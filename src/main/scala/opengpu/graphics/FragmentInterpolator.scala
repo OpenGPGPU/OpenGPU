@@ -89,12 +89,12 @@ class FragmentQuad(config: GraphicsConfig) extends Bundle {
 
 /** Shades a rasterized triangle into fixed-point screen fragments.
   *
-  * This is a combinator->registered pipeline that, given one triangle, emits
+  * This owned streaming pipeline, given one triangle, emits
   * every covered pixel's barycentrically-interpolated colour and depth together
   * with its screen position on `pixel`.
   *
   * With `quadMode` the rasterizer's whole-quad stream is shaded instead: four
-  * interpolators (one per lane) produce a complete TL/TR/BL/BR
+  * attribute lanes produce a complete TL/TR/BL/BR
   * [[FragmentQuad]] per cycle on `quad`, helper lanes included, for the
   * core-backed fragment dispatcher.  The unused port of each configuration is
   * tied off.
@@ -128,10 +128,22 @@ class RasterShader(config: GraphicsConfig, quadMode: Boolean = false) extends Mo
   })
 
   private val raster = Module(new TriangleRasterizer(config, quadMode))
-
-  raster.io.draw <> io.draw
+  private val attributes = Module(new PipelinedRasterAttributes(config, if (quadMode) 4 else 1))
+  // Draw ownership includes all queued arithmetic and publicly held outputs.
+  // Capture attributes at this boundary; later live pins cannot recolor an
+  // earlier triangle while its divisions and per-sample depths are in flight.
+  raster.io.draw.valid := io.draw.valid && attributes.io.drained
+  raster.io.draw.bits := io.draw.bits
+  io.draw.ready := raster.io.draw.ready && attributes.io.drained
+  private val colors = Reg(Vec(3, new Varyings))
+  private val alphas = Reg(Vec(3, UInt(8.W)))
+  private val depths = Reg(Vec(3, SInt(32.W)))
+  private val sampleMode = RegInit(0.U(2.W))
+  when(io.draw.fire) {
+    colors := io.colors; alphas := io.alphas; depths := io.depths; sampleMode := io.sampleMode
+  }
   raster.io.cullMode := io.cullMode
-  raster.io.sampleMode := io.sampleMode
+  raster.io.sampleMode := Mux(io.draw.fire, io.sampleMode, sampleMode)
   raster.io.scissorEnable := io.scissorEnable
   raster.io.scissorMinX := io.scissorMinX
   raster.io.scissorMinY := io.scissorMinY
@@ -139,113 +151,37 @@ class RasterShader(config: GraphicsConfig, quadMode: Boolean = false) extends Mo
   raster.io.scissorMaxY := io.scissorMaxY
   raster.io.screenW := io.screenW
   raster.io.screenH := io.screenH
-  io.done := raster.io.draw.ready
-
+  io.done := raster.io.draw.ready && attributes.io.drained
+  attributes.io.in.bits.colors := colors
+  attributes.io.in.bits.alphas := alphas
+  attributes.io.in.bits.depths := depths
+  attributes.io.in.bits.sampleMode := sampleMode
+  attributes.io.in.bits.planeA := raster.io.planeA
+  attributes.io.in.bits.planeB := raster.io.planeB
+  attributes.io.in.bits.planeArea := raster.io.planeArea
   if (quadMode) {
-    val laneInterps = Seq.fill(4)(Module(new FragmentInterpolator(config)))
-    for (k <- 0 until 4) {
-      laneInterps(k).io.c0 := io.colors(0)
-      laneInterps(k).io.c1 := io.colors(1)
-      laneInterps(k).io.c2 := io.colors(2)
-      laneInterps(k).io.a0 := io.alphas(0)
-      laneInterps(k).io.a1 := io.alphas(1)
-      laneInterps(k).io.a2 := io.alphas(2)
-      laneInterps(k).io.d0 := io.depths(0)
-      laneInterps(k).io.d1 := io.depths(1)
-      laneInterps(k).io.d2 := io.depths(2)
-      laneInterps(k).io.e0 := raster.io.quad.bits.lanes(k).e0
-      laneInterps(k).io.e1 := raster.io.quad.bits.lanes(k).e1
-      laneInterps(k).io.e2 := raster.io.quad.bits.lanes(k).e2
-      laneInterps(k).io.area := raster.io.quad.bits.lanes(k).area
-
-      io.quad.bits.lanes(k).x := raster.io.quad.bits.lanes(k).x
-      io.quad.bits.lanes(k).y := raster.io.quad.bits.lanes(k).y
-      io.quad.bits.lanes(k).color := laneInterps(k).io.color
-      io.quad.bits.lanes(k).alpha := laneInterps(k).io.alpha
-      io.quad.bits.lanes(k).depth := laneInterps(k).io.depth
-      io.quad.bits.lanes(k).e0 := raster.io.quad.bits.lanes(k).e0
-      io.quad.bits.lanes(k).e1 := raster.io.quad.bits.lanes(k).e1
-      io.quad.bits.lanes(k).e2 := raster.io.quad.bits.lanes(k).e2
-      io.quad.bits.lanes(k).covered := raster.io.quad.bits.lanes(k).covered
-      io.quad.bits.lanes(k).coverageMask :=
-        raster.io.quad.bits.lanes(k).coverageMask
-    }
-    // Depth is affine in screen space, so one per-triangle gradient off the
-    // rasterizer's registered plane coefficients gives every sample's depth.
-    // A single shared gradient feeds four per-lane SampleDepth instances,
-    // each centred on its own lane's interpolated depth.
-    val depthGrad = Module(new DepthGradient(config))
-    depthGrad.io.planeA := raster.io.planeA
-    depthGrad.io.planeB := raster.io.planeB
-    depthGrad.io.area := raster.io.planeArea
-    depthGrad.io.d0 := io.depths(0)
-    depthGrad.io.d1 := io.depths(1)
-    depthGrad.io.d2 := io.depths(2)
-    val sampleDepths = Seq.fill(4)(Module(new SampleDepth(config.maxSampleCount)))
-    for (k <- 0 until 4) {
-      sampleDepths(k).io.sampleMode := io.sampleMode
-      sampleDepths(k).io.centre := laneInterps(k).io.depth
-      sampleDepths(k).io.quarterDx := depthGrad.io.quarterDx
-      sampleDepths(k).io.quarterDy := depthGrad.io.quarterDy
-      for (s <- 0 until config.maxSampleCount)
-        io.quadDepths(k)(s) := sampleDepths(k).io.depths(s)
-    }
-    io.quad.valid := raster.io.quad.valid
-    raster.io.quad.ready := io.quad.ready
-
+    attributes.io.in.valid := raster.io.quad.valid
+    attributes.io.in.bits.pixels := raster.io.quad.bits.lanes
+    raster.io.quad.ready := attributes.io.in.ready
+    raster.io.pixel.ready := false.B
+    io.quad.valid := attributes.io.out.valid
+    io.quad.bits.lanes := attributes.io.out.bits.fragments
+    io.quadDepths := attributes.io.out.bits.depthSamples
+    attributes.io.out.ready := io.quad.ready
     io.pixel.valid := false.B
     io.pixel.bits := 0.U.asTypeOf(new RasterFragment(config))
     io.depthSamples := 0.U.asTypeOf(Vec(config.maxSampleCount, UInt(30.W)))
-    raster.io.pixel.ready := false.B
   } else {
-    val interp = Module(new FragmentInterpolator(config))
-    interp.io.c0 := io.colors(0)
-    interp.io.c1 := io.colors(1)
-    interp.io.c2 := io.colors(2)
-    interp.io.a0 := io.alphas(0)
-    interp.io.a1 := io.alphas(1)
-    interp.io.a2 := io.alphas(2)
-    interp.io.d0 := io.depths(0)
-    interp.io.d1 := io.depths(1)
-    interp.io.d2 := io.depths(2)
-    interp.io.e0 := raster.io.pixel.bits.e0
-    interp.io.e1 := raster.io.pixel.bits.e1
-    interp.io.e2 := raster.io.pixel.bits.e2
-    interp.io.area := raster.io.pixel.bits.area
-
-    // Depth is affine in screen space, so one per-triangle gradient off the
-    // rasterizer's registered plane coefficients gives every sample's depth.
-    val depthGrad = Module(new DepthGradient(config))
-    depthGrad.io.planeA := raster.io.planeA
-    depthGrad.io.planeB := raster.io.planeB
-    depthGrad.io.area := raster.io.planeArea
-    depthGrad.io.d0 := io.depths(0)
-    depthGrad.io.d1 := io.depths(1)
-    depthGrad.io.d2 := io.depths(2)
-    val sampleDepths = Module(new SampleDepth(config.maxSampleCount))
-    sampleDepths.io.sampleMode := io.sampleMode
-    sampleDepths.io.centre := interp.io.depth
-    sampleDepths.io.quarterDx := depthGrad.io.quarterDx
-    sampleDepths.io.quarterDy := depthGrad.io.quarterDy
-    io.depthSamples := sampleDepths.io.depths
-
-    io.pixel.valid := raster.io.pixel.valid
-    io.pixel.bits.x := raster.io.pixel.bits.x
-    io.pixel.bits.y := raster.io.pixel.bits.y
-    io.pixel.bits.color := interp.io.color
-    io.pixel.bits.alpha := interp.io.alpha
-    io.pixel.bits.depth := interp.io.depth
-    io.pixel.bits.e0 := raster.io.pixel.bits.e0
-    io.pixel.bits.e1 := raster.io.pixel.bits.e1
-    io.pixel.bits.e2 := raster.io.pixel.bits.e2
-    io.pixel.bits.covered := raster.io.pixel.bits.covered
-    io.pixel.bits.coverageMask := raster.io.pixel.bits.coverageMask
-    raster.io.pixel.ready := io.pixel.ready
-
+    attributes.io.in.valid := raster.io.pixel.valid
+    attributes.io.in.bits.pixels(0) := raster.io.pixel.bits
+    raster.io.pixel.ready := attributes.io.in.ready
+    raster.io.quad.ready := false.B
+    io.pixel.valid := attributes.io.out.valid
+    io.pixel.bits := attributes.io.out.bits.fragments(0)
+    io.depthSamples := attributes.io.out.bits.depthSamples(0)
+    attributes.io.out.ready := io.pixel.ready
     io.quad.valid := false.B
     io.quad.bits := 0.U.asTypeOf(new FragmentQuad(config))
-    io.quadDepths := 0.U.asTypeOf(
-      Vec(4, Vec(config.maxSampleCount, UInt(30.W))))
-    raster.io.quad.ready := false.B
+    io.quadDepths := 0.U.asTypeOf(Vec(4, Vec(config.maxSampleCount, UInt(30.W))))
   }
 }
