@@ -18,5 +18,6 @@ python3 scripts/test_display_config.py
 python3 scripts/test_qmp_screendump_protocol.py
 python3 scripts/test_verify_gtk_scanout.py
 python3 scripts/test_qemu_cpu_config.py
+python3 scripts/test_analyze_shared_graphics_trace.py
 
 echo "script tests: PASS"
