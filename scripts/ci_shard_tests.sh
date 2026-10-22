@@ -24,7 +24,7 @@
 #   system-walk  — 4-CU desktop page-walk and address repros (one shared model)
 #   system-tex   — programmable texture and parallel ordering
 #   system-wide  — WideSharedGraphicsSpec (1/2/4 CU)
-#   system-core  — GpuSystemSpec
+#   system-core  — GpuSystem command, geometry, and indirect compute
 #   system-rt-narrow — 4- and 8-lane runtime shaders (side 16, one CU)
 #   system-rt-16     — 16-lane runtime shader (side 32, one and four CUs)
 #   system-rt-32     — 32-lane runtime shader (side 16, one CU)
@@ -79,9 +79,9 @@ all_shards=(graphics system-mem system-host system-walk system-tex system-wide s
 # A new file must be added here; otherwise CI selection fails closed.
 system_shard_for() {
   case "$(basename "$1")" in
-    AxiStimulusOrderingSpec.scala|ComputeMemoryAxiMasterSpec.scala|GpuHostAxiSpec.scala|GpuHostAxiOwnershipSpec.scala|GpuWorkloadSpec.scala|TileBinHostMemoryFabricSpec.scala|NativeBinnedGraphicsMemoryFabricSpec.scala|NativeTypedGraphicsMemoryFabricSpec.scala|NativeVertexInputCapabilitiesAxiSpec.scala)
+    AxiStimulusOrderingSpec.scala|ComputeMemoryAxiMasterSpec.scala|GpuHostAxiSpec.scala|GpuHostAxiOwnershipSpec.scala|GpuWorkloadSpec.scala|TileBinHostMemoryFabricSpec.scala|NativeBinnedGraphicsMemoryFabricSpec.scala|NativeTypedGraphicsMemoryFabricSpec.scala|NativeVertexInputCapabilitiesAxiSpec.scala|NativeTextureOperationCapabilitiesAxiSpec.scala|ComputeIndirectCapabilitiesAxiSpec.scala|ComputeResourceCapabilitiesAxiSpec.scala|NativePrimitiveQueryCapabilitiesAxiSpec.scala|NativeTransformFeedbackCapabilitiesAxiSpec.scala|NativeShaderExecutionCapabilitiesAxiSpec.scala|NativeRgba8TextureMemoryFabricSpec.scala)
       printf '%s\n' system-mem ;;
-    GpuHostSystemAxiSpec.scala|GpuFillThroughputSpec.scala|GpuHostVmOwnershipSpec.scala)
+    GpuHostSystemAxiSpec.scala|GpuFillThroughputSpec.scala|GpuHostVmOwnershipSpec.scala|GpuHostIndirectComputeSpec.scala|ComputeResourceOwnerHostSpec.scala|ComputeResourceFullHostSpec.scala)
       printf '%s\n' system-host ;;
     RuntimeVectorAddressSpec.scala|SharedCuTwoLevelWalkSpec.scala)
       printf '%s\n' system-walk ;;
@@ -89,7 +89,7 @@ system_shard_for() {
       printf '%s\n' system-tex ;;
     WideSharedGraphicsSpec.scala)
       printf '%s\n' system-wide ;;
-    GpuSystemSpec.scala)
+    GpuSystemSpec.scala|GpuSystemComputeGeometrySpec.scala|GpuSystemIndirectComputeSpec.scala|GpuSystemIndirectTranslationResetSpec.scala)
       printf '%s\n' system-core ;;
     RuntimeShaderFourLaneSpec.scala|RuntimeShaderEightLaneSpec.scala)
       printf '%s\n' system-rt-narrow ;;

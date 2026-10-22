@@ -95,7 +95,8 @@ class GpuHostSystemAxi(
   typedGraphics: Option[NativeTypedGraphicsConfig] = None,
   nativeBinnedGraphics: Option[NativeBinnedGraphicsConfig] = None,
   visibilityQueries: Boolean = false,
-  primitiveQueries: Boolean = false
+  primitiveQueries: Boolean = false,
+  enableIndirectCompute: Boolean = false
 ) extends RawModule {
   private val shaderConfig = graphicsGpuConfig.getOrElse(gpuConfig)
   private val nativeExecutionLimits = typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty
@@ -193,7 +194,7 @@ class GpuHostSystemAxi(
     s"graphics host ID budget $graphicsHostTransactions < used " +
       s"$usedGraphicsTransactionsWithTlb")
   private val systemTransactions = GpuSystem.totalMemoryTransactions(
-    numComputeUnits, transactionsPerCu, graphicsHostTransactions)
+    numComputeUnits, transactionsPerCu, graphicsHostTransactions,enableIndirectCompute)
   private val memoryAxiIdWidth = math.max(1, log2Ceil(systemTransactions))
   private val memoryAxiDataWidth = memoryAxiDataBytes * 8
 
@@ -283,6 +284,8 @@ class GpuHostSystemAxi(
       useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = externalRender,nativeCompletionInfo=nativeBinnedGraphics.nonEmpty,
       nativeVertexInput=typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,visibilityQueries=visibilityQueries,
       shaderExecutionLimits=nativeExecutionLimits,
+      enableIndirectCompute=enableIndirectCompute,
+      computeResources=Some(opengpu.config.ComputeResourceProfile(gpuConfig,numComputeUnits,memoryAxiDataBytes)),
       primitiveQueries=primitiveQueries,transformFeedback=nativeFeedback,transformFeedbackSourceWords=5+4*typedGraphics.map(_.vertex.varyings).orElse(nativeBinnedGraphics.map(_.vertex.varyings)).getOrElse(16)))
     val system = Module(new GpuSystem(
       gpuConfig,
@@ -301,7 +304,8 @@ class GpuHostSystemAxi(
       enableGraphicsKernels = sharedGraphics,shaderPayload=localPayload,
       producerPayloadPins=if(localPayload.nonEmpty){if(nativeBinnedGraphics.nonEmpty)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)
         else if(typedGraphics.nonEmpty)4 else sharedShader.get.binPayloadPins(binnedRendering.get.tileEngines)}else 0,
-      drainGraphicsPayloadWork=localPayload.nonEmpty,shaderExecutionLimits=nativeExecutionLimits))
+      drainGraphicsPayloadWork=localPayload.nonEmpty,shaderExecutionLimits=nativeExecutionLimits,
+      enableIndirectCompute=enableIndirectCompute))
     if (nativeExecutionLimits) system.io.graphicsInstructionLimit.get := host.io.shaderInstructionLimit.get
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
       graphicsConfig,gpuConfig,commandIdWidth,m.tileEngines,m.binPageBytes,m.binWriteCredits,

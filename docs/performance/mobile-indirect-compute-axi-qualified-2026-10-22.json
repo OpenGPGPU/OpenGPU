@@ -1,0 +1,109 @@
+{
+  "passed": true,
+  "source_files": 1033,
+  "source_manifest": ".artifacts/mobile-indirect-axi-host-v3-source.json",
+  "source_manifest_sha256": "81a78f089399a07a33106d89cc64eb227ac90c5ffa2abcd6d7524a1cbd46096d",
+  "all1032_previous_inputs_identical": true,
+  "added_test": "src/test/scala/opengpu/system/GpuHostIndirectComputeSpec.scala",
+  "distinct_checks": 26,
+  "prior_24": ".artifacts/mobile-indirect-compute-qualified-v1-commit.json",
+  "fresh_AXI_host_checks": 2,
+  "AXI_bits": 256,
+  "host_runtime_profile": {
+    "CUs": 2,
+    "lanes": 4,
+    "warps": 2,
+    "cache_configuration": "bringup4sets1way I/V and8sets2ways L2",
+    "command_read_buffering": [
+      false,
+      true
+    ]
+  },
+  "accepted_commands_per_profile": 7,
+  "rejected_reset_submission_per_profile": 1,
+  "accepted_commands_total": 14,
+  "coverage": [
+    "ActualGPUproducer writescounts2x1x1 acrosslines; eventtokenindirectconsumer exactgroupXstores",
+    "Bothbuffered/unbuffered commandread profiles; read-onlyGCI independentliteralwords",
+    "MMIOcapturedsource/bytes/width/kernel/kernarg; completionopcode14 preserveshighbit16",
+    "Zero work withoutinstructionfetch; boundsstatus12; secondlinephysicalfaultstatus13; guardbytesuntouched",
+    "AcceptedARwithdelayedR pinsresetbusy; SUBMIT returnsOKAYandsetsRESET_REJECTED; distinctID0x77/buffera000 neverexecutes; nosecondargumentline",
+    "ResetIRQafterrealRdrain, sameID6actualkernelstorehealthyafterreset, heldcompletionstable"
+  ],
+  "host_result": ".artifacts/mobile-indirect-axi-host-v3-result.json",
+  "reader_synthesis": {
+    "passed": true,
+    "qualification": {
+      "passed": true,
+      "reported_setup_slacks_ps": [
+        481.266,
+        457.828
+      ],
+      "reported_path_groups": 2,
+      "scope": "All reported synthesis setup paths, including I/O",
+      "report_sha256": "c75b8dabf32cdd13d0ddb67964543dafe352793474d44dc5eb75739147fa49ab",
+      "setup_passed": true,
+      "mapping": {
+        "passed": true,
+        "mapping_report_present": true,
+        "skipped_instance_types": [],
+        "skipped_instance_count": 0,
+        "skipped_instances_by_type": {},
+        "unresolved_diagnostics": [],
+        "scope": "Synthesis mapping report; omitted operators and undriven logic fail qualification",
+        "log": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-indirect-reader-2026-10-22-v1/flow/orfs-work/reports/base/synth_stat.txt",
+        "log_sha256": "05da83418e44509365e77c1d8caa8e05403a1185775f22d7d6da41f84f0747bf",
+        "logs": [
+          {
+            "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-indirect-reader-2026-10-22-v1/flow/orfs-work/logs/base/1_synth.log",
+            "sha256": "5edfb088b3242f5a9667b57453669dcd44e2c28da7bc2c1d7c67bb786d0b69e1"
+          },
+          {
+            "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-indirect-reader-2026-10-22-v1/flow/orfs-work/logs/base/1_2_yosys.log",
+            "sha256": "931adf31883e48ef6c2ef7eb429eafd5d819db6ccfb6ee2ce62e29c6ecdbab12"
+          },
+          {
+            "path": "/Users/duckdonald/workspace/gpu/generated/qualification/ppa/mobile-indirect-reader-2026-10-22-v1/flow/orfs-work/reports/base/synth_stat.txt",
+            "sha256": "05da83418e44509365e77c1d8caa8e05403a1185775f22d7d6da41f84f0747bf"
+          }
+        ],
+        "combined_log_sha256": "ab50c0413f0a3f90c62fdbaeda5570aff597827b11752f85e731ca07a72f2f22"
+      }
+    },
+    "qualification_path": "generated/qualification/ppa/mobile-indirect-reader-2026-10-22-v1/qualification.json",
+    "qualification_sha256": "cf5f15d630ccbf0a6981d8e39fe195035c08884583cc68ee431d5c9c59112e84",
+    "active_RTL_unchanged": true,
+    "module": "IndirectDispatchReader",
+    "mapped_cells": 4102,
+    "library_area": 445.47732,
+    "sequential_library_area": 67.3596,
+    "flip_flops": 231,
+    "SRAM_macros": 0,
+    "period_ps": 1000,
+    "IO_fraction": 0.25,
+    "corner": "TC",
+    "VT": "SLVT",
+    "engine": "yosys standardABC",
+    "retiming": false,
+    "scope": "Standalone reader only; no translated system/router/CU/host PPA qualification."
+  },
+  "failure_history": [
+    {
+      "result": ".artifacts/mobile-indirect-axi-host-v1-result.json",
+      "repair": ".artifacts/mobile-indirect-axi-host-v2-repair-proof.json",
+      "cause": "Fixture omittedIRQenable beforewaitingmirq."
+    },
+    {
+      "result": ".artifacts/mobile-indirect-axi-host-v2-result.json",
+      "repair": ".artifacts/mobile-indirect-axi-host-v3-repair-proof.json",
+      "cause": "Fixture expectedSLVERR; documentedresetrejectionisOKAYplusSTATUSbit4. Correctstatus/no-replayassertionsadded."
+    }
+  ],
+  "production_unchanged_since24check_commit": true,
+  "remaining": [
+    "Enabled-host strictsynthesis after composition with remaining graphics timing repairs",
+    "Full H7 storage/images/atomics/barriers/resource limits/indirect drawing",
+    "H8 and all remainingH0-H8 hardware gates"
+  ],
+  "main_promoted": false
+}

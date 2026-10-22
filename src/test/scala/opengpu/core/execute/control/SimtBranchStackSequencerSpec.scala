@@ -32,6 +32,8 @@ class SimtBranchStackSequencerSpec extends AnyFlatSpec {
   it should "push reconvergence then alternate before releasing the current path" in {
     val config = GpuConfig(lanes = 4, simtStackDepth = 4)
     simulate(new SimtBranchStackSequencer(config)) { dut =>
+      dut.io.clear.valid.poke(false.B)
+      dut.io.clear.bits.poke(0.U)
       dut.reset.poke(true.B)
       dut.clock.step()
       dut.reset.poke(false.B)
@@ -63,9 +65,11 @@ class SimtBranchStackSequencerSpec extends AnyFlatSpec {
     }
   }
 
-  it should "wait for enough stack capacity before accepting divergence" in {
+  it should "fault without partial stack writes when divergence exceeds available capacity" in {
     val config = GpuConfig(lanes = 4, simtStackDepth = 4)
     simulate(new SimtBranchStackSequencer(config)) { dut =>
+      dut.io.clear.valid.poke(false.B)
+      dut.io.clear.bits.poke(0.U)
       dut.reset.poke(true.B)
       dut.clock.step()
       dut.reset.poke(false.B)
@@ -74,11 +78,19 @@ class SimtBranchStackSequencerSpec extends AnyFlatSpec {
       dut.io.freeEntries.poke(1.U)
       driveDivergence(dut)
 
-      dut.io.in.ready.expect(false.B)
-      dut.clock.step(2)
-      dut.io.stackPush.valid.expect(false.B)
-
-      dut.io.freeEntries.poke(2.U)
+      dut.io.in.ready.expect(true.B)
+      dut.io.overflow.ready.poke(false.B)
+      dut.clock.step();dut.io.in.valid.poke(false.B)
+      dut.io.overflow.valid.expect(true.B)
+      val held=dut.io.overflow.bits.peek().litValue
+      dut.io.freeEntries.poke(4.U)
+      for(_<-0 until 5){
+        dut.io.overflow.valid.expect(true.B)
+        assert(dut.io.overflow.bits.peek().litValue==held)
+        dut.io.stackPush.valid.expect(false.B);dut.io.current.valid.expect(false.B)
+        dut.clock.step()
+      }
+      dut.io.overflow.ready.poke(true.B);dut.clock.step()
       dut.io.in.ready.expect(true.B)
     }
   }

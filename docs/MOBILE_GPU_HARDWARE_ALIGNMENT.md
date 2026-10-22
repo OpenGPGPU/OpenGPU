@@ -1,6 +1,6 @@
 # Mobile GPU hardware alignment proposal
 
-Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6 implementation in progress, 2026-10-21. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
+Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6/H7 implementation in progress, 2026-10-22. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
 Latest point/line checkpoint: [23 fresh targeted checks](performance/mobile-point-line-bounded-2026-10-20.json) pass on 674 frozen source files. The [standalone synthesis setup screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json) passes at 1000 ps with core +25.772 ps and I/O +619.101 ps. This does not qualify the whole GPU clock or complete H0-H8.
 
@@ -7829,6 +7829,22 @@ and programmable quad UV candidates remain separate. Full-host synthesis at
 1000ps including I/O, complete watchdog/resource/reconvergence contracts, frame
 budgets and the full H0-H8 objective remain open.
 
+
+### H7 indirect compute foundation, 2026-10-22
+
+The [GCI1 hardware path](INDIRECT_COMPUTE_DISPATCH.md) now connects an optional
+indirect command through the unified router, checked GPU argument views, Sv32
+and shared L2 to the normal tagged compute dispatcher. Twelve foundation checks
+pass on1,023 frozen inputs, with an ABI check and fresh reader/default four-CU
+host emissions. The actual reader checks line crossings, full uint32 counts,
+legal4GiB end, malformed bounds, faults, stable held owners and reset-cancel
+reply drain. Existing disabled-profile router behavior passes all ten cases.
+
+Enabled dependency/ID behavior, real CU producer-consumer execution, translated
+fault/reset reuse, co-enabled discovery and synthesis are still required. This
+foundation does not close E31-05/H7, remaining storage/image/barrier work, H8 or
+the full H0-H8 objective.
+
 ### 2026-10-21: disjoint native texture-operation discovery
 
 The [revised GTO1 candidate](performance/mobile-native-texture-operations-relocated-2026-10-21.json)
@@ -7877,3 +7893,124 @@ slacks remain historical; both changed interfaces require fresh strict1000ps,
 25%IO synthesis before timing qualification and main promotion. No clock,
 retiming or port relaxation is used. Whole-host timing, product/resource/rate/
 coherence gates and the full H0-H8 objective remain open.
+
+### Qualified indirect-compute system execution, 2026-10-22
+
+The optional GCI1 path now has [24 qualified checks](performance/mobile-indirect-compute-qualified-2026-10-22.json)
+on1,032 exact source inputs, composed with main411f GTO1/GSL/query discovery.
+Actual two-CU bring-up and full default four-CU/16-lane/eight-warp systems each
+execute eight commands, including a GPU kernel that publishes2x1x1 counts
+across cache lines and an event-dependent consumer with exact group-indexed
+stores. Real fill/DMA dependency, zero-work, both argument-line physical faults,
+held completion/VM ownership and healthy ID reuse pass. The four-CU run keeps
+the default L2 and instruction/vector cache capacities.
+
+Two-CU system probes additionally pass Sv32 two-level/cross-page reads,
+second-page read permission failure, a physical page-walk fault, and controlled
+reset with offered data, accepted data and accepted page-walk owners. Reset
+waits for actual replies, prevents a second argument read or queued launch,
+and allows a healthy kernel store after recovery. Co-enabled GCI1/GTO1/GSL and
+all three query blocks retain their disjoint read-only and VM-write contracts.
+The initial invalid12-byte fill fixture and its64-byte repair are preserved;
+no hardware or expected result changed. Full command/memory AXI runtime and
+enabled-host synthesis remain separate gates. H7 indirect drawing, resource/
+image/storage/atomic/barrier requirements, H8 and the full H0-H8 goal stay open.
+
+
+### Indirect-compute AXI transport and reader synthesis, 2026-10-22
+
+The [26-check GCI1 checkpoint](performance/mobile-indirect-compute-axi-qualified-2026-10-22.json)
+adds two complete256-bit AXI host runtime cases on1,033 exact inputs. Both
+command-read buffering profiles execute a real GPU producer and event-dependent
+indirect consumer with exact stores, preserve opcode14 in completion bit16,
+report no-work/bounds/read faults, drain a real delayed R response before reset
+acknowledgement and execute healthy work after ID reuse. Each profile accepts
+seven commands and refuses one reset-racing submission; its distinct buffer
+never executes. The two fixture failures (missing IRQ enable and an incorrect
+SLVERR expectation instead of the documented RESET_REJECTED status) remain
+preserved. All production inputs are unchanged from the24-check checkpoint.
+
+Standalone IndirectDispatchReader synthesis passes1000ps TC/SLVT with25%IO,
+standardABC, no retiming and zero skips: core/IO +481.266/+457.828ps,4,102 cells,
+445.477320 library area,231 flip-flops and no SRAM macro. This is component
+qualification. Enabled-host composition/timing, the remaining H7/H8 work and
+all other H0-H8 gates remain open.
+
+
+### Attributed reconvergence capacity and empty-join faults, 2026-10-22
+
+The [54-check reconvergence checkpoint](performance/mobile-reconvergence-faults-2026-10-22.json)
+qualifies1,038 exact inputs. The sequencer reports cause26 with original PC/mask
+before a divergent branch can partially push an over-capacity pair. Uniform
+branches require no slots. Per-warp finish clears pending resolver/sequencer
+state as well as the stack, preventing ghost pushes or redirects after reuse.
+The core owns selected trap offers so a later peer fault cannot replace a held
+event. Actual empty joins now report cause27 and retire through the existing
+failed-kernel owner; both scalar-FPU settings pass held-trap/completion and
+healthy-write reuse. The identical tests previously stalled501 cycles with no
+trap. General instruction-driven vector-branch execution is still open.
+
+The complete default16-lane/eight-warp/depth8 controller passes1000ps TC/SLVT
+synthesis with core/IO +493.532/+348.407ps,16,331 cells and zero skipped
+instances. The combinational warp-system block passes its I/O-only group at
++376.990ps with703 cells and no sequential path. Both use25%IO, standardABC and
+no retiming. The original wrapper's mistaken two-group requirement for that
+combinational block is preserved; classification was corrected from existing
+reports without rerunning synthesis. Twelve fresh integration checks pass
+configured default four-CU indirect execution,256-bit AXI host and Sv32/reset,
+plus typed/binned local/spilled native join recovery: eight attributed faults
+and eight exact healthy successor images with payload/VM drain. The42 component
+checks and both synthesis results carry through identical production, build,
+component-test dependencies and emitted component RTL. One-grid distribution
+across the CU pool remains unqualified. Whole-CU/host timing,
+resource/watchdog/capacity-discovery contracts and
+the remaining H0-H8 goal remain open.
+
+
+### Single-grid compute distribution candidate, 2026-10-22
+
+The [compute-grid checkpoint](performance/mobile-compute-grid-distribution-2026-10-22.json)
+passes20 checks on1,056 frozen inputs. One2x2x2 grid now uses all configured CUs
+concurrently in both actual2CU4-lane/two-warp and default4CU16-lane/eight-warp
+profiles, with exact16/64 built-in stores, guards and actual delayed write replies.
+The corrected old-hardware baseline reaches one CU in both profiles.
+
+The [distributor](COMPUTE_GRID_DISTRIBUTION.md) keeps each workgroup on one CU,
+retains original grid/local built-ins, owns private child tags and parent
+completion rows, and drains already offered/accepted groups after a real fault.
+Existing physical graphics arbitration, payload pins and independent completion
+credits are retained. Seven new unit cases include held offers, reordered and
+simultaneous completion, same-edge last admission/fault, full-width slices and
+one/two/four-CU payload ownership. Eleven legacy dispatch checks also pass.
+
+The [GCR1 candidate](COMPUTE_RESOURCES.md) reports the executing compute pool at
+0x360..0x39f and fixes the GCI1 local-item limit when legacy graphics uses another
+configuration. Fresh composed discovery/AXI/admission, indirect execution and
+native join/quota/reset regressions are running; they are excluded from20.
+Default component synthesis remains pending at1000psTC/SLVT with25%IO, standard
+ABC, no retiming and zero skipped instances required. Main promotion needs these
+gates; full resource/branch/coherence/rate/product and H0-H8 requirements remain
+open.
+
+### Compute grid/resource main integration, 2026-10-22
+
+The [qualified compute-grid base](performance/mobile-compute-grid-main-2026-10-22.json) is integrated into main with50 distinct checks, three ABI checks, strict C validation and five emissions. One actual2x2x2grid uses all default four16-lane/eight-warp CUs concurrently with exact built-ins/stores; host discovery, indirect/AXI/Sv32/reset and native fault/interruption recovery also pass. Complete distributor/shared-arbiter/slice-admission synthesis passes1000ps TC/SLVT with25%IO, standardABC, no retiming/falsepaths and zero skips. All1055executedhardware/ABI/build/test dependencies retain their qualified bytes; independent GTK updates are preserved. The larger coenabled-control container remains adopted after its client timeout; no whole-host clock claim is made. The newer native-control pruning and raster/texture candidates stay separate until their own checks finish. General execution/resource contracts, H7/H8 and the full H0-H8 target remain open.
+
+
+### Native texture composed with compute-grid main, 2026-10-22
+
+The [current-main qualification](performance/mobile-shared-cluster-grid-composition-2026-10-22.json)
+passes 47 fresh checks and five emissions on 1,056 frozen inputs, combining the
+native texture cancellation/planner repairs with compute-grid/resource discovery,
+indirect execution, query and MMIO changes. All complete active RTL maps match
+their qualified synthesis inputs byte for byte: 87 cluster files and 85 files
+per native endpoint. Strict 1000 ps TC/SLVT synthesis with 25% I/O, standard ABC,
+no retiming/false paths and zero skipped instances passes core/I/O at
++42.104/+301.056 ps (cluster), +84.510/+151.590 ps (vertex) and
++73.547/+157.244 ps (fragment). The fragment result reuses its original mapped
+netlist and preserves the earlier client interruption evidence.
+
+The warm shared-window probe delivers 448 groups in 448 cycles with sixteen
+lanes and eight warps, one active client among three configured clients. It
+does not establish aggregate two-cluster or frame throughput. Whole-host timing,
+resource/coherence/rate budgets, H7/H8 and the full H0-H8 objective remain open.

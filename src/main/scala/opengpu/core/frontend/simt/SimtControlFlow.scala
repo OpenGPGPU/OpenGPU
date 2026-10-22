@@ -17,6 +17,7 @@ class SimtControlFlow(config: GpuConfig = GpuConfig()) extends Module {
   val io = IO(new Bundle {
     val branch = Flipped(Decoupled(new SimtBranchRequest(config)))
     val current = Decoupled(new SimtPath(config))
+    val overflow = Decoupled(new SimtPath(config))
     val restoreWarpId = Input(UInt(config.warpIdWidth.W))
     val restore = Decoupled(new SimtPath(config))
     val clear = Flipped(Valid(UInt(config.warpIdWidth.W)))
@@ -30,6 +31,9 @@ class SimtControlFlow(config: GpuConfig = GpuConfig()) extends Module {
   resolver.io.in <> io.branch
   sequencer.io.in <> resolver.io.out
   io.current <> sequencer.io.current
+  io.overflow <> sequencer.io.overflow
+  resolver.io.clear <> io.clear
+  sequencer.io.clear <> io.clear
 
   private val sequencerWarpId = resolver.io.out.bits.warpId
   private val validSequencerWarp = sequencerWarpId < config.warps.U

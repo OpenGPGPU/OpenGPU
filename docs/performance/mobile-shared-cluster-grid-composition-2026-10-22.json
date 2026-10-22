@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-22",
+  "status": "Qualified native texture cancellation/planner changes composed with current compute-grid main; full H4 and H0-H8 remain open.",
+  "main_parent": "d78952edb942bcf74e20a04b92c8be3c8b716dcc",
+  "H4_parent": "1db0c331889781aac1be7e05e40bc191b0846634",
+  "source_files": 1056,
+  "source_manifest": ".artifacts/mobile-shared-cluster-main-composition-v2-source.json",
+  "functional_tests": 47,
+  "test_counts": [
+    24,
+    23
+  ],
+  "emissions": 5,
+  "functional_result": ".artifacts/mobile-shared-cluster-main-composition-v2-result.json",
+  "source_unchanged": true,
+  "synthesis": {
+    "period_ps": 1000,
+    "cell_vt": "SLVT",
+    "corner": "TC",
+    "io_delay_fraction": 0.25,
+    "standard_ABC": true,
+    "retiming": false,
+    "false_paths": false,
+    "components": {
+      "cluster": {
+        "passed": true,
+        "core_IO_slacks_ps": [
+          42.104,
+          301.056
+        ],
+        "skipped_instances": 0,
+        "active_RTL_byte_identical": true,
+        "active_files": 87,
+        "result": ".artifacts/mobile-shared-cluster-timing-synthesis-v1-cluster-result.json",
+        "result_sha256": "54010a865e22c021bbd1b11398c12787ea183ac5ed9732945b6014b8feac5fba"
+      },
+      "native-vertex": {
+        "passed": true,
+        "core_IO_slacks_ps": [
+          84.51,
+          151.59
+        ],
+        "skipped_instances": 0,
+        "active_RTL_byte_identical": true,
+        "active_files": 85,
+        "result": ".artifacts/mobile-shared-cluster-main-composition-synthesis-v1-native-vertex-result.json",
+        "result_sha256": "d9ebe192090c3561dcd2fb6951f76e90d52ecda92e3bde698a1b03f69c57c997"
+      },
+      "native-fragment": {
+        "passed": true,
+        "core_IO_slacks_ps": [
+          73.547,
+          157.244
+        ],
+        "skipped_instances": 0,
+        "active_RTL_byte_identical": true,
+        "active_files": 85,
+        "result": ".artifacts/mobile-texture-synthesis-recovered-20261022-result.json",
+        "result_sha256": "6553da28aa1bb0f1299d5e68d6505d265c7ea4ffb9f83d3e0481dc5246fa0eb1"
+      }
+    }
+  },
+  "rate_scope": {
+    "lanes": 16,
+    "warps": 8,
+    "configured_clients": 3,
+    "active_clients": 1,
+    "warm_groups": 448,
+    "span_cycles": 448,
+    "no_warm_descriptor_or_data_reads": true,
+    "does_not_prove_two_cluster_or_full_frame_rate": true
+  },
+  "composition": "Actual47freshchecks retain independent numeric/image/fault/reset/rate assertions after main grid/resource/indirect/query/MMIO changes. All three complete active RTL maps match their positive strict synthesis inputs byte for byte. Original fragment synthesis was reused for STA; no Yosys rerun or timing relaxation.",
+  "remaining": [
+    "Whole-CU/renderer/host timing and physical resource budgets.",
+    "Whole-path format/precision/coherence and aggregate contention/throughput.",
+    "720p workloads and all original H0-H8 gates."
+  ]
+}

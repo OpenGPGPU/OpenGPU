@@ -87,6 +87,13 @@ assert set(assigned) == all_specs - ci_skip, (
 )
 assert ci_skip.isdisjoint(assigned)
 assert assigned["opengpu.system.GpuHostAxiOwnershipSpec"] == "system-mem"
+assert assigned["opengpu.system.ComputeResourceCapabilitiesAxiSpec"] == "system-mem"
+assert assigned["opengpu.system.NativeRgba8TextureMemoryFabricSpec"] == "system-mem"
+assert assigned["opengpu.system.ComputeResourceFullHostSpec"] == "system-host"
+assert assigned["opengpu.system.GpuHostIndirectComputeSpec"] == "system-host"
+assert assigned["opengpu.system.GpuSystemComputeGeometrySpec"] == "system-core"
+assert assigned["opengpu.system.GpuSystemIndirectComputeSpec"] == "system-core"
+assert assigned["opengpu.system.GpuSystemIndirectTranslationResetSpec"] == "system-core"
 for suite in ("Fp32CentroidInterpolationSpec", "Fp32DepthResolutionRasterSpec", "PolygonDepthOffsetSpec", "PolygonDepthOffsetRasterSpec", "PolygonDepthResolutionSpec"):
     assert assigned["opengpu.graphics." + suite] == "graphics"
 assert json.loads(shard_cmd("shards-json", "ALL")) == list(shards)

@@ -18,6 +18,7 @@ class WarpSystemControl(config: GpuConfig = GpuConfig()) extends Module {
     val in = Flipped(Decoupled(new ScalarIssuedInstruction(config)))
     val finish = Valid(UInt(config.warpIdWidth.W))
     val restore = Decoupled(UInt(config.warpIdWidth.W))
+    val restoreEmpty = Input(Bool())
     val resume = Decoupled(new SimtPath(config))
     val barrier = Decoupled(new SimtPath(config))
     /** tex.sample: full issued instruction (rs1Data=u, rs2Data=v, decode.rd).
@@ -46,7 +47,8 @@ class WarpSystemControl(config: GpuConfig = GpuConfig()) extends Module {
   io.finish.valid := io.in.valid && cease
   io.finish.bits := io.in.bits.decode.warpId
 
-  io.restore.valid := io.in.valid && join
+  private val emptyJoin = join && io.restoreEmpty
+  io.restore.valid := io.in.valid && join && !io.restoreEmpty
   io.restore.bits := io.in.bits.decode.warpId
 
   io.resume.valid := io.in.valid && (fence || setVxrm)
@@ -68,14 +70,14 @@ class WarpSystemControl(config: GpuConfig = GpuConfig()) extends Module {
   io.vxrmWrite.bits.data := instruction(16, 15)
 
   private val known = cease || join || fence || barrier || texSample || setVxrm
-  io.unsupported.valid := io.in.valid && !known
+  io.unsupported.valid := io.in.valid && (!known || emptyJoin)
   io.unsupported.bits := io.in.bits
 
   io.in.ready := MuxCase(
     io.unsupported.ready,
     Seq(
       cease -> true.B,
-      join -> io.restore.ready,
+      join -> Mux(io.restoreEmpty, io.unsupported.ready, io.restore.ready),
       fence -> io.resume.ready,
       setVxrm -> io.resume.ready,
       barrier -> io.barrier.ready,

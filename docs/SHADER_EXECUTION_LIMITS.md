@@ -147,3 +147,14 @@ UV path with native GSL quota/reset/availability and registered MMIO addressing.
 All typed/binned local/spill loop, owned-reset and healthy-reuse cases pass, as
 do the system-trap cases, host ABI/discovery checks and default host emission.
 No complete-host timing or full watchdog closure is inferred from these results.
+
+
+## Reconvergence capacity and join faults
+
+[SIMT reconvergence fault handling](SIMT_RECONVERGENCE_FAULTS.md) complements
+the fetch quota: a full divergence stack or empty join can stall before the
+next fetch and cannot be recovered by an admitted-instruction quota alone.
+The42-check component checkpoint supplies attributed causes26/27, per-warp
+clear, held fault ownership and positive default component synthesis. Native
+join recovery, instruction-driven vector branches, resource discovery and
+whole-CU/host timing remain separate gates.

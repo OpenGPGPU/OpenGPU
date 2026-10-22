@@ -295,6 +295,12 @@ echo '=== Load guest GPU driver ==='
 "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 120 \
     '/root/load_opengpu.sh && test -c /dev/dri/card0' | tee "$LOAD_LOG"
 
+if [ -n "${GTK_PROOF_TRACE_CMD:-}" ]; then
+    echo '=== Traced guest command ==='
+    "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" "${GTK_PROOF_TRACE_TIMEOUT:-1200}" \
+        "$GTK_PROOF_TRACE_CMD" | tee "$PROOF_WORK/trace-cmd.log"
+fi
+
 if [ "${GTK_PROOF_SKIP_COVERAGE:-0}" != 1 ]; then
     echo '=== Check GTK ellipse coverage ==='
     "$GPU_DIR/scripts/gtk_coverage_guest.exp" "$PORT" 1200 \

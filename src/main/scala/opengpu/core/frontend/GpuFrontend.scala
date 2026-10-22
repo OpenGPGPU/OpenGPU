@@ -27,6 +27,8 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
     val branch = Flipped(Decoupled(new SimtBranchRequest(config)))
     val scalarRedirect = Flipped(Decoupled(new SimtPath(config)))
     val restore = Flipped(Decoupled(UInt(config.warpIdWidth.W)))
+    val restoreEmpty = Output(Bool())
+    val overflow = Decoupled(new SimtPath(config))
     val finish = Flipped(Valid(UInt(config.warpIdWidth.W)))
     val active = Output(UInt(config.warps.W))
     val blocked = Output(UInt(config.warps.W))
@@ -39,6 +41,9 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
   control.io.branch <> io.branch
   control.io.scalarRedirect <> io.scalarRedirect
   control.io.restore <> io.restore
+  io.restoreEmpty := Mux(io.restore.bits < config.warps.U,
+    control.io.stackCounts(io.restore.bits) === 0.U, true.B)
+  io.overflow <> control.io.overflow
   control.io.finish <> io.finish
   io.active := control.io.active
   io.blocked := control.io.blocked

@@ -3,7 +3,8 @@ package opengpu.command
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.dispatch.{DmaEventSource, KernelCommand, KernelCommandResult, KernelLaunch}
+import opengpu.dispatch.{DmaEventSource, DmaCompletionEvent, KernelCommand, KernelCommandResult, KernelCommandStatus, KernelLaunch}
+import opengpu.core.memory.{ComputeMemoryRequest, ComputeMemoryResponse}
 import opengpu.dma._
 
 object GpuCommandOpcode {
@@ -22,6 +23,7 @@ object GpuCommandOpcode {
   val queryResult = 11.U(width.W)
   val transformFeedback = 12.U(width.W)
   val primitiveQuery = 13.U(width.W)
+  val kernelIndirect = 14.U(width.W)
 
   def visibilityQuery(opcode: UInt): Bool = opcode >= queryBegin && opcode <= queryResult
 }
@@ -58,6 +60,8 @@ class GpuCommand(config: GpuConfig, val commandIdWidth: Int) extends Bundle {
 
 object GpuCommandResultStatus {
   val width = 4
+  val indirectBounds = 12.U(width.W)
+  val indirectReadFailed = 13.U(width.W)
   val eventDependencyFailed = 14.U(width.W)
   val invalidOpcode = 15.U(width.W)
 }
@@ -78,7 +82,8 @@ class GpuCommandRouter(
   config: GpuConfig = GpuConfig(),
   commandIdWidth: Int = 8,
   commandQueueDepth: Int = 8,
-  completionQueueDepth: Int = 8
+  completionQueueDepth: Int = 8,
+  enableIndirectCompute: Boolean = false
 ) extends Module {
   require(commandIdWidth > 0 && commandIdWidth <= 12)
   require(commandQueueDepth > 0 && completionQueueDepth > 0)
@@ -110,6 +115,15 @@ class GpuCommandRouter(
     val busy = Output(Bool())
     /** Queued/executing non-kernel commands retain memory-engine ownership. */
     val memoryEngineBusy = Output(Bool())
+    val indirectBusy = Output(Bool())
+    val indirectMemoryRequest = if(enableIndirectCompute)
+      Some(Decoupled(new ComputeMemoryRequest(config,64,1))) else None
+    val indirectMemoryResponse = if(enableIndirectCompute)
+      Some(Flipped(Decoupled(new ComputeMemoryResponse(64,1)))) else None
+    val dmaCompletion = if(enableIndirectCompute)
+      Some(Input(Vec(DmaEventSource.count,Valid(new DmaCompletionEvent(commandIdWidth))))) else None
+    /** Cancel only during command reset; ordinary blockDispatch preserves work. */
+    val cancelIndirect = if(enableIndirectCompute) Some(Input(Bool())) else None
     /** While high the router stops dispatching queued commands to the
       * engines; completion drain continues so in-flight work can retire. */
     val blockDispatch = Input(Bool())
@@ -153,18 +167,83 @@ class GpuCommandRouter(
   val h0Known = !h0.waitForEvent || h0Match
   val h0Failed = h0.waitForEvent && h0Match && !eventSuccess(h0.waitEventId)
   val isKernel = head.opcode === GpuCommandOpcode.kernel
+  val isIndirect = if(enableIndirectCompute) head.opcode === GpuCommandOpcode.kernelIndirect else false.B
   val isCopy = head.opcode === GpuCommandOpcode.copy
   val isFill = head.opcode === GpuCommandOpcode.fill
   val isStrided = head.opcode === GpuCommandOpcode.stridedCopy
   val isResolve = head.opcode === GpuCommandOpcode.resolve
   val isInvalidate = head.opcode === GpuCommandOpcode.invalidate
   val opcodeValid = isKernel || isCopy || isFill || isStrided || isResolve ||
-    isInvalidate
+    isInvalidate || isIndirect
 
-  io.kernel.valid := hold1Valid && !hold1Failed && isKernel && !io.blockDispatch
+  val indirectResultValid = WireDefault(false.B)
+  val indirectResult = WireDefault(0.U.asTypeOf(new IndirectDispatchResult))
+  val indirectResultReady = WireDefault(false.B)
+  val indirectDmaFailed = WireDefault(false.B)
+  val indirectStarted = RegInit(false.B)
+  val indirectDependencyConsumed = WireDefault(false.B)
+  val indirectHeadRetired = WireDefault(false.B)
+  val indirectArgumentsPending = WireDefault(false.B)
+  io.indirectBusy := false.B
+  if(enableIndirectCompute) {
+    val pending = RegInit(0.U((commandIdWidth + 1).W))
+    val accept = io.command.fire && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect
+    when(accept =/= indirectHeadRetired) {
+      when(accept) { pending := pending + 1.U }
+        .otherwise { assert(pending =/= 0.U); pending := pending - 1.U }
+    }
+    indirectArgumentsPending := pending =/= 0.U ||
+      (io.command.valid && io.command.bits.opcode === GpuCommandOpcode.kernelIndirect)
+    val reader = Module(new IndirectDispatchReader(config))
+    io.indirectMemoryRequest.get <> reader.io.memoryRequest
+    reader.io.memoryResponse <> io.indirectMemoryResponse.get
+    reader.io.cancel := io.cancelIndirect.get
+    io.indirectBusy := reader.io.busy
+    val succeeded = RegInit(VecInit(Seq.fill(DmaEventSource.count)(0.U(idCount.W))))
+    val failed = RegInit(VecInit(Seq.fill(DmaEventSource.count)(0.U(idCount.W))))
+    val sourceValid = head.dmaSource < DmaEventSource.count.U
+    val dependencyKnown = !head.waitForDma || !sourceValid ||
+      succeeded(head.dmaSource)(head.dmaDescriptorId) || failed(head.dmaSource)(head.dmaDescriptorId)
+    indirectDmaFailed := head.waitForDma && (!sourceValid || failed(head.dmaSource)(head.dmaDescriptorId))
+    reader.io.in.valid := hold1Valid && isIndirect && !hold1Failed && !indirectStarted &&
+      dependencyKnown && !indirectDmaFailed && !io.blockDispatch
+    reader.io.in.bits.allocationBase := head.sourceAddress
+    reader.io.in.bits.allocationBytes := head.bytes
+    reader.io.in.bits.offset := head.widthBytes
+    when(reader.io.in.fire) { indirectStarted := true.B }
+    indirectResultValid := reader.io.out.valid
+    indirectResult := reader.io.out.bits
+    reader.io.out.ready := indirectResultReady
+    for(source <- 0 until DmaEventSource.count) {
+      val event = io.dmaCompletion.get(source)
+      val opcode = source match {
+        case 0 => GpuCommandOpcode.copy
+        case 1 => GpuCommandOpcode.fill
+        case _ => GpuCommandOpcode.stridedCopy
+      }
+      // A reused DMA command ID must discard its previous dependency token
+      // before a later indirect read can observe the new producer's arguments.
+      val replacement = io.command.fire && io.command.bits.opcode === opcode
+      val consume = head.waitForDma && head.dmaSource === source.U &&
+        (reader.io.in.fire || indirectDependencyConsumed)
+      val clear = Mux(replacement,UIntToOH(io.command.bits.commandId,idCount),0.U) |
+        Mux(consume,UIntToOH(head.dmaDescriptorId,idCount),0.U)
+      val good = Mux(event.valid && event.bits.success,UIntToOH(event.bits.descriptorId,idCount),0.U)
+      val bad = Mux(event.valid && !event.bits.success,UIntToOH(event.bits.descriptorId,idCount),0.U)
+      succeeded(source) := (succeeded(source) & ~(clear | bad)) | good
+      failed(source) := (failed(source) & ~(clear | good)) | bad
+      when(event.valid) { assert(event.bits.source === source.U) }
+    }
+  }
+  val indirectLocal = isIndirect && indirectResultValid && (!indirectResult.success || indirectResult.empty)
+  val indirectDependencyError = isIndirect && !indirectStarted && indirectDmaFailed
+  val indirectKernel = isIndirect && indirectResultValid && indirectResult.success && !indirectResult.empty
+
+  io.kernel.valid := hold1Valid && !hold1Failed && (isKernel || indirectKernel) && !io.blockDispatch
   io.kernel.bits.commandId := head.commandId
   io.kernel.bits.launch := head.launch
-  io.kernel.bits.waitForDma := head.waitForDma
+  when(isIndirect) { io.kernel.bits.launch.gridSize := indirectResult.groups }
+  io.kernel.bits.waitForDma := head.waitForDma && !isIndirect
   io.kernel.bits.dmaSource := head.dmaSource
   io.kernel.bits.dmaDescriptorId := head.dmaDescriptorId
   io.copy.valid := hold1Valid && !hold1Failed &&
@@ -250,13 +329,20 @@ class GpuCommandRouter(
     io.invalidateCompletion.bits.success,
     io.invalidateCompletion.bits.bytesInvalidated)
   io.invalidateCompletion.ready := completionEvents.io.in(5).ready
-  mapCompletion(6, hold1Valid && (!opcodeValid || hold1Failed) && !io.blockDispatch, head.commandId,
+  mapCompletion(6, hold1Valid && (!opcodeValid || hold1Failed || indirectLocal || indirectDependencyError) && !io.blockDispatch, head.commandId,
     Mux(hold1Failed, GpuCommandResultStatus.eventDependencyFailed,
-      GpuCommandResultStatus.invalidOpcode), false.B, 0.U)
+      Mux(indirectDependencyError,KernelCommandStatus.dmaDependencyFailed,
+        Mux(indirectLocal,indirectResult.status,GpuCommandResultStatus.invalidOpcode))),
+    indirectLocal && indirectResult.success && !hold1Failed, 0.U)
+  indirectResultReady := hold1Valid && isIndirect && !hold1Failed && !io.blockDispatch &&
+    Mux(indirectKernel,io.kernel.ready,completionEvents.io.in(6).ready)
+  indirectDependencyConsumed := completionEvents.io.in(6).fire && indirectDependencyError
 
   val engineReady = MuxCase(
     completionEvents.io.in(6).ready, Seq(
     isKernel -> io.kernel.ready,
+    isIndirect -> Mux(indirectDependencyError,completionEvents.io.in(6).ready,
+      indirectResultValid && Mux(indirectKernel,io.kernel.ready,completionEvents.io.in(6).ready)),
     isCopy -> io.copy.ready,
     isFill -> io.fill.ready,
     isStrided -> io.stridedCopy.ready,
@@ -265,6 +351,7 @@ class GpuCommandRouter(
   val dispatchFire = hold1Valid && !io.blockDispatch &&
     ((opcodeValid && !hold1Failed && engineReady) ||
       ((!opcodeValid || hold1Failed) && completionEvents.io.in(6).ready))
+  indirectHeadRetired := dispatchFire && isIndirect
   val popFire = commands.io.deq.fire
   val shiftFire = hold0Valid && h0Known && (!hold1Valid || dispatchFire)
   commands.io.deq.ready := !hold0Valid || shiftFire
@@ -274,6 +361,7 @@ class GpuCommandRouter(
   when(shiftFire) {
     hold1Cmd := hold0Cmd
     hold1Failed := h0Failed
+    indirectStarted := false.B
   }
   completions.io.enq <> completionEvents.io.out
   io.completion <> completions.io.deq
@@ -311,12 +399,14 @@ class GpuCommandRouter(
     eventGeneration(eventId) := commandSignalGeneration(completedId)
   }
   io.busy := reservedIds.orR
-  val addMemoryOwner = io.command.fire && io.command.bits.opcode =/= GpuCommandOpcode.kernel
-  val removeMemoryOwner = io.completion.fire && io.completion.bits.opcode =/= GpuCommandOpcode.kernel
+  def memoryOpcode(opcode: UInt): Bool = opcode =/= GpuCommandOpcode.kernel &&
+    (if(enableIndirectCompute) opcode =/= GpuCommandOpcode.kernelIndirect else true.B)
+  val addMemoryOwner = io.command.fire && memoryOpcode(io.command.bits.opcode)
+  val removeMemoryOwner = io.completion.fire && memoryOpcode(io.completion.bits.opcode)
   when(addMemoryOwner =/= removeMemoryOwner) {
     memoryOwners := Mux(addMemoryOwner, memoryOwners + 1.U, memoryOwners - 1.U)
   }
   io.memoryEngineBusy := memoryOwners =/= 0.U ||
-    (io.command.valid && io.command.bits.opcode =/= GpuCommandOpcode.kernel)
+    (io.command.valid && memoryOpcode(io.command.bits.opcode)) || indirectArgumentsPending || io.indirectBusy
   }
 }

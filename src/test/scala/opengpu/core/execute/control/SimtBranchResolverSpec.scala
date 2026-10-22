@@ -26,6 +26,8 @@ class SimtBranchResolverSpec extends AnyFlatSpec {
   it should "create alternate and reconvergence entries for a divergent branch" in {
     val config = GpuConfig(lanes = 4)
     simulate(new SimtBranchResolver(config)) { dut =>
+      dut.io.clear.valid.poke(false.B)
+      dut.io.clear.bits.poke(0.U)
       dut.reset.poke(true.B)
       dut.clock.step()
       dut.reset.poke(false.B)
@@ -49,6 +51,8 @@ class SimtBranchResolverSpec extends AnyFlatSpec {
   it should "avoid stack work when all active lanes choose one direction" in {
     val config = GpuConfig(lanes = 4)
     simulate(new SimtBranchResolver(config)) { dut =>
+      dut.io.clear.valid.poke(false.B)
+      dut.io.clear.bits.poke(0.U)
       dut.reset.poke(true.B)
       dut.clock.step()
       dut.reset.poke(false.B)

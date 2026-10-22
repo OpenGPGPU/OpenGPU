@@ -30,7 +30,7 @@ The `weston-texture.*.tgsi` captures are supported shaders. The short runs
 were manually interrupted and do not demonstrate a texture deadlock. In
 `.artifacts/gtk-qualification-final/gtk-smoke.log`, compositor draws 1–10
 completed with status 0, including full-frame draws taking about 16 minutes.
-The client idle frame passed; the captured texture-swizzle rejection remains.
+The client idle frame passed; the captured texture-swizzle rejection remains in that log.
 
 Before extending lowering, reproduce these inputs in a small GLES draw and
 verify the same rejection. After fixing them, require GPU fences and output
@@ -65,3 +65,34 @@ that vertex shader is `MOV OUT[0], CONST[0][0]` and stays on the uniform-colour
 menu. The texture frame from the same log, `TEX` then `SEQ` then a red/blue
 `CMP`, stays on the sampler menu, as does the vertex program that writes
 position `zw` from `(0, 1)` and a vec2 varying.
+
+The two captured programs have been through that sequence. On 2026-10-22 the
+guest gates in `../arti-work/gtk-coverage-proof/` log no `did not lower`.
+Client readback is `(242, 89, 46, 255)` in both modes, and the scanout checker
+accepts the presented rectangle at channel tolerance 3. A same-order pair
+still applies the red/blue swap. An RGBA view into a BGRA window keeps
+`sampler_format=1` and `folded_swap=0`, because the format store already
+places those channels.
+
+The 64×64 periodic run (`GTK_PROOF_KMS_MODE=64x64`,
+`GTK_PROOF_SCANOUT_ENABLE=2`, empty `GTK_PROOF_SCANOUT_MATCH`) is
+`gate-64x64-pass.log`. The client is 64×64. The scanout rectangle is
+`[8, 14, 50, 36]` with 1887 active pixels. Its sha256 is
+`96023b41d72eb995b1e9829cc1fb5281eb71cee973a1b5c13f216cab177e7d7d`.
+That PPM was replaced by the later 640×480 save. Switching into 64×64 is a
+second scanout enable, which is why enable count 2 writes the frame there.
+
+The 640×480 periodic run (`GTK_PROOF_SCANOUT_ENABLE=1`, empty match) is
+`gate.log`, and the saved frame is `gtk-smoke-verified.ppm`. The client is
+280×124. The scanout rectangle is `[93, 223, 227, 72]` with 16571 active
+pixels. Its sha256 is
+`7283ef88946c6e4bb3e474aae530d86c89bbc92f18e075d0165ed0aa9fa7eefa`.
+The 227×72 block is the single colour `f1582d` (16344 pixels). The image has
+16571 pixels of that colour. Exact `f2592e` is absent. `f1582d` is
+`floor(channel * 255 / 256)` from white modulation of the client orange, and
+it is inside the checker's tolerance. The boot console is already 640×480, so
+enable count 2 never dumps on this mode.
+
+A divergent per-pixel branch, a second colour output, a loop, or a general
+NIR compiler waits for a newly captured program that fails to lower. The
+remaining full-frame cost is the serialized `vtex.sample` path.

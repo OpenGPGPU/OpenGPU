@@ -21,6 +21,7 @@ class SimtFrontendControl(config: GpuConfig = GpuConfig()) extends Module {
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
     val issue = Decoupled(new WarpIssue(config))
     val branch = Flipped(Decoupled(new SimtBranchRequest(config)))
+    val overflow = Decoupled(new SimtPath(config))
     val scalarRedirect = Flipped(Decoupled(new SimtPath(config)))
     val restore = Flipped(Decoupled(UInt(config.warpIdWidth.W)))
     val finish = Flipped(Valid(UInt(config.warpIdWidth.W)))
@@ -35,6 +36,7 @@ class SimtFrontendControl(config: GpuConfig = GpuConfig()) extends Module {
   scheduler.io.launch <> io.launch
   io.issue <> scheduler.io.issue
   controlFlow.io.branch <> io.branch
+  io.overflow <> controlFlow.io.overflow
 
   controlFlow.io.restoreWarpId := io.restore.bits
   private val restorePathValid =

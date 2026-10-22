@@ -10,6 +10,7 @@ import scala.collection.mutable
 
 abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHostTestSupport {
   protected def shaderRunningReset: Boolean=false
+  protected def shaderReconvergenceFaults: Boolean=false
   protected def shaderExecutionLimits: Boolean=false
   protected def shaderAvailabilityFaults: Boolean=false
   protected def visibilityQueries: Boolean=false
@@ -314,6 +315,32 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   }
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
+  if(shaderReconvergenceFaults)for(local<-Seq(true,false))
+  it should s"drain binned empty joins in both shared-CU shader stages and reuse payload owners local=$local" in {
+    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
+      val vertexWord=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+        .find(_.name=="draw.vertex.geometry.vertex.shaderPc").get.word
+      val fragmentWord=TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name=="fragment.shaderPc").get.word
+      var frames=0
+      def released(): Unit={perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)}
+      for(stage<-Seq("vertex","fragment")){
+        image.setup(0);val pc=image.region+0x29000
+        image.word(image.pa(pc),BigInt("0000205b",16));image.word(image.pa(pc+4),BigInt("30500073",16))
+        if(stage=="vertex")for(draw<-0 until 2)image.word(image.pa(image.region+0x12000+draw*4096+vertexWord*4),pc)
+        else for(state<-0 until 2)image.word(image.pa(image.region+0x20000+state*512+fragmentWord*4),pc)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(220+frames);image.run(status=5,id=220+frames)
+        assert(image.reads.contains(image.pa(pc)),s"binned $stage join never reached instruction memory")
+        assert(!image.writes.exists(_>=image.imageBase),s"binned $stage join published an image")
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        image.pop();released();frames+=1
+        image.setup(0);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        image.submit(220+frames);image.run(id=220+frames);image.verify();image.pop();released();frames+=1
+      }
+      assert(frames==4)
+      info(s"NATIVE_SIMT_UNDERFLOW_BINNED local=$local CUs2=true engines2=true frames4=true vertexAndFragment=true actualJoinThenCease=true twoShaderFaults=true twoExactHealthyImages=true heldCompletionPinsVM=true payloadReleased=true noImageOnFault=true")
+    }
+  }
   if(shaderAvailabilityFaults)for(local<-Seq(true,false))
   it should s"trap unavailable scalar FP and VF register references before binned issue local=$local" in {
     simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
@@ -527,7 +554,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       primitive.foreach(_.report("BINNED",local,2))
     }
   }
-  if(!transformFeedback && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
+  if(!transformFeedback && !shaderReconvergenceFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
   if(groupedTexture)for(local<-Seq(true,false))
   it should (if(sharedTextureReset)s"drain shared native texture reads across AXI command reset and republish both binned image engines local=$local"
     else s"sample shared RGBA8 in both native binned stages and observe coherent DMA publication across two image engines local=$local") in {

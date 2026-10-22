@@ -8,7 +8,7 @@
   "minimum_quota":1,
   "maximum_quota":4294967295,
   "feature_bits":{"per_warp_admitted_fetches":0,"kernel_snapshot":1,"reset_interrupt":2,"attributed_traps":3,"nonzero_native_quota":4},
-  "trap_causes":{"instruction_limit":24,"interrupted":25},
+  "trap_causes":{"instruction_limit":24,"interrupted":25,"simt_stack_overflow":26,"simt_stack_underflow":27},
   "quota_unit":"admitted instruction fetches per allocated warp, including branches and cease",
   "scope":"native typed and binned shared-CU graphics; compute compatibility uses quota zero",
   "snapshot":"kernel acceptance; later warp allocations retain the same limit",

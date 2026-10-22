@@ -28,6 +28,8 @@ class FrontendICache(
     val branch = Flipped(Decoupled(new SimtBranchRequest(config)))
     val scalarRedirect = Flipped(Decoupled(new SimtPath(config)))
     val restore = Flipped(Decoupled(UInt(config.warpIdWidth.W)))
+    val restoreEmpty = Output(Bool())
+    val overflow = Decoupled(new SimtPath(config))
     val finish = Flipped(Valid(UInt(config.warpIdWidth.W)))
     val active = Output(UInt(config.warps.W))
     val blocked = Output(UInt(config.warps.W))
@@ -51,6 +53,8 @@ class FrontendICache(
   frontend.io.branch <> io.branch
   frontend.io.scalarRedirect <> io.scalarRedirect
   frontend.io.restore <> io.restore
+  io.restoreEmpty := frontend.io.restoreEmpty
+  io.overflow <> frontend.io.overflow
   frontend.io.finish <> io.finish
   io.active := frontend.io.active
   io.blocked := frontend.io.blocked
