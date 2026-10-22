@@ -13,6 +13,11 @@ GitHub must still require the current protected `ci-ok` check and an up-to-date
 branch. Update the topic branch when needed; never bypass protection or push to
 `main`/`master`. Keep genuinely unfinished implementation in draft mode.
 
+Delete temporary topic branches after their PR is merged. Keep GitHub's
+`delete_branch_on_merge` enabled. Delete a leftover remote head only when it
+still matches the merged PR head and has no open PR. Preserve unmerged or
+unpublished work and branches used by active local worktrees.
+
 When creating a Git commit, include one `Co-authored-by` trailer for the agent. The trailer must identify the agent and include the model name, for example:
 
 ```text
