@@ -70,13 +70,16 @@ class GpuHostAxi(
   primitiveQueries: Boolean = false,
   shaderExecutionLimits: Boolean = false,
   enableIndirectCompute: Boolean = false,
-  computeResources: Option[opengpu.config.ComputeResourceProfile] = None
+  computeResources: Option[opengpu.config.ComputeResourceProfile] = None,
+  nativeVertexReuseEntries: Int = 0
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
   require(!externalBinnedRender || (unifiedCommandMmio && protectVmState && !persistentAttachments))
   require(!nativeCompletionInfo || externalBinnedRender)
   require(!nativeVertexInput || externalBinnedRender)
+  require(nativeVertexInput || nativeVertexReuseEntries==0)
+  private val nativeVertexWords=NativeVertexInputCapabilities.wordsFor(nativeVertexReuseEntries)
   require(!visibilityQueries || nativeVertexInput)
   require(!transformFeedback || nativeVertexInput)
   require(!primitiveQueries || transformFeedback)
@@ -499,7 +502,7 @@ class GpuHostAxi(
           .elsewhen(targetBinCapabilities) { rdata:=io.binCapabilityWords.get(((beatAddr-TileBinHostRegs.CAPABILITIES.U)>>2)(2,0)) }
       }
       if(nativeVertexInput)when(targetNativeInput){
-        rdata:=VecInit(NativeVertexInputCapabilities.words.map(_.U(32.W)))(((beatAddr-NativeVertexInputCapabilities.base.U)>>2)(1,0))
+        rdata:=VecInit(nativeVertexWords.map(_.U(32.W)))(((beatAddr-NativeVertexInputCapabilities.base.U)>>2)(1,0))
       }
       if(nativeVertexInput)when(targetTexturePolicy){
         rdata:=VecInit(opengpu.graphics.NativeTextureCapabilities.words.map(_.U(32.W)))(((beatAddr-opengpu.graphics.NativeTextureCapabilities.base.U)>>2)(2,0))

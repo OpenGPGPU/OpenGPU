@@ -10,11 +10,16 @@ object NativeVertexInputCapabilities {
   val formatMask=VertexInputFormat.formats.foldLeft(BigInt(0)){case(mask,(_,id))=>mask.setBit(id)}
   require(VertexInputFormat.formats.forall(_._2<32))
   val words=Seq(magic,BigInt(wordCount),BigInt(VertexInputFormat.version)|(BigInt(VertexInputFormat.width)<<8),formatMask)
+  def wordsFor(reuseEntries: Int): Seq[BigInt]={
+    require(reuseEntries==0 || (reuseEntries>=2 && reuseEntries<=32 && (reuseEntries&(reuseEntries-1))==0))
+    words.updated(2,words(2)|(BigInt(reuseEntries)<<16))
+  }
   def header(prefix: String): String=
     s"#define ${prefix}INPUT_CAPABILITIES 0x${base.toHexString}u\n"+
     s"#define ${prefix}INPUT_CAPABILITY_MAGIC 0x${magic.toString(16)}u\n"+
     s"#define ${prefix}INPUT_CAPABILITY_WORDS ${wordCount}u\n"+
     s"#define ${prefix}INPUT_CAPABILITY_VERSION_WORD 2u\n#define ${prefix}INPUT_CAPABILITY_VERSION_MASK 0xffu\n"+
     s"#define ${prefix}INPUT_CAPABILITY_FORMAT_BITS_SHIFT 8u\n#define ${prefix}INPUT_CAPABILITY_FORMAT_BITS_MASK 0xff00u\n"+
-    s"#define ${prefix}INPUT_CAPABILITY_FORMAT_MASK_WORD 3u\n"
+    s"#define ${prefix}INPUT_CAPABILITY_FORMAT_MASK_WORD 3u\n"+
+    s"#define ${prefix}INPUT_CAPABILITY_REUSE_ENTRIES_SHIFT 16u\n#define ${prefix}INPUT_CAPABILITY_REUSE_ENTRIES_MASK 0xff0000u\n"
 }

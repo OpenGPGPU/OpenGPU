@@ -6,7 +6,7 @@ import opengpu.config.GpuConfig
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,ShaderPayloadBinding}
 import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
 
-case class NativeBinnedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShaderStageConfig(),
+case class NativeBinnedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShaderStageConfig(postTransformEntries=PostTransformVertexCache.defaultEntries),
     fragment: FragmentShaderConfig=FragmentShaderConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),
     engines: Int=2,pageBytes: Int=4096,writeCredits: Int=8,tileSlots: Int=8,pagedCapacity: Int=16384,
     payload: Option[ShaderPayloadConfig]=Some(ShaderPayloadConfig(maxPayloadBytes=16*1024,owners=3,ports=8)),
