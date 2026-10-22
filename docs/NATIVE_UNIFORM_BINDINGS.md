@@ -101,10 +101,12 @@ interface in implemented native hosts. Driver/compiler API admission/lowering
 remains required before declaring API support.
 [Compact translated host checks](NATIVE_UNIFORM_HOST_OWNERSHIP.md)
 cover both stages sharing one table, GPU-produced root/view/data publication,
-denied data pages and held-completion VM ownership.
+denied data pages, ASID remapping/restoration, accepted root/view/data reset
+drain and held-completion VM ownership.
 [Concurrent native stage checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md)
 add overlapping 128-thread vertex/fragment use of one table under fixed payload
-capacity. Concurrent translated publication/lifetime, ASID remapping/reset,
+capacity. Concurrent translated publication/lifetime at full stage capacity,
+general context/cache coherence,
 grouped texture-host composition, rate budgets and
 enclosing clock/product qualification remain open. This binding/execution
 component does not close H0/H6 or the full H0–H8 goal.
