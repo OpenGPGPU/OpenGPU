@@ -52,6 +52,21 @@ class NativeShaderTextureUnitSpec extends AnyFlatSpec {
     }
   }
   for(stage<-0 to 1)
+  it should s"fetch all 32 resident bindings at the exclusive address limit stage=$stage" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage)
+      val values=(0 until 32).map(u=>install(t.put,t.byte,u,3,stage=stage,raw=BigInt(0xff102030L)+u*0x10101))
+      coordinates(t.put)
+      boundaryBindingTable(t.put,a=>t.memory.word(a))
+      for(u<-0 until 32){t.scalarRequest(u%4,u);t.scalarResult(values(u).expected(u%4))}
+      assert((0 until 32).forall(u=>t.memory.seen.exists(_.address==boundaryBindings+u*64)))
+      for(unit<-Seq(BigInt(32),BigInt("ffffffff",16))){
+        val before=t.memory.seen.size;t.scalarRequest(0,unit);t.scalarResult(fault=true)
+        assert(t.memory.seen.drop(before).map(_.address).toSet==Set(root,root+64),"bad unit escaped root admission")
+        t.scalarRequest(0,31);t.scalarResult(values(31).expected(0))
+      }
+    }
+  }
+  for(stage<-0 to 1)
   it should s"fetch every typed component and target through independent stage bindings with stage=$stage" in {
     simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage)
       var checks=0

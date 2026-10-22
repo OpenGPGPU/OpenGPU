@@ -9,6 +9,13 @@ private[graphics] object NativeTextureFetchTestData {
   def roots(put: (BigInt,BigInt)=>Unit,stage: Int=0,id: Seq[BigInt]=defaultIdentity,address: BigInt=root,count: Int=32,offset: BigInt=0): Unit={
     words(put,address+offset,Seq[BigInt](BigInt("47585201",16),128,1)++id++Seq[BigInt](stage,count,bindings+offset,bindings+offset+2048,0,images+offset,images+offset+4096,0,samplers+offset,0,samplers+offset+2048,0),32)
   }
+  // Independent boundary fixture: 32 distinct records occupy the final 2 KiB
+  // of the 32-bit address space. Preserve the exclusive limit's high word.
+  val boundaryBindings = (BigInt(1)<<32)-32*64
+  def boundaryBindingTable(put: (BigInt,BigInt)=>Unit,read: BigInt=>BigInt): Unit={
+    for(n<-0 until 32*16)put(boundaryBindings+n*4,read(bindings+n*4))
+    put(root+8*4,boundaryBindings);put(root+9*4,0);put(root+10*4,1)
+  }
   case class View(address: BigInt,format: Int,raw: BigInt,target: Int,swizzle: Seq[Int]=Seq.empty) {
     val name=if(format<54)ImageFormatReference.names(format)else CompressedImageReference.names(format-54)
     private val decoded=if(format<54)ImageFormatReference.decode(name,raw)else CompressedImageReference.decode(format,raw)

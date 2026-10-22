@@ -65,6 +65,40 @@ class TextureSampleExecuteUnitSpec extends AnyFlatSpec {
     def sample(c: Int=0,vector: Boolean=false,mask: BigInt=all,units: Seq[BigInt]=Seq.fill(lanes)(BigInt(0)),control: Int=1): Unit=
       issue(vector,false,c,units,Seq.fill(lanes)(BigInt(control)),mask)
   }
+  for(stage<-0 to 1)it should s"admit all 32 resident bindings and reject root capacity overflow before selected reads stage=$stage" in {
+    simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage);t.clear()
+      val values=(0 until 32).map(u=>install(t.put,t.byte,u,3,stage=stage,raw=BigInt(0xff102030L)+u*0x10101))
+      boundaryBindingTable(t.put,a=>t.memory.word(a))
+      // Exercise the three separate root-admission paths at native retirement.
+      for(mode<-Seq("sample","integer","size")){
+        t.parameters((if(mode=="sample")Seq(fp(0.75f),fp(0.75f))else Seq[BigInt](1,1))++Seq.fill(14)(BigInt(0)))
+        def access(unit: BigInt,invalid: Boolean=false): Unit={
+          val before=t.memory.seen.size
+          t.issue(false,false,0,Seq.fill(4)(unit),Seq.fill(4)(if(mode=="sample")BigInt(1)else BigInt(0)),
+            integer=mode=="integer",query=mode=="size")
+          t.retire(false,false,Seq(if(invalid)BigInt(0)else if(mode=="size")BigInt(2)else values(unit.toInt).expected(0)),fault=invalid)
+          val reads=t.memory.seen.drop(before).map(_.address)
+          if(invalid)assert(reads.toSet==Set(root,root+64),s"$mode bad capacity escaped root admission: $reads")
+          else {
+            assert(reads.contains(boundaryBindings+unit*64),s"$mode selected a different binding")
+            if(mode=="size")assert(!reads.exists(a=>(a>=samplers && a<samplers+2048) || (a>=0x20000 && a<0x40000)))
+          }
+        }
+        for(u<-0 until 32)access(u)
+        for(unit<-Seq(BigInt(32),BigInt("ffffffff",16))){access(unit,invalid=true);access(31)}
+        // Count and table-span checks precede index narrowing and binding reads.
+        for((word,value)<-Seq(7->BigInt(0),7->BigInt(33),7->BigInt("ffffffff",16),
+            10->BigInt(0),9->BigInt("ffffffc0",16),8->(boundaryBindings+1))){
+          val old=t.memory.word(root+word*4);t.put(root+word*4,value)
+          access(31,invalid=true);t.put(root+word*4,old);access(31)
+        }
+        // A valid, aligned limit can still truncate the final advertised slot.
+        t.put(root+9*4,BigInt("ffffffc0",16));t.put(root+10*4,0)
+        access(31,invalid=true)
+        t.put(root+9*4,0);t.put(root+10*4,1);access(31)
+      }
+    }
+  }
   for(stage<-0 to 1)it should s"capture scalar and vector operands on chip and sample every format through native credits stage=$stage" in {
     simulate(new NativeShaderTextureUnit(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage);t.clear()
       var samples=0
