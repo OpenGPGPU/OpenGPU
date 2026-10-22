@@ -72,6 +72,11 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
     val column=UInt(14.W);val row=UInt(14.W);val slice=UInt(14.W);val layer=UInt(16.W)
     val invalid=Bool();val badCoordinate=Bool()
   }
+  private class CompressedProducts extends Bundle {
+    val metadata=new Products
+    val rows=Vec(6,Vec(2,UInt(49.W)))
+  }
+  private def productFields(d: Products): Seq[UInt]=Seq(d.lastRow,d.lastSlice,d.lastLayer,d.row,d.slice,d.layer)
   private val captured=Queue(io.in,1,pipe=true,flow=false)
   private val prepare=Wire(Decoupled(new Coefficients))
   prepare.valid:=captured.valid;captured.ready:=prepare.ready
@@ -100,27 +105,40 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
   operands.row:=Mux(incoming.block4x4,input.y(13,0)>>2,input.y(13,0))
   operands.slice:=Mux(volume,input.z(13,0),0.U)
   operands.layer:=Mux(cube,input.face.pad(16),Mux(array,input.layer(15,0),0.U))
-  // Composed owners register target selection, block rounding and coefficient
-  // decrements before wide multiplication. Full-width validity accompanies the
-  // captured request; no invalid coordinate can publish a truncated address.
-  private val prepared=if(pipelineProducts)Queue(prepare,1,pipe=true,flow=false)else prepare
   private val multiply=Wire(Decoupled(new Products))
-  multiply.valid:=prepared.valid;prepared.ready:=multiply.ready
-  private val q=prepared.bits.request;private val v=q.view;private val a=multiply.bits;private val coefficients=prepared.bits
-  // Compress one row per coefficient bit, then finish with a prefix adder.
-  // Keep all 47/49 useful product bits, including malformed-view overflow.
-  private def pitchProduct(coefficient: UInt,pitch: UInt): UInt=
-    if(pipelineProducts)CarrySaveMultiplier(pitch,coefficient,false,false)else coefficient*pitch
+  multiply.valid:=prepare.valid;prepare.ready:=multiply.ready
+  private val q=prepare.bits.request;private val v=q.view;private val a=multiply.bits;private val coefficients=prepare.bits
+  private val pitchOperands=Seq(coefficients.rowsMinusOne->v.rowPitch,coefficients.slicesMinusOne->v.slicePitch,
+    coefficients.planesMinusOne->v.layerPitch,coefficients.row->v.rowPitch,coefficients.slice->v.slicePitch,coefficients.layer->v.layerPitch)
   a.invalid:=coefficients.invalid;a.badCoordinate:=coefficients.badCoordinate
   a.tag:=q.tag;a.level:=v.level;a.target:=v.target;a.allocationBase:=v.allocationBase
   a.allocationLimit:=v.allocationLimit;a.base:=v.base
   a.rowPitch:=v.rowPitch;a.slicePitch:=v.slicePitch;a.layerPitch:=v.layerPitch
   a.rowBytes:=coefficients.columns*v.blockBytes
-  a.lastRow:=pitchProduct(coefficients.rowsMinusOne,v.rowPitch);a.lastSlice:=pitchProduct(coefficients.slicesMinusOne,v.slicePitch);a.lastLayer:=pitchProduct(coefficients.planesMinusOne,v.layerPitch)
-  a.column:=coefficients.column*v.blockBytes;a.row:=pitchProduct(coefficients.row,v.rowPitch)
-  a.slice:=pitchProduct(coefficients.slice,v.slicePitch);a.layer:=pitchProduct(coefficients.layer,v.layerPitch)
+  a.column:=coefficients.column*v.blockBytes
+  productFields(a).zip(pitchOperands).foreach{case(field,(coefficient,pitch))=>field:=(if(pipelineProducts)0.U else coefficient*pitch)}
   a.bytes:=v.blockBytes;a.blockX:=Mux(v.block4x4,q.x(1,0),0.U);a.blockY:=Mux(v.block4x4,q.y(1,0),0.U)
-  private val products=Queue(multiply,1,pipe=true,flow=false)
+  private val productInput=if(pipelineProducts){
+    // Use the existing cut for compressed rows, so target selection and the
+    // compressor are separated from prefix finishing without another cycle.
+    // The full 47/49 useful bits and validity of rejected views are retained.
+    val partial=Wire(Decoupled(new CompressedProducts))
+    partial.valid:=multiply.valid;multiply.ready:=partial.ready;partial.bits.metadata:=multiply.bits
+    pitchOperands.zipWithIndex.foreach{case((coefficient,pitch),i)=>
+      val(sum,carry)=CarrySaveMultiplier.compress(pitch,coefficient,false,false)
+      partial.bits.rows(i)(0):=sum;partial.bits.rows(i)(1):=carry
+    }
+    val compressed=Queue(partial,1,pipe=true,flow=false)
+    val finished=Wire(Decoupled(new Products))
+    finished.valid:=compressed.valid;compressed.ready:=finished.ready;finished.bits:=compressed.bits.metadata
+    productFields(finished.bits).zipWithIndex.foreach{case(field,i)=>
+      val width=field.getWidth;val adder=Module(new BlockPrefixAdder(width))
+      adder.io.a:=compressed.bits.rows(i)(0)(width-1,0);adder.io.b:=compressed.bits.rows(i)(1)(width-1,0)
+      adder.io.carryIn:=false.B;field:=adder.io.sum(width-1,0)
+    }
+    finished
+  }else multiply
+  private val products=Queue(productInput,1,pipe=true,flow=false)
   private val finish=Wire(Decoupled(new TextureImageAddressResult))
   private def exactSum(terms: Seq[UInt]): UInt={
     // Enough bits for all original unsigned terms, including rejected views.
@@ -193,5 +211,5 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
   }
   private val result=Queue(finish,1,pipe=true,flow=false)
   io.out<>result
-  io.busy:=captured.valid || prepared.valid || products.valid || result.valid || boundsBusy
+  io.busy:=captured.valid || productInput.valid || products.valid || result.valid || boundsBusy
 }

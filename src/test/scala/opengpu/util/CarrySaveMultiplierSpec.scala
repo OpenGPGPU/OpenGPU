@@ -8,8 +8,11 @@ class CarrySaveMultiplierProbe(aw: Int, bw: Int, signedA: Boolean, signedB: Bool
   val io = IO(new Bundle {
     val a = Input(UInt(aw.W)); val b = Input(UInt(bw.W))
     val product = Output(UInt((aw + bw).W))
+    val compressedProduct = Output(UInt((aw + bw).W))
   })
   io.product := CarrySaveMultiplier.apply(io.a, io.b, signedA, signedB)
+  private val(sum,carry)=CarrySaveMultiplier.compress(io.a,io.b,signedA,signedB)
+  io.compressedProduct:=(sum+&carry)(aw+bw-1,0)
 }
 
 class CarrySaveMultiplierSpec extends AnyFlatSpec {
@@ -32,6 +35,7 @@ class CarrySaveMultiplierSpec extends AnyFlatSpec {
           dut.io.a.poke(a.U); dut.io.b.poke(b.U); dut.clock.step()
           val expected = (signed(a,aw,sa) * signed(b,bw,sb)) & ((BigInt(1) << (aw+bw)) - 1)
           assert(dut.io.product.peek().litValue == expected, s"a=$a b=$b")
+          assert(dut.io.compressedProduct.peek().litValue == expected, s"compressed a=$a b=$b")
         }
       }
       info(s"operandBits=$aw/$bw signed=$sa/$sb exactProducts=${cases.size}")

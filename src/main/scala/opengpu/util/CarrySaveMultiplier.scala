@@ -11,7 +11,7 @@ import chisel3.util.Cat
   * addition propagates a carry across the full result.
   */
 object CarrySaveMultiplier {
-  def apply(a: UInt, b: UInt, signedA: Boolean, signedB: Boolean): UInt = {
+  private def compressedRows(a: UInt, b: UInt, signedA: Boolean, signedB: Boolean): Seq[UInt] = {
     val aw = a.getWidth
     val bw = b.getWidth
     require(aw > 0 && bw > 0)
@@ -43,6 +43,20 @@ object CarrySaveMultiplier {
         }
       }.toSeq
     }
+    rows
+  }
+
+  /** Two exact carry-save rows, suitable for registration before finishing.
+    * Their sum modulo 2^(A+B) equals the same full-width product as apply.
+    */
+  def compress(a: UInt,b: UInt,signedA: Boolean,signedB: Boolean): (UInt,UInt) = {
+    val rows=compressedRows(a,b,signedA,signedB)
+    (rows.head,rows.lift(1).getOrElse(0.U((a.getWidth+b.getWidth).W)))
+  }
+
+  def apply(a: UInt, b: UInt, signedA: Boolean, signedB: Boolean): UInt = {
+    val width=a.getWidth+b.getWidth
+    val rows=compressedRows(a,b,signedA,signedB)
     if (rows.size == 1) rows.head
     else {
       val adder = Module(new BlockPrefixAdder(width))
