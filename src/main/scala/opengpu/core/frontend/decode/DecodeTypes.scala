@@ -120,7 +120,8 @@ class VectorDecodeResponse(config: GpuConfig) extends Bundle {
   val decoded = new VectorDecodeSignals
 }
 
-class DecodePipeIO(config: GpuConfig) extends Bundle {
+class DecodePipeIO(config: GpuConfig, taskTextureAvailability: Boolean = false) extends Bundle {
+  val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
   val in = Flipped(Decoupled(new DecodeRequest(config)))
   val scalarOut = Decoupled(new ScalarDecodeResponse(config))
   val fpuOut = Decoupled(new FpuDecodeResponse(config))
