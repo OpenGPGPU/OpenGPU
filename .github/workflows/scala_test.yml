@@ -6,25 +6,93 @@
 name: Scala CI
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, closed]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+concurrency:
+  group: scala-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
+  pull-requests: read
 
 jobs:
+  # No repository code, toolchain setup or tests run before this metadata gate.
+  approval:
+    if: github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      approved: ${{ steps.review.outputs.approved }}
+      merge_sha: ${{ steps.review.outputs.merge_sha }}
+    steps:
+    - name: Require an approving review of the current PR head
+      id: review
+      uses: actions/github-script@v7
+      with:
+        script: &review_gate |
+          core.setOutput('approved', 'false');
+          const { owner, repo } = context.repo;
+          const number = context.payload.pull_request.number;
+          const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+          if (pr.state !== 'open' || pr.draft || pr.base.ref !== 'main' ||
+              pr.head.sha !== context.payload.pull_request.head.sha ||
+              pr.merge_commit_sha !== context.sha) {
+            core.info('PR is closed, draft, or this run is no longer for its current merge commit.');
+            return;
+          }
+          const reviews = await github.paginate(github.rest.pulls.listReviews,
+            { owner, repo, pull_number: number, per_page: 100 });
+          const latest = new Map();
+          for (const review of reviews.sort((a, b) => a.id - b.id)) {
+            if (['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)) {
+              latest.set(review.user.login, review);
+            }
+          }
+          let approvals = 0;
+          let changesRequested = false;
+          for (const [username, review] of latest) {
+            if (username === pr.user.login) continue;
+            let permission;
+            try {
+              const response = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username });
+              permission = response.data.permission;
+            } catch (error) {
+              if (error.status === 404) continue;
+              throw error;
+            }
+            if (!['write', 'maintain', 'admin'].includes(permission)) continue;
+            if (review.state === 'CHANGES_REQUESTED') changesRequested = true;
+            if (review.state === 'APPROVED' && review.commit_id === pr.head.sha) approvals++;
+          }
+          if (!approvals || changesRequested) {
+            core.info('Waiting for a write-authorized reviewer to approve the latest commit.');
+            return;
+          }
+          core.setOutput('approved', 'true');
+          core.setOutput('merge_sha', context.sha);
+
   driver:
+    needs: approval
+    if: needs.approval.outputs.approved == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.approval.outputs.merge_sha }}
+        persist-credentials: false
     - name: Run host script tests
       run: bash scripts/test_scripts.sh
 
   # Resolve affected packages once, then fan out only the shards that have work.
   # Keeps Verilator/JDK setup off runners that would immediately no-op.
   select:
+    needs: approval
+    if: needs.approval.outputs.approved == 'true'
     runs-on: ubuntu-latest
     outputs:
       selected: ${{ steps.select.outputs.selected }}
@@ -32,20 +100,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
+        ref: ${{ needs.approval.outputs.merge_sha }}
+        persist-credentials: false
         fetch-depth: 0
     - name: Select affected tests and shards
       id: select
       run: |
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          BASE=$(git merge-base origin/main HEAD)
-        else
-          # A push can contain several commits; HEAD^ misses changes in all
-          # but the last one. Compare the whole pushed range instead.
-          BASE='${{ github.event.before }}'
-          if [ "$BASE" = '0000000000000000000000000000000000000000' ]; then
-            BASE=$(git hash-object -t tree /dev/null)
-          fi
-        fi
+        # Both PR events and review events test the approved merge snapshot.
+        BASE=$(git merge-base origin/main HEAD)
         CHANGED=$(git diff --name-only "$BASE" HEAD)
         echo "Changed files:"
         echo "$CHANGED"
@@ -65,8 +127,8 @@ jobs:
         } >> "$GITHUB_OUTPUT"
 
   scala:
-    needs: select
-    if: needs.select.outputs.selected != 'NONE'
+    needs: [approval, select]
+    if: needs.approval.outputs.approved == 'true' && needs.select.outputs.selected != 'NONE'
     strategy:
       fail-fast: false
       matrix:
@@ -83,6 +145,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
+        ref: ${{ needs.approval.outputs.merge_sha }}
+        persist-credentials: false
         submodules: recursive
     - name: Set up JDK 11
       uses: actions/setup-java@v4
@@ -192,10 +256,16 @@ jobs:
         sbt $FLAGS 'set Test / parallelExecution := false' "testOnly $SUITES"
 
   dependency-graph:
+    needs: approval
+    if: needs.approval.outputs.approved == 'true' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-26.04
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
       with:
+        ref: ${{ needs.approval.outputs.merge_sha }}
+        persist-credentials: false
         submodules: recursive
     - name: Set up JDK 11
       uses: actions/setup-java@v4
@@ -208,21 +278,41 @@ jobs:
     - name: Upload dependency graph
       uses: scalacenter/sbt-dependency-submission@ab086b50c947c9774b70f39fc7f6e20ca2706c91
 
-  # Stable required-check name once branch protection points at it.
+  # Never report a skipped, unapproved run as a successful required check.
   ci-ok:
-    if: always()
-    needs: [driver, select, scala, dependency-graph]
+    if: always() && github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open'
+    needs: [approval, driver, select, scala, dependency-graph]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
+    - name: Recheck approval and the tested commit before accepting results
+      id: review
+      if: needs.approval.outputs.approved == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: *review_gate
     - name: Aggregate job results
+      env:
+        APPROVED: ${{ needs.approval.outputs.approved }}
+        STILL_APPROVED: ${{ steps.review.outputs.approved }}
+        IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
       run: |
+        if [ "$APPROVED" != "true" ] || [ "$STILL_APPROVED" != "true" ]; then
+          echo "::error::An approving review of the latest PR commit is required before tests can run."
+          exit 1
+        fi
+        [ "${{ needs.approval.result }}" = "success" ] || exit 1
         echo "driver=${{ needs.driver.result }}"
         echo "select=${{ needs.select.result }}"
         echo "scala=${{ needs.scala.result }}"
         echo "dependency-graph=${{ needs.dependency-graph.result }}"
         [ "${{ needs.driver.result }}" = "success" ] || exit 1
         [ "${{ needs.select.result }}" = "success" ] || exit 1
-        [ "${{ needs.dependency-graph.result }}" = "success" ] || exit 1
+        case "${{ needs.dependency-graph.result }}" in
+          success) ;;
+          skipped) [ "$IS_FORK" = "true" ] || exit 1 ;;
+          *) exit 1 ;;
+        esac
         # When selection is NONE the scala job is skipped — treat as success.
         case "${{ needs.scala.result }}" in
           success|skipped) ;;
