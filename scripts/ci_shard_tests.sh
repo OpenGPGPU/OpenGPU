@@ -23,8 +23,8 @@
 #   system-mem   — AXI masters and the register-only host
 #   system-host  — GpuHostSystemAxi plus the fill-throughput model
 #   system-walk  — 4-CU desktop page-walk and address repros (one shared model)
-#   system-tex   — programmable texture and parallel ordering
-#   system-wide  — WideSharedGraphicsSpec (1/2/4 CU)
+#   system-tex-0..7 — programmable texture and ordering, bucketed by suite
+#   system-wide-0..3 — wide shared graphics, bucketed by suite
 #   system-core  — GpuSystem command, geometry, and indirect compute
 #   system-rt-narrow — 4- and 8-lane runtime shaders (side 16, one CU)
 #   system-rt-16     — 16-lane runtime shader (side 32, one and four CUs)
@@ -73,21 +73,21 @@ shard_prefixes() {
   esac
 }
 
-all_shards=(graphics-0 graphics-1 graphics-2 graphics-3 graphics-4 graphics-5 graphics-6 graphics-7 system-mem system-host system-walk system-tex system-wide system-core system-rt-narrow system-rt-16 system-rt-32 system-rt-batch system-pool core-a core-b)
+all_shards=(graphics-0 graphics-1 graphics-2 graphics-3 graphics-4 graphics-5 graphics-6 graphics-7 system-mem system-host system-walk system-tex-0 system-tex-1 system-tex-2 system-tex-3 system-tex-4 system-tex-5 system-tex-6 system-tex-7 system-wide-0 system-wide-1 system-wide-2 system-wide-3 system-core system-rt-narrow system-rt-16 system-rt-32 system-rt-batch system-pool core-a core-b)
 
 graphics_shard_files() {
   # Hash paths rather than source bytes or directory order: editing a test or
   # adding a new file must not move all the other compiled models to new runners.
   python3 - "$test_root" "${1#graphics-}" <<'PY'
 from pathlib import Path
+import hashlib
 import sys
-import zlib
 
 root = Path(sys.argv[1])
 bucket = int(sys.argv[2])
 for path in sorted((root / "opengpu/graphics").rglob("*Spec.scala")):
     key = path.relative_to(root).as_posix().encode("utf-8")
-    if zlib.crc32(key) % 8 == bucket:
+    if hashlib.sha256(key).digest()[0] % 8 == bucket:
         print(path)
 PY
 }
@@ -159,6 +159,10 @@ shard_spec_files() {
       graphics_shard_files "$shard"
       return
       ;;
+    system-tex-[0-7]|system-wide-[0-3])
+      system_shard_files "${shard%-*}"
+      return
+      ;;
     system-*)
       system_shard_files "$shard"
       return
@@ -193,7 +197,7 @@ shard_flags() {
     system-rt-32)
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1'
       ;;
-    system-rt-16|system-rt-batch|system-tex|system-wide)
+    system-rt-16|system-rt-batch|system-tex-[0-7]|system-wide-[0-3])
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1'
       ;;
     system-host|system-walk|system-core|system-pool|system-rt-narrow)
@@ -221,6 +225,27 @@ fqcns_of() {
       if (name ~ /Spec$/) print package_name "." name
     }
   ' "$@"
+}
+
+fqcns_for_shard() {
+  local shard=$1 buckets
+  shift
+  case "$shard" in
+    system-tex-[0-7]) buckets=8 ;;
+    system-wide-[0-3]) buckets=4 ;;
+    *) fqcns_of "$@"; return ;;
+  esac
+  # These files contain many inherited configurations, each compiling distinct
+  # full-system models. Partition concrete suite names instead of putting all
+  # configurations from one source file back on a single runner.
+  fqcns_of "$@" | python3 -c '
+import hashlib, sys
+bucket, count = map(int, sys.argv[1:])
+for name in sys.stdin:
+    name = name.strip()
+    if hashlib.sha256(name.encode("utf-8")).digest()[0] % count == bucket:
+        print(name)
+' "${shard##*-}" "$buckets"
 }
 
 matches_glob() {
@@ -257,7 +282,7 @@ suites_for_shard() {
     if suite_selected "$fqcn" "$selected"; then
       out+=("$fqcn")
     fi
-  done < <(fqcns_of "${files[@]}")
+  done < <(fqcns_for_shard "$shard" "${files[@]}")
   if [ "${#out[@]}" -gt 0 ]; then
     printf '%s\n' "${out[*]}"
   fi

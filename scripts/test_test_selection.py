@@ -73,12 +73,13 @@ ci_skip_files = {
 }
 ci_skip = set().union(*(suites_by_file[name] for name in ci_skip_files))
 graphics_shards = tuple(f"graphics-{i}" for i in range(8))
+texture_shards = tuple(f"system-tex-{i}" for i in range(8))
+wide_shards = tuple(f"system-wide-{i}" for i in range(4))
 shards = graphics_shards + (
     "system-mem",
     "system-host",
     "system-walk",
-    "system-tex",
-    "system-wide",
+) + texture_shards + wide_shards + (
     "system-core",
     "system-rt-narrow",
     "system-rt-16",
@@ -132,13 +133,14 @@ assert assigned["opengpu.core.frontend.decode.DecoderSpec"] == "core-b"
 assert "opengpu.core.frontend.decode.ScalarDecoderSpec" not in assigned
 for suite in ("Fp32CentroidInterpolationSpec", "Fp32DepthResolutionRasterSpec", "PolygonDepthOffsetSpec", "PolygonDepthOffsetRasterSpec", "PolygonDepthResolutionSpec"):
     assert assigned["opengpu.graphics." + suite] in graphics_shards
-assert json.loads(shard_cmd("shards-json", "ALL")) == list(shards)
+populated_shards = [shard for shard in shards if shard_cmd("suites", shard, "ALL")]
+assert json.loads(shard_cmd("shards-json", "ALL")) == populated_shards
 assert json.loads(shard_cmd("shards-json", "NONE")) == []
 assert json.loads(shard_cmd("shards-json", "opengpu.graphics.*")) == list(graphics_shards)
 assert shard_cmd("flags", "system-rt-32") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1"
 assert shard_cmd("flags", "system-rt-narrow") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2"
-assert shard_cmd("flags", "system-wide") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1"
-assert shard_cmd("flags", "system-tex") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1"
+for shard in texture_shards + wide_shards:
+    assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1"
 assert shard_cmd("flags", "system-mem") == ""
 for shard in graphics_shards:
     assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1"
@@ -152,7 +154,7 @@ assert json.loads(shard_cmd("shards-json", one_suite)) == [assigned[one_suite]]
 graphics_fanout = " ".join(select("src/main/scala/opengpu/graphics/RenderHost.scala"))
 scheduled = json.loads(shard_cmd("shards-json", graphics_fanout))
 assert set(graphics_shards).issubset(scheduled)
-for shard in shards:
+for shard in populated_shards:
     if shard.startswith("system-"):
         assert shard in scheduled, shard
 assert json.loads(shard_cmd("shards-json", " ".join(vector_selected))) == [
