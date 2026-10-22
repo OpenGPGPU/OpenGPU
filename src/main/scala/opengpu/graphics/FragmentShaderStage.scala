@@ -130,7 +130,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val resident=RegInit(false.B);private val leaseActive=RegInit(false.B);private val finishOffered=RegInit(false.B);private val finishStarted=RegInit(false.B)
   private val invalidateOffered=RegInit(false.B);private val invalidatePending=RegInit(false.B);private val launchOffered=RegInit(false.B);private val kernelActive=RegInit(false.B);private val kernelDone=RegInit(false.B)
   private val memOffered=RegInit(false.B);private val memPending=RegInit(false.B);private val memRequest=Reg(new ComputeMemoryRequest(config,64,1))
-  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),helperInvocations=true))
+  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),helperInvocations=true,nativeResources=true))
   private val texture=Module(new NativeShaderTextureUnit(config,stage=1,groupedTexture=groupedTexture))
   if(groupedTexture){io.grouped.get <> texture.io.grouped.get}
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))

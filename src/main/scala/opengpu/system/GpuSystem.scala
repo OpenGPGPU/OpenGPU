@@ -957,6 +957,7 @@ class GpuSystem(
       // One physical launch is selected per cycle. Registered graphicsOwner
       // still describes the preceding task on this kernel-acceptance edge.
       unit.io.textureEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire
+      unit.io.nativeResourcesEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire && io.graphicsKernels.get.nativeResources
     }
     if (shaderExecutionLimits) {
       // graphicsOwner changes after kernel.fire. Snapshot the actual selected
