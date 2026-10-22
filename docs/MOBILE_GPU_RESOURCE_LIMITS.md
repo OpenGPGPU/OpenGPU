@@ -54,11 +54,13 @@ simultaneous stage capacity.
 
 GTC1/GNC2/GTO1 do not advertise a uniform-block namespace or the above uniform
 limits. Ordinary CU loads alone do not establish the missing binding, range,
-publication and lifetime contract. The next implementation must define that
-contract, including its shader lowering, and check complete legal ranges,
-boundary failures, held tasks, VM faults and healthy reuse through both native
-stages. It must keep uniform data outside private-prefix clearing and preserve
-the current kernarg ABI.
+publication and lifetime contract. The [checked uniform load service](UNIFORM_BUFFER_RESOURCES.md)
+defines GUR1/GUB1 roots and read-only views, twelve stage mappings, twenty-four
+bindings and default storage outside the private prefix. Its standalone checks
+cover complete 16 KiB/default ranges, boundary failures, snapshots, faults and
+cancellation drain for both stages. Native instruction/draw/discovery wiring,
+shader lowering, translated publication and simultaneous actual-CU stage
+capacity remain open. Preserve the current kernarg ABI throughout that work.
 
 ## V: stage interfaces — partial
 
