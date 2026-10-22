@@ -122,6 +122,27 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
     }
     def cancel(): Unit={d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)}
   }
+  it should "snapshot fixed indirect parameter slots and reject malformed mode padding or index selection" in {
+    simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
+      for(mode<-Seq(1,2)){
+        t.prepare(1)
+        t.drawValues++=Map[String,BigInt]("indirect.mode"->mode,"indirect.view.base"->0x803c,
+          "indirect.view.limit"->(0x803c+(if(mode==1)16 else 20)),"indirect.view.allocationBase"->0x8000,
+          "indirect.view.allocationLimit"->0x8080,"input.indexFormat"->(if(mode==1)0 else 2),"input.restart"->0)
+        for((word,value)<-Seq(76->mode,88->0x803c,89->(0x803c+(if(mode==1)16 else 20)),91->0x8000,92->0x8080,
+          74->(if(mode==1)0 else 2),75->0))t.memory(0x4000+word*4)=value
+        t.blockDraw=true;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+        t.memory(0x4000+76*4)=0;t.memory(0x4000+88*4)=0
+        for(_<-0 until 5)t.tick()
+        d.io.draw.bits.shaders.vertex.vertex.geometry.indirect.mode.expect(mode.U)
+        t.blockDraw=false;t.complete(0,1)
+      }
+      for(change<-Seq[(Int,BigInt)](76->BigInt(3),76->BigInt(4),76->BigInt(1),88->BigInt(0x803c))){
+        t.prepare(1);t.memory(0x4000+change._1*4)=change._2;t.submit();t.complete(1)
+      }
+      t.prepare(1);t.submit();t.complete(0,1)
+    }
+  }
   for(entries<-Seq(0,16))
   it should s"snapshot opt-in vertex output reuse and reject unsupported capacity or padding entries=$entries" in {
     simulate(new NativeTypedGraphicsJobReader(p=p.copy(postTransformEntries=entries),f=f)){d=>val t=new Driver(d)

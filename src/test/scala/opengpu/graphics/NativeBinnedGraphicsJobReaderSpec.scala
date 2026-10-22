@@ -146,6 +146,27 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
     def healthy(): Unit={prepare();submit();complete(0,2);assert(acceptedBegins==1 && acceptedEnds==1 && peak==4 && reordered)}
   }
 
+  it should "snapshot fixed indirect parameter slots and reject malformed mode padding or index selection" in {
+    simulate(new Harness){d=>val t=new Driver(d)
+      val prefix="draw.vertex.geometry.indirect."
+      for(mode<-Seq(1,2)){
+        t.prepare(1)
+        t.drawValues++=Map[String,BigInt](prefix+"mode"->mode,prefix+"view.base"->0x803c,
+          prefix+"view.limit"->(0x803c+(if(mode==1)16 else 20)),prefix+"view.allocationBase"->0x8000,
+          prefix+"view.allocationLimit"->0x8080,"draw.vertex.geometry.vertex.input.indexFormat"->(if(mode==1)0 else 2))
+        for((word,value)<-Seq(499->mode,500->0x803c,501->(0x803c+(if(mode==1)16 else 20)),503->0x8000,504->0x8080))t.memory(t.drawBase+word*4)=value
+        t.set(t.drawBase,t.df,"draw.vertex.geometry.vertex.input.indexFormat",if(mode==1)0 else 2)
+        t.blockDraw=true;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+        t.memory(t.drawBase+499*4)=0;t.memory(t.drawBase+500*4)=0
+        for(_<-0 until 5)t.tick()
+        d.io.draw.bits.vertex.geometry.indirect.mode.expect(mode.U);t.blockDraw=false;t.complete(0,1)
+      }
+      for(change<-Seq[(Int,BigInt)](499->BigInt(3),499->BigInt(4),499->BigInt(2),500->BigInt(0x803c))){
+        t.prepare(1);t.memory(t.drawBase+change._1*4)=change._2;t.submit();t.complete(1)
+      }
+      t.prepare(1);t.submit();t.complete(0,1)
+    }
+  }
   for(entries<-Seq(0,16))
   it should s"snapshot opt-in vertex output reuse and reject unsupported capacity or padding entries=$entries" in {
     simulate(new Harness(reuseEntries=entries)){d=>val t=new Driver(d)

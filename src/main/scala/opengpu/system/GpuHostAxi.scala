@@ -71,15 +71,16 @@ class GpuHostAxi(
   shaderExecutionLimits: Boolean = false,
   enableIndirectCompute: Boolean = false,
   computeResources: Option[opengpu.config.ComputeResourceProfile] = None,
-  nativeVertexReuseEntries: Int = 0
+  nativeVertexReuseEntries: Int = 0,
+  nativeIndirectDraw: Boolean = false
 ) extends Module {
   require(!protectVmState || unifiedCommandMmio)
   require(!persistentAttachments || (unifiedCommandMmio && protectVmState))
   require(!externalBinnedRender || (unifiedCommandMmio && protectVmState && !persistentAttachments))
   require(!nativeCompletionInfo || externalBinnedRender)
   require(!nativeVertexInput || externalBinnedRender)
-  require(nativeVertexInput || nativeVertexReuseEntries==0)
-  private val nativeVertexWords=NativeVertexInputCapabilities.wordsFor(nativeVertexReuseEntries)
+  require(nativeVertexInput || (nativeVertexReuseEntries==0 && !nativeIndirectDraw))
+  private val nativeVertexWords=NativeVertexInputCapabilities.wordsFor(nativeVertexReuseEntries,nativeIndirectDraw)
   require(!visibilityQueries || nativeVertexInput)
   require(!transformFeedback || nativeVertexInput)
   require(!primitiveQueries || transformFeedback)

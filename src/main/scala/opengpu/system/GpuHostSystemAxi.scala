@@ -283,6 +283,7 @@ class GpuHostSystemAxi(
       persistentAttachments = persistentAttachments, tileStoreCredits = tileStoreCredits,
       useTileSramBlackBoxes = useBlackBoxes, externalBinnedRender = externalRender,nativeCompletionInfo=nativeBinnedGraphics.nonEmpty,
       nativeVertexInput=typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,visibilityQueries=visibilityQueries,
+      nativeIndirectDraw=typedGraphics.nonEmpty || nativeBinnedGraphics.nonEmpty,
       nativeVertexReuseEntries=typedGraphics.map(_.vertex.postTransformEntries).orElse(nativeBinnedGraphics.map(_.vertex.postTransformEntries)).getOrElse(0),
       shaderExecutionLimits=nativeExecutionLimits,
       enableIndirectCompute=enableIndirectCompute,
