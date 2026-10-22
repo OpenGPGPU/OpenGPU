@@ -100,6 +100,9 @@ object EmitPpaRtl {
       case "mobile-uniform-vertex" | "mobile-uniform-fragment" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ShaderUniformLoadUnit(
           stage=if(args(0)=="mobile-uniform-vertex")0 else 1),stageArgs,firtoolArgs)
+      case "mobile-uniform-execute-vertex" | "mobile-uniform-execute-fragment" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ShaderUniformExecuteUnit(
+          stage=if(args(0)=="mobile-uniform-execute-vertex")0 else 1),stageArgs,firtoolArgs)
       case "mobile-vertex-memory-responses" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexMemoryResponseRouter,stageArgs,firtoolArgs)
       case "mobile-vertex-reuse" =>
