@@ -104,6 +104,7 @@ assert set(assigned) == all_specs - ci_skip, (
 assert ci_skip.isdisjoint(assigned)
 assert assigned["opengpu.system.GpuHostAxiOwnershipSpec"] == "system-mem"
 assert assigned["opengpu.system.ComputeResourceCapabilitiesAxiSpec"] == "system-mem"
+assert assigned["opengpu.system.NativeUniformCapabilitiesAxiSpec"] == "system-mem"
 assert assigned["opengpu.system.NativeRgba8TextureMemoryFabricSpec"] == "system-mem"
 assert assigned["opengpu.system.ComputeResourceFullHostSpec"] == "system-host"
 assert assigned["opengpu.system.HostExecutionAvailabilitySpec"] == "system-host"
