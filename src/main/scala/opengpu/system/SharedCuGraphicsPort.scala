@@ -15,12 +15,21 @@ case class SharedCuShaderConfig(
   numComputeUnits: Int,
   taskIdWidth: Int = 8,
   parallelFragments: Boolean = false,
-  shaderPayload: Option[ShaderPayloadConfig] = None
+  shaderPayload: Option[ShaderPayloadConfig] = None,
+  fragmentWorkerCount: Int = 0
 ) {
   require(numComputeUnits > 0)
   require(taskIdWidth > 0)
   require(shaderPayload.isEmpty || parallelFragments,"local renderer payloads use parallel shared fragment workers")
-  val fragmentWorkers: Int = if (parallelFragments) numComputeUnits else 1
+  require(fragmentWorkerCount>=0 && fragmentWorkerCount<=16 && (fragmentWorkerCount==0 || parallelFragments),
+    "explicit parallel fragment workers must be 1..16, keeping staging credits within the event counters")
+  val fragmentWorkers: Int = if (parallelFragments) {
+    if(fragmentWorkerCount==0)numComputeUnits else fragmentWorkerCount
+  } else 1
+  require(fragmentWorkers<=opengpu.graphics.ShaderResourceConfig.FieldMask/2,
+    "fragment kernarg banks must fit the shader resource record")
+  require(!parallelFragments || BigInt(fragmentWorkers+1)<=(BigInt(1)<<taskIdWidth),
+    "reserve a task tag for every fragment worker and the vertex client")
   val fragmentBanks: Int = fragmentWorkers * 2
   val tasksPerEngine: Int = if(parallelFragments)fragmentWorkers+1 else 1
   val rendererPayloadPins: Int = 2*(fragmentWorkers+1)
