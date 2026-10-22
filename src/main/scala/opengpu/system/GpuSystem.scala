@@ -229,7 +229,7 @@ class GpuSystem(
   private val commandRouter = Module(new GpuCommandRouter(
     config, commandIdWidth, commandQueueDepth = config.commandQueueDepth,
     completionQueueDepth = config.completionQueueDepth, enableIndirectCompute = enableIndirectCompute))
-  private val dispatcher = Module(new SharedCuKernelDispatcher(
+  private val dispatcher = Module(new SharedCuGridDispatcher(
     config, numComputeUnits, commandIdWidth,shaderPayload))
   private val memory = Module(new SharedComputeMemoryInterconnect(
     config, numComputeUnits, 64, transactionsPerCu))
@@ -252,7 +252,7 @@ class GpuSystem(
         instructionCacheMissEntries,
         vectorCacheSets,
         vectorCacheWays,
-        finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits))
+        finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(p,useBlackBoxes,numComputeUnits+1+producerPayloadPins)))
   // The generic compute system has no graphics sampler. Keep the optional
@@ -949,6 +949,7 @@ class GpuSystem(
       unit.io.payload.get.response<>payloadStore.get.io.response(p.owners+cu)
     }
     unit.io.kernel <> dispatcher.io.cuLaunch(cu)
+    unit.io.gridSlice.get := dispatcher.io.cuGridSlice(cu)
     if (shaderExecutionLimits) {
       // graphicsOwner changes after kernel.fire. Snapshot the actual selected
       // producer on admission, including a graphics task drained during reset.

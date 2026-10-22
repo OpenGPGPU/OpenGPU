@@ -1,0 +1,62 @@
+{
+  "passed": true,
+  "scope": "Component and actual direct-system compute-grid checkpoint only; fresh resource/indirect/native composition and strict synthesis remain separate pending gates.",
+  "source_files": 1056,
+  "source_manifest": ".artifacts/mobile-compute-grid-v2-source.json",
+  "source_proof": ".artifacts/mobile-compute-grid-v2-source-proof.json",
+  "tests": 20,
+  "test_counts": [
+    7,
+    2,
+    11
+  ],
+  "fresh_checks": 9,
+  "compatibility_checks": 11,
+  "functional_result": ".artifacts/mobile-compute-grid-v2-result.json",
+  "corrected_baseline": {
+    "result": ".artifacts/mobile-compute-grid-baseline-v2-result.json",
+    "failures": 2,
+    "observation": "Old hardware passes exact3Dbuiltins/stores/guards but peaks at1activeCU with2/4configured; newhardware peaksat2/4. Identical corrected test uses bitCount of actual busy mask.",
+    "recovery": ".artifacts/worktree-cleanup-backups-2026-10-22/compute-grid-corrected-baseline/result.json"
+  },
+  "original_fixture_failure": {
+    "result": ".artifacts/mobile-compute-grid-v1-result.json",
+    "observation": "The original fixture compared masks3/15 against counts2/4. Preserved unchanged hardware/code/source/logs; only metric fixed, allCUconcurrency requirement retained."
+  },
+  "coverage": [
+    "Actual2CU4lane2warp and4CUdefault16lane8warp/defaultI/V/L2, one2x2x2grid atfullresidentcapacity, exact16/64 stores, allbuiltins, guardwords, actualdelayedreplies, heldcompletion/VM.",
+    "Defaultdistributor2parents, XYZorder, peak4privatechildren, reordered/simultaneouscompletion, stableoffers/results and parentIDreservation.",
+    "Realchildfault with alreadyheldoffer, offeredownershipdrainsbeforeparentfailure, sameedgelastadmission+fault count, healthyreuse, fulluint32slice andrangecheck.",
+    "Originalphysicalgraphicsdispatcher/payloadownership, same numericcompute/graphicsIDs and separatecompletioncredits, one/two/fourCUs; legacydispatch/controllers unchanged."
+  ],
+  "C_header_strict_check": true,
+  "emissions": 3,
+  "emission_profiles": [
+    "default4CU16lane8warp8bitIDdistributor",
+    "defaultsharedphysicalarbiterwithpayloadpins",
+    "defaultsingle-groupjobadmission"
+  ],
+  "synthesis": {
+    "state": "running; excluded from20",
+    "state_file": ".artifacts/mobile-compute-grid-synthesis-v2-state.json",
+    "policy": "Synthesisonly1000psTC/SLVT25%IO standardABC,no retiming,zero skipped; no wholeCU/hostclaim."
+  },
+  "fresh_integration": {
+    "state": "running; excluded from20",
+    "state_file": ".artifacts/mobile-compute-grid-integration-v2-state.json",
+    "expected_counts": [
+      7,
+      11,
+      4,
+      4,
+      4
+    ],
+    "scope": "GCRactualowner/AXI/admission;GCI/indirectactual2CU/default4CU/AXI/Sv32/reset;nativejoin,quota/reset,runninglooprealdrain."
+  },
+  "main_promoted": false,
+  "remaining": [
+    "Fresh composed host/native checks, generatedABIchecks and defaultcomponent synthesis.",
+    "Instruction-driven lane-wise branch execution, full resource/permission/scratch contracts and wholeCU/hosttiming.",
+    "RemainingH7/H8,coherence,rates,frame/SRAM/productbudgets and allotherH0-H8 gates."
+  ]
+}

@@ -152,7 +152,7 @@ specification.
 
 | ID | Requirement group | Existing starting point and remaining hardware contract | State |
 |---|---|---|---|
-| E31-01 | Compute resources | EXEC/HOST execute kernels. General dispatch geometry, built-ins, resources and advertised limits need qualification. | Partial |
+| E31-01 | Compute resources | [50-check grid/resource integration](performance/mobile-compute-grid-main-2026-10-22.json) distributes one grid across all default four CUs, preserves original XYZ/local/warp built-ins and exposes immutable GCR1 limits. Actual host/native/AXI/Sv32/reset checks, three ABI checks, strict C validation and three default grid component synthesis screens pass. General shader resources, permissions, instruction-driven SIMD branches and whole-host timing remain open. | Partial |
 | E31-02 | Storage buffers/images | CU memory execution exists. Add typed image/storage descriptors, bounds and format-dependent operations. | Partial |
 | E31-03 | Atomics | EXEC implements shared atomic requests. General required storage classes, ordering and contention/fault coverage remain open. | Partial |
 | E31-04 | Memory and workgroup barriers | EXEC has a workgroup barrier; HOST has publication. Complete execution/memory-domain ordering across images, textures, attachments and DMA remains open. | Partial |

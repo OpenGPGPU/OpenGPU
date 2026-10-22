@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-22",
+  "status": "qualified compute grid and resource discovery integrated into main; full-host clock remains open",
+  "candidate_commit": "be3c6045a8ed59dd5494623c312c04bb19ced11e",
+  "main_parent": "7a62fbcd28c9958c41bc45b507d855d345d1ebf1",
+  "source_manifest": ".artifacts/mobile-compute-grid-v2-source.json",
+  "source_files": 1056,
+  "source_sha256": "d7734be7fcb0ec393ba31534f823a3b8adfa7b06ce69989e91c682ea8f36a2c2",
+  "main_integration_proof": ".artifacts/mobile-compute-grid-main-integration-proof.json",
+  "functional_tests": 50,
+  "component_and_actual_grid_checks": {
+    "tests": 20,
+    "test_counts": [
+      7,
+      2,
+      11
+    ],
+    "result": ".artifacts/mobile-compute-grid-v2-result.json"
+  },
+  "fresh_host_and_native_checks": {
+    "tests": 30,
+    "test_counts": [
+      7,
+      11,
+      4,
+      4,
+      4
+    ],
+    "result": ".artifacts/mobile-compute-grid-integration-v2-result.json",
+    "ABI_checks": 3,
+    "strict_C_check": true
+  },
+  "emissions": 5,
+  "synthesis": {
+    "stage": "synthesis",
+    "period_ps": 1000,
+    "cell_vt": "SLVT",
+    "corner": "TC",
+    "io_delay_fraction": 0.25,
+    "standard_ABC": true,
+    "retiming": false,
+    "false_paths": false,
+    "components": {
+      "distributor": {
+        "passed": true,
+        "core_IO_slacks_ps": [
+          362.358,
+          383.019
+        ],
+        "skipped_instances": 0,
+        "result": ".artifacts/mobile-compute-grid-synthesis-v2-distributor-result.json"
+      },
+      "shared": {
+        "passed": true,
+        "core_IO_slacks_ps": [
+          441.012,
+          342.01
+        ],
+        "skipped_instances": 0,
+        "result": ".artifacts/mobile-compute-grid-synthesis-v2-shared-result.json"
+      },
+      "slice": {
+        "passed": true,
+        "core_IO_slacks_ps": [
+          515.501,
+          667.415
+        ],
+        "skipped_instances": 0,
+        "result": ".artifacts/mobile-compute-grid-synthesis-v2-slice-result.json"
+      }
+    },
+    "scope": "Complete default distributor, shared physical CU arbiter with payload ownership, and sliced-job admission. Shared includes distributor; do not sum their area. These results do not qualify whole-CU or whole-host timing."
+  },
+  "full_control_synthesis": {
+    "timing_result": null,
+    "original_client_timed_out_seconds": 3600,
+    "original_container_adopted_without_Yosys_restart": true,
+    "state": ".artifacts/mobile-compute-resources-adopted-v2-state.json",
+    "scope": "Larger coenabled host screen remains separate; its timeout is not a negative slack result."
+  },
+  "main_integration_basis": "All1055executedhardware/ABI/build/testdependencies are byte-identical. Solecatalogdifference is the independently committed unexecuted GTK guest script; newer GTK presentation README is outside the catalog. Preserve all user commits and dirty files. Component timing and actual host/native runtime qualify this feature checkpoint; broad host timing is not asserted.",
+  "later_topic_changes_excluded": [
+    "Native control RenderHost/Core pruning from a3d3255e; freshPPA and14native runtime checks remain pending.",
+    "Rerouted quad/raster/texture candidates stay on their own branches pending independent qualification."
+  ],
+  "remaining": [
+    "Instruction-driven lane-wise branches, scratch/resource permissions and full execution contract.",
+    "Whole-CU/host timing, general memory/coherence/rate/budget qualification.",
+    "Remaining H0-H8 including H7 storage/images/atomics/barriers/indirect drawing and H8 geometry/tessellation."
+  ]
+}

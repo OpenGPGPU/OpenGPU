@@ -7,9 +7,10 @@ import opengpu.core.backend.register.{ScalarRegisterWrite, VectorRegisterWrite}
 import opengpu.core.frontend.warp.WarpLaunch
 
 /** Host-launch to initialized-warp control path for one compute unit. */
-class SingleCuKernelController(config: GpuConfig = GpuConfig()) extends Module {
+class SingleCuKernelController(config: GpuConfig = GpuConfig(), gridSlices: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val kernel = Flipped(Decoupled(new KernelLaunch(config)))
+    val gridSlice = if (gridSlices) Some(Input(new KernelGridSlice)) else None
     val completion = Decoupled(new KernelCompletion)
     val activeWarps = Input(UInt(config.warps.W))
     val scalarInitialize = Decoupled(new ScalarRegisterWrite(config))
@@ -20,7 +21,8 @@ class SingleCuKernelController(config: GpuConfig = GpuConfig()) extends Module {
     val workgroupDispatchComplete = Output(Bool())
   })
 
-  private val dispatch = Module(new KernelDispatchPipeline(config))
+  private val dispatch = Module(new KernelDispatchPipeline(config, gridSlices))
+  if (gridSlices) { dispatch.io.gridSlice.get := io.gridSlice.get }
   private val initialize = Module(new WarpContextInitializer(config))
   private val running = RegInit(0.U(config.warps.W))
   private val dispatchComplete = RegInit(false.B)

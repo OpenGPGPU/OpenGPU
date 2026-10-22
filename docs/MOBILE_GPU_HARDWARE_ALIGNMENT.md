@@ -7898,3 +7898,33 @@ component-test dependencies and emitted component RTL. One-grid distribution
 across the CU pool remains unqualified. Whole-CU/host timing,
 resource/watchdog/capacity-discovery contracts and
 the remaining H0-H8 goal remain open.
+
+
+### Single-grid compute distribution candidate, 2026-10-22
+
+The [compute-grid checkpoint](performance/mobile-compute-grid-distribution-2026-10-22.json)
+passes20 checks on1,056 frozen inputs. One2x2x2 grid now uses all configured CUs
+concurrently in both actual2CU4-lane/two-warp and default4CU16-lane/eight-warp
+profiles, with exact16/64 built-in stores, guards and actual delayed write replies.
+The corrected old-hardware baseline reaches one CU in both profiles.
+
+The [distributor](COMPUTE_GRID_DISTRIBUTION.md) keeps each workgroup on one CU,
+retains original grid/local built-ins, owns private child tags and parent
+completion rows, and drains already offered/accepted groups after a real fault.
+Existing physical graphics arbitration, payload pins and independent completion
+credits are retained. Seven new unit cases include held offers, reordered and
+simultaneous completion, same-edge last admission/fault, full-width slices and
+one/two/four-CU payload ownership. Eleven legacy dispatch checks also pass.
+
+The [GCR1 candidate](COMPUTE_RESOURCES.md) reports the executing compute pool at
+0x360..0x39f and fixes the GCI1 local-item limit when legacy graphics uses another
+configuration. Fresh composed discovery/AXI/admission, indirect execution and
+native join/quota/reset regressions are running; they are excluded from20.
+Default component synthesis remains pending at1000psTC/SLVT with25%IO, standard
+ABC, no retiming and zero skipped instances required. Main promotion needs these
+gates; full resource/branch/coherence/rate/product and H0-H8 requirements remain
+open.
+
+### Compute grid/resource main integration, 2026-10-22
+
+The [qualified compute-grid base](performance/mobile-compute-grid-main-2026-10-22.json) is integrated into main with50 distinct checks, three ABI checks, strict C validation and five emissions. One actual2x2x2grid uses all default four16-lane/eight-warp CUs concurrently with exact built-ins/stores; host discovery, indirect/AXI/Sv32/reset and native fault/interruption recovery also pass. Complete distributor/shared-arbiter/slice-admission synthesis passes1000ps TC/SLVT with25%IO, standardABC, no retiming/falsepaths and zero skips. All1055executedhardware/ABI/build/test dependencies retain their qualified bytes; independent GTK updates are preserved. The larger coenabled-control container remains adopted after its client timeout; no whole-host clock claim is made. The newer native-control pruning and raster/texture candidates stay separate until their own checks finish. General execution/resource contracts, H7/H8 and the full H0-H8 target remain open.

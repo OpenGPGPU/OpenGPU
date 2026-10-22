@@ -29,12 +29,14 @@ class GpuComputeUnit(
   vectorCacheWays: Int = 2,
   finishOnTrap: Boolean = false,
   shaderPayload: Option[opengpu.graphics.ShaderPayloadConfig] = None,
-  executionLimits: Boolean = false
+  executionLimits: Boolean = false,
+  gridSlices: Boolean = false
 ) extends Module {
   require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   val io = IO(new Bundle {
     val execution=if(executionLimits)Some(Input(new opengpu.core.frontend.ShaderExecutionControl))else None
     val kernel = Flipped(Decoupled(new KernelLaunch(config)))
+    val gridSlice = if (gridSlices) Some(Input(new opengpu.dispatch.KernelGridSlice)) else None
     val completion = Decoupled(new KernelCompletion)
 
     val memoryRequest = Decoupled(new ComputeMemoryRequest(config))
@@ -73,7 +75,7 @@ class GpuComputeUnit(
       Flipped(Decoupled(new VectorCommitRequest(config)))
   })
 
-  private val controller = Module(new SingleCuKernelController(config))
+  private val controller = Module(new SingleCuKernelController(config, gridSlices))
   private val core = Module(
     new GpuCore(
       config,
@@ -96,6 +98,7 @@ class GpuComputeUnit(
   private val memoryInterconnect = Module(new ComputeUnitMemoryInterconnect(config))
 
   controller.io.kernel <> io.kernel
+  if (gridSlices) { controller.io.gridSlice.get := io.gridSlice.get }
   io.completion <> controller.io.completion
   controller.io.activeWarps := core.io.active
   core.io.scalarInitialize <> controller.io.scalarInitialize

@@ -15,6 +15,14 @@ class KernelLaunch(config: GpuConfig) extends Bundle {
   val localSize = Vec(3, UInt(16.W))
 }
 
+/** Optional CU admission sideband. Original grid dimensions remain in KernelLaunch.
+  * A single workgroup owns the CU until its real completion is accepted.
+  */
+class KernelGridSlice extends Bundle {
+  val singleGroup = Bool()
+  val groupId = Vec(3, UInt(32.W))
+}
+
 class WorkgroupTask(config: GpuConfig) extends Bundle {
   val invocations = new opengpu.core.memory.KernelInvocationPolicy(config)
   val kernelPc = UInt(config.xLen.W)
