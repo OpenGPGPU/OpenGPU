@@ -44,6 +44,17 @@ class SimtBranchRequest(config: GpuConfig) extends Bundle {
   val takenMask = UInt(config.lanes.W)
 }
 
+/** Explicit reconvergence scope established before a structured branch/loop.
+  * The target names its join instruction; restoring the marker resumes at
+  * target+4 with the original SIMT mask. No scalar ABI register is reserved.
+  */
+class SimtSyncRequest(config: GpuConfig) extends Bundle {
+  val warpId = UInt(config.warpIdWidth.W)
+  val pc = UInt(config.xLen.W)
+  val activeMask = UInt(config.lanes.W)
+  val joinPc = UInt(config.xLen.W)
+}
+
 class SimtBranchResult(config: GpuConfig) extends Bundle {
   val pc = UInt(config.xLen.W)
   val activeMask = UInt(config.lanes.W)

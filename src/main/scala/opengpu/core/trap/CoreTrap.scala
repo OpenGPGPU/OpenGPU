@@ -8,6 +8,7 @@ import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.memory.{ScalarMemoryFault, VectorMemoryFault}
 
 object TrapCause {
+  val instructionAddressMisaligned = 0
   val shaderInstructionLimit = 24
   val shaderInterrupted = 25
   val simtStackOverflow = 26

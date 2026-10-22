@@ -14,6 +14,11 @@ class SimtStackEntry(config: GpuConfig) extends Bundle {
   val activeMask = UInt(config.lanes.W)
   val originalMask = UInt(config.lanes.W)
   val divergent = Bool()
+  /** Instruction scopes and their alternate paths retain the same join PC.
+    * Legacy externally supplied paths keep structured=false and preserve pc.
+    */
+  val structured = Bool()
+  val joinPc = UInt(config.xLen.W)
 }
 
 /** Small per-warp LIFO for divergent control flow.

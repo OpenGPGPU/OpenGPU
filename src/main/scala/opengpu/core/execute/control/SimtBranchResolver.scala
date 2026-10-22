@@ -52,11 +52,15 @@ class SimtBranchResolver(config: GpuConfig = GpuConfig()) extends Module {
       outBits.alternate.activeMask := fallthroughActive
       outBits.alternate.originalMask := io.in.bits.activeMask
       outBits.alternate.divergent := true.B
+      outBits.alternate.structured := false.B
+      outBits.alternate.joinPc := 0.U
       outBits.hasReconvergence := divergent
       outBits.reconvergence.pc := io.in.bits.reconvergePc
       outBits.reconvergence.activeMask := io.in.bits.activeMask
       outBits.reconvergence.originalMask := io.in.bits.activeMask
       outBits.reconvergence.divergent := false.B
+      outBits.reconvergence.structured := false.B
+      outBits.reconvergence.joinPc := 0.U
     }
   }
   when(clearSaved && !io.in.fire) { outValid := false.B }
