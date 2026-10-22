@@ -162,8 +162,14 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val secondBytes=Reg(UInt(7.W));private val secondLine=Reg(UInt(32.W))
   private val memOffered=RegInit(false.B);private val memPending=RegInit(false.B)
   private val memRequest=Reg(new ComputeMemoryRequest(config,64,1))
-  private val vertices=RegInit(0.U(64.W));private val restarts=RegInit(0.U(64.W));private val batches=RegInit(0.U(64.W))
-  private val localBatches=RegInit(0.U(64.W));private val spilledBatches=RegInit(0.U(64.W))
+  private val vertexCount=Module(new CarrySaveAccumulator(64,prefixValue=true))
+  private val restartCount=Module(new CarrySaveAccumulator(64,prefixValue=true))
+  private val vertices=vertexCount.io.value;private val restarts=restartCount.io.value
+  private val batchCount=Module(new CarrySaveAccumulator(64,prefixValue=true))
+  private val localBatchCount=Module(new CarrySaveAccumulator(64,prefixValue=true))
+  private val spilledBatchCount=Module(new CarrySaveAccumulator(64,prefixValue=true))
+  private val batches=batchCount.io.value;private val localBatches=localBatchCount.io.value
+  private val spilledBatches=spilledBatchCount.io.value
   private val writtenBytes=Module(new CarrySaveAccumulator(64,prefixValue=true))
   private val fetchedBytes=Module(new CarrySaveAccumulator(64,prefixValue=true))
   private val writeBytes=writtenBytes.io.value;private val readBytes=fetchedBytes.io.value
@@ -178,6 +184,15 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   // Count actual handshakes with bitwise feedback; only observation propagates
   // carries. Clear retains priority over a coincident transfer on draw admission.
   writtenBytes.io.clear:=phase===idle && io.draw.fire;fetchedBytes.io.clear:=writtenBytes.io.clear
+  Seq(vertexCount,restartCount,batchCount,localBatchCount,spilledBatchCount).foreach(_.io.clear:=writtenBytes.io.clear)
+  vertexCount.io.addend:=(io.out.fire && !record.restart).asUInt
+  restartCount.io.addend:=(io.out.fire && record.restart).asUInt
+  // Admission readiness must not feed a 64-bit increment chain. Observation
+  // stays combinational, so completion sees the same accepted-launch count.
+  private val batchAccepted=shader.io.launch.valid && shader.io.launch.ready
+  batchCount.io.addend:=batchAccepted.asUInt
+  localBatchCount.io.addend:=(batchAccepted && resident).asUInt
+  spilledBatchCount.io.addend:=(if(payload.nonEmpty) batchAccepted && !resident else false.B).asUInt
   private val transferredBytes=PopCount(memRequest.byteMask)
   writtenBytes.io.addend:=Mux(stageRequest.fire && memRequest.isWrite,transferredBytes,0.U)
   fetchedBytes.io.addend:=Mux(stageRequest.fire && !memRequest.isWrite,transferredBytes,0.U)
@@ -266,9 +281,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   shader.io.launch.localY:=1.U;shader.io.launch.localZ:=1.U
   shader.io.launch.gridX:=1.U;shader.io.launch.gridY:=1.U;shader.io.launch.gridZ:=1.U
   when(shader.io.launch.valid && shader.io.launch.ready) {
-    launchOffered:=false.B;kernelActive:=true.B;kernelDone:=false.B;batches:=batches+1.U
-    when(resident){localBatches:=localBatches+1.U}
-    if(payload.nonEmpty)when(!resident){spilledBatches:=spilledBatches+1.U}
+    launchOffered:=false.B;kernelActive:=true.B;kernelDone:=false.B
     when(count>maxLocalX){maxLocalX:=count}
   }
   when(shader.io.completion.fire){kernelActive:=false.B;kernelDone:=true.B}
@@ -300,7 +313,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     }
   }
   io.completion.valid:=phase===complete;io.completion.bits:=result
-  when(io.out.fire){outputValid:=false.B;when(record.restart){restarts:=restarts+1.U}.otherwise{vertices:=vertices+1.U}}
+  when(io.out.fire){outputValid:=false.B}
   private def fail(code: UInt,address: UInt): Unit={when(status===0.U && !externalCancel){status:=code;faultAddress:=address}}
   private def overlap(a: UInt,end: UInt,b: VertexInputView): Bool=a<b.limit && end>b.base
   private def mask(offset: UInt,bytes: UInt): UInt=((~0.U(64.W))>>(64.U(7.W)-bytes))<<offset
@@ -356,7 +369,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       draw:=io.draw.bits;status:=0.U;faultAddress:=0.U;count:=0.U;outputValid:=false.B
       reuseChecked:=false.B;reuseHit:=false.B
       inputStarted:=false.B;inputDone:=false.B;inputResult:=0.U.asTypeOf(inputResult);inputResult.identity:=io.draw.bits.input.identity
-      vertices:=0.U;restarts:=0.U;batches:=0.U;localBatches:=0.U;spilledBatches:=0.U;maxLocalX:=0.U
+      maxLocalX:=0.U
       val in=(io.draw.bits.attributeSlots<<2)+3.U;val out=(io.draw.bits.varyingSlots<<2)+4.U+(io.draw.bits.version===2.U).asUInt
       inputWords:=in;outputWords:=out;inputBytes:=in*stride.U;prefixBytes:=(in+&out)*stride.U
       payloadContext:=io.payload.map(_.context).getOrElse(0.U);phase:=validate

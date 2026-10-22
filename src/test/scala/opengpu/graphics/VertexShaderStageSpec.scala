@@ -333,12 +333,13 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       for(_<-0 until 17){t.tick();assert(d.io.out.bits.peek().litValue==held);if(local)d.io.reservedBytes.expect(d.pp.slotBytes.U)}
       d.io.out.ready.poke(true.B);t.until(d.io.completion.valid.peek().litToBoolean)
       d.io.completion.bits.vertices.expect(16.U);d.io.completion.bits.restarts.expect(2.U);d.io.completion.bits.batches.expect(3.U)
-      d.io.completion.bits.localBatches.expect((if(local)3 else 0).U);d.io.completion.bits.maxLocalX.expect(8.U)
+      d.io.completion.bits.localBatches.expect((if(local)3 else 0).U);d.io.completion.bits.spilledBatches.expect(0.U)
+      d.io.completion.bits.maxLocalX.expect(8.U)
       t.check();t.complete(0);assert(t.launches==3);assert((t.globalStaging==0)==local)
       if(local) {
         val leases=Vector.fill(d.pp.slots)(t.pressure(ShaderPayloadControl.allocate))
         t.exports.clear();t.descriptor();t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
-        d.io.completion.bits.localBatches.expect(0.U);d.io.completion.bits.spilledBatches.expect(3.U)
+        d.io.completion.bits.batches.expect(3.U);d.io.completion.bits.localBatches.expect(0.U);d.io.completion.bits.spilledBatches.expect(3.U)
         t.check();d.io.completion.ready.poke(true.B);t.tick();d.io.completion.ready.poke(false.B)
         leases.foreach{case(h,g)=>t.pressure(ShaderPayloadControl.release,h,g)}
         t.until(d.io.idle.peek().litToBoolean);d.io.poolDrained.expect(true.B);assert(t.globalStaging>0)
@@ -458,6 +459,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       t.until(d.io.launchOffered.peek().litToBoolean);d.io.cancel.poke(true.B)
       for(_<-0 until 11){d.io.launchOffered.expect(true.B);d.io.busy.expect(true.B);d.io.completion.valid.expect(false.B);t.tick()}
       d.io.blockLaunch.poke(false.B);t.until(d.io.completion.valid.peek().litToBoolean);assert(t.exports.isEmpty)
+      d.io.completion.bits.batches.expect(1.U);d.io.completion.bits.localBatches.expect(1.U);d.io.completion.bits.spilledBatches.expect(0.U)
       d.io.cancel.poke(false.B);t.complete(VertexInputStatus.cancelled)
       // An offered export retains its reservation and value until it is consumed.
       t.descriptor(false,1,3);t.submit();t.until(d.io.out.valid.peek().litToBoolean)
@@ -468,7 +470,9 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       // The failing input record cannot become a partially shaded/exported vertex.
       t.exports.clear();t.fault=(addr,write)=>addr==0x7000 && !write
       t.descriptor(false,1,3);t.view(d.io.draw.bits.input.bindings(0),0x7000,256)
-      t.submit();t.complete(VertexInputStatus.memoryFault);assert(t.exports.isEmpty)
+      t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.batches.expect(0.U);d.io.completion.bits.localBatches.expect(0.U);d.io.completion.bits.spilledBatches.expect(0.U)
+      t.complete(VertexInputStatus.memoryFault);assert(t.exports.isEmpty)
       t.fault=(_,_)=>false
       t.put(0x2000,0);t.descriptor(false,1,3);d.io.draw.bits.shaderPc.poke(0x2000.U);t.submit()
       t.complete(VertexShaderStatus.shaderFault);assert(t.exports.isEmpty)
