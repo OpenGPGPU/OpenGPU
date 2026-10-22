@@ -137,11 +137,14 @@ address field is insufficient evidence.
 | Array layers | 256 | TIA qualifies every layer and a full 2048-square 256-layer RGBA8 array ending at 4 GiB | GPU binding and mip tables, layer selection/filtering and native provenance/visibility |
 | 3D dimension | 256 | TIA qualifies every slice and a full 256-cubed volume at the address component | GPU descriptors, 3D coordinate/filtering operations and native memory/fault ownership |
 
-Uniform, varying, texture-unit, renderbuffer and per-stage resource limits still
-need individual rows from the normative tables. Until that expansion and its
-tests are complete, H0's general feature/limit contract and H6's capability gate
-remain open. Proposal storage budgets and CU lane/warp counts cannot substitute
-for shader-visible binding limits.
+The [shader and framebuffer capacity contract](MOBILE_GPU_RESOURCE_LIMITS.md)
+adds individual normative uniform, varying, texture-unit and renderbuffer rows,
+their implemented discovery paths and missing boundary evidence. Thirty-two
+resident bindings per native stage are checked at the exclusive 4 GiB table
+boundary. Uniform-block discovery/lifetimes, full native varying combinations
+and full-size framebuffer capacity remain open. H0's general feature/limit
+contract and H6's capability gate therefore remain open; proposal storage
+budgets and CU lane/warp counts cannot substitute for shader-visible limits.
 
 ## Later capability stages
 
