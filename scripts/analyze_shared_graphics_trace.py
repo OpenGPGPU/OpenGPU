@@ -15,20 +15,6 @@ results=[]
 for path in paths:
     cus=int(path.name.split('-')[1]); totals=collections.Counter();phase=[0]*6
     samples=0;peak=0
-    for row in csv.DictReader(path.open()):
-        duration=int(row['duration']);bits=int(row['events_hex'],16)
-        phases=[(bits>>(8*i))&255 for i in range(6)]
-        outstanding=(bits>>48)&255
-        samples+=duration;peak=max(peak,outstanding)
-        for i,count in enumerate(phases):phase[i]+=duration*count
-        for i,name in enumerate(('idle','write','launch','run','read','emit')):
-            if phases[i]:totals[name+'_any']+=duration
-        for bit,name in ((56,'staging_blocked'),(57,'output_blocked'),(58,'om_stall'),(59,'raster_stall'),(60,'bvalid'),(61,'rvalid'),(62,'awvalid'),(63,'arvalid')):
-            if bits&(1<<bit):totals[name]+=duration
-        if outstanding:totals['staging_outstanding_any']+=duration
-        if not phases[3] and (phases[1] or phases[4]):totals['staging_without_shader_run']+=duration
-    assert sum(phase) == cus * samples, "each worker must occupy exactly one phase per cycle"
-    memory=collections.Counter()
     prefix=path.name.removesuffix('-cycles.csv')
     metadata_path=root/f'{prefix}-metadata.json'
     if metadata_path.exists():
@@ -47,6 +33,25 @@ for path in paths:
                     bank_stride=(9*stride+32+63)&~63,kernarg=0x10000,
                     color=0x30000,depth=0x40000,commands=0x2000,
                     program=0x4000,descriptor=0x1000)
+    workers=config.get('fragment_workers',cus)
+    assert type(workers) is int and 1<=workers<=127, 'Invalid fragment worker count'
+    assert config['bank_count']==2*workers, 'Scratch bank count must match fragment workers'
+    for row in csv.DictReader(path.open()):
+        duration=int(row['duration']);bits=int(row['events_hex'],16)
+        assert duration>0, "Trace intervals must have positive duration"
+        phases=[(bits>>(8*i))&255 for i in range(6)]
+        assert sum(phases)==workers, "Each fragment worker must occupy exactly one phase per cycle"
+        outstanding=(bits>>48)&255
+        samples+=duration;peak=max(peak,outstanding)
+        for i,count in enumerate(phases):phase[i]+=duration*count
+        for i,name in enumerate(('idle','write','launch','run','read','emit')):
+            if phases[i]:totals[name+'_any']+=duration
+        for bit,name in ((56,'staging_blocked'),(57,'output_blocked'),(58,'om_stall'),(59,'raster_stall'),(60,'bvalid'),(61,'rvalid'),(62,'awvalid'),(63,'arvalid')):
+            if bits&(1<<bit):totals[name]+=duration
+        if outstanding:totals['staging_outstanding_any']+=duration
+        if not phases[3] and (phases[1] or phases[4]):totals['staging_without_shader_run']+=duration
+    assert samples>0, 'Empty cycle trace cannot establish worker accounting'
+    memory=collections.Counter()
     mp=root/f'{prefix}-memory.csv'
     for row in csv.DictReader(mp.open()):
         addr=int(row['address_hex'],16);kind='other'
@@ -62,7 +67,7 @@ for path in paths:
             elif config['vertex_buffer']<=addr<config['vertex_buffer']+3*32:kind='vertex_input'
             elif config['vertex_kernarg']<=addr<config['vertex_kernarg']+2*config['vertex_bank_stride']:kind='vertex_staging'
         memory[kind+'_'+row['operation']]+=1
-    r=dict(cus=cus,axi_data_bytes=axi_bytes,side=side,alu_loops=alu_loops,traced_cycles=samples,phase_worker_cycles=phase,peak_staging_outstanding=peak,cycle_events=dict(totals),lower_memory_transactions=dict(memory),trace_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (path,mp)})
+    r=dict(cus=cus,fragment_workers=workers,axi_data_bytes=axi_bytes,side=side,alu_loops=alu_loops,traced_cycles=samples,phase_worker_cycles=phase,peak_staging_outstanding=peak,cycle_events=dict(totals),lower_memory_transactions=dict(memory),trace_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (path,mp)})
     r['configuration']=config
     if metadata_path.exists():
         r['trace_sha256'][metadata_path.name]=hashlib.sha256(metadata_path.read_bytes()).hexdigest()
