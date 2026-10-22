@@ -12,6 +12,10 @@ requirements pass. Incomplete implementation remains draft; failing checks
 block merging. The agent updates an outdated topic branch rather than bypassing
 protection. Repository auto-merge must remain enabled.
 
+Keep automatic deletion of merged PR branches enabled. Clean up leftover
+temporary remote heads only after verifying they still match their merged PR
+and have no open PR. Preserve unmerged work and active local worktrees.
+
 Open, non-draft PRs run host checks, compile all main/test Scala sources, and run
 an affected subset of fourteen bounded unit suites in `scripts/ci_pr_suites.txt`.
 The PR lane uses one runner with a 15-minute timeout. Documentation-only changes
