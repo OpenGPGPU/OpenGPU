@@ -179,6 +179,7 @@ assert len(pr_suites) == len(set(pr_suites)) == 14
 assert set(pr_suites) <= all_specs
 assert not any("GpuComputeUnit" in suite or "HostAxi" in suite for suite in pr_suites)
 assert shard_cmd("pr-suites", "NONE") == ""
+assert shard_cmd("pr-suites", "opengpu.core.trap.*").split() == pr_suites
 assert set(shard_cmd("pr-suites", "opengpu.graphics.*").split()) == {
     suite for suite in pr_suites if suite.startswith("opengpu.graphics.")
 }

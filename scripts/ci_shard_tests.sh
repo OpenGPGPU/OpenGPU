@@ -294,6 +294,7 @@ suites_for_shard() {
 
 pr_suites() {
   local selected=$1 suite
+  local -a catalog=() matched=()
   local declared
   declared=$(fqcns_of $(find "$test_root" -name '*Spec.scala' -print))
   while IFS= read -r suite; do
@@ -304,10 +305,19 @@ pr_suites() {
       echo "PR suite does not exist: $suite" >&2
       return 1
     fi
+    catalog+=("$suite")
     if suite_selected "$suite" "$selected"; then
-      printf '%s\n' "$suite"
+      matched+=("$suite")
     fi
-  done < "$root/scripts/ci_pr_suites.txt" | paste -sd ' ' -
+  done < "$root/scripts/ci_pr_suites.txt"
+  # A valid code selection outside the small catalog still runs bounded smoke
+  # tests. It must not silently degrade to compilation alone.
+  if [ "$selected" != NONE ] && [ "${#matched[@]}" -eq 0 ]; then
+    matched=("${catalog[@]}")
+  fi
+  if [ "${#matched[@]}" -gt 0 ]; then
+    printf '%s\n' "${matched[*]}"
+  fi
 }
 
 shards_json() {

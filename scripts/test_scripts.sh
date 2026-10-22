@@ -13,6 +13,7 @@ cd "$GPU_DIR"
 python3 scripts/test_driver.py
 python3 scripts/validate_offload_kernel.py
 python3 scripts/test_test_selection.py
+python3 scripts/test_check_pr_test_results.py
 python3 scripts/test_display_config.py
 python3 scripts/test_qmp_screendump_protocol.py
 python3 scripts/test_verify_gtk_scanout.py

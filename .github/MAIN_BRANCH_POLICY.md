@@ -15,8 +15,15 @@ protection. Repository auto-merge must remain enabled.
 Open, non-draft PRs run host checks, compile all main/test Scala sources, and run
 an affected subset of fourteen bounded unit suites in `scripts/ci_pr_suites.txt`.
 The PR lane uses one runner with a 15-minute timeout. Documentation-only changes
-run host checks. Draft PRs skip both gate jobs. New commits cancel superseded runs; `ci-ok` rejects stale heads,
-drafts, changed base branches and failed/canceled checks.
+run host checks. Code changes with no affected suite in that catalog run the
+bounded catalog as smoke coverage. A code PR must finish a nonzero ScalaTest run;
+the Actions summary records its suites and test count. This does not establish
+integration coverage for the changed component.
+
+Draft PRs skip expensive validation, but `ci-ok` runs and fails. New commits
+cancel superseded runs; `ci-ok` rejects stale heads, drafts, changed base
+branches and failed/canceled/skipped checks. Closing or merging a PR does not
+start another CI run, so a redundant skipped run cannot obscure the real result.
 
 `Scala regression` retains the broad integration matrix separately. It runs
 nightly, skipping an exact revision already covered by a successful regression,
