@@ -13,6 +13,10 @@ information while separating long carry and normalization paths.
   are unchanged.
 - Vertex element, component and exclusive-end sums use prefix adders. Their
   65/66-bit results still reject overflow before any memory request.
+- Private index address, bounds and cache-hit registers capture on the existing
+  preparation phase independently of cancellation. A stopped task drains before
+  consuming those values, keeping cancellation out of their arithmetic enables.
+  No phase, memory transfer, launch/export queue or state bit is added.
 - Global staging-clear start/end, inclusive-last-line and advance arithmetic
   use prefix adders. The exclusive prefix end retains its 33rd bit, byte masks
   preserve adjacent input/uniform values, and clearing never wraps into address
@@ -42,13 +46,15 @@ conversion/fetch, independent coordinate/filter references, depth and EAC
 normalization, complete image sampling, and actual shared-CU cancellation and
 local/global vertex execution.
 
-**68 distinct directed checks pass**, including twelve multiplier checks of
+**69 distinct directed checks pass**, including twelve multiplier checks of
 both completed products and compressed rows, 217,680 exact vertex-conversion
 cases, 5,982 depth/format queries, all 8,190 EAC normalization cases, cached and
 uncached coordinate references, cancellation/fault recovery and cache-enabled
 actual two-CU reuse. Host script checks also pass.
 The global staging checks cover an allocation ending at 4 GiB, partial first
 and last clear lines, preserved uniform tail, offered writes and late faults.
+Indexed cancellation also covers 72 phase offsets across 8-/16-/32-bit indices,
+preserved accepted record prefixes, owned request drain and healthy reuse.
 
 ```sh
 sbt -Dopengpu.simJobs=4 'set Test / parallelExecution := false' \
@@ -73,7 +79,7 @@ macros occur in these component tops. Areas are synthesis library areas.
 | --- | ---: | ---: | ---: |
 | TextureImageAddressUnit, both pipeline cuts | +129.805 / +333.006 | 25,297 | 3,417.10 |
 | VertexInputConversionPipeline | +304.670 / +631.152 | 5,003 | 691.734 |
-| VertexInputFetcher, sixteen attributes/bindings | +51.727 / +477.318 | 95,967 | 13,508.2 |
+| VertexInputFetcher, sixteen attributes/bindings | +87.107 / +479.132 | 88,121 | 11,507.6 |
 | TextureCoordinatePipeline, policy enabled | +102.839 / +317.379 | 9,605 | 1,311.41 |
 | TextureUnit, prepared/overlap/policy enabled | +61.910 / +106.876 | 36,622 | 4,966.2 |
 | TextureImageFetchDecoder | +299.372 / +660.229 | 11,154 | 1,449.35 |
