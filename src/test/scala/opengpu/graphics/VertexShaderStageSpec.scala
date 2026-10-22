@@ -110,9 +110,9 @@ class VertexShaderStageSpec extends AnyFlatSpec {
     store(inputs+7,2);code+=cease;code.toVector
   }
   private case class Export(ordinal: BigInt,id: BigInt,instance: BigInt,base: BigInt,restart: Boolean,position: Vector[BigInt],varyings: Vector[BigInt])
-  private class Driver(val d: VertexShaderHarness) {
+  private class Driver(val d: VertexShaderHarness,scratchBase: BigInt=0x100000) {
     val cap=d.cfg.lanes*d.cfg.warps;val stride=4*cap;val prefix=d.vp.prefixBytes(cap,2,1)
-    val scratch=BigInt(0x100000);val memory=mutable.Map.empty[BigInt,BigInt]
+    val scratch=scratchBase;val memory=mutable.Map.empty[BigInt,BigInt]
     def put(address: BigInt,value: BigInt): Unit=for(b<-0 until 4)memory(address+b)=(value>>(8*b))&255
     def word(address: BigInt): BigInt=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(address+b,BigInt(0))<<(8*b)))
     zero(d.io);d.io.context.poke(101.U);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
@@ -121,7 +121,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
     for(i<-0 until 16)put(0x5000+i*4,100+i)
     val indices=Seq(3,1,2,255,1,3,0,2,1)
     indices.zipWithIndex.foreach{case(v,i)=>memory(BigInt(0x6000+i))=v}
-    for(i<-0 until prefix+128 by 4)put(scratch+i,BigInt("deadbeef",16))
+    for(i<-0 until prefix+128 by 4 if scratch+i+4<=(BigInt(1)<<32))put(scratch+i,BigInt("deadbeef",16))
     put(scratch+prefix,17)
     case class Reply(id: BigInt,data: BigInt,due: Int,fault: Boolean)
     val pending=mutable.ArrayBuffer.empty[Reply];var offered: Option[Reply]=None
@@ -317,6 +317,16 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       start(true);t.until(d.io.completion.valid.peek().litToBoolean)
       assert(t.exports.toVector==baseline);d.io.completion.bits.batches.expect(2.U);t.complete(0)
       info(s"POST_TRANSFORM_REUSE local=$local baselineBatches=4 reusedBatches=2 vertices=32 restarts=2 instances=2 exactOrder=true heldCachedCancel=true inputFaultBeforeReuse=true drawClear=true healthyReuse=true")
+    }
+  }
+
+  it should "clear partial global output lines at the exclusive 4 GiB allocation end without clobbering the uniform tail" in {
+    simulate(new VertexShaderHarness(local=false)){d=>
+      val prefix=d.vp.prefixBytes(d.cfg.lanes*d.cfg.warps,2,1)
+      val t=new Driver(d,(BigInt(1)<<32)-((prefix+4+63)/64)*64)
+      t.descriptor();d.io.out.ready.poke(true.B);t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.batches.expect(3.U);t.check();t.complete(0)
+      assert(t.globalStaging>0 && t.memory.keys.forall(_<(BigInt(1)<<32)) && !t.memory.contains(BigInt(0)))
     }
   }
 

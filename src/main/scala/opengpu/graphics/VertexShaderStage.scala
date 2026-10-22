@@ -5,7 +5,7 @@ import chisel3.util._
 import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,L2SramArray}
 import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
-import opengpu.util.CarrySaveAccumulator
+import opengpu.util.{BlockPrefixAdder,CarrySaveAccumulator}
 
 case class VertexShaderStageConfig(input: VertexInputFetchConfig=VertexInputFetchConfig(),varyings: Int=16,postTransformEntries: Int=0) {
   require(varyings>=1 && varyings<=16)
@@ -322,10 +322,18 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     memRequest.isWrite:=write.B;memRequest.writeData:=data;memRequest.byteMask:=byteMask
     memRequest.sizeLog2:=6.U;memRequest.cachePolicy:=CachePolicy.uncached;memOffered:=true.B
   }
-  private val outputStart=draw.scratch.base+inputBytes
-  private val prefixEnd=draw.scratch.base+&prefixBytes
+  private val outputStartSum=Module(new BlockPrefixAdder(32))
+  outputStartSum.io.a:=draw.scratch.base;outputStartSum.io.b:=inputBytes;outputStartSum.io.carryIn:=false.B
+  private val outputStart=outputStartSum.io.sum(31,0)
+  private val prefixEndSum=Module(new BlockPrefixAdder(32))
+  prefixEndSum.io.a:=draw.scratch.base;prefixEndSum.io.b:=prefixBytes;prefixEndSum.io.carryIn:=false.B
+  private val prefixEnd=prefixEndSum.io.sum
+  private val clearLastSum=Module(new BlockPrefixAdder(33))
+  clearLastSum.io.a:=prefixEnd;clearLastSum.io.b:=((BigInt(1)<<33)-1).U;clearLastSum.io.carryIn:=false.B
+  private val clearNextSum=Module(new BlockPrefixAdder(32))
+  clearNextSum.io.a:=clearLine;clearNextSum.io.b:=64.U;clearNextSum.io.carryIn:=false.B
   private val clearFirst=Cat(outputStart(31,6),0.U(6.W))
-  private val clearLast=Cat((prefixEnd-1.U)(31,6),0.U(6.W))
+  private val clearLast=Cat(clearLastSum.io.sum(31,6),0.U(6.W))
   private val clearLow=(~0.U(64.W))<<outputStart(5,0)
   private val clearHigh=Mux(prefixEnd(5,0)===0.U,~0.U(64.W),(~0.U(64.W))>>(64.U-prefixEnd(5,0)))
   private val clearMask=Mux(clearLine===clearFirst,clearLow,~0.U(64.W)) & Mux(clearLine===clearLast,clearHigh,~0.U(64.W))
@@ -430,7 +438,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       metadata.io.writeEnable:=true.B;input.io.out.ready:=true.B;count:=count+1.U;reuseChecked:=false.B;phase:=collect
     }
     is(clearOutput){issue(clearLine,true,0.U,clearMask);phase:=waitClear}
-    is(waitClear){when(stageResponse.fire){when(clearLine===clearLast){phase:=invalidate}.otherwise{clearLine:=clearLine+64.U;phase:=clearOutput}}}
+    is(waitClear){when(stageResponse.fire){when(clearLine===clearLast){phase:=invalidate}.otherwise{clearLine:=clearNextSum.io.sum(31,0);phase:=clearOutput}}}
     is(invalidate){kernelDone:=false.B;invalidateOffered:=true.B;phase:=waitLaunch}
     is(waitLaunch){when(!invalidateOffered && !invalidatePending){launchOffered:=true.B;phase:=waitKernel}}
     is(waitKernel){when(kernelDone){chunk:=0.U;slice:=0.U;phase:=cacheSlice}}
