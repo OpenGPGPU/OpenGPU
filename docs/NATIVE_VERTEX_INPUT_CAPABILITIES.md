@@ -10,8 +10,14 @@ and legacy profiles leave the block unmapped.
 |---|---|---|
 | 0x1b0 | 0x47564901 | GVI1 magic |
 | 0x1b4 | 4 | Number of capability words |
-| 0x1b8 | 0x00000502 | Maximum input version in bits 7:0; format ID width in bits 15:8 |
+| 0x1b8 | Profile-dependent; default 0x00100502 | Maximum input version in bits 7:0; format ID width in bits 15:8; post-transform cache entry count in bits 23:16 |
 | 0x1bc | 0x01ffffff | Supported format IDs 0–24 |
+
+A zero entry count means output reuse is unavailable. The default native
+profiles implement 16 entries; reduced profiles may disable it. Probe the count
+before setting the [draw reuse flag](VERTEX_POST_TRANSFORM_REUSE.md). Earlier
+GVI1 implementations return zero in these previously reserved bits. Input
+version and format-mask fields retain their values.
 
 Input version 1 retains formats 0–6. Version 2 additionally supports the
 [converted formats](VERTEX_INPUT_FORMATS.md). Generated native typed and binned
@@ -34,7 +40,9 @@ held read/write responses, INCR/FIXED reads and writes, all write strobes,
 unaligned/out-of-map addresses, unsupported bursts and sizes, 4 GiB wrap
 attempts, VM ownership and reset. Three existing AXI register/reset/fill checks
 and both buffered/unbuffered VM-owner tests also pass: seven checks across three
-suites. Full native-host integration is pending.
+suites. [Reuse-capable native host checks](VERTEX_POST_TRANSFORM_REUSE.md)
+now cover local/global typed and binned image publication. Broader resource/rate
+qualification remains open.
 These bounded checks do not establish complete AXI or API conformance, Mobile
 rate/budget closure or a new synthesis PPA result.
 

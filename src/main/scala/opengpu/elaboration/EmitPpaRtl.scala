@@ -69,6 +69,13 @@ object EmitPpaRtl {
           stageArgs, firtoolArgs)
       case "mobile-vertex-input-fetch" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexInputFetcher(),stageArgs,firtoolArgs)
+      case "mobile-vertex-reuse" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PostTransformVertexCache(
+          opengpu.graphics.VertexShaderStageConfig(),useSramBlackBoxes=true),stageArgs,firtoolArgs)
+      case "mobile-vertex-shader-reuse" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexShaderStage(
+          p=opengpu.graphics.VertexShaderStageConfig(postTransformEntries=opengpu.graphics.PostTransformVertexCache.defaultEntries),
+          useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
       case "mobile-vertex-shader" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexShaderStage(
           useSramBlackBoxes=true,payload=Some(opengpu.graphics.ShaderPayloadConfig())),stageArgs,firtoolArgs)
