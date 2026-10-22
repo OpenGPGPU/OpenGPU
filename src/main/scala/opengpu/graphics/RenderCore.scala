@@ -12,45 +12,15 @@ import opengpu.core.memory.{
   SharedAtomicResponse
 }
 
-/** Top-level command-driven renderer.
-  *
-  * Wires CommandBufferStage (reads draw-call records from host memory) into
-  * RenderPipeline (geometry viewport -> rasterize -> shade -> depth test ->
-  * write colour/depth buffers).  The command buffer and the framebuffer use
-  * two separate memory ports, mirroring a real integrated SoC where the
-  * command ring and the render targets are distinct traffic.
-  *
-  * `fragCore` selects the shading backend (passed to `RenderPipeline`).  With
-  * `fragCore = true` fragments are shaded by a compiled RV32 kernel launched on
-  * the compute unit's SIMT warps (the phase-D unified-shader path); the
-  * kernel's program/kernarg/output live in the line-based memory behind
-  * `kernelMemReq/Resp` and `kernelWordMemReq/Resp`.  With `fragCore = false`
-  * the fixed-function interpolated colour is used and those ports are idle.
-  *
-  * A `start` pulse makes the command stage read `cmdCount` records starting at
-  * `cmdBase` and, for each, render one triangle; `done` goes high once every
-  * record has been consumed and the last read-modify-write has retired.  In
-  * vertex-core mode one record references a vertex buffer and may produce
-  * multiple triangles.
-  *
-  * Persistent mode instead accepts tileJob and retains its immutable binding
-  * through tileCompletion. done then reports controller idle, including result
-  * delivery; legacy start stays low. Memory ports still use the caller's
-  * translation/cache domain, whose ownership must outlive the tagged job.
+/** Renderer boundary shared with the host. Native external rendering retains
+  * the register/DMA interface without allocating a second rendering datapath.
   */
-class RenderCore(
-  config: GraphicsConfig = GraphicsConfig(),
-  gpuConfig: GpuConfig = GpuConfig(),
-  fragCore: Boolean = false,
-  vertCore: Boolean = false,
-  graphicsScalarFpu: Boolean = true,
-  sharedShader: Option[SharedCuShaderConfig] = None,
-  persistentAttachments: Boolean = false,
-  tileStoreCredits: Int = 1,
-  useTileSramBlackBoxes: Boolean = false,
-  bankedAttachments: Boolean = false
-) extends Module {
-  val io = IO(new Bundle {
+class RenderCoreIO(
+  gpuConfig: GpuConfig,
+  sharedShader: Option[SharedCuShaderConfig],
+  persistentAttachments: Boolean,
+  bankedAttachments: Boolean
+) extends Bundle {
     /** Persistent mode replaces legacy start/register submission with one
       * immutable, bounded command-list job and a tagged completion. */
     val tileJob = if (persistentAttachments) Some(Flipped(Decoupled(new TileCommandJob))) else None
@@ -129,7 +99,47 @@ class RenderCore(
     }
     val performance = Output(new GraphicsPerformanceEvents)
     val done = Output(Bool())
-  })
+}
+
+/** Top-level command-driven renderer.
+  *
+  * Wires CommandBufferStage (reads draw-call records from host memory) into
+  * RenderPipeline (geometry viewport -> rasterize -> shade -> depth test ->
+  * write colour/depth buffers).  The command buffer and the framebuffer use
+  * two separate memory ports, mirroring a real integrated SoC where the
+  * command ring and the render targets are distinct traffic.
+  *
+  * `fragCore` selects the shading backend (passed to `RenderPipeline`).  With
+  * `fragCore = true` fragments are shaded by a compiled RV32 kernel launched on
+  * the compute unit's SIMT warps (the phase-D unified-shader path); the
+  * kernel's program/kernarg/output live in the line-based memory behind
+  * `kernelMemReq/Resp` and `kernelWordMemReq/Resp`.  With `fragCore = false`
+  * the fixed-function interpolated colour is used and those ports are idle.
+  *
+  * A `start` pulse makes the command stage read `cmdCount` records starting at
+  * `cmdBase` and, for each, render one triangle; `done` goes high once every
+  * record has been consumed and the last read-modify-write has retired.  In
+  * vertex-core mode one record references a vertex buffer and may produce
+  * multiple triangles.
+  *
+  * Persistent mode instead accepts tileJob and retains its immutable binding
+  * through tileCompletion. done then reports controller idle, including result
+  * delivery; legacy start stays low. Memory ports still use the caller's
+  * translation/cache domain, whose ownership must outlive the tagged job.
+  */
+class RenderCore(
+  config: GraphicsConfig = GraphicsConfig(),
+  gpuConfig: GpuConfig = GpuConfig(),
+  fragCore: Boolean = false,
+  vertCore: Boolean = false,
+  graphicsScalarFpu: Boolean = true,
+  sharedShader: Option[SharedCuShaderConfig] = None,
+  persistentAttachments: Boolean = false,
+  tileStoreCredits: Int = 1,
+  useTileSramBlackBoxes: Boolean = false,
+  bankedAttachments: Boolean = false
+) extends Module {
+  val io = IO(new RenderCoreIO(gpuConfig, sharedShader, persistentAttachments, bankedAttachments))
 
   // The command payload type must follow the selected front end.  In vertex
   // core mode words 0..6 describe a vertex buffer and vertex shader rather

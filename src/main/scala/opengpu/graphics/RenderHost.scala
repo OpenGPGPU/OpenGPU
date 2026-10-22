@@ -198,28 +198,58 @@ class RenderHost(
     val performance = Output(new GraphicsPerformanceEvents)
   })
 
-  private val core = Module(new RenderCore(
-    if (externalBinnedRender) config.copy(tileAttachments=false,tileSize=0,tileBinning=false) else config,
-    gpuConfig, if (externalBinnedRender) false else fragCore, if (externalBinnedRender) false else vertCore,
-    graphicsScalarFpu, if (externalBinnedRender) None else sharedShader,
-    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes && !externalBinnedRender))
+  private val core = if (externalBinnedRender) None else Some(Module(new RenderCore(
+    config, gpuConfig, fragCore, vertCore, graphicsScalarFpu, sharedShader,
+    persistentAttachments, tileStoreCredits, useTileSramBlackBoxes)))
+  private val coreIO = core.map(_.io).getOrElse {
+    // External native rendering owns its own vertex/raster/fragment pipeline.
+    // There is no legal legacy launch or persistent-tile submission here.
+    // Retain the host-facing ports with no request or response ownership;
+    // Fill/Copy/StridedCopy, scanout and native command ownership stay live.
+    val idle = Wire(new RenderCoreIO(gpuConfig, None, false, false))
+    idle.cbMem.req.valid := false.B
+    idle.cbMem.req.bits := 0.U.asTypeOf(idle.cbMem.req.bits)
+    idle.cbMem.resp.ready := false.B
+    idle.fbMem.req.valid := false.B
+    idle.fbMem.req.bits := 0.U.asTypeOf(idle.fbMem.req.bits)
+    idle.fbMem.resp.ready := false.B
+    idle.texMem.req.valid := false.B
+    idle.texMem.req.bits := 0.U.asTypeOf(idle.texMem.req.bits)
+    idle.texMem.resp.ready := false.B
+    idle.kernelMemReq.valid := false.B
+    idle.kernelMemReq.bits := 0.U.asTypeOf(idle.kernelMemReq.bits)
+    idle.kernelMemResp.ready := false.B
+    idle.kernelWordMemReq.valid := false.B
+    idle.kernelWordMemReq.bits := 0.U.asTypeOf(idle.kernelWordMemReq.bits)
+    idle.kernelWordMemResp.ready := false.B
+    idle.kernelL1Invalidate.ready := false.B
+    idle.kernelL1InvalidateDone.valid := false.B
+    idle.kernelL1InvalidateDone.bits := 0.U.asTypeOf(idle.kernelL1InvalidateDone.bits)
+    idle.kernelGlobalAtomicRequest.valid := false.B
+    idle.kernelGlobalAtomicRequest.bits := 0.U.asTypeOf(idle.kernelGlobalAtomicRequest.bits)
+    idle.kernelGlobalAtomicResponse.ready := false.B
+    idle.shaderFault := false.B
+    idle.performance := 0.U.asTypeOf(idle.performance)
+    idle.done := true.B
+    idle
+  }
   private val tileHost = if (persistentAttachments) Some(Module(new TileJobDescriptorReader(
     gpuConfig, config, commandIdWidth, kernelWordTransactions, stagingTransactions))) else None
-  sharedShader.filter(_ => !externalBinnedRender).foreach(_ => core.io.shared.get <> io.shared.get)
-  core.io.instructionSatp := io.instructionSatp
-  core.io.instructionTlbFlush := io.instructionTlbFlush
-  core.io.vectorSatp := io.vectorSatp
-  core.io.vectorTlbFlush := io.vectorTlbFlush
-  io.performance := core.io.performance
+  sharedShader.filter(_ => !externalBinnedRender).foreach(_ => coreIO.shared.get <> io.shared.get)
+  coreIO.instructionSatp := io.instructionSatp
+  coreIO.instructionTlbFlush := io.instructionTlbFlush
+  coreIO.vectorSatp := io.vectorSatp
+  coreIO.vectorTlbFlush := io.vectorTlbFlush
+  io.performance := coreIO.performance
   tileHost.foreach { host =>
-    core.io.tileJob.get <> host.io.job
-    host.io.passCompletion <> core.io.tileCompletion.get
-    core.io.tileCancel.get := host.io.cancelCore
-    core.io.commandMemoryFault.get := io.commandFault.get
-    core.io.attachmentMemoryFault.get := io.attachmentFault.get
-    core.io.textureMemoryFault.get := io.tileTextureFault.get
+    coreIO.tileJob.get <> host.io.job
+    host.io.passCompletion <> coreIO.tileCompletion.get
+    coreIO.tileCancel.get := host.io.cancelCore
+    coreIO.commandMemoryFault.get := io.commandFault.get
+    coreIO.attachmentMemoryFault.get := io.attachmentFault.get
+    coreIO.textureMemoryFault.get := io.tileTextureFault.get
     host.io.cancel := io.tileCancel.get
-    host.io.commandReadAccepted := core.io.cbMem.req.fire
+    host.io.commandReadAccepted := coreIO.cbMem.req.fire
   }
 
   // The DMA engines share the kernelWordMem line port with the core's
@@ -253,9 +283,9 @@ class RenderHost(
   io.kernelWordMemReq.valid := descriptorRequest.map(_.valid).getOrElse(false.B) ||
     fill.io.memoryRequest.valid || blit.io.memoryRequest.valid ||
       strided.io.memoryRequest.valid ||
-      core.io.kernelWordMemReq.valid
+      coreIO.kernelWordMemReq.valid
   private val coreWordRequest=Wire(new ComputeMemoryRequest(gpuConfig,64,kernelWordTransactions))
-  coreWordRequest:=core.io.kernelWordMemReq.bits
+  coreWordRequest:=coreIO.kernelWordMemReq.bits
   private val regularWordRequest = Mux(fill.io.memoryRequest.valid,
     fill.io.memoryRequest.bits, Mux(blit.io.memoryRequest.valid,
       blit.io.memoryRequest.bits, Mux(strided.io.memoryRequest.valid,
@@ -272,7 +302,7 @@ class RenderHost(
   strided.io.memoryRequest.ready :=
     io.kernelWordMemReq.ready && !descriptorOffered && !fill.io.memoryRequest.valid &&
       !blit.io.memoryRequest.valid && strided.io.memoryRequest.valid
-  core.io.kernelWordMemReq.ready :=
+  coreIO.kernelWordMemReq.ready :=
     io.kernelWordMemReq.ready && !descriptorOffered && !fill.io.memoryRequest.valid &&
       !blit.io.memoryRequest.valid && !strided.io.memoryRequest.valid
 
@@ -294,15 +324,15 @@ class RenderHost(
   strided.io.memoryResponse.valid :=
     io.kernelWordMemResp.valid && wordRespIsStrided
   strided.io.memoryResponse.bits := io.kernelWordMemResp.bits
-  core.io.kernelWordMemResp.valid :=
+  coreIO.kernelWordMemResp.valid :=
     io.kernelWordMemResp.valid && !wordRespIsFill && !wordRespIsBlit &&
       !wordRespIsStrided && !wordRespIsTile
-  core.io.kernelWordMemResp.bits := io.kernelWordMemResp.bits
+  coreIO.kernelWordMemResp.bits := io.kernelWordMemResp.bits
   private val regularWordResponseReady =
     Mux(wordRespIsStrided, strided.io.memoryResponse.ready,
       Mux(wordRespIsBlit, blit.io.memoryResponse.ready,
       Mux(wordRespIsFill, fill.io.memoryResponse.ready,
-        core.io.kernelWordMemResp.ready)))
+        coreIO.kernelWordMemResp.ready)))
   io.kernelWordMemResp.ready := tileHost.map(h =>
     Mux(wordRespIsTile, h.io.memoryResponse.ready, regularWordResponseReady))
     .getOrElse(regularWordResponseReady)
@@ -384,7 +414,7 @@ class RenderHost(
   private val renderLaunch = RegInit(false.B)
   private val renderAddr = RegInit(0.U(gpuConfig.xLen.W))
   private val invalidSampleMode = RegInit(false.B)
-  private val memoryFaultNow = (io.textureFault.getOrElse(false.B) || core.io.shaderFault) &&
+  private val memoryFaultNow = (io.textureFault.getOrElse(false.B) || coreIO.shaderFault) &&
     (busy || renderFetching || renderLaunch)
   private val validRenderMode = Msaa.validModeWord(renderWords(9), config.maxSampleCount)
   private val tileHostBusy = tileHost.map(_.io.busy).getOrElse(false.B)
@@ -712,7 +742,7 @@ class RenderHost(
   // command port, then launch from a packed register snapshot.
   if (persistentAttachments) {
     val host = tileHost.get
-    val admissible = core.io.done && dmaOwner === dmaIdle &&
+    val admissible = coreIO.done && dmaOwner === dmaIdle &&
       !clearStartWrite && !blitStartWrite && !stridedStartWrite
     host.io.submit.valid := io.renderCommand.valid && admissible
     host.io.submit.bits.commandId := io.renderCommand.bits.descriptorId
@@ -816,8 +846,8 @@ class RenderHost(
     // return to idle counts as done.  `core.done` is high before/at the launch
     // cycle (the command stage has not yet started), so the sawBusy guard stops
     // that pre-launch idle from being mistaken for completion.
-    when(busy && !core.io.done) { sawBusy := true.B }
-    when(busy && sawBusy && core.io.done) {
+    when(busy && !coreIO.done) { sawBusy := true.B }
+    when(busy && sawBusy && coreIO.done) {
       busy := false.B
       done := true.B
       when(ownerUnified) {
@@ -832,7 +862,7 @@ class RenderHost(
     }
     // Preserve failure at completion even if STATUS.ERROR was acknowledged
     // while the failed draw was still draining.
-    when(busy && sawBusy && core.io.done && memoryFaulted) { error := true.B }
+    when(busy && sawBusy && coreIO.done && memoryFaulted) { error := true.B }
   }
   // Integrated compute/DMA completions share the same sticky, AXI-visible
   // pending bit and W1C acknowledgement as graphics completions.
@@ -883,46 +913,46 @@ class RenderHost(
   }
 
   // The unified render descriptor is the single configuration source.
-  core.io.cmdBase := unifiedCfg.cmdBase
-  core.io.cmdCount := unifiedCfg.cmdCount
-  core.io.colorFormat := unifiedCfg.colorFormat
-  core.io.colorBase := unifiedCfg.colorBase
-  core.io.depthBase := unifiedCfg.depthBase
-  core.io.stride := unifiedCfg.stride
-  core.io.depthTestEnable := unifiedCfg.depthTestEnable
-  core.io.depthFunc := unifiedCfg.depthFunc
-  core.io.depthWriteEnable := unifiedCfg.depthWriteEnable
-  core.io.blendCfgEnable := unifiedCfg.blendCfgEnable
-  core.io.blendSrcFactor := unifiedCfg.blendSrcFactor
-  core.io.blendDstFactor := unifiedCfg.blendDstFactor
-  core.io.blendEquation := unifiedCfg.blendEquation
-  core.io.stencilTestEnable := unifiedCfg.stencilTestEnable
-  core.io.stencilFunc := unifiedCfg.stencilFunc
-  core.io.stencilRef := unifiedCfg.stencilRef
-  core.io.stencilReadMask := unifiedCfg.stencilReadMask
-  core.io.stencilWriteMask := unifiedCfg.stencilWriteMask
-  core.io.stencilFailOp := unifiedCfg.stencilFailOp
-  core.io.stencilZFailOp := unifiedCfg.stencilZFailOp
-  core.io.stencilZPassOp := unifiedCfg.stencilZPassOp
-  core.io.cullMode := unifiedCfg.cullMode
-  core.io.texEnable := unifiedCfg.texEnable
-  core.io.texFormat := unifiedCfg.texFormat
-  core.io.texBase := unifiedCfg.texBase
-  core.io.texWidth := unifiedCfg.texWidth
-  core.io.texHeight := unifiedCfg.texHeight
-  core.io.texWrapClamp := unifiedCfg.texWrapClamp
-  core.io.texMaxLevel := unifiedCfg.texMaxLevel
-  core.io.sampleMode := unifiedCfg.sampleMode
-  core.io.screenW := unifiedCfg.screenW
-  core.io.screenH := unifiedCfg.screenH
-  core.io.start := (if (persistentAttachments || externalBinnedRender) false.B else renderLaunch && validRenderMode && !busy)
+  coreIO.cmdBase := unifiedCfg.cmdBase
+  coreIO.cmdCount := unifiedCfg.cmdCount
+  coreIO.colorFormat := unifiedCfg.colorFormat
+  coreIO.colorBase := unifiedCfg.colorBase
+  coreIO.depthBase := unifiedCfg.depthBase
+  coreIO.stride := unifiedCfg.stride
+  coreIO.depthTestEnable := unifiedCfg.depthTestEnable
+  coreIO.depthFunc := unifiedCfg.depthFunc
+  coreIO.depthWriteEnable := unifiedCfg.depthWriteEnable
+  coreIO.blendCfgEnable := unifiedCfg.blendCfgEnable
+  coreIO.blendSrcFactor := unifiedCfg.blendSrcFactor
+  coreIO.blendDstFactor := unifiedCfg.blendDstFactor
+  coreIO.blendEquation := unifiedCfg.blendEquation
+  coreIO.stencilTestEnable := unifiedCfg.stencilTestEnable
+  coreIO.stencilFunc := unifiedCfg.stencilFunc
+  coreIO.stencilRef := unifiedCfg.stencilRef
+  coreIO.stencilReadMask := unifiedCfg.stencilReadMask
+  coreIO.stencilWriteMask := unifiedCfg.stencilWriteMask
+  coreIO.stencilFailOp := unifiedCfg.stencilFailOp
+  coreIO.stencilZFailOp := unifiedCfg.stencilZFailOp
+  coreIO.stencilZPassOp := unifiedCfg.stencilZPassOp
+  coreIO.cullMode := unifiedCfg.cullMode
+  coreIO.texEnable := unifiedCfg.texEnable
+  coreIO.texFormat := unifiedCfg.texFormat
+  coreIO.texBase := unifiedCfg.texBase
+  coreIO.texWidth := unifiedCfg.texWidth
+  coreIO.texHeight := unifiedCfg.texHeight
+  coreIO.texWrapClamp := unifiedCfg.texWrapClamp
+  coreIO.texMaxLevel := unifiedCfg.texMaxLevel
+  coreIO.sampleMode := unifiedCfg.sampleMode
+  coreIO.screenW := unifiedCfg.screenW
+  coreIO.screenH := unifiedCfg.screenH
+  coreIO.start := (if (persistentAttachments || externalBinnedRender) false.B else renderLaunch && validRenderMode && !busy)
 
   // Separate word ports.  The engine's command stage (draw records) and the
   // job queue's admin agent (descriptor fetches, IH record writes) are distinct
   // clients with different coherence and translation needs, so they expose
   // The command word port carries draw records and the unified render
   // descriptor; the admin port was removed with the job ring.
-  private val cbPort = core.io.cbMem
+  private val cbPort = coreIO.cbMem
 
   // The descriptor fetch owns the command word port while it runs (the core is
   // idle until launch), then hands it back to the command stage.
@@ -938,16 +968,16 @@ class RenderHost(
   cbPort.resp.bits := io.cbMem.resp.bits
   io.cbMem.resp.ready := Mux(renderFetching, true.B, cbPort.resp.ready)
 
-  core.io.fbMem.req <> io.fbMem.req
-  io.fbMem.resp <> core.io.fbMem.resp
-  io.kernelMemReq <> core.io.kernelMemReq
-  core.io.kernelMemResp <> io.kernelMemResp
+  coreIO.fbMem.req <> io.fbMem.req
+  io.fbMem.resp <> coreIO.fbMem.resp
+  io.kernelMemReq <> coreIO.kernelMemReq
+  coreIO.kernelMemResp <> io.kernelMemResp
 
-  core.io.kernelL1Invalidate <> io.kernelL1Invalidate
-  io.kernelL1InvalidateDone <> core.io.kernelL1InvalidateDone
-  io.kernelGlobalAtomicRequest <> core.io.kernelGlobalAtomicRequest
-  core.io.kernelGlobalAtomicResponse <> io.kernelGlobalAtomicResponse
-  core.io.texMem <> io.texMem
+  coreIO.kernelL1Invalidate <> io.kernelL1Invalidate
+  io.kernelL1InvalidateDone <> coreIO.kernelL1InvalidateDone
+  io.kernelGlobalAtomicRequest <> coreIO.kernelGlobalAtomicRequest
+  coreIO.kernelGlobalAtomicResponse <> io.kernelGlobalAtomicResponse
+  coreIO.texMem <> io.texMem
 
   // Read port: single-cycle combinational response; writes are fire-and-forget.
   io.reg.req.ready := true.B
