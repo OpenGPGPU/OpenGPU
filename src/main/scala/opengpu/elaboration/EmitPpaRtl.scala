@@ -88,6 +88,8 @@ object EmitPpaRtl {
           pipelineBounds=true,pipelineProducts=true),stageArgs,firtoolArgs)
       case "mobile-vertex-byte-counter" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.util.CarrySaveAccumulator(64,prefixValue=true),stageArgs,firtoolArgs)
+      case "mobile-vertex-memory-responses" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.VertexMemoryResponseRouter,stageArgs,firtoolArgs)
       case "mobile-vertex-reuse" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PostTransformVertexCache(
           opengpu.graphics.VertexShaderStageConfig(),useSramBlackBoxes=true),stageArgs,firtoolArgs)
