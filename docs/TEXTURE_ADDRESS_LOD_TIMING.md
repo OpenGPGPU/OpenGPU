@@ -57,14 +57,16 @@ in these component tops.
 | Emitted top/profile | Core / I/O slack (ps) | Cells | Library area |
 | --- | ---: | ---: | ---: |
 | TextureGradientLodUnit | +169.009 / +480.095 | 11,168 | 1,513.30 |
-| TextureImageAddressUnit, both pipeline cuts | +32.833 / +333.640 | 23,374 | 3,110.31 |
+| TextureImageAddressUnit, both pipeline cuts | +129.805 / +333.006 | 25,297 | 3,417.10 |
 | CarrySaveAccumulator, 64-bit prefix observation | +672.237 / +95.247 | 996 | 127.21 |
 
 At the same settings the prior LOD component fails core setup at −113.998 ps
 with library area 1,704.74; final area decreases 11.23%. Prior composed
-addressing fails at −92.581 ps with area 3,000.35; current area increases 3.665%.
+addressing fails at −92.581 ps with area 3,000.35; current area increases 13.890%.
 The current [full-width pitch-product repair](VERTEX_STAGE_ARITHMETIC.md)
-also covers the multiplier paths; its enclosing-stage gate remains separate.
+registers compressed rows before prefix finishing at the existing optional
+cut, preserving latency while increasing stored data. Its enclosing-stage
+gate remains separate.
 These are synthesis library areas, not placed/routed area or energy estimates.
 
 Emit `mobile-texture-gradient-lod`, `mobile-texture-composed-address` and
