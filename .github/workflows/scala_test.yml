@@ -9,8 +9,6 @@ on:
   pull_request:
     branches: [ "main" ]
     types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, closed]
-  pull_request_review:
-    types: [submitted, dismissed]
 
 concurrency:
   group: scala-pr-${{ github.event.pull_request.number }}
@@ -19,66 +17,50 @@ concurrency:
 permissions:
   contents: read
   pull-requests: read
+  actions: read
 
 jobs:
-  # No repository code, toolchain setup or tests run before this metadata gate.
+  # GitHub pauses this job at Review deployments before allocating a runner.
+  # Configure ci-approval with required reviewers and self-review enabled.
   approval:
-    if: github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open'
+    if: github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open' && !github.event.pull_request.draft
     runs-on: ubuntu-latest
+    environment:
+      name: ci-approval
     timeout-minutes: 5
     outputs:
-      approved: ${{ steps.review.outputs.approved }}
-      merge_sha: ${{ steps.review.outputs.merge_sha }}
+      ready: ${{ steps.snapshot.outputs.ready }}
+      merge_sha: ${{ steps.snapshot.outputs.merge_sha }}
     steps:
-    - name: Require an approving review of the current PR head
-      id: review
+    - name: Validate the manually approved PR snapshot
+      id: snapshot
       uses: actions/github-script@v7
       with:
-        script: &review_gate |
-          core.setOutput('approved', 'false');
+        script: &snapshot_gate |
+          core.setOutput('ready', 'false');
           const { owner, repo } = context.repo;
           const number = context.payload.pull_request.number;
+          const { data: environment } = await github.rest.repos.getEnvironment({
+            owner, repo, environment_name: 'ci-approval'
+          });
+          const reviewers = environment.protection_rules.find(rule => rule.type === 'required_reviewers');
+          if (!reviewers?.reviewers?.length || reviewers.prevent_self_review !== false) {
+            core.setFailed('Configure ci-approval with required reviewers and Prevent self-review disabled.');
+            return;
+          }
           const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
           if (pr.state !== 'open' || pr.draft || pr.base.ref !== 'main' ||
               pr.head.sha !== context.payload.pull_request.head.sha ||
               pr.merge_commit_sha !== context.sha) {
-            core.info('PR is closed, draft, or this run is no longer for its current merge commit.');
+            core.setFailed('The approved PR snapshot is no longer current. Approve the latest Scala CI run.');
             return;
           }
-          const reviews = await github.paginate(github.rest.pulls.listReviews,
-            { owner, repo, pull_number: number, per_page: 100 });
-          const latest = new Map();
-          for (const review of reviews.sort((a, b) => a.id - b.id)) {
-            if (['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)) {
-              latest.set(review.user.login, review);
-            }
-          }
-          let approvals = 0;
-          let changesRequested = false;
-          for (const [username, review] of latest) {
-            if (username === pr.user.login) continue;
-            let permission;
-            try {
-              const response = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username });
-              permission = response.data.permission;
-            } catch (error) {
-              if (error.status === 404) continue;
-              throw error;
-            }
-            if (!['write', 'maintain', 'admin'].includes(permission)) continue;
-            if (review.state === 'CHANGES_REQUESTED') changesRequested = true;
-            if (review.state === 'APPROVED' && review.commit_id === pr.head.sha) approvals++;
-          }
-          if (!approvals || changesRequested) {
-            core.info('Waiting for a write-authorized reviewer to approve the latest commit.');
-            return;
-          }
-          core.setOutput('approved', 'true');
+          core.setOutput('ready', 'true');
           core.setOutput('merge_sha', context.sha);
 
   driver:
     needs: approval
-    if: needs.approval.outputs.approved == 'true'
+    if: needs.approval.outputs.ready == 'true'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -92,7 +74,7 @@ jobs:
   # Keeps Verilator/JDK setup off runners that would immediately no-op.
   select:
     needs: approval
-    if: needs.approval.outputs.approved == 'true'
+    if: needs.approval.outputs.ready == 'true'
     runs-on: ubuntu-latest
     outputs:
       selected: ${{ steps.select.outputs.selected }}
@@ -106,7 +88,7 @@ jobs:
     - name: Select affected tests and shards
       id: select
       run: |
-        # Both PR events and review events test the approved merge snapshot.
+        # Test the immutable merge snapshot approved for this run.
         BASE=$(git merge-base origin/main HEAD)
         CHANGED=$(git diff --name-only "$BASE" HEAD)
         echo "Changed files:"
@@ -128,7 +110,7 @@ jobs:
 
   scala:
     needs: [approval, select]
-    if: needs.approval.outputs.approved == 'true' && needs.select.outputs.selected != 'NONE'
+    if: needs.approval.outputs.ready == 'true' && needs.select.outputs.selected != 'NONE'
     strategy:
       fail-fast: false
       matrix:
@@ -257,7 +239,7 @@ jobs:
 
   dependency-graph:
     needs: approval
-    if: needs.approval.outputs.approved == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+    if: needs.approval.outputs.ready == 'true' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-26.04
     permissions:
       contents: write
@@ -285,20 +267,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - name: Recheck approval and the tested commit before accepting results
-      id: review
-      if: needs.approval.outputs.approved == 'true'
+    - name: Recheck the tested PR snapshot before accepting results
+      id: snapshot
+      if: needs.approval.outputs.ready == 'true'
       uses: actions/github-script@v7
       with:
-        script: *review_gate
+        script: *snapshot_gate
     - name: Aggregate job results
       env:
-        APPROVED: ${{ needs.approval.outputs.approved }}
-        STILL_APPROVED: ${{ steps.review.outputs.approved }}
+        GATE_READY: ${{ needs.approval.outputs.ready }}
+        SNAPSHOT_CURRENT: ${{ steps.snapshot.outputs.ready }}
+        SELECTED: ${{ needs.select.outputs.selected }}
         IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
       run: |
-        if [ "$APPROVED" != "true" ] || [ "$STILL_APPROVED" != "true" ]; then
-          echo "::error::An approving review of the latest PR commit is required before tests can run."
+        if [ "$GATE_READY" != "true" ] || [ "$SNAPSHOT_CURRENT" != "true" ]; then
+          echo "::error::Approve the latest Scala CI run via Review deployments; its PR snapshot must still be current."
           exit 1
         fi
         [ "${{ needs.approval.result }}" = "success" ] || exit 1
@@ -315,6 +298,7 @@ jobs:
         esac
         # When selection is NONE the scala job is skipped — treat as success.
         case "${{ needs.scala.result }}" in
-          success|skipped) ;;
+          success) ;;
+          skipped) [ "$SELECTED" = "NONE" ] || exit 1 ;;
           *) exit 1 ;;
         esac
