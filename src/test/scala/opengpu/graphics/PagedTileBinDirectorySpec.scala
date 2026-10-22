@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import opengpu.testutil.GpuSim._
+import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
@@ -202,8 +203,8 @@ class PagedTileBinDirectorySpec extends AnyFlatSpec {
     }
   }
 
-  it should "build and close a complete 720p 16x16 tile directory with only eight resident entries" in {
-    val tiles=80*45
+  it should s"build and close a complete ${GraphicsTestResolution.label} 16x16 tile directory with only eight resident entries" in {
+    val tiles=GraphicsTestResolution.tileCount(16)
     simulate(new TileBinDirectory(tileSlots=8,pageBytes=pageBytes,writeCredits=2,pagedCapacity=16384)) { dut=>
       val d=new Driver(dut); d.begin(tiles,pages=tiles)
       for (tile <- 0 until tiles) d.append(tile,ref(tile,0))
@@ -311,8 +312,8 @@ class PagedTileBinDirectorySpec extends AnyFlatSpec {
     }
   }
 
-  it should "retain report bits across both real SRAM banks for a complete 720p 8x8 grid" in {
-    val tiles=160*90
+  it should "retain report bits on both sides of the real SRAM bank boundary" in {
+    val tiles=8194 // Cross the 8192-bit report-bank boundary without a full-frame walk.
     simulate(new MacroDirectory) { dut=>
       val d=new Driver(dut); d.begin(tiles)
       for (tile <- Seq(8191,8192,tiles-1)) d.seal(tile)

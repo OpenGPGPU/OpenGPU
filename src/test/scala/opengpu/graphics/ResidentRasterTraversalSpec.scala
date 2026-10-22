@@ -3,10 +3,13 @@ package opengpu.graphics
 import chisel3._
 import chisel3.util._
 import opengpu.testutil.GpuSim._
+import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 
 private class ResidentRasterTraversalHarness(quadMode: Boolean) extends Module {
-  private val config = GraphicsConfig(screenWidth = 1280, screenHeight = 720)
+  private val width = GraphicsTestResolution.width
+  private val height = GraphicsTestResolution.height
+  private val config = GraphicsConfig(screenWidth = width, screenHeight = height)
   val io = IO(new Bundle {
     val draw = Flipped(Decoupled(new TriangleVertices(config)))
     val scissor = Input(Vec(4, UInt(16.W)))
@@ -23,7 +26,7 @@ private class ResidentRasterTraversalHarness(quadMode: Boolean) extends Module {
     raster.io.draw.bits := io.draw.bits
     raster.io.cullMode := 0.U
     raster.io.sampleMode := io.sampleMode
-    raster.io.screenW := 1280.U; raster.io.screenH := 720.U
+    raster.io.screenW := width.U; raster.io.screenH := height.U
     raster.io.scissorEnable := true.B
     raster.io.scissorMinX := io.scissor(0); raster.io.scissorMinY := io.scissor(1)
     raster.io.scissorMaxX := io.scissor(2); raster.io.scissorMaxY := io.scissor(3)
@@ -49,10 +52,12 @@ class ResidentRasterTraversalSpec extends AnyFlatSpec {
         dut.io.draw.valid.poke(false.B); dut.io.consume.poke(false.B)
         // Origins and extents obey the admission rules for8/16tile classes.
         val tiles = Seq((0, 0, 8, 8), (8, 8, 8, 8), (16, 16, 16, 16),
-          (1264, 704, 16, 16), (1272, 712, 8, 8), (24, 24, 7, 5),
+          (GraphicsTestResolution.width-16, GraphicsTestResolution.height-16, 16, 16),
+          (GraphicsTestResolution.width-8, GraphicsTestResolution.height-8, 8, 8), (24, 24, 7, 5),
           (32, 16, 15, 13), (0, 0, 1, 1))
-        val full = Seq((-1280 * 256, -720 * 256), (3840 * 256, -720 * 256),
-          (-1280 * 256, 2160 * 256))
+        val full = Seq((-GraphicsTestResolution.width * 256, -GraphicsTestResolution.height * 256),
+          (3 * GraphicsTestResolution.width * 256, -GraphicsTestResolution.height * 256),
+          (-GraphicsTestResolution.width * 256, 3 * GraphicsTestResolution.height * 256))
         var jobs = 0; var beats = 0
         for (mode <- 0 to 2; (x, y, width, height) <- tiles) {
           val local = Seq((x * 256 + 64, y * 256 + 64),

@@ -4,6 +4,7 @@ import chisel3._
 import opengpu.config.MobileGpuConfig
 import opengpu.graphics.{GpuCommandMmioRegs, GraphicsConfig, RenderHostRegs, TileDescriptorTestData}
 import opengpu.testutil.GpuSim._
+import opengpu.testutil.GraphicsTestResolution
 import org.scalatest.flatspec.AnyFlatSpec
 import scala.collection.mutable
 
@@ -22,7 +23,8 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
         "Run sbt -J-Xmx8G 'testOnly opengpu.system.PersistentTileProductMsaaSpec'.")
       val gpu = MobileGpuConfig().execution
       val count = if (shared) 4 else 1
-      val gfx = GraphicsConfig(screenWidth = 1280, screenHeight = 720,
+      val width = GraphicsTestResolution.width; val height = GraphicsTestResolution.height
+      val gfx = GraphicsConfig(screenWidth = width, screenHeight = height,
         tileSize = 16, tileAttachments = true, fragmentBatchLimit = gpu.lanes)
       simulate(new GpuHostSystemAxi(gfx, gpu, numComputeUnits = count,
         fragCore = shared, sharedGraphics = shared, parallelGraphics = shared,
@@ -34,8 +36,8 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
         val colorBase = 0x100000L
         val depthBase = 0x200000L
         val resolveBase = 0x300000L
-        val pitch = 1280 * 4 * 4
-        val resolvePitch = 1280 * 4
+        val pitch = width * 4 * 4
+        val resolvePitch = width * 4
         var offset = 0L
         var commandLines = 0
         var attachmentReads = 0
@@ -124,7 +126,7 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
         def covered(x: Int, y: Int, position: (Int, Int)): Boolean =
           (originX + x) * 4 + position._1 > 0 && (originY + y) * 4 + position._2 > 0
         def expected(x: Int, y: Int, position: (Int, Int)): (Long, Long) = {
-          // All tile pixels are far from the diagonal of the 1280x720
+          // All tile pixels are far from the diagonal of the viewport-sized
           // triangle. Only the strict left/bottom edges intersect these tiles.
           val hit = covered(x, y, position)
           var c = 0x10203040L; var d = 0x5affffffL
@@ -159,7 +161,7 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
           put(0x3000, program); put(0x4000, records.flatten)
           commandEnd = 0x4000 + records.size * 164
           val job = TileDescriptorTestData.words(records.size)
-          job(0) = 0x47545002L; job(7) = commandEnd; job(9) = 1280; job(10) = 720
+          job(0) = 0x47545002L; job(7) = commandEnd; job(9) = width; job(10) = height
           job(11) = originX | (originY << 16)
           job(12) = (if (size == 8) 3L else 4L) | (size.toLong << 8) | (size.toLong << 16) | (mode.toLong << 24) | (1L << 31)
           job(13) = colorBase; job(14) = depthBase; job(16) = pitch
@@ -216,7 +218,7 @@ abstract class PersistentTileProductMsaaChecks(crossing: Boolean) extends AnyFla
           assert(attachmentBytes + resolveBytes == expectedWrites.size * 4)
           axiWrite(dut, GpuCommandMmioRegs.COMPLETION_POP, 1)
           axiWrite(dut, RenderHostRegs.IRQ, 3)
-          info(s"shared=$shared clipped=$crossing CUs=$count lanes=${gpu.lanes} warps=${gpu.warps} viewport=1280x720 L2Bytes=131072 tile=$size originX=$originX originY=$originY samples=$activeSamples Sv32=$translated load=$loadStart commandLines=$commandLines attachmentReads=$attachmentReads attachmentBytes=$attachmentBytes resolveBytes=$resolveBytes activeCuCycles=$activeCycles cycles=$cycles")
+          info(s"shared=$shared clipped=$crossing CUs=$count lanes=${gpu.lanes} warps=${gpu.warps} viewport=${GraphicsTestResolution.label} L2Bytes=131072 tile=$size originX=$originX originY=$originY samples=$activeSamples Sv32=$translated load=$loadStart commandLines=$commandLines attachmentReads=$attachmentReads attachmentBytes=$attachmentBytes resolveBytes=$resolveBytes activeCuCycles=$activeCycles cycles=$cycles")
         }
         if (shared) assert(dut.io.performance.get.system.maxActiveComputeUnits.peek().litValue == count,
           "the product matrix did not exercise the complete shared CU pool")
