@@ -55,6 +55,11 @@ class SingleCuKernelController(config: GpuConfig = GpuConfig(), gridSlices: Bool
   when(launchOH.orR || finishOH.orR) {
     running := (running | launchOH) & ~finishOH
   }
+  // A kernel may stream several workgroups through this CU. Clear the
+  // preceding group before any warp of the next group becomes runnable.
+  when(initialize.io.task.fire && initialize.io.task.bits.firstWarp) {
+    dispatchComplete := false.B
+  }
   when(initialize.io.launchedTask.valid && initialize.io.launchedTask.bits.lastWarp) {
     dispatchComplete := true.B
   }
