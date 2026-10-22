@@ -2,14 +2,15 @@
 
 `ShaderUniformLoadUnit` provides immutable descriptor admission and a raw
 four-byte load for the resource contract in [Mobile limits](MOBILE_GPU_RESOURCE_LIMITS.md).
-This is a standalone hardware service. Native instruction execution, draw
-bindings, runtime discovery, compiler lowering, translated publication and
-simultaneous vertex/fragment qualification remain required before exposing
-uniform-buffer support through a native profile. GTC1/GNC2/GTO1 are unchanged.
+The [native binding path](NATIVE_UNIFORM_BINDINGS.md) connects it to task-owned
+scalar/vector execution and native draw/state records. Runtime discovery,
+compiler lowering, translated publication and simultaneous vertex/fragment
+qualification remain required before exposing uniform-buffer support through
+a native profile. GTC1/GNC2/GTO1 are unchanged.
 
 The [uniform execution adapter](UNIFORM_INSTRUCTION_EXECUTION.md) adds
 scalar/vector retirement and coalesces identical active-lane requests. It
-remains a standalone service until native binding and provider integration.
+is selected by an explicitly enabled native uniform provider.
 
 The generated [C header](../driver/opengpu_uniform_abi.h) and
 [word layout](abi/native-uniform-v1.json) define two 64-byte records. Headers

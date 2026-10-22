@@ -26,9 +26,9 @@ The reserved scalar encoding is custom-0 (`0x0b`), funct7=7, funct3=0; the
 reserved vector encoding is custom-1 (`0x2b`), funct6=7, funct3=0, with ordinary
 RVV `vm`. `rs1/vs1` selects logical block 0–11 or default block 31;
 `rs2/vs2` supplies the full 32-bit byte offset. `rd/vd` receives one raw word.
-These encodings remain illegal in the production decoder until native draw
-binding and provider routing are connected. The adapter alone does not expose
-an instruction or advertise native uniform support.
+Generic decoders keep these encodings disabled. The [native binding
+path](NATIVE_UNIFORM_BINDINGS.md) enables them only for an accepted task with
+uniform-provider permission. The adapter alone does not advertise support.
 
 Seven execution checks pass: both stages at compact four-lane/two-warp and
 default sixteen-lane/eight-warp shape, both stages' fault/cancellation recovery,
@@ -56,7 +56,7 @@ sbt 'runMain opengpu.elaboration.EmitPpaRtl mobile-uniform-execute-vertex .artif
 
 Qualify top `ShaderUniformExecuteUnit` with `scripts/qualify_ppa.py --stage
 synthesis --period-ps 1000 --io-delay 0.25`. These component gates do not
-qualify an enclosing native stage or CU clock. Native draw/descriptor binding,
-decoder/provider integration, discovery, driver/compiler lowering, translated
-publication/lifetime, actual-CU capacity and resource/rate qualification remain
-required. H0/H6 and the full H0–H8 objective remain open.
+qualify an enclosing native stage or CU clock. The native binding path records
+its separate actual-CU scope. Discovery, driver/compiler lowering, translated
+publication/lifetime and resource/rate qualification remain required. H0/H6 and
+the full H0–H8 objective remain open.
