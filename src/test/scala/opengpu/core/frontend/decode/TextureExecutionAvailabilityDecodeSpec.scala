@@ -48,6 +48,17 @@ class TextureExecutionAvailabilityDecodeSpec extends AnyFlatSpec {
           d.clock.step(); d.io.scalarOut.ready.poke(false.B); d.io.fpuOut.ready.poke(false.B); d.io.vectorOut.ready.poke(false.B)
           d.io.scalarOut.valid.expect(false.B); d.io.fpuOut.valid.expect(false.B); d.io.vectorOut.valid.expect(false.B)
         }
+        // Uniform execution is a standalone service until native draw binding
+        // and provider routing are connected. These encodings stay illegal.
+        for(hex<-Seq("0e00038b","1e0003ab")){
+          d.io.textureEnabled.foreach(_.poke(true.B));d.io.nativeResourcesEnabled.foreach(_.poke(true.B))
+          d.io.in.bits.instruction.poke(BigInt(hex,16).U);d.io.in.bits.pc.poke(0x3000.U)
+          d.io.in.bits.warpId.poke(1.U);d.io.in.bits.activeMask.poke(0x55.U)
+          d.io.in.valid.poke(true.B);d.io.in.ready.expect(true.B);d.clock.step();d.io.in.valid.poke(false.B)
+          d.io.scalarOut.valid.expect(true.B);d.io.scalarOut.bits.illegalInstruction.expect(true.B)
+          d.io.vectorOut.valid.expect(false.B);d.io.fpuOut.valid.expect(false.B)
+          d.io.scalarOut.ready.poke(true.B);d.clock.step();d.io.scalarOut.ready.poke(false.B)
+        }
         info(s"TEXTURE_EXECUTION_DECODE available=$available taskPolicy=$taskPolicy permission=$permission nativeAvailable=$nativeAvailable nativePermission=$nativePermission scalarFamilies7=true vectorFamilies7=true default16lane8warp=true heldPacketsAndPolicyChanges=true ordinaryScalarVectorFPBarrierDerivativePreserved=true")
       }
     }
