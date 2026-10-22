@@ -32,7 +32,9 @@ class GpuComputeUnit(
   executionLimits: Boolean = false,
   gridSlices: Boolean = false,
   textureAvailable: Boolean = true,
-  taskTextureAvailability: Boolean = false
+  taskTextureAvailability: Boolean = false,
+  // Native adapters have no external scalar-FP completion service.
+  nativeExecutionProfile: Boolean = false
 ) extends Module {
   require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   val io = IO(new Bundle {
@@ -86,7 +88,7 @@ class GpuComputeUnit(
       useBlackBoxes,
       enableFpuBackend,
       vectorCacheSets,
-      vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits,textureAvailable=textureAvailable,
+      vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits || nativeExecutionProfile,textureAvailable=textureAvailable,
       taskTextureAvailability=taskTextureAvailability))
   if(taskTextureAvailability) {
     val enabled = RegInit(false.B)
