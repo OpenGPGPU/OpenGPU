@@ -93,3 +93,6 @@ These component results do not qualify the enclosing vertex stage or host clock.
 The separate [sampling/counter arithmetic qualification](TEXTURE_ADDRESS_LOD_TIMING.md)
 covers LOD, composed image-address sums and staging byte counters; enclosing
 response routing and clock qualification remain required.
+The [registered memory-response router](VERTEX_MEMORY_RESPONSES.md) separates
+external reply arrival from client control while retaining cancellation drain;
+its component timing result also requires enclosing-stage qualification.
