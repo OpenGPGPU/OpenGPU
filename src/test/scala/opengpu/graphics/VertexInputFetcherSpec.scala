@@ -348,6 +348,29 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
     }
   }
 
+  it should "drain every captured conversion cut after cancellation before admitting a healthy draw" in {
+    val p=VertexInputFetchConfig(1,1)
+    simulate(new VertexInputFetcher(p=p)){d=>val t=new Driver(d,p)
+      t.put(0x1000,BigInt("ffffffff",16))
+      val command=Draw(count=1,version=2,buffers=Vector(Buffer(view(0x1000),4)),
+        attributes=Vector(Attribute(components=1,format=12)))
+      for(cut<-0 to 7){
+        val canceled=command.copy(generation=80+cut)
+        t.start(canceled);t.until(t.requests.nonEmpty && t.pending.isEmpty)
+        for(_<-0 until cut)t.step()
+        val offered=t.outputs.nonEmpty || d.io.out.valid.peek().litToBoolean
+        if(cut<7)assert(!offered,"a conversion escaped before its five pipeline cuts")
+        d.io.cancel.poke(true.B);t.step();d.io.cancel.poke(false.B)
+        t.summary(VertexInputStatus.cancelled)
+        assert(t.outputs.toVector==(if(offered)t.expected(canceled)else Vector.empty) && t.requests.size==1,
+          s"cancellation lost an offered record or leaked an unoffered conversion at cut $cut")
+        t.consume()
+        val healthy=command.copy(generation=100+cut)
+        t.start(healthy);t.summary(0);assert(t.outputs.toVector==t.expected(healthy));t.consume()
+      }
+    }
+  }
+
   it should "preserve subword indices and attributes at the minimum configured stream width" in {
     val p=VertexInputFetchConfig(1,1)
     simulate(new VertexInputFetcher(p=p)) { d=>
