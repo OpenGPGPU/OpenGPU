@@ -314,6 +314,31 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       for(i<-0 until 12)assert(axiRead(d,0x180+i*4)==0,"ordinary compute must not inherit native completion details")
       val v=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(memory.getOrElse(pa(region+0x130040)+b,0))<<(b*8)));pop();v}
   }
+  // Register these cases once, without duplicating them in every feature profile.
+  if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])for(local<-Seq(true,false))
+  it should s"render repeated native indexed triangles with post-transform reuse and exact binned images local=$local" in {
+    val native=profile(local).copy(vertex=p.copy(postTransformEntries=16))
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=2,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,nativeBinnedGraphics=Some(native))){d=>
+      initialize(d);val image=new Image(d);vm(d)
+      assert(axiRead(d,0x1b8)==BigInt(0x100502),"native discovery must report the implemented cache capacity")
+      for((reuse,frame)<-Seq(false,true).zipWithIndex){
+        image.setup()
+        val indices=image.region+0x22000
+        for(i<-0 until 9)image.memory(image.pa(indices+i))=i%3
+        val key="draw.vertex.geometry.vertex."
+        for((name,value)<-Map[String,BigInt](key+"reuseOutputs"->(if(reuse)1 else 0),key+"input.count"->9,key+"input.indexFormat"->1,
+          key+"input.indices.base"->indices,key+"input.indices.limit"->(indices+9),
+          key+"input.indices.allocationBase"->indices,key+"input.indices.allocationLimit"->(indices+64)))image.patchDraw(name,value)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        image.submit(230+frame);image.run(id=230+frame);image.verify()
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
+        val perf=d.io.performance.get;perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+      }
+      info(s"NATIVE_BINNED_POST_TRANSFORM_REUSE local=$local indices=9 triangles=3 cacheEntries=16 optOutAndOptIn=true exactMRTDepthResolveGuards=true realSv32=true heldCompletionPinsVM=true payloadReleased=true")
+    }
+  }
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
   if(shaderStructuredSimt)for(local<-Seq(true,false))

@@ -216,9 +216,12 @@ class VertexShaderStageSpec extends AnyFlatSpec {
 
   it should "cancel unoffered vertex output while a full-width cache fill owns its SRAM port" in {
     simulate(new VertexShaderHarness(fullInterface=true,reuseEntries=16)){d=>val t=new Driver(d)
+      var serial=0
       def start(): Unit={
-        (0 until 8).foreach(i=>t.memory(BigInt(0x6000+i))=i)
-        t.exports.clear();t.descriptor(true,1,8);d.io.draw.bits.reuseOutputs.poke(true.B);t.submit()
+        val indices=BigInt(0x18000+128*serial);serial+=1
+        (0 until 8).foreach(i=>t.memory(indices+i)=i)
+        t.exports.clear();t.descriptor(true,1,8);t.view(d.io.draw.bits.input.indices,indices,8)
+        d.io.draw.bits.reuseOutputs.poke(true.B);t.submit()
       }
       d.io.out.ready.poke(true.B);start();t.until(t.exports.size==1)
       // Only one varying is active, so gathering the next export finishes
@@ -235,10 +238,13 @@ class VertexShaderStageSpec extends AnyFlatSpec {
   it should s"reuse pure indexed vertex outputs across batches without losing ordered restarts instances or fault drain local=$local" in {
     simulate(new VertexShaderHarness(local,reuseEntries=16)){d=>val t=new Driver(d)
       val ids=Vector(0,1,2,3,0,1,2,3,255,0,1,2,3,0,1,2,3)
+      var serial=0;var indexBase=BigInt(0)
       def start(reuse: Boolean,instances: Int=2,indices: Vector[Int]=ids,pc: Int=0x1000): Unit={
-        indices.zipWithIndex.foreach{case(id,i)=>t.memory(BigInt(0x6000+i))=id}
+        // CPU fixture writes cannot invalidate previously cached GPU lines.
+        indexBase=BigInt(0x10000+128*serial);serial+=1
+        indices.zipWithIndex.foreach{case(id,i)=>t.memory(indexBase+i)=id}
         t.exports.clear();t.descriptor(true,instances,indices.size)
-        t.view(d.io.draw.bits.input.indices,0x6000,indices.size)
+        t.view(d.io.draw.bits.input.indices,indexBase,indices.size)
         d.io.draw.bits.shaderPc.poke(pc.U);d.io.draw.bits.reuseOutputs.poke(reuse.B);t.submit()
       }
       d.io.out.ready.poke(true.B);start(false)
@@ -264,8 +270,11 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       // while that batch executes and updates the cache.
       val mixed=(0 until 8).toVector++Vector(8,0,9,1)
       start(false,instances=1,indices=mixed);t.until(d.io.completion.valid.peek().litToBoolean)
-      val mixedBaseline=t.exports.toVector;t.complete(0)
+      val mixedBaseline=t.exports.toVector
+      assert(mixedBaseline.map(_.id)==mixed.map(BigInt(_)),"mixed fixture did not acquire its fresh index stream")
+      t.complete(0)
       start(true,instances=1,indices=mixed);t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.batches.expect(3.U)
       assert(t.exports.toVector==mixedBaseline,"a cached hit overtook its older partial miss batch")
       t.complete(0)
       start(true,instances=1)
@@ -277,12 +286,12 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       // name outputs already cached by the first batch; reuse must not bypass
       // acquiring the index stream, even after many successful hits.
       val faultIds=Vector.tabulate(72)(_ % 8)
-      t.fault=(address,write)=> !write && address==0x6040
+      t.fault=(address,write)=> !write && address==indexBase+64
       start(true,instances=1,indices=faultIds)
       t.until(d.io.completion.valid.peek().litToBoolean)
       d.io.completion.bits.input.status.expect(VertexInputStatus.memoryFault.U)
       d.io.completion.bits.input.ordinal.expect(64.U)
-      d.io.completion.bits.faultAddress.expect(0x6040.U)
+      d.io.completion.bits.faultAddress.expect((indexBase+64).U)
       assert(t.exports.nonEmpty && t.exports.forall(_.ordinal<64),
         s"a faulting or younger input escaped acquisition: exports=${t.exports.map(_.ordinal)}")
       assert(t.exports.exists(_.ordinal>=8),"fault fixture did not retire any reused outputs")

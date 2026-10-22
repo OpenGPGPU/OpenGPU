@@ -259,6 +259,34 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       assert(writes.exists(_>=0x1000000) && !reads.exists(a=>a>=0x400000 && a<0x800000),"virtual descriptors must not escape onto physical AXI")
     }
   }
+  // Feature-specific subclasses retain their own focused coverage.
+  if(getClass==classOf[NativeTypedGraphicsHostAxiSpec])for(local<-Seq(true,false))
+  it should s"render repeated native indexed triangles with post-transform reuse and exact translated images local=$local" in {
+    val native=profile(local).copy(vertex=p.copy(postTransformEntries=16))
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(native))){d=>
+      initialize(d);val image=new Image(d)
+      assert(axiRead(d,0x1b8)==BigInt(0x100502),"native discovery must report the implemented cache capacity")
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,RenderHostRegs.IRQ,1)
+      for((reuse,frame)<-Seq(false,true).zipWithIndex){
+        image.shaderDraws(0,sourceBias=frame*0x200000)
+        image.word(image.pa(0x410000+12*4),1)
+        val draw=image.pa(0x412000);val indices=BigInt(0x470000+frame*64)
+        for(i<-0 until 9)image.memory(image.pa(indices+i))=i%3
+        image.word(draw+68*4,9);image.word(draw+74*4,1)
+        image.word(draw+80*4,indices);image.word(draw+81*4,indices+9)
+        image.word(draw+83*4,indices);image.word(draw+84*4,indices+64)
+        image.word(draw+610*4,if(reuse)1 else 0)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        image.submit(230+frame);image.run(id=230+frame);image.verifyDraws(0,primitiveCount=1)
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
+        val perf=d.io.performance.get;perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+      }
+      info(s"NATIVE_POST_TRANSFORM_REUSE local=$local indices=9 triangles=3 cacheEntries=16 optOutAndOptIn=true exactMRTDepthResolveGuards=true realSv32=true heldCompletionPinsVM=true payloadReleased=true")
+    }
+  }
   if(shaderRunningReset)for(local<-Seq(true,false))
   it should s"interrupt running vertex and fragment loops with owned data replies local=$local" in {
     simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
