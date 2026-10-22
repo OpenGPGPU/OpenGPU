@@ -165,8 +165,12 @@ class TypedVertexBinImagePipeline(config: GpuConfig=GpuConfig(),p: VertexShaderS
         (view.store || TypedTileImageRules.loads(descriptor.image.pixels)(i)===AttachmentLoadOp.load.U)
       (Mux(needed,view.allocationBase,0.U),Mux(needed,view.allocationLimit,0.U))} ++
     descriptor.image.resolves.map(r=>(Mux(r.enable,r.destination.allocationBase,0.U),Mux(r.enable,r.destination.allocationLimit,0.U)))
-  private val work=v.input.count=/=0.U && v.input.instances=/=0.U
-  private val drawLegal=io.draw.bits.version===1.U &&
+  private val indirect=io.draw.bits.vertex.geometry.indirect
+  private val parameterEnd=indirect.view.base+&Mux(indirect.mode===1.U,16.U,20.U)
+  private val parameterAlias=indirect.mode=/=0.U && protectedScratch.drop(1).map{
+    case(a,b)=>overlap(indirect.view.base,parameterEnd,a,b)}.reduce(_ || _)
+  private val work=indirect.mode=/=0.U || (v.input.count=/=0.U && v.input.instances=/=0.U)
+  private val drawLegal=IndirectDrawControl.legal(indirect,v.input.indexFormat) && !parameterAlias && io.draw.bits.version===1.U &&
     descriptor.states.base.pad(64)+(io.draw.bits.state.pad(64)<<9)+512.U<=descriptor.states.limit &&
     io.draw.bits.raster.sampleMode===descriptor.image.pixels.colors.sampleMode &&
     (!work || !protectedScratch.map{case(a,b)=>overlap(v.scratch.base,v.scratch.limit,a,b)}.reduce(_ || _))

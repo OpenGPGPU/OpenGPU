@@ -30,6 +30,7 @@ class AssembledPrimitive(p: VertexShaderStageConfig) extends Bundle {
 }
 class PrimitiveAssemblyCompletion extends Bundle {
   val identity=new GraphicsWorkIdentity;val status=UInt(3.W)
+  val indirectLines=UInt(2.W)
   val source=new VertexShaderCompletion
   val vertices=UInt(64.W);val restarts=UInt(64.W)
   val primitives=UInt(64.W);val points=UInt(64.W);val lines=UInt(64.W);val triangles=UInt(64.W)
@@ -196,7 +197,7 @@ class PrimitiveAssemblyStage(p: VertexShaderStageConfig=VertexShaderStageConfig(
   when(active && endSeen && !boundary && !outputValid){phase:=finish}
   when(phase===finish) {
     result.identity:=draw.identity;result.status:=Mux(io.cancel && status===0.U,VertexInputStatus.cancelled.U,status)
-    result.source:=source;result.vertices:=vertices;result.restarts:=restarts
+    result.source:=source;result.vertices:=vertices;result.restarts:=restarts;result.indirectLines:=0.U
     result.primitives:=primitives;result.points:=points;result.lines:=lines;result.triangles:=triangles
     result.incompleteVertices:=incomplete;result.faultOrdinal:=faultOrdinal;result.faultInstance:=faultInstance;phase:=complete
   }

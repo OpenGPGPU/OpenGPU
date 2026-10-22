@@ -75,16 +75,16 @@ class VertexGeometryStageSpec extends AnyFlatSpec {
       addi(5,7,4*32),vm(5,1,false),(BigInt(1)<<25)|(BigInt(1)<<20)|(BigInt(13)<<15)|(BigInt(4)<<12)|(BigInt(1)<<7)|0x57,
       addi(6,7,14*32),vm(6,1,true),BigInt("30500073",16));code.toVector
   }
-  private case class V(ordinal: Int,instance: Int,id: Int) {
+  private case class V(ordinal: Int,instance: Int,id: Int,baseInstance: Int=2) {
     val position=(0 until 4).map(c=>fp(id*10+c+1)).toVector
-    val vary=Vector(BigInt(id),BigInt(instance),BigInt(2),BigInt(id+17),BigInt(0),BigInt(0),BigInt(0),BigInt(0))
+    val vary=Vector(BigInt(id),BigInt(instance),BigInt(baseInstance),BigInt(id+17),BigInt(0),BigInt(0),BigInt(0),BigInt(0))
   }
   private case class Prim(values: Vector[V],id: Int,closing: Boolean=false)
-  private def reference(mode: Int): Vector[Prim]={
+  private def reference(mode: Int,baseInstance: Int=2,indexValues: Vector[Int]=indices): Vector[Prim]={
     val out=mutable.ArrayBuffer.empty[Prim]
     for(inst<-0 until 2) {
       var pid=0;val segments=mutable.ArrayBuffer.empty[Vector[V]];var vertices=Vector.empty[V]
-      for((id,ordinal)<-indices.zipWithIndex)if(id==255){segments+=vertices;vertices=Vector.empty}else vertices :+= V(ordinal,inst,id)
+      for((id,ordinal)<-indexValues.zipWithIndex)if(id==255){segments+=vertices;vertices=Vector.empty}else vertices :+= V(ordinal,inst,id,baseInstance)
       segments+=vertices
       for(segment<-segments if segment.nonEmpty) {
         val groups: Vector[(Vector[V],Boolean)]=mode match {
@@ -100,15 +100,15 @@ class VertexGeometryStageSpec extends AnyFlatSpec {
   }
   private def pack(fields: (BigInt,Int)*): BigInt=fields.foldLeft(BigInt(0)){case(acc,(v,w))=>(acc<<w)|v}
   private def vector(values: Seq[BigInt],width: Int): BigInt=values.zipWithIndex.foldLeft(BigInt(0)){case(acc,(v,i))=>acc|(v<<(width*i))}
-  private def bits(primitive: Prim,seq: Int,mode: Int,flat: BigInt): BigInt={
+  private def bits(primitive: Prim,seq: Int,mode: Int,flat: BigInt,baseInstance: Int=2): BigInt={
     val vertices=primitive.values.map { v=>
       val varying=v.vary.indices.map(c=>if(flat.testBit(c))primitive.values.last.vary(c)else v.vary(c))
-      pack(identity->96,BigInt(v.ordinal)->32,BigInt(v.id)->32,BigInt(v.instance)->32,BigInt(2)->32,BigInt(0)->1,
+      pack(identity->96,BigInt(v.ordinal)->32,BigInt(v.id)->32,BigInt(v.instance)->32,BigInt(baseInstance)->32,BigInt(0)->1,BigInt(0)->32,BigInt(0)->1,
         vector(v.position,32)->128,vector(varying,32)->256)
     }++Vector.fill(3-primitive.values.size)(BigInt(0))
-    pack(identity->96,BigInt(seq)->64,BigInt(primitive.id)->32,BigInt(primitive.values.last.instance)->32,BigInt(2)->32,
+    pack(identity->96,BigInt(seq)->64,BigInt(primitive.id)->32,BigInt(primitive.values.last.instance)->32,BigInt(baseInstance)->32,
       BigInt(mode)->4,BigInt(primitive.values.size-1)->2,BigInt(primitive.values.size)->2,BigInt(primitive.values.size-1)->2,
-      BigInt(if(primitive.closing)1 else 0)->1,BigInt(1)->5,flat->8,vector(vertices,609)->1827)
+      BigInt(if(primitive.closing)1 else 0)->1,BigInt(1)->5,flat->8,vector(vertices,642)->1926)
   }
   private class Driver(val d: VertexGeometryHarness) {
     zero(d.io);d.reset.poke(true.B);d.clock.step();d.reset.poke(false.B)
@@ -119,9 +119,11 @@ class VertexGeometryStageSpec extends AnyFlatSpec {
     for(i<-0 until 16;c<-0 until 4)put(0x4000+i*16+c*4,fp(i*10+c+1))
     indices.zipWithIndex.foreach{case(v,i)=>memory(BigInt(0x6000+i))=v}
     for(i<-0 until 512 by 4)put(0x100000+i,BigInt("deadbeef",16));put(0x100000+480,17)
-    case class Reply(id: BigInt,data: BigInt,due: Int)
+    case class Reply(id: BigInt,data: BigInt,due: Int,fault: Boolean)
     val pending=mutable.ArrayBuffer.empty[Reply];var offered: Option[Reply]=None
     var cycle=0;var requests=0;var globalStaging=0
+    var fault: (BigInt,Boolean)=>Boolean=(_,_)=>false
+    var onRead: BigInt=>Unit=_=>()
     var expected=Vector.empty[BigInt];var accepted=0;var held: Option[BigInt]=None
     var holdAt: Option[Int]=None;var ready=true
     def tick(): Unit={
@@ -138,16 +140,18 @@ class VertexGeometryStageSpec extends AnyFlatSpec {
         if(due.nonEmpty)offered=Some(pending.remove(if(cycle%2==0)due.last else due.head))
       }
       d.io.memoryResponse.valid.poke(offered.nonEmpty.B)
-      offered.foreach { r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U) }
+      offered.foreach { r=>d.io.memoryResponse.bits.transactionId.poke(r.id.U);d.io.memoryResponse.bits.readData.poke(r.data.U);d.io.memoryResponse.bits.fault.poke(r.fault.B) }
       if(offered.nonEmpty && d.io.memoryResponse.ready.peek().litToBoolean)offered=None
       if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean) {
         requests+=1;val r=d.io.memoryRequest.bits;val address=r.address.peek().litValue
-        if(r.isWrite.peek().litToBoolean) {
+        val failed=fault(address,r.isWrite.peek().litToBoolean)
+        if(!r.isWrite.peek().litToBoolean)onRead(address)
+        if(r.isWrite.peek().litToBoolean && !failed) {
           val mask=r.byteMask.peek().litValue;val data=r.writeData.peek().litValue
           for(b<-0 until 64 if mask.testBit(b))memory(address+b)=(data>>(8*b))&255
         }
         val data=(0 until 64).foldLeft(BigInt(0))((v,b)=>v|(memory.getOrElse(address+b,BigInt(0))<<(8*b)))
-        pending+=Reply(r.transactionId.peek().litValue,data,cycle+5+requests%4)
+        pending+=Reply(r.transactionId.peek().litValue,data,cycle+5+requests%4,failed)
       }
       d.clock.step();cycle+=1
     }
@@ -171,6 +175,67 @@ class VertexGeometryStageSpec extends AnyFlatSpec {
       for(_<-0 until 9){d.io.draw.ready.expect(false.B);d.io.busy.expect(true.B);d.io.idle.expect(false.B);tick();assert(r.peek().litValue==held)}
       d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B);until(d.io.idle.peek().litToBoolean)
       d.io.poolDrained.expect(true.B);d.io.reserved.expect(0.U);assert(pending.isEmpty && offered.isEmpty)
+    }
+  }
+
+  for(local<-Seq(true,false))
+  it should s"resolve indirect arrays and signed indexed parameters before shared-CU shading and assembly local=$local" in {
+    simulate(new VertexGeometryHarness(local)){d=>val t=new Driver(d)
+      var serial=0
+      def prepare(mode: Int,count: Int,instances: Int=2,reserved: Int=0): BigInt={
+        t.descriptor(4);d.io.draw.bits.vertex.input.count.poke(0.U);d.io.draw.bits.vertex.input.instances.poke(0.U)
+        val c=d.io.draw.bits.indirect;val address=BigInt(0x9003c+128*serial);serial+=1
+        c.mode.poke(mode.U);c.view.base.poke(address.U);c.view.limit.poke((address+(if(mode==1)16 else 20)).U)
+        c.view.allocationBase.poke((address& ~BigInt(63)).U);c.view.allocationLimit.poke(((address+128)& ~BigInt(63)).U)
+        val values=if(mode==1)Seq(count,instances,2,reserved)else Seq(count,instances,1,-1,reserved)
+        values.zipWithIndex.foreach{case(v,i)=>t.put(address+4*i,BigInt(v)&0xffffffffL)}
+        if(mode==1){d.io.draw.bits.vertex.input.indexFormat.poke(0.U);d.io.draw.bits.vertex.input.restart.poke(false.B)}
+        else{
+          t.memory(BigInt(0x8000))=99
+          indices.zipWithIndex.foreach{case(v,i)=>t.memory(BigInt(0x8001+i))=if(v==255)255 else v+1}
+          val v=d.io.draw.bits.vertex.input.indices
+          v.base.poke(0x8000.U);v.limit.poke((0x8000+indices.size+1).U)
+          v.allocationBase.poke(0x8000.U);v.allocationLimit.poke(0x8040.U)
+        }
+        val stream=if(mode==1)Vector.range(2,8)else indices
+        t.expected=if(count==0 || reserved!=0)Vector.empty else reference(4,0,stream).zipWithIndex.map{case(p,i)=>bits(p,i,4,9,0)}
+        address
+      }
+      for(mode<-Seq(1,2)){
+        prepare(mode,if(mode==1)6 else indices.size);t.submit()
+        d.io.draw.bits.indirect.mode.poke(3.U);d.io.draw.bits.indirect.view.base.poke(0.U)
+        d.io.draw.bits.vertex.input.count.poke("hffffffff".U)
+        t.until(d.io.completion.valid.peek().litToBoolean)
+        d.io.completion.bits.indirectLines.expect(2.U)
+        d.io.completion.bits.source.vertices.expect((if(mode==1)12 else 44).U)
+        d.io.completion.bits.source.restarts.expect((if(mode==1)0 else 6).U)
+        assert(t.accepted==t.expected.size);t.finish(0)
+      }
+      prepare(1,0);d.io.draw.bits.vertex.shaderPc.poke(0x2000.U);t.submit()
+      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.source.batches.expect(0.U);t.finish(0)
+      val reserved=prepare(2,3,reserved=1);t.submit()
+      t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.source.batches.expect(0.U)
+      d.io.completion.bits.source.faultAddress.expect((reserved+16).U);t.finish(1)
+      prepare(1,6);t.expected=Vector.empty
+      val privateBase=d.io.draw.bits.vertex.scratch.base.peek().litValue
+      val alias=d.io.draw.bits.indirect.view
+      alias.base.poke(privateBase.U);alias.limit.poke((privateBase+16).U)
+      alias.allocationBase.poke(privateBase.U);alias.allocationLimit.poke((privateBase+64).U)
+      val beforeAlias=t.requests;t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.source.faultAddress.expect(privateBase.U)
+      d.io.completion.bits.indirectLines.expect(0.U);d.io.completion.bits.source.batches.expect(0.U)
+      t.finish(1);assert(t.requests==beforeAlias,"private-prefix alias issued memory work")
+      val failed=prepare(2,3);t.expected=Vector.empty;t.fault=(a,w)=> !w && a==(failed& ~BigInt(63))+64
+      t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+      d.io.completion.bits.source.faultAddress.expect(((failed& ~BigInt(63))+64).U)
+      d.io.completion.bits.source.batches.expect(0.U);t.finish(3);t.fault=(_,_)=>false
+      val canceled=prepare(2,3);t.expected=Vector.empty;var requested=false
+      t.onRead=a=>if(a==(canceled& ~BigInt(63))){requested=true;d.io.cancel.poke(true.B)}
+      t.submit();t.until(d.io.completion.valid.peek().litToBoolean)
+      assert(requested);d.io.completion.bits.indirectLines.expect(1.U)
+      d.io.completion.bits.source.batches.expect(0.U);t.finish(4);d.io.cancel.poke(false.B);t.onRead=_=>()
+      prepare(1,6);t.submit();t.finish(0);assert(t.accepted==t.expected.size)
+      info(s"INDIRECT_DRAW_GEOMETRY local=$local actualCUs2=true arraysAndElements=true staticCountsIgnored=true signedBaseVertex=true firstIndex=true instances2=true restarts=true exactFlatPrimitives=true emptyNoLaunch=true reservedRejected=true privateAliasRejected=true secondLineFault=true delayedReplyCancel=true healthyReuse=true")
     }
   }
 

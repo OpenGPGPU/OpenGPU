@@ -181,9 +181,12 @@ class VertexBinPipeline(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
         input.bindings.zipWithIndex.map{case(binding,i)=>
           val used=input.attributes.map(a=>a.enabled && a.bindingIndex===i.U).reduce(_ || _)
           used && aliases(binding.base,binding.limit)}.reduce(_ || _)
-      val work=input.count=/=0.U && input.instances=/=0.U
-      val legal=draw.version===1.U && input.identity.asUInt===d.identity.asUInt && Fp32RasterState.legal(draw.raster,g) &&
-        Fp32ViewportState.legal(draw.vertex.viewport) && draw.vertex.geometry.topology<=6.U && !(work && (scratchAlias || inputAlias))
+      val indirect=draw.vertex.geometry.indirect
+      val parameterEnd=indirect.view.base+&Mux(indirect.mode===1.U,16.U,20.U)
+      val parameterAlias=indirect.mode=/=0.U && aliases(indirect.view.base,parameterEnd)
+      val work=indirect.mode=/=0.U || (input.count=/=0.U && input.instances=/=0.U)
+      val legal=IndirectDrawControl.legal(indirect,input.indexFormat) && draw.version===1.U && input.identity.asUInt===d.identity.asUInt && Fp32RasterState.legal(draw.raster,g) &&
+        Fp32ViewportState.legal(draw.vertex.viewport) && draw.vertex.geometry.topology<=6.U && !(work && (scratchAlias || inputAlias || parameterAlias))
       when(stop){phase:=State.closing}.elsewhen(!legal){fail(1.U,1);phase:=State.closing}
         .otherwise{sourceOffered:=true.B;phase:=State.drawing}
     }

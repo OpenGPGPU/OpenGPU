@@ -9,6 +9,7 @@ import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
 class VertexGeometryDraw(p: VertexShaderStageConfig) extends Bundle {
   val vertex=new VertexShaderDraw(p)
   val topology=UInt(4.W);val flatMask=UInt((4*p.varyings).W)
+  val indirect=new IndirectDrawControl
 }
 
 /** Generic GPU input/shader/assembly stream. Admission snapshots both stages;
@@ -16,7 +17,7 @@ class VertexGeometryDraw(p: VertexShaderStageConfig) extends Bundle {
   * reach that child. Completion retains host ownership through primitive drain.
   * Rasterization, clipping and native host descriptors are separate interfaces.
   */
-class VertexGeometryStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
+private[graphics] class DirectVertexGeometryStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig=VertexShaderStageConfig(),
     shared: SharedCuShaderConfig=SharedCuShaderConfig(4),useSramBlackBoxes: Boolean=false,
     payload: Option[ShaderPayloadConfig]=None,payloadOwner: Int=0,groupedTexture: Boolean=false,
     flatShading: Boolean=true,transformFeedback: Boolean=false) extends Module {
