@@ -152,6 +152,26 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
         // the surviving warp samples texture and writes derivative depth.
         val divergentFragment = scenario.endsWith("fragment") ||
           scenario == "instruction vertex guest shader" || drmImage
+        // The guest discards warp zero. A capped one-warp batch therefore
+        // discards every fragment, even though it still fetches the texture.
+        val shaderLanes = if (drmGuestTexture) 4 else gpu.lanes
+        val allDiscarded = divergentFragment && fragmentBatchLimit > 0 &&
+          fragmentBatchLimit <= shaderLanes
+        def checkSampledColor(base: Long, sampled: Long, background: Long): Unit = {
+          if (allDiscarded) {
+            assert(!writes.exists(a => a >= base && a < base + framebufferBytes),
+              "discarded fragments must not write the framebuffer")
+            for (i <- 0 until side * side * samples) {
+              assert(words.getOrElse(base + i * 4L, BigInt(0)) == background,
+                s"single-warp guest must preserve background at sample $i")
+            }
+          } else {
+            assert(if (divergentFragment) (0 until side * side).exists(i =>
+              words.getOrElse(base + i * 4L, BigInt(0)) == sampled)
+              else words.getOrElse(base + 1 * 16L + 1 * 4, BigInt(0)) == sampled,
+              "successful render/reset drain must commit sampled colour")
+          }
+        }
         if (divergentFragment) store(program, Seq(
           0x00241293L, 0x005082b3L, 0xc1027057L, 0x08028313L,
           0x02036087L, 0x0a028313L, 0x02036107L, 0x0620812bL,
@@ -331,10 +351,7 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
           assert(translatedTextureRead, "texture must be fetched from its translated mip allocation")
         }
         if (!fault) {
-          assert(if (divergentFragment) (0 until side * side).exists(i =>
-            words.getOrElse(color + i * 4L, BigInt(0)) == texel)
-            else words.getOrElse(color + 1 * 16L + 1 * 4, BigInt(0)) == texel,
-            "successful render/reset drain must commit sampled colour")
+          checkSampledColor(color, texel, if (drmImage) 0x000000ffL else 0L)
         }
         if (resetting) {
           assert(resetIssued)
@@ -443,11 +460,11 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
           assert(reads.contains(BigInt(recoveryProgram)), "relaunch must fetch the new physical code page")
         }
         assert(!reads.exists(a => a >= textureVa && a < textureVa + 4096))
-        assert(writes.exists(a => a >= recoveryColor && a < recoveryColor + framebufferBytes))
+        if (!allDiscarded) {
+          assert(writes.exists(a => a >= recoveryColor && a < recoveryColor + framebufferBytes))
+        }
         checkGuestImage(recoveryColor, recoveryTexel, 0x12345678L)
-          assert(if (divergentFragment) (0 until side * side).exists(i => words(recoveryColor + i * 4L) == recoveryTexel)
-          else words(recoveryColor + 1 * 16L + 1 * 4) == recoveryTexel,
-          "framebuffer must contain the sampled physical texel")
+        checkSampledColor(recoveryColor, recoveryTexel, 0x12345678L)
         if (drmModeTransitions) {
           // Keep the same GPU, code, context mapping and command ID across
           // mode changes. Fresh attachments avoid CPU/GPU cache aliasing.
