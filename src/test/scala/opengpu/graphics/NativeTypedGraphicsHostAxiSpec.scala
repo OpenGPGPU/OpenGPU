@@ -293,10 +293,13 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
             (BigInt(7)<<26)|(BigInt(1)<<25)|(BigInt(4)<<20)|(BigInt(3)<<15)|(BigInt(7)<<7)|0x2b))
         }
       }
-      for((mode,frame)<-Seq("healthy","published","denied","healthy").zipWithIndex){
-        val denied=mode=="denied";val published=mode=="published"
-        image.sampledRed=Some(if(published)Fp32ViewportReference.fp(0.125)else value(23))
-        image.sampledGreen=Some(if(published)Fp32ViewportReference.fp(0.875)else value(11))
+      val resetModes=for(stage<-Seq("vertex","fragment");owner<-Seq("root","view","data"))yield s"reset-$stage-$owner"
+      val modes=Seq("healthy","published","denied","healthy","remapped","restored")++resetModes.flatMap(m=>Seq(m,"healthy"))
+      var resetCuts=0;var completedFrames=0
+      for((mode,frame)<-modes.zipWithIndex){
+        val denied=mode=="denied";val published=mode=="published";val remapped=mode=="remapped";val resetting=mode.startsWith("reset-")
+        image.sampledRed=Some(if(published || remapped)Fp32ViewportReference.fp(0.125)else value(23))
+        image.sampledGreen=Some(if(published || remapped)Fp32ViewportReference.fp(0.875)else value(11))
         image.shaderDraws(0,generation=frame+1,freshTextureSources=true)
         for(index<-0 until 24){view(table+index*64,index,block(index),16384);put(block(index)+16380,value(index))}
         val vp=0x4c0000+frame*0x2000;val fp=vp+0x1000
@@ -321,11 +324,21 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           }
         }
         val deniedPage=(block(23)+16380)& ~BigInt(4095)
-        if(denied){
+        val remappedPages=Map(11->BigInt(0xb00000),23->BigInt(0xb01000))
+        def dataAddress(index: Int): BigInt=if(remapped && remappedPages.contains(index))
+          remappedPages(index)+((block(index)+16380)&4095)else image.pa(block(index)+16380)
+        if(denied || remapped){
           val pt=BigInt(0x31000);image.word(0x30004,(pt>>12)<<10|1)
           for(page<-0 until 1024)image.word(pt+4*page,((BigInt(0x800000+page*4096)>>12)<<10)|0xcf)
-          image.word(pt+((deniedPage>>12)&1023)*4,((image.pa(deniedPage)>>12)<<10)|0x49)
+          if(denied)image.word(pt+((deniedPage>>12)&1023)*4,((image.pa(deniedPage)>>12)<<10)|0x49)
+          if(remapped)for((index,page)<-remappedPages){
+            image.word(pt+(((block(index)+16380)>>12)&1023)*4,((page>>12)<<10)|0xcf)
+            image.word(dataAddress(index),Fp32ViewportReference.fp(if(index==11)0.875 else 0.125))
+          }
         }
+        val satp=if(remapped)BigInt("80400030",16)else BigInt("80000030",16)
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,satp.toInt);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,satp.toInt)
+        assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==satp && axiRead(d,GpuCommandMmioRegs.INSTRUCTION_SATP)==satp)
         axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
         val reboundData=BigInt(0x5a0000)
         val publication=if(published){
@@ -341,12 +354,43 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           producer.produceUpdates(170+frame,0x4e0000,0x4e1000,updates,0x345+frame)
           producer.publish(190+frame,0x345+frame,0x520000,((reboundData+16384-0x520000)/4).toInt);Some(producer)
         }else None
-        image.submit(220+frame);image.run(if(denied)3 else 0,id=220+frame,publication=publication)
+        image.submit(220+frame)
+        if(resetting){
+          val stage=if(mode.contains("vertex"))0 else 1;val owner=mode.split("-").last
+          val root=BigInt(0x520000+stage*64);val defaultView=BigInt(0x522000+stage*64)
+          val defaultData=if(stage==0)BigInt(0x430000+608)else BigInt(0x450000+896)
+          val target=image.pa((owner match{case "root"=>root;case "view"=>defaultView;case "data"=>defaultData})& ~BigInt(63))
+          var cut=false
+          serviceMemoryMaster(d,image.read,readResponseDelay=37,writeAckDelay=29,maxCycles=300000,
+            // The legacy fragment depth load also reads the default-data line.
+            // Cut only the later uncached uniform read, after its own view.
+            onReadAccepted=a=>if(!cut && a==target && (owner!="data" || image.reads.contains(image.pa(defaultView)))){
+              if(owner!="root")assert(image.reads.contains(image.pa(root)),s"$mode preceded the root read")
+              if(owner=="data")assert(image.reads.contains(image.pa(defaultView)),s"$mode preceded the default view read")
+              cut=true;if(local)assert(d.io.performance.get.payloadReservedBytes.peek().litValue>0)
+              axiWrite(d,GpuCommandMmioRegs.RESET,1)
+              axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+              axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0,expectedResponse=2)
+              assert((axiRead(d,GpuCommandMmioRegs.STATUS)&10)!=0,"reset released an accepted uniform read before its delayed reply")
+            })(image.write){cut && d.io.m_irq.peek().litToBoolean}
+          assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0,s"$mode did not drain")
+          assert(!image.writes.exists(_>=0x1000000),s"$mode published an abandoned image")
+          assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==satp && axiRead(d,GpuCommandMmioRegs.INSTRUCTION_SATP)==satp)
+          axiWrite(d,RenderHostRegs.IRQ,3);resetCuts+=1
+        }else{
+        image.run(if(denied)3 else 0,id=220+frame,publication=publication)
         if(denied)assert(!image.reads.exists(a=>a>=image.pa(deniedPage) && a<image.pa(deniedPage+4096)),"denied uniform data reached physical AXI")
         else{
           image.verifyDraws(0)
           for(index<-0 until 24){val base=if(published && index==23)reboundData else block(index)
-            assert(image.reads.contains(image.pa((base+16380)& ~BigInt(63))),s"binding $index was not physically read")}
+            val address=if(published && index==23)image.pa(base+16380)else dataAddress(index)
+            assert(image.reads.contains(address& ~BigInt(63)),s"binding $index was not physically read")}
+          if(remapped)for(index<-Seq(11,23)){
+            val oldPage=image.pa((block(index)+16380)& ~BigInt(4095))
+            assert(!image.reads.exists(a=>a>=oldPage && a<oldPage+4096),s"ASID remap reused binding $index's old physical page")
+            val old=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory(image.pa(block(index)+16380+b)))<<(8*b)))
+            assert(old==value(index),"ASID remap modified the old physical allocation")
+          }
           if(published){
             val old=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory(image.pa(block(23)+16380+b)))<<(8*b)))
             assert(old==value(23),"rebinding changed the old data allocation")
@@ -357,10 +401,16 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
               assert(image.memory(image.pa(base+offset+b))==((expected>>(8*b))&255).toInt,"default tail was modified")}
           }
         }
-        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0,expectedResponse=2)
+        assert(axiRead(d,GpuCommandMmioRegs.VECTOR_SATP)==satp && axiRead(d,GpuCommandMmioRegs.INSTRUCTION_SATP)==satp)
+        image.pop();completedFrames+=1
+        }
         d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)
+        if(local)assert(d.io.performance.get.payloadAllocations.peek().litValue==d.io.performance.get.payloadReleases.peek().litValue)
       }
-      info(s"NATIVE_UNIFORM_AXI local=$local frames4=true sharedBindings24=true stageMappings12=true scalarVector=true lastBlockWords=true defaultFirstLast=true realSv32=true GPUproducerRootViewAndDataStores=true queuedProducerPublicationRender=true mappingRebindingAndDataChangesVisible=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true defaultTailsPreserved=true healthyReuse=true")
+      assert(resetCuts==6 && completedFrames==12)
+      info(s"NATIVE_UNIFORM_AXI local=$local submissions=${modes.size} completedFrames=$completedFrames resetCuts=$resetCuts sharedBindings24=true stageMappings12=true scalarVector=true lastBlockWords=true defaultFirstLast=true realSv32=true GPUproducerRootViewAndDataStores=true queuedProducerPublicationRender=true mappingRebindingAndDataChangesVisible=true ASIDremappedAndRestored=true oldPhysicalPagesNotRead=true vertexFragmentRootViewDataReset=true delayedRepliesDrained=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true defaultTailsPreserved=true healthyReuse=true")
     }
   }
 
