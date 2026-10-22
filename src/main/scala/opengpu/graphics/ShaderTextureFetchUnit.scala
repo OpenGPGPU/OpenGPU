@@ -111,7 +111,7 @@ class ShaderTextureFetchUnit(config: GpuConfig=GpuConfig(),capturedCoordinates: 
     is(State.verifyRoot){
       val end=root.bindingsBase.pad(64)+(root.bindingCount.pad(64)<<6)
       when(stop){phase:=State.finish}.elsewhen(malformed || root.identity.asUInt=/=request.identity.asUInt || root.stage=/=request.stage){fail(7.U,1.U);phase:=State.finish}
-        .elsewhen(root.bindingCount===0.U || root.bindingCount>32.U || request.unit>=root.bindingCount ||
+        .elsewhen(root.bindingCount===0.U || root.bindingCount>ShaderTextureResources.maxBindings.U || request.unit>=root.bindingCount ||
           !tableLegal(root.bindingsBase,root.bindingsLimit,64) || end>root.bindingsLimit ||
           !tableLegal(root.imagesBase,root.imagesLimit,128) || !tableLegal(root.samplersBase,root.samplersLimit,64)){
           fail(1.U,1.U);phase:=State.finish

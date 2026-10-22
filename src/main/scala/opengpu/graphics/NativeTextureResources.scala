@@ -8,6 +8,8 @@ import chisel3.util._
   */
 class ShaderTextureResources extends Bundle {val version=UInt(2.W);val address=UInt(32.W)}
 object ShaderTextureResources {
+  /** Binding namespace shared by vertex/fragment fetch, sampling and size queries. */
+  val maxBindings = 32
   def legal(r: ShaderTextureResources): Bool=(r.version===0.U && r.address===0.U) ||
     (r.version===1.U && r.address(5,0)===0.U && r.address.pad(33)+128.U<=(BigInt(1)<<32).U)
   def fields(base: Int,prefix: String,r: ShaderTextureResources): Seq[NativeTypedGraphicsLayout.Field]=

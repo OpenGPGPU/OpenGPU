@@ -12,7 +12,7 @@ object NativeTextureOperationCapabilities {
   val features=BigInt(0x3f)
   val offsetRange=BigInt("0007fff8",16) // Signed16-bit minimum and maximum: -8,+7.
   val words: Seq[BigInt]=Seq(magic,BigInt(wordCount),BigInt(version),functionMask,functionMask,
-    BigInt(0xff),BigInt(15),BigInt(7),BigInt(7),BigInt(3),BigInt(32),BigInt(16),BigInt(15),
+    BigInt(0xff),BigInt(15),BigInt(7),BigInt(7),BigInt(3),BigInt(ShaderTextureResources.maxBindings),BigInt(16),BigInt(15),
     BigInt(TextureImageFormat.formats.size),features,offsetRange)
   require(base>=NativePrimitiveQueryCapabilities.end && (base&63)==0 && end<=0x400 && words.size==wordCount)
   def header(prefix: String): String=Seq(
