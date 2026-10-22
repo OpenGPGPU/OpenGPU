@@ -291,8 +291,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
             (BigInt(7)<<26)|(BigInt(1)<<25)|(BigInt(4)<<20)|(BigInt(3)<<15)|(BigInt(7)<<7)|0x2b))
         }
       }
-      for((denied,frame)<-Seq(false,true,false).zipWithIndex){
-        image.sampledRed=Some(value(23));image.sampledGreen=Some(value(11))
+      for((mode,frame)<-Seq("healthy","published","denied","healthy").zipWithIndex){
+        val denied=mode=="denied";val published=mode=="published"
+        image.sampledRed=Some(if(published)Fp32ViewportReference.fp(0.125)else value(23))
+        image.sampledGreen=Some(if(published)Fp32ViewportReference.fp(0.875)else value(11))
         image.shaderDraws(0,generation=frame+1,freshTextureSources=true)
         for(index<-0 until 24){view(table+index*64,index,block(index),16384);put(block(index)+16380,value(index))}
         val vp=0x4c0000+frame*0x2000;val fp=vp+0x1000
@@ -322,11 +324,31 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
           for(page<-0 until 1024)image.word(pt+4*page,((BigInt(0x800000+page*4096)>>12)<<10)|0xcf)
           image.word(pt+((deniedPage>>12)&1023)*4,((image.pa(deniedPage)>>12)<<10)|0x49)
         }
-        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(220+frame);image.run(if(denied)3 else 0,id=220+frame)
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        val reboundData=BigInt(0x5a0000)
+        val publication=if(published){
+          val producer=new NativeUniformProducerHostProbe(d,image.memory,image.read,image.write,image.pa)
+          val roots=for(n<-0 until 3;stage<-0 to 1)yield{
+            val address=BigInt(0x520000+n*256+stage*64+9*4)
+            val mapping=(0 until 6).map(i=>BigInt(stage*12+6+i)<<(5*i)).sum
+            address->((mapping & ~(BigInt(31)<<25))|(BigInt(if(stage==0)23 else 11)<<25))
+          }
+          val viewUpdates=Seq(8->reboundData,9->(reboundData+16384),11->reboundData,12->(reboundData+16384))
+            .map{case(word,value)=>(table+23*64+word*4)->value}
+          val updates=roots++viewUpdates++Seq((reboundData+16380)->Fp32ViewportReference.fp(0.875),(block(11)+16380)->Fp32ViewportReference.fp(0.125))
+          producer.produceUpdates(170+frame,0x4e0000,0x4e1000,updates,0x345+frame)
+          producer.publish(190+frame,0x345+frame,0x520000,((reboundData+16384-0x520000)/4).toInt);Some(producer)
+        }else None
+        image.submit(220+frame);image.run(if(denied)3 else 0,id=220+frame,publication=publication)
         if(denied)assert(!image.reads.exists(a=>a>=image.pa(deniedPage) && a<image.pa(deniedPage+4096)),"denied uniform data reached physical AXI")
         else{
           image.verifyDraws(0)
-          for(index<-0 until 24)assert(image.reads.contains(image.pa((block(index)+16380)& ~BigInt(63))),s"binding $index was not physically read")
+          for(index<-0 until 24){val base=if(published && index==23)reboundData else block(index)
+            assert(image.reads.contains(image.pa((base+16380)& ~BigInt(63))),s"binding $index was not physically read")}
+          if(published){
+            val old=(0 until 4).foldLeft(BigInt(0))((v,b)=>v|(BigInt(image.memory(image.pa(block(23)+16380+b)))<<(8*b)))
+            assert(old==value(23),"rebinding changed the old data allocation")
+          }
           for(n<-0 until 3;stage<-0 to 1){val base=if(stage==0)BigInt(0x430000+n*8192+608)else BigInt(0x450000+n*8192+896)
             val bytes=if(stage==0)4096 else 3584
             for(offset<-0 until bytes by 4;b<-0 until 4){val expected=if(offset==0)BigInt(61)else Fp32ViewportReference.fp(0.5)
@@ -336,7 +358,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
         d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)
       }
-      info(s"NATIVE_UNIFORM_AXI local=$local frames3=true sharedBindings24=true stageMappings12=true scalarVector=true lastBlockWords=true defaultFirstLast=true realSv32=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true defaultTailsPreserved=true healthyReuse=true")
+      info(s"NATIVE_UNIFORM_AXI local=$local frames4=true sharedBindings24=true stageMappings12=true scalarVector=true lastBlockWords=true defaultFirstLast=true realSv32=true GPUproducerRootViewAndDataStores=true queuedProducerPublicationRender=true mappingRebindingAndDataChangesVisible=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true defaultTailsPreserved=true healthyReuse=true")
     }
   }
 
