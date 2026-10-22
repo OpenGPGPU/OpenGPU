@@ -35,13 +35,14 @@ class GpuComputeUnit(
   taskTextureAvailability: Boolean = false,
   // Native adapters have no external scalar-FP completion service.
   nativeExecutionProfile: Boolean = false,
-  nativeResourcesAvailable: Boolean = true
+  nativeResourcesAvailable: Boolean = true, nativeUniformsAvailable: Boolean = false
 ) extends Module {
   require(!executionLimits || finishOnTrap,"execution limits require fault retirement")
   val io = IO(new Bundle {
     /** Sampler ownership for the kernel accepted on this edge. */
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
+    val uniformResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val execution=if(executionLimits)Some(Input(new opengpu.core.frontend.ShaderExecutionControl))else None
     val kernel = Flipped(Decoupled(new KernelLaunch(config)))
     val gridSlice = if (gridSlices) Some(Input(new opengpu.dispatch.KernelGridSlice)) else None
@@ -91,7 +92,7 @@ class GpuComputeUnit(
       enableFpuBackend,
       vectorCacheSets,
       vectorCacheWays,shaderPayload,nativeExecutionProfile=executionLimits || nativeExecutionProfile,textureAvailable=textureAvailable,
-      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable))
+      taskTextureAvailability=taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable,nativeUniformsAvailable=nativeUniformsAvailable))
   if(taskTextureAvailability) {
     val enabled = RegInit(false.B)
     when(io.kernel.fire) { enabled := io.textureEnabled.get }
@@ -99,6 +100,9 @@ class GpuComputeUnit(
     val nativeEnabled = RegInit(false.B)
     when(io.kernel.fire) { nativeEnabled := io.nativeResourcesEnabled.get }
     core.io.nativeResourcesEnabled.get := nativeEnabled
+    val uniformsEnabled = RegInit(false.B)
+    when(io.kernel.fire) { uniformsEnabled := io.uniformResourcesEnabled.get }
+    core.io.uniformResourcesEnabled.get := uniformsEnabled
   }
   shaderPayload.foreach(_=>core.io.payload.get <> io.payload.get)
   private val system = Module(new WarpSystemControl(config))

@@ -255,7 +255,7 @@ class GpuSystem(
         vectorCacheWays,
         finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true,
         textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels,
-        nativeExecutionProfile=nativeExecutionProfile))
+        nativeExecutionProfile=nativeExecutionProfile,nativeUniformsAvailable=enableGraphicsKernels))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(p,useBlackBoxes,numComputeUnits+1+producerPayloadPins)))
   // The generic compute system has no graphics sampler. Keep the optional
@@ -958,6 +958,7 @@ class GpuSystem(
       // still describes the preceding task on this kernel-acceptance edge.
       unit.io.textureEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire
       unit.io.nativeResourcesEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire && io.graphicsKernels.get.nativeResources
+      unit.io.uniformResourcesEnabled.get := dispatcher.io.graphicsLaunch.fire && unit.io.kernel.fire && io.graphicsKernels.get.uniformResources
     }
     if (shaderExecutionLimits) {
       // graphicsOwner changes after kernel.fire. Snapshot the actual selected

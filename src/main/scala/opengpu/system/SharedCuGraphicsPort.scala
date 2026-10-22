@@ -82,6 +82,7 @@ class SharedCuGraphicsPort(config: GpuConfig, commandIdWidth: Int, numComputeUni
     * Routers snapshot it with acceptance, just like other task ownership.
     */
   val nativeResources = Input(Bool())
+  val uniformResources = Input(Bool())
   val launch = Flipped(Decoupled(new TaggedKernelLaunch(config, commandIdWidth)))
   val completion = Decoupled(new TaggedKernelCompletion(commandIdWidth))
   val trap = Decoupled(new TaggedGraphicsTrap(config, commandIdWidth, numComputeUnits))
