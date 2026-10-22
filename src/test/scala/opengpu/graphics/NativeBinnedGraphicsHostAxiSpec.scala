@@ -11,6 +11,7 @@ import scala.collection.mutable
 abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHostTestSupport {
   protected def shaderRunningReset: Boolean=false
   protected def shaderReconvergenceFaults: Boolean=false
+  protected def shaderStructuredSimt: Boolean=false
   protected def shaderExecutionLimits: Boolean=false
   protected def shaderAvailabilityFaults: Boolean=false
   protected def visibilityQueries: Boolean=false
@@ -315,6 +316,59 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
   }
   private def vm(d: GpuHostSystemAxi): Unit={axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
     axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)}
+  if(shaderStructuredSimt)for(local<-Seq(true,false))
+  it should s"execute checked binned SIMT shaders with scoped fault and reset recovery local=$local" in {
+    simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
+      val vertexWord=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+        .find(_.name=="draw.vertex.geometry.vertex.shaderPc").get.word
+      val fragmentWord=TypedFragmentStateLayout.fields(new TypedFragmentState(f)).find(_.name=="fragment.shaderPc").get.word
+      var frames=0
+      def released(): Unit={perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)}
+      def install(stage: String,code: Vector[BigInt]): BigInt={
+        val pc=image.region+0x29000
+        code.zipWithIndex.foreach{case(word,i)=>image.word(image.pa(pc+4*i),word)}
+        if(stage=="vertex")for(draw<-0 until 2)image.word(image.pa(image.region+0x12000+draw*4096+vertexWord*4),pc)
+        else for(state<-0 until 2)image.word(image.pa(image.region+0x20000+state*512+fragmentWord*4),pc)
+        pc
+      }
+      def render(stage: String,mode: Int,kind: String): Unit={
+        image.setup(mode)
+        val body=if(stage=="vertex")vertexProgram else fragmentProgram
+        val code=if(kind=="overflow")NativeSimtProgram.overflow(gpu.simtStackDepth)
+          else NativeSimtProgram.guarded(body,corrupt=kind=="corrupt")
+        val pc=install(stage,code);val good=kind=="healthy"
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(64+frames)
+        image.run(status=if(good)0 else 5,id=64+frames)
+        assert(image.reads.contains(image.pa(pc)),s"binned $stage SIMT code was not fetched")
+        if(good)image.verify()else assert(!image.writes.exists(_>=image.imageBase),s"binned $kind $stage fault published an image")
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        image.pop();released();frames+=1
+      }
+      for(stage<-Seq("vertex","fragment");mode<-Seq(0,2))render(stage,mode,"healthy")
+      for(stage<-Seq("vertex","fragment");kind<-Seq("corrupt","overflow"))render(stage,0,kind)
+      for(stage<-Seq("vertex","fragment")){
+        image.setup(0);val pc=install(stage,NativeSimtProgram.parkedScope)
+        axiWrite(d,0x320,-1);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(64+frames)
+        var cut=false
+        serviceMemoryMaster(d,image.read,readResponseDelay=37,writeAckDelay=29,maxCycles=1000000,
+          onReadAccepted=a=>if(!cut && a==image.pa(pc+64)){
+            assert(image.reads.contains(image.pa(pc)),"binned reset preceded the scope's first instruction line")
+            cut=true;if(local)assert(perf.payloadReservedBytes.peek().litValue>0)
+            axiWrite(d,GpuCommandMmioRegs.RESET,1)
+            axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+          })(image.write){cut && d.io.m_irq.peek().litToBoolean}
+        assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
+        assert(!image.writes.exists(_>=image.imageBase));released();frames+=1
+        axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,0x320,4096)
+        render(stage,0,"healthy")
+      }
+      assert(frames==12)
+      info(s"NATIVE_SIMT_BINNED local=$local CUs2=true engines2=true frames=$frames " +
+        "vertexAndFragment=true modes1x4x=true scalarReductionOracle=true corruptionAndOverflowRejected=true " +
+        "resetWithLiveScope=true exactHealthyImages=true heldCompletionPinsVM=true payloadReleased=true")
+    }
+  }
   if(shaderReconvergenceFaults)for(local<-Seq(true,false))
   it should s"drain binned empty joins in both shared-CU shader stages and reuse payload owners local=$local" in {
     simulate(host(local)){d=>initialize(d);val image=new Image(d);vm(d);val perf=d.io.performance.get
@@ -554,7 +608,7 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       primitive.foreach(_.report("BINNED",local,2))
     }
   }
-  if(!transformFeedback && !shaderReconvergenceFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
+  if(!transformFeedback && !shaderStructuredSimt && !shaderReconvergenceFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
   if(groupedTexture)for(local<-Seq(true,false))
   it should (if(sharedTextureReset)s"drain shared native texture reads across AXI command reset and republish both binned image engines local=$local"
     else s"sample shared RGBA8 in both native binned stages and observe coherent DMA publication across two image engines local=$local") in {

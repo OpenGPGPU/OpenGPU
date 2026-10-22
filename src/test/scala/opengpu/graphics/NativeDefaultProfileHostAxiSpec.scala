@@ -1,0 +1,222 @@
+package opengpu.graphics
+
+import chisel3._
+import opengpu.config.GpuConfig
+import opengpu.system.{GpuHostSystemAxi, GpuHostTestSupport}
+import opengpu.testutil.GpuSim._
+import org.scalatest.flatspec.AnyFlatSpec
+import scala.collection.mutable
+
+/** Full physical thread capacity changes every shader SoA array stride.
+  * Keep a small image, but require all eight warps to produce distinct pixels.
+  */
+class NativeDefaultProfileHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport {
+  protected def structuredSimt: Boolean = false
+  private val gpu = GpuConfig()
+  private val capacity = gpu.lanes * gpu.warps
+  private val stride = capacity * 4
+  private val vertexBytes = 19 * stride // two attributes, one varying, v1
+  private val fragmentBytes = 28 * stride // one varying, four outputs, v1
+  private val graphics = GraphicsConfig(screenWidth = 32, screenHeight = 32)
+  private val vertexScratch = 0x500000
+  private val fragmentScratch = 0x540000
+  private val vertexPc = 0x401000
+  private val fragmentPc = 0x402000
+  private def fp(x: Double): BigInt = Fp32ViewportReference.fp(x)
+  private def addi(rd: Int, rs: Int, n: Int): BigInt =
+    (BigInt(n & 4095) << 20) | (BigInt(rs) << 15) | (BigInt(rd) << 7) | 0x13
+  private def address(rd: Int, base: Int, offset: Int): Vector[BigInt] = {
+    if (offset >= -2048 && offset < 2048) Vector(addi(rd, base, offset))
+    else {
+      val high = (offset + 2048) >> 12
+      val low = offset - (high << 12)
+      Vector((BigInt(high & 0xfffff) << 12) | (BigInt(rd) << 7) | 0x37,
+        addi(rd, rd, low), (BigInt(base) << 20) | (BigInt(rd) << 15) | (BigInt(rd) << 7) | 0x33)
+    }
+  }
+  private def vectorMemory(base: Int, write: Boolean): BigInt =
+    (BigInt(1) << 25) | (BigInt(base) << 15) | (BigInt(6) << 12) |
+      (BigInt(1) << 7) | (if (write) 0x27 else 7)
+  private val prologue = Vector(BigInt("00241393", 16), BigInt("007083b3", 16), BigInt("0104f057", 16))
+  private val cease = BigInt("30500073", 16)
+  private val vertexCode = {
+    val code = mutable.ArrayBuffer.empty[BigInt] ++ prologue
+    for ((input, output) <- (0 until 4).map(i => (i, 11 + i)) ++
+      (0 until 4).map(i => (4 + i, 15 + i))) {
+      code ++= address(5, 7, input * stride)
+      code += vectorMemory(5, false)
+      code ++= address(6, 7, output * stride)
+      code += vectorMemory(6, true)
+    }
+    (code += cease).toVector
+  }
+  private val fragmentCode = {
+    val code = mutable.ArrayBuffer.empty[BigInt] ++ prologue
+    for (color <- 0 until 4; component <- 0 until 4) {
+      code ++= address(5, 7, (6 + component) * stride)
+      code += vectorMemory(5, false)
+      code ++= address(6, 7, (10 + color * 4 + component) * stride)
+      code += vectorMemory(6, true)
+    }
+    code ++= address(13, 1, fragmentBytes)
+    code += ((BigInt(13) << 15) | (BigInt(2) << 12) | (BigInt(13) << 7) | 3)
+    code += ((BigInt(0x17) << 26) | (BigInt(1) << 25) | (BigInt(13) << 15) |
+      (BigInt(4) << 12) | (BigInt(1) << 7) | 0x57) // vmv.v.x v1,x13
+    code ++= address(6, 7, 27 * stride)
+    code += vectorMemory(6, true)
+    (code += cease).toVector
+  }
+
+  for (local <- Seq(true, false)) {
+    it should s"render a full 128-thread native batch with default four-CU caches local=$local" in {
+      assert(gpu.lanes == 16 && gpu.warps == 8 && capacity == 128 && stride == 512)
+      val native = NativeTypedGraphicsConfig(payload = if (local)
+        Some(ShaderPayloadConfig(capacityBytes = 64 * 1024, maxPayloadBytes = 16 * 1024,
+          owners = 2, ports = 6)) else None)
+      simulate(new GpuHostSystemAxi(graphics, gpu, numComputeUnits = 4,
+        fragCore = true, sharedGraphics = true, parallelGraphics = true,
+        memoryAxiDataBytes = 32, exposePerformance = true,
+        enableIndirectCompute = true, typedGraphics = Some(native))) { d =>
+        initialize(d)
+        val perf = d.io.performance.get
+        axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0x80000030)
+        axiWrite(d, GpuCommandMmioRegs.INSTRUCTION_SATP, 0x80000030)
+        axiWrite(d, RenderHostRegs.IRQ, 1)
+        var peakActive = BigInt(0)
+        var totalSamples = 0
+        for ((mode, frame) <- Seq(0, 2).zipWithIndex) {
+          val memory = mutable.Map.empty[BigInt, Int]
+          val guarded = mutable.Map.empty[BigInt, Int]
+          val reads = mutable.ArrayBuffer.empty[BigInt]
+          def pa(va: Int): BigInt = BigInt(va) + 0x400000
+          def word(a: BigInt, value: BigInt): Unit =
+            for (b <- 0 until 4) memory(a + b) = ((value >> (8 * b)) & 255).toInt
+          def record(va: Int, words: Int, magic: BigInt, fields: Map[Int, BigInt]): Unit = {
+            for (i <- 0 until words) word(pa(va + 4 * i), fields.getOrElse(i, BigInt(0)))
+            word(pa(va), magic); word(pa(va + 4), words * 4); word(pa(va + 8), 1)
+          }
+          // Sv32 superpage: virtual4..8MiB maps to physical8..12MiB.
+          word(0x30004, ((BigInt(0x800000) >> 12) << 10) | 0xcf)
+          val frameVertexPc = vertexPc + frame * 0x2000
+          val frameFragmentPc = fragmentPc + frame * 0x2000
+          val executedVertex = if (structuredSimt) NativeSimtProgram.guarded(vertexCode) else vertexCode
+          val executedFragment = if (structuredSimt) NativeSimtProgram.guarded(fragmentCode) else fragmentCode
+          executedVertex.zipWithIndex.foreach { case (v, i) => word(pa(frameVertexPc + 4 * i), v) }
+          executedFragment.zipWithIndex.foreach { case (v, i) => word(pa(frameFragmentPc + 4 * i), v) }
+          val positions = Vector(Vector(-1.0, -1.0, 0.0, 1.0),
+            Vector(1.0, -1.0, 0.0, 1.0), Vector(-1.0, 1.0, 0.0, 1.0))
+          val colors = Vector(Vector(0.0, 0.0, 0.25, 1.0),
+            Vector(1.0, 0.0, 0.25, 1.0), Vector(0.0, 1.0, 0.25, 1.0))
+          for (v <- 0 until 3; c <- 0 until 4) {
+            word(pa(0x420000 + 16 * v + 4 * c), fp(positions(v)(c)))
+            word(pa(0x421000 + 16 * v + 4 * c), fp(colors(v)(c)))
+          }
+          word(pa(fragmentScratch + fragmentBytes), 61) // emit, all colors, no depth override
+          val samples = 1 << mode
+          case class View(base: BigInt, pitch: Int, depth: Boolean)
+          val views = mutable.ArrayBuffer.empty[View]
+          def view(slot: Int, region: Int, depth: Boolean): Map[Int, BigInt] = {
+            val base = BigInt(region) + 59
+            val pitch = 19 * samples * 4 + 5
+            val limit = base + 10 * pitch + 19 * samples * 4
+            val end = (limit + 63) & ~BigInt(63)
+            for (a <- BigInt(region) until end) { memory(a) = 0xa7; guarded(a) = 0xa7 }
+            views += View(base, pitch, depth)
+            Map(slot -> base, (slot + 1) -> limit, (slot + 3) -> BigInt(region),
+              (slot + 4) -> end, (slot + 6) -> 19, (slot + 7) -> 11,
+              (slot + 8) -> pitch, (slot + 10) -> 1, (slot + 11) -> 1)
+          }
+          val imageBase = 0x1000000 + frame * 0x400000
+          val pass = Map[Int, BigInt](16 -> 1, 17 -> 1, 18 -> 1, 19 -> 7, 20 -> 8, 21 -> 9,
+            24 -> 4, 25 -> 16, 26 -> 8, 27 -> mode, 28 -> 4096,
+            32 -> TypedDepthFormat.d24s8, 34 -> 1, 35 -> fp(1), 36 -> 5,
+            64 -> 1, 65 -> TypedColorFormat.id("RGBA8"), 66 -> 4096, 67 -> 15, 68 -> 1,
+            69 -> fp(0.25), 70 -> fp(0.5), 71 -> fp(0.75), 72 -> fp(1)) ++
+            view(128, imageBase, false) ++ view(192, imageBase + 0x10000, true)
+          record(0x411000, 320, BigInt("47544901", 16), pass)
+          record(0x410000, 128, BigInt("47544a01", 16), Map[Int, BigInt](
+            3 -> 7, 4 -> 8, 5 -> 9, 6 -> 0x411000, 7 -> (0x411000 + 1280),
+            9 -> 0x412000, 10 -> (0x412000 + 2560), 12 -> 1, 13 -> 4096))
+          var draw = Map[Int, BigInt](16 -> 1, 17 -> 1, 18 -> 4,
+            32 -> 1, 33 -> frameVertexPc, 34 -> 2, 35 -> 1, 36 -> 15,
+            40 -> vertexScratch, 41 -> (vertexScratch + vertexBytes),
+            43 -> vertexScratch, 44 -> (vertexScratch + vertexBytes),
+            64 -> 1, 65 -> 7, 66 -> 8, 67 -> 9, 68 -> 3, 69 -> 1,
+            96 -> 1, 99 -> 4, 112 -> 1, 113 -> 1, 115 -> 4,
+            480 -> 1, 483 -> 32, 484 -> 32, 486 -> fp(1),
+            496 -> 1, 497 -> 16, 498 -> 8, 500 -> 1, 501 -> mode,
+            502 -> fp(1), 503 -> fp(1),
+            512 -> 1, 513 -> 7, 514 -> 8, 515 -> 9, 516 -> frameFragmentPc,
+            520 -> fragmentScratch, 521 -> (fragmentScratch + fragmentBytes + 4),
+            523 -> fragmentScratch, 524 -> (fragmentScratch + fragmentBytes + 64),
+            528 -> 1, 529 -> 4, 530 -> 15, 536 -> mode,
+            560 -> 1, 561 -> 1, 562 -> 1, 563 -> 1)
+          for ((base, slot) <- Seq((0x420000, 352), (0x421000, 360)))
+            draw ++= Map[Int, BigInt](slot -> base, (slot + 1) -> (base + 48),
+              (slot + 3) -> base, (slot + 4) -> (base + 64), (slot + 6) -> 16)
+          record(0x412000, 640, BigInt("47544401", 16), draw)
+          val expected = mutable.Map.empty[BigInt, Int] ++ guarded
+          for (v <- views; y <- 0 until 8; x <- 0 until 16; s <- 0 until samples) {
+            // This rectangle lies strictly inside the triangle at every sample.
+            // The exact affine varying uses pixel centers, including 4x mode.
+            val rgba = Vector(fp((x + 0.5) / 32), fp((y + 0.5) / 32), fp(0.25), fp(1))
+            val raw = if (v.depth) (BigInt(5) << 24) |
+              TypedDepthReference.encode(fp(0.5), TypedDepthFormat.d24s8)
+              else TypedColorReference.encode("RGBA8", rgba)._1
+            val a = v.base + y * v.pitch + (x * samples + s) * 4
+            for (b <- 0 until 4) expected(a + b) = ((raw >> (8 * b)) & 255).toInt
+          }
+          def read(a: BigInt): BigInt = {
+            reads += a
+            val base = a & ~BigInt(63)
+            (0 until 64).foldLeft(BigInt(0))((v, b) =>
+              v | (BigInt(memory.getOrElse(base + b, 0)) << (8 * b)))
+          }
+          def write(a: BigInt, data: BigInt, mask: BigInt): Unit =
+            for (b <- 0 until 64 if mask.testBit(b)) memory(a + b) = ((data >> (8 * b)) & 255).toInt
+          axiWrite(d, GpuCommandMmioRegs.TLB_FLUSH, 1)
+          val id = 220 + frame
+          axiWrite(d, GpuCommandMmioRegs.COMMAND_ID, id)
+          axiWrite(d, GpuCommandMmioRegs.OPCODE, 7)
+          axiWrite(d, GpuCommandMmioRegs.SOURCE, 0x410000)
+          axiWrite(d, GpuCommandMmioRegs.DESTINATION, 0x410200)
+          axiWrite(d, GpuCommandMmioRegs.BYTES, 512)
+          axiWrite(d, GpuCommandMmioRegs.PATTERN, 0)
+          axiWrite(d, GpuCommandMmioRegs.SUBMIT, 1)
+          serviceMemoryMaster(d, read, writeAckDelay = 19, readResponseDelay = 11,
+            maxCycles = 1000000, onCycle = () => {
+              peakActive = peakActive.max(perf.activeComputeUnits.peek().litValue)
+            })(write) { d.io.m_irq.peek().litToBoolean }
+          val completion = axiRead(d, GpuCommandMmioRegs.COMPLETION)
+          assert((completion & 255) == id && ((completion >> 8) & 7) == 7 &&
+            ((completion >> 11) & 15) == 0 && completion.testBit(15),
+            s"default native completion=${completion.toString(16)} local=$local mode=$mode")
+          for ((a, value) <- expected)
+            assert(memory(a) == value,
+              s"default native image/guard ${a.toString(16)} actual=${memory(a)} expected=$value local=$local mode=$mode")
+          perf.maxGraphicsLocalX.expect(128.U)
+          assert(reads.contains(pa(frameVertexPc)) && reads.contains(pa(frameFragmentPc)))
+          assert(!reads.exists(a => a >= 0x400000 && a < 0x800000))
+          axiWrite(d, GpuCommandMmioRegs.VECTOR_SATP, 0, expectedResponse = 2)
+          d.io.s_axi_aclk.step(13)
+          assert(axiRead(d, GpuCommandMmioRegs.COMPLETION) == completion)
+          perf.payloadReservedBytes.expect(0.U)
+          perf.payloadPinsActive.expect(0.U)
+          if (local) {
+            assert(perf.payloadAllocations.peek().litValue > 0)
+            assert(perf.payloadAllocations.peek().litValue == perf.payloadReleases.peek().litValue)
+            perf.payloadSpills.expect(0.U)
+          }
+          axiWrite(d, GpuCommandMmioRegs.COMPLETION_POP, 1)
+          axiWrite(d, RenderHostRegs.IRQ, 3)
+          totalSamples += 128 * samples
+        }
+        assert(peakActive >= 1 && peakActive <= 4)
+        info(s"NATIVE_DEFAULT_PROFILE structuredSIMT=$structuredSimt local=$local CUs=4 lanes=16 warps=8 SoAStride=512 " +
+          s"defaultIVCaches=true defaultL2=true AXI256=true frames=2 exactPixels=256 " +
+          s"exactSamples=$totalSamples maxFragmentBatch=128 peakActiveCUs=$peakActive " +
+          "allEightWarps=true imageGuards=true heldCompletionPinsVM=true payloadReleased=true")
+      }
+    }
+  }
+}

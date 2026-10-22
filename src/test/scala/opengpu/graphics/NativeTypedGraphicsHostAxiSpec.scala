@@ -17,6 +17,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   protected def shaderExecutionLimits: Boolean=false
   protected def shaderSystemFaults: Boolean=false
   protected def shaderReconvergenceFaults: Boolean=false
+  protected def shaderStructuredSimt: Boolean=false
   protected def shaderAvailabilityFaults: Boolean=false
   protected def transformFeedbackRecovery: Boolean=false
   protected def groupedTexture: Boolean=false
@@ -340,6 +341,61 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       info(s"NATIVE_SHADER_EXECUTION_TYPED local=$local CUs=$nativeComputeUnits frames=4 vertexLoop=true fragmentLoop=true quota128=true resetDuringOwnedFetch=true delayedReplyDrained=true maxQuota=true zeroRejectedByPolicy=true queuedAndCompletionPolicyPinned=true exactHealthyImages=true payloadReleased=true")
     }
   }
+  if(shaderStructuredSimt)for(local<-Seq(true,false))
+  it should s"execute checked native SIMT shaders and drain live-scope faults and resets local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      initialize(d);val image=new Image(d);val perf=d.io.performance.get
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,RenderHostRegs.IRQ,1)
+      var frames=0
+      def released(): Unit={perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+        if(local)assert(perf.payloadAllocations.peek().litValue==perf.payloadReleases.peek().litValue)}
+      def install(stage: String,code: Vector[BigInt]): BigInt={
+        val pc=BigInt(0x4c0000)+frames*0x1000
+        code.zipWithIndex.foreach{case(word,i)=>image.word(image.pa(pc+4*i),word)}
+        for(draw<-0 until 3)image.word(image.pa(0x412000+draw*4096+(if(stage=="vertex")33 else 516)*4),pc)
+        pc
+      }
+      def render(stage: String,mode: Int,kind: String): Unit={
+        image.shaderDraws(mode,freshTextureSources=true,generation=40+frames)
+        val body=if(stage=="vertex")vertexProgram else fragmentProgram()
+        val code=if(kind=="overflow")NativeSimtProgram.overflow(gpu.simtStackDepth)
+          else NativeSimtProgram.guarded(body,corrupt=kind=="corrupt")
+        val pc=install(stage,code);val good=kind=="healthy"
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(64+frames)
+        image.run(status=if(good)0 else 5,id=64+frames)
+        assert(image.reads.contains(image.pa(pc)),s"$stage SIMT code was not fetched")
+        if(good)image.verifyDraws(mode)else assert(!image.writes.exists(_>=0x1000000),s"$kind $stage fault published an image")
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+        image.pop();released();frames+=1
+      }
+      for(stage<-Seq("vertex","fragment");mode<-Seq(0,2))render(stage,mode,"healthy")
+      for(stage<-Seq("vertex","fragment");kind<-Seq("corrupt","overflow"))render(stage,0,kind)
+      for(stage<-Seq("vertex","fragment")){
+        image.shaderDraws(0,freshTextureSources=true,generation=40+frames)
+        val pc=install(stage,NativeSimtProgram.parkedScope)
+        axiWrite(d,0x320,-1);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(64+frames)
+        var cut=false
+        serviceMemoryMaster(d,image.read,readResponseDelay=37,writeAckDelay=29,maxCycles=300000,
+          onReadAccepted=a=>if(!cut && a==image.pa(pc+64)){
+            assert(image.reads.contains(image.pa(pc)),"reset preceded the scope's first instruction line")
+            cut=true;if(local)assert(perf.payloadReservedBytes.peek().litValue>0)
+            axiWrite(d,GpuCommandMmioRegs.RESET,1)
+            axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2)
+          })(image.write){cut && d.io.m_irq.peek().litToBoolean}
+        assert(cut && (axiRead(d,GpuCommandMmioRegs.STATUS)&10)==0)
+        assert(!image.writes.exists(_>=0x1000000));released();frames+=1
+        axiWrite(d,RenderHostRegs.IRQ,3);axiWrite(d,0x320,4096)
+        render(stage,0,"healthy")
+      }
+      assert(frames==12)
+      info(s"NATIVE_SIMT_TYPED local=$local CUs=$nativeComputeUnits frames=$frames " +
+        "vertexAndFragment=true modes1x4x=true scalarReductionOracle=true corruptionAndOverflowRejected=true " +
+        "resetWithLiveScope=true exactHealthyImages=true heldCompletionPinsVM=true payloadReleased=true")
+    }
+  }
   if(shaderReconvergenceFaults)for(local<-Seq(true,false))
   it should s"fault empty joins in both native shader stages and recover exact images local=$local" in {
     simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
@@ -578,7 +634,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       info(s"NATIVE_TRANSFORM_FEEDBACK_RECOVERY_AXI local=$local CUs=4 completedFrames=$frames resetCuts=$resetCuts checkpointPermissionFaults=1 capturePermissionFaults=1 captureBusFaults=1 missingLeaseDraws=1 peerHealthyDraws=4 scopedRecovery=true countersAfterFinalAck=true noDeniedPhysicalStores=true partialFaultStoresBounded=true staleResetObjectsRejected=true exactRawCaptureAndImages=true queryContextIsolation=true")
     }
   }
-  if(!transformFeedback && !shaderReconvergenceFaults && !shaderSystemFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
+  if(!transformFeedback && !shaderStructuredSimt && !shaderReconvergenceFaults && !shaderSystemFaults && !shaderExecutionLimits && !shaderAvailabilityFaults && !shaderRunningReset){
   // Shared-path subclasses register the focused capture matrix below.
   if(!groupedTexture){
   it should "submit a translated native clear pass and publish trusted physical source and resolve views over the production AXI host" in {
