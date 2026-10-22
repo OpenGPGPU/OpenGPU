@@ -20,7 +20,7 @@ class GpuComputeUnitTexturePolicySpec extends AnyFlatSpec {
     it should s"snapshot texture permission across held service, faults and same-CU owner changes vector=$vector lanes=$lanes warps=$warps" in {
       val config = GpuConfig(lanes=lanes, warps=warps)
       val fullMask = (BigInt(1)<<lanes)-1
-      simulate(new GpuComputeUnit(config, finishOnTrap=true, taskTextureAvailability=true,nativeUniformsAvailable=true,
+      simulate(new GpuComputeUnit(config, finishOnTrap=true, taskTextureAvailability=true,nativeUniformsAvailable=true,nativeExecutionProfile=true,
         instructionCacheSets=sets, instructionCacheWays=ways, vectorCacheSets=sets, vectorCacheWays=ways)) { d =>
         zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
         d.io.l1InvalidateDone.ready.poke(true.B); d.io.globalAtomicRequest.ready.poke(true.B)
