@@ -19,7 +19,7 @@ object TextureFloatAxisWrap {val repeat=0;val clamp=1;val mirroredRepeat=2;val c
 /** Exact binary-rational tap selection, followed by RNE binary32 weight
   * conversion. Retain149 fractional bits, including every FP32 subnormal;
   * reducing periods before multiplication bounds arbitrary finite inputs.
-  * Eight elastic stages accept one axis per cycle when unstalled. Two-entry
+  * Ten elastic stages accept one axis per cycle when unstalled. Two-entry
   * stage queues break the ready path. There is no memory or cancellation
   * ownership here: parents drain every accepted tag before retiring work.
   */
@@ -40,6 +40,15 @@ class TextureFloatAxisPipeline extends Module {
     val meta=new Meta;val negative=Bool();val aboveOne=Bool();val aboveTwo=Bool()
     val aboveSixteen=Bool();val product=UInt(38.W);val shift=UInt(8.W)
   }
+  private class Shifted extends Bundle {
+    val meta=new Meta;val negative=Bool();val aboveOne=Bool();val aboveTwo=Bool()
+    val aboveSixteen=Bool();val magnitude=UInt(169.W)
+  }
+  private val chunkBits=(0 until 6).map(i=>math.min(32,170-32*i))
+  private class SignedChunks extends Bundle {
+    val meta=new Meta;val negative=Bool();val positive=UInt(170.W)
+    val local=Vec(6,UInt(33.W));val propagate=Vec(6,Bool())
+  }
   private class Aligned extends Bundle {val meta=new Meta;val scaled=SInt(170.W)}
   private class Located extends Bundle {
     val meta=new Meta;val first=SInt(22.W);val second=SInt(22.W);val fraction=UInt(149.W)
@@ -53,6 +62,8 @@ class TextureFloatAxisPipeline extends Module {
   }
   private val reduced=Module(new Queue(new Reduced,2)).io
   private val products=Module(new Queue(new Product,2)).io
+  private val shiftedAxis=Module(new Queue(new Shifted,2)).io
+  private val signedChunks=Module(new Queue(new SignedChunks,2)).io
   private val aligned=Module(new Queue(new Aligned,2)).io
   private val located=Module(new Queue(new Located,2)).io
   private val adjusted=Module(new Queue(new Located,2)).io
@@ -73,12 +84,18 @@ class TextureFloatAxisPipeline extends Module {
     (input.wrap===TextureFloatAxisWrap.cubeBorder.U && input.offset=/=0.S)
   reduced.enq.bits.meta.offset:=input.offset
   // Normalize the bounded integer offset modulo 2N. Only N<8 can need
-  // multiple periods; their five-bit constant remainders avoid a wide divider.
+  // multiple periods. Decode the complete five-bit offset domain at elaboration:
+  // the synthesis frontend otherwise leaves non-power-of-two constant remainders
+  // unmapped. Preserve even invalid offset encodings; admission still rejects them.
   private val twoExtent=(input.extent<<1).zext
   private val largeOffset=Mux(input.offset<0.S,twoExtent+input.offset,input.offset.pad(17)).asUInt
   private val smallOffsets=(1 until 8).map{n=>
-    val positive=input.offset.pad(6)+(((8+2*n-1)/(2*n))*2*n).S(6.W)
-    n.U->(positive.asUInt % (2*n).U)
+    val bias=((8+2*n-1)/(2*n))*2*n
+    val values=(0 until 32).map{raw=>
+      val signed=if(raw<16)raw else raw-32
+      raw.U->(((signed+bias)&63)%(2*n)).U(4.W)
+    }
+    n.U->MuxLookup(input.offset.asUInt,0.U(4.W))(values)
   }
   reduced.enq.bits.meta.periodicOffset:=MuxLookup(input.extent,largeOffset)(smallOffsets)
   reduced.enq.bits.negative:=input.coordinate(31)
@@ -96,25 +113,49 @@ class TextureFloatAxisPipeline extends Module {
   products.enq.bits.shift:=reduced.deq.bits.shift
   products.enq.bits.product:=reduced.deq.bits.mantissa*reduced.deq.bits.meta.extent
 
-  aligned.enq.valid:=products.deq.valid;products.deq.ready:=aligned.enq.ready
   private val p=products.deq.bits
-  private val magnitude=((p.product.pad(169)<<p.shift)(168,0)).pad(170).asSInt
-  private val unit=Cat(p.meta.extent,0.U(149.W)).pad(170).asSInt
-  private val period=Cat(p.meta.extent,0.U(150.W)).pad(170).asSInt
-  private val periodic=Mux(p.negative && magnitude=/=0.S,period-magnitude,magnitude)
-  private val clampZero=Mux(p.negative,0.S,Mux(p.aboveOne,unit,magnitude))
+  shiftedAxis.enq.valid:=products.deq.valid;products.deq.ready:=shiftedAxis.enq.ready
+  shiftedAxis.enq.bits.meta:=p.meta;shiftedAxis.enq.bits.negative:=p.negative
+  shiftedAxis.enq.bits.aboveOne:=p.aboveOne;shiftedAxis.enq.bits.aboveTwo:=p.aboveTwo
+  shiftedAxis.enq.bits.aboveSixteen:=p.aboveSixteen
+  shiftedAxis.enq.bits.magnitude:=(p.product.pad(169)<<p.shift)(168,0)
+
+  signedChunks.enq.valid:=shiftedAxis.deq.valid;shiftedAxis.deq.ready:=signedChunks.enq.ready
+  private val s=shiftedAxis.deq.bits
+  private val magnitude=s.magnitude.pad(170)
+  private val unit=Cat(s.meta.extent,0.U(149.W)).pad(170)
+  private val period=Cat(s.meta.extent,0.U(150.W)).pad(170)
   // With a nonzero offset retain original coordinates until integer tap
   // selection. Saturation at +/-16N is outside every reachable edge even
   // for N=1 and offsets[-8,7]; saturating at u=0/1 would be incorrect.
-  private val clampMagnitude=Mux(p.aboveSixteen,(unit<<4).asSInt,magnitude)
-  private val clampOffset=Mux(p.negative,-clampMagnitude,clampMagnitude)
-  private val clamped=Mux(p.meta.offset===0.S,clampZero,clampOffset)
+  private val clampMagnitude=Mux(s.aboveSixteen,(unit<<4)(169,0),magnitude)
   // Outside[-1,2], both border taps coincide. Saturating there preserves
   // their value while keeping both integer coordinates tightly bounded.
-  private val border=Mux(p.negative,Mux(p.aboveOne,-unit,-magnitude),Mux(p.aboveTwo,period,magnitude))
-  aligned.enq.bits.meta:=p.meta
-  aligned.enq.bits.scaled:=Mux(p.meta.wrap===TextureFloatAxisWrap.clamp.U,clamped,
-    Mux(p.meta.wrap===TextureFloatAxisWrap.cubeBorder.U,border,periodic))
+  private val isClamp=s.meta.wrap===TextureFloatAxisWrap.clamp.U
+  private val isBorder=s.meta.wrap===TextureFloatAxisWrap.cubeBorder.U
+  private val negativeAmount=Mux(isClamp,Mux(s.meta.offset===0.S,0.U,clampMagnitude),
+    Mux(isBorder,Mux(s.aboveOne,unit,magnitude),magnitude))
+  private val negativeBase=Mux(!isClamp && !isBorder && magnitude=/=0.U,period,0.U)
+  private val positive=Mux(isClamp,Mux(s.meta.offset===0.S,Mux(s.aboveOne,unit,magnitude),clampMagnitude),
+    Mux(isBorder,Mux(s.aboveTwo,period,magnitude),magnitude))
+  signedChunks.enq.bits.meta:=s.meta;signedChunks.enq.bits.negative:=s.negative
+  signedChunks.enq.bits.positive:=positive
+  // Keep every one of the 149 fractional bits. Register bounded local sums
+  // before propagating carries, rather than allowing a 170-bit ripple chain.
+  for((bits,i)<-chunkBits.zipWithIndex){
+    val low=32*i;val a=negativeBase(low+bits-1,low);val b= ~negativeAmount(low+bits-1,low)
+    signedChunks.enq.bits.local(i):=a+&b
+    signedChunks.enq.bits.propagate(i):=(a^b).andR
+  }
+  aligned.enq.valid:=signedChunks.deq.valid;signedChunks.deq.ready:=aligned.enq.ready
+  private val chunks=signedChunks.deq.bits
+  private val carries=Wire(Vec(7,Bool()));carries(0):=true.B
+  private val sums=chunkBits.zipWithIndex.map{case(bits,i)=>
+    carries(i+1):=chunks.local(i)(bits) || (chunks.propagate(i) && carries(i))
+    (chunks.local(i)(bits-1,0)+carries(i).asUInt)(bits-1,0)
+  }
+  aligned.enq.bits.meta:=chunks.meta
+  aligned.enq.bits.scaled:=Mux(chunks.negative,Cat(sums.reverse),chunks.positive).asSInt
 
   located.enq.valid:=aligned.deq.valid;aligned.deq.ready:=located.enq.ready
   private val a=aligned.deq.bits;private val scaled=a.scaled.asUInt

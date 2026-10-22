@@ -77,8 +77,8 @@ class TextureFloatAxisPipelineSpec extends AnyFlatSpec {
         n<-Seq(1,3,53,16383);mode<-0 to 3;linear<-Seq(false,true))yield{
         tag+=1;Query((negative.toLong<<31)|(e.toLong<<23)|mantissa,n,mode,linear,tag)}
       t.stream(cases)
-      assert(t.latencies.forall(_==8));assert(t.accepted==cases.size && t.retired==cases.size);assert(t.cycle==cases.size+9)
-      info(s"FLOAT_AXIS_EXPONENTS queries=${cases.size} allExponents256=true signs2=true mantissas4=true extents1_3_53_16383=true modes4=true filters2=true exactRationalOracle=true RNEWeights=true latency8=true interval1=true")
+      assert(t.latencies.forall(_==10));assert(t.accepted==cases.size && t.retired==cases.size);assert(t.cycle==cases.size+11)
+      info(s"FLOAT_AXIS_EXPONENTS queries=${cases.size} allExponents256=true signs2=true mantissas4=true extents1_3_53_16383=true modes4=true filters2=true exactRationalOracle=true RNEWeights=true latency10=true interval1=true")
     }
   }
   it should "cover every14-bit extent half-texel boundaries negative subnormals and independent random coordinates under backpressure" in {
@@ -94,7 +94,7 @@ class TextureFloatAxisPipelineSpec extends AnyFlatSpec {
         mode<-0 to 3;linear<-Seq(false,true))yield q(bits,n,mode,linear)
       val arbitrary=(0 until 8192).map(_=>q(random.nextInt().toLong&0xffffffffL,1+random.nextInt(16383),random.nextInt(4),random.nextBoolean()))
       val cases=sizes++edges++arbitrary;t.stream(cases,stalls=true)
-      assert(t.accepted==cases.size && t.retired==cases.size);assert(t.latencies.exists(_>8))
+      assert(t.accepted==cases.size && t.retired==cases.size);assert(t.latencies.exists(_>10))
       info(s"FLOAT_AXIS_STREAM queries=${cases.size} everyExtent16383=true halfTexelULPNeighbors=true signedZeroSubnormalAndMaxFinite=true NaNInfinityZeroExtentRejected=true orderedTags=true immutableHeldResults=true arbitraryInputAndOutputStalls=true")
     }
   }
