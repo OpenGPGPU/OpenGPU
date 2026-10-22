@@ -275,6 +275,13 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     indexByteWide<(BigInt(1)<<32).U && indexLine>=draw.indices.allocationBase && (indexLine+&64.U)<=draw.indices.allocationLimit
   private val indexRequestByte=Reg(UInt(32.W));private val indexSafe=Reg(Bool());private val indexHit=Reg(Bool())
 
+  // These private captures are consumed only by the uncancelled index phase.
+  // Capturing on a canceled prepare cycle is harmless: stop sends the owner
+  // to drain before consumption. Keep external cancellation out of the wide
+  // address/bounds/cache-compare register enables without adding a phase.
+  when(phase===prepareIndex){
+    indexRequestByte:=indexByte;indexSafe:=indexInBounds;indexHit:=indexValid && indexAddress===indexLine
+  }
   when(!stop || phase===idle || phase===drain || phase===finish || phase===complete) {
   switch(phase) {
     is(idle) {
@@ -322,7 +329,6 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
         .otherwise{phase:=prepareIndex}
     }
     is(prepareIndex){
-      indexRequestByte:=indexByte;indexSafe:=indexInBounds;indexHit:=indexValid && indexAddress===indexLine
       nextReusedReads:=reusedReads+1.U;phase:=index
     }
     is(index) {
