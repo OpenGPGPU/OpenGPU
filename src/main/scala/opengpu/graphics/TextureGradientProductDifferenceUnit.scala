@@ -38,12 +38,16 @@ class TextureGradientProductDifferenceUnit extends Module {
     val out=Decoupled(new TextureGradientProductDifferenceResult)
     val cancel=Input(Bool());val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,check,decode,products,align,sum,normalize,pack,finish,complete=Value}
+  private object State extends ChiselEnum {val idle,check,decode,partialProducts,crossProducts,lowProducts,products,prepareAlign,align,signedAlign,sumLow,sumHigh,absolute,normalize,pack,finish,complete=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureGradientProductDifferenceRequest)
   private val result=Reg(new TextureGradientProductDifferenceResult);private val status=RegInit(0.U(3.W))
   private val products=Reg(Vec(2,UInt(48.W)));private val exponents=Reg(Vec(2,SInt(12.W)));private val signs=Reg(Vec(2,Bool()))
+  private val partials=Reg(Vec(2,Vec(4,UInt(24.W))));private val crossProducts=Reg(Vec(2,UInt(25.W)))
+  private val lowProducts=Reg(Vec(2,UInt(24.W)));private val productCarries=Reg(Vec(2,Bool()))
   private val common=Reg(SInt(12.W));private val aligned=Reg(Vec(2,SInt(56.W)));private val difference=Reg(SInt(57.W))
-  private val magnitude=Wire(UInt(57.W));magnitude:=Mux(difference<0.S,(-difference).asUInt,difference.asUInt)
+  private val shifts=Reg(Vec(2,UInt(6.W)));private val jammed=Reg(Vec(2,UInt(56.W)))
+  private val sumLow=Reg(UInt(28.W));private val sumCarry=Reg(Bool())
+  private val magnitude=Reg(UInt(57.W))
   private val normalized=Reg(UInt(57.W));private val leading=Reg(UInt(6.W));private val zero=Reg(Bool());private val negative=Reg(Bool())
   private val value=Reg(new TextureGradientScalar)
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
@@ -54,11 +58,12 @@ class TextureGradientProductDifferenceUnit extends Module {
   private val incomingExponent=VecInit((0 until 4).map(i=>incoming(i).exponent+&request.exponentOffsets(i)))
   private val productExponent=VecInit(Seq(decoded(0).exponent+decoded(1).exponent,decoded(2).exponent+decoded(3).exponent))
   private val maximum=Mux(products(0)===0.U,exponents(1),Mux(products(1)===0.U,exponents(0),Mux(exponents(0)>exponents(1),exponents(0),exponents(1))))
-  private def align(p: UInt,e: SInt,sign: Bool): SInt={
-    val gap=(maximum-e).asUInt;val shift=Mux(gap>56.U,56.U,gap)(5,0)
-    val extended=(p.pad(56)<<6)(55,0);val mask=((1.U(57.W)<<shift)-1.U)(55,0)
-    val jam=(extended>>shift)|(extended&mask).orR
-    Mux(sign,-jam.asSInt,jam.asSInt)
+  private def align(p: UInt,shift: UInt): UInt={
+    val extended=(p.pad(56)<<6)(55,0)
+    // The six low fraction bits are zero. Compare the shift with each product
+    // bit position to retain sticky information without a wide mask increment.
+    val lost=(0 until 48).map(i=>p(i) && shift>(i+6).U).reduce(_ || _)
+    (extended>>shift)|lost
   }
   switch(phase){
     is(State.idle){when(io.in.fire){request:=io.in.bits;status:=0.U;value:=0.U.asTypeOf(value);phase:=State.check}}
@@ -69,18 +74,59 @@ class TextureGradientProductDifferenceUnit extends Module {
       .otherwise{phase:=State.decode}}
     is(State.decode){decoded:=incoming
       for(i<-0 until 4)decoded(i).exponent:=Mux(incoming(i).significand===0.U,0.S,incomingExponent(i))
-      phase:=Mux(stop,State.finish,State.products)}
-    is(State.products){
-      products(0):=decoded(0).significand*decoded(1).significand;products(1):=decoded(2).significand*decoded(3).significand
+      phase:=Mux(stop,State.finish,State.partialProducts)}
+    is(State.partialProducts){
+      for(i<-0 until 2){
+        val a=decoded(2*i).significand;val b=decoded(2*i+1).significand
+        partials(i)(0):=a(11,0)*b(11,0);partials(i)(1):=a(23,12)*b(11,0)
+        partials(i)(2):=a(11,0)*b(23,12);partials(i)(3):=a(23,12)*b(23,12)
+      }
       exponents:=productExponent;signs(0):=decoded(0).negative^decoded(1).negative
-      signs(1):= !(decoded(2).negative^decoded(3).negative);phase:=Mux(stop,State.finish,State.align)
+      signs(1):= !(decoded(2).negative^decoded(3).negative);phase:=Mux(stop,State.finish,State.crossProducts)
     }
-    is(State.align){common:=maximum;aligned(0):=align(products(0),exponents(0),signs(0));aligned(1):=align(products(1),exponents(1),signs(1))
-      phase:=Mux(stop,State.finish,State.sum)}
-    is(State.sum){difference:=aligned(0)+&aligned(1);phase:=Mux(stop,State.finish,State.normalize)}
+    is(State.crossProducts){
+      for(i<-0 until 2)crossProducts(i):=partials(i)(1)+&partials(i)(2)
+      phase:=Mux(stop,State.finish,State.lowProducts)
+    }
+    is(State.lowProducts){
+      for(i<-0 until 2){
+        val low=partials(i)(0)+&Cat(crossProducts(i)(11,0),0.U(12.W))
+        lowProducts(i):=low(23,0);productCarries(i):=low(24)
+      }
+      phase:=Mux(stop,State.finish,State.products)
+    }
+    is(State.products){
+      for(i<-0 until 2){
+        val high=partials(i)(3)+crossProducts(i)(24,12)+productCarries(i).asUInt
+        products(i):=Cat(high,lowProducts(i))
+      }
+      phase:=Mux(stop,State.finish,State.prepareAlign)
+    }
+    is(State.prepareAlign){
+      common:=maximum
+      for(i<-0 until 2){val gap=(maximum-exponents(i)).asUInt;shifts(i):=Mux(gap>56.U,56.U,gap)(5,0)}
+      phase:=Mux(stop,State.finish,State.align)
+    }
+    is(State.align){for(i<-0 until 2)jammed(i):=align(products(i),shifts(i))
+      phase:=Mux(stop,State.finish,State.signedAlign)}
+    is(State.signedAlign){for(i<-0 until 2)aligned(i):=Mux(signs(i),-jammed(i).asSInt,jammed(i).asSInt)
+      phase:=Mux(stop,State.finish,State.sumLow)}
+    is(State.sumLow){
+      val low=aligned(0).asUInt(27,0)+&aligned(1).asUInt(27,0)
+      sumLow:=low(27,0);sumCarry:=low(28)
+      phase:=Mux(stop,State.finish,State.sumHigh)
+    }
+    is(State.sumHigh){
+      val high=aligned(0).asUInt(55,28).asSInt.pad(29).asUInt+
+        aligned(1).asUInt(55,28).asSInt.pad(29).asUInt+sumCarry.asUInt
+      difference:=Cat(high,sumLow).asSInt
+      phase:=Mux(stop,State.finish,State.absolute)
+    }
+    is(State.absolute){magnitude:=Mux(difference<0.S,(-difference).asUInt,difference.asUInt)
+      zero:=difference===0.S;negative:=difference<0.S;phase:=Mux(stop,State.finish,State.normalize)}
     is(State.normalize){
       val shift=PriorityEncoder(Reverse(magnitude));leading:=shift;normalized:=(magnitude<<shift)(56,0)
-      zero:=magnitude===0.U;negative:=difference<0.S;phase:=Mux(stop,State.finish,State.pack)
+      phase:=Mux(stop,State.finish,State.pack)
     }
     is(State.pack){
       val significand=normalized(56,33);val rounded=significand+&(normalized(32) && (normalized(31,0).orR || significand(0)))

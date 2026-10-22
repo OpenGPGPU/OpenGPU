@@ -69,11 +69,25 @@ class TextureGradientProductDifferenceUnitSpec extends AnyFlatSpec {
   }
   it should "cancel every arithmetic state and retain an already offered result before healthy reuse" in {
     simulate(new TextureGradientProductDifferenceUnit){d=>val t=new Driver(d)
-      for(cut<-0 until 14){t.query(Seq[BigInt](0x7f7fffffL,0x7f7fffffL,1,1));d.clock.step(cut)
+      for(cut<-0 until 20){t.query(Seq[BigInt](0x7f7fffffL,0x7f7fffffL,1,1));d.clock.step(cut)
         val complete=d.io.out.valid.peek().litToBoolean;d.io.cancel.poke(true.B);t.check(cancelled= !complete)
         t.query(Seq[BigInt](1,1,0,0));t.check()
       }
-      info("GRADIENT_PRODUCT_DIFFERENCE_DRAIN cuts14=true noPartialScalar=true heldResultIrrevocable=true healthyReuse14=true")
+      info("GRADIENT_PRODUCT_DIFFERENCE_DRAIN cuts20=true noPartialScalar=true heldResultIrrevocable=true healthyReuse20=true")
+    }
+  }
+  it should "preserve jammed alignment at every fraction boundary and the maximum exponent gap" in {
+    simulate(new TextureGradientProductDifferenceUnit){d=>val t=new Driver(d)
+      val gaps=Seq(0,1,2,5,6,7,23,24,47,48,52,53,54,55,56,57,255,511,512,1023,1024,2045,2046)
+      for(gap<-gaps;signs<-0 until 16){
+        val offsets=if(gap<=512)Seq(0,0,-gap,0)else if(gap<=1023)Seq(gap-512,0,-512,0)
+          else Seq(511,gap-1535,-512,-512)
+        val operands=Seq[BigInt](0x3f800001L,0x3f800003L,0x3f800005L,0x3f800007L).zipWithIndex.map{
+          case(v,i)=>if((signs&(1<<i))!=0)v|0x80000000L else v}
+        t.query(operands,offsets);t.check()
+      }
+      t.query(Seq[BigInt](0,0x3f800001L,0x3f800005L,0x3f800007L),Seq(0,511,-512,0));t.check()
+      t.query(Seq.fill(4)(BigInt(0)),Seq(511,511,-512,-512));t.check()
     }
   }
 }
