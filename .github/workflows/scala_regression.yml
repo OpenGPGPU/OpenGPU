@@ -1,0 +1,178 @@
+name: Scala regression
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 18 * * *'
+
+concurrency:
+  group: scala-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+jobs:
+  driver:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+    - name: Run host script tests
+      run: bash scripts/test_scripts.sh
+
+  # Run the complete catalog, unless this exact nightly revision already passed.
+  select:
+    runs-on: ubuntu-latest
+    outputs:
+      selected: ${{ steps.select.outputs.selected }}
+      shards: ${{ steps.select.outputs.shards }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        fetch-depth: 0
+    - name: Select full regression
+      id: select
+      env:
+        GH_TOKEN: ${{ github.token }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        SELECTED=ALL
+        if [ "$EVENT_NAME" = schedule ]; then
+          PREVIOUS=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/scala_regression.yml/runs?status=success&per_page=20" --jq '.workflow_runs[].head_sha')
+          if printf '%s\n' "$PREVIOUS" | grep -Fxq "$GITHUB_SHA"; then
+            SELECTED=NONE
+          fi
+        fi
+        echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"
+        echo "shards=$(bash scripts/ci_shard_tests.sh shards-json "$SELECTED")" >> "$GITHUB_OUTPUT"
+
+  scala:
+    needs: [select]
+    if: needs.select.outputs.selected != 'NONE'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: ${{ fromJson(needs.select.outputs.shards) }}
+
+    # Distro Verilator on 24.04 is 5.020 (too old) and on 26.04 is 5.032
+    # (internal fault on GraphicsAddressTranslator). Pin v5.050 from source.
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    env:
+      # Leave room for firtool and Verilator instead of committing 6 GB before
+      # the first model build. The JVM can still grow to the same 6 GB ceiling.
+      JAVA_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+      JVM_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        submodules: recursive
+    - name: Set up simulation toolchain
+      id: toolchain
+      uses: ./.github/actions/setup-simulation
+    - name: Cache incremental Scala compilation
+      uses: actions/cache@v4
+      with:
+        path: |
+          target/scala-2.13
+          project/target
+        key: sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-${{ hashFiles('src/**') }}
+        restore-keys: |
+          sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-
+    - name: Prepare simulation cache directory
+      run: mkdir -p target/chiselsim
+    - name: Cache compiled simulation models
+      id: simcache
+      # Models are content-addressed. Roll the outer cache key so a cache hit
+      # can still save new models; never archive per-run simulation workdirs.
+      uses: actions/cache@v4
+      with:
+        path: target/chiselsim/cache
+        key: simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-${{ matrix.shard }}-
+    - name: Run shard ${{ matrix.shard }}
+      run: |
+        # Serial inside each runner: forked/shared-JVM parallelism OOMs under
+        # Chisel elaboration. Parallelism comes from the matrix, not sbt.
+        SUITES=$(bash scripts/ci_shard_tests.sh suites "${{ matrix.shard }}" "${{ needs.select.outputs.selected }}")
+        if [ -z "$SUITES" ]; then
+          echo "Shard ${{ matrix.shard }} has no suites for this selection; skipping"
+          exit 0
+        fi
+        echo "Running: $SUITES"
+        # GpuComputeUnit shards compile repeated CUs as a hierarchy library.
+        # Job count comes from ci_shard_tests.sh. The wide runtime shards
+        # each own one model. The 6 GB heap still leaves too little RAM for
+        # the 16-lane four-CU build, the 32-lane model, and the side-64
+        # batch: the OOM killer stops the runner and GitHub reports a
+        # canceled step. ubuntu-latest already has /swapfile active (~4G).
+        # fallocate on that live file returns ETXTBSY ("Text file busy"), so
+        # swap it off and replace the inode with 8G before the model build.
+        case "${{ matrix.shard }}" in
+          graphics-*|system-rt-16|system-rt-32|system-rt-batch)
+            sudo swapoff /swapfile 2>/dev/null || true
+            sudo rm -f /swapfile
+            sudo fallocate -l 8G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+            sudo swapon /swapfile
+            free -h
+            ;;
+        esac
+        FLAGS=$(bash scripts/ci_shard_tests.sh flags "${{ matrix.shard }}")
+        if [ -n "$FLAGS" ]; then
+          echo "Simulation flags: $FLAGS"
+        fi
+        # shellcheck disable=SC2086
+        sbt $FLAGS 'set Test / parallelExecution := false' "testOnly $SUITES"
+
+  dependency-graph:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        submodules: recursive
+    - name: Set up JDK 11
+      uses: actions/setup-java@v4
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+        cache: 'sbt'
+    - name: Set up sbt
+      uses: sbt/setup-sbt@v1
+    - name: Upload dependency graph
+      uses: scalacenter/sbt-dependency-submission@ab086b50c947c9774b70f39fc7f6e20ca2706c91
+
+  regression-ok:
+    if: always()
+    needs: [driver, select, scala, dependency-graph]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - name: Aggregate full regression
+      env:
+        DRIVER: ${{ needs.driver.result }}
+        SELECT: ${{ needs.select.result }}
+        SCALA: ${{ needs.scala.result }}
+        DEPENDENCIES: ${{ needs.dependency-graph.result }}
+        SELECTED: ${{ needs.select.outputs.selected }}
+      run: |
+        [ "$DRIVER" = success ] && [ "$SELECT" = success ] && [ "$DEPENDENCIES" = success ] || exit 1
+        [ "$SCALA" = success ] || { [ "$SELECTED" = NONE ] && [ "$SCALA" = skipped ]; }

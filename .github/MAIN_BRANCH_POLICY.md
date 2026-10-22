@@ -1,21 +1,27 @@
 # Main branch policy
 
-Changes to `main` go through a pull request (MR) and require the `ci-ok` check
-from the GitHub Actions app. Protection applies to administrators, requires an
-up-to-date branch, and prohibits force pushes and branch deletion. No manual
-approval is needed: on every open, non-draft PR to `main`, the Scala CI workflow
-runs host tests, test selection/shards, and dependency submission automatically
-against the PR's immutable merge commit.
+Changes to `main` require a PR and the current `ci-ok` check from GitHub Actions.
+Protection includes administrators, requires an up-to-date branch, and blocks
+force pushes and deletion. Work and commit on topic branches only.
 
-New PR commits cancel the in-progress run and trigger a fresh run. Draft PRs do
-not run tests; mark them ready for review to start CI. Closing the PR cancels
-its previous run. The `ci-ok` job rejects a changed PR head, base branch, draft
-or closed PR: a run that started before a push fails once a newer run is
-pending. Scala may be skipped only when selection is `NONE`. Fork PRs skip
-dependency submission because it needs a write token unavailable to fork
-workflows.
+Open, non-draft PRs run host checks, compile all main/test Scala sources, and run
+an affected subset of eight bounded unit suites in `scripts/ci_pr_suites.txt`.
+The PR lane uses one runner with a 15-minute timeout. Documentation-only changes
+run host checks. New commits cancel superseded runs; `ci-ok` rejects stale heads,
+drafts, changed base branches and failed/canceled checks.
 
-`main-branch-protection.json` keeps PRs required with zero approving reviews
-and no latest-push review requirement. Read the existing rule before applying
-it, preserve unrelated required checks and push restrictions, and verify the
-server configuration through GitHub's API.
+`Scala regression` retains the broad integration matrix separately. It runs
+nightly, skipping an exact revision already covered by a successful regression,
+and can be run manually through Actions on a selected ref. Its matrix allows
+eight concurrent runners. Whole-CU/host, native graphics, configuration sweeps
+and dependency submission do not block routine PR feedback. A green `ci-ok`
+means the fast gate passed; it does not mean the broad regression passed.
+Existing desktop exclusions in the CI catalog remain unchanged. Use the broad
+regression for integration/release qualification.
+
+Scala compilation and content-addressed simulation models are cached. Simulation
+cache snapshots get a new outer key per run, so newly built models are saved
+after restoring an older cache. Per-run simulation workdirs are excluded.
+
+`main-branch-protection.json` preserves PRs with zero required approving reviews.
+Read the current rule before applying it and preserve unrelated restrictions.

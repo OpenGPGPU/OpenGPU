@@ -2,6 +2,9 @@
 # Partition ScalaTest suites across CI runners and intersect with select_tests.sh.
 #
 # Usage:
+#   ci_shard_tests.sh pr-suites <selected>
+#     Print bounded unit suites for the required PR lane.
+#
 #   ci_shard_tests.sh shards-json <selected>
 #     Print a JSON array of shard names that have work for <selected>.
 #     <selected> is ALL, NONE, or space-separated sbt testOnly globs.
@@ -288,6 +291,22 @@ suites_for_shard() {
   fi
 }
 
+pr_suites() {
+  local selected=$1 suite
+  local declared
+  declared=$(fqcns_of $(find "$test_root" -name '*Spec.scala' -print))
+  while IFS= read -r suite; do
+    case "$suite" in ''|\#*) continue ;; esac
+    if ! printf '%s\n' "$declared" | grep -Fxq "$suite"; then
+      echo "PR suite does not exist: $suite" >&2
+      return 1
+    fi
+    if suite_selected "$suite" "$selected"; then
+      printf '%s\n' "$suite"
+    fi
+  done < "$root/scripts/ci_pr_suites.txt" | paste -sd ' ' -
+}
+
 shards_json() {
   local selected=$1 shard suites
   local -a active=()
@@ -312,6 +331,11 @@ shards_json() {
 
 cmd=${1:-}
 case "$cmd" in
+  pr-suites)
+    [ $# -ge 2 ] || { echo "usage: $0 pr-suites <selected>" >&2; exit 2; }
+    shift
+    pr_suites "$*"
+    ;;
   shards-json)
     [ $# -ge 2 ] || { echo "usage: $0 shards-json <selected>" >&2; exit 2; }
     shift
@@ -329,7 +353,7 @@ case "$cmd" in
     shard_flags "$2"
     ;;
   *)
-    echo "usage: $0 {shards-json|suites|flags} ..." >&2
+    echo "usage: $0 {pr-suites|shards-json|suites|flags} ..." >&2
     exit 2
     ;;
 esac

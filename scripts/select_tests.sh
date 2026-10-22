@@ -72,7 +72,7 @@ for f in "$@"; do
       none=0
       full=1
       ;;
-    .github/workflows/scala_test.yml|scripts/select_tests.sh|scripts/ci_shard_tests.sh)
+    .github/workflows/scala_test.yml|.github/workflows/scala_regression.yml|.github/actions/setup-simulation/*|scripts/select_tests.sh|scripts/ci_shard_tests.sh|scripts/ci_pr_suites.txt)
       none=0
       full=1
       ;;

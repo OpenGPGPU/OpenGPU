@@ -167,3 +167,16 @@ for name in ("decompress-etc.c", "decompress-eac.c", "detex.h", "oracle.c", "UPS
     assert select("src/test/resources/opengpu/texture/detex/" + name) == ["opengpu.graphics.*"]
 
 print("Integration test selection: PASS")
+
+# The PR lane is bounded independently of broad integration fan-out.
+pr_suites = shard_cmd("pr-suites", "ALL").split()
+assert len(pr_suites) == len(set(pr_suites)) == 8
+assert set(pr_suites) <= all_specs
+assert not any("GpuComputeUnit" in suite or "HostAxi" in suite for suite in pr_suites)
+assert shard_cmd("pr-suites", "NONE") == ""
+assert set(shard_cmd("pr-suites", "opengpu.graphics.*").split()) == {
+    suite for suite in pr_suites if suite.startswith("opengpu.graphics.")
+}
+for path in ("scripts/ci_pr_suites.txt", ".github/workflows/scala_regression.yml",
+             ".github/actions/setup-simulation/action.yml"):
+    assert select(path) == ["ALL"], path
