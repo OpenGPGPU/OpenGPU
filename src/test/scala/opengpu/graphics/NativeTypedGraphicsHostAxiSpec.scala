@@ -267,6 +267,8 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d)
+      for((word,i)<-Vector[BigInt](BigInt("47554301",16),16,1,127,3,12,24).zipWithIndex)
+        assert(axiRead(d,0x3a0+i*4)==word,s"typed GUC1 word $i differs")
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
       axiWrite(d,RenderHostRegs.IRQ,1)
       val table=BigInt(0x521000)
