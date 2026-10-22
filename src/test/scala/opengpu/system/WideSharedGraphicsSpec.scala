@@ -3,9 +3,10 @@ package opengpu.system
 import chisel3._
 import opengpu.command.GpuCommandOpcode
 import opengpu.config.GpuConfig
-import opengpu.graphics.{GpuCommandMmioRegs, GraphicsConfig, RenderHostRegs}
+import opengpu.graphics.{GpuCommandMmioRegs, GraphicsConfig, RenderHostRegs,ShaderResourceConfig}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.BeforeAndAfterAll
 import scala.collection.mutable
 import java.nio.file.{Files, Paths}
 
@@ -16,11 +17,13 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
     lanes: Int = 16, warps: Int = 8, runtimeShader: Boolean = false,
     enableFpuBackend: Boolean = false, vertCore: Boolean = false,
     gpuConfig: Option[GpuConfig] = None, textureExtent: Int = 0,
-    bufferTextureReads: Boolean = false)
+    bufferTextureReads: Boolean = false, fragmentWorkerCount: Int = 0)
     extends AnyFlatSpec with GpuHostTestSupport {
+  protected def recordScalingResult(cus: Int,workers: Int,cycles: BigInt,invariant: String): Unit=()
   for (cus <- cuCounts) {
     it should s"shade every wide-batch lane through $cus shared CUs on ${axiBytes * 8}-bit AXI (side=$side ALU-loops=$aluIterations OM=$omInflight cap=$fragmentBatchLimit lanes=$lanes warps=$warps runtime=$runtimeShader)" in {
       val capacity = lanes * warps
+      val workers=if(fragmentWorkerCount==0)cus else fragmentWorkerCount
       val stride = 4 * capacity
       val bankStride = (9 * stride + 32 + 63) & ~63
       val gpu = gpuConfig.getOrElse(GpuConfig(lanes = lanes, warps = warps, l2Sets = 8, l2Ways = 2))
@@ -30,8 +33,9 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         enableFpuBackend = enableFpuBackend, sharedGraphics = true,
         parallelGraphics = true, exposePerformance = true, memoryAxiDataBytes = axiBytes,
         coalesceFramebufferWrites = coalesce, bufferCommandReads = bufferCommandReads,
-        bufferTextureReads = bufferTextureReads)) { dut =>
+        bufferTextureReads = bufferTextureReads,fragmentWorkerCount=fragmentWorkerCount)) { dut =>
         initialize(dut)
+        assert(axiRead(dut,GpuCommandMmioRegs.SHADER_CONFIG)==ShaderResourceConfig.encode(lanes,warps,2*workers,cus))
         val words = mutable.LongMap.empty[BigInt]
         val descriptor = 0x1000
         val commands = 0x2000
@@ -92,9 +96,8 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           // The exact same binary for every lane/warp/CU count. x9 supplies
           // capacity, x8 the warp base; vsetvli selects VLMAX at execution.
           Seq(0x00249f13L, 0x00241293L, 0x005082b3L, 0x01007357L,
-            0x00300313L, 0x03e30333L, 0x00628333L, 0x02036107L,
-            0x00600313L, 0x03e30333L, 0x00628333L, 0x02036127L,
-            0x30500073L)
+            0x00300313L, 0x03e30333L, 0x00628333L, 0x02036107L) ++ arithmetic ++ Seq(
+            0x00600313L, 0x03e30333L, 0x00628333L, 0x02036127L,0x30500073L)
         } else Seq(0x00241293L, 0x005082b3L, 0xc1087057L) ++
           address(3 * stride) ++ Seq(0x02036107L) ++ arithmetic ++
           address(6 * stride) ++ Seq(0x02036127L, 0x30500073L)
@@ -140,7 +143,7 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           (slice == 7 && (outputSkip & 5) == 5) ||
           (slice == 8 && (outputSkip & 10) == 10)
         store(commands, record.updated(32, record(32) | (skip.toLong << 19) | (outputSkip.toLong << 25)))
-        for (bank <- 0 until 2*cus; slice <- 0 until 9; lane <- 0 until capacity if omitted(slice))
+        for (bank <- 0 until 2*workers; slice <- 0 until 9; lane <- 0 until capacity if omitted(slice))
           store(kernarg+bank*bankStride+slice*stride+lane*4,Seq(0x5a000000L+bank*0x100000L+slice*0x10000L+lane))
         store(descriptor, Seq(1L << 16, commands.toLong, color.toLong, depth.toLong,
           side * 4L, 0x81L, if (textureExtent > 0) texture.toLong else 0L,
@@ -149,20 +152,28 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         if (textureExtent > 0) store(texture, Seq.fill(textureExtent * textureExtent)(textureColor))
         store(color, Seq.fill(side * side)(0x12345678L))
         store(depth, Seq.fill(side * side)(0x00ffffffL))
-        for (bank <- 0 until 2 * cus)
+        for (bank <- 0 until 2 * workers)
           store(kernarg + bank * bankStride + 9 * stride, Seq.fill((bankStride - 9 * stride) / 4)(sentinel))
         val tracePrefix = s"cu-$cus-axi-$axiBytes-side-$side-alu-$aluIterations" +
           s"-lanes-$lanes-warps-$warps-cap-$fragmentBatchLimit-om-$omInflight" +
           s"-l2-${gpu.l2Sets}x${gpu.l2Ways}-fpu-$enableFpuBackend-vert-$vertCore" +
           s"-runtime-$runtimeShader-coalesce-$coalesce-locality-$omLocality-buffer-$bufferCommandReads" +
-          s"-texture-$textureExtent-texbuffer-$bufferTextureReads"
+          s"-texture-$textureExtent-texbuffer-$bufferTextureReads" +
+          (if(fragmentWorkerCount>0)s"-workers-$workers" else "")
         val traceDirectory = sys.env.get("WIDE_GRAPHICS_TRACE_DIR").map(Paths.get(_))
         val cycleTrace = new StringBuilder("start_cycle,duration,events_hex\n")
         val memoryTrace = new StringBuilder("cycle,operation,address_hex\n")
         var traceCycle = 0
         var traceStart = 0
         var lastTrace: Option[BigInt] = None
-        def recordCycle(): Unit = traceDirectory.foreach { _ =>
+        var peakWorkers=0
+        def recordCycle(): Unit = {
+          if(fragmentWorkerCount>0){
+            val trace=dut.io.performance.get.fragmentTrace.peek().litValue
+            val active=(1 until 6).map(i=>((trace>>(8*i))&255).toInt).sum
+            peakWorkers=math.max(peakWorkers,active)
+          }
+          traceDirectory.foreach { _ =>
           val event = dut.io.performance.get.fragmentTrace.peek().litValue
           if (!lastTrace.contains(event)) {
             lastTrace.foreach(old => cycleTrace.append(s"$traceStart,${traceCycle - traceStart},${old.toString(16)}\n"))
@@ -170,6 +181,7 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
             lastTrace = Some(event)
           }
           traceCycle += 1
+          }
         }
         def readLine(address: BigInt): BigInt = {
           traceDirectory.foreach(_ => memoryTrace.append(s"$traceCycle,read,${address.toString(16)}\n"))
@@ -184,7 +196,7 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           for (b <- 0 until 64 if mask.testBit(b)) {
             val a = base + (b / 4) * 4
             val shift = (b % 4) * 8
-            if (a >= kernarg && a < kernarg + 2L*cus*bankStride) {
+            if (a >= kernarg && a < kernarg + 2L*workers*bankStride) {
               val slice = ((a-kernarg)%bankStride/stride).toInt
               assert(!omitted(slice), "wrote omitted fragment scratch")
             }
@@ -214,7 +226,7 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           val vertexWords = vertexShader.map(w => "\"" + f"$w%08x" + "\"").mkString(",")
           val metadata = s"""{
             "cus":$cus,"axi_data_bytes":$axiBytes,"side":$side,"alu_loops":$aluIterations,
-            "lanes":$lanes,"warps":$warps,"bank_count":${2 * cus},"bank_stride":$bankStride,
+            "lanes":$lanes,"warps":$warps,"fragment_workers":$workers,"bank_count":${2 * workers},"bank_stride":$bankStride,
             "fragment_batch_limit":$fragmentBatchLimit,"om_inflight":$omInflight,
             "l2_sets":${gpu.l2Sets},"l2_ways":${gpu.l2Ways},
             "fpu_backend":$enableFpuBackend,"vertex_stage":$vertCore,
@@ -267,8 +279,9 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
         val completion = axiRead(dut, GpuCommandMmioRegs.COMPLETION)
         assert((completion & 0xff) == 91 && completion.testBit(15))
         val peakCus = dut.io.performance.get.system.maxActiveComputeUnits.peek().litValue
-        assert(peakCus == cus, s"render used at most $peakCus of $cus configured CUs")
-        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight fragment_batch_limit=$fragmentBatchLimit lanes=$lanes warps=$warps runtime_shader=$runtimeShader cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$peakCus texture_extent=$textureExtent buffer_texture_reads=$bufferTextureReads texture_words=$textureWords texture_lines=$textureLines")
+        assert(peakCus == math.min(cus,workers), s"render used at most $peakCus of $cus configured CUs with $workers workers")
+        if(fragmentWorkerCount>0)assert(peakWorkers==workers,s"only $peakWorkers of $workers fragment workers became active")
+        println(s"WIDE_SHARED_GRAPHICS_METRICS CUs=$cus axi_bytes=$axiBytes side=$side alu_loops=$aluIterations om_inflight=$omInflight fragment_batch_limit=$fragmentBatchLimit lanes=$lanes warps=$warps runtime_shader=$runtimeShader cycles=$cycles active_cu_cycles=$cuCycles peak_cus=$peakCus texture_extent=$textureExtent buffer_texture_reads=$bufferTextureReads texture_words=$textureWords texture_lines=$textureLines workers=$workers peak_workers=$peakWorkers")
         if (textureExtent > 0) {
           assert(textureWords > 0 && textureLines > 0)
           if (bufferTextureReads) assert(textureLines < textureWords,
@@ -298,13 +311,17 @@ abstract class WideSharedGraphicsChecks(axiBytes: Int, cuCounts: Seq[Int], coale
           Files.writeString(dir.resolve(s"$tracePrefix-pixels.csv"), pixelDump.toString)
         }
         assert(mismatches.isEmpty, s"CUs=$cus: ${mismatches.size} mismatches: ${mismatches.take(12).mkString("; ")}")
-        for (bank <- 0 until 2 * cus; word <- 0 until (bankStride - 9 * stride) / 4)
+        for (bank <- 0 until 2 * workers; word <- 0 until (bankStride - 9 * stride) / 4)
           assert(words(kernarg + bank * bankStride + 9L * stride + word * 4) == BigInt(sentinel))
-        for (bank <- 0 until 2*cus; slice <- 0 until 9; lane <- 0 until capacity if omitted(slice))
+        for (bank <- 0 until 2*workers; slice <- 0 until 9; lane <- 0 until capacity if omitted(slice))
           assert(words(kernarg+bank*bankStride+slice.toLong*stride+lane*4)==BigInt(0x5a000000L+bank*0x100000L+slice*0x10000L+lane), "omitted input sentinel changed")
         println(s"FRAGMENT_OUTPUT_USAGE input=$skip output=$outputSkip all_omitted_bytes_preserved=true")
         pixelsPassed = true
         saveMetadata()
+        val invariant=Seq(gpu.toString,workers,capacity,bankStride,axiBytes,side,aluIterations,
+          omInflight,omLocality,fragmentBatchLimit,coalesce,bufferCommandReads,bufferTextureReads,
+          runtimeShader,enableFpuBackend,vertCore,textureExtent,shader.mkString(","),record.mkString(",")).mkString("|")
+        recordScalingResult(cus,workers,cycles,invariant)
       }
     }
   }
@@ -316,8 +333,34 @@ class WideAxiSharedGraphicsSpec extends WideSharedGraphicsChecks(64, Seq(1, 4))
 class CoalescedWideAxiSharedGraphicsSpec extends WideSharedGraphicsChecks(64, Seq(1, 2, 4), coalesce = true)
 class LargeCoalescedWideAxiSharedGraphicsSpec
     extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64)
+private object ArithmeticScalingOptions {
+  val workers=sys.props.get("opengpu.scalingFragmentWorkers").map(_.toInt).getOrElse(0)
+  val counts=sys.props.get("opengpu.scalingCuCounts").map(_.split(',').toSeq.map(_.toInt)).getOrElse(Seq(1,4))
+  val minimum=sys.props.get("opengpu.scalingMinSpeedup").map(BigDecimal(_))
+  require(counts.nonEmpty && counts.distinct==counts && counts.forall(n=>n>=1 && n<=4))
+  minimum.foreach{n=>require(n>=BigDecimal("3.2") && workers==4 && counts.toSet==Set(1,2,4),
+    "scaling qualification requires fixed four workers, 1/2/4 CUs and a target of at least 3.2x")}
+}
 class ArithmeticCoalescedWideAxiSharedGraphicsSpec
-    extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64, aluIterations = 64)
+    extends WideSharedGraphicsChecks(64, ArithmeticScalingOptions.counts, coalesce = true, side = 64,
+      aluIterations = 64,fragmentWorkerCount=ArithmeticScalingOptions.workers) with BeforeAndAfterAll {
+  override val invokeBeforeAllAndAfterAllEvenIfNoTestsAreExpected=ArithmeticScalingOptions.minimum.nonEmpty
+  private val measured=mutable.Map.empty[Int,(Int,BigInt,String)]
+  override protected def recordScalingResult(cus: Int,workers: Int,cycles: BigInt,invariant: String): Unit=measured.synchronized{
+    assert(!measured.contains(cus) && cycles>0);measured(cus)=(workers,cycles,invariant)
+  }
+  override protected def afterAll(): Unit=try {
+    ArithmeticScalingOptions.minimum.foreach{target=>
+      val results=measured.synchronized{measured.toMap}
+      assert(results.keySet==Set(1,2,4),"all three exact image/guard checks must finish before qualifying scaling")
+      assert(results.values.forall(_._1==4))
+      assert(results.values.map(_._3).toSet.size==1,"shader, draw and non-CU resource configuration must match across the CU sweep")
+      val speedup=BigDecimal(results(1)._2)/BigDecimal(results(4)._2)
+      println(s"FIXED_RESOURCE_CU_SCALING workers=4 CUs=1,2,4 cycles=${Seq(1,2,4).map(n=>results(n)._2).mkString(",")} speedup=$speedup target=$target sameShader=true sameBatchCapacity=true exactImagesAndGuards=true")
+      assert(speedup>=target,s"fixed-resource shader-bound scaling $speedup is below $target")
+    }
+  } finally super.afterAll()
+}
 
 class DeepOmCoalescedWideAxiSharedGraphicsSpec
     extends WideSharedGraphicsChecks(64, Seq(1, 4), coalesce = true, side = 64, omInflight = 32)
