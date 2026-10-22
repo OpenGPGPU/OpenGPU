@@ -104,6 +104,7 @@ assert assigned["opengpu.system.GpuHostAxiOwnershipSpec"] == "system-mem"
 assert assigned["opengpu.system.ComputeResourceCapabilitiesAxiSpec"] == "system-mem"
 assert assigned["opengpu.system.NativeRgba8TextureMemoryFabricSpec"] == "system-mem"
 assert assigned["opengpu.system.ComputeResourceFullHostSpec"] == "system-host"
+assert assigned["opengpu.system.HostExecutionAvailabilitySpec"] == "system-host"
 assert assigned["opengpu.system.GpuHostIndirectComputeSpec"] == "system-host"
 assert assigned["opengpu.system.GpuSystemComputeGeometrySpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemIndirectComputeSpec"] == "system-core"
@@ -143,6 +144,8 @@ for shard in texture_shards + wide_shards:
     assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1"
 assert shard_cmd("flags", "system-mem") == ""
 for shard in graphics_shards:
+    assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1"
+for shard in ("system-host", "core-b"):
     assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1"
 # Keep all concrete suites in a source file on one runner; inherited scenarios
 # then reuse the same cached Verilator model rather than compiling it twice.

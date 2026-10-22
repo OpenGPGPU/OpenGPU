@@ -192,9 +192,10 @@ shard_flags() {
   # compiles it at -O0. The memory shard has no compute unit, so it stays
   # flat.
   case "$1" in
-    graphics-[0-7])
+    graphics-[0-7]|system-host|core-b)
       # Native/default-width graphics can elaborate several CUs. Bound both
       # compiler concurrency and optimized C++ size on the hosted 16 GB runner.
+      # This composition adds default 128-thread host and actual-CU regressions.
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1'
       ;;
     system-rt-32)
@@ -203,10 +204,10 @@ shard_flags() {
     system-rt-16|system-rt-batch|system-tex-[0-7]|system-wide-[0-3])
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1'
       ;;
-    system-host|system-walk|system-core|system-pool|system-rt-narrow)
+    system-walk|system-core|system-pool|system-rt-narrow)
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2'
       ;;
-    system-mem|core-a|core-b)
+    system-mem|core-a)
       ;;
     *)
       echo "unknown shard: $1" >&2

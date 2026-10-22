@@ -5,7 +5,7 @@ Protection includes administrators, requires an up-to-date branch, and blocks
 force pushes and deletion. Work and commit on topic branches only.
 
 Open, non-draft PRs run host checks, compile all main/test Scala sources, and run
-an affected subset of eight bounded unit suites in `scripts/ci_pr_suites.txt`.
+an affected subset of twelve bounded unit suites in `scripts/ci_pr_suites.txt`.
 The PR lane uses one runner with a 15-minute timeout. Documentation-only changes
 run host checks. New commits cancel superseded runs; `ci-ok` rejects stale heads,
 drafts, changed base branches and failed/canceled checks.
