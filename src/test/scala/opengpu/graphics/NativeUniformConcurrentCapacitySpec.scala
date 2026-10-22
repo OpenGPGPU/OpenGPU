@@ -187,6 +187,7 @@ class NativeUniformConcurrentCapacitySpec extends AnyFlatSpec {
       var publishedVertex=BigInt(0);var publishedFragment=BigInt(0)
       val reboundBase=BigInt(0x90000);val finalStore=NativeUniformTestData.base(11)+16380
       var parkMemory=false;var holdProducerAck=false;var heldStoreCount=0;var blockedCycles=0
+      var obsoleteWrites=0
       var updates=Seq.empty[(BigInt,BigInt)];val gpuStores=mutable.Set.empty[BigInt]
       val commandResults=mutable.ArrayBuffer.empty[Int]
       val publicationIds=82 to 86
@@ -226,6 +227,8 @@ class NativeUniformConcurrentCapacitySpec extends AnyFlatSpec {
         if(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.ready.peek().litToBoolean){
           val r=d.io.memoryRequest.bits;val a=r.address.peek().litValue;val write=r.isWrite.peek().litToBoolean
           if(write){val mask=r.byteMask.peek().litValue;val value=r.writeData.peek().litValue
+            if(translated && a>=pa(NativeUniformTestData.base(23)) &&
+              a<pa(NativeUniformTestData.base(23)+16384))obsoleteWrites+=1
             for(b<-0 until 64 if mask.testBit(b))memory(a+b)=(value>>(8*b))&255
             for((address,_)<-updates if (pa(address)& ~BigInt(63))==a &&
               ((0 until 4).forall(b=>mask.testBit((pa(address)-a).toInt+b))))gpuStores+=address
@@ -242,7 +245,7 @@ class NativeUniformConcurrentCapacitySpec extends AnyFlatSpec {
       def until(condition: =>Boolean): Unit=while(!condition)tick()
       for((spillVertex,iteration)<-Seq(false,true).zipWithIndex){
         vertices=0;quads=0;overlapCycles=0;overlappingRoots.clear();dataLines.clear();d.io.start.poke(false.B)
-        commandResults.clear();gpuStores.clear();heldStoreCount=0;blockedCycles=0
+        commandResults.clear();gpuStores.clear();heldStoreCount=0;blockedCycles=0;obsoleteWrites=0
         publishedVertex=BigInt("b1234567",16)^iteration;publishedFragment=BigInt("c2345678",16)^iteration
         parkMemory=false;holdProducerAck=translated
         if(translated){putPhysical(0x30000,((BigInt(0x800000)>>12)<<10)|0xcf)
@@ -330,7 +333,9 @@ class NativeUniformConcurrentCapacitySpec extends AnyFlatSpec {
           assert(dataLines(pa(base+16380)& ~BigInt(63)))}
         if(translated){
           assert(commandResults.toVector==Vector(81)++publicationIds && heldStoreCount>0 && dataLines(BigInt(0x30000)))
-          assert(!dataLines(pa(NativeUniformTestData.base(23)+16380)& ~BigInt(63)),"uniforms read the obsolete binding allocation")
+          assert(!dataLines.exists(a=>a>=pa(NativeUniformTestData.base(23)) &&
+            a<pa(NativeUniformTestData.base(23)+16384)),"uniforms read the obsolete binding allocation")
+          assert(obsoleteWrites==0,"a GPU client wrote the obsolete binding allocation")
           assert(word(NativeUniformTestData.base(23)+16380)==NativeUniformTestData.value(23,16380))
         }
         for((base,bytes)<-Seq((vs+vp,4096),(fs+fp,3584));offset<-0 until bytes by 4)assert(word(base+offset)==NativeUniformTestData.value(31,offset))

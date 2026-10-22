@@ -105,8 +105,9 @@ denied data pages, ASID remapping/restoration, accepted root/view/data reset
 drain and held-completion VM ownership.
 [Concurrent native stage checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md)
 add overlapping 128-thread vertex/fragment use of one table under fixed payload
-capacity. Concurrent translated publication/lifetime at full stage capacity,
-general context/cache coherence,
+capacity, including Sv32 and GPU-produced mappings/views/data published before
+active draw admission. Full-capacity native renderer composition, concurrent
+reset/remapping and general context/cache coherence,
 grouped texture-host composition, rate budgets and
 enclosing clock/product qualification remain open. This binding/execution
 component does not close H0/H6 or the full H0–H8 goal.
