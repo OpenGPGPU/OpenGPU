@@ -1,0 +1,7 @@
+{
+  "version":1,"blocksPerStage":12,"bindings":24,"blockBytes":16384,"offsetAlignment":256,"defaultComponents":[1024,896],
+  "layouts":[
+    {"name":"root","magic":"0x47555201","words":16,"bytes":64,"fields":[{"name":"identity.context","word":3,"bits":32,"signed":false},{"name":"identity.pass","word":4,"bits":32,"signed":false},{"name":"identity.generation","word":5,"bits":32,"signed":false},{"name":"stage","word":6,"bits":1,"signed":false},{"name":"activeMask","word":7,"bits":12,"signed":false},{"name":"mapLow","word":8,"bits":30,"signed":false},{"name":"mapHigh","word":9,"bits":30,"signed":false},{"name":"bindingsBase","word":10,"bits":32,"signed":false},{"name":"bindingsLimit","word":11,"bits":33,"signed":false},{"name":"defaultView","word":13,"bits":32,"signed":false},{"name":"defaultPresent","word":14,"bits":1,"signed":false}]},
+    {"name":"binding","magic":"0x47554201","words":16,"bytes":64,"fields":[{"name":"identity.context","word":3,"bits":32,"signed":false},{"name":"identity.pass","word":4,"bits":32,"signed":false},{"name":"identity.generation","word":5,"bits":32,"signed":false},{"name":"bindingIndex","word":6,"bits":5,"signed":false},{"name":"stageMask","word":7,"bits":2,"signed":false},{"name":"base","word":8,"bits":32,"signed":false},{"name":"limit","word":9,"bits":33,"signed":false},{"name":"allocationBase","word":11,"bits":32,"signed":false},{"name":"allocationLimit","word":12,"bits":33,"signed":false},{"name":"readOnly","word":14,"bits":1,"signed":false}]}
+  ]
+}
