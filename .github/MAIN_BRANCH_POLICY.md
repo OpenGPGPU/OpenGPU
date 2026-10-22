@@ -4,6 +4,14 @@ Changes to `main` require a PR and the current `ci-ok` check from GitHub Actions
 Protection includes administrators, requires an up-to-date branch, and blocks
 force pushes and deletion. Work and commit on topic branches only.
 
+Codex PRs automatically move to ready after implementation and relevant local
+validation pass, then enable GitHub auto-merge using **rebase**. This preserves
+the logical commits. No additional user merge confirmation is required. GitHub
+performs the merge only when the protected current-head checks and branch
+requirements pass. Incomplete implementation remains draft; failing checks
+block merging. The agent updates an outdated topic branch rather than bypassing
+protection. Repository auto-merge must remain enabled.
+
 Open, non-draft PRs run host checks, compile all main/test Scala sources, and run
 an affected subset of fourteen bounded unit suites in `scripts/ci_pr_suites.txt`.
 The PR lane uses one runner with a 15-minute timeout. Documentation-only changes
