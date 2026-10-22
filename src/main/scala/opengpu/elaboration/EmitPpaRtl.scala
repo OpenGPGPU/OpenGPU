@@ -93,6 +93,12 @@ object EmitPpaRtl {
       case "mobile-resource-decode" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.core.frontend.decode.DecodePipe(
           taskTextureAvailability=true),stageArgs,firtoolArgs)
+      case "mobile-uniform-resource-decode" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.core.frontend.decode.DecodePipe(
+          taskTextureAvailability=true,nativeUniformsAvailable=true),stageArgs,firtoolArgs)
+      case "mobile-native-uniform-vertex" | "mobile-native-uniform-fragment" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.NativeShaderTextureUnit(
+          stage=if(args(0)=="mobile-native-uniform-vertex")0 else 1,uniformAvailable=true),stageArgs,firtoolArgs)
       case "mobile-resource-legacy-decode" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.core.frontend.decode.DecodePipe(
           nativeResourcesAvailable=false),stageArgs,firtoolArgs)
