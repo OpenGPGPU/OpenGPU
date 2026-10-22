@@ -2,7 +2,9 @@
 
 Status: proposed hardware architecture with H0/H1/H2/H3/H4/H5/H6/H7 implementation in progress, 2026-10-22. Baseline: `d038228`. Current PPA evaluation uses synthesis only; functional hardware development remains in progress.
 
-Execution updates in this PR add instruction-driven scoped SIMT branches, task-owned sampler and scalar-FP availability checks, native control pruning, and per-workgroup barrier lifetime repair. See [execution validation](EXECUTION_VALIDATION.md) for final test scopes and component timing. Full raster, whole-CU/host timing, throughput, coherence and H0–H8 completion remain open.
+Execution support includes instruction-driven scoped SIMT branches, task-owned sampler and scalar-FP availability checks, native control pruning, and per-workgroup barrier lifetime repair. See [execution validation](EXECUTION_VALIDATION.md) for final test scopes and component timing. Full raster, whole-CU/host timing, throughput, coherence and H0–H8 completion remain open.
+
+The [owned raster pipeline integration](RASTER_PIPELINE_OWNERSHIP.md) passes current-source ownership checks and complete quad component synthesis timing. Scalar timing remains required before promotion.
 
 Latest point/line checkpoint: [23 fresh targeted checks](performance/mobile-point-line-bounded-2026-10-20.json) pass on 674 frozen source files. The [standalone synthesis setup screen](performance/mobile-point-line-diamond-synthesis-2026-10-20.json) passes at 1000 ps with core +25.772 ps and I/O +619.101 ps. This does not qualify the whole GPU clock or complete H0-H8.
 

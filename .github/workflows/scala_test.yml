@@ -74,7 +74,7 @@ jobs:
 
   # Never report a stale or partially successful run as a successful required check.
   ci-ok:
-    if: always() && github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open'
+    if: always() && github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open' && !github.event.pull_request.draft
     needs: [checks]
     runs-on: ubuntu-latest
     timeout-minutes: 5
