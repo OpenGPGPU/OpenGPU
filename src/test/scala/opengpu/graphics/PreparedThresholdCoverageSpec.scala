@@ -5,13 +5,15 @@ import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
 
 class PreparedThresholdCoverageSpec extends AnyFlatSpec {
-  for(width<-Seq(16,64);samples<-Seq(1,2,4))
+  for(width<-Seq(4,16,64);samples<-Seq(1,2,4))
   it should s"match exact signed offset coverage with width$width samples$samples" in {
     simulate(new PreparedThresholdCoverage(samples,width)){d=>
       val random=new scala.util.Random(0x54e0+width+samples)
       def limits(bits: Int): Seq[BigInt]=Seq(-(BigInt(1)<<(bits-1)),-1,0,1,(BigInt(1)<<(bits-1))-1)
       def signed(bits: Int): BigInt=BigInt(bits,random)-(BigInt(1)<<(bits-1))
-      val cases=(for(e<-limits(width);o<-limits(width+1))yield(e,o))++Seq.fill(512)((signed(width),signed(width+1)))
+      val cases=if(width==4) {
+        for(e<- -8 until 8;o<- -16 until 16)yield(BigInt(e),BigInt(o))
+      }else (for(e<-limits(width);o<-limits(width+1))yield(e,o))++Seq.fill(512)((signed(width),signed(width+1)))
       for(((edge,offset),index)<-cases.zipWithIndex){
         val edges=Seq(edge,if(index%3==0)signed(width)else edge,if(index%5==0)signed(width)else edge)
         val offsets=(0 until 4).map(slot=>(0 until 3).map(e=>

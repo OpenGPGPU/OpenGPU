@@ -134,6 +134,28 @@ class PreparedThresholdCoverage(maxSampleCount: Int = 4, edgeWidth: Int = 64) ex
     val topLeft = Input(Vec(3, Bool()))
     val mask = Output(UInt(maxSampleCount.W))
   })
+  // Compare short unsigned chunks in parallel, then combine their ordering
+  // in a balanced tree. A native wide comparison can become a subtraction
+  // carry network with excessive load on the captured threshold sign bits.
+  private def compare(a: SInt, b: SInt): (Bool, Bool) = {
+    val width = a.getWidth
+    require(width == b.getWidth)
+    val x = a.asUInt
+    val y = b.asUInt
+    var chunks: Seq[(Bool, Bool)] = (0 until width by 4).map { low =>
+      val high = math.min(low + 3, width - 1)
+      (x(high, low) < y(high, low), x(high, low) === y(high, low))
+    }
+    while (chunks.size > 1) {
+      chunks = chunks.grouped(2).map {
+        case Seq((lowLess, lowEqual), (highLess, highEqual)) =>
+          (highLess || (highEqual && lowLess), highEqual && lowEqual)
+        case Seq(single) => single
+      }.toSeq
+    }
+    val (unsignedLess, equal) = chunks.head
+    (Mux(x(width - 1) =/= y(width - 1), x(width - 1), unsignedLess), equal)
+  }
   private val masks = (0 to log2Ceil(maxSampleCount)).map { mode =>
     val bits = Msaa.positions(mode).map { case (x, y) =>
       (0 until 3).map { edge =>
@@ -144,8 +166,7 @@ class PreparedThresholdCoverage(maxSampleCount: Int = 4, edgeWidth: Int = 64) ex
         val value = io.edges(edge).pad(edgeWidth + 2)
         // Share one signed comparison between windings to reduce the
         // threshold sign-bit load of separate greater/less networks.
-        val less = value < threshold
-        val equal = value === threshold
+        val (less, equal) = compare(value, threshold)
         Mux(equal, io.topLeft(edge), io.front ^ less)
       }.reduce(_ && _)
     }
