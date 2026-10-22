@@ -298,7 +298,9 @@ pr_suites() {
   declared=$(fqcns_of $(find "$test_root" -name '*Spec.scala' -print))
   while IFS= read -r suite; do
     case "$suite" in ''|\#*) continue ;; esac
-    if ! printf '%s\n' "$declared" | grep -Fxq "$suite"; then
+    # grep -q may exit before printf drains a large catalog. With pipefail,
+    # that producer's SIGPIPE otherwise turns a valid match into a failure.
+    if ! grep -Fxq -- "$suite" <<< "$declared"; then
       echo "PR suite does not exist: $suite" >&2
       return 1
     fi

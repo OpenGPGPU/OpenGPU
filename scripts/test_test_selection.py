@@ -4,6 +4,8 @@ from pathlib import Path
 import json
 import re
 import subprocess
+import shutil
+import tempfile
 
 root = Path(__file__).resolve().parents[1]
 
@@ -183,3 +185,28 @@ assert set(shard_cmd("pr-suites", "opengpu.graphics.*").split()) == {
 for path in ("scripts/ci_pr_suites.txt", ".github/workflows/scala_regression.yml",
              ".github/actions/setup-simulation/action.yml"):
     assert select(path) == ["ALL"], path
+
+# A valid early match must survive catalogs larger than the shell pipe buffer.
+# Exercise the real selector in isolation; also retain missing-suite rejection.
+with tempfile.TemporaryDirectory(prefix="gpu-pr-catalog-") as temporary:
+    fixture = Path(temporary)
+    (fixture / "scripts").mkdir()
+    sources = fixture / "src/test/scala/opengpu/graphics"
+    sources.mkdir(parents=True)
+    selector = fixture / "scripts/ci_shard_tests.sh"
+    shutil.copy2(root / "scripts/ci_shard_tests.sh", selector)
+    names = [f"CapacityCatalog{i:05d}Spec" for i in range(12000)]
+    (sources / "CapacityCatalogSpec.scala").write_text(
+        "package opengpu.graphics\n"
+        + "".join(f"class {name} extends AnyFlatSpec\n" for name in names)
+    )
+    expected = ["opengpu.graphics." + names[i] for i in (0, -1)]
+    catalog = fixture / "scripts/ci_pr_suites.txt"
+    catalog.write_text("\n".join(expected) + "\n")
+    command = ["bash", str(selector), "pr-suites", "ALL"]
+    assert subprocess.check_output(command, text=True).split() == expected
+    catalog.write_text("opengpu.graphics.MissingSpec\n")
+    missing = subprocess.run(command, text=True, capture_output=True)
+    assert missing.returncode != 0 and "MissingSpec" in missing.stderr
+
+print("Large PR suite catalog selection: PASS")
