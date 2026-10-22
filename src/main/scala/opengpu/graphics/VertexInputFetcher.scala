@@ -134,20 +134,28 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     val memoryResponse=Flipped(Decoupled(new ComputeMemoryResponse(64,1)))
     val busy=Output(Bool())
   })
-  private val Seq(idle,validate,vertex,index,waitIndex,attribute,middle,multiply,addressBase,
-    address,waitAttribute,convertAttribute,publish,emit,advance,drain,finish,complete)=Enum(18)
+  private object Phase extends ChiselEnum {
+    val idle,validate,vertex,prepareIndex,index,waitIndex,decodeIndex,selectAttribute,selectBinding,attribute,middle,multiply,addressBase,
+      addressCompute,addressCheck,address,waitAttribute,convertAttribute,waitConversion,publish,emit,advance,drain,finish,complete=Value
+  }
+  import Phase._
   private val phase=RegInit(idle)
   private val draw=Reg(new VertexInputDraw(p))
   private val record=Reg(new VertexInputRecord(p))
   private val result=Reg(new VertexInputCompletion)
   private val status=RegInit(0.U(VertexInputStatus.width.W))
   private val ordinal=RegInit(0.U(32.W));private val instance=RegInit(0.U(32.W))
+  private val lastOrdinal=Reg(UInt(32.W));private val lastInstance=Reg(UInt(32.W))
   private val attr=RegInit(0.U(p.attributeWidth.W));private val component=RegInit(0.U(2.W))
   private val instanceElement=Reg(Vec(p.bindings,UInt(33.W)))
   private val ratePosition=Reg(Vec(p.bindings,UInt(32.W)))
+  private val lastRate=Reg(Vec(p.bindings,UInt(32.W)))
   private val vertices=RegInit(0.U(64.W));private val restarts=RegInit(0.U(64.W))
   private val indexLines=RegInit(0.U(64.W));private val attributeLines=RegInit(0.U(64.W))
   private val reusedReads=RegInit(0.U(64.W))
+  private val nextVertices=Reg(UInt(64.W));private val nextRestarts=Reg(UInt(64.W))
+  private val nextIndexLines=Reg(UInt(64.W));private val nextAttributeLines=Reg(UInt(64.W))
+  private val nextReusedReads=Reg(UInt(64.W))
   private val faultAddress=Reg(UInt(32.W));private val faultAttributeValid=Reg(Bool())
   private val faultAttribute=Reg(UInt(4.W))
   private val outputValid=RegInit(false.B)
@@ -169,12 +177,12 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
   }
   when(io.memoryRequest.fire) {
     offerValid:=false.B;pending:=true.B
-    when(requestAttribute){attributeLines:=attributeLines+1.U}.otherwise{indexLines:=indexLines+1.U}
+    when(requestAttribute){attributeLines:=nextAttributeLines}.otherwise{indexLines:=nextIndexLines}
   }
   when(io.memoryResponse.fire){pending:=false.B}
   when(io.out.fire) {
     outputValid:=false.B
-    when(record.restart){restarts:=restarts+1.U}.otherwise{vertices:=vertices+1.U}
+    when(record.restart){restarts:=nextRestarts}.otherwise{vertices:=nextVertices}
   }
   private def fail(code: Int,at: UInt,isAttribute: Bool=false.B): Unit={
     when(status===0.U && !io.cancel) {
@@ -187,9 +195,10 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
       v.allocationLimit<= (BigInt(1)<<32).U && v.allocationLimit>v.allocationBase &&
       v.base>=v.allocationBase && v.limit>=v.base && v.limit<=v.allocationLimit
   private def nextAttribute(): Unit={
-    when(attr===(p.attributes-1).U){phase:=publish}.otherwise{attr:=attr+1.U;phase:=attribute}
+    when(attr===(p.attributes-1).U){phase:=publish}.otherwise{attr:=attr+1.U;phase:=selectAttribute}
   }
   private def queue(at: UInt,isAttribute: Boolean,bytesLog2: UInt): Unit={
+    if(isAttribute)nextAttributeLines:=attributeLines+1.U else nextIndexLines:=indexLines+1.U
     request:=0.U.asTypeOf(request)
     request.address:=Cat(at(31,6),0.U(6.W));request.sizeLog2:=6.U
     request.byteMask:=MuxLookup(bytesLog2,15.U(64.W))(Seq(0.U->1.U(64.W),1.U->3.U(64.W)))<<at(5,0)
@@ -197,11 +206,21 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     requestByte:=at;requestAttribute:=isAttribute.B;offerValid:=true.B
     phase:=(if(isAttribute)waitAttribute else waitIndex)
   }
-  private val currentAttribute=draw.attributes(attr)
+  private val currentAttribute=Reg(new VertexInputAttribute(p))
   private val attributeWord=Reg(UInt(32.W))
+  private val indexWord=Reg(UInt(32.W))
+  private val conversionFormat=Reg(UInt(VertexInputFormat.width.W))
+  private val conversionPending=RegInit(false.B)
+  private val converter=Module(new VertexInputConversionPipeline)
+  converter.io.in.valid:=phase===convertAttribute && !stop
+  converter.io.in.bits.word:=attributeWord;converter.io.in.bits.format:=conversionFormat
+  converter.io.in.bits.component:=component
+  converter.io.out.ready:=conversionPending
+  when(converter.io.in.fire){conversionPending:=true.B}
+  when(converter.io.out.fire){conversionPending:=false.B}
   private val bindingIndex=Mux(currentAttribute.bindingIndex<p.bindings.U,currentAttribute.bindingIndex,0.U)
-  private val binding=draw.bindings(bindingIndex)
-  private val selectedElement=Mux(binding.divisor===0.U,Cat(0.U(1.W),record.vertexId),instanceElement(bindingIndex))
+  private val binding=Reg(new VertexInputBinding)
+  private val selectedElement=Reg(UInt(33.W))
   private val e=selectedElement(31,0);private val stride=binding.stride
   private val partialLL=CarrySaveMultiplier(e(15,0),stride(15,0),false,false)
   private val partialLH=CarrySaveMultiplier(e(15,0),stride(31,16),false,false)
@@ -219,11 +238,14 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     }.elsewhen(biased<0.S || biased.asUInt>"hffffffff".U) {
       fail(VertexInputStatus.bounds,at)
     }.otherwise {
-      record.vertexId:=biased.asUInt;attr:=0.U;phase:=attribute
+      record.vertexId:=biased.asUInt;attr:=0.U;phase:=selectAttribute
     }
   }
+  private def stageIndex(word: UInt,at: UInt): Unit={
+    indexWord:=word;requestByte:=at;phase:=decodeIndex
+  }
   private def consumeAttribute(word: UInt): Unit={
-    attributeWord:=word;phase:=convertAttribute
+    attributeWord:=word;conversionFormat:=currentAttribute.format;phase:=convertAttribute
   }
   private val ll=Reg(UInt(32.W));private val lh=Reg(UInt(32.W))
   private val hl=Reg(UInt(32.W));private val hh=Reg(UInt(32.W))
@@ -231,27 +253,32 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
   private val baseOffset=Reg(UInt(33.W));private val elementAddress=Reg(UInt(65.W))
   private val join=Module(new BlockPrefixAdder(64))
   join.io.a:=Cat(hh,ll);join.io.b:=Cat(0.U(15.W),mid,0.U(16.W));join.io.carryIn:=false.B
-  private val wideAddress=elementAddress+&Mux(VertexInputFormat.packed(currentAttribute.format),0.U,component<<size)
+  private val componentOffset=Mux(VertexInputFormat.packed(currentAttribute.format),0.U,component<<size)
+  private val wideAddress=Reg(UInt(66.W));private val componentEnd=Reg(UInt(66.W))
   private val byteAddress=wideAddress(31,0)
   private val lineAddress=Cat(byteAddress(31,6),0.U(6.W))
   private val attributeInBounds=wideAddress>=binding.base &&
-    wideAddress+(1.U(4.W)<<size)<=binding.limit && wideAddress<(BigInt(1)<<32).U &&
+    componentEnd<=binding.limit && wideAddress<(BigInt(1)<<32).U &&
     lineAddress>=binding.allocationBase && (lineAddress+&64.U)<=binding.allocationLimit
+  private val addressSafe=Reg(Bool());private val attributeHit=Reg(Bool())
   private val indexByteWide=draw.indices.base+&((draw.firstIndex+&ordinal)<<indexSize)
   private val indexByte=indexByteWide(31,0)
   private val indexLine=Cat(indexByte(31,6),0.U(6.W))
   private val indexInBounds=indexByteWide>=draw.indices.base && indexByteWide+(1.U(4.W)<<indexSize)<=draw.indices.limit &&
     indexByteWide<(BigInt(1)<<32).U && indexLine>=draw.indices.allocationBase && (indexLine+&64.U)<=draw.indices.allocationLimit
+  private val indexRequestByte=Reg(UInt(32.W));private val indexSafe=Reg(Bool());private val indexHit=Reg(Bool())
 
   when(!stop || phase===idle || phase===drain || phase===finish || phase===complete) {
   switch(phase) {
     is(idle) {
       when(io.draw.fire) {
         draw:=io.draw.bits;status:=0.U;ordinal:=0.U;instance:=0.U;attr:=0.U
+        lastOrdinal:=io.draw.bits.count-1.U;lastInstance:=io.draw.bits.instances-1.U
         vertices:=0.U;restarts:=0.U;indexLines:=0.U;attributeLines:=0.U;reusedReads:=0.U
         faultAddress:=0.U;faultAttributeValid:=false.B;faultAttribute:=0.U
         indexValid:=false.B;attrValid:=false.B
-        for(i<-0 until p.bindings){instanceElement(i):=io.draw.bits.baseInstance;ratePosition(i):=0.U}
+        for(i<-0 until p.bindings){instanceElement(i):=io.draw.bits.baseInstance;ratePosition(i):=0.U
+          lastRate(i):=io.draw.bits.bindings(i).divisor-1.U}
         phase:=validate
       }
     }
@@ -284,24 +311,36 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
       record:=0.U.asTypeOf(record);record.identity:=draw.identity;record.ordinal:=ordinal
       record.instanceId:=instance;record.baseInstance:=draw.baseInstance
       attr:=0.U
-      when(draw.indexFormat===0.U){record.vertexId:=draw.firstVertex+ordinal;phase:=attribute}
-        .otherwise{phase:=index}
+      when(draw.indexFormat===0.U){record.vertexId:=draw.firstVertex+ordinal;phase:=selectAttribute}
+        .otherwise{phase:=prepareIndex}
+    }
+    is(prepareIndex){
+      indexRequestByte:=indexByte;indexSafe:=indexInBounds;indexHit:=indexValid && indexAddress===indexLine
+      nextReusedReads:=reusedReads+1.U;phase:=index
     }
     is(index) {
-      when(!indexInBounds){fail(VertexInputStatus.bounds,indexByte)}
-        .elsewhen(indexValid && indexAddress===indexLine) {
-          requestByte:=indexByte;reusedReads:=reusedReads+1.U
-          consumeIndex((indexData>>(indexByte(5,0)<<3))(31,0),indexByte)
-        }.otherwise{queue(indexByte,false,indexSize)}
+      when(!indexSafe){fail(VertexInputStatus.bounds,indexRequestByte)}
+        .elsewhen(indexHit) {
+          reusedReads:=nextReusedReads
+          stageIndex((indexData>>(indexRequestByte(5,0)<<3))(31,0),indexRequestByte)
+        }.otherwise{queue(indexRequestByte,false,indexSize)}
     }
     is(waitIndex) {
       when(io.memoryResponse.fire && !stop) {
         when(io.memoryResponse.bits.fault){fail(VertexInputStatus.memoryFault,requestByte)}
           .otherwise {
             indexValid:=true.B;indexAddress:=request.address;indexData:=io.memoryResponse.bits.readData
-            consumeIndex((io.memoryResponse.bits.readData>>(requestByte(5,0)<<3))(31,0),requestByte)
+            stageIndex((io.memoryResponse.bits.readData>>(requestByte(5,0)<<3))(31,0),requestByte)
           }
       }
+    }
+    is(decodeIndex){consumeIndex(indexWord,requestByte)}
+    is(selectAttribute){currentAttribute:=draw.attributes(attr);phase:=selectBinding}
+    is(selectBinding){
+      val selected=draw.bindings(bindingIndex)
+      binding:=selected
+      selectedElement:=Mux(selected.divisor===0.U,Cat(0.U(1.W),record.vertexId),instanceElement(bindingIndex))
+      phase:=attribute
     }
     is(attribute) {
       when(!currentAttribute.enabled){record.values(attr):=currentAttribute.constant;nextAttribute()}
@@ -316,18 +355,29 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     }
     is(middle){mid:=lh+&hl;phase:=multiply}
     is(multiply){product:=join.io.sum(63,0);phase:=addressBase}
-    is(addressBase){elementAddress:=product+&baseOffset;phase:=address}
+    is(addressBase){elementAddress:=product+&baseOffset;phase:=addressCompute}
+    is(addressCompute){
+      wideAddress:=elementAddress+&componentOffset
+      componentEnd:=elementAddress+&(componentOffset+&(1.U(4.W)<<size))
+      phase:=addressCheck
+    }
+    is(addressCheck){
+      addressSafe:=attributeInBounds;attributeHit:=attrValid && attrAddress===lineAddress
+      nextReusedReads:=reusedReads+1.U
+      phase:=address
+    }
     is(address) {
-      when(!attributeInBounds){fail(VertexInputStatus.bounds,byteAddress,true.B)}
-        .elsewhen(attrValid && attrAddress===lineAddress) {
-          reusedReads:=reusedReads+1.U;consumeAttribute((attrData>>(byteAddress(5,0)<<3))(31,0))
+      when(!addressSafe){fail(VertexInputStatus.bounds,byteAddress,true.B)}
+        .elsewhen(attributeHit) {
+          reusedReads:=nextReusedReads;consumeAttribute((attrData>>(byteAddress(5,0)<<3))(31,0))
         }.otherwise{queue(byteAddress,true,size)}
     }
-    is(convertAttribute) {
-      record.values(attr)(component):=VertexInputConversion(attributeWord,currentAttribute.format,component)
+    is(convertAttribute){when(converter.io.in.fire){phase:=waitConversion}}
+    is(waitConversion){when(converter.io.out.fire){
+      record.values(attr)(component):=converter.io.out.bits
       when(component===currentAttribute.components-1.U){nextAttribute()}
-        .otherwise{component:=component+1.U;phase:=address}
-    }
+        .otherwise{component:=component+1.U;phase:=addressCompute}
+    }}
     is(waitAttribute) {
       when(io.memoryResponse.fire && !stop) {
         when(io.memoryResponse.bits.fault){fail(VertexInputStatus.memoryFault,requestByte,true.B)}
@@ -337,16 +387,16 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
           }
       }
     }
-    is(publish){outputValid:=true.B;phase:=emit}
+    is(publish){nextVertices:=vertices+1.U;nextRestarts:=restarts+1.U;outputValid:=true.B;phase:=emit}
     is(emit){when(io.out.fire){phase:=advance}}
     is(advance) {
-      when(ordinal===draw.count-1.U) {
-        when(instance===draw.instances-1.U){phase:=finish}
+      when(ordinal===lastOrdinal) {
+        when(instance===lastInstance){phase:=finish}
           .otherwise {
             instance:=instance+1.U;ordinal:=0.U;phase:=vertex
             for(i<-0 until p.bindings) {
               when(draw.bindings(i).divisor=/=0.U) {
-                when(ratePosition(i)===draw.bindings(i).divisor-1.U) {
+                when(ratePosition(i)===lastRate(i)) {
                   ratePosition(i):=0.U;instanceElement(i):=instanceElement(i)+1.U
                 }.otherwise{ratePosition(i):=ratePosition(i)+1.U}
               }
@@ -354,7 +404,7 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
           }
       }.otherwise{ordinal:=ordinal+1.U;phase:=vertex}
     }
-    is(drain){when(!offerValid && !pending && !outputValid){phase:=finish}}
+    is(drain){when(!offerValid && !pending && !outputValid && !conversionPending){phase:=finish}}
     is(finish) {
       result.identity:=draw.identity;result.status:=Mux(io.cancel && status===0.U,VertexInputStatus.cancelled.U,status)
       result.vertices:=vertices;result.restarts:=restarts
