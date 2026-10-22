@@ -36,14 +36,21 @@ class TextureGradientLodUnit extends Module {
   private val candidateExponent=Reg(SInt(12.W));private val candidateSignificand=Reg(UInt(40.W));private val candidateZero=Reg(Bool())
   private val peakExponent=Reg(SInt(12.W));private val peakSignificand=Reg(UInt(40.W));private val found=RegInit(false.B)
   private val x=Reg(UInt(40.W));private val fraction=Reg(UInt(40.W));private val iteration=Reg(UInt(6.W))
-  private val partial=Reg(Vec(2,UInt(60.W)));private val square=Reg(UInt(80.W));private val lod=Reg(UInt(32.W))
+  private val partial=Reg(Vec(3,UInt(40.W)));private val square=Reg(UInt(80.W));private val lod=Reg(UInt(32.W))
   private val packedMagnitude=Reg(UInt(56.W));private val packedLeading=Reg(UInt(6.W));private val packedNegative=Reg(Bool());private val packedZero=Reg(Bool())
   private val active=phase=/=State.idle && phase=/=State.complete;private val stop=status=/=0.U || io.cancel
   io.in.ready:=phase===State.idle && !io.cancel;io.out.valid:=phase===State.complete;io.out.bits:=result;io.busy:=phase=/=State.idle
   when(active && io.cancel && status===0.U){status:=4.U}
   private val row=index>=3.U;private val axis=Mux(row,index-3.U,index)(1,0)
   private val scalar=request.gradients(row)(axis)
-  private val adder=Module(new BlockPrefixAdder(80,4));adder.io.a:=partial(0).pad(80);adder.io.b:=Cat(partial(1),0.U(20.W));adder.io.carryIn:=false.B
+  // For x=lo+hi*2^20, x^2=lo^2+(lo*hi)*2^21+hi^2*2^40.
+  // The disjoint squares form one 80-bit operand. This retains every bit with
+  // three 20x20 products instead of two 20x40 products, at the same latency.
+  private val adder=Module(new BlockPrefixAdder(80,4));adder.io.a:=Cat(partial(2),partial(0))
+  adder.io.b:=Cat(partial(1),0.U(21.W));adder.io.carryIn:=false.B
+  private val fixed=Cat(peakExponent.pad(16).asUInt,fraction).asSInt
+  private val negateFixed=Module(new BlockPrefixAdder(56))
+  negateFixed.io.a:= ~fixed.asUInt;negateFixed.io.b:=0.U;negateFixed.io.carryIn:=true.B
   switch(phase){
     is(State.idle){when(io.in.fire){
       request:=io.in.bits;status:=0.U;index:=0.U;found:=false.B;peakExponent:=0.S;peakSignificand:=0.U;lod:=0.U;phase:=State.check
@@ -81,18 +88,20 @@ class TextureGradientLodUnit extends Module {
       when(stop){phase:=State.finish}.elsewhen(!found){lod:="hff800000".U;phase:=State.finish}
         .otherwise{x:=peakSignificand;fraction:=0.U;iteration:=0.U;phase:=State.logProduct}
     }
-    is(State.logProduct){partial(0):=x(19,0)*x;partial(1):=x(39,20)*x;phase:=Mux(stop,State.finish,State.logSum)}
+    is(State.logProduct){partial(0):=x(19,0)*x(19,0);partial(1):=x(19,0)*x(39,20);partial(2):=x(39,20)*x(39,20)
+      phase:=Mux(stop,State.finish,State.logSum)}
     is(State.logSum){assert(!adder.io.sum(80),"normalized texture logarithm square overflowed80 bits")
       square:=adder.io.sum(79,0);phase:=Mux(stop,State.finish,State.logStep)}
     is(State.logStep){
-      val high=square(79);x:=Mux(high,square(79,40),square(78,39));fraction:=Cat(fraction(38,0),high)
+      val high=square(79);val nextFraction=Cat(fraction(38,0),high)
+      x:=Mux(high,square(79,40),square(78,39));fraction:=nextFraction
+      when(iteration===39.U){packedZero:=peakExponent===0.S && !nextFraction.orR;packedNegative:=peakExponent<0.S}
       when(stop){phase:=State.finish}.elsewhen(iteration===39.U){phase:=State.packNormalize}
         .otherwise{iteration:=iteration+1.U;phase:=State.logProduct}
     }
     is(State.packNormalize){
-      val fixed=Wire(SInt(56.W));fixed:=(peakExponent.pad(56)<<40)+fraction.zext
-      val magnitude=Mux(fixed<0.S,(-fixed).asUInt,fixed.asUInt);val leading=PriorityEncoder(Reverse(magnitude))
-      packedMagnitude:=(magnitude<<leading)(55,0);packedLeading:=leading;packedNegative:=fixed<0.S;packedZero:=fixed===0.S
+      val magnitude=Mux(fixed<0.S,negateFixed.io.sum(55,0),fixed.asUInt);val leading=PriorityEncoder(Reverse(magnitude))
+      packedMagnitude:=(magnitude<<leading)(55,0);packedLeading:=leading
       phase:=Mux(stop,State.finish,State.packRound)
     }
     is(State.packRound){
