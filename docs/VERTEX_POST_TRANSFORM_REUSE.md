@@ -62,6 +62,12 @@ without retiming or false paths: core +418.432 ps and I/O +446.121 ps, with zero
 skipped instances and all eight SRAM macros present. This component result
 does not qualify the vertex stage, host clock, frame rate or H5 completion.
 
+The enclosing vertex-stage synthesis screen fails the same 1000 ps setup gate:
+core −836.824 ps and I/O +74.348 ps. Its mapping report also omits four `umod`
+operators, so it cannot establish a full-stage maximum frequency. Repairing
+complete arithmetic mapping and the failing path remains required separately
+from the passing cache screen.
+
 Reproduce the directed stage case with:
 
 ```sh
