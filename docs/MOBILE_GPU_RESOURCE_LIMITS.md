@@ -1,0 +1,112 @@
+# Mobile shader and framebuffer capacity contract
+
+This expands the resource-limit gap in the [capability inventory](MOBILE_GPU_CAPABILITY_MATRIX.md).
+It is an H0/H6 requirement map, not an API capability declaration. Read the
+native profile's discovery records before constructing descriptors; reduced
+elaborations may expose fewer slots than the Mobile target.
+
+The normative bounds below use [GLES 3.0.6, tables 6.28 and 6.31–6.35](https://registry.khronos.org/OpenGL/specs/es/3.0/es_spec_3.0.pdf#page=285).
+Values are lower bounds except the alignment ceiling. U/V/T/F identify the
+implementation evidence and missing gates described below.
+
+| Required limit | Bound | Contract |
+|---|---:|---|
+| MAX_VERTEX_UNIFORM_COMPONENTS | 1024 | U |
+| MAX_VERTEX_UNIFORM_VECTORS | 256 | U |
+| MAX_FRAGMENT_UNIFORM_COMPONENTS | 896 | U |
+| MAX_FRAGMENT_UNIFORM_VECTORS | 224 | U |
+| MAX_VERTEX_UNIFORM_BLOCKS | 12 | U |
+| MAX_FRAGMENT_UNIFORM_BLOCKS | 12 | U |
+| MAX_COMBINED_UNIFORM_BLOCKS | 24 | U |
+| MAX_UNIFORM_BUFFER_BINDINGS | 24 | U |
+| MAX_UNIFORM_BLOCK_SIZE | 16384 bytes | U |
+| UNIFORM_BUFFER_OFFSET_ALIGNMENT | at most 256 bytes | U |
+| MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS | 50176 floor; formula below | U |
+| MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS | 50048 floor; formula below | U |
+| MAX_VERTEX_OUTPUT_COMPONENTS | 64 | V |
+| MAX_FRAGMENT_INPUT_COMPONENTS | 60 | V |
+| MAX_VARYING_COMPONENTS | 60 | V |
+| MAX_VARYING_VECTORS | 15 | V |
+| MAX_VERTEX_TEXTURE_IMAGE_UNITS | 16 | T |
+| MAX_TEXTURE_IMAGE_UNITS | 16 | T |
+| MAX_COMBINED_TEXTURE_IMAGE_UNITS | 32 | T |
+| MAX_RENDERBUFFER_SIZE | 2048 pixels per axis | F |
+| MAX_SAMPLES | 4 | F |
+
+The combined uniform bound is calculated per stage from that implementation's
+block count × block bytes / 4 + default-block component count; larger advertised
+values raise the bound. Viewport dimensions must accommodate the renderbuffer
+and display dimensions as specified in §2.13.1. These are separate contracts
+from texture dimensions, tile edge length and SRAM capacity.
+
+## U: uniform storage and blocks — open capacity evidence
+
+[Vertex](../src/main/scala/opengpu/graphics/VertexShaderStage.scala) and
+[fragment](../src/main/scala/opengpu/graphics/FragmentShaderStage.scala) tasks
+receive the scratch base through the existing kernarg ABI. Uniform data follows
+the invocation input/output prefix in GPU memory. Local payload allocation maps
+only the private prefix; its spill threshold is not a uniform-storage limit.
+Existing [vertex](../src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala)
+and [fragment](../src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala)
+checks preserve a scalar uniform tail. They do not prove all default-block
+components, twelve blocks per stage, twenty-four bindings, full block spans or
+simultaneous stage capacity.
+
+GTC1/GNC2/GTO1 do not advertise a uniform-block namespace or the above uniform
+limits. Ordinary CU loads alone do not establish the missing binding, range,
+publication and lifetime contract. The next implementation must define that
+contract, including its shader lowering, and check complete legal ranges,
+boundary failures, held tasks, VM faults and healthy reuse through both native
+stages. It must keep uniform data outside private-prefix clearing and preserve
+the current kernarg ABI.
+
+## V: stage interfaces — partial
+
+GTC1 and GNC2 report the configured varying-slot count. Each slot contains four
+raw components; the stage configurations permit up to sixteen slots. Position
+and optional point size have their own output arrays. Fragment position,
+front-face and optional point coordinates also have distinct ABI fields.
+These hardware counts still require the specification's built-in/component
+counting and linker packing rules before exposing API limits.
+
+The default 128-thread [vertex-stage check](../src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala)
+exports all sixty-four user components with sixteen attributes and controlled
+spill. Full-width fragment consumption, native end-to-end interpolation,
+centroid/flat combinations and limit rejection remain qualification gates.
+
+## T: texture bindings — native endpoint boundary checked
+
+[GTO1 word 10](NATIVE_TEXTURE_OPERATION_CAPABILITIES.md) reports thirty-two
+bindings. [ShaderTextureResources.maxBindings](../src/main/scala/opengpu/graphics/NativeTextureResources.scala)
+defines that namespace for discovery and all three root-admission paths:
+packet/captured fetch, floating sampling and size queries. Each stage binds an
+independent GXR1 root; resource identity and stage tags remain checked. This
+does not advertise sixty-four combined API units: API unit sharing and active
+sampler accounting still require a program/binding contract.
+
+Four focused native endpoint checks install all thirty-two distinct bindings
+at once for each stage. They exercise legacy packet fetch, captured integer
+fetch, floating sample and metadata-only size retirement with a binding table
+ending exactly at the exclusive 4 GiB boundary. Invalid counts, full-width
+indices, truncated/short limits and misalignment fail before selected binding
+reads; valid binding 31 succeeds again after rejection. Both memory offers and
+held results encounter backpressure. These tests do not execute a whole CU or
+prove simultaneous vertex/fragment program limits or full-host capacity.
+
+```sh
+sbt 'testOnly opengpu.graphics.NativeShaderTextureUnitSpec -- -z "fetch all 32 resident"'
+sbt 'testOnly opengpu.graphics.TextureSampleExecuteUnitSpec -- -z "admit all 32 resident"'
+```
+
+## F: framebuffer and viewport extent — partial
+
+[GNC2](NATIVE_BINNED_GRAPHICS_PIPELINE.md) reports the configured frame extent;
+[GTC1](NATIVE_TYPED_GRAPHICS_ABI.md) reports sample and resident attachment
+capacities. The current emitted product's 1280×720 extent does not meet a
+2048×2048 renderbuffer capacity requirement. Larger descriptor fields and small
+tile storage do not prove a larger native target. Qualify a supported full-size
+configuration, extreme viewport/scissor coordinates, format/sample-specific
+admission and complete backing/resolve bounds before advertising these limits.
+
+The remaining format, geometry, compute/storage and GLES 3.2 limits remain in
+the original H0–H8 plan. No milestone is closed by this capacity map.
