@@ -39,6 +39,12 @@ sbt -Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 \
   'testOnly opengpu.graphics.NativeTypedGraphicsHostAxiSpec -- -t "should execute GPU-memory triangle line and point shader draws with translated resources and cached image consumers local=true"'
 ```
 
+The fast catalog includes the uniform-load and instruction-retirement state
+machines, alongside provider-permission decoding. These component tests execute
+real descriptor reads, bounds and permission faults, lane coalescing, held
+results and cancellation drain without compiling a complete CU or host. Full
+native-frame and concurrent-capacity checks remain separate integration work.
+
 ## Frame sizes
 
 Routine rendering tests use **640×480 or smaller**. Prefer small tiles and images
