@@ -48,9 +48,9 @@ the invocation input/output prefix in GPU memory. Local payload allocation maps
 only the private prefix; its spill threshold is not a uniform-storage limit.
 Existing [vertex](../src/test/scala/opengpu/graphics/VertexShaderStageSpec.scala)
 and [fragment](../src/test/scala/opengpu/graphics/FragmentShaderStageSpec.scala)
-checks preserve a scalar uniform tail. They do not prove all default-block
-components, twelve blocks per stage, twenty-four bindings, full block spans or
-simultaneous stage capacity.
+legacy kernarg checks preserve a scalar uniform tail. Those ordinary loads
+alone do not establish checked block mappings, permissions or simultaneous
+stage capacity; the native evidence below covers separate resource contracts.
 
 GTC1/GNC2/GTO1 do not advertise a uniform-block namespace or the above uniform
 limits. Ordinary CU loads alone do not establish the missing binding, range,
@@ -61,8 +61,10 @@ cover complete 16 KiB/default ranges, boundary failures, snapshots, faults and
 cancellation drain for both stages. The [native binding/execution path](NATIVE_UNIFORM_BINDINGS.md)
 adds task-owned uniform instructions, versioned draw/state roots and separate
 128-thread vertex/fragment local/spill checks of all twelve mappings and the
-final block/default words. Discovery, driver/compiler integration and the
-combined-stage/VM/rate gates remain open. Preserve the kernarg ABI.
+final block/default words. [Concurrent native stage checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md)
+exercise both 128-thread stages against the same twenty-four-binding table at
+a fixed payload budget. Discovery, driver/compiler integration, translated
+concurrent publication/lifetime and rate gates remain open. Preserve the kernarg ABI.
 
 ## V: stage interfaces — partial
 

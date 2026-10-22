@@ -99,7 +99,9 @@ results do not qualify an enclosing stage/CU/host clock.
 Runtime discovery and driver/compiler admission/lowering remain required before
 advertising uniform support. [Compact translated host checks](NATIVE_UNIFORM_HOST_OWNERSHIP.md)
 cover both stages sharing one table, denied data pages and held-completion VM
-ownership. GPU-producer publication/lifetime, concurrent full-size stage
-use of one binding table, grouped texture-host composition, rate budgets and
+ownership. [Concurrent native stage checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md)
+add overlapping 128-thread vertex/fragment use of one table under fixed payload
+capacity. GPU-producer publication/lifetime, concurrent translated composition,
+grouped texture-host composition, rate budgets and
 enclosing clock/product qualification remain open. This binding/execution
 component does not close H0/H6 or the full H0–H8 goal.

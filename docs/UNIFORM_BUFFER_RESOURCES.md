@@ -4,9 +4,10 @@
 four-byte load for the resource contract in [Mobile limits](MOBILE_GPU_RESOURCE_LIMITS.md).
 The [native binding path](NATIVE_UNIFORM_BINDINGS.md) connects it to task-owned
 scalar/vector execution and native draw/state records. Runtime discovery,
-compiler lowering, translated publication and simultaneous vertex/fragment
-qualification remain required before exposing uniform-buffer support through
-a native profile. GTC1/GNC2/GTO1 are unchanged.
+compiler lowering, translated concurrent publication and rate qualification
+remain required before advertising full uniform-buffer support. The
+[concurrent capacity checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md) retain their
+separate native execution scope. GTC1/GNC2/GTO1 are unchanged.
 
 The [uniform execution adapter](UNIFORM_INSTRUCTION_EXECUTION.md) adds
 scalar/vector retirement and coalesces identical active-lane requests. It
