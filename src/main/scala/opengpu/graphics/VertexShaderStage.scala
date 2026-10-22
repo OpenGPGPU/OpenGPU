@@ -216,14 +216,11 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     sources(i).ready:=memoryArbiter.io.in(i).ready
   }
   memoryQueue.io.enq<>memoryArbiter.io.out;io.memoryRequest<>memoryQueue.io.deq
-  private val tag=io.memoryResponse.bits.transactionId
-  input.io.memoryResponse.valid:=io.memoryResponse.valid && tag===0.U
-  input.io.memoryResponse.bits:=io.memoryResponse.bits;input.io.memoryResponse.bits.transactionId:=0.U
-  fallbackResponse.valid:=io.memoryResponse.valid && tag===1.U
-  fallbackResponse.bits:=io.memoryResponse.bits;fallbackResponse.bits.transactionId:=0.U
-  texture.io.memoryResponse.valid:=io.memoryResponse.valid && tag>=2.U
-  texture.io.memoryResponse.bits:=io.memoryResponse.bits;texture.io.memoryResponse.bits.transactionId:=tag-2.U
-  io.memoryResponse.ready:=Mux(tag===0.U,input.io.memoryResponse.ready,Mux(tag===1.U,fallbackResponse.ready,texture.io.memoryResponse.ready))
+  private val memoryReplies=Module(new VertexMemoryResponseRouter)
+  memoryReplies.io.in<>io.memoryResponse
+  input.io.memoryResponse<>memoryReplies.io.inputResponse
+  fallbackResponse<>memoryReplies.io.stagingResponse
+  texture.io.memoryResponse<>memoryReplies.io.textureResponse
 
   private val texturePending=RegInit(0.U(3.W));private val textureInstructions=RegInit(0.U((if(groupedTexture)math.max(1,log2Ceil(config.warps+1))else 3).W))
   private val textureRequestFire=texture.io.memoryRequest.fire
@@ -347,7 +344,8 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     record.ordinal:=value(31,0);record.vertexId:=value(63,32)
     record.instanceId:=value(95,64);record.baseInstance:=value(127,96)
   }
-  private val memoryDrained= !memOffered && !memPending && !memoryQueue.io.deq.valid
+  private val memoryDrained= !memOffered && !memPending && !memoryQueue.io.deq.valid && !memoryReplies.io.busy
+  when(phase===complete){assert(!memoryReplies.io.busy,"vertex completion abandoned an accepted memory reply")}
   private val controlsDrained= !inputOffered && (!inputStarted || inputDone) &&
     !allocationOffered && (!allocationStarted || allocationPrepared) &&
     !invalidateOffered && !invalidatePending && !launchOffered && !kernelActive && textureDrained && !reuseBusy
