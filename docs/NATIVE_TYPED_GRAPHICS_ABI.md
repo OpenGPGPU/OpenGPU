@@ -59,8 +59,8 @@ zero. All records have 64-byte-aligned bases.
 
 [The generated C header](../driver/opengpu_native_typed_abi.h) supplies named
 word offsets and bit widths for every field. The
-[JSON map](abi/native-typed-graphics-v1.json) records the same 548 scalar fields:
-9 job, 185 pass and 354 draw fields. These layouts are explicit and independent
+[JSON map](abi/native-typed-graphics-v1.json) records the same scalar fields.
+These layouts are explicit and independent
 of Chisel Bundle packing, lane count and reduced hardware capacities. Active
 fields beyond an advertised capacity are rejected before draw execution.
 
@@ -152,6 +152,7 @@ The C/JSON interfaces give every scalar offset within these sections.
 | Vertex scratch view | 40..45 |
 | Vertex sampler | 48..55 |
 | Vertex-input version, identity, counts, indices, instances, restart | 64..75 |
+| Indirect draw mode; parameter view | 76; 88..93 |
 | Index-buffer view | 80..85 |
 | Sixteen attribute descriptors | `96 + 16*a`, `a=0..15` |
 | Sixteen buffer bindings | `352 + 8*b`, `b=0..15` |
@@ -170,6 +171,11 @@ allocation base and 33-bit allocation limit. Bindings append stride and divisor.
 An attribute has enabled, binding index, byte offset, component count, format
 and four constant components. A sampler has format, virtual base, dimensions,
 clamp, maximum/minimum levels and signed bias; use the exact named offsets in the header.
+
+[Indirect drawing](INDIRECT_DRAW_SUBMISSION.md) is enabled only after probing
+the GVI1 high-byte mode mask. Mode zero requires a zero parameter view and
+preserves direct draws. The extension uses reserved words without moving any
+existing field or changing the 640-word record size.
 
 The native record layout version is independent of shader ABI versions 1 and 2.
 The draw/shader-owner, input, viewport, raster and late-test descriptor versions

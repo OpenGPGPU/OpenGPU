@@ -7925,7 +7925,9 @@ and allows a healthy kernel store after recovery. Co-enabled GCI1/GTO1/GSL and
 all three query blocks retain their disjoint read-only and VM-write contracts.
 The initial invalid12-byte fill fixture and its64-byte repair are preserved;
 no hardware or expected result changed. Full command/memory AXI runtime and
-enabled-host synthesis remain separate gates. H7 indirect drawing, resource/
+enabled-host synthesis remain separate gates. The later
+[native indirect-draw contract](INDIRECT_DRAW_SUBMISSION.md) adds arrays/elements
+argument resolution; H7 API/compiler validation, resource/
 image/storage/atomic/barrier requirements, H8 and the full H0-H8 goal stay open.
 
 

@@ -38,3 +38,13 @@ GND1 word 498 is a one-bit `draw.vertex.geometry.vertex.reuseOutputs` promise;
 upper padding bits must be zero. It uses the [same contract as GTD1](VERTEX_POST_TRANSFORM_REUSE.md)
 and requires a nonzero GVI1 cache entry count. Existing fields and record sizes
 retain their offsets. Zero preserves ordinary shader execution.
+
+## Optional GPU-memory indirect arguments
+
+GND1 word 499 selects direct/arrays/elements mode (0/1/2), with zero upper
+padding. Words 500, 501–502, 503 and 504–505 hold parameter base, logical limit,
+allocation base and allocation limit. Limits are 33-bit exclusive bounds.
+Probe GVI1 word 2 bits 31:24 first. The [indirect draw contract](INDIRECT_DRAW_SUBMISSION.md)
+covers argument resolution, GPU publication, alias checks and cancellation.
+Mode zero requires the whole view to be zero. Existing fields and the
+512-word draw size remain unchanged.
