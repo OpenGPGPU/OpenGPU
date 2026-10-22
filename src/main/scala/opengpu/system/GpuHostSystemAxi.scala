@@ -305,7 +305,9 @@ class GpuHostSystemAxi(
       producerPayloadPins=if(localPayload.nonEmpty){if(nativeBinnedGraphics.nonEmpty)TypedVertexBinImagePipeline.payloadPins(nativeBinnedGraphics.get.engines)
         else if(typedGraphics.nonEmpty)4 else sharedShader.get.binPayloadPins(binnedRendering.get.tileEngines)}else 0,
       drainGraphicsPayloadWork=localPayload.nonEmpty,shaderExecutionLimits=nativeExecutionLimits,
-      enableIndirectCompute=enableIndirectCompute))
+      // This product wrapper ties the external FP handoff unready. Its CUs
+      // must use their actual local backend even without graphics quotas.
+      enableIndirectCompute=enableIndirectCompute,nativeExecutionProfile=true))
     if (nativeExecutionLimits) system.io.graphicsInstructionLimit.get := host.io.shaderInstructionLimit.get
     val binned=binnedRendering.map(m=>Module(new MemoryTileBinRenderPipeline(
       graphicsConfig,gpuConfig,commandIdWidth,m.tileEngines,m.binPageBytes,m.binWriteCredits,

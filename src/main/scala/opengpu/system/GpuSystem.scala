@@ -72,7 +72,8 @@ class GpuSystem(
   producerPayloadPins: Int = 0,
   drainGraphicsPayloadWork: Boolean = false,
   shaderExecutionLimits: Boolean = false,
-  enableIndirectCompute: Boolean = false
+  enableIndirectCompute: Boolean = false,
+  nativeExecutionProfile: Boolean = false
 ) extends Module {
   require(numComputeUnits > 0)
   require(!enableIndirectCompute || enableUnifiedCommands)
@@ -253,7 +254,8 @@ class GpuSystem(
         vectorCacheSets,
         vectorCacheWays,
         finishOnTrap = true,shaderPayload=shaderPayload,executionLimits=shaderExecutionLimits,gridSlices=true,
-        textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels))
+        textureAvailable=enableGraphicsKernels,taskTextureAvailability=enableGraphicsKernels,
+        nativeExecutionProfile=nativeExecutionProfile))
   }
   private val payloadStore=shaderPayload.map(p=>Module(new BankedShaderPayloadStore(p,useBlackBoxes,numComputeUnits+1+producerPayloadPins)))
   // The generic compute system has no graphics sampler. Keep the optional

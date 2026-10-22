@@ -81,14 +81,13 @@ class KernelShaderStage(
 
   private val emit = Module(new KernelEmit(config))
   if (sharedShader.isEmpty) {
-    // The shader CU needs the scalar FP backend so a fragment or vertex shader
-    // can read f-registers, which is what a `uniform float` lowers to. Without
-    // it FpuBackend is absent, flw never retires and the CU hangs. This widens
-    // GpuCore's completion arbiter from 3 to 4 inputs and adds a second FP cone
-    // to the design. The software admission gate is
-    // GPU_CAP_COMPUTE_SCALAR_FPU, which is only advertised when this is set.
+    // This adapter has no external scalar-FP completion service. Decode must
+    // reflect the local backend/RF even without the optional execution quota.
+    // Vector-only FP remains available when the scalar backend is disabled.
+    // GPU_CAP_COMPUTE_SCALAR_FPU advertises the scalar backend when enabled.
     val cu = Module(new GpuComputeUnit(
-      config, enableFpuBackend = enableScalarFpu, finishOnTrap = true))
+      config, enableFpuBackend = enableScalarFpu, finishOnTrap = true,
+      nativeExecutionProfile = true))
 
     io.launch.ready := cu.io.kernel.ready
     cu.io.kernel.valid := io.launch.valid
