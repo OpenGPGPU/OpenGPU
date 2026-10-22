@@ -251,10 +251,17 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
   private val hl=Reg(UInt(32.W));private val hh=Reg(UInt(32.W))
   private val mid=Reg(UInt(33.W));private val product=Reg(UInt(64.W))
   private val baseOffset=Reg(UInt(33.W));private val elementAddress=Reg(UInt(65.W))
+  private val elementSum=Module(new BlockPrefixAdder(64))
+  elementSum.io.a:=product;elementSum.io.b:=baseOffset;elementSum.io.carryIn:=false.B
   private val join=Module(new BlockPrefixAdder(64))
   join.io.a:=Cat(hh,ll);join.io.b:=Cat(0.U(15.W),mid,0.U(16.W));join.io.carryIn:=false.B
   private val componentOffset=Mux(VertexInputFormat.packed(currentAttribute.format),0.U,component<<size)
   private val wideAddress=Reg(UInt(66.W));private val componentEnd=Reg(UInt(66.W))
+  private val componentSum=Module(new BlockPrefixAdder(65))
+  componentSum.io.a:=elementAddress;componentSum.io.b:=componentOffset;componentSum.io.carryIn:=false.B
+  private val componentEndSum=Module(new BlockPrefixAdder(65))
+  componentEndSum.io.a:=elementAddress
+  componentEndSum.io.b:=componentOffset+&(1.U(4.W)<<size);componentEndSum.io.carryIn:=false.B
   private val byteAddress=wideAddress(31,0)
   private val lineAddress=Cat(byteAddress(31,6),0.U(6.W))
   private val attributeInBounds=wideAddress>=binding.base &&
@@ -355,10 +362,10 @@ class VertexInputFetcher(config: GpuConfig=GpuConfig(),p: VertexInputFetchConfig
     }
     is(middle){mid:=lh+&hl;phase:=multiply}
     is(multiply){product:=join.io.sum(63,0);phase:=addressBase}
-    is(addressBase){elementAddress:=product+&baseOffset;phase:=addressCompute}
+    is(addressBase){elementAddress:=elementSum.io.sum;phase:=addressCompute}
     is(addressCompute){
-      wideAddress:=elementAddress+&componentOffset
-      componentEnd:=elementAddress+&(componentOffset+&(1.U(4.W)<<size))
+      wideAddress:=componentSum.io.sum
+      componentEnd:=componentEndSum.io.sum
       phase:=addressCheck
     }
     is(addressCheck){
