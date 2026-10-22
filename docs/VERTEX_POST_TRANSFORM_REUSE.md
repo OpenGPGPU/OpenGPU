@@ -62,15 +62,16 @@ without retiming or false paths: core +418.432 ps and I/O +446.121 ps, with zero
 skipped instances and all eight SRAM macros present. This component result
 does not qualify the vertex stage, host clock, frame rate or H5 completion.
 
-The enclosing vertex-stage synthesis screen fails the same 1000 ps setup gate:
-core −836.824 ps and I/O +74.348 ps. Its mapping report also omits four `umod`
-operators, so it cannot establish a full-stage maximum frequency. Repairing
-complete arithmetic mapping and the failing path remains required separately
-from the passing cache screen.
+The enclosing vertex-stage synthesis qualification fails the same 1000 ps
+setup gate. Complete mapping alone does not qualify its clock; the passing
+cache screen and component arithmetic repairs require a fresh enclosing-stage
+qualification before any full-stage frequency claim.
 
 The [input arithmetic pipelines](VERTEX_INPUT_PIPELINING.md) now qualify complete
 standalone conversion, fetcher and floating-axis mapping/setup. Their component
-results do not replace the enclosing stage's qualification gate.
+results do not replace the enclosing stage's qualification gate. The
+[texture-gradient pipelines](TEXTURE_GRADIENT_PIPELINING.md) separately qualify
+the shared exact product/subtraction owner and its cube/helper-quad parents.
 
 Reproduce the directed stage case with:
 
