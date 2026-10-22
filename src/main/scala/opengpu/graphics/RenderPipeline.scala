@@ -229,8 +229,9 @@ class RenderPipeline(
   private val drawTileGate = passAcceptingDraws && (if (config.tileBinning) true.B else tileDrained)
   private val upstreamDone = Wire(Bool())
   private val fragmentDrained = Wire(Bool())
+  private val quadUvDrained = WireDefault(true.B)
   private val textured =
-    Module(new TexturedFragStage(config, quadUv = fragCore || vertCore,
+    Module(new TexturedFragStage(config,
       normalizedModulation = normalizedTextureModulation))
   private val expander = Module(new SampleExpander(config.maxSampleCount))
   private val bankedWide=if(bankedAttachments) Some(Module(new TileSampleQuadExpander(config.maxSampleCount))) else None
@@ -482,7 +483,7 @@ class RenderPipeline(
   // RasterShader consumes edge coordinates at draw acceptance but reads
   // varyings throughout rasterization. Keep the selected fan triangle stable
   // until the rasterizer returns to idle, then advance to the next one.
-  when(clipTriangleActive && shader.io.done) {
+  when(clipTriangleActive && shader.io.done && quadUvDrained) {
     clipTriangleActive := false.B
     geometryIssued := false.B
     when(clipEmitIndex + 1.U >= clipper.io.outValid) {
@@ -778,7 +779,7 @@ class RenderPipeline(
     val ctxFifo = Module(new DrawContextFifo(2))
     val clippedDrawValid = drawHoldValid && !clipTriangleActive && clipper.io.done && geometryReady &&
       clipEmitIndex < clipper.io.outValid
-    shader.io.draw.valid := clippedDrawValid && ctxFifo.io.enq.ready
+    shader.io.draw.valid := clippedDrawValid && ctxFifo.io.enq.ready && quadUvDrained
     ctxFifo.io.enq.valid := shader.io.draw.fire
     ctxFifo.io.enq.bits.shaderPc := drawHold.shaderPc
     ctxFifo.io.enq.bits.fragInputSkip := drawHold.fragInputSkip
@@ -840,11 +841,19 @@ class RenderPipeline(
       kernelFrag.fragIn.ready &&
       ctxFifo.io.enq.ready && drawTileGate &&
       kernelVert.map(_.io.done).getOrElse(true.B)
-    kernelFrag.fragIn.valid := shader.io.quad.valid
-    kernelFrag.fragIn.bits := shader.io.quad.bits
-    kernelFrag.fragUv := textured.io.interpolatedUvQuad
-    kernelFrag.fragDepths := shader.io.quadDepths
-    shader.io.quad.ready := kernelFrag.fragIn.ready
+    val quadUv = Module(new PipelinedQuadTexUV(config))
+    quadUv.io.in.valid := shader.io.quad.valid
+    quadUv.io.in.bits.fragment := shader.io.quad.bits
+    quadUv.io.in.bits.depths := shader.io.quadDepths
+    quadUv.io.in.bits.inverseW := VecInit(geo.io.out.map(_.invW))
+    quadUv.io.in.bits.coordinates := VecInit(clippedVertices.map(_.uv))
+    shader.io.quad.ready := quadUv.io.in.ready
+    kernelFrag.fragIn.valid := quadUv.io.out.valid
+    kernelFrag.fragIn.bits := quadUv.io.out.bits.fragment
+    kernelFrag.fragUv := quadUv.io.out.bits.coordinates
+    kernelFrag.fragDepths := quadUv.io.out.bits.depths
+    quadUv.io.out.ready := kernelFrag.fragIn.ready
+    quadUvDrained := quadUv.io.drained
     shader.io.pixel.ready := false.B // quad mode: scalar port is tied off
     // The programmable path selects ABI 1 exactly when MSAA is active; the
     // 1x ABI 0 path is observationally identical (the depth-output slice is
@@ -864,11 +873,12 @@ class RenderPipeline(
     kernelFrag.texLodBias := ctxFifo.io.tail.texLodBias
     kernelFrag.texMinLevel := ctxFifo.io.tail.texMinLevel
     // The batch must be flushed exactly at the draw boundary: once the
-    // rasterizer has gone idle (all pixels of the current draw emitted), any
+    // rasterizer and UV pipeline have drained (all quads accepted by the
+    // fragment stage), any
     // accumulated-but-unlaunched fragments are launched as one kernel.  The
     // batch is empty at that same point iff the draw produced no fragments, in
     // which case flush is a no-op.
-    kernelFrag.flush := shader.io.done
+    kernelFrag.flush := shader.io.done && quadUvDrained
 
     // The sample expander is the per-pixel/per-sample boundary for both
     // backends: the kernel emits one fragment per lane and the expander
@@ -1028,7 +1038,7 @@ class RenderPipeline(
     // Vertex draws also keep the pipeline busy until KernelVertStage returns
     // to idle; otherwise a just-accepted vertex command looks drained before
     // its shader has fetched a single instruction.
-    fragmentDrained := !drawHoldValid && !geo.io.busy && shader.io.done && kernelFrag.drained &&
+    fragmentDrained := !drawHoldValid && !geo.io.busy && shader.io.done && quadUvDrained && kernelFrag.drained &&
       expander.io.drained && om.io.drained && !ctxFifo.io.headValid && stagingRouterDrained && bankedLocalDrained
     upstreamDone := fragmentDrained && kernelVert.map(_.io.done).getOrElse(true.B) &&
       vertBinnerOpt.map(_.io.done).getOrElse(true.B)
