@@ -488,7 +488,7 @@ class VectorDecoder extends Module {
 
   val opcode = io.instruction(6, 0)
   val recognized = opcode === "b1010111".U || opcode === "b0000111".U ||
-    opcode === "b0100111".U || opcode === "b0101011".U
+    opcode === "b0100111".U || opcode === "b0101011".U || opcode === "b1011011".U
   val result = VectorDecodeTable.table.decode(io.instruction)
   val (decodedUnit, _) = VectorUnit.safe(result(VectorDecodeTable.Unit))
   val slideUpOverlap = io.instruction(31, 26) === "b001110".U &&
@@ -549,4 +549,18 @@ class VectorDecoder extends Module {
   io.decoded.memoryRead := result(VectorDecodeTable.MemoryRead)
   io.decoded.memoryWrite := result(VectorDecodeTable.MemoryWrite)
   io.decoded.configure := result(VectorDecodeTable.Configure)
+
+  // Custom-2 branches consume vector RF operands. Their bit25 is a branch
+  // displacement bit, not the RVV vm field; no v0 dependency may be created.
+  val simtBranch = opcode === "b1011011".U &&
+    io.instruction(14, 12) =/= 2.U && io.instruction(14, 12) =/= 3.U
+  when(simtBranch) {
+    io.decoded := 0.U.asTypeOf(new VectorDecodeSignals)
+    io.decoded.recognized := true.B
+    io.decoded.valid := true.B
+    io.decoded.unit := VectorUnit.branch
+    io.decoded.vm := true.B
+    io.decoded.readsVs1 := true.B
+    io.decoded.readsVs2 := true.B
+  }
 }

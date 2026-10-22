@@ -59,6 +59,7 @@ class DecodeSignals extends Bundle {
   val barrier = Bool()
   val texSample = Bool()
   val vectorBranch = Bool()
+  val simtSync = Bool()
   val join = Bool()
   val cease = Bool()
 }
@@ -94,6 +95,7 @@ private case class Rv32Pattern(
   barrier: Boolean = false,
   texSample: Boolean = false,
   vectorBranch: Boolean = false,
+  simtSync: Boolean = false,
   join: Boolean = false,
   cease: Boolean = false
 ) extends DecodePattern {
@@ -187,6 +189,9 @@ private object Rv32Decode {
   }
   object Join extends BoolField("join") {
     override protected def value(pattern: Rv32Pattern): Boolean = pattern.join
+  }
+  object SimtSync extends BoolField("simtSync") {
+    override protected def value(pattern: Rv32Pattern): Boolean = pattern.simtSync
   }
   object Cease extends BoolField("cease") {
     override protected def value(pattern: Rv32Pattern): Boolean = pattern.cease
@@ -400,6 +405,9 @@ private object Rv32Decode {
     vectorBranch("vbne",  "001", BranchOp.ne.litValue.toInt),
     Rv32Pattern("join", "?????????????????010?????1011011",
       system = true, join = true),
+    // B-type PC-relative join target; both register fields must be zero.
+    Rv32Pattern("simt.sync", "???????0000000000011?????1011011",
+      imm = ImmSel.b, system = true, simtSync = true),
     vectorBranch("vblt",  "100", BranchOp.lt.litValue.toInt),
     vectorBranch("vbge",  "101", BranchOp.ge.litValue.toInt),
     vectorBranch("vbltu", "110", BranchOp.ltu.litValue.toInt),
@@ -431,6 +439,7 @@ private object Rv32Decode {
     Barrier,
     TexSample,
     VectorBranch,
+    SimtSync,
     Join,
     Cease
   )
@@ -490,6 +499,7 @@ class RiscVDecoder extends Module {
   io.decoded.barrier := decoded(Rv32Decode.Barrier)
   io.decoded.texSample := decoded(Rv32Decode.TexSample)
   io.decoded.vectorBranch := decoded(Rv32Decode.VectorBranch)
+  io.decoded.simtSync := decoded(Rv32Decode.SimtSync)
   io.decoded.join := decoded(Rv32Decode.Join)
   io.decoded.cease := decoded(Rv32Decode.Cease)
 }

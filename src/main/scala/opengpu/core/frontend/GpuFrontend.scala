@@ -3,7 +3,7 @@ package opengpu.core.frontend
 import chisel3._
 import chisel3.util._
 import opengpu.config.GpuConfig
-import opengpu.core.execute.control.{SimtBranchRequest, SimtPath}
+import opengpu.core.execute.control.{SimtBranchRequest, SimtPath, SimtSyncRequest}
 import opengpu.core.frontend.decode._
 import opengpu.core.frontend.warp.WarpLaunch
 
@@ -14,7 +14,7 @@ import opengpu.core.frontend.warp.WarpLaunch
   * one-cycle-latency instruction memory can sustain one instruction per cycle.
   * Request metadata is retained until the response enters `DecodePipe`.
   */
-class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true) extends Module {
+class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true, instructionSimt: Boolean = false) extends Module {
   val io = IO(new Bundle {
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
     val fetchRequest = Decoupled(new InstructionFetchRequest(config))
@@ -25,6 +25,9 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
     val vectorOut = Decoupled(new VectorDecodeResponse(config))
 
     val branch = Flipped(Decoupled(new SimtBranchRequest(config)))
+    val instructionBranch = if(instructionSimt) Some(Flipped(Decoupled(new SimtBranchRequest(config)))) else None
+    val sync = if(instructionSimt) Some(Flipped(Decoupled(new SimtSyncRequest(config)))) else None
+    val fault = if(instructionSimt) Some(Decoupled(new opengpu.core.trap.CoreTrapEvent(config))) else None
     val scalarRedirect = Flipped(Decoupled(new SimtPath(config)))
     val restore = Flipped(Decoupled(UInt(config.warpIdWidth.W)))
     val restoreEmpty = Output(Bool())
@@ -34,11 +37,16 @@ class GpuFrontend(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean =
     val blocked = Output(UInt(config.warps.W))
   })
 
-  private val control = Module(new SimtFrontendControl(config))
+  private val control = Module(new SimtFrontendControl(config,instructionSimt))
   private val decode = Module(new DecodePipe(config, scalarFpuAvailable))
 
   control.io.launch <> io.launch
   control.io.branch <> io.branch
+  if(instructionSimt) {
+    control.io.instructionBranch.get <> io.instructionBranch.get
+    control.io.sync.get <> io.sync.get
+    io.fault.get <> control.io.fault.get
+  }
   control.io.scalarRedirect <> io.scalarRedirect
   control.io.restore <> io.restore
   io.restoreEmpty := Mux(io.restore.bits < config.warps.U,

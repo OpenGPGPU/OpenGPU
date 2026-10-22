@@ -14,7 +14,7 @@ object FpuUnit extends ChiselEnum {
 
 object VectorUnit extends ChiselEnum {
   val none, alu, multiply, divide, floatingPoint, loadStore, configuration,
-    mask, texture = Value
+    mask, texture, branch = Value
 }
 
 /** RV32F controls carried from decode to the floating-point issue path. */
