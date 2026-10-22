@@ -6,8 +6,9 @@ import opengpu.config.{CachePolicy,GpuConfig}
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse,L2SramArray}
 import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
 
-case class VertexShaderStageConfig(input: VertexInputFetchConfig=VertexInputFetchConfig(),varyings: Int=16) {
+case class VertexShaderStageConfig(input: VertexInputFetchConfig=VertexInputFetchConfig(),varyings: Int=16,postTransformEntries: Int=0) {
   require(varyings>=1 && varyings<=16)
+  require(postTransformEntries==0 || (postTransformEntries>=2 && postTransformEntries<=32 && isPow2(postTransformEntries)))
   val outputWords: Int=5+4*varyings
   def prefixBytes(capacity: Int,attributes: Int,varyingSlots: Int,version: Int=1): Int=
     (4*attributes+3+4+4*varyingSlots+(if(version==2)1 else 0))*capacity*4
@@ -50,6 +51,9 @@ class VertexShaderDraw(p: VertexShaderStageConfig) extends Bundle {
   val varyingMask=UInt((4*p.varyings).W)
   val sampler=new VertexShaderSampler
   val resources=new ShaderTextureResources
+  /** Opt-in promise: outputs depend only on vertex/instance inputs and pinned
+    * draw resources; no externally visible shader effects or batch dependence. */
+  val reuseOutputs=Bool()
 }
 class ShadedVertexRecord(p: VertexShaderStageConfig) extends Bundle {
   val identity=new GraphicsWorkIdentity
@@ -123,11 +127,15 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   shader.io.globalAtomicResponse.bits:=0.U.asTypeOf(shader.io.globalAtomicResponse.bits)
   shader.io.simtBranch.valid:=false.B;shader.io.simtBranch.bits:=0.U.asTypeOf(shader.io.simtBranch.bits)
 
-  private val states=Enum(27)
+  private val states=Enum(30)
   private val Seq(idle,validate,collect,allocate,writeInput,waitInput,commitInput,clearOutput,waitClear,
     invalidate,waitLaunch,waitKernel,cacheSlice,waitCacheFirst,cacheSecond,waitCacheSecond,
     metaRead,metaReply,gather,gatherReply)=states.take(20)
-  private val Seq(emitVertex,emitRestart,release,waitRelease,drain,finish,complete)=states.drop(20)
+  private val Seq(emitVertex,emitRestart,release,waitRelease,drain,finish,complete,reuseRequest,reuseReply,emitCached)=states.drop(20)
+  private val reuse=if(p.postTransformEntries>0)Some(Module(new PostTransformVertexCache(p,p.postTransformEntries,useSramBlackBoxes)))else None
+  private val reuseChecked=RegInit(false.B);private val reuseHit=RegInit(false.B)
+  private val reuseValue=Reg(new VertexShaderOutputs(p))
+  private val reuseBusy=reuse.map(_.io.busy).getOrElse(false.B)
   private val phase=RegInit(idle)
   private val draw=Reg(new VertexShaderDraw(p))
   private val result=Reg(new VertexShaderCompletion)
@@ -270,7 +278,17 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   }
 
   io.draw.ready:=phase===idle && !externalCancel;io.busy:=phase=/=idle
-  io.out.valid:=outputValid;io.out.bits:=record
+  io.out.valid:=outputValid && reuse.map(c=> !(phase===emitVertex && draw.reuseOutputs) || c.io.update.ready).getOrElse(true.B)
+  io.out.bits:=record
+  reuse.foreach { c=>
+    c.io.clear:=io.draw.fire
+    c.io.lookup.valid:=phase===reuseRequest && !stop
+    c.io.lookup.bits.vertexId:=input.io.out.bits.vertexId
+    c.io.lookup.bits.instanceId:=input.io.out.bits.instanceId;c.io.lookup.bits.baseInstance:=input.io.out.bits.baseInstance
+    c.io.result.ready:=phase===reuseReply || stop
+    c.io.update.valid:=io.out.fire && phase===emitVertex && draw.reuseOutputs && !stop
+    c.io.update.bits:=record
+  }
   io.completion.valid:=phase===complete;io.completion.bits:=result
   when(io.out.fire){outputValid:=false.B;when(record.restart){restarts:=restarts+1.U}.otherwise{vertices:=vertices+1.U}}
   private def fail(code: UInt,address: UInt): Unit={when(status===0.U && !externalCancel){status:=code;faultAddress:=address}}
@@ -319,12 +337,13 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   private val memoryDrained= !memOffered && !memPending && !memoryQueue.io.deq.valid
   private val controlsDrained= !inputOffered && (!inputStarted || inputDone) &&
     !allocationOffered && (!allocationStarted || allocationPrepared) &&
-    !invalidateOffered && !invalidatePending && !launchOffered && !kernelActive && textureDrained
+    !invalidateOffered && !invalidatePending && !launchOffered && !kernelActive && textureDrained && !reuseBusy
 
   when(!stop || phase===idle || phase===drain || phase===release || phase===waitRelease || phase===finish || phase===complete) {
   switch(phase) {
     is(idle){when(io.draw.fire){
       draw:=io.draw.bits;status:=0.U;faultAddress:=0.U;count:=0.U;outputValid:=false.B
+      reuseChecked:=false.B;reuseHit:=false.B
       inputStarted:=false.B;inputDone:=false.B;inputResult:=0.U.asTypeOf(inputResult);inputResult.identity:=io.draw.bits.input.identity
       vertices:=0.U;restarts:=0.U;batches:=0.U;localBatches:=0.U;spilledBatches:=0.U;writeBytes:=0.U;readBytes:=0.U;maxLocalX:=0.U
       val in=(io.draw.bits.attributeSlots<<2)+3.U;val out=(io.draw.bits.varyingSlots<<2)+4.U+(io.draw.bits.version===2.U).asUInt
@@ -336,7 +355,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       val s=draw.scratch
       val view=s.allocationBase(5,0)===0.U && s.allocationLimit(5,0)===0.U && s.allocationLimit<=(BigInt(1)<<32).U &&
         s.allocationLimit>s.allocationBase && s.base>=s.allocationBase && s.base(5,0)===0.U && s.limit>=s.base && s.limit<=s.allocationLimit
-      val fields=ShaderTextureResources.legal(draw.resources) && VertexShaderSampler.legal(draw.sampler) && draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
+      val fields=(!draw.reuseOutputs || (p.postTransformEntries>0).B) && ShaderTextureResources.legal(draw.resources) && VertexShaderSampler.legal(draw.sampler) && draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
         !(draw.varyingMask>>(draw.varyingSlots<<2)).orR &&
         draw.input.attributes.zipWithIndex.map { case (a,i)=> !a.enabled || i.U<draw.attributeSlots }.reduce(_ && _)
       val aliases=(0 until p.input.bindings).map { i=>
@@ -356,20 +375,35 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       }.elsewhen(input.io.out.valid && input.io.out.bits.restart) {
         recordMetadata(Cat(inputIdentity.baseInstance,inputIdentity.instanceId,inputIdentity.vertexId,inputIdentity.ordinal))
         record.restart:=true.B;input.io.out.ready:=true.B;outputValid:=true.B;phase:=emitRestart
+      }.elsewhen(input.io.out.valid && draw.reuseOutputs && reuseChecked && reuseHit) {
+        when(count=/=0.U){clearLine:=clearFirst;phase:=Mux(resident,invalidate,clearOutput)}
+          .otherwise {
+            recordMetadata(Cat(inputIdentity.baseInstance,inputIdentity.instanceId,inputIdentity.vertexId,inputIdentity.ordinal))
+            record.position:=reuseValue.position;record.varyings:=reuseValue.varyings
+            record.pointSize:=reuseValue.pointSize;record.pointSizeWritten:=reuseValue.pointSizeWritten
+            input.io.out.ready:=true.B;outputValid:=true.B;reuseChecked:=false.B;phase:=emitCached
+          }
+      }.elsewhen(input.io.out.valid && draw.reuseOutputs && !reuseChecked) {
+        phase:=reuseRequest
       }.elsewhen(input.io.out.valid) {
         when(!leaseActive) {
           if(payload.nonEmpty){allocationOffered:=true.B;phase:=allocate}
           else{leaseActive:=true.B;resident:=false.B;field:=0.U;phase:=writeInput}
         }.otherwise{field:=0.U;phase:=writeInput}
-      }.elsewhen(inputDone){phase:=finish}
+      }.elsewhen(inputDone && !reuseBusy){phase:=finish}
     }
+    is(reuseRequest){reuse.foreach(c=>when(c.io.lookup.fire){phase:=reuseReply})}
+    is(reuseReply){reuse.foreach(c=>when(c.io.result.fire){
+      reuseChecked:=true.B;reuseHit:=c.io.result.bits.hit;reuseValue:=c.io.result.bits.outputs;phase:=collect
+    })}
+    is(emitCached){when(io.out.fire){phase:=collect}}
     is(allocate){when(allocationPrepared){field:=0.U;phase:=writeInput}}
     is(writeInput){issue(Cat(inputAddress(31,6),0.U(6.W)),true,inputData.pad(512)<<(inputAddress(5,0)<<3),15.U(64.W)<<inputAddress(5,0));phase:=waitInput}
     is(waitInput){when(stageResponse.fire){when(field===inputWords-1.U){phase:=commitInput}.otherwise{field:=field+1.U;phase:=writeInput}}}
     is(commitInput){
       assert(input.io.out.valid && !input.io.out.bits.restart)
       assert(inputIdentity.identity.asUInt===draw.input.identity.asUInt)
-      metadata.io.writeEnable:=true.B;input.io.out.ready:=true.B;count:=count+1.U;phase:=collect
+      metadata.io.writeEnable:=true.B;input.io.out.ready:=true.B;count:=count+1.U;reuseChecked:=false.B;phase:=collect
     }
     is(clearOutput){issue(clearLine,true,0.U,clearMask);phase:=waitClear}
     is(waitClear){when(stageResponse.fire){when(clearLine===clearLast){phase:=invalidate}.otherwise{clearLine:=clearLine+64.U;phase:=clearOutput}}}
