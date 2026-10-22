@@ -10,6 +10,7 @@ opengpu.testutil.GpuSimSpec
 opengpu.core.execute.control.StructuredSimtControlSpec
 opengpu.core.frontend.decode.SimtSyncDecodeSpec
 opengpu.core.frontend.decode.TextureExecutionAvailabilityDecodeSpec
+opengpu.core.frontend.decode.UniformExecutionAvailabilityDecodeSpec
 opengpu.dispatch.WorkgroupBarrierEpochSpec
 opengpu.graphics.PreparedThresholdCoverageSpec
 opengpu.graphics.RasterThresholdSetupSpec
