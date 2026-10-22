@@ -33,8 +33,11 @@ object EmitNativeUniformAbi {
       "DEFAULT_VERTEX_COMPONENTS"->ShaderUniformLimits.defaultComponents(0),"DEFAULT_FRAGMENT_COMPONENTS"->ShaderUniformLimits.defaultComponents(1),
       "DEFAULT_BLOCK"->ShaderUniformLimits.defaultBlock,"TABLE_ALIGNMENT"->64,"DEFAULT_ALIGNMENT"->4,
       "STAGE_VERTEX"->0,"STAGE_FRAGMENT"->1))header.append(s"#define $prefix$name ${value}u\n")
-    for((name,value)<-Seq("SCALAR_LOAD_BASE"->"0x0e00000bu","VECTOR_LOAD_BASE"->"0x1c00002bu",
-      "VECTOR_LOAD_UNMASKED_BASE"->"0x1e00002bu"))header.append(s"#define $prefix$name $value\n")
+    for((name,value)<-Seq("SCALAR_LOAD_BASE"->NativeUniformCapabilities.scalarLoadBase,"VECTOR_LOAD_BASE"->NativeUniformCapabilities.vectorLoadBase,
+      "VECTOR_LOAD_UNMASKED_BASE"->NativeUniformCapabilities.vectorLoadUnmaskedBase)){
+      val encoded=f"0x${value.toLong}%08xu";header.append(s"#define $prefix$name $encoded\n")
+    }
+    header.append(NativeUniformCapabilities.header(prefix))
     for((name,words,magic,fs)<-schemas){val p=prefix+name.toUpperCase(Locale.ROOT)+"_"
       header.append(s"#define ${p}MAGIC 0x${magic.toString(16)}u\n#define ${p}WORDS ${words}u\n#define ${p}BYTES ${words*4}u\n")
       for((field,word,bits)<-fs){val n=field.replace('.','_').toUpperCase(Locale.ROOT)
