@@ -107,7 +107,7 @@ system_shard_for() {
       printf '%s\n' system-walk ;;
     ProgrammableTextureAxiSpec.scala|ParallelGraphicsOrderingSpec.scala)
       printf '%s\n' system-tex ;;
-    WideSharedGraphicsSpec.scala)
+    WideSharedGraphicsSpec.scala|FixedFragmentWorkersSpec.scala)
       printf '%s\n' system-wide ;;
     GpuSystemSpec.scala|GpuSystemComputeGeometrySpec.scala|GpuSystemIndirectComputeSpec.scala|GpuSystemIndirectTranslationResetSpec.scala|ComputeTextureAvailabilitySpec.scala)
       printf '%s\n' system-core ;;
