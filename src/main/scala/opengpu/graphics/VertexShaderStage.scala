@@ -260,8 +260,15 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   texture.io.minLevel:=draw.sampler.minLevel;texture.io.lodBias:=draw.sampler.bias
   texture.io.coordinatePolicy:=VertexShaderSampler.coordinatePolicy(draw.sampler)
   private val coordinateFault=texture.io.coordinateFault && (texture.io.commit.valid || texture.io.vectorCommit.valid)
+  // Every texture memory offer belongs to a previously accepted instruction.
+  // Its instruction debt already prevents completion, including before the
+  // external request handshake. Rechecking the deep sampler offer cone here
+  // needlessly feeds it back into CU completion and the entire stage's stop.
+  when(texture.io.memoryRequest.valid){
+    assert(textureInstructions=/=0.U,"vertex texture memory offer lost its accepted instruction owner")
+  }
   private val textureDrained=texturePending===0.U && textureInstructions===0.U &&
-    !texture.io.memoryRequest.valid && !shader.io.texSample.valid && !shader.io.vectorTexSample.valid
+    !shader.io.texSample.valid && !shader.io.vectorTexSample.valid
   shader.io.trap.ready:=true.B
   shader.io.completion.ready:=kernelActive && textureDrained
   private val shaderFault=shader.io.trap.valid || (shader.io.completion.valid && !shader.io.completion.bits.success)
