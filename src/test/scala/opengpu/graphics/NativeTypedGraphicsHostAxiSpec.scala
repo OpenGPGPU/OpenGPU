@@ -243,8 +243,10 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       axiWrite(d,GpuCommandMmioRegs.BYTES,512);axiWrite(d,GpuCommandMmioRegs.PATTERN,0);feedback.foreach{case(p,discard)=>p.stageRender(discard)};feedbackScope();axiWrite(d,GpuCommandMmioRegs.SUBMIT,1)
     }
     def run(status: Int=0,id: Int=23,readFault: BigInt=>Boolean=_=>false,
-      writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false): Unit={
-      serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=300000,writeFault=writeFault)(write){d.io.m_irq.peek().litToBoolean}
+      writeFault: (BigInt,BigInt,BigInt)=>Boolean=(_,_,_)=>false,
+      publication: Option[NativeIndirectDrawHostProbe]=None): Unit={
+      serviceMemoryMaster(d,read,readFault,writeAckDelay=7,readResponseDelay=3,maxCycles=300000,writeFault=writeFault,
+        onPausedCycle=publication.map(p=>()=>p.consumePublication()))(write){publication.forall(_.publicationComplete) && d.io.m_irq.peek().litToBoolean}
       val result=axiRead(d,GpuCommandMmioRegs.COMPLETION)
       assert((result&255)==id && ((result>>8)&7)==7 && ((result>>11)&15)==status && ((result>>15)&1)==(if(status==0)1 else 0),s"native AXI result=${result.toString(16)} sharedGroups=${d.io.performance.get.nativeTextureGroups.peek().litValue} sharedReads=${d.io.performance.get.nativeTextureDataReads.map(_.peek().litValue)} sharedWalks=${d.io.performance.get.nativeTexturePageWalks.map(_.peek().litValue)} recentReads=${reads.takeRight(24).map(_.toString(16)).mkString(",")}")
       queryProbe.foreach(_.completed(status))
@@ -267,7 +269,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
       exposePerformance=true,typedGraphics=Some(native))){d=>
       initialize(d);val image=new Image(d)
-      assert(axiRead(d,0x1b8)==BigInt(0x100502),"native discovery must report the implemented cache capacity")
+      assert(axiRead(d,0x1b8)==BigInt(0x3100502),"native discovery must report the implemented cache capacity")
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
       axiWrite(d,RenderHostRegs.IRQ,1)
       for((reuse,frame)<-Seq(false,true).zipWithIndex){
@@ -285,6 +287,57 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
         val perf=d.io.performance.get;perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
       }
       info(s"NATIVE_POST_TRANSFORM_REUSE local=$local indices=9 triangles=3 cacheEntries=16 optOutAndOptIn=true exactMRTDepthResolveGuards=true realSv32=true heldCompletionPinsVM=true payloadReleased=true")
+    }
+  }
+  if(getClass==classOf[NativeTypedGraphicsHostAxiSpec])for(local<-Seq(true,false))
+  it should s"consume GPU-published indirect arrays and elements through translated native images local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local).copy(vertex=p.copy(postTransformEntries=if(local)16 else 0))))){d=>
+      initialize(d);val image=new Image(d)
+      val probe=new NativeIndirectDrawHostProbe(d,image.memory,image.read,image.write,image.pa)
+      assert(axiRead(d,0x1b8)==BigInt(if(local)0x3100502 else 0x3000502))
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,RenderHostRegs.IRQ,1)
+      val cases=if(local)Seq((1,false),(2,true),(2,false))else Seq((1,false),(2,false))
+      for(((mode,denied),frame)<-cases.zipWithIndex){
+        image.shaderDraws(0,allocation=frame,sourceBias=0x100000+frame*0x10000)
+        image.word(image.pa(0x410000+12*4),1)
+        val parameters=if(denied)BigInt(0x4efffc)else BigInt(0x4e003c+frame*128)
+        val count=if(mode==2 && local)9 else 3
+        val values=if(mode==1)Seq(3,1,0,0)else Seq(count,1,1,-1,0)
+        val record=image.pa(0x412000);val indexBase=BigInt(0x4c0000+frame*64)
+        image.word(record+68*4,0);image.word(record+69*4,0);image.word(record+74*4,if(mode==1)0 else 1)
+        image.word(record+610*4,if(local)1 else 0)
+        if(mode==2){
+          (Seq(99)++Seq.tabulate(count)(i=>1+i%3)).zipWithIndex.foreach{case(v,i)=>image.memory(image.pa(indexBase+i))=v}
+          image.word(record+80*4,indexBase);image.word(record+81*4,indexBase+count+1)
+          image.word(record+83*4,indexBase);image.word(record+84*4,indexBase+64)
+        }
+        image.word(record+76*4,mode);image.word(record+88*4,parameters);image.word(record+89*4,parameters+4*values.size)
+        image.word(record+91*4,parameters& ~BigInt(63));image.word(record+92*4,(parameters+128)& ~BigInt(63))
+        probe.initializeArguments(parameters,values);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1)
+        val token=0x309+frame
+        probe.produce(170+frame,0x4a0000+frame*4096,parameters,values,token)
+        if(denied){
+          val table=BigInt(0x31000);image.word(0x30004,(table>>12)<<10|1)
+          for(page<-0 until 1024)image.word(table+4*page,((BigInt(0x800000+page*4096)>>12)<<10)|0xcf)
+          val page=(parameters+4)>>12
+          image.word(table+(page&1023)*4,((image.pa(page<<12)>>12)<<10)|0x49)
+        }
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);val before=image.reads.size
+        probe.publish(190+frame,token,parameters,values.size)
+        image.submit(230+frame);image.run(if(denied)3 else 0,id=230+frame,publication=Some(probe))
+        if(denied){
+          val page=image.pa((parameters+4)& ~BigInt(4095))
+          assert(!image.reads.drop(before).exists(a=>a>=page && a<page+4096),"denied indirect page reached physical data AXI")
+          assert(!image.writes.exists(_>=0x1000000),"faulted indirect parameters published an image")
+        }else image.verifyDraws(0,primitiveCount=1)
+        probe.checkGuards(parameters,values.size)
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
+        val perf=d.io.performance.get;perf.payloadReservedBytes.expect(0.U);perf.payloadPinsActive.expect(0.U)
+      }
+      info(s"INDIRECT_DRAW_NATIVE_TYPED local=$local frames=${cases.size} actualGPUproducer=true eventPublication=true arraysAndElements=true crossLine=true staticCountsZero=true signedBaseVertex=true Sv32=true deniedParameterPage=$local outputReuseEnabled=$local exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
     }
   }
   if(shaderRunningReset)for(local<-Seq(true,false))
@@ -672,7 +725,7 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       initialize(d);val image=new Image(d)
       assert(axiRead(d,TileBinHostRegs.DISCOVERY)==0x160)
       assert(axiRead(d,0x160)==BigInt("47544301",16));assert(axiRead(d,0x168)==BigInt("47544a01",16))
-      for((word,i)<-Vector[BigInt](BigInt("47564901",16),4,0x502,0x1ffffff).zipWithIndex)
+      for((word,i)<-Vector[BigInt](BigInt("47564901",16),4,0x3000502,0x1ffffff).zipWithIndex)
         assert(axiRead(d,0x1b0+i*4)==word,s"typed GVI1 word $i differs")
       axiWrite(d,0x1b0,0,expectedResponse=2)
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);axiWrite(d,RenderHostRegs.IRQ,1)

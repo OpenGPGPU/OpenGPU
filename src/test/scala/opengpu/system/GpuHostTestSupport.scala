@@ -227,7 +227,10 @@ trait GpuHostTestSupport {
     * aligned line address/data/mask as `onWrite`, once per completed AW/W
     * burst. Its verdict stays with that burst's queued B response.
     * `onWriteAccepted` runs after the accepting edge; a positive B delay lets
-    * a test request reset before that write is acknowledged. */
+    * a test request reset before that write is acknowledged. `onPausedCycle`
+    * may perform MMIO between completed bursts without restarting the memory
+    * driver, for example to consume an earlier command completion. It waits
+    * for accepted R/B responses to drain. Returning false removes the hook. */
   protected def serviceMemoryMaster(
     dut: GpuHostSystemAxi,
     readLine: BigInt => BigInt,
@@ -239,11 +242,12 @@ trait GpuHostTestSupport {
     onCycle: () => Unit = () => (),
     noProgressLimit: Int = 0,
     writeFault: (BigInt, BigInt, BigInt) => Boolean = (_, _, _) => false,
-    onWriteAccepted: BigInt => Unit = _ => ()
+    onWriteAccepted: BigInt => Unit = _ => (),
+    onPausedCycle: Option[() => Boolean] = None
   )(onWrite: (BigInt, BigInt, BigInt) => Unit)(until: => Boolean): Unit = {
     serviceMemoryMasterPort(new AxiMemoryMasterPort(dut.io), readLine, readFault,
       writeAckDelay, maxCycles, readResponseDelay, onReadAccepted, onCycle,
-      noProgressLimit, writeFault, onWriteAccepted)(onWrite)(until)
+      noProgressLimit, writeFault, onWriteAccepted, onPausedCycle)(onWrite)(until)
   }
 
   protected def serviceMemoryMasterPort(
@@ -257,7 +261,8 @@ trait GpuHostTestSupport {
     onCycle: () => Unit = () => (),
     noProgressLimit: Int = 0,
     writeFault: (BigInt, BigInt, BigInt) => Boolean = (_, _, _) => false,
-    onWriteAccepted: BigInt => Unit = _ => ()
+    onWriteAccepted: BigInt => Unit = _ => (),
+    onPausedCycle: Option[() => Boolean] = None
   )(onWrite: (BigInt, BigInt, BigInt) => Unit)(until: => Boolean): Unit = {
     val axiDataBytes = port.m_axi_wstrb.getWidth
     val axiDataBits = axiDataBytes * 8
@@ -275,6 +280,7 @@ trait GpuHostTestSupport {
     val pendingWriteAcks = scala.collection.mutable.Queue.empty[(BigInt, Int, Boolean)]
     var guard = 0
     var quietCycles = 0
+    var pausedHook = onPausedCycle
     while (!until && guard < maxCycles) {
       var acceptedReadAddress: Option[BigInt] = None
       var acceptedWriteAddress: Option[BigInt] = None
@@ -366,7 +372,8 @@ trait GpuHostTestSupport {
         s"AXI no progress for $quietCycles cycles at cycle=$guard pendingR=${pendingReads.size} awDone=$awDone wDone=$wDone pendingB=${pendingWriteAcks.size}")
       onCycle()
       port.s_axi_aclk.step()
-      if (acceptedReadAddress.nonEmpty || acceptedWriteAddress.nonEmpty) {
+      val pauseSafe=pendingReads.isEmpty && !awDone && !wDone && pendingWriteAcks.isEmpty
+      if (acceptedReadAddress.nonEmpty || acceptedWriteAddress.nonEmpty || (pausedHook.nonEmpty && pauseSafe)) {
         // Pause memory handshakes while the hook drives control MMIO. Local
         // burst state survives, including accepted AR or AW/W awaiting replies.
         port.m_axi_arready.poke(false.B)
@@ -376,6 +383,7 @@ trait GpuHostTestSupport {
         port.m_axi_bvalid.poke(false.B)
         acceptedReadAddress.foreach(onReadAccepted)
         acceptedWriteAddress.foreach(onWriteAccepted)
+        if(pauseSafe)pausedHook.foreach(hook => if (!hook()) pausedHook = None)
       }
       guard += 1
     }
