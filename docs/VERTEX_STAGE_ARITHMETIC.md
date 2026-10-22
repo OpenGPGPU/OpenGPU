@@ -35,6 +35,11 @@ information while separating long carry and normalization paths.
   carry-save state with prefix observation. They count the same accepted
   exports/launches, clear on draw admission and wrap modulo 2^64. Five counters
   add 320 state bits. There is no new launch/export queue or observation cycle.
+- Texture completion uses the existing accepted instruction and reply debts.
+  Every memory offer must retain an accepted instruction owner, checked by an
+  assertion. Removing the redundant sampler memory-offer term keeps its state
+  cone out of completion readiness. Unaccepted scalar/vector handoffs and
+  accepted replies still drain. No state, phase, transfer or latency is added.
 - Image decoding captures the full 80-bit normalized fraction and its leading
   count before shifting. SNORM, normalized depth and EAC components take one
   extra cycle each, or four per texel. Other encodings retain their latency.
