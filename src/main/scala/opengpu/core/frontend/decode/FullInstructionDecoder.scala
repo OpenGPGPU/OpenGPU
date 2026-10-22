@@ -5,9 +5,11 @@ import opengpu.config.GpuConfig
 
 /** Unified RV32I + F/D/Zfh + RVV instruction classifier. */
 class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable: Boolean = true,
-  textureAvailable: Boolean = true, taskTextureAvailability: Boolean = false) extends Module {
+  textureAvailable: Boolean = true, taskTextureAvailability: Boolean = false,
+  nativeResourcesAvailable: Boolean = true) extends Module {
   val io = IO(new Bundle {
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
+    val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val instruction = Input(UInt(32.W))
     val decoded = Output(new FullDecodeSignals)
   })
@@ -29,9 +31,12 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
     scalarDecoder.io.decoded.memoryWrite
   val scalarSystem = scalarDecoder.io.decoded.system
   private val textureAllowed = textureAvailable.B && io.textureEnabled.getOrElse(true.B)
+  private val nativeAllowed = nativeResourcesAvailable.B && io.nativeResourcesEnabled.getOrElse(true.B)
+  private val scalarNative = io.instruction(31,25)>=2.U
+  private val vectorNative = io.instruction(31,26)>=2.U
 
   when(scalarDecoder.io.decoded.legal &&
-      (textureAllowed || !scalarDecoder.io.decoded.texSample)) {
+      ((textureAllowed && (!scalarNative || nativeAllowed)) || !scalarDecoder.io.decoded.texSample)) {
     io.decoded.legal := true.B
     io.decoded.executionType := Mux(
       scalarBranch,
@@ -50,7 +55,7 @@ class FullInstructionDecoder(config: GpuConfig = GpuConfig(), scalarFpuAvailable
     vectorDecoder.io.decoded.readsFloat || vectorDecoder.io.decoded.writesFloat
   when(vectorDecoder.io.decoded.valid && config.enableVector.B &&
       (scalarFpuAvailable.B || !vectorNeedsScalarFpu) &&
-      (textureAllowed || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {
+      ((textureAllowed && (!vectorNative || nativeAllowed)) || vectorDecoder.io.decoded.unit =/= VectorUnit.texture)) {
     io.decoded.legal := true.B
     io.decoded.executionType := ExecutionType.vector
     io.decoded.vector := vectorDecoder.io.decoded

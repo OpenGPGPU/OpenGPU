@@ -51,10 +51,12 @@ class GpuCore(
   shaderPayload: Option[opengpu.graphics.ShaderPayloadConfig] = None,
   nativeExecutionProfile: Boolean = false,
   textureAvailable: Boolean = true,
-  taskTextureAvailability: Boolean = false
+  taskTextureAvailability: Boolean = false,
+  nativeResourcesAvailable: Boolean = true
 ) extends Module {
   val io = IO(new Bundle {
     val textureEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
+    val nativeResourcesEnabled = if(taskTextureAvailability) Some(Input(Bool())) else None
     val launch = Flipped(Decoupled(new WarpLaunch(config)))
     val scalarInitialize =
       Flipped(Decoupled(new ScalarRegisterWrite(config)))
@@ -110,8 +112,9 @@ class GpuCore(
   private val frontend = Module(new GpuFrontend(config,
     scalarFpuAvailable = !nativeExecutionProfile || (enableFpuBackend && config.enableFpu),
     instructionSimt = config.enableVector, textureAvailable = textureAvailable,
-    taskTextureAvailability = taskTextureAvailability))
+    taskTextureAvailability = taskTextureAvailability,nativeResourcesAvailable=nativeResourcesAvailable))
   if(taskTextureAvailability) { frontend.io.textureEnabled.get := io.textureEnabled.get }
+  if(taskTextureAvailability) { frontend.io.nativeResourcesEnabled.get := io.nativeResourcesEnabled.get }
   private val scalar = Module(new ScalarBackend(config, useBlackBoxes,helperInvocations=true))
   private val vector = Module(new VectorBackend(config, useBlackBoxes,helperInvocations=true,
     instructionSimt=config.enableVector))
