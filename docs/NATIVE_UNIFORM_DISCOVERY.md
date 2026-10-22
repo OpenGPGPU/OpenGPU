@@ -41,10 +41,12 @@ with the typed, binned and fragment-state ABI headers; generated ABI checks and
 CI suite-selection checks pass.
 
 Four additional production-host checks pass at four lanes, two warps and two
-shared CUs: eight typed frames and six binned frames across local/global payload
-modes. Typed frames retain GPU-produced root/view/data publication and exact
-images. Binned frames carry GND1 vertex and cached GFS1 fragment roots through
-both tile engines, using scalar vertex and vector fragment loads from bindings
+shared CUs: twenty-four completed typed frames, twelve typed reset cuts, and
+six binned frames across local/global payload modes. Typed frames retain
+GPU-produced root/view/data publication and exact images, remap both stages'
+uniform data under another ASID and restore it, and drain accepted root/view/data
+reads on reset before healthy reuse. Binned frames carry GND1 vertex and cached
+GFS1 fragment roots through both tile engines, using scalar vertex and vector fragment loads from bindings
 0 and 23 at the final block word. Both paths reject denied Sv32 data pages
 without physical reads, retain VM ownership through held completion and recover
 for the following healthy frame. These compact host cases do not establish
@@ -70,6 +72,7 @@ CHIPAGENT_DIR=../chipagent ../chipagent/.venv/bin/python scripts/qualify_ppa.py 
   --period-ps 1000 --io-delay 0.25 --output .artifacts/uniform-host-control-synthesis
 ```
 
-Driver/compiler API integration, concurrent translated publication, ASID
-remapping/reset, resource/rate/product budgets and the remaining H0–H8 gates
-remain required. Discovery does not close those requirements.
+Driver/compiler API integration, concurrent translated publication at full
+stage capacity, general context/cache coherence, resource/rate/product budgets
+and the remaining H0–H8 gates remain required. The compact typed remapping/reset
+checks do not establish those broader requirements.

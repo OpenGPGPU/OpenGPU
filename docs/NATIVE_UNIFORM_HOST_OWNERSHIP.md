@@ -2,8 +2,10 @@
 
 Two directed `NativeTypedGraphicsHostAxiSpec` cases pass on the production
 native execution profile with four lanes, two warps and two shared CUs.
-Each runs four 8×8 frames: healthy, GPU-published rebind, denied fragment
-uniform-data page, healthy.
+Each makes eighteen 8×8 submissions: twelve completed frames and six reset
+cuts. Completed frames include healthy draws, GPU-published rebinding, a denied
+fragment uniform-data page, an ASID remap and restoration, and healthy successors
+after every reset.
 The cases use local and globally staged shader payloads respectively.
 
 Each frame binds both shader stages to one immutable table of twenty-four
@@ -31,6 +33,20 @@ healthy frame succeeds using fresh shader code and source allocations. While
 each frame completion remains held, a VM-context change is rejected; popping
 completion releases its lifetime. Payload reservations and pins return to zero.
 
+With an explicit TLB flush, ASID 1 maps the same virtual last-word addresses
+for bindings 11 and 23 to new physical pages. Their changed values reach exact
+vertex/fragment image results; the old physical pages are neither read nor
+modified. Returning to ASID 0 and the original mapping restores the original
+results. Both instruction and vector SATPs remain pinned through held completion.
+
+Each stage is also reset during an accepted root, default-view and default-data
+read, with delayed AXI replies. The data cut waits for the uniform view, excluding
+the fragment program's earlier ordinary depth load from the same line. Reset
+rejects both SATP writes until the owned reply drains, publishes no abandoned
+image, releases all payload reservations and pins, and is followed by an exact
+healthy image. Across both payload modes this gives twelve reset cuts and
+twenty-four completed frames, including two expected permission failures.
+
 Every default word remains unchanged after successful frames, including the
 vertex default tail that shares its first line with the 608-byte private prefix.
 This checks the local-prefix/global-uniform boundary and the partial final-line
@@ -43,8 +59,8 @@ sbt -Dopengpu.simJobs=2 'set Test / parallelExecution := false' \
 
 These cases establish translated table access, fault isolation and completion
 lifetime for compact native frames. They do not establish overlapping full-size
-vertex/fragment capacity with translated GPU publication, ASID remapping/reset
-coverage, uniform throughput or an enclosing host clock. The separate
+vertex/fragment capacity with translated GPU publication, general context/cache
+coherence, uniform throughput or an enclosing host clock. The separate
 [binding qualification](NATIVE_UNIFORM_BINDINGS.md) records 128-thread per-stage
-capacity and component timing. Runtime discovery and the remaining H0–H8 gates
-remain open.
+capacity and component timing. [GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md) is
+implemented; the remaining H0–H8 gates stay open.

@@ -42,4 +42,5 @@ It does not measure a throughput budget, translate these concurrent tasks,
 publish descriptors from a GPU producer, qualify reset/remapping, or establish
 an enclosing clock. [Compact translated host checks](NATIVE_UNIFORM_HOST_OWNERSHIP.md)
 and [component timing](NATIVE_UNIFORM_BINDINGS.md) remain separate evidence.
-Runtime discovery, remaining resource/rate/product gates and H0–H8 remain open.
+[GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md) is implemented. Remaining
+resource/rate/product gates and H0–H8 stay open.
