@@ -83,6 +83,7 @@ class PipelinedTexUVInterpolator(config: GraphicsConfig, payloadWidth: Int = 1) 
   sums.io.enq.bits.denominator := denominator.io.deq.bits.value
   sums.io.enq.bits.payload := denominator.io.deq.bits.payload
   private val dividers = Seq.fill(2)(Module(new PipelinedSignedDivider(numeratorWidth, weightWidth, 32)))
+  val latency: Int = weights.head.latency + products.head.latency + 1 + dividers.head.latency
   private val payloads = Module(new Queue(UInt(payloadWidth.W), entries = dividers.head.latency + 2))
   sums.io.deq.ready := dividers.head.io.in.ready && payloads.io.enq.ready
   payloads.io.enq.valid := sums.io.deq.valid && dividers.head.io.in.ready
