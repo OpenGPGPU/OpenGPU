@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import opengpu.util.BlockPrefixAdder
 
 class VertexInputConversionRequest extends Bundle {
   val word=UInt(32.W);val format=UInt(VertexInputFormat.width.W);val component=UInt(2.W)
@@ -56,12 +57,20 @@ class VertexInputConversionPipeline extends Module {
   extracted.enq.bits.fallback:=Mux(q.format===float16.U,TypedColorDecode.half(q.word(15,0)),VertexInputFormat.expand(q.word,q.format))
 
   private val e=extracted.deq.bits
-  private val extended=((e.raw<<(32.U-e.bits))(31,0).asSInt>>(32.U-e.bits)).asUInt
-  private val negative=e.signed && extended(31)
-  private val absolute=Mux(negative,(~extended+1.U)(31,0),e.raw)
-  private val maximum=((1.U(33.W)<<(e.bits-1.U))-1.U)(31,0)
+  // Extraction produces only these widths and zeroes every higher raw bit.
+  // Negate modulo the original width instead of sign-extending through two
+  // variable shifts. The only signed magnitude above maximum is the minimum.
+  private val rawMask=MuxLookup(e.bits,"hffffffff".U(32.W))(
+    Seq(2,8,10,16).map(b=>b.U->((BigInt(1)<<b)-1).U(32.W)))
+  private val signMask=MuxLookup(e.bits,"h80000000".U(32.W))(
+    Seq(2,8,10,16).map(b=>b.U->(BigInt(1)<<(b-1)).U(32.W)))
+  private val negative=e.signed && (e.raw & signMask).orR
+  private val negate=Module(new BlockPrefixAdder(32))
+  negate.io.a:= ~e.raw;negate.io.b:=0.U;negate.io.carryIn:=true.B
+  private val absolute=Mux(negative,negate.io.sum(31,0)&rawMask,e.raw)
+  private val maximum=rawMask>>1
   magnitude.enq.valid:=extracted.deq.valid;extracted.deq.ready:=magnitude.enq.ready
-  magnitude.enq.bits.n:=Mux(e.normalized && e.signed && absolute>maximum,maximum,absolute)
+  magnitude.enq.bits.n:=Mux(e.normalized && e.signed && e.raw===signMask,maximum,absolute)
   magnitude.enq.bits.bits:=e.bits-(e.normalized && e.signed).asUInt
   magnitude.enq.bits.normalized:=e.normalized;magnitude.enq.bits.fixed:=e.fixed
   magnitude.enq.bits.negative:=negative;magnitude.enq.bits.converted:=e.converted;magnitude.enq.bits.fallback:=e.fallback
