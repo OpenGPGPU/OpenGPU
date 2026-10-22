@@ -175,7 +175,7 @@ print("Integration test selection: PASS")
 
 # The PR lane is bounded independently of broad integration fan-out.
 pr_suites = shard_cmd("pr-suites", "ALL").split()
-assert len(pr_suites) == len(set(pr_suites)) == 14
+assert len(pr_suites) == len(set(pr_suites)) == 15
 assert set(pr_suites) <= all_specs
 assert not any("GpuComputeUnit" in suite or "HostAxi" in suite for suite in pr_suites)
 assert shard_cmd("pr-suites", "NONE") == ""
