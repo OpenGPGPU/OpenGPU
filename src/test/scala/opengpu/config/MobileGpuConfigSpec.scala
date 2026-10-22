@@ -17,6 +17,9 @@ class MobileGpuConfigSpec extends AnyFlatSpec {
     assert(c.binPageBytes == 4096 && c.binWriteCredits == 8 && c.binTileSlots == 8)
     assert(c.binDirectoryTiles==16384 && c.binDirectoryReportBytes==2048 && c.binDirectoryBackingBytes==1024*1024)
     assert(c.copy(binDirectoryTiles=0,binTileSlots=3).binDirectoryReportBytes==0)
+    assert(c.vertexReuseEntries==16 && c.vertexReuseBytes==8192)
+    assert(c.copy(vertexReuseEntries=0).vertexReuseBytes==0)
+    intercept[IllegalArgumentException]{c.copy(primitiveBytes=8192)}
     assert(c.binRecordCacheEntries == 8 && c.binRecordCacheBytes == 1024)
     assert(c.copy(binRecordCacheEntries = 32).dataStorageBytes == c.dataStorageBytes,
       "replay record caches consume the existing primitive/state storage budget")
