@@ -148,6 +148,29 @@ class VertexInputFetcherSpec extends AnyFlatSpec {
     }
   }
 
+  it should "retain indexed cache ownership when cancellation coincides with private address capture" in {
+    val p=VertexInputFetchConfig(2,2)
+    simulate(new VertexInputFetcher(p=p)){d=>val t=new Driver(d,p)
+      val values=Vector(3,1,4,2,3,0,4,1)
+      for(i<-0 until 8)t.put(0x9000+i*4,0x1200+i)
+      for(format<-1 to 3;cut<-0 until 24){
+        val bytes=1<<(format-1)
+        values.zipWithIndex.foreach{case(value,i)=>t.put(0x8000+i*bytes,value,bytes)}
+        val command=Draw(count=8,instances=2,indexFormat=format,indices=view(0x8000,64),
+          buffers=Vector(Buffer(view(0x9000),4)),attributes=Vector(Attribute(components=1,format=1)),generation=100+format*100+cut)
+        t.start(command);t.until(t.outputs.nonEmpty)
+        for(_<-0 until cut)t.step()
+        d.io.cancel.poke(true.B);t.step();d.io.cancel.poke(false.B)
+        t.summary(VertexInputStatus.cancelled)
+        assert(t.outputs.toVector==t.expected(command).take(t.outputs.size),s"indexed cancellation changed an accepted record format=$format cut=$cut")
+        t.consume()
+        val healthy=command.copy(count=3,instances=1,generation=500+format*100+cut)
+        t.start(healthy);t.summary(0);assert(t.outputs.toVector==t.expected(healthy));t.consume()
+      }
+      info("VERTEX_INDEX_CAPTURE cancellationCuts72=true indexWidths8_16_32=true cachedPreparation=true acceptedPrefixStable=true ownedRequestsDrained=true healthyReuse=true noNewPhase=true")
+    }
+  }
+
   it should "fetch all sixteen attribute slots with typed defaults, signed expansion and draw snapshots" in {
     val p=VertexInputFetchConfig()
     simulate(new VertexInputFetcher(p=p)) { d=>
