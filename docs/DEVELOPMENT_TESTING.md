@@ -21,7 +21,7 @@ sbt 'testOnly opengpu.graphics.TileBinRenderPipelineSpec -- -z "clear and store 
 Run 720p deliberately outside the routine CI lanes:
 
 ```sh
-sbt -Dopengpu.productQualification=1 'testOnly opengpu.graphics.TileBinRenderPipelineSpec -- -z "complete 1280x720"'
+sbt -Dopengpu.productQualification=1 'testOnly opengpu.graphics.TileBinRenderPipelineSpec -- -z "1280x720"'
 ```
 
 The same switch selects the full-frame grid, directory, scissor, traversal and
