@@ -607,6 +607,8 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       }
       val sizeOnly=java.lang.Boolean.getBoolean("opengpu.nativeTextureSizeOnly")
       val lifetimeOnly=java.lang.Boolean.getBoolean("opengpu.nativeIntegerLifetimeOnly")
+      val availabilityOnly=java.lang.Boolean.getBoolean("opengpu.nativeResourceAvailabilityOnly")
+      require(!availabilityOnly || !sizeOnly && !lifetimeOnly,"resource availability is a separate bounded profile")
       val reproduceScratchAlias=java.lang.Boolean.getBoolean("opengpu.nativeIntegerScratchAlias")
       require(!reproduceScratchAlias || lifetimeOnly,"scratch alias is only an explicit negative fixture control")
       def floatPc(c: Int,scalar: Boolean,missing: Boolean,mode: Int): Int={
@@ -662,7 +664,19 @@ class VertexShaderStageSpec extends AnyFlatSpec {
         }
         if(nativeMode && skipParameters)assert(!rootRead,"new task reused stale operand validity")
       }
-      if(sizeOnly){}else if(lifetimeOnly){
+      if(availabilityOnly){
+        run(0,false);run(3,true)
+        nativeMode=true;integerMode=false;nativeControl=1
+        views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,3,0,0,id))
+        run(0,false);run(3,true)
+        skipParameters=true;run(0,false);run(0,true);skipParameters=false
+        run(0,false,bad=true);run(1,false,cancelled=true);run(3,true)
+        integerMode=true;nativeControl=0;run(0,false);run(3,true)
+        queryMode=true;integerMode=false;nativeControl=0
+        sizeDims=Vector.fill(4)(Vector[BigInt](2,2,0));run(0,false);run(2,true)
+        run(0,false,bad=true);run(0,false,cancelled=true);run(1,true)
+        info(s"NATIVE_RESOURCE_PERMISSION_CU stage=0 local=$local draws16=true nativeFamilies2Through6=true scalarVector=true immutableRoot=true noStaleParameters=true parameterAckPreservesV0=true faultAndCancellationDrain=true healthyReuse=true")
+      }else if(sizeOnly){}else if(lifetimeOnly){
         nativeMode=true;integerMode=true;nativeControl=0
         views=(0 until 4).map(u=>texData.install(t.put,(a,b)=>t.memory(a)=BigInt(b),u,3,0,0,id))
         run(0,false)
@@ -719,7 +733,7 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       info(s"NATIVE_IMAGE_FORMAT_CU stage=vertex local=$local formats64=true imageSwizzle=true scalarVector=true addedDraws=$addedDraws")
       info(s"NATIVE_TYPED_FETCH_CU stage=vertex local=$local CUs=2 draws=11 scalarVector=true components4=true targets4=true mixedRawTypes=true perLaneBindings=true descriptorSnapshot=true faultAndCancelDrain=true healthyReuse=true")
       }
-      if(!lifetimeOnly){
+      if(!lifetimeOnly && !availabilityOnly){
         queryMode=true;integerMode=false;nativeMode=true;nativeControl=0
 
         var sizeDraws=0
