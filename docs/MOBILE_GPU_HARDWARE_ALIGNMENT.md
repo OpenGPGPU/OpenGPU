@@ -228,6 +228,12 @@ Tile storage reduces repeated external attachment traffic by retaining intermedi
 
 The current qualified textured scene is 32,341 cycles on one CU and 11,566 on four, or about 2.80x. It is a retained regression workload, not a general theoretical scaling limit. [Qualification handoff](performance/optimization-pause-2026-10-17.json)
 
+The separate [fixed-resource integer shader qualification](FIXED_RESOURCE_CU_SCALING.md)
+passes the specified shader-bound target at 3.374x: 382,860 / 193,556 / 113,483
+cycles on 1/2/4 CUs with four workers, eight scratch banks and identical work.
+This legacy-renderer result does not establish native concurrency, whole-host
+clock timing, balanced scaling or completion of H0–H8.
+
 Current texture traces found a peak of 10 occupied slots out of 16 and about 0.06 percent cross-CU duplicate candidates in the captured desktop workload. Prioritize service bandwidth and bank conflicts over owner-table growth or duplicate multicast for that workload; these opportunity counters do not establish a causal speedup. [Texture contention measurements](performance/texture-arbiter-contention-2026-10-17.json)
 
 Existing OM screening also failed the 1 GHz timing gate for both baseline and sharing candidates. Use that result to justify pipelined admission/address/hazard control. A design with fewer cycles must also improve or preserve elapsed time at its achievable clock. [Paused physical screening](performance/optimization-pause-2026-10-17.json)
