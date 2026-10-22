@@ -587,8 +587,10 @@ abstract class ProgrammableTextureAxiChecks(sharedCUs: Option[Int], parallel: Bo
           ((8 + f) * 32L) << 20 | 1L << 15 | 5L << 7 | 0x13L,
           0x02006027L | 5L << 15 | 1L << 7)
       } ++ Seq(0x30500073L))
-      // Empty first-draw VB so coverage is empty; a stale L2 hit would keep it.
-      storeVertices(vertexBufferPa, Seq.fill(12)(0L))
+      // A valid degenerate triangle has no coverage. Keep homogeneous w=1:
+      // all-zero positions instead exercise invalid viewport division. A stale
+      // L2 hit after the CPU update would still retain these degenerate vertices.
+      storeVertices(vertexBufferPa, Seq.fill(3)(Seq(0L, 0L, 0L, 65536L)).flatten)
       store(texturePa, Seq(texel))
       store(textureVa, Seq(0x00ff00ffL))
       store(root, Seq(0xcfL, (0x800L << 10) | 0x43L))

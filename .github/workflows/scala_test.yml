@@ -81,8 +81,10 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      JAVA_OPTS: -Xms6G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
-      JVM_OPTS: -Xms6G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+      # Leave room for firtool and Verilator instead of committing 6 GB before
+      # the first model build. The JVM can still grow to the same 6 GB ceiling.
+      JAVA_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+      JVM_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
 
     steps:
     - uses: actions/checkout@v4
@@ -172,7 +174,7 @@ jobs:
         # fallocate on that live file returns ETXTBSY ("Text file busy"), so
         # swap it off and replace the inode with 8G before the model build.
         case "${{ matrix.shard }}" in
-          system-rt-16|system-rt-32|system-rt-batch)
+          graphics-*|system-rt-16|system-rt-32|system-rt-batch)
             sudo swapoff /swapfile 2>/dev/null || true
             sudo rm -f /swapfile
             sudo fallocate -l 8G /swapfile
@@ -182,14 +184,6 @@ jobs:
             free -h
             ;;
         esac
-        # system-rt-32 elaborates one 32-lane CU. -Xms6G commits that heap
-        # for the whole step, so firtool and g++ thrash on the rest until
-        # the OOM killer stops the agent. Grow the heap from 1 GB instead.
-        # The shard also passes simLowMem, which compiles the model at -O0.
-        if [ "${{ matrix.shard }}" = "system-rt-32" ]; then
-          export JAVA_OPTS="-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8"
-          export JVM_OPTS="$JAVA_OPTS"
-        fi
         FLAGS=$(bash scripts/ci_shard_tests.sh flags "${{ matrix.shard }}")
         if [ -n "$FLAGS" ]; then
           echo "Simulation flags: $FLAGS"

@@ -18,7 +18,8 @@
 # ran every full-GPU Verilator model back to back and was the hour-plus
 # job. Those suites now fan out, and the desktop scaling sweeps below are
 # left to local `sbt test`:
-#   graphics     — opengpu/graphics/**
+#   graphics-0..7 — stable file buckets under opengpu/graphics/**; concrete
+#                    suites from one file stay together to reuse models
 #   system-mem   — AXI masters and the register-only host
 #   system-host  — GpuHostSystemAxi plus the fill-throughput model
 #   system-walk  — 4-CU desktop page-walk and address repros (one shared model)
@@ -49,7 +50,6 @@ test_root="$root/src/test/scala"
 
 shard_prefixes() {
   case "$1" in
-    graphics) printf '%s\n' "opengpu/graphics" ;;
     core-a)   printf '%s\n' "opengpu/core/execute" "opengpu/core/memory" ;;
     core-b)
       printf '%s\n' \
@@ -73,7 +73,24 @@ shard_prefixes() {
   esac
 }
 
-all_shards=(graphics system-mem system-host system-walk system-tex system-wide system-core system-rt-narrow system-rt-16 system-rt-32 system-rt-batch system-pool core-a core-b)
+all_shards=(graphics-0 graphics-1 graphics-2 graphics-3 graphics-4 graphics-5 graphics-6 graphics-7 system-mem system-host system-walk system-tex system-wide system-core system-rt-narrow system-rt-16 system-rt-32 system-rt-batch system-pool core-a core-b)
+
+graphics_shard_files() {
+  # Hash paths rather than source bytes or directory order: editing a test or
+  # adding a new file must not move all the other compiled models to new runners.
+  python3 - "$test_root" "${1#graphics-}" <<'PY'
+from pathlib import Path
+import sys
+import zlib
+
+root = Path(sys.argv[1])
+bucket = int(sys.argv[2])
+for path in sorted((root / "opengpu/graphics").rglob("*Spec.scala")):
+    key = path.relative_to(root).as_posix().encode("utf-8")
+    if zlib.crc32(key) % 8 == bucket:
+        print(path)
+PY
+}
 
 # Map one opengpu/system spec file to a shard, or SKIP.
 # A new file must be added here; otherwise CI selection fails closed.
@@ -81,7 +98,7 @@ system_shard_for() {
   case "$(basename "$1")" in
     AxiStimulusOrderingSpec.scala|ComputeMemoryAxiMasterSpec.scala|GpuHostAxiSpec.scala|GpuHostAxiOwnershipSpec.scala|GpuWorkloadSpec.scala|TileBinHostMemoryFabricSpec.scala|NativeBinnedGraphicsMemoryFabricSpec.scala|NativeTypedGraphicsMemoryFabricSpec.scala|NativeVertexInputCapabilitiesAxiSpec.scala|NativeTextureOperationCapabilitiesAxiSpec.scala|ComputeIndirectCapabilitiesAxiSpec.scala|ComputeResourceCapabilitiesAxiSpec.scala|NativePrimitiveQueryCapabilitiesAxiSpec.scala|NativeTransformFeedbackCapabilitiesAxiSpec.scala|NativeShaderExecutionCapabilitiesAxiSpec.scala|NativeRgba8TextureMemoryFabricSpec.scala)
       printf '%s\n' system-mem ;;
-    GpuHostSystemAxiSpec.scala|GpuFillThroughputSpec.scala|GpuHostVmOwnershipSpec.scala|GpuHostIndirectComputeSpec.scala|ComputeResourceOwnerHostSpec.scala|ComputeResourceFullHostSpec.scala)
+    GpuHostSystemAxiSpec.scala|GpuFillThroughputSpec.scala|GpuHostVmOwnershipSpec.scala|GpuHostIndirectComputeSpec.scala|ComputeResourceOwnerHostSpec.scala|ComputeResourceFullHostSpec.scala|NativeControlHostDmaSpec.scala)
       printf '%s\n' system-host ;;
     RuntimeVectorAddressSpec.scala|SharedCuTwoLevelWalkSpec.scala)
       printf '%s\n' system-walk ;;
@@ -89,7 +106,7 @@ system_shard_for() {
       printf '%s\n' system-tex ;;
     WideSharedGraphicsSpec.scala)
       printf '%s\n' system-wide ;;
-    GpuSystemSpec.scala|GpuSystemComputeGeometrySpec.scala|GpuSystemIndirectComputeSpec.scala|GpuSystemIndirectTranslationResetSpec.scala)
+    GpuSystemSpec.scala|GpuSystemComputeGeometrySpec.scala|GpuSystemIndirectComputeSpec.scala|GpuSystemIndirectTranslationResetSpec.scala|ComputeTextureAvailabilitySpec.scala)
       printf '%s\n' system-core ;;
     RuntimeShaderFourLaneSpec.scala|RuntimeShaderEightLaneSpec.scala)
       printf '%s\n' system-rt-narrow ;;
@@ -138,6 +155,10 @@ core_b_toplevel() {
 shard_spec_files() {
   local shard=$1 prefix
   case "$shard" in
+    graphics-[0-7])
+      graphics_shard_files "$shard"
+      return
+      ;;
     system-*)
       system_shard_files "$shard"
       return
@@ -164,16 +185,21 @@ shard_flags() {
   # compiles it at -O0. The memory shard has no compute unit, so it stays
   # flat.
   case "$1" in
+    graphics-[0-7])
+      # Native/default-width graphics can elaborate several CUs. Bound both
+      # compiler concurrency and optimized C++ size on the hosted 16 GB runner.
+      printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1'
+      ;;
     system-rt-32)
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1'
       ;;
-    system-rt-16|system-rt-batch)
+    system-rt-16|system-rt-batch|system-tex|system-wide)
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1'
       ;;
-    system-host|system-walk|system-tex|system-wide|system-core|system-pool|system-rt-narrow)
+    system-host|system-walk|system-core|system-pool|system-rt-narrow)
       printf '%s\n' '-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2'
       ;;
-    graphics|system-mem|core-a|core-b)
+    system-mem|core-a|core-b)
       ;;
     *)
       echo "unknown shard: $1" >&2
@@ -182,11 +208,19 @@ shard_flags() {
   esac
 }
 
-fqcn_of() {
-  # $1: absolute path to *Spec.scala
-  local rel=${1#"$test_root"/}
-  rel=${rel%.scala}
-  printf '%s\n' "${rel//\//.}"
+fqcns_of() {
+  # One source file can declare several concrete suites or use a different
+  # filename. Abstract bases and private hardware harnesses are not suites.
+  # Tests use public top-level class declarations with the Spec suffix.
+  awk '
+    FNR == 1 { package_name = "" }
+    $1 == "package" { package_name = $2 }
+    /^(final[[:space:]]+)?class[[:space:]]+/ {
+      name = ($1 == "final" ? $3 : $2)
+      sub(/[^[:alnum:]_].*$/, "", name)
+      if (name ~ /Spec$/) print package_name "." name
+    }
+  ' "$@"
 }
 
 matches_glob() {
@@ -213,14 +247,17 @@ suite_selected() {
 
 suites_for_shard() {
   local shard=$1 selected=$2 file fqcn
-  local -a out=()
+  local -a files=() out=()
   while IFS= read -r file; do
     [ -n "$file" ] || continue
-    fqcn=$(fqcn_of "$file")
+    files+=("$file")
+  done < <(shard_spec_files "$shard" | sort -u)
+  [ "${#files[@]}" -gt 0 ] || return 0
+  while IFS= read -r fqcn; do
     if suite_selected "$fqcn" "$selected"; then
       out+=("$fqcn")
     fi
-  done < <(shard_spec_files "$shard" | sort -u)
+  done < <(fqcns_of "${files[@]}")
   if [ "${#out[@]}" -gt 0 ]; then
     printf '%s\n' "${out[*]}"
   fi
