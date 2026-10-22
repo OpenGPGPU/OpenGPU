@@ -24,7 +24,7 @@ class GpuComputeUnitTexturePolicySpec extends AnyFlatSpec {
         instructionCacheSets=sets, instructionCacheWays=ways, vectorCacheSets=sets, vectorCacheWays=ways)) { d =>
         zero(d.io); d.reset.poke(true.B); d.clock.step(); d.reset.poke(false.B)
         d.io.l1InvalidateDone.ready.poke(true.B); d.io.globalAtomicRequest.ready.poke(true.B)
-        val opcode = BigInt(if(vector) "0600052b" else "0200050b", 16)
+        var opcode = BigInt(0)
         val cease = BigInt("30500073",16)
         val code = mutable.Map.empty[BigInt,BigInt]
         case class Read(id: BigInt, data: BigInt, due: Int)
@@ -99,8 +99,11 @@ class GpuComputeUnitTexturePolicySpec extends AnyFlatSpec {
           while(!condition && cycle-start<3000) tick()
           assert(condition,s"$label stalled: cycle=$cycle active=${d.io.active.peek().litValue}")
         }
-        for((permission,frame)<-Seq(false,true,false,true).zipWithIndex) {
-          allowed=permission
+        val policies=Seq((false,false,false),(true,false,false),(true,false,true),(true,true,true),
+          (true,false,true),(false,true,true),(true,true,false),(true,true,true))
+        for(((permission,nativePermission,nativeOperation),frame)<-policies.zipWithIndex) {
+          allowed=permission && (!nativeOperation || nativePermission)
+          opcode=BigInt(if(vector){if(nativeOperation)"0a00052b"else"0600052b"}else{if(nativeOperation)"0400050b"else"0200050b"},16)
           val pc=0x1000+frame*0x200
           val prefix=if(vector) Seq(BigInt("0104f057",16)) else Seq.empty
           val suffix=BigInt(if(vector) "5e03b557" else "00700513",16) // vmv.v.i v10,7 or addi x10,x0,7
@@ -108,6 +111,7 @@ class GpuComputeUnitTexturePolicySpec extends AnyFlatSpec {
           trapPc=BigInt(pc+4*prefix.size)
           val oldRequests=requests;val oldTraps=traps;val oldWrites=healthyWrites
           d.io.trap.ready.poke(false.B);d.io.textureEnabled.get.poke(permission.B)
+          d.io.nativeResourcesEnabled.get.poke(nativePermission.B)
           d.io.kernel.bits.poke(0.U.asTypeOf(d.io.kernel.bits))
           d.io.kernel.bits.kernelPc.poke(pc.U);d.io.kernel.bits.kernargAddress.poke(0x8000.U)
           for(i<-0 until 3) {
@@ -117,19 +121,20 @@ class GpuComputeUnitTexturePolicySpec extends AnyFlatSpec {
           tick();d.io.kernel.valid.poke(false.B)
           // The launch policy may change immediately after the accepted task.
           d.io.textureEnabled.get.poke((!permission).B)
-          if(!permission) {
+          d.io.nativeResourcesEnabled.get.poke((!nativePermission).B)
+          if(!allowed) {
             until("attributed rejection")(d.io.trap.valid.peek().litToBoolean)
             val held=d.io.trap.bits.peek().litValue
             for(_<-0 until 9) { assert(d.io.trap.bits.peek().litValue==held);d.io.completion.valid.expect(false.B);tick() }
             d.io.trap.ready.poke(true.B)
           }
           until("task completion")(d.io.completion.valid.peek().litToBoolean)
-          d.io.completion.bits.success.expect(permission.B);d.io.active.expect(0.U)
+          d.io.completion.bits.success.expect(allowed.B);d.io.active.expect(0.U)
           val held=d.io.completion.bits.peek().litValue
           for(_<-0 until 7) { assert(d.io.completion.bits.peek().litValue==held);tick() }
-          assert(requests-oldRequests==(if(permission)warps else 0))
-          assert(traps-oldTraps==(if(permission)0 else warps))
-          assert(healthyWrites-oldWrites==(if(permission)warps else 0))
+          assert(requests-oldRequests==(if(allowed)warps else 0))
+          assert(traps-oldTraps==(if(allowed)0 else warps))
+          assert(healthyWrites-oldWrites==(if(allowed)warps else 0))
           assert(reads.isEmpty && samples.isEmpty)
           d.io.completion.ready.poke(true.B);tick();d.io.completion.ready.poke(false.B)
         }
