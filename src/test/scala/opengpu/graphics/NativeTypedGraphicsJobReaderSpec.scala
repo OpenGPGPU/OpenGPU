@@ -122,6 +122,22 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
     }
     def cancel(): Unit={d.io.cancel.poke(true.B);tick();d.io.cancel.poke(false.B)}
   }
+  for(entries<-Seq(0,16))
+  it should s"snapshot opt-in vertex output reuse and reject unsupported capacity or padding entries=$entries" in {
+    simulate(new NativeTypedGraphicsJobReader(p=p.copy(postTransformEntries=entries),f=f)){d=>val t=new Driver(d)
+      t.prepare(1);t.drawValues+=("vertex.reuseOutputs"->BigInt(1));t.memory(0x4000+610*4)=1
+      if(entries>0)t.blockDraw=true
+      t.submit()
+      if(entries>0){
+        t.until(d.io.draw.valid.peek().litToBoolean);t.memory(0x4000+610*4)=0
+        for(_<-0 until 5)t.tick()
+        d.io.draw.bits.shaders.vertex.vertex.geometry.vertex.reuseOutputs.expect(true.B);t.blockDraw=false
+      }
+      t.complete(if(entries>0)0 else 1,if(entries>0)1 else 0)
+      t.prepare(1);t.memory(0x4000+610*4)=2;t.submit();t.complete(1)
+      t.prepare(1);t.submit();t.complete(0,1)
+    }
+  }
   it should "decode fixed native layouts with out of order replies and retain complete pass draw and publication ownership" in {
     simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d);t.prepare();t.blockBegin=true;t.submit();t.until(d.io.begin.valid.peek().litToBoolean)
       val held=d.io.begin.bits.peek().litValue;for(_<-0 until 9){t.tick();assert(d.io.begin.bits.peek().litValue==held)}

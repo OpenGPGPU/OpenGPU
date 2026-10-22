@@ -10,7 +10,7 @@ import opengpu.system.{SharedCuGraphicsPort,SharedCuShaderConfig}
   * records keep their fixed16-slot layout even for a smaller elaboration.
   * This shares the system payload pool and CUs, never a private shader core.
   */
-case class NativeTypedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShaderStageConfig(),
+case class NativeTypedGraphicsConfig(vertex: VertexShaderStageConfig=VertexShaderStageConfig(postTransformEntries=PostTransformVertexCache.defaultEntries),
     fragment: FragmentShaderConfig=FragmentShaderConfig(),storage: TypedTileColorConfig=TypedTileColorConfig(),
     payload: Option[ShaderPayloadConfig]=Some(ShaderPayloadConfig(maxPayloadBytes=16*1024,owners=2,ports=6)),groupedTexture: Boolean=false,transformFeedback: Boolean=false) {
   require(vertex.varyings==fragment.varyings && fragment.colors==4)

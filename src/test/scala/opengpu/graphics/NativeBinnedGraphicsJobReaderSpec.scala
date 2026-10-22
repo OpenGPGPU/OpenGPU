@@ -12,8 +12,8 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
   private val p=VertexShaderStageConfig(VertexInputFetchConfig(2,2),2)
   // Keep the complete nested result while avoiding the simulator's DPI name
   // length limit. The production interface and all result fields are preserved.
-  private class Harness(virtualImages: Boolean=false) extends Module {
-    val core=Module(new NativeBinnedGraphicsJobReader(p=p,virtualImageViews=virtualImages))
+  private class Harness(virtualImages: Boolean=false,reuseEntries: Int=0) extends Module {
+    val core=Module(new NativeBinnedGraphicsJobReader(p=p.copy(postTransformEntries=reuseEntries),virtualImageViews=virtualImages))
     val io=IO(new Bundle {
       val submit=chiselTypeOf(core.io.submit);val begin=chiselTypeOf(core.io.begin)
       val draw=chiselTypeOf(core.io.draw);val end=chiselTypeOf(core.io.end)
@@ -146,6 +146,23 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
     def healthy(): Unit={prepare();submit();complete(0,2);assert(acceptedBegins==1 && acceptedEnds==1 && peak==4 && reordered)}
   }
 
+  for(entries<-Seq(0,16))
+  it should s"snapshot opt-in vertex output reuse and reject unsupported capacity or padding entries=$entries" in {
+    simulate(new Harness(reuseEntries=entries)){d=>val t=new Driver(d)
+      val name="draw.vertex.geometry.vertex.reuseOutputs"
+      t.prepare(1);t.drawValues+=(name->BigInt(1));t.set(t.drawBase,t.df,name,1)
+      if(entries>0)t.blockDraw=true
+      t.submit()
+      if(entries>0){
+        t.until(d.io.draw.valid.peek().litToBoolean);t.set(t.drawBase,t.df,name,0)
+        for(_<-0 until 5)t.tick()
+        d.io.draw.bits.vertex.geometry.vertex.reuseOutputs.expect(true.B);t.blockDraw=false
+      }
+      t.complete(if(entries>0)0 else 1,if(entries>0)1 else 0)
+      t.prepare(1);t.set(t.drawBase,t.df,name,2);t.submit();t.complete(1)
+      t.prepare(1);t.submit();t.complete(0,1)
+    }
+  }
   it should "snapshot appended polygon raster fields and reject noncanonical enables before offering a draw" in {
     simulate(new Harness()){d=>val t=new Driver(d);t.prepare(1);t.blockDraw=true
       t.drawValues++=Map[String,BigInt]("draw.raster.version"->2,"draw.raster.polygonOffsetEnable"->1,

@@ -575,6 +575,7 @@
     {"name":"draw.vertex.geometry.vertex.sampler.wrapV","word":482,"bits":2,"signed":false},
     {"name":"draw.vertex.geometry.vertex.sampler.signedCoordinates","word":483,"bits":1,"signed":false},
     {"name":"draw.vertex.geometry.vertex.resources.version","word":496,"bits":2,"signed":false},
-    {"name":"draw.vertex.geometry.vertex.resources.address","word":497,"bits":32,"signed":false}
+    {"name":"draw.vertex.geometry.vertex.resources.address","word":497,"bits":32,"signed":false},
+    {"name":"draw.vertex.geometry.vertex.reuseOutputs","word":498,"bits":1,"signed":false}
   ]}
 }
