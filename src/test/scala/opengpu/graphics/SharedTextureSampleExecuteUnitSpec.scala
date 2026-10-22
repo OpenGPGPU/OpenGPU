@@ -164,6 +164,42 @@ class SharedTextureSampleExecuteUnitSpec extends AnyFlatSpec {
       info(s"NATIVE_FLOAT_OPERAND_SEMANTICS stage=$stage explicitLambdaSelectsMinFilter=true allGradientWords6=true unused2DZIgnored=true volumeZGradients2=true originalHelpers=true fragmentBiasBeforeClamps=true arrayLayer2=true cubeFace5=true signedIntegerOffset=true shadowReference=true")
     }
   }
+  for(stage<-0 to 1)it should s"retain exact cube Jacobians through captured scalar vector operands and cancellation stage=$stage" in {
+    simulate(new SharedNativeTextureHarness(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d)
+      roots(t.put,stage);t.clear()
+      val view=install(t.put,t.byte,0,3,2,stage,raw=BigInt(0xffffffffL))
+      assert(view.expected(0)==fp(1f))
+      t.put(samplers+7*4,1) // LINEAR minification, NEAREST magnification.
+      def words(scale: Float,angular: Boolean): Seq[BigInt]={
+        val c=Seq(-0.25f*scale,-0.25f*scale,-scale)
+        val gradients=if(angular)Seq(2f*scale,0f,0f,0f,2f*scale,0f)else c++c
+        (c.map(fp)++Seq.fill(4)(BigInt(0))++gradients.map(fp)++Seq.fill(3)(BigInt(0)))
+      }
+      // Face -Z projects to (5/8,5/8). One populated white texel gives
+      // (3/4)^2=9/16 under LINEAR and 1 under NEAREST. Parallel direction
+      // derivatives cancel exactly, even when their products exceed FP32.
+      for(bits<-Seq(0x00800000,0x3f800000,0x7e800000);angular<-Seq(false,true);vector<-Seq(false,true)){
+        val scale=java.lang.Float.intBitsToFloat(bits)
+        t.parameters(words(scale,angular),vector= !vector)
+        t.sample(vector=vector,mask=5,control=2)
+        val expected=fp(if(angular)9f/16f else 1f)
+        t.retire(vector,false,if(vector)(0 until 4).map(l=>if(l==0 || l==2)expected else previous(l))else Seq(expected))
+      }
+      var cancelled=0;var held=0
+      for(cut<-Seq(0,1,64,128,256,512,1024,4096,8192)){
+        t.parameters(words(1f,true));t.sample(vector=true,control=2)
+        for(_<-0 until cut)t.tick()
+        val complete=d.io.native.vectorCommit.valid.peek().litToBoolean
+        d.io.native.cancel.poke(true.B)
+        t.retire(true,false,Seq.fill(4)(if(complete)fp(9f/16f)else BigInt(0)),fault= !complete)
+        if(complete)held+=1 else cancelled+=1
+        t.parameters(words(1f,false));t.sample(vector=true,control=2)
+        t.retire(true,false,Seq.fill(4)(fp(1f)))
+      }
+      assert(cancelled>0 && held>0)
+      info(s"NATIVE_CUBE_GRADIENT stage=$stage scalarVector=true maskedOldVd=true scaleMinNormalTo2Pow126=true exactParallelCancellation=true nonzeroJacobianSelectsMinFilter=true cancellationCuts9=true cancelled=$cancelled held=$held healthyReuse=true")
+    }
+  }
   for(stage<-0 to 1)it should s"reject stale incomplete and late-lane operands while draining native sample cancellation stage=$stage" in {
     simulate(new SharedNativeTextureHarness(GpuConfig(lanes=4,warps=2),stage)){d=>val t=new Driver(d);roots(t.put,stage);val v=install(t.put,t.byte,0,3,0,stage)
       val words=Seq(fp(0.75f),fp(0.75f))++Seq.fill(14)(BigInt(0))
