@@ -301,4 +301,25 @@ class NativeTypedGraphicsJobReaderSpec extends AnyFlatSpec {
     }
   }
 
+  it should "snapshot stage uniform resource references in reserved native draw words and reject illegal roots" in {
+    simulate(new NativeTypedGraphicsJobReader(p=p,f=f)){d=>val t=new Driver(d)
+      val mapped=drawFields(d.io.draw.bits).map(f=>f.name->f.word).toMap
+      assert(mapped("vertex.uniforms.version")==612 && mapped("vertex.uniforms.address")==613)
+      assert(mapped("fragment.uniforms.version")==626 && mapped("fragment.uniforms.address")==627)
+      t.prepare(1);t.drawValues++=Map("vertex.uniforms.version"->BigInt(1),"vertex.uniforms.address"->BigInt(0),
+        "fragment.uniforms.version"->BigInt(1),"fragment.uniforms.address"->((BigInt(1)<<32)-64))
+      t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues);t.blockDraw=true;t.submit()
+      t.until(d.io.draw.valid.peek().litToBoolean);t.check(drawFields(d.io.draw.bits),t.drawValues)
+      val held=d.io.draw.bits.peek().litValue;t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),Map.empty)
+      for(_<-0 until 9){t.tick();assert(d.io.draw.bits.peek().litValue==held)}
+      t.blockDraw=false;t.complete(0,1)
+      for(prefix<-Seq("vertex.uniforms.","fragment.uniforms.");(version,address)<-Seq((2,BigInt(0)),(0,BigInt(64)),(1,BigInt(1)),(1,(BigInt(1)<<32)-32))){
+        t.prepare(1);t.drawValues++=Map(prefix+"version"->BigInt(version),prefix+"address"->address)
+        t.put(0x4000,drawWords,drawMagic,drawFields(d.io.draw.bits),t.drawValues);t.submit();t.complete(1);assert(t.acceptedDraws==0)
+      }
+      t.prepare(1);t.submit();t.complete(0,1)
+      info("NATIVE_UNIFORM_ROOT_READER typed=true words612And626=true immutableOffer=true validAddressZero=true exact4GiBEnd=true invalidRoots8BeforeChild=true legacyReuse=true")
+    }
+  }
+
 }
