@@ -86,7 +86,8 @@ object NativeTypedGraphicsLayout {
       fields(592,"blend.","enable"->b.enable,"version"->b.version,"srcRGB"->b.srcRGB,"dstRGB"->b.dstRGB,"srcAlpha"->b.srcAlpha,"dstAlpha"->b.dstAlpha,
         "equationRGB"->b.equationRGB,"equationAlpha"->b.equationAlpha,"constantR"->b.constant(0),"constantG"->b.constant(1),"constantB"->b.constant(2),"constantA"->b.constant(3))++
       fields(610,"vertex.","reuseOutputs"->v.reuseOutputs)++
-      ShaderTextureResources.fields(608,"vertex.resources.",v.resources)++ShaderTextureResources.fields(624,"fragment.resources.",f.resources)
+      ShaderTextureResources.fields(608,"vertex.resources.",v.resources)++ShaderTextureResources.fields(624,"fragment.resources.",f.resources)++
+      ShaderUniformResources.fields(612,"vertex.uniforms.",v.uniforms)++ShaderUniformResources.fields(626,"fragment.uniforms.",f.uniforms)
   }
   def leaves(d: Data): Seq[Data]=d match{case r: Record=>r.elements.values.toSeq.flatMap(leaves);case v: Vec[_]=>v.toSeq.flatMap(leaves);case a=>Seq(a)}
   def check(d: Data,fs: Seq[Field],words: Int): Unit={
@@ -128,6 +129,7 @@ object NativeTypedGraphicsLayout {
     val g=d.shaders.vertex.vertex.geometry;val v=g.vertex;val i=v.input
     val active=i.attributes.zipWithIndex.map{case(a,n)=> !a.enabled || (n<p.input.attributes).B && a.bindingIndex<p.input.bindings.U}.reduce(_ && _)
     IndirectDrawControl.legal(g.indirect,i.indexFormat) && ShaderTextureResources.legal(v.resources) && ShaderTextureResources.legal(d.shaders.fragment.resources) &&
+      ShaderUniformResources.legal(v.uniforms) && ShaderUniformResources.legal(d.shaders.fragment.uniforms) &&
       VertexShaderSampler.legal(v.sampler) && VertexShaderSampler.legal(d.shaders.fragment.sampler) &&
       (!v.reuseOutputs || (p.postTransformEntries>0).B) && active && v.attributeSlots<=p.input.attributes.U && v.varyingSlots<=p.varyings.U && d.shaders.fragment.varyingSlots<=f.varyings.U &&
       !(v.varyingMask>>(v.varyingSlots<<2)).orR && !(g.flatMask>>(v.varyingSlots<<2)).orR &&

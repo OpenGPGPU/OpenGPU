@@ -581,6 +581,8 @@
     {"name":"draw.vertex.geometry.indirect.view.base","word":500,"bits":32,"signed":false},
     {"name":"draw.vertex.geometry.indirect.view.limit","word":501,"bits":33,"signed":false},
     {"name":"draw.vertex.geometry.indirect.view.allocationBase","word":503,"bits":32,"signed":false},
-    {"name":"draw.vertex.geometry.indirect.view.allocationLimit","word":504,"bits":33,"signed":false}
+    {"name":"draw.vertex.geometry.indirect.view.allocationLimit","word":504,"bits":33,"signed":false},
+    {"name":"draw.vertex.geometry.vertex.uniforms.version","word":506,"bits":2,"signed":false},
+    {"name":"draw.vertex.geometry.vertex.uniforms.address","word":507,"bits":32,"signed":false}
   ]}
 }

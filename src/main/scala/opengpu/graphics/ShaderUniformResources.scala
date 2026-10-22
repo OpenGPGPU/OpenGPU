@@ -11,6 +11,8 @@ object ShaderUniformLimits {
 /** Optional immutable GUR1 root. Version zero is canonical disabled state. */
 class ShaderUniformResources extends Bundle {val version=UInt(2.W);val address=UInt(32.W)}
 object ShaderUniformResources {
+  def fields(base: Int,prefix: String,r: ShaderUniformResources): Seq[NativeTypedGraphicsLayout.Field]=
+    Seq(NativeTypedGraphicsLayout.Field(prefix+"version",base,r.version),NativeTypedGraphicsLayout.Field(prefix+"address",base+1,r.address))
   def legal(r: ShaderUniformResources): Bool=(r.version===0.U && r.address===0.U) ||
     (r.version===1.U && r.address(5,0)===0.U && r.address.pad(33)+64.U<=(BigInt(1)<<32).U)
 }

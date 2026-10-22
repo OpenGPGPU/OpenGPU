@@ -572,7 +572,11 @@
     {"name":"vertex.resources.version","word":608,"bits":2,"signed":false},
     {"name":"vertex.resources.address","word":609,"bits":32,"signed":false},
     {"name":"vertex.reuseOutputs","word":610,"bits":1,"signed":false},
+    {"name":"vertex.uniforms.version","word":612,"bits":2,"signed":false},
+    {"name":"vertex.uniforms.address","word":613,"bits":32,"signed":false},
     {"name":"fragment.resources.version","word":624,"bits":2,"signed":false},
-    {"name":"fragment.resources.address","word":625,"bits":32,"signed":false}
+    {"name":"fragment.resources.address","word":625,"bits":32,"signed":false},
+    {"name":"fragment.uniforms.version","word":626,"bits":2,"signed":false},
+    {"name":"fragment.uniforms.address","word":627,"bits":32,"signed":false}
   ]}
 }

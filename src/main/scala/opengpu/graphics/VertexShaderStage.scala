@@ -52,6 +52,7 @@ class VertexShaderDraw(p: VertexShaderStageConfig) extends Bundle {
   val varyingMask=UInt((4*p.varyings).W)
   val sampler=new VertexShaderSampler
   val resources=new ShaderTextureResources
+  val uniforms=new ShaderUniformResources
   /** Opt-in promise: outputs depend only on vertex/instance inputs and pinned
     * draw resources; no externally visible shader effects or batch dependence. */
   val reuseOutputs=Bool()
@@ -112,8 +113,8 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     val cancel=Input(Bool());val busy=Output(Bool())
   })
   private val input=Module(new VertexInputFetcher(config,p.input))
-  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),nativeResources=true))
-  private val texture=Module(new NativeShaderTextureUnit(config,stage=0,groupedTexture=groupedTexture))
+  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),nativeResources=true,nativeUniforms=true))
+  private val texture=Module(new NativeShaderTextureUnit(config,stage=0,groupedTexture=groupedTexture,uniformAvailable=true))
   if(groupedTexture){io.grouped.get <> texture.io.grouped.get}
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))
   private val metadata=Module(new L2SramArray(metaDepth,128,useSramBlackBoxes))
@@ -252,6 +253,8 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   textureInstructions:=textureInstructions+textureStarts-textureEnds
   assert(textureEnds<=textureInstructions+textureStarts,"vertex texture completion must retain its instruction")
   texture.io.resources:=draw.resources;texture.io.identity:=draw.input.identity
+  texture.io.uniforms.get:=draw.uniforms;texture.io.privateBase.get:=draw.scratch.base
+  texture.io.privateLimit.get:=draw.scratch.base+&prefixBytes
   texture.io.clearParameters:=shader.io.launch.valid && shader.io.launch.ready
   texture.io.cancel:=externalCancel || status=/=0.U;texture.io.invalidate:=io.draw.fire
   texture.io.texFormat:=draw.sampler.format;texture.io.texBase:=draw.sampler.base
@@ -394,7 +397,7 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
       val s=draw.scratch
       val view=s.allocationBase(5,0)===0.U && s.allocationLimit(5,0)===0.U && s.allocationLimit<=(BigInt(1)<<32).U &&
         s.allocationLimit>s.allocationBase && s.base>=s.allocationBase && s.base(5,0)===0.U && s.limit>=s.base && s.limit<=s.allocationLimit
-      val fields=(!draw.reuseOutputs || (p.postTransformEntries>0).B) && ShaderTextureResources.legal(draw.resources) && VertexShaderSampler.legal(draw.sampler) && draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
+      val fields=(!draw.reuseOutputs || (p.postTransformEntries>0).B) && ShaderTextureResources.legal(draw.resources) && ShaderUniformResources.legal(draw.uniforms) && VertexShaderSampler.legal(draw.sampler) && draw.attributeSlots<=p.input.attributes.U && draw.varyingSlots<=p.varyings.U &&
         !(draw.varyingMask>>(draw.varyingSlots<<2)).orR &&
         draw.input.attributes.zipWithIndex.map { case (a,i)=> !a.enabled || i.U<draw.attributeSlots }.reduce(_ && _)
       val aliases=(0 until p.input.bindings).map { i=>

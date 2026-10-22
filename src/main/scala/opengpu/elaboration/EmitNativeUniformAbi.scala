@@ -7,8 +7,8 @@ import java.nio.file.{Files,Paths}
 import java.util.Locale
 import opengpu.graphics._
 
-/** Describe the uniform records independently of their future instruction and
-  * native discovery integration. These constants do not advertise availability.
+/** Describe uniform records and instruction encodings. Constants alone do not
+  * advertise native availability or replace runtime discovery.
   */
 object EmitNativeUniformAbi {
   def main(args: Array[String]): Unit={
@@ -33,6 +33,8 @@ object EmitNativeUniformAbi {
       "DEFAULT_VERTEX_COMPONENTS"->ShaderUniformLimits.defaultComponents(0),"DEFAULT_FRAGMENT_COMPONENTS"->ShaderUniformLimits.defaultComponents(1),
       "DEFAULT_BLOCK"->ShaderUniformLimits.defaultBlock,"TABLE_ALIGNMENT"->64,"DEFAULT_ALIGNMENT"->4,
       "STAGE_VERTEX"->0,"STAGE_FRAGMENT"->1))header.append(s"#define $prefix$name ${value}u\n")
+    for((name,value)<-Seq("SCALAR_LOAD_BASE"->"0x0e00000bu","VECTOR_LOAD_BASE"->"0x1c00002bu",
+      "VECTOR_LOAD_UNMASKED_BASE"->"0x1e00002bu"))header.append(s"#define $prefix$name $value\n")
     for((name,words,magic,fs)<-schemas){val p=prefix+name.toUpperCase(Locale.ROOT)+"_"
       header.append(s"#define ${p}MAGIC 0x${magic.toString(16)}u\n#define ${p}WORDS ${words}u\n#define ${p}BYTES ${words*4}u\n")
       for((field,word,bits)<-fs){val n=field.replace('.','_').toUpperCase(Locale.ROOT)
