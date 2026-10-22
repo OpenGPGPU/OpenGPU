@@ -44,11 +44,12 @@ in those regions, so this changes no filtered value. Other weights come from
 the original exact fractional position. NaN, infinity and zero extent return
 coordinate status 5, zero indices and zero weight, retaining the caller tag.
 
-Eight stages use two-entry queues to bound the ready path and retain accepted
-requests through backpressure. With no stalls the latency is eight cycles and
-the initiation interval is one axis per cycle. Up to 16 requests can be buffered.
-The additional register stage bounds integer texel offsets before final wrap
-selection; see [texture offset support](TEXTURE_OFFSETS.md).
+Ten stages use two-entry queues to bound the ready path and retain accepted
+requests through backpressure. With no stalls the latency is ten cycles and
+the initiation interval is one axis per cycle. Up to 20 requests can be buffered.
+Separate alignment and chunked signed-arithmetic stages bound the wide path;
+see [arithmetic pipelining](VERTEX_INPUT_PIPELINING.md) and
+[texture offset support](TEXTURE_OFFSETS.md).
 This arithmetic pipeline owns no memory transactions and has no cancel input;
 the parent must drain all accepted tags before retiring cancelled work.
 
@@ -215,7 +216,8 @@ records two passing tests with 91,135 exact-rational reference queries. These
 cover all 256 FP32 exponent encodings, both signs, all 16,383 nonzero extents,
 representative significands, wrap/filter combinations, half-texel ULP neighbors,
 random coordinates, rejected inputs, held output stability and ordered tags.
-The dense stream checks the seven-cycle latency and one-cycle interval.
+That historical dense stream checks seven-cycle latency and a one-cycle interval;
+the current pipeline's latency is ten cycles, with the same initiation interval.
 
 Fresh synthesis at 1000 ps, TC/SLVT, 25% I/O, default ABC and no retiming passes
 mapping and setup: core +194.895 ps, I/O +632.673 ps, 19,046 mapped cells. Library cell

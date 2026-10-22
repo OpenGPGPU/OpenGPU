@@ -30,10 +30,11 @@ coordinates. Consequently even maximum finite coordinates retain the offset
 when repeating or mirroring.
 
 Periodic offsets are reduced modulo twice the extent. Extents below eight use
-small constant remainders; larger extents require one conditional adjustment.
+exact elaboration-time offset tables; larger extents require one conditional adjustment.
 A separate elastic register stage reduces the shifted integer location before
-final wrapping. The pipeline accepts one axis per cycle, with eight cycles of
-unstalled latency and sixteen buffered requests. Existing zero-offset results
+final wrapping. Wide alignment and chunked signed arithmetic also have separate
+registered cuts. The pipeline accepts one axis per cycle, with ten cycles of
+unstalled latency and twenty buffered requests. Existing zero-offset results
 remain unchanged apart from latency.
 
 For edge clamping with a nonzero offset, the normalized coordinate is retained
