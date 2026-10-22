@@ -85,9 +85,9 @@ vertex/host timing, workload throughput and the full H0–H8 gates require their
 own evidence.
 
 The standalone converter passes 1000 ps TC/SLVT synthesis with 25% I/O:
-core +39.288 ps and I/O +632.513 ps. The complete ten-stage coordinate pipeline
+core +304.670 ps and I/O +631.152 ps. The complete ten-stage coordinate pipeline
 passes the same gate at +127.689/+581.296 ps. The full sixteen-attribute/binding
-fetcher passes at +2.351/+477.318 ps; its core margin is narrow. All three use
+fetcher passes at +51.727/+477.318 ps. All three use
 standard ABC, no retiming or false paths, and have zero skipped operators.
 These component results do not qualify the enclosing vertex stage or host clock.
 The separate [sampling/counter arithmetic qualification](TEXTURE_ADDRESS_LOD_TIMING.md)
@@ -96,3 +96,6 @@ response routing and clock qualification remain required.
 The [registered memory-response router](VERTEX_MEMORY_RESPONSES.md) separates
 external reply arrival from client control while retaining cancellation drain;
 its component timing result also requires enclosing-stage qualification.
+The [vertex-stage arithmetic contract](VERTEX_STAGE_ARITHMETIC.md) covers the
+updated magnitude conversion and full-width address sums, together with
+coordinate, texel-normalization and event-counter changes.
