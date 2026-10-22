@@ -278,7 +278,10 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
   }
 
   io.draw.ready:=phase===idle && !externalCancel;io.busy:=phase=/=idle
-  io.out.valid:=outputValid && reuse.map(c=> !(phase===emitVertex && draw.reuseOutputs) || c.io.update.ready).getOrElse(true.B)
+  // Reserve the idle fill port before offering an export. Once offered, valid
+  // never depends on cache readiness; stop retains only already offered data.
+  private val reuseUpdateReady=reuse.map(c=> !draw.reuseOutputs || c.io.update.ready).getOrElse(true.B)
+  io.out.valid:=outputValid
   io.out.bits:=record
   reuse.foreach { c=>
     c.io.clear:=io.draw.fire
@@ -288,6 +291,9 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     c.io.result.ready:=phase===reuseReply || stop
     c.io.update.valid:=io.out.fire && phase===emitVertex && draw.reuseOutputs && !stop
     c.io.update.bits:=record
+    when(io.out.valid && phase===emitVertex && draw.reuseOutputs && !stop){
+      assert(c.io.update.ready,"offered shader output must retain its cache fill port")
+    }
   }
   io.completion.valid:=phase===complete;io.completion.bits:=result
   when(io.out.fire){outputValid:=false.B;when(record.restart){restarts:=restarts+1.U}.otherwise{vertices:=vertices+1.U}}
@@ -428,20 +434,23 @@ class VertexShaderStage(config: GpuConfig=GpuConfig(),p: VertexShaderStageConfig
     is(metaRead){phase:=metaReply}
     is(metaReply){recordMetadata(metadata.io.readData);slice:=0.U;phase:=gather}
     is(gather){when(!requested){
-      when(slice===outputWords-1.U){outputValid:=true.B;phase:=emitVertex}.otherwise{slice:=slice+1.U}
+      when(slice===outputWords-1.U){outputValid:=reuseUpdateReady;phase:=emitVertex}.otherwise{slice:=slice+1.U}
     }.otherwise{phase:=gatherReply}}
     is(gatherReply){
       val word=(cache.io.readData>>(emitIndex.pad(4)(3,0)<<5))(31,0)
       when(slice<4.U){record.position(slice(1,0)):=word}
       for(v<-0 until p.varyings;c<-0 until 4)when(v.U<draw.varyingSlots && slice===(4+4*v+c).U){record.varyings(v)(c):=word}
       when(draw.version===2.U && slice===pointSizeSlice){record.pointSize:=word}
-      when(slice===outputWords-1.U){outputValid:=true.B;phase:=emitVertex}.otherwise{slice:=slice+1.U;phase:=gather}
+      when(slice===outputWords-1.U){outputValid:=reuseUpdateReady;phase:=emitVertex}.otherwise{slice:=slice+1.U;phase:=gather}
     }
-    is(emitVertex){when(io.out.fire){
-      when(emitIndex===count-1.U){phase:=release}
-        .elsewhen(emitIndex===chunk+chunkCount-1.U){chunk:=chunk+chunkCount;slice:=0.U;phase:=cacheSlice}
-        .otherwise{emitIndex:=emitIndex+1.U;phase:=metaRead}
-    }}
+    is(emitVertex){
+      when(!outputValid && reuseUpdateReady){outputValid:=true.B}
+      when(io.out.fire){
+        when(emitIndex===count-1.U){phase:=release}
+          .elsewhen(emitIndex===chunk+chunkCount-1.U){chunk:=chunk+chunkCount;slice:=0.U;phase:=cacheSlice}
+          .otherwise{emitIndex:=emitIndex+1.U;phase:=metaRead}
+      }
+    }
     is(emitRestart){when(io.out.fire){phase:=collect}}
     is(release){
       if(payload.nonEmpty){finishOffered:=true.B;phase:=waitRelease}

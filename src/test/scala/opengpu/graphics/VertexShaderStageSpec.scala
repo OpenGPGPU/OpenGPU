@@ -214,6 +214,23 @@ class VertexShaderStageSpec extends AnyFlatSpec {
     }
   }
 
+  it should "cancel unoffered vertex output while a full-width cache fill owns its SRAM port" in {
+    simulate(new VertexShaderHarness(fullInterface=true,reuseEntries=16)){d=>val t=new Driver(d)
+      def start(): Unit={
+        (0 until 8).foreach(i=>t.memory(BigInt(0x6000+i))=i)
+        t.exports.clear();t.descriptor(true,1,8);d.io.draw.bits.reuseOutputs.poke(true.B);t.submit()
+      }
+      d.io.out.ready.poke(true.B);start();t.until(t.exports.size==1)
+      // Only one varying is active, so gathering the next export finishes
+      // before the preceding full-interface (70-word) cache write completes.
+      for(_<-0 until 28){d.io.out.valid.expect(false.B);t.tick()}
+      d.io.cancel.poke(true.B);t.until(d.io.completion.valid.peek().litToBoolean)
+      assert(t.exports.size==1,"cancellation published a record that had never been offered")
+      t.complete(4);d.io.cancel.poke(false.B)
+      start();t.complete(0);assert(t.exports.size==8)
+    }
+  }
+
   for(local<-Seq(true,false))
   it should s"reuse pure indexed vertex outputs across batches without losing ordered restarts instances or fault drain local=$local" in {
     simulate(new VertexShaderHarness(local,reuseEntries=16)){d=>val t=new Driver(d)
@@ -226,19 +243,31 @@ class VertexShaderStageSpec extends AnyFlatSpec {
       }
       d.io.out.ready.poke(true.B);start(false)
       t.until(d.io.completion.valid.peek().litToBoolean);d.io.completion.bits.batches.expect(4.U)
-      val baseline=t.exports.toVector;assert(baseline.size==34 && baseline.count(_.restart)==2);t.complete(0)
+      val baseline=t.exports.toVector;assert(baseline.size==34 && baseline.count(_.restart)==2)
+      val baselineWrites=d.io.completion.bits.stagingWriteBytes.peek().litValue
+      val baselineReads=d.io.completion.bits.stagingReadBytes.peek().litValue;t.complete(0)
       start(true);d.io.out.ready.poke(false.B);t.until(d.io.out.valid.peek().litToBoolean)
       val held=d.io.out.bits.peek().litValue
       for(_<-0 until 9){t.tick();assert(d.io.out.bits.peek().litValue==held);d.io.idle.expect(false.B)}
       d.io.out.ready.poke(true.B);t.until(d.io.completion.valid.peek().litToBoolean)
       d.io.completion.bits.batches.expect(2.U);d.io.completion.bits.vertices.expect(32.U);d.io.completion.bits.restarts.expect(2.U)
-      assert(t.exports.toVector==baseline,"reuse changed ordered vertex/instance/restart exports");t.complete(0)
+      assert(t.exports.toVector==baseline,"reuse changed ordered vertex/instance/restart exports")
+      assert(d.io.completion.bits.stagingWriteBytes.peek().litValue<baselineWrites,"reuse did not reduce input staging bytes")
+      assert(d.io.completion.bits.stagingReadBytes.peek().litValue<baselineReads,"reuse did not reduce output staging bytes");t.complete(0)
       // The same keys in a new draw must execute the new shader, never old tags.
       val uniformLoad=(BigInt(13)<<15)|(BigInt(2)<<12)|(BigInt(13)<<7)|3
       program(d.cfg.lanes,d.cfg.warps).map(w=>if(w==uniformLoad)addi(13,0,23)else w).zipWithIndex.foreach{case(w,i)=>t.put(0x2000+4*i,w)}
       start(true,pc=0x2000);t.until(d.io.completion.valid.peek().litToBoolean)
       val changed=baseline.map(r=>if(r.restart)r else r.copy(varyings=r.varyings.updated(3,r.varyings(3)+6)))
       assert(t.exports.toVector==changed,"draw admission reused outputs from an older shader");t.complete(0)
+      // A hit behind an older partial miss batch must retain its own output
+      // while that batch executes and updates the cache.
+      val mixed=(0 until 8).toVector++Vector(8,0,9,1)
+      start(false,instances=1,indices=mixed);t.until(d.io.completion.valid.peek().litToBoolean)
+      val mixedBaseline=t.exports.toVector;t.complete(0)
+      start(true,instances=1,indices=mixed);t.until(d.io.completion.valid.peek().litToBoolean)
+      assert(t.exports.toVector==mixedBaseline,"a cached hit overtook its older partial miss batch")
+      t.complete(0)
       start(true,instances=1)
       t.until(t.exports.size==9);d.io.out.ready.poke(false.B);t.until(d.io.out.valid.peek().litToBoolean)
       val cached=d.io.out.bits.peek().litValue;d.io.cancel.poke(true.B)
