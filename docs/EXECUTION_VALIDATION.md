@@ -22,6 +22,12 @@ Final whole-grid controller core/I/O slack is +383.666/+562.947 ps; the grid-sli
 controller is +400.788/+560.754 ps. These component results do not qualify a
 whole-CU or whole-host clock.
 
+[Native resource availability](NATIVE_RESOURCE_AVAILABILITY.md) separates a
+legacy sampler from the descriptor/captured-operand service. Task-router slots
+and CU admission retain the provider permission through queued launches,
+backpressure and task reuse; unavailable native operations trap before service.
+Its directed checks and component timing scopes are recorded separately.
+
 PR preparation preserves the qualified RTL, ABI, driver, build and runtime-test
 inputs, with the uncached-vertex fixture correction from PR #2 and the capped-guest
 discard oracle correction in this PR. Fresh
