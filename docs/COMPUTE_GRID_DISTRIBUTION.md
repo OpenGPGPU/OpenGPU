@@ -59,7 +59,11 @@ resource header check pass. The [main qualification](performance/mobile-compute-
 adds30 passing host/native checks, three generated ABI checks, strict C validation
 and two host emissions. All three default grid component synthesis screens pass
 1000ps including I/O with zero skipped instances. The feature now has50 distinct
-checks. Larger coenabled/whole-host timing remains a separate gate. The actual two-CU and default four-CU tests submit one 2x2x2 grid at
+checks. Larger coenabled/whole-host timing remains a separate gate.
+The [native-control follow-up](NATIVE_CONTROL_HOST.md) changes RenderHost/Core
+and has a separate fresh four-check scope. Those original fifty checks are not
+presented as fresh runs of the combined SIMT/native-control source.
+The actual two-CU and default four-CU tests submit one 2x2x2 grid at
 full per-CU resident capacity. They compare every group/local/warp built-in
 store, untouched guards and actual delayed write acknowledgements, require all
 configured CUs concurrently active, and hold public completion before VM reuse.
@@ -75,7 +79,7 @@ Synthesis must use 1000 ps TC/SLVT, 25% I/O, standard ABC, no retiming and zero
 skipped instances. Component results do not establish whole-CU or host timing.
 
 Fresh host resource discovery, indirect execution, AXI/Sv32/reset and native
-shader interruption/fault recovery pass on the composed source. Main retains
+shader interruption/fault recovery passed on the original grid/main composition. That main checkpoint retained
 all1055executedhardware/ABI/build/test dependencies exactly; the only source
 catalog delta is an unused independently committed GTK guest script. Full shader resources, instruction-driven lane-wise branch
 semantics, remaining H7/H8 work, coherence, sustained rates and product budgets
