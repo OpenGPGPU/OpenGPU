@@ -261,6 +261,85 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
       assert(writes.exists(_>=0x1000000) && !reads.exists(a=>a>=0x400000 && a<0x800000),"virtual descriptors must not escape onto physical AXI")
     }
   }
+  if(getClass==classOf[NativeTypedGraphicsHostAxiSpec])for(local<-Seq(true,false))
+  it should s"retain native uniform table ownership through translated frames and denied data pages local=$local" in {
+    simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
+      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
+      initialize(d);val image=new Image(d)
+      axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
+      axiWrite(d,RenderHostRegs.IRQ,1)
+      val table=BigInt(0x521000)
+      def block(index: Int): BigInt=BigInt(0x530000)+index*16384
+      def value(index: Int): BigInt=Fp32ViewportReference.fp((index+1)/32.0)
+      def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
+      def record(a: BigInt,magic: BigInt,fields: Map[Int,BigInt]): Unit={
+        for(i<-0 until 16)put(a+4*i,fields.getOrElse(i,BigInt(0)))
+        put(a,magic);put(a+4,64);put(a+8,1);put(a+12,7);put(a+16,8);put(a+20,9)
+      }
+      def view(a: BigInt,index: Int,base: BigInt,bytes: Int): Unit=record(a,BigInt("47554201",16),
+        Map(6->BigInt(index),7->BigInt(3),8->base,9->(base+bytes),11->(base& ~BigInt(63)),12->((base+bytes+63)& ~BigInt(63)),14->BigInt(1)))
+      def loads(stage: Int): Seq[BigInt]={
+        val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
+        val queries=Seq(31->0,31->(if(stage==0)4092 else 3580))++(0 until 12).map(_->16380)
+        queries.zipWithIndex.flatMap{case((binding,offset),i)=>
+          val hi=(offset+2048)>>12;val lo=offset-(hi<<12)
+          val constants=Seq(addi(14,0,binding),(BigInt(hi)<<12)|(BigInt(15)<<7)|0x37,addi(15,15,lo))
+          constants++(if(i%2==0)Seq((BigInt(7)<<25)|(BigInt(15)<<20)|(BigInt(14)<<15)|(BigInt(16)<<7)|0x0b,
+            broadcast|(BigInt(16)<<15)|(BigInt(7)<<7)|0x57)
+          else Seq(broadcast|(BigInt(14)<<15)|(BigInt(3)<<7)|0x57,broadcast|(BigInt(15)<<15)|(BigInt(4)<<7)|0x57,
+            (BigInt(7)<<26)|(BigInt(1)<<25)|(BigInt(4)<<20)|(BigInt(3)<<15)|(BigInt(7)<<7)|0x2b))
+        }
+      }
+      for((denied,frame)<-Seq(false,true,false).zipWithIndex){
+        image.sampledRed=Some(value(23));image.sampledGreen=Some(value(11))
+        image.shaderDraws(0,generation=frame+1,freshTextureSources=true)
+        for(index<-0 until 24){view(table+index*64,index,block(index),16384);put(block(index)+16380,value(index))}
+        val vp=0x4c0000+frame*0x2000;val fp=vp+0x1000
+        val vcode=vertexProgram.dropRight(1)++loads(0)++Seq(addi(6,7,16*32),vm(6,7,true),BigInt("30500073",16))
+        val fcode=fragmentProgram().dropRight(1)++loads(1)++
+          (0 until 4).flatMap(c=>Seq(addi(6,7,(10+c*4)*32),vm(6,7,true)))++Seq(BigInt("30500073",16))
+        vcode.zipWithIndex.foreach{case(w,i)=>put(vp+4*i,w)};fcode.zipWithIndex.foreach{case(w,i)=>put(fp+4*i,w)}
+        for(n<-0 until 3){
+          val draw=BigInt(0x412000+n*4096);val vs=BigInt(0x430000+n*8192);val fs=BigInt(0x450000+n*8192)
+          for((word,v)<-Seq(33->BigInt(vp),40->vs,41->(vs+608+4096),43->vs,44->(vs+4736),
+            516->BigInt(fp),520->fs,521->(fs+896+3584),523->fs,524->(fs+4480),19->BigInt(3)))put(draw+4*word,v)
+          for(stage<-0 to 1){
+            val root=BigInt(0x520000+n*256+stage*64);val defaultView=BigInt(0x522000+n*128+stage*64)
+            val base=if(stage==0)vs+608 else fs+896;val bytes=if(stage==0)4096 else 3584
+            for(offset<-0 until bytes by 4)put(base+offset,if(offset==0)61 else Fp32ViewportReference.fp(0.5))
+            view(defaultView,31,base,bytes)
+            val mapping=(0 until 12).map(i=>BigInt(stage*12+i))
+            record(root,BigInt("47555201",16),Map(6->BigInt(stage),7->BigInt(0xfff),
+              8->(0 until 6).map(i=>mapping(i)<<(5*i)).sum,9->(0 until 6).map(i=>mapping(i+6)<<(5*i)).sum,
+              10->table,11->(table+1536),13->defaultView,14->BigInt(1)))
+            put(draw+4*(if(stage==0)612 else 626),1);put(draw+4*(if(stage==0)613 else 627),root)
+          }
+        }
+        val deniedPage=(block(23)+16380)& ~BigInt(4095)
+        if(denied){
+          val pt=BigInt(0x31000);image.word(0x30004,(pt>>12)<<10|1)
+          for(page<-0 until 1024)image.word(pt+4*page,((BigInt(0x800000+page*4096)>>12)<<10)|0xcf)
+          image.word(pt+((deniedPage>>12)&1023)*4,((image.pa(deniedPage)>>12)<<10)|0x49)
+        }
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(220+frame);image.run(if(denied)3 else 0,id=220+frame)
+        if(denied)assert(!image.reads.exists(a=>a>=image.pa(deniedPage) && a<image.pa(deniedPage+4096)),"denied uniform data reached physical AXI")
+        else{
+          image.verifyDraws(0)
+          for(index<-0 until 24)assert(image.reads.contains(image.pa((block(index)+16380)& ~BigInt(63))),s"binding $index was not physically read")
+          for(n<-0 until 3;stage<-0 to 1){val base=if(stage==0)BigInt(0x430000+n*8192+608)else BigInt(0x450000+n*8192+896)
+            val bytes=if(stage==0)4096 else 3584
+            for(offset<-0 until bytes by 4;b<-0 until 4){val expected=if(offset==0)BigInt(61)else Fp32ViewportReference.fp(0.5)
+              assert(image.memory(image.pa(base+offset+b))==((expected>>(8*b))&255).toInt,"default tail was modified")}
+          }
+        }
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
+        d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)
+      }
+      info(s"NATIVE_UNIFORM_AXI local=$local frames3=true sharedBindings24=true stageMappings12=true scalarVector=true lastBlockWords=true defaultFirstLast=true realSv32=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true defaultTailsPreserved=true healthyReuse=true")
+    }
+  }
+
   // Feature-specific subclasses retain their own focused coverage.
   if(getClass==classOf[NativeTypedGraphicsHostAxiSpec])for(local<-Seq(true,false))
   it should s"render repeated native indexed triangles with post-transform reuse and exact translated images local=$local" in {
