@@ -58,9 +58,11 @@ publication and lifetime contract. The [checked uniform load service](UNIFORM_BU
 defines GUR1/GUB1 roots and read-only views, twelve stage mappings, twenty-four
 bindings and default storage outside the private prefix. Its standalone checks
 cover complete 16 KiB/default ranges, boundary failures, snapshots, faults and
-cancellation drain for both stages. Native instruction/draw/discovery wiring,
-shader lowering, translated publication and simultaneous actual-CU stage
-capacity remain open. Preserve the current kernarg ABI throughout that work.
+cancellation drain for both stages. The [native binding/execution path](NATIVE_UNIFORM_BINDINGS.md)
+adds task-owned uniform instructions, versioned draw/state roots and separate
+128-thread vertex/fragment local/spill checks of all twelve mappings and the
+final block/default words. Discovery, driver/compiler integration and the
+combined-stage/VM/rate gates remain open. Preserve the kernarg ABI.
 
 ## V: stage interfaces — partial
 
