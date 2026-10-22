@@ -161,7 +161,8 @@ class VertexShaderStageSpec extends AnyFlatSpec {
         if(cancelAfterResponse){cancelAfterResponse=false;d.io.cancel.poke(true.B)}
       }
     }
-    def until(condition: => Boolean): Unit={var n=0;while(!condition && n<40000){tick();n+=1};assert(condition,s"vertex stage stalled cycle=$cycle launches=$launches exports=${exports.size} pending=${pending.size}")}
+    var cycleLimit=40000
+    def until(condition: => Boolean): Unit={var n=0;while(!condition && n<cycleLimit){tick();n+=1};assert(condition,s"vertex stage stalled cycle=$cycle launches=$launches exports=${exports.size} pending=${pending.size}")}
     def view(v: VertexInputView,base: BigInt,bytes: Int): Unit={
       v.base.poke(base.U);v.limit.poke((base+bytes).U);v.allocationBase.poke((base& ~BigInt(63)).U)
       v.allocationLimit.poke(((base+bytes+63)& ~BigInt(63)).U)
@@ -833,4 +834,64 @@ class VertexShaderStageSpec extends AnyFlatSpec {
     }
   }
 
+
+  it should "execute native uniform blocks on all 128 threads with local payload and full-interface spill" in {
+    simulate(new VertexShaderHarness(local=true,lanes=16,warps=8,fullInterface=true)){d=>
+      val t=new Driver(d);t.cycleLimit=250000;d.io.out.ready.poke(true.B)
+      for(spill<-Seq(false,true)){
+        val attributes=if(spill)16 else 2;val varyings=if(spill)16 else 4
+        val prefix=d.vp.prefixBytes(t.cap,attributes,varyings);val defaultBase=t.scratch+prefix
+        val pc=if(spill)0x10000 else 0x1000
+        for(i<-0 until t.cap;c<-0 until 4)t.put(0x4000+i*16+c*4,fp((10*i+c+1).toFloat))
+        NativeUniformTestData.fixture(0,defaultBase,t.put)
+        val code=program(16,8,attributes,varyings).dropRight(1)++NativeUniformTestData.instructions(0,t.stride,4*attributes+3+4)++Seq(cease)
+        code.zipWithIndex.foreach{case(word,i)=>t.put(pc+4*i,word)}
+        t.descriptor(indexed=false,instances=1,count=t.cap);val q=d.io.draw.bits
+        q.shaderPc.poke(pc.U);q.attributeSlots.poke(attributes.U);q.varyingSlots.poke(varyings.U)
+        q.varyingMask.poke(((BigInt(1)<<(4*varyings))-1).U);t.view(q.input.bindings(0),0x4000,t.cap*16)
+        t.view(q.scratch,t.scratch,prefix+4096);q.uniforms.version.poke(1.U);q.uniforms.address.poke(NativeUniformTestData.root.U)
+        t.exports.clear();t.submit();q.uniforms.version.poke(0.U);q.uniforms.address.poke(0.U);d.io.context.poke(999.U)
+        t.until(d.io.completion.valid.peek().litToBoolean)
+        d.io.completion.bits.maxLocalX.expect(128.U);d.io.completion.bits.localBatches.expect((if(spill)0 else 1).U)
+        d.io.completion.bits.spilledBatches.expect((if(spill)1 else 0).U);t.complete(0)
+        assert(t.exports.size==128)
+        for((r,i)<-t.exports.zipWithIndex){assert(r.id==i && r.ordinal==i && !r.restart)
+          assert(r.position==Vector(fp((11*i+1).toFloat),fp((10*i+2).toFloat),fp((10*i+3).toFloat),fp((10*i+4).toFloat)))
+          assert(r.varyings.take(14)==NativeUniformTestData.expected(0));assert(r.varyings.drop(14).forall(_==0))}
+        assert(t.word(defaultBase)==NativeUniformTestData.value(31,0));assert(t.word(defaultBase+4092)==NativeUniformTestData.value(31,4092))
+        info(s"NATIVE_UNIFORM_CU stage=0 threads128=true blocks12=true blockLastWord16380=true defaultLastWord4092=true scalarVector=true spill=$spill privatePrefix=$prefix exactExports=true")
+      }
+    }
+  }
+
+  it should "drain native uniform failures and cancellation without partial exports before healthy reuse stage=0" in {
+    simulate(new VertexShaderHarness(local=true)){d=>val t=new Driver(d);d.io.out.ready.poke(true.B)
+      for((mode,frame)<-Seq("healthy","invalid-block","private-view","memory-fault","missing-root","root-identity","cancel","healthy").zipWithIndex){
+        t.fault=(_,_)=>false;d.io.cancel.poke(false.B)
+        NativeUniformTestData.fixture(0,t.scratch+t.prefix,t.put)
+        val queries=if(mode=="invalid-block")Seq(0->0,12->0)else Seq(0->0)
+        val code=program(d.cfg.lanes,d.cfg.warps).dropRight(1)++NativeUniformTestData.instructions(0,t.stride,15,Some(queries))++Seq(cease);val pc=0x10000+frame*0x1000
+        code.zipWithIndex.foreach{case(word,i)=>t.put(pc+4*i,word)}
+        t.descriptor(indexed=false,instances=1,count=1);val q=d.io.draw.bits
+        t.view(q.scratch,t.scratch,t.prefix+4096)
+        q.shaderPc.poke(pc.U);q.uniforms.version.poke((if(mode=="missing-root")0 else 1).U)
+        q.uniforms.address.poke((if(mode=="missing-root")BigInt(0)else NativeUniformTestData.root).U)
+        if(mode=="root-identity")t.put(NativeUniformTestData.root+12,99)
+        if(mode=="private-view"){val record=NativeUniformTestData.table+0*64
+          t.put(record+8*4,t.scratch);t.put(record+9*4,t.scratch+256);t.put(record+10*4,0)
+          t.put(record+11*4,t.scratch);t.put(record+12*4,t.scratch+256);t.put(record+13*4,0)}
+        if(mode=="memory-fault")t.fault=(address,write)=> !write && address==NativeUniformTestData.base(0)
+        t.exports.clear();t.submit();
+        if(mode=="cancel"){
+          t.until(d.io.memoryRequest.valid.peek().litToBoolean && d.io.memoryRequest.bits.address.peek().litValue==NativeUniformTestData.root)
+          t.blockMemory=true;val held=d.io.memoryRequest.bits.peek().litValue;d.io.cancel.poke(true.B)
+          for(_<-0 until 5){t.tick();d.io.memoryRequest.valid.expect(true.B);assert(d.io.memoryRequest.bits.peek().litValue==held);d.io.completion.valid.expect(false.B)}
+          t.blockMemory=false
+        }
+        withClue(s"uniform recovery mode=$mode: "){t.complete(if(mode=="healthy")0 else if(mode=="cancel")4 else 3)}
+        if(mode=="healthy"){assert(t.exports.size==1 && t.exports.head.varyings.head==NativeUniformTestData.value(0,0))}else assert(t.exports.isEmpty)
+      }
+      info("NATIVE_UNIFORM_RECOVERY stage=0 scalarThenInvalidVector=true privateAliasRejected=true dataFault=true missingRoot=true identityFault=true heldRequestCancel=true noPartialExports=true healthyReuse=true")
+    }
+  }
 }

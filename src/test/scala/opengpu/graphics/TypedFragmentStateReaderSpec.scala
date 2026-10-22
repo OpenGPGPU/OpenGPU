@@ -173,4 +173,16 @@ class TypedFragmentStateReaderSpec extends AnyFlatSpec {
     }
   }
 
+  it should "snapshot native uniform roots without shifting legacy state and reject invalid reference versions or ends" in {
+    simulate(new TypedFragmentStateReader(cfg,f,g)){d=>val t=new Driver(d)
+      for((version,address,status)<-Seq((1,BigInt(0),0),(1,(BigInt(1)<<32)-64,0),(2,BigInt(0),1),
+        (0,BigInt(64),1),(1,BigInt(1),1),(1,(BigInt(1)<<32)-32,1))){
+        val values=t.contents++Map("fragment.uniforms.version"->BigInt(version),"fragment.uniforms.address"->address)
+        t.invalidate();t.install(values=values);t.lookup();t.until(d.io.result.valid.peek().litToBoolean)
+        if(status==0)t.check(values);t.result(status)
+      }
+      info("GFS_NATIVE_UNIFORM_ROOT fields118And119=true legacyOffsetsRetained=true validAddressZero=true exact4GiBEnd=true canonicalDisabled=true versionsAndAlignmentChecked=true")
+    }
+  }
+
 }

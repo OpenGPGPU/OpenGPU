@@ -322,4 +322,20 @@ class NativeBinnedGraphicsJobReaderSpec extends AnyFlatSpec {
     }
   }
 
+  it should "retain binned vertex uniform root references without moving legacy descriptor words" in {
+    simulate(new Harness()){d=>val t=new Driver(d);val prefix="draw.vertex.geometry.vertex.uniforms."
+      val mapped=t.df.map(f=>f.name->f.word).toMap;assert(mapped(prefix+"version")==506 && mapped(prefix+"address")==507)
+      t.prepare(1);t.drawValues++=Map(prefix+"version"->BigInt(1),prefix+"address"->BigInt(0x9000))
+      t.put(t.drawBase,drawWords,drawMagic,t.df,t.drawValues);t.blockDraw=true;t.submit();t.until(d.io.draw.valid.peek().litToBoolean)
+      d.io.draw.bits.vertex.geometry.vertex.uniforms.version.expect(1.U);d.io.draw.bits.vertex.geometry.vertex.uniforms.address.expect(0x9000.U)
+      val held=d.io.draw.bits.peek().litValue;for(_<-0 until 9){t.tick();assert(d.io.draw.bits.peek().litValue==held)}
+      t.blockDraw=false;t.complete(0,1)
+      for((version,address)<-Seq((2,BigInt(0)),(0,BigInt(64)),(1,BigInt(1)),(1,(BigInt(1)<<32)-32))){
+        t.prepare(1);t.drawValues++=Map(prefix+"version"->BigInt(version),prefix+"address"->address)
+        t.put(t.drawBase,drawWords,drawMagic,t.df,t.drawValues);t.submit();t.complete(1);assert(t.acceptedDraws==0)
+      }
+      t.healthy();info("NATIVE_UNIFORM_ROOT_READER binned=true words506And507=true immutableOffer=true invalidRoots4BeforeChild=true legacyReuse=true")
+    }
+  }
+
 }
