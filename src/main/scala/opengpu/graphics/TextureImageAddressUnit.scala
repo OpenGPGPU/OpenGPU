@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
-import opengpu.util.BlockPrefixAdder
+import opengpu.util.{BlockPrefixAdder,CarrySaveMultiplier}
 
 case class TextureImageAddressConfig(max2D: Int=16383,max3D: Int=256,maxLayers: Int=256) {
   require(max2D>=1 && max2D<=16383 && max3D>=1 && max3D<=16383)
@@ -107,14 +107,18 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
   private val multiply=Wire(Decoupled(new Products))
   multiply.valid:=prepared.valid;prepared.ready:=multiply.ready
   private val q=prepared.bits.request;private val v=q.view;private val a=multiply.bits;private val coefficients=prepared.bits
+  // Compress one row per coefficient bit, then finish with a prefix adder.
+  // Keep all 47/49 useful product bits, including malformed-view overflow.
+  private def pitchProduct(coefficient: UInt,pitch: UInt): UInt=
+    if(pipelineProducts)CarrySaveMultiplier(pitch,coefficient,false,false)else coefficient*pitch
   a.invalid:=coefficients.invalid;a.badCoordinate:=coefficients.badCoordinate
   a.tag:=q.tag;a.level:=v.level;a.target:=v.target;a.allocationBase:=v.allocationBase
   a.allocationLimit:=v.allocationLimit;a.base:=v.base
   a.rowPitch:=v.rowPitch;a.slicePitch:=v.slicePitch;a.layerPitch:=v.layerPitch
   a.rowBytes:=coefficients.columns*v.blockBytes
-  a.lastRow:=coefficients.rowsMinusOne*v.rowPitch;a.lastSlice:=coefficients.slicesMinusOne*v.slicePitch;a.lastLayer:=coefficients.planesMinusOne*v.layerPitch
-  a.column:=coefficients.column*v.blockBytes;a.row:=coefficients.row*v.rowPitch
-  a.slice:=coefficients.slice*v.slicePitch;a.layer:=coefficients.layer*v.layerPitch
+  a.lastRow:=pitchProduct(coefficients.rowsMinusOne,v.rowPitch);a.lastSlice:=pitchProduct(coefficients.slicesMinusOne,v.slicePitch);a.lastLayer:=pitchProduct(coefficients.planesMinusOne,v.layerPitch)
+  a.column:=coefficients.column*v.blockBytes;a.row:=pitchProduct(coefficients.row,v.rowPitch)
+  a.slice:=pitchProduct(coefficients.slice,v.slicePitch);a.layer:=pitchProduct(coefficients.layer,v.layerPitch)
   a.bytes:=v.blockBytes;a.blockX:=Mux(v.block4x4,q.x(1,0),0.U);a.blockY:=Mux(v.block4x4,q.y(1,0),0.U)
   private val products=Queue(multiply,1,pipe=true,flow=false)
   private val finish=Wire(Decoupled(new TextureImageAddressResult))

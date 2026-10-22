@@ -161,6 +161,21 @@ class TextureImageAddressUnitSpec extends AnyFlatSpec {
       info(s"TEXTURE_IMAGE_ADDRESS_STREAM cases=$received latency=$latency pipelineBounds=$pipelineBounds pipelineProducts=$pipelineProducts steadyAddressInterval=1 elasticBackpressure=true faultRepliesOrdered=true immutableBindings=true")
     }
   }
+  for((bounds,products)<-Seq((false,false),(true,false),(false,true),(true,true)))
+  it should s"retain full pitch products without allocation or coordinate aliases bounds=$bounds products=$products" in {
+    val p=TextureImageAddressConfig(maxLayers=65535)
+    simulate(new TextureImageAddressUnit(p,pipelineBounds=bounds,pipelineProducts=products)){d=>initialize(d)
+      val wide=View(target=1,width=1,height=1,layers=65535,rowPitch=4,layerPitch=64,base=0x1000,allocationLimit=0x800000)
+      val pitch=(BigInt(1)<<32)+64
+      val requests=Vector(Request(wide,layer=65534),
+        Request(wide.copy(layerPitch=pitch,allocationLimit=addressSpace)),
+        Request(View(width=1,height=2,rowPitch=pitch,allocationLimit=addressSpace)),
+        Request(View(target=3,width=1,height=1,depth=2,rowPitch=4,slicePitch=pitch,allocationLimit=addressSpace)),
+        Request(wide,layer=BigInt(1)<<16))
+      assert(requests.map(oracle(_,p).status)==Vector(0,3,3,3,2))
+      sequential(d,requests.flatMap(q=>Vector(q,Request(View()))),p)
+    }
+  }
   it should "enforce configured dimensions volume extent and array layers at their exact boundaries" in {
     val p=TextureImageAddressConfig(max2D=512,max3D=64,maxLayers=8)
     simulate(new TextureImageAddressUnit(p)){d=>initialize(d)
