@@ -254,6 +254,14 @@ For H1, use overlapping triangles from multiple draws with blending and depth/st
 
 ## Verification and delivery discipline
 
+Routine render workloads use at most **640×480**, with smaller images preferred
+for functional checks. Shared frame-scale fixtures select this size by default;
+PR and nightly CI explicitly keep product qualification disabled. Use
+`-Dopengpu.productQualification=1` only for a separate, deliberate 1280×720
+qualification run. This development policy preserves the product's 720p target
+and capacity requirements. Bounded numeric/address boundary checks do not need
+to render a full-size frame. See [development testing](DEVELOPMENT_TESTING.md).
+
 Add counters for tile residency/evictions, attachment bytes by operation, bin allocation/spill, active engines, primitive occupancy, payload traffic, queue stalls, eligible/rejected early tests, texture bank conflicts, useful cache bytes, fill occupancy and per-CU active/helper lanes. Avoid summing overlapping stall counters as if they were exclusive causes.
 
 Use arithmetic/ordering proofs and component tests first, followed by small cycle benchmarks, synthesis, native trace replay and selected full-system smoke tests. Run full desktop validation at integration milestones. Freeze source/configuration and workload hashes for comparisons; report simulator wall time separately from GPU cycles and estimated silicon frame time.
