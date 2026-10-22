@@ -26,6 +26,7 @@ class FragmentShaderDraw(p: FragmentShaderConfig) extends Bundle {
   val colorMask=UInt(4.W);val colorTypes=Vec(p.colors,UInt(2.W));val allowDepthOverride=Bool();val sampleMode=UInt(2.W)
   val sampler=new VertexShaderSampler
   val resources=new ShaderTextureResources
+  val uniforms=new ShaderUniformResources
   val centroidMask=UInt(64.W)
 }
 /** Pure descriptor checks shared by the standalone client and draw admission. */
@@ -41,7 +42,7 @@ object FragmentShaderDescriptor {
       types && draw.sampleMode<=log2Ceil(g.maxSampleCount).U &&
       !(draw.centroidMask>>(draw.varyingSlots<<2)).orR && (FragmentInputAbi.hasCentroid(draw.version) || !draw.centroidMask.orR)
     val sharedAlias=s.base<(config.sharedMemoryBase+config.sharedMemoryBytes).U && end>config.sharedMemoryBase.U
-    val invalid= !FragmentInputAbi.legal(draw.version) || !VertexShaderSampler.legal(draw.sampler) || !ShaderTextureResources.legal(draw.resources) || !fields || !view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || sharedAlias
+    val invalid= !FragmentInputAbi.legal(draw.version) || !VertexShaderSampler.legal(draw.sampler) || !ShaderTextureResources.legal(draw.resources) || !ShaderUniformResources.legal(draw.uniforms) || !fields || !view || draw.shaderPc===0.U || draw.shaderPc(1,0)=/=0.U || sharedAlias
     val bounds=end>s.limit || end>(BigInt(1)<<32).U || ((end+63.U)&(~63.U(40.W)))>s.allocationLimit
     (invalid,bounds)
   }
@@ -130,8 +131,8 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   private val resident=RegInit(false.B);private val leaseActive=RegInit(false.B);private val finishOffered=RegInit(false.B);private val finishStarted=RegInit(false.B)
   private val invalidateOffered=RegInit(false.B);private val invalidatePending=RegInit(false.B);private val launchOffered=RegInit(false.B);private val kernelActive=RegInit(false.B);private val kernelDone=RegInit(false.B)
   private val memOffered=RegInit(false.B);private val memPending=RegInit(false.B);private val memRequest=Reg(new ComputeMemoryRequest(config,64,1))
-  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),helperInvocations=true,nativeResources=true))
-  private val texture=Module(new NativeShaderTextureUnit(config,stage=1,groupedTexture=groupedTexture))
+  private val shader=Module(new KernelShaderStage(config,true,Some(shared.copy(shaderPayload=None)),helperInvocations=true,nativeResources=true,nativeUniforms=true))
+  private val texture=Module(new NativeShaderTextureUnit(config,stage=1,groupedTexture=groupedTexture,uniformAvailable=true))
   if(groupedTexture){io.grouped.get <> texture.io.grouped.get}
   private val transport=payload.map(q=>Module(new FragmentPayloadTransport(config,q,payloadOwner,1)))
   private val metadataBanks=Seq.fill((metaDepth+255)/256)(Module(new L2SramArray(math.min(256,metaDepth),64,useSramBlackBoxes)))
@@ -197,6 +198,8 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
   textureInstructions:=textureInstructions+textureStarts-textureEnds
   assert(textureEnds<=textureInstructions+textureStarts,"fragment texture completion must retain its instruction")
   texture.io.resources:=draw.resources;texture.io.identity:=draw.identity
+  texture.io.uniforms.get:=draw.uniforms;texture.io.privateBase.get:=draw.scratch.base
+  texture.io.privateLimit.get:=draw.scratch.base+&prefixBytes
   texture.io.clearParameters:=shader.io.launch.valid && shader.io.launch.ready
   texture.io.cancel:=externalCancel || status=/=0.U;texture.io.invalidate:=io.draw.fire
   texture.io.texFormat:=draw.sampler.format;texture.io.texBase:=draw.sampler.base

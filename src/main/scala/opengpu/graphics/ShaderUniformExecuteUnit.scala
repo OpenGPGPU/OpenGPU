@@ -8,9 +8,9 @@ import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
 import opengpu.core.memory.{ComputeMemoryRequest,ComputeMemoryResponse}
 
-/** Reserved encodings for raw uniform words: rs1/vs1 is the logical block,
+/** Encodings for raw uniform words: rs1/vs1 is the logical block,
   * rs2/vs2 the byte offset. Vector vm has its ordinary RVV meaning.
-  * Decoder admission remains disabled until the native provider is connected.
+  * Decoder admission requires an accepted task's uniform-provider permission.
   */
 object ShaderUniformOpcode {
   def scalar(i: UInt): Bool=i(6,0)==="h0b".U && i(31,25)===7.U && i(14,12)===0.U
