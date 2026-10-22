@@ -1,230 +1,102 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
 name: Scala CI
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, closed]
+
+concurrency:
+  group: scala-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
+  pull-requests: read
+  actions: read
 
 jobs:
-  driver:
+  checks:
+    if: github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open' && !github.event.pull_request.draft
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      JAVA_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
+      JVM_OPTS: -Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+        fetch-depth: 0
+        submodules: recursive
     - name: Run host script tests
       run: bash scripts/test_scripts.sh
-
-  # Resolve affected packages once, then fan out only the shards that have work.
-  # Keeps Verilator/JDK setup off runners that would immediately no-op.
-  select:
-    runs-on: ubuntu-latest
-    outputs:
-      selected: ${{ steps.select.outputs.selected }}
-      shards: ${{ steps.select.outputs.shards }}
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Select affected tests and shards
+    - name: Select PR unit regressions
       id: select
       run: |
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          BASE=$(git merge-base origin/main HEAD)
-        else
-          # A push can contain several commits; HEAD^ misses changes in all
-          # but the last one. Compare the whole pushed range instead.
-          BASE='${{ github.event.before }}'
-          if [ "$BASE" = '0000000000000000000000000000000000000000' ]; then
-            BASE=$(git hash-object -t tree /dev/null)
-          fi
-        fi
-        CHANGED=$(git diff --name-only "$BASE" HEAD)
-        echo "Changed files:"
-        echo "$CHANGED"
-        SELECTED=$(bash scripts/select_tests.sh $CHANGED)
-        echo "Selected: $SELECTED"
-        SHARDS=$(bash scripts/ci_shard_tests.sh shards-json "$SELECTED")
-        echo "Shards: $SHARDS"
-        if [ "$SELECTED" != "NONE" ] && [ "$SHARDS" = "[]" ]; then
-          echo "selected packages did not map to any CI shard" >&2
-          exit 1
-        fi
-        {
-          echo "selected<<EOF"
-          echo "$SELECTED"
-          echo "EOF"
-          echo "shards=$SHARDS"
-        } >> "$GITHUB_OUTPUT"
-
-  scala:
-    needs: select
-    if: needs.select.outputs.selected != 'NONE'
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJson(needs.select.outputs.shards) }}
-
-    # Distro Verilator on 24.04 is 5.020 (too old) and on 26.04 is 5.032
-    # (internal fault on GraphicsAddressTranslator). Pin v5.050 from source.
-    runs-on: ubuntu-latest
-
-    env:
-      JAVA_OPTS: -Xms6G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
-      JVM_OPTS: -Xms6G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8
-
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: Set up JDK 11
-      uses: actions/setup-java@v4
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-        cache: 'sbt'
-    - name: Set up sbt
-      uses: sbt/setup-sbt@v1
-    - name: Compute Verilator cache key
-      id: verilator-key
-      # ImageOS is injected into the runner's process environment but is not
-      # part of the expression context, so read it from the shell. Keying on the
-      # image family (ubuntu24/ubuntu26) means a runner image migration rebuilds
-      # rather than reusing a binary linked against a different glibc.
-      run: echo "key=verilator-5.050-${ImageOS:-unknown}-${{ runner.arch }}" >> "$GITHUB_OUTPUT"
-    - name: Cache Verilator
-      id: verilator-cache
+        BASE=$(git merge-base origin/main HEAD)
+        mapfile -t CHANGED < <(git diff --name-only "$BASE" HEAD)
+        SELECTED=$(bash scripts/select_tests.sh "${CHANGED[@]}")
+        echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"
+        echo "suites=$(bash scripts/ci_shard_tests.sh pr-suites "$SELECTED")" >> "$GITHUB_OUTPUT"
+    - name: Set up simulation toolchain
+      if: steps.select.outputs.selected != 'NONE'
+      id: toolchain
+      uses: ./.github/actions/setup-simulation
+    - name: Cache incremental Scala compilation
+      if: steps.select.outputs.selected != 'NONE'
       uses: actions/cache@v4
       with:
-        path: /opt/verilator
-        key: ${{ steps.verilator-key.outputs.key }}
-    - name: Install Verilator (v5.050 from source) and espresso
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y git perl python3 make autoconf g++ flex bison libfl-dev zlib1g-dev ccache help2man
-        echo "/opt/verilator/bin" >> "$GITHUB_PATH"
-        curl -sL https://github.com/chipsalliance/espresso/releases/download/v2.4/x86_64-linux-gnu-espresso -o /usr/local/bin/espresso
-        chmod +x /usr/local/bin/espresso
-        if [ "${{ steps.verilator-cache.outputs.cache-hit }}" = "true" ]; then
-          /opt/verilator/bin/verilator --version
-          exit 0
-        fi
-        sudo mkdir -p /opt/verilator
-        sudo chown "$(id -u):$(id -g)" /opt/verilator
-        git clone --depth 1 --branch v5.050 https://github.com/verilator/verilator /tmp/verilator
-        cd /tmp/verilator
-        autoconf
-        ./configure --prefix=/opt/verilator
-        make -j"$(nproc)"
-        make install
-        /opt/verilator/bin/verilator --version
-    - name: Prefetch Scala compiler bridge
-      # Zinc resolves org.scala-lang:scala2-sbt-bridge outside the normal
-      # `update` graph (sbt/sbt#8783). A cached Coursier miss after the
-      # 2.13.18 bump surfaces as (scalaCompilerBridgeBinaryJar) Missing in ~1s.
-      # Force a fresh resolve before tests so shards do not inherit a bad entry.
-      run: |
-        rm -rf "${HOME}/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala2-sbt-bridge/"
-        sbt --batch 'show scalaCompilerBridgeBinaryJar'
-    - name: Prepare simulation cache directory
-      run: mkdir -p target/chiselsim
-    - name: Cache compiled simulation models
-      id: simcache
-      # GpuSim keys each Verilator build by the digest of its Verilog, so a
-      # stale entry is never used and the cache key only has to cover the
-      # toolchain.  One entry per shard, with a shared restore key, so shards
-      # keep accumulating their own designs across runs.
-      uses: actions/cache@v4
-      with:
-        path: target/chiselsim
-        key: simcache-${{ steps.verilator-key.outputs.key }}-${{ matrix.shard }}
+        path: |
+          target/scala-2.13
+          project/target
+        key: sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-${{ hashFiles('src/**') }}
         restore-keys: |
-          simcache-${{ steps.verilator-key.outputs.key }}-
-    - name: Run shard ${{ matrix.shard }}
+          sbt-build-v1-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/*.properties') }}-
+    - name: Cache PR simulation models
+      if: steps.select.outputs.selected != 'NONE'
+      uses: actions/cache@v4
+      with:
+        path: target/chiselsim/cache
+        key: simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-pr-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          simcache-v2-${{ steps.toolchain.outputs.verilator-key }}-pr-
+    - name: Compile all sources and run selected unit regressions
+      if: steps.select.outputs.selected != 'NONE'
+      env:
+        SUITES: ${{ steps.select.outputs.suites }}
       run: |
-        # Serial inside each runner: forked/shared-JVM parallelism OOMs under
-        # Chisel elaboration. Parallelism comes from the matrix, not sbt.
-        SUITES=$(bash scripts/ci_shard_tests.sh suites "${{ matrix.shard }}" "${{ needs.select.outputs.selected }}")
-        if [ -z "$SUITES" ]; then
-          echo "Shard ${{ matrix.shard }} has no suites for this selection; skipping"
-          exit 0
+        COMMANDS=('set Test / parallelExecution := false' 'Test / compile')
+        if [ -n "$SUITES" ]; then
+          COMMANDS+=("testOnly $SUITES")
         fi
-        echo "Running: $SUITES"
-        # GpuComputeUnit shards compile repeated CUs as a hierarchy library.
-        # Job count comes from ci_shard_tests.sh. The wide runtime shards
-        # each own one model. The 6 GB heap still leaves too little RAM for
-        # the 16-lane four-CU build, the 32-lane model, and the side-64
-        # batch: the OOM killer stops the runner and GitHub reports a
-        # canceled step. ubuntu-latest already has /swapfile active (~4G).
-        # fallocate on that live file returns ETXTBSY ("Text file busy"), so
-        # swap it off and replace the inode with 8G before the model build.
-        case "${{ matrix.shard }}" in
-          system-rt-16|system-rt-32|system-rt-batch)
-            sudo swapoff /swapfile 2>/dev/null || true
-            sudo rm -f /swapfile
-            sudo fallocate -l 8G /swapfile
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile
-            sudo swapon /swapfile
-            free -h
-            ;;
-        esac
-        # system-rt-32 elaborates one 32-lane CU. -Xms6G commits that heap
-        # for the whole step, so firtool and g++ thrash on the rest until
-        # the OOM killer stops the agent. Grow the heap from 1 GB instead.
-        # The shard also passes simLowMem, which compiles the model at -O0.
-        if [ "${{ matrix.shard }}" = "system-rt-32" ]; then
-          export JAVA_OPTS="-Xms1G -Xmx6G -Xss6M -XX:+UseG1GC -Dfile.encoding=UTF-8"
-          export JVM_OPTS="$JAVA_OPTS"
-        fi
-        FLAGS=$(bash scripts/ci_shard_tests.sh flags "${{ matrix.shard }}")
-        if [ -n "$FLAGS" ]; then
-          echo "Simulation flags: $FLAGS"
-        fi
-        # shellcheck disable=SC2086
-        sbt $FLAGS 'set Test / parallelExecution := false' "testOnly $SUITES"
+        sbt -Dopengpu.simJobs=2 "${COMMANDS[@]}"
 
-  dependency-graph:
-    runs-on: ubuntu-26.04
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: Set up JDK 11
-      uses: actions/setup-java@v4
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-        cache: 'sbt'
-    - name: Set up sbt
-      uses: sbt/setup-sbt@v1
-    - name: Upload dependency graph
-      uses: scalacenter/sbt-dependency-submission@ab086b50c947c9774b70f39fc7f6e20ca2706c91
-
-  # Stable required-check name once branch protection points at it.
+  # Never report a stale or partially successful run as a successful required check.
   ci-ok:
-    if: always()
-    needs: [driver, select, scala, dependency-graph]
+    if: always() && github.event.pull_request.base.ref == 'main' && github.event.pull_request.state == 'open'
+    needs: [checks]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
+    - name: Recheck that this run tests the current PR head
+      id: snapshot
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.setOutput('current', 'false');
+          const { owner, repo } = context.repo;
+          const number = context.payload.pull_request.number;
+          const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+          if (pr.state !== 'open' || pr.draft || pr.base.ref !== 'main' ||
+              pr.head.sha !== context.payload.pull_request.head.sha) {
+            core.setFailed('New PR commits were pushed after this run started; a newer Scala CI run supersedes it.');
+            return;
+          }
+          core.setOutput('current', 'true');
     - name: Aggregate job results
+      env:
+        SNAPSHOT_CURRENT: ${{ steps.snapshot.outputs.current }}
       run: |
-        echo "driver=${{ needs.driver.result }}"
-        echo "select=${{ needs.select.result }}"
-        echo "scala=${{ needs.scala.result }}"
-        echo "dependency-graph=${{ needs.dependency-graph.result }}"
-        [ "${{ needs.driver.result }}" = "success" ] || exit 1
-        [ "${{ needs.select.result }}" = "success" ] || exit 1
-        [ "${{ needs.dependency-graph.result }}" = "success" ] || exit 1
-        # When selection is NONE the scala job is skipped — treat as success.
-        case "${{ needs.scala.result }}" in
-          success|skipped) ;;
-          *) exit 1 ;;
-        esac
+        [ "$SNAPSHOT_CURRENT" = "true" ] || exit 1
+        [ "${{ needs.checks.result }}" = success ]

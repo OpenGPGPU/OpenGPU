@@ -1,0 +1,9 @@
+# Bounded unit regressions for the required PR gate; no full CU/host models.
+opengpu.core.frontend.decode.DecoderSpec
+opengpu.dispatch.SingleCuKernelControllerSpec
+opengpu.command.GpuCommandRouterSpec
+opengpu.graphics.RasterSampleOffsetsSpec
+opengpu.graphics.TextureResultHandoffSpec
+opengpu.graphics.TileCommandPassControllerSpec
+opengpu.system.AxiStimulusOrderingSpec
+opengpu.testutil.GpuSimSpec

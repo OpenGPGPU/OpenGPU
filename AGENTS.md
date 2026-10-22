@@ -1,5 +1,10 @@
 # Agent contribution rules
 
+All changes must be submitted through a pull request. Work and create commits
+on topic branches; never commit, merge, or push directly to `main` or `master`.
+Keep existing unpublished work intact and submit it from a topic branch.
+Required CI must pass before a PR is merged. Do not bypass branch protection.
+
 When creating a Git commit, include one `Co-authored-by` trailer for the agent. The trailer must identify the agent and include the model name, for example:
 
 ```text

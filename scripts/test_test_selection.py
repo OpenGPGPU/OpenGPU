@@ -2,6 +2,7 @@
 """Check that boundary edits cannot silently omit system regressions."""
 from pathlib import Path
 import json
+import re
 import subprocess
 
 root = Path(__file__).resolve().parents[1]
@@ -41,11 +42,22 @@ assert "opengpu.core.backend.VectorBackendSpec" in vector_selected, vector_selec
 # CI shard partition: every Spec belongs to exactly one shard, except the
 # desktop scaling sweeps that local `sbt test` still runs. Selection
 # intersects so a graphics-only change only schedules the graphics runner.
-all_specs = {
-    str(p.relative_to(root / "src/test/scala").with_suffix("")).replace("/", ".")
+def declared_suites(path):
+    source = path.read_text()
+    package = re.search(r"^package\s+([\w.]+)", source, re.M).group(1)
+    return {
+        package + "." + match.group(1)
+        for match in re.finditer(r"^(?:final\s+)?class\s+(\w+Spec)\b", source, re.M)
+    }
+
+
+suites_by_file = {
+    str(p.relative_to(root / "src/test/scala").with_suffix("")).replace("/", "."):
+        declared_suites(p)
     for p in (root / "src/test/scala").rglob("*Spec.scala")
 }
-ci_skip = {
+all_specs = set().union(*suites_by_file.values())
+ci_skip_files = {
     "opengpu.system.FullPoolRuntimeScalingSpec",
     "opengpu.system.RuntimeSharedGraphicsPerformanceSpec",
     "opengpu.system.FullPoolTextureScalingSpec",
@@ -59,13 +71,15 @@ ci_skip = {
     "opengpu.system.GpuSystemPayloadSpec",
     "opengpu.system.SharedPayloadClientSystemSpec",
 }
-shards = (
-    "graphics",
+ci_skip = set().union(*(suites_by_file[name] for name in ci_skip_files))
+graphics_shards = tuple(f"graphics-{i}" for i in range(8))
+texture_shards = tuple(f"system-tex-{i}" for i in range(8))
+wide_shards = tuple(f"system-wide-{i}" for i in range(4))
+shards = graphics_shards + (
     "system-mem",
     "system-host",
     "system-walk",
-    "system-tex",
-    "system-wide",
+) + texture_shards + wide_shards + (
     "system-core",
     "system-rt-narrow",
     "system-rt-16",
@@ -94,20 +108,53 @@ assert assigned["opengpu.system.GpuHostIndirectComputeSpec"] == "system-host"
 assert assigned["opengpu.system.GpuSystemComputeGeometrySpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemIndirectComputeSpec"] == "system-core"
 assert assigned["opengpu.system.GpuSystemIndirectTranslationResetSpec"] == "system-core"
+if (root / "src/test/scala/opengpu/system/ComputeTextureAvailabilitySpec.scala").exists():
+    assert assigned["opengpu.system.ComputeTextureAvailabilitySpec"] == "system-core"
+for filename, suites in {
+    "NativeStructuredSimtHostAxiSpec.scala": (
+        "NativeTypedStructuredSimtHostAxiSpec", "NativeBinnedStructuredSimtHostAxiSpec",
+        "NativeDefaultStructuredSimtHostAxiSpec"),
+    "NativeShaderExecutionHostAxiSpec.scala": (
+        "NativeTypedShaderExecutionHostAxiSpec", "NativeBinnedShaderExecutionHostAxiSpec"),
+    "NativeShaderRunningResetHostAxiSpec.scala": (
+        "NativeTypedShaderRunningResetHostAxiSpec", "NativeBinnedShaderRunningResetHostAxiSpec"),
+    "NativeShaderAvailabilityHostAxiSpec.scala": (
+        "NativeTypedShaderAvailabilityHostAxiSpec", "NativeBinnedShaderAvailabilityHostAxiSpec"),
+}.items():
+    if (root / "src/test/scala/opengpu/graphics" / filename).exists():
+        for suite in suites:
+            assert assigned["opengpu.graphics." + suite] in graphics_shards
+for phantom in (
+    "NativeStructuredSimtHostAxiSpec", "NativeShaderExecutionHostAxiSpec",
+    "NativeShaderRunningResetHostAxiSpec", "NativeShaderAvailabilityHostAxiSpec",
+):
+    assert "opengpu.graphics." + phantom not in assigned
+assert assigned["opengpu.core.frontend.decode.DecoderSpec"] == "core-b"
+assert "opengpu.core.frontend.decode.ScalarDecoderSpec" not in assigned
 for suite in ("Fp32CentroidInterpolationSpec", "Fp32DepthResolutionRasterSpec", "PolygonDepthOffsetSpec", "PolygonDepthOffsetRasterSpec", "PolygonDepthResolutionSpec"):
-    assert assigned["opengpu.graphics." + suite] == "graphics"
-assert json.loads(shard_cmd("shards-json", "ALL")) == list(shards)
+    assert assigned["opengpu.graphics." + suite] in graphics_shards
+populated_shards = [shard for shard in shards if shard_cmd("suites", shard, "ALL")]
+assert json.loads(shard_cmd("shards-json", "ALL")) == populated_shards
 assert json.loads(shard_cmd("shards-json", "NONE")) == []
-assert json.loads(shard_cmd("shards-json", "opengpu.graphics.*")) == ["graphics"]
+assert json.loads(shard_cmd("shards-json", "opengpu.graphics.*")) == list(graphics_shards)
 assert shard_cmd("flags", "system-rt-32") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1"
 assert shard_cmd("flags", "system-rt-narrow") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2"
-assert shard_cmd("flags", "system-wide") == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=2"
+for shard in texture_shards + wide_shards:
+    assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1"
 assert shard_cmd("flags", "system-mem") == ""
-assert shard_cmd("flags", "graphics") == ""
+for shard in graphics_shards:
+    assert shard_cmd("flags", shard) == "-Dopengpu.simHierarchy=GpuComputeUnit -Dopengpu.simJobs=1 -Dopengpu.simLowMem=1"
+# Keep all concrete suites in a source file on one runner; inherited scenarios
+# then reuse the same cached Verilator model rather than compiling it twice.
+for name, suites in suites_by_file.items():
+    if name.startswith("opengpu.graphics."):
+        assert len({assigned[suite] for suite in suites}) <= 1, name
+one_suite = "opengpu.graphics.Fp32CentroidInterpolationSpec"
+assert json.loads(shard_cmd("shards-json", one_suite)) == [assigned[one_suite]]
 graphics_fanout = " ".join(select("src/main/scala/opengpu/graphics/RenderHost.scala"))
 scheduled = json.loads(shard_cmd("shards-json", graphics_fanout))
-assert "graphics" in scheduled
-for shard in shards:
+assert set(graphics_shards).issubset(scheduled)
+for shard in populated_shards:
     if shard.startswith("system-"):
         assert shard in scheduled, shard
 assert json.loads(shard_cmd("shards-json", " ".join(vector_selected))) == [
@@ -120,3 +167,16 @@ for name in ("decompress-etc.c", "decompress-eac.c", "detex.h", "oracle.c", "UPS
     assert select("src/test/resources/opengpu/texture/detex/" + name) == ["opengpu.graphics.*"]
 
 print("Integration test selection: PASS")
+
+# The PR lane is bounded independently of broad integration fan-out.
+pr_suites = shard_cmd("pr-suites", "ALL").split()
+assert len(pr_suites) == len(set(pr_suites)) == 8
+assert set(pr_suites) <= all_specs
+assert not any("GpuComputeUnit" in suite or "HostAxi" in suite for suite in pr_suites)
+assert shard_cmd("pr-suites", "NONE") == ""
+assert set(shard_cmd("pr-suites", "opengpu.graphics.*").split()) == {
+    suite for suite in pr_suites if suite.startswith("opengpu.graphics.")
+}
+for path in ("scripts/ci_pr_suites.txt", ".github/workflows/scala_regression.yml",
+             ".github/actions/setup-simulation/action.yml"):
+    assert select(path) == ["ALL"], path

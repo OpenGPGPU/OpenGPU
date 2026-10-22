@@ -1,0 +1,61 @@
+name: Simulation toolchain
+description: Set up Java, sbt and the pinned Verilator toolchain.
+outputs:
+  verilator-key:
+    description: Runner-compatible Verilator cache namespace.
+    value: ${{ steps.verilator-key.outputs.key }}
+runs:
+  using: composite
+  steps:
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: 'sbt'
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+      - name: Compute Verilator cache key
+        id: verilator-key
+        # ImageOS is injected into the runner's process environment but is not
+        # part of the expression context, so read it from the shell. Keying on the
+        # image family (ubuntu24/ubuntu26) means a runner image migration rebuilds
+        # rather than reusing a binary linked against a different glibc.
+        shell: bash
+        run: echo "key=verilator-5.050-${ImageOS:-unknown}-${{ runner.arch }}" >> "$GITHUB_OUTPUT"
+      - name: Cache Verilator
+        id: verilator-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/verilator
+          key: ${{ steps.verilator-key.outputs.key }}
+      - name: Install Verilator (v5.050 from source) and espresso
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git perl python3 make autoconf g++ flex bison libfl-dev zlib1g-dev ccache help2man
+          echo "/opt/verilator/bin" >> "$GITHUB_PATH"
+          curl -sL https://github.com/chipsalliance/espresso/releases/download/v2.4/x86_64-linux-gnu-espresso -o /usr/local/bin/espresso
+          chmod +x /usr/local/bin/espresso
+          if [ "${{ steps.verilator-cache.outputs.cache-hit }}" = "true" ]; then
+            /opt/verilator/bin/verilator --version
+            exit 0
+          fi
+          sudo mkdir -p /opt/verilator
+          sudo chown "$(id -u):$(id -g)" /opt/verilator
+          git clone --depth 1 --branch v5.050 https://github.com/verilator/verilator /tmp/verilator
+          cd /tmp/verilator
+          autoconf
+          ./configure --prefix=/opt/verilator
+          make -j"$(nproc)"
+          make install
+          /opt/verilator/bin/verilator --version
+      - name: Prefetch Scala compiler bridge
+        # Zinc resolves org.scala-lang:scala2-sbt-bridge outside the normal
+        # `update` graph (sbt/sbt#8783). A cached Coursier miss after the
+        # 2.13.18 bump surfaces as (scalaCompilerBridgeBinaryJar) Missing in ~1s.
+        # Force a fresh resolve before tests so shards do not inherit a bad entry.
+        shell: bash
+        run: |
+          rm -rf "${HOME}/.cache/coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala2-sbt-bridge/"
+          sbt --batch 'show scalaCompilerBridgeBinaryJar'
