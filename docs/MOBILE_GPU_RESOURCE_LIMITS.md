@@ -52,8 +52,10 @@ legacy kernarg checks preserve a scalar uniform tail. Those ordinary loads
 alone do not establish checked block mappings, permissions or simultaneous
 stage capacity; the native evidence below covers separate resource contracts.
 
-GTC1/GNC2/GTO1 do not advertise a uniform-block namespace or the above uniform
-limits. Ordinary CU loads alone do not establish the missing binding, range,
+GTC1/GNC2/GTO1 retain their existing contracts. The separate
+[GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md) reports native uniform word-load
+bounds and semantics without an API conformance claim. Ordinary CU loads alone
+do not establish the binding, range,
 publication and lifetime contract. The [checked uniform load service](UNIFORM_BUFFER_RESOURCES.md)
 defines GUR1/GUB1 roots and read-only views, twelve stage mappings, twenty-four
 bindings and default storage outside the private prefix. Its standalone checks
@@ -63,7 +65,7 @@ adds task-owned uniform instructions, versioned draw/state roots and separate
 128-thread vertex/fragment local/spill checks of all twelve mappings and the
 final block/default words. [Concurrent native stage checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md)
 exercise both 128-thread stages against the same twenty-four-binding table at
-a fixed payload budget. Discovery, driver/compiler integration, translated
+a fixed payload budget. Driver/compiler API integration, translated
 concurrent publication/lifetime and rate gates remain open. Preserve the kernarg ABI.
 
 ## V: stage interfaces — partial

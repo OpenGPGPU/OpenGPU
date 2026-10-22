@@ -96,8 +96,10 @@ The complete native providers include their existing texture services as well
 as uniforms. These totals are not the incremental uniform cost. Component
 results do not qualify an enclosing stage/CU/host clock.
 
-Runtime discovery and driver/compiler admission/lowering remain required before
-advertising uniform support. [Compact translated host checks](NATIVE_UNIFORM_HOST_OWNERSHIP.md)
+[GUC1 discovery](NATIVE_UNIFORM_DISCOVERY.md) reports this checked word-load
+interface in implemented native hosts. Driver/compiler API admission/lowering
+remains required before declaring API support.
+[Compact translated host checks](NATIVE_UNIFORM_HOST_OWNERSHIP.md)
 cover both stages sharing one table, GPU-produced root/view/data publication,
 denied data pages and held-completion VM ownership.
 [Concurrent native stage checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md)
