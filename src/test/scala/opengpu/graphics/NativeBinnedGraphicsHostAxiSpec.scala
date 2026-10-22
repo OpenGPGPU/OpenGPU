@@ -813,6 +813,62 @@ abstract class NativeBinnedGraphicsHostBaseSpec extends AnyFlatSpec with GpuHost
       else info(s"NATIVE_SHARED_BINNED_AXI local=$local CUs=4 frames=$frames engines=2 exactMRTDepthResolve=true bothStages=true realSv32=true actualSharedDataWalks=true sameAddressDMAPublication=true modes1x4x=true heldCompletionPinsVM=true")
     }
   }
+  if(getClass==classOf[NativeBinnedGraphicsHostAxiSpec])for(local<-Seq(true,false))
+  it should s"discover and execute native uniform roots through binned draws and cached fragment states local=$local" in {
+    simulate(host(local)){d=>
+      initialize(d);val image=new Image(d);vm(d)
+      for((word,i)<-Vector[BigInt](BigInt("47554301",16),16,1,127,3,12,24).zipWithIndex)
+        assert(axiRead(d,0x3a0+i*4)==word,s"binned GUC1 word $i differs")
+      val drawFields=NativeBinnedGraphicsLayout.drawFields(new NativeBinnedGraphicsDrawRecord)
+      val stateFields=TypedFragmentStateLayout.fields(new TypedFragmentState(f))
+      val uniformRed=fp(0.625)
+      for((denied,frame)<-Seq(false,true,false).zipWithIndex){
+        image.expectedSampledRed=Some(uniformRed);image.setup()
+        val region=image.region;val table=region+0x27000;val vroot=region+0x26000;val froot=vroot+64
+        val vdata=region+0x300000;val fdata=vdata+16384
+        def put(a: BigInt,v: BigInt): Unit=image.word(image.pa(a),v)
+        def record(a: BigInt,magic: BigInt,fields: Map[Int,BigInt]): Unit={
+          for(i<-0 until 16)put(a+4*i,fields.getOrElse(i,BigInt(0)))
+          for((v,i)<-Seq[BigInt](magic,64,1,7,8,image.generation).zipWithIndex)put(a+4*i,v)
+        }
+        for((root,stage,binding)<-Seq((vroot,0,0),(froot,1,23)))record(root,BigInt("47555201",16),
+          Map(6->BigInt(stage),7->BigInt(1<<11),9->(BigInt(binding)<<25),10->table,11->(table+1536)))
+        for((binding,data)<-Seq(0->vdata,23->fdata))record(table+binding*64,BigInt("47554201",16),
+          Map(6->BigInt(binding),7->BigInt(3),8->data,9->(data+16384),11->data,12->(data+16384),14->BigInt(1)))
+        put(vdata+16380,fp(1));put(fdata+16380,uniformRed)
+        val vp=region+0x28000;val fs=region+0x29000
+        val vcode=vertexProgram.dropRight(1)++NativeUniformTestData.instructions(0,32,10,Some(Seq(11->16380)))++Seq(BigInt("30500073",16))
+        val broadcast=(BigInt(0x17)<<26)|(BigInt(1)<<25)|(BigInt(4)<<12)
+        val query=Seq(addi(14,0,11),BigInt("000047b7",16),addi(15,15,-4),
+          broadcast|(BigInt(14)<<15)|(BigInt(3)<<7)|0x57,broadcast|(BigInt(15)<<15)|(BigInt(4)<<7)|0x57,
+          (BigInt(7)<<26)|(BigInt(1)<<25)|(BigInt(4)<<20)|(BigInt(3)<<15)|(BigInt(5)<<7)|0x2b)
+        val fcode=fragmentProgram.dropRight(1)++query++(0 until 4).flatMap(c=>Seq(addi(6,7,(10+c*4)*32),vm(6,5,true)))++Seq(BigInt("30500073",16))
+        vcode.zipWithIndex.foreach{case(w,i)=>put(vp+4*i,w)};fcode.zipWithIndex.foreach{case(w,i)=>put(fs+4*i,w)}
+        for(h<-0 until 2){val draw=region+0x12000+h*4096;val state=region+0x20000+h*512
+          for((name,value)<-Seq("draw.vertex.geometry.vertex.shaderPc"->vp,"draw.vertex.geometry.vertex.uniforms.version"->BigInt(1),
+            "draw.vertex.geometry.vertex.uniforms.address"->vroot))image.patchRecord(draw,drawFields,name,value)
+          for((name,value)<-Seq("fragment.shaderPc"->fs,"fragment.uniforms.version"->BigInt(1),"fragment.uniforms.address"->froot))
+            image.patchRecord(state,stateFields,name,value)
+        }
+        val page=(fdata+16380)& ~BigInt(4095)
+        if(denied){val pt=BigInt(0x31000);image.word(0x30000+(region>>22)*4,(pt>>12)<<10|1)
+          for(p<-0 until 1024)image.word(pt+p*4,((image.pa(region+p*4096)>>12)<<10)|0xcf)
+          image.word(pt+((page>>12)&1023)*4,((image.pa(page)>>12)<<10)|0x49)
+        }
+        axiWrite(d,GpuCommandMmioRegs.TLB_FLUSH,1);image.submit(210+frame);image.run(if(denied)3 else 0,id=210+frame)
+        if(denied)assert(!image.reads.exists(a=>a>=image.pa(page) && a<image.pa(page+4096)),"denied binned uniform page reached physical AXI")
+        else{
+          image.verify()
+          for(a<-Seq(vroot,froot,table,table+23*64,(vdata+16380)& ~BigInt(63),(fdata+16380)& ~BigInt(63)))
+            assert(image.reads.contains(image.pa(a)),s"binned uniform address ${a.toString(16)} was not read")
+        }
+        axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0,expectedResponse=2);image.pop()
+        d.io.performance.get.payloadReservedBytes.expect(0.U);d.io.performance.get.payloadPinsActive.expect(0.U)
+      }
+      info(s"NATIVE_UNIFORM_BINNED local=$local frames3=true GUC1=true GND1VertexRoot=true GFS1FragmentRoot=true engines2=true scalarVertexVectorFragment=true binding0And23=true blockLastWord=true realSv32=true deniedDataNoPhysicalRead=true exactMRTDepthResolveGuards=true heldCompletionPinsVM=true healthyReuse=true")
+    }
+  }
+
   if(!groupedTexture){
   it should "expose exact GNX1 diagnostics for rejected envelopes through the production AXI registers" in {
     simulate(host(false)){d=>initialize(d);val image=new Image(d);vm(d);image.setup(empty=true)
