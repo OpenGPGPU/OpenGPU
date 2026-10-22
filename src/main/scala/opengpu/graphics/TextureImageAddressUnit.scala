@@ -2,6 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import chisel3.util._
+import opengpu.util.BlockPrefixAdder
 
 case class TextureImageAddressConfig(max2D: Int=16383,max3D: Int=256,maxLayers: Int=256) {
   require(max2D>=1 && max2D<=16383 && max3D>=1 && max3D<=16383)
@@ -117,6 +118,23 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
   a.bytes:=v.blockBytes;a.blockX:=Mux(v.block4x4,q.x(1,0),0.U);a.blockY:=Mux(v.block4x4,q.y(1,0),0.U)
   private val products=Queue(multiply,1,pipe=true,flow=false)
   private val finish=Wire(Decoupled(new TextureImageAddressResult))
+  private def exactSum(terms: Seq[UInt]): UInt={
+    // Enough bits for all original unsigned terms, including rejected views.
+    // Carry-save reduction leaves only one carry-propagating prefix addition.
+    val width=terms.map(_.getWidth).max+log2Ceil(terms.size)
+    var pending=terms.map(_.pad(width))
+    while(pending.size>2){
+      pending=pending.grouped(3).flatMap{group=>
+        if(group.size<3)group else {
+          val Seq(a,b,c)=group
+          val sum=a^b^c;val carry=(((a&b)|(a&c)|(b&c))<<1)(width-1,0)
+          Seq(sum,carry)
+        }
+      }.toSeq
+    }
+    val adder=Module(new BlockPrefixAdder(width));adder.io.a:=pending(0);adder.io.b:=pending(1);adder.io.carryIn:=false.B
+    adder.io.sum
+  }
   // In a composed owner the final wide sums and checks can exceed one
   // cycle. This optional cut preserves full arithmetic and steady throughput;
   // the legacy/default path below retains its three-cycle register placement.
@@ -128,10 +146,11 @@ class TextureImageAddressUnit(p: TextureImageAddressConfig=TextureImageAddressCo
     a.rowPitch:=b.rowPitch;a.rowBytes:=b.rowBytes
     a.planePitch:=Mux(b.target===TextureImageTarget.image3D.U,b.slicePitch,b.layerPitch)
     a.needsPlanePitch:=b.target===TextureImageTarget.image3D.U || b.target===TextureImageTarget.array2D.U || b.target===TextureImageTarget.cube.U
-    a.planeSpan:=b.lastRow.pad(64)+b.rowBytes.pad(64)
-    a.levelEnd:=b.base.pad(64)+a.planeSpan+b.lastSlice.pad(64)+b.lastLayer.pad(64)
-    a.address:=b.base.pad(64)+b.column.pad(64)+b.row.pad(64)+b.slice.pad(64)+b.layer.pad(64)
-    a.selectedEnd:=a.address+b.bytes.pad(64)
+    a.planeSpan:=exactSum(Seq(b.lastRow,b.rowBytes))
+    a.levelEnd:=exactSum(Seq(b.base,b.lastRow,b.rowBytes,b.lastSlice,b.lastLayer))
+    val coordinates=Seq(b.base,b.column,b.row,b.slice,b.layer)
+    a.address:=exactSum(coordinates)
+    a.selectedEnd:=exactSum(coordinates:+b.bytes)
     a.bytes:=b.bytes;a.blockX:=b.blockX;a.blockY:=b.blockY
     val summed=Queue(sum,1,pipe=true,flow=false);val q=summed.bits
     finish.valid:=summed.valid;summed.ready:=finish.ready
