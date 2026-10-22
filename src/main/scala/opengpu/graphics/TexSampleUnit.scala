@@ -7,6 +7,14 @@ import opengpu.core.backend.{VectorCommitRequest, VectorTextureRequest}
 import opengpu.core.backend.issue.ScalarIssuedInstruction
 import opengpu.core.backend.writeback.ScalarCommitRequest
 
+object TexSampleUnit {
+  /** First active lane plus one, retaining the terminal lane for an empty mask.
+    * Encoding a shifted mask avoids a carry chain after priority selection.
+    */
+  private[graphics] def laneAfterFirst(mask: UInt): UInt =
+    PriorityEncoder(Cat(mask, 0.U(1.W)))
+}
+
 /** Execute-side backend for the `tex.sample rd, rs1, rs2` custom instruction
   * (opengpu graphics ISA extension, custom-0 space).
   *
@@ -386,7 +394,7 @@ class TexSampleUnit(
         // lanes enter the lookahead pipeline.
         firstSampleReg := true.B
         requestLane := PriorityEncoder(io.vectorIn.bits.executionMask)
-        prepareLane := PriorityEncoder(io.vectorIn.bits.executionMask) +& 1.U
+        prepareLane := TexSampleUnit.laneAfterFirst(io.vectorIn.bits.executionMask)
         texBaseReg := io.texBase
         texFormatReg := io.texFormat
         wrapClampReg := io.wrapClamp

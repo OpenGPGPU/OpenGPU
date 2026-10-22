@@ -17,3 +17,4 @@ opengpu.graphics.RasterThresholdSetupSpec
 opengpu.graphics.VertexShaderClearLinesSpec
 opengpu.graphics.ShaderUniformLoadUnitSpec
 opengpu.graphics.ShaderUniformExecuteUnitSpec
+opengpu.graphics.TextureLaneStartSpec
