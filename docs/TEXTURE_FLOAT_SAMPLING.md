@@ -204,7 +204,7 @@ registered clamp/split/selection steps move the limiting path to array-layer
 conversion at -136.698 ps. Layer guard extraction, rounding and saturation now
 use separate states. Supplemental STA also finds a -3.147 ps periodic wrap path;
 direct endpoint selection within the proven `[-1,2N]` range removes chained
-modulo/subtraction arithmetic. The final pass retains seven-cycle axis latency,
+modulo/subtraction arithmetic. That historical pass retained seven-cycle axis latency,
 one axis per cycle, numeric semantics and the original clock constraint.
 The updated axis is included in the full-owner screen; earlier byte-exact
 standalone-axis carry applies only to its historical selected-level snapshot.

@@ -32,12 +32,13 @@ allocation bounds cover complete cache lines. Missing array components use
 zero, with W equal to FP32 1 for floating outputs or integer 1 for raw integer
 outputs. Index restart, signed base vertex and instance divisors are unchanged.
 
-Conversion occurs after a registered component-word capture. The normalized
+Conversion uses a [five-stage elastic pipeline](VERTEX_INPUT_PIPELINING.md)
+after registered component-word/format capture. The normalized
 converter repeats the numerator's bit pattern over 64 fractional bits, retaining
 the leading bit, 24 significand bits and rounding guard for denominators up to
 `2^32 - 1`; it uses no divider. Integer conversion retains guard and sticky bits
 for ties-to-even. Cancellation can suppress a captured conversion and drains
-offered reads, accepted responses and held records before reuse.
+offered reads, accepted memory/conversion responses and held records before reuse.
 
 Native typed and binned record offsets, sizes and magic values are unchanged.
 Each attribute format has a dedicated 32-bit wire word; five low bits now carry
