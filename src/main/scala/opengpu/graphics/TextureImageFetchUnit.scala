@@ -154,7 +154,7 @@ private[graphics] class TextureImageFetchDecoder extends Module {
     val in=Flipped(Decoupled(new TextureImageDecodeRequest));val out=Decoupled(new TypedColorDecodeResult)
     val busy=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,offerBlock,waitBlock,select,prepare,decode,respond=Value}
+  private object State extends ChiselEnum {val idle,offerBlock,waitBlock,select,prepare,normalize,decode,respond=Value}
   private val phase=RegInit(State.idle);private val request=Reg(new TextureImageDecodeRequest)
   private val result=Reg(new TypedColorDecodeResult);private val c=RegInit(0.U(2.W))
   private val raw=Reg(UInt(32.W));private val bits=Reg(UInt(6.W));private val encoding=Reg(UInt(4.W))
@@ -169,6 +169,7 @@ private[graphics] class TextureImageFetchDecoder extends Module {
     result.status:=block.io.out.bits.status;phase:=Mux(block.io.out.bits.status===0.U,State.select,State.respond)}
   private val sharedExponent=Reg(UInt(5.W))
   private val preparedValue=Reg(UInt(32.W));private val normalized=Reg(Bool())
+  private val preparedFraction=Reg(UInt(80.W));private val preparedLeading=Reg(UInt(7.W))
   private val mantissa=Reg(UInt(24.W));private val guard=Reg(Bool());private val exponent=Reg(UInt(8.W))
   private val negative=Reg(Bool());private val zero=Reg(Bool())
   private val present=Reg(Bool());private val alpha=Reg(Bool());private val defaultValue=Reg(UInt(32.W))
@@ -201,7 +202,7 @@ private[graphics] class TextureImageFetchDecoder extends Module {
   private val repeated=MuxLookup(fractionBits,0.U(80.W))(Seq(7,10,11,16,24).map{b=>
     val count=(80+b-1)/b;val size=count*b;b.U->Fill(count,numerator(b-1,0))(size-1,size-80)})
   private val leading=PriorityEncoder(Reverse(repeated))
-  private val shifted=(repeated<<leading)(79,0)
+  private val shifted=(preparedFraction<<preparedLeading)(79,0)
   private def miniFloat(n: UInt,fractionBits: Int): UInt={
     val fraction=n(fractionBits-1,0);val e=n(fractionBits+4,fractionBits)
     val leading=PriorityEncoder(Reverse(fraction))
@@ -216,11 +217,15 @@ private[graphics] class TextureImageFetchDecoder extends Module {
   private val sharedValue=Mux(sharedMantissa.orR,
     Cat(0.U(1.W),(111.U(8.W)+sharedExponent-sharedLeading)(7,0),sharedFraction),0.U)
   when(phase===State.prepare){
-    normalized:=encoding===6.U || encoding===9.U || encoding===13.U || encoding===14.U
-    mantissa:=shifted(79,56);guard:=shifted(55);exponent:=126.U-leading
+    val needsNormalization=encoding===6.U || encoding===9.U || encoding===13.U || encoding===14.U
+    normalized:=needsNormalization;preparedFraction:=repeated;preparedLeading:=leading
     zero:=numerator===0.U;negative:=((encoding===6.U && raw(7)) || (encoding===14.U && raw(31))) && numerator=/=0.U
     preparedValue:=Mux(encoding===7.U,Mux(bits===10.U,miniFloat(raw,5),miniFloat(raw,6)),
       Mux(encoding===8.U,sharedValue,decoded))
+    phase:=Mux(needsNormalization,State.normalize,State.decode)
+  }
+  when(phase===State.normalize){
+    mantissa:=shifted(79,56);guard:=shifted(55);exponent:=126.U-preparedLeading
     phase:=State.decode
   }
   private val rounded=mantissa+&guard

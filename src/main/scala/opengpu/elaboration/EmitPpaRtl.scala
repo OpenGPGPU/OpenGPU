@@ -86,6 +86,8 @@ object EmitPpaRtl {
       case "mobile-texture-composed-address" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TextureImageAddressUnit(
           pipelineBounds=true,pipelineProducts=true),stageArgs,firtoolArgs)
+      case "mobile-texture-typed-fetch" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.TextureImageTypedFetchUnit(),stageArgs,firtoolArgs)
       case "mobile-vertex-byte-counter" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.util.CarrySaveAccumulator(64,prefixValue=true),stageArgs,firtoolArgs)
       case "mobile-resource-decode" =>
