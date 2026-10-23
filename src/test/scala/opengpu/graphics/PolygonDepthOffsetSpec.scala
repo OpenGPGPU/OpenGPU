@@ -145,4 +145,35 @@ class PolygonDepthOffsetSpec extends AnyFlatSpec {
       info("POLYGON_OFFSET_DRAIN offeredAndAccepted=true noWithdrawnMath=true acceptedReplyDrains=true noEarlyCompletion=true requestSnapshot=true immutableCompletion=true exactHealthyReuse=true")
     }
   }
+  it should "retain exact signed determinants and rounded coefficients at coordinate boundaries" in {
+    simulate(new PolygonDepthOffsetHarness){d=>val t=new Driver(d)
+      val lo= -(BigInt(1)<<31);val hi=(BigInt(1)<<31)-1
+      val boundaries=Vector(
+        base.copy(x=Vector(lo,hi,lo),y=Vector(lo,lo,lo+1)),
+        base.copy(x=Vector(lo,0,lo),y=Vector(lo,lo,hi)),
+        // Exact -2^63: positive 2^63 would be outside the signed64 contract.
+        base.copy(x=Vector(-2,-4,hi-1),y=Vector(lo,hi-1,0)))
+      for((c,i)<-boundaries.zipWithIndex){
+        val area=(c.x(1)-c.x(0))*(c.y(2)-c.y(0))-(c.y(1)-c.y(0))*(c.x(2)-c.x(0))
+        if(i==2)assert(area== -(BigInt(1)<<63))
+        t.run(c)
+        if(i!=2)t.run(c.copy(x=c.x.reverse,y=c.y.reverse,z=c.z.reverse))
+      }
+      t.offer(boundaries.last.copy(x=boundaries.last.x.reverse,y=boundaries.last.y.reverse));t.finish(status=7,operations=0)
+      t.offer(base.copy(x=Vector(lo,hi,lo),y=Vector(lo,lo,hi),factor=0,units=0));t.finish(status=7,operations=0)
+      t.run(base.copy(z=Vector(BigInt("80000000",16),fp(0.5),fp(1))))
+      info("POLYGON_PIPELINED_GEOMETRY exactSigned64Minimum=true signed33Differences=true bothWindings=true roundedWideCoefficients=true overflowBeforeZeroFactor=true negativeZeroDepth=true")
+    }
+  }
+  it should "cancel every geometry preparation boundary before scalar issue and reuse cleanly" in {
+    simulate(new PolygonDepthOffsetHarness){d=>val t=new Driver(d)
+      for(delay<-0 to 9){
+        val count=d.io.accepted.peek().litValue;t.offer(base)
+        for(_<-0 until delay)t.tick()
+        d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+        t.finish(status=4,operations=0);d.io.accepted.expect(count.U)
+      }
+      t.run(base)
+    }
+  }
 }
