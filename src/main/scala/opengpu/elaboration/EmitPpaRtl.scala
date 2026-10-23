@@ -133,6 +133,8 @@ object EmitPpaRtl {
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ClipFloatStreamingDivider(),stageArgs,firtoolArgs)
       case "mobile-clip-float-streaming-add-mul" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ClipFloatStreamingAddMul(),stageArgs,firtoolArgs)
+      case "mobile-clip-float-weighted-component" =>
+        ChiselStage.emitSystemVerilogFile(new opengpu.graphics.ClipFloatWeightedComponent(),stageArgs,firtoolArgs)
       case "mobile-primitive-clip" =>
         ChiselStage.emitSystemVerilogFile(new opengpu.graphics.PrimitiveClipStage(useSramBlackBoxes=true),stageArgs,firtoolArgs)
       case "mobile-vertex-clip" =>
