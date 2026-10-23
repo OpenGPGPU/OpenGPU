@@ -50,6 +50,10 @@ class CasePartitionsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             plan([suite], {})
 
+    def test_native_reservation_size_changes_the_elaborated_profile(self):
+        case = "carry all64 varying components with oversizeSpill=true"
+        self.assertNotEqual(profile(case), profile(case.replace("true", "false")))
+
     def test_graph_preserves_ordinary_suites_and_every_heavy_case(self):
         heavy = "opengpu.graphics.ExampleHostAxiSpec"
         ordinary = "opengpu.graphics.SimpleSpec"
