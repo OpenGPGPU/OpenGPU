@@ -31,7 +31,7 @@ Use Mali-G31 as an older commercial reference class, rather than treating it as 
 The initial OpenGPU product target is four shared CUs, with a 720p workload suite targeting 30 FPS first and 60 FPS subsequently at a physically qualified clock. Test desktop composition, textured 3D, opaque overdraw, transparent layers, small triangles, and 4x MSAA separately. These targets do not imply measured performance parity with a particular commercial device.
 
 The [wider pixel arithmetic target](STREAMING_PIXEL_ARITHMETIC.md) specifies four
-streaming component lanes and four owned quad contexts per raster engine,
+streaming component lanes and eight owned quad contexts per raster engine,
 replacing serialized component work. The first streaming divider qualifies
 one operation per cycle and 29-cycle latency; streaming add/multiply passes
 one operation per cycle and 11-cycle latency. Both pass 1000 ps component
@@ -41,13 +41,17 @@ prepared components each cycle with 65-cycle row latency; both combined blocks
 pass the same synthesis gate. A four-context prepared-quad owner now sustains
 one full quad every 64 clocks and passes complete 1000 ps synthesis in both
 fresh and parent-reserved admission modes. [Native spatial interpolation](SPATIAL_FRAGMENT_INTERPOLATION.md) connects
-four raw preparation owners to that bank, now with four pixel-lane services per
-owner and sixteen preparation services per raster engine. The bounded raw rate
-improves from four quads per 1,031 clocks to four per 389 clocks, with a
-400-clock regression bound and ordered fault/cancellation drain. Combined
-preparation/owner/raster checks pass; raw preparation, point/line coverage,
-triangle coverage and scalar arithmetic pass component synthesis. The
-complete engine/shared-CU/host clock and product renderer rates remain open.
+eight raw preparation owners to that bank, with four pixel-lane services per
+owner and thirty-two preparation services per raster engine. The bounded
+full64 fixture improves from four quads per 389 clocks at four contexts to
+four per 256 clocks at eight contexts, against a 272-clock regression bound.
+Nine expanded-profile owner/raster checks pass, including ordered rejection,
+cancellation and reset. The four-context baseline passes complete raster/
+interpolation synthesis at 1000 ps; the expanded owner requires its own timing
+and area gate. Raw preparation, point/line coverage, triangle coverage and
+scalar arithmetic retain their component qualifications. Complete engine/
+shared-CU/host timing, payload bandwidth, four-CU fragment concurrency and
+product renderer rates remain open.
 
 The hardware contract must cover shader execution, geometry, texture resources, rasterization, framebuffer operations, synchronization and faults. Display scanout remains a consumer of completed images. Its refresh rate is separate from rendering throughput.
 
