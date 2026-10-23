@@ -276,7 +276,11 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
         faultInstance:=inputQuad.values.instanceId;faultPart:=inputQuad.values.partIndex}}
   }
   when(io.inputEnd.fire){inputDone:=true.B
-    when(io.inputEnd.bits.identity.asUInt=/=draw.identity.asUInt || io.inputEnd.bits.quads=/=received+io.in.fire.asUInt){fail(6.U,7.U,0.U)}
+    // Select between complete comparisons so the late response/fault-to-ready
+    // path does not feed the carry input of a 99-bit EOF count addition.
+    val countMatches=Mux(io.in.fire,io.inputEnd.bits.quads===(received+1.U),
+      io.inputEnd.bits.quads===received)
+    when(io.inputEnd.bits.identity.asUInt=/=draw.identity.asUInt || !countMatches){fail(6.U,7.U,0.U)}
     .elsewhen(io.inputEnd.bits.status=/=0.U){fail(io.inputEnd.bits.status,7.U,0.U)}
   }
   private def mask(offset: UInt,bytes: UInt): UInt=(((~0.U(64.W))>>(64.U(7.W)-bytes))<<offset)(63,0)
