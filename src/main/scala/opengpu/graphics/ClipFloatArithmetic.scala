@@ -130,10 +130,21 @@ class ClipFloatArithmetic(tagWidth: Int=8) extends Module {
   }
   private val alignmentLost=a.special===0.U && b.special===0.U && !aZero && !bZero &&
     ((common-a.exponent)>26.S || (common-b.exponent)>26.S)
+  private val exactPowerTwoDivide=isDivide && a.special===0.U && !aZero &&
+    b.special===0.U && b.significand==="h800000".U
+  private val scaledExponent=a.exponent.pad(14)-b.exponent.pad(14)
   when(phase===prepare) {
     when(!ClipFloat.legal(a) || !ClipFloat.legal(b) || request.operation>ClipFloatOperation.addTowardZero.U) {
       value:=ClipFloat.zero;error:=1.U;phase:=pack
     }.elsewhen(cancelled || io.cancel){value:=ClipFloat.zero;phase:=pack}
+      .elsewhen(exactPowerTwoDivide){
+        // Dividing a normalized finite significand by exactly one is exact;
+        // only its sign and extended exponent change. Keep the normal pack
+        // and response states, including range errors and cancellation.
+        value:=a;value.negative:=a.negative^b.negative;value.exponent:=scaledExponent
+        when(scaledExponent<(-512).S || scaledExponent>511.S){value:=ClipFloat.zero;error:=2.U}
+        phase:=pack
+      }
       .otherwise {
         coreRequest:=0.U.asTypeOf(coreRequest);coreRequest.tag:=request.tag
         coreRequest.roundingMode:=Mux(isTowardZero,1.U,0.U)

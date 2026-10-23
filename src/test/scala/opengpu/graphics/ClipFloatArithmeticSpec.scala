@@ -157,6 +157,39 @@ class ClipFloatArithmeticSpec extends AnyFlatSpec {
     }
   }
 
+  it should "scale exact signed power-of-two divisions without iterative latency or ownership changes" in {
+    simulate(new ClipFloatArithmetic()){d=>val t=new Driver(d);var checks=0;var maxLatency=0
+      for((ae,be)<-Seq((-512,511),(-149,0),(-126,1),(0,0),(127,-1),(511,-512));
+          sig<-Seq(0x800000,0x800001,0xabcdef,0xffffff);as<-Seq(false,true);bs<-Seq(false,true)){
+        val a=E(as,ae,sig);val b=E(bs,be,0x800000);val (expected,flags)=reference(a,b,3)
+        val start=t.cycle;t.offer(a,b,3);t.until(d.io.out.valid.peek().litToBoolean)
+        val latency=t.cycle-start;maxLatency=maxLatency.max(latency)
+        assert(latency<=4,s"exact scaling took $latency cycles");assert(flags==0)
+        val range=expected.exponent< -512 || expected.exponent>511
+        t.response(if(range)E()else expected,Some(flags),if(range)2 else 0);checks+=1
+      }
+      for(bs<-Seq(false,true)){
+        t.offer(E(true),E(bs,2,0x800000),3);t.response(E(!bs),Some(0))
+      }
+      t.offer(E(false,0,0x400000,2),E(false,2,0x800000),3)
+      t.response(E(false,0,0x400000,2),Some(16))
+      for((a,b)<-Seq((E(false,512,0x800000),E(false,2,0x800000)),
+          (E(false,-513,0x800000),E(false,2,0x800000)),(E(false,0,0x800000),E(false,512,0x800000)))){
+        t.offer(a,b,3);t.response(E(),Some(0),1)
+      }
+      val a=E(true,7,0xabcdef);val b=E(true,2,0x800000);val (value,flags)=reference(a,b,3)
+      t.offer(a,b,3);d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      t.response(E(),Some(0),cancelled=true)
+      t.offer(a,b,3);t.tick();d.io.cancel.poke(true.B);t.tick();d.io.cancel.poke(false.B)
+      t.response(value,Some(flags),cancelled=true)
+      t.offer(a,b,3);t.until(d.io.out.valid.peek().litToBoolean);val held=d.io.out.bits.peek().litValue
+      d.io.cancel.poke(true.B);for(_<-0 until 7){t.tick();assert(d.io.out.bits.peek().litValue==held)}
+      d.io.cancel.poke(false.B);t.response(value,Some(flags))
+      t.run(decode(BigInt("3f800000",16)),decode(BigInt("40400000",16)),3);t.run(a,b,3)
+      info(s"CLIP_POWER_TWO rationalChecks=$checks maxRequestToOutputCycles=$maxLatency signedDivisor=true extendedRangeErrors=true gradualPacking=true zeroAndNaNFallback=true invalidOperandsRejected=true snapshots=true cancelBeforeAndAfterScale=true heldResponse=true healthyGeneralDivide=true")
+    }
+  }
+
   it should "retain tiny crossing contributions and separately report final FP32 packing loss" in {
     simulate(new ClipFloatArithmetic()) { d=>
       val t=new Driver(d);val small=decode(1);val large=decode(BigInt("7f7fffff",16))
