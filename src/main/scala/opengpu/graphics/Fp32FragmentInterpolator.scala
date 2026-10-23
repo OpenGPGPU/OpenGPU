@@ -101,7 +101,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     val prepared=if(prepareOnly)Some(Decoupled(new PreparedFragmentInterpolation(p,g)))else None
   })
   private object State extends ChiselEnum {
-    val idle,validate,initialize,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerAbsolute,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
+    val idle,edgeCheck,validate,initialize,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerAbsolute,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
       pointX,pointY,pointValue,pointAbsolute,pointNormalize,pointValueConvert,pointResidual,pointResidualConvert,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
       sampleSelect,sampleTerms,sampleSum,sampleAbsolute,sampleMagnitude,sampleNormalize,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
@@ -162,24 +162,28 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     for((edge,i)<-Seq(s.e0,s.e1,s.e2).zipWithIndex)adder.io.terms(i):=edge.pad(66).asUInt
     adder.io.sum(65,0).asSInt
   }
+  private val validationEdgeParts=Reg(Vec(4,UInt(5.W)))
+  private val validationAreaParts=Reg(Vec(4,UInt(4.W)))
+  private val validationNonzeroParts=Reg(Vec(4,UInt(4.W)))
   private def prefixDifference(a: SInt,b: SInt): SInt={
     val adder=Module(new BlockPrefixAdder(65))
     adder.io.a:=a.pad(65).asUInt;adder.io.b:= ~b.pad(65).asUInt;adder.io.carryIn:=true.B
     adder.io.sum(64,0).asSInt
   }
   private def negationCarries(value: SInt): UInt={
-    require(value.getWidth==65)
-    Cat((1 to 4).reverse.map(i=> !value(i*16-1,0).asUInt.orR))
+    val groups=(value.getWidth+15)/16
+    Cat((1 until groups).reverse.map(i=> !value(i*16-1,0).asUInt.orR))
   }
-  private def signedGradient(value: SInt,positive: Bool,carries: UInt): SInt={
-    val bits=value.asUInt
-    val negated=Cat((0 until 5).reverse.map { i=>
-      val lo=i*16;val size=math.min(16,65-lo)
+  private def negatedParts(value: SInt,carries: UInt): SInt={
+    val bits=value.asUInt;val width=value.getWidth
+    Cat((0 until (width+15)/16).reverse.map { i=>
+      val lo=i*16;val size=math.min(16,width-lo)
       val carry=if(i==0)true.B else carries(i-1)
       ((~bits(lo+size-1,lo))+carry.asUInt)(size-1,0)
     }).asSInt
-    Mux(positive,value,negated)
   }
+  private def signedGradient(value: SInt,positive: Bool,carries: UInt): SInt=
+    Mux(positive,value,negatedParts(value,carries))
   private val scaledX=Wire(Vec(3,SInt(sampleEdgeWidth.W)));private val scaledY=Wire(Vec(3,SInt(sampleEdgeWidth.W)))
   private val summedEdges=Wire(Vec(3,SInt(sampleEdgeWidth.W)))
   for(i<-0 until 3){
@@ -201,7 +205,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private val safeSampleEdges=sampleEdges.map(e=>e===e(63,0).asSInt).reduce(_ && _)
   private val area=Reg(new ClipFloat);private val areaMagnitude=Reg(UInt(64.W));private val areaNegative=Reg(Bool())
   private val areaRounding=Reg(new FragmentEdgeRounding)
-  private val nextAreaMagnitude=FragmentEdgeFloat.magnitude(input.quad.lanes(0).area)
+  private val areaCarry=Reg(UInt(3.W))
   private val edgeMagnitudes=Reg(Vec(3,UInt(64.W)));private val edgeNegatives=Reg(Vec(3,Bool()))
   private val edgeRounding=Reg(Vec(3,new FragmentEdgeRounding))
   // The magnitude registers first hold raw signed bits, then their absolute
@@ -324,17 +328,37 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     switch(phase) {
       is(State.idle){when(io.in.fire) {
         input:=io.in.bits;output:=0.U.asTypeOf(output);status:=0.U;faultLane:=0.U;exported:=false.B;invalidHelpers:=0.U
-        operations:=0.U;arithmeticFlags:=0.U;packingFlags:=0.U;lane:=0.U;phase:=State.validate
+        operations:=0.U;arithmeticFlags:=0.U;packingFlags:=0.U;lane:=0.U;phase:=State.edgeCheck
         if(prepareOnly){
           preparation.get:=0.U.asTypeOf(preparation.get);preparationCentroid.get:=VecInit(Seq.fill(4)(false.B))
           laneStarted.get:=false.B;laneOperations.get:=0.U;laneArithmetic.get:=0.U;lanePacking.get:=0.U
         }
       }}
+      // Keep full signed66 conservation checks, but register short equality
+      // groups before combining them with metadata and driving fault state.
+      is(State.edgeCheck){
+        for(i<-0 until 4){
+          val bits=input.quad.lanes(i).area.asUInt
+          val common=input.quad.lanes(0).area.asUInt
+          val sum=validationEdgeSums(i).asUInt
+          val area=input.quad.lanes(i).area.pad(66).asUInt
+          validationEdgeParts(i):=VecInit((0 until 5).map { j=>
+            val lo=j*16;val hi=math.min(66,lo+16)-1
+            sum(hi,lo)===area(hi,lo)
+          }).asUInt
+          validationAreaParts(i):=VecInit((0 until 4).map(j=>bits(j*16+15,j*16)===common(j*16+15,j*16))).asUInt
+          validationNonzeroParts(i):=VecInit((0 until 4).map(j=>bits(j*16+15,j*16).orR)).asUInt
+        }
+        areaMagnitude:=input.quad.lanes(0).area.asUInt
+        areaCarry:=negationCarries(input.quad.lanes(0).area)
+        areaNegative:=input.quad.lanes(0).area<0.S
+        phase:=State.validate
+      }
       is(State.validate){
         gradientX:=nextGradientX;gradientY:=nextGradientY
         depthPairMinimum:=Mux(depth0<depth1,depth0,depth1)
         depthPairMaximum:=Mux(depth0>depth1,depth0,depth1)
-        areaMagnitude:=nextAreaMagnitude;areaNegative:=input.quad.lanes(0).area<0.S
+        areaMagnitude:=Mux(areaNegative,negatedParts(areaMagnitude.asSInt,areaCarry).asUInt,areaMagnitude)
         val topology=MuxLookup(primitive.kind,false.B)(Seq(0.U->(primitive.topology===0.U),1.U->(primitive.topology>=1.U && primitive.topology<=3.U),2.U->(primitive.topology>=4.U && primitive.topology<=6.U)))
         val metadata=primitive.kind<=2.U && primitive.vertexCount===primitive.kind+&1.U && topology &&
           primitive.provokingVertex<primitive.vertexCount && primitive.varyingSlots<=p.varyings.U && !(primitive.flatMask>>(primitive.varyingSlots<<2)).orR &&
@@ -356,7 +380,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         }.reduce(_ && _)
         val sampleModeLegal=input.sampleMode<=log2Ceil(g.maxSampleCount).U && (input.sampleMode===0.U || (g.subPixelBits>=2).B)
         val samples=(0 until 4).map { i=>val s=input.quad.lanes(i)
-          s.area=/=0.S && s.area===input.quad.lanes(0).area && validationEdgeSums(i)===s.area.pad(66) && s.covered===s.coverageMask.orR && (!(input.sampleDepthEnable || input.centroidMask.orR) || !(s.coverageMask>>(1.U(3.W)<<input.sampleMode)).orR)
+          validationNonzeroParts(i).orR && validationAreaParts(i).andR && validationEdgeParts(i).andR && s.covered===s.coverageMask.orR && (!(input.sampleDepthEnable || input.centroidMask.orR) || !(s.coverageMask>>(1.U(3.W)<<input.sampleMode)).orR)
         }.reduce(_ && _)
         val offsetValid=ClipFloat.legal(input.depthOffset) && input.depthOffset.special===0.U &&
           (!input.depthOffset.significand.orR || primitive.kind===2.U)
