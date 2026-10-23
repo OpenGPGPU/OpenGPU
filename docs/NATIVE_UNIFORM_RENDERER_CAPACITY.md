@@ -67,9 +67,10 @@ sbt -J-Xmx6G -Dopengpu.simJobs=1 -Dopengpu.simHierarchy=GpuComputeUnit \
 
 This qualifies the stated typed renderer configurations at two and four CUs.
 It does not establish four-way occupancy/scaling, complete product or
-full-capacity binned runtime, nonconstant varying
-interpolation, mixed centroid/flat qualifiers, concurrent reset/remapping,
+full-capacity binned runtime, nonunit-W full-width perspective, mixed centroid/flat qualifiers, concurrent reset/remapping,
 general context/cache coherence, rate budgets or an enclosing renderer clock.
+[Full-width native affine checks](NATIVE_FULL_VARYING_INTERPOLATION.md) separately
+cover nonconstant triangle values in every fragment lane at 1×/4× MSAA.
 The [concurrent stage checks](NATIVE_UNIFORM_CONCURRENT_CAPACITY.md),
 [compact translated host checks](NATIVE_UNIFORM_HOST_OWNERSHIP.md) and
 [component timing](NATIVE_UNIFORM_BINDINGS.md) retain their separate scopes.
