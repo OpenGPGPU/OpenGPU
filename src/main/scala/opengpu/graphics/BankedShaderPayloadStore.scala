@@ -96,8 +96,9 @@ private class ScheduledShaderPayloadOperation(p: ShaderPayloadConfig) extends Bu
   * into characterized <=256-row arrays. Masked writes read/modify/write under
   * the same global operation owner; no uncharacterized byte-write SRAM port is
   * assumed. A two-entry ordered admission queue overlaps accepted lines with
-  * the three-phase SRAM service. Reply credits cover queued, active and held
-  * operations; physical line service remains serialized.
+  * the SRAM service. Queued operations hand off at completion, sustaining
+  * one read/modify/write every two clocks. Reply credits cover queued, active
+  * and held operations; physical line service remains serialized.
   *
   * Allocation reserves the complete input/output slot. Background zeroing is
   * fairly arbitrated with live traffic, and matching accesses wait for it.
@@ -273,7 +274,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
   pendingOperations.io.enq.bits.fault:= !offeredMatches || canceled(offeredSlot) ||
     (!scheduled.io.out.bits.initialize && !offeredBounds)
   when(scheduled.io.out.fire && scheduled.io.out.bits.initialize){initializerQueued(offeredSlot):=true.B}
-  pendingOperations.io.deq.ready:=state===State.idle
+  pendingOperations.io.deq.ready:=state===State.idle || state===State.complete
   when(pendingOperations.io.deq.fire){
     val next=pendingOperations.io.deq.bits
     operation:=next.operation;operationPort:=next.port;operationSlot:=next.slot
@@ -326,7 +327,7 @@ class BankedShaderPayloadStore(p: ShaderPayloadConfig=ShaderPayloadConfig(),useB
     when(enq.valid) {assert(enq.ready,"accepted payload operation must retain reply capacity")}
   }
   when(state===State.complete) {
-    state:=State.idle
+    state:=Mux(pendingOperations.io.deq.fire,State.memory,State.idle)
     when(operation.initialize){initializerQueued(heldSlot):=false.B}
     when(operation.initialize && validOperation) {
       when(initLine(heldSlot)===(p.slotLines-1).U) {
