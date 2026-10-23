@@ -39,7 +39,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
     val in=Flipped(Decoupled(new PointLineRasterRequest));val out=Decoupled(new RasterQuad(g))
     val cancel=Input(Bool());val busy=Output(Bool());val fault=Output(Bool())
   })
-  private object State extends ChiselEnum {val idle,decode,measure,lengthProducts,lengthSum,bounds,clipBounds,admitBounds,threshold,waitThreshold,startQuad,startLane,laneProducts,laneParameter,laneRemaining,laneRemainingCarry,laneExport,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
+  private object State extends ChiselEnum {val idle,decode,measure,lengthProducts,lengthSum,bounds,clipBounds,admitBounds,threshold,waitThreshold,startQuad,startLane,laneParts,laneProducts,laneParameter,laneRemaining,laneRemainingCarry,laneExport,sample,sampleStream,diamondSetup,diamondParts,diamondReduce,diamondResolve,diamondApply,nextSample,nextLane,emit,advance=Value}
   private class GroupCarries(width: Int) extends Bundle {
     val generate=UInt(((width-1)/16).W);val propagate=UInt(((width-1)/16).W)
   }
@@ -107,6 +107,7 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
   private val laneOperandWidth=math.max(33,math.max(laneEx.getWidth,laneEy.getWidth))
   private val laneProductWidth=2*laneOperandWidth;private val laneParameterWidth=laneProductWidth+1
   private val laneRemainingWidth=math.max(67,laneParameterWidth)+1
+  private val laneOffsetX=Reg(SInt(laneOperandWidth.W));private val laneOffsetY=Reg(SInt(laneOperandWidth.W))
   private val lanePartsX=Reg(new SignedProductParts(laneOperandWidth))
   private val lanePartsY=Reg(new SignedProductParts(laneOperandWidth))
   private val laneProductX=Reg(SInt(laneProductWidth.W));private val laneProductY=Reg(SInt(laneProductWidth.W))
@@ -302,10 +303,13 @@ class PointLineRasterizer(g: GraphicsConfig=GraphicsConfig()) extends Module {
         val o=output.lanes(lane);o.x:=px.zext;o.y:=py.zext;o.area:=1.S;o.e0:=1.S;o.e1:=0.S;o.e2:=0.S
         beginSamples()
       }.otherwise{
-        lanePartsX:=SplitSignedProduct.split(laneEx.pad(laneOperandWidth),dx.pad(laneOperandWidth))
-        lanePartsY:=SplitSignedProduct.split(laneEy.pad(laneOperandWidth),dy.pad(laneOperandWidth))
-        phase:=State.laneProducts
+        laneOffsetX:=laneEx;laneOffsetY:=laneEy;phase:=State.laneParts
       }
+    }
+    is(State.laneParts){
+      lanePartsX:=SplitSignedProduct.split(laneOffsetX,dx.pad(laneOperandWidth))
+      lanePartsY:=SplitSignedProduct.split(laneOffsetY,dy.pad(laneOperandWidth))
+      phase:=State.laneProducts
     }
     is(State.laneProducts){laneProductX:=joinedLaneX;laneProductY:=joinedLaneY;phase:=State.laneParameter}
     is(State.laneParameter){laneParameter:=laneSum.io.sum(laneParameterWidth-1,0).asSInt;phase:=State.laneRemaining}
