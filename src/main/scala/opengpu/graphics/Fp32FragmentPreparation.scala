@@ -27,8 +27,15 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
     preparation.io.cancel := io.cancel
     io.busy := preparation.io.busy
   } else {
+    // All four lanes admit and retire together. Capture the immutable raw
+    // request once; each lane first consumes it in edgeCheck on the next cycle.
+    val snapshot = Reg(new FragmentInterpolationRequest(p,g))
+    when(io.in.fire) {
+      assert(!io.busy, "shared preparation input changed while lanes still owned it")
+      snapshot := io.in.bits
+    }
     val lanes = Seq.tabulate(4)(i => Module(new Fp32FragmentInterpolator(p, g,
-      prepareOnly = true, preparationLane = Some(i))))
+      prepareOnly = true, preparationLane = Some(i), sharedPreparationInput = true)))
     val ready = VecInit(lanes.map(_.io.in.ready)).asUInt.andR
     val valid = VecInit(lanes.map(_.io.prepared.get.valid)).asUInt.andR
     val prepared = lanes.map(_.io.prepared.get.bits)
@@ -38,6 +45,7 @@ class Fp32FragmentPreparation(p: VertexShaderStageConfig = VertexShaderStageConf
     for(stage <- lanes) {
       stage.io.in.valid := io.in.valid && ready
       stage.io.in.bits := io.in.bits
+      stage.io.sharedInput.get := snapshot
       stage.io.prepared.get.ready := io.out.ready && valid
       stage.io.out.ready := false.B
       stage.io.completion.ready := false.B
