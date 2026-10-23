@@ -103,7 +103,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private object State extends ChiselEnum {
     val idle,edgeCheck,validate,initialize,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerAbsolute,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
       pointX,pointY,pointValue,pointAbsolute,pointNormalize,pointValueConvert,pointResidual,pointResidualConvert,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
-      sampleSelect,sampleTerms,sampleSum,sampleAbsolute,sampleMagnitude,sampleNormalize,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
+      sampleSelect,sampleTerms,sampleReduce,sampleSum,sampleAbsolute,sampleMagnitude,sampleNormalize,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val input=Reg(new FragmentInterpolationRequest(p,g))
   private val output=Reg(new Fp32InterpolatedQuad(p,g));private val result=Reg(new FragmentInterpolationCompletion)
@@ -198,6 +198,11 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private def signedGradient(value: SInt,positive: Bool,carries: UInt): SInt=
     Mux(positive,value,negatedParts(value,carries))
   private val scaledX=Wire(Vec(3,SInt(sampleEdgeWidth.W)));private val scaledY=Wire(Vec(3,SInt(sampleEdgeWidth.W)))
+  private val sampleGroups=(sampleEdgeWidth+15)/16
+  private val sampleGenerate=Reg(Vec(3,UInt((sampleGroups-1).W)))
+  private val samplePropagate=Reg(Vec(3,UInt((sampleGroups-1).W)))
+  private val reducedSum=Wire(Vec(3,UInt(sampleEdgeWidth.W)))
+  private val reducedCarry=Wire(Vec(3,UInt(sampleEdgeWidth.W)))
   private val summedEdges=Wire(Vec(3,SInt(sampleEdgeWidth.W)))
   for(i<-0 until 3){
     val a=input.primitive.vertices((i+1)%3);val b=input.primitive.vertices((i+2)%3)
@@ -211,9 +216,17 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       if(i==0)sample(0)^line else sample(0),sampleCarryX(i))<<quarterShift
     scaledY(i):=signedGradient(sampleY(i)(64,0).asSInt,
       if(i==1)positiveY^line else positiveY,sampleCarryY(i))<<quarterShift
-    val adder=Module(new CarrySavePrefixSum(sampleEdgeWidth))
-    adder.io.terms(0):=sampleCenter(i).asUInt;adder.io.terms(1):=sampleX(i).asUInt;adder.io.terms(2):=sampleY(i).asUInt
-    summedEdges(i):=adder.io.sum(sampleEdgeWidth-1,0).asSInt
+    val center=sampleCenter(i).asUInt;val x=sampleX(i).asUInt;val y=sampleY(i).asUInt
+    reducedSum(i):=center^x^y
+    reducedCarry(i):=(((center&x)|(center&y)|(x&y))<<1)(sampleEdgeWidth-1,0)
+    var carry: Bool=false.B
+    val parts=(0 until sampleGroups).map { j=>
+      val lo=j*16;val size=math.min(16,sampleEdgeWidth-lo)
+      val part=(x(lo+size-1,lo)+&y(lo+size-1,lo)+carry.asUInt)(size-1,0)
+      if(j<sampleGroups-1)carry=sampleGenerate(i)(j) || (samplePropagate(i)(j) && carry)
+      part
+    }
+    summedEdges(i):=Cat(parts.reverse).asSInt
   }
   private val safeSampleEdges=sampleEdges.map(e=>e===e(63,0).asSInt).reduce(_ && _)
   private val area=Reg(new ClipFloat);private val areaMagnitude=Reg(UInt(64.W));private val areaNegative=Reg(Bool())
@@ -572,6 +585,19 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         sampleX:=scaledX;sampleY:=scaledY
         for(v<-0 until 3)sampleCenter(v):=centerEdges(v)
         when(primitive.kind===1.U){sampleCenter(2):=0.S}
+        phase:=State.sampleReduce
+      }
+      // Carry-save reduction and short generate/propagate groups precede
+      // final carry propagation. The signed full-width sum is unchanged.
+      is(State.sampleReduce){
+        for(i<-0 until 3){
+          val a=reducedSum(i);val b=reducedCarry(i)
+          sampleGenerate(i):=VecInit((0 until sampleGroups-1).map { j=>
+            (a(j*16+15,j*16)+&b(j*16+15,j*16))(16)
+          }).asUInt
+          samplePropagate(i):=VecInit((0 until sampleGroups-1).map(j=>(a(j*16+15,j*16)^b(j*16+15,j*16)).andR)).asUInt
+          sampleX(i):=a.asSInt;sampleY(i):=b.asSInt
+        }
         phase:=State.sampleSum
       }
       is(State.sampleSum){sampleEdges:=summedEdges;phase:=State.sampleAbsolute}
