@@ -218,10 +218,16 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     memoryArbiter.io.in(i).bits.transactionId:=(if(i==0)source.bits.transactionId else 2.U+source.bits.transactionId);source.ready:=memoryArbiter.io.in(i).ready
   }
   memoryQueue.io.enq<>memoryArbiter.io.out;io.memoryRequest<>memoryQueue.io.deq
-  private val tag=io.memoryResponse.bits.transactionId
-  fallbackResponse.valid:=io.memoryResponse.valid && tag<2.U;fallbackResponse.bits:=io.memoryResponse.bits;fallbackResponse.bits.transactionId:=tag
-  texture.io.memoryResponse.valid:=io.memoryResponse.valid && tag>=2.U;texture.io.memoryResponse.bits:=io.memoryResponse.bits;texture.io.memoryResponse.bits.transactionId:=tag-2.U
-  io.memoryResponse.ready:=Mux(tag<2.U,fallbackResponse.ready,texture.io.memoryResponse.ready)
+  // Retain accepted replies before tag routing and fault/texture control.
+  // Pending transaction ownership is released by the routed consumer, so a
+  // queued response remains owned through backpressure and cancellation.
+  private val memoryResponses=Module(new Queue(new ComputeMemoryResponse(64,4),2))
+  memoryResponses.io.enq<>io.memoryResponse
+  private val memoryReply=memoryResponses.io.deq
+  private val tag=memoryReply.bits.transactionId
+  fallbackResponse.valid:=memoryReply.valid && tag<2.U;fallbackResponse.bits:=memoryReply.bits;fallbackResponse.bits.transactionId:=tag
+  texture.io.memoryResponse.valid:=memoryReply.valid && tag>=2.U;texture.io.memoryResponse.bits:=memoryReply.bits;texture.io.memoryResponse.bits.transactionId:=tag-2.U
+  memoryReply.ready:=Mux(tag<2.U,fallbackResponse.ready,texture.io.memoryResponse.ready)
   io.shared<>shader.io.shared.get
   shader.io.instructionSatp:=0.U;shader.io.vectorSatp:=0.U;shader.io.instructionTlbFlush:=0.U.asTypeOf(shader.io.instructionTlbFlush);shader.io.vectorTlbFlush:=0.U.asTypeOf(shader.io.vectorTlbFlush)
   shader.io.memoryRequest.ready:=true.B;shader.io.memoryResponse.valid:=false.B;shader.io.memoryResponse.bits:=0.U.asTypeOf(shader.io.memoryResponse.bits)
@@ -372,7 +378,7 @@ class FragmentShaderStage(config: GpuConfig=GpuConfig(),p: FragmentShaderConfig=
     leaseActive:=false.B;allocationStarted:=false.B;allocationPrepared:=false.B;finishStarted:=false.B;resident:=false.B
     count:=0.U;helperQuads.foreach(_:=0.U);phase:=Mux(stop,State.drain,State.collect)
   }
-  private val memoryDrained= !memOffered && !memPending.asUInt.orR && !memoryQueue.io.deq.valid
+  private val memoryDrained= !memOffered && !memPending.asUInt.orR && !memoryQueue.io.deq.valid && !memoryResponses.io.deq.valid
   private val controlsDrained= !allocationOffered && (!allocationStarted || allocationPrepared) &&
     !invalidateOffered && !invalidatePending && !launchOffered && !kernelActive && textureDrained
 
