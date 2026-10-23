@@ -109,8 +109,8 @@ jobs:
         # Chisel elaboration. Parallelism comes from the matrix, not sbt.
         SUITES=$(bash scripts/ci_shard_tests.sh suites "${{ matrix.shard }}" "${{ needs.select.outputs.selected }}")
         if [ -z "$SUITES" ]; then
-          echo "Shard ${{ matrix.shard }} has no suites for this selection; skipping"
-          exit 0
+          echo "Selected shard ${{ matrix.shard }} has no suites" >&2
+          exit 1
         fi
         echo "Running: $SUITES"
         # GpuComputeUnit shards compile repeated CUs as a hierarchy library.
@@ -137,7 +137,10 @@ jobs:
           echo "Simulation flags: $FLAGS"
         fi
         # shellcheck disable=SC2086
-        sbt -Dopengpu.productQualification=0 $FLAGS 'set Test / parallelExecution := false' "testOnly $SUITES"
+        set -o pipefail
+        sbt -Dopengpu.productQualification=0 $FLAGS 'set Test / parallelExecution := false' \
+          'set Test / logBuffered := false' "testOnly $SUITES" 2>&1 | tee "$RUNNER_TEMP/regression-tests.log"
+        python3 scripts/check_pr_test_results.py "$RUNNER_TEMP/regression-tests.log" >> "$GITHUB_STEP_SUMMARY"
 
   dependency-graph:
     runs-on: ubuntu-latest

@@ -12,6 +12,9 @@ The required `ci-ok` gate also checks that the PR is ready for review and that
 the tested head is still current. Drafts therefore receive test feedback while
 remaining ineligible to merge. Marking a PR ready triggers fresh validation.
 Broad integration regressions run in the separate regression workflow.
+Each selected regression shard streams test output and records its completed
+ScalaTest count in the job summary. An unexpectedly empty shard or an empty,
+incomplete, failed, canceled or pending ScalaTest run fails validation.
 
 ## Regression simulation builds
 
