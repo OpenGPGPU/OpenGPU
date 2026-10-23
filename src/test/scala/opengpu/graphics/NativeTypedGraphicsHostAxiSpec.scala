@@ -2,7 +2,7 @@ package opengpu.graphics
 
 import chisel3._
 import opengpu.command.GpuCommandOpcode
-import opengpu.config.GpuConfig
+import opengpu.config.{GpuConfig,MobileGpuConfig}
 import opengpu.system.{GpuHostSystemAxi,GpuHostTestSupport}
 import opengpu.testutil.GpuSim._
 import org.scalatest.flatspec.AnyFlatSpec
@@ -21,11 +21,13 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   protected def shaderAvailabilityFaults: Boolean=false
   protected def transformFeedbackRecovery: Boolean=false
   protected def uniformRendererCapacity: Boolean=false
+  protected def uniformRendererFullCaches: Boolean=false
   protected def groupedTexture: Boolean=false
   protected def nativeComputeUnits: Int=2
   protected def capturedFloatingFormats: Seq[Int]=0 until 64
   protected def capturedDefaultFormat: Int=35
-  private val gpu=GpuConfig(lanes=if(uniformRendererCapacity)16 else 4,warps=if(uniformRendererCapacity)8 else 2,l2Sets=8,l2Ways=2)
+  private val gpu=if(uniformRendererFullCaches)MobileGpuConfig().execution else
+    GpuConfig(lanes=if(uniformRendererCapacity)16 else 4,warps=if(uniformRendererCapacity)8 else 2,l2Sets=8,l2Ways=2)
   private val stride=4*gpu.lanes*gpu.warps
   private val attributeSlots=if(uniformRendererCapacity)16 else 2
   private val varyingSlots=if(uniformRendererCapacity)16 else 1
@@ -283,10 +285,15 @@ class NativeTypedGraphicsHostAxiSpec extends AnyFlatSpec with GpuHostTestSupport
   for(fullVaryingProbe<-if(uniformRendererCapacity)Seq(false,true)else Seq(false);local<-Seq(true,false))
   it should (if(fullVaryingProbe)s"consume all sixty-four varying components in 128 native fragment invocations local=$local"
     else s"retain native uniform table ownership through translated frames and denied data pages local=$local") in {
+    require(!uniformRendererFullCaches || (uniformRendererCapacity && nativeComputeUnits==4 &&
+      gpu==MobileGpuConfig().execution),"full-cache uniform checks require the four-CU mobile execution profile")
     simulate(new GpuHostSystemAxi(graphics,gpu,numComputeUnits=nativeComputeUnits,fragCore=true,sharedGraphics=true,parallelGraphics=true,
-      memoryAxiDataBytes=32,instructionCacheSets=4,instructionCacheWays=1,vectorCacheSets=4,vectorCacheWays=1,
+      memoryAxiDataBytes=32,instructionCacheSets=if(uniformRendererFullCaches)64 else 4,
+      instructionCacheWays=if(uniformRendererFullCaches)2 else 1,
+      vectorCacheSets=if(uniformRendererFullCaches)64 else 4,vectorCacheWays=if(uniformRendererFullCaches)2 else 1,
       exposePerformance=true,typedGraphics=Some(profile(local)))){d=>
       initialize(d);val image=new Image(d)
+      if(uniformRendererFullCaches)info(s"NATIVE_UNIFORM_FOUR_CU_CACHES CUs=$nativeComputeUnits lanes=${gpu.lanes} warps=${gpu.warps} L2Bytes=${gpu.l2Sets*gpu.l2Ways*64} L2StoreEntries=${gpu.l2StoreEntries} privateCacheSets=64 privateCacheWays=2 localPoolEnabled=$local")
       for((word,i)<-Vector[BigInt](BigInt("47554301",16),16,1,127,3,12,24).zipWithIndex)
         assert(axiRead(d,0x3a0+i*4)==word,s"typed GUC1 word $i differs")
       axiWrite(d,GpuCommandMmioRegs.VECTOR_SATP,0x80000030);axiWrite(d,GpuCommandMmioRegs.INSTRUCTION_SATP,0x80000030)
