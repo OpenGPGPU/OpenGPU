@@ -103,7 +103,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
   private object State extends ChiselEnum {
     val idle,validate,initialize,areaNormalize,areaRound,depthDifference,saveDepthDifference,startLane,centerNormalize,centerRound,weight,saveWeight,sumWeight,addWeight,reciprocal,saveReciprocal,
       pointX,pointY,pointValue,pointAbsolute,pointNormalize,pointValueConvert,pointResidual,pointResidualConvert,pointDivide,pointOffset,pointSave,sampleDepth,startCentroid,centroidEdges,
-      sampleTerms,sampleSum,sampleAbsolute,sampleNormalize,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
+      sampleSelect,sampleTerms,sampleSum,sampleAbsolute,sampleNormalize,sampleConvert,startValues,product,saveProduct,addProduct,divide,addDepthBase,saveValue,saveOffsetDepth,component,nextLane,waitMath,emit,abort,finish,complete=Value
   }
   private val phase=RegInit(State.idle);private val input=Reg(new FragmentInterpolationRequest(p,g))
   private val output=Reg(new Fp32InterpolatedQuad(p,g));private val result=Reg(new FragmentInterpolationCompletion)
@@ -179,11 +179,10 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
     // Triangle edge2 already contains -line.dy and line.dx. Reuse those
     // exact signed65 differences; kind selection belongs in sample setup.
     val positiveY=Mux(input.sampleMode===1.U,sample(0),sample.pad(2)(1))
-    scaledX(i):=signedGradient(Mux(line,gradientY(2),gradientX(i)),
+    scaledX(i):=signedGradient(sampleX(i)(64,0).asSInt,
       if(i==0)sample(0)^line else sample(0))<<quarterShift
-    scaledY(i):=signedGradient(Mux(line,gradientX(2),gradientY(i)),
+    scaledY(i):=signedGradient(sampleY(i)(64,0).asSInt,
       if(i==1)positiveY^line else positiveY)<<quarterShift
-    if(i==2){when(line){scaledX(i):=0.S;scaledY(i):=0.S}}
     val adder=Module(new CarrySavePrefixSum(sampleEdgeWidth))
     adder.io.terms(0):=sampleCenter(i).asUInt;adder.io.terms(1):=sampleX(i).asUInt;adder.io.terms(2):=sampleY(i).asUInt
     summedEdges(i):=adder.io.sum(sampleEdgeWidth-1,0).asSInt
@@ -494,7 +493,7 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
       is(State.sampleDepth){
         when(sample>=(1.U(3.W)<<input.sampleMode)){sampling:=false.B;depth:=false.B;component:=0.U;phase:=Mux(needsCentroid,State.startCentroid,State.component)}
           .elsewhen(!pixel.coverageMask(sampleIndex)){sample:=sample+1.U}
-          .otherwise{sampleForCentroid:=false.B;phase:=State.sampleTerms}
+          .otherwise{sampleForCentroid:=false.B;phase:=State.sampleSelect}
       }
       is(State.startCentroid){
         when(needsCentroid){
@@ -502,7 +501,17 @@ class Fp32FragmentInterpolator(p: VertexShaderStageConfig=VertexShaderStageConfi
         }.otherwise{phase:=State.component}
       }
       is(State.centroidEdges){
-        sampleForCentroid:=true.B;phase:=State.sampleTerms
+        sampleForCentroid:=true.B;phase:=State.sampleSelect
+      }
+      // Reuse the term registers for raw signed65 coefficients first.
+      // Topology selection then ends before the sample-sign prefix adder;
+      // the next state overwrites them with the scaled signed73 terms.
+      is(State.sampleSelect){
+        for(i<-0 until 3){
+          sampleX(i):=Mux(primitive.kind===1.U,if(i==2)0.S else gradientY(2),gradientX(i))
+          sampleY(i):=Mux(primitive.kind===1.U,if(i==2)0.S else gradientX(2),gradientY(i))
+        }
+        phase:=State.sampleTerms
       }
       is(State.sampleTerms){
         sampleX:=scaledX;sampleY:=scaledY
