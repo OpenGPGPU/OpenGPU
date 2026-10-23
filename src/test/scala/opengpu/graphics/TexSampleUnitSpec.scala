@@ -618,6 +618,7 @@ class TexSampleUnitSpec extends AnyFlatSpec {
             val expected = if (lanes == 4) 8 else 16
             assert(requests == expected, s"spatial cache requested $requests words, expected $expected")
           }
+          if (ordinary && mask != 0) assert(first <= 5, s"fixed base-level sample admission was delayed: $first")
           if (mask == 0) assert(requests == 0)
           println(s"SINGLE_TEXEL_VECTOR lanes=$lanes trial=$trial requests=$requests first=$first")
           dut.io.vectorCommit.ready.poke(true.B); dut.clock.step()
